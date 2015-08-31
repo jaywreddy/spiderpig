@@ -66,14 +66,14 @@ def solution(shapes):
 
   try:
     tiled_star = tile_shape(star_pl, 2, 3).simplified()
-    assert(len(tiled_star.simplified()) == 6*len(star_pl.simplified()))
+    assert(len(tiled_star) == 6*len(star_pl))
     assert(not check_overlap(tiled_star))
   except AssertionError:
     print 'Something\'s wrong with tiling stars'
 
   try:
     tiled_squarcle = tile_shape(squarcle_pl, 2, 1).simplified()
-    assert(len(tiled_squarcle) == 2*len(star_pl.simplified()))
+    assert(len(tiled_squarcle) == 2*len(squarcle_pl))
   except AssertionError:
     print 'Something\'s wrong with tiling squarcles'
 
