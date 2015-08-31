@@ -59,24 +59,21 @@ def solution(shapes):
   open_pl, squarcle_pl, star_pl = shapes
 
   try:
-    combined_shapes = combine_shapes(shapes)
-    assert(
-      len(combined_shapes.simplified()) == 
-        sum([len(s.simplified()) for s in shapes])
-    )
+    combined_shapes = combine_shapes(shapes).simplified()
+    assert(len(combined_shapes) == sum([len(s) for s in shapes]))
   except AssertionError:
     print 'Something\'s wrong with combine_shapes'
 
   try:
-    tiled_star = tile_shape(star_pl, 3, 5)
-    assert(len(tiled_star.simplified()) == 15*len(star_pl.simplified()))
+    tiled_star = tile_shape(star_pl, 2, 3).simplified()
+    assert(len(tiled_star.simplified()) == 6*len(star_pl.simplified()))
     assert(not check_overlap(tiled_star))
   except AssertionError:
     print 'Something\'s wrong with tiling stars'
 
   try:
-    tiled_squarcle = tile_shape(squarcle_pl, 7, 2)
-    assert(len(tiled_squarcle.simplified()) == 14*len(star_pl.simplified()))
+    tiled_squarcle = tile_shape(squarcle_pl, 2, 1).simplified()
+    assert(len(tiled_squarcle) == 2*len(star_pl.simplified()))
   except AssertionError:
     print 'Something\'s wrong with tiling squarcles'
 
