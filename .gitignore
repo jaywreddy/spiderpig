@@ -1,0 +1,15 @@
+*.json
+
+*.scad
+*.stl
+
+*.dxf
+*.pdf
+
+*.png
+*.svg
+
+*.pyc
+
+*.*~
+*.swp
