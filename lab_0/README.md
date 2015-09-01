@@ -47,7 +47,7 @@ for first-time users. [Markdown](https://help.github.com/articles/markdown-basic
 is the text formatting language we will be using for exercies responses.
 
 Before starting this lab, you should have created a GitHub account, and sent
-a Piazz message to instructors with your GitHub username to the instructor.
+a Piazza message to instructors with your GitHub username to the instructor.
 We'll respond with a private repository that you will use for the remainder
 of the class to submit lab work. All individual checkoffs will be based on 
 what is checked into this repository by the due date and time.
@@ -73,15 +73,33 @@ generate these. By default these will be ignored by the `.gitignore` anyway.
 
 ### Exercises
 
-1. Run the Virtual Machine image, login, open a terminal, and cd into the 
-`comp_fab` directory.
+1. Run the Virtual Machine image and open a terminal.
 
-1. Make sure you have the most recent version of the code by pulling from the 
-starter repository: `git pull starter master`. You should also pull from the
-digifab directory in the home folder.
+1. Make sure you have the most up to date DigiFab code by entering
 
-1. Add your class repository as a remote with `git remote add origin your_url`,
-replacing "your\_url" with the full path to your class repository.
+```
+cd digifab
+git pull origin master
+```
+
+You should do this every time you start working on solution code.
+
+1. Enter the following commands to initialize your repository, replacing
+replacing the xx's with your team number.
+
+```
+git init ~/team_xx
+cd ~/team_xx
+touch README.md
+git commit -am "Initializing"
+git remote add origin https://github.com:CS194-028/team_xx.git
+git remote add starter https://github.com:CS194-028/starter.git
+git pull starter master
+git push origin master
+```
+
+You should repeat the `git pull starter master` every time you work on code
+as well.
 
 1. Edit this `README.md` file to answer the following:
 *Question 1: What is your name and GitHub username? Answer using a Markdown
