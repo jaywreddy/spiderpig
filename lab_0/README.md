@@ -10,8 +10,8 @@ In this lab you will learn how to
 * Use Git to check out starter code and DigiFab repositories
 * Use Git-flavored Markdown to respond to exercise questions
 * Use Git to check in responses and solution code
-* Output standard geometry file types
 * View geometry files in LibreCAD and OpenSCAD
+* Print PDF files from LibreCAD
 * Use iPython to generate and examine geometry objects
 * Write Python code to generate and manipulate geometry objects
 
@@ -73,19 +73,24 @@ generate these. By default these will be ignored by the `.gitignore` anyway.
 
 ### Exercises
 
-1. Run the Virtual Machine image and open a terminal.
+1. Install VirtualBox.
+
+1. Import the cs194-028.ova Virtual Machine in VirtualBox with File > Import 
+Appliance ...
+
+1. Run the VM by double-clicking it and open a terminal.
 
 1. Make sure you have the most up to date DigiFab code by entering
 
 ```
-cd digifab
+cd ~/digifab
 git pull origin master
 ```
 
 You should do this every time you start working on solution code.
 
 1. Enter the following commands to initialize your repository, replacing
-replacing the xx's with your team number.
+the xx's with your team number.
 
 ```
 git init ~/team_xx
@@ -95,7 +100,6 @@ git commit -am "Initializing"
 git remote add origin https://github.com:CS194-028/team_xx.git
 git remote add starter https://github.com:CS194-028/starter.git
 git pull starter master
-git push origin master
 ```
 
 You should repeat the `git pull starter master` every time you work on code
@@ -118,29 +122,36 @@ Now you are ready to run the starter code. The easiest way to do this is run
 ./solution.py
 ```
 
-This should generate several files, among them being `lab_0.json`,`lab_0.dxf`,
-and `lab_0.scad`.
-
+This should generate several files, among them being `all_shapes.dxf` and
+`all_shapes.scad`.
 
 ### OpenSCAD
 
-[OpenSCAD](http://www.openscad.org/documentation.html)
+[OpenSCAD](http://www.openscad.org/documentation.html) is a Constructive
+Solid Geometry (CSG) laguage with an integrated development and viewer
+environment. Double clicking files with a `.scad` extension will open them
+in in OpenSCAD.
 
 ### LibreCAD
 
-[LibreCAD](http://librecad.org/cms/home.html)
+[LibreCAD](http://librecad.org/cms/home.html) is a CAD program for viewing
+and printing DXF files. This program also allows printing to PDF files with
+scale-accurate dimensions. Double clicking files with a `.dxf` extension will
+open them in LibreCAD.
 
 ### Exercises
 
 1. Run the starter code.
 
-1. Open `lab_0.dxf` in LibreCAD. Use the Print to File option 
+1. Open `all_geometry.dxf` in LibreCAD. Enable Print Preview under the File
+menu. Use the Print to File option to make a PDF. You might need to muck around
+with the print scale and settings in Edit > Current Drawing Settings.
 
-1. Open `lab_0.scad` in OpenSCAD.
-*Question 2: What do you notice about the red shape compared to the DXF?*
+1. Open `all_geometry.scad` in OpenSCAD.
+*Question 2: What do you notice about the bottom shape compared to the DXF?*
 
-1. Open `lab_0.json` in a text editor.
-*Question 3: What*
+1. Try editing the geometry in the OpenSCAD window. A list of available
+is [here](http://www.openscad.org/cheatsheet/index.html).
 
 ## iPython, NumPy, SolidPython
 
@@ -164,9 +175,36 @@ nd indexing, hstack, vstack, dot, transpose, broadcast functions
 
 1. Create python function that will tile an input PolyLine
 
+## Design Challenge
+
+Complete the following functions in `solution.py`. When you meet the minimum
+requirements for checkoff, the `solution` function will no longer print any
+lines like `Something's wrong with ...`. You should still display the results
+of each of your functions to check that they produce what you expect.
+
+### Exercises
+
+1. `combine_shapes`: Write a function that accepts a list of shapes created in
+the `example` function and applies the same transforms using only OpenSCAD
+functions. This means no using any functions defined in the Geometry or
+PolyLine class (other than constructors).
+
+1. `tile_shape`: Given a PolyLine shape and number of elements in x and y
+directions, produce a rectangular grid of the shape. Make sure that there is
+enough of a margin between the shapes that they can't intersect.
+
+1. `make_art`: Get your creative juices flowing and create a design with the
+functions you've learned so far. The only requirements are that it have at
+least 10 individual polyline elements, and 100 points. You'll bring a printout
+of this design to class, and have an opportunity to explain the functions and
+techniques you used.
+
 ## Deliverables
 
-1. Checked in `solution.py` that produces `lab_0.dxf` with new geometry functions. 
-1. Checked in `README.md` with responses to lab questions.
-1. Bring a printout of your `lab_0.dxf` to class.
+1. Checked in `solution.py` with completed functions that passes all assertion
+tests in `solution`.
+
+1. Checked in `README.md` complete with responses to questions.
+
+1. Bring a printout of your computationally fabricated artwork to class.
 
