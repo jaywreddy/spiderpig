@@ -20,13 +20,16 @@ In this lab you will learn how to
 We have created a [VirtualBox](https://www.virtualbox.org/wiki/Downloads)
 virtual machine image that is already set up with all of the software you
 will need to run the labs. You can download the image file from the class
-Piazza [Resources Page](https://piazza.com/berkeley/fall2015/cs194028/resources).
-To run it, download the appropriate VirtualBox player from the website for
-your system, and import the image file. The username and password is "maker"
-and "CS194-028".
+Piazza 
+[Resources Page](https://piazza.com/berkeley/fall2015/cs194028/resources)
+(this should be the same as the image handed out on flash drives in class).
 
-Since you will be generating files that need to be moved to protyping machines,
-we suggest following these
+To run it, download the appropriate VirtualBox player from the website for
+your system, and import the image file. The username and password for 
+the VM is "maker" and "CS194-028" should you ever need to sudo things.
+
+Since you will frequently be generating files that need to be moved to 
+protyping machines, we suggest following these
 [instructions](https://www.virtualbox.org/manual/ch04.html#sharedfolders)
 for setting up a shared folder between your host and guest operating system.
 
