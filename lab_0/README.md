@@ -75,12 +75,12 @@ generate these. By default these will be ignored by the `.gitignore` anyway.
 
 1. Install VirtualBox.
 
-1. Import the cs194-028.ova Virtual Machine in VirtualBox with File > Import 
+2. Import the cs194-028.ova Virtual Machine in VirtualBox with File > Import 
 Appliance ...
 
-1. Run the VM by double-clicking it and open a terminal.
+3. Run the VM by double-clicking it and open a terminal.
 
-1. Make sure you have the most up to date DigiFab code by entering
+4. Make sure you have the most up to date DigiFab code by entering
 
 ```
 cd ~/digifab
@@ -89,7 +89,7 @@ git pull origin master
 
 You should do this every time you start working on solution code.
 
-1. Enter the following commands to initialize your repository, replacing
+5. Enter the following commands to initialize your repository, replacing
 the xx's with your team number.
 
 ```
@@ -105,13 +105,13 @@ git pull starter master
 You should repeat the `git pull starter master` every time you work on code
 as well.
 
-1. Edit this `README.md` file to answer the following:
+5. Edit this `README.md` file to answer the following:
 *Question 1: What is your name and GitHub username? Answer using a Markdown
 table.*
 
-1. Commit this change with `git commit -am "Adding name and username to README"`.
+6. Commit this change with `git commit -am "Adding name and username to README"`.
 
-1. Push to your repo with `git push origin master`.
+7. Push to your repo with `git push origin master`.
 
 ## Running code, viewing files
 
@@ -143,37 +143,102 @@ open them in LibreCAD.
 
 1. Run the starter code.
 
-1. Open `all_geometry.dxf` in LibreCAD. Enable Print Preview under the File
+2. Open `all_geometry.dxf` in LibreCAD. Enable Print Preview under the File
 menu. Use the Print to File option to make a PDF. You might need to muck around
 with the print scale and settings in Edit > Current Drawing Settings.
 
-1. Open `all_geometry.scad` in OpenSCAD.
+3. Open `all_geometry.scad` in OpenSCAD.
 *Question 2: What do you notice about the bottom shape compared to the DXF?*
 
-1. Try editing the geometry in the OpenSCAD window. A list of available
-is [here](http://www.openscad.org/cheatsheet/index.html).
+4. Try editing the geometry in the OpenSCAD window. A list of available
+functions is [here](http://www.openscad.org/cheatsheet/index.html).
 
-## iPython, NumPy, SolidPython
+## Interactive Computational Fabrication
 
-You can also run the starter code from an iPython interpreter
+Since these exercises will focus on creating physical objects, it's important
+to be able to quickly iterate on designs and see the the results. As an
+intepreted language, Python naturally offers a paradigm for introspecting
+and viewing live software objects.
 
-[iPython](http://www.pythonforbeginners.com/basics/ipython-a-short-introduction)
-tab completion, object?, running shell commands, mention notebooks
+### iPython
 
-[SolidPython](https://github.com/SolidCode/SolidPython)
+You can run fabrication code from an iPython interpreter. iPython is an
+augmented command line interpreter for Python that has several useful
+features such as:
+
+* Tab completion of variable, attribute, function, filenames, and entry
+history.
+* Object and function documentation. Adding a question mark to the end of
+any function will print the function signature and docstring for the function.
+Two question marks will provide even more information, including the source
+code of functions (hitting q will exit this view for long entries).
+* Shell commands. Common Linux functions like `ls`,`pwd` and `cd` can be run
+from the iPython interpreter.
+* iPython [notebooks](http://ipython.org/notebook.html) offer a way of 
+combining code exectution and document. We won't cover them here, but they're
+worth checking out.
+
+[Here](http://www.pythonforbeginners.com/basics/ipython-a-short-introduction)
+is a tutorial for iPython for more information.
+
+### NumPy
+
+[NumPy](www.numpy.org) is a Python package for matrix operations and linear
+algebra. The [DigiFab](https://github.com/CS194-028/digifab) library that 
+represents geometry objects uses NumPy arrays for point and index variables.
+Knowing how to manipulate NumPy arrays will help with the upcoming labs.
+[Here](http://cs231n.github.io/python-numpy-tutorial/) is a tutorial
+introduction. Multi-dimensional array indexing, 
+[broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+hstack, vstack, dot, and transpose are important functions to read up on.
+
+### SolidPython
+
+[SolidPython](https://github.com/SolidCode/SolidPython) is a Python package
+that wraps all OpenSCAD functions in Python calls.
+
 Python hooks to pretty much all OpenSCAD functions. Check out the utils module
 for more useful functions.
 
-[NumPy](http://cs231n.github.io/python-numpy-tutorial/)
-nd indexing, hstack, vstack, dot, transpose, broadcast functions
-
 ### Exercises
 
-1. Create geometry function like star.
+1. Run an iPython interpreter by typing `ipython` in a shell.
 
-1. Create SCAD geometry, maybe with text?
+2. Enter the first line of the `example` function in `solution.py` into the 
+interpreter, and press enter. View the `open_pl` PolyLine by entering
+`open_pl.show()` in the interpreter. You will have to close the viewing
+window before entering more code.
 
-1. Create python function that will tile an input PolyLine
+3. Enter the rest of the `example` function lines one at a time (copy paste 
+is your friend, which is ctrl-shift-c and ctrl-shift-v in the default Ubuntu 
+shell). As you work through the code, answer the following questions about 
+objects and functions.
+
+*Question 3: When you type `open_pl.` and hit tab, how many member functions
+and attributes are listed?*
+
+*Question 4: What are the arguments and return type listed when you enter 
+`open_pl.hull?`?*
+
+*Question 5: What is the output of `open_pl.points[2:4,0]`, and what does 
+this notation mean in terms of selecting a subset of the point coordinates?*
+
+*Question 6: `print solid.scad_render(squarcle_gen)` will show the OpenSCAD 
+string generated by `squarcle_gen`. What OpenSCAD function correlates to the 
+minus sign used to make `squarcle_gen`?*
+
+*Question 7: `len(squarcle_pl)` will return the number of unconnected polylines
+in the PolyLine object. How many polylines were in the PolyLine created with 
+`squarcle_gen` before `simplified` was called on it?*
+
+*Question 8: Can an integer be used to scale a PolyLine object with the
+multiplication notation?*
+
+*Question 9: Python uses so-called "magic functions" to implement the behavior
+of symbolic in-fix notation (i.e. `foo + bar` is equivalent to 
+`foo.__add__(bar)`. You can see all of the magic functions defined for an 
+object by typing entering `obj.__?`. Which magic function and symbol has the 
+equivalent behavior of the `unioned` function defined for the PolyLine class?*
 
 ## Design Challenge
 
@@ -189,11 +254,11 @@ the `example` function and applies the same transforms using only OpenSCAD
 functions. This means no using any functions defined in the Geometry or
 PolyLine class (other than constructors).
 
-1. `tile_shape`: Given a PolyLine shape and number of elements in x and y
+2. `tile_shape`: Given a PolyLine shape and number of elements in x and y
 directions, produce a rectangular grid of the shape. Make sure that there is
 enough of a margin between the shapes that they can't intersect.
 
-1. `make_art`: Get your creative juices flowing and create a design with the
+3. `make_art`: Get your creative juices flowing and create a design with the
 functions you've learned so far. The only requirements are that it have at
 least 10 individual polyline elements, and 100 points. You'll bring a printout
 of this design to class, and have an opportunity to explain the functions and
@@ -201,10 +266,10 @@ techniques you used.
 
 ## Deliverables
 
-1. Checked in `solution.py` with completed functions that passes all assertion
+* Checked in `solution.py` with completed functions that passes all assertion
 tests in `solution`.
 
-1. Checked in `README.md` complete with responses to questions.
+* Checked in `README.md` complete with responses to questions.
 
-1. Bring a printout of your computationally fabricated artwork to class.
+* Bring a printout of your computationally fabricated artwork to class.
 
