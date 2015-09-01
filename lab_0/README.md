@@ -193,7 +193,8 @@ Knowing how to manipulate NumPy arrays will help with the upcoming labs.
 [Here](http://cs231n.github.io/python-numpy-tutorial/) is a tutorial
 introduction. Multi-dimensional array indexing, 
 [broadcasting](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-hstack, vstack, dot, and transpose are important functions to read up on.
+, `hstack`, `vstack`, `dot`, and `transpose` (`nparray.T`) are important 
+functions to read up on.
 
 ### SolidPython
 
