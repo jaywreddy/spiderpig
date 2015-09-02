@@ -199,10 +199,10 @@ functions to read up on.
 ### SolidPython
 
 [SolidPython](https://github.com/SolidCode/SolidPython) is a Python package
-that wraps all OpenSCAD functions in Python calls.
-
-Python hooks to pretty much all OpenSCAD functions. Check out the utils module
-for more useful functions.
+that wraps all OpenSCAD functions in Python calls. Almost all OpenSCAD 
+functions like `text` or `offset` have a corresponding SolidPython call.
+See the GitHub link above for calling convention details. Also check out the 
+`utils` file for more useful utility functions.
 
 ### Exercises
 
