@@ -98,8 +98,6 @@ the xx's with your team number.
 ```
 git init ~/team_xx
 cd ~/team_xx
-touch README.md
-git commit -am "Initializing"
 git remote add origin https://github.com:CS194-028/team_xx.git
 git remote add starter https://github.com:CS194-028/starter.git
 git pull starter master
