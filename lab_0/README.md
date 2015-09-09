@@ -146,11 +146,11 @@ open them in LibreCAD.
 
 1. Run the starter code.
 
-2. Open `all_geometry.dxf` in LibreCAD. Enable Print Preview under the File
+2. Open `all_shapes.dxf` in LibreCAD. Enable Print Preview under the File
 menu. Use the Print to File option to make a PDF. You might need to muck around
 with the print scale and settings in Edit > Current Drawing Settings.
 
-3. Open `all_geometry.scad` in OpenSCAD.
+3. Open `all_shapes.scad` in OpenSCAD.
 *Question 2: What do you notice about the bottom shape compared to the DXF?*
 
 4. Try editing the geometry in the OpenSCAD window. A list of available
