@@ -87,7 +87,7 @@ Appliance ...
 
 ```
 cd ~/digifab
-git pull origin master
+git pull
 ```
 
 You should do this every time you start working on solution code.
