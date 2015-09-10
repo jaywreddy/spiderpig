@@ -123,13 +123,13 @@ def example():
   )
   
   # Use the OpenSCAD generator to make a PolyLine
-  squarcle_pl = PolyLine(generator=squarcle_gen)
+  squarcle_pl = PolyLine(generator=squarcle_gen).simplified()
   
   # Create star.dxf by saving a PolyLine
   star().save('star.dxf')
     
   # Load PolyLine from DXF file
-  star_pl = PolyLine(filename='star.dxf')
+  star_pl = PolyLine(filename='star.dxf').simplified()
   
   # Scale, translate and rotate PolyLines
   small_open_pl = 0.5 * open_pl
