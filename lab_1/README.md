@@ -14,7 +14,7 @@ This first lab introduces the computational design of structures made out of ben
 
 Our tool will be the DI-WIRE CNC wirebender, which is currently located in the Invention Lab. Explore some of the project on the [Pensa Labs site](http://www.pensalabs.com/bendables/) to see what people have used the machine for. Note that this machine can only do 2D bends, whereas production machines would be full 3D.
 
-The [user manual](http://static1.squarespace.com/static/53ac5d6ee4b02ecfa224b242/t/54611765e4b043f3ac05a1bc/1415649125267/DIWire_User_Manual.pdf) covers the operation of the machine and driver software. The "Wireware" software, which runs the machine, makes toolpaths from imported dxfs which we will generate. It can do some interpretation of curved lines, but it doesn't do a great job. So our strategy will be to 
+The [user manual](http://static1.squarespace.com/static/53ac5d6ee4b02ecfa224b242/t/54611765e4b043f3ac05a1bc/1415649125267/DIWire_User_Manual.pdf) covers the operation of the machine and driver software. The "Wireware" software, which runs the machine, makes toolpaths from imported dxfs which we will generate. It can do some interpretation of curved lines, but it doesn't do a great job. So our strategy will be to generate the exact points that will be bent by the machine.
 
 ## Joinery for 1D structures
 
@@ -22,7 +22,7 @@ Joinery for bent wire structures is accomplished by connecting adjacent pieces o
 
 The thickness of the wire has to be accounted for in bent wire designs so parts will have to be offset by a certain amount to fit properly. Figure 1 demonstrates how this would work for structures comprised of adjacent planar faces.
 
-![Figure 1](https://github.com/CS194-028/solution/blob/master/lab_1/assets/wire_offset.jpg) 
+![Figure 1](https://github.com/CS194-028/starter/tree/master/lab_1/assets/wire_offset.jpg) 
 
 The first figure shows the structure we want to make, three triangular faces coming together at a point. The second pane shows the fully rationalized design with offsets to allow for wire thickness. The third plane is a section view through a wire section showing how the rationalized pieces fit to the specified design.
 
@@ -36,7 +36,7 @@ The first figure shows the structure we want to make, three triangular faces com
 3. Create a function which simulates the output of the DI-WIRE given a 3D polyline and a 0.125" wire diameter
 4. Let's make 3D bent structures like this 3D phone holder:
 
-![Figure 2](https://github.com/CS194-028/solution/blob/master/lab_1/assets/bend_fig.jpg)
+![Figure 2](https://github.com/CS194-028/starter/tree/master/lab_1/assets/bend_fig.jpg)
 
  from the following points (which are in inches):
 
@@ -49,7 +49,7 @@ Create a function which unfolds a 3D polyline so that the DI-WIRE can manufactur
 Make structural wire supports for a set of shelves described by a list of endpoints i.e. shelves = [[p0-p3], [p0-p3],...]. Not every set of input point has to work, but your code should throw an exception if the shelf supports cannot be fabricated.
 Simulate your design and ensure that it passes the DFM check.
 
-![Figure 3](https://github.com/CS194-028/solution/blob/master/lab_1/assets/shelves.jpg)
+![Figure 3](https://github.com/CS194-028/starter/tree/master/lab_1/assets/shelves.jpg)
 
 Starter points:
 
