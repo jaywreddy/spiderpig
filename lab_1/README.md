@@ -22,7 +22,7 @@ Joinery for bent wire structures is accomplished by connecting adjacent pieces o
 
 The thickness of the wire has to be accounted for in bent wire designs so parts will have to be offset by a certain amount to fit properly. Figure 1 demonstrates how this would work for structures comprised of adjacent planar faces.
 
-![Figure 1](https://github.com/CS194-028/starter/tree/master/lab_1/assets/wire_offset.jpg) 
+![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_1/assets/wire_offset.jpg) 
 
 The first figure shows the structure we want to make, three triangular faces coming together at a point. The second pane shows the fully rationalized design with offsets to allow for wire thickness. The third plane is a section view through a wire section showing how the rationalized pieces fit to the specified design.
 
@@ -36,7 +36,7 @@ The first figure shows the structure we want to make, three triangular faces com
 3. Create a function which simulates the output of the DI-WIRE given a 3D polyline and a 0.125" wire diameter
 4. Let's make 3D bent structures like this 3D phone holder:
 
-![Figure 2](https://github.com/CS194-028/starter/tree/master/lab_1/assets/bend_fig.jpg)
+![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_1/assets/bend_fig.jpg)
 
  from the following points (which are in inches):
 
@@ -49,7 +49,7 @@ Create a function which unfolds a 3D polyline so that the DI-WIRE can manufactur
 Make structural wire supports for a set of shelves described by a list of endpoints i.e. shelves = [[p0-p3], [p0-p3],...]. Not every set of input point has to work, but your code should throw an exception if the shelf supports cannot be fabricated.
 Simulate your design and ensure that it passes the DFM check.
 
-![Figure 3](https://github.com/CS194-028/starter/tree/master/lab_1/assets/shelves.jpg)
+![Figure 3](https://github.com/CS194-028/starter/blob/master/lab_1/assets/shelves.jpg)
 
 Starter points:
 
