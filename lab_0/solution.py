@@ -87,7 +87,7 @@ def solution(shapes):
 
   try:
     combined_shapes = combine_shapes(shapes).simplified()
-    assert(len(combined_shapes) == sum([len(s.simplified()) for s in shapes])) #added simplified
+    assert(len(combined_shapes) == sum([len(s) for s in shapes]))
   except AssertionError:
     print 'Something\'s wrong with combine_shapes'
 
@@ -102,7 +102,7 @@ def solution(shapes):
   try:
     tiled_squarcle = tile_shape(squarcle_pl, 2, 1).simplified()
     tiled_squarcle.save("tiled_squarcle.scad")
-    assert(len(tiled_squarcle) == 2*len(squarcle_pl.simplified())) #I think there needs to be a simplified here as well?
+    assert(len(tiled_squarcle) == 2*len(squarcle_pl))
   except AssertionError:
     print 'Something\'s wrong with tiling squarcles'
 
@@ -153,13 +153,14 @@ def example():
   )
 
   # Use the OpenSCAD generator to make a PolyLine
-  squarcle_pl = PolyLine(generator=squarcle_gen)
+  squarcle_pl = PolyLine(generator=squarcle_gen).simplified()
 
   # Create star.dxf by saving a PolyLine
   star().save('star.dxf')
 
   # Load PolyLine from DXF file
-  star_pl = PolyLine(filename='star.dxf')
+
+  star_pl = PolyLine(filename='star.dxf').simplified()
 
   # Scale, translate and rotate PolyLines
   small_open_pl = 0.5 * open_pl
