@@ -38,6 +38,8 @@ The first figure shows the structure we want to make, three triangular faces com
 
 ![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_1/assets/bend_fig.jpg)
 
+The black lines represent the folded wire that would be produced by the DI-WIRE, in other words the design file.
+
  from the following points (which are in inches):
 
 [[3.0568,0.0,0.4915], [3.4,0.0,0.0], [2.8,0.0,0.0], [1.6405,0,1.6405], [0.0,0.0,0.0], [0.0,2.0,0.0], [1.6405,2.0,1.6405], [2.8,2.0,0.0], [3.4,2.0,0.0], [3.0568,2.0,0.4915]]  
