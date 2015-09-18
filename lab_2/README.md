@@ -51,11 +51,11 @@ allow folding (black).
 
 5. Write the `join_with_fold` function which joins a block and a PolyLine and adds a fold line between them. This function should operate by translating the second polyline such that the position of two ordered points is matched. As shown in this figure:
 
-![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_1/assets/join_fold_flow.jpg)
+![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_2/assets/join_fold_flow.jpg)
 
 6. Write a function that adds a tab between two given points in a Block, using your `join_with_fold` function. The example object should look like this:
 
-![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_1/assets/example_fold.png) 
+![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_2/assets/example_fold.png) 
 
 7. Assemble the chair with folded joints by sequentially joining the planar pieces with your functions. If any line which should be cut get lost in the union operations, you should add them back manually.
 
