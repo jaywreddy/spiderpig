@@ -17,7 +17,7 @@ In this lab you will learn how to:
 ### Slice forms
 Let's look at how we would make a 3D solid out of 2D manufactured parts:
 
-1. Complete `slice_mesh` to rationalize an [imported stl](https://www.thingiverse.com/download:846213) with slice forms, including thru-holes you place for two 2mm diameter alignment pins. If using the supplied STL, rotate it 90 degrees about the x-axis for a better slicing result.
+1. Complete `slice_mesh` to rationalize an imported stl with slice forms, including thru-holes you place for two 2mm diameter alignment pins. If using the supplied STL, rotate it 90 degrees about the x-axis for a better slicing result.
 
 2. Simulate the slice formed solid in its assembled configuration by completing `slice_sim`.
 
@@ -66,7 +66,7 @@ Make a parametric box! Your design function should accept length, width, and hei
 
 ## Deliverables
 
-As always, we encourage you to make the objects you design. There is more oppurtunity for future innovation when you can look at a physical object in your hands. For this lab, the Jacobs material store isn't up yet, so I would reccomend making your objects out of corrugated cardboard. It's easy to cut an readily available.
+As always, we encourage you to make the objects you design. There is more oppurtunity for future innovation when you can look at a physical object in your hands. For this lab, the Jacobs material store isn't up yet, so I would reccomend making your objects out of corrugated cardboard. It's easy to cut and readily available.
 
 1. Rendering of slice-formed solid, and dxf of 2D layout
 2. Solution code for the 2D joinery compiler, including elaborator and joinery functions
@@ -77,6 +77,13 @@ As always, we encourage you to make the objects you design. There is more oppurt
 - Folded layout of chair
 3. Design code for parametric box
 
-## Extensions
+## Using the Laser Cutter in Jacobs
 
-Describe open-ended lab extenions here.
+The laser cutter we will use is located in 110D Jacobs. Everyone who has completed **both** the GWS **and** the invention lab training is eligible to use it. It is still not fully set up so, there are a few caveats:
+
+- Compressed air for the building is not operable, so we will be using the laser without compressed air. Because of this, it is especially important that users confirm the dust collection is on, and that the mirrors are cleaned when necessary.
+- The local switch for the dust collection is not operable, technical staff (Design Specialist) are turning on the dust collection manually on the roof at the beginning of each work day. If users notice the ventilation is not on, please notify a Design Specialist.
+- If you have **ANY** questions about how to use it, ask a design specialist right away. Chris is one such who works there full time, so you can ask for him. The machine is vulnerable in its current state so it's best to be careful.
+
+As always post to Piazza when you have any questions, and may the odds be ever in your favor.
+
