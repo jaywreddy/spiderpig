@@ -75,7 +75,7 @@ As always, we encourage you to make the objects you design. There is more oppurt
 3. Solution code which joins two polylines with a fold
 - Solution code that adds tabs
 - Folded layout of chair
-3. Design code for parametric box
+4. Design code for parametric box
 
 ## Using the Laser Cutter in Jacobs
 
