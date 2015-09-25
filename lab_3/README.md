@@ -26,7 +26,7 @@ The `Connector` class extends `Body`. In its current form, it just places a 6mm 
 
 1. In the Connector class, create a labelled blind mortise joint primitive according to the below figure:
 
-![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_3/assets/blind_mortise.jpg) 
+![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_3/assets/blind_mortise.JPG) 
 
 2. For each `Stick` in the connector, add a blind mortise joint aligned to its axis.
 3. Join all of the mortise joints with the original sphere. Ensure that all of the mortises for the `Sticks` stay empty. For help with this, see 
@@ -36,7 +36,7 @@ There are three connectors that join the space frame to a base plate. For this j
 
 1. Create a labelled, flanged tenon primitive as shown in the below figure:
 
-![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_3/assets/tenon.jpg) 
+![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_3/assets/tenon.JPG) 
 
 2. If the `Connector` attaches to the plate, then add a tenon to the connector. Again ensure that the area around the tenon is free of 3D printed material, so that it can be inserted into the laser cut plate.
 
