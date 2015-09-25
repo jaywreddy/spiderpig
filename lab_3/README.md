@@ -48,6 +48,10 @@ There are three connectors that join the space frame to a base plate. For this j
 
 Simulate the assembled structure with all of the final joints, and 1D trusses. To verify, check for intersection between the solids.
 
+## 3D printing
+
+We'll be taking advantage of 3D printing's ability to print mostly arbitrary shapes to make our connector pieces. That being said, the connectors will have complex geometry, and you may need to turn on the support material option to ensure that everything prints correctly. We will be coupling 3D printed parts to objects of fixed dimension (laser cut plate, 1D trusses), so it's important to check that any potential shrinkage from the FDM process is compensated for (or be prepared for a lot of post-processing).
+
 ## Design challenge
 
 Get creative with the point clouds you send to sculpture. Modify the way that edges are calculated from the point cloud (may I suggest a Voronoi partition?)
