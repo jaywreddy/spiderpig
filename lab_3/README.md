@@ -10,6 +10,8 @@ Let's make a space frame structure mounted on a laser cut mounting plate. We'll 
 
 We have made a generator that produces a rough draft of the structure from a random seed. Your job in this lab will be to make this structure fully constructable using computational techniques. By being robust to a random seed, we can be fairly sure that our space-frame compiler will work for most designed objects.
 
+The following directions are set up for using bamboo kitchen skewers (available at Safeway). If you want to use some other material for your struts, like laser-cut plastic or a stick you found on the ground, feel free to modify the lab to fit your purposes. Likewise, the connector geometry can be modified if you so choose.
+
 ## Code structure
 
 There are four main classes in the starter code that you need to pay attention to. 
