@@ -10,6 +10,8 @@ Let's make a space frame structure mounted on a laser cut mounting plate. We'll 
 
 We have made a generator that produces a rough draft of the structure from a random seed. Your job in this lab will be to make this structure fully constructable using computational techniques. By being robust to a random seed, we can be fairly sure that our space-frame compiler will work for most designed objects.
 
+The following directions are set up for using bamboo kitchen skewers (available at Safeway). If you want to use some other material for your struts, like laser-cut plastic or a stick you found on the ground, feel free to modify the lab to fit your purposes. Likewise, the connector geometry can be modified if you so choose.
+
 ## Code structure
 
 There are four main classes in the starter code that you need to pay attention to. 
@@ -45,6 +47,10 @@ There are three connectors that join the space frame to a base plate. For this j
 
 
 Simulate the assembled structure with all of the final joints, and 1D trusses. To verify, check for intersection between the solids.
+
+## 3D printing
+
+We'll be taking advantage of 3D printing's ability to print mostly arbitrary shapes to make our connector pieces. That being said, the connectors will have complex geometry, and you may need to turn on the support material option to ensure that everything prints correctly. We will be coupling 3D printed parts to objects of fixed dimension (laser cut plate, 1D trusses), so it's important to check that any potential shrinkage from the FDM process is compensated for (or be prepared for a lot of post-processing).
 
 ## Design challenge
 
