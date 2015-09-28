@@ -184,17 +184,21 @@ class Sculpture(Layout):
         # vector axis  along that stick
         connector_axes[edge[0]][new_stick.name] = axis.tolist()
         connector_axes[edge[1]][new_stick.name] = (-axis).tolist()
-     
+    
+      # Add Plate body
+      plate = Plate(base_pts)
+      blocks.append(plate)
+
+      # Add an axis for connection to plate for the last three connectors
+      for axes in connector_axes[-3:]:
+        axes[plate.name] = [0.0,0.0,-1.0]
+
       # Add Connector bodies with connection axes and correct translation pose
       for i in range(len(connector_axes)):
         blocks.append(
           Connector(connector_axes[i], pose=(self.cloud[i,:].tolist(),ORIGIN_POSE[1]))
         )
       
-      # Add Plate body
-      plate = Plate(base_pts)
-      blocks.append(plate)
-
       kwargs['blocks'] = blocks
     
     super(Sculpture, self).__init__(**kwargs)
