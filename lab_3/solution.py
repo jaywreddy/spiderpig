@@ -53,8 +53,9 @@ class Connector(Body):
     """Make a connector with specified connection axes.
     
     Args:
-      axes [[float]]: List of unit vectors in directions of connections
-        to sticks.
+      axes { str: [float] } : Dictionary mapping the name of a connected
+        block (Stick or Plate) to a list of float representing the unit axis
+        in the direction of the connection.
     """
 
     if axes is None:
