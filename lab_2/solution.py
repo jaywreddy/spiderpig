@@ -58,6 +58,7 @@ def slice_mesh(fn='LOGOROBOT.stl', t_m=3.0):
 
     """
     poly = PolyMesh(filename=fn)
+    #custom rotation for LOGOROBOT
     rot = sl.rotate(-90, [1, 0, 0])(poly.get_generator())
     poly = PolyMesh(generator=rot)
     slices = []
@@ -95,7 +96,7 @@ def slice_sim(slices, t_m=3.0):
     return PolyMesh(generator=sl.union()(slice_solids))
 
 
-def assemble_chair(polygons, tf_xyz_rpy, t=3):
+def assemble_chair(polygons, tf_xyz_rpy, t=3.0):
     """ Create a 3D rendering of a chair from part outlines.
 
     Args:
@@ -110,8 +111,16 @@ def assemble_chair(polygons, tf_xyz_rpy, t=3):
       tf input
 
     """
-
-    return
+    polys = []
+    for (p,r) in zip(polygons, tf_xyz_rpy):
+        translation, rotation = r
+        solid_p = p.get_generator()
+        thick_p = sl.linear_extrude(t)(solid_p)
+        rotated_p = sl.rotate(rotation)(thick_p)
+        translated_p = sl.translate(translation)(rotated_p)
+        poly = PolyMesh(generator = translated_p)
+        polys.append(poly)
+    return polys
 
 
 def join_butt(solids):
@@ -124,7 +133,13 @@ def join_butt(solids):
       [PolyMesh] list of PolyMeshes modified with butt joints
 
     """
-
+    for i1 in range(len(solids)):
+        for i2 in range(i1):
+            s1 = solids[i1]
+            s2 = solids[i2]
+            intersection = s1.intersected(s2)
+            solids[i1]= s1.differenced(intersection)
+    return solids
 
 def join_box(solids):
     """
@@ -133,7 +148,21 @@ def join_box(solids):
     Returns:
       List of solids modified for joinery
     """
-    return
+    for i1 in range(len(solids)):
+        for i2 in range(i1):
+            s1 = solids[i1]
+            s2 = solids[i2]
+            intersection = s1.intersected(s2)
+
+
+            #segmented intersection 1
+            seg1 = intersection
+            #segmented intersection 2
+            seg2 = intersection
+
+            solids[i1]= s1.differenced(seg1)
+            solids[i2]= s2.differenced(seg2)
+    return solids
 
 
 def rationalize_planar_solids(solids, tf_xyz_rpy, offset):
@@ -158,7 +187,6 @@ def offset_polygon(pl, offset):
       offset PolyLine
 
     """
-
     pp = [p + [0] for p in pl.points.tolist()]
     off_pts = numpy.array([p[0:2] for p in solid.utils.offset_points(
         pp[0:-1], offset, closed_poly=True)])
