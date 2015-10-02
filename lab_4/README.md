@@ -51,7 +51,8 @@ of the upper arm.
 2. Add two Arms as children to the Robot class, and change it's connections so that
 it connects these arms to the torso at the shoulder joints.
 3. Implement `add_snap_joint`. Given two bodies connected by a rotational joint,
-this function will return modified geometry 
+this function will return modified geometry to add the snap shaft and remove
+material around the shaft to one part, and add a hole to the other part.
 4. Use `add_snap_joint` to modify the torso and arm geometries to use the
 included snap joint designs.
 5. 3D print the torso and arm parts, and bring the assembled torso to class.
