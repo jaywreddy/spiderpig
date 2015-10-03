@@ -35,13 +35,13 @@ connections. The hole can either be 3D printed, or laser cut from appropriate
 thickness material.
 
 Automatically Generated Mortise:
-![Figure 3](https://github.com/CS194-028/solution/blob/master/lab_4/assets/robot_back.png)
+![Figure 3](https://github.com/CS194-028/starter/blob/master/lab_4/assets/robot_back.png)
 
 Snap Shaft:
-![Figure 4](https://github.com/CS194-028/solution/blob/master/lab_4/assets/snap_shaft.png)
+![Figure 4](https://github.com/CS194-028/starter/blob/master/lab_4/assets/snap_shaft.png)
 
 Snap Hole:
-![Figure 5](https://github.com/CS194-028/solution/blob/master/lab_4/assets/snap_hole.png)
+![Figure 5](https://github.com/CS194-028/starter/blob/master/lab_4/assets/snap_hole.png)
 
 ### Deliverables
 
@@ -61,7 +61,7 @@ included snap joint designs.
 
 Let's make a simple closed chain mechanism, [the pantograph](https://en.wikipedia.org/wiki/Pantograph). The pantograph is linkage which uses parallel motion to create scaled versions of a traced input. It was very popular with [engravers](http://www.engraversjournal.com/article.php/2207/index.html) for a long time. Here is a diagram of the pantograph:
 
-![Figure 1](https://github.com/CS194-028/solution/blob/master/lab_4/assets/pantograph.jpg)
+![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_4/assets/pantograph.jpg)
 
 To esure proper operation, the pantograph has to be a *parallel mechanism*, meaning that links A and B are parallel, and C and D are parallel. For the motion of the output to be a pure scaling of the input, the input must be placed on a line drawn from the ground pivot to the output. The scale is determined by the ratio of: the distance from the output to the ground pivot, to the distance from the input to the ground pivot.
 
