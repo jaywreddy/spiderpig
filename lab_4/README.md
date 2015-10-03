@@ -21,10 +21,10 @@ configuration. Try running `r.show([0.0,-0.5,0.5])` to see the arms move
 to a new angular state as shown below.
 
 Default Configuration:
-![Figure 1](https://github.com/CS194-028/solution/blob/master/lab_4/assets/robot_front.png)
+![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_4/assets/robot_front.png)
 
 Moved Configuration:
-![Figure 2](https://github.com/CS194-028/solution/blob/master/lab_4/assets/robot_moved.png)
+![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_4/assets/robot_moved.png)
 
 This torso has an automatically generated mortise slot for the lower part of 
 the robot figure, which is implemented in `add_mortice`. You will use a similar
