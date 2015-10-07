@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
   lo.save('lab_1.dxf')
 
-  tet_mesh = PolyMesh(generator=tetrahedron()))
+  tet_mesh = PolyMesh(generator=tetrahedron())
   
   tet_mesh.save('lab_1.scad')
   tet_mesh.save('lab_1.stl')
