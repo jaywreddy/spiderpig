@@ -5,6 +5,7 @@ import solid as sl
 import os
 import solid.utils
 import numpy as np
+from numpy import linalg as la
 import math
 
 
@@ -45,6 +46,13 @@ def planar_slice(mesh, slice_args, slice_width=5):
     intersection = (slice.intersected(mesh)).get_generator()
     return PolyLine(generator=sl.projection()(intersection))
 
+def planar_slice_3d(mesh, slice_args, slice_width = 1):
+    (plane, offset) = slice_args
+    slice_gen = sl.linear_extrude(slice_width)(plane.get_generator())
+    slice_gen = sl.translate(offset)(slice_gen)
+    slice = PolyMesh(generator=slice_gen)
+    intersection = (slice.intersected(mesh))
+    return intersection
 
 def slice_mesh(fn='LOGOROBOT.stl', t_m=3.0):
     """ Return list of slices from stl modifed with through holes for alignment.
@@ -141,6 +149,33 @@ def join_butt(solids):
             solids[i1]= s1.differenced(intersection)
     return solids
 
+def plane_from_normal(norm):
+    plane = sl.square(1000,True)
+    plane_poly = PolyLine(generator=plane)
+    plane_axis = np.array([0,0,1])
+    if norm == plane_axis:
+        return plane
+    rot_axis = np.cross(norm, plane_axis)
+    cos_theta = np.dot(norm, plane_axis)
+    theta = math.acos(cos_theta)
+    quaternion = quaternion_about_axis(theta, rot_axis)
+
+    z = np.array([0,0,1])
+    x = np.array([1,0,0])
+    rot_axis = np.cross(x,z)
+    cos_theta= np.dot(z,x)
+    theta = math.acos(cos_theta)
+    quat = quaternion_about_axis(theta, rot_axis)
+    quat_mat = quaternion_matrix(quat)
+    x * quat
+    I = identity_matrix()
+    plane_poly.points
+    plane_poly * e
+    e = euler_from_quaternion(quat)
+    np.dot(quat,np.array(z))
+
+
+
 def join_box(solids):
     """
     Args:
@@ -148,20 +183,47 @@ def join_box(solids):
     Returns:
       List of solids modified for joinery
     """
+    butt_join_thickness = 5
     for i1 in range(len(solids)):
         for i2 in range(i1):
             s1 = solids[i1]
             s2 = solids[i2]
             intersection = s1.intersected(s2)
 
+            #identify cut axis:
+            points = intersection.points
+            maxx = None
+            maxy = None
+            maxz = None
+            for j1 in range(len(points)):
+                for j2 in range(j1):
+                    p1 = points[j1]
+                    p2 = points[j2]
+                    dp = p2-p1
+                    dx,dy,dz = dp
+                    maxx = max(la.norm(maxx), dx) * np.array[1,0,0]
+                    maxy = max(la.norm(maxy), dy) * np.array[0,1,0]
+                    maxy = max(la.norm(maxz), dz) * np.array[0,0,1]
 
-            #segmented intersection 1
-            seg1 = intersection
-            #segmented intersection 2
-            seg2 = intersection
+            #only slice if we find splitting axis
+            if(maxx):
+                split_axis = max([maxx,maxy,maxz], key=la.norm)
+                norm_axis = split_axis/la.norm(split_axis)
+                start_point = min(points, key= lambda x: np.dot(norm_axis, x))
+                end_val = max([np.dot(norm_axis, p) for p in ponits])
+                for l in frange(0,end_val, box_join_thickness):
+                    slice_norm = start_point + norm_axis*l
+                    plane = plane_from_normal(slice_norm)
+                    slice_args = (plane, slice_norm)
+                    planar_slice_3d(intersection, slice_args, butt_join_thickness)
 
-            solids[i1]= s1.differenced(seg1)
-            solids[i2]= s2.differenced(seg2)
+                #segmented intersection 1
+                seg1 = intersection
+                #segmented intersection 2
+                seg2 = intersection
+
+                solids[i1]= s1.differenced(seg1)
+                solids[i2]= s2.differenced(seg2)
     return solids
 
 
@@ -172,8 +234,21 @@ def rationalize_planar_solids(solids, tf_xyz_rpy, offset):
     Returns:
       List of PolyLines projected from solids, offset for laser kerf
     """
-
-    return
+    final_list = []
+    #reverse the transformation, then call ayout
+    for (p,r) in zip(solids, tf_xyz_rpy):
+        translation, rotation = r
+        #create reverse
+        translate*=-1
+        rotation*=-1
+        solid_p = p.get_generator()
+        translated_p = sl.translate(translation)(solid_p)
+        rotated_p = sl.rotate(rotation)(translated_p)
+        p_2d = sl.projection(rotated_p)
+        polyline = PolyLine(generator=p_2d)
+        offset = offset_polygon(polyline, solid)
+        final_list.append(offset)
+    return final_list
 
 
 def offset_polygon(pl, offset):

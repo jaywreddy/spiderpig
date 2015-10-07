@@ -9,24 +9,27 @@ from scipy.spatial import Voronoi, Delaunay
 class Stick(Body):
 
   STICK_COUNT = 0
-  
+
   def __init__(self, length=50.0, **kwargs):
     """Make a 3mm diameter cylinder of specified length."""
-    
+    if 'diameter' not in kwargs.keys():
+        kwargs['diameter'] = 3.0
+
     if 'name' not in kwargs.keys():
       kwargs['name'] = 'stick_%d' % Stick.STICK_COUNT
       Stick.STICK_COUNT = Stick.STICK_COUNT + 1
 
     self.length = length
-    
+
     if 'joints' not in kwargs.keys():
       kwargs['joints'] = [ORIGIN_POSE, ((0,0,length),ORIGIN_POSE[1])]
-    
+
+    dia = float(kwargs['diameter'])
     if 'layers' not in kwargs.keys():
       kwargs['layers'] = Layer(
-        PolyMesh(generator=solid.cylinder(1.5,length)),
+        PolyMesh(generator=solid.cylinder(dia,length)),
         name='stick',color='white')
-    
+
     super(Stick, self).__init__(**kwargs)
 
   def guide(self):
@@ -35,23 +38,40 @@ class Stick(Body):
     bar_pl = PolyLine([[0,-2],[0,2]])
 
     stick_pl = PolyLine([[0,0],[self.length,0]])
-    
+
     stick_num = self.name.split('_')[-1]
     label_pl = (2,-2,0) * PolyLine(generator=solid.text(stick_num, 4))
-    
+
     len_pose = (self.length, 0, 0)
 
     guide_pl = bar_pl + stick_pl + len_pose * (bar_pl + label_pl)
 
     return guide_pl
 
+class Mortise(Body):
+    """
+    Mortise class which will allow joining Sticks
+    """
+    def __init__(self, axis):
+        height = 9.0
+        thickness = 2.0
+        hole_depth = 6.0
+        hole_width = 3.4
+        shell = PolyMesh(generator = solid.cylinder(hole_width + 2*thickness, height))
+
+        #Add hole
+
+        #Add label
+
+        #rotate into position b
+
 class Connector(Body):
-  
+
   CONNECTOR_COUNT = 0
 
   def __init__(self, axes=None, **kwargs):
     """Make a connector with specified connection axes.
-    
+
     Args:
       axes { str: [float] } : Dictionary mapping the name of a connected
         block (Stick or Plate) to a list of float representing the unit axis
@@ -66,7 +86,7 @@ class Connector(Body):
     if 'name' not in kwargs.keys():
       kwargs['name'] = 'connector_%d' % Connector.CONNECTOR_COUNT
       Connector.CONNECTOR_COUNT = Connector.CONNECTOR_COUNT + 1
-    
+
     if 'layers' not in kwargs.keys():
       kwargs['layers'] = Layer(
         PolyMesh(generator=solid.sphere(6.0)),
@@ -75,12 +95,12 @@ class Connector(Body):
     super(Connector, self).__init__(**kwargs)
 
 class Plate(Body):
-  
+
   PLATE_COUNT = 0
 
   def __init__(self, base_pts=None, **kwargs):
     """Make a support plate with specified connection holes at base_pts
-    
+
     Args:
       base_pts [[float]]: list of 3D coordinates of support connectors (the
         z coordinate will be 0).
@@ -88,19 +108,19 @@ class Plate(Body):
 
     if base_pts is None:
       base_pts = []
-    
+
     self.base_pts = base_pts
 
     if 'name' not in kwargs.keys():
       kwargs['name'] = 'plate_%d' % Plate.PLATE_COUNT
       Plate.PLATE_COUNT = Plate.PLATE_COUNT + 1
-    
+
     if 'layers' not in kwargs.keys():
       gen = solid.translate([0,0,-6])(solid.cube([150,150,6]))
       kwargs['layers'] = Layer(PolyMesh(generator = gen), name = 'cut', color='red')
 
     super(Plate, self).__init__(**kwargs)
-  
+
   def cut(self):
     """Return cut geometry for this support plate."""
 
@@ -123,16 +143,16 @@ def make_sparse_cloud(n_points = 6, scale=150.0):
 
 class Sculpture(Layout):
   def __init__(self, cloud = None, **kwargs):
-    
+
     if cloud is None:
       cloud = make_sparse_cloud()
 
     self.cloud = cloud
-    
+
     self.edges = []
-    
+
     delaunay = Delaunay(self.cloud)
-    
+
     for simplex in delaunay.simplices:
       sl = simplex.tolist()
       simplex_edges = []
@@ -149,18 +169,18 @@ class Sculpture(Layout):
 
     self.edges.extend([(self.cloud.shape[0]+i,min_z[i]) for i in range(3)])
     self.cloud = numpy.vstack([self.cloud,base_pts])
-    
+
     if 'blocks' not in kwargs.keys():
       blocks = []
       connector_axes = [dict() for i in range(self.cloud.shape[0])]
-      
+
       # Iterate through edges, create sticks for each, and record axes for connector
       for edge in self.edges:
         pt0, pt1 = self.cloud[edge,:]
         vector = pt1 - pt0
-        length = ((vector)**2).sum()**0.5 
+        length = ((vector)**2).sum()**0.5
         axis = vector/length
-        
+
         # If the current axis is very nearly vertical, just coerce to vertical to
         # avoid numerical instability problems
         if (1.0-abs(axis[2])) < 0.001:
@@ -176,16 +196,17 @@ class Sculpture(Layout):
           rot_axis = numpy.cross([0,0,1],axis)
           rot_angle = numpy.arccos(axis[2])
           quat = quaternion_about_axis(rot_angle, rot_axis)
-        
+
         # Add Sticks
-        new_stick = Stick(length, pose=(pt0,quat))
+        length = length - 6.0 #leave room for joinery
+        new_stick = Stick(length, pose=(pt0,quat), diameter = 3.0)
         blocks.append(new_stick)
 
         # Update connector axes list with mapping from stick name to the unit
         # vector axis  along that stick
         connector_axes[edge[0]][new_stick.name] = axis.tolist()
         connector_axes[edge[1]][new_stick.name] = (-axis).tolist()
-    
+
       # Add Plate body
       plate = Plate(base_pts)
       blocks.append(plate)
@@ -199,21 +220,21 @@ class Sculpture(Layout):
         blocks.append(
           Connector(connector_axes[i], pose=(self.cloud[i,:].tolist(),ORIGIN_POSE[1]))
         )
-      
+
       kwargs['blocks'] = blocks
-    
+
     super(Sculpture, self).__init__(**kwargs)
-    
+
   def show_wireframe(self):
     """Show matplotlib 3D plot of wireframe of sculpture."""
-    
+
     fig = plt.figure(2)
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(*self.cloud.T)
-    
+
     for edge in self.edges:
       ax.plot(*self.cloud[edge,:].T)
-    
+
     ax.axis('equal')
 
     plt.show()
@@ -223,7 +244,7 @@ class Sculpture(Layout):
 
   def get_layouts(self):
     """Return layouts for making this sculpture.
-    
+
     Returns:
       guide_layout: 2D Layout for printing, use to cut sticks
       cut_layout: 2D Layout for laser cutting base
@@ -238,13 +259,13 @@ class Sculpture(Layout):
     )
     for i in range(len(sticks)):
       guide_layout[i] *= (0, 2.5+i*5.0, 0)
-    
+
     plates = [body for body in self if type(body) is Plate]
     cut_layout = Layout(
       Block(Layer(plates[0].cut(),color='red')),
       size = (300,300) # Laser Cutter bed is larger, but use 30x30cm for now
     )
-    
+
     connectors = [
       body.clone(pose=ORIGIN_POSE) for body in self if type(body) is Connector
     ]
@@ -262,7 +283,7 @@ class Sculpture(Layout):
         j += 1
       else:
         i += 1
-     
+
     return guide_layout, cut_layout, print_layout
 
 def seeded_solution(seed = 1):
@@ -280,7 +301,9 @@ def solid_hole_example():
   h_g = solid.part()(solid.translate([0,0,-3])(solid.cylinder(3,20))+solid.hole()(solid.cylinder(1.5,20)))
   h_g += solid.sphere(16)
   PolyMesh(generator=h_g).show()
-      
+
+sculpture.get_generator()
+
 if __name__ == '__main__':
   sculpture, guide_layout, cut_layout, print_layout = seeded_solution()
   sculpture.save('sculpture.scad')
