@@ -288,7 +288,7 @@ class Pantograph(Mechanism):
             kwargs['name'] = 'pantograph'
 
         #choose ground_length
-        ground_length = 20
+        ground_length = 40
         link1_length = (scale - 1)*ground_length
 
         #choose Trace length
