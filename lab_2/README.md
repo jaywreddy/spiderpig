@@ -37,7 +37,7 @@ In the starter code are polygons which represent the exterior faces of an
 uncomfortable looking chair. They are followed by a list of transformations
 which transform linear\_extrude()s of those polygons into the 3D chair.
 
-3. Write the `assemble_char` function which elaborates a 3D object by extruding a list of polygons by a material thickness and transforming them into a final pose. The `quaternion_from_euler` or `euler_matrix` functions defined in `transformations.py` may be useful here.
+3. Write the `assemble_chair` function which elaborates a 3D object by extruding a list of polygons by a material thickness and transforming them into a final pose. The `quaternion_from_euler` or `euler_matrix` functions defined in `transformations.py` may be useful here.
 
 4. Create the `join_butt` function which adds butt joints between planar solids. The `rationalize_planar_solids` should rationalize the design by rotating the modified solids back to their original orientation and projecting then back onto the x-y plane. Offset these 2D projections to compensate for the kerf removed by the laser cutter (which can be measured from test cuts on your material, `offset_polygon` is written for you). Return a layout of parts ready for the laser cutter. Again label each part.
 
