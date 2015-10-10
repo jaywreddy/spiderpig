@@ -22,14 +22,14 @@ Play around with the `code Austin will write` to familiarize yourself with the i
 
 Let's make a gripper. For this task, we want to open and close the gripper with a single actuator. The grasping pads should move in and out in a straight line, and be able to fully close as shown in this image:
 
-![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_5/assets/clevis.jpg)
+![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_5/assets/gripper.jpg)
 
 For your synthesis, try to optimize how wide the gripper can open so you can be able to pick up larger objects. To constrain the two sides such that they move together, you can use a [bell crank](http://www.robives.com/blog/bellcrankmech), a [crossed belt drive](http://www.expertsmind.com/questions/cross-belt-drive-30118956.aspx) made with a rubber band (make sure it is sufficiently stretched so avoid slippage, [crown your pulleys](https://www.youtube.com/watch?v=6sM0Qjumyro) if you want to get fancy), or a use gear pair (although I hardly encourage such behavior).
 
 For the gripper, you can use the clevis joint primitive to create more accurate joints, as shown in this figure:
 
-![Figure 2](https://github.com/CS194-028/starter/blob/master/lab_5/assets/gripper.jpg)
 
+![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_5/assets/clevis.jpg)
 The clevis joint supports the rotational shaft from both sides, increasing the off-axis stiffness of the joint. It uses IGUS plain bearings (Part JFM-0304) to establish accurate, low friction surfaces. You can collect the shaft material, and IGUS parts from us; there is enough to go round.
 
 Make your gripper out of whatever manufacuring methods you would like. Completely 3D printed parts are fine, quality could  be improved (and machine time reduced) by using a combination of laser cut and 3D printed parts. Or, you can use folded structures and joints, as in lab 2.
