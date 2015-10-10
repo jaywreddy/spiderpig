@@ -32,4 +32,6 @@ For the gripper, you can use the clevis joint primitive to create more accurate 
 ![Figure 1](https://github.com/CS194-028/starter/blob/master/lab_5/assets/clevis.jpg)
 The clevis joint supports the rotational shaft from both sides, increasing the off-axis stiffness of the joint. It uses IGUS plain bearings (Part JFM-0304) to establish accurate, low friction surfaces. You can collect the shaft material, and IGUS parts from us; there is enough to go round.
 
+To use: add the elements of the double support to one of the bodies the joint connects; add the center piece to the other. For assembly: press the IGUS bushings into the double support (this can be done by hand), then insert the center piece, then insert the shaft from the top. The shaft should be a friction fit in the center piece, so make sure you are componsating for any offsets resulting from 3d printer shrinkage, or laser cutter kerf. You can modify the primitive as you need it.
+
 Make your gripper out of whatever manufacuring methods you would like. Completely 3D printed parts are fine, quality could  be improved (and machine time reduced) by using a combination of laser cut and 3D printed parts. Or, you can use folded structures and joints, as in lab 2.
