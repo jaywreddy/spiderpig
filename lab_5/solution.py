@@ -4,14 +4,25 @@ from digifab import *
 import numpy
 
 class SynthFourBar(Mechanism):
-  def __init__(self, B = 70-40j, D = 110+90j, 
-    P = (190+120j, 185+107j, 185+97j, 187+83j, 190+65j), signs=None, **kwargs):
+  def __init__(self, B = -9.65+96.6j, D = -73.5-91.3j,
+    P = (-100+44j, -110+21j, -114-1.5j, -113-23j, -110-41j), signs=(1,1,1,1,1),
+    origins=None, **kwargs):
     
+    """Show all solutions of a synthesis problem showing output points.
+    
+    Args:
+      B,D,P : synthesis arguments, see fourbar_synthesis.py
+      origins: list of positions to put generated mechanisms at. By default
+        will be spaced apart to not overlap
+    """
+
     if 'name' not in kwargs.keys():
       kwargs['name'] = 'synth_four_bar'
 
 
     if 'children' not in kwargs.keys():
+      # Get synthesis solutions, and remove those that don't have A/Ac and C/Cc
+      # as complex conjugates
       solns = filter(is_consistent, synthesis(B, D, P, signs))
       
       # Remove 2R solutions
@@ -24,23 +35,36 @@ class SynthFourBar(Mechanism):
       constraints = []
       child_offset = 0.0
       soln_count = 0
+      origins = []
 
       for A,_,C,_ in solns:
+        # Create an elbow up and elbow down mechanism for each synthesis solution
         vectors = [B-A,D-B,(C-D,P[0]-D),A-C]
-        up_child = FourBar(vectors=vectors, name='soln_%d_up' % soln_count)
-        #down_child = FourBar(vectors=vectors, name='soln_%d_down' % soln_count)
         
-        offset = 2 * max(up_child.lengths) # + down_child.lengths)
-        
-        children.extend([up_child])#,down_child])
-        
-        up_pos = (child_offset + A.real, A.imag, 0.0)
-        #down_pos = (child_offset + A.real, offset + A.imag, 0.0)
-        #ori = quaternion_about_axis(numpy.angle(B-A),Z_AXIS)
+        up_child = FourBar(
+          vectors=vectors, elbow=0, name='soln_%d_up' % soln_count,
+        )
 
+        down_child = up_child.clone(
+          elbow=1, name='soln_%d_down' % soln_count,
+        )
+        
+        # space children out by twice the maximum link length to guarantee no
+        # overlapping
+        offset = 2 * max(up_child.lengths)
+        up_pos = (child_offset + A.real, A.imag, 0.0)
+        down_pos = (child_offset + A.real, offset + A.imag, 0.0)
+
+        up_child.constraints = [('body',(0,0,0),(up_pos, ORIGIN_POSE[1]))]
+        down_child.constraints = [('body',(0,0,0),(down_pos, ORIGIN_POSE[1]))]
+
+        origins.extend([(child_offset, 0.0),(child_offset,offset)])
+
+        children.extend([up_child,down_child])
+        
         constraints.extend([
           ('body', (up_child.name,0,0), (up_pos,ORIGIN_POSE[1])),
-          #('body', (down_child.name,0,0), (down_pos,ori))
+          ('body', (down_child.name,0,0), (down_pos,ORIGIN_POSE[1]))
         ])
         
         soln_count += 1
@@ -64,22 +88,47 @@ class SynthFourBar(Mechanism):
     else:
       self.P = P
     
+    self.origins = origins
+    self.signs = signs
+
     super(SynthFourBar, self).__init__(**kwargs)
     
   def plot(self, plotter, **kwargs):
     x,y = zip(*self.P)
-    plotter.ax.plot(x,y,'k*')
+    x,y = numpy.array(x), numpy.array(y)
+    for x_o, y_o in self.origins:
+      plotter.ax.plot(x+x_o,y+y_o,'k*')
 
     super(SynthFourBar, self).plot(plotter, **kwargs)
 
-  def show(self, state=None, **kwargs):
-    if type(state) is int:
-      P0 = complex(*self.points[0])
-      P = complex(*self.points[state])
-      S = inv_kin_2R(complex(*self.B), complex(*self.D),P0,P)
+  def synth_angle(self, synth_idx, child_idx):
+    """Given a synthesis point index, return the angle that should be between
+      body 0 and body 1
+
+    Args:
+      synth_idx (int): index into P from synthesis problem
+      child_idx (int): which of self.children to get angle for
+    """
     
-    if type(state) is float:
+    P = [complex(*pi) for pi in self.P]
+    S,T = inv_kin_2R(complex(*self.B), complex(*self.D), P[0], P[synth_idx])[self.signs[synth_idx]]
+    return self.children[child_idx].init_angle + numpy.angle(S)
+
+  def show(self, state=None, **kwargs):
+    """Show collection of synthesized mechanisms
+    
+    Args:
+      state (int|float): if int, use synth_angle to assign mechanism to pose
+        that reaches output point P[state]. If float, assign all children
+        mechanism 
+    """
+
+    if type(state) is int:
+      for i in range(len(self.children)):
+        self.children[i].state[0] = self.synth_angle(state,i)
+
+    elif type(state) is float:
       for child in self.children:
-        child.state = [state] + 3*[numpy.nan]
+        child.state[0] = state
     
     super(SynthFourBar, self).show(**kwargs)
