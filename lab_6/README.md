@@ -36,9 +36,9 @@ though there are a lot of knobs you can play with in the optimization.
  5. `sudo pip install sympy`
  6. `sudo pip install pyvtk`
 2. From lab\_6, run optomizer on example ternary link problem specification: `./optimise.py ternary_link.tpd` The first run will take a long time to generate stiffness matrices, after that it should run in less than 30 seconds. When done it should look like this:
-![Ternary Link Grid](https://github.com/CS194-028/solution/blob/master/lab_6/assets/ternary_link_grid.png)
+![Ternary Link Grid](https://github.com/CS194-028/starter/blob/master/lab_6/assets/ternary_link_grid.png)
 3. View the mechanism by running the sample code `./solution.py`. It should look like this (things get flipped around and rotated due to image indexing, but you should be able to fix this with basic transformations):
-![Ternary Link Outline](https://github.com/CS194-028/solution/blob/master/lab_6/assets/ternary_link_outline.png)
+![Ternary Link Outline](https://github.com/CS194-028/starter/blob/master/lab_6/assets/ternary_link_outline.png)
 4. Create or include your own fourbar mechanism, and modify `ternary_link.tpd` to match
 the geometry of your mechanism.
 5. Run the structure optimization, and add joint geometry to the resulting part
