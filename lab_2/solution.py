@@ -235,11 +235,11 @@ def rationalize_planar_solids(solids, tf_xyz_rpy, offset):
       List of PolyLines projected from solids, offset for laser kerf
     """
     final_list = []
-    #reverse the transformation, then call ayout
+    #reverse the transformation, then call layout
     for (p,r) in zip(solids, tf_xyz_rpy):
         translation, rotation = r
         #create reverse
-        translate*=-1
+        translation*=-1
         rotation*=-1
         solid_p = p.get_generator()
         translated_p = sl.translate(translation)(solid_p)
@@ -279,8 +279,28 @@ def join_with_fold(bA, fpA, plB, fpB):
     Returns:
       Combined Block with fold and cut layers
     """
-
-    return
+    x1,x2 = fpA
+    y1,y2 = fpB
+    dx = x1-y1
+    bA = b
+    help(bA)
+    plB=p2
+    help(plB.transformed)
+    help(plB)
+    help(plB.transformed)
+    pl_geom = plB.get_generator()
+    translated = solid.translate(list(dx))(pl_geom)
+    pl_tr  =PolyLine(generator = translated)
+    v1_norm  = y2-x1/la.norm(y2-x1)
+    v2_norm = x2-x1/la.norm(x2-x1)
+    rot = create_transform(v1_norm,v2_norm)
+    pl_tr.transformed((x1,rot))
+    trans_pl =plB.translated(dx)
+    rot = create_transform(y2-x1,x2-x1)
+    pose= (dx, rot)
+    plB.transformed(pose)
+    rot_pl = plB.rotated(rot)
+    return bA + rot_pl
 
 
 def add_tab(b, tp, right_handed=True):

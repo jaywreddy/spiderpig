@@ -380,7 +380,6 @@ def solid_hole_example():
     h_g += solid.sphere(16)
     PolyMesh(generator=h_g).show()
 
-
 def export_sculpture():
     sculpture = Sculpture()
     lol = sculpture.get_generator()

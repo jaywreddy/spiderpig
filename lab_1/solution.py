@@ -103,7 +103,6 @@ def rotate_polyline(polyline, matrix):
 	return PolyLine(compose([r, points.T])[0:3].T)
 
 
-tetrahedron()
 def tetrahedron(length=40.0, r=3.175 / 2):
 	"""
 	Simulate a tetrahedron made out of 4 ebnt wire triangles. To transform a
@@ -146,17 +145,30 @@ def tetrahedron(length=40.0, r=3.175 / 2):
 		total += parts[i]
 	return total
 
-
-phone_pl = phone_holder()
-phone_2d = unfold_wire(phone_pl)
-
 def fast_forward(iter, num):
 	for i in range(num):
 		iter.next()
 
+def create_transform(start, stop):
+    # make sure they are np arrays
+    start = np.array(start)
+    stop = np.array(stop)
+    # check for numerical instability at flip:
+    if np.array_equal(stop, -1 * start):
+        return quaternion_about_axis(np.pi, [0, -1, 0])
+    rot_axis = np.cross(start, stop)
+    cos_theta = np.dot(stop, start)
+    #correct for numerical errors:
+    if cos_theta >= 1:
+        cos_theta = 1.0
+    if cos_theta <= -1:
+        cose_theta = -1.0
+    theta = math.acos(cos_theta)
+    quaternion = quaternion_about_axis(theta, rot_axis)
+    return quaternion
+
 
 def unfold_wire(pl):
-	mesh_wire(PolyLine(shape_points),.25)
 	"""
 	Unfold a list of 3D points such that they are planar, while maintaining the
 	open angle between the points.
@@ -167,11 +179,12 @@ def unfold_wire(pl):
 	Returns:
 	  Unfolded list of points
 	"""
+	pl = phone_pl
 	shape_points = [np.array(p) for p in pl.points]
 	pointIter = takeNGenerator(shape_points, 4)
-	d0 = getDistance(*points[0:2])
+	d0 = getDistance(*shape_points[0:2])
 	points = [np.array([0, 0]), np.array([0, d0])]
-	for i in range(len(shape_points)-2):
+	for i in range(len(shape_points)-3):
 		(p1,p2,p3,p4) = pointIter.next()
 		v1 =p1-p2
 		v2 = p3-p2
@@ -179,17 +192,27 @@ def unfold_wire(pl):
 		v4 = p4-p3
 		old_normal = np.cross(v1,v2)
 		new_normal = np.cross(v3,v4)
-		diff = np.linalg.norm(np.cross(new_normal, old_normal))
+		norm_old = old_normal/la.norm(old_normal)
+		norm_new = old_normal/la.norm(new_normal)
 
-		#get angle between normals. If not equal to 0, rotate everything by lol
-		rot_ang = getAngle(old_normal, np.array([0,0,0]), new_normal)
-		if rot_ang != 0.0 and rot_ang != 180.0:
-			rot_pt = center_point(PolyLine([p2,p3]))
-			rot_dir = v3
-			r= rotation_matrix(-rot_ang, rot_dir, rot_pt)
+
+		#check if we need to transform:
+		if any(norm_old != norm_new):
+			print norm_old, norm_new
+			#create a transform that will rotate the next points to the old orientation
+			transform = create_transform(norm_new, norm_old)
+			rot_pot = p2
+			pose = (rot_pot, transform)
 			poly = PolyLine(shape_points[i:])
-			translated = rotate_polyline(poly, r)
-			shape_points = np.vstack((shape_points[:i], translated.points))
+			translated = poly.transformed(pose)
+			new_pts = [np.array(p) for p in translated.points]
+
+			if len(shape_points[:i]) is 0:
+				shape_points = new_pts
+			else:
+				shape_points = np.vstack((shape_points[:i], new_pts))
+			pointIter = takeNGenerator(shape_points, 4)
+			fast_forward(pointIter, i)
 	return PolyLine(shape_points)
 
 
@@ -282,7 +305,6 @@ def sim_wire(pl, r=3.175 / 2):
 	"""
 	return wire_sim
 
-tetrahedron()
 
 if __name__ == '__main__':
 	# Create equilateral triangle geometry
@@ -293,9 +315,9 @@ if __name__ == '__main__':
 
 	#make phone case
 	phone_pl = phone_holder()
-	phone_pl.points
 	mesh_wire(phone_pl,2)
 	phone_2d = unfold_wire(phone_pl)
+	mesh_wire(phone_2d,2)
 	assert(diwire_dfm(phone_2d))
 	phone_2d.show()
 	phone_2d.save('holder.dxf')
