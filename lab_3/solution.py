@@ -19,9 +19,6 @@ class Stick(Body):
 
     self.length = length
     
-    if 'joints' not in kwargs.keys():
-      kwargs['joints'] = [ORIGIN_POSE, ((0,0,length),ORIGIN_POSE[1])]
-    
     if 'layers' not in kwargs.keys():
       kwargs['layers'] = Layer(
         PolyMesh(generator=solid.cylinder(1.5,length)),
