@@ -22,8 +22,39 @@ def create_transform(start, stop):
 
 
 class Stick(Body):
+  STICK_COUNT = 0
 
-    STICK_COUNT = 0
+  def __init__(self, length=50.0, **kwargs):
+    """Make a 3mm diameter cylinder of specified length."""
+
+    if 'name' not in kwargs.keys():
+      kwargs['name'] = 'stick_%d' % Stick.STICK_COUNT
+      Stick.STICK_COUNT = Stick.STICK_COUNT + 1
+
+    self.length = length
+
+    if 'layers' not in kwargs.keys():
+      kwargs['layers'] = Layer(
+        PolyMesh(generator=solid.cylinder(1.5,length)),
+        name='stick',color='white')
+
+    super(Stick, self).__init__(**kwargs)
+
+  def guide(self):
+    """Return guide PolyLine with name label for this stick."""
+
+    bar_pl = PolyLine([[0,-2],[0,2]])
+
+    stick_pl = PolyLine([[0,0],[self.length,0]])
+
+    stick_num = self.name.split('_')[-1]
+    label_pl = (2,-2,0) * PolyLine(generator=solid.text(stick_num, 4))
+
+    len_pose = (self.length, 0, 0)
+
+    guide_pl = bar_pl + stick_pl + len_pose * (bar_pl + label_pl)
+
+    return guide_pl
 
     def __init__(self, length=50.0, **kwargs):
         """Make a 3mm diameter cylinder of specified length."""
