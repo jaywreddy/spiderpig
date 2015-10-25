@@ -4,15 +4,17 @@ from digifab import *
 import numpy
 
 def test_synth():
-    x1 = -500 + -0j
-    x2 = -400 + -250j
-    x3 = -250 -300j
-    x4 = -400 + 100j
-    x5 = -450 + 150j
+    x1 = -131 + -112j
+    x2 = -123 + -129j
+    x3 = -87 + -132j
+    x4 = -125 + -91j
+    x5 = -104 + -95j
     p = (x1,x2,x3,x4,x5)
-    b = 200 + 50j
-    d = -100 + 300j
+    b = 30 + -20j
+    d = -20 + 30j
     bar = SynthFourBar(B = b, D = d, P = p)
+    design = bar.children[0]
+
     bar.show()
 
 class SynthFourBar(Mechanism):
