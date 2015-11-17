@@ -414,6 +414,7 @@ def solid_hole_example():
 def export_sculpture():
     sculpture = Sculpture()
     lol = sculpture.get_generator()
+    lol
     return solid.scad_render_to_file(lol, "test.scad")
 
 if __name__ == '__main__':
