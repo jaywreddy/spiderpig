@@ -1,6 +1,4 @@
 #!/usr/local/bin/python
-
-#symbolic/numerical math
 import numpy as np
 import sympy
 from sympy.geometry import *
@@ -320,14 +318,13 @@ def create_support_bar(jt, offset):
     plan on gluing two segments with acetone
 
     """
-    ((dx,dy,_),_) = jt.pose
-    base = solid.cylinder(r = 4, h = offset)
-    clevis_pin = solid.cylinder(r=2, h = 3.5,segments=300)
-    placed_pin = solid.translate([0,0,offset])(clevis_pin)
-    total = base + placed_pin
-    translated = solid.translate([dx,dy,0])(total)
+    ((dx,dy,dz),_) = jt.pose
+    placed_base = solid.translate([0,0,-offset])(solid.cylinder(r = 4, h = offset))
+    clevis_pin = solid.cylinder(r=1.9, h = 5.5,segments=300)
+    total = placed_base + clevis_pin
+    translated = solid.translate([dx,dy,dz])(total)
     pl = PolyMesh(generator=translated)
-    attach = PolyMesh(generator = solid.translate([dx,dy,0])(base))
+    attach = PolyMesh(generator = solid.translate([dx,dy,dz])(placed_base))
     return pl, attach
 
 
@@ -439,7 +436,7 @@ class KlannLinkage(Mechanism):
                 pls.append(pl)
         save_layout(pls, "linkages")
 
-def create_klann_part(orientation, phase, p= ""):
+def create_klann_part(orientation, phase, p= "", special = False):
     #return 3 lists:
     #set of bodies, joints, connections
     O, A,B, C, D, E, F,M, b1,b2,b3,b4,conn = create_klann_geometry(orientation,phase)
@@ -452,13 +449,17 @@ def create_klann_part(orientation, phase, p= ""):
     pos_M, neg_M = joint_from_point(M,p+"M",1)
     pos_O, neg_O = joint_from_point(O,p+"O",1)
 
-
-    b1_body = rationalize_segment(b1,[neg_M, neg_C, neg_D],p+"b1")
+    b_M = neg_M
+    if orientation == -1:
+        b_M = pos_M
+    b1_body = rationalize_segment(b1,[b_M, neg_C, neg_D],p+"b1")
     b2_body = rationalize_segment(b2,[neg_B, neg_E],p+"b2")
     b3_body = rationalize_segment(b3, [neg_A,pos_C],p+"b3")
     b4_body = rationalize_segment(b4, [pos_E,pos_D], p+"b4")
-    conn = rationalize_segment(conn, [neg_O, pos_M], p+"conn" )
-
+    conn_M = pos_M
+    if orientation ==-1:
+        conn_M = neg_M
+    conn = rationalize_segment(conn, [neg_O, conn_M], p+"conn" )
 
     ######
     # Connect bottom
@@ -473,13 +474,15 @@ def create_klann_part(orientation, phase, p= ""):
         pins.append(pin)
         c_conns.append(p_conn)
 
+    center_conn = ((0,'conn',p+'M'),(0,p+'b1', p+'M'))
+    if special:
+        center_conn = ((0,p+'conn',p+'M'),(0,p+'b1', p+'M')),
 
-
-    bodies = [b1_body, b2_body, b3_body, b4_body, conn] + pins
+    bodies = pins+[b1_body, b2_body, b3_body, b4_body, conn]
     bt_pos, bt_neg = joint_from_point(B,p+"B",2)
-    joints = [pos_A, pos_O, bt_pos]
+    joints = [pos_A, pos_O, bt_neg]
     conns = [
-        ((0,p+'conn',p+'M'),(0,p+'b1', p+'M')),
+        center_conn,
         ((0,p+'b1',p+'C'),(0,p+'b3',p+'C')),
         ((0,p+'b1',p+'D'), (0,p+'b4',p+'D')),
         ((0,p+'b2',p+'E'),(0,p+'b4',p+'E')),
@@ -503,6 +506,14 @@ def combine_connectors(conn1, conn2):
                      joints=joints, name="conn")
     return conn_body
 
+def voffset_joint(jt, offset, name):
+    ((dx,dy,dz),quat) = jt.pose
+    pos = Joint(
+        ((dx, dy, dz + offset),Z_JOINT_POSE[1]),
+        name=name
+    )
+    return pos
+
 class DoubleKlannLinkage(Mechanism):
     def __init__(self, **kwargs):
         if 'name' not in kwargs.keys():
@@ -512,13 +523,17 @@ class DoubleKlannLinkage(Mechanism):
             #create
 
             b1, j1, c1 = create_klann_part(1,1, "1")
-            b2, j2, c2 = create_klann_part(-1, 1+ np.pi, "2")
+            b2, j2, c2 = create_klann_part(-1, 1, "2") # + np.pi
             conn1 = b1.pop()
             conn2 = b2.pop()
             conn = combine_connectors(conn1,conn2)
             # print(conn.joints)
             A1,_,B1 = j1
+            A1 = voffset_joint(A1,-3, "1A")
+            B1 = voffset_joint(B1,0,"1B")
             A2,_,B2 = j2
+            A2 = voffset_joint(A2, -9, "2A")
+            B2 = voffset_joint(B2, -6, "2B")
             link_bodies = b1+b2 +[conn]
             link_conns = c1+c2
             # #create servo mount that connects to shaft connector
@@ -529,7 +544,7 @@ class DoubleKlannLinkage(Mechanism):
 
             ##create the attacher thing, with joints
             A1_bar, a1_attach = create_support_bar(A1,mount_thickness)
-            B1_bar, b1_attach = create_support_bar(B1,mount_thickness + layer_thickness)
+            B1_bar, b1_attach = create_support_bar(B1,mount_thickness)
 
             m_attach1_gen = m_attach1.get_generator()
             a1_gen = a1_attach.get_generator()
@@ -540,18 +555,18 @@ class DoubleKlannLinkage(Mechanism):
 
             cronenberg1 = PolyMesh(generator= solid.union()(a1_join,b1_join))
 
-            A2_bar, a2_attach = create_support_bar(A2,mount_thickness)
-            B2_bar, b2_attach = create_support_bar(B2,mount_thickness + layer_thickness)
+            # A2_bar, a2_attach = create_support_bar(A2,mount_thickness)
+            # B2_bar, b2_attach = create_support_bar(B2,mount_thickness)
+            #
+            # m_attach2_gen = m_attach2.get_generator()
+            # a2_gen = a2_attach.get_generator()
+            # b2_gen = b2_attach.get_generator()
+            #
+            # a2_join = solid.hull()(m_attach2_gen, a2_gen)
+            # b2_join = solid.hull()(m_attach2_gen, b2_gen)
 
-            m_attach2_gen = m_attach2.get_generator()
-            a2_gen = a2_attach.get_generator()
-            b2_gen = b2_attach.get_generator()
-
-            a2_join = solid.hull()(m_attach2_gen, a2_gen)
-            b2_join = solid.hull()(m_attach2_gen, b2_gen)
-
-            cronenberg2 = PolyMesh(generator= solid.union()(a2_join,b2_join))
-            aparatus = cronenberg1 + A1_bar + B1_bar + mt + cronenberg2 + A2_bar + B2_bar
+            # cronenberg2 = PolyMesh(generator= solid.union()(a2_join,b2_join))
+            aparatus = cronenberg1 + A1_bar + B1_bar + mt #+ cronenberg2 + A2_bar + B2_bar
 
             shaft_conn = create_shaft_connector()
 
@@ -563,7 +578,7 @@ class DoubleKlannLinkage(Mechanism):
 
             torso = Body(
                 pose = OP,
-                joints = j1+j2,
+                joints = [pos_O, A2, B2, A1, B1],
                 elts=[Layer(
                     aparatus,
                     name='lol',
@@ -577,14 +592,14 @@ class DoubleKlannLinkage(Mechanism):
                 elts = [Layer(shaft_conn, name='lol', color = 'blue')],
                 name = 'coupler'
             )
-            kwargs['elts'] = [conn,torso]+ link_bodies#[torso] , conn coupler,
+            kwargs['elts'] = [torso]+ link_bodies#[torso] , conn coupler,
             #kwargs['children'] = [torso]
 
         if 'connections' not in kwargs.keys():
             kwargs['connections'] = [
                 #((0, 'conn', '1O'),(0,'coupler','1O')),
-                ((0, 'torso', '1O'),(0, 'conn','1O')),
-                ((0, 'torso', '2O'),(0, 'conn','2O')),
+                #((0, 'torso', '1O'),(0, 'conn','1O')),
+                #((0, 'torso', '2O'),(0, 'conn','2O')),
                 ((0, 'torso', '1A'),(0, '1b3', '1A')),
                 ((0, 'torso', '1B'),(0, '1b2', '1B')),
                 ((0, 'torso', '2A'),(0, '2b3', '2A')),
@@ -605,24 +620,13 @@ class DoubleKlannLinkage(Mechanism):
             if link.name == "coupler" or link.name == "torso":
                 #save as stl
                 link.elts[0].elts[0].save("%s.stl"%(link.name))
-            else:
+            elif "coupler" not in link.name:
                 #create 2D outline
                 pm= link.elts[0].elts[0]
                 base = pm.get_generator()
                 pl = PolyLine(generator=solid.projection()(base) )
                 pls.append(pl)
         save_layout(pls, "linkages")
-
-
-def voffset_joint(jt, offset, name):
-    ((dx,dy,dz),quat) = jt.pose
-    dz = dz + offest
-    pos = Joint(
-        ((dx, dy, dz + offset),Z_JOINT_POSE[1]),
-        name=name
-    )
-    return joint
-
 
 class DoubleDeckerKlannLinkage(Mechanism):
     def __init__(self, **kwargs):
@@ -632,12 +636,14 @@ class DoubleDeckerKlannLinkage(Mechanism):
         if 'elts' not in kwargs.keys():
             #create
 
-            b1, j1, c1 = create_klann_part(1,1, "1")
-            b2, j2, c2 = create_klann_part(1, 1+ np.pi/2, "2")
+            b1, j1, c1 = create_klann_part(1,1, "1",True)
+            b2, j2, c2 = create_klann_part(1, 1+ np.pi/2, "2", True)
 
             # print(conn.joints)
             A1,_,B1 = j1
             A2,_,B2 = j2
+            # A1 = voffset_joint(A1,-3, "1A")
+            # B1 = voffset_joint(B1,0,"1B")
             link_bodies = b1+b2
             link_conns = c1+c2
             # # #create servo mount that connects to shaft connector
@@ -653,8 +659,8 @@ class DoubleDeckerKlannLinkage(Mechanism):
             st_body2,anch2 = standoff(mount_thickness)
             st_body3,_ = standoff(layer_thickness) #contains joint "anchor"
             st_body4,_ = standoff(layer_thickness)
-            st_conn1 = ((0,"1b3","1A"),(0,st_body1.name,"A"))
-            st_conn2 = ((0,"1b2","1B"),(0,st_body2.name,"A"))
+            st_conn1 = ((0,"1b3","1A"),(0,st_body1.name, "A"))
+            st_conn2 = ((0,"1b2","1B"),(0,st_body2.name, "A"))
 
             #second layer:
             st_conn3 = ((0,"2b3", "2A"),(0,st_body3.name, "A"))
@@ -689,7 +695,7 @@ class DoubleDeckerKlannLinkage(Mechanism):
 
             torso = Body(
                 pose = OP,
-                joints = j1+j2,
+                joints = [pos_O, A1, B1],
                 elts=[Layer(
                     aparatus,
                     name='lol',
@@ -703,20 +709,20 @@ class DoubleDeckerKlannLinkage(Mechanism):
                  elts = [Layer(shaft_conn, name='lol', color = 'blue')],
                  name = 'coupler'
              )
-            kwargs['elts'] = link_bodies+ [coupler, st_body1, st_body2, st_body3, st_body4,torso]#[torso] [conn,torso]+ , [coupler]+ conn coupler,
+            kwargs['elts'] = link_bodies+ [coupler]#, st_body1, st_body2, st_body3, st_body4]#,torso]#[torso] [conn,torso]+ , [coupler]+ conn coupler,
             #kwargs['children'] = [torso]
 
         if 'connections' not in kwargs.keys():
             kwargs['connections'] = [
                 ((0, '1conn', '1O'),(0,'coupler','1O')),
-                ((0, 'coupler', '3O'),(0, '2conn','2O')),
-                st_conn1,
-                st_conn2,
-                st_conn3,
-                st_conn4,
+                ((0, 'coupler', '3O'),(0, '2conn','2O'))
+                #st_conn1,
+                #st_conn2,
+                #st_conn3,
+                #st_conn4
                 #((0, 'torso', '2O'),(0, 'conn','2O')),
-                ((0, 'torso', '1A'),(0, '1b3', '1A')),
-                ((0, 'torso', '1B'),(0, '1b2', '1B')),
+                # ((0, 'torso', '1A'),(0, '1b3', '1A')),
+                # ((0, 'torso', '1B'),(0, '1b2', '1B')),
                 #((0, 'torso', '2A'),(0, '2b3', '2A')),
                 #((0, 'torso', '2B'),(0, '2b2', '2B'))
             ] + link_conns
@@ -758,21 +764,21 @@ def connector():
     OT = (0, 0, 0)
     OQ = (0, 0, 1, 0)
     OP = (OT, OQ)
-    base = solid.cylinder(r=4, h = 2, segments = 100)
-    conn = solid.cylinder(r = 1.8, h = 6.4, segments = 100 )
+    base = solid.cylinder(r=4, h = 4, segments = 100)
+    conn = solid.cylinder(r = 1.9, h = 8, segments = 100 )
 
     anchor = Joint(
             ((0, 0, 5.2),Z_JOINT_POSE[1]),
             name="pin"
         )
-    bottom = base+ solid.translate([0,0,2])(conn)
-    cap = solid.translate([0,0,2+6.25])(base)
-    dimple_cap  = cap - conn
+    bottom = base+ solid.translate([0,0,4])(conn)
+    cap = solid.translate([0,0,4+6.4])(base)
+    dimple_cap  = cap - bottom
 
     p1 = PolyMesh(generator = bottom)
     p2 = PolyMesh(generator  = dimple_cap)
-    # p1.save("pin.stl")
-    # p2.save("cap.stl")
+    #p1.save("pin.stl")
+    #p2.save("cap.stl")
     poly = p1+p2
     pin = Body(
          pose = OP,
@@ -790,13 +796,15 @@ def standoff(thickness):
     OT = (0, 0, 0)
     OQ = (0, 0, 1, 0)
     OP = (OT, OQ)
+    peg_height = 5.5
+    clearance = 3.2
     base = solid.cylinder(r=4, h=thickness, segments = 100)
-    conn = solid.cylinder(r=1.8, h=4, segments = 100)
+    conn = solid.cylinder(r=1.9, h=peg_height, segments = 100)
     #wtf??? can't get z axis on Joint to work, no matter what I put it just
     #defaults to 0, so I'm going to orient everything at the origin.
     anchor = Joint((0,0, -100),Z_JOINT_POSE[1],name="A")
     b_placed = solid.translate([0,0,-thickness])(base)
-    unit = b_placed+ conn - solid.translate([0,0,-(5+ thickness)])(conn)
+    unit = b_placed+ conn - solid.translate([0,0,-(clearance+ thickness)])(conn)
     pm = PolyMesh(generator = unit)
     stand = Body(
         pose = OP,
@@ -822,15 +830,231 @@ def make_stupid_connector():
     p1.save("pin.stl")
     p2.save("cap.stl")
 
+class DoubleDoubleDeckerKlannLinkage(Mechanism):
+    def __init__(self, **kwargs):
+        if 'name' not in kwargs.keys():
+            kwargs['name'] = 'klann'
+
+        if 'elts' not in kwargs.keys():
+            #create
+
+
+##################################################
+##################################################
+            b1, j1, c1 = create_klann_part(1,1, "1")
+            b2, j2, c2 = create_klann_part(-1, 1+ np.pi, "2")
+            conn1 = b1.pop()
+            conn2 = b2.pop()
+            conn = combine_connectors(conn1,conn2)
+            # print(conn.joints)
+            A1,_,B1 = j1
+            A1 = voffset_joint(A1,-3, "1A")
+            B1 = voffset_joint(B1,0,"1B")
+            A2,_,B2 = j2
+            A2 = voffset_joint(A2, -9, "2A")
+            B2 = voffset_joint(B2, -6, "2B")
+            link_bodies = b1+b2 +[conn]
+            link_conns = c1+c2
+            # #create servo mount that connects to shaft connector
+            mt, m_attach1, m_attach2 = create_servo_mount()
+                        # #add support for A,B
+            mount_thickness= 3 # shaft coupler
+            layer_thickness = 3
+
+            ##create the attacher thing, with joints
+            A1_bar, a1_attach = create_support_bar(A1,mount_thickness)
+            B1_bar, b1_attach = create_support_bar(B1,mount_thickness)
+
+            m_attach1_gen = m_attach1.get_generator()
+            a1_gen = a1_attach.get_generator()
+            b1_gen = b1_attach.get_generator()
+
+            a1_join = solid.hull()(m_attach1_gen, a1_gen)
+            b1_join = solid.hull()(m_attach1_gen, b1_gen)
+
+            cronenberg1 = PolyMesh(generator= solid.union()(a1_join,b1_join))
+
+            A2_bar, a2_attach = create_support_bar(A2,mount_thickness)
+            B2_bar, b2_attach = create_support_bar(B2,mount_thickness)
+
+            m_attach2_gen = m_attach2.get_generator()
+            a2_gen = a2_attach.get_generator()
+            b2_gen = b2_attach.get_generator()
+
+            a2_join = solid.hull()(m_attach2_gen, a2_gen)
+            b2_join = solid.hull()(m_attach2_gen, b2_gen)
+
+            cronenberg2 = PolyMesh(generator= solid.union()(a2_join,b2_join))
+            aparatus = cronenberg1 + A1_bar + B1_bar + mt + cronenberg2 + A2_bar + B2_bar
+
+            OT = (0, 0, 0)
+            OQ = (0, 0, 1, 0)
+            OP = (OT, OQ)
+
+            pos_O, neg_O = joint_from_point(Point(0,0), "1O", 1)
+
+            torso = Body(
+                pose = OP,
+                joints = [pos_O, A2, B2, A1, B1],
+                elts=[Layer(
+                    aparatus,
+                    name='lol',
+                    color='yellow',
+                )],
+                name='torso'
+            )
+            # coupler = Body(
+            #     pose = OP,
+            #     joints = [pos_O],
+            #     elts = [Layer(shaft_conn, name='lol', color = 'blue')],
+            #     name = 'coupler'
+            # )
+            # kwargs['elts'] = [torso]+ link_bodies#[torso] , conn coupler,
+            #kwargs['children'] = [torso]
+
+##################################################
+
+
+
+            #b3, j3, c3 = create_klann_part(-1,1+ np.pi/2, "3")
+            b4, j4, c4 = create_klann_part(1, 1+ np.pi/2, "4", True)
+
+            # print(conn.joints)
+            #A3,_,B3 = j3
+            A4,_,B4 = j4
+            link_bodies = b4+link_bodies
+            link_conns =  c4+link_conns
+            # # #create servo mount that connects to shaft connector
+            #mt, m_attach1, m_attach2 = create_servo_mount()
+            #             # #add support for A,B
+            mount_thickness= 6 # shaft coupler
+            layer_thickness = 15
+            #
+            # ##create the attacher thing, with joints
+
+            #first layer of standoffs
+            #st_body1,anch1 = standoff(mount_thickness) #contains joint "anchor"
+            #st_body2,anch2 = standoff(mount_thickness)
+            st_body3,_ = standoff(layer_thickness) #contains joint "anchor"
+            st_body4,_ = standoff(layer_thickness)
+            #st_conn1 = ((0,"1b3","1A"),(0,st_body1.name,"A"))
+            #st_conn2 = ((0,"1b2","1B"),(0,st_body2.name,"A"))
+
+            #second layer:
+            st_conn3 = ((0,"4b3", "4A"),(0,st_body3.name, "A"))
+            st_conn4 = ((0,"4b2", "4B"),(0,st_body4.name, "A"))
+
+            #A1_bar, a1_attach = create_support_bar(A1,mount_thickness)
+            #B1_bar, b1_attach = create_support_bar(B1,mount_thickness + layer_thickness)
+            #
+            #m_attach1_gen = m_attach1.get_generator()
+            # b1_gen = b1_attach.get_generator()
+
+            #((dxa,dya,_),_) = A1.pose
+            #((dxb,dyb,_),_) = B1.pose
+            #placed_anch1 = solid.translate([dxa,dya,0])(anch1)
+            #placed_anch2 = solid.translate([dxb,dyb,0])(anch2)
+
+            #a1_join = solid.hull()(m_attach1_gen, placed_anch1)
+            #b1_join = solid.hull()(m_attach1_gen, placed_anch2)
+
+            #cronenberg1 = PolyMesh(generator= solid.union()(a1_join,b1_join))
+
+            #aparatus = cronenberg1 +mt
+
+            shaft_conn = create_shaft_connector()
+
+            OT = (0, 0, 0)
+            OQ = (0, 0, 1, 0)
+            OP = (OT, OQ)
+
+            pos_O, neg_O = joint_from_point(Point(0,0), "1O", 1)
+            O_3, _ = joint_from_point(Point(0,0),"3O",5)
+
+            # torso = Body(
+            #     pose = OP,
+            #     joints = j1+j2,
+            #     elts=[Layer(
+            #         aparatus,
+            #         name='lol',
+            #         color='yellow',
+            #     )],
+            #     name='torso'
+            # )
+            coupler = Body(
+                 pose = OP,
+                 joints = [pos_O,O_3],
+                 elts = [Layer(shaft_conn, name='lol', color = 'blue')],
+                 name = 'coupler'
+             )
+            kwargs['elts'] = link_bodies+ [coupler, st_body3, st_body4,torso]#[torso] [conn,torso]+ , [coupler]+ conn coupler,
+            #kwargs['children'] = [torso]
+
+        if 'connections' not in kwargs.keys():
+            kwargs['connections'] = [
+                #((0, 'conn', '1O'),(0,'coupler','1O')),
+                #((0, 'coupler', '3O'),(0, '4conn','4O')), # 4O?
+                #st_conn1,
+                #st_conn2,
+                st_conn3,
+                st_conn4,
+                # ((0, 'torso', '1O'),(0, 'coupler','1O')),
+                ((0, 'torso', '1A'),(0, '1b3', '1A')),
+                ((0, 'torso', '1B'),(0, '1b2', '1B')),
+                ((0, 'torso', '2A'),(0, '2b3', '2A')),
+                ((0, 'torso', '2B'),(0, '2b2', '2B'))
+            ] + link_conns
+        super(DoubleDoubleDeckerKlannLinkage, self).__init__(**kwargs)
+
+    def save_layouts(self):
+        """
+        Return layouts for making this sculpture.
+
+        Returns:
+          cut_layout: 2D Layout for laser cutting base
+          print_layout: 3D Layout for 3D printing connectors
+        """
+        links = self.elts
+        pls = []
+        for link in links:
+            if "coupler" in link.name or link.name == "torso" or "pin" in link.name or "":
+                #save as stl
+                link.elts[0].elts[0].save("%s.stl"%(link.name))
+            elif "pin" not in link.name:
+                #create 2D outline
+                pm= link.elts[0].elts[0]
+                base = pm.get_generator()
+                pl = PolyLine(generator=solid.projection()(base) )
+                pls.append(pl)
+        save_layout(pls, "linkages")
+
 #make_stupid_connector()
 
+create_shaft_connector().save("shaft.stl")
+# mech = DoubleKlannLinkage()
+#
+#
+# # def test():
+# #     O1, A1,B1, C1, D1, E1, F1,M1, b11,b21,b31,b41,conn1 = create_klann_geometry(1,1)
+# #     O2, A2,B2, C2, D2, E2, F2,M2, b12,b22,b32,b42,conn2 = create_klann_geometry(-1,1)
+# #     print(M1 == M2)
+# # test()
+# mech.save("test.scad")
+# mech.save_layouts()
+# ms = mech.solved()
+# ms.get_generator()
+# ms.save("doubletest.scad")
+# connector()
+# p,s = standoff(15)
+# p.elts[0].elts[0].save("standoff.stl")
 
-mech = DoubleDeckerKlannLinkage()
-#mech.save("decker.scad")
-mech.save_layouts()
+## to make double decker, I already have the mount.
+## just need to laser cut 4 sets of linkages, print the pins and the standoffs
+
+#mech.save_layouts()
 
 # O, A,B, C, D, E, F,M, b1,b2,b3,b4,conn = create_klann_geometry()
 # xf, yf = F.args
 # t = xf.free_symbols.pop()
-#
+
 # path_plot = plot_parametric(xf,yf, (xf.free_symbols.pop(),0.0,2*np.pi))
