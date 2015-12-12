@@ -2,6 +2,7 @@
 import numpy as np
 import percache
 import sympy
+import math
 from sympy.geometry import *
 from sympy.plotting import plot_implicit, plot_parametric, plot
 from sympy.simplify import simplify
@@ -11,14 +12,212 @@ from digifab import *
 import solid
 
 #rationalization
-cache = percache.Cache("/tmp/my-cache12")
+cache = percache.Cache("/tmp/my-cache13")
 
-def rationalize_linkage(linkage_dicts, layer_dict):
+def create_servo_mount():
+    """
+    right now designed to fit Jacobs institute model
+    """
+    width = 6.5
+    length = 20.0
+    depth = 2.3
+    voffset = -18.5 - 9
+
+    left_bar = solid.cube([width,length,depth], center = True)
+    hole = solid.cylinder(r=2,h=10, center =True,segments = 100)
+    hole1 = solid.translate([0,4,0])(hole)
+    hole2 = solid.translate([0,-4,0])(hole)
+    left_bar = solid.difference()(left_bar, hole1)
+    left_bar = solid.difference()(left_bar, hole2)
+
+    right_bar = solid.cube([width,length,depth],center = True)
+    right_bar = solid.difference()(right_bar, hole1)
+    right_bar = solid.difference()(right_bar, hole2)
+
+    left_spread = -30.0
+    right_spread = 17.0
+    left_bar = solid.translate([left_spread, 0,-(depth/2 + voffset)])(left_bar)
+    right_bar = solid.translate([right_spread, 0 , -(depth/2+voffset)])(right_bar)
+    connector = solid.cube([(right_spread - left_spread) + width,width,depth],center=True)
+    placed_connector = solid.translate([(left_spread+right_spread)/2,-(length/2 +width/2), -(depth/2+voffset)])(connector)
+    total_mount = left_bar + placed_connector + right_bar
+    pl = PolyMesh(generator= total_mount)
+
+    attach_point1 = PolyMesh(generator =solid.translate([width, 0,0])(right_bar))
+    attach_point2 = PolyMesh(generator =solid.translate([-width, 0,0])(left_bar))
+    return pl, attach_point1, attach_point2
+
+def create_support_bar(jt, offset):
+    """
+    create a support bar to the point from the origin XY plane
+    account for default klann spacing for now.
+
+    plan on gluing two segments with acetone
+
+    """
+    ((dx,dy,dz),_) = jt.pose
+    placed_base = solid.translate([0,0,-offset])(solid.cylinder(r = 4, h = offset))
+    clevis_pin = solid.translate([0,0,-(offset+5.5)])(solid.cylinder(r=1.9, h = 5.5,segments=300))
+    total = placed_base + clevis_pin
+    translated = solid.translate([dx,dy,dz])(total)
+    pl = PolyMesh(generator=translated)
+    attach = PolyMesh(generator = solid.translate([dx,dy,dz])(placed_base))
+    return pl, attach
+
+shaft_count = 0
+def create_crank_shaft():
+    """
+    Oriented relative to the shaft that will be driven at the origin in
+    the +Z direction.
+
+    TODO: Consider refactoring into mechanism with joint at O.
+    """
+    global shaft_count
+    name = "shaft_" + str(shaft_count)
+    j_name = "shaft_joint_" + str(shaft_count)
+    mount_plate = solid.cylinder(r = 10, h= 3)
+    shaft = solid.cube([4/math.sqrt(2),4/math.sqrt(2),6], center = True)
+    shifted_shaft = solid.translate([0,0,3])(shaft)
+    total = mount_plate+shaft
+    pl = PolyMesh(generator=total)
+
+    j1 = Joint(
+        ((0, 0, 0),Z_JOINT_POSE[1]),
+        name=j_name
+    )
+
+    OT = (0, 0, 0)
+    OQ = (0, 0, 1, 0)
+    OP = (OT, OQ)
+
+    layers=Layer(
+        pl,
+        name="lol",
+        color='blue'
+    )
+    b = Body(pose=OP, elts=[layers],
+                     joints=[j1], name=name)
+    return b, name, j_name
+offset_count = 0
+def create_offset():
+    """
+    Oriented relative to the shaft that will be driven at the origin in
+    the +Z direction.
+
+    TODO: Consider refactoring into mechanism with joint at O.
+    """
+    global offset_count
+    name = "offset_" + str(offset_count)
+    offset_count +=1
+    j_name = "offset_joint_" + str(offset_count)
+    thickness = 6 #span 2 layers
+    peg_height = 5.5
+    clearance = 3.2
+    base = solid.cylinder(r=4, h=thickness, segments = 100)
+    conn = solid.cylinder(r=1.9, h=peg_height, segments = 100)
+    #wtf??? can't get z axis on Joint to work, no matter what I put it just
+    #defaults to 0, so I'm going to orient everything at the origin.
+    b_placed = solid.translate([0,0,-thickness])(base)
+    unit = b_placed+ conn - solid.translate([0,0,-(clearance+ thickness)])(conn)
+    pm = PolyMesh(generator = unit)
+
+    j1 = Joint(
+        ((0, 0, 0),NZ_JOINT_POSE[1]),
+        name=j_name
+    )
+
+    OT = (0, 0, 0)
+    OQ = (0, 0, 1, 0)
+    OP = (OT, OQ)
+
+    layers=Layer(
+        pm,
+        name="lol",
+        color='blue'
+    )
+    b = Body(pose=OP, elts=[layers],
+                     joints=[j1], name=name)
+    return b, name, j_name
+
+
+locked_count = 0
+def locked_offset():
+    global locked_count
+    name = "locked_" + str(locked_count)
+    locked_count +=1
+    j_name = "locked_joint_" + str(locked_count)
+    thickness = 6 #span 2 layers
+    peg_height = 3.2
+    clearance = 3.2
+    base = solid.cylinder(r=1.9, h=thickness, segments = 100)
+    conn1 = solid.cube([4/math.sqrt(2),4/math.sqrt(2),3],center=True)
+    conn2 = solid.cube([4/math.sqrt(2),4/math.sqrt(2),3],center=True)
+    #wtf??? can't get z axis on Joint to work, no matter what I put it just
+    #defaults to 0, so I'm going to orient everything at the origin.
+    b_placed = solid.translate([0,0,3])(base)
+    unit = b_placed + solid.translate([0,0,1.5])(conn1) + solid.translate([0,0,10.5])(conn2)
+    pm = PolyMesh(generator = unit)
+    # pm.save("lol.stl")
+    j1 = Joint(
+        ((0, 0, 12),NZ_JOINT_POSE[1]), #9
+        name=j_name
+    )
+
+    OT = (0, 0, 0)
+    OQ = (0, 0, 1, 0)
+    OP = (OT, OQ)
+
+    layers=Layer(
+        pm,
+        name="lol",
+        color='blue'
+    )
+    b = Body(pose=OP, elts=[layers],
+                     joints=[j1], name=name)
+    return b, name, j_name
+
+
+pinnumber=0
+def connector():
+    """
+    Connector 2.0!!! comes in two better sized segments, now with indent!
+
+    """
+    global pinnumber
+    OT = (0, 0, 0)
+    OQ = (0, 0, 1, 0)
+    OP = (OT, OQ)
+    base = solid.cylinder(r=4, h = 4, segments = 100)
+    conn = solid.cylinder(r = 1.9, h = 8, segments = 100 )
+
+    #8.2
+    anchor = Joint(
+            ((0, 0, 8),Z_JOINT_POSE[1]),
+            name="pin"
+        )
+    bottom = base+ solid.translate([0,0,4])(conn)
+    cap = solid.translate([0,0,4+6.4])(base)
+    dimple_cap  = cap - bottom
+
+    p1 = PolyMesh(generator = bottom)
+    p2 = PolyMesh(generator  = dimple_cap)
+    #p1.save("pin.stl")
+    #p2.save("cap.stl")
+    poly = p1+p2
+    pin = Body(
+         pose = OP,
+         joints = [anchor],
+         elts = [Layer(poly, name='lol', color = 'blue')],
+         name = 'coupler'+str(pinnumber)
+    )
+    pinnumber = pinnumber + 1
+    return pin
+
+def rationalize_linkage(linkage_dicts, layer_dict, lock_joints = [], anchor_pts = []):
     """
     linkage_dicts:[{seg:joint}]
     layer_dict:{seg:layer}
     """
-
     #invert linkage_dicts
     joint_dict = {}
     for d in linkage_dicts:
@@ -31,40 +230,81 @@ def rationalize_linkage(linkage_dicts, layer_dict):
                 joint_dict[j] = [s]
     seg_joints = {}
     joint_names = {}
-    segs = list(layer_dict.keys())
+    all_segs = list(layer_dict.keys())
 
     seg_names = {}
     segnum = 0
-    for s in segs:
+    for s in all_segs:
         seg_names[s] = "segment_"+str(segnum)
         segnum+=1
 
-    for s in segs:
+    for s in all_segs:
         seg_joints[s]=[]
 
+
+    rats = []
     counter = 0
     conns = []
-    for (pt, segs) in joint_dict:
+    for (pt, segs) in joint_dict.items():
+        bottom_seg = min(segs, key = lambda x: layer_dict[x])
+        top_seg = max(segs, key = lambda x: layer_dict[x])
         for (i,s1) in enumerate(segs):
             for s2 in segs[i+1:]:
                     l1,l2 = layer_dict[s1],layer_dict[s2]
-                    name = "joint_" + str(counter)
-                    #create conns entry
-                    conns += [((0,seg_names[s1],name),(0,seg_names[s2],name))]
-
-                    counter +=1
-                    j_pos, j_neg = joint_from_point(pt,name,1)
-                    if abs(l1-l2)==2:
+                    if abs(l1-l2)==1:
+                        name = "joint_" + str(counter)
+                        joint_names[pt] = name
+                        #create conns entry
+                        conns += [((0,seg_names[s1],name),(0,seg_names[s2],name))]
+                        counter +=1
+                        j_pos, j_neg = joint_from_point(pt,name,1)
                         if l1>l2:
                             seg_joints[s1] += [j_neg]
                             seg_joints[s2] += [j_pos]
                         else:
                             seg_joints[s1] += [j_pos]
                             seg_joints[s2] += [j_neg]
+                        #add joinery
+                        if len(segs)==2:
+                            pin = connector()
+                            pin_base = pin.joints[0]
+                            p_conn = ((0,seg_names[bottom_seg],name),(0,pin.name,"pin"))
+                            rats += [pin]
+                            conns += [p_conn]
+            if pt in anchor_pts:
+                name = "joint_" + str(counter)
+                if name not in joint_names:
+                  joint_names[pt] = name
+                counter+=1
+                j_pos, j_neg = joint_from_point(pt,name,1)
+                seg_joints[s1] += [j_pos]
+                if s1 in lock_joints:
+                    #add a crank shaft
+                    cs, p_name, j_name = create_crank_shaft()
+                    conns += [((0, seg_names[s1], name),(0, p_name, j_name))]
+                    rats +=[cs]
+                else:
+                    #add a standard offset
+                    off, p_name, j_name = create_offset()
+                    conns += [((0, seg_names[s1], name),(0, p_name, j_name))]
+                    rats+=[off]
 
+        if len(segs)>2:
+            #this is a locked joint
+            name = "joint_" + str(counter)
+            print(name)
+            counter+=1
+            j_pos, j_neg = joint_from_point(pt,name,1)
+            seg_joints[bottom_seg] += [j_neg]
 
-    rats = [rationalize_segment(s,seg_joints[s],seg_names[s]) for s in segs]
-    return rats, conns
+            lock, l_name, j_name = locked_offset()
+            l_conn = ((0,l_name, j_name),(0,seg_names[bottom_seg],name))
+            conns += [l_conn]
+            rats += [lock]
+
+    #print(seg_joints)
+    rats += [rationalize_segment(s,seg_joints[s],seg_names[s], is_locked = s in lock_joints) for s in all_segs]
+    return rats, conns, seg_names, joint_names
 
 
 def joint_from_point(p,name, layer):
@@ -83,9 +323,27 @@ def joint_from_point(p,name, layer):
     )
     return pos,neg
 
-def rationalize_segment(seg,joints,name, state= {}):
-    p1 = seg.p1
-    p2 = seg.p2
+def clevis_neg(poly, joint):
+    transform = matrix_pose(joint.pose)
+    h_hole = PolyMesh(generator=solid.cylinder(r=2, h=20, segments=100,center =True))
+    tf_snap_sub = transform * h_hole
+    return poly - tf_snap_sub
+
+def square_neg(poly,joint):
+    transform = matrix_pose(joint.pose)
+    w, l, h = 4/math.sqrt(2),4/math.sqrt(2),20
+    h_hole = PolyMesh(generator=solid.cube([w,l,h],center =True))
+    tf_snap_sub = transform * h_hole
+    return poly - tf_snap_sub
+
+
+def rationalize_segment(seg,joints,name, state= {}, is_locked = False):
+
+    p1 = seg
+    p2 = seg
+    if type(seg) != Point:
+        p1 = seg.p1
+        p2 = seg.p2
     buff = 6
     thickness = 3
 
@@ -107,7 +365,10 @@ def rationalize_segment(seg,joints,name, state= {}):
     pm = PolyMesh(generator=link)
 
     for joint in joints:
-        pm = clevis_neg(pm,joint)
+        if is_locked:
+            pm = square_neg(pm,joint)
+        else:
+            pm = clevis_neg(pm,joint)
     if "conn" in name:
         #this is a connector joint
         pm = add_servo_mount(pm)
@@ -189,7 +450,7 @@ def frange(start, stop, step):
 @cache
 def create_klann_geometry(orientation = 1, phase = 1, evaluate= True):
     O = Point(0,0)
-    mOA = 1#60
+    mOA = 60
     OA = Point(0,-mOA)
     rotA = orientation*66.28*np.pi/180
     A = OA.rotate(rotA)
@@ -197,7 +458,6 @@ def create_klann_geometry(orientation = 1, phase = 1, evaluate= True):
     OB = Point(0,1.121*mOA) #.611
     rotB = orientation*-41.76*np.pi/180 # -63.76
     B = simplify(OB.rotate(rotB))
-    print("got B")
 
     M_circ = Circle(O, .412*mOA)
     M = M_circ.arbitrary_point()
@@ -212,7 +472,6 @@ def create_klann_geometry(orientation = 1, phase = 1, evaluate= True):
         i = 1
     C = C_ints[i] #the circles have two intersections, check its the right value
     C = simplify(C)
-    print("got C")
 
     MC_length = M.distance(C)
     CD_length = .726*mOA
@@ -220,8 +479,6 @@ def create_klann_geometry(orientation = 1, phase = 1, evaluate= True):
     Dy = C.y + ((C.y - M.y)/ MC_length)*CD_length
     D = Point(Dx, Dy)
     D = simplify(D)
-    print("got D")
-
 
     D_circ = Circle(D, .93*mOA) #.93
     B_circ = Circle(B, .8*mOA) # 1.323 #.8
@@ -229,7 +486,6 @@ def create_klann_geometry(orientation = 1, phase = 1, evaluate= True):
 
     E=E_ints[i] #same deal
     E = simplify(E)
-    print("Got E")
 
     ED_length = E.distance(D)
     DF_length = 2.577*mOA
@@ -237,7 +493,6 @@ def create_klann_geometry(orientation = 1, phase = 1, evaluate= True):
     Fy = D.y + ((D.y - E.y)/ ED_length)*DF_length
     F = Point(Fx, Fy)
     F = simplify(F)
-    print("got F")
 
     b1 = Segment(M,D)
     b2 = Segment(B,E)
@@ -306,36 +561,38 @@ def test_linearizer():
     b3_dict4 = {b34: [A4,C4]}
     b4_dict4 = {b44:[E4,D4,F4]}
     conn_dict4 = {conn4:[M4,O4]}
-    seg_paths = simulate_linkage_path(1,1)
-    seg_paths2 = simulate_linkage_path(-1,1)
-    seg_paths3 = simulate_linkage_path(1,1+np.pi)
-    seg_paths4 = simulate_linkage_path(-1,1+np.pi)
-    seg_paths.update(seg_paths2)
-    seg_paths.update(seg_paths3)
-    seg_paths.update(seg_paths4)
-    print("generated Geometry")
-
-    seg_confs = seg_conflicts(seg_paths)
-    print("calculated conflicts")
-
-    #add gear conflicts and joints
+    # seg_paths = simulate_linkage_path(1,1)
+    # seg_paths2 = simulate_linkage_path(-1,1)
+    # seg_paths3 = simulate_linkage_path(1,1+np.pi)
+    # seg_paths4 = simulate_linkage_path(-1,1+np.pi)
+    # seg_paths.update(seg_paths2)
+    # seg_paths.update(seg_paths3)
+    # seg_paths.update(seg_paths4)
+    # print("generated Geometry")
+    #
+    # seg_confs = seg_conflicts(seg_paths)
+    # print("calculated conflicts")
+    #
+    # #add gear conflicts and joints
     gear = Segment(M,M3)
-    seg_confs[b1]+=[gear]
-    seg_confs[b12]+=[gear]
-    seg_confs[b13]+=[gear]
-    seg_confs[b14]+=[gear]
-    seg_confs[gear] = [b1,b12,b13,b14]
+    cap = Segment(M3,M3)
+    # seg_confs[b1]+=[gear]
+    # seg_confs[b12]+=[gear]
+    # seg_confs[b13]+=[gear]
+    # seg_confs[b14]+=[gear]
+    # seg_confs[gear] = [b1,b12,b13,b14]
     gear_dict = {gear:[M,M3]}
-
+    cap_dict = {cap:[M3]}
+    #
     seg_dicts = [b1_dict, b2_dict, b3_dict, b4_dict]
     seg_dicts2 = [b1_dict2, b2_dict2, b3_dict2, b4_dict2]
     seg_dicts3 = [b1_dict3, b2_dict3, b3_dict3, b4_dict3]
     seg_dicts4 = [b1_dict4, b2_dict4, b3_dict4, b4_dict4]
-    all_dicts = [gear_dict] + seg_dicts + seg_dicts2 + seg_dicts3 + seg_dicts4
-    print("added gear")
-
-    neighbor_dicts = {list(seg.keys())[0]: [list(s.keys())[0] for s in all_dicts if shares_joint(s,seg)]
-                                for seg in all_dicts}
+    all_dicts = [gear_dict, conn_dict, cap_dict] + seg_dicts + seg_dicts2 + seg_dicts3 + seg_dicts4
+    # print("added gear")
+    #
+    # neighbor_dicts = {list(seg.keys())[0]: [list(s.keys())[0] for s in all_dicts if shares_joint(s,seg)]
+    #                             for seg in all_dicts}
 
     print("created neighbors")
 
@@ -352,34 +609,78 @@ def test_linearizer():
     optimal[b32] = 1
     optimal[b42] = 1
 
-    optimal[b13] = -1
-    optimal[b23] = -1
-    optimal[b33] = -2
-    optimal[b43] = -2
+    optimal[b13] = -2
+    optimal[b23] = -2
+    optimal[b33] = -1
+    optimal[b43] = -1
 
-    optimal[b14] = -2
-    optimal[b24] = -2
-    optimal[b34] = -1
-    optimal[b44] = -1
+    optimal[b14] = -1
+    optimal[b24] = -1
+    optimal[b34] = -2
+    optimal[b44] = -2
 
-    ratts, conns = rationalize_linkage(all_dicts, optimal)
+    optimal[conn] = 3
+    optimal[cap] = -3
 
+    lock_joints = [conn,conn2,conn3,conn4,gear, cap]
+    anchor_pts = [A,B,O,A4,B4]
+    ratts, conns, seg_names, joint_names = rationalize_linkage(all_dicts, optimal, lock_joints, anchor_pts)
+
+    pos_O, neg_O = joint_from_point(Point(0,0), "1O", 1)
+    #Create torso
+    mt, m_attach1, m_attach2 = create_servo_mount()
+                # #add support for A,B
+    mount_thickness= 3 # shaft coupler
+    layer_thickness = 3
+
+    ##create the attacher thing, with joints
+    A1_bar, a1_attach = create_support_bar(joint_from_point(A,"A",3)[0],mount_thickness)
+    B1_bar, b1_attach = create_support_bar(joint_from_point(B,"B",2)[0],mount_thickness)
+
+    m_attach1_gen = m_attach1.get_generator()
+    a1_gen = a1_attach.get_generator()
+    b1_gen = b1_attach.get_generator()
+
+    a1_join = solid.hull()(m_attach1_gen, a1_gen)
+    b1_join = solid.hull()(m_attach1_gen, b1_gen)
+
+    cronenberg1 = PolyMesh(generator= solid.union()(a1_join,b1_join))
+
+    A2_bar, a2_attach = create_support_bar(joint_from_point(A2,"A2",2)[0],mount_thickness)
+    B2_bar, b2_attach = create_support_bar(joint_from_point(B2,"B2",3)[0],mount_thickness)
+
+    m_attach2_gen = m_attach2.get_generator()
+    a2_gen = a2_attach.get_generator()
+    b2_gen = b2_attach.get_generator()
+
+    a2_join = solid.hull()(m_attach2_gen, a2_gen)
+    b2_join = solid.hull()(m_attach2_gen, b2_gen)
+
+    cronenberg2 = PolyMesh(generator= solid.union()(a2_join,b2_join))
+    aparatus = cronenberg1 + A1_bar + B1_bar + mt + cronenberg2 + A2_bar + B2_bar
+
+    OT = (0, 0, 0)
+    OQ = Z_JOINT_POSE[1]
+    OP = (OT, OQ)
+
+
+    torso = Body(
+        pose = OP,
+        joints = [pos_O],
+        elts=[Layer(
+            aparatus,
+            name='lol',
+            color='yellow',
+        )],
+        name='torso'
+    )
+
+    ratts += [torso]
+    conns += [((0,'torso',"1O"),(0,seg_names[conn], joint_names[O]))]
+    #print ratts
+    #print conns
     return ratts, conns
-    #print(E.evalf())
-    # p1,p2 = b4.points
-    # evalp(O,1)
-    # evalp(A,1)
-    # evalp(B,1)
-    # evalp(C,1)
-    # evalp(D,1)
-    # evalp(E,1)
-    # evalp(F,1)
-    # evalp(M,1)
-    # t = E.free_symbols.pop()
-    # print(E.x.evalf(subs= {t:1}))
-    # links = [b1_dict,b2_dict,b3_dict,b4_dict]
-    # print("Generated Geometry")
-    #linearizer(links)
+
 class KlannLinkage(Mechanism):
     def __init__(self, **kwargs):
         ratts, conns = test_linearizer()
@@ -387,9 +688,7 @@ class KlannLinkage(Mechanism):
             kwargs['name'] = 'klann'
 
         if 'elts' not in kwargs.keys():
-
-            kwargs['elts'] = ratts#[torso] , conn coupler,
-            #kwargs['children'] = [torso]
+            kwargs['elts'] = ratts
 
         if 'connections' not in kwargs.keys():
             kwargs['connections'] = conns
@@ -532,7 +831,7 @@ def linearizer(seg_dicts):
     optimal = create_layer_assignment(neighbor_dicts,conflict_dicts)
     print(optimal.values())
     return optimal
-
+# locked_offset()[0].save("lock.stl")
 A = KlannLinkage()
-A.save("blah.scad")
+A.save("blah2.scad")
 #simulate_linkage_path()

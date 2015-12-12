@@ -320,7 +320,7 @@ def create_support_bar(jt, offset):
     """
     ((dx,dy,dz),_) = jt.pose
     placed_base = solid.translate([0,0,-offset])(solid.cylinder(r = 4, h = offset))
-    clevis_pin = solid.cylinder(r=1.9, h = 5.5,segments=300)
+    clevis_pin = solid.translate([0,0,-(offset+2.5)])(solid.cylinder(r=1.9, h = 5.5,segments=300))
     total = placed_base + clevis_pin
     translated = solid.translate([dx,dy,dz])(total)
     pl = PolyMesh(generator=translated)
@@ -1030,8 +1030,8 @@ class DoubleDoubleDeckerKlannLinkage(Mechanism):
 
 #make_stupid_connector()
 
-create_shaft_connector().save("shaft.stl")
-# mech = DoubleKlannLinkage()
+#create_shaft_connector().save("shaft.stl")
+mech = KlannLinkage()
 #
 #
 # # def test():
@@ -1039,7 +1039,7 @@ create_shaft_connector().save("shaft.stl")
 # #     O2, A2,B2, C2, D2, E2, F2,M2, b12,b22,b32,b42,conn2 = create_klann_geometry(-1,1)
 # #     print(M1 == M2)
 # # test()
-# mech.save("test.scad")
+mech.save("single.scad")
 # mech.save_layouts()
 # ms = mech.solved()
 # ms.get_generator()
