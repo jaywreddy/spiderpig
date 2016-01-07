@@ -8,11 +8,15 @@ from sympy.plotting import plot_implicit, plot_parametric, plot
 from sympy.simplify import simplify
 from sympy.utilities.autowrap import ufuncify
 
+import matplotlib.pyplot as plt
+from matplotlib.path import Path
+import matplotlib.patches as patches
+
 from digifab import *
 import solid
 
 #rationalization
-cache = percache.Cache("/tmp/my-cache13")
+cache = percache.Cache("/tmp/my-cache15")
 
 def create_servo_mount():
     """
@@ -20,6 +24,7 @@ def create_servo_mount():
     """
     width = 6.5
     length = 20.0
+
     depth = 2.3
     voffset = -18.5 - 9
 
@@ -65,12 +70,10 @@ def create_support_bar(jt, offset):
     return pl, attach
 
 shaft_count = 0
-def create_crank_shaft():
+def create_crank_shaft(save = False):
     """
     Oriented relative to the shaft that will be driven at the origin in
     the +Z direction.
-
-    TODO: Consider refactoring into mechanism with joint at O.
     """
     global shaft_count
     name = "shaft_" + str(shaft_count)
@@ -80,7 +83,8 @@ def create_crank_shaft():
     shifted_shaft = solid.translate([0,0,3])(shaft)
     total = mount_plate+shaft
     pl = PolyMesh(generator=total)
-
+    if save:
+        pl.save("crank.stl")
     j1 = Joint(
         ((0, 0, 0),Z_JOINT_POSE[1]),
         name=j_name
@@ -120,6 +124,7 @@ def create_offset():
     b_placed = solid.translate([0,0,-thickness])(base)
     unit = b_placed+ conn - solid.translate([0,0,-(clearance+ thickness)])(conn)
     pm = PolyMesh(generator = unit)
+    pm.save("offset.stl")
 
     j1 = Joint(
         ((0, 0, 0),NZ_JOINT_POSE[1]),
@@ -157,7 +162,7 @@ def locked_offset():
     b_placed = solid.translate([0,0,3])(base)
     unit = b_placed + solid.translate([0,0,1.5])(conn1) + solid.translate([0,0,10.5])(conn2)
     pm = PolyMesh(generator = unit)
-    # pm.save("lol.stl")
+    pm.save("lock.stl")
     j1 = Joint(
         ((0, 0, 12),NZ_JOINT_POSE[1]), #9
         name=j_name
@@ -329,6 +334,7 @@ def clevis_neg(poly, joint):
     tf_snap_sub = transform * h_hole
     return poly - tf_snap_sub
 
+
 def square_neg(poly,joint):
     transform = matrix_pose(joint.pose)
     w, l, h = 4/math.sqrt(2),4/math.sqrt(2),20
@@ -384,6 +390,8 @@ def rationalize_segment(seg,joints,name, state= {}, is_locked = False):
 
 def plot_geom(items):
     plots = []
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
     #create plots from implicit equations
     for item in items:
         if isinstance(item,Circle):
@@ -406,9 +414,27 @@ def plot_geom(items):
         elif isinstance(item,Point):
             pc = Circle(item.evalf(), .2)
             plots.append(plot_geom([pc]))
+        elif isinstance(item, list):
+            print("item")
+            print(item)
+            mat_pts = [(p.x.evalf(),p.y.evalf()) for p in item]
+            print("mat_pts")
+            print(mat_pts)
+            mat_pts += [mat_pts[0]] #line has to end where it starts
+            codes = [Path.MOVETO]
+            for i in range(len(mat_pts)-2):
+                codes += [Path.LINETO]
+            codes += [Path.CLOSEPOLY]
+
+            path = Path(mat_pts, codes)
+            patch = patches.PathPatch(path, facecolor = 'red', alpha= .5,lw=2)
+            ax.add_patch(patch)
+            ax.set_xlim(-200,200)
+            ax.set_ylim(-200,200)
         else:
             raise TypeError("item does not have recognized geometry type")
     #combine plots
+    plt.show()
     p = plots.pop()
     for e in plots:
         p.extend(e)
@@ -517,6 +543,7 @@ def simulate_linkage_path(orient,default):
         seg_paths[b2d] += list([p.evalf() for p in b2.points])
         seg_paths[b3d] += list([p.evalf() for p in b3.points])
         seg_paths[b4d] += list([p.evalf() for p in b4.points])
+        seg_paths[connd] += list([p.evalf() for p in conn.points])
     return seg_paths
 
 @cache
@@ -658,6 +685,7 @@ def test_linearizer():
 
     cronenberg2 = PolyMesh(generator= solid.union()(a2_join,b2_join))
     aparatus = cronenberg1 + A1_bar + B1_bar + mt + cronenberg2 + A2_bar + B2_bar
+    aparatus.save("torso.stl")
 
     OT = (0, 0, 0)
     OQ = Z_JOINT_POSE[1]
@@ -693,6 +721,28 @@ class KlannLinkage(Mechanism):
         if 'connections' not in kwargs.keys():
             kwargs['connections'] = conns
         super(KlannLinkage, self).__init__(**kwargs)
+
+    def save_layouts(self):
+        """
+        Return layouts for making this sculpture.
+
+        Returns:
+          cut_layout: 2D Layout for laser cutting base
+          print_layout: 3D Layout for 3D printing connectors
+        """
+        links = self.elts
+        pls = []
+        for link in links:
+            if "coupler" in link.name or link.name == "torso" or "pin" in link.name or "":
+                #save as stl
+                link.elts[0].elts[0].save("%s.stl"%(link.name))
+            elif "segment" in link.name:
+                #create 2D outline
+                pm= link.elts[0].elts[0]
+                base = pm.get_generator()
+                pl = PolyLine(generator=solid.projection()(base) )
+                pls.append(pl)
+        save_layout(pls, "linkages")
 
 def shares_joint(seg_d1, seg_d2):
     """
@@ -812,6 +862,25 @@ def create_layer_assignment(neighbor_dicts, conflict_dicts):
 
     return explore(start_node,{},[])
 
+def save_layout(pls, filename):
+    """ Given a list of polylines, make a layout and save it to DXF files for laser cutting
+
+    Args:
+      pls ([PolyLine]): list of polylines
+      filname (str): beginning of file name (sheet number and DXF extension will be added)
+
+    """
+
+    for pl in pls:
+        pl.generator = None
+    lo = Layout([Block(Layer(s, color='red')) for s in pls], size=(500, 1000))
+
+    sheets = lo.solved(5)
+
+    for i in range(len(sheets)):
+        sheets[i].save('%s_sheet_%d.dxf' % (filename, i), version='AC1021')
+
+
 def linearizer(seg_dicts):
     """
     Takes in a list of dictionaries of {Segment: [Point]}
@@ -831,7 +900,17 @@ def linearizer(seg_dicts):
     optimal = create_layer_assignment(neighbor_dicts,conflict_dicts)
     print(optimal.values())
     return optimal
-# locked_offset()[0].save("lock.stl")
-A = KlannLinkage()
-A.save("blah2.scad")
+
+create_crank_shaft()[0].get_generator(True)
+# seg_paths = simulate_linkage_path(1,1)
+# poly1 = seg_paths.values()[1]
+# poly2 = seg_paths.values()[0]
+# # print(poly1)
+# # seg_paths2 = simulate_linkage_path(-1,1 + np.pi)
+# # poly2 = seg_paths2.values()[1]
+# plot_geom([poly1,poly2]).show()
+#locked_offset()
+# A = KlannLinkage()
+# A.save_layouts()
+# A.save("blah2.scad")
 #simulate_linkage_path()

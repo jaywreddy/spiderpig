@@ -354,6 +354,8 @@ class KlannLinkage(Mechanism):
             conn = rationalize_segment(conn, [neg_O, pos_M], "conn" )
 
             # #create servo mount that connects to shaft connector
+            b, j, c = create_klann_part(1,1, "1")
+            A,_,B = j
             mt, m_attach, _ = create_servo_mount()
                         # #add support for A,B
             mount_thickness= 3 # shaft coupler
@@ -361,8 +363,8 @@ class KlannLinkage(Mechanism):
             #O, A,B, C, D, E, F,M, b1,b2,b3,b4,conn = create_klann_geometry()
 
             ##create the attacher thing, with joints
-            A_bar, a_attach = create_support_bar(pos_A,mount_thickness)
-            B_bar, b_attach = create_support_bar(pos_B,mount_thickness + layer_thickness)
+            A_bar, a_attach = create_support_bar(A,mount_thickness)
+            B_bar, b_attach = create_support_bar(B,mount_thickness + layer_thickness)
 
             m_attach_gen = m_attach.get_generator()
             a_gen = a_attach.get_generator()
