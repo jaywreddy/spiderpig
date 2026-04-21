@@ -1,27 +1,28 @@
+# Cross-platform task runner. All recipes dispatch to cli.py so Windows
+# PowerShell, macOS zsh, and Linux bash behave identically.
+
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
 default:
     @just --list
 
 # STEP/STL/DXF → build/
-build:
-    uv run python main.py
+build *ARGS:
+    uv run python cli.py build {{ARGS}}
 
 # Bake viewer meshes + frames.json → viewer/data/
-bake:
-    uv run python viewer/bake.py
+bake *ARGS:
+    uv run python cli.py bake {{ARGS}}
 
-# Bake, serve, and open the viewer in a browser
-view: bake
-    @echo "→ http://localhost:8000"
-    @(sleep 0.3 && (command -v open >/dev/null && open http://localhost:8000 \
-        || command -v xdg-open >/dev/null && xdg-open http://localhost:8000 \
-        || true)) &
-    cd viewer && python -m http.server 8000
+# Dev server with live reload → http://localhost:8000
+view *ARGS:
+    uv run python cli.py view {{ARGS}}
 
-test:
-    uv run pytest -v
+test *ARGS:
+    uv run python cli.py test {{ARGS}}
 
 lint:
     uv run ruff check .
 
 clean:
-    rm -rf build/ viewer/data/
+    uv run python cli.py clean

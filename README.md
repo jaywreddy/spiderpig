@@ -28,14 +28,29 @@ build123d). First run takes a minute or two.
 
 ## Quick start
 
-With [`just`](https://github.com/casey/just) installed:
+Every task goes through a single cross-platform Python CLI (no `sh` required):
+
+```bash
+uv run python cli.py view       # dev server w/ live reload at :8000
+uv run python cli.py build      # STEP/STL/DXF → build/
+uv run python cli.py bake       # viewer data → viewer/data/
+uv run python cli.py test
+uv run python cli.py clean      # rm build/ and viewer/data/
+```
+
+Or, if you have [`just`](https://github.com/casey/just):
 
 ```bash
 just            # list recipes
-just build      # STEP/STL/DXF → build/
-just view       # bake viewer data, serve, open browser
+just view
+just build
 just test
 ```
+
+`just view` starts a FastAPI dev server on <http://127.0.0.1:8000> that
+serves the three.js viewer, bakes data on first run, watches `*.py`
+under the repo, and pushes a browser reload over a WebSocket after every
+successful re-bake — the full edit → visualize loop without a manual refresh.
 
 ## Run
 
@@ -73,17 +88,24 @@ emission.
 
 ```
 spiderpig/
-├── main.py          # CLI entry point
+├── cli.py           # cross-platform task runner (view/build/bake/test/clean)
+├── main.py          # fabrication CLI (STEP/STL/DXF)
 ├── klann.py         # symbolic Klann geometry + KlannLinkage assembly
 ├── mechanism.py     # Pose, Joint, Body, Mechanism (pytransform3d-backed)
 ├── shapes.py        # build123d part factories
 ├── layout.py        # 2D section + rectpack + ezdxf sheet writer
+├── server/          # FastAPI dev server + watchfiles live-reload
+│   ├── app.py       #   /api/frames, /api/parts/{name}, /ws, static mount
+│   └── watcher.py   #   source-change → re-bake → broadcast reload
+├── viewer/          # three.js client (HTML/JS + bake.py + poses.py)
+├── justfile         # optional Unix alias for `uv run python cli.py ...`
 ├── pyproject.toml
 ├── uv.lock
 └── tests/
     ├── test_transforms.py
     ├── test_geometry.py
     ├── test_mechanism.py
+    ├── test_poses.py
     └── test_export.py
 ```
 

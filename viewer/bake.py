@@ -41,25 +41,42 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def bake(
+    out: Path,
+    n_frames: int = 60,
+    fps: int = 30,
+    *,
+    parts: bool = True,
+    verbose: bool = False,
+) -> None:
+    """Run the bake: writes ``out/parts/*.stl`` and ``out/frames.json``.
+
+    Set ``parts=False`` to skip STL regeneration (fast path when only
+    phase/pose math changed — geometry is unaffected).
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    log = print if verbose else (lambda *_a, **_k: None)
+
+    if parts:
+        parts_dir = out / "parts"
+        parts_dir.mkdir(parents=True, exist_ok=True)
+        mech = KlannLinkage()
+        for body in mech.bodies:
+            if body.part is None:
+                continue
+            path = parts_dir / f"{body.name}.stl"
+            export_stl(body.part, str(path))
+            log(f"wrote {path} ({path.stat().st_size} B)")
+
+    data = bake_frames(n_frames=n_frames, fps=fps)
+    frames_path = out / "frames.json"
+    frames_path.write_text(json.dumps(data))
+    log(f"wrote {frames_path} ({frames_path.stat().st_size} B, {n_frames} frames)")
+
+
 def main() -> None:
     args = _parse_args()
-    parts_dir = args.out / "parts"
-    parts_dir.mkdir(parents=True, exist_ok=True)
-
-    # Per-body STL meshes (geometry is phase-invariant).
-    mech = KlannLinkage()
-    for body in mech.bodies:
-        if body.part is None:
-            continue
-        path = parts_dir / f"{body.name}.stl"
-        export_stl(body.part, str(path))
-        print(f"wrote {path} ({path.stat().st_size} B)")
-
-    # Per-frame poses.
-    data = bake_frames(n_frames=args.frames, fps=args.fps)
-    frames_path = args.out / "frames.json"
-    frames_path.write_text(json.dumps(data))
-    print(f"wrote {frames_path} ({frames_path.stat().st_size} B, {args.frames} frames)")
+    bake(args.out, n_frames=args.frames, fps=args.fps, verbose=True)
 
 
 if __name__ == "__main__":

@@ -7,36 +7,41 @@ articulates correctly and the foot tip traces the expected Klann path.
 
 ## Design
 
-Two-step pipeline:
+Three parts:
 
-1. **Bake** (`bake.py`): exports one STL per rigid body and a
+1. **Bake** (`bake.py`): exports one STL per rigid body plus a
    `frames.json` with a 4×4 world pose for each body at every frame
    (using `klann.create_klann_geometry` + 2D Kabsch alignment in
    `poses.py`).
-2. **Render** (`index.html` + `main.js`): loads the meshes once,
-   fetches `frames.json`, and sets `mesh.matrix` per animation frame.
-   Three.js is imported from `esm.sh` via an importmap; no build step.
-
-Re-run `bake.py` whenever you change `klann.py` constants or the body
-topology. The browser just reloads.
+2. **Dev server** (`../server/app.py`, FastAPI + uvicorn): serves the
+   HTML/JS client, the baked STLs and pose JSON under `/api/*`, and a
+   `/ws` WebSocket. A `watchfiles`-backed watcher re-bakes on any `.py`
+   change and broadcasts `reload` so the browser refreshes automatically.
+3. **Client** (`index.html` + `main.js`): three.js from `esm.sh` via an
+   importmap; no build step. Fetches `/api/frames`, loads each STL from
+   `/api/parts/{name}.stl`, and sets `mesh.matrix` per animation frame.
+   On `reload` from `/ws`, `location.reload()`.
 
 ## Run
 
 ```bash
-just view          # bake + serve + open browser (recommended)
+uv run python cli.py view     # or: just view
 ```
 
-Or manually:
+Starts the dev server at <http://127.0.0.1:8000>, bakes viewer data on
+first run, watches `*.py`, and live-reloads the browser after every
+successful re-bake.
+
+Static-only fallback (no server, no live reload):
 
 ```bash
-# 1. Bake the STL meshes + pose tables (once, or after linkage changes).
-uv run python viewer/bake.py
-
-# 2. Serve the viewer statically (anything that serves ./ works).
+uv run python cli.py bake
 cd viewer && python -m http.server 8000
 ```
 
-Open <http://localhost:8000> in any modern browser.
+Note: the static fallback requires editing `main.js` to point back at
+`./data/frames.json` — the default API paths (`/api/frames`) only work
+behind the FastAPI server.
 
 Flags on `bake.py`:
 

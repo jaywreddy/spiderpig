@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const DATA_URL = './data/frames.json';
-const PARTS_URL = './data/parts/';
+const DATA_URL = './api/frames';
+const PARTS_URL = './api/parts/';
 
 const canvas = document.getElementById('stage');
 const statusEl = document.getElementById('status');
@@ -74,6 +74,38 @@ function loadStl(name) {
       (err) => reject(err),
     );
   });
+}
+
+// Live-reload over /ws -------------------------------------------------------
+// When the dev server re-bakes source files it broadcasts "reload"; we just
+// reload the page. OrbitControls state is lost — acceptable for a dev loop.
+function connectLiveReload() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const url = `${proto}://${location.host}/ws`;
+  let socket;
+  let retry = 0;
+
+  const open = () => {
+    socket = new WebSocket(url);
+    socket.addEventListener('open', () => { retry = 0; });
+    socket.addEventListener('message', (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.type === 'rebaking') {
+        statusEl.textContent = `rebaking (${(msg.files || []).join(', ')})…`;
+      } else if (msg.type === 'reload') {
+        location.reload();
+      } else if (msg.type === 'error') {
+        statusEl.textContent = `bake error: ${msg.msg}`;
+      }
+    });
+    socket.addEventListener('close', () => {
+      // Exponential backoff retry, capped at 5s.
+      retry = Math.min(retry + 1, 10);
+      setTimeout(open, Math.min(500 * retry, 5000));
+    });
+  };
+  open();
 }
 
 function buildFootPath(pathXY) {
@@ -159,3 +191,5 @@ init().catch((err) => {
   console.error(err);
   statusEl.textContent = 'error: ' + err.message;
 });
+
+connectLiveReload();
