@@ -23,6 +23,12 @@ topology. The browser just reloads.
 ## Run
 
 ```bash
+just view          # bake + serve + open browser (recommended)
+```
+
+Or manually:
+
+```bash
 # 1. Bake the STL meshes + pose tables (once, or after linkage changes).
 uv run python viewer/bake.py
 

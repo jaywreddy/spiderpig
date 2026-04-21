@@ -26,6 +26,17 @@ uv sync
 This resolves `pyproject.toml` and fetches OCP (the OCCT binding that powers
 build123d). First run takes a minute or two.
 
+## Quick start
+
+With [`just`](https://github.com/casey/just) installed:
+
+```bash
+just            # list recipes
+just build      # STEP/STL/DXF → build/
+just view       # bake viewer data, serve, open browser
+just test
+```
+
 ## Run
 
 ```bash
