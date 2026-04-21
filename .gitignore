@@ -10,6 +10,11 @@
 *.svg
 
 *.pyc
+__pycache__/
 
 *.*~
 *.swp
+
+.venv/
+.ruff_cache/
+.pytest_cache/
