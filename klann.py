@@ -110,24 +110,42 @@ def create_klann_geometry(orientation=1, phase=1):
     return [O, A, B, C, D, E, F, M, b1, b2, b3, b4, conn]
 
 
-def KlannLinkage(name: str = "klann") -> Mechanism:
-    """Assemble the full Klann single-leg mechanism.
+_CONNECTIONS = [
+    ((0, "torso", "A"), (0, "b3", "A")),
+    ((0, "torso", "B"), (0, "b2", "B")),
+    ((0, "torso", "O"), (0, "conn", "O")),
+    ((0, "conn", "M"), (0, "b1", "M")),
+    ((0, "b1", "C"), (0, "b3", "C")),
+    ((0, "b1", "D"), (0, "b4", "D")),
+    ((0, "b2", "E"), (0, "b4", "E")),
+    ((0, "conn", "O"), (0, "coupler", "O")),
+]
 
-    Lays out the 5 laser-cut links (``b1``..``b4`` plus ``conn``), a simple
-    torso plate carrying the servo-mount pivots, and a shaft coupler. The
-    returned :class:`Mechanism` is unsolved: call ``.solved()`` to propagate
-    world poses.
+
+def _build_mechanism(
+    name: str,
+    O,
+    A,
+    B,
+    C,
+    D,
+    E,
+    _F,
+    M,
+    b1,
+    b2,
+    b3,
+    b4,
+    conn,
+    *,
+    with_parts: bool,
+) -> Mechanism:
+    """Wire the seven bodies given the per-phase symbolic points and segments.
+
+    ``with_parts=False`` skips build123d part construction — useful for the
+    viewer bake loop where we only need joint poses for ``Mechanism.solved()``.
     """
-    # shapes.py is optional at geometry time; import lazily so callers that
-    # only want the symbolic points don't pay the build123d import cost.
-    from shapes import (
-        create_shaft_connector,
-        create_torso,
-        joint_from_point,
-        rationalize_segment,
-    )
-
-    O, A, B, C, D, E, F, M, b1, b2, b3, b4, conn = create_klann_geometry()
+    from shapes import joint_from_point  # lazy: avoid build123d when unused
 
     pos_A, neg_A = joint_from_point(A, "A", 1)
     pos_B, neg_B = joint_from_point(B, "B", 1)
@@ -136,42 +154,73 @@ def KlannLinkage(name: str = "klann") -> Mechanism:
     pos_E, neg_E = joint_from_point(E, "E", 1)
     pos_M, neg_M = joint_from_point(M, "M", 1)
     pos_O, neg_O = joint_from_point(O, "O", 1)
-
-    b1_body = rationalize_segment(b1, [neg_M, neg_C, neg_D], "b1")
-    b2_body = rationalize_segment(b2, [neg_B, neg_E], "b2")
-    b3_body = rationalize_segment(b3, [neg_A, pos_C], "b3")
-    b4_body = rationalize_segment(b4, [pos_E, pos_D], "b4")
-    conn_body = rationalize_segment(conn, [neg_O, pos_M], "conn")
-
     bt_pos, _ = joint_from_point(B, "B", 2)
-    torso_part = create_torso([pos_A, pos_O, bt_pos])
+
+    if with_parts:
+        from shapes import create_shaft_connector, create_torso, rationalize_segment
+
+        b1_body = rationalize_segment(b1, [neg_M, neg_C, neg_D], "b1")
+        b2_body = rationalize_segment(b2, [neg_B, neg_E], "b2")
+        b3_body = rationalize_segment(b3, [neg_A, pos_C], "b3")
+        b4_body = rationalize_segment(b4, [pos_E, pos_D], "b4")
+        conn_body = rationalize_segment(conn, [neg_O, pos_M], "conn")
+        torso_part = create_torso([pos_A, pos_O, bt_pos])
+        coupler_part = create_shaft_connector()
+    else:
+        b1_body = Body(name="b1", joints=[neg_M, neg_C, neg_D], color="green")
+        b2_body = Body(name="b2", joints=[neg_B, neg_E], color="green")
+        b3_body = Body(name="b3", joints=[neg_A, pos_C], color="green")
+        b4_body = Body(name="b4", joints=[pos_E, pos_D], color="green")
+        conn_body = Body(name="conn", joints=[neg_O, pos_M], color="green")
+        torso_part = None
+        coupler_part = None
+
     torso = Body(
         name="torso",
         part=torso_part,
         joints=[pos_A, pos_O, bt_pos],
         color="yellow",
     )
-
     coupler = Body(
         name="coupler",
-        part=create_shaft_connector(),
+        part=coupler_part,
         joints=[pos_O],
         color="blue",
     )
 
-    connections = [
-        ((0, "torso", "A"), (0, "b3", "A")),
-        ((0, "torso", "B"), (0, "b2", "B")),
-        ((0, "torso", "O"), (0, "conn", "O")),
-        ((0, "conn", "M"), (0, "b1", "M")),
-        ((0, "b1", "C"), (0, "b3", "C")),
-        ((0, "b1", "D"), (0, "b4", "D")),
-        ((0, "b2", "E"), (0, "b4", "E")),
-        ((0, "conn", "O"), (0, "coupler", "O")),
-    ]
-
     return Mechanism(
         name=name,
         bodies=[coupler, b1_body, b2_body, b3_body, b4_body, conn_body, torso],
-        connections=connections,
+        connections=list(_CONNECTIONS),
     )
+
+
+def solve_klann_at_phase(
+    phase: float,
+    *,
+    name: str = "klann",
+    with_parts: bool = False,
+) -> Mechanism:
+    """Build a Klann mechanism with joints placed at the given crank ``phase``.
+
+    Bodies are wired identically to :func:`KlannLinkage` — only the joint XY
+    positions differ per phase. Joint Z layering is phase-invariant (pins
+    don't migrate in Z between layers). Returns an unsolved
+    :class:`Mechanism`; call ``.solved()`` to propagate world poses.
+
+    ``with_parts=False`` (default) skips build123d part construction for
+    speed when only poses are needed (viewer bake loop).
+    """
+    geom = create_klann_geometry(orientation=1, phase=phase)
+    return _build_mechanism(name, *geom, with_parts=with_parts)
+
+
+def KlannLinkage(name: str = "klann") -> Mechanism:
+    """Assemble the full Klann single-leg mechanism at the reference phase.
+
+    Lays out the 5 laser-cut links (``b1``..``b4`` plus ``conn``), a simple
+    torso plate carrying the servo-mount pivots, and a shaft coupler. The
+    returned :class:`Mechanism` is unsolved: call ``.solved()`` to propagate
+    world poses.
+    """
+    return solve_klann_at_phase(phase=1.0, name=name, with_parts=True)

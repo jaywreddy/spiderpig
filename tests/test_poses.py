@@ -1,8 +1,7 @@
-"""Tests for viewer.poses (Kabsch + per-body pose computation)."""
+"""Tests for viewer.poses (per-phase bake via Mechanism.solved())."""
 
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 
@@ -11,76 +10,73 @@ import numpy as np
 # viewer/ is a sibling of the package modules; make it importable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
 
-from poses import body_pose_for_phase, kabsch_2d  # noqa: E402
+from poses import bake_frames  # noqa: E402
+
+from klann import solve_klann_at_phase  # noqa: E402
+from shapes import THICKNESS  # noqa: E402
 
 
-def _apply_se2(r: np.ndarray, t: np.ndarray, pts: np.ndarray) -> np.ndarray:
-    return pts @ r.T + t
+def _pose_from_flat(flat: list[float]) -> np.ndarray:
+    """Unpack a column-major 16-vector back into a 4×4 row-major matrix."""
+    col_major = np.array(flat, dtype=float).reshape(4, 4)
+    return col_major.T
 
 
-def test_kabsch_recovers_known_transform():
-    rng = np.random.default_rng(0)
-    ref = rng.standard_normal((4, 2))
-    theta = 0.6
-    r_true = np.array([[math.cos(theta), -math.sin(theta)], [math.sin(theta), math.cos(theta)]])
-    t_true = np.array([3.5, -1.2])
-    new = _apply_se2(r_true, t_true, ref)
-
-    r, t = kabsch_2d(ref, new)
-    np.testing.assert_allclose(r, r_true, atol=1e-12)
-    np.testing.assert_allclose(t, t_true, atol=1e-12)
-
-
-def test_kabsch_proper_rotation_no_reflection():
-    # Same point set in both frames -> identity, never a reflection.
-    ref = np.array([[0.0, 0.0], [1.0, 0.0]])
-    new = ref.copy()
-    r, t = kabsch_2d(ref, new)
-    assert np.linalg.det(r) > 0.999
-    np.testing.assert_allclose(r, np.eye(2), atol=1e-12)
-    np.testing.assert_allclose(t, [0.0, 0.0], atol=1e-12)
+def test_bake_frames_shape():
+    data = bake_frames(n_frames=8, fps=30)
+    assert data["fps"] == 30
+    assert data["n_frames"] == 8
+    assert len(data["frames"]) == 8
+    assert len(data["foot_path"]) == 8
+    assert set(data["body_names"]) == {"torso", "coupler", "conn", "b1", "b2", "b3", "b4"}
+    for f in data["frames"]:
+        for name in data["body_names"]:
+            assert len(f["poses"][name]) == 16
 
 
-def test_torso_pose_is_identity_at_every_phase():
-    ref = {"A": (1.0, 2.0), "O": (0.0, 0.0), "B": (5.0, 5.0)}
-    for p in [0.0, 0.5, 1.7, 2 * math.pi]:
-        # Even with totally different "current" positions, torso should pin.
-        new = {"A": (10.0, 20.0), "O": (3.0, 3.0), "B": (50.0, 50.0)}
-        m = body_pose_for_phase("torso", ref, new)
-        np.testing.assert_allclose(m, np.eye(4), atol=1e-12)
+def test_bake_frames_z_layered():
+    """b1 and b4 must sit at distinct Z (one THICKNESS apart) — layering preserved."""
+    data = bake_frames(n_frames=4, fps=30)
+    m_b1 = _pose_from_flat(data["frames"][0]["poses"]["b1"])
+    m_b4 = _pose_from_flat(data["frames"][0]["poses"]["b4"])
+    z_b1 = m_b1[2, 3]
+    z_b4 = m_b4[2, 3]
+    assert abs(z_b1 - z_b4) > 1e-6, "b1 and b4 ended up at the same Z"
+    assert abs(abs(z_b1 - z_b4) - THICKNESS) < 1e-6
 
 
-def test_body_pose_reproduces_new_joint_positions():
-    """Applying the returned pose to ref joints must land on new joints."""
-    # Use b2 (joints B, E) with a known rotation+translation.
-    ref = {"B": (10.0, 0.0), "E": (40.0, 0.0)}
-    theta = 0.4
-    cos_t, sin_t = math.cos(theta), math.sin(theta)
-    rot = np.array([[cos_t, -sin_t], [sin_t, cos_t]])
-    trans = np.array([5.0, -3.0])
+def test_bake_frames_joint_snap():
+    """Shared joint C coincides in 3D between b1 (owns neg_C) and b3 (owns pos_C).
 
-    def _xform(pt):
-        v = np.array(pt)
-        return tuple((rot @ v + trans).tolist())
+    b1 and b3 live at different body-world Z (one THICKNESS apart) precisely
+    because their local copies of joint C sit on opposite layers. Composing
+    them must land the pin at the same world point.
+    """
+    data = bake_frames(n_frames=4, fps=30)
+    mech = solve_klann_at_phase(float(data["frames"][0]["phase"]), with_parts=False).solved()
 
-    new = {"B": _xform(ref["B"]), "E": _xform(ref["E"])}
+    b1 = mech.body("b1")
+    b3 = mech.body("b3")
+    c_local_b1 = b1.joint("C").pose.matrix[:, 3]
+    c_local_b3 = b3.joint("C").pose.matrix[:, 3]
 
-    m = body_pose_for_phase("b2", ref, new)
-    for j in ("B", "E"):
-        ref_v = np.array([*ref[j], 0.0, 1.0])
-        out = m @ ref_v
-        np.testing.assert_allclose(out[:2], new[j], atol=1e-9)
+    m_b1 = _pose_from_flat(data["frames"][0]["poses"]["b1"])
+    m_b3 = _pose_from_flat(data["frames"][0]["poses"]["b3"])
+    c_world_b1 = m_b1 @ c_local_b1
+    c_world_b3 = m_b3 @ c_local_b3
+
+    np.testing.assert_allclose(c_world_b1, c_world_b3, atol=1e-9)
+    # Sanity: body Zs really do differ by one layer (the reason local Cs differ).
+    assert abs(abs(m_b1[2, 3] - m_b3[2, 3]) - THICKNESS) < 1e-6
 
 
-def test_real_klann_b1_pose_closes_joints():
-    """End-to-end: solve klann at two phases, recover b1 pose, joints align."""
-    from poses import REFERENCE_PHASE, _solve_joint_positions
-
-    ref_joints, _ = _solve_joint_positions(REFERENCE_PHASE)
-    new_joints, _ = _solve_joint_positions(0.7)
-
-    m = body_pose_for_phase("b1", ref_joints, new_joints)
-    for j in ("M", "C", "D"):
-        ref_v = np.array([*ref_joints[j], 0.0, 1.0])
-        out = m @ ref_v
-        np.testing.assert_allclose(out[:2], new_joints[j], atol=1e-9)
+def test_bake_frames_matches_direct_solve():
+    """Every baked pose equals a fresh ``solve_klann_at_phase(p).solved()`` call."""
+    data = bake_frames(n_frames=6, fps=30)
+    for frame in data["frames"]:
+        mech = solve_klann_at_phase(float(frame["phase"]), with_parts=False).solved()
+        for name in data["body_names"]:
+            baked = _pose_from_flat(frame["poses"][name])
+            np.testing.assert_allclose(
+                baked, mech.body(name).pose.matrix, atol=1e-9, err_msg=name
+            )
