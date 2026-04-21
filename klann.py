@@ -1,4 +1,4 @@
-"""Symbolic Klann walking-linkage geometry.
+"""Symbolic Klann walking-linkage geometry and mechanism assembly.
 
 The Klann linkage is a 6-bar planar mechanism that converts continuous
 rotation of a crank into a foot path well suited to walking robots. This
@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import numpy as np
 from sympy.geometry import Circle, Point, Segment
+
+from mechanism import Body, Mechanism
 
 
 def custom_intersection(c1, c2):
@@ -106,3 +108,70 @@ def create_klann_geometry(orientation=1, phase=1):
     conn = Segment(O, M)
 
     return [O, A, B, C, D, E, F, M, b1, b2, b3, b4, conn]
+
+
+def KlannLinkage(name: str = "klann") -> Mechanism:
+    """Assemble the full Klann single-leg mechanism.
+
+    Lays out the 5 laser-cut links (``b1``..``b4`` plus ``conn``), a simple
+    torso plate carrying the servo-mount pivots, and a shaft coupler. The
+    returned :class:`Mechanism` is unsolved: call ``.solved()`` to propagate
+    world poses.
+    """
+    # shapes.py is optional at geometry time; import lazily so callers that
+    # only want the symbolic points don't pay the build123d import cost.
+    from shapes import (
+        create_shaft_connector,
+        create_torso,
+        joint_from_point,
+        rationalize_segment,
+    )
+
+    O, A, B, C, D, E, F, M, b1, b2, b3, b4, conn = create_klann_geometry()
+
+    pos_A, neg_A = joint_from_point(A, "A", 1)
+    pos_B, neg_B = joint_from_point(B, "B", 1)
+    pos_C, neg_C = joint_from_point(C, "C", 1)
+    pos_D, neg_D = joint_from_point(D, "D", 1)
+    pos_E, neg_E = joint_from_point(E, "E", 1)
+    pos_M, neg_M = joint_from_point(M, "M", 1)
+    pos_O, neg_O = joint_from_point(O, "O", 1)
+
+    b1_body = rationalize_segment(b1, [neg_M, neg_C, neg_D], "b1")
+    b2_body = rationalize_segment(b2, [neg_B, neg_E], "b2")
+    b3_body = rationalize_segment(b3, [neg_A, pos_C], "b3")
+    b4_body = rationalize_segment(b4, [pos_E, pos_D], "b4")
+    conn_body = rationalize_segment(conn, [neg_O, pos_M], "conn")
+
+    bt_pos, _ = joint_from_point(B, "B", 2)
+    torso_part = create_torso([pos_A, pos_O, bt_pos])
+    torso = Body(
+        name="torso",
+        part=torso_part,
+        joints=[pos_A, pos_O, bt_pos],
+        color="yellow",
+    )
+
+    coupler = Body(
+        name="coupler",
+        part=create_shaft_connector(),
+        joints=[pos_O],
+        color="blue",
+    )
+
+    connections = [
+        ((0, "torso", "A"), (0, "b3", "A")),
+        ((0, "torso", "B"), (0, "b2", "B")),
+        ((0, "torso", "O"), (0, "conn", "O")),
+        ((0, "conn", "M"), (0, "b1", "M")),
+        ((0, "b1", "C"), (0, "b3", "C")),
+        ((0, "b1", "D"), (0, "b4", "D")),
+        ((0, "b2", "E"), (0, "b4", "E")),
+        ((0, "conn", "O"), (0, "coupler", "O")),
+    ]
+
+    return Mechanism(
+        name=name,
+        bodies=[coupler, b1_body, b2_body, b3_body, b4_body, conn_body, torso],
+        connections=connections,
+    )

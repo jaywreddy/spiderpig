@@ -70,9 +70,12 @@ class Pose:
         return Pose(concat(other.matrix, self.matrix))
 
     def to_location(self):
-        from build123d import Location  # lazy import
+        from build123d import Location, Plane  # lazy import
 
-        return Location(self.matrix.tolist())
+        origin = tuple(self.matrix[:3, 3])
+        x_dir = tuple(self.matrix[:3, 0])
+        z_dir = tuple(self.matrix[:3, 2])
+        return Location(Plane(origin, x_dir, z_dir))
 
 
 @dataclass(frozen=True)
@@ -158,18 +161,19 @@ class Mechanism:
         return Mechanism(name=self.name, bodies=placed, connections=list(self.connections))
 
     def to_compound(self):
-        from build123d import Compound  # lazy import
+        from build123d import Color, Compound  # lazy import
 
         parts = []
         for b in self.bodies:
             placed = b.placed_part()
             if placed is None:
                 continue
+            placed.label = b.name
             if b.color is not None:
-                placed.label = b.name
-                placed.color = b.color
-            else:
-                placed.label = b.name
+                try:
+                    placed.color = Color(b.color)
+                except Exception:
+                    pass
             parts.append(placed)
         return Compound(children=parts, label=self.name)
 
