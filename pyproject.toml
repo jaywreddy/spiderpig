@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "Klann walking-linkage mechanism generator for laser cutting and 3D printing"
 requires-python = ">=3.12"
 dependencies = [
-    "numpy>=2.0",
-    "sympy>=1.13",
-    "build123d>=0.8",
-    "ezdxf>=1.3",
+    "numpy>=2.2",
+    "scipy>=1.15",
+    "sympy>=1.14",
+    "build123d>=0.10,<0.12",
+    "pytransform3d>=3.14",
+    "ezdxf>=1.4",
     "rectpack>=0.2",
 ]
 
@@ -25,4 +27,8 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "PT", "NPY"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
