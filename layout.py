@@ -97,7 +97,8 @@ def _emit_wire_to_dxf(msp, wire, offset_xy, as_polyline_points=True):
     shifted = [(x + ox, y + oy) for x, y in pts]
     msp.add_lwpolyline(
         shifted,
-        dxfattribs={"layer": _CUT_LAYER, "closed": True},
+        close=True,
+        dxfattribs={"layer": _CUT_LAYER},
     )
 
 

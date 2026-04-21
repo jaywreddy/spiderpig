@@ -57,6 +57,23 @@ def test_solved_is_pure_does_not_mutate_input():
     np.testing.assert_allclose(mech.body("child").pose.matrix, np.eye(4))
 
 
+def test_klann_linkage_connections_close_after_solve():
+    """Every named connection edge should align the two joints in world space."""
+    from klann import KlannLinkage
+
+    solved = KlannLinkage().solved()
+
+    for (_, a_name, a_joint), (_, b_name, b_joint) in solved.connections:
+        a = solved.body(a_name)
+        b = solved.body(b_name)
+        pa = (a.pose @ a.joint(a_joint).pose).matrix
+        pb = (b.pose @ b.joint(b_joint).pose).matrix
+        np.testing.assert_allclose(
+            pa[:3, 3], pb[:3, 3], atol=1e-6,
+            err_msg=f"joint {a_name}.{a_joint} did not align with {b_name}.{b_joint}",
+        )
+
+
 def test_solved_handles_chain_of_three():
     a = Body("a", joints=[Joint("t", Pose.from_translation([1.0, 0.0, 0.0]))])
     b = Body(
