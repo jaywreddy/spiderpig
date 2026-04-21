@@ -2,7 +2,7 @@
 name = "spiderpig"
 version = "0.1.0"
 description = "Klann walking-linkage mechanism generator for laser cutting and 3D printing"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "numpy>=2.2",
     "scipy>=1.15",
