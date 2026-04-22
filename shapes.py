@@ -244,7 +244,12 @@ def standoff(thickness: float, index: int = 0, color: str = "yellow") -> Body:
     b_placed = base.move(Pos(0, 0, -thickness))
     unit = b_placed + conn_cyl - conn_cyl.move(Pos(0, 0, -(clearance + thickness)))
 
-    anchor = Joint("A", Pose.from_translation([0, 0, -100]))
+    # Anchor at body origin so BFS snaps the standoff's local frame to the
+    # mating joint's world position. The printed column spans z ∈ [-thickness, 0)
+    # below the anchor and the pin protrudes upward to z=peg_height — when the
+    # anchor aligns with a lower-deck A/B pivot at z=layer_thickness, the base
+    # neatly bridges down to the torso plane at z=0.
+    anchor = Joint("A", Pose.identity())
     return Body(
         name=f"standoff{index}",
         part=unit,
