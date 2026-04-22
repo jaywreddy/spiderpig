@@ -24,13 +24,101 @@ Usage
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 import re
 import sys
+import time
+from collections import defaultdict
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pygltflib
+
+logger = logging.getLogger("bake_gltf")
+
+
+@dataclass
+class _Profiler:
+    """Lightweight perf recorder: nested wall-clock timers + counters + metrics.
+
+    Durations are accumulated per label so the same bracket can be entered
+    many times (e.g. once per animation frame) and reported as total / mean /
+    p50 / p95.
+    """
+
+    enabled: bool = True
+    _durations: dict[str, list[float]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    _counters: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    _metrics: dict[str, float] = field(default_factory=dict)
+
+    @contextmanager
+    def timed(self, label: str):
+        if not self.enabled:
+            yield
+            return
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._durations[label].append(time.perf_counter() - start)
+
+    def bump(self, label: str, n: int = 1) -> None:
+        if self.enabled:
+            self._counters[label] += n
+
+    def set_metric(self, key: str, value: float) -> None:
+        if self.enabled:
+            self._metrics[key] = float(value)
+
+    def log_summary(self) -> None:
+        if not self.enabled:
+            return
+
+        bake_total = sum(self._durations.get("bake_total", [])) or None
+
+        rows = []
+        for label, times_ in self._durations.items():
+            n = len(times_)
+            total = sum(times_)
+            mean_ms = (total / n) * 1000.0 if n else 0.0
+            ts = sorted(times_)
+            p50 = ts[n // 2] * 1000.0 if n else 0.0
+            p95 = ts[min(n - 1, int(n * 0.95))] * 1000.0 if n else 0.0
+            pct = (total / bake_total * 100.0) if bake_total else 0.0
+            rows.append((label, n, total, mean_ms, p50, p95, pct))
+        rows.sort(key=lambda r: -r[2])
+
+        lines = [
+            "bake profile summary:",
+            f"  {'label':40} {'calls':>6} {'total_s':>9} "
+            f"{'mean_ms':>9} {'p50_ms':>9} {'p95_ms':>9} {'%bake':>6}",
+            f"  {'-' * 40} {'-' * 6} {'-' * 9} {'-' * 9} "
+            f"{'-' * 9} {'-' * 9} {'-' * 6}",
+        ]
+        for label, n, total, mean_ms, p50, p95, pct in rows:
+            lines.append(
+                f"  {label:40} {n:6d} {total:9.3f} "
+                f"{mean_ms:9.3f} {p50:9.3f} {p95:9.3f} {pct:6.1f}"
+            )
+        if self._counters:
+            lines.append("  counters:")
+            for k, v in sorted(self._counters.items()):
+                lines.append(f"    {k}: {v}")
+        if self._metrics:
+            lines.append("  metrics:")
+            for k, v in sorted(self._metrics.items()):
+                # Integers stay integers for readability (vert counts, bytes).
+                if v == int(v):
+                    lines.append(f"    {k}: {int(v)}")
+                else:
+                    lines.append(f"    {k}: {v:.3f}")
+
+        logger.info("\n".join(lines))
 
 # Make sibling modules importable when invoked as ``viewer/bake_gltf.py``.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +307,8 @@ def bake_gltf(
     thickness: float = THICKNESS,
     mode: str = "multi",
     verbose: bool = False,
+    profile: bool = True,
+    cprofile_out: Path | None = None,
 ) -> None:
     """Write ``<out>`` as a self-contained binary glTF describing the Klann
     walker plus its TRS animation over one crank revolution.
@@ -226,280 +316,358 @@ def bake_gltf(
     ``mode`` selects which assembly to bake: ``single``/``multi`` (default,
     phase-stacked N legs), or ``double``/``decker``/``quad`` from the
     2016-style assembly builders.
+
+    Profiling
+    ---------
+    When ``profile`` is true, per-stage wall-clock times, call counts and
+    output-size metrics are emitted via the ``bake_gltf`` logger at INFO
+    level. Set ``cprofile_out`` to a path to additionally dump a
+    ``cProfile`` .prof file (plus a ``<path>.txt`` of the top-30 cumulative
+    hot functions) for deep dives.
     """
-    log = print if verbose else (lambda *_a, **_k: None)
+    if verbose and logger.level > logging.DEBUG:
+        logger.setLevel(logging.DEBUG)
+
+    prof = _Profiler(enabled=profile)
+
+    pr = None
+    if cprofile_out is not None:
+        import cProfile  # noqa: PLC0415
+        pr = cProfile.Profile()
+        pr.enable()
+
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    log(f"[bake] reference mech (mode={mode}, parts=True, n_legs={n_legs})…")
-    ref_mech = _build_assembly(
-        mode, t=0.0, n_legs=n_legs, thickness=thickness, with_parts=True
+    logger.info(
+        "bake: mode=%s n_legs=%d n_frames=%d duration_s=%.3f out=%s",
+        mode, n_legs, n_frames, duration_s, out,
     )
+    prof.set_metric("n_frames", n_frames)
+    prof.set_metric("n_legs", n_legs)
 
-    log("[bake] tessellate unique geometry classes…")
-    class_parts: dict[str, object] = {}
-    for body in ref_mech.bodies:
-        cls = _class_of(body.name)
-        if cls not in class_parts and body.part is not None:
-            class_parts[cls] = body.part
-    class_mesh: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
-    for cls, part in class_parts.items():
-        class_mesh[cls] = _tessellate(part)
-        log(f"  {cls}: {len(class_mesh[cls][0])} verts, {len(class_mesh[cls][2])//3} tris")
+    try:
+        with prof.timed("bake_total"):
+            # --- stage 1: reference mechanism build (with parts) ---
+            with prof.timed("1_reference_build"):
+                ref_mech = _build_assembly(
+                    mode, t=0.0, n_legs=n_legs, thickness=thickness, with_parts=True
+                )
+            prof.set_metric("n_bodies", len(ref_mech.bodies))
+            logger.debug("reference mech: %d bodies", len(ref_mech.bodies))
 
-    packer = _Packer()
-    accessors: list[pygltflib.Accessor] = []
+            # --- stage 2: tessellate one mesh per unique body class ---
+            logger.debug("tessellating unique geometry classes…")
+            class_parts: dict[str, object] = {}
+            for body in ref_mech.bodies:
+                cls = _class_of(body.name)
+                if cls not in class_parts and body.part is not None:
+                    class_parts[cls] = body.part
 
-    # --- geometry: pack per-class position/normal/index accessors ---
-    class_primitive: dict[str, pygltflib.Primitive] = {}
-    class_material_idx: dict[str, int] = {}
-    materials: list[pygltflib.Material] = []
+            class_mesh: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+            with prof.timed("2_tessellate_total"):
+                for cls, part in class_parts.items():
+                    with prof.timed(f"2_tessellate.{cls}"):
+                        class_mesh[cls] = _tessellate(part)
+                    nv = len(class_mesh[cls][0])
+                    nt = len(class_mesh[cls][2]) // 3
+                    prof.set_metric(f"verts.{cls}", nv)
+                    prof.set_metric(f"tris.{cls}", nt)
+                    logger.debug("  %s: %d verts, %d tris", cls, nv, nt)
 
-    for cls in _BODY_CLASSES:
-        if cls not in class_mesh:
-            continue
-        positions, normals, indices = class_mesh[cls]
+            # --- stage 3: pack per-class geometry accessors + materials ---
+            packer = _Packer()
+            accessors: list[pygltflib.Accessor] = []
+            class_primitive: dict[str, pygltflib.Primitive] = {}
+            class_material_idx: dict[str, int] = {}
+            materials: list[pygltflib.Material] = []
 
-        pos_bv = packer.add(positions.tobytes(), target=pygltflib.ARRAY_BUFFER)
-        pos_acc = len(accessors)
-        accessors.append(
-            _accessor_for(
-                pos_bv, len(positions),
-                component_type=pygltflib.FLOAT,
-                accessor_type=pygltflib.VEC3,
-                min_vals=positions.min(axis=0).tolist(),
-                max_vals=positions.max(axis=0).tolist(),
+            with prof.timed("3_gltf_pack_geometry"):
+                for cls in _BODY_CLASSES:
+                    if cls not in class_mesh:
+                        continue
+                    positions, normals, indices = class_mesh[cls]
+
+                    pos_bv = packer.add(positions.tobytes(), target=pygltflib.ARRAY_BUFFER)
+                    pos_acc = len(accessors)
+                    accessors.append(
+                        _accessor_for(
+                            pos_bv, len(positions),
+                            component_type=pygltflib.FLOAT,
+                            accessor_type=pygltflib.VEC3,
+                            min_vals=positions.min(axis=0).tolist(),
+                            max_vals=positions.max(axis=0).tolist(),
+                        )
+                    )
+
+                    nrm_bv = packer.add(normals.tobytes(), target=pygltflib.ARRAY_BUFFER)
+                    nrm_acc = len(accessors)
+                    accessors.append(
+                        _accessor_for(
+                            nrm_bv, len(normals),
+                            component_type=pygltflib.FLOAT,
+                            accessor_type=pygltflib.VEC3,
+                        )
+                    )
+
+                    idx_bv = packer.add(indices.tobytes(), target=pygltflib.ELEMENT_ARRAY_BUFFER)
+                    idx_acc = len(accessors)
+                    accessors.append(
+                        _accessor_for(
+                            idx_bv, len(indices),
+                            component_type=pygltflib.UNSIGNED_INT,
+                            accessor_type=pygltflib.SCALAR,
+                        )
+                    )
+
+                    color = _CLASS_COLORS.get(cls, (0.55, 0.55, 0.55))
+                    material_idx = len(materials)
+                    materials.append(
+                        pygltflib.Material(
+                            name=cls,
+                            pbrMetallicRoughness=pygltflib.PbrMetallicRoughness(
+                                baseColorFactor=[color[0], color[1], color[2], 1.0],
+                                metallicFactor=0.15,
+                                roughnessFactor=0.75,
+                            ),
+                            doubleSided=True,
+                        )
+                    )
+                    class_material_idx[cls] = material_idx
+
+                    class_primitive[cls] = pygltflib.Primitive(
+                        attributes=pygltflib.Attributes(POSITION=pos_acc, NORMAL=nrm_acc),
+                        indices=idx_acc,
+                        material=material_idx,
+                        mode=pygltflib.TRIANGLES,
+                    )
+
+                meshes: list[pygltflib.Mesh] = []
+                class_mesh_idx: dict[str, int] = {}
+                for cls, prim in class_primitive.items():
+                    class_mesh_idx[cls] = len(meshes)
+                    meshes.append(pygltflib.Mesh(name=cls, primitives=[prim]))
+
+            # --- canonical anchors: joint world positions when each class was tessellated ---
+            #
+            # Body parts were tessellated once from ref_mech at t=0, in *world coords*.
+            # That makes the class mesh carry the body's t=0 pose already, so Mechanism.solved()
+            # returns identity transforms — there's no motion left to animate.
+            #
+            # To recover motion, for each body at each frame we compute the rigid transform
+            # that maps its anchor joints (leg-0 @ t=0 of the same class) onto its current
+            # joint positions. Single-joint bodies (the coupler) degrade to pure translation.
+            class_anchor_joints: dict[str, dict[str, np.ndarray]] = {}
+            for body in ref_mech.bodies:
+                cls = _class_of(body.name)
+                if cls not in class_anchor_joints and body.part is not None:
+                    class_anchor_joints[cls] = _body_joint_world(body)
+
+            # --- stage 4: sample animation (per-frame kinematic rebuild + solve + pose extract) ---
+            logger.debug("sampling %d frames over %.3fs…", n_frames, duration_s)
+            ts = np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
+            times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
+
+            body_names = [b.name for b in ref_mech.bodies]
+            translations = {name: np.zeros((n_frames, 3), dtype=np.float32) for name in body_names}
+            rotations = {name: np.zeros((n_frames, 4), dtype=np.float32) for name in body_names}
+            prev_q: dict[str, np.ndarray | None] = dict.fromkeys(body_names)
+
+            with prof.timed("4_animation_sample_total"):
+                for fi, t_val in enumerate(ts):
+                    with prof.timed("4.1_frame.build_assembly"):
+                        mech_unsolved = _build_assembly(
+                            mode,
+                            t=float(t_val),
+                            n_legs=n_legs,
+                            thickness=thickness,
+                            with_parts=False,
+                        )
+                    with prof.timed("4.2_frame.solved"):
+                        mech = mech_unsolved.solved()
+                    with prof.timed("4.3_frame.body_extract"):
+                        for body in mech.bodies:
+                            prof.bump("body_extract.calls")
+                            cls = _class_of(body.name)
+                            anchor = class_anchor_joints.get(cls)
+                            if anchor is None:
+                                # Body has no mesh; animation values are ignored.
+                                translations[body.name][fi] = 0.0
+                                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
+                                prof.bump("body_extract.skipped_no_mesh")
+                                continue
+                            now = _body_joint_world(body)
+                            names = [n for n in anchor if n in now]
+                            if not names:
+                                # Class mesh was tessellated from a differently-shaped body of
+                                # the same name (mechanism-side naming bug in e.g. 'quad' conn).
+                                # Fall back to identity so the bake doesn't fail — that body
+                                # will visually stay at the class canonical pose.
+                                translations[body.name][fi] = 0.0
+                                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
+                                prof.bump("body_extract.skipped_no_anchor_match")
+                                continue
+                            p0 = np.stack([anchor[n] for n in names], axis=0)
+                            p1 = np.stack([now[n] for n in names], axis=0)
+                            R, t_vec = _rigid_planar(p0, p1)
+                            q = _quat_xyzw_from_z_rot(R).astype(np.float32)
+                            prev = prev_q[body.name]
+                            if prev is not None and float(np.dot(prev, q)) < 0.0:
+                                q = -q
+                            translations[body.name][fi] = t_vec.astype(np.float32)
+                            rotations[body.name][fi] = q
+                            prev_q[body.name] = q
+
+            # --- shared time accessor ---
+            time_bv = packer.add(times.tobytes())
+            time_acc = len(accessors)
+            accessors.append(
+                _accessor_for(
+                    time_bv, n_frames,
+                    component_type=pygltflib.FLOAT,
+                    accessor_type=pygltflib.SCALAR,
+                    min_vals=[float(times.min())],
+                    max_vals=[float(times.max())],
+                )
             )
-        )
 
-        nrm_bv = packer.add(normals.tobytes(), target=pygltflib.ARRAY_BUFFER)
-        nrm_acc = len(accessors)
-        accessors.append(
-            _accessor_for(
-                nrm_bv, len(normals),
-                component_type=pygltflib.FLOAT,
-                accessor_type=pygltflib.VEC3,
+            # --- stage 5: nodes + per-body animation samplers/channels ---
+            nodes: list[pygltflib.Node] = []
+            animation_samplers: list[pygltflib.AnimationSampler] = []
+            animation_channels: list[pygltflib.AnimationChannel] = []
+
+            with prof.timed("5_gltf_nodes_channels"):
+                for body in ref_mech.bodies:
+                    cls = _class_of(body.name)
+                    mesh_idx = class_mesh_idx.get(cls)
+
+                    initial_t = translations[body.name][0]
+                    initial_q = rotations[body.name][0]
+
+                    node = pygltflib.Node(
+                        name=body.name,
+                        translation=[float(initial_t[0]), float(initial_t[1]), float(initial_t[2])],
+                        rotation=[float(initial_q[0]), float(initial_q[1]),
+                                  float(initial_q[2]), float(initial_q[3])],
+                    )
+                    if mesh_idx is not None:
+                        node.mesh = mesh_idx
+                    node_idx = len(nodes)
+                    nodes.append(node)
+
+                    # translation sampler / channel
+                    t_bv = packer.add(translations[body.name].tobytes())
+                    t_acc = len(accessors)
+                    accessors.append(
+                        _accessor_for(
+                            t_bv, n_frames,
+                            component_type=pygltflib.FLOAT,
+                            accessor_type=pygltflib.VEC3,
+                        )
+                    )
+                    trs_sampler_idx = len(animation_samplers)
+                    animation_samplers.append(
+                        pygltflib.AnimationSampler(
+                            input=time_acc, output=t_acc, interpolation="LINEAR"
+                        )
+                    )
+                    animation_channels.append(
+                        pygltflib.AnimationChannel(
+                            sampler=trs_sampler_idx,
+                            target=pygltflib.AnimationChannelTarget(
+                                node=node_idx, path="translation"
+                            ),
+                        )
+                    )
+
+                    # rotation sampler / channel
+                    r_bv = packer.add(rotations[body.name].tobytes())
+                    r_acc = len(accessors)
+                    accessors.append(
+                        _accessor_for(
+                            r_bv, n_frames,
+                            component_type=pygltflib.FLOAT,
+                            accessor_type=pygltflib.VEC4,
+                        )
+                    )
+                    rot_sampler_idx = len(animation_samplers)
+                    animation_samplers.append(
+                        pygltflib.AnimationSampler(
+                            input=time_acc, output=r_acc, interpolation="LINEAR"
+                        )
+                    )
+                    animation_channels.append(
+                        pygltflib.AnimationChannel(
+                            sampler=rot_sampler_idx,
+                            target=pygltflib.AnimationChannelTarget(
+                                node=node_idx, path="rotation"
+                            ),
+                        )
+                    )
+
+            animation = pygltflib.Animation(
+                name="walk", samplers=animation_samplers, channels=animation_channels
             )
-        )
 
-        idx_bv = packer.add(indices.tobytes(), target=pygltflib.ELEMENT_ARRAY_BUFFER)
-        idx_acc = len(accessors)
-        accessors.append(
-            _accessor_for(
-                idx_bv, len(indices),
-                component_type=pygltflib.UNSIGNED_INT,
-                accessor_type=pygltflib.SCALAR,
-            )
-        )
+            # --- stage 6: foot-path extra (leg 0 for reference) ---
+            with prof.timed("6_foot_path_extra"):
+                sol0 = create_klann_geometry(orientation=1, phase=0.0)
+                foot_samples = 64
+                foot_path = [
+                    list(sol0.joints_at(float(tv))["F"])
+                    for tv in np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
+                ]
 
-        color = _CLASS_COLORS.get(cls, (0.55, 0.55, 0.55))
-        material_idx = len(materials)
-        materials.append(
-            pygltflib.Material(
-                name=cls,
-                pbrMetallicRoughness=pygltflib.PbrMetallicRoughness(
-                    baseColorFactor=[color[0], color[1], color[2], 1.0],
-                    metallicFactor=0.15,
-                    roughnessFactor=0.75,
-                ),
-                doubleSided=True,
-            )
-        )
-        class_material_idx[cls] = material_idx
+            scene = pygltflib.Scene(nodes=list(range(len(nodes))))
+            scene.extras = {"foot_path": foot_path}
 
-        class_primitive[cls] = pygltflib.Primitive(
-            attributes=pygltflib.Attributes(POSITION=pos_acc, NORMAL=nrm_acc),
-            indices=idx_acc,
-            material=material_idx,
-            mode=pygltflib.TRIANGLES,
-        )
+            # --- stage 7: assemble + binary-serialize glTF ---
+            with prof.timed("7_serialize"):
+                blob = packer.bytes
+                gltf = pygltflib.GLTF2(
+                    asset=pygltflib.Asset(version="2.0", generator="spiderpig/bake_gltf"),
+                    scene=0,
+                    scenes=[scene],
+                    nodes=nodes,
+                    meshes=meshes,
+                    materials=materials,
+                    accessors=accessors,
+                    bufferViews=packer.buffer_views,
+                    buffers=[pygltflib.Buffer(byteLength=len(blob))],
+                    animations=[animation],
+                )
+                gltf.set_binary_blob(blob)
+                gltf.save_binary(str(out))
 
-    meshes: list[pygltflib.Mesh] = []
-    class_mesh_idx: dict[str, int] = {}
-    for cls, prim in class_primitive.items():
-        class_mesh_idx[cls] = len(meshes)
-        meshes.append(pygltflib.Mesh(name=cls, primitives=[prim]))
+            prof.set_metric("blob_bytes", len(blob))
+            prof.set_metric("gltf_bytes", out.stat().st_size)
+            prof.set_metric("animation_channels", len(animation_channels))
+            prof.set_metric("accessors", len(accessors))
+    finally:
+        if pr is not None:
+            pr.disable()
+            cprofile_out = Path(cprofile_out)
+            cprofile_out.parent.mkdir(parents=True, exist_ok=True)
+            pr.dump_stats(str(cprofile_out))
+            txt_path = cprofile_out.with_suffix(cprofile_out.suffix + ".txt")
+            import pstats  # noqa: PLC0415
+            with open(txt_path, "w") as f:
+                pstats.Stats(str(cprofile_out), stream=f).sort_stats(
+                    "cumulative"
+                ).print_stats(30)
+            logger.info("cProfile dumped to %s (top-30 in %s)", cprofile_out, txt_path)
 
-    # --- canonical anchors: joint world positions when each class was tessellated ---
-    #
-    # Body parts were tessellated once from ref_mech at t=0, in *world coords*.
-    # That makes the class mesh carry the body's t=0 pose already, so Mechanism.solved()
-    # returns identity transforms — there's no motion left to animate.
-    #
-    # To recover motion, for each body at each frame we compute the rigid transform
-    # that maps its anchor joints (leg-0 @ t=0 of the same class) onto its current
-    # joint positions. Single-joint bodies (the coupler) degrade to pure translation.
-    class_anchor_joints: dict[str, dict[str, np.ndarray]] = {}
-    for body in ref_mech.bodies:
-        cls = _class_of(body.name)
-        if cls not in class_anchor_joints and body.part is not None:
-            class_anchor_joints[cls] = _body_joint_world(body)
+        # Peak resident set (linux: ru_maxrss is KB; mac: bytes — treat as linux here).
+        try:
+            import resource  # noqa: PLC0415
+            ru = resource.getrusage(resource.RUSAGE_SELF)
+            prof.set_metric("peak_rss_mb", ru.ru_maxrss / 1024.0)
+        except ImportError:
+            pass
 
-    # --- sample animation ---
-    log(f"[bake] sampling {n_frames} frames over {duration_s:.3f}s…")
-    ts = np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
-    times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
+        prof.log_summary()
 
-    body_names = [b.name for b in ref_mech.bodies]
-    translations = {name: np.zeros((n_frames, 3), dtype=np.float32) for name in body_names}
-    rotations = {name: np.zeros((n_frames, 4), dtype=np.float32) for name in body_names}
-    prev_q: dict[str, np.ndarray | None] = dict.fromkeys(body_names)
-
-    for fi, t_val in enumerate(ts):
-        mech = _build_assembly(
-            mode,
-            t=float(t_val),
-            n_legs=n_legs,
-            thickness=thickness,
-            with_parts=False,
-        ).solved()
-        for body in mech.bodies:
-            cls = _class_of(body.name)
-            anchor = class_anchor_joints.get(cls)
-            if anchor is None:
-                # Body has no mesh; animation values are ignored.
-                translations[body.name][fi] = 0.0
-                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
-                continue
-            now = _body_joint_world(body)
-            names = [n for n in anchor if n in now]
-            if not names:
-                # Class mesh was tessellated from a differently-shaped body of
-                # the same name (mechanism-side naming bug in e.g. 'quad' conn).
-                # Fall back to identity so the bake doesn't fail — that body
-                # will visually stay at the class canonical pose.
-                translations[body.name][fi] = 0.0
-                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
-                continue
-            p0 = np.stack([anchor[n] for n in names], axis=0)
-            p1 = np.stack([now[n] for n in names], axis=0)
-            R, t_vec = _rigid_planar(p0, p1)
-            q = _quat_xyzw_from_z_rot(R).astype(np.float32)
-            prev = prev_q[body.name]
-            if prev is not None and float(np.dot(prev, q)) < 0.0:
-                q = -q
-            translations[body.name][fi] = t_vec.astype(np.float32)
-            rotations[body.name][fi] = q
-            prev_q[body.name] = q
-
-    # --- shared time accessor ---
-    time_bv = packer.add(times.tobytes())
-    time_acc = len(accessors)
-    accessors.append(
-        _accessor_for(
-            time_bv, n_frames,
-            component_type=pygltflib.FLOAT,
-            accessor_type=pygltflib.SCALAR,
-            min_vals=[float(times.min())],
-            max_vals=[float(times.max())],
-        )
-    )
-
-    # --- nodes + per-body animation samplers/channels ---
-    nodes: list[pygltflib.Node] = []
-    animation_samplers: list[pygltflib.AnimationSampler] = []
-    animation_channels: list[pygltflib.AnimationChannel] = []
-
-    for body in ref_mech.bodies:
-        cls = _class_of(body.name)
-        mesh_idx = class_mesh_idx.get(cls)
-
-        initial_t = translations[body.name][0]
-        initial_q = rotations[body.name][0]
-
-        node = pygltflib.Node(
-            name=body.name,
-            translation=[float(initial_t[0]), float(initial_t[1]), float(initial_t[2])],
-            rotation=[float(initial_q[0]), float(initial_q[1]),
-                      float(initial_q[2]), float(initial_q[3])],
-        )
-        if mesh_idx is not None:
-            node.mesh = mesh_idx
-        node_idx = len(nodes)
-        nodes.append(node)
-
-        # translation sampler / channel
-        t_bv = packer.add(translations[body.name].tobytes())
-        t_acc = len(accessors)
-        accessors.append(
-            _accessor_for(
-                t_bv, n_frames,
-                component_type=pygltflib.FLOAT,
-                accessor_type=pygltflib.VEC3,
-            )
-        )
-        trs_sampler_idx = len(animation_samplers)
-        animation_samplers.append(
-            pygltflib.AnimationSampler(
-                input=time_acc, output=t_acc, interpolation="LINEAR"
-            )
-        )
-        animation_channels.append(
-            pygltflib.AnimationChannel(
-                sampler=trs_sampler_idx,
-                target=pygltflib.AnimationChannelTarget(
-                    node=node_idx, path="translation"
-                ),
-            )
-        )
-
-        # rotation sampler / channel
-        r_bv = packer.add(rotations[body.name].tobytes())
-        r_acc = len(accessors)
-        accessors.append(
-            _accessor_for(
-                r_bv, n_frames,
-                component_type=pygltflib.FLOAT,
-                accessor_type=pygltflib.VEC4,
-            )
-        )
-        rot_sampler_idx = len(animation_samplers)
-        animation_samplers.append(
-            pygltflib.AnimationSampler(
-                input=time_acc, output=r_acc, interpolation="LINEAR"
-            )
-        )
-        animation_channels.append(
-            pygltflib.AnimationChannel(
-                sampler=rot_sampler_idx,
-                target=pygltflib.AnimationChannelTarget(
-                    node=node_idx, path="rotation"
-                ),
-            )
-        )
-
-    animation = pygltflib.Animation(
-        name="walk", samplers=animation_samplers, channels=animation_channels
-    )
-
-    # --- foot-path extra (leg 0 for reference) ---
-    sol0 = create_klann_geometry(orientation=1, phase=0.0)
-    foot_samples = 64
-    foot_path = [
-        list(sol0.joints_at(float(tv))["F"])
-        for tv in np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
-    ]
-
-    scene = pygltflib.Scene(nodes=list(range(len(nodes))))
-    scene.extras = {"foot_path": foot_path}
-
-    # --- assemble glTF ---
-    blob = packer.bytes
-    gltf = pygltflib.GLTF2(
-        asset=pygltflib.Asset(version="2.0", generator="spiderpig/bake_gltf"),
-        scene=0,
-        scenes=[scene],
-        nodes=nodes,
-        meshes=meshes,
-        materials=materials,
-        accessors=accessors,
-        bufferViews=packer.buffer_views,
-        buffers=[pygltflib.Buffer(byteLength=len(blob))],
-        animations=[animation],
-    )
-    gltf.set_binary_blob(blob)
-    gltf.save_binary(str(out))
-    log(f"[bake] wrote {out} ({out.stat().st_size} B)")
+    logger.info("wrote %s (%d B)", out, out.stat().st_size)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -521,18 +689,42 @@ def _parse_args() -> argparse.Namespace:
         default="multi",
         help="Assembly kind (default: multi — N phase-stacked legs).",
     )
+    p.add_argument(
+        "--profile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Emit per-stage wall-clock profile summary (default: on).",
+    )
+    p.add_argument(
+        "--cprofile",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Also dump a cProfile .prof file plus <PATH>.txt top-30 report.",
+    )
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level (default: INFO).",
+    )
     return p.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+    logging.basicConfig(
+        level=getattr(logging, args.log_level),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     bake_gltf(
         args.out,
         n_frames=args.frames,
         duration_s=args.duration,
         n_legs=args.legs,
         mode=args.mode,
-        verbose=True,
+        profile=args.profile,
+        cprofile_out=args.cprofile,
     )
 
 
