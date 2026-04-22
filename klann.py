@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Any
@@ -24,6 +25,23 @@ import sympy as sp
 from sympy.geometry import Circle, Point, Segment
 
 from mechanism import Body, Joint, Mechanism, Pose
+
+
+# Optional profiler hook. ``viewer/bake_gltf.py`` sets this to its
+# ``_Profiler`` instance at the start of a bake so the per-frame hot path
+# (create_klann_geometry, lambdify, joints_at, body wiring) shows up as
+# labelled rows in the bake profile summary. Leave ``None`` in normal use.
+_BAKE_PROFILER: Any = None
+
+
+@contextmanager
+def _maybe_timed(label: str):
+    prof = _BAKE_PROFILER
+    if prof is None:
+        yield
+        return
+    with prof.timed(label):
+        yield
 
 
 def custom_intersection(c1, c2):
@@ -84,18 +102,20 @@ class KlannSolution:
     @cached_property
     def callables(self) -> dict[str, Callable[[float], tuple[float, float]]]:
         """One numpy callable ``(t,) -> (x, y)`` per named point."""
-        return {
-            name: sp.lambdify((self.t,), (pt.x, pt.y), modules="numpy", cse=True)
-            for name, pt in self.points.items()
-        }
+        with _maybe_timed("4.1b_klann.lambdify"):
+            return {
+                name: sp.lambdify((self.t,), (pt.x, pt.y), modules="numpy", cse=True)
+                for name, pt in self.points.items()
+            }
 
     def joints_at(self, t_value: float) -> dict[str, tuple[float, float]]:
         """Evaluate every named point at ``t_value`` and return float (x, y) pairs."""
-        out: dict[str, tuple[float, float]] = {}
-        for name, fn in self.callables.items():
-            x, y = fn(float(t_value))
-            out[name] = (float(x), float(y))
-        return out
+        with _maybe_timed("4.1c_klann.joints_at_eval"):
+            out: dict[str, tuple[float, float]] = {}
+            for name, fn in self.callables.items():
+                x, y = fn(float(t_value))
+                out[name] = (float(x), float(y))
+            return out
 
 
 def create_klann_geometry(orientation: int = 1, phase: float = 0.0) -> KlannSolution:
@@ -106,60 +126,63 @@ def create_klann_geometry(orientation: int = 1, phase: float = 0.0) -> KlannSolu
     left-hand mirror. The crank angle is ``t + phase`` — bake a different
     ``phase`` per leg to build a multi-arm walker.
     """
-    t = sp.Symbol("t", real=True)
+    with _maybe_timed("4.1a_klann.create_geometry"):
+        t = sp.Symbol("t", real=True)
 
-    O = Point(0, 0)
-    mOA = 60
-    OA = Point(0, -mOA)
-    rotA = orientation * 66.28 * np.pi / 180
-    A = OA.rotate(rotA)
+        O = Point(0, 0)
+        mOA = 60
+        OA = Point(0, -mOA)
+        rotA = orientation * 66.28 * np.pi / 180
+        A = OA.rotate(rotA)
 
-    OB = Point(0, 1.121 * mOA)
-    rotB = orientation * -41.76 * np.pi / 180
-    B = OB.rotate(rotB)
+        OB = Point(0, 1.121 * mOA)
+        rotB = orientation * -41.76 * np.pi / 180
+        B = OB.rotate(rotB)
 
-    M_circ = Circle(O, 0.412 * mOA)
-    M = M_circ.arbitrary_point()
-    [sym] = M.free_symbols
-    M = M.subs(sym, t + phase)
-    C_circ1 = Circle(M, 1.143 * mOA)
-    C_circ2 = Circle(A, 0.909 * mOA)
-    C_ints = custom_intersection(C_circ1, C_circ2)
-    i = 0
-    if orientation == -1:
-        i = 1
-    C = C_ints[i]
+        M_circ = Circle(O, 0.412 * mOA)
+        M = M_circ.arbitrary_point()
+        [sym] = M.free_symbols
+        M = M.subs(sym, t + phase)
+        C_circ1 = Circle(M, 1.143 * mOA)
+        C_circ2 = Circle(A, 0.909 * mOA)
+        with _maybe_timed("4.1a_klann.create_geometry.intersect_C"):
+            C_ints = custom_intersection(C_circ1, C_circ2)
+        i = 0
+        if orientation == -1:
+            i = 1
+        C = C_ints[i]
 
-    MC_length = M.distance(C)
-    CD_length = 0.726 * mOA
-    Dx = C.x + ((C.x - M.x) / MC_length) * CD_length
-    Dy = C.y + ((C.y - M.y) / MC_length) * CD_length
-    D = Point(Dx, Dy)
+        MC_length = M.distance(C)
+        CD_length = 0.726 * mOA
+        Dx = C.x + ((C.x - M.x) / MC_length) * CD_length
+        Dy = C.y + ((C.y - M.y) / MC_length) * CD_length
+        D = Point(Dx, Dy)
 
-    D_circ = Circle(D, 0.93 * mOA)
-    B_circ = Circle(B, 0.8 * mOA)
-    E_ints = custom_intersection(B_circ, D_circ)
-    E = E_ints[i]
+        D_circ = Circle(D, 0.93 * mOA)
+        B_circ = Circle(B, 0.8 * mOA)
+        with _maybe_timed("4.1a_klann.create_geometry.intersect_E"):
+            E_ints = custom_intersection(B_circ, D_circ)
+        E = E_ints[i]
 
-    ED_length = E.distance(D)
-    DF_length = 2.577 * mOA
-    Fx = D.x + ((D.x - E.x) / ED_length) * DF_length
-    Fy = D.y + ((D.y - E.y) / ED_length) * DF_length
-    F = Point(Fx, Fy)
+        ED_length = E.distance(D)
+        DF_length = 2.577 * mOA
+        Fx = D.x + ((D.x - E.x) / ED_length) * DF_length
+        Fy = D.y + ((D.y - E.y) / ED_length) * DF_length
+        F = Point(Fx, Fy)
 
-    b1 = Segment(M, D)
-    b2 = Segment(B, E)
-    b3 = Segment(A, C)
-    b4 = Segment(E, F)
-    conn = Segment(O, M)
+        b1 = Segment(M, D)
+        b2 = Segment(B, E)
+        b3 = Segment(A, C)
+        b4 = Segment(E, F)
+        conn = Segment(O, M)
 
-    return KlannSolution(
-        t=t,
-        orientation=orientation,
-        phase=float(phase),
-        points={"O": O, "A": A, "B": B, "C": C, "D": D, "E": E, "F": F, "M": M},
-        segments={"b1": b1, "b2": b2, "b3": b3, "b4": b4, "conn": conn},
-    )
+        return KlannSolution(
+            t=t,
+            orientation=orientation,
+            phase=float(phase),
+            points={"O": O, "A": A, "B": B, "C": C, "D": D, "E": E, "F": F, "M": M},
+            segments={"b1": b1, "b2": b2, "b3": b3, "b4": b4, "conn": conn},
+        )
 
 
 # Per-leg connection template. Body names pick up a ``name_suffix`` in
@@ -201,79 +224,80 @@ def build_klann_mechanism(
     """
     xy = solution.joints_at(t)
 
-    def _jp(name: str, layer: int) -> tuple[Joint, Joint]:
-        x, y = xy[name]
-        pos = Joint(name=name, pose=Pose.from_translation([x, y, thickness * layer]))
-        neg = Joint(
-            name=name, pose=Pose.from_translation([x, y, thickness * (layer - 1)])
+    with _maybe_timed("4.1d_klann.assemble_leg"):
+        def _jp(name: str, layer: int) -> tuple[Joint, Joint]:
+            x, y = xy[name]
+            pos = Joint(name=name, pose=Pose.from_translation([x, y, thickness * layer]))
+            neg = Joint(
+                name=name, pose=Pose.from_translation([x, y, thickness * (layer - 1)])
+            )
+            return pos, neg
+
+        pos_A, neg_A = _jp("A", 1)
+        pos_B, neg_B = _jp("B", 1)
+        pos_C, neg_C = _jp("C", 1)
+        pos_D, neg_D = _jp("D", 1)
+        pos_E, neg_E = _jp("E", 1)
+        pos_M, neg_M = _jp("M", 1)
+        pos_O, neg_O = _jp("O", 1)
+        bt_pos, _ = _jp("B", 2)
+
+        # Mirrored legs own the M joint on the opposite layer so a shared crank
+        # couples the right-hand and left-hand legs at the same physical pin.
+        if solution.orientation == -1:
+            b1_M, conn_M = pos_M, neg_M
+        else:
+            b1_M, conn_M = neg_M, pos_M
+
+        def _nm(base: str) -> str:
+            return f"{base}{name_suffix}"
+
+        if with_parts:
+            from shapes import create_shaft_connector, create_torso, rationalize_segment
+
+            def _seg(p: str, q: str) -> Segment:
+                return Segment(Point(*xy[p]), Point(*xy[q]))
+
+            b1_body = rationalize_segment(_seg("M", "D"), [b1_M, neg_C, neg_D], _nm("b1"))
+            b2_body = rationalize_segment(_seg("B", "E"), [neg_B, neg_E], _nm("b2"))
+            b3_body = rationalize_segment(_seg("A", "C"), [neg_A, pos_C], _nm("b3"))
+            b4_body = rationalize_segment(_seg("E", "F"), [pos_E, pos_D], _nm("b4"))
+            conn_body = rationalize_segment(_seg("O", "M"), [neg_O, conn_M], _nm("conn"))
+            torso_part = create_torso([pos_A, pos_O, bt_pos])
+            coupler_part = create_shaft_connector()
+        else:
+            b1_body = Body(name=_nm("b1"), joints=[b1_M, neg_C, neg_D], color="green")
+            b2_body = Body(name=_nm("b2"), joints=[neg_B, neg_E], color="green")
+            b3_body = Body(name=_nm("b3"), joints=[neg_A, pos_C], color="green")
+            b4_body = Body(name=_nm("b4"), joints=[pos_E, pos_D], color="green")
+            conn_body = Body(name=_nm("conn"), joints=[neg_O, conn_M], color="green")
+            torso_part = None
+            coupler_part = None
+
+        torso = Body(
+            name=_nm("torso"),
+            part=torso_part,
+            joints=[pos_A, pos_O, bt_pos],
+            color="yellow",
         )
-        return pos, neg
+        coupler = Body(
+            name=_nm("coupler"),
+            part=coupler_part,
+            joints=[pos_O],
+            color="blue",
+            pose=Pose.from_translation([0.0, 0.0, z_base]),
+        )
 
-    pos_A, neg_A = _jp("A", 1)
-    pos_B, neg_B = _jp("B", 1)
-    pos_C, neg_C = _jp("C", 1)
-    pos_D, neg_D = _jp("D", 1)
-    pos_E, neg_E = _jp("E", 1)
-    pos_M, neg_M = _jp("M", 1)
-    pos_O, neg_O = _jp("O", 1)
-    bt_pos, _ = _jp("B", 2)
+        connections = [
+            ((pi, f"{pn}{name_suffix}", pj), (ci, f"{cn}{name_suffix}", cj))
+            for (pi, pn, pj), (ci, cn, cj) in _CONN_TEMPLATE
+        ]
 
-    # Mirrored legs own the M joint on the opposite layer so a shared crank
-    # couples the right-hand and left-hand legs at the same physical pin.
-    if solution.orientation == -1:
-        b1_M, conn_M = pos_M, neg_M
-    else:
-        b1_M, conn_M = neg_M, pos_M
-
-    def _nm(base: str) -> str:
-        return f"{base}{name_suffix}"
-
-    if with_parts:
-        from shapes import create_shaft_connector, create_torso, rationalize_segment
-
-        def _seg(p: str, q: str) -> Segment:
-            return Segment(Point(*xy[p]), Point(*xy[q]))
-
-        b1_body = rationalize_segment(_seg("M", "D"), [b1_M, neg_C, neg_D], _nm("b1"))
-        b2_body = rationalize_segment(_seg("B", "E"), [neg_B, neg_E], _nm("b2"))
-        b3_body = rationalize_segment(_seg("A", "C"), [neg_A, pos_C], _nm("b3"))
-        b4_body = rationalize_segment(_seg("E", "F"), [pos_E, pos_D], _nm("b4"))
-        conn_body = rationalize_segment(_seg("O", "M"), [neg_O, conn_M], _nm("conn"))
-        torso_part = create_torso([pos_A, pos_O, bt_pos])
-        coupler_part = create_shaft_connector()
-    else:
-        b1_body = Body(name=_nm("b1"), joints=[b1_M, neg_C, neg_D], color="green")
-        b2_body = Body(name=_nm("b2"), joints=[neg_B, neg_E], color="green")
-        b3_body = Body(name=_nm("b3"), joints=[neg_A, pos_C], color="green")
-        b4_body = Body(name=_nm("b4"), joints=[pos_E, pos_D], color="green")
-        conn_body = Body(name=_nm("conn"), joints=[neg_O, conn_M], color="green")
-        torso_part = None
-        coupler_part = None
-
-    torso = Body(
-        name=_nm("torso"),
-        part=torso_part,
-        joints=[pos_A, pos_O, bt_pos],
-        color="yellow",
-    )
-    coupler = Body(
-        name=_nm("coupler"),
-        part=coupler_part,
-        joints=[pos_O],
-        color="blue",
-        pose=Pose.from_translation([0.0, 0.0, z_base]),
-    )
-
-    connections = [
-        ((pi, f"{pn}{name_suffix}", pj), (ci, f"{cn}{name_suffix}", cj))
-        for (pi, pn, pj), (ci, cn, cj) in _CONN_TEMPLATE
-    ]
-
-    return Mechanism(
-        name=f"klann{name_suffix}",
-        bodies=[coupler, b1_body, b2_body, b3_body, b4_body, conn_body, torso],
-        connections=connections,
-    )
+        return Mechanism(
+            name=f"klann{name_suffix}",
+            bodies=[coupler, b1_body, b2_body, b3_body, b4_body, conn_body, torso],
+            connections=connections,
+        )
 
 
 def build_multi_leg_mechanism(

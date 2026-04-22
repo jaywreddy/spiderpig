@@ -125,6 +125,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+import klann  # noqa: E402
 from klann import (  # noqa: E402
     build_double_decker_klann,
     build_double_double_decker_klann,
@@ -346,6 +347,7 @@ def bake_gltf(
     prof.set_metric("n_frames", n_frames)
     prof.set_metric("n_legs", n_legs)
 
+    klann._BAKE_PROFILER = prof if profile else None
     try:
         with prof.timed("bake_total"):
             # --- stage 1: reference mechanism build (with parts) ---
@@ -644,6 +646,7 @@ def bake_gltf(
             prof.set_metric("animation_channels", len(animation_channels))
             prof.set_metric("accessors", len(accessors))
     finally:
+        klann._BAKE_PROFILER = None
         if pr is not None:
             pr.disable()
             cprofile_out = Path(cprofile_out)
