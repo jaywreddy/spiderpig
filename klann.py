@@ -1038,13 +1038,14 @@ def build_double_double_decker_klann(
     z_deck: float = 15.0,
     with_parts: bool = True,
 ) -> Mechanism:
-    """Three-leg walker: mirrored lower pair with shared crank + upper leg at 90° phase.
+    """Four-leg walker: two mirrored pairs, one per deck, driven by a shared shaft.
 
     2016 analogue: ``DoubleDoubleDeckerKlannLinkage`` (Project/main.py:835).
-    The lower deck is a mirrored pair (``+1`` and ``-1`` orientations, phase
-    π apart) sharing a single combined crank. The upper deck is one leg at
-    90° phase, grounded via standoffs. One shared coupler spans both decks;
-    one shared torso carries both lower legs' pivots.
+    Each deck is a ``build_double_klann``-style mirrored pair (phases 0/π on
+    the lower deck, π/2 / 3π/2 on the upper) with its own combined crank;
+    the two cranks are driven coaxially by a single shaft coupler. The lower
+    deck carries a torso plate holding both lower legs' A/B pivots; the
+    upper legs are grounded via printed standoffs bridging to the torso plane.
     """
     from shapes import THICKNESS
 
@@ -1052,6 +1053,7 @@ def build_double_double_decker_klann(
     sol0 = create_klann_geometry(orientation=+1, phase=0.0)
     sol1 = create_klann_geometry(orientation=-1, phase=math.pi)
     sol2 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
+    sol3 = create_klann_geometry(orientation=-1, phase=3 * math.pi / 2)
     leg0 = build_klann_mechanism(
         sol0, t, thickness=th, z_base=0.0, name_suffix="_leg0", with_parts=with_parts
     )
@@ -1061,11 +1063,20 @@ def build_double_double_decker_klann(
     leg2 = build_klann_mechanism(
         sol2, t, thickness=th, z_base=z_deck, name_suffix="_leg2", with_parts=with_parts
     )
-    mech = _merge_mechanisms("klann_quad", [leg0, leg1, leg2])
-    mech = combine_connectors(mech, "_leg0", "_leg1")
-    mech = fuse_couplers(mech, ["_leg0", "_leg1", "_leg2"], deck_dzs=[0.0, 0.0, z_deck])
+    leg3 = build_klann_mechanism(
+        sol3, t, thickness=th, z_base=z_deck, name_suffix="_leg3", with_parts=with_parts
+    )
+    mech = _merge_mechanisms("klann_quad", [leg0, leg1, leg2, leg3])
+    mech = combine_connectors(mech, "_leg0", "_leg1", new_name="conn")
+    mech = combine_connectors(mech, "_leg2", "_leg3", new_name="conn_upper")
+    mech = fuse_couplers(
+        mech,
+        ["_leg0", "_leg1", "_leg2", "_leg3"],
+        deck_dzs=[0.0, 0.0, z_deck, z_deck],
+    )
     mech = fuse_torsos(mech, ["_leg0", "_leg1"], a_dz=(0.0, -6.0), b_dz=(0.0, -6.0))
     mech = _add_standoffs(mech, leg_suffix="_leg2", layer_thickness=z_deck)
+    mech = _add_standoffs(mech, leg_suffix="_leg3", layer_thickness=z_deck)
     return mech
 
 

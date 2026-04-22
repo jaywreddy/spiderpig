@@ -183,17 +183,20 @@ def _build_template(mode: str, *, n_legs: int, thickness: float) -> MechanismTem
 # Per-class colour overrides (RGB 0-1). Mirror the prior viewer palette so
 # the three.js scene looks the same after the STL→glTF swap.
 _CLASS_COLORS: dict[str, tuple[float, float, float]] = {
-    "torso": (0.831, 0.686, 0.000),     # #d4af00 yellow
-    "coupler": (0.188, 0.376, 1.000),   # #3060ff blue
-    "conn": (0.878, 0.439, 0.125),      # #e07020 orange
-    "b1": (0.227, 0.659, 0.420),        # #3aa86b green
+    "torso": (0.831, 0.686, 0.000),       # #d4af00 yellow
+    "coupler": (0.188, 0.376, 1.000),     # #3060ff blue
+    "conn": (0.878, 0.439, 0.125),        # #e07020 orange
+    "conn_upper": (0.878, 0.439, 0.125),  # upper-deck combined crank, same orange
+    "b1": (0.227, 0.659, 0.420),          # #3aa86b green
     "b2": (0.227, 0.659, 0.420),
     "b3": (0.227, 0.659, 0.420),
     "b4": (0.227, 0.659, 0.420),
-    "standoff": (0.831, 0.686, 0.000),  # match torso palette
+    "standoff": (0.831, 0.686, 0.000),    # match torso palette
 }
 
-_BODY_CLASSES = ("torso", "coupler", "conn", "b1", "b2", "b3", "b4", "standoff")
+_BODY_CLASSES = (
+    "torso", "coupler", "conn", "conn_upper", "b1", "b2", "b3", "b4", "standoff",
+)
 
 _STANDOFF_RE = re.compile(r"^(standoff)\d+$")
 
