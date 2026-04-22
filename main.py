@@ -14,7 +14,19 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from klann import KlannLinkage
+from klann import (
+    KlannLinkage,
+    build_double_decker_klann,
+    build_double_double_decker_klann,
+    build_double_klann,
+)
+
+_MODE_BUILDERS = {
+    "single": lambda: KlannLinkage(),
+    "double": lambda: build_double_klann(t=1.0),
+    "decker": lambda: build_double_decker_klann(t=1.0),
+    "quad": lambda: build_double_double_decker_klann(t=1.0),
+}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -31,6 +43,13 @@ def _parse_args() -> argparse.Namespace:
         help="File-name stem for the STEP/STL outputs. Default: klann",
     )
     parser.add_argument(
+        "--mode",
+        choices=sorted(_MODE_BUILDERS),
+        default="single",
+        help="Assembly: single leg, mirrored pair (double), Z-stacked 90° pair "
+        "(decker), or mirrored+decker 3-leg walker (quad). Default: single",
+    )
+    parser.add_argument(
         "--no-dxf",
         action="store_true",
         help="Skip the DXF sheet-packing pass.",
@@ -42,7 +61,7 @@ def main() -> None:
     args = _parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    mech = KlannLinkage().solved()
+    mech = _MODE_BUILDERS[args.mode]().solved()
 
     step_path = args.out / f"{args.name}.step"
     stl_path = args.out / f"{args.name}.stl"

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -37,10 +38,36 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from klann import (  # noqa: E402
+    build_double_decker_klann,
+    build_double_double_decker_klann,
+    build_double_klann,
+    build_klann_mechanism,
     build_multi_leg_mechanism,
     create_klann_geometry,
 )
 from shapes import THICKNESS  # noqa: E402
+
+
+# Assembly builders keyed by CLI mode. The bake pipeline calls each once for
+# a reference build with geometry, then once per frame without geometry for
+# pure kinematic sampling.
+def _build_assembly(mode: str, *, t: float, n_legs: int, thickness: float, with_parts: bool):
+    if mode == "single":
+        sol = create_klann_geometry(orientation=1, phase=0.0)
+        return build_klann_mechanism(sol, t=t, thickness=thickness, with_parts=with_parts)
+    if mode == "multi":
+        return build_multi_leg_mechanism(
+            n_legs, t=t, thickness=thickness, with_parts=with_parts
+        )
+    if mode == "double":
+        return build_double_klann(t=t, thickness=thickness, with_parts=with_parts)
+    if mode == "decker":
+        return build_double_decker_klann(t=t, thickness=thickness, with_parts=with_parts)
+    if mode == "quad":
+        return build_double_double_decker_klann(
+            t=t, thickness=thickness, with_parts=with_parts
+        )
+    raise ValueError(f"unknown mode: {mode!r}")
 
 # Per-class colour overrides (RGB 0-1). Mirror the prior viewer palette so
 # the three.js scene looks the same after the STL→glTF swap.
@@ -52,14 +79,19 @@ _CLASS_COLORS: dict[str, tuple[float, float, float]] = {
     "b2": (0.227, 0.659, 0.420),
     "b3": (0.227, 0.659, 0.420),
     "b4": (0.227, 0.659, 0.420),
+    "standoff": (0.831, 0.686, 0.000),  # match torso palette
 }
 
-_BODY_CLASSES = ("torso", "coupler", "conn", "b1", "b2", "b3", "b4")
+_BODY_CLASSES = ("torso", "coupler", "conn", "b1", "b2", "b3", "b4", "standoff")
+
+_STANDOFF_RE = re.compile(r"^(standoff)\d+$")
 
 
 def _class_of(body_name: str) -> str:
-    """``"b1_leg3"`` -> ``"b1"``; ``"coupler_leg0"`` -> ``"coupler"``."""
-    return body_name.rsplit("_leg", 1)[0]
+    """Strip leg/index suffixes: ``"b1_leg3"`` -> ``"b1"``, ``"standoff2"`` -> ``"standoff"``."""
+    base = body_name.rsplit("_leg", 1)[0]
+    m = _STANDOFF_RE.match(base)
+    return m.group(1) if m else base
 
 
 def _body_joint_world(body) -> dict[str, np.ndarray]:
@@ -185,18 +217,23 @@ def bake_gltf(
     duration_s: float = 1.0,
     n_legs: int = 1,
     thickness: float = THICKNESS,
+    mode: str = "multi",
     verbose: bool = False,
 ) -> None:
-    """Write ``<out>`` as a self-contained binary glTF describing the multi-leg
-    Klann walker plus its TRS animation over one crank revolution.
+    """Write ``<out>`` as a self-contained binary glTF describing the Klann
+    walker plus its TRS animation over one crank revolution.
+
+    ``mode`` selects which assembly to bake: ``single``/``multi`` (default,
+    phase-stacked N legs), or ``double``/``decker``/``quad`` from the
+    2016-style assembly builders.
     """
     log = print if verbose else (lambda *_a, **_k: None)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
-    log(f"[bake] reference mech (parts=True, n_legs={n_legs})…")
-    ref_mech = build_multi_leg_mechanism(
-        n_legs, t=0.0, thickness=thickness, with_parts=True
+    log(f"[bake] reference mech (mode={mode}, parts=True, n_legs={n_legs})…")
+    ref_mech = _build_assembly(
+        mode, t=0.0, n_legs=n_legs, thickness=thickness, with_parts=True
     )
 
     log("[bake] tessellate unique geometry classes…")
@@ -309,8 +346,12 @@ def bake_gltf(
     prev_q: dict[str, np.ndarray | None] = dict.fromkeys(body_names)
 
     for fi, t_val in enumerate(ts):
-        mech = build_multi_leg_mechanism(
-            n_legs, float(t_val), thickness=thickness, with_parts=False
+        mech = _build_assembly(
+            mode,
+            t=float(t_val),
+            n_legs=n_legs,
+            thickness=thickness,
+            with_parts=False,
         ).solved()
         for body in mech.bodies:
             cls = _class_of(body.name)
@@ -466,6 +507,12 @@ def _parse_args() -> argparse.Namespace:
         "--duration", type=float, default=1.0, help="Animation duration in seconds."
     )
     p.add_argument("--legs", type=int, default=1, help="Number of legs to stack in Z.")
+    p.add_argument(
+        "--mode",
+        choices=["single", "multi", "double", "decker", "quad"],
+        default="multi",
+        help="Assembly kind (default: multi — N phase-stacked legs).",
+    )
     return p.parse_args()
 
 
@@ -476,6 +523,7 @@ def main() -> None:
         n_frames=args.frames,
         duration_s=args.duration,
         n_legs=args.legs,
+        mode=args.mode,
         verbose=True,
     )
 

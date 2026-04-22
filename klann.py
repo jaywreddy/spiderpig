@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Any
 
@@ -218,6 +218,13 @@ def build_klann_mechanism(
     pos_O, neg_O = _jp("O", 1)
     bt_pos, _ = _jp("B", 2)
 
+    # Mirrored legs own the M joint on the opposite layer so a shared crank
+    # couples the right-hand and left-hand legs at the same physical pin.
+    if solution.orientation == -1:
+        b1_M, conn_M = pos_M, neg_M
+    else:
+        b1_M, conn_M = neg_M, pos_M
+
     def _nm(base: str) -> str:
         return f"{base}{name_suffix}"
 
@@ -227,19 +234,19 @@ def build_klann_mechanism(
         def _seg(p: str, q: str) -> Segment:
             return Segment(Point(*xy[p]), Point(*xy[q]))
 
-        b1_body = rationalize_segment(_seg("M", "D"), [neg_M, neg_C, neg_D], _nm("b1"))
+        b1_body = rationalize_segment(_seg("M", "D"), [b1_M, neg_C, neg_D], _nm("b1"))
         b2_body = rationalize_segment(_seg("B", "E"), [neg_B, neg_E], _nm("b2"))
         b3_body = rationalize_segment(_seg("A", "C"), [neg_A, pos_C], _nm("b3"))
         b4_body = rationalize_segment(_seg("E", "F"), [pos_E, pos_D], _nm("b4"))
-        conn_body = rationalize_segment(_seg("O", "M"), [neg_O, pos_M], _nm("conn"))
+        conn_body = rationalize_segment(_seg("O", "M"), [neg_O, conn_M], _nm("conn"))
         torso_part = create_torso([pos_A, pos_O, bt_pos])
         coupler_part = create_shaft_connector()
     else:
-        b1_body = Body(name=_nm("b1"), joints=[neg_M, neg_C, neg_D], color="green")
+        b1_body = Body(name=_nm("b1"), joints=[b1_M, neg_C, neg_D], color="green")
         b2_body = Body(name=_nm("b2"), joints=[neg_B, neg_E], color="green")
         b3_body = Body(name=_nm("b3"), joints=[neg_A, pos_C], color="green")
         b4_body = Body(name=_nm("b4"), joints=[pos_E, pos_D], color="green")
-        conn_body = Body(name=_nm("conn"), joints=[neg_O, pos_M], color="green")
+        conn_body = Body(name=_nm("conn"), joints=[neg_O, conn_M], color="green")
         torso_part = None
         coupler_part = None
 
@@ -306,6 +313,388 @@ def build_multi_leg_mechanism(
         connections.extend(leg.connections)
 
     return Mechanism(name="klann_multi", bodies=bodies, connections=connections)
+
+
+# ---------------------------------------------------------------------------
+# Composition primitives for multi-linkage assemblies
+# ---------------------------------------------------------------------------
+#
+# The 2016 project stacked 2–4 Klann legs into walker sculptures by sharing
+# rigid bodies across legs (a single crank driving a mirrored pair, one
+# torso plate carrying pivots for every leg, one shaft coupler spanning
+# multiple decks). Each pattern reduces to a small mechanism rewrite: drop
+# one or more bodies and redirect the connection edges that used to target
+# them. These helpers are pure — they return a new :class:`Mechanism` —
+# mirroring the style of :meth:`Mechanism.solved`.
+
+
+def voffset_joint(j: Joint, dz: float, new_name: str | None = None) -> Joint:
+    """Return a copy of ``j`` shifted by ``dz`` in Z, optionally renamed."""
+    m = j.pose.matrix.copy()
+    m[2, 3] += dz
+    return Joint(name=new_name or j.name, pose=Pose.from_matrix(m))
+
+
+def _merge_mechanisms(name: str, mechs: list[Mechanism]) -> Mechanism:
+    bodies: list[Body] = []
+    connections: list = []
+    for m in mechs:
+        bodies.extend(m.bodies)
+        connections.extend(m.connections)
+    return Mechanism(name=name, bodies=bodies, connections=connections)
+
+
+def _rewrite_connections(connections, rewriter):
+    """Map each (a, b) endpoint via ``rewriter(idx, body, joint)``.
+
+    ``rewriter`` may return a replacement ``(idx, body, joint)`` tuple, or
+    ``None`` to drop that entire connection.
+    """
+    out = []
+    for a, b in connections:
+        na = rewriter(*a)
+        nb = rewriter(*b)
+        if na is None or nb is None:
+            continue
+        out.append((na, nb))
+    return out
+
+
+def combine_connectors(
+    mech: Mechanism,
+    suffix_a: str,
+    suffix_b: str,
+    *,
+    new_name: str = "conn",
+) -> Mechanism:
+    """Fuse two ``conn`` crank bodies into one rigid body with joints from both.
+
+    2016 analogue: ``combine_connectors(conn1, conn2)`` (Project/main.py:494).
+    The two cranks share the world-origin pivot O, so a single rigid body
+    driven by one shaft co-rotates both mirrored legs.
+    """
+    name_a = f"conn{suffix_a}"
+    name_b = f"conn{suffix_b}"
+    body_a = mech.body(name_a)
+    body_b = mech.body(name_b)
+
+    # Rename joints with the leg suffix so the merged body has unique names.
+    joints = [replace(j, name=f"{j.name}{suffix_a}") for j in body_a.joints] + [
+        replace(j, name=f"{j.name}{suffix_b}") for j in body_b.joints
+    ]
+
+    if body_a.part is not None and body_b.part is not None:
+        part = body_a.part + body_b.part
+    else:
+        part = body_a.part or body_b.part
+
+    fused = Body(name=new_name, part=part, joints=joints, color=body_a.color)
+
+    bodies = []
+    for b in mech.bodies:
+        if b.name == name_a:
+            bodies.append(fused)  # preserve position of the first old body
+        elif b.name == name_b:
+            continue
+        else:
+            bodies.append(b)
+
+    def rewrite(idx, body, joint):
+        if body == name_a:
+            return (idx, new_name, f"{joint}{suffix_a}")
+        if body == name_b:
+            return (idx, new_name, f"{joint}{suffix_b}")
+        return (idx, body, joint)
+
+    return Mechanism(
+        name=mech.name,
+        bodies=bodies,
+        connections=_rewrite_connections(mech.connections, rewrite),
+    )
+
+
+def fuse_couplers(
+    mech: Mechanism,
+    suffixes: list[str],
+    *,
+    deck_dzs: list[float] | None = None,
+    new_name: str = "coupler",
+) -> Mechanism:
+    """Collapse per-leg coupler bodies into a single shaft-coupler body.
+
+    The primary coupler keeps its ``part`` and ``pose`` (so the existing
+    ``z_base`` anchor still seeds BFS). Each additional leg contributes one
+    ``O``-named joint on the shared coupler, renamed with that leg's
+    suffix and optionally offset in Z by ``deck_dzs[k]`` to span decks.
+
+    2016 analogue: the single ``coupler`` body with joints ``pos_O`` at layer 1
+    and ``O_3`` at layer 5 (Project/main.py:696).
+    """
+    if deck_dzs is None:
+        deck_dzs = [0.0] * len(suffixes)
+    if len(deck_dzs) != len(suffixes):
+        raise ValueError("deck_dzs length must match suffixes length")
+
+    primary_name = f"coupler{suffixes[0]}"
+    primary = mech.body(primary_name)
+
+    # Rebuild the primary coupler's joint list: one O per suffix, suffix-renamed.
+    joints: list[Joint] = []
+    for suffix, dz in zip(suffixes, deck_dzs):
+        base = primary.joints[0]  # every coupler had a single "O" joint
+        joints.append(voffset_joint(base, dz, new_name=f"O{suffix}"))
+
+    fused = Body(
+        name=new_name,
+        part=primary.part,
+        joints=joints,
+        color=primary.color,
+        pose=primary.pose,
+    )
+
+    drop_names = {f"coupler{s}" for s in suffixes}
+    bodies = []
+    for b in mech.bodies:
+        if b.name == primary_name:
+            bodies.append(fused)
+        elif b.name in drop_names:
+            continue
+        else:
+            bodies.append(b)
+
+    def rewrite(idx, body, joint):
+        for suffix in suffixes:
+            if body == f"coupler{suffix}":
+                return (idx, new_name, f"{joint}{suffix}")
+        return (idx, body, joint)
+
+    return Mechanism(
+        name=mech.name,
+        bodies=bodies,
+        connections=_rewrite_connections(mech.connections, rewrite),
+    )
+
+
+def fuse_torsos(
+    mech: Mechanism,
+    suffixes: list[str],
+    *,
+    a_dz: list[float] | None = None,
+    b_dz: list[float] | None = None,
+    servo: bool = True,
+    new_name: str = "torso",
+) -> Mechanism:
+    """Collapse per-leg torsos into one torso body carrying every listed leg's pivots.
+
+    Builds a fresh :class:`Body` named ``new_name`` whose joint list is the
+    union of per-leg ``A``/``B`` joints (z-shifted by the optional
+    ``a_dz``/``b_dz``) plus a single shared ``O`` joint from the primary leg.
+    The build123d part is re-created via :func:`shapes.create_torso`.
+
+    Any existing ``torso*`` body whose suffix is **not** in ``suffixes`` is
+    dropped along with its incident connection edges — callers wire those
+    orphaned legs via :func:`_add_standoffs` or similar.
+
+    2016 analogue: the single hulled ``torso`` carrying ``[pos_O, A2, B2, A1, B1]``
+    in ``DoubleKlannLinkage.__init__`` (Project/main.py:587).
+    """
+    n = len(suffixes)
+    if a_dz is None:
+        a_dz = [0.0] * n
+    if b_dz is None:
+        b_dz = [0.0] * n
+    if len(a_dz) != n or len(b_dz) != n:
+        raise ValueError("a_dz/b_dz length must match suffixes length")
+
+    # Collect suffixed A/B joints from each listed leg's torso, plus one O.
+    new_joints: list[Joint] = []
+    primary = mech.body(f"torso{suffixes[0]}")
+    o_joint = next(j for j in primary.joints if j.name == "O")
+    new_joints.append(replace(o_joint))  # O stays unsuffixed (all legs share it)
+
+    for suffix, dza, dzb in zip(suffixes, a_dz, b_dz):
+        torso = mech.body(f"torso{suffix}")
+        a_j = next(j for j in torso.joints if j.name == "A")
+        b_j = next(j for j in torso.joints if j.name == "B")
+        new_joints.append(voffset_joint(a_j, dza, new_name=f"A{suffix}"))
+        new_joints.append(voffset_joint(b_j, dzb, new_name=f"B{suffix}"))
+
+    # Rebuild the build123d part. If the primary torso had no part (with_parts=False),
+    # skip regeneration.
+    if primary.part is not None:
+        from shapes import create_torso
+
+        part = create_torso(new_joints, servo=servo)
+    else:
+        part = None
+
+    fused = Body(
+        name=new_name,
+        part=part,
+        joints=new_joints,
+        color=primary.color or "yellow",
+    )
+
+    listed = {f"torso{s}" for s in suffixes}
+    drop_all_torsos = {b.name for b in mech.bodies if b.name.startswith("torso")}
+
+    bodies = []
+    inserted = False
+    for b in mech.bodies:
+        if b.name in drop_all_torsos:
+            if not inserted:
+                bodies.append(fused)
+                inserted = True
+        else:
+            bodies.append(b)
+
+    def rewrite(idx, body, joint):
+        if body in listed:
+            # joint "O" stays as "O"; "A"/"B" pick up the leg suffix.
+            for suffix in suffixes:
+                if body == f"torso{suffix}":
+                    if joint == "O":
+                        return (idx, new_name, "O")
+                    return (idx, new_name, f"{joint}{suffix}")
+        if body in drop_all_torsos:
+            return None  # unlisted torso — drop this edge entirely
+        return (idx, body, joint)
+
+    return Mechanism(
+        name=mech.name,
+        bodies=bodies,
+        connections=_rewrite_connections(mech.connections, rewrite),
+    )
+
+
+def _add_standoffs(
+    mech: Mechanism,
+    *,
+    leg_suffix: str,
+    layer_thickness: float,
+) -> Mechanism:
+    """Ground a leg's A/B pivots via two :func:`shapes.standoff` bodies.
+
+    2016 analogue: ``st_conn3, st_conn4`` in ``DoubleDeckerKlannLinkage``
+    (Project/main.py:668). The upper-deck leg has no torso of its own; a pair
+    of printed standoffs bridge its b3.A and b2.B pivots down to the torso
+    plane.
+    """
+    from shapes import standoff
+
+    # Allocate standoff indices unique within this mechanism.
+    existing = sum(1 for b in mech.bodies if b.name.startswith("standoff"))
+    st_a = standoff(layer_thickness, index=existing)
+    st_b = standoff(layer_thickness, index=existing + 1)
+
+    bodies = list(mech.bodies) + [st_a, st_b]
+    connections = list(mech.connections) + [
+        ((0, f"b3{leg_suffix}", "A"), (0, st_a.name, "A")),
+        ((0, f"b2{leg_suffix}", "B"), (0, st_b.name, "A")),
+    ]
+    return Mechanism(name=mech.name, bodies=bodies, connections=connections)
+
+
+# ---------------------------------------------------------------------------
+# Public multi-linkage builders
+# ---------------------------------------------------------------------------
+
+
+def build_double_klann(
+    t: float,
+    *,
+    thickness: float | None = None,
+    with_parts: bool = True,
+) -> Mechanism:
+    """Mirrored pair sharing one crank and one torso.
+
+    2016 analogue: ``DoubleKlannLinkage`` (Project/main.py:519). Two legs of
+    opposite chirality at the same phase, their O→M crank arms fused into a
+    single rigid body driven by one shaft. A single torso holds both legs'
+    A/B pivots, staggered in Z by a 6 mm layer stride.
+    """
+    from shapes import THICKNESS
+
+    th = THICKNESS if thickness is None else thickness
+    sol_r = create_klann_geometry(orientation=+1, phase=0.0)
+    sol_l = create_klann_geometry(orientation=-1, phase=0.0)
+    leg_r = build_klann_mechanism(sol_r, t, thickness=th, name_suffix="_leg0", with_parts=with_parts)
+    leg_l = build_klann_mechanism(sol_l, t, thickness=th, name_suffix="_leg1", with_parts=with_parts)
+    mech = _merge_mechanisms("klann_double", [leg_r, leg_l])
+    mech = combine_connectors(mech, "_leg0", "_leg1")
+    mech = fuse_couplers(mech, ["_leg0", "_leg1"])
+    mech = fuse_torsos(mech, ["_leg0", "_leg1"], a_dz=(0.0, -6.0), b_dz=(0.0, -6.0))
+    return mech
+
+
+def build_double_decker_klann(
+    t: float,
+    *,
+    thickness: float | None = None,
+    z_deck: float = 15.0,
+    with_parts: bool = True,
+) -> Mechanism:
+    """Two legs of the same chirality stacked in Z at 90° phase offset.
+
+    2016 analogue: ``DoubleDeckerKlannLinkage`` (Project/main.py:633). The
+    lower leg grows the torso + servo mount; the upper leg is grounded via
+    printed standoffs bridging to the torso plane. A single coupler carries
+    one ``O`` joint per deck so a single shaft spans both levels.
+    """
+    from shapes import THICKNESS
+
+    th = THICKNESS if thickness is None else thickness
+    sol0 = create_klann_geometry(orientation=+1, phase=0.0)
+    sol1 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
+    leg0 = build_klann_mechanism(
+        sol0, t, thickness=th, z_base=0.0, name_suffix="_leg0", with_parts=with_parts
+    )
+    leg1 = build_klann_mechanism(
+        sol1, t, thickness=th, z_base=z_deck, name_suffix="_leg1", with_parts=with_parts
+    )
+    mech = _merge_mechanisms("klann_decker", [leg0, leg1])
+    mech = fuse_couplers(mech, ["_leg0", "_leg1"], deck_dzs=[0.0, z_deck])
+    mech = fuse_torsos(mech, ["_leg0"])
+    mech = _add_standoffs(mech, leg_suffix="_leg1", layer_thickness=z_deck)
+    return mech
+
+
+def build_double_double_decker_klann(
+    t: float,
+    *,
+    thickness: float | None = None,
+    z_deck: float = 15.0,
+    with_parts: bool = True,
+) -> Mechanism:
+    """Three-leg walker: mirrored lower pair with shared crank + upper leg at 90° phase.
+
+    2016 analogue: ``DoubleDoubleDeckerKlannLinkage`` (Project/main.py:835).
+    The lower deck is a mirrored pair (``+1`` and ``-1`` orientations, phase
+    π apart) sharing a single combined crank. The upper deck is one leg at
+    90° phase, grounded via standoffs. One shared coupler spans both decks;
+    one shared torso carries both lower legs' pivots.
+    """
+    from shapes import THICKNESS
+
+    th = THICKNESS if thickness is None else thickness
+    sol0 = create_klann_geometry(orientation=+1, phase=0.0)
+    sol1 = create_klann_geometry(orientation=-1, phase=math.pi)
+    sol2 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
+    leg0 = build_klann_mechanism(
+        sol0, t, thickness=th, z_base=0.0, name_suffix="_leg0", with_parts=with_parts
+    )
+    leg1 = build_klann_mechanism(
+        sol1, t, thickness=th, z_base=0.0, name_suffix="_leg1", with_parts=with_parts
+    )
+    leg2 = build_klann_mechanism(
+        sol2, t, thickness=th, z_base=z_deck, name_suffix="_leg2", with_parts=with_parts
+    )
+    mech = _merge_mechanisms("klann_quad", [leg0, leg1, leg2])
+    mech = combine_connectors(mech, "_leg0", "_leg1")
+    mech = fuse_couplers(mech, ["_leg0", "_leg1", "_leg2"], deck_dzs=[0.0, 0.0, z_deck])
+    mech = fuse_torsos(mech, ["_leg0", "_leg1"], a_dz=(0.0, -6.0), b_dz=(0.0, -6.0))
+    mech = _add_standoffs(mech, leg_suffix="_leg2", layer_thickness=z_deck)
+    return mech
 
 
 def KlannLinkage(name: str = "klann") -> Mechanism:
