@@ -18,36 +18,33 @@ EXPECTED_FX_PHASE_1 = 224.87767188289433
 EXPECTED_FY_PHASE_1 = -93.54456977054052
 
 
-def _xy(pt):
-    return float(pt.x.evalf()), float(pt.y.evalf())
-
-
 def test_foot_tip_reference_value_phase_1():
-    geo = create_klann_geometry(orientation=1, phase=1)
-    fx, fy = _xy(geo[6])
+    sol = create_klann_geometry(orientation=1, phase=0.0)
+    fx, fy = sol.joints_at(1.0)["F"]
     assert fx == pytest.approx(EXPECTED_FX_PHASE_1, abs=1e-9)
     assert fy == pytest.approx(EXPECTED_FY_PHASE_1, abs=1e-9)
 
 
 def test_foot_path_closure_over_full_cycle():
-    fx0, fy0 = _xy(create_klann_geometry(orientation=1, phase=0.0)[6])
-    fx2, fy2 = _xy(create_klann_geometry(orientation=1, phase=2 * math.pi)[6])
+    sol = create_klann_geometry(orientation=1, phase=0.0)
+    fx0, fy0 = sol.joints_at(0.0)["F"]
+    fx2, fy2 = sol.joints_at(2 * math.pi)["F"]
     assert fx0 == pytest.approx(fx2, abs=1e-9)
     assert fy0 == pytest.approx(fy2, abs=1e-9)
 
 
 def test_fixed_pivot_O_is_origin():
-    geo = create_klann_geometry(orientation=1, phase=0.7)
-    ox, oy = _xy(geo[0])
+    sol = create_klann_geometry(orientation=1, phase=0.7)
+    ox, oy = sol.joints_at(0.0)["O"]
     assert ox == pytest.approx(0.0, abs=1e-12)
     assert oy == pytest.approx(0.0, abs=1e-12)
 
 
 def test_orientation_flips_foot_x_sign():
-    geo_r = create_klann_geometry(orientation=1, phase=1.0)
-    geo_l = create_klann_geometry(orientation=-1, phase=1.0)
-    fx_r, _ = _xy(geo_r[6])
-    fx_l, _ = _xy(geo_l[6])
+    sol_r = create_klann_geometry(orientation=1, phase=0.0)
+    sol_l = create_klann_geometry(orientation=-1, phase=0.0)
+    fx_r, _ = sol_r.joints_at(1.0)["F"]
+    fx_l, _ = sol_l.joints_at(1.0)["F"]
     assert fx_r > 0
     assert fx_l < 0
 
