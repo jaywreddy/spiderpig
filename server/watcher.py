@@ -33,7 +33,7 @@ def _is_source_change(_change: Change, path: str) -> bool:
 class WatchBroadcaster:
     """Owns the WebSocket client set and the file-watching task."""
 
-    def __init__(self, root: Path, rebake: Callable[..., None]) -> None:
+    def __init__(self, root: Path, rebake: Callable[[], None]) -> None:
         self._root = root
         self._rebake = rebake
         self._clients: set[WebSocket] = set()
@@ -83,13 +83,10 @@ class WatchBroadcaster:
             return
         paths = sorted({Path(p).name for _, p in changes})
         print(f"[watcher] change detected: {', '.join(paths)}")
-        # Phase/pose-only files: skip the slow STL step.
-        pose_only = {"poses.py"}
-        parts = not {Path(p).name for _, p in changes}.issubset(pose_only)
         async with self._bake_lock:
             await self._broadcast({"type": "rebaking", "files": paths})
             try:
-                await asyncio.to_thread(self._rebake, parts)
+                await asyncio.to_thread(self._rebake)
             except Exception as e:
                 print(f"[watcher] bake failed: {e}")
                 await self._broadcast({"type": "error", "msg": str(e)})

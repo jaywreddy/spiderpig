@@ -34,10 +34,10 @@ def _cmd_build(args: argparse.Namespace) -> int:
 
 def _cmd_bake(args: argparse.Namespace) -> int:
     sys.path.insert(0, str(_REPO_ROOT / "viewer"))
-    import bake  # noqa: PLC0415
+    import bake_gltf  # noqa: PLC0415
 
-    sys.argv = ["bake.py", *args.rest]
-    bake.main()
+    sys.argv = ["bake_gltf.py", *args.rest]
+    bake_gltf.main()
     return 0
 
 
@@ -77,8 +77,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("build", help="Generate STEP/STL/DXF in build/").add_argument(
         "rest", nargs=argparse.REMAINDER, help="Args forwarded to main.py"
     )
-    sub.add_parser("bake", help="Bake viewer data into viewer/data/").add_argument(
-        "rest", nargs=argparse.REMAINDER, help="Args forwarded to viewer/bake.py"
+    sub.add_parser("bake", help="Bake viewer/data/klann.glb").add_argument(
+        "rest", nargs=argparse.REMAINDER, help="Args forwarded to viewer/bake_gltf.py"
     )
 
     pv = sub.add_parser("view", help="Start dev server + live-reload viewer")
