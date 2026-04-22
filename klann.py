@@ -1121,25 +1121,37 @@ def build_double_decker_template(
 def build_double_double_decker_template(
     *, thickness: float | None = None, z_deck: float = 15.0,
 ) -> MechanismTemplate:
-    """Parametric-in-t sibling of :func:`build_double_double_decker_klann`."""
+    """Parametric-in-t sibling of :func:`build_double_double_decker_klann`.
+
+    Four legs: mirrored pair on the lower deck (phases 0 / π) and a second
+    mirrored pair on the upper deck (phases π/2 / 3π/2). Each pair's cranks
+    fuse into a single rigid body; the two crank bodies are stacked on one
+    shared shaft coupler. Upper-pair legs are grounded via standoffs.
+    """
     from shapes import THICKNESS
 
     th = THICKNESS if thickness is None else thickness
     sol0 = create_klann_geometry(orientation=+1, phase=0.0)
     sol1 = create_klann_geometry(orientation=-1, phase=math.pi)
     sol2 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
+    sol3 = create_klann_geometry(orientation=-1, phase=3 * math.pi / 2)
     leg0 = build_klann_template(sol0, thickness=th, z_base=0.0, name_suffix="_leg0")
     leg1 = build_klann_template(sol1, thickness=th, z_base=0.0, name_suffix="_leg1")
     leg2 = build_klann_template(sol2, thickness=th, z_base=z_deck, name_suffix="_leg2")
-    tmpl = _merge_templates("klann_quad", [leg0, leg1, leg2])
-    tmpl = combine_connectors_template(tmpl, "_leg0", "_leg1")
+    leg3 = build_klann_template(sol3, thickness=th, z_base=z_deck, name_suffix="_leg3")
+    tmpl = _merge_templates("klann_quad", [leg0, leg1, leg2, leg3])
+    tmpl = combine_connectors_template(tmpl, "_leg0", "_leg1", new_name="conn")
+    tmpl = combine_connectors_template(tmpl, "_leg2", "_leg3", new_name="conn_upper")
     tmpl = fuse_couplers_template(
-        tmpl, ["_leg0", "_leg1", "_leg2"], deck_dzs=[0.0, 0.0, z_deck]
+        tmpl,
+        ["_leg0", "_leg1", "_leg2", "_leg3"],
+        deck_dzs=[0.0, 0.0, z_deck, z_deck],
     )
     tmpl = fuse_torsos_template(
         tmpl, ["_leg0", "_leg1"], a_dz=[0.0, -6.0], b_dz=[0.0, -6.0]
     )
     tmpl = _add_standoffs_template(tmpl, leg_suffix="_leg2", layer_thickness=z_deck)
+    tmpl = _add_standoffs_template(tmpl, leg_suffix="_leg3", layer_thickness=z_deck)
     return tmpl
 
 
