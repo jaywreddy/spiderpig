@@ -29,8 +29,8 @@ def test_viewer_loads_glb(page: Page, viewer_server: str) -> None:
     expect(page.locator("#status")).to_contain_text("nodes")
     expect(page.locator("#status")).to_contain_text("tracks")
 
-    glb_responses = [(u, s) for (u, s) in responses if u.endswith("/api/klann.glb")]
-    assert glb_responses, "klann.glb was never requested"
+    glb_responses = [(u, s) for (u, s) in responses if "/api/glb/" in u]
+    assert glb_responses, "no /api/glb/* request was made"
     assert all(s == 200 for (_, s) in glb_responses), f"bad glb responses: {glb_responses}"
 
 
@@ -70,7 +70,7 @@ def test_play_button_advances_animation(page: Page, viewer_server: str) -> None:
 
     # Readout reflects the advance.
     readout = page.locator("#readout").inner_text()
-    assert readout != "t 0.000s / 0.992s", f"readout stuck: {readout!r}"
+    assert not readout.startswith("t 0.000s"), f"readout stuck: {readout!r}"
 
 
 def test_mesh_nodes_actually_move(page: Page, viewer_server: str) -> None:
@@ -116,7 +116,10 @@ def test_mesh_nodes_actually_move(page: Page, viewer_server: str) -> None:
     b = sample(0.5)
     # torso is the fixed frame; coupler pivots on the fixed crank centre O
     # so a probe point tied to its single-joint anchor doesn't translate.
-    static = {"torso_leg0", "coupler_leg0"}
+    # torso is world-fixed; coupler has a single anchor joint on the fixed
+    # crank centre O, so its probe point doesn't translate. Names differ
+    # with/without the _leg0 suffix depending on n_legs.
+    static = {"torso", "torso_leg0", "coupler", "coupler_leg0"}
     moving = [n for n in a if n not in static]
     assert moving, f"no moving bodies found in {list(a)}"
     for name in moving:
@@ -156,3 +159,29 @@ def test_slider_seeks(page: Page, viewer_server: str) -> None:
     # Slider step is clipDuration/1000, so exact 0.5 isn't reachable — tolerate a step.
     assert abs(t - 0.5) < 2e-3, f"action.time did not follow slider: {t}"
     expect(page.locator("#readout")).to_contain_text("0.500s")
+
+
+@pytest.mark.parametrize("mode_id", ["double", "double_double"])
+def test_mode_toggle_swaps_assembly(page: Page, viewer_server: str, mode_id: str) -> None:
+    """Selecting a different mode swaps the GLB and rebinds the mixer.
+
+    The multi-leg assemblies produce strictly more animated bodies than the
+    single-leg default, so the track count is a reliable swap indicator.
+    """
+    page.goto(viewer_server)
+    _wait_ready(page)
+
+    base_tracks = page.evaluate("() => window.__viewer.action.getClip().tracks.length")
+    assert page.evaluate("() => window.__viewer.mode") == "klann"
+
+    page.select_option("#mode", mode_id)
+    page.wait_for_function(
+        "(m) => window.__viewer && window.__viewer.mode === m && window.__viewer.action",
+        arg=mode_id,
+        timeout=20_000,
+    )
+
+    new_tracks = page.evaluate("() => window.__viewer.action.getClip().tracks.length")
+    assert new_tracks > base_tracks, (
+        f"mode {mode_id} should add tracks; base={base_tracks} new={new_tracks}"
+    )
