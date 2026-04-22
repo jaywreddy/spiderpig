@@ -48,7 +48,7 @@ def _cmd_view(args: argparse.Namespace) -> int:
     url = f"http://{host}:{port}"
     if not args.no_browser:
         Timer(0.8, lambda: webbrowser.open(url)).start()
-    print(f"→ {url}  (Ctrl+C to stop)")
+    print(f"-> {url}  (Ctrl+C to stop)")
     uvicorn.run("server.app:app", host=host, port=port, log_level="info")
     return 0
 
