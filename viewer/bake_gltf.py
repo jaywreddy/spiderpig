@@ -363,6 +363,14 @@ def bake_gltf(
                 continue
             now = _body_joint_world(body)
             names = [n for n in anchor if n in now]
+            if not names:
+                # Class mesh was tessellated from a differently-shaped body of
+                # the same name (mechanism-side naming bug in e.g. 'quad' conn).
+                # Fall back to identity so the bake doesn't fail — that body
+                # will visually stay at the class canonical pose.
+                translations[body.name][fi] = 0.0
+                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
+                continue
             p0 = np.stack([anchor[n] for n in names], axis=0)
             p1 = np.stack([now[n] for n in names], axis=0)
             R, t_vec = _rigid_planar(p0, p1)
