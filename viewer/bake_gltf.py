@@ -31,7 +31,6 @@ from pathlib import Path
 
 import numpy as np
 import pygltflib
-from pytransform3d.transformations import pq_from_transform
 
 # Make sibling modules importable when invoked as ``viewer/bake_gltf.py``.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +92,45 @@ def _class_of(body_name: str) -> str:
     base = body_name.rsplit("_leg", 1)[0]
     m = _STANDOFF_RE.match(base)
     return m.group(1) if m else base
+
+
+def _body_joint_world(body) -> dict[str, np.ndarray]:
+    """World-space XYZ of each joint on ``body`` under its current pose."""
+    return {
+        j.name: np.asarray((body.pose @ j.pose).matrix[:3, 3], dtype=float)
+        for j in body.joints
+    }
+
+
+def _rigid_planar(p0: np.ndarray, p1: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Rigid 2.5D transform (XY rotation + XYZ translation) mapping ``p0`` onto ``p1``.
+
+    ``p0``, ``p1`` are ``(N, 3)``. The Klann mechanism is planar: bodies
+    rotate only about the Z axis, and Z offsets come from per-joint layers.
+    Uses the 2D closed-form Procrustes solution over XY and a straight
+    centroid-delta for Z.
+    """
+    n = p0.shape[0]
+    c0 = p0.mean(axis=0)
+    c1 = p1.mean(axis=0)
+    if n == 1:
+        # Under-constrained rotation → pure translation.
+        return np.eye(3), c1 - c0
+    v0 = p0 - c0
+    v1 = p1 - c1
+    sxy = float((v0[:, 0] * v1[:, 1] - v0[:, 1] * v1[:, 0]).sum())
+    cxy = float((v0[:, 0] * v1[:, 0] + v0[:, 1] * v1[:, 1]).sum())
+    theta = math.atan2(sxy, cxy)
+    c, s = math.cos(theta), math.sin(theta)
+    R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=float)
+    t = c1 - R @ c0
+    return R, t
+
+
+def _quat_xyzw_from_z_rot(R: np.ndarray) -> np.ndarray:
+    """Quaternion ``[qx, qy, qz, qw]`` for a rotation about Z embedded in ``R``."""
+    theta = math.atan2(R[1, 0], R[0, 0])
+    return np.array([0.0, 0.0, math.sin(theta / 2.0), math.cos(theta / 2.0)], dtype=float)
 
 
 def _tessellate(part, tolerance: float = 0.1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -177,7 +215,7 @@ def bake_gltf(
     *,
     n_frames: int = 120,
     duration_s: float = 1.0,
-    n_legs: int = 8,
+    n_legs: int = 1,
     thickness: float = THICKNESS,
     mode: str = "multi",
     verbose: bool = False,
@@ -282,6 +320,21 @@ def bake_gltf(
         class_mesh_idx[cls] = len(meshes)
         meshes.append(pygltflib.Mesh(name=cls, primitives=[prim]))
 
+    # --- canonical anchors: joint world positions when each class was tessellated ---
+    #
+    # Body parts were tessellated once from ref_mech at t=0, in *world coords*.
+    # That makes the class mesh carry the body's t=0 pose already, so Mechanism.solved()
+    # returns identity transforms — there's no motion left to animate.
+    #
+    # To recover motion, for each body at each frame we compute the rigid transform
+    # that maps its anchor joints (leg-0 @ t=0 of the same class) onto its current
+    # joint positions. Single-joint bodies (the coupler) degrade to pure translation.
+    class_anchor_joints: dict[str, dict[str, np.ndarray]] = {}
+    for body in ref_mech.bodies:
+        cls = _class_of(body.name)
+        if cls not in class_anchor_joints and body.part is not None:
+            class_anchor_joints[cls] = _body_joint_world(body)
+
     # --- sample animation ---
     log(f"[bake] sampling {n_frames} frames over {duration_s:.3f}s…")
     ts = np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
@@ -301,13 +354,23 @@ def bake_gltf(
             with_parts=False,
         ).solved()
         for body in mech.bodies:
-            pq = pq_from_transform(body.pose.matrix)
-            translations[body.name][fi] = pq[:3].astype(np.float32)
-            # pq is [x, y, z, qw, qx, qy, qz]; glTF wants [qx, qy, qz, qw].
-            q = np.array([pq[4], pq[5], pq[6], pq[3]], dtype=np.float32)
+            cls = _class_of(body.name)
+            anchor = class_anchor_joints.get(cls)
+            if anchor is None:
+                # Body has no mesh; animation values are ignored.
+                translations[body.name][fi] = 0.0
+                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
+                continue
+            now = _body_joint_world(body)
+            names = [n for n in anchor if n in now]
+            p0 = np.stack([anchor[n] for n in names], axis=0)
+            p1 = np.stack([now[n] for n in names], axis=0)
+            R, t_vec = _rigid_planar(p0, p1)
+            q = _quat_xyzw_from_z_rot(R).astype(np.float32)
             prev = prev_q[body.name]
             if prev is not None and float(np.dot(prev, q)) < 0.0:
                 q = -q
+            translations[body.name][fi] = t_vec.astype(np.float32)
             rotations[body.name][fi] = q
             prev_q[body.name] = q
 
@@ -443,7 +506,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--duration", type=float, default=1.0, help="Animation duration in seconds."
     )
-    p.add_argument("--legs", type=int, default=8, help="Number of legs to stack in Z.")
+    p.add_argument("--legs", type=int, default=1, help="Number of legs to stack in Z.")
     p.add_argument(
         "--mode",
         choices=["single", "multi", "double", "decker", "quad"],

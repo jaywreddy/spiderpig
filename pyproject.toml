@@ -21,6 +21,8 @@ dependencies = [
 dev = [
     "ruff>=0.9",
     "pytest>=8",
+    "playwright>=1.49",
+    "pytest-playwright>=0.6",
 ]
 
 [tool.uv]
@@ -35,4 +37,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "PT", "NPY"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not e2e'"
+markers = [
+    "e2e: end-to-end Playwright tests (opt-in; run with `pytest -m e2e`)",
+]
