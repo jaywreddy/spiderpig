@@ -125,11 +125,14 @@ class Mechanism:
         raise KeyError(f"Mechanism has no body {name!r}")
 
     def solved(self) -> Mechanism:
-        """Return a copy with world poses propagated from ``bodies[0]``.
+        """Return a copy with world poses propagated across every component.
 
-        BFS over the undirected connection graph. The first body's current
-        pose is taken as the world anchor; every body reached via a connection
-        is placed so its joint coincides with the already-placed parent joint.
+        BFS over the undirected connection graph. Each connected component
+        is seeded from its first body in :attr:`bodies` order, using that
+        body's current pose as the world anchor — so multi-leg assemblies
+        can pin each leg's root at its own ``z_base`` and let BFS fill in
+        the rest. Every body reached via a connection is placed so its
+        joint coincides with the already-placed neighbour.
         """
         if not self.bodies:
             return replace(self)
@@ -143,20 +146,24 @@ class Mechanism:
             adj[a_name].append((b_name, a_joint, b_joint))
             adj[b_name].append((a_name, b_joint, a_joint))
 
-        visited = {placed[0].name}
-        q: deque[str] = deque([placed[0].name])
-        while q:
-            cur = q.popleft()
-            cur_body = placed[by_name[cur]]
-            for other, j_here, j_there in adj[cur]:
-                if other in visited:
-                    continue
-                other_body = placed[by_name[other]]
-                p_here = cur_body.joint(j_here).pose
-                p_there = other_body.joint(j_there).pose
-                other_body.pose = cur_body.pose @ p_here @ p_there.inverse()
-                visited.add(other)
-                q.append(other)
+        visited: set[str] = set()
+        for root in placed:
+            if root.name in visited:
+                continue
+            visited.add(root.name)
+            q: deque[str] = deque([root.name])
+            while q:
+                cur = q.popleft()
+                cur_body = placed[by_name[cur]]
+                for other, j_here, j_there in adj[cur]:
+                    if other in visited:
+                        continue
+                    other_body = placed[by_name[other]]
+                    p_here = cur_body.joint(j_here).pose
+                    p_there = other_body.joint(j_there).pose
+                    other_body.pose = cur_body.pose @ p_here @ p_there.inverse()
+                    visited.add(other)
+                    q.append(other)
 
         return Mechanism(name=self.name, bodies=placed, connections=list(self.connections))
 
