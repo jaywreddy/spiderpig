@@ -2,12 +2,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-const GLB_URL = './api/klann.glb';
-
 const canvas = document.getElementById('stage');
 const statusEl = document.getElementById('status');
 const slider = document.getElementById('slider');
 const playBtn = document.getElementById('play');
+const modeEl = document.getElementById('mode');
 const readout = document.getElementById('readout');
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -50,7 +49,10 @@ let mixer = null;
 let action = null;
 let clipDuration = 1;
 let playing = false;
+let currentRoot = null;  // gltf.scene currently attached
 let footLine = null;
+let currentMode = modeEl.value;
+const loader = new GLTFLoader();
 const clock = new THREE.Clock();
 
 function buildFootPath(pathXY) {
@@ -60,6 +62,37 @@ function buildFootPath(pathXY) {
   const geom = new THREE.BufferGeometry().setFromPoints(pts);
   const mat = new THREE.LineBasicMaterial({ color: 0xff4040 });
   return new THREE.Line(geom, mat);
+}
+
+function disposeRoot(root) {
+  if (!root) return;
+  root.traverse((obj) => {
+    if (obj.isMesh) {
+      obj.geometry?.dispose();
+      if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+      else obj.material?.dispose();
+    }
+  });
+}
+
+function teardownCurrent() {
+  if (mixer) {
+    mixer.stopAllAction();
+    mixer.uncacheRoot(mixer.getRoot());
+    mixer = null;
+  }
+  action = null;
+  if (currentRoot) {
+    scene.remove(currentRoot);
+    disposeRoot(currentRoot);
+    currentRoot = null;
+  }
+  if (footLine) {
+    scene.remove(footLine);
+    footLine.geometry?.dispose();
+    footLine.material?.dispose();
+    footLine = null;
+  }
 }
 
 // Live-reload over /ws ------------------------------------------------------
@@ -95,46 +128,61 @@ function formatTime(t) {
   return `t ${t.toFixed(3)}s / ${clipDuration.toFixed(3)}s`;
 }
 
-async function init() {
-  statusEl.textContent = 'loading klann.glb…';
-  const gltf = await new GLTFLoader().loadAsync(GLB_URL);
-  scene.add(gltf.scene);
+async function loadMode(modeId) {
+  currentMode = modeId;
+  statusEl.textContent = `loading ${modeId}…`;
+  modeEl.disabled = true;
+  try {
+    const gltf = await loader.loadAsync(`./api/glb/${modeId}`);
+    teardownCurrent();
+    currentRoot = gltf.scene;
+    scene.add(currentRoot);
 
-  // Force flat shading on every imported mesh to match prior viewer look.
-  gltf.scene.traverse((obj) => {
-    if (obj.isMesh && obj.material) {
-      obj.material.flatShading = true;
-      obj.material.needsUpdate = true;
+    // Force flat shading to match prior viewer look.
+    currentRoot.traverse((obj) => {
+      if (obj.isMesh && obj.material) {
+        obj.material.flatShading = true;
+        obj.material.needsUpdate = true;
+      }
+    });
+
+    // Foot-path overlay comes from scene.extras.foot_path (stashed by the baker).
+    const sceneData =
+      gltf.parser.json.scenes?.[gltf.parser.json.scene ?? 0]?.extras ?? {};
+    if (Array.isArray(sceneData.foot_path)) {
+      footLine = buildFootPath(sceneData.foot_path);
+      if (footLine) scene.add(footLine);
     }
-  });
 
-  // Foot-path overlay comes from scene.extras.foot_path (stashed by the baker).
-  const sceneData =
-    gltf.parser.json.scenes?.[gltf.parser.json.scene ?? 0]?.extras ?? {};
-  if (Array.isArray(sceneData.foot_path)) {
-    footLine = buildFootPath(sceneData.foot_path);
-    if (footLine) scene.add(footLine);
+    if (gltf.animations.length === 0) {
+      throw new Error(`${modeId}.glb has no animations`);
+    }
+    const clip = gltf.animations[0];
+    clipDuration = clip.duration;
+    mixer = new THREE.AnimationMixer(currentRoot);
+    action = mixer.clipAction(clip);
+    action.play();
+    action.paused = !playing;
+
+    slider.min = '0';
+    slider.max = String(clipDuration);
+    slider.step = String(clipDuration / 1000);
+    slider.value = '0';
+    action.time = 0;
+    mixer.update(0);
+
+    const nNodes = currentRoot.children.reduce((n, o) => n + (o.isMesh ? 1 : 0), 0);
+    statusEl.textContent =
+      `${modeId} · ${gltf.nodes?.length ?? nNodes} nodes · ` +
+      `${clip.tracks.length} tracks · ${clipDuration.toFixed(2)}s loop`;
+    readout.textContent = formatTime(0);
+  } finally {
+    modeEl.disabled = false;
   }
+}
 
-  if (gltf.animations.length === 0) {
-    throw new Error('klann.glb has no animations');
-  }
-  const clip = gltf.animations[0];
-  clipDuration = clip.duration;
-  mixer = new THREE.AnimationMixer(gltf.scene);
-  action = mixer.clipAction(clip);
-  action.play();
-  action.paused = true;  // start paused; slider shows frame 0.
-
-  slider.min = '0';
-  slider.max = String(clipDuration);
-  slider.step = String(clipDuration / 1000);
-  slider.value = '0';
-
-  const nNodes = gltf.scene.children.reduce((n, o) => n + (o.isMesh ? 1 : 0), 0);
-  statusEl.textContent =
-    `${gltf.nodes?.length ?? nNodes} nodes · ${clip.tracks.length} tracks · ${clipDuration.toFixed(2)}s loop`;
-  readout.textContent = formatTime(0);
+async function init() {
+  await loadMode(modeEl.value);
 
   clock.start();
   requestAnimationFrame(tick);
@@ -145,7 +193,9 @@ async function init() {
     get action() { return action; },
     get clipDuration() { return clipDuration; },
     get playing() { return playing; },
-    step(dt) { mixer.update(dt); },
+    get mode() { return currentMode; },
+    step(dt) { mixer?.update(dt); },
+    loadMode,
     ready: true,
   };
 }
@@ -167,6 +217,13 @@ playBtn.addEventListener('click', () => {
   playing = !playing;
   playBtn.textContent = playing ? '⏸' : '▶';
   action.paused = !playing;
+});
+
+modeEl.addEventListener('change', () => {
+  loadMode(modeEl.value).catch((err) => {
+    console.error(err);
+    statusEl.textContent = 'error: ' + err.message;
+  });
 });
 
 // Main RAF loop -------------------------------------------------------------

@@ -20,6 +20,11 @@
     font-size: 14px;
   }
   #panel button:hover { background: #36414d; }
+  #panel select {
+    background: #2a333d; color: #cfd6de; border: 1px solid #3a444f;
+    border-radius: 6px; padding: 6px 8px; font-size: 13px;
+    cursor: pointer;
+  }
   #slider { flex: 1; accent-color: #3060ff; }
   #readout { min-width: 170px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
   #status { position: fixed; top: 12px; left: 12px; font-size: 12px; opacity: 0.7; }
@@ -30,6 +35,11 @@
 <div id="status">loading…</div>
 <div id="panel">
   <button id="play" title="Play/pause">▶</button>
+  <select id="mode" title="Assembly">
+    <option value="klann">klann</option>
+    <option value="double">double</option>
+    <option value="double_double">double double</option>
+  </select>
   <input id="slider" type="range" min="0" max="1" step="1" value="0" />
   <span id="readout">frame 0 / phase 0.000</span>
 </div>
