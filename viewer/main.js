@@ -138,6 +138,16 @@ async function init() {
 
   clock.start();
   requestAnimationFrame(tick);
+
+  // Test hook — expose animation state for e2e tests / debugging.
+  window.__viewer = {
+    get mixer() { return mixer; },
+    get action() { return action; },
+    get clipDuration() { return clipDuration; },
+    get playing() { return playing; },
+    step(dt) { mixer.update(dt); },
+    ready: true,
+  };
 }
 
 // Slider + play controls ----------------------------------------------------
