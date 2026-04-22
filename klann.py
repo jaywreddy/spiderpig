@@ -24,7 +24,17 @@ import numpy as np
 import sympy as sp
 from sympy.geometry import Circle, Point, Segment
 
-from mechanism import Body, Joint, Mechanism, Pose
+from mechanism import (
+    Body,
+    BodyTemplate,
+    Joint,
+    JointTemplate,
+    Mechanism,
+    MechanismTemplate,
+    Pose,
+    offset_pose_at,
+    translation_pose_at,
+)
 
 
 # Optional profiler hook. ``viewer/bake_gltf.py`` sets this to its
@@ -300,6 +310,79 @@ def build_klann_mechanism(
         )
 
 
+def build_klann_template(
+    solution: KlannSolution,
+    *,
+    thickness: float,
+    z_base: float = 0.0,
+    name_suffix: str = "",
+) -> MechanismTemplate:
+    """Parametric-in-t analogue of :func:`build_klann_mechanism`.
+
+    Builds one Klann leg as a :class:`MechanismTemplate` whose joint poses
+    are closures over ``solution.callables[name]``. The template can be
+    sampled over an entire ``ts`` array in one vectorized pass; see
+    :meth:`MechanismTemplate.sample`. No build123d parts are attached —
+    templates drive the frame loop, not the reference build.
+    """
+    callables = solution.callables
+
+    def _jpt(name: str, layer: int) -> tuple[JointTemplate, JointTemplate]:
+        xy_fn = callables[name]
+        pos = JointTemplate(
+            name=name, pose_at=translation_pose_at(xy_fn, z=thickness * layer)
+        )
+        neg = JointTemplate(
+            name=name, pose_at=translation_pose_at(xy_fn, z=thickness * (layer - 1))
+        )
+        return pos, neg
+
+    pos_A, neg_A = _jpt("A", 1)
+    pos_B, neg_B = _jpt("B", 1)
+    pos_C, neg_C = _jpt("C", 1)
+    pos_D, neg_D = _jpt("D", 1)
+    pos_E, neg_E = _jpt("E", 1)
+    pos_M, neg_M = _jpt("M", 1)
+    pos_O, neg_O = _jpt("O", 1)
+    bt_pos, _ = _jpt("B", 2)
+
+    if solution.orientation == -1:
+        b1_M, conn_M = pos_M, neg_M
+    else:
+        b1_M, conn_M = neg_M, pos_M
+
+    def _nm(base: str) -> str:
+        return f"{base}{name_suffix}"
+
+    b1_body = BodyTemplate(name=_nm("b1"), joints=[b1_M, neg_C, neg_D], color="green")
+    b2_body = BodyTemplate(name=_nm("b2"), joints=[neg_B, neg_E], color="green")
+    b3_body = BodyTemplate(name=_nm("b3"), joints=[neg_A, pos_C], color="green")
+    b4_body = BodyTemplate(name=_nm("b4"), joints=[pos_E, pos_D], color="green")
+    conn_body = BodyTemplate(name=_nm("conn"), joints=[neg_O, conn_M], color="green")
+    torso = BodyTemplate(
+        name=_nm("torso"),
+        joints=[pos_A, pos_O, bt_pos],
+        color="yellow",
+    )
+    coupler = BodyTemplate(
+        name=_nm("coupler"),
+        joints=[pos_O],
+        color="blue",
+        base_pose=Pose.from_translation([0.0, 0.0, z_base]),
+    )
+
+    connections = [
+        ((pi, f"{pn}{name_suffix}", pj), (ci, f"{cn}{name_suffix}", cj))
+        for (pi, pn, pj), (ci, cn, cj) in _CONN_TEMPLATE
+    ]
+
+    return MechanismTemplate(
+        name=f"klann{name_suffix}",
+        bodies=[coupler, b1_body, b2_body, b3_body, b4_body, conn_body, torso],
+        connections=connections,
+    )
+
+
 def build_multi_leg_mechanism(
     n_legs: int,
     t: float,
@@ -337,6 +420,43 @@ def build_multi_leg_mechanism(
         connections.extend(leg.connections)
 
     return Mechanism(name="klann_multi", bodies=bodies, connections=connections)
+
+
+def build_multi_leg_template(
+    n_legs: int,
+    *,
+    thickness: float,
+    z_stride: float | None = None,
+) -> MechanismTemplate:
+    """Parametric-in-t analogue of :func:`build_multi_leg_mechanism`.
+
+    Precomputes one :class:`KlannSolution` per leg (one per
+    ``phase = 2π·k/n_legs``) — this is the expensive symbolic work that
+    used to be redone per frame. All legs share the template; the frame
+    loop only needs :meth:`MechanismTemplate.sample`.
+    """
+    if n_legs < 1:
+        raise ValueError(f"n_legs must be >= 1, got {n_legs}")
+    if z_stride is None:
+        z_stride = 3.0 * thickness
+
+    bodies: list[BodyTemplate] = []
+    connections: list = []
+    for k in range(n_legs):
+        phase = 2.0 * math.pi * k / n_legs
+        sol = create_klann_geometry(orientation=1, phase=phase)
+        leg = build_klann_template(
+            sol,
+            thickness=thickness,
+            z_base=k * z_stride,
+            name_suffix=f"_leg{k}",
+        )
+        bodies.extend(leg.bodies)
+        connections.extend(leg.connections)
+
+    return MechanismTemplate(
+        name="klann_multi", bodies=bodies, connections=connections
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -620,6 +740,234 @@ def _add_standoffs(
 
 
 # ---------------------------------------------------------------------------
+# Template-layer composition primitives (parametric-in-t siblings of
+# combine_connectors / fuse_couplers / fuse_torsos / _add_standoffs).
+# They mirror the single-t primitives structurally; the only differences are
+# ``JointTemplate`` instead of ``Joint`` (joint-pose renames wrap the
+# underlying ``pose_at`` callable) and ``BodyTemplate.base_pose`` / no parts.
+# ---------------------------------------------------------------------------
+
+
+def _merge_templates(name: str, tmpls: list[MechanismTemplate]) -> MechanismTemplate:
+    bodies: list[BodyTemplate] = []
+    connections: list = []
+    for m in tmpls:
+        bodies.extend(m.bodies)
+        connections.extend(m.connections)
+    return MechanismTemplate(name=name, bodies=bodies, connections=connections)
+
+
+def combine_connectors_template(
+    tmpl: MechanismTemplate,
+    suffix_a: str,
+    suffix_b: str,
+    *,
+    new_name: str = "conn",
+) -> MechanismTemplate:
+    name_a = f"conn{suffix_a}"
+    name_b = f"conn{suffix_b}"
+    body_a = tmpl.body(name_a)
+    body_b = tmpl.body(name_b)
+
+    joints = [
+        JointTemplate(name=f"{j.name}{suffix_a}", pose_at=j.pose_at) for j in body_a.joints
+    ] + [
+        JointTemplate(name=f"{j.name}{suffix_b}", pose_at=j.pose_at) for j in body_b.joints
+    ]
+    fused = BodyTemplate(name=new_name, joints=joints, color=body_a.color)
+
+    bodies: list[BodyTemplate] = []
+    for b in tmpl.bodies:
+        if b.name == name_a:
+            bodies.append(fused)
+        elif b.name == name_b:
+            continue
+        else:
+            bodies.append(b)
+
+    def rewrite(idx, body, joint):
+        if body == name_a:
+            return (idx, new_name, f"{joint}{suffix_a}")
+        if body == name_b:
+            return (idx, new_name, f"{joint}{suffix_b}")
+        return (idx, body, joint)
+
+    return MechanismTemplate(
+        name=tmpl.name,
+        bodies=bodies,
+        connections=_rewrite_connections(tmpl.connections, rewrite),
+    )
+
+
+def fuse_couplers_template(
+    tmpl: MechanismTemplate,
+    suffixes: list[str],
+    *,
+    deck_dzs: list[float] | None = None,
+    new_name: str = "coupler",
+) -> MechanismTemplate:
+    if deck_dzs is None:
+        deck_dzs = [0.0] * len(suffixes)
+    if len(deck_dzs) != len(suffixes):
+        raise ValueError("deck_dzs length must match suffixes length")
+
+    primary_name = f"coupler{suffixes[0]}"
+    primary = tmpl.body(primary_name)
+
+    joints: list[JointTemplate] = []
+    base = primary.joints[0]                    # every coupler has a single "O" joint
+    for suffix, dz in zip(suffixes, deck_dzs):
+        joints.append(
+            JointTemplate(
+                name=f"O{suffix}",
+                pose_at=base.pose_at if dz == 0.0 else offset_pose_at(base.pose_at, dz=dz),
+            )
+        )
+
+    fused = BodyTemplate(
+        name=new_name,
+        joints=joints,
+        color=primary.color,
+        base_pose=primary.base_pose,
+    )
+
+    drop_names = {f"coupler{s}" for s in suffixes}
+    bodies: list[BodyTemplate] = []
+    for b in tmpl.bodies:
+        if b.name == primary_name:
+            bodies.append(fused)
+        elif b.name in drop_names:
+            continue
+        else:
+            bodies.append(b)
+
+    def rewrite(idx, body, joint):
+        for suffix in suffixes:
+            if body == f"coupler{suffix}":
+                return (idx, new_name, f"{joint}{suffix}")
+        return (idx, body, joint)
+
+    return MechanismTemplate(
+        name=tmpl.name,
+        bodies=bodies,
+        connections=_rewrite_connections(tmpl.connections, rewrite),
+    )
+
+
+def fuse_torsos_template(
+    tmpl: MechanismTemplate,
+    suffixes: list[str],
+    *,
+    a_dz: list[float] | None = None,
+    b_dz: list[float] | None = None,
+    new_name: str = "torso",
+) -> MechanismTemplate:
+    n = len(suffixes)
+    if a_dz is None:
+        a_dz = [0.0] * n
+    if b_dz is None:
+        b_dz = [0.0] * n
+    if len(a_dz) != n or len(b_dz) != n:
+        raise ValueError("a_dz/b_dz length must match suffixes length")
+
+    new_joints: list[JointTemplate] = []
+    primary = tmpl.body(f"torso{suffixes[0]}")
+    o_joint = next(j for j in primary.joints if j.name == "O")
+    new_joints.append(JointTemplate(name="O", pose_at=o_joint.pose_at))
+
+    for suffix, dza, dzb in zip(suffixes, a_dz, b_dz):
+        torso = tmpl.body(f"torso{suffix}")
+        a_j = next(j for j in torso.joints if j.name == "A")
+        b_j = next(j for j in torso.joints if j.name == "B")
+        new_joints.append(
+            JointTemplate(
+                name=f"A{suffix}",
+                pose_at=a_j.pose_at if dza == 0.0 else offset_pose_at(a_j.pose_at, dz=dza),
+            )
+        )
+        new_joints.append(
+            JointTemplate(
+                name=f"B{suffix}",
+                pose_at=b_j.pose_at if dzb == 0.0 else offset_pose_at(b_j.pose_at, dz=dzb),
+            )
+        )
+
+    fused = BodyTemplate(
+        name=new_name,
+        joints=new_joints,
+        color=primary.color or "yellow",
+    )
+
+    listed = {f"torso{s}" for s in suffixes}
+    drop_all_torsos = {b.name for b in tmpl.bodies if b.name.startswith("torso")}
+
+    bodies: list[BodyTemplate] = []
+    inserted = False
+    for b in tmpl.bodies:
+        if b.name in drop_all_torsos:
+            if not inserted:
+                bodies.append(fused)
+                inserted = True
+        else:
+            bodies.append(b)
+
+    def rewrite(idx, body, joint):
+        if body in listed:
+            for suffix in suffixes:
+                if body == f"torso{suffix}":
+                    if joint == "O":
+                        return (idx, new_name, "O")
+                    return (idx, new_name, f"{joint}{suffix}")
+        if body in drop_all_torsos:
+            return None
+        return (idx, body, joint)
+
+    return MechanismTemplate(
+        name=tmpl.name,
+        bodies=bodies,
+        connections=_rewrite_connections(tmpl.connections, rewrite),
+    )
+
+
+def _add_standoffs_template(
+    tmpl: MechanismTemplate,
+    *,
+    leg_suffix: str,
+    layer_thickness: float,
+) -> MechanismTemplate:
+    """Template-layer sibling of :func:`_add_standoffs`.
+
+    Standoffs are grounding bodies whose anchor is at the body origin; the
+    joint pose is time-invariant :class:`Pose.identity`. Built as a constant
+    ``pose_at`` closure that ignores ``ts`` and returns a broadcast identity.
+    """
+    del layer_thickness  # standoff part geometry isn't needed in the template
+    existing = sum(1 for b in tmpl.bodies if b.name.startswith("standoff"))
+
+    def _identity_pose_at(ts: np.ndarray) -> np.ndarray:
+        ts = np.asarray(ts, dtype=float)
+        return np.broadcast_to(np.eye(4), (ts.shape[0], 4, 4)).copy()
+
+    st_a = BodyTemplate(
+        name=f"standoff{existing}",
+        joints=[JointTemplate(name="A", pose_at=_identity_pose_at)],
+        color="yellow",
+    )
+    st_b = BodyTemplate(
+        name=f"standoff{existing + 1}",
+        joints=[JointTemplate(name="A", pose_at=_identity_pose_at)],
+        color="yellow",
+    )
+
+    bodies = list(tmpl.bodies) + [st_a, st_b]
+    connections = list(tmpl.connections) + [
+        ((0, f"b3{leg_suffix}", "A"), (0, st_a.name, "A")),
+        ((0, f"b2{leg_suffix}", "B"), (0, st_b.name, "A")),
+    ]
+    return MechanismTemplate(name=tmpl.name, bodies=bodies, connections=connections)
+
+
+# ---------------------------------------------------------------------------
 # Public multi-linkage builders
 # ---------------------------------------------------------------------------
 
@@ -719,6 +1067,69 @@ def build_double_double_decker_klann(
     mech = fuse_torsos(mech, ["_leg0", "_leg1"], a_dz=(0.0, -6.0), b_dz=(0.0, -6.0))
     mech = _add_standoffs(mech, leg_suffix="_leg2", layer_thickness=z_deck)
     return mech
+
+
+def build_double_template(
+    *, thickness: float | None = None,
+) -> MechanismTemplate:
+    """Parametric-in-t sibling of :func:`build_double_klann`."""
+    from shapes import THICKNESS
+
+    th = THICKNESS if thickness is None else thickness
+    sol_r = create_klann_geometry(orientation=+1, phase=0.0)
+    sol_l = create_klann_geometry(orientation=-1, phase=0.0)
+    leg_r = build_klann_template(sol_r, thickness=th, name_suffix="_leg0")
+    leg_l = build_klann_template(sol_l, thickness=th, name_suffix="_leg1")
+    tmpl = _merge_templates("klann_double", [leg_r, leg_l])
+    tmpl = combine_connectors_template(tmpl, "_leg0", "_leg1")
+    tmpl = fuse_couplers_template(tmpl, ["_leg0", "_leg1"])
+    tmpl = fuse_torsos_template(
+        tmpl, ["_leg0", "_leg1"], a_dz=[0.0, -6.0], b_dz=[0.0, -6.0]
+    )
+    return tmpl
+
+
+def build_double_decker_template(
+    *, thickness: float | None = None, z_deck: float = 15.0,
+) -> MechanismTemplate:
+    """Parametric-in-t sibling of :func:`build_double_decker_klann`."""
+    from shapes import THICKNESS
+
+    th = THICKNESS if thickness is None else thickness
+    sol0 = create_klann_geometry(orientation=+1, phase=0.0)
+    sol1 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
+    leg0 = build_klann_template(sol0, thickness=th, z_base=0.0, name_suffix="_leg0")
+    leg1 = build_klann_template(sol1, thickness=th, z_base=z_deck, name_suffix="_leg1")
+    tmpl = _merge_templates("klann_decker", [leg0, leg1])
+    tmpl = fuse_couplers_template(tmpl, ["_leg0", "_leg1"], deck_dzs=[0.0, z_deck])
+    tmpl = fuse_torsos_template(tmpl, ["_leg0"])
+    tmpl = _add_standoffs_template(tmpl, leg_suffix="_leg1", layer_thickness=z_deck)
+    return tmpl
+
+
+def build_double_double_decker_template(
+    *, thickness: float | None = None, z_deck: float = 15.0,
+) -> MechanismTemplate:
+    """Parametric-in-t sibling of :func:`build_double_double_decker_klann`."""
+    from shapes import THICKNESS
+
+    th = THICKNESS if thickness is None else thickness
+    sol0 = create_klann_geometry(orientation=+1, phase=0.0)
+    sol1 = create_klann_geometry(orientation=-1, phase=math.pi)
+    sol2 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
+    leg0 = build_klann_template(sol0, thickness=th, z_base=0.0, name_suffix="_leg0")
+    leg1 = build_klann_template(sol1, thickness=th, z_base=0.0, name_suffix="_leg1")
+    leg2 = build_klann_template(sol2, thickness=th, z_base=z_deck, name_suffix="_leg2")
+    tmpl = _merge_templates("klann_quad", [leg0, leg1, leg2])
+    tmpl = combine_connectors_template(tmpl, "_leg0", "_leg1")
+    tmpl = fuse_couplers_template(
+        tmpl, ["_leg0", "_leg1", "_leg2"], deck_dzs=[0.0, 0.0, z_deck]
+    )
+    tmpl = fuse_torsos_template(
+        tmpl, ["_leg0", "_leg1"], a_dz=[0.0, -6.0], b_dz=[0.0, -6.0]
+    )
+    tmpl = _add_standoffs_template(tmpl, leg_suffix="_leg2", layer_thickness=z_deck)
+    return tmpl
 
 
 def KlannLinkage(name: str = "klann") -> Mechanism:

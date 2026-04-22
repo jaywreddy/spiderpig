@@ -128,12 +128,18 @@ if str(_REPO_ROOT) not in sys.path:
 import klann  # noqa: E402
 from klann import (  # noqa: E402
     build_double_decker_klann,
+    build_double_decker_template,
     build_double_double_decker_klann,
+    build_double_double_decker_template,
     build_double_klann,
+    build_double_template,
     build_klann_mechanism,
+    build_klann_template,
     build_multi_leg_mechanism,
+    build_multi_leg_template,
     create_klann_geometry,
 )
+from mechanism import MechanismTemplate  # noqa: E402
 from shapes import THICKNESS  # noqa: E402
 
 
@@ -156,6 +162,22 @@ def _build_assembly(mode: str, *, t: float, n_legs: int, thickness: float, with_
         return build_double_double_decker_klann(
             t=t, thickness=thickness, with_parts=with_parts
         )
+    raise ValueError(f"unknown mode: {mode!r}")
+
+
+def _build_template(mode: str, *, n_legs: int, thickness: float) -> MechanismTemplate:
+    """Parametric-in-t dispatcher. Built once per bake; sampled over all frames."""
+    if mode == "single":
+        sol = create_klann_geometry(orientation=1, phase=0.0)
+        return build_klann_template(sol, thickness=thickness)
+    if mode == "multi":
+        return build_multi_leg_template(n_legs, thickness=thickness)
+    if mode == "double":
+        return build_double_template(thickness=thickness)
+    if mode == "decker":
+        return build_double_decker_template(thickness=thickness)
+    if mode == "quad":
+        return build_double_double_decker_template(thickness=thickness)
     raise ValueError(f"unknown mode: {mode!r}")
 
 # Per-class colour overrides (RGB 0-1). Mirror the prior viewer palette so
@@ -216,10 +238,59 @@ def _rigid_planar(p0: np.ndarray, p1: np.ndarray) -> tuple[np.ndarray, np.ndarra
     return R, t
 
 
+def _rigid_planar_batch(
+    p0: np.ndarray, p1: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorized :func:`_rigid_planar` over a ``(T, N, 3)`` batch.
+
+    Returns ``(theta, translations, quaternions_xyzw)`` where ``theta`` is
+    the Z-rotation angle in radians shape ``(T,)``, translations are
+    ``(T, 3)`` and quaternions are ``(T, 4)`` in ``[qx, qy, qz, qw]`` order.
+    """
+    t_count, n, _ = p0.shape
+    c0 = p0.mean(axis=1)                                # (T, 3)
+    c1 = p1.mean(axis=1)                                # (T, 3)
+    if n == 1:
+        theta = np.zeros(t_count, dtype=float)
+        trans = c1 - c0
+    else:
+        v0 = p0 - c0[:, None, :]                        # (T, N, 3)
+        v1 = p1 - c1[:, None, :]
+        sxy = (v0[..., 0] * v1[..., 1] - v0[..., 1] * v1[..., 0]).sum(axis=1)
+        cxy = (v0[..., 0] * v1[..., 0] + v0[..., 1] * v1[..., 1]).sum(axis=1)
+        theta = np.arctan2(sxy, cxy)                    # (T,)
+        cos_t = np.cos(theta)
+        sin_t = np.sin(theta)
+        # Apply R(theta) to each c0: (T, 3) ← 2D rotation on XY, Z passthrough.
+        rot_c0 = np.stack(
+            [cos_t * c0[:, 0] - sin_t * c0[:, 1],
+             sin_t * c0[:, 0] + cos_t * c0[:, 1],
+             c0[:, 2]],
+            axis=1,
+        )
+        trans = c1 - rot_c0
+    half = theta / 2.0
+    q = np.stack(
+        [np.zeros_like(theta), np.zeros_like(theta), np.sin(half), np.cos(half)],
+        axis=1,
+    )
+    return theta, trans, q
+
+
 def _quat_xyzw_from_z_rot(R: np.ndarray) -> np.ndarray:
     """Quaternion ``[qx, qy, qz, qw]`` for a rotation about Z embedded in ``R``."""
     theta = math.atan2(R[1, 0], R[0, 0])
     return np.array([0.0, 0.0, math.sin(theta / 2.0), math.cos(theta / 2.0)], dtype=float)
+
+
+def _quat_hemisphere_continuous(q: np.ndarray) -> np.ndarray:
+    """Flip signs of ``(T, 4)`` quaternions so adjacent samples stay in the
+    same hemisphere (avoids the 2π ambiguity during LINEAR interpolation)."""
+    q = q.copy()
+    for i in range(1, q.shape[0]):
+        if float(np.dot(q[i - 1], q[i])) < 0.0:
+            q[i] = -q[i]
+    return q
 
 
 def _tessellate(part, tolerance: float = 0.1) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -465,7 +536,13 @@ def bake_gltf(
                 if cls not in class_anchor_joints and body.part is not None:
                     class_anchor_joints[cls] = _body_joint_world(body)
 
-            # --- stage 4: sample animation (per-frame kinematic rebuild + solve + pose extract) ---
+            # --- stage 4: sample animation ---
+            #
+            # Build one parametric-in-t template and evaluate it for every frame
+            # in a single vectorized pass. Stages 1-2 of the pipeline
+            # (symbolic SymPy build + lambdify) run exactly once per leg here,
+            # instead of once per leg per frame. The per-frame cost collapses
+            # to batched numpy.
             logger.debug("sampling %d frames over %.3fs…", n_frames, duration_s)
             ts = np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
             times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
@@ -473,52 +550,43 @@ def bake_gltf(
             body_names = [b.name for b in ref_mech.bodies]
             translations = {name: np.zeros((n_frames, 3), dtype=np.float32) for name in body_names}
             rotations = {name: np.zeros((n_frames, 4), dtype=np.float32) for name in body_names}
-            prev_q: dict[str, np.ndarray | None] = dict.fromkeys(body_names)
 
             with prof.timed("4_animation_sample_total"):
-                for fi, t_val in enumerate(ts):
-                    with prof.timed("4.1_frame.build_assembly"):
-                        mech_unsolved = _build_assembly(
-                            mode,
-                            t=float(t_val),
-                            n_legs=n_legs,
-                            thickness=thickness,
-                            with_parts=False,
+                with prof.timed("4.1_template_build"):
+                    template = _build_template(
+                        mode, n_legs=n_legs, thickness=thickness
+                    )
+                with prof.timed("4.2_template_sample"):
+                    sampled = template.sample(ts)
+                with prof.timed("4.3_trs_batch"):
+                    for body_name in body_names:
+                        prof.bump("body_extract.calls")
+                        cls = _class_of(body_name)
+                        anchor = class_anchor_joints.get(cls)
+                        body_joints = sampled.joint_world.get(body_name)
+                        if anchor is None or body_joints is None:
+                            rotations[body_name][:, 3] = 1.0
+                            prof.bump("body_extract.skipped_no_mesh")
+                            continue
+                        names = [n for n in anchor if n in body_joints]
+                        if not names:
+                            # Class mesh was tessellated from a differently-shaped
+                            # body of the same name (mechanism-side naming bug in
+                            # e.g. 'quad' conn). Fall back to identity so the bake
+                            # doesn't fail — that body will stay at the class
+                            # canonical pose.
+                            rotations[body_name][:, 3] = 1.0
+                            prof.bump("body_extract.skipped_no_anchor_match")
+                            continue
+                        anchor_xyz = np.stack([anchor[n] for n in names], axis=0)
+                        p0 = np.broadcast_to(
+                            anchor_xyz, (n_frames, anchor_xyz.shape[0], 3)
                         )
-                    with prof.timed("4.2_frame.solved"):
-                        mech = mech_unsolved.solved()
-                    with prof.timed("4.3_frame.body_extract"):
-                        for body in mech.bodies:
-                            prof.bump("body_extract.calls")
-                            cls = _class_of(body.name)
-                            anchor = class_anchor_joints.get(cls)
-                            if anchor is None:
-                                # Body has no mesh; animation values are ignored.
-                                translations[body.name][fi] = 0.0
-                                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
-                                prof.bump("body_extract.skipped_no_mesh")
-                                continue
-                            now = _body_joint_world(body)
-                            names = [n for n in anchor if n in now]
-                            if not names:
-                                # Class mesh was tessellated from a differently-shaped body of
-                                # the same name (mechanism-side naming bug in e.g. 'quad' conn).
-                                # Fall back to identity so the bake doesn't fail — that body
-                                # will visually stay at the class canonical pose.
-                                translations[body.name][fi] = 0.0
-                                rotations[body.name][fi] = (0.0, 0.0, 0.0, 1.0)
-                                prof.bump("body_extract.skipped_no_anchor_match")
-                                continue
-                            p0 = np.stack([anchor[n] for n in names], axis=0)
-                            p1 = np.stack([now[n] for n in names], axis=0)
-                            R, t_vec = _rigid_planar(p0, p1)
-                            q = _quat_xyzw_from_z_rot(R).astype(np.float32)
-                            prev = prev_q[body.name]
-                            if prev is not None and float(np.dot(prev, q)) < 0.0:
-                                q = -q
-                            translations[body.name][fi] = t_vec.astype(np.float32)
-                            rotations[body.name][fi] = q
-                            prev_q[body.name] = q
+                        p1 = np.stack([body_joints[n] for n in names], axis=1)
+                        _theta, trans, q = _rigid_planar_batch(p0, p1)
+                        q = _quat_hemisphere_continuous(q)
+                        translations[body_name] = trans.astype(np.float32)
+                        rotations[body_name] = q.astype(np.float32)
 
             # --- shared time accessor ---
             time_bv = packer.add(times.tobytes())

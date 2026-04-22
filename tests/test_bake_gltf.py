@@ -107,6 +107,81 @@ def test_gltf_mesh_instancing(tmp_path):
         assert len(mesh_set) == 1, f"class {cls} uses {len(mesh_set)} meshes"
 
 
+@pytest.mark.parametrize(
+    "mode, maker_old, maker_new",
+    [
+        (
+            "single",
+            lambda t, th: __import__("klann").build_klann_mechanism(
+                __import__("klann").create_klann_geometry(orientation=1, phase=0.0),
+                t=t, thickness=th, with_parts=False,
+            ),
+            lambda t, th: __import__("klann").build_klann_template(
+                __import__("klann").create_klann_geometry(orientation=1, phase=0.0),
+                thickness=th,
+            ).freeze_at(t),
+        ),
+        (
+            "multi-3",
+            lambda t, th: __import__("klann").build_multi_leg_mechanism(
+                3, t=t, thickness=th, with_parts=False
+            ),
+            lambda t, th: __import__("klann").build_multi_leg_template(
+                3, thickness=th
+            ).freeze_at(t),
+        ),
+        (
+            "double",
+            lambda t, th: __import__("klann").build_double_klann(
+                t=t, thickness=th, with_parts=False
+            ),
+            lambda t, th: __import__("klann").build_double_template(
+                thickness=th
+            ).freeze_at(t),
+        ),
+        (
+            "decker",
+            lambda t, th: __import__("klann").build_double_decker_klann(
+                t=t, thickness=th, with_parts=False
+            ),
+            lambda t, th: __import__("klann").build_double_decker_template(
+                thickness=th
+            ).freeze_at(t),
+        ),
+        (
+            "quad",
+            lambda t, th: __import__("klann").build_double_double_decker_klann(
+                t=t, thickness=th, with_parts=False
+            ),
+            lambda t, th: __import__("klann").build_double_double_decker_template(
+                thickness=th
+            ).freeze_at(t),
+        ),
+    ],
+)
+def test_template_matches_scalar(mode, maker_old, maker_new):
+    """``template.freeze_at(t)`` must produce identical joint poses to the
+    single-t ``build_*_mechanism(..., t, with_parts=False)`` path for every t.
+
+    Guards the vectorized bake against drift from the original scalar path.
+    """
+    thickness = 3.0
+    ts = np.linspace(0.0, 2.0 * np.pi, 16, endpoint=False)
+    for t in ts:
+        old = maker_old(float(t), thickness)
+        new = maker_new(float(t), thickness)
+        assert [b.name for b in old.bodies] == [b.name for b in new.bodies], (
+            f"mode={mode} t={t:.3f}: body order differs"
+        )
+        for bo, bn in zip(old.bodies, new.bodies):
+            assert [j.name for j in bo.joints] == [j.name for j in bn.joints]
+            for jo, jn in zip(bo.joints, bn.joints):
+                np.testing.assert_allclose(
+                    jo.pose.matrix, jn.pose.matrix, atol=1e-9,
+                    err_msg=f"mode={mode} body={bo.name} joint={jo.name} t={t:.3f}",
+                )
+
+
 @pytest.mark.parametrize("n_legs", [1, 2])
 def test_gltf_animation_duration(tmp_path, n_legs):
     out = tmp_path / f"klann_{n_legs}.glb"
