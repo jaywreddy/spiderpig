@@ -1,7 +1,7 @@
 """Tests for 2016-style multi-linkage assemblies.
 
 Covers the mirrored pair (``build_double_klann``), the 90°-phase Z-stack
-(``build_double_decker_klann``), and the 3-leg walker combining both patterns
+(``build_double_decker_klann``), and the 4-leg walker combining both patterns
 (``build_double_double_decker_klann``). Also exercises the small primitives
 those builders share — ``voffset_joint``, ``combine_connectors``,
 ``fuse_couplers``, ``fuse_torsos``.
@@ -206,7 +206,7 @@ def test_double_decker_all_connections_close():
 
 
 # ---------------------------------------------------------------------------
-# build_double_double_decker_klann — 3-leg walker
+# build_double_double_decker_klann — 4-leg walker
 # ---------------------------------------------------------------------------
 
 
@@ -215,14 +215,17 @@ def test_quad_body_count():
     names = [b.name for b in mech.bodies]
     assert names.count("torso") == 1
     assert names.count("coupler") == 1
-    # Lower pair's cranks fused into one "conn"; upper leg keeps its own.
+    # One combined crank per deck — lower (conn) and upper (conn_upper).
     assert names.count("conn") == 1
-    assert sum(1 for n in names if n.startswith("conn_leg")) == 1  # leg2 only
-    assert sum(1 for n in names if n.startswith("standoff")) == 2
-    # Four per-leg laser-cut links × 3 legs = 12
+    assert names.count("conn_upper") == 1
+    # Both combined cranks absorbed their per-leg originals.
+    assert sum(1 for n in names if n.startswith("conn_leg")) == 0
+    # Two standoffs per upper-deck leg × 2 upper legs = 4
+    assert sum(1 for n in names if n.startswith("standoff")) == 4
+    # Four per-leg laser-cut links × 4 legs = 16
     for prefix in ("b1", "b2", "b3", "b4"):
-        assert sum(1 for n in names if n.startswith(f"{prefix}_leg")) == 3
-    assert len(mech.bodies) == 18
+        assert sum(1 for n in names if n.startswith(f"{prefix}_leg")) == 4
+    assert len(mech.bodies) == 24
 
 
 def test_quad_all_connections_close():
@@ -238,31 +241,48 @@ def test_quad_all_connections_close():
         )
 
 
-def test_quad_three_coupler_O_joints():
-    """Coupler carries one O joint per leg — lower pair coplanar, upper leg offset."""
+def test_quad_four_coupler_O_joints():
+    """Coupler carries one O joint per leg — lower pair coplanar, upper pair at z_deck."""
     mech = build_double_double_decker_klann(t=0.5, with_parts=False, z_deck=15.0)
     coupler = mech.body("coupler")
     z = {j.name: float(j.pose.matrix[2, 3]) for j in coupler.joints}
-    assert set(z) == {"O_leg0", "O_leg1", "O_leg2"}
+    assert set(z) == {"O_leg0", "O_leg1", "O_leg2", "O_leg3"}
     assert z["O_leg0"] == pytest.approx(z["O_leg1"], abs=1e-9)
+    assert z["O_leg2"] == pytest.approx(z["O_leg3"], abs=1e-9)
     assert z["O_leg2"] - z["O_leg0"] == pytest.approx(15.0, abs=1e-9)
 
 
-def test_quad_upper_leg_grounded_via_standoffs():
+def test_quad_upper_crank_is_combined_body():
+    """Upper-deck mirrored pair fuses into a single rigid body driven by the shared shaft."""
     mech = build_double_double_decker_klann(t=1.0, with_parts=False)
-    # Every edge from b3_leg2.A and b2_leg2.B must land on a standoff, not the torso.
+    conn_upper = mech.body("conn_upper")
+    names = {j.name for j in conn_upper.joints}
+    assert names == {"O_leg2", "M_leg2", "O_leg3", "M_leg3"}
+
+
+def test_quad_upper_legs_grounded_via_standoffs():
+    mech = build_double_double_decker_klann(t=1.0, with_parts=False)
     edges = mech.connections
-    leg2_a_edges = [
-        (a, b) for a, b in edges if a[1] == "b3_leg2" and a[2] == "A"
-    ]
-    leg2_b_edges = [
-        (a, b) for a, b in edges if a[1] == "b2_leg2" and a[2] == "B"
-    ]
-    # Exactly one standoff edge for each.
-    assert len(leg2_a_edges) == 1
-    assert leg2_a_edges[0][1][1].startswith("standoff")
-    assert len(leg2_b_edges) == 1
-    assert leg2_b_edges[0][1][1].startswith("standoff")
+    for suffix in ("_leg2", "_leg3"):
+        a_edges = [
+            (a, b) for a, b in edges if a[1] == f"b3{suffix}" and a[2] == "A"
+        ]
+        b_edges = [
+            (a, b) for a, b in edges if a[1] == f"b2{suffix}" and a[2] == "B"
+        ]
+        assert len(a_edges) == 1, f"{suffix}: expected one standoff edge at b3.A"
+        assert a_edges[0][1][1].startswith("standoff")
+        assert len(b_edges) == 1, f"{suffix}: expected one standoff edge at b2.B"
+        assert b_edges[0][1][1].startswith("standoff")
+
+
+def test_quad_upper_crank_lifts_to_z_deck():
+    """Once solved, the upper combined crank sits at z_deck so its mesh doesn't
+    render at the lower-deck origin (the pre-fix 'hanging crankshaft' symptom)."""
+    mech = build_double_double_decker_klann(t=0.3, with_parts=False, z_deck=15.0).solved()
+    lower = mech.body("conn").pose.matrix[2, 3]
+    upper = mech.body("conn_upper").pose.matrix[2, 3]
+    assert upper - lower == pytest.approx(15.0, abs=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -275,9 +295,10 @@ def test_class_of_survives_new_body_names():
 
     assert _class_of("b1_leg3") == "b1"
     assert _class_of("coupler_leg0") == "coupler"
-    assert _class_of("conn") == "conn"          # combined crank
+    assert _class_of("conn") == "conn"                # lower combined crank
+    assert _class_of("conn_upper") == "conn_upper"    # upper combined crank — distinct class
     assert _class_of("torso") == "torso"
-    assert _class_of("coupler") == "coupler"    # fused coupler
+    assert _class_of("coupler") == "coupler"          # fused coupler
     assert _class_of("standoff0") == "standoff"
     assert _class_of("standoff12") == "standoff"
     assert _class_of("conn_leg2") == "conn"
