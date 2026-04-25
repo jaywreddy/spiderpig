@@ -482,6 +482,7 @@ def ClevisPin(
     shaft_height: float = 8.0,
     cap_height: float = 4.0,
     cap_gap: float = 6.4,
+    pin_anchor_z: float | None = None,
     bind: Bind = "parent",
     color: str = "blue",
     name_prefix: str = "clevis_pin",
@@ -494,6 +495,13 @@ def ClevisPin(
     The whole pin is one rigid piece bound to ``bind`` (default
     ``"parent"`` — the pin rides with the parent link).
 
+    ``pin_anchor_z`` controls where along the pin the kinematic mate
+    point sits (0 = base of the pin, ``shaft_height/2 + base_height`` =
+    middle of the shaft). The default centers the mate at the shaft
+    midpoint so the pin spans both layered links above and below the
+    joint, matching how :func:`shapes.connector` wired its ``"pin"``
+    joint.
+
     Defaults to ``spacing=0`` so it can be layered on top of the existing
     ``_jp`` Z-stagger system without disrupting the canonical layout. Set
     ``spacing`` explicitly for joinery to own the parent→child Z gap.
@@ -504,6 +512,8 @@ def ClevisPin(
     """
     from build123d import Cylinder, Pos  # lazy
 
+    if pin_anchor_z is None:
+        pin_anchor_z = base_height + shaft_height / 2
     base = Cylinder(radius=4.0, height=base_height).move(Pos(0, 0, base_height / 2))
     shaft = Cylinder(radius=shaft_radius, height=shaft_height).move(
         Pos(0, 0, base_height + shaft_height / 2)
@@ -518,7 +528,15 @@ def ClevisPin(
     return Joinery(
         name_prefix=name_prefix,
         spacing=spacing,
-        pieces=(JoineryPiece(name="pin", part=part, z_offset=0.0, bind=bind, color=color),),
+        pieces=(
+            JoineryPiece(
+                name="pin",
+                part=part,
+                z_offset=-pin_anchor_z,
+                bind=bind,
+                color=color,
+            ),
+        ),
     )
 
 

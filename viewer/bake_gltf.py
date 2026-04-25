@@ -146,39 +146,96 @@ from shapes import THICKNESS  # noqa: E402
 # Assembly builders keyed by CLI mode. The bake pipeline calls each once for
 # a reference build with geometry, then once per frame without geometry for
 # pure kinematic sampling.
-def _build_assembly(mode: str, *, t: float, n_legs: int, thickness: float, with_parts: bool):
+def _build_assembly(
+    mode: str,
+    *,
+    t: float,
+    n_legs: int,
+    thickness: float,
+    with_parts: bool,
+    with_joinery: bool = True,
+):
     if mode == "single":
         sol = create_klann_geometry(orientation=1, phase=0.0)
-        return build_klann_mechanism(sol, t=t, thickness=thickness, with_parts=with_parts)
-    if mode == "multi":
-        return build_multi_leg_mechanism(
+        mech = build_klann_mechanism(sol, t=t, thickness=thickness, with_parts=with_parts)
+    elif mode == "multi":
+        mech = build_multi_leg_mechanism(
             n_legs, t=t, thickness=thickness, with_parts=with_parts
         )
-    if mode == "double":
-        return build_double_klann(t=t, thickness=thickness, with_parts=with_parts)
-    if mode == "decker":
-        return build_double_decker_klann(t=t, thickness=thickness, with_parts=with_parts)
-    if mode == "quad":
-        return build_double_double_decker_klann(
+    elif mode == "double":
+        mech = build_double_klann(t=t, thickness=thickness, with_parts=with_parts)
+    elif mode == "decker":
+        mech = build_double_decker_klann(t=t, thickness=thickness, with_parts=with_parts)
+    elif mode == "quad":
+        mech = build_double_double_decker_klann(
             t=t, thickness=thickness, with_parts=with_parts
         )
-    raise ValueError(f"unknown mode: {mode!r}")
+    else:
+        raise ValueError(f"unknown mode: {mode!r}")
+
+    if with_joinery:
+        mech = _apply_clevis_pins(mech)
+    return mech
 
 
-def _build_template(mode: str, *, n_legs: int, thickness: float) -> MechanismTemplate:
+def _build_template(
+    mode: str,
+    *,
+    n_legs: int,
+    thickness: float,
+    with_joinery: bool = True,
+) -> MechanismTemplate:
     """Parametric-in-t dispatcher. Built once per bake; sampled over all frames."""
     if mode == "single":
         sol = create_klann_geometry(orientation=1, phase=0.0)
-        return build_klann_template(sol, thickness=thickness)
-    if mode == "multi":
-        return build_multi_leg_template(n_legs, thickness=thickness)
-    if mode == "double":
-        return build_double_template(thickness=thickness)
-    if mode == "decker":
-        return build_double_decker_template(thickness=thickness)
-    if mode == "quad":
-        return build_double_double_decker_template(thickness=thickness)
-    raise ValueError(f"unknown mode: {mode!r}")
+        tmpl = build_klann_template(sol, thickness=thickness)
+    elif mode == "multi":
+        tmpl = build_multi_leg_template(n_legs, thickness=thickness)
+    elif mode == "double":
+        tmpl = build_double_template(thickness=thickness)
+    elif mode == "decker":
+        tmpl = build_double_decker_template(thickness=thickness)
+    elif mode == "quad":
+        tmpl = build_double_double_decker_template(thickness=thickness)
+    else:
+        raise ValueError(f"unknown mode: {mode!r}")
+
+    if with_joinery:
+        tmpl = _apply_clevis_pins_template(tmpl)
+    return tmpl
+
+
+def _apply_clevis_pins(mech):
+    """Walk every conn↔coupler edge and insert a printed ClevisPin joinery.
+
+    Catches edges in both pre- and post-composition forms: per-leg
+    ``(conn_legK, "O") → (coupler_legK, "O")`` (single, multi modes) and
+    fused-coupler ``(conn, "O_legK") → (coupler, "O_legK")`` (double,
+    decker, quad modes after fuse_couplers renames joints). Each match
+    gets a unique joinery index so body names don't collide.
+    """
+    from joinery import ClevisPin
+
+    targets = []
+    for (_, pn, pj), (_, cn, cj) in mech.connections:
+        if "conn" in pn and "coupler" in cn and pj.startswith("O") and cj.startswith("O"):
+            targets.append(((pn, pj), (cn, cj)))
+    for i, (parent, child) in enumerate(targets):
+        mech = ClevisPin().apply(mech, parent=parent, child=child, index=i)
+    return mech
+
+
+def _apply_clevis_pins_template(tmpl: MechanismTemplate) -> MechanismTemplate:
+    """Template-side sibling of :func:`_apply_clevis_pins`."""
+    from joinery import ClevisPin
+
+    targets = []
+    for (_, pn, pj), (_, cn, cj) in tmpl.connections:
+        if "conn" in pn and "coupler" in cn and pj.startswith("O") and cj.startswith("O"):
+            targets.append(((pn, pj), (cn, cj)))
+    for i, (parent, child) in enumerate(targets):
+        tmpl = ClevisPin().apply_template(tmpl, parent=parent, child=child, index=i)
+    return tmpl
 
 # Per-class colour overrides (RGB 0-1). Mirror the prior viewer palette so
 # the three.js scene looks the same after the STL→glTF swap.
@@ -192,6 +249,7 @@ _CLASS_COLORS: dict[str, tuple[float, float, float]] = {
     "b3": (0.227, 0.659, 0.420),
     "b4": (0.227, 0.659, 0.420),
     "standoff": (0.831, 0.686, 0.000),    # match torso palette
+    "clevis_pin_pin": (0.157, 0.157, 0.157),  # #282828 dark grey, like a steel pin
 }
 
 _BODY_CLASSES = (
@@ -395,6 +453,7 @@ def bake_gltf(
     verbose: bool = False,
     profile: bool = True,
     cprofile_out: Path | None = None,
+    with_joinery: bool = True,
 ) -> None:
     """Write ``<out>`` as a self-contained binary glTF describing the Klann
     walker plus its TRS animation over one crank revolution.
@@ -438,7 +497,8 @@ def bake_gltf(
             # --- stage 1: reference mechanism build (with parts) ---
             with prof.timed("1_reference_build"):
                 ref_mech = _build_assembly(
-                    mode, t=0.0, n_legs=n_legs, thickness=thickness, with_parts=True
+                    mode, t=0.0, n_legs=n_legs, thickness=thickness,
+                    with_parts=True, with_joinery=with_joinery,
                 )
             prof.set_metric("n_bodies", len(ref_mech.bodies))
             logger.debug("reference mech: %d bodies", len(ref_mech.bodies))
@@ -573,7 +633,8 @@ def bake_gltf(
             with prof.timed("4_animation_sample_total"):
                 with prof.timed("4.1_template_build"):
                     template = _build_template(
-                        mode, n_legs=n_legs, thickness=thickness
+                        mode, n_legs=n_legs, thickness=thickness,
+                        with_joinery=with_joinery,
                     )
                 with prof.timed("4.2_template_sample"):
                     sampled = template.sample(ts)
@@ -786,6 +847,12 @@ def _parse_args() -> argparse.Namespace:
         help="Emit per-stage wall-clock profile summary (default: on).",
     )
     p.add_argument(
+        "--joinery",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Insert ClevisPin joinery at every conn↔coupler edge (default: on).",
+    )
+    p.add_argument(
         "--cprofile",
         type=Path,
         default=None,
@@ -815,6 +882,7 @@ def main() -> None:
         mode=args.mode,
         profile=args.profile,
         cprofile_out=args.cprofile,
+        with_joinery=args.joinery,
     )
 
 

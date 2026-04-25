@@ -44,7 +44,12 @@ def _read_accessor(gltf: pygltflib.GLTF2, accessor_idx: int) -> np.ndarray:
 
 def test_gltf_emits_valid_file(tmp_path):
     out = tmp_path / "klann.glb"
-    bake_gltf(out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5)
+    # with_joinery=False isolates the canonical 7-body Klann structure;
+    # joinery rendering is exercised separately in test_gltf_joinery.
+    bake_gltf(
+        out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5,
+        with_joinery=False,
+    )
     assert out.is_file()
     assert out.stat().st_size > 1024
 
@@ -65,6 +70,23 @@ def test_gltf_emits_valid_file(tmp_path):
     scene = gltf.scenes[gltf.scene]
     assert "foot_path" in (scene.extras or {})
     assert len(scene.extras["foot_path"]) == 64
+
+
+def test_gltf_joinery_adds_clevis_pin_meshes(tmp_path):
+    """When with_joinery=True (default), ClevisPin bodies appear in the bake."""
+    out = tmp_path / "klann_joinery.glb"
+    bake_gltf(out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5)
+    gltf = pygltflib.GLTF2().load(str(out))
+
+    mesh_names = {m.name for m in gltf.meshes}
+    assert "clevis_pin_pin" in mesh_names
+
+    # 2 legs * (7 canonical + 2 joinery [spacer + pin]) = 18 nodes.
+    assert len(gltf.nodes) == 18
+
+    # Joinery bodies animate alongside everything else.
+    anim = gltf.animations[0]
+    assert len(anim.channels) == 18 * 2
 
 
 def test_quaternion_shortest_path(tmp_path):
