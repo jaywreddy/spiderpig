@@ -205,21 +205,40 @@ def _build_template(
     return tmpl
 
 
-def _apply_clevis_pins(mech):
-    """Walk every conn↔coupler edge and insert a printed ClevisPin joinery.
+# Set of canonical link body classes that get a pin between any two of them.
+# Excludes ``standoff`` (already a joinery-style body in the legacy code) and
+# ``clevis_pin_*`` (added by joinery itself — never re-pin). ``conn_upper`` is
+# the upper-deck combined crank in quad mode.
+_LINK_CLASSES = frozenset({
+    "torso", "coupler", "conn", "conn_upper", "b1", "b2", "b3", "b4",
+})
 
-    Catches edges in both pre- and post-composition forms: per-leg
-    ``(conn_legK, "O") → (coupler_legK, "O")`` (single, multi modes) and
-    fused-coupler ``(conn, "O_legK") → (coupler, "O_legK")`` (double,
-    decker, quad modes after fuse_couplers renames joints). Each match
-    gets a unique joinery index so body names don't collide.
+
+def _is_link_link_edge(parent_name: str, child_name: str) -> bool:
+    """True iff both endpoints are canonical Klann link bodies."""
+    return _class_of(parent_name) in _LINK_CLASSES and _class_of(child_name) in _LINK_CLASSES
+
+
+def _apply_clevis_pins(mech):
+    """Insert a printed ClevisPin at every link↔link edge in ``mech``.
+
+    Walks the connection list once to collect all edges between two
+    canonical Klann link bodies (torso, coupler, conn, b1..b4 and their
+    leg-suffixed / fused variants), then applies one ClevisPin per edge
+    with a unique sequential index so body names don't collide.
+
+    Standoffs and previously-applied joinery bodies are excluded by the
+    ``_LINK_CLASSES`` filter. The conn↔coupler crank pivot's ``O`` joint
+    appears in two connections (torso↔conn↔coupler), so the central
+    pivot gets two overlapping pins per leg — visually one chunky pin.
     """
     from joinery import ClevisPin
 
-    targets = []
-    for (_, pn, pj), (_, cn, cj) in mech.connections:
-        if "conn" in pn and "coupler" in cn and pj.startswith("O") and cj.startswith("O"):
-            targets.append(((pn, pj), (cn, cj)))
+    targets = [
+        ((pn, pj), (cn, cj))
+        for (_, pn, pj), (_, cn, cj) in mech.connections
+        if _is_link_link_edge(pn, cn)
+    ]
     for i, (parent, child) in enumerate(targets):
         mech = ClevisPin().apply(mech, parent=parent, child=child, index=i)
     return mech
@@ -229,10 +248,11 @@ def _apply_clevis_pins_template(tmpl: MechanismTemplate) -> MechanismTemplate:
     """Template-side sibling of :func:`_apply_clevis_pins`."""
     from joinery import ClevisPin
 
-    targets = []
-    for (_, pn, pj), (_, cn, cj) in tmpl.connections:
-        if "conn" in pn and "coupler" in cn and pj.startswith("O") and cj.startswith("O"):
-            targets.append(((pn, pj), (cn, cj)))
+    targets = [
+        ((pn, pj), (cn, cj))
+        for (_, pn, pj), (_, cn, cj) in tmpl.connections
+        if _is_link_link_edge(pn, cn)
+    ]
     for i, (parent, child) in enumerate(targets):
         tmpl = ClevisPin().apply_template(tmpl, parent=parent, child=child, index=i)
     return tmpl
