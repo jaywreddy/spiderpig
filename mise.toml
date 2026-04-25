@@ -46,6 +46,14 @@ run         = "uv run pytest"
 description = "ruff check"
 run         = "uv run ruff check ."
 
+[tasks.kill]
+description = "Stop dev servers spawned from THIS worktree (path-scoped, parallel-worktree-safe)"
+run         = "uv run python scripts/kill_dev.py --mine"
+
+[tasks."kill-port"]
+description = "Force-stop whoever is listening on a TCP port (e.g. mise run kill-port -- --port 5173)"
+run         = "uv run python scripts/kill_dev.py"
+
 [tasks.clean]
 description = "Remove build/, viewer/data/, viewer/dist/, viewer/node_modules/"
 run         = "uv run python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in [pathlib.Path('build'), pathlib.Path('viewer/data'), pathlib.Path('viewer/dist'), pathlib.Path('viewer/node_modules')]]\""
