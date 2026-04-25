@@ -1,7 +1,18 @@
 """Spawn FastAPI (uvicorn) and Vite side-by-side for `mise run view`.
 
 FastAPI bakes .glb on source change; Vite serves the viewer with HMR and
-proxies /api + /ws to FastAPI. Open http://localhost:5173.
+proxies /api + /ws to FastAPI.
+
+Port assignment (parallel-worktree safe):
+- ``VITE_PORT`` / ``API_PORT`` env vars are honoured if set (typical
+  override location: per-worktree ``mise.local.toml`` ``[env]`` block).
+- Otherwise, ports are derived from a CRC32 hash of this worktree's
+  absolute path: Vite ∈ [5500, 5999], API ∈ [8500, 8999]. New worktrees
+  get unique stable ports with no manual config; the URL is printed in
+  the startup banner.
+- Vite's ``strictPort=false`` means a hash collision (or a stale process)
+  degrades gracefully — Vite picks the next free port and we'll point at
+  whichever it bound.
 """
 
 from __future__ import annotations
@@ -15,14 +26,30 @@ import sys
 import threading
 import time
 import webbrowser
+import zlib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VIEWER_DIR = REPO_ROOT / "viewer"
 
-VIEWER_URL = "http://localhost:5173"
-API_HOST_PORT = ("127.0.0.1", 8000)
-WEB_HOST_PORT = ("localhost", 5173)
+
+def _hashed_port(salt: str, low: int, high: int) -> int:
+    """Deterministic port in ``[low, high]`` from CRC32 of the worktree path.
+
+    CRC32 (not Python's ``hash()``) so the value is stable across runs and
+    Python versions — important for bookmarks and parallel worktrees.
+    """
+    h = zlib.crc32(f"{REPO_ROOT}|{salt}".encode())
+    span = high - low + 1
+    return low + (h % span)
+
+
+WEB_PORT = int(os.environ.get("VITE_PORT") or _hashed_port("vite", 5500, 5999))
+API_PORT = int(os.environ.get("API_PORT") or _hashed_port("api", 8500, 8999))
+
+VIEWER_URL = f"http://localhost:{WEB_PORT}"
+API_HOST_PORT = ("127.0.0.1", API_PORT)
+WEB_HOST_PORT = ("localhost", WEB_PORT)
 READY_TIMEOUT_S = 30.0
 POLL_INTERVAL_S = 0.25
 
@@ -59,7 +86,7 @@ def _print_banner() -> None:
     print(bar, flush=True)
     print("  spiderpig viewer ready", flush=True)
     print(f"  {arrow} {link}    (click to open)", flush=True)
-    print("  api: 127.0.0.1:8000  (proxied via vite)", flush=True)
+    print(f"  api: 127.0.0.1:{API_PORT}  (proxied via vite)", flush=True)
     print(bar, flush=True)
     print(flush=True)
 
@@ -82,12 +109,18 @@ def _wait_then_announce(stop: threading.Event) -> None:
 def main() -> int:
     api_cmd = [
         sys.executable, "-u", "-m", "uvicorn", "server.app:app",
-        "--host", "127.0.0.1", "--port", "8000",
+        "--host", "127.0.0.1", "--port", str(API_PORT),
     ]
     if sys.platform == "win32":
         web_cmd = ["npm.cmd", "run", "dev"]
     else:
         web_cmd = ["npm", "run", "dev"]
+
+    # Vite's config reads VITE_PORT and VITE_API_PORT from env; export the
+    # resolved values so the child npm/vite process picks them up.
+    web_env = os.environ.copy()
+    web_env["VITE_PORT"] = str(WEB_PORT)
+    web_env["VITE_API_PORT"] = str(API_PORT)
 
     # On Windows, mise's task runner inherits handles in a way that can
     # block uvicorn at startup. Detach the api child into a new process
@@ -100,9 +133,9 @@ def main() -> int:
     _log(f"starting FastAPI: {' '.join(api_cmd)}")
     api = subprocess.Popen(api_cmd, cwd=REPO_ROOT, **api_kwargs)
     _log(f"starting Vite: {' '.join(web_cmd)} (cwd={VIEWER_DIR})")
-    web = subprocess.Popen(web_cmd, cwd=VIEWER_DIR)
+    web = subprocess.Popen(web_cmd, cwd=VIEWER_DIR, env=web_env)
 
-    _log(f"FastAPI pid={api.pid} :8000  Vite pid={web.pid} :5173")
+    _log(f"FastAPI pid={api.pid} :{API_PORT}  Vite pid={web.pid} :{WEB_PORT}")
 
     ready_stop = threading.Event()
     ready_thread = threading.Thread(

@@ -22,6 +22,8 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 
+mise.local.toml
+
 build/
 viewer/data/
 viewer/dist/

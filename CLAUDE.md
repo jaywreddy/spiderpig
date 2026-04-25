@@ -8,11 +8,13 @@ the code. Keep it terse.
 Tasks live in `mise.toml`:
 
 ```bash
-mise run view       # FastAPI :8000 + Vite :5173 (HMR) — open http://localhost:5173
+mise run view       # FastAPI + Vite (HMR); URL printed in startup banner
 mise run bake       # bake viewer/data/*.glb
 mise run test       # pytest (runs viewer-build first; -m e2e for browser tests)
 mise run build      # STEP/STL/DXF -> build/
 mise run lint       # ruff check
+mise run kill       # stop dev servers spawned from THIS worktree
+mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan recovery)
 mise run clean
 ```
 
@@ -23,8 +25,21 @@ uv run python viewer/bake_gltf.py --mode multi --frames 120 --legs 1
 ```
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
-serves on `:5173` and proxies `/api` + `/ws` to FastAPI on `:8000`. For
-single-port runs (e2e tests, prod-like), build first with
+serves on a port derived from a CRC32 hash of the worktree path
+(range 5500-5999) and proxies `/api` + `/ws` to FastAPI on a similarly
+hash-derived port (8500-8999). This means parallel worktrees get unique
+stable ports with **zero manual config** — just `mise run view` in each
+and bookmark the URL printed in the banner. Override via env vars in
+`mise.local.toml` (gitignored) when the auto-picked port collides:
+
+```toml
+# mise.local.toml — per-worktree, not committed
+[env]
+VITE_PORT = "5173"   # pin the main checkout to the canonical port
+API_PORT  = "8000"
+```
+
+For single-port runs (e2e tests, prod-like), build first with
 `mise run viewer-build`; `server/app.py` auto-mounts `viewer/dist` when it
 exists (override via `SPIDERPIG_VIEWER_DIST`).
 
