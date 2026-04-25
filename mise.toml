@@ -1,0 +1,51 @@
+[tools]
+python = "3.12"
+uv     = "latest"
+node   = "20"
+
+[env]
+UV_PROJECT_ENVIRONMENT = ".venv"
+
+[tasks.view]
+description = "Dev: FastAPI (:8000) + Vite (:5173) with HMR. Open http://localhost:5173"
+depends     = ["viewer-install"]
+run         = "uv run python scripts/dev.py"
+
+[tasks.viewer-install]
+description = "Install npm deps for viewer/"
+dir         = "{{config_root}}/viewer"
+run         = "npm install"
+sources     = ["viewer/package.json", "viewer/package-lock.json"]
+outputs     = ["viewer/node_modules/.package-lock.json"]
+
+[tasks.viewer-dev]
+description = "Vite dev server (:5173) only"
+dir         = "{{config_root}}/viewer"
+run         = "npm run dev"
+
+[tasks.viewer-build]
+description = "Build viewer/dist for production"
+depends     = ["viewer-install"]
+dir         = "{{config_root}}/viewer"
+run         = "npm run build"
+
+[tasks.bake]
+description = "Bake viewer/data/*.glb"
+run         = "uv run python viewer/bake_gltf.py"
+
+[tasks.build]
+description = "STEP/STL/DXF -> build/"
+run         = "uv run python main.py"
+
+[tasks.test]
+description = "pytest (unit; pass -m e2e for browser tests)"
+depends     = ["viewer-build"]
+run         = "uv run pytest"
+
+[tasks.lint]
+description = "ruff check"
+run         = "uv run ruff check ."
+
+[tasks.clean]
+description = "Remove build/, viewer/data/, viewer/dist/, viewer/node_modules/"
+run         = "uv run python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in [pathlib.Path('build'), pathlib.Path('viewer/data'), pathlib.Path('viewer/dist'), pathlib.Path('viewer/node_modules')]]\""

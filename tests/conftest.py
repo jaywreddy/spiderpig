@@ -26,12 +26,24 @@ def _free_port() -> int:
 
 @pytest.fixture(scope="session")
 def viewer_server() -> Iterator[str]:
-    """Start the FastAPI dev server once per session and yield its base URL."""
+    """Start the FastAPI server once per session and yield its base URL.
+
+    E2E tests run against the built viewer bundle (``viewer/dist``) on a
+    single port — `mise run test` invokes ``viewer-build`` first via the
+    task ``depends`` chain, so the bundle is up to date.
+    """
+    dist = _REPO_ROOT / "viewer" / "dist"
+    if not dist.is_dir():
+        raise RuntimeError(
+            f"viewer/dist missing — run `mise run viewer-build` before e2e tests "
+            f"(or use `mise run test`, which builds it for you). Looked at {dist}"
+        )
     port = _free_port()
     proc = subprocess.Popen(  # noqa: S603
         [
-            sys.executable, "cli.py", "view",
-            "--no-browser", "--host", "127.0.0.1", "--port", str(port),
+            sys.executable, "-m", "uvicorn", "server.app:app",
+            "--host", "127.0.0.1", "--port", str(port),
+            "--log-level", "warning",
         ],
         cwd=_REPO_ROOT,
         stdout=subprocess.DEVNULL,

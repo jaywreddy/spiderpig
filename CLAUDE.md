@@ -5,17 +5,28 @@ the code. Keep it terse.
 
 ## How to run things
 
+Tasks live in `mise.toml`:
+
 ```bash
-uv run python cli.py bake       # bake viewer/data/klann.glb
-uv run python cli.py test       # pytest
-uv run python cli.py view       # dev server at :8000
+mise run view       # FastAPI :8000 + Vite :5173 (HMR) — open http://localhost:5173
+mise run bake       # bake viewer/data/*.glb
+mise run test       # pytest (runs viewer-build first; -m e2e for browser tests)
+mise run build      # STEP/STL/DXF -> build/
+mise run lint       # ruff check
+mise run clean
 ```
 
-Direct invocation of the bake script (more flags than the `cli.py` wrapper):
+Direct invocation of the bake script (more flags than `mise run bake`):
 
 ```bash
 uv run python viewer/bake_gltf.py --mode multi --frames 120 --legs 1
 ```
+
+The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
+serves on `:5173` and proxies `/api` + `/ws` to FastAPI on `:8000`. For
+single-port runs (e2e tests, prod-like), build first with
+`mise run viewer-build`; `server/app.py` auto-mounts `viewer/dist` when it
+exists (override via `SPIDERPIG_VIEWER_DIST`).
 
 ## Baking the glTF — performance profiler
 

@@ -14,43 +14,41 @@ Originally UC Berkeley CS194 coursework built on SolidPython + OpenSCAD +
 | SE(3) kinematics    | [`pytransform3d`](https://dfki-ric.github.io/pytransform3d/) |
 | DXF output          | [`ezdxf`](https://ezdxf.mozman.at)       |
 | sheet packing       | [`rectpack`](https://github.com/secnot/rectpack) |
-| dep management      | [`uv`](https://docs.astral.sh/uv/)       |
+| dep + tool mgmt     | [`mise`](https://mise.jdx.dev) + [`uv`](https://docs.astral.sh/uv/) |
+| frontend bundler    | [`vite`](https://vitejs.dev) + TypeScript |
 | tests               | [`pytest`](https://docs.pytest.org)      |
 
 ## Install
 
 ```bash
-uv sync
+mise install        # pin Python 3.12 + uv + node 20
+uv sync             # resolve pyproject.toml (fetches OCP/OCCT; first run is slow)
 ```
-
-This resolves `pyproject.toml` and fetches OCP (the OCCT binding that powers
-build123d). First run takes a minute or two.
 
 ## Quick start
 
-Every task goes through a single cross-platform Python CLI (no `sh` required):
-
 ```bash
-uv run python cli.py view       # dev server w/ live reload at :8000
-uv run python cli.py build      # STEP/STL/DXF → build/
-uv run python cli.py bake       # viewer data → viewer/data/
-uv run python cli.py test
-uv run python cli.py clean      # rm build/ and viewer/data/
+mise run view           # FastAPI :8000 + Vite :5173 with HMR — open http://localhost:5173
+mise run build          # STEP/STL/DXF → build/
+mise run bake           # viewer/data/*.glb
+mise run test           # pytest (unit; -m e2e for browser tests)
+mise run lint           # ruff check
+mise run clean          # rm build/, viewer/data/, viewer/dist/, viewer/node_modules/
 ```
 
-Or, if you have [`just`](https://github.com/casey/just):
+`mise run view` starts FastAPI on `:8000` (bakes `.glb` on first request,
+watches `*.py` and re-bakes on change, broadcasts over `/ws`) and Vite on
+`:5173` (HMR for the TypeScript viewer; proxies `/api` and `/ws` to FastAPI).
+Edit a `.ts` file → instant HMR. Edit a `.py` kinematics file → re-bake →
+viewer hot-swaps the GLB without a full page reload.
+
+For a production-style single-port run, build the bundle then start FastAPI
+directly:
 
 ```bash
-just            # list recipes
-just view
-just build
-just test
+mise run viewer-build
+uv run uvicorn server.app:app --host 127.0.0.1 --port 8000
 ```
-
-`just view` starts a FastAPI dev server on <http://127.0.0.1:8000> that
-serves the three.js viewer, bakes data on first run, watches `*.py`
-under the repo, and pushes a browser reload over a WebSocket after every
-successful re-bake — the full edit → visualize loop without a manual refresh.
 
 ## Run
 
@@ -88,17 +86,21 @@ emission.
 
 ```
 spiderpig/
-├── cli.py           # cross-platform task runner (view/build/bake/test/clean)
+├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/clean)
+├── scripts/dev.py   # spawns FastAPI + Vite for `mise run view`
 ├── main.py          # fabrication CLI (STEP/STL/DXF)
 ├── klann.py         # symbolic Klann geometry + KlannLinkage assembly
 ├── mechanism.py     # Pose, Joint, Body, Mechanism (pytransform3d-backed)
 ├── shapes.py        # build123d part factories
 ├── layout.py        # 2D section + rectpack + ezdxf sheet writer
 ├── server/          # FastAPI dev server + watchfiles live-reload
-│   ├── app.py       #   /api/frames, /api/parts/{name}, /ws, static mount
+│   ├── app.py       #   /api/modes, /api/glb/{mode}, /ws, static mount
 │   └── watcher.py   #   source-change → re-bake → broadcast reload
-├── viewer/          # three.js client (HTML/JS + bake.py + poses.py)
-├── justfile         # optional Unix alias for `uv run python cli.py ...`
+├── viewer/          # Vite + TypeScript three.js client
+│   ├── index.html
+│   ├── package.json, tsconfig.json, vite.config.ts
+│   ├── bake_gltf.py #   .glb baker (Python)
+│   └── src/         #   main.ts, scene.ts, loader.ts, controls.ts, live-reload.ts
 ├── pyproject.toml
 ├── uv.lock
 └── tests/

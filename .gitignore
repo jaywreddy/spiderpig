@@ -1,4 +1,7 @@
 *.json
+!viewer/package.json
+!viewer/package-lock.json
+!viewer/tsconfig.json
 
 *.scad
 *.stl
@@ -21,3 +24,5 @@ __pycache__/
 
 build/
 viewer/data/
+viewer/dist/
+viewer/node_modules/

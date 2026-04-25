@@ -7,11 +7,17 @@ pushes a ``reload`` message to every connected browser over ``/ws``.
 
 Start via::
 
-    uv run python cli.py view
+    mise run view          # FastAPI + Vite (dev, recommended)
+    uv run uvicorn server.app:app   # FastAPI alone (serves built bundle)
+
+The viewer is served from ``viewer/dist`` (Vite build output). Override
+with ``SPIDERPIG_VIEWER_DIST`` if needed; falls back to ``viewer/`` when
+no build exists so the API still works during initial setup.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +29,14 @@ from fastapi.staticfiles import StaticFiles
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VIEWER_DIR = REPO_ROOT / "viewer"
 DATA_DIR = VIEWER_DIR / "data"
+
+
+def _viewer_static_dir() -> Path:
+    override = os.environ.get("SPIDERPIG_VIEWER_DIST")
+    if override:
+        return Path(override).resolve()
+    dist = VIEWER_DIR / "dist"
+    return dist if dist.is_dir() else VIEWER_DIR
 
 # User-facing mode id → bake_gltf mode argument. Order is the dropdown order.
 MODES: dict[str, str] = {
@@ -117,4 +131,4 @@ async def ws(websocket: WebSocket) -> None:
 
 
 # Mount static viewer last so /api and /ws take precedence.
-app.mount("/", StaticFiles(directory=VIEWER_DIR, html=True), name="viewer")
+app.mount("/", StaticFiles(directory=_viewer_static_dir(), html=True), name="viewer")
