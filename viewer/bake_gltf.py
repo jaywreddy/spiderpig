@@ -199,13 +199,24 @@ _BODY_CLASSES = (
 )
 
 _STANDOFF_RE = re.compile(r"^(standoff)\d+$")
+# Joinery body names follow ``{name_prefix}{index}_{piece_name}`` (see
+# joinery.py). Collapse the per-instance index so all instances of the same
+# joinery type share one mesh class — matches what _STANDOFF_RE does for the
+# legacy standoff bodies.
+_JOINERY_RE = re.compile(r"^([a-z][a-z_]*?)(\d+)_([a-z_]+)$")
 
 
 def _class_of(body_name: str) -> str:
-    """Strip leg/index suffixes: ``"b1_leg3"`` -> ``"b1"``, ``"standoff2"`` -> ``"standoff"``."""
+    """Strip leg/index suffixes: ``"b1_leg3"`` -> ``"b1"``, ``"standoff2"`` -> ``"standoff"``,
+    ``"clevis_pin0_pin"`` -> ``"clevis_pin_pin"``."""
     base = body_name.rsplit("_leg", 1)[0]
     m = _STANDOFF_RE.match(base)
-    return m.group(1) if m else base
+    if m:
+        return m.group(1)
+    m = _JOINERY_RE.match(base)
+    if m:
+        return f"{m.group(1)}_{m.group(3)}"
+    return base
 
 
 def _body_joint_world(body) -> dict[str, np.ndarray]:
@@ -459,7 +470,12 @@ def bake_gltf(
             materials: list[pygltflib.Material] = []
 
             with prof.timed("3_gltf_pack_geometry"):
-                for cls in _BODY_CLASSES:
+                # Pack canonical classes first for deterministic ordering, then
+                # any joinery (or other) classes the mechanism introduced.
+                ordered_classes = list(_BODY_CLASSES) + [
+                    c for c in class_mesh if c not in _BODY_CLASSES
+                ]
+                for cls in ordered_classes:
                     if cls not in class_mesh:
                         continue
                     positions, normals, indices = class_mesh[cls]
