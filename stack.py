@@ -30,7 +30,7 @@ from __future__ import annotations
 import itertools
 import re
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Literal
 
@@ -169,11 +169,14 @@ class Placed:
 
 @dataclass
 class Layout:
-    """What a claim sees: the (possibly partial) link layers and the stack size."""
+    """What a claim sees: the (possibly partial) link layers, the stack size, and the
+    choices the planner made for groups with a shape to choose (``choices[group]``, e.g.
+    the crank's route; absent: the group's default)."""
 
     layers: Mapping[str, int]
     top: int
     pitch: float
+    choices: Mapping[str, object] = field(default_factory=dict)
 
     def z(self, layer: int) -> tuple[float, float]:
         return layer * self.pitch, (layer + 1) * self.pitch
@@ -481,10 +484,11 @@ class StackPlan:
     topo: Topology
     claims: tuple[Claim, ...]
     placed: tuple[Placed, ...] = ()
+    choices: dict[str, object] = field(default_factory=dict)
 
     @property
     def layout(self) -> Layout:
-        return Layout(dict(self.layers), self.top, self.spec.pitch)
+        return Layout(dict(self.layers), self.top, self.spec.pitch, dict(self.choices))
 
     def z(self, layer: int) -> tuple[float, float]:
         return self.layout.z(layer)
@@ -622,15 +626,17 @@ class StackProblem:
         raise PlanError(f"{self.topo.name}: no layer plan with up to {self.spec.max_top} "
                         "layers", self.blockers())
 
-    def plan(self, layers: Mapping[str, int], top: int) -> StackPlan:
-        layout = Layout(dict(layers), top, self.spec.pitch)
+    def plan(self, layers: Mapping[str, int], top: int,
+             choices: Mapping[str, object] | None = None) -> StackPlan:
+        layout = Layout(dict(layers), top, self.spec.pitch, dict(choices or {}))
         placed: list[Placed] = []
         for c in self.claims:
             out, why = made(c, layout)
             if out is None:
                 raise ValueError(why)
             placed.extend(out)
-        return StackPlan(self.spec, dict(layers), top, self.topo, self.claims, tuple(placed))
+        return StackPlan(self.spec, dict(layers), top, self.topo, self.claims, tuple(placed),
+                         dict(choices or {}))
 
     def _order(self) -> list[str]:
         """b1s first (they constrain the crank), then the most-conflicted links."""

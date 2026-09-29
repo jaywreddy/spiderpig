@@ -171,6 +171,59 @@ class CrankDims:
     hub_thickness: float
 
 
+@dataclass(frozen=True)
+class Run:
+    """The crankshaft runs along the post at ``at`` over layers ``lo``..``hi``.
+
+    ``at`` is a crankpin, or a detour point fixed to the crank (a point of the
+    plan's geometry that turns with it). Webs from O lead in at ``lo - 1`` and
+    out at ``hi + 1``; the centre O is free in the run's layers.
+    """
+
+    at: str
+    lo: int
+    hi: int
+
+
+@dataclass(frozen=True)
+class CrankRoute:
+    """The crankshaft's shape through the stack: its runs off the centre, and whether it
+    keeps its journal stub in the outer frame plate (the bottom bearing)."""
+
+    runs: tuple[Run, ...]
+    bearing: bool = True
+
+
+def default_route(layout: Layout, pins) -> CrankRoute:
+    """Each crankpin's riders, grouped into runs of adjacent layers (the crank as it was)."""
+    runs = []
+    for p in pins:
+        for k in sorted({layout.layers[b] for b in p.members if b in layout.layers}):
+            if runs and runs[-1].at == p.name and runs[-1].hi == k - 1:
+                runs[-1] = Run(p.name, runs[-1].lo, k)
+            else:
+                runs.append(Run(p.name, k, k))
+    return CrankRoute(tuple(runs))
+
+
+def add_crank_point(topo, name: str, r: float, angle_deg: float) -> str:
+    """Add a point fixed to the crank to ``topo``'s geometry: ``r`` from O, ``angle_deg``
+    counter-clockwise from the first crankpin. Returns its name (a detour run's ``at``)."""
+    pins = topo.axes_of("crankpin")
+    g = topo.geometry.points
+    pin = g[pins[0].name] - g["O"]
+    theta = np.arctan2(pin[:, 1], pin[:, 0]) + math.radians(angle_deg)
+    xy = g["O"] + r * np.stack([np.cos(theta), np.sin(theta)], axis=-1)
+    topo.geometry = type(topo.geometry)({**g, name: xy})
+    return name
+
+
+def route_of(layout: Layout, pins) -> CrankRoute:
+    """The route the planner chose (``layout.choices["crank"]``), else :func:`default_route`."""
+    chosen = layout.choices.get(GROUP)
+    return chosen if chosen is not None else default_route(layout, pins)
+
+
 def hub_layers(layout: Layout, drive: DriveInterface, hub_thickness: float) -> tuple[range, range]:
     """(horn layers, hub layers) below the inner frame plate's top face."""
     plate_top = layout.z(layout.top)[1]
@@ -211,6 +264,7 @@ class CrankGroup:
         drive: DriveInterface = ctx.interfaces["drive"]
         d = self.dims(ctx)
         pins = topo.axes_of("crankpin")
+        pin_names = {p.name for p in pins}
         riders = topo.riders
 
         def hub(L: Layout):
@@ -220,30 +274,40 @@ class CrankGroup:
             out += [Placed(k, Disc("O", d.hub), GROUP, "crank hub") for k in hub]
             return out
 
+        def run_shapes(run: Run, ridden: set[int]):
+            """A run's post (inside a rider's hole where one rides it) and its two webs."""
+            out = [Placed(k, Disc(run.at, d.post), GROUP, f"crankpin {run.at}", seat=k in ridden)
+                   for k in range(run.lo, run.hi + 1)]
+            out += [Placed(k, Pill("O", run.at, d.web), GROUP, f"web {run.at}")
+                    for k in (run.lo - 1, run.hi + 1)]
+            return out
+
         def webs(pin: str, members: tuple[str, ...]):
             def make(L: Layout):
-                rs = {L.layers[b] for b in members}
-                out = []
-                for s in sorted(rs):
-                    out.append(Placed(s, Disc(pin, d.post), GROUP, f"crankpin {pin}", seat=True))
-                    for k in (s - 1, s + 1):
-                        if k not in rs:
-                            out.append(Placed(k, Pill("O", pin, d.web), GROUP, f"web {pin}"))
-                return out
+                ridden = {L.layers[b] for b in members}
+                runs = [r for r in route_of(L, pins).runs if r.at == pin]
+                if off := sorted(k for k in ridden if not any(r.lo <= k <= r.hi for r in runs)):
+                    raise Unbuildable(f"a link riding {pin} sits in layer {off[0]}, off every "
+                                      f"run of the crankshaft along {pin}")
+                return [p for r in runs for p in run_shapes(r, ridden)]
             return make
 
         def body(L: Layout):
-            rider_layers = {L.layers[b] for b in riders}
-            web_layers = {k for s in rider_layers for k in (s - 1, s + 1)} - rider_layers
+            route = route_of(L, pins)
+            run_layers = {k for r in route.runs for k in range(r.lo, r.hi + 1)}
+            web_layers = {k for r in route.runs for k in (r.lo - 1, r.hi + 1)} - run_layers
             _, hub = hub_layers(L, drive, d.hub_thickness)
             lo, hi = min(web_layers), min(hub)
             if lo > hi:
                 raise Unbuildable(f"its lowest web (layer {lo}) would sit above the hub under "
                                   f"the servo horn (layer {hi}): the riders are too high")
-            out = [Placed(k, Disc("O", d.journal), GROUP, "crank body")
-                   for k in range(lo, hi) if k not in rider_layers]
-            out += [Placed(k, Disc("O", d.stub), GROUP, "journal stub") for k in range(1, lo)]
-            out.append(Placed(0, Disc("O", d.stub), GROUP, "journal stub", seat=True))
+            # detour runs (not on a crankpin) aren't any pin's claim: they're placed here
+            out = [p for r in route.runs if r.at not in pin_names for p in run_shapes(r, set())]
+            out += [Placed(k, Disc("O", d.journal), GROUP, "crank body")
+                    for k in range(lo, hi) if k not in run_layers]
+            if route.bearing:
+                out += [Placed(k, Disc("O", d.stub), GROUP, "journal stub") for k in range(1, lo)]
+                out.append(Placed(0, Disc("O", d.stub), GROUP, "journal stub", seat=True))
             return out
 
         claims = [Claim("crank hub", frozenset(), hub)]
@@ -434,8 +498,9 @@ class PrintedCrank:
         plate_bottom, plate_top = build.z(build.top)
         face = plate_top - drive.horn_face_depth
         play = self.axial_play
-        rider_layers = {build.layers[b]: pin for b, pin in topo.riders.items()}
-        gaps = _gaps(rider_layers)
+        route = route_of(build.plan.layout, topo.axes_of("crankpin"))
+        rider_layers = {k: r.at for r in route.runs for k in range(r.lo, r.hi + 1)}
+        gaps = [Gap(r.lo, r.hi, r.at) for r in sorted(route.runs, key=lambda r: r.lo)]
         claimed = [p for p in build.shapes(GROUP)
                    if p.label != "servo horn" and not p.label.startswith("crankpin")]
 
@@ -533,11 +598,14 @@ class PrintedCrank:
         for pin in topo.axes_of("crankpin"):
             for b in pin.members:
                 out.cut(b, Cut(tuple(build.xy(pin.name)), params.hole(2 * d.post)))
-        out.cut(FRAME_OUTER, Cut(tuple(build.xy("O")), params.hole(2 * d.stub)))
+        if route.bearing:
+            out.cut(FRAME_OUTER, Cut(tuple(build.xy("O")), params.hole(2 * d.stub)))
         return out
 
 
 __all__ = [
-    "BHCS", "CrankDims", "CrankGroup", "Gap", "HornJoint", "POST_SCREWS", "PostJoint",
-    "PrintedCrank", "SELF_TAP", "SHCS", "ScrewKind", "hub_layers", "screw_body", "screw_from_key",
+    "BHCS", "CrankDims", "CrankGroup", "CrankRoute", "Gap", "HornJoint", "POST_SCREWS",
+    "PostJoint", "PrintedCrank", "Run", "SELF_TAP", "SHCS", "ScrewKind", "add_crank_point",
+    "default_route",
+    "hub_layers", "route_of", "screw_body", "screw_from_key",
 ]
