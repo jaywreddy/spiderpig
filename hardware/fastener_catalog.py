@@ -21,12 +21,13 @@ fetched and showed the product; McMaster pages don't render to a fetcher.
 from __future__ import annotations
 
 from hardware.catalog import Item, Offer, register
-from hardware.parts import CLEARANCE, SHCS_HEAD, SHCS_LENGTHS, shcs
+from hardware.fasteners import CLEARANCE, screw, shcs
 
 LONG_SHCS_LENGTHS: tuple[float, ...] = (45, 50)
-BOLT_LENGTHS: tuple[float, ...] = tuple(sorted(set(SHCS_LENGTHS["3"]) | set(LONG_SHCS_LENGTHS)))
+BOLT_LENGTHS: tuple[float, ...] = tuple(
+    sorted(set(screw("shcs", "3").lengths) | set(LONG_SHCS_LENGTHS)))
 
-_dk, _k = SHCS_HEAD["3"]
+_dk, _k = screw("shcs", "3").head_d, screw("shcs", "3").head_h
 for _L in LONG_SHCS_LENGTHS:
     register(Item(
         shcs("3", _L), f"M3 x {_L:g} mm socket head cap screw", "fastener",
@@ -57,5 +58,3 @@ register(
          dims={"af": 5.5, "h": 3.9, "d": 3.0},
          notes="Only 0.1 mm lower than DIN 985: it needs the same two layers."),
 )
-
-__all__ = ["BOLT_LENGTHS", "LONG_SHCS_LENGTHS"]

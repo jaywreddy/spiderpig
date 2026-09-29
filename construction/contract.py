@@ -4,6 +4,8 @@ The planner guarantees that claims of different groups never meet; this
 module checks the other half: that what a construction *builds* stays inside
 what it *claimed*. Together they mean the parts can't collide at any crank
 angle. Run it for every construction (tests do) and whenever one changes.
+:func:`clashes` and :func:`bad_solids` check the fabricated solids themselves
+(the audit and the tests).
 
 Exceptions, by design:
 
@@ -15,6 +17,8 @@ Exceptions, by design:
 
 from __future__ import annotations
 
+import itertools
+
 from build123d import Box, Location
 
 from construction.base import Build, Realized
@@ -23,6 +27,7 @@ from construction.plates import FramePlates, LinkPlates
 
 TOL = 0.02        # mm the envelope is grown by (float noise)
 MAX_OUTSIDE = 1e-3  # mm^3 a part may poke outside its envelope
+CLASH_MM3 = 1e-3  # mm^3 two parts may share (float noise)
 
 
 def _outside(part, envelope) -> float:
@@ -83,4 +88,38 @@ def check_side(design, mech) -> list[str]:
     return problems
 
 
-__all__ = ["check_side"]
+def _overlap(a, b, eps: float = 1e-6) -> bool:
+    return all(max(getattr(a.min, c), getattr(b.min, c)) < min(getattr(a.max, c),
+                                                               getattr(b.max, c)) - eps
+               for c in "XYZ")
+
+
+def clashes(mech) -> list[dict]:
+    """Pairs of parts that intersect by more than :data:`CLASH_MM3`.
+
+    A screw in the part it threads into (``mech.meta["fastened"]``) is not a clash.
+    """
+    allowed = {frozenset(p) for p in mech.meta.get("fastened", [])}
+    parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
+    boxes = {n: p.bounding_box() for n, p in parts.items()}
+    out = []
+    for a, b in itertools.combinations(parts, 2):
+        if frozenset((a, b)) in allowed or not _overlap(boxes[a], boxes[b]):
+            continue
+        inter = parts[a] & parts[b]
+        vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
+        if vol > CLASH_MM3:
+            out.append({"a": a, "b": b, "mm3": round(vol, 3)})
+    return out
+
+
+def bad_solids(mech) -> list[dict]:
+    """Parts that aren't one valid B-rep solid."""
+    out = []
+    for b in mech.bodies:
+        if b.part is None:
+            continue
+        n = len(b.part.solids())
+        if n != 1 or not b.part.is_valid:
+            out.append({"part": b.name, "solids": n, "valid": bool(b.part.is_valid)})
+    return out

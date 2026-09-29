@@ -9,16 +9,7 @@ on the inner frame plate.
 
 from __future__ import annotations
 
-from servos.spec import (
-    CadRef,
-    HolePattern,
-    Horn,
-    Idler,
-    MountHole,
-    Recess,
-    Relief,
-    ServoSpec,
-)
+from servos.spec import ServoSpec
 
 REGISTRY: dict[str, ServoSpec] = {}
 DEFAULT = "sts3215"
@@ -43,10 +34,3 @@ def available() -> list[str]:
     from servos import catalog  # noqa: F401
 
     return sorted(k for k, s in REGISTRY.items() if s.continuous)
-
-
-__all__ = [
-    "CadRef", "DEFAULT", "HolePattern", "Horn", "Idler", "MountHole", "REGISTRY", "Recess",
-    "Relief", "ServoSpec",
-    "available", "get", "register",
-]

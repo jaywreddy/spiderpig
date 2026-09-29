@@ -8,9 +8,10 @@ import math
 import numpy as np
 import pytest
 
+import linkage
 import servos
 from construction.base import FRAME_OUTER, Build, ConstructionError
-from construction.contract import check_side
+from construction.contract import check_side, clashes
 from construction.crank import (
     BHCS,
     NUT_H,
@@ -30,24 +31,16 @@ from fabricate import (
     template_for,
 )
 from hardware.bom import bom_from_mechanism
-from klann import (
-    build_double_decker_template,
-    build_double_double_decker_template,
-    build_double_template,
-    build_klann_template,
-    create_klann_geometry,
-)
-from scripts.audit_fab import clashes
 from servos import cad as cadlib
 from servos import model
 from shapes import disc
 from stack import Axis, Layout, verify_plan
 
 TEMPLATES = {
-    "single": lambda: build_klann_template(create_klann_geometry()),
-    "double": build_double_template,
-    "decker": build_double_decker_template,
-    "quad": build_double_double_decker_template,
+    "single": lambda: linkage.build_module_template("single"),
+    "double": lambda: linkage.build_module_template("double"),
+    "decker": lambda: linkage.build_module_template("decker"),
+    "quad": lambda: linkage.build_module_template("quad"),
 }
 SERVOS = servos.available()
 OTHERS = [s for s in SERVOS if s != servos.DEFAULT]

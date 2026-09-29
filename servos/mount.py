@@ -46,13 +46,12 @@ from construction.base import (
     Realized,
     hardware,
 )
-from construction.crank import ScrewKind, screw_body, screw_from_key
+from hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
 from servos.model import cut_each, horn_part, servo_part
 from servos.spec import MountHole, ServoSpec
 from shapes import Cut, Rect, disc
 from stack import Claim, Disc, Layout, Placed
 
-SCREW_HEAD_D = {"M2": 3.8, "M2.5": 4.5, "M3": 5.5}   # ISO 4762 socket head diameters
 MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
 SERVO_COLOR = "#1f1f1f"
 HORN_COLOR = "#c0c0c0"
@@ -173,7 +172,7 @@ class DriveGroup:
                 f"for {', '.join(inputs[1:])} isn't built")
         s, h = self.spec, self.spec.horn
         t = self.spacer(ctx)
-        thread = h.pattern.thread or "M3"
+        head = screw("shcs", SIZES.get(h.pattern.thread, "3"))    # an ISO 4762 head, or larger
         return DriveInterface(
             horn_face_depth=s.horn_face_depth + t,
             horn_radius=h.diameter / 2,
@@ -181,7 +180,7 @@ class DriveGroup:
             screw_pcd=h.pattern.pcd,
             screw_count=h.pattern.count,
             screw_clearance_d=h.pattern.hole_d,
-            screw_head_d=SCREW_HEAD_D.get(thread, 5.5) + 0.5,
+            screw_head_d=head.head_d + 0.5,
             screw_key=h.pattern.screw,
             center_head_d=h.center_screw_head_d,
             center_head_h=max(0.0, h.center_screw_head_h - t),
@@ -190,8 +189,8 @@ class DriveGroup:
 
     # -- mounting screws ------------------------------------------------------------
 
-    def front_screws(self, ctx: Context) -> list[tuple[str, MountHole, ScrewKind, float]]:
-        """Front mounting holes used: ``(point name, hole, screw kind, length)``.
+    def front_screws(self, ctx: Context) -> list[tuple[str, MountHole, Screw, float]]:
+        """Front mounting holes used: ``(point name, hole, screw family, length)``.
 
         A hole is used when its screw head, under the plate, clears the widest
         crank hub (the horn, or the horn screws' counterbores plus a wall, as
@@ -202,7 +201,7 @@ class DriveGroup:
         hub = max(iface.horn_radius, iface.screw_pcd / 2 + iface.screw_head_d / 2 + p.min_wall)
         out = []
         for i, mh in enumerate(self.spec.mount):
-            parsed = screw_from_key(mh.screw)
+            parsed = parse(mh.screw)
             if parsed is None:
                 continue
             sk, length = parsed
@@ -302,7 +301,7 @@ class DriveGroup:
         for i, (_, mh, sk, length) in enumerate(self.front_screws(ctx)):
             xy = world(mh.x, mh.y)
             out.cut(FRAME_INNER, Cut(xy, mh.d))
-            out.bodies.append(hardware(f"servo_screw{i}", screw_body(xy, sk, plate_bottom, length),
+            out.bodies.append(hardware(f"servo_screw{i}", screw_solid(xy, sk, plate_bottom, length),
                                        frame_host, fab="purchased", bom_key=mh.screw, color=STEEL))
 
         # the horn turns with the crank: its first hole at the interface's pattern angle
@@ -328,6 +327,3 @@ class DriveGroup:
             out.bodies.append(hardware("servo_horn_spacer", spacer, crank_host or frame_host,
                                        fab="printed", color=SPACER_COLOR))
         return out
-
-
-__all__ = ["DriveGroup", "away_from_pillars", "servo_to_world", "to_location"]

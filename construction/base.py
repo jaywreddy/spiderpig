@@ -226,9 +226,3 @@ def hardware(name: str, part, host: str, *, fab: str, bom_key: str | None = None
              color: str | None = None) -> Body:
     """A non-kinematic body riding ``host`` (world-coordinate part)."""
     return Body(name=name, part=part, color=color, rigid_with=host, fab=fab, bom_key=bom_key)
-
-
-__all__ = [
-    "FRAME_INNER", "FRAME_OUTER", "Build", "ConstructionError", "Context", "DriveInterface",
-    "Group", "Params", "Realized", "hardware",
-]

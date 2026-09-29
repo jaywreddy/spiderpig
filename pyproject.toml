@@ -8,7 +8,6 @@ dependencies = [
     "scipy>=1.15",
     "sympy>=1.14",
     "build123d>=0.10,<0.12",
-    "pytransform3d>=3.14",
     "ezdxf>=1.4",
     "rectpack>=0.2",
     "fastapi>=0.115",
@@ -43,4 +42,5 @@ testpaths = ["tests"]
 addopts = "-q -m 'not e2e'"
 markers = [
     "e2e: end-to-end Playwright tests (opt-in; run with `pytest -m e2e`)",
+    "slow: the bakes, the CLI build, the MuJoCo runs and the gait tuner (`-m 'not slow'` to skip)",
 ]

@@ -98,20 +98,14 @@ class MountHole:
     """A hole in the frame plate that fixes the servo.
 
     ``x, y`` in the servo frame; ``d`` the finished hole diameter;
-    ``screw`` catalog key; ``z`` the height in the servo frame where the
-    screw engages the servo (0 = output face, negative = further up the
-    body toward the back face; used to size standoffs for ear-mounted
-    servos); ``standoff`` whether a spacer is needed between plate and servo.
-    Optional: ``depth`` how deep the hole goes into the servo from that face
-    (``None``: not published).
+    ``screw`` catalog key. Optional: ``depth`` how deep the hole goes into
+    the servo from its face (``None``: not published).
     """
 
     x: float
     y: float
     d: float
     screw: str | None = None
-    z: float = 0.0
-    standoff: bool = False
     depth: float | None = None
 
 
@@ -225,7 +219,6 @@ class ServoSpec:
     rear_mount: tuple[MountHole, ...] = ()
     rear_reliefs: tuple[Relief, ...] = ()   # heights measured beyond the rear face (-z)
     continuous: bool = False        # can turn a crank (full rotation, speed mode)
-    ears: tuple[float, float, float] | None = None  # (z_bottom, thickness, overall length) if eared
     idler: Idler | None = None
     cad: CadRef | None = None
     torque_kgcm: float | None = None

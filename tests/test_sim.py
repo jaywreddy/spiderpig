@@ -12,10 +12,9 @@ mujoco = pytest.importorskip("mujoco")
 
 import linkage  # noqa: E402
 from fabricate import BuildConfig, template_for  # noqa: E402
-from sim.mjcf import MM, fabricated  # noqa: E402
+from sim.mjcf import MM, fabricated, load_model  # noqa: E402
 from sim.run import (  # noqa: E402
     body_motions,
-    compiled,
     kinematic_gait,
     kinematic_qpos,
     loop_errors,
@@ -23,6 +22,8 @@ from sim.run import (  # noqa: E402
     walk_metrics,
 )
 from stack import body_class, is_link  # noqa: E402
+
+pytestmark = pytest.mark.slow
 
 # (linkage, module): Klann's single and quad, and a Strider (one coupled pair, two feet)
 DESIGNS = (("klann", "single"), ("klann", "quad"), ("strider", "single"))
@@ -33,14 +34,11 @@ WALK = 0.8              # drive speed, fraction of the servo's no-load speed
 
 @pytest.fixture(scope="module", params=DESIGNS, ids=[f"{k}-{m}" for k, m in DESIGNS])
 def built(request):
-    """(config, model, metadata, fabricated robot) per design; no servo CAD download."""
+    """(config, model, metadata, fabricated robot) per design."""
     key, module = request.param
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("SPIDERPIG_OFFLINE", "1")
-        cfg = BuildConfig(linkage=key, module=module)
-        model, meta = compiled(cfg)
-        robot = fabricated(cfg)
-    return cfg, model, meta, robot
+    cfg = BuildConfig(linkage=key, module=module)
+    model, meta = load_model(cfg)
+    return cfg, model, meta, fabricated(cfg)
 
 
 def _vmax(meta) -> float:
@@ -220,10 +218,8 @@ def test_drive_torque_within_servo_limits(built, walk):
 
 @pytest.fixture(scope="module")
 def quad():
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("SPIDERPIG_OFFLINE", "1")
-        cfg = BuildConfig(module="quad")
-        _, meta = compiled(cfg)
+    cfg = BuildConfig(module="quad")
+    _, meta = load_model(cfg)
     return cfg, _vmax(meta)
 
 

@@ -12,7 +12,6 @@ Originally UC Berkeley CS194 coursework built on SolidPython + OpenSCAD +
 |---------------------|------------------------------------------|
 | symbolic geometry   | [`sympy`](https://www.sympy.org)         |
 | CAD / B-rep         | [`build123d`](https://build123d.readthedocs.io) |
-| SE(3) kinematics    | [`pytransform3d`](https://dfki-ric.github.io/pytransform3d/) |
 | DXF output          | [`ezdxf`](https://ezdxf.mozman.at)       |
 | sheet packing       | [`rectpack`](https://github.com/secnot/rectpack) |
 | dep + tool mgmt     | [`mise`](https://mise.jdx.dev) + [`uv`](https://docs.astral.sh/uv/) |
@@ -133,16 +132,19 @@ Playwright viewer tests. `mise run audit` checks every module end to end.
 spiderpig/
 ├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/audit)
 ├── main.py          # fabrication CLI (STEP/STL/DXF/BOM)
-├── klann.py         # symbolic Klann program + leg module templates
-├── mechanism.py     # Pose, Joint, Body, Mechanism (pytransform3d-backed)
+├── linkage.py       # the symbolic engine: straight-line programs, checks, leg module templates
+├── linkages/        # one module per linkage family (Klann, Strider, Jansen, ...)
+├── mechanism.py     # Pose, Joint, Body, Mechanism, MechanismTemplate
 ├── stack.py         # layer planner over claims (full-cycle clearance)
 ├── fabricate.py     # BuildConfig; design a side, fabricate the robot
 ├── construction/    # the groups: axle, crank, plates, robot; contract check
 ├── servos/          # servo data (spec, catalog), drive group, models, CAD cache
-├── hardware/        # purchasable-item catalog and the bill of materials
+├── hardware/        # catalog, screw families, materials and masses, the bill of materials
+├── walk.py          # quasi-static walking model (/api/walk, the viewer's drive mode)
+├── sim/             # MuJoCo model of the fabricated robot and its runner
 ├── shapes.py        # build123d part primitives
 ├── layout.py        # 2D section + rectpack + ezdxf sheet writer
-├── scripts/audit_fab.py  # `mise run audit`
+├── scripts/         # audit_fab.py (`mise run audit`), tune_gait.py, sim_walk.py, linkage_report.py
 ├── server/          # FastAPI dev server + watchfiles live-reload
 ├── viewer/          # Vite + TypeScript three.js client, bake_gltf.py
 └── tests/           # unit tests; tests/e2e/ for Playwright
@@ -150,8 +152,9 @@ spiderpig/
 
 ## Customising the linkage
 
-The Klann proportions are exact rationals in `klann.PROPORTIONS` (lengths
-as multiples of `OA`, angles in degrees). They are symbols in the compiled
-program, so the program never needs re-deriving: change a value and every
-link length, the foot path, the stack plan and the parts follow. Re-run
-`main.py` (and `mise run audit`) to regenerate and check STEP/STL/DXF.
+Each linkage's proportions are exact rationals in its module under
+`linkages/` (Klann: `linkages/klann.py`, lengths as multiples of `OA`,
+angles in degrees). They are symbols in the compiled program, so the program
+never needs re-deriving: change a value (or pass `--proportion NAME=VALUE`)
+and every link length, the foot path, the stack plan and the parts follow.
+Re-run `main.py` (and `mise run audit`) to regenerate and check STEP/STL/DXF.

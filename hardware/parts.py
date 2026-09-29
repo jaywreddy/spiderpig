@@ -1,15 +1,8 @@
-"""Catalog data: generic purchasable hardware (fasteners, inserts, sheet stock, glue, filament).
+"""Catalog data: generic purchasable hardware (screws, nut, insert, sheet stock, glue, filament).
 
-Key naming (other modules build keys with these helpers, so keep them stable):
-
-* socket head cap screws: ``shcs("3", 12) -> "m3_shcs_12"`` (sizes "2", "2p5", "3")
-* button head socket screws: ``bhcs("3", 6) -> "m3_bhcs_6"`` (the crank's post joints)
-* M2 pan-head self-tapping screws for plastic: ``self_tap("2", 8) -> "m2_self_tap_8"``
-* female-female M3 hex standoffs: ``standoff_ff(20) -> "m3_standoff_ff_20"``
-
-Every key these helpers can produce for the lengths in ``SHCS_LENGTHS`` /
-``SELF_TAP_LENGTHS`` / ``STANDOFF_FF_LENGTHS`` is registered below
-(``tests/test_robot.py`` checks it).
+Screw keys come from :mod:`hardware.fasteners` (``shcs("3", 12) ->
+"m3_shcs_12"``; every family's every stock length is registered here, as
+``tests/test_robot.py`` checks).
 
 Sources: the research notes of 2026-09-29 (``joinery.json``: ISO/DIN
 dimension tables, vendor pages) plus the pages cited per offer. An offer is
@@ -25,44 +18,7 @@ Servo-specific items (servos, horns sold separately) live in
 from __future__ import annotations
 
 from hardware.catalog import Item, Offer, register
-
-SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
-    "2": (4, 5, 6, 8, 10, 12, 16, 20),
-    "2p5": (4, 5, 6, 8, 10, 12, 16, 20),
-    "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40),
-}
-SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
-BHCS_LENGTHS: dict[str, tuple[float, ...]] = {"3": (6, 8, 10, 12, 16, 20, 25, 30)}
-STANDOFF_FF_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 20, 25, 30, 35, 40)
-
-# ISO 4762 heads (fasteners.eu table): thread d -> (head diameter dk, head height k)
-SHCS_HEAD = {"2": (3.8, 2.0), "2p5": (4.5, 2.5), "3": (5.5, 3.0)}
-# ISO 7380-1 button heads: thread d -> (head diameter dk, head height k)
-BHCS_HEAD = {"3": (5.7, 1.65)}
-# ISO 7049 pan head for ST2.2 (maximum dk, k); PA2.0 self-tapping pan heads are within this
-SELF_TAP_HEAD = {"2": (4.0, 1.6)}
-CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4}   # ISO 273 medium clearance holes
-
-
-def shcs(size: str, length: float) -> str:
-    return f"m{size}_shcs_{length:g}"
-
-
-def bhcs(size: str, length: float) -> str:
-    return f"m{size}_bhcs_{length:g}"
-
-
-def self_tap(size: str, length: float) -> str:
-    return f"m{size}_self_tap_{length:g}"
-
-
-def standoff_ff(length: float) -> str:
-    return f"m3_standoff_ff_{length:g}"
-
-
-def _mm(size: str) -> float:
-    return float(size.replace("p", "."))
-
+from hardware.fasteners import CLEARANCE, SCREWS, SHCS_LENGTHS, shcs
 
 # ---------------------------------------------------------------------------
 # Socket head cap screws (ISO 4762 / DIN 912)
@@ -112,12 +68,12 @@ def _shcs_offers(size: str, length: float) -> tuple[Offer, ...]:
 
 
 for _size, _lengths in SHCS_LENGTHS.items():
-    _dk, _k = SHCS_HEAD[_size]
+    _sk = SCREWS["shcs", _size]
     for _L in _lengths:
         register(Item(
-            shcs(_size, _L), f"M{_mm(_size):g} x {_L:g} mm socket head cap screw", "fastener",
+            shcs(_size, _L), f"M{_sk.d:g} x {_L:g} mm socket head cap screw", "fastener",
             _shcs_offers(_size, _L),
-            dims={"d": _mm(_size), "length": float(_L), "head_d": _dk, "head_h": _k,
+            dims={"d": _sk.d, "length": float(_L), "head_d": _sk.head_d, "head_h": _sk.head_h,
                   "clearance_d": CLEARANCE[_size]},
             notes="ISO 4762 / DIN 912",
         ))
@@ -126,30 +82,28 @@ for _size, _lengths in SHCS_LENGTHS.items():
 # Button head socket screws (ISO 7380-1): short heads that fit a 3 mm layer
 # ---------------------------------------------------------------------------
 
-for _size, _lengths in BHCS_LENGTHS.items():
-    _dk, _k = BHCS_HEAD[_size]
-    for _L in _lengths:
-        register(Item(
-            bhcs(_size, _L), f"M{_mm(_size):g} x {_L:g} mm button head socket screw",
-            "fastener",
-            (Offer("McMaster-Carr", "https://www.mcmaster.com/products/button-head-screws/",
-                   pack_qty=100, note=f"pick M{_mm(_size):g} x {_L:g} mm, ISO 7380; part "
-                   "number not confirmed"),
-             Offer("Amazon", "https://www.amazon.com/s?k=M3+button+head+socket+screw+assortment",
-                   note="search: M3 ISO 7380 assortment")),
-            dims={"d": _mm(_size), "length": float(_L), "head_d": _dk, "head_h": _k,
-                  "clearance_d": CLEARANCE[_size]},
-            notes="ISO 7380-1",
-        ))
+_sk = SCREWS["bhcs", "3"]
+for _L in _sk.lengths:
+    register(Item(
+        _sk.key(_L), f"M{_sk.d:g} x {_L:g} mm button head socket screw", "fastener",
+        (Offer("McMaster-Carr", "https://www.mcmaster.com/products/button-head-screws/",
+               pack_qty=100, note=f"pick M{_sk.d:g} x {_L:g} mm, ISO 7380; part "
+               "number not confirmed"),
+         Offer("Amazon", "https://www.amazon.com/s?k=M3+button+head+socket+screw+assortment",
+               note="search: M3 ISO 7380 assortment")),
+        dims={"d": _sk.d, "length": float(_L), "head_d": _sk.head_d, "head_h": _sk.head_h,
+              "clearance_d": CLEARANCE["3"]},
+        notes="ISO 7380-1",
+    ))
 
 # ---------------------------------------------------------------------------
 # Self-tapping screws for plastic (the STS3215's case pilots are 1.6 mm, for PA2.0)
 # ---------------------------------------------------------------------------
 
-for _L in SELF_TAP_LENGTHS["2"]:
-    _dk, _k = SELF_TAP_HEAD["2"]
+_sk = SCREWS["self_tap", "2"]
+for _L in _sk.lengths:
     register(Item(
-        self_tap("2", _L), f"M2 x {_L:g} mm pan-head self-tapping screw (for plastic)",
+        _sk.key(_L), f"M2 x {_L:g} mm pan-head self-tapping screw (for plastic)",
         "fastener",
         (
             Offer("Amazon", "https://www.amazon.com/dp/B0GV338JJK", "B0GV338JJK", pack_qty=100,
@@ -161,12 +115,13 @@ for _L in SELF_TAP_LENGTHS["2"]:
                   verified=True, note="400-pc M2/M2.6 cross pan-head self-tapping assortment; "
                   "count per length not stated"),
         ),
-        dims={"d": 2.0, "length": float(_L), "head_d": _dk, "head_h": _k, "pilot_d": 1.6},
+        dims={"d": 2.0, "length": float(_L), "head_d": _sk.head_d, "head_h": _sk.head_h,
+              "pilot_d": 1.6},
         notes="Pan head ~4.0 x 1.6 mm (ISO 7049 ST2.2 maximum); measure yours.",
     ))
 
 # ---------------------------------------------------------------------------
-# Nuts, washers, inserts, standoffs
+# Nut and insert
 # ---------------------------------------------------------------------------
 
 register(
@@ -176,22 +131,6 @@ register(
           Offer("Amazon", "https://www.amazon.com/dp/B0DNM4HK5Q", "B0DNM4HK5Q", pack_qty=140,
                 note="in the 631-pc M3 kit")),
          dims={"af": 5.5, "h": 2.4, "d": 3.0}),
-    Item("m3_nylock", "M3 nylon-insert lock nut (DIN 985)", "nut",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/93625A100/", "93625A100", pack_qty=100,
-                note="18-8 stainless; seen on the McMaster M3 locknut listing"),
-          Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-0-5-din-985-metric-hex-"
-                "nylon-insert-stop-lock-nuts-a2-stainless-steel/", "ME223", pack_qty=250,
-                price_usd=36.55, verified=True, note="A2 stainless, bag of 250"),
-          Offer("Amazon", "https://www.amazon.com/dp/B07KSPTYNZ", "B07KSPTYNZ", pack_qty=100)),
-         dims={"af": 5.5, "h": 4.0, "d": 3.0}),
-    Item("m3_washer", "M3 flat washer (DIN 125-A, 3.2 x 7 x 0.5)", "washer",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/91166A210/", "91166A210", pack_qty=100,
-                note="18-8 stainless, per the RepRap McMaster BOM"),
-          Offer("Amazon", "https://www.amazon.com/dp/B08HJVF49P", "B08HJVF49P", pack_qty=200),
-          Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-din-125-type-a-iso-7089-"
-                "7090-metric-standard-flat-washers-a2-stainless-steel/", pack_qty=6300,
-                price_usd=272.85, verified=True, note="bulk only")),
-         dims={"id": 3.2, "od": 7.0, "t": 0.5}),
     Item("m3_heat_set_insert", "M3 x 5.7 brass heat-set insert (for printed parts)", "insert",
          (Offer("3DJake", "https://www.3djake.com/cnc-kitchen/threaded-inserts-m3-standard",
                 "CNC Kitchen M3 standard", pack_qty=100, price_usd=11.37, verified=True),
@@ -204,65 +143,6 @@ register(
          dims={"od": 4.6, "length": 5.7, "hole_d": 4.0, "min_wall": 1.6, "d": 3.0},
          notes="Hole 4.0 mm, at least 1.6 mm of plastic around it (CNC Kitchen). "
                "Press in with a soldering iron; not for laser-cut sheet."),
-)
-
-_ADAFRUIT_FF = {6: 20, 8: 20, 10: 20, 12: 10}
-for _L in STANDOFF_FF_LENGTHS:
-    _offers = []
-    if _L in _ADAFRUIT_FF:
-        _offers.append(Offer("Adafruit", "https://www.adafruit.com/product/4685", "4685",
-                             pack_qty=_ADAFRUIT_FF[_L], price_usd=16.95, verified=True,
-                             note="black nylon M3 standoff + screw kit (F-F 6/8/10/12 mm)"))
-    _offers.append(Offer("McMaster-Carr", "https://www.mcmaster.com/products/standoffs/",
-                         pack_qty=1, note=f"M3 female-female, {_L:g} mm"))
-    register(Item(standoff_ff(_L), f"M3 x {_L:g} mm female-female hex standoff", "standoff",
-                  tuple(_offers), dims={"length": float(_L), "af": 5.5}))
-
-# ---------------------------------------------------------------------------
-# Pivot hardware from the joinery research (for bearing / metal-pin constructions)
-# ---------------------------------------------------------------------------
-
-register(
-    Item("bearing_mf63zz", "MF63ZZ flanged ball bearing 3 x 6 x 2.5", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B08H27NJ5N", "B08H27NJ5N", pack_qty=10,
-                verified=True, note="uxcell 10-pack"),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/57155K538/", "57155K538")),
-         dims={"id": 3.0, "od": 6.0, "w": 2.5, "flange_d": 7.2, "flange_t": 0.6}),
-    Item("bearing_f683zz", "F683ZZ flanged ball bearing 3 x 7 x 3", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B08CKJ3NMW", "B08CKJ3NMW", pack_qty=10,
-                verified=True, note="uxcell 10-pack"),),
-         dims={"id": 3.0, "od": 7.0, "w": 3.0, "flange_d": 8.1, "flange_t": 0.8}),
-    Item("bearing_f623zz", "F623ZZ flanged ball bearing 3 x 10 x 4", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B07Z3CHXT5", "B07Z3CHXT5", pack_qty=10,
-                verified=True, note="uxcell 10-pack"),),
-         dims={"id": 3.0, "od": 10.0, "w": 4.0, "flange_d": 11.5, "flange_t": 1.0}),
-    Item("bushing_gfm0304_03", "igus iglide G flange bushing 3 x 4.5 x 3 (GFM-0304-03)",
-         "bushing",
-         (Offer("igus", "https://www.igus.com/iglide-ibh/flange-bearings/product-details/"
-                "iglidur-g-m?artnr=GFM-0304-03", "GFM-0304-03", verified=True),
-          Offer("TME", "https://www.tme.com/us/en-us/details/gfm-0304-03/plain-bearings/igus/",
-                "GFM-0304-03", pack_qty=10, price_usd=5.3),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/2705T111/", "2705T111")),
-         dims={"id": 3.0, "od": 4.5, "l": 3.0, "flange_d": 7.5, "flange_t": 0.75}),
-    Item("dowel_3x8", "3 mm x 8 mm dowel pin", "dowel",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/91595A104/", "91595A104"),
-          Offer("Amazon", "https://www.amazon.com/dp/B0C3QP216P", "B0C3QP216P", pack_qty=300,
-                verified=True, note="300-pc 304 stainless assortment, M2-M4 x 6-16 mm; "
-                "count per size and tolerance not stated")),
-         dims={"d": 3.0, "length": 8.0}),
-    Item("rod_3mm_100", "3 mm stainless rod, 100 mm", "dowel",
-         (Offer("Amazon", "https://www.amazon.com/dp/B082ZP313B", "B082ZP313B", pack_qty=5,
-                verified=True, note="uxcell 5-pack"),),
-         dims={"d": 3.0, "length": 100.0}),
-    Item("starlock_3mm", "Push-on lock washer for a 3 mm shaft", "clip",
-         (Offer("Amazon", "https://www.amazon.com/dp/B0B219S4FW", "B0B219S4FW", pack_qty=60,
-                verified=True, note="300-pc starlock kit M3-M12 (60 x 3 mm)"),),
-         dims={"shaft_d": 3.0, "od": 9.7, "h": 1.3}),
-    Item("m3_spacer_3", "M3 nylon unthreaded spacer, 3 mm long", "spacer",
-         (Offer("REV Robotics", "https://www.revrobotics.com/M3-Nylon-Unthreaded-Spacers/",
-                "REV-41-2884-PK50", pack_qty=50, price_usd=3.25, verified=True),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/93657A203/", "93657A203")),
-         dims={"length": 3.0, "od": 4.5}),
 )
 
 # ---------------------------------------------------------------------------
@@ -339,10 +219,46 @@ register(
          dims={"density": 1.27, "spool_g": 1000.0, "diameter": 1.75}),
 )
 
-__all__ = [
-    "BHCS_HEAD", "BHCS_LENGTHS", "CLEARANCE", "SELF_TAP_HEAD", "SELF_TAP_LENGTHS", "SHCS_HEAD",
-    "SHCS_LENGTHS", "STANDOFF_FF_LENGTHS", "bhcs", "self_tap", "shcs", "standoff_ff",
-]
+# Pivot hardware the metal-shaft constructions use (construction/pivots).
+register(
+    Item("bearing_mf63zz", "MF63ZZ flanged ball bearing 3 x 6 x 2.5", "bearing",
+         (Offer("Amazon", "https://www.amazon.com/dp/B08H27NJ5N", "B08H27NJ5N", pack_qty=10,
+                verified=True, note="uxcell 10-pack"),
+          Offer("McMaster-Carr", "https://www.mcmaster.com/57155K538/", "57155K538")),
+         dims={"id": 3.0, "od": 6.0, "w": 2.5, "flange_d": 7.2, "flange_t": 0.6}),
+    Item("bushing_gfm0304_03", "igus iglide G flange bushing 3 x 4.5 x 3 (GFM-0304-03)",
+         "bushing",
+         (Offer("igus", "https://www.igus.com/iglide-ibh/flange-bearings/product-details/"
+                "iglidur-g-m?artnr=GFM-0304-03", "GFM-0304-03", verified=True),
+          Offer("TME", "https://www.tme.com/us/en-us/details/gfm-0304-03/plain-bearings/igus/",
+                "GFM-0304-03", pack_qty=10, price_usd=5.3),
+          Offer("McMaster-Carr", "https://www.mcmaster.com/2705T111/", "2705T111")),
+         dims={"id": 3.0, "od": 4.5, "l": 3.0, "flange_d": 7.5, "flange_t": 0.75}),
+    Item("m3_nylock", "M3 nylon-insert lock nut (DIN 985)", "nut",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/93625A100/", "93625A100", pack_qty=100,
+                note="18-8 stainless; seen on the McMaster M3 locknut listing"),
+          Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-0-5-din-985-metric-hex-"
+                "nylon-insert-stop-lock-nuts-a2-stainless-steel/", "ME223", pack_qty=250,
+                price_usd=36.55, verified=True, note="A2 stainless, bag of 250"),
+          Offer("Amazon", "https://www.amazon.com/dp/B07KSPTYNZ", "B07KSPTYNZ", pack_qty=100)),
+         dims={"af": 5.5, "h": 4.0, "d": 3.0}),
+    Item("m3_washer", "M3 flat washer (DIN 125-A, 3.2 x 7 x 0.5)", "washer",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/91166A210/", "91166A210", pack_qty=100,
+                note="18-8 stainless, per the RepRap McMaster BOM"),
+          Offer("Amazon", "https://www.amazon.com/dp/B08HJVF49P", "B08HJVF49P", pack_qty=200),
+          Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-din-125-type-a-iso-7089-"
+                "7090-metric-standard-flat-washers-a2-stainless-steel/", pack_qty=6300,
+                price_usd=272.85, verified=True, note="bulk only")),
+         dims={"id": 3.2, "od": 7.0, "t": 0.5}),
+    Item("rod_3mm_100", "3 mm stainless rod, 100 mm", "dowel",
+         (Offer("Amazon", "https://www.amazon.com/dp/B082ZP313B", "B082ZP313B", pack_qty=5,
+                verified=True, note="uxcell 5-pack"),),
+         dims={"d": 3.0, "length": 100.0}),
+    Item("starlock_3mm", "Push-on lock washer for a 3 mm shaft", "clip",
+         (Offer("Amazon", "https://www.amazon.com/dp/B0B219S4FW", "B0B219S4FW", pack_qty=60,
+                verified=True, note="300-pc starlock kit M3-M12 (60 x 3 mm)"),),
+         dims={"shaft_d": 3.0, "od": 9.7, "h": 1.3}),
+)
 
 # Items the metal-shaft pivot constructions need (long bolts, clips); registered on import.
 from hardware import fastener_catalog  # noqa: E402, F401  (appends to the catalog)

@@ -41,6 +41,7 @@ no build exists so the API still works during initial setup.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import sys
@@ -53,6 +54,11 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+
+log = logging.getLogger("server")
+if not logging.root.handlers:       # under uvicorn, which configures only its own loggers
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.getLogger("build123d").setLevel(logging.WARNING)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VIEWER_DIR = REPO_ROOT / "viewer"
@@ -88,7 +94,6 @@ from bake_gltf import bake_gltf, build_config, is_default, param_glb  # noqa: E4
 
 import linkage  # noqa: E402
 import walk  # noqa: E402
-from construction import ConstructionError  # noqa: E402
 from fabricate import BuildConfig  # noqa: E402
 from server.watcher import WatchBroadcaster, is_ignored_dir, is_source  # noqa: E402
 
@@ -126,7 +131,7 @@ def _bake_to(path: Path, bake_mode: str, config: BuildConfig | None = None) -> N
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.stem}.partial{path.suffix}")
     try:
-        bake_gltf(tmp, mode=bake_mode, config=config, verbose=True)
+        bake_gltf(tmp, mode=bake_mode, config=config)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -135,7 +140,7 @@ def _bake_to(path: Path, bake_mode: str, config: BuildConfig | None = None) -> N
 def _bake_mode(mode_id: str) -> None:
     bake_mode = MODES[mode_id]
     out = _glb_path(mode_id)
-    print(f"[server] baking mode={mode_id} -> {out.name}")
+    log.info("baking mode=%s -> %s", mode_id, out.name)
     _bake_to(out, bake_mode)
 
 
@@ -159,8 +164,8 @@ def _ensure_param_baked(bake_mode: str, config: BuildConfig) -> Path:
     """The ``.glb`` of a non-default design, baked (and cached) on demand.
 
     422 when the linkage can't be assembled (checked first, from the
-    kinematics alone), the planner finds no layout (``ValueError``) or a
-    construction can't be built (:class:`construction.ConstructionError`).
+    kinematics alone), the planner finds no layout or a construction can't
+    be built (both ``ValueError``).
     """
     try:
         walk.side_legs(config)
@@ -174,11 +179,11 @@ def _ensure_param_baked(bake_mode: str, config: BuildConfig) -> Path:
         failed = _FAILED.get(path)
         if failed is not None and failed[0] >= mtime:
             raise HTTPException(status_code=422, detail=failed[1])
-        print(f"[server] baking mode={bake_mode} params={walk.params_of(config)} "
-              f"-> params/{path.name}")
+        log.info("baking mode=%s params=%s -> params/%s", bake_mode, walk.params_of(config),
+                 path.name)
         try:
             _bake_to(path, bake_mode, config)
-        except (ValueError, ConstructionError) as e:
+        except ValueError as e:
             reason = f"can't build this design: {e}"
             _FAILED[path] = (mtime, reason)
             raise HTTPException(status_code=422, detail=reason) from None

@@ -190,10 +190,5 @@ def main() -> int:
     return 1 if missing else 0
 
 
-__all__ = [
-    "CACHE_ENV", "OFFLINE_ENV", "USE_CAD_ENV", "cache_dir", "cad_enabled", "cached_path",
-    "fetch", "load", "main", "offline", "sha256_file",
-]
-
 if __name__ == "__main__":
     raise SystemExit(main())

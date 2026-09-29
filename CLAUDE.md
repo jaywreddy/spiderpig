@@ -63,8 +63,9 @@ Flags:
 | flag | default | purpose |
 |---|---|---|
 | `--profile / --no-profile` | on | stage timings + metrics summary |
-| `--cprofile PATH` | off | also dump `cProfile` `.prof` file + `<PATH>.txt` top-30 cumulative functions |
 | `--log-level LEVEL` | `INFO` | `DEBUG` for per-class tessellation and frame-sampling chatter |
+
+(For a function-level profile run the script under `python -m cProfile`.)
 
 Instrumented stages (keys in the summary table):
 
@@ -73,12 +74,12 @@ Instrumented stages (keys in the summary table):
 2. `2_mesh_share` — find bodies whose parts are exact translates of another
    (mirrored right-side plates, the legs' links) so they share one mesh
 3. `2_tessellate_total` + `2_tessellate.<kind>` — OCCT tessellation, one
-   mesh per shared shape
+   mesh per shared shape (positions and indices only: the viewer shades flat)
 3. `3_gltf_pack_geometry` — accessor/bufferview/material packing
 4. `4_animation_sample_total` with three sub-timers (run once per bake now,
    not once per frame):
-   - `4.1_template_build` — one-shot `MechanismTemplate` assembly
-     (includes all `klann.create_geometry` / `lambdify` work)
+   - `4.1_template_build` — one-shot `MechanismTemplate` assembly (the
+     linkage's program was compiled once per process by then)
    - `4.2_template_sample` — vectorized batched-BFS pose propagation
      over the whole `ts` array
    - `4.3_trs_batch` — batched planar rigid fit + quaternion hemisphere
@@ -89,11 +90,7 @@ Instrumented stages (keys in the summary table):
    servo rpm) on the root node `walker` for the viewer's drive mode
 7. `7_serialize` — `pygltflib.GLTF2.save_binary`
 
-Plus `bake_total` wrapping everything. The inner `klann.*` sub-timers
-(`4.1a_klann.create_geometry`, `4.1b_klann.lambdify`,
-`4.1c_klann.joints_at_eval`, `4.1d_klann.assemble_leg`) fire inside
-`1_reference_build` + `4.1_template_build`. `4.1b` fires once per process:
-the symbolic program is compiled once and cached.
+Plus `bake_total` wrapping everything.
 
 Metrics the summary reports: `n_frames`, `n_legs`, `n_bodies`, per-class
 `verts.*` / `tris.*`, `blob_bytes`, `gltf_bytes`, `animation_channels`,
@@ -110,7 +107,7 @@ Historical: the symbolic solve used to run per leg per call (per frame,
 before `19e020e`), and substituted expressions grew to ~34k ops. The
 straight-line program of each linkage (`linkage.py`) is compiled once per
 process; a leg's phase is a time shift. Don't reintroduce per-leg or
-per-frame solves. The `*_klann.*` labels are kept for every linkage.
+per-frame solves.
 
 ### How to extend
 
@@ -135,18 +132,18 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 | `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
 | `explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error and what would clear it) |
 | `recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), or thinner `Params` parts within every construction's `dims()` |
-| `klann.py` | the Klann-named API kept for callers: `PROPORTIONS`, `STEPS`, `KlannSolution` (= `LegSolution`), `build_*_template`, single-t `build_*_mechanism`. |
-| `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
+| `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling (numpy 4x4s). All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
 | `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers; an `early` part checked as soon as a group's own links are placed), a `Router` (a group whose shape it chooses per layering: the crank), a `Topology` (links, axles as named points, points fixed to the crank) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()` (see "The planner" below); `verify_plan()` re-checks exhaustively on fresh sampling. |
 | `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins: the claims, `AxleDims`, the `printed` snap axle), `crank.py` (routes, claims, the printed crankshaft), `route.py` (the crank's router: static facts, detours, the exact route per layering), `underside.py` (the body's underside: the envelope, ground clearance), `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides + chassis), `contract.py` (parts inside claims), `envelope.py` (solids of claims). Registries in `__init__.py`. |
 | `construction/pivots/` | metal-shaft pivots (`--pin` / `--pillar` keys; its docstring holds the hardware research): `rod` (3 mm rod, laser-cut spacer rings, Starlock clips, glued into the frame plates; `rod.py`), `bolt` (M3 SHCS axle, rings, washer + nylock; a pillar clamps both plates, the nut end claims 2-3 layers; `bolt.py`), `bearing` (MF63ZZ flanged bearing glued in each link, rod, printed sleeves; `insert.py`), `bushing` (igus GFM-0304-03 pressed in each link, same; `insert.py`). Their claims fill every layer (`AxleDims.fill`: a rod can't neck, so `neck` is the narrowest ring or sleeve), flanges need a free face (`AxleDims.flange`, `flange_sides`), retainers come from the construction's `ends` hook. Catalog additions in `hardware/fastener_catalog.py`. |
 | `servos/` | `ServoSpec` data (continuous-rotation servos only), the drive group (`mount.py`: servo on the inner frame plate, `DriveInterface` for the crank), models and CAD cache. |
-| `hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py` and `servos/catalog.py`) and the BOM (`bom.py`). |
-| `fabricate.py` | orchestration: `BuildConfig`, `design_side()` (groups -> claims -> plan, cached), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`). |
-| `shapes.py` | build123d primitives (disc, pill, plate, link plate, cuts incl. D-holes and rectangles) |
+| `hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py` and `servos/catalog.py`; the sheet helpers), the screw families (`fasteners.py`: heads, stock lengths, keys, solids), materials and exact mass properties (`mass.py`: the one density table, `material_of`, `part_props`) and the BOM (`bom.py`). |
+| `fabricate.py` | orchestration: `BuildConfig`, `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
+| `shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
-| `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM |
+| `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM (`construction.contract` has the checks) |
 | `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
+| `sim/` | MuJoCo: `mjcf.py` builds the MJCF of the fabricated robot (exact masses, loop equalities, velocity drives) and its viewer metadata; `run.py` steps it (`simulate`, `walk_metrics`, kinematic playback). `scripts/sim_walk.py` is the CLI. |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
 | `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker |
 
@@ -295,5 +292,11 @@ Physical rules the claims encode:
 - Don't put Z into joint poses. Z is the stack plan's job.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts should leave `mise run audit` green.
-- `verbose=True` on `bake_gltf()` is back-compat only: it forces the logger
-  to DEBUG. Prefer `--log-level DEBUG` from the CLI.
+- Tests build each design, side and robot once per session (the `design` /
+  `side` / `robot` factories in `tests/conftest.py`): read them, never
+  mutate them. `tests/test_contract.py` is the contract and clash check for
+  every module and servo; bakes, the CLI build, MuJoCo and the tuner are
+  marked `slow` (in the default run; `-m 'not slow'` skips them).
+- One density table, one OCCT mass query: `hardware/mass.py`. One screw
+  table: `hardware/fasteners.py` (`construction/crank.py` still carries its
+  own until its rewrite lands).

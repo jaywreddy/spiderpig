@@ -43,15 +43,10 @@ import construction
 import linkage
 import servos
 import walk
-from fabricate import (
-    MODULES,
-    BuildConfig,
-    design_side,
-    fabricate,
-    sheet_thickness,
-    template_for,
-)
+from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for
 from hardware.bom import BomLine, bom_from_mechanism, group_made
+from hardware.catalog import CATALOG, _load, sheet_size, sheet_thickness
+from hardware.mass import filament_density
 from layout import DEFAULT_KERF, save_sheets
 
 
@@ -113,8 +108,6 @@ def _parse_args(argv) -> argparse.Namespace:
 
 
 def _list_options() -> None:
-    from hardware.catalog import CATALOG, _load
-
     _load()
     print("linkages (--linkage; --proportion NAME=VALUE for its parameters):")
     for key in linkage.available():
@@ -134,13 +127,6 @@ def _list_options() -> None:
     for key, it in sorted(CATALOG.items()):
         if it.category == "sheet":
             print(f"  {key:14} {it.name}")
-
-
-def sheet_size(config: BuildConfig) -> tuple[float, float]:
-    from hardware.catalog import get
-
-    size = get(config.sheet).dims.get("sheet_mm")
-    return (float(size[0]), float(size[1])) if size else (200.0, 200.0)
 
 
 def _file_stem(name: str, taken: set[str]) -> str:
@@ -215,7 +201,7 @@ def main(argv=None) -> int:
     design = design_side(tmpl, config)
     plan = design.plan
     print(f"{args.module}: layer plan of one side, {plan.top + 1} layers of "
-          f"{sheet_thickness(config):g} mm ({plan.height:.1f} mm):")
+          f"{sheet_thickness(config.sheet, config.thickness):g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
     mech = fabricate(tmpl, config, 1.0)
     if config.robot:
@@ -230,18 +216,15 @@ def main(argv=None) -> int:
     print(f"wrote {step_path} and {stl_path}")
 
     groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
-    from hardware.catalog import get
-
     filament = mech.meta.get("filament", "pla_filament")
-    rows = export_prints(groups["printed"], out / "print",
-                         density=float(get(filament).dims.get("density", 1.24)))
+    rows = export_prints(groups["printed"], out / "print", density=filament_density(filament))
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
         print(f"  {r['file']:28} {r['print']}")
 
     if not args.no_dxf:
-        size = tuple(args.sheet_size) if args.sheet_size else sheet_size(config)
+        size = tuple(args.sheet_size) if args.sheet_size else sheet_size(config.sheet)
         sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
                              kerf=args.kerf)
         n_laser = sum(g.qty for g in groups["laser"])

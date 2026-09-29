@@ -1,8 +1,8 @@
-"""build123d part primitives for the Klann walker.
+"""build123d part primitives for the walker.
 
 Pure geometry: no mechanism wiring, no planning. Every function takes world
-XY positions and a Z range and returns a build123d ``Part``; :mod:`fabricate`
-decides what goes where, :mod:`joinery` and :mod:`servos` model hardware.
+XY positions and a Z range and returns a build123d ``Part``; the
+constructions (:mod:`construction`, :mod:`servos`) decide what goes where.
 """
 
 from __future__ import annotations
@@ -13,12 +13,6 @@ from dataclasses import dataclass
 
 import numpy as np
 from build123d import Align, Axis, Box, Compound, Cylinder, Part, Pos
-
-THICKNESS = 3.0   # default laser-cut sheet = one stack slot
-BUFF = 6.0        # link half-width (pill end radius)
-HOLE_R = 2.0      # running-fit hole for a 3.8 mm printed pin
-PIN_R = 1.9       # printed pin shaft; also the press-fit bore in printed caps
-FLANGE_R = 4.0    # printed pin head / cap / sleeve
 
 XY = Sequence[float]
 
@@ -107,11 +101,6 @@ def cut_holes(part: Part, cuts: Iterable[Cut | Rect], z0: float, z1: float) -> P
     return _unwrap(part - union(cutters))
 
 
-def drill(part: Part, holes: Iterable[tuple[XY, float]], z0: float, z1: float) -> Part:
-    """Cut round holes given as ``(xy, radius)``."""
-    return cut_holes(part, [Cut((float(xy[0]), float(xy[1])), 2 * r) for xy, r in holes], z0, z1)
-
-
 def plate(
     pills: Iterable[tuple[XY, XY, float]],
     z0: float,
@@ -125,46 +114,18 @@ def plate(
     return cut_holes(union(shapes), cuts, z0, z1)
 
 
-def link_plate(
-    segments: Iterable[tuple[XY, XY]],
-    z0: float,
-    z1: float,
-    holes: Iterable[XY | Cut] = (),
-    radius: float = BUFF,
-) -> Part:
-    """A laser-cut link: pills over ``segments``, cut at ``holes`` (a bare XY
-    gets the printed-pin running fit)."""
-    cuts = [h if isinstance(h, (Cut, Rect)) else Cut((float(h[0]), float(h[1])), 2 * HOLE_R)
-            for h in holes]
-    return plate([(p, q, radius) for p, q in segments], z0, z1, cuts)
-
-
-def ring(xy: XY, od: float, id_: float, z0: float, z1: float) -> Part:
-    """A spacer ring (laser-cut washer)."""
-    return drill(disc(xy, od / 2, z0, z1), [(xy, id_ / 2)], z0, z1)
-
-
 def box(center: XY, size: tuple[float, float, float], z0: float, angle: float = 0.0) -> Part:
     """A box standing on ``z0``, centred on ``center`` in XY, turned by ``angle`` (rad)."""
     b = Box(*size, align=(Align.CENTER, Align.CENTER, Align.MIN))
     return b.rotate(Axis.Z, math.degrees(angle)).move(Pos(float(center[0]), float(center[1]), z0))
 
 
-# -- printed pin kit (the no-purchase joinery option) --------------------------
+# Restored for the metal-shaft pivots (construction/pivots): laser-cut spacer rings.
+def ring(xy: XY, od: float, id_: float, z0: float, z1: float) -> Part:
+    """A spacer ring (laser-cut washer)."""
+    return drill(disc(xy, od / 2, z0, z1), [(xy, id_ / 2)], z0, z1)
 
 
-def pin(xy: XY, head: tuple[float, float], top: float, *, shaft_r: float = PIN_R,
-        head_r: float = FLANGE_R) -> Part:
-    """Printed pin: a head flange over ``head`` (z0, z1) and a shaft up to ``top``."""
-    return union([disc(xy, head_r, *head), disc(xy, shaft_r, head[0], top)])
-
-
-def cap(xy: XY, z0: float, z1: float, *, bore_r: float = PIN_R, r: float = FLANGE_R) -> Part:
-    """Press-on cap: a flange with a bore that grips the pin shaft."""
-    return drill(disc(xy, r, z0, z1), [(xy, bore_r)], z0, z1)
-
-
-def sleeve(xy: XY, z0: float, z1: float, *, bore_r: float = HOLE_R,
-           r: float = FLANGE_R) -> Part:
-    """Spacer between two links on one pin (running fit on the shaft)."""
-    return drill(disc(xy, r, z0, z1), [(xy, bore_r)], z0, z1)
+def drill(part: Part, holes: Iterable[tuple[XY, float]], z0: float, z1: float) -> Part:
+    """Cut round holes given as ``(xy, radius)``."""
+    return cut_holes(part, [Cut((float(xy[0]), float(xy[1])), 2 * r) for xy, r in holes], z0, z1)

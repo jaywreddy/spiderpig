@@ -45,7 +45,7 @@ from construction.pivots.common import (
 )
 from hardware.catalog import get
 from hardware.fastener_catalog import BOLT_LENGTHS
-from hardware.parts import CLEARANCE, shcs
+from hardware.fasteners import CLEARANCE, shcs
 from shapes import Cut, disc, ring, union
 from stack import Unbuildable
 

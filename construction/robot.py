@@ -57,10 +57,14 @@ from build123d import Location, Plane
 
 from construction.base import FRAME_INNER, Build, ConstructionError, Context, Realized
 from hardware.bom import BomLine
+from hardware.catalog import adhesive, get, pick_length
+from hardware.fasteners import CLEARANCE, Screw, parse, screw
 from mechanism import Body, Mechanism, MechanismTemplate
+from servos.model import UNKNOWN_HOLE_DEPTH
 from shapes import Cut, Rect, box, cut_holes, disc, union
 
 SIDES = ("L", "R")
+TIE_SCREW = screw("shcs", "3")   # the frame ties' M3 socket head screws
 REAR_ENGAGE = 4.0        # target thread engagement of a rear screw in its servo's pilot (mm)
 MIN_ENGAGE = 2.0         # least thread engagement that still holds
 HEAD_CLEARANCE = 0.3     # radial clearance around a screw head in a laser-cut recess (mm)
@@ -99,11 +103,16 @@ def _rear_face(spec) -> float:
     return spec.rear_face_z if spec.rear_face_z is not None else spec.mount_face_z - spec.body[2]
 
 
+def mid_plane_z(spec, top: int, pitch: float, margin: float) -> float:
+    """Side-coordinate z of the robot's mid-plane for a stack of ``top + 1`` layers."""
+    n = centre_plates(spec, pitch, margin)
+    return (top + 1) * pitch + (spec.mount_face_z - _rear_face(spec)) + n * pitch / 2
+
+
 def mid_plane(design) -> float:
     """Side-coordinate z of the robot's mid-plane."""
-    spec, plan = design.ctx.servo, design.plan
-    n = centre_plates(spec, design.ctx.pitch, design.ctx.params.margin)
-    return plan.z(plan.top)[1] + (spec.mount_face_z - _rear_face(spec)) + n * design.ctx.pitch / 2
+    return mid_plane_z(design.ctx.servo, design.plan.top, design.ctx.pitch,
+                       design.ctx.params.margin)
 
 
 # ---------------------------------------------------------------------------
@@ -184,18 +193,15 @@ class TieDims:
 
 
 def tie_dims(ctx: Context) -> TieDims:
-    from hardware.catalog import get
-
     p = ctx.params
     ins = get("m3_heat_set_insert").dims
-    head = get("m3_shcs_10").dims
-    bore = head["head_d"] + 2 * p.print_fit
+    sk = TIE_SCREW
+    bore = sk.head_d + 2 * p.print_fit
     spigot = round(bore + 2 * max(p.min_wall, 1.2), 1)
     column = spigot / 2 + 2.5
     dims = TieDims(column=column, spigot_d=spigot, bore_d=bore, floor=3.0,
-                   clearance_d=head["clearance_d"], insert_d=ins["hole_d"],
-                   insert_len=ins["length"], screw_d=head["d"], head_d=head["head_d"],
-                   head_h=head["head_h"])
+                   clearance_d=CLEARANCE[sk.size], insert_d=ins["hole_d"],
+                   insert_len=ins["length"], screw_d=sk.d, head_d=sk.head_d, head_h=sk.head_h)
     if column - dims.insert_d / 2 < ins["min_wall"]:
         raise ConstructionError("a tie column is too thin for its heat-set insert")
     return dims
@@ -272,38 +278,22 @@ class RearScrews:
     head_h: float
 
 
-def _screw_choice(hole_key: str | None, grip: float, depth: float):
-    """(key, length, dims) of the screw for a rear hole: the hole's screw family, resized.
+def _screw_choice(hole_key: str | None, grip: float, depth: float) -> tuple[Screw, float]:
+    """The screw for a rear hole: the hole's screw family, resized.
 
     The screw reaches ``REAR_ENGAGE`` into the pilot if the hole is that deep,
     never past its bottom (``depth``), and at least ``MIN_ENGAGE``.
     """
-    from hardware.catalog import get
-    from hardware.parts import SELF_TAP_LENGTHS, SHCS_LENGTHS, self_tap, shcs
-
-    key = hole_key or "m2_self_tap_6"
-    family = None
-    for size in SELF_TAP_LENGTHS:
-        if key.startswith(f"m{size}_self_tap_"):
-            family = (SELF_TAP_LENGTHS[size], lambda L, s=size: self_tap(s, L))
-    for size in SHCS_LENGTHS:
-        if key.startswith(f"m{size}_shcs_"):
-            family = (SHCS_LENGTHS[size], lambda L, s=size: shcs(s, L))
-    if family is None:        # an item of fixed length: use it if it fits the hole
-        length = float(get(key).dims["length"])
-        if not MIN_ENGAGE <= length - grip <= depth:
-            raise ConstructionError(f"{key} doesn't fit a {depth:g} mm deep rear pilot "
-                                    f"through {grip:g} mm of centre plate")
-        return key, length, get(key).dims
-    lengths, make = family
-    fits = [L for L in lengths if MIN_ENGAGE <= L - grip <= depth]
+    parsed = parse(hole_key or "m2_self_tap_6")
+    if parsed is None:
+        raise ConstructionError(f"no screws modelled for the rear hole's {hole_key!r}")
+    sk, _ = parsed
+    fits = [L for L in sk.lengths if MIN_ENGAGE <= L - grip <= depth]
     if not fits:
-        raise ConstructionError(f"no {make(0).rsplit('_', 1)[0]} length engages "
+        raise ConstructionError(f"no {sk.key(0).rsplit('_', 1)[0]} length engages "
                                 f"{MIN_ENGAGE:g}..{depth:g} mm through {grip:g} mm of plate")
     target = min(REAR_ENGAGE, depth)
-    length = min(fits, key=lambda L: (abs(L - grip - target), -L))
-    key = make(length)
-    return key, float(length), get(key).dims
+    return sk, float(min(fits, key=lambda L: (abs(L - grip - target), -L)))
 
 
 def rear_screws(spec, n: int, pitch: float) -> RearScrews | None:
@@ -313,13 +303,10 @@ def rear_screws(spec, n: int, pitch: float) -> RearScrews | None:
     if own < 1 or not holes:
         return None
     grip = own * pitch
-    from servos.model import UNKNOWN_HOLE_DEPTH
-
     depth = min(h.depth if h.depth is not None else UNKNOWN_HOLE_DEPTH for h in holes)
-    key, length, dims = _screw_choice(holes[0].screw, grip, depth)
-    rs = RearScrews(holes=holes, key=key, own=own, length=length, engage=length - grip,
-                    d=float(dims["d"]), head_d=float(dims["head_d"]),
-                    head_h=float(dims["head_h"]))
+    sk, length = _screw_choice(holes[0].screw, grip, depth)
+    rs = RearScrews(holes=holes, key=sk.key(length), own=own, length=length,
+                    engage=length - grip, d=sk.d, head_d=sk.head_d, head_h=sk.head_h)
     if rs.head_h >= (n - own) * pitch:      # from its seat to the other servo's rear face
         raise ConstructionError("rear screw heads don't fit between the servos")
     return rs
@@ -403,10 +390,6 @@ def _rounded_rect(frame: ServoFrame, x0, x1, y0, y1, r: float, z0: float, z1: fl
 
 def _chassis(side: Mechanism, design, z_mid: float) -> tuple[list[Body], list[BomLine], dict]:
     """Centre plates, the servos' rear screws and the frame ties (world coordinates)."""
-    from fabricate import adhesive
-    from hardware.catalog import pick_length
-    from hardware.parts import SHCS_LENGTHS, shcs
-
     ctx, plan = design.ctx, design.plan
     spec, p, pitch = ctx.servo, ctx.params, ctx.pitch
     build = Build(ctx, plan, side)
@@ -447,16 +430,15 @@ def _chassis(side: Mechanism, design, z_mid: float) -> tuple[list[Body], list[Bo
         info.update(rear_screw=None, rear_screws_per_servo=0)
 
     # -- frame ties -----------------------------------------------------------------
-    ties_group = next((g for g in design.groups if isinstance(g, FrameTies)), None)
-    tie_xy = tie_points(build, design.drive) if ties_group is not None else []
+    tie_xy = tie_points(build, design.drive)
     extras: list[BomLine] = []
     if tie_xy:
         d = tie_dims(ctx)
         z_top = plan.z(plan.top)[1] - z_mid           # inner plate's top face (left side)
         z_spigot = z_top - (pitch - SPIGOT_RECESS)
         need = d.floor + 2 * half + min(INSERT_ENGAGE, d.insert_len)
-        length = pick_length(need, SHCS_LENGTHS["3"])
-        key = shcs("3", length)
+        length = pick_length(need, TIE_SCREW.lengths)
+        key = TIE_SCREW.key(length)
         engage = length - d.floor - 2 * half
         pocket = max(d.insert_len, engage) + 1.0
         if -half - z_top < d.floor + d.head_h + 1.0 or pocket > -half - z_top - 1.0:
@@ -532,13 +514,6 @@ def _chassis(side: Mechanism, design, z_mid: float) -> tuple[list[Body], list[Bo
         bodies.append(Body(name=f"centre_plate{k}", part=part, rigid_with=host["L"],
                            fab="laser", color=CHASSIS_COLOR))
     if n > 1:
-        extras.append(BomLine(adhesive(ctx.config), 1, "laminate the centre plates"))
+        extras.append(BomLine(adhesive(ctx.config.sheet), 1, "laminate the centre plates"))
     info["fastened"] = fastened
     return bodies, extras, info
-
-
-__all__ = [
-    "MIN_ENGAGE", "REAR_ENGAGE", "SIDES", "FrameTies", "RearScrews", "ServoFrame", "TieDims",
-    "assemble_robot", "centre_plates", "mid_plane", "prefixed", "rear_screws",
-    "robot_template", "servo_frame", "tie_dims", "tie_points",
-]

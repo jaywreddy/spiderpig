@@ -420,6 +420,3 @@ def segment_solid(seg: Segment, snap: Snap, xy, angle: float = 0.0) -> Solid:
     if angle:
         solid = solid.rotate(Axis.Z, math.degrees(angle))
     return solid.moved(Location((float(xy[0]), float(xy[1]), 0.0)))
-
-
-__all__ = ["Piece", "Segment", "Snap", "outline", "plan_segments", "prong_section", "segment_solid"]

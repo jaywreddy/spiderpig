@@ -28,7 +28,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import sys
 import time
@@ -38,47 +37,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
 import linkage  # noqa: E402
-from construction.contract import check_side  # noqa: E402
+from construction.contract import bad_solids, check_side, clashes  # noqa: E402
 from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
 from hardware.bom import BomLine, bom_from_mechanism  # noqa: E402
+from hardware.catalog import sheet_size  # noqa: E402
 from layout import pack  # noqa: E402
-from main import add_config_args, sheet_size  # noqa: E402
+from main import add_config_args  # noqa: E402
 from stack import verify_plan  # noqa: E402
-
-CLASH_MM3 = 1e-3
-
-
-def _overlap(a, b, eps: float = 1e-6) -> bool:
-    return all(max(getattr(a.min, c), getattr(b.min, c)) < min(getattr(a.max, c),
-                                                               getattr(b.max, c)) - eps
-               for c in "XYZ")
-
-
-def clashes(mech) -> list[dict]:
-    """Pairs of parts that intersect by more than ``CLASH_MM3`` (fastened pairs excepted)."""
-    allowed = {frozenset(p) for p in mech.meta.get("fastened", [])}
-    parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
-    boxes = {n: p.bounding_box() for n, p in parts.items()}
-    out = []
-    for a, b in itertools.combinations(parts, 2):
-        if frozenset((a, b)) in allowed or not _overlap(boxes[a], boxes[b]):
-            continue
-        inter = parts[a] & parts[b]
-        vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
-        if vol > CLASH_MM3:
-            out.append({"a": a, "b": b, "mm3": round(vol, 3)})
-    return out
-
-
-def bad_solids(mech) -> list[dict]:
-    out = []
-    for b in mech.bodies:
-        if b.part is None:
-            continue
-        n = len(b.part.solids())
-        if n != 1 or not b.part.is_valid:
-            out.append({"part": b.name, "solids": n, "valid": bool(b.part.is_valid)})
-    return out
 
 
 def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash) -> dict:
@@ -100,7 +65,7 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash) -> dic
                       if k in ("centre_plates", "rear_screw", "rear_screws_per_servo",
                                "rear_engagement_mm", "ties", "tie_screw", "tie_engagement_mm")}
     try:
-        sheets = pack(mech, sheet_size(config))
+        sheets = pack(mech, sheet_size(config.sheet))
         rep["dxf_sheets"], rep["dxf_error"] = len(sheets), None
         mech.bom_extras.append(BomLine(config.sheet, len(sheets), "laser-cut parts"))
     except ValueError as e:

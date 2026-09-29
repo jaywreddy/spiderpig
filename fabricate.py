@@ -10,7 +10,8 @@ last with every hole the other groups asked for.
 
 With ``BuildConfig.robot`` (the default) the result is the whole robot: two
 mirror-image sides with their servos back to back in one frame
-(:mod:`construction.robot`).
+(:mod:`construction.robot`). The robot's side is the side on its own with
+the frame ties added at build time, so the two share one design.
 
 Every body carries ``fab`` ("laser", "printed" or "purchased"), purchased
 ones a catalog ``bom_key``; non-kinematic bodies carry ``rigid_with`` (what
@@ -22,10 +23,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 
 import construction
+import linkage
 import servos
 from construction.base import Build, Context, Params, Realized
 from construction.plates import FramePlates, LinkPlates
+from construction.robot import FrameTies, assemble_robot
 from construction.underside import underside
+from hardware.catalog import sheet_name, sheet_thickness
 from mechanism import Mechanism
 from servos.mount import DriveGroup
 from stack import (
@@ -63,18 +67,8 @@ class BuildConfig:
 
 def template_for(config: BuildConfig):
     """The kinematic template of one side for ``config`` (linkage, module, phases, params)."""
-    from linkage import build_module_template
-
-    return build_module_template(config.module, config.phases, dict(config.proportions),
-                                 config.linkage)
-
-
-def sheet_thickness(config: BuildConfig) -> float:
-    if config.thickness is not None:
-        return config.thickness
-    from hardware.catalog import get
-
-    return float(get(config.sheet).dims["thickness"])
+    return linkage.build_module_template(config.module, config.phases, dict(config.proportions),
+                                         config.linkage)
 
 
 @dataclass
@@ -101,8 +95,6 @@ class SideDesign:
 
     @property
     def checks(self):
-        import linkage
-
         return linkage.get(self.config.linkage).check(dict(self.config.proportions))
 
 
@@ -117,12 +109,7 @@ def side_groups(ctx: Context, config: BuildConfig) -> list:
             groups.append(construction.AxleGroup(ax, construction.axle(config.pillar)))
         elif ax.kind == "pin":
             groups.append(construction.AxleGroup(ax, construction.axle(config.pin)))
-    if config.robot:   # the inner plate's share of the frame ties between the two sides
-        from construction.robot import FrameTies
-
-        groups.append(FrameTies(groups[0]))
-    groups += [LinkPlates(), FramePlates()]
-    return groups
+    return groups + [LinkPlates(), FramePlates()]
 
 
 def side_clearances(ctx: Context, groups: list) -> list[Clearance]:
@@ -136,7 +123,8 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
     static clearances, the body's underside (``ctx.interfaces["underside"]``) and the
     crank's router (its static facts in ``problem.router.facts``)."""
     topo = topology_from_template(tmpl)
-    ctx = Context(topo=topo, params=config.params, pitch=sheet_thickness(config),
+    ctx = Context(topo=topo, params=config.params,
+                  pitch=sheet_thickness(config.sheet, config.thickness),
                   servo=servos.get(config.servo), config=config)
     groups = side_groups(ctx, config)
     for g in groups:
@@ -211,7 +199,7 @@ def _reuse(problem: StackProblem, solved: StackPlan | None) -> StackPlan | None:
 def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True) -> SideDesign:
     """Rationalize and plan one side (cached per template and config). A failure of the
     planner's stages says what would clear it (``advise``, :mod:`recommend`)."""
-    config = config or BuildConfig()
+    config = replace(config or BuildConfig(), robot=False)
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
     if key not in _DESIGNS:
@@ -241,20 +229,19 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True) ->
     return _DESIGNS[key]
 
 
-def plan_for(tmpl, config: BuildConfig | None = None) -> StackPlan:
-    """The layer plan of one side."""
-    return design_side(tmpl, config).plan
+def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mechanism:
+    """Build every part of one side for ``mech`` (the side's template frozen at some ``t``).
 
-
-def fabricate_side(design: SideDesign, mech: Mechanism) -> Mechanism:
-    """Build every part of one side for ``mech`` (the side's template frozen at some ``t``)."""
+    ``extra_groups`` (the robot's frame ties) realize after the design's
+    groups and before the plates, which cut what they ask for.
+    """
     build = Build(design.ctx, design.plan, mech)
     done = Realized()
-    for g in design.groups:
-        if isinstance(g, (LinkPlates, FramePlates)):
-            done.merge(g.realize(build, done))
-        else:
-            done.merge(g.realize(build))
+    plates = [g for g in design.groups if isinstance(g, (LinkPlates, FramePlates))]
+    for g in [g for g in design.groups if g not in plates] + list(extra_groups):
+        done.merge(g.realize(build))
+    for g in plates:
+        done.merge(g.realize(build, done))
     bodies = {b.name: replace(b, part=None) for b in mech.bodies}
     extra = []
     for b in done.bodies:
@@ -267,7 +254,7 @@ def fabricate_side(design: SideDesign, mech: Mechanism) -> Mechanism:
     cfg = design.config
     meta = dict(mech.meta)
     meta.update(
-        sheet=cfg.sheet, sheet_name=_sheet_name(cfg), pitch=design.ctx.pitch,
+        sheet=cfg.sheet, sheet_name=sheet_name(cfg.sheet), pitch=design.ctx.pitch,
         servo=cfg.servo, pillar=cfg.pillar, pin=cfg.pin, crank=cfg.crank,
         layers=design.plan.top + 1, stack_mm=design.plan.height,
     )
@@ -284,28 +271,6 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0) -> Mechan
     """The fabricated walker at crank angle ``t`` (one side unless ``config.robot``)."""
     config = config or BuildConfig()
     design = design_side(tmpl, config)
-    side = fabricate_side(design, tmpl.freeze_at(t))
-    if not config.robot:
-        return side
-    from construction.robot import assemble_robot
-
-    return assemble_robot(side, design)
-
-
-def _sheet_name(config: BuildConfig) -> str:
-    from hardware.catalog import get
-
-    try:
-        return get(config.sheet).name
-    except KeyError:
-        return config.sheet
-
-
-def adhesive(config: BuildConfig) -> str:
-    return "wood_glue" if "plywood" in config.sheet else "acrylic_cement"
-
-
-__all__ = [
-    "MODULES", "BuildConfig", "SideDesign", "design_side", "fabricate", "fabricate_side",
-    "plan_for", "sheet_thickness", "template_for",
-]
+    ties = [FrameTies(design.drive)] if config.robot else []
+    side = fabricate_side(design, tmpl.freeze_at(t), ties)
+    return assemble_robot(side, design) if config.robot else side

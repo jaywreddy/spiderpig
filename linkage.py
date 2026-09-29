@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import contextmanager
 from dataclasses import dataclass, field
 from functools import cache, cached_property
 from typing import Any
@@ -47,23 +46,7 @@ import numpy as np
 import sympy as sp
 
 from mechanism import BodyTemplate, JointTemplate, MechanismTemplate, translation_pose_at
-
-# Optional profiler hook. ``viewer/bake_gltf.py`` sets this to its
-# ``_Profiler`` instance at the start of a bake so the symbolic work shows up
-# as labelled rows in the bake profile summary. The labels predate the other
-# linkages and stay ``*_klann.*`` so downstream parsers keep working.
-_BAKE_PROFILER: Any = None
-
-
-@contextmanager
-def _maybe_timed(label: str):
-    prof = _BAKE_PROFILER
-    if prof is None:
-        yield
-        return
-    with prof.timed(label):
-        yield
-
+from stack import body_class
 
 # ---------------------------------------------------------------------------
 # Compass-and-ruler constructions
@@ -285,17 +268,6 @@ class Linkage:
         base = MODULE_LEGS if self.feet else {"single": MODULE_LEGS["single"]}
         return {**base, **self.modules}
 
-    def closed_form(self) -> dict[str, sp.Matrix]:
-        """Fully substituted point expressions (for inspection and differentiation)."""
-        env: dict[sp.Symbol, sp.Expr] = {}
-        out: dict[str, sp.Matrix] = {}
-        for name, expr in self.steps:
-            e = expr.xreplace(env)
-            out[name] = e
-            x, y = P(name)
-            env[x], env[y] = e[0], e[1]
-        return out
-
     @cached_property
     def compiled(self) -> Callable[..., list]:
         """The program, compiled once: ``(t, [t2,] *params) -> [Ox, Oy, Ax, ...]``.
@@ -304,12 +276,11 @@ class Linkage:
         the points before it, and run in order: never substituted, so
         compiling costs the same at any depth.
         """
-        with _maybe_timed("4.1b_klann.lambdify"):
-            head = [sp.Symbol(i, real=True) for i in self.inputs] + list(self.symbols.values())
-            fns, before = [], []
-            for name, expr in self.steps:
-                fns.append(sp.lambdify([*head, *before], list(expr), modules="numpy", cse=True))
-                before += list(P(name))
+        head = [sp.Symbol(i, real=True) for i in self.inputs] + list(self.symbols.values())
+        fns, before = [], []
+        for name, expr in self.steps:
+            fns.append(sp.lambdify([*head, *before], list(expr), modules="numpy", cse=True))
+            before += list(P(name))
 
         def run(*args):
             flat: list = []
@@ -331,10 +302,8 @@ class Linkage:
     def solve(self, orientation: int = 1, phase: float = 0.0,
               params: Mapping[str, float] | None = None) -> LegSolution:
         """One leg of this linkage (cheap: compiles once, then records parameters)."""
-        with _maybe_timed("4.1a_klann.create_geometry"):
-            self.compiled  # noqa: B018 - compile (and time it) on first use
-            values = self.values(params) if params else ()
-            return LegSolution(int(orientation), float(phase), values, self.key)
+        values = self.values(params) if params else ()
+        return LegSolution(int(orientation), float(phase), values, self.key)
 
     def check(self, params: Mapping[str, float] | None = None) -> list[StepCheck]:
         """Every step of the program over one revolution, or over the torus of two
@@ -672,16 +641,6 @@ class LegSolution:
         lk = self.linkage
         return dict(zip(lk.params, self.values or lk.defaults, strict=True))
 
-    @cached_property
-    def points(self) -> dict[str, sp.Matrix]:
-        """Closed-form ``(x, y)`` per named point, in ``t`` (slow; for inspection)."""
-        lk = self.linkage
-        tt = t + self.phase if self.orientation > 0 else sp.pi - (t + self.phase)
-        subs = {t: tt} | {lk.symbols[k]: v for k, v in self.proportions.items()}
-        sign = 1 if self.orientation > 0 else -1
-        return {name: sp.Matrix([sign * e[0], e[1]]).xreplace(subs)
-                for name, e in lk.closed_form().items()}
-
     @property
     def segments(self) -> dict[str, tuple[str, ...]]:
         """Body name -> the named joints along it (the crank is ``conn``)."""
@@ -722,9 +681,8 @@ class LegSolution:
 
     def joints_at(self, t_value: float) -> dict[str, tuple[float, float]]:
         """Evaluate every named point at ``t_value`` and return float (x, y) pairs."""
-        with _maybe_timed("4.1c_klann.joints_at_eval"):
-            pts = self.evaluate(float(t_value))
-            return {name: (float(v[0]), float(v[1])) for name, v in pts.items()}
+        pts = self.evaluate(float(t_value))
+        return {name: (float(v[0]), float(v[1])) for name, v in pts.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -765,25 +723,24 @@ def leg_connections(lk: Linkage) -> list[tuple[str, str, str]]:
 
 def build_leg_template(solution: LegSolution, *, name_suffix: str = "") -> MechanismTemplate:
     """One leg whose joint poses are closures over the compiled program."""
-    with _maybe_timed("4.1d_klann.assemble_leg"):
-        lk = solution.linkage
-        callables = solution.callables
-        bodies = [
-            BodyTemplate(
-                name=f"{name}{name_suffix}",
-                joints=[JointTemplate(name=j, pose_at=translation_pose_at(callables[j], z=0.0))
-                        for j in joints],
-                outline=outline,
-                color=color,
-            )
-            for name, joints, outline, color in leg_bodies(lk)
-        ]
-        connections = [
-            ((0, f"{a}{name_suffix}", j), (0, f"{b}{name_suffix}", j))
-            for a, b, j in leg_connections(lk)
-        ]
-        return MechanismTemplate(name=f"{lk.key}{name_suffix}", bodies=bodies,
-                                 connections=connections)
+    lk = solution.linkage
+    callables = solution.callables
+    bodies = [
+        BodyTemplate(
+            name=f"{name}{name_suffix}",
+            joints=[JointTemplate(name=j, pose_at=translation_pose_at(callables[j], z=0.0))
+                    for j in joints],
+            outline=outline,
+            color=color,
+        )
+        for name, joints, outline, color in leg_bodies(lk)
+    ]
+    connections = [
+        ((0, f"{a}{name_suffix}", j), (0, f"{b}{name_suffix}", j))
+        for a, b, j in leg_connections(lk)
+    ]
+    return MechanismTemplate(name=f"{lk.key}{name_suffix}", bodies=bodies,
+                             connections=connections)
 
 
 # ---------------------------------------------------------------------------
@@ -985,8 +942,6 @@ def feet_of(tmpl_or_mech) -> list[tuple[str, str]]:
     Reads the linkage from ``meta`` and matches foot links by class (so
     ``L.b4_leg2`` is a Klann foot).
     """
-    from stack import body_class  # lazy: stack imports numpy-heavy bits only
-
     lk = get(tmpl_or_mech.meta.get("linkage", DEFAULT))
     return [(b.name, j) for b in tmpl_or_mech.bodies for cls, j in lk.feet
             if body_class(b.name) == cls]

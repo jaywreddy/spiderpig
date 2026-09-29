@@ -26,7 +26,6 @@ from bake_gltf import (  # noqa: E402
     _MATERIALS,
     _build_assembly,
     _congruent,
-    _mass_props,
     _Planar,
     bake_gltf,
     build_config,
@@ -35,10 +34,13 @@ from bake_gltf import (  # noqa: E402
     param_glb,
 )
 
-import klann  # noqa: E402
 import linkage  # noqa: E402
 import walk  # noqa: E402
+from hardware.mass import part_props  # noqa: E402
 
+pytestmark = pytest.mark.slow
+
+KLANN = linkage.get("klann")
 N_FRAMES = 12
 DURATION = 0.5
 CASES = {
@@ -244,18 +246,19 @@ def test_congruence_check():
     """A Z-mirror is a Z shift only for a part symmetric about its mid-plane."""
     from build123d import Axis, Location, Plane
 
-    from shapes import disc, link_plate
+    from shapes import Cut, disc
+    from shapes import plate as make_plate
 
-    plate = link_plate([((0, 0), (40, 10))], 0.0, 3.0, holes=[(0, 0), (40, 10)], radius=6.0)
+    plate = make_plate([((0, 0), (40, 10), 6.0)], 0.0, 3.0, [Cut((0, 0), 4.0), Cut((40, 10), 4.0)])
     pin = disc((5, 5), 3.0, 0.0, 12.0).fuse(disc((5, 5), 4.5, 0.0, 2.0))   # head at the bottom
     for part, symmetric in ((plate, True), (pin, False)):
         mirrored = part.mirror(Plane.XY).moved(Location((0, 0, -20.0)))
-        a, b = _mass_props(part), _mass_props(mirrored)
+        a, b = part_props(part), part_props(mirrored)
         g = _Planar(dz=float(b.com[2] - a.com[2]))
         assert _congruent(a, b, g) is symmetric
     # a turned and shifted plate is congruent under the matching motion only
     moved = plate.rotate(Axis.Z, 30).moved(Location((7.0, -3.0, 9.0)))
-    a, b = _mass_props(plate), _mass_props(moved)
+    a, b = part_props(plate), part_props(moved)
     assert _congruent(a, b, _Planar(math.radians(30), (7.0, -3.0), 9.0))
     assert not _congruent(a, b, _Planar(0.0, (7.0, -3.0), 9.0))
 
@@ -338,7 +341,7 @@ def test_drive_extras(baked):
     feet = drive["feet"]
     assert [(f["body"], f["side"], f["leg"]) for f in feet] == [("L.b4", "L", 0), ("R.b4", "R", 0)]
     index = {n.name: i for i, n in enumerate(gltf.nodes)}
-    path = klann.create_klann_geometry().evaluate(walk.theta_grid())["F"]
+    path = KLANN.solve().evaluate(walk.theta_grid())["F"]
     for f in feet:
         np.testing.assert_allclose(f["xy"], path, atol=1e-3)
         assert f["z"] == pytest.approx(_foot_z(gltf, index[f["body"]]), abs=0.01)
@@ -351,7 +354,7 @@ def test_drive_extras(baked):
     assert drive["mass_g"] > 150.0
     assert drive["servo"] == {"key": "sts3215", "rpm_max": 52.0}
     assert drive["params"] == {"linkage": "klann", "module": "single", "phases_deg": [0.0],
-                               "proportions": {k: float(v) for k, v in klann.PROPORTIONS.items()}}
+                               "proportions": {k: float(v) for k, v in KLANN.params.items()}}
     assert drive["z_nominal"] is False
     assert drive["com_nominal"] is False
     assert drive["metrics"]["degenerate_fraction"] == 1.0        # two feet
@@ -362,7 +365,7 @@ def test_phases_are_baked(bakes):
     gltf = bakes("phased")
     drive = _root(gltf).extras["drive"]
     assert drive["params"]["phases_deg"] == [90.0]
-    base = klann.create_klann_geometry().evaluate(walk.theta_grid())["F"]
+    base = KLANN.solve().evaluate(walk.theta_grid())["F"]
     np.testing.assert_allclose(drive["feet"][0]["xy"], np.roll(base, -90, axis=0), atol=1e-3)
     trs = _tracks(gltf)
     frame = 3

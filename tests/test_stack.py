@@ -7,14 +7,6 @@ import dataclasses
 import numpy as np
 import pytest
 
-from fabricate import BuildConfig, design_side
-from klann import (
-    build_double_decker_template,
-    build_double_double_decker_template,
-    build_double_template,
-    build_klann_template,
-    create_klann_geometry,
-)
 from stack import (
     Claim,
     Geometry,
@@ -27,19 +19,11 @@ from stack import (
     verify_plan,
 )
 
-TEMPLATES = {
-    "single": lambda: build_klann_template(create_klann_geometry()),
-    "double": build_double_template,
-    "decker": build_double_decker_template,
-    "quad": build_double_double_decker_template,
-}
-SIDE = BuildConfig(robot=False)
 
-
-@pytest.fixture(scope="module", params=sorted(TEMPLATES))
-def side(request):
-    tmpl = TEMPLATES[request.param]()
-    return tmpl, design_side(tmpl, SIDE)
+@pytest.fixture(params=["single", "double", "decker", "quad"])
+def planned(request, design):
+    """``(side template, SideDesign)`` per module."""
+    return design(request.param)
 
 
 def test_seg_seg_is_exact():
@@ -95,21 +79,21 @@ def test_a_claim_that_cannot_be_built_forces_another_layout():
     assert plan.layers["a"] >= 3
 
 
-def test_plan_clears_everything_over_the_full_cycle(side):
-    tmpl, design = side
+def test_plan_clears_everything_over_the_full_cycle(planned):
+    tmpl, design = planned
     assert verify_plan(design.plan, tmpl) == []
 
 
-def test_verifier_catches_a_bad_plan():
+def test_verifier_catches_a_bad_plan(design):
     """Negative control: b1 and b2 in one layer is the original layering bug."""
-    tmpl = TEMPLATES["single"]()
-    plan = design_side(tmpl, SIDE).plan
+    tmpl, d = design("single")
+    plan = d.plan
     broken = dataclasses.replace(plan, layers={**plan.layers, "b2": plan.layers["b1"]})
     assert any("b1" in v and "b2" in v for v in verify_plan(broken, tmpl))
 
 
-def test_every_pillar_is_held_by_both_frame_plates(side):
-    _, design = side
+def test_every_pillar_is_held_by_both_frame_plates(planned):
+    _, design = planned
     plan = design.plan
     for ax in plan.topo.axes_of("frame"):
         labels = {p.label for p in plan.shapes(f"pillar:{ax.name}")}
@@ -117,8 +101,8 @@ def test_every_pillar_is_held_by_both_frame_plates(side):
         assert sorted(anchors) == [0, plan.top], (ax.name, labels)
 
 
-def test_crank_crosses_a_b1_layer_only_along_its_crankpin(side):
-    _, design = side
+def test_crank_crosses_a_b1_layer_only_along_its_crankpin(planned):
+    _, design = planned
     plan = design.plan
     riders = {plan.layers[b] for b in plan.topo.riders}
     for p in plan.shapes("crank"):
@@ -127,9 +111,9 @@ def test_crank_crosses_a_b1_layer_only_along_its_crankpin(side):
             assert p.label.startswith("crankpin"), p
 
 
-def test_every_link_is_held_on_its_axles(side):
+def test_every_link_is_held_on_its_axles(planned):
     """Each link on an axle has a shoulder, head, cap, plate or another link either side."""
-    _, design = side
+    _, design = planned
     plan = design.plan
     for ax in plan.topo.axes:
         if ax.kind not in ("pin", "frame"):
