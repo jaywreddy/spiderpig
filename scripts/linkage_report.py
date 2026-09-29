@@ -5,9 +5,10 @@
 For each linkage (``linkage.available()``): its parameters and bodies, the
 single leg's foot path over one crank revolution (lift; stride, stance
 fraction and speed ripple within 2 and 5 mm of the ground), which leg modules the layer
-planner can lay out (and how thick the side is), and, for the modules that
-plan, the quasi-static walking metrics (:mod:`walk`) and the robot's BOM
-cost. Writes one JSON document; ``--modules`` / ``--linkages`` narrow it.
+planner can lay out (how thick the side is, whether that is proven the thinnest, the
+crank's route, and ``ground_clearance_mm``: how high the body rides over the feet), and,
+for the modules that plan, the quasi-static walking metrics (:mod:`walk`) and the robot's
+BOM cost. Writes one JSON document; ``--modules`` / ``--linkages`` narrow it.
 """
 
 from __future__ import annotations
@@ -69,7 +70,11 @@ def plans(key: str, modules) -> dict:
         t0 = time.perf_counter()
         try:
             d = design_side(template_for(cfg), cfg)
-            out[m] = {"ok": True, "layers": d.plan.top + 1, "stack_mm": d.plan.height}
+            gc = d.ground_clearance_mm
+            out[m] = {"ok": True, "layers": d.plan.top + 1, "stack_mm": d.plan.height,
+                      "optimal": d.plan.optimal, "proof": d.plan.proof,
+                      "crank_route": repr(d.plan.choices.get("crank")),
+                      "ground_clearance_mm": None if gc is None else round(gc, 1)}
         except ValueError as e:     # a stage said why: AssemblyError, ClearanceError, PlanError
             out[m] = {"ok": False, "stage": type(e).__name__, "error": str(e)}
         out[m]["seconds"] = round(time.perf_counter() - t0, 1)

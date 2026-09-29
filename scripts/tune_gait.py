@@ -75,6 +75,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 import linkage  # noqa: E402
 import walk  # noqa: E402
+from linkage import scale_params  # noqa: E402
 
 PHASE_STEPS = (8.0, 4.0, 2.0, 1.0)          # degrees
 MIN_GAP = 5.0                               # degrees between two legs' crank phases
@@ -236,20 +237,6 @@ def flags(module: str, c: Candidate, linkage_key: str = linkage.DEFAULT) -> dict
     return {"main": f"uv run python main.py {cli}",
             "bake": f"uv run python viewer/bake_gltf.py {cli}",
             "query": f"?{query}"}
-
-
-def scale_params(lk: linkage.Linkage) -> tuple[str, ...]:
-    """The parameters that only scale the linkage (every point doubles with them, like
-    Klann's ``OA``): tuning them resizes the robot, its gait's shape stays."""
-    ts = np.linspace(0.0, 2.0 * math.pi, 7)
-    base = lk.solve().evaluate(ts)
-    out = []
-    for k, v in lk.params.items():
-        with np.errstate(all="ignore"):
-            pts = lk.solve(params={k: 2.0 * float(v)}).evaluate(ts)
-        if k not in lk.angles and all(np.allclose(pts[p], 2.0 * base[p]) for p in lk.points):
-            out.append(k)
-    return tuple(out)
 
 
 def tune(module: str, *, grid: float = 30.0, coarse: int = 120, top: int = 6,

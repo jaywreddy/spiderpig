@@ -965,6 +965,20 @@ def build_module_template(
     return tmpl
 
 
+def scale_params(lk: Linkage) -> tuple[str, ...]:
+    """The parameters that only scale the linkage (every point doubles with them, like
+    Klann's ``OA``): tuning them resizes the robot, its gait's shape stays."""
+    ts = np.linspace(0.0, 2.0 * math.pi, 7)
+    base = lk.solve().evaluate(ts)
+    out = []
+    for k, v in lk.params.items():
+        with np.errstate(all="ignore"):
+            pts = lk.solve(params={k: 2.0 * float(v)}).evaluate(ts)
+        if k not in lk.angles and all(np.allclose(pts[p], 2.0 * base[p]) for p in lk.points):
+            out.append(k)
+    return tuple(out)
+
+
 def feet_of(tmpl_or_mech) -> list[tuple[str, str]]:
     """``(body, joint)`` of every foot in a side template or a fabricated robot.
 

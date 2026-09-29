@@ -19,13 +19,13 @@ they move with). ``mech.bom_extras`` lists unmodelled purchases.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field, replace
 
 import construction
 import servos
 from construction.base import Build, Context, Params, Realized
 from construction.plates import FramePlates, LinkPlates
+from construction.underside import underside
 from mechanism import Mechanism
 from servos.mount import DriveGroup
 from stack import (
@@ -35,7 +35,6 @@ from stack import (
     StackPlan,
     StackProblem,
     StackSpec,
-    impossible,
     static_clearances,
     topology_from_template,
     verify_plan,
@@ -84,7 +83,9 @@ class SideDesign:
 
     ``clearances`` are the static facts the plan had to respect (links that
     can never share a layer with some group's keep-out); :attr:`checks` how
-    well each loop of the linkage closes.
+    well each loop of the linkage closes. ``ground_clearance_mm``: how far the
+    body's lowest point (:mod:`construction.underside`) rides above the lowest
+    foot point over the cycle (``None`` without feet).
     """
 
     config: BuildConfig
@@ -92,6 +93,7 @@ class SideDesign:
     groups: list
     plan: StackPlan
     clearances: list[Clearance] = field(default_factory=list)
+    ground_clearance_mm: float | None = None
 
     @property
     def drive(self) -> DriveGroup:
@@ -129,58 +131,10 @@ def side_clearances(ctx: Context, groups: list) -> list[Clearance]:
     return static_clearances(ctx.topo, keepouts, ctx.params.link_radius, ctx.params.margin)
 
 
-def stacked_plan(tmpl, config: BuildConfig, problem: StackProblem) -> tuple[StackPlan | None, str]:
-    """A multi-leg side as copies of a smaller module's plan stacked up the frame.
-
-    When every link of one leg sweeps across another leg's pins, the legs
-    must sit in disjoint blocks of layers, which the budgeted search is poor
-    at finding. Copies of the plan of the first two legs (or of one), each
-    ``k`` layers above the last, are checked by the same claims and
-    :func:`verify_plan`: accepted only if nothing collides.
-    """
-    import linkage
-
-    legs = linkage.module_legs(config.module, config.linkage)
-    phases = tmpl.meta.get("phases") or tuple(ph for _, ph in legs)
-    blocks = []
-    pair = linkage.get(config.linkage).leg_modules.get("double")
-    if len(legs) >= 4 and len(legs) % 2 == 0 and pair and [o for o, _ in pair] == [
-            o for o, _ in legs[:2]]:
-        blocks.append((replace(config, module="double", phases=tuple(phases[:2]), robot=False), 2))
-    if len(legs) >= 2:
-        blocks.append((replace(config, module="single", phases=(phases[0],), robot=False), 1))
-    why = "no smaller module to stack"
-    for sub, size in blocks:
-        try:
-            base = design_side(template_for(sub), sub).plan
-        except ValueError as e:
-            why = f"its {sub.module} module has no plan either ({str(e).splitlines()[0]})"
-            continue
-        n = len(legs) // size
-        for k in range(1, problem.spec.max_top):
-            top = base.top + (n - 1) * k
-            if top > problem.spec.max_top:
-                break
-            layers = {}
-            for name in problem.links:
-                cls, leg = re.fullmatch(r"(b\d+)_leg(\d+)", name).groups()
-                block, j = divmod(int(leg), size)
-                layers[name] = base.layers[cls if size == 1 else f"{cls}_leg{j}"] + block * k
-            try:
-                plan = problem.plan(layers, top)
-            except ValueError as e:
-                why = str(e)
-                continue
-            bad = verify_plan(plan)
-            if not bad:
-                return plan, f"stacked {n} copies of the {sub.module} plan, {k} layers apart"
-            why = bad[0]
-        why = f"stacking {sub.module} plans at every spacing collides (last: {why})"
-    return None, why
-
-
 def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem]:
-    """One side's groups (interfaces resolved) and the layer problem their claims pose."""
+    """One side's groups (interfaces resolved) and the layer problem their claims pose: the
+    static clearances, the body's underside (``ctx.interfaces["underside"]``) and the
+    crank's router (its static facts in ``problem.router.facts``)."""
     topo = topology_from_template(tmpl)
     ctx = Context(topo=topo, params=config.params, pitch=sheet_thickness(config),
                   servo=servos.get(config.servo), config=config)
@@ -190,49 +144,100 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
             ctx.interfaces[g.name] = g.interface(ctx)
     claims = [c for g in groups for c in g.claims(ctx)]
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin)
-    return ctx, groups, StackProblem(topo, claims, spec)
+    crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
+    ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
+    router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
+    return ctx, groups, StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
+                                     hint=_leg_hint(config))
+
+
+def _leg_hint(config: BuildConfig) -> dict[str, int] | None:
+    """One leg's plan (the single module's), for the planner to try each leg of a bigger
+    module at (a hint for the order it tries layers in, nothing more)."""
+    if config.module == "single":
+        return None
+    one = replace(config, module="single", phases=None, robot=False)
+    try:
+        return design_side(template_for(one), one).plan.layers
+    except ValueError:
+        return None
+
+
+def ground_clearance(tmpl, ctx: Context) -> float | None:
+    """How far the body's lowest point rides above the lowest foot point (mm)."""
+    import linkage
+
+    feet = linkage.feet_of(tmpl)
+    if not feet:
+        return None
+    pts = ctx.topo.geometry.points
+    low = min(float(pts[ctx.topo.point_of[f]][:, 1].min()) for f in feet)
+    return ctx.interfaces["underside"].clearance(low)
 
 
 _DESIGNS: dict[tuple, SideDesign] = {}
-_LAYOUTS: dict[tuple, tuple[dict[str, int], int]] = {}
+_LAYOUTS: dict[tuple, StackPlan] = {}
 
 
-def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
-    """Rationalize and plan one side (cached per template and config)."""
+def static_stage(tmpl, problem: StackProblem, config: BuildConfig | None = None) -> None:
+    """The planner's static stage: a link no crank route can let through stops here (with
+    ``config``: and what would clear it, checked; :mod:`recommend`)."""
+    if problem.router is None or not problem.router.facts.failures:
+        return
+    failures = problem.router.facts.failures
+    err = ClearanceError(f"{tmpl.name}: " + "\n  ".join(f.describe() for f in failures))
+    if config is not None:
+        from recommend import recommend
+
+        recs, notes = recommend(config, failures=tuple(failures))
+        err = err.with_notes(*notes).with_recommendations(recs)
+    raise err
+
+
+def _reuse(problem: StackProblem, solved: StackPlan | None) -> StackPlan | None:
+    """``solved``'s layout in ``problem``, if every claim still clears (checked)."""
+    if solved is None:
+        return None
+    try:
+        plan = problem.plan(solved.layers, solved.top, solved.choices)
+    except ValueError:
+        return None
+    if verify_plan(plan):
+        return None
+    plan.optimal, plan.proof, plan.cost = solved.optimal, solved.proof, solved.cost
+    return plan
+
+
+def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True) -> SideDesign:
+    """Rationalize and plan one side (cached per template and config). A failure of the
+    planner's stages says what would clear it (``advise``, :mod:`recommend`)."""
     config = config or BuildConfig()
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
     if key not in _DESIGNS:
         ctx, groups, problem = side_problem(tmpl, config)
+        static_stage(tmpl, problem, config if advise else None)
         # The robot's side has the same layout as the side on its own; reuse
         # a solved layout when every claim still clears (checked, not assumed).
         layout_key = key[:4] + (replace(config, robot=False),)
-        plan = None
-        if layout_key in _LAYOUTS:
-            layers, top = _LAYOUTS[layout_key]
-            try:
-                plan = problem.plan(layers, top)
-            except ValueError:
-                plan = None
-            if plan is not None and verify_plan(plan):
-                plan = None
-        clearances = side_clearances(ctx, groups)
-        if no := impossible(ctx.topo, clearances, config.params.link_radius, config.params.margin):
-            raise ClearanceError(f"{tmpl.name}: " + "\n  ".join(no))
+        plan = _reuse(problem, _LAYOUTS.get(layout_key))
         if plan is None:
             try:
                 plan = problem.solve()
             except PlanError as e:
-                plan, how = stacked_plan(tmpl, config, problem)
-                if plan is None:
-                    said = [*e.blockers, how]
-                    involved = [c.describe() for c in clearances
-                                if any(c.link in b and c.keepout.owner in b for b in said)]
-                    raise e.with_notes(f"stacking a smaller module's plan: {how}",
-                                       *(["static clearances behind it:", *involved[:8]]
-                                         if involved else [])) from None
-            _LAYOUTS[layout_key] = (dict(plan.layers), plan.top)
-        _DESIGNS[key] = SideDesign(config, ctx, groups, plan, clearances)
+                involved = [c for c in problem.clearances
+                            if any(c.link in b and c.keepout.owner in b for b in e.blockers)]
+                e = e.with_notes(*(["static clearances behind it:",
+                                    *(c.describe() for c in involved[:8])] if involved else []))
+                if advise and involved:
+                    from recommend import recommend
+
+                    recs, notes = recommend(config, clearances=tuple(involved), plan=True)
+                    e = e.with_notes(*notes).with_recommendations(recs)
+                raise e from None
+            _LAYOUTS[layout_key] = plan
+        _DESIGNS[key] = SideDesign(config, ctx, groups, plan, list(problem.clearances),
+                                   ground_clearance(tmpl, ctx))
     return _DESIGNS[key]
 
 

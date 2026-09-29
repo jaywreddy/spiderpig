@@ -30,9 +30,9 @@ uv run python viewer/bake_gltf.py --mode single --linkage hoecken    # a mechani
 
 `--linkage` / `--phases` / `--proportion NAME=VALUE` are shared by `main.py`,
 `bake_gltf.py` and `scripts/tune_gait.py` (`walk.add_design_args`); the server
-takes `linkage=`, `module=`, `phases=`, `p.NAME=`. Not every linkage's module
-has a layer plan (Jansen decker/quad, Strider double/quad don't): its bake is
-a 422, its `/api/walk` still works.
+takes `linkage=`, `module=`, `phases=`, `p.NAME=`. A design with no layer plan
+(the planner says why, e.g. TrotBot's heel at its drawing's scale) bakes a
+422; its `/api/walk` still works.
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
 serves on a port derived from a CRC32 hash of the worktree path
@@ -133,11 +133,12 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 |---|---|
 | `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). Registry: `get` / `available(kind)`. |
 | `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
-| `explain.py` | prints each pipeline stage's verdict for a design (program checks, static clearances, plan or `PlanError`) |
+| `explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error and what would clear it) |
+| `recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), or thinner `Params` parts within every construction's `dims()` |
 | `klann.py` | the Klann-named API kept for callers: `PROPORTIONS`, `STEPS`, `KlannSolution` (= `LegSolution`), `build_*_template`, single-t `build_*_mechanism`. |
 | `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
-| `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers), a `Topology` (links, axles as named points) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()`; `verify_plan()` re-checks exhaustively on fresh sampling. |
-| `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins), `crank.py`, `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides + chassis), `contract.py` (parts inside claims), `envelope.py`. Registries in `__init__.py`. |
+| `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers; an `early` part checked as soon as a group's own links are placed), a `Router` (a group whose shape it chooses per layering: the crank), a `Topology` (links, axles as named points, points fixed to the crank) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()` (see "The planner" below); `verify_plan()` re-checks exhaustively on fresh sampling. |
+| `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins), `crank.py` (routes, claims, the printed crankshaft), `route.py` (the crank's router: static facts, detours, the exact route per layering), `underside.py` (the body's underside: the envelope, ground clearance), `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides + chassis), `contract.py` (parts inside claims), `envelope.py` (solids of claims). Registries in `__init__.py`. |
 | `servos/` | `ServoSpec` data (continuous-rotation servos only), the drive group (`mount.py`: servo on the inner frame plate, `DriveInterface` for the crank), models and CAD cache. |
 | `hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py` and `servos/catalog.py`) and the BOM (`bom.py`). |
 | `fabricate.py` | orchestration: `BuildConfig`, `design_side()` (groups -> claims -> plan, cached), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`). |
@@ -179,15 +180,25 @@ Every stage says what fails, so no follow-up digging is needed
   its tolerance, a dwell too short).
 - **drive**: one servo turns `t`; a second input stops at
   `ConstructionError` (`servos/mount.py`).
-- **static clearance**: each group declares `keepouts(ctx)` (an axle's neck
-  over its span, the crank at O). `side_clearances` lists every link that
-  can never share their layers. `stack.impossible` raises `ClearanceError`
-  when no layer can hold a link at all.
+- **static facts**: each group declares `keepouts(ctx)` (an axle's neck over
+  its span, a pillar's to a plate, the crank's journal at O).
+  `side_clearances` lists every link that can never share their layers. The
+  crank's router (`construction.route.crank_facts`) knows which links sweep O
+  (their layer needs the crank off its axis) and which crank points each
+  clears; `fabricate.static_stage` raises `ClearanceError` for a link no
+  crankpin and no detour inside the body's underside clears, with the
+  distances (`NoCrankPoint`).
 - **plan**: the planner tallies what blocked it, and claims raise
-  `Unbuildable(reason)` rather than returning `None`. If the search fails,
-  `stacked_plan` composes the side from a verified smaller module's plan.
-  Otherwise `PlanError` lists the blockers with distances, the stacking
-  result and the static clearances involved.
+  `Unbuildable(reason)` rather than returning `None`. `PlanError` lists the
+  blockers with distances and the static clearances involved. A plan says
+  whether it is proven the thinnest (`StackPlan.optimal`, `proof`: nodes per
+  size ruled out, or which sizes a budget left open, and when the crank's
+  joints forced a taller stack).
+- Both `ClearanceError` and `PlanError` carry `recommendations`
+  (`stack.Recommendation`: what to change, from, to, why, side effects, and
+  what re-running showed), printed under "what would clear it:". A
+  recommendation is only given once the stage passes with it
+  (`recommend.py`); what can't help goes in the notes.
 
 A new construction or claim must keep this up: raise with a reason, and
 declare its keep-outs.
@@ -207,6 +218,48 @@ add a linkage: a module in `linkages/` with its params, program, links
 `output`); `tests/test_linkage.py` checks it assembles, stays rigid and
 plans (`tests/test_mechanisms.py`: outputs against the research's numbers).
 
+### The planner
+
+`stack.StackProblem.solve()` finds the thinnest stack, and the cheapest
+crank route in it:
+
+1. **Static facts** (before any layer): the keep-outs above; each link's own
+   shapes per layer; the crank's facts. A link with no crank point stops here.
+2. **Search per stack size** (`_Search`), fewest layers first: link layers by
+   fewest open layers, then the assembly tree from the crank out. Forward
+   checking (every placed shape removes the layers it rules out; an axle's
+   links bound where links that can't pass it may go; a pillar must reach a
+   plate), the router as a sub-check at every node (`check`: bit-mask
+   reachability over layers x crank states, and which states each layer still
+   has on a route, which prunes more), conflicts as the links behind a
+   failure, backjumping to the latest of them, learned nogoods (watched), and
+   branch and bound on the route's cost.
+3. **The route** for a complete layering (`CrankRouter.route`): exact, a
+   shortest path over layers and **chains** (runs along one point whose webs
+   meet: one screw). Buildable only: a stock screw per chain
+   (`JointRules.spans`, from `PrintedCrank.post_joint`, end-play faces
+   included), one chain per point, pockets of consecutive chains (and the
+   last one and the horn screws) apart. Cost, in order: added features (run
+   layers no rider needs, detour runs), detour sweep, a dropped bearing
+   (`StackSpec.drop_bearing`, off by default), then fewer runs.
+4. **Verification**: `problem.plan(layers, top, choices)` and `verify_plan`;
+   a failure there is a bug (it raises).
+
+Effort: a short search per size until one finds a plan (then, for a multi-leg
+module, a second strategy: a leg at a time at the single module's layers,
+`hint`), then the thinner sizes it didn't rule out with the full budget (the
+next thinner first), then a cheaper route. Budgets (`StackSpec.quick_nodes`,
+`max_nodes`, `max_total_nodes`) only limit the proof, never validity.
+`tests/brute.py` is an independent brute force (every layering, every
+route) the tests compare the planner's optimum with.
+
+**Envelope** (`construction/underside.py`): the body (frame plates, the
+crank's own sweep, servo, centre plates) has an underside profile; what the
+planner adds to the crank turns with it, so a detour sweeps a full circle
+about O, which must stay `margin` above the profile and within the body's
+x-extent (`Underside.allows`). `SideDesign.ground_clearance_mm`: the body's
+lowest point above the lowest foot point.
+
 ### Stacking (future)
 
 Not built. A stage would mount on its parent's output body (`Output.frame`:
@@ -223,7 +276,10 @@ Physical rules the claims encode:
 - The links riding a crankpin (Klann's b1; Jansen's j and k; Strider's
   bars) sweep over the crank axis O, and the crank turns fully relative to
   them, so the crank crosses a rider's layer only along its crankpin: a
-  built-up crankshaft with webs either side of each rider.
+  built-up crankshaft with webs either side of each rider. A link pinned to
+  a rider inside the crank circle (TrotBot's B8, the 6-bar's B6) sweeps O
+  too: the crank runs along a post (the crankpin, or a detour point fixed to
+  the crank) through its layer, a post it must clear.
 - Layers 0 (outer frame plate) and `top` (inner frame plate) hold nothing
   but the plates and parts seated in their holes.
 - Pillars (frame pivots) are anchored in both frame plates whenever the

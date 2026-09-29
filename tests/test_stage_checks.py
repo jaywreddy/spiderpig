@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 import linkage
@@ -41,15 +43,26 @@ def test_plan_stage_names_what_blocked_it():
         design_side(template_for(cfg), cfg)
     msg = str(e.value)
     assert "what blocked it" in msg
-    assert "pillar:A_leg0: can't run between its links" in msg
-    assert "passes 8.7 mm from its centre" in msg
-    assert "b2_leg1 passes pillar:A_leg0 at 8.7 mm" in msg
+    assert "pin:B_leg1 head vs pin:B_leg0 cap: -8.7 mm apart in one layer, need 1.0" in msg
+    assert "static clearances behind it:" in msg
+    assert re.search(r"b2_leg\d passes pillar:A_leg\d at 8.7 mm, under the 9.0 mm its thinnest "
+                     r"part needs, so it can't be in any layer pillar:A_leg\d spans", msg)
+    # and what would clear it, checked by planning it: a larger scale, or thinner links
+    assert "what would clear it:" in msg
+    scaled, thinner = e.value.recommendations
+    assert scaled.changes == (("unit", 1.5, 1.6),)
+    assert scaled.effects.startswith("crank 22.5 -> 24.0 mm")
+    assert thinner.changes == (("link_radius", 6.0, 5.5),)
+    for r in (scaled, thinner):
+        assert r.verified == "checked: the static stage passes, and it plans in 13 layers (39 mm)"
 
 
-def test_legs_that_must_sit_in_disjoint_blocks_are_stacked():
-    """The budgeted search misses it; the stacked single-leg plan is checked exactly."""
+def test_legs_that_must_sit_in_disjoint_blocks_are_found():
+    """Strider's legs sweep across each other's pins: one leg's block above the other's,
+    and nothing thinner (the search ran to the end)."""
     cfg = BuildConfig(linkage="strider", module="double", robot=False)
     plan = design_side(template_for(cfg), cfg).plan
     leg0 = [k for n, k in plan.layers.items() if n.endswith("_leg0")]
     leg1 = [k for n, k in plan.layers.items() if n.endswith("_leg1")]
     assert max(leg0) < min(leg1)
+    assert plan.optimal, plan.proof
