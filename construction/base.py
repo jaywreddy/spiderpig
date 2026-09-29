@@ -152,15 +152,25 @@ class Build:
     def xy(self, point: str) -> np.ndarray:
         """World XY of a topology point at this ``t``.
 
-        A fixed point a group added to the geometry (not a joint, e.g. a servo
-        mounting screw) is where the geometry says.
+        A point a group added to the geometry (not a joint) is where the
+        geometry says if it's fixed (e.g. a servo mounting screw); if it moves,
+        it's fixed to the crank (:func:`construction.crank.add_crank_point`)
+        and has turned with it about O.
         """
         node = self._node(point)
-        if node is None:
-            return np.asarray(self.plan.topo.geometry.points[point][0], dtype=float).copy()
-        body, joint = node
-        b = self.mech.body(body)
-        return (b.pose @ b.joint(joint).pose).matrix[:2, 3].copy()
+        if node is not None:
+            body, joint = node
+            b = self.mech.body(body)
+            return (b.pose @ b.joint(joint).pose).matrix[:2, 3].copy()
+        g = self.plan.topo.geometry.points
+        p = np.asarray(g[point][0], dtype=float)
+        if not np.ptp(g[point], axis=0).any():
+            return p.copy()
+        pin = self.plan.topo.axes_of("crankpin")[0].name
+        v, w = p - g["O"][0], g[pin][0] - g["O"][0]
+        turn = self.angle("O", pin) - math.atan2(w[1], w[0])
+        c, s = math.cos(turn), math.sin(turn)
+        return self.xy("O") + np.array([c * v[0] - s * v[1], s * v[0] + c * v[1]])
 
     def angle(self, a: str, b: str) -> float:
         d = self.xy(b) - self.xy(a)
