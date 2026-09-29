@@ -9,8 +9,8 @@ Exceptions, by design:
 
 * the frame plates own their layers (0 and ``top``) outright;
 * the servo stands outside the stack, above the inner frame plate; the part
-  of the drive group below that face (the horn) must lie in the crank's
-  "servo horn" claim.
+  of the drive group below that face (the horn, the mounting screws) must
+  lie in the crank's "servo horn" claim or the drive's own claims.
 """
 
 from __future__ import annotations
@@ -58,7 +58,8 @@ def check_side(design, mech) -> list[str]:
             continue
         if g.name == "drive":
             envelope = claimed_solid(build, [p for p in build.shapes("crank")
-                                             if p.label == "servo horn"], TOL)
+                                             if p.label == "servo horn"] + build.shapes(g.name),
+                                     TOL)
             below = _slab(-1e3, plate_top)
             for b in got.bodies:
                 inside = b.part & below if b.part is not None else None

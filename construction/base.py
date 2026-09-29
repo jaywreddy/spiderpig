@@ -150,8 +150,15 @@ class Build:
         return self.plan.z(layer)
 
     def xy(self, point: str) -> np.ndarray:
-        """World XY of a topology point at this ``t``."""
-        body, joint = self._node(point)
+        """World XY of a topology point at this ``t``.
+
+        A fixed point a group added to the geometry (not a joint, e.g. a servo
+        mounting screw) is where the geometry says.
+        """
+        node = self._node(point)
+        if node is None:
+            return np.asarray(self.plan.topo.geometry.points[point][0], dtype=float).copy()
+        body, joint = node
         b = self.mech.body(body)
         return (b.pose @ b.joint(joint).pose).matrix[:2, 3].copy()
 
@@ -159,12 +166,12 @@ class Build:
         d = self.xy(b) - self.xy(a)
         return math.atan2(d[1], d[0])
 
-    def _node(self, point: str) -> tuple[str, str]:
+    def _node(self, point: str) -> tuple[str, str] | None:
         if not hasattr(self, "_nodes"):
             self._nodes: dict[str, tuple[str, str]] = {}
             for node, p in sorted(self.plan.topo.point_of.items()):
                 self._nodes.setdefault(p, node)
-        return self._nodes[point]
+        return self._nodes.get(point)
 
     def shapes(self, group: str) -> list[Placed]:
         return self.plan.shapes(group)

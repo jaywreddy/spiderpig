@@ -619,6 +619,13 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
     violations (empty when valid).
     """
     topo = topology_from_template(tmpl, samples) if tmpl is not None else plan.topo
+    if tmpl is not None:
+        # fixed points a group added to the plan's geometry (e.g. the servo's mounting
+        # screws) aren't joints of the template: carry them over
+        fixed = {k: v[0] for k, v in plan.topo.geometry.points.items()
+                 if k not in topo.geometry.points and not np.ptp(v, axis=0).any()}
+        if fixed:
+            topo.geometry = Geometry({**topo.geometry.points, **fixed})
     geo, sp, layout = topo.geometry, plan.spec, plan.layout
     bad: list[str] = []
     shapes: list[Placed] = []
