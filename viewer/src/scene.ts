@@ -9,6 +9,7 @@ export interface Stage {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
+  grid: THREE.GridHelper;
 }
 
 // World frame: Z up, ground plane z = 0. The baked ``walker`` root stands the
@@ -64,7 +65,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
   });
 
-  return { canvas, renderer, scene, camera, controls };
+  return { canvas, renderer, scene, camera, controls, grid };
 }
 
 /**

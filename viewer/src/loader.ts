@@ -65,8 +65,14 @@ export function teardown(scene: THREE.Scene, prev: LoadedScene | null): void {
   disposeRoot(prev.root);  // the foot path lives under the walker node
 }
 
-export async function loadGlb(scene: THREE.Scene, mode: Mode): Promise<LoadedScene> {
-  const gltf: GLTF = await loader.loadAsync(`/api/glb/${encodeURIComponent(mode)}`);
+/** Load ``/api/glb/<mode>?<query>`` (design parameters); rejects with the server's error detail. */
+export async function loadGlb(scene: THREE.Scene, mode: Mode, query = ''): Promise<LoadedScene> {
+  const res = await fetch(`/api/glb/${encodeURIComponent(mode)}${query ? `?${query}` : ''}`);
+  if (!res.ok) {
+    const detail = ((await res.json().catch(() => ({}))) as { detail?: unknown }).detail;
+    throw new Error(typeof detail === 'string' ? detail : `${res.status} ${JSON.stringify(detail ?? res.statusText)}`);
+  }
+  const gltf: GLTF = await loader.parseAsync(await res.arrayBuffer(), '');
   const root = gltf.scene;
 
   // Flat shading reads plate edges crisply; translucent acrylic keeps writing

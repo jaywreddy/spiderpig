@@ -68,3 +68,22 @@ html, body {
   font-size: 12px;
   opacity: 0.7;
 }
+
+/* Drive mode (drive/): lil-gui panels (drive + HUD top right, tune top left),
+   tipping warning top centre. */
+#drive-gui, #tune-gui { --name-width: 42%; max-height: calc(100% - 100px); overflow-y: auto; }
+#tune-gui { position: fixed; top: 34px; left: 12px; z-index: 1000; }
+#drive-gui .controller.disabled, #tune-gui .controller.disabled { opacity: 0.9; }
+#drive-spark { display: block; margin: 4px 6px 6px; }
+#drive-warn {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: rgba(200, 40, 40, 0.9);
+  color: #fff;
+  font-weight: 600;
+}
+body.driving #play, body.driving #slider, body.driving #readout { visibility: hidden; }

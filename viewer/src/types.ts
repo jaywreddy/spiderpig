@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { Drive } from './drive';
 
 /** A server mode id (see ``/api/modes``): ``robot``, ``klann``, ``double``, … */
 export type Mode = string;
@@ -21,7 +22,9 @@ export interface ViewerHandle {
   seek(t: number): void;
   /** Move the camera to a preset view framing the loaded model. */
   setView(view: View): void;
-  loadMode(m: Mode): Promise<void>;
+  loadMode(m: Mode, query?: string): Promise<void>;
+  /** Drive mode + tune panel (``drive/index.ts``). */
+  readonly drive: Drive;
   ready: boolean;
 }
 
