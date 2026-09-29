@@ -368,6 +368,7 @@ class StackSpec:
     min_top: int = 2
     max_top: int = 40
     max_nodes: int = 4000         # search effort per stack size before trying a bigger one
+    max_total_nodes: int = 24000  # search effort over all stack sizes before giving up
 
 
 @dataclass
@@ -456,10 +457,18 @@ class StackProblem:
 
     def solve(self) -> StackPlan:
         order = self._order()
+        spent = 0
         for top in range(self.spec.min_top, self.spec.max_top + 1):
             found = self._search(order, top)
             if found is not None:
                 return self.plan(found, top)
+            spent += self._nodes
+            if spent >= self.spec.max_total_nodes:
+                raise ValueError(
+                    f"{self.topo.name}: no layer plan found with up to {top + 1} layers after "
+                    f"{spent} search steps; the design likely can't be laid out (e.g. two "
+                    "crankpins at the same angle, or links that sweep through each other's pivots)"
+                )
         raise ValueError(
             f"{self.topo.name}: no layer plan with up to {self.spec.max_top} layers; "
             "the chosen construction needs more room than the mechanism leaves"
@@ -526,6 +535,7 @@ class StackProblem:
             for p in shapes:
                 by_layer[p.layer].remove(p)
 
+        self._nodes = 0
         for c in self.claims:
             if not c.deps and not c.final and add(c.make(Layout(layers, top, pitch))) is None:
                 return None
@@ -598,7 +608,9 @@ class StackProblem:
             unplaced.add(n)
             return False
 
-        return dict(layers) if rec() else None
+        ok = rec()
+        self._nodes = self.spec.max_nodes - budget[0]
+        return dict(layers) if ok else None
 
 
 def plan_problem(topo: Topology, claims: Iterable[Claim],

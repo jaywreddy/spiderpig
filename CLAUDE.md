@@ -76,7 +76,9 @@ Instrumented stages (keys in the summary table):
    - `4.3_trs_batch` — batched planar rigid fit + quaternion hemisphere
      fix per body; hardware (`Body.rigid_with`) copies its host's motion
 5. `5_gltf_nodes_channels` — glTF node + animation sampler/channel assembly
-6. `6_foot_path_extra` — 64-sample foot path written to scene extras
+6. `6_foot_path_extra` — 64-sample foot path written to scene extras;
+   `6b_drive_extra` — the drive data (feet over the crank cycle, COM, mass,
+   servo rpm) on the root node `walker` for the viewer's drive mode
 7. `7_serialize` — `pygltflib.GLTF2.save_binary`
 
 Plus `bake_total` wrapping everything. The inner `klann.*` sub-timers
@@ -130,8 +132,9 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 | `shapes.py` | build123d primitives (disc, pill, plate, link plate, cuts incl. D-holes and rectangles) |
 | `layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
 | `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM |
+| `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
-| `server/app.py` | dev server; calls `bake_gltf()` on demand per mode |
+| `server/app.py` | dev server: `/api/glb/{mode}?module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` answers walk metrics for a design without building parts |
 
 ### Pipeline contract
 
