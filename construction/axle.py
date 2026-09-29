@@ -16,8 +16,14 @@ a pillar stops short of that plate and is held by the other one (see
 length: ``axle_d`` where a plate turns on it or is glued to it and in the
 necks, up to ``spacer_d`` in the shoulders beside each link, a head outside
 the outer plate (pillars) or below the lowest link and a cap above the
-highest (pins). It is printed in segments that snap together, split at every link it
-carries, so the links can be threaded on.
+highest (pins). It is printed in segments that snap together, split above
+every run of links it carries, so the links can be threaded on
+(:mod:`construction.printed`).
+
+Assembly, bottom up: glue each pillar's first segment into the outer plate
+(head underneath); thread the links on; snap the next segment of every
+pillar and pin on; repeat per deck; glue the inner plate over the pillars'
+top ends, which finish flush with its top face.
 """
 
 from __future__ import annotations
@@ -36,7 +42,8 @@ from construction.base import (
     Realized,
     hardware,
 )
-from construction.envelope import claimed_solid
+from construction.printed import Segment, Snap, plan_segments, segment_solid
+from hardware.bom import BomLine
 from shapes import Cut
 from stack import Axis, Claim, Disc, Layout, Placed
 
@@ -146,10 +153,29 @@ class AxleGroup:
 
 @dataclass(frozen=True)
 class PrintedAxle:
-    """Printed stepped axle with built-in spacers."""
+    """Printed stepped axle with built-in spacers, in segments that snap together.
+
+    The profile, the segments and the snap joint are described in
+    :mod:`construction.printed`. Pillars are glued into the frame plates they
+    reach (``ca_glue``); every other joint snaps. The knobs are the fields
+    below (mm unless noted); the fits come from :class:`Params`.
+    """
 
     key: str = "printed"
     label: str = "printed stepped axle (built-in spacers, snap-together segments)"
+    axial_play: float = 0.1      # gap between a link and each shoulder beside it
+    snap_engage: float = 0.25    # radial overlap of the barb over the socket's ledge
+    snap_wall: float = 0.8       # thinnest wall around a socket (in a shoulder or cap)
+    snap_shank: float = 1.0      # peg shank height (the ledge is this less the clearance)
+    snap_land: float = 0.4       # height of the barb's cylindrical land
+    snap_flats: float = 3.0      # width across the flats trimmed on the barb
+    slot_width: float = 1.2      # slot splitting the peg (and the bearing below it)
+    slot_max: float = 12.0       # deepest the slot runs, measured down from the peg's tip
+    max_strain: float = 0.04     # peak prong strain while snapping (PETG); more is logged
+    bridge: float = 0.8          # least solid between a socket and the slot above it
+    base: float = 2.0            # least solid under a slot's root at a segment's bottom
+    min_prong: float = 0.8       # thinnest a prong of the peg's shank may be
+    glue_per_anchor: float = 0.02  # CA glue per anchor, as a fraction of a bottle
 
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         p: Params = ctx.params
@@ -163,24 +189,81 @@ class PrintedAxle:
             raise ConstructionError("spacers and heads must be wider than the holes they retain")
         if not 0 < p.neck_d <= p.axle_d:
             raise ConstructionError("the neck can't be wider than the axle")
+        self.snap(ctx)          # the snap joint must fit too
         return AxleDims(axle=p.axle_d / 2, spacer=p.spacer_d / 2, head=p.head_d / 2,
                         neck=p.neck_d / 2)
 
+    def snap(self, ctx: Context) -> Snap:
+        """The snap joint between segments, sized for the narrowest socket a plan can ask for.
+
+        A socket sits in a shoulder (at least as wide as a link's hole plus
+        ``STOP_OVERLAP``) or a cap (``head_d``). The barb is as wide as that
+        leaves room for, but no wider than the bearing.
+        """
+        p: Params = ctx.params
+        c = p.print_fit / 2
+        stop = p.hole(p.axle_d) / 2 + STOP_OVERLAP
+        room = min(stop, p.spacer_d / 2, p.head_d / 2)
+        barb = min(p.axle_d / 2, room - self.snap_wall - c)
+        snap = Snap(barb=barb, engage=self.snap_engage, clearance=c,
+                    shank_h=self.snap_shank, land_h=self.snap_land,
+                    flats=self.snap_flats / 2, slot=self.slot_width)
+        if snap.shank - snap.slot / 2 < self.min_prong:
+            raise ConstructionError(
+                f"no room for a snap peg: a {2 * snap.shank:.2f} mm shank split by a "
+                f"{snap.slot} mm slot (wider shoulders or heads, or a narrower slot)")
+        if snap.deflection() > snap.slot / 2 - 0.1:
+            raise ConstructionError(
+                f"the snap peg's prongs would have to close by {snap.deflection():.2f} mm "
+                f"each; the {snap.slot} mm slot lets them close {snap.slot / 2 - 0.1:.2f}")
+        if self.snap_shank <= c:
+            raise ConstructionError("the snap peg's shank must be taller than the clearance")
+        room_z = ctx.pitch - 2 * self.axial_play
+        if snap.depth + self.bridge > room_z + 1e-9:
+            raise ConstructionError(
+                f"a {snap.depth:.2f} mm snap socket and a {self.bridge} mm bridge don't fit "
+                f"a {room_z:.2f} mm shoulder ({ctx.pitch} mm sheet)")
+        return snap
+
+    def segments(self, group: AxleGroup, build: Build) -> list[Segment]:
+        """The axle's printed segments for the solved plan (see :func:`plan_segments`)."""
+        column = {s.layer: (s.label.rsplit(" ", 1)[1], s.shape.r)
+                  for s in build.shapes(group.name)}
+        links: dict[int, tuple[str, ...]] = {}
+        for m in group.axis.members:
+            links[build.layers[m]] = links.get(build.layers[m], ()) + (m,)
+        return plan_segments(
+            column, build.z, links, axle=group.dims(build.ctx).axle, snap=self.snap(build.ctx),
+            play=self.axial_play, bridge=self.bridge, base=self.base, slot_max=self.slot_max,
+            min_prong=self.min_prong, max_strain=self.max_strain, name=group.name)
+
     def realize(self, group: AxleGroup, build: Build) -> Realized:
-        """First pass: one part that is exactly the claim (not yet split for assembly)."""
+        """One printed body per segment; holes in its links and in the plates it's glued into."""
         out = Realized()
         ax = group.axis
-        host = build.plan.topo.frame_bodies[0] if group.pillar else ax.members[0]
-        solid = claimed_solid(build, build.shapes(group.name))
-        out.bodies.append(hardware(group.name.replace(":", "_"), solid, host, fab="printed",
-                                   color="#1baf7a"))
         p = build.ctx.params
-        xy = tuple(build.xy(ax.name))
+        if group.pillar:
+            host = build.plan.topo.frame_bodies[0]
+        else:
+            host = min(ax.members, key=lambda m: (build.layers[m], m))
+        snap = self.snap(build.ctx)
+        xy = build.xy(ax.name)
+        stem = group.name.replace(":", "_")
+        anchors: list[int] = []
+        for seg in self.segments(group, build):
+            part = segment_solid(seg, snap, xy)
+            out.bodies.append(hardware(f"{stem}_seg{seg.index}", part, host, fab="printed",
+                                       color="#1baf7a"))
+            anchors += seg.anchors
+        xy = (float(xy[0]), float(xy[1]))
         for m in ax.members:
             out.cut(m, Cut(xy, p.hole(p.axle_d)))
-        if group.pillar:
-            for plate in (FRAME_INNER, FRAME_OUTER):
-                out.cut(plate, Cut(xy, p.hole(p.axle_d, "glue")))
+        plates = {0: FRAME_OUTER, build.top: FRAME_INNER}
+        for k in anchors:
+            out.cut(plates[k], Cut(xy, p.hole(p.axle_d, "glue")))
+        if anchors:
+            out.extras.append(BomLine("ca_glue", self.glue_per_anchor * len(anchors),
+                                      f"{group.name} anchors"))
         return out
 
 
