@@ -235,7 +235,7 @@ def test_materials_follow_fab(robot_gltf):
     assert by_node["L.b1"].name == "acrylic"
     assert by_node["L.torso"].name == "acrylic_frame"
     assert by_node["centre_plate0"].name == "acrylic_frame"
-    assert by_node["L.pin_C"].name == "printed"
+    assert by_node["L.pin_C_seg0"].name == "printed"
     assert by_node["L.crank_seg0"].name == "printed"
     assert by_node["L.servo"].name == "servo"
     assert by_node["L.servo_horn"].name == "metal"

@@ -34,7 +34,8 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
             assert "mirrored" in r["print"]
             assert (single_out / "print" / r["file"].replace(".stl", "_mirrored.stl")).exists()
     files = {r["file"] for r in rows}
-    assert {"pin_C.stl", "tie_screw_half0.stl", "tie_insert_half0.stl"} <= files
+    assert {"tie_screw_half0.stl", "tie_insert_half0.stl"} <= files
+    assert any(f.startswith("pin_C_seg") for f in files)
     by_file = {r["file"]: int(r["qty"]) for r in rows}
     assert by_file["tie_screw_half0.stl"] == by_file["tie_insert_half0.stl"] == 4
     # left and right side parts are one row each: every part is printed twice or more
