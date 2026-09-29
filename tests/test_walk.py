@@ -437,7 +437,7 @@ def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch):
 def test_invalid_linkage_is_explained(key, props, joint):
     """The first point that can't be placed, and where (the linkage's assembly check)."""
     cfg = walk.make_config("single", proportions=props, linkage=key)
-    with pytest.raises(walk.LinkageError, match=f"{key}: {joint} can't be placed"):
+    with pytest.raises(walk.LinkageError, match=f"joint {joint} can't be placed"):
         walk.side_legs(cfg)
     payload = walk.api_payload(cfg)
     assert payload["valid"] is False

@@ -239,7 +239,7 @@ class RobotModel:
     joints: dict[str, dict[str, np.ndarray]]   # kinematic body -> joint -> xy (mm) at t_ref
     loops: list[tuple[str, str, str, np.ndarray]]   # (name, body1, body2, xy mm)
     outlines: dict[str, list[tuple[np.ndarray, np.ndarray]]]   # link -> capsule segments (mm)
-    feet: dict[str, tuple[str, np.ndarray]]   # foot name -> (foot link, foot xy mm)
+    feet: dict[str, tuple[str, str, np.ndarray]]   # foot -> (foot link, joint, xy mm)
     hulls: dict[str, tuple[str, np.ndarray]]  # robot body -> (MuJoCo body, hull points mm)
     link_radius: float                  # mm
     crank_sign: int
@@ -482,7 +482,8 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
     foot_joints: dict[str, set[str]] = {}
     for body, joint in feet_of(robot):
         tag = "" if n_feet == 1 else f"_{joint}"
-        feet[re.sub(r"^([LR])\.b\d+", rf"\g<1>.foot{tag}", body)] = (body, joints[body][joint])
+        foot = re.sub(r"^([LR])\.b\d+", rf"\g<1>.foot{tag}", body)
+        feet[foot] = (body, joint, joints[body][joint])
         foot_joints.setdefault(body, set()).add(joint)
     outlines = {}
     for b in kinematic:
@@ -548,7 +549,7 @@ def rest_pose(rm: RobotModel, clearance: float) -> tuple[float, float]:
     of the centre of mass, as in the single module) it stays level, on its
     lowest foot.
     """
-    pts = np.array([xy for _, xy in rm.feet.values()], dtype=float)
+    pts = np.array([xy for *_, xy in rm.feet.values()], dtype=float)
     total = sum(mb.mass for mb in rm.bodies.values())
     xc = sum(mb.mass * mb.com[0] for mb in rm.bodies.values()) / total
     pitch = 0.0
@@ -642,7 +643,7 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
             b = np.array([q[0], q[1], z]) - mb.origin
             ET.SubElement(el, "geom", name=f"{name}#{k}", type="capsule", size=_f(r),
                           fromto=_v(np.concatenate([a, b]) * MM), rgba=_RGBA["link"])
-        for foot, (link, xy) in rm.feet.items():
+        for foot, (link, _, xy) in rm.feet.items():
             if link == name:
                 pos = _v((np.array([xy[0], xy[1], z]) - mb.origin) * MM)
                 ET.SubElement(el, "geom", name=foot, type="sphere", size=_f(r), pos=pos,
@@ -735,8 +736,9 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
                            "stall_torque_kgcm": rm.servo.torque_kgcm}
             for s in sides
         },
-        "feet": {foot: {"body": link, "site": foot, "geom": foot, "radius": rm.link_radius * MM}
-                 for foot, (link, _) in rm.feet.items()},
+        "feet": {foot: {"body": link, "joint": joint, "site": foot, "geom": foot,
+                        "radius": rm.link_radius * MM}
+                 for foot, (link, joint, _) in rm.feet.items()},
         "loops": [{"name": n, "body1": b1, "body2": b2} for n, b1, b2, _ in rm.loops],
         "mass": {"total": total, "by_material": by_material},
         "params": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(params).items()},

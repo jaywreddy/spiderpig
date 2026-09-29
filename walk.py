@@ -337,8 +337,8 @@ def side_legs(config: BuildConfig, n: int = N_THETA) -> list[Leg]:
         for name, xy in pts.items():                # a backstop on this grid
             bad = ~np.isfinite(xy).all(axis=-1)
             if bad.any():
-                raise LinkageError(f"{lk.key}: {name} can't be placed at crank angle "
-                                   f"{np.degrees(ts[bad][0]):.0f} deg (leg {k})")
+                raise LinkageError(f"{lk.key} leg {k}: joint {name} can't be placed at crank "
+                                   f"angle {np.degrees(ts[bad][0]):.0f} deg")
     return out
 
 

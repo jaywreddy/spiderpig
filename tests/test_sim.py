@@ -153,11 +153,11 @@ def test_the_model_is_the_template(built):
         jw = tmpl.sample(np.array([t])).joint_world
         base = data.body("base")
         rot = base.xmat.reshape(3, 3)
-        feet = dict(linkage.feet_of(tmpl))              # foot link -> its foot joint
+        assert sorted((f"{s}.{b}", j) for s in "LR" for b, j in linkage.feet_of(tmpl)) == \
+            sorted((info["body"], info["joint"]) for info in meta["feet"].values())
         for foot, info in meta["feet"].items():
             mech = rot.T @ (data.site(foot).xpos - base.xpos) / MM
-            body = info["body"].split(".", 1)[1]
-            want = jw[body][feet[body]][0, :2]
+            want = jw[info["body"].split(".", 1)[1]][info["joint"]][0, :2]
             assert np.abs(mech[:2] - want).max() < 1e-3        # mm
 
 
