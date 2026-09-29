@@ -3,8 +3,8 @@
 Each module here defines one family with :class:`linkage.Linkage` (and its
 published variants with :meth:`linkage.Linkage.variant`) and registers it.
 Klann registers first: it is the default. Every version is registered, even
-one the current constructions can't build: the pipeline says why (e.g. a link
-that sweeps across the crank axis needs a crank overhung from the servo side).
+one the current constructions can't build: the pipeline says why, and what would
+clear it (e.g. a link that sweeps across the crank axis and no crank point clears).
 """
 
 import importlib

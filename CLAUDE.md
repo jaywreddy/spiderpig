@@ -133,7 +133,8 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 |---|---|
 | `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). Registry: `get` / `available(kind)`. |
 | `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
-| `explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error) |
+| `explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error and what would clear it) |
+| `recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), or thinner `Params` parts within every construction's `dims()` |
 | `klann.py` | the Klann-named API kept for callers: `PROPORTIONS`, `STEPS`, `KlannSolution` (= `LegSolution`), `build_*_template`, single-t `build_*_mechanism`. |
 | `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
 | `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers; an `early` part checked as soon as a group's own links are placed), a `Router` (a group whose shape it chooses per layering: the crank), a `Topology` (links, axles as named points, points fixed to the crank) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()` (see "The planner" below); `verify_plan()` re-checks exhaustively on fresh sampling. |
@@ -193,6 +194,11 @@ Every stage says what fails, so no follow-up digging is needed
   whether it is proven the thinnest (`StackPlan.optimal`, `proof`: nodes per
   size ruled out, or which sizes a budget left open, and when the crank's
   joints forced a taller stack).
+- Both `ClearanceError` and `PlanError` carry `recommendations`
+  (`stack.Recommendation`: what to change, from, to, why, side effects, and
+  what re-running showed), printed under "what would clear it:". A
+  recommendation is only given once the stage passes with it
+  (`recommend.py`); what can't help goes in the notes.
 
 A new construction or claim must keep this up: raise with a reason, and
 declare its keep-outs.

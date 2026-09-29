@@ -47,6 +47,14 @@ def test_plan_stage_names_what_blocked_it():
     assert "static clearances behind it:" in msg
     assert re.search(r"b2_leg\d passes pillar:A_leg\d at 8.7 mm, under the 9.0 mm its thinnest "
                      r"part needs, so it can't be in any layer pillar:A_leg\d spans", msg)
+    # and what would clear it, checked by planning it: a larger scale, or thinner links
+    assert "what would clear it:" in msg
+    scaled, thinner = e.value.recommendations
+    assert scaled.changes == (("unit", 1.5, 1.6),)
+    assert scaled.effects.startswith("crank 22.5 -> 24.0 mm")
+    assert thinner.changes == (("link_radius", 6.0, 5.5),)
+    for r in (scaled, thinner):
+        assert r.verified == "checked: the static stage passes, and it plans in 13 layers (39 mm)"
 
 
 def test_legs_that_must_sit_in_disjoint_blocks_are_found():

@@ -179,11 +179,19 @@ _DESIGNS: dict[tuple, SideDesign] = {}
 _LAYOUTS: dict[tuple, StackPlan] = {}
 
 
-def static_stage(tmpl, problem: StackProblem) -> None:
-    """The planner's static stage: a link no crank route can let through stops here."""
-    if problem.router is not None and problem.router.facts.failures:
-        raise ClearanceError(f"{tmpl.name}: " + "\n  ".join(
-            f.describe() for f in problem.router.facts.failures))
+def static_stage(tmpl, problem: StackProblem, config: BuildConfig | None = None) -> None:
+    """The planner's static stage: a link no crank route can let through stops here (with
+    ``config``: and what would clear it, checked; :mod:`recommend`)."""
+    if problem.router is None or not problem.router.facts.failures:
+        return
+    failures = problem.router.facts.failures
+    err = ClearanceError(f"{tmpl.name}: " + "\n  ".join(f.describe() for f in failures))
+    if config is not None:
+        from recommend import recommend
+
+        recs, notes = recommend(config, failures=tuple(failures))
+        err = err.with_notes(*notes).with_recommendations(recs)
+    raise err
 
 
 def _reuse(problem: StackProblem, solved: StackPlan | None) -> StackPlan | None:
@@ -200,14 +208,15 @@ def _reuse(problem: StackProblem, solved: StackPlan | None) -> StackPlan | None:
     return plan
 
 
-def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
-    """Rationalize and plan one side (cached per template and config)."""
+def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True) -> SideDesign:
+    """Rationalize and plan one side (cached per template and config). A failure of the
+    planner's stages says what would clear it (``advise``, :mod:`recommend`)."""
     config = config or BuildConfig()
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
     if key not in _DESIGNS:
         ctx, groups, problem = side_problem(tmpl, config)
-        static_stage(tmpl, problem)
+        static_stage(tmpl, problem, config if advise else None)
         # The robot's side has the same layout as the side on its own; reuse
         # a solved layout when every claim still clears (checked, not assumed).
         layout_key = key[:4] + (replace(config, robot=False),)
@@ -216,10 +225,16 @@ def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
             try:
                 plan = problem.solve()
             except PlanError as e:
-                involved = [c.describe() for c in problem.clearances
+                involved = [c for c in problem.clearances
                             if any(c.link in b and c.keepout.owner in b for b in e.blockers)]
-                raise e.with_notes(*(["static clearances behind it:", *involved[:8]]
-                                     if involved else [])) from None
+                e = e.with_notes(*(["static clearances behind it:",
+                                    *(c.describe() for c in involved[:8])] if involved else []))
+                if advise and involved:
+                    from recommend import recommend
+
+                    recs, notes = recommend(config, clearances=tuple(involved), plan=True)
+                    e = e.with_notes(*notes).with_recommendations(recs)
+                raise e from None
             _LAYOUTS[layout_key] = plan
         _DESIGNS[key] = SideDesign(config, ctx, groups, plan, list(problem.clearances),
                                    ground_clearance(tmpl, ctx))

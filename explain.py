@@ -15,7 +15,8 @@
    (:class:`stack.ClearanceError`, with what would clear it).
 3. plan: :func:`fabricate.design_side`. The layer plan, the crank's route and
    whether the plan is proven the thinnest, or a :class:`stack.PlanError`
-   naming what blocked it and the static clearances involved.
+   naming what blocked it, the static clearances involved and what would
+   clear it (:mod:`recommend`: each recommendation checked by re-running).
 
 Nothing here computes anything the pipeline doesn't: the stages report
 their own failures.
@@ -66,7 +67,7 @@ def explain(key: str, module: str = "single", params=None, phases=None) -> str:
     if (gc := ground_clearance(tmpl, ctx)) is not None:
         lines.append(f"  ground clearance: {gc:.1f} mm")
     try:
-        static_stage(tmpl, problem)
+        static_stage(tmpl, problem, config)
     except ValueError as e:
         return "\n".join([*lines, "", f"STOP: {e}"])
     lines += ["", "3. plan"]
