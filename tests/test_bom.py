@@ -5,10 +5,10 @@ from __future__ import annotations
 import csv
 
 import pytest
-from build123d import Box
+from build123d import Axis, Box, Plane, Pos
 
 from hardware import catalog
-from hardware.bom import BomLine, bom_from_mechanism
+from hardware.bom import BomLine, bom_from_mechanism, congruent, group_made
 from hardware.catalog import Item, Offer, pick_length, register
 from mechanism import Body, Mechanism
 
@@ -85,3 +85,57 @@ def test_pick_length():
     assert pick_length(12.0, (6, 8, 10, 12, 16)) == 12
     with pytest.raises(ValueError, match="no standard length"):
         pick_length(40, (6, 8, 10))
+
+
+def _chiral():
+    """A 3D corner with three different arms: not congruent to its mirror image."""
+    return (Box(10, 2, 2).moved(Pos(5, 0, 0)) + Box(2, 6, 2).moved(Pos(0, 3, 0))
+            + Box(2, 2, 4).moved(Pos(0, 0, 2)))
+
+
+def test_filament_line_from_printed_volume():
+    register(Item("test_pla", "Test PLA, 1 kg", "filament",
+                  (Offer("BigVendor", "https://example.com/pla", "PLA-1", price_usd=20.0),),
+                  dims={"density": 1.25, "spool_g": 1000.0}))
+    mech = _mech()
+    mech.meta["filament"] = "test_pla"
+    bom = bom_from_mechanism(mech)
+    row = next(r for r in bom.purchased if r.key == "test_pla")
+    grams = 2 * 2 * 10 / 1000 * 1.25                 # the 2 x 2 x 10 mm printed pin
+    assert row.qty == pytest.approx(grams / 1000, abs=1e-3)
+    assert row.packs == 1
+    assert bom.printed_g == pytest.approx(grams)
+    assert [r.category for r in bom.purchased][-2:] == ["filament", "adhesive"]
+
+
+def test_one_product_covering_several_rows_is_bought_once():
+    kit = Offer("BigVendor", "https://example.com/kit", "KIT-1", pack_qty=100, price_usd=12.0)
+    register(Item("test_screw_6", "Test screw 6", "fastener", (kit,)),
+             Item("test_screw_8", "Test screw 8", "fastener", (kit,)))
+    mech = Mechanism("m", bom_extras=[BomLine("test_screw_6", 8), BomLine("test_screw_8", 4)])
+    bom = bom_from_mechanism(mech)
+    rows = {r.key: r for r in bom.purchased}
+    assert rows["test_screw_8"].same_pack_as == "Test screw 6"
+    assert rows["test_screw_8"].cost_usd == 0.0
+    assert bom.cost_usd == pytest.approx(12.0)
+
+
+def test_identical_and_mirrored_parts_are_grouped():
+    part = _chiral()
+    moved = part.rotate(Axis.Z, 70).moved(Pos(40, -3, 9))
+    mirrored = part.mirror(Plane.XY).moved(Pos(-30, 0, 0))
+    assert congruent(part, moved) == "same"
+    assert congruent(part, mirrored) == "mirror"
+    assert congruent(part, Box(10, 2, 2)) is None
+    bodies = [Body(n, part=p, fab="printed") for n, p in (("a", part), ("b", moved),
+                                                            ("c", mirrored))]
+    (g,) = group_made(bodies, "printed")
+    assert (g.qty, g.mirrored) == (3, ["c"])
+    laser = [Body(b.name, part=b.part, fab="laser") for b in bodies]
+    (g,) = group_made(laser, "laser")                # a flipped plate is the same cut
+    assert (g.qty, g.mirrored) == (3, [])
+    mech = Mechanism("m", bodies=bodies)
+    bom = bom_from_mechanism(mech)
+    (row,) = bom.made
+    assert (row.qty, row.mirrored) == (3, 1)
+    assert "2 + 1 mirrored" in bom.markdown()

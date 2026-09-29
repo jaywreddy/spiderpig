@@ -34,7 +34,7 @@ description = "Bake viewer/data/*.glb"
 run         = "uv run python viewer/bake_gltf.py"
 
 [tasks.build]
-description = "STEP/STL/DXF -> build/"
+description = "Robot (default quad; pass -- --module single etc.): STEP/STL, print STLs, DXF sheets, BOM -> build/"
 run         = "uv run python main.py"
 
 [tasks.test]
@@ -47,7 +47,7 @@ description = "ruff check"
 run         = "uv run ruff check ."
 
 [tasks.audit]
-description = "Fabrication audit: part clashes, same-layer sweep, disconnected solids, DXF drops"
+description = "Fabrication audit per module: plan re-check, construction contract, robot clashes, solids, DXF packing, BOM -> build/audit/"
 run         = "uv run python scripts/audit_fab.py"
 
 [tasks.kill]
