@@ -1,51 +1,69 @@
 """Crank constructions.
 
 The crank turns about O, driven by the servo horn, and carries one crankpin
-per leg (point M), which b1 turns on. Every b1 sweeps over O, and the crank
-turns fully relative to b1, so the crank can cross a b1's layer only along
-that b1's own crankpin: it is a **built-up crankshaft**, with a web (an arm
-from O out to the crankpin) in the layers either side of each b1, a body on
-O through the other layers, a hub under the servo horn, and a journal stub
-turning in the outer frame plate. That shape (:meth:`CrankGroup.claims`) is
-the same for every construction; a construction decides radii and how the
-pieces are made and joined.
+per leg (point M), which the leg's riders (Klann's b1) turn on. Every rider
+sweeps over O, and the crank turns fully relative to it, so the crank can
+cross a rider's layer only along that rider's own crankpin: it is a
+**built-up crankshaft**. Its shape is a :class:`CrankRoute`, which the
+planner may choose (else :func:`default_route`): **runs**, where the shaft
+leaves O along a post (at a crankpin, or at a detour point fixed to the
+crank) over some layers, each between two **webs** (arms from O out to the
+post) in the layers either side; a body on O through the other layers; a hub
+under the servo horn; and, with the bottom bearing, a journal stub turning in
+the outer frame plate (without it the crank hangs from the servo side). That
+shape (:meth:`CrankGroup.claims`) is the same for every construction; a
+construction decides radii and how the pieces are made and joined.
 
-:class:`PrintedCrank`: printed segments, split at every b1 layer (b1 has to
-be threaded onto its crankpin); b1s of one crankpin in adjacent layers (two
-legs on one pin) share a split. Going up from the outer frame plate:
+:class:`PrintedCrank`: printed segments, split at every run (a rider has to
+be threaded onto its post). Going up from the outer frame plate:
 
-* **segments**: the bottom one carries the journal stub; the top one is the
-  hub. Each is the union of its claimed shapes, except that a web's face
-  toward the b1 above it is set back by ``axial_play``, which is the b1's
-  end play;
-* **crankpins**: a printed post (``Params.crankpin_d``) on the segment below
-  each split. It runs through the b1 layer(s) and butts against the web of
-  the segment above;
+* **segments**: the layers between runs, each the union of its claimed
+  shapes. The bottom one carries the journal stub, or ends at the lowest web
+  without the bearing; the top one is the hub. A crank face against a rider
+  is set back by ``axial_play``, the rider's end play: the face below a run's
+  riders when they fill the run, else every face a rider touches. A face
+  toward a run layer no rider sits in isn't: nothing turns against it;
+* **posts**: a printed post (``Params.crankpin_d``) on the segment below each
+  run. It runs through the run's layers, bare where no rider rides it (a
+  link may pass it there), and butts against the web of the segment above;
 * **joints**: an axial M3 screw runs through each post. Its head is recessed
   into the lower web from below and it screws into a hex nut trapped in the
-  upper web (pocket open away from the b1). An ISO 4762 head is 3 mm tall
+  upper web (pocket open away from the post). An ISO 4762 head is 3 mm tall
   and doesn't fit a 3 mm web with any floor, so at that pitch the screw is
-  an ISO 7380 button head (:data:`POST_SCREWS` is the order of preference);
+  an ISO 7380 button head (:data:`POST_SCREWS` is the order of preference).
+  Runs along one point whose webs meet (in one layer, or in two adjacent
+  ones) are one joint: one screw through all their posts, since a nut and a
+  head can't share that column. Pockets reach their web through a tunnel the
+  height of the segment, so two joints' (or a joint's and the horn screws')
+  pockets in one segment must not meet;
+* **detours** are split and screwed like crankpins. O is free in a detour's
+  layers, so in one piece its upper web would print hanging off the post over
+  nothing (support trapped between the webs), and the post, which carries
+  the drive torque past the detour, would be loaded across its print layers
+  with no screw clamping it. Split, each segment prints standing on the flat
+  face of its lowest web (or its stub), posts upright;
 * **hub**: bolts to the horn with the horn's screws from below, through the
   hub into the horn's holes (through the drive's horn spacer, if any). The
   heads sit in counterbores in the hub, reached through tunnels in the rest
   of the top segment; a pocket clears the horn's centre screw. The hub's top
   face is the horn's outer face, and within ``Params.margin`` of the inner
   frame plate the hub is no wider than the horn (it turns inside the plate's
-  horn hole).
+  horn hole). Nothing of the crank rises past the horn's outer face.
 
 Assembly: servo on the inner plate; the top segment bolted to the horn
-(nut in its trap first); then, going down, each b1 onto its post and the
-next segment up to it, screwed from below; the outer frame plate last, over
-the journal stub.
+(nut in its trap first); then, going down, each rider onto its post and the
+next segment up to it (every segment of a joint, then its screw from below);
+the outer frame plate last, over the journal stub.
 
-Screw lengths are standard lengths (:func:`hardware.catalog.pick_length`
-style) chosen for the most thread engagement that keeps every head, nut and
-tip inside the crank's claims.
+Screw lengths are stock lengths chosen for the most thread engagement that
+keeps every head, nut and tip inside the crank's claims; a joint no stock
+length fits raises :class:`ConstructionError` (at a 3 mm pitch: 5, 6, 8 or
+more than 9 layers between its webs).
 """
 
 from __future__ import annotations
 
+import itertools
 import math
 import re
 from dataclasses import dataclass
@@ -347,26 +365,6 @@ class HornJoint:
     spacer: float         # drive's horn spacer the screw passes first
 
 
-@dataclass(frozen=True)
-class Gap:
-    """A run of adjacent b1 layers on one crankpin: where the crank is split."""
-
-    lo: int
-    hi: int
-    pin: str
-
-
-def _gaps(rider_layers: dict[int, str]) -> list[Gap]:
-    out: list[Gap] = []
-    for k in sorted(rider_layers):
-        pin = rider_layers[k]
-        if out and out[-1].hi == k - 1 and out[-1].pin == pin:
-            out[-1] = Gap(out[-1].lo, k, pin)
-        else:
-            out.append(Gap(k, k, pin))
-    return out
-
-
 def _hex(xy, af: float, z0: float, z1: float, angle: float):
     """A hexagonal prism, ``af`` across flats, one pair of flats facing ``angle``."""
     ang = math.degrees(angle)
@@ -496,85 +494,131 @@ class PrintedCrank:
         plate_bottom, plate_top = build.z(build.top)
         face = plate_top - drive.horn_face_depth
         play = self.axial_play
-        route = route_of(build.plan.layout, topo.axes_of("crankpin"))
-        rider_layers = {k: r.at for r in route.runs for k in range(r.lo, r.hi + 1)}
-        gaps = [Gap(r.lo, r.hi, r.at) for r in sorted(route.runs, key=lambda r: r.lo)]
+        pins = topo.axes_of("crankpin")
+        route = route_of(build.plan.layout, pins)
+        runs = sorted(route.runs, key=lambda r: (r.lo, r.at))
+        in_run = {k for r in runs for k in range(r.lo, r.hi + 1)}
+        for r in runs:
+            webs = {r.lo - 1, r.hi + 1}
+            if k := sorted(webs & in_run) or sorted(k for k in webs if not 0 < k < build.top):
+                raise ConstructionError(f"the crank's route puts a web of {r.at} in layer {k[0]}: "
+                                        "in a frame plate, or where another run needs O free")
+        riders = {p.name: {build.layers[b] for b in p.members} for p in pins}
         claimed = [p for p in build.shapes(GROUP)
                    if p.label != "servo horn" and not p.label.startswith("crankpin")]
 
-        def span(p: Placed) -> tuple[float, float]:
-            z0, z1 = build.z(p.layer)
-            if p.layer + 1 in rider_layers:
-                z1 -= play                 # b1's end play
-            if p.label == "crank hub":
-                z1 = min(z1, face)         # the hub stops at the horn's outer face
-            return z0, z1
+        # end play: the crank's face against a rider is set back by ``play``, once per
+        # stack of riders filling a run, else on each side a rider touches
+        below, above = set(), set()     # layers whose top / bottom face is set back
+        for r in runs:
+            ridden = riders.get(r.at, set()) & set(range(r.lo, r.hi + 1))
+            if r.lo in ridden:
+                below.add(r.lo - 1)
+            if r.hi in ridden and len(ridden) <= r.hi - r.lo:
+                above.add(r.hi + 1)
 
-        # segments: the layers between splits
-        ranges = []
-        lo = 0
-        for g in gaps:
-            ranges.append((lo, g.lo - 1))
-            lo = g.hi + 1
-        ranges.append((lo, build.top - 1))
+        def span(k: int) -> tuple[float, float]:
+            """The crank's faces in layer ``k``; nothing rises past the horn's outer face."""
+            z0, z1 = build.z(k)
+            return z0 + play * (k in above), min(z1 - play * (k in below), face)
+
+        # segments: the layers between runs, each printed standing on its bottom face
+        ranges: list[list[int]] = []
+        for k in range(build.top):
+            if k not in in_run:
+                if ranges and ranges[-1][1] == k - 1:
+                    ranges[-1][1] = k
+                else:
+                    ranges.append([k, k])
+        seg_of = {k: i for i, (a, b) in enumerate(ranges) for k in range(a, b + 1)}
         segs: list[list] = [[] for _ in ranges]
         zspan: list[list[float]] = [[math.inf, -math.inf] for _ in ranges]
         for p in claimed:
-            i = next((i for i, (a, b) in enumerate(ranges) if a <= p.layer <= b), None)
-            if i is None:
+            i, z = seg_of.get(p.layer), span(p.layer)
+            if i is None or z[1] <= z[0] + EPS:
                 continue
-            z = span(p)
             segs[i].append(shape_solid(build, p, z=z))
             zspan[i] = [min(zspan[i][0], z[0]), max(zspan[i][1], z[1])]
         cuts: list[list] = [[] for _ in ranges]
         purchased: list = []
+        holes: list[tuple[int, tuple, float, str, bool]] = []  # (segment, xy, r, owner, tunnel)
 
-        # crankpin joints: a post on the segment below, screwed into a nut above
-        for i, g in enumerate(gaps):
-            xy = tuple(build.xy(g.pin))
-            ang = build.angle("O", g.pin)
-            zl0, zl1 = build.z(g.lo - 1)[0], build.z(g.lo)[0] - play
-            zu0 = build.z(g.hi + 1)[0]
-            zu1 = build.z(g.hi + 1)[1] - (play if g.hi + 2 in rider_layers else 0.0)
+        # joints: runs along one point whose webs meet (shared or adjacent layers) are one
+        # joint; a post on the segment below each run, one screw from the lowest web's
+        # head counterbore up through every post into a nut trapped in the highest web
+        chains: list[list[Run]] = []
+        for r in runs:
+            c = next((c for c in chains if c[-1].at == r.at and r.lo - c[-1].hi <= 3), None)
+            if c is None:
+                chains.append([r])
+            else:
+                c.append(r)
+        for c in chains:
+            at = c[0].at
+            tag = at if sum(x[0].at == at for x in chains) == 1 else f"{at}_{c[0].lo}"
+            xy, ang = tuple(build.xy(at)), build.angle("O", at)
+            (zl0, zl1), (zu0, zu1) = span(c[0].lo - 1), span(c[-1].hi + 1)
+            lo_seg, hi_seg = seg_of[c[0].lo - 1], seg_of[c[-1].hi + 1]
             joint = self.post_joint(zl0, zl1, zu0, zu1)
             if joint is None:
-                raise ConstructionError(f"no screw fits the crankpin joint at {g.pin}")
-            segs[i].append(disc(xy, d.post, zl1 - 0.5, zu0))
+                raise ConstructionError(
+                    f"no stock screw fits the crankpin joint at {at}: its webs' outer faces are "
+                    f"{zu1 - zl0:.2f} mm apart (layers {c[0].lo - 1}..{c[-1].hi + 1}), and no "
+                    f"length of {', '.join(f'M3 {sk.kind} {sk.lengths}' for sk in POST_SCREWS)} "
+                    f"keeps its head, nut and tip inside those webs with {self.min_nut_engage} "
+                    "mm in the nut")
+            for r in c:
+                segs[seg_of[r.lo - 1]].append(disc(xy, d.post, span(r.lo - 1)[1] - 0.5,
+                                                   span(r.hi + 1)[0]))
+                holes.append((seg_of[r.lo - 1], xy, d.post, tag, False))
             bore = disc(xy, self.post_bore / 2, zl0 - 1, zu1 + 1)
-            cuts[i] += [bore, disc(xy, (joint.screw.head_d + self.screw_fit) / 2,
-                                   zspan[i][0] - 1, zl0 + joint.head_depth)]
+            head_r = (joint.screw.head_d + self.screw_fit) / 2
             nut_z = zu1 - joint.nut_depth
-            cuts[i + 1] += [bore, _hex(xy, NUT_AF + self.nut_fit, nut_z, zspan[i + 1][1] + 1, ang)]
+            for i in range(lo_seg, hi_seg + 1):
+                cuts[i].append(bore)
+            cuts[lo_seg].append(disc(xy, head_r, zspan[lo_seg][0] - 1, zl0 + joint.head_depth))
+            cuts[hi_seg].append(_hex(xy, NUT_AF + self.nut_fit, nut_z, zspan[hi_seg][1] + 1, ang))
+            holes += [(lo_seg, xy, head_r, tag, True),
+                      (hi_seg, xy, (NUT_AF + self.nut_fit) / math.sqrt(3), tag, True)]
             purchased.append(hardware(
-                f"crank_screw_{g.pin}", screw_body(xy, joint.screw, zl0 + joint.head_depth,
-                                                    joint.length),
+                f"crank_screw_{tag}", screw_body(xy, joint.screw, zl0 + joint.head_depth,
+                                                 joint.length),
                 host, fab="purchased", bom_key=joint.screw.key(joint.length), color=STEEL))
             nut = _hex(xy, NUT_AF, nut_z, nut_z + NUT_H, ang) - disc(xy, NUT_BORE / 2, nut_z - 1,
                                                                     nut_z + NUT_H + 1)
-            purchased.append(hardware(f"crank_nut_{g.pin}", nut, host, fab="purchased",
+            purchased.append(hardware(f"crank_nut_{tag}", nut, host, fab="purchased",
                                       bom_key=NUT_KEY, color=STEEL))
 
         # the hub: horn screws from below, the centre pocket, the step inside the plate
         top_seg = len(ranges) - 1
-        hub_bottom = min((span(p)[0] for p in claimed if p.label == "crank hub"), default=face)
+        hub_bottom = min((span(p.layer)[0] for p in claimed if p.label == "crank hub"),
+                         default=face)
         joint = self.horn_joint(drive, spec, face - hub_bottom)
         if joint is None:
             raise ConstructionError(f"no screw fits between the crank hub and the {spec.key} horn")
         sk = joint.screw
         o = build.xy("O")
-        theta = build.angle("O", topo.axes_of("crankpin")[0].name) + drive.pattern_angle
+        theta = build.angle("O", pins[0].name) + drive.pattern_angle
         bearing = face - joint.floor
         for k in range(drive.screw_count):
             a = theta + 2 * math.pi * k / drive.screw_count
             xy = tuple(o + drive.screw_pcd / 2 * np.array([math.cos(a), math.sin(a)]))
             cuts[top_seg] += [disc(xy, drive.screw_clearance_d / 2, bearing - 1, face + 1),
                               disc(xy, drive.screw_head_d / 2, zspan[top_seg][0] - 1, bearing)]
+            holes.append((top_seg, xy, drive.screw_head_d / 2, "the servo horn", True))
             purchased.append(hardware(
                 f"crank_horn_screw{k}", screw_body(xy, sk, bearing, joint.length), host,
                 fab="purchased", bom_key=sk.key(joint.length), color=STEEL))
         if drive.center_head_d > 0:
-            cuts[top_seg].append(disc(tuple(o), (drive.center_head_d + params.print_fit) / 2,
-                                      face - drive.center_head_h - 0.2, face + 1))
+            r = (drive.center_head_d + params.print_fit) / 2
+            cuts[top_seg].append(disc(tuple(o), r, face - drive.center_head_h - 0.2, face + 1))
+            holes.append((top_seg, tuple(o), r, "the servo horn", True))
+        # a tunnel runs the height of its segment: it mustn't cut another joint's
+        for (i, p, rp, a, tp), (j, q, rq, b, tq) in itertools.combinations(holes, 2):
+            if i == j and a != b and (tp or tq) and math.dist(p, q) < rp + rq:
+                raise ConstructionError(f"the crank's pockets for {a} and {b} are "
+                                        f"{math.dist(p, q):.1f} mm apart in segment {i}: they "
+                                        "would cut into each other's screw, nut or post")
         step = plate_bottom - params.margin
         if face > step + EPS:
             ring = disc(tuple(o), 2 * d.hub + 10, step, face + 1) - disc(
@@ -602,7 +646,7 @@ class PrintedCrank:
 
 
 __all__ = [
-    "BHCS", "CrankDims", "CrankGroup", "CrankRoute", "Gap", "HornJoint", "POST_SCREWS",
+    "BHCS", "CrankDims", "CrankGroup", "CrankRoute", "HornJoint", "POST_SCREWS",
     "PostJoint", "PrintedCrank", "Run", "SELF_TAP", "SHCS", "ScrewKind", "add_crank_point",
     "default_route",
     "hub_layers", "route_of", "screw_body", "screw_from_key",
