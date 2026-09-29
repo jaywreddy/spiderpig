@@ -14,17 +14,19 @@ writes into ``--out``:
 * ``bom.csv`` / ``bom.md`` / ``bom.json`` — what to buy (quantities, packs,
   vendor links, estimated cost), cut and print.
 
-The design parameters: ``--phases`` (every leg's crank phase in degrees,
-e.g. ``0,175,180,355`` for a quad) and ``--proportion NAME=VALUE``
-(repeatable; overrides one of Klann's proportions, see ``klann.PROPORTIONS``).
-``scripts/tune_gait.py`` searches for good ones.
+The design parameters: ``--linkage`` (Klann by default; ``--list`` shows
+them all), ``--phases`` (every leg's crank phase in degrees, e.g.
+``0,175,180,355`` for a quad) and ``--proportion NAME=VALUE`` (repeatable;
+overrides one of the linkage's parameters). ``scripts/tune_gait.py``
+searches for good ones.
 
 Usage
 -----
     uv run python main.py                           # quad robot, defaults
     uv run python main.py --module single --out build/single
     uv run python main.py --phases 0,175,180,355       # the tuned quad gait
-    uv run python main.py --list                    # modules, servos, constructions
+    uv run python main.py --linkage jansen --module double
+    uv run python main.py --list                    # linkages, modules, servos, constructions
 """
 
 from __future__ import annotations
@@ -34,9 +36,11 @@ import csv
 import math
 import re
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import construction
+import linkage
 import servos
 import walk
 from fabricate import (
@@ -51,39 +55,16 @@ from hardware.bom import BomLine, bom_from_mechanism, group_made
 from layout import DEFAULT_KERF, save_sheets
 
 
-def module_template(module: str):
-    """The kinematic template of one side for ``module`` (see ``fabricate.MODULES``)."""
-    from klann import (
-        build_double_decker_template,
-        build_double_double_decker_template,
-        build_double_template,
-        build_klann_template,
-        create_klann_geometry,
-    )
-
-    builders = {
-        "single": lambda: build_klann_template(create_klann_geometry()),
-        "double": build_double_template,
-        "decker": build_double_decker_template,
-        "quad": build_double_double_decker_template,
-    }
-    if module not in builders:
-        raise ValueError(f"unknown module {module!r}; have {sorted(builders)}")
-    return builders[module]()
-
-
 def config_from_args(args: argparse.Namespace) -> BuildConfig:
-    """The build the arguments ask for (``--phases`` / ``--proportion`` when parsed).
+    """The build the arguments ask for (the design from ``--linkage`` / ``--phases`` /
+    ``--proportion``).
 
     Raises :class:`walk.ParamError` for design parameters that don't fit the module.
     """
-    phases_deg, proportions = (walk.design_args(args) if hasattr(args, "phases")
-                               else (None, None))
-    return BuildConfig(module=args.module, robot=not args.side_only, sheet=args.sheet,
-                       servo=args.servo, pillar=args.pillar, pin=args.pin, crank=args.crank,
-                       thickness=args.thickness,
-                       phases=walk.normalize_phases(args.module, phases_deg),
-                       proportions=walk.normalize_proportions(proportions))
+    base = BuildConfig(sheet=args.sheet, servo=args.servo, pillar=args.pillar, pin=args.pin,
+                       crank=args.crank, thickness=args.thickness)
+    config = walk.make_config(args.module, base=base, **walk.design_args(args))
+    return replace(config, robot=not args.side_only)
 
 
 def add_config_args(p: argparse.ArgumentParser) -> None:
@@ -101,10 +82,11 @@ def add_config_args(p: argparse.ArgumentParser) -> None:
 
 
 def _parse_args(argv) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Klann walking-robot generator")
-    p.add_argument("--module", choices=MODULES, default="quad",
-                   help="legs per side: single, double (mirrored pair), decker (two legs on "
-                   "one crankshaft), quad (two mirrored deckers). Default: quad")
+    p = argparse.ArgumentParser(description="Walking-robot generator")
+    p.add_argument("--module", default="quad",
+                   help="legs per side (the linkage's modules): single, double (mirrored "
+                   "pair), decker (two legs on one crankshaft), quad (two mirrored deckers). "
+                   "Default: quad")
     p.add_argument("--side-only", action="store_true",
                    help="build one side (no second side, no chassis)")
     walk.add_design_args(p)
@@ -115,7 +97,7 @@ def _parse_args(argv) -> argparse.Namespace:
                    help="usable sheet size in mm (default: the sheet stock's size)")
     p.add_argument("--out", type=Path, default=Path("build"),
                    help="output directory (created if missing). Default: ./build")
-    p.add_argument("--name", default="klann", help="file-name stem. Default: klann")
+    p.add_argument("--name", default=None, help="file-name stem. Default: the linkage (klann)")
     p.add_argument("--no-dxf", action="store_true", help="skip the DXF sheet-packing pass")
     p.add_argument("--list", action="store_true",
                    help="list modules, servos, constructions and sheet stock")
@@ -124,6 +106,7 @@ def _parse_args(argv) -> argparse.Namespace:
         args.config = config_from_args(args)
     except walk.ParamError as e:
         p.error(str(e))
+    args.name = args.name or args.config.linkage
     return args
 
 
@@ -131,6 +114,11 @@ def _list_options() -> None:
     from hardware.catalog import CATALOG, _load
 
     _load()
+    print("linkages (--linkage; --proportion NAME=VALUE for its parameters):")
+    for key in linkage.available():
+        lk = linkage.get(key)
+        params = ", ".join(f"{k}={float(v):g}" for k, v in lk.params.items())
+        print(f"  {key:14} {lk.name}: {params}")
     print("modules: " + ", ".join(MODULES))
     print("servos (full rotation):")
     for key in servos.available():
@@ -216,10 +204,12 @@ def main(argv=None) -> int:
     except walk.LinkageError as e:
         print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
         return 2
-    if config.phases is not None or config.proportions:
-        params = walk.params_of(config)
-        print(f"design: phases {', '.join(f'{p:g}' for p in params['phases_deg'])} deg; "
-              f"proportions {dict(config.proportions) or 'Klann'}")
+    phases = ",".join(f"{math.degrees(p):g}" for p in walk.phases_rad(config))
+    custom = config.phases is not None or config.proportions
+    design_note = (f"{config.linkage} linkage, leg phases {phases} deg, proportions "
+                   f"{dict(config.proportions) or 'its defaults'}")
+    if custom or config.linkage != linkage.DEFAULT:
+        print(f"design: {design_note}")
     design = design_side(tmpl, config)
     plan = design.plan
     print(f"{args.module}: layer plan of one side, {plan.top + 1} layers of "
@@ -262,10 +252,8 @@ def main(argv=None) -> int:
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
-    if config.phases is not None or config.proportions:
-        phases = ",".join(f"{math.degrees(p):g}" for p in walk.phases_rad(config))
-        bom.notes.append(f"Design: leg phases {phases} deg; proportions "
-                         f"{dict(config.proportions) or 'Klann'}.")
+    if custom or config.linkage != linkage.DEFAULT:
+        bom.notes.append(f"Design: {design_note}.")
     paths = bom.write(out)
     print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
           f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")

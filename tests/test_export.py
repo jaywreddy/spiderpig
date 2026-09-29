@@ -91,8 +91,20 @@ def test_side_only_without_dxf(tmp_path):
 def test_list(capsys):
     assert cli.main(["--list"]) == 0
     out = capsys.readouterr().out
-    for word in ("sts3215", "printed", "acrylic_3mm"):
+    for word in ("sts3215", "printed", "acrylic_3mm", "jansen", "strider"):
         assert word in out
+
+
+def test_linkage_flag():
+    """``--linkage`` picks the linkage; its own parameters are the ones ``--proportion`` takes."""
+    args = cli._parse_args(["--linkage", "jansen", "--module", "double", "--proportion", "m=14"])
+    assert (args.config.linkage, args.config.module) == ("jansen", "double")
+    assert args.config.proportions == (("m", 14.0),)
+    assert args.name == "jansen"
+    assert cli._parse_args([]).name == "klann"
+    for bad in (["--linkage", "octopus"], ["--linkage", "jansen", "--proportion", "DF=2"]):
+        with pytest.raises(SystemExit):
+            cli._parse_args(bad)
 
 
 def test_design_flags():
@@ -114,4 +126,4 @@ def test_design_flags():
 def test_unassemblable_design_is_refused(tmp_path, capsys):
     assert cli.main(["--module", "single", "--proportion", "MC=0.3", "--no-dxf",
                      "--out", str(tmp_path)]) == 2
-    assert "joint C" in capsys.readouterr().err
+    assert "C can't be placed" in capsys.readouterr().err

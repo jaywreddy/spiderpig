@@ -6,7 +6,9 @@
  * the whole story, and it is cheap enough to evaluate many times per frame.
  *
  * Mech frame (the glb ``walker`` node's local frame): x along the walking
- * axis, y up, z lateral (left side at -z).
+ * axis, y up, z lateral (left side at -z). The feet are whatever the data
+ * lists: every foot of the design's linkage on both sides (a leg may have
+ * several), each with its path over the crank cycle.
  */
 import { Line3, Triangle, Vector3 } from 'three';
 
@@ -17,7 +19,7 @@ export interface DriveData { n: number; feet: Foot[]; com: Vector3; rpmMax: numb
 /** The SPEC-shaped walking data of the glb ``drive`` extras or an ``/api/walk`` response. */
 export interface WalkJson {
   theta_samples: number;
-  feet: { side: Side; leg: number; z: number; xy: [number, number][] }[];
+  feet: { body?: string; side: Side; leg: number; z: number; xy: [number, number][] }[];
   com?: [number, number, number];
   servo?: { key?: string; rpm_max?: number };
 }
@@ -26,7 +28,7 @@ export function parseDrive(src: WalkJson): DriveData {
   const n = src.theta_samples;
   const feet = src.feet.map((f) => {
     const xy = Float64Array.from(f.xy.flat());
-    if (xy.length !== 2 * n || !xy.every(Number.isFinite)) throw new Error(`bad foot track ${f.side}${f.leg}`);
+    if (xy.length !== 2 * n || !xy.every(Number.isFinite)) throw new Error(`bad foot track ${f.body ?? f.side + f.leg}`);
     return { side: f.side, leg: f.leg, z: f.z, xy };
   });
   return { n, feet, com: new Vector3(...(src.com ?? [0, 0, 0])), rpmMax: src.servo?.rpm_max ?? 50 };

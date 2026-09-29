@@ -1,4 +1,4 @@
-"""FastAPI dev server for the Klann viewer.
+"""FastAPI dev server for the walker viewer.
 
 Serves the three.js frontend and one self-contained ``klann_<mode>.glb``
 per assembly mode from ``viewer/data/``, baked on first request (and again
@@ -9,16 +9,22 @@ changes and pushes a ``reload`` message to every connected browser over
 
 Design parameters (the walking model's contract, see ``walk.py``):
 
-``GET /api/walk?module=quad&phases=0,180,90,270&p.OB=1.121``
-    The walking model from the kinematics alone (no parts; fast): every
-    foot's path, one side's joints, the nominal centre of mass and the
-    straight-walk metrics. ``phases`` in degrees, one per leg; ``p.<NAME>``
-    overrides one of ``klann.PROPORTIONS``. Bad parameters: 422. A linkage
-    that can't be assembled: 200 with ``valid: false`` and the reason.
-``GET /api/glb/{mode}?module=...&phases=...&p.NAME=...``
+``GET /api/linkages``
+    Every registered linkage (:mod:`linkage`): key, name, family, notes,
+    source, its parameters (name, default, whether it's an angle), its
+    modules (name -> legs per side), link labels and feet per leg.
+``GET /api/walk?linkage=klann&module=quad&phases=0,180,90,270&p.OB=1.121``
+    The walking model from the kinematics alone (no parts; fast once the
+    linkage's default design is planned): every foot's path, one side's
+    joints, the nominal centre of mass and the straight-walk metrics.
+    ``linkage`` defaults to Klann; ``phases`` in degrees, one per leg;
+    ``p.<NAME>`` overrides one of the linkage's parameters. Bad parameters
+    (an unknown linkage too): 422. A linkage that can't be assembled: 200
+    with ``valid: false`` and the reason.
+``GET /api/glb/{mode}?linkage=...&module=...&phases=...&p.NAME=...``
     The fabricated walker baked with those parameters. The default design
-    keeps ``viewer/data/klann_<mode>.glb``; other designs are cached in
-    ``viewer/data/params/`` per parameter set (the newest
+    keeps ``viewer/data/klann_<mode>.glb``; other designs (other linkages
+    too) are cached in ``viewer/data/params/`` per parameter set (the newest
     ``PARAM_CACHE_SIZE`` kept). A design the planner or a construction
     can't build: 422 with the reason. Bakes run one at a time.
 
@@ -79,6 +85,7 @@ if str(VIEWER_DIR) not in sys.path:
 
 from bake_gltf import bake_gltf, build_config, is_default, param_glb  # noqa: E402
 
+import linkage  # noqa: E402
 import walk  # noqa: E402
 from construction import ConstructionError  # noqa: E402
 from fabricate import BuildConfig  # noqa: E402
@@ -166,8 +173,8 @@ def _ensure_param_baked(bake_mode: str, config: BuildConfig) -> Path:
         failed = _FAILED.get(path)
         if failed is not None and failed[0] >= mtime:
             raise HTTPException(status_code=422, detail=failed[1])
-        print(f"[server] baking mode={bake_mode} module={config.module} "
-              f"params={walk.params_of(config)} -> params/{path.name}")
+        print(f"[server] baking mode={bake_mode} params={walk.params_of(config)} "
+              f"-> params/{path.name}")
         try:
             _bake_to(path, bake_mode, config)
         except (ValueError, ConstructionError) as e:
@@ -214,21 +221,38 @@ app = FastAPI(lifespan=_lifespan, title="spiderpig viewer")
 # ---------------------------------------------------------------------------
 
 
-def design_query(query) -> tuple[str | None, list[float] | None, dict[str, float]]:
-    """``(module, phases in degrees, proportion overrides)`` from a query string.
+def design_query(query) -> dict:
+    """``linkage``, ``module``, ``phases`` (degrees) and ``proportions`` from a query string.
 
-    ``module``, ``phases`` (comma-separated degrees, one per leg) and
-    ``p.<NAME>=<value>``; other keys are ignored. Raises
-    :class:`walk.ParamError` for malformed values.
+    ``linkage`` (a registered key, Klann by default), ``module``, ``phases``
+    (comma-separated degrees, one per leg) and ``p.<NAME>=<value>``; other
+    keys are ignored. Raises :class:`walk.ParamError` for malformed values
+    and an unknown linkage (the rest is checked with the config).
     """
-    module = query.get("module") or None
-    phases = walk.parse_phases(query["phases"]) if query.get("phases") else None
     proportions: dict[str, float] = {}
     for key, value in query.multi_items():
         if key.startswith("p."):
             name, v = walk.parse_proportion(f"{key[2:]}={value}")
             proportions[name] = v
-    return module, phases, proportions
+    return {
+        "linkage": walk.get_linkage(query.get("linkage") or linkage.DEFAULT).key,
+        "module": query.get("module") or None,
+        "phases": walk.parse_phases(query["phases"]) if query.get("phases") else None,
+        "proportions": proportions,
+    }
+
+
+def linkage_info(lk: linkage.Linkage) -> dict:
+    """What the viewer needs to offer and tune a linkage (``/api/linkages``)."""
+    return {
+        "key": lk.key, "name": lk.name, "family": lk.family or lk.key, "notes": lk.notes,
+        "source": lk.source,
+        "params": [{"name": k, "default": float(v), "angle": k in lk.angles}
+                   for k, v in lk.params.items()],
+        "modules": {m: len(legs) for m, legs in lk.leg_modules.items()},
+        "labels": dict(lk.labels),
+        "feet": len(lk.feet),
+    }
 
 
 @lru_cache(maxsize=64)
@@ -244,12 +268,20 @@ def list_modes() -> dict:
     return {"default": _DEFAULT_MODE, "modes": list(MODES.keys())}
 
 
+@app.get("/api/linkages")
+def list_linkages() -> dict:
+    """The registered linkages (the viewer's linkage dropdown and parameter sliders)."""
+    return {"default": linkage.DEFAULT,
+            "linkages": [linkage_info(linkage.get(k)) for k in linkage.available()]}
+
+
 @app.get("/api/walk")
 def get_walk(request: Request) -> Response:
     """The walking model for a design, from the kinematics alone (see the module docstring)."""
     try:
-        module, phases, proportions = design_query(request.query_params)
-        config = walk.make_config(module or "quad", phases, proportions)
+        q = design_query(request.query_params)
+        config = walk.make_config(q["module"] or "quad", q["phases"], q["proportions"],
+                                  linkage=q["linkage"])
     except walk.ParamError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     return Response(_walk_json(config), media_type="application/json", headers=_NO_CACHE)
@@ -261,11 +293,11 @@ def get_glb(mode_id: str, request: Request) -> Response:
         raise HTTPException(status_code=404, detail=f"unknown mode {mode_id!r}")
     bake_mode = MODES[mode_id]
     try:
-        module, phases, proportions = design_query(request.query_params)
+        q = design_query(request.query_params)
         config = build_config(
-            bake_mode, module,
-            phases=None if phases is None else [math.radians(p) for p in phases],
-            proportions=proportions or None)
+            bake_mode, q["module"], linkage=q["linkage"],
+            phases=None if q["phases"] is None else [math.radians(p) for p in q["phases"]],
+            proportions=q["proportions"] or None)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     if is_default(bake_mode, config):

@@ -76,8 +76,9 @@ uv run uvicorn server.app:app --port 8000
 
 - **Slider** — scrub to any phase instantly.
 - **Play / Pause** — plays the clip in real time.
-- **Mode dropdown** — the server's modes (`/api/modes`), robot first.
-- **Red loop** — leg 0's foot trail over one cycle.
+- **Mode dropdown** — the server's modes (`/api/modes`), robot first, of the
+  tune panel's linkage.
+- **Red loop** — leg 0's (first) foot trail over one cycle.
 - **Orbit** — mouse drag to rotate; wheel to zoom; right-drag to pan.
 - **Deep links** — `?mode=klann&view=side&t=0.3` picks the mode, a camera
   preset (`three-quarter`, `side`, `front`, `top`) and a paused clip time.
@@ -108,16 +109,18 @@ feet on the ground don't slide (least squares; the residual is the *slip*).
   revolution (net distance and path, turn, bob, pitch / roll range, slip,
   min margin, tipping share), the model's straight-walk stride; one
   sparkline of a chosen metric; a red banner when tipping.
-- **Tune panel** (top left): module, per-leg phases, the 11 Klann
-  proportions (±30 %; defaults come from `/api/walk`). Changes query
+- **Tune panel** (top left): the linkage (`/api/linkages`: Klann, Jansen,
+  Strider, ...) and its modules, per-leg phases, a slider per parameter of
+  the linkage (lengths 0.5–1.5 × the default, angles ± 45°). Switching the
+  linkage rebuilds the sliders and re-bakes the robot. Changes query
   `/api/walk` (debounced) and switch to a stick-figure preview of both sides
   that drives with the same model — instant. *Rebuild parts* bakes
   `/api/glb/robot?<params>` (a 422 shows its detail) and drives the full
-  model again; *Reset to Klann*.
+  model again; *Reset to defaults*.
 
 Walking data comes from the glb's `walker` extras `drive`, or from
 `/api/walk` for the glb's design when it has none. Drive mode renders
-continuously. Deep links: `?drive=1`, `?scheme=arcade`,
+continuously. Deep links: `?drive=1`, `?scheme=arcade`, `?linkage=jansen`,
 `?tune=1&module=quad&phases=0,180,90,270&p.DF=2.7`.
 
 ## Files

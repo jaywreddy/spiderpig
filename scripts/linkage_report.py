@@ -28,6 +28,7 @@ import linkage  # noqa: E402
 
 log = logging.getLogger("linkage_report")
 N = 720
+MIN_STRIDE = 20.0     # mm per revolution: less isn't walking
 STANCE_TOL = (2.0, 5.0)   # mm above the lowest point that still count as stance
 
 
@@ -76,6 +77,33 @@ def plans(key: str, modules) -> dict:
     return out
 
 
+def walking(key: str, module: str) -> dict:
+    """Quasi-static straight-walk metrics of the robot (both sides) for a module that plans."""
+    import walk
+
+    p = walk.api_payload(walk.make_config(module, linkage=key))
+    if not p["valid"]:
+        return {"valid": False, "error": p["error"]}
+    m = p["metrics"]
+    keep = ("stride_mm", "speed_mm_s", "bob_mm", "pitch_deg", "roll_deg", "slip_rms_mm_per_rev",
+            "tipping_fraction", "degenerate_fraction", "mean_contacts", "min_margin_mm")
+    return {"valid": True, "mass_g": p["mass_g"], "objective": round(walk.objective(m), 2),
+            **{k: m[k] for k in keep}}
+
+
+def cost(key: str, module: str) -> dict:
+    """The robot's purchase total and part counts (builds every part: slow)."""
+    from fabricate import BuildConfig, fabricate, template_for
+    from hardware.bom import bom_from_mechanism
+
+    cfg = BuildConfig(linkage=key, module=module)
+    mech = fabricate(template_for(cfg), cfg, 0.0)
+    bom = bom_from_mechanism(mech)
+    return {"module": module, "cost_usd": round(bom.cost_usd, 2), "bodies": len(mech.bodies),
+            "laser": sum(b.fab == "laser" for b in mech.bodies),
+            "printed": sum(b.fab == "printed" for b in mech.bodies)}
+
+
 def describe(lk: linkage.Linkage) -> dict:
     return {
         "key": lk.key, "name": lk.name, "family": lk.family or lk.key,
@@ -99,6 +127,9 @@ def main(argv=None) -> int:
     ap.add_argument("--linkages", nargs="*", default=None)
     ap.add_argument("--modules", nargs="*", default=["single", "double", "decker", "quad"])
     ap.add_argument("--no-plan", action="store_true", help="skip the layer planner")
+    ap.add_argument("--no-walk", action="store_true", help="skip the walking model")
+    ap.add_argument("--cost", action="store_true",
+                    help="build the best-walking module's robot for its BOM total (slow)")
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
     logging.basicConfig(level=args.log_level, format="%(name)s %(message)s")
@@ -109,6 +140,14 @@ def main(argv=None) -> int:
         row = describe(lk) | {"foot": foot_path(lk)}
         if not args.no_plan:
             row["plans"] = plans(key, args.modules)
+            if not args.no_walk:
+                row["walk"] = {m: walking(key, m) for m, r in row["plans"].items() if r["ok"]}
+                ok = {m: w for m, w in row["walk"].items()      # it has to go somewhere
+                      if w["valid"] and w["stride_mm"] > MIN_STRIDE}
+                if ok:
+                    row["best"] = min(ok, key=lambda m: ok[m]["objective"])
+                    if args.cost:
+                        row["cost"] = cost(key, row["best"])
         report.append(row)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=1))

@@ -23,9 +23,12 @@ moves where the cycle starts. Then
 2. the ``--top`` best refined by a pattern search (steps 8, 4, 2, 1 deg;
    one leg's phase or two legs' at a time) at the model's full resolution
    (``walk.N_THETA``);
-3. with ``--proportions PCT``: the proportions (all but ``OA``, which only
-   scales the robot; ``--names`` to choose) join the pattern search, each
-   within +-PCT % of Klann's.
+3. with ``--proportions PCT``: the linkage's parameters (all but those
+   that only scale the robot, like Klann's ``OA`` or Jansen's ``unit``;
+   ``--names`` to choose) join the pattern search, each within +-PCT % of
+   its default.
+
+``--linkage`` picks the linkage (Klann by default).
 
 Two legs' phases stay at least ``--min-gap`` degrees apart (default 5)
 unless the module's own design has them together (the double's pair):
@@ -37,7 +40,7 @@ The model is :mod:`walk`'s without parts: the feet's lateral z from the
 default design's layer plan and the nominal centre of mass (the same as
 ``/api/walk``). ``--plan`` plans the best design (is it buildable?) and
 scores it again with its planned foot z; when tuned proportions can't be
-planned it falls back on the best phases with Klann's proportions. (The
+planned it falls back on the best phases with the default proportions. (The
 planner can take minutes to give up on a design.) Found so far for the
 default quad: the phases alone plan like the default; tuning the lower leg
 (``--names DF,DE,BE,CD``) plans too, while designs that also move the
@@ -48,6 +51,7 @@ Usage
 -----
     uv run python scripts/tune_gait.py                      # quad, phases only
     uv run python scripts/tune_gait.py --module decker --grid 5
+    uv run python scripts/tune_gait.py --linkage jansen --module double --proportions 5
     uv run python scripts/tune_gait.py --proportions 5 --names DF,DE,BE,CD --plan
     uv run python scripts/tune_gait.py --proportions 8 --plan --json best.json
 """
@@ -69,7 +73,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import klann  # noqa: E402
+import linkage  # noqa: E402
 import walk  # noqa: E402
 
 PHASE_STEPS = (8.0, 4.0, 2.0, 1.0)          # degrees
@@ -98,16 +102,18 @@ def _gap(a: float, b: float) -> float:
 
 
 class Tuner:
-    """Scores candidates of one module (memoized per resolution)."""
+    """Scores candidates of one module of a linkage (memoized per resolution)."""
 
     def __init__(self, module: str, stride_ref: float | None = None,
-                 min_gap: float = MIN_GAP) -> None:
+                 min_gap: float = MIN_GAP, linkage: str = linkage.DEFAULT) -> None:
         self.module = module
-        self.default = Candidate(tuple(math.degrees(ph) for _, ph in walk.module_legs(module)))
+        self.linkage = walk.get_linkage(linkage)
+        self.default = Candidate(tuple(math.degrees(ph)
+                                       for _, ph in walk.module_legs(module, linkage)))
         self.stride_ref = stride_ref
         self.min_gap = min_gap
         self.evaluations = 0
-        self.phase_best: Scored | None = None     # best with Klann's proportions (tune())
+        self.phase_best: Scored | None = None     # best with the default proportions (tune())
         self._memo: dict[tuple, Scored] = {}
         d = self.default.phases
         self._pairs = [(i, j) for i, j in combinations(range(len(d)), 2)
@@ -120,11 +126,15 @@ class Tuner:
         """Every two legs' phases ``min_gap`` apart (see the module docstring)."""
         return all(_gap(phases[i], phases[j]) >= self.min_gap - 1e-9 for i, j in self._pairs)
 
+    def config(self, c: Candidate):
+        return walk.make_config(self.module, c.phases, dict(c.proportions),
+                                linkage=self.linkage.key)
+
     def metrics(self, c: Candidate, n: int = walk.N_THETA, feet_z=None) -> dict | None:
         """Straight-walk metrics of a candidate (``None``: the linkage can't be assembled)."""
-        config = walk.make_config(self.module, c.phases, dict(c.proportions))
+        config = self.config(c)
         try:
-            legs = walk.program_legs(config, n)
+            legs = walk.side_legs(config, n)
         except walk.LinkageError:
             return None
         self.evaluations += 1
@@ -162,7 +172,7 @@ def grid_search(tuner: Tuner, step: float, n: int, top: int,
 def pattern_search(tuner: Tuner, start: Candidate, names: tuple[str, ...] = (),
                    pct: float = 0.0) -> Scored:
     """Coordinate descent on the free phases (and the named proportions, +-pct %)."""
-    defaults = {k: float(v) for k, v in klann.PROPORTIONS.items()}
+    defaults = {k: float(v) for k, v in tuner.linkage.params.items()}
     best = tuner.score(start)
     prop_steps = [pct / 2 ** k for k in range(1, 5)] if names and pct > 0 else []
     levels = max(len(PHASE_STEPS), len(prop_steps))
@@ -193,7 +203,8 @@ def pattern_search(tuner: Tuner, start: Candidate, names: tuple[str, ...] = (),
                     if abs(v - d) > pct / 100.0 * abs(d) + 1e-12:
                         continue
                     trial = dict(props, **{name: v})
-                    moves.append(Candidate(c.phases, walk.normalize_proportions(trial)))
+                    moves.append(Candidate(c.phases, walk.normalize_proportions(
+                        trial, tuner.linkage.key)))
             for m in moves:
                 s = tuner.score(m)
                 if s.score < best.score - 1e-9:
@@ -213,25 +224,45 @@ def _phases_arg(phases) -> str:
     return ",".join(f"{p:g}" for p in phases)
 
 
-def flags(module: str, c: Candidate) -> dict[str, str]:
+def flags(module: str, c: Candidate, linkage_key: str = linkage.DEFAULT) -> dict[str, str]:
     """How to use a candidate: main.py / bake flags and the viewer's query string."""
     cli = f"--module {module} --phases {_phases_arg(c.phases)}"
     cli += "".join(f" --proportion {k}={v:.6g}" for k, v in c.proportions)
     query = f"module={module}&phases={_phases_arg(c.phases)}"
     query += "".join(f"&p.{k}={v:.6g}" for k, v in c.proportions)
+    if linkage_key != linkage.DEFAULT:
+        cli += f" --linkage {linkage_key}"
+        query += f"&linkage={linkage_key}"
     return {"main": f"uv run python main.py {cli}",
             "bake": f"uv run python viewer/bake_gltf.py {cli}",
             "query": f"?{query}"}
 
 
+def scale_params(lk: linkage.Linkage) -> tuple[str, ...]:
+    """The parameters that only scale the linkage (every point doubles with them, like
+    Klann's ``OA``): tuning them resizes the robot, its gait's shape stays."""
+    ts = np.linspace(0.0, 2.0 * math.pi, 7)
+    base = lk.solve().evaluate(ts)
+    out = []
+    for k, v in lk.params.items():
+        with np.errstate(all="ignore"):
+            pts = lk.solve(params={k: 2.0 * float(v)}).evaluate(ts)
+        if k not in lk.angles and all(np.allclose(pts[p], 2.0 * base[p]) for p in lk.points):
+            out.append(k)
+    return tuple(out)
+
+
 def tune(module: str, *, grid: float = 30.0, coarse: int = 120, top: int = 6,
          pct: float = 0.0, names: tuple[str, ...] | None = None,
-         min_gap: float = MIN_GAP) -> tuple[Tuner, Scored, Scored]:
+         min_gap: float = MIN_GAP, linkage_key: str = linkage.DEFAULT,
+         ) -> tuple[Tuner, Scored, Scored]:
     """``(tuner, default, best)`` for ``module`` (see the module docstring)."""
-    tuner = Tuner(module, min_gap=min_gap)
+    tuner = Tuner(module, min_gap=min_gap, linkage=linkage_key)
     default = tuner.score(tuner.default)
-    if names is None:
-        names = tuple(k for k in klann.PROPORTIONS if k != "OA") if pct > 0 else ()
+    if names is None and pct > 0:
+        scale = scale_params(tuner.linkage)
+        names = tuple(k for k in tuner.linkage.params if k not in scale)
+    names = names or ()
     starts = [s.candidate for s in grid_search(tuner, grid, coarse, top)]
     if tuner.default not in starts:
         starts.append(tuner.default)
@@ -251,7 +282,7 @@ def plan(tuner: Tuner, c: Candidate) -> dict:
     """Plan a candidate's layers (can it be built?) and score it with its planned foot z."""
     from fabricate import design_side, template_for
 
-    config = walk.make_config(tuner.module, c.phases, dict(c.proportions))
+    config = tuner.config(c)
     try:
         design = design_side(template_for(config), config)
     except Exception as e:  # the planner or a construction: report, don't crash
@@ -264,39 +295,42 @@ def plan(tuner: Tuner, c: Candidate) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--module", default="quad", choices=list(klann.MODULE_LEGS))
+    ap.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT)
+    ap.add_argument("--module", default="quad", help="one of the linkage's modules (quad)")
     ap.add_argument("--grid", type=float, default=30.0,
                     help="phase grid step in degrees (default 30)")
     ap.add_argument("--coarse", type=int, default=120,
                     help="crank samples per revolution for the grid stage (default 120)")
     ap.add_argument("--top", type=int, default=6, help="grid candidates refined (default 6)")
     ap.add_argument("--proportions", type=float, default=0.0, metavar="PCT",
-                    help="also tune the proportions within +-PCT %% of Klann's (default: no)")
+                    help="also tune the proportions within +-PCT %% of the defaults (default: no)")
     ap.add_argument("--names", default=None,
-                    help="comma-separated proportions to tune (default: all but OA)")
+                    help="comma-separated proportions to tune (default: all but the scale)")
     ap.add_argument("--min-gap", type=float, default=MIN_GAP, metavar="DEG",
                     help=f"least angle between two legs' phases (default {MIN_GAP:g})")
     ap.add_argument("--plan", action="store_true",
                     help="plan the best design's layers (buildable?) and rescore with them")
     ap.add_argument("--json", type=Path, default=None, help="write the result as JSON")
     args = ap.parse_args(argv)
+    lk = linkage.get(args.linkage)
     names = tuple(s.strip() for s in args.names.split(",")) if args.names else None
-    if names and (bad := [n for n in names if n not in klann.PROPORTIONS]):
-        ap.error(f"unknown proportions {bad}; have {list(klann.PROPORTIONS)}")
-
-    legs = walk.module_legs(args.module)
+    if names and (bad := [n for n in names if n not in lk.params]):
+        ap.error(f"unknown proportions {bad}; have {list(lk.params)}")
+    try:
+        legs = walk.module_legs(args.module, lk.key)
+    except walk.ParamError as e:
+        ap.error(str(e))
     if len(legs) == 1 and args.proportions <= 0:
-        print(f"{args.module}: one leg per side, so no phases to tune (and two feet can't "
-              "stand on their own in this model); try --proportions PCT")
+        print(f"{args.module}: one leg per side, so no phases to tune; try --proportions PCT")
         return 0
 
     t0 = time.perf_counter()
     tuner, default, best = tune(args.module, grid=args.grid, coarse=args.coarse,
                                 top=args.top, pct=args.proportions, names=names,
-                                min_gap=args.min_gap)
+                                min_gap=args.min_gap, linkage_key=lk.key)
     elapsed = time.perf_counter() - t0
 
-    print(f"{args.module}: {tuner.evaluations} evaluations in {elapsed:.1f} s "
+    print(f"{lk.key} {args.module}: {tuner.evaluations} evaluations in {elapsed:.1f} s "
           f"(objective: walk.objective, stride reference {tuner.stride_ref:.1f} mm/rev)")
     if not tuner.stride_ref or tuner.stride_ref < 1.0:
         print("  note: the default design doesn't walk in this model (one leg a side can't "
@@ -305,12 +339,13 @@ def main(argv=None) -> int:
     print(f"  {'phases (deg)':22} {_phases_arg(default.candidate.phases):>22} "
           f"{_phases_arg(best.candidate.phases):>22}")
     for k, v in best.candidate.proportions:
-        print(f"  {'proportion ' + k:22} {float(klann.PROPORTIONS[k]):>22.6g} {v:>22.6g}")
+        print(f"  {'proportion ' + k:22} {float(lk.params[k]):>22.6g} {v:>22.6g}")
     print(f"  {'objective':22} {default.score:>22.2f} {best.score:>22.2f}")
     for key in REPORT:
         print(f"  {key:22} {_fmt(default.metrics[key]):>22} {_fmt(best.metrics[key]):>22}")
 
-    result = {"module": args.module, "objective_weights": walk.OBJECTIVE_WEIGHTS,
+    result = {"linkage": lk.key, "module": args.module,
+              "objective_weights": walk.OBJECTIVE_WEIGHTS,
               "stride_ref_mm": tuner.stride_ref,
               "default": {"phases_deg": list(default.candidate.phases),
                           "objective": default.score, "metrics": default.metrics},
@@ -321,22 +356,22 @@ def main(argv=None) -> int:
     if args.plan:
         p = result["best"]["plan"] = plan(tuner, best.candidate)
         if not p["ok"] and best.candidate.proportions and tuner.phase_best is not best:
-            # fall back on the best design with Klann's proportions
+            # fall back on the best design with the default proportions
             print(f"  plan: the best design can't be built as is: {p['error']}")
             chosen = tuner.phase_best
             p = plan(tuner, chosen.candidate)
             result["phases_only"] = {"phases_deg": list(chosen.candidate.phases),
                                      "objective": chosen.score, "metrics": chosen.metrics,
                                      "plan": p}
-            print(f"  best with Klann's proportions: phases {_phases_arg(chosen.candidate.phases)}"
-                  f", objective {chosen.score:.2f}")
+            print(f"  best with the default proportions: phases "
+                  f"{_phases_arg(chosen.candidate.phases)}, objective {chosen.score:.2f}")
         if p["ok"]:
             print(f"  plan: {p['layers']} layers, foot z {[round(v, 1) for v in p['foot_z']]}; "
                   f"objective with the planned z {p['objective']:.2f}")
         else:
             print(f"  plan: can't be built as is: {p['error']}")
 
-    use = flags(args.module, chosen.candidate)
+    use = flags(args.module, chosen.candidate, lk.key)
     result["use"] = use
     print("use it:")
     print(f"  {use['main']}")

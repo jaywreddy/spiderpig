@@ -1,7 +1,9 @@
 /**
  * Drive mode and the tune panel (lil-gui): drive the robot tank- or
  * arcade-style over a ground plane with the SPEC walking model, and tune its
- * design with an instant stick-figure preview from ``/api/walk``.
+ * design with an instant stick-figure preview from ``/api/walk``: the
+ * linkage (``/api/linkages``; switching one re-bakes the robot), its module
+ * and its parameters.
  *
  * Walking data comes from the glb's ``walker`` extras ``drive`` or, when the
  * glb has none, from ``/api/walk`` for the glb's design.
@@ -25,13 +27,19 @@ export interface DriveHost {
 }
 
 interface WalkResponse extends WalkJson {
-  valid: boolean; error: string | null; module: string; phases_deg: number[];
+  valid: boolean; error: string | null; linkage: string; module: string; phases_deg: number[];
   proportions: Record<string, number>; metrics?: Record<string, unknown>;
   legs: { leg: number; joints: Record<string, [number, number][]> }[]; links: [string, string][];
   side_z?: Partial<Record<Side, number>>;
 }
 
-const MODULES = ['single', 'double', 'decker', 'quad'];
+/** One entry of ``/api/linkages``. */
+export interface LinkageInfo {
+  key: string; name: string; family: string; notes: string; source: string;
+  params: { name: string; default: number; angle: boolean }[];
+  modules: Record<string, number>; labels: Record<string, string>; feet: number;
+}
+
 const PLOTS: (keyof Sample)[] = ['speed', 'yawRate', 'height', 'pitch', 'roll', 'slip', 'margin'];
 const HUD_ROWS = ['speed', 'yaw rate', 'height', 'pitch', 'roll', 'contacts', 'slip', 'margin', 'cranks',
   'rev distance', 'rev turn', 'rev bob', 'rev pitch', 'rev roll', 'rev slip', 'rev margin', 'model'];
@@ -90,24 +98,29 @@ export function createDrive(host: DriveHost) {
   document.body.append(warn);
 
   const design = {
+    linkage: url.get('linkage') ?? 'klann',
     module: url.get('module') ?? 'quad',
     phases: (url.get('phases')?.split(',').map(Number) ?? null) as number[] | null,
     props: Object.fromEntries(paramKeys(url).filter((k) => k.startsWith('p.'))
       .map((k) => [k.slice(2), Number(url.get(k))])) as Record<string, number>,
   };
-  let klann: Record<string, number> | null = null;       // Klann's proportions, from the server
-  const tune = { preview: false, status: '', rebuild: () => void rebuild(), klann: () => resetKlann() };
+  let linkages: LinkageInfo[] | null = null, defaultLinkage = 'klann';   // from /api/linkages
+  const info = (): LinkageInfo | undefined => linkages?.find((l) => l.key === design.linkage);
+  const defaults = (): Record<string, number> =>
+    Object.fromEntries((info()?.params ?? []).map((p) => [p.name, p.default]));
+  const tune = { preview: false, status: '', rebuild: () => void rebuild(), reset: () => resetDefaults() };
   const tuneGui = new GUI({ title: 'Tune (instant preview)', width: 300, autoPlace: false }).close();
   tuneGui.domElement.id = 'tune-gui';
   document.body.append(tuneGui.domElement);
   tuneGui.add(tune, 'preview').name('stick preview').onChange((on: boolean) => void setPreview(on).catch(fail));
-  tuneGui.add(design, 'module', MODULES).onChange(() => { design.phases = null; request(); });
+  const designF = tuneGui.addFolder('design');           // linkage, module
   const phaseF = tuneGui.addFolder('phases (°)');
-  const propF = tuneGui.addFolder('proportions (±30 % of Klann)');
+  const propF = tuneGui.addFolder('parameters (lengths ×0.5–1.5, angles ±45°)');
   tuneGui.add(tune, 'rebuild').name('Rebuild parts');
-  tuneGui.add(tune, 'klann').name('Reset to Klann');
+  tuneGui.add(tune, 'reset').name('Reset to defaults');
   tuneGui.add(tune, 'status').disable().listen();
   const metricF = tuneGui.addFolder('metrics (per revolution)');
+  let moduleC: ReturnType<GUI['add']> | null = null;
 
   function fail(e: unknown): void {
     tune.status = (e as Error).message;
@@ -127,8 +140,9 @@ export function createDrive(host: DriveHost) {
     const l = host.loaded();
     if (!l || !side?.usable) return;
     const extras = l.walker.userData.drive as WalkJson | undefined;
-    const module = (l.root.userData.module as string | undefined) ?? 'quad';
-    useData(parseDrive(extras ?? await getJson<WalkResponse>(`/api/walk?${glbQuery || `module=${module}`}`)
+    const { module = 'quad', linkage = defaultLinkage } = l.root.userData as { module?: string; linkage?: string };
+    useData(parseDrive(extras ?? await getJson<WalkResponse>(
+      `/api/walk?${glbQuery || new URLSearchParams({ module, linkage }).toString()}`)
       .catch((e: Error) => { throw new Error(`no walking data (no glb extras; /api/walk: ${e.message})`); })));
     l.root.visible = true;
     if (!engaged) {   // the whole clip -> one action per side, posed per frame
@@ -183,7 +197,8 @@ export function createDrive(host: DriveHost) {
     if (on) {
       tuneGui.open();
       if (!opts.drive) await setDrive(true);
-      if (klann) request(0); else await start();
+      await loadLinkages();
+      request(0);
     } else if (opts.drive) {
       await bindGlb();
     }
@@ -191,24 +206,53 @@ export function createDrive(host: DriveHost) {
   }
 
   // --- tune ------------------------------------------------------------------
+  /** The design as ``/api/walk`` and ``/api/glb`` query parameters (defaults left out). */
   function designQuery(): string {
     const q = new URLSearchParams({ module: design.module });
+    if (design.linkage !== defaultLinkage) q.set('linkage', design.linkage);
     if (design.phases) q.set('phases', design.phases.map((v) => +v.toFixed(2)).join(','));
+    const d = defaults();
     for (const [k, v] of Object.entries(design.props)) {
-      if (!klann || Math.abs(v - (klann[k] ?? v)) > 1e-9) q.set(`p.${k}`, String(+v.toPrecision(6)));
+      if (!(k in d) || Math.abs(v - d[k]!) > 1e-9) q.set(`p.${k}`, String(+v.toPrecision(6)));
     }
     return q.toString();
   }
 
-  /** First use: Klann's proportions (the defaults and slider ranges) from a plain ``/api/walk``. */
-  async function start(): Promise<void> {
-    klann = (await getJson<WalkResponse>(`/api/walk?module=${design.module}`)).proportions;
-    design.props = { ...klann, ...design.props };
-    for (const [k, v] of Object.entries(klann)) {
-      propF.add(design.props, k, v - 0.3 * Math.abs(v), v + 0.3 * Math.abs(v), Math.abs(v) / 1000)
-        .name(`${k} (${v})`).onChange(() => request());
+  /** The registered linkages (once): the linkage dropdown, then the design controls. */
+  async function loadLinkages(): Promise<void> {
+    if (linkages) return;
+    const r = await getJson<{ default: string; linkages: LinkageInfo[] }>('/api/linkages');
+    [linkages, defaultLinkage] = [r.linkages, r.default];
+    if (!info()) design.linkage = r.default;
+    design.props = { ...defaults(), ...design.props };     // the URL's p.NAME win
+    designF.add(design, 'linkage', Object.fromEntries(r.linkages.map((l) => [l.name, l.key])))
+      .onChange(() => queueMicrotask(switchLinkage));
+    buildDesign();
+  }
+
+  /** The module dropdown (the linkage's modules) and a slider per parameter. */
+  function buildDesign(): void {
+    const lk = info()!;
+    moduleC?.destroy();
+    moduleC = designF.add(design, 'module', Object.keys(lk.modules))
+      .onChange(() => { design.phases = null; request(); });
+    propF.controllers.slice().forEach((c) => c.destroy());
+    for (const p of lk.params) {
+      const [lo, hi] = p.angle ? [p.default - 45, p.default + 45] : [0.5 * p.default, 1.5 * p.default];
+      propF.add(design.props, p.name, lo, hi, p.angle ? 0.1 : p.default / 1000)
+        .name(`${p.name} (${p.default})`).onChange(() => request());
     }
-    request(0);
+  }
+
+  /** Another linkage: its defaults, its modules (keeping this one if it has it), and the parts re-baked. */
+  function switchLinkage(): void {
+    const mods = Object.keys(info()!.modules);
+    if (!mods.includes(design.module)) design.module = mods.includes('quad') ? 'quad' : mods[0]!;
+    design.phases = null;
+    design.props = defaults();
+    buildDesign();
+    if (preview) request(0);
+    void rebuild();
   }
 
   let timer = 0, inflight: AbortController | null = null;
@@ -239,7 +283,7 @@ export function createDrive(host: DriveHost) {
     metricF.controllers.slice().forEach((c) => c.destroy());
     const shown = Object.fromEntries(Object.entries(w.metrics ?? pred).map(([k, v]) => [k, fmt(v)]));
     for (const k of Object.keys(shown)) metricF.add(shown, k).disable();
-    tune.status = `ok · ${w.module}${w.metrics ? '' : ' (metrics: viewer model)'}`;
+    tune.status = `ok · ${w.linkage} ${w.module}${w.metrics ? '' : ' (metrics: viewer model)'}`;
     syncUrl();
   }
 
@@ -261,20 +305,21 @@ export function createDrive(host: DriveHost) {
     }
   }
 
-  function resetKlann(): void {
-    if (!klann) return;
-    Object.assign(design.props, klann);
+  function resetDefaults(): void {
+    Object.assign(design.props, defaults());
     design.phases = null;
     propF.controllers.forEach((c) => c.updateDisplay());
     request(0);
   }
 
-  /** Cheap deep links: ``drive=1``, ``scheme=arcade``, ``tune=1`` + the design (``module``, ``phases``, ``p.NAME``). */
+  /** Cheap deep links: ``drive=1``, ``scheme=arcade``, ``linkage``, ``tune=1`` + the design
+   * (``module``, ``phases``, ``p.NAME``). */
   function syncUrl(): void {
     const q = new URLSearchParams(location.search);
-    for (const k of paramKeys(q)) if (/^(drive|scheme|tune|module|phases|p\..*)$/.test(k)) q.delete(k);
+    for (const k of paramKeys(q)) if (/^(drive|scheme|tune|linkage|module|phases|p\..*)$/.test(k)) q.delete(k);
     if (opts.drive) q.set('drive', '1');
     if (opts.scheme !== 'tank') q.set('scheme', opts.scheme);
+    if (design.linkage !== defaultLinkage) q.set('linkage', design.linkage);
     if (preview) { q.set('tune', '1'); new URLSearchParams(designQuery()).forEach((v, k) => q.set(k, v)); }
     history.replaceState(null, '', `?${q.toString()}`.replace(/%2C/g, ','));
   }
@@ -343,6 +388,13 @@ export function createDrive(host: DriveHost) {
     opts, sim, view, tune, design, hud, gui, tuneGui,
     model: { parseDrive, evaluate, straightWalk },
     setDrive, setPreview, frame,
+    /** The query a plain load of ``mode`` carries: the selected linkage (and the robot's module). */
+    baseQuery(mode: string): string {
+      const q = new URLSearchParams();
+      if (mode === 'robot' && design.module !== 'quad') q.set('module', design.module);
+      if (design.linkage !== defaultLinkage) q.set('linkage', design.linkage);
+      return q.toString();
+    },
     /** A new glb is on screen: split its clip by side; keep driving if it can be driven. */
     async onLoad(l: LoadedScene): Promise<void> {
       engaged = false;
@@ -353,6 +405,7 @@ export function createDrive(host: DriveHost) {
       else if (preview) l.root.visible = false;
     },
     async init(): Promise<void> {
+      await loadLinkages().catch(fail);
       if (url.get('tune') === '1') await setPreview(true);
       else if (url.get('drive') === '1') await setDrive(true);
     },
