@@ -3,6 +3,7 @@
 Key naming (other modules build keys with these helpers, so keep them stable):
 
 * socket head cap screws: ``shcs("3", 12) -> "m3_shcs_12"`` (sizes "2", "2p5", "3")
+* button head socket screws: ``bhcs("3", 6) -> "m3_bhcs_6"`` (the crank's post joints)
 * M2 pan-head self-tapping screws for plastic: ``self_tap("2", 8) -> "m2_self_tap_8"``
 * female-female M3 hex standoffs: ``standoff_ff(20) -> "m3_standoff_ff_20"``
 
@@ -31,10 +32,13 @@ SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40),
 }
 SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
+BHCS_LENGTHS: dict[str, tuple[float, ...]] = {"3": (6, 8, 10, 12, 16, 20, 25, 30)}
 STANDOFF_FF_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 20, 25, 30, 35, 40)
 
 # ISO 4762 heads (fasteners.eu table): thread d -> (head diameter dk, head height k)
 SHCS_HEAD = {"2": (3.8, 2.0), "2p5": (4.5, 2.5), "3": (5.5, 3.0)}
+# ISO 7380-1 button heads: thread d -> (head diameter dk, head height k)
+BHCS_HEAD = {"3": (5.7, 1.65)}
 # ISO 7049 pan head for ST2.2 (maximum dk, k); PA2.0 self-tapping pan heads are within this
 SELF_TAP_HEAD = {"2": (4.0, 1.6)}
 CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4}   # ISO 273 medium clearance holes
@@ -42,6 +46,10 @@ CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4}   # ISO 273 medium clearance holes
 
 def shcs(size: str, length: float) -> str:
     return f"m{size}_shcs_{length:g}"
+
+
+def bhcs(size: str, length: float) -> str:
+    return f"m{size}_bhcs_{length:g}"
 
 
 def self_tap(size: str, length: float) -> str:
@@ -112,6 +120,26 @@ for _size, _lengths in SHCS_LENGTHS.items():
             dims={"d": _mm(_size), "length": float(_L), "head_d": _dk, "head_h": _k,
                   "clearance_d": CLEARANCE[_size]},
             notes="ISO 4762 / DIN 912",
+        ))
+
+# ---------------------------------------------------------------------------
+# Button head socket screws (ISO 7380-1): short heads that fit a 3 mm layer
+# ---------------------------------------------------------------------------
+
+for _size, _lengths in BHCS_LENGTHS.items():
+    _dk, _k = BHCS_HEAD[_size]
+    for _L in _lengths:
+        register(Item(
+            bhcs(_size, _L), f"M{_mm(_size):g} x {_L:g} mm button head socket screw",
+            "fastener",
+            (Offer("McMaster-Carr", "https://www.mcmaster.com/products/button-head-screws/",
+                   pack_qty=100, note=f"pick M{_mm(_size):g} x {_L:g} mm, ISO 7380; part "
+                   "number not confirmed"),
+             Offer("Amazon", "https://www.amazon.com/s?k=M3+button+head+socket+screw+assortment",
+                   note="search: M3 ISO 7380 assortment")),
+            dims={"d": _mm(_size), "length": float(_L), "head_d": _dk, "head_h": _k,
+                  "clearance_d": CLEARANCE[_size]},
+            notes="ISO 7380-1",
         ))
 
 # ---------------------------------------------------------------------------
@@ -312,6 +340,6 @@ register(
 )
 
 __all__ = [
-    "CLEARANCE", "SELF_TAP_HEAD", "SELF_TAP_LENGTHS", "SHCS_HEAD", "SHCS_LENGTHS",
-    "STANDOFF_FF_LENGTHS", "self_tap", "shcs", "standoff_ff",
+    "BHCS_HEAD", "BHCS_LENGTHS", "CLEARANCE", "SELF_TAP_HEAD", "SELF_TAP_LENGTHS", "SHCS_HEAD",
+    "SHCS_LENGTHS", "STANDOFF_FF_LENGTHS", "bhcs", "self_tap", "shcs", "standoff_ff",
 ]
