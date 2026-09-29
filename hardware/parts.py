@@ -35,3 +35,14 @@ def standoff_ff(length: float) -> str:
 # ---------------------------------------------------------------------------
 # Registrations (filled in from docs/research: vendors, dimensions)
 # ---------------------------------------------------------------------------
+
+register(
+    Item("acrylic_3mm", "3 mm cast acrylic sheet, 12 x 12 in", "sheet",
+         (Offer("Amazon", "https://www.amazon.com/s?k=3mm+cast+acrylic+sheet+12x12"),),
+         dims={"thickness": 3.0},
+         notes="Nominal 3 mm; real sheets vary by up to about 8 %. "
+               "Measure yours and pass --thickness."),
+    Item("plywood_3mm", "3 mm Baltic birch plywood, 12 x 12 in", "sheet",
+         (Offer("Amazon", "https://www.amazon.com/s?k=3mm+baltic+birch+plywood+12x12"),),
+         dims={"thickness": 3.0}),
+)

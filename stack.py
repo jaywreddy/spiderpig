@@ -1,132 +1,43 @@
-"""Layer planning: which laser-cut link sits in which Z slot, and the hardware between.
+"""Layer planning: which layer every plate sits in, so that nothing ever collides.
 
-The Klann mechanism is planar; Z only matters for fabrication. This module
-decides it explicitly. A stack is a sequence of equal-height *slots*
-(``pitch`` = sheet thickness), with the frame plate in the top slot and the
-servo on top of that. Every leg link (b1..b4) occupies one slot. The rest is
-derived from the link slots:
+The Klann mechanism is planar; Z only matters for fabrication, and this module
+decides it. One side of the walker is a stack of equal-height **layers**
+(``pitch`` = sheet thickness):
 
-* **Pins** (C, D, E) carry a head flange one slot below their lowest link, a
-  cap one slot above their highest link, and pass bare through any slots in
-  between.
-* **Frame pivots** (A, B) carry a head flange below their lowest link, then
-  rise through every slot above it to the plate.
-* **The crank is a built-up crankshaft.** Every b1 passes within 0.05 mm of
-  the crank axis O at some point in the cycle, and because the crank turns a
-  full circle relative to b1, *no* crank-attached point other than b1's own
-  crankpin M can pass through b1's slot. So the crank reaches each b1 slot
-  only along that b1's crankpin, with a **web** (arms from O out to the
-  crankpins) in each neighbouring slot, and runs along O as a **journal**
-  through the other slots up to the servo hub.
+* layer ``0`` holds the **outer frame plate**, layer ``top`` the **inner frame
+  plate** (the one the servo bolts to); nothing else may sit in them except
+  parts seated in their holes;
+* every leg link (b1..b4) sits in one layer in between;
+* layers below 0 and above ``top`` are outside the stack (pillar heads, the
+  servo).
 
-A plan is valid when, in every slot, every pair of objects clears by
-``margin`` over the **whole crank cycle**. :meth:`StackProblem.solve`
-searches link slots (lowest stack first) against clearance tables computed
-once from vectorized samples of the mechanism.
+Everything that isn't a link plate (axles and their built-in spacers, pin
+heads, the crank, the servo horn) is described to the planner by the
+construction groups as **claims** (:class:`Claim`): the shapes a group will
+occupy in each layer, stated relative to the layers of the links it depends
+on. A shape is a disc around a point or a pill (capsule) between two points,
+and points move over the crank cycle. The planner does not know how anything
+is built. It guarantees that no two shapes of different groups in one layer
+ever come closer than ``margin`` over the **whole** cycle: distances are
+lower bounds that also cover the motion between samples.
+
+:meth:`StackProblem.solve` searches link layers, fewest layers first;
+:func:`verify_plan` re-checks a plan exhaustively on a fresh, denser sampling.
 """
 
 from __future__ import annotations
 
 import itertools
 import re
-from collections.abc import Iterable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from functools import cached_property
 from typing import Literal
 
 import numpy as np
 
-AxisKind = Literal["pin", "frame"]
-
-
-@dataclass(frozen=True)
-class Envelope:
-    """Room a pivot's hardware needs around its axis (radii in mm, heights in slots).
-
-    ``head_*``: directly below the lowest plate on the axis. ``tail_*``:
-    directly above the highest (unused for frame pivots, which end above the
-    frame plate). ``gap_radius``: slots the axle crosses that hold other
-    parts. A *flush* envelope needs nothing outside its plates.
-    """
-
-    head_radius: float = 4.0
-    head_slots: int = 1
-    tail_radius: float = 4.0
-    tail_slots: int = 1
-    gap_radius: float = 2.0
-
-    @property
-    def flush(self) -> bool:
-        return self.head_slots == 0 and self.tail_slots == 0
-
-
-@dataclass(frozen=True)
-class StackSpec:
-    """Physical dimensions (mm) the plan must respect.
-
-    Joinery options supply the three envelopes; the servo supplies the hub
-    (its horn and screw heads, in ``hub_slots`` slots right under the frame
-    plate) and how many crank plates must sit right under the hub
-    (``adapter_slots``: the horn adapter plus the plate its screw heads sink
-    into).
-    """
-
-    pitch: float = 3.0          # slot height = sheet thickness
-    link_radius: float = 6.0    # half-width of a laser-cut link / crank web arm
-    margin: float = 1.0         # clearance between objects sharing a slot
-    pin: Envelope = Envelope()                                  # link-to-link pivots
-    frame: Envelope = Envelope(tail_radius=0.0, tail_slots=0)   # link-to-frame pivots
-    crankpin: Envelope = Envelope(tail_radius=0.0, tail_slots=0)  # b1-to-crank pivots
-    journal_radius: float = 4.0  # crank plates on the axis O
-    hub_radius: float = 4.0      # servo horn + screw heads under the frame plate
-    hub_slots: int = 0
-    adapter_radius: float = 4.0  # crank plates directly under the hub
-    adapter_slots: int = 0
-
-    def envelope(self, kind: str) -> Envelope:
-        return {"pin": self.pin, "frame": self.frame, "crankpin": self.crankpin}[kind]
-
-    @property
-    def top_rider_gap(self) -> int:
-        """Slots between the highest b1 and the frame plate (hub + adapter + web)."""
-        return self.hub_slots + max(self.adapter_slots, 1) + 1
-
-
-@dataclass(frozen=True)
-class Link:
-    """A laser-cut link: the union of pills (radius ``link_radius``) over ``segments``.
-
-    Each segment is a pair of ``(T, 2)`` XY samples over the crank cycle.
-    """
-
-    name: str
-    segments: tuple[tuple[np.ndarray, np.ndarray], ...]
-
-
-@dataclass(frozen=True)
-class Axis:
-    """Coincident joints between links (or a link and the frame): one physical pin."""
-
-    name: str
-    kind: AxisKind
-    xy: np.ndarray                          # (T, 2)
-    members: tuple[str, ...]                # links riding on this axis
-    joints: tuple[tuple[str, str], ...] = ()  # every (body, joint) on the axis
-
-
-@dataclass(frozen=True)
-class Crank:
-    """The crankshaft: axis ``center`` (O) and the crankpins its webs reach."""
-
-    center: np.ndarray                       # (T, 2)
-    pins: dict[str, np.ndarray]              # crankpin name -> (T, 2)
-    riders: dict[str, str]                   # b1 link name -> crankpin name
-    joints: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
-    center_joints: tuple[tuple[str, str], ...] = ()
-
-
 # ---------------------------------------------------------------------------
-# Batched planar distances (exact, vectorized over the crank samples)
+# Batched planar distances (exact per sample)
 # ---------------------------------------------------------------------------
 
 
@@ -155,433 +66,198 @@ def seg_seg(p1, q1, p2, q2) -> np.ndarray:
     return np.where(crossing, 0.0, d)
 
 
-def _link_link(a: Link, b: Link) -> float:
-    return min(float(seg_seg(p, q, r, s).min()) for (p, q) in a.segments for (r, s) in b.segments)
+Core = tuple  # ("pt", name) | ("seg", name_a, name_b)
 
 
-def _point_link(xy: np.ndarray, b: Link) -> float:
-    return min(float(_point_seg(xy, p, q).min()) for (p, q) in b.segments)
+class Geometry:
+    """XY of named points over one crank cycle, sampled at equal steps.
 
+    ``points[name]`` has shape ``(T, 2)``; a fixed point may be given as
+    ``(2,)``. :meth:`dist` is a lower bound on the distance between two cores
+    over the continuous cycle: the smallest sampled distance minus half the
+    most the two can move between samples.
+    """
 
-def _point_point(a: np.ndarray, b: np.ndarray) -> float:
-    return float(np.linalg.norm(a - b, axis=-1).min())
+    def __init__(self, points: Mapping[str, np.ndarray]):
+        arrays = {k: np.asarray(v, dtype=float).reshape(-1, 2) for k, v in points.items()}
+        n = max((a.shape[0] for a in arrays.values()), default=1)
+        self.samples = n
+        self.points = {k: np.broadcast_to(a, (n, 2)) for k, a in arrays.items()}
+        self._dist: dict[tuple, float] = {}
+
+    @cached_property
+    def step(self) -> dict[str, float]:
+        """Largest move of each point between consecutive samples (the cycle wraps)."""
+        return {
+            k: float(np.linalg.norm(np.roll(v, -1, axis=0) - v, axis=1).max())
+            for k, v in self.points.items()
+        }
+
+    def _step(self, c: Core) -> float:
+        return self.step[c[1]] if c[0] == "pt" else max(self.step[c[1]], self.step[c[2]])
+
+    def sampled(self, a: Core, b: Core) -> np.ndarray:
+        """Exact distance per sample."""
+        P = self.points
+        if a[0] == "pt" and b[0] == "pt":
+            return np.linalg.norm(P[a[1]] - P[b[1]], axis=-1)
+        if a[0] == "pt":
+            return _point_seg(P[a[1]], P[b[1]], P[b[2]])
+        if b[0] == "pt":
+            return _point_seg(P[b[1]], P[a[1]], P[a[2]])
+        return seg_seg(P[a[1]], P[a[2]], P[b[1]], P[b[2]])
+
+    def dist(self, a: Core, b: Core) -> float:
+        key = (a, b) if a <= b else (b, a)
+        d = self._dist.get(key)
+        if d is None:
+            d = float(self.sampled(a, b).min()) - (self._step(a) + self._step(b)) / 2
+            self._dist[key] = d
+        return d
 
 
 # ---------------------------------------------------------------------------
-# The plan
+# Shapes and claims
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Disc:
+    """A disc of radius ``r`` around point ``at``."""
+
+    at: str
+    r: float
+
+    @property
+    def core(self) -> Core:
+        return ("pt", self.at)
+
+
+@dataclass(frozen=True)
+class Pill:
+    """A capsule of radius ``r`` around the segment ``a``-``b``."""
+
+    a: str
+    b: str
+    r: float
+
+    @property
+    def core(self) -> Core:
+        return ("seg", self.a, self.b)
+
+
+Shape = Disc | Pill
+
+
+@dataclass(frozen=True)
+class Placed:
+    """A shape in a layer, owned by a rigid ``group``.
+
+    Shapes of one group never need to clear each other (one printed part, one
+    link). ``seat`` marks a shape that sits inside a hole of another part (an
+    axle through a link or a frame plate, the crankpin through b1): it isn't
+    collision-checked (the hole is the clearance) and may sit in a
+    frame-plate layer, but it still bounds what the group may build there.
+    """
+
+    layer: int
+    shape: Shape
+    group: str
+    label: str = ""
+    seat: bool = False
 
 
 @dataclass
-class StackPlan:
-    """Slot assignment for every link, plus the frame plate and crank layout."""
+class Layout:
+    """What a claim sees: the (possibly partial) link layers and the stack size."""
 
-    spec: StackSpec
-    slots: dict[str, int]           # link name -> slot
-    plate: int                      # frame plate slot (top of the stack)
+    layers: Mapping[str, int]
+    top: int
+    pitch: float
+
+    def z(self, layer: int) -> tuple[float, float]:
+        return layer * self.pitch, (layer + 1) * self.pitch
+
+    def layers_between(self, z0: float, z1: float) -> range:
+        """Layers whose Z range overlaps the open interval ``(z0, z1)``."""
+        eps = 1e-9
+        return range(int(np.floor((z0 + eps) / self.pitch)), int(np.ceil((z1 - eps) / self.pitch)))
+
+
+@dataclass(frozen=True)
+class Claim:
+    """Space a construction group needs, as a function of link layers.
+
+    ``make`` runs once every link in ``deps`` has a layer (or, if ``final``,
+    once every link has one) and returns the shapes, or ``None`` if the group
+    can't be built in that layout at all.
+    """
+
+    owner: str
+    deps: frozenset[str]
+    make: Callable[[Layout], Iterable[Placed] | None]
+    final: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Topology: links, axes and the crank, from a kinematic template
+# ---------------------------------------------------------------------------
+
+AxisKind = Literal["pin", "frame", "crankpin", "center"]
+LINK_CLASSES = frozenset({"b1", "b2", "b3", "b4"})
+
+
+def body_class(name: str) -> str:
+    """``"b1_leg3"`` -> ``"b1"``, ``"R.b1_leg3"`` -> ``"b1"``; ``"conn_upper"`` stays."""
+    return re.sub(r"_leg\d+$", "", re.sub(r"^[LR]\.", "", name))
+
+
+def is_crank(name: str) -> bool:
+    return body_class(name).startswith("conn")
+
+
+def is_frame(name: str) -> bool:
+    return body_class(name) == "torso"
+
+
+@dataclass(frozen=True)
+class Axis:
+    """Coincident joints: one physical axle. Its point in :class:`Geometry` is ``name``.
+
+    ``kind``: ``"pin"`` joins links only; ``"frame"`` joins links to the frame
+    (a pillar); ``"crankpin"`` joins b1 links to the crank; ``"center"`` is the
+    crank axis O.
+    """
+
+    name: str
+    kind: AxisKind
+    members: tuple[str, ...]                 # leg links on the axle
+    joints: tuple[tuple[str, str], ...]      # every (body, joint) on it
+
+
+@dataclass
+class Topology:
+    """The planner's view of one side: link outlines and axles as named points."""
+
+    name: str
+    geometry: Geometry
+    links: dict[str, tuple[tuple[str, str], ...]]   # link -> outline segments (point names)
     axes: tuple[Axis, ...]
-    crank: Crank | None
-    problem: StackProblem | None = None
+    point_of: dict[tuple[str, str], str]            # (body, joint) -> point name
+    frame_bodies: tuple[str, ...] = ()
+    crank_bodies: tuple[str, ...] = ()
 
-    def z(self, slot: int) -> tuple[float, float]:
-        return slot * self.spec.pitch, (slot + 1) * self.spec.pitch
-
-    def span(self, axis: Axis) -> tuple[int, int]:
-        ss = [self.slots[m] for m in axis.members]
-        return min(ss), max(ss)
+    def axes_of(self, kind: AxisKind) -> list[Axis]:
+        return [a for a in self.axes if a.kind == kind]
 
     @property
-    def height(self) -> float:
-        return (self.plate + 1) * self.spec.pitch
+    def center(self) -> Axis | None:
+        return next(iter(self.axes_of("center")), None)
 
-    # -- crank layout ---------------------------------------------------------
-
-    @cached_property
-    def rider_slots(self) -> dict[int, set[str]]:
-        """slot -> crankpins whose riders (b1 links) sit in it."""
-        out: dict[int, set[str]] = {}
-        if self.crank is None:
-            return out
-        for link, pin in self.crank.riders.items():
-            out.setdefault(self.slots[link], set()).add(pin)
-        return out
-
-    @cached_property
-    def webs(self) -> dict[int, tuple[str, ...]]:
-        """slot -> crankpins its web reaches. A web sits beside every rider slot.
-
-        Below the lowest b1 a flush crankpin gets a cheek web; a headed one
-        ends in its head instead (see :attr:`pin_flanges`).
-        """
-        out: dict[int, set[str]] = {}
-        rs = self.rider_slots
-        lowest = min(rs, default=self.plate)
-        flush = self.spec.crankpin.flush
-        for s, pins in rs.items():
-            for k in (s - 1, s + 1):
-                if k in rs or (k < lowest and not flush):
-                    continue
-                out.setdefault(k, set()).update(pins)
-        return {k: tuple(sorted(v)) for k, v in sorted(out.items())}
-
-    @cached_property
-    def pin_flanges(self) -> dict[str, tuple[int, ...]]:
-        """Headed crankpin -> the slots its head fills (below the lowest b1)."""
-        out: dict[str, tuple[int, ...]] = {}
-        env = self.spec.crankpin
-        if self.crank is None or env.flush:
-            return out
-        rs = self.rider_slots
-        lowest = min(rs, default=0)
-        for pin in self.crank.pins:
-            ss = [s for s, ps in rs.items() if pin in ps]
-            if ss and min(ss) == lowest:
-                out[pin] = tuple(lowest - k for k in range(1, env.head_slots + 1))
-        return out
-
-    @cached_property
-    def hub_slots(self) -> tuple[int, ...]:
-        """Slots right under the frame plate that hold the servo horn (not crank plates)."""
-        return tuple(range(self.plate - self.spec.hub_slots, self.plate))
-
-    @cached_property
-    def adapter_slots(self) -> tuple[int, ...]:
-        """Crank plates right under the hub: the horn adapter and its screw-head plate."""
-        top = self.plate - self.spec.hub_slots
-        return tuple(range(top - self.spec.adapter_slots, top))
-
-    @cached_property
-    def journal_slots(self) -> tuple[int, ...]:
-        """Slots with a crank plate on the axis O (webs included), below the hub."""
-        rs = self.rider_slots
-        if not rs:
-            return ()
-        bottom = min(rs) - 1 if self.spec.crankpin.flush else min(rs) + 1
-        top = self.plate - self.spec.hub_slots
-        return tuple(k for k in range(bottom, top) if k not in rs)
-
-    def crank_radius(self, slot: int) -> float:
-        """Radius the crank (or servo hub) occupies around O in ``slot``."""
-        if slot in self.hub_slots:
-            return self.spec.hub_radius
-        if slot in self.adapter_slots:
-            return self.spec.adapter_radius
-        return self.spec.journal_radius
-
-    @cached_property
-    def occupancy(self) -> dict[int, dict[int, float]]:
-        """Axis index -> {slot: disc radius} for the flanges and bare shafts it needs."""
-        return {
-            i: self.problem.occupancy(i, self.slots, self.plate)
-            for i in range(len(self.axes))
-        }
-
-    def disc_fits(self, i: int, slot: int, radius: float,
-                  extra: dict[int, dict[int, float]] | None = None) -> bool:
-        """Would a disc of ``radius`` on axis ``i`` in ``slot`` clear everything there?
-
-        Used to add optional sleeves and frame posts. ``extra`` holds discs
-        already added the same way (axis -> {slot: radius}).
-        """
-        pr, sp = self.problem, self.spec
-        m = sp.margin
-        ax = self.axes[i]
-        for n, s in self.slots.items():
-            if s == slot and n not in ax.members and (
-                pr.jl[(i, n)] < sp.link_radius + radius + m
-            ):
-                return False
-        for source in (self.occupancy, extra or {}):
-            for j, occ in source.items():
-                r2 = occ.get(slot)
-                if j != i and r2 is not None and pr.jj[frozenset((i, j))] < radius + r2 + m:
-                    return False
-        if slot in self.webs and any(
-            pr.aj[(p, i)] < sp.link_radius + radius + m for p in self.webs[slot]
-        ):
-            return False
-        on_axis = slot in self.journal_slots or slot in self.hub_slots
-        return not (on_axis and pr.oj[i] < self.crank_radius(slot) + radius + m)
-
-    def describe(self) -> str:
-        rows = []
-        for k in range(self.plate, -1, -1):
-            names = sorted(n for n, s in self.slots.items() if s == k)
-            if k == self.plate:
-                label = "frame plate"
-            else:
-                parts = names[:]
-                if k in self.hub_slots:
-                    parts.append("servo horn")
-                if k in self.webs:
-                    parts.append(f"web({'+'.join(self.webs[k])})")
-                elif k in self.adapter_slots:
-                    parts.append("horn adapter" if k == max(self.adapter_slots) else "crank plate")
-                elif k in self.journal_slots:
-                    parts.append("journal")
-                label = ", ".join(parts) or "·"
-            rows.append(f"  slot {k:2d}  z {k * self.spec.pitch:5.1f}  {label}")
-        return "\n".join(rows)
-
-
-class StackProblem:
-    """Clearance tables for one assembly, and a search over link slots."""
-
-    def __init__(
-        self,
-        links: Iterable[Link],
-        axes: Iterable[Axis] = (),
-        crank: Crank | None = None,
-        spec: StackSpec | None = None,
-    ):
-        self.spec = spec or StackSpec()
-        self.links = {lk.name: lk for lk in links}
-        self.axes = tuple(axes)
-        self.crank = crank
-        self.rider = dict(crank.riders) if crank else {}
-
-    # -- clearance tables (min distance over the whole cycle) ---------------
-
-    @cached_property
-    def ll(self) -> dict[frozenset, float]:
-        return {
-            frozenset((a, b)): _link_link(self.links[a], self.links[b])
-            for a, b in itertools.combinations(self.links, 2)
-        }
-
-    @cached_property
-    def jl(self) -> dict[tuple[int, str], float]:
-        return {
-            (i, n): _point_link(ax.xy, lk)
-            for i, ax in enumerate(self.axes)
-            for n, lk in self.links.items()
-            if n not in ax.members
-        }
-
-    @cached_property
-    def jj(self) -> dict[frozenset, float]:
-        return {
-            frozenset((i, k)): _point_point(self.axes[i].xy, self.axes[k].xy)
-            for i, k in itertools.combinations(range(len(self.axes)), 2)
-        }
-
-    @cached_property
-    def arms(self) -> dict[str, Link]:
-        if self.crank is None:
-            return {}
-        o = self.crank.center
-        return {p: Link(f"arm:{p}", ((o, xy),)) for p, xy in self.crank.pins.items()}
-
-    @cached_property
-    def al(self) -> dict[tuple[str, str], float]:
-        """Crank arm (O -> crankpin) vs non-b1 link."""
-        return {
-            (p, n): _link_link(arm, lk)
-            for p, arm in self.arms.items()
-            for n, lk in self.links.items()
-            if n not in self.rider
-        }
-
-    @cached_property
-    def aj(self) -> dict[tuple[str, int], float]:
-        """Crank arm vs axis point."""
-        return {
-            (p, i): _point_link(ax.xy, arm)
-            for p, arm in self.arms.items()
-            for i, ax in enumerate(self.axes)
-        }
-
-    @cached_property
-    def ol(self) -> dict[str, float]:
-        """Crank axis O vs link."""
-        if self.crank is None:
-            return {}
-        return {n: _point_link(self.crank.center, lk) for n, lk in self.links.items()}
-
-    @cached_property
-    def oj(self) -> dict[int, float]:
-        if self.crank is None:
-            return {}
-        return {i: _point_point(self.crank.center, ax.xy) for i, ax in enumerate(self.axes)}
-
-    def _clear_ll(self, a: str, b: str) -> bool:
-        return self.ll[frozenset((a, b))] >= 2 * self.spec.link_radius + self.spec.margin
-
-    # -- what each axis occupies ------------------------------------------------
-
-    def occupancy(self, i: int, slots: dict[str, int], plate: int) -> dict[int, float] | None:
-        """slot -> disc radius this axis puts there (``None`` if members unassigned)."""
-        ax, sp = self.axes[i], self.spec
-        if any(m not in slots for m in ax.members):
-            return None
-        ms = {slots[m] for m in ax.members}
-        lo, hi = min(ms), max(ms)
-        env = sp.envelope(ax.kind)
-        occ: dict[int, float] = {lo - k: env.head_radius for k in range(1, env.head_slots + 1)}
-        top = hi if ax.kind == "pin" else plate
-        occ.update({k: env.gap_radius for k in range(lo + 1, top) if k not in ms})
-        if ax.kind == "pin":
-            occ.update({hi + k: env.tail_radius for k in range(1, env.tail_slots + 1)})
-        return occ
-
-    # -- search ---------------------------------------------------------------
-
-    def solve(self, max_plate: int = 30) -> StackPlan:
-        member_of: dict[str, list[int]] = {n: [] for n in self.links}
-        for i, ax in enumerate(self.axes):
-            for m in ax.members:
-                member_of[m].append(i)
-        order = self._order()
-        for plate in range(3, max_plate + 1):
-            found = self._search(order, member_of, plate)
-            if found is not None:
-                return StackPlan(self.spec, found, plate, self.axes, self.crank, self)
-        raise ValueError(f"no feasible stack up to {max_plate} slots")
-
-    def _order(self) -> list[str]:
-        """b1s first (they constrain the crank), then most-conflicted links."""
-        deg = {n: 0 for n in self.links}
-        for pair, d in self.ll.items():
-            if d < 2 * self.spec.link_radius + self.spec.margin:
-                for n in pair:
-                    deg[n] += 1
-        for ax in self.axes:
-            for m in ax.members:
-                deg[m] += 1
-        return sorted(self.links, key=lambda n: (n not in self.rider, -deg[n], n))
-
-    def _search(self, order, member_of, plate) -> dict[str, int] | None:
-        sp = self.spec
-        r_link, m = sp.link_radius, sp.margin
-        slots: dict[str, int] = {}
-        occs: dict[int, dict[int, float]] = {}
-        riders_at: dict[int, list[str]] = {}   # slot -> b1 links in it
-
-        def arm_ok_vs_links(pin: str, s: int) -> bool:
-            return all(
-                self.al[(pin, n)] >= 2 * r_link + m
-                for n, sn in slots.items()
-                if sn == s and n not in self.rider
-            )
-
-        def arm_ok_vs_discs(pin: str, s: int) -> bool:
-            for i, occ in occs.items():
-                r = occ.get(s)
-                if r is not None and self.aj[(pin, i)] < r_link + r + m:
-                    return False
-            return True
-
-        def place(n: str, s: int) -> list[int] | None:
-            if any(sn == s and not self._clear_ll(n, o) for o, sn in slots.items()):
-                return None
-            for i, occ in occs.items():
-                r = occ.get(s)
-                if r is not None and self.jl[(i, n)] < r_link + r + m:
-                    return None
-            pin = self.rider.get(n)
-            if pin is not None:
-                lowest_ok = 1 if sp.crankpin.flush else sp.crankpin.head_slots
-                if not lowest_ok <= s <= plate - sp.top_rider_gap:
-                    return None
-                for k in (s - 1, s + 1):
-                    near = riders_at.get(k, [])
-                    if any(self.rider[b] != pin for b in near):
-                        return None
-                    if not near and not (arm_ok_vs_links(pin, k) and arm_ok_vs_discs(pin, k)):
-                        return None
-            else:
-                for k in (s - 1, s + 1):
-                    for b in riders_at.get(k, []):
-                        if self.al[(self.rider[b], n)] < 2 * r_link + m:
-                            return None
-            slots[n] = s
-            if pin is not None:
-                riders_at.setdefault(s, []).append(n)
-            added: list[int] = []
-            for i in member_of[n]:
-                occ = self.occupancy(i, slots, plate)
-                if occ is None:
-                    continue
-                if not self._axis_ok(i, occ, slots, occs, riders_at, plate):
-                    unplace(n, added)
-                    return None
-                occs[i] = occ
-                added.append(i)
-            return added
-
-        def unplace(n: str, added: list[int]) -> None:
-            for i in added:
-                del occs[i]
-            if n in self.rider:
-                riders_at[slots[n]].remove(n)
-            del slots[n]
-
-        def rec(k: int) -> bool:
-            if k == len(order):
-                return self._journal_ok(slots, occs, riders_at, plate)
-            n = order[k]
-            for s in range(plate - 1):
-                added = place(n, s)
-                if added is None:
-                    continue
-                if rec(k + 1):
-                    return True
-                unplace(n, added)
-            return False
-
-        return dict(slots) if rec(0) else None
-
-    def _axis_ok(self, i, occ, slots, occs, riders_at, plate) -> bool:
-        sp = self.spec
-        r_link, m = sp.link_radius, sp.margin
-        if occ and (min(occ) < 0 or max(occ) >= plate):
-            return False
-        for n, s in slots.items():
-            r = occ.get(s)
-            if r is not None and self.jl[(i, n)] < r_link + r + m:
-                return False
-        for k, other in occs.items():
-            d = self.jj[frozenset((i, k))]
-            for s, r in occ.items():
-                r2 = other.get(s)
-                if r2 is not None and d < r + r2 + m:
-                    return False
-        for s, r in occ.items():  # webs beside b1 slots
-            if riders_at.get(s):
-                continue
-            for k in (s - 1, s + 1):
-                for b in riders_at.get(k, []):
-                    if self.aj[(self.rider[b], i)] < r_link + r + m:
-                        return False
-        return True
-
-    def _journal_ok(self, slots, occs, riders_at, plate) -> bool:
-        """Checks that need the whole assignment: the crank on O, the servo hub,
-        and a headed crankpin's head under the lowest b1."""
-        if self.crank is None:
-            return True
-        plan = StackPlan(self.spec, dict(slots), plate, self.axes, self.crank, self)
-        sp, m = self.spec, self.spec.margin
-        for k in (*plan.journal_slots, *plan.hub_slots):
-            r = plan.crank_radius(k)
-            for n, s in slots.items():
-                if s == k and self.ol[n] < sp.link_radius + r + m:
-                    return False
-            for i, occ in occs.items():
-                r2 = occ.get(k)
-                if r2 is not None and self.oj[i] < r + r2 + m:
-                    return False
-        head = sp.crankpin.head_radius
-        for p, ks in plan.pin_flanges.items():
-            for k in ks:
-                for n, s in slots.items():
-                    if s == k and self.al[(p, n)] < sp.link_radius + head + m:
-                        return False
-                for i, occ in occs.items():
-                    r2 = occ.get(k)
-                    if r2 is not None and self.aj[(p, i)] < head + r2 + m:
-                        return False
-        return True
+    @property
+    def riders(self) -> dict[str, str]:
+        """b1 link -> the crankpin it rides on."""
+        return {m: a.name for a in self.axes_of("crankpin") for m in a.members}
 
 
 def group_axes(
@@ -614,22 +290,6 @@ def group_axes(
     return list(groups.values())
 
 
-# ---------------------------------------------------------------------------
-# From a kinematic template to a stack problem
-# ---------------------------------------------------------------------------
-
-LINK_CLASSES = frozenset({"b1", "b2", "b3", "b4"})
-
-
-def body_class(name: str) -> str:
-    """``"b1_leg3"`` -> ``"b1"``; ``"conn_upper"`` stays ``"conn_upper"``."""
-    return re.sub(r"_leg\d+$", "", name)
-
-
-def _is_crank(name: str) -> bool:
-    return body_class(name).startswith("conn")
-
-
 def _axis_name(nodes: list[tuple[str, str]]) -> str:
     """Name an axis after its first link joint: ``("b1_leg0", "C")`` -> ``"C_leg0"``."""
     for body, joint in sorted(nodes):
@@ -639,14 +299,12 @@ def _axis_name(nodes: list[tuple[str, str]]) -> str:
     return "_".join(j for _, j in sorted(nodes))
 
 
-def problem_from_template(
-    tmpl, spec: StackSpec | None = None, samples: int = 720,
-) -> StackProblem:
-    """Classify a template's bodies and joints into links, pin axes and the crank.
+def topology_from_template(tmpl, samples: int = 1440) -> Topology:
+    """Classify a template's bodies and joints into links and axles.
 
-    Links are the b1..b4 bodies. Coincident joints form axes: the one on the
-    crank centre (frame + crank + coupler) is O; axes joining a crank to b1s
-    are crankpins; axes touching the frame are fixed pivots; the rest are pins.
+    Links are the b1..b4 bodies. Coincident joints form axles: the one on the
+    crank centre (frame + crank, no link) is O; axles joining the crank to b1s
+    are crankpins; axles touching the frame are pillars; the rest are pins.
     """
     ts = np.linspace(0.0, 2.0 * np.pi, samples, endpoint=False)
     sampled = tmpl.sample(ts)
@@ -654,40 +312,298 @@ def problem_from_template(
         (b.name, j.name): sampled.joint_world[b.name][j.name][:, :2]
         for b in tmpl.bodies for j in b.joints
     }
-    links = [
-        Link(b.name, tuple((xy[(b.name, p)], xy[(b.name, q)]) for p, q in b.outline))
-        for b in tmpl.bodies if body_class(b.name) in LINK_CLASSES
-    ]
     edges = [((pn, pj), (cn, cj)) for (_, pn, pj), (_, cn, cj) in tmpl.connections]
     axes: list[Axis] = []
-    center = None
-    center_joints: tuple[tuple[str, str], ...] = ()
-    pins: dict[str, np.ndarray] = {}
-    riders: dict[str, str] = {}
-    pin_joints: dict[str, tuple[tuple[str, str], ...]] = {}
+    point_of: dict[tuple[str, str], str] = {}
+    points: dict[str, np.ndarray] = {}
     for nodes in group_axes(xy, edges):
         bodies = {b for b, _ in nodes}
         members = tuple(sorted(b for b in bodies if body_class(b) in LINK_CLASSES))
-        point = xy[nodes[0]]
-        cranked = any(_is_crank(b) for b in bodies)
-        framed = any(body_class(b) == "torso" for b in bodies)
+        cranked = any(is_crank(b) for b in bodies)
+        framed = any(is_frame(b) for b in bodies)
         if cranked and not members:
-            center = point
-            center_joints = tuple(sorted(nodes))
+            axis = Axis("O", "center", (), tuple(sorted(nodes)))
         elif cranked:
-            name = _axis_name(nodes)
-            pins[name] = point
-            pin_joints[name] = tuple(sorted(nodes))
-            riders.update({m: name for m in members})
+            axis = Axis(_axis_name(nodes), "crankpin", members, tuple(sorted(nodes)))
         elif framed and members:
-            axes.append(Axis(_axis_name(nodes), "frame", point, members, tuple(sorted(nodes))))
+            axis = Axis(_axis_name(nodes), "frame", members, tuple(sorted(nodes)))
         elif len(members) >= 2:
-            axes.append(Axis(_axis_name(nodes), "pin", point, members, tuple(sorted(nodes))))
-    crank = None
-    if center is not None:
-        crank = Crank(center=center, pins=pins, riders=riders, joints=pin_joints,
-                      center_joints=center_joints)
-    return StackProblem(links, axes, crank, spec)
+            axis = Axis(_axis_name(nodes), "pin", members, tuple(sorted(nodes)))
+        else:
+            for n in nodes:  # a lone joint (a foot, a frame corner): its own point
+                point_of[n] = f"{n[0]}.{n[1]}"
+                points[point_of[n]] = xy[n]
+            continue
+        if axis.name in points:
+            raise ValueError(f"two axles named {axis.name!r}")
+        axes.append(axis)
+        points[axis.name] = xy[nodes[0]]
+        point_of.update({n: axis.name for n in nodes})
+    links = {
+        b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
+        for b in tmpl.bodies if body_class(b.name) in LINK_CLASSES
+    }
+    return Topology(
+        name=tmpl.name,
+        geometry=Geometry(points),
+        links=links,
+        axes=tuple(sorted(axes, key=lambda a: a.name)),
+        point_of=point_of,
+        frame_bodies=tuple(b.name for b in tmpl.bodies if is_frame(b.name)),
+        crank_bodies=tuple(b.name for b in tmpl.bodies if is_crank(b.name)),
+    )
+
+
+# ---------------------------------------------------------------------------
+# The problem and the plan
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StackSpec:
+    """Stack dimensions (mm): ``pitch`` = sheet thickness; ``margin`` = clearance."""
+
+    pitch: float = 3.0
+    margin: float = 1.0
+    min_top: int = 2
+    max_top: int = 40
+    max_nodes: int = 4000         # search effort per stack size before trying a bigger one
+
+
+@dataclass
+class StackPlan:
+    """A solved stack: every link's layer, the stack size and every claimed shape."""
+
+    spec: StackSpec
+    layers: dict[str, int]
+    top: int
+    topo: Topology
+    claims: tuple[Claim, ...]
+    placed: tuple[Placed, ...] = ()
+
+    @property
+    def layout(self) -> Layout:
+        return Layout(dict(self.layers), self.top, self.spec.pitch)
+
+    def z(self, layer: int) -> tuple[float, float]:
+        return self.layout.z(layer)
+
+    @property
+    def height(self) -> float:
+        """Total thickness of the stack, both frame plates included (mm)."""
+        return (self.top + 1) * self.spec.pitch
+
+    def shapes(self, group: str | None = None, layer: int | None = None) -> list[Placed]:
+        return [p for p in self.placed
+                if (group is None or p.group == group) and (layer is None or p.layer == layer)]
+
+    def describe(self) -> str:
+        lo = min((p.layer for p in self.placed), default=0)
+        hi = max((p.layer for p in self.placed), default=self.top)
+        rows = []
+        for k in range(max(hi, self.top), min(lo, 0) - 1, -1):
+            names = sorted(n for n, s in self.layers.items() if s == k)
+            groups = sorted({p.label or p.group for p in self.placed
+                             if p.layer == k and not p.seat and p.group not in self.layers})
+            if k == self.top:
+                label = "inner frame plate"
+            elif k == 0:
+                label = "outer frame plate"
+            else:
+                label = ", ".join(names + groups) or "·"
+            if k < 0 or k > self.top:
+                label = "(outside) " + (", ".join(groups) or "·")
+            rows.append(f"  layer {k:2d}  z {k * self.spec.pitch:6.1f}  {label}")
+        return "\n".join(rows)
+
+
+class StackProblem:
+    """Search link layers so that every claim fits."""
+
+    def __init__(self, topo: Topology, claims: Iterable[Claim], spec: StackSpec | None = None):
+        self.topo = topo
+        self.spec = spec or StackSpec()
+        self.claims = tuple(claims)
+        self.links = tuple(topo.links)
+        known = set(self.links)
+        for c in self.claims:
+            if not c.deps <= known:
+                unknown = sorted(c.deps - known)
+                raise ValueError(f"claim {c.owner} depends on unknown links {unknown}")
+        self._by_dep: dict[str, list[Claim]] = {n: [] for n in self.links}
+        for c in self.claims:
+            if not c.final:
+                for n in c.deps:
+                    self._by_dep[n].append(c)
+
+    # -- checks ----------------------------------------------------------------
+
+    def fits(self, p: Placed, by_layer: Mapping[int, list[Placed]], top: int) -> bool:
+        """Does ``p`` clear everything already in its layer (and stay out of the plates)?"""
+        if p.seat:
+            return True
+        if p.layer in (0, top):
+            return False
+        geo, m = self.topo.geometry, self.spec.margin
+        for q in by_layer.get(p.layer, ()):
+            if q.seat or q.group == p.group:
+                continue
+            if geo.dist(p.shape.core, q.shape.core) < p.shape.r + q.shape.r + m:
+                return False
+        return True
+
+    # -- search ----------------------------------------------------------------
+
+    def solve(self) -> StackPlan:
+        order = self._order()
+        for top in range(self.spec.min_top, self.spec.max_top + 1):
+            found = self._search(order, top)
+            if found is not None:
+                return self.plan(found, top)
+        raise ValueError(
+            f"{self.topo.name}: no layer plan with up to {self.spec.max_top} layers; "
+            "the chosen construction needs more room than the mechanism leaves"
+        )
+
+    def plan(self, layers: Mapping[str, int], top: int) -> StackPlan:
+        layout = Layout(dict(layers), top, self.spec.pitch)
+        placed: list[Placed] = []
+        for c in self.claims:
+            out = c.make(layout)
+            if out is None:
+                raise ValueError(f"claim {c.owner} can't be built in this layout")
+            placed.extend(out)
+        return StackPlan(self.spec, dict(layers), top, self.topo, self.claims, tuple(placed))
+
+    def _order(self) -> list[str]:
+        """b1s first (they constrain the crank), then the most-conflicted links."""
+        riders = self.topo.riders
+        solo = Layout({n: 1 for n in self.links}, 10**6, self.spec.pitch)
+        own: dict[str, list[Placed]] = {n: [] for n in self.links}
+        for c in self.claims:
+            if len(c.deps) == 1 and not c.final:
+                (n,) = c.deps
+                own[n].extend(p for p in (c.make(solo) or ()) if p.layer == 1)
+        deg = {n: len(self._by_dep[n]) for n in self.links}
+        for a, b in itertools.combinations(self.links, 2):
+            by_layer = {1: own[a]}
+            if not all(self.fits(p, by_layer, 10**6) for p in own[b]):
+                deg[a] += 1
+                deg[b] += 1
+        return sorted(self.links, key=lambda n: (n not in riders, -deg[n], n))
+
+    def _search(self, order: list[str], top: int) -> dict[str, int] | None:
+        """Depth-first search with the most-constrained link first (fewest open layers).
+
+        Gives up on this ``top`` after ``spec.max_nodes`` nodes (a solution
+        found is always valid; only minimality is at stake).
+        """
+        pitch = self.spec.pitch
+        rank = {n: i for i, n in enumerate(order)}
+        layers: dict[str, int] = {}
+        by_layer: dict[int, list[Placed]] = {}
+        unplaced = set(self.links)
+        budget = [self.spec.max_nodes]
+        partners = {n: set() for n in self.links}
+        for ax in self.topo.axes:
+            for a, b in itertools.combinations(ax.members, 2):
+                partners[a].add(b)
+                partners[b].add(a)
+
+        def add(shapes: Iterable[Placed] | None) -> list[Placed] | None:
+            if shapes is None:
+                return None
+            added: list[Placed] = []
+            for p in shapes:
+                if not self.fits(p, by_layer, top):
+                    remove(added)
+                    return None
+                by_layer.setdefault(p.layer, []).append(p)
+                added.append(p)
+            return added
+
+        def remove(shapes: list[Placed]) -> None:
+            for p in shapes:
+                by_layer[p.layer].remove(p)
+
+        for c in self.claims:
+            if not c.deps and not c.final and add(c.make(Layout(layers, top, pitch))) is None:
+                return None
+
+        def place(n: str, k: int) -> list[Placed] | None:
+            layers[n] = k
+            added: list[Placed] = []
+            for c in self._by_dep[n]:
+                if not c.deps <= layers.keys():
+                    continue
+                got = add(c.make(Layout(layers, top, pitch)))
+                if got is None:
+                    remove(added)
+                    del layers[n]
+                    return None
+                added.extend(got)
+            return added
+
+        def unplace(n: str, added: list[Placed]) -> None:
+            remove(added)
+            del layers[n]
+
+        def open_layers(n: str) -> list[int]:
+            ks = []
+            for k in range(1, top):
+                added = place(n, k)
+                if added is not None:
+                    ks.append(k)
+                    unplace(n, added)
+            return ks
+
+        def finish() -> bool:
+            finals: list[Placed] = []
+            for c in self.claims:
+                if c.final:
+                    got = add(c.make(Layout(layers, top, pitch)))
+                    if got is None:
+                        remove(finals)
+                        return False
+                    finals.extend(got)
+            return True
+
+        def rec() -> bool:
+            if not unplaced:
+                return finish()
+            budget[0] -= 1
+            if budget[0] < 0:
+                return False
+            best: tuple[str, list[int]] | None = None
+            for n in sorted(unplaced, key=rank.__getitem__):
+                ks = open_layers(n)
+                if not ks:
+                    return False
+                if best is None or len(ks) < len(best[1]):
+                    best = (n, ks)
+                    if len(ks) == 1:
+                        break
+            n, ks = best
+            unplaced.remove(n)
+            near = [layers[m] for m in partners[n] if m in layers]
+            if near:   # try layers next to the links it shares an axle with first
+                ks.sort(key=lambda k: (min(abs(k - j) for j in near), k))
+            for k in ks:
+                added = place(n, k)
+                if added is None:
+                    continue
+                if rec():
+                    return True
+                unplace(n, added)
+            unplaced.add(n)
+            return False
+
+        return dict(layers) if rec() else None
+
+
+def plan_problem(topo: Topology, claims: Iterable[Claim],
+                 spec: StackSpec | None = None) -> StackPlan:
+    return StackProblem(topo, claims, spec).solve()
 
 
 # ---------------------------------------------------------------------------
@@ -695,72 +611,45 @@ def problem_from_template(
 # ---------------------------------------------------------------------------
 
 
-def verify_plan(plan: StackPlan, tmpl, samples: int = 1440, tol: float = 0.05) -> list[str]:
-    """Re-check a plan from scratch against a fresh (denser) sampling of ``tmpl``.
+def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e-6) -> list[str]:
+    """Re-check a plan from scratch: every claim re-evaluated, every pair tested.
 
-    Unlike the solver's incremental tables, this enumerates every physical
-    object slot by slot (links, pin flanges and shafts, frame pins, crank
-    webs, journal, crankpin flanges) and tests every pair sharing a slot.
-    Pairs within one rigid group (the crank; one pin with itself) are
-    skipped. Returns human-readable violations (empty when valid).
+    With ``tmpl`` the geometry is re-sampled (denser than the solver's), so
+    the check doesn't reuse any solver table. Returns human-readable
+    violations (empty when valid).
     """
-    fresh = problem_from_template(tmpl, plan.spec, samples)
-    sp = plan.spec
-    links, crank = fresh.links, fresh.crank
-    # object = (label, group, slot, kind, geometry, radius)
-    objs: list[tuple[str, str, int, str, object, float]] = []
-    for name, slot in plan.slots.items():
-        objs.append((name, name, slot, "segs", links[name].segments, sp.link_radius))
-    by_name = {ax.name: ax for ax in fresh.axes}
-    for ax in plan.axes:
-        xy = by_name[ax.name].xy
-        env = sp.envelope(ax.kind)
-        ms = {plan.slots[m] for m in ax.members}
-        lo, hi = min(ms), max(ms)
-        for k in range(1, env.head_slots + 1):
-            objs.append((f"head:{ax.name}@{lo - k}", ax.name, lo - k, "pt", xy, env.head_radius))
-        top = plan.plate if ax.kind == "frame" else hi
-        for k in range(lo + 1, top):
-            if k not in ms:
-                objs.append((f"shaft:{ax.name}@{k}", ax.name, k, "pt", xy, env.gap_radius))
-        if ax.kind == "pin":
-            for k in range(1, env.tail_slots + 1):
-                objs.append((f"tail:{ax.name}@{hi + k}", ax.name, hi + k, "pt", xy,
-                             env.tail_radius))
-    if crank is not None:
-        o = crank.center
-        for k in (*plan.journal_slots, *plan.hub_slots):
-            objs.append((f"crank@{k}", "crank", k, "pt", o, plan.crank_radius(k)))
-        for k, pins in plan.webs.items():
-            for p in pins:
-                objs.append((f"web@{k}:{p}", "crank", k, "segs", ((o, crank.pins[p]),),
-                             sp.link_radius))
-        for p, ks in plan.pin_flanges.items():
-            for k in ks:
-                objs.append((f"head:{p}@{k}", "crank", k, "pt", crank.pins[p],
-                             sp.crankpin.head_radius))
-
-    def dist(a, b) -> float:
-        (_, _, _, ka, ga, _), (_, _, _, kb, gb, _) = a, b
-        if ka == "pt" and kb == "pt":
-            return _point_point(ga, gb)
-        if ka == "pt":
-            return _point_link(ga, Link("", gb))
-        if kb == "pt":
-            return _point_link(gb, Link("", ga))
-        return _link_link(Link("", ga), Link("", gb))
-
-    bad = []
-    for a, b in itertools.combinations(objs, 2):
-        if a[2] != b[2] or a[1] == b[1]:
+    topo = topology_from_template(tmpl, samples) if tmpl is not None else plan.topo
+    geo, sp, layout = topo.geometry, plan.spec, plan.layout
+    bad: list[str] = []
+    shapes: list[Placed] = []
+    for c in plan.claims:
+        out = c.make(layout)
+        if out is None:
+            bad.append(f"{c.owner}: can't be built in this layout")
             continue
-        need = a[5] + b[5] + sp.margin - tol
-        d = dist(a, b)
-        if d < need:
-            bad.append(f"slot {a[2]}: {a[0]} x {b[0]} clear {d - a[5] - b[5]:.2f} mm "
-                       f"(need {sp.margin:.2f})")
-    if min(o[2] for o in objs) < 0:
-        bad.append("an object sits below slot 0")
-    if max(o[2] for o in objs) >= plan.plate:
-        bad.append("an object reaches the frame plate slot")
+        shapes.extend(out)
+    for n in topo.links:
+        if n not in plan.layers:
+            bad.append(f"{n} has no layer")
+        elif not 0 < plan.layers[n] < plan.top:
+            bad.append(f"{n} sits in layer {plan.layers[n]}, outside the frame plates")
+    for p in shapes:
+        if not p.seat and p.layer in (0, plan.top):
+            bad.append(f"{p.label or p.group} sits in frame-plate layer {p.layer}")
+    live = [p for p in shapes if not p.seat]
+    for a, b in itertools.combinations(live, 2):
+        if a.layer != b.layer or a.group == b.group:
+            continue
+        need = a.shape.r + b.shape.r + sp.margin
+        d = geo.dist(a.shape.core, b.shape.core)
+        if d < need - tol:
+            bad.append(f"layer {a.layer}: {a.label or a.group} x {b.label or b.group} "
+                       f"clear {d - a.shape.r - b.shape.r:.2f} mm (need {sp.margin:.2f})")
     return bad
+
+
+__all__ = [
+    "LINK_CLASSES", "Axis", "Claim", "Disc", "Geometry", "Layout", "Pill", "Placed",
+    "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes",
+    "is_crank", "is_frame", "plan_problem", "seg_seg", "topology_from_template", "verify_plan",
+]

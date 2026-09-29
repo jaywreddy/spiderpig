@@ -36,7 +36,6 @@ from mechanism import (
     MechanismTemplate,
     translation_pose_at,
 )
-from stack import StackSpec
 
 # Optional profiler hook. ``viewer/bake_gltf.py`` sets this to its
 # ``_Profiler`` instance at the start of a bake so the symbolic work
@@ -454,13 +453,11 @@ def _realize(
     with_parts: bool,
     with_joinery: bool = True,
 ) -> Mechanism:
-    mech = tmpl.freeze_at(t)
     if not with_parts:
-        return mech
-    from fabricate import fabricate, plan_for  # lazy: pulls in build123d
+        return tmpl.freeze_at(t)
+    from fabricate import BuildConfig, fabricate  # lazy: pulls in build123d
 
-    spec = StackSpec() if thickness is None else StackSpec(pitch=thickness)
-    return fabricate(mech, plan_for(tmpl, spec), joinery=with_joinery)
+    return fabricate(tmpl, BuildConfig(robot=False, thickness=thickness), t)
 
 
 def build_klann_mechanism(

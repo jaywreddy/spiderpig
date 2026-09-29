@@ -6,7 +6,7 @@ build uses unless told otherwise.
 
 from __future__ import annotations
 
-from servos.spec import CadRef, HolePattern, Horn, Idler, MountHole, ServoSpec
+from servos.spec import CadRef, HolePattern, Horn, Idler, MountHole, Relief, ServoSpec
 
 REGISTRY: dict[str, ServoSpec] = {}
 DEFAULT = "sts3215"
@@ -27,12 +27,14 @@ def get(key: str) -> ServoSpec:
 
 
 def available() -> list[str]:
+    """Servos that can drive a crank (full rotation)."""
     from servos import catalog  # noqa: F401
 
-    return sorted(REGISTRY)
+    return sorted(k for k, s in REGISTRY.items() if s.continuous)
 
 
 __all__ = [
-    "CadRef", "DEFAULT", "HolePattern", "Horn", "Idler", "MountHole", "REGISTRY", "ServoSpec",
+    "CadRef", "DEFAULT", "HolePattern", "Horn", "Idler", "MountHole", "REGISTRY", "Relief",
+    "ServoSpec",
     "available", "get", "register",
 ]

@@ -1,4 +1,4 @@
-"""Tests for :mod:`stack`: the layer plan and its crankshaft."""
+"""Tests for :mod:`stack`: the claims-based layer planner."""
 
 from __future__ import annotations
 
@@ -7,24 +7,39 @@ import dataclasses
 import numpy as np
 import pytest
 
-from fabricate import plan_for
+from fabricate import BuildConfig, design_side
 from klann import (
     build_double_decker_template,
     build_double_double_decker_template,
     build_double_template,
     build_klann_template,
-    build_multi_leg_template,
     create_klann_geometry,
 )
-from stack import Link, StackProblem, seg_seg, verify_plan
+from stack import (
+    Claim,
+    Geometry,
+    Layout,
+    Pill,
+    Placed,
+    StackProblem,
+    Topology,
+    seg_seg,
+    verify_plan,
+)
 
 TEMPLATES = {
     "single": lambda: build_klann_template(create_klann_geometry()),
     "double": build_double_template,
     "decker": build_double_decker_template,
     "quad": build_double_double_decker_template,
-    "multi3": lambda: build_multi_leg_template(3),
 }
+SIDE = BuildConfig(robot=False)
+
+
+@pytest.fixture(scope="module", params=sorted(TEMPLATES))
+def side(request):
+    tmpl = TEMPLATES[request.param]()
+    return tmpl, design_side(tmpl, SIDE)
 
 
 def test_seg_seg_is_exact():
@@ -34,50 +49,100 @@ def test_seg_seg_is_exact():
     assert seg_seg(a, b, np.array([[13.0, 4.0]]), np.array([[20.0, 4.0]]))[0] == 5.0  # end-to-end
 
 
-def test_links_that_collide_get_different_slots():
-    ts = np.linspace(0.0, 1.0, 4)
-    bar = (np.stack([ts * 0, ts * 0], 1), np.stack([ts * 0 + 50, ts * 0], 1))
-    crossing = (np.stack([ts * 0 + 25, ts * 0 - 20], 1), np.stack([ts * 0 + 25, ts * 0 + 20], 1))
-    far = (np.stack([ts * 0, ts * 0 + 90], 1), np.stack([ts * 0 + 50, ts * 0 + 90], 1))
-    plan = StackProblem([Link("a", (bar,)), Link("b", (crossing,)), Link("c", (far,))]).solve()
-    assert plan.slots["a"] != plan.slots["b"]
-    assert plan.slots["c"] in (plan.slots["a"], plan.slots["b"])  # it may share
+def test_distance_is_a_lower_bound_between_samples():
+    """A point on a circle passing a fixed point: coarse samples must not overshoot."""
+    fine = np.linspace(0, 2 * np.pi, 20000, endpoint=False)
+    coarse = fine[::500]
+
+    def geo(ts):
+        return Geometry({"p": np.c_[10 * np.cos(ts), 10 * np.sin(ts)], "q": [10.0, 0.4]})
+
+    truth = geo(fine).dist(("pt", "p"), ("pt", "q"))
+    assert geo(coarse).dist(("pt", "p"), ("pt", "q")) <= truth + 1e-9
 
 
-@pytest.mark.parametrize("mode", sorted(TEMPLATES))
-def test_plan_clears_everything_over_the_full_cycle(mode):
-    tmpl = TEMPLATES[mode]()
-    assert verify_plan(plan_for(tmpl), tmpl) == []
+def _toy(links: dict[str, tuple[np.ndarray, np.ndarray]]):
+    points, segs = {}, {}
+    for n, (p, q) in links.items():
+        points[f"{n}.a"], points[f"{n}.b"] = p, q
+        segs[n] = ((f"{n}.a", f"{n}.b"),)
+    topo = Topology("toy", Geometry(points), segs, (), {})
+
+    def claim(n):
+        return Claim(n, frozenset((n,)),
+                     lambda L: [Placed(L.layers[n], Pill(f"{n}.a", f"{n}.b", 3.0), n, n)])
+
+    return topo, [claim(n) for n in links]
+
+
+def test_links_that_collide_get_different_layers():
+    ts = np.zeros((4, 1))
+    bar = (np.c_[ts * 0, ts * 0], np.c_[ts * 0 + 50, ts * 0])
+    crossing = (np.c_[ts * 0 + 25, ts * 0 - 20], np.c_[ts * 0 + 25, ts * 0 + 20])
+    far = (np.c_[ts * 0, ts * 0 + 90], np.c_[ts * 0 + 50, ts * 0 + 90])
+    topo, claims = _toy({"a": bar, "b": crossing, "c": far})
+    plan = StackProblem(topo, claims).solve()
+    assert plan.layers["a"] != plan.layers["b"]
+    assert plan.top == 3                                 # two link layers between the plates
+    assert all(0 < k < plan.top for k in plan.layers.values())
+
+
+def test_a_claim_that_cannot_be_built_forces_another_layout():
+    ts = np.zeros((2, 1))
+    topo, claims = _toy({"a": (np.c_[ts * 0, ts * 0], np.c_[ts * 0 + 9, ts * 0])})
+    claims.append(Claim("fussy", frozenset("a"), lambda L: None if L.layers["a"] < 3 else []))
+    plan = StackProblem(topo, claims).solve()
+    assert plan.layers["a"] >= 3
+
+
+def test_plan_clears_everything_over_the_full_cycle(side):
+    tmpl, design = side
+    assert verify_plan(design.plan, tmpl) == []
 
 
 def test_verifier_catches_a_bad_plan():
-    """Negative control: b1 and b2 on one slot is the original layering bug."""
+    """Negative control: b1 and b2 in one layer is the original layering bug."""
     tmpl = TEMPLATES["single"]()
-    plan = plan_for(tmpl)
-    broken = dataclasses.replace(plan, slots={**plan.slots, "b2": plan.slots["b1"]})
-    assert any("b1 x b2" in v or "b2 x b1" in v for v in verify_plan(broken, tmpl))
+    plan = design_side(tmpl, SIDE).plan
+    broken = dataclasses.replace(plan, layers={**plan.layers, "b2": plan.layers["b1"]})
+    assert any("b1" in v and "b2" in v for v in verify_plan(broken, tmpl))
 
 
-@pytest.mark.parametrize("mode", sorted(TEMPLATES))
-def test_crankshaft_never_crosses_a_b1_on_the_axis(mode):
-    """Every b1 sweeps over O, so the crank may enter a b1 slot only along
-    that b1's own crankpin, with a web beside it reaching that crankpin."""
-    plan = plan_for(TEMPLATES[mode]())
-    riders = plan.rider_slots
-    assert not set(plan.journal_slots) & set(riders)
-    lowest = min(riders)
-    for slot, pins in riders.items():
-        above = riders.get(slot + 1)
-        assert above is None or above == pins  # only a b1 on the same crankpin
-        if above is None:
-            assert set(pins) <= set(plan.webs[slot + 1])
-        if slot > lowest and riders.get(slot - 1) is None:
-            assert set(pins) <= set(plan.webs[slot - 1])
+def test_every_pillar_is_held_by_both_frame_plates(side):
+    _, design = side
+    plan = design.plan
+    for ax in plan.topo.axes_of("frame"):
+        labels = {p.label for p in plan.shapes(f"pillar:{ax.name}")}
+        anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
+        assert sorted(anchors) == [0, plan.top], (ax.name, labels)
 
 
-def test_quad_crank_alternates_webs_and_b1s():
-    plan = plan_for(TEMPLATES["quad"]())
-    kinds = []
-    for k in range(min(plan.rider_slots), plan.plate):
-        kinds.append("b1" if k in plan.rider_slots else "web" if k in plan.webs else "journal")
-    assert kinds == ["b1", "web"] * 4
+def test_crank_crosses_a_b1_layer_only_along_its_crankpin(side):
+    _, design = side
+    plan = design.plan
+    riders = {plan.layers[b] for b in plan.topo.riders}
+    for p in plan.shapes("crank"):
+        if p.layer in riders:
+            assert p.seat, p
+            assert p.label.startswith("crankpin"), p
+
+
+def test_every_link_is_held_on_its_axles(side):
+    """Each link on an axle has a shoulder, head, cap, plate or another link either side."""
+    _, design = side
+    plan = design.plan
+    for ax in plan.topo.axes:
+        if ax.kind not in ("pin", "frame"):
+            continue
+        group = ("pillar:" if ax.kind == "frame" else "pin:") + ax.name
+        held = {p.layer for p in plan.shapes(group)
+                if not p.label.endswith("neck")} | {plan.layers[m] for m in ax.members}
+        for m in ax.members:
+            k = plan.layers[m]
+            assert {k - 1, k + 1} <= held, (ax.name, m)
+
+
+def test_layout_layers_between():
+    L = Layout({}, 5, 3.0)
+    assert list(L.layers_between(2.9, 6.1)) == [0, 1, 2]
+    assert list(L.layers_between(3.0, 6.0)) == [1]

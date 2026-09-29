@@ -12,7 +12,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
-from build123d import Align, Axis, Box, Cylinder, Part, Pos
+from build123d import Align, Axis, Box, Compound, Cylinder, Part, Pos
 
 THICKNESS = 3.0   # default laser-cut sheet = one stack slot
 BUFF = 6.0        # link half-width (pill end radius)
@@ -31,6 +31,16 @@ class Cut:
     xy: tuple[float, float]
     d: float
     flat: float = 0.0
+    angle: float = 0.0
+
+
+@dataclass(frozen=True)
+class Rect:
+    """A rectangular cut-out: ``size`` (along, across) centred on ``xy``, its
+    long side turned to ``angle`` (radians, world XY)."""
+
+    xy: tuple[float, float]
+    size: tuple[float, float]
     angle: float = 0.0
 
 
@@ -58,10 +68,11 @@ def pill(p: XY, q: XY, radius: float, z0: float, z1: float) -> Part:
 
 
 def union(parts: Iterable[Part]) -> Part:
+    """Fuse parts in one boolean (``a + b`` on two disjoint Solids returns a list)."""
     parts = [p for p in parts if p is not None]
-    out = parts[0]
-    for p in parts[1:]:
-        out = out + p
+    out = parts[0].fuse(*parts[1:]) if len(parts) > 1 else parts[0]
+    if isinstance(out, list):
+        out = Compound(children=list(out))
     return _unwrap(out)
 
 
@@ -72,7 +83,9 @@ def _unwrap(shape):
     return solids[0] if len(solids) == 1 else shape
 
 
-def _cutter(cut: Cut, z0: float, z1: float) -> Part:
+def _cutter(cut: Cut | Rect, z0: float, z1: float) -> Part:
+    if isinstance(cut, Rect):
+        return box(cut.xy, (cut.size[0], cut.size[1], z1 - z0), z0, cut.angle)
     body = disc(cut.xy, cut.d / 2, z0, z1)
     if cut.flat <= 0:
         return body
@@ -86,8 +99,8 @@ def _cutter(cut: Cut, z0: float, z1: float) -> Part:
     return body - slab.move(Pos(cx, cy, (z0 + z1) / 2))
 
 
-def cut_holes(part: Part, cuts: Iterable[Cut], z0: float, z1: float) -> Part:
-    """Cut through-holes (round or D) spanning ``z0..z1`` (with overshoot)."""
+def cut_holes(part: Part, cuts: Iterable[Cut | Rect], z0: float, z1: float) -> Part:
+    """Cut through-holes (round, D or rectangular) spanning ``z0..z1`` (with overshoot)."""
     cutters = [_cutter(c, z0 - 1.0, z1 + 1.0) for c in cuts]
     if not cutters:
         return part
@@ -103,7 +116,7 @@ def plate(
     pills: Iterable[tuple[XY, XY, float]],
     z0: float,
     z1: float,
-    cuts: Iterable[Cut] = (),
+    cuts: Iterable[Cut | Rect] = (),
     discs: Iterable[tuple[XY, float]] = (),
 ) -> Part:
     """A laser-cut plate: union of pills ``(p, q, r)`` and discs ``(xy, r)``, minus cuts."""
@@ -121,7 +134,7 @@ def link_plate(
 ) -> Part:
     """A laser-cut link: pills over ``segments``, cut at ``holes`` (a bare XY
     gets the printed-pin running fit)."""
-    cuts = [h if isinstance(h, Cut) else Cut((float(h[0]), float(h[1])), 2 * HOLE_R)
+    cuts = [h if isinstance(h, (Cut, Rect)) else Cut((float(h[0]), float(h[1])), 2 * HOLE_R)
             for h in holes]
     return plate([(p, q, radius) for p, q in segments], z0, z1, cuts)
 

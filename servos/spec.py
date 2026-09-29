@@ -84,6 +84,21 @@ class Idler:
 
 
 @dataclass(frozen=True)
+class Relief:
+    """A raised region of a case face that a flat plate must clear (a cut-out).
+
+    Rectangle ``x0..x1`` by ``y0..y1`` in the servo frame, standing
+    ``height`` mm proud of the face that rests on the plate.
+    """
+
+    x0: float
+    x1: float
+    y0: float
+    y1: float
+    height: float
+
+
+@dataclass(frozen=True)
 class CadRef:
     """A downloadable model of the servo, aligned to the servo frame by ``transform``.
 
@@ -113,6 +128,12 @@ class ServoSpec:
     seat_height: float              # output face to horn seat (the horn's back face)
     horn: Horn
     mount: tuple[MountHole, ...]
+    mount_face_z: float = 0.0       # z of the front face that rests on a plate (its hole face)
+    front_reliefs: tuple[Relief, ...] = ()
+    rear_face_z: float | None = None  # z of the rear face that rests on a plate, if it has holes
+    rear_mount: tuple[MountHole, ...] = ()
+    rear_reliefs: tuple[Relief, ...] = ()   # heights measured beyond the rear face (-z)
+    continuous: bool = False        # can turn a crank (full rotation, speed mode)
     ears: tuple[float, float, float] | None = None  # (z_bottom, thickness, overall length) if eared
     idler: Idler | None = None
     cad: CadRef | None = None
@@ -126,3 +147,8 @@ class ServoSpec:
     def horn_bottom(self) -> float:
         """z (servo frame) of the horn's outer face."""
         return self.seat_height + self.horn.thickness
+
+    @property
+    def horn_face_depth(self) -> float:
+        """How far the horn's outer face sits beyond the plate the servo rests on."""
+        return self.horn_bottom - self.mount_face_z
