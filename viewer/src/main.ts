@@ -1,28 +1,37 @@
 import * as THREE from 'three';
 import './style.css';
-import { createStage } from './scene';
+import { createStage, frameView } from './scene';
 import { loadGlb, teardown, type LoadedScene } from './loader';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
-import type { Mode, ViewerHandle } from './types';
+import type { Mode, View, ViewerHandle } from './types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const stage = createStage(canvas);
 const clock = new THREE.Clock();
 
+// Deep links: ?mode=robot&view=side&t=0.3 (t in clip seconds; pauses there).
+const params = new URLSearchParams(location.search);
+const VIEWS: readonly View[] = ['three-quarter', 'side', 'front', 'top'];
+const paramView = params.get('view') as View | null;
+let view: View = paramView && VIEWS.includes(paramView) ? paramView : 'three-quarter';
+
 let loaded: LoadedScene | null = null;
 let playing = false;
-let currentMode: Mode = 'klann';  // last requested (live reload re-requests it)
-let loadedMode: Mode = 'klann';   // on screen; set only once its GLB has swapped in
+let currentMode: Mode = 'robot';  // last requested (live reload re-requests it)
+let loadedMode: Mode = '';        // on screen; set only once its GLB has swapped in
+
+// Render on demand: while playing, while the camera moves, or after a change.
+// A paused viewer then costs nothing (the env-mapped, translucent robot is
+// heavy on software GL and laptop GPUs alike).
+let dirty = true;
+function invalidate(): void { dirty = true; }
+stage.controls.addEventListener('change', invalidate);
+window.addEventListener('resize', invalidate);
 
 const ui = bindControls({
   onSeek(t) {
-    if (!loaded) return;
-    playing = false;
-    loaded.action.paused = true;
-    loaded.action.time = t;
-    loaded.mixer.update(0);
-    ui.setReadout(formatTime(t));
+    seek(t);
   },
   onTogglePlay(p) {
     playing = p;
@@ -41,13 +50,27 @@ function formatTime(t: number): string {
   return `t ${t.toFixed(3)}s / ${dur.toFixed(3)}s`;
 }
 
+function seek(t: number): void {
+  if (!loaded) return;
+  playing = false;
+  ui.setPlaying(false);
+  loaded.action.paused = true;
+  loaded.action.time = t;
+  loaded.mixer.update(0);
+  ui.setSliderValue(t);
+  ui.setReadout(formatTime(t));
+  invalidate();
+}
+
 async function loadMode(mode: Mode): Promise<void> {
   currentMode = mode;
+  ui.setModeValue(mode);
   ui.setStatus(`loading ${mode}…`);
   ui.setModeDisabled(true);
   try {
     const next = await loadGlb(stage.scene, mode);
     teardown(stage.scene, loaded);
+    const reframe = mode !== loadedMode;  // a live reload keeps the user's camera
     loaded = next;
     loadedMode = mode;
     next.action.paused = !playing;
@@ -56,28 +79,33 @@ async function loadMode(mode: Mode): Promise<void> {
     ui.setSliderValue(0);
     next.action.time = 0;
     next.mixer.update(0);
+    if (reframe) frameView(stage, next.root, view);
 
     ui.setStatus(
       `${mode} · ${next.nodeCount} nodes · ${next.clip.tracks.length} tracks · ` +
       `${next.clipDuration.toFixed(2)}s loop`,
     );
     ui.setReadout(formatTime(0));
+    invalidate();
   } finally {
     ui.setModeDisabled(false);
   }
 }
 
 function tick(): void {
-  if (loaded) {
-    loaded.mixer.update(clock.getDelta());
-    if (playing) {
-      const t = loaded.action.time % loaded.clipDuration;
-      ui.setSliderValue(t);
-      ui.setReadout(formatTime(t));
-    }
+  const dt = clock.getDelta();
+  if (loaded && playing) {
+    loaded.mixer.update(dt);
+    const t = loaded.action.time % loaded.clipDuration;
+    ui.setSliderValue(t);
+    ui.setReadout(formatTime(t));
+    dirty = true;
   }
-  stage.controls.update();
-  stage.renderer.render(stage.scene, stage.camera);
+  if (stage.controls.update()) dirty = true;   // orbiting, or damping settling
+  if (dirty) {
+    dirty = false;
+    stage.renderer.render(stage.scene, stage.camera);
+  }
   requestAnimationFrame(tick);
 }
 
@@ -87,14 +115,45 @@ const viewerHandle: ViewerHandle = {
   get clipDuration() { return loaded?.clipDuration ?? 1; },
   get playing() { return playing; },
   get mode() { return loadedMode; },
-  step(dt) { loaded?.mixer.update(dt); },
+  get walker() { return loaded?.walker ?? null; },
+  camera: stage.camera,
+  step(dt) {
+    loaded?.mixer.update(dt);
+    invalidate();
+  },
+  seek,
+  setView(v) {
+    view = v;
+    if (loaded) frameView(stage, loaded.root, v);
+    invalidate();
+  },
   loadMode,
   ready: false,
 };
 window.__viewer = viewerHandle;
 
+/** Server's mode catalogue; falls back to the static options in index.html. */
+async function fetchModes(): Promise<{ modes: Mode[]; default: Mode } | null> {
+  try {
+    const res = await fetch('/api/modes');
+    if (!res.ok) return null;
+    return (await res.json()) as { modes: Mode[]; default: Mode };
+  } catch {
+    return null;
+  }
+}
+
 async function init(): Promise<void> {
-  await loadMode(ui.modeValue());
+  const catalogue = await fetchModes();
+  const requested = params.get('mode');
+  let initial = ui.modeValue();
+  if (catalogue) {
+    initial = requested && catalogue.modes.includes(requested) ? requested : catalogue.default;
+    ui.setModes(catalogue.modes, initial);
+  }
+  await loadMode(initial);
+  const t = Number(params.get('t'));
+  if (params.has('t') && Number.isFinite(t)) seek(t);
   clock.start();
   requestAnimationFrame(tick);
   viewerHandle.ready = true;

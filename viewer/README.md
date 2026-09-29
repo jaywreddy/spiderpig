@@ -1,41 +1,71 @@
-# Klann linkage three.js viewer
+# Walker three.js viewer
 
-Lightweight visual validator. The kinematics layer bakes a single
-self-contained `.glb` per assembly mode (torso + coupler + crank
-links etc.) with the animation embedded as a glTF clip; the browser
-plays it via three.js.
+Lightweight visual validator. The fabrication pipeline bakes a single
+self-contained `.glb` per assembly mode (every fabricated part: laser-cut
+plates, printed axles and crank, the servos) with the animation embedded as
+a glTF clip; the browser plays it via three.js.
 
 ## Design
 
 Three parts:
 
 1. **Bake** (`bake_gltf.py`): one `.glb` per mode under
-   `viewer/data/klann_<mode>.glb`. Geometry from `build123d` /
-   `klann.py`; animation channels per body are sampled from the
-   `MechanismTemplate` in `mechanism.py` (vectorized batched-BFS
-   over a `(T, 4, 4)` pose tensor).
+   `viewer/data/klann_<mode>.glb`. Parts come from `fabricate.fabricate`
+   (build123d, world coordinates at `t = 0`); animation channels per body
+   are sampled from the `MechanismTemplate` (`construction.robot.robot_template`
+   for the whole robot). Bodies of one class whose parts are congruent under
+   a planar motion plus a Z shift share one mesh (checked from exact B-rep
+   mass properties): the legs' link plates, and the mirrored right side's
+   plates, but not a mirrored part that isn't symmetric about its mid-plane.
 2. **Dev server** (`../server/app.py`, FastAPI + uvicorn): exposes
-   `/api/modes` and `/api/glb/{mode_id}`; mounts the built viewer
-   bundle (`viewer/dist`) as static files. A `watchfiles` watcher
-   re-bakes on any `.py` change and broadcasts `reload` over `/ws`.
-3. **Client** (`index.html` + `src/*.ts`): Vite + TypeScript +
-   three.js (npm). `loader.ts` fetches `/api/glb/<mode>`, plays the
-   embedded `AnimationClip`, and overlays the foot path stashed in
-   `scene.extras.foot_path`. On `reload` from `/ws`, the GLB is
-   hot-swapped without a full page reload.
+   `/api/modes` and `/api/glb/{mode_id}`, baking a mode on first request
+   (or when its cached `.glb` is older than the Python sources); mounts the
+   built viewer bundle (`viewer/dist`) as static files. A `watchfiles`
+   watcher re-bakes on any `.py` change and broadcasts `reload` over `/ws`.
+3. **Client** (`index.html` + `src/*.ts`): Vite + TypeScript + three.js
+   (npm). `loader.ts` fetches `/api/glb/<mode>`, plays the embedded
+   `AnimationClip`, and overlays the foot path stashed in
+   `scene.extras.foot_path`. On `reload` from `/ws`, the GLB is hot-swapped
+   without a full page reload.
+
+## Modes
+
+| id (server / URL) | bake mode | what |
+|---|---|---|
+| `robot` (default) | `robot` | both mirror-image sides (`L.` / `R.`), quad per side, chassis between the servos |
+| `klann` | `single` | one side, one leg |
+| `double` | `double` | one side, mirrored pair |
+| `decker` | `decker` | one side, two legs on one crankshaft |
+| `double_double` | `quad` | one side, four legs |
+
+`uv run python viewer/bake_gltf.py --mode robot --module single` bakes the
+robot with another module per side.
+
+## Orientation and materials
+
+The linkage moves in model XY with +Y up; the layer stack runs along model
+Z. The glTF root node `walker` turns +90° about X (model +Y -> world +Z,
+the stack horizontal along world Y) and lifts the gait's lowest point onto
+`z = 0`; bodies are its animated children. The viewer's camera is Z-up.
+
+Materials follow `Body.fab`: laser-cut plates are translucent acrylic
+(`acrylic` for the leg links, orange-tinted `acrylic_frame` for the frame
+and chassis plates), `printed` parts are opaque violet, and purchased parts
+are `servo` (dark) or `metal` (horns, screws). Node extras carry
+`{fab, rigid_with, bom, body}` (three.js exposes them as `userData`; node
+names lose their `.` to three.js name sanitizing, `body` keeps the original).
 
 ## Run
 
 From the repo root:
 
 ```bash
-mise run view             # FastAPI :8000 + Vite :5173 (HMR)
+mise run view             # FastAPI + Vite (HMR); URL printed in the banner
 ```
 
-Open <http://localhost:5173>. Edit `.ts` → instant HMR. Edit `.py`
-kinematics → re-bake → viewer hot-swaps the GLB.
+Edit `.ts` → instant HMR. Edit `.py` → re-bake → viewer hot-swaps the GLB.
 
-Single-port (built bundle on :8000):
+Single-port (built bundle):
 
 ```bash
 mise run viewer-build
@@ -45,10 +75,16 @@ uv run uvicorn server.app:app --port 8000
 ## UI
 
 - **Slider** — scrub to any phase instantly.
-- **Play / Pause** — RAF-driven playback at the baked FPS.
-- **Mode dropdown** — swap between `klann` / `double` / `double_double`.
-- **Red loop** — foot tip trail over one cycle.
+- **Play / Pause** — plays the clip in real time.
+- **Mode dropdown** — the server's modes (`/api/modes`), robot first.
+- **Red loop** — leg 0's foot trail over one cycle.
 - **Orbit** — mouse drag to rotate; wheel to zoom; right-drag to pan.
+- **Deep links** — `?mode=klann&view=side&t=0.3` picks the mode, a camera
+  preset (`three-quarter`, `side`, `front`, `top`) and a paused clip time.
+
+The page renders on demand (while playing, orbiting, or after a change), so
+a paused viewer is idle. `window.__viewer` exposes the mixer, `seek(t)`,
+`setView(view)` and `loadMode(id)` for the e2e tests.
 
 ## Files
 
@@ -58,8 +94,8 @@ viewer/
 ├── index.html
 ├── package.json, tsconfig.json, vite.config.ts
 ├── src/
-│   ├── main.ts        # entry; bootstraps the scene
-│   ├── scene.ts       # renderer, camera, lights, grid, orbit
+│   ├── main.ts        # entry; render loop, deep links, window.__viewer
+│   ├── scene.ts       # renderer, camera + view presets, lights, grid, orbit
 │   ├── loader.ts      # GLTFLoader + foot-path overlay
 │   ├── controls.ts    # slider / play / mode dropdown wiring
 │   ├── live-reload.ts # /ws client → re-load GLB on rebake

@@ -16,18 +16,35 @@ from pathlib import Path
 from fastapi import WebSocket
 from watchfiles import Change, awatch
 
-_IGNORED_DIRS = {".venv", ".git", "__pycache__", ".ruff_cache", ".pytest_cache", "build", "data"}
+_IGNORED_DIRS = {
+    ".venv", ".git", "__pycache__", ".ruff_cache", ".pytest_cache", "build", "data",
+    "node_modules", "dist",
+}
 
 
-def _is_source_change(_change: Change, path: str) -> bool:
+def is_ignored_dir(name: str) -> bool:
+    """Directories a scan from the repo root skips (caches, envs, build output, dot-dirs
+    such as ``.claude`` holding other worktrees)."""
+    return name in _IGNORED_DIRS or name.startswith(".")
+
+
+def is_source(path: Path) -> bool:
+    """Is ``path`` a Python source the bake depends on (not tests, caches or build output)?
+
+    ``path`` may be absolute (watcher events), so only the named ignored
+    directories apply here: a worktree itself lives under ``.claude/``.
+    """
     p = Path(path)
     if p.suffix != ".py":
         return False
-    parts = set(p.parts)
-    if parts & _IGNORED_DIRS:
+    if set(p.parts) & _IGNORED_DIRS:
         return False
     # Skip test files — they don't affect runtime geometry.
     return not (p.name.startswith("test_") or "tests" in p.parts)
+
+
+def _is_source_change(_change: Change, path: str) -> bool:
+    return is_source(Path(path))
 
 
 class WatchBroadcaster:

@@ -1,7 +1,12 @@
-"""Tests for the glTF bake pipeline."""
+"""Tests for the glTF bake pipeline.
+
+Two bakes are shared by the module: one side with a single leg (``single``)
+and the robot with a single leg per side (``robot`` / ``module="single"``).
+"""
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -12,7 +17,47 @@ import pytest
 # viewer/ is a sibling of the package modules; make it importable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
 
-from bake_gltf import _build_assembly, _mesh_key, bake_gltf  # noqa: E402
+from bake_gltf import (  # noqa: E402
+    _MATERIALS,
+    _build_assembly,
+    _congruent,
+    _mass_props,
+    _Planar,
+    bake_gltf,
+)
+
+N_FRAMES = 12
+DURATION = 0.5
+CASES = {
+    "side": {"mode": "single"},
+    "robot": {"mode": "robot", "module": "single"},
+}
+
+
+@pytest.fixture(scope="module")
+def bakes(tmp_path_factory):
+    """``case -> GLTF2``, each case baked once per module."""
+    cache: dict[str, pygltflib.GLTF2] = {}
+
+    def get(case: str) -> pygltflib.GLTF2:
+        if case not in cache:
+            out = tmp_path_factory.mktemp("glb") / f"{case}.glb"
+            bake_gltf(out, n_frames=N_FRAMES, duration_s=DURATION, **CASES[case])
+            cache[case] = pygltflib.GLTF2().load(str(out))
+        return cache[case]
+
+    return get
+
+
+@pytest.fixture(params=list(CASES))
+def baked(request, bakes):
+    """``(case, kwargs, gltf)`` for each shared bake."""
+    return request.param, CASES[request.param], bakes(request.param)
+
+
+@pytest.fixture
+def robot_gltf(bakes):
+    return bakes("robot")
 
 
 def _read_accessor(gltf: pygltflib.GLTF2, accessor_idx: int) -> np.ndarray:
@@ -51,98 +96,92 @@ def _quat_matrix(q):
     ])
 
 
-def test_gltf_emits_valid_file(tmp_path):
-    out = tmp_path / "klann.glb"
-    bake_gltf(out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5, with_joinery=False)
-    assert out.is_file()
-    assert out.stat().st_size > 1024
-
-    gltf = pygltflib.GLTF2().load(str(out))
-    mech = _build_assembly("multi", t=0.0, n_legs=2, with_joinery=False)
-
-    # one node per body; b1..b4 of both legs share 4 meshes, the rest are per-body
-    assert [n.name for n in gltf.nodes] == [b.name for b in mech.bodies]
-    with_part = [b.name for b in mech.bodies if b.part is not None]
-    assert len(gltf.meshes) == len({_mesh_key(n) for n in with_part})
-    assert {"b1", "b2", "b3", "b4"} <= {m.name for m in gltf.meshes}
-
+def _tracks(gltf) -> dict[tuple[int, str], np.ndarray]:
     anim = gltf.animations[0]
-    assert len(anim.channels) == 2 * len(gltf.nodes)  # translation + rotation
+    return {
+        (ch.target.node, ch.target.path): _read_accessor(gltf, anim.samplers[ch.sampler].output)
+        for ch in anim.channels
+    }
+
+
+def _root(gltf):
+    return gltf.nodes[gltf.scenes[gltf.scene].nodes[0]]
+
+
+def test_nodes_meshes_and_channels(baked):
+    """A root node with one animated child per body; every part has a mesh."""
+    case, kw, gltf = baked
+    mech = _build_assembly(t=0.0, **kw)
 
     scene = gltf.scenes[gltf.scene]
+    assert len(scene.nodes) == 1
+    root = _root(gltf)
+    assert root.name == "walker"
+    assert root.mesh is None
+    assert len(gltf.nodes) == len(mech.bodies) + 1
+    children = [gltf.nodes[i] for i in root.children]
+    assert [n.name for n in children] == [b.name for b in mech.bodies]
+
+    parts = {b.name: b for b in mech.bodies}
+    for node in children:
+        body = parts[node.name]
+        assert (node.mesh is not None) == (body.part is not None), node.name
+        # pygltflib drops None-valued keys on save: absent means None
+        assert node.extras.get("fab") == body.fab
+        assert node.extras.get("rigid_with") == body.rigid_with
+        assert node.extras.get("bom") == body.bom_key
+        assert node.extras["body"] == body.name
+
+    anim = gltf.animations[0]
+    targets = {(ch.target.node, ch.target.path) for ch in anim.channels}
+    assert len(anim.channels) == 2 * len(children)       # translation + rotation
+    assert targets == {(i, p) for i in root.children for p in ("translation", "rotation")}
+
     assert len(scene.extras["foot_path"]) == 64
+    assert scene.extras["robot"] is (case == "robot")
+    if case == "robot":
+        names = {n.name for n in children}
+        assert {"L.b1", "R.b1", "L.servo", "R.servo"} <= names
+        assert any(n.startswith("centre_plate") for n in names)
 
 
-def test_gltf_joinery_adds_pins_and_caps(tmp_path):
-    """Pins and press-on caps appear at every pivot only when joinery is on."""
-    with_j = tmp_path / "with.glb"
-    without = tmp_path / "without.glb"
-    bake_gltf(with_j, n_frames=2, mode="single", duration_s=0.5)
-    bake_gltf(without, n_frames=2, mode="single", duration_s=0.5, with_joinery=False)
+def test_root_stands_the_walker_up(baked):
+    """The root turns model +Y to +Z and puts the lowest point of the gait on z = 0."""
+    _case, _kw, gltf = baked
+    root = _root(gltf)
+    r = _quat_matrix(root.rotation)
+    np.testing.assert_allclose(r @ [0, 1, 0], [0, 0, 1], atol=1e-9)    # up
+    np.testing.assert_allclose(r @ [0, 0, 1], [0, -1, 0], atol=1e-9)   # stack: horizontal
+    np.testing.assert_allclose(r @ [1, 0, 0], [1, 0, 0], atol=1e-9)    # walking axis
 
-    names = {n.name for n in pygltflib.GLTF2().load(str(with_j)).nodes}
-    bare = {n.name for n in pygltflib.GLTF2().load(str(without)).nodes}
-    # C, D, E link pins and the A, B frame pivots each get a pin + cap
-    for axis in ("C", "D", "E"):
-        assert {f"pin_{axis}", f"cap_{axis}"} <= names
-    for axis in ("A", "B"):
-        assert {f"frame_pin_{axis}", f"frame_cap_{axis}"} <= names
-    assert not any(n.startswith(("pin_", "cap_", "frame_pin_")) for n in bare)
-    # the crankshaft is structure, not joinery: present either way
-    assert any(n.startswith("crankpin_") for n in bare)
-
-
-def test_quaternion_shortest_path(tmp_path):
-    out = tmp_path / "klann.glb"
-    bake_gltf(out, n_frames=32, n_legs=1, thickness=3.0, duration_s=1.0)
-    gltf = pygltflib.GLTF2().load(str(out))
-
-    anim = gltf.animations[0]
-    rotation_channels = [ch for ch in anim.channels if ch.target.path == "rotation"]
-    assert rotation_channels, "expected at least one rotation channel"
-    for ch in rotation_channels:
-        q = _read_accessor(gltf, anim.samplers[ch.sampler].output)
-        assert q.shape == (32, 4)
-        dots = np.einsum("ij,ij->i", q[:-1], q[1:])
-        assert np.all(dots >= -1e-6), (
-            f"shortest-path violated on node {ch.target.node}: min dot {dots.min()}"
-        )
+    trs = _tracks(gltf)
+    lowest, highest = math.inf, -math.inf
+    for i in root.children:
+        node = gltf.nodes[i]
+        if node.mesh is None:
+            continue
+        v = _read_accessor(gltf, gltf.meshes[node.mesh].primitives[0].attributes.POSITION)
+        for k in range(N_FRAMES):
+            local = v @ _quat_matrix(trs[(i, "rotation")][k]).T + trs[(i, "translation")][k]
+            world = local @ r.T + root.translation
+            lowest = min(lowest, world[:, 2].min())
+            highest = max(highest, world[:, 2].max())
+    assert lowest == pytest.approx(0.0, abs=1e-3)
+    assert highest > 100.0
 
 
-def test_gltf_mesh_instancing(tmp_path):
-    """Every leg's b1 (b2, b3, b4) instances one shared mesh."""
-    out = tmp_path / "klann.glb"
-    bake_gltf(out, n_frames=2, n_legs=3, thickness=3.0, duration_s=0.1)
-    gltf = pygltflib.GLTF2().load(str(out))
-    by_class: dict[str, set[int]] = {}
-    for node in gltf.nodes:
-        cls = node.name.rsplit("_leg", 1)[0]
-        if node.mesh is not None and cls in {"b1", "b2", "b3", "b4"}:
-            by_class.setdefault(cls, set()).add(node.mesh)
-    assert set(by_class) == {"b1", "b2", "b3", "b4"}
-    for cls, meshes in by_class.items():
-        assert len(meshes) == 1, f"class {cls} uses {len(meshes)} meshes"
-
-
-@pytest.mark.parametrize("mode", ["single", "double"])
-def test_animation_reproduces_fabricated_geometry(tmp_path, mode):
-    """Posing each node's mesh by its animation at frame k must land on the part
-    fabricated directly at that crank angle (shared link meshes, slot Z offsets
-    and hardware riding its host all included)."""
-    n_frames = 12
-    out = tmp_path / f"{mode}.glb"
-    bake_gltf(out, n_frames=n_frames, mode=mode, duration_s=1.0)
-    gltf = pygltflib.GLTF2().load(str(out))
-    anim = gltf.animations[0]
-    trs: dict[tuple[int, str], np.ndarray] = {}
-    for ch in anim.channels:
-        out_acc = anim.samplers[ch.sampler].output
-        trs[(ch.target.node, ch.target.path)] = _read_accessor(gltf, out_acc)
-
+def test_animation_reproduces_fabricated_geometry(baked):
+    """Posing each node's mesh by its animation at frame k lands on the part
+    fabricated directly at that crank angle: shared meshes (other legs, the
+    mirrored right side), their Z offsets and hardware riding its host included."""
+    _case, kw, gltf = baked
+    trs = _tracks(gltf)
+    root = _root(gltf)
     for frame in (0, 5):
-        mech = _build_assembly(mode, t=2.0 * np.pi * frame / n_frames)
+        mech = _build_assembly(t=2.0 * np.pi * frame / N_FRAMES, **kw)
         parts = {b.name: b.part for b in mech.bodies if b.part is not None}
-        for i, node in enumerate(gltf.nodes):
+        for i in root.children:
+            node = gltf.nodes[i]
             if node.mesh is None:
                 continue
             v = _read_accessor(gltf, gltf.meshes[node.mesh].primitives[0].attributes.POSITION)
@@ -151,17 +190,87 @@ def test_animation_reproduces_fabricated_geometry(tmp_path, mode):
             np.testing.assert_allclose(
                 np.concatenate([posed.min(0), posed.max(0)]),
                 [bb.min.X, bb.min.Y, bb.min.Z, bb.max.X, bb.max.Y, bb.max.Z],
-                atol=0.05, err_msg=f"{mode} {node.name} frame {frame}",
+                atol=0.05, err_msg=f"{node.name} frame {frame}",
             )
 
 
-@pytest.mark.parametrize("n_legs", [1, 2])
-def test_gltf_animation_duration(tmp_path, n_legs):
-    out = tmp_path / f"klann_{n_legs}.glb"
-    duration = 0.25
-    bake_gltf(out, n_frames=8, n_legs=n_legs, thickness=3.0, duration_s=duration)
-    gltf = pygltflib.GLTF2().load(str(out))
+def test_mirrored_side_shares_only_congruent_meshes(robot_gltf):
+    """Right-side link plates (z-mirrored extrusions) reuse the left side's
+    meshes; the servo, which isn't symmetric about its mid-plane, doesn't."""
+    mesh = {n.name: n.mesh for n in robot_gltf.nodes}
+    for link in ("b1", "b2", "b3", "b4", "torso", "frame_outer"):
+        assert mesh[f"L.{link}"] == mesh[f"R.{link}"], link
+    assert mesh["L.servo"] != mesh["R.servo"]
+    with_part = [m for m in mesh.values() if m is not None]
+    assert len(robot_gltf.meshes) < len(with_part)
+
+
+def test_congruence_check():
+    """A Z-mirror is a Z shift only for a part symmetric about its mid-plane."""
+    from build123d import Axis, Location, Plane
+
+    from shapes import disc, link_plate
+
+    plate = link_plate([((0, 0), (40, 10))], 0.0, 3.0, holes=[(0, 0), (40, 10)], radius=6.0)
+    pin = disc((5, 5), 3.0, 0.0, 12.0).fuse(disc((5, 5), 4.5, 0.0, 2.0))   # head at the bottom
+    for part, symmetric in ((plate, True), (pin, False)):
+        mirrored = part.mirror(Plane.XY).moved(Location((0, 0, -20.0)))
+        a, b = _mass_props(part), _mass_props(mirrored)
+        g = _Planar(dz=float(b.com[2] - a.com[2]))
+        assert _congruent(a, b, g) is symmetric
+    # a turned and shifted plate is congruent under the matching motion only
+    moved = plate.rotate(Axis.Z, 30).moved(Location((7.0, -3.0, 9.0)))
+    a, b = _mass_props(plate), _mass_props(moved)
+    assert _congruent(a, b, _Planar(math.radians(30), (7.0, -3.0), 9.0))
+    assert not _congruent(a, b, _Planar(0.0, (7.0, -3.0), 9.0))
+
+
+def test_materials_follow_fab(robot_gltf):
+    """Laser plates are translucent acrylic; printed, servo and metal are opaque."""
+    by_node = {}
+    for node in robot_gltf.nodes:
+        if node.mesh is not None:
+            mat = robot_gltf.materials[robot_gltf.meshes[node.mesh].primitives[0].material]
+            by_node[node.name] = mat
+    assert by_node["L.b1"].name == "acrylic"
+    assert by_node["L.torso"].name == "acrylic_frame"
+    assert by_node["centre_plate0"].name == "acrylic_frame"
+    assert by_node["L.pin_C"].name == "printed"
+    assert by_node["L.crank_seg0"].name == "printed"
+    assert by_node["L.servo"].name == "servo"
+    assert by_node["L.servo_horn"].name == "metal"
+    for name, mat in by_node.items():
+        rgba = _MATERIALS[mat.name].rgba
+        assert mat.pbrMetallicRoughness.baseColorFactor == pytest.approx(list(rgba)), name
+        assert mat.alphaMode == ("BLEND" if mat.name.startswith("acrylic") else "OPAQUE"), name
+
+
+def test_quaternion_shortest_path(baked):
+    _case, _kw, gltf = baked
+    anim = gltf.animations[0]
+    rotation_channels = [ch for ch in anim.channels if ch.target.path == "rotation"]
+    assert rotation_channels, "expected at least one rotation channel"
+    for ch in rotation_channels:
+        q = _read_accessor(gltf, anim.samplers[ch.sampler].output)
+        assert q.shape == (N_FRAMES, 4)
+        dots = np.einsum("ij,ij->i", q[:-1], q[1:])
+        assert np.all(dots >= -1e-6), (
+            f"shortest-path violated on node {ch.target.node}: min dot {dots.min()}"
+        )
+
+
+def test_gltf_animation_duration(baked):
+    _case, _kw, gltf = baked
     t_acc = gltf.accessors[gltf.animations[0].samplers[0].input]
-    assert t_acc.count == 8
+    assert t_acc.count == N_FRAMES
     assert t_acc.min[0] == pytest.approx(0.0)
-    assert t_acc.max[0] == pytest.approx(duration * 7 / 8)
+    assert t_acc.max[0] == pytest.approx(DURATION * (N_FRAMES - 1) / N_FRAMES)
+
+
+def test_unknown_modes_are_rejected(tmp_path):
+    with pytest.raises(ValueError, match="unknown mode"):
+        bake_gltf(tmp_path / "x.glb", mode="multi")
+    with pytest.raises(ValueError, match="robot only"):
+        bake_gltf(tmp_path / "x.glb", mode="single", module="quad")
+    with pytest.raises(ValueError, match="unknown module"):
+        bake_gltf(tmp_path / "x.glb", mode="robot", module="octo")

@@ -1,9 +1,11 @@
 """FastAPI dev server for the Klann viewer.
 
 Serves the three.js frontend and one self-contained ``klann_<mode>.glb``
-per assembly mode from ``viewer/data/``. A background watcher re-runs the
-glTF bake for every known mode whenever a source ``.py`` file changes and
-pushes a ``reload`` message to every connected browser over ``/ws``.
+per assembly mode from ``viewer/data/``, baked on first request (and again
+when a cached file is older than the Python sources). A background watcher
+re-runs the glTF bake for every cached mode whenever a source ``.py`` file
+changes and pushes a ``reload`` message to every connected browser over
+``/ws``.
 
 Start via::
 
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -39,7 +42,10 @@ def _viewer_static_dir() -> Path:
     return dist if dist.is_dir() else VIEWER_DIR
 
 # User-facing mode id → bake_gltf mode argument. Order is the dropdown order.
+# ``robot`` is both sides (quad per side); the rest are one side, under the
+# ids old URLs use.
 MODES: dict[str, str] = {
+    "robot": "robot",
     "klann": "single",
     "double": "double",
     "decker": "decker",
@@ -53,14 +59,33 @@ if str(VIEWER_DIR) not in sys.path:
 
 from bake_gltf import bake_gltf  # noqa: E402
 
-from server.watcher import WatchBroadcaster  # noqa: E402
+from server.watcher import WatchBroadcaster, is_ignored_dir, is_source  # noqa: E402
 
 _NO_CACHE = {"Cache-Control": "no-store"}
-_DEFAULT_MODE = "klann"
+_DEFAULT_MODE = "robot"
+
+# One bake at a time: requests run in a threadpool and the bake isn't reentrant.
+_BAKE_LOCK = threading.Lock()
 
 
 def _glb_path(mode_id: str) -> Path:
     return DATA_DIR / f"klann_{mode_id}.glb"
+
+
+def _sources_mtime() -> float:
+    """Newest mtime of the Python sources a bake depends on (what the watcher watches)."""
+    newest = 0.0
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        rel = Path(dirpath).relative_to(REPO_ROOT)
+        dirnames[:] = [d for d in dirnames if not is_ignored_dir(d)]
+        for name in filenames:
+            if is_source(rel / name):
+                newest = max(newest, os.stat(os.path.join(dirpath, name)).st_mtime)
+    return newest
+
+
+def _is_fresh(path: Path) -> bool:
+    return path.is_file() and path.stat().st_mtime >= _sources_mtime()
 
 
 def _bake_mode(mode_id: str) -> None:
@@ -70,18 +95,26 @@ def _bake_mode(mode_id: str) -> None:
     bake_gltf(out, mode=bake_mode, verbose=True)
 
 
+def _ensure_baked(mode_id: str) -> Path:
+    """The mode's ``.glb``, baked first when missing or older than the sources."""
+    path = _glb_path(mode_id)
+    with _BAKE_LOCK:
+        if not _is_fresh(path):
+            _bake_mode(mode_id)
+    return path
+
+
 def _ensure_default_baked() -> None:
-    if _glb_path(_DEFAULT_MODE).exists():
-        return
-    _bake_mode(_DEFAULT_MODE)
+    _ensure_baked(_DEFAULT_MODE)
 
 
 def _rebake_all() -> None:
     """Called by the watcher. Re-bakes every mode that already has a cached
     ``.glb`` — newly-requested modes are baked lazily on first GET."""
-    for mode_id in MODES:
-        if _glb_path(mode_id).exists():
-            _bake_mode(mode_id)
+    with _BAKE_LOCK:
+        for mode_id in MODES:
+            if _glb_path(mode_id).exists():
+                _bake_mode(mode_id)
 
 
 broadcaster = WatchBroadcaster(REPO_ROOT, rebake=_rebake_all)
@@ -111,9 +144,7 @@ def list_modes() -> dict:
 def get_glb(mode_id: str) -> Response:
     if mode_id not in MODES:
         raise HTTPException(status_code=404, detail=f"unknown mode {mode_id!r}")
-    path = _glb_path(mode_id)
-    if not path.is_file():
-        _bake_mode(mode_id)
+    path = _ensure_baked(mode_id)
     return FileResponse(path, media_type="model/gltf-binary", headers=_NO_CACHE)
 
 

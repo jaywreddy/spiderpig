@@ -178,18 +178,3 @@ def test_quad_every_leg_pivots_on_the_frame():
     torso_joints = {j.name for j in mech.body("torso").joints}
     for k in range(4):
         assert {f"A_leg{k}", f"B_leg{k}"} <= torso_joints
-
-
-# ---------------------------------------------------------------------------
-# bake_gltf mesh keys
-# ---------------------------------------------------------------------------
-
-
-def test_mesh_key_instances_links_only():
-    from bake_gltf import _mesh_key
-
-    assert _mesh_key("b1_leg3") == "b1"
-    assert _mesh_key("b4") == "b4"
-    assert _mesh_key("conn_upper") == "conn_upper"
-    assert _mesh_key("pin_C_leg0") == "pin_C_leg0"
-    assert _mesh_key("torso") == "torso"
