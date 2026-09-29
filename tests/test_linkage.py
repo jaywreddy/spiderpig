@@ -117,19 +117,19 @@ def test_strider_matches_its_plan_drawing():
         assert np.hypot(*(got - xy)) < 0.2, f"{j}: {got} vs plan {xy}"
 
 
-# A link pinned to the crank rider inside the crank circle sweeps across O, which the
-# through crankshaft fills in every layer: these need a crank overhung from the servo side.
-NEEDS_OVERHUNG_CRANK = {"trotbot", "trotbot_heel", "trotbot_toe", "sixbar", "sixbar_v1"}
+# The heel link hangs off the crank rider one plan unit from the crankpin: it sweeps across
+# O and passes the crankpin's post too close for the crank to run along it in its layer.
+NO_CRANK_POINT = {"trotbot_heel", "trotbot_toe"}
 
 
 @pytest.mark.parametrize("key", WALKERS)     # mechanisms: tests/test_mechanisms.py
 def test_one_side_plans_or_the_pipeline_says_why(key):
-    """A single-module side lays out with the default constructions, or the static
-    clearance stage names the link no layer can hold."""
+    """A single-module side lays out with the default constructions, or the static stage
+    names the link no crank route lets through."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
-    if key in NEEDS_OVERHUNG_CRANK:
-        with pytest.raises(ClearanceError, match="sweeps right across the crank at O, so it "
-                                                 "can't be in any layer but its riders'"):
+    if key in NO_CRANK_POINT:
+        with pytest.raises(ClearanceError, match="b7 sweeps right across the crank at O, so its "
+                                                 "layer needs the crank off its axis"):
             design_side(template_for(cfg), cfg)
         return
     design = design_side(template_for(cfg), cfg)

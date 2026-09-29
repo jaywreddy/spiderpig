@@ -147,7 +147,20 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
     ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
     router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
-    return ctx, groups, StackProblem(topo, claims, spec, router, side_clearances(ctx, groups))
+    return ctx, groups, StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
+                                     hint=_leg_hint(config))
+
+
+def _leg_hint(config: BuildConfig) -> dict[str, int] | None:
+    """One leg's plan (the single module's), for the planner to try each leg of a bigger
+    module at (a hint for the order it tries layers in, nothing more)."""
+    if config.module == "single":
+        return None
+    one = replace(config, module="single", phases=None, robot=False)
+    try:
+        return design_side(template_for(one), one).plan.layers
+    except ValueError:
+        return None
 
 
 def ground_clearance(tmpl, ctx: Context) -> float | None:

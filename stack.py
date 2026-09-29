@@ -307,21 +307,18 @@ def static_clearances(topo: Topology, keepouts: Iterable[Keepout], link_r: float
 class Recommendation:
     """A change that clears a failure, checked by re-running the stage with it applied.
 
-    ``change`` names what to set (a linkage parameter such as ``unit``, or a
-    ``Params`` field), ``before`` -> ``after``; ``effects`` what else it
-    changes (the crank radius, the torque); ``verified`` what re-running the
-    stage said.
+    ``changes``: what to set (a linkage parameter such as ``unit``, or a
+    ``Params`` field), from, to; ``effects`` what else it changes (the crank
+    radius, the torque); ``verified`` what re-running the stage showed.
     """
 
-    change: str
-    before: float
-    after: float
+    changes: tuple[tuple[str, float, float], ...]
     why: str = ""
     effects: str = ""
     verified: str = ""
 
     def describe(self) -> str:
-        out = f"{self.change} {self.before:g} -> {self.after:g}"
+        out = ", ".join(f"{name} {a:g} -> {b:g}" for name, a, b in self.changes)
         if self.why:
             out += f": {self.why}"
         if self.effects:
@@ -548,12 +545,14 @@ class Route:
 @dataclass(frozen=True)
 class RouteConflict:
     """No route: what happens in layers ``lo..hi`` (their occupants and links) explains it.
-    ``bound``: routes exist, but none cheaper than the bound."""
+    ``bound``: routes exist, but none cheaper than the bound; ``rules``: routes pass the
+    occupants, but none the router's own rules (``why``) allow."""
 
     lo: int
     hi: int
     why: str = ""
     bound: bool = False
+    rules: bool = False
 
 
 @dataclass
@@ -685,12 +684,18 @@ class StackProblem:
 
     ``clearances`` are the static facts (:func:`static_clearances`); those of an
     axle (``Keepout.span``) keep a link out of the layers between the axle's
-    links as soon as those are placed.
+    links as soon as those are placed. ``hint``: a layer per link class
+    (:func:`body_class`), e.g. from one leg's plan; a second strategy places
+    one leg (``_leg<i>``) at a time at those layers, shifted.
     """
 
     def __init__(self, topo: Topology, claims: Iterable[Claim], spec: StackSpec | None = None,
-                 router: Router | None = None, clearances: Iterable[Clearance] = ()):
+                 router: Router | None = None, clearances: Iterable[Clearance] = (),
+                 hint: Mapping[str, int] | None = None):
         self.topo = topo
+        self.hint = dict(hint or {})
+        self.leg = {n: int(m.group(1)) if (m := re.search(r"_leg(\d+)$", n)) else 0
+                    for n in topo.links}
         self.spec = spec or StackSpec()
         self.claims = tuple(claims)
         self.router = router
@@ -775,27 +780,26 @@ class StackProblem:
         tried: dict[int, _Search] = {}
         found = None
         for top in range(spec.min_top, spec.max_top + 1):
-            tried[top] = self._search(top, spec.quick_nodes)
-            if tried[top].best is not None:
-                found = tried[top]
+            s = tried[top] = _Search(self, top)
+            self._run(s, spec.quick_nodes)
+            if s.best is None and self.hint:
+                self._run(s, spec.quick_nodes, legs=True)
+            if s.best is not None:
+                found = s
                 break
             if self.spent >= spec.max_total_nodes:
                 break
         if found is None:
             raise PlanError(f"{self.topo.name}: no layer plan found with up to {top + 1} layers "
                             f"after {self.spent} search steps", self.blockers())
-        for top in range(spec.min_top, found.top):
-            if not tried[top].done and self.spent < spec.max_total_nodes:
-                tried[top] = self._search(top, spec.max_nodes)
-                if tried[top].best is not None:
-                    found = tried[top]
-                    break
-        if not found.done and self.spent < spec.max_total_nodes:
-            better = self._search(found.top, spec.max_nodes, found.best.cost)
-            if better.best is not None:
-                better.nodes += found.nodes
-                found = better
-            found.done = better.done
+        for top in range(found.top - 1, spec.min_top - 1, -1):   # just thinner first
+            s = tried[top]
+            self._run(s, spec.max_nodes // 2)
+            if s.best is None and self.hint:
+                self._run(s, spec.max_nodes // 2, legs=True)
+            if s.best is not None:
+                found = s
+        self._run(found, spec.max_nodes)          # a cheaper route, if not ruled out yet
         plan = found.best
         below = [tried[t] for t in range(spec.min_top, plan.top)]
         open_ = [t.top + 1 for t in below if not t.done]
@@ -810,16 +814,24 @@ class StackProblem:
         else:
             proof = (f"no plan in {plan.top} layers or fewer "
                      f"({sum(t.nodes for t in below)} nodes)")
+        forced = [(t.top + 1, why, n) for t in below for why, n in t.unbuilt.items()]
+        if forced:
+            top, why, n = forced[-1]
+            proof += (f"; the {self.router.group}'s own rules forced it taller: in {top} "
+                      f"layers the search met {n} layouts that fit everything else but {why}")
         plan.proof = f"{proof}; {here}"
         return plan
 
-    def _search(self, top: int, budget: int, bound: int | None = None) -> _Search:
-        s = _Search(self, top, min(budget, self.spec.max_total_nodes - self.spent), bound)
-        s.done = s.run()
-        self.spent += s.nodes
-        log.debug("%s: %d layers, %d nodes, %s", self.topo.name, top + 1, s.nodes,
+    def _run(self, s: _Search, budget: int, legs: bool = False) -> None:
+        budget = min(budget, self.spec.max_total_nodes - self.spent)
+        if s.done or budget <= 0:
+            return
+        before = s.nodes
+        s.run(budget, legs)
+        self.spent += s.nodes - before
+        log.debug("%s: %d layers, %d nodes%s, %s", self.topo.name, s.top + 1, s.nodes,
+                  " (a leg at a time)" if legs else "",
                   "found" if s.best else "none" if s.done else "budget")
-        return s
 
     def plan(self, layers: Mapping[str, int], top: int,
              choices: Mapping[str, object] | None = None) -> StackPlan:
@@ -842,21 +854,27 @@ class _Search:
     A conflict is the set of links whose layers explain a failure: the deps of
     the claims whose shapes collide, of a claim that can't be built, or of
     everything in the layers a router's dead end spans.
+
+    :meth:`run` may be called again with more effort or another strategy: what
+    it learned (nogoods, the best plan so far and its cost as the bound) stays.
     """
 
     NOGOOD_MAX = 8       # longest conflict worth remembering
 
-    def __init__(self, prob: StackProblem, top: int, budget: int, bound: int | None = None):
-        self.prob, self.top, self.budget = prob, top, budget
+    def __init__(self, prob: StackProblem, top: int):
+        self.prob, self.top, self.budget = prob, top, 0
         self.geo, self.margin, self.pitch = prob.topo.geometry, prob.spec.margin, prob.spec.pitch
         self.router = prob.router
         self.links = prob.links
         self.layers: dict[str, int] = {}
         self.trail: list[tuple] = []
         self.nodes = 0
-        self.bound = bound
+        self.base: int | None = None      # the trail once the fixed claims are placed
+        self.bound: int | None = None
         self.best: StackPlan | None = None
         self.done = False
+        self.legs = False
+        self.unbuilt: dict[str, int] = {}     # layouts only the router's rules rejected, why
         # learned nogoods, each watched by one of its (link, layer) pairs that doesn't hold
         self.watch: dict[tuple[str, int], list[tuple[tuple[str, int], ...]]] = {}
         self.banned: set[tuple[str, int]] = set()     # nogoods of one link: never again
@@ -1077,6 +1095,8 @@ class _Search:
         if self.router is not None and self.dirty:     # else: as the last time it said yes
             res = self.router.check(self.view(partial=True))
             if isinstance(res, RouteConflict):
+                if res.rules:
+                    self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
                 return self.explain(res) | {n}
             # a layer none of whose states on a route a link's own shapes leave is closed to it
             why = frozenset(self.layers)
@@ -1139,8 +1159,17 @@ class _Search:
         return self.wiped(x)
 
     def values(self, n: str) -> list[int]:
-        """Layers next to the links it shares an axle with first."""
+        """Layers next to the links it shares an axle with first; a leg at a time: where the
+        hint puts it, shifted as the leg's first placed link was."""
         ks = sorted(k for k in self.dom[n] if (n, k) not in self.banned)
+        hint, leg = self.prob.hint, self.prob.leg
+        if self.legs and body_class(n) in hint:
+            placed = [x for x in self.layers if leg[x] == leg[n] and body_class(x) in hint]
+            if placed:
+                first = min(placed, key=self.when.__getitem__)
+                want = hint[body_class(n)] + self.layers[first] - hint[body_class(first)]
+                ks.sort(key=lambda k: (abs(k - want), k))
+            return ks
         near = [self.layers[m] for m in self.prob.partners[n] if m in self.layers]
         if near:
             ks.sort(key=lambda k: (min(abs(k - j) for j in near), k))
@@ -1156,8 +1185,12 @@ class _Search:
         if not free:
             return self.leaf()
         # fewest open layers first, then the assembly tree from the crank out (riders, the
-        # links pinned to them, ...)
-        depth, dom = self.prob.depth, self.dom
+        # links pinned to them, ...); a leg at a time in the other strategy
+        depth, dom, leg = self.prob.depth, self.dom, self.prob.leg
+        if self.legs:
+            started = {leg[x] for x in self.layers} & {leg[x] for x in free}
+            now = min(started) if started else min(leg[x] for x in free)
+            free = [x for x in free if leg[x] == now]
         n = min(free, key=lambda x: (len(dom[x]), depth.get(x, 99), x))
         conflict: set[str] = set()
         for v in self.values(n):
@@ -1191,6 +1224,8 @@ class _Search:
         if self.router is not None:
             res = self.router.route(self.view(partial=False))
             if isinstance(res, RouteConflict):
+                if res.rules:
+                    self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
                 return self.explain(res)
             choices, cost = {self.router.group: res.choice}, res.cost
         plan = self.prob.plan(self.layers, self.top, choices)
@@ -1204,30 +1239,38 @@ class _Search:
             raise _Done
         return frozenset(self.layers)
 
-    def run(self) -> bool:
-        """Search this stack size; True if it was searched to the end."""
-        try:
+    def run(self, budget: int, legs: bool = False) -> bool:
+        """Search this stack size with ``budget`` more nodes (``legs``: a leg at a time, at
+        the hint's layers); True once it has been searched to the end."""
+        if self.done:
+            return True
+        if self.base is None:                        # the fixed claims, once
+            self.base = 0
             for c in self.claims:
                 if not self.deps[id(c)]:
                     out, why = made(c, Layout({}, self.top, self.pitch))
                     if out is None:
                         self.prob._tally_why(c.owner, why)
+                        self.done = True
                         return True
                     if any(self.add(p, frozenset()) is not None for p in out):
+                        self.done = True
                         return True
+            self.base = len(self.trail)
             if any(not d for d in self.dom.values()):
+                self.done = True
                 return True
+        self.budget, self.legs = self.nodes + budget, legs
+        try:
             self.dfs()
+            self.done = True
         except _Done:
-            pass
+            self.done = True
         except _Budget:
-            return False
-        return True
-
-
-def plan_problem(topo: Topology, claims: Iterable[Claim],
-                 spec: StackSpec | None = None) -> StackPlan:
-    return StackProblem(topo, claims, spec).solve()
+            pass
+        finally:
+            self.undo(self.base)
+        return self.done
 
 
 # ---------------------------------------------------------------------------
@@ -1288,5 +1331,5 @@ __all__ = [
     "ClearanceError", "PlanError", "Recommendation", "Route", "RouteConflict", "RouteView",
     "Router", "Unbuildable", "made", "static_clearances",
     "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes", "is_link",
-    "is_crank", "is_frame", "plan_problem", "seg_seg", "topology_from_template", "verify_plan",
+    "is_crank", "is_frame", "seg_seg", "topology_from_template", "verify_plan",
 ]

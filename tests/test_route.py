@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 import linkage
-from construction.crank import CrankRoute, Run
+from construction.crank import CrankRoute
 from construction.route import crank_facts
 from construction.underside import Underside, underside
 from fabricate import BuildConfig, design_side, ground_clearance, side_problem, template_for
@@ -35,9 +35,12 @@ def test_the_envelope_is_the_largest_circle_about_o_above_the_profile():
     alone = Underside(xs, np.minimum(crank, np.where(np.abs(xs) <= 50, 0.0, np.inf)), (0.0, 0.0))
     assert alone.allows(1.0) == pytest.approx(33.0, abs=0.01)   # 1 mm above the crank's own
     assert alone.allows(0.0) == pytest.approx(34.0, abs=0.01)
-    # a deeper body under O lets more through, until its x-extent stops it
-    deep = Underside(xs, np.where(np.abs(xs) <= 40, -60.0, 0.0), (0.0, 0.0))
+    # a deeper body under O lets more through, until its x-extent stops it ...
+    deep = Underside(xs, np.full_like(xs, -60.0), (0.0, 0.0))
     assert deep.allows(1.0) == pytest.approx(50.0, abs=0.01)    # the body ends 50 mm out
+    # ... or where it rises level with O: a circle wider than that would hang below it
+    step = Underside(xs, np.where(np.abs(xs) <= 40, -60.0, 0.0), (0.0, 0.0))
+    assert step.allows(1.0) == pytest.approx(40.25, abs=0.01)
 
 
 def test_a_detour_outside_the_envelope_is_refused_and_one_inside_is_used():
@@ -109,14 +112,6 @@ def test_the_crank_runs_along_its_pin_through_the_link_that_sweeps_o(key, pin, t
     assert verify_plan(plan, tmpl) == []
 
 
-def test_trotbot_runs_the_crank_along_its_pin_over_the_whole_leg():
-    """The diywalkers build: crank arms outside the leg, one crankpin through every plane."""
-    _, design = _design("trotbot")
-    plan = design.plan
-    assert plan.choices["crank"] == CrankRoute((Run("J1", 2, plan.top - 3),), bearing=True)
-    assert plan.optimal
-
-
 @pytest.mark.parametrize(("module", "height"), [("single", 21), ("double", 24), ("decker", 33),
                                                 ("quad", 36)])
 def test_klann_plans_keep_their_heights_and_are_proven_thinnest(module, height):
@@ -137,10 +132,10 @@ def test_the_planner_matches_the_brute_force_optimum(key):
     cfg = _cfg(key)
     tmpl = template_for(cfg)
     plan = design_side(tmpl, cfg).plan
-    _, _, problem = side_problem(tmpl, cfg)
+    ctx, _, problem = side_problem(tmpl, cfg)
     for top in range(plan.top - 2, plan.top):
-        assert brute.solve(problem, top) is None, f"a plan in {top + 1} layers"
-    best = brute.solve(problem, plan.top)
+        assert brute.solve(problem, top, ctx) is None, f"a plan in {top + 1} layers"
+    best = brute.solve(problem, plan.top, ctx)
     ours = brute.cost(plan.choices["crank"], plan.layers, problem.topo.riders, {})
     assert best is not None
     assert ours == best[0]

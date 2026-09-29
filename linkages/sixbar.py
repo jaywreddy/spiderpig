@@ -20,9 +20,9 @@ The page's versions (hip; B1..B7):
 
 **Fabrication.** In the bar map and Ver 1, ``Q`` is 20 from the
 crankpin, inside the crank circle (40): seen from B6, O circles ``Q`` once
-per turn, so B6 sweeps across the crank axis whatever its shape, and the
-printed crankshaft occupies O in every layer: the static clearance stage
-rejects them until a crank overhung from the servo side exists. In Ver 2,
+per turn, so B6 sweeps across the crank axis whatever its shape: the planner
+runs the crankshaft along the crankpin ``M`` through B6's layer, a post B6
+clears. In Ver 2,
 B5 = 10 puts ``P`` 6 mm from ``K`` at the 24 mm-crank scale; the two pins'
 heads and shoulders can't clear each other in any layer order, so Ver 2 is
 drawn at 1.0 mm per unit (a 40 mm crank), where it plans.
@@ -93,12 +93,12 @@ def _sixbar(key: str, name: str, params: dict, notes: str) -> Linkage:
 
 SIXBAR = register(_sixbar(
     "sixbar", "6-bar walking linkage (bar map)", _params(60, 60, 40, 80, 60, 90, 20, 110, 20),
-    notes="Six bars, one frame pivot: the 4-bar's rocker extended for a higher step. "
-          "Needs an overhung crank (B6 sweeps across the crank axis).",
+    notes="Six bars, one frame pivot: the 4-bar's rocker extended for a higher step "
+          "(B6 sweeps across the crank axis: the crank runs along its pin there).",
 ))
 SIXBAR_V1 = register(_sixbar(
     "sixbar_v1", "6-bar walking linkage, Ver 1", _params(60, 60, 40, 80, 60, 100, 20, 120, 20),
-    notes="The bar map with longer legs (B4 100, B6 120). Needs an overhung crank.",
+    notes="The bar map with longer legs (B4 100, B6 120).",
 ))
 SIXBAR_V2 = register(_sixbar(
     "sixbar_v2", "6-bar walking linkage, Ver 2",

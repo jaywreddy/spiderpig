@@ -273,10 +273,11 @@ class CrankGroup:
     def router(self, ctx: Context, envelope, margin: float, drop_bearing: bool = False):
         """The planner's router for this crank (:mod:`construction.route`): the static facts
         (which links need O free, detour points inside ``envelope``) and the route search."""
-        from construction.route import CrankRouter, crank_facts
+        from construction.route import CrankRouter, crank_facts, joint_rules
 
         d = self.dims(ctx)
-        return CrankRouter(ctx, d, crank_facts(ctx, d, envelope, margin), drop_bearing)
+        return CrankRouter(ctx, d, crank_facts(ctx, d, envelope, margin), drop_bearing,
+                           joint_rules(self.construction, ctx, d))
 
     def claims(self, ctx: Context) -> list[Claim]:
         """The hub under the servo horn (fixed), and the rest from the planner's route

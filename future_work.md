@@ -39,11 +39,13 @@ and make every leg's link literally the same part.
 
 ## Search
 
-`StackProblem.solve()` is a depth-first search, most-constrained link first,
-with a node budget per stack size (a plan it finds is always valid; only
-minimality depends on the budget). Quad per side plans in about a second.
-Much larger stacks, or a secondary objective (shortest axles, fewest
-shoulders), may want CP-SAT over precomputed pairwise tables.
+`StackProblem.solve()` proves most sides the thinnest (every Klann module,
+Jansen, Strider double, the 6-bar deckers) but not most quads with legs that
+must sit in separate blocks (Strider, 6-bar, TrotBot): their thinner sizes
+stay "not ruled out" within the node budget. Stronger lower bounds (legs
+that can't share layers, as a clique over blocks), symmetry between legs,
+or CP-SAT over the static tables would close them. A secondary objective
+(shortest axles, fewest shoulders) isn't modelled.
 
 ## Walking
 
