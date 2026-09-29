@@ -1,12 +1,24 @@
 """Servo models (see :mod:`servos.spec` for the contract and the servo frame).
 
 ``get(key)`` returns a :class:`servos.spec.ServoSpec`; ``DEFAULT`` is what a
-build uses unless told otherwise.
+build uses unless told otherwise. :mod:`servos.catalog` holds the data,
+:mod:`servos.cad` fetches the manufacturers' models, :mod:`servos.model`
+builds a servo (CAD or parametric) and its horn, :mod:`servos.mount` puts it
+on the inner frame plate.
 """
 
 from __future__ import annotations
 
-from servos.spec import CadRef, HolePattern, Horn, Idler, MountHole, Relief, ServoSpec
+from servos.spec import (
+    CadRef,
+    HolePattern,
+    Horn,
+    Idler,
+    MountHole,
+    Recess,
+    Relief,
+    ServoSpec,
+)
 
 REGISTRY: dict[str, ServoSpec] = {}
 DEFAULT = "sts3215"
@@ -34,7 +46,7 @@ def available() -> list[str]:
 
 
 __all__ = [
-    "CadRef", "DEFAULT", "HolePattern", "Horn", "Idler", "MountHole", "REGISTRY", "Relief",
-    "ServoSpec",
+    "CadRef", "DEFAULT", "HolePattern", "Horn", "Idler", "MountHole", "REGISTRY", "Recess",
+    "Relief", "ServoSpec",
     "available", "get", "register",
 ]

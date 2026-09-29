@@ -1,0 +1,340 @@
+"""Tests for :mod:`servos`: the data, the model fetcher, the models and the mount."""
+
+from __future__ import annotations
+
+import hashlib
+import math
+import re
+import zipfile
+from dataclasses import replace
+
+import numpy as np
+import pytest
+from build123d import Cylinder, Location
+
+import servos
+from fabricate import BuildConfig, design_side, fabricate_side
+from hardware import catalog
+from klann import build_klann_template, create_klann_geometry
+from servos import cad as cadlib
+from servos import model
+from servos.mount import servo_to_world
+from servos.spec import CadRef
+
+KEYS = servos.available()
+
+
+def _clear_model_caches():
+    model.cad_servo.cache_clear()
+    model._servo_part.cache_clear()
+    cadlib._load_cached.cache_clear()
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _no_downloads(tmp_path_factory):
+    """Tests never download: models come from the vendored dir or not at all."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv(cadlib.OFFLINE_ENV, "1")
+        mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
+        _clear_model_caches()
+        yield
+        _clear_model_caches()
+
+
+@pytest.fixture
+def offline(monkeypatch, tmp_path):
+    """No downloads and an empty model cache (the vendored dir still counts)."""
+    monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    _clear_model_caches()
+    yield tmp_path
+    _clear_model_caches()
+
+
+@pytest.fixture(scope="module")
+def single():
+    return build_klann_template(create_klann_geometry())
+
+
+# -- data ---------------------------------------------------------------------------
+
+
+def test_the_expected_servos_are_registered():
+    assert {"sts3215", "xl430_w250", "xl330_m288"} <= set(KEYS)
+    assert servos.DEFAULT in KEYS
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_every_servo_can_drive_a_crank_and_be_bought(key):
+    s = servos.get(key)
+    assert s.continuous
+    item = catalog.get(s.bom_key)
+    assert item.category == "servo"
+    assert item.offers
+    assert item.offers[0].url.startswith("https://")
+    assert any(o.verified for o in item.offers)
+    assert s.torque_kgcm
+    assert s.voltage
+    assert s.interface
+    assert s.sources
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_every_servo_has_a_horn_pattern_and_mount_holes(key):
+    s = servos.get(key)
+    pat = s.horn.pattern
+    assert pat.count >= 3
+    assert pat.pcd > 0
+    assert pat.thread_d > 0
+    assert pat.hole_d > pat.thread_d                 # a clearance hole for the thread
+    assert pat.pcd / 2 + pat.hole_d / 2 < s.horn.diameter / 2
+    assert pat.thread_depth
+    assert pat.reach
+    assert pat.reach <= s.horn.thickness + 2.5
+    assert len(s.mount) >= 4
+    assert len(s.rear_mount) >= 4
+    for mh in s.mount + s.rear_mount:
+        assert mh.screw
+        assert re.match(r"^m\d", mh.screw)
+    L, W, H = s.body
+    near, far = s.axis_offset - L / 2, s.axis_offset + L / 2
+    assert near < 0 < far                            # the axis is on the body
+    for mh in s.mount:
+        assert near < mh.x < far
+        assert abs(mh.y) < W / 2
+    assert s.rear_z == pytest.approx(s.mount_face_z - H)
+    assert s.horn_face_depth > 0
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_every_servo_names_a_pinned_model(key):
+    for ref in servos.get(key).cads:
+        assert re.fullmatch(r"[0-9a-f]{64}", ref.sha256)
+        assert ref.url.startswith("https://")
+        assert len(ref.transform) == 16
+        m = np.array(ref.transform, dtype=float).reshape(4, 4)
+        assert np.linalg.det(m[:3, :3]) == pytest.approx(1.0)   # a rotation, no mirror
+
+
+def test_only_redistributable_models_are_vendored():
+    for path in cadlib.VENDORED.glob("*.st*p"):
+        refs = [r for k in KEYS for r in servos.get(k).cads if r.filename == path.name]
+        assert refs, path.name
+        assert all(r.redistributable for r in refs), path.name
+        assert cadlib.sha256_file(path) == refs[0].sha256
+    assert (cadlib.VENDORED / "NOTICE").is_file()
+
+
+# -- model fetcher ---------------------------------------------------------------------
+
+
+def _ref(tmp_path, data: bytes, **kw) -> CadRef:
+    src = tmp_path / "src" / "part.step"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    src.write_bytes(data)
+    base = dict(url=src.as_uri(), sha256=hashlib.sha256(data).hexdigest(), filename="part.step")
+    base.update(kw)
+    return CadRef(**base)
+
+
+def test_fetch_caches_a_file_that_matches_its_hash(monkeypatch, tmp_path):
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    ref = _ref(tmp_path, b"ISO-10303-21; a model")
+    path = cadlib.fetch(ref)
+    assert path == cadlib.cached_path(ref)
+    assert path.read_bytes() == b"ISO-10303-21; a model"
+    (tmp_path / "src" / "part.step").unlink()        # the cache answers from now on
+    assert cadlib.fetch(ref) == path
+
+
+def test_fetch_refuses_a_file_that_does_not_match(monkeypatch, tmp_path):
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    ref = replace(_ref(tmp_path, b"the real model"), sha256="0" * 64)
+    assert cadlib.fetch(ref) is None
+    assert not cadlib.cached_path(ref).exists()
+    # a tampered cache file isn't used either
+    good = _ref(tmp_path, b"the real model")
+    cadlib.fetch(good)
+    cadlib.cached_path(good).write_bytes(b"tampered")
+    (tmp_path / "src" / "part.step").unlink()
+    assert cadlib.fetch(good) is None
+
+
+def test_offline_never_downloads(monkeypatch, tmp_path):
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
+    ref = _ref(tmp_path, b"a model")
+    assert cadlib.fetch(ref) is None
+    assert cadlib.fetch(replace(ref, url="https://invalid.example/nothing.step")) is None
+    monkeypatch.setenv(cadlib.OFFLINE_ENV, "0")
+    assert cadlib.fetch(ref) is not None
+
+
+def test_fetch_extracts_a_zip_member(monkeypatch, tmp_path):
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    member = b"the servo model"
+    archive = tmp_path / "model.zip"
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("docs/readme.txt", "hello")
+        z.writestr("ST.step", member)
+    ref = CadRef(url=archive.as_uri(), sha256=hashlib.sha256(member).hexdigest(),
+                 filename="ST.step", member="ST.step",
+                 archive_sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+    assert cadlib.fetch(ref).read_bytes() == member
+    wrong = replace(ref, filename="other.step", archive_sha256="f" * 64)
+    assert cadlib.fetch(wrong) is None
+
+
+def test_vendored_files_come_first_and_are_checked(monkeypatch, tmp_path):
+    vend = tmp_path / "vendored"
+    vend.mkdir()
+    monkeypatch.setattr(cadlib, "VENDORED", vend)
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
+    ref = _ref(tmp_path, b"vendored model")
+    (vend / ref.filename).write_bytes(b"vendored model")
+    assert cadlib.fetch(ref) == vend / ref.filename
+    (vend / ref.filename).write_bytes(b"not it")
+    assert cadlib.fetch(ref) is None
+
+
+def test_load_never_raises(monkeypatch, tmp_path):
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    ref = _ref(tmp_path, b"not a STEP file")
+    assert cadlib.load(ref) is None
+
+
+# -- models -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_parametric_servo_offline(offline, key):
+    s = servos.get(key)
+    part = model.parametric_servo(s)
+    assert len(part.solids()) == 1
+    assert part.is_valid
+    bb = part.bounding_box()
+    L, W, _ = s.body
+    assert pytest.approx(s.axis_offset - L / 2) == bb.min.X
+    assert pytest.approx(s.axis_offset + L / 2) == bb.max.X
+    assert pytest.approx(W / 2) == bb.max.Y
+    # without its horn nothing stands beyond the face the servo rests on but the panel,
+    # the spline and whatever passes through the horn
+    front = max((r.height for r in s.front_reliefs if r.solid), default=0.0)
+    top = max(s.mount_face_z + front, s.spline_top)
+    if model.center_boss_on_servo(s):
+        top = max(top, s.horn_bottom + s.horn.center_boss[1])
+    assert pytest.approx(top, abs=0.02) == bb.max.Z
+    got = model.servo_part(s, cad=False)
+    assert got.is_valid
+    assert len(got.solids()) == 1
+    if not any(r.redistributable for r in s.cads):          # nothing vendored: falls back
+        assert model.servo_part(s).volume == pytest.approx(got.volume)
+
+
+def test_the_vendored_sts3215_model_loads_offline(offline):
+    s = servos.get("sts3215")
+    part = model.cad_servo(s)
+    assert part is not None
+    assert part.is_valid
+    bb = part.bounding_box()
+    assert pytest.approx((-10.2, 35.2), abs=0.1) == (bb.min.X, bb.max.X)
+    assert s.seat_height + 2.5 > bb.max.Z         # the fused horn is gone (panel top at 2.6)
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_horn_has_its_screw_holes(key):
+    s = servos.get(key)
+    horn = model.horn_part(s)
+    assert horn.is_valid
+    assert len(horn.solids()) == 1
+    pat = s.horn.pattern
+    face = s.horn_bottom
+    for k in range(pat.count):
+        a = math.radians(pat.angle_deg) + 2 * math.pi * k / pat.count
+        probe = Cylinder(0.97 * pat.thread_d / 2, 4).moved(
+            Location((pat.pcd / 2 * math.cos(a), pat.pcd / 2 * math.sin(a), face - 2)))
+        inter = horn & probe
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-6
+    # and a screw beside a hole would bite
+    a = math.radians(pat.angle_deg)
+    r = pat.pcd / 2 + pat.thread_d
+    probe = Cylinder(0.5, 2).moved(Location((r * math.cos(a), r * math.sin(a), face - 1)))
+    inter = horn & probe
+    assert inter is not None
+    assert sum(x.volume for x in inter.solids()) > 0
+
+
+def test_servo_to_world_puts_the_output_on_o_face_down():
+    o, u, face_z = (12.0, -3.0), (0.6, 0.8), 21.5
+    m = servo_to_world(o, u, face_z)
+    assert m @ np.array([0, 0, 0, 1.0]) == pytest.approx([12.0, -3.0, 21.5, 1.0])
+    assert m[:3, 2] == pytest.approx([0, 0, -1])         # output face down
+    assert m[:3, 0] == pytest.approx([0.6, 0.8, 0])      # servo +x along u
+    assert np.linalg.det(m[:3, :3]) == pytest.approx(1.0)
+    # the horn's outer face ends up horn_face_depth below the plate the servo stands on
+    s = servos.get("sts3215")
+    plate_top = 21.0
+    m = servo_to_world(o, u, plate_top + s.mount_face_z)
+    assert (m @ np.array([0, 0, s.horn_bottom, 1.0]))[2] == pytest.approx(
+        plate_top - s.horn_face_depth)
+
+
+# -- mount ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_drive_interface_couples_below_the_plate(single, key):
+    design = design_side(single, BuildConfig(robot=False, servo=key))
+    iface = design.ctx.interfaces["drive"]
+    s = servos.get(key)
+    assert iface.horn_face_depth >= design.ctx.pitch - 1e-9
+    assert iface.horn_radius == pytest.approx(s.horn.diameter / 2)
+    assert iface.screw_count == s.horn.pattern.count
+    assert iface.screw_pcd == pytest.approx(s.horn.pattern.pcd)
+    spacer = design.drive.spacer(design.ctx)
+    assert iface.horn_face_depth == pytest.approx(s.horn_face_depth + spacer)
+    assert (spacer > 0) == (key == "xl430_w250")   # its horn face is inside the plate
+
+
+@pytest.mark.parametrize("key", KEYS)
+def test_mount_screws_clear_the_crank_and_are_claimed(single, key):
+    design = design_side(single, BuildConfig(robot=False, servo=key))
+    drive, ctx = design.drive, design.ctx
+    screws = drive.front_screws(ctx)
+    assert len(screws) >= 2
+    hub = next(p.shape.r for p in design.plan.shapes("crank") if p.label == "crank hub")
+    for _, mh, sk, _ in screws:
+        assert math.hypot(mh.x, mh.y) - sk.head_d / 2 >= hub + ctx.params.margin
+    if key == "sts3215":
+        assert sorted({mh.x for _, mh, _, _ in screws}) == [29.0]
+    heads = [p for p in design.plan.shapes("drive") if p.label == "servo screw head"]
+    assert {p.layer for p in heads} == {design.plan.top - 1}
+    assert {p.shape.at for p in heads} == {name for name, *_ in screws}
+    mech = fabricate_side(design, single.freeze_at(1.0))
+    bodies = {b.name: b for b in mech.bodies}
+    for i in range(len(screws)):
+        b = bodies[f"servo_screw{i}"]
+        assert b.fab == "purchased"
+        assert b.bom_key == screws[i][1].screw
+        bb = b.part.bounding_box()
+        assert design.plan.z(design.plan.top)[1] < bb.max.Z      # into the servo
+        assert design.plan.z(design.plan.top)[0] > bb.min.Z      # head under the plate
+
+
+def test_the_verifier_sees_the_screw_heads(single):
+    """Negative control: a screw head moved onto the crank hub is a violation."""
+    from stack import Geometry, verify_plan
+
+    design = design_side(single, BuildConfig(robot=False))
+    plan = design.plan
+    assert verify_plan(plan, single) == []              # the fixed points carry over
+    pts = dict(plan.topo.geometry.points)
+    name = next(n for n in pts if n.startswith("servo.screw"))
+    pts[name] = pts["O"][0] + np.array([12.0, 0.0])     # just outside the horn hole
+    broken = replace(plan, topo=replace(plan.topo, geometry=Geometry(pts)))
+    assert any("servo screw head" in v and "crank hub" in v for v in verify_plan(broken))
