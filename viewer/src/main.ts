@@ -4,6 +4,7 @@ import { createStage, frameView } from './scene';
 import { loadGlb, teardown, type LoadedScene } from './loader';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
+import { createDrive } from './drive';
 import type { Mode, View, ViewerHandle } from './types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -19,6 +20,7 @@ let view: View = paramView && VIEWS.includes(paramView) ? paramView : 'three-qua
 let loaded: LoadedScene | null = null;
 let playing = false;
 let currentMode: Mode = 'robot';  // last requested (live reload re-requests it)
+let currentQuery = '';            // its design parameters ('' = default)
 let loadedMode: Mode = '';        // on screen; set only once its GLB has swapped in
 
 // Render on demand: while playing, while the camera moves, or after a change.
@@ -45,6 +47,15 @@ const ui = bindControls({
   },
 });
 
+const drive = createDrive({
+  stage,
+  loaded: () => loaded,
+  loadRobot: (query) => loadMode('robot', query),
+  status: (text) => ui.setStatus(text),
+  seek,
+  reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
+});
+
 function formatTime(t: number): string {
   const dur = loaded?.clipDuration ?? 1;
   return `t ${t.toFixed(3)}s / ${dur.toFixed(3)}s`;
@@ -62,13 +73,14 @@ function seek(t: number): void {
   invalidate();
 }
 
-async function loadMode(mode: Mode): Promise<void> {
+async function loadMode(mode: Mode, query = ''): Promise<void> {
   currentMode = mode;
+  currentQuery = query;
   ui.setModeValue(mode);
   ui.setStatus(`loading ${mode}…`);
   ui.setModeDisabled(true);
   try {
-    const next = await loadGlb(stage.scene, mode);
+    const next = await loadGlb(stage.scene, mode, query);
     teardown(stage.scene, loaded);
     const reframe = mode !== loadedMode;  // a live reload keeps the user's camera
     loaded = next;
@@ -86,6 +98,7 @@ async function loadMode(mode: Mode): Promise<void> {
       `${next.clipDuration.toFixed(2)}s loop`,
     );
     ui.setReadout(formatTime(0));
+    await drive.onLoad(next);
     invalidate();
   } finally {
     ui.setModeDisabled(false);
@@ -94,7 +107,10 @@ async function loadMode(mode: Mode): Promise<void> {
 
 function tick(): void {
   const dt = clock.getDelta();
-  if (loaded && playing) {
+  if (drive.active) {
+    drive.frame(dt);   // drive mode renders continuously
+    dirty = true;
+  } else if (loaded && playing) {
     loaded.mixer.update(dt);
     const t = loaded.action.time % loaded.clipDuration;
     ui.setSliderValue(t);
@@ -128,6 +144,7 @@ const viewerHandle: ViewerHandle = {
     invalidate();
   },
   loadMode,
+  drive,
   ready: false,
 };
 window.__viewer = viewerHandle;
@@ -154,6 +171,7 @@ async function init(): Promise<void> {
   await loadMode(initial);
   const t = Number(params.get('t'));
   if (params.has('t') && Number.isFinite(t)) seek(t);
+  await drive.init().catch((err: unknown) => ui.setStatus(`drive: ${(err as Error).message}`));
   clock.start();
   requestAnimationFrame(tick);
   viewerHandle.ready = true;
@@ -165,6 +183,6 @@ init().catch((err: unknown) => {
 });
 
 connectLiveReload({
-  onReload: () => { void loadMode(currentMode); },
+  onReload: () => { void loadMode(currentMode, currentQuery); },
   onStatus: (s) => ui.setStatus(s),
 });
