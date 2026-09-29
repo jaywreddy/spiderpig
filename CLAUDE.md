@@ -13,6 +13,7 @@ mise run bake       # bake viewer/data/*.glb
 mise run test       # pytest (runs viewer-build first; -m e2e for browser tests)
 mise run build      # STEP/STL/DXF -> build/
 mise run lint       # ruff check
+mise run audit      # do the parts physically fit? (see docs/audit/AUDIT.md)
 mise run kill       # stop dev servers spawned from THIS worktree
 mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan recovery)
 mise run clean

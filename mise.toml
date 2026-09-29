@@ -46,6 +46,10 @@ run         = "uv run pytest"
 description = "ruff check"
 run         = "uv run ruff check ."
 
+[tasks.audit]
+description = "Fabrication audit: part clashes, same-layer sweep, disconnected solids, DXF drops"
+run         = "uv run python scripts/audit_fab.py"
+
 [tasks.kill]
 description = "Stop dev servers spawned from THIS worktree (path-scoped, parallel-worktree-safe)"
 run         = "uv run python scripts/kill_dev.py --mine"
