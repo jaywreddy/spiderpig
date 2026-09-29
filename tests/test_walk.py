@@ -19,7 +19,7 @@ from urllib.parse import urlencode
 import numpy as np
 import pytest
 
-import klann
+import linkage
 import walk
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -247,13 +247,13 @@ def test_quad_reference(quad, com):
     assert m["speed_mm_s"] == pytest.approx(m["stride_mm"] * 52.0 / 60.0)
 
 
-@pytest.mark.parametrize("module", list(klann.MODULE_LEGS))
+@pytest.mark.parametrize("module", list(linkage.MODULE_LEGS))
 def test_straight_walk_metrics_are_finite(module):
     m = walk.straight_walk_metrics(walk.walker(walk.make_config(module)))
     for key, value in m.items():
         if key != "direction":
             assert np.isfinite(value).all(), key
-    assert len(m["duty"]) == 2 * len(klann.MODULE_LEGS[module])
+    assert len(m["duty"]) == 2 * len(linkage.MODULE_LEGS[module])
     assert m["slip_rms"] == m["slip_rms_mm_per_rad"]
     assert m["slip_rms_mm_per_rev"] == pytest.approx(2 * math.pi * m["slip_rms"])
     if module == "single":          # two feet: never a support triangle
@@ -330,12 +330,52 @@ def test_normalized_parameters():
         walk.parse_proportion("DF")
 
 
-@pytest.mark.parametrize(("phases", "props"), [(None, None), ((0, 175, 180, 355), {"DF": 2.4})])
-def test_template_feet_are_the_program(phases, props):
-    cfg = walk.make_config("quad", phases, props)
-    for a, b in zip(walk.side_legs(cfg), walk.program_legs(cfg), strict=True):
-        for j in walk.JOINTS:
-            np.testing.assert_allclose(a.joints[j], b.joints[j], atol=1e-9)
+def test_parameters_are_the_linkages():
+    """Each linkage validates its own parameters: lengths > 0, angles any finite number."""
+    cfg = walk.make_config("double", [0, 90], {"m": 14.0, "unit": 1.5}, linkage="jansen")
+    assert (cfg.linkage, cfg.proportions) == ("jansen", (("m", 14.0),))   # the default dropped
+    assert walk.params_of(cfg) == {
+        "linkage": "jansen", "module": "double", "phases_deg": [0.0, 90.0],
+        "proportions": {k: (14.0 if k == "m" else float(v))
+                        for k, v in linkage.get("jansen").params.items()}}
+    assert walk.make_config("quad", proportions={"angA": -30.0}).proportions == (("angA", -30.0),)
+    for bad in (dict(linkage="octopus"), dict(proportions={"DF": 2.0}),     # Klann's, not Jansen's
+                dict(proportions={"m": 0.0}), dict(proportions={"m": float("inf")})):
+        with pytest.raises(walk.ParamError):
+            walk.make_config(**{"module": "double", "linkage": "jansen", **bad})
+    # the default design's phases, whichever way they were given, are None
+    assert walk.make_config("double", [0, 180], linkage="strider").phases is None
+
+
+@pytest.mark.parametrize(("key", "module", "phases", "props"), [
+    ("klann", "quad", None, None),
+    ("klann", "quad", (0, 175, 180, 355), {"DF": 2.4}),
+    ("jansen", "double", (0, 90), {"m": 14.0}),
+    ("strider", "single", None, {"tail": 5.5}),
+])
+def test_template_joints_are_the_program(key, module, phases, props):
+    """The side template's link joints (what gets built) are the legs' program points,
+    and the feet are the linkage's feet of every leg."""
+    from fabricate import template_for
+
+    cfg = walk.make_config(module, phases, props, linkage=key)
+    tmpl = template_for(cfg)
+    jw = tmpl.sample(walk.theta_grid()).joint_world
+    legs = walk.side_legs(cfg)
+    feet = walk.side_feet(cfg)
+    assert [b for _, b, _ in feet] == [b for b, _ in linkage.feet_of(tmpl)]
+    lk = linkage.get(key)
+    for leg in legs:
+        sfx = "" if len(legs) == 1 else f"_leg{leg.leg}"
+        for body, (joints, _) in lk.links.items():
+            for j in joints:
+                np.testing.assert_allclose(jw[f"{body}{sfx}"][j][:, :2], leg.joints[j], atol=1e-9)
+    model = walk.walker(cfg)
+    assert len(model.feet) == 2 * len(legs) * len(lk.feet)
+    for f, (k, body, joint) in zip(model.feet, feet, strict=False):
+        assert f.body == f"L.{body}"
+        np.testing.assert_allclose(f.xy, jw[body][joint][:, :2], atol=1e-9)
+        assert f.leg == k
 
 
 def test_phase_is_a_time_shift():
@@ -345,21 +385,65 @@ def test_phase_is_a_time_shift():
                                atol=1e-9)
 
 
-@pytest.mark.parametrize("module", ["decker", "quad"])
-def test_nominal_foot_z_is_the_default_plan(module):
-    cfg = walk.make_config(module)
+@pytest.mark.parametrize(("key", "module"), [("klann", "decker"), ("klann", "quad"),
+                                             ("jansen", "double"), ("strider", "single")])
+def test_nominal_foot_z_is_the_default_plan(key, module):
+    """Klann's from its table, another linkage's from planning its default design once."""
+    cfg = walk.make_config(module, linkage=key)
     assert walk.foot_z_nominal(cfg) == pytest.approx(walk.foot_z_planned(cfg), abs=1e-9)
     assert all(z < 0 for z in walk.foot_z_nominal(cfg))                  # left side: -z
+    name, default = next(iter(linkage.get(key).params.items()))
+    tuned = walk.make_config(module, proportions={name: 1.1 * float(default)}, linkage=key)
+    assert walk.foot_z_nominal(tuned) == walk.foot_z_nominal(cfg)       # no new plan
 
 
-def test_invalid_linkage_is_explained():
-    cfg = walk.make_config("quad", proportions={"MC": 0.3})
-    with pytest.raises(walk.LinkageError, match="joint C can't be placed"):
+def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch):
+    """A default design the planner can't lay out (cached as such): feet a layer apart."""
+    import fabricate
+
+    def no_plan(*_a, **_k):
+        raise ValueError("no layer plan found")
+
+    monkeypatch.setattr(fabricate, "design_side", no_plan)
+    cfg = walk.make_config("decker", linkage="jansen", base=fabricate.BuildConfig(thickness=3.1))
+    z = walk.foot_z_nominal(cfg)
+    assert len(z) == 2
+    assert z[1] - z[0] == pytest.approx(3.1)
+    assert all(v < 0 for v in z)
+
+
+@pytest.mark.parametrize(("key", "props", "joint"), [
+    ("klann", {"MC": 0.3}, "C"),
+    ("jansen", {"j": 20.0}, "E"),
+    ("strider", {"rocker": 0.5}, "J3"),
+])
+def test_invalid_linkage_is_explained(key, props, joint):
+    """The first point that can't be placed, and where (the linkage's assembly check)."""
+    cfg = walk.make_config("single", proportions=props, linkage=key)
+    with pytest.raises(walk.LinkageError, match=f"{key}: {joint} can't be placed"):
         walk.side_legs(cfg)
     payload = walk.api_payload(cfg)
     assert payload["valid"] is False
-    assert "joint C" in payload["error"]
+    assert f"{joint} can't be placed" in payload["error"]
     assert "crank angle" in payload["error"]
+
+
+@pytest.mark.parametrize(("key", "module", "feet"), [
+    ("jansen", "double", ["L.b6_leg0", "L.b6_leg1", "R.b6_leg0", "R.b6_leg1"]),
+    ("strider", "single", ["L.b3", "L.b7", "R.b3", "R.b7"]),        # a coupled pair: two feet
+])
+def test_other_linkages_walk_in_the_model(key, module, feet):
+    model = walk.walker(walk.make_config(module, linkage=key))
+    assert [f.body for f in model.feet] == feet
+    assert [f.leg for f in model.feet] == [0, 1, 0, 1] if module == "double" else [0] * 4
+    assert model.z_nominal
+    m = walk.straight_walk_metrics(model)
+    for k, v in m.items():
+        if k != "direction":
+            assert np.isfinite(v).all(), k
+    assert len(m["duty"]) == 4
+    assert model.mass_g > 150.0
+    assert model.com[2] == 0.0
 
 
 def test_nominal_mass_and_servo():
@@ -441,18 +525,21 @@ def client(server_app):
 
 
 def test_api_walk_quad(client, server_app):
-    client.get("/api/walk", {"module": "decker"})      # warm (compiles the program once)
+    client.get("/api/walk", params={"module": "decker"})      # warm (compiles the program once)
     server_app._walk_json.cache_clear()
     t0 = time.perf_counter()
-    r = client.get("/api/walk", {"module": "quad", "phases": "0,180,90,270", "p.OB": "1.121"})
+    r = client.get("/api/walk", params={"module": "quad", "phases": "0,180,90,270",
+                                        "p.OB": "1.121"})
     elapsed = time.perf_counter() - t0
     assert r.status_code == 200
     w = r.json()
     assert w["valid"] is True
     assert w["error"] is None
+    assert w["linkage"] == "klann"
     assert w["module"] == "quad"
     assert w["phases_deg"] == [0, 180, 90, 270]
-    assert w["proportions"] == {k: float(v) for k, v in klann.PROPORTIONS.items()}
+    klann = linkage.get("klann")
+    assert w["proportions"] == {k: float(v) for k, v in klann.params.items()}
     assert w["theta_samples"] == 360
     assert w["z_nominal"] is True
     assert [f["body"] for f in w["feet"]] == [f"{s}.b4_leg{k}" for s in "LR" for k in range(4)]
@@ -461,10 +548,11 @@ def test_api_walk_quad(client, server_app):
         assert (f["z"] < 0) == (f["side"] == "L")
     assert len(w["legs"]) == 4
     for leg in w["legs"]:
-        assert set(leg["joints"]) == set(walk.JOINTS)
+        assert set(leg["joints"]) == set(klann.points)
         assert all(len(v) == 360 for v in leg["joints"].values())
     assert [leg["orientation"] for leg in w["legs"]] == [1, -1, 1, -1]
-    assert w["links"] == [list(link) for link in walk.LINKS]
+    assert w["links"] == [["O", "M"], ["M", "D"], ["B", "E"], ["A", "C"], ["E", "F"],
+                          ["O", "A"], ["O", "B"]]
     assert w["side_z"]["L"] == pytest.approx(-w["side_z"]["R"])
     assert w["side_z"]["L"] < 0
     assert len(w["com"]) == 3
@@ -474,14 +562,56 @@ def test_api_walk_quad(client, server_app):
 
 
 def test_api_walk_parameters(client):
-    w = client.get("/api/walk", {"module": "decker", "phases": "0,180", "p.DF": "2.4"}).json()
+    w = client.get("/api/walk", params={"module": "decker", "phases": "0,180",
+                                        "p.DF": "2.4"}).json()
     assert w["valid"]
     assert w["phases_deg"] == [0, 180]
     assert w["proportions"]["DF"] == 2.4
     assert len(w["feet"]) == 4
 
 
+@pytest.mark.parametrize(("key", "module", "name", "value", "n_feet"), [
+    ("jansen", "double", "m", 14.0, 4),
+    ("strider", "single", "tail", 5.5, 4),
+])
+def test_api_walk_other_linkages(client, key, module, name, value, n_feet):
+    lk = linkage.get(key)
+    w = client.get("/api/walk", params={"linkage": key, "module": module,
+                                        f"p.{name}": str(value)}).json()
+    assert w["valid"], w["error"]
+    assert (w["linkage"], w["module"]) == (key, module)
+    assert w["proportions"][name] == value
+    assert len(w["feet"]) == n_feet
+    assert {f["body"].split(".")[1].split("_")[0] for f in w["feet"]} == {b for b, _ in lk.feet}
+    assert w["links"] == [list(link) for link in walk.links_of(lk)]
+    for leg in w["legs"]:
+        assert set(leg["joints"]) == set(lk.points)
+    assert np.isfinite(w["metrics"]["bob_mm"])
+
+
+def test_api_linkages(client):
+    body = client.get("/api/linkages").json()
+    assert body["default"] == "klann"
+    by_key = {lk["key"]: lk for lk in body["linkages"]}
+    assert list(by_key) == linkage.available()
+    klann = by_key["klann"]
+    assert klann["name"]
+    assert klann["family"] == "klann"
+    assert klann["source"].startswith("http")
+    assert klann["params"][0] == {"name": "OA", "default": 60.0, "angle": False}
+    assert {p["name"] for p in klann["params"] if p["angle"]} == {"angA", "angB"}
+    assert klann["modules"] == {"single": 1, "double": 2, "decker": 2, "quad": 4}
+    assert klann["feet"] == 1
+    assert by_key["strider"]["feet"] == 2
+    assert by_key["strider"]["modules"]["double"] == 2
+    assert by_key["jansen"]["labels"]["b6"] == "foot triangle g-h-i"
+    assert [p["name"] for p in by_key["jansen"]["params"]] == list(linkage.get("jansen").params)
+
+
 @pytest.mark.parametrize("params", [
+    {"linkage": "octopus"},
+    {"linkage": "jansen", "p.DF": "2.5"},          # Klann's proportion, not Jansen's
+    {"linkage": "jansen", "p.m": "-3"},
     {"module": "octo"},
     {"module": "quad", "phases": "0,90"},
     {"module": "quad", "phases": "0,a,90,270"},
@@ -491,18 +621,18 @@ def test_api_walk_parameters(client):
     {"module": "quad", "p.OB": "inf"},
 ])
 def test_api_walk_rejects_bad_parameters(client, params):
-    r = client.get("/api/walk", params)
+    r = client.get("/api/walk", params=params)
     assert r.status_code == 422
     assert isinstance(r.json()["detail"], str)
     assert r.json()["detail"]
 
 
 def test_api_walk_invalid_linkage(client):
-    r = client.get("/api/walk", {"module": "quad", "p.MC": "0.3"})
+    r = client.get("/api/walk", params={"module": "quad", "p.MC": "0.3"})
     assert r.status_code == 200
     w = r.json()
     assert w["valid"] is False
-    assert "joint C" in w["error"]
+    assert "C can't be placed" in w["error"]
 
 
 class _Calls(list):
@@ -534,12 +664,12 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
 
 
 def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
-    r = client.get("/api/glb/robot", {"module": "quad", "phases": "0,180,90,270"})
+    r = client.get("/api/glb/robot", params={"module": "quad", "phases": "0,180,90,270"})
     assert r.status_code == 200
     assert (tmp_path / "klann_robot.glb").exists()                  # the default's path
     q = {"module": "quad", "phases": "0,175,180,355", "p.DF": "2.4"}
-    assert client.get("/api/glb/robot", q).status_code == 200
-    assert client.get("/api/glb/robot", q).status_code == 200      # cached
+    assert client.get("/api/glb/robot", params=q).status_code == 200
+    assert client.get("/api/glb/robot", params=q).status_code == 200      # cached
     assert len(stub_bakes) == 2
     mode, config = stub_bakes[1]
     assert mode == "robot"
@@ -547,18 +677,35 @@ def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
     assert config.proportions == (("DF", 2.4),)
     assert config.phases == pytest.approx(tuple(math.radians(p) for p in TUNED_QUAD))
     assert len(list((tmp_path / "params").glob("robot_quad_*.glb"))) == 1
-    assert client.get("/api/glb/klann", {"phases": "90"}).status_code == 200
+    assert client.get("/api/glb/klann", params={"phases": "90"}).status_code == 200
     assert stub_bakes[-1][0] == "single"
+
+
+def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path):
+    """``linkage=klann`` is the default design; another linkage bakes (and caches) its own."""
+    assert client.get("/api/glb/robot", params={"linkage": "klann"}).status_code == 200
+    assert stub_bakes == [("robot", None)]                       # the plain default bake
+    assert (tmp_path / "klann_robot.glb").exists()
+    for _ in range(2):                                           # the second one is cached
+        r = client.get("/api/glb/robot", params={"linkage": "jansen", "module": "double"})
+        assert r.status_code == 200
+    q = {"linkage": "strider", "module": "double"}               # same module, other linkage
+    assert client.get("/api/glb/robot", params=q).status_code == 200
+    assert [(c.linkage, c.module) for _, c in stub_bakes[1:]] == [("jansen", "double"),
+                                                                   ("strider", "double")]
+    assert len(list((tmp_path / "params").glob("robot_double_*.glb"))) == 2
 
 
 @pytest.mark.parametrize(("mode", "params"), [
     ("robot", {"module": "octo"}),
     ("robot", {"phases": "0,90"}),
     ("robot", {"p.XX": "2"}),
+    ("robot", {"linkage": "octopus"}),
+    ("robot", {"linkage": "jansen", "p.DF": "2"}),
     ("klann", {"module": "quad"}),              # a side-only mode is its own module
 ])
 def test_api_glb_rejects_bad_parameters(client, stub_bakes, mode, params):
-    r = client.get(f"/api/glb/{mode}", params)
+    r = client.get(f"/api/glb/{mode}", params=params)
     assert r.status_code == 422
     assert r.json()["detail"]
     assert stub_bakes == []
@@ -569,9 +716,9 @@ def test_api_glb_unknown_mode(client, stub_bakes):
 
 
 def test_api_glb_invalid_linkage_is_422(client, stub_bakes):
-    r = client.get("/api/glb/robot", {"p.MC": "0.3"})
+    r = client.get("/api/glb/robot", params={"p.MC": "0.3"})
     assert r.status_code == 422
-    assert "joint C" in r.json()["detail"]
+    assert "C can't be placed" in r.json()["detail"]
     assert stub_bakes == []                    # caught from the kinematics, before baking
 
 
@@ -582,10 +729,10 @@ def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
                       (260, ConstructionError("a tie column is too thin"))):
         stub_bakes.errors["next"] = err
         q = {"phases": f"0,180,90,{last}"}
-        r = client.get("/api/glb/robot", q)
+        r = client.get("/api/glb/robot", params=q)
         assert r.status_code == 422
         assert str(err) in r.json()["detail"]
         n = len(stub_bakes)
-        assert client.get("/api/glb/robot", q).status_code == 422      # remembered
+        assert client.get("/api/glb/robot", params=q).status_code == 422      # remembered
         assert len(stub_bakes) == n
     assert not list(Path(server_app.PARAMS_DIR).glob("*.glb"))

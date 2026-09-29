@@ -39,18 +39,23 @@ Kinematic tree
   every crank body of the template (``conn``, ``conn_upper``, the shaft
   ``coupler``: one printed crankshaft in the robot) with the crank segments,
   their screws and nuts and the servo horn.
-* per leg: ``b1`` (hinge at ``M`` on the crank), ``b4`` (hinge at ``D`` on
-  ``b1``), ``b3`` (hinge at ``A`` on the base), ``b2`` (hinge at ``B`` on
-  the base). The loops are closed by ``<connect>`` equalities at ``C``
-  (``b1``-``b3``) and ``E`` (``b4``-``b2``), named ``S.C<suffix>`` /
-  ``S.E<suffix>``. Their anchors are placed at the reference configuration, so
-  they hold exactly at ``qpos0``. The mechanism is planar: the z-rows of
-  those constraints are redundant (MuJoCo's soft constraints handle that).
+* every link ``b<k>`` of every leg, on a hinge at one of its joints. The tree
+  is the linkage's connection graph (bodies pinned at a shared joint) grown
+  from the base: every body pinned to a body already in the tree hangs from
+  it, the base's neighbours first (the cranks before the links on frame
+  pivots), then each new body's in turn. For Klann: ``b1`` at ``M`` on the
+  crank, ``b4`` at ``D`` on ``b1``, ``b3`` at ``A`` and ``b2`` at ``B`` on
+  the base. Every other connection closes a loop with a ``<connect>``
+  equality named ``S.<joint><suffix>`` (Klann: ``S.C`` between ``b1`` and
+  ``b3``, ``S.E`` between ``b4`` and ``b2``). Their anchors are placed at
+  the reference configuration, so they hold exactly at ``qpos0``. The
+  mechanism is planar: the z-rows of those constraints are redundant
+  (MuJoCo's soft constraints handle that).
 * Link pins follow the link they're glued to (``rigid_with``).
 
-Body frames sit on their pivot (``O``, ``M``, ``D``, ``A``, ``B``) in the
-plane and at the middle of their own layer(s) in ``z``; the reference crank
-angle is ``t_ref = 0`` (the glb's frame 0), and the crank angle is
+Body frames sit on their pivot (Klann: ``O``, ``M``, ``D``, ``A``, ``B``) in
+the plane and at the middle of their own layer(s) in ``z``; the reference
+crank angle is ``t_ref = 0`` (the glb's frame 0), and the crank angle is
 ``t = t_ref + crank_sign * qpos[S.crank]``.
 
 Metadata (for the viewer)
@@ -87,11 +92,13 @@ Simple shapes; only the robot and the floor collide (robot geoms
 ``contype=1 conaffinity=0``, floor ``contype=0 conaffinity=1``: the layer
 planner already guarantees robot parts never meet each other).
 
-* feet: a sphere of the link radius at each foot tip ``F`` (the rounded end of
-  ``b4``; the plate's 3 mm width is ignored), geom and site ``S.foot<suffix>``;
-* links: capsules along their outline at their layer, link radius; ``b4``'s
-  capsule stops one radius short of ``F`` so the foot sphere alone makes the
-  foot contact;
+* feet: a sphere of the link radius at each of the linkage's foot tips (the
+  rounded end of the foot link, Klann's ``b4.F``; the plate's 3 mm width is
+  ignored), geom and site ``S.foot<suffix>`` (``S.foot_<joint><suffix>``
+  when a leg has several feet);
+* links: capsules along their outline at their layer, link radius; a foot
+  link's capsule stops one radius short of the foot so the foot sphere alone
+  makes the foot contact;
 * base: the convex hull of each frame plate and servo (so a fall or tip
   shows).
 
@@ -143,6 +150,8 @@ from functools import cache
 import numpy as np
 
 from fabricate import BuildConfig, fabricate, template_for
+from linkage import feet_of
+from linkage import get as get_linkage
 from stack import body_class, is_crank, is_frame, is_link
 
 T_REF = 0.0                     # crank angle the model's qpos0 is at (the glb's frame 0)
@@ -200,7 +209,7 @@ class MjBody:
     """One MuJoCo body: the robot bodies it stands for and their mass properties (mech, mm)."""
 
     name: str
-    kind: str                           # "base" | "crank" | "b1" | "b2" | "b3" | "b4"
+    kind: str                           # "base" | "crank" | a link's class ("b1", "b2", ...)
     side: str | None
     kinematic: list[str] = field(default_factory=list)   # template bodies (L.torso, L.conn, ...)
     members: list[str] = field(default_factory=list)     # every robot body riding it
@@ -211,8 +220,13 @@ class MjBody:
     layer_z: float | None = None        # mm, mid-plane of the body's own plate (links)
     origin: np.ndarray = field(default_factory=lambda: np.zeros(3))    # frame origin, mm (mech)
     parent: str | None = None
-    pivot: str | None = None            # the hinge's point name (O, M, D, A, B)
+    pivot: str | None = None            # the hinge's point name (Klann: O, M, D, A, B)
     mass_by: dict[str, float] = field(default_factory=dict)            # kg per material
+
+    @property
+    def z(self) -> float:
+        """Mid-plane of its own plate (links), else of everything riding it."""
+        return self.layer_z if self.layer_z is not None else 0.5 * sum(self.z_range)
 
 
 @dataclass
@@ -224,8 +238,8 @@ class RobotModel:
     host: dict[str, str]                # every robot body -> its MuJoCo body
     joints: dict[str, dict[str, np.ndarray]]   # kinematic body -> joint -> xy (mm) at t_ref
     loops: list[tuple[str, str, str, np.ndarray]]   # (name, body1, body2, xy mm)
-    outlines: dict[str, list[tuple[np.ndarray, np.ndarray]]]   # link body -> segments (mm)
-    feet: dict[str, tuple[str, np.ndarray]]   # foot name -> (b4 body, F xy mm)
+    outlines: dict[str, list[tuple[np.ndarray, np.ndarray]]]   # link -> capsule segments (mm)
+    feet: dict[str, tuple[str, np.ndarray]]   # foot name -> (foot link, foot xy mm)
     hulls: dict[str, tuple[str, np.ndarray]]  # robot body -> (MuJoCo body, hull points mm)
     link_radius: float                  # mm
     crank_sign: int
@@ -327,11 +341,11 @@ def _hull(part, tolerance: float) -> np.ndarray:
 
 def crank_sign(config: BuildConfig) -> int:
     """+1 if a growing crank angle walks the robot towards mech ``+x`` (the stance foot
-    moves ``-x``), else -1. Judged on leg 0's foot over the lowest tenth of its path."""
+    moves ``-x``), else -1. Judged on leg 0's first foot over the lowest tenth of its path."""
     tmpl = template_for(config)
     ts = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
-    b4 = next(b for b in tmpl.bodies if body_class(b.name) == "b4")
-    f = tmpl.sample(ts).joint_world[b4.name]["F"][:, :2]
+    body, joint = feet_of(tmpl)[0]
+    f = tmpl.sample(ts).joint_world[body][joint][:, :2]
     low = f[:, 1] <= np.quantile(f[:, 1], 0.1)
     vx = (np.roll(f[:, 0], -1) - np.roll(f[:, 0], 1))[low].mean()
     return 1 if vx < 0 else -1
@@ -401,59 +415,84 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
             inertia += ii + mi * (d @ d * np.eye(3) - np.outer(d, d))
         mb.mass, mb.com, mb.inertia = m, c, inertia
 
-    # tree and loops from the template's connections
-    tree = {("base", "b3"), ("base", "b2"), ("base", "crank"), ("crank", "b1"), ("b1", "b4")}
-    loop = {frozenset(("b1", "b3")): "C", frozenset(("b2", "b4")): "E"}
-    loops: list[tuple[str, str, str, np.ndarray]] = []
-    for (_, pa, ja), (_, pb, jb) in robot.connections:
+    # the tree grown from the base over the template's connections (see the module doc)
+    adj: dict[str, list[tuple[int, str, str, np.ndarray]]] = {n: [] for n in bodies}
+    for i, ((_, pa, ja), (_, pb, jb)) in enumerate(robot.connections):
         ma, mb_ = _mj_name(pa), _mj_name(pb)
         if ma == mb_:
             continue                    # conn - coupler: one crankshaft
         xy = joints[pa][ja]
         if np.abs(xy - joints[pb][jb]).max() > 1e-6:
             raise ValueError(f"joint {pa}.{ja} and {pb}.{jb} don't coincide at t_ref")
-        ka, kb = bodies[ma].kind, bodies[mb_].kind
-        if (ka, kb) in tree or (kb, ka) in tree:
-            parent, child = (ma, mb_) if (ka, kb) in tree else (mb_, ma)
-            cb = bodies[child]
-            if cb.parent is not None:
-                if cb.parent != parent or np.abs(cb.origin[:2] - xy).max() > 1e-6:
-                    raise ValueError(f"{child!r} has two parents ({cb.parent!r}, {parent!r})")
+        point = re.sub(r"_leg\d+$", "", ja)
+        adj[ma].append((i, mb_, point, xy))
+        adj[mb_].append((i, ma, point, xy))
+    placed = {"base"}
+    loops: list[tuple[str, str, str, np.ndarray]] = []
+    seen: set[int] = set()
+
+    def hinge(a: str, b: str) -> np.ndarray | None:
+        """Where the tree pins ``a`` and ``b`` together, if it does."""
+        for child, parent in ((a, b), (b, a)):
+            if bodies[child].parent == parent:
+                return bodies[child].origin[:2]
+        return None
+
+    def grow(name: str) -> None:
+        kids = []
+        for i, other, point, xy in sorted(adj[name], key=lambda e: bodies[e[1]].kind != "crank"):
+            if i in seen:
                 continue
-            cb.parent = parent
-            cb.pivot = (ja if ma == child else jb).split("_")[0]
-            z = cb.layer_z if cb.layer_z is not None else 0.5 * sum(cb.z_range)
-            cb.origin = np.array([xy[0], xy[1], z])
-        elif frozenset((ka, kb)) in loop:
-            b1, b2 = (ma, mb_) if ka in ("b1", "b4") else (mb_, ma)
-            suffix = re.sub(r"^[LR]\.b\d", "", b1)
-            loops.append((f"{bodies[b1].side}.{loop[frozenset((ka, kb))]}{suffix}", b1, b2, xy))
-        else:
-            raise ValueError(f"no MuJoCo role for the connection {pa}.{ja} - {pb}.{jb}")
-    for name, mb in bodies.items():
-        if name != "base" and mb.parent is None:
-            raise ValueError(f"{name!r} isn't connected to the base")
+            seen.add(i)
+            ob = bodies[other]
+            if other not in placed:             # hang it from this body, on this joint
+                ob.parent, ob.pivot = name, point
+                ob.origin = np.array([xy[0], xy[1], ob.z])
+                placed.add(other)
+                kids.append(other)
+                continue
+            h = hinge(name, other)
+            if h is not None and np.abs(xy - h).max() <= 1e-6:
+                continue                        # another pin of that hinge (two cranks on O)
+            m = re.search(r"_leg\d+$", name) or re.search(r"_leg\d+$", other)
+            loop = base = f"{bodies[name].side or ob.side}.{point}{m.group() if m else ''}"
+            while any(n == loop for n, *_ in loops):
+                loop = f"{base}#{sum(n.startswith(base) for n, *_ in loops)}"
+            loops.append((loop, name, other, xy))
+        for kid in kids:
+            grow(kid)
 
-    # tree order (parents first)
-    ordered: dict[str, MjBody] = {"base": bodies["base"]}
+    grow("base")
+    missing = sorted(set(bodies) - placed)
+    if missing:
+        raise ValueError(f"{missing} aren't connected to the base")
+    ordered = {"base": bodies["base"]}          # tree order: parents first, else as found
     while len(ordered) < len(bodies):
-        grew = False
-        for name, mb in bodies.items():
-            if name not in ordered and mb.parent in ordered:
-                ordered[name] = mb
-                grew = True
-        if not grew:
-            raise ValueError("the MuJoCo body tree has a cycle")
+        for n, mb in bodies.items():
+            if n not in ordered and mb.parent in ordered:
+                ordered[n] = mb
 
-    # collision geometry
-    outlines = {}
+    # collision geometry: link capsules (a foot link's stops a radius short of the
+    # foot: the foot sphere alone makes the contact) and foot spheres
+    n_feet = len(get_linkage(config.linkage).feet)
+    r = config.params.link_radius
     feet = {}
+    foot_joints: dict[str, set[str]] = {}
+    for body, joint in feet_of(robot):
+        tag = "" if n_feet == 1 else f"_{joint}"
+        feet[re.sub(r"^([LR])\.b\d+", rf"\g<1>.foot{tag}", body)] = (body, joints[body][joint])
+        foot_joints.setdefault(body, set()).add(joint)
+    outlines = {}
     for b in kinematic:
         if not is_link(b.name):
             continue
-        outlines[b.name] = [(joints[b.name][p], joints[b.name][q]) for p, q in b.outline]
-        if body_class(b.name) == "b4":
-            feet[b.name.replace(".b4", ".foot")] = (b.name, joints[b.name]["F"])
+        on_foot = foot_joints.get(b.name, set())
+        segs = []
+        for p, q in b.outline:
+            a, c = joints[b.name][p], joints[b.name][q]
+            u = (c - a) / np.linalg.norm(c - a) * r
+            segs.append((a + u if p in on_foot else a, c - u if q in on_foot else c))
+        outlines[b.name] = segs
     hulls = {}
     for b in robot.bodies:
         if b.part is None or host[b.name] != "base":
@@ -486,8 +525,7 @@ def _v(xs) -> str:
 _RX90 = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
 
 _RGBA = {
-    "base": "0.95 0.45 0.15 0.6", "crank": "0.45 0.3 0.9 1", "b1": "0.4 0.7 0.95 0.8",
-    "b2": "0.4 0.7 0.95 0.8", "b3": "0.4 0.7 0.95 0.8", "b4": "0.4 0.7 0.95 0.8",
+    "base": "0.95 0.45 0.15 0.6", "crank": "0.45 0.3 0.9 1", "link": "0.4 0.7 0.95 0.8",
     "foot": "0.1 0.1 0.1 1", "floor": "0.8 0.8 0.8 1",
 }
 
@@ -596,17 +634,14 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
         ET.SubElement(el, "inertial", pos=_v((mb.com - mb.origin) * MM), mass=_f(mb.mass),
                       fullinertia=_v((i[0, 0], i[1, 1], i[2, 2], i[0, 1], i[0, 2], i[1, 2])))
         # collision geometry, in the body's own layer
-        z = mb.layer_z if mb.layer_z is not None else 0.5 * sum(mb.z_range)
+        z = mb.z
         for k, (p, q) in enumerate(rm.outlines.get(name, ())):
             a = np.array([p[0], p[1], z]) - mb.origin
             b = np.array([q[0], q[1], z]) - mb.origin
-            if mb.kind == "b4":         # the foot sphere makes the foot contact
-                u = b - a
-                b = b - u / np.linalg.norm(u) * rm.link_radius
             ET.SubElement(el, "geom", name=f"{name}#{k}", type="capsule", size=_f(r),
-                          fromto=_v(np.concatenate([a, b]) * MM), rgba=_RGBA[mb.kind])
-        for foot, (b4, xy) in rm.feet.items():
-            if b4 == name:
+                          fromto=_v(np.concatenate([a, b]) * MM), rgba=_RGBA["link"])
+        for foot, (link, xy) in rm.feet.items():
+            if link == name:
                 pos = _v((np.array([xy[0], xy[1], z]) - mb.origin) * MM)
                 ET.SubElement(el, "geom", name=foot, type="sphere", size=_f(r), pos=pos,
                               rgba=_RGBA["foot"])
@@ -618,7 +653,7 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
     equality = ET.SubElement(root, "equality")
     for name, b1, b2, xy in rm.loops:
         m1, m2 = rm.bodies[b1], rm.bodies[b2]
-        z = 0.5 * (m1.layer_z + m2.layer_z)                     # between the two layers
+        z = 0.5 * (m1.z + m2.z)                                 # between the two layers
         anchor = (np.array([xy[0], xy[1], z]) - m1.origin) * MM
         ET.SubElement(equality, "connect", name=name, body1=b1, body2=b2, anchor=_v(anchor),
                       solref=_v(params.eq_solref), solimp=_v(params.eq_solimp))
@@ -654,7 +689,8 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
     cfg = rm.config
     return {
         "format": "spiderpig-mjcf/1",
-        "config": {"module": cfg.module, "servo": cfg.servo, "sheet": cfg.sheet,
+        "config": {"linkage": cfg.linkage, "module": cfg.module, "servo": cfg.servo,
+                   "sheet": cfg.sheet,
                    "phases": list(rm.config.phases) if cfg.phases else None,
                    "proportions": dict(cfg.proportions)},
         "units": {"model": "SI (m, kg, s, rad)", "design": "mm"},
@@ -697,8 +733,8 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
                            "stall_torque_kgcm": rm.servo.torque_kgcm}
             for s in sides
         },
-        "feet": {foot: {"body": b4, "site": foot, "geom": foot, "radius": rm.link_radius * MM}
-                 for foot, (b4, _) in rm.feet.items()},
+        "feet": {foot: {"body": link, "site": foot, "geom": foot, "radius": rm.link_radius * MM}
+                 for foot, (link, _) in rm.feet.items()},
         "loops": [{"name": n, "body1": b1, "body2": b2} for n, b1, b2, _ in rm.loops],
         "mass": {"total": total, "by_material": by_material},
         "params": {k: (list(v) if isinstance(v, tuple) else v) for k, v in asdict(params).items()},

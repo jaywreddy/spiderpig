@@ -1,6 +1,7 @@
 """Fabrication audit: can the robot be built, and does it go together?
 
-For each module (single, double, decker, quad), independent of the unit tests:
+For each module (single, double, decker, quad) of one linkage (``--linkage``,
+Klann by default), independent of the unit tests:
 
 1. **plan**     — :func:`stack.verify_plan` re-checks one side's layer plan on
    a fresh, denser sampling of the whole crank cycle.
@@ -21,6 +22,7 @@ Usage::
 
     uv run python scripts/audit_fab.py                       # all modules
     uv run python scripts/audit_fab.py --modules single --out build/audit
+    uv run python scripts/audit_fab.py --linkage jansen --modules single,double
 """
 
 from __future__ import annotations
@@ -35,11 +37,12 @@ from pathlib import Path
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
+import linkage  # noqa: E402
 from construction.contract import check_side  # noqa: E402
-from fabricate import MODULES, BuildConfig, design_side, fabricate  # noqa: E402
+from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
 from hardware.bom import BomLine, bom_from_mechanism  # noqa: E402
 from layout import pack  # noqa: E402
-from main import add_config_args, module_template, sheet_size  # noqa: E402
+from main import add_config_args, sheet_size  # noqa: E402
 from stack import verify_plan  # noqa: E402
 
 CLASH_MM3 = 1e-3
@@ -80,7 +83,7 @@ def bad_solids(mech) -> list[dict]:
 
 def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash) -> dict:
     t0 = time.time()
-    tmpl = module_template(module)
+    tmpl = template_for(config)
     design = design_side(tmpl, config)
     rep: dict = {"layers": design.plan.top + 1, "stack_mm": design.plan.height,
                  "plan": design.plan.describe()}
@@ -165,6 +168,7 @@ def markdown(report: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT)
     ap.add_argument("--modules", default=",".join(MODULES))
     ap.add_argument("--ts-contract", default="0,1.6,3.2,4.8",
                     help="crank angles for the contract check")
@@ -174,10 +178,10 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     base = BuildConfig(sheet=args.sheet, servo=args.servo, pillar=args.pillar, pin=args.pin,
-                       crank=args.crank, thickness=args.thickness)
-    report: dict = {"config": {"servo": base.servo, "pillar": base.pillar, "pin": base.pin,
-                               "crank": base.crank, "sheet": base.sheet,
-                               "thickness": base.thickness},
+                       crank=args.crank, thickness=args.thickness, linkage=args.linkage)
+    report: dict = {"config": {"linkage": base.linkage, "servo": base.servo,
+                               "pillar": base.pillar, "pin": base.pin, "crank": base.crank,
+                               "sheet": base.sheet, "thickness": base.thickness},
                     "modules": {}}
     ts_contract = [float(x) for x in args.ts_contract.split(",")]
     ts_clash = [float(x) for x in args.ts_clash.split(",")]

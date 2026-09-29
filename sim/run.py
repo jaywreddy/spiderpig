@@ -23,8 +23,8 @@ from functools import cache
 import numpy as np
 
 from fabricate import BuildConfig, template_for
+from linkage import feet_of
 from sim.mjcf import T_REF, SimParams, build_mjcf, drive_limits, robot_model
-from stack import body_class
 
 Controls = Callable[[float], Sequence[float]] | Sequence
 
@@ -299,17 +299,17 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
 def kinematic_gait(config: BuildConfig | None = None, samples: int = 1440) -> dict:
     """What the kinematics alone promise, on rigid ground without slip (mm per revolution).
 
-    One side's feet over a crank revolution: the body rests on the lowest
-    foot and moves as that foot moves back (``stride``); ``bob`` is the range
-    of the lowest foot's height; ``stance_length`` is one foot's travel over
-    the lowest 10 mm of its path (the classic step length).
+    One side's feet (the linkage's) over a crank revolution: the body rests
+    on the lowest foot and moves as that foot moves back (``stride``);
+    ``bob`` is the range of the lowest foot's height; ``stance_length`` is
+    one foot's travel over the lowest 10 mm of its path (the classic step
+    length).
     """
     config = config or BuildConfig()
     tmpl = template_for(config)
     ts = T_REF + np.linspace(0.0, 2.0 * math.pi, samples, endpoint=False)
     joint_world = tmpl.sample(ts).joint_world
-    feet = np.stack([joint_world[b.name]["F"][:, :2] for b in tmpl.bodies
-                     if body_class(b.name) == "b4"])                     # (L, T, 2)
+    feet = np.stack([joint_world[b][j][:, :2] for b, j in feet_of(tmpl)])    # (F, T, 2)
     low = feet[:, :, 1].argmin(axis=0)
     idx = np.arange(samples)
     x_now, x_next = feet[low, idx, 0], feet[low, (idx + 1) % samples, 0]
@@ -322,7 +322,8 @@ def kinematic_gait(config: BuildConfig | None = None, samples: int = 1440) -> di
         "bob": float(np.ptp(lowest)),
         "stance_length": float(np.ptp(f0[stance, 0])),
         "foot_lift": float(np.ptp(f0[:, 1])),
-        "legs_per_side": int(feet.shape[0]),
+        "legs_per_side": len(tmpl.meta["phases"]),
+        "feet_per_side": int(feet.shape[0]),
     }
 
 

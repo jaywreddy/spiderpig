@@ -34,12 +34,13 @@ Pipeline
 
 Design parameters
 -----------------
-``phases`` (one crank phase per leg) and ``proportions`` (overrides of
-:data:`klann.PROPORTIONS`) change the design; the CLI takes the phases in
-degrees (``--phases 0,180,90,270``) and ``--proportion NAME=VALUE``
-(repeatable). A non-default design is written to
-``viewer/data/params/<mode>_<key>.glb`` unless ``--out`` says otherwise
-(:func:`param_glb`; the dev server caches parameter bakes there too).
+``linkage`` (a registered :class:`linkage.Linkage`, Klann by default),
+``phases`` (one crank phase per leg) and ``proportions`` (overrides of the
+linkage's parameters) change the design; the CLI takes ``--linkage``, the
+phases in degrees (``--phases 0,180,90,270``) and ``--proportion
+NAME=VALUE`` (repeatable). A non-default design is written to
+``viewer/data/params/<mode>_<module>_<key>.glb`` unless ``--out`` says
+otherwise (:func:`param_glb`; the dev server caches parameter bakes there too).
 
 Usage
 -----
@@ -47,6 +48,7 @@ Usage
     uv run python viewer/bake_gltf.py --mode robot --module single
     uv run python viewer/bake_gltf.py --mode double --frames 60
     uv run python viewer/bake_gltf.py --phases 0,175,180,355 --proportion DF=2.5
+    uv run python viewer/bake_gltf.py --linkage jansen --module double
 """
 
 from __future__ import annotations
@@ -154,11 +156,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import linkage  # noqa: E402
+import linkage as linkage_mod  # noqa: E402
 import walk  # noqa: E402
 from construction.robot import robot_template  # noqa: E402
 from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
-from klann import create_klann_geometry  # noqa: E402
 from mechanism import Body, Mechanism, MechanismTemplate  # noqa: E402
 from stack import body_class, is_link  # noqa: E402
 
@@ -179,12 +180,9 @@ _ROOT_ROTATION = (math.sqrt(0.5), 0.0, 0.0, math.sqrt(0.5))   # xyzw
 
 
 def _resolve(mode: str, module: str | None = None) -> tuple[str, bool]:
-    """``(side module, robot?)`` for a bake mode."""
+    """``(side module, robot?)`` for a bake mode (:func:`build_config` checks the module)."""
     if mode == ROBOT:
-        module = module or DEFAULT_MODULE
-        if module not in MODULES:
-            raise ValueError(f"unknown module {module!r}; have {sorted(MODULES)}")
-        return module, True
+        return module or DEFAULT_MODULE, True
     if mode not in MODULES:
         raise ValueError(f"unknown mode {mode!r}; have {list(MODES)}")
     if module not in (None, mode):
@@ -201,10 +199,10 @@ def _build_template(config: BuildConfig) -> MechanismTemplate:
 def build_config(
     mode: str, module: str | None = None, config: BuildConfig | None = None,
     thickness: float | None = None, phases: Sequence[float] | None = None,
-    proportions: Mapping[str, float] | None = None,
+    proportions: Mapping[str, float] | None = None, linkage: str | None = None,
 ) -> BuildConfig:
-    """The build for a bake. ``phases`` (rad, one per leg) and ``proportions``
-    override ``config``'s; both are validated and normalized
+    """The build for a bake. ``linkage``, ``phases`` (rad, one per leg) and
+    ``proportions`` override ``config``'s; they are validated and normalized
     (:func:`walk.normalize_phases`, :func:`walk.normalize_proportions`), so a
     default design has one config however it was asked for.
 
@@ -212,14 +210,17 @@ def build_config(
     """
     side, robot = _resolve(mode, module)
     config = replace(config or BuildConfig(), module=side, robot=robot)
+    if linkage is not None:
+        config = replace(config, linkage=walk.get_linkage(linkage).key)
     if phases is not None:
         config = replace(config, phases=tuple(float(p) for p in phases))
     if proportions is not None:
         config = replace(config, proportions=tuple(dict(proportions).items()))
     config = replace(
         config,
-        phases=walk.normalize_phases(side, config.phases, degrees=False),
-        proportions=walk.normalize_proportions(dict(config.proportions)),
+        phases=walk.normalize_phases(side, config.phases, degrees=False,
+                                     linkage=config.linkage),
+        proportions=walk.normalize_proportions(dict(config.proportions), config.linkage),
     )
     return config if thickness is None else replace(config, thickness=thickness)
 
@@ -248,9 +249,10 @@ def _build_assembly(
     thickness: float | None = None,
     phases: Sequence[float] | None = None,
     proportions: Mapping[str, float] | None = None,
+    linkage: str | None = None,
 ) -> Mechanism:
     """The fabricated walker at crank angle ``t`` (parts in world coordinates)."""
-    config = build_config(mode, module, config, thickness, phases, proportions)
+    config = build_config(mode, module, config, thickness, phases, proportions, linkage)
     return fabricate(template_for(config), config, t)
 
 
@@ -316,40 +318,6 @@ def _body_joint_world(body) -> dict[str, np.ndarray]:
         j.name: np.asarray((body.pose @ j.pose).matrix[:3, 3], dtype=float)
         for j in body.joints
     }
-
-
-def _rigid_planar_batch(
-    p0: np.ndarray, p1: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Best planar rigid motion taking ``p0`` to ``p1`` over a ``(T, N, 3)`` batch.
-
-    Returns ``(theta, translations, quaternions_xyzw)`` where ``theta`` is
-    the Z-rotation angle in radians shape ``(T,)``, translations are
-    ``(T, 3)`` and quaternions are ``(T, 4)`` in ``[qx, qy, qz, qw]`` order.
-    """
-    t_count, n, _ = p0.shape
-    c0 = p0.mean(axis=1)                                # (T, 3)
-    c1 = p1.mean(axis=1)                                # (T, 3)
-    if n == 1:
-        theta = np.zeros(t_count, dtype=float)
-        trans = c1 - c0
-    else:
-        v0 = p0 - c0[:, None, :]                        # (T, N, 3)
-        v1 = p1 - c1[:, None, :]
-        sxy = (v0[..., 0] * v1[..., 1] - v0[..., 1] * v1[..., 0]).sum(axis=1)
-        cxy = (v0[..., 0] * v1[..., 0] + v0[..., 1] * v1[..., 1]).sum(axis=1)
-        theta = np.arctan2(sxy, cxy)                    # (T,)
-        cos_t = np.cos(theta)
-        sin_t = np.sin(theta)
-        # Apply R(theta) to each c0: (T, 3) ← 2D rotation on XY, Z passthrough.
-        rot_c0 = np.stack(
-            [cos_t * c0[:, 0] - sin_t * c0[:, 1],
-             sin_t * c0[:, 0] + cos_t * c0[:, 1],
-             c0[:, 2]],
-            axis=1,
-        )
-        trans = c1 - rot_c0
-    return theta, trans, _quat_z(theta)
 
 
 def _quat_z(theta: np.ndarray) -> np.ndarray:
@@ -453,17 +421,6 @@ def _congruent(a: _MassProps, b: _MassProps, g: _Planar) -> bool:
     return bool(np.abs(r @ a.inertia @ r.T - b.inertia).max() <= _REL_TOL * scale)
 
 
-def _anchor_owner(body: Body, by_name: dict[str, Body]) -> str | None:
-    """The kinematic body whose joints carry ``body``: itself, or its host chain."""
-    seen = set()
-    while body is not None and body.name not in seen:
-        if body.joints:
-            return body.name
-        seen.add(body.name)
-        body = by_name.get(body.rigid_with) if body.rigid_with else None
-    return None
-
-
 def _fit_ref(a: dict[str, np.ndarray], b: dict[str, np.ndarray]) -> _Planar | None:
     """Planar motion taking joints ``a`` onto the same-named joints ``b``, if exact."""
     if set(a) != set(b) or not a:
@@ -471,7 +428,7 @@ def _fit_ref(a: dict[str, np.ndarray], b: dict[str, np.ndarray]) -> _Planar | No
     names = sorted(a)
     p0 = np.stack([a[n] for n in names])[None]
     p1 = np.stack([b[n] for n in names])[None]
-    theta, trans, _ = _rigid_planar_batch(p0, p1)
+    theta, trans = walk.planar_fit(p0, p1)
     g = _Planar(float(theta[0]), (float(trans[0, 0]), float(trans[0, 1])))
     if np.abs(g.apply(p0[0])[:, :2] - p1[0][:, :2]).max() > 1e-4:
         return None
@@ -672,6 +629,7 @@ def bake_gltf(
     config: BuildConfig | None = None,
     phases: Sequence[float] | None = None,
     proportions: Mapping[str, float] | None = None,
+    linkage: str | None = None,
     verbose: bool = False,
     profile: bool = True,
     cprofile_out: Path | None = None,
@@ -681,9 +639,10 @@ def bake_gltf(
     ``mode`` is ``"robot"`` (both sides; ``module`` picks the side, ``quad``
     by default) or a side-only module (``single``, ``double``, ``decker``,
     ``quad``). ``config`` sets the build (sheet, servo, constructions); its
-    ``module`` / ``robot`` fields follow ``mode``. ``phases`` (radians, one
-    per leg, like ``BuildConfig.phases``) and ``proportions`` (overrides of
-    :data:`klann.PROPORTIONS`) set the design; they override ``config``'s.
+    ``module`` / ``robot`` fields follow ``mode``. ``linkage`` (a key of
+    :func:`linkage.available`), ``phases`` (radians, one per leg, like
+    ``BuildConfig.phases``) and ``proportions`` (overrides of the linkage's
+    parameters) set the design; they override ``config``'s.
     Bad parameters raise ``ValueError``; so does a layout the planner can't
     find (:mod:`stack`), and a construction that can't be built raises
     :class:`construction.ConstructionError`.
@@ -704,8 +663,9 @@ def bake_gltf(
     ``cProfile`` .prof file (plus a ``<path>.txt`` of the top-30 cumulative
     hot functions) for deep dives.
     """
-    config = build_config(mode, module, config, thickness, phases, proportions)
+    config = build_config(mode, module, config, thickness, phases, proportions, linkage)
     robot = config.robot
+    lk = linkage_mod.get(config.linkage)
     if verbose and logger.level > logging.DEBUG:
         logger.setLevel(logging.DEBUG)
 
@@ -721,15 +681,16 @@ def bake_gltf(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "bake: mode=%s module=%s phases=%s proportions=%s n_frames=%d duration_s=%.3f out=%s",
-        mode, config.module,
+        "bake: mode=%s linkage=%s module=%s phases=%s proportions=%s n_frames=%d "
+        "duration_s=%.3f out=%s",
+        mode, config.linkage, config.module,
         "default" if config.phases is None
         else ",".join(f"{math.degrees(p):g}" for p in config.phases),
         dict(config.proportions) or "default", n_frames, duration_s, out,
     )
     prof.set_metric("n_frames", n_frames)
 
-    linkage._BAKE_PROFILER = prof if profile else None
+    linkage_mod._BAKE_PROFILER = prof if profile else None
     try:
         with prof.timed("bake_total"):
             # --- stage 1: the fabricated walker at t_ref ---
@@ -737,12 +698,13 @@ def bake_gltf(
                 ref_mech = fabricate(template_for(config), config, _T_REF)
             bodies = ref_mech.bodies
             by_name = {b.name: b for b in bodies}
+            feet = linkage_mod.feet_of(ref_mech)          # (body, joint), lk.feet per leg
             prof.set_metric("n_bodies", len(bodies))
-            prof.set_metric("n_legs", sum(body_class(b.name) == "b4" for b in bodies))
+            prof.set_metric("n_legs", len(feet) // len(lk.feet))
             logger.debug("reference mech: %d bodies", len(bodies))
 
             # Every body moves with the joints of its anchor: its own, or its host's.
-            owner = {b.name: _anchor_owner(b, by_name) for b in bodies}
+            owner = {b.name: walk.anchor_of(b, by_name) for b in bodies}
             anchors = {n: _body_joint_world(by_name[n]) for n in set(owner.values()) if n}
 
             # --- stage 2: one mesh per congruence group (see _plan_meshes) ---
@@ -845,8 +807,7 @@ def bake_gltf(
                             np.stack([ref[n] for n in names]), (n_frames, len(names), 3)
                         )
                         p1 = np.stack([current[n] for n in names], axis=1)
-                        theta, trans, _q = _rigid_planar_batch(p0, p1)
-                        motion[name] = (theta, trans)
+                        motion[name] = walk.planar_fit(p0, p1)
                     for body in bodies:
                         prof.bump("body_extract.calls")
                         g = meshes_of.place.get(body.name, _Planar())
@@ -955,18 +916,17 @@ def bake_gltf(
                 name="walk", samplers=animation_samplers, channels=animation_channels
             )
 
-            # --- stage 6: foot-path extra (leg 0 for reference) ---
+            # --- stage 6: foot-path extra (leg 0's first foot for reference) ---
             with prof.timed("6_foot_path_extra"):
-                sol0 = create_klann_geometry(orientation=1, phase=0.0,
-                                             proportions=dict(config.proportions))
+                sol0 = lk.solve(1, 0.0, dict(config.proportions))
                 foot_samples = 64
                 foot = sol0.evaluate(
                     np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
-                )["F"]
+                )[lk.feet[0][1]]
                 foot_path = [[float(x), float(y)] for x, y in foot]
-                # Drawn just outside leg 0's foot link (first side), in model Z.
-                b4 = next((b for b in bodies if body_class(b.name) == "b4" and b.part), None)
-                foot_z = b4.part.bounding_box().min.Z - 0.5 if b4 is not None else 0.0
+                # Drawn just outside that foot's link (first side), in model Z.
+                link = next((by_name[b] for b, _ in feet if by_name[b].part), None)
+                foot_z = link.part.bounding_box().min.Z - 0.5 if link is not None else 0.0
 
             # --- stage 6b: the walking model's data (robot only; see walk.py) ---
             if robot:
@@ -982,7 +942,7 @@ def bake_gltf(
             scene = pygltflib.Scene(nodes=[0])
             scene.extras = {
                 "foot_path": foot_path, "foot_path_z": foot_z,
-                "mode": mode, "module": config.module, "robot": robot,
+                "mode": mode, "linkage": config.linkage, "module": config.module, "robot": robot,
                 "meta": _json_meta(ref_mech.meta),
             }
 
@@ -1009,7 +969,7 @@ def bake_gltf(
             prof.set_metric("animation_channels", len(animation_channels))
             prof.set_metric("accessors", len(accessors))
     finally:
-        linkage._BAKE_PROFILER = None
+        linkage_mod._BAKE_PROFILER = None
         if pr is not None:
             pr.disable()
             cprofile_out = Path(cprofile_out)
@@ -1056,9 +1016,9 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--module",
-        choices=list(MODULES),
         default=None,
-        help=f"Legs per side for --mode robot (default: {DEFAULT_MODULE}).",
+        help=f"Legs per side for --mode robot: one of the linkage's modules, e.g. "
+        f"{'/'.join(MODULES)} (default: {DEFAULT_MODULE}).",
     )
     walk.add_design_args(p)
     p.add_argument(
@@ -1081,12 +1041,13 @@ def _parse_args() -> argparse.Namespace:
         help="Logging level (default: INFO).",
     )
     args = p.parse_args()
-    phases_deg, proportions = walk.design_args(args)
+    design = walk.design_args(args)
+    phases_deg = design["phases_deg"]
     try:
         args.config = build_config(
-            args.mode, args.module,
+            args.mode, args.module, linkage=design["linkage"],
             phases=None if phases_deg is None else [math.radians(v) for v in phases_deg],
-            proportions=proportions)
+            proportions=design["proportions"])
     except ValueError as e:
         p.error(str(e))
     return args

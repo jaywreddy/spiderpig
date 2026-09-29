@@ -10,6 +10,7 @@ import pytest
 
 mujoco = pytest.importorskip("mujoco")
 
+import linkage  # noqa: E402
 from fabricate import BuildConfig, template_for  # noqa: E402
 from sim.mjcf import MM, fabricated  # noqa: E402
 from sim.run import (  # noqa: E402
@@ -23,17 +24,20 @@ from sim.run import (  # noqa: E402
 )
 from stack import body_class, is_link  # noqa: E402
 
-MODULES = ("single", "quad")
+# (linkage, module): Klann's single and quad, and a Strider (one coupled pair, two feet)
+DESIGNS = (("klann", "single"), ("klann", "quad"), ("strider", "single"))
+LOOPS_PER_LEG = {"klann": 2, "strider": 4}     # independent loops of one leg's linkage
 SETTLE = 0.3            # s at rest before the drives start
 WALK = 0.8              # drive speed, fraction of the servo's no-load speed
 
 
-@pytest.fixture(scope="module", params=MODULES)
+@pytest.fixture(scope="module", params=DESIGNS, ids=[f"{k}-{m}" for k, m in DESIGNS])
 def built(request):
-    """(config, model, metadata, fabricated robot) per module; no servo CAD download."""
+    """(config, model, metadata, fabricated robot) per design; no servo CAD download."""
+    key, module = request.param
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv("SPIDERPIG_OFFLINE", "1")
-        cfg = BuildConfig(module=request.param)
+        cfg = BuildConfig(linkage=key, module=module)
         model, meta = compiled(cfg)
         robot = fabricated(cfg)
     return cfg, model, meta, robot
@@ -59,9 +63,12 @@ def test_model_compiles_with_the_documented_names(built):
     cfg, model, meta, _ = built
     names = {model.body(i).name for i in range(model.nbody)}
     assert names == {"world", *meta["bodies"]}
-    legs = sum(body_class(n) == "b4" for n in meta["bodies"])
-    assert legs == 2 * {"single": 1, "quad": 4}[cfg.module]
-    assert model.neq == 2 * legs                              # C and E per leg
+    lk = linkage.get(cfg.linkage)
+    legs = 2 * len(lk.leg_modules[cfg.module])
+    assert len(meta["feet"]) == legs * len(lk.feet)
+    assert {info["body"].split(".")[1].split("_")[0] for info in meta["feet"].values()} == \
+        {b for b, _ in lk.feet}
+    assert model.neq == len(meta["loops"]) == LOOPS_PER_LEG[cfg.linkage] * legs  # Klann: C, E
     assert model.nu == 2
     assert [model.actuator(i).name for i in range(model.nu)] == ["L.drive", "R.drive"]
     assert model.joint("base").type == mujoco.mjtJoint.mjJNT_FREE
@@ -146,9 +153,11 @@ def test_the_model_is_the_template(built):
         jw = tmpl.sample(np.array([t])).joint_world
         base = data.body("base")
         rot = base.xmat.reshape(3, 3)
+        feet = dict(linkage.feet_of(tmpl))              # foot link -> its foot joint
         for foot, info in meta["feet"].items():
             mech = rot.T @ (data.site(foot).xpos - base.xpos) / MM
-            want = jw[info["body"].split(".", 1)[1]]["F"][0, :2]
+            body = info["body"].split(".", 1)[1]
+            want = jw[body][feet[body]][0, :2]
             assert np.abs(mech[:2] - want).max() < 1e-3        # mm
 
 
@@ -185,8 +194,8 @@ def test_it_settles_on_its_feet(built):
         assert sum(feet.values()) >= 4
         assert math.degrees(r.tilt[-1]) < 10.0
     else:
-        # a single leg per side has every foot ahead of the centre of mass: it sits
-        # back on its frame
+        # one leg per side: Klann's foot is ahead of the centre of mass, it sits back on
+        # its frame; the Strider's pair of feet stand it up, tilted
         assert math.degrees(r.tilt[-1]) < 30.0
 
 

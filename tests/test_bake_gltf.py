@@ -3,13 +3,16 @@
 Two bakes are shared by the module: one side with a single leg (``single``)
 and the robot with a single leg per side (``robot`` / ``module="single"``);
 a third, the robot with its leg's crank phase moved (``phased``), is baked
-for the design-parameter tests only.
+for the design-parameter tests only, and a fourth, a Strider robot
+(``strider``), for another linkage's.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +36,7 @@ from bake_gltf import (  # noqa: E402
 )
 
 import klann  # noqa: E402
+import linkage  # noqa: E402
 import walk  # noqa: E402
 
 N_FRAMES = 12
@@ -41,23 +45,42 @@ CASES = {
     "side": {"mode": "single"},
     "robot": {"mode": "robot", "module": "single"},
 }
-PHASED = {"mode": "robot", "module": "single", "phases": [math.pi / 2]}
+EXTRA = {"phased": {"mode": "robot", "module": "single", "phases": [math.pi / 2]},
+         "strider": {"mode": "robot", "module": "single", "linkage": "strider"}}
+PHASED = EXTRA["phased"]
+
+
+class _Bakes(dict):
+    """``case -> GLTF2``, each case baked once per module; ``logs[case]`` its log."""
+
+    def __init__(self, root) -> None:
+        super().__init__()
+        self.root, self.logs = root, {}
+
+    def __call__(self, case: str) -> pygltflib.GLTF2:
+        if case not in self:
+            out = self.root.mktemp("glb") / f"{case}.glb"
+            lines: list[str] = []
+            handler = logging.Handler()
+            handler.emit = lambda record: lines.append(record.getMessage())
+            log = logging.getLogger("bake_gltf")
+            log.addHandler(handler)
+            level = log.level
+            log.setLevel(logging.INFO)
+            try:
+                bake_gltf(out, n_frames=N_FRAMES, duration_s=DURATION,
+                          **EXTRA.get(case) or CASES[case])
+            finally:
+                log.removeHandler(handler)
+                log.setLevel(level)
+            self.logs[case] = "\n".join(lines) + "\n"
+            self[case] = pygltflib.GLTF2().load(str(out))
+        return self[case]
 
 
 @pytest.fixture(scope="module")
 def bakes(tmp_path_factory):
-    """``case -> GLTF2``, each case baked once per module."""
-    cache: dict[str, pygltflib.GLTF2] = {}
-
-    def get(case: str) -> pygltflib.GLTF2:
-        if case not in cache:
-            out = tmp_path_factory.mktemp("glb") / f"{case}.glb"
-            kw = PHASED if case == "phased" else CASES[case]
-            bake_gltf(out, n_frames=N_FRAMES, duration_s=DURATION, **kw)
-            cache[case] = pygltflib.GLTF2().load(str(out))
-        return cache[case]
-
-    return get
+    return _Bakes(tmp_path_factory)
 
 
 @pytest.fixture(params=list(CASES))
@@ -326,7 +349,7 @@ def test_drive_extras(baked):
     assert abs(com[2]) < 2.0                        # the sides are mirror images
     assert drive["mass_g"] > 150.0
     assert drive["servo"] == {"key": "sts3215", "rpm_max": 52.0}
-    assert drive["params"] == {"module": "single", "phases_deg": [0.0],
+    assert drive["params"] == {"linkage": "klann", "module": "single", "phases_deg": [0.0],
                                "proportions": {k: float(v) for k, v in klann.PROPORTIONS.items()}}
     assert drive["z_nominal"] is False
     assert drive["com_nominal"] is False
@@ -371,5 +394,33 @@ def test_design_parameters_are_normalized():
     assert not is_default("robot", build_config("robot", "single"))
     with pytest.raises(ValueError, match="4 legs"):
         build_config("robot", phases=[0.0])
-    with pytest.raises(ValueError, match="unknown proportions"):
+    with pytest.raises(ValueError, match="unknown klann proportions"):
         build_config("robot", proportions={"XX": 1.0})
+    jansen = build_config("robot", "double", linkage="jansen", proportions={"m": 14.0})
+    assert (jansen.linkage, jansen.proportions) == ("jansen", (("m", 14.0),))
+    assert not is_default("robot", build_config("robot", linkage="jansen"))
+    assert build_config("robot", linkage="klann") == default
+    assert config_key(jansen) != config_key(replace(jansen, linkage="strider"))
+    with pytest.raises(ValueError, match="unknown linkage"):
+        build_config("robot", linkage="octopus")
+
+
+def test_other_linkage_bake(bakes):
+    """A Strider robot (one leg per side, a coupled pair with two feet): both feet of
+    each side drive the walking model, the foot path is its first foot's, and the
+    profile counts a leg per side."""
+    gltf = bakes("strider")
+    scene = gltf.scenes[gltf.scene]
+    assert scene.extras["linkage"] == "strider"
+    lk = linkage.get("strider")
+    path = lk.solve().evaluate(np.linspace(0.0, 2 * math.pi, 64, endpoint=False))["J4"]
+    np.testing.assert_allclose(scene.extras["foot_path"], path, atol=1e-9)
+    drive = _root(gltf).extras["drive"]
+    assert [f["body"] for f in drive["feet"]] == ["L.b3", "L.b7", "R.b3", "R.b7"]
+    assert drive["params"]["linkage"] == "strider"
+    index = {n.name: i for i, n in enumerate(gltf.nodes)}
+    pts = lk.solve().evaluate(walk.theta_grid())
+    for f, joint in zip(drive["feet"], ("J4", "J8", "J4", "J8"), strict=True):
+        np.testing.assert_allclose(f["xy"], pts[joint], atol=1e-3)
+        assert f["z"] == pytest.approx(_foot_z(gltf, index[f["body"]]), abs=0.01)
+    assert "    n_legs: 2\n" in bakes.logs["strider"]              # both sides: 4 feet, 2 legs

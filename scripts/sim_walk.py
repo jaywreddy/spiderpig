@@ -22,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import linkage  # noqa: E402
 from fabricate import MODULES, BuildConfig  # noqa: E402
 from sim.mjcf import RPM, SimParams, build_mjcf, drive_limits  # noqa: E402
 from sim.run import kinematic_gait, simulate, walk_metrics  # noqa: E402
@@ -75,6 +76,8 @@ def _args(argv) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter,
                                 epilog=__doc__.split("\n", 1)[1])
+    p.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT,
+                   help=f"the leg linkage ({linkage.DEFAULT})")
     p.add_argument("--module", choices=MODULES, default="quad", help="legs per side (quad)")
     p.add_argument("--servo", default=d.servo, help=f"servo model ({d.servo})")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock ({d.sheet})")
@@ -82,7 +85,7 @@ def _args(argv) -> argparse.Namespace:
     p.add_argument("--phases", type=parse_phases, default=None,
                    help="crank phase per leg, radians or NNdeg, comma-separated")
     p.add_argument("--proportion", type=parse_proportion, action="append", default=[],
-                   metavar="NAME=VALUE", help="override a Klann proportion (repeatable)")
+                   metavar="NAME=VALUE", help="override a linkage parameter (repeatable)")
     p.add_argument("--seconds", type=float, default=4.0,
                    help="seconds of driving after --settle (4)")
     p.add_argument("--left", default="0.8", help="left drive speed (0.8 of no-load)")
@@ -103,7 +106,7 @@ def _report(cfg: BuildConfig, m: dict, kin: dict, left: float, right: float, sec
     rpm = 1.0 / RPM
     revs_per_s = m["revolutions"] / m["duration"] if m["duration"] else 0.0
     kin_speed = kin["stride"] * revs_per_s
-    print(f"{cfg.module} robot, {cfg.servo}, {m['mass'] * 1e3:.0f} g, {seconds:g} s; "
+    print(f"{cfg.linkage} {cfg.module} robot, {cfg.servo}, {m['mass'] * 1e3:.0f} g, {seconds:g} s; "
           f"drives L {left * rpm:.1f} rpm, R {right * rpm:.1f} rpm")
     print(f"  walking   speed {m['speed']:.1f} mm/s along the start heading, lateral "
           f"{m['lateral']:.1f} mm, heading drift {m['heading_drift']:.1f} deg "
@@ -133,7 +136,7 @@ def main(argv=None) -> int:
     import servos
 
     args = _args(argv)
-    cfg = BuildConfig(module=args.module, servo=args.servo, sheet=args.sheet,
+    cfg = BuildConfig(linkage=args.linkage, module=args.module, servo=args.servo, sheet=args.sheet,
                       thickness=args.thickness, phases=args.phases,
                       proportions=tuple(args.proportion))
     params = SimParams(friction=args.friction, timestep=args.timestep)

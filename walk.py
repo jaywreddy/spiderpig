@@ -13,8 +13,8 @@ Frames
 ``walker``: x along the linkage plane (the walking axis), y up (feet at low
 y), z lateral (the layer stack axis). The left side (bodies ``L.``) is at
 negative z, the right side (``R.``) is its mirror image at positive z, the
-robot's mid-plane is z = 0. Kinematic XY is :mod:`klann`'s XY unchanged
-(the crank centre O is the origin).
+robot's mid-plane is z = 0. Kinematic XY is the linkage's XY unchanged
+(:mod:`linkage`: the crank centre O is the origin).
 
 Inputs
 ------
@@ -27,14 +27,16 @@ crank angle.
 
 Feet
 ----
-Every leg's foot tip is joint ``F`` of its ``b4`` body. Its path is sampled
-at ``N_THETA`` crank angles ``theta_i = 2 pi i / N`` from the side's
-kinematic template (:func:`fabricate.template_for`) and interpolated
-linearly in theta (wrapping); ``dp/dtheta`` is the central difference on
-that grid, interpolated the same way. A foot's lateral ``z`` is the
-mid-plane of its b4 plate's layer: from the layer plan when one is at hand
-(:func:`foot_z_planned`), otherwise from :func:`foot_z_nominal`, which
-needs no planning (exact for the default designs).
+The design's linkage (``BuildConfig.linkage``) names its feet: ``(link,
+joint)`` pairs, one or more per leg (Klann: ``b4.F``; a Strider leg is a
+coupled pair with two). A foot's path is sampled at ``N_THETA`` crank
+angles ``theta_i = 2 pi i / N`` from the linkage's compiled program (the
+side template's joints are its points) and interpolated linearly in theta
+(wrapping); ``dp/dtheta`` is the central difference on that grid,
+interpolated the same way. A foot's lateral ``z`` is the mid-plane of its
+link plate's layer: from the layer plan when one is at hand
+(:func:`foot_z_planned`), otherwise from :func:`foot_z_nominal`, the
+default design's layers (exact for the default designs).
 
 Support (:func:`support`)
 -------------------------
@@ -91,8 +93,8 @@ from itertools import combinations
 
 import numpy as np
 
-import klann
-from fabricate import MODULES, BuildConfig, sheet_thickness, template_for
+import linkage as lkg
+from fabricate import BuildConfig, sheet_thickness, template_for
 
 N_THETA = 360        # crank-angle samples per revolution
 AREA_MIN = 1.0       # mm^2: smaller foot triangles don't define a plane
@@ -103,24 +105,10 @@ _INSIDE_TOL = 1e-9   # mm: c's projection this close to a triangle counts as ins
 _HULL_TOL = 1e-7     # mm: side-of-line tolerance for the support polygon
 
 SIDES = ("L", "R")
-JOINTS = ("O", "A", "B", "M", "C", "D", "E", "F")
-LINKS = (("O", "M"), ("M", "D"), ("B", "E"), ("A", "C"), ("E", "F"), ("O", "A"), ("O", "B"))
-_ANGLES = frozenset({"angA", "angB"})
-
-# Where each leg joint is read from in the side template (``{sfx}`` = ``_leg<k>``).
-_JOINT_BODY = {"O": "torso", "A": "b3{sfx}", "B": "b2{sfx}", "M": "b1{sfx}", "C": "b1{sfx}",
-               "D": "b1{sfx}", "E": "b4{sfx}", "F": "b4{sfx}"}
-# Why a joint of the straight-line program (klann.STEPS) can come out NaN.
-_WHY_NAN = {
-    "C": "the circles about M (radius MC) and A (radius AC) don't meet",
-    "D": "C coincides with M",
-    "E": "the circles about B (radius BE) and D (radius DE) don't meet",
-    "F": "E coincides with D",
-}
 
 
 class ParamError(ValueError):
-    """Bad design parameters (unknown module or proportion, wrong phase count, ...)."""
+    """Bad design parameters (unknown linkage, module or proportion, wrong phase count, ...)."""
 
 
 class LinkageError(ValueError):
@@ -132,22 +120,38 @@ class LinkageError(ValueError):
 # ---------------------------------------------------------------------------
 
 
-def module_legs(module: str) -> tuple[tuple[int, float], ...]:
+def get_linkage(key: str) -> lkg.Linkage:
+    """The registered :class:`linkage.Linkage` ``key`` (:class:`ParamError` if there is none)."""
+    try:
+        return lkg.get(key)
+    except KeyError as e:
+        raise ParamError(e.args[0]) from None
+
+
+def links_of(lk: lkg.Linkage) -> list[tuple[str, str]]:
+    """A leg's stick figure: the crank, every link's outline, the frame (O to each pivot)."""
+    return [*(("O", pin) for pin in lk.crank[1:]),
+            *(seg for _, outline in lk.links.values() for seg in outline),
+            *(("O", j) for j in lk.frame if j != "O")]
+
+
+def module_legs(module: str, linkage: str = lkg.DEFAULT) -> lkg.LegList:
     """``(orientation, default phase in rad)`` per leg of one side."""
-    if module not in klann.MODULE_LEGS:
-        raise ParamError(f"unknown module {module!r}; have {list(MODULES)}")
-    return klann.MODULE_LEGS[module]
+    mods = get_linkage(linkage).leg_modules
+    if module not in mods:
+        raise ParamError(f"unknown module {module!r}; have {list(mods)}")
+    return mods[module]
 
 
-def normalize_phases(module: str, phases: Sequence[float] | None, *,
-                     degrees: bool = True) -> tuple[float, ...] | None:
+def normalize_phases(module: str, phases: Sequence[float] | None, *, degrees: bool = True,
+                     linkage: str = lkg.DEFAULT) -> tuple[float, ...] | None:
     """Leg phases (degrees, or radians with ``degrees=False``) -> radians for
     :class:`fabricate.BuildConfig`, validated.
 
     ``None`` and the module's own phases (mod 360 degrees) give ``None``, so a
     default design has one cache key however it was asked for.
     """
-    legs = module_legs(module)
+    legs = module_legs(module, linkage)
     if phases is None:
         return None
     try:
@@ -164,17 +168,19 @@ def normalize_phases(module: str, phases: Sequence[float] | None, *,
     return rad
 
 
-def normalize_proportions(overrides: Mapping[str, float] | None) -> tuple[tuple[str, float], ...]:
-    """Proportion overrides, validated, in :data:`klann.PROPORTIONS` order, defaults dropped.
+def normalize_proportions(overrides: Mapping[str, float] | None,
+                          linkage: str = lkg.DEFAULT) -> tuple[tuple[str, float], ...]:
+    """Overrides of the linkage's parameters, validated, in its ``params`` order, defaults dropped.
 
-    Lengths (everything but the angles ``angA`` / ``angB``) must be positive.
+    Lengths (every parameter but the linkage's ``angles``) must be positive.
     """
+    lk = get_linkage(linkage)
     overrides = dict(overrides or {})
-    unknown = sorted(set(overrides) - set(klann.PROPORTIONS))
+    unknown = sorted(set(overrides) - set(lk.params))
     if unknown:
-        raise ParamError(f"unknown proportions {unknown}; have {list(klann.PROPORTIONS)}")
+        raise ParamError(f"unknown {lk.key} proportions {unknown}; have {list(lk.params)}")
     out = []
-    for name, default in klann.PROPORTIONS.items():
+    for name, default in lk.params.items():
         if name not in overrides:
             continue
         try:
@@ -183,7 +189,7 @@ def normalize_proportions(overrides: Mapping[str, float] | None) -> tuple[tuple[
             raise ParamError(f"proportion {name} must be a number, got {overrides[name]!r}") from e
         if not math.isfinite(v):
             raise ParamError(f"proportion {name} must be a finite number, got {overrides[name]!r}")
-        if name not in _ANGLES and v <= 0:
+        if name not in lk.angles and v <= 0:
             raise ParamError(f"proportion {name} is a length and must be > 0, got {v:g}")
         if abs(v - float(default)) > 1e-12:
             out.append((name, v))
@@ -205,13 +211,11 @@ def parse_phases(text: str) -> list[float]:
 
 
 def parse_proportion(item: str) -> tuple[str, float]:
-    """``"DF=2.6"`` -> ``("DF", 2.6)`` (the name must be one of :data:`klann.PROPORTIONS`)."""
+    """``"DF=2.6"`` -> ``("DF", 2.6)`` (:func:`normalize_proportions` checks the name)."""
     name, sep, value = str(item).partition("=")
     name = name.strip()
-    if not sep:
+    if not sep or not name:
         raise ParamError(f"expected NAME=VALUE, got {item!r}")
-    if name not in klann.PROPORTIONS:
-        raise ParamError(f"unknown proportion {name!r}; have {list(klann.PROPORTIONS)}")
     try:
         v = float(value)
     except ValueError:
@@ -220,7 +224,8 @@ def parse_proportion(item: str) -> tuple[str, float]:
 
 
 def add_design_args(p) -> None:
-    """``--phases`` and ``--proportion`` on an ``argparse`` parser (see :func:`design_args`)."""
+    """``--linkage``, ``--phases`` and ``--proportion`` on an ``argparse`` parser
+    (see :func:`design_args`)."""
     import argparse
 
     def arg(fn):
@@ -232,34 +237,41 @@ def add_design_args(p) -> None:
         convert.__name__ = fn.__name__
         return convert
 
+    p.add_argument("--linkage", choices=lkg.available(), default=lkg.DEFAULT,
+                   help=f"the leg linkage (default {lkg.DEFAULT})")
     p.add_argument("--phases", type=arg(parse_phases), default=None, metavar="DEG,...",
                    help="crank phase of every leg of a side, in degrees (default: the "
                    "module's, e.g. quad 0,180,90,270)")
+    names = "; ".join(f"{k}: {', '.join(lkg.get(k).params)}" for k in lkg.available())
     p.add_argument("--proportion", type=arg(parse_proportion), action="append", default=None,
                    metavar="NAME=VALUE",
-                   help=f"override one of Klann's proportions (repeatable): "
-                   f"{', '.join(klann.PROPORTIONS)}; OA in mm, angA/angB in degrees, "
-                   "the rest in multiples of OA")
+                   help=f"override one of the linkage's parameters (repeatable; lengths in mm "
+                   f"or the linkage's unit, angles in degrees): {names}")
 
 
-def design_args(args) -> tuple[list[float] | None, dict[str, float] | None]:
-    """``(phases in degrees, proportion overrides)`` (each or None) from the parsed args."""
-    return args.phases, (dict(args.proportion) if args.proportion else None)
+def design_args(args) -> dict:
+    """:func:`make_config`'s ``linkage``, ``phases_deg`` and ``proportions`` (parsed args)."""
+    return {"linkage": args.linkage, "phases_deg": args.phases,
+            "proportions": dict(args.proportion) if args.proportion else None}
 
 
 def make_config(module: str = "quad", phases_deg: Sequence[float] | None = None,
                 proportions: Mapping[str, float] | None = None,
-                base: BuildConfig | None = None) -> BuildConfig:
-    """A robot :class:`BuildConfig` for these design parameters (normalized, validated)."""
+                base: BuildConfig | None = None, *, linkage: str | None = None) -> BuildConfig:
+    """A robot :class:`BuildConfig` for these design parameters (normalized, validated).
+
+    ``linkage`` defaults to ``base``'s (Klann).
+    """
     base = base or BuildConfig()
-    return replace(base, module=module, robot=True,
-                   phases=normalize_phases(module, phases_deg),
-                   proportions=normalize_proportions(proportions))
+    key = get_linkage(linkage or base.linkage).key
+    return replace(base, linkage=key, module=module, robot=True,
+                   phases=normalize_phases(module, phases_deg, linkage=key),
+                   proportions=normalize_proportions(proportions, key))
 
 
 def phases_rad(config: BuildConfig) -> tuple[float, ...]:
     """Every leg's crank phase (rad), the module's unless the config sets them."""
-    legs = module_legs(config.module)
+    legs = module_legs(config.module, config.linkage)
     if config.phases is None:
         return tuple(ph for _, ph in legs)
     if len(config.phases) != len(legs):
@@ -267,25 +279,15 @@ def phases_rad(config: BuildConfig) -> tuple[float, ...]:
     return tuple(float(p) for p in config.phases)
 
 
-def proportions_of(config: BuildConfig) -> dict[str, float]:
-    """All proportions of the design (Klann's, with the config's overrides)."""
-    return dict(zip(klann.PROPORTIONS, klann.proportion_values(dict(config.proportions)),
-                    strict=True))
-
-
 def params_of(config: BuildConfig) -> dict:
-    """The design parameters as JSON: module, phases (deg) and all proportions."""
+    """The design parameters as JSON: linkage, module, phases (deg) and all its proportions."""
+    lk = get_linkage(config.linkage)
     return {
+        "linkage": lk.key,
         "module": config.module,
         "phases_deg": [round(math.degrees(p), 6) for p in phases_rad(config)],
-        "proportions": proportions_of(config),
+        "proportions": dict(zip(lk.params, lk.values(dict(config.proportions)), strict=True)),
     }
-
-
-def is_default_design(config: BuildConfig) -> bool:
-    """Klann's proportions and the module's own phases?"""
-    return (normalize_phases(config.module, config.phases, degrees=False) is None
-            and not normalize_proportions(dict(config.proportions)))
 
 
 def _wrap(a):
@@ -303,83 +305,46 @@ def theta_grid(n: int = N_THETA) -> np.ndarray:
 
 @dataclass(frozen=True)
 class Leg:
-    """One leg of a side over a revolution: every joint's XY (mech frame) at each theta."""
+    """One leg of a side over a revolution: its linkage's every point (mech frame) per theta."""
 
     leg: int
-    body: str                        # its b4 body on one side ("b4_leg0", "b4" for single)
     orientation: int
     phase: float                     # rad
-    joints: dict[str, np.ndarray]    # name -> (N, 2)
-
-
-def _suffix(module: str, k: int) -> str:
-    return "" if module == "single" else f"_leg{k}"
+    joints: dict[str, np.ndarray]    # point -> (N, 2)
 
 
 def side_legs(config: BuildConfig, n: int = N_THETA) -> list[Leg]:
-    """The legs of one side sampled at ``n`` crank angles (from the side's template).
+    """The legs of one side sampled at ``n`` crank angles, from the compiled program.
 
-    Raises :class:`LinkageError` when a loop can't close somewhere in the cycle.
+    The side template's joints are the program's points (``tests/test_walk.py``
+    checks it). Raises :class:`LinkageError` when a loop can't close somewhere
+    in the cycle, with the reason :func:`fabricate.template_for` gives (the
+    linkage's assembly check).
     """
-    legs = module_legs(config.module)
-    phases = phases_rad(config)
-    ts = theta_grid(n)
-    tmpl = template_for(config)
-    with np.errstate(all="ignore"):
-        jw = tmpl.sample(ts).joint_world
-    out = []
-    for k, ((orient, _), phase) in enumerate(zip(legs, phases, strict=True)):
-        sfx = _suffix(config.module, k)
-        joints = {j: np.asarray(jw[_JOINT_BODY[j].format(sfx=sfx)][j][:, :2], dtype=float)
-                  for j in JOINTS}
-        out.append(Leg(k, f"b4{sfx}", int(orient), float(phase), joints))
-    if not all(np.isfinite(v).all() for leg in out for v in leg.joints.values()):
-        raise LinkageError(_diagnose(config, ts))
-    return out
-
-
-def program_legs(config: BuildConfig, n: int = N_THETA) -> list[Leg]:
-    """:func:`side_legs` straight from the compiled program (no template; for searches).
-
-    The template's joints are that program's points, so the numbers are the
-    same (``tests/test_walk.py`` checks it).
-    """
-    props = dict(config.proportions)
+    try:
+        template_for(config)
+    except ValueError as e:
+        raise LinkageError(str(e)) from None
+    lk = get_linkage(config.linkage)
+    legs = module_legs(config.module, config.linkage)
+    params = dict(config.proportions) or None
     ts = theta_grid(n)
     out = []
-    for k, ((orient, _), phase) in enumerate(zip(module_legs(config.module),
-                                                 phases_rad(config), strict=True)):
+    for k, ((orient, _), phase) in enumerate(zip(legs, phases_rad(config), strict=True)):
         with np.errstate(all="ignore"):
-            pts = klann.create_klann_geometry(orient, phase, props).evaluate(ts)
-        out.append(Leg(k, f"b4{_suffix(config.module, k)}", int(orient), float(phase),
-                       {j: np.asarray(pts[j], dtype=float) for j in JOINTS}))
-    if not all(np.isfinite(v).all() for leg in out for v in leg.joints.values()):
-        raise LinkageError(_diagnose(config, ts))
-    return out
-
-
-def _diagnose(config: BuildConfig, ts: np.ndarray) -> str:
-    """Which joint of which leg can't be placed, and over which crank angles."""
-    props = dict(config.proportions)
-    for k, ((orient, _), phase) in enumerate(zip(module_legs(config.module),
-                                                 phases_rad(config), strict=True)):
-        sol = klann.create_klann_geometry(orient, phase, props)
-        with np.errstate(all="ignore"):
-            pts = sol.evaluate(ts)
-        for name in klann.POINTS:
-            bad = ~np.isfinite(pts[name]).all(axis=-1)
+            pts = lk.solve(orient, phase, params).evaluate(ts)
+        out.append(Leg(k, int(orient), float(phase), pts))
+        for name, xy in pts.items():                # a backstop on this grid
+            bad = ~np.isfinite(xy).all(axis=-1)
             if bad.any():
-                deg = np.degrees(ts[bad])
-                why = _WHY_NAN.get(name, "a degenerate step")
-                return (f"leg {k}: joint {name} can't be placed at crank angle {deg[0]:.0f} deg "
-                        f"({why}); fails at {int(bad.sum())} of {len(ts)} sampled angles "
-                        f"between {deg.min():.0f} and {deg.max():.0f} deg")
-    return "the linkage can't be assembled (non-finite joint positions)"
+                raise LinkageError(f"{lk.key}: {name} can't be placed at crank angle "
+                                   f"{np.degrees(ts[bad][0]):.0f} deg (leg {k})")
+    return out
 
 
 @dataclass(frozen=True)
 class Foot:
-    """A foot tip: joint F of a b4 body, on one side."""
+    """A foot tip: a foot joint of a link (``linkage.Linkage.feet``), on one side."""
 
     body: str            # "L.b4_leg0"
     side: str            # "L" / "R"
@@ -393,22 +358,27 @@ class Foot:
                 "xy": np.round(self.xy, digits).tolist()}
 
 
-def make_feet(legs: Sequence[Leg], z_left: Sequence[float]) -> list[Foot]:
-    """Both sides' feet: the left side's legs at ``z_left`` (one per leg), the right mirrored."""
-    if len(z_left) != len(legs):
-        raise ValueError(f"{len(legs)} legs, {len(z_left)} foot z values")
-    feet = []
-    for side, sign in (("L", 1.0), ("R", -1.0)):
-        for leg, z in zip(legs, z_left, strict=True):
-            feet.append(Foot(f"{side}.{leg.body}", side, leg.leg, sign * float(z),
-                             leg.joints["F"]))
-    return feet
+def side_feet(config: BuildConfig) -> list[tuple[int, str, str]]:
+    """``(leg, body, joint)`` of every foot of one side: each leg's, in the linkage's order."""
+    n = len(module_legs(config.module, config.linkage))
+    return [(k, f"{link}{'' if n == 1 else f'_leg{k}'}", joint)
+            for k in range(n) for link, joint in get_linkage(config.linkage).feet]
 
 
-# The default layer plans (fabricate.design_side at Klann's proportions and the
-# module's phases, 3 mm sheet, STS3215): each leg's b4 layer and the inner
-# frame plate's layer, in pitches. :func:`foot_z_nominal` scales them by the
-# config's pitch; other designs usually plan within a layer or two of these.
+def make_feet(config: BuildConfig, legs: Sequence[Leg], z_left: Sequence[float]) -> list[Foot]:
+    """Both sides' feet: the left side's at ``z_left`` (one per foot), the right mirrored."""
+    feet = side_feet(config)
+    if len(z_left) != len(feet):
+        raise ValueError(f"{len(feet)} feet per side, {len(z_left)} foot z values")
+    return [Foot(f"{side}.{body}", side, k, sign * float(z), legs[k].joints[joint])
+            for side, sign in (("L", 1.0), ("R", -1.0))
+            for (k, body, joint), z in zip(feet, z_left, strict=True)]
+
+
+# Klann's default layer plans (fabricate.design_side at its proportions and the
+# module's phases, 3 mm sheet, STS3215): each foot's layer and the inner frame
+# plate's layer, in pitches. :func:`foot_z_nominal` scales them by the config's
+# pitch; other designs usually plan within a layer or two of these.
 # ``tests/test_walk.py`` checks the table against the planner.
 _NOMINAL_LAYERS: dict[str, tuple[tuple[int, ...], int]] = {
     "single": ((3,), 6),
@@ -430,20 +400,39 @@ def _mid_plane(config: BuildConfig, top: int, pitch: float) -> float:
 
 
 def foot_z_nominal(config: BuildConfig) -> list[float]:
-    """Left-side foot z per leg without planning: the default plan's layers (see above).
+    """Left-side foot z (one per foot) without planning this design: the default design's.
 
-    Exact for a default design; the right side is the mirror (``-z``).
+    Klann's from the table above; another linkage's default design is planned
+    once (cached). With no layer plan at all, a guess: the feet one layer
+    apart from layer 2 out. Exact for a default design; the right side is the
+    mirror (``-z``).
     """
-    layers, top = _NOMINAL_LAYERS[config.module]
+    if config.linkage == lkg.DEFAULT and config.module in _NOMINAL_LAYERS:
+        layers, top = _NOMINAL_LAYERS[config.module]
+    else:
+        z = _default_plan_z(replace(config, robot=True, phases=None, proportions=()))
+        if z is not None:
+            return list(z)
+        n = len(side_feet(config))
+        layers, top = range(2, 2 + n), 2 * n + 5
     pitch = sheet_thickness(config)
     z_mid = _mid_plane(config, top, pitch)
     return [(layer + 0.5) * pitch - z_mid for layer in layers]
 
 
-def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
-    """Left-side foot z per leg from the layer plan (plans the side unless ``design`` given).
+@cache
+def _default_plan_z(config: BuildConfig) -> tuple[float, ...] | None:
+    try:
+        return tuple(foot_z_planned(config))
+    except ValueError:      # no layer plan, or a construction that can't be built
+        return None
 
-    The b4 plate's layer mid-plane, moved like :func:`construction.robot.assemble_robot`
+
+def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
+    """Left-side foot z (one per foot) from the layer plan (plans the side unless ``design``
+    given).
+
+    The foot link's layer mid-plane, moved like :func:`construction.robot.assemble_robot`
     moves the left side (mid-plane to z = 0).
     """
     from construction.robot import mid_plane
@@ -453,11 +442,7 @@ def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
         cfg = replace(config, robot=True)
         design = design_side(template_for(cfg), cfg)
     plan, z_mid = design.plan, mid_plane(design)
-    out = []
-    for k in range(len(module_legs(config.module))):
-        z0, z1 = plan.z(plan.layers[f"b4{_suffix(config.module, k)}"])
-        out.append((z0 + z1) / 2 - z_mid)
-    return out
+    return [sum(plan.z(plan.layers[body])) / 2 - z_mid for _, body, _ in side_feet(config)]
 
 
 # ---------------------------------------------------------------------------
@@ -585,7 +570,7 @@ def cycle_com(masses: Mapping[str, tuple[float, np.ndarray]],
     return (acc / total if total > 0 else acc), total
 
 
-def _planar_fit(p0: np.ndarray, p1: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def planar_fit(p0: np.ndarray, p1: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Planar rigid motion (rotation about z, then translation) taking ``p0`` to ``p1``.
 
     ``p0``, ``p1``: ``(T, K, 3)``. Returns ``(theta (T,), translation (T, 3))``.
@@ -629,7 +614,7 @@ def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
             continue
         p0 = np.broadcast_to(np.stack([ref[j] for j in names]), (len(ts), len(names), 3))
         p1 = np.stack([cur[j] for j in names], axis=1)
-        motion[name] = _planar_fit(p0, p1)
+        motion[name] = planar_fit(p0, p1)
     return motion, owner
 
 
@@ -646,9 +631,8 @@ def fabricated_mass(config: BuildConfig, t_ref: float = 0.0,
     return cycle_com(body_masses(mech, config), motion, owner)
 
 
-# Nominal mass model (no parts), see :func:`nominal_mass`. Link plates span these joints.
-_LINK_OUTLINES = {"b1": ("M", "D"), "b2": ("B", "E"), "b3": ("A", "C"), "b4": ("E", "F")}
-# Everything of a side but its link plates and servo (frame plates, pillars, crank, pins,
+# Nominal mass model (no parts), see :func:`nominal_mass`. Everything of a side but its
+# link plates and servo (frame plates, pillars, crank, pins,
 # horn, half the centre plates, ties and screws), lumped on the crank axis O (its measured
 # centre of mass is within 2.8 mm of it), fitted so the nominal totals match the fabricated
 # default robots (single 289.7 g, double 357.4, decker 341.0, quad 460.8; the pill-shaped
@@ -660,8 +644,8 @@ _CHASSIS_PER_LEG_G = 8.6
 def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, float]:
     """Centre of mass (cycle mean) and total mass of the robot without building parts.
 
-    Per side: every link plate is a pill of the link radius along its
-    outline, one pitch thick, at the sheet's density, at its cycle-mean
+    Per side: every segment of a link's outline is a pill of the link
+    radius, one pitch thick, at the sheet's density, at its cycle-mean
     midpoint; the servo is its mass (:func:`servo_info`) at the centre of
     its body, ``axis_offset`` from O along the direction away from the frame
     pillars (as :meth:`servos.mount.DriveGroup.direction` places it); the
@@ -672,6 +656,7 @@ def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, 
     """
     import servos
 
+    lk = get_linkage(config.linkage)
     pitch = sheet_thickness(config)
     r = config.params.link_radius
     dens = _density(_Proxy("laser"), config, {})
@@ -679,14 +664,15 @@ def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, 
     servo_g = servo_info(config.servo)["mass_g"]
     m_acc, c_acc = 0.0, np.zeros(2)
     for leg in legs:
-        for p, q in _LINK_OUTLINES.values():
-            a, b = leg.joints[p], leg.joints[q]
-            length = np.linalg.norm(b - a, axis=-1).mean()
-            grams = dens * pitch * (2 * r * length + math.pi * r * r) / 1000.0
-            m_acc += grams
-            c_acc += grams * ((a + b) / 2).mean(axis=0)
-    # servo +x: away from the frame pillars (the distinct A and B pivots)
-    pivots = {tuple(np.round(leg.joints[j][0], 6)) for leg in legs for j in ("A", "B")}
+        for _, outline in lk.links.values():
+            for p, q in outline:
+                a, b = leg.joints[p], leg.joints[q]
+                length = np.linalg.norm(b - a, axis=-1).mean()
+                grams = dens * pitch * (2 * r * length + math.pi * r * r) / 1000.0
+                m_acc += grams
+                c_acc += grams * ((a + b) / 2).mean(axis=0)
+    # servo +x: away from the frame pillars (the distinct fixed pivots)
+    pivots = {tuple(np.round(leg.joints[j][0], 6)) for leg in legs for j in lk.frame if j != "O"}
     away = -np.sum([np.asarray(p) for p in pivots], axis=0)
     norm = np.linalg.norm(away)
     u = away / norm if norm > 1e-9 else np.array([1.0, 0.0])
@@ -769,7 +755,7 @@ def walker(config: BuildConfig | None = None, *, feet_z: Sequence[float] | None 
            legs: Sequence[Leg] | None = None, n: int = N_THETA) -> Walker:
     """The walking model of the robot ``config`` describes (no parts are built).
 
-    ``feet_z``: left-side foot z per leg (e.g. :func:`foot_z_planned`), else
+    ``feet_z``: left-side foot z per foot (e.g. :func:`foot_z_planned`), else
     :func:`foot_z_nominal`. ``com`` / ``mass_g``: e.g. from a fabricated
     robot (:func:`fabricated_mass`), else :func:`nominal_mass`. ``legs``:
     one side's sampled legs (default :func:`side_legs`).
@@ -778,7 +764,7 @@ def walker(config: BuildConfig | None = None, *, feet_z: Sequence[float] | None 
     legs = list(legs) if legs is not None else side_legs(config, n)
     z_nominal = feet_z is None
     z_left = foot_z_nominal(config) if z_nominal else [float(z) for z in feet_z]
-    feet = make_feet(legs, z_left)
+    feet = make_feet(config, legs, z_left)
     com_nominal = com is None
     if com_nominal:
         com, m = nominal_mass(config, legs)
@@ -1178,13 +1164,10 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
     An invalid linkage gives ``valid: false`` and the reason in ``error``.
     """
     servo = servo_info(config.servo)
-    params = params_of(config)
     base = {
-        "valid": True, "error": None,
-        "module": params["module"], "phases_deg": params["phases_deg"],
-        "proportions": params["proportions"],
+        "valid": True, "error": None, **params_of(config),
         "theta_samples": N_THETA,
-        "links": [list(link) for link in LINKS],
+        "links": [list(link) for link in links_of(get_linkage(config.linkage))],
         "servo": {"key": servo["key"], "rpm_max": servo["rpm_max"]},
     }
     try:
@@ -1210,14 +1193,13 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
 
 
 __all__ = [
-    "AREA_MIN", "CONTACT", "JOINTS", "LINKS", "N_THETA", "ON_PLANE", "OBJECTIVE_WEIGHTS",
-    "SIDES", "W_DEN_MIN",
+    "AREA_MIN", "CONTACT", "N_THETA", "ON_PLANE", "OBJECTIVE_WEIGHTS", "SIDES", "W_DEN_MIN",
     "Foot", "Leg", "LinkageError", "ParamError", "Support", "Trace", "Walker",
-    "add_design_args", "api_payload", "body_masses", "body_motion", "body_velocity",
+    "add_design_args", "anchor_of", "api_payload", "body_masses", "body_motion", "body_velocity",
     "cycle_com", "design_args", "drive_extra", "fabricated_mass", "foot_z_nominal",
-    "foot_z_planned", "is_default_design", "jsonable", "make_config", "make_feet",
+    "foot_z_planned", "get_linkage", "jsonable", "links_of", "make_config", "make_feet",
     "module_legs", "nominal_mass", "normalize_phases", "normalize_proportions", "objective",
-    "params_of", "parse_phases", "parse_proportion", "phases_rad", "program_legs",
-    "proportions_of", "servo_info", "side_legs", "simulate", "straight_walk_metrics",
-    "support", "theta_grid", "walker",
+    "params_of", "parse_phases", "parse_proportion", "phases_rad", "planar_fit", "servo_info",
+    "side_feet",
+    "side_legs", "simulate", "straight_walk_metrics", "support", "theta_grid", "walker",
 ]
