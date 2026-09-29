@@ -343,3 +343,6 @@ __all__ = [
     "BHCS_HEAD", "BHCS_LENGTHS", "CLEARANCE", "SELF_TAP_HEAD", "SELF_TAP_LENGTHS", "SHCS_HEAD",
     "SHCS_LENGTHS", "STANDOFF_FF_LENGTHS", "bhcs", "self_tap", "shcs", "standoff_ff",
 ]
+
+# Items the metal-shaft pivot constructions need (long bolts, clips); registered on import.
+from hardware import fastener_catalog  # noqa: E402, F401  (appends to the catalog)

@@ -24,10 +24,16 @@ Assembly, bottom up: glue each pillar's first segment into the outer plate
 (head underneath); thread the links on; snap the next segment of every
 pillar and pin on; repeat per deck; glue the inner plate over the pillars'
 top ends, which finish flush with its top face.
+
+The constructions on purchased metal shafts (``rod``, ``bolt``, ``bearing``,
+``bushing``) live in :mod:`construction.pivots`; they state how they differ
+through the extra fields of :class:`AxleDims` and an optional ``ends``
+method (see :meth:`AxleGroup.claims`).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -56,6 +62,60 @@ class AxleDims:
     spacer: float    # radius of the shoulder beside a link
     head: float      # radius of a head / cap
     neck: float      # thinnest the axle may get where another link passes
+    # How a construction departs from a printed stepped axle (the defaults: it doesn't).
+    fill: bool = False      # a loose spacer fills every layer between the ends (a rod can't
+    #                         neck down, so a passing link must leave room for the spacer)
+    flange: float = 0.0     # radius of a flange each link carries on one face (a bearing's);
+    #                         it needs a free layer beside the link at least this wide
+    seat: float | None = None   # radius seated in a link's hole when not ``axle`` (a bearing)
+
+
+End = tuple[str, float]     # (label, radius) of one layer claimed beyond an axle's end
+
+
+def default_ends(d: AxleDims, pillar: bool, anchored: tuple[bool, bool]) -> tuple[
+        tuple[End, ...], tuple[End, ...]]:
+    """What a printed axle claims beyond its retained stack: a head below (under the outer
+    plate, or under its lowest link), a cap above unless the inner plate holds it."""
+    below: tuple[End, ...] = (("head", d.head),)
+    above: tuple[End, ...] = () if pillar and anchored[1] else (("cap", d.head),)
+    return below, above
+
+
+def flange_sides(layers: list[int], room: Callable[[int], float], flange: float,
+                 names: Mapping[int, str] | None = None) -> dict[int, int]:
+    """Which face of each link (by layer) its flange goes on: ``+1`` up, ``-1`` down.
+
+    ``room(k)`` is the radius free for a flange in layer ``k`` (0 where a link,
+    a frame plate or a narrow neighbour leaves none). Two links in adjacent
+    layers turn their flanges outwards; a lone link puts its flange on the
+    roomier side (down on a tie). Raises :class:`Unbuildable` when a flange
+    has nowhere to go.
+    """
+    names = names or {}
+    out: dict[int, int] = {}
+    runs: list[list[int]] = []
+    for k in sorted(layers):
+        if runs and runs[-1][-1] == k - 1:
+            runs[-1].append(k)
+        else:
+            runs.append([k])
+    for run in runs:
+        if len(run) > 2:
+            raise Unbuildable(f"{len(run)} of its links sit in adjacent layers {run[0]}..{run[-1]}:"
+                              f" the flange of {names.get(run[1], 'the middle one')} has no room")
+        if len(run) == 2:
+            wants = ((run[0], -1), (run[1], +1))
+        else:
+            k = run[0]
+            wants = ((k, -1 if room(k - 1) >= room(k + 1) else +1),)
+        for k, side in wants:
+            if room(k + side) < flange - 1e-9:
+                raise Unbuildable(f"no room for the {2 * flange:g} mm flange of "
+                                  f"{names.get(k, f'the link in layer {k}')} beside layer {k}: "
+                                  f"{room(k + side):.1f} mm free")
+            out[k] = side
+    return out
 
 
 class AxleGroup:
@@ -85,17 +145,23 @@ class AxleGroup:
         that keeps it in its layer: as wide as ``spacer`` where the links in
         that layer allow, and at least wide enough to overlap the link's
         hole. Everywhere else it crosses it is a **neck**, ``axle`` wide or
-        thinner (down to ``neck``) where another link passes close. If even
-        that can't pass a layer, the axle can't cross it. A pillar
-        is anchored in both frame plates when it can reach them, else in the
-        one it can reach, with a cap at its free end. A pin ends in a head
-        below its lowest link and a cap above its highest.
+        thinner (down to ``neck``) where another link passes close (or, for
+        a construction that ``fill``\\ s with loose spacers, a **spacer** as
+        wide as the shoulder). If even that can't pass a layer, the axle
+        can't cross it. A pillar is anchored in both frame plates when it can
+        reach them, else in the one it can reach, with a cap at its free end.
+        A pin ends in a head below its lowest link and a cap above its
+        highest. A construction with an ``ends`` method claims its own
+        retainers beyond each end instead (:func:`default_ends` is the
+        printed axle's); it may raise :class:`Unbuildable` for a stack it
+        can't span.
         """
         d = self.dims(ctx)
         p = ctx.params
         geo = ctx.topo.geometry
         ax, g, members = self.axis.name, self.name, self.axis.members
-        stop = p.hole(2 * d.axle) / 2 + STOP_OVERLAP     # a shoulder this wide holds a link
+        seat = d.axle if d.seat is None else d.seat
+        stop = p.hole(2 * seat) / 2 + STOP_OVERLAP       # a shoulder this wide holds a link
         room: dict[str, float] = {}                      # link -> radius free around the axle
         for n, segs in ctx.topo.links.items():
             if n in members:
@@ -104,6 +170,7 @@ class AxleGroup:
             free = d_min - p.link_radius - p.margin
             if free < max(d.spacer, d.head):
                 room[n] = free
+        ends = getattr(self.construction, "ends", None)
 
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
@@ -130,26 +197,29 @@ class AxleGroup:
             if (k := blocker(lo, hi)) is not None:
                 raise Unbuildable(f"can't run between its links (layers {lo}..{hi}): "
                                   + crossing(k))
+            down = up = False
             if self.pillar:
                 kd, ku = blocker(1, lo - 1), blocker(hi + 1, L.top - 1)
                 down, up = kd is None, ku is None
                 if not (down or up):
                     raise Unbuildable("can't reach either frame plate: " + crossing(kd)
                                       + " below its links and " + crossing(ku) + " above")
-                k0 = 0 if down else lo - 1          # outer anchor, or a head below
-                k1 = L.top if up else hi + 1        # inner anchor, or a cap above
-            else:
-                k0, k1 = lo - 1, hi + 1
-            out = [Placed(k, Disc(ax, d.axle), g, f"{g} axle", seat=True) for k in ms]
-            for k in (k0, k1):
-                if self.pillar and k in (0, L.top):  # anchored in a frame plate
+            k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
+            k1 = L.top if up else hi            # ... to inner anchor or highest link
+            out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]
+            for k, anchored in ((0, down), (L.top, up)):
+                if anchored:
                     out.append(Placed(k, Disc(ax, d.axle), g, f"{g} anchor", seat=True))
-                else:
-                    end = "head" if k == k0 else "cap"
-                    out.append(Placed(k, Disc(ax, d.head), g, f"{g} {end}"))
-            if self.pillar and k0 == 0:
-                out.append(Placed(-1, Disc(ax, d.head), g, f"{g} head"))
-            beside = {k for m in ms for k in (m - 1, m + 1)} - mset - {k0, k1}
+            if ends is None:
+                below, above = default_ends(d, self.pillar, (down, up))
+            else:
+                below, above = ends(d, self.pillar, (down, up), k1 - k0 + 1, L.pitch)
+            out += [Placed(k0 - 1 - i, Disc(ax, r), g, f"{g} {label}")
+                    for i, (label, r) in enumerate(below)]
+            out += [Placed(k1 + 1 + i, Disc(ax, r), g, f"{g} {label}")
+                    for i, (label, r) in enumerate(above)]
+            beside = {k for m in ms for k in (m - 1, m + 1)} - mset
+            claimed: dict[int, float] = {}
             for k in range(k0 + 1, k1):
                 if k in mset:
                     continue
@@ -160,9 +230,20 @@ class AxleGroup:
                                           f"{who[k]} leaves {r:.1f} mm, a shoulder needs "
                                           f"{stop:.1f}")
                     out.append(Placed(k, Disc(ax, r), g, f"{g} shoulder"))
+                elif d.fill:
+                    r = min(d.spacer, free.get(k, np.inf))   # a loose spacer, as wide as it can
+                    out.append(Placed(k, Disc(ax, r), g, f"{g} spacer"))
                 else:
                     r = min(d.axle, free.get(k, np.inf))   # necks down where a link passes
                     out.append(Placed(k, Disc(ax, r), g, f"{g} neck"))
+                claimed[k] = r
+            if d.flange > 0:
+                for i, (_, r) in enumerate(below):
+                    claimed[k0 - 1 - i] = r
+                for i, (_, r) in enumerate(above):
+                    claimed[k1 + 1 + i] = r
+                flange_sides(ms, lambda k: claimed.get(k, 0.0), d.flange,
+                             {L.layers[m]: m for m in members})
             return out
 
         return [Claim(g, frozenset(members) | frozenset(room), make)]
@@ -287,4 +368,4 @@ class PrintedAxle:
         return out
 
 
-__all__ = ["AxleDims", "AxleGroup", "PrintedAxle"]
+__all__ = ["AxleDims", "AxleGroup", "End", "PrintedAxle", "default_ends", "flange_sides"]
