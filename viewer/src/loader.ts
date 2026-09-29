@@ -4,6 +4,8 @@ import type { Mode } from './types';
 
 export interface LoadedScene {
   root: THREE.Group;
+  /** The baked ``walker`` node: stands the model up; bodies are its children. */
+  walker: THREE.Object3D;
   mixer: THREE.AnimationMixer;
   action: THREE.AnimationAction;
   clipDuration: number;
@@ -12,22 +14,41 @@ export interface LoadedScene {
   nodeCount: number;
 }
 
+interface SceneExtras {
+  foot_path?: ReadonlyArray<readonly [number, number]>;
+  foot_path_z?: number;
+}
+
 const loader = new GLTFLoader();
 
-function buildFootPath(pathXY: ReadonlyArray<readonly [number, number]>): THREE.Line | null {
+// How much of the studio environment each baked material reflects: glossy
+// acrylic and metal pick up highlights, matte prints mostly don't.
+const ENV_INTENSITY: Record<string, number> = {
+  acrylic: 0.9,
+  acrylic_frame: 0.6,
+  metal: 1.0,
+  servo: 0.5,
+};
+
+/** Foot trail in model coordinates (the linkage plane is XY at ``z``). */
+function buildFootPath(
+  pathXY: ReadonlyArray<readonly [number, number]>, z: number,
+): THREE.Line | null {
   if (!pathXY || pathXY.length === 0) return null;
-  const pts = pathXY.map(([x, y]) => new THREE.Vector3(x, y, 0.2));
+  const pts = pathXY.map(([x, y]) => new THREE.Vector3(x, y, z));
   const first = pts[0];
   if (first) pts.push(first.clone());
   const geom = new THREE.BufferGeometry().setFromPoints(pts);
   const mat = new THREE.LineBasicMaterial({ color: 0xff4040 });
-  return new THREE.Line(geom, mat);
+  const line = new THREE.Line(geom, mat);
+  line.name = 'foot_path';
+  return line;
 }
 
 function disposeRoot(root: THREE.Object3D): void {
   root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (mesh.isMesh) {
+    const mesh = obj as THREE.Mesh | THREE.Line;
+    if ((mesh as THREE.Mesh).isMesh || (mesh as THREE.Line).isLine) {
       mesh.geometry?.dispose();
       const mat = mesh.material;
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
@@ -41,40 +62,36 @@ export function teardown(scene: THREE.Scene, prev: LoadedScene | null): void {
   prev.mixer.stopAllAction();
   prev.mixer.uncacheRoot(prev.mixer.getRoot());
   scene.remove(prev.root);
-  disposeRoot(prev.root);
-  if (prev.footLine) {
-    scene.remove(prev.footLine);
-    prev.footLine.geometry?.dispose();
-    (prev.footLine.material as THREE.Material).dispose();
-  }
+  disposeRoot(prev.root);  // the foot path lives under the walker node
 }
 
 export async function loadGlb(scene: THREE.Scene, mode: Mode): Promise<LoadedScene> {
-  const gltf: GLTF = await loader.loadAsync(`/api/glb/${mode}`);
+  const gltf: GLTF = await loader.loadAsync(`/api/glb/${encodeURIComponent(mode)}`);
   const root = gltf.scene;
-  scene.add(root);
 
-  // Force flat shading to match prior viewer look.
+  // Flat shading reads plate edges crisply; translucent acrylic keeps writing
+  // depth off (GLTFLoader's BLEND default) so the parts behind show through.
+  // Materials are named by the baker after the fabrication kind.
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.isMesh && mesh.material) {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.flatShading = true;
+      mat.envMapIntensity = ENV_INTENSITY[mat.name] ?? 0.35;
       mat.needsUpdate = true;
     }
   });
 
-  // Foot-path overlay comes from scene.extras.foot_path stashed by the baker.
-  const json = gltf.parser.json as {
-    scene?: number;
-    scenes?: Array<{ extras?: { foot_path?: ReadonlyArray<readonly [number, number]> } }>;
-  };
-  const sceneIdx = json.scene ?? 0;
-  const extras = json.scenes?.[sceneIdx]?.extras ?? {};
+  const walker = root.getObjectByName('walker') ?? root;
+
+  // Foot-path overlay comes from scene.extras stashed by the baker; it is in
+  // model coordinates, so it hangs off the walker node like the bodies do.
+  const json = gltf.parser.json as { scene?: number; scenes?: Array<{ extras?: SceneExtras }> };
+  const extras = json.scenes?.[json.scene ?? 0]?.extras ?? {};
   let footLine: THREE.Line | null = null;
   if (Array.isArray(extras.foot_path)) {
-    footLine = buildFootPath(extras.foot_path);
-    if (footLine) scene.add(footLine);
+    footLine = buildFootPath(extras.foot_path, extras.foot_path_z ?? 0.2);
+    if (footLine) walker.add(footLine);
   }
 
   const clip = gltf.animations[0];
@@ -86,8 +103,10 @@ export async function loadGlb(scene: THREE.Scene, mode: Mode): Promise<LoadedSce
   const nodeCount = (gltf.parser.json as { nodes?: unknown[] }).nodes?.length
     ?? root.children.filter((o) => (o as THREE.Mesh).isMesh).length;
 
+  scene.add(root);
   return {
     root,
+    walker,
     mixer,
     action,
     clipDuration: clip.duration,
