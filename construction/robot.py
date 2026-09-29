@@ -84,7 +84,8 @@ def robot_template(tmpl: MechanismTemplate) -> MechanismTemplate:
         bodies += [replace(b, name=prefixed(b.name, side)) for b in tmpl.bodies]
         connections += [((i, prefixed(pb, side), pj), (k, prefixed(cb, side), cj))
                         for (i, pb, pj), (k, cb, cj) in tmpl.connections]
-    return MechanismTemplate(name=f"{tmpl.name}_robot", bodies=bodies, connections=connections)
+    return MechanismTemplate(name=f"{tmpl.name}_robot", bodies=bodies, connections=connections,
+                             meta=dict(tmpl.meta))
 
 
 def centre_plates(spec, pitch: float, margin: float) -> int:

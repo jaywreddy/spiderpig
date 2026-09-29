@@ -341,6 +341,7 @@ class MechanismTemplate:
     name: str
     bodies: list[BodyTemplate] = field(default_factory=list)
     connections: list[Connection] = field(default_factory=list)
+    meta: dict = field(default_factory=dict)   # design parameters (module, phases, proportions)
 
     def body(self, name: str) -> BodyTemplate:
         for b in self.bodies:

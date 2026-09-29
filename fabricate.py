@@ -45,6 +45,15 @@ class BuildConfig:
     crank: str = "printed"
     params: Params = field(default_factory=Params)
     thickness: float | None = None    # override the sheet's nominal thickness
+    phases: tuple[float, ...] | None = None        # crank phase per leg (rad); None = module's
+    proportions: tuple[tuple[str, float], ...] = ()  # overrides of klann.PROPORTIONS
+
+
+def template_for(config: BuildConfig):
+    """The kinematic template of one side for ``config`` (module, phases, proportions)."""
+    from klann import build_module_template
+
+    return build_module_template(config.module, config.phases, dict(config.proportions))
 
 
 def sheet_thickness(config: BuildConfig) -> float:
@@ -95,7 +104,8 @@ _LAYOUTS: dict[tuple, tuple[dict[str, int], int]] = {}
 def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
     """Rationalize and plan one side (cached per template and config)."""
     config = config or BuildConfig()
-    key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), config)
+    meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
+    key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
     if key not in _DESIGNS:
         topo = topology_from_template(tmpl)
         ctx = Context(topo=topo, params=config.params, pitch=sheet_thickness(config),
@@ -109,7 +119,7 @@ def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
         problem = StackProblem(topo, claims, spec)
         # The robot's side has the same layout as the side on its own; reuse
         # a solved layout when every claim still clears (checked, not assumed).
-        layout_key = key[:3] + (replace(config, robot=False),)
+        layout_key = key[:4] + (replace(config, robot=False),)
         plan = None
         if layout_key in _LAYOUTS:
             layers, top = _LAYOUTS[layout_key]
@@ -192,5 +202,5 @@ def adhesive(config: BuildConfig) -> str:
 
 __all__ = [
     "MODULES", "BuildConfig", "SideDesign", "design_side", "fabricate", "fabricate_side",
-    "plan_for", "sheet_thickness",
+    "plan_for", "sheet_thickness", "template_for",
 ]

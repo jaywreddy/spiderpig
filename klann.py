@@ -20,7 +20,7 @@ over a batch of times via :meth:`KlannSolution.evaluate`.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import cache, cached_property
@@ -165,12 +165,17 @@ class KlannSolution:
 
     orientation: int = 1
     phase: float = 0.0
+    values: tuple[float, ...] = ()     # proportion values in PROPORTIONS order; () = Klann's
+
+    @property
+    def proportions(self) -> dict[str, float]:
+        return dict(zip(PROPORTIONS, self.values or _DEFAULT_VALUES, strict=True))
 
     @cached_property
     def points(self) -> dict[str, sp.Matrix]:
         """Closed-form ``(x, y)`` per named point, in ``t`` (slow; for inspection)."""
         subs = {s: self.orientation, t: t + self.phase}
-        subs |= {PARAMS[k]: v for k, v in PROPORTIONS.items()}
+        subs |= {PARAMS[k]: v for k, v in self.proportions.items()}
         return {name: e.xreplace(subs) for name, e in closed_form().items()}
 
     @property
@@ -181,7 +186,8 @@ class KlannSolution:
     def evaluate(self, ts) -> dict[str, np.ndarray]:
         """Every named point over ``ts``: ``name -> (..., 2)`` array."""
         ts = np.asarray(ts, dtype=float)
-        flat = compile_program()(ts + self.phase, float(self.orientation), *_DEFAULT_VALUES)
+        flat = compile_program()(ts + self.phase, float(self.orientation),
+                                 *(self.values or _DEFAULT_VALUES))
         return {
             name: np.stack(np.broadcast_arrays(flat[2 * i], flat[2 * i + 1], ts)[:2], axis=-1)
             for i, name in enumerate(POINTS)
@@ -206,15 +212,28 @@ class KlannSolution:
             return {name: (float(v[0]), float(v[1])) for name, v in xy.items()}
 
 
-def create_klann_geometry(orientation: int = 1, phase: float = 0.0) -> KlannSolution:
+def proportion_values(overrides: Mapping[str, float] | None = None) -> tuple[float, ...]:
+    """Proportion values in ``PROPORTIONS`` order, Klann's unless overridden."""
+    overrides = dict(overrides or {})
+    unknown = set(overrides) - set(PROPORTIONS)
+    if unknown:
+        raise KeyError(f"unknown proportions {sorted(unknown)}; have {list(PROPORTIONS)}")
+    return tuple(float(overrides.get(k, v)) for k, v in PROPORTIONS.items())
+
+
+def create_klann_geometry(
+    orientation: int = 1, phase: float = 0.0, proportions: Mapping[str, float] | None = None,
+) -> KlannSolution:
     """The Klann leg of the given chirality, with crank angle ``t + phase``.
 
-    Cheap: the symbolic program is compiled once per process
-    (:func:`compile_program`); this only records the chirality and phase.
+    ``proportions`` overrides some of :data:`PROPORTIONS` (same units). Cheap:
+    the symbolic program is compiled once per process
+    (:func:`compile_program`); this only records the parameters.
     """
     with _maybe_timed("4.1a_klann.create_geometry"):
         compile_program()
-        return KlannSolution(orientation=int(orientation), phase=float(phase))
+        values = proportion_values(proportions) if proportions else ()
+        return KlannSolution(orientation=int(orientation), phase=float(phase), values=values)
 
 
 # ---------------------------------------------------------------------------
@@ -393,11 +412,62 @@ def fuse_torsos(
 # ---------------------------------------------------------------------------
 
 
-def _legs(name: str, legs: list[tuple[int, float]]) -> MechanismTemplate:
+def _legs(name: str, legs: list[tuple[int, float]],
+          proportions: Mapping[str, float] | None = None) -> MechanismTemplate:
     return _merge(name, [
-        build_klann_template(create_klann_geometry(o, ph), name_suffix=f"_leg{k}")
+        build_klann_template(create_klann_geometry(o, ph, proportions), name_suffix=f"_leg{k}")
         for k, (o, ph) in enumerate(legs)
     ])
+
+
+# Leg modules (one side of the robot): each leg's chirality and default crank
+# phase (radians). 2016 analogues: KlannLinkage, DoubleKlannLinkage,
+# DoubleDeckerKlannLinkage, DoubleDoubleDeckerKlannLinkage.
+MODULE_LEGS: dict[str, tuple[tuple[int, float], ...]] = {
+    "single": ((+1, 0.0),),
+    "double": ((+1, 0.0), (-1, 0.0)),
+    "decker": ((+1, 0.0), (+1, math.pi / 2)),
+    "quad": ((+1, 0.0), (-1, math.pi), (+1, math.pi / 2), (-1, 3 * math.pi / 2)),
+}
+
+
+def build_module_template(
+    module: str = "quad",
+    phases: Sequence[float] | None = None,
+    proportions: Mapping[str, float] | None = None,
+) -> MechanismTemplate:
+    """One side's legs on one crankshaft and one frame.
+
+    ``phases`` (radians, one per leg) replaces the module's default crank
+    phases; ``proportions`` overrides some of :data:`PROPORTIONS`. The
+    template's ``meta`` records both, so caches keyed on it stay honest.
+    """
+    if module not in MODULE_LEGS:
+        raise ValueError(f"unknown module {module!r}; have {sorted(MODULE_LEGS)}")
+    legs = MODULE_LEGS[module]
+    if phases is not None:
+        if len(phases) != len(legs):
+            raise ValueError(f"{module} has {len(legs)} legs, got {len(phases)} phases")
+        legs = tuple((o, float(ph)) for (o, _), ph in zip(legs, phases, strict=True))
+    if module == "single":
+        (o, ph), = legs
+        tmpl = build_klann_template(create_klann_geometry(o, ph, proportions))
+    else:
+        tmpl = _legs(f"klann_{module}", list(legs), proportions)
+        suffixes = [f"_leg{k}" for k in range(len(legs))]
+        if module == "double":
+            tmpl = combine_connectors(tmpl, "_leg0", "_leg1")
+        elif module == "quad":
+            tmpl = combine_connectors(tmpl, "_leg0", "_leg1", new_name="conn")
+            tmpl = combine_connectors(tmpl, "_leg2", "_leg3", new_name="conn_upper")
+        tmpl = fuse_couplers(tmpl, suffixes)
+        tmpl = fuse_torsos(tmpl, suffixes)
+    tmpl.meta = {
+        "module": module,
+        "phases": tuple(ph for _, ph in legs),
+        "proportions": proportion_values(proportions),
+    }
+    return tmpl
 
 
 def build_multi_leg_template(n_legs: int) -> MechanismTemplate:
@@ -412,17 +482,12 @@ def build_multi_leg_template(n_legs: int) -> MechanismTemplate:
 
 def build_double_template() -> MechanismTemplate:
     """Mirrored pair sharing one crank and one torso (``DoubleKlannLinkage``)."""
-    tmpl = _legs("klann_double", [(+1, 0.0), (-1, 0.0)])
-    tmpl = combine_connectors(tmpl, "_leg0", "_leg1")
-    tmpl = fuse_couplers(tmpl, ["_leg0", "_leg1"])
-    return fuse_torsos(tmpl, ["_leg0", "_leg1"])
+    return build_module_template("double")
 
 
 def build_double_decker_template() -> MechanismTemplate:
     """Two same-chirality legs 90° apart on one crankshaft (``DoubleDeckerKlannLinkage``)."""
-    tmpl = _legs("klann_decker", [(+1, 0.0), (+1, math.pi / 2)])
-    tmpl = fuse_couplers(tmpl, ["_leg0", "_leg1"])
-    return fuse_torsos(tmpl, ["_leg0", "_leg1"])
+    return build_module_template("decker")
 
 
 def build_double_double_decker_template() -> MechanismTemplate:
@@ -430,14 +495,7 @@ def build_double_double_decker_template() -> MechanismTemplate:
 
     2016 analogue: ``DoubleDoubleDeckerKlannLinkage`` (``Project/main.py:835``).
     """
-    tmpl = _legs("klann_quad", [
-        (+1, 0.0), (-1, math.pi), (+1, math.pi / 2), (-1, 3 * math.pi / 2),
-    ])
-    tmpl = combine_connectors(tmpl, "_leg0", "_leg1", new_name="conn")
-    tmpl = combine_connectors(tmpl, "_leg2", "_leg3", new_name="conn_upper")
-    suffixes = ["_leg0", "_leg1", "_leg2", "_leg3"]
-    tmpl = fuse_couplers(tmpl, suffixes)
-    return fuse_torsos(tmpl, suffixes)
+    return build_module_template("quad")
 
 
 # ---------------------------------------------------------------------------
