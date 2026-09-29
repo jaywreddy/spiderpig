@@ -293,6 +293,23 @@ def test_tuner_improves_the_quad():
     assert use["query"].startswith("?module=quad&phases=")
 
 
+def test_tuner_on_other_linkages():
+    """The tuner tunes any linkage: it leaves out the parameters that only scale it, and
+    its flags name the linkage."""
+    import tune_gait
+
+    assert [tune_gait.scale_params(linkage.get(k)) for k in ("klann", "jansen", "strider")] == \
+        [("OA",), ("unit",), ("unit",)]
+    tuner, default, best = tune_gait.tune("double", grid=90.0, coarse=60, top=1,
+                                          linkage_key="jansen")
+    assert tuner.linkage.key == "jansen"
+    assert default.metrics is not None
+    assert best.score <= default.score
+    use = tune_gait.flags("double", best.candidate, "jansen")
+    assert use["main"].endswith("--linkage jansen")
+    assert use["query"].endswith("&linkage=jansen")
+
+
 def test_tuner_keeps_crankpins_apart():
     """Coincident crankpins on different cranks can't be planned (quad 0,180,180,0);
     the double's pair shares one by design."""

@@ -24,7 +24,14 @@ Direct invocation of the bake script (more flags than `mise run bake`):
 ```bash
 uv run python viewer/bake_gltf.py --mode robot --module quad --frames 120
 uv run python viewer/bake_gltf.py --mode single          # one side only
+uv run python viewer/bake_gltf.py --linkage jansen --module double   # another linkage
 ```
+
+`--linkage` / `--phases` / `--proportion NAME=VALUE` are shared by `main.py`,
+`bake_gltf.py` and `scripts/tune_gait.py` (`walk.add_design_args`); the server
+takes `linkage=`, `module=`, `phases=`, `p.NAME=`. Not every linkage's module
+has a layer plan (Jansen decker/quad, Strider double/quad don't): its bake is
+a 422, its `/api/walk` still works.
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
 serves on a port derived from a CRC32 hash of the worktree path
@@ -137,7 +144,7 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 | `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM |
 | `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
-| `server/app.py` | dev server: `/api/glb/{mode}?module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` answers walk metrics for a design without building parts |
+| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages and their params/modules for the viewer's tune panel |
 
 ### Pipeline contract
 

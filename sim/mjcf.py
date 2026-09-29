@@ -456,8 +456,10 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
                 continue                        # another pin of that hinge (two cranks on O)
             m = re.search(r"_leg\d+$", name) or re.search(r"_leg\d+$", other)
             loop = base = f"{bodies[name].side or ob.side}.{point}{m.group() if m else ''}"
-            while any(n == loop for n, *_ in loops):
-                loop = f"{base}#{sum(n.startswith(base) for n, *_ in loops)}"
+            k = 0
+            while any(n == loop for n, *_ in loops):    # a third body on that joint
+                k += 1
+                loop = f"{base}#{k}"
             loops.append((loop, name, other, xy))
         for kid in kids:
             grow(kid)

@@ -28,7 +28,7 @@ const PAUSE = '⏸';
 // Dropdown labels for the server's mode ids; unknown ids show as-is.
 const MODE_LABELS: Record<string, string> = {
   robot: 'robot',
-  klann: 'klann (one leg)',
+  klann: 'single (one leg)',
   double: 'double',
   decker: 'decker',
   double_double: 'double double',

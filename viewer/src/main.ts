@@ -11,7 +11,8 @@ const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const stage = createStage(canvas);
 const clock = new THREE.Clock();
 
-// Deep links: ?mode=robot&view=side&t=0.3 (t in clip seconds; pauses there).
+// Deep links: ?mode=robot&view=side&t=0.3 (t in clip seconds; pauses there);
+// &linkage=jansen and the tune panel's design parameters (drive/index.ts).
 const params = new URLSearchParams(location.search);
 const VIEWS: readonly View[] = ['three-quarter', 'side', 'front', 'top'];
 const paramView = params.get('view') as View | null;
@@ -40,7 +41,7 @@ const ui = bindControls({
     if (loaded) loaded.action.paused = !p;
   },
   onModeChange(m) {
-    void loadMode(m).catch((err: unknown) => {
+    void loadMode(m, drive.baseQuery(m)).catch((err: unknown) => {
       console.error(err);
       ui.setStatus(`error: ${(err as Error).message}`);
     });
@@ -94,8 +95,8 @@ async function loadMode(mode: Mode, query = ''): Promise<void> {
     if (reframe) frameView(stage, next.root, view);
 
     ui.setStatus(
-      `${mode} · ${next.nodeCount} nodes · ${next.clip.tracks.length} tracks · ` +
-      `${next.clipDuration.toFixed(2)}s loop`,
+      `${mode} · ${String(next.root.userData.linkage ?? '')} · ${next.nodeCount} nodes · ` +
+      `${next.clip.tracks.length} tracks · ${next.clipDuration.toFixed(2)}s loop`,
     );
     ui.setReadout(formatTime(0));
     await drive.onLoad(next);
@@ -168,7 +169,9 @@ async function init(): Promise<void> {
     initial = requested && catalogue.modes.includes(requested) ? requested : catalogue.default;
     ui.setModes(catalogue.modes, initial);
   }
-  await loadMode(initial);
+  // ?linkage=... (the tune panel's). A design that can't be built still tunes (stick preview).
+  await loadMode(initial, drive.baseQuery(initial))
+    .catch((err: unknown) => ui.setStatus(`error: ${(err as Error).message}`));
   const t = Number(params.get('t'));
   if (params.has('t') && Number.isFinite(t)) seek(t);
   await drive.init().catch((err: unknown) => ui.setStatus(`drive: ${(err as Error).message}`));

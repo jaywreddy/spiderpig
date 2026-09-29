@@ -179,10 +179,12 @@ _T_REF = 0.0
 _ROOT_ROTATION = (math.sqrt(0.5), 0.0, 0.0, math.sqrt(0.5))   # xyzw
 
 
-def _resolve(mode: str, module: str | None = None) -> tuple[str, bool]:
-    """``(side module, robot?)`` for a bake mode (:func:`build_config` checks the module)."""
+def _resolve(mode: str, module: str | None = None,
+             robot_module: str = DEFAULT_MODULE) -> tuple[str, bool]:
+    """``(side module, robot?)`` for a bake mode (:func:`build_config` checks the module);
+    the robot's module is ``robot_module`` unless ``module`` says otherwise."""
     if mode == ROBOT:
-        return module or DEFAULT_MODULE, True
+        return module or robot_module, True
     if mode not in MODULES:
         raise ValueError(f"unknown mode {mode!r}; have {list(MODES)}")
     if module not in (None, mode):
@@ -208,8 +210,9 @@ def build_config(
 
     Raises ``ValueError`` (:class:`walk.ParamError` for bad design parameters).
     """
-    side, robot = _resolve(mode, module)
-    config = replace(config or BuildConfig(), module=side, robot=robot)
+    config = config or BuildConfig()
+    side, robot = _resolve(mode, module, config.module)     # a robot keeps config's module
+    config = replace(config, module=side, robot=robot)
     if linkage is not None:
         config = replace(config, linkage=walk.get_linkage(linkage).key)
     if phases is not None:

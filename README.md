@@ -57,10 +57,15 @@ uv run uvicorn server.app:app --host 127.0.0.1 --port 8000
 ```bash
 uv run python main.py --out build/                 # the quad robot (4 legs per side)
 uv run python main.py --module single --out build/single
-uv run python main.py --list                       # modules, servos, constructions, sheets
+uv run python main.py --linkage jansen --module double --out build/jansen
+uv run python main.py --list                       # linkages, modules, servos, constructions, sheets
 ```
 
-It prints the layer plan of one side and writes:
+`--linkage` (Klann by default), `--phases` and `--proportion NAME=VALUE`
+(the linkage's parameters) work the same way for `viewer/bake_gltf.py`,
+`scripts/tune_gait.py` and (`linkage=`, `phases=`, `p.NAME=`) the viewer's
+`/api/walk` and `/api/glb`. It prints the layer plan of one side and writes
+(stem: the linkage, `--name` to change it):
 
 - `build/klann.step` / `klann.stl` — the whole robot (both sides, servos,
   frame), colour-tagged.

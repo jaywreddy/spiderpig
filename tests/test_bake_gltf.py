@@ -392,6 +392,10 @@ def test_design_parameters_are_normalized():
         "robot", phases=[0.0, math.pi, math.pi / 2, 1.0], proportions={"DF": 2.4}))
     assert param_glb("robot", other).name == f"robot_quad_{config_key(other)}.glb"
     assert not is_default("robot", build_config("robot", "single"))
+    # a robot config's own module is kept (the server bakes non-default designs this way)
+    double = build_config("robot", "double")
+    assert build_config("robot", config=double) == double
+    assert build_config("robot", "quad", config=double) == default
     with pytest.raises(ValueError, match="4 legs"):
         build_config("robot", phases=[0.0])
     with pytest.raises(ValueError, match="unknown klann proportions"):
