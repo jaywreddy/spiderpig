@@ -43,23 +43,16 @@ def test_solution_phase_offset_cancels_time_shift(t_value: float):
     assert a[1] == pytest.approx(b[1], abs=1e-9)
 
 
-def test_multi_leg_build_bodies_and_z_stride():
+def test_multi_leg_build_bodies_are_planar():
     n_legs = 8
-    thickness = 3.0
-    mech = build_multi_leg_mechanism(
-        n_legs=n_legs, t=1.0, thickness=thickness, with_parts=False
-    )
-    # 7 bodies per leg: torso, coupler, conn, b1, b2, b3, b4.
+    mech = build_multi_leg_mechanism(n_legs=n_legs, t=1.0, with_parts=False)
+    # 7 bodies per leg: torso, coupler, conn, b1, b2, b3, b4; 8 connections per leg.
     assert len(mech.bodies) == n_legs * 7
-
-    # Connections: 8 per leg.
     assert len(mech.connections) == n_legs * 8
-
-    solved = mech.solved()
-    z_stride = 3.0 * thickness
-    for k in range(n_legs):
-        z = solved.body(f"torso_leg{k}").pose.matrix[2, 3]
-        assert z == pytest.approx(k * z_stride, abs=1e-9)
+    # Kinematics is planar: Z is the stack plan's job, never a joint offset.
+    for body in mech.solved().bodies:
+        assert body.pose.matrix[2, 3] == 0.0
+        assert all(j.pose.matrix[2, 3] == 0.0 for j in body.joints)
 
 
 def test_multi_leg_phase_spacing():

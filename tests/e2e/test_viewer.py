@@ -114,13 +114,13 @@ def test_mesh_nodes_actually_move(page: Page, viewer_server: str) -> None:
 
     a = sample(0.0)
     b = sample(0.5)
-    # torso is the fixed frame; coupler pivots on the fixed crank centre O
-    # so a probe point tied to its single-joint anchor doesn't translate.
-    # torso is world-fixed; coupler has a single anchor joint on the fixed
-    # crank centre O, so its probe point doesn't translate. Names differ
-    # with/without the _leg0 suffix depending on n_legs.
-    static = {"torso", "torso_leg0", "coupler", "coupler_leg0"}
-    moving = [n for n in a if n not in static]
+    # The frame (torso) and the hardware riding it (frame_pin_*, frame_cap_*,
+    # frame_sleeve_*) are world-fixed; the coupler's single joint sits on the
+    # fixed crank centre O. Everything else moves.
+    def is_static(name: str) -> bool:
+        return name.startswith(("torso", "coupler", "frame_"))
+
+    moving = [n for n in a if not is_static(n)]
     assert moving, f"no moving bodies found in {list(a)}"
     for name in moving:
         dx = max(abs(a[name][i] - b[name][i]) for i in range(3))
@@ -161,7 +161,7 @@ def test_slider_seeks(page: Page, viewer_server: str) -> None:
     expect(page.locator("#readout")).to_contain_text("0.500s")
 
 
-@pytest.mark.parametrize("mode_id", ["double", "double_double"])
+@pytest.mark.parametrize("mode_id", ["double", "decker", "double_double"])
 def test_mode_toggle_swaps_assembly(page: Page, viewer_server: str, mode_id: str) -> None:
     """Selecting a different mode swaps the GLB and rebinds the mixer.
 

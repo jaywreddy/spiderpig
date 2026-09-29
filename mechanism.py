@@ -87,15 +87,27 @@ class Joint:
     pose: Pose = field(default_factory=Pose.identity)
 
 
+# A link's physical skeleton: the pairs of its own joints its outline spans.
+Outline = tuple[tuple[str, str], ...]
+
+
 @dataclass
 class Body:
-    """A rigid body carrying a build123d part, joints, and a world pose."""
+    """A rigid body carrying a build123d part, joints, and a world pose.
+
+    ``outline`` names the joint pairs the body's laser-cut shape spans (empty
+    for bodies that aren't links). ``rigid_with`` marks fabricated hardware
+    that moves with another body; such a body has no joints of its own and
+    its part is modelled in the same frame as its host's.
+    """
 
     name: str
     part: object = None  # build123d Part/Compound or None for abstract bodies
     joints: list[Joint] = field(default_factory=list)
     color: str | None = None
     pose: Pose = field(default_factory=Pose.identity)
+    outline: Outline = ()
+    rigid_with: str | None = None
 
     def joint(self, name: str) -> Joint:
         for j in self.joints:
@@ -178,10 +190,7 @@ class Mechanism:
                 continue
             placed.label = b.name
             if b.color is not None:
-                try:
-                    placed.color = Color(b.color)
-                except Exception:
-                    pass
+                placed.color = Color(b.color)
             parts.append(placed)
         return Compound(children=parts, label=self.name)
 
@@ -195,10 +204,10 @@ class Mechanism:
 
         export_stl(self.to_compound(), str(path))
 
-    def save_layouts(self, prefix) -> None:
+    def save_layouts(self, prefix) -> list:
         from layout import save_sheets  # lazy import
 
-        save_sheets(self, prefix)
+        return save_sheets(self, prefix)
 
 
 # ---------------------------------------------------------------------------
@@ -285,6 +294,7 @@ class BodyTemplate:
     color: str | None = None
     base_pose: Pose = field(default_factory=Pose.identity)
     part: object = None
+    outline: Outline = ()
 
     def joint(self, name: str) -> JointTemplate:
         for j in self.joints:
@@ -401,9 +411,8 @@ class MechanismTemplate:
     def freeze_at(self, t: float) -> Mechanism:
         """Single-t projection back to the concrete :class:`Mechanism` type.
 
-        Used by back-compat shims (``build_klann_mechanism`` etc.) so
-        callers that need build123d parts or a single-pose ``solved()`` tree
-        (shapes.py, layout.py, CLI build) stay working.
+        Every single-t builder (``build_klann_mechanism`` etc.) is this
+        projection of its template, so the two can't drift apart.
         """
         ts = np.array([float(t)], dtype=float)
         bodies: list[Body] = []
@@ -419,6 +428,7 @@ class MechanismTemplate:
                     joints=joints,
                     color=b.color,
                     pose=b.base_pose,
+                    outline=b.outline,
                 )
             )
         return Mechanism(name=self.name, bodies=bodies, connections=list(self.connections))
@@ -445,20 +455,5 @@ def translation_pose_at(
         out[:, 1, 3] = ys
         out[:, 2, 3] = z
         return out
-
-    return _fn
-
-
-def offset_pose_at(base: JointPoseFn, *, dz: float) -> JointPoseFn:
-    """Return a ``pose_at`` that shifts ``base``'s output by ``dz`` in Z.
-
-    Used by the composition primitives that move shared joints onto a higher
-    deck (analogue of :func:`klann.voffset_joint`).
-    """
-
-    def _fn(ts: np.ndarray) -> np.ndarray:
-        m = base(ts).copy()
-        m[:, 2, 3] += dz
-        return m
 
     return _fn

@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import pytest
+import sympy as sp
 
-from klann import create_klann_geometry, custom_intersection
-
+from klann import STEPS, circle_x_circle, create_klann_geometry
 
 EXPECTED_FX_PHASE_1 = 224.87767188289433
 EXPECTED_FY_PHASE_1 = -93.54456977054052
@@ -49,17 +50,35 @@ def test_orientation_flips_foot_x_sign():
     assert fx_l < 0
 
 
-def test_custom_intersection_two_unit_circles():
-    from sympy.geometry import Circle, Point
+def test_circle_x_circle_two_unit_circles_is_exact():
+    c1, c2 = sp.Matrix([0, 0]), sp.Matrix([1, 0])
+    up = circle_x_circle(c1, 1, c2, 1, +1)
+    down = circle_x_circle(c1, 1, c2, 1, -1)
+    assert list(up) == [sp.Rational(1, 2), sp.sqrt(3) / 2]
+    assert list(down) == [sp.Rational(1, 2), -sp.sqrt(3) / 2]
 
-    c1 = Circle(Point(0, 0), 1)
-    c2 = Circle(Point(1, 0), 1)
-    pts = custom_intersection(c1, c2)
-    assert len(pts) == 2
-    xs = sorted(float(p.x.evalf()) for p in pts)
-    ys = sorted(float(p.y.evalf()) for p in pts)
-    # intersections at (1/2, +/- sqrt(3)/2)
-    assert xs[0] == pytest.approx(0.5, abs=1e-12)
-    assert xs[1] == pytest.approx(0.5, abs=1e-12)
-    assert ys[0] == pytest.approx(-math.sqrt(3) / 2, abs=1e-12)
-    assert ys[1] == pytest.approx(math.sqrt(3) / 2, abs=1e-12)
+
+def test_program_steps_stay_small():
+    """Each step is a short expression over earlier points' symbols, not a
+    substituted tree (the old chain grew F to ~34k ops)."""
+    for name, expr in STEPS:
+        ops = sum(sp.count_ops(c) for c in expr)
+        assert ops < 200, f"step {name} has {ops} ops"
+
+
+def test_phase_is_a_time_shift():
+    base = create_klann_geometry(orientation=-1, phase=0.0)
+    shifted = create_klann_geometry(orientation=-1, phase=0.9)
+    ts = np.linspace(0.0, 2.0 * math.pi, 50)
+    np.testing.assert_allclose(
+        shifted.evaluate(ts)["F"], base.evaluate(ts + 0.9)["F"], atol=1e-12
+    )
+
+
+def test_link_lengths_are_rigid_over_the_cycle():
+    sol = create_klann_geometry(orientation=1, phase=0.0)
+    xy = sol.evaluate(np.linspace(0.0, 2.0 * math.pi, 720))
+    for a, b in [("O", "M"), ("M", "C"), ("M", "D"), ("A", "C"), ("B", "E"),
+                 ("E", "D"), ("E", "F")]:
+        d = np.linalg.norm(xy[a] - xy[b], axis=-1)
+        assert np.ptp(d) < 1e-9, f"|{a}{b}| drifts by {np.ptp(d)}"

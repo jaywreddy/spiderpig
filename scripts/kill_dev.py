@@ -111,7 +111,8 @@ def _kill_by_path_unix(path: Path) -> int:
 def _kill_by_port_windows(port: int) -> int:
     script = (
         f"$port = {port};"
-        "$conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue;"
+        "$conns = Get-NetTCPConnection -LocalPort $port -State Listen "
+        "-ErrorAction SilentlyContinue;"
         "if (-not $conns) { Write-Host \"[kill] nothing listening on $port\"; exit 0 };"
         "$conns | Select-Object -Expand OwningProcess -Unique | ForEach-Object {"
         "  $proc = Get-Process -Id $_ -ErrorAction SilentlyContinue;"

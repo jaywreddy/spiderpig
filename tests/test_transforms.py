@@ -56,5 +56,5 @@ def test_xyz_quat_xyzw_z_180():
 
 
 def test_rejects_wrong_shape():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="4x4"):
         Pose(np.eye(3))

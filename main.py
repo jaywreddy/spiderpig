@@ -14,18 +14,20 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from fabricate import fabricate, plan_for
 from klann import (
-    KlannLinkage,
-    build_double_decker_klann,
-    build_double_double_decker_klann,
-    build_double_klann,
+    build_double_decker_template,
+    build_double_double_decker_template,
+    build_double_template,
+    build_klann_template,
+    create_klann_geometry,
 )
 
-_MODE_BUILDERS = {
-    "single": lambda: KlannLinkage(),
-    "double": lambda: build_double_klann(t=1.0),
-    "decker": lambda: build_double_decker_klann(t=1.0),
-    "quad": lambda: build_double_double_decker_klann(t=1.0),
+_MODE_TEMPLATES = {
+    "single": lambda: build_klann_template(create_klann_geometry()),
+    "double": build_double_template,
+    "decker": build_double_decker_template,
+    "quad": build_double_double_decker_template,
 }
 
 
@@ -44,10 +46,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=sorted(_MODE_BUILDERS),
+        choices=sorted(_MODE_TEMPLATES),
         default="single",
-        help="Assembly: single leg, mirrored pair (double), Z-stacked 90° pair "
-        "(decker), or mirrored+decker 3-leg walker (quad). Default: single",
+        help="Assembly: single leg, mirrored pair (double), two legs 90° apart on "
+        "one crankshaft (decker), or two mirrored pairs on one crankshaft (quad). "
+        "Default: single",
     )
     parser.add_argument(
         "--no-dxf",
@@ -61,7 +64,10 @@ def main() -> None:
     args = _parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
-    mech = _MODE_BUILDERS[args.mode]().solved()
+    tmpl = _MODE_TEMPLATES[args.mode]()
+    plan = plan_for(tmpl)
+    print(f"stack plan ({plan.height:.0f} mm):\n{plan.describe()}")
+    mech = fabricate(tmpl.freeze_at(1.0), plan).solved()
 
     step_path = args.out / f"{args.name}.step"
     stl_path = args.out / f"{args.name}.stl"
@@ -71,8 +77,8 @@ def main() -> None:
     print(f"wrote {stl_path} ({stl_path.stat().st_size} B)")
 
     if not args.no_dxf:
-        prefix = args.out / f"{args.name}_sheet"
-        mech.save_layouts(prefix)
+        sheets = mech.save_layouts(args.out / f"{args.name}_sheet")
+        print(f"wrote {len(sheets)} DXF sheet(s) with the laser-cut links")
 
 
 if __name__ == "__main__":

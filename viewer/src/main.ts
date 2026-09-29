@@ -12,7 +12,8 @@ const clock = new THREE.Clock();
 
 let loaded: LoadedScene | null = null;
 let playing = false;
-let currentMode: Mode = 'klann';
+let currentMode: Mode = 'klann';  // last requested (live reload re-requests it)
+let loadedMode: Mode = 'klann';   // on screen; set only once its GLB has swapped in
 
 const ui = bindControls({
   onSeek(t) {
@@ -48,6 +49,7 @@ async function loadMode(mode: Mode): Promise<void> {
     const next = await loadGlb(stage.scene, mode);
     teardown(stage.scene, loaded);
     loaded = next;
+    loadedMode = mode;
     next.action.paused = !playing;
 
     ui.setSliderRange(next.clipDuration);
@@ -84,7 +86,7 @@ const viewerHandle: ViewerHandle = {
   get action() { return loaded?.action ?? null; },
   get clipDuration() { return loaded?.clipDuration ?? 1; },
   get playing() { return playing; },
-  get mode() { return currentMode; },
+  get mode() { return loadedMode; },
   step(dt) { loaded?.mixer.update(dt); },
   loadMode,
   ready: false,

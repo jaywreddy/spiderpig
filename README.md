@@ -32,6 +32,7 @@ mise run view           # FastAPI :8000 + Vite :5173 with HMR — open http://lo
 mise run build          # STEP/STL/DXF → build/
 mise run bake           # viewer/data/*.glb
 mise run test           # pytest (unit; -m e2e for browser tests)
+mise run audit          # do the parts physically fit? (clashes, solids, plan, DXF)
 mise run lint           # ruff check
 mise run clean          # rm build/, viewer/data/, viewer/dist/, viewer/node_modules/
 ```
@@ -56,20 +57,38 @@ uv run uvicorn server.app:app --host 127.0.0.1 --port 8000
 uv run python main.py --out build/
 ```
 
-Produces:
+It prints the stack plan (which part sits in which 3 mm slot) and produces:
 
 - `build/klann.step` — full assembly, colour-tagged, viewable in FreeCAD,
   KiCad's 3D viewer, or any STEP importer.
 - `build/klann.stl` — meshed assembly for slicers.
 - `build/klann_sheet_*.dxf` — one DXF per 200 × 200 mm sheet with every
-  laser-cut link packed; outer contours on layer `CUT` as `LWPOLYLINE`,
-  joint holes as `CIRCLE`, units = mm.
+  laser-cut link (b1..b4 of every leg) laid flat and packed; outer contours
+  on layer `CUT` as `LWPOLYLINE`, pin holes as `CIRCLE`, units = mm.
+
+Everything else is printed: the frame (one piece: plate, posts, servo pad),
+the crankshaft segments and crankpins, and a pin plus press-on cap at every
+pivot.
 
 Flags:
 
 - `--out PATH` — output directory (created if missing; default `./build`).
 - `--name STEM` — file-name stem for STEP/STL outputs.
+- `--mode {single,double,decker,quad}` — which assembly (default `single`).
 - `--no-dxf` — skip the DXF sheet-packing pass.
+
+## How the parts fit together
+
+The linkage is planar; `stack.py` decides the Z stack. Each link gets a
+slot, and a slot may be shared only by parts that never touch anywhere in
+the crank cycle (checked over 720 crank angles with 1 mm clearance). Pins
+carry a head below their lowest link and a press-on cap above their
+highest. The frame plate sits on top with the servo.
+
+Every b1 sweeps across the crank axis O, so the crank is a built-up
+crankshaft: in each b1's slot it is only that b1's crankpin, with webs
+(arms across the centre) in the slots either side. That is what lets the
+decker and quad walkers share one servo.
 
 ## Test
 
@@ -77,10 +96,12 @@ Flags:
 uv run pytest
 ```
 
-20 smoke tests covering: `Pose` round-trips, `Mechanism.solved()` joint
-alignment on a toy fixture and the real `KlannLinkage`, reference foot-tip
-values for `create_klann_geometry`, and end-to-end STEP / STL / DXF
-emission.
+Unit tests cover the symbolic core (reference foot values, rigidity,
+phase as a time shift), assemblies, the stack plan (including an
+independent full-cycle re-check), fabricated parts (no clashes, one solid
+each, pins through every link they join), the glTF bake (animated meshes
+match the fabricated parts) and STEP / STL / DXF emission. `-m e2e` runs
+the Playwright viewer tests.
 
 ## Layout
 
@@ -89,10 +110,13 @@ spiderpig/
 ├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/clean)
 ├── scripts/dev.py   # spawns FastAPI + Vite for `mise run view`
 ├── main.py          # fabrication CLI (STEP/STL/DXF)
-├── klann.py         # symbolic Klann geometry + KlannLinkage assembly
+├── klann.py         # symbolic Klann program + assembly templates
 ├── mechanism.py     # Pose, Joint, Body, Mechanism (pytransform3d-backed)
-├── shapes.py        # build123d part factories
+├── stack.py         # layer plan: slots, pins, crankshaft (full-cycle clearance)
+├── fabricate.py     # plan -> build123d parts
+├── shapes.py        # build123d part primitives
 ├── layout.py        # 2D section + rectpack + ezdxf sheet writer
+├── scripts/audit_fab.py  # `mise run audit`
 ├── server/          # FastAPI dev server + watchfiles live-reload
 │   ├── app.py       #   /api/modes, /api/glb/{mode}, /ws, static mount
 │   └── watcher.py   #   source-change → re-bake → broadcast reload
@@ -103,17 +127,13 @@ spiderpig/
 │   └── src/         #   main.ts, scene.ts, loader.ts, controls.ts, live-reload.ts
 ├── pyproject.toml
 ├── uv.lock
-└── tests/
-    ├── test_transforms.py
-    ├── test_geometry.py
-    ├── test_mechanism.py
-    ├── test_poses.py
-    └── test_export.py
+└── tests/           # unit tests; tests/e2e/ for Playwright
 ```
 
 ## Customising the linkage
 
-The Klann proportions live as constants in
-`klann.create_klann_geometry()`. Change `mOA`, the angles on A and B, or
-any of the radius ratios; every downstream link length and the foot path
-update through the sympy chain. Re-run `main.py` to regenerate STEP/STL/DXF.
+The Klann proportions are exact rationals in `klann.PROPORTIONS` (lengths
+as multiples of `OA`, angles in degrees). They are symbols in the compiled
+program, so the program never needs re-deriving: change a value and every
+link length, the foot path, the stack plan and the parts follow. Re-run
+`main.py` (and `mise run audit`) to regenerate and check STEP/STL/DXF.

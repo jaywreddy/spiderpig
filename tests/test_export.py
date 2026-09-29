@@ -45,7 +45,7 @@ def test_dxf_sheets_are_mm_and_have_entities(tmp_path, solved_mech):
             elif e.dxftype() == "CIRCLE":
                 total_circles += 1
 
-    # 5 laser-cut bodies => >= 5 outer polylines
-    assert total_polylines >= 5
-    # each link has at least one pin hole
-    assert total_circles >= 5
+    # b1..b4 are the laser-cut links (the crank and frame are printed): one
+    # outline each, and a hole at every pivot (b1: M, C, D; b2..b4: two each)
+    assert total_polylines == 4
+    assert total_circles == 9

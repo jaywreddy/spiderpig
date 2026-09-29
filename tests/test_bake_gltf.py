@@ -12,7 +12,7 @@ import pytest
 # viewer/ is a sibling of the package modules; make it importable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
 
-from bake_gltf import bake_gltf  # noqa: E402
+from bake_gltf import _build_assembly, _mesh_key, bake_gltf  # noqa: E402
 
 
 def _read_accessor(gltf: pygltflib.GLTF2, accessor_idx: int) -> np.ndarray:
@@ -42,54 +42,54 @@ def _read_accessor(gltf: pygltflib.GLTF2, accessor_idx: int) -> np.ndarray:
     return arr
 
 
+def _quat_matrix(q):
+    x, y, z, w = q
+    return np.array([
+        [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+        [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+        [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+    ])
+
+
 def test_gltf_emits_valid_file(tmp_path):
     out = tmp_path / "klann.glb"
-    # with_joinery=False isolates the canonical 7-body Klann structure;
-    # joinery rendering is exercised separately in test_gltf_joinery.
-    bake_gltf(
-        out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5,
-        with_joinery=False,
-    )
+    bake_gltf(out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5, with_joinery=False)
     assert out.is_file()
     assert out.stat().st_size > 1024
 
     gltf = pygltflib.GLTF2().load(str(out))
+    mech = _build_assembly("multi", t=0.0, n_legs=2, with_joinery=False)
 
-    # 7 unique meshes (torso, coupler, conn, b1..b4).
-    assert len(gltf.meshes) == 7
-    # 2 legs × 7 bodies = 14 nodes.
-    assert len(gltf.nodes) == 14
+    # one node per body; b1..b4 of both legs share 4 meshes, the rest are per-body
+    assert [n.name for n in gltf.nodes] == [b.name for b in mech.bodies]
+    with_part = [b.name for b in mech.bodies if b.part is not None]
+    assert len(gltf.meshes) == len({_mesh_key(n) for n in with_part})
+    assert {"b1", "b2", "b3", "b4"} <= {m.name for m in gltf.meshes}
 
-    # one animation
-    assert len(gltf.animations) == 1
     anim = gltf.animations[0]
-    # 2 channels per body node: translation + rotation.
-    assert len(anim.channels) == 14 * 2
+    assert len(anim.channels) == 2 * len(gltf.nodes)  # translation + rotation
 
-    # foot_path tucked in scene.extras
     scene = gltf.scenes[gltf.scene]
-    assert "foot_path" in (scene.extras or {})
     assert len(scene.extras["foot_path"]) == 64
 
 
-def test_gltf_joinery_adds_clevis_pin_meshes(tmp_path):
-    """When with_joinery=True (default), ClevisPin bodies appear at every
-    link↔link edge in the bake."""
-    out = tmp_path / "klann_joinery.glb"
-    bake_gltf(out, n_frames=4, n_legs=2, thickness=3.0, duration_s=0.5)
-    gltf = pygltflib.GLTF2().load(str(out))
+def test_gltf_joinery_adds_pins_and_caps(tmp_path):
+    """Pins and press-on caps appear at every pivot only when joinery is on."""
+    with_j = tmp_path / "with.glb"
+    without = tmp_path / "without.glb"
+    bake_gltf(with_j, n_frames=2, mode="single", duration_s=0.5)
+    bake_gltf(without, n_frames=2, mode="single", duration_s=0.5, with_joinery=False)
 
-    mesh_names = {m.name for m in gltf.meshes}
-    assert "clevis_pin_pin" in mesh_names
-
-    # 2 legs × 7 canonical bodies = 14 link bodies. Each leg has 8
-    # link↔link connections in _CONN_TEMPLATE, each adding (1 spacer +
-    # 1 pin) = 2 joinery bodies. Total = 14 + 2 × 8 × 2 = 46 nodes.
-    assert len(gltf.nodes) == 14 + 2 * 8 * 2
-
-    # 2 channels per node (translation + rotation).
-    anim = gltf.animations[0]
-    assert len(anim.channels) == (14 + 2 * 8 * 2) * 2
+    names = {n.name for n in pygltflib.GLTF2().load(str(with_j)).nodes}
+    bare = {n.name for n in pygltflib.GLTF2().load(str(without)).nodes}
+    # C, D, E link pins and the A, B frame pivots each get a pin + cap
+    for axis in ("C", "D", "E"):
+        assert {f"pin_{axis}", f"cap_{axis}"} <= names
+    for axis in ("A", "B"):
+        assert {f"frame_pin_{axis}", f"frame_cap_{axis}"} <= names
+    assert not any(n.startswith(("pin_", "cap_", "frame_pin_")) for n in bare)
+    # the crankshaft is structure, not joinery: present either way
+    assert any(n.startswith("crankpin_") for n in bare)
 
 
 def test_quaternion_shortest_path(tmp_path):
@@ -98,16 +98,11 @@ def test_quaternion_shortest_path(tmp_path):
     gltf = pygltflib.GLTF2().load(str(out))
 
     anim = gltf.animations[0]
-    rotation_channels = [
-        ch for ch in anim.channels if ch.target.path == "rotation"
-    ]
+    rotation_channels = [ch for ch in anim.channels if ch.target.path == "rotation"]
     assert rotation_channels, "expected at least one rotation channel"
-
     for ch in rotation_channels:
-        sampler = anim.samplers[ch.sampler]
-        q = _read_accessor(gltf, sampler.output)
+        q = _read_accessor(gltf, anim.samplers[ch.sampler].output)
         assert q.shape == (32, 4)
-        # Consecutive quaternions must land on the same hemisphere.
         dots = np.einsum("ij,ij->i", q[:-1], q[1:])
         assert np.all(dots >= -1e-6), (
             f"shortest-path violated on node {ch.target.node}: min dot {dots.min()}"
@@ -115,96 +110,49 @@ def test_quaternion_shortest_path(tmp_path):
 
 
 def test_gltf_mesh_instancing(tmp_path):
-    """All legs of the same class share a single mesh index."""
+    """Every leg's b1 (b2, b3, b4) instances one shared mesh."""
     out = tmp_path / "klann.glb"
     bake_gltf(out, n_frames=2, n_legs=3, thickness=3.0, duration_s=0.1)
     gltf = pygltflib.GLTF2().load(str(out))
-
-    # gather mesh indices per class
     by_class: dict[str, set[int]] = {}
     for node in gltf.nodes:
-        if node.mesh is None:
-            continue
         cls = node.name.rsplit("_leg", 1)[0]
-        by_class.setdefault(cls, set()).add(node.mesh)
+        if node.mesh is not None and cls in {"b1", "b2", "b3", "b4"}:
+            by_class.setdefault(cls, set()).add(node.mesh)
+    assert set(by_class) == {"b1", "b2", "b3", "b4"}
+    for cls, meshes in by_class.items():
+        assert len(meshes) == 1, f"class {cls} uses {len(meshes)} meshes"
 
-    for cls, mesh_set in by_class.items():
-        assert len(mesh_set) == 1, f"class {cls} uses {len(mesh_set)} meshes"
 
+@pytest.mark.parametrize("mode", ["single", "double"])
+def test_animation_reproduces_fabricated_geometry(tmp_path, mode):
+    """Posing each node's mesh by its animation at frame k must land on the part
+    fabricated directly at that crank angle (shared link meshes, slot Z offsets
+    and hardware riding its host all included)."""
+    n_frames = 12
+    out = tmp_path / f"{mode}.glb"
+    bake_gltf(out, n_frames=n_frames, mode=mode, duration_s=1.0)
+    gltf = pygltflib.GLTF2().load(str(out))
+    anim = gltf.animations[0]
+    trs: dict[tuple[int, str], np.ndarray] = {}
+    for ch in anim.channels:
+        out_acc = anim.samplers[ch.sampler].output
+        trs[(ch.target.node, ch.target.path)] = _read_accessor(gltf, out_acc)
 
-@pytest.mark.parametrize(
-    "mode, maker_old, maker_new",
-    [
-        (
-            "single",
-            lambda t, th: __import__("klann").build_klann_mechanism(
-                __import__("klann").create_klann_geometry(orientation=1, phase=0.0),
-                t=t, thickness=th, with_parts=False,
-            ),
-            lambda t, th: __import__("klann").build_klann_template(
-                __import__("klann").create_klann_geometry(orientation=1, phase=0.0),
-                thickness=th,
-            ).freeze_at(t),
-        ),
-        (
-            "multi-3",
-            lambda t, th: __import__("klann").build_multi_leg_mechanism(
-                3, t=t, thickness=th, with_parts=False
-            ),
-            lambda t, th: __import__("klann").build_multi_leg_template(
-                3, thickness=th
-            ).freeze_at(t),
-        ),
-        (
-            "double",
-            lambda t, th: __import__("klann").build_double_klann(
-                t=t, thickness=th, with_parts=False
-            ),
-            lambda t, th: __import__("klann").build_double_template(
-                thickness=th
-            ).freeze_at(t),
-        ),
-        (
-            "decker",
-            lambda t, th: __import__("klann").build_double_decker_klann(
-                t=t, thickness=th, with_parts=False
-            ),
-            lambda t, th: __import__("klann").build_double_decker_template(
-                thickness=th
-            ).freeze_at(t),
-        ),
-        (
-            "quad",
-            lambda t, th: __import__("klann").build_double_double_decker_klann(
-                t=t, thickness=th, with_parts=False
-            ),
-            lambda t, th: __import__("klann").build_double_double_decker_template(
-                thickness=th
-            ).freeze_at(t),
-        ),
-    ],
-)
-def test_template_matches_scalar(mode, maker_old, maker_new):
-    """``template.freeze_at(t)`` must produce identical joint poses to the
-    single-t ``build_*_mechanism(..., t, with_parts=False)`` path for every t.
-
-    Guards the vectorized bake against drift from the original scalar path.
-    """
-    thickness = 3.0
-    ts = np.linspace(0.0, 2.0 * np.pi, 16, endpoint=False)
-    for t in ts:
-        old = maker_old(float(t), thickness)
-        new = maker_new(float(t), thickness)
-        assert [b.name for b in old.bodies] == [b.name for b in new.bodies], (
-            f"mode={mode} t={t:.3f}: body order differs"
-        )
-        for bo, bn in zip(old.bodies, new.bodies):
-            assert [j.name for j in bo.joints] == [j.name for j in bn.joints]
-            for jo, jn in zip(bo.joints, bn.joints):
-                np.testing.assert_allclose(
-                    jo.pose.matrix, jn.pose.matrix, atol=1e-9,
-                    err_msg=f"mode={mode} body={bo.name} joint={jo.name} t={t:.3f}",
-                )
+    for frame in (0, 5):
+        mech = _build_assembly(mode, t=2.0 * np.pi * frame / n_frames)
+        parts = {b.name: b.part for b in mech.bodies if b.part is not None}
+        for i, node in enumerate(gltf.nodes):
+            if node.mesh is None:
+                continue
+            v = _read_accessor(gltf, gltf.meshes[node.mesh].primitives[0].attributes.POSITION)
+            posed = v @ _quat_matrix(trs[(i, "rotation")][frame]).T + trs[(i, "translation")][frame]
+            bb = parts[node.name].bounding_box()
+            np.testing.assert_allclose(
+                np.concatenate([posed.min(0), posed.max(0)]),
+                [bb.min.X, bb.min.Y, bb.min.Z, bb.max.X, bb.max.Y, bb.max.Z],
+                atol=0.05, err_msg=f"{mode} {node.name} frame {frame}",
+            )
 
 
 @pytest.mark.parametrize("n_legs", [1, 2])
@@ -213,11 +161,7 @@ def test_gltf_animation_duration(tmp_path, n_legs):
     duration = 0.25
     bake_gltf(out, n_frames=8, n_legs=n_legs, thickness=3.0, duration_s=duration)
     gltf = pygltflib.GLTF2().load(str(out))
-
-    # time accessor is shared across samplers; grab the input of the first.
-    anim = gltf.animations[0]
-    t_acc = gltf.accessors[anim.samplers[0].input]
+    t_acc = gltf.accessors[gltf.animations[0].samplers[0].input]
     assert t_acc.count == 8
-    # min/max bound the keyframe range.
     assert t_acc.min[0] == pytest.approx(0.0)
     assert t_acc.max[0] == pytest.approx(duration * 7 / 8)

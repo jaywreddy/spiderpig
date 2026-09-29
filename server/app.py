@@ -42,6 +42,7 @@ def _viewer_static_dir() -> Path:
 MODES: dict[str, str] = {
     "klann": "single",
     "double": "double",
+    "decker": "decker",
     "double_double": "quad",
 }
 

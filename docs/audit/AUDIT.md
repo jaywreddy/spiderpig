@@ -4,12 +4,38 @@ Scope: performance, elegance of the symbolic core, and whether the
 fabrication build (STEP / STL / DXF + joinery) produces parts that actually
 go together. Audited at `6ef75ea` (master == `claude/great-carson-6nw2bz`).
 
-Reproduce everything below with:
+## Status after the rework (same day)
+
+Every finding below is fixed, or has moved to [future_work.md](../../future_work.md).
+`mise run audit` now passes in every mode (single, double, decker, quad): no
+part intersects any other at five crank angles, every part is one valid
+solid, the stack plan re-checks clean over 1440 crank samples, and every
+link reaches the DXF.
+
+| finding | fix |
+|---|---|
+| F1 b1/b2 share a layer | `stack.py` assigns slots explicitly, against full-cycle clearance tables |
+| F2 frame holds nothing | the frame is one solid: plate in the top slot, posts, servo pad; pins through every pivot |
+| F3 coupler vs frame/links | no separate coupler disc. The crank's top segment is the hub: journal, then a stub through the plate and a key for the servo |
+| F4 mirrored leg at z < 0 | z lives only in the plan, never in joint offsets |
+| F5 standoffs through the lower deck | standoffs removed. Every deck's pivots are frame axes |
+| F6 ClevisPin misfit / fused cap | pins are sized from the plan: head below the lowest link, a separate press-on cap above the highest, sleeves where they fit |
+| F7 DXF drops a foot link | links are laid flat along their long axis (diagonal if needed); a part that doesn't fit is an error |
+| F8 pins missing from STEP | `main.py` fabricates with hardware |
+| F9 e2e regressions | no empty spacer nodes; `__viewer.mode` reports the GLB on screen. 9/9 e2e pass |
+| decker / quad on one shaft | infeasible as the 2016 design had it: every b1 sweeps over O. They now use a **built-up crankshaft**, with webs either side of each b1 and torque carried through the crankpins |
+| sympy as float calculator | `klann.py` is the straight-line program (≤126 ops per step, exact rational proportions), compiled once; phase is a time shift |
+| twin builders | single-t mechanisms are `template.freeze_at(t)`; `klann.py` is 508 lines (was 1,171) |
+| performance | unit suite 40 s for 77 tests (was 3 m 25 s for 75); bake single 1.7 s (was 3.1 s), quad 4.7 s (was 9.5 s) with 71 bodies |
+| lint | `ruff check .` clean (was 17) |
+
+The rest of this document is the original audit, kept as the record of
+what was found.
+
+Reproduce the original findings by checking out `6ef75ea` and running:
 
 ```bash
-mise run audit                                   # fabrication checks (exit 1 today)
-uv run python scripts/audit_fab.py --joinery     # same, with the bake's ClevisPins applied
-uv run python docs/audit/klann_core_sketch.py    # proposed symbolic core: parity + timings
+mise run audit                                   # fabrication checks (exit 1 there)
 uv run python viewer/bake_gltf.py --mode quad    # bake profile
 ```
 
@@ -29,9 +55,9 @@ uv run python viewer/bake_gltf.py --mode quad    # bake profile
 * **The architecture duplicates itself.** Every builder has a single-t twin
   and a template twin, and bodies have no rigid local frames, so motion has
   to be recovered after the fact by Procrustes fitting.
-* A ~200-line sketch (`docs/audit/klann_core_sketch.py`) shows the target
+* A ~200-line sketch (since folded into `klann.py`) showed the target
   design: a symbolic straight-line program with symbolic design parameters,
-  compiled once. It matches `klann.py` to about 3e-13.
+  compiled once. It matched the old `klann.py` to about 3e-13.
 
 ## 1. Repo state
 
@@ -144,7 +170,7 @@ adds tessellation.)
 
 ## 5. Proposed direction: a sympy core with compiled fast paths
 
-The sketch is `docs/audit/klann_core_sketch.py`:
+The sketch (now the core of `klann.py`):
 
 | | current `klann.py` | sketch |
 |---|---|---|

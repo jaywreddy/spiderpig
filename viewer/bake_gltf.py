@@ -26,7 +26,6 @@ from __future__ import annotations
 import argparse
 import logging
 import math
-import re
 import sys
 import time
 from collections import defaultdict
@@ -126,175 +125,83 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import klann  # noqa: E402
+from fabricate import fabricate, plan_for  # noqa: E402
 from klann import (  # noqa: E402
-    build_double_decker_klann,
     build_double_decker_template,
-    build_double_double_decker_klann,
     build_double_double_decker_template,
-    build_double_klann,
     build_double_template,
-    build_klann_mechanism,
     build_klann_template,
-    build_multi_leg_mechanism,
     build_multi_leg_template,
     create_klann_geometry,
 )
 from mechanism import MechanismTemplate  # noqa: E402
 from shapes import THICKNESS  # noqa: E402
+from stack import LINK_CLASSES, StackSpec, body_class  # noqa: E402
+
+_TEMPLATES = {
+    "single": lambda n_legs: build_klann_template(create_klann_geometry()),
+    "multi": build_multi_leg_template,
+    "double": lambda n_legs: build_double_template(),
+    "decker": lambda n_legs: build_double_decker_template(),
+    "quad": lambda n_legs: build_double_double_decker_template(),
+}
 
 
-# Assembly builders keyed by CLI mode. The bake pipeline calls each once for
-# a reference build with geometry, then once per frame without geometry for
-# pure kinematic sampling.
+def _build_template(mode: str, *, n_legs: int = 1) -> MechanismTemplate:
+    """Parametric-in-t assembly for ``mode``; sampled once over all frames."""
+    if mode not in _TEMPLATES:
+        raise ValueError(f"unknown mode: {mode!r}")
+    return _TEMPLATES[mode](n_legs)
+
+
 def _build_assembly(
     mode: str,
     *,
     t: float,
-    n_legs: int,
-    thickness: float,
-    with_parts: bool,
+    n_legs: int = 1,
+    thickness: float = THICKNESS,
+    with_parts: bool = True,
     with_joinery: bool = True,
 ):
-    if mode == "single":
-        sol = create_klann_geometry(orientation=1, phase=0.0)
-        mech = build_klann_mechanism(sol, t=t, thickness=thickness, with_parts=with_parts)
-    elif mode == "multi":
-        mech = build_multi_leg_mechanism(
-            n_legs, t=t, thickness=thickness, with_parts=with_parts
-        )
-    elif mode == "double":
-        mech = build_double_klann(t=t, thickness=thickness, with_parts=with_parts)
-    elif mode == "decker":
-        mech = build_double_decker_klann(t=t, thickness=thickness, with_parts=with_parts)
-    elif mode == "quad":
-        mech = build_double_double_decker_klann(
-            t=t, thickness=thickness, with_parts=with_parts
-        )
-    else:
-        raise ValueError(f"unknown mode: {mode!r}")
-
-    if with_joinery:
-        mech = _apply_clevis_pins(mech)
+    """The assembly frozen at ``t``; with parts, fabricated from its stack plan."""
+    tmpl = _build_template(mode, n_legs=n_legs)
+    mech = tmpl.freeze_at(t)
+    if with_parts:
+        plan = plan_for(tmpl, StackSpec(pitch=thickness))
+        mech = fabricate(mech, plan, joinery=with_joinery)
     return mech
 
 
-def _build_template(
-    mode: str,
-    *,
-    n_legs: int,
-    thickness: float,
-    with_joinery: bool = True,
-) -> MechanismTemplate:
-    """Parametric-in-t dispatcher. Built once per bake; sampled over all frames."""
-    if mode == "single":
-        sol = create_klann_geometry(orientation=1, phase=0.0)
-        tmpl = build_klann_template(sol, thickness=thickness)
-    elif mode == "multi":
-        tmpl = build_multi_leg_template(n_legs, thickness=thickness)
-    elif mode == "double":
-        tmpl = build_double_template(thickness=thickness)
-    elif mode == "decker":
-        tmpl = build_double_decker_template(thickness=thickness)
-    elif mode == "quad":
-        tmpl = build_double_double_decker_template(thickness=thickness)
-    else:
-        raise ValueError(f"unknown mode: {mode!r}")
-
-    if with_joinery:
-        tmpl = _apply_clevis_pins_template(tmpl)
-    return tmpl
-
-
-# Set of canonical link body classes that get a pin between any two of them.
-# Excludes ``standoff`` (already a joinery-style body in the legacy code) and
-# ``clevis_pin_*`` (added by joinery itself — never re-pin). ``conn_upper`` is
-# the upper-deck combined crank in quad mode.
-_LINK_CLASSES = frozenset({
-    "torso", "coupler", "conn", "conn_upper", "b1", "b2", "b3", "b4",
-})
-
-
-def _is_link_link_edge(parent_name: str, child_name: str) -> bool:
-    """True iff both endpoints are canonical Klann link bodies."""
-    return _class_of(parent_name) in _LINK_CLASSES and _class_of(child_name) in _LINK_CLASSES
-
-
-def _apply_clevis_pins(mech):
-    """Insert a printed ClevisPin at every link↔link edge in ``mech``.
-
-    Walks the connection list once to collect all edges between two
-    canonical Klann link bodies (torso, coupler, conn, b1..b4 and their
-    leg-suffixed / fused variants), then applies one ClevisPin per edge
-    with a unique sequential index so body names don't collide.
-
-    Standoffs and previously-applied joinery bodies are excluded by the
-    ``_LINK_CLASSES`` filter. The conn↔coupler crank pivot's ``O`` joint
-    appears in two connections (torso↔conn↔coupler), so the central
-    pivot gets two overlapping pins per leg — visually one chunky pin.
-    """
-    from joinery import ClevisPin
-
-    targets = [
-        ((pn, pj), (cn, cj))
-        for (_, pn, pj), (_, cn, cj) in mech.connections
-        if _is_link_link_edge(pn, cn)
-    ]
-    for i, (parent, child) in enumerate(targets):
-        mech = ClevisPin().apply(mech, parent=parent, child=child, index=i)
-    return mech
-
-
-def _apply_clevis_pins_template(tmpl: MechanismTemplate) -> MechanismTemplate:
-    """Template-side sibling of :func:`_apply_clevis_pins`."""
-    from joinery import ClevisPin
-
-    targets = [
-        ((pn, pj), (cn, cj))
-        for (_, pn, pj), (_, cn, cj) in tmpl.connections
-        if _is_link_link_edge(pn, cn)
-    ]
-    for i, (parent, child) in enumerate(targets):
-        tmpl = ClevisPin().apply_template(tmpl, parent=parent, child=child, index=i)
-    return tmpl
-
-# Per-class colour overrides (RGB 0-1). Mirror the prior viewer palette so
-# the three.js scene looks the same after the STL→glTF swap.
-_CLASS_COLORS: dict[str, tuple[float, float, float]] = {
-    "torso": (0.831, 0.686, 0.000),       # #d4af00 yellow
-    "coupler": (0.188, 0.376, 1.000),     # #3060ff blue
-    "conn": (0.878, 0.439, 0.125),        # #e07020 orange
-    "conn_upper": (0.878, 0.439, 0.125),  # upper-deck combined crank, same orange
-    "b1": (0.227, 0.659, 0.420),          # #3aa86b green
-    "b2": (0.227, 0.659, 0.420),
-    "b3": (0.227, 0.659, 0.420),
-    "b4": (0.227, 0.659, 0.420),
-    "standoff": (0.831, 0.686, 0.000),    # match torso palette
-    "clevis_pin_pin": (0.157, 0.157, 0.157),  # #282828 dark grey, like a steel pin
+# RGB 0-1 per body kind; see _kind_of.
+_KIND_COLORS: dict[str, tuple[float, float, float]] = {
+    "torso": (0.831, 0.686, 0.000),       # #d4af00 frame
+    "coupler": (0.188, 0.376, 1.000),     # #3060ff
+    "crank": (0.878, 0.439, 0.125),       # #e07020 crankshaft
+    "link": (0.227, 0.659, 0.420),        # #3aa86b laser-cut links
+    "hardware": (0.157, 0.157, 0.157),    # #282828 pins, caps, sleeves
 }
 
-_BODY_CLASSES = (
-    "torso", "coupler", "conn", "conn_upper", "b1", "b2", "b3", "b4", "standoff",
-)
 
-_STANDOFF_RE = re.compile(r"^(standoff)\d+$")
-# Joinery body names follow ``{name_prefix}{index}_{piece_name}`` (see
-# joinery.py). Collapse the per-instance index so all instances of the same
-# joinery type share one mesh class — matches what _STANDOFF_RE does for the
-# legacy standoff bodies.
-_JOINERY_RE = re.compile(r"^([a-z][a-z_]*?)(\d+)_([a-z_]+)$")
+def _kind_of(body_name: str) -> str:
+    cls = body_class(body_name)
+    if cls in LINK_CLASSES:
+        return "link"
+    if cls.startswith("conn") or cls.startswith("crank") and not cls.startswith("crankpin"):
+        return "crank"
+    if cls in ("torso", "coupler"):
+        return cls
+    return "hardware"
+
+
+def _mesh_key(body_name: str) -> str:
+    """Leg links are congruent across legs and share one mesh; all else is per-body."""
+    cls = body_class(body_name)
+    return cls if cls in LINK_CLASSES else body_name
 
 
 def _class_of(body_name: str) -> str:
-    """Strip leg/index suffixes: ``"b1_leg3"`` -> ``"b1"``, ``"standoff2"`` -> ``"standoff"``,
-    ``"clevis_pin0_pin"`` -> ``"clevis_pin_pin"``."""
-    base = body_name.rsplit("_leg", 1)[0]
-    m = _STANDOFF_RE.match(base)
-    if m:
-        return m.group(1)
-    m = _JOINERY_RE.match(base)
-    if m:
-        return f"{m.group(1)}_{m.group(3)}"
-    return base
+    """Back-compat alias: the mesh a body instances."""
+    return _mesh_key(body_name)
 
 
 def _body_joint_world(body) -> dict[str, np.ndarray]:
@@ -303,31 +210,6 @@ def _body_joint_world(body) -> dict[str, np.ndarray]:
         j.name: np.asarray((body.pose @ j.pose).matrix[:3, 3], dtype=float)
         for j in body.joints
     }
-
-
-def _rigid_planar(p0: np.ndarray, p1: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Rigid 2.5D transform (XY rotation + XYZ translation) mapping ``p0`` onto ``p1``.
-
-    ``p0``, ``p1`` are ``(N, 3)``. The Klann mechanism is planar: bodies
-    rotate only about the Z axis, and Z offsets come from per-joint layers.
-    Uses the 2D closed-form Procrustes solution over XY and a straight
-    centroid-delta for Z.
-    """
-    n = p0.shape[0]
-    c0 = p0.mean(axis=0)
-    c1 = p1.mean(axis=0)
-    if n == 1:
-        # Under-constrained rotation → pure translation.
-        return np.eye(3), c1 - c0
-    v0 = p0 - c0
-    v1 = p1 - c1
-    sxy = float((v0[:, 0] * v1[:, 1] - v0[:, 1] * v1[:, 0]).sum())
-    cxy = float((v0[:, 0] * v1[:, 0] + v0[:, 1] * v1[:, 1]).sum())
-    theta = math.atan2(sxy, cxy)
-    c, s = math.cos(theta), math.sin(theta)
-    R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]], dtype=float)
-    t = c1 - R @ c0
-    return R, t
 
 
 def _rigid_planar_batch(
@@ -523,43 +405,50 @@ def bake_gltf(
             prof.set_metric("n_bodies", len(ref_mech.bodies))
             logger.debug("reference mech: %d bodies", len(ref_mech.bodies))
 
-            # --- stage 2: tessellate one mesh per unique body class ---
-            logger.debug("tessellating unique geometry classes…")
-            class_parts: dict[str, object] = {}
+            # --- stage 2: tessellate one mesh per key (see _mesh_key) ---
+            logger.debug("tessellating meshes…")
+            mesh_parts: dict[str, object] = {}
+            mesh_rep: dict[str, object] = {}   # key -> the body whose part it is
             for body in ref_mech.bodies:
-                cls = _class_of(body.name)
-                if cls not in class_parts and body.part is not None:
-                    class_parts[cls] = body.part
+                key = _mesh_key(body.name)
+                if key not in mesh_parts and body.part is not None:
+                    mesh_parts[key] = body.part
+                    mesh_rep[key] = body
 
             class_mesh: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
             with prof.timed("2_tessellate_total"):
-                for cls, part in class_parts.items():
-                    with prof.timed(f"2_tessellate.{cls}"):
-                        class_mesh[cls] = _tessellate(part)
-                    nv = len(class_mesh[cls][0])
-                    nt = len(class_mesh[cls][2]) // 3
-                    prof.set_metric(f"verts.{cls}", nv)
-                    prof.set_metric(f"tris.{cls}", nt)
-                    logger.debug("  %s: %d verts, %d tris", cls, nv, nt)
+                for key, part in mesh_parts.items():
+                    with prof.timed(f"2_tessellate.{_kind_of(key)}"):
+                        class_mesh[key] = _tessellate(part)
+                    nv = len(class_mesh[key][0])
+                    nt = len(class_mesh[key][2]) // 3
+                    prof.set_metric(f"verts.{key}", nv)
+                    prof.set_metric(f"tris.{key}", nt)
+                    logger.debug("  %s: %d verts, %d tris", key, nv, nt)
 
-            # --- stage 3: pack per-class geometry accessors + materials ---
+            # --- stage 3: pack per-mesh geometry accessors + materials ---
             packer = _Packer()
             accessors: list[pygltflib.Accessor] = []
-            class_primitive: dict[str, pygltflib.Primitive] = {}
-            class_material_idx: dict[str, int] = {}
             materials: list[pygltflib.Material] = []
+            material_idx: dict[str, int] = {}
+            meshes: list[pygltflib.Mesh] = []
+            class_mesh_idx: dict[str, int] = {}
 
             with prof.timed("3_gltf_pack_geometry"):
-                # Pack canonical classes first for deterministic ordering, then
-                # any joinery (or other) classes the mechanism introduced.
-                ordered_classes = list(_BODY_CLASSES) + [
-                    c for c in class_mesh if c not in _BODY_CLASSES
-                ]
-                for cls in ordered_classes:
-                    if cls not in class_mesh:
-                        continue
-                    positions, normals, indices = class_mesh[cls]
-
+                for kind, color in _KIND_COLORS.items():
+                    material_idx[kind] = len(materials)
+                    materials.append(
+                        pygltflib.Material(
+                            name=kind,
+                            pbrMetallicRoughness=pygltflib.PbrMetallicRoughness(
+                                baseColorFactor=[color[0], color[1], color[2], 1.0],
+                                metallicFactor=0.15,
+                                roughnessFactor=0.75,
+                            ),
+                            doubleSided=True,
+                        )
+                    )
+                for key, (positions, normals, indices) in class_mesh.items():
                     pos_bv = packer.add(positions.tobytes(), target=pygltflib.ARRAY_BUFFER)
                     pos_acc = len(accessors)
                     accessors.append(
@@ -571,7 +460,6 @@ def bake_gltf(
                             max_vals=positions.max(axis=0).tolist(),
                         )
                     )
-
                     nrm_bv = packer.add(normals.tobytes(), target=pygltflib.ARRAY_BUFFER)
                     nrm_acc = len(accessors)
                     accessors.append(
@@ -581,7 +469,6 @@ def bake_gltf(
                             accessor_type=pygltflib.VEC3,
                         )
                     )
-
                     idx_bv = packer.add(indices.tobytes(), target=pygltflib.ELEMENT_ARRAY_BUFFER)
                     idx_acc = len(accessors)
                     accessors.append(
@@ -591,57 +478,21 @@ def bake_gltf(
                             accessor_type=pygltflib.SCALAR,
                         )
                     )
-
-                    color = _CLASS_COLORS.get(cls, (0.55, 0.55, 0.55))
-                    material_idx = len(materials)
-                    materials.append(
-                        pygltflib.Material(
-                            name=cls,
-                            pbrMetallicRoughness=pygltflib.PbrMetallicRoughness(
-                                baseColorFactor=[color[0], color[1], color[2], 1.0],
-                                metallicFactor=0.15,
-                                roughnessFactor=0.75,
-                            ),
-                            doubleSided=True,
-                        )
-                    )
-                    class_material_idx[cls] = material_idx
-
-                    class_primitive[cls] = pygltflib.Primitive(
+                    class_mesh_idx[key] = len(meshes)
+                    meshes.append(pygltflib.Mesh(name=key, primitives=[pygltflib.Primitive(
                         attributes=pygltflib.Attributes(POSITION=pos_acc, NORMAL=nrm_acc),
                         indices=idx_acc,
-                        material=material_idx,
+                        material=material_idx[_kind_of(key)],
                         mode=pygltflib.TRIANGLES,
-                    )
-
-                meshes: list[pygltflib.Mesh] = []
-                class_mesh_idx: dict[str, int] = {}
-                for cls, prim in class_primitive.items():
-                    class_mesh_idx[cls] = len(meshes)
-                    meshes.append(pygltflib.Mesh(name=cls, primitives=[prim]))
-
-            # --- canonical anchors: joint world positions when each class was tessellated ---
-            #
-            # Body parts were tessellated once from ref_mech at t=0, in *world coords*.
-            # That makes the class mesh carry the body's t=0 pose already, so Mechanism.solved()
-            # returns identity transforms — there's no motion left to animate.
-            #
-            # To recover motion, for each body at each frame we compute the rigid transform
-            # that maps its anchor joints (leg-0 @ t=0 of the same class) onto its current
-            # joint positions. Single-joint bodies (the coupler) degrade to pure translation.
-            class_anchor_joints: dict[str, dict[str, np.ndarray]] = {}
-            for body in ref_mech.bodies:
-                cls = _class_of(body.name)
-                if cls not in class_anchor_joints and body.part is not None:
-                    class_anchor_joints[cls] = _body_joint_world(body)
+                    )]))
 
             # --- stage 4: sample animation ---
             #
-            # Build one parametric-in-t template and evaluate it for every frame
-            # in a single vectorized pass. Stages 1-2 of the pipeline
-            # (symbolic SymPy build + lambdify) run exactly once per leg here,
-            # instead of once per leg per frame. The per-frame cost collapses
-            # to batched numpy.
+            # Parts are modelled in world coordinates at t=0. A body's motion is
+            # the planar rigid transform taking its t=0 joints to its joints at
+            # each frame. A shared link mesh was modelled on its representative,
+            # so its nodes fit the representative's t=0 joints instead and add the
+            # Z of their own slot. Hardware moves with its ``rigid_with`` host.
             logger.debug("sampling %d frames over %.3fs…", n_frames, duration_s)
             ts = np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
             times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
@@ -650,43 +501,45 @@ def bake_gltf(
             translations = {name: np.zeros((n_frames, 3), dtype=np.float32) for name in body_names}
             rotations = {name: np.zeros((n_frames, 4), dtype=np.float32) for name in body_names}
 
+            def _fit(anchor: dict[str, np.ndarray], current: dict[str, np.ndarray]):
+                names = [n for n in anchor if n in current]
+                p0 = np.broadcast_to(
+                    np.stack([anchor[n] for n in names]), (n_frames, len(names), 3)
+                )
+                p1 = np.stack([current[n] for n in names], axis=1)
+                _theta, trans, q = _rigid_planar_batch(p0, p1)
+                return trans, _quat_hemisphere_continuous(q)
+
             with prof.timed("4_animation_sample_total"):
                 with prof.timed("4.1_template_build"):
-                    template = _build_template(
-                        mode, n_legs=n_legs, thickness=thickness,
-                        with_joinery=with_joinery,
-                    )
+                    template = _build_template(mode, n_legs=n_legs)
                 with prof.timed("4.2_template_sample"):
                     sampled = template.sample(ts)
                 with prof.timed("4.3_trs_batch"):
-                    for body_name in body_names:
+                    own: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+                    for body in ref_mech.bodies:
+                        current = sampled.joint_world.get(body.name)
+                        if body.joints and current:
+                            own[body.name] = _fit(_body_joint_world(body), current)
+                    for body in ref_mech.bodies:
                         prof.bump("body_extract.calls")
-                        cls = _class_of(body_name)
-                        anchor = class_anchor_joints.get(cls)
-                        body_joints = sampled.joint_world.get(body_name)
-                        if anchor is None or body_joints is None:
-                            rotations[body_name][:, 3] = 1.0
-                            prof.bump("body_extract.skipped_no_mesh")
+                        key = _mesh_key(body.name)
+                        rep = mesh_rep.get(key)
+                        host = body.rigid_with or body.name
+                        if rep is not None and rep is not body and body.part is not None:
+                            trans, q = _fit(
+                                _body_joint_world(rep), sampled.joint_world[body.name]
+                            )
+                            dz = body.part.bounding_box().min.Z - rep.part.bounding_box().min.Z
+                            trans = trans + np.array([0.0, 0.0, dz])
+                        elif host in own:
+                            trans, q = own[host]
+                        else:
+                            rotations[body.name][:, 3] = 1.0
+                            prof.bump("body_extract.static")
                             continue
-                        names = [n for n in anchor if n in body_joints]
-                        if not names:
-                            # Class mesh was tessellated from a differently-shaped
-                            # body of the same name (mechanism-side naming bug in
-                            # e.g. 'quad' conn). Fall back to identity so the bake
-                            # doesn't fail — that body will stay at the class
-                            # canonical pose.
-                            rotations[body_name][:, 3] = 1.0
-                            prof.bump("body_extract.skipped_no_anchor_match")
-                            continue
-                        anchor_xyz = np.stack([anchor[n] for n in names], axis=0)
-                        p0 = np.broadcast_to(
-                            anchor_xyz, (n_frames, anchor_xyz.shape[0], 3)
-                        )
-                        p1 = np.stack([body_joints[n] for n in names], axis=1)
-                        _theta, trans, q = _rigid_planar_batch(p0, p1)
-                        q = _quat_hemisphere_continuous(q)
-                        translations[body_name] = trans.astype(np.float32)
-                        rotations[body_name] = q.astype(np.float32)
+                        translations[body.name] = trans.astype(np.float32)
+                        rotations[body.name] = q.astype(np.float32)
 
             # --- shared time accessor ---
             time_bv = packer.add(times.tobytes())
@@ -708,8 +561,9 @@ def bake_gltf(
 
             with prof.timed("5_gltf_nodes_channels"):
                 for body in ref_mech.bodies:
-                    cls = _class_of(body.name)
-                    mesh_idx = class_mesh_idx.get(cls)
+                    mesh_idx = (
+                        class_mesh_idx.get(_mesh_key(body.name)) if body.part is not None else None
+                    )
 
                     initial_t = translations[body.name][0]
                     initial_q = rotations[body.name][0]
@@ -870,7 +724,7 @@ def _parse_args() -> argparse.Namespace:
         "--joinery",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="Insert ClevisPin joinery at every conn↔coupler edge (default: on).",
+        help="Include pins, caps and sleeves at every pivot (default: on).",
     )
     p.add_argument(
         "--cprofile",
