@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import pathlib
 import re
 import zipfile
 from dataclasses import replace
@@ -32,7 +33,7 @@ def _clear_model_caches():
 
 @pytest.fixture(scope="module", autouse=True)
 def _no_downloads(tmp_path_factory):
-    """Tests never download: models come from the vendored dir or not at all."""
+    """Tests never download: servos are drawn parametrically unless a model is cached."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv(cadlib.OFFLINE_ENV, "1")
         mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
@@ -43,7 +44,7 @@ def _no_downloads(tmp_path_factory):
 
 @pytest.fixture
 def offline(monkeypatch, tmp_path):
-    """No downloads and an empty model cache (the vendored dir still counts)."""
+    """No downloads and an empty model cache."""
     monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
     monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
     _clear_model_caches()
@@ -116,14 +117,6 @@ def test_every_servo_names_a_pinned_model(key):
         assert np.linalg.det(m[:3, :3]) == pytest.approx(1.0)   # a rotation, no mirror
 
 
-def test_only_redistributable_models_are_vendored():
-    for path in cadlib.VENDORED.glob("*.st*p"):
-        refs = [r for k in KEYS for r in servos.get(k).cads if r.filename == path.name]
-        assert refs, path.name
-        assert all(r.redistributable for r in refs), path.name
-        assert cadlib.sha256_file(path) == refs[0].sha256
-    assert (cadlib.VENDORED / "NOTICE").is_file()
-
 
 # -- model fetcher ---------------------------------------------------------------------
 
@@ -188,18 +181,6 @@ def test_fetch_extracts_a_zip_member(monkeypatch, tmp_path):
     assert cadlib.fetch(wrong) is None
 
 
-def test_vendored_files_come_first_and_are_checked(monkeypatch, tmp_path):
-    vend = tmp_path / "vendored"
-    vend.mkdir()
-    monkeypatch.setattr(cadlib, "VENDORED", vend)
-    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
-    monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
-    ref = _ref(tmp_path, b"vendored model")
-    (vend / ref.filename).write_bytes(b"vendored model")
-    assert cadlib.fetch(ref) == vend / ref.filename
-    (vend / ref.filename).write_bytes(b"not it")
-    assert cadlib.fetch(ref) is None
-
 
 def test_load_never_raises(monkeypatch, tmp_path):
     monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
@@ -232,12 +213,17 @@ def test_parametric_servo_offline(offline, key):
     got = model.servo_part(s, cad=False)
     assert got.is_valid
     assert len(got.solids()) == 1
-    if not any(r.redistributable for r in s.cads):          # nothing vendored: falls back
-        assert model.servo_part(s).volume == pytest.approx(got.volume)
+    # offline with an empty cache, every servo falls back to the parametric model
+    assert model.servo_part(s).volume == pytest.approx(got.volume)
 
 
-def test_the_vendored_sts3215_model_loads_offline(offline):
+def test_the_sts3215_model_lines_up_when_cached(offline, monkeypatch):
+    """Checks the manufacturer model's transform if `mise run fetch-cad` has cached it."""
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(pathlib.Path.home() / ".cache" / "spiderpig" / "cad"))
     s = servos.get("sts3215")
+    if cadlib.fetch(s.cad, allow_download=False) is None:
+        pytest.skip("STS3215 model not cached (run `mise run fetch-cad`)")
+    _clear_model_caches()
     part = model.cad_servo(s)
     assert part is not None
     assert part.is_valid
@@ -338,3 +324,9 @@ def test_the_verifier_sees_the_screw_heads(single):
     pts[name] = pts["O"][0] + np.array([12.0, 0.0])     # just outside the horn hole
     broken = replace(plan, topo=replace(plan.topo, geometry=Geometry(pts)))
     assert any("servo screw head" in v and "crank hub" in v for v in verify_plan(broken))
+
+
+def test_no_models_are_checked_in():
+    """Manufacturer models are downloaded at build time (``mise run fetch-cad``), never vendored."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    assert not list((root / "servos").rglob("*.st*p"))

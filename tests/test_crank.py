@@ -36,7 +36,7 @@ OTHERS = [s for s in SERVOS if s != servos.DEFAULT]
 
 @pytest.fixture(scope="module", autouse=True)
 def _offline(tmp_path_factory):
-    """No downloads in tests: servos without a vendored model are drawn parametrically."""
+    """No downloads in tests: servos are drawn parametrically."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv(cadlib.OFFLINE_ENV, "1")
         mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))

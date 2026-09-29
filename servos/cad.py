@@ -1,13 +1,14 @@
 """Fetch and load the manufacturers' servo models (:class:`servos.spec.CadRef`).
 
-Where a model comes from, in order:
+Models are never checked into the repo. Where one comes from, in order:
 
-1. ``servos/cad/`` (:data:`VENDORED`): files whose licence allows
-   redistribution, checked into the repo (see ``servos/cad/NOTICE``);
-2. the download cache, ``$SPIDERPIG_CAD_CACHE`` (default
+1. the download cache, ``$SPIDERPIG_CAD_CACHE`` (default
    ``~/.cache/spiderpig/cad``), one folder per pinned hash;
-3. the model's ``url``, unless ``SPIDERPIG_OFFLINE=1``. A zip archive is
+2. the model's ``url``, unless ``SPIDERPIG_OFFLINE=1``. A zip archive is
    checked against ``archive_sha256`` and the ``member`` extracted.
+
+``mise run fetch-cad`` (``python -m servos.cad``) fills the cache ahead of
+time, e.g. before going offline.
 
 Every file is checked against its pinned ``sha256`` before use: a file that
 doesn't match is never used (a mismatching download isn't cached). Nothing
@@ -31,7 +32,6 @@ from servos.spec import CadRef
 
 log = logging.getLogger("spiderpig.servos")
 
-VENDORED = Path(__file__).with_name("cad")
 CACHE_ENV = "SPIDERPIG_CAD_CACHE"
 OFFLINE_ENV = "SPIDERPIG_OFFLINE"
 USE_CAD_ENV = "SPIDERPIG_SERVO_CAD"      # "0" draws every servo parametrically
@@ -78,10 +78,6 @@ def cached_path(ref: CadRef) -> Path:
     return cache_dir() / ref.sha256[:16] / ref.filename
 
 
-def vendored_path(ref: CadRef) -> Path:
-    return VENDORED / ref.filename
-
-
 def _download(url: str, timeout: float) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": "spiderpig-cad-fetch/1"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -113,11 +109,6 @@ def fetch(ref: CadRef, *, allow_download: bool | None = None,
     if allow_download is None:
         allow_download = not offline()
     try:
-        vend = vendored_path(ref)
-        if vend.is_file():
-            if _good(vend, ref.sha256):
-                return vend
-            log.warning("vendored %s doesn't match its pinned sha256; not using it", vend)
         path = cached_path(ref)
         if _good(path, ref.sha256):
             return path
@@ -185,7 +176,24 @@ def load(ref: CadRef, *, allow_download: bool | None = None):
         return None
 
 
+def main() -> int:
+    """Download every registered servo's models into the cache (``mise run fetch-cad``)."""
+    import servos
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    missing = 0
+    for key in servos.available():
+        for ref in servos.get(key).cads:
+            path = fetch(ref, allow_download=True)
+            log.info("%-12s %-28s %s", key, ref.filename, path or "UNAVAILABLE")
+            missing += path is None
+    return 1 if missing else 0
+
+
 __all__ = [
-    "CACHE_ENV", "OFFLINE_ENV", "USE_CAD_ENV", "VENDORED", "cache_dir", "cad_enabled",
-    "cached_path", "fetch", "load", "offline", "sha256_file", "vendored_path",
+    "CACHE_ENV", "OFFLINE_ENV", "USE_CAD_ENV", "cache_dir", "cad_enabled", "cached_path",
+    "fetch", "load", "main", "offline", "sha256_file",
 ]
+
+if __name__ == "__main__":
+    raise SystemExit(main())

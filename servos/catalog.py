@@ -110,7 +110,6 @@ STS3215 = register_servo(ServoSpec(
         source="TheRobotStudio/SO-ARM100 @5f6d2b8 STEP/SO100/STS3215_03a.step "
                "(one simplified solid, horns fused in)",
         strip_cut=(10.3, 0.05, 6.0),    # the fused output horn, its centre screw, the spline end
-        redistributable=True,
     ),
     cad_alternates=(
         CadRef(

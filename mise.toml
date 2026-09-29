@@ -42,6 +42,10 @@ description = "pytest (unit; pass -m e2e for browser tests)"
 depends     = ["viewer-build"]
 run         = "uv run pytest"
 
+[tasks.fetch-cad]
+description = "Download the servo manufacturers' CAD models into the cache (sha256-pinned)"
+run = "uv run python -m servos.cad"
+
 [tasks.lint]
 description = "ruff check"
 run         = "uv run ruff check ."

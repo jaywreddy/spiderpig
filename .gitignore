@@ -31,3 +31,7 @@ viewer/node_modules/
 
 # agent worktrees
 .claude/worktrees/
+
+# CAD models are downloaded at build time (mise run fetch-cad)
+*.step
+*.stp

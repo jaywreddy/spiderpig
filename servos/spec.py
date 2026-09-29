@@ -188,8 +188,8 @@ class CadRef:
     x1, y1, z1)`` of solids to drop (the stock output horn and its screw,
     which :mod:`servos.model` draws separately); ``strip_cut`` a cylinder
     ``(r, z0, z1)`` about the output axis cut away where a model fuses the
-    horn into the case. ``redistributable`` marks a licence that allows
-    vendoring the file in ``servos/cad/``.
+    horn into the case. Files are downloaded and cached at build time
+    (:mod:`servos.cad`), never checked into the repo.
     """
 
     url: str
@@ -204,7 +204,6 @@ class CadRef:
     archive_sha256: str = ""
     strip: tuple[tuple[float, ...], ...] = ()
     strip_cut: tuple[float, float, float] | None = None
-    redistributable: bool = False
 
 
 @dataclass(frozen=True)
