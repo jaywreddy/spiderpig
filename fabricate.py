@@ -46,14 +46,16 @@ class BuildConfig:
     params: Params = field(default_factory=Params)
     thickness: float | None = None    # override the sheet's nominal thickness
     phases: tuple[float, ...] | None = None        # crank phase per leg (rad); None = module's
-    proportions: tuple[tuple[str, float], ...] = ()  # overrides of klann.PROPORTIONS
+    proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
+    linkage: str = "klann"            # see linkage.available()
 
 
 def template_for(config: BuildConfig):
-    """The kinematic template of one side for ``config`` (module, phases, proportions)."""
-    from klann import build_module_template
+    """The kinematic template of one side for ``config`` (linkage, module, phases, params)."""
+    from linkage import build_module_template
 
-    return build_module_template(config.module, config.phases, dict(config.proportions))
+    return build_module_template(config.module, config.phases, dict(config.proportions),
+                                 config.linkage)
 
 
 def sheet_thickness(config: BuildConfig) -> float:

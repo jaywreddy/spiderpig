@@ -154,13 +154,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import klann  # noqa: E402
+import linkage  # noqa: E402
 import walk  # noqa: E402
 from construction.robot import robot_template  # noqa: E402
 from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
 from klann import create_klann_geometry  # noqa: E402
 from mechanism import Body, Mechanism, MechanismTemplate  # noqa: E402
-from stack import LINK_CLASSES, body_class  # noqa: E402
+from stack import body_class, is_link  # noqa: E402
 
 # One side's kinematics per module (see fabricate.MODULES) is
 # ``fabricate.template_for(config)``: the module at the config's crank phases
@@ -296,7 +296,7 @@ def _material_of(body: Body) -> str:
     """Material key for a body: by ``fab``, then by role."""
     cls = body_class(body.name)
     if body.fab == "laser":
-        return "acrylic" if cls in LINK_CLASSES else "acrylic_frame"
+        return "acrylic" if is_link(body.name) else "acrylic_frame"
     if body.fab == "printed":
         return "printed"
     if body.fab == "purchased":
@@ -729,7 +729,7 @@ def bake_gltf(
     )
     prof.set_metric("n_frames", n_frames)
 
-    klann._BAKE_PROFILER = prof if profile else None
+    linkage._BAKE_PROFILER = prof if profile else None
     try:
         with prof.timed("bake_total"):
             # --- stage 1: the fabricated walker at t_ref ---
@@ -1009,7 +1009,7 @@ def bake_gltf(
             prof.set_metric("animation_channels", len(animation_channels))
             prof.set_metric("accessors", len(accessors))
     finally:
-        klann._BAKE_PROFILER = None
+        linkage._BAKE_PROFILER = None
         if pr is not None:
             pr.disable()
             cprofile_out = Path(cprofile_out)

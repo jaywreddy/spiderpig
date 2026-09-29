@@ -204,12 +204,16 @@ class Claim:
 # ---------------------------------------------------------------------------
 
 AxisKind = Literal["pin", "frame", "crankpin", "center"]
-LINK_CLASSES = frozenset({"b1", "b2", "b3", "b4"})
 
 
 def body_class(name: str) -> str:
     """``"b1_leg3"`` -> ``"b1"``, ``"R.b1_leg3"`` -> ``"b1"``; ``"conn_upper"`` stays."""
     return re.sub(r"_leg\d+$", "", re.sub(r"^[LR]\.", "", name))
+
+
+def is_link(name: str) -> bool:
+    """A leg link: every linkage names its links ``b<k>`` (see :mod:`linkage`)."""
+    return re.fullmatch(r"b\d+", body_class(name)) is not None
 
 
 def is_crank(name: str) -> bool:
@@ -293,7 +297,7 @@ def group_axes(
 def _axis_name(nodes: list[tuple[str, str]]) -> str:
     """Name an axis after its first link joint: ``("b1_leg0", "C")`` -> ``"C_leg0"``."""
     for body, joint in sorted(nodes):
-        if body_class(body) in LINK_CLASSES:
+        if is_link(body):
             m = re.search(r"(_leg\d+)$", body)
             return f"{joint}{m.group(1) if m else ''}"
     return "_".join(j for _, j in sorted(nodes))
@@ -318,7 +322,7 @@ def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     points: dict[str, np.ndarray] = {}
     for nodes in group_axes(xy, edges):
         bodies = {b for b, _ in nodes}
-        members = tuple(sorted(b for b in bodies if body_class(b) in LINK_CLASSES))
+        members = tuple(sorted(b for b in bodies if is_link(b)))
         cranked = any(is_crank(b) for b in bodies)
         framed = any(is_frame(b) for b in bodies)
         if cranked and not members:
@@ -341,7 +345,7 @@ def topology_from_template(tmpl, samples: int = 1440) -> Topology:
         point_of.update({n: axis.name for n in nodes})
     links = {
         b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
-        for b in tmpl.bodies if body_class(b.name) in LINK_CLASSES
+        for b in tmpl.bodies if is_link(b.name)
     }
     return Topology(
         name=tmpl.name,
@@ -668,7 +672,7 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
 
 
 __all__ = [
-    "LINK_CLASSES", "Axis", "Claim", "Disc", "Geometry", "Layout", "Pill", "Placed",
-    "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes",
+    "Axis", "Claim", "Disc", "Geometry", "Layout", "Pill", "Placed",
+    "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes", "is_link",
     "is_crank", "is_frame", "plan_problem", "seg_seg", "topology_from_template", "verify_plan",
 ]

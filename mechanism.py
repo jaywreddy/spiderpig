@@ -448,7 +448,8 @@ class MechanismTemplate:
                     outline=b.outline,
                 )
             )
-        return Mechanism(name=self.name, bodies=bodies, connections=list(self.connections))
+        return Mechanism(name=self.name, bodies=bodies, connections=list(self.connections),
+                         meta=dict(self.meta))
 
 
 def translation_pose_at(

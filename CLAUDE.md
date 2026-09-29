@@ -100,8 +100,9 @@ meshes) ≈ 6.6 s.
 
 Historical: the symbolic solve used to run per leg per call (per frame,
 before `19e020e`), and substituted expressions grew to ~34k ops. The
-straight-line program in `klann.py` is compiled once per process; a leg's
-phase is a time shift. Don't reintroduce per-leg or per-frame solves.
+straight-line program of each linkage (`linkage.py`) is compiled once per
+process; a leg's phase is a time shift. Don't reintroduce per-leg or
+per-frame solves. The `*_klann.*` labels are kept for every linkage.
 
 ### How to extend
 
@@ -122,7 +123,9 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 
 | file | role |
 |---|---|
-| `klann.py` | symbolic core (`STEPS`: a straight-line program over exact `PROPORTIONS`, compiled once by `compile_program`) + one template builder per leg module (`build_*_template`). Single-t `build_*_mechanism` = template `.freeze_at(t)`, fabricated (one side) when `with_parts`. |
+| `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. Registry: `get` / `available`. |
+| `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). |
+| `klann.py` | the Klann-named API kept for callers: `PROPORTIONS`, `STEPS`, `KlannSolution` (= `LegSolution`), `build_*_template`, single-t `build_*_mechanism`. |
 | `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
 | `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers), a `Topology` (links, axles as named points) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()`; `verify_plan()` re-checks exhaustively on fresh sampling. |
 | `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins), `crank.py`, `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides + chassis), `contract.py` (parts inside claims), `envelope.py`. Registries in `__init__.py`. |
@@ -138,10 +141,12 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 
 ### Pipeline contract
 
-1. **Symbolic** — `klann.STEPS`: each point is a small sympy expression over
-   earlier points' symbols, `t`, chirality `s` and the proportions.
-2. **Compiled** — `compile_program()` (cached) lambdifies it once;
-   `KlannSolution(orientation, phase).evaluate(ts)` runs it at `ts + phase`.
+1. **Symbolic** — a `Linkage`'s steps (`linkages/*.py`): each point is a
+   small sympy expression over earlier points' symbols, `t` and the params.
+   `O` is the crank centre at the origin, y up, feet lowest.
+2. **Compiled** — `Linkage.compiled` lambdifies it once;
+   `LegSolution(orientation, phase).evaluate(ts)` runs it at `ts + phase`
+   (a mirrored leg: reflected, at `π − (ts + phase)`).
 3. **Template** — `MechanismTemplate`: topology, per-body `outline`, and
    per-joint `pose_at` closures over the compiled program. One template is
    one *side* of the robot (a leg module: single, double, decker, quad).
@@ -162,15 +167,17 @@ planning; a layout it can't be built in makes its claim return `None`.
 To add a construction: implement `dims(ctx)` (validation, the radii its
 claims use) and `realize(group, build)` (parts inside those claims), register
 it in `construction/__init__.py`, run the contract tests. To add a leg
-module: write a `build_*_template` (compose legs with `_legs`,
-`combine_connectors`, `fuse_couplers`, `fuse_torsos`) and list it in
-`main.py` / `bake_gltf`.
+module: add it to `linkage.MODULE_LEGS` (or a linkage's own `modules`). To
+add a linkage: a module in `linkages/` with its params, program, links
+(`b<k>` -> joints, outline), frame, crank and feet; `tests/test_linkage.py`
+checks it assembles, stays rigid and plans.
 
 Physical rules the claims encode:
 
-- Every b1 sweeps within 0.05 mm of the crank axis O, and the crank turns
-  fully relative to b1, so the crank crosses a b1's layer only along that
-  b1's crankpin: a built-up crankshaft with webs either side of each b1.
+- The links riding a crankpin (Klann's b1; Jansen's j and k; Strider's
+  bars) sweep over the crank axis O, and the crank turns fully relative to
+  them, so the crank crosses a rider's layer only along its crankpin: a
+  built-up crankshaft with webs either side of each rider.
 - Layers 0 (outer frame plate) and `top` (inner frame plate) hold nothing
   but the plates and parts seated in their holes.
 - Pillars (frame pivots) are anchored in both frame plates whenever the

@@ -143,7 +143,7 @@ from functools import cache
 import numpy as np
 
 from fabricate import BuildConfig, fabricate, template_for
-from stack import LINK_CLASSES, body_class, is_crank, is_frame
+from stack import body_class, is_crank, is_frame, is_link
 
 T_REF = 0.0                     # crank angle the model's qpos0 is at (the glb's frame 0)
 MM = 1e-3                       # m per mm
@@ -239,7 +239,7 @@ def _kind(name: str) -> str:
         return "base"
     if is_crank(name) or cls == "coupler":
         return "crank"
-    if cls in LINK_CLASSES:
+    if is_link(name):
         return cls
     raise ValueError(f"no MuJoCo role for kinematic body {name!r}")
 
@@ -449,7 +449,7 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
     outlines = {}
     feet = {}
     for b in kinematic:
-        if body_class(b.name) not in LINK_CLASSES:
+        if not is_link(b.name):
             continue
         outlines[b.name] = [(joints[b.name][p], joints[b.name][q]) for p, q in b.outline]
         if body_class(b.name) == "b4":

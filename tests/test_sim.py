@@ -21,7 +21,7 @@ from sim.run import (  # noqa: E402
     simulate,
     walk_metrics,
 )
-from stack import LINK_CLASSES, body_class  # noqa: E402
+from stack import body_class, is_link  # noqa: E402
 
 MODULES = ("single", "quad")
 SETTLE = 0.3            # s at rest before the drives start
@@ -107,7 +107,7 @@ def test_every_glb_body_has_a_mujoco_body(built):
     for name, target in nodes.items():
         assert model.body(target).name == target
         cls = body_class(name)
-        if cls in LINK_CLASSES:
+        if is_link(name):
             assert target == name
         elif cls == "torso":
             assert target == "base"
