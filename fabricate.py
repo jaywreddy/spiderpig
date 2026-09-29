@@ -27,7 +27,7 @@ from construction.base import Build, Context, Params, Realized
 from construction.plates import FramePlates, LinkPlates
 from mechanism import Mechanism
 from servos.mount import DriveGroup
-from stack import StackPlan, StackProblem, StackSpec, topology_from_template
+from stack import StackPlan, StackProblem, StackSpec, topology_from_template, verify_plan
 
 MODULES = ("single", "double", "decker", "quad")
 
@@ -89,6 +89,7 @@ def side_groups(ctx: Context, config: BuildConfig) -> list:
 
 
 _DESIGNS: dict[tuple, SideDesign] = {}
+_LAYOUTS: dict[tuple, tuple[dict[str, int], int]] = {}
 
 
 def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
@@ -105,7 +106,22 @@ def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
                 ctx.interfaces[g.name] = g.interface(ctx)
         claims = [c for g in groups for c in g.claims(ctx)]
         spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin)
-        plan = StackProblem(topo, claims, spec).solve()
+        problem = StackProblem(topo, claims, spec)
+        # The robot's side has the same layout as the side on its own; reuse
+        # a solved layout when every claim still clears (checked, not assumed).
+        layout_key = key[:3] + (replace(config, robot=False),)
+        plan = None
+        if layout_key in _LAYOUTS:
+            layers, top = _LAYOUTS[layout_key]
+            try:
+                plan = problem.plan(layers, top)
+            except ValueError:
+                plan = None
+            if plan is not None and verify_plan(plan):
+                plan = None
+        if plan is None:
+            plan = problem.solve()
+            _LAYOUTS[layout_key] = (dict(plan.layers), plan.top)
         _DESIGNS[key] = SideDesign(config, ctx, groups, plan)
     return _DESIGNS[key]
 
