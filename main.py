@@ -14,10 +14,16 @@ writes into ``--out``:
 * ``bom.csv`` / ``bom.md`` / ``bom.json`` — what to buy (quantities, packs,
   vendor links, estimated cost), cut and print.
 
+The design parameters: ``--phases`` (every leg's crank phase in degrees,
+e.g. ``0,175,180,355`` for a quad) and ``--proportion NAME=VALUE``
+(repeatable; overrides one of Klann's proportions, see ``klann.PROPORTIONS``).
+``scripts/tune_gait.py`` searches for good ones.
+
 Usage
 -----
     uv run python main.py                           # quad robot, defaults
     uv run python main.py --module single --out build/single
+    uv run python main.py --phases 0,175,180,355       # the tuned quad gait
     uv run python main.py --list                    # modules, servos, constructions
 """
 
@@ -25,13 +31,22 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import re
 import sys
 from pathlib import Path
 
 import construction
 import servos
-from fabricate import MODULES, BuildConfig, design_side, fabricate, sheet_thickness
+import walk
+from fabricate import (
+    MODULES,
+    BuildConfig,
+    design_side,
+    fabricate,
+    sheet_thickness,
+    template_for,
+)
 from hardware.bom import BomLine, bom_from_mechanism, group_made
 from layout import DEFAULT_KERF, save_sheets
 
@@ -58,9 +73,17 @@ def module_template(module: str):
 
 
 def config_from_args(args: argparse.Namespace) -> BuildConfig:
+    """The build the arguments ask for (``--phases`` / ``--proportion`` when parsed).
+
+    Raises :class:`walk.ParamError` for design parameters that don't fit the module.
+    """
+    phases_deg, proportions = (walk.design_args(args) if hasattr(args, "phases")
+                               else (None, None))
     return BuildConfig(module=args.module, robot=not args.side_only, sheet=args.sheet,
                        servo=args.servo, pillar=args.pillar, pin=args.pin, crank=args.crank,
-                       thickness=args.thickness)
+                       thickness=args.thickness,
+                       phases=walk.normalize_phases(args.module, phases_deg),
+                       proportions=walk.normalize_proportions(proportions))
 
 
 def add_config_args(p: argparse.ArgumentParser) -> None:
@@ -84,6 +107,7 @@ def _parse_args(argv) -> argparse.Namespace:
                    "one crankshaft), quad (two mirrored deckers). Default: quad")
     p.add_argument("--side-only", action="store_true",
                    help="build one side (no second side, no chassis)")
+    walk.add_design_args(p)
     add_config_args(p)
     p.add_argument("--kerf", type=float, default=DEFAULT_KERF,
                    help=f"laser kerf compensation in mm (default {DEFAULT_KERF})")
@@ -95,7 +119,12 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--no-dxf", action="store_true", help="skip the DXF sheet-packing pass")
     p.add_argument("--list", action="store_true",
                    help="list modules, servos, constructions and sheet stock")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    try:
+        args.config = config_from_args(args)
+    except walk.ParamError as e:
+        p.error(str(e))
+    return args
 
 
 def _list_options() -> None:
@@ -178,11 +207,20 @@ def main(argv=None) -> int:
     if args.list:
         _list_options()
         return 0
-    config = config_from_args(args)
+    config = args.config
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
 
-    tmpl = module_template(args.module)
+    tmpl = template_for(config)
+    if config.phases is not None or config.proportions:
+        params = walk.params_of(config)
+        print(f"design: phases {', '.join(f'{p:g}' for p in params['phases_deg'])} deg; "
+              f"proportions {dict(config.proportions) or 'Klann'}")
+        try:
+            walk.side_legs(config)
+        except walk.LinkageError as e:
+            print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
+            return 2
     design = design_side(tmpl, config)
     plan = design.plan
     print(f"{args.module}: layer plan of one side, {plan.top + 1} layers of "
@@ -225,6 +263,10 @@ def main(argv=None) -> int:
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
+    if config.phases is not None or config.proportions:
+        phases = ",".join(f"{math.degrees(p):g}" for p in walk.phases_rad(config))
+        bom.notes.append(f"Design: leg phases {phases} deg; proportions "
+                         f"{dict(config.proportions) or 'Klann'}.")
     paths = bom.write(out)
     print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
           f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")

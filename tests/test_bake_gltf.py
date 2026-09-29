@@ -1,7 +1,9 @@
 """Tests for the glTF bake pipeline.
 
 Two bakes are shared by the module: one side with a single leg (``single``)
-and the robot with a single leg per side (``robot`` / ``module="single"``).
+and the robot with a single leg per side (``robot`` / ``module="single"``);
+a third, the robot with its leg's crank phase moved (``phased``), is baked
+for the design-parameter tests only.
 """
 
 from __future__ import annotations
@@ -24,7 +26,14 @@ from bake_gltf import (  # noqa: E402
     _mass_props,
     _Planar,
     bake_gltf,
+    build_config,
+    config_key,
+    is_default,
+    param_glb,
 )
+
+import klann  # noqa: E402
+import walk  # noqa: E402
 
 N_FRAMES = 12
 DURATION = 0.5
@@ -32,6 +41,7 @@ CASES = {
     "side": {"mode": "single"},
     "robot": {"mode": "robot", "module": "single"},
 }
+PHASED = {"mode": "robot", "module": "single", "phases": [math.pi / 2]}
 
 
 @pytest.fixture(scope="module")
@@ -42,7 +52,8 @@ def bakes(tmp_path_factory):
     def get(case: str) -> pygltflib.GLTF2:
         if case not in cache:
             out = tmp_path_factory.mktemp("glb") / f"{case}.glb"
-            bake_gltf(out, n_frames=N_FRAMES, duration_s=DURATION, **CASES[case])
+            kw = PHASED if case == "phased" else CASES[case]
+            bake_gltf(out, n_frames=N_FRAMES, duration_s=DURATION, **kw)
             cache[case] = pygltflib.GLTF2().load(str(out))
         return cache[case]
 
@@ -274,3 +285,91 @@ def test_unknown_modes_are_rejected(tmp_path):
         bake_gltf(tmp_path / "x.glb", mode="single", module="quad")
     with pytest.raises(ValueError, match="unknown module"):
         bake_gltf(tmp_path / "x.glb", mode="robot", module="octo")
+
+
+# ---------------------------------------------------------------------------
+# The walking model's data and the design parameters
+# ---------------------------------------------------------------------------
+
+
+def _foot_z(gltf, node_idx: int) -> float:
+    """Mid-plane z of a node's mesh at frame 0 (rotations are about z)."""
+    node = gltf.nodes[node_idx]
+    v = _read_accessor(gltf, gltf.meshes[node.mesh].primitives[0].attributes.POSITION)
+    z = v[:, 2] + _tracks(gltf)[(node_idx, "translation")][0][2]
+    return float(z.min() + z.max()) / 2
+
+
+def test_drive_extras(baked):
+    """The robot's root node carries the walking model's data (the drive contract);
+    one side on its own can't stand, so it has none."""
+    case, _kw, gltf = baked
+    root = _root(gltf)
+    if case == "side":
+        assert "drive" not in root.extras
+        return
+    drive = root.extras["drive"]
+    assert drive["theta_samples"] == walk.N_THETA == 360
+    assert drive["clip_duration_s"] == pytest.approx(DURATION)
+    feet = drive["feet"]
+    assert [(f["body"], f["side"], f["leg"]) for f in feet] == [("L.b4", "L", 0), ("R.b4", "R", 0)]
+    index = {n.name: i for i, n in enumerate(gltf.nodes)}
+    path = klann.create_klann_geometry().evaluate(walk.theta_grid())["F"]
+    for f in feet:
+        np.testing.assert_allclose(f["xy"], path, atol=1e-3)
+        assert f["z"] == pytest.approx(_foot_z(gltf, index[f["body"]]), abs=0.01)
+    assert feet[0]["z"] < 0
+    assert feet[1]["z"] == pytest.approx(-feet[0]["z"])
+    com = np.array(drive["com"])
+    assert com.shape == (3,)
+    assert np.isfinite(com).all()
+    assert abs(com[2]) < 2.0                        # the sides are mirror images
+    assert drive["mass_g"] > 150.0
+    assert drive["servo"] == {"key": "sts3215", "rpm_max": 52.0}
+    assert drive["params"] == {"module": "single", "phases_deg": [0.0],
+                               "proportions": {k: float(v) for k, v in klann.PROPORTIONS.items()}}
+    assert drive["z_nominal"] is False
+    assert drive["com_nominal"] is False
+    assert drive["metrics"]["degenerate_fraction"] == 1.0        # two feet
+
+
+def test_phases_are_baked(bakes):
+    """A crank phase moves the leg in the animation and in the drive data alike."""
+    gltf = bakes("phased")
+    drive = _root(gltf).extras["drive"]
+    assert drive["params"]["phases_deg"] == [90.0]
+    base = klann.create_klann_geometry().evaluate(walk.theta_grid())["F"]
+    np.testing.assert_allclose(drive["feet"][0]["xy"], np.roll(base, -90, axis=0), atol=1e-3)
+    trs = _tracks(gltf)
+    frame = 3
+    mech = _build_assembly(t=2.0 * np.pi * frame / N_FRAMES, **PHASED)
+    parts = {b.name: b.part for b in mech.bodies}
+    for i, node in enumerate(gltf.nodes):
+        if node.name not in ("L.b4", "R.b4", "L.b1"):
+            continue
+        v = _read_accessor(gltf, gltf.meshes[node.mesh].primitives[0].attributes.POSITION)
+        posed = v @ _quat_matrix(trs[(i, "rotation")][frame]).T + trs[(i, "translation")][frame]
+        bb = parts[node.name].bounding_box()
+        np.testing.assert_allclose(
+            np.concatenate([posed.min(0), posed.max(0)]),
+            [bb.min.X, bb.min.Y, bb.min.Z, bb.max.X, bb.max.Y, bb.max.Z], atol=0.05)
+
+
+def test_design_parameters_are_normalized():
+    default = build_config("robot")
+    quarter = [0.0, math.pi, math.pi / 2, 3 * math.pi / 2]
+    assert build_config("robot", "quad", phases=quarter) == default
+    assert build_config("robot", proportions={"DF": 2.577}) == default
+    assert is_default("robot", default)
+    other = build_config("robot", phases=[0.0, math.pi, math.pi / 2, 1.0],
+                         proportions={"DF": 2.4})
+    assert not is_default("robot", other)
+    assert other.proportions == (("DF", 2.4),)
+    assert config_key(other) == config_key(build_config(
+        "robot", phases=[0.0, math.pi, math.pi / 2, 1.0], proportions={"DF": 2.4}))
+    assert param_glb("robot", other).name == f"robot_quad_{config_key(other)}.glb"
+    assert not is_default("robot", build_config("robot", "single"))
+    with pytest.raises(ValueError, match="4 legs"):
+        build_config("robot", phases=[0.0])
+    with pytest.raises(ValueError, match="unknown proportions"):
+        build_config("robot", proportions={"XX": 1.0})
