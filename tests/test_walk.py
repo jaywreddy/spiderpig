@@ -624,10 +624,15 @@ def test_api_linkages(client):
     assert by_key["strider"]["modules"]["double"] == 2
     assert by_key["jansen"]["labels"]["b6"] == "foot triangle g-h-i"
     assert [p["name"] for p in by_key["jansen"]["params"]] == list(linkage.get("jansen").params)
+    assert (klann["kind"], klann["output"]) == ("walker", None)
+    rocker = by_key["crank_rocker"]
+    assert (rocker["kind"], rocker["feet"]) == ("mechanism", 0)
+    assert rocker["output"]["frame"] == ["G", "E"]
 
 
 @pytest.mark.parametrize("params", [
     {"linkage": "octopus"},
+    {"linkage": "hoecken"},                        # a mechanism doesn't walk
     {"linkage": "jansen", "p.DF": "2.5"},          # Klann's proportion, not Jansen's
     {"linkage": "jansen", "p.m": "-3"},
     {"module": "octo"},

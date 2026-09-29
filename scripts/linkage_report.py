@@ -133,7 +133,7 @@ def main(argv=None) -> int:
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
     logging.basicConfig(level=args.log_level, format="%(name)s %(message)s")
-    keys = args.linkages or linkage.available()
+    keys = args.linkages or linkage.available("walker")
     report = []
     for key in keys:
         lk = linkage.get(key)

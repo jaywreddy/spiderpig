@@ -4,7 +4,9 @@
 
 1. program: :meth:`linkage.Linkage.check`. Each loop's closing margin and
    transmission angle; a loop that can't close raises
-   :class:`linkage.AssemblyError` when the template is built.
+   :class:`linkage.AssemblyError` when the template is built. A mechanism's
+   :meth:`linkage.Linkage.output_check`; a broken promise raises
+   :class:`linkage.OutputError` there too.
 2. static clearances: :func:`fabricate.side_clearances`. Each link that
    sweeps through some group's keep-out, so the two can never share a layer.
 3. plan: :func:`fabricate.design_side`. The layer plan, or a
@@ -30,12 +32,15 @@ def explain(key: str, module: str = "single", params=None, phases=None) -> str:
     config = BuildConfig(linkage=key, module=module, robot=False, phases=phases,
                          proportions=tuple(sorted((params or {}).items())))
     lines = [f"{lk.name} [{key}], module {module}", "", "1. program"]
-    lines += [f"  {s.describe()}" for s in lk.check(params)]
+    steps = lk.check(params)
+    lines += [f"  {s.describe()}" for s in steps]
+    if lk.output and all(s.fails_deg is None for s in steps):
+        lines.append(f"  output: {lk.output_check(params).describe()}")
     try:
         tmpl = template_for(config)
-    except linkage.AssemblyError as e:
+        ctx, groups, _ = side_problem(tmpl, config)
+    except ValueError as e:     # AssemblyError / OutputError; ConstructionError (e.g. the drive)
         return "\n".join([*lines, "", f"STOP: {e}"])
-    ctx, groups, _ = side_problem(tmpl, config)
     clear = side_clearances(ctx, groups)
     lines += ["", f"2. static clearances ({len(clear)})"]
     lines += [f"  {c.describe()}" for c in clear]

@@ -262,10 +262,14 @@ def make_config(module: str = "quad", phases_deg: Sequence[float] | None = None,
                 base: BuildConfig | None = None, *, linkage: str | None = None) -> BuildConfig:
     """A robot :class:`BuildConfig` for these design parameters (normalized, validated).
 
-    ``linkage`` defaults to ``base``'s (Klann).
+    ``linkage`` defaults to ``base``'s (Klann); it must be a walker.
     """
     base = base or BuildConfig()
-    key = get_linkage(linkage or base.linkage).key
+    lk = get_linkage(linkage or base.linkage)
+    if lk.kind != "walker":
+        raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on "
+                         f"(walkers: {', '.join(lkg.available('walker'))})")
+    key = lk.key
     return replace(base, linkage=key, module=module, robot=True,
                    phases=normalize_phases(module, phases_deg, linkage=key),
                    proportions=normalize_proportions(proportions, key))

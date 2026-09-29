@@ -295,7 +295,7 @@ def plan(tuner: Tuner, c: Candidate) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT)
+    ap.add_argument("--linkage", choices=linkage.available("walker"), default=linkage.DEFAULT)
     ap.add_argument("--module", default="quad", help="one of the linkage's modules (quad)")
     ap.add_argument("--grid", type=float, default=30.0,
                     help="phase grid step in degrees (default 30)")

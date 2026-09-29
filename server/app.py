@@ -46,6 +46,7 @@ import os
 import sys
 import threading
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
 
@@ -252,6 +253,8 @@ def linkage_info(lk: linkage.Linkage) -> dict:
         "modules": {m: len(legs) for m, legs in lk.leg_modules.items()},
         "labels": dict(lk.labels),
         "feet": len(lk.feet),
+        "kind": lk.kind,
+        "output": asdict(lk.output) if lk.output else None,
     }
 
 
@@ -270,7 +273,8 @@ def list_modes() -> dict:
 
 @app.get("/api/linkages")
 def list_linkages() -> dict:
-    """The registered linkages (the viewer's linkage dropdown and parameter sliders)."""
+    """The registered linkages (the viewer's walker dropdown and parameter sliders, and its
+    mechanism picker: ``kind`` tells them apart)."""
     return {"default": linkage.DEFAULT,
             "linkages": [linkage_info(linkage.get(k)) for k in linkage.available()]}
 

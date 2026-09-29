@@ -14,6 +14,7 @@ from stack import ClearanceError
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
+WALKERS = linkage.available("walker")
 
 
 def test_registry_has_klann_first_and_the_others():
@@ -58,7 +59,7 @@ def test_bodies_are_rigid_and_the_crank_turns_about_o(key):
         np.testing.assert_allclose(frame[j][0], frame[j][1], atol=1e-12, err_msg=f"{j} moves")
 
 
-@pytest.mark.parametrize("key", ALL)
+@pytest.mark.parametrize("key", WALKERS)
 def test_feet_are_the_lowest_points(key):
     lk = linkage.get(key)
     pts = lk.solve().evaluate(TS)
@@ -81,8 +82,8 @@ def test_leg_template_pins_every_shared_joint(key):
     for b in tmpl.bodies:
         for j in b.joints:
             on.setdefault(j.name, []).append(b.name)
-    feet = {j for _, j in lk.feet}
-    lonely = sorted(j for j, bs in on.items() if len(bs) < 2 and j not in feet
+    ends = {j for _, j in lk.feet} | ({lk.output.point, *lk.output.frame} if lk.output else set())
+    lonely = sorted(j for j, bs in on.items() if len(bs) < 2 and j not in ends
                     and j not in {p for _, segs in lk.links.values() for s in segs for p in s})
     assert not lonely, f"{key}: joints {lonely} pin nothing"
 
@@ -121,7 +122,7 @@ def test_strider_matches_its_plan_drawing():
 NEEDS_OVERHUNG_CRANK = {"trotbot", "trotbot_heel", "trotbot_toe", "sixbar", "sixbar_v1"}
 
 
-@pytest.mark.parametrize("key", ALL)
+@pytest.mark.parametrize("key", WALKERS)     # mechanisms: tests/test_mechanisms.py
 def test_one_side_plans_or_the_pipeline_says_why(key):
     """A single-module side lays out with the default constructions, or the static
     clearance stage names the link no layer can hold."""

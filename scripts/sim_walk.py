@@ -76,7 +76,7 @@ def _args(argv) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter,
                                 epilog=__doc__.split("\n", 1)[1])
-    p.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT,
+    p.add_argument("--linkage", choices=linkage.available("walker"), default=linkage.DEFAULT,
                    help=f"the leg linkage ({linkage.DEFAULT})")
     p.add_argument("--module", choices=MODULES, default="quad", help="legs per side (quad)")
     p.add_argument("--servo", default=d.servo, help=f"servo model ({d.servo})")
