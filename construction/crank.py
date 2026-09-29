@@ -66,7 +66,7 @@ from construction.base import (
 from construction.envelope import shape_solid
 from hardware.parts import SHCS_LENGTHS, shcs
 from shapes import Cut, disc, union
-from stack import Claim, Disc, Layout, Pill, Placed
+from stack import Claim, Disc, Keepout, Layout, Pill, Placed, Unbuildable
 
 GROUP = "crank"
 SEGMENT_COLOR = "#6a4fc7"
@@ -191,6 +191,17 @@ class CrankGroup:
     def dims(self, ctx: Context) -> CrankDims:
         return self.construction.dims(ctx)
 
+    def keepouts(self, ctx: Context) -> list[Keepout]:
+        """The crank fills O in every layer but its riders': the journal between the webs
+        and the hub, the thinner stub below them."""
+        if ctx.topo.center is None:
+            return []
+        d, riders = self.dims(ctx), frozenset(ctx.topo.riders)
+        return [Keepout(GROUP, ("pt", "O"), d.journal, "between the crank webs and the hub",
+                        riders),
+                Keepout(GROUP, ("pt", "O"), d.stub, "below the crank webs (journal stub)",
+                        riders)]
+
     def claims(self, ctx: Context) -> list[Claim]:
         topo = ctx.topo
         if topo.center is None:
@@ -225,7 +236,8 @@ class CrankGroup:
             _, hub = hub_layers(L, drive, d.hub_thickness)
             lo, hi = min(web_layers), min(hub)
             if lo > hi:
-                return None
+                raise Unbuildable(f"its lowest web (layer {lo}) would sit above the hub under "
+                                  f"the servo horn (layer {hi}): the riders are too high")
             out = [Placed(k, Disc("O", d.journal), GROUP, "crank body")
                    for k in range(lo, hi) if k not in rider_layers]
             out += [Placed(k, Disc("O", d.stub), GROUP, "journal stub") for k in range(1, lo)]

@@ -45,7 +45,7 @@ from construction.base import (
 from construction.printed import Segment, Snap, plan_segments, segment_solid
 from hardware.bom import BomLine
 from shapes import Cut
-from stack import Axis, Claim, Disc, Layout, Placed
+from stack import Axis, Claim, Disc, Keepout, Layout, Placed, Unbuildable
 
 STOP_OVERLAP = 0.8   # how far a spacer must overlap a link's hole to hold it (radial, mm)
 
@@ -72,6 +72,11 @@ class AxleGroup:
 
     def dims(self, ctx: Context) -> AxleDims:
         return self.construction.dims(ctx, self.pillar)
+
+    def keepouts(self, ctx: Context) -> list[Keepout]:
+        """At its thinnest (the neck) the axle still fills every layer it spans."""
+        return [Keepout(self.name, ("pt", self.axis.name), self.dims(ctx).neck,
+                        f"{self.name} spans", frozenset(self.axis.members))]
 
     def claims(self, ctx: Context) -> list[Claim]:
         """One claim; it depends on the axle's links and on every link that passes close.
@@ -104,20 +109,33 @@ class AxleGroup:
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
             free: dict[int, float] = {}
+            who: dict[int, str] = {}
             for n, r in room.items():
-                free[L.layers[n]] = min(free.get(L.layers[n], np.inf), r)
+                if r < free.get(L.layers[n], np.inf):
+                    free[L.layers[n]], who[L.layers[n]] = r, n
 
-            def passes(k0: int, k1: int) -> bool:
-                return all(free.get(k, np.inf) >= d.neck
-                           for k in range(k0, k1 + 1) if k not in mset)
+            def blocker(k0: int, k1: int) -> int | None:
+                """The first layer in k0..k1 the axle can't neck through."""
+                return next((k for k in range(k0, k1 + 1)
+                             if k not in mset and free.get(k, np.inf) < d.neck), None)
+
+            def crossing(k: int) -> str:
+                gap = free[k] + p.link_radius + p.margin
+                if gap <= 0:
+                    return f"{who[k]} in layer {k} sweeps right across it"
+                return (f"{who[k]} in layer {k} passes {gap:.1f} mm from its centre, leaving "
+                        f"{free[k]:.1f} mm, under its {d.neck:g} mm thinnest neck radius")
 
             lo, hi = ms[0], ms[-1]
-            if not passes(lo, hi):
-                return None
+            if (k := blocker(lo, hi)) is not None:
+                raise Unbuildable(f"can't run between its links (layers {lo}..{hi}): "
+                                  + crossing(k))
             if self.pillar:
-                down, up = passes(1, lo - 1), passes(hi + 1, L.top - 1)
+                kd, ku = blocker(1, lo - 1), blocker(hi + 1, L.top - 1)
+                down, up = kd is None, ku is None
                 if not (down or up):
-                    return None
+                    raise Unbuildable("can't reach either frame plate: " + crossing(kd)
+                                      + " below its links and " + crossing(ku) + " above")
                 k0 = 0 if down else lo - 1          # outer anchor, or a head below
                 k1 = L.top if up else hi + 1        # inner anchor, or a cap above
             else:
@@ -137,8 +155,10 @@ class AxleGroup:
                     continue
                 if k in beside:
                     r = min(d.spacer, free.get(k, np.inf))
-                    if r < stop:
-                        return None                 # nothing could hold the link here
+                    if r < stop:                    # nothing could hold the link here
+                        raise Unbuildable(f"no room for a shoulder in layer {k} beside its link: "
+                                          f"{who[k]} leaves {r:.1f} mm, a shoulder needs "
+                                          f"{stop:.1f}")
                     out.append(Placed(k, Disc(ax, r), g, f"{g} shoulder"))
                 else:
                     r = min(d.axle, free.get(k, np.inf))   # necks down where a link passes

@@ -15,7 +15,9 @@ from linkage import Linkage, P, circle_x_circle, crank, register, xy
 
 R = sp.Rational
 PARAMS = {
-    "unit": R(3, 2),       # mm per Jansen unit
+    # mm per Jansen unit. At 1.5 link k passes the fixed pivot A 8.7 mm off, under
+    # the 9 mm a necked pillar needs, so legs sharing A can't be layered.
+    "unit": R(8, 5),
     "a": R(38),            # A: a left of O ...
     "l": R(78, 10),        # ... and l below it
     "m": R(15),            # crank

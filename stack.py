@@ -184,6 +184,21 @@ class Layout:
         return range(int(np.floor((z0 + eps) / self.pitch)), int(np.ceil((z1 - eps) / self.pitch)))
 
 
+class Unbuildable(Exception):
+    """Raised by a claim's ``make`` instead of returning ``None``, to say why."""
+
+
+def made(claim: Claim, layout: Layout) -> tuple[list[Placed] | None, str]:
+    """``claim.make(layout)`` and, when it can't be built, why."""
+    try:
+        out = claim.make(layout)
+    except Unbuildable as e:
+        return None, f"{claim.owner}: {e}"
+    if out is None:
+        return None, f"{claim.owner} can't be built in this layout"
+    return list(out), ""
+
+
 @dataclass(frozen=True)
 class Claim:
     """Space a construction group needs, as a function of link layers.
@@ -197,6 +212,55 @@ class Claim:
     deps: frozenset[str]
     make: Callable[[Layout], Iterable[Placed] | None]
     final: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Static clearances: what can never share a layer, before any layer is chosen
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Keepout:
+    """The thinnest shape a group always has at ``core`` (radius ``r``), in the
+    layers ``where`` describes. Links in ``members`` ride on it."""
+
+    owner: str
+    core: Core
+    r: float
+    where: str
+    members: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
+class Clearance:
+    """A link that sweeps too close to a keep-out to ever share its layers."""
+
+    link: str
+    keepout: Keepout
+    dist: float          # closest approach over the cycle, centreline to core (mm)
+    need: float          # keep-out radius + link radius + margin
+
+    def describe(self) -> str:
+        k = self.keepout
+        how = (f"sweeps right across {k.owner}" if self.dist <= 0 else
+               f"passes {k.owner} at {self.dist:.1f} mm, under the {self.need:.1f} mm its "
+               "thinnest part needs")
+        return f"{self.link} {how}, so it can't be in any layer {k.where}"
+
+
+def static_clearances(topo: Topology, keepouts: Iterable[Keepout], link_r: float,
+                      margin: float) -> list[Clearance]:
+    """Every (link, keep-out) pair the layer plan must separate, from geometry alone."""
+    out = []
+    for k in keepouts:
+        need = k.r + link_r + margin
+        for link, segs in topo.links.items():
+            if link in k.members:
+                continue
+            d = min(topo.geometry.dist(k.core, ("seg", p, q)) for p, q in segs)
+            if d < need:
+                out.append(Clearance(link, k, d, need))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +486,19 @@ class StackPlan:
         return "\n".join(rows)
 
 
+class PlanError(ValueError):
+    """No layer plan: the message says what the search kept running into."""
+
+    def __init__(self, summary: str, blockers: list[str], notes: Iterable[str] = ()):
+        self.summary, self.blockers, self.notes = summary, list(blockers), list(notes)
+        lines = [summary + "; what blocked it (count x shape vs shape):", *self.blockers]
+        lines += [n for n in self.notes if n]
+        super().__init__("\n  ".join(lines))
+
+    def with_notes(self, *notes: str) -> PlanError:
+        return PlanError(self.summary, self.blockers, [*self.notes, *notes])
+
+
 class StackProblem:
     """Search link layers so that every claim fits."""
 
@@ -430,6 +507,8 @@ class StackProblem:
         self.spec = spec or StackSpec()
         self.claims = tuple(claims)
         self.links = tuple(topo.links)
+        self.blocked: dict[tuple[str, str], int] = {}
+        self._blocked_by: dict[tuple[str, str], tuple[Placed, Placed | None]] = {}
         known = set(self.links)
         for c in self.claims:
             if not c.deps <= known:
@@ -444,23 +523,61 @@ class StackProblem:
     # -- checks ----------------------------------------------------------------
 
     def fits(self, p: Placed, by_layer: Mapping[int, list[Placed]], top: int) -> bool:
-        """Does ``p`` clear everything already in its layer (and stay out of the plates)?"""
+        """Does ``p`` clear everything already in its layer (and stay out of the plates)?
+
+        Every refusal is tallied in :attr:`blocked` (what the search ran into).
+        """
         if p.seat:
             return True
         if p.layer in (0, top):
+            self._block(p, None)
             return False
         geo, m = self.topo.geometry, self.spec.margin
         for q in by_layer.get(p.layer, ()):
             if q.seat or q.group == p.group:
                 continue
             if geo.dist(p.shape.core, q.shape.core) < p.shape.r + q.shape.r + m:
+                self._block(p, q)
                 return False
         return True
+
+    def _make(self, c: Claim, layers: Mapping[str, int], top: int) -> list[Placed] | None:
+        out, why = made(c, Layout(layers, top, self.spec.pitch))
+        if out is None:
+            self.blocked[(c.owner, why)] = self.blocked.get((c.owner, why), 0) + 1
+            self._blocked_by.setdefault((c.owner, why), None)
+        return out
+
+    def _block(self, p: Placed, q: Placed | None) -> None:
+        key = (p.label or p.group, "a frame plate" if q is None else (q.label or q.group))
+        self.blocked[key] = self.blocked.get(key, 0) + 1
+        self._blocked_by.setdefault(key, (p, q))
+
+    def blockers(self, n: int = 6) -> list[str]:
+        """The pairs the search ran into most, with how close they come."""
+        geo, m = self.topo.geometry, self.spec.margin
+        out = []
+        for key, count in sorted(self.blocked.items(), key=lambda kv: -kv[1])[:n]:
+            if self._blocked_by[key] is None:           # a claim that couldn't be built
+                out.append(f"{count:7d} x {key[1]}")
+                continue
+            p, q = self._blocked_by[key]
+            if q is None:
+                why = "it would sit in a frame plate's layer"
+            else:
+                gap = geo.dist(p.shape.core, q.shape.core) - p.shape.r - q.shape.r
+                why = f"{gap:.1f} mm apart in one layer, need {m:.1f}"
+            out.append(f"{count:7d} x {key[0]} vs {key[1]}: {why}")
+        return out
 
     # -- search ----------------------------------------------------------------
 
     def solve(self) -> StackPlan:
+        """The thinnest plan the budgeted search finds; :class:`PlanError` (saying what
+        blocked it) when it finds none."""
         order = self._order()
+        self.blocked.clear()
+        self._blocked_by.clear()
         spent = 0
         for top in range(self.spec.min_top, self.spec.max_top + 1):
             found = self._search(order, top)
@@ -468,23 +585,18 @@ class StackProblem:
                 return self.plan(found, top)
             spent += self._nodes
             if spent >= self.spec.max_total_nodes:
-                raise ValueError(
-                    f"{self.topo.name}: no layer plan found with up to {top + 1} layers after "
-                    f"{spent} search steps; the design likely can't be laid out (e.g. two "
-                    "crankpins at the same angle, or links that sweep through each other's pivots)"
-                )
-        raise ValueError(
-            f"{self.topo.name}: no layer plan with up to {self.spec.max_top} layers; "
-            "the chosen construction needs more room than the mechanism leaves"
-        )
+                raise PlanError(f"{self.topo.name}: no layer plan found with up to {top + 1} "
+                                f"layers after {spent} search steps", self.blockers())
+        raise PlanError(f"{self.topo.name}: no layer plan with up to {self.spec.max_top} "
+                        "layers", self.blockers())
 
     def plan(self, layers: Mapping[str, int], top: int) -> StackPlan:
         layout = Layout(dict(layers), top, self.spec.pitch)
         placed: list[Placed] = []
         for c in self.claims:
-            out = c.make(layout)
+            out, why = made(c, layout)
             if out is None:
-                raise ValueError(f"claim {c.owner} can't be built in this layout")
+                raise ValueError(why)
             placed.extend(out)
         return StackPlan(self.spec, dict(layers), top, self.topo, self.claims, tuple(placed))
 
@@ -496,7 +608,7 @@ class StackProblem:
         for c in self.claims:
             if len(c.deps) == 1 and not c.final:
                 (n,) = c.deps
-                own[n].extend(p for p in (c.make(solo) or ()) if p.layer == 1)
+                own[n].extend(p for p in (made(c, solo)[0] or ()) if p.layer == 1)
         deg = {n: len(self._by_dep[n]) for n in self.links}
         for a, b in itertools.combinations(self.links, 2):
             by_layer = {1: own[a]}
@@ -511,7 +623,6 @@ class StackProblem:
         Gives up on this ``top`` after ``spec.max_nodes`` nodes (a solution
         found is always valid; only minimality is at stake).
         """
-        pitch = self.spec.pitch
         rank = {n: i for i, n in enumerate(order)}
         layers: dict[str, int] = {}
         by_layer: dict[int, list[Placed]] = {}
@@ -541,7 +652,7 @@ class StackProblem:
 
         self._nodes = 0
         for c in self.claims:
-            if not c.deps and not c.final and add(c.make(Layout(layers, top, pitch))) is None:
+            if not c.deps and not c.final and add(self._make(c, layers, top)) is None:
                 return None
 
         def place(n: str, k: int) -> list[Placed] | None:
@@ -550,7 +661,7 @@ class StackProblem:
             for c in self._by_dep[n]:
                 if not c.deps <= layers.keys():
                     continue
-                got = add(c.make(Layout(layers, top, pitch)))
+                got = add(self._make(c, layers, top))
                 if got is None:
                     remove(added)
                     del layers[n]
@@ -575,7 +686,7 @@ class StackProblem:
             finals: list[Placed] = []
             for c in self.claims:
                 if c.final:
-                    got = add(c.make(Layout(layers, top, pitch)))
+                    got = add(self._make(c, layers, top))
                     if got is None:
                         remove(finals)
                         return False
@@ -646,9 +757,9 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
     bad: list[str] = []
     shapes: list[Placed] = []
     for c in plan.claims:
-        out = c.make(layout)
+        out, why = made(c, layout)
         if out is None:
-            bad.append(f"{c.owner}: can't be built in this layout")
+            bad.append(why)
             continue
         shapes.extend(out)
     for n in topo.links:
@@ -672,7 +783,8 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
 
 
 __all__ = [
-    "Axis", "Claim", "Disc", "Geometry", "Layout", "Pill", "Placed",
+    "Axis", "Claim", "Clearance", "Disc", "Geometry", "Keepout", "Layout", "Pill", "Placed",
+    "PlanError", "Unbuildable", "made", "static_clearances",
     "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes", "is_link",
     "is_crank", "is_frame", "plan_problem", "seg_seg", "topology_from_template", "verify_plan",
 ]

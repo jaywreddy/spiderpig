@@ -33,7 +33,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cache, cached_property
 from typing import Any
 
 import numpy as np
@@ -242,6 +242,18 @@ class Linkage:
             values = self.values(params) if params else ()
             return LegSolution(int(orientation), float(phase), values, self.key)
 
+    def check(self, params: Mapping[str, float] | None = None) -> list[StepCheck]:
+        """Every step of the program over one revolution (see :class:`StepCheck`)."""
+        return list(_check(self.key, self.values(params)))
+
+    def assert_assembles(self, params: Mapping[str, float] | None = None) -> list[StepCheck]:
+        """:meth:`check`, raising :class:`AssemblyError` at the first step that can't close."""
+        steps = self.check(params)
+        bad = next((s for s in steps if s.fails_deg is not None), None)
+        if bad is not None:
+            raise AssemblyError(f"{self.key}: {bad.describe()}")
+        return steps
+
     def variant(self, key: str, name: str, *, notes: str = "", source: str = "",
                 **params) -> Linkage:
         """The same program with other default parameters (a published variant)."""
@@ -252,6 +264,108 @@ class Linkage:
             angles=self.angles, labels=self.labels, modules=self.modules,
             family=self.family or self.key, source=source or self.source, notes=notes,
         )
+
+
+# ---------------------------------------------------------------------------
+# Stage check: does every loop close, and how well?
+# ---------------------------------------------------------------------------
+
+TOGGLE_DEG = 15.0     # a transmission angle this close to 0° or 180° is flagged
+
+
+class AssemblyError(ValueError):
+    """A loop of the linkage can't close at some crank angle."""
+
+
+@dataclass(frozen=True)
+class StepCheck:
+    """One step of a program over a revolution (leg as defined, phase 0).
+
+    ``kind``: ``fixed`` / ``crank`` (no earlier points), ``closure`` (placed
+    at given distances from two earlier points that move relative to each
+    other: a loop closes here), ``rigid`` (fixed relative to two earlier
+    points) or ``derived``. For a closure: the two bar lengths, the margin
+    (how far the loop is from failing to close, worst over the cycle; < 0 is
+    a failure), the crank-angle range where it fails and the transmission
+    angle range at the new joint.
+    """
+
+    point: str
+    kind: str
+    refs: tuple[str, ...]
+    radii: tuple[float, float] | None = None
+    margin_mm: float | None = None
+    worst_deg: float | None = None
+    fails_deg: tuple[float, float] | None = None
+    angle_deg: tuple[float, float] | None = None
+    fail_fraction: float = 0.0
+
+    @property
+    def toggles(self) -> bool:
+        return self.angle_deg is not None and min(self.angle_deg[0],
+                                                  180 - self.angle_deg[1]) < TOGGLE_DEG
+
+    def describe(self) -> str:
+        if self.kind != "closure":
+            return f"{self.point}: {self.kind} ({', '.join(self.refs) or 'no earlier points'})"
+        a, b = self.refs
+        if self.radii is None:
+            return (f"{self.point} can't be placed at any crank angle: "
+                    f"its bars from {a} and {b} never meet")
+        r1, r2 = self.radii
+        where = f"bars {a}-{self.point} {r1:.1f} mm and {b}-{self.point} {r2:.1f} mm"
+        if self.fails_deg is not None:
+            lo, hi = self.fails_deg
+            return (f"{self.point} can't be placed for {self.fail_fraction:.0%} of the cycle "
+                    f"(crank angles {lo:.0f}°..{hi:.0f}°): {where} miss each other by up to "
+                    f"{-self.margin_mm:.2f} mm (worst at {self.worst_deg:.0f}°)")
+        lo, hi = self.angle_deg
+        flag = "; near toggle" if self.toggles else ""
+        return (f"{self.point}: {where} close with {self.margin_mm:.2f} mm to spare "
+                f"(worst at {self.worst_deg:.0f}°), transmission angle {lo:.0f}°..{hi:.0f}°{flag}")
+
+
+@cache
+def _check(key: str, values: tuple[float, ...], n: int = 720) -> tuple[StepCheck, ...]:
+    lk = get(key)
+    ts = 2.0 * math.pi * np.arange(n) / n
+    with np.errstate(all="ignore"):
+        pts = LegSolution(1, 0.0, values, key).evaluate(ts)
+    out = []
+    for name, expr in lk.steps:
+        syms = {s.name for s in expr.free_symbols}
+        refs = tuple(p for p in lk.points if p != name and {f"{p}x", f"{p}y"} & syms)
+        if len(refs) != 2:
+            kind = "derived" if refs else ("crank" if "t" in syms else "fixed")
+            out.append(StepCheck(name, kind, refs))
+            continue
+        z, a, b = pts[name], pts[refs[0]], pts[refs[1]]
+        u, v = a - z, b - z
+        ang = np.degrees(np.arctan2(np.abs(u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0]),
+                                    (u * v).sum(-1)))
+        ok = np.isfinite(ang)
+        if not (np.isfinite(a).all() and np.isfinite(b).all()):
+            out.append(StepCheck(name, "derived", refs))    # an earlier step already failed
+            continue
+        if not ok.any():
+            out.append(StepCheck(name, "closure", refs, None, -math.inf, 0.0, (0.0, 360.0),
+                                 fail_fraction=1.0))
+            continue
+        if np.ptp(ang[ok]) < 1e-6:
+            out.append(StepCheck(name, "rigid", refs))
+            continue
+        r1 = float(np.median(np.linalg.norm(u[ok], axis=-1)))
+        r2 = float(np.median(np.linalg.norm(v[ok], axis=-1)))
+        d = np.linalg.norm(a - b, axis=-1)
+        margin = np.minimum(r1 + r2 - d, d - abs(r1 - r2))
+        k = int(np.argmin(margin))
+        fails = np.degrees(ts[margin < 0])
+        out.append(StepCheck(
+            name, "closure", refs, (r1, r2), float(margin[k]), math.degrees(ts[k]),
+            (float(fails.min()), float(fails.max())) if fails.size else None,
+            (float(ang[ok].min()), float(ang[ok].max())), fails.size / n,
+        ))
+    return tuple(out)
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +685,7 @@ def build_module_template(
     template's ``meta`` records all of it, so caches keyed on it stay honest.
     """
     lk = get(linkage)
+    lk.assert_assembles(proportions)
     legs = module_legs(module, linkage)
     if phases is not None:
         if len(phases) != len(legs):
