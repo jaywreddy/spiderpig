@@ -36,7 +36,16 @@ import numpy as np
 from build123d import Box, Cylinder, Location
 from OCP.gp import gp_Trsf
 
-from construction.base import FRAME_INNER, Build, Context, DriveInterface, Realized, hardware
+import linkage
+from construction.base import (
+    FRAME_INNER,
+    Build,
+    ConstructionError,
+    Context,
+    DriveInterface,
+    Realized,
+    hardware,
+)
 from construction.crank import ScrewKind, screw_body, screw_from_key
 from servos.model import cut_each, horn_part, servo_part
 from servos.spec import MountHole, ServoSpec
@@ -156,6 +165,12 @@ class DriveGroup:
         return best
 
     def interface(self, ctx: Context) -> DriveInterface:
+        inputs = linkage.get(ctx.config.linkage).inputs
+        if len(inputs) > 1:
+            raise ConstructionError(
+                f"{ctx.topo.name}: the drive turns one input, the crank at O (one servo); "
+                f"{ctx.config.linkage} has {len(inputs)} ({', '.join(inputs)}), and a drive "
+                f"for {', '.join(inputs[1:])} isn't built")
         s, h = self.spec, self.spec.horn
         t = self.spacer(ctx)
         thread = h.pattern.thread or "M3"

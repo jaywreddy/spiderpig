@@ -21,6 +21,8 @@ export interface DriveHost {
   loaded(): LoadedScene | null;
   /** Load the robot baked with design ``query`` ('' = default); rejects with the server's detail. */
   loadRobot(query: string): Promise<void>;
+  /** Load one side (the side-only ``single`` mode) baked with design ``query``. */
+  loadSide(query: string): Promise<void>;
   status(text: string): void;
   seek(t: number): void;
   reframe(): void;
@@ -38,6 +40,7 @@ export interface LinkageInfo {
   key: string; name: string; family: string; notes: string; source: string;
   params: { name: string; default: number; angle: boolean }[];
   modules: Record<string, number>; labels: Record<string, string>; feet: number;
+  kind: 'walker' | 'mechanism'; output: { kind: string; name: string; motion: string } | null;
 }
 
 const PLOTS: (keyof Sample)[] = ['speed', 'yawRate', 'height', 'pitch', 'roll', 'slip', 'margin'];
@@ -218,15 +221,21 @@ export function createDrive(host: DriveHost) {
     return q.toString();
   }
 
-  /** The registered linkages (once): the linkage dropdown, then the design controls. */
+  /** The registered linkages (once): the walker dropdown, the design controls, and a
+   * mechanism picker (one side, not tuned). */
   async function loadLinkages(): Promise<void> {
     if (linkages) return;
     const r = await getJson<{ default: string; linkages: LinkageInfo[] }>('/api/linkages');
-    [linkages, defaultLinkage] = [r.linkages, r.default];
+    [linkages, defaultLinkage] = [r.linkages.filter((l) => l.kind === 'walker'), r.default];
     if (!info()) design.linkage = r.default;
     design.props = { ...defaults(), ...design.props };     // the URL's p.NAME win
-    designF.add(design, 'linkage', Object.fromEntries(r.linkages.map((l) => [l.name, l.key])))
+    designF.add(design, 'linkage', Object.fromEntries(linkages.map((l) => [l.name, l.key])))
       .onChange(() => queueMicrotask(switchLinkage));
+    const mechs = r.linkages.filter((l) => l.kind === 'mechanism');
+    designF.add({ mechanism: '' }, 'mechanism',
+      { '–': '', ...Object.fromEntries(mechs.map((l) => [l.name, l.key])) })
+      .name('mechanism (one side)')
+      .onChange((k: string) => { if (k) host.loadSide(`linkage=${k}`).catch(fail); });
     buildDesign();
   }
 

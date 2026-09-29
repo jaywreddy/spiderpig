@@ -1,8 +1,8 @@
-"""Planar walking linkages as symbolic straight-line programs.
+"""Planar linkages (walking legs and mechanisms) as symbolic straight-line programs.
 
-A :class:`Linkage` is one leg written as a short program: each step names a
-point and gives it as a small sympy expression over earlier points' symbols
-(:func:`P`), the crank angle :data:`t` and the linkage's parameters (exact
+A :class:`Linkage` is one leg, or one mechanism, written as a short program:
+each step names a point and gives it as a small sympy expression over earlier
+points' symbols (:func:`P`), the crank angle :data:`t` and the linkage's parameters (exact
 rationals: lengths in mm or in a drawing unit, angles in degrees). The
 geometry helpers below (:func:`crank`, :func:`circle_x_circle`,
 :func:`extend`, :func:`offset`, ...) keep each step to one construction a
@@ -19,9 +19,16 @@ evaluates that one compiled program:
   ``t`` is the original's: mirrored legs ride the same crank.
 
 Conventions every definition follows: ``O`` is the crank centre at the
-origin, ``y`` points up (feet are the lowest points), the crank turns
-counter-clockwise with ``t``. Links are bodies named ``b<k>`` (:func:`is_link`
-in :mod:`stack`); ``torso`` carries the fixed pivots, ``conn`` the crank.
+origin, ``y`` points up (a walker's feet are the lowest points), the crank
+turns counter-clockwise with ``t``. Links are bodies named ``b<k>``
+(:func:`is_link` in :mod:`stack`); ``torso`` carries the fixed pivots,
+``conn`` the crank.
+
+A walker declares ``feet``; a mechanism (a building block: a straight line, a
+lift, a rocker) declares its :class:`Output` instead, which
+:meth:`Linkage.output_check` measures and whose promises the template stage
+enforces (:class:`OutputError`). A mechanism may take a second input ``t2``
+(:func:`crank_at`); fabrication drives one.
 
 Definitions live in :mod:`linkages` and register themselves; see
 :func:`get` / :func:`available`.
@@ -90,6 +97,12 @@ def crank(r) -> sp.Matrix:
     return r * sp.Matrix([sp.cos(t), sp.sin(t)])
 
 
+def crank_at(center: sp.Matrix, r, input: str = "t2", phase_deg=0) -> sp.Matrix:
+    """A crankpin of radius ``r`` about ``center``, at the input angle ``input`` + ``phase_deg``."""
+    a = sp.Symbol(input, real=True) + phase_deg * sp.pi / 180
+    return center + r * sp.Matrix([sp.cos(a), sp.sin(a)])
+
+
 def circle_x_circle(c1: sp.Matrix, r1, c2: sp.Matrix, r2, branch) -> sp.Matrix:
     """Intersection of two circles; ``branch`` = +1 / -1 picks the side of c1->c2.
 
@@ -139,17 +152,68 @@ MODULE_LEGS: dict[str, LegList] = {
 }
 
 
+MOTIONS = ("line", "path", "rotation", "translation_platform", "xy")
+
+
+@dataclass(frozen=True)
+class Output:
+    """What a mechanism delivers, and what it promises.
+
+    ``kind`` "point": the point ``name``, a joint of the link ``body``;
+    "body": the link ``name`` itself. ``motion`` is one of :data:`MOTIONS`.
+    ``frame`` names two joints of the output body, its origin then its x axis:
+    where a later stage's frame would mount (a rotation's pivot comes first).
+
+    Promises, enforced at the template stage (:meth:`Linkage.assert_output`):
+    a ``translation_platform`` never rotates; ``straight = (from_deg, to_deg,
+    tol_mm)``: over that crank range the output point stays within a band
+    ``tol_mm`` wide about one straight line (a ``line`` must promise it);
+    ``dwell = (tol_deg, crank_deg)``: a rotation stands still to ``±tol_deg``
+    for at least ``crank_deg`` of the turn.
+    """
+
+    kind: str
+    name: str
+    motion: str
+    frame: tuple[str, str]
+    body: str = ""
+    straight: tuple[float, float, float] | None = None
+    dwell: tuple[float, float] | None = None
+
+    def __post_init__(self):
+        if (self.kind, bool(self.body)) not in (("point", True), ("body", False)):
+            raise ValueError(f"output {self.name}: a point names its link (body=), a body doesn't")
+        if self.motion not in MOTIONS or (self.motion == "line" and not self.straight):
+            raise ValueError(f"output {self.name}: motion is one of {MOTIONS}; "
+                             f"a line promises how straight")
+
+    @property
+    def link(self) -> str:
+        return self.name if self.kind == "body" else self.body
+
+    @property
+    def point(self) -> str:
+        """The point whose path shows the motion: the output point, a body's origin (a
+        rotation's pin)."""
+        if self.kind == "point":
+            return self.name
+        return self.frame[1] if self.motion == "rotation" else self.frame[0]
+
+
 @dataclass(eq=False)
 class Linkage:
-    """One walking leg: its straight-line program, bodies and parameters.
+    """One walking leg or one mechanism: its straight-line program, bodies and parameters.
 
     ``program(p)`` returns the steps given the parameter symbols ``p`` (a
     dict name -> Symbol). ``links`` maps each link body ``b<k>`` to its joints
     and the outline segments its laser-cut shape spans. ``frame`` lists the
     torso's joints (fixed pivots and ``O``), ``crank`` the crank's (``O``
-    first, then the crankpin(s)). ``feet`` are ``(link, point)`` pairs.
-    ``modules`` replaces :data:`MODULE_LEGS` entries for linkages whose natural
-    unit differs (e.g. one that already carries a mirrored pair).
+    first, then the crankpin(s)). A walker's ``feet`` are ``(link, point)``
+    pairs; a mechanism has none and declares its ``output``. ``inputs`` are
+    the program's input angles, ``t`` first (a second one is placed with
+    :func:`crank_at`). ``modules`` replaces :data:`MODULE_LEGS` entries for
+    linkages whose natural unit differs (e.g. one that already carries a
+    mirrored pair); a mechanism is one unit (``single``).
     """
 
     key: str
@@ -158,8 +222,10 @@ class Linkage:
     program: Callable[[Mapping[str, sp.Symbol]], Steps]
     links: Mapping[str, LinkSpec]
     frame: tuple[str, ...]
-    feet: tuple[tuple[str, str], ...]
+    feet: tuple[tuple[str, str], ...] = ()
     crank: tuple[str, ...] = ("O", "M")
+    output: Output | None = None
+    inputs: tuple[str, ...] = ("t",)
     angles: frozenset[str] = frozenset()
     labels: Mapping[str, str] = field(default_factory=dict)
     modules: Mapping[str, LegList] = field(default_factory=dict)
@@ -180,15 +246,27 @@ class Linkage:
         loose = [j for j in (*self.frame, *self.crank[1:]) if j != "O" and j not in joints]
         if loose:
             raise ValueError(f"{self.key}: frame/crank joints {loose} carry no link")
+        if bool(self.feet) == (self.output is not None):
+            raise ValueError(f"{self.key}: a walker has feet, a mechanism an output: one of them")
+        if self.inputs not in (("t",), ("t", "t2")):
+            raise ValueError(f"{self.key}: inputs are the crank angle t, and maybe t2")
+        o = self.output
+        if o is not None and not {o.point, *o.frame} <= set(self.links.get(o.link, ((),))[0]):
+            raise ValueError(f"{self.key}: output {o.name} and its frame {o.frame} must be joints "
+                             f"of its link {o.link!r}")
+
+    @property
+    def kind(self) -> str:
+        """``walker`` (it has feet) or ``mechanism`` (it has an output)."""
+        return "walker" if self.feet else "mechanism"
 
     # -- symbols and program ---------------------------------------------
 
     @cached_property
     def symbols(self) -> dict[str, sp.Symbol]:
-        return {
-            k: sp.Symbol(k, real=True) if k in self.angles else sp.Symbol(k, positive=True)
-            for k in self.params
-        }
+        """Angles and non-positive defaults (coordinates) are real symbols, the rest positive."""
+        return {k: sp.Symbol(k, real=True) if k in self.angles or v <= 0
+                else sp.Symbol(k, positive=True) for k, v in self.params.items()}
 
     @cached_property
     def steps(self) -> Steps:
@@ -204,7 +282,8 @@ class Linkage:
 
     @property
     def leg_modules(self) -> dict[str, LegList]:
-        return {**MODULE_LEGS, **self.modules}
+        base = MODULE_LEGS if self.feet else {"single": MODULE_LEGS["single"]}
+        return {**base, **self.modules}
 
     def closed_form(self) -> dict[str, sp.Matrix]:
         """Fully substituted point expressions (for inspection and differentiation)."""
@@ -219,23 +298,23 @@ class Linkage:
 
     @cached_property
     def compiled(self) -> Callable[..., list]:
-        """The program, compiled once: ``(t, *params) -> [Ox, Oy, Ax, ...]``.
+        """The program, compiled once: ``(t, [t2,] *params) -> [Ox, Oy, Ax, ...]``.
 
-        Each step is lambdified on its own, over ``t``, the params and the
-        points before it, and run in order: never substituted, so compiling
-        costs the same at any depth.
+        Each step is lambdified on its own, over the inputs, the params and
+        the points before it, and run in order: never substituted, so
+        compiling costs the same at any depth.
         """
         with _maybe_timed("4.1b_klann.lambdify"):
-            params, fns, before = list(self.symbols.values()), [], []
+            head = [sp.Symbol(i, real=True) for i in self.inputs] + list(self.symbols.values())
+            fns, before = [], []
             for name, expr in self.steps:
-                fns.append(sp.lambdify([t, *params, *before], list(expr), modules="numpy",
-                                       cse=True))
+                fns.append(sp.lambdify([*head, *before], list(expr), modules="numpy", cse=True))
                 before += list(P(name))
 
-        def run(tt, *values):
+        def run(*args):
             flat: list = []
             for fn in fns:
-                flat += fn(tt, *values, *flat)
+                flat += fn(*args, *flat)
             return flat
 
         return run
@@ -258,7 +337,8 @@ class Linkage:
             return LegSolution(int(orientation), float(phase), values, self.key)
 
     def check(self, params: Mapping[str, float] | None = None) -> list[StepCheck]:
-        """Every step of the program over one revolution (see :class:`StepCheck`)."""
+        """Every step of the program over one revolution, or over the torus of two
+        inputs (see :class:`StepCheck`)."""
         return list(_check(self.key, self.values(params)))
 
     def assert_assembles(self, params: Mapping[str, float] | None = None) -> list[StepCheck]:
@@ -269,6 +349,23 @@ class Linkage:
             raise AssemblyError(f"{self.key}: {bad.describe()}")
         return steps
 
+    def output_check(self, params: Mapping[str, float] | None = None) -> OutputCheck:
+        """How well a mechanism's output does its job over the cycle (see :class:`OutputCheck`);
+        :class:`AssemblyError` first if a loop can't close."""
+        if self.output is None:
+            raise ValueError(f"{self.key} is a walker: it has feet, not an output")
+        self.assert_assembles(params)
+        return _output_check(self.key, self.values(params))
+
+    def assert_output(self, params: Mapping[str, float] | None = None) -> OutputCheck | None:
+        """:meth:`output_check`, raising :class:`OutputError` if the output breaks a promise."""
+        if self.output is None:
+            return None
+        c = self.output_check(params)
+        if c.broken:
+            raise OutputError(f"{self.key}: {c.broken}")
+        return c
+
     def variant(self, key: str, name: str, *, notes: str = "", source: str = "",
                 **params) -> Linkage:
         """The same program with other default parameters (a published variant)."""
@@ -276,7 +373,8 @@ class Linkage:
         return Linkage(
             key=key, name=name, params={**self.params, **params}, program=self.program,
             links=self.links, frame=self.frame, feet=self.feet, crank=self.crank,
-            angles=self.angles, labels=self.labels, modules=self.modules,
+            output=self.output, inputs=self.inputs, angles=self.angles, labels=self.labels,
+            modules=self.modules,
             family=self.family or self.key, source=source or self.source, notes=notes,
         )
 
@@ -314,6 +412,7 @@ class StepCheck:
     fails_deg: tuple[float, float] | None = None
     angle_deg: tuple[float, float] | None = None
     fail_fraction: float = 0.0
+    worst_t2_deg: float | None = None     # a second input's angle at the worst sample
 
     @property
     def toggles(self) -> bool:
@@ -329,23 +428,35 @@ class StepCheck:
                     f"its bars from {a} and {b} never meet")
         r1, r2 = self.radii
         where = f"bars {a}-{self.point} {r1:.1f} mm and {b}-{self.point} {r2:.1f} mm"
+        at = f"{self.worst_deg:.0f}°" + ("" if self.worst_t2_deg is None
+                                         else f", t2 {self.worst_t2_deg:.0f}°")
         if self.fails_deg is not None:
             lo, hi = self.fails_deg
             return (f"joint {self.point} can't be placed for {self.fail_fraction:.0%} of the cycle "
                     f"(crank angles {lo:.0f}°..{hi:.0f}°): {where} miss each other by up to "
-                    f"{-self.margin_mm:.2f} mm (worst at {self.worst_deg:.0f}°)")
+                    f"{-self.margin_mm:.2f} mm (worst at {at})")
         lo, hi = self.angle_deg
         flag = "; near toggle" if self.toggles else ""
         return (f"{self.point}: {where} close with {self.margin_mm:.2f} mm to spare "
-                f"(worst at {self.worst_deg:.0f}°), transmission angle {lo:.0f}°..{hi:.0f}°{flag}")
+                f"(worst at {at}), transmission angle {lo:.0f}°..{hi:.0f}°{flag}")
+
+
+def _inputs(lk: Linkage, n: int = 720) -> list[np.ndarray]:
+    """What a stage check samples: ``n`` crank angles; with two inputs, a grid of
+    ``(n/4)²`` over their torus."""
+    if len(lk.inputs) == 1:
+        return [2.0 * math.pi * np.arange(n) / n]
+    g = 2.0 * math.pi * np.arange(n // 4) / (n // 4)
+    return [a.ravel() for a in np.meshgrid(*[g] * len(lk.inputs), indexing="ij")]
 
 
 @cache
 def _check(key: str, values: tuple[float, ...], n: int = 720) -> tuple[StepCheck, ...]:
     lk = get(key)
-    ts = 2.0 * math.pi * np.arange(n) / n
+    ins = _inputs(lk, n)
+    ts = ins[0]
     with np.errstate(all="ignore"):
-        pts = LegSolution(1, 0.0, values, key).evaluate(ts)
+        pts = LegSolution(1, 0.0, values, key).evaluate(*ins)
     out = []
     for name, expr in lk.steps:
         syms = {s.name for s in expr.free_symbols}
@@ -378,9 +489,126 @@ def _check(key: str, values: tuple[float, ...], n: int = 720) -> tuple[StepCheck
         out.append(StepCheck(
             name, "closure", refs, (r1, r2), float(margin[k]), math.degrees(ts[k]),
             (float(fails.min()), float(fails.max())) if fails.size else None,
-            (float(ang[ok].min()), float(ang[ok].max())), fails.size / n,
+            (float(ang[ok].min()), float(ang[ok].max())), fails.size / ts.size,
+            math.degrees(ins[1][k]) if len(ins) > 1 else None,
         ))
     return tuple(out)
+
+
+# ---------------------------------------------------------------------------
+# Stage check: does a mechanism's output do its job?
+# ---------------------------------------------------------------------------
+
+ON_LINE_MM = 0.05     # a point this close to its fitted line is on it
+STILL_DEG = 1e-6      # a translating platform turns no more than this
+
+
+class OutputError(AssemblyError):
+    """A mechanism's output breaks what it promises (see :class:`Output`)."""
+
+
+@dataclass(frozen=True)
+class OutputCheck:
+    """A mechanism's output over the cycle (or the torus of its inputs), in mm and degrees.
+
+    ``extent_mm``: the output point's path, x and y. Over its straight
+    stretch (``Output.straight``; a platform's whole turn): ``stroke_mm``
+    along the fitted line; if it promises one, ``straightness_mm`` (the band
+    across the line) and ``on_line`` (the longest part of the turn within
+    :data:`ON_LINE_MM` of it). A platform's ``rotation_deg``; a rotation's
+    ``swing_deg`` and, if it promises one, its ``dwell_deg`` (crank degrees
+    within its tolerance). ``broken``: the promise it breaks, if any.
+    """
+
+    key: str
+    output: Output
+    extent_mm: tuple[float, float]
+    stroke_mm: float | None = None
+    straightness_mm: float | None = None
+    on_line: float | None = None
+    rotation_deg: float | None = None
+    swing_deg: float | None = None
+    dwell_deg: float | None = None
+    broken: str | None = None
+
+    def describe(self) -> str:
+        o = self.output
+        out = [f"{o.name} ({o.motion}) covers {self.extent_mm[0]:.2f} x {self.extent_mm[1]:.2f} mm"]
+        if self.stroke_mm is not None:
+            out.append(f"stroke {self.stroke_mm:.2f} mm")
+        if self.straightness_mm is not None:
+            lo, hi, _ = o.straight
+            out.append(f"straight to {self.straightness_mm:.3g} mm over crank {lo:g}°..{hi:g}°, "
+                       f"on the line for {self.on_line:.1%} of the turn")
+        if self.rotation_deg is not None:
+            out.append(f"turns {self.rotation_deg:.3g}°")
+        if self.swing_deg is not None:
+            out.append(f"swings {self.swing_deg:.2f}° about {o.frame[0]}")
+        if self.dwell_deg is not None:
+            out.append(f"stands still (±{o.dwell[0]:g}°) for {self.dwell_deg:.1f}° of the turn")
+        if self.broken:
+            out.append(f"BROKEN: {self.broken}")
+        return f"{self.key}: " + ", ".join(out)
+
+
+def _longest_run(mask: np.ndarray) -> int:
+    """Longest cyclic run of True."""
+    if mask.all():
+        return mask.size
+    edges = np.diff(np.concatenate([[0], mask, mask, [0]]).astype(int))
+    return int((np.flatnonzero(edges < 0) - np.flatnonzero(edges > 0)).max(initial=0))
+
+
+def _dwell(psi: np.ndarray, tol: float) -> int:
+    """Most consecutive samples (cyclic) of ``psi`` within a band ``2 tol`` wide."""
+    lo, hi, k = psi, psi, 0
+    while k < psi.size and (hi - lo <= 2 * tol).any():
+        k += 1
+        nxt = np.roll(psi, -k)
+        lo, hi = np.minimum(lo, nxt), np.maximum(hi, nxt)
+    return k
+
+
+@cache
+def _output_check(key: str, values: tuple[float, ...], n: int = 720) -> OutputCheck:
+    lk = get(key)
+    o = lk.output
+    ins = _inputs(lk, n)
+    deg = np.degrees(ins[0])
+    pts = LegSolution(1, 0.0, values, key).evaluate(*ins)
+    p, a, b = pts[o.point], pts[o.frame[0]], pts[o.frame[1]]
+    ang = np.degrees(np.unwrap(np.arctan2(b[:, 1] - a[:, 1], b[:, 0] - a[:, 0])))
+    got: dict[str, Any] = {"extent_mm": tuple(float(v) for v in np.ptp(p, axis=0))}
+    broken = []
+    if o.straight or o.motion == "translation_platform":
+        lo, hi, tol = o.straight or (0.0, 360.0, math.inf)
+        win = (deg >= lo) & (deg <= hi) if lo <= hi else (deg >= lo) | (deg <= hi)
+        c = p[win].mean(0)
+        along, across = np.linalg.svd(p[win] - c, full_matrices=False)[2]
+        off = (p - c) @ across
+        got["stroke_mm"] = float(np.ptp((p[win] - c) @ along))
+        if o.straight:
+            band = float(np.ptp(off[win]))
+            got.update(straightness_mm=band,
+                       on_line=_longest_run(np.abs(off) <= ON_LINE_MM) / off.size)
+            if band > tol:
+                broken.append(f"output {o.name} strays across a {band:.3g} mm band about its line "
+                              f"over crank {lo:g}°..{hi:g}°, wider than the {tol:g} mm it promises")
+    if o.motion == "translation_platform":
+        got["rotation_deg"] = rot = float(np.ptp(ang))
+        if rot > STILL_DEG:
+            k = int(np.argmax(np.abs(ang - ang[0])))
+            broken.append(f"platform {o.name} turns {rot:.3g}° over the cycle (most at crank "
+                          f"{deg[k]:.0f}°): a translating platform must not rotate")
+    if o.motion == "rotation":
+        got["swing_deg"] = float(np.ptp(ang))
+        if o.dwell:
+            tol, need = o.dwell
+            got["dwell_deg"] = dwell = 360.0 * _dwell(ang, tol) / ang.size
+            if dwell < need:
+                broken.append(f"output {o.name} stands still (±{tol:g}°) for only {dwell:.1f}° of "
+                              f"the turn, less than the {need:g}° it promises")
+    return OutputCheck(key, o, **got, broken="; ".join(broken) or None)
 
 
 # ---------------------------------------------------------------------------
@@ -410,9 +638,10 @@ def get(key: str) -> Linkage:
         raise KeyError(f"unknown linkage {key!r}; have {sorted(REGISTRY)}") from None
 
 
-def available() -> list[str]:
+def available(kind: str | None = None) -> list[str]:
+    """Registered keys, Klann first; ``kind`` (``walker`` / ``mechanism``) keeps those."""
     _load()
-    return list(REGISTRY)
+    return [k for k, lk in REGISTRY.items() if kind in (None, lk.kind)]
 
 
 # ---------------------------------------------------------------------------
@@ -459,16 +688,23 @@ class LegSolution:
         lk = self.linkage
         return {**{b: js for b, (js, _) in lk.links.items()}, "conn": lk.crank}
 
-    def evaluate(self, ts) -> dict[str, np.ndarray]:
-        """Every named point over ``ts``: ``name -> (..., 2)`` array."""
+    def evaluate(self, ts, *others) -> dict[str, np.ndarray]:
+        """Every named point over ``ts``: ``name -> (..., 2)`` array.
+
+        ``others``: the other inputs' angles (``t2``), 0 when not given: a
+        template, which has one time, holds them there.
+        """
         lk = self.linkage
         ts = np.asarray(ts, dtype=float)
         tt = ts + self.phase
         sign = 1.0
         if self.orientation < 0:
             tt, sign = np.pi - tt, -1.0
-        flat = lk.compiled(tt, *(self.values or lk.defaults))
-        cols = [np.broadcast_arrays(sign * flat[2 * i], flat[2 * i + 1], ts)[:2]
+        others = others or (0.0,) * (len(lk.inputs) - 1)
+        if len(others) != len(lk.inputs) - 1:
+            raise ValueError(f"{lk.key} takes inputs {lk.inputs}, got {1 + len(others)}")
+        flat = lk.compiled(tt, *others, *(self.values or lk.defaults))
+        cols = [np.broadcast_arrays(sign * flat[2 * i], flat[2 * i + 1], ts, *others)[:2]
                 for i in range(len(lk.points))]
         return {name: np.stack(c, axis=-1) for name, c in zip(lk.points, cols, strict=True)}
 
@@ -701,6 +937,7 @@ def build_module_template(
     """
     lk = get(linkage)
     lk.assert_assembles(proportions)
+    lk.assert_output(proportions)
     legs = module_legs(module, linkage)
     if phases is not None:
         if len(phases) != len(legs):

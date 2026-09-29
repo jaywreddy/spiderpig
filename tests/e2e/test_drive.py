@@ -251,14 +251,14 @@ def _sliders_are(tune: dict, info: dict) -> None:
 
 
 def test_linkage_dropdown_switches_the_design(page: Page, viewer_server: str) -> None:
-    """The tune panel lists ``/api/linkages``; picking one rebuilds the parameter sliders
+    """The tune panel lists ``/api/linkages``' walkers; picking one rebuilds the sliders
     from its parameters, limits the module dropdown to its modules and re-bakes the robot
     with ``linkage=`` (Jansen's mirrored pair here), which then drives on Jansen's feet."""
     catalogue = _catalogue(viewer_server)
     _open(page, viewer_server, "tune=1&module=double")
     page.wait_for_function("() => window.__viewer.drive.lastWalk !== null", timeout=60_000)
     tune = page.evaluate(TUNE_JS)
-    assert tune["linkages"] == list(catalogue)
+    assert tune["linkages"] == [k for k, lk in catalogue.items() if lk["kind"] == "walker"]
     assert (tune["linkage"], tune["module"]) == ("klann", "double")
     _sliders_are(tune, catalogue["klann"])
 

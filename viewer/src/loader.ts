@@ -17,6 +17,8 @@ export interface LoadedScene {
 interface SceneExtras {
   foot_path?: ReadonlyArray<readonly [number, number]>;
   foot_path_z?: number;
+  output_path?: ReadonlyArray<readonly [number, number]>;   // a mechanism's, instead
+  output_path_z?: number;
 }
 
 const loader = new GLTFLoader();
@@ -95,8 +97,9 @@ export async function loadGlb(scene: THREE.Scene, mode: Mode, query = ''): Promi
   const json = gltf.parser.json as { scene?: number; scenes?: Array<{ extras?: SceneExtras }> };
   const extras = json.scenes?.[json.scene ?? 0]?.extras ?? {};
   let footLine: THREE.Line | null = null;
-  if (Array.isArray(extras.foot_path)) {
-    footLine = buildFootPath(extras.foot_path, extras.foot_path_z ?? 0.2);
+  const path = extras.foot_path ?? extras.output_path;
+  if (Array.isArray(path)) {
+    footLine = buildFootPath(path, extras.foot_path_z ?? extras.output_path_z ?? 0.2);
     if (footLine) walker.add(footLine);
   }
 

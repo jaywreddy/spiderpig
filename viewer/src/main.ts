@@ -52,6 +52,7 @@ const drive = createDrive({
   stage,
   loaded: () => loaded,
   loadRobot: (query) => loadMode('robot', query),
+  loadSide: (query) => loadMode('klann', query),   // 'klann': the server's side-only single mode
   status: (text) => ui.setStatus(text),
   seek,
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },

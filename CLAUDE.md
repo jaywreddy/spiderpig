@@ -25,6 +25,7 @@ Direct invocation of the bake script (more flags than `mise run bake`):
 uv run python viewer/bake_gltf.py --mode robot --module quad --frames 120
 uv run python viewer/bake_gltf.py --mode single          # one side only
 uv run python viewer/bake_gltf.py --linkage jansen --module double   # another linkage
+uv run python viewer/bake_gltf.py --mode single --linkage hoecken    # a mechanism: one side
 ```
 
 `--linkage` / `--phases` / `--proportion NAME=VALUE` are shared by `main.py`,
@@ -130,8 +131,8 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 
 | file | role |
 |---|---|
-| `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. Registry: `get` / `available`. |
-| `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). |
+| `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). Registry: `get` / `available(kind)`. |
+| `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
 | `explain.py` | prints each pipeline stage's verdict for a design (program checks, static clearances, plan or `PlanError`) |
 | `klann.py` | the Klann-named API kept for callers: `PROPORTIONS`, `STEPS`, `KlannSolution` (= `LegSolution`), `build_*_template`, single-t `build_*_mechanism`. |
 | `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
@@ -145,7 +146,7 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 | `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM |
 | `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
-| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages and their params/modules for the viewer's tune panel |
+| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker |
 
 ### Pipeline contract
 
@@ -171,7 +172,13 @@ Every stage says what fails, so no follow-up digging is needed
 
 - **template**: `Linkage.assert_assembles` raises `AssemblyError` naming the
   step whose bars can't meet, by how much and at which crank angles.
-  `Linkage.check()` gives every loop's margin and transmission angle.
+  `Linkage.check()` gives every loop's margin and transmission angle (over
+  the torus of both inputs for a two-input mechanism). A mechanism's
+  `output_check()` measures its output; `assert_output` raises `OutputError`
+  when it breaks a promise (a platform that turns, a line not straight to
+  its tolerance, a dwell too short).
+- **drive**: one servo turns `t`; a second input stops at
+  `ConstructionError` (`servos/mount.py`).
 - **static clearance**: each group declares `keepouts(ctx)` (an axle's neck
   over its span, the crank at O). `side_clearances` lists every link that
   can never share their layers. `stack.impossible` raises `ClearanceError`
@@ -196,8 +203,20 @@ claims use) and `realize(group, build)` (parts inside those claims), register
 it in `construction/__init__.py`, run the contract tests. To add a leg
 module: add it to `linkage.MODULE_LEGS` (or a linkage's own `modules`). To
 add a linkage: a module in `linkages/` with its params, program, links
-(`b<k>` -> joints, outline), frame, crank and feet; `tests/test_linkage.py`
-checks it assembles, stays rigid and plans.
+(`b<k>` -> joints, outline), frame, crank and feet (a mechanism: its
+`output`); `tests/test_linkage.py` checks it assembles, stays rigid and
+plans (`tests/test_mechanisms.py`: outputs against the research's numbers).
+
+### Stacking (future)
+
+Not built. A stage would mount on its parent's output body (`Output.frame`:
+origin joint, x-axis joint). The engine would need: the child's fixed pivots
+placed as `offset(J1, J2, along, across)` on that body instead of `xy`; its
+point names prefixed per stage so the programs concatenate into one; its
+input added to `inputs` (its crank turns relative to the parent body, so its
+angle is its input plus that body's rotation); one drive per input; and the
+planner's clearances between bodies in relative motion across stages (the
+child's frame is a moving body, not the frame plates).
 
 Physical rules the claims encode:
 

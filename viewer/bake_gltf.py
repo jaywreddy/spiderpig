@@ -28,7 +28,8 @@ Pipeline
 5. Emit a root node ``walker`` that stands the robot on its feet (model +Y
    -> up, the layer stack horizontal, lowest foot on ``z = 0``) with one
    animated child node per body (TRS channels, LINEAR).
-6. Foot-path overlay in ``scene.extras``; for the robot, the walking
+6. Foot-path overlay in ``scene.extras`` (a mechanism's, one side only:
+   ``output_path`` and its ``output`` spec); for the robot, the walking
    model's data (:mod:`walk`) in the root node's extras under ``"drive"``.
 7. Serialize with ``pygltflib``.
 
@@ -62,7 +63,7 @@ import time
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -215,6 +216,9 @@ def build_config(
     config = replace(config, module=side, robot=robot)
     if linkage is not None:
         config = replace(config, linkage=walk.get_linkage(linkage).key)
+    if robot and walk.get_linkage(config.linkage).kind != "walker":
+        raise walk.ParamError(f"{config.linkage} is a mechanism: bake one side (mode single), "
+                              f"not a robot")
     if phases is not None:
         config = replace(config, phases=tuple(float(p) for p in phases))
     if proportions is not None:
@@ -701,9 +705,10 @@ def bake_gltf(
                 ref_mech = fabricate(template_for(config), config, _T_REF)
             bodies = ref_mech.bodies
             by_name = {b.name: b for b in bodies}
-            feet = linkage_mod.feet_of(ref_mech)          # (body, joint), lk.feet per leg
+            # (body, joint): lk.feet per leg, or a mechanism's output point
+            feet = linkage_mod.feet_of(ref_mech) or [(lk.output.link, lk.output.point)]
             prof.set_metric("n_bodies", len(bodies))
-            prof.set_metric("n_legs", len(feet) // len(lk.feet))
+            prof.set_metric("n_legs", len(feet) // max(len(lk.feet), 1))
             logger.debug("reference mech: %d bodies", len(bodies))
 
             # Every body moves with the joints of its anchor: its own, or its host's.
@@ -919,13 +924,14 @@ def bake_gltf(
                 name="walk", samplers=animation_samplers, channels=animation_channels
             )
 
-            # --- stage 6: foot-path extra (leg 0's first foot for reference) ---
+            # --- stage 6: foot-path extra (leg 0's first foot for reference; a
+            # mechanism's output point, as ``output_path``) ---
             with prof.timed("6_foot_path_extra"):
                 sol0 = lk.solve(1, 0.0, dict(config.proportions))
                 foot_samples = 64
                 foot = sol0.evaluate(
                     np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
-                )[lk.feet[0][1]]
+                )[(lk.feet or feet)[0][1]]
                 foot_path = [[float(x), float(y)] for x, y in foot]
                 # Drawn just outside that foot's link (first side), in model Z.
                 link = next((by_name[b] for b, _ in feet if by_name[b].part), None)
@@ -943,11 +949,14 @@ def bake_gltf(
                              drive["mass_g"], drive["metrics"]["stride_mm"])
 
             scene = pygltflib.Scene(nodes=[0])
+            path = "foot_path" if lk.feet else "output_path"
             scene.extras = {
-                "foot_path": foot_path, "foot_path_z": foot_z,
+                path: foot_path, f"{path}_z": foot_z,
                 "mode": mode, "linkage": config.linkage, "module": config.module, "robot": robot,
                 "meta": _json_meta(ref_mech.meta),
             }
+            if lk.output:
+                scene.extras["output"] = asdict(lk.output)
 
             # --- stage 7: assemble + binary-serialize glTF ---
             with prof.timed("7_serialize"):

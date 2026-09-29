@@ -46,7 +46,8 @@ CASES = {
     "robot": {"mode": "robot", "module": "single"},
 }
 EXTRA = {"phased": {"mode": "robot", "module": "single", "phases": [math.pi / 2]},
-         "strider": {"mode": "robot", "module": "single", "linkage": "strider"}}
+         "strider": {"mode": "robot", "module": "single", "linkage": "strider"},
+         "mechanism": {"mode": "single", "linkage": "crank_rocker"}}
 PHASED = EXTRA["phased"]
 
 
@@ -428,3 +429,17 @@ def test_other_linkage_bake(bakes):
         np.testing.assert_allclose(f["xy"], pts[joint], atol=1e-3)
         assert f["z"] == pytest.approx(_foot_z(gltf, index[f["body"]]), abs=0.01)
     assert "    n_legs: 2\n" in bakes.logs["strider"]              # both sides: 4 feet, 2 legs
+
+
+def test_mechanism_bake(bakes):
+    """A mechanism bakes one side: no feet, no drive; its output's path instead."""
+    gltf = bakes("mechanism")
+    scene = gltf.scenes[gltf.scene]
+    lk = linkage.get("crank_rocker")
+    pin = lk.solve().evaluate(np.linspace(0.0, 2 * math.pi, 64, endpoint=False))["E"]
+    np.testing.assert_allclose(scene.extras["output_path"], pin, atol=1e-9)
+    assert scene.extras["output"]["name"] == "b2"
+    assert "foot_path" not in scene.extras
+    assert "drive" not in (_root(gltf).extras or {})
+    with pytest.raises(walk.ParamError, match="crank_rocker is a mechanism: bake one side"):
+        build_config("robot", linkage="crank_rocker")
