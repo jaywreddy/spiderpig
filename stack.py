@@ -229,6 +229,13 @@ class Keepout:
     r: float
     where: str
     members: frozenset[str] = frozenset()
+    everywhere: bool = False    # fills ``core`` in every layer but its members'
+    hint: str = ""              # what construction would lift it
+
+    @property
+    def label(self) -> str:
+        at = self.core[1] if self.core[0] == "pt" else ""
+        return self.owner if at in self.owner else f"the {self.owner} at {at}"
 
 
 @dataclass(frozen=True)
@@ -242,10 +249,35 @@ class Clearance:
 
     def describe(self) -> str:
         k = self.keepout
-        how = (f"sweeps right across {k.owner}" if self.dist <= 0 else
-               f"passes {k.owner} at {self.dist:.1f} mm, under the {self.need:.1f} mm its "
+        how = (f"sweeps right across {k.label}" if self.dist <= 0 else
+               f"passes {k.label} at {self.dist:.1f} mm, under the {self.need:.1f} mm its "
                "thinnest part needs")
         return f"{self.link} {how}, so it can't be in any layer {k.where}"
+
+
+class ClearanceError(ValueError):
+    """A link no layer can hold, known from the geometry alone (before any search)."""
+
+
+def link_gap(topo: Topology, a: str, b: str) -> float:
+    """Closest approach of two links' centrelines over the cycle (lower bound)."""
+    return min(topo.geometry.dist(("seg", *s), ("seg", *u))
+               for s in topo.links[a] for u in topo.links[b])
+
+
+def impossible(topo: Topology, clearances: Iterable[Clearance], link_r: float,
+               margin: float) -> list[str]:
+    """Links shut out of every layer: across a keep-out that fills all layers but its
+    members', while overlapping each member."""
+    out = []
+    for c in clearances:
+        k = c.keepout
+        if k.everywhere and all(link_gap(topo, c.link, m) < 2 * link_r + margin
+                                for m in k.members):
+            also = f" and it overlaps each of {', '.join(sorted(k.members))}" if k.members else ""
+            out.append(f"{c.describe()}{also}, so no layer can hold it"
+                       + (f" ({k.hint})" if k.hint else ""))
+    return out
 
 
 def static_clearances(topo: Topology, keepouts: Iterable[Keepout], link_r: float,
@@ -784,7 +816,8 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
 
 __all__ = [
     "Axis", "Claim", "Clearance", "Disc", "Geometry", "Keepout", "Layout", "Pill", "Placed",
-    "PlanError", "Unbuildable", "made", "static_clearances",
+    "ClearanceError", "PlanError", "Unbuildable", "impossible", "link_gap", "made",
+    "static_clearances",
     "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes", "is_link",
     "is_crank", "is_frame", "plan_problem", "seg_seg", "topology_from_template", "verify_plan",
 ]

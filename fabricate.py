@@ -30,10 +30,12 @@ from mechanism import Mechanism
 from servos.mount import DriveGroup
 from stack import (
     Clearance,
+    ClearanceError,
     PlanError,
     StackPlan,
     StackProblem,
     StackSpec,
+    impossible,
     static_clearances,
     topology_from_template,
     verify_plan,
@@ -215,6 +217,8 @@ def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
             if plan is not None and verify_plan(plan):
                 plan = None
         clearances = side_clearances(ctx, groups)
+        if no := impossible(ctx.topo, clearances, config.params.link_radius, config.params.margin):
+            raise ClearanceError(f"{tmpl.name}: " + "\n  ".join(no))
         if plan is None:
             try:
                 plan = problem.solve()

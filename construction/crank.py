@@ -199,8 +199,10 @@ class CrankGroup:
         d, riders = self.dims(ctx), frozenset(ctx.topo.riders)
         return [Keepout(GROUP, ("pt", "O"), d.journal, "between the crank webs and the hub",
                         riders),
-                Keepout(GROUP, ("pt", "O"), d.stub, "below the crank webs (journal stub)",
-                        riders)]
+                Keepout(GROUP, ("pt", "O"), min(d.stub, d.journal), "but its riders'", riders,
+                        everywhere=True,
+                        hint="the crankshaft runs through every layer to its stub in the outer "
+                             "plate; a crank overhung from the servo side would leave room")]
 
     def claims(self, ctx: Context) -> list[Claim]:
         topo = ctx.topo

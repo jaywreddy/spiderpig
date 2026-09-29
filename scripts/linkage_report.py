@@ -69,8 +69,8 @@ def plans(key: str, modules) -> dict:
         try:
             d = design_side(template_for(cfg), cfg)
             out[m] = {"ok": True, "layers": d.plan.top + 1, "stack_mm": d.plan.height}
-        except Exception as e:  # noqa: BLE001 - reported, not raised
-            out[m] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+        except ValueError as e:     # a stage said why: AssemblyError, ClearanceError, PlanError
+            out[m] = {"ok": False, "stage": type(e).__name__, "error": str(e)}
         out[m]["seconds"] = round(time.perf_counter() - t0, 1)
         log.info("%s %s: %s", key, m, out[m])
     return out
@@ -85,6 +85,10 @@ def describe(lk: linkage.Linkage) -> dict:
         "links": {b: {"joints": list(js), "label": lk.labels.get(b, "")}
                   for b, (js, _) in lk.links.items()},
         "feet_per_leg": len(lk.feet),
+        "closures": [{"point": c.point, "refs": list(c.refs), "margin_mm": round(c.margin_mm, 2),
+                      "transmission_deg": [round(a, 1) for a in c.angle_deg],
+                      "toggles": c.toggles, "text": c.describe()}
+                     for c in lk.check() if c.kind == "closure"],
         "modules": {m: len(legs) for m, legs in lk.leg_modules.items()},
     }
 

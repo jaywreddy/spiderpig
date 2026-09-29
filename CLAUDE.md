@@ -125,6 +125,7 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 |---|---|
 | `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. Registry: `get` / `available`. |
 | `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). |
+| `explain.py` | prints each pipeline stage's verdict for a design (program checks, static clearances, plan or `PlanError`) |
 | `klann.py` | the Klann-named API kept for callers: `PROPORTIONS`, `STEPS`, `KlannSolution` (= `LegSolution`), `build_*_template`, single-t `build_*_mechanism`. |
 | `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
 | `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers), a `Topology` (links, axles as named points) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()`; `verify_plan()` re-checks exhaustively on fresh sampling. |
@@ -157,6 +158,25 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
    parts at `t` inside its claims; plates are cut last with every hole the
    other groups asked for; the robot mirrors the side and adds the chassis.
 6. **Serialized** — STEP/STL/DXF/BOM (`main.py`) or `.glb` (`bake_gltf`).
+
+Every stage says what fails, so no follow-up digging is needed
+(`python explain.py --linkage K --module M` prints all three):
+
+- **template**: `Linkage.assert_assembles` raises `AssemblyError` naming the
+  step whose bars can't meet, by how much and at which crank angles.
+  `Linkage.check()` gives every loop's margin and transmission angle.
+- **static clearance**: each group declares `keepouts(ctx)` (an axle's neck
+  over its span, the crank at O). `side_clearances` lists every link that
+  can never share their layers. `stack.impossible` raises `ClearanceError`
+  when no layer can hold a link at all.
+- **plan**: the planner tallies what blocked it, and claims raise
+  `Unbuildable(reason)` rather than returning `None`. If the search fails,
+  `stacked_plan` composes the side from a verified smaller module's plan.
+  Otherwise `PlanError` lists the blockers with distances, the stacking
+  result and the static clearances involved.
+
+A new construction or claim must keep this up: raise with a reason, and
+declare its keep-outs.
 
 Correct by construction: the planner guarantees claims of different groups
 never meet over the whole crank cycle, and `construction.contract` checks

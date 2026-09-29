@@ -10,6 +10,7 @@ import pytest
 
 import linkage
 from fabricate import BuildConfig, design_side, template_for
+from stack import ClearanceError
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
@@ -115,9 +116,20 @@ def test_strider_matches_its_plan_drawing():
         assert np.hypot(*(got - xy)) < 0.2, f"{j}: {got} vs plan {xy}"
 
 
+# A link pinned to the crank rider inside the crank circle sweeps across O, which the
+# through crankshaft fills in every layer: these need a crank overhung from the servo side.
+NEEDS_OVERHUNG_CRANK = {"trotbot", "trotbot_heel", "trotbot_toe", "sixbar", "sixbar_v1"}
+
+
 @pytest.mark.parametrize("key", ALL)
-def test_one_side_plans(key):
-    """Every linkage lays out as a single-module side with the default constructions."""
+def test_one_side_plans_or_the_pipeline_says_why(key):
+    """A single-module side lays out with the default constructions, or the static
+    clearance stage names the link no layer can hold."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
+    if key in NEEDS_OVERHUNG_CRANK:
+        with pytest.raises(ClearanceError, match="sweeps right across the crank at O, so it "
+                                                 "can't be in any layer but its riders'"):
+            design_side(template_for(cfg), cfg)
+        return
     design = design_side(template_for(cfg), cfg)
     assert design.plan.top >= 2

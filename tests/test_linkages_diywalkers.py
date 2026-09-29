@@ -10,49 +10,25 @@ defined but not registered; they're checked here all the same.
 
 from __future__ import annotations
 
-import functools
 import math
 
 import numpy as np
 import pytest
-import sympy as sp
 
 import linkage
-from linkages import fourbar, jansen, sixbar, strider, trotbot
+from linkages import jansen, strider, trotbot
 
 TS = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
-DEFINED = {lk.key: lk for lk in (
-    fourbar.FOURBAR, linkage.get("fourbar_spot_micro"), linkage.get("fourbar_spot_micro_v2"),
-    *sixbar.UNREGISTERED, sixbar.SIXBAR_V3, *trotbot.UNREGISTERED,
+DEFINED = {k: linkage.get(k) for k in (
+    "fourbar", "fourbar_spot_micro", "fourbar_spot_micro_v2", "sixbar", "sixbar_v1",
+    "sixbar_v2", "sixbar_v3", "trotbot", "trotbot_heel", "trotbot_toe",
 )}
 
 
-@functools.cache
-def _step_functions(lk: linkage.Linkage):
-    """Each step of the program as its own numpy function (quick to compile at any depth)."""
-    fns, before = [], []
-    for name, expr in lk.steps:
-        args = [linkage.t, *lk.symbols.values(), *(s for n in before for s in linkage.P(n))]
-        fns.append((name, sp.lambdify(args, list(expr), modules="numpy")))
-        before.append(name)
-    return fns
-
-
 def points(lk: linkage.Linkage, ts) -> dict[str, np.ndarray]:
-    """Every point over crank angles ``ts``, in drawing units (``name -> (..., 2)``).
-
-    Registered linkages go through the engine; the others are run step by step.
-    """
-    ts = np.asarray(ts, dtype=float)
+    """Every point over crank angles ``ts``, in drawing units (``name -> (..., 2)``)."""
     unit = float(lk.params["unit"])
-    if lk.key in linkage.available():
-        return {k: v / unit for k, v in lk.solve().evaluate(ts).items()}
-    vals, chain, out = lk.defaults, [], {}
-    for name, fn in _step_functions(lk):
-        xy = np.broadcast_arrays(*fn(ts, *vals, *chain), ts)[:2]
-        chain += xy
-        out[name] = np.stack(xy, axis=-1) / unit
-    return out
+    return {k: v / unit for k, v in lk.solve().evaluate(np.asarray(ts, dtype=float)).items()}
 
 
 # ---------------------------------------------------------------------------
@@ -219,28 +195,3 @@ def test_follows_the_sites_python_simulator_over_the_whole_cycle(key):
         for j, want in site(th).items():
             got = pts[j][i] * scale
             assert math.dist(got, want) < 1e-9, f"{key} {j} at {math.degrees(th):.0f} deg"
-
-
-# ---------------------------------------------------------------------------
-# Why some aren't registered
-# ---------------------------------------------------------------------------
-
-SWEEPERS = {"trotbot": "b6", "trotbot_heel": "b7", "trotbot_toe": "b6",
-            "sixbar": "b4", "sixbar_v1": "b4"}
-
-
-@pytest.mark.parametrize("key", sorted(SWEEPERS))
-def test_unregistered_ones_assemble_but_sweep_a_link_across_the_crank_axis(key):
-    """A link hung off the crank rider inside the crank circle crosses O: no layer is free there."""
-    lk = DEFINED[key]
-    assert key not in linkage.available()
-    pts = points(lk, TS)
-    assert all(np.isfinite(v).all() for v in pts.values()), f"{key} doesn't assemble"
-    feet = {j for _, j in lk.feet}
-    assert min(pts[j][:, 1].min() for j in feet) < min(
-        v[:, 1].min() for j, v in pts.items() if j not in feet)
-    (a, b), = lk.links[SWEEPERS[key]][1]
-    ab = pts[b] - pts[a]
-    s = np.clip(-(pts[a] * ab).sum(-1) / (ab * ab).sum(-1), 0.0, 1.0)
-    reach = np.linalg.norm(pts[a] + ab * s[:, None], axis=-1).min() * float(lk.params["unit"])
-    assert reach < 1.0, f"{key} {SWEEPERS[key]} keeps {reach:.1f} mm from O"

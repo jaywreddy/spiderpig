@@ -219,11 +219,26 @@ class Linkage:
 
     @cached_property
     def compiled(self) -> Callable[..., list]:
-        """The whole program, lambdified once: ``(t, *params) -> [Ox, Oy, Ax, ...]``."""
+        """The program, compiled once: ``(t, *params) -> [Ox, Oy, Ax, ...]``.
+
+        Each step is lambdified on its own, over ``t``, the params and the
+        points before it, and run in order: never substituted, so compiling
+        costs the same at any depth.
+        """
         with _maybe_timed("4.1b_klann.lambdify"):
-            cf = self.closed_form()
-            flat = [c for name in self.points for c in cf[name]]
-            return sp.lambdify([t, *self.symbols.values()], flat, modules="numpy", cse=True)
+            params, fns, before = list(self.symbols.values()), [], []
+            for name, expr in self.steps:
+                fns.append(sp.lambdify([t, *params, *before], list(expr), modules="numpy",
+                                       cse=True))
+                before += list(P(name))
+
+        def run(tt, *values):
+            flat: list = []
+            for fn in fns:
+                flat += fn(tt, *values, *flat)
+            return flat
+
+        return run
 
     def values(self, overrides: Mapping[str, float] | None = None) -> tuple[float, ...]:
         """Parameter values in ``params`` order, the defaults unless overridden."""

@@ -2,9 +2,9 @@
 
 Each module here defines one family with :class:`linkage.Linkage` (and its
 published variants with :meth:`linkage.Linkage.variant`) and registers it.
-Klann registers first: it is the default. A version the fabrication can't
-lay out yet is defined but left out of the registry, listed in its module's
-``UNREGISTERED`` with the reason in the module docstring.
+Klann registers first: it is the default. Every version is registered, even
+one the current constructions can't build: the pipeline says why (e.g. a link
+that sweeps across the crank axis needs a crank overhung from the servo side).
 """
 
 import importlib

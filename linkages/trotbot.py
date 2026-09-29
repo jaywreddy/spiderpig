@@ -26,22 +26,20 @@ number on the plan; ``J13``-``J15`` are ours. Branches are the site's Python
 simulator's (``TrotBot Stationary.py``): ``J2`` high, ``J5`` low, ``J8``
 left, ``J7`` low, ``J11`` low; the program matches it to 1e-13.
 
-**Not registered.** ``B8`` and the heel link ``B13`` hang off the crank
+**Fabrication.** ``B8`` and the heel link ``B13`` hang off the crank
 triangle at ``J8`` and ``J9``, 3 and 1 from the crankpin: inside the crank
 circle (4). Seen from either link, O circles its pin once per crank turn, so
 the link sweeps across the crank axis whatever its shape, while the printed
 crankshaft occupies O in every layer (journal stub in the outer frame plate,
-body, hub): no layer plan exists. TrotBot needs an overhung crank, nothing
-on O outboard of its last web, as in the LEGO builds; register these once a
-crank construction offers one. (``trotbot_toe``'s program also takes about
-2.5 minutes to compile.)
+body, hub): the static clearance stage rejects them. TrotBot needs an
+overhung crank, nothing on O outboard of its last web, as in the LEGO builds.
 """
 
 from __future__ import annotations
 
 import sympy as sp
 
-from linkage import Linkage, P, circle_x_circle, crank, xy
+from linkage import Linkage, P, circle_x_circle, crank, register, xy
 
 R = sp.Rational
 SOURCE = "https://www.diywalkers.com/trotbot-linkage-plans.html"
@@ -170,18 +168,18 @@ def _trotbot(key: str, name: str, heel: bool, toe: bool, notes: str) -> Linkage:
     )
 
 
-TROTBOT = _trotbot(
+TROTBOT = register(_trotbot(
     "trotbot", "TrotBot", heel=False, toe=False,
-    notes="Eight bars, one frame pivot; a tear-drop foot path with a high step.",
-)
-TROTBOT_HEEL = _trotbot(
+    notes="Eight bars, one frame pivot; a tear-drop foot path with a high step. "
+          "Needs an overhung crank.",
+))
+TROTBOT_HEEL = register(_trotbot(
     "trotbot_heel", "TrotBot with heel (Ver 1)", heel=True, toe=False,
-    notes="Ten bars: a heel takes the weight while the main foot is still descending.",
-)
-TROTBOT_TOE = _trotbot(
+    notes="Ten bars: a heel takes the weight while the main foot is still descending. "
+          "Needs an overhung crank.",
+))
+TROTBOT_TOE = register(_trotbot(
     "trotbot_toe", "TrotBot with heel and retractable toe (Ver 3)", heel=True, toe=True,
-    notes="Twelve bars: heel, plus a toe that paws backward and stays folded as the leg lifts.",
-)
-
-# Defined but not registered: see the module docstring.
-UNREGISTERED = (TROTBOT, TROTBOT_HEEL, TROTBOT_TOE)
+    notes="Twelve bars: heel, plus a toe that paws backward and stays folded as the leg "
+          "lifts. Needs an overhung crank.",
+))
