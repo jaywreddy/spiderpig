@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 
 import ezdxf
 import pytest
@@ -92,3 +93,25 @@ def test_list(capsys):
     out = capsys.readouterr().out
     for word in ("sts3215", "printed", "acrylic_3mm"):
         assert word in out
+
+
+def test_design_flags():
+    """``--phases`` (degrees) and ``--proportion NAME=VALUE`` reach the BuildConfig."""
+    args = cli._parse_args(["--phases", "0,175,180,355", "--proportion", "DF=2.4",
+                            "--proportion", "OB=1.121"])
+    assert args.config.phases == pytest.approx(
+        tuple(math.radians(p) for p in (0, 175, 180, 355)))
+    assert args.config.proportions == (("DF", 2.4),)          # Klann's OB is no override
+    assert cli._parse_args(["--phases", "0,180,90,270"]).config.phases is None
+    assert cli._parse_args(["--module", "decker", "--phases", "0,180"]).config.phases == \
+        pytest.approx((0.0, math.pi))
+    for bad in (["--module", "single", "--phases", "0,90"], ["--phases", "0,x,1,2"],
+                ["--proportion", "XX=1"], ["--proportion", "OB"], ["--proportion", "OB=-1"]):
+        with pytest.raises(SystemExit):
+            cli._parse_args(bad)
+
+
+def test_unassemblable_design_is_refused(tmp_path, capsys):
+    assert cli.main(["--module", "single", "--proportion", "MC=0.3", "--no-dxf",
+                     "--out", str(tmp_path)]) == 2
+    assert "joint C" in capsys.readouterr().err

@@ -28,24 +28,37 @@ Pipeline
 5. Emit a root node ``walker`` that stands the robot on its feet (model +Y
    -> up, the layer stack horizontal, lowest foot on ``z = 0``) with one
    animated child node per body (TRS channels, LINEAR).
-6. Foot-path overlay in ``scene.extras``.
+6. Foot-path overlay in ``scene.extras``; for the robot, the walking
+   model's data (:mod:`walk`) in the root node's extras under ``"drive"``.
 7. Serialize with ``pygltflib``.
+
+Design parameters
+-----------------
+``phases`` (one crank phase per leg) and ``proportions`` (overrides of
+:data:`klann.PROPORTIONS`) change the design; the CLI takes the phases in
+degrees (``--phases 0,180,90,270``) and ``--proportion NAME=VALUE``
+(repeatable). A non-default design is written to
+``viewer/data/params/<mode>_<key>.glb`` unless ``--out`` says otherwise
+(:func:`param_glb`; the dev server caches parameter bakes there too).
 
 Usage
 -----
     uv run python viewer/bake_gltf.py                       # robot, quad per side
     uv run python viewer/bake_gltf.py --mode robot --module single
     uv run python viewer/bake_gltf.py --mode double --frames 60
+    uv run python viewer/bake_gltf.py --phases 0,175,180,355 --proportion DF=2.5
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import logging
 import math
 import sys
 import time
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -142,28 +155,20 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import klann  # noqa: E402
+import walk  # noqa: E402
 from construction.robot import robot_template  # noqa: E402
-from fabricate import BuildConfig, fabricate  # noqa: E402
-from klann import (  # noqa: E402
-    build_double_decker_template,
-    build_double_double_decker_template,
-    build_double_template,
-    build_klann_template,
-    create_klann_geometry,
-)
+from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
+from klann import create_klann_geometry  # noqa: E402
 from mechanism import Body, Mechanism, MechanismTemplate  # noqa: E402
 from stack import LINK_CLASSES, body_class  # noqa: E402
 
-# One side's kinematics per module (see fabricate.MODULES).
-_TEMPLATES = {
-    "single": lambda: build_klann_template(create_klann_geometry()),
-    "double": build_double_template,
-    "decker": build_double_decker_template,
-    "quad": build_double_double_decker_template,
-}
+# One side's kinematics per module (see fabricate.MODULES) is
+# ``fabricate.template_for(config)``: the module at the config's crank phases
+# and proportions.
 ROBOT = "robot"
-MODES = (ROBOT, *_TEMPLATES)
+MODES = (ROBOT, *MODULES)
 DEFAULT_MODULE = "quad"
+PARAMS_DIR = _REPO_ROOT / "viewer" / "data" / "params"
 
 # Crank angle the parts are modelled at; frame 0 of the animation.
 _T_REF = 0.0
@@ -177,30 +182,61 @@ def _resolve(mode: str, module: str | None = None) -> tuple[str, bool]:
     """``(side module, robot?)`` for a bake mode."""
     if mode == ROBOT:
         module = module or DEFAULT_MODULE
-        if module not in _TEMPLATES:
-            raise ValueError(f"unknown module {module!r}; have {sorted(_TEMPLATES)}")
+        if module not in MODULES:
+            raise ValueError(f"unknown module {module!r}; have {sorted(MODULES)}")
         return module, True
-    if mode not in _TEMPLATES:
+    if mode not in MODULES:
         raise ValueError(f"unknown mode {mode!r}; have {list(MODES)}")
     if module not in (None, mode):
         raise ValueError(f"mode {mode!r} is one side; module {module!r} applies to robot only")
     return mode, False
 
 
-def _build_template(mode: str, *, module: str | None = None) -> MechanismTemplate:
+def _build_template(config: BuildConfig) -> MechanismTemplate:
     """The kinematics the animation samples: one side, or both sides of the robot."""
-    side, robot = _resolve(mode, module)
-    tmpl = _TEMPLATES[side]()
-    return robot_template(tmpl) if robot else tmpl
+    tmpl = template_for(config)
+    return robot_template(tmpl) if config.robot else tmpl
 
 
-def _build_config(
+def build_config(
     mode: str, module: str | None = None, config: BuildConfig | None = None,
-    thickness: float | None = None,
+    thickness: float | None = None, phases: Sequence[float] | None = None,
+    proportions: Mapping[str, float] | None = None,
 ) -> BuildConfig:
+    """The build for a bake. ``phases`` (rad, one per leg) and ``proportions``
+    override ``config``'s; both are validated and normalized
+    (:func:`walk.normalize_phases`, :func:`walk.normalize_proportions`), so a
+    default design has one config however it was asked for.
+
+    Raises ``ValueError`` (:class:`walk.ParamError` for bad design parameters).
+    """
     side, robot = _resolve(mode, module)
     config = replace(config or BuildConfig(), module=side, robot=robot)
+    if phases is not None:
+        config = replace(config, phases=tuple(float(p) for p in phases))
+    if proportions is not None:
+        config = replace(config, proportions=tuple(dict(proportions).items()))
+    config = replace(
+        config,
+        phases=walk.normalize_phases(side, config.phases, degrees=False),
+        proportions=walk.normalize_proportions(dict(config.proportions)),
+    )
     return config if thickness is None else replace(config, thickness=thickness)
+
+
+def config_key(config: BuildConfig) -> str:
+    """A short stable hash of a (normalized) build config: names parameter bakes."""
+    return hashlib.sha1(repr(config).encode()).hexdigest()[:12]
+
+
+def is_default(mode: str, config: BuildConfig) -> bool:
+    """Is ``config`` what a plain bake of ``mode`` builds?"""
+    return config == build_config(mode)
+
+
+def param_glb(mode: str, config: BuildConfig, root: Path | None = None) -> Path:
+    """Where a bake of ``mode`` with a non-default ``config`` is cached."""
+    return (root or PARAMS_DIR) / f"{mode}_{config.module}_{config_key(config)}.glb"
 
 
 def _build_assembly(
@@ -210,10 +246,12 @@ def _build_assembly(
     module: str | None = None,
     config: BuildConfig | None = None,
     thickness: float | None = None,
+    phases: Sequence[float] | None = None,
+    proportions: Mapping[str, float] | None = None,
 ) -> Mechanism:
     """The fabricated walker at crank angle ``t`` (parts in world coordinates)."""
-    config = _build_config(mode, module, config, thickness)
-    return fabricate(_TEMPLATES[config.module](), config, t)
+    config = build_config(mode, module, config, thickness, phases, proportions)
+    return fabricate(template_for(config), config, t)
 
 
 # ---------------------------------------------------------------------------
@@ -450,14 +488,18 @@ class _MeshPlan:
 
 
 def _plan_meshes(bodies: list[Body], anchors: dict[str, dict[str, np.ndarray]],
-                 owner: dict[str, str | None], prof: _Profiler) -> _MeshPlan:
-    """Group bodies into shared meshes (see :func:`_congruent`)."""
+                 owner: dict[str, str | None], prof: _Profiler,
+                 props: dict[str, _MassProps] | None = None) -> _MeshPlan:
+    """Group bodies into shared meshes (see :func:`_congruent`).
+
+    ``props`` caches each body's mass properties (filled as they're needed).
+    """
     by_class: dict[str, list[Body]] = defaultdict(list)
     for b in bodies:
         if b.part is not None:
             by_class[body_class(b.name)].append(b)
     plan = _MeshPlan({}, {}, {})
-    props: dict[str, _MassProps] = {}
+    props = {} if props is None else props
 
     def props_of(b: Body) -> _MassProps:
         if b.name not in props:
@@ -592,6 +634,33 @@ def _json_meta(meta: dict) -> dict:
     return {k: v for k, v in meta.items() if isinstance(v, (str, int, float, bool))}
 
 
+def _drive_extra(config: BuildConfig, mech: Mechanism,
+                 motion: dict[str, tuple[np.ndarray, np.ndarray]],
+                 owner: dict[str, str | None], props: dict[str, _MassProps],
+                 duration_s: float) -> dict:
+    """The root node's ``drive`` extras: :func:`walk.drive_extra` for the fabricated robot.
+
+    Feet z from the side's layer plan; the centre of mass is every part's
+    mass at its centroid (:func:`walk.body_masses`, reusing the mass
+    properties the mesh sharing measured) averaged over the animation's
+    samples (``motion``: each anchor's planar motion per frame).
+    """
+    design = design_side(template_for(config), config)       # cached by fabricate
+    by_name = {b.name: b for b in mech.bodies}
+
+    def volume_centroid(body: Body) -> tuple[float, np.ndarray]:
+        if body.name not in props:
+            props[body.name] = _mass_props(by_name[body.name].part)
+        p = props[body.name]
+        return p.volume, p.com
+
+    masses = walk.body_masses(mech, config, volume_centroid=volume_centroid)
+    com, mass = walk.cycle_com(masses, motion, owner)
+    model = walk.walker(config, feet_z=walk.foot_z_planned(config, design), com=com,
+                        mass_g=mass)
+    return walk.drive_extra(model, duration_s, metrics=walk.straight_walk_metrics(model))
+
+
 def bake_gltf(
     out: Path,
     *,
@@ -601,6 +670,8 @@ def bake_gltf(
     module: str | None = None,
     thickness: float | None = None,
     config: BuildConfig | None = None,
+    phases: Sequence[float] | None = None,
+    proportions: Mapping[str, float] | None = None,
     verbose: bool = False,
     profile: bool = True,
     cprofile_out: Path | None = None,
@@ -610,7 +681,20 @@ def bake_gltf(
     ``mode`` is ``"robot"`` (both sides; ``module`` picks the side, ``quad``
     by default) or a side-only module (``single``, ``double``, ``decker``,
     ``quad``). ``config`` sets the build (sheet, servo, constructions); its
-    ``module`` / ``robot`` fields follow ``mode``.
+    ``module`` / ``robot`` fields follow ``mode``. ``phases`` (radians, one
+    per leg, like ``BuildConfig.phases``) and ``proportions`` (overrides of
+    :data:`klann.PROPORTIONS`) set the design; they override ``config``'s.
+    Bad parameters raise ``ValueError``; so does a layout the planner can't
+    find (:mod:`stack`), and a construction that can't be built raises
+    :class:`construction.ConstructionError`.
+
+    A robot's root node ``walker`` carries the walking model's data in its
+    extras under ``"drive"`` (:func:`walk.drive_extra`): every foot's path
+    (theta_i = 2 pi i / 360, animation time ``tau = theta / 2 pi *
+    duration_s``) with its lateral z from the layer plan, the cycle-mean
+    centre of mass and total mass of the fabricated parts, the clip
+    duration, the servo's key and speed, the design parameters and the
+    straight-walk metrics.
 
     Profiling
     ---------
@@ -620,7 +704,7 @@ def bake_gltf(
     ``cProfile`` .prof file (plus a ``<path>.txt`` of the top-30 cumulative
     hot functions) for deep dives.
     """
-    config = _build_config(mode, module, config, thickness)
+    config = build_config(mode, module, config, thickness, phases, proportions)
     robot = config.robot
     if verbose and logger.level > logging.DEBUG:
         logger.setLevel(logging.DEBUG)
@@ -637,8 +721,11 @@ def bake_gltf(
     out.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "bake: mode=%s module=%s n_frames=%d duration_s=%.3f out=%s",
-        mode, config.module, n_frames, duration_s, out,
+        "bake: mode=%s module=%s phases=%s proportions=%s n_frames=%d duration_s=%.3f out=%s",
+        mode, config.module,
+        "default" if config.phases is None
+        else ",".join(f"{math.degrees(p):g}" for p in config.phases),
+        dict(config.proportions) or "default", n_frames, duration_s, out,
     )
     prof.set_metric("n_frames", n_frames)
 
@@ -647,7 +734,7 @@ def bake_gltf(
         with prof.timed("bake_total"):
             # --- stage 1: the fabricated walker at t_ref ---
             with prof.timed("1_reference_build"):
-                ref_mech = fabricate(_TEMPLATES[config.module](), config, _T_REF)
+                ref_mech = fabricate(template_for(config), config, _T_REF)
             bodies = ref_mech.bodies
             by_name = {b.name: b for b in bodies}
             prof.set_metric("n_bodies", len(bodies))
@@ -659,8 +746,9 @@ def bake_gltf(
             anchors = {n: _body_joint_world(by_name[n]) for n in set(owner.values()) if n}
 
             # --- stage 2: one mesh per congruence group (see _plan_meshes) ---
+            mass_props: dict[str, _MassProps] = {}     # shared with the drive extras
             with prof.timed("2_mesh_share"):
-                meshes_of = _plan_meshes(bodies, anchors, owner, prof)
+                meshes_of = _plan_meshes(bodies, anchors, owner, prof, mass_props)
             logger.debug("%d bodies with parts -> %d meshes",
                          len(meshes_of.key_of), len(meshes_of.rep_of))
 
@@ -745,7 +833,7 @@ def bake_gltf(
 
             with prof.timed("4_animation_sample_total"):
                 with prof.timed("4.1_template_build"):
-                    template = _build_template(mode, module=config.module if robot else None)
+                    template = _build_template(config)
                 with prof.timed("4.2_template_sample"):
                     sampled = template.sample(ts)
                 with prof.timed("4.3_trs_batch"):
@@ -869,7 +957,8 @@ def bake_gltf(
 
             # --- stage 6: foot-path extra (leg 0 for reference) ---
             with prof.timed("6_foot_path_extra"):
-                sol0 = create_klann_geometry(orientation=1, phase=0.0)
+                sol0 = create_klann_geometry(orientation=1, phase=0.0,
+                                             proportions=dict(config.proportions))
                 foot_samples = 64
                 foot = sol0.evaluate(
                     np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
@@ -878,6 +967,17 @@ def bake_gltf(
                 # Drawn just outside leg 0's foot link (first side), in model Z.
                 b4 = next((b for b in bodies if body_class(b.name) == "b4" and b.part), None)
                 foot_z = b4.part.bounding_box().min.Z - 0.5 if b4 is not None else 0.0
+
+            # --- stage 6b: the walking model's data (robot only; see walk.py) ---
+            if robot:
+                with prof.timed("6b_drive_extra"):
+                    root.extras["drive"] = _drive_extra(
+                        config, ref_mech, motion, owner, mass_props, duration_s)
+                drive = root.extras["drive"]
+                prof.set_metric("drive.mass_g", drive["mass_g"])
+                prof.set_metric("drive.stride_mm", drive["metrics"]["stride_mm"])
+                logger.debug("drive: com %s, %.1f g, stride %.1f mm/rev", drive["com"],
+                             drive["mass_g"], drive["metrics"]["stride_mm"])
 
             scene = pygltflib.Scene(nodes=[0])
             scene.extras = {
@@ -956,10 +1056,11 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--module",
-        choices=list(_TEMPLATES),
+        choices=list(MODULES),
         default=None,
         help=f"Legs per side for --mode robot (default: {DEFAULT_MODULE}).",
     )
+    walk.add_design_args(p)
     p.add_argument(
         "--profile",
         action=argparse.BooleanOptionalAction,
@@ -979,7 +1080,16 @@ def _parse_args() -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level (default: INFO).",
     )
-    return p.parse_args()
+    args = p.parse_args()
+    phases_deg, proportions = walk.design_args(args)
+    try:
+        args.config = build_config(
+            args.mode, args.module,
+            phases=None if phases_deg is None else [math.radians(v) for v in phases_deg],
+            proportions=proportions)
+    except ValueError as e:
+        p.error(str(e))
+    return args
 
 
 def main() -> None:
@@ -990,13 +1100,18 @@ def main() -> None:
     )
     # build123d logs every builder-less primitive at INFO; keep the profile readable.
     logging.getLogger("build123d").setLevel(max(logging.WARNING, logging.root.level))
-    out = args.out or _REPO_ROOT / "viewer" / "data" / f"klann_{args.mode}.glb"
+    config = args.config
+    out = args.out
+    if out is None:
+        out = (_REPO_ROOT / "viewer" / "data" / f"klann_{args.mode}.glb"
+               if is_default(args.mode, config) else param_glb(args.mode, config))
     bake_gltf(
         out,
         n_frames=args.frames,
         duration_s=args.duration,
         mode=args.mode,
         module=args.module,
+        config=config,
         profile=args.profile,
         cprofile_out=args.cprofile,
     )
