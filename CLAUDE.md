@@ -22,7 +22,8 @@ mise run clean
 Direct invocation of the bake script (more flags than `mise run bake`):
 
 ```bash
-uv run python viewer/bake_gltf.py --mode multi --frames 120 --legs 1
+uv run python viewer/bake_gltf.py --mode robot --module quad --frames 120
+uv run python viewer/bake_gltf.py --mode single          # one side only
 ```
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
@@ -59,10 +60,12 @@ Flags:
 
 Instrumented stages (keys in the summary table):
 
-1. `1_reference_build` — freeze the template at `t=0`, solve (or reuse) the
-   stack plan, fabricate every part with build123d
-2. `2_tessellate_total` + `2_tessellate.<kind>` — OCCT tessellation, one mesh
-   per body except b1..b4, which every leg shares
+1. `1_reference_build` — freeze the template at `t=0`, rationalize (or
+   reuse) the side design and its layer plan, fabricate every part
+2. `2_mesh_share` — find bodies whose parts are exact translates of another
+   (mirrored right-side plates, the legs' links) so they share one mesh
+3. `2_tessellate_total` + `2_tessellate.<kind>` — OCCT tessellation, one
+   mesh per shared shape
 3. `3_gltf_pack_geometry` — accessor/bufferview/material packing
 4. `4_animation_sample_total` with three sub-timers (run once per bake now,
    not once per frame):
@@ -84,13 +87,14 @@ the symbolic program is compiled once and cached.
 
 Metrics the summary reports: `n_frames`, `n_legs`, `n_bodies`, per-class
 `verts.*` / `tris.*`, `blob_bytes`, `gltf_bytes`, `animation_channels`,
-`accessors`, `peak_rss_mb`. Counters: `body_extract.calls` and
-`body_extract.static` (bodies with no joints and no host).
+`accessors`, `n_meshes`, `peak_rss_mb`. Counters: `body_extract.calls`,
+`body_extract.static` (bodies with no joints and no host), `mesh_shared`.
 
 ### Known hot stage
 
-`1_reference_build` (OCCT parts, ~65%) and `2_tessellate_total` (~30%)
-dominate; the frame loop is ~1%. Quad bake ≈ 4.7 s, single ≈ 1.7 s.
+`1_reference_build` (OCCT parts, ~70%) and `2_tessellate_total` (~20%)
+dominate; the frame loop is ~1%. Robot quad (two sides, 91 bodies, 33
+meshes) ≈ 6.6 s.
 
 Historical: the symbolic solve used to run per leg per call (per frame,
 before `19e020e`), and substituted expressions grew to ~34k ops. The
