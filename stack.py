@@ -40,15 +40,56 @@ AxisKind = Literal["pin", "frame"]
 
 
 @dataclass(frozen=True)
+class Envelope:
+    """Room a pivot's hardware needs around its axis (radii in mm, heights in slots).
+
+    ``head_*``: directly below the lowest plate on the axis. ``tail_*``:
+    directly above the highest (unused for frame pivots, which end above the
+    frame plate). ``gap_radius``: slots the axle crosses that hold other
+    parts. A *flush* envelope needs nothing outside its plates.
+    """
+
+    head_radius: float = 4.0
+    head_slots: int = 1
+    tail_radius: float = 4.0
+    tail_slots: int = 1
+    gap_radius: float = 2.0
+
+    @property
+    def flush(self) -> bool:
+        return self.head_slots == 0 and self.tail_slots == 0
+
+
+@dataclass(frozen=True)
 class StackSpec:
-    """Physical dimensions (mm) the plan must respect."""
+    """Physical dimensions (mm) the plan must respect.
+
+    Joinery options supply the three envelopes; the servo supplies the hub
+    (its horn and screw heads, in ``hub_slots`` slots right under the frame
+    plate) and how many crank plates must sit right under the hub
+    (``adapter_slots``: the horn adapter plus the plate its screw heads sink
+    into).
+    """
 
     pitch: float = 3.0          # slot height = sheet thickness
     link_radius: float = 6.0    # half-width of a laser-cut link / crank web arm
-    flange_radius: float = 4.0  # pin head / cap
-    shaft_radius: float = 2.0   # a bare pin (or its hole) passing through a slot
-    journal_radius: float = 4.0  # crank journal / servo hub on the axis O
     margin: float = 1.0         # clearance between objects sharing a slot
+    pin: Envelope = Envelope()                                  # link-to-link pivots
+    frame: Envelope = Envelope(tail_radius=0.0, tail_slots=0)   # link-to-frame pivots
+    crankpin: Envelope = Envelope(tail_radius=0.0, tail_slots=0)  # b1-to-crank pivots
+    journal_radius: float = 4.0  # crank plates on the axis O
+    hub_radius: float = 4.0      # servo horn + screw heads under the frame plate
+    hub_slots: int = 0
+    adapter_radius: float = 4.0  # crank plates directly under the hub
+    adapter_slots: int = 0
+
+    def envelope(self, kind: str) -> Envelope:
+        return {"pin": self.pin, "frame": self.frame, "crankpin": self.crankpin}[kind]
+
+    @property
+    def top_rider_gap(self) -> int:
+        """Slots between the highest b1 and the frame plate (hub + adapter + web)."""
+        return self.hub_slots + max(self.adapter_slots, 1) + 1
 
 
 @dataclass(frozen=True)
@@ -167,40 +208,65 @@ class StackPlan:
 
     @cached_property
     def webs(self) -> dict[int, tuple[str, ...]]:
-        """slot -> crankpins its web reaches. A web sits beside every rider slot."""
+        """slot -> crankpins its web reaches. A web sits beside every rider slot.
+
+        Below the lowest b1 a flush crankpin gets a cheek web; a headed one
+        ends in its head instead (see :attr:`pin_flanges`).
+        """
         out: dict[int, set[str]] = {}
         rs = self.rider_slots
         lowest = min(rs, default=self.plate)
+        flush = self.spec.crankpin.flush
         for s, pins in rs.items():
             for k in (s - 1, s + 1):
-                if k in rs:
-                    continue
-                if k < lowest:  # below the lowest b1 the crankpin just ends in a flange
+                if k in rs or (k < lowest and not flush):
                     continue
                 out.setdefault(k, set()).update(pins)
         return {k: tuple(sorted(v)) for k, v in sorted(out.items())}
 
     @cached_property
-    def pin_flanges(self) -> dict[str, int]:
-        """Crankpin -> slot of its end flange (below the lowest b1 riding it)."""
-        out: dict[str, int] = {}
-        if self.crank is None:
+    def pin_flanges(self) -> dict[str, tuple[int, ...]]:
+        """Headed crankpin -> the slots its head fills (below the lowest b1)."""
+        out: dict[str, tuple[int, ...]] = {}
+        env = self.spec.crankpin
+        if self.crank is None or env.flush:
             return out
         rs = self.rider_slots
         lowest = min(rs, default=0)
         for pin in self.crank.pins:
             ss = [s for s, ps in rs.items() if pin in ps]
             if ss and min(ss) == lowest:
-                out[pin] = lowest - 1
+                out[pin] = tuple(lowest - k for k in range(1, env.head_slots + 1))
         return out
 
     @cached_property
+    def hub_slots(self) -> tuple[int, ...]:
+        """Slots right under the frame plate that hold the servo horn (not crank plates)."""
+        return tuple(range(self.plate - self.spec.hub_slots, self.plate))
+
+    @cached_property
+    def adapter_slots(self) -> tuple[int, ...]:
+        """Crank plates right under the hub: the horn adapter and its screw-head plate."""
+        top = self.plate - self.spec.hub_slots
+        return tuple(range(top - self.spec.adapter_slots, top))
+
+    @cached_property
     def journal_slots(self) -> tuple[int, ...]:
-        """Slots the crank occupies on the axis O (webs included), up to the plate."""
+        """Slots with a crank plate on the axis O (webs included), below the hub."""
         rs = self.rider_slots
         if not rs:
             return ()
-        return tuple(k for k in range(min(rs) + 1, self.plate) if k not in rs)
+        bottom = min(rs) - 1 if self.spec.crankpin.flush else min(rs) + 1
+        top = self.plate - self.spec.hub_slots
+        return tuple(k for k in range(bottom, top) if k not in rs)
+
+    def crank_radius(self, slot: int) -> float:
+        """Radius the crank (or servo hub) occupies around O in ``slot``."""
+        if slot in self.hub_slots:
+            return self.spec.hub_radius
+        if slot in self.adapter_slots:
+            return self.spec.adapter_radius
+        return self.spec.journal_radius
 
     @cached_property
     def occupancy(self) -> dict[int, dict[int, float]]:
@@ -230,12 +296,12 @@ class StackPlan:
                 r2 = occ.get(slot)
                 if j != i and r2 is not None and pr.jj[frozenset((i, j))] < radius + r2 + m:
                     return False
-        if slot in self.webs:
-            if any(pr.aj[(p, i)] < sp.link_radius + radius + m for p in self.webs[slot]):
-                return False
-        elif slot in self.journal_slots and pr.oj[i] < sp.journal_radius + radius + m:
+        if slot in self.webs and any(
+            pr.aj[(p, i)] < sp.link_radius + radius + m for p in self.webs[slot]
+        ):
             return False
-        return True
+        on_axis = slot in self.journal_slots or slot in self.hub_slots
+        return not (on_axis and pr.oj[i] < self.crank_radius(slot) + radius + m)
 
     def describe(self) -> str:
         rows = []
@@ -245,8 +311,12 @@ class StackPlan:
                 label = "frame plate"
             else:
                 parts = names[:]
+                if k in self.hub_slots:
+                    parts.append("servo horn")
                 if k in self.webs:
                     parts.append(f"web({'+'.join(self.webs[k])})")
+                elif k in self.adapter_slots:
+                    parts.append("horn adapter" if k == max(self.adapter_slots) else "crank plate")
                 elif k in self.journal_slots:
                     parts.append("journal")
                 label = ", ".join(parts) or "·"
@@ -346,11 +416,12 @@ class StackProblem:
             return None
         ms = {slots[m] for m in ax.members}
         lo, hi = min(ms), max(ms)
-        occ: dict[int, float] = {lo - 1: sp.flange_radius}
-        top = hi + 1 if ax.kind == "pin" else plate
-        occ.update({k: sp.shaft_radius for k in range(lo + 1, top) if k not in ms})
+        env = sp.envelope(ax.kind)
+        occ: dict[int, float] = {lo - k: env.head_radius for k in range(1, env.head_slots + 1)}
+        top = hi if ax.kind == "pin" else plate
+        occ.update({k: env.gap_radius for k in range(lo + 1, top) if k not in ms})
         if ax.kind == "pin":
-            occ[hi + 1] = sp.flange_radius
+            occ.update({hi + k: env.tail_radius for k in range(1, env.tail_slots + 1)})
         return occ
 
     # -- search ---------------------------------------------------------------
@@ -409,7 +480,8 @@ class StackProblem:
                     return None
             pin = self.rider.get(n)
             if pin is not None:
-                if not 1 <= s <= plate - 2:
+                lowest_ok = 1 if sp.crankpin.flush else sp.crankpin.head_slots
+                if not lowest_ok <= s <= plate - sp.top_rider_gap:
                     return None
                 for k in (s - 1, s + 1):
                     near = riders_at.get(k, [])
@@ -462,7 +534,7 @@ class StackProblem:
     def _axis_ok(self, i, occ, slots, occs, riders_at, plate) -> bool:
         sp = self.spec
         r_link, m = sp.link_radius, sp.margin
-        if min(occ) < 0 or max(occ) >= plate:
+        if occ and (min(occ) < 0 or max(occ) >= plate):
             return False
         for n, s in slots.items():
             r = occ.get(s)
@@ -484,23 +556,31 @@ class StackProblem:
         return True
 
     def _journal_ok(self, slots, occs, riders_at, plate) -> bool:
-        """The O journal runs through every non-b1 slot from the lowest b1 to the plate."""
+        """Checks that need the whole assignment: the crank on O, the servo hub,
+        and a headed crankpin's head under the lowest b1."""
         if self.crank is None:
             return True
-        sp = self.spec
-        occupied = [s for s, bs in riders_at.items() if bs]
-        if not occupied:
-            return True
-        for k in range(min(occupied) + 1, plate):
-            if riders_at.get(k):
-                continue
+        plan = StackPlan(self.spec, dict(slots), plate, self.axes, self.crank, self)
+        sp, m = self.spec, self.spec.margin
+        for k in (*plan.journal_slots, *plan.hub_slots):
+            r = plan.crank_radius(k)
             for n, s in slots.items():
-                if s == k and self.ol[n] < sp.link_radius + sp.journal_radius + sp.margin:
+                if s == k and self.ol[n] < sp.link_radius + r + m:
                     return False
             for i, occ in occs.items():
-                r = occ.get(k)
-                if r is not None and self.oj[i] < sp.journal_radius + r + sp.margin:
+                r2 = occ.get(k)
+                if r2 is not None and self.oj[i] < r + r2 + m:
                     return False
+        head = sp.crankpin.head_radius
+        for p, ks in plan.pin_flanges.items():
+            for k in ks:
+                for n, s in slots.items():
+                    if s == k and self.al[(p, n)] < sp.link_radius + head + m:
+                        return False
+                for i, occ in occs.items():
+                    r2 = occ.get(k)
+                    if r2 is not None and self.aj[(p, i)] < head + r2 + m:
+                        return False
         return True
 
 
@@ -634,25 +714,31 @@ def verify_plan(plan: StackPlan, tmpl, samples: int = 1440, tol: float = 0.05) -
     by_name = {ax.name: ax for ax in fresh.axes}
     for ax in plan.axes:
         xy = by_name[ax.name].xy
+        env = sp.envelope(ax.kind)
         ms = {plan.slots[m] for m in ax.members}
         lo, hi = min(ms), max(ms)
-        objs.append((f"head:{ax.name}", ax.name, lo - 1, "pt", xy, sp.flange_radius))
-        top = plan.plate if ax.kind == "frame" else hi + 1
+        for k in range(1, env.head_slots + 1):
+            objs.append((f"head:{ax.name}@{lo - k}", ax.name, lo - k, "pt", xy, env.head_radius))
+        top = plan.plate if ax.kind == "frame" else hi
         for k in range(lo + 1, top):
             if k not in ms:
-                objs.append((f"shaft:{ax.name}@{k}", ax.name, k, "pt", xy, sp.shaft_radius))
+                objs.append((f"shaft:{ax.name}@{k}", ax.name, k, "pt", xy, env.gap_radius))
         if ax.kind == "pin":
-            objs.append((f"cap:{ax.name}", ax.name, hi + 1, "pt", xy, sp.flange_radius))
+            for k in range(1, env.tail_slots + 1):
+                objs.append((f"tail:{ax.name}@{hi + k}", ax.name, hi + k, "pt", xy,
+                             env.tail_radius))
     if crank is not None:
         o = crank.center
-        for k in plan.journal_slots:
-            objs.append((f"journal@{k}", "crank", k, "pt", o, sp.journal_radius))
+        for k in (*plan.journal_slots, *plan.hub_slots):
+            objs.append((f"crank@{k}", "crank", k, "pt", o, plan.crank_radius(k)))
         for k, pins in plan.webs.items():
             for p in pins:
                 objs.append((f"web@{k}:{p}", "crank", k, "segs", ((o, crank.pins[p]),),
                              sp.link_radius))
-        for p, k in plan.pin_flanges.items():
-            objs.append((f"flange:{p}", "crank", k, "pt", crank.pins[p], sp.flange_radius))
+        for p, ks in plan.pin_flanges.items():
+            for k in ks:
+                objs.append((f"head:{p}@{k}", "crank", k, "pt", crank.pins[p],
+                             sp.crankpin.head_radius))
 
     def dist(a, b) -> float:
         (_, _, _, ka, ga, _), (_, _, _, kb, gb, _) = a, b

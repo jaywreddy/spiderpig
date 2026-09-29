@@ -1,16 +1,18 @@
-"""2D sheet packing + DXF emission for the laser-cut links.
+"""2D sheet packing + DXF emission for every laser-cut part.
 
 Given a fabricated :class:`mechanism.Mechanism`, we:
 
-1. Select the laser-cut links (b1..b4 of every leg).
-2. Slice each part through the middle of its own slot to get its 2D profile,
-   and turn it so its long axis runs along X (the pose it happened to have
-   at build time is irrelevant on a sheet). A part longer than the sheet is
-   laid along the sheet diagonal if that fits.
-3. Pack the profiles' bounding boxes onto fixed-size sheets with rectpack.
-   A part that fits no sheet is an error, never a silent drop.
-4. Emit one DXF per sheet: outer contours as LWPOLYLINE, holes as CIRCLE,
-   all on layer ``CUT``, units = mm.
+1. Select the laser-cut bodies (``fab == "laser"``): links, frame plate,
+   crankshaft plates, spacer rings, brackets.
+2. Slice each part through the middle of its own slot to get its 2D profile.
+   Links are turned so their long axis runs along X; any part too long for
+   the sheet is laid along the diagonal if that fits.
+3. Compensate for the laser's kerf: outlines grow and holes shrink by half
+   the kerf, so cut parts come out at their nominal size.
+4. Pack the profiles' bounding boxes onto fixed-size sheets with rectpack. A
+   part that fits no sheet is an error, never a silent drop.
+5. Emit one DXF per sheet: outer contours as LWPOLYLINE, round holes as
+   CIRCLE, all on layer ``CUT``, units = mm.
 """
 
 from __future__ import annotations
@@ -23,15 +25,18 @@ import numpy as np
 from build123d import Axis, GeomType, Plane, section
 from rectpack import newPacker
 
-from stack import LINK_CLASSES, body_class
-
 _CUT_LAYER = "CUT"
 _DEFAULT_SHEET = (200.0, 200.0)
-_MARGIN = 5.0
-_WIRE_SAMPLES = 72  # N-gon resolution for non-circle curves
+_MARGIN = 3.0
+_WIRE_SAMPLES = 96  # N-gon resolution for non-circle curves
+DEFAULT_KERF = 0.15
 
 
-def _wire_to_polyline_points(wire, n: int = _WIRE_SAMPLES):
+def laser_bodies(mech) -> list:
+    return [b for b in mech.bodies if b.fab == "laser" and b.part is not None]
+
+
+def _wire_points(wire, n: int = _WIRE_SAMPLES):
     """Sample a wire into a closed 2D polyline ``[(x, y), ...]``."""
     return [(v.X, v.Y) for v in (wire.position_at(u) for u in np.linspace(0, 1, n, endpoint=False))]
 
@@ -50,7 +55,9 @@ def _bbox_2d(shape):
 
 
 def _long_axis_degrees(body) -> float:
-    """Direction of the body's outline (first segment), in degrees."""
+    """Direction of a link's outline (first segment), in degrees; 0 for other parts."""
+    if not body.outline or not body.joints:
+        return 0.0
     p, q = body.outline[0]
     a = (body.pose @ body.joint(p).pose).matrix[:2, 3]
     b = (body.pose @ body.joint(q).pose).matrix[:2, 3]
@@ -58,33 +65,42 @@ def _long_axis_degrees(body) -> float:
 
 
 def _profile(body, sheet: tuple[float, float], margin: float):
-    """The body's mid-slot section, turned to lie flat along X (or the sheet diagonal)."""
+    """The body's mid-slot section, turned to lie flat (or along the sheet diagonal)."""
     bb = body.part.bounding_box()
     sketch = section(body.part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
     sketch = sketch.rotate(Axis.Z, -_long_axis_degrees(body))
-    x0, y0, x1, y1 = _bbox_2d(sketch)
     usable = (sheet[0] - 2 * margin, sheet[1] - 2 * margin)
-    if x1 - x0 > usable[0] or y1 - y0 > usable[1]:
-        sketch = sketch.rotate(Axis.Z, math.degrees(math.atan2(usable[1], usable[0])))
-        x0, y0, x1, y1 = _bbox_2d(sketch)
-        if x1 - x0 > usable[0] or y1 - y0 > usable[1]:
-            raise ValueError(
-                f"{body.name} ({x1 - x0:.0f} x {y1 - y0:.0f} mm) does not fit a "
-                f"{sheet[0]:.0f} x {sheet[1]:.0f} mm sheet with {margin:.0f} mm margins"
-            )
-    return sketch
+    for extra in (0.0, 90.0, math.degrees(math.atan2(usable[1], usable[0]))):
+        turned = sketch.rotate(Axis.Z, extra) if extra else sketch
+        x0, y0, x1, y1 = _bbox_2d(turned)
+        if x1 - x0 <= usable[0] and y1 - y0 <= usable[1]:
+            return turned
+    raise ValueError(
+        f"{body.name} ({x1 - x0:.0f} x {y1 - y0:.0f} mm) does not fit a "
+        f"{sheet[0]:.0f} x {sheet[1]:.0f} mm sheet with {margin:.0f} mm margins"
+    )
 
 
-def _emit_wire_to_dxf(msp, wire, offset_xy):
-    """Emit a wire (offset by ``offset_xy``): circles exactly, the rest as polylines."""
+def _outer(wires):
+    def area(w):
+        x0, y0, x1, y1 = _bbox_2d(w)
+        return (x1 - x0) * (y1 - y0)
+
+    return max(wires, key=area)
+
+
+def _emit(msp, wire, offset_xy, grow: float):
+    """Emit a wire shifted by ``offset_xy``, offset by ``grow`` (kerf compensation)."""
     ox, oy = offset_xy
     circle = _wire_is_circle(wire)
     if circle is not None:
         (cx, cy), r = circle
-        msp.add_circle((cx + ox, cy + oy), r, dxfattribs={"layer": _CUT_LAYER})
+        msp.add_circle((cx + ox, cy + oy), r + grow, dxfattribs={"layer": _CUT_LAYER})
         return
+    if abs(grow) > 1e-9:
+        wire = wire.offset_2d(grow)
     msp.add_lwpolyline(
-        [(x + ox, y + oy) for x, y in _wire_to_polyline_points(wire)],
+        [(x + ox, y + oy) for x, y in _wire_points(wire)],
         close=True,
         dxfattribs={"layer": _CUT_LAYER},
     )
@@ -95,18 +111,17 @@ def save_sheets(
     prefix,
     sheet_size: tuple[float, float] = _DEFAULT_SHEET,
     margin: float = _MARGIN,
+    kerf: float = DEFAULT_KERF,
 ) -> list[Path]:
-    """Pack the mechanism's laser-cut links onto sheets and write DXFs.
+    """Pack the mechanism's laser-cut parts onto sheets and write DXFs.
 
-    Returns the DXF paths written. Raises if any link can't be placed.
+    Returns the DXF paths written. Raises if any part can't be placed.
     """
     prefix = Path(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
 
     items = []
-    for body in mech.bodies:
-        if body_class(body.name) not in LINK_CLASSES or body.part is None:
-            continue
+    for body in laser_bodies(mech):
         sketch = _profile(body, sheet_size, margin)
         x0, y0, x1, y1 = _bbox_2d(sketch)
         items.append((body.name, sketch, x0, y0, (x1 - x0) + 2 * margin, (y1 - y0) + 2 * margin))
@@ -134,8 +149,10 @@ def save_sheets(
         for rect in abin:
             _, sketch, x0, y0, _, _ = items[rect.rid]
             off = (rect.x + margin - x0, rect.y + margin - y0)
-            for wire in sketch.wires():
-                _emit_wire_to_dxf(msp, wire, off)
+            wires = list(sketch.wires())
+            outer = _outer(wires)
+            for wire in wires:
+                _emit(msp, wire, off, kerf / 2 if wire is outer else -kerf / 2)
         path = Path(f"{prefix}_{sheet_idx}.dxf")
         doc.saveas(str(path))
         written.append(path)

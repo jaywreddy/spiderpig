@@ -125,7 +125,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 import klann  # noqa: E402
-from fabricate import fabricate, plan_for  # noqa: E402
+from fabricate import BuildConfig, fabricate, plan_for  # noqa: E402
 from klann import (  # noqa: E402
     build_double_decker_template,
     build_double_double_decker_template,
@@ -135,8 +135,7 @@ from klann import (  # noqa: E402
     create_klann_geometry,
 )
 from mechanism import MechanismTemplate  # noqa: E402
-from shapes import THICKNESS  # noqa: E402
-from stack import LINK_CLASSES, StackSpec, body_class  # noqa: E402
+from stack import LINK_CLASSES, body_class  # noqa: E402
 
 _TEMPLATES = {
     "single": lambda n_legs: build_klann_template(create_klann_geometry()),
@@ -159,37 +158,44 @@ def _build_assembly(
     *,
     t: float,
     n_legs: int = 1,
-    thickness: float = THICKNESS,
+    config: BuildConfig | None = None,
     with_parts: bool = True,
     with_joinery: bool = True,
 ):
     """The assembly frozen at ``t``; with parts, fabricated from its stack plan."""
+    config = config or BuildConfig()
     tmpl = _build_template(mode, n_legs=n_legs)
     mech = tmpl.freeze_at(t)
     if with_parts:
-        plan = plan_for(tmpl, StackSpec(pitch=thickness))
-        mech = fabricate(mech, plan, joinery=with_joinery)
+        mech = fabricate(mech, plan_for(tmpl, config), config, joinery=with_joinery)
     return mech
 
 
 # RGB 0-1 per body kind; see _kind_of.
 _KIND_COLORS: dict[str, tuple[float, float, float]] = {
-    "torso": (0.831, 0.686, 0.000),       # #d4af00 frame
-    "coupler": (0.188, 0.376, 1.000),     # #3060ff
-    "crank": (0.878, 0.439, 0.125),       # #e07020 crankshaft
+    "torso": (0.831, 0.686, 0.000),       # #d4af00 laser-cut frame
+    "crank": (0.878, 0.439, 0.125),       # #e07020 laser-cut crankshaft
     "link": (0.227, 0.659, 0.420),        # #3aa86b laser-cut links
-    "hardware": (0.157, 0.157, 0.157),    # #282828 pins, caps, sleeves
+    "laser": (0.600, 0.780, 0.860),       # #99c7db spacers, brackets
+    "printed": (0.188, 0.376, 1.000),     # #3060ff printed parts
+    "hardware": (0.560, 0.580, 0.600),    # #8f9499 metal hardware
+    "servo": (0.110, 0.110, 0.120),       # #1c1c1f servo body
 }
 
 
-def _kind_of(body_name: str) -> str:
+def _kind_of(body_name: str, fab: str | None = None, rigid_with: str | None = None) -> str:
     cls = body_class(body_name)
     if cls in LINK_CLASSES:
         return "link"
-    if cls.startswith("conn") or cls.startswith("crank") and not cls.startswith("crankpin"):
-        return "crank"
-    if cls in ("torso", "coupler"):
-        return cls
+    if cls == "torso":
+        return "torso"
+    if cls.startswith("servo"):
+        return "servo"
+    if fab == "laser":
+        crank = cls.startswith(("conn", "crank_")) or (rigid_with or "").startswith("conn")
+        return "crank" if crank else "laser"
+    if fab == "printed":
+        return "printed"
     return "hardware"
 
 
@@ -350,12 +356,13 @@ def bake_gltf(
     n_frames: int = 120,
     duration_s: float = 1.0,
     n_legs: int = 1,
-    thickness: float = THICKNESS,
+    thickness: float | None = None,
     mode: str = "multi",
     verbose: bool = False,
     profile: bool = True,
     cprofile_out: Path | None = None,
     with_joinery: bool = True,
+    config: BuildConfig | None = None,
 ) -> None:
     """Write ``<out>`` as a self-contained binary glTF describing the Klann
     walker plus its TRS animation over one crank revolution.
@@ -372,6 +379,11 @@ def bake_gltf(
     ``cProfile`` .prof file (plus a ``<path>.txt`` of the top-30 cumulative
     hot functions) for deep dives.
     """
+    config = config or BuildConfig()
+    if thickness is not None:
+        from dataclasses import replace as _replace
+
+        config = _replace(config, thickness=thickness)
     if verbose and logger.level > logging.DEBUG:
         logger.setLevel(logging.DEBUG)
 
@@ -399,7 +411,7 @@ def bake_gltf(
             # --- stage 1: reference mechanism build (with parts) ---
             with prof.timed("1_reference_build"):
                 ref_mech = _build_assembly(
-                    mode, t=0.0, n_legs=n_legs, thickness=thickness,
+                    mode, t=0.0, n_legs=n_legs, config=config,
                     with_parts=True, with_joinery=with_joinery,
                 )
             prof.set_metric("n_bodies", len(ref_mech.bodies))
@@ -418,7 +430,9 @@ def bake_gltf(
             class_mesh: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
             with prof.timed("2_tessellate_total"):
                 for key, part in mesh_parts.items():
-                    with prof.timed(f"2_tessellate.{_kind_of(key)}"):
+                    rep = mesh_rep[key]
+                    kind = _kind_of(rep.name, rep.fab, rep.rigid_with)
+                    with prof.timed(f"2_tessellate.{kind}"):
                         class_mesh[key] = _tessellate(part)
                     nv = len(class_mesh[key][0])
                     nt = len(class_mesh[key][2]) // 3
@@ -482,7 +496,9 @@ def bake_gltf(
                     meshes.append(pygltflib.Mesh(name=key, primitives=[pygltflib.Primitive(
                         attributes=pygltflib.Attributes(POSITION=pos_acc, NORMAL=nrm_acc),
                         indices=idx_acc,
-                        material=material_idx[_kind_of(key)],
+                        material=material_idx[_kind_of(
+                            mesh_rep[key].name, mesh_rep[key].fab, mesh_rep[key].rigid_with
+                        )],
                         mode=pygltflib.TRIANGLES,
                     )]))
 
@@ -576,6 +592,9 @@ def bake_gltf(
                     )
                     if mesh_idx is not None:
                         node.mesh = mesh_idx
+                    node.extras = {
+                        "fab": body.fab, "rigid_with": body.rigid_with, "bom": body.bom_key,
+                    }
                     node_idx = len(nodes)
                     nodes.append(node)
 

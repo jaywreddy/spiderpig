@@ -100,11 +100,13 @@ def test_mesh_nodes_actually_move(page: Page, viewer_server: str) -> None:
                 const out = {};
                 for (const o of root.children) {
                     const m = o.matrixWorld.elements;
-                    // Probe point (1, 1, 0) transformed by the 4x4 world matrix.
+                    // Probe point (1, 1, 0) transformed by the 4x4 world matrix,
+                    // plus the body the bake says this node rides with.
                     out[o.name] = [
                         m[0] + m[4] + m[12],
                         m[1] + m[5] + m[13],
                         m[2] + m[6] + m[14],
+                        (o.userData && o.userData.rigid_with) || "",
                     ];
                 }
                 return out;
@@ -114,11 +116,11 @@ def test_mesh_nodes_actually_move(page: Page, viewer_server: str) -> None:
 
     a = sample(0.0)
     b = sample(0.5)
-    # The frame (torso) and the hardware riding it (frame_pin_*, frame_cap_*,
-    # frame_sleeve_*) are world-fixed; the coupler's single joint sits on the
-    # fixed crank centre O. Everything else moves.
+    # The frame (torso) and everything riding it (servo, frame pivot hardware,
+    # spacers) are world-fixed; the coupler's single joint sits on the fixed
+    # crank centre O. Everything else moves.
     def is_static(name: str) -> bool:
-        return name.startswith(("torso", "coupler", "frame_"))
+        return name.startswith(("torso", "coupler")) or a[name][3].startswith("torso")
 
     moving = [n for n in a if not is_static(n)]
     assert moving, f"no moving bodies found in {list(a)}"

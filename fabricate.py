@@ -1,59 +1,89 @@
-"""Fabrication: turn a :class:`stack.StackPlan` into build123d parts.
+"""Fabrication: turn a stack plan into parts, hardware and a bill of materials.
 
-Given a mechanism frozen at some crank angle ``t`` and the plan for its
-assembly, :func:`fabricate` returns a copy whose bodies carry parts built in
-world coordinates at ``t``:
+:func:`fabricate` takes a mechanism frozen at a crank angle ``t``, the
+:class:`stack.StackPlan` for its assembly and a :class:`BuildConfig`, and
+returns a copy whose bodies carry build123d parts in world coordinates:
 
-* every leg link (b1..b4) as a laser-cut plate in its slot, drilled at its pivots;
-* the frame (the ``torso`` body) as one printed solid: a plate in the top
-  slot with arms to every fixed pivot, posts down toward the links wherever
-  they clear, and a servo pad around the crank centre;
-* the crankshaft as rigid segments (webs + journal) with crankpins across the
-  b1 slots; the top segment carries the hub stub and the key the servo grips;
-* with ``joinery``: a pin and a separate press-on cap at every pin and pivot,
-  plus sleeves in the gaps where they fit.
+* **laser-cut** (``fab="laser"``): every leg link in its slot; the frame
+  plate (arms out to every fixed pivot plus the servo pad); the crankshaft
+  plates (webs, journal plates, cheek webs, the horn adapter and the plate
+  its screw heads sink into); spacer rings; the servo's idler bracket;
+* **purchased** (``fab="purchased"``, ``bom_key`` set): the servo, bolts,
+  nuts, bearings, bushings, dowels, standoffs... as the chosen options model
+  them;
+* **printed** (``fab="printed"``): only where an option asks for it (the
+  printed-pin joinery).
 
-Hardware bodies have no joints; ``Body.rigid_with`` names the body they move
-with, and their parts share that body's frame.
+The work is delegated: :mod:`joinery` options turn each pivot site into
+holes and hardware, :mod:`servos.mount` places the servo and says what the
+frame plate and the adapter plates must cut; this module only walks the plan
+and cuts plates. Hardware bodies carry ``rigid_with`` (what they move with).
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
+import math
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
+import joinery
+import servos
+from hardware.bom import BomLine
+from joinery.base import JoineryParams, Member, PivotSite
 from mechanism import Body, Mechanism
-from shapes import (
-    BUFF,
-    FLANGE_R,
-    HOLE_R,
-    HUB_R,
-    JOURNAL_R,
-    KEY,
-    PIN_R,
-    cap,
-    disc,
-    drill,
-    link_plate,
-    pill,
-    pin,
-    sleeve,
-    square_key,
-)
+from servos.mount import hub as servo_hub
+from servos.mount import mount as servo_mount
+from shapes import BUFF, Cut, link_plate, plate
 from stack import StackPlan, StackSpec, body_class, problem_from_template
+
+SPACER_OD = 8.0          # laser-cut spacer ring outer diameter
+ADAPTER_SLOTS = 2        # horn adapter + the crank plate its screw heads sink into
+JOURNAL_R = BUFF         # crank plates on the axis O are discs of the link half-width
+
+
+@dataclass(frozen=True)
+class BuildConfig:
+    """What to build with. Keys refer to :mod:`joinery`, :mod:`servos` and the catalog."""
+
+    sheet: str = "acrylic_3mm"        # catalog item for the sheet stock (sets the pitch)
+    pin: str = joinery.DEFAULTS["pin"]
+    frame: str = joinery.DEFAULTS["frame"]
+    crankpin: str = joinery.DEFAULTS["crankpin"]
+    params: JoineryParams = field(default_factory=JoineryParams)
+    servo: str = servos.DEFAULT
+    idler_bracket: bool = True
+    thickness: float | None = None    # override the sheet's nominal thickness
+
+
+def sheet_thickness(config: BuildConfig) -> float:
+    if config.thickness is not None:
+        return config.thickness
+    from hardware.catalog import get
+
+    return float(get(config.sheet).dims["thickness"])
+
+
+def spec_for(config: BuildConfig) -> StackSpec:
+    """The stack planner's view of a build: envelopes from joinery, hub from the servo."""
+    pitch = sheet_thickness(config)
+    env = {kind: joinery.get(getattr(config, kind)).envelope(config.params, pitch)
+           for kind in ("pin", "frame", "crankpin")}
+    hub = servo_hub(servos.get(config.servo), pitch)
+    return StackSpec(
+        pitch=pitch, pin=env["pin"], frame=env["frame"], crankpin=env["crankpin"],
+        journal_radius=JOURNAL_R, hub_radius=hub.radius, hub_slots=hub.slots,
+        adapter_radius=max(hub.adapter_radius, JOURNAL_R), adapter_slots=ADAPTER_SLOTS,
+    )
+
 
 _PLANS: dict[tuple, StackPlan] = {}
 
-# Servo (SG90-class) on the frame plate: output shaft on O, body along ``u``.
-_SERVO_SHAFT_OFFSET = 5.5   # shaft axis to servo body centre
-_SERVO_HOLE_SPAN = 27.5     # between the two mounting-tab screw holes
-_SERVO_SCREW_R = 1.0
-_KEY_HEIGHT = 5.0
 
-
-def plan_for(tmpl, spec: StackSpec | None = None) -> StackPlan:
-    """Solve (once per process) the stack plan for a mechanism template."""
+def plan_for(tmpl, spec: StackSpec | BuildConfig | None = None) -> StackPlan:
+    """Solve (once per process) the stack plan for a template."""
+    if isinstance(spec, BuildConfig):
+        spec = spec_for(spec)
     spec = spec or StackSpec()
     key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), spec)
     if key not in _PLANS:
@@ -61,10 +91,10 @@ def plan_for(tmpl, spec: StackSpec | None = None) -> StackPlan:
     return _PLANS[key]
 
 
-def _runs(slots: list[int]) -> list[list[int]]:
+def _runs(slots) -> list[list[int]]:
     """Split sorted slots into runs of consecutive integers."""
     runs: list[list[int]] = []
-    for s in slots:
+    for s in sorted(slots):
         if runs and s == runs[-1][-1] + 1:
             runs[-1].append(s)
         else:
@@ -72,134 +102,227 @@ def _runs(slots: list[int]) -> list[list[int]]:
     return runs
 
 
-def _union(parts):
-    parts = [p for p in parts if p is not None]
-    out = parts[0]
-    for p in parts[1:]:
-        out = out + p
-    return out
+def fabricate(
+    mech: Mechanism,
+    plan: StackPlan,
+    config: BuildConfig | None = None,
+    *,
+    joinery_on: bool = True,
+    joinery: bool | None = None,
+) -> Mechanism:
+    """Attach parts, hardware and BOM extras for ``plan`` to a copy of ``mech``.
+
+    ``joinery_on=False`` (alias ``joinery=False``) still cuts every hole but
+    leaves out the pivot hardware bodies (pins, bolts, bearings, spacers);
+    the crankshaft and servo are structure and always included.
+    """
+    config = config or BuildConfig()
+    if joinery is not None:
+        joinery_on = joinery
+    return _Fabricator(mech, plan, config, joinery_on).run()
 
 
-def fabricate(mech: Mechanism, plan: StackPlan, *, joinery: bool = True) -> Mechanism:
-    """Attach parts (and hardware bodies) for ``plan`` to a copy of ``mech``."""
-    bodies = {b.name: replace(b) for b in mech.bodies}
+class _Fabricator:
+    def __init__(self, mech: Mechanism, plan: StackPlan, config: BuildConfig, joinery_on: bool):
+        self.mech = mech
+        self.plan = plan
+        self.config = config
+        self.joinery_on = joinery_on
+        self.bodies = {b.name: replace(b) for b in mech.bodies}
+        self.hardware: list[Body] = []
+        self.extras: list[BomLine] = []
+        self.cuts: dict[str, list[Cut]] = {}      # plate body -> holes to cut
+        self.frame = next(n for n in self.bodies if body_class(n) == "torso")
+        cranks = [n for n in self.bodies if body_class(n).startswith("conn")]
+        self.crank_host = cranks[0] if cranks else None
+        crank = plan.crank
+        self.center = self.pos(*crank.center_joints[0]) if crank else np.zeros(2)
 
-    def pos(body: str, joint: str) -> np.ndarray:
-        b = bodies[body]
+    # -- helpers --------------------------------------------------------------
+
+    def pos(self, body: str, joint: str) -> np.ndarray:
+        b = self.bodies[body]
         return (b.pose @ b.joint(joint).pose).matrix[:2, 3]
 
-    z = plan.z
-    crank = plan.crank
-    pivots = {n for ax in plan.axes for n in ax.joints}
-    if crank is not None:
-        pivots |= {n for nodes in crank.joints.values() for n in nodes}
-        pivots |= set(crank.center_joints)
+    def z(self, slot: int) -> tuple[float, float]:
+        return self.plan.z(slot)
 
-    # -- leg links ------------------------------------------------------------
-    for name, slot in plan.slots.items():
-        b = bodies[name]
-        segs = [(pos(name, p), pos(name, q)) for p, q in b.outline]
-        holes = [pos(name, j.name) for j in b.joints if (name, j.name) in pivots]
-        b.part = link_plate(segs, *z(slot), holes=holes)
+    def cut(self, body: str, cut: Cut) -> None:
+        self.cuts.setdefault(body, []).append(cut)
 
-    hardware: list[Body] = []
-    frame = next(n for n in bodies if body_class(n) == "torso")
-    center = pos(*crank.center_joints[0]) if crank else np.zeros(2)
-    axis_xy = {i: pos(*ax.joints[0]) for i, ax in enumerate(plan.axes)}
-    extra: dict[int, dict[int, float]] = {}   # optional discs added so far
+    # -- crank plate names ------------------------------------------------------
 
-    # -- frame ----------------------------------------------------------------
-    pz0, pz1 = z(plan.plate)
-    frame_axes = [i for i, ax in enumerate(plan.axes) if ax.kind == "frame"]
-    shapes = [pill(center, axis_xy[i], BUFF, pz0, pz1) for i in frame_axes]
-    away = -sum((axis_xy[i] - center for i in frame_axes), np.zeros(2))
-    u = away / (np.linalg.norm(away) or 1.0)
-    servo_mid = center + u * _SERVO_SHAFT_OFFSET
-    screws = [servo_mid + u * _SERVO_HOLE_SPAN / 2, servo_mid - u * _SERVO_HOLE_SPAN / 2]
-    shapes.append(pill(screws[0] + u * 3, screws[1] - u * 3, BUFF + 1, pz0, pz1))
-    post_bottom = pz0
-    for i in frame_axes:
-        _, hi = plan.span(plan.axes[i])
-        for k in range(plan.plate - 1, hi, -1):
-            if not plan.disc_fits(i, k, FLANGE_R, extra):
-                break
-            extra.setdefault(i, {})[k] = FLANGE_R
-            shapes.append(disc(axis_xy[i], FLANGE_R, z(k)[0], pz0 + 0.5))
-            post_bottom = min(post_bottom, z(k)[0])
-    bodies[frame].part = drill(
-        _union(shapes),
-        [(axis_xy[i], HOLE_R) for i in frame_axes]
-        + [(center, HUB_R + 0.5)]
-        + [(s, _SERVO_SCREW_R) for s in screws],
-        post_bottom, pz1,
-    )
+    def crank_plate_names(self) -> dict[int, str]:
+        """slot -> body name. The crank host carries the horn adapter (the driven plate)."""
+        plan = self.plan
+        slots = list(plan.journal_slots)
+        if not slots or self.crank_host is None:
+            return {}
+        top = max(plan.adapter_slots) if plan.adapter_slots else max(slots)
+        return {k: (self.crank_host if k == top else f"crank_{k}") for k in slots}
 
-    # -- crankshaft -----------------------------------------------------------
-    if crank is not None:
-        host = next(n for n in bodies if body_class(n).startswith("conn"))
-        pin_xy = {p: pos(*nodes[0]) for p, nodes in crank.joints.items()}
-        runs = _runs(list(plan.journal_slots))
-        for idx, run in enumerate(reversed(runs)):   # top run first
-            shapes = []
-            web_pins: set[str] = set()
-            for k in run:
-                shapes.append(disc(center, JOURNAL_R, *z(k)))
-                for p in plan.webs.get(k, ()):
-                    shapes.append(pill(center, pin_xy[p], BUFF, *z(k)))
-                    web_pins.add(p)
-            seg = drill(_union(shapes), [(pin_xy[p], PIN_R) for p in sorted(web_pins)],
-                        z(run[0])[0], z(run[-1])[1])
-            if idx == 0:
-                seg = seg + disc(center, HUB_R, pz0, pz1) + square_key(
-                    center, KEY, pz1, pz1 + _KEY_HEIGHT
-                )
-                bodies[host].part = seg
-            else:
-                hardware.append(Body(f"crank{idx}", part=seg, color="orange", rigid_with=host))
-        for p, xy in pin_xy.items():
-            slots = [plan.slots[b] for b, q in crank.riders.items() if q == p]
-            slots += [k for k, ps in plan.webs.items() if p in ps]
-            flange = plan.pin_flanges.get(p)
-            lo, hi = min(slots), max(slots)
-            part = disc(xy, PIN_R, z(lo)[0], z(hi)[1])
-            if flange is not None:
-                part = part + disc(xy, FLANGE_R, *z(flange))
-            hardware.append(Body(f"crankpin_{p}", part=part, color="gray", rigid_with=host))
+    # -- pivot sites --------------------------------------------------------------
 
-    # -- pins, caps, sleeves --------------------------------------------------
-    if joinery:
+    def sites(self, plate_names: dict[int, str]) -> list[tuple[str, PivotSite]]:
+        plan, cfg = self.plan, self.config
+        out: list[tuple[str, PivotSite]] = []
+        extra: dict[int, dict[int, float]] = {}
+        spacer_r = SPACER_OD / 2
         for i, ax in enumerate(plan.axes):
-            xy = axis_xy[i]
             members = sorted(ax.members, key=lambda n: plan.slots[n])
-            member_slots = {plan.slots[n] for n in members}
-            lo, hi = plan.span(ax)
-            framed = ax.kind == "frame"
-            top_slot = plan.plate + 1 if framed else hi + 1
-            prefix = "frame_" if framed else ""
-            head_host = frame if framed else members[0]
-            cap_host = frame if framed else members[-1]
-            hardware.append(Body(
-                f"{prefix}pin_{ax.name}", part=pin(xy, z(lo - 1), z(top_slot)[1]),
-                color="gray", rigid_with=head_host,
-            ))
-            hardware.append(Body(
-                f"{prefix}cap_{ax.name}", part=cap(xy, *z(top_slot)),
-                color="gray", rigid_with=cap_host,
-            ))
-            for k in range(lo + 1, hi):
-                if k in member_slots or not plan.disc_fits(i, k, FLANGE_R, extra):
+            slots = {plan.slots[n] for n in members}
+            lo, hi = min(slots), max(slots)
+            ms = [Member(n, *self.z(plan.slots[n])) for n in members]
+            if ax.kind == "frame":
+                ms.append(Member(self.frame, *self.z(plan.plate), fixed=True))
+                top, host = plan.plate, self.frame
+            else:
+                top, host = hi, members[0]
+            gaps = []
+            for k in range(lo + 1, top):
+                if k in slots or not cfg.params.spacers:
                     continue
-                extra.setdefault(i, {})[k] = FLANGE_R
-                hardware.append(Body(
-                    f"{prefix}sleeve_{ax.name}_{k}", part=sleeve(xy, *z(k)),
-                    color="gray", rigid_with=head_host,
-                ))
+                if plan.disc_fits(i, k, spacer_r, extra):
+                    extra.setdefault(i, {})[k] = spacer_r
+                    gaps.append(self.z(k))
+            out.append((getattr(cfg, ax.kind), PivotSite(
+                name=ax.name, kind=ax.kind, xy=tuple(self.pos(*ax.joints[0])),
+                members=tuple(ms), host=host, gap_slots=tuple(gaps),
+                pitch=plan.spec.pitch, params=cfg.params,
+            )))
+        crank = plan.crank
+        if crank is not None:
+            for p, nodes in crank.joints.items():
+                riders = [b for b, q in crank.riders.items() if q == p]
+                ms = [Member(b, *self.z(plan.slots[b])) for b in riders]
+                ms += [Member(plate_names[k], *self.z(k), fixed=True)
+                       for k, pins in plan.webs.items() if p in pins]
+                ms.sort(key=lambda m: m.z0)
+                out.append((cfg.crankpin, PivotSite(
+                    name=p, kind="crankpin", xy=tuple(self.pos(*nodes[0])),
+                    members=tuple(ms), host=self.crank_host, gap_slots=(),
+                    pitch=plan.spec.pitch, params=cfg.params,
+                )))
+        return out
 
-    return Mechanism(
-        name=mech.name,
-        bodies=list(bodies.values()) + hardware,
-        connections=list(mech.connections),
-    )
+    # -- the build --------------------------------------------------------------
+
+    def run(self) -> Mechanism:
+        plan, cfg = self.plan, self.config
+        plate_names = self.crank_plate_names()
+
+        # 1. pivots: holes for every plate, hardware bodies
+        for key, site in self.sites(plate_names):
+            hw = joinery.get(key).build(site)
+            for member, hole in hw.holes.items():
+                self.cut(member, Cut(site.xy, hole.d, hole.flat, self._radial(site.xy)))
+            if self.joinery_on or site.kind == "crankpin":
+                self.hardware.extend(hw.bodies)
+                self.extras.extend(hw.extras)
+
+        # 2. servo: frame plate holes/pads, adapter holes, servo bodies
+        spec = servos.get(cfg.servo)
+        crank = plan.crank
+        first_pin = next(iter(crank.joints.values()))[0] if crank else None
+        crank_angle = 0.0
+        if first_pin is not None:
+            d = self.pos(*first_pin) - self.center
+            crank_angle = math.atan2(d[1], d[0])
+        pivots = [self.pos(*ax.joints[0]) for ax in plan.axes if ax.kind == "frame"]
+        away = -sum((p - self.center for p in pivots), np.zeros(2))
+        u = away / (np.linalg.norm(away) or 1.0)
+        mount = servo_mount(
+            spec, center=tuple(self.center), u=tuple(u), plate_top=self.z(plan.plate)[1],
+            pitch=plan.spec.pitch, crank_angle=crank_angle, frame_host=self.frame,
+            crank_host=self.crank_host or self.frame, idler_bracket=cfg.idler_bracket,
+        )
+        self.hardware.extend(mount.bodies)
+        self.extras.extend(mount.extras)
+        for xy, d in mount.plate_holes:
+            self.cut(self.frame, Cut(tuple(xy), d))
+        if plan.adapter_slots and plate_names:
+            adapter = plate_names[max(plan.adapter_slots)]
+            recess = plate_names.get(max(plan.adapter_slots) - 1)
+            for xy, d in mount.adapter_holes:
+                self.cut(adapter, Cut(tuple(xy), d))
+            for xy, d in mount.recess_holes:
+                if recess is not None:
+                    self.cut(recess, Cut(tuple(xy), d))
+
+        # 3. plates
+        self.cut_links()
+        self.cut_frame(pivots, mount.plate_pads)
+        self.cut_crank(plate_names)
+        for name, b in self.bodies.items():
+            if body_class(name) == "coupler" or (
+                body_class(name).startswith("conn") and name != self.crank_host
+            ) or (body_class(name) == "torso" and name != self.frame):
+                b.part = None   # the horn + adapter replace the old coupler
+        meta = dict(self.mech.meta)
+        meta.update(
+            sheet=cfg.sheet, sheet_name=_sheet_name(cfg), pitch=plan.spec.pitch,
+            servo=cfg.servo, pin=cfg.pin, frame=cfg.frame, crankpin=cfg.crankpin,
+        )
+        if any(len(r) > 1 for r in _runs(plate_names)):
+            self.extras.append(BomLine(_adhesive(cfg), 1, "crankshaft plate stacks"))
+        return Mechanism(
+            name=self.mech.name,
+            bodies=list(self.bodies.values()) + self.hardware,
+            connections=list(self.mech.connections),
+            meta=meta,
+            bom_extras=list(self.mech.bom_extras) + self.extras,
+        )
+
+    def _radial(self, xy) -> float:
+        d = np.asarray(xy, float) - self.center
+        return math.atan2(d[1], d[0])
+
+    def cut_links(self) -> None:
+        for name, slot in self.plan.slots.items():
+            b = self.bodies[name]
+            segs = [(self.pos(name, p), self.pos(name, q)) for p, q in b.outline]
+            b.part = link_plate(segs, *self.z(slot), holes=self.cuts.get(name, []))
+            b.fab = "laser"
+
+    def cut_frame(self, pivots, pads) -> None:
+        pills = [(self.center, p, BUFF) for p in pivots]
+        pills += [(p, q, r) for p, q, r in pads]
+        body = self.bodies[self.frame]
+        body.part = plate(pills, *self.z(self.plan.plate), self.cuts.get(self.frame, []))
+        body.fab = "laser"
+
+    def cut_crank(self, plate_names: dict[int, str]) -> None:
+        plan, crank = self.plan, self.plan.crank
+        if crank is None:
+            return
+        pin_xy = {p: self.pos(*nodes[0]) for p, nodes in crank.joints.items()}
+        center_hole = Cut(tuple(self.center), self.config.params.axle_d
+                          + self.config.params.running_clearance)
+        for k, name in plate_names.items():
+            pills = [(self.center, pin_xy[p], BUFF) for p in plan.webs.get(k, ())]
+            cuts = self.cuts.get(name, [])
+            if not any(np.allclose(c.xy, self.center) for c in cuts):
+                cuts = [*cuts, center_hole]
+            part = plate(pills, *self.z(k), cuts, discs=[(self.center, plan.crank_radius(k))])
+            if name in self.bodies:
+                self.bodies[name].part = part
+                self.bodies[name].fab = "laser"
+            else:
+                self.hardware.append(Body(name=name, part=part, color="orange",
+                                          rigid_with=self.crank_host, fab="laser"))
 
 
-__all__ = ["fabricate", "plan_for"]
+def _sheet_name(config: BuildConfig) -> str:
+    from hardware.catalog import get
+
+    try:
+        return get(config.sheet).name
+    except KeyError:
+        return config.sheet
+
+
+def _adhesive(config: BuildConfig) -> str:
+    return "wood_glue" if "plywood" in config.sheet else "acrylic_cement"
+
+
+__all__ = ["BuildConfig", "fabricate", "plan_for", "spec_for"]

@@ -98,7 +98,9 @@ class Body:
     ``outline`` names the joint pairs the body's laser-cut shape spans (empty
     for bodies that aren't links). ``rigid_with`` marks fabricated hardware
     that moves with another body; such a body has no joints of its own and
-    its part is modelled in the same frame as its host's.
+    its part is modelled in the same frame as its host's. ``fab`` says how
+    the part is made (``"laser"``, ``"printed"`` or ``"purchased"``); a
+    purchased body names its catalog item in ``bom_key``.
     """
 
     name: str
@@ -108,6 +110,8 @@ class Body:
     pose: Pose = field(default_factory=Pose.identity)
     outline: Outline = ()
     rigid_with: str | None = None
+    fab: str | None = None
+    bom_key: str | None = None
 
     def joint(self, name: str) -> Joint:
         for j in self.joints:
@@ -127,9 +131,18 @@ Connection = tuple[tuple[int, str, str], tuple[int, str, str]]
 
 @dataclass
 class Mechanism:
+    """Bodies joined by connections.
+
+    ``meta`` carries build settings for downstream writers (sheet material,
+    servo, joinery); ``bom_extras`` holds purchases that aren't modelled as
+    bodies (``hardware.bom.BomLine``).
+    """
+
     name: str
     bodies: list[Body] = field(default_factory=list)
     connections: list[Connection] = field(default_factory=list)
+    meta: dict = field(default_factory=dict)
+    bom_extras: list = field(default_factory=list)
 
     def body(self, name: str) -> Body:
         for b in self.bodies:
@@ -178,7 +191,10 @@ class Mechanism:
                     visited.add(other)
                     q.append(other)
 
-        return Mechanism(name=self.name, bodies=placed, connections=list(self.connections))
+        return Mechanism(
+            name=self.name, bodies=placed, connections=list(self.connections),
+            meta=dict(self.meta), bom_extras=list(self.bom_extras),
+        )
 
     def to_compound(self):
         from build123d import Color, Compound  # lazy import
@@ -204,10 +220,10 @@ class Mechanism:
 
         export_stl(self.to_compound(), str(path))
 
-    def save_layouts(self, prefix) -> list:
+    def save_layouts(self, prefix, **kw) -> list:
         from layout import save_sheets  # lazy import
 
-        return save_sheets(self, prefix)
+        return save_sheets(self, prefix, **kw)
 
 
 # ---------------------------------------------------------------------------

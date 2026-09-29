@@ -35,7 +35,7 @@ sys.path.insert(0, str(_REPO_ROOT / "viewer"))
 
 from bake_gltf import _build_assembly, _build_template  # noqa: E402
 
-from fabricate import plan_for  # noqa: E402
+from fabricate import BuildConfig, plan_for  # noqa: E402
 from layout import save_sheets  # noqa: E402
 from stack import verify_plan  # noqa: E402
 
@@ -48,8 +48,8 @@ def _bb_overlap(a, b, eps: float = 1e-6) -> bool:
     return bool(np.all(hi - lo > eps))
 
 
-def check_solids_and_clash(mode: str, t: float, *, joinery: bool) -> dict:
-    mech = _build_assembly(mode, t=t, with_joinery=joinery).solved()
+def check_solids_and_clash(mode: str, t: float, *, joinery: bool, config: BuildConfig) -> dict:
+    mech = _build_assembly(mode, t=t, with_joinery=joinery, config=config).solved()
     placed = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
     solids = {}
     for name, part in placed.items():
@@ -67,14 +67,14 @@ def check_solids_and_clash(mode: str, t: float, *, joinery: bool) -> dict:
     return {"parts": len(placed), "solids": solids, "clashes": clashes}
 
 
-def check_plan(mode: str) -> tuple[list[str], str]:
+def check_plan(mode: str, config: BuildConfig) -> tuple[list[str], str]:
     tmpl = _build_template(mode)
-    plan = plan_for(tmpl)
+    plan = plan_for(tmpl, config)
     return verify_plan(plan, tmpl), plan.describe()
 
 
-def check_dxf(mode: str) -> tuple[int, str | None]:
-    mech = _build_assembly(mode, t=1.0, with_joinery=False)
+def check_dxf(mode: str, config: BuildConfig) -> tuple[int, str | None]:
+    mech = _build_assembly(mode, t=1.0, with_joinery=False, config=config)
     with tempfile.TemporaryDirectory() as d:
         try:
             return len(save_sheets(mech, Path(d) / "sheet")), None
@@ -86,25 +86,35 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--modes", default=",".join(_MODES))
     ap.add_argument("--ts", default="0,1,2.5,4,5.5", help="crank angles for the OCCT clash check")
-    ap.add_argument("--no-joinery", action="store_true", help="omit pins, caps and sleeves")
+    ap.add_argument("--no-joinery", action="store_true", help="omit pivot hardware bodies")
+    d = BuildConfig()
+    ap.add_argument("--servo", default=d.servo)
+    ap.add_argument("--pin", default=d.pin)
+    ap.add_argument("--frame-joinery", default=d.frame)
+    ap.add_argument("--crankpin", default=d.crankpin)
+    ap.add_argument("--sheet", default=d.sheet)
     ap.add_argument("--json", type=Path, default=None)
     args = ap.parse_args()
 
-    report: dict = {}
+    config = BuildConfig(sheet=args.sheet, pin=args.pin, frame=args.frame_joinery,
+                         crankpin=args.crankpin, servo=args.servo)
+    report: dict = {"config": {"servo": config.servo, "pin": config.pin,
+                               "frame": config.frame, "crankpin": config.crankpin,
+                               "sheet": config.sheet}}
     failed = False
     for mode in args.modes.split(","):
         rep = report[mode] = {"clash": {}, "multi_solid": {}}
         print(f"== {mode}")
-        rep["plan_violations"], layout = check_plan(mode)
+        rep["plan_violations"], layout = check_plan(mode, config)
         print(layout)
         for t in (float(x) for x in args.ts.split(",")):
-            r = check_solids_and_clash(mode, t, joinery=not args.no_joinery)
+            r = check_solids_and_clash(mode, t, joinery=not args.no_joinery, config=config)
             rep["parts"] = r["parts"]
             rep["clash"][f"t={t:g}"] = r["clashes"]
             for name, s in r["solids"].items():
                 if s["solids"] != 1 or not s["valid"]:
                     rep["multi_solid"][name] = s
-        rep["dxf_sheets"], rep["dxf_error"] = check_dxf(mode)
+        rep["dxf_sheets"], rep["dxf_error"] = check_dxf(mode, config)
 
         for name, s in rep["multi_solid"].items():
             print(f"  [solids] {name}: {s['solids']} solids, valid={s['valid']}")
