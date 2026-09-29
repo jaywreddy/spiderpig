@@ -88,11 +88,15 @@ frame + drive:  beyond L2 (pins at A, B, O cross L2 with ≥ 12 mm clearance)
 
 Bake profile, `--frames 120`, 4-core container:
 
-| mode | bake total | `create_klann_geometry` calls | sympy (solve + lambdify) | OCCT reference build |
+| mode | bake total | `create_klann_geometry` calls | sympy (solve + lambdify) | OCCT parts + tessellation |
 |---|---|---|---|---|
 | single | 3.1 s | 3 | 1.1 s (36%) | 1.7 s |
-| double | 5.2 s | 5 | 1.8 s (35%) | 3.3 s |
-| quad | 9.5 s | 9 | 3.6 s (38%) | 6.5 s |
+| double | 5.2 s | 5 | 1.8 s (35%) | 3.2 s |
+| quad | 9.5 s | 9 | 3.6 s (38%) | 5.5 s |
+
+(The profiler's `1_reference_build` stage, 1.7 / 3.3 / 6.5 s, also contains
+the sympy work for the reference legs. The OCCT column subtracts that and
+adds tessellation.)
 
 * **The same symbolic solve runs repeatedly.** Each call costs about 0.28 s
   to solve plus 0.12 s to lambdify, and it runs once per leg for the
