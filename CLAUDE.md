@@ -116,13 +116,16 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 
 | file | role |
 |---|---|
-| `klann.py` | symbolic core (`STEPS`: a straight-line program over exact `PROPORTIONS`, compiled once by `compile_program`) + one template builder per assembly (`build_*_template`). Single-t `build_*_mechanism` = template `.freeze_at(t)`, fabricated when `with_parts`. |
-| `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. |
-| `stack.py` | the layer plan: which slot each link occupies, where pin flanges/shafts go, and the built-up crankshaft. `StackProblem.solve()` searches slots against full-cycle clearance tables; `verify_plan()` re-checks a plan independently. |
-| `fabricate.py` | plan -> build123d parts: links, frame (one solid), crank segments + crankpins, pins with press-on caps, sleeves. `plan_for(tmpl)` caches solved plans. |
-| `shapes.py` | build123d primitives (disc, pill, link plate, pin, cap, sleeve) and dimensions |
-| `layout.py` | DXF sheets of the laser-cut links (b1..b4); errors instead of dropping parts |
-| `scripts/audit_fab.py` | `mise run audit`: solids, OCCT clashes, plan re-check, DXF |
+| `klann.py` | symbolic core (`STEPS`: a straight-line program over exact `PROPORTIONS`, compiled once by `compile_program`) + one template builder per leg module (`build_*_template`). Single-t `build_*_mechanism` = template `.freeze_at(t)`, fabricated (one side) when `with_parts`. |
+| `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling. All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
+| `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers), a `Topology` (links, axles as named points) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()`; `verify_plan()` re-checks exhaustively on fresh sampling. |
+| `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins), `crank.py`, `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides + chassis), `contract.py` (parts inside claims), `envelope.py`. Registries in `__init__.py`. |
+| `servos/` | `ServoSpec` data (continuous-rotation servos only), the drive group (`mount.py`: servo on the inner frame plate, `DriveInterface` for the crank), models and CAD cache. |
+| `hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py` and `servos/catalog.py`) and the BOM (`bom.py`). |
+| `fabricate.py` | orchestration: `BuildConfig`, `design_side()` (groups -> claims -> plan, cached), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`). |
+| `shapes.py` | build123d primitives (disc, pill, plate, link plate, cuts incl. D-holes and rectangles) |
+| `layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
+| `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
 | `server/app.py` | dev server; calls `bake_gltf()` on demand per mode |
 
@@ -133,22 +136,39 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 2. **Compiled** — `compile_program()` (cached) lambdifies it once;
    `KlannSolution(orientation, phase).evaluate(ts)` runs it at `ts + phase`.
 3. **Template** — `MechanismTemplate`: topology, per-body `outline`, and
-   per-joint `pose_at` closures over the compiled program.
-4. **Plan** — `stack.problem_from_template(tmpl).solve()`: Z slots for every
-   link, pins and crank, valid over the whole crank cycle.
-5. **Fabricated** — `fabricate(tmpl.freeze_at(t), plan)`: parts in world
-   coordinates at `t`; hardware bodies carry `rigid_with`.
-6. **Serialized** — STEP/STL/DXF (`main.py`) or `.glb` (`bake_gltf`).
+   per-joint `pose_at` closures over the compiled program. One template is
+   one *side* of the robot (a leg module: single, double, decker, quad).
+4. **Rationalized** — `fabricate.design_side(tmpl, config)`: groups in
+   dependency order (drive, crank, axles, links, frame), each with the
+   construction the config picks; their claims; the layer plan.
+5. **Fabricated** — `fabricate(tmpl, config, t)`: every group realizes its
+   parts at `t` inside its claims; plates are cut last with every hole the
+   other groups asked for; the robot mirrors the side and adds the chassis.
+6. **Serialized** — STEP/STL/DXF/BOM (`main.py`) or `.glb` (`bake_gltf`).
 
-To add an assembly: write a `build_*_template` (compose legs with
-`_legs`, `combine_connectors`, `fuse_couplers`, `fuse_torsos`), then add it
-to `main.py` / `bake_gltf._TEMPLATES`. The plan and parts follow; run
-`mise run audit` to confirm it can be built.
+Correct by construction: the planner guarantees claims of different groups
+never meet over the whole crank cycle, and `construction.contract` checks
+that every part lies inside its own group's claims. A construction that
+can't be built with the given parameters raises `ConstructionError` before
+planning; a layout it can't be built in makes its claim return `None`.
 
-Physical rule the planner enforces: every b1 sweeps within 0.05 mm of the
-crank axis O, and the crank turns fully relative to b1, so nothing on the
-crank except b1's own crankpin may pass through b1's slot. Multi-deck
-assemblies therefore get a built-up crankshaft (webs either side of each b1).
+To add a construction: implement `dims(ctx)` (validation, the radii its
+claims use) and `realize(group, build)` (parts inside those claims), register
+it in `construction/__init__.py`, run the contract tests. To add a leg
+module: write a `build_*_template` (compose legs with `_legs`,
+`combine_connectors`, `fuse_couplers`, `fuse_torsos`) and list it in
+`main.py` / `bake_gltf`.
+
+Physical rules the claims encode:
+
+- Every b1 sweeps within 0.05 mm of the crank axis O, and the crank turns
+  fully relative to b1, so the crank crosses a b1's layer only along that
+  b1's crankpin: a built-up crankshaft with webs either side of each b1.
+- Layers 0 (outer frame plate) and `top` (inner frame plate) hold nothing
+  but the plates and parts seated in their holes.
+- Pillars (frame pivots) are anchored in both frame plates whenever the
+  mechanism lets them reach both; every link on an axle is held in its
+  layer by a shoulder, head, cap, plate or neighbouring link on each side.
 
 ## House rules
 
@@ -156,6 +176,7 @@ assemblies therefore get a built-up crankshaft (webs either side of each b1).
 - Don't regress the profiler (keep the stage keys stable; downstream scripts
   may parse them).
 - Don't put Z into joint poses. Z is the stack plan's job.
+- A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts should leave `mise run audit` green.
 - `verbose=True` on `bake_gltf()` is back-compat only: it forces the logger
   to DEBUG. Prefer `--log-level DEBUG` from the CLI.

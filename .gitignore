@@ -28,3 +28,6 @@ build/
 viewer/data/
 viewer/dist/
 viewer/node_modules/
+
+# agent worktrees
+.claude/worktrees/
