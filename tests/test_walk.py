@@ -441,10 +441,11 @@ def client(server_app):
 
 
 def test_api_walk_quad(client, server_app):
-    client.get("/api/walk", {"module": "decker"})      # warm (compiles the program once)
+    client.get("/api/walk", params={"module": "decker"})      # warm (compiles the program once)
     server_app._walk_json.cache_clear()
     t0 = time.perf_counter()
-    r = client.get("/api/walk", {"module": "quad", "phases": "0,180,90,270", "p.OB": "1.121"})
+    r = client.get("/api/walk",
+                   params={"module": "quad", "phases": "0,180,90,270", "p.OB": "1.121"})
     elapsed = time.perf_counter() - t0
     assert r.status_code == 200
     w = r.json()
@@ -474,7 +475,8 @@ def test_api_walk_quad(client, server_app):
 
 
 def test_api_walk_parameters(client):
-    w = client.get("/api/walk", {"module": "decker", "phases": "0,180", "p.DF": "2.4"}).json()
+    q = {"module": "decker", "phases": "0,180", "p.DF": "2.4"}
+    w = client.get("/api/walk", params=q).json()
     assert w["valid"]
     assert w["phases_deg"] == [0, 180]
     assert w["proportions"]["DF"] == 2.4
@@ -491,14 +493,14 @@ def test_api_walk_parameters(client):
     {"module": "quad", "p.OB": "inf"},
 ])
 def test_api_walk_rejects_bad_parameters(client, params):
-    r = client.get("/api/walk", params)
+    r = client.get("/api/walk", params=params)
     assert r.status_code == 422
     assert isinstance(r.json()["detail"], str)
     assert r.json()["detail"]
 
 
 def test_api_walk_invalid_linkage(client):
-    r = client.get("/api/walk", {"module": "quad", "p.MC": "0.3"})
+    r = client.get("/api/walk", params={"module": "quad", "p.MC": "0.3"})
     assert r.status_code == 200
     w = r.json()
     assert w["valid"] is False
@@ -534,12 +536,12 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
 
 
 def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
-    r = client.get("/api/glb/robot", {"module": "quad", "phases": "0,180,90,270"})
+    r = client.get("/api/glb/robot", params={"module": "quad", "phases": "0,180,90,270"})
     assert r.status_code == 200
     assert (tmp_path / "klann_robot.glb").exists()                  # the default's path
     q = {"module": "quad", "phases": "0,175,180,355", "p.DF": "2.4"}
-    assert client.get("/api/glb/robot", q).status_code == 200
-    assert client.get("/api/glb/robot", q).status_code == 200      # cached
+    assert client.get("/api/glb/robot", params=q).status_code == 200
+    assert client.get("/api/glb/robot", params=q).status_code == 200      # cached
     assert len(stub_bakes) == 2
     mode, config = stub_bakes[1]
     assert mode == "robot"
@@ -547,7 +549,7 @@ def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
     assert config.proportions == (("DF", 2.4),)
     assert config.phases == pytest.approx(tuple(math.radians(p) for p in TUNED_QUAD))
     assert len(list((tmp_path / "params").glob("robot_quad_*.glb"))) == 1
-    assert client.get("/api/glb/klann", {"phases": "90"}).status_code == 200
+    assert client.get("/api/glb/klann", params={"phases": "90"}).status_code == 200
     assert stub_bakes[-1][0] == "single"
 
 
@@ -558,7 +560,7 @@ def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
     ("klann", {"module": "quad"}),              # a side-only mode is its own module
 ])
 def test_api_glb_rejects_bad_parameters(client, stub_bakes, mode, params):
-    r = client.get(f"/api/glb/{mode}", params)
+    r = client.get(f"/api/glb/{mode}", params=params)
     assert r.status_code == 422
     assert r.json()["detail"]
     assert stub_bakes == []
@@ -569,7 +571,7 @@ def test_api_glb_unknown_mode(client, stub_bakes):
 
 
 def test_api_glb_invalid_linkage_is_422(client, stub_bakes):
-    r = client.get("/api/glb/robot", {"p.MC": "0.3"})
+    r = client.get("/api/glb/robot", params={"p.MC": "0.3"})
     assert r.status_code == 422
     assert "joint C" in r.json()["detail"]
     assert stub_bakes == []                    # caught from the kinematics, before baking
@@ -582,10 +584,10 @@ def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
                       (260, ConstructionError("a tie column is too thin"))):
         stub_bakes.errors["next"] = err
         q = {"phases": f"0,180,90,{last}"}
-        r = client.get("/api/glb/robot", q)
+        r = client.get("/api/glb/robot", params=q)
         assert r.status_code == 422
         assert str(err) in r.json()["detail"]
         n = len(stub_bakes)
-        assert client.get("/api/glb/robot", q).status_code == 422      # remembered
+        assert client.get("/api/glb/robot", params=q).status_code == 422      # remembered
         assert len(stub_bakes) == n
     assert not list(Path(server_app.PARAMS_DIR).glob("*.glb"))
