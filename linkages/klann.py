@@ -1,4 +1,7 @@
-"""Joseph Klann's linkage (US patent 6,260,862): a 6-bar leg.
+"""Joseph Klann's linkage (US patent 6,260,862): a 6-bar leg, straight-bar form.
+
+The proportions are the 2016 project's; the patent drawing itself (bent rider
+and leg) is ``klann_patent`` in :mod:`linkages.klann_variants`.
 
 Lengths are multiples of ``OA`` (crank centre to the lower frame pivot A, in
 mm); ``angA`` / ``angB`` place the frame pivots, in degrees from straight
@@ -42,7 +45,7 @@ def program(p):
 
 KLANN = register(Linkage(
     key="klann",
-    name="Klann (patent proportions)",
+    name="Klann (2016 project proportions)",
     family="klann",
     params=PARAMS,
     angles=frozenset({"angA", "angB"}),
@@ -59,5 +62,5 @@ KLANN = register(Linkage(
     crank=("O", "M"),
     feet=(("b4", "F"),),
     source="https://www.diywalkers.com/klanns-linkage-plans.html",
-    notes="Six bars, two frame pivots; the foot path has a long flat stance and a high lift.",
+    notes="Six bars, two frame pivots, straight bars; a high lift. The project default.",
 ))
