@@ -80,6 +80,10 @@ def side_groups(ctx: Context, config: BuildConfig) -> list:
             groups.append(construction.AxleGroup(ax, construction.axle(config.pillar)))
         elif ax.kind == "pin":
             groups.append(construction.AxleGroup(ax, construction.axle(config.pin)))
+    if config.robot:   # the inner plate's share of the frame ties between the two sides
+        from construction.robot import FrameTies
+
+        groups.append(FrameTies(groups[0]))
     groups += [LinkPlates(), FramePlates()]
     return groups
 
