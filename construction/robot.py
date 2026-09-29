@@ -62,6 +62,7 @@ from shapes import Cut, Rect, box, cut_holes, disc, union
 
 SIDES = ("L", "R")
 REAR_ENGAGE = 4.0        # target thread engagement of a rear screw in its servo's pilot (mm)
+MIN_ENGAGE = 2.0         # least thread engagement that still holds
 HEAD_CLEARANCE = 0.3     # radial clearance around a screw head in a laser-cut recess (mm)
 RELIEF_GROW = 0.5        # a relief cut-out is this much bigger than the bump, per side (mm)
 SPIGOT_RECESS = 0.2      # a tie spigot stops this short of the inner plate's leg-side face
@@ -271,9 +272,13 @@ class RearScrews:
     head_h: float
 
 
-def _screw_choice(hole_key: str | None, grip: float):
-    """(key, length, dims) of the screw for a rear hole: the hole's screw family, resized."""
-    from hardware.catalog import get, pick_length
+def _screw_choice(hole_key: str | None, grip: float, depth: float):
+    """(key, length, dims) of the screw for a rear hole: the hole's screw family, resized.
+
+    The screw reaches ``REAR_ENGAGE`` into the pilot if the hole is that deep,
+    never past its bottom (``depth``), and at least ``MIN_ENGAGE``.
+    """
+    from hardware.catalog import get
     from hardware.parts import SELF_TAP_LENGTHS, SHCS_LENGTHS, self_tap, shcs
 
     key = hole_key or "m2_self_tap_6"
@@ -284,13 +289,19 @@ def _screw_choice(hole_key: str | None, grip: float):
     for size in SHCS_LENGTHS:
         if key.startswith(f"m{size}_shcs_"):
             family = (SHCS_LENGTHS[size], lambda L, s=size: shcs(s, L))
-    if family is None:        # an item of fixed length: use it if it reaches
+    if family is None:        # an item of fixed length: use it if it fits the hole
         length = float(get(key).dims["length"])
-        if length < grip + 2.0:
-            raise ConstructionError(f"{key} is too short to fix the servo to the centre plates")
+        if not MIN_ENGAGE <= length - grip <= depth:
+            raise ConstructionError(f"{key} doesn't fit a {depth:g} mm deep rear pilot "
+                                    f"through {grip:g} mm of centre plate")
         return key, length, get(key).dims
     lengths, make = family
-    length = pick_length(grip + REAR_ENGAGE, lengths)
+    fits = [L for L in lengths if MIN_ENGAGE <= L - grip <= depth]
+    if not fits:
+        raise ConstructionError(f"no {make(0).rsplit('_', 1)[0]} length engages "
+                                f"{MIN_ENGAGE:g}..{depth:g} mm through {grip:g} mm of plate")
+    target = min(REAR_ENGAGE, depth)
+    length = min(fits, key=lambda L: (abs(L - grip - target), -L))
     key = make(length)
     return key, float(length), get(key).dims
 
@@ -302,7 +313,10 @@ def rear_screws(spec, n: int, pitch: float) -> RearScrews | None:
     if own < 1 or not holes:
         return None
     grip = own * pitch
-    key, length, dims = _screw_choice(holes[0].screw, grip)
+    from servos.model import UNKNOWN_HOLE_DEPTH
+
+    depth = min(h.depth if h.depth is not None else UNKNOWN_HOLE_DEPTH for h in holes)
+    key, length, dims = _screw_choice(holes[0].screw, grip, depth)
     rs = RearScrews(holes=holes, key=key, own=own, length=length, engage=length - grip,
                     d=float(dims["d"]), head_d=float(dims["head_d"]),
                     head_h=float(dims["head_h"]))
@@ -524,7 +538,7 @@ def _chassis(side: Mechanism, design, z_mid: float) -> tuple[list[Body], list[Bo
 
 
 __all__ = [
-    "REAR_ENGAGE", "SIDES", "FrameTies", "RearScrews", "ServoFrame", "TieDims",
+    "MIN_ENGAGE", "REAR_ENGAGE", "SIDES", "FrameTies", "RearScrews", "ServoFrame", "TieDims",
     "assemble_robot", "centre_plates", "mid_plane", "prefixed", "rear_screws",
     "robot_template", "servo_frame", "tie_dims", "tie_points",
 ]

@@ -8,8 +8,10 @@ import math
 import pytest
 from build123d import Location
 
+import servos
 from construction.base import FRAME_INNER, Build
 from construction.robot import (
+    MIN_ENGAGE,
     FrameTies,
     ServoFrame,
     centre_plates,
@@ -20,6 +22,7 @@ from fabricate import BuildConfig, design_side, fabricate, side_groups
 from hardware import parts
 from hardware.catalog import CATALOG, _load, get
 from klann import build_klann_template, create_klann_geometry
+from servos.model import UNKNOWN_HOLE_DEPTH
 from shapes import disc
 
 CONFIG = BuildConfig(module="single")
@@ -64,16 +67,20 @@ def test_no_two_parts_of_the_robot_intersect(single, t):
     assert clashes == []
 
 
-def test_fastened_screws_really_engage(single):
+def test_rear_screws_engage_their_pilots_without_bottoming_out(single):
+    """The servo model's pilots are drilled at screw size, so a screw that fits its
+    hole doesn't intersect the case; it must reach in far enough and no further."""
     _, _, robots = single
     mech = robots[TS[0]]
     parts_ = _placed(mech)
+    spec = servos.get(mech.meta["servo"])
+    depth = min(h.depth if h.depth is not None else UNKNOWN_HOLE_DEPTH for h in spec.rear_mount)
     engage = mech.meta["rear_engagement_mm"]
-    for screw, host in mech.meta["fastened"]:
-        if "rear_screw" in screw:
-            d = get(mech.body(screw).bom_key).dims["d"]
-            expected = math.pi * (d / 2) ** 2 * engage
-            assert _volume(parts_[screw] & parts_[host]) == pytest.approx(expected, rel=1e-3)
+    assert MIN_ENGAGE <= engage <= depth
+    screws = [(s, h) for s, h in mech.meta["fastened"] if "rear_screw" in s]
+    assert screws
+    for screw, host in screws:
+        assert _volume(parts_[screw] & parts_[host]) < 1e-3, screw
 
 
 def test_every_robot_part_is_one_valid_solid(single):
@@ -111,17 +118,14 @@ def test_rear_screws_sit_on_the_servo_pilots(single):
         assert any(math.hypot(x - px, y - py) < 1e-6 for px, py in pilots), (b.name, x, y)
         assert y > 0            # each servo uses the holes on its own +y side
         world[side].add((round(c[0], 3), round(c[1], 3)))
-        servo = mech.body(f"{side}.servo").part.bounding_box()
+        # the servos' rear hole faces sit on the centre plates at z = -half / +half
+        # (their bumps reach into the plates' cut-outs, so not the bounding box)
         z0, z1 = bb.min.Z, bb.max.Z
         if side == "L":         # tip `engage` into the left servo, head inside the stack
-            rear = servo.max.Z
             assert z0 == pytest.approx(-half - engage)
-            assert rear == pytest.approx(-half)
             assert -half < z1 < half
         else:
-            rear = servo.min.Z
             assert z1 == pytest.approx(half + engage)
-            assert rear == pytest.approx(half)
             assert -half < z0 < half
     assert not world["L"] & world["R"]      # the two screw sets never share a hole position
 
