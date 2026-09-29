@@ -71,11 +71,13 @@ def add_config_args(p: argparse.ArgumentParser) -> None:
     """The build options shared by the CLI and the audit."""
     d = BuildConfig()
     p.add_argument("--servo", default=d.servo, help=f"servo model (default {d.servo})")
-    p.add_argument("--pillar", default=d.pillar,
+    axles, cranks = sorted(construction.AXLES), sorted(construction.CRANKS)
+    p.add_argument("--pillar", default=d.pillar, choices=axles,
                    help=f"construction of the frame pivots (default {d.pillar})")
-    p.add_argument("--pin", default=d.pin,
+    p.add_argument("--pin", default=d.pin, choices=axles,
                    help=f"construction of the pivots between links (default {d.pin})")
-    p.add_argument("--crank", default=d.crank, help=f"crank construction (default {d.crank})")
+    p.add_argument("--crank", default=d.crank, choices=cranks,
+                   help=f"crank construction (default {d.crank})")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
                    help="measured sheet thickness in mm (default: the sheet's nominal)")

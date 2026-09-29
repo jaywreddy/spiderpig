@@ -2,7 +2,9 @@
 
 Registries map a config key to a construction:
 
-* ``AXLES``: pillars and link pins (:mod:`construction.axle`)
+* ``AXLES``: pillars and link pins (:mod:`construction.axle`; the metal-shaft
+  ones, ``rod`` / ``bolt`` / ``bearing`` / ``bushing``, in
+  :mod:`construction.pivots`)
 * ``CRANKS``: the crankshaft (:mod:`construction.crank`)
 
 Add a construction by implementing ``dims`` (validation + the radii its
@@ -25,9 +27,10 @@ from construction.base import (
     Realized,
 )
 from construction.crank import CrankGroup, PrintedCrank
+from construction.pivots import PIVOTS
 from construction.plates import FramePlates, LinkPlates
 
-AXLES = {c.key: c for c in (PrintedAxle(),)}
+AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
 CRANKS = {c.key: c for c in (PrintedCrank(),)}
 
 
