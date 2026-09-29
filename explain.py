@@ -7,11 +7,15 @@
    :class:`linkage.AssemblyError` when the template is built. A mechanism's
    :meth:`linkage.Linkage.output_check`; a broken promise raises
    :class:`linkage.OutputError` there too.
-2. static clearances: :func:`fabricate.side_clearances`. Each link that
-   sweeps through some group's keep-out, so the two can never share a layer.
-3. plan: :func:`fabricate.design_side`. The layer plan, or a
-   :class:`stack.PlanError` naming what blocked it, whether stacking a
-   smaller module's plan also failed, and the static clearances involved.
+2. static facts: :func:`fabricate.side_clearances`, each link that sweeps
+   through some group's keep-out, so the two can never share a layer; the
+   crank's (:func:`construction.route.crank_facts`): which links need O
+   free and which crank points they clear, the body's underside and the
+   ground clearance. A link no crank point clears stops here
+   (:class:`stack.ClearanceError`, with what would clear it).
+3. plan: :func:`fabricate.design_side`. The layer plan, the crank's route and
+   whether the plan is proven the thinnest, or a :class:`stack.PlanError`
+   naming what blocked it and the static clearances involved.
 
 Nothing here computes anything the pipeline doesn't: the stages report
 their own failures.
@@ -26,7 +30,14 @@ import linkage
 
 
 def explain(key: str, module: str = "single", params=None, phases=None) -> str:
-    from fabricate import BuildConfig, design_side, side_clearances, side_problem, template_for
+    from fabricate import (
+        BuildConfig,
+        design_side,
+        ground_clearance,
+        side_problem,
+        static_stage,
+        template_for,
+    )
 
     lk = linkage.get(key)
     config = BuildConfig(linkage=key, module=module, robot=False, phases=phases,
@@ -38,16 +49,33 @@ def explain(key: str, module: str = "single", params=None, phases=None) -> str:
         lines.append(f"  output: {lk.output_check(params).describe()}")
     try:
         tmpl = template_for(config)
-        ctx, groups, _ = side_problem(tmpl, config)
+        ctx, _, problem = side_problem(tmpl, config)
     except ValueError as e:     # AssemblyError / OutputError; ConstructionError (e.g. the drive)
         return "\n".join([*lines, "", f"STOP: {e}"])
-    clear = side_clearances(ctx, groups)
-    lines += ["", f"2. static clearances ({len(clear)})"]
-    lines += [f"  {c.describe()}" for c in clear]
+    lines += ["", f"2. static facts ({len(problem.clearances)} clearances)"]
+    lines += [f"  {c.describe()}" for c in problem.clearances]
+    if problem.router is not None:
+        f = problem.router.facts
+        for link, d in f.o_free.items():
+            lines.append(f"  {link} passes O at {max(d, 0.0):.1f} mm: its layer needs the crank "
+                         f"running along {', '.join(f.hosts[link]) or 'no crank point'}")
+        lines += [f"  detour {d.name}: {d.r:g} mm from O, {d.angle:g}° from the first crankpin, "
+                  f"sweeping {d.sweep:g} mm" for d in f.detours]
+        lines.append(f"  body's underside: lowest at {f.envelope.lowest:.1f} mm (O at 0); what "
+                     f"the planner adds to the crank may sweep {f.allow:.1f} mm about O")
+    if (gc := ground_clearance(tmpl, ctx)) is not None:
+        lines.append(f"  ground clearance: {gc:.1f} mm")
+    try:
+        static_stage(tmpl, problem)
+    except ValueError as e:
+        return "\n".join([*lines, "", f"STOP: {e}"])
     lines += ["", "3. plan"]
     try:
         d = design_side(tmpl, config)
-        lines.append(f"  {d.plan.top + 1} layers, {d.plan.height:.0f} mm")
+        lines.append(f"  {d.plan.top + 1} layers, {d.plan.height:.0f} mm; "
+                     + ("optimal: " if d.plan.optimal else "not proven optimal: ") + d.plan.proof)
+        if "crank" in d.plan.choices:
+            lines.append(f"  crank: {d.plan.choices['crank']}")
         lines += d.plan.describe().splitlines()
     except ValueError as e:
         lines.append(f"  STOP: {e}")

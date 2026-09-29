@@ -76,7 +76,8 @@ class AxleGroup:
     def keepouts(self, ctx: Context) -> list[Keepout]:
         """At its thinnest (the neck) the axle still fills every layer it spans."""
         return [Keepout(self.name, ("pt", self.axis.name), self.dims(ctx).neck,
-                        f"{self.name} spans", frozenset(self.axis.members))]
+                        f"{self.name} spans", frozenset(self.axis.members), span=True,
+                        anchored=self.pillar)]
 
     def claims(self, ctx: Context) -> list[Claim]:
         """One claim; it depends on the axle's links and on every link that passes close.
@@ -165,7 +166,28 @@ class AxleGroup:
                     out.append(Placed(k, Disc(ax, r), g, f"{g} neck"))
             return out
 
-        return [Claim(g, frozenset(members) | frozenset(room), make)]
+        def early(L: Layout):
+            """The least the axle is once its own links have layers, whatever passes it: a
+            pin's head and cap, shoulders at their narrowest beside its links, necks at
+            their thinnest between them (a pillar's ends may still become anchors)."""
+            ms = sorted(L.layers[m] for m in members)
+            mset = set(ms)
+            lo, hi = ms[0], ms[-1]
+            beside = {k for m in ms for k in (m - 1, m + 1)}
+            out = [Placed(k, Disc(ax, d.axle), g, f"{g} axle", seat=True) for k in ms]
+            for k in range(lo - 1, hi + 2):
+                if k in mset or (self.pillar and k in (0, L.top)):
+                    continue
+                if not self.pillar and k in (lo - 1, hi + 1):
+                    out.append(Placed(k, Disc(ax, d.head), g, f"{g} {'head' if k < lo else 'cap'}"))
+                elif k in beside:
+                    out.append(Placed(k, Disc(ax, stop), g, f"{g} shoulder"))
+                else:
+                    out.append(Placed(k, Disc(ax, d.neck), g, f"{g} neck"))
+            return out
+
+        return [Claim(g, frozenset(members) | frozenset(room), make, early=early,
+                      early_deps=frozenset(members))]
 
     def realize(self, build: Build) -> Realized:
         return self.construction.realize(self, build)
