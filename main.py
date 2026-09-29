@@ -211,16 +211,15 @@ def main(argv=None) -> int:
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
 
-    tmpl = template_for(config)
+    try:
+        tmpl = template_for(config)     # the template stage checks every loop closes
+    except walk.LinkageError as e:
+        print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
+        return 2
     if config.phases is not None or config.proportions:
         params = walk.params_of(config)
         print(f"design: phases {', '.join(f'{p:g}' for p in params['phases_deg'])} deg; "
               f"proportions {dict(config.proportions) or 'Klann'}")
-        try:
-            walk.side_legs(config)
-        except walk.LinkageError as e:
-            print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
-            return 2
     design = design_side(tmpl, config)
     plan = design.plan
     print(f"{args.module}: layer plan of one side, {plan.top + 1} layers of "

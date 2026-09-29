@@ -325,13 +325,13 @@ class StepCheck:
             return f"{self.point}: {self.kind} ({', '.join(self.refs) or 'no earlier points'})"
         a, b = self.refs
         if self.radii is None:
-            return (f"{self.point} can't be placed at any crank angle: "
+            return (f"joint {self.point} can't be placed at any crank angle: "
                     f"its bars from {a} and {b} never meet")
         r1, r2 = self.radii
         where = f"bars {a}-{self.point} {r1:.1f} mm and {b}-{self.point} {r2:.1f} mm"
         if self.fails_deg is not None:
             lo, hi = self.fails_deg
-            return (f"{self.point} can't be placed for {self.fail_fraction:.0%} of the cycle "
+            return (f"joint {self.point} can't be placed for {self.fail_fraction:.0%} of the cycle "
                     f"(crank angles {lo:.0f}°..{hi:.0f}°): {where} miss each other by up to "
                     f"{-self.margin_mm:.2f} mm (worst at {self.worst_deg:.0f}°)")
         lo, hi = self.angle_deg

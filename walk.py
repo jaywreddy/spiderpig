@@ -93,6 +93,7 @@ import numpy as np
 
 import klann
 from fabricate import MODULES, BuildConfig, sheet_thickness, template_for
+from linkage import AssemblyError
 
 N_THETA = 360        # crank-angle samples per revolution
 AREA_MIN = 1.0       # mm^2: smaller foot triangles don't define a plane
@@ -123,8 +124,9 @@ class ParamError(ValueError):
     """Bad design parameters (unknown module or proportion, wrong phase count, ...)."""
 
 
-class LinkageError(ValueError):
-    """The linkage can't be assembled at some crank angle (a loop doesn't close)."""
+# The linkage can't be assembled at some crank angle (a loop doesn't close): the
+# template stage raises it (linkage.Linkage.assert_assembles).
+LinkageError = AssemblyError
 
 
 # ---------------------------------------------------------------------------

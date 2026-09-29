@@ -13,7 +13,7 @@ def test_program_stage_names_the_loop_that_cannot_close():
     with pytest.raises(linkage.AssemblyError) as e:
         linkage.build_module_template("single", proportions={"MC": 0.3})
     msg = str(e.value)
-    assert msg.startswith("klann: C can't be placed for")
+    assert msg.startswith("klann: joint C can't be placed for")
     assert "bars A-C 54.5 mm and M-C 18.0 mm miss each other by up to" in msg
 
 
