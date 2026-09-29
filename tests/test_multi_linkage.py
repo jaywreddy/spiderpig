@@ -1,46 +1,38 @@
-"""Tests for 2016-style multi-linkage assemblies.
+"""Tests for the leg modules (``linkage.build_module_template``): the mirrored pair
+(``double``), two legs 90° apart on one crankshaft (``decker``), the 4-leg walker
+combining both (``quad``), and the template rewrites they share
+(``combine_connectors``, ``fuse_couplers``, ``fuse_torsos``).
 
-Covers the mirrored pair (``build_double_klann``), two legs 90° apart on one
-crankshaft (``build_double_decker_klann``), and the 4-leg walker combining
-both (``build_double_double_decker_klann``), plus the template rewrites they
-share (``combine_connectors``, ``fuse_couplers``, ``fuse_torsos``).
-
-Kinematics only (``with_parts=False``): Z placement belongs to the stack
-plan and is covered by ``test_stack.py``.
+Kinematics only: Z placement belongs to the stack plan (``test_stack.py``).
 """
 
 from __future__ import annotations
 
 import math
-import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
+import linkage
+from linkage import build_module_template, combine_connectors, fuse_torsos
 
-from klann import (  # noqa: E402
-    build_double_decker_klann,
-    build_double_double_decker_klann,
-    build_double_klann,
-    build_double_template,
-    build_klann_template,
-    combine_connectors,
-    create_klann_geometry,
-    fuse_torsos,
-)
+TS = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
+KLANN = linkage.get("klann")
 
 
-def _assert_connections_close(mech):
-    solved = mech.solved()
-    for (_, a_name, a_joint), (_, b_name, b_joint) in solved.connections:
-        a, b = solved.body(a_name), solved.body(b_name)
-        pa = (a.pose @ a.joint(a_joint).pose).matrix[:3, 3]
-        pb = (b.pose @ b.joint(b_joint).pose).matrix[:3, 3]
-        np.testing.assert_allclose(
-            pa, pb, atol=1e-6, err_msg=f"{a_name}.{a_joint} ≠ {b_name}.{b_joint}"
-        )
+def _assert_connections_close(tmpl):
+    """Every connection pins two joints that coincide at every crank angle, in the plane."""
+    sampled = tmpl.sample(TS)
+    for (_, a, ja), (_, b, jb) in tmpl.connections:
+        np.testing.assert_allclose(sampled.joint_world[a][ja], sampled.joint_world[b][jb],
+                                   atol=1e-6, err_msg=f"{a}.{ja} ≠ {b}.{jb}")
+    for body, joints in sampled.joint_world.items():      # planar: Z is the stack plan's job
+        for name, xyz in joints.items():
+            assert np.all(xyz[:, 2] == 0.0), f"{body}.{name} has a Z offset"
+
+
+def _body_names(module: str) -> list[str]:
+    return [b.name for b in build_module_template(module).bodies]
 
 
 # ---------------------------------------------------------------------------
@@ -49,13 +41,8 @@ def _assert_connections_close(mech):
 
 
 def test_combine_connectors_merges_joints_and_outline():
-    legs = [
-        build_klann_template(create_klann_geometry(+1), name_suffix="_leg0"),
-        build_klann_template(create_klann_geometry(-1), name_suffix="_leg1"),
-    ]
-    from klann import _merge
-
-    tmpl = combine_connectors(_merge("pair", legs), "_leg0", "_leg1")
+    tmpl = combine_connectors(linkage.legs_template("pair", [(+1, 0.0), (-1, 0.0)]),
+                              "_leg0", "_leg1")
     conn = tmpl.body("conn")
     assert {j.name for j in conn.joints} == {"O_leg0", "M_leg0", "O_leg1", "M_leg1"}
     assert conn.outline == (("O_leg0", "M_leg0"), ("O_leg1", "M_leg1"))
@@ -67,7 +54,7 @@ def test_combine_connectors_merges_joints_and_outline():
 
 
 def test_fuse_torsos_shares_O_and_suffixes_pivots():
-    tmpl = build_double_template()
+    tmpl = build_module_template("double")
     torso = tmpl.body("torso")
     assert sorted(j.name for j in torso.joints) == ["A_leg0", "A_leg1", "B_leg0", "B_leg1", "O"]
     with pytest.raises(KeyError):
@@ -75,47 +62,45 @@ def test_fuse_torsos_shares_O_and_suffixes_pivots():
 
 
 # ---------------------------------------------------------------------------
-# build_double_klann — mirrored pair
+# double: the mirrored pair
 # ---------------------------------------------------------------------------
 
 
-def test_double_klann_body_count():
-    names = [b.name for b in build_double_klann(t=1.0, with_parts=False).bodies]
+def test_double_body_count():
+    names = _body_names("double")
     assert names.count("torso") == names.count("coupler") == names.count("conn") == 1
     for prefix in ("b1", "b2", "b3", "b4"):
         assert sum(1 for n in names if n.startswith(f"{prefix}_leg")) == 2
     assert len(names) == 11
 
 
-def test_double_klann_all_connections_close():
-    _assert_connections_close(build_double_klann(t=1.0, with_parts=False))
+def test_double_all_connections_close():
+    _assert_connections_close(build_module_template("double"))
 
 
-def test_double_klann_mirror_produces_distinct_foot():
+def test_double_mirror_produces_distinct_foot():
     """M is not reflected (only A/B and the intersection branch flip), so the
     mirrored foot is not a simple X-negation; check the traces differ."""
-    sol_r = create_klann_geometry(orientation=+1, phase=0.0)
-    sol_l = create_klann_geometry(orientation=-1, phase=0.0)
+    sol_r, sol_l = KLANN.solve(+1), KLANN.solve(-1)
     for t in (0.1, 1.0, 2.5):
         fr, fl = sol_r.joints_at(t)["F"], sol_l.joints_at(t)["F"]
         assert math.hypot(fr[0] - fl[0], fr[1] - fl[1]) > 50.0
 
 
-def test_double_klann_mirrored_legs_share_the_crankpin():
-    mech = build_double_klann(t=0.7, with_parts=False)
-    conn = mech.body("conn")
-    m0 = conn.joint("M_leg0").pose.matrix[:2, 3]
-    m1 = conn.joint("M_leg1").pose.matrix[:2, 3]
-    np.testing.assert_allclose(m0, m1, atol=1e-12)
+def test_double_mirrored_legs_share_the_crankpin():
+    conn = build_module_template("double").body("conn")
+    ts = np.array([0.7])
+    np.testing.assert_allclose(conn.joint("M_leg0").eval(ts)[0, :2, 3],
+                               conn.joint("M_leg1").eval(ts)[0, :2, 3], atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
-# build_double_decker_klann — two legs 90° apart on one crankshaft
+# decker: two legs 90° apart on one crankshaft
 # ---------------------------------------------------------------------------
 
 
-def test_double_decker_body_count():
-    names = [b.name for b in build_double_decker_klann(t=1.0, with_parts=False).bodies]
+def test_decker_body_count():
+    names = _body_names("decker")
     assert names.count("torso") == names.count("coupler") == 1
     assert sum(1 for n in names if n.startswith("conn_leg")) == 2
     for prefix in ("b1", "b2", "b3", "b4"):
@@ -123,34 +108,23 @@ def test_double_decker_body_count():
     assert len(names) == 12
 
 
-def test_double_decker_phase_offset():
-    """Leg 1's foot at time t matches leg 0's foot at t + π/2."""
-    sol0 = create_klann_geometry(orientation=+1, phase=0.0)
-    sol1 = create_klann_geometry(orientation=+1, phase=math.pi / 2)
-    for t in (0.0, 0.5, 2.0 * math.pi - 0.3):
-        np.testing.assert_allclose(
-            sol1.joints_at(t)["F"], sol0.joints_at(t + math.pi / 2)["F"], atol=1e-9
-        )
-
-
-def test_double_decker_frame_holds_both_decks():
-    mech = build_double_decker_klann(t=1.0, with_parts=False)
-    torso = mech.body("torso")
+def test_decker_frame_holds_both_decks():
+    tmpl = build_module_template("decker")
+    torso = tmpl.body("torso")
     assert sorted(j.name for j in torso.joints) == ["A_leg0", "A_leg1", "B_leg0", "B_leg1", "O"]
     # same chirality: both decks pivot on the same A and B
-    np.testing.assert_allclose(
-        torso.joint("A_leg0").pose.matrix, torso.joint("A_leg1").pose.matrix, atol=1e-12
-    )
-    _assert_connections_close(mech)
+    np.testing.assert_allclose(torso.joint("A_leg0").eval(TS), torso.joint("A_leg1").eval(TS),
+                               atol=1e-12)
+    _assert_connections_close(tmpl)
 
 
 # ---------------------------------------------------------------------------
-# build_double_double_decker_klann — 4-leg walker
+# quad: the 4-leg walker
 # ---------------------------------------------------------------------------
 
 
 def test_quad_body_count():
-    names = [b.name for b in build_double_double_decker_klann(t=1.0, with_parts=False).bodies]
+    names = _body_names("quad")
     assert names.count("torso") == names.count("coupler") == 1
     assert names.count("conn") == names.count("conn_upper") == 1
     assert not any(n.startswith(("conn_leg", "standoff")) for n in names)
@@ -160,21 +134,21 @@ def test_quad_body_count():
 
 
 def test_quad_all_connections_close():
-    _assert_connections_close(build_double_double_decker_klann(t=1.0, with_parts=False))
+    _assert_connections_close(build_module_template("quad"))
 
 
 def test_quad_cranks_are_arms_across_the_centre():
     """Each mirrored pair's crank is one bar through O with a crankpin at each end."""
-    mech = build_double_double_decker_klann(t=0.4, with_parts=False)
+    tmpl = build_module_template("quad")
+    ts = np.array([0.4])
     for name, (a, b) in {"conn": ("_leg0", "_leg1"), "conn_upper": ("_leg2", "_leg3")}.items():
-        crank = mech.body(name)
-        ma = crank.joint(f"M{a}").pose.matrix[:2, 3]
-        mb = crank.joint(f"M{b}").pose.matrix[:2, 3]
+        crank = tmpl.body(name)
+        ma = crank.joint(f"M{a}").eval(ts)[0, :2, 3]
+        mb = crank.joint(f"M{b}").eval(ts)[0, :2, 3]
         np.testing.assert_allclose(ma, -mb, atol=1e-9)
 
 
 def test_quad_every_leg_pivots_on_the_frame():
-    mech = build_double_double_decker_klann(t=1.0, with_parts=False)
-    torso_joints = {j.name for j in mech.body("torso").joints}
+    torso_joints = {j.name for j in build_module_template("quad").body("torso").joints}
     for k in range(4):
         assert {f"A_leg{k}", f"B_leg{k}"} <= torso_joints

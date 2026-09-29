@@ -10,7 +10,8 @@ last with every hole the other groups asked for.
 
 With ``BuildConfig.robot`` (the default) the result is the whole robot: two
 mirror-image sides with their servos back to back in one frame
-(:mod:`construction.robot`).
+(:mod:`construction.robot`). The robot's side is the side on its own with
+the frame ties added at build time, so the two share one design.
 
 Every body carries ``fab`` ("laser", "printed" or "purchased"), purchased
 ones a catalog ``bom_key``; non-kinematic bodies carry ``rigid_with`` (what
@@ -23,9 +24,12 @@ import re
 from dataclasses import dataclass, field, replace
 
 import construction
+import linkage
 import servos
 from construction.base import Build, Context, Params, Realized
 from construction.plates import FramePlates, LinkPlates
+from construction.robot import FrameTies, assemble_robot
+from hardware.catalog import sheet_name, sheet_thickness
 from mechanism import Mechanism
 from servos.mount import DriveGroup
 from stack import (
@@ -64,18 +68,8 @@ class BuildConfig:
 
 def template_for(config: BuildConfig):
     """The kinematic template of one side for ``config`` (linkage, module, phases, params)."""
-    from linkage import build_module_template
-
-    return build_module_template(config.module, config.phases, dict(config.proportions),
-                                 config.linkage)
-
-
-def sheet_thickness(config: BuildConfig) -> float:
-    if config.thickness is not None:
-        return config.thickness
-    from hardware.catalog import get
-
-    return float(get(config.sheet).dims["thickness"])
+    return linkage.build_module_template(config.module, config.phases, dict(config.proportions),
+                                         config.linkage)
 
 
 @dataclass
@@ -99,8 +93,6 @@ class SideDesign:
 
     @property
     def checks(self):
-        import linkage
-
         return linkage.get(self.config.linkage).check(dict(self.config.proportions))
 
 
@@ -115,12 +107,7 @@ def side_groups(ctx: Context, config: BuildConfig) -> list:
             groups.append(construction.AxleGroup(ax, construction.axle(config.pillar)))
         elif ax.kind == "pin":
             groups.append(construction.AxleGroup(ax, construction.axle(config.pin)))
-    if config.robot:   # the inner plate's share of the frame ties between the two sides
-        from construction.robot import FrameTies
-
-        groups.append(FrameTies(groups[0]))
-    groups += [LinkPlates(), FramePlates()]
-    return groups
+    return groups + [LinkPlates(), FramePlates()]
 
 
 def side_clearances(ctx: Context, groups: list) -> list[Clearance]:
@@ -138,17 +125,15 @@ def stacked_plan(tmpl, config: BuildConfig, problem: StackProblem) -> tuple[Stac
     ``k`` layers above the last, are checked by the same claims and
     :func:`verify_plan`: accepted only if nothing collides.
     """
-    import linkage
-
     legs = linkage.module_legs(config.module, config.linkage)
     phases = tmpl.meta.get("phases") or tuple(ph for _, ph in legs)
     blocks = []
     pair = linkage.get(config.linkage).leg_modules.get("double")
     if len(legs) >= 4 and len(legs) % 2 == 0 and pair and [o for o, _ in pair] == [
             o for o, _ in legs[:2]]:
-        blocks.append((replace(config, module="double", phases=tuple(phases[:2]), robot=False), 2))
+        blocks.append((replace(config, module="double", phases=tuple(phases[:2])), 2))
     if len(legs) >= 2:
-        blocks.append((replace(config, module="single", phases=(phases[0],), robot=False), 1))
+        blocks.append((replace(config, module="single", phases=(phases[0],)), 1))
     why = "no smaller module to stack"
     for sub, size in blocks:
         try:
@@ -182,7 +167,8 @@ def stacked_plan(tmpl, config: BuildConfig, problem: StackProblem) -> tuple[Stac
 def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem]:
     """One side's groups (interfaces resolved) and the layer problem their claims pose."""
     topo = topology_from_template(tmpl)
-    ctx = Context(topo=topo, params=config.params, pitch=sheet_thickness(config),
+    ctx = Context(topo=topo, params=config.params,
+                  pitch=sheet_thickness(config.sheet, config.thickness),
                   servo=servos.get(config.servo), config=config)
     groups = side_groups(ctx, config)
     for g in groups:
@@ -194,62 +180,46 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
 
 
 _DESIGNS: dict[tuple, SideDesign] = {}
-_LAYOUTS: dict[tuple, tuple[dict[str, int], int]] = {}
 
 
 def design_side(tmpl, config: BuildConfig | None = None) -> SideDesign:
-    """Rationalize and plan one side (cached per template and config)."""
-    config = config or BuildConfig()
+    """Rationalize and plan one side (cached per template and config; ``robot`` doesn't matter)."""
+    config = replace(config or BuildConfig(), robot=False)
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
     if key not in _DESIGNS:
         ctx, groups, problem = side_problem(tmpl, config)
-        # The robot's side has the same layout as the side on its own; reuse
-        # a solved layout when every claim still clears (checked, not assumed).
-        layout_key = key[:4] + (replace(config, robot=False),)
-        plan = None
-        if layout_key in _LAYOUTS:
-            layers, top = _LAYOUTS[layout_key]
-            try:
-                plan = problem.plan(layers, top)
-            except ValueError:
-                plan = None
-            if plan is not None and verify_plan(plan):
-                plan = None
         clearances = side_clearances(ctx, groups)
         if no := impossible(ctx.topo, clearances, config.params.link_radius, config.params.margin):
             raise ClearanceError(f"{tmpl.name}: " + "\n  ".join(no))
-        if plan is None:
-            try:
-                plan = problem.solve()
-            except PlanError as e:
-                plan, how = stacked_plan(tmpl, config, problem)
-                if plan is None:
-                    said = [*e.blockers, how]
-                    involved = [c.describe() for c in clearances
-                                if any(c.link in b and c.keepout.owner in b for b in said)]
-                    raise e.with_notes(f"stacking a smaller module's plan: {how}",
-                                       *(["static clearances behind it:", *involved[:8]]
-                                         if involved else [])) from None
-            _LAYOUTS[layout_key] = (dict(plan.layers), plan.top)
+        try:
+            plan = problem.solve()
+        except PlanError as e:
+            plan, how = stacked_plan(tmpl, config, problem)
+            if plan is None:
+                said = [*e.blockers, how]
+                involved = [c.describe() for c in clearances
+                            if any(c.link in b and c.keepout.owner in b for b in said)]
+                raise e.with_notes(f"stacking a smaller module's plan: {how}",
+                                   *(["static clearances behind it:", *involved[:8]]
+                                     if involved else [])) from None
         _DESIGNS[key] = SideDesign(config, ctx, groups, plan, clearances)
     return _DESIGNS[key]
 
 
-def plan_for(tmpl, config: BuildConfig | None = None) -> StackPlan:
-    """The layer plan of one side."""
-    return design_side(tmpl, config).plan
+def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mechanism:
+    """Build every part of one side for ``mech`` (the side's template frozen at some ``t``).
 
-
-def fabricate_side(design: SideDesign, mech: Mechanism) -> Mechanism:
-    """Build every part of one side for ``mech`` (the side's template frozen at some ``t``)."""
+    ``extra_groups`` (the robot's frame ties) realize after the design's
+    groups and before the plates, which cut what they ask for.
+    """
     build = Build(design.ctx, design.plan, mech)
     done = Realized()
-    for g in design.groups:
-        if isinstance(g, (LinkPlates, FramePlates)):
-            done.merge(g.realize(build, done))
-        else:
-            done.merge(g.realize(build))
+    plates = [g for g in design.groups if isinstance(g, (LinkPlates, FramePlates))]
+    for g in [g for g in design.groups if g not in plates] + list(extra_groups):
+        done.merge(g.realize(build))
+    for g in plates:
+        done.merge(g.realize(build, done))
     bodies = {b.name: replace(b, part=None) for b in mech.bodies}
     extra = []
     for b in done.bodies:
@@ -262,7 +232,7 @@ def fabricate_side(design: SideDesign, mech: Mechanism) -> Mechanism:
     cfg = design.config
     meta = dict(mech.meta)
     meta.update(
-        sheet=cfg.sheet, sheet_name=_sheet_name(cfg), pitch=design.ctx.pitch,
+        sheet=cfg.sheet, sheet_name=sheet_name(cfg.sheet), pitch=design.ctx.pitch,
         servo=cfg.servo, pillar=cfg.pillar, pin=cfg.pin, crank=cfg.crank,
         layers=design.plan.top + 1, stack_mm=design.plan.height,
     )
@@ -279,28 +249,6 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0) -> Mechan
     """The fabricated walker at crank angle ``t`` (one side unless ``config.robot``)."""
     config = config or BuildConfig()
     design = design_side(tmpl, config)
-    side = fabricate_side(design, tmpl.freeze_at(t))
-    if not config.robot:
-        return side
-    from construction.robot import assemble_robot
-
-    return assemble_robot(side, design)
-
-
-def _sheet_name(config: BuildConfig) -> str:
-    from hardware.catalog import get
-
-    try:
-        return get(config.sheet).name
-    except KeyError:
-        return config.sheet
-
-
-def adhesive(config: BuildConfig) -> str:
-    return "wood_glue" if "plywood" in config.sheet else "acrylic_cement"
-
-
-__all__ = [
-    "MODULES", "BuildConfig", "SideDesign", "design_side", "fabricate", "fabricate_side",
-    "plan_for", "sheet_thickness", "template_for",
-]
+    ties = [FrameTies(design.drive)] if config.robot else []
+    side = fabricate_side(design, tmpl.freeze_at(t), ties)
+    return assemble_robot(side, design) if config.robot else side

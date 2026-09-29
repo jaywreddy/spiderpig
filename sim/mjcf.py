@@ -78,13 +78,12 @@ Mass and inertia
 Exact, from the fabricated parts at ``t_ref`` (OCCT B-rep volume, centroid
 and inertia tensor per part, combined per body with the parallel-axis
 theorem) and written as each body's ``<inertial>`` (``inertiafromgeom`` is
-off: geoms carry no mass). Densities (g/cm³): laser-cut sheet
-:data:`SHEET_DENSITY` (cast acrylic 1.19); printed parts the robot's filament
-from the catalog (PLA 1.24) times :attr:`SimParams.printed_fill` (1.0 = the
-BOM's 100 % infill, an upper bound); screws and nuts steel 7.85; heat-set
-inserts brass 8.5; an aluminium horn 2.70; the servo its datasheet mass
-(``ServoSpec.weight_g``, 55 g for the STS3215) spread uniformly over its
-modelled case.
+off: geoms carry no mass). Materials and densities are
+:func:`hardware.mass.material_of`'s (cast acrylic 1.19 g/cm³, PLA 1.24,
+steel 7.85, brass 8.5, an aluminium horn 2.70); printed parts are scaled by
+:attr:`SimParams.printed_fill` (1.0 = the BOM's 100 % infill, an upper
+bound); the servo is its datasheet mass (``ServoSpec.weight_g``, 55 g for
+the STS3215) spread uniformly over its modelled case.
 
 Collision geometry
 ------------------
@@ -148,8 +147,11 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import cache
 
 import numpy as np
+from scipy.spatial import ConvexHull
 
+import servos
 from fabricate import BuildConfig, fabricate, template_for
+from hardware.mass import material_of, part_props
 from linkage import feet_of
 from linkage import get as get_linkage
 from stack import body_class, is_crank, is_frame, is_link
@@ -158,19 +160,6 @@ T_REF = 0.0                     # crank angle the model's qpos0 is at (the glb's
 MM = 1e-3                       # m per mm
 KGF_CM = 9.80665e-2             # N·m per kgf·cm
 RPM = 2.0 * math.pi / 60.0      # rad/s per rpm
-
-# Densities (g/cm³) of what the catalog doesn't carry.
-SHEET_DENSITY = {
-    # cast PMMA: 1.19 g/cm³ (ISO 1183; e.g. Röhm PLEXIGLAS GS technical data, 1.19)
-    "acrylic_3mm": 1.19,
-    # Baltic birch plywood: about 0.68 g/cm³ (typical 650-720 kg/m³ for birch plywood)
-    "plywood_3mm": 0.68,
-}
-STEEL_DENSITY = 7.85            # carbon / alloy steel fasteners (EN 10025 / ISO 898 steels)
-BRASS_DENSITY = 8.5             # heat-set inserts (CuZn39Pb3 free-cutting brass: 8.47)
-ALUMINIUM_DENSITY = 2.70        # 6061-T6 (ASM handbook: 2.70 g/cm³)
-POM_DENSITY = 1.41              # a plastic (acetal) horn, when the horn isn't aluminium
-
 
 
 @dataclass(frozen=True)
@@ -284,56 +273,7 @@ def _root(body, by_name) -> str:
     return body.name
 
 
-def _part_props(part) -> tuple[float, np.ndarray, np.ndarray]:
-    """``(volume mm³, centroid mm, inertia about the centroid at unit density mm⁵)``."""
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-
-    g = GProp_GProps()
-    BRepGProp.VolumeProperties_s(part.wrapped, g)
-    c = g.CentreOfMass()
-    m = g.MatrixOfInertia()
-    inertia = np.array([[m.Value(i, j) for j in (1, 2, 3)] for i in (1, 2, 3)])
-    return g.Mass(), np.array([c.X(), c.Y(), c.Z()]), inertia
-
-
-def _material(body, config: BuildConfig, meta: dict,
-              servo) -> tuple[str, float | None, float | None]:
-    """``(material, density g/cm³, fixed mass g)`` of a fabricated body."""
-    from hardware.catalog import get
-
-    cls = body_class(body.name)
-    if body.fab == "laser":
-        if config.sheet not in SHEET_DENSITY:
-            raise ValueError(f"no density for sheet {config.sheet!r}; add it to SHEET_DENSITY")
-        return "sheet", SHEET_DENSITY[config.sheet], None
-    if body.fab == "printed":
-        filament = meta.get("filament") or "pla_filament"
-        density = float(get(filament).dims["density"])
-        return "printed", density, None
-    if body.fab == "purchased":
-        category = None
-        if body.bom_key:
-            try:
-                category = get(body.bom_key).category
-            except KeyError:
-                category = None
-        if category == "servo" or cls == "servo":
-            if servo.weight_g is None:
-                raise ValueError(f"servo {servo.key!r} has no weight_g")
-            return "servo", None, float(servo.weight_g)
-        if cls.startswith("servo_horn") or category == "horn":
-            alu = "alumin" in servo.horn.name.lower()
-            return ("aluminium", ALUMINIUM_DENSITY, None) if alu else ("plastic", POM_DENSITY, None)
-        if body.bom_key and "insert" in body.bom_key:
-            return "brass", BRASS_DENSITY, None
-        return "steel", STEEL_DENSITY, None
-    raise ValueError(f"body {body.name!r} has a part but no known fabrication ({body.fab!r})")
-
-
 def _hull(part, tolerance: float) -> np.ndarray:
-    from scipy.spatial import ConvexHull
-
     verts, _ = part.tessellate(tolerance)
     pts = np.unique(np.round(np.array([(v.X, v.Y, v.Z) for v in verts]), 4), axis=0)
     return pts[ConvexHull(pts).vertices]
@@ -362,8 +302,6 @@ def fabricated(config: BuildConfig):
 def robot_model(config: BuildConfig, printed_fill: float = 1.0,
                 hull_tolerance: float = 0.5) -> RobotModel:
     """The fabricated robot at ``t_ref`` reduced to MuJoCo bodies (cached per config)."""
-    import servos
-
     config = replace(config, robot=True)
     robot = fabricated(config)
     servo = servos.get(config.servo)
@@ -390,10 +328,12 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
         mb.members.append(b.name)
         if b.part is None:
             continue
-        material, density, fixed_g = _material(b, config, robot.meta, servo)
+        material, density, fixed_g = material_of(b, config.sheet, robot.meta.get("filament"),
+                                                 servo)
         if material == "printed":
             density *= printed_fill
-        vol, com, inertia = _part_props(b.part)
+        props = part_props(b.part)
+        vol, com, inertia = props.volume, props.com, props.inertia
         if vol <= 0:
             raise ValueError(f"part of {b.name!r} has no volume")
         rho = (fixed_g / vol) if fixed_g is not None else density * 1e-3   # g/mm³
@@ -747,14 +687,13 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
 
 
 def load_model(config: BuildConfig | None = None, params: SimParams | None = None):
-    """``(mujoco.MjModel, metadata)`` for ``config``."""
+    """``(mujoco.MjModel, metadata)`` for ``config``, compiled once per config and params."""
+    return _load_model(config or BuildConfig(), params or SimParams())
+
+
+@cache
+def _load_model(config: BuildConfig, params: SimParams):
     import mujoco
 
-    xml, meta = build_mjcf(config, params)
+    xml, meta = _build_mjcf(config, params)
     return mujoco.MjModel.from_xml_string(xml), meta
-
-
-__all__ = [
-    "MM", "RPM", "SHEET_DENSITY", "T_REF", "MjBody", "RobotModel", "SimParams", "build_mjcf",
-    "crank_sign", "drive_limits", "fabricated", "load_model", "rest_pose", "robot_model",
-]

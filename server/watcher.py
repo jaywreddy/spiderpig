@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import WebSocket
 from watchfiles import Change, awatch
+
+log = logging.getLogger("watcher")
 
 _IGNORED_DIRS = {
     ".venv", ".git", "__pycache__", ".ruff_cache", ".pytest_cache", "build", "data",
@@ -99,13 +102,13 @@ class WatchBroadcaster:
         if not changes:
             return
         paths = sorted({Path(p).name for _, p in changes})
-        print(f"[watcher] change detected: {', '.join(paths)}")
+        log.info("change detected: %s", ", ".join(paths))
         async with self._bake_lock:
             await self._broadcast({"type": "rebaking", "files": paths})
             try:
                 await asyncio.to_thread(self._rebake)
             except Exception as e:
-                print(f"[watcher] bake failed: {e}")
+                log.error("bake failed: %s", e)
                 await self._broadcast({"type": "error", "msg": str(e)})
                 return
             await self._broadcast({"type": "reload"})

@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import logging
 import math
-import re
 from functools import lru_cache
 
 from build123d import Box, Compound, Cylinder, Location, Part
 
+from hardware.fasteners import parse
 from servos import cad as cadlib
 from servos.spec import CadRef, HolePattern, ServoSpec
 
@@ -225,19 +225,14 @@ def cad_servo(spec: ServoSpec):
     return None
 
 
-def _thread_d(key: str | None) -> float:
-    """Nominal diameter from a screw catalog key: ``"m2p5_shcs_12"`` -> 2.5 (0 if unknown)."""
-    m = re.match(r"^m(\d+)(?:p(\d+))?_", key or "")
-    return 0.0 if m is None else float(f"{m.group(1)}.{m.group(2) or 0}")
-
-
 def drill_mounts(spec: ServoSpec, part):
     """The mounting holes, drawn at the screws' nominal size (a tapped or tapping hole)."""
     cutters = []
     for holes, face, sense in ((spec.mount, spec.mount_face_z, -1.0),
                                (spec.rear_mount, spec.rear_z, 1.0)):
         for mh in holes:
-            d = _thread_d(mh.screw) or mh.d
+            screw = parse(mh.screw)
+            d = screw[0].d if screw else mh.d
             depth = mh.depth if mh.depth is not None else UNKNOWN_HOLE_DEPTH
             z0, z1 = sorted((face - sense, face + sense * depth))
             cutters.append(_cyl(d / 2, z0, z1, mh.x, mh.y))
@@ -257,7 +252,3 @@ def servo_part(spec: ServoSpec, *, cad: bool = True):
     ``0``) and one can be had, else :func:`parametric_servo`.
     """
     return _servo_part(spec, bool(cad and cadlib.cad_enabled()))
-
-
-__all__ = ["cad_servo", "center_boss_on_servo", "cut_each", "drill_mounts", "horn_part",
-           "parametric_servo", "servo_part", "strip_horn"]

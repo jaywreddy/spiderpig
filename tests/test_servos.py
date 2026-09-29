@@ -14,47 +14,24 @@ import pytest
 from build123d import Cylinder, Location
 
 import servos
-from fabricate import BuildConfig, design_side, fabricate_side
 from hardware import catalog
-from klann import build_klann_template, create_klann_geometry
 from servos import cad as cadlib
 from servos import model
 from servos.mount import servo_to_world
 from servos.spec import CadRef
+from tests.conftest import clear_model_caches
 
 KEYS = servos.available()
 
 
-def _clear_model_caches():
-    model.cad_servo.cache_clear()
-    model._servo_part.cache_clear()
-    cadlib._load_cached.cache_clear()
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _no_downloads(tmp_path_factory):
-    """Tests never download: servos are drawn parametrically unless a model is cached."""
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv(cadlib.OFFLINE_ENV, "1")
-        mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
-        _clear_model_caches()
-        yield
-        _clear_model_caches()
-
-
 @pytest.fixture
 def offline(monkeypatch, tmp_path):
-    """No downloads and an empty model cache."""
+    """No downloads and an empty model cache (the session's is shared)."""
     monkeypatch.setenv(cadlib.OFFLINE_ENV, "1")
     monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
-    _clear_model_caches()
+    clear_model_caches()
     yield tmp_path
-    _clear_model_caches()
-
-
-@pytest.fixture(scope="module")
-def single():
-    return build_klann_template(create_klann_geometry())
+    clear_model_caches()
 
 
 # -- data ---------------------------------------------------------------------------
@@ -223,7 +200,7 @@ def test_the_sts3215_model_lines_up_when_cached(offline, monkeypatch):
     s = servos.get("sts3215")
     if cadlib.fetch(s.cad, allow_download=False) is None:
         pytest.skip("STS3215 model not cached (run `mise run fetch-cad`)")
-    _clear_model_caches()
+    clear_model_caches()
     part = model.cad_servo(s)
     assert part is not None
     assert part.is_valid
@@ -274,50 +251,49 @@ def test_servo_to_world_puts_the_output_on_o_face_down():
 
 
 @pytest.mark.parametrize("key", KEYS)
-def test_drive_interface_couples_below_the_plate(single, key):
-    design = design_side(single, BuildConfig(robot=False, servo=key))
-    iface = design.ctx.interfaces["drive"]
+def test_drive_interface_couples_below_the_plate(design, key):
+    _, d = design("single", key)
+    iface = d.ctx.interfaces["drive"]
     s = servos.get(key)
-    assert iface.horn_face_depth >= design.ctx.pitch - 1e-9
+    assert iface.horn_face_depth >= d.ctx.pitch - 1e-9
     assert iface.horn_radius == pytest.approx(s.horn.diameter / 2)
     assert iface.screw_count == s.horn.pattern.count
     assert iface.screw_pcd == pytest.approx(s.horn.pattern.pcd)
-    spacer = design.drive.spacer(design.ctx)
+    spacer = d.drive.spacer(d.ctx)
     assert iface.horn_face_depth == pytest.approx(s.horn_face_depth + spacer)
     assert (spacer > 0) == (key == "xl430_w250")   # its horn face is inside the plate
 
 
 @pytest.mark.parametrize("key", KEYS)
-def test_mount_screws_clear_the_crank_and_are_claimed(single, key):
-    design = design_side(single, BuildConfig(robot=False, servo=key))
-    drive, ctx = design.drive, design.ctx
+def test_mount_screws_clear_the_crank_and_are_claimed(design, side, key):
+    _, d = design("single", key)
+    drive, ctx = d.drive, d.ctx
     screws = drive.front_screws(ctx)
     assert len(screws) >= 2
-    hub = next(p.shape.r for p in design.plan.shapes("crank") if p.label == "crank hub")
+    hub = next(p.shape.r for p in d.plan.shapes("crank") if p.label == "crank hub")
     for _, mh, sk, _ in screws:
         assert math.hypot(mh.x, mh.y) - sk.head_d / 2 >= hub + ctx.params.margin
     if key == "sts3215":
         assert sorted({mh.x for _, mh, _, _ in screws}) == [29.0]
-    heads = [p for p in design.plan.shapes("drive") if p.label == "servo screw head"]
-    assert {p.layer for p in heads} == {design.plan.top - 1}
+    heads = [p for p in d.plan.shapes("drive") if p.label == "servo screw head"]
+    assert {p.layer for p in heads} == {d.plan.top - 1}
     assert {p.shape.at for p in heads} == {name for name, *_ in screws}
-    mech = fabricate_side(design, single.freeze_at(1.0))
-    bodies = {b.name: b for b in mech.bodies}
+    bodies = {b.name: b for b in side("single", 1.0, key).bodies}
     for i in range(len(screws)):
         b = bodies[f"servo_screw{i}"]
         assert b.fab == "purchased"
         assert b.bom_key == screws[i][1].screw
         bb = b.part.bounding_box()
-        assert design.plan.z(design.plan.top)[1] < bb.max.Z      # into the servo
-        assert design.plan.z(design.plan.top)[0] > bb.min.Z      # head under the plate
+        assert d.plan.z(d.plan.top)[1] < bb.max.Z      # into the servo
+        assert d.plan.z(d.plan.top)[0] > bb.min.Z      # head under the plate
 
 
-def test_the_verifier_sees_the_screw_heads(single):
+def test_the_verifier_sees_the_screw_heads(design):
     """Negative control: a screw head moved onto the crank hub is a violation."""
     from stack import Geometry, verify_plan
 
-    design = design_side(single, BuildConfig(robot=False))
-    plan = design.plan
+    single, d = design("single")
+    plan = d.plan
     assert verify_plan(plan, single) == []              # the fixed points carry over
     pts = dict(plan.topo.geometry.points)
     name = next(n for n in pts if n.startswith("servo.screw"))

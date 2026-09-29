@@ -26,8 +26,8 @@ unless you're debugging the build itself.
 ## When NOT to use mise
 
 Use raw commands only for **one-off validation scripts** — small
-throwaway probes for a hypothesis (e.g. `uv run python -c "import klann;
-print(klann.foo())"`, a tiny temp `.py` to dump a value, an `npx tsc
+throwaway probes for a hypothesis (e.g. `uv run python -c "import linkage;
+print(linkage.get('klann').check())"`, a tiny temp `.py` to dump a value, an `npx tsc
 --noEmit` to look at type errors during a refactor). If a probe is going
 to be used more than twice, promote it to a `mise.toml` task instead.
 

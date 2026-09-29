@@ -7,6 +7,7 @@ import math
 
 import numpy as np
 import pytest
+import sympy as sp
 
 import linkage
 from fabricate import BuildConfig, design_side, template_for
@@ -20,6 +21,43 @@ WALKERS = linkage.available("walker")
 def test_registry_has_klann_first_and_the_others():
     assert ALL[0] == linkage.DEFAULT == "klann"
     assert "strider" in ALL
+
+
+def test_klann_reference_foot_value():
+    """Captured once from the 2016 project's numerical output; drift here is deliberate."""
+    sol = linkage.get("klann").solve()
+    fx, fy = sol.joints_at(1.0)["F"]
+    assert fx == pytest.approx(224.87767188289433, abs=1e-9)
+    assert fy == pytest.approx(-93.54456977054052, abs=1e-9)
+    ox, oy = linkage.get("klann").solve(phase=0.7).joints_at(0.0)["O"]
+    assert (ox, oy) == pytest.approx((0.0, 0.0), abs=1e-12)
+
+
+def test_circle_x_circle_two_unit_circles_is_exact():
+    c1, c2 = sp.Matrix([0, 0]), sp.Matrix([1, 0])
+    up = linkage.circle_x_circle(c1, 1, c2, 1, +1)
+    down = linkage.circle_x_circle(c1, 1, c2, 1, -1)
+    assert list(up) == [sp.Rational(1, 2), sp.sqrt(3) / 2]
+    assert list(down) == [sp.Rational(1, 2), -sp.sqrt(3) / 2]
+
+
+@pytest.mark.parametrize("key", ALL)
+def test_program_steps_stay_small(key):
+    """Each step is a short expression over earlier points' symbols, not a
+    substituted tree (the old chain grew Klann's F to ~34k ops)."""
+    for name, expr in linkage.get(key).steps:
+        ops = sum(sp.count_ops(c) for c in expr)
+        assert ops < 200, f"{key} step {name} has {ops} ops"
+
+
+@pytest.mark.parametrize("key", ALL)
+def test_phase_is_a_time_shift(key):
+    lk = linkage.get(key)
+    base, shifted = lk.solve(-1, 0.0), lk.solve(-1, 0.9)
+    ts = np.linspace(0.0, 2.0 * math.pi, 50)
+    for name in lk.points:
+        np.testing.assert_allclose(shifted.evaluate(ts)[name], base.evaluate(ts + 0.9)[name],
+                                   atol=1e-12)
 
 
 @pytest.mark.parametrize("key", ALL)

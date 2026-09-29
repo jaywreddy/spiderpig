@@ -1,29 +1,21 @@
-"""Small kinematic-tree data model backed by pytransform3d.
+"""Kinematic-tree data model: rigid bodies, named joints and 4x4 poses (numpy).
 
 A :class:`Mechanism` is a list of rigid :class:`Body` objects connected by
-named :class:`Joint` pairs. ``solved()`` walks the connection graph from the
-root body and propagates world poses so that connected joints coincide:
-
-    T_world_child = T_world_parent @ P_parent_joint @ inv(P_child_joint)
-
-The :class:`Pose` wrapper stores a 4x4 SE(3) matrix and offers constructors
-for the ``(xyz, xyzw)`` tuples the legacy digifab code used. build123d is
-imported lazily inside ``Pose.to_location`` so importing this module does not
-drag in OCCT.
+named :class:`Joint` pairs, at one crank angle; a :class:`MechanismTemplate`
+is the same assembly with every joint's pose a function of time, sampled in
+one batch (:meth:`MechanismTemplate.sample`) and projected to a
+:class:`Mechanism` with :meth:`MechanismTemplate.freeze_at`. build123d is
+imported lazily inside ``Pose.to_location`` so importing this module does
+not drag in OCCT.
 """
 
 from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import numpy as np
-from pytransform3d.transformations import (
-    concat,
-    invert_transform,
-    transform_from_pq,
-)
 
 
 @dataclass(frozen=True)
@@ -44,31 +36,19 @@ class Pose:
 
     @classmethod
     def from_translation(cls, xyz) -> Pose:
-        xyz = np.asarray(xyz, dtype=float)
         m = np.eye(4)
-        m[:3, 3] = xyz
+        m[:3, 3] = np.asarray(xyz, dtype=float)
         return cls(m)
-
-    @classmethod
-    def from_xyz_quat_xyzw(cls, xyz, quat_xyzw) -> Pose:
-        """Build a Pose from legacy ``(xyz, (x, y, z, w))`` tuples.
-
-        pytransform3d uses ``(w, x, y, z)``; reorder here.
-        """
-        xyz = np.asarray(xyz, dtype=float)
-        x, y, z, w = quat_xyzw
-        pq = np.array([xyz[0], xyz[1], xyz[2], w, x, y, z], dtype=float)
-        return cls(transform_from_pq(pq))
 
     @classmethod
     def from_matrix(cls, matrix) -> Pose:
         return cls(np.asarray(matrix, dtype=float))
 
     def inverse(self) -> Pose:
-        return Pose(invert_transform(self.matrix, check=False))
+        return Pose(_invert_se3_batch(self.matrix))
 
     def __matmul__(self, other: Pose) -> Pose:
-        return Pose(concat(other.matrix, self.matrix))
+        return Pose(self.matrix @ other.matrix)
 
     def to_location(self):
         from build123d import Location, Plane  # lazy import
@@ -150,52 +130,6 @@ class Mechanism:
                 return b
         raise KeyError(f"Mechanism has no body {name!r}")
 
-    def solved(self) -> Mechanism:
-        """Return a copy with world poses propagated across every component.
-
-        BFS over the undirected connection graph. Each connected component
-        is seeded from its first body in :attr:`bodies` order, using that
-        body's current pose as the world anchor — so multi-leg assemblies
-        can pin each leg's root at its own ``z_base`` and let BFS fill in
-        the rest. Every body reached via a connection is placed so its
-        joint coincides with the already-placed neighbour.
-        """
-        if not self.bodies:
-            return replace(self)
-
-        placed = [replace(b) for b in self.bodies]
-        by_name = {b.name: i for i, b in enumerate(placed)}
-
-        # adjacency: name -> list of (neighbour_name, joint_here, joint_there)
-        adj: dict[str, list[tuple[str, str, str]]] = {b.name: [] for b in placed}
-        for (_, a_name, a_joint), (_, b_name, b_joint) in self.connections:
-            adj[a_name].append((b_name, a_joint, b_joint))
-            adj[b_name].append((a_name, b_joint, a_joint))
-
-        visited: set[str] = set()
-        for root in placed:
-            if root.name in visited:
-                continue
-            visited.add(root.name)
-            q: deque[str] = deque([root.name])
-            while q:
-                cur = q.popleft()
-                cur_body = placed[by_name[cur]]
-                for other, j_here, j_there in adj[cur]:
-                    if other in visited:
-                        continue
-                    other_body = placed[by_name[other]]
-                    p_here = cur_body.joint(j_here).pose
-                    p_there = other_body.joint(j_there).pose
-                    other_body.pose = cur_body.pose @ p_here @ p_there.inverse()
-                    visited.add(other)
-                    q.append(other)
-
-        return Mechanism(
-            name=self.name, bodies=placed, connections=list(self.connections),
-            meta=dict(self.meta), bom_extras=list(self.bom_extras),
-        )
-
     def to_compound(self):
         from build123d import Color, Compound  # lazy import
 
@@ -220,11 +154,6 @@ class Mechanism:
 
         export_stl(self.to_compound(), str(path))
 
-    def save_layouts(self, prefix, **kw) -> list:
-        from layout import save_sheets  # lazy import
-
-        return save_sheets(self, prefix, **kw)
-
 
 # ---------------------------------------------------------------------------
 # Template layer: parametric-in-time mechanism.
@@ -234,11 +163,6 @@ class Mechanism:
 # *callables* that produce per-joint poses for any batch of sample times ``t``.
 # Downstream bakes call :meth:`MechanismTemplate.sample` once over the whole
 # ``ts`` array instead of rebuilding the symbolic geometry per frame.
-#
-# The existing :class:`Mechanism` / :class:`Body` / :class:`Joint` types are
-# unchanged: :meth:`MechanismTemplate.freeze_at` maps a template back to a
-# concrete ``Mechanism`` at a single float ``t`` for single-t consumers
-# (shapes.py, layout.py, CLI build, tests).
 # ---------------------------------------------------------------------------
 
 
@@ -253,12 +177,7 @@ def _identity_pose_batch(n: int) -> np.ndarray:
 
 
 def _invert_se3_batch(m: np.ndarray) -> np.ndarray:
-    """Batched closed-form inverse for ``(..., 4, 4)`` SE(3) tensors.
-
-    ``pytransform3d.invert_transform`` handles a single 4x4. This avoids
-    per-frame Python dispatch by applying the SE(3) identity
-    ``[R | t]^-1 = [R^T | -R^T t]`` in vectorized numpy.
-    """
+    """Closed-form inverse of ``(..., 4, 4)`` SE(3) tensors: ``[R | t]^-1 = [R^T | -R^T t]``."""
     r = m[..., :3, :3]
     t = m[..., :3, 3]
     r_t = np.swapaxes(r, -1, -2)
@@ -352,10 +271,14 @@ class MechanismTemplate:
     def sample(self, ts: np.ndarray) -> SampledPoses:
         """Vectorized pose propagation over every ``t`` in ``ts``.
 
-        Mirrors :meth:`Mechanism.solved` but operates on ``(T, 4, 4)``
-        tensors: each joint's ``pose_at`` is called once on the whole ``ts``
-        array, then BFS composes world poses per connected component using
-        batched SE(3) multiply + inverse.
+        Each joint's ``pose_at`` is called once on the whole ``ts`` array, then
+        a BFS over the undirected connection graph composes world poses per
+        connected component (seeded from its first body's ``base_pose``) so
+        that connected joints coincide:
+
+            T_world_child = T_world_parent @ P_parent_joint @ inv(P_child_joint)
+
+        on ``(T, 4, 4)`` tensors, with batched SE(3) multiply + inverse.
         """
         ts = np.asarray(ts, dtype=float)
         if ts.ndim != 1:
@@ -428,8 +351,8 @@ class MechanismTemplate:
     def freeze_at(self, t: float) -> Mechanism:
         """Single-t projection back to the concrete :class:`Mechanism` type.
 
-        Every single-t builder (``build_klann_mechanism`` etc.) is this
-        projection of its template, so the two can't drift apart.
+        Every single-t consumer (fabrication, the CLI build, tests) works on
+        this projection of the template, so the two can't drift apart.
         """
         ts = np.array([float(t)], dtype=float)
         bodies: list[Body] = []
@@ -458,9 +381,9 @@ def translation_pose_at(
 ) -> JointPoseFn:
     """Build a ``pose_at`` callable from a 2D ``(ts,) -> (xs, ys)`` function.
 
-    ``klann.KlannSolution.callables`` already returns numpy callables of this
-    shape for each named point. ``z`` is the fixed joint layer offset (every
-    Klann joint is planar — bodies rotate only about Z).
+    ``linkage.LegSolution.callables`` returns numpy callables of this shape
+    for each named point. ``z`` is the fixed joint layer offset (every joint
+    is planar: bodies rotate only about Z).
     """
 
     def _fn(ts: np.ndarray) -> np.ndarray:

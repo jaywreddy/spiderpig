@@ -1,5 +1,11 @@
 """Shared fixtures for the spiderpig test suite.
 
+Fabrication is the slow part, so the session builds each design, side and
+robot once (the ``design`` / ``side`` / ``robot`` factories below, cached
+per key) and every test reads them: never mutate what they return. Tests
+never download servo models (``_offline``): every servo is drawn
+parametrically.
+
 Only ``tests/e2e/`` needs Playwright, so we gate the browser-context fixture
 behind a ``pytestmark`` in those modules and keep everything else plain-pytest.
 """
@@ -15,7 +21,74 @@ from pathlib import Path
 
 import pytest
 
+import servos
+from fabricate import BuildConfig, design_side, fabricate, fabricate_side
+from linkage import build_module_template
+from servos import cad as cadlib
+from servos import model
+
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def clear_model_caches() -> None:
+    for f in (model.cad_servo, model._servo_part, cadlib._load_cached):
+        f.cache_clear()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _offline(tmp_path_factory):
+    """No downloads and an empty model cache: servos are drawn parametrically."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv(cadlib.OFFLINE_ENV, "1")
+        mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
+        clear_model_caches()
+        yield
+        clear_model_caches()
+
+
+@pytest.fixture(scope="session")
+def design():
+    """``design(module, servo=DEFAULT, linkage="klann") -> (side template, SideDesign)``."""
+    cache: dict = {}
+
+    def get(module: str = "single", servo: str = servos.DEFAULT, linkage: str = "klann"):
+        key = (module, servo, linkage)
+        if key not in cache:
+            tmpl = build_module_template(module, linkage=linkage)
+            cfg = BuildConfig(module=module, servo=servo, linkage=linkage, robot=False)
+            cache[key] = (tmpl, design_side(tmpl, cfg))
+        return cache[key]
+
+    return get
+
+
+@pytest.fixture(scope="session")
+def side(design):
+    """``side(module, t, servo=DEFAULT)``: the fabricated side (one build per key per session)."""
+    cache: dict = {}
+
+    def get(module: str = "single", t: float = 1.0, servo: str = servos.DEFAULT):
+        key = (module, t, servo)
+        if key not in cache:
+            tmpl, d = design(module, servo)
+            cache[key] = fabricate_side(d, tmpl.freeze_at(t))
+        return cache[key]
+
+    return get
+
+
+@pytest.fixture(scope="session")
+def robot(design):
+    """``robot(module, t)``: the fabricated robot (both sides and the chassis)."""
+    cache: dict = {}
+
+    def get(module: str = "single", t: float = 1.0):
+        if (module, t) not in cache:
+            tmpl, _ = design(module)
+            cache[module, t] = fabricate(tmpl, BuildConfig(module=module), t)
+        return cache[module, t]
+
+    return get
 
 
 def _free_port() -> int:

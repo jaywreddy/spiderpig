@@ -18,7 +18,7 @@ was only seen in a search result or refused the fetch.
 from __future__ import annotations
 
 from hardware.catalog import Item, Offer, register
-from hardware.parts import shcs
+from hardware.fasteners import shcs
 from servos import register as register_servo
 from servos.spec import CadRef, HolePattern, Horn, Idler, MountHole, Recess, Relief, ServoSpec
 
@@ -34,9 +34,9 @@ from servos.spec import CadRef, HolePattern, Horn, Idler, MountHole, Recess, Rel
 #         https://files.waveshare.com/upload/5/59/ST3215-3D.zip
 #   [SO]  TheRobotStudio/SO-ARM100 STEP (Apache-2.0, one simplified solid), measured.
 _STS_SCREW = "m2_self_tap_6"      # 8 x PA2.0 self-tapping [FT]; hole depth not published
-_STS_FRONT = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW, z=1.5)
+_STS_FRONT = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW)
                    for x in (8.3, 29.0) for y in (10.25, -10.25))       # [WS2] 18.41 / 20.7 / 20.5
-_STS_REAR = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW, z=-30.5)
+_STS_REAR = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW)
                   for x in (8.3, 32.75) for y in (10.25, -10.25))       # [WS2] 24.45 x 20.5
 
 STS3215 = register_servo(ServoSpec(
@@ -168,12 +168,12 @@ _XL430_FRONT = tuple(
     # the 4 corner case screws (4-FHS M2.5x10 [DR4]) swap for longer M2.5 screws that clamp
     # a frame plate; through a 3 mm plate an M2.5 x 12 reaches 9 mm into the case (the
     # stock 10 mm flat-head reaches ~10)
-    MountHole(x, y, 2.9, screw=shcs("2p5", 12), z=0.0, depth=10.0)
+    MountHole(x, y, 2.9, screw=shcs("2p5", 12), depth=10.0)
     for x in (-8.0, 32.0) for y in (11.0, -11.0))                 # [DR4] 40 x 22, [ST4]
 _XL430_REAR = tuple(
     # UNVERIFIED: [ST4] shows the same corner bodies behind the back face; the drawing
     # calls out the corner screws once
-    MountHole(x, y, 2.9, screw=shcs("2p5", 12), z=-34.0, depth=10.0)
+    MountHole(x, y, 2.9, screw=shcs("2p5", 12), depth=10.0)
     for x in (-8.0, 32.0) for y in (11.0, -11.0))
 
 XL430_W250 = register_servo(ServoSpec(
@@ -299,11 +299,11 @@ XL330_M288 = register_servo(ServoSpec(
         center_screw_head_h=0.0,
         center_hole_d=2.6,          # [ST3] screw shank (thread not published)
     ),
-    mount=tuple(MountHole(x, y, 2.4, screw=_XL330_SCREW, z=0.0, depth=23.0)   # through the case
+    mount=tuple(MountHole(x, y, 2.4, screw=_XL330_SCREW, depth=23.0)   # through the case
                 for x, y in _XL330_HOLES),
     mount_face_z=0.0,
     rear_face_z=-23.0,
-    rear_mount=tuple(MountHole(x, y, 2.4, screw=_XL330_SCREW, z=-23.0, depth=23.0)
+    rear_mount=tuple(MountHole(x, y, 2.4, screw=_XL330_SCREW, depth=23.0)
                      for x, y in _XL330_HOLES),
     rear_reliefs=(
         Relief(-8.5, 8.5, -8.5, 8.5, 3.0, solid=False, label="X330 idler (FPX330-H101 set)"),
@@ -360,4 +360,3 @@ register(Item(
     notes="Horn comes fitted; 6 x PHS M2x6 TAP (horn) and 10 x PHS M2x8 TAP (frames) in the box.",
 ))
 
-__all__ = ["STS3215", "XL330_M288", "XL430_W250"]

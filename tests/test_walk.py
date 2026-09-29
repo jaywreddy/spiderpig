@@ -281,6 +281,7 @@ def test_better_phases_lower_the_objective(quad):
         assert m["stride_mm"] > ref["stride_mm"]
 
 
+@pytest.mark.slow
 def test_tuner_improves_the_quad():
     import tune_gait
 
@@ -293,6 +294,7 @@ def test_tuner_improves_the_quad():
     assert use["query"].startswith("?module=quad&phases=")
 
 
+@pytest.mark.slow
 def test_tuner_on_other_linkages():
     """The tuner tunes any linkage: it leaves out the parameters that only scale it, and
     its flags name the linkage."""
@@ -422,7 +424,7 @@ def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch):
     def no_plan(*_a, **_k):
         raise ValueError("no layer plan found")
 
-    monkeypatch.setattr(fabricate, "design_side", no_plan)
+    monkeypatch.setattr(walk, "design_side", no_plan)
     cfg = walk.make_config("decker", linkage="jansen", base=fabricate.BuildConfig(thickness=3.1))
     z = walk.foot_z_nominal(cfg)
     assert len(z) == 2
@@ -543,8 +545,8 @@ def client(server_app):
 
 
 def test_api_walk_quad(client, server_app):
-    client.get("/api/walk", params={"module": "decker"})      # warm (compiles the program once)
-    server_app._walk_json.cache_clear()
+    client.get("/api/walk", params={"module": "quad"})   # warm: the program compiles, the
+    server_app._walk_json.cache_clear()                  # default design plans, once
     t0 = time.perf_counter()
     r = client.get("/api/walk", params={"module": "quad", "phases": "0,180,90,270",
                                         "p.OB": "1.121"})
@@ -671,7 +673,7 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
     """``/api/glb`` baking into ``tmp_path`` with a stub bake: the calls it got."""
     calls = _Calls()
 
-    def fake_bake(out, *, mode, config=None, verbose=False, **_):
+    def fake_bake(out, *, mode, config=None, **_):
         calls.append((mode, config))
         err = calls.errors.get("next")
         if err is not None:

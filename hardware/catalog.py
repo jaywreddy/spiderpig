@@ -1,10 +1,11 @@
-"""Catalog of purchasable items (fasteners, bearings, servos, sheet stock, glue).
+"""Catalog of purchasable items (fasteners, servos, sheet stock, glue, filament).
 
 Every item that ends up in the bill of materials is registered here under a
-stable ``key``. Modules that model hardware (``joinery``, ``servos``) set
-``Body.bom_key`` on the bodies they create, or return :class:`BomLine`
-extras for things they don't model (washers, glue); the BOM resolves those
-keys against this catalog.
+stable ``key``. Modules that model hardware (:mod:`construction`,
+:mod:`servos`) set ``Body.bom_key`` on the bodies they create, or return
+:class:`BomLine` extras for things they don't model (glue, sheets); the BOM
+resolves those keys against this catalog. The sheet helpers below read what
+the build needs from the sheet stock item.
 
 Offers list where to buy, best first. Prefer large vendors (manufacturer
 stores, McMaster-Carr, Amazon, Misumi, igus, RobotShop, Pololu, Adafruit,
@@ -73,6 +74,29 @@ def pick_length(needed: float, lengths: tuple[float, ...]) -> float:
         if length >= needed - 1e-9:
             return length
     raise ValueError(f"no standard length >= {needed:.1f} mm in {lengths}")
+
+
+def sheet_thickness(sheet: str, override: float | None = None) -> float:
+    """The layer pitch: ``override`` (a measured sheet) or the sheet item's nominal thickness."""
+    return override if override is not None else float(get(sheet).dims["thickness"])
+
+
+def sheet_name(sheet: str) -> str:
+    try:
+        return get(sheet).name
+    except KeyError:
+        return sheet
+
+
+def sheet_size(sheet: str) -> tuple[float, float]:
+    """The sheet stock's usable size (mm)."""
+    size = get(sheet).dims.get("sheet_mm")
+    return (float(size[0]), float(size[1])) if size else (200.0, 200.0)
+
+
+def adhesive(sheet: str) -> str:
+    """The catalog item that laminates plates of this sheet."""
+    return "wood_glue" if "plywood" in sheet else "acrylic_cement"
 
 
 _LOADED = False

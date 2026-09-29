@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 import math
 
 import pytest
@@ -10,6 +9,7 @@ from build123d import Location
 
 import servos
 from construction.base import FRAME_INNER, Build
+from construction.contract import bad_solids, clashes
 from construction.robot import (
     MIN_ENGAGE,
     FrameTies,
@@ -18,32 +18,16 @@ from construction.robot import (
     servo_frame,
     tie_dims,
 )
-from fabricate import BuildConfig, design_side, fabricate, side_groups
-from hardware import parts
+from hardware import fasteners
 from hardware.catalog import CATALOG, _load, get
-from klann import build_klann_template, create_klann_geometry
 from servos.model import UNKNOWN_HOLE_DEPTH
 from shapes import disc
 
-CONFIG = BuildConfig(module="single")
 TS = (1.0, 4.38)
-
-
-@pytest.fixture(scope="module")
-def single():
-    tmpl = build_klann_template(create_klann_geometry())
-    design = design_side(tmpl, CONFIG)
-    robots = {t: fabricate(tmpl, CONFIG, t) for t in TS}
-    return tmpl, design, robots
 
 
 def _placed(mech):
     return {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
-
-
-def _boxes_meet(a, b) -> bool:
-    return all(max(getattr(a.min, c), getattr(b.min, c))
-               < min(getattr(a.max, c), getattr(b.max, c)) - 1e-6 for c in "XYZ")
 
 
 def _volume(shape) -> float:
@@ -51,27 +35,14 @@ def _volume(shape) -> float:
 
 
 @pytest.mark.parametrize("t", TS)
-def test_no_two_parts_of_the_robot_intersect(single, t):
-    _, _, robots = single
-    mech = robots[t]
-    fastened = {frozenset(p) for p in mech.meta["fastened"]}
-    parts_ = _placed(mech)
-    boxes = {n: p.bounding_box() for n, p in parts_.items()}
-    clashes = []
-    for a, b in itertools.combinations(parts_, 2):
-        if frozenset((a, b)) in fastened or not _boxes_meet(boxes[a], boxes[b]):
-            continue
-        vol = _volume(parts_[a] & parts_[b])
-        if vol > 1e-3:
-            clashes.append((a, b, round(vol, 3)))
-    assert clashes == []
+def test_no_two_parts_of_the_robot_intersect(robot, t):
+    assert clashes(robot("single", t)) == []
 
 
-def test_rear_screws_engage_their_pilots_without_bottoming_out(single):
+def test_rear_screws_engage_their_pilots_without_bottoming_out(robot):
     """The servo model's pilots are drilled at screw size, so a screw that fits its
     hole doesn't intersect the case; it must reach in far enough and no further."""
-    _, _, robots = single
-    mech = robots[TS[0]]
+    mech = robot("single", TS[0])
     parts_ = _placed(mech)
     spec = servos.get(mech.meta["servo"])
     depth = min(h.depth if h.depth is not None else UNKNOWN_HOLE_DEPTH for h in spec.rear_mount)
@@ -83,12 +54,8 @@ def test_rear_screws_engage_their_pilots_without_bottoming_out(single):
         assert _volume(parts_[screw] & parts_[host]) < 1e-3, screw
 
 
-def test_every_robot_part_is_one_valid_solid(single):
-    _, _, robots = single
-    for b in robots[TS[0]].bodies:
-        if b.part is not None:
-            assert len(b.part.solids()) == 1, b.name
-            assert b.part.is_valid, b.name
+def test_every_robot_part_is_one_valid_solid(robot):
+    assert bad_solids(robot("single", TS[0])) == []
 
 
 def _frames(design, mech) -> dict[str, ServoFrame]:
@@ -97,14 +64,14 @@ def _frames(design, mech) -> dict[str, ServoFrame]:
     return {"L": left, "R": ServoFrame(left.o, left.u, hand=-1)}
 
 
-def test_rear_screws_sit_on_the_servo_pilots(single):
-    tmpl, design, robots = single
-    mech = robots[TS[0]]
-    spec = design.ctx.servo
-    frames = _frames(design, tmpl.freeze_at(TS[0]))
+def test_rear_screws_sit_on_the_servo_pilots(design, robot):
+    tmpl, d = design("single")
+    mech = robot("single", TS[0])
+    spec = d.ctx.servo
+    frames = _frames(d, tmpl.freeze_at(TS[0]))
     pilots = {(h.x, h.y) for h in spec.rear_mount}
-    n = centre_plates(spec, design.ctx.pitch, design.ctx.params.margin)
-    half = n * design.ctx.pitch / 2
+    n = centre_plates(spec, d.ctx.pitch, d.ctx.params.margin)
+    half = n * d.ctx.pitch / 2
     engage = mech.meta["rear_engagement_mm"]
     assert 3.0 <= engage <= 5.0
     screws = [b for b in mech.bodies if ".rear_screw" in b.name]
@@ -130,9 +97,9 @@ def test_rear_screws_sit_on_the_servo_pilots(single):
     assert not world["L"] & world["R"]      # the two screw sets never share a hole position
 
 
-def test_robot_is_mirror_symmetric(single):
-    tmpl, _, robots = single
-    mech = robots[TS[0]]
+def test_robot_is_mirror_symmetric(design, robot):
+    tmpl, d = design("single")
+    mech = robot("single", TS[0])
     lefts = [b for b in mech.bodies if b.name.startswith("L.") and b.part is not None]
     assert lefts
     for b in lefts:
@@ -147,8 +114,7 @@ def test_robot_is_mirror_symmetric(single):
         assert xy_left == pytest.approx((right.min.X, right.min.Y, right.max.X, right.max.Y)), name
         assert b.fab == mech.body(f"R.{name}").fab
     # rear screws: the right one is the left one mirrored in z, on the right servo's frame
-    _, design, _ = single
-    frames = _frames(design, tmpl.freeze_at(TS[0]))
+    frames = _frames(d, tmpl.freeze_at(TS[0]))
     for i in range(mech.meta["rear_screws_per_servo"]):
         lb = mech.body(f"L.rear_screw{i}").part.bounding_box()
         rb = mech.body(f"R.rear_screw{i}").part.bounding_box()
@@ -159,10 +125,10 @@ def test_robot_is_mirror_symmetric(single):
         assert lc == pytest.approx(rc)
 
 
-def test_ties_join_the_inner_plates_above_them(single):
-    tmpl, design, robots = single
-    mech = robots[TS[0]]
-    d = tie_dims(design.ctx)
+def test_ties_join_the_inner_plates_above_them(design, robot):
+    _, d = design("single")
+    mech = robot("single", TS[0])
+    td = tie_dims(d.ctx)
     halves = [b for b in mech.bodies if "tie_screw_half" in b.name or "tie_insert_half" in b.name]
     assert len(halves) == 2 * mech.meta["ties"] == 8
     plates = [b for b in mech.bodies if b.name.startswith("centre_plate")]
@@ -178,49 +144,49 @@ def test_ties_join_the_inner_plates_above_them(single):
             face = pb.min.Z
         # the column bears on the plate's top face all round its spigot
         xy = ((tb.min.X + tb.max.X) / 2, (tb.min.Y + tb.max.Y) / 2)
-        ring = (disc(xy, d.column - 0.05, face - 0.5, face + 0.5)
-                - disc(xy, d.spigot_d / 2 + 0.3, face - 1, face + 1))
+        ring = (disc(xy, td.column - 0.05, face - 0.5, face + 0.5)
+                - disc(xy, td.spigot_d / 2 + 0.3, face - 1, face + 1))
         under = ring.moved(Location((0, 0, -0.5 if side == "L" else 0.5)))
         assert _volume(under & plate) == pytest.approx(_volume(under), rel=1e-3)
         # and on the centre plates at the other end
         stack = [p.part for p in plates]
         end = tb.max.Z if side == "L" else tb.min.Z
-        cap = (disc(xy, d.column - 0.05, end - 0.25, end + 0.25)
-               - disc(xy, d.clearance_d / 2 + 0.3, end - 1, end + 1))
+        cap = (disc(xy, td.column - 0.05, end - 0.25, end + 0.25)
+               - disc(xy, td.clearance_d / 2 + 0.3, end - 1, end + 1))
         cap = cap.moved(Location((0, 0, 0.25 if side == "L" else -0.25)))
         got = sum(_volume(cap & s) for s in stack)
         assert got == pytest.approx(_volume(cap), rel=1e-3)
 
 
-def test_frame_ties_only_touch_the_inner_plate(single):
-    tmpl, design, _ = single
-    ties = [g for g in design.groups if isinstance(g, FrameTies)]
-    assert len(ties) == 1
-    assert ties[0].claims(design.ctx) == []
-    got = ties[0].realize(Build(design.ctx, design.plan, tmpl.freeze_at(1.0)))
+def test_frame_ties_only_touch_the_inner_plate(design):
+    """The ties are the robot's: a side's design has none, and what they add to the side
+    (their spigot holes and pads) is all in the inner plate."""
+    tmpl, d = design("single")
+    assert not any(isinstance(g, FrameTies) for g in d.groups)
+    ties = FrameTies(d.drive)
+    assert ties.claims(d.ctx) == []
+    got = ties.realize(Build(d.ctx, d.plan, tmpl.freeze_at(1.0)))
     assert got.bodies == []
     assert set(got.cuts) == {FRAME_INNER}
     assert set(got.pads) == {FRAME_INNER}
     assert len(got.cuts[FRAME_INNER]) == 4
-    side_only = side_groups(design.ctx, BuildConfig(module="single", robot=False))
-    assert not any(isinstance(g, FrameTies) for g in side_only)
 
 
-def test_ties_keep_clear_of_the_servo(single):
-    tmpl, design, robots = single
-    mech = robots[TS[0]]
-    spec, p = design.ctx.servo, design.ctx.params
-    frame = _frames(design, tmpl.freeze_at(TS[0]))["L"]
+def test_ties_keep_clear_of_the_servo(design, robot):
+    tmpl, d = design("single")
+    mech = robot("single", TS[0])
+    spec, p = d.ctx.servo, d.ctx.params
+    frame = _frames(d, tmpl.freeze_at(TS[0]))["L"]
     L, W, _ = spec.body
     x0, x1 = spec.axis_offset - L / 2, spec.axis_offset + L / 2
-    d = tie_dims(design.ctx)
+    td = tie_dims(d.ctx)
     for b in mech.bodies:
         if "tie_screw_half" in b.name:
             bb = b.part.bounding_box()
             x, y = frame.local(((bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2))
             dx = max(x0 - x, 0.0, x - x1)
             dy = max(abs(y) - W / 2, 0.0)
-            assert math.hypot(dx, dy) >= d.column + p.margin - 1e-6
+            assert math.hypot(dx, dy) >= td.column + p.margin - 1e-6
 
 
 # ---------------------------------------------------------------------------
@@ -228,25 +194,21 @@ def test_ties_keep_clear_of_the_servo(single):
 # ---------------------------------------------------------------------------
 
 REQUIRED = (
-    "m3_nut", "m3_nylock", "m3_washer", "m3_heat_set_insert", "m2_self_tap_6",
-    "acrylic_cement", "wood_glue", "ca_glue", "pla_filament", "petg_filament",
-    "acrylic_3mm", "plywood_3mm", "servo_sts3215",
+    "m3_nut", "m3_heat_set_insert", "m2_self_tap_6", "acrylic_cement", "wood_glue", "ca_glue",
+    "pla_filament", "petg_filament", "acrylic_3mm", "plywood_3mm", "servo_sts3215",
 )
 
 
-def test_every_catalog_key_the_project_uses_is_registered(single):
+def test_every_catalog_key_the_project_uses_is_registered(design, robot):
     _load()
     keys = set(REQUIRED)
-    for size, lengths in parts.SHCS_LENGTHS.items():
-        keys |= {parts.shcs(size, L) for L in lengths}
-    for size, lengths in parts.SELF_TAP_LENGTHS.items():
-        keys |= {parts.self_tap(size, L) for L in lengths}
-    keys |= {parts.standoff_ff(L) for L in parts.STANDOFF_FF_LENGTHS}
-    _, design, robots = single
-    mech = robots[TS[0]]
+    for sk in fasteners.SCREWS.values():
+        keys |= {sk.key(L) for L in sk.lengths}
+    _, d = design("single")
+    mech = robot("single", TS[0])
     keys |= {b.bom_key for b in mech.bodies if b.bom_key}
     keys |= {line.key for line in mech.bom_extras}
-    keys |= {h.screw for h in design.ctx.servo.mount + design.ctx.servo.rear_mount if h.screw}
+    keys |= {h.screw for h in d.ctx.servo.mount + d.ctx.servo.rear_mount if h.screw}
     missing = sorted(k for k in keys if k not in CATALOG)
     assert missing == []
     for key in keys:
@@ -262,6 +224,10 @@ def test_catalog_data_the_code_reads():
     assert get("plywood_3mm").dims["thickness"] == 3.0
     assert get("pla_filament").dims["density"] == 1.24
     assert get("m3_heat_set_insert").dims["hole_d"] == 4.0
-    for size, (dk, k) in parts.SHCS_HEAD.items():
-        item = get(parts.shcs(size, parts.SHCS_LENGTHS[size][0]))
-        assert (item.dims["head_d"], item.dims["head_h"]) == (dk, k)
+    for sk in fasteners.SCREWS.values():
+        item = get(sk.key(sk.lengths[0]))
+        assert (item.dims["d"], item.dims["head_d"], item.dims["head_h"]) == (
+            sk.d, sk.head_d, sk.head_h)
+    assert fasteners.shcs("3", 12) == "m3_shcs_12"
+    assert fasteners.parse("m2p5_shcs_12") == (fasteners.screw("shcs", "2p5"), 12.0)
+    assert fasteners.parse("m3_standoff_ff_20") is None

@@ -33,8 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from hardware.catalog import get
-
-_PLA_G_PER_CM3 = 1.24
+from hardware.mass import filament_density
 
 
 @dataclass(frozen=True)
@@ -165,7 +164,7 @@ class Bom:
             if method == "printed":
                 grams = self.printed_g
                 if grams is None:
-                    grams = sum(m.volume_cm3 * m.qty for m in rows) * _PLA_G_PER_CM3
+                    grams = sum(m.volume_cm3 * m.qty for m in rows) * filament_density(None)
                 lines += ["", f"About {grams:.0f} g of {self.filament} at 100% infill."]
             lines.append("")
         if self.notes:
@@ -298,12 +297,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     notes: list[str] = []
     sheet = mech.meta.get("sheet_name", "sheet")
     filament = filament or mech.meta.get("filament")
-    density = _PLA_G_PER_CM3
-    fil_name = "PLA/PETG"
-    if filament:
-        item = get(filament)
-        density = float(item.dims.get("density", density))
-        fil_name = item.name.split(",")[0]
+    density = filament_density(filament)
+    fil_name = get(filament).name.split(",")[0] if filament else "PLA/PETG"
     for body in mech.bodies:
         if body.fab == "purchased" and body.bom_key:
             lines.append(BomLine(body.bom_key, 1, body.name))

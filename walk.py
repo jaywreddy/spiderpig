@@ -36,7 +36,8 @@ side template's joints are its points) and interpolated linearly in theta
 interpolated the same way. A foot's lateral ``z`` is the mid-plane of its
 link plate's layer: from the layer plan when one is at hand
 (:func:`foot_z_planned`), otherwise from :func:`foot_z_nominal`, the
-default design's layers (exact for the default designs).
+linkage's default design's layers, planned once (exact for the default
+designs).
 
 Support (:func:`support`)
 -------------------------
@@ -94,7 +95,11 @@ from itertools import combinations
 import numpy as np
 
 import linkage as lkg
-from fabricate import BuildConfig, sheet_thickness, template_for
+import servos
+from construction.robot import SIDES, mid_plane, mid_plane_z
+from fabricate import BuildConfig, design_side, template_for
+from hardware.catalog import sheet_thickness
+from hardware.mass import PartProps, material_of, part_props, servo_mass_g, sheet_density
 from linkage import AssemblyError
 
 N_THETA = 360        # crank-angle samples per revolution
@@ -104,8 +109,7 @@ CONTACT = 0.5        # mm: feet this close to the support plane are contacts
 W_DEN_MIN = 1e-9     # mm^2: below this spread of the contacts the yaw rate is 0
 _INSIDE_TOL = 1e-9   # mm: c's projection this close to a triangle counts as inside it
 _HULL_TOL = 1e-7     # mm: side-of-line tolerance for the support polygon
-
-SIDES = ("L", "R")
+DEFAULT_RPM = 50.0   # when the servo spec has no speed
 
 
 class ParamError(ValueError):
@@ -381,48 +385,21 @@ def make_feet(config: BuildConfig, legs: Sequence[Leg], z_left: Sequence[float])
             for (k, body, joint), z in zip(feet, z_left, strict=True)]
 
 
-# Klann's default layer plans (fabricate.design_side at its proportions and the
-# module's phases, 3 mm sheet, STS3215): each foot's layer and the inner frame
-# plate's layer, in pitches. :func:`foot_z_nominal` scales them by the config's
-# pitch; other designs usually plan within a layer or two of these.
-# ``tests/test_walk.py`` checks the table against the planner.
-_NOMINAL_LAYERS: dict[str, tuple[tuple[int, ...], int]] = {
-    "single": ((3,), 6),
-    "double": ((3, 2), 7),
-    "decker": ((3, 7), 10),
-    "quad": ((3, 3, 7, 7), 11),
-}
-
-
-def _mid_plane(config: BuildConfig, top: int, pitch: float) -> float:
-    """Side-coordinate z of the robot's mid-plane (:func:`construction.robot.mid_plane`)."""
-    import servos
-    from construction.robot import centre_plates
-
-    spec = servos.get(config.servo)
-    rear = spec.rear_face_z if spec.rear_face_z is not None else spec.mount_face_z - spec.body[2]
-    n = centre_plates(spec, pitch, config.params.margin)
-    return (top + 1) * pitch + (spec.mount_face_z - rear) + n * pitch / 2
-
-
 def foot_z_nominal(config: BuildConfig) -> list[float]:
     """Left-side foot z (one per foot) without planning this design: the default design's.
 
-    Klann's from the table above; another linkage's default design is planned
-    once (cached). With no layer plan at all, a guess: the feet one layer
-    apart from layer 2 out. Exact for a default design; the right side is the
-    mirror (``-z``).
+    The linkage's default design (the module's phases, its proportions) is
+    planned once (cached). With no layer plan at all, a guess: the feet one
+    layer apart from layer 2 out. Exact for a default design; the right side
+    is the mirror (``-z``).
     """
-    if config.linkage == lkg.DEFAULT and config.module in _NOMINAL_LAYERS:
-        layers, top = _NOMINAL_LAYERS[config.module]
-    else:
-        z = _default_plan_z(replace(config, robot=True, phases=None, proportions=()))
-        if z is not None:
-            return list(z)
-        n = len(side_feet(config))
-        layers, top = range(2, 2 + n), 2 * n + 5
-    pitch = sheet_thickness(config)
-    z_mid = _mid_plane(config, top, pitch)
+    z = _default_plan_z(replace(config, robot=True, phases=None, proportions=()))
+    if z is not None:
+        return list(z)
+    n = len(side_feet(config))
+    layers, top = range(2, 2 + n), 2 * n + 5
+    pitch = sheet_thickness(config.sheet, config.thickness)
+    z_mid = mid_plane_z(servos.get(config.servo), top, pitch, config.params.margin)
     return [(layer + 0.5) * pitch - z_mid for layer in layers]
 
 
@@ -441,9 +418,6 @@ def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
     The foot link's layer mid-plane, moved like :func:`construction.robot.assemble_robot`
     moves the left side (mid-plane to z = 0).
     """
-    from construction.robot import mid_plane
-    from fabricate import design_side
-
     if design is None:
         cfg = replace(config, robot=True)
         design = design_side(template_for(cfg), cfg)
@@ -455,99 +429,38 @@ def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
 # Mass and centre of mass
 # ---------------------------------------------------------------------------
 
-# g/cm^3. Sheet stock by name (the catalog's sheet items carry no density).
-_SHEET_DENSITY = {"acrylic": 1.19, "plywood": 0.68}
-# Purchased parts by catalog category (steel hardware, brass inserts, aluminium horns).
-_PURCHASED_DENSITY = {"insert": 8.5, "horn": 2.7, "bushing": 1.4}
-_STEEL = 7.85
-_ALUMINIUM = 2.7     # a purchased part with no catalog item: the servo's stock horn
-PRINT_FILL = 1.0     # printed parts at 100 % infill, as the BOM counts filament
-_SERVO_DENSITY = 1.5  # g/cm^3 of a servo's body box, when its spec has no weight
-DEFAULT_RPM = 50.0    # when the servo spec has no speed
-
-
 def servo_info(key: str) -> dict:
     """``{"key", "rpm_max", "mass_g"}`` of a servo from its spec (``speed_rpm``,
     ``weight_g``); a spec without them gets ``DEFAULT_RPM`` and its body box
-    at ``_SERVO_DENSITY``."""
-    import servos
-
+    (:func:`hardware.mass.servo_mass_g`)."""
     try:
         spec = servos.get(key)
     except KeyError as e:
         raise ParamError(str(e)) from None
     rpm = float(spec.speed_rpm) if spec.speed_rpm else DEFAULT_RPM
-    mass = (float(spec.weight_g) if spec.weight_g
-            else _SERVO_DENSITY * math.prod(spec.body) / 1000.0)
-    return {"key": key, "rpm_max": rpm, "mass_g": mass}
-
-
-def _density(body, config: BuildConfig, meta: Mapping) -> float:
-    """g/cm^3 of a body's material (by how it's made and what it is)."""
-    from hardware.catalog import get
-    from stack import body_class
-
-    if body.fab == "laser":
-        try:
-            dens = get(config.sheet).dims.get("density")
-        except KeyError:
-            dens = None
-        if dens:
-            return float(dens)
-        return next((d for k, d in _SHEET_DENSITY.items() if k in config.sheet), 1.19)
-    if body.fab == "printed":
-        try:
-            dens = get(meta.get("filament", "pla_filament")).dims.get("density", 1.24)
-        except KeyError:
-            dens = 1.24
-        return float(dens) * PRINT_FILL
-    if not body.bom_key:
-        return _ALUMINIUM if body_class(body.name) == "servo_horn" else _STEEL
-    try:
-        category = get(body.bom_key).category
-    except KeyError:
-        return _STEEL
-    return _PURCHASED_DENSITY.get(category, _STEEL)
-
-
-def _volume_centroid(part) -> tuple[float, np.ndarray]:
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-
-    props = GProp_GProps()
-    BRepGProp.VolumeProperties_s(part.wrapped, props)
-    c = props.CentreOfMass()
-    return float(props.Mass()), np.array([c.X(), c.Y(), c.Z()])
+    return {"key": key, "rpm_max": rpm, "mass_g": servo_mass_g(spec)}
 
 
 def body_masses(mech, config: BuildConfig,
-                volume_centroid=None) -> dict[str, tuple[float, np.ndarray]]:
+                props: dict[str, PartProps] | None = None) -> dict[str, tuple[float, np.ndarray]]:
     """``body -> (grams, centre of mass)`` for every body with a part (model coordinates).
 
-    Laser-cut parts: the sheet's density; printed: the filament's
-    (``PRINT_FILL``); a servo: its catalogued mass (:func:`servo_info`) at
-    the centroid of its model; other purchased parts: steel, brass inserts,
-    aluminium horns. ``volume_centroid(body) -> (mm^3, centroid)`` replaces
-    the OCCT query (e.g. to share a cache).
+    Each part's volume at its material's density (:func:`hardware.mass.material_of`;
+    the servo at its catalogued mass) at its centroid. ``props`` caches each
+    body's :class:`hardware.mass.PartProps` (shared with the bake).
     """
-    from hardware.catalog import get
-
-    servo_g = servo_info(config.servo)["mass_g"]
+    spec = servos.get(config.servo)
+    props = {} if props is None else props
     out = {}
     for b in mech.bodies:
         if b.part is None:
             continue
-        vol, com = (volume_centroid(b) if volume_centroid is not None
-                    else _volume_centroid(b.part))
-        com = np.asarray(com, dtype=float)
-        is_servo = False
-        if b.fab == "purchased" and b.bom_key:
-            try:
-                is_servo = get(b.bom_key).category == "servo"
-            except KeyError:
-                is_servo = False
-        grams = servo_g if is_servo else abs(vol) / 1000.0 * _density(b, config, mech.meta)
-        out[b.name] = (grams, com)
+        if b.name not in props:
+            props[b.name] = part_props(b.part)
+        p = props[b.name]
+        _, density, fixed = material_of(b, config.sheet, mech.meta.get("filament"), spec)
+        grams = fixed if fixed is not None else abs(p.volume) / 1000.0 * density
+        out[b.name] = (grams, np.asarray(p.com, dtype=float))
     return out
 
 
@@ -624,19 +537,6 @@ def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
     return motion, owner
 
 
-def fabricated_mass(config: BuildConfig, t_ref: float = 0.0,
-                    samples: int = 120) -> tuple[np.ndarray, float]:
-    """Cycle-mean centre of mass and total mass of the fabricated robot (builds every part)."""
-    from construction.robot import robot_template
-    from fabricate import fabricate
-
-    config = replace(config, robot=True)
-    tmpl = template_for(config)
-    mech = fabricate(tmpl, config, t_ref)
-    motion, owner = body_motion(mech, robot_template(tmpl), t_ref + theta_grid(samples))
-    return cycle_com(body_masses(mech, config), motion, owner)
-
-
 # Nominal mass model (no parts), see :func:`nominal_mass`. Everything of a side but its
 # link plates and servo (frame plates, pillars, crank, pins,
 # horn, half the centre plates, ties and screws), lumped on the crank axis O (its measured
@@ -660,12 +560,10 @@ def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, 
     2.6 % of the fabricated mass and 1.3 mm of its centre of mass (quad:
     461.8 g at (0, 2.7, 0) vs 460.8 g at (0, 2.1, 0.2)).
     """
-    import servos
-
     lk = get_linkage(config.linkage)
-    pitch = sheet_thickness(config)
+    pitch = sheet_thickness(config.sheet, config.thickness)
     r = config.params.link_radius
-    dens = _density(_Proxy("laser"), config, {})
+    dens = sheet_density(config.sheet)
     spec = servos.get(config.servo)
     servo_g = servo_info(config.servo)["mass_g"]
     m_acc, c_acc = 0.0, np.zeros(2)
@@ -687,15 +585,6 @@ def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, 
     m_acc += _CHASSIS_BASE_G + _CHASSIS_PER_LEG_G * len(legs)   # on O: adds no moment
     c = c_acc / m_acc
     return np.array([c[0], c[1], 0.0]), 2.0 * m_acc
-
-
-@dataclass(frozen=True)
-class _Proxy:
-    """Stands in for a body in :func:`_density`."""
-
-    fab: str
-    name: str = ""
-    bom_key: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -763,8 +652,8 @@ def walker(config: BuildConfig | None = None, *, feet_z: Sequence[float] | None 
 
     ``feet_z``: left-side foot z per foot (e.g. :func:`foot_z_planned`), else
     :func:`foot_z_nominal`. ``com`` / ``mass_g``: e.g. from a fabricated
-    robot (:func:`fabricated_mass`), else :func:`nominal_mass`. ``legs``:
-    one side's sampled legs (default :func:`side_legs`).
+    robot (:func:`body_masses`, :func:`cycle_com`), else :func:`nominal_mass`.
+    ``legs``: one side's sampled legs (default :func:`side_legs`).
     """
     config = config or BuildConfig()
     legs = list(legs) if legs is not None else side_legs(config, n)
@@ -1196,16 +1085,3 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
         "mass_g": round(float(model.mass_g), 2),
         "metrics": straight_walk_metrics(model, rpm_max=servo["rpm_max"]),
     })
-
-
-__all__ = [
-    "AREA_MIN", "CONTACT", "N_THETA", "ON_PLANE", "OBJECTIVE_WEIGHTS", "SIDES", "W_DEN_MIN",
-    "Foot", "Leg", "LinkageError", "ParamError", "Support", "Trace", "Walker",
-    "add_design_args", "anchor_of", "api_payload", "body_masses", "body_motion", "body_velocity",
-    "cycle_com", "design_args", "drive_extra", "fabricated_mass", "foot_z_nominal",
-    "foot_z_planned", "get_linkage", "jsonable", "links_of", "make_config", "make_feet",
-    "module_legs", "nominal_mass", "normalize_phases", "normalize_proportions", "objective",
-    "params_of", "parse_phases", "parse_proportion", "phases_rad", "planar_fit", "servo_info",
-    "side_feet",
-    "side_legs", "simulate", "straight_walk_metrics", "support", "theta_grid", "walker",
-]

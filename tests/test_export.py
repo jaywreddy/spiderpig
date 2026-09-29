@@ -11,6 +11,8 @@ import pytest
 
 import main as cli
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope="module")
 def single_out(tmp_path_factory):

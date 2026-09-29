@@ -8,7 +8,7 @@ pads other groups need (the servo footprint, chassis tabs).
 from __future__ import annotations
 
 from construction.base import FRAME_INNER, FRAME_OUTER, Build, Context, Realized, hardware
-from shapes import link_plate, plate
+from shapes import plate
 from stack import Claim, Layout, Pill, Placed
 
 
@@ -32,8 +32,8 @@ class LinkPlates:
         r = build.ctx.params.link_radius
         for name, segs in build.plan.topo.links.items():
             z0, z1 = build.z(build.layers[name])
-            part = link_plate([(build.xy(a), build.xy(b)) for a, b in segs], z0, z1,
-                              holes=done.cuts.get(name, []), radius=r)
+            part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1,
+                         done.cuts.get(name, []))
             out.bodies.append(hardware(name, part, name, fab="laser"))
         return out
 
@@ -60,6 +60,3 @@ class FramePlates:
             part = plate(pills, z0, z1, done.cuts.get(key, []), discs=[(o, p.frame_radius)])
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834"))
         return out
-
-
-__all__ = ["FramePlates", "LinkPlates"]

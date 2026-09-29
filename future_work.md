@@ -20,8 +20,9 @@ those claims:
 - a laser-cut crank (glued plate stack, rod crankpins).
 
 A claim can express these: shoulders become ring or washer discs, necks the
-bare rod. The catalog already lists the parts (research notes in the
-commit history).
+bare rod. The research notes in the commit history list the parts (bearings,
+bushings, dowels, push-on washers); register them in `hardware/parts.py` when
+a construction uses them.
 
 ## Stiffer necks
 
@@ -33,8 +34,8 @@ core (a 3 mm rod through a printed sleeve) would keep the neck stiff.
 
 Parts are still modelled in world coordinates at the build angle `t`, so the
 glTF bake recovers each body's motion by a planar rigid fit of its joints.
-Giving each link a local frame (joint *i* at `(dᵢ, 0)`, lengths from
-`klann.PROPORTIONS`) and a closed-form pose `(x, y, θ)(t)` would drop the fit
+Giving each link a local frame (joint *i* at `(dᵢ, 0)`, lengths from the
+linkage's parameters) and a closed-form pose `(x, y, θ)(t)` would drop the fit
 and make every leg's link literally the same part.
 
 ## Search

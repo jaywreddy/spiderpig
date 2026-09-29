@@ -18,30 +18,16 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from functools import cache
 
 import numpy as np
 
 from fabricate import BuildConfig, template_for
 from linkage import feet_of
-from sim.mjcf import T_REF, SimParams, build_mjcf, drive_limits, robot_model
+from sim.mjcf import T_REF, SimParams, load_model, robot_model
 
 Controls = Callable[[float], Sequence[float]] | Sequence
 
 FELL_TILT = math.radians(45.0)      # the base tilted further than this: it fell over
-
-
-@cache
-def _compiled(config: BuildConfig, params: SimParams):
-    import mujoco
-
-    xml, meta = build_mjcf(config, params)
-    return mujoco.MjModel.from_xml_string(xml), meta
-
-
-def compiled(config: BuildConfig | None = None, params: SimParams | None = None):
-    """``(mujoco.MjModel, metadata)``, compiled once per config and params."""
-    return _compiled(config or BuildConfig(), params or SimParams())
 
 
 def _control_fn(controls: Controls | None, vmax: float) -> Callable[[float], np.ndarray]:
@@ -117,7 +103,7 @@ def simulate(
 
     config = config or BuildConfig()
     params = params or SimParams()
-    model, meta = compiled(config, params)
+    model, meta = load_model(config, params)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
 
@@ -335,7 +321,7 @@ def kinematic_qpos(config: BuildConfig | None, t: float, params: SimParams | Non
     import mujoco
 
     config = config or BuildConfig()
-    model, meta = compiled(config, params)
+    model, meta = load_model(config, params)
     rm = robot_model(config, (params or SimParams()).printed_fill,
                      (params or SimParams()).hull_tolerance)
     tmpl = template_for(config)
@@ -400,9 +386,3 @@ def loop_errors(model, data) -> np.ndarray:
     p2 = data.xpos[b2] + np.einsum("nij,nj->ni", data.xmat[b2].reshape(-1, 3, 3),
                                    model.eq_data[eq, 3:6])
     return np.linalg.norm(p1 - p2, axis=1)
-
-
-__all__ = [
-    "FELL_TILT", "SimResult", "body_motions", "compiled", "drive_limits", "kinematic_gait",
-    "kinematic_qpos", "loop_errors", "simulate", "walk_metrics",
-]

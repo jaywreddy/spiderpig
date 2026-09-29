@@ -285,6 +285,3 @@ class PrintedAxle:
             out.extras.append(BomLine("ca_glue", self.glue_per_anchor * len(anchors),
                                       f"{group.name} anchors"))
         return out
-
-
-__all__ = ["AxleDims", "AxleGroup", "PrintedAxle"]
