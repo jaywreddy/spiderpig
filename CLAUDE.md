@@ -44,7 +44,11 @@ validates itself; `--linkage` / `--module` / `--phases` / `--proportion
 NAME=VALUE` and the build options are shared by `build.py`, `bake.py`,
 `explain.py` and the tools (`config.add_design_args` / `add_build_args` /
 `config_from_args`); the server takes `linkage=`, `module=`, `phases=`,
-`p.NAME=` (`config.design_from_query`). A bake is cached as
+`p.NAME=` (`config.design_from_query`). `--module` defaults to `None` and
+`config_from_args(robot=None)` fills both in from the linkage's kind
+(`config.default_module` / `default_robot`: a walker's `quad` and the robot, a
+mechanism's `single` and one side), so a CLI never needs `--module single
+--side-only` for a mechanism; `audit` and `report` take mechanisms too. A bake is cached as
 `<store>/bakes/<config.key>.glb` (`bake.default_bake_dir()`: the project
 store, `$SPIDERPIG_STORE` else `./.spiderpig`; `klann_quad_robot.glb`, a hash
 suffix for a non-default design). A design with no layer plan (the planner says why, e.g.
@@ -166,6 +170,7 @@ hatchling; `uv sync` installs it editable, `spiderpig` is its console script).
 | `spiderpig/config.py` | `BuildConfig`: what to build and how, validated on construction (the linkage's module, one phase per leg, the linkage's proportions; defaults dropped so a design has one config and one `key`), the shared CLI arguments and the server's query parsing. |
 | `spiderpig/fabricate.py` | orchestration: `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
 | `spiderpig/shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
+| `spiderpig/mesh.py` | `tessellate(part)`: OCCT's incremental mesh face by face, skipping (and counting) faces the mesher leaves without a triangulation (the XL330's model has three); the bake's `_tessellate` and the MJCF's hulls both use it, so a purchased model never fails either |
 | `spiderpig/layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
 | `spiderpig/cli.py` | the one entry point, the `spiderpig` console script (`python -m spiderpig.cli` from a checkout): `build` (`spiderpig/build.py`: STEP/STL/DXF/BOM), `bake` (`spiderpig/bake.py`), `audit`, `tune`, `sim`, `report` (`spiderpig/tools/`), `explain`, `mcp`, `view` (each a module's `main(argv)`); the `mise` tasks run it. It imports nothing of the engine until a command runs |
 | `spiderpig/view.py` | `spiderpig view <design> [--store] [--port] [--open]`, or `spiderpig view --linkage ... --pin bolt` (the build options: `resolve_args` turns them into a design in the store through `api.spec_of`): the store as the MCP picks it, `api.export(design, ["glb"])` (cached), the server below on a free port, the URL `/?design=<id>`; `start_background()` runs it as a child process (`--serve-only`) for the MCP `view` tool |

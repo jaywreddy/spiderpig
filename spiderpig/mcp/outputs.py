@@ -122,6 +122,7 @@ class CheckOut(Result):
     crank_facts: JSON | None
     ground_clearance_mm: float | None
     lowest_body_part: str
+    warnings: list[str]
     seconds: float
 
 

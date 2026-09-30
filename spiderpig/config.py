@@ -61,8 +61,9 @@ class BuildConfig:
         except KeyError as e:
             raise ParamError(e.args[0]) from None
         if self.robot and lk.kind != "walker":
-            raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on "
-                             f"(walkers: {', '.join(linkage.available('walker'))})")
+            raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on, "
+                             f"so it builds one side (robot=False; --side-only on the command "
+                             f"line) (walkers: {', '.join(linkage.available('walker'))})")
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
@@ -189,8 +190,35 @@ def parse_proportion(item: str) -> tuple[str, float]:
         raise ParamError(f"proportion {name} must be a number, got {value!r}") from None
 
 
+DEFAULT_MODULE = "quad"           # a walker's, when none is asked for
+
+
+def default_module(key: str) -> str:
+    """The module a design gets when none is asked for: a walker's ``quad`` (its first
+    module if it has no quad), a mechanism's one module (:class:`ParamError` for an
+    unknown linkage)."""
+    try:
+        lk = linkage.get(key)
+    except KeyError as e:
+        raise ParamError(e.args[0]) from None
+    if DEFAULT_MODULE in lk.leg_modules:
+        return DEFAULT_MODULE
+    return next(iter(lk.leg_modules))
+
+
+def default_robot(key: str) -> bool:
+    """Whether a design builds the two-sided robot when nothing says: a walker does, a
+    mechanism is one side (it has no feet to walk on)."""
+    try:
+        return linkage.get(key).kind == "walker"
+    except KeyError as e:
+        raise ParamError(e.args[0]) from None
+
+
 def add_design_args(p) -> None:
-    """``--linkage``, ``--module``, ``--phases`` and ``--proportion`` on an argparse parser."""
+    """``--linkage``, ``--module``, ``--phases`` and ``--proportion`` on an argparse parser.
+    ``--module`` defaults to ``None``: :func:`config_from_args` fills in the linkage's
+    (:func:`default_module`), so a mechanism needs no ``--module single``."""
     import argparse
 
     def arg(fn):
@@ -204,10 +232,10 @@ def add_design_args(p) -> None:
 
     p.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT,
                    help=f"the linkage (default {linkage.DEFAULT})")
-    p.add_argument("--module", default="quad",
+    p.add_argument("--module", default=None,
                    help="legs per side (the linkage's modules): single, double (mirrored "
                    "pair), decker (two legs on one crankshaft), quad (two mirrored deckers). "
-                   "Default: %(default)s")
+                   f"Default: a walker's {DEFAULT_MODULE}, a mechanism's single")
     p.add_argument("--phases", type=arg(parse_phases), default=None, metavar="DEG,...",
                    help="crank phase of every leg of a side, in degrees (default: the "
                    "module's, e.g. quad 0,180,90,270)")
@@ -238,25 +266,33 @@ def add_build_args(p) -> None:
 def config_from_args(args, **fixed) -> BuildConfig:
     """The config the parsed arguments ask for (:class:`ParamError` if they don't fit).
 
-    ``fixed`` overrides fields (``robot=False``); build options the parser
-    lacks keep their defaults.
+    ``fixed`` overrides fields (``robot=False``); build options the parser lacks keep
+    their defaults. A module not given (``None``) is the linkage's
+    (:func:`default_module`); ``robot`` not given, or given as ``None``, is the
+    linkage's kind's (:func:`default_robot`: a mechanism builds one side).
     """
     d = BuildConfig()
-    fields = {k: getattr(args, k, getattr(d, k)) for k in ("linkage", "module", "sheet",
-                                                            "thickness", "servo", "pillar",
-                                                            "pin", "crank")}
+    fields = {k: getattr(args, k, getattr(d, k)) for k in ("linkage", "sheet", "thickness",
+                                                            "servo", "pillar", "pin", "crank")}
     fields.update(phases=getattr(args, "phases", None),
                   proportions=tuple(getattr(args, "proportion", None) or ()))
-    return BuildConfig(**{**fields, **fixed})
+    fields.update(fixed)
+    fields["module"] = (fixed.get("module") or getattr(args, "module", None)
+                        or default_module(fields["linkage"]))
+    if fields.get("robot") is None:
+        fields["robot"] = default_robot(fields["linkage"])
+    return BuildConfig(**fields)
 
 
 def design_from_query(query: Mapping, **fixed) -> BuildConfig:
-    """The config a query string asks for: ``linkage``, ``module``, ``phases`` (degrees,
-    comma-separated) and ``p.<NAME>=<value>``; other keys are ignored."""
+    """The config a query string asks for: ``linkage``, ``module`` (default: the linkage's,
+    :func:`default_module`), ``phases`` (degrees, comma-separated) and ``p.<NAME>=<value>``;
+    other keys are ignored."""
     items = query.multi_items() if hasattr(query, "multi_items") else query.items()
     proportions = [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
-    kw = {"linkage": query.get("linkage") or linkage.DEFAULT,
-          "module": query.get("module") or "quad",
+    key = query.get("linkage") or linkage.DEFAULT
+    kw = {"linkage": key,
+          "module": query.get("module") or default_module(key),
           "phases": parse_phases(query["phases"]) if query.get("phases") else None,
           "proportions": tuple(proportions)}
     return BuildConfig(**{**kw, **fixed})

@@ -65,7 +65,7 @@ from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
 from spiderpig.hardware.bom import BomLine, bom_from_mechanism, group_made
 from spiderpig.hardware.catalog import sheet_name, sheet_size, sheet_thickness
 from spiderpig.hardware.mass import filament_density, material_of, part_props
-from spiderpig.layout import DEFAULT_KERF, save_sheets
+from spiderpig.layout import DEFAULT_KERF, pack, save_sheets
 from spiderpig.spec import (
     FIT_FIELDS,
     SECTIONS,
@@ -128,6 +128,7 @@ class CheckReport(Report):
     crank_facts: dict | None = None
     ground_clearance_mm: float | None = None
     lowest_body_part: str = ""      # which body shape sets the ground clearance
+    warnings: list[str] = field(default_factory=list)   # the constructions', at the static stage
     seconds: float = 0.0
 
 
@@ -209,6 +210,7 @@ class RecheckReport(Report):
     contract: list[dict] = field(default_factory=list)
     clashes: list[dict] = field(default_factory=list)
     bad_solids: list[dict] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)      # an edit that left the solid as built
     seconds: float = 0.0
 
 
@@ -580,7 +582,7 @@ def describe(key: str) -> dict:
         for m, doc in card["modules"].items():
             s = module_stride(key, m)
             doc["stride_mm"] = s
-            doc["walks"] = s is not None and s >= NO_TRAVEL_MM
+            doc["walks"] = s is not None and s >= WALKS_MM
     else:
         try:
             card["output_check"] = _output_dict(lk.output_check())
@@ -799,7 +801,8 @@ def check(design: Design, force: bool = False) -> CheckReport:
                  "inputs": list(lk.inputs)}
     try:
         tmpl = design.template = _template_for(cfg)
-        ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False))
+        with capture_warnings() as warned:      # the constructions size themselves here
+            ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False))
     except ValueError as e:      # AssemblyError / OutputError (caught above) / ConstructionError
         fl = Failure.from_exception(e, lk=lk)
         if isinstance(e, ConstructionError) and getattr(e, "changes", ()):
@@ -810,6 +813,7 @@ def check(design: Design, force: bool = False) -> CheckReport:
             fl.notes += notes
         rep.failures.append(fl)
         return _finish(design, "check", rep, t0)
+    rep.warnings = list(warned)
     rep.clearances = [{"link": c.link, "keepout": c.keepout.owner, "where": c.keepout.where,
                        "dist_mm": c.dist, "need_mm": c.need, "text": c.describe()}
                       for c in problem.clearances]
@@ -1199,30 +1203,37 @@ def walk(design: Design, force: bool = False) -> WalkReport:
     return _finish(design, "walk", rep, t0)
 
 
-NO_TRAVEL_MM = 1.0      # a stride under this is no walk
+NO_TRAVEL_MM = 1.0      # a stride under this is no travel at all (the feet cancel)
+WALKS_MM = 20.0         # a module "walks" from this stride a turn on (a few mm is a shuffle)
 
 
 def no_travel_note(cfg: BuildConfig, metrics: dict) -> str | None:
     """Why a walker's stride is (near) zero, when it is: the module's feet cancel each
     other in the quasi-static model, so the body stands and bobs (a mirrored pair at one
-    phase, or two legs one way with nothing to take turns with), and which module of the
+    phase, or two legs one way with nothing to take turns with); or that a stride of a
+    few millimetres is a shuffle, not a walk (:data:`WALKS_MM`); and which module of the
     linkage walks (:func:`describe` gives every module's stride)."""
     stride = float(metrics.get("stride_mm") or 0.0)
-    if stride >= NO_TRAVEL_MM:
+    if stride >= WALKS_MM:
         return None
     lk = linkage.get(cfg.linkage)
     walking = {m: s for m in lk.leg_modules if m != cfg.module
-               and (s := module_stride(cfg.linkage, m)) is not None and s >= NO_TRAVEL_MM}
+               and (s := module_stride(cfg.linkage, m)) is not None and s >= WALKS_MM}
     duty = metrics.get("duty") or []
     stands = all(float(d) >= 0.999 for d in duty) if duty else False
     phases = ([round(math.degrees(p), 1) for p in cfg.phases] if cfg.phases
               else "its default phases")
     others = ", ".join(f"{m} ({s:.0f} mm/rev)" for m, s in walking.items())
-    return (f"no net travel: {cfg.linkage}'s {cfg.module} module at {phases} walks "
-            f"{stride:.2g} mm per revolution in the quasi-static model"
-            + (": every foot stays on the ground (duty 1.0) and the feet's pushes cancel, so "
-               "the body stands and bobs" if stands else
-               ": the feet's pushes cancel over the cycle")
+    head = (f"{cfg.linkage}'s {cfg.module} module at {phases} walks {stride:.2g} mm per "
+            f"revolution in the quasi-static model")
+    if stride < NO_TRAVEL_MM:
+        why = ("no net travel: " + head
+               + (": every foot stays on the ground (duty 1.0) and the feet's pushes cancel, "
+                  "so the body stands and bobs" if stands else
+                  ": the feet's pushes cancel over the cycle"))
+    else:
+        why = f"a shuffle, not a walk: {head} (a module walks from {WALKS_MM:g} mm a turn)"
+    return (why
             + (f"; of this linkage's modules, {others} walk" if walking
                else "; no other module of this linkage walks at its default phases")
             + "; describe(linkage) lists each module's stride_mm")
@@ -1347,12 +1358,13 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         lo, hi = np.minimum(lo, [bb.min.X, bb.min.Y, bb.min.Z]), np.maximum(hi, [bb.max.X,
                                                                                   bb.max.Y,
                                                                                   bb.max.Z])
+        z_side = side_z(tag, z_mid, (bb.min.Z, bb.max.Z))
         parts[b.name] = Part(
             name=b.name, solid=b.part, group=group_of(base, side.plan), side=tag, fab=b.fab,
             material=material, dims_mm=(bb.size.X, bb.size.Y, bb.size.Z),
-            layers=side_layers(side.plan, side_z(tag, z_mid, (bb.min.Z, bb.max.Z))),
-            density=density, fixed_mass_g=fixed,
+            layers=side_layers(side.plan, z_side), density=density, fixed_mass_g=fixed,
             bom_key=b.bom_key, rigid_with=b.rigid_with, pose=b.pose.matrix.tolist(),
+            z_mid=z_mid, z_side=(float(z_side[0]), float(z_side[1])),
             built=b.part, _measured=(b.part, float(props.volume)),
         )
         assert abs(parts[b.name].mass_g - mass) < 1e-9
@@ -1459,6 +1471,14 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
             raise TypeError(f"parts[{n!r}].solid must be a build123d Shape (a Part, Solid or "
                             f"Compound), got {type(part.solid).__name__}")
         mech.body(n).part = part.solid
+    for n in rep.edited:      # an edit that missed its part (a cut placed in the wrong frame)
+        part = design.parts[n]
+        built = float(part_props(part.built).volume)
+        if abs(part.volume_mm3 - built) <= 1e-6 * max(built, 1.0):
+            rep.notes.append(
+                f"{n}: the edited solid has the build's volume ({built:.2f} mm3), so the edit "
+                f"changed nothing; a cut placed by the side's coordinates (a joint's xy, a "
+                f"layer's z) goes through Part.locate: a robot's part sits in the world frame")
     rep.bad_solids = bad_solids(mech)
     rep.clashes = clashes(mech)
     z_mid = mech.meta.get("mid_plane")
@@ -1610,14 +1630,19 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
+    size = tuple(spec.fit.sheet_size_mm or sheet_size(cfg.sheet))
+    kerf = spec.fit.kerf_mm if spec.fit.kerf_mm is not None else DEFAULT_KERF
     if "dxf" in formats:
-        size = tuple(spec.fit.sheet_size_mm or sheet_size(cfg.sheet))
-        kerf = spec.fit.kerf_mm if spec.fit.kerf_mm is not None else DEFAULT_KERF
         try:
             sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
                                  kerf=kerf)
             files += sheets + [out / "laser" / f"{name}_sheet_parts.csv"]
             extras.append(BomLine(cfg.sheet, len(sheets), "laser-cut parts"))
+        except ValueError as e:
+            rep.failures.append(Failure.from_exception(e, stage="layout"))
+    elif "bom" in formats:      # the BOM buys the sheets whether or not the DXF is written
+        try:
+            extras.append(BomLine(cfg.sheet, len(pack(mech, size)), "laser-cut parts"))
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))
     if "bom" in formats:

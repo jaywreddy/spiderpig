@@ -117,12 +117,16 @@ def jsonable(obj):
 @dataclass
 class Part:
     """One fabricated body. ``solid`` is the live build123d solid in the body's own frame
-    (for every part of a side that is the side's frame; ``pose`` places it in the world:
-    :meth:`placed`). Replace it to edit the part; ``edited`` says whether it differs from
-    what the engine built, and only :func:`spiderpig.api.recheck` restores the guarantee.
-    ``volume_mm3`` and ``mass_g`` are measured on the solid as it now is (``density`` in
-    g/cm3; a purchased part with a catalog mass, the servo, keeps ``fixed_mass_g``);
-    ``dims_mm`` and ``layers`` are the build's."""
+    and ``pose`` places it in the world (:meth:`placed`). A one-sided design's parts sit
+    in the side's frame (the plan's z, the joints' xy); a robot's sit in the world frame,
+    the left side moved down by the chassis' mid-plane ``z_mid`` and the right side its
+    mirror image moved up (``z_side`` is the part's z range back in its side's frame), so
+    a cut placed by the side's coordinates goes through :meth:`locate`. Replace ``solid``
+    to edit the part; ``edited`` says whether it differs from what the engine built, and
+    only :func:`spiderpig.api.recheck` restores the guarantee (it notes an edit that left
+    the volume as built). ``volume_mm3`` and ``mass_g`` are measured on the solid as it
+    now is (``density`` in g/cm3; a purchased part with a catalog mass, the servo, keeps
+    ``fixed_mass_g``); ``dims_mm`` and ``layers`` are the build's."""
 
     name: str
     solid: object
@@ -137,12 +141,34 @@ class Part:
     bom_key: str | None = None
     rigid_with: str | None = None
     pose: list[list[float]] = field(default_factory=list)
+    z_mid: float | None = None                  # the robot's mid-plane; None on one side
+    z_side: tuple[float, float] | None = None   # the solid's z range in its side's frame
     built: object = field(default=None, repr=False)
     _measured: tuple | None = field(default=None, repr=False)   # (solid, its volume)
 
     @property
     def edited(self) -> bool:
         return self.solid is not self.built
+
+    def locate(self, xy, z: float | None = None):
+        """A build123d ``Location`` in the solid's frame for a tool centred at the side's
+        ``xy`` (a joint's, ``design.mech.body(name).joint(j).pose.matrix[:2, 3]``) and the
+        side's ``z`` (default: the middle of the part's own layers), whichever side of
+        the robot the part is on:
+        ``part.solid = part.solid - Cylinder(1.5, 10).moved(part.locate((a + b) / 2))``."""
+        from build123d import Location
+
+        x, y = float(xy[0]), float(xy[1])
+        if z is None:
+            if self.z_side is None:
+                raise ValueError(f"{self.name}: no z range recorded: give z")
+            z = sum(self.z_side) / 2
+        z = float(z)
+        if self.z_mid is None or self.side is None:
+            return Location((x, y, z))
+        if self.side == "L":
+            return Location((x, y, z - self.z_mid))
+        return Location((x, y, self.z_mid - z))
 
     @property
     def volume_mm3(self) -> float:

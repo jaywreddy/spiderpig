@@ -640,3 +640,30 @@ def test_export_carries_its_warnings_and_the_guide_the_round_3_vocabulary(fresh)
     assert "scale with `unit`" in guide
     assert "spiderpig view --linkage" in guide                                # entry 10
     assert "the longest stock M3" in guide or "stock screw" in guide          # entry 7
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the stage under ``report``, the check's
+# warnings, the floor's glue, the guide
+# ---------------------------------------------------------------------------
+
+
+def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(server, single):
+    from spiderpig.mcp import render_guide
+
+    cr = call(server, "check", design=single)
+    assert cr["ok"]
+    assert cr["warnings"] == []                              # entry 12: a field, not stderr
+    got = call(server, "get_design", design=single, stage="check")
+    assert set(got) == {"ok", "failures", "design", "stage", "report"}     # entry 4
+    assert got["stage"] == "check"
+    assert got["report"]["ground_clearance_mm"] == cr["ground_clearance_mm"]
+    v = call(server, "verify", design=single, level="quick")
+    floor = next(r for r in v["rows"] if r["requirement"] == "budget.cost_floor_usd")
+    assert "Medium CA (cyanoacrylate) glue" in floor["detail"]               # entry 1
+    assert "M3 hex nut" in floor["detail"]
+    assert floor["detail"].endswith("(verify standard)")
+    guide = render_guide()
+    assert "a bottle of CA glue" in guide
+    assert "`sim.speed_mm_s`" in guide                                        # entry 7
+    assert "20 mm" in guide                                                   # entry 14

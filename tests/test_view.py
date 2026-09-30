@@ -306,3 +306,62 @@ def test_the_clis_warn_about_a_thickness_far_from_the_nominal(capsys):
     assert explain.main(["--linkage", "klann", "--module", "single", "--thickness", "5"]) == 0
     err = capsys.readouterr().err                                             # entry 8
     assert "warning: materials.thickness_mm 5 is 67% over acrylic_3mm's nominal 3 mm" in err
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the CLIs take a mechanism as it is
+# (its one module, one side), audit and report cover it, the output names its axes
+# ---------------------------------------------------------------------------
+
+
+def test_the_clis_default_a_mechanism_to_its_one_module_and_one_side(store, capsys, tmp_path):
+    import argparse
+
+    from spiderpig import build, explain, view
+    from spiderpig.config import config_from_args, default_module, default_robot
+    from spiderpig.tools import report
+
+    assert default_module("parallelogram_lift") == "single"                  # entry 9
+    assert default_module("klann") == "quad"
+    assert not default_robot("parallelogram_lift")
+    assert default_robot("klann")
+    ns = argparse.Namespace(linkage="parallelogram_lift", module=None, phases=None,
+                            proportion=None)
+    cfg = config_from_args(ns, robot=None)
+    assert (cfg.module, cfg.robot) == ("single", False)
+    cfg = config_from_args(argparse.Namespace(linkage="klann", module=None, phases=None,
+                                              proportion=None))
+    assert (cfg.module, cfg.robot) == ("quad", True)
+    args = build._parse_args(["--linkage", "parallelogram_lift", "--out", str(tmp_path)])
+    assert (args.config.module, args.config.robot) == ("single", False)
+    with pytest.raises(SystemExit):        # a robot of a mechanism is still refused, and says
+        build._parse_args(["--linkage", "parallelogram_lift", "--module", "quad"])
+    assert "unknown module 'quad'; have ['single']" in capsys.readouterr().err
+    assert explain.main(["--linkage", "parallelogram_lift"]) == 0
+    out = capsys.readouterr().out
+    assert "covers 1.62 mm in x by 32.00 mm in y (up), stroke 32.00 mm" in out   # entry 11
+    empty = {**dict.fromkeys(view.DESIGN_OPTIONS), "side_only": False}
+    d = view.resolve_args(argparse.Namespace(**{**empty, "linkage": "hoecken"}), store)
+    assert (d.config.module, d.config.robot) == ("single", False)
+    out_file = tmp_path / "report.json"                                       # entry 8
+    assert report.main(["--linkages", "parallelogram_lift", "--no-plan", "--out",
+                        str(out_file)]) == 0
+    (row,) = json.loads(out_file.read_text())
+    assert "foot" not in row
+    assert row["output"]["stroke_mm"] == pytest.approx(32.0, abs=0.01)
+    assert row["output"]["text"].startswith("parallelogram_lift: b4 (translation_platform)")
+
+
+def test_audit_takes_a_mechanism(tmp_path, capsys):
+    from spiderpig.tools import audit
+
+    assert audit.main(["--linkage", "parallelogram_lift", "--ts-contract", "0",
+                       "--ts-clash", "1", "--out", str(tmp_path)]) == 0    # entry 10
+    out = capsys.readouterr().out
+    assert "== single" in out
+    assert "OK" in out
+    rep = json.loads((tmp_path / "audit.json").read_text())
+    assert rep["config"]["linkage"] == "parallelogram_lift"
+    assert rep["modules"]["single"]["problems"] == []
+    assert rep["modules"]["single"]["parts"] > 20
+    assert rep["modules"]["single"]["chassis"] == {}         # one side: no chassis

@@ -5,6 +5,7 @@ verifies with tiers, parts expose live solids and ``recheck`` catches an edited 
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -722,7 +723,8 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     from spiderpig.hardware.catalog import get as item
 
     servo = item(servos.get("sts3215").bom_key).offer.price_usd
-    assert total == pytest.approx(servo + 25.49 + 10.99, abs=0.01)
+    glue, nuts = 13.99, 2.39     # round 4: a bottle of CA for the anchors, the crank's nuts
+    assert total == pytest.approx(servo + 25.49 + 10.99 + glue + nuts, abs=0.01)
     assert unpriced == []
     assert priced[0].startswith("Feetech STS3215")
     rep = api.verify(one, "quick")
@@ -736,7 +738,8 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
                          "budget": {"cost_usd": {"max": 100}}}, store=None)
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
-    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + 12.84 + 11.37, abs=0.01)
+    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + 12.84 + 11.37 + glue + nuts,
+                                  abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
@@ -1001,3 +1004,165 @@ def test_spec_of_a_config_round_trips():
     assert mech["legs"]["sides"] == 1
     assert api.resolve(mech).config == BuildConfig(linkage="hoecken", module="single",
                                                    robot=False)
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the cost floor, the glue, the BOM's
+# sheets, a robot part's frame, the sim's rows and mesher, the walks flag, the warnings
+# ---------------------------------------------------------------------------
+
+STRIDER_DOUBLE_PLY = {"kind": "walker", "linkage": {"key": "strider"},
+                      "legs": {"module": "double"}, "materials": {"sheet": "plywood_3mm"}}
+
+
+def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds():
+    from spiderpig import verify as verify_module
+
+    d = api.resolve(STRIDER_DOUBLE_PLY, store=None)
+    total, priced, unpriced = verify_module.cost_floor(d)                     # entry 1
+    assert total == pytest.approx(101.83)              # was 85.45: + a bottle of CA, a nut pack
+    assert unpriced == []
+    assert any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
+    assert any(line.startswith("M3 hex nut") and "(a pack of 100)" in line for line in priced)
+    lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}},
+                       store=None)
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86)    # the BOM says 80.66
+    bolted = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"},
+                          "constructions": {"pillar": "bolt", "pin": "bolt"}}, store=None)
+    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.86 - 13.99)   # nothing glued
+    row = next(r for r in api.verify(lift, "quick").rows
+               if r.requirement == "budget.cost_floor_usd")
+    assert row.value == pytest.approx(72.86)
+    assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
+    assert "the sheets' count, the crank's screws" in row.detail
+
+
+def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
+    d = api.resolve(KLANN_SINGLE, store=None)
+    rep = api.export(d, ["bom"], tmp_path)                                    # entry 3
+    assert rep.ok
+    bom = json.loads((tmp_path / "bom.json").read_text())
+    sheet = next(r for r in bom["purchased"] if r["key"] == "acrylic_3mm")
+    assert sheet["qty"] >= 1
+    assert sheet["cost_usd"] == pytest.approx(10.99)
+    assert bom["cost_usd"] == pytest.approx(sum(r["cost_usd"] or 0 for r in bom["purchased"]))
+
+
+def test_a_robot_part_locates_a_cut_by_the_sides_coordinates_and_recheck_notes_a_miss(design):
+    from build123d import Cylinder
+
+    design("single")                                # the side's plan is the session's
+    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                     "legs": {"module": "single"}}, store=None)
+    api.build(d)
+    z_mid = d.mech.meta["mid_plane"]
+    links = sorted(n for n, p in d.parts.items() if p.group == "links" and p.side == "L")
+    first, second = links[0], links[1]                # the Klann single's L.b1, L.b2
+    edited = {}
+    for name in (first, "R." + first[2:]):                                    # entry 5
+        link, body = d.parts[name], d.mech.body(name)
+        assert link.z_mid == z_mid
+        assert link.z_side == pytest.approx(d.side.plan.z(link.layers[0]))
+        a, b = (body.joint(j).pose.matrix[:2, 3] for j in body.outline[0])
+        loc = link.locate((a + b) / 2)
+        z = sum(link.z_side) / 2
+        z_world = loc.position.Z
+        assert z_world == pytest.approx(z - z_mid if name[0] == "L" else z_mid - z)
+        bb = link.solid.bounding_box()
+        assert bb.min.Z < z_world < bb.max.Z                # inside the solid, whichever side
+        before = link.volume_mm3
+        link.solid = link.solid - Cylinder(1.5, 10).moved(loc)
+        edited[name] = before - link.volume_mm3
+        assert edited[name] == pytest.approx(math.pi * 1.5 ** 2 * 3.0, rel=0.02)
+    missed = d.parts[second]                        # the old way: the plan's z, no frame
+    zz = d.side.plan.z(missed.layers[0])
+    missed.solid = missed.solid - Cylinder(1.5, 10).moved(Location((0.0, 0.0, sum(zz) / 2)))
+    rc = api.recheck(d)
+    assert rc.ok
+    assert sorted(rc.edited) == sorted([first, second, "R." + first[2:]])
+    assert rc.contract == []
+    assert rc.clashes == []
+    (note,) = rc.notes
+    assert note.startswith(f"{second}: the edited solid has the build's volume")
+    assert "Part.locate" in note
+    from spiderpig.design import jsonable
+
+    assert api.RecheckReport.from_dict(json.loads(json.dumps(jsonable(rc)))).notes == [note]
+    one = api.resolve(KLANN_SINGLE, store=None)      # one side: the side's frame as is
+    api.build(one)
+    part = one.parts[first[2:]]                  # the same link, unprefixed on one side
+    assert part.z_mid is None
+    z_default, z_given = part.locate((1.0, 2.0)).position.Z, part.locate((1, 2), 4.5).position.Z
+    assert z_default == pytest.approx(sum(part.z_side) / 2)
+    assert z_given == pytest.approx(4.5)
+
+
+def test_the_sim_rows_have_their_own_names(monkeypatch):
+    from spiderpig import verify as verify_module
+
+    pytest.importorskip("mujoco")
+    from spiderpig.sim import run as sim_run
+
+    fake = {"speed": 164.9, "stride": 190.4, "fell": False, "max_tilt": 4.2,
+            "torque_peak": 0.21, "torque_limit": 1.91, "saturates": False}
+    monkeypatch.setattr(sim_run, "simulate", lambda config, seconds: None)
+    monkeypatch.setattr(sim_run, "walk_metrics", lambda result: fake)
+    d = api.resolve({**KLANN_QUAD, "motion": {"speed_mm_s": {"min": 100}}}, store=None)
+    rows = verify_module._sim_rows(d, verify_module.VerifyReport(level="full"))   # entry 7
+    assert [r.requirement for r in rows] == ["sim.speed_mm_s", "sim.stride_mm", "sim.stays_up",
+                                             "sim.torque"]
+    assert rows[0].source == "sim"
+    assert rows[0].value == pytest.approx(164.9)
+    assert rows[0].target == ">= 100"
+    assert rows[0].passed
+    assert not rows[0].hard
+    assert "the walk model's motion.speed_mm_s row is the spec's" in rows[0].detail
+
+
+def test_the_sim_meshes_face_by_face_as_the_bake_does():
+    from spiderpig.bake import _tessellate
+    from spiderpig.mesh import tessellate
+    from spiderpig.sim.mjcf import _hull
+
+    box = Box(2, 3, 4)
+    pos, tri, skipped = tessellate(box)                                       # entry 6
+    assert skipped == 0
+    assert (len(pos), len(tri)) == (24, 36)                 # 6 faces x 4 corners, 12 triangles
+    bake_pos, bake_tri = _tessellate(box)
+    assert (bake_pos == pos).all()
+    assert (bake_tri == tri).all()
+    hull = _hull(box, 0.1)
+    assert hull.shape == (8, 3)
+    assert sorted(map(tuple, hull))[0] == pytest.approx((-1.0, -1.5, -2.0))
+
+
+def test_walks_means_a_stride_of_twenty_millimetres():
+    assert api.WALKS_MM == 20.0
+    card = api.describe("trotbot_toe")
+    single = card["modules"]["single"]                                       # entry 14
+    assert 1 < single["stride_mm"] < 20
+    assert not single["walks"]
+    assert card["modules"]["decker"]["walks"]
+    d = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_toe"},
+                     "legs": {"module": "single"}}, store=None)
+    (note,) = api.walk(d).notes
+    assert note.startswith("a shuffle, not a walk: trotbot_toe's single module")
+    assert "decker" in note
+    assert "quad" in note
+    assert "single (" not in note                       # a 4 mm shuffle isn't offered as a walk
+
+
+def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_terminal(caplog):
+    import logging
+
+    d = api.resolve({"kind": "walker", "linkage": {"key": "strider"},
+                     "legs": {"module": "single", "sides": 1}}, store=None)
+    with caplog.at_level(logging.WARNING):
+        cr = api.check(d)
+        rep = api.verify(d, "standard")                                     # entry 12
+    assert cr.ok
+    assert isinstance(cr.warnings, list)
+    assert rep.ok
+    br = d.reports["build"]
+    assert any("snap prongs" in w for w in br.warnings)      # the printed pins do warn
+    assert [r for r in caplog.records if r.name.startswith("spiderpig.construction")] == []

@@ -231,3 +231,26 @@ def test_catalog_data_the_code_reads():
     assert fasteners.shcs("3", 12) == "m3_shcs_12"
     assert fasteners.parse("m2p5_shcs_12") == (fasteners.screw("shcs", "2p5"), 12.0)
     assert fasteners.parse("m3_standoff_ff_20") is None
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): a robot's tie spigots take a few drops
+# of CA glue each, not a bottle, so a robot buys one bottle
+# ---------------------------------------------------------------------------
+
+
+def test_the_robots_glue_is_a_few_drops_per_anchor_and_spigot(robot):
+    from spiderpig.construction.chassis import GLUE_PER_SPIGOT
+    from spiderpig.hardware.bom import bom_from_mechanism
+
+    mech = robot("single", 1.0)
+    glue = [line for line in mech.bom_extras if line.key == "ca_glue"]      # entry 2
+    ties = next(line for line in glue if line.where.startswith("tie spigots"))
+    assert ties.qty == pytest.approx(GLUE_PER_SPIGOT * mech.meta["ties"])
+    assert 0 < ties.qty < 0.2
+    total = sum(line.qty for line in glue)
+    assert 0 < total < 1                                   # one bottle covers the robot
+    bom = bom_from_mechanism(mech, group=False)
+    row = next(r for r in bom.purchased if r.key == "ca_glue")
+    assert row.packs == 1
+    assert row.cost_usd == pytest.approx(13.99)

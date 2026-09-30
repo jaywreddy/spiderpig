@@ -2,13 +2,15 @@
 
     spiderpig report --out build/linkages.json
 
-For each linkage (``linkage.available()``): its parameters and bodies, the
-single leg's foot path over one crank revolution (lift; stride, stance
-fraction and speed ripple within 2 and 5 mm of the ground), which leg modules the layer
-planner can lay out (how thick the side is, whether that is proven the thinnest, the
-crank's route, and ``ground_clearance_mm``: how high the body rides over the feet), and,
-for the modules that plan, the quasi-static walking metrics (:mod:`walk`) and the robot's
-BOM cost. Writes one JSON document; ``--modules`` / ``--linkages`` narrow it.
+For each linkage (every walker by default; ``--linkages`` names any, mechanisms
+included): its parameters and bodies, the single leg's foot path over one crank
+revolution (lift; stride, stance fraction and speed ripple within 2 and 5 mm of the
+ground) or a mechanism's output numbers (``output``: extent, stroke, straightness,
+rotation, dwell), which leg modules the layer planner can lay out (how thick the side
+is, whether that is proven the thinnest, the crank's route, and ``ground_clearance_mm``:
+how high the body rides over the feet), and, for a walker's modules that plan, the
+quasi-static walking metrics (:mod:`walk`) and the robot's BOM cost. Writes one JSON
+document; ``--modules`` / ``--linkages`` narrow it.
 """
 
 from __future__ import annotations
@@ -56,6 +58,20 @@ def foot_path(lk: linkage.Linkage, n: int = N) -> dict:
             "speed_ripple": round(float(sv.std() / max(abs(sv.mean()), 1e-9)), 3),
         }
     return out
+
+
+def output_numbers(lk: linkage.Linkage) -> dict:
+    """A mechanism's output check at its defaults (what its card carries): the extent,
+    stroke, straightness, on-line fraction, rotation, swing, dwell, and the text."""
+    try:
+        c = lk.output_check()
+    except linkage.AssemblyError as e:
+        return {"error": str(e)}
+    return {"name": c.output.name, "motion": c.output.motion, "extent_mm": list(c.extent_mm),
+            "stroke_mm": c.stroke_mm, "straightness_mm": c.straightness_mm,
+            "on_line_fraction": c.on_line, "rotation_deg": c.rotation_deg,
+            "swing_deg": c.swing_deg, "dwell_deg": c.dwell_deg, "broken": c.broken,
+            "text": c.describe()}
 
 
 def plans(key: str, modules) -> dict:
@@ -142,10 +158,15 @@ def main(argv=None) -> int:
     report = []
     for key in keys:
         lk = linkage.get(key)
-        row = describe(lk) | {"foot": foot_path(lk)}
+        row = describe(lk)
+        if lk.kind == "walker":
+            row["foot"] = foot_path(lk)
+        else:                       # a mechanism: its output's numbers, no feet, no walk
+            row["output"] = output_numbers(lk)
+        modules = [m for m in args.modules if m in lk.leg_modules]
         if not args.no_plan:
-            row["plans"] = plans(key, args.modules)
-            if not args.no_walk:
+            row["plans"] = plans(key, modules)
+            if not args.no_walk and lk.kind == "walker":
                 row["walk"] = {m: walking(key, m) for m, r in row["plans"].items() if r["ok"]}
                 ok = {m: w for m, w in row["walk"].items()      # it has to go somewhere
                       if w["valid"] and w["stride_mm"] > MIN_STRIDE}

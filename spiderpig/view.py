@@ -179,24 +179,16 @@ def resolve_args(args, store):
     if not given or given == {"side_only": False}:
         return None
     from spiderpig import api
-    from spiderpig.config import BuildConfig, ParamError
+    from spiderpig.config import BuildConfig, ParamError, default_module, default_robot
 
     d = BuildConfig()
-    fields = {k: given.get(k, getattr(d, k)) for k in ("linkage", "module", "sheet", "thickness",
+    fields = {k: given.get(k, getattr(d, k)) for k in ("linkage", "sheet", "thickness",
                                                         "servo", "pillar", "pin", "crank")}
     fields["phases"] = given.get("phases")
     fields["proportions"] = tuple(given.get("proportion") or ())
-    robot = not given.get("side_only", False)
-    lk_kind = None
-    try:
-        from spiderpig import linkage
-
-        lk_kind = linkage.get(fields["linkage"]).kind
-    except KeyError:
-        pass
-    if lk_kind == "mechanism":
-        robot = False
-    try:
+    try:            # a mechanism: its one module, one side, with no option saying so
+        fields["module"] = given.get("module") or default_module(fields["linkage"])
+        robot = False if given.get("side_only") else default_robot(fields["linkage"])
         config = BuildConfig(**fields, robot=robot)
     except ParamError as e:
         raise ValueError(str(e)) from None

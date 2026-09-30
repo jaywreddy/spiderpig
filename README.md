@@ -101,11 +101,15 @@ plan of one side and writes
   vendor links, whether each link was checked, estimated cost), what to
   print (filament) and what to cut (sheets).
 
-Useful flags: `--module {single,double,decker,quad}` (legs per side),
-`--side-only`, `--servo` (continuous-rotation servos only; default
+Useful flags: `--module {single,double,decker,quad}` (legs per side; default
+`quad`), `--side-only`, `--servo` (continuous-rotation servos only; default
 `sts3215`), `--pillar` / `--pin` / `--crank` (constructions), `--sheet`,
 `--thickness` (measure your sheet: acrylic varies by up to 8 %), `--kerf`,
-`--no-dxf`.
+`--no-dxf`. A mechanism (`--linkage hoecken`, `parallelogram_lift`, ...) needs
+no `--module` or `--side-only`: it is its one module and one side, for `build`,
+`explain`, `view`, `audit` and `bake` alike; `spiderpig report --linkages
+parallelogram_lift watt_table_lift` compares mechanisms by their output numbers
+(stroke, straightness, rotation) as it compares walkers by their foot paths.
 
 `spiderpig view <design-id>` serves the animated viewer for a design recorded in
 the project store by the Python API or the MCP server (`docs/agentlib/API.md`),

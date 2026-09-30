@@ -26,7 +26,7 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `kind` | `walker` \| `mechanism` | required |
 | `linkage.key` | a registered linkage (`api.list_linkages()`) | required; its kind must match |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them: a length must be > 0; an angle, or a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
-| `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`) | `quad` (walker), `single` (mechanism) |
+| `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`: a stride of at least 20 mm a turn; a few mm is a shuffle, and a stride under 1 mm gets `walk`'s "no net travel" note) | `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
 | `materials.sheet` | a catalog sheet item: `acrylic_3mm`, `plywood_3mm` (sets the layer pitch) | `acrylic_3mm` |
@@ -82,8 +82,8 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `walk(design)` | `WalkReport`: `metrics`, `mass_g`, `rows`, `notes` (a stride near zero: why, and which module of the linkage walks) | `walk.api_payload` (feet at their planned layers) | 0.1 s |
 | `build(design, t=1.0)` | `BuildReport`: `parts` manifest, `mass_g`, `envelope_mm`, `counts`, `warnings`; `design.parts[name]` | `fabricate.fabricate` | 8 s |
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
-| `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids` | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
-| `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports | 1 s / 30-45 s / 85 s |
+| `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids`, `notes` (an edited part whose volume is still the build's: the cut missed it) | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
+| `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports (its own rows: `sim.speed_mm_s` and `sim.stride_mm` measured over 4 s at the drives' full speed, beside the walk model's `motion.*` rows, `sim.stays_up`, `sim.torque`; a purchased model the mesher can't triangulate everywhere, the XL330's, meshes face by face as the bake does) | 1 s / 30-45 s / 85 s |
 | `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
@@ -101,11 +101,20 @@ on the solid as it now is, so they follow an edit; the servo keeps its catalog m
 part (`edited` then reads true). A part's joints and outline are on the mechanism's body
 of the same name, `design.mech.body(name)` (`joints`, `outline`: the joint pairs a link
 spans), on a fresh build and on one reloaded from the store alike; the robot's parts are
-named by side, `L.b7` / `R.b7`, a one-sided design's `b7`.
+named by side, `L.b7` / `R.b7`, a one-sided design's `b7`. **Frames**: the joints' xy and
+the plan's z (`design.side.plan.z(layer)`) are the side's coordinates; a one-sided
+design's solids sit in that frame, but a robot's sit in the world (the left side moved
+down by the chassis' mid-plane `Part.z_mid`, the right side its mirror image moved up;
+`Part.z_side` is a part's z range back in its side's frame), so a cut placed by the
+side's coordinates goes through `Part.locate(xy, z=None)`: the `Location` of a tool
+centred at the side's `xy` and `z` (default: the middle of the part's own layers) in
+the solid's frame, whichever side the part is on.
 **An edited solid is outside the correct-by-construction guarantee until `recheck`
 passes**: it re-runs the solid and clash checks over every part and, for edited parts
 of the claim-bound groups (links, crank, pillars, pins), checks they lie inside their
-group's claims at the build's crank angle; a passing recheck accepts the edits.
+group's claims at the build's crank angle; a passing recheck accepts the edits. Its
+`notes` name an edited part whose volume is still the build's (a cut that missed its
+solid: the wrong frame), which passes every check and changed nothing.
 
 ### Failure
 
@@ -219,8 +228,12 @@ bound, which can refute a `max` but never confirm it, so a hard `max` / `value` 
 then **fails** ("at least ...") until the items are priced in the catalog or accepted by
 hand (a soft target keeps the priced part's verdict, with the same note); at `quick`
 the row `budget.cost_floor_usd` prices what the design buys whatever its parts (the
-servos, a spool, a sheet, the robot's cement and inserts) from the catalog, and a floor
-already over a `max` fails `budget.cost_usd` before any build; `plan.warnings`
+servos, a spool, a sheet, the robot's cement and inserts, a bottle of CA glue for the
+pillars' anchors and the robot's tie spigots with every pivot construction but `bolt`,
+the printed crank's crankpin nuts) from the catalog, and a floor already over a `max`
+fails `budget.cost_usd` before any build; the floor's detail says what a build adds
+(the sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few
+dollars on a printed-pivot design); `plan.warnings`
 (informational, soft) carries the constructions' warnings; a walker whose stride reads
 near zero has the walk note on its stride and speed rows. `size.mass_g` at `quick` is
 the nominal model's total for what the design builds (one side or the robot) and its
@@ -244,10 +257,11 @@ One side of the TrotBot heel at its drawing's 7 mm unit (35 s in all; the `singl
 module because a one-leg-per-side robot doesn't walk in the quasi-static model, so
 its stride would read 0). It is one side (`sides: 1`), so the parts and bodies are
 `b7`; on the robot they are `L.b7` and `R.b7` (`design.mech.body("L.b7")`), and the
-same edit works there:
+same edit works there because `Part.locate` puts the cut in the part's own frame
+(a robot's left side sits below the mid-plane, its right side mirrored above it):
 
 ```python
-from build123d import Cylinder, Location
+from build123d import Cylinder
 from spiderpig import api, apply_patch
 
 spec = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
@@ -265,9 +279,9 @@ print(result.describe())
 api.build(design)                          # design.parts["b7"].solid: a build123d Part
 link, body = design.parts["b7"], design.mech.body("b7")
 a, b = (body.joint(j).pose.matrix[:2, 3] for j in body.outline[0])   # one outline segment
-z = design.side.plan.z(link.layers[0])
-link.solid = link.solid - Cylinder(1.5, 10).moved(Location((*((a + b) / 2), sum(z) / 2)))
-assert api.recheck(design).ok              # the lightening hole: inside its claims, no clashes
+link.solid = link.solid - Cylinder(1.5, 10).moved(link.locate((a + b) / 2))  # mid-layer
+report = api.recheck(design)               # the lightening hole: inside its claims, no clashes
+assert report.ok and not report.notes      # a note would say the cut missed the solid
 files = api.export(design, ["step", "dxf", "bom"], "out/heel").files
 ```
 
@@ -323,7 +337,7 @@ A design argument is the id `resolve` returned.
 | `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** |
 | `get_job(job)`, `wait_job(job, seconds?)` | the same shape as the long tool itself: while it runs, `job` alone (`{job, op, design, args, state, started_at, finished_at, seconds}`; its `job` field is the id these take); once done, the tool's own result flat beside `job`; failed, `ok: false` with the failure |
 | `compare(a, b)`, `derive(design, patch)` | as the Python API |
-| `get_design(design, stage?)` | `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
+| `get_design(design, stage?)` | `{ok, failures, design, stage, report}`: the stage's document under `report`, for `stage` one of `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
 | `list_designs()` | the store's cards |
 | `gc(keep?, older_than_seconds?)` | `removed`; refuses to run without either argument |
 | `view(design)` | `url` of the viewer for the design (`?design=<id>`), `server` (its base URL) and `mode`: a `spiderpig view --serve-only` child process over the store, started on a free port on the first call and reused (stopped with the server); the page's first load bakes the design unless it was exported (`ok: false`, code `viewer_not_built`, when the package has no built viewer) |
