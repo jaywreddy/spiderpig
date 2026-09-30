@@ -1109,6 +1109,12 @@ def advise(design: Design) -> AdviceReport:
 
     t0 = time.time()
     rep = AdviceReport()
+
+    def done(rep: AdviceReport) -> AdviceReport:     # logged, never a stage of the handle
+        rep.seconds = round(time.time() - t0, 3)
+        _record(design, "advise", rep.seconds, rep.ok)
+        return rep
+
     cr = check(design)
     failing = cr if not cr.ok else None
     pr = None
@@ -1120,12 +1126,12 @@ def advise(design: Design) -> AdviceReport:
         rep.stage = f.stage if f is not None else None
         rep.recommendations = list(f.recommendations) if f is not None else []
         rep.notes = list(f.notes) if f is not None else []
-        return _finish(design, "advice", rep, t0, write=False)
+        return done(rep)
     misses = missed_targets(design)
     if not misses:
         rep.notes.append("every stage passes and no target check or plan can read is missed; "
                          "verify measures the rest (the walk, the build, the BOM)")
-        return _finish(design, "advice", rep, t0, write=False)
+        return done(rep)
     rep.stage = "target"
     scaled = [m for m in misses if m[0] in SCALED_METRICS]
     if scaled:
@@ -1149,7 +1155,7 @@ def advise(design: Design) -> AdviceReport:
         else:
             rep.notes.append(f"{path} {v:g} vs {t.describe()}: missed; no lever the engine "
                              f"can compute for it")
-    return _finish(design, "advice", rep, t0, write=False)
+    return done(rep)
 
 
 # ---------------------------------------------------------------------------

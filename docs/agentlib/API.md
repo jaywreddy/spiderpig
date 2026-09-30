@@ -225,8 +225,8 @@ already over a `max` fails `budget.cost_usd` before any build; `plan.warnings`
 near zero has the walk note on its stride and speed rows. `size.mass_g` at `quick` is
 the nominal model's total for what the design builds (one side or the robot) and its
 detail says what it is made of (links as pills at the sheet's density with the holes
-taken out, the servos, the plates, the printed parts; within about 1.3 % of the built
-mass on the default Klann robots, within 5 % on the Jansen quad); at `standard` the
+taken out, the servos, the plates, the printed parts; within about 1 % of the built
+mass on the default Klann robots, within 1 % on the Jansen quad and 6 % with the XL330 on plywood); at `standard` the
 measured row's detail lists the mass by group (links, drive, chassis, crank, frame,
 pins, pillars). A `size.stack_mm` row that fails on a plan that is proven the thinnest
 says so ("proven the thinnest for jansen's quad module on 3 mm layers") and what could

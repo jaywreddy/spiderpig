@@ -365,14 +365,16 @@ def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
 # pivot; half the centre plates), which follow the sheet's density, and the printed and
 # purchased rest (the crank by crankpin, pillars by pivot, pins by pin joint, the ties,
 # screws and horn). The constants are fitted to the fabricated default Klann robots on
-# 3 mm acrylic (single 289.5 g, double 357.2, decker 340.8, quad 460.6: within 1.3 %).
+# 3 mm acrylic (single 289.5 g, double 357.2, decker 340.8, quad 460.6: within 1 %).
 _ACRYLIC = 1.19                      # g/cm^3 the plate constants were fitted at
 _FRAME_BASE_G, _FRAME_PER_PIVOT_G = 6.5, 5.2      # the frame plates
 _CENTRE_PLATES_G = 14.7              # half the centre plates (the robot's chassis)
 _CHASSIS_REST_G = 23.6               # ties, inserts, rear screws: printed and steel
 _DRIVE_EXTRA_G = 2.7                 # the horn's screws and hub
-_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.5, 3.2        # the printed crankshaft
-_PILLAR_PER_PIVOT_G, _PIN_PER_JOINT_G = 1.0, 0.53  # printed pivots
+_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.3, 3.5        # the printed crankshaft, per distinct crankpin
+_PILLAR_PER_PIVOT_G = 0.7            # a printed pillar, plus per leg (a taller stack)
+_PILLAR_PER_PIVOT_LEG_G = 0.22
+_PIN_PER_JOINT_G = 0.53              # a printed pin
 
 
 def _pin_joints(lk) -> int:
@@ -395,7 +397,7 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
     ``total``, the cycle-mean centre of mass ``com`` (side coordinates, z = 0) and a
     ``note`` on how it was made. ``robot``: both sides and the chassis (what the walk
     model always is), else one side alone. On the default Klann robots this is within
-    1.3 % of the fabricated mass (:func:`body_masses`); a build measures it."""
+    1 % of the fabricated mass (:func:`body_masses`); a build measures it."""
     lk = config.lk
     pitch = config.pitch
     p = config.params
@@ -427,8 +429,11 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
     c_acc += servo_g * (spec.axis_offset * u)
     scale = dens / _ACRYLIC
     plates = (_FRAME_BASE_G + _FRAME_PER_PIVOT_G * len(pivots)) * scale
-    printed = (_DRIVE_EXTRA_G + _CRANK_BASE_G + _CRANK_PER_PIN_G * len(legs)
-               + _PILLAR_PER_PIVOT_G * len(pivots) + _PIN_PER_JOINT_G * _pin_joints(lk) * len(legs))
+    # crankpins at distinct positions (a mirrored pair shares one; a decker's are 90° apart)
+    crankpins = {tuple(np.round(leg.joints[p][0], 3)) for leg in legs for p in lk.crank[1:]}
+    printed = (_DRIVE_EXTRA_G + _CRANK_BASE_G + _CRANK_PER_PIN_G * len(crankpins)
+               + (_PILLAR_PER_PIVOT_G + _PILLAR_PER_PIVOT_LEG_G * len(legs)) * len(pivots)
+               + _PIN_PER_JOINT_G * _pin_joints(lk) * len(legs))
     if robot:
         plates += _CENTRE_PLATES_G * scale
         printed += _CHASSIS_REST_G
@@ -441,7 +446,7 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
         "com": np.array([c[0], c[1], 0.0]),
         "note": (f"links as {dens:g} g/cm3 pills of the link radius on {pitch:g} mm layers "
                  f"(holes taken out); the plates and the printed parts from fitted "
-                 f"constants (within about 1.3 % on the default robots); a build measures it"),
+                 f"constants (within about 1 % on the default robots); a build measures it"),
     }
 
 
