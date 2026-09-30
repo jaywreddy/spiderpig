@@ -43,7 +43,9 @@ from __future__ import annotations
 
 import itertools
 import logging
+import math
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from functools import cached_property
@@ -541,15 +543,17 @@ class Route:
 
 @dataclass(frozen=True)
 class RouteConflict:
-    """No route: what happens in layers ``lo..hi`` (their occupants and links) explains it.
-    ``bound``: routes exist, but none cheaper than the bound; ``rules``: routes pass the
-    occupants, but none the router's own rules (``why``) allow."""
+    """No route: what happens in layers ``lo..hi`` (their occupants and links) explains it,
+    or just the links in ``links`` when the router can name them. ``bound``: routes exist,
+    but none cheaper than the bound; ``rules``: routes pass the occupants, but none the
+    router's own rules (``why``) allow."""
 
     lo: int
     hi: int
     why: str = ""
     bound: bool = False
     rules: bool = False
+    links: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -597,8 +601,12 @@ class StackSpec:
 
     Search effort, in nodes: ``quick_nodes`` per stack size while looking for
     the first plan, ``max_nodes`` per size to rule out a thinner one (or find
-    a cheaper route), ``max_total_nodes`` in all. A plan found is always
-    valid; only the proof that it is the thinnest depends on them.
+    a cheaper route), ``max_total_nodes`` in all; and ``max_seconds`` of
+    wall clock for the whole search, the safety net (a node's cost grows
+    with the stack size). A plan found is always valid; only the proof that
+    it is the thinnest depends on them: when they run out, a plan found is
+    returned unproven (``StackPlan.optimal`` false, ``proof`` naming the
+    sizes left open) and none found raises :class:`PlanError` with the tally.
     ``drop_bearing`` lets the crank lose its bottom bearing as the last resort.
     """
 
@@ -609,7 +617,31 @@ class StackSpec:
     quick_nodes: int = 1500
     max_nodes: int = 20000
     max_total_nodes: int = 60000
+    max_seconds: float = 60.0
     drop_bearing: bool = False
+
+
+class Deadline:
+    """A wall-clock deadline ``seconds`` from its creation, shared by nested planner runs
+    (a design's plan, the leg hint's, the checks of a recommendation): each takes what is
+    left of it. ``math.inf``: none."""
+
+    def __init__(self, seconds: float = math.inf):
+        self.seconds = seconds
+        self.start = time.monotonic()
+        self.at = self.start + seconds
+
+    @property
+    def remaining(self) -> float:
+        return max(self.at - time.monotonic(), 0.0)
+
+    @property
+    def expired(self) -> bool:
+        return time.monotonic() >= self.at
+
+    @property
+    def elapsed(self) -> float:
+        return time.monotonic() - self.start
 
 
 @dataclass
@@ -764,33 +796,34 @@ class StackProblem:
 
     def solve(self) -> StackPlan:
         """The thinnest plan, with the cheapest route in it; :class:`PlanError` (saying what
-        blocked it) when there is none up to ``spec.max_top``.
+        blocked it, and how far each stack size got) when there is none up to
+        ``spec.max_top``, or none was found before the effort ran out.
 
         First the thinnest stack a short search finds a plan in, then, with the
         full effort, the thinner sizes that short search didn't rule out, then a
-        cheaper route in the thinnest size found.
+        cheaper route in the thinnest size found. The node budgets and the
+        deadline (``spec.max_seconds``) bound every part of it: the search
+        never runs longer than the deadline, whatever a node costs.
         """
         spec = self.spec
         self.blocked.clear()
         self._blocked_by.clear()
         self.spent = 0
+        self.deadline = Deadline(spec.max_seconds)
         tried: dict[int, _Search] = {}
-        found = None
-        for top in range(spec.min_top, spec.max_top + 1):
-            s = tried[top] = _Search(self, top)
-            self._run(s, spec.quick_nodes)
-            if s.best is None and self.hint:
-                self._run(s, spec.quick_nodes, legs=True)
-            if s.best is not None:
-                found = s
-                break
-            if self.spent >= spec.max_total_nodes:
-                break
+        found = self._first(tried)
         if found is None:
-            raise PlanError(f"{self.topo.name}: no layer plan found with up to {top + 1} layers "
-                            f"after {self.spent} search steps", self.blockers())
+            last = max(tried, default=spec.min_top - 1)
+            ran_out = f"; {self.stopped}" if self.stopped else ""
+            raise PlanError(f"{self.topo.name}: no layer plan found with up to {last + 1} layers "
+                            f"after {self.spent} search steps in {self.deadline.elapsed:.0f} s"
+                            f"{ran_out}", self.blockers(), [self.sizes(tried)])
         for top in range(found.top - 1, spec.min_top - 1, -1):   # just thinner first
-            s = tried[top]
+            if self.exhausted:
+                break
+            s = tried.get(top)
+            if s is None:
+                s = tried[top] = _Search(self, top)
             self._run(s, spec.max_nodes // 2)
             if s.best is None and self.hint:
                 self._run(s, spec.max_nodes // 2, legs=True)
@@ -798,16 +831,17 @@ class StackProblem:
                 found = s
         self._run(found, spec.max_nodes)          # a cheaper route, if not ruled out yet
         plan = found.best
-        below = [tried[t] for t in range(spec.min_top, plan.top)]
-        open_ = [t.top + 1 for t in below if not t.done]
+        below = [tried[t] for t in range(spec.min_top, plan.top) if t in tried]
+        open_ = [t + 1 for t in range(spec.min_top, plan.top)
+                 if t not in tried or not tried[t].done]
         plan.optimal = found.done and not open_
+        why = self.stopped or "the search stopped at its budget"
         here = (f"{plan.top + 1} layers searched to the end for the cheapest crank route "
                 f"({found.nodes} nodes)" if found.done else
-                f"a cheaper crank route in {plan.top + 1} layers not ruled out (the search "
-                f"stopped at its budget, {found.nodes} nodes)")
+                f"a cheaper crank route in {plan.top + 1} layers not ruled out ({why}, "
+                f"{found.nodes} nodes)")
         if open_:
-            proof = (f"{', '.join(map(str, open_))} layers not ruled out (the search stopped at "
-                     f"its budget)")
+            proof = f"{', '.join(map(str, open_))} layers not ruled out ({why})"
         else:
             proof = (f"no plan in {plan.top} layers or fewer "
                      f"({sum(t.nodes for t in below)} nodes)")
@@ -819,12 +853,100 @@ class StackProblem:
         plan.proof = f"{proof}; {here}"
         return plan
 
+    def _quick(self, tried: dict[int, _Search], top: int) -> _Search:
+        """A short search of one stack size (and one a leg at a time, with a hint)."""
+        s = tried[top] = _Search(self, top)
+        self._run(s, self.spec.quick_nodes)
+        if s.best is None and self.hint:
+            self._run(s, self.spec.quick_nodes, legs=True)
+        return s
+
+    def _first(self, tried: dict[int, _Search]) -> _Search | None:
+        """The thinnest stack size a quick search finds a plan in, or None.
+
+        Every size in turn while they are ruled out; once one exhausts its
+        quick budget instead, in doubling steps (a plan is then likely far
+        thicker, and every size in between costs its whole budget), then, a
+        plan found, back down the skipped sizes while they keep one. Sizes
+        skipped stay open for the proof. With none found up to
+        ``spec.max_top``, the skipped sizes in turn, while the effort lasts.
+        """
+        spec = self.spec
+        top, jump, found = spec.min_top, 0, None
+        while not self.exhausted:
+            s = self._quick(tried, top)
+            if s.best is not None:
+                found = s
+                break
+            if top >= spec.max_top:
+                break
+            if s.done:
+                top, jump = top + 1, 0
+            else:
+                top, jump = min(top + (1 << jump), spec.max_top), jump + 1
+        if found is not None:
+            for top in range(found.top - 1, spec.min_top - 1, -1):
+                if top in tried or self.exhausted:
+                    break
+                s = self._quick(tried, top)
+                if s.best is None:
+                    break
+                found = s
+            return found
+        for top in range(spec.min_top, spec.max_top + 1):
+            if self.exhausted:
+                break
+            if top not in tried and self._quick(tried, top).best is not None:
+                return tried[top]
+        return None
+
+    @property
+    def exhausted(self) -> bool:
+        """The deadline or the total node budget ran out: no search starts or goes on."""
+        return self.deadline.expired or self.spent >= self.spec.max_total_nodes
+
+    @property
+    def stopped(self) -> str:
+        """Which of the two ran out, as a phrase (``""``: neither)."""
+        if self.deadline.expired:
+            return f"the {self.spec.max_seconds:g} s deadline ran out"
+        if self.spent >= self.spec.max_total_nodes:
+            return f"the {self.spec.max_total_nodes} search-step budget ran out"
+        return ""
+
+    def sizes(self, tried: Mapping[int, _Search]) -> str:
+        """How far each stack size got: ruled out, left open at its budget (with nodes and
+        seconds), or not tried."""
+        runs: list[tuple[str, list[int]]] = []
+        for top in range(self.spec.min_top, self.spec.max_top + 1):
+            s = tried.get(top)
+            state = ("not tried" if s is None else "found" if s.best is not None
+                     else "ruled out" if s.done else "left open at their budget")
+            if runs and runs[-1][0] == state:
+                runs[-1][1].append(top)
+            else:
+                runs.append((state, [top]))
+        out = []
+        for state, tops in runs:
+            layers = (f"{tops[0] + 1}-{tops[-1] + 1} layers" if len(tops) > 1 else
+                      f"{tops[0] + 1} layers")
+            if state == "not tried":
+                out.append(f"{layers} not tried")
+                continue
+            nodes = sorted(tried[t].nodes for t in tops)
+            secs = sum(tried[t].seconds for t in tops)
+            span = f"{nodes[0]}" if nodes[0] == nodes[-1] else f"{nodes[0]}-{nodes[-1]}"
+            each = " each" if len(tops) > 1 else ""
+            out.append(f"{layers} {state} ({span} nodes{each}, {secs:.0f} s in all)")
+        return "sizes: " + "; ".join(out)
+
     def _run(self, s: _Search, budget: int, legs: bool = False) -> None:
         budget = min(budget, self.spec.max_total_nodes - self.spent)
-        if s.done or budget <= 0:
+        if s.done or budget <= 0 or self.deadline.expired:
             return
-        before = s.nodes
-        s.run(budget, legs)
+        before, t0 = s.nodes, time.monotonic()
+        s.run(budget, legs, self.deadline)
+        s.seconds += time.monotonic() - t0
         self.spent += s.nodes - before
         log.debug("%s: %d layers, %d nodes%s, %s", self.topo.name, s.top + 1, s.nodes,
                   " (a leg at a time)" if legs else "",
@@ -866,6 +988,8 @@ class _Search:
         self.layers: dict[str, int] = {}
         self.trail: list[tuple] = []
         self.nodes = 0
+        self.seconds = 0.0                # wall clock spent in this size, over every run
+        self.deadline = Deadline()
         self.base: int | None = None      # the trail once the fixed claims are placed
         self.bound: int | None = None
         self.best: StackPlan | None = None
@@ -1021,21 +1145,27 @@ class _Search:
         return None
 
     def view(self, partial: bool) -> RouteView:
+        """What the router sees now; ``partial``: the layers still open to each unplaced
+        link too (the router then answers for the layering as a relaxation, and words a
+        dead end of its own rules once per what they see, not per node)."""
         open_ = None
-        if partial and self.bound is not None:
+        if partial:
             open_ = {n: self.dom[n] for n in self.links if n not in self.layers}
         return RouteView(Layout(self.layers, self.top, self.pitch), self.bmask, open_, self.bound)
 
     def explain(self, res: RouteConflict) -> frozenset[str]:
-        """The links behind a router's dead end: everything in the layers it spans."""
+        """The links behind a router's dead end: the ones it names, else everything in the
+        layers it spans."""
         if res.bound:
             return frozenset(self.layers)
+        self.prob._tally_why(self.router.group, self.describe(res))
+        if res.links:
+            return res.links
         out: set[str] = {n for n, k in self.layers.items() if res.lo <= k <= res.hi}
         for (k, _), deps in self.block.items():
             if res.lo <= k <= res.hi:
                 for d in deps:
                     out |= d
-        self.prob._tally_why(self.router.group, self.describe(res))
         return frozenset(out)
 
     def describe(self, res: RouteConflict) -> str:
@@ -1176,7 +1306,7 @@ class _Search:
         """Explore below the current layers; the conflict that explains why nothing (better)
         is there. Solutions go to :attr:`best`."""
         self.nodes += 1
-        if self.nodes > self.budget:
+        if self.nodes > self.budget or self.deadline.expired:
             raise _Budget
         free = [n for n in self.links if n not in self.layers]
         if not free:
@@ -1236,11 +1366,12 @@ class _Search:
             raise _Done
         return frozenset(self.layers)
 
-    def run(self, budget: int, legs: bool = False) -> bool:
-        """Search this stack size with ``budget`` more nodes (``legs``: a leg at a time, at
-        the hint's layers); True once it has been searched to the end."""
+    def run(self, budget: int, legs: bool = False, deadline: Deadline | None = None) -> bool:
+        """Search this stack size with ``budget`` more nodes, until ``deadline`` (``legs``: a
+        leg at a time, at the hint's layers); True once it has been searched to the end."""
         if self.done:
             return True
+        self.deadline = deadline or Deadline()
         if self.base is None:                        # the fixed claims, once
             self.base = 0
             for c in self.claims:
