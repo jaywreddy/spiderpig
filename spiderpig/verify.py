@@ -230,7 +230,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                            "crank point"))
     if design.kind == "walker":
         _push(rows, target_row(design, target_field("motion", "ground_clearance_mm"),
-                               cr.ground_clearance_mm, "static"))
+                               cr.ground_clearance_mm, "static",
+                               detail=(f"the body's lowest point is {cr.lowest_body_part}"
+                                       if cr.lowest_body_part else "")))
 
     # -- plan --------------------------------------------------------------------
     pr = api.plan(design)
@@ -243,6 +245,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
         rows.append(Row("plan.optimal", "plan", bool(pr.optimal), None, True, "proven", True,
                         pr.proof))
         _push(rows, target_row(design, target_field("size", "stack_mm"), pr.height_mm, "plan"))
+        if pr.warnings:      # informational: what the constructions warned about
+            rows.append(Row("plan.warnings", "plan", len(pr.warnings), None, True, "measured",
+                            False, "; ".join(pr.warnings[:4])))
 
     # -- walk --------------------------------------------------------------------
     wr = api.walk(design)
@@ -268,6 +273,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                            f"{br.n_parts} parts" if br.ok else "", "measured"))
     if not br.ok:
         return _done(design, rep, t0)
+    if br.warnings:      # informational: what the constructions warned about while building
+        rows.append(Row("build.warnings", "build", len(br.warnings), None, True, "measured",
+                        False, "; ".join(br.warnings[:4])))
     _push(rows, target_row(design, target_field("size", "mass_g"), br.mass_g, "build"))
     for axis, v in zip("xyz", br.envelope_mm, strict=True):
         _push(rows, target_row(design, target_field("size", f"envelope_{axis}_mm"), v, "build",
@@ -310,10 +318,15 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                                  filament=mech.meta.get("filament", "pla_filament"))
         unpriced = [r.key for r in bom.unpriced]
         unverified = [r.key for r in bom.purchased if not r.verified and not r.same_pack_as]
+        top = sorted((r for r in bom.purchased if r.cost_usd), key=lambda r: -r.cost_usd)[:4]
         _push(rows, target_row(design, target_field("budget", "cost_usd"), bom.cost_usd, "bom",
-                               detail=(f"{len(bom.purchased)} items; "
-                                       + (f"{len(unpriced)} unpriced; " if unpriced else "")
-                                       + f"{len(unverified)} unverified links")))
+                               detail=(f"{len(bom.purchased)} items"
+                                       + (f", the largest {'; '.join(_cost_item(r) for r in top)}"
+                                          if top else "")
+                                       + (f"; {len(unpriced)} unpriced, so the total is a "
+                                          f"lower bound ({', '.join(unpriced[:4])})"
+                                          if unpriced else "")
+                                       + f"; {len(unverified)} unverified links")))
         _push(rows, target_row(design, target_field("budget", "print_g"), bom.printed_g, "bom",
                                detail="at 100 % infill"))
     except KeyError as e:
@@ -327,6 +340,13 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     return _done(design, rep, t0)
 
 
+def _cost_item(r) -> str:
+    """``name x qty $cost (a pack of N)``: one BOM line for the cost row's detail."""
+    qty = f" x {r.qty:g}" if r.qty != 1 else ""
+    pack = f" (a pack of {r.pack_qty})" if r.pack_qty and r.pack_qty > r.qty else ""
+    return f"{r.name}{qty} ${r.cost_usd:.2f}{pack}"
+
+
 def _fail(rep: VerifyReport, problems: list[str], stage: str, code: str) -> None:
     if problems:
         rep.failures.append(Failure(stage, code, "; ".join(problems),
@@ -335,22 +355,29 @@ def _fail(rep: VerifyReport, problems: list[str], stage: str, code: str) -> None
 
 def _envelope_estimate(design: Design) -> list[Row]:
     """The envelope before a build: the joints' sweep over the cycle plus a frame arm's
-    half-width (x, y) and the robot's width from the mid-plane (z)."""
+    half-width (x, y), and across the sides (z) the robot's width from the mid-plane plus
+    what the plan places outside the outer frame plate (an axle's head or clip)."""
     import numpy as np
 
     from spiderpig.construction.robot import mid_plane
 
     side, cfg = design.side, design.config
-    pts = side.plan.topo.geometry.points
+    plan = side.plan
+    pts = plan.topo.geometry.points
     xy = np.concatenate([np.asarray(v, dtype=float) for v in pts.values()])
     r = max(cfg.params.link_radius, cfg.params.frame_radius)
     x, y = float(np.ptp(xy[:, 0])) + 2 * r, float(np.ptp(xy[:, 1])) + 2 * r
-    z_mid = mid_plane(side)
+    outside = max(0, -min((p.layer for p in plan.placed), default=0)) * plan.spec.pitch
+    z_mid = mid_plane(side) + outside
     z = 2 * z_mid if cfg.robot else z_mid
     rows = []
     for axis, v in zip("xyz", (x, y, z), strict=True):
-        _push(rows, target_row(design, target_field("size", f"envelope_{axis}_mm"), v, "sweep",
-                               "estimated", "joints' sweep + plates; measured after a build"))
+        _push(rows, target_row(
+            design, target_field("size", f"envelope_{axis}_mm"), v, "sweep", "estimated",
+            "the joints' sweep over the cycle + the plates; a build measures one crank angle"
+            if axis != "z" else
+            f"the stacks + the chassis + {outside:g} mm of axle heads outside each outer "
+            "plate; measured after a build"))
     return rows
 
 

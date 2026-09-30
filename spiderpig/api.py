@@ -35,6 +35,7 @@ from __future__ import annotations
 import logging
 import math
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
@@ -124,6 +125,7 @@ class CheckReport(Report):
     clearances: list[dict] = field(default_factory=list)
     crank_facts: dict | None = None
     ground_clearance_mm: float | None = None
+    lowest_body_part: str = ""      # which body shape sets the ground clearance
     seconds: float = 0.0
 
 
@@ -150,6 +152,7 @@ class PlanReport(Report):
     ground_clearance_mm: float | None = None
     table: str = ""
     reused: str | None = None
+    warnings: list[str] = field(default_factory=list)   # the constructions' (a strained snap)
     seconds: float = 0.0
 
 
@@ -169,6 +172,7 @@ class WalkReport(Report):
     feet_z_planned: bool = False
     servo: dict = field(default_factory=dict)
     rows: list = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)      # why a stride reads zero
     seconds: float = 0.0
 
 
@@ -186,6 +190,7 @@ class BuildReport(Report):
     envelope_mm: tuple[float, float, float] | None = None
     meta: dict = field(default_factory=dict)
     parts: list[dict] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)   # the constructions' while building
     seconds: float = 0.0
 
 
@@ -513,6 +518,11 @@ def describe(key: str) -> dict:
     }
     if lk.kind == "walker":
         card["foot_path"] = foot_path(lk, {})
+        card["sensitivity"] = sensitivity(lk)
+        for m, doc in card["modules"].items():
+            s = module_stride(key, m)
+            doc["stride_mm"] = s
+            doc["walks"] = s is not None and s >= NO_TRAVEL_MM
     else:
         try:
             card["output_check"] = _output_dict(lk.output_check())
@@ -540,6 +550,37 @@ def foot_path(lk: linkage.Linkage, params: dict, n: int = 720) -> dict:
         "height_mm": top - y0,
         "width_mm": float(np.ptp(xs)),
     }
+
+
+SENSITIVITY_STEP = 0.10     # a length parameter is moved by +10 %
+SENSITIVITY_DEG = 5.0       # an angle by +5°
+
+
+def sensitivity(lk: linkage.Linkage) -> dict:
+    """What each parameter does to one foot's path, from its default: the percent change
+    of ``lift_mm``, ``stance_stride_mm``, ``height_mm`` and ``width_mm`` for +10 % of a
+    length (``+5°`` of an angle), so a designer knows which raise the leg, lengthen the
+    stride or grow the envelope before trying. ``null`` where the loops no longer close."""
+    base = foot_path(lk, {})
+    keys = ("lift_mm", "stance_stride_mm", "height_mm", "width_mm")
+    out = {}
+    for name, default in lk.params.items():
+        angle = name in lk.angles
+        value = (float(default) + SENSITIVITY_DEG if angle
+                 else float(default) * (1 + SENSITIVITY_STEP))
+        try:
+            with np.errstate(invalid="ignore", divide="ignore"):   # a loop that can't close
+                fp = foot_path(lk, {name: value})
+        except (ValueError, linkage.AssemblyError):
+            out[name] = None
+            continue
+        if not all(math.isfinite(fp[k]) for k in keys):
+            out[name] = None
+            continue
+        out[name] = {"step": f"+{SENSITIVITY_DEG:g}°" if angle else f"+{SENSITIVITY_STEP:.0%}",
+                     **{k: (round(100.0 * (fp[k] - base[k]) / base[k], 1) if base[k] else None)
+                        for k in keys}}
+    return out
 
 
 def _step_dict(s) -> dict:
@@ -675,6 +716,8 @@ def check(design: Design, force: bool = False) -> CheckReport:
             "allow_mm": f.allow if math.isfinite(f.allow) else None,
         }
     rep.ground_clearance_mm = ground_clearance(tmpl, ctx)
+    under = ctx.interfaces.get("underside")
+    rep.lowest_body_part = under.lowest_part if under is not None else ""
     try:
         static_stage(tmpl, problem, cfg)
     except ClearanceError as e:
@@ -712,11 +755,41 @@ def plan(design: Design, force: bool = False) -> PlanReport:
         rep.failures = list(cr.failures)
         return _finish(design, "plan", rep, t0)
     try:
-        design.side = design_side(_template(design), design.config)
+        with capture_warnings() as warned:
+            design.side = design_side(_template(design), design.config)
     except (PlanError, ConstructionError) as e:
         rep.failures.append(Failure.from_exception(e, lk=design.lk))
         return _finish(design, "plan", rep, t0)
-    return _finish(design, "plan", _plan_report(design.side, rep), t0)
+    rep = _plan_report(design.side, rep)
+    rep.warnings = list(warned)
+    return _finish(design, "plan", rep, t0)
+
+
+WARNING_LOGGERS = ("spiderpig.construction", "spiderpig.servos", "spiderpig.hardware")
+
+
+@contextmanager
+def capture_warnings(names: tuple[str, ...] = WARNING_LOGGERS):
+    """Collect what the constructions warn about while a stage runs (a printed snap that
+    overstrains, a servo model that can't be had), deduplicated in order, so a report
+    carries them instead of only the server's stderr."""
+    seen: dict[str, None] = {}
+
+    class _Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.setdefault(record.getMessage(), None)
+
+    handler = _Collect(level=logging.WARNING)
+    loggers = [logging.getLogger(n) for n in names]
+    for lg in loggers:
+        lg.addHandler(handler)
+    out: list[str] = []
+    try:
+        yield out
+    finally:
+        for lg in loggers:
+            lg.removeHandler(handler)
+        out += list(seen)
 
 
 def _plan_report(d: SideDesign, rep: PlanReport | None = None) -> PlanReport:
@@ -804,12 +877,16 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
 
 
 def explain(design: Design) -> str:
-    """Today's ``explain`` text: each stage's verdict on one side of the design."""
+    """Each stage's verdict on one side of the design, in prose (:func:`explain.explain_config`
+    with the design's full config: servo, sheet, constructions and fit). The plan is the
+    design's own (:func:`plan`: the handle's, the store's re-made, or solved once); a
+    recorded failure is printed, not searched for again."""
     from spiderpig import explain as explain_module
 
-    cfg = design.config
-    return explain_module.explain(cfg.linkage, cfg.module, dict(cfg.proportions) or None,
-                                  cfg.phases)
+    pr = plan(design)
+    failure = None if pr.ok else "\n  ".join(f.message for f in pr.failures[:1]) or "failed"
+    return explain_module.explain_config(design.config, side=design.side if pr.ok else None,
+                                         plan_failure=failure)
 
 
 def recommend(design: Design) -> list[Recommendation]:
@@ -854,7 +931,61 @@ def walk(design: Design, force: bool = False) -> WalkReport:
     from spiderpig import verify as _verify
 
     rep.rows = _verify.walk_rows(design, rep.metrics)
+    if (note := no_travel_note(cfg, rep.metrics)) is not None:
+        rep.notes.append(note)
+        for r in rep.rows:
+            if r.requirement in ("motion.stride_mm", "motion.speed_mm_s"):
+                r.detail = note
     return _finish(design, "walk", rep, t0)
+
+
+NO_TRAVEL_MM = 1.0      # a stride under this is no walk
+
+
+def no_travel_note(cfg: BuildConfig, metrics: dict) -> str | None:
+    """Why a walker's stride is (near) zero, when it is: the module's feet cancel each
+    other in the quasi-static model, so the body stands and bobs (a mirrored pair at one
+    phase, or two legs one way with nothing to take turns with), and which module of the
+    linkage walks (:func:`describe` gives every module's stride)."""
+    stride = float(metrics.get("stride_mm") or 0.0)
+    if stride >= NO_TRAVEL_MM:
+        return None
+    lk = linkage.get(cfg.linkage)
+    walking = {m: s for m in lk.leg_modules if m != cfg.module
+               and (s := module_stride(cfg.linkage, m)) is not None and s >= NO_TRAVEL_MM}
+    duty = metrics.get("duty") or []
+    stands = all(float(d) >= 0.999 for d in duty) if duty else False
+    phases = ([round(math.degrees(p), 1) for p in cfg.phases] if cfg.phases
+              else "its default phases")
+    others = ", ".join(f"{m} ({s:.0f} mm/rev)" for m, s in walking.items())
+    return (f"no net travel: {cfg.linkage}'s {cfg.module} module at {phases} walks "
+            f"{stride:.2g} mm per revolution in the quasi-static model"
+            + (": every foot stays on the ground (duty 1.0) and the feet's pushes cancel, so "
+               "the body stands and bobs" if stands else
+               ": the feet's pushes cancel over the cycle")
+            + (f"; of this linkage's modules, {others} walk" if walking
+               else "; no other module of this linkage walks at its default phases")
+            + "; describe(linkage) lists each module's stride_mm")
+
+
+_MODULE_STRIDES: dict[tuple[str, str], float | None] = {}
+
+
+def module_stride(key: str, module: str) -> float | None:
+    """The walk model's stride (mm per revolution, the two-sided robot) of a linkage's
+    module at its default phases and proportions, the feet at a nominal spacing
+    (:func:`walk.foot_z_guess`: no layer plan is searched for a card); ``None`` when the
+    model can't use it."""
+    k = (key, module)
+    if k not in _MODULE_STRIDES:
+        try:
+            cfg = BuildConfig(linkage=key, module=module)
+            payload = walk_model.api_payload(cfg, feet_z=walk_model.foot_z_guess(cfg))
+            m = payload["metrics"] if payload["valid"] else None
+            _MODULE_STRIDES[k] = None if m is None else round(float(m["stride_mm"]), 2)
+        except (ValueError, KeyError, ParamError):
+            _MODULE_STRIDES[k] = None
+    return _MODULE_STRIDES[k]
 
 
 # ---------------------------------------------------------------------------
@@ -880,11 +1011,12 @@ def build(design: Design, t: float = 1.0, force: bool = False) -> BuildReport:
         rep = BuildReport(failures=list(pr.failures), t=t)
         return _finish(design, "build", rep, t0)
     try:
-        mech = fabricate_at(design, t)
+        with capture_warnings() as warned:
+            mech = fabricate_at(design, t)
     except ConstructionError as e:
         rep = BuildReport(failures=[Failure.from_exception(e, stage="fabricate")], t=t)
         return _finish(design, "build", rep, t0)
-    return attach_build(design, mech, t, t0)
+    return attach_build(design, mech, t, t0, warnings=warned)
 
 
 def fabricate_at(design: Design, t: float):
@@ -919,11 +1051,12 @@ def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:
 
 
 def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
-                 cached: bool = False) -> BuildReport:
+                 cached: bool = False, warnings: list[str] | None = None) -> BuildReport:
     """Adopt a fabricated mechanism as the design's build (what :func:`build` does after
     fabricating; a store loading part files, or a test holding a fabricated robot, uses it
     directly). Needs the plan (runs it if it hasn't). ``cached``: the parts came from the
-    store, so they are logged as such and not written again."""
+    store, so they are logged as such and not written again. ``warnings``: what the
+    constructions warned about while fabricating (:func:`capture_warnings`)."""
     t0 = time.time() if t0 is None else t0
     pr = plan(design)
     if not pr.ok:
@@ -965,6 +1098,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         envelope_mm=tuple(float(v) for v in (hi - lo)) if parts else None,
         meta=jsonable({k: v for k, v in mech.meta.items() if k != "fastened"}),
         parts=[p.to_dict() for p in parts.values()],
+        warnings=list(warnings or []),
     )
     return _finish(design, "build", rep, t0, cached=cached)
 
@@ -1132,10 +1266,10 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     if out_dir is None:
         out_dir = design.store.exports_dir(design.id) if design.store else Path("build")
     out = Path(out_dir)
-    if not force:
-        prior = _cached(design, "export", ExportReport, formats=formats,
-                        out_dir=str(out.resolve()))
-        if prior is not None and prior.ok and all(Path(f).is_file() for f in prior.files):
+    if not force:      # a prior export of these formats (or more) into this folder
+        prior = _cached(design, "export", ExportReport, out_dir=str(out.resolve()))
+        if (prior is not None and prior.ok and set(formats) <= set(prior.formats)
+                and all(Path(f).is_file() for f in prior.files)):
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
     if design.mech is None:
