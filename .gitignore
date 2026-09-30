@@ -2,6 +2,7 @@
 !viewer/package.json
 !viewer/package-lock.json
 !viewer/tsconfig.json
+!.claude/settings.json
 
 *.scad
 *.stl
