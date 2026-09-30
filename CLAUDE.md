@@ -111,7 +111,7 @@ meshes) ≈ 6.6 s.
 
 Historical: the symbolic solve used to run per leg per call (per frame,
 before `19e020e`), and substituted expressions grew to ~34k ops. The
-straight-line program of each linkage (`linkage.py`) is compiled once per
+straight-line program of each linkage (`linkage/engine.py`) is compiled once per
 process; a leg's phase is a time shift. Don't reintroduce per-leg or
 per-frame solves.
 
@@ -134,7 +134,7 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 
 | file | role |
 |---|---|
-| `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). Registry: `get` / `available(kind)`. |
+| `linkage/` | the symbolic side, one package re-exporting everything. `engine.py`: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), the registry (`get` / `available(kind)`), `LegSolution` (mirror = reflect x at crank angle π − t), `scale_params`. `checks.py`: the stage checks (`check_steps`: every loop's margin and transmission angle; `check_output`: a mechanism's output against its promises). `assembly.py`: the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`), `build_module_template(module, phases, params, linkage)` and `feet_of`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). |
 | `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
 | `explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error and what would clear it) |
 | `recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), or thinner `Params` parts within every construction's `dims()` |
