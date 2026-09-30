@@ -160,7 +160,8 @@ class OutputCheck:
 
     def describe(self) -> str:
         o = self.output
-        out = [f"{o.name} ({o.motion}) covers {self.extent_mm[0]:.2f} x {self.extent_mm[1]:.2f} mm"]
+        out = [f"{o.name} ({o.motion}) covers {self.extent_mm[0]:.2f} mm in x by "
+               f"{self.extent_mm[1]:.2f} mm in y (up)"]
         if self.stroke_mm is not None:
             out.append(f"stroke {self.stroke_mm:.2f} mm")
         if self.straightness_mm is not None:

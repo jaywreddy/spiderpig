@@ -296,20 +296,24 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows.append(Row("plan.verified", "verify_plan", len(bad), "0", not bad, "proven", True,
                     "; ".join(bad[:3]) or "re-checked on 2880 fresh samples"))
     _fail(rep, bad, "plan", "plan_verification_failed")
-    for t in CONTRACT_TS[level]:
-        problems = check_side(side, tmpl.freeze_at(t))
-        rows.append(Row(f"contract@t={t:g}", "check_side", len(problems), "0", not problems,
-                        "proven", True, "; ".join(problems[:3])))
-        _fail(rep, problems, "contract", "part_outside_claim")
-    for t in CLASH_TS[level]:
-        m = mech if t == design.build_t else api.fabricate_at(design, t)
-        cl, solids = clashes(m), bad_solids(m)
-        rows.append(Row(f"clash@t={t:g}", "clashes", len(cl), "0", not cl, "measured", True,
-                        "; ".join(f"{c['a']} x {c['b']} {c['mm3']} mm^3" for c in cl[:3])))
-        rows.append(Row(f"solids@t={t:g}", "bad_solids", len(solids), "0", not solids,
-                        "measured", True, "; ".join(s["part"] for s in solids[:3])))
-        _fail(rep, [f"{c['a']} x {c['b']}" for c in cl], "clash", "parts_clash")
-        _fail(rep, [s["part"] for s in solids], "clash", "bad_solid")
+    # the parts are realized again at every other crank angle: what the constructions
+    # warn about then is the build's (already on build.warnings), not a terminal's
+    with api.capture_warnings():
+        for t in CONTRACT_TS[level]:
+            problems = check_side(side, tmpl.freeze_at(t))
+            rows.append(Row(f"contract@t={t:g}", "check_side", len(problems), "0",
+                            not problems, "proven", True, "; ".join(problems[:3])))
+            _fail(rep, problems, "contract", "part_outside_claim")
+        for t in CLASH_TS[level]:
+            m = mech if t == design.build_t else api.fabricate_at(design, t)
+            cl, solids = clashes(m), bad_solids(m)
+            rows.append(Row(f"clash@t={t:g}", "clashes", len(cl), "0", not cl, "measured",
+                            True, "; ".join(f"{c['a']} x {c['b']} {c['mm3']} mm^3"
+                                            for c in cl[:3])))
+            rows.append(Row(f"solids@t={t:g}", "bad_solids", len(solids), "0", not solids,
+                            "measured", True, "; ".join(s["part"] for s in solids[:3])))
+            _fail(rep, [f"{c['a']} x {c['b']}" for c in cl], "clash", "parts_clash")
+            _fail(rep, [s["part"] for s in solids], "clash", "bad_solid")
 
     # -- layout, bom -------------------------------------------------------------
     size = tuple(design.spec.fit.sheet_size_mm or sheet_size(cfg.sheet))
@@ -451,17 +455,32 @@ def cost_row(design: Design, bom) -> Row | None:
     return row
 
 
+GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")   # anchored in the plates with CA glue
+GLUED_PINS = ("bearing", "bushing")                         # an insert glued into each link
+FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws, the pivots' hardware, rod and "
+                    "clips are counted after a build (verify standard)")
+
+
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog
     before any build: the servos (one per side), a spool of filament (the crank is
-    printed), one sheet, and for the robot the centre plates' cement and the frame ties'
-    inserts. ``(total, priced lines, unpriced names)``: a lower bound on the BOM's total;
-    the pivots' hardware, the screws, rod and clips are counted from the built parts."""
+    printed), one sheet, for the robot the centre plates' cement and the frame ties'
+    inserts, and what the constructions buy whatever the parts' sizes: a bottle of CA
+    glue when a pillar is anchored in the plates or an insert glued into its links (every
+    construction but ``bolt``) or the robot's tie spigots are glued, and the printed
+    crank's crankpin nuts (a pack). ``(total, priced lines, unpriced names)``: a lower
+    bound on the BOM's total; :data:`FLOOR_LEAVES_OUT` says what a build adds."""
+    from spiderpig.construction.crank import NUT_KEY
+
     cfg = design.config
     sides = 2 if cfg.robot else 1
     lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1), (cfg.sheet, 1)]
     if cfg.robot:
         lines += [(adhesive(cfg.sheet), 1), ("m3_heat_set_insert", 4)]
+    if cfg.robot or cfg.pillar in GLUED_PILLARS or cfg.pin in GLUED_PINS:
+        lines.append(("ca_glue", 1))
+    if cfg.crank == "printed":
+        lines.append((NUT_KEY, 1))
     total, priced, unpriced = 0.0, [], []
     for key, qty in lines:
         item = catalog_item(key)
@@ -489,8 +508,7 @@ def _cost_floor_rows(design: Design) -> list[Row]:
     t: Target | None = design.spec.budget.get("cost_usd")
     detail = ("before a build, from the catalog: " + "; ".join(priced)
               + (f"; unpriced: {', '.join(unpriced)}" if unpriced else "")
-              + "; the pivots' hardware, screws, rod and clips are counted after a build "
-                "(verify standard)")
+              + "; " + FLOOR_LEAVES_OUT)
     ceiling = None if t is None else (t.max if t.max is not None else
                                       (t.value + (t.tol if t.tol is not None
                                                   else abs(t.value) * 0.05)
@@ -549,12 +567,17 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
     except Exception as e:  # noqa: BLE001 - MuJoCo's own errors are not ours to classify
         rep.failures.append(Failure("sim", "sim_failed", str(e)))
         return [Row("sim.run", "sim", "failed", None, False, "measured", True, str(e))]
+    # the sim's own rows (``sim.*``): the walk model's rows keep the spec's names, and a
+    # report never carries two rows of one name
+    speed = target_row(design, target_field("motion", "speed_mm_s"), m["speed"], "sim",
+                       "measured", f"{SIM_SECONDS:g} s at the drives' full speed; the walk "
+                       "model's motion.speed_mm_s row is the spec's", hard=False)
+    stride = target_row(design, target_field("motion", "stride_mm"), m["stride"], "sim",
+                        "measured", "forward travel per crank revolution in the sim",
+                        hard=False)
     rows = [
-        target_row(design, target_field("motion", "speed_mm_s"), m["speed"], "sim", "measured",
-                   f"{SIM_SECONDS:g} s at the drives' full speed; the walk model's row above "
-                   "is the spec's", hard=False),
-        target_row(design, target_field("motion", "stride_mm"), m["stride"], "sim", "measured",
-                   "forward travel per crank revolution in the sim", hard=False),
+        replace(speed, requirement="sim.speed_mm_s"),
+        replace(stride, requirement="sim.stride_mm"),
         Row("sim.stays_up", "sim", not m["fell"], None, not m["fell"], "measured", True,
             f"max tilt {m['max_tilt']:.1f} deg"),
         Row("sim.torque", "sim", m["torque_peak"], f"<= {m['torque_limit']:g}",

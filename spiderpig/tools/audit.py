@@ -1,7 +1,8 @@
 """Fabrication audit: can the robot be built, and does it go together?
 
 For each module (single, double, decker, quad) of one linkage (``--linkage``,
-Klann by default), independent of the unit tests:
+Klann by default; a mechanism audits as its one module, one side), independent
+of the unit tests:
 
 1. **plan**     — :func:`stack.verify_plan` re-checks one side's layer plan on
    a fresh, denser sampling of the whole crank cycle.
@@ -23,6 +24,7 @@ Usage::
     spiderpig audit                       # all modules (mise run audit)
     spiderpig audit --modules single --out build/audit
     spiderpig audit --linkage jansen --modules single,double
+    spiderpig audit --linkage parallelogram_lift      # a mechanism: one side
 """
 
 from __future__ import annotations
@@ -129,7 +131,8 @@ def markdown(report: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--linkage", choices=linkage.available("walker"), default=linkage.DEFAULT)
+    ap.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT,
+                    help="the linkage (default klann); a mechanism audits as one side")
     ap.add_argument("--modules", default=None,
                     help="comma-separated leg modules (default: all of the linkage's)")
     ap.add_argument("--ts-contract", default="0,1.6,3.2,4.8",
@@ -141,8 +144,8 @@ def main(argv=None) -> int:
 
     modules = (args.modules.split(",") if args.modules
                else list(linkage.get(args.linkage).leg_modules))
-    try:
-        configs = [config_from_args(args, module=m) for m in modules]
+    try:        # robot=None: a walker's robot, a mechanism's one side
+        configs = [config_from_args(args, module=m, robot=None) for m in modules]
     except ParamError as e:
         ap.error(str(e))
     base = configs[0]

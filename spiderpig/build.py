@@ -64,8 +64,8 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--list", action="store_true",
                    help="list modules, servos, constructions and sheet stock")
     args = p.parse_args(argv)
-    try:
-        args.config = config_from_args(args, robot=not args.side_only)
+    try:            # robot=None: the linkage's kind decides (a mechanism is one side)
+        args.config = config_from_args(args, robot=False if args.side_only else None)
     except ParamError as e:
         p.error(str(e))
     args.name = args.name or args.config.linkage
@@ -169,7 +169,7 @@ def main(argv=None) -> int:
         print(f"design: {design_note}")
     design = design_side(tmpl, config)
     plan = design.plan
-    print(f"{args.module}: layer plan of one side, {plan.top + 1} layers of "
+    print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
           f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
     mech = fabricate(tmpl, config, 1.0)
@@ -201,7 +201,7 @@ def main(argv=None) -> int:
               f"{n_laser} laser-cut parts ({len(groups['laser'])} different) to {out / 'laser'}")
         mech.bom_extras.append(BomLine(config.sheet, len(sheets), "laser-cut parts"))
 
-    title = (f"{args.module} {'robot' if config.robot else 'side'}, {config.servo}, "
+    title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
              f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:

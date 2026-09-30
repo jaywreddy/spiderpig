@@ -136,7 +136,8 @@ A side's feet must take turns on the ground for the quasi-static model to walk: 
 most linkages only `quad` does, and a `double` or `decker` stands on all its feet and
 bobs (`walk` says so, with `stride_mm` near 0 and a note). The Strider's `double` is a
 coupled pair at 0° and 180° and walks: the four-legged walker of the catalog. Every
-linkage's card (`describe`) carries each module's `stride_mm` and `walks`, and a
+linkage's card (`describe`) carries each module's `stride_mm` and `walks` (a stride of
+at least 20 mm a turn; a few mm is a shuffle, not a walk), and a
 `sensitivity` table: what +10 % of each parameter does to the foot path's lift,
 stride, height and width, so you know which parameter to move before trying it.
 
@@ -170,8 +171,12 @@ unpriced items is a lower bound: it can refute a `max` but not confirm it, and a
 (the catalog's bearings, bushings, rod, clips, CA glue and most screws have vendor
 links but no price, so a metal-pivot design's cost stays a lower bound until they are
 priced or accepted by hand). At `quick`, `budget.cost_floor_usd` prices what the design
-buys whatever its parts (servos, spool, sheet, cement, inserts) from the catalog, and a
-floor already over the `max` fails the target before any build.
+buys whatever its parts (servos, spool, sheet, cement, inserts, a bottle of CA glue for
+the pillars' anchors and the robot's tie spigots with every pivot construction but
+`bolt`, the printed crank's crankpin nuts) from the catalog, and a floor already over
+the `max` fails the target before any build; its detail says what a build adds (the
+sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few dollars
+on a printed-pivot design), so the floor is within about 10 % of the built total.
 
 `materials.thickness_mm` is the layer pitch: every construction sizes its parts by it,
 and a value more than 12 % off the sheet's nominal is a warning on `resolve`. The
@@ -232,7 +237,9 @@ server process; the store keeps what they produced.
 - The planner's 60 s deadline is fixed; a design it can't plan in that time is
   reported as such, with what blocked it, not searched longer.
 - `speed_mm_s` is the stride at the servo's no-load rpm, tier `estimated`, until a
-  MuJoCo run (`verify("full")`) reports beside it.
+  MuJoCo run (`verify("full")`) reports beside it as its own rows, `sim.speed_mm_s`
+  and `sim.stride_mm` (measured, 4 s at the drives' full speed), `sim.stays_up` and
+  `sim.torque`.
 - Prices are the catalog's preferred offers, unverified.
 - A walker with `sides: 1` builds one side; its walk metrics still model the two-sided
   robot.
