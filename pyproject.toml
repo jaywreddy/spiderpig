@@ -15,6 +15,7 @@ dependencies = [
     "watchfiles>=1.0",
     "pygltflib>=1.16",
     "mujoco>=3.14.0",
+    "mcp>=2.2",
 ]
 
 [dependency-groups]

@@ -58,6 +58,10 @@ description = "pytest (unit; pass -m e2e for browser tests)"
 depends     = ["viewer-build"]
 run         = "uv run pytest"
 
+[tasks.mcp]
+description = "Serve the agent-facing API over MCP on stdio (pass -- --store PATH); for an MCP client's config, not a terminal"
+run         = "uv run python cli.py mcp"
+
 [tasks.fetch-cad]
 description = "Download the servo manufacturers' CAD models into the cache (sha256-pinned)"
 run = "uv run python -m servos.cad"

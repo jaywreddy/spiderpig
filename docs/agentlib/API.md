@@ -1,10 +1,11 @@
-# spiderpig as a compiler: the Python API (harness v1, steps 1-2)
+# spiderpig as a compiler: the Python API (harness v1, steps 1-3)
 
 An agent writes a **Spec** and uses the engine as a compiler to verified geometry.
 Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api.py`
 (the operations), `failure.py` (every engine exception as data), `verify.py` (the
-harness), `design.py` (the handle), `store.py` (the per-project store, below). CLI and
-MCP come in later steps; this document is the surface they will wrap.
+harness), `design.py` (the handle), `store.py` (the per-project store, below), `mcp/`
+(the MCP server over all of it, at the end). This document is the surface; the CLI
+`spiderpig view` comes in step 4.
 
 ```python
 from spiderpig import api
@@ -233,3 +234,101 @@ link.solid = link.solid - Cylinder(1.5, 10).moved(Location((*((a + b) / 2), sum(
 assert api.recheck(design).ok              # the lightening hole: inside its claims, no clashes
 files = api.export(design, ["step", "dxf", "bom"], "out/heel").files
 ```
+
+## MCP (step 3)
+
+`spiderpig/mcp/` serves the same operations over the Model Context Protocol (the
+official `mcp` SDK, 2.x: `MCPServer`, the class FastMCP became). Across this boundary
+everything is **files and numbers** (decision 3): a design is its id, a report is JSON,
+a part is the path of its STEP file inside the store, and a failure is the `Failure`
+document under `failures` of a result whose `ok` is false, never an exception's text.
+The store (decision 4) is the state shared between calls; the server keeps nothing
+else but its job pool.
+
+```bash
+uv run python cli.py mcp --store .spiderpig      # stdio; also: mise run mcp, python -m spiderpig.mcp
+```
+
+`--store PATH` picks the store (else `$SPIDERPIG_STORE`, else `./.spiderpig`),
+`--workers N` the processes for the long operations (default 2), `--log-level` the
+server's logging (stderr; while serving, the SDK points fd 1 at stderr so nothing the
+engine prints can reach the wire). A Claude Code / Claude Desktop entry:
+
+```json
+{
+  "mcpServers": {
+    "spiderpig": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/spiderpig", "python", "cli.py", "mcp",
+               "--store", "/path/to/project/.spiderpig"]
+    }
+  }
+}
+```
+
+### Tools
+
+Every tool maps one-to-one onto `spiderpig.api`; each has an input schema (`resolve`'s
+`spec` argument is the Spec's own JSON Schema, `spec_schema()`), a typed output schema
+(the `TypedDict`s of `spiderpig/mcp/outputs.py`, every result an `{ok, failures, ...}`
+envelope) and `readOnlyHint` / `idempotentHint` on everything but `export` and `gc`.
+A design argument is the id `resolve` returned.
+
+| tool | returns |
+|---|---|
+| `list_linkages(kind?)`, `describe(key)` | the linkage cards |
+| `catalog(category?)` | servos, sheets, constructions with prices, dims, rpm, torque, mass, hardware |
+| `resolve(spec)` | `design` (the id), `resolved`, `engine_version`, `warnings`; an invalid spec: `ok: false`, `failures[0].code = invalid_spec`, `errors: [{path, message, allowed, nearest}]` |
+| `check(design)`, `plan(design)`, `walk(design)` | the `CheckReport` / `PlanReport` / `WalkReport` as JSON (`walk` plans first so the feet sit at their layers) |
+| `explain(design)` | `text` |
+| `recommend(design)` | `stage` (the failing one) and `recommendations` with their `patch` |
+| `build(design, t?, wait_seconds?)` | the manifest: every part with `path` (its STEP in the store's `build/parts/`), `dir`, masses, envelope; **a job** |
+| `verify(design, level?, wait_seconds?)` | the `VerifyReport` (rows with `pass`, `tier`, `hard`); `quick` inline, `standard` / `full` **jobs** |
+| `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** |
+| `get_job(job)`, `wait_job(job, seconds?)` | a job's record: `state` (queued, running, done, failed), timings, `result` or `error` |
+| `compare(a, b)`, `derive(design, patch)` | as the Python API |
+| `get_design(design, stage?)` | `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
+| `list_designs()` | the store's cards |
+| `gc(keep?, older_than_seconds?)` | `removed`; refuses to run without either argument |
+
+`tune` and `search` are not in v1 (the guide says so); `recheck` needs solids and stays
+in the Python API.
+
+**Failures.** A stage that fails is an ordinary result: `ok: false` and `failures` as
+data (stage, code, message, culprits, numbers, blockers, recommendations with patches,
+notes). Only a *misuse* of a tool (an unknown design, a malformed id, an unknown
+linkage, `gc` without arguments) sets `isError`, and its payload is the same envelope
+(`store` / `no_such_design`, `bad_design_id`, `no_such_stage`, `gc_needs_arguments`;
+`spec` / `unknown_linkage`; `export` / `unknown_format`; `job` / `no_such_job`). A
+programming error in the engine crosses the same way (stage `engine`, code = the
+exception's class) and is logged with its traceback on the server.
+
+**Long operations.** The installed SDK carries the wire types of task-augmented
+execution but its server doesn't run tools as tasks, so `build`, `verify` at
+`standard` / `full` and `export` run in a process pool (one per store, workers
+spawned fresh: a clean `fabricate._DESIGNS` per process, no fork of the threaded
+server). Each waits `wait_seconds` (default 15) and returns the finished result with
+its `job` record, or the running `job` alone for `wait_job` / `get_job`. A worker
+loads the design from the store, runs the Python operation (which writes its report,
+parts or files into the store) and returns the report's JSON; the reports are in the
+store either way (`get_design`). Job records live in the server process. Short
+operations run in a worker thread, one at a time, so the loop keeps answering.
+
+### Resources and prompts
+
+| resource | content |
+|---|---|
+| `spiderpig://guide` | how to design with spiderpig (markdown): the passes and what each proves, the Spec vocabulary with defaults and hard/soft (generated from `TARGET_FIELDS`), the linkages, the catalog, the two loops, jobs, the limits of v1 |
+| `spiderpig://schema/spec` | the Spec's JSON Schema |
+| `spiderpig://linkages/{key}` | a linkage's card (also listed per linkage) |
+| `spiderpig://catalog/{servos\|sheets\|constructions}` | the catalog |
+| `spiderpig://designs/{id}/{stage}` | a stored stage as JSON (`build` is the manifest with part paths) |
+
+Prompts: `design_walker(goal)` (resolve → check → plan → verify → export),
+`diagnose(design)` (explain → recommend → derive), `iterate(design, metric)` (a
+derive / compare loop on one metric).
+
+`tests/test_spiderpig_mcp.py` drives the server through the SDK's in-memory client
+(`mcp.Client(server)`, no subprocess). A cold `resolve → verify("quick")` on the Klann
+single takes ~0.7 s through the client once the engine is imported (~3 s of imports
+before that); `build` of the single as a job ~10 s including the worker's start.
