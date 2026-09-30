@@ -1,6 +1,6 @@
 """Compare every registered linkage: foot paths, layer plans, walking, cost.
 
-    uv run python scripts/linkage_report.py --out build/linkages.json
+    uv run python cli.py report --out build/linkages.json
 
 For each linkage (``linkage.available()``): its parameters and bodies, the
 single leg's foot path over one crank revolution (lift; stride, stance
@@ -17,15 +17,12 @@ import argparse
 import json
 import logging
 import math
-import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import linkage  # noqa: E402
+import linkage
 
 log = logging.getLogger("linkage_report")
 N = 720
@@ -62,7 +59,8 @@ def foot_path(lk: linkage.Linkage, n: int = N) -> dict:
 
 
 def plans(key: str, modules) -> dict:
-    from fabricate import BuildConfig, design_side, template_for
+    from config import BuildConfig
+    from fabricate import design_side, template_for
 
     out = {}
     for m in modules:
@@ -85,8 +83,9 @@ def plans(key: str, modules) -> dict:
 def walking(key: str, module: str) -> dict:
     """Quasi-static straight-walk metrics of the robot (both sides) for a module that plans."""
     import walk
+    from config import BuildConfig
 
-    p = walk.api_payload(walk.make_config(module, linkage=key))
+    p = walk.api_payload(BuildConfig(linkage=key, module=module))
     if not p["valid"]:
         return {"valid": False, "error": p["error"]}
     m = p["metrics"]
@@ -98,7 +97,8 @@ def walking(key: str, module: str) -> dict:
 
 def cost(key: str, module: str) -> dict:
     """The robot's purchase total and part counts (builds every part: slow)."""
-    from fabricate import BuildConfig, fabricate, template_for
+    from config import BuildConfig
+    from fabricate import fabricate, template_for
     from hardware.bom import bom_from_mechanism
 
     cfg = BuildConfig(linkage=key, module=module)

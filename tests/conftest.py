@@ -22,7 +22,8 @@ from pathlib import Path
 import pytest
 
 import servos
-from fabricate import BuildConfig, design_side, fabricate, fabricate_side
+from config import BuildConfig
+from fabricate import design_side, fabricate, fabricate_side
 from linkage import build_module_template
 from servos import cad as cadlib
 from servos import model

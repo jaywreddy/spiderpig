@@ -1,6 +1,7 @@
 """Print what each stage of the pipeline says about a design.
 
     uv run python explain.py --linkage strider --module double
+    uv run python explain.py --linkage trotbot_heel --proportion unit=7
 
 1. program: :meth:`linkage.Linkage.check`. Each loop's closing margin and
    transmission angle; a loop that can't close raises
@@ -25,20 +26,13 @@ their own failures.
 from __future__ import annotations
 
 import argparse
-import math
 
 import linkage
 
 
 def explain(key: str, module: str = "single", params=None, phases=None) -> str:
-    from fabricate import (
-        BuildConfig,
-        design_side,
-        ground_clearance,
-        side_problem,
-        static_stage,
-        template_for,
-    )
+    from config import BuildConfig
+    from fabricate import design_side, ground_clearance, side_problem, static_stage, template_for
 
     lk = linkage.get(key)
     config = BuildConfig(linkage=key, module=module, robot=False, phases=phases,
@@ -84,16 +78,18 @@ def explain(key: str, module: str = "single", params=None, phases=None) -> str:
 
 
 def main(argv=None) -> int:
+    from config import ParamError, add_design_args, config_from_args
+
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--linkage", default=linkage.DEFAULT, choices=linkage.available())
-    ap.add_argument("--module", default="single")
-    ap.add_argument("--phases", default=None, help="comma-separated degrees, one per leg")
-    ap.add_argument("--param", action="append", default=[], help="NAME=VALUE (repeatable)")
+    add_design_args(ap)
+    ap.set_defaults(module="single")
     args = ap.parse_args(argv)
-    params = {k: float(v) for k, v in (p.split("=", 1) for p in args.param)} or None
-    phases = (tuple(math.radians(float(x)) for x in args.phases.split(","))
-              if args.phases else None)
-    print(explain(args.linkage, args.module, params, phases))
+    try:
+        config = config_from_args(args, robot=False)
+    except ParamError as e:
+        ap.error(str(e))
+    print(explain(config.linkage, config.module, dict(config.proportions) or None,
+                  config.phases))
     return 0
 
 

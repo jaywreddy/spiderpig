@@ -15,8 +15,8 @@ export interface ControlsHandles {
   setSliderValue(t: number): void;
   setReadout(text: string): void;
   setStatus(text: string): void;
-  /** Replace the dropdown's options (server order) and select ``selected``. */
-  setModes(modes: readonly Mode[], selected: Mode): void;
+  /** Replace the dropdown's options (server order, its labels) and select ``selected``. */
+  setModes(modes: readonly Mode[], selected: Mode, labels?: Record<string, string>): void;
   modeValue(): Mode;
   setModeValue(mode: Mode): void;
   setModeDisabled(disabled: boolean): void;
@@ -24,15 +24,6 @@ export interface ControlsHandles {
 
 const PLAY = '▶';
 const PAUSE = '⏸';
-
-// Dropdown labels for the server's mode ids; unknown ids show as-is.
-const MODE_LABELS: Record<string, string> = {
-  robot: 'robot',
-  klann: 'single (one leg)',
-  double: 'double',
-  decker: 'decker',
-  double_double: 'double double',
-};
 
 export function bindControls(api: ControlsApi): ControlsHandles {
   const slider = document.getElementById('slider') as HTMLInputElement;
@@ -75,11 +66,11 @@ export function bindControls(api: ControlsApi): ControlsHandles {
     },
     setReadout(text) { readout.textContent = text; },
     setStatus(text) { statusEl.textContent = text; },
-    setModes(modes, selected) {
+    setModes(modes, selected, labels = {}) {
       modeEl.replaceChildren(...modes.map((m) => {
         const opt = document.createElement('option');
         opt.value = m;
-        opt.textContent = MODE_LABELS[m] ?? m;
+        opt.textContent = labels[m] ?? m;
         return opt;
       }));
       modeEl.value = selected;

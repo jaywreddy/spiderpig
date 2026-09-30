@@ -19,8 +19,9 @@ SERVO = {"key": "sts3215", "rpm_max": 52.0}
 def walk_response(module: str = "quad", linkage: str = "klann") -> dict:
     """``GET /api/walk?module=<module>&linkage=<linkage>``'s body."""
     import walk
+    from config import BuildConfig
 
-    return walk.api_payload(walk.make_config(module, linkage=linkage))
+    return walk.api_payload(BuildConfig(linkage=linkage, module=module))
 
 
 def flat_walk() -> dict:

@@ -10,10 +10,10 @@ from dataclasses import replace
 import pytest
 
 import linkage
-import walk
+from config import BuildConfig, ParamError
 from construction import ConstructionError
 from construction.contract import check_side
-from fabricate import BuildConfig, design_side, template_for
+from fabricate import design_side, template_for
 
 MECHANISMS = linkage.available("mechanism")
 
@@ -122,5 +122,5 @@ def test_one_side_plans_or_the_pipeline_says_why(key):
 
 
 def test_walking_takes_walkers_only():
-    with pytest.raises(walk.ParamError, match="hoecken is a mechanism, not a walker"):
-        walk.make_config("single", linkage="hoecken")
+    with pytest.raises(ParamError, match="hoecken is a mechanism, not a walker"):
+        BuildConfig(linkage="hoecken", module="single", robot=True)

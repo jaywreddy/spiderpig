@@ -1,9 +1,9 @@
 """FastAPI dev server for the walker viewer.
 
-Serves the three.js frontend and one self-contained ``klann_<mode>.glb``
-per assembly mode from ``viewer/data/``, baked on first request (and again
-when a cached file is older than the Python sources). A background watcher
-re-runs the glTF bake for every cached mode whenever a source ``.py`` file
+Serves the three.js frontend and one self-contained ``.glb`` per design
+from ``viewer/data/``, baked on first request (and again when a cached file
+is older than the Python sources). A background watcher re-runs the glTF
+bake for every default design it has baked whenever a source ``.py`` file
 changes and pushes a ``reload`` message to every connected browser over
 ``/ws``.
 
@@ -22,11 +22,14 @@ Design parameters (the walking model's contract, see ``walk.py``):
     (an unknown linkage too): 422. A linkage that can't be assembled: 200
     with ``valid: false`` and the reason.
 ``GET /api/glb/{mode}?linkage=...&module=...&phases=...&p.NAME=...``
-    The fabricated walker baked with those parameters. The default design
-    keeps ``viewer/data/klann_<mode>.glb``; other designs (other linkages
-    too) are cached in ``viewer/data/params/`` per parameter set (the newest
-    ``PARAM_CACHE_SIZE`` kept). A design the planner or a construction
-    can't build: 422 with the reason. Bakes run one at a time.
+    The fabricated walker baked with those parameters: ``robot`` (both
+    sides, ``module`` legs per side) or ``side`` (one side of ``module``);
+    the ids old URLs use (``klann``, ``double``, ``decker``,
+    ``double_double``) are one side of that module (:data:`MODES`;
+    ``/api/modes`` lists the ids the viewer's dropdown offers, with labels).
+    Every design is cached in ``viewer/data/`` under its config's key (the
+    newest ``CACHE_SIZE`` non-default ones kept). A design the planner or a
+    construction can't build: 422 with the reason. Bakes run one at a time.
 
 Start via::
 
@@ -42,12 +45,11 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import os
 import sys
 import threading
 from contextlib import asynccontextmanager
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -63,8 +65,7 @@ if not logging.root.handlers:       # under uvicorn, which configures only its o
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VIEWER_DIR = REPO_ROOT / "viewer"
 DATA_DIR = VIEWER_DIR / "data"
-PARAMS_DIR = DATA_DIR / "params"
-PARAM_CACHE_SIZE = 24     # parameter bakes kept on disk (newest first)
+CACHE_SIZE = 24     # non-default bakes kept on disk (newest first)
 
 
 def _viewer_static_dir() -> Path:
@@ -74,40 +75,53 @@ def _viewer_static_dir() -> Path:
     dist = VIEWER_DIR / "dist"
     return dist if dist.is_dir() else VIEWER_DIR
 
-# User-facing mode id → bake_gltf mode argument. Order is the dropdown order.
-# ``robot`` is both sides (quad per side unless ``module`` says otherwise); the
-# rest are one side, under the ids old URLs use.
-MODES: dict[str, str] = {
-    "robot": "robot",
-    "klann": "single",
-    "double": "double",
-    "decker": "decker",
-    "double_double": "quad",
-}
 
 # Viewer-side helpers live under ``viewer/``; add to sys.path so we can
 # import ``bake_gltf`` without it being a proper package.
 if str(VIEWER_DIR) not in sys.path:
     sys.path.insert(0, str(VIEWER_DIR))
 
-from bake_gltf import bake_gltf, build_config, is_default, param_glb  # noqa: E402
+from bake_gltf import bake_gltf  # noqa: E402
 
 import linkage  # noqa: E402
 import walk  # noqa: E402
-from fabricate import BuildConfig  # noqa: E402
+from config import BuildConfig, design_from_query  # noqa: E402
 from server.watcher import WatchBroadcaster, is_ignored_dir, is_source  # noqa: E402
 
 _NO_CACHE = {"Cache-Control": "no-store"}
 _DEFAULT_MODE = "robot"
 
+
+@dataclass(frozen=True)
+class Mode:
+    """What a ``/api/glb/{mode}`` id builds: ``module`` (``None``: the query's, quad by
+    default) as the robot or one side; ``label`` puts it in the viewer's dropdown."""
+
+    module: str | None
+    robot: bool
+    label: str | None = None
+
+
+# URL ids, in the dropdown's order; the side-only ids are the ones old URLs use.
+MODES: dict[str, Mode] = {
+    "robot": Mode(None, True, "robot"),
+    "klann": Mode("single", False, "single (one leg)"),
+    "double": Mode("double", False, "double"),
+    "decker": Mode("decker", False, "decker"),
+    "double_double": Mode("quad", False, "double double"),
+    "side": Mode(None, False),
+}
+
 # One bake at a time: requests run in a threadpool and the bake isn't reentrant.
 _BAKE_LOCK = threading.Lock()
-# Parameter sets that failed to build: glb path -> (sources mtime, reason).
+# Designs that failed to build: glb path -> (sources mtime, reason).
 _FAILED: dict[Path, tuple[float, str]] = {}
+# Every design this server has baked, by its file (the watcher re-bakes the defaults).
+_BAKED: dict[Path, BuildConfig] = {}
 
 
-def _glb_path(mode_id: str) -> Path:
-    return DATA_DIR / f"klann_{mode_id}.glb"
+def _glb_path(config: BuildConfig) -> Path:
+    return DATA_DIR / f"{config.key}.glb"
 
 
 def _sources_mtime() -> float:
@@ -126,83 +140,74 @@ def _is_fresh(path: Path) -> bool:
     return path.is_file() and path.stat().st_mtime >= _sources_mtime()
 
 
-def _bake_to(path: Path, bake_mode: str, config: BuildConfig | None = None) -> None:
-    """Bake into ``path`` atomically (a failed bake leaves no file behind)."""
+def _bake(config: BuildConfig) -> Path:
+    """Bake ``config`` into its file atomically (a failed bake leaves no file behind)."""
+    path = _glb_path(config)
+    log.info("baking %s -> %s", config.design_json(), path.name)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.stem}.partial{path.suffix}")
     try:
-        bake_gltf(tmp, mode=bake_mode, config=config)
+        bake_gltf(tmp, config)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
-
-
-def _bake_mode(mode_id: str) -> None:
-    bake_mode = MODES[mode_id]
-    out = _glb_path(mode_id)
-    log.info("baking mode=%s -> %s", mode_id, out.name)
-    _bake_to(out, bake_mode)
-
-
-def _ensure_baked(mode_id: str) -> Path:
-    """The mode's ``.glb``, baked first when missing or older than the sources."""
-    path = _glb_path(mode_id)
-    with _BAKE_LOCK:
-        if not _is_fresh(path):
-            _bake_mode(mode_id)
     return path
 
 
-def _prune_params(keep: int = PARAM_CACHE_SIZE) -> None:
-    """Drop all but the ``keep`` newest parameter bakes."""
-    files = sorted(PARAMS_DIR.glob("*.glb"), key=lambda p: p.stat().st_mtime, reverse=True)
+def _prune(keep: int = CACHE_SIZE) -> None:
+    """Drop all but the ``keep`` newest non-default bakes (a file this server didn't bake
+    counts as one)."""
+    def is_default(p: Path) -> bool:
+        config = _BAKED.get(p)
+        return config is not None and config.is_default
+
+    files = sorted((p for p in DATA_DIR.glob("*.glb") if not is_default(p)),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
     for old in files[keep:]:
         old.unlink(missing_ok=True)
+        _BAKED.pop(old, None)
 
 
-def _ensure_param_baked(bake_mode: str, config: BuildConfig) -> Path:
-    """The ``.glb`` of a non-default design, baked (and cached) on demand.
+def _ensure_baked(config: BuildConfig) -> Path:
+    """The design's ``.glb``, baked first when missing or older than the sources.
 
     422 when the linkage can't be assembled (checked first, from the
     kinematics alone), the planner finds no layout or a construction can't
-    be built (both ``ValueError``).
+    be built (both ``ValueError``); a failed design is remembered until the
+    sources change.
     """
-    try:
-        walk.side_legs(config)
-    except walk.LinkageError as e:
-        raise HTTPException(status_code=422, detail=f"invalid linkage: {e}") from None
-    path = param_glb(bake_mode, config, PARAMS_DIR)
+    if config.robot:
+        try:
+            walk.side_legs(config)
+        except walk.LinkageError as e:
+            raise HTTPException(status_code=422, detail=f"invalid linkage: {e}") from None
+    path = _glb_path(config)
     with _BAKE_LOCK:
+        _BAKED[path] = config
         if _is_fresh(path):
             return path
         mtime = _sources_mtime()
         failed = _FAILED.get(path)
         if failed is not None and failed[0] >= mtime:
             raise HTTPException(status_code=422, detail=failed[1])
-        log.info("baking mode=%s params=%s -> params/%s", bake_mode, walk.params_of(config),
-                 path.name)
         try:
-            _bake_to(path, bake_mode, config)
+            _bake(config)
         except ValueError as e:
             reason = f"can't build this design: {e}"
             _FAILED[path] = (mtime, reason)
             raise HTTPException(status_code=422, detail=reason) from None
-        _prune_params()
+        if not config.is_default:
+            _prune()
     return path
 
 
-def _ensure_default_baked() -> None:
-    _ensure_baked(_DEFAULT_MODE)
-
-
 def _rebake_all() -> None:
-    """Called by the watcher. Re-bakes every mode that already has a cached
-    ``.glb`` — newly-requested modes are baked lazily on first GET, and
-    parameter bakes when next requested (they're stale by then)."""
+    """Called by the watcher. Re-bakes every default design this server has baked; other
+    designs are baked again when next requested (they're stale by then)."""
     with _BAKE_LOCK:
-        for mode_id in MODES:
-            if _glb_path(mode_id).exists():
-                _bake_mode(mode_id)
+        for path, config in list(_BAKED.items()):
+            if config.is_default and path.exists():
+                _bake(config)
 
 
 broadcaster = WatchBroadcaster(REPO_ROOT, rebake=_rebake_all)
@@ -211,7 +216,7 @@ broadcaster = WatchBroadcaster(REPO_ROOT, rebake=_rebake_all)
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _ensure_default_baked()
+    _ensure_baked(BuildConfig())
     await broadcaster.start()
     try:
         yield
@@ -220,32 +225,6 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(lifespan=_lifespan, title="spiderpig viewer")
-
-
-# ---------------------------------------------------------------------------
-# Design parameters in the query string
-# ---------------------------------------------------------------------------
-
-
-def design_query(query) -> dict:
-    """``linkage``, ``module``, ``phases`` (degrees) and ``proportions`` from a query string.
-
-    ``linkage`` (a registered key, Klann by default), ``module``, ``phases``
-    (comma-separated degrees, one per leg) and ``p.<NAME>=<value>``; other
-    keys are ignored. Raises :class:`walk.ParamError` for malformed values
-    and an unknown linkage (the rest is checked with the config).
-    """
-    proportions: dict[str, float] = {}
-    for key, value in query.multi_items():
-        if key.startswith("p."):
-            name, v = walk.parse_proportion(f"{key[2:]}={value}")
-            proportions[name] = v
-    return {
-        "linkage": walk.get_linkage(query.get("linkage") or linkage.DEFAULT).key,
-        "module": query.get("module") or None,
-        "phases": walk.parse_phases(query["phases"]) if query.get("phases") else None,
-        "proportions": proportions,
-    }
 
 
 def linkage_info(lk: linkage.Linkage) -> dict:
@@ -272,8 +251,9 @@ def _walk_json(config: BuildConfig) -> bytes:
 
 @app.get("/api/modes")
 def list_modes() -> dict:
-    """Expose the mode catalogue so the frontend can build its toggle."""
-    return {"default": _DEFAULT_MODE, "modes": list(MODES.keys())}
+    """The ids the viewer's dropdown offers (in order) and their labels."""
+    offered = {k: m.label for k, m in MODES.items() if m.label}
+    return {"default": _DEFAULT_MODE, "modes": list(offered), "labels": offered}
 
 
 @app.get("/api/linkages")
@@ -288,10 +268,8 @@ def list_linkages() -> dict:
 def get_walk(request: Request) -> Response:
     """The walking model for a design, from the kinematics alone (see the module docstring)."""
     try:
-        q = design_query(request.query_params)
-        config = walk.make_config(q["module"] or "quad", q["phases"], q["proportions"],
-                                  linkage=q["linkage"])
-    except walk.ParamError as e:
+        config = design_from_query(request.query_params, robot=True)
+    except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
     return Response(_walk_json(config), media_type="application/json", headers=_NO_CACHE)
 
@@ -300,20 +278,18 @@ def get_walk(request: Request) -> Response:
 def get_glb(mode_id: str, request: Request) -> Response:
     if mode_id not in MODES:
         raise HTTPException(status_code=404, detail=f"unknown mode {mode_id!r}")
-    bake_mode = MODES[mode_id]
+    mode = MODES[mode_id]
+    asked = request.query_params.get("module")
+    if mode.module is not None and asked not in (None, mode.module):
+        raise HTTPException(status_code=422, detail=f"mode {mode_id!r} is one side of its "
+                            f"module; module {asked!r} applies to robot or side only")
     try:
-        q = design_query(request.query_params)
-        config = build_config(
-            bake_mode, q["module"], linkage=q["linkage"],
-            phases=None if q["phases"] is None else [math.radians(p) for p in q["phases"]],
-            proportions=q["proportions"] or None)
+        config = design_from_query(request.query_params, robot=mode.robot,
+                                   **({"module": mode.module} if mode.module else {}))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
-    if is_default(bake_mode, config):
-        path = _ensure_baked(mode_id)
-    else:
-        path = _ensure_param_baked(bake_mode, config)
-    return FileResponse(path, media_type="model/gltf-binary", headers=_NO_CACHE)
+    return FileResponse(_ensure_baked(config), media_type="model/gltf-binary",
+                        headers=_NO_CACHE)
 
 
 @app.websocket("/ws")

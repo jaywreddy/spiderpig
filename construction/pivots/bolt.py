@@ -179,6 +179,3 @@ class BoltAxle:
         for k in col.anchors:
             out.cut(plates[k], Cut(xy, CLEARANCE["3"]))
         return out
-
-
-__all__ = ["BoltAxle"]

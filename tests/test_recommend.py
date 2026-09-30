@@ -5,8 +5,9 @@ from __future__ import annotations
 import pytest
 
 import explain
+from config import BuildConfig
 from construction.base import Params
-from fabricate import BuildConfig, design_side, side_problem, static_stage, template_for
+from fabricate import design_side, side_problem, static_stage, template_for
 from recommend import Gap, scale
 from stack import ClearanceError
 

@@ -67,6 +67,3 @@ class RodAxle:
         for m in group.axis.members:
             out.cut(m, Cut(xy, self.hole()))
         return out
-
-
-__all__ = ["RodAxle"]

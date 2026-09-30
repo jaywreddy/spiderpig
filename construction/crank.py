@@ -81,6 +81,7 @@ from construction.base import (
     ConstructionError,
     Context,
     DriveInterface,
+    Group,
     Params,
     Realized,
     hardware,
@@ -198,7 +199,8 @@ class Run:
     """The crankshaft runs along the post at ``at`` over layers ``lo``..``hi``.
 
     ``at`` is a crankpin, or a detour point fixed to the crank (a point of the
-    plan's geometry that turns with it). Webs from O lead in at ``lo - 1`` and
+    plan's geometry that turns with it, :meth:`stack.Topology.add_crank_point`).
+    Webs from O lead in at ``lo - 1`` and
     out at ``hi + 1``; the centre O is free in the run's layers.
     """
 
@@ -228,12 +230,6 @@ def default_route(layout: Layout, pins) -> CrankRoute:
     return CrankRoute(tuple(runs))
 
 
-def add_crank_point(topo, name: str, r: float, angle_deg: float) -> str:
-    """Add a point fixed to the crank to ``topo``'s geometry: ``r`` from O, ``angle_deg``
-    counter-clockwise from the first crankpin. Returns its name (a detour run's ``at``)."""
-    return topo.add_crank_point(name, r, angle_deg)
-
-
 def route_of(layout: Layout, pins) -> CrankRoute:
     """The route the planner chose (``layout.choices["crank"]``), else :func:`default_route`."""
     chosen = layout.choices.get(GROUP)
@@ -249,7 +245,7 @@ def hub_layers(layout: Layout, drive: DriveInterface, hub_thickness: float) -> t
     return horn, hub
 
 
-class CrankGroup:
+class CrankGroup(Group):
     """The crankshaft of one side, built by ``construction``."""
 
     name = GROUP
@@ -337,7 +333,7 @@ class CrankGroup:
         return [Claim("crank hub", frozenset(), hub),
                 Claim("crank route", frozenset(riders), shaft, choice=GROUP)]
 
-    def realize(self, build: Build) -> Realized:
+    def realize(self, build: Build, done: Realized) -> Realized:
         if build.plan.topo.center is None:
             return Realized()
         return self.construction.realize(self, build)
@@ -655,11 +651,3 @@ class PrintedCrank:
         if route.bearing:
             out.cut(FRAME_OUTER, Cut(tuple(build.xy("O")), params.hole(2 * d.stub)))
         return out
-
-
-__all__ = [
-    "BHCS", "CrankDims", "CrankGroup", "CrankRoute", "HornJoint", "POST_SCREWS",
-    "PostJoint", "PrintedCrank", "Run", "SELF_TAP", "SHCS", "ScrewKind", "add_crank_point",
-    "default_route",
-    "hub_layers", "route_of", "screw_body", "screw_from_key",
-]

@@ -23,7 +23,6 @@ from build123d import Box, Location
 
 from construction.base import Build, Realized
 from construction.envelope import claimed_solid
-from construction.plates import FramePlates, LinkPlates
 
 TOL = 0.02        # mm the envelope is grown by (float noise)
 MAX_OUTSIDE = 1e-3  # mm^3 a part may poke outside its envelope
@@ -51,10 +50,9 @@ def check_side(design, mech) -> list[str]:
     done = Realized()
     plate_top = build.z(build.top)[1]
     for g in design.groups:
-        plates = isinstance(g, (LinkPlates, FramePlates))
-        got = g.realize(build, done) if plates else g.realize(build)
+        got = g.realize(build, done)
         done.merge(got)
-        if isinstance(g, FramePlates):
+        if g.name == "frame":
             for b in got.bodies:
                 bb = b.part.bounding_box()
                 zs = [build.z(k) for k in (0, build.top)]
@@ -73,7 +71,7 @@ def check_side(design, mech) -> list[str]:
                     problems.append(f"{b.name}: {vol:.3f} mm^3 below the servo face, "
                                     "outside the horn claim")
             continue
-        if isinstance(g, LinkPlates):
+        if g.name == "links":
             for b in got.bodies:
                 env = claimed_solid(build, build.shapes(b.name), TOL)
                 vol = _outside(b.part, env)

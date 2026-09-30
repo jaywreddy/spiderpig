@@ -10,7 +10,8 @@ import pytest
 import sympy as sp
 
 import linkage
-from fabricate import BuildConfig, design_side, template_for
+from config import BuildConfig
+from fabricate import design_side, template_for
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()

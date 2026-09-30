@@ -152,3 +152,27 @@ def test_quad_every_leg_pivots_on_the_frame():
     torso_joints = {j.name for j in build_module_template("quad").body("torso").joints}
     for k in range(4):
         assert {f"A_leg{k}", f"B_leg{k}"} <= torso_joints
+
+
+# ---------------------------------------------------------------------------
+# A module says which legs share a crank body
+# ---------------------------------------------------------------------------
+
+
+def test_modules_say_which_legs_share_a_crank():
+    """A module's crank groups fuse the crank links, whatever the module is called:
+    Strider's double is two Striders half a turn apart on one crank body, its decker two
+    on their own crank bodies (joined by the crank construction)."""
+    assert linkage.MODULES["quad"].cranks == ((0, 1), (2, 3))
+    assert linkage.MODULE_LEGS["quad"] == linkage.MODULES["quad"].legs
+    conn = build_module_template("double", linkage="strider").body("conn")
+    assert {j.name for j in conn.joints} == {"O_leg0", "J1_leg0", "O_leg1", "J1_leg1"}
+    decker = build_module_template("decker", linkage="strider")
+    assert [b.name for b in decker.bodies if b.name.startswith("conn")] == ["conn_leg0",
+                                                                             "conn_leg1"]
+    assert linkage.get("strider").modules_of["decker"].cranks == ()
+    assert [linkage.crank_name(k) for k in range(3)] == ["conn", "conn_upper", "conn_upper2"]
+    with pytest.raises(ValueError, match="distinct legs"):
+        linkage.Module(((+1, 0.0), (-1, 0.0)), cranks=((0, 2),))
+    with pytest.raises(ValueError, match="distinct legs"):
+        linkage.Module(((+1, 0.0), (-1, 0.0)), cranks=((0, 1), (1,)))

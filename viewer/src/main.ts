@@ -151,12 +151,15 @@ const viewerHandle: ViewerHandle = {
 };
 window.__viewer = viewerHandle;
 
-/** Server's mode catalogue; falls back to the static options in index.html. */
-async function fetchModes(): Promise<{ modes: Mode[]; default: Mode } | null> {
+/** Server's mode catalogue (ids in order, their labels); falls back to the static
+ * options in index.html. */
+interface ModeCatalogue { modes: Mode[]; default: Mode; labels?: Record<string, string> }
+
+async function fetchModes(): Promise<ModeCatalogue | null> {
   try {
     const res = await fetch('/api/modes');
     if (!res.ok) return null;
-    return (await res.json()) as { modes: Mode[]; default: Mode };
+    return (await res.json()) as ModeCatalogue;
   } catch {
     return null;
   }
@@ -168,7 +171,7 @@ async function init(): Promise<void> {
   let initial = ui.modeValue();
   if (catalogue) {
     initial = requested && catalogue.modes.includes(requested) ? requested : catalogue.default;
-    ui.setModes(catalogue.modes, initial);
+    ui.setModes(catalogue.modes, initial, catalogue.labels);
   }
   // ?linkage=... (the tune panel's). A design that can't be built still tunes (stick preview).
   await loadMode(initial, drive.baseQuery(initial))

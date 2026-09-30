@@ -60,10 +60,12 @@ uv run python main.py --linkage jansen --module double --out build/jansen
 uv run python main.py --list                       # linkages, modules, servos, constructions, sheets
 ```
 
-`--linkage` (Klann by default), `--phases` and `--proportion NAME=VALUE`
-(the linkage's parameters) work the same way for `viewer/bake_gltf.py`,
-`scripts/tune_gait.py` and (`linkage=`, `phases=`, `p.NAME=`) the viewer's
-`/api/walk` and `/api/glb`. It prints the layer plan of one side and writes
+`--linkage` (Klann by default), `--module`, `--phases` and `--proportion
+NAME=VALUE` (the linkage's parameters) work the same way for
+`viewer/bake_gltf.py`, `explain.py`, the scripts and (`linkage=`, `module=`,
+`phases=`, `p.NAME=`) the viewer's `/api/walk` and `/api/glb`: they all build
+one validated `config.BuildConfig`. It prints the layer plan of one side and
+writes
 (stem: the linkage, `--name` to change it):
 
 - `build/klann.step` / `klann.stl` — the whole robot (both sides, servos,
@@ -130,14 +132,16 @@ Playwright viewer tests. `mise run audit` checks every module end to end.
 
 ```
 spiderpig/
-├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/audit)
+├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/audit/...)
+├── cli.py           # one entry point: build | bake | audit | explain | tune | sim | report
 ├── main.py          # fabrication CLI (STEP/STL/DXF/BOM)
-├── linkage.py       # the symbolic engine: straight-line programs, checks, leg module templates
+├── linkage/         # the symbolic engine (engine.py), stage checks (checks.py), leg module templates (assembly.py)
 ├── linkages/        # one module per linkage family (Klann, Strider, Jansen, ...)
 ├── mechanism.py     # Pose, Joint, Body, Mechanism, MechanismTemplate
 ├── stack.py         # layer planner over claims (full-cycle clearance)
-├── fabricate.py     # BuildConfig; design a side, fabricate the robot
-├── construction/    # the groups: axle, crank, plates, robot; contract check
+├── config.py        # BuildConfig (what to build and how, validated); the shared CLI / query arguments
+├── fabricate.py     # design a side, fabricate the robot
+├── construction/    # the groups: axle, crank, plates, robot, chassis; contract check
 ├── servos/          # servo data (spec, catalog), drive group, models, CAD cache
 ├── hardware/        # catalog, screw families, materials and masses, the bill of materials
 ├── walk.py          # quasi-static walking model (/api/walk, the viewer's drive mode)

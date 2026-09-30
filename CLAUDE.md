@@ -9,30 +9,44 @@ Tasks live in `mise.toml`:
 
 ```bash
 mise run view       # FastAPI + Vite (HMR); URL printed in startup banner
-mise run bake       # bake viewer/data/*.glb
+mise run bake       # bake viewer/data/<design>.glb
 mise run test       # pytest (runs viewer-build first; -m e2e for browser tests)
 mise run build      # STEP/STL/DXF -> build/
 mise run lint       # ruff check
 mise run audit      # do the parts physically fit? (see docs/audit/AUDIT.md)
+mise run explain    # each pipeline stage's verdict on a design
+mise run tune       # search crank phases for a smoother walk
+mise run sim        # MuJoCo
+mise run report     # compare every linkage -> build/linkages.json
 mise run kill       # stop dev servers spawned from THIS worktree
 mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan recovery)
 mise run clean
 ```
 
-Direct invocation of the bake script (more flags than `mise run bake`):
+`build`, `bake`, `audit`, `explain`, `tune`, `sim` and `report` are the
+subcommands of `cli.py` (`uv run python cli.py <command> --help`; `mise run
+<command> -- <options>` passes options through); the tools' own modules
+(`main.py`, `viewer/bake_gltf.py`, `explain.py`, `scripts/*.py`) are what it
+runs. For example:
 
 ```bash
-uv run python viewer/bake_gltf.py --mode robot --module quad --frames 120
-uv run python viewer/bake_gltf.py --mode single          # one side only
-uv run python viewer/bake_gltf.py --linkage jansen --module double   # another linkage
-uv run python viewer/bake_gltf.py --mode single --linkage hoecken    # a mechanism: one side
+uv run python cli.py bake --module quad --frames 120
+uv run python cli.py bake --module single --side             # one side only
+uv run python cli.py bake --linkage jansen --module double   # another linkage
+uv run python cli.py bake --side --linkage hoecken           # a mechanism: one side
 ```
 
-`--linkage` / `--phases` / `--proportion NAME=VALUE` are shared by `main.py`,
-`bake_gltf.py` and `scripts/tune_gait.py` (`walk.add_design_args`); the server
-takes `linkage=`, `module=`, `phases=`, `p.NAME=`. A design with no layer plan
-(the planner says why, e.g. TrotBot's heel scaled back to its drawing's 7 mm
-unit, `p.unit=7`) bakes a 422; its `/api/walk` still works.
+What every tool builds is a `config.BuildConfig` (linkage, module, robot or
+side, phases, proportions, servo, constructions, sheet), which validates
+itself; `--linkage` / `--module` / `--phases` / `--proportion NAME=VALUE` and
+the build options are shared by `main.py`, `bake_gltf.py`, `explain.py` and
+the scripts (`config.add_design_args` / `add_build_args` /
+`config_from_args`); the server takes `linkage=`, `module=`, `phases=`,
+`p.NAME=` (`config.design_from_query`). A bake is cached as
+`viewer/data/<config.key>.glb` (`klann_quad_robot.glb`; a hash suffix for a
+non-default design). A design with no layer plan (the planner says why, e.g.
+TrotBot's heel scaled back to its drawing's 7 mm unit, `p.unit=7`) bakes a
+422; its `/api/walk` still works.
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
 serves on a port derived from a CRC32 hash of the worktree path
@@ -105,7 +119,7 @@ meshes) ≈ 6.6 s.
 
 Historical: the symbolic solve used to run per leg per call (per frame,
 before `19e020e`), and substituted expressions grew to ~34k ops. The
-straight-line program of each linkage (`linkage.py`) is compiled once per
+straight-line program of each linkage (`linkage/engine.py`) is compiled once per
 process; a leg's phase is a time shift. Don't reintroduce per-leg or
 per-frame solves.
 
@@ -128,24 +142,26 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 
 | file | role |
 |---|---|
-| `linkage.py` | the symbolic engine: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), `LegSolution` (mirror = reflect x at crank angle π − t), the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`) and `build_module_template(module, phases, params, linkage)`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). Registry: `get` / `available(kind)`. |
+| `linkage/` | the symbolic side, one package re-exporting everything. `engine.py`: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), the registry (`get` / `available(kind)`), `LegSolution` (mirror = reflect x at crank angle π − t), `scale_params`. `checks.py`: the stage checks (`check_steps`: every loop's margin and transmission angle; `check_output`: a mechanism's output against its promises). `assembly.py`: the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`), `build_module_template(module, phases, params, linkage)` and `feet_of`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). |
 | `linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Klann first (the default). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
 | `explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error and what would clear it) |
 | `recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), or thinner `Params` parts within every construction's `dims()` |
 | `mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling (numpy 4x4s). All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
 | `stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers; an `early` part checked as soon as a group's own links are placed), a `Router` (a group whose shape it chooses per layering: the crank), a `Topology` (links, axles as named points, points fixed to the crank) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()` (see "The planner" below); `verify_plan()` re-checks exhaustively on fresh sampling. |
-| `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins: the claims, `AxleDims`, the `printed` snap axle), `crank.py` (routes, claims, the printed crankshaft), `route.py` (the crank's router: static facts, detours, the exact route per layering), `underside.py` (the body's underside: the envelope, ground clearance), `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides + chassis), `contract.py` (parts inside claims), `envelope.py` (solids of claims). Registries in `__init__.py`. |
+| `construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins: the claims, `AxleDims`, the `printed` snap axle), `crank.py` (routes, claims, the printed crankshaft), `route.py` (the crank's router: static facts, detours, the exact route per layering), `underside.py` (the body's underside: the envelope, ground clearance), `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides, the frame ties' holes, the assembly), `chassis.py` (the servo frames in the plate plane, centre plates, rear screws, tie columns), `contract.py` (parts inside claims), `envelope.py` (solids of claims). Registries in `__init__.py`. |
 | `construction/pivots/` | metal-shaft pivots (`--pin` / `--pillar` keys; its docstring holds the hardware research): `rod` (3 mm rod, laser-cut spacer rings, Starlock clips, glued into the frame plates; `rod.py`), `bolt` (M3 SHCS axle, rings, washer + nylock; a pillar clamps both plates, the nut end claims 2-3 layers; `bolt.py`), `bearing` (MF63ZZ flanged bearing glued in each link, rod, printed sleeves; `insert.py`), `bushing` (igus GFM-0304-03 pressed in each link, same; `insert.py`). Their claims fill every layer (`AxleDims.fill`: a rod can't neck, so `neck` is the narrowest ring or sleeve), flanges need a free face (`AxleDims.flange`, `flange_sides`), retainers come from the construction's `ends` hook. Catalog additions in `hardware/fastener_catalog.py`. |
 | `servos/` | `ServoSpec` data (continuous-rotation servos only), the drive group (`mount.py`: servo on the inner frame plate, `DriveInterface` for the crank), models and CAD cache. |
 | `hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py` and `servos/catalog.py`; the sheet helpers), the screw families (`fasteners.py`: heads, stock lengths, keys, solids), materials and exact mass properties (`mass.py`: the one density table, `material_of`, `part_props`) and the BOM (`bom.py`). |
-| `fabricate.py` | orchestration: `BuildConfig`, `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
+| `config.py` | `BuildConfig`: what to build and how, validated on construction (the linkage's module, one phase per leg, the linkage's proportions; defaults dropped so a design has one config and one `key`), the shared CLI arguments and the server's query parsing. |
+| `fabricate.py` | orchestration: `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
 | `shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
+| `cli.py` | the one entry point: `build` (`main.py`), `bake` (`viewer/bake_gltf.py`), `audit`, `explain`, `tune`, `sim`, `report` (each a module's `main(argv)`); the `mise` tasks run it |
 | `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM (`construction.contract` has the checks) |
 | `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `sim/` | MuJoCo: `mjcf.py` builds the MJCF of the fabricated robot (exact masses, loop equalities, velocity drives) and its viewer metadata; `run.py` steps it (`simulate`, `walk_metrics`, kinematic playback). `scripts/sim_walk.py` is the CLI. |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
-| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker |
+| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design; `mode` is `robot`, `side`, or one of the side-only ids old URLs use, `MODES`), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker, `/api/modes` the dropdown's ids and labels |
 
 ### Pipeline contract
 
@@ -209,8 +225,13 @@ planning; a layout it can't be built in makes its claim return `None`.
 
 To add a construction: implement `dims(ctx)` (validation, the radii its
 claims use) and `realize(group, build)` (parts inside those claims), register
-it in `construction/__init__.py`, run the contract tests. To add a leg
-module: add it to `linkage.MODULE_LEGS` (or a linkage's own `modules`). To
+it in `construction/__init__.py`, run the contract tests. To add a kind of
+group (a second drive, spacer rings): subclass `construction.base.Group`
+(`claims`, `realize(build, done)`; `keepouts` / `interface` if it has any;
+`cuts = True` if it cuts what the others asked for) and append its factory
+to `construction.GROUP_FACTORIES`, in dependency order. To add a leg
+module: a `linkage.Module` (its legs, and which of them share one crank
+body) in `linkage.MODULES` or a linkage's own `modules`. To
 add a linkage: a module in `linkages/` with its params, program, links
 (`b<k>` -> joints, outline), frame, crank and feet (a mechanism: its
 `output`); `tests/test_linkage.py` checks it assembles, stays rigid and

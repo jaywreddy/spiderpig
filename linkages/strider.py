@@ -16,7 +16,7 @@ import math
 
 import sympy as sp
 
-from linkage import Linkage, P, circle_x_circle, crank, extend, offset, register, xy
+from linkage import Linkage, Module, P, circle_x_circle, crank, extend, offset, register, xy
 
 PARAMS = {
     "unit": sp.Rational(13, 2),     # mm per drawing unit (6.5: the foot links clear the crank)
@@ -72,12 +72,14 @@ STRIDER = register(Linkage(
     frame=("J2", "O", "J6"),
     crank=("O", "J1"),
     feet=(("b3", "J4"), ("b7", "J8")),
-    # One Strider already is a mirrored pair: modules add pairs out of phase.
+    # One Strider already is a mirrored pair: modules add pairs out of phase, each pair
+    # of a double on one crank body (as Klann's mirrored pair), a decker's on its own.
     modules={
-        "single": ((+1, 0.0),),
-        "double": ((+1, 0.0), (+1, math.pi)),
-        "decker": ((+1, 0.0), (+1, math.pi / 2)),
-        "quad": ((+1, 0.0), (+1, math.pi), (+1, math.pi / 2), (+1, 3 * math.pi / 2)),
+        "single": Module(((+1, 0.0),)),
+        "double": Module(((+1, 0.0), (+1, math.pi)), cranks=((0, 1),)),
+        "decker": Module(((+1, 0.0), (+1, math.pi / 2))),
+        "quad": Module(((+1, 0.0), (+1, math.pi), (+1, math.pi / 2), (+1, 3 * math.pi / 2)),
+                       cranks=((0, 1), (2, 3))),
     },
     source="https://www.diywalkers.com/strider-linkage-plans.html",
     notes="Two feet per crankpin, 180° apart; long, flat stance.",

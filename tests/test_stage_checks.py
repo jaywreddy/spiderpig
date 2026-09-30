@@ -7,7 +7,8 @@ import re
 import pytest
 
 import linkage
-from fabricate import BuildConfig, design_side, side_clearances, side_problem, template_for
+from config import BuildConfig
+from fabricate import design_side, side_clearances, side_problem, template_for
 from stack import PlanError
 
 

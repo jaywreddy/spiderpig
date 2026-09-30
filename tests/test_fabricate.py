@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from fabricate import BuildConfig, design_side
+from config import BuildConfig
+from fabricate import design_side
 
 
 def test_links_sit_in_their_planned_layers(design, side):

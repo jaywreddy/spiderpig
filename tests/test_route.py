@@ -8,12 +8,12 @@ import numpy as np
 import pytest
 
 import linkage
+from config import BuildConfig
 from construction.base import ConstructionError
 from construction.crank import CrankRoute, Run
 from construction.route import crank_facts
 from construction.underside import Underside, underside
 from fabricate import (
-    BuildConfig,
     SideDesign,
     design_side,
     fabricate_side,

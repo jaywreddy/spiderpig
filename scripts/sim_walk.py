@@ -1,31 +1,36 @@
 """Simulate the walker in MuJoCo and print how it walks.
 
-    PYTHONPATH=. uv run python scripts/sim_walk.py                     # quad, both drives 80 %
-    PYTHONPATH=. uv run python scripts/sim_walk.py --module single --seconds 6
-    PYTHONPATH=. uv run python scripts/sim_walk.py --left 0.4 --right -0.4     # turn in place
-    PYTHONPATH=. uv run python scripts/sim_walk.py --left 40rpm --right 40rpm
-    PYTHONPATH=. uv run python scripts/sim_walk.py --xml build/quad.xml       # + quad.json
+    uv run python cli.py sim                                 # quad, both drives 80 %
+    uv run python cli.py sim --module single --seconds 6
+    uv run python cli.py sim --left 0.4 --right -0.4         # turn in place
+    uv run python cli.py sim --left 40rpm --right 40rpm
+    uv run python cli.py sim --xml build/quad.xml            # + quad.json
 
-Drive speeds are fractions of the servo's no-load speed (``0.8``, ``-1``),
-percentages (``80%``) or crank rpm (``40rpm``); positive walks forward. The
-drives start after ``--settle`` seconds at rest; metrics skip the first
-``--skip`` seconds.
+The design and build options are every other tool's (:mod:`config`:
+``--linkage``, ``--module``, ``--phases`` in degrees, ``--proportion
+NAME=VALUE``, the servo, the constructions, the sheet). Drive speeds are
+fractions of the servo's no-load speed (``0.8``, ``-1``), percentages
+(``80%``) or crank rpm (``40rpm``); positive walks forward. The drives start
+after ``--settle`` seconds at rest; metrics skip the first ``--skip``
+seconds.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import linkage  # noqa: E402
-from fabricate import MODULES, BuildConfig  # noqa: E402
-from sim.mjcf import RPM, SimParams, build_mjcf, drive_limits  # noqa: E402
-from sim.run import kinematic_gait, simulate, walk_metrics  # noqa: E402
+from config import (
+    BuildConfig,
+    ParamError,
+    add_build_args,
+    add_design_args,
+    config_from_args,
+)
+from sim.mjcf import RPM, SimParams, build_mjcf, drive_limits
+from sim.run import kinematic_gait, simulate, walk_metrics
 
 
 def parse_speed(text: str, vmax: float) -> float:
@@ -43,49 +48,12 @@ def parse_speed(text: str, vmax: float) -> float:
     return v * vmax
 
 
-def _angle(text: str) -> float:
-    """``1.57``, ``90deg``, ``pi``, ``3pi/2``, ``-pi/4`` -> radians."""
-    s = text.strip().lower()
-    if s.endswith("deg"):
-        return math.radians(float(s[:-3]))
-    if "pi" in s:
-        num, _, den = s.partition("/")
-        k = num.replace("pi", "").replace("*", "").strip()
-        k = {"": "1", "-": "-1", "+": "1"}.get(k, k)
-        return float(k) * math.pi / (float(den) if den else 1.0)
-    return float(s)
-
-
-def parse_phases(text: str) -> tuple[float, ...]:
-    """``"0,pi,pi/2,3pi/2"`` or ``"0,180deg,90deg,270deg"`` -> radians."""
-    try:
-        return tuple(_angle(item) for item in text.split(","))
-    except ValueError as e:
-        raise argparse.ArgumentTypeError(f"{text!r}: {e}") from None
-
-
-def parse_proportion(text: str) -> tuple[str, float]:
-    name, sep, value = text.partition("=")
-    if not sep:
-        raise argparse.ArgumentTypeError(f"{text!r}: expected NAME=VALUE")
-    return name.strip(), float(value)
-
-
 def _args(argv) -> argparse.Namespace:
-    d = BuildConfig()
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter,
                                 epilog=__doc__.split("\n", 1)[1])
-    p.add_argument("--linkage", choices=linkage.available("walker"), default=linkage.DEFAULT,
-                   help=f"the leg linkage ({linkage.DEFAULT})")
-    p.add_argument("--module", choices=MODULES, default="quad", help="legs per side (quad)")
-    p.add_argument("--servo", default=d.servo, help=f"servo model ({d.servo})")
-    p.add_argument("--sheet", default=d.sheet, help=f"sheet stock ({d.sheet})")
-    p.add_argument("--thickness", type=float, default=None, help="sheet thickness override (mm)")
-    p.add_argument("--phases", type=parse_phases, default=None,
-                   help="crank phase per leg, radians or NNdeg, comma-separated")
-    p.add_argument("--proportion", type=parse_proportion, action="append", default=[],
-                   metavar="NAME=VALUE", help="override a linkage parameter (repeatable)")
+    add_design_args(p)
+    add_build_args(p)
     p.add_argument("--seconds", type=float, default=4.0,
                    help="seconds of driving after --settle (4)")
     p.add_argument("--left", default="0.8", help="left drive speed (0.8 of no-load)")
@@ -99,7 +67,12 @@ def _args(argv) -> argparse.Namespace:
     p.add_argument("--xml", type=Path, default=None,
                    help="write the MJCF here (and its metadata next to it as .json)")
     p.add_argument("--json", action="store_true", help="print the metrics as JSON")
-    return p.parse_args(argv)
+    args = p.parse_args(argv)
+    try:
+        args.config = config_from_args(args)
+    except ParamError as e:
+        p.error(str(e))
+    return args
 
 
 def _report(cfg: BuildConfig, m: dict, kin: dict, left: float, right: float, seconds: float):
@@ -136,11 +109,9 @@ def main(argv=None) -> int:
     import servos
 
     args = _args(argv)
-    cfg = BuildConfig(linkage=args.linkage, module=args.module, servo=args.servo, sheet=args.sheet,
-                      thickness=args.thickness, phases=args.phases,
-                      proportions=tuple(args.proportion))
+    cfg: BuildConfig = args.config
     params = SimParams(friction=args.friction, timestep=args.timestep)
-    vmax, _ = drive_limits(servos.get(args.servo))
+    vmax, _ = drive_limits(servos.get(cfg.servo))
     left, right = parse_speed(args.left, vmax), parse_speed(args.right, vmax)
     if args.xml is not None:
         xml, meta = build_mjcf(cfg, params)

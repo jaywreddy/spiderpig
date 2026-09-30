@@ -7,15 +7,16 @@ pads other groups need (the servo footprint, chassis tabs).
 
 from __future__ import annotations
 
-from construction.base import FRAME_INNER, FRAME_OUTER, Build, Context, Realized, hardware
+from construction.base import FRAME_INNER, FRAME_OUTER, Build, Context, Group, Realized, hardware
 from shapes import plate
 from stack import Claim, Layout, Pill, Placed
 
 
-class LinkPlates:
+class LinkPlates(Group):
     """Every leg link, cut from the sheet, in the layer the plan gives it."""
 
     name = "links"
+    cuts = True
 
     def claims(self, ctx: Context) -> list[Claim]:
         r = ctx.params.link_radius
@@ -38,10 +39,11 @@ class LinkPlates:
         return out
 
 
-class FramePlates:
+class FramePlates(Group):
     """The inner (servo) and outer frame plates: arms from O out to every pillar."""
 
     name = "frame"
+    cuts = True
 
     def claims(self, ctx: Context) -> list[Claim]:
         return []   # layers 0 and top are reserved for these plates by the planner

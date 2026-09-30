@@ -44,6 +44,7 @@ from construction.base import (
     Build,
     ConstructionError,
     Context,
+    Group,
     Params,
     Realized,
     hardware,
@@ -118,7 +119,7 @@ def flange_sides(layers: list[int], room: Callable[[int], float], flange: float,
     return out
 
 
-class AxleGroup:
+class AxleGroup(Group):
     """One axle (``kind`` "frame" = pillar, "pin" = link pin), built by ``construction``."""
 
     def __init__(self, axis: Axis, construction):
@@ -270,7 +271,7 @@ class AxleGroup:
         return [Claim(g, frozenset(members) | frozenset(room), make, early=early,
                       early_deps=frozenset(members))]
 
-    def realize(self, build: Build) -> Realized:
+    def realize(self, build: Build, done: Realized) -> Realized:
         return self.construction.realize(self, build)
 
 

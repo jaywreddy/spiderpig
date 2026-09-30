@@ -10,7 +10,8 @@ import pytest
 
 import linkage
 import servos
-from construction.base import FRAME_OUTER, Build, ConstructionError
+from config import BuildConfig
+from construction.base import FRAME_OUTER, Build, ConstructionError, Realized
 from construction.contract import check_side, clashes
 from construction.crank import (
     BHCS,
@@ -18,12 +19,10 @@ from construction.crank import (
     CrankRoute,
     PrintedCrank,
     Run,
-    add_crank_point,
     default_route,
     route_of,
 )
 from fabricate import (
-    BuildConfig,
     SideDesign,
     design_side,
     fabricate_side,
@@ -297,7 +296,7 @@ def _routed(config, layers, top, route, point=None):
     tmpl = template_for(config)
     ctx, groups, problem = side_problem(tmpl, config)
     if point is not None:
-        add_crank_point(ctx.topo, *point)
+        ctx.topo.add_crank_point(*point)
     plan = problem.plan(layers, top, {"crank": route})
     assert verify_plan(plan) == []
     return tmpl, SideDesign(config, ctx, groups, plan)
@@ -367,7 +366,7 @@ def test_without_the_bearing_the_crank_ends_at_its_lowest_web():
     bottom = _part(mech, "crank_seg0").bounding_box().min.Z
     assert pytest.approx(design.plan.z(1)[0]) == bottom   # the web's face, no journal stub
     crank = next(g for g in design.groups if g.name == "crank")
-    got = crank.realize(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)))
+    got = crank.realize(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)), Realized())
     assert FRAME_OUTER not in got.cuts                 # no journal hole in the outer plate
 
 
