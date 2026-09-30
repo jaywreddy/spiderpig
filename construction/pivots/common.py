@@ -230,10 +230,3 @@ class RodShaft:
         if col.anchors:
             out.extras.append(BomLine("ca_glue", self.glue_per_anchor * len(col.anchors),
                                       f"{group.name} anchors"))
-
-
-__all__ = [
-    "CLIP_KEY", "FLANGE_ROOM", "RETAINED", "RING_COLOR", "ROD_KEY", "SLEEVE_COLOR",
-    "SPACER_ROLES", "STEEL", "Column", "RodShaft", "bored", "hex_prism", "host_of",
-    "sleeve_solid", "stem_of", "xy_of",
-]

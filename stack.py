@@ -1324,12 +1324,3 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
             bad.append(f"layer {a.layer}: {a.label or a.group} x {b.label or b.group} "
                        f"clear {d - a.shape.r - b.shape.r:.2f} mm (need {sp.margin:.2f})")
     return bad
-
-
-__all__ = [
-    "Axis", "Claim", "Clearance", "Disc", "Geometry", "Keepout", "Layout", "Pill", "Placed",
-    "ClearanceError", "PlanError", "Recommendation", "Route", "RouteConflict", "RouteView",
-    "Router", "Unbuildable", "made", "static_clearances",
-    "StackPlan", "StackProblem", "StackSpec", "Topology", "body_class", "group_axes", "is_link",
-    "is_crank", "is_frame", "seg_seg", "topology_from_template", "verify_plan",
-]

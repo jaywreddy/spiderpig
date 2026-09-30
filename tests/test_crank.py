@@ -19,7 +19,6 @@ from construction.crank import (
     CrankRoute,
     PrintedCrank,
     Run,
-    add_crank_point,
     default_route,
     route_of,
 )
@@ -297,7 +296,7 @@ def _routed(config, layers, top, route, point=None):
     tmpl = template_for(config)
     ctx, groups, problem = side_problem(tmpl, config)
     if point is not None:
-        add_crank_point(ctx.topo, *point)
+        ctx.topo.add_crank_point(*point)
     plan = problem.plan(layers, top, {"crank": route})
     assert verify_plan(plan) == []
     return tmpl, SideDesign(config, ctx, groups, plan)

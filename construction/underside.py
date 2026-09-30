@@ -146,6 +146,3 @@ def underside(ctx: Context, crank_reach: float | None) -> Underside:
         ys = np.minimum(ys, f(s))
     o = ctx.topo.geometry.points["O"][0]
     return Underside(xs, ys, (float(o[0]), float(o[1])))
-
-
-__all__ = ["Underside", "body_shapes", "underside"]

@@ -205,6 +205,3 @@ def _recommend(config, gaps: list[Gap], plan: bool) -> tuple[list[Recommendation
     else:
         notes.append(t)
     return recs, notes
-
-
-__all__ = ["Gap", "gaps_of", "recommend", "scale", "thinner"]

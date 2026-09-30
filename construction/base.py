@@ -154,7 +154,7 @@ class Build:
 
         A point a group added to the geometry (not a joint) is where the
         geometry says if it's fixed (e.g. a servo mounting screw); if it moves,
-        it's fixed to the crank (:func:`construction.crank.add_crank_point`)
+        it's fixed to the crank (:meth:`stack.Topology.add_crank_point`)
         and has turned with it about O.
         """
         node = self._node(point)

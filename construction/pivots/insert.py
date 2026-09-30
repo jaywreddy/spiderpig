@@ -170,5 +170,3 @@ BUSHING = InsertAxle(
     label="igus GFM-0304-03 flange bushing pressed in each link, 3 mm rod, printed sleeves, clips",
     insert="bushing_gfm0304_03", seat_fit=0.02, glued=False,
 )
-
-__all__ = ["BEARING", "BUSHING", "InsertAxle", "InsertDims"]

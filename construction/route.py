@@ -49,7 +49,6 @@ from construction.crank import (
     CrankDims,
     CrankRoute,
     Run,
-    add_crank_point,
     hub_layers,
 )
 from construction.underside import Underside
@@ -258,8 +257,8 @@ def crank_facts(ctx: Context, dims: CrankDims, envelope: Underside | None,
             if j is None:
                 continue
             if not any(d.r == rad and d.angle == angles[j] for d in facts.detours):
-                name = add_crank_point(topo, f"crank.detour{len(facts.detours)}", float(rad),
-                                       float(angles[j]))
+                name = topo.add_crank_point(f"crank.detour{len(facts.detours)}", float(rad),
+                                            float(angles[j]))
                 facts.detours.append(Detour(name, float(rad), float(angles[j]),
                                             float(rad + reach)))
             break
@@ -652,7 +651,3 @@ class CrankRouter:
         if top is not None and h0 - top < dead:
             return RouteConflict(top, h0)
         return RouteConflict(1, dead)
-
-
-__all__ = ["CrankFacts", "CrankRouter", "Detour", "NoCrankPoint", "crank_facts",
-           "point_clearance"]

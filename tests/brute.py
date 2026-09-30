@@ -196,6 +196,3 @@ def solve(problem: StackProblem, top: int, ctx,
                             and buildable(route, layers, problem, ctx):
                         best = (c, dict(layers), route)
     return best
-
-
-__all__ = ["cost", "routes", "solve"]

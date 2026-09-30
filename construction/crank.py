@@ -194,7 +194,8 @@ class Run:
     """The crankshaft runs along the post at ``at`` over layers ``lo``..``hi``.
 
     ``at`` is a crankpin, or a detour point fixed to the crank (a point of the
-    plan's geometry that turns with it). Webs from O lead in at ``lo - 1`` and
+    plan's geometry that turns with it, :meth:`stack.Topology.add_crank_point`).
+    Webs from O lead in at ``lo - 1`` and
     out at ``hi + 1``; the centre O is free in the run's layers.
     """
 
@@ -222,12 +223,6 @@ def default_route(layout: Layout, pins) -> CrankRoute:
             else:
                 runs.append(Run(p.name, k, k))
     return CrankRoute(tuple(runs))
-
-
-def add_crank_point(topo, name: str, r: float, angle_deg: float) -> str:
-    """Add a point fixed to the crank to ``topo``'s geometry: ``r`` from O, ``angle_deg``
-    counter-clockwise from the first crankpin. Returns its name (a detour run's ``at``)."""
-    return topo.add_crank_point(name, r, angle_deg)
 
 
 def route_of(layout: Layout, pins) -> CrankRoute:
@@ -644,11 +639,3 @@ class PrintedCrank:
         if route.bearing:
             out.cut(FRAME_OUTER, Cut(tuple(build.xy("O")), params.hole(2 * d.stub)))
         return out
-
-
-__all__ = [
-    "BHCS", "CrankDims", "CrankGroup", "CrankRoute", "HornJoint", "POST_SCREWS",
-    "PostJoint", "PrintedCrank", "Run", "SELF_TAP", "SHCS", "ScrewKind", "add_crank_point",
-    "default_route",
-    "hub_layers", "route_of", "screw_body", "screw_from_key",
-]

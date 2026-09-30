@@ -123,9 +123,8 @@ under 5 mm (perimeter-only, weak: Hubs).
 from __future__ import annotations
 
 from construction.pivots.bolt import BoltAxle
-from construction.pivots.insert import BEARING, BUSHING, InsertAxle
+from construction.pivots.insert import BEARING, BUSHING
+from construction.pivots.insert import InsertAxle as InsertAxle
 from construction.pivots.rod import RodAxle
 
 PIVOTS = (RodAxle(), BoltAxle(), BEARING, BUSHING)
-
-__all__ = ["BEARING", "BUSHING", "PIVOTS", "BoltAxle", "InsertAxle", "RodAxle"]
