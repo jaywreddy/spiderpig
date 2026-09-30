@@ -36,6 +36,8 @@ As a package, with no Node on the machine (the wheel carries the built viewer):
 uv pip install .                  # or the wheel from `mise run release` (dist/*.whl)
 spiderpig --help
 spiderpig view <design-id>        # the viewer for a stored design (prints the URL; --open)
+spiderpig export <design-id> --formats step dxf bom glb mjcf   # a stored design's files
+spiderpig sim <design-id>         # MuJoCo on a stored design (its exported MJCF if any)
 spiderpig mcp --store .spiderpig  # the MCP server for an agent (docs/agentlib/API.md)
 ```
 
@@ -111,6 +113,12 @@ no `--module` or `--side-only`: it is its one module and one side, for `build`,
 parallelogram_lift watt_table_lift` compares mechanisms by their output numbers
 (stroke, straightness, rotation) as it compares walkers by their foot paths.
 
+`spiderpig export --linkage trotbot_heel --formats step stl print dxf bom glb mjcf`
+writes every format at once (the build options as for `spiderpig build`, or a stored
+design's id, into the store's `exports/` or `--out`), and `spiderpig sim --mjcf
+out/trotbot_heel.xml --linkage trotbot_heel` (or `spiderpig sim <design-id>`) runs that
+MJCF; `spiderpig report` covers every linkage, walkers and mechanisms, and says which
+module it is planning (a quad takes the planner's minute).
 `spiderpig view <design-id>` serves the animated viewer for a design recorded in
 the project store by the Python API or the MCP server (`docs/agentlib/API.md`),
 with the drive and tune panels answering for that design. `spiderpig view

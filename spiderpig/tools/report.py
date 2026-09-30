@@ -1,9 +1,10 @@
 """Compare every registered linkage: foot paths, layer plans, walking, cost.
 
     spiderpig report --out build/linkages.json
+    spiderpig report --linkages klann strider --modules quad
 
-For each linkage (every walker by default; ``--linkages`` names any, mechanisms
-included): its parameters and bodies, the single leg's foot path over one crank
+For each linkage (every registered one by default, the mechanisms included; ``--linkages``
+names some): its parameters and bodies, the single leg's foot path over one crank
 revolution (lift; stride, stance fraction and speed ripple within 2 and 5 mm of the
 ground) or a mechanism's output numbers (``output``: extent, stroke, straightness,
 rotation, dwell), which leg modules the layer planner can lay out (how thick the side
@@ -81,6 +82,8 @@ def plans(key: str, modules) -> dict:
     out = {}
     for m in modules:
         cfg = BuildConfig(linkage=key, module=m, robot=False)
+        log.info("%s %s: planning (a quad, or a TrotBot double, can take the planner's "
+                 "60 s deadline)", key, m)
         t0 = time.perf_counter()
         try:
             d = design_side(template_for(cfg), cfg)
@@ -144,9 +147,16 @@ def describe(lk: linkage.Linkage) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--out", type=Path, default=Path("build/linkages.json"))
-    ap.add_argument("--linkages", nargs="*", default=None)
-    ap.add_argument("--modules", nargs="*", default=["single", "double", "decker", "quad"])
+    ap.add_argument("--out", type=Path, default=Path("build/linkages.json"),
+                    help="the JSON written (default build/linkages.json)")
+    ap.add_argument("--linkages", nargs="*", default=None, metavar="KEY",
+                    help="the linkages to report (default: every registered one, walkers and "
+                         "mechanisms)")
+    ap.add_argument("--modules", nargs="*", default=["single", "double", "decker", "quad"],
+                    metavar="MODULE",
+                    help="the leg modules to plan (default: all four; every quad and the "
+                         "TrotBot doubles take the planner's 60 s deadline each, so the whole "
+                         "report is about 12 minutes; --modules single double is a minute)")
     ap.add_argument("--no-plan", action="store_true", help="skip the layer planner")
     ap.add_argument("--no-walk", action="store_true", help="skip the walking model")
     ap.add_argument("--cost", action="store_true",
@@ -154,7 +164,8 @@ def main(argv=None) -> int:
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
     logging.basicConfig(level=args.log_level, format="%(name)s %(message)s")
-    keys = args.linkages or linkage.available("walker")
+    keys = args.linkages or linkage.available()
+    log.info("%d linkages: %s", len(keys), ", ".join(keys))
     report = []
     for key in keys:
         lk = linkage.get(key)

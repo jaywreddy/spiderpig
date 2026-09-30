@@ -110,7 +110,10 @@ def test_one_side_plans_or_the_pipeline_says_why(key):
         err, msg = EXPECTED[key]
         with pytest.raises(err) as e:
             design_side(tmpl, cfg)
-        assert str(e.value) == msg
+        assert str(e.value).startswith(msg)
+        # round 5: and what to do about it (a limit of v1; the one-input mechanisms)
+        assert "a limit of v1 (one servo per machine), not of this spec" in str(e.value)
+        assert "a one-input mechanism builds (hoecken, " in str(e.value)
         return
     design = design_side(tmpl, cfg)
     assert design.plan.top >= 2

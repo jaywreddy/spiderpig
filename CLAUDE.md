@@ -23,7 +23,7 @@ mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan re
 mise run clean
 ```
 
-`build`, `bake`, `audit`, `explain`, `tune`, `sim`, `report`, `mcp` and `view` are
+`build`, `bake`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp` and `view` are
 the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig
 <command> --help`; from a checkout `uv run python -m spiderpig.cli <command>`, or
 `mise run <command> -- <options>`, which passes options through); the tools' own
@@ -172,9 +172,9 @@ hatchling; `uv sync` installs it editable, `spiderpig` is its console script).
 | `spiderpig/shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `spiderpig/mesh.py` | `tessellate(part)`: OCCT's incremental mesh face by face, skipping (and counting) faces the mesher leaves without a triangulation (the XL330's model has three); the bake's `_tessellate` and the MJCF's hulls both use it, so a purchased model never fails either |
 | `spiderpig/layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
-| `spiderpig/cli.py` | the one entry point, the `spiderpig` console script (`python -m spiderpig.cli` from a checkout): `build` (`spiderpig/build.py`: STEP/STL/DXF/BOM), `bake` (`spiderpig/bake.py`), `audit`, `tune`, `sim`, `report` (`spiderpig/tools/`), `explain`, `mcp`, `view` (each a module's `main(argv)`); the `mise` tasks run it. It imports nothing of the engine until a command runs |
+| `spiderpig/cli.py` | the one entry point, the `spiderpig` console script (`python -m spiderpig.cli` from a checkout): `build` (`spiderpig/build.py`: STEP/STL/DXF/BOM), `bake` (`spiderpig/bake.py`), `audit`, `tune`, `sim`, `export`, `report` (`spiderpig/tools/`), `explain`, `mcp`, `view` (each a module's `main(argv)`); the `mise` tasks run it. It imports nothing of the engine until a command runs |
 | `spiderpig/view.py` | `spiderpig view <design> [--store] [--port] [--open]`, or `spiderpig view --linkage ... --pin bolt` (the build options: `resolve_args` turns them into a design in the store through `api.spec_of`): the store as the MCP picks it, `api.export(design, ["glb"])` (cached), the server below on a free port, the URL `/?design=<id>`; `start_background()` runs it as a child process (`--serve-only`) for the MCP `view` tool |
-| `spiderpig/tools/` | `audit.py` (`mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM; `construction.contract` has the checks), `tune.py` (crank phases and proportions for a smoother walk), `sim_walk.py` (the MuJoCo CLI), `report.py` (every linkage compared), `dev.py` / `kill_dev.py` (`mise run view` / `kill`: the dev servers, a checkout only) |
+| `spiderpig/tools/` | `audit.py` (`mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM; `construction.contract` has the checks), `tune.py` (crank phases and proportions for a smoother walk), `sim_walk.py` (the MuJoCo CLI: the build options, a stored design's id, or `--mjcf FILE` with its `.json`), `export.py` (`spiderpig export`: `api.export` on the command line, a stored design or the build options, every format), `report.py` (every linkage compared, mechanisms included, a log line per plan), `dev.py` / `kill_dev.py` (`mise run view` / `kill`: the dev servers, a checkout only) |
 | `spiderpig/walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `spiderpig/tools/tune.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py` builds the MJCF of the fabricated robot (exact masses, loop equalities, velocity drives) and its viewer metadata; `run.py` steps it (`simulate`, `walk_metrics`, kinematic playback). `spiderpig/tools/sim_walk.py` is the CLI. |
 | `spiderpig/bake.py` | end-to-end `.glb` bake for the three.js viewer (`spiderpig bake`; cached in the store's `bakes/`) |

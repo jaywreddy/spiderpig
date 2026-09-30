@@ -5,14 +5,20 @@
     spiderpig sim --left 0.4 --right -0.4         # turn in place
     spiderpig sim --left 40rpm --right 40rpm
     spiderpig sim --xml build/quad.xml            # + quad.json
+    spiderpig sim 1a2b3c4d5e6f7a8b                # a stored design (its exported MJCF if any)
+    spiderpig sim --mjcf out/heel/trotbot_heel.xml --linkage trotbot_heel
 
 The design and build options are every other tool's (:mod:`config`:
 ``--linkage``, ``--module``, ``--phases`` in degrees, ``--proportion
-NAME=VALUE``, the servo, the constructions, the sheet). Drive speeds are
-fractions of the servo's no-load speed (``0.8``, ``-1``), percentages
-(``80%``) or crank rpm (``40rpm``); positive walks forward. The drives start
-after ``--settle`` seconds at rest; metrics skip the first ``--skip``
-seconds.
+NAME=VALUE``, the servo, the constructions, the sheet); a stored design's id
+(from the API's ``resolve``, ``--store`` picks the store) stands for all of
+them, and runs the MJCF its ``export`` wrote when there is one. ``--mjcf FILE``
+runs that model (with the ``.json`` written beside it by ``export`` or
+``--xml``) for the design the other options describe, instead of building
+one. Drive speeds are fractions of the servo's no-load speed (``0.8``,
+``-1``), percentages (``80%``) or crank rpm (``40rpm``); positive walks
+forward. The drives start after ``--settle`` seconds at rest; metrics skip
+the first ``--skip`` seconds.
 """
 
 from __future__ import annotations
@@ -52,6 +58,14 @@ def _args(argv) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter,
                                 epilog=__doc__.split("\n", 1)[1])
+    p.add_argument("design", nargs="?", metavar="DESIGN",
+                   help="a stored design's id (16 hex digits, from resolve) in place of the "
+                        "build options; its exported MJCF is run when the store has one")
+    p.add_argument("--store", metavar="PATH",
+                   help="the design store (default: $SPIDERPIG_STORE, else ./.spiderpig)")
+    p.add_argument("--mjcf", type=Path, default=None, metavar="FILE",
+                   help="run this MJCF (its .json beside it) for the design instead of "
+                        "building the model")
     add_design_args(p)
     add_build_args(p)
     p.add_argument("--seconds", type=float, default=4.0,
@@ -68,10 +82,35 @@ def _args(argv) -> argparse.Namespace:
                    help="write the MJCF here (and its metadata next to it as .json)")
     p.add_argument("--json", action="store_true", help="print the metrics as JSON")
     args = p.parse_args(argv)
-    try:
-        args.config = config_from_args(args)
-    except ParamError as e:
-        p.error(str(e))
+    args.model = None                # (xml, meta) to run instead of building
+    if args.design:
+        from spiderpig.store import Store
+        from spiderpig.view import load_design
+
+        store = Store.of(args.store) if args.store else Store.default()
+        try:
+            design = load_design(args.design, store)
+        except (KeyError, ValueError) as e:
+            p.error(str(e))
+        args.config = design.config
+        if args.mjcf is None:        # the design's exported MJCF, when the store has one
+            rep = design.reports.get("export") or design.store.read_report(design.id, "export")
+            files = (rep.files if hasattr(rep, "files") else (rep or {}).get("files")) or []
+            xml = next((Path(f) for f in files if str(f).endswith(".xml")), None)
+            if xml is not None and xml.is_file() and xml.with_suffix(".json").is_file():
+                args.mjcf = xml
+    else:
+        try:
+            args.config = config_from_args(args)
+        except ParamError as e:
+            p.error(str(e))
+    if args.mjcf is not None:
+        meta_path = args.mjcf.with_suffix(".json")
+        if not args.mjcf.is_file() or not meta_path.is_file():
+            p.error(f"--mjcf needs {args.mjcf} and its metadata {meta_path} beside it (what "
+                    f"export(design, ['mjcf']) and spiderpig sim --xml write)")
+        args.model = (args.mjcf.read_text(), json.loads(meta_path.read_text()))
+        print(f"running {args.mjcf}", file=sys.stderr)
     return args
 
 
@@ -90,7 +129,12 @@ def _report(cfg: BuildConfig, m: dict, kin: dict, left: float, right: float, sec
     print(f"  body      height {m['height']:.1f} mm, bob {m['bob']:.1f} mm/rev (kinematic "
           f"{kin['bob']:.1f}), pitch range {m['pitch_range']:.1f} deg, roll range "
           f"{m['roll_range']:.1f} deg, max tilt {m['max_tilt']:.1f} deg")
-    print(f"            fell over: {'YES' if m['fell'] else 'no'}; something other than a foot "
+    fell = "no"
+    if m["fell"]:
+        fell = "YES"
+        if m.get("fell_at_s") is not None:
+            fell += f" ({m.get('fell_axis') or 'tilted'} at {m['fell_at_s']:.1f} s into the run)"
+    print(f"            fell over: {fell}; something other than a foot "
           f"on the floor {m['body_contact'] * 100:.0f} % of the time")
     for name, d in m["torque"].items():
         print(f"  {name:9s} torque peak {d['peak']:.3f} N·m ({d['peak_fraction'] * 100:.0f} % of "
@@ -119,8 +163,10 @@ def main(argv=None) -> int:
         args.xml.write_text(xml)
         args.xml.with_suffix(".json").write_text(json.dumps(meta, indent=1))
         print(f"wrote {args.xml} and {args.xml.with_suffix('.json')}", file=sys.stderr)
+    xml_in, meta_in = args.model or (None, None)
     result = simulate(cfg, [(0.0, 0.0, 0.0), (args.settle, left, right)],
-                      args.settle + args.seconds, params=params)
+                      args.settle + args.seconds, params=params,
+                      model_xml=xml_in, model_meta=meta_in)
     m = walk_metrics(result, skip=args.settle + args.skip)
     kin = kinematic_gait(cfg)
     if args.json:

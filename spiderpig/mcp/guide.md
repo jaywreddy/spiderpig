@@ -167,10 +167,16 @@ spool of filament, a can of solvent cement and a pack of inserts are bought whol
 the total rarely goes under about $100 whatever the linkage; the row's detail lists
 the largest items. An item with no listed price is not in the total, so a total with
 unpriced items is a lower bound: it can refute a `max` but not confirm it, and a hard
-`max` target then fails ("at least ...") with every unpriced item named by quantity
-(the catalog's bearings, bushings, rod, clips, CA glue and most screws have vendor
-links but no price, so a metal-pivot design's cost stays a lower bound until they are
-priced or accepted by hand). At `quick`, `budget.cost_floor_usd` prices what the design
+`max` target then fails ("at least ...") with every unpriced item named by quantity.
+Most hardware is priced (the servos, sheets, glues, inserts, the MF63ZZ bearing, the
+igus bushing, the M3 socket caps, button heads, nuts, nylocks and washers); what is not
+is the 3 mm rod, the push-on clips, the M2 tapping screws and the M3 x 16 / x 18 /
+x 50 screws, and three of those packs are on every walker (the servo horn's
+self-tappers, the crank's button heads, the frame ties' screws), so a hard budget
+never verifies on its own. **`budget.allowance_usd`** accepts them: a plain number
+under `budget` (not a target), USD for all the unpriced items in all, added to the
+priced total; the row then reads "$108.76 priced + $15.00 allowed for the 3 unpriced
+items" and verifies against the target. At `quick`, `budget.cost_floor_usd` prices what the design
 buys whatever its parts (servos, spool, sheet, cement, inserts, a bottle of CA glue for
 the pillars' anchors and the robot's tie spigots with every pivot construction but
 `bolt`, the printed crank's crankpin nuts) from the catalog, and a floor already over
@@ -243,3 +249,12 @@ server process; the store keeps what they produced.
 - Prices are the catalog's preferred offers, unverified.
 - A walker with `sides: 1` builds one side; its walk metrics still model the two-sided
   robot.
+- One drive per machine: a two-input mechanism (`five_bar`, `inputs: [t, t2]` on its
+  card) resolves, and `check` reads its program and output, but `plan`, `build`,
+  `verify` and `export` stop at `drive / second_input_no_drive`; `resolve` warns, and
+  no spec change helps (the one-input mechanisms build).
+- The transmission angle is a target (`motion.transmission_angle_deg`, the least over
+  the closures, folded about 90°) and a row; the per-closure ranges are on the card.
+  A parameter set that puts a length under a square root below zero (a crank-rocker
+  whose crank outgrows its rocker) fails `check` at `program / point_undefined`,
+  naming the expression.

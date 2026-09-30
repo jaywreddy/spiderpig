@@ -1379,3 +1379,382 @@ workaround, and what remains is nits (the viewer's chrome around a mechanism) an
 catalog's honest packs. The single biggest remaining problem is the same as round 3's
 and the engine's: the planner's 60 s deadline on a scaled-down multi-leg design (the
 sixbar quad took its whole minute here too), with no knob and no proof.
+
+## Round 5 — 2026-09-30 (the final confirmation)
+
+Two jobs. *The regression*: rounds 2, 3 and 4's goals again, on the same paths their
+logs describe (round 2's six-legged walker on 2 mm acrylic with bearings and the XL330
+through the Python API and the CLI, with the TrotBot unit-7 failure; round 3's Hoecken
+over MCP, the bolt Klann over the CLI and the Jansen quad over the API; round 4's
+box-and-budget walker and cheapest walker over MCP, the derive / compare / recheck /
+full verify over the API, the lift over the CLI), expected to go through clean. *Five
+corners nobody had driven*: (1) a rotation mechanism over MCP, "a single-servo rocker
+that swings at least 120° with a transmission angle that never drops below 40°"; (2)
+every export format at once for a TrotBot heel quad, then `spiderpig sim` on that MJCF
+and the sim's speed against the walk model's; (3) `spiderpig report` over every linkage
+and `explain` on a mechanism and a walker; (4) the two-input five-bar over MCP; (5) a
+Spec written wrong three ways (a misspelled key, a bare-number target, `legs.module:
+"quad"` on a mechanism).
+
+Driver: the MCP server as a subprocess (`python -m spiderpig.cli mcp --store <tmp>`
+from the worktree, the official `mcp` 2.x client, a fresh store per goal);
+`PYTHONPATH=. python -m spiderpig.cli ...`; `spiderpig.api` in a Python session on a
+scratch store; headless Chromium for the viewer. Allowed reading: `README.md`,
+`docs/agentlib/API.md`, this file's rounds 1 to 4, `--help`, `help()`, the guide, the
+cards and the catalog. Goals ran two at a time on the 4 cores (as the logs' second
+runs did); the browser checks ran alone at the end. One honesty note: my first
+browser numbers read 128 s to the GLB on every page because my Playwright client
+polled with `time.sleep` (the sync API dispatches events only inside its own calls);
+the numbers below are from the fixed client, on an idle machine.
+
+### The regression
+
+| goal (path) | clean? | this run | the log's second run |
+|---|---|---|---|
+| R2 API: import + cards; 10 spec probes | yes | 3.0 s; ms | 3.8; 3.4 |
+| R2 API: the goal at 2 mm: check, plan, walk, quick | yes: `construction / unbuildable`, least pitch 2.9 mm, the checked patch `thickness_mm: 3`, `resolve` warned | 1.1 s | 4.2 |
+| R2 API: recommend, derive, check, plan, quick | yes: 12 layers, optimal | 0.8 s | 4.4 |
+| R2 API: the derived Klann quad, standard | yes: `budget.cost_usd` **$259.71** FAIL, 4 unpriced (the 64 bearings are priced now, $123.69: round 3's catalog, not "$115.67 at least") | 44.7 s | 54.0 |
+| R2 API: Strider double, quick + standard | yes ($255.74 at least; 16 layers, 31.5 mm clearance, 172.8 mm/rev, 296.7 mm/s) | 38.3 s | 53.4 |
+| R2 API: export step/dxf/print/bom/glb | yes, 22 files, the XL330's 3 faces on `warnings` | 33.7 s | 44.4 |
+| R2 API: the edit on the loaded robot + recheck | yes (`L.b2_leg0` 4963.8 -> 4942.6 mm3, mass 5.907 -> 5.882 g, no note) | 9.7 s | 14.2 |
+| R2 API: TrotBot heel at unit 7: check, recommend, derive, plan, quick, explain | yes (the same message; the quad's own plan 37 layers in the deadline, unproven) | 69.7 s | 76.8 |
+| R2 CLI: explain (2 mm; the Strider), build, audit | yes (the 2 mm warning on stderr, `STOP: no M3 screw ...`; 257 parts OK) | 2.9 + 4.1; 32.7; 61.8 s | 4.7; 38.7; 73.9 |
+| R2 CLI: `spiderpig view` to the URL; page + GLB; drive mode + HUD | yes: the export served as is (`X-Spiderpig-Glb: export`, 10.5 MB), no console errors; the HUD's numbers not read (my client's toggle) | 4.6; 2.7 + 6.2; — | 3.0; 9.5; 33 |
+| R3 G1 MCP: discover, 11 cards, catalog; Hoecken resolve → view; probes | yes (66.9 mm at 0.064; standard 12.4 s job; export 1.2 s; Peaucellier 51.6 / Watt 50.1 mm; stroke 80 → `unit 19.5`, checked 81.53; dwell refused; the three line mechanisms plan) | 2.2; 17.0; 0.9 s (27 s in session) | 8.4 (2.6); 22.3 (14.6); 12.2 |
+| R3 G1 CLI: `spiderpig view` from a shell; page + GLB | yes: the export served, no console errors | 9.6; 2.9 + 6.4 | 7.0; 5.2 |
+| R3 G2 CLI: `build --list`, explain default | yes | 2.9; 3.8 s | 8.2 |
+| R3 G2 CLI: explain bolt both; at 5 mm; bolt pillars; bolt pins | yes (proven "3-15 layers ruled out", `pillar bolt -> printed ... 13 layers (39 mm)`; the 5 mm warning; 13 / 39 mm) | 6.4; 4.5; 6.2; 4.1 s | 6.5; 5.2; 7.0; 4.7 |
+| R3 G2 CLI: build default; build --pin bolt; audit --pin bolt | yes (197 parts OK) | 86.7; 55.2; 62.9 s | 84.4; 59.6; 66.5 |
+| R3 G2 CLI: `view --linkage klann --module quad --pin bolt` | yes: resolved into the store as `1a89d6bb0b7de797` (the log's id), the export served | 32.0; 2.7 + 6.2 | 25 + 4.7 |
+| R3 G3 API: resolve → explain | yes (48 mm proven, the floor note; 552.8 g estimated) | 3.3 s | 6.9 |
+| R3 G3 API: describe + derives (XL330, decker, double, unit 1.3) | yes (unit 1.3: the deadline, then `unit 1.3 -> 1.6 ... plans (quad module, the design's own) in 16 layers`) | 65.3 s | 74 |
+| R3 G3 API: plywood, + XL330, standard; two more standards | yes (319.87 g built vs 339.0 estimated; by group) | 75.1; 112.5 s | 70; 57 + 59 |
+| R4 G1 MCP: discover; describe, catalog, resolve, quick | yes (floor $117.07 "already over") | 2.1; 3.1 s | 5.9; 7.1 |
+| R4 G1 MCP: four derives + quick; two derives + quick + the sts3215 standard | yes ($101.83 plywood, $116.81 XL330; z 205 on the sts3215 candidate) | 78.2; 70.5 s | 88.0; 57.5 |
+| R4 G1 MCP: final standard, export, view, browser | yes: 50.63 mm, 290 mm/s, 208 x 145 x 181, $119.91, 20 layers proven; the page: 166 nodes, 330 tracks, the export served, no console errors (from a shell: 35 s cold after a restart, 4.1 s warm to the URL) | 52.3; 142.0; 3.1; 2.9 + 6.4 | 152.3 in all |
+| R4 G2 MCP: 17 cards; seven candidates quick + standard | yes ($108.76 / $112.73 at least; the sixbar quad's quick 60.5 s) | 10.9; 285.4 s (standards two at a time beside G1) | 14.5; 193.6 |
+| R4 G2 MCP: export(bom) + summary; pillar variants | yes (`bom.md` $108.76 = the row; bolt fails in 1 s with the checked patch back to printed) | 73.2; 68.3 s | 74.3; 51.9 |
+| R4 G3 API: load, three derives, standards, compares | yes (335.8 -> 238.5 g, 149.8 -> 296.7 mm/s, 22.6 -> 31.5 mm, 108.76 -> 119.91) | 97.4 s | 106 |
+| R4 G3 API: build (reloaded), the `Part.locate` edit on both sides + a wrong-frame edit, recheck | yes (21.2 mm3 off each; the note names the missed one) | 9.3 s | 10 + 14 |
+| R4 G3 API: verify full, XL330 + rod; sts3215 + rod | rows yes (326.3 mm/s, 190.7 mm/rev, stays up 4.2°, 0.12 of 0.52 N·m; 164.9 mm/s, 0.21 of 1.91), but **`ok: false`** (entry 1) | 65.6; 57.7 s | 54.4; 52.5 |
+| R4 G4 CLI: three explains, report; build; audit | yes (the axes named; 26 parts OK) | 9.2 + 3.3; 8.1; 20.2 s | 12; 9; 19 |
+| R4 G4 CLI: `view --linkage parallelogram_lift`; browser | yes: resolved as `af8b33c63bb7b4b0` (the log's id), the export served, no console errors | 11.7; 2.8 + 6.3 | 25; 14 |
+
+Every regression goal went through on the logged path with no workaround; the
+numbers are the logs' (the engine's, to the digit) and the wall clocks at or under the
+logs' second runs but for two: G2's seven standard verifies (285 s: I ran them two at a
+time beside goal 1's plans) and G1's export (142 s beside G2's). One verdict changed,
+by round 3's catalog: with the bearings priced, round 2's "$115.67 at least" is now
+"$259.71 at least" (the honest number). One verdict is new and wrong for the goal:
+every `verify` of round 4's goal 2 and 3 designs reads `ok: false` on the cost row alone
+(entry 1), because I gave the "cheapest walker" goal a budget (`max: 150`) where round 4
+gave none.
+
+### The corners
+
+| corner | wall | outcome |
+|---|---|---|
+| 1 rocker over MCP (3 cards, amplifier resolve → standard → export → view → browser; crank-rocker probes) | 45 s | the cards answer both numbers before any design (entry 2); one engine bug (entry 3) |
+| 2 export of all seven formats (API), the sim | 209 s export, 107 s full verify, 79 s CLI sim | no `spiderpig export`; `spiderpig sim` takes no MJCF (entry 6); the robot falls over in the sim (entry 5) |
+| 3 `spiderpig report`; `explain` on `crank_rocker` and the Strider double | 693.6 s; 3.2 s; 4.3 s | the report covers the walkers only, 9 of its 68 plans at the deadline (entry 7); both explains complete |
+| 4 the five-bar over MCP | 15 s | says what, not what to do (entry 4) |
+| 5 nine wrong specs over MCP and the API | 7 s | every one back on track in one round from `nearest` / `allowed` (entries 9, 10) |
+
+### Entries
+
+#### 1. A hard `budget.cost_usd` target can never pass on a walker: three packs of screws are unpriced on every design, and "accept them by hand" has no lever — **annoying** (a blocker for any goal that names a budget and reads `ok`)
+
+Tried (R4 G2, the cheapest walker): the goal spec with `budget: {cost_usd: {max: 150}}`
+on seven candidates. Every `verify(standard)`: `budget.cost_usd: 108.76 USD vs <= 150
+[FAIL, estimated] at least; the target can't be verified while items are unpriced (price
+them in the catalog, or accept them by hand): 11 items, the largest Feetech STS3215
+servo ...; 3 unpriced, so the total is a lower bound: 8 x M2 x 6 mm pan-head
+self-tapping screw (for plastic) (1 pack of 100), 4 x M3 x 16 mm button head socket
+screw (1 pack of 100), 4 x M3 x 18 mm socket head cap screw (1 pack of 100)`, and
+`ok: false`. The same three items (the servo horn's self-tappers, the crank's button
+heads, the frame ties' screws) are on every walker in the catalog, whatever the linkage,
+sheet, servo or pivots, so no walker with a budget target ever verifies, at any level:
+goal 3's `verify("full")` with every sim row green is `ok: false` for this row alone,
+and the `design_walker` prompt's loop ("stop at the first ok: false") stops here. The
+row's own remedy, "accept them by hand", names nothing an agent can do: no spec field
+takes an allowance or an acceptance, and the catalog is not the agent's to edit.
+Round 2's entry 3 asked for this honesty on a lower bound that hid $50 of bearings; here
+the bound hides three packs of screws at a few dollars each under a $41 margin.
+Expected: a way to accept unpriced items in the spec (an allowance per unpriced pack,
+or a list of accepted keys) that the row reads ("$108.76 + 3 unpriced packs at up to $5
+each = $123.76 <= 150: ok, the packs named"), and the row's remedy to name it.
+Recoverable from docs and messages alone: no (the number is right; the verdict is
+wrong for the goal, and nothing says how to change it).
+
+#### 2. The goal's second number, the transmission angle, is not a target; the spec error's "nearest" is `rotation_deg` — **annoying**
+
+Tried (corner 1): `motion.transmission_angle_deg: {min: 40}` on the rocker amplifier.
+`resolve`: `motion.transmission_angle_deg: unknown metric (did you mean 'rotation_deg'?);
+allowed: stroke_mm, straightness_mm, on_line_fraction, rotation_deg, swing_deg,
+dwell_deg`. The number exists: the card's `closures` (`E: ... transmission angle
+55°..125°`, `K: ... 43°..136°`) and `check.steps[].transmission_deg`, so I read it off
+the card (the amplifier's 43° meets the 40°; the crank-rocker's 55°; the dwell rocker's
+48°) and dropped the target. But nothing verifies it, no row carries it (the
+`program.loops_close` row gives the least *margin*, in mm), and a derive that lowers it
+under 40° would pass every row. Expected: `motion.transmission_angle_deg` (the least
+over the closures, measured by `check`) as a target and an informational row, for
+walkers too; and the nearest-key hint not to point at a rotation.
+Recoverable: yes, by reading the card.
+
+#### 3. `crank_rocker` with `crank: 1.6, rocker: 1.2`: the fixed pivot goes NaN, the program stage passes, and `check` fails at `static` with "passes crankpin M at nan mm" — **annoying** (an engine bug)
+
+Tried (corner 1, chasing 120° on the crank-rocker after the card's sensitivity: `crank
++10 %: swing +11.2 %`, `rocker +10 %: -9.9 %`): `crank 1.5` -> 97.2°, `rocker 1.2`
+-> 112.9°, then `crank 1.6, rocker 1.2`. `derive` ok; `check`: `ok: false`, `static /
+link_no_layer: crank_rocker: b2 sweeps right across the crank at O, so its layer needs
+the crank off its axis, and no crank point clears it: it passes crankpin M at nan mm,
+under the 10.0 mm a post there needs ...; no point within 150 mm of O clears it \n no
+part sizes at this scale clear it`, `culprits[0].dist_mm: null`, `output.text:
+"crank_rocker: b2 (rotation) covers nan mm in x by nan mm in y (up), swings nan° about
+G"`, `steps: [... E: derived (G, M)]` (the closure line is gone), and on the server's
+stderr `RuntimeWarning: invalid value encountered in sqrt ... unit*sqrt(-crank**2 +
+rocker**2)`. The linkage places G at `unit * sqrt(rocker² - crank²)`, imaginary once the
+crank is longer than the rocker; the program stage saw a NaN and called it a pass.
+Expected: `resolve` or `check` to refuse the parameters at stage `program` ("crank_rocker:
+the crank (1.6) must be shorter than the rocker (1.2): the fixed pivot G at sqrt(rocker²
+- crank²) is imaginary"), never NaN geometry with a static-stage message about it.
+Recoverable: only by trying other values (the message says nothing true).
+
+#### 4. The five-bar: the drive failure says what is missing, not what to do; `recommend` answers `[]` with no note; `resolve` is silent — **annoying**
+
+Tried (corner 4): `describe(five_bar)` (`inputs: ["t", "t2"]`, `notes: "Two cranks place
+P anywhere in its workspace. Needs a second drive."`), `resolve` (`ok: true`, no
+warning), then `check`, `plan`, `verify(quick)`, `build`, `export`: every one `drive /
+second_input_no_drive: five_bar: the drive turns one input, the crank at O (one servo);
+five_bar has 2 (t, t2), and a drive for t2 isn't built`; `recommend`: `{"stage":
+"drive", "recommendations": [], "notes": []}`; `explain`: the program (its closure over
+both inputs, `P ... transmission angle 44°..122°`) then `STOP:` the same line. The guide's
+failure table says "the mechanism has a second input; v1 drives one" and its limits say
+nothing of it. So the agent learns, after a check, that the one two-input linkage in the
+catalog can't be built, and not that this is a limit of v1 rather than of the spec, nor
+what to pick instead. `view` then answers `ok: true` with a URL for the design (the page
+would bake it and fail), where `spiderpig view` from a shell says `error: 315ae7254b632dba
+can't be built: drive (second_input_no_drive): ...`.
+Expected: the message (and a `resolve` warning, from the card's `inputs`) to say "v1
+builds one drive: a two-input mechanism can't be built; the one-input mechanisms are
+..." and `recommend`'s notes to carry it; the MCP `view` to refuse as the CLI does.
+Recoverable: yes (the guide's table), after the dead calls.
+
+#### 5. The TrotBot heel quad falls over in MuJoCo (`sim.stays_up: False, max tilt 92.2 deg`) while the walk model reads `tipping_fraction: 0.0`; the sim's speed is 108 mm/s against the model's 165 — **annoying** (an engine finding the row doesn't explain)
+
+Tried (corner 2): `verify("full")` on the TrotBot heel quad at its defaults (unit 10.5,
+37 layers / 111 mm a side, 614 g). Rows: `motion.stride_mm 190.3`, `motion.speed_mm_s
+165.0 [estimated]`, `sim.speed_mm_s: 108.4 mm/s [measured] 4 s at the drives' full
+speed`, `sim.stride_mm: 125.4`, `sim.stays_up: False [FAIL] max tilt 92.2 deg`,
+`sim.torque: 0.96 N·m ... of 1.9123 stall`, `ok: false`, `failures: []`. `spiderpig sim
+--linkage trotbot_heel --module quad --json` says the same (`fell: true`, `body_contact:
+0.92`, `penetration: 3.2`, `feet_down: 0.61`, `slip: 49`). The quasi-static model
+(`tipping_fraction: 0.0`, `min_margin_mm: 45`) and the sim disagree by a fall, and the
+row gives the tilt only: not when it fell (at the start, settling? under drive?), on
+which side, or what to move. Round 4's Strider double stayed up in both; nothing in
+the earlier rounds ran the sim on an eight-legged, 111-mm-a-side robot. Expected: the
+row to say when and how it fell (the time, the axis, whether it was upright after the
+settle), and the walk note or the row to name the levers (a lower stack, the phases).
+Recoverable: the fact is there; the why is not.
+
+#### 6. No `spiderpig export`; `spiderpig sim` takes no MJCF — **annoying**
+
+Tried (corner 2): `spiderpig export --help`: `unknown command 'export'`. The seven
+formats at once are the Python API's (`api.export(design, [step, stl, print, dxf, bom,
+glb, mjcf], out_dir)`: 34 files in 209 s, `manifest.json` with the plan, the BOM total
+$131.89 and 3 unpriced, the snap-prong warnings on `warnings`) or the MCP's; the CLI
+writes them in three commands (`build` for five, `bake` for the glb, `sim --xml` for the
+MJCF). Then "`spiderpig sim` on that MJCF": `sim --help` has `--xml XML  write the MJCF
+here` and no way to read one, so it rebuilt the robot (79 s) to write a model byte for
+byte the size of the exported one (144223 bytes both), and the exported `trotbot_heel.xml`
+loads in MuJoCo directly (68 bodies, 6 meshes, 2 actuators `L.drive` / `R.drive`, 32
+equalities). Expected: `spiderpig export <design or build options> --formats ...` (the
+API's `export` on the CLI, as `view` took the build options in round 3), and `spiderpig
+sim --xml-in FILE` (or `sim <design>`) to run a stored model.
+Recoverable: yes (the API).
+
+#### 7. `spiderpig report` with no `--linkages` reports the 17 walkers only, in 11.5 minutes, with no progress line — **annoying**
+
+Tried (corner 3): `spiderpig report --out linkages.json` ("Compare every registered
+linkage"). 693.6 s; `wrote linkages.json (17 linkages)`: the walkers; the 11 mechanisms
+only with `--linkages` (round 4's fix, which works: the lifts' report ran in 3.3 s). Nine
+of the 68 module plans ran to the 60 s deadline or the node budget (the sixbar, sixbar_v1,
+sixbar_v2, sixbar_v3, Strider, TrotBot and TrotBot-heel / toe quads, unproven, and the
+two TrotBot-heel / toe `double`s, `PlanError` after 60 s), each a full minute with no
+line before it; `--cost` is rightly opt-in. Expected: every linkage by default (the
+mechanisms with their output rows), a line per (linkage, module) as it starts, and a
+`--modules` hint in the help ("the quads and the TrotBot doubles take the planner's
+minute each").
+Recoverable: yes (wait, or name the linkages).
+
+#### 8. A target on the five-bar's xy output: "its metrics: " and nothing — **nit**
+
+`motion.stroke_mm: {min: 50}` on `five_bar`: `motion.stroke_mm: five_bar's xy output has
+no stroke_mm; its metrics: ` (empty), `allowed: null`. The card's `extent_mm` (64 x 53
+mm) is the output's one number and no metric names it. Expected: "its metrics: none (an
+xy output is measured by its extent, on the card)" or `extent_x_mm` / `extent_y_mm`
+targets.
+
+#### 9. `legs.module: "quad"` on a mechanism gets the walker's wording — **nit**
+
+`{"kind": "mechanism", "linkage": {"key": "hoecken"}, "legs": {"module": "quad"}}`:
+`legs.module: unknown value 'quad'; a module is the legs per side, and the robot has two
+sides: single 1 a side (2 on the robot); no linkage has a three-leg module (which modules
+walk is on the linkage's card, api.describe); allowed: single`. `allowed` is right and
+got me back in one round; the sentence is a walker's (a mechanism has no legs, one side
+and no robot). Expected: "hoecken is a mechanism: its one module is `single` (one side, no
+legs)".
+
+#### 10. A misspelled `linkage.key` lists all 28 linkages whatever the `kind` — **nit**
+
+`klan` under `kind: walker`: `nearest: klann` (good) and `allowed` = all 28 keys, the 11
+mechanisms included; a right key of the wrong kind lists the right kind's ("klann is a
+walker, not a mechanism; allowed: hoecken, ..."). Expected: the kind's keys.
+
+#### 11. The guide's cost paragraph is stale — **nit**
+
+`spiderpig://guide`: "the catalog's bearings, bushings, rod, clips, CA glue and most
+screws have vendor links but no price, so a metal-pivot design's cost stays a lower
+bound until they are priced or accepted by hand". Round 3 priced the bearings, the
+bushing, the glues and most M3 screws; this run's rows price 64 MF63ZZ at $123.69 and
+name 4 unpriced. Expected: the sentence to name what is still unpriced (the rod, the
+clips, the M2 tapping screws, M3 x 16 / 18 / 50).
+
+#### 12. A one-sided design's quick `size.envelope_z_mm` detail: "the stacks + the chassis" — **nit**
+
+The Hoecken (one side, no chassis): `size.envelope_z_mm: 57.5 mm [estimated] the stacks
++ the chassis + 3 mm of axle heads outside each outer plate; measured after a build`
+(built: 56.3). The number is fine; the words are the robot's.
+
+#### 13. `spiderpig build` prints build123d's "Unknown Compound type, color not set" — **nit**
+
+On every CLI build (`exporters3d.py:295: UserWarning`); round 2's entry 10 silenced it
+on the API's export, not on `spiderpig build`.
+
+#### 14. `spiderpig sim --json`'s `kinematic.stride` reads -297 for a walk model stride of +190 — **nit**
+
+The TrotBot heel quad: the walk model 190.3 mm/rev (+x), the sim 125.4, the JSON's
+`kinematic: {stride: -297.3, stance_length: 117.6, foot_lift: 54.3}`: another number
+with the other sign, and nothing says what it measures.
+
+#### 15. Good — no entry
+
+The regression: every goal on its logged path, with the logs' numbers. The spec errors
+(corner 5): `klan -> klann`, `stryder -> strider`, `hoeken -> hoecken` under `nearest`;
+the bare number's three forms (`{"max": 40}, {"min": 40} or {"value": 40}`); a
+mechanism's `sides: 2`; two errors at once both listed (the module error waits for a
+valid key, rightly: its vocabulary is the linkage's). The rocker cards answered the goal
+before any design (the amplifier: `swings 153.26° about H`, closures `55°..125°` and
+`43°..136°`; the crank-rocker's `60°`; the dwell rocker's `43.9°, 125° dwell`), the
+amplifier resolved, planned (7 layers), verified standard (17 s, 29 parts), exported and
+viewed (the page baked it in 11 s, no console errors) in 45 s of session; `recommend` on
+the crank-rocker's 60° said the honest "missed; no lever the engine can compute for it"
+and the card's sensitivity named the two levers. The bolt pillar's proven verdict and
+patch in 1 s; the sim rows beside the walk model's; the exported MJCF loading in MuJoCo
+as is; the reloaded robot's `Part.locate` edit on both sides and the note on the
+wrong-frame one.
+
+### What I ended up with
+
+**Corner 1.** The rocker amplifier (`rocker_amplifier`, design `b56f19944c764ee0`) at
+its defaults: **153.3°** of swing about H, transmission angles **43°..136°** and
+55°..125° on its two closures, 7 layers / 21 mm, 29 parts, 96.6 g estimated, one servo,
+$72.86 floor; standard verify green but two snap-prong warnings (6.0 %, 6.9 %); STEP,
+DXF, print STLs and the BOM exported; viewed. The crank-rocker's 60° reaches 113° with
+`rocker 1.2` and 97° with `crank 1.5`; `crank 1.6, rocker 1.2` is entry 3.
+
+**Corner 2.** The TrotBot heel quad (`726f2ecf20866afb`, unit 10.5): 37 layers / 111 mm
+a side in the deadline (unproven), 614 g, 335 x 202 x 301 mm, $131.89 at least; 34
+files in the seven formats; the walk model 190 mm/rev and 165 mm/s at 52 rpm, the sim
+**108 mm/s and 125 mm/rev, and it falls** (entry 5); the MJCF loads in MuJoCo.
+
+**Corner 3.** `report`: 17 walkers, 68 module plans, 2 `PlanError`s (the TrotBot-heel /
+toe doubles), 7 quads unproven at the deadline, 693 s (entry 7). `explain crank_rocker`:
+the program, the output line, 6 layers; `explain --linkage strider --module double`:
+the 56 static clearances, 16 layers, 48 mm.
+
+**Corner 4.** The five-bar resolves and stops at `drive` (entry 4); one input is v1.
+
+**Corner 5.** Nine specs, each back on track from the message alone (entries 9, 10).
+
+### Phase 2 — what was fixed, and the second run
+
+Commits: `4e5dc9e` (engine: a point that isn't a number fails the program stage
+and names its square root, the kinematic stride's sign, when and how a fall happened, an
+exported MJCF runs as is), `03aa2d2` (the API, reports and CLIs: the budget's
+allowance, the transmission angle as a target and a row, the two-input mechanism's words
+at `resolve`, `check`, `recommend` and the MCP `view`, `spiderpig export`, `spiderpig
+sim <design>` / `--mjcf`, `report` over every linkage with a line per plan, the spec
+messages per kind, the one-sided envelope's words, the build's warning; API.md, the
+guide, the README) and this round's log in the commit after them. Tests for each in
+`tests/test_spiderpig_api.py`, `tests/test_spiderpig_mcp.py`, `tests/test_view.py` and
+`tests/test_sim.py` (the section "Test drive, round 5", `test_r5_*`).
+
+| entry | severity | fixed in | how |
+|---|---|---|---|
+| 1 a hard budget never verifies on a walker | annoying | `03aa2d2` | `budget.allowance_usd`: one plain number under `budget` (validated ≥ 0, in the schema, in the resolved record and so in the id), USD for all the unpriced items; `cost_row` adds it and the row reads "$108.76 priced + $15.00 allowed (budget.allowance_usd) for the 3 unpriced items: ..." and verifies; without it the failing row's remedy names the field. The guide's cost paragraph says what is priced and what is not, and that three unpriced packs are on every walker |
+| 2 the transmission angle is not a target | annoying | `03aa2d2` | `motion.transmission_angle_deg` (both kinds, soft, measured by `check`): the least over the closures folded about 90° (`verify.least_transmission_angle`), a row on every quick verify ("the least over the closures is at K"), a target when asked; the "unknown metric" hint no longer offers a metric of another name (`rotation_deg` for a transmission angle) |
+| 3 a NaN point passes the program stage | annoying (engine) | `4e5dc9e` | `check_steps` flags a fixed or derived point whose coordinates aren't finite (`StepCheck.invalid`, failing the whole cycle) and says why: the square root whose argument went negative, with its value ("sqrt(-crank**2 + rocker**2) with -crank**2 + rocker**2 = -1.12 at these parameters; the linkage needs it positive"); `assert_assembles` raises on it, `api.check` reports `program / point_undefined` with a note, `explain` prints it as the STOP, and the static stage never sees a nan |
+| 4 the five-bar says what, not what to do | annoying | `03aa2d2` | `resolve` warns (`api.second_input_note`: v1 builds one drive, `check` reads the program and output, the rest stops at `drive`, a limit of v1 not of the spec, the one-input mechanisms named); the drive's `ConstructionError` says the same; `advise` / `recommend` add the note ("no fix: ..."); the MCP `view` runs `check` and `plan` first and answers `ok: false` with the failure for a design the page could not bake, as `spiderpig view` does; the guide's limits carry it |
+| 5 the TrotBot heel quad falls in the sim | annoying (engine) | `4e5dc9e`, `03aa2d2` (the row) | `walk_metrics` carries `fell_at_s` and `fell_axis` (`sim.run._fall`: the first sample past 45°, rolling or pitching); the `sim.stays_up` row says "fell over rolling at 0.9 s into the 4 s run" and what the quasi-static model saw ("tipping fraction 0.00: it saw no tipping: the fall is dynamic, or the sim's contacts; a lower stack, a slower drive or other phases are the levers"); `spiderpig sim` prints it too. The fall itself is not fixed: it reproduces at 0.4 of the no-load speed and at half the timestep, and the robot stands while settling (tilt 4.2° over 3 s), with its heel links on the floor by design (the sim counts a heel as body contact); a real dynamic finding of the sim on a 111 mm stack, left to the sim's owner with the row now saying when and how |
+| 6 no `spiderpig export`; `sim` takes no MJCF | annoying | `03aa2d2` | `spiderpig export <design or build options> --formats ... --out --store --force` (`spiderpig/tools/export.py`: `api.export` on the command line, the build options resolved into the store as `view` does, warnings on stderr); `spiderpig sim <design> [--store]` runs a stored design with its exported MJCF when the store has one, `spiderpig sim --mjcf FILE` runs a given model with its `.json` (`simulate(model_xml=, model_meta=)`); README and API.md |
+| 7 `report` covers the walkers only | annoying | `03aa2d2` | every registered linkage by default (the mechanisms with their output rows), a log line as each (linkage, module) starts planning and one naming the linkages, the help saying which modules take the planner's minute |
+| 8 "its metrics: " and nothing | nit | `03aa2d2` | "an xy output is measured by its extent alone (extent_mm on the card), which is no target" |
+| 9 the walker's words on a mechanism's module | nit | `03aa2d2` | "hoecken is a mechanism: its one module is single (one side, no legs; the leg modules double, decker and quad are a walker's)" |
+| 10 all 28 keys whatever the kind | nit | `03aa2d2` | `allowed` is the kind's keys; the nearest key of the other kind is still named with its kind ("'hoecken' is a mechanism, not a walker") |
+| 11 the guide's stale cost paragraph | nit | `03aa2d2` | rewritten: what is priced, what is not, the allowance |
+| 12 "the stacks + the chassis" on one side | nit | `03aa2d2` | "the stack + the servo on the inner plate + 3 mm of axle heads outside the outer plate" for one side; "the two stacks + the chassis + ..." for the robot |
+| 13 `spiderpig build` prints build123d's warning | nit | `03aa2d2` | silenced around the STEP export, as the API's export does |
+| 14 `kinematic.stride` reads negative | nit (engine) | `4e5dc9e` | `kinematic_gait` multiplies by the drive's `crank_sign`, so the kinematic stride reads forward for every walker (a test over the Klann, the TrotBot heel and the Strider) |
+
+Not fixed, and why:
+
+- The fall (entry 5): reported now, not cured; the sim's contact model on the TrotBot
+  heel (a heel that touches the floor by design) is the engine's question, not the
+  surface's, and a settle-and-drive it survives for 0.5 s is not a proof either way.
+- The HUD's numbers in headless Chromium: my client never read them (the page's drive
+  mode toggled, the canvas rendered, no console error); rounds 1-4's clients did. Not a
+  product finding.
+- The report's 12 minutes: `--modules` and the log line say where the time goes; the
+  planner's deadline is the engine's, as in every round.
+
+### Wall clock, second run
+
+Against the fixed tree, fresh stores, the corners again (the round 5 tests, the full
+suite and the audit ran alongside on the same 4 cores, so the longer steps read slower
+than alone).
+
+| step | wall | note |
+|---|---|---|
+| C1 rocker over MCP: the goal as a spec (`swing_deg >= 120`, `transmission_angle_deg >= 40`, both hard), resolve, quick, explain | 1.0 s | `motion.transmission_angle_deg 42.6 [ok] the least over the closures is at K, folded about 90°`; `explain`'s `4. targets` reads both; was "unknown metric (did you mean 'rotation_deg'?)" |
+| C1 the NaN derive (`crank 1.6, rocker 1.2`): check, recommend | in the 1.0 s | `program / point_undefined: crank_rocker: G (fixed) can't be placed at these parameters: its coordinates are not a number (sqrt(-crank**2 + rocker**2) with -crank**2 + rocker**2 = -1.12 at these parameters; the linkage needs it positive)`, with the note; was "passes crankpin M at nan mm" |
+| C4 the five-bar: resolve, check, recommend, view, a stroke target | 0.2 s | `resolve` warns ("v1 builds one drive ... a limit of v1, not of the spec; the one-input mechanisms are hoecken, ..."), `recommend` notes "no fix: ...", `view` answers `ok: false` with the drive failure, the xy target's refusal says what an xy output is measured by |
+| C5 the wrong specs | ms | the kind's keys under `allowed`, "'hoecken' is a mechanism, not a walker" for a misspelling of the other kind, the mechanism's own words on `legs.module` |
+| R4 G2's verdict: the Strider double with `budget.allowance_usd: 15`, standard | 50.2 s | `budget.cost_usd: 123.76 USD vs <= 150 [ok] $108.76 priced + $15.00 allowed (budget.allowance_usd) for the 3 unpriced items: ...`; `ok: true`; was FAIL "at least" on every walker |
+| C2 `spiderpig export --linkage trotbot_heel --formats step stl print dxf bom glb mjcf` | 348.5 s (beside the suite and the audit) | 34 files into `--out`, resolved into the store as `840981a0b319eb3b`; was the API only |
+| C2 `spiderpig sim 840981a0b319eb3b --store ...` (its exported MJCF) | 7.6 s | "running .../trotbot_heel.xml"; no rebuild (was 79 s); `fell over: YES (pitching at 2.0 s into the run)`; the kinematic stride reads +297.3 mm/rev (was -297.3) |
+| C2 `spiderpig sim --mjcf out/heel/trotbot_heel.xml --linkage trotbot_heel --module quad` | 7.2 s | the same model, the same numbers |
+| C3 `spiderpig report --linkages crank_rocker hoecken klann --modules single` | 4.8 s | "3 linkages: crank_rocker, hoecken, klann", a "planning" line per module, the mechanisms' output rows; the default is every linkage now |
+| `spiderpig build --module single` | 34.2 s | no build123d warning |
+| the new tests (`-k r5`: 15) | 36 s + 35 s | green; the full suite and the audit: see the report |
+
+Read as the agent: the rocker goal is a spec now (both numbers as targets, verified
+at `quick`, explained under `4. targets`) and a parameter set that breaks the geometry
+is refused with the expression that broke; the five-bar says what it is (a limit of v1)
+at `resolve`, and `view` no longer hands out a URL for it; a budget verifies once the
+three unpriced packs are accepted with one number; every format is one CLI command and
+the sim runs the exported model in seconds. What it still does by hand: nothing in the
+corners; the fall of the TrotBot heel quad is reported (when, how, and that the
+quasi-static model saw no tipping), not explained.
+
+Verdict on the loop: converged, still. The regression of rounds 2, 3 and 4 went
+through clean on every path (the numbers to the digit, the wall clocks at or under the
+logs'), and the corners' entries were a missing spec lever (the allowance), a missing
+metric (the transmission angle), an engine bug (the NaN point), an under-explained limit
+(the second input), two missing CLI commands and a report's default: none a workaround,
+each a few lines. Only nits and one engine finding remain: the viewer's chrome around a
+mechanism (rounds 3 and 4), and the sim's fall on the tallest walker in the catalog, now
+reported honestly. The single biggest remaining problem is that finding: the sim and the
+quasi-static model disagree on whether the TrotBot heel quad stands, and no row can yet
+say which of them is right about the physical robot.

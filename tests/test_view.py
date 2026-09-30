@@ -365,3 +365,84 @@ def test_audit_takes_a_mechanism(tmp_path, capsys):
     assert rep["modules"]["single"]["problems"] == []
     assert rep["modules"]["single"]["parts"] > 20
     assert rep["modules"]["single"]["chassis"] == {}         # one side: no chassis
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): ``spiderpig export`` on the command
+# line, ``spiderpig sim`` on a stored design or an MJCF, ``report`` over every linkage
+# ---------------------------------------------------------------------------
+
+
+def test_r5_the_export_cli_writes_a_design_and_the_sim_cli_takes_a_design_or_an_mjcf(
+        store, tmp_path, capsys):
+    from spiderpig.tools import export as export_cli
+    from spiderpig.tools import sim_walk
+
+    assert "export" in cli.COMMANDS
+    assert cli.COMMANDS["export"][0] == "spiderpig.tools.export"
+    out = tmp_path / "klann"                                                    # entry 6
+    assert export_cli.main(["--linkage", "klann", "--module", "single", "--formats", "bom",
+                            "mjcf", "--out", str(out), "--store", str(store.root)]) == 0
+    captured = capsys.readouterr()
+    assert "resolved the build options into" in captured.err
+    assert "wrote" in captured.out
+    assert "manifest.json" in captured.out
+    for name in ("bom.md", "klann.xml", "klann.json", "manifest.json"):
+        assert (out / name).is_file()
+    d = api.resolve(api.spec_of(export_cli_config()), store)
+    assert export_cli.main([d.id, "--formats", "bom", "--out", str(out), "--store",
+                            str(store.root)]) == 0          # a stored design, cached
+    with pytest.raises(SystemExit):
+        export_cli.main(["--store", str(store.root)])        # neither an id nor options
+    assert export_cli.main(["0123456789abcdef", "--store", str(store.root)]) == 2
+    assert "error:" in capsys.readouterr().err
+    # the sim CLI: a stored design runs its exported MJCF; --mjcf wants the .json beside it
+    args = sim_walk._args([d.id, "--store", str(store.root)])
+    assert args.config == d.config
+    assert args.mjcf == out / "klann.xml"
+    assert args.model is not None
+    assert args.model[1]["format"] == "spiderpig-mjcf/1"
+    args = sim_walk._args(["--mjcf", str(out / "klann.xml"), "--linkage", "klann",
+                           "--module", "single"])
+    assert args.model[0].startswith("<mujoco")
+    with pytest.raises(SystemExit):
+        sim_walk._args(["--mjcf", str(tmp_path / "none.xml"), "--linkage", "klann"])
+    assert "--mjcf needs" in capsys.readouterr().err
+    # a mechanism has nothing to walk: its mjcf is skipped with a warning, not an error
+    lift = tmp_path / "lift"
+    assert export_cli.main(["--linkage", "hoecken", "--formats", "bom", "mjcf", "--out",
+                            str(lift), "--store", str(store.root)]) == 0
+    assert "warning: mjcf: hoecken is a mechanism" in capsys.readouterr().err
+    assert (lift / "bom.md").is_file()
+    assert not (lift / "hoecken.xml").exists()
+    rep = api.load(api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}},
+                               store).id, store).reports.get("export")
+    assert rep is None or any(w.startswith("mjcf: hoecken is a mechanism") for w in rep.warnings)
+
+
+def export_cli_config():
+    from spiderpig.config import BuildConfig
+
+    return BuildConfig(linkage="klann", module="single")
+
+
+def test_r5_the_report_covers_every_linkage_by_default_and_says_what_it_plans(tmp_path,
+                                                                                caplog):
+    import logging
+
+    from spiderpig.tools import report
+
+    out_file = tmp_path / "report.json"
+    with caplog.at_level(logging.INFO, logger="linkage_report"):                # entry 7
+        assert report.main(["--linkages", "hoecken", "klann", "--modules", "single", "--out",
+                            str(out_file)]) == 0
+    keys = [row["key"] for row in json.loads(out_file.read_text())]
+    assert keys == ["hoecken", "klann"]
+    assert any("klann single: planning" in r.message for r in caplog.records)
+    assert any(r.message.startswith("2 linkages: hoecken, klann") for r in caplog.records)
+    assert "every registered one by default" in report.__doc__
+    # the default keys are every linkage, mechanisms included (the walkers alone before)
+    import inspect
+
+    src = inspect.getsource(report.main)
+    assert "args.linkages or linkage.available()" in src
