@@ -64,11 +64,13 @@ def cost(route: CrankRoute, layers: dict[str, int], riders: dict[str, str],
     return extra, sum(detours[r.at] for r in route.runs if r.at in detours), int(not route.bearing)
 
 
-def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, ctx) -> bool:
+def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, ctx,
+              h0: int) -> bool:
     """The printed crank's joints, as :meth:`construction.crank.PrintedCrank.realize` makes
     them: runs along one point whose webs meet are one chain (one point, one chain), its
     screw must fit between its outer webs' faces (end play set back where a rider turns
-    against them), and pockets in one segment (consecutive chains, the last chain and the
+    against them), a web set back in the hub's lowest layer (``h0``) must leave the hub its
+    horn screws, and pockets in one segment (consecutive chains, the last chain and the
     horn screws) must not meet."""
     crank, drive = construction.crank(ctx.config.crank), ctx.interfaces["drive"]
     geo, pitch, play = problem.topo.geometry, problem.spec.pitch, crank.axial_play
@@ -97,6 +99,8 @@ def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, 
                  for k, top in ((lo, True), (lo, False), (hi, True), (hi, False))]
         if crank.post_joint(*faces) is None:
             return False
+    if h0 in above and crank.hub_joint(ctx, problem.router.dims.hub_thickness, play) is None:
+        return False
     xy = {p: geo.points[p][0] for p in {r.at for r in runs}}
     head = max(sk.head_d for sk in POST_SCREWS) / 2 + crank.screw_fit / 2
     nut = (NUT_AF + crank.nut_fit) / math.sqrt(3)
@@ -193,7 +197,7 @@ def solve(problem: StackProblem, top: int, ctx,
                     if any(not p.seat and p.layer in (0, top) for p in crank):
                         continue
                     if all(clear(a, b) for a in crank for b in by_layer.get(a.layer, ())) \
-                            and buildable(route, layers, problem, ctx):
+                            and buildable(route, layers, problem, ctx, h0):
                         best = (c, dict(layers), route)
     return best
 

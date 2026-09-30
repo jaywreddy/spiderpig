@@ -8,10 +8,19 @@ import numpy as np
 import pytest
 
 import linkage
-from construction.crank import CrankRoute
+from construction.base import ConstructionError
+from construction.crank import CrankRoute, Run
 from construction.route import crank_facts
 from construction.underside import Underside, underside
-from fabricate import BuildConfig, design_side, ground_clearance, side_problem, template_for
+from fabricate import (
+    BuildConfig,
+    SideDesign,
+    design_side,
+    fabricate_side,
+    ground_clearance,
+    side_problem,
+    template_for,
+)
 from stack import ClearanceError, verify_plan
 from tests import brute
 
@@ -109,6 +118,34 @@ def test_the_crank_runs_along_its_pin_through_the_link_that_sweeps_o(key, pin, t
     k = plan.layers[through]
     assert any(r.at == pin and r.lo <= k <= r.hi for r in route.runs)
     assert not any(p.layer == k and p.shape.core == ("pt", "O") for p in plan.shapes("crank"))
+    assert verify_plan(plan, tmpl) == []
+
+
+def test_a_chain_ends_set_back_in_the_hub_only_if_the_horn_screws_still_fit():
+    """TrotBot's heel in 12 layers: with b4 right under the hub, the web over it (the hub's
+    lowest layer) is set back for b4's end play, and the sts3215's 5.8 mm hub then takes no
+    M3x6 horn screw (the xl330's 6 mm hub still does). The route rules refuse that end, the
+    brute force agrees, the construction would have caught it, and the planner's own plan
+    (b4 elsewhere) builds."""
+    cfg = _cfg("trotbot_heel")
+    tmpl = template_for(cfg)
+    ctx, groups, problem = side_problem(tmpl, cfg)
+    assert not problem.router.hub_play
+    assert side_problem(tmpl, _cfg("trotbot_heel", servo="xl330_m288"))[2].router.hub_play
+    h0 = problem.router.hub_bottom(11)
+    assert h0 == 9
+    under = {"b1": 3, "b2": 2, "b3": 3, "b4": 8, "b5": 2, "b6": 4, "b7": 6, "b8": 3}
+    route = CrankRoute((Run("J1", 2, 8),))
+    assert not brute.buildable(route, under, problem, ctx, h0)
+    design = SideDesign(cfg, ctx, groups, problem.plan(under, 11, {"crank": route}))
+    with pytest.raises(ConstructionError, match="no screw fits between the crank hub and the "
+                                                "sts3215 horn"):
+        fabricate_side(design, tmpl.freeze_at(1.0))
+    plan = design_side(tmpl, cfg).plan
+    assert plan.top == 11
+    assert plan.layers["b4"] != 8
+    assert brute.buildable(plan.choices["crank"], plan.layers, problem, ctx, h0)
+    assert "leaves the hub too short for the horn screws" in plan.proof
     assert verify_plan(plan, tmpl) == []
 
 

@@ -29,10 +29,13 @@ left, ``J7`` low, ``J11`` low; the program matches it to 1e-13.
 **Fabrication.** ``B8`` and the heel link ``B13`` hang off the crank
 triangle at ``J8`` and ``J9``, 3 and 1 from the crankpin: inside the crank
 circle (4). Seen from either link, O circles its pin once per crank turn, so
-the link sweeps across the crank axis whatever its shape, while the printed
-crankshaft occupies O in every layer (journal stub in the outer frame plate,
-body, hub): the static clearance stage rejects them. TrotBot needs an
-overhung crank, nothing on O outboard of its last web, as in the LEGO builds.
+the link sweeps across the crank axis whatever its shape. The crank router
+(:mod:`construction.route`) runs the crankshaft along the crankpin's post
+through such a link's layer, and the link must clear that post. ``B13``
+passes it 6.8 mm off at the drawing's 7 mm unit, under the 10 mm a post
+needs (3 post radius + 6 link half-width + 1 margin): that clearance sets
+the family's scale, 10.5 mm per unit (x1.5; x1.47 is the least that clears
+it).
 """
 
 from __future__ import annotations
@@ -45,10 +48,11 @@ R = sp.Rational
 SOURCE = "https://www.diywalkers.com/trotbot-linkage-plans.html"
 
 BASE = {
-    # mm per drawing unit (crank 28 mm): the rocker's pin J2 swings to 2
-    # units from O, and the printed crank's body needs 13 mm there (journal
-    # radius 6 + link half-width 6 + margin 1).
-    "unit": R(7),
+    # mm per drawing unit (crank 42 mm), one scale for the family: the heel
+    # link B13 sweeps across O and passes the crankpin's post 6.8 mm off at
+    # unit 7, under the 10 it needs (3 post radius + 6 link half-width + 1
+    # margin); 10.5 is the least half-unit step that clears it (x1.47 would).
+    "unit": R(21, 2),
     "frame_x": R(7),      # frame pivot J3 at (-frame_x, frame_y) from the crank centre
     "frame_y": R(6),
     "B0": R(4),           # crank
@@ -170,16 +174,14 @@ def _trotbot(key: str, name: str, heel: bool, toe: bool, notes: str) -> Linkage:
 
 TROTBOT = register(_trotbot(
     "trotbot", "TrotBot", heel=False, toe=False,
-    notes="Eight bars, one frame pivot; a tear-drop foot path with a high step. "
-          "Needs an overhung crank.",
+    notes="Eight bars, one frame pivot; a tear-drop foot path with a high step.",
 ))
 TROTBOT_HEEL = register(_trotbot(
     "trotbot_heel", "TrotBot with heel (Ver 1)", heel=True, toe=False,
-    notes="Ten bars: a heel takes the weight while the main foot is still descending. "
-          "Needs an overhung crank.",
+    notes="Ten bars: a heel takes the weight while the main foot is still descending.",
 ))
 TROTBOT_TOE = register(_trotbot(
     "trotbot_toe", "TrotBot with heel and retractable toe (Ver 3)", heel=True, toe=True,
     notes="Twelve bars: heel, plus a toe that paws backward and stays folded as the leg "
-          "lifts. Needs an overhung crank.",
+          "lifts.",
 ))

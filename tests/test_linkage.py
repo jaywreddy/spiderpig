@@ -11,7 +11,6 @@ import sympy as sp
 
 import linkage
 from fabricate import BuildConfig, design_side, template_for
-from stack import ClearanceError
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
@@ -155,20 +154,11 @@ def test_strider_matches_its_plan_drawing():
         assert np.hypot(*(got - xy)) < 0.2, f"{j}: {got} vs plan {xy}"
 
 
-# The heel link hangs off the crank rider one plan unit from the crankpin: it sweeps across
-# O and passes the crankpin's post too close for the crank to run along it in its layer.
-NO_CRANK_POINT = {"trotbot_heel", "trotbot_toe"}
-
-
 @pytest.mark.parametrize("key", WALKERS)     # mechanisms: tests/test_mechanisms.py
-def test_one_side_plans_or_the_pipeline_says_why(key):
-    """A single-module side lays out with the default constructions, or the static stage
-    names the link no crank route lets through."""
+def test_one_side_plans(key):
+    """A single-module side lays out with the default constructions (TrotBot's heel link,
+    one plan unit from the crankpin, needs the family's 10.5 mm unit: tests/test_recommend.py
+    has it stop the static stage at the drawing's 7)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
-    if key in NO_CRANK_POINT:
-        with pytest.raises(ClearanceError, match="b7 sweeps right across the crank at O, so its "
-                                                 "layer needs the crank off its axis"):
-            design_side(template_for(cfg), cfg)
-        return
     design = design_side(template_for(cfg), cfg)
     assert design.plan.top >= 2
