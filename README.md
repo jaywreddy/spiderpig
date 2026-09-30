@@ -140,7 +140,7 @@ spiderpig/
 ├── stack.py         # layer planner over claims (full-cycle clearance)
 ├── config.py        # BuildConfig (what to build and how, validated); the shared CLI / query arguments
 ├── fabricate.py     # design a side, fabricate the robot
-├── construction/    # the groups: axle, crank, plates, robot; contract check
+├── construction/    # the groups: axle, crank, plates, robot, chassis; contract check
 ├── servos/          # servo data (spec, catalog), drive group, models, CAD cache
 ├── hardware/        # catalog, screw families, materials and masses, the bill of materials
 ├── walk.py          # quasi-static walking model (/api/walk, the viewer's drive mode)

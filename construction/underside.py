@@ -5,7 +5,7 @@ The **body** is everything on a side that isn't a leg link: the frame plates
 the pad under the servo), the crank's sweep (a circle about O, crankpin
 distance + web radius), the servo's footprint (:mod:`servos.mount`: mounted
 at O on the inner plate, pointing away from the pillars) and the robot's
-centre plates (:mod:`construction.robot`: the servo footprint grown by the
+centre plates (:mod:`construction.chassis`: the servo footprint grown by the
 rear screws and the frame ties). :class:`Underside` is its profile in the
 plane of motion: for each x, the lowest y it reaches over a crank cycle. The
 planner keeps what it adds to the crank above it (:meth:`Underside.allows`),
@@ -24,6 +24,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from construction.base import Context
+from construction.chassis import _footprint, centre_plates, rear_screws, tie_dims
 
 STEP = 0.25     # mm between profile samples along x
 
@@ -83,7 +84,6 @@ def _polygon(xs, pts):
 def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
     """The body's shapes in side coordinates: ``("disc", c, r)``, ``("pill", a, b, r)`` and
     ``("poly", [corners])``. ``crank_reach``: the radius the crank sweeps about O."""
-    from construction.robot import _footprint, centre_plates, rear_screws, tie_dims
     from servos.mount import away_from_pillars
 
     topo, p, spec = ctx.topo, ctx.params, ctx.servo

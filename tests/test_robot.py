@@ -9,15 +9,9 @@ from build123d import Location
 
 import servos
 from construction.base import FRAME_INNER, Build
+from construction.chassis import MIN_ENGAGE, ServoFrame, centre_plates, servo_frame, tie_dims
 from construction.contract import bad_solids, clashes
-from construction.robot import (
-    MIN_ENGAGE,
-    FrameTies,
-    ServoFrame,
-    centre_plates,
-    servo_frame,
-    tie_dims,
-)
+from construction.robot import FrameTies
 from hardware import fasteners
 from hardware.catalog import CATALOG, _load, get
 from servos.model import UNKNOWN_HOLE_DEPTH
