@@ -10,6 +10,7 @@ import pytest
 
 import linkage
 import servos
+from config import BuildConfig
 from construction.base import FRAME_OUTER, Build, ConstructionError
 from construction.contract import check_side, clashes
 from construction.crank import (
@@ -23,7 +24,6 @@ from construction.crank import (
     route_of,
 )
 from fabricate import (
-    BuildConfig,
     SideDesign,
     design_side,
     fabricate_side,

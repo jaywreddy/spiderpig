@@ -60,10 +60,12 @@ uv run python main.py --linkage jansen --module double --out build/jansen
 uv run python main.py --list                       # linkages, modules, servos, constructions, sheets
 ```
 
-`--linkage` (Klann by default), `--phases` and `--proportion NAME=VALUE`
-(the linkage's parameters) work the same way for `viewer/bake_gltf.py`,
-`scripts/tune_gait.py` and (`linkage=`, `phases=`, `p.NAME=`) the viewer's
-`/api/walk` and `/api/glb`. It prints the layer plan of one side and writes
+`--linkage` (Klann by default), `--module`, `--phases` and `--proportion
+NAME=VALUE` (the linkage's parameters) work the same way for
+`viewer/bake_gltf.py`, `explain.py`, the scripts and (`linkage=`, `module=`,
+`phases=`, `p.NAME=`) the viewer's `/api/walk` and `/api/glb`: they all build
+one validated `config.BuildConfig`. It prints the layer plan of one side and
+writes
 (stem: the linkage, `--name` to change it):
 
 - `build/klann.step` / `klann.stl` — the whole robot (both sides, servos,
@@ -136,7 +138,8 @@ spiderpig/
 ├── linkages/        # one module per linkage family (Klann, Strider, Jansen, ...)
 ├── mechanism.py     # Pose, Joint, Body, Mechanism, MechanismTemplate
 ├── stack.py         # layer planner over claims (full-cycle clearance)
-├── fabricate.py     # BuildConfig; design a side, fabricate the robot
+├── config.py        # BuildConfig (what to build and how, validated); the shared CLI / query arguments
+├── fabricate.py     # design a side, fabricate the robot
 ├── construction/    # the groups: axle, crank, plates, robot; contract check
 ├── servos/          # servo data (spec, catalog), drive group, models, CAD cache
 ├── hardware/        # catalog, screw families, materials and masses, the bill of materials

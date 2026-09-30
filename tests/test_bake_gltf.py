@@ -22,20 +22,12 @@ import pytest
 # viewer/ is a sibling of the package modules; make it importable.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
 
-from bake_gltf import (  # noqa: E402
-    _MATERIALS,
-    _build_assembly,
-    _congruent,
-    _Planar,
-    bake_gltf,
-    build_config,
-    config_key,
-    is_default,
-    param_glb,
-)
+from bake_gltf import _MATERIALS, _congruent, _Planar, bake_gltf  # noqa: E402
 
 import linkage  # noqa: E402
 import walk  # noqa: E402
+from config import BuildConfig, ParamError  # noqa: E402
+from fabricate import fabricate, template_for  # noqa: E402
 from hardware.mass import part_props  # noqa: E402
 
 pytestmark = pytest.mark.slow
@@ -44,13 +36,18 @@ KLANN = linkage.get("klann")
 N_FRAMES = 12
 DURATION = 0.5
 CASES = {
-    "side": {"mode": "single"},
-    "robot": {"mode": "robot", "module": "single"},
+    "side": BuildConfig(module="single", robot=False),
+    "robot": BuildConfig(module="single"),
 }
-EXTRA = {"phased": {"mode": "robot", "module": "single", "phases": [math.pi / 2]},
-         "strider": {"mode": "robot", "module": "single", "linkage": "strider"},
-         "mechanism": {"mode": "single", "linkage": "crank_rocker"}}
+EXTRA = {"phased": BuildConfig(module="single", phases=(math.pi / 2,)),
+         "strider": BuildConfig(linkage="strider", module="single"),
+         "mechanism": BuildConfig(linkage="crank_rocker", module="single", robot=False)}
 PHASED = EXTRA["phased"]
+
+
+def _assembly(config: BuildConfig, t: float):
+    """The fabricated walker at crank angle ``t`` (parts in world coordinates)."""
+    return fabricate(template_for(config), config, t)
 
 
 class _Bakes(dict):
@@ -71,8 +68,8 @@ class _Bakes(dict):
             level = log.level
             log.setLevel(logging.INFO)
             try:
-                bake_gltf(out, n_frames=N_FRAMES, duration_s=DURATION,
-                          **EXTRA.get(case) or CASES[case])
+                bake_gltf(out, EXTRA.get(case) or CASES[case], n_frames=N_FRAMES,
+                          duration_s=DURATION)
             finally:
                 log.removeHandler(handler)
                 log.setLevel(level)
@@ -88,7 +85,7 @@ def bakes(tmp_path_factory):
 
 @pytest.fixture(params=list(CASES))
 def baked(request, bakes):
-    """``(case, kwargs, gltf)`` for each shared bake."""
+    """``(case, config, gltf)`` for each shared bake."""
     return request.param, CASES[request.param], bakes(request.param)
 
 
@@ -147,8 +144,8 @@ def _root(gltf):
 
 def test_nodes_meshes_and_channels(baked):
     """A root node with one animated child per body; every part has a mesh."""
-    case, kw, gltf = baked
-    mech = _build_assembly(t=0.0, **kw)
+    case, cfg, gltf = baked
+    mech = _assembly(cfg, 0.0)
 
     scene = gltf.scenes[gltf.scene]
     assert len(scene.nodes) == 1
@@ -211,11 +208,11 @@ def test_animation_reproduces_fabricated_geometry(baked):
     """Posing each node's mesh by its animation at frame k lands on the part
     fabricated directly at that crank angle: shared meshes (other legs, the
     mirrored right side), their Z offsets and hardware riding its host included."""
-    _case, kw, gltf = baked
+    _case, cfg, gltf = baked
     trs = _tracks(gltf)
     root = _root(gltf)
     for frame in (0, 5):
-        mech = _build_assembly(t=2.0 * np.pi * frame / N_FRAMES, **kw)
+        mech = _assembly(cfg, 2.0 * np.pi * frame / N_FRAMES)
         parts = {b.name: b.part for b in mech.bodies if b.part is not None}
         for i in root.children:
             node = gltf.nodes[i]
@@ -305,13 +302,14 @@ def test_gltf_animation_duration(baked):
     assert t_acc.max[0] == pytest.approx(DURATION * (N_FRAMES - 1) / N_FRAMES)
 
 
-def test_unknown_modes_are_rejected(tmp_path):
-    with pytest.raises(ValueError, match="unknown mode"):
-        bake_gltf(tmp_path / "x.glb", mode="multi")
-    with pytest.raises(ValueError, match="robot only"):
-        bake_gltf(tmp_path / "x.glb", mode="single", module="quad")
-    with pytest.raises(ValueError, match="unknown module"):
-        bake_gltf(tmp_path / "x.glb", mode="robot", module="octo")
+def test_bad_designs_are_rejected_before_baking():
+    """What is baked is a :class:`config.BuildConfig`, which validates itself."""
+    with pytest.raises(ParamError, match="unknown module"):
+        BuildConfig(module="octo")
+    with pytest.raises(ParamError, match="unknown linkage"):
+        BuildConfig(linkage="octopus")
+    with pytest.raises(ParamError, match="is a mechanism, not a walker"):
+        BuildConfig(linkage="crank_rocker", module="single")
 
 
 # ---------------------------------------------------------------------------
@@ -369,7 +367,7 @@ def test_phases_are_baked(bakes):
     np.testing.assert_allclose(drive["feet"][0]["xy"], np.roll(base, -90, axis=0), atol=1e-3)
     trs = _tracks(gltf)
     frame = 3
-    mech = _build_assembly(t=2.0 * np.pi * frame / N_FRAMES, **PHASED)
+    mech = _assembly(PHASED, 2.0 * np.pi * frame / N_FRAMES)
     parts = {b.name: b.part for b in mech.bodies}
     for i, node in enumerate(gltf.nodes):
         if node.name not in ("L.b4", "R.b4", "L.b1"):
@@ -383,34 +381,36 @@ def test_phases_are_baked(bakes):
 
 
 def test_design_parameters_are_normalized():
-    default = build_config("robot")
-    quarter = [0.0, math.pi, math.pi / 2, 3 * math.pi / 2]
-    assert build_config("robot", "quad", phases=quarter) == default
-    assert build_config("robot", proportions={"DF": 2.577}) == default
-    assert is_default("robot", default)
-    other = build_config("robot", phases=[0.0, math.pi, math.pi / 2, 1.0],
-                         proportions={"DF": 2.4})
-    assert not is_default("robot", other)
+    """One config (and one file name) per design, however it was asked for."""
+    default = BuildConfig()
+    quarter = (0.0, math.pi, math.pi / 2, 3 * math.pi / 2)
+    assert BuildConfig(module="quad", phases=quarter) == default
+    assert BuildConfig(proportions=(("DF", 2.577),)) == default
+    assert default.is_default
+    assert default.key == "klann_quad_robot"
+    other = BuildConfig(phases=(0.0, math.pi, math.pi / 2, 1.0), proportions=(("DF", 2.4),))
+    assert not other.is_default
     assert other.proportions == (("DF", 2.4),)
-    assert config_key(other) == config_key(build_config(
-        "robot", phases=[0.0, math.pi, math.pi / 2, 1.0], proportions={"DF": 2.4}))
-    assert param_glb("robot", other).name == f"robot_quad_{config_key(other)}.glb"
-    assert not is_default("robot", build_config("robot", "single"))
-    # a robot config's own module is kept (the server bakes non-default designs this way)
-    double = build_config("robot", "double")
-    assert build_config("robot", config=double) == double
-    assert build_config("robot", "quad", config=double) == default
+    assert other.key == BuildConfig(phases=[0.0, math.pi, math.pi / 2, 1.0],
+                                    proportions={"DF": 2.4}.items()).key
+    assert other.key.startswith("klann_quad_robot_")
+    assert other.key != default.key
+    assert BuildConfig(module="single").is_default            # its module's default design
+    assert BuildConfig(module="single") != default
     with pytest.raises(ValueError, match="4 legs"):
-        build_config("robot", phases=[0.0])
+        BuildConfig(phases=(0.0,))
     with pytest.raises(ValueError, match="unknown klann proportions"):
-        build_config("robot", proportions={"XX": 1.0})
-    jansen = build_config("robot", "double", linkage="jansen", proportions={"m": 14.0})
+        BuildConfig(proportions=(("XX", 1.0),))
+    jansen = BuildConfig(linkage="jansen", module="double", proportions=(("m", 14.0),))
     assert (jansen.linkage, jansen.proportions) == ("jansen", (("m", 14.0),))
-    assert not is_default("robot", build_config("robot", linkage="jansen"))
-    assert build_config("robot", linkage="klann") == default
-    assert config_key(jansen) != config_key(replace(jansen, linkage="strider"))
+    assert not jansen.is_default
+    assert BuildConfig(linkage="jansen", module="double").is_default
+    assert BuildConfig(linkage="klann") == default
+    assert jansen.key != BuildConfig(linkage="strider", module="double").key
     with pytest.raises(ValueError, match="unknown linkage"):
-        build_config("robot", linkage="octopus")
+        BuildConfig(linkage="octopus")
+    with pytest.raises(ValueError, match="unknown strider proportions"):
+        replace(jansen, linkage="strider")              # a replaced config validates too
 
 
 def test_other_linkage_bake(bakes):
@@ -444,5 +444,5 @@ def test_mechanism_bake(bakes):
     assert scene.extras["output"]["name"] == "b2"
     assert "foot_path" not in scene.extras
     assert "drive" not in (_root(gltf).extras or {})
-    with pytest.raises(walk.ParamError, match="crank_rocker is a mechanism: bake one side"):
-        build_config("robot", linkage="crank_rocker")
+    with pytest.raises(ParamError, match="crank_rocker is a mechanism, not a walker"):
+        BuildConfig(linkage="crank_rocker", module="single", robot=True)

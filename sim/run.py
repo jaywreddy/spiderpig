@@ -21,7 +21,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from fabricate import BuildConfig, template_for
+from config import BuildConfig
+from fabricate import template_for
 from linkage import feet_of
 from sim.mjcf import T_REF, SimParams, load_model, robot_model
 

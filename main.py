@@ -36,58 +36,25 @@ import csv
 import math
 import re
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import construction
 import linkage
 import servos
-import walk
-from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for
+from config import ParamError, add_build_args, add_design_args, config_from_args
+from fabricate import design_side, fabricate, template_for
 from hardware.bom import BomLine, bom_from_mechanism, group_made
-from hardware.catalog import CATALOG, _load, sheet_size, sheet_thickness
+from hardware.catalog import CATALOG, _load, sheet_size
 from hardware.mass import filament_density
 from layout import DEFAULT_KERF, save_sheets
 
 
-def config_from_args(args: argparse.Namespace) -> BuildConfig:
-    """The build the arguments ask for (the design from ``--linkage`` / ``--phases`` /
-    ``--proportion``).
-
-    Raises :class:`walk.ParamError` for design parameters that don't fit the module.
-    """
-    base = BuildConfig(sheet=args.sheet, servo=args.servo, pillar=args.pillar, pin=args.pin,
-                       crank=args.crank, thickness=args.thickness)
-    config = walk.make_config(args.module, base=base, **walk.design_args(args))
-    return replace(config, robot=not args.side_only)
-
-
-def add_config_args(p: argparse.ArgumentParser) -> None:
-    """The build options shared by the CLI and the audit."""
-    d = BuildConfig()
-    p.add_argument("--servo", default=d.servo, help=f"servo model (default {d.servo})")
-    axles, cranks = sorted(construction.AXLES), sorted(construction.CRANKS)
-    p.add_argument("--pillar", default=d.pillar, choices=axles,
-                   help=f"construction of the frame pivots (default {d.pillar})")
-    p.add_argument("--pin", default=d.pin, choices=axles,
-                   help=f"construction of the pivots between links (default {d.pin})")
-    p.add_argument("--crank", default=d.crank, choices=cranks,
-                   help=f"crank construction (default {d.crank})")
-    p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
-    p.add_argument("--thickness", type=float, default=None,
-                   help="measured sheet thickness in mm (default: the sheet's nominal)")
-
-
 def _parse_args(argv) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Walking-robot generator")
-    p.add_argument("--module", default="quad",
-                   help="legs per side (the linkage's modules): single, double (mirrored "
-                   "pair), decker (two legs on one crankshaft), quad (two mirrored deckers). "
-                   "Default: quad")
+    add_design_args(p)
     p.add_argument("--side-only", action="store_true",
                    help="build one side (no second side, no chassis)")
-    walk.add_design_args(p)
-    add_config_args(p)
+    add_build_args(p)
     p.add_argument("--kerf", type=float, default=DEFAULT_KERF,
                    help=f"laser kerf compensation in mm (default {DEFAULT_KERF})")
     p.add_argument("--sheet-size", type=float, nargs=2, metavar=("W", "H"), default=None,
@@ -100,8 +67,8 @@ def _parse_args(argv) -> argparse.Namespace:
                    help="list modules, servos, constructions and sheet stock")
     args = p.parse_args(argv)
     try:
-        args.config = config_from_args(args)
-    except walk.ParamError as e:
+        args.config = config_from_args(args, robot=not args.side_only)
+    except ParamError as e:
         p.error(str(e))
     args.name = args.name or args.config.linkage
     return args
@@ -109,12 +76,12 @@ def _parse_args(argv) -> argparse.Namespace:
 
 def _list_options() -> None:
     _load()
-    print("linkages (--linkage; --proportion NAME=VALUE for its parameters):")
+    print("linkages (--linkage; --module one of its modules; --proportion NAME=VALUE for its "
+          "parameters):")
     for key in linkage.available():
         lk = linkage.get(key)
         params = ", ".join(f"{k}={float(v):g}" for k, v in lk.params.items())
-        print(f"  {key:14} {lk.name}: {params}")
-    print("modules: " + ", ".join(MODULES))
+        print(f"  {key:14} {lk.name} ({', '.join(lk.leg_modules)}): {params}")
     print("servos (full rotation):")
     for key in servos.available():
         print(f"  {key:14} {servos.get(key).name}")
@@ -189,10 +156,10 @@ def main(argv=None) -> int:
 
     try:
         tmpl = template_for(config)     # the template stage checks every loop closes
-    except walk.LinkageError as e:
+    except linkage.AssemblyError as e:
         print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
         return 2
-    phases = ",".join(f"{math.degrees(p):g}" for p in walk.phases_rad(config))
+    phases = ",".join(f"{math.degrees(p):g}" for _, p in config.legs)
     custom = config.phases is not None or config.proportions
     design_note = (f"{config.linkage} linkage, leg phases {phases} deg, proportions "
                    f"{dict(config.proportions) or 'its defaults'}")
@@ -201,7 +168,7 @@ def main(argv=None) -> int:
     design = design_side(tmpl, config)
     plan = design.plan
     print(f"{args.module}: layer plan of one side, {plan.top + 1} layers of "
-          f"{sheet_thickness(config.sheet, config.thickness):g} mm ({plan.height:.1f} mm):")
+          f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
     mech = fabricate(tmpl, config, 1.0)
     if config.robot:

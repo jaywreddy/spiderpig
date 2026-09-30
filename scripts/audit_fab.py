@@ -37,12 +37,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
 import linkage  # noqa: E402
+from config import BuildConfig, ParamError, add_build_args, config_from_args  # noqa: E402
 from construction.contract import bad_solids, check_side, clashes  # noqa: E402
-from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
+from fabricate import design_side, fabricate, template_for  # noqa: E402
 from hardware.bom import BomLine, bom_from_mechanism  # noqa: E402
 from hardware.catalog import sheet_size  # noqa: E402
 from layout import pack  # noqa: E402
-from main import add_config_args  # noqa: E402
 from stack import verify_plan  # noqa: E402
 
 
@@ -133,17 +133,23 @@ def markdown(report: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT)
-    ap.add_argument("--modules", default=",".join(MODULES))
+    ap.add_argument("--linkage", choices=linkage.available("walker"), default=linkage.DEFAULT)
+    ap.add_argument("--modules", default=None,
+                    help="comma-separated leg modules (default: all of the linkage's)")
     ap.add_argument("--ts-contract", default="0,1.6,3.2,4.8",
                     help="crank angles for the contract check")
     ap.add_argument("--ts-clash", default="1,4.38", help="crank angles for the OCCT clash check")
-    add_config_args(ap)
+    add_build_args(ap)
     ap.add_argument("--out", type=Path, default=Path("build/audit"))
     args = ap.parse_args(argv)
 
-    base = BuildConfig(sheet=args.sheet, servo=args.servo, pillar=args.pillar, pin=args.pin,
-                       crank=args.crank, thickness=args.thickness, linkage=args.linkage)
+    modules = (args.modules.split(",") if args.modules
+               else list(linkage.get(args.linkage).leg_modules))
+    try:
+        configs = [config_from_args(args, module=m) for m in modules]
+    except ParamError as e:
+        ap.error(str(e))
+    base = configs[0]
     report: dict = {"config": {"linkage": base.linkage, "servo": base.servo,
                                "pillar": base.pillar, "pin": base.pin, "crank": base.crank,
                                "sheet": base.sheet, "thickness": base.thickness},
@@ -151,8 +157,7 @@ def main(argv=None) -> int:
     ts_contract = [float(x) for x in args.ts_contract.split(",")]
     ts_clash = [float(x) for x in args.ts_clash.split(",")]
     failed = False
-    for module in args.modules.split(","):
-        config = BuildConfig(**{**base.__dict__, "module": module})
+    for module, config in zip(modules, configs, strict=True):
         print(f"== {module}", flush=True)
         rep = report["modules"][module] = audit_module(module, config, ts_contract, ts_clash)
         for p in rep["problems"]:

@@ -73,8 +73,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-import linkage  # noqa: E402
+import linkage as linkage_mod  # noqa: E402
 import walk  # noqa: E402
+from config import BuildConfig  # noqa: E402
 from linkage import scale_params  # noqa: E402
 
 PHASE_STEPS = (8.0, 4.0, 2.0, 1.0)          # degrees
@@ -106,11 +107,11 @@ class Tuner:
     """Scores candidates of one module of a linkage (memoized per resolution)."""
 
     def __init__(self, module: str, stride_ref: float | None = None,
-                 min_gap: float = MIN_GAP, linkage: str = linkage.DEFAULT) -> None:
+                 min_gap: float = MIN_GAP, linkage: str = linkage_mod.DEFAULT) -> None:
         self.module = module
-        self.linkage = walk.get_linkage(linkage)
-        self.default = Candidate(tuple(math.degrees(ph)
-                                       for _, ph in walk.module_legs(module, linkage)))
+        self.linkage = linkage_mod.get(linkage)
+        self.default = Candidate(tuple(math.degrees(ph) for _, ph in
+                                       BuildConfig(linkage=linkage, module=module).legs))
         self.stride_ref = stride_ref
         self.min_gap = min_gap
         self.evaluations = 0
@@ -127,9 +128,10 @@ class Tuner:
         """Every two legs' phases ``min_gap`` apart (see the module docstring)."""
         return all(_gap(phases[i], phases[j]) >= self.min_gap - 1e-9 for i, j in self._pairs)
 
-    def config(self, c: Candidate):
-        return walk.make_config(self.module, c.phases, dict(c.proportions),
-                                linkage=self.linkage.key)
+    def config(self, c: Candidate) -> BuildConfig:
+        return BuildConfig(linkage=self.linkage.key, module=self.module,
+                           phases=tuple(math.radians(p) for p in c.phases),
+                           proportions=c.proportions)
 
     def metrics(self, c: Candidate, n: int = walk.N_THETA, feet_z=None) -> dict | None:
         """Straight-walk metrics of a candidate (``None``: the linkage can't be assembled)."""
@@ -203,9 +205,8 @@ def pattern_search(tuner: Tuner, start: Candidate, names: tuple[str, ...] = (),
                     v = cur + sgn * dprop / 100.0 * abs(d)
                     if abs(v - d) > pct / 100.0 * abs(d) + 1e-12:
                         continue
-                    trial = dict(props, **{name: v})
-                    moves.append(Candidate(c.phases, walk.normalize_proportions(
-                        trial, tuner.linkage.key)))
+                    trial = Candidate(c.phases, tuple(dict(props, **{name: v}).items()))
+                    moves.append(Candidate(c.phases, tuner.config(trial).proportions))
             for m in moves:
                 s = tuner.score(m)
                 if s.score < best.score - 1e-9:
@@ -225,13 +226,13 @@ def _phases_arg(phases) -> str:
     return ",".join(f"{p:g}" for p in phases)
 
 
-def flags(module: str, c: Candidate, linkage_key: str = linkage.DEFAULT) -> dict[str, str]:
+def flags(module: str, c: Candidate, linkage_key: str = linkage_mod.DEFAULT) -> dict[str, str]:
     """How to use a candidate: main.py / bake flags and the viewer's query string."""
     cli = f"--module {module} --phases {_phases_arg(c.phases)}"
     cli += "".join(f" --proportion {k}={v:.6g}" for k, v in c.proportions)
     query = f"module={module}&phases={_phases_arg(c.phases)}"
     query += "".join(f"&p.{k}={v:.6g}" for k, v in c.proportions)
-    if linkage_key != linkage.DEFAULT:
+    if linkage_key != linkage_mod.DEFAULT:
         cli += f" --linkage {linkage_key}"
         query += f"&linkage={linkage_key}"
     return {"main": f"uv run python main.py {cli}",
@@ -241,7 +242,7 @@ def flags(module: str, c: Candidate, linkage_key: str = linkage.DEFAULT) -> dict
 
 def tune(module: str, *, grid: float = 30.0, coarse: int = 120, top: int = 6,
          pct: float = 0.0, names: tuple[str, ...] | None = None,
-         min_gap: float = MIN_GAP, linkage_key: str = linkage.DEFAULT,
+         min_gap: float = MIN_GAP, linkage_key: str = linkage_mod.DEFAULT,
          ) -> tuple[Tuner, Scored, Scored]:
     """``(tuner, default, best)`` for ``module`` (see the module docstring)."""
     tuner = Tuner(module, min_gap=min_gap, linkage=linkage_key)
@@ -282,7 +283,8 @@ def plan(tuner: Tuner, c: Candidate) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--linkage", choices=linkage.available("walker"), default=linkage.DEFAULT)
+    ap.add_argument("--linkage", choices=linkage_mod.available("walker"),
+                    default=linkage_mod.DEFAULT)
     ap.add_argument("--module", default="quad", help="one of the linkage's modules (quad)")
     ap.add_argument("--grid", type=float, default=30.0,
                     help="phase grid step in degrees (default 30)")
@@ -299,14 +301,13 @@ def main(argv=None) -> int:
                     help="plan the best design's layers (buildable?) and rescore with them")
     ap.add_argument("--json", type=Path, default=None, help="write the result as JSON")
     args = ap.parse_args(argv)
-    lk = linkage.get(args.linkage)
+    lk = linkage_mod.get(args.linkage)
     names = tuple(s.strip() for s in args.names.split(",")) if args.names else None
     if names and (bad := [n for n in names if n not in lk.params]):
         ap.error(f"unknown proportions {bad}; have {list(lk.params)}")
-    try:
-        legs = walk.module_legs(args.module, lk.key)
-    except walk.ParamError as e:
-        ap.error(str(e))
+    legs = lk.leg_modules.get(args.module)
+    if legs is None:
+        ap.error(f"unknown module {args.module!r}; have {list(lk.leg_modules)}")
     if len(legs) == 1 and args.proportions <= 0:
         print(f"{args.module}: one leg per side, so no phases to tune; try --proportions PCT")
         return 0

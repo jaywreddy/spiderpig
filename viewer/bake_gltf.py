@@ -1,13 +1,9 @@
 """Bake the walker as one self-contained, animated ``.glb`` for the three.js viewer.
 
-Modes
------
-``robot`` (default)
-    The whole robot (:mod:`construction.robot`): two mirror-image sides,
-    bodies prefixed ``L.`` / ``R.``, plus the chassis between the servos.
-    ``module`` picks the side (``quad`` by default).
-``single`` / ``double`` / ``decker`` / ``quad``
-    One side only (:data:`fabricate.MODULES`).
+What is baked is a :class:`config.BuildConfig`: the whole robot
+(:mod:`construction.robot`: two mirror-image sides, bodies prefixed ``L.`` /
+``R.``, plus the chassis between the servos) or, with ``robot=False``, one
+side of the module.
 
 Pipeline
 --------
@@ -35,19 +31,17 @@ Pipeline
 
 Design parameters
 -----------------
-``linkage`` (a registered :class:`linkage.Linkage`, Klann by default),
-``phases`` (one crank phase per leg) and ``proportions`` (overrides of the
-linkage's parameters) change the design; the CLI takes ``--linkage``, the
-phases in degrees (``--phases 0,180,90,270``) and ``--proportion
-NAME=VALUE`` (repeatable). A non-default design is written to
-``viewer/data/params/<mode>_<module>_<key>.glb`` unless ``--out`` says
-otherwise (:func:`param_glb`; the dev server caches parameter bakes there too).
+The CLI takes the design (``--linkage``, ``--module``, the phases in
+degrees ``--phases 0,180,90,270``, ``--proportion NAME=VALUE``) and the
+build options like every other tool (:mod:`config`); ``--side`` bakes one
+side. The file goes to ``viewer/data/<config.key>.glb`` unless ``--out``
+says otherwise (the dev server caches its bakes there too).
 
 Usage
 -----
     uv run python viewer/bake_gltf.py                       # robot, quad per side
-    uv run python viewer/bake_gltf.py --mode robot --module single
-    uv run python viewer/bake_gltf.py --mode double --frames 60
+    uv run python viewer/bake_gltf.py --module single
+    uv run python viewer/bake_gltf.py --module double --side --frames 60
     uv run python viewer/bake_gltf.py --phases 0,175,180,355 --proportion DF=2.5
     uv run python viewer/bake_gltf.py --linkage jansen --module double
 """
@@ -55,13 +49,11 @@ Usage
 from __future__ import annotations
 
 import argparse
-import hashlib
 import logging
 import math
 import sys
 import time
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
@@ -159,20 +151,21 @@ if str(_REPO_ROOT) not in sys.path:
 
 import linkage as linkage_mod  # noqa: E402
 import walk  # noqa: E402
+from config import (  # noqa: E402
+    BuildConfig,
+    ParamError,
+    add_build_args,
+    add_design_args,
+    config_from_args,  # noqa: E402
+)
 from construction.robot import robot_template  # noqa: E402
-from fabricate import MODULES, BuildConfig, design_side, fabricate, template_for  # noqa: E402
+from fabricate import design_side, fabricate, template_for  # noqa: E402
 from hardware.catalog import get as catalog_get  # noqa: E402
 from hardware.mass import PartProps, part_props  # noqa: E402
 from mechanism import Body, Mechanism, MechanismTemplate  # noqa: E402
 from stack import body_class, is_link  # noqa: E402
 
-# One side's kinematics per module (see fabricate.MODULES) is
-# ``fabricate.template_for(config)``: the module at the config's crank phases
-# and proportions.
-ROBOT = "robot"
-MODES = (ROBOT, *MODULES)
-DEFAULT_MODULE = "quad"
-PARAMS_DIR = _REPO_ROOT / "viewer" / "data" / "params"
+DATA_DIR = _REPO_ROOT / "viewer" / "data"
 
 # Crank angle the parts are modelled at; frame 0 of the animation.
 _T_REF = 0.0
@@ -182,87 +175,10 @@ _T_REF = 0.0
 _ROOT_ROTATION = (math.sqrt(0.5), 0.0, 0.0, math.sqrt(0.5))   # xyzw
 
 
-def _resolve(mode: str, module: str | None = None,
-             robot_module: str = DEFAULT_MODULE) -> tuple[str, bool]:
-    """``(side module, robot?)`` for a bake mode (:func:`build_config` checks the module);
-    the robot's module is ``robot_module`` unless ``module`` says otherwise."""
-    if mode == ROBOT:
-        return module or robot_module, True
-    if mode not in MODULES:
-        raise ValueError(f"unknown mode {mode!r}; have {list(MODES)}")
-    if module not in (None, mode):
-        raise ValueError(f"mode {mode!r} is one side; module {module!r} applies to robot only")
-    return mode, False
-
-
 def _build_template(config: BuildConfig) -> MechanismTemplate:
     """The kinematics the animation samples: one side, or both sides of the robot."""
     tmpl = template_for(config)
     return robot_template(tmpl) if config.robot else tmpl
-
-
-def build_config(
-    mode: str, module: str | None = None, config: BuildConfig | None = None,
-    thickness: float | None = None, phases: Sequence[float] | None = None,
-    proportions: Mapping[str, float] | None = None, linkage: str | None = None,
-) -> BuildConfig:
-    """The build for a bake. ``linkage``, ``phases`` (rad, one per leg) and
-    ``proportions`` override ``config``'s; they are validated and normalized
-    (:func:`walk.normalize_phases`, :func:`walk.normalize_proportions`), so a
-    default design has one config however it was asked for.
-
-    Raises ``ValueError`` (:class:`walk.ParamError` for bad design parameters).
-    """
-    config = config or BuildConfig()
-    side, robot = _resolve(mode, module, config.module)     # a robot keeps config's module
-    config = replace(config, module=side, robot=robot)
-    if linkage is not None:
-        config = replace(config, linkage=walk.get_linkage(linkage).key)
-    if robot and walk.get_linkage(config.linkage).kind != "walker":
-        raise walk.ParamError(f"{config.linkage} is a mechanism: bake one side (mode single), "
-                              f"not a robot")
-    if phases is not None:
-        config = replace(config, phases=tuple(float(p) for p in phases))
-    if proportions is not None:
-        config = replace(config, proportions=tuple(dict(proportions).items()))
-    config = replace(
-        config,
-        phases=walk.normalize_phases(side, config.phases, degrees=False,
-                                     linkage=config.linkage),
-        proportions=walk.normalize_proportions(dict(config.proportions), config.linkage),
-    )
-    return config if thickness is None else replace(config, thickness=thickness)
-
-
-def config_key(config: BuildConfig) -> str:
-    """A short stable hash of a (normalized) build config: names parameter bakes."""
-    return hashlib.sha1(repr(config).encode()).hexdigest()[:12]
-
-
-def is_default(mode: str, config: BuildConfig) -> bool:
-    """Is ``config`` what a plain bake of ``mode`` builds?"""
-    return config == build_config(mode)
-
-
-def param_glb(mode: str, config: BuildConfig, root: Path | None = None) -> Path:
-    """Where a bake of ``mode`` with a non-default ``config`` is cached."""
-    return (root or PARAMS_DIR) / f"{mode}_{config.module}_{config_key(config)}.glb"
-
-
-def _build_assembly(
-    mode: str,
-    *,
-    t: float,
-    module: str | None = None,
-    config: BuildConfig | None = None,
-    thickness: float | None = None,
-    phases: Sequence[float] | None = None,
-    proportions: Mapping[str, float] | None = None,
-    linkage: str | None = None,
-) -> Mechanism:
-    """The fabricated walker at crank angle ``t`` (parts in world coordinates)."""
-    config = build_config(mode, module, config, thickness, phases, proportions, linkage)
-    return fabricate(template_for(config), config, t)
 
 
 # ---------------------------------------------------------------------------
@@ -568,30 +484,18 @@ def _drive_extra(config: BuildConfig, mech: Mechanism,
 
 def bake_gltf(
     out: Path,
+    config: BuildConfig | None = None,
     *,
     n_frames: int = 120,
     duration_s: float = 1.0,
-    mode: str = ROBOT,
-    module: str | None = None,
-    thickness: float | None = None,
-    config: BuildConfig | None = None,
-    phases: Sequence[float] | None = None,
-    proportions: Mapping[str, float] | None = None,
-    linkage: str | None = None,
     profile: bool = True,
 ) -> None:
-    """Write ``<out>``: the fabricated walker and its animation over one crank revolution.
+    """Write ``<out>``: the fabricated walker of ``config`` and its animation over one crank
+    revolution (the whole robot, or one side with ``robot=False``).
 
-    ``mode`` is ``"robot"`` (both sides; ``module`` picks the side, ``quad``
-    by default) or a side-only module (``single``, ``double``, ``decker``,
-    ``quad``). ``config`` sets the build (sheet, servo, constructions); its
-    ``module`` / ``robot`` fields follow ``mode``. ``linkage`` (a key of
-    :func:`linkage.available`), ``phases`` (radians, one per leg, like
-    ``BuildConfig.phases``) and ``proportions`` (overrides of the linkage's
-    parameters) set the design; they override ``config``'s.
-    Bad parameters raise ``ValueError``; so does a layout the planner can't
-    find (:mod:`stack`), and a construction that can't be built raises
-    :class:`construction.ConstructionError`.
+    A layout the planner can't find (:mod:`stack`) and a construction that
+    can't be built (:class:`construction.ConstructionError`) raise
+    ``ValueError``.
 
     A robot's root node ``walker`` carries the walking model's data in its
     extras under ``"drive"`` (:func:`walk.drive_extra`): every foot's path
@@ -607,17 +511,17 @@ def bake_gltf(
     output-size metrics are emitted via the ``bake_gltf`` logger at INFO
     level.
     """
-    config = build_config(mode, module, config, thickness, phases, proportions, linkage)
+    config = config or BuildConfig()
     robot = config.robot
-    lk = linkage_mod.get(config.linkage)
+    lk = config.lk
     prof = _Profiler(enabled=profile)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
 
     logger.info(
-        "bake: mode=%s linkage=%s module=%s phases=%s proportions=%s n_frames=%d "
+        "bake: %s linkage=%s module=%s phases=%s proportions=%s n_frames=%d "
         "duration_s=%.3f out=%s",
-        mode, config.linkage, config.module,
+        "robot" if robot else "side", config.linkage, config.module,
         "default" if config.phases is None
         else ",".join(f"{math.degrees(p):g}" for p in config.phases),
         dict(config.proportions) or "default", n_frames, duration_s, out,
@@ -868,7 +772,7 @@ def bake_gltf(
         path = "foot_path" if lk.feet else "output_path"
         scene.extras = {
             path: foot_path, f"{path}_z": foot_z,
-            "mode": mode, "linkage": config.linkage, "module": config.module, "robot": robot,
+            "linkage": config.linkage, "module": config.module, "robot": robot,
             "meta": _json_meta(ref_mech.meta),
         }
         if lk.output:
@@ -909,50 +813,22 @@ def bake_gltf(
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument(
-        "--out",
-        type=Path,
-        default=None,
-        help="Output .glb path (default: viewer/data/klann_<mode>.glb).",
-    )
-    p.add_argument("--frames", type=int, default=120, help="Animation frame count.")
-    p.add_argument(
-        "--duration", type=float, default=1.0, help="Animation duration in seconds."
-    )
-    p.add_argument(
-        "--mode",
-        choices=list(MODES),
-        default=ROBOT,
-        help="robot (both sides, default) or one side: single/double/decker/quad.",
-    )
-    p.add_argument(
-        "--module",
-        default=None,
-        help=f"Legs per side for --mode robot: one of the linkage's modules, e.g. "
-        f"{'/'.join(MODULES)} (default: {DEFAULT_MODULE}).",
-    )
-    walk.add_design_args(p)
-    p.add_argument(
-        "--profile",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Emit per-stage wall-clock profile summary (default: on).",
-    )
-    p.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level (default: INFO).",
-    )
+    add_design_args(p)
+    add_build_args(p)
+    p.add_argument("--side", action="store_true", help="bake one side only (default: the robot)")
+    p.add_argument("--out", type=Path, default=None,
+                   help="output .glb path (default: viewer/data/<linkage>_<module>_<robot|side>"
+                        "[_<hash>].glb)")
+    p.add_argument("--frames", type=int, default=120, help="animation frame count")
+    p.add_argument("--duration", type=float, default=1.0, help="animation duration in seconds")
+    p.add_argument("--profile", action=argparse.BooleanOptionalAction, default=True,
+                   help="emit the per-stage wall-clock profile summary (default: on)")
+    p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+                   help="logging level (default: INFO)")
     args = p.parse_args()
-    design = walk.design_args(args)
-    phases_deg = design["phases_deg"]
     try:
-        args.config = build_config(
-            args.mode, args.module, linkage=design["linkage"],
-            phases=None if phases_deg is None else [math.radians(v) for v in phases_deg],
-            proportions=design["proportions"])
-    except ValueError as e:
+        args.config = config_from_args(args, robot=not args.side)
+    except ParamError as e:
         p.error(str(e))
     return args
 
@@ -965,20 +841,8 @@ def main() -> None:
     )
     # build123d logs every builder-less primitive at INFO; keep the profile readable.
     logging.getLogger("build123d").setLevel(max(logging.WARNING, logging.root.level))
-    config = args.config
-    out = args.out
-    if out is None:
-        out = (_REPO_ROOT / "viewer" / "data" / f"klann_{args.mode}.glb"
-               if is_default(args.mode, config) else param_glb(args.mode, config))
-    bake_gltf(
-        out,
-        n_frames=args.frames,
-        duration_s=args.duration,
-        mode=args.mode,
-        module=args.module,
-        config=config,
-        profile=args.profile,
-    )
+    bake_gltf(args.out or DATA_DIR / f"{args.config.key}.glb", args.config,
+              n_frames=args.frames, duration_s=args.duration, profile=args.profile)
 
 
 if __name__ == "__main__":

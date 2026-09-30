@@ -25,11 +25,12 @@ from dataclasses import dataclass, field, replace
 import construction
 import linkage
 import servos
-from construction.base import Build, Context, Params, Realized
+from config import BuildConfig
+from construction.base import Build, Context, Realized
 from construction.plates import FramePlates, LinkPlates
 from construction.robot import FrameTies, assemble_robot
 from construction.underside import underside
-from hardware.catalog import sheet_name, sheet_thickness
+from hardware.catalog import sheet_name
 from mechanism import Mechanism
 from servos.mount import DriveGroup
 from stack import (
@@ -43,26 +44,6 @@ from stack import (
     topology_from_template,
     verify_plan,
 )
-
-MODULES = ("single", "double", "decker", "quad")
-
-
-@dataclass(frozen=True)
-class BuildConfig:
-    """What to build and how. Construction keys refer to :mod:`construction` registries."""
-
-    module: str = "quad"              # legs per side (see MODULES)
-    robot: bool = True                # two mirrored sides, servos back to back in one frame
-    sheet: str = "acrylic_3mm"        # catalog item for the sheet stock (sets the layer pitch)
-    servo: str = servos.DEFAULT
-    pillar: str = "printed"           # frame pivots
-    pin: str = "printed"              # pivots between links
-    crank: str = "printed"
-    params: Params = field(default_factory=Params)
-    thickness: float | None = None    # override the sheet's nominal thickness
-    phases: tuple[float, ...] | None = None        # crank phase per leg (rad); None = module's
-    proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
-    linkage: str = "klann"            # see linkage.available()
 
 
 def template_for(config: BuildConfig):
@@ -95,7 +76,7 @@ class SideDesign:
 
     @property
     def checks(self):
-        return linkage.get(self.config.linkage).check(dict(self.config.proportions))
+        return self.config.lk.check(dict(self.config.proportions))
 
 
 def side_groups(ctx: Context, config: BuildConfig) -> list:
@@ -123,8 +104,7 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
     static clearances, the body's underside (``ctx.interfaces["underside"]``) and the
     crank's router (its static facts in ``problem.router.facts``)."""
     topo = topology_from_template(tmpl)
-    ctx = Context(topo=topo, params=config.params,
-                  pitch=sheet_thickness(config.sheet, config.thickness),
+    ctx = Context(topo=topo, params=config.params, pitch=config.pitch,
                   servo=servos.get(config.servo), config=config)
     groups = side_groups(ctx, config)
     for g in groups:

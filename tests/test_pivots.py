@@ -13,13 +13,14 @@ from dataclasses import replace
 import pytest
 
 import construction
+from config import BuildConfig
 from construction import ConstructionError
 from construction.axle import AxleGroup, flange_sides
 from construction.base import FRAME_INNER, FRAME_OUTER, Build, Params
 from construction.contract import check_side
 from construction.pivots import BEARING, BUSHING, BoltAxle, InsertAxle, RodAxle
 from construction.pivots.common import Column
-from fabricate import BuildConfig, design_side, fabricate, fabricate_side, template_for
+from fabricate import design_side, fabricate, fabricate_side, template_for
 from hardware.bom import bom_from_mechanism
 from hardware.catalog import get
 from stack import Layout, Unbuildable, verify_plan

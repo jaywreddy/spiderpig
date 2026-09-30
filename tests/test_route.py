@@ -8,10 +8,11 @@ import numpy as np
 import pytest
 
 import linkage
+from config import BuildConfig
 from construction.crank import CrankRoute
 from construction.route import crank_facts
 from construction.underside import Underside, underside
-from fabricate import BuildConfig, design_side, ground_clearance, side_problem, template_for
+from fabricate import design_side, ground_clearance, side_problem, template_for
 from stack import ClearanceError, verify_plan
 from tests import brute
 

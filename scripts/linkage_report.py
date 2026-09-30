@@ -62,7 +62,8 @@ def foot_path(lk: linkage.Linkage, n: int = N) -> dict:
 
 
 def plans(key: str, modules) -> dict:
-    from fabricate import BuildConfig, design_side, template_for
+    from config import BuildConfig
+    from fabricate import design_side, template_for
 
     out = {}
     for m in modules:
@@ -85,8 +86,9 @@ def plans(key: str, modules) -> dict:
 def walking(key: str, module: str) -> dict:
     """Quasi-static straight-walk metrics of the robot (both sides) for a module that plans."""
     import walk
+    from config import BuildConfig
 
-    p = walk.api_payload(walk.make_config(module, linkage=key))
+    p = walk.api_payload(BuildConfig(linkage=key, module=module))
     if not p["valid"]:
         return {"valid": False, "error": p["error"]}
     m = p["metrics"]
@@ -98,7 +100,8 @@ def walking(key: str, module: str) -> dict:
 
 def cost(key: str, module: str) -> dict:
     """The robot's purchase total and part counts (builds every part: slow)."""
-    from fabricate import BuildConfig, fabricate, template_for
+    from config import BuildConfig
+    from fabricate import fabricate, template_for
     from hardware.bom import bom_from_mechanism
 
     cfg = BuildConfig(linkage=key, module=module)

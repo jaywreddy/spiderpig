@@ -1,16 +1,16 @@
 # Walker three.js viewer
 
 Lightweight visual validator. The fabrication pipeline bakes a single
-self-contained `.glb` per assembly mode (every fabricated part: laser-cut
-plates, printed axles and crank, the servos) with the animation embedded as
-a glTF clip; the browser plays it via three.js.
+self-contained `.glb` per design (every fabricated part: laser-cut plates,
+printed axles and crank, the servos) with the animation embedded as a glTF
+clip; the browser plays it via three.js.
 
 ## Design
 
 Three parts:
 
-1. **Bake** (`bake_gltf.py`): one `.glb` per mode under
-   `viewer/data/klann_<mode>.glb`. Parts come from `fabricate.fabricate`
+1. **Bake** (`bake_gltf.py`): one `.glb` per design (a `config.BuildConfig`)
+   under `viewer/data/<config.key>.glb`. Parts come from `fabricate.fabricate`
    (build123d, world coordinates at `t = 0`); animation channels per body
    are sampled from the `MechanismTemplate` (`construction.robot.robot_template`
    for the whole robot). Bodies of one class whose parts are congruent under
@@ -30,16 +30,21 @@ Three parts:
 
 ## Modes
 
-| id (server / URL) | bake mode | what |
-|---|---|---|
-| `robot` (default) | `robot` | both mirror-image sides (`L.` / `R.`), quad per side, chassis between the servos |
-| `klann` | `single` | one side, one leg |
-| `double` | `double` | one side, mirrored pair |
-| `decker` | `decker` | one side, two legs on one crankshaft |
-| `double_double` | `quad` | one side, four legs |
+A `/api/glb/{mode}` id is a module and a side or the robot (`server.app.MODES`);
+the query's `module=` applies to the first two, the rest are the ids old URLs
+use, and `/api/modes` lists the ones the dropdown offers with their labels.
 
-`uv run python viewer/bake_gltf.py --mode robot --module single` bakes the
-robot with another module per side.
+| id (server / URL) | what |
+|---|---|
+| `robot` (default) | both mirror-image sides (`L.` / `R.`), `module` legs per side (quad), chassis between the servos |
+| `side` | one side of `module` (quad) |
+| `klann` | one side, one leg |
+| `double` | one side, mirrored pair |
+| `decker` | one side, two legs on one crankshaft |
+| `double_double` | one side, four legs |
+
+`uv run python viewer/bake_gltf.py --module single` bakes the robot with
+another module per side, `--side` one side of it.
 
 ## Orientation and materials
 

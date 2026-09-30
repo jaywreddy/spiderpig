@@ -150,7 +150,8 @@ import numpy as np
 from scipy.spatial import ConvexHull
 
 import servos
-from fabricate import BuildConfig, fabricate, template_for
+from config import BuildConfig
+from fabricate import fabricate, template_for
 from hardware.mass import material_of, part_props
 from linkage import feet_of
 from linkage import get as get_linkage

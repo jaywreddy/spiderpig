@@ -11,7 +11,8 @@ import pytest
 mujoco = pytest.importorskip("mujoco")
 
 import linkage  # noqa: E402
-from fabricate import BuildConfig, template_for  # noqa: E402
+from config import BuildConfig  # noqa: E402
+from fabricate import template_for  # noqa: E402
 from sim.mjcf import MM, fabricated, load_model  # noqa: E402
 from sim.run import (  # noqa: E402
     body_motions,

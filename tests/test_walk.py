@@ -21,6 +21,7 @@ import pytest
 
 import linkage
 import walk
+from config import BuildConfig, ParamError, parse_phases, parse_proportion
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
@@ -37,9 +38,16 @@ def _square(y=-100.0, hx=50.0, hz=40.0):
     return np.array([[-hx, y, -hz], [-hx, y, hz], [hx, y, -hz], [hx, y, hz]])
 
 
+def _cfg(module: str, phases_deg=None, proportions=None, **kw) -> BuildConfig:
+    """A robot's config from the phases in degrees and a proportions dict."""
+    phases = None if phases_deg is None else tuple(math.radians(p) for p in phases_deg)
+    return BuildConfig(module=module, phases=phases, proportions=tuple((proportions or {}).items()),
+                       **kw)
+
+
 @pytest.fixture(scope="module")
 def quad():
-    return walk.walker(walk.make_config("quad"))
+    return walk.walker(_cfg("quad"))
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +257,7 @@ def test_quad_reference(quad, com):
 
 @pytest.mark.parametrize("module", list(linkage.MODULE_LEGS))
 def test_straight_walk_metrics_are_finite(module):
-    m = walk.straight_walk_metrics(walk.walker(walk.make_config(module)))
+    m = walk.straight_walk_metrics(walk.walker(_cfg(module)))
     for key, value in m.items():
         if key != "direction":
             assert np.isfinite(value).all(), key
@@ -274,7 +282,7 @@ def test_better_phases_lower_the_objective(quad):
     ref = walk.straight_walk_metrics(quad)
     base = walk.objective(ref, ref["stride_mm"])
     for phases in (TUNED_QUAD, TUNED_QUAD_B):
-        m = walk.straight_walk_metrics(walk.walker(walk.make_config("quad", phases)))
+        m = walk.straight_walk_metrics(walk.walker(_cfg("quad", phases)))
         assert walk.objective(m, ref["stride_mm"]) < 0.5 * base, phases
         assert m["bob_mm"] < ref["bob_mm"]
         assert m["slip_rms"] < ref["slip_rms"]
@@ -330,41 +338,50 @@ def test_tuner_keeps_crankpins_apart():
 
 
 def test_normalized_parameters():
-    assert walk.make_config("quad", [0, 180, 90, 270]).phases is None
-    assert walk.make_config("quad", [360, -180, 90, 270]).phases is None
-    cfg = walk.make_config("quad", [0, 175, 180, 355], {"DF": 2.577, "OB": 1.2})
+    """A design has one config however it was asked for (the module's own phases and the
+    linkage's default proportions are dropped), and a bad one fails where it is named."""
+    assert _cfg("quad", [0, 180, 90, 270]).phases is None
+    assert _cfg("quad", [360, -180, 90, 270]).phases is None
+    cfg = _cfg("quad", [0, 175, 180, 355], {"DF": 2.577, "OB": 1.2})
     assert cfg.phases == pytest.approx(tuple(math.radians(p) for p in TUNED_QUAD))
     assert cfg.proportions == (("OB", 1.2),)
-    assert walk.params_of(cfg)["proportions"]["OB"] == 1.2
+    assert cfg.design_json()["proportions"]["OB"] == 1.2
+    assert cfg.legs == tuple(zip((1, -1, 1, -1), cfg.phases, strict=True))
+    assert not cfg.is_default
+    assert cfg.key.startswith("klann_quad_robot_")
+    assert _cfg("quad").is_default
+    assert _cfg("quad").key == "klann_quad_robot"
+    assert _cfg("quad", robot=False).key == "klann_quad_side"
     for bad in (dict(module="octo"), dict(phases_deg=[0, 90]), dict(proportions={"XX": 1}),
-                dict(proportions={"OB": -1}), dict(proportions={"DF": float("nan")})):
-        with pytest.raises(walk.ParamError):
-            walk.make_config(**{"module": "quad", **bad})
-    assert walk.parse_phases("0, 90") == [0.0, 90.0]
-    assert walk.parse_proportion("DF=2.6") == ("DF", 2.6)
+                dict(proportions={"OB": -1}), dict(proportions={"DF": float("nan")}),
+                dict(servo="none"), dict(linkage="hoecken")):            # a mechanism: no feet
+        with pytest.raises(ParamError):
+            _cfg(**{"module": "quad", **bad})
+    assert parse_phases("0, 90") == (0.0, math.pi / 2)
+    assert parse_proportion("DF=2.6") == ("DF", 2.6)
     for text in ("0,,90", "a,b"):
-        with pytest.raises(walk.ParamError):
-            walk.parse_phases(text)
-    with pytest.raises(walk.ParamError):
-        walk.parse_proportion("DF")
+        with pytest.raises(ParamError):
+            parse_phases(text)
+    with pytest.raises(ParamError):
+        parse_proportion("DF")
 
 
 def test_parameters_are_the_linkages():
     """Each linkage validates its own parameters: lengths > 0, angles any finite number."""
     unit = float(linkage.get("jansen").params["unit"])
-    cfg = walk.make_config("double", [0, 90], {"m": 14.0, "unit": unit}, linkage="jansen")
+    cfg = _cfg("double", [0, 90], {"m": 14.0, "unit": unit}, linkage="jansen")
     assert (cfg.linkage, cfg.proportions) == ("jansen", (("m", 14.0),))   # the default dropped
-    assert walk.params_of(cfg) == {
+    assert cfg.design_json() == {
         "linkage": "jansen", "module": "double", "phases_deg": [0.0, 90.0],
         "proportions": {k: (14.0 if k == "m" else float(v))
                         for k, v in linkage.get("jansen").params.items()}}
-    assert walk.make_config("quad", proportions={"angA": -30.0}).proportions == (("angA", -30.0),)
+    assert _cfg("quad", proportions={"angA": -30.0}).proportions == (("angA", -30.0),)
     for bad in (dict(linkage="octopus"), dict(proportions={"DF": 2.0}),     # Klann's, not Jansen's
                 dict(proportions={"m": 0.0}), dict(proportions={"m": float("inf")})):
-        with pytest.raises(walk.ParamError):
-            walk.make_config(**{"module": "double", "linkage": "jansen", **bad})
+        with pytest.raises(ParamError):
+            _cfg(**{"module": "double", "linkage": "jansen", **bad})
     # the default design's phases, whichever way they were given, are None
-    assert walk.make_config("double", [0, 180], linkage="strider").phases is None
+    assert _cfg("double", [0, 180], linkage="strider").phases is None
 
 
 @pytest.mark.parametrize(("key", "module", "phases", "props"), [
@@ -378,7 +395,7 @@ def test_template_joints_are_the_program(key, module, phases, props):
     and the feet are the linkage's feet of every leg."""
     from fabricate import template_for
 
-    cfg = walk.make_config(module, phases, props, linkage=key)
+    cfg = _cfg(module, phases, props, linkage=key)
     tmpl = template_for(cfg)
     jw = tmpl.sample(walk.theta_grid()).joint_world
     legs = walk.side_legs(cfg)
@@ -399,8 +416,8 @@ def test_template_joints_are_the_program(key, module, phases, props):
 
 
 def test_phase_is_a_time_shift():
-    base = walk.walker(walk.make_config("decker"))
-    moved = walk.walker(walk.make_config("decker", [0, 180]))
+    base = walk.walker(_cfg("decker"))
+    moved = walk.walker(_cfg("decker", [0, 180]))
     np.testing.assert_allclose(moved.feet[1].xy, np.roll(base.feet[1].xy, -90, axis=0),
                                atol=1e-9)
 
@@ -409,23 +426,22 @@ def test_phase_is_a_time_shift():
                                              ("jansen", "double"), ("strider", "single")])
 def test_nominal_foot_z_is_the_default_plan(key, module):
     """Klann's from its table, another linkage's from planning its default design once."""
-    cfg = walk.make_config(module, linkage=key)
+    cfg = _cfg(module, linkage=key)
     assert walk.foot_z_nominal(cfg) == pytest.approx(walk.foot_z_planned(cfg), abs=1e-9)
     assert all(z < 0 for z in walk.foot_z_nominal(cfg))                  # left side: -z
     name, default = next(iter(linkage.get(key).params.items()))
-    tuned = walk.make_config(module, proportions={name: 1.1 * float(default)}, linkage=key)
+    tuned = _cfg(module, proportions={name: 1.1 * float(default)}, linkage=key)
     assert walk.foot_z_nominal(tuned) == walk.foot_z_nominal(cfg)       # no new plan
 
 
 def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch):
     """A default design the planner can't lay out (cached as such): feet a layer apart."""
-    import fabricate
 
     def no_plan(*_a, **_k):
         raise ValueError("no layer plan found")
 
     monkeypatch.setattr(walk, "design_side", no_plan)
-    cfg = walk.make_config("decker", linkage="jansen", base=fabricate.BuildConfig(thickness=3.1))
+    cfg = _cfg("decker", linkage="jansen", thickness=3.1)
     z = walk.foot_z_nominal(cfg)
     assert len(z) == 2
     assert z[1] - z[0] == pytest.approx(3.1)
@@ -439,7 +455,7 @@ def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch):
 ])
 def test_invalid_linkage_is_explained(key, props, joint):
     """The first point that can't be placed, and where (the linkage's assembly check)."""
-    cfg = walk.make_config("single", proportions=props, linkage=key)
+    cfg = _cfg("single", proportions=props, linkage=key)
     with pytest.raises(walk.LinkageError, match=f"joint {joint} can't be placed"):
         walk.side_legs(cfg)
     payload = walk.api_payload(cfg)
@@ -453,7 +469,7 @@ def test_invalid_linkage_is_explained(key, props, joint):
     ("strider", "single", ["L.b3", "L.b7", "R.b3", "R.b7"]),        # a coupled pair: two feet
 ])
 def test_other_linkages_walk_in_the_model(key, module, feet):
-    model = walk.walker(walk.make_config(module, linkage=key))
+    model = walk.walker(_cfg(module, linkage=key))
     assert [f.body for f in model.feet] == feet
     assert [f.leg for f in model.feet] == [0, 1, 0, 1] if module == "double" else [0] * 4
     assert model.z_nominal
@@ -469,7 +485,7 @@ def test_other_linkages_walk_in_the_model(key, module, feet):
 def test_nominal_mass_and_servo():
     info = walk.servo_info("sts3215")
     assert info == {"key": "sts3215", "rpm_max": 52.0, "mass_g": 55.0}
-    cfg = walk.make_config("quad")
+    cfg = _cfg("quad")
     com, mass = walk.nominal_mass(cfg, walk.side_legs(cfg))
     assert mass == pytest.approx(460.8, rel=0.01)          # the fabricated quad robot
     assert com[2] == 0.0
@@ -661,7 +677,7 @@ def test_api_walk_invalid_linkage(client):
 
 
 class _Calls(list):
-    """Stub bake calls ``(mode, config)``; ``errors["next"]`` makes the next ones raise."""
+    """Stub bake calls (the configs); ``errors["next"]`` makes the next ones raise."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -670,11 +686,11 @@ class _Calls(list):
 
 @pytest.fixture
 def stub_bakes(server_app, monkeypatch, tmp_path):
-    """``/api/glb`` baking into ``tmp_path`` with a stub bake: the calls it got."""
+    """``/api/glb`` baking into ``tmp_path`` with a stub bake: the configs it got."""
     calls = _Calls()
 
-    def fake_bake(out, *, mode, config=None, **_):
-        calls.append((mode, config))
+    def fake_bake(out, config=None, **_):
+        calls.append(config)
         err = calls.errors.get("next")
         if err is not None:
             raise err
@@ -682,43 +698,74 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
 
     monkeypatch.setattr(server_app, "bake_gltf", fake_bake)
     monkeypatch.setattr(server_app, "DATA_DIR", tmp_path)
-    monkeypatch.setattr(server_app, "PARAMS_DIR", tmp_path / "params")
     monkeypatch.setattr(server_app, "_sources_mtime", lambda: 0.0)
     monkeypatch.setattr(server_app, "_FAILED", {})
+    monkeypatch.setattr(server_app, "_BAKED", {})
     return calls
 
 
 def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
     r = client.get("/api/glb/robot", params={"module": "quad", "phases": "0,180,90,270"})
     assert r.status_code == 200
-    assert (tmp_path / "klann_robot.glb").exists()                  # the default's path
+    assert (tmp_path / "klann_quad_robot.glb").exists()             # the default's path
     q = {"module": "quad", "phases": "0,175,180,355", "p.DF": "2.4"}
     assert client.get("/api/glb/robot", params=q).status_code == 200
     assert client.get("/api/glb/robot", params=q).status_code == 200      # cached
     assert len(stub_bakes) == 2
-    mode, config = stub_bakes[1]
-    assert mode == "robot"
-    assert config.module == "quad"
+    config = stub_bakes[1]
+    assert (config.module, config.robot) == ("quad", True)
     assert config.proportions == (("DF", 2.4),)
     assert config.phases == pytest.approx(tuple(math.radians(p) for p in TUNED_QUAD))
-    assert len(list((tmp_path / "params").glob("robot_quad_*.glb"))) == 1
+    assert len(list(tmp_path.glob("klann_quad_robot_*.glb"))) == 1
     assert client.get("/api/glb/klann", params={"phases": "90"}).status_code == 200
-    assert stub_bakes[-1][0] == "single"
+    assert (stub_bakes[-1].module, stub_bakes[-1].robot) == ("single", False)
+    assert stub_bakes[-1].phases == (math.pi / 2,)
 
 
 def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path):
     """``linkage=klann`` is the default design; another linkage bakes (and caches) its own."""
     assert client.get("/api/glb/robot", params={"linkage": "klann"}).status_code == 200
-    assert stub_bakes == [("robot", None)]                       # the plain default bake
-    assert (tmp_path / "klann_robot.glb").exists()
+    assert stub_bakes == [BuildConfig()]                         # the plain default bake
+    assert (tmp_path / "klann_quad_robot.glb").exists()
     for _ in range(2):                                           # the second one is cached
         r = client.get("/api/glb/robot", params={"linkage": "jansen", "module": "double"})
         assert r.status_code == 200
     q = {"linkage": "strider", "module": "double"}               # same module, other linkage
     assert client.get("/api/glb/robot", params=q).status_code == 200
-    assert [(c.linkage, c.module) for _, c in stub_bakes[1:]] == [("jansen", "double"),
-                                                                   ("strider", "double")]
-    assert len(list((tmp_path / "params").glob("robot_double_*.glb"))) == 2
+    assert [(c.linkage, c.module) for c in stub_bakes[1:]] == [("jansen", "double"),
+                                                                ("strider", "double")]
+    assert {p.name for p in tmp_path.glob("*_double_robot.glb")} == {"jansen_double_robot.glb",
+                                                                     "strider_double_robot.glb"}
+
+
+@pytest.mark.parametrize(("mode", "params", "expected"), [
+    ("robot", {}, ("klann", "quad", True)),
+    ("robot", {"module": "single"}, ("klann", "single", True)),
+    ("side", {}, ("klann", "quad", False)),
+    ("side", {"module": "double", "linkage": "jansen"}, ("jansen", "double", False)),
+    ("klann", {}, ("klann", "single", False)),                   # the ids old URLs use
+    ("klann", {"linkage": "crank_rocker"}, ("crank_rocker", "single", False)),   # a mechanism
+    ("double", {}, ("klann", "double", False)),
+    ("decker", {"module": "decker"}, ("klann", "decker", False)),
+    ("double_double", {}, ("klann", "quad", False)),
+])
+def test_api_glb_mode_ids_are_a_module_and_a_side(client, stub_bakes, tmp_path, mode, params,
+                                                  expected):
+    """Every id is (linkage, module, robot?) of :class:`config.BuildConfig`; the file is
+    the config's key."""
+    assert client.get(f"/api/glb/{mode}", params=params).status_code == 200
+    linkage_key, module, robot = expected
+    assert stub_bakes == [BuildConfig(linkage=linkage_key, module=module, robot=robot)]
+    assert (tmp_path / f"{linkage_key}_{module}_{'robot' if robot else 'side'}.glb").exists()
+
+
+def test_api_modes_are_the_dropdown(client, server_app):
+    body = client.get("/api/modes").json()
+    assert body["default"] == "robot"
+    assert body["modes"] == ["robot", "klann", "double", "decker", "double_double"]
+    assert body["labels"]["klann"] == "single (one leg)"
+    assert "side" in server_app.MODES                # an id for URLs, not for the dropdown
+    assert "side" not in body["modes"]
 
 
 @pytest.mark.parametrize(("mode", "params"), [
@@ -727,6 +774,8 @@ def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path):
     ("robot", {"p.XX": "2"}),
     ("robot", {"linkage": "octopus"}),
     ("robot", {"linkage": "jansen", "p.DF": "2"}),
+    ("robot", {"linkage": "crank_rocker"}),     # a mechanism has no feet: one side only
+    ("side", {"linkage": "octopus"}),
     ("klann", {"module": "quad"}),              # a side-only mode is its own module
 ])
 def test_api_glb_rejects_bad_parameters(client, stub_bakes, mode, params):
@@ -760,4 +809,4 @@ def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
         n = len(stub_bakes)
         assert client.get("/api/glb/robot", params=q).status_code == 422      # remembered
         assert len(stub_bakes) == n
-    assert not list(Path(server_app.PARAMS_DIR).glob("*.glb"))
+    assert not list(Path(server_app.DATA_DIR).glob("*.glb"))

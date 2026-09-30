@@ -96,9 +96,9 @@ import numpy as np
 
 import linkage as lkg
 import servos
+from config import BuildConfig
 from construction.robot import SIDES, mid_plane, mid_plane_z
-from fabricate import BuildConfig, design_side, template_for
-from hardware.catalog import sheet_thickness
+from fabricate import design_side, template_for
 from hardware.mass import PartProps, material_of, part_props, servo_mass_g, sheet_density
 from linkage import AssemblyError
 
@@ -112,26 +112,9 @@ _HULL_TOL = 1e-7     # mm: side-of-line tolerance for the support polygon
 DEFAULT_RPM = 50.0   # when the servo spec has no speed
 
 
-class ParamError(ValueError):
-    """Bad design parameters (unknown linkage, module or proportion, wrong phase count, ...)."""
-
-
 # The linkage can't be assembled at some crank angle (a loop doesn't close): the
 # template stage raises it (linkage.Linkage.assert_assembles).
 LinkageError = AssemblyError
-
-
-# ---------------------------------------------------------------------------
-# Design parameters
-# ---------------------------------------------------------------------------
-
-
-def get_linkage(key: str) -> lkg.Linkage:
-    """The registered :class:`linkage.Linkage` ``key`` (:class:`ParamError` if there is none)."""
-    try:
-        return lkg.get(key)
-    except KeyError as e:
-        raise ParamError(e.args[0]) from None
 
 
 def links_of(lk: lkg.Linkage) -> list[tuple[str, str]]:
@@ -139,169 +122,6 @@ def links_of(lk: lkg.Linkage) -> list[tuple[str, str]]:
     return [*(("O", pin) for pin in lk.crank[1:]),
             *(seg for _, outline in lk.links.values() for seg in outline),
             *(("O", j) for j in lk.frame if j != "O")]
-
-
-def module_legs(module: str, linkage: str = lkg.DEFAULT) -> lkg.LegList:
-    """``(orientation, default phase in rad)`` per leg of one side."""
-    mods = get_linkage(linkage).leg_modules
-    if module not in mods:
-        raise ParamError(f"unknown module {module!r}; have {list(mods)}")
-    return mods[module]
-
-
-def normalize_phases(module: str, phases: Sequence[float] | None, *, degrees: bool = True,
-                     linkage: str = lkg.DEFAULT) -> tuple[float, ...] | None:
-    """Leg phases (degrees, or radians with ``degrees=False``) -> radians for
-    :class:`fabricate.BuildConfig`, validated.
-
-    ``None`` and the module's own phases (mod 360 degrees) give ``None``, so a
-    default design has one cache key however it was asked for.
-    """
-    legs = module_legs(module, linkage)
-    if phases is None:
-        return None
-    try:
-        values = [float(p) for p in phases]
-    except (TypeError, ValueError) as e:
-        raise ParamError(f"phases must be numbers, got {list(phases)!r}") from e
-    if len(values) != len(legs):
-        raise ParamError(f"{module} has {len(legs)} legs per side, got {len(values)} phases")
-    if not all(math.isfinite(p) for p in values):
-        raise ParamError(f"phases must be finite numbers, got {values}")
-    rad = tuple(math.radians(p) for p in values) if degrees else tuple(values)
-    if all(abs(float(_wrap(a - ph))) < 1e-9 for a, (_, ph) in zip(rad, legs, strict=True)):
-        return None
-    return rad
-
-
-def normalize_proportions(overrides: Mapping[str, float] | None,
-                          linkage: str = lkg.DEFAULT) -> tuple[tuple[str, float], ...]:
-    """Overrides of the linkage's parameters, validated, in its ``params`` order, defaults dropped.
-
-    Lengths (every parameter but the linkage's ``angles``) must be positive.
-    """
-    lk = get_linkage(linkage)
-    overrides = dict(overrides or {})
-    unknown = sorted(set(overrides) - set(lk.params))
-    if unknown:
-        raise ParamError(f"unknown {lk.key} proportions {unknown}; have {list(lk.params)}")
-    out = []
-    for name, default in lk.params.items():
-        if name not in overrides:
-            continue
-        try:
-            v = float(overrides[name])
-        except (TypeError, ValueError) as e:
-            raise ParamError(f"proportion {name} must be a number, got {overrides[name]!r}") from e
-        if not math.isfinite(v):
-            raise ParamError(f"proportion {name} must be a finite number, got {overrides[name]!r}")
-        if name not in lk.angles and v <= 0:
-            raise ParamError(f"proportion {name} is a length and must be > 0, got {v:g}")
-        if abs(v - float(default)) > 1e-12:
-            out.append((name, v))
-    return tuple(out)
-
-
-def parse_phases(text: str) -> list[float]:
-    """``"0,180,90,270"`` -> ``[0.0, 180.0, 90.0, 270.0]`` (degrees; the count is checked
-    against a module by :func:`normalize_phases`)."""
-    parts = [s.strip() for s in str(text).split(",")]
-    try:
-        values = [float(s) for s in parts]
-    except ValueError:
-        raise ParamError(f"phases must be comma-separated numbers (degrees), got {text!r}") \
-            from None
-    if not all(math.isfinite(v) for v in values):
-        raise ParamError(f"phases must be finite numbers, got {text!r}")
-    return values
-
-
-def parse_proportion(item: str) -> tuple[str, float]:
-    """``"DF=2.6"`` -> ``("DF", 2.6)`` (:func:`normalize_proportions` checks the name)."""
-    name, sep, value = str(item).partition("=")
-    name = name.strip()
-    if not sep or not name:
-        raise ParamError(f"expected NAME=VALUE, got {item!r}")
-    try:
-        v = float(value)
-    except ValueError:
-        raise ParamError(f"proportion {name} must be a number, got {value!r}") from None
-    return name, v
-
-
-def add_design_args(p) -> None:
-    """``--linkage``, ``--phases`` and ``--proportion`` on an ``argparse`` parser
-    (see :func:`design_args`)."""
-    import argparse
-
-    def arg(fn):
-        def convert(text):
-            try:
-                return fn(text)
-            except ParamError as e:
-                raise argparse.ArgumentTypeError(str(e)) from None
-        convert.__name__ = fn.__name__
-        return convert
-
-    p.add_argument("--linkage", choices=lkg.available(), default=lkg.DEFAULT,
-                   help=f"the leg linkage (default {lkg.DEFAULT})")
-    p.add_argument("--phases", type=arg(parse_phases), default=None, metavar="DEG,...",
-                   help="crank phase of every leg of a side, in degrees (default: the "
-                   "module's, e.g. quad 0,180,90,270)")
-    names = "; ".join(f"{k}: {', '.join(lkg.get(k).params)}" for k in lkg.available())
-    p.add_argument("--proportion", type=arg(parse_proportion), action="append", default=None,
-                   metavar="NAME=VALUE",
-                   help=f"override one of the linkage's parameters (repeatable; lengths in mm "
-                   f"or the linkage's unit, angles in degrees): {names}")
-
-
-def design_args(args) -> dict:
-    """:func:`make_config`'s ``linkage``, ``phases_deg`` and ``proportions`` (parsed args)."""
-    return {"linkage": args.linkage, "phases_deg": args.phases,
-            "proportions": dict(args.proportion) if args.proportion else None}
-
-
-def make_config(module: str = "quad", phases_deg: Sequence[float] | None = None,
-                proportions: Mapping[str, float] | None = None,
-                base: BuildConfig | None = None, *, linkage: str | None = None) -> BuildConfig:
-    """A robot :class:`BuildConfig` for these design parameters (normalized, validated).
-
-    ``linkage`` defaults to ``base``'s (Klann); it must be a walker.
-    """
-    base = base or BuildConfig()
-    lk = get_linkage(linkage or base.linkage)
-    if lk.kind != "walker":
-        raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on "
-                         f"(walkers: {', '.join(lkg.available('walker'))})")
-    key = lk.key
-    return replace(base, linkage=key, module=module, robot=True,
-                   phases=normalize_phases(module, phases_deg, linkage=key),
-                   proportions=normalize_proportions(proportions, key))
-
-
-def phases_rad(config: BuildConfig) -> tuple[float, ...]:
-    """Every leg's crank phase (rad), the module's unless the config sets them."""
-    legs = module_legs(config.module, config.linkage)
-    if config.phases is None:
-        return tuple(ph for _, ph in legs)
-    if len(config.phases) != len(legs):
-        raise ParamError(f"{config.module} has {len(legs)} legs, got {len(config.phases)} phases")
-    return tuple(float(p) for p in config.phases)
-
-
-def params_of(config: BuildConfig) -> dict:
-    """The design parameters as JSON: linkage, module, phases (deg) and all its proportions."""
-    lk = get_linkage(config.linkage)
-    return {
-        "linkage": lk.key,
-        "module": config.module,
-        "phases_deg": [round(math.degrees(p), 6) for p in phases_rad(config)],
-        "proportions": dict(zip(lk.params, lk.values(dict(config.proportions)), strict=True)),
-    }
-
-
-def _wrap(a):
-    return (np.asarray(a) + math.pi) % (2 * math.pi) - math.pi
 
 
 def theta_grid(n: int = N_THETA) -> np.ndarray:
@@ -335,12 +155,11 @@ def side_legs(config: BuildConfig, n: int = N_THETA) -> list[Leg]:
         template_for(config)
     except ValueError as e:
         raise LinkageError(str(e)) from None
-    lk = get_linkage(config.linkage)
-    legs = module_legs(config.module, config.linkage)
+    lk = config.lk
     params = dict(config.proportions) or None
     ts = theta_grid(n)
     out = []
-    for k, ((orient, _), phase) in enumerate(zip(legs, phases_rad(config), strict=True)):
+    for k, (orient, phase) in enumerate(config.legs):
         with np.errstate(all="ignore"):
             pts = lk.solve(orient, phase, params).evaluate(ts)
         out.append(Leg(k, int(orient), float(phase), pts))
@@ -370,9 +189,9 @@ class Foot:
 
 def side_feet(config: BuildConfig) -> list[tuple[int, str, str]]:
     """``(leg, body, joint)`` of every foot of one side: each leg's, in the linkage's order."""
-    n = len(module_legs(config.module, config.linkage))
+    n = len(config.legs)
     return [(k, f"{link}{'' if n == 1 else f'_leg{k}'}", joint)
-            for k in range(n) for link, joint in get_linkage(config.linkage).feet]
+            for k in range(n) for link, joint in config.lk.feet]
 
 
 def make_feet(config: BuildConfig, legs: Sequence[Leg], z_left: Sequence[float]) -> list[Foot]:
@@ -393,12 +212,12 @@ def foot_z_nominal(config: BuildConfig) -> list[float]:
     layer apart from layer 2 out. Exact for a default design; the right side
     is the mirror (``-z``).
     """
-    z = _default_plan_z(replace(config, robot=True, phases=None, proportions=()))
+    z = _default_plan_z(replace(config, phases=None, proportions=()))
     if z is not None:
         return list(z)
     n = len(side_feet(config))
     layers, top = range(2, 2 + n), 2 * n + 5
-    pitch = sheet_thickness(config.sheet, config.thickness)
+    pitch = config.pitch
     z_mid = mid_plane_z(servos.get(config.servo), top, pitch, config.params.margin)
     return [(layer + 0.5) * pitch - z_mid for layer in layers]
 
@@ -419,8 +238,7 @@ def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
     moves the left side (mid-plane to z = 0).
     """
     if design is None:
-        cfg = replace(config, robot=True)
-        design = design_side(template_for(cfg), cfg)
+        design = design_side(template_for(config), config)
     plan, z_mid = design.plan, mid_plane(design)
     return [sum(plan.z(plan.layers[body])) / 2 - z_mid for _, body, _ in side_feet(config)]
 
@@ -433,10 +251,7 @@ def servo_info(key: str) -> dict:
     """``{"key", "rpm_max", "mass_g"}`` of a servo from its spec (``speed_rpm``,
     ``weight_g``); a spec without them gets ``DEFAULT_RPM`` and its body box
     (:func:`hardware.mass.servo_mass_g`)."""
-    try:
-        spec = servos.get(key)
-    except KeyError as e:
-        raise ParamError(str(e)) from None
+    spec = servos.get(key)
     rpm = float(spec.speed_rpm) if spec.speed_rpm else DEFAULT_RPM
     return {"key": key, "rpm_max": rpm, "mass_g": servo_mass_g(spec)}
 
@@ -560,8 +375,8 @@ def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, 
     2.6 % of the fabricated mass and 1.3 mm of its centre of mass (quad:
     461.8 g at (0, 2.7, 0) vs 460.8 g at (0, 2.1, 0.2)).
     """
-    lk = get_linkage(config.linkage)
-    pitch = sheet_thickness(config.sheet, config.thickness)
+    lk = config.lk
+    pitch = config.pitch
     r = config.params.link_radius
     dens = sheet_density(config.sheet)
     spec = servos.get(config.servo)
@@ -1043,7 +858,7 @@ def drive_extra(model: Walker, clip_duration_s: float, metrics: dict | None = No
         "com": _round(model.com),
         "mass_g": round(float(model.mass_g), 2),
         "servo": {"key": servo["key"], "rpm_max": servo["rpm_max"]},
-        "params": params_of(model.config),
+        "params": model.config.design_json(),
         "z_nominal": model.z_nominal,
         "com_nominal": model.com_nominal,
     }
@@ -1060,9 +875,9 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
     """
     servo = servo_info(config.servo)
     base = {
-        "valid": True, "error": None, **params_of(config),
+        "valid": True, "error": None, **config.design_json(),
         "theta_samples": N_THETA,
-        "links": [list(link) for link in links_of(get_linkage(config.linkage))],
+        "links": [list(link) for link in links_of(config.lk)],
         "servo": {"key": servo["key"], "rpm_max": servo["rpm_max"]},
     }
     try:

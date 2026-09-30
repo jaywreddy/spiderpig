@@ -22,17 +22,23 @@ mise run clean
 Direct invocation of the bake script (more flags than `mise run bake`):
 
 ```bash
-uv run python viewer/bake_gltf.py --mode robot --module quad --frames 120
-uv run python viewer/bake_gltf.py --mode single          # one side only
+uv run python viewer/bake_gltf.py --module quad --frames 120
+uv run python viewer/bake_gltf.py --module single --side           # one side only
 uv run python viewer/bake_gltf.py --linkage jansen --module double   # another linkage
-uv run python viewer/bake_gltf.py --mode single --linkage hoecken    # a mechanism: one side
+uv run python viewer/bake_gltf.py --side --linkage hoecken           # a mechanism: one side
 ```
 
-`--linkage` / `--phases` / `--proportion NAME=VALUE` are shared by `main.py`,
-`bake_gltf.py` and `scripts/tune_gait.py` (`walk.add_design_args`); the server
-takes `linkage=`, `module=`, `phases=`, `p.NAME=`. A design with no layer plan
-(the planner says why, e.g. TrotBot's heel at its drawing's scale) bakes a
-422; its `/api/walk` still works.
+What every tool builds is a `config.BuildConfig` (linkage, module, robot or
+side, phases, proportions, servo, constructions, sheet), which validates
+itself; `--linkage` / `--module` / `--phases` / `--proportion NAME=VALUE` and
+the build options are shared by `main.py`, `bake_gltf.py`, `explain.py` and
+the scripts (`config.add_design_args` / `add_build_args` /
+`config_from_args`); the server takes `linkage=`, `module=`, `phases=`,
+`p.NAME=` (`config.design_from_query`). A bake is cached as
+`viewer/data/<config.key>.glb` (`klann_quad_robot.glb`; a hash suffix for a
+non-default design). A design with no layer plan (the planner says why, e.g.
+TrotBot's heel at its drawing's scale) bakes a 422; its `/api/walk` still
+works.
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
 serves on a port derived from a CRC32 hash of the worktree path
@@ -138,14 +144,15 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 | `construction/pivots/` | metal-shaft pivots (`--pin` / `--pillar` keys; its docstring holds the hardware research): `rod` (3 mm rod, laser-cut spacer rings, Starlock clips, glued into the frame plates; `rod.py`), `bolt` (M3 SHCS axle, rings, washer + nylock; a pillar clamps both plates, the nut end claims 2-3 layers; `bolt.py`), `bearing` (MF63ZZ flanged bearing glued in each link, rod, printed sleeves; `insert.py`), `bushing` (igus GFM-0304-03 pressed in each link, same; `insert.py`). Their claims fill every layer (`AxleDims.fill`: a rod can't neck, so `neck` is the narrowest ring or sleeve), flanges need a free face (`AxleDims.flange`, `flange_sides`), retainers come from the construction's `ends` hook. Catalog additions in `hardware/fastener_catalog.py`. |
 | `servos/` | `ServoSpec` data (continuous-rotation servos only), the drive group (`mount.py`: servo on the inner frame plate, `DriveInterface` for the crank), models and CAD cache. |
 | `hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py` and `servos/catalog.py`; the sheet helpers), the screw families (`fasteners.py`: heads, stock lengths, keys, solids), materials and exact mass properties (`mass.py`: the one density table, `material_of`, `part_props`) and the BOM (`bom.py`). |
-| `fabricate.py` | orchestration: `BuildConfig`, `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
+| `config.py` | `BuildConfig`: what to build and how, validated on construction (the linkage's module, one phase per leg, the linkage's proportions; defaults dropped so a design has one config and one `key`), the shared CLI arguments and the server's query parsing. |
+| `fabricate.py` | orchestration: `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
 | `shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
 | `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM (`construction.contract` has the checks) |
 | `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `sim/` | MuJoCo: `mjcf.py` builds the MJCF of the fabricated robot (exact masses, loop equalities, velocity drives) and its viewer metadata; `run.py` steps it (`simulate`, `walk_metrics`, kinematic playback). `scripts/sim_walk.py` is the CLI. |
 | `viewer/bake_gltf.py` | end-to-end `.glb` bake for the three.js viewer |
-| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker |
+| `server/app.py` | dev server: `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design; `mode` is `robot`, `side`, or one of the side-only ids old URLs use, `MODES`), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker, `/api/modes` the dropdown's ids and labels |
 
 ### Pipeline contract
 
