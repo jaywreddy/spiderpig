@@ -482,6 +482,290 @@ def _drive_extra(config: BuildConfig, mech: Mechanism,
     return walk.drive_extra(model, duration_s, metrics=walk.straight_walk_metrics(model))
 
 
+@dataclass
+class _Reference:
+    """Stage 1: the fabricated walker at ``_T_REF`` and who moves with whom."""
+
+    mech: Mechanism
+    feet: list[tuple[str, str]]             # (body, joint): lk.feet per leg, or the output point
+    owner: dict[str, str | None]            # body -> the kinematic body whose joints carry it
+    anchors: dict[str, dict[str, np.ndarray]]   # anchor -> its joints' world XYZ at t_ref
+
+    @property
+    def bodies(self) -> list[Body]:
+        return self.mech.bodies
+
+
+@dataclass
+class _Meshes:
+    """Stage 2: one tessellated mesh per congruence group, and the mass properties measured
+    on the way (the drive extras reuse them)."""
+
+    plan: _MeshPlan
+    class_mesh: dict[str, tuple[np.ndarray, np.ndarray]]   # mesh key -> (positions, indices)
+    mass_props: dict[str, PartProps]
+
+
+@dataclass
+class _Geometry:
+    """Stage 3: the packed buffer and the glTF objects that index it."""
+
+    packer: _Packer
+    accessors: list[pygltflib.Accessor] = field(default_factory=list)
+    materials: list[pygltflib.Material] = field(default_factory=list)
+    meshes: list[pygltflib.Mesh] = field(default_factory=list)
+    mesh_index: dict[str, int] = field(default_factory=dict)   # mesh key -> meshes[]
+
+    def add_accessor(self, data: bytes, count: int, component_type: int, accessor_type: str,
+                     *, target: int | None = None, bounds: np.ndarray | None = None) -> int:
+        """Pack ``data`` as a buffer view and its accessor; returns the accessor's index."""
+        bv = self.packer.add(data, target=target)
+        acc = _accessor_for(bv, count, component_type=component_type, accessor_type=accessor_type,
+                            min_vals=None if bounds is None else bounds.min(axis=0).tolist(),
+                            max_vals=None if bounds is None else bounds.max(axis=0).tolist())
+        self.accessors.append(acc)
+        return len(self.accessors) - 1
+
+
+@dataclass
+class _Animation:
+    """Stage 4: every body's TRS track over the clip (``motion``: each anchor's planar
+    motion per frame, for the drive extras)."""
+
+    times: np.ndarray
+    translations: dict[str, np.ndarray]
+    rotations: dict[str, np.ndarray]
+    thetas: dict[str, np.ndarray]
+    motion: dict[str, tuple[np.ndarray, np.ndarray]]
+
+
+def _reference(config: BuildConfig, prof: _Profiler) -> _Reference:
+    """Stage 1: fabricate the walker at ``_T_REF``; every body's anchor and its joints."""
+    lk = config.lk
+    with prof.timed("1_reference_build"):
+        mech = fabricate(template_for(config), config, _T_REF)
+    by_name = {b.name: b for b in mech.bodies}
+    feet = linkage_mod.feet_of(mech) or [(lk.output.link, lk.output.point)]
+    prof.set_metric("n_bodies", len(mech.bodies))
+    prof.set_metric("n_legs", len(feet) // max(len(lk.feet), 1))
+    logger.debug("reference mech: %d bodies", len(mech.bodies))
+    # Every body moves with the joints of its anchor: its own, or its host's.
+    owner = {b.name: walk.anchor_of(b, by_name) for b in mech.bodies}
+    anchors = {n: _body_joint_world(by_name[n]) for n in set(owner.values()) if n}
+    return _Reference(mech, feet, owner, anchors)
+
+
+def _share_and_tessellate(ref: _Reference, prof: _Profiler) -> _Meshes:
+    """Stage 2: one mesh per congruence group (see :func:`_plan_meshes`), tessellated."""
+    mass_props: dict[str, PartProps] = {}
+    with prof.timed("2_mesh_share"):
+        plan = _plan_meshes(ref.bodies, ref.anchors, ref.owner, prof, mass_props)
+    logger.debug("%d bodies with parts -> %d meshes", len(plan.key_of), len(plan.rep_of))
+    class_mesh: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    with prof.timed("2_tessellate_total"):
+        for key, rep in plan.rep_of.items():
+            with prof.timed(f"2_tessellate.{_material_of(rep)}"):
+                class_mesh[key] = _tessellate(rep.part)
+            nv = len(class_mesh[key][0])
+            nt = len(class_mesh[key][1]) // 3
+            prof.set_metric(f"verts.{key}", nv)
+            prof.set_metric(f"tris.{key}", nt)
+            logger.debug("  %s: %d verts, %d tris", key, nv, nt)
+    prof.set_metric("n_meshes", len(class_mesh))
+    return _Meshes(plan, class_mesh, mass_props)
+
+
+def _pack_geometry(meshes: _Meshes, prof: _Profiler) -> _Geometry:
+    """Stage 3: per-mesh position / index accessors, one material per fabrication kind."""
+    geom = _Geometry(_Packer())
+    material_idx: dict[str, int] = {}
+    with prof.timed("3_gltf_pack_geometry"):
+        for key, (positions, indices) in meshes.class_mesh.items():
+            mat = _material_of(meshes.plan.rep_of[key])
+            if mat not in material_idx:
+                material_idx[mat] = len(geom.materials)
+                geom.materials.append(_gltf_material(mat))
+            pos_acc = geom.add_accessor(positions.tobytes(), len(positions), pygltflib.FLOAT,
+                                        pygltflib.VEC3, target=pygltflib.ARRAY_BUFFER,
+                                        bounds=positions)
+            idx_acc = geom.add_accessor(indices.tobytes(), len(indices), pygltflib.UNSIGNED_INT,
+                                        pygltflib.SCALAR, target=pygltflib.ELEMENT_ARRAY_BUFFER)
+            geom.mesh_index[key] = len(geom.meshes)
+            geom.meshes.append(pygltflib.Mesh(name=key, primitives=[pygltflib.Primitive(
+                attributes=pygltflib.Attributes(POSITION=pos_acc),
+                indices=idx_acc,
+                material=material_idx[mat],
+                mode=pygltflib.TRIANGLES,
+            )]))
+    return geom
+
+
+def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: int,
+             duration_s: float, prof: _Profiler) -> _Animation:
+    """Stage 4: sample the template over one revolution and fit each body's motion.
+
+    A body's motion is the planar rigid transform taking its anchor joints at
+    ``t_ref`` to the same joints at each frame; hardware anchors on its
+    ``rigid_with`` host. A shared mesh was modelled on its representative,
+    so the node first applies the body's placement (``_MeshPlan.place``:
+    planar motion + Z shift) and then the motion.
+    """
+    logger.debug("sampling %d frames over %.3fs…", n_frames, duration_s)
+    ts = _T_REF + np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
+    times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
+    anim = _Animation(times, {}, {}, {}, {})
+    with prof.timed("4_animation_sample_total"):
+        with prof.timed("4.1_template_build"):
+            template = _build_template(config)
+        with prof.timed("4.2_template_sample"):
+            sampled = template.sample(ts)
+        with prof.timed("4.3_trs_batch"):
+            for name, joints in ref.anchors.items():
+                current = sampled.joint_world[name]
+                names = [n for n in joints if n in current]
+                p0 = np.broadcast_to(np.stack([joints[n] for n in names]),
+                                     (n_frames, len(names), 3))
+                p1 = np.stack([current[n] for n in names], axis=1)
+                anim.motion[name] = walk.planar_fit(p0, p1)
+            for body in ref.bodies:
+                prof.bump("body_extract.calls")
+                g = meshes.plan.place.get(body.name, _Planar())
+                anchor = ref.owner[body.name]
+                if anchor is None:
+                    prof.bump("body_extract.static")
+                    theta = np.full(n_frames, g.theta)
+                    trans = np.tile([*g.txy, g.dz], (n_frames, 1))
+                else:
+                    m_theta, m_trans = anim.motion[anchor]
+                    theta = m_theta + g.theta
+                    c, s = np.cos(m_theta), np.sin(m_theta)
+                    tx, ty = g.txy
+                    trans = m_trans + np.stack(
+                        [c * tx - s * ty, s * tx + c * ty, np.full(n_frames, g.dz)], axis=1)
+                anim.thetas[body.name] = theta
+                anim.translations[body.name] = trans.astype(np.float32)
+                anim.rotations[body.name] = _quat_hemisphere_continuous(
+                    _quat_z(theta)).astype(np.float32)
+    return anim
+
+
+def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim: _Animation,
+                        prof: _Profiler) -> tuple[list[pygltflib.Node], pygltflib.Animation]:
+    """Stage 5: the root node ``walker`` (standing the robot up) with one animated child per
+    body, and the animation's samplers and channels."""
+    n_frames = len(anim.times)
+    time_acc = geom.add_accessor(anim.times.tobytes(), n_frames, pygltflib.FLOAT,
+                                 pygltflib.SCALAR, bounds=anim.times[:, None])
+    nodes: list[pygltflib.Node] = []
+    samplers: list[pygltflib.AnimationSampler] = []
+    channels: list[pygltflib.AnimationChannel] = []
+    with prof.timed("5_gltf_nodes_channels"):
+        root = pygltflib.Node(name="walker", rotation=list(_ROOT_ROTATION))
+        nodes.append(root)
+        ground = math.inf       # lowest model Y any mesh reaches over the cycle
+        for body in ref.bodies:
+            key = meshes.plan.key_of.get(body.name)
+            initial_t = anim.translations[body.name][0]
+            initial_q = anim.rotations[body.name][0]
+            node = pygltflib.Node(
+                name=body.name,
+                translation=[float(initial_t[0]), float(initial_t[1]), float(initial_t[2])],
+                rotation=[float(initial_q[0]), float(initial_q[1]),
+                          float(initial_q[2]), float(initial_q[3])],
+            )
+            if key is not None:
+                node.mesh = geom.mesh_index[key]
+                v = meshes.class_mesh[key][0]
+                th = anim.thetas[body.name]
+                y = np.outer(np.sin(th), v[:, 0]) + np.outer(np.cos(th), v[:, 1])
+                ground = min(ground, float((y.min(axis=1) + anim.translations[body.name][:, 1])
+                                           .min()))
+            node.extras = {
+                "fab": body.fab, "rigid_with": body.rigid_with, "bom": body.bom_key,
+                "body": body.name,
+            }
+            node_idx = len(nodes)
+            nodes.append(node)
+            for path, data, acc_type in (
+                ("translation", anim.translations[body.name], pygltflib.VEC3),
+                ("rotation", anim.rotations[body.name], pygltflib.VEC4),
+            ):
+                acc = geom.add_accessor(data.tobytes(), n_frames, pygltflib.FLOAT, acc_type)
+                channels.append(pygltflib.AnimationChannel(
+                    sampler=len(samplers),
+                    target=pygltflib.AnimationChannelTarget(node=node_idx, path=path)))
+                samplers.append(pygltflib.AnimationSampler(input=time_acc, output=acc,
+                                                           interpolation="LINEAR"))
+        ground = 0.0 if not math.isfinite(ground) else ground
+        # Stand it up: model +Y -> +Z, the lowest point of the gait on z = 0.
+        root.translation = [0.0, 0.0, -ground]
+        root.children = list(range(1, len(nodes)))
+        root.extras = {"model_up": [0, 1, 0], "stack_axis": [0, 0, 1], "ground_y": ground}
+    return nodes, pygltflib.Animation(name="walk", samplers=samplers, channels=channels)
+
+
+def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animation,
+           root: pygltflib.Node, duration_s: float, prof: _Profiler) -> pygltflib.Scene:
+    """Stage 6: the scene with the foot-path extra (leg 0's first foot; a mechanism's output
+    point as ``output_path``) and, for a robot, the walking model's data on the root node."""
+    lk = config.lk
+    by_name = {b.name: b for b in ref.bodies}
+    with prof.timed("6_foot_path_extra"):
+        sol0 = lk.solve(1, 0.0, dict(config.proportions))
+        foot_samples = 64
+        foot = sol0.evaluate(
+            np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
+        )[(lk.feet or ref.feet)[0][1]]
+        foot_path = [[float(x), float(y)] for x, y in foot]
+        # Drawn just outside that foot's link (first side), in model Z.
+        link = next((by_name[b] for b, _ in ref.feet if by_name[b].part), None)
+        foot_z = link.part.bounding_box().min.Z - 0.5 if link is not None else 0.0
+    if config.robot:
+        with prof.timed("6b_drive_extra"):
+            root.extras["drive"] = _drive_extra(config, ref.mech, anim.motion, ref.owner,
+                                                meshes.mass_props, duration_s)
+        drive = root.extras["drive"]
+        prof.set_metric("drive.mass_g", drive["mass_g"])
+        prof.set_metric("drive.stride_mm", drive["metrics"]["stride_mm"])
+        logger.debug("drive: com %s, %.1f g, stride %.1f mm/rev", drive["com"],
+                     drive["mass_g"], drive["metrics"]["stride_mm"])
+    scene = pygltflib.Scene(nodes=[0])
+    path = "foot_path" if lk.feet else "output_path"
+    scene.extras = {
+        path: foot_path, f"{path}_z": foot_z,
+        "linkage": config.linkage, "module": config.module, "robot": config.robot,
+        "meta": _json_meta(ref.mech.meta),
+    }
+    if lk.output:
+        scene.extras["output"] = asdict(lk.output)
+    return scene
+
+
+def _write(out: Path, scene: pygltflib.Scene, nodes: list[pygltflib.Node], geom: _Geometry,
+           animation: pygltflib.Animation, prof: _Profiler) -> None:
+    """Stage 7: assemble the glTF and serialize it as one binary ``.glb``."""
+    with prof.timed("7_serialize"):
+        blob = geom.packer.bytes
+        gltf = pygltflib.GLTF2(
+            asset=pygltflib.Asset(version="2.0", generator="spiderpig/bake_gltf"),
+            scene=0,
+            scenes=[scene],
+            nodes=nodes,
+            meshes=geom.meshes,
+            materials=geom.materials,
+            accessors=geom.accessors,
+            bufferViews=geom.packer.buffer_views,
+            buffers=[pygltflib.Buffer(byteLength=len(blob))],
+            animations=[animation],
+        )
+        gltf.set_binary_blob(blob)
+        gltf.save_binary(str(out))
+    prof.set_metric("blob_bytes", len(blob))
+    prof.set_metric("gltf_bytes", out.stat().st_size)
+    prof.set_metric("animation_channels", len(animation.channels))
+    prof.set_metric("accessors", len(geom.accessors))
+
+
 def bake_gltf(
     out: Path,
     config: BuildConfig | None = None,
@@ -491,7 +775,8 @@ def bake_gltf(
     profile: bool = True,
 ) -> None:
     """Write ``<out>``: the fabricated walker of ``config`` and its animation over one crank
-    revolution (the whole robot, or one side with ``robot=False``).
+    revolution (the whole robot, or one side with ``robot=False``), stage by stage (see the
+    module docstring; each stage is a function here).
 
     A layout the planner can't find (:mod:`stack`) and a construction that
     can't be built (:class:`construction.ConstructionError`) raise
@@ -512,8 +797,6 @@ def bake_gltf(
     level.
     """
     config = config or BuildConfig()
-    robot = config.robot
-    lk = config.lk
     prof = _Profiler(enabled=profile)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -521,7 +804,7 @@ def bake_gltf(
     logger.info(
         "bake: %s linkage=%s module=%s phases=%s proportions=%s n_frames=%d "
         "duration_s=%.3f out=%s",
-        "robot" if robot else "side", config.linkage, config.module,
+        "robot" if config.robot else "side", config.linkage, config.module,
         "default" if config.phases is None
         else ",".join(f"{math.degrees(p):g}" for p in config.phases),
         dict(config.proportions) or "default", n_frames, duration_s, out,
@@ -529,277 +812,13 @@ def bake_gltf(
     prof.set_metric("n_frames", n_frames)
 
     with prof.timed("bake_total"):
-        # --- stage 1: the fabricated walker at t_ref ---
-        with prof.timed("1_reference_build"):
-            ref_mech = fabricate(template_for(config), config, _T_REF)
-        bodies = ref_mech.bodies
-        by_name = {b.name: b for b in bodies}
-        # (body, joint): lk.feet per leg, or a mechanism's output point
-        feet = linkage_mod.feet_of(ref_mech) or [(lk.output.link, lk.output.point)]
-        prof.set_metric("n_bodies", len(bodies))
-        prof.set_metric("n_legs", len(feet) // max(len(lk.feet), 1))
-        logger.debug("reference mech: %d bodies", len(bodies))
-
-        # Every body moves with the joints of its anchor: its own, or its host's.
-        owner = {b.name: walk.anchor_of(b, by_name) for b in bodies}
-        anchors = {n: _body_joint_world(by_name[n]) for n in set(owner.values()) if n}
-
-        # --- stage 2: one mesh per congruence group (see _plan_meshes) ---
-        mass_props: dict[str, PartProps] = {}     # shared with the drive extras
-        with prof.timed("2_mesh_share"):
-            meshes_of = _plan_meshes(bodies, anchors, owner, prof, mass_props)
-        logger.debug("%d bodies with parts -> %d meshes",
-                     len(meshes_of.key_of), len(meshes_of.rep_of))
-
-        class_mesh: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-        with prof.timed("2_tessellate_total"):
-            for key, rep in meshes_of.rep_of.items():
-                with prof.timed(f"2_tessellate.{_material_of(rep)}"):
-                    class_mesh[key] = _tessellate(rep.part)
-                nv = len(class_mesh[key][0])
-                nt = len(class_mesh[key][1]) // 3
-                prof.set_metric(f"verts.{key}", nv)
-                prof.set_metric(f"tris.{key}", nt)
-                logger.debug("  %s: %d verts, %d tris", key, nv, nt)
-        prof.set_metric("n_meshes", len(class_mesh))
-
-        # --- stage 3: pack per-mesh geometry accessors + materials ---
-        packer = _Packer()
-        accessors: list[pygltflib.Accessor] = []
-        materials: list[pygltflib.Material] = []
-        material_idx: dict[str, int] = {}
-        meshes: list[pygltflib.Mesh] = []
-        class_mesh_idx: dict[str, int] = {}
-
-        with prof.timed("3_gltf_pack_geometry"):
-            for key, (positions, indices) in class_mesh.items():
-                mat = _material_of(meshes_of.rep_of[key])
-                if mat not in material_idx:
-                    material_idx[mat] = len(materials)
-                    materials.append(_gltf_material(mat))
-                pos_bv = packer.add(positions.tobytes(), target=pygltflib.ARRAY_BUFFER)
-                pos_acc = len(accessors)
-                accessors.append(
-                    _accessor_for(
-                        pos_bv, len(positions),
-                        component_type=pygltflib.FLOAT,
-                        accessor_type=pygltflib.VEC3,
-                        min_vals=positions.min(axis=0).tolist(),
-                        max_vals=positions.max(axis=0).tolist(),
-                    )
-                )
-                idx_bv = packer.add(indices.tobytes(), target=pygltflib.ELEMENT_ARRAY_BUFFER)
-                idx_acc = len(accessors)
-                accessors.append(
-                    _accessor_for(
-                        idx_bv, len(indices),
-                        component_type=pygltflib.UNSIGNED_INT,
-                        accessor_type=pygltflib.SCALAR,
-                    )
-                )
-                class_mesh_idx[key] = len(meshes)
-                meshes.append(pygltflib.Mesh(name=key, primitives=[pygltflib.Primitive(
-                    attributes=pygltflib.Attributes(POSITION=pos_acc),
-                    indices=idx_acc,
-                    material=material_idx[mat],
-                    mode=pygltflib.TRIANGLES,
-                )]))
-
-        # --- stage 4: sample animation ---
-        #
-        # A body's motion is the planar rigid transform taking its anchor
-        # joints at t_ref to the same joints at each frame; hardware
-        # anchors on its ``rigid_with`` host. A shared mesh was modelled
-        # on its representative, so the node first applies the body's
-        # placement (``_MeshPlan.place``: planar motion + Z shift) and
-        # then the motion.
-        logger.debug("sampling %d frames over %.3fs…", n_frames, duration_s)
-        ts = _T_REF + np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
-        times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
-
-        translations: dict[str, np.ndarray] = {}
-        rotations: dict[str, np.ndarray] = {}
-        thetas: dict[str, np.ndarray] = {}
-
-        with prof.timed("4_animation_sample_total"):
-            with prof.timed("4.1_template_build"):
-                template = _build_template(config)
-            with prof.timed("4.2_template_sample"):
-                sampled = template.sample(ts)
-            with prof.timed("4.3_trs_batch"):
-                motion: dict[str, tuple[np.ndarray, np.ndarray]] = {}
-                for name, ref in anchors.items():
-                    current = sampled.joint_world[name]
-                    names = [n for n in ref if n in current]
-                    p0 = np.broadcast_to(
-                        np.stack([ref[n] for n in names]), (n_frames, len(names), 3)
-                    )
-                    p1 = np.stack([current[n] for n in names], axis=1)
-                    motion[name] = walk.planar_fit(p0, p1)
-                for body in bodies:
-                    prof.bump("body_extract.calls")
-                    g = meshes_of.place.get(body.name, _Planar())
-                    anchor = owner[body.name]
-                    if anchor is None:
-                        prof.bump("body_extract.static")
-                        theta = np.full(n_frames, g.theta)
-                        trans = np.tile([*g.txy, g.dz], (n_frames, 1))
-                    else:
-                        m_theta, m_trans = motion[anchor]
-                        theta = m_theta + g.theta
-                        c, s = np.cos(m_theta), np.sin(m_theta)
-                        tx, ty = g.txy
-                        trans = m_trans + np.stack(
-                            [c * tx - s * ty, s * tx + c * ty, np.full(n_frames, g.dz)],
-                            axis=1,
-                        )
-                    thetas[body.name] = theta
-                    translations[body.name] = trans.astype(np.float32)
-                    rotations[body.name] = _quat_hemisphere_continuous(
-                        _quat_z(theta)
-                    ).astype(np.float32)
-
-        # --- shared time accessor ---
-        time_bv = packer.add(times.tobytes())
-        time_acc = len(accessors)
-        accessors.append(
-            _accessor_for(
-                time_bv, n_frames,
-                component_type=pygltflib.FLOAT,
-                accessor_type=pygltflib.SCALAR,
-                min_vals=[float(times.min())],
-                max_vals=[float(times.max())],
-            )
-        )
-
-        # --- stage 5: root + per-body nodes, animation samplers/channels ---
-        nodes: list[pygltflib.Node] = []
-        animation_samplers: list[pygltflib.AnimationSampler] = []
-        animation_channels: list[pygltflib.AnimationChannel] = []
-
-        with prof.timed("5_gltf_nodes_channels"):
-            root = pygltflib.Node(name="walker", rotation=list(_ROOT_ROTATION))
-            nodes.append(root)
-            ground = math.inf       # lowest model Y any mesh reaches over the cycle
-            for body in bodies:
-                key = meshes_of.key_of.get(body.name)
-                initial_t = translations[body.name][0]
-                initial_q = rotations[body.name][0]
-
-                node = pygltflib.Node(
-                    name=body.name,
-                    translation=[float(initial_t[0]), float(initial_t[1]), float(initial_t[2])],
-                    rotation=[float(initial_q[0]), float(initial_q[1]),
-                              float(initial_q[2]), float(initial_q[3])],
-                )
-                if key is not None:
-                    node.mesh = class_mesh_idx[key]
-                    v = class_mesh[key][0]
-                    th = thetas[body.name]
-                    y = np.outer(np.sin(th), v[:, 0]) + np.outer(np.cos(th), v[:, 1])
-                    ground = min(ground, float((y.min(axis=1) + translations[body.name][:, 1])
-                                               .min()))
-                node.extras = {
-                    "fab": body.fab, "rigid_with": body.rigid_with, "bom": body.bom_key,
-                    "body": body.name,
-                }
-                node_idx = len(nodes)
-                nodes.append(node)
-
-                for path, data, acc_type in (
-                    ("translation", translations[body.name], pygltflib.VEC3),
-                    ("rotation", rotations[body.name], pygltflib.VEC4),
-                ):
-                    bv = packer.add(data.tobytes())
-                    acc = len(accessors)
-                    accessors.append(
-                        _accessor_for(
-                            bv, n_frames,
-                            component_type=pygltflib.FLOAT,
-                            accessor_type=acc_type,
-                        )
-                    )
-                    sampler_idx = len(animation_samplers)
-                    animation_samplers.append(
-                        pygltflib.AnimationSampler(
-                            input=time_acc, output=acc, interpolation="LINEAR"
-                        )
-                    )
-                    animation_channels.append(
-                        pygltflib.AnimationChannel(
-                            sampler=sampler_idx,
-                            target=pygltflib.AnimationChannelTarget(
-                                node=node_idx, path=path
-                            ),
-                        )
-                    )
-            ground = 0.0 if not math.isfinite(ground) else ground
-            # Stand it up: model +Y -> +Z, the lowest point of the gait on z = 0.
-            root.translation = [0.0, 0.0, -ground]
-            root.children = list(range(1, len(nodes)))
-            root.extras = {"model_up": [0, 1, 0], "stack_axis": [0, 0, 1],
-                           "ground_y": ground}
-
-        animation = pygltflib.Animation(
-            name="walk", samplers=animation_samplers, channels=animation_channels
-        )
-
-        # --- stage 6: foot-path extra (leg 0's first foot for reference; a
-        # mechanism's output point, as ``output_path``) ---
-        with prof.timed("6_foot_path_extra"):
-            sol0 = lk.solve(1, 0.0, dict(config.proportions))
-            foot_samples = 64
-            foot = sol0.evaluate(
-                np.linspace(0.0, 2.0 * math.pi, foot_samples, endpoint=False)
-            )[(lk.feet or feet)[0][1]]
-            foot_path = [[float(x), float(y)] for x, y in foot]
-            # Drawn just outside that foot's link (first side), in model Z.
-            link = next((by_name[b] for b, _ in feet if by_name[b].part), None)
-            foot_z = link.part.bounding_box().min.Z - 0.5 if link is not None else 0.0
-
-        # --- stage 6b: the walking model's data (robot only; see walk.py) ---
-        if robot:
-            with prof.timed("6b_drive_extra"):
-                root.extras["drive"] = _drive_extra(
-                    config, ref_mech, motion, owner, mass_props, duration_s)
-            drive = root.extras["drive"]
-            prof.set_metric("drive.mass_g", drive["mass_g"])
-            prof.set_metric("drive.stride_mm", drive["metrics"]["stride_mm"])
-            logger.debug("drive: com %s, %.1f g, stride %.1f mm/rev", drive["com"],
-                         drive["mass_g"], drive["metrics"]["stride_mm"])
-
-        scene = pygltflib.Scene(nodes=[0])
-        path = "foot_path" if lk.feet else "output_path"
-        scene.extras = {
-            path: foot_path, f"{path}_z": foot_z,
-            "linkage": config.linkage, "module": config.module, "robot": robot,
-            "meta": _json_meta(ref_mech.meta),
-        }
-        if lk.output:
-            scene.extras["output"] = asdict(lk.output)
-
-        # --- stage 7: assemble + binary-serialize glTF ---
-        with prof.timed("7_serialize"):
-            blob = packer.bytes
-            gltf = pygltflib.GLTF2(
-                asset=pygltflib.Asset(version="2.0", generator="spiderpig/bake_gltf"),
-                scene=0,
-                scenes=[scene],
-                nodes=nodes,
-                meshes=meshes,
-                materials=materials,
-                accessors=accessors,
-                bufferViews=packer.buffer_views,
-                buffers=[pygltflib.Buffer(byteLength=len(blob))],
-                animations=[animation],
-            )
-            gltf.set_binary_blob(blob)
-            gltf.save_binary(str(out))
-
-        prof.set_metric("blob_bytes", len(blob))
-        prof.set_metric("gltf_bytes", out.stat().st_size)
-        prof.set_metric("animation_channels", len(animation_channels))
-        prof.set_metric("accessors", len(accessors))
+        ref = _reference(config, prof)
+        meshes = _share_and_tessellate(ref, prof)
+        geom = _pack_geometry(meshes, prof)
+        anim = _animate(config, ref, meshes, n_frames, duration_s, prof)
+        nodes, animation = _nodes_and_channels(ref, meshes, geom, anim, prof)
+        scene = _scene(config, ref, meshes, anim, nodes[0], duration_s, prof)
+        _write(out, scene, nodes, geom, animation, prof)
 
     # Peak resident set (linux: ru_maxrss is KB; mac: bytes — treat as linux here).
     try:
