@@ -115,6 +115,8 @@ class Job:
 
     def to_dict(self, result: bool = True) -> dict:
         state = self.state
+        if state in ("done", "failed") and self.finished_at is None:
+            self._finish(self.future)       # a waiter can wake before the done callback runs
         out = {"job": self.id, "op": self.op, "design": self.design, "args": dict(self.args),
                "state": state, "started_at": self.started_at, "finished_at": self.finished_at,
                "seconds": self.seconds}
