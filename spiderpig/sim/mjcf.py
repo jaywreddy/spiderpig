@@ -275,8 +275,13 @@ def _root(body, by_name) -> str:
 
 
 def _hull(part, tolerance: float) -> np.ndarray:
-    verts, _ = part.tessellate(tolerance)
-    pts = np.unique(np.round(np.array([(v.X, v.Y, v.Z) for v in verts]), 4), axis=0)
+    """The convex hull's vertices of a part's mesh: :func:`spiderpig.mesh.tessellate`, face
+    by face, so a purchased model with a face the mesher can't triangulate (the XL330's)
+    gives its hull from the faces it has instead of failing the whole model."""
+    from spiderpig.mesh import tessellate
+
+    verts, _, _ = tessellate(part, tolerance)
+    pts = np.unique(np.round(np.asarray(verts, dtype=float), 4), axis=0)
     return pts[ConvexHull(pts).vertices]
 
 

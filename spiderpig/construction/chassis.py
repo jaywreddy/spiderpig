@@ -24,6 +24,7 @@ MIN_ENGAGE = 2.0         # least thread engagement that still holds
 HEAD_CLEARANCE = 0.3     # radial clearance around a screw head in a laser-cut recess (mm)
 RELIEF_GROW = 0.5        # a relief cut-out is this much bigger than the bump, per side (mm)
 SPIGOT_RECESS = 0.2      # a tie spigot stops this short of the inner plate's leg-side face
+GLUE_PER_SPIGOT = 0.02   # CA glue per tie spigot glued into its plate, as a fraction of a bottle
 INSERT_ENGAGE = 5.0      # target thread engagement of a tie screw in its insert (mm)
 MODEL_GAP = 0.01         # radial gap between modelled parts that touch in reality (mm)
 CHASSIS_COLOR = "#eb6834"
@@ -353,7 +354,9 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
                      fab="purchased", bom_key="m3_heat_set_insert", color=BRASS),
             ]
             fastened.append((f"L.tie_screw{i}", f"R.tie_insert{i}"))
-        extras.append(BomLine("ca_glue", 1, "tie spigots into the inner frame plates"))
+        # a spigot is glued like a pillar's anchor (a few drops each), not a bottle a robot
+        extras.append(BomLine("ca_glue", GLUE_PER_SPIGOT * len(tie_xy),
+                              "tie spigots into the inner frame plates"))
         info.update(ties=len(tie_xy), tie_screw=key, tie_engagement_mm=engage)
     else:
         info.update(ties=0)
