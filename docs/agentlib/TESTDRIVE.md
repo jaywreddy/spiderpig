@@ -377,3 +377,210 @@ row named the servos, the spool and the cement. What it still had to do by hand:
 pick `shin 16` and `unit 6.3` by two derives (the sensitivity table says which way,
 not how far), and accept the two marginal misses (z 205 / 200, $100.69 / 100) as
 facts of the catalog and the stack.
+
+## Round 2 — 2026-09-30
+
+Goal: *"I want a small, quiet six-legged walker on 2 mm acrylic with metal pivots
+(bearings or bushings, not printed snap pins) and the smaller XL330 servo, under
+$120 in parts, that can step over a 25 mm obstacle. Give me the files to cut and
+print, tell me what it will cost and how fast it walks, and show it to me in the
+viewer. Also: I already have a TrotBot design in mind at its published 7 mm scale —
+tell me whether it builds and, if not, what to change."*
+
+Driver: `spiderpig.api` in a Python session and the `spiderpig` CLI (`explain`,
+`build`, `audit`, `view`), the worktree's package (`PYTHONPATH=.`), a scratch
+store; the viewer checked with headless Chromium. Allowed reading: `README.md`,
+`docs/agentlib/API.md`, this file's round 1, `--help`, the modules' `pydoc`.
+
+### Wall clock, first run
+
+| step | wall | note |
+|---|---|---|
+| import, `list_linkages`, `describe(klann)` | 3.8 s | 2.8 s of imports |
+| 15 spec probes (six legs, 2 mm, servo names, targets) | 3.4 s | all ms; every miss a `SpecError` |
+| goal spec (Klann quad, bearings, XL330, 2 mm): check, plan, walk, quick | 3.8 s | `construction / unbuildable` at 2 mm |
+| four probes around the 2 mm wall (printed pins, 2.5 mm, `fit.hub_thickness`, recommend + explain) and two CLI `explain`s | 26 s | dead end: nothing names a lever |
+| the same at 3 mm: quick 4.3 s, standard 45.7 s | 50 s | |
+| Strider double (four legs): quick 4.9 s, standard 43.4 s; bushing variant standard 43.5 s | 92 s | |
+| TrotBot heel at unit 7: check 7 s, recommend 0 s, derive 0 s, plan of the derived quad 61.5 s, quick 1.1 s, explain 3.9 s | 77 s | |
+| build (cached from the standard verify) 4.8 s, edit + recheck 6.1 s, export step/dxf/print/bom/glb 43.3 s | 58 s | plus one crash on API.md's worked example (entry 6) |
+| CLI `build` (Strider double, bearings, XL330) 35.6 s; CLI `audit` 66 s | 102 s | |
+| export of the final design 37.7 s; `spiderpig view` to the URL 8 s (the export served as is); browser: page + GLB 3.6 s, drive mode + HUD 31 s | 80 s | |
+| **total, goal to files, the viewer and the TrotBot answer** | **~8.5 min** of wall clock, ~6 of it engine time | three dead ends |
+
+### Entries
+
+#### 1. Six legs has no module, and the error doesn't say what the modules are — **annoying**
+
+Tried: `legs.module: "hex"`, `"triple"`, `legs.count: 6`, and three phases on
+`decker`. Every one a clean `SpecError`: `legs.module: unknown value 'hex'`,
+allowed `('single', 'double', 'decker', 'quad')`; `legs.phases_deg: decker has 2
+legs per side, got 3 phases`. The cards say `modules: {single: 1, double: 2,
+decker: 2, quad: 4}` (legs per side), so six legs (three a side) exists for no
+linkage, and of the modules that exist only `quad` (eight legs) walks for Klann and
+`double` (four) for the Strider (the cards' `walks`, the round 1 fix). Expected: the
+module error to say "legs per side: single 1, double 2, decker 2, quad 4 (a robot
+has two sides); no linkage has a three-leg module", so the agent learns in one call
+that the count is out of the vocabulary rather than mis-spelt, and API.md's
+`legs.module` row to say the same. I told the user: six is not on offer; four
+(Strider double) or eight (Klann quad).
+Recoverable from docs and messages alone: yes (the cards), after two calls.
+
+#### 2. 2 mm acrylic: `thickness_mm: 2` resolves silently, then every stage stops at "no M3 screw and nut fit a crankpin joint in 2 mm layers", with no lever — **blocker**
+
+Tried: `materials.sheet: "acrylic_2mm"` — rejected, allowed `acrylic_3mm`,
+`plywood_3mm` (fine: the catalog has no 2 mm sheet). Then the documented way, the
+3 mm sheet with a measured `thickness_mm: 2`: `resolve` OK, `warnings: []`. `check`:
+`ok: False`, failure `construction / unbuildable: no M3 screw and nut fit a crankpin
+joint in 2 mm layers`, `culprits: []`, `numbers: {}`, `recommendations: []`, `notes:
+[]`. `plan` the same; `walk` ran (102 mm/rev, as if built); `verify quick` FAIL with
+the failure on a row named `drive.one_servo: unbuildable [FAIL, proven]` (it is the
+crank, not the drive); `recommend` -> `[]` in 0.0 s with no note; `explain` prints
+the program and then `STOP: no M3 screw and nut fit a crankpin joint in 2 mm
+layers`. The same with printed pins, at 2.5 mm, and with `fit.hub_thickness: 8`. The
+README says "measure your sheet: acrylic varies by up to 8 %", which 2 on 3 is not,
+but nothing says the constructions have a thickness range. Expected: `resolve` to
+warn (or refuse) when the measured thickness is far from the sheet's nominal;
+the failure to name the lever (the layer pitch is the sheet: the printed crank's
+joints take a stock M3 screw across `n` layers, and at 2 mm no stock length lands on
+a layer boundary — say which thickness works, e.g. "3 mm plans", as a checked
+recommendation with the patch `{"materials": {"thickness_mm": 3}}` or the sheet
+choice), and the verify row to be named for the failing stage (`construction`).
+Recoverable: no. I found the answer by trying 3 mm because round 1 used it.
+
+#### 3. The hard budget row passes on a lower bound that leaves out the bearings (and names 4 of 8 unpriced items) — **blocker**
+
+Tried: `budget.cost_usd: {max: 120, hard: true}` on the Klann quad and the Strider
+double, bearings and bushings, XL330. Every `verify standard`: `budget.cost_usd:
+115.7 USD vs <= 120 [ok, estimated] 15 items, the largest ... XL330-M288-T x 2
+$54.98; PLA ... $25.49; ... cement $12.84; ... insert x 4 $11.37; 8 unpriced, so the
+total is a lower bound (m2_self_tap_10, m3_shcs_18, m3_bhcs_6, m3_nut); 3 unverified
+links`. The BOM (`export(bom)`, `bom.md`) says which 8: the four screws **and the 64
+MF63ZZ bearings (7 packs of 10), the 3 mm rod, the 56 push-on clips and the CA
+glue** — the whole pivot construction the user asked for. Bearings and bushings
+price the same, $115.67, because neither is priced. So "under $120" reads as met and
+is almost certainly not (seven packs of bearings alone are $40-60 at the linked
+vendor). The row names only four of the eight (the screws, the cheap ones) and
+hides the four that matter. Expected: a hard `max` target with unpriced items to
+be `unverified` (or FAIL with "at least"), never `ok`; the row to name every
+unpriced item, the biggest quantities first; and the catalog's bearing, bushing, rod
+and clip items to carry a price (they have vendor links).
+Recoverable: no (the row says ok; only the BOM file shows what is missing).
+
+#### 4. `verify quick` doesn't price the design — **annoying**
+
+`not verified at this level: budget.cost_usd` on every quick verify. The catalog
+prices are known from the spec (servo x 2, sheet, spool, cement, the constructions'
+hardware per joint), as round 1 asked (entry 15, "verify quick to price the design
+from its catalog choices"); the round 1 fix added the detail to the standard row
+only. Each answer to "what will it cost" costs a 40 s build.
+Recoverable: yes (wait for standard).
+
+#### 5. The TrotBot recommendation is checked with the `single` module, the design is the `quad` — **annoying**
+
+`trotbot_heel` at `unit: 7`, the robot (the default `quad`, two sides): `check` ->
+`static / link_no_layer`, the good message from round 1 (b7 passes crankpin J1 at
+6.8 mm, needs 10.0), recommendation `unit 7 -> 10.5 ... checked: the static stage
+passes, and it plans (its single module) in 12 layers (36 mm)`. `derive` with the
+patch, then `plan`: 61.5 s (the 60 s deadline), 37 layers, 111 mm, `optimal:
+False`, sizes 20-36 left open. So the checked claim answers a question the design
+didn't ask (one leg a side), and the design's own plan is three times taller and
+unproven. Expected: the recommendation to be checked with the design's module
+(and to say the deadline ran out if it does), or to say plainly "checked for the
+single module; the quad may take longer or more layers".
+Recoverable: yes, after the minute.
+
+#### 6. API.md's worked example doesn't transfer to the robot: `design.mech.body("b7")` and `outline` — **annoying**
+
+Tried the lightening-hole edit from API.md on the robot (two sides). Parts are
+`L.b1_leg0`, `R.b1_leg0`, ...; `design.mech.body("L.b1_leg0")` returns a body with
+`outline: ()` and no joints (the robot's mechanism carries the placed bodies, not the
+side's template), so `body.outline[0]` raises `IndexError`. `design.side` has
+`checks, clearances, config, ctx, drive, ground_clearance_mm, groups, plan` and no
+mechanism to ask. I cut at the solid's centre of mass instead. Expected: the example
+(and `Part`) to say how to get a link's joints on the robot (`design.side`'s template,
+or a `Part.joints_xy()` / `Part.frame` helper), and the example to state it is for
+`sides: 1`.
+Recoverable: yes, by fallback (the bounding box), not from the docs.
+
+#### 7. `Part.mass_g` / `volume_mm3` don't follow an edited solid — **annoying**
+
+After `part.solid = part.solid - Cylinder(...)` the solid's `volume` went from
+1895.9 to 1886.5 mm3, `part.edited` read `True`, `recheck` passed and listed the
+part as `edited` and `checked`, but `part.mass_g` (2.2562) and `part.volume_mm3`
+(1895.9) stayed at the build's values; the export's BOM and the mass rows keep the
+old mass. Expected: the properties to be computed from the live solid (or refreshed
+by `recheck`), and the docs to say so.
+Recoverable: yes (compute from `solid.volume` and the density yourself), not
+obviously.
+
+#### 8. CLI `explain` takes no servo, pins, sheet or thickness — **annoying**
+
+`spiderpig explain --linkage klann --module quad --thickness 2` -> `error:
+unrecognized arguments: --thickness 2`. `explain` accepts only `--linkage`,
+`--module`, `--phases`, `--proportion`; `build` and `audit` take `--servo`,
+`--pillar`, `--pin`, `--sheet`, `--thickness`. So the CLI can't explain the design
+I'm building (bearings, XL330, 2 mm): it printed the printed-pin, STS3215 plan
+(ground clearance 64.2 mm) while the API's `check` of my design said 73.9 mm. The
+Python `explain(design)` does take the full config.
+Recoverable: yes (use the API).
+
+#### 9. `list_designs` cards don't say which design is which — **nit**
+
+The two Strider doubles (bearings, bushings) have identical cards: id, kind,
+linkage, module, sides, engine version, times, stages. Expected: servo, sheet,
+constructions and the targets on the card, or a `label`.
+
+#### 10. The bake prints to stdout while exporting — **nit**
+
+`export` (Python) prints `tessellate: 3 of 511 faces have no triangulation;
+skipped` twice (the XL330 model, round 1's fix) and build123d's `UserWarning:
+Unknown Compound type, color not set`; neither reaches `ExportReport` or
+`BuildReport.warnings`.
+
+#### 11. "Quiet" has no vocabulary — **nit**
+
+Nothing in the Spec speaks to noise; the closest levers are the pivots (rolling
+bearings against printed snaps) and the servo. Not expected in v1; the guide could
+say what the vocabulary doesn't cover.
+
+#### 12. Good: the spec errors, the TrotBot message, the export cache, the view — no entry
+
+Fifteen deliberate mistakes came back with the path, the allowed values and the
+nearest key (`materials.servo: unknown value 'XL330-M288'` -> nearest
+`xl330_m288`). The TrotBot's static failure said which link, which pin, the
+distance, the need and its three terms, why no detour works, the least scale that
+clears it, the torque cost, and that it was checked. `spiderpig view` served the
+export in 8 s (`X-Spiderpig-Glb: export`); the page rendered the robot, the drive
+panel seeded from the design, and with drive mode on the HUD answered (height 63.3
+mm, contacts 4 / 8, margin 53.9 mm, model "172.82 mm/rev · 296.68 mm/s"). `recheck`
+after an edit ran in 6 s and named the part. CLI `build` wrote everything in 36 s and
+CLI `audit` came back OK in 66 s.
+
+### The robot I ended up with
+
+Strider (coupled pair) `double`, two sides: four legs (six is not a module of any
+linkage; eight, the Klann quad, is 444 mm long). Bearings (`MF63ZZ` glued in each
+link on 3 mm rod, printed sleeves, clips) for both pins and pillars, XL330-M288, 3 mm
+acrylic (2 mm can't be built: entry 2). Design `6a1eee81af8cf837`.
+
+| requirement | value | tier |
+|---|---|---|
+| plan | 16 layers, 48 mm a side | proven optimal |
+| ground clearance (the 25 mm obstacle) | 31.5 mm (>= 25); lift 32.8 mm | measured |
+| stride / speed | 172.8 mm per rev; 296.7 mm/s at the XL330's no-load 103 rpm | measured / estimated |
+| envelope (built, t = 1) | 228 x 128 x 155 mm | measured |
+| cost | "$115.67" (<= 120, ok) — **a lower bound without the 64 bearings, the rod, 56 clips and the glue** | estimated |
+| mass, print, sheets | 395 g; 71 g PLA; 2 sheets of 300 x 300 | measured |
+| contract, clashes, solids, plan re-check | clean | proven / measured |
+
+Files (the store's `exports/`): `strider.step`, `laser/strider_sheet_0.dxf`,
+`laser/strider_sheet_1.dxf` + `parts.csv`, `print/*.stl` (12 distinct, 38 parts) +
+`parts.csv`, `bom.csv/.md/.json`, `strider.glb`, `manifest.json`. The bushing
+variant (`885574195baab37d`) is the same stack and "cost", 23 g lighter.
+
+The TrotBot answer: at its drawing's 7 mm unit it does not build — b7 passes the
+crankpin at 6.8 mm where a post needs 10.0, no detour clears it, and no thinner
+parts help; scaled x1.5 to `unit: 10.5` (the engine's checked patch) it plans, in
+12 layers as one leg a side, and as the quad robot in 37 layers (111 mm a side)
+within the deadline, unproven.
