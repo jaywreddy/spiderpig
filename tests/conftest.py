@@ -38,10 +38,13 @@ def clear_model_caches() -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def _offline(tmp_path_factory):
-    """No downloads and an empty model cache: servos are drawn parametrically."""
+    """No downloads and an empty model cache: servos are drawn parametrically; the
+    spiderpig API's project store (``$SPIDERPIG_STORE``) is a folder of this session, so
+    tests never touch the checkout's ``.spiderpig/``."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv(cadlib.OFFLINE_ENV, "1")
         mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
+        mp.setenv("SPIDERPIG_STORE", str(tmp_path_factory.mktemp("store")))
         clear_model_caches()
         yield
         clear_model_caches()

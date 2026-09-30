@@ -28,6 +28,7 @@ import math
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, is_dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +56,16 @@ def engine_version() -> str:
 def canonical_json(obj) -> str:
     """One JSON text per value: sorted keys, no spaces, no NaN."""
     return json.dumps(jsonable(obj), sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def spec_hash(resolved: Mapping) -> str:
+    """The resolved spec alone (no engine version): what one design shares across engine
+    versions, so a store can find an earlier plan of it."""
+    return hashlib.sha256(canonical_json(resolved).encode()).hexdigest()[:16]
+
+
+def now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def design_id(resolved: Mapping, engine: str) -> str:
@@ -147,6 +158,10 @@ class Design:
     side: object = field(default=None, repr=False)         # fabricate.SideDesign
     mech: object = field(default=None, repr=False)         # the fabricated Mechanism
     build_t: float | None = None                           # crank angle the parts are at
+    store: object = field(default=None, repr=False)        # spiderpig.store.Store, or None
+    derived_from: str | None = None                        # the design this one's spec patches
+    patch: dict | None = None                              # the merge patch from it
+    created_at: str = field(default_factory=now_iso)
 
     @property
     def lk(self):
@@ -161,15 +176,21 @@ class Design:
         ``recheck``, ``verify``, ``export``), or ``None``."""
         return self.reports.get(stage)
 
-    def record(self, op: str, seconds: float, ok: bool) -> None:
-        self.log.append({"op": op, "engine_version": self.engine_version,
-                         "seconds": round(seconds, 3), "ok": ok})
+    def record(self, op: str, seconds: float, ok: bool, cached: bool = False) -> dict:
+        """Log an operation on this handle (``cached``: served from the store); the store
+        appends the same line to the design's ``log.jsonl``."""
+        entry = {"op": op, "engine_version": self.engine_version,
+                 "seconds": round(seconds, 3), "ok": ok, "cached": cached, "at": now_iso()}
+        self.log.append(entry)
+        return entry
 
     def to_dict(self) -> dict:
         """Everything but the solids and the engine objects: what a store writes."""
         return {
             "id": self.id, "engine_version": self.engine_version, "spec": self.spec.to_dict(),
             "resolved": self.resolved, "warnings": list(self.warnings),
+            "derived_from": self.derived_from, "patch": self.patch,
+            "created_at": self.created_at,
             "reports": {k: jsonable(v) for k, v in self.reports.items()},
             "parts": [p.to_dict() for p in self.parts.values()],
             "build_t": self.build_t, "log": list(self.log),

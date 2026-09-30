@@ -104,6 +104,11 @@ class Recommendation:
         return {"changes": list(self.changes), "why": self.why, "effects": self.effects,
                 "verified": self.verified, "patch": self.patch, "notes": list(self.notes)}
 
+    @classmethod
+    def from_dict(cls, d: Mapping) -> Recommendation:
+        return cls(list(d.get("changes", [])), d.get("why", ""), d.get("effects", ""),
+                   d.get("verified", ""), dict(d.get("patch") or {}), list(d.get("notes", [])))
+
 
 @dataclass
 class Failure:
@@ -130,6 +135,15 @@ class Failure:
                 "culprits": list(self.culprits), "numbers": dict(self.numbers),
                 "recommendations": [r.to_dict() for r in self.recommendations],
                 "notes": list(self.notes), "blockers": list(self.blockers)}
+
+    @classmethod
+    def from_dict(cls, d: Mapping) -> Failure:
+        """A failure back from its JSON form (a store's stage file)."""
+        return cls(d["stage"], d["code"], d.get("message", ""),
+                   culprits=list(d.get("culprits", [])), numbers=dict(d.get("numbers", {})),
+                   recommendations=[Recommendation.from_dict(r)
+                                    for r in d.get("recommendations", [])],
+                   notes=list(d.get("notes", [])), blockers=list(d.get("blockers", [])))
 
     @classmethod
     def from_exception(cls, exc: BaseException, stage: str | None = None,
@@ -194,12 +208,33 @@ def parse_blocker(text: str) -> dict:
 
 
 def apply_patch(spec: Mapping, patch: Mapping) -> dict:
-    """``spec`` (a spec document) with ``patch`` merged in: objects merge key by key, any
-    other value replaces. Validate the result with :meth:`spiderpig.spec.Spec.from_dict`."""
+    """``spec`` (a spec document) with ``patch`` merged in, as a JSON merge patch (RFC
+    7386): objects merge key by key, ``None`` removes a key, any other value replaces.
+    Validate the result with :meth:`spiderpig.spec.Spec.from_dict`."""
     out = dict(spec)
     for k, v in patch.items():
-        if isinstance(v, Mapping) and isinstance(out.get(k), Mapping):
+        if v is None:
+            out.pop(k, None)
+        elif isinstance(v, Mapping) and isinstance(out.get(k), Mapping):
             out[k] = apply_patch(out[k], v)
         else:
             out[k] = v
+    return out
+
+
+def merge_patch(a: Mapping, b: Mapping) -> dict:
+    """The smallest merge patch (RFC 7386) that turns document ``a`` into ``b``
+    (``apply_patch(a, merge_patch(a, b)) == b``): keys ``b`` lacks become ``None``."""
+    out: dict = {}
+    for k in sorted(set(a) | set(b), key=str):
+        if k not in b:
+            out[k] = None
+        elif k not in a:
+            out[k] = b[k]
+        elif isinstance(a[k], Mapping) and isinstance(b[k], Mapping):
+            sub = merge_patch(a[k], b[k])
+            if sub:
+                out[k] = sub
+        elif a[k] != b[k]:
+            out[k] = b[k]
     return out
