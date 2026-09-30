@@ -206,11 +206,16 @@ class VerifyOut(Result):
 
 
 class ExportOut(Result):
+    """The files written and the manifest; ``warnings`` is what the bake and the
+    constructions warned about while writing (a purchased model's faces the mesher
+    skipped, a printed snap that overstrains). While the job runs only ``job`` is set."""
+
     design: NotRequired[str]
     out_dir: NotRequired[str]
     formats: NotRequired[list[str]]
     files: NotRequired[list[str]]
     manifest: NotRequired[JSON]
+    warnings: NotRequired[list[str]]
     seconds: NotRequired[float]
     job: NotRequired[JobOut]
 

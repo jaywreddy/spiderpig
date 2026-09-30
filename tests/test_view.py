@@ -263,3 +263,46 @@ def test_explain_takes_the_build_options(capsys):
     assert "ground clearance:" in out
     assert "3. plan" in out
     assert "bearing" in out or "sleeve" in out
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): a CLI build can be viewed by its
+# options, and the CLIs warn about a thickness far from the nominal
+# ---------------------------------------------------------------------------
+
+
+def test_view_takes_the_build_options_and_resolves_them_into_the_store(store, capsys):
+    import argparse
+
+    from spiderpig import view
+
+    ns = argparse.Namespace(linkage="klann", module="single", phases=None, proportion=None,
+                            servo=None, pillar=None, pin="bolt", crank=None, sheet=None,
+                            thickness=None, side_only=False)
+    d = view.resolve_args(ns, store)                                          # entry 10
+    assert d is not None
+    assert d.config.pin == "bolt"
+    assert d.config.module == "single"
+    assert d.config.robot
+    assert api.load(d.id, store).config == d.config
+    empty = {**dict.fromkeys(view.DESIGN_OPTIONS), "side_only": False}
+    assert view.resolve_args(argparse.Namespace(**empty), store) is None
+    mech = argparse.Namespace(**{**empty, "linkage": "hoecken", "module": "single"})
+    assert view.resolve_args(mech, store).config.robot is False
+    with pytest.raises(SystemExit):                # neither a design id nor an option
+        view.main(["--store", str(store.root)])
+    assert "build options" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        view.main(["--help"])
+    out = capsys.readouterr().out
+    assert "--pin" in out
+    assert "--linkage" in out
+    assert "--thickness" in out
+
+
+def test_the_clis_warn_about_a_thickness_far_from_the_nominal(capsys):
+    from spiderpig import explain
+
+    assert explain.main(["--linkage", "klann", "--module", "single", "--thickness", "5"]) == 0
+    err = capsys.readouterr().err                                             # entry 8
+    assert "warning: materials.thickness_mm 5 is 67% over acrylic_3mm's nominal 3 mm" in err

@@ -166,13 +166,61 @@ def start_background(store, host: str = DEFAULT_HOST, port: int | None = None,
     raise RuntimeError(f"the view server did not come up on {host}:{port} within {timeout:.0f} s")
 
 
+DESIGN_OPTIONS = ("linkage", "module", "phases", "proportion", "servo", "pillar", "pin",
+                  "crank", "sheet", "thickness", "side_only")
+
+
+def resolve_args(args, store):
+    """The design the build options ask for (``--linkage``, ``--module``, ``--pin``, ...:
+    the same options as ``spiderpig build``), resolved into ``store`` through the API
+    (:func:`spiderpig.api.spec_of`), so a CLI build can be viewed by its options; or
+    ``None`` when none was given."""
+    given = {k: getattr(args, k) for k in DESIGN_OPTIONS if getattr(args, k, None) is not None}
+    if not given or given == {"side_only": False}:
+        return None
+    from spiderpig import api
+    from spiderpig.config import BuildConfig, ParamError
+
+    d = BuildConfig()
+    fields = {k: given.get(k, getattr(d, k)) for k in ("linkage", "module", "sheet", "thickness",
+                                                        "servo", "pillar", "pin", "crank")}
+    fields["phases"] = given.get("phases")
+    fields["proportions"] = tuple(given.get("proportion") or ())
+    robot = not given.get("side_only", False)
+    lk_kind = None
+    try:
+        from spiderpig import linkage
+
+        lk_kind = linkage.get(fields["linkage"]).kind
+    except KeyError:
+        pass
+    if lk_kind == "mechanism":
+        robot = False
+    try:
+        config = BuildConfig(**fields, robot=robot)
+    except ParamError as e:
+        raise ValueError(str(e)) from None
+    return api.resolve(api.spec_of(config), store)
+
+
 def main(argv: list[str] | None = None) -> int:
+    from spiderpig.config import add_build_args, add_design_args
+
     ap = argparse.ArgumentParser(
         prog="spiderpig view",
-        description="serve the viewer for a stored design (prints the URL; Ctrl-C stops)")
+        description="serve the viewer for a stored design, or for the design the build "
+                    "options describe (prints the URL; Ctrl-C stops)")
     ap.add_argument("design", nargs="?", metavar="DESIGN",
                     help="a design id (16 hex digits, from resolve); spiderpig mcp's "
-                         "list_designs or api.list_designs() list the store's")
+                         "list_designs or api.list_designs() list the store's. Or give the "
+                         "build options below (as for spiderpig build), and the design is "
+                         "resolved into the store first")
+    add_design_args(ap)
+    add_build_args(ap)
+    ap.add_argument("--side-only", action="store_true",
+                    help="with the build options: one side (no second side, no chassis)")
+    ap.set_defaults(linkage=None, module=None, servo=None, pillar=None, pin=None, crank=None,
+                    sheet=None)       # None: not given (the design id, or the defaults)
     ap.add_argument("--store", metavar="PATH",
                     help="the design store (default: $SPIDERPIG_STORE, else ./.spiderpig)")
     ap.add_argument("--host", default=DEFAULT_HOST)
@@ -187,9 +235,6 @@ def main(argv: list[str] | None = None) -> int:
                     choices=("critical", "error", "warning", "info", "debug"),
                     help="uvicorn's logging")
     args = ap.parse_args(argv)
-    if not args.design and not args.serve_only:
-        ap.error("a design id is required (or --serve-only)")
-
     from spiderpig.store import Store
 
     store = Store.of(args.store) if args.store else Store.default()
@@ -207,14 +252,26 @@ def main(argv: list[str] | None = None) -> int:
         except (KeyError, ValueError) as e:
             print(f"error: {e}", file=sys.stderr)
             return 2
-        if not args.no_export:
-            print(f"exporting the glb of {design.id} (built and baked once, then cached)...",
-                  file=sys.stderr, flush=True)
-            try:
-                export_glb(design)
-            except ValueError as e:
-                print(f"error: {design.id} can't be built: {e}", file=sys.stderr)
-                return 1
+    else:
+        try:
+            design = resolve_args(args, store)       # the build options, as a design
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 2
+        if design is None and not args.serve_only:
+            ap.error("a design id or the build options (--linkage, --module, --pin, ...) are "
+                     "required (or --serve-only)")
+        if design is not None:
+            print(f"resolved the build options into {store.root.resolve()} as design "
+                  f"{design.id} (spiderpig view {design.id} shows it again)", file=sys.stderr)
+    if design is not None and not args.no_export:
+        print(f"exporting the glb of {design.id} (built and baked once, then cached)...",
+              file=sys.stderr, flush=True)
+        try:
+            export_glb(design)
+        except ValueError as e:
+            print(f"error: {design.id} can't be built: {e}", file=sys.stderr)
+            return 1
     port = args.port or free_port(args.host)
     url = url_for(args.host, port, design.id if design else None)
     print(url, flush=True)

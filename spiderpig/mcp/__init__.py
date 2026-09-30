@@ -50,6 +50,7 @@ from pydantic import Field
 
 from spiderpig import api, construction, linkage, servos
 from spiderpig import walk as walk_model
+from spiderpig.config import ParamError
 from spiderpig.design import Design, engine_version, jsonable
 from spiderpig.failure import Failure
 from spiderpig.hardware import catalog as hw_catalog
@@ -150,6 +151,10 @@ def _load(state: State, design: str) -> Design:
         return api.load(design, state.store)
     except StoreError as e:
         raise Misuse(Failure("store", "corrupt_record", str(e))) from None
+    except ParamError as e:      # the record's resolved values don't make a config any more
+        raise Misuse(Failure("spec", "bad_parameter", str(e), notes=[
+            f"the stored design {design} resolved under another engine; resolve its spec "
+            "again"])) from None
     except ValueError as e:
         raise Misuse(Failure("store", "bad_design_id", str(e), notes=[
             "a design id is the 16 hex digits resolve returned"])) from None
@@ -555,17 +560,18 @@ def _register_tools(server: MCPServer, state: State) -> None:
         engine recommends only what it re-ran and saw pass: the sheet thickness the printed
         crank's joints need (``materials.thickness_mm``), a scale of the linkage or thinner
         parts for a link-to-axle gap, the linkage's default scale for a plan that ran into
-        the stack's own room. ``verified`` says what was re-run: for a decker or quad design
-        the static stage and its single module's plan (plan the derived design for its
-        own)."""
+        the stack's own room, printed pillars for a stack a bolt pillar's stock screw
+        can't span. When every stage passes, ``stage`` is ``target``: a missed stroke,
+        straightness or lift target is met by a scale of the linkage (measured again and
+        planned), and a missed stack that is proven the thinnest, or a clearance, gets a
+        note naming the levers left. ``verified`` says what was re-run: for a decker or
+        quad design the static stage and its single module's plan (a plan failure: the
+        design's own)."""
         d = await _run(_load, state, design)
-        recs = await _run(api.recommend, d)
-        failing = next((r for s in ("check", "plan") if (r := d.reports.get(s)) is not None
-                        and not r.ok), None)
-        stage = failing.failures[0].stage if failing and failing.failures else None
-        notes = list(failing.failures[0].notes) if failing and failing.failures else []
-        return {"ok": True, "failures": [], "design": d.id, "stage": stage,
-                "recommendations": [r.to_dict() for r in recs], "notes": notes}
+        adv = await _run(api.advise, d)
+        return {"ok": True, "failures": [], "design": d.id, "stage": adv.stage,
+                "recommendations": [r.to_dict() for r in adv.recommendations],
+                "notes": list(adv.notes)}
 
     @tool
     async def walk(design: DesignArg) -> o.WalkOut:

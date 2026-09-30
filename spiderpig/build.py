@@ -151,6 +151,10 @@ def main(argv=None) -> int:
     config = args.config
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
+    from spiderpig.api import config_warnings
+
+    for w in config_warnings(config):       # what the API's resolve would warn about
+        print(f"warning: {w}", file=sys.stderr)
 
     try:
         tmpl = template_for(config)     # the template stage checks every loop closes

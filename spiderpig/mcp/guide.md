@@ -67,8 +67,17 @@ given only after the stage passes with it, plus the failure's `notes` on what ca
 help or wasn't checked. The engine can compute a fix from a *gap* (a link passing an
 axle too closely: scale the linkage, or thinner parts) and, for a plan that ran into
 the stack's own room (the crank's route, pin heads against the frame plates) after the
-linkage was scaled down, it checks the linkage's default scale; anything else (a
-different module, construction or servo) is yours to try with `derive`. `derive(design,
+linkage was scaled down, it checks the linkage's default scale; for a plan that failed
+with pillars on a purchased shaft (`bolt`: the longest stock M3 screw, 50 mm, clamps at
+most 15 layers of 3 mm, and the planner searches no taller stack) it checks printed
+pillars. When every stage passes, `recommend` answers for the **targets** (stage
+`target`): a missed stroke, straightness or lift is met by a scale of the linkage (these
+scale with `unit` exactly; the least practical scale is measured again and planned
+before it is offered, as `{"linkage": {"params": {"unit": 19.5}}}`); a missed stack
+that is proven the thinnest gets a note saying what could be thinner (fewer legs a
+side, and whether those modules walk; the sheet's pitch), a missed clearance a note
+naming its lowest part. Anything else (a different module, construction or servo) is
+yours to try with `derive`. `derive(design,
 patch)` resolves the patched spec as a new design that records its parent, so
 `compare(parent, child)` shows exactly what moved. Then loop back to `plan`/`verify`.
 
@@ -106,7 +115,7 @@ design: there is no search in v1.
 | `version` | `"1"` | `"1"` |
 | `kind` | `walker` or `mechanism` | required |
 | `linkage.key` | a registered linkage (below) whose kind matches | required |
-| `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm, angles in degrees) | the linkage's defaults |
+| `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm and > 0, angles in degrees; a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
@@ -139,7 +148,14 @@ soft; `hard: true|false` on any target flips it.
 
 <<TARGETS>>
 
-What the rows measure, where it isn't obvious: `size.envelope_*` before a build is
+What the rows measure, where it isn't obvious: `size.mass_g` before a build is the
+nominal model's total for what the design builds, and its detail says what it is made
+of (links as pills at the sheet's density with the holes taken out, the servos, the
+plates, the printed parts: within a few percent of the built mass); the measured row
+after a build lists the mass by group (links, drive, chassis, crank, ...), so the lever
+(the sheet, the servo) is plain. A `size.stack_mm` row that fails on a plan that is
+proven the thinnest says so and what could be thinner (fewer legs a side, and whether
+those modules walk; the sheet's pitch). `size.envelope_*` before a build is
 the joints' sweep over the whole cycle plus the plates (x, y) and the stacks plus the
 chassis and the axle heads outside the outer plates (z); after a build it is the
 extent at the build's crank angle, so x and y read smaller and z the same.
@@ -183,7 +199,10 @@ check, and its modules with their default phases.
 one side), drive mode, and the tune panel seeded with the design's linkage, module,
 phases and proportions. The server starts once per MCP server on a free port and is
 reused; the first load of a design bakes it (seconds) unless `export` wrote its
-`glb`. The same page is `spiderpig view <design>` from a shell.
+`glb`. The same page is `spiderpig view <design>` from a shell, and
+`spiderpig view --linkage klann --module quad --pin bolt` (the build options, as for
+`spiderpig build`) resolves that design into the store and shows it, so a CLI build
+needs no spec to be looked at.
 
 ## Long operations
 
@@ -206,7 +225,10 @@ server process; the store keeps what they produced.
 - One machine per spec: no compound machines, no stacking of mechanisms.
 - No `tune` and no `search`: one spec compiles one design; move parameters yourself
   with `derive` and read `compare` (the card's `sensitivity` says which way each
-  parameter pushes the foot path).
+  parameter pushes the foot path, or a mechanism's output). The one search the engine
+  does is `recommend`'s scale for a missed stroke, straightness or lift target.
+- The planner searches no stack a construction can't span: with `bolt` pillars the
+  longest stock M3 screw (50 mm) bounds it at 15 layers of 3 mm, and a failure says so.
 - The planner's 60 s deadline is fixed; a design it can't plan in that time is
   reported as such, with what blocked it, not searched longer.
 - `speed_mm_s` is the stride at the servo's no-load rpm, tier `estimated`, until a

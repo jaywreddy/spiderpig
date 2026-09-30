@@ -231,9 +231,10 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     assert rows["size.stack_mm"]["value"] == 21.0
     assert rows["motion.speed_mm_s"]["tier"] == "estimated"
     _no_solids(vr)
-    assert call(server, "recommend", design=single) == {
-        "ok": True, "failures": [], "design": single, "stage": None, "recommendations": [],
-        "notes": []}
+    recs = call(server, "recommend", design=single)
+    assert {k: v for k, v in recs.items() if k != "notes"} == {
+        "ok": True, "failures": [], "design": single, "stage": None, "recommendations": []}
+    assert recs["notes"][0].startswith("every stage passes and no target")   # round 3
     assert "3. plan" in call(server, "explain", design=single)["text"]
     summary = call(server, "get_design", design=single, stage="summary")["report"]
     assert {"check", "plan", "walk", "verify"} <= set(summary["stages"])
@@ -571,3 +572,71 @@ def test_the_guide_explains_the_budgets_lower_bound_and_the_layer_pitch(server):
     assert "`budget.cost_floor_usd`" in guide
     assert "layers of at least about 2.9 mm" in guide                      # entry 2
     assert "there is no three-leg module" in guide                         # entry 1
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): signed coordinates, a missed target,
+# the export's warnings, the guide
+# ---------------------------------------------------------------------------
+
+
+def test_a_mechanism_with_a_signed_coordinate_works_end_to_end(fresh):
+    r = call(fresh, "resolve", spec={"kind": "mechanism", "linkage": {
+        "key": "peaucellier_crank", "params": {"unit": 18}}})
+    assert r["ok"]       # entry 1
+    assert r["resolved"]["linkage"]["params"]["yy"] == -1.75
+    cr = call(fresh, "check", design=r["design"])
+    assert cr["ok"]
+    assert cr["output"]["stroke_mm"] == pytest.approx(51.64, abs=0.01)
+    assert cr["lowest_body_part"] == ""  # entry 4
+    assert cr["ground_clearance_mm"] is None
+    assert call(fresh, "plan", design=r["design"])["ok"]
+    card = call(fresh, "describe", key="peaucellier_crank")["card"]
+    assert next(p for p in card["params"] if p["name"] == "yy")["signed"] is True
+    assert card["sensitivity"]["unit"]["stroke_mm"] == pytest.approx(10.0)    # entry 2
+
+
+def test_recommend_meets_a_missed_stroke_by_a_checked_scale(fresh):
+    r = call(fresh, "resolve", spec={"kind": "mechanism", "linkage": {"key": "hoecken"},
+                                     "motion": {"stroke_mm": {"min": 80, "hard": True}}})
+    assert not call(fresh, "verify", design=r["design"], level="quick")["ok"]
+    recs = call(fresh, "recommend", design=r["design"])                       # entry 2
+    assert recs["stage"] == "target"
+    assert recs["notes"] == []
+    (rec,) = recs["recommendations"]
+    assert rec["patch"] == {"linkage": {"params": {"unit": 19.5}}}
+    assert rec["verified"].startswith("checked: stroke_mm 81.5")
+    child = call(fresh, "derive", design=r["design"], patch=rec["patch"])
+    assert call(fresh, "verify", design=child["design"], level="quick")["ok"]
+    bad = call(fresh, "resolve", spec={"kind": "mechanism", "linkage": {"key": "hoecken"},
+                                       "motion": {"dwell_deg": {"min": 90}}})
+    assert bad["ok"] is False   # entry 3
+    assert bad["errors"][0]["path"] == "motion.dwell_deg"
+    assert "line output has no dwell_deg" in bad["errors"][0]["message"]
+
+
+def test_a_stack_that_is_proven_the_floor_is_explained_by_recommend(fresh):
+    r = call(fresh, "resolve", spec={"kind": "walker", "linkage": {"key": "klann"},
+                                     "size": {"stack_mm": {"max": 30}}})
+    recs = call(fresh, "recommend", design=r["design"])                       # entry 11
+    assert recs["stage"] == "target"
+    assert recs["recommendations"] == []
+    assert recs["notes"][0].startswith("size.stack_mm 36 vs <= 30: 36 mm is proven the "
+                                       "thinnest for klann's quad module")
+
+
+def test_export_carries_its_warnings_and_the_guide_the_round_3_vocabulary(fresh):
+    from spiderpig.mcp import render_guide
+
+    r = call(fresh, "resolve", spec={"kind": "mechanism", "linkage": {"key": "hoecken"}})
+    out = call(fresh, "export", design=r["design"], formats=["dxf"], wait_seconds=180)
+    if "files" not in out:                                     # a slow worker: follow the job
+        out = call(fresh, "wait_job", job=out["job"]["job"], seconds=180)
+    assert out["ok"]                                # entry 6
+    assert out["warnings"] == []
+    guide = render_guide()
+    assert "`signed`" in guide                                                # entry 1
+    assert "`target`" in guide                     # entry 2
+    assert "scale with `unit`" in guide
+    assert "spiderpig view --linkage" in guide                                # entry 10
+    assert "the longest stock M3" in guide or "stock screw" in guide          # entry 7

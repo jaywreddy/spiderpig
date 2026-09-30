@@ -279,6 +279,14 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
     return design
 
 
+def config_warnings(config: BuildConfig, sides: int | None = None) -> list[str]:
+    """What :func:`resolve` would warn about for this config (a measured thickness far
+    from the sheet's nominal, a servo with no listed speed, one side of a walker): for the
+    CLIs, which take the same options."""
+    return _warnings(linkage.get(config.linkage), config,
+                     (2 if config.robot else 1) if sides is None else sides)
+
+
 def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     warnings: list[str] = []
     if lk.kind == "walker" and sides == 1:
@@ -316,6 +324,34 @@ def _attach_store(design: Design, store: Store | None) -> None:
     else:
         design.created_at = rec.get("created_at") or design.created_at
         design.derived_from, design.patch = rec.get("derived_from"), rec.get("patch")
+
+
+def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
+    """The Spec document of a :class:`config.BuildConfig` (a CLI's options as a spec): its
+    kind from the linkage, the proportions it overrides, module, phases and sides, the
+    materials and constructions, and the fit fields that differ from the defaults; no
+    targets. ``resolve(spec_of(config))`` is a design with that config, so ``spiderpig
+    view --linkage ... --pin bolt`` can show what ``spiderpig build`` built."""
+    lk = config.lk
+    doc: dict = {"kind": lk.kind, "linkage": {"key": config.linkage}}
+    if config.proportions:
+        doc["linkage"]["params"] = dict(config.proportions)
+    legs: dict = {"module": config.module,
+                  "sides": (2 if config.robot else 1) if sides is None else int(sides)}
+    if config.phases is not None:
+        legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
+    doc["legs"] = legs
+    mats: dict = {"sheet": config.sheet, "servo": config.servo}
+    if config.thickness is not None:
+        mats["thickness_mm"] = config.thickness
+    doc["materials"] = mats
+    doc["constructions"] = {"pillar": config.pillar, "pin": config.pin, "crank": config.crank}
+    default = Params()
+    fit = {k: getattr(config.params, k) for k in FIT_FIELDS
+           if getattr(config.params, k) != getattr(default, k)}
+    if fit:
+        doc["fit"] = fit
+    return doc
 
 
 def _config_from_resolved(resolved: dict) -> BuildConfig:
@@ -524,7 +560,8 @@ def describe(key: str) -> dict:
         "key": key, "name": lk.name, "family": lk.family or key, "kind": lk.kind,
         "source": lk.source, "notes": lk.notes,
         "params": [{"name": k, "default": float(v), "angle": k in lk.angles,
-                    "scale": k in scale} for k, v in lk.params.items()],
+                    "signed": k in lk.signed, "scale": k in scale}
+                   for k, v in lk.params.items()],
         "scale_params": list(scale),
         "modules": {m: {"legs": len(legs),
                         "phases_deg": [round(math.degrees(ph), 6) for _, ph in legs],
@@ -549,7 +586,50 @@ def describe(key: str) -> dict:
             card["output_check"] = _output_dict(lk.output_check())
         except linkage.AssemblyError as e:
             card["output_check"] = {"error": str(e)}
+        else:
+            card["sensitivity"] = output_sensitivity(lk)
     return card
+
+
+OUTPUT_SENSITIVITY_KEYS = ("stroke_mm", "straightness_mm", "extent_x_mm", "extent_y_mm",
+                           "on_line_fraction", "rotation_deg", "swing_deg", "dwell_deg")
+
+
+def _output_numbers(lk: linkage.Linkage, params: dict) -> dict[str, float | None]:
+    c = _output_dict(lk.output_check(params or None))
+    ex = c.get("extent_mm") or [None, None]
+    return {"stroke_mm": c["stroke_mm"], "straightness_mm": c["straightness_mm"],
+            "extent_x_mm": ex[0], "extent_y_mm": ex[1], "on_line_fraction": c["on_line_fraction"],
+            "rotation_deg": c["rotation_deg"], "swing_deg": c["swing_deg"],
+            "dwell_deg": c["dwell_deg"]}
+
+
+def output_sensitivity(lk: linkage.Linkage) -> dict:
+    """A mechanism's answer to the walkers' :func:`sensitivity`: what +10 % of each length
+    (+5° of an angle) does to the output's numbers at the defaults, in percent (the
+    stroke, the straightness band, the path's extent, and the rotation, swing or dwell it
+    measures), so a designer knows a stroke that scales with ``unit`` from one that
+    depends on a proportion. ``null`` where the loops no longer close."""
+    base = _output_numbers(lk, {})
+    keys = [k for k in OUTPUT_SENSITIVITY_KEYS if base.get(k) is not None]
+    out = {}
+    for name, default in lk.params.items():
+        angle = name in lk.angles
+        value = (float(default) + SENSITIVITY_DEG if angle
+                 else float(default) * (1 + SENSITIVITY_STEP))
+        try:
+            with np.errstate(invalid="ignore", divide="ignore"):
+                got = _output_numbers(lk, {name: value})
+        except (ValueError, linkage.AssemblyError):
+            out[name] = None
+            continue
+        if not all(got.get(k) is not None and math.isfinite(got[k]) for k in keys):
+            out[name] = None
+            continue
+        out[name] = {"step": f"+{SENSITIVITY_DEG:g}°" if angle else f"+{SENSITIVITY_STEP:.0%}",
+                     **{k: (round(100.0 * (got[k] - base[k]) / base[k], 1) if base[k] else None)
+                        for k in keys}}
+    return out
 
 
 def foot_path(lk: linkage.Linkage, params: dict, n: int = 720) -> dict:
@@ -745,7 +825,9 @@ def check(design: Design, force: bool = False) -> CheckReport:
         }
     rep.ground_clearance_mm = ground_clearance(tmpl, ctx)
     under = ctx.interfaces.get("underside")
-    rep.lowest_body_part = under.lowest_part if under is not None else ""
+    # which body shape sets the clearance: a walker's question (a mechanism has no feet)
+    rep.lowest_body_part = (under.lowest_part
+                            if under is not None and rep.ground_clearance_mm is not None else "")
     try:
         static_stage(tmpl, problem, cfg)
     except ClearanceError as e:
@@ -809,14 +891,17 @@ def capture_warnings(names: tuple[str, ...] = WARNING_LOGGERS):
 
     handler = _Collect(level=logging.WARNING)
     loggers = [logging.getLogger(n) for n in names]
+    propagated = [lg.propagate for lg in loggers]
     for lg in loggers:
         lg.addHandler(handler)
+        lg.propagate = False      # on the report, not (again) on a terminal's stderr
     out: list[str] = []
     try:
         yield out
     finally:
-        for lg in loggers:
+        for lg, p in zip(loggers, propagated, strict=True):
             lg.removeHandler(handler)
+            lg.propagate = p
         out += list(seen)
 
 
@@ -913,17 +998,158 @@ def explain(design: Design) -> str:
 
     pr = plan(design)
     failure = None if pr.ok else "\n  ".join(f.message for f in pr.failures[:1]) or "failed"
-    return explain_module.explain_config(design.config, side=design.side if pr.ok else None,
+    text = explain_module.explain_config(design.config, side=design.side if pr.ok else None,
                                          plan_failure=failure)
+    if not pr.ok or not design.spec.targets():
+        return text
+    # 4. the spec's targets that check and plan can read, and what would meet a miss
+    got = cheap_measures(design)
+    lines = ["", "4. targets"]
+    for f, t in design.spec.targets():
+        v = got.get(f.path)
+        if v is None:
+            lines.append(f"  {f.path}: {t.describe()}: measured by verify (the walk, the build "
+                         "or the BOM)")
+            continue
+        met, _ = t.check(float(v))
+        lines.append(f"  {f.path}: {v:.4g} {f.unit} vs {t.describe()}: "
+                     f"{'ok' if met else ('MISSED (hard)' if effective_hard(t, f) else 'missed')}")
+    adv = advise(design)
+    if adv.recommendations:
+        lines += ["  what would meet it:", *(f"  {r.describe()}" for r in adv.recommendations)]
+    lines += [f"  {n}" for n in adv.notes]
+    return text + "\n".join(lines)
 
 
 def recommend(design: Design) -> list[Recommendation]:
-    """The checked recommendations of the stage that fails (the static stage's, else the
-    planner's), each with the spec patch that applies it; empty when the design plans."""
-    rep = check(design)
-    if rep.ok:
-        rep = plan(design)
-    return [r for f in rep.failures for r in f.recommendations]
+    """The checked recommendations of :func:`advise`: the failing stage's (a construction
+    that can't be built, the static stage's, else the planner's), or, when every stage
+    passes, a scale of the linkage that meets a missed target that scales with it; each
+    with the spec patch that applies it. Empty when there is nothing to recommend
+    (:func:`advise` says why in its ``notes``)."""
+    return list(advise(design).recommendations)
+
+
+@dataclass
+class AdviceReport(Report):
+    """What would move the design: ``stage`` is the failing stage the advice is for
+    (``construction``, ``static``, ``plan``), ``target`` when every stage passes but a
+    target is missed, or ``None`` when nothing is missed; ``recommendations`` are checked
+    (each with its spec ``patch``); ``notes`` say what can't help, what wasn't checked,
+    and which missed target has no lever the engine can compute."""
+
+    ok: bool = True
+    failures: list[Failure] = field(default_factory=list)
+    stage: str | None = None
+    recommendations: list[Recommendation] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    seconds: float = 0.0
+
+
+SCALED_METRICS = ("motion.stroke_mm", "motion.straightness_mm", "motion.lift_mm")
+CHEAP_OUTPUT = ("stroke_mm", "straightness_mm", "on_line_fraction", "rotation_deg",
+                "swing_deg", "dwell_deg")
+
+
+def cheap_measures(design: Design) -> dict[str, float]:
+    """The metrics a target can be read against from ``check`` and ``plan`` alone: a
+    mechanism's output numbers, a walker's lift and ground clearance, the stack."""
+    out: dict[str, float] = {}
+    cr, pr = design.reports.get("check"), design.reports.get("plan")
+    if cr is not None and cr.ok:
+        if cr.output:
+            out.update({f"motion.{k}": cr.output[k] for k in CHEAP_OUTPUT
+                        if cr.output.get(k) is not None})
+        if cr.foot_path:
+            out["motion.lift_mm"] = cr.foot_path["lift_mm"]
+        if cr.ground_clearance_mm is not None:
+            out["motion.ground_clearance_mm"] = cr.ground_clearance_mm
+    if pr is not None and pr.ok and pr.height_mm is not None:
+        out["size.stack_mm"] = pr.height_mm
+    return out
+
+
+def missed_targets(design: Design) -> list[tuple[str, float, object]]:
+    """``(path, value, target)`` for every spec target :func:`cheap_measures` can read that
+    the design misses."""
+    got = cheap_measures(design)
+    out = []
+    for f, t in design.spec.targets():
+        v = got.get(f.path)
+        if v is None:
+            continue
+        met, _ = t.check(float(v))
+        if not met:
+            out.append((f.path, float(v), t))
+    return out
+
+
+def measure_config(config: BuildConfig) -> dict[str, float]:
+    """The scaled metrics of ``config`` without a design: a mechanism's stroke and
+    straightness, a walker's lift (what :func:`recommend.target_scale` re-measures)."""
+    lk = config.lk
+    params = dict(config.proportions)
+    if lk.output is not None:
+        c = _output_dict(lk.output_check(params or None))
+        return {f"motion.{k}": c[k] for k in ("stroke_mm", "straightness_mm")
+                if c.get(k) is not None}
+    return {"motion.lift_mm": foot_path(lk, params)["lift_mm"]}
+
+
+def advise(design: Design) -> AdviceReport:
+    """What would move the design, checked (:class:`AdviceReport`). A stage that fails
+    (``check``, then ``plan``) answers with its own recommendations and notes. When every
+    stage passes, the targets :func:`cheap_measures` can read are compared with the spec:
+    a missed stroke, straightness or lift is met by scaling the linkage
+    (:func:`recommend.target_scale`: the least practical scale, measured again and
+    planned); a missed stack that is proven the thinnest, or a clearance, gets a note
+    saying which levers are left."""
+    from spiderpig import verify as _verify
+    from spiderpig.recommend import target_scale
+
+    t0 = time.time()
+    rep = AdviceReport()
+    cr = check(design)
+    failing = cr if not cr.ok else None
+    pr = None
+    if failing is None:
+        pr = plan(design)
+        failing = pr if not pr.ok else None
+    if failing is not None:
+        f = failing.failures[0] if failing.failures else None
+        rep.stage = f.stage if f is not None else None
+        rep.recommendations = list(f.recommendations) if f is not None else []
+        rep.notes = list(f.notes) if f is not None else []
+        return _finish(design, "advice", rep, t0, write=False)
+    misses = missed_targets(design)
+    if not misses:
+        rep.notes.append("every stage passes and no target check or plan can read is missed; "
+                         "verify measures the rest (the walk, the build, the BOM)")
+        return _finish(design, "advice", rep, t0, write=False)
+    rep.stage = "target"
+    scaled = [m for m in misses if m[0] in SCALED_METRICS]
+    if scaled:
+        rec, note = target_scale(design.config, scaled, measure_config)
+        if rec is not None:
+            rep.recommendations.append(Recommendation.from_engine(rec, design.lk))
+        if note:
+            rep.notes.append(note)
+    for path, v, t in misses:
+        if path in SCALED_METRICS:
+            continue
+        if path == "size.stack_mm" and pr is not None and pr.optimal:
+            rep.notes.append(f"size.stack_mm {v:g} vs {t.describe()}: "
+                             + _verify.stack_floor_note(design, pr))
+        elif path == "motion.ground_clearance_mm":
+            rep.notes.append(f"motion.ground_clearance_mm {v:.1f} vs {t.describe()}: the "
+                             f"lowest point is {cr.lowest_body_part or 'the body'}; it grows "
+                             f"with the linkage's scale and shrinks with the servo's body and "
+                             f"the chassis, none exactly, so no scale is computed: derive on "
+                             f"the scale parameter or the servo and read check")
+        else:
+            rep.notes.append(f"{path} {v:g} vs {t.describe()}: missed; no lever the engine "
+                             f"can compute for it")
+    return _finish(design, "advice", rep, t0, write=False)
 
 
 # ---------------------------------------------------------------------------
