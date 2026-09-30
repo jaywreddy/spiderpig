@@ -45,6 +45,7 @@ use, and `/api/modes` lists the ones the dropdown offers with their labels.
 | `double` | one side, mirrored pair |
 | `decker` | one side, two legs on one crankshaft |
 | `double_double` | one side, four legs |
+| `side` | one side of `module` (a one-sided stored design) |
 
 `spiderpig bake --module single` bakes the robot with
 another module per side, `--side` one side of it.
@@ -89,7 +90,12 @@ uv run uvicorn spiderpig.server.app:app --port 8000
 - **Red loop** — leg 0's (first) foot trail over one cycle.
 - **Orbit** — mouse drag to rotate; wheel to zoom; right-drag to pan.
 - **Deep links** — `?mode=klann&view=side&t=0.3` picks the mode, a camera
-  preset (`three-quarter`, `side`, `front`, `top`) and a paused clip time.
+  preset (`three-quarter`, `side`, `front`, `top`) and a paused clip time;
+  `?design=<id>` a stored design (what `spiderpig view` opens): its glb, its
+  mode (`robot`, or `side` for a one-sided design) and its linkage, module,
+  phases and proportions in the tune panel (`/api/design/{id}`); every
+  `/api/glb` and `/api/walk` query then carries the id, so the server starts
+  from the design's config (servo, sheet, constructions included).
 
 The page renders on demand (while playing, orbiting, or after a change), so
 a paused viewer is idle. `window.__viewer` exposes the mixer, `seek(t)`,

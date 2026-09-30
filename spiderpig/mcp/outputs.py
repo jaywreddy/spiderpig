@@ -240,9 +240,19 @@ class GcOut(Result):
     removed: list[str]
 
 
+class ViewOut(Result):
+    """``view``: the viewer's URL for the design (``?design=<id>``), the server's base
+    URL, and the mode the page opens in (``robot`` or ``side``)."""
+
+    design: str
+    url: str
+    server: str
+    mode: str
+
+
 __all__ = [
     "JSON", "BuildOut", "CatalogOut", "CheckOut", "CompareOut", "DescribeOut", "DesignOut",
     "DesignsOut", "ExplainOut", "ExportOut", "FailureOut", "GcOut", "JobOut", "JobResult",
     "LinkagesOut", "PlanOut", "RecommendOut", "RecommendationOut", "Result", "RowOut",
-    "SpecErrorOut", "StageOut", "VerifyOut", "WalkOut",
+    "SpecErrorOut", "StageOut", "VerifyOut", "ViewOut", "WalkOut",
 ]

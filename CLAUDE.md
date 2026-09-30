@@ -23,12 +23,13 @@ mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan re
 mise run clean
 ```
 
-`build`, `bake`, `audit`, `explain`, `tune`, `sim`, `report` and `mcp` are the
-subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig
+`build`, `bake`, `audit`, `explain`, `tune`, `sim`, `report`, `mcp` and `view` are
+the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig
 <command> --help`; from a checkout `uv run python -m spiderpig.cli <command>`, or
 `mise run <command> -- <options>`, which passes options through); the tools' own
 modules (`spiderpig/build.py`, `spiderpig/bake.py`, `spiderpig/explain.py`,
-`spiderpig/tools/*.py`, `spiderpig/mcp/`) are what it runs. For example:
+`spiderpig/tools/*.py`, `spiderpig/mcp/`, `spiderpig/view.py`) are what it runs. For
+example:
 
 ```bash
 spiderpig bake --module quad --frames 120
@@ -69,7 +70,9 @@ For single-port runs (e2e tests, prod-like), build first with
 `mise run viewer-build`: Vite's `outDir` is `spiderpig/viewer/dist` (git-ignored
 package data, what a release wheel ships); `spiderpig/server/app.py` mounts it
 when it exists (override via `SPIDERPIG_VIEWER_DIST`; without a build `/`
-answers 503 and the API still works).
+answers 503 and the API still works). `spiderpig view <design>` serves that
+app for a stored design with no Node on the machine (the wheel carries the
+dist; `mise run release` builds both): see `docs/agentlib/API.md`, "View".
 
 ## Baking the glTF — performance profiler
 
@@ -164,15 +167,16 @@ hatchling; `uv sync` installs it editable, `spiderpig` is its console script).
 | `spiderpig/fabricate.py` | orchestration: `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
 | `spiderpig/shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `spiderpig/layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
-| `spiderpig/cli.py` | the one entry point, the `spiderpig` console script (`python -m spiderpig.cli` from a checkout): `build` (`spiderpig/build.py`: STEP/STL/DXF/BOM), `bake` (`spiderpig/bake.py`), `audit`, `tune`, `sim`, `report` (`spiderpig/tools/`), `explain`, `mcp` (each a module's `main(argv)`); the `mise` tasks run it. It imports nothing of the engine until a command runs |
+| `spiderpig/cli.py` | the one entry point, the `spiderpig` console script (`python -m spiderpig.cli` from a checkout): `build` (`spiderpig/build.py`: STEP/STL/DXF/BOM), `bake` (`spiderpig/bake.py`), `audit`, `tune`, `sim`, `report` (`spiderpig/tools/`), `explain`, `mcp`, `view` (each a module's `main(argv)`); the `mise` tasks run it. It imports nothing of the engine until a command runs |
+| `spiderpig/view.py` | `spiderpig view <design> [--store] [--port] [--open]`: the store as the MCP picks it, `api.export(design, ["glb"])` (cached), the server below on a free port, the URL `/?design=<id>`; `start_background()` runs it as a child process (`--serve-only`) for the MCP `view` tool |
 | `spiderpig/tools/` | `audit.py` (`mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM; `construction.contract` has the checks), `tune.py` (crank phases and proportions for a smoother walk), `sim_walk.py` (the MuJoCo CLI), `report.py` (every linkage compared), `dev.py` / `kill_dev.py` (`mise run view` / `kill`: the dev servers, a checkout only) |
 | `spiderpig/walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `spiderpig/tools/tune.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py` builds the MJCF of the fabricated robot (exact masses, loop equalities, velocity drives) and its viewer metadata; `run.py` steps it (`simulate`, `walk_metrics`, kinematic playback). `spiderpig/tools/sim_walk.py` is the CLI. |
 | `spiderpig/bake.py` | end-to-end `.glb` bake for the three.js viewer (`spiderpig bake`; cached in the store's `bakes/`) |
 | `viewer/` | the Vite + TypeScript three.js client (`src/`), built by `mise run viewer-build` into `spiderpig/viewer/dist` (package data); its `node_modules` never ship |
-| `spiderpig/server/app.py` | the viewer's FastAPI app (the dev server, serving `spiderpig/viewer/dist`): `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design; `mode` is `robot`, `side`, or one of the side-only ids old URLs use, `MODES`), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker, `/api/modes` the dropdown's ids and labels |
+| `spiderpig/server/app.py` | the viewer's FastAPI app (the dev server and `spiderpig view`, serving `spiderpig/viewer/dist`; `configure(store, prebake_default)`): `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand (cached per design; `mode` is `robot`, `side`, or one of the side-only ids old URLs use, `MODES`), `/api/walk` (same params) answers walk metrics for a design without building parts, `/api/linkages` lists the linkages (`kind`, `output`) and their params/modules for the viewer's tune panel and mechanism picker, `/api/modes` the dropdown's ids and labels; `?design=<id>` on `/api/glb` and `/api/walk` starts from a stored design's `BuildConfig` (`resolved.json`) and applies the other parameters on top (the glb from the store's export when it matches: `X-Spiderpig-Glb`), `/api/design/{id}` is its card for the page |
 | `spiderpig/` | the agent-facing surface (`docs/agentlib/API.md`): `spec.py` (Spec v1: a validated, JSON-schema'd document; every metric a `Target`, hard or soft per `TARGET_FIELDS`, unknown fields and wildcards rejected with `SpecError[]`), `api.py` (`resolve` -> `Design` with a content-addressed id; `check`, `plan`, `explain`, `recommend`, `walk`, `build`, `recheck`, `verify`, `export` as pure functions of the handle, each mapping onto one engine pass and returning a report), `failure.py` (every engine exception as a `Failure`: stage, code, culprits, numbers, blockers, recommendations with spec patches), `verify.py` (rows with a `proven` / `measured` / `estimated` tier at `quick` / `standard` / `full`), `design.py` (the handle, `Part` with the live build123d `solid`; an edited solid is outside the guarantee until `recheck` passes), `store.py` (the per-project store, `$SPIDERPIG_STORE` else `./.spiderpig`, git-ignored: `designs/<id>/` with the spec, the resolved record, one JSON per stage, the build's STEP parts, exports and a log; every op reads its stage when valid for the engine version, a plan is re-made and `verify_plan`ed on reload, `load` / `derive` / `compare` / `list_designs` / `gc`; `store=None` for memory). It only calls the engine; CLI and MCP come after it. |
-| `spiderpig/mcp/` | the MCP server over that API (`spiderpig mcp --store PATH`, `mise run mcp`, `python -m spiderpig.mcp`; stdio; the official `mcp` SDK 2.x, `MCPServer`): one tool per operation, files and numbers only (a design is its id, a part the path of its STEP file in the store, a failure the `Failure` document under `failures` with `ok: false`; a misused tool sets `isError` with the same envelope). `outputs.py` holds the TypedDict output schemas, `jobs.py` the process pool per store (`build`, `verify` standard/full and `export` come back as jobs after `wait_seconds`; `get_job` / `wait_job`), `guide.md` the `spiderpig://guide` resource (the vocabulary tables are generated from `TARGET_FIELDS` and the registries). Engine calls run in a worker thread one at a time; `tune` / `search` are not in v1. `tests/test_spiderpig_mcp.py` drives it through the SDK's in-memory client. |
+| `spiderpig/mcp/` | the MCP server over that API (`spiderpig mcp --store PATH`, `mise run mcp`, `python -m spiderpig.mcp`; stdio; the official `mcp` SDK 2.x, `MCPServer`): one tool per operation, files and numbers only (a design is its id, a part the path of its STEP file in the store, a failure the `Failure` document under `failures` with `ok: false`; a misused tool sets `isError` with the same envelope). `outputs.py` holds the TypedDict output schemas, `jobs.py` the process pool per store (`build`, `verify` standard/full and `export` come back as jobs after `wait_seconds`; `get_job` / `wait_job`; `view(design)` starts or reuses a `spiderpig view --serve-only` child process and returns the URL), `guide.md` the `spiderpig://guide` resource (the vocabulary tables are generated from `TARGET_FIELDS` and the registries). Engine calls run in a worker thread one at a time; `tune` / `search` are not in v1. `tests/test_spiderpig_mcp.py` drives it through the SDK's in-memory client. |
 
 ### Pipeline contract
 

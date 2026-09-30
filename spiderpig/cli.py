@@ -9,6 +9,7 @@
     spiderpig sim --left 40rpm --right 40rpm               # MuJoCo
     spiderpig report --out build/linkages.json             # every linkage
     spiderpig mcp --store .spiderpig                       # MCP server (stdio)
+    spiderpig view 1a2b3c4d5e6f7a8b --open                 # the viewer for a stored design
 
 Each command is a module's ``main(argv)``; ``spiderpig <command> --help`` shows its
 options. The design and build options are the same everywhere
@@ -32,6 +33,8 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "sim": ("spiderpig.tools.sim_walk", "simulate the walker in MuJoCo"),
     "report": ("spiderpig.tools.report", "compare every registered linkage"),
     "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
+    "view": ("spiderpig.view",
+             "serve the viewer for a stored design, no Node needed (prints the URL; --open)"),
 }
 
 

@@ -105,6 +105,10 @@ Useful flags: `--module {single,double,decker,quad}` (legs per side),
 `--thickness` (measure your sheet: acrylic varies by up to 8 %), `--kerf`,
 `--no-dxf`.
 
+`spiderpig view <design-id>` serves the animated viewer for a design recorded in
+the project store by the Python API or the MCP server (`docs/agentlib/API.md`),
+with the drive and tune panels answering for that design.
+
 ## How it is built
 
 The linkage is planar; the design (sympy) says only where the joints are

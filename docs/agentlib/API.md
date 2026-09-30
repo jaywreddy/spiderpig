@@ -1,11 +1,11 @@
-# spiderpig as a compiler: the Python API (harness v1, steps 1-3)
+# spiderpig as a compiler: the Python API (harness v1, steps 1-4)
 
 An agent writes a **Spec** and uses the engine as a compiler to verified geometry.
 Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api.py`
 (the operations), `failure.py` (every engine exception as data), `verify.py` (the
 harness), `design.py` (the handle), `store.py` (the per-project store, below), `mcp/`
-(the MCP server over all of it, at the end). This document is the surface; the CLI
-`spiderpig view` comes in step 4.
+(the MCP server over all of it), `cli.py` (the `spiderpig` command) and `view.py`
+(`spiderpig view`, at the end). This document is the surface.
 
 ```python
 from spiderpig import api
@@ -290,9 +290,11 @@ A design argument is the id `resolve` returned.
 | `get_design(design, stage?)` | `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
 | `list_designs()` | the store's cards |
 | `gc(keep?, older_than_seconds?)` | `removed`; refuses to run without either argument |
+| `view(design)` | `url` of the viewer for the design (`?design=<id>`), `server` (its base URL) and `mode`: a `spiderpig view --serve-only` child process over the store, started on a free port on the first call and reused (stopped with the server); the page's first load bakes the design unless it was exported (`ok: false`, code `viewer_not_built`, when the package has no built viewer) |
 
 `tune` and `search` are not in v1 (the guide says so); `recheck` needs solids and stays
-in the Python API.
+in the Python API. `view` is the one tool that isn't an operation: it serves the
+viewer (below).
 
 **Failures.** A stage that fails is an ordinary result: `ok: false` and `failures` as
 data (stage, code, message, culprits, numbers, blockers, recommendations with patches,
@@ -332,3 +334,41 @@ derive / compare loop on one metric).
 (`mcp.Client(server)`, no subprocess). A cold `resolve → verify("quick")` on the Klann
 single takes ~0.7 s through the client once the engine is imported (~3 s of imports
 before that); `build` of the single as a job ~10 s including the worker's start.
+
+## View (step 4, decision 6)
+
+The Python package ships the built viewer as package data (`spiderpig/viewer/dist`,
+Vite's output; `mise run viewer-build` makes it, `mise run release` makes it and
+then the sdist and wheel, and a wheel built without it fails with a message saying
+so), so `spiderpig view` needs no Node on the user's machine:
+
+```bash
+spiderpig view <design> [--store PATH] [--port N] [--open] [--no-export]
+```
+
+It picks the store as the MCP server does (`--store`, else `$SPIDERPIG_STORE`, else
+`./.spiderpig`), loads the design, runs `api.export(design, ["glb"])` (built and baked
+once, cached in the store's `exports/`), starts the FastAPI app of
+`spiderpig/server/app.py` on a free port serving the built viewer, prints the URL,
+`http://127.0.0.1:<port>/?design=<id>`, and serves until Ctrl-C (`--open` opens the
+browser). What the page does with `?design=<id>`:
+
+- `GET /api/design/{id}` is the design's card from its `resolved.json`: `kind`,
+  `linkage`, `module`, `sides`, `mode` (`robot`, or `side` for a one-sided design),
+  `phases_deg`, `params` (the linkage's proportions), `servo`, and `glb`, the URL of
+  its bake. The viewer seeds its mode and the tune panel's state (linkage, module,
+  phases, parameter sliders) from it.
+- Every `/api/glb/{mode}` and `/api/walk` query the page makes then carries
+  `design=<id>` first: the server resolves the design's `BuildConfig` from the store
+  (servo, sheet, thickness, constructions and fit included, which no query string
+  expresses) and applies the tune panel's own `module`, `phases` and `p.NAME` on top
+  of it, so the sliders edit the viewed design; a different `linkage` starts from
+  that linkage's defaults but keeps the design's materials and constructions.
+- The glb of the design itself is served from the store's export when it exists and
+  is newer than the package's sources (response header `X-Spiderpig-Glb: export`);
+  an edited design bakes into the store's `bakes/` under its config key (`bake`),
+  as every dev-server bake does.
+
+`python -m spiderpig.view --serve-only --store PATH --port N` serves a store without
+a design: the MCP `view` tool starts one such child process per server (reused
+across calls, stopped with the server) and returns the design's URL.

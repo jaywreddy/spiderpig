@@ -12,7 +12,9 @@ const stage = createStage(canvas);
 const clock = new THREE.Clock();
 
 // Deep links: ?mode=robot&view=side&t=0.3 (t in clip seconds; pauses there);
-// &linkage=jansen and the tune panel's design parameters (drive/index.ts).
+// &linkage=jansen and the tune panel's design parameters (drive/index.ts);
+// &design=<id> a stored design (`spiderpig view`): its glb, its mode (robot or one
+// side), and its linkage, module, phases and proportions in the tune panel.
 const params = new URLSearchParams(location.search);
 const VIEWS: readonly View[] = ['three-quarter', 'side', 'front', 'top'];
 const paramView = params.get('view') as View | null;
@@ -167,11 +169,26 @@ async function fetchModes(): Promise<ModeCatalogue | null> {
 
 async function init(): Promise<void> {
   const catalogue = await fetchModes();
-  const requested = params.get('mode');
+  // ?design=<id>: the stored design's card seeds the tune panel and picks the mode
+  // (robot, or `side` for a one-sided design) unless ?mode= says otherwise.
+  const designId = params.get('design');
+  const card = designId
+    ? await drive.loadDesign(designId).catch((err: unknown) => {
+      ui.setStatus(`design ${designId}: ${(err as Error).message}`);
+      return null;
+    })
+    : null;
+  const requested = params.get('mode') ?? card?.mode ?? null;
   let initial = ui.modeValue();
   if (catalogue) {
-    initial = requested && catalogue.modes.includes(requested) ? requested : catalogue.default;
-    ui.setModes(catalogue.modes, initial, catalogue.labels);
+    // The server's dropdown ids, plus the design's own mode when it isn't one of them
+    // (`side`: one side of a one-sided design; an id for URLs, not offered otherwise).
+    const modes = card && !catalogue.modes.includes(card.mode) ? [...catalogue.modes, card.mode]
+      : catalogue.modes;
+    const labels = card && !catalogue.modes.includes(card.mode)
+      ? { ...catalogue.labels, [card.mode]: `${card.mode} (this design)` } : catalogue.labels;
+    initial = requested && modes.includes(requested) ? requested : catalogue.default;
+    ui.setModes(modes, initial, labels);
   }
   // ?linkage=... (the tune panel's). A design that can't be built still tunes (stick preview).
   await loadMode(initial, drive.baseQuery(initial))
