@@ -18,8 +18,8 @@ SERVO = {"key": "sts3215", "rpm_max": 52.0}
 
 def walk_response(module: str = "quad", linkage: str = "klann") -> dict:
     """``GET /api/walk?module=<module>&linkage=<linkage>``'s body."""
-    import walk
-    from config import BuildConfig
+    from spiderpig import walk
+    from spiderpig.config import BuildConfig
 
     return walk.api_payload(BuildConfig(linkage=linkage, module=module))
 

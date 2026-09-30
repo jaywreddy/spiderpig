@@ -7,15 +7,21 @@ import math
 import pytest
 from build123d import Location
 
-import servos
-from construction.base import FRAME_INNER, Build, Realized
-from construction.chassis import MIN_ENGAGE, ServoFrame, centre_plates, servo_frame, tie_dims
-from construction.contract import bad_solids, clashes
-from construction.robot import FrameTies
-from hardware import fasteners
-from hardware.catalog import CATALOG, _load, get
-from servos.model import UNKNOWN_HOLE_DEPTH
-from shapes import disc
+from spiderpig import servos
+from spiderpig.construction.base import FRAME_INNER, Build, Realized
+from spiderpig.construction.chassis import (
+    MIN_ENGAGE,
+    ServoFrame,
+    centre_plates,
+    servo_frame,
+    tie_dims,
+)
+from spiderpig.construction.contract import bad_solids, clashes
+from spiderpig.construction.robot import FrameTies
+from spiderpig.hardware import fasteners
+from spiderpig.hardware.catalog import CATALOG, _load, get
+from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
+from spiderpig.shapes import disc
 
 TS = (1.0, 4.38)
 

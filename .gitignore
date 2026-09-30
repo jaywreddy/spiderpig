@@ -26,9 +26,12 @@ __pycache__/
 mise.local.toml
 
 build/
+dist/
 viewer/data/
 viewer/dist/
 viewer/node_modules/
+# the built viewer: package data, produced by `mise run viewer-build` (Vite's outDir)
+spiderpig/viewer/dist/
 
 # agent worktrees
 .claude/worktrees/

@@ -44,11 +44,11 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-import linkage
-from config import ParamError
-from construction.base import ConstructionError
+from spiderpig import linkage
+from spiderpig.config import ParamError
+from spiderpig.construction.base import ConstructionError
 from spiderpig.spec import FIT_FIELDS, SpecErrors
-from stack import ClearanceError, PlanError, StackSpec
+from spiderpig.stack import ClearanceError, PlanError, StackSpec
 
 STAGES = ("spec", "program", "output", "drive", "construction", "static", "plan", "fabricate",
           "contract", "clash", "layout", "bom", "walk", "sim")

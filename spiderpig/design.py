@@ -23,6 +23,7 @@ passes on it.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import math
 import tomllib
@@ -33,18 +34,30 @@ from pathlib import Path
 
 import numpy as np
 
-from config import BuildConfig
+from spiderpig.config import BuildConfig
 from spiderpig.spec import Spec
-from stack import StackSpec
+from spiderpig.stack import StackSpec
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent      # the spiderpig package
+
+
+def package_version() -> str:
+    """The installed distribution's version, else the checkout's ``pyproject.toml``."""
+    try:
+        return importlib.metadata.version("spiderpig")
+    except importlib.metadata.PackageNotFoundError:
+        pyproject = ROOT.parent / "pyproject.toml"
+        if pyproject.is_file():
+            with open(pyproject, "rb") as f:
+                return tomllib.load(f)["project"]["version"]
+        return "0.0.0"
 
 
 def engine_version() -> str:
     """The package version plus a hash of what changes a design's result: the linkage
-    definitions (``linkages/*.py``) and the planner's defaults (:class:`stack.StackSpec`)."""
-    with open(ROOT / "pyproject.toml", "rb") as f:
-        version = tomllib.load(f)["project"]["version"]
+    definitions (``spiderpig/linkages/*.py``) and the planner's defaults
+    (:class:`spiderpig.stack.StackSpec`)."""
+    version = package_version()
     h = hashlib.sha256()
     for p in sorted((ROOT / "linkages").glob("*.py")):
         h.update(p.name.encode())
@@ -129,7 +142,7 @@ class Part:
 
     def placed(self):
         """The solid in world coordinates (the body's pose applied)."""
-        from mechanism import Pose
+        from spiderpig.mechanism import Pose
 
         return self.solid.moved(Pose.from_matrix(np.array(self.pose)).to_location())
 

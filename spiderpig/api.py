@@ -9,7 +9,7 @@ Each operation maps onto the engine's own pass (:func:`check` onto the
 program checks and the planner's static stage, :func:`plan` onto
 :func:`fabricate.design_side`, :func:`walk` onto :func:`walk.api_payload`,
 :func:`build` onto :func:`fabricate.fabricate`, :func:`export` onto what
-``main.py`` writes), stores its report on the handle
+``spiderpig build`` writes), stores its report on the handle
 (``design.reports[stage]``) and returns it. A design that merely fails a
 stage gets a report with ``ok = False`` and a :class:`spiderpig.failure.Failure`
 (stage, code, culprits, numbers, checked recommendations); operations raise
@@ -34,23 +34,22 @@ from __future__ import annotations
 
 import logging
 import math
-import sys
 import time
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 import numpy as np
 
-import linkage
-import servos
-import walk as walk_model
-from config import BuildConfig, ParamError
-from construction.base import Build, ConstructionError, Params
-from construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
-from construction.crank import CrankRoute, Run
-from construction.envelope import claimed_solid
-from construction.robot import FrameTies, assemble_robot
-from fabricate import (
+from spiderpig import linkage, servos
+from spiderpig import walk as walk_model
+from spiderpig.config import BuildConfig, ParamError
+from spiderpig.construction.base import Build, ConstructionError, Params
+from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
+from spiderpig.construction.crank import CrankRoute, Run
+from spiderpig.construction.envelope import claimed_solid
+from spiderpig.construction.robot import FrameTies, assemble_robot
+from spiderpig.design import Design, Part, design_id, engine_version, jsonable, spec_hash
+from spiderpig.fabricate import (
     SideDesign,
     design_side,
     fabricate_side,
@@ -58,13 +57,12 @@ from fabricate import (
     side_problem,
     static_stage,
 )
-from fabricate import template_for as _template_for
-from hardware.bom import BomLine, bom_from_mechanism, group_made
-from hardware.catalog import sheet_name, sheet_size
-from hardware.mass import filament_density, material_of, part_props
-from layout import DEFAULT_KERF, save_sheets
-from spiderpig.design import ROOT, Design, Part, design_id, engine_version, jsonable, spec_hash
+from spiderpig.fabricate import template_for as _template_for
 from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
+from spiderpig.hardware.bom import BomLine, bom_from_mechanism, group_made
+from spiderpig.hardware.catalog import sheet_name, sheet_size
+from spiderpig.hardware.mass import filament_density, material_of, part_props
+from spiderpig.layout import DEFAULT_KERF, save_sheets
 from spiderpig.spec import (
     FIT_FIELDS,
     SECTIONS,
@@ -76,8 +74,8 @@ from spiderpig.spec import (
     nearest,
     validate,
 )
+from spiderpig.stack import ClearanceError, PlanError, verify_plan
 from spiderpig.store import PROJECT, Store, diff_json, report_doc
-from stack import ClearanceError, PlanError, verify_plan
 
 log = logging.getLogger("spiderpig")
 
@@ -807,7 +805,7 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
 
 def explain(design: Design) -> str:
     """Today's ``explain`` text: each stage's verdict on one side of the design."""
-    import explain as explain_module
+    from spiderpig import explain as explain_module
 
     cfg = design.config
     return explain_module.explain(cfg.linkage, cfg.module, dict(cfg.proportions) or None,
@@ -1116,7 +1114,7 @@ def verify(design: Design, level: str = "quick"):
 def export(design: Design, formats=None, out_dir: str | Path | None = None,
            force: bool = False) -> ExportReport:
     """Write the chosen ``formats`` (default: the spec's ``outputs``) into ``out_dir``
-    (default: the design's ``exports/`` in its store, else ``build/``), as ``main.py``
+    (default: the design's ``exports/`` in its store, else ``build/``), as ``spiderpig build``
     does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
@@ -1160,7 +1158,7 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     if "print" in formats or "bom" in formats:
         groups = {m: group_made(mech.bodies, m) for m in ("laser", "printed")}
     if "print" in formats:
-        import main as build_cli
+        from spiderpig import build as build_cli
 
         build_cli.export_prints(groups["printed"], out / "print",
                                 density=filament_density(filament))
@@ -1190,16 +1188,14 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
     if "glb" in formats:
-        if str(ROOT / "viewer") not in sys.path:
-            sys.path.append(str(ROOT / "viewer"))
-        from bake_gltf import bake_gltf
+        from spiderpig.bake import bake_gltf
 
         bake_gltf(out / f"{name}.glb", cfg, profile=False)
         files.append(out / f"{name}.glb")
     if "mjcf" in formats:
         import json
 
-        from sim.mjcf import build_mjcf
+        from spiderpig.sim.mjcf import build_mjcf
 
         xml, meta = build_mjcf(cfg)
         (out / f"{name}.xml").write_text(xml)

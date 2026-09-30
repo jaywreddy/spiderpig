@@ -1,7 +1,7 @@
 """spiderpig over MCP (harness v1, step 3): the agent-facing API as tools over files and
 numbers.
 
-    uv run python cli.py mcp --store .spiderpig      # stdio; or: python -m spiderpig.mcp
+    spiderpig mcp --store .spiderpig      # stdio; or: python -m spiderpig.mcp
 
 Every tool maps one-to-one onto :mod:`spiderpig.api`. Across this boundary a design is
 its id, a report is JSON, a part is the path of its STEP file inside the store
@@ -46,14 +46,11 @@ from mcp.server.mcpserver.resources import FunctionResource
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
-import construction
-import linkage
-import servos
-import walk as walk_model
-from hardware import catalog as hw_catalog
-from spiderpig import api
+from spiderpig import api, construction, linkage, servos
+from spiderpig import walk as walk_model
 from spiderpig.design import Design, engine_version, jsonable
 from spiderpig.failure import Failure
+from spiderpig.hardware import catalog as hw_catalog
 from spiderpig.mcp import outputs as o
 from spiderpig.mcp.jobs import Jobs
 from spiderpig.spec import TARGET_FIELDS, SpecErrors, nearest, sheet_keys, spec_schema
@@ -369,8 +366,8 @@ def _linkages_table() -> str:
 
 
 def _fit_defaults() -> str:
-    from construction.base import Params
-    from layout import DEFAULT_KERF
+    from spiderpig.construction.base import Params
+    from spiderpig.layout import DEFAULT_KERF
 
     p = Params()
     items = [f"`{f.name}` {getattr(p, f.name):g}" for f in fields(Params)]
@@ -797,7 +794,7 @@ def _register_prompts(server: MCPServer) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """``python cli.py mcp [--store PATH] [--workers N]``: serve over stdio."""
+    """``spiderpig mcp [--store PATH] [--workers N]``: serve over stdio."""
     ap = argparse.ArgumentParser(prog="spiderpig mcp",
                                  description="serve the spiderpig API over MCP (stdio)")
     ap.add_argument("--store", metavar="PATH",

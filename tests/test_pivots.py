@@ -12,18 +12,18 @@ from dataclasses import replace
 
 import pytest
 
-import construction
-from config import BuildConfig
-from construction import ConstructionError
-from construction.axle import AxleGroup, flange_sides
-from construction.base import FRAME_INNER, FRAME_OUTER, Build, Params, Realized
-from construction.contract import check_side
-from construction.pivots import BEARING, BUSHING, BoltAxle, InsertAxle, RodAxle
-from construction.pivots.common import Column
-from fabricate import design_side, fabricate, fabricate_side, template_for
-from hardware.bom import bom_from_mechanism
-from hardware.catalog import get
-from stack import Layout, Unbuildable, verify_plan
+from spiderpig import construction
+from spiderpig.config import BuildConfig
+from spiderpig.construction import ConstructionError
+from spiderpig.construction.axle import AxleGroup, flange_sides
+from spiderpig.construction.base import FRAME_INNER, FRAME_OUTER, Build, Params, Realized
+from spiderpig.construction.contract import check_side
+from spiderpig.construction.pivots import BEARING, BUSHING, BoltAxle, InsertAxle, RodAxle
+from spiderpig.construction.pivots.common import Column
+from spiderpig.fabricate import design_side, fabricate, fabricate_side, template_for
+from spiderpig.hardware.bom import bom_from_mechanism
+from spiderpig.hardware.catalog import get
+from spiderpig.stack import Layout, Unbuildable, verify_plan
 
 KEYS = ("rod", "bolt", "bearing", "bushing")
 T = 1.0
@@ -84,7 +84,7 @@ def _group_bodies(fab, group):
 
 
 def test_registry_and_cli_list_the_constructions(capsys):
-    from main import _list_options
+    from spiderpig.build import _list_options
 
     assert set(KEYS) <= set(construction.AXLES)
     for key in KEYS:

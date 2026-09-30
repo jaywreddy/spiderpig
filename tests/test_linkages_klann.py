@@ -16,7 +16,7 @@ import math
 import numpy as np
 import pytest
 
-import linkage
+from spiderpig import linkage
 
 TS = np.linspace(0.0, 2.0 * math.pi, 3600, endpoint=False)
 KLANNS = ("klann_patent", "klann_lego", "klann_long_legs", "klann_high_step")

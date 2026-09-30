@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from config import BuildConfig
-from fabricate import design_side
+from spiderpig.config import BuildConfig
+from spiderpig.fabricate import design_side
 
 
 def test_links_sit_in_their_planned_layers(design, side):

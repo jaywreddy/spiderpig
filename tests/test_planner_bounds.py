@@ -9,10 +9,10 @@ from dataclasses import replace
 
 import pytest
 
-from config import BuildConfig
-from fabricate import design_side, side_problem, template_for
-from recommend import recommend
-from stack import PlanError, StackSpec, verify_plan
+from spiderpig.config import BuildConfig
+from spiderpig.fabricate import design_side, side_problem, template_for
+from spiderpig.recommend import recommend
+from spiderpig.stack import PlanError, StackSpec, verify_plan
 
 
 def _problem(key: str, module: str, **spec):

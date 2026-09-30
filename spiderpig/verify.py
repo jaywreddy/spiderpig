@@ -33,15 +33,15 @@ import importlib.util
 import time
 from dataclasses import dataclass, field, replace
 
-from construction.contract import bad_solids, check_side, clashes
-from hardware.bom import BomLine, bom_from_mechanism
-from hardware.catalog import sheet_size
-from layout import pack
 from spiderpig import api
+from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.design import Design
 from spiderpig.failure import Failure
+from spiderpig.hardware.bom import BomLine, bom_from_mechanism
+from spiderpig.hardware.catalog import sheet_size
+from spiderpig.layout import pack
 from spiderpig.spec import Target, TargetField, effective_hard, target_field
-from stack import verify_plan
+from spiderpig.stack import verify_plan
 
 LEVELS = ("quick", "standard", "full")
 CONTRACT_TS = {"standard": (0.0, 3.2), "full": (0.0, 1.6, 3.2, 4.8)}
@@ -338,7 +338,7 @@ def _envelope_estimate(design: Design) -> list[Row]:
     half-width (x, y) and the robot's width from the mid-plane (z)."""
     import numpy as np
 
-    from construction.robot import mid_plane
+    from spiderpig.construction.robot import mid_plane
 
     side, cfg = design.side, design.config
     pts = side.plan.topo.geometry.points
@@ -358,7 +358,7 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
     if importlib.util.find_spec("mujoco") is None:
         return [Row("sim.mujoco", "sim", "not installed", None, True, "estimated", False,
                     "pip install mujoco to simulate")]
-    from sim.run import simulate, walk_metrics
+    from spiderpig.sim.run import simulate, walk_metrics
 
     try:
         result = simulate(design.config, seconds=SIM_SECONDS)

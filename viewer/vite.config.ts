@@ -13,10 +13,13 @@ const env = (globalThis as { process?: { env: Record<string, string | undefined>
 const port = Number(env.VITE_PORT) || 5173;
 const apiPort = Number(env.VITE_API_PORT) || 8000;
 
+// The build lands inside the Python package (``spiderpig/viewer/dist``, git-ignored):
+// it ships as package data, and ``spiderpig view`` / ``spiderpig.server.app`` serve it
+// without Node on the user's machine. ``viewer/`` itself (sources, node_modules) never ships.
 export default defineConfig({
   root: '.',
   build: {
-    outDir: 'dist',
+    outDir: '../spiderpig/viewer/dist',
     emptyOutDir: true,
     target: 'es2022',
   },

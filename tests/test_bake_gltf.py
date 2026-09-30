@@ -11,24 +11,17 @@ from __future__ import annotations
 
 import logging
 import math
-import sys
 from dataclasses import replace
-from pathlib import Path
 
 import numpy as np
 import pygltflib
 import pytest
 
-# viewer/ is a sibling of the package modules; make it importable.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
-
-from bake_gltf import _MATERIALS, _congruent, _Planar, bake_gltf  # noqa: E402
-
-import linkage  # noqa: E402
-import walk  # noqa: E402
-from config import BuildConfig, ParamError  # noqa: E402
-from fabricate import fabricate, template_for  # noqa: E402
-from hardware.mass import part_props  # noqa: E402
+from spiderpig import linkage, walk
+from spiderpig.bake import _MATERIALS, _congruent, _Planar, bake_gltf
+from spiderpig.config import BuildConfig, ParamError
+from spiderpig.fabricate import fabricate, template_for
+from spiderpig.hardware.mass import part_props
 
 pytestmark = pytest.mark.slow
 
@@ -243,8 +236,8 @@ def test_congruence_check():
     """A Z-mirror is a Z shift only for a part symmetric about its mid-plane."""
     from build123d import Axis, Location, Plane
 
-    from shapes import Cut, disc
-    from shapes import plate as make_plate
+    from spiderpig.shapes import Cut, disc
+    from spiderpig.shapes import plate as make_plate
 
     plate = make_plate([((0, 0), (40, 10), 6.0)], 0.0, 3.0, [Cut((0, 0), 4.0), Cut((40, 10), 4.0)])
     pin = disc((5, 5), 3.0, 0.0, 12.0).fuse(disc((5, 5), 4.5, 0.0, 2.0))   # head at the bottom

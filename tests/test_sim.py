@@ -10,11 +10,11 @@ import pytest
 
 mujoco = pytest.importorskip("mujoco")
 
-import linkage  # noqa: E402
-from config import BuildConfig  # noqa: E402
-from fabricate import template_for  # noqa: E402
-from sim.mjcf import MM, fabricated, load_model  # noqa: E402
-from sim.run import (  # noqa: E402
+from spiderpig import linkage  # noqa: E402
+from spiderpig.config import BuildConfig  # noqa: E402
+from spiderpig.fabricate import template_for  # noqa: E402
+from spiderpig.sim.mjcf import MM, fabricated, load_model  # noqa: E402
+from spiderpig.sim.run import (  # noqa: E402
     body_motions,
     kinematic_gait,
     kinematic_qpos,
@@ -22,7 +22,7 @@ from sim.run import (  # noqa: E402
     simulate,
     walk_metrics,
 )
-from stack import body_class, is_link  # noqa: E402
+from spiderpig.stack import body_class, is_link  # noqa: E402
 
 pytestmark = pytest.mark.slow
 

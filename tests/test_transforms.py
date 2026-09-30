@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mechanism import Pose
+from spiderpig.mechanism import Pose
 
 
 def _rz(theta: float, xyz=(0.0, 0.0, 0.0)) -> Pose:

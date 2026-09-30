@@ -21,12 +21,12 @@ from pathlib import Path
 
 import pytest
 
-import servos
-from config import BuildConfig
-from fabricate import design_side, fabricate, fabricate_side
-from linkage import build_module_template
-from servos import cad as cadlib
-from servos import model
+from spiderpig import servos
+from spiderpig.config import BuildConfig
+from spiderpig.fabricate import design_side, fabricate, fabricate_side
+from spiderpig.linkage import build_module_template
+from spiderpig.servos import cad as cadlib
+from spiderpig.servos import model
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -105,20 +105,20 @@ def _free_port() -> int:
 def viewer_server() -> Iterator[str]:
     """Start the FastAPI server once per session and yield its base URL.
 
-    E2E tests run against the built viewer bundle (``viewer/dist``) on a
-    single port — `mise run test` invokes ``viewer-build`` first via the
-    task ``depends`` chain, so the bundle is up to date.
+    E2E tests run against the built viewer bundle (``spiderpig/viewer/dist``, the
+    package data a release ships) on a single port — `mise run test` invokes
+    ``viewer-build`` first via the task ``depends`` chain, so the bundle is up to date.
     """
-    dist = _REPO_ROOT / "viewer" / "dist"
-    if not dist.is_dir():
+    dist = _REPO_ROOT / "spiderpig" / "viewer" / "dist"
+    if not (dist / "index.html").is_file():
         raise RuntimeError(
-            f"viewer/dist missing — run `mise run viewer-build` before e2e tests "
+            f"spiderpig/viewer/dist missing — run `mise run viewer-build` before e2e tests "
             f"(or use `mise run test`, which builds it for you). Looked at {dist}"
         )
     port = _free_port()
     proc = subprocess.Popen(  # noqa: S603
         [
-            sys.executable, "-m", "uvicorn", "server.app:app",
+            sys.executable, "-m", "uvicorn", "spiderpig.server.app:app",
             "--host", "127.0.0.1", "--port", str(port),
             "--log-level", "warning",
         ],

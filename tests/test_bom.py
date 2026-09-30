@@ -7,10 +7,10 @@ import csv
 import pytest
 from build123d import Axis, Box, Plane, Pos
 
-from hardware import catalog
-from hardware.bom import BomLine, bom_from_mechanism, congruent, group_made
-from hardware.catalog import Item, Offer, pick_length, register
-from mechanism import Body, Mechanism
+from spiderpig.hardware import catalog
+from spiderpig.hardware.bom import BomLine, bom_from_mechanism, congruent, group_made
+from spiderpig.hardware.catalog import Item, Offer, pick_length, register
+from spiderpig.mechanism import Body, Mechanism
 
 
 @pytest.fixture(autouse=True)

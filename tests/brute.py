@@ -21,9 +21,9 @@ from collections.abc import Iterator
 
 import numpy as np
 
-import construction
-from construction.crank import NUT_AF, POST_SCREWS, CrankRoute, Run
-from stack import Layout, Placed, StackProblem, made
+from spiderpig import construction
+from spiderpig.construction.crank import NUT_AF, POST_SCREWS, CrankRoute, Run
+from spiderpig.stack import Layout, Placed, StackProblem, made
 
 
 def routes(points: list[str], lo: int, hi: int, need: dict[int, str],

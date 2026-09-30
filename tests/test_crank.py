@@ -8,12 +8,11 @@ import math
 import numpy as np
 import pytest
 
-import linkage
-import servos
-from config import BuildConfig
-from construction.base import FRAME_OUTER, Build, ConstructionError, Realized
-from construction.contract import check_side, clashes
-from construction.crank import (
+from spiderpig import linkage, servos
+from spiderpig.config import BuildConfig
+from spiderpig.construction.base import FRAME_OUTER, Build, ConstructionError, Realized
+from spiderpig.construction.contract import check_side, clashes
+from spiderpig.construction.crank import (
     BHCS,
     NUT_H,
     CrankRoute,
@@ -22,18 +21,18 @@ from construction.crank import (
     default_route,
     route_of,
 )
-from fabricate import (
+from spiderpig.fabricate import (
     SideDesign,
     design_side,
     fabricate_side,
     side_problem,
     template_for,
 )
-from hardware.bom import bom_from_mechanism
-from servos import cad as cadlib
-from servos import model
-from shapes import disc
-from stack import Axis, Layout, verify_plan
+from spiderpig.hardware.bom import bom_from_mechanism
+from spiderpig.servos import cad as cadlib
+from spiderpig.servos import model
+from spiderpig.shapes import disc
+from spiderpig.stack import Axis, Layout, verify_plan
 
 TEMPLATES = {
     "single": lambda: linkage.build_module_template("single"),

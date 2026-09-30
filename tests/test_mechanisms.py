@@ -9,11 +9,11 @@ from dataclasses import replace
 
 import pytest
 
-import linkage
-from config import BuildConfig, ParamError
-from construction import ConstructionError
-from construction.contract import check_side
-from fabricate import design_side, template_for
+from spiderpig import linkage
+from spiderpig.config import BuildConfig, ParamError
+from spiderpig.construction import ConstructionError
+from spiderpig.construction.contract import check_side
+from spiderpig.fabricate import design_side, template_for
 
 MECHANISMS = linkage.available("mechanism")
 

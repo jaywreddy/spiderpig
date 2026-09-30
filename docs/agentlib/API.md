@@ -59,7 +59,7 @@ miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `h
 | `budget.print_g` | both | g | **hard** | bom | measured | filament at 100 % infill |
 | `budget.sheets` | both | sheets | **hard** | layout | measured | sheets the laser parts pack onto |
 
-Semantics are pinned once, in `TARGET_FIELDS`: robot metrics come from `walk.py`;
+Semantics are pinned once, in `TARGET_FIELDS`: robot metrics come from `spiderpig/walk.py`;
 per-leg foot-path numbers (stance stride, ripple) appear only on the linkage card
 (`api.describe`), except `lift_mm`, which is a target.
 
@@ -72,7 +72,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
-| `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
+| `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
 | `list_linkages(kind?)`, `describe(key)` | linkage cards | registry, `Linkage.check`, foot path / output check | ms |
 | `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm` | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table` | `fabricate.design_side` (cached by the engine) | 0.4 s |
@@ -83,7 +83,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids` | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `main.py` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where | 5-60 s (the BOM's grouping dominates) |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where | 5-60 s (the BOM's grouping dominates) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
 | `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
@@ -246,7 +246,7 @@ The store (decision 4) is the state shared between calls; the server keeps nothi
 else but its job pool.
 
 ```bash
-uv run python cli.py mcp --store .spiderpig      # stdio; also: mise run mcp, python -m spiderpig.mcp
+spiderpig mcp --store .spiderpig      # stdio; also: mise run mcp, python -m spiderpig.mcp
 ```
 
 `--store PATH` picks the store (else `$SPIDERPIG_STORE`, else `./.spiderpig`),
@@ -259,7 +259,7 @@ engine prints can reach the wire). A Claude Code / Claude Desktop entry:
   "mcpServers": {
     "spiderpig": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/spiderpig", "python", "cli.py", "mcp",
+      "args": ["run", "--directory", "/path/to/spiderpig", "spiderpig", "mcp",
                "--store", "/path/to/project/.spiderpig"]
     }
   }

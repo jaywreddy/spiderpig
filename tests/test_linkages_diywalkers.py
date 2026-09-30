@@ -15,8 +15,8 @@ import math
 import numpy as np
 import pytest
 
-import linkage
-from linkages import jansen, strider, trotbot
+from spiderpig import linkage
+from spiderpig.linkages import jansen, strider, trotbot
 
 TS = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
 DEFINED = {k: linkage.get(k) for k in (

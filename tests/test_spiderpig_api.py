@@ -296,10 +296,10 @@ def test_a_broken_loop_is_a_program_failure_with_its_numbers():
 
 
 def test_exceptions_map_to_stages():
-    import linkage
-    from config import ParamError
-    from construction.base import ConstructionError
-    from stack import PlanError
+    from spiderpig import linkage
+    from spiderpig.config import ParamError
+    from spiderpig.construction.base import ConstructionError
+    from spiderpig.stack import PlanError
 
     assert Failure.from_exception(ParamError("x")).stage == "spec"
     assert Failure.from_exception(linkage.OutputError("k: y")).code == "promise_broken"

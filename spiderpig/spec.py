@@ -29,13 +29,11 @@ import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
-import construction
-import linkage
-import servos
-from construction.base import Params
-from hardware.catalog import CATALOG
-from hardware.catalog import _load as _load_catalog
-from layout import DEFAULT_KERF
+from spiderpig import construction, linkage, servos
+from spiderpig.construction.base import Params
+from spiderpig.hardware.catalog import CATALOG
+from spiderpig.hardware.catalog import _load as _load_catalog
+from spiderpig.layout import DEFAULT_KERF
 
 SPEC_VERSION = "1"
 KINDS = ("walker", "mechanism")

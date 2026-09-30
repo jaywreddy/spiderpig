@@ -11,11 +11,11 @@ chains consistent.
 
 ```bash
 mise run view           # FastAPI :8000 + Vite :5173 (HMR) — open http://localhost:5173
-mise run bake           # bake viewer/data/*.glb
+mise run bake           # bake <store>/bakes/*.glb (the project store, .spiderpig/)
 mise run build          # STEP/STL/DXF -> build/
-mise run test           # pytest (auto-builds viewer/dist for e2e)
+mise run test           # pytest (auto-builds spiderpig/viewer/dist for e2e)
 mise run lint           # ruff
-mise run clean          # rm build/, viewer/data/, viewer/dist/, viewer/node_modules/
+mise run clean          # rm build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/
 mise tasks              # list everything available
 ```
 
@@ -38,24 +38,25 @@ Also raw, never via mise:
 
 ## Adding a new task
 
-Edit `mise.toml`, not `scripts/`. Tasks should be one-liners that
+Edit `mise.toml`, not `spiderpig/tools/`. Tasks should be one-liners that
 delegate to `uv run …` or `npm run …`. The only existing helper script,
-`scripts/dev.py`, is justified because it spawns FastAPI + Vite *in
+`spiderpig/tools/dev.py`, is justified because it spawns FastAPI + Vite *in
 parallel* — something a single task command can't express portably.
 
 ## What the server does
 
-`server/app.py` (FastAPI + uvicorn) serves `viewer/dist/` (Vite output)
-plus `/api/glb/{mode}` and a `/ws` watch-and-rebake channel. In dev,
-Vite on `:5173` proxies `/api` and `/ws` to FastAPI on `:8000`; in prod
-or e2e, just hit FastAPI on `:8000` with `viewer/dist` mounted. Override
-the static dir with `SPIDERPIG_VIEWER_DIST` if needed.
+`spiderpig/server/app.py` (FastAPI + uvicorn) serves `spiderpig/viewer/dist/`
+(Vite's output, shipped as package data) plus `/api/glb/{mode}` and a `/ws`
+watch-and-rebake channel. In dev, Vite proxies `/api` and `/ws` to FastAPI
+(per-worktree ports, see the banner); in prod or e2e, just hit FastAPI with
+`spiderpig/viewer/dist` mounted. Override the static dir with
+`SPIDERPIG_VIEWER_DIST` if needed.
 
 ## Testing the viewer end-to-end
 
 `mise run test -- -m e2e` runs Playwright against the **built** bundle
 (the `test` task depends on `viewer-build`). The fixture in
-`tests/conftest.py` will refuse to start if `viewer/dist/` is missing —
+`tests/conftest.py` will refuse to start if `spiderpig/viewer/dist/` is missing —
 that's intentional, it forces e2e to test what users actually see.
 
 For a quick visual smoke check, `mise run view` and look at
