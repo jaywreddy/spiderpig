@@ -25,7 +25,7 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `version` | `"1"` | `"1"` |
 | `kind` | `walker` \| `mechanism` | required |
 | `linkage.key` | a registered linkage (`api.list_linkages()`) | required; its kind must match |
-| `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them) | the linkage's defaults |
+| `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them: a length must be > 0; an angle, or a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`) | `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
@@ -73,11 +73,12 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
 | `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
-| `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width) | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s, the walk per module) |
+| `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width); a mechanism's carries its `output_check` and a `sensitivity` table of the output's numbers (stroke, straightness, extent, on-line fraction, rotation, swing, dwell: the ones it measures), so a stroke that only scales with `unit` is told from one a proportion moves; every parameter says whether it is an `angle`, `signed` (a coordinate) or a `scale` parameter | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s, the walk per module) |
 | `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm`, `lowest_body_part` (which body shape sets the clearance); a construction that can't be built at these parameters is a `construction` failure whose `numbers` and checked `recommendations` name the lever (the sheet thickness) | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table`, `warnings` (what the constructions warned about: a printed snap that overstrains) | `fabricate.design_side` (cached by the engine); a search is bounded by `StackSpec.max_seconds` (60 s) and the recommendation checks by one more | 0.4 s (Klann quad); up to a minute on a large or scaled-down design, one to three on one that fails |
-| `explain(design)` | text | `explain.explain_config` on the design's full config, from its own plan (a recorded failure is printed, not re-solved) | ms after plan |
-| `recommend(design)` | `[Recommendation]` with `patch` (the failure's `notes` say what can't help or wasn't checked) | the failing stage's checked recommendations: a thickness for a construction that can't be built that thin; a scale or thinner parts for a link-to-axle gap; the linkage's default scale for a plan that ran into the stack's own room after a scale-down. `verified` says what was re-run: for a `decker` / `quad` design the static stage and its **single** module's plan (the design's own plan is not checked: plan the derived design) | 1-60 s |
+| `explain(design)` | text | `explain.explain_config` on the design's full config, from its own plan (a recorded failure is printed, not re-solved); then, for a design that plans, `4. targets`: each spec target `check` and `plan` can read (a mechanism's output numbers, a walker's lift and ground clearance, the stack) as ok / missed, and what `advise` would do about a miss | ms after plan |
+| `advise(design)` | `AdviceReport`: `stage` (the failing stage; `target` when every stage passes but a target is missed; `None` when nothing is), `recommendations` with their `patch`, `notes` | a stage that fails answers with its checked recommendations and notes (below). Every stage passing: a missed `motion.stroke_mm`, `straightness_mm` or `lift_mm` is met by `recommend.target_scale`, the least practical scale of the linkage that meets every such target, measured again and planned (the design's own module) before it is offered; a missed `size.stack_mm` that is proven the thinnest gets the floor note (what could be thinner), a missed `ground_clearance_mm` a note naming its lowest part and the levers | ms; up to the planner's deadline for the check |
+| `recommend(design)` | `[Recommendation]` (`advise(design).recommendations`) | the failing stage's checked recommendations: a thickness for a construction that can't be built that thin; a scale or thinner parts for a link-to-axle gap; the linkage's default scale for a plan that ran into the stack's own room after a scale-down; printed pillars for a plan that failed with pillars on a purchased shaft (`bolt`: the longest stock screw bounds the stack). `verified` says what was re-run: a plan failure is re-planned with the design's own module ("plans (quad module, the design's own) in ..."); a static failure of a `decker` / `quad` design is checked with its **single** module's plan (plan the derived design for its own) | 1-60 s |
 | `walk(design)` | `WalkReport`: `metrics`, `mass_g`, `rows`, `notes` (a stride near zero: why, and which module of the linkage walks) | `walk.api_payload` (feet at their planned layers) | 0.1 s |
 | `build(design, t=1.0)` | `BuildReport`: `parts` manifest, `mass_g`, `envelope_mm`, `counts`, `warnings`; `design.parts[name]` | `fabricate.fabricate` | 8 s |
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
@@ -221,9 +222,21 @@ the row `budget.cost_floor_usd` prices what the design buys whatever its parts (
 servos, a spool, a sheet, the robot's cement and inserts) from the catalog, and a floor
 already over a `max` fails `budget.cost_usd` before any build; `plan.warnings`
 (informational, soft) carries the constructions' warnings; a walker whose stride reads
-near zero has the walk note on its stride and speed rows. The catalog's pivot hardware
-(bearings, bushings, rod, clips, CA glue) and most screws carry vendor links but no
-price, so a metal-pivot design's cost is a lower bound until they are priced.
+near zero has the walk note on its stride and speed rows. `size.mass_g` at `quick` is
+the nominal model's total for what the design builds (one side or the robot) and its
+detail says what it is made of (links as pills at the sheet's density with the holes
+taken out, the servos, the plates, the printed parts; within about 1.3 % of the built
+mass on the default Klann robots, within 5 % on the Jansen quad); at `standard` the
+measured row's detail lists the mass by group (links, drive, chassis, crank, frame,
+pins, pillars). A `size.stack_mm` row that fails on a plan that is proven the thinnest
+says so ("proven the thinnest for jansen's quad module on 3 mm layers") and what could
+be thinner: fewer legs a side (and whether those modules walk), or the sheet's pitch.
+The catalog prices most of the pivot hardware since round 3 (M3 screws, nuts, nylocks,
+washers, the MF63ZZ bearing, the igus bushing, the glues, the plywood: Bolt Depot,
+TME, Woodcraft and Woodpeckers pages, each offer's `note` naming the source and the
+date when a search quoted it); the 3 mm rod, the starlock clips, the M2 tapping
+screws and M3 x 18 / x 50 stay unpriced, so a `rod` or `bearing` design's cost is still
+a lower bound.
 
 ## Worked example: spec to STEP
 
@@ -304,7 +317,7 @@ A design argument is the id `resolve` returned.
 | `resolve(spec)` | `design` (the id), `resolved`, `engine_version`, `warnings`; an invalid spec: `ok: false`, `failures[0].code = invalid_spec`, `errors: [{path, message, allowed, nearest}]` |
 | `check(design)`, `plan(design)`, `walk(design)` | the `CheckReport` / `PlanReport` / `WalkReport` as JSON (`walk` plans first so the feet sit at their layers) |
 | `explain(design)` | `text` |
-| `recommend(design)` | `stage` (the failing one), `recommendations` with their `patch`, and the failure's `notes` (what can't help, what wasn't checked) |
+| `recommend(design)` | `api.advise`: `stage` (the failing one; `target` when every stage passes but a target is missed; null when nothing is), `recommendations` with their `patch` (a failing stage's; a scale that meets a missed stroke, straightness or lift, checked), and `notes` (what can't help, what wasn't checked, the floor of a stack that is proven the thinnest) |
 | `build(design, t?, wait_seconds?)` | the manifest: every part with `path` (its STEP in the store's `build/parts/`), `dir`, masses, envelope; **a job** |
 | `verify(design, level?, wait_seconds?)` | the `VerifyReport` (rows with `pass`, `tier`, `hard`); `quick` inline, `standard` / `full` **jobs** |
 | `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** |
@@ -372,6 +385,7 @@ so), so `spiderpig view` needs no Node on the user's machine:
 
 ```bash
 spiderpig view <design> [--store PATH] [--port N] [--open] [--no-export]
+spiderpig view --linkage klann --module quad --pin bolt   # a CLI build, by its options
 ```
 
 It picks the store as the MCP server does (`--store`, else `$SPIDERPIG_STORE`, else
@@ -379,7 +393,12 @@ It picks the store as the MCP server does (`--store`, else `$SPIDERPIG_STORE`, e
 once, cached in the store's `exports/`), starts the FastAPI app of
 `spiderpig/server/app.py` on a free port serving the built viewer, prints the URL,
 `http://127.0.0.1:<port>/?design=<id>`, and serves until Ctrl-C (`--open` opens the
-browser). What the page does with `?design=<id>`:
+browser). Given the build options instead of an id (`--linkage`, `--module`, `--phases`,
+`--proportion`, `--servo`, `--pillar`, `--pin`, `--crank`, `--sheet`, `--thickness`,
+`--side-only`: the same parser as `spiderpig build` and `explain`), it resolves them
+into the store first (`api.spec_of(config)`: the config as a Spec, so the id is the
+same one `resolve` gives that spec) and says so on stderr, so what `spiderpig build`
+built can be looked at without a spec. What the page does with `?design=<id>`:
 
 - `GET /api/design/{id}` is the design's card from its `resolved.json`: `kind`,
   `linkage`, `module`, `sides`, `mode` (`robot`, or `side` for a one-sided design),

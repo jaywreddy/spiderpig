@@ -109,7 +109,12 @@ Useful flags: `--module {single,double,decker,quad}` (legs per side),
 
 `spiderpig view <design-id>` serves the animated viewer for a design recorded in
 the project store by the Python API or the MCP server (`docs/agentlib/API.md`),
-with the drive and tune panels answering for that design.
+with the drive and tune panels answering for that design. `spiderpig view
+--linkage klann --module quad --pin bolt` (the build options above, as for
+`spiderpig build`) resolves that design into the store first and shows it, so a
+CLI build can be looked at without writing a spec. `build`, `explain` and `view`
+warn (on stderr) when `--thickness` is more than 12 % off the sheet's nominal, as
+the API's `resolve` does.
 
 ## How it is built
 
