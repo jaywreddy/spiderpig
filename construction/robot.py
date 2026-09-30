@@ -56,7 +56,7 @@ from dataclasses import replace
 
 from build123d import Location, Plane
 
-from construction.base import FRAME_INNER, Build, Context, Realized
+from construction.base import FRAME_INNER, Build, Context, Group, Realized
 from construction.chassis import centre_plates, chassis, servo_frame, tie_dims, tie_points
 from mechanism import Body, Mechanism, MechanismTemplate
 from shapes import Cut
@@ -95,7 +95,7 @@ def mid_plane(design) -> float:
                        design.ctx.params.margin)
 
 
-class FrameTies:
+class FrameTies(Group):
     """Side-level part of the frame ties: spigot holes and pads in the inner frame plate."""
 
     name = "frame ties"
@@ -106,7 +106,7 @@ class FrameTies:
     def claims(self, ctx: Context) -> list:
         return []   # nothing below the inner plate's top face
 
-    def realize(self, build: Build) -> Realized:
+    def realize(self, build: Build, done: Realized) -> Realized:
         out = Realized()
         p, d = build.ctx.params, tie_dims(build.ctx)
         frame = servo_frame(build, self.drive)

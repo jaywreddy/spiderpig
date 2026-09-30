@@ -77,6 +77,7 @@ from construction.base import (
     ConstructionError,
     Context,
     DriveInterface,
+    Group,
     Params,
     Realized,
     hardware,
@@ -240,7 +241,7 @@ def hub_layers(layout: Layout, drive: DriveInterface, hub_thickness: float) -> t
     return horn, hub
 
 
-class CrankGroup:
+class CrankGroup(Group):
     """The crankshaft of one side, built by ``construction``."""
 
     name = GROUP
@@ -328,7 +329,7 @@ class CrankGroup:
         return [Claim("crank hub", frozenset(), hub),
                 Claim("crank route", frozenset(riders), shaft, choice=GROUP)]
 
-    def realize(self, build: Build) -> Realized:
+    def realize(self, build: Build, done: Realized) -> Realized:
         if build.plan.topo.center is None:
             return Realized()
         return self.construction.realize(self, build)

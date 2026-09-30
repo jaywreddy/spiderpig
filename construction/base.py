@@ -32,22 +32,24 @@ crank, a printed stepped axle, ...), and is rationalized in two passes:
 guarantee, nothing can collide. A construction that can't be built with the
 given parameters raises :class:`ConstructionError` before planning.
 
-Groups run in dependency order (drive, crank, axles, links, frame): a later
-group may read an earlier group's interface from :attr:`Context.interfaces`.
+Groups run in dependency order (drive, crank, axles, links, frame;
+:data:`construction.GROUP_FACTORIES` makes them): a later group may read an
+earlier group's interface from :attr:`Context.interfaces`, and a group that
+``cuts`` (the plates) realizes after every other, with what they asked for.
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from hardware.bom import BomLine
 from mechanism import Body
 from shapes import Cut
-from stack import Claim, Layout, Placed, StackPlan, Topology
+from stack import Claim, Keepout, Layout, Placed, StackPlan, Topology
 
 if TYPE_CHECKING:
     from mechanism import Mechanism
@@ -212,14 +214,33 @@ class Realized:
         self.extras.extend(other.extras)
 
 
-class Group(Protocol):
-    """A functional part of a side, built by one construction."""
+class Group:
+    """A functional part of a side, built by one construction (the contract above).
+
+    A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`
+    and :meth:`interface` are optional. ``cuts``: the group cuts what the
+    others asked for (holes, pads), so it realizes after them.
+    """
 
     name: str
+    cuts: bool = False
 
-    def claims(self, ctx: Context) -> list[Claim]: ...
+    def keepouts(self, ctx: Context) -> list[Keepout]:
+        """Space the group needs whatever the layout (:class:`stack.Keepout`); the static
+        stage checks every link against it."""
+        return []
 
-    def realize(self, build: Build) -> Realized: ...
+    def interface(self, ctx: Context) -> object | None:
+        """What later groups may read as ``ctx.interfaces[name]`` (``None``: nothing)."""
+        return None
+
+    def claims(self, ctx: Context) -> list[Claim]:
+        raise NotImplementedError
+
+    def realize(self, build: Build, done: Realized) -> Realized:
+        """The group's parts for the solved plan; ``done`` is what the groups before it
+        built (a plate cuts the holes and adds the pads they asked for)."""
+        raise NotImplementedError
 
 
 def hardware(name: str, part, host: str, *, fab: str, bom_key: str | None = None,

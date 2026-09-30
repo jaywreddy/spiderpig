@@ -9,17 +9,23 @@ Registries map a config key to a construction:
 
 Add a construction by implementing ``dims`` (validation + the radii its
 claims use) and ``realize`` (parts inside those claims), then registering
-it here.
+it here. Add a kind of group (:class:`construction.base.Group`) by
+appending its factory to :data:`GROUP_FACTORIES`: :func:`side_groups`
+runs them in that order, which is the groups' dependency order.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from construction.axle import AxleGroup as AxleGroup
 from construction.axle import PrintedAxle
-from construction.base import ConstructionError
+from construction.base import ConstructionError, Context, Group
 from construction.crank import CrankGroup as CrankGroup
 from construction.crank import PrintedCrank
 from construction.pivots import PIVOTS
+from construction.plates import FramePlates, LinkPlates
+from servos.mount import DriveGroup
 
 AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
 CRANKS = {c.key: c for c in (PrintedCrank(),)}
@@ -39,3 +45,32 @@ def axle(key: str) -> PrintedAxle:
 
 def crank(key: str) -> PrintedCrank:
     return _pick(CRANKS, key, "crank")
+
+
+def _drive_groups(ctx: Context, config) -> list[Group]:
+    return [DriveGroup(ctx.servo)]
+
+
+def _crank_groups(ctx: Context, config) -> list[Group]:
+    return [CrankGroup(crank(config.crank))] if ctx.topo.center is not None else []
+
+
+def _axle_groups(ctx: Context, config) -> list[Group]:
+    """One axle per pillar (``config.pillar``) and per link pin (``config.pin``)."""
+    kinds = {"frame": config.pillar, "pin": config.pin}
+    return [AxleGroup(ax, axle(kinds[ax.kind])) for ax in ctx.topo.axes if ax.kind in kinds]
+
+
+def _plate_groups(ctx: Context, config) -> list[Group]:
+    return [LinkPlates(), FramePlates()]
+
+
+# The groups of a side, in dependency order (``config`` is the :class:`config.BuildConfig`).
+GROUP_FACTORIES: list[Callable[[Context, object], list[Group]]] = [
+    _drive_groups, _crank_groups, _axle_groups, _plate_groups,
+]
+
+
+def side_groups(ctx: Context, config) -> list[Group]:
+    """The groups of one side, in dependency order (the plates last)."""
+    return [g for make in GROUP_FACTORIES for g in make(ctx, config)]

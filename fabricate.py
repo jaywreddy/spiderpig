@@ -27,7 +27,6 @@ import linkage
 import servos
 from config import BuildConfig
 from construction.base import Build, Context, Realized
-from construction.plates import FramePlates, LinkPlates
 from construction.robot import FrameTies, assemble_robot
 from construction.underside import underside
 from hardware.catalog import sheet_name
@@ -79,23 +78,9 @@ class SideDesign:
         return self.config.lk.check(dict(self.config.proportions))
 
 
-def side_groups(ctx: Context, config: BuildConfig) -> list:
-    """The groups of one side, in dependency order (frame plates last)."""
-    topo = ctx.topo
-    groups: list = [DriveGroup(ctx.servo)]
-    if topo.center is not None:
-        groups.append(construction.CrankGroup(construction.crank(config.crank)))
-    for ax in topo.axes:
-        if ax.kind == "frame":
-            groups.append(construction.AxleGroup(ax, construction.axle(config.pillar)))
-        elif ax.kind == "pin":
-            groups.append(construction.AxleGroup(ax, construction.axle(config.pin)))
-    return groups + [LinkPlates(), FramePlates()]
-
-
 def side_clearances(ctx: Context, groups: list) -> list[Clearance]:
     """Static clearance check: every link against every group's keep-outs."""
-    keepouts = [k for g in groups if hasattr(g, "keepouts") for k in g.keepouts(ctx)]
+    keepouts = [k for g in groups for k in g.keepouts(ctx)]
     return static_clearances(ctx.topo, keepouts, ctx.params.link_radius, ctx.params.margin)
 
 
@@ -106,10 +91,11 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
     topo = topology_from_template(tmpl)
     ctx = Context(topo=topo, params=config.params, pitch=config.pitch,
                   servo=servos.get(config.servo), config=config)
-    groups = side_groups(ctx, config)
+    groups = construction.side_groups(ctx, config)
     for g in groups:
-        if hasattr(g, "interface"):
-            ctx.interfaces[g.name] = g.interface(ctx)
+        iface = g.interface(ctx)
+        if iface is not None:
+            ctx.interfaces[g.name] = iface
     claims = [c for g in groups for c in g.claims(ctx)]
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin)
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
@@ -217,10 +203,8 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
     """
     build = Build(design.ctx, design.plan, mech)
     done = Realized()
-    plates = [g for g in design.groups if isinstance(g, (LinkPlates, FramePlates))]
-    for g in [g for g in design.groups if g not in plates] + list(extra_groups):
-        done.merge(g.realize(build))
-    for g in plates:
+    plates = [g for g in design.groups if g.cuts]
+    for g in [g for g in design.groups if not g.cuts] + list(extra_groups) + plates:
         done.merge(g.realize(build, done))
     bodies = {b.name: replace(b, part=None) for b in mech.bodies}
     extra = []

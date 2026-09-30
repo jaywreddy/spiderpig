@@ -216,7 +216,11 @@ planning; a layout it can't be built in makes its claim return `None`.
 
 To add a construction: implement `dims(ctx)` (validation, the radii its
 claims use) and `realize(group, build)` (parts inside those claims), register
-it in `construction/__init__.py`, run the contract tests. To add a leg
+it in `construction/__init__.py`, run the contract tests. To add a kind of
+group (a second drive, spacer rings): subclass `construction.base.Group`
+(`claims`, `realize(build, done)`; `keepouts` / `interface` if it has any;
+`cuts = True` if it cuts what the others asked for) and append its factory
+to `construction.GROUP_FACTORIES`, in dependency order. To add a leg
 module: a `linkage.Module` (its legs, and which of them share one crank
 body) in `linkage.MODULES` or a linkage's own `modules`. To
 add a linkage: a module in `linkages/` with its params, program, links

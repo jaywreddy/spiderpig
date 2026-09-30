@@ -8,7 +8,7 @@ import pytest
 from build123d import Location
 
 import servos
-from construction.base import FRAME_INNER, Build
+from construction.base import FRAME_INNER, Build, Realized
 from construction.chassis import MIN_ENGAGE, ServoFrame, centre_plates, servo_frame, tie_dims
 from construction.contract import bad_solids, clashes
 from construction.robot import FrameTies
@@ -159,7 +159,7 @@ def test_frame_ties_only_touch_the_inner_plate(design):
     assert not any(isinstance(g, FrameTies) for g in d.groups)
     ties = FrameTies(d.drive)
     assert ties.claims(d.ctx) == []
-    got = ties.realize(Build(d.ctx, d.plan, tmpl.freeze_at(1.0)))
+    got = ties.realize(Build(d.ctx, d.plan, tmpl.freeze_at(1.0)), Realized())
     assert got.bodies == []
     assert set(got.cuts) == {FRAME_INNER}
     assert set(got.pads) == {FRAME_INNER}

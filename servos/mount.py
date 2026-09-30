@@ -43,6 +43,7 @@ from construction.base import (
     ConstructionError,
     Context,
     DriveInterface,
+    Group,
     Realized,
     hardware,
 )
@@ -113,7 +114,7 @@ def _placed_servo(spec: ServoSpec, key: tuple):
     return part
 
 
-class DriveGroup:
+class DriveGroup(Group):
     """One servo on the inner frame plate."""
 
     name = GROUP
@@ -261,7 +262,7 @@ class DriveGroup:
         base = build.angle("O", pins[0].name) if pins else 0.0
         return base + iface.pattern_angle
 
-    def realize(self, build: Build) -> Realized:
+    def realize(self, build: Build, done: Realized) -> Realized:
         """The servo, its horn (and spacer), mounting screws, the plate's holes and pad.
 
         The servo body is cut back to the plate's top face except over the

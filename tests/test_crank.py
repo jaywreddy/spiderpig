@@ -11,7 +11,7 @@ import pytest
 import linkage
 import servos
 from config import BuildConfig
-from construction.base import FRAME_OUTER, Build, ConstructionError
+from construction.base import FRAME_OUTER, Build, ConstructionError, Realized
 from construction.contract import check_side, clashes
 from construction.crank import (
     BHCS,
@@ -366,7 +366,7 @@ def test_without_the_bearing_the_crank_ends_at_its_lowest_web():
     bottom = _part(mech, "crank_seg0").bounding_box().min.Z
     assert pytest.approx(design.plan.z(1)[0]) == bottom   # the web's face, no journal stub
     crank = next(g for g in design.groups if g.name == "crank")
-    got = crank.realize(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)))
+    got = crank.realize(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)), Realized())
     assert FRAME_OUTER not in got.cuts                 # no journal hole in the outer plate
 
 

@@ -16,7 +16,7 @@ from build123d import Box, Location
 
 from construction import ConstructionError
 from construction.axle import AxleGroup, PrintedAxle
-from construction.base import Build
+from construction.base import Build, Realized
 from construction.printed import Snap, plan_segments, segment_solid
 from shapes import disc
 
@@ -134,7 +134,7 @@ def test_holes_and_glue(axles):
     design, build, _, groups = axles
     p = design.ctx.params
     for g in groups:
-        got = g.realize(build)
+        got = g.realize(build, Realized())
         anchors = [s.layer for s in build.shapes(g.name) if s.label.endswith("anchor")]
         plates = {0: "frame:outer", build.top: "frame:inner"}
         assert set(got.cuts) == set(g.axis.members) | {plates[k] for k in anchors}

@@ -16,7 +16,7 @@ import construction
 from config import BuildConfig
 from construction import ConstructionError
 from construction.axle import AxleGroup, flange_sides
-from construction.base import FRAME_INNER, FRAME_OUTER, Build, Params
+from construction.base import FRAME_INNER, FRAME_OUTER, Build, Params, Realized
 from construction.contract import check_side
 from construction.pivots import BEARING, BUSHING, BoltAxle, InsertAxle, RodAxle
 from construction.pivots.common import Column
@@ -188,7 +188,7 @@ def test_holes_cut_for_each_construction(side):
     link_hole = {"rod": 3.2, "bolt": 3.2, "bearing": 6.03, "bushing": 4.52}[key]
     plate_hole = 3.4 if key == "bolt" else p.hole(3.0, "glue")     # clamped, or glued
     for g in axles:
-        got = g.realize(build)
+        got = g.realize(build, Realized())
         anchors = [s.layer for s in build.shapes(g.name) if s.label.endswith("anchor")]
         assert set(got.cuts) == set(g.axis.members) | {plates[k] for k in anchors}
         for m in g.axis.members:
