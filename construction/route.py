@@ -85,7 +85,10 @@ class JointRules:
     layer), the highest web's bottom face (a rider on the last run layer, the
     run not all riders) and top face (a rider over it). Pocket radii (mm): a
     screw head's counterbore, a nut's trap, a post. Horn pockets, fixed on the
-    crank: ``(point on the crank at sample 0, radius)``.
+    crank: ``(point on the crank at sample 0, radius)``. ``hub_play``: whether
+    the horn screws still fit the hub with its bottom face set back for a
+    rider's end play; else no chain may end in the hub's lowest layer with
+    that web set back.
     """
 
     spans: dict[int, int]
@@ -93,6 +96,7 @@ class JointRules:
     nut: float
     post: float
     horn: tuple[tuple[tuple[float, float], float], ...] = ()
+    hub_play: bool = True
 
 
 def joint_rules(construction, ctx: Context, dims: CrankDims) -> JointRules | None:
@@ -120,7 +124,8 @@ def joint_rules(construction, ctx: Context, dims: CrankDims) -> JointRules | Non
     return JointRules(spans,
                       head=max(sk.head_d for sk in POST_SCREWS) / 2 + construction.screw_fit / 2,
                       nut=(NUT_AF + construction.nut_fit) / math.sqrt(3), post=dims.post,
-                      horn=tuple(horn))
+                      horn=tuple(horn),
+                      hub_play=construction.hub_joint(ctx, dims.hub_thickness, play) is not None)
 
 
 @dataclass(frozen=True)
@@ -376,6 +381,7 @@ class CrankRouter:
                            for j in range(n)] for i in range(n)]
             self.last = [all(float(np.linalg.norm(at[j] - np.asarray(xy))) >= rules.nut + r
                              for xy, r in rules.horn) for j in range(n)]
+        self.hub_play = rules is None or rules.hub_play
 
     def hub_bottom(self, top: int) -> int:
         _, hub = hub_layers(Layout({}, top, self.pitch), self.drive, self.dims.hub_thickness)
@@ -608,7 +614,8 @@ class CrankRouter:
                         continue
                     start(state, cost, state, j, k, pend[3] if pend is not None else 0)
         ends = [(v[0], s) for s, v in best.items()
-                if s[0] == h0 and self.last[s[2]] and (s[3] is None or fits(s[3], 0))]
+                if s[0] == h0 and self.last[s[2]]
+                and (s[3] is None or fits(s[3], 0) and (self.hub_play or not s[3][3]))]
         if not ends:
             if view.open is not None:
                 return RouteConflict(1, h0)
@@ -628,19 +635,24 @@ class CrankRouter:
         """Why no route is buildable although the relaxation lets one through."""
         if self.spans is None:
             return "no crank route passes"
-        saved = self.spans, self.after, self.last
+        saved = self.spans, self.after, self.last, self.hub_play
         try:
             self.spans = None
             if isinstance(self.route(view), Route):
                 sizes = sorted(k for k, m in saved[0].items() if m)
                 return ("its crank routes need a joint no stock screw fits (a chain's webs "
                         f"{_ranges(sizes)} layers apart, both counted, take one)")
+            self.hub_play = True
+            if isinstance(self.route(view), Route):
+                return ("its crank routes end with a web set back for its rider's end play in "
+                        "the hub's lowest layer, which leaves the hub too short for the horn "
+                        "screws")
             self.after = [[True] * self.n for _ in range(self.n)]
             self.last = [True] * self.n
             if isinstance(self.route(view), Route):
                 return "its crank routes put two joints' pockets together"
         finally:
-            self.spans, self.after, self.last = saved
+            self.spans, self.after, self.last, self.hub_play = saved
         return "no crank route passes"
 
     def _conflict(self, view: RouteView, dead: int, riding: dict[int, int],

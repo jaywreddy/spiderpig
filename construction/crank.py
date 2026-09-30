@@ -48,7 +48,11 @@ be threaded onto its post). Going up from the outer frame plate:
   of the top segment; a pocket clears the horn's centre screw. The hub's top
   face is the horn's outer face, and within ``Params.margin`` of the inner
   frame plate the hub is no wider than the horn (it turns inside the plate's
-  horn hole). Nothing of the crank rises past the horn's outer face.
+  horn hole). Nothing of the crank rises past the horn's outer face. A
+  chain's highest web may share the hub's lowest layer; set back for its
+  rider's end play it shortens the hub, which the route rules allow only
+  when the horn screws still fit (``JointRules.hub_play`` in
+  :mod:`construction.route`).
 
 Assembly: servo on the inner plate; the top segment bolted to the horn
 (nut in its trap first); then, going down, each rider onto its post and the
@@ -415,12 +419,8 @@ class PrintedCrank:
                            3 * pitch - self.axial_play) is None:
             raise ConstructionError(
                 f"no M3 screw and nut fit a crankpin joint in {pitch} mm layers")
-        spec = ctx.servo
-        top = 100                       # any stack: the hub's height only depends on the pitch
-        plate_top = (top + 1) * pitch
-        face = plate_top - drive.horn_face_depth
-        hub_bottom = Layout({}, top, pitch).layers_between(face - p.hub_thickness, face).start
-        if self.horn_joint(drive, spec, face - hub_bottom * pitch) is None:
+        if self.hub_joint(ctx, p.hub_thickness) is None:
+            spec = ctx.servo
             raise ConstructionError(
                 f"no {spec.horn.pattern.thread} screw fits between the crank hub and the "
                 f"{spec.key} horn")
@@ -480,6 +480,17 @@ class PrintedCrank:
             if best is None or min(engage, e_want) > min(best.engagement, e_want) + EPS:
                 best = HornJoint(sk, length, floor, engage, spacer)
         return best
+
+    def hub_joint(self, ctx: Context, hub_thickness: float,
+                  set_back: float = 0.0) -> HornJoint | None:
+        """The horn joint of the hub claiming ``hub_thickness`` under the horn (whole
+        layers: its height depends on the pitch alone, not the stack), its bottom face
+        ``set_back`` (a rider's end play under a web sharing its lowest layer)."""
+        drive: DriveInterface = ctx.interfaces["drive"]
+        top, pitch = 100, ctx.pitch
+        face = (top + 1) * pitch - drive.horn_face_depth
+        hub_bottom = Layout({}, top, pitch).layers_between(face - hub_thickness, face).start
+        return self.horn_joint(drive, ctx.servo, face - hub_bottom * pitch - set_back)
 
     # -- parts ----------------------------------------------------------------------
 

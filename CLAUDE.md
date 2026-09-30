@@ -31,8 +31,8 @@ uv run python viewer/bake_gltf.py --mode single --linkage hoecken    # a mechani
 `--linkage` / `--phases` / `--proportion NAME=VALUE` are shared by `main.py`,
 `bake_gltf.py` and `scripts/tune_gait.py` (`walk.add_design_args`); the server
 takes `linkage=`, `module=`, `phases=`, `p.NAME=`. A design with no layer plan
-(the planner says why, e.g. TrotBot's heel at its drawing's scale) bakes a
-422; its `/api/walk` still works.
+(the planner says why, e.g. TrotBot's heel scaled back to its drawing's 7 mm
+unit, `p.unit=7`) bakes a 422; its `/api/walk` still works.
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
 serves on a port derived from a CRC32 hash of the worktree path
@@ -237,7 +237,9 @@ crank route in it:
    meet: one screw). Buildable only: a stock screw per chain
    (`JointRules.spans`, from `PrintedCrank.post_joint`, end-play faces
    included), one chain per point, pockets of consecutive chains (and the
-   last one and the horn screws) apart. Cost, in order: added features (run
+   last one and the horn screws) apart, a chain ending set back in the hub's
+   lowest layer only if the horn screws still fit the shortened hub
+   (`JointRules.hub_play`). Cost, in order: added features (run
    layers no rider needs, detour runs), detour sweep, a dropped bearing
    (`StackSpec.drop_bearing`, off by default), then fewer runs.
 4. **Verification**: `problem.plan(layers, top, choices)` and `verify_plan`;
