@@ -7,6 +7,7 @@
     uv run python cli.py tune --module decker --grid 5                # crank phases
     uv run python cli.py sim --left 40rpm --right 40rpm               # MuJoCo
     uv run python cli.py report --out build/linkages.json             # every linkage
+    uv run python cli.py mcp --store .spiderpig                       # MCP server (stdio)
 
 Each command is a module's ``main(argv)``; ``python cli.py <command> --help``
 shows its options. The design and build options are the same everywhere
@@ -34,6 +35,7 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "tune": ("tune_gait", "search crank phases (and proportions) for a smoother walk"),
     "sim": ("sim_walk", "simulate the walker in MuJoCo"),
     "report": ("linkage_report", "compare every registered linkage"),
+    "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
 }
 
 
