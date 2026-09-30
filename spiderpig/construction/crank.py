@@ -413,14 +413,56 @@ class PrintedCrank:
         pitch = ctx.pitch
         if self.post_joint(0.0, pitch - self.axial_play, 2 * pitch,
                            3 * pitch - self.axial_play) is None:
-            raise ConstructionError(
-                f"no M3 screw and nut fit a crankpin joint in {pitch} mm layers")
+            raise self._pitch_error(ctx, pitch)
         if self.hub_joint(ctx, p.hub_thickness) is None:
             spec = ctx.servo
             raise ConstructionError(
                 f"no {spec.horn.pattern.thread} screw fits between the crank hub and the "
                 f"{spec.key} horn")
         return dims
+
+    def least_pitch(self, pitch: float, limit: float = 8.0) -> float | None:
+        """The least layer pitch (from ``pitch`` up, in 0.05 mm steps) at which the tightest
+        crankpin joint (one link between two one-layer webs) takes a stock screw and nut;
+        ``None`` when none does up to ``limit``."""
+        p = round(math.ceil(pitch / 0.05 - EPS) * 0.05, 6)
+        while p <= limit + EPS:
+            joint = self.post_joint(0.0, p - self.axial_play, 2 * p, 3 * p - self.axial_play)
+            if joint is not None:
+                return round(p, 2)
+            p = round(p + 0.05, 6)
+        return None
+
+    def _pitch_error(self, ctx: Context, pitch: float) -> ConstructionError:
+        """Why no crankpin joint fits in ``pitch`` mm layers, and the thickness that would:
+        each web is one layer thick and must hold a screw head (or a nut) under a printed
+        floor, so the layer pitch, which is the sheet's thickness, has a least value."""
+        from spiderpig.hardware.catalog import sheet_thickness
+
+        least = self.least_pitch(pitch)
+        lo_web = pitch - self.axial_play
+        why = (f"no M3 screw and nut fit a crankpin joint in {pitch:g} mm layers: each web of "
+               f"the printed crank is one layer thick ({lo_web:g} mm beside a link, after "
+               f"{self.axial_play:g} mm of end play) and must hold a screw head under "
+               f"{self.min_web_floor:g} mm of floor and a nut under {self.min_nut_floor:g} mm "
+               f"(the flattest head is {min(sk.head_h for sk in POST_SCREWS):g} mm, the nut "
+               f"{NUT_H:g} mm)")
+        if least is None:
+            return ConstructionError(why + "; no layer pitch up to 8 mm fits one",
+                                     numbers={"pitch_mm": pitch})
+        nominal = sheet_thickness(ctx.config.sheet) if ctx.config is not None else None
+        after = nominal if nominal is not None and nominal >= least else least
+        lever = (f"; the least layer pitch that fits is {least:g} mm, and the layer pitch is "
+                 f"the sheet's thickness: materials.thickness_mm {pitch:g} -> {after:g}"
+                 + (f" (the {ctx.config.sheet} sheet's nominal)"
+                    if after == nominal and nominal != least else "")
+                 + ", or a thicker sheet")
+        return ConstructionError(
+            why + lever, changes=(("thickness_mm", pitch, after),),
+            lever=(f"the printed crank's crankpin joints need layers of at least {least:g} mm "
+                   f"(a stock M3 screw head and nut in one-layer webs), and the layer pitch is "
+                   f"the sheet's thickness"),
+            numbers={"pitch_mm": pitch, "least_pitch_mm": least})
 
     def post_joint(self, zl0: float, zl1: float, zu0: float, zu1: float) -> PostJoint | None:
         """The screw for a joint: lower web ``zl0..zl1``, upper web ``zu0..zu1``.

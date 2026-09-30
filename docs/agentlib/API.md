@@ -26,11 +26,11 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `kind` | `walker` \| `mechanism` | required |
 | `linkage.key` | a registered linkage (`api.list_linkages()`) | required; its kind must match |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them) | the linkage's defaults |
-| `legs.module` | one of the linkage's modules: `single`, `double`, `decker`, `quad`, or its own | `quad` (walker), `single` (mechanism) |
+| `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`) | `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
 | `materials.sheet` | a catalog sheet item: `acrylic_3mm`, `plywood_3mm` (sets the layer pitch) | `acrylic_3mm` |
-| `materials.thickness_mm` | a measured sheet thickness | the sheet's nominal |
+| `materials.thickness_mm` | a measured sheet thickness: **the layer pitch** every construction sizes its parts by (a value more than 12 % off the sheet's nominal is a warning on `resolve`; the printed crank's crankpin joints need at least about 2.9 mm, and a `check` at a thinner pitch fails at `construction` with the thickness that works as a checked recommendation) | the sheet's nominal |
 | `materials.servo` | `sts3215`, `xl330_m288`, `xl430_w250` | `sts3215` |
 | `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing` | `printed` |
 | `constructions.crank` | `printed` | `printed` |
@@ -55,7 +55,7 @@ miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `h
 | `size.stack_mm` | both | mm | **hard** | plan | proven | one side's stack, frame plates included |
 | `size.mass_g` | both | g | **hard** | build (walk before a build) | measured (estimated) | mass of every part |
 | `size.envelope_x_mm`, `_y_mm`, `_z_mm` | both | mm | **hard** | build (joint sweep before) | measured (estimated) | extent at the build's crank angle: x along the walk, y up, z across the sides |
-| `budget.cost_usd` | both | USD | **hard** | bom | estimated | purchase total at the preferred offers |
+| `budget.cost_usd` | both | USD | **hard** | bom (a catalog floor at `quick`) | estimated | purchase total at the preferred offers; unpriced items make it a lower bound, which cannot verify a `max` (the row fails and names them) |
 | `budget.print_g` | both | g | **hard** | bom | measured | filament at 100 % infill |
 | `budget.sheets` | both | sheets | **hard** | layout | measured | sheets the laser parts pack onto |
 
@@ -74,16 +74,16 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 |---|---|---|---|
 | `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
 | `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width) | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s, the walk per module) |
-| `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm`, `lowest_body_part` (which body shape sets the clearance) | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
+| `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm`, `lowest_body_part` (which body shape sets the clearance); a construction that can't be built at these parameters is a `construction` failure whose `numbers` and checked `recommendations` name the lever (the sheet thickness) | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table`, `warnings` (what the constructions warned about: a printed snap that overstrains) | `fabricate.design_side` (cached by the engine); a search is bounded by `StackSpec.max_seconds` (60 s) and the recommendation checks by one more | 0.4 s (Klann quad); up to a minute on a large or scaled-down design, one to three on one that fails |
 | `explain(design)` | text | `explain.explain_config` on the design's full config, from its own plan (a recorded failure is printed, not re-solved) | ms after plan |
-| `recommend(design)` | `[Recommendation]` with `patch` (the failure's `notes` say what can't help or wasn't checked) | the failing stage's checked recommendations: a scale or thinner parts for a link-to-axle gap; the linkage's default scale for a plan that ran into the stack's own room after a scale-down | 1-60 s |
+| `recommend(design)` | `[Recommendation]` with `patch` (the failure's `notes` say what can't help or wasn't checked) | the failing stage's checked recommendations: a thickness for a construction that can't be built that thin; a scale or thinner parts for a link-to-axle gap; the linkage's default scale for a plan that ran into the stack's own room after a scale-down. `verified` says what was re-run: for a `decker` / `quad` design the static stage and its **single** module's plan (the design's own plan is not checked: plan the derived design) | 1-60 s |
 | `walk(design)` | `WalkReport`: `metrics`, `mass_g`, `rows`, `notes` (a stride near zero: why, and which module of the linkage walks) | `walk.api_payload` (feet at their planned layers) | 0.1 s |
 | `build(design, t=1.0)` | `BuildReport`: `parts` manifest, `mass_g`, `envelope_mm`, `counts`, `warnings`; `design.parts[name]` | `fabricate.fabricate` | 8 s |
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids` | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates) |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest`, `warnings` (what the bake and the constructions warned about: a purchased model's faces the mesher skipped) | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
 | `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
@@ -94,8 +94,13 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 After `build`, `design.parts[name]` is a `Part`: `solid` (the live build123d solid the
 export and the clash check use, in the side's frame; `placed()` applies the pose),
 `group` (`links`, `frame`, `drive`, `crank`, `pillar:<axis>`, `pin:<axis>`, `chassis`),
-`side` (`L`/`R`/`None`), `fab`, `material`, `mass_g`, `volume_mm3`, `dims_mm`, `layers`,
-`bom_key`, `rigid_with`. Replace `solid` to edit a part (`edited` then reads true).
+`side` (`L`/`R`/`None`), `fab`, `material`, `density`, `mass_g` and `volume_mm3` (measured
+on the solid as it now is, so they follow an edit; the servo keeps its catalog mass),
+`dims_mm` and `layers` (the build's), `bom_key`, `rigid_with`. Replace `solid` to edit a
+part (`edited` then reads true). A part's joints and outline are on the mechanism's body
+of the same name, `design.mech.body(name)` (`joints`, `outline`: the joint pairs a link
+spans), on a fresh build and on one reloaded from the store alike; the robot's parts are
+named by side, `L.b7` / `R.b7`, a one-sided design's `b7`.
 **An edited solid is outside the correct-by-construction guarantee until `recheck`
 passes**: it re-runs the solid and clash checks over every part and, for edited parts
 of the claim-bound groups (links, crank, pillars, pins), checks they lie inside their
@@ -180,9 +185,10 @@ What is cached, and when it is stale:
 Warm against cold on the Klann quad: `verify("standard")` 40 s cold, ~0 s warm
 (`verify.json`); a second process's `build` 4 s, `plan` 0.5 s, `check`/`walk` ms.
 
-`list_designs()` returns one card per design (id, kind, linkage, module, sides, engine
-version, created/last-used times, `derived_from`, the stages held with their `ok`, the
-latest verify verdict). `gc(keep=[ids or handles])` removes every other design;
+`list_designs()` returns one card per design (id, kind, linkage, module, sides, the
+parameters the spec overrides (`params`), `servo`, `sheet`, `thickness_mm`,
+`constructions`, the metrics it `targets`, engine version, created/last-used times,
+`derived_from`, the stages held with their `ok`, the latest verify verdict). `gc(keep=[ids or handles])` removes every other design;
 `gc(older_than=timedelta | datetime | seconds)` those last used before then; both
 together remove only what is neither kept nor recent. `derive(design, patch)` records
 the parent and patch on the child; `compare(a, b)` (handles or ids) returns
@@ -206,16 +212,26 @@ spec's targets the level didn't measure (budget at `quick`). What a row's `detai
 says: the ground clearance names the body part that sets it; the envelope at `quick`
 is the joints' sweep plus the plates (x, y) and the stacks, the chassis and the axle
 heads outside the outer plates (z), at `standard` the built extent at the build's
-crank angle; the cost lists the largest items (packs are bought whole) and says when
-unpriced items make the total a lower bound; `plan.warnings` (informational, soft)
-carries the constructions' warnings; a walker whose stride reads near zero has the
-walk note on its stride and speed rows.
+crank angle; the cost lists the largest items (packs are bought whole) and every unpriced item
+with its quantity and packs (largest first): with unpriced items the total is a lower
+bound, which can refute a `max` but never confirm it, so a hard `max` / `value` target
+then **fails** ("at least ...") until the items are priced in the catalog or accepted by
+hand (a soft target keeps the priced part's verdict, with the same note); at `quick`
+the row `budget.cost_floor_usd` prices what the design buys whatever its parts (the
+servos, a spool, a sheet, the robot's cement and inserts) from the catalog, and a floor
+already over a `max` fails `budget.cost_usd` before any build; `plan.warnings`
+(informational, soft) carries the constructions' warnings; a walker whose stride reads
+near zero has the walk note on its stride and speed rows. The catalog's pivot hardware
+(bearings, bushings, rod, clips, CA glue) and most screws carry vendor links but no
+price, so a metal-pivot design's cost is a lower bound until they are priced.
 
 ## Worked example: spec to STEP
 
 One side of the TrotBot heel at its drawing's 7 mm unit (35 s in all; the `single`
 module because a one-leg-per-side robot doesn't walk in the quasi-static model, so
-its stride would read 0):
+its stride would read 0). It is one side (`sides: 1`), so the parts and bodies are
+`b7`; on the robot they are `L.b7` and `R.b7` (`design.mech.body("L.b7")`), and the
+same edit works there:
 
 ```python
 from build123d import Cylinder, Location

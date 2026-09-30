@@ -548,12 +548,16 @@ def _register_tools(server: MCPServer, state: State) -> None:
 
     @tool
     async def recommend(design: DesignArg) -> o.RecommendOut:
-        """The engine's checked recommendations for the stage that fails (the static
-        stage's, else the planner's), each with the spec patch that applies it (hand it to
-        ``derive``), and the failure's ``notes`` on what can't help or wasn't checked;
-        empty when the design plans. The engine recommends only what it re-ran and saw
-        pass: a scale of the linkage or thinner parts for a link-to-axle gap, the linkage's
-        default scale for a plan that ran into the stack's own room."""
+        """The engine's checked recommendations for the stage that fails (a construction
+        that can't be built at these parameters, the static stage's, else the planner's),
+        each with the spec patch that applies it (hand it to ``derive``), and the failure's
+        ``notes`` on what can't help or wasn't checked; empty when the design plans. The
+        engine recommends only what it re-ran and saw pass: the sheet thickness the printed
+        crank's joints need (``materials.thickness_mm``), a scale of the linkage or thinner
+        parts for a link-to-axle gap, the linkage's default scale for a plan that ran into
+        the stack's own room. ``verified`` says what was re-run: for a decker or quad design
+        the static stage and its single module's plan (plan the derived design for its
+        own)."""
         d = await _run(_load, state, design)
         recs = await _run(api.recommend, d)
         failing = next((r for s in ("check", "plan") if (r := d.reports.get(s)) is not None

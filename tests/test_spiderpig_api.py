@@ -5,6 +5,7 @@ verifies with tiers, parts expose live solids and ``recheck`` catches an edited 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from build123d import Box, Location
@@ -592,3 +593,255 @@ def test_capture_warnings_collects_the_constructions_warnings_once():
         logging.getLogger("spiderpig.construction.printed").info("not a warning")
         logging.getLogger("spiderpig.other").warning("not collected")
     assert seen == ["pin seg0: strains 6 %"]                            # entry 18
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the thin sheet, the budget, the handles
+# ---------------------------------------------------------------------------
+
+
+THIN = {"kind": "walker", "linkage": {"key": "klann"}, "legs": {"module": "single", "sides": 1},
+        "materials": {"thickness_mm": 2}}
+
+
+def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_patch():
+    thin = api.resolve(THIN, store=None)                                   # entry 2
+    (warning,) = [w for w in thin.warnings if w.startswith("materials.")]
+    assert warning.startswith("materials.thickness_mm 2 is 33% under acrylic_3mm's nominal 3 mm")
+    cr = api.check(thin)
+    assert not cr.ok
+    (f,) = cr.failures
+    assert (f.stage, f.code) == ("construction", "unbuildable")
+    assert f.message.startswith("no M3 screw and nut fit a crankpin joint in 2 mm layers: ")
+    assert "the least layer pitch that fits is 2.9 mm" in f.message
+    assert "materials.thickness_mm 2 -> 3 (the acrylic_3mm sheet's nominal)" in f.message
+    assert f.numbers == {"pitch_mm": 2, "least_pitch_mm": 2.9}
+    (rec,) = f.recommendations
+    assert rec.patch == {"materials": {"thickness_mm": 3.0}}
+    assert rec.changes == [{"name": "thickness_mm", "before": 2, "after": 3.0}]
+    assert rec.why.startswith("the printed crank's crankpin joints need layers of at least 2.9 mm")
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 7 layers")
+    assert api.recommend(thin) == [rec]
+    assert api.plan(thin).failures == cr.failures
+    rep = api.verify(thin, "quick")
+    rows = {r.requirement: r for r in rep.rows}
+    assert not rep.ok
+    assert rows["drive.one_servo"].passed                      # the drive is fine: the crank isn't
+    assert not rows["construction.buildable"].passed
+    assert rows["construction.buildable"].value == "unbuildable"
+    fixed = api.derive(thin, rec.patch, store=None)
+    assert [w for w in fixed.warnings if w.startswith("materials.")] == []
+    assert api.check(fixed).ok
+    assert api.plan(fixed).n_layers == 7
+    near = api.resolve({**THIN, "materials": {"thickness_mm": 3.2}}, store=None)
+    assert [w for w in near.warnings if w.startswith("materials.")] == []
+
+
+def test_a_thickness_at_the_nominal_or_as_an_int_is_the_same_design():
+    plain = api.resolve(KLANN_QUAD, store=None)                            # entry 12
+    nominal = api.resolve({**KLANN_QUAD, "materials": {"thickness_mm": 3}}, store=None)
+    assert nominal.id == plain.id
+    assert nominal.resolved["materials"]["thickness_mm"] is None
+    thin = api.resolve({**KLANN_QUAD, "materials": {"thickness_mm": 2}}, store=None)
+    assert thin.id == api.resolve({**KLANN_QUAD, "materials": {"thickness_mm": 2.0}},
+                                  store=None).id
+    assert thin.resolved["materials"]["thickness_mm"] == 2.0
+    assert thin.config.pitch == 2.0
+
+
+def test_the_least_pitch_of_the_printed_crank():
+    from spiderpig.construction.crank import PrintedCrank
+
+    crank = PrintedCrank()
+    assert crank.least_pitch(2.0) == 2.9
+    assert crank.least_pitch(3.0) == 3.0
+    assert crank.least_pitch(2.0, limit=2.5) is None
+
+
+def test_the_module_error_says_legs_per_side():
+    errs = _errors({"kind": "walker", "linkage": {"key": "klann"}, "legs": {"module": "hex"}})
+    (e,) = errs["legs.module"]                                             # entry 1
+    assert "a module is the legs per side" in e.message
+    assert "quad 4 a side (8 on the robot)" in e.message
+    assert "no linkage has a three-leg module" in e.message
+    assert e.allowed == ("single", "double", "decker", "quad")
+
+
+def _bom(*rows):
+    from spiderpig.hardware.bom import Bom, PurchaseRow
+
+    out = []
+    for key, qty, pack_qty, price in rows:
+        packs = -(-qty // pack_qty)
+        out.append(PurchaseRow(key=key, name=key.replace("_", " "), category="misc", qty=qty,
+                               where=[], vendor="Shop", url="", sku="", pack_qty=pack_qty,
+                               packs=packs, pack_price_usd=price, verified=True,
+                               alternatives=[]))
+    return Bom(purchased=out, made=[])
+
+
+def test_the_cost_row_cannot_pass_a_max_on_a_lower_bound_and_names_every_unpriced_item():
+    from spiderpig.verify import cost_row
+
+    bom = _bom(("servo", 2, 1, 25.0), ("bearing_mf63zz", 64, 10, None),
+               ("m3_nut", 8, 100, None))
+    hard = api.resolve({**KLANN_QUAD, "budget": {"cost_usd": {"max": 100}}}, store=None)
+    row = cost_row(hard, bom)                                              # entry 3
+    assert row.value == 50.0
+    assert row.hard
+    assert not row.passed
+    assert row.detail.startswith("at least; the target can't be verified while items are unpriced")
+    assert "2 unpriced, so the total is a lower bound: 64 x bearing mf63zz (7 packs of 10 at " \
+           "Shop); 8 x m3 nut (1 pack of 100 at Shop)" in row.detail
+    soft = api.resolve({**KLANN_QUAD, "budget": {"cost_usd": {"max": 100, "hard": False}}},
+                       store=None)
+    row = cost_row(soft, bom)
+    assert row.passed
+    assert not row.hard
+    assert row.detail.startswith("at least (the verdict is on the priced part)")
+    floor = api.resolve({**KLANN_QUAD, "budget": {"cost_usd": {"min": 40}}}, store=None)
+    assert cost_row(floor, bom).passed                     # a lower bound can confirm a floor
+    over = cost_row(hard, _bom(("servo", 2, 1, 60.0), ("m3_nut", 8, 100, None)))
+    assert not over.passed
+    assert over.detail.startswith("2 items")
+    priced = cost_row(hard, _bom(("servo", 2, 1, 25.0), ("m3_nut", 8, 100, 2.0)))
+    assert priced.passed
+    assert "unpriced" not in priced.detail
+
+
+def test_verify_quick_prices_a_floor_from_the_catalog():
+    from spiderpig.verify import cost_floor
+
+    one = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                       "legs": {"module": "single", "sides": 1},
+                       "budget": {"cost_usd": {"max": 100}}}, store=None)
+    total, priced, unpriced = cost_floor(one)                              # entry 4
+    from spiderpig import servos
+    from spiderpig.hardware.catalog import get as item
+
+    servo = item(servos.get("sts3215").bom_key).offer.price_usd
+    assert total == pytest.approx(servo + 25.49 + 10.99, abs=0.01)
+    assert unpriced == []
+    assert priced[0].startswith("Feetech STS3215")
+    rep = api.verify(one, "quick")
+    rows = {r.requirement: r for r in rep.rows}
+    assert rows["budget.cost_floor_usd"].value == total
+    assert rows["budget.cost_floor_usd"].detail.startswith("before a build, from the catalog: ")
+    assert "counted after a build (verify standard)" in rows["budget.cost_floor_usd"].detail
+    assert rep.unverified == ["budget.cost_usd"]
+    assert rep.ok
+    robot = api.resolve({**KLANN_QUAD, "materials": {"servo": "xl330_m288"},
+                         "budget": {"cost_usd": {"max": 100}}}, store=None)
+    total, priced, _ = cost_floor(robot)
+    xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
+    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + 12.84 + 11.37, abs=0.01)
+    rep = api.verify(robot, "quick")
+    rows = {r.requirement: r for r in rep.rows}
+    assert "budget.cost_floor_usd" not in rows
+    assert rows["budget.cost_usd"].value == total
+    assert not rows["budget.cost_usd"].passed
+    assert rows["budget.cost_usd"].detail.startswith("a lower bound already over the target")
+    assert not rep.ok
+
+
+def test_the_recommendation_says_which_module_it_checked():
+    from spiderpig import recommend as rec
+    from spiderpig.config import BuildConfig
+
+    text = rec._verify(BuildConfig(module="quad", robot=False), plan=False)   # entry 5
+    assert text.startswith("checked: the static stage passes, and its single module plans in "
+                           "7 layers (21 mm); the quad module's own plan is not checked here")
+    assert "the planner's deadline is 60 s" in text
+    assert rec._verify(BuildConfig(module="single", robot=False), plan=False) \
+        == "checked: the static stage passes, and it plans in 7 layers (21 mm)"
+
+
+def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
+    api.attach_build(quad, robot("quad", 1.0), 1.0)
+    part = quad.parts["L.b2_leg0"]                                         # entry 7
+    mass, volume = part.mass_g, part.volume_mm3
+    assert part.density == pytest.approx(1.19, abs=0.05)
+    assert mass == pytest.approx(volume / 1000 * part.density)
+    try:
+        c = part.solid.center()
+        part.solid = part.solid - Box(4, 4, 20).moved(Location((c.X, c.Y, c.Z)))
+        assert part.edited
+        assert part.volume_mm3 < volume - 40
+        assert part.mass_g == pytest.approx(part.volume_mm3 / 1000 * part.density)
+        assert part.to_dict()["mass_g"] == pytest.approx(part.mass_g, abs=1e-3)
+    finally:
+        part.solid = part.built                       # the session's robot: never mutated
+    assert part.mass_g == mass
+    assert part.volume_mm3 == volume
+    servo = quad.parts["L.servo"]
+    assert servo.fixed_mass_g == 55.0
+    assert servo.mass_g == 55.0
+
+
+@pytest.mark.slow
+def test_a_reloaded_build_carries_the_links_joints_and_outlines_and_takes_the_example_edit(
+        tmp_path):
+    from build123d import Cylinder, Location
+
+    spec = {"kind": "walker", "linkage": {"key": "klann"},
+            "legs": {"module": "single", "sides": 1}}
+    first = api.resolve(spec, store=tmp_path)
+    assert api.build(first).ok
+    again = api.load(first.id, store=tmp_path)
+    rep = api.build(again)                                                 # entry 6
+    assert rep.ok
+    assert again.log[-1]["cached"]
+    body, fresh = again.mech.body("b2"), first.mech.body("b2")
+    assert body.outline == fresh.outline != ()
+    assert [j.name for j in body.joints] == [j.name for j in fresh.joints]
+    link = again.parts["b2"]
+    a, b = (body.joint(j).pose.matrix[:2, 3] for j in body.outline[0])
+    z = again.side.plan.z(link.layers[0])
+    mass, total = link.mass_g, rep.mass_g
+    link.solid = link.solid - Cylinder(1.5, 10).moved(Location((*((a + b) / 2), sum(z) / 2)))
+    assert link.mass_g < mass
+    rr = api.recheck(again)
+    assert rr.ok
+    assert rr.edited == ["b2"]
+    assert rr.checked == ["b2"]
+    assert again.reports["build"].mass_g == pytest.approx(
+        sum(p.mass_g for p in again.parts.values()), abs=0.01)
+    assert again.reports["build"].mass_g < total
+
+
+def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
+    base = {"kind": "walker", "linkage": {"key": "strider", "params": {"unit": 6.3}},
+            "legs": {"module": "double"}, "materials": {"servo": "xl330_m288"},
+            "budget": {"cost_usd": {"max": 120}}}
+    a = api.resolve({**base, "constructions": {"pin": "bearing", "pillar": "bearing"}},
+                    store=tmp_path)
+    b = api.resolve({**base, "constructions": {"pin": "bushing", "pillar": "bushing"}},
+                    store=tmp_path)
+    cards = {c["id"]: c for c in api.list_designs(store=tmp_path)}         # entry 9
+    assert cards[a.id]["constructions"] == {"pillar": "bearing", "pin": "bearing",
+                                            "crank": "printed"}
+    assert cards[b.id]["constructions"]["pin"] == "bushing"
+    for c in (cards[a.id], cards[b.id]):
+        assert c["servo"] == "xl330_m288"
+        assert c["sheet"] == "acrylic_3mm"
+        assert c["thickness_mm"] is None
+        assert c["params"] == {"unit": 6.3}
+        assert c["targets"] == {"budget": ["cost_usd"]}
+
+
+def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
+    import logging
+
+    api.attach_build(quad, robot("quad", 1.0), 1.0)
+
+    def fake_bake(path, cfg, profile=False):
+        logging.getLogger("bake_gltf").warning("tessellate: 3 of 511 faces have no "
+                                               "triangulation; skipped")
+        Path(path).write_bytes(b"glTF")
+
+    monkeypatch.setattr("spiderpig.bake.bake_gltf", fake_bake)
+    rep = api.export(quad, ["glb"], tmp_path)                              # entry 10
+    assert rep.ok
+    assert rep.warnings == ["tessellate: 3 of 511 faces have no triangulation; skipped"]
+    assert rep.manifest["warnings"] == rep.warnings
+    assert json.loads((tmp_path / "manifest.json").read_text())["warnings"] == rep.warnings

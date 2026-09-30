@@ -243,3 +243,23 @@ def test_view_serves_a_design_on_a_free_port(store, single):
     finally:
         srv.stop()
     assert not srv.alive()
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the CLI's explain takes the build options
+# ---------------------------------------------------------------------------
+
+
+def test_explain_takes_the_build_options(capsys):
+    from spiderpig import explain
+
+    assert explain.main(["--linkage", "klann", "--module", "single", "--thickness", "2"]) == 0
+    out = capsys.readouterr().out                                          # entry 8
+    assert "STOP: no M3 screw and nut fit a crankpin joint in 2 mm layers" in out
+    assert "materials.thickness_mm 2 -> 3" in out
+    assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "bearing",
+                         "--pillar", "bearing", "--servo", "xl330_m288"]) == 0
+    out = capsys.readouterr().out
+    assert "ground clearance:" in out
+    assert "3. plan" in out
+    assert "bearing" in out or "sleeve" in out

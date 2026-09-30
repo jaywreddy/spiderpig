@@ -107,7 +107,7 @@ design: there is no search in v1.
 | `kind` | `walker` or `mechanism` | required |
 | `linkage.key` | a registered linkage (below) whose kind matches | required |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm, angles in degrees) | the linkage's defaults |
-| `legs.module` | one of the linkage's modules (legs **per side**; below): `single`, `double`, `decker`, `quad` or its own | `quad` (walker), `single` (mechanism) |
+| `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
 | `materials.sheet` | a sheet item (sets the layer pitch) | `acrylic_3mm` |
@@ -148,8 +148,20 @@ the frame plates, the crank's sweep, the centre plates): that is what to move.
 `budget.cost_usd` is the purchase total at the catalog's pack prices: two servos, a
 spool of filament, a can of solvent cement and a pack of inserts are bought whole, so
 the total rarely goes under about $100 whatever the linkage; the row's detail lists
-the largest items, and an item with no listed price counts as 0, so a total with
-unpriced items is a lower bound (the detail says so).
+the largest items. An item with no listed price is not in the total, so a total with
+unpriced items is a lower bound: it can refute a `max` but not confirm it, and a hard
+`max` target then fails ("at least ...") with every unpriced item named by quantity
+(the catalog's bearings, bushings, rod, clips, CA glue and most screws have vendor
+links but no price, so a metal-pivot design's cost stays a lower bound until they are
+priced or accepted by hand). At `quick`, `budget.cost_floor_usd` prices what the design
+buys whatever its parts (servos, spool, sheet, cement, inserts) from the catalog, and a
+floor already over the `max` fails the target before any build.
+
+`materials.thickness_mm` is the layer pitch: every construction sizes its parts by it,
+and a value more than 12 % off the sheet's nominal is a warning on `resolve`. The
+printed crank's crankpin joints (a stock M3 screw and nut through one-layer webs) need
+layers of at least about 2.9 mm, so a 2 mm sheet fails at `check` (stage
+`construction`) with the thickness that works as a checked recommendation.
 
 `fit` defaults (mm): <<FIT>>
 
