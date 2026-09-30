@@ -584,3 +584,75 @@ crankpin at 6.8 mm where a post needs 10.0, no detour clears it, and no thinner
 parts help; scaled x1.5 to `unit: 10.5` (the engine's checked patch) it plans, in
 12 layers as one leg a side, and as the quad robot in 37 layers (111 mm a side)
 within the deadline, unproven.
+
+### Phase 2 — what was fixed, and the second run
+
+Commits: `4696993` (the engine's reports and the handles: the thin sheet's lever,
+the budget row, the checked module, the reloaded build's joints, the live mass, the
+cards, the export's warnings, the CLI's explain), `96ba6b8` (API.md, the MCP guide,
+the README, the `recommend` tool's description). Tests for each in
+`tests/test_spiderpig_api.py`, `tests/test_spiderpig_mcp.py` and `tests/test_view.py`
+(the section "Test drive, round 2").
+
+| entry | severity | fixed in | how |
+|---|---|---|---|
+| 1 six legs has no module | annoying | `4696993`, `96ba6b8` | the `legs.module` error says a module is the legs per side and the robot has two sides, with every module's count ("quad 4 a side (8 on the robot)"), and that no linkage has a three-leg module; API.md's row and the guide say the same |
+| 2 the 2 mm sheet | blocker | `4696993` | `resolve` warns when a measured thickness is more than 12 % off the sheet's nominal (the layer pitch follows it); the printed crank's `dims()` says why no crankpin joint fits (one-layer webs, the flattest head 1.65 mm and the nut 2.4 mm under their floors), that the least pitch is 2.9 mm, and hands the API a lever (`ConstructionError.changes`); `check` re-runs the static stage and the design's own plan at 3 mm (`recommend.construction_fix`) and hands out `{"materials": {"thickness_mm": 3.0}}` as a checked recommendation, which `recommend`, `explain` (the CLI's too) and the MCP tool carry; the verify row is `construction.buildable`, the drive's stays green |
+| 3 the budget passes on a lower bound | blocker | `4696993` | the cost row names every unpriced item, largest quantities first, with its packs ("64 x MF63ZZ ... (7 packs of 10 at Amazon)"); a hard `max` / `value` target can't pass on a lower bound: the row fails "at least; the target can't be verified while items are unpriced" until they are priced in the catalog or accepted by hand (a soft target keeps the priced part's verdict with the same note; a `min` is confirmed by a lower bound). The catalog's bearings, bushings, rod, clips and glue stay unpriced: their vendors' pages don't give a price to a fetch, and nothing was invented |
+| 4 `quick` doesn't price | annoying | `4696993` | `budget.cost_floor_usd` at `quick`: the servos, a spool, a sheet, the robot's cement and inserts from the catalog ($115.70 for this goal, every one a whole pack), and a floor already over a `max` fails `budget.cost_usd` before any build |
+| 5 checked with the `single` module | annoying | `4696993` | the `verified` text says "its single module plans in 12 layers (36 mm); the quad module's own plan is not checked here (plan the derived design: the planner's deadline is 60 s, and a bigger module stacks taller)". The design's own plan is not attempted in the check: the TrotBot quad's takes the whole deadline, which would double every failed check |
+| 6 the worked example on the robot | annoying | `4696993`, `96ba6b8` | the real cause: a build reloaded from the store's STEP files had no joints or outlines (a fresh build has them); they now come from the side's template at the build's angle, so `design.mech.body("L.b2_leg0").outline` works after a reload as after a build; API.md says the example is one side and the robot's bodies are `L.b7` / `R.b7` |
+| 7 `mass_g` / `volume_mm3` stale | annoying | `4696993` | measured on the live solid (`Part.density`, `fixed_mass_g` for the servo), so they follow an edit at once; an accepted `recheck` refreshes the build report's masses |
+| 8 CLI `explain` without build options | annoying | `4696993` | `spiderpig explain` takes `--servo`, `--pillar`, `--pin`, `--crank`, `--sheet`, `--thickness` (the README says so) |
+| 9 cards alike | nit | `4696993` | `list_designs` cards carry `params` (the spec's overrides), `servo`, `sheet`, `thickness_mm`, `constructions` and `targets` |
+| 10 the bake prints | nit | `4696993` | `ExportReport.warnings` (and the manifest) carry the bake's and the constructions' warnings; build123d's "Unknown Compound type" warning is silenced |
+| 11 "quiet" | nit | not fixed | out of the vocabulary; the guide's limits say what v1 doesn't cover |
+
+Not fixed, and why:
+
+- The pivot hardware's prices. The row is now honest instead: with bearings or
+  bushings the goal's "under $120" is **not verifiable** in this catalog, and the
+  priced part alone is $115.67 (two XL330s, a spool, the cement, a pack of inserts),
+  so the 64 bearings, the rod, the clips and the glue put it over. That is the answer
+  the user gets now, at `verify standard`, in one row.
+- Six legs. A true limit of the modules (1, 2, 2, 4 a side); the error says so.
+- A parameter search (`sweep`). Not the top friction this round: both blockers were
+  reports that hid a fact (a lever, a lower bound), and the numbers the goal asked
+  for (clearance, lift, speed) were met by the first Strider without a search.
+- The design's own plan in a recommendation's check (entry 5). Said plainly rather
+  than attempted, to keep a failed check inside one deadline.
+
+### Wall clock, second run
+
+Against the fixed tree, a fresh store, the same scripts and the same order; the
+full unit suite (and, for the first minutes, the Klann audit) ran alongside on the
+same 4 cores, so the engine steps read a little slower than alone.
+
+| step | wall | note |
+|---|---|---|
+| 1 import, `list_linkages`, `describe(klann)` | 3.8 s | |
+| 2 the 15 spec probes | 3.4 s | the module error now says legs per side |
+| 3 goal spec at 2 mm: check, plan, walk, quick | 4.2 s | `construction / unbuildable` with the least pitch (2.9 mm), the lever and a checked patch; `resolve` warned |
+| 4 recommend, derive with its patch, check, plan, quick | 4.4 s | 12 layers, optimal; was four probes and a guess |
+| 5 the derived Klann quad: verify standard | 54.0 s | `budget.cost_usd` FAIL: at least $115.67, the 64 bearings, 56 clips, rod and glue named |
+| 6 Strider double (four legs): quick 4.9 s, standard 48.5 s | 53.4 s | `budget.cost_floor_usd` $115.70 at quick; the same honest FAIL at standard |
+| 7 export step/dxf/print/bom/glb | 44.4 s | the bake's warning on the report |
+| 8 the example edit on the loaded robot: build (reloaded) 4.7 s, edit, recheck 5.9 s | 14.2 s | `outline` and `joints` present after the reload; mass 5.907 -> 5.882 g at once; the build report follows |
+| 9 TrotBot heel at unit 7: check 7.2 s, recommend, derive, plan 61.5 s, quick, explain | 76.8 s | the recommendation says "its single module plans in 12 layers ... the quad module's own plan is not checked here" |
+| 10 CLI `explain` with the build options 4.7 s; CLI `build` 38.7 s; CLI `audit` 73.9 s | 117 s | |
+| 11 `spiderpig view` to the URL 3.0 s; browser: page + GLB 9.5 s, drive mode + HUD 33 s | 45.5 s | the export served as is; HUD height 63.3 mm, contacts 4 / 8, margin 53.9 mm, model 172.82 mm/rev · 296.68 mm/s |
+| **total, goal to files, the viewer and the TrotBot answer** | **422 s** (7.0 min) | no workaround, no dead end; ~8.5 min with three in the first run |
+
+Entry 12, found in this run and fixed in `c2a8838`: the design derived with the
+checked patch (`thickness_mm: 3.0`) had another id than the one resolved with
+`thickness_mm: 3`, and both another than the plain default, though all three are one
+config; `resolve` now drops a thickness at the sheet's nominal and keeps a measured
+one as a float.
+
+Read as the agent: the 2 mm wall is now two calls (`check` says 2.9 mm and hands
+out 3, `derive` takes it) instead of four probes and a guess; the cost row answers
+the budget question honestly (FAIL, at least $115.67, the bearings named) where it
+used to say ok; the `explain` CLI shows the design being built; the example edit
+works on the robot straight from the store, and the part's mass moves with it. What
+it still has to do by hand: accept that six legs and a verified $120 with metal
+pivots are not on offer, and choose four (Strider) or eight (Klann) legs.
