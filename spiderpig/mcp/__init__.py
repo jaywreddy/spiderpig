@@ -241,9 +241,10 @@ def _job(state: State, job: str):
 
 
 def _job_result(j) -> dict:
-    doc = j.to_dict()
-    err = j.error()
-    return {"ok": err is None, "failures": [] if err is None else [err.to_dict()], "job": doc}
+    """``get_job`` / ``wait_job``: the same shape as the long tool itself returns (the
+    finished result flat with the job's record under ``job``; a failure's envelope; or the
+    running record alone)."""
+    return _long_out(j)
 
 
 # ---------------------------------------------------------------------------
@@ -491,9 +492,11 @@ def _register_tools(server: MCPServer, state: State) -> None:
     @tool
     async def describe(key: Annotated[str, Field(description="a linkage key")]) -> o.DescribeOut:
         """One linkage's card: parameters (default, angle or length, which only scale it),
-        links and labels, feet or output, modules with their default phases, the loop
-        closures at the defaults (margins, transmission angles, toggles) and one foot's
-        path numbers (a walker) or the output check (a mechanism)."""
+        links and labels, feet or output, modules with their default phases and, for a
+        walker, each module's ``stride_mm`` and whether it ``walks`` in the walk model, the
+        loop closures at the defaults (margins, transmission angles, toggles), one foot's
+        path numbers and the ``sensitivity`` of the foot path (lift, stride, height, width)
+        to +10 % of each parameter (a walker), or the output check (a mechanism)."""
         return {"ok": True, "failures": [], "card": await _run(linkage_card, key)}
 
     @tool
@@ -526,9 +529,12 @@ def _register_tools(server: MCPServer, state: State) -> None:
     async def plan(design: DesignArg) -> o.PlanOut:
         """The layer plan of one side: every link's layer, the stack (layers, height), the
         crank's route along its posts, whether it is proven the thinnest (``optimal``,
-        ``proof``), the ground clearance and the plan's table. A failure carries the
-        blockers (count, the two shapes, gap, need) and checked recommendations. A stored
-        plan is re-made and verified rather than searched again."""
+        ``proof``), the ground clearance, the constructions' ``warnings`` and the plan's
+        table. A failure carries the blockers (count, the two shapes, gap, need) and checked
+        recommendations. A stored plan is re-made and verified rather than searched again.
+        A search is bounded by a 60 s deadline (and the recommendation checks by another):
+        the Klann quad plans in under a second, a big or scaled-down design can take a
+        minute, and a design that fails takes the deadline plus the checks."""
         d = await _run(_load, state, design)
         return _report(d, await _run(api.plan, d))
 
@@ -544,21 +550,27 @@ def _register_tools(server: MCPServer, state: State) -> None:
     async def recommend(design: DesignArg) -> o.RecommendOut:
         """The engine's checked recommendations for the stage that fails (the static
         stage's, else the planner's), each with the spec patch that applies it (hand it to
-        ``derive``); empty when the design plans."""
+        ``derive``), and the failure's ``notes`` on what can't help or wasn't checked;
+        empty when the design plans. The engine recommends only what it re-ran and saw
+        pass: a scale of the linkage or thinner parts for a link-to-axle gap, the linkage's
+        default scale for a plan that ran into the stack's own room."""
         d = await _run(_load, state, design)
         recs = await _run(api.recommend, d)
         failing = next((r for s in ("check", "plan") if (r := d.reports.get(s)) is not None
                         and not r.ok), None)
         stage = failing.failures[0].stage if failing and failing.failures else None
+        notes = list(failing.failures[0].notes) if failing and failing.failures else []
         return {"ok": True, "failures": [], "design": d.id, "stage": stage,
-                "recommendations": [r.to_dict() for r in recs]}
+                "recommendations": [r.to_dict() for r in recs], "notes": notes}
 
     @tool
     async def walk(design: DesignArg) -> o.WalkOut:
         """The quasi-static walk model of the robot (no parts): stride, bob, slip, tipping,
         speed at the servo's no-load rpm (estimated), the nominal mass, and each motion
         target's verdict as rows. The feet sit at their planned layers when the design
-        plans. A mechanism is skipped."""
+        plans. A stride near zero comes with a note saying why (the module's feet cancel
+        each other: a mirrored pair at one phase) and which module of the linkage walks.
+        A mechanism is skipped."""
         d = await _run(_load, state, design)
 
         def run():
@@ -614,16 +626,25 @@ def _register_tools(server: MCPServer, state: State) -> None:
         return await _long(state, "export", design, args, wait_seconds)
 
     @tool
-    async def get_job(job: Annotated[str, Field(description="a job id")]) -> o.JobResult:
-        """A long operation's record: ``state`` (queued, running, done, failed), timings,
-        the ``result`` when done (the tool's own output) or the ``error``."""
+    async def get_job(job: Annotated[str, Field(
+            description="a job id: the `job` field of the record build, verify or export "
+                        "returned")]) -> o.JobResult:
+        """A long operation's state, in the shape the tool itself returns: while it runs,
+        ``job`` alone (``{job, op, design, args, state: queued|running, started_at, ...}``);
+        once done, the tool's own result (a build's manifest, a verify's rows, an export's
+        files) flat beside ``job`` (``state: done``, ``seconds``); if it failed, ``ok:
+        false`` with the failure. Records live as long as the server; the store keeps the
+        report (``get_design``)."""
         return _job_result(_job(state, job))
 
     @tool
-    async def wait_job(job: Annotated[str, Field(description="a job id")],
-                       seconds: Annotated[float, Field(description="how long to wait",
-                                                       ge=0)] = 60.0) -> o.JobResult:
-        """Wait up to ``seconds`` for a job, then return its record (``get_job``)."""
+    async def wait_job(job: Annotated[str, Field(
+            description="a job id: the `job` field of the record build, verify or export "
+                        "returned")],
+            seconds: Annotated[float, Field(description="how long to wait", ge=0)] = 60.0
+            ) -> o.JobResult:
+        """Wait up to ``seconds`` for a job, then return it as ``get_job`` does: the tool's
+        own result flat beside ``job`` once done, else the running record."""
         j = _job(state, job)
         await anyio.to_thread.run_sync(state.jobs.wait, j, float(seconds))
         return _job_result(j)
@@ -773,7 +794,9 @@ def _register_prompts(server: MCPServer) -> None:
             "2. Call list_linkages(kind='walker') and describe(key) for the candidates; call "
             "catalog() for the servos, sheets and constructions and their prices.\n"
             "3. Write one Spec (spiderpig://schema/spec): kind 'walker', a linkage key, a "
-            "module (single/double/decker/quad), materials and constructions, and the goal's "
+            "module (legs per side: single 1, double 2 as a mirrored pair, decker 2 one way, "
+            "quad 4; the card says which modules walk: a mirrored pair stands still in the "
+            "walk model for most linkages), materials and constructions, and the goal's "
             "numbers as targets under motion, size and budget (objects with min/max/value; "
             "physical limits are hard by default, gait quality soft).\n"
             "4. resolve(spec) -> the design id. On errors, fix each path it names.\n"

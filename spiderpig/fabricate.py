@@ -196,7 +196,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
                         if any(c.link in b and c.keepout.owner in b for b in e.blockers)]
             e = e.with_notes(*(["static clearances behind it:",
                                 *(c.describe() for c in involved[:8])] if involved else []))
-            if advise and involved:
+            if advise:      # no involved clearance: recommend still says what it can
                 from spiderpig.recommend import recommend
 
                 recs, notes = recommend(config, clearances=tuple(involved), plan=True)

@@ -73,17 +73,17 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
 | `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
-| `list_linkages(kind?)`, `describe(key)` | linkage cards | registry, `Linkage.check`, foot path / output check | ms |
-| `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm` | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
-| `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table` | `fabricate.design_side` (cached by the engine) | 0.4 s |
-| `explain(design)` | text | `explain.explain` | ms after plan |
-| `recommend(design)` | `[Recommendation]` with `patch` | the failing stage's checked recommendations | 1-30 s |
-| `walk(design)` | `WalkReport`: `metrics`, `mass_g`, `rows` | `walk.api_payload` (feet at their planned layers) | 0.1 s |
-| `build(design, t=1.0)` | `BuildReport`: `parts` manifest, `mass_g`, `envelope_mm`, `counts`; `design.parts[name]` | `fabricate.fabricate` | 8 s |
+| `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width) | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s, the walk per module) |
+| `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm`, `lowest_body_part` (which body shape sets the clearance) | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
+| `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table`, `warnings` (what the constructions warned about: a printed snap that overstrains) | `fabricate.design_side` (cached by the engine); a search is bounded by `StackSpec.max_seconds` (60 s) and the recommendation checks by one more | 0.4 s (Klann quad); up to a minute on a large or scaled-down design, one to three on one that fails |
+| `explain(design)` | text | `explain.explain_config` on the design's full config, from its own plan (a recorded failure is printed, not re-solved) | ms after plan |
+| `recommend(design)` | `[Recommendation]` with `patch` (the failure's `notes` say what can't help or wasn't checked) | the failing stage's checked recommendations: a scale or thinner parts for a link-to-axle gap; the linkage's default scale for a plan that ran into the stack's own room after a scale-down | 1-60 s |
+| `walk(design)` | `WalkReport`: `metrics`, `mass_g`, `rows`, `notes` (a stride near zero: why, and which module of the linkage walks) | `walk.api_payload` (feet at their planned layers) | 0.1 s |
+| `build(design, t=1.0)` | `BuildReport`: `parts` manifest, `mass_g`, `envelope_mm`, `counts`, `warnings`; `design.parts[name]` | `fabricate.fabricate` | 8 s |
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids` | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where | 5-60 s (the BOM's grouping dominates) |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where; a recorded export of these formats or more into the same folder, its files all still there, is returned as is | 5-60 s (the BOM's grouping dominates) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
 | `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
@@ -202,7 +202,14 @@ Row {requirement, source, value, target, pass, tier: proven|measured|estimated, 
 `ok` is false when any hard row fails or any stage failed; `score` is the weighted mean
 over the soft targets of `max(0, 1 - miss / |bound|)`. Rows without a target are
 informational (every metric the level measured is reported); `unverified` lists the
-spec's targets the level didn't measure (budget at `quick`).
+spec's targets the level didn't measure (budget at `quick`). What a row's `detail`
+says: the ground clearance names the body part that sets it; the envelope at `quick`
+is the joints' sweep plus the plates (x, y) and the stacks, the chassis and the axle
+heads outside the outer plates (z), at `standard` the built extent at the build's
+crank angle; the cost lists the largest items (packs are bought whole) and says when
+unpriced items make the total a lower bound; `plan.warnings` (informational, soft)
+carries the constructions' warnings; a walker whose stride reads near zero has the
+walk note on its stride and speed rows.
 
 ## Worked example: spec to STEP
 
@@ -276,16 +283,16 @@ A design argument is the id `resolve` returned.
 
 | tool | returns |
 |---|---|
-| `list_linkages(kind?)`, `describe(key)` | the linkage cards |
+| `list_linkages(kind?)`, `describe(key)` | `linkages` (the list) / `card` (one linkage's card) |
 | `catalog(category?)` | servos, sheets, constructions with prices, dims, rpm, torque, mass, hardware |
 | `resolve(spec)` | `design` (the id), `resolved`, `engine_version`, `warnings`; an invalid spec: `ok: false`, `failures[0].code = invalid_spec`, `errors: [{path, message, allowed, nearest}]` |
 | `check(design)`, `plan(design)`, `walk(design)` | the `CheckReport` / `PlanReport` / `WalkReport` as JSON (`walk` plans first so the feet sit at their layers) |
 | `explain(design)` | `text` |
-| `recommend(design)` | `stage` (the failing one) and `recommendations` with their `patch` |
+| `recommend(design)` | `stage` (the failing one), `recommendations` with their `patch`, and the failure's `notes` (what can't help, what wasn't checked) |
 | `build(design, t?, wait_seconds?)` | the manifest: every part with `path` (its STEP in the store's `build/parts/`), `dir`, masses, envelope; **a job** |
 | `verify(design, level?, wait_seconds?)` | the `VerifyReport` (rows with `pass`, `tier`, `hard`); `quick` inline, `standard` / `full` **jobs** |
 | `export(design, formats?, out_dir?, wait_seconds?)` | `files` (paths) and `manifest`; **a job** |
-| `get_job(job)`, `wait_job(job, seconds?)` | a job's record: `state` (queued, running, done, failed), timings, `result` or `error` |
+| `get_job(job)`, `wait_job(job, seconds?)` | the same shape as the long tool itself: while it runs, `job` alone (`{job, op, design, args, state, started_at, finished_at, seconds}`; its `job` field is the id these take); once done, the tool's own result flat beside `job`; failed, `ok: false` with the failure |
 | `compare(a, b)`, `derive(design, patch)` | as the Python API |
 | `get_design(design, stage?)` | `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
 | `list_designs()` | the store's cards |
@@ -300,20 +307,25 @@ viewer (below).
 data (stage, code, message, culprits, numbers, blockers, recommendations with patches,
 notes). Only a *misuse* of a tool (an unknown design, a malformed id, an unknown
 linkage, `gc` without arguments) sets `isError`, and its payload is the same envelope
-(`store` / `no_such_design`, `bad_design_id`, `no_such_stage`, `gc_needs_arguments`;
-`spec` / `unknown_linkage`; `export` / `unknown_format`; `job` / `no_such_job`). A
-programming error in the engine crosses the same way (stage `engine`, code = the
-exception's class) and is logged with its traceback on the server.
+(`store` / `no_such_design`, `bad_design_id`, `no_such_stage` (a stage the design
+doesn't hold yet), `gc_needs_arguments`; `spec` / `unknown_linkage`; `job` /
+`no_such_job`). An unknown export format or stage name never reaches a tool: the
+input schema (`Literal`) refuses it, and the SDK answers `isError` with its own text
+naming the allowed values. A programming error in the engine crosses the same way
+(stage `engine`, code = the exception's class) and is logged with its traceback on the
+server.
 
 **Long operations.** The installed SDK carries the wire types of task-augmented
 execution but its server doesn't run tools as tasks, so `build`, `verify` at
 `standard` / `full` and `export` run in a process pool (one per store, workers
 spawned fresh: a clean `fabricate._DESIGNS` per process, no fork of the threaded
 server). Each waits `wait_seconds` (default 15) and returns the finished result with
-its `job` record, or the running `job` alone for `wait_job` / `get_job`. A worker
-loads the design from the store, runs the Python operation (which writes its report,
-parts or files into the store) and returns the report's JSON; the reports are in the
-store either way (`get_design`). Job records live in the server process. Short
+its `job` record, or the running `job` alone (`{ok: true, failures: [], job: {job: <id>,
+op, design, args, state, started_at, finished_at, seconds}}`) for `wait_job` /
+`get_job`, which answer in that same shape (the finished result flat beside `job`). A
+worker loads the design from the store, runs the Python operation (which writes its
+report, parts or files into the store) and returns the report's JSON; the reports are
+in the store either way (`get_design`). Job records live in the server process. Short
 operations run in a worker thread, one at a time, so the loop keeps answering.
 
 ### Resources and prompts

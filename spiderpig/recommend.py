@@ -199,6 +199,34 @@ def _product(lists):
             yield (v, *rest)
 
 
+def default_scale(config, plan: bool = True,
+                  deadline: Deadline | None = None) -> Recommendation | None:
+    """A plan that failed on no link-to-axle gap (crank routes, pin heads against the
+    plates: the stack's own room) after the linkage was scaled *down* from its registered
+    default: the default scale, verified. ``None`` when the linkage is at or above its
+    default, or the default doesn't plan either."""
+    lk = linkage.get(config.linkage)
+    names = linkage.scale_params(lk)
+    if not names:
+        return None
+    name = names[0]
+    props = dict(config.proportions)
+    now, default = float(props.get(name, lk.params[name])), float(lk.params[name])
+    if now >= default:
+        return None
+    trial = replace(config, proportions=tuple(sorted({**props, name: default}.items())))
+    verified = _verify(trial, plan, deadline)          # _OutOfTime crosses to the caller
+    if verified is None:
+        return None
+    return Recommendation(
+        ((name, now, default),),
+        why=(f"back to the linkage's default scale (x{default / now:.2f}): the search ran "
+             f"into the stack's own room (the crank's route, pin heads against the frame "
+             f"plates), which more distance between the joints clears"),
+        effects=f"every length x{default / now:.2f}; the foot path and the envelope with it",
+        verified=verified)
+
+
 _DONE: dict[tuple, tuple[list[Recommendation], list[str]]] = {}
 
 
@@ -207,9 +235,11 @@ def recommend(config, failures=(), clearances=(), plan: bool = False,
     """Checked recommendations for these failures, and notes on what can't help (remembered
     per design: checking them plans other designs). The checks share ``seconds`` of wall
     clock (the planner's own ``StackSpec.max_seconds`` by default); what they didn't get
-    to is noted."""
+    to is noted. A plan failure with no gap behind it (``plan`` and no ``clearances`` that
+    open one) is answered with :func:`default_scale` when the linkage was scaled down,
+    else with a note saying why nothing is recommended."""
     gaps = gaps_of(failures, tuple(clearances), config.params)
-    if not gaps:
+    if not gaps and not plan:
         return [], []
     key = (config, tuple(gaps), plan, seconds)
     if key not in _DONE:
@@ -221,6 +251,29 @@ def _recommend(config, gaps: list[Gap], plan: bool,
                seconds: float | None = None) -> tuple[list[Recommendation], list[str]]:
     deadline = Deadline(StackSpec().max_seconds if seconds is None else seconds)
     recs, notes, unchecked = [], [], []
+    if not gaps:
+        try:
+            if (r := default_scale(config, plan, deadline)) is not None:
+                recs.append(r)
+        except _OutOfTime:
+            unchecked.append("the linkage's default scale")
+        if not recs:
+            lk = linkage.get(config.linkage)
+            names = linkage.scale_params(lk)
+            scaled_down = bool(names) and float(dict(config.proportions).get(
+                names[0], lk.params[names[0]])) < float(lk.params[names[0]])
+            notes.append(
+                "no link passes an axle too closely, so no part size or scale could be "
+                "computed from a gap: what blocked the search is the stack's own room "
+                "(the crank's route, pin heads against the frame plates)"
+                + ("; the linkage's default scale doesn't plan either"
+                   if scaled_down and not unchecked else
+                   "; levers left: a bigger scale of the linkage, another module, "
+                   "another pillar or pin construction"))
+        if unchecked:
+            notes.append(f"not checked, the {deadline.seconds:g} s for checking what would "
+                         f"clear it ran out: {' and '.join(unchecked)}")
+        return recs, notes
     try:
         if (r := scale(config, gaps, plan, deadline)) is not None:
             recs.append(r)

@@ -431,3 +431,164 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     assert len(manifest["parts"]) == 28
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 1 (docs/agentlib/TESTDRIVE.md): what the reports must say
+# ---------------------------------------------------------------------------
+
+KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
+                "legs": {"module": "single", "sides": 1}}
+
+
+def test_a_walkers_card_says_which_modules_walk_and_how_each_parameter_moves_the_foot():
+    card = api.describe("klann")
+    mods = card["modules"]
+    assert mods["quad"]["walks"]
+    assert mods["quad"]["stride_mm"] > 50
+    assert not mods["double"]["walks"]
+    assert mods["double"]["stride_mm"] < 1
+    sens = card["sensitivity"]
+    assert set(sens) == {p["name"] for p in card["params"]}
+    oa = sens["OA"]                              # the scale parameter: everything grows 10 %
+    assert oa["step"] == "+10%"
+    assert all(oa[k] == pytest.approx(10.0, abs=0.5)
+               for k in ("lift_mm", "height_mm", "width_mm"))
+    assert sens["angA"]["step"] == "+5°"
+    assert sens["MC"] is None                    # +10 % of MC: the loops no longer close
+    assert api.describe("strider")["modules"]["double"]["walks"]
+    assert "sensitivity" not in api.describe("hoecken")
+    text = json.dumps(card)
+    assert json.loads(text)["sensitivity"] == card["sensitivity"]
+    assert "NaN" not in text                     # a null, never NaN, where a loop can't close
+
+
+def test_a_module_with_no_net_travel_says_why_and_which_module_walks():
+    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                     "legs": {"module": "double"}}, store=None)
+    w = api.walk(d)
+    assert w.ok
+    assert w.metrics["stride_mm"] < 1
+    (note,) = w.notes
+    assert note.startswith("no net travel: klann's double module")
+    assert "quad (" in note
+    assert "describe(linkage)" in note
+    stride = next(r for r in w.rows if r.requirement == "motion.stride_mm")
+    speed = next(r for r in w.rows if r.requirement == "motion.speed_mm_s")
+    assert stride.detail == speed.detail == note
+    assert api.no_travel_note(d.config, {"stride_mm": 100.0}) is None
+
+
+def test_check_names_the_body_part_that_sets_the_ground_clearance_and_z_counts_the_heads():
+    d = api.resolve(KLANN_SINGLE, store=None)
+    cr = api.check(d)
+    assert cr.ok
+    assert cr.lowest_body_part.startswith("the ")                    # entry 7
+    rep = api.verify(d, "quick")
+    gc = next(r for r in rep.rows if r.requirement == "motion.ground_clearance_mm")
+    assert cr.lowest_body_part in gc.detail
+    z = next(r for r in rep.rows if r.requirement == "size.envelope_z_mm")
+    assert "axle heads outside" in z.detail                            # entry 4
+    x = next(r for r in rep.rows if r.requirement == "size.envelope_x_mm")
+    assert "sweep over the cycle" in x.detail
+    assert all(isinstance(w, str) for w in api.plan(d).warnings)
+
+
+def test_explain_prints_a_recorded_failure_without_solving_or_advising_again(monkeypatch):
+    heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
+                                                      "params": {"unit": 7}},
+                        "legs": {"module": "single"}})
+    assert not api.plan(heel).ok
+    import spiderpig.fabricate as fabricate
+    import spiderpig.recommend as recommend
+
+    def never(*a, **k):
+        raise AssertionError("the engine ran again")
+
+    monkeypatch.setattr(fabricate, "design_side", never)
+    monkeypatch.setattr(recommend, "recommend", never)
+    text = api.explain(heel)                                           # entry 10
+    assert "STOP:" in text
+    assert "b7" in text
+    assert "what would clear it" in text          # the recorded failure's recommendations
+
+
+def test_export_returns_a_prior_export_that_covers_the_formats(tmp_path):
+    from spiderpig.store import Store
+
+    store = Store(tmp_path / "store")
+    d = api.resolve(KLANN_SINGLE, store=store)
+    out = tmp_path / "out"
+    out.mkdir()
+    files = [out / "klann.step", out / "bom.csv", out / "manifest.json"]
+    for f in files:
+        f.write_text("x")
+    prior = api.ExportReport(out_dir=str(out.resolve()), formats=["step", "bom"],
+                             files=[str(f) for f in files])
+    store.write_report(d, "export", prior)
+    rep = api.export(d, ["bom"], out)                                   # entry 19
+    assert rep.formats == ["step", "bom"]
+    assert rep.files == prior.files
+    assert d.mech is None                                              # served, not built
+
+
+def test_bad_solids_accepts_a_purchased_compound_of_valid_solids():
+    from types import SimpleNamespace
+
+    from build123d import Compound
+
+    from spiderpig.construction.contract import bad_solids
+
+    two = Compound([Box(1, 1, 1), Box(1, 1, 1).moved(Location((3, 0, 0)))])
+    assert len(two.solids()) == 2
+    mech = SimpleNamespace(bodies=[
+        SimpleNamespace(name="servo", part=two, fab="purchased"),      # entry 14
+        SimpleNamespace(name="link", part=two, fab="laser"),
+        SimpleNamespace(name="pin", part=Box(1, 1, 1), fab="printed"),
+        SimpleNamespace(name="none", part=None, fab="laser")])
+    (bad,) = bad_solids(mech)
+    assert (bad["part"], bad["solids"], bad["fab"]) == ("link", 2, "laser")
+
+
+def test_the_bake_tessellates_face_by_face():
+    from spiderpig.bake import _tessellate
+
+    pos, tri = _tessellate(Box(2, 3, 4))
+    assert pos.shape == (24, 3)
+    assert tri.shape == (36,)
+    assert pos.dtype.name == "float32"
+    assert tri.dtype.name == "uint32"
+    assert tri.max() == 23
+
+
+def test_recommend_offers_the_default_scale_when_a_scaled_down_plan_ran_out_of_room(
+        monkeypatch):
+    from spiderpig import recommend as rec
+    from spiderpig.config import BuildConfig
+
+    checked = "checked: the static stage passes, and it plans in 16 layers (48 mm)"
+    monkeypatch.setattr(rec, "_verify", lambda config, plan, deadline=None: checked)
+    monkeypatch.setattr(rec, "_DONE", {})
+    small = BuildConfig(linkage="jansen", module="quad", proportions=(("unit", 1.1),))
+    recs, notes = rec.recommend(small, plan=True)                     # entry 9
+    (r,) = recs
+    assert r.changes == (("unit", 1.1, 1.6),)
+    assert r.verified == checked
+    assert "default scale" in r.why
+    assert notes == []
+    recs, notes = rec.recommend(BuildConfig(linkage="jansen", module="quad"), plan=True)
+    assert recs == []
+    assert "stack's own room" in notes[0]
+    assert "levers left" in notes[0]
+    assert rec.recommend(small) == ([], [])          # a static failure without gaps: nothing
+
+
+def test_capture_warnings_collects_the_constructions_warnings_once():
+    import logging
+
+    with api.capture_warnings() as seen:
+        logging.getLogger("spiderpig.construction.printed").warning("pin seg0: strains 6 %")
+        logging.getLogger("spiderpig.construction.printed").warning("pin seg0: strains 6 %")
+        logging.getLogger("spiderpig.construction.printed").info("not a warning")
+        logging.getLogger("spiderpig.other").warning("not collected")
+    assert seen == ["pin seg0: strains 6 %"]                            # entry 18

@@ -215,6 +215,13 @@ def foot_z_nominal(config: BuildConfig) -> list[float]:
     z = _default_plan_z(replace(config, phases=None, proportions=()))
     if z is not None:
         return list(z)
+    return foot_z_guess(config)
+
+
+def foot_z_guess(config: BuildConfig) -> list[float]:
+    """Left-side foot z without any plan (no search at all): the feet one layer apart from
+    layer 2 out, in a stack of two layers per foot plus five. What :func:`foot_z_nominal`
+    falls back to, and what a linkage card's per-module stride uses."""
     n = len(side_feet(config))
     layers, top = range(2, 2 + n), 2 * n + 5
     pitch = config.pitch

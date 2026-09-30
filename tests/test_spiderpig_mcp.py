@@ -232,7 +232,8 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     assert rows["motion.speed_mm_s"]["tier"] == "estimated"
     _no_solids(vr)
     assert call(server, "recommend", design=single) == {
-        "ok": True, "failures": [], "design": single, "stage": None, "recommendations": []}
+        "ok": True, "failures": [], "design": single, "stage": None, "recommendations": [],
+        "notes": []}
     assert "3. plan" in call(server, "explain", design=single)["text"]
     summary = call(server, "get_design", design=single, stage="summary")["report"]
     assert {"check", "plan", "walk", "verify"} <= set(summary["stages"])
@@ -319,7 +320,8 @@ def test_build_through_the_long_op_path_returns_a_manifest_of_files_in_the_store
     assert got["ok"], got
     assert got["job"]["state"] == "done"
     assert got["job"]["seconds"] > 0
-    manifest = got["job"]["result"]
+    assert "result" not in got["job"]       # the tool's own shape: the manifest flat
+    manifest = got
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
@@ -352,7 +354,8 @@ def test_export_as_a_job_writes_the_files(server, single, tmp_path):
                wait_seconds=0)
     got = call(server, "wait_job", job=out["job"]["job"], seconds=600)
     assert got["ok"], got
-    rep = got["job"]["result"]
+    assert got["job"]["state"] == "done"
+    rep = got
     assert rep["ok"]
     assert rep["out_dir"] == str(tmp_path.resolve())
     names = {Path(f).name for f in rep["files"]}
@@ -470,3 +473,54 @@ def test_view_misuse_is_a_failure_envelope(server):
     assert (f["stage"], f["code"]) == ("store", "no_such_design")
     f = misuse(server, "view", design="nonsense")
     assert (f["stage"], f["code"]) == ("store", "bad_design_id")
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 1 (docs/agentlib/TESTDRIVE.md): the guide, the card, the notes
+# ---------------------------------------------------------------------------
+
+
+def test_the_guide_explains_modules_the_deadline_the_job_record_and_the_cost(server):
+    async def go():
+        async with Client(server) as client:
+            return (await client.read_resource("spiderpig://guide")).contents[0].text
+
+    guide = run(go())
+    assert "**Modules** are legs per side" in guide                        # entries 1, 5, 20
+    assert "The Strider's `double`" in guide
+    assert "**The planner's clock.**" in guide
+    assert "60 s" in guide
+    assert "{job, op, design, args, state:" in guide                        # entry 17
+    assert "bought whole" in guide
+    assert "lower bound" in guide
+
+
+def test_the_card_over_mcp_says_which_modules_walk_and_the_walk_note_says_why(server):
+    card = call(server, "describe", key="klann")["card"]
+    assert card["modules"]["quad"]["walks"]
+    assert not card["modules"]["double"]["walks"]
+    assert card["sensitivity"]["OA"]["step"] == "+10%"
+    double = call(server, "resolve", spec={"kind": "walker", "linkage": {"key": "klann"},
+                                           "legs": {"module": "double"}})["design"]
+    w = call(server, "walk", design=double)
+    assert w["ok"]
+    assert w["metrics"]["stride_mm"] < 1
+    (note,) = w["notes"]
+    assert "no net travel" in note
+    assert "quad (" in note
+    stride = next(r for r in w["rows"] if r["requirement"] == "motion.stride_mm")
+    assert stride["detail"] == note
+    cr = call(server, "check", design=double)
+    assert cr["lowest_body_part"].startswith("the ")
+
+
+def test_recommend_carries_the_failures_notes_and_a_plan_its_warnings(fresh):
+    heel = call(fresh, "resolve", spec=HEEL)["design"]
+    recs = call(fresh, "recommend", design=heel)
+    assert recs["stage"] == "static"
+    assert isinstance(recs["notes"], list)
+    assert len(recs["recommendations"]) == 1
+    child = call(fresh, "derive", design=heel, patch={"linkage": {"params": {"unit": 10.5}}})
+    pr = call(fresh, "plan", design=child["design"])
+    assert pr["ok"]
+    assert isinstance(pr["warnings"], list)

@@ -121,6 +121,7 @@ class CheckOut(Result):
     clearances: list[JSON]
     crank_facts: JSON | None
     ground_clearance_mm: float | None
+    lowest_body_part: str
     seconds: float
 
 
@@ -138,6 +139,7 @@ class PlanOut(Result):
     ground_clearance_mm: float | None
     table: str
     reused: str | None
+    warnings: list[str]
     seconds: float
 
 
@@ -157,6 +159,7 @@ class WalkOut(Result):
     feet_z_planned: bool
     servo: JSON
     rows: list[RowOut]
+    notes: list[str]
     seconds: float
 
 
@@ -169,6 +172,7 @@ class RecommendOut(Result):
     design: str
     stage: str | None
     recommendations: list[RecommendationOut]
+    notes: list[str]
 
 
 class BuildOut(Result):
@@ -186,6 +190,7 @@ class BuildOut(Result):
     parts: NotRequired[list[JSON]]
     dir: NotRequired[str]
     files: NotRequired[int]
+    warnings: NotRequired[list[str]]
     seconds: NotRequired[float]
     job: NotRequired[JobOut]
 
@@ -211,7 +216,33 @@ class ExportOut(Result):
 
 
 class JobResult(Result):
+    """``get_job`` / ``wait_job``: what the long tool itself returns, so a finished job's
+    result (a build's manifest, a verify's rows, an export's files) sits flat beside the
+    ``job`` record, and a running job is the record alone."""
+
     job: JobOut
+    design: NotRequired[str]
+    seconds: NotRequired[float]
+    # build
+    t: NotRequired[float | None]
+    n_parts: NotRequired[int]
+    counts: NotRequired[JSON]
+    mass_g: NotRequired[float | None]
+    envelope_mm: NotRequired[list[float] | None]
+    meta: NotRequired[JSON]
+    parts: NotRequired[list[JSON]]
+    dir: NotRequired[str]
+    files: NotRequired[int | list[str]]
+    warnings: NotRequired[list[str]]
+    # verify
+    level: NotRequired[str]
+    score: NotRequired[float]
+    rows: NotRequired[list[RowOut]]
+    unverified: NotRequired[list[str]]
+    # export
+    out_dir: NotRequired[str]
+    formats: NotRequired[list[str]]
+    manifest: NotRequired[JSON]
 
 
 class CompareOut(Result):
