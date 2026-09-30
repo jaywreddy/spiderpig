@@ -31,6 +31,7 @@ their own failures.
 from __future__ import annotations
 
 import argparse
+import sys
 
 from spiderpig import linkage
 
@@ -119,6 +120,10 @@ def main(argv=None) -> int:
         config = config_from_args(args, robot=False)
     except ParamError as e:
         ap.error(str(e))
+    from spiderpig.api import config_warnings
+
+    for w in config_warnings(config, sides=2):     # what resolve would warn about (one
+        print(f"warning: {w}", file=sys.stderr)    # side is what explain always shows)
     print(explain_config(config))
     return 0
 

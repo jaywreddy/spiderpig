@@ -139,3 +139,32 @@ def test_identical_and_mirrored_parts_are_grouped():
     (row,) = bom.made
     assert (row.qty, row.mirrored) == (3, 1)
     assert "2 + 1 mirrored" in bom.markdown()
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): the pivot hardware is priced, and each
+# price says where it came from
+# ---------------------------------------------------------------------------
+
+
+def test_the_catalog_prices_the_pivot_hardware_and_says_where_from(monkeypatch):
+    import importlib
+
+    from spiderpig.hardware import fastener_catalog, parts
+
+    monkeypatch.setattr(catalog, "CATALOG", {})       # the real data, freshly registered
+    importlib.reload(parts)
+    importlib.reload(fastener_catalog)
+    priced = {"m3_shcs_6": 3.83, "m3_shcs_12": 5.18, "m3_shcs_45": 12.25, "m3_bhcs_6": 3.97,
+              "m3_bhcs_10": 4.30, "m3_nut": 2.39, "m3_nylock": 4.22, "m3_washer": 1.45,
+              "bearing_mf63zz": 17.67, "bushing_gfm0304_03": 5.3, "ca_glue": 13.99,
+              "wood_glue": 5.49, "plywood_3mm": 3.10}
+    for key, price in priced.items():                                         # entry 9
+        offer = catalog.get(key).offer
+        assert offer.price_usd == pytest.approx(price), key
+        # a fetched page is verified; a price a search quoted says so, with the date
+        assert offer.verified or "2026-09-30" in offer.note, key
+        assert offer.url.startswith("https://"), key
+    for key in ("rod_3mm_100", "starlock_3mm", "m2_self_tap_6", "m3_shcs_18", "m3_shcs_50"):
+        assert catalog.get(key).offer.price_usd is None, key           # no page priced them
+    assert catalog.get("plywood_3mm").offer.pack_qty == 1              # sold per sheet

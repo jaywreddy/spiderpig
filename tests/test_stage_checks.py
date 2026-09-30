@@ -55,7 +55,8 @@ def test_plan_stage_names_what_blocked_it():
     assert scaled.effects.startswith("crank 22.5 -> 24.0 mm")
     assert thinner.changes == (("link_radius", 6.0, 5.5),)
     for r in (scaled, thinner):
-        assert r.verified == "checked: the static stage passes, and it plans in 13 layers (39 mm)"
+        assert r.verified == ("checked: the static stage passes, and it plans (decker module, "
+                              "the design's own) in 13 layers (39 mm)")
 
 
 def test_legs_that_must_sit_in_disjoint_blocks_are_found():

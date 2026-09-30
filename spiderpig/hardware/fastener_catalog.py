@@ -29,9 +29,13 @@ BOLT_LENGTHS: tuple[float, ...] = tuple(
 
 _dk, _k = screw("shcs", "3").head_d, screw("shcs", "3").head_h
 for _L in LONG_SHCS_LENGTHS:
+    from spiderpig.hardware.parts import bolt_depot_shcs
+
+    _bd = bolt_depot_shcs(_L)          # 45 mm is priced (Bolt Depot 6388); 50 mm is not
     register(Item(
         shcs("3", _L), f"M3 x {_L:g} mm socket head cap screw", "fastener",
-        (Offer("McMaster-Carr", "https://www.mcmaster.com/products/socket-head-screws/",
+        (*([_bd] if _bd is not None else []),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/products/socket-head-screws/",
                pack_qty=50, note=f"M3 x {_L:g} mm, pick from the listing (91290A series); part "
                "number not confirmed"),
          Offer("Amazon", f"https://www.amazon.com/s?k=M3+x+{_L:g}+mm+socket+head+cap+screw",

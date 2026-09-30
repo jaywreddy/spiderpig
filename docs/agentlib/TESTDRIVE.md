@@ -656,3 +656,343 @@ used to say ok; the `explain` CLI shows the design being built; the example edit
 works on the robot straight from the store, and the part's mass moves with it. What
 it still has to do by hand: accept that six legs and a verified $120 with metal
 pivots are not on offer, and choose four (Strider) or eight (Klann) legs.
+
+## Round 3 — 2026-09-30
+
+Three goals, three surfaces. *Goal 1 (MCP)*: "a single-servo straight-line mechanism
+for a small pick-and-place: a point that travels at least 50 mm along a line straight
+to 0.5 mm, laser-cut, with a printed crank; which building block fits, what stroke and
+straightness does it really give, build it and export STEP and DXF." *Goal 2 (CLI)*:
+"the default Klann quad with M3 bolt pivots instead of printed snap pins, on the
+thicker 5 mm acrylic if the catalog has it, audited; the stack thickness and part
+count changes versus the default." *Goal 3 (Python API)*: "a Jansen quad that must fit
+a side stack of 30 mm and weigh under 400 g, ground clearance at least 80 mm" —
+follow the failures and recommendations the way the reports suggest, `derive` with
+their patches, say what an agent would conclude.
+
+Driver: the MCP server as a subprocess (`python -m spiderpig.cli mcp --store <tmp>`
+from the worktree, the official `mcp` 2.x client); `PYTHONPATH=. python -m
+spiderpig.cli build|audit|explain|view`; `spiderpig.api` in a Python session with a
+scratch store; headless Chromium for the viewer. Allowed reading: `README.md`,
+`docs/agentlib/API.md`, this file's rounds 1 and 2, `--help`, the guide, cards and
+catalog. Several engine runs overlapped on the 4 cores, so a few wall clocks below
+read slower than alone (noted where it matters).
+
+### Wall clock, first run
+
+| step | wall | note |
+|---|---|---|
+| G1 connect, tools, resources, prompts, guide | 7.4 s (2.1 s in session) | the server's imports |
+| G1 `list_linkages(mechanism)`, `catalog`, 11 `describe` cards | 0.2 s | the cards answer the stroke question |
+| G1 Hoecken: resolve, check, plan, quick, explain, standard (job), export step + dxf, view | 16.9 s | standard 11.9 s (the worker's start), export 1.3 s, view 3.0 s |
+| G1 `spiderpig view` from a shell: to the URL 6.5 s, page + GLB 5.8 s | 12.3 s | no console errors |
+| G1 probes: Peaucellier / Watt at a stroke of 50, stroke 80, dwell, sides 2, misuse, prompts, cards; then the same at defaults | 12 s | entries 1, 2, 3 |
+| G2 `build --list`, `explain` default quad | 7.4 s | no 5 mm sheet |
+| G2 `explain` bolt pillars + pins; the same at `--thickness 5`; bolt pillars only | 108 s, 116 s, 45 s | all three: no plan in the budget (entry 7) |
+| G2 `explain` bolt single 3.5 s; bolt pins only, quad 4.5 s | 8 s | 8 layers / 24 mm; 13 layers / 39 mm |
+| G2 `build` default 107 s, `build --pin bolt` 83 s (both contended) | 190 s | |
+| G2 `audit --pin bolt --modules quad` | 65 s | OK, 197 parts |
+| G2 view the bolt-pin quad: API resolve 2.5 s, `spiderpig view` to the URL 27 s, page 5 s | 35 s | a rebuild of what `build` had built (entry 10) |
+| G3 import 2.7, resolve, check 0.5, plan 2.0, walk, quick, recommend, explain | 6.4 s | stack and mass fail; `recommend` `[]` |
+| G3 `describe(jansen)` + derives: XL330 2.7 s, decker 0.9 s, double 0.4 s, unit 1.3 65.6 s (deadline) + recommend + explain | 73 s | |
+| G3 plywood 3.0 s, plywood + XL330 2.8 s, standard verify 65 s, mass by group | 74 s | |
+| G3 two more standard verifies for the mass entry | 71 s each | |
+| **total, three goals** | **~15 min** of wall clock | G1 ~1 min, G2 ~10 min (4.5 of it the three bolt-pillar plans that fail), G3 ~5 min |
+
+### Entries
+
+#### 1. Two of the three straight-line building blocks fail every tool after `resolve`, even at their defaults, as `store / bad_design_id` — **blocker**
+
+Tried: `resolve({"kind": "mechanism", "linkage": {"key": "peaucellier_crank", "params":
+{"unit": 18}}})` (the card says 45.9 mm at unit 16, so 18 for 50 mm): `ok: true`, an id,
+no warning. Then `verify(quick)`, `check`, `explain`: every one `isError` with
+`{"stage": "store", "code": "bad_design_id", "message": "proportion yy is a length and
+must be > 0, got -1.75", "notes": ["a design id is the 16 hex digits resolve
+returned"]}`. `yy: -1.75` is the linkage's own default (the card lists it; `yx: 3, yy:
+-1.75` place the fixed pivot Y). The Watt crank the same: `proportion ax is a length
+and must be > 0, got -4`. Both fail **at their defaults too** (no `params` at all);
+`get_design(summary)` reads fine, so the record is there and the id is right. Giving
+`yy: -1.75` explicitly is refused by `resolve` ("must be > 0"), so the negative default
+is written into `resolved.json` on the way in and rejected on the way out. Only the
+Hoecken (all lengths positive) works; the mechanism cards' `output_check` (computed
+from the same defaults) is fine, so the engine can evaluate them.
+Expected: the three line mechanisms of the catalog to be usable; a signed coordinate
+to be a coordinate, not a length; and whatever failed to be reported as its own stage,
+not as a malformed id. What happened: 6 dead tools, a message that points at my id,
+and no way through for the exact-line mechanism the goal might have preferred.
+Recoverable from docs and messages alone: no.
+
+#### 2. A mechanism that misses its stroke target gets nothing from `recommend` or `explain`, and its card has no sensitivity table — **annoying**
+
+Tried: the Hoecken with `motion.stroke_mm: {min: 80, hard: true}`. `verify(quick)`:
+`ok: false`, the row `motion.stroke_mm: 66.89 >= 80 FAIL`, `score: 1.0`. `recommend`:
+`{"stage": null, "recommendations": [], "notes": []}` in 0.0 s. `explain`: the
+program, the static facts, the plan; not a word about the target. `describe(hoecken)`
+has `scale_params: ["unit"]` and the `output_check` at the defaults, but no
+`sensitivity` (the walker cards have one), so it doesn't say the stroke is linear in
+`unit`. I scaled by hand: `unit: 16 x 80 / 66.89 = 19.2` -> stroke 80.27 mm, straight
+to 0.077 mm, 6 layers, in 0.5 s. Right, but a guess.
+Expected: a missed target that a scale parameter meets to come back as a checked
+recommendation (`unit 16 -> 19.2: the stroke scales with unit; checked: 80.27 mm`), or
+at least a note ("the target is missed, not a stage: stroke scales with `unit`"), and
+the mechanism cards to carry a sensitivity line (stroke, straightness, extent per +10 %
+of each parameter) as the walkers do.
+Recoverable: yes (the card names the scale parameter).
+
+#### 3. A `dwell_deg` target on a line output resolves, then reads `pass: false` under `ok: true` — **nit**
+
+`motion.dwell_deg: {min: 90}` on the Hoecken: `resolve` ok; `verify(quick)` `ok:
+true`, `unverified: ["motion.dwell_deg"]`, and the row `motion.dwell_deg: null >= 90
+pass: false, "not measured by this design"`. The card says the output has `dwell:
+null`, so the target could have been refused at `resolve` ("hoecken's line output has
+no dwell; its metrics: stroke_mm, straightness_mm, on_line_fraction"), and a row that
+is unverified shouldn't also say it failed.
+
+#### 4. A mechanism's `check` names "the centre plates (the chassis between the servos)" as its lowest body part — **nit**
+
+`check` on the one-sided Hoecken: `ground_clearance_mm: null`, `lowest_body_part: "the
+centre plates (the chassis between the servos)"`. A mechanism has no feet, one side
+and no chassis; the field should be null with the clearance, or name the real lowest
+shape.
+
+#### 5. The viewer shows a mechanism in the walker's chrome — **nit**
+
+`view` (and `spiderpig view`) rendered the Hoecken (mode `side`, the output point's
+path as the red curve, no console errors), inside the Drive panel (tank / arcade,
+speed, R − L phase), the walker's HUD (yaw rate, contacts, slip, margin) and a mode
+dropdown offering `double`, `decker`, `double double`. Nothing shows the output's
+line, stroke or straightness. Cosmetic, but the page doesn't know what it is showing.
+
+#### 6. `export` answers `warnings: null` — **nit**
+
+The Hoecken's `export(["step", "dxf"])` result has `warnings: null`; API.md and the
+output schema say a list. One `or []` in the client.
+
+#### 7. Bolt pillars on the Klann quad: no plan within the budget, three times, 45-116 s each, and the levers "not checked, the 60 s ... ran out" — **blocker**
+
+Tried: `spiderpig explain --module quad --pillar bolt --pin bolt` (the literal goal:
+bolts for pins and pillars). 108 s: `STOP: klann_quad: no layer plan found with up to
+41 layers after 60001 search steps in 44 s; the 60000 search-step budget ran out;
+what blocked it: 9800 x pin:E_leg1 head vs a frame plate; 5126 x pillar:A_leg0: no
+standard M3 screw for its 99 mm stack (needs 104.0 to 108 mm); 4529 x ... 96 mm
+stack; 3991 x pillar:B_leg1 head vs b1_leg1: 0.9 mm apart in one layer, need 1.0;
+...; sizes: 3-14 layers ruled out (1 s in all); 15-33 layers left open at their
+budget (38 s in all); 34-40 not tried; 41 left open`, then `not checked, the 60 s for
+checking what would clear it ran out: a scale of the linkage from OA 61.5 up and
+thinner parts`. The same with `--thickness 5` (116 s; "no standard M3 screw for its
+165 mm stack") and with bolt pillars alone (45 s; `no_plan_in_budget`, "levers left: a
+bigger scale of the linkage, another module, another pillar or pin construction").
+Bolt pins alone plan in 4.5 s (13 layers, 39 mm); the bolt single in 3.5 s (8 layers,
+24 mm, the nuts 3 layers outside the outer plate). So the quad with bolt pillars is
+either impossible or beyond the budget, and nothing says which.
+What the tally shows: a bolt pillar clamps both frame plates, so its screw spans the
+whole stack, and the longest stock M3 bounds the stack; yet the search spent its
+budget on sizes 15-33 (45-99 mm, 165 mm at 5 mm), where every layout dies on "no
+standard M3 screw". Expected: the pillar's screw bound to rule those sizes out before
+the search ("a bolt pillar's stock M3 (up to xx mm) allows at most N layers"), so the
+budget goes to the sizes that could plan and the verdict is proven ("no plan in N
+layers or fewer") instead of a timeout; then a checked recommendation ("bolt pins with
+printed pillars: 13 layers, 39 mm"), which the message half-names as "another pillar
+or pin construction".
+Recoverable: yes, by trying the constructions one at a time (the message's hint),
+after 4.5 minutes of failed plans.
+
+#### 8. No 5 mm sheet; `--thickness 5` on the 3 mm sheet is taken without a word — **nit**
+
+`build --list`: `acrylic_3mm`, `plywood_3mm` only, so "the thicker 5 mm acrylic if
+the catalog has it" is answered (it doesn't). `explain --thickness 5 --sheet
+acrylic_3mm` ran without the warning the API's `resolve` gives beyond 12 % off the
+nominal (round 2, entry 2's fix); the CLI should say the same.
+
+#### 9. The bolt variant "costs the same": every M3 item is unpriced — **annoying**
+
+`build --pin bolt`: `14 items to buy, est. $100.69 (9 without a listed price)`; the
+default: `11 items, est. $100.69 (6 without a listed price)`. The 24 M3 x 12 SHCS, 24
+nylock nuts and 24 washers the change adds are all unpriced (McMaster links,
+"unverified"), so the honest answer to "what does the change cost" is "at least $0
+more". The standing item from rounds 1 and 2; it bites again on the one comparison the
+goal asked for.
+Recoverable: the BOM names the unpriced items; the number is not there.
+
+#### 10. A CLI build can't be viewed — **annoying**
+
+`spiderpig build --pin bolt --out ...` wrote STEP, STL, DXF and the BOM (83 s); to
+look at it, `spiderpig view` wants a stored design id, `mise run view`'s query string
+carries no constructions, and `build` records nothing in the store. I resolved the
+same config through the API (2.5 s) and `spiderpig view`ed that id: 27 s to build and
+bake again what `build` had just built. Expected: `spiderpig view` to take the build
+options (`--linkage --module --pin ...`, the same parser as `build` and `explain`)
+and resolve them into the store, or `build --view`.
+
+#### 11. The Jansen quad's 30 mm stack: the rows say FAIL and proven optimal, nothing says the target is out of reach for any walking module — **annoying**
+
+Tried: the goal spec at the defaults. `verify(quick)` in 6 s: `size.stack_mm: 48 mm
+vs <= 30 [FAIL, proven]`, `plan.optimal: True ... no plan in 15 layers or fewer`,
+`recommend -> []` (no note), `explain` silent on targets. To learn whether 30 mm is
+possible I derived the other modules: `double` 27 mm (fits) and `decker` 39 mm, both
+`stride_mm ~ 1e-12` with the walk note ("every foot stays on the ground"); the card
+says only `quad` walks. So a walking Jansen is 48 mm a side and proven so (and no
+walker in the catalog is under 36 mm, the Klann quad). That took three derives (1.3 s)
+and the reasoning was mine. Expected: a hard row that fails on a *proven* value to say
+so in its detail ("proven the thinnest for this module and sheet; a `double` plans in
+27 mm but does not walk"), or `recommend` to note it.
+Recoverable: yes.
+
+#### 12. The quick mass estimate reads 9-24 % high, and neither tier says what the mass is made of — **annoying**
+
+`size.mass_g` at `quick`, "the walk model's nominal mass": 598.4 g at the defaults,
+524.4 with the XL330, 471.9 on plywood, 397.9 on plywood + XL330. Measured at
+`standard`: 550.3, —, 417.0, 319.9. The bias is one way (high) and up to 24 %, so a
+`max: 400` target read on the quick row rejects designs that pass built (plywood +
+XL330 passes on both only because the estimate lands 2 g under). Nothing before or
+after a build says what weighs: I summed `design.parts[*].mass_g` by group myself
+(links 258 g of acrylic, servos 115, chassis 77, crank 40, frame 31, pins 22,
+pillars 8; on plywood the links are 147 g). Expected: an estimate that follows the
+plan (every part's dims and layers are known after `plan`) or a row that says its
+bias, and a `detail` that lists the groups as the cost row lists items, so the agent
+knows the lever (the sheet's density and the servo, not the pins).
+Recoverable: yes, by building.
+
+#### 13. `recommend`'s checked text no longer says which module it checked — **nit**
+
+`unit 1.3`: `plan / no_plan` after 65.6 s, the recommendation `unit 1.3 -> 1.6 ...
+checked: the static stage passes, and it plans in 16 layers (48 mm)`. 16 layers is the
+quad's own plan (cached from the parent design), which is what round 2's item asked
+for; but the text no longer says whether it is the quad's or the single's.
+
+#### 14. The constructions' warnings still print to stderr in a Python session — **nit**
+
+`verify(standard)` printed 16 lines of `pin:B_leg0 seg0: its snap prongs (5.1 mm)
+strain 6.0 % while snapping (want at most 4.0 %)` (each twice) to the terminal while
+the same eight sit on `build.warnings`. Round 1's entry 18 put them on the report; the
+print stayed.
+
+#### 15. Good — no entry
+
+The spec errors (a mechanism with `sides: 2` -> "one side only (it has no feet to
+walk on)"; a walker metric on a mechanism -> the mechanism's six; `crank: bolt` ->
+allowed `printed`); the card answering the stroke question before any design; the
+whole Hoecken loop in 17 s; the walk note on `double` / `decker`; the checked scale
+recommendation on `unit 1.3` (the quad's own plan this time); `compare`; the audit
+(197 parts, OK, 65 s); the plan tables, which made the stack delta a one-line read
+(36 -> 39 mm: the nut end claims two layers); the viewer on both designs.
+
+### What I ended up with
+
+**Goal 1.** The Hoecken straight-line four-bar (`hoecken`, design `5fd91d2581c6b4c7`):
+at its default `unit 16` the point P travels **66.9 mm** along its line, straight to
+**0.064 mm** over crank 90°..270° (on the line for 51 % of the turn; the return is a
+14 mm-high arc), printed pillars, pins and crank on 3 mm acrylic, 6 layers (18 mm),
+20 parts, 80.7 g, one sheet, $56.48 estimated. `verify standard` all green in 12 s;
+`hoecken.step`, `laser/hoecken_sheet_0.dxf` + parts.csv exported in 1.3 s; viewed.
+Scaled to `unit 19.2` it gives 80.3 mm at 0.077 mm. The Peaucellier (exact line, 45.9
+mm at unit 16, 51.6 at 18) and the Watt crank (32 mm) could not be checked (entry 1).
+
+**Goal 2.** No 5 mm sheet in the catalog, so 3 mm acrylic. Bolt *pins* with printed
+pillars (`--pin bolt`): 13 layers / **39 mm** a side against 12 / 36 mm (+1 layer: a
+nylock claims two layers where a printed cap claimed one); printed parts **90 -> 42**
+(16 -> 15 distinct: the 48 pin segments become 24 M3 x 12 screws, 24 nylocks, 24
+washers), laser-cut parts **39 -> 39** (8 different, 2 sheets, no spacer rings in this
+layout), PLA 95 -> 84 g, items to buy 11 -> 14, estimate $100.69 -> $100.69 (9
+unpriced: entry 9). `audit --pin bolt --modules quad`: OK, 197 parts, 0 clashes, 0
+contract, 65 s. Bolt *pillars* too: no plan in the budget (entry 7).
+
+**Goal 3.** At the defaults the Jansen quad clears 116.9 mm (the crank's sweep is the
+lowest point; 80 needed), stacks **48 mm** a side (proven optimal; 30 asked) and
+weighs 550 g built (400 asked). The stack can't be met by any walking module (entry
+11); the mass can: plywood + XL330 gives **319.9 g** measured (design
+`8d79c9a1329d33a3`: 16 layers, clearance 116.9 mm, stride 150 mm/rev, 258 mm/s,
+$91.84 with 7 unpriced, 3 sheets, all checks green but the stack row). Scaling down
+(`unit 1.3`) loses the plan and the engine sends it back to 1.6. What an agent would
+conclude: drop the 30 mm stack (48 mm is the floor for a Jansen that walks; 36 mm for
+the Klann quad), take plywood and the XL330 for the mass, keep the clearance for free.
+
+### Phase 2 — what was fixed, and the second run
+
+Commits: `6682a4c` (engine: signed coordinates, the bolt pillars' stack bound and a
+full-effort pass on the sizes a quick search leaves open, printed pillars and a target's
+scale as checked levers, the nominal mass by what it is made of, a target on an output
+metric the mechanism lacks refused), `583f359` (the API and reports: `advise` on the
+targets, the mass rows' composition, the stack's floor, `spec_of` and `spiderpig view`
+by build options, the CLIs' thickness warning, the export's warnings over MCP, the
+misuse code of a stored design that doesn't validate), `55e4614` (the catalog's
+prices, with sources), `f445482` (API.md, the guide, the README, CLAUDE.md), `91eced9`
+(`explain` warns for the robot's spec). Tests for each in `tests/test_spiderpig_api.py`,
+`tests/test_spiderpig_mcp.py`, `tests/test_view.py` and `tests/test_bom.py` (the section
+"Test drive, round 3").
+
+| entry | severity | fixed in | how |
+|---|---|---|---|
+| 1 Peaucellier / Watt die after `resolve` as `bad_design_id` | blocker | `6682a4c`, `583f359` | the engine already made a parameter with a non-positive default a *real* symbol (a coordinate); `Linkage.signed` names them, and `config` and `spec` validate them as such, so `yy: -1.75` and `ax: -4` resolve, check, plan and reload; the card marks `signed`; a stored design whose values don't validate is `spec / bad_parameter`, not a bad id |
+| 2 no recommendation for a missed mechanism target; no sensitivity on the card | annoying | `6682a4c`, `583f359` | `api.advise` (the MCP `recommend`): when every stage passes, stage `target`: a missed stroke, straightness or lift is met by `recommend.target_scale`, the least practical scale, measured again and planned before it is offered (`unit 16 -> 19.5: checked: stroke_mm 81.53; it plans in 6 layers`); `explain` ends with `4. targets`; a mechanism's card carries a sensitivity table of its output's numbers |
+| 3 a `dwell_deg` target on a line output | nit | `6682a4c` | refused at `resolve`: "hoecken's line output has no dwell_deg; its metrics: stroke_mm, straightness_mm, on_line_fraction" |
+| 4 a mechanism's lowest body part | nit | `583f359` | empty with the clearance |
+| 5 the viewer's chrome for a mechanism | nit | not fixed | cosmetic, a viewer change; the page renders the mechanism and its output path |
+| 6 `export`'s `warnings: null` | nit | `583f359` | `ExportOut` declared no `warnings`, so the SDK stripped them; declared, `[]` |
+| 7 bolt pillars on the quad: 45-116 s to "budget ran out", levers unchecked | blocker | `6682a4c` | a group may bound the stack (`Group.max_top`): a bolt pillar's longest stock M3 (50 mm) clamps 15 layers of 3 mm, `side_problem` caps the sizes searched and the failure names the bound; the sizes a quick pass leaves open get the full effort, so the verdict is proven: 108 s and "left open" -> 2 s and "3-15 layers ruled out"; `recommend` checks printed pillars ("plans (quad module, the design's own) in 13 layers (39 mm)") and a construction change maps to a `constructions.*` patch |
+| 8 `--thickness 5` taken without a word | nit | `583f359`, `91eced9` | `build`, `explain` and `view` print `resolve`'s warnings on stderr |
+| 9 the bolt variant "costs the same": M3 hardware unpriced | annoying | `55e4614` | Bolt Depot's M3 socket caps (6, 8, 12, 16, 20, 30, 45), button heads (6, 10), hex nut, nylock and washer; TME's bushing; an Amazon MF63ZZ 10-pack; Woodcraft's Starbond CA and Woodpeckers' plywood per sheet (both pages fetched, `verified`); Home Depot's Titebond. Bolt Depot, TME, Amazon and Home Depot refuse a fetch, so those prices are what a web search quoted from the page on 2026-09-30, and the offer's note says so. The 3 mm rod, the starlock kit, the M2 tapping kit and M3 x 18 / x 50 got no price from any page and stay unpriced. The pin-bolt quad now costs $10.85 more than the default (24 screws, nylocks and washers) with 2 unpriced items instead of 9 |
+| 10 a CLI build can't be viewed | annoying | `583f359` | `spiderpig view --linkage klann --module quad --pin bolt` (the build options, the same parser as `build`) resolves them into the store through `api.spec_of(config)` and serves the design: 25 s to the URL |
+| 11 a proven stack miss without a word | annoying | `583f359` | the row's detail: "48 mm is proven the thinnest for jansen's quad module on 3 mm layers (16 layers ...); a thinner stack needs fewer legs a side, and no module of jansen with fewer walks (single, double, decker stand still ...); the sheet sets the layer pitch"; `advise` and `explain` carry the same |
+| 12 the quick mass 9-24 % high, no breakdown | annoying | `6682a4c`, `583f359` | `walk.nominal_mass_breakdown`: links as pills with the joint discs counted once and the holes taken out (within 1 % of the built links), the plates at the sheet's density and the printed parts by pivot and pin counts, refitted to the four default Klann robots (within 1 %; the crank by its distinct crankpins, the pillars by pivot and leg); the Jansen quad reads 552.8 vs 550.3 g built (was 598), on plywood 413.0 vs 417.0 (was 471.9), with the XL330 339.0 vs 319.9 (was 397.9); the quick row's detail says what it counts, the measured row lists the mass by group |
+| 13 which module the recommendation checked | nit | `6682a4c` | "plans (quad module, the design's own) in 16 layers (48 mm)" |
+| 14 the constructions' warnings on stderr | nit | `583f359` | `capture_warnings` stops their propagation while they go on the report |
+
+Not fixed, and why:
+
+- The viewer's chrome (entry 5): the page shows a mechanism inside the walker's
+  panels; a viewer change, out of this round's scope.
+- The planner's 60 s deadline on a scaled-down multi-leg design (goal 3's `unit 1.3`:
+  65.8 s to `no_plan`, unchanged): the search space is real and there is no knob; the
+  recommendation it comes back with is now checked with the design's own module.
+- A `sweep` operation (the standing item b): not the top friction this round either.
+  The blockers were an engine bug (the signed coordinates) and a search that spent its
+  budget on stacks no screw could span; the one search a goal needed by hand, the
+  stroke's scale, is now `advise`'s. Goal 3's five derives (servo, modules, unit, sheet)
+  stay by hand: the reports now say why each lever moves what it moves.
+- Two facts the prices made visible rather than caused: the engine's CA glue estimate
+  (0.02 bottle per glued anchor: 1.16 bottles on the Jansen quad, so two $13.99
+  bottles) and the M3 hardware lift every total (the default Klann quad's estimate is
+  $138.86, not $100.69). They are the honest numbers of the catalog as it stands.
+
+### Wall clock, second run
+
+Against the fixed tree, fresh stores, the same scripts in the same order; goals 1 and
+3 ran side by side, goal 2 after them, nothing else on the cores.
+
+| step | wall | note |
+|---|---|---|
+| G1 connect, tools, resources, prompts, guide, 11 cards, catalog | 8.4 s (2.6 s in session) | |
+| G1 Hoecken: resolve, check, plan, quick, explain (with `4. targets`), standard (job 9.7 s), export step + dxf (1.1 s, `warnings: []`), view | 22.3 s (14.6 s in session) | |
+| G1 `spiderpig view` from a shell: to the URL 7.0 s, page + GLB 5.2 s | 12.2 s | no console errors |
+| G1 probes: Peaucellier at unit 18 and Watt at 25 verify quick `ok` in 0.2 s each; stroke 80 -> `recommend` hands out `unit 19.5` in 0.1 s; dwell refused at resolve; the three line mechanisms check and plan at their defaults | 12.2 s | entries 1, 2, 3 gone |
+| G2 `build --list`, `explain` default quad | 8.2 s | |
+| G2 `explain` bolt pillars + pins 6.5 s; at `--thickness 5` 5.2 s (the warning, the bound at 9 layers of 5 mm); bolt pillars only 7.0 s | 18.7 s | all three: a proven verdict and the checked lever "pillar bolt -> printed"; was 108 s, 116 s and 45 s of "budget ran out" |
+| G2 `explain` bolt pins only, quad | 4.7 s | 13 layers / 39 mm |
+| G2 `build` default 84.4 s, `build --pin bolt` 59.6 s | 144 s | $138.86 -> $149.71, 2 unpriced each |
+| G2 `audit --pin bolt --modules quad` | 66.5 s | OK, 197 parts |
+| G2 `spiderpig view --linkage klann --module quad --pin bolt`: to the URL 25 s, page 4.7 s | 30 s | resolved into the store as `1a89d6bb0b7de797` (the same id the API gives that spec) |
+| G3 resolve, check, plan, walk, quick, recommend, explain | 6.9 s | the stack row and `explain` say the floor; the mass estimate 548.5 g (552.8 with the crank and pillar refit that followed) |
+| G3 `describe` + derives: XL330 2.7 s, decker 0.9 s, double 0.4 s, unit 1.3 65.8 s (deadline) + recommend + explain | 74 s | the recommendation names the quad's own plan |
+| G3 plywood 3.1 s, plywood + XL330 2.7 s, standard verify 55 s, mass by group | 70 s | estimate 334.6 vs 319.9 g built (339.0 after the refit) |
+| G3 two more standard verifies | 57 s, 59 s | measured rows "by group: links 258 g, drive 115 g, ..." |
+| **total, three goals** | **~10 min** of wall clock | G1 ~55 s, G2 ~4.6 min, G3 ~4.5 min; no workaround, no dead end; ~15 min with two dead ends in the first run |
+
+Read as the agent: the three line mechanisms are all on offer now, and the goal's
+"which fits" is a `describe` and three quick verifies (the Peaucellier at unit 18 is
+the exact line at 51.6 mm; the Hoecken the fewest bars at 66.9 mm); a missed stroke
+comes back with its scale, checked. The bolt quad's answer is a proven "no plan in 15
+layers with bolt pillars" and "bolt pins with printed pillars: 13 layers, 39 mm" in
+seven seconds, and the cost of the change is a number ($10.85, two items unpriced).
+The Jansen's 30 mm is refused with the reason (the quad's floor is 48 mm, and nothing
+with fewer legs walks); its mass estimate is within 1 % of the build, so the plywood +
+XL330 choice is made at `quick`. What it still does by hand: the five derives of goal
+3 (the reports say which way each lever moves, not how far) and the wait for the
+deadline on a scaled-down quad.
+
+Verdict on the loop: the surfaces are good enough to stop test-driving them. Every
+entry of this round was a fact the reports hid or a bug, not a missing operation, and
+the second run went through all three goals without a workaround. The single biggest
+remaining problem is the engine's, not the surface's: a scaled-down multi-leg design
+costs the planner's whole 60 s deadline per try with no knob and no proof, so the
+iterate loop's one slow step is the one an agent must repeat.

@@ -251,7 +251,11 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if pr.ok:
         rows.append(Row("plan.optimal", "plan", bool(pr.optimal), None, True, "proven", True,
                         pr.proof))
-        _push(rows, target_row(design, target_field("size", "stack_mm"), pr.height_mm, "plan"))
+        stack = target_row(design, target_field("size", "stack_mm"), pr.height_mm, "plan")
+        if stack is not None:
+            if not stack.passed and pr.optimal:     # a proven floor: say what could be thinner
+                stack.detail = stack_floor_note(design, pr)
+            rows.append(stack)
         if pr.warnings:      # informational: what the constructions warned about
             rows.append(Row("plan.warnings", "plan", len(pr.warnings), None, True, "measured",
                             False, "; ".join(pr.warnings[:4])))
@@ -264,9 +268,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows += wr.rows
 
     if level == "quick":
-        if wr.mass_g is not None:
-            _push(rows, target_row(design, target_field("size", "mass_g"), wr.mass_g, "walk",
-                                   "estimated", "the walk model's nominal mass"))
+        _push(rows, _mass_estimate(design, wr))
         if pr.ok:
             rows += _envelope_estimate(design)
         rows += _cost_floor_rows(design)
@@ -284,7 +286,8 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if br.warnings:      # informational: what the constructions warned about while building
         rows.append(Row("build.warnings", "build", len(br.warnings), None, True, "measured",
                         False, "; ".join(br.warnings[:4])))
-    _push(rows, target_row(design, target_field("size", "mass_g"), br.mass_g, "build"))
+    _push(rows, target_row(design, target_field("size", "mass_g"), br.mass_g, "build",
+                           detail=mass_by_group(br)))
     for axis, v in zip("xyz", br.envelope_mm, strict=True):
         _push(rows, target_row(design, target_field("size", f"envelope_{axis}_mm"), v, "build",
                                detail=f"at t = {br.t:g}"))
@@ -336,6 +339,71 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if level == "full" and design.kind == "walker":
         rows += _sim_rows(design, rep)
     return _done(design, rep, t0)
+
+
+def _mass_estimate(design: Design, wr) -> Row | None:
+    """The ``size.mass_g`` row before a build: the nominal model's total for what the
+    design builds (one side or the robot), its detail saying what the estimate is made
+    of (:func:`walk.nominal_mass_breakdown`), so the lever (the sheet, the servo) is
+    plain before the build measures it."""
+    from spiderpig import walk as walk_model
+
+    cfg = design.config
+    f = target_field("size", "mass_g")
+    try:
+        b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.robot)
+    except (ValueError, KeyError):
+        if wr.mass_g is None:
+            return None
+        return target_row(design, f, wr.mass_g, "walk", "estimated",
+                          "the walk model's nominal mass")
+    n = 2 if cfg.robot else 1
+    servos_ = f"{n} servo{'s' if n > 1 else ''}"
+    plates = f"frame{' and centre' if cfg.robot else ''} plates"
+    printed = f"printed crank, pillars, pins{' and ties' if cfg.robot else ''}"
+    detail = (f"estimated before a build: links {b['links']:.0f} g, {servos_} {b['servos']:.0f} g, "
+              f"{plates} {b['plates']:.0f} g, {printed} {b['printed']:.0f} g ({b['note']})")
+    return target_row(design, f, b["total"], "walk", "estimated", detail)
+
+
+def mass_by_group(br) -> str:
+    """``by group: links 258 g, drive 115 g, ...`` from a build report's parts manifest,
+    heaviest first: what the measured mass is made of."""
+    by: dict[str, float] = {}
+    for p in br.parts or ():
+        g = str(p.get("group", "") or "other").split(":")[0]
+        by[g] = by.get(g, 0.0) + float(p.get("mass_g") or 0.0)
+    if not by:
+        return ""
+    return "by group: " + ", ".join(f"{g} {m:.0f} g" for g, m in
+                                    sorted(by.items(), key=lambda kv: -kv[1]))
+
+
+def stack_floor_note(design: Design, pr) -> str:
+    """Why a stack that is proven the thinnest can't meet a target it misses, and what
+    could be thinner: fewer legs a side (and whether those modules walk), or a thinner
+    sheet (the layer pitch)."""
+    cfg = design.config
+    note = (f"{pr.height_mm:g} mm is proven the thinnest for {cfg.linkage}'s {cfg.module} "
+            f"module on {cfg.pitch:g} mm layers ({pr.n_layers} layers, the frame plates "
+            f"included)")
+    if design.kind == "walker":
+        lk = design.lk
+        legs = len(lk.leg_modules[cfg.module])
+        fewer = [m for m, ls in lk.leg_modules.items() if len(ls) < legs]
+        walking = [m for m in fewer if (s := api.module_stride(cfg.linkage, m)) is not None
+                   and s >= api.NO_TRAVEL_MM]
+        if not fewer:
+            note += "; no module of this linkage has fewer legs a side"
+        elif walking:
+            note += (f"; a thinner stack needs fewer legs a side: of {cfg.linkage}'s modules "
+                     f"with fewer, {', '.join(walking)} walk")
+        else:
+            note += (f"; a thinner stack needs fewer legs a side, and no module of "
+                     f"{cfg.linkage} with fewer walks ({', '.join(fewer)} stand still in the "
+                     f"walk model)")
+    return note + ("; the sheet sets the layer pitch (the printed crank's joints need at least "
+                   "about 2.9 mm)")
 
 
 def _cost_item(r) -> str:

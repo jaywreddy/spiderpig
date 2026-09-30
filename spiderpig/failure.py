@@ -55,7 +55,8 @@ STAGES = ("spec", "program", "output", "drive", "construction", "static", "plan"
 
 # config fields a construction may name as its lever (ConstructionError.changes) -> spec path
 CONFIG_FIELDS = {"thickness_mm": ("materials", "thickness_mm"), "sheet": ("materials", "sheet"),
-                 "servo": ("materials", "servo")}
+                 "servo": ("materials", "servo"), "pillar": ("constructions", "pillar"),
+                 "pin": ("constructions", "pin"), "crank": ("constructions", "crank")}
 
 _BLOCKER = re.compile(r"^\s*(\d+) x (.+?) vs (.+?): (-?[\d.]+) mm apart in one layer, need "
                       r"([\d.]+)\s*$")

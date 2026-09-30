@@ -33,6 +33,7 @@ method (see :meth:`AxleGroup.claims`).
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
@@ -139,6 +140,19 @@ class AxleGroup(Group):
         return [Keepout(self.name, ("pt", self.axis.name), self.dims(ctx).neck,
                         f"{self.name} spans", frozenset(self.axis.members), span=True,
                         anchored=self.pillar)]
+
+    def max_top(self, ctx: Context) -> tuple[int, str] | None:
+        """A pillar on a purchased shaft of bounded length (a bolt: the longest stock
+        screw) clamps both frame plates, so the whole stack must fit its ``max_stack``:
+        no plan exists above that many layers, and the planner needn't search them."""
+        max_stack = getattr(self.construction, "max_stack", None)
+        if not self.pillar or max_stack is None:
+            return None
+        stack = float(max_stack(ctx.pitch))
+        n = int(math.floor(stack / ctx.pitch + 1e-9))          # layers the stack may have
+        why = (f"{self.name}: {self.construction.stock_note()} clamps at most {n} layers of "
+               f"{ctx.pitch:g} mm ({stack:g} mm), so no taller stack was searched")
+        return max(n - 1, 0), why
 
     def claims(self, ctx: Context) -> list[Claim]:
         """One claim; it depends on the axle's links and on every link that passes close.

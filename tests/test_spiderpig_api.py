@@ -11,6 +11,7 @@ import pytest
 from build123d import Box, Location
 
 from spiderpig import api
+from spiderpig.config import BuildConfig
 from spiderpig.failure import Failure, apply_patch, parse_blocker
 from spiderpig.spec import TARGET_FIELDS, Spec, SpecErrors, Target, spec_schema, validate
 
@@ -458,7 +459,8 @@ def test_a_walkers_card_says_which_modules_walk_and_how_each_parameter_moves_the
     assert sens["angA"]["step"] == "+5°"
     assert sens["MC"] is None                    # +10 % of MC: the loops no longer close
     assert api.describe("strider")["modules"]["double"]["walks"]
-    assert "sensitivity" not in api.describe("hoecken")
+    # a mechanism's card has its own sensitivity: the output's numbers (round 3)
+    assert "stroke_mm" in api.describe("hoecken")["sensitivity"]["unit"]
     text = json.dumps(card)
     assert json.loads(text)["sensitivity"] == card["sensitivity"]
     assert "NaN" not in text                     # a null, never NaN, where a loop can't close
@@ -845,3 +847,157 @@ def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
     assert rep.warnings == ["tessellate: 3 of 511 faces have no triangulation; skipped"]
     assert rep.manifest["warnings"] == rep.warnings
     assert json.loads((tmp_path / "manifest.json").read_text())["warnings"] == rep.warnings
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): signed coordinates, a missed target's
+# scale, the bolt pillars' bound, the stack's floor, the mass estimate, the CLI's designs
+# ---------------------------------------------------------------------------
+
+
+def test_a_mechanism_with_signed_coordinates_resolves_checks_and_reloads():
+    from spiderpig import linkage
+    from spiderpig.spec import validate
+
+    lk = linkage.get("peaucellier_crank")
+    assert "yy" in lk.signed                       # entry 1
+    assert "arm" not in lk.signed
+    d = api.resolve({"kind": "mechanism",
+                     "linkage": {"key": "peaucellier_crank", "params": {"unit": 18}}})
+    cr = api.check(d)
+    assert cr.ok
+    assert cr.output["stroke_mm"] == pytest.approx(51.64, abs=0.01)
+    assert api.load(d.id).config == d.config              # the resolved yy = -1.75 reloads
+    assert api.check(api.resolve({"kind": "mechanism", "linkage": {"key": "watt_crank"}})).ok
+    explicit = api.resolve({"kind": "mechanism",
+                            "linkage": {"key": "peaucellier_crank", "params": {"yy": -1.75}}})
+    assert explicit.config.proportions == ()             # the default, however written
+    errors = validate({"kind": "mechanism",
+                       "linkage": {"key": "peaucellier_crank", "params": {"arm": 0}}})
+    assert [e.path for e in errors] == ["linkage.params.arm"]      # a length stays a length
+    card = api.describe("peaucellier_crank")
+    assert [p["name"] for p in card["params"] if p["signed"]] == ["yy"]
+
+
+def test_a_missed_output_target_gets_a_checked_scale_and_the_card_a_sensitivity():
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                     "motion": {"stroke_mm": {"min": 80, "hard": True}}})
+    assert not api.verify(d, "quick").ok
+    adv = api.advise(d)                                                       # entry 2
+    assert adv.stage == "target"
+    (rec,) = adv.recommendations
+    assert rec.patch == {"linkage": {"params": {"unit": 19.5}}}
+    assert "stroke_mm scales with unit" in rec.why
+    assert rec.verified.startswith("checked: stroke_mm 81.5")
+    assert api.verify(api.derive(d, rec.patch), "quick").ok
+    assert [r.patch for r in api.recommend(d)] == [rec.patch]
+    text = api.explain(d)
+    assert "4. targets" in text
+    assert "motion.stroke_mm: 66.89 mm vs >= 80: MISSED (hard)" in text
+    assert "unit 16 -> 19.5" in text
+    s = api.describe("hoecken")["sensitivity"]
+    assert s["unit"]["stroke_mm"] == pytest.approx(10.0)
+    assert s["unit"]["straightness_mm"] == pytest.approx(10.0)
+    assert {"step", "stroke_mm", "straightness_mm", "extent_x_mm", "extent_y_mm",
+            "on_line_fraction"} <= set(s["crank"])
+
+
+def test_a_target_the_output_lacks_is_refused_and_a_mechanism_names_no_lowest_part():
+    from spiderpig.spec import validate
+
+    (err,) = validate({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                       "motion": {"dwell_deg": {"min": 90}}})                 # entry 3
+    assert err.path == "motion.dwell_deg"
+    assert "line output has no dwell_deg" in err.message
+    assert list(err.allowed) == ["stroke_mm", "straightness_mm", "on_line_fraction"]
+    cr = api.check(api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}))
+    assert cr.ground_clearance_mm is None       # entry 4
+    assert cr.lowest_body_part == ""
+
+
+def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_printed_ones():
+    from spiderpig.construction.pivots.bolt import BoltAxle
+    from spiderpig.fabricate import side_problem, template_for
+
+    assert BoltAxle().max_stack(3.0) == pytest.approx(45.0)                   # entry 7
+    cfg = BuildConfig(module="single", pillar="bolt", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
+    assert problem.spec.max_top == 14
+    assert problem.notes == ["pillar:A: the longest stock M3 screw (50 mm) clamps at most 15 "
+                             "layers of 3 mm (45 mm), so no taller stack was searched"]
+    printed = BuildConfig(module="single", robot=False)
+    assert side_problem(template_for(printed), printed, hint=False)[2].spec.max_top == 40
+    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                     "constructions": {"pillar": "bolt"}})
+    pr = api.plan(d)
+    assert not pr.ok
+    (f,) = pr.failures
+    assert "with up to 15 layers (the most a group allows)" in f.message
+    assert any("clamps at most 15 layers" in n for n in f.notes)
+    rec = next(r for r in f.recommendations
+               if r.patch == {"constructions": {"pillar": "printed"}})
+    assert "plans (quad module, the design's own) in 12 layers" in rec.verified
+
+
+def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it(quad):
+    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                     "size": {"stack_mm": {"max": 30}}})
+    row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.stack_mm")
+    assert not row.passed                            # entry 11
+    assert row.tier == "proven"
+    assert row.detail.startswith("36 mm is proven the thinnest for klann's quad module on "
+                                 "3 mm layers (12 layers")
+    assert "no module of klann with fewer walks" in row.detail
+    adv = api.advise(d)
+    assert adv.stage == "target"
+    assert adv.recommendations == []
+    assert adv.notes[0].startswith("size.stack_mm 36 vs <= 30: 36 mm is proven the thinnest")
+
+
+def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups(quad, robot):
+    from spiderpig import verify as verify_module
+    from spiderpig import walk as walk_model
+
+    cfg = quad.config
+    b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg))     # entry 12
+    assert b["total"] == pytest.approx(460.6, rel=0.02)          # the fabricated default quad
+    assert b["links"] + b["servos"] + b["plates"] + b["printed"] == pytest.approx(b["total"])
+    row = next(r for r in api.verify(quad, "quick").rows if r.requirement == "size.mass_g")
+    assert row.tier == "estimated"
+    assert row.detail.startswith("estimated before a build: links ")
+    assert "2 servos 110 g" in row.detail
+    br = api.attach_build(quad, robot("quad", 1.0), 1.0)
+    text = verify_module.mass_by_group(br)
+    assert text.startswith("by group: links ")
+    assert "drive " in text
+    assert "chassis " in text
+    one = BuildConfig(linkage="jansen", module="single", robot=False)
+    side = walk_model.nominal_mass_breakdown(one, walk_model.side_legs(one), robot=False)
+    both = walk_model.nominal_mass_breakdown(one, walk_model.side_legs(one))
+    assert side["servos"] == pytest.approx(both["servos"] / 2)
+    assert side["plates"] < both["plates"] / 2                   # no centre plates on one side
+
+
+def test_captured_warnings_stay_off_the_terminal(caplog):
+    import logging
+
+    lg = logging.getLogger("spiderpig.construction.printed")
+    with api.capture_warnings() as seen:
+        lg.warning("pin:X seg0: its snap prongs strain")
+    assert seen == ["pin:X seg0: its snap prongs strain"]
+    assert caplog.records == []                              # entry 14
+    assert lg.propagate
+
+
+def test_spec_of_a_config_round_trips():
+    cfg = BuildConfig(module="single", pin="bolt", thickness=2.9, servo="xl330_m288")
+    doc = api.spec_of(cfg)                                                    # entry 10
+    assert doc["constructions"]["pin"] == "bolt"
+    assert doc["materials"]["thickness_mm"] == 2.9
+    assert doc["legs"] == {"module": "single", "sides": 2}
+    assert api.resolve(doc).config == cfg
+    mech = api.spec_of(BuildConfig(linkage="hoecken", module="single", robot=False))
+    assert mech["kind"] == "mechanism"
+    assert mech["legs"]["sides"] == 1
+    assert api.resolve(mech).config == BuildConfig(linkage="hoecken", module="single",
+                                                   robot=False)

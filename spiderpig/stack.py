@@ -316,13 +316,16 @@ class Recommendation:
     radius, the torque); ``verified`` what re-running the stage showed.
     """
 
-    changes: tuple[tuple[str, float, float], ...]
+    changes: tuple[tuple[str, object, object], ...]     # (name, from, to): numbers or keys
     why: str = ""
     effects: str = ""
     verified: str = ""
 
     def describe(self) -> str:
-        out = ", ".join(f"{name} {a:g} -> {b:g}" for name, a, b in self.changes)
+        def num(v) -> str:
+            return f"{v:g}" if isinstance(v, (int, float)) else str(v)
+
+        out = ", ".join(f"{name} {num(a)} -> {num(b)}" for name, a, b in self.changes)
         if self.why:
             out += f": {self.why}"
         if self.effects:
@@ -720,9 +723,10 @@ class StackProblem:
 
     def __init__(self, topo: Topology, claims: Iterable[Claim], spec: StackSpec | None = None,
                  router: Router | None = None, clearances: Iterable[Clearance] = (),
-                 hint: Mapping[str, int] | None = None):
+                 hint: Mapping[str, int] | None = None, notes: Iterable[str] = ()):
         self.topo = topo
         self.hint = dict(hint or {})
+        self.notes = list(notes)      # facts behind the spec (a stack size some group bounds)
         self.leg = {n: int(m.group(1)) if (m := re.search(r"_leg(\d+)$", n)) else 0
                     for n in topo.links}
         self.spec = spec or StackSpec()
@@ -812,12 +816,27 @@ class StackProblem:
         self.deadline = Deadline(spec.max_seconds)
         tried: dict[int, _Search] = {}
         found = self._first(tried)
+        if found is None and not self.exhausted:
+            # the quick pass found nothing and effort is left: give the sizes it left
+            # open the full effort, thinnest first (a bounded search may have only a few)
+            for top in sorted(t for t, s in tried.items() if not s.done):
+                if self.exhausted:
+                    break
+                s = tried[top]
+                self._run(s, spec.max_nodes)
+                if s.best is None and self.hint:
+                    self._run(s, spec.max_nodes, legs=True)
+                if s.best is not None:
+                    found = s
+                    break
         if found is None:
             last = max(tried, default=spec.min_top - 1)
             ran_out = f"; {self.stopped}" if self.stopped else ""
-            raise PlanError(f"{self.topo.name}: no layer plan found with up to {last + 1} layers "
-                            f"after {self.spent} search steps in {self.deadline.elapsed:.0f} s"
-                            f"{ran_out}", self.blockers(), [self.sizes(tried)])
+            bounded = " (the most a group allows)" if self.notes and last >= spec.max_top else ""
+            raise PlanError(f"{self.topo.name}: no layer plan found with up to {last + 1} layers"
+                            f"{bounded} after {self.spent} search steps in "
+                            f"{self.deadline.elapsed:.0f} s{ran_out}", self.blockers(),
+                            [self.sizes(tried), *self.notes])
         for top in range(found.top - 1, spec.min_top - 1, -1):   # just thinner first
             if self.exhausted:
                 break

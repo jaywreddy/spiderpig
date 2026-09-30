@@ -88,6 +88,16 @@ class BoltAxle:
         need = stack + self.washer()[2] + nut_h + self.min_tip
         return next((L for L in BOLT_LENGTHS if need - EPS <= L <= stack + room + EPS), None)
 
+    def max_stack(self, pitch: float) -> float:
+        """The tallest stack any stock screw clamps (mm): the longest length less the
+        washer, the nut and the thread's tip. A pillar clamps both frame plates, so this
+        bounds the stack the planner may search (:meth:`construction.base.Group.max_top`)."""
+        _, nut_h, _ = self.nut()
+        return max(BOLT_LENGTHS) - self.washer()[2] - nut_h - self.min_tip
+
+    def stock_note(self) -> str:
+        return f"the longest stock M{self.d:g} screw ({max(BOLT_LENGTHS):g} mm)"
+
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         p = ctx.params
         hole = self.d + self.running_fit
