@@ -39,11 +39,11 @@ says otherwise (the dev server caches its bakes there too).
 
 Usage
 -----
-    uv run python viewer/bake_gltf.py                       # robot, quad per side
-    uv run python viewer/bake_gltf.py --module single
-    uv run python viewer/bake_gltf.py --module double --side --frames 60
-    uv run python viewer/bake_gltf.py --phases 0,175,180,355 --proportion DF=2.5
-    uv run python viewer/bake_gltf.py --linkage jansen --module double
+    uv run python cli.py bake                       # robot, quad per side (mise run bake)
+    uv run python cli.py bake --module single
+    uv run python cli.py bake --module double --side --frames 60
+    uv run python cli.py bake --phases 0,175,180,355 --proportion DF=2.5
+    uv run python cli.py bake --linkage jansen --module double
 """
 
 from __future__ import annotations
@@ -811,7 +811,7 @@ def bake_gltf(
     logger.info("wrote %s (%d B)", out, out.stat().st_size)
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_design_args(p)
     add_build_args(p)
@@ -825,7 +825,7 @@ def _parse_args() -> argparse.Namespace:
                    help="emit the per-stage wall-clock profile summary (default: on)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="logging level (default: INFO)")
-    args = p.parse_args()
+    args = p.parse_args(argv)
     try:
         args.config = config_from_args(args, robot=not args.side)
     except ParamError as e:
@@ -833,8 +833,8 @@ def _parse_args() -> argparse.Namespace:
     return args
 
 
-def main() -> None:
-    args = _parse_args()
+def main(argv=None) -> int:
+    args = _parse_args(argv)
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -843,6 +843,7 @@ def main() -> None:
     logging.getLogger("build123d").setLevel(max(logging.WARNING, logging.root.level))
     bake_gltf(args.out or DATA_DIR / f"{args.config.key}.glb", args.config,
               n_frames=args.frames, duration_s=args.duration, profile=args.profile)
+    return 0
 
 
 if __name__ == "__main__":

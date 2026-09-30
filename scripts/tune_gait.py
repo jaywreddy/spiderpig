@@ -49,11 +49,11 @@ found no layer plan.
 
 Usage
 -----
-    uv run python scripts/tune_gait.py                      # quad, phases only
-    uv run python scripts/tune_gait.py --module decker --grid 5
-    uv run python scripts/tune_gait.py --linkage jansen --module double --proportions 5
-    uv run python scripts/tune_gait.py --proportions 5 --names DF,DE,BE,CD --plan
-    uv run python scripts/tune_gait.py --proportions 8 --plan --json best.json
+    uv run python cli.py tune                      # quad, phases only (mise run tune)
+    uv run python cli.py tune --module decker --grid 5
+    uv run python cli.py tune --linkage jansen --module double --proportions 5
+    uv run python cli.py tune --proportions 5 --names DF,DE,BE,CD --plan
+    uv run python cli.py tune --proportions 8 --plan --json best.json
 """
 
 from __future__ import annotations
@@ -69,14 +69,10 @@ from pathlib import Path
 
 import numpy as np
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
-
-import linkage as linkage_mod  # noqa: E402
-import walk  # noqa: E402
-from config import BuildConfig  # noqa: E402
-from linkage import scale_params  # noqa: E402
+import linkage as linkage_mod
+import walk
+from config import BuildConfig
+from linkage import scale_params
 
 PHASE_STEPS = (8.0, 4.0, 2.0, 1.0)          # degrees
 MIN_GAP = 5.0                               # degrees between two legs' crank phases
@@ -235,8 +231,8 @@ def flags(module: str, c: Candidate, linkage_key: str = linkage_mod.DEFAULT) -> 
     if linkage_key != linkage_mod.DEFAULT:
         cli += f" --linkage {linkage_key}"
         query += f"&linkage={linkage_key}"
-    return {"main": f"uv run python main.py {cli}",
-            "bake": f"uv run python viewer/bake_gltf.py {cli}",
+    return {"main": f"uv run python cli.py build {cli}",
+            "bake": f"uv run python cli.py bake {cli}",
             "query": f"?{query}"}
 
 

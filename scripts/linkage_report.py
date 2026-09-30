@@ -1,6 +1,6 @@
 """Compare every registered linkage: foot paths, layer plans, walking, cost.
 
-    uv run python scripts/linkage_report.py --out build/linkages.json
+    uv run python cli.py report --out build/linkages.json
 
 For each linkage (``linkage.available()``): its parameters and bodies, the
 single leg's foot path over one crank revolution (lift; stride, stance
@@ -17,15 +17,12 @@ import argparse
 import json
 import logging
 import math
-import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-import linkage  # noqa: E402
+import linkage
 
 log = logging.getLogger("linkage_report")
 N = 720

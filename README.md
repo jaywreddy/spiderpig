@@ -132,7 +132,8 @@ Playwright viewer tests. `mise run audit` checks every module end to end.
 
 ```
 spiderpig/
-├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/audit)
+├── mise.toml        # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/audit/...)
+├── cli.py           # one entry point: build | bake | audit | explain | tune | sim | report
 ├── main.py          # fabrication CLI (STEP/STL/DXF/BOM)
 ├── linkage/         # the symbolic engine (engine.py), stage checks (checks.py), leg module templates (assembly.py)
 ├── linkages/        # one module per linkage family (Klann, Strider, Jansen, ...)

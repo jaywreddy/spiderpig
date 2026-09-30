@@ -9,23 +9,31 @@ Tasks live in `mise.toml`:
 
 ```bash
 mise run view       # FastAPI + Vite (HMR); URL printed in startup banner
-mise run bake       # bake viewer/data/*.glb
+mise run bake       # bake viewer/data/<design>.glb
 mise run test       # pytest (runs viewer-build first; -m e2e for browser tests)
 mise run build      # STEP/STL/DXF -> build/
 mise run lint       # ruff check
 mise run audit      # do the parts physically fit? (see docs/audit/AUDIT.md)
+mise run explain    # each pipeline stage's verdict on a design
+mise run tune       # search crank phases for a smoother walk
+mise run sim        # MuJoCo
+mise run report     # compare every linkage -> build/linkages.json
 mise run kill       # stop dev servers spawned from THIS worktree
 mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan recovery)
 mise run clean
 ```
 
-Direct invocation of the bake script (more flags than `mise run bake`):
+`build`, `bake`, `audit`, `explain`, `tune`, `sim` and `report` are the
+subcommands of `cli.py` (`uv run python cli.py <command> --help`; `mise run
+<command> -- <options>` passes options through); the tools' own modules
+(`main.py`, `viewer/bake_gltf.py`, `explain.py`, `scripts/*.py`) are what it
+runs. For example:
 
 ```bash
-uv run python viewer/bake_gltf.py --module quad --frames 120
-uv run python viewer/bake_gltf.py --module single --side           # one side only
-uv run python viewer/bake_gltf.py --linkage jansen --module double   # another linkage
-uv run python viewer/bake_gltf.py --side --linkage hoecken           # a mechanism: one side
+uv run python cli.py bake --module quad --frames 120
+uv run python cli.py bake --module single --side             # one side only
+uv run python cli.py bake --linkage jansen --module double   # another linkage
+uv run python cli.py bake --side --linkage hoecken           # a mechanism: one side
 ```
 
 What every tool builds is a `config.BuildConfig` (linkage, module, robot or
@@ -148,6 +156,7 @@ All output goes through `logging.getLogger("bake_gltf")` — do not revert to
 | `fabricate.py` | orchestration: `design_side()` (groups -> claims -> plan, cached; the robot's side is the side's design), `fabricate_side()`, `fabricate()` (the robot unless `robot=False`: the frame ties join at build time). |
 | `shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
+| `cli.py` | the one entry point: `build` (`main.py`), `bake` (`viewer/bake_gltf.py`), `audit`, `explain`, `tune`, `sim`, `report` (each a module's `main(argv)`); the `mise` tasks run it |
 | `scripts/audit_fab.py` | `mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM (`construction.contract` has the checks) |
 | `walk.py` | quasi-static walking model (support plane, no-slip velocity, per-revolution metrics); feeds `/api/walk`, the bake's drive data and `scripts/tune_gait.py`. The viewer's `viewer/src/drive/model.ts` implements the same model. |
 | `sim/` | MuJoCo: `mjcf.py` builds the MJCF of the fabricated robot (exact masses, loop equalities, velocity drives) and its viewer metadata; `run.py` steps it (`simulate`, `walk_metrics`, kinematic playback). `scripts/sim_walk.py` is the CLI. |

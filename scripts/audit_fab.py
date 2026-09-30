@@ -20,30 +20,26 @@ any check fails.
 
 Usage::
 
-    uv run python scripts/audit_fab.py                       # all modules
-    uv run python scripts/audit_fab.py --modules single --out build/audit
-    uv run python scripts/audit_fab.py --linkage jansen --modules single,double
+    uv run python cli.py audit                       # all modules (mise run audit)
+    uv run python cli.py audit --modules single --out build/audit
+    uv run python cli.py audit --linkage jansen --modules single,double
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(_REPO_ROOT))
-
-import linkage  # noqa: E402
-from config import BuildConfig, ParamError, add_build_args, config_from_args  # noqa: E402
-from construction.contract import bad_solids, check_side, clashes  # noqa: E402
-from fabricate import design_side, fabricate, template_for  # noqa: E402
-from hardware.bom import BomLine, bom_from_mechanism  # noqa: E402
-from hardware.catalog import sheet_size  # noqa: E402
-from layout import pack  # noqa: E402
-from stack import verify_plan  # noqa: E402
+import linkage
+from config import BuildConfig, ParamError, add_build_args, config_from_args
+from construction.contract import bad_solids, check_side, clashes
+from fabricate import design_side, fabricate, template_for
+from hardware.bom import BomLine, bom_from_mechanism
+from hardware.catalog import sheet_size
+from layout import pack
+from stack import verify_plan
 
 
 def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash) -> dict:

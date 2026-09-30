@@ -1,10 +1,10 @@
 """Simulate the walker in MuJoCo and print how it walks.
 
-    PYTHONPATH=. uv run python scripts/sim_walk.py                     # quad, both drives 80 %
-    PYTHONPATH=. uv run python scripts/sim_walk.py --module single --seconds 6
-    PYTHONPATH=. uv run python scripts/sim_walk.py --left 0.4 --right -0.4     # turn in place
-    PYTHONPATH=. uv run python scripts/sim_walk.py --left 40rpm --right 40rpm
-    PYTHONPATH=. uv run python scripts/sim_walk.py --xml build/quad.xml       # + quad.json
+    uv run python cli.py sim                                 # quad, both drives 80 %
+    uv run python cli.py sim --module single --seconds 6
+    uv run python cli.py sim --left 0.4 --right -0.4         # turn in place
+    uv run python cli.py sim --left 40rpm --right 40rpm
+    uv run python cli.py sim --xml build/quad.xml            # + quad.json
 
 The design and build options are every other tool's (:mod:`config`:
 ``--linkage``, ``--module``, ``--phases`` in degrees, ``--proportion
@@ -22,17 +22,15 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from config import (  # noqa: E402
+from config import (
     BuildConfig,
     ParamError,
     add_build_args,
     add_design_args,
-    config_from_args,  # noqa: E402
+    config_from_args,
 )
-from sim.mjcf import RPM, SimParams, build_mjcf, drive_limits  # noqa: E402
-from sim.run import kinematic_gait, simulate, walk_metrics  # noqa: E402
+from sim.mjcf import RPM, SimParams, build_mjcf, drive_limits
+from sim.run import kinematic_gait, simulate, walk_metrics
 
 
 def parse_speed(text: str, vmax: float) -> float:

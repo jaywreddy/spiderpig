@@ -298,7 +298,8 @@ def test_tuner_improves_the_quad():
     assert best.candidate.phases[0] == default.candidate.phases[0]      # leg 0 stays
     assert tuner.feasible(best.candidate.phases)
     use = tune_gait.flags("quad", best.candidate)
-    assert use["main"].startswith("uv run python main.py --module quad --phases ")
+    assert use["main"].startswith("uv run python cli.py build --module quad --phases ")
+    assert use["bake"].startswith("uv run python cli.py bake --module quad --phases ")
     assert use["query"].startswith("?module=quad&phases=")
 
 
