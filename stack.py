@@ -50,6 +50,8 @@ from functools import cached_property
 from typing import Literal, Protocol
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 log = logging.getLogger("stack")
 
@@ -444,24 +446,19 @@ def group_axes(
     Nodes joined by a connection are one axis; so are nodes whose XY coincide
     over every sample (e.g. the A pivots of two same-chirality decks).
     """
-    parent = {n: n for n in joint_xy}
-
-    def find(n):
-        while parent[n] != n:
-            parent[n] = parent[parent[n]]
-            n = parent[n]
-        return n
-
-    for a, b in connections:
-        parent[find(a)] = find(b)
     nodes = list(joint_xy)
-    for a, b in itertools.combinations(nodes, 2):
-        if find(a) != find(b) and np.abs(joint_xy[a] - joint_xy[b]).max() < tol:
-            parent[find(a)] = find(b)
-    groups: dict[tuple[str, str], list[tuple[str, str]]] = {}
-    for n in nodes:
-        groups.setdefault(find(n), []).append(n)
-    return list(groups.values())
+    index = {n: i for i, n in enumerate(nodes)}
+    edges = [(index[a], index[b]) for a, b in connections]
+    edges += [(index[a], index[b]) for a, b in itertools.combinations(nodes, 2)
+              if np.abs(joint_xy[a] - joint_xy[b]).max() < tol]
+    rows = np.array([a for a, _ in edges], dtype=int)
+    cols = np.array([b for _, b in edges], dtype=int)
+    graph = coo_matrix((np.ones(len(edges)), (rows, cols)), shape=(len(nodes), len(nodes)))
+    _, labels = connected_components(graph, directed=False)
+    groups: dict[int, list[tuple[str, str]]] = {}
+    for node, label in zip(nodes, labels, strict=True):
+        groups.setdefault(int(label), []).append(node)
+    return list(groups.values())        # in order of each axis's first node
 
 
 def _axis_name(nodes: list[tuple[str, str]]) -> str:
