@@ -524,3 +524,46 @@ def test_recommend_carries_the_failures_notes_and_a_plan_its_warnings(fresh):
     pr = call(fresh, "plan", design=child["design"])
     assert pr["ok"]
     assert isinstance(pr["warnings"], list)
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the thin sheet's patch, the cards
+# ---------------------------------------------------------------------------
+
+
+def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fresh):
+    thin = call(fresh, "resolve", spec={**KLANN_SINGLE, "materials": {"thickness_mm": 2}})
+    (warning,) = [w for w in thin["warnings"] if w.startswith("materials.")]      # entry 2
+    assert warning.startswith("materials.thickness_mm 2 is 33% under")
+    cr = call(fresh, "check", design=thin["design"])
+    assert not cr["ok"]
+    assert cr["failures"][0]["stage"] == "construction"
+    assert cr["failures"][0]["numbers"]["least_pitch_mm"] == 2.9
+    recs = call(fresh, "recommend", design=thin["design"])
+    assert recs["stage"] == "construction"
+    (rec,) = recs["recommendations"]
+    assert rec["patch"] == {"materials": {"thickness_mm": 3.0}}
+    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 7 ")
+    vr = call(fresh, "verify", design=thin["design"], level="quick")
+    rows = {r["requirement"]: r for r in vr["rows"]}
+    assert rows["drive.one_servo"]["pass"]
+    assert not rows["construction.buildable"]["pass"]
+    child = call(fresh, "derive", design=thin["design"], patch=rec["patch"])
+    assert [w for w in child["warnings"] if w.startswith("materials.")] == []
+    assert call(fresh, "check", design=child["design"])["ok"]
+    (card,) = [c for c in call(fresh, "list_designs")["designs"] if c["id"] == child["design"]]
+    assert card["thickness_mm"] == 3.0                                     # entry 9
+    assert card["constructions"] == {"pillar": "printed", "pin": "printed", "crank": "printed"}
+    assert card["servo"] == "sts3215"
+
+
+def test_the_guide_explains_the_budgets_lower_bound_and_the_layer_pitch(server):
+    async def go():
+        async with Client(server) as client:
+            return (await client.read_resource("spiderpig://guide")).contents[0].text
+
+    guide = run(go())
+    assert "can refute a `max` but not confirm it" in guide                # entries 3, 4
+    assert "`budget.cost_floor_usd`" in guide
+    assert "layers of at least about 2.9 mm" in guide                      # entry 2
+    assert "there is no three-leg module" in guide                         # entry 1

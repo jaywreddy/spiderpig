@@ -104,9 +104,13 @@ def _verify(config, plan: bool, deadline: Deadline | None = None) -> str | None:
         d = design_side(template_for(trial), trial, advise=False, deadline=deadline)
     except ValueError:
         return None
-    where = "" if trial is config else " (its single module)"
-    return (f"checked: the static stage passes, and it plans{where} in {d.plan.top + 1} "
-            f"layers ({d.plan.height:g} mm)")
+    if trial is config:
+        return (f"checked: the static stage passes, and it plans in {d.plan.top + 1} layers "
+                f"({d.plan.height:g} mm)")
+    return (f"checked: the static stage passes, and its single module plans in "
+            f"{d.plan.top + 1} layers ({d.plan.height:g} mm); the {config.module} module's own "
+            f"plan is not checked here (plan the derived design: the planner's deadline is "
+            f"{StackSpec().max_seconds:g} s, and a bigger module stacks taller)")
 
 
 def scale(config, gaps: list[Gap], plan: bool = False,
@@ -225,6 +229,48 @@ def default_scale(config, plan: bool = True,
              f"plates), which more distance between the joints clears"),
         effects=f"every length x{default / now:.2f}; the foot path and the envelope with it",
         verified=verified)
+
+
+CONFIG_LEVERS = {"thickness_mm": "thickness", "sheet": "sheet", "servo": "servo"}
+
+
+def construction_fix(config, exc, seconds: float | None = None
+                     ) -> tuple[list[Recommendation], list[str]]:
+    """What a construction said would clear its :class:`construction.base.ConstructionError`
+    (``exc.changes``: a config field such as ``thickness_mm``, or a ``Params`` field),
+    checked by re-running the static stage and the plan with it (the design's own module,
+    within one planner deadline); and notes on what wasn't checked or didn't build."""
+    changes = tuple(getattr(exc, "changes", ()) or ())
+    if not changes:
+        return [], []
+    deadline = Deadline(StackSpec().max_seconds if seconds is None else seconds)
+    fields: dict = {}
+    params: dict = {}
+    unknown = []
+    for name, _before, after in changes:
+        if name in CONFIG_LEVERS:
+            fields[CONFIG_LEVERS[name]] = after
+        elif hasattr(config.params, name):
+            params[name] = after
+        else:
+            unknown.append(name)
+    notes = [f"{n} is not a field this API sets: apply it by hand" for n in unknown]
+    if not fields and not params:
+        return [], notes
+    trial = replace(config, **fields)
+    if params:
+        trial = replace(trial, params=replace(config.params, **params))
+    what = ", ".join(f"{n} {b:g} -> {a:g}" for n, b, a in changes)
+    try:
+        verified = _verify(trial, plan=True, deadline=deadline)
+    except _OutOfTime:
+        return [], [*notes, f"not checked, the {deadline.seconds:g} s for checking what would "
+                            f"clear it ran out: {what}"]
+    if verified is None:
+        why = _check(trial) or "it still doesn't plan"
+        return [], [*notes, f"{what} doesn't build either: {why}"]
+    why = getattr(exc, "lever", "") or str(exc).split(":", 1)[0]
+    return [Recommendation(changes, why=why, verified=verified)], notes
 
 
 _DONE: dict[tuple, tuple[list[Recommendation], list[str]]] = {}

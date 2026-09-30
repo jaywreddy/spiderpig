@@ -1,7 +1,12 @@
 """Print what each stage of the pipeline says about a design.
 
-    uv run python explain.py --linkage strider --module double
-    uv run python explain.py --linkage trotbot_heel --proportion unit=7
+    spiderpig explain --linkage strider --module double
+    spiderpig explain --linkage trotbot_heel --proportion unit=7
+    spiderpig explain --module quad --pin bearing --servo xl330_m288 --thickness 2
+
+The build options (``--servo``, ``--pillar`` / ``--pin`` / ``--crank``, ``--sheet``,
+``--thickness``) are the same as ``spiderpig build``'s: the static facts and the
+plan depend on them.
 
 1. program: :meth:`linkage.Linkage.check`. Each loop's closing margin and
    transmission angle; a loop that can't close raises
@@ -103,18 +108,18 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
 
 
 def main(argv=None) -> int:
-    from spiderpig.config import ParamError, add_design_args, config_from_args
+    from spiderpig.config import ParamError, add_build_args, add_design_args, config_from_args
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     add_design_args(ap)
+    add_build_args(ap)
     ap.set_defaults(module="single")
     args = ap.parse_args(argv)
     try:
         config = config_from_args(args, robot=False)
     except ParamError as e:
         ap.error(str(e))
-    print(explain(config.linkage, config.module, dict(config.proportions) or None,
-                  config.phases))
+    print(explain_config(config))
     return 0
 
 

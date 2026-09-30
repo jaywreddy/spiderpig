@@ -63,7 +63,21 @@ FRAME_OUTER = "frame:outer"
 
 
 class ConstructionError(ValueError):
-    """The chosen construction can't be built with these parameters."""
+    """The chosen construction can't be built with these parameters.
+
+    A construction that knows the lever says so: ``changes`` are ``(name, before,
+    after)`` triples (a config field such as ``thickness_mm``, or a ``Params`` field)
+    that would clear it, for the API to check and hand out as a recommendation, and
+    ``lever`` says in one line why they would; ``numbers`` are the figures behind it
+    (mm); ``notes`` what can't help.
+    """
+
+    def __init__(self, message: str, *, changes=(), lever: str = "", numbers=None, notes=()):
+        super().__init__(message)
+        self.changes = tuple(tuple(c) for c in changes)
+        self.lever = lever
+        self.numbers = dict(numbers or {})
+        self.notes = list(notes)
 
 
 @dataclass(frozen=True)

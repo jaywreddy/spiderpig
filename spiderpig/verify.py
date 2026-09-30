@@ -33,12 +33,13 @@ import importlib.util
 import time
 from dataclasses import dataclass, field, replace
 
-from spiderpig import api
+from spiderpig import api, servos
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.design import Design
 from spiderpig.failure import Failure
 from spiderpig.hardware.bom import BomLine, bom_from_mechanism
-from spiderpig.hardware.catalog import sheet_size
+from spiderpig.hardware.catalog import adhesive, sheet_size
+from spiderpig.hardware.catalog import get as catalog_item
 from spiderpig.layout import pack
 from spiderpig.spec import Target, TargetField, effective_hard, target_field
 from spiderpig.stack import verify_plan
@@ -220,9 +221,15 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                                cr.foot_path["lift_mm"], "foot_path"))
     if prog or any(f.stage == "output" for f in cr.failures):
         return _done(design, rep, t0)
-    drive = [f for f in cr.failures if f.stage in ("drive", "construction")]
+    drive = [f for f in cr.failures if f.stage == "drive"]
     rows.append(_stage_row("drive.one_servo", "check", drive, cr.drive.get("servo", "")))
     if drive:
+        return _done(design, rep, t0)
+    built = [f for f in cr.failures if f.stage == "construction"]
+    rows.append(_stage_row("construction.buildable", "check", built,
+                           f"{cfg.pillar} pillars, {cfg.pin} pins, {cfg.crank} crank in "
+                           f"{cfg.pitch:g} mm layers"))
+    if built:
         return _done(design, rep, t0)
     static = [f for f in cr.failures if f.stage == "static"]
     rows.append(_stage_row("static.crank_route", "check", static,
@@ -262,6 +269,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                                    "estimated", "the walk model's nominal mass"))
         if pr.ok:
             rows += _envelope_estimate(design)
+        rows += _cost_floor_rows(design)
         return _done(design, rep, t0)
     if not pr.ok:
         return _done(design, rep, t0)
@@ -316,17 +324,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     try:
         bom = bom_from_mechanism(replace(mech, bom_extras=extras), group=False,
                                  filament=mech.meta.get("filament", "pla_filament"))
-        unpriced = [r.key for r in bom.unpriced]
-        unverified = [r.key for r in bom.purchased if not r.verified and not r.same_pack_as]
-        top = sorted((r for r in bom.purchased if r.cost_usd), key=lambda r: -r.cost_usd)[:4]
-        _push(rows, target_row(design, target_field("budget", "cost_usd"), bom.cost_usd, "bom",
-                               detail=(f"{len(bom.purchased)} items"
-                                       + (f", the largest {'; '.join(_cost_item(r) for r in top)}"
-                                          if top else "")
-                                       + (f"; {len(unpriced)} unpriced, so the total is a "
-                                          f"lower bound ({', '.join(unpriced[:4])})"
-                                          if unpriced else "")
-                                       + f"; {len(unverified)} unverified links")))
+        _push(rows, cost_row(design, bom))
         _push(rows, target_row(design, target_field("budget", "print_g"), bom.printed_g, "bom",
                                detail="at 100 % infill"))
     except KeyError as e:
@@ -345,6 +343,96 @@ def _cost_item(r) -> str:
     qty = f" x {r.qty:g}" if r.qty != 1 else ""
     pack = f" (a pack of {r.pack_qty})" if r.pack_qty and r.pack_qty > r.qty else ""
     return f"{r.name}{qty} ${r.cost_usd:.2f}{pack}"
+
+
+def _unpriced_item(r) -> str:
+    """``qty x name (N packs of M at vendor)``: an unpriced BOM line, so the reader sees what
+    the lower bound leaves out and how much of it."""
+    packs = f"{r.packs} pack{'s' if r.packs != 1 else ''} of {r.pack_qty}" if r.pack_qty > 1 \
+        else f"{r.packs}"
+    return f"{r.qty:g} x {r.name} ({packs}{' at ' + r.vendor if r.vendor else ''})"
+
+
+def cost_row(design: Design, bom) -> Row | None:
+    """The ``budget.cost_usd`` row from a BOM. With unpriced items the total is a lower
+    bound, and a hard ``max`` (or ``value``) target can't be called met by a lower bound:
+    the row then fails and says so, naming every unpriced item (largest quantities first)
+    so they can be priced or accepted by hand; a soft target keeps the priced part's
+    verdict with the same note."""
+    f = target_field("budget", "cost_usd")
+    unpriced = sorted(bom.unpriced, key=lambda r: (-r.qty, r.name))
+    unverified = [r.key for r in bom.purchased if not r.verified and not r.same_pack_as]
+    top = sorted((r for r in bom.purchased if r.cost_usd), key=lambda r: -r.cost_usd)[:4]
+    detail = (f"{len(bom.purchased)} items"
+              + (f", the largest {'; '.join(_cost_item(r) for r in top)}" if top else "")
+              + (f"; {len(unpriced)} unpriced, so the total is a lower bound: "
+                 f"{'; '.join(_unpriced_item(r) for r in unpriced)}" if unpriced else "")
+              + f"; {len(unverified)} unverified links")
+    row = target_row(design, f, bom.cost_usd, "bom", detail=detail)
+    if row is None or not unpriced:
+        return row
+    t: Target | None = design.spec.budget.get("cost_usd")
+    bounded = t is not None and (t.max is not None or t.value is not None)
+    if bounded and row.passed:
+        if row.hard:
+            row.passed = False
+            row.detail = ("at least; the target can't be verified while items are unpriced "
+                          "(price them in the catalog, or accept them by hand): " + row.detail)
+        else:
+            row.detail = "at least (the verdict is on the priced part): " + row.detail
+    return row
+
+
+def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
+    """What the design buys whatever its parts turn out to be, priced from the catalog
+    before any build: the servos (one per side), a spool of filament (the crank is
+    printed), one sheet, and for the robot the centre plates' cement and the frame ties'
+    inserts. ``(total, priced lines, unpriced names)``: a lower bound on the BOM's total;
+    the pivots' hardware, the screws, rod and clips are counted from the built parts."""
+    cfg = design.config
+    sides = 2 if cfg.robot else 1
+    lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1), (cfg.sheet, 1)]
+    if cfg.robot:
+        lines += [(adhesive(cfg.sheet), 1), ("m3_heat_set_insert", 4)]
+    total, priced, unpriced = 0.0, [], []
+    for key, qty in lines:
+        item = catalog_item(key)
+        offer = item.offer
+        if offer is None or offer.price_usd is None:
+            unpriced.append(item.name)
+            continue
+        packs = max(1, -(-qty // max(offer.pack_qty, 1)))
+        cost = packs * offer.price_usd
+        total += cost
+        priced.append(f"{item.name}{f' x {qty}' if qty != 1 else ''} ${cost:.2f}"
+                      + (f" (a pack of {offer.pack_qty})" if offer.pack_qty > qty else ""))
+    return round(total, 2), priced, unpriced
+
+
+def _cost_floor_rows(design: Design) -> list[Row]:
+    """Before a build: the catalog floor as an informational row, or, when it already
+    exceeds a ``max`` target, as the target's failing row (a lower bound can refute a
+    ceiling, never confirm it)."""
+    try:
+        floor, priced, unpriced = cost_floor(design)
+    except KeyError:
+        return []
+    f = target_field("budget", "cost_usd")
+    t: Target | None = design.spec.budget.get("cost_usd")
+    detail = ("before a build, from the catalog: " + "; ".join(priced)
+              + (f"; unpriced: {', '.join(unpriced)}" if unpriced else "")
+              + "; the pivots' hardware, screws, rod and clips are counted after a build "
+                "(verify standard)")
+    ceiling = None if t is None else (t.max if t.max is not None else
+                                      (t.value + (t.tol if t.tol is not None
+                                                  else abs(t.value) * 0.05)
+                                       if t.value is not None else None))
+    if ceiling is not None and floor > ceiling:
+        row = target_row(design, f, floor, "catalog", "estimated",
+                         "a lower bound already over the target: " + detail)
+        return [row] if row is not None else []
+    return [Row("budget.cost_floor_usd", "catalog", floor, None, True, "estimated", False,
+                detail, unit="USD")]
 
 
 def _fail(rep: VerifyReport, problems: list[str], stage: str, code: str) -> None:

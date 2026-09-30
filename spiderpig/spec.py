@@ -592,7 +592,18 @@ def validate(data: Mapping) -> list[SpecError]:
     legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides"))
     if legs is not None:
         modules = list(lk.leg_modules) if lk is not None else module_keys()
-        module = v.string(legs.get("module"), "legs.module", modules)
+        mod = legs.get("module")
+        if (isinstance(mod, str) and mod not in modules and lk is not None
+                and mod.strip().lower() not in WILDCARDS):
+            legs_of = ", ".join(f"{m} {len(lk.leg_modules[m])} a side "
+                                f"({2 * len(lk.leg_modules[m])} on the robot)" for m in modules)
+            v.err("legs.module", f"unknown value {mod!r}; a module is the legs per side, and "
+                                 f"the robot has two sides: {legs_of}; no linkage has a "
+                                 f"three-leg module (which modules walk is on the linkage's "
+                                 f"card, api.describe)", modules, nearest(mod, modules))
+            module = None
+        else:
+            module = v.string(mod, "legs.module", modules)
         phases = legs.get("phases_deg")
         if phases is not None:
             if not isinstance(phases, (list, tuple)):

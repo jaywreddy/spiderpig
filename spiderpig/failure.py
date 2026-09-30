@@ -53,6 +53,10 @@ from spiderpig.stack import ClearanceError, PlanError, StackSpec
 STAGES = ("spec", "program", "output", "drive", "construction", "static", "plan", "fabricate",
           "contract", "clash", "layout", "bom", "walk", "sim")
 
+# config fields a construction may name as its lever (ConstructionError.changes) -> spec path
+CONFIG_FIELDS = {"thickness_mm": ("materials", "thickness_mm"), "sheet": ("materials", "sheet"),
+                 "servo": ("materials", "servo")}
+
 _BLOCKER = re.compile(r"^\s*(\d+) x (.+?) vs (.+?): (-?[\d.]+) mm apart in one layer, need "
                       r"([\d.]+)\s*$")
 _BLOCKER_PLATE = re.compile(r"^\s*(\d+) x (.+?) vs (.+?): (it would sit in a frame plate's "
@@ -77,7 +81,8 @@ class Recommendation:
     @classmethod
     def from_engine(cls, rec, lk: linkage.Linkage | None) -> Recommendation:
         """A :class:`stack.Recommendation` with its patch: a linkage parameter goes under
-        ``linkage.params``, a :class:`construction.base.Params` field under ``fit``."""
+        ``linkage.params``, a :class:`construction.base.Params` field under ``fit``, a
+        material (``thickness_mm``, ``sheet``, ``servo``) under ``materials``."""
         patch: dict = {}
         notes = []
         for name, _before, after in rec.changes:
@@ -85,13 +90,17 @@ class Recommendation:
                 patch.setdefault("linkage", {}).setdefault("params", {})[name] = after
             elif name in FIT_FIELDS:
                 patch.setdefault("fit", {})[name] = after
+            elif name in CONFIG_FIELDS:
+                section, key = CONFIG_FIELDS[name]
+                patch.setdefault(section, {})[key] = after
             else:
                 notes.append(f"{name} is not a spec field: apply it by hand")
         return cls([{"name": n, "before": b, "after": a} for n, b, a in rec.changes],
                    rec.why, rec.effects, rec.verified, patch, notes)
 
     def describe(self) -> str:
-        out = ", ".join(f"{c['name']} {c['before']:g} -> {c['after']:g}" for c in self.changes)
+        out = ", ".join(f"{c['name']} {_num(c['before'])} -> {_num(c['after'])}"
+                        for c in self.changes)
         if self.why:
             out += f": {self.why}"
         if self.effects:
@@ -182,7 +191,9 @@ class Failure:
         if isinstance(exc, ConstructionError):
             if "the drive turns one input" in msg:
                 return cls("drive", "second_input_no_drive", msg)
-            return cls(stage or "construction", "unbuildable", msg)
+            return cls(stage or "construction", "unbuildable", msg,
+                       numbers=dict(getattr(exc, "numbers", None) or {}),
+                       notes=[n for n in getattr(exc, "notes", ()) if n])
         if isinstance(exc, KeyError) and "catalog" in msg:
             return cls(stage or "bom", "unknown_catalog_key", msg.strip("'\""))
         if isinstance(exc, ValueError) and msg.startswith("sheet packing dropped"):
@@ -190,6 +201,10 @@ class Failure:
             return cls(stage or "layout", "part_exceeds_sheet", msg,
                        culprits=[{"body": p} for p in parts])
         return cls(stage or "engine", type(exc).__name__, msg or repr(exc))
+
+
+def _num(v) -> str:
+    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
 
 
 def parse_blocker(text: str) -> dict:

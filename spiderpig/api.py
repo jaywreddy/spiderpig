@@ -32,9 +32,11 @@ reports, :func:`list_designs` and :func:`gc` manage the folder.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 import time
+import warnings as pywarnings
 from contextlib import contextmanager
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -61,7 +63,7 @@ from spiderpig.fabricate import (
 from spiderpig.fabricate import template_for as _template_for
 from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
 from spiderpig.hardware.bom import BomLine, bom_from_mechanism, group_made
-from spiderpig.hardware.catalog import sheet_name, sheet_size
+from spiderpig.hardware.catalog import sheet_name, sheet_size, sheet_thickness
 from spiderpig.hardware.mass import filament_density, material_of, part_props
 from spiderpig.layout import DEFAULT_KERF, save_sheets
 from spiderpig.spec import (
@@ -221,6 +223,7 @@ class ExportReport(Report):
     formats: list[str] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     manifest: dict = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
     seconds: float = 0.0
 
 
@@ -280,7 +283,21 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
                         f"{walk_model.DEFAULT_RPM:g} rpm")
+    if config.thickness is not None:
+        nominal = sheet_thickness(config.sheet)
+        dev = (config.thickness - nominal) / nominal
+        if abs(dev) > THICKNESS_TOLERANCE:
+            warnings.append(
+                f"materials.thickness_mm {config.thickness:g} is {abs(dev):.0%} "
+                f"{'under' if dev < 0 else 'over'} {config.sheet}'s nominal {nominal:g} mm "
+                f"(real sheets vary by about 8 %): the layer pitch follows the measured "
+                f"thickness and every construction sizes its parts by it, so this design is "
+                f"built for {config.thickness:g} mm layers, and a construction that can't be "
+                f"built that thin says so at check (with the thickness that works)")
     return warnings
+
+
+THICKNESS_TOLERANCE = 0.12     # a measured thickness this far from the sheet's nominal warns
 
 
 def _attach_store(design: Design, store: Store | None) -> None:
@@ -700,7 +717,14 @@ def check(design: Design, force: bool = False) -> CheckReport:
         tmpl = design.template = _template_for(cfg)
         ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False))
     except ValueError as e:      # AssemblyError / OutputError (caught above) / ConstructionError
-        rep.failures.append(Failure.from_exception(e, lk=lk))
+        fl = Failure.from_exception(e, lk=lk)
+        if isinstance(e, ConstructionError) and getattr(e, "changes", ()):
+            from spiderpig.recommend import construction_fix
+
+            recs, notes = construction_fix(replace(cfg, robot=False), e)
+            fl.recommendations += [Recommendation.from_engine(r, lk) for r in recs]
+            fl.notes += notes
+        rep.failures.append(fl)
         return _finish(design, "check", rep, t0)
     rep.clearances = [{"link": c.link, "keepout": c.keepout.owner, "where": c.keepout.where,
                        "dist_mm": c.dist, "need_mm": c.need, "text": c.describe()}
@@ -1047,6 +1071,13 @@ def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:
     except (OSError, KeyError, ValueError) as e:
         log.warning("%s: stored build unreadable (%s): rebuilding", design.id, e)
         return None
+    # the files hold solids and poses; the joints and outlines (what an edit is placed by)
+    # come from the side's template at the build's crank angle, as a fresh build's do
+    frozen = {b.name: b for b in _template(design).freeze_at(t).bodies}
+    for b in mech.bodies:
+        kin = frozen.get(split_side(b.name)[1])
+        if kin is not None:
+            b.joints, b.outline = list(kin.joints), kin.outline
     return attach_build(design, mech, t, t0, cached=True)
 
 
@@ -1082,12 +1113,13 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
                                                                                   bb.max.Z])
         parts[b.name] = Part(
             name=b.name, solid=b.part, group=group_of(base, side.plan), side=tag, fab=b.fab,
-            material=material, mass_g=mass, volume_mm3=props.volume,
-            dims_mm=(bb.size.X, bb.size.Y, bb.size.Z),
+            material=material, dims_mm=(bb.size.X, bb.size.Y, bb.size.Z),
             layers=side_layers(side.plan, side_z(tag, z_mid, (bb.min.Z, bb.max.Z))),
+            density=density, fixed_mass_g=fixed,
             bom_key=b.bom_key, rigid_with=b.rigid_with, pose=b.pose.matrix.tolist(),
-            built=b.part,
+            built=b.part, _measured=(b.part, float(props.volume)),
         )
+        assert abs(parts[b.name].mass_g - mass) < 1e-9
     design.parts = parts
     counts = {}
     for p in parts.values():
@@ -1227,9 +1259,13 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
                       for c in rep.contract),
             culprits=[{"body": c["part"], "group": c["group"]} for c in rep.contract],
             numbers={"mm3": max(c["mm3_outside"] for c in rep.contract)}))
-    if not rep.failures:
+    if not rep.failures and rep.edited:
         for n in rep.edited:
             design.parts[n].built = design.parts[n].solid
+        br = design.reports.get("build")
+        if br is not None:      # the handle's build now describes the edited parts
+            br.mass_g = round(sum(p.mass_g for p in design.parts.values()), 2)
+            br.parts = [p.to_dict() for p in design.parts.values()]
     return _finish(design, "recheck", rep, t0)
 
 
@@ -1253,7 +1289,9 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
     its metadata); and always ``manifest.json``. Builds first if nothing is built; a
-    sheet-packing failure is ``layout``, a catalog miss ``bom``. An export the store
+    sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
+    constructions warned about while writing (a purchased model's faces the mesher
+    skipped) is on the report (``warnings``) and in the manifest. An export the store
     records for the same formats and folder, whose files are all still there, is
     returned as is (``force`` rewrites)."""
     from spiderpig.spec import OUTPUTS
@@ -1278,6 +1316,43 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
             rep.failures = list(br.failures)
             return _finish(design, "export", rep, t0)
     out.mkdir(parents=True, exist_ok=True)
+    with contextlib.ExitStack() as stack:
+        warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
+        stack.enter_context(pywarnings.catch_warnings())
+        pywarnings.filterwarnings("ignore", message="Unknown Compound type")
+        files, bom_summary = _export_files(design, formats, out, rep)
+    rep.warnings = warned
+    cfg = design.config
+    pr, br = design.reports["plan"], design.reports["build"]
+    vr = design.reports.get("verify")
+    rep.manifest = jsonable({
+        "design": design.id, "engine_version": design.engine_version, "t_ref": design.build_t,
+        "formats": formats, "files": [str(f.relative_to(out)) for f in files],
+        "parts": br.parts, "counts": br.counts, "mass_g": br.mass_g,
+        "envelope_mm": br.envelope_mm, "sheet": sheet_name(cfg.sheet),
+        "plan": {"layers": pr.n_layers, "height_mm": pr.height_mm, "route": pr.route,
+                 "optimal": pr.optimal},
+        "bom": bom_summary,
+        "warnings": rep.warnings,
+        "verify": None if vr is None else {"level": vr.level, "ok": vr.ok, "score": vr.score,
+                                           "failed": [r.requirement for r in vr.rows
+                                                      if not r.passed]},
+    })
+    import json
+
+    (out / "manifest.json").write_text(json.dumps(rep.manifest, indent=1))
+    files.append(out / "manifest.json")
+    rep.files = [str(f) for f in files]
+    return _finish(design, "export", rep, t0)
+
+
+EXPORT_LOGGERS = (*WARNING_LOGGERS, "bake_gltf", "spiderpig.bake", "spiderpig.layout")
+
+
+def _export_files(design: Design, formats: list[str], out: Path, rep: ExportReport
+                  ) -> tuple[list[Path], dict | None]:
+    """Write the formats into ``out`` (see :func:`export`): the files written, and the
+    BOM's summary."""
     cfg, mech, spec = design.config, design.mech, design.spec
     name = cfg.linkage
     filament = mech.meta.get("filament", "pla_filament")
@@ -1335,26 +1410,7 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
         (out / f"{name}.xml").write_text(xml)
         (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
         files += [out / f"{name}.xml", out / f"{name}.json"]
-    pr, br = design.reports["plan"], design.reports["build"]
-    vr = design.reports.get("verify")
-    rep.manifest = jsonable({
-        "design": design.id, "engine_version": design.engine_version, "t_ref": design.build_t,
-        "formats": formats, "files": [str(f.relative_to(out)) for f in files],
-        "parts": br.parts, "counts": br.counts, "mass_g": br.mass_g,
-        "envelope_mm": br.envelope_mm, "sheet": sheet_name(cfg.sheet),
-        "plan": {"layers": pr.n_layers, "height_mm": pr.height_mm, "route": pr.route,
-                 "optimal": pr.optimal},
-        "bom": bom_summary,
-        "verify": None if vr is None else {"level": vr.level, "ok": vr.ok, "score": vr.score,
-                                           "failed": [r.requirement for r in vr.rows
-                                                      if not r.passed]},
-    })
-    import json
-
-    (out / "manifest.json").write_text(json.dumps(rep.manifest, indent=1))
-    files.append(out / "manifest.json")
-    rep.files = [str(f) for f in files]
-    return _finish(design, "export", rep, t0)
+    return files, bom_summary
 
 
 __all__ = [

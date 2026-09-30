@@ -85,7 +85,7 @@ def design_id(resolved: Mapping, engine: str) -> str:
     return hashlib.sha256((canonical_json(resolved) + engine).encode()).hexdigest()[:16]
 
 
-SKIP_FIELDS = frozenset({"solid", "built"})     # live solids never serialize
+SKIP_FIELDS = frozenset({"solid", "built", "_measured"})     # live solids never serialize
 
 
 def jsonable(obj):
@@ -119,7 +119,10 @@ class Part:
     """One fabricated body. ``solid`` is the live build123d solid in the body's own frame
     (for every part of a side that is the side's frame; ``pose`` places it in the world:
     :meth:`placed`). Replace it to edit the part; ``edited`` says whether it differs from
-    what the engine built, and only :func:`spiderpig.api.recheck` restores the guarantee."""
+    what the engine built, and only :func:`spiderpig.api.recheck` restores the guarantee.
+    ``volume_mm3`` and ``mass_g`` are measured on the solid as it now is (``density`` in
+    g/cm3; a purchased part with a catalog mass, the servo, keeps ``fixed_mass_g``);
+    ``dims_mm`` and ``layers`` are the build's."""
 
     name: str
     solid: object
@@ -127,18 +130,37 @@ class Part:
     side: str | None
     fab: str
     material: str
-    mass_g: float
-    volume_mm3: float
     dims_mm: tuple[float, float, float]
     layers: tuple[int, ...]
+    density: float = 0.0
+    fixed_mass_g: float | None = None
     bom_key: str | None = None
     rigid_with: str | None = None
     pose: list[list[float]] = field(default_factory=list)
     built: object = field(default=None, repr=False)
+    _measured: tuple | None = field(default=None, repr=False)   # (solid, its volume)
 
     @property
     def edited(self) -> bool:
         return self.solid is not self.built
+
+    @property
+    def volume_mm3(self) -> float:
+        """The live solid's volume (measured again after ``solid`` is replaced)."""
+        m = self._measured
+        if m is None or m[0] is not self.solid:
+            from spiderpig.hardware.mass import part_props
+
+            self._measured = m = (self.solid, float(part_props(self.solid).volume))
+        return m[1]
+
+    @property
+    def mass_g(self) -> float:
+        """The live solid's mass: its volume at the material's density, or the catalog's
+        fixed mass of a purchased part."""
+        if self.fixed_mass_g is not None:
+            return self.fixed_mass_g
+        return self.volume_mm3 / 1000.0 * self.density
 
     def placed(self):
         """The solid in world coordinates (the body's pose applied)."""

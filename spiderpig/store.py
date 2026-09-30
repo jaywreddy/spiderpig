@@ -334,14 +334,24 @@ class Store:
     # -- listing, gc -------------------------------------------------------------------
 
     def summary(self, id: str) -> dict:
-        """One design's card: what it is, when, from what, and which stages it holds."""
+        """One design's card: what it is (linkage, module, sides, the parameters the spec
+        overrides, servo, sheet and thickness, constructions, which metrics it targets),
+        when, from what, and which stages it holds."""
         rec = self.read_design(id) or {}
         stages = self.stages(id)
         last = self.last_activity(id)
         v = stages.get("verify")
+        res = rec.get("resolved") or {}
+        materials = res.get("materials") or {}
+        spec = self.read_spec(id) or {}
         return {
             "id": id, "kind": rec.get("kind"), "linkage": rec.get("linkage"),
             "module": rec.get("module"), "sides": rec.get("sides"),
+            "params": dict((spec.get("linkage") or {}).get("params") or {}),
+            "servo": materials.get("servo"), "sheet": materials.get("sheet"),
+            "thickness_mm": materials.get("thickness_mm"),
+            "constructions": dict(res.get("constructions") or {}),
+            "targets": {s: sorted(res[s]) for s in ("motion", "size", "budget") if res.get(s)},
             "engine_version": rec.get("engine_version"), "created_at": rec.get("created_at"),
             "derived_from": rec.get("derived_from"),
             "last_at": last.isoformat(timespec="seconds") if last else None,
