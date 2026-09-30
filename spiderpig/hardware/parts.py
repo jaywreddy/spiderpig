@@ -13,12 +13,22 @@ Prices are per pack and only where a page showed one.
 
 Servo-specific items (servos, horns sold separately) live in
 :mod:`servos.catalog`.
+
+Prices added 2026-09-30 (test drive round 3): the fastener pages that render to a
+fetcher (Woodcraft, Woodpeckers Crafts) are ``verified=True`` with the price seen;
+Bolt Depot, TME and Amazon refuse a fetch, so their prices are what a web search's
+result quoted from that page on that day, ``verified=False`` and said so in the note.
+Nothing is priced from memory; an item no page priced stays unpriced (the 3 mm rod,
+the M2 tapping kit, the starlock kit, M3 x 18 and x 50 SHCS).
 """
 
 from __future__ import annotations
 
 from spiderpig.hardware.catalog import Item, Offer, register
 from spiderpig.hardware.fasteners import CLEARANCE, SCREWS, SHCS_LENGTHS, shcs
+
+SEARCHED = ("price as a web search quoted it from this page on 2026-09-30 (the page "
+            "refuses a fetch)")
 
 # ---------------------------------------------------------------------------
 # Socket head cap screws (ISO 4762 / DIN 912)
@@ -29,12 +39,33 @@ _MCM_M3_SHCS = {6: "91290A111", 8: "91290A113", 10: "91290A115", 12: "91290A117"
 _KIT_M3 = {6: 50, 8: 30, 10: 25, 12: 20, 16: 15, 20: 10, 25: 10, 30: 10}  # B0DNM4HK5Q
 _KIT_M2 = (4, 6, 8, 10, 12, 16, 20)                           # lengths in B08MT9WWCT
 _MCM_SHCS_PAGE = "https://www.mcmaster.com/products/socket-head-screws/"
+# Bolt Depot, metric socket cap, stainless 18-8 (A-2), 3 mm x 0.5: (product, USD per 100)
+BOLT_DEPOT_M3_SHCS: dict[int, tuple[str | None, float]] = {
+    6: (None, 3.83), 8: ("6379", 4.76), 12: ("6381", 5.18), 16: ("6382", 4.50),
+    20: ("6383", 4.84), 30: ("6385", 6.89), 45: ("6388", 12.25),
+}
+_BD_LIST_M3_SHCS = ("https://boltdepot.com/Metric_socket_cap_Stainless_steel_18-8_(A-2)"
+                    "_3mm_x_0.5mm")
+
+
+def bolt_depot_shcs(length: float) -> Offer | None:
+    """Bolt Depot's M3 socket cap of this length with the price its page quoted, or None."""
+    entry = BOLT_DEPOT_M3_SHCS.get(int(length))
+    if entry is None:
+        return None
+    product, price = entry
+    url = (f"https://boltdepot.com/Product-Details?product={product}" if product
+           else _BD_LIST_M3_SHCS)
+    return Offer("Bolt Depot", url, product, pack_qty=100, price_usd=price,
+                 note=f"stainless 18-8 (A-2), DIN 912; {SEARCHED}")
 
 
 def _shcs_offers(size: str, length: float) -> tuple[Offer, ...]:
     L = int(length)
     offers: list[Offer] = []
     if size == "3":
+        if (bd := bolt_depot_shcs(L)) is not None:
+            offers.append(bd)
         if L in _MCM_M3_SHCS:
             pn = _MCM_M3_SHCS[L]
             offers.append(Offer("McMaster-Carr", f"https://www.mcmaster.com/{pn}/", pn,
@@ -83,10 +114,16 @@ for _size, _lengths in SHCS_LENGTHS.items():
 # ---------------------------------------------------------------------------
 
 _sk = SCREWS["bhcs", "3"]
+# Bolt Depot, metric socket button head, stainless 18-8 (A-2), 3 mm x 0.5: (product, USD/100)
+BOLT_DEPOT_M3_BHCS: dict[int, tuple[str, float]] = {6: ("7218", 3.97), 10: ("7220", 4.30)}
 for _L in _sk.lengths:
+    _bd = BOLT_DEPOT_M3_BHCS.get(int(_L))
     register(Item(
         _sk.key(_L), f"M{_sk.d:g} x {_L:g} mm button head socket screw", "fastener",
-        (Offer("McMaster-Carr", "https://www.mcmaster.com/products/button-head-screws/",
+        (*([Offer("Bolt Depot", f"https://boltdepot.com/Product-Details?product={_bd[0]}",
+                  _bd[0], pack_qty=100, price_usd=_bd[1],
+                  note=f"stainless 18-8 (A-2), ISO 7380; {SEARCHED}")] if _bd else []),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/products/button-head-screws/",
                pack_qty=100, note=f"pick M{_sk.d:g} x {_L:g} mm, ISO 7380; part "
                "number not confirmed"),
          Offer("Amazon", "https://www.amazon.com/s?k=M3+button+head+socket+screw+assortment",
@@ -126,7 +163,10 @@ for _L in _sk.lengths:
 
 register(
     Item("m3_nut", "M3 hex nut (ISO 4032)", "nut",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/90592A085/", "90592A085", pack_qty=100,
+         (Offer("Bolt Depot", "https://www.boltdepot.com/Product-Details.aspx?product=4773", "4773",
+                pack_qty=100, price_usd=2.39,
+                note=f"stainless 18-8 (A-2), DIN 934; {SEARCHED}"),
+          Offer("McMaster-Carr", "https://www.mcmaster.com/90592A085/", "90592A085", pack_qty=100,
                 note="part number from a search result only"),
           Offer("Amazon", "https://www.amazon.com/dp/B0DNM4HK5Q", "B0DNM4HK5Q", pack_qty=140,
                 note="in the 631-pc M3 kit")),
@@ -164,7 +204,11 @@ register(
          notes="Nominal 3 mm; real sheets vary by up to about 8 %. "
                "Measure yours and pass --thickness."),
     Item("plywood_3mm", "3 mm (1/8 in) Baltic birch plywood, 12 x 12 in", "sheet",
-         (Offer("Amazon", "https://www.amazon.com/dp/B01N5CHME9", "B01N5CHME9", pack_qty=8,
+         (Offer("Woodpeckers Crafts", "https://woodpeckerscrafts.com/products/baltic-birch-"
+                "plywood-1-8-x-12-x-12", pack_qty=1, price_usd=3.10, verified=True,
+                note="B/BB, sold per sheet ($2.57 each at 8 or more); page fetched "
+                     "2026-09-30"),
+          Offer("Amazon", "https://www.amazon.com/dp/B01N5CHME9", "B01N5CHME9", pack_qty=8,
                 verified=True, note="Woodpeckers B/BB, box of 8"),
           Offer("Amazon", "https://www.amazon.com/dp/B08429ZRB1", "B08429ZRB1", pack_qty=20,
                 verified=True, note="Woodpeckers 12 x 20 in, box of 20"),
@@ -189,12 +233,17 @@ register(
          notes="Water-thin, applied by capillary with a needle bottle: 1-2 min working, "
                "3 min fixture (SCIGRIP 4 TDS). Acrylic to acrylic only."),
     Item("wood_glue", "Titebond II Premium wood glue, 8 oz (5003)", "adhesive",
-         (Offer("Amazon", "https://www.amazon.com/dp/B0000223US", "B0000223US"),
+         (Offer("The Home Depot", "https://homedepot.com/p/Titebond-8-oz-Titebond-II-Premium-"
+                "Wood-Glue-5003/202180087", "202180087", price_usd=5.49, note=SEARCHED),
+          Offer("Amazon", "https://www.amazon.com/dp/B0000223US", "B0000223US"),
           Offer("Titebond", "https://www.titebond.com/product/glues/"
                 "2ef3e95d-48d2-43bc-8e1b-217a38930fa2", "5003", verified=True,
                 note="manufacturer page (sizes, where to buy)"))),
     Item("ca_glue", "Medium CA (cyanoacrylate) glue, 2 oz", "adhesive",
-         (Offer("Amazon", "https://www.amazon.com/dp/B00C32MHJU", "B00C32MHJU", verified=True,
+         (Offer("Woodcraft", "https://www.woodcraft.com/products/starbond-em-150-multi-purpose-"
+                "ca-glue-medium-2-oz", price_usd=13.99, verified=True,
+                note="Starbond EM-150 medium, 2 oz; page fetched 2026-09-30"),
+          Offer("Amazon", "https://www.amazon.com/dp/B00C32MHJU", "B00C32MHJU", verified=True,
                 note="Starbond EM-150 medium, 2 oz"),
           Offer("Amazon", "https://www.amazon.com/dp/B0B4PNW7CC", "B0B4PNW7CC",
                 note="Starbond thin/medium/thick + activator bundle")),
@@ -222,7 +271,9 @@ register(
 # Pivot hardware the metal-shaft constructions use (construction/pivots).
 register(
     Item("bearing_mf63zz", "MF63ZZ flanged ball bearing 3 x 6 x 2.5", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B08H27NJ5N", "B08H27NJ5N", pack_qty=10,
+         (Offer("Amazon", "https://www.amazon.com/dp/B00GGQ62PO", "B00GGQ62PO", pack_qty=10,
+                price_usd=17.67, note=f"10-pack MF63-ZZ (99MF63-ZZ-X10); {SEARCHED}"),
+          Offer("Amazon", "https://www.amazon.com/dp/B08H27NJ5N", "B08H27NJ5N", pack_qty=10,
                 verified=True, note="uxcell 10-pack"),
           Offer("McMaster-Carr", "https://www.mcmaster.com/57155K538/", "57155K538")),
          dims={"id": 3.0, "od": 6.0, "w": 2.5, "flange_d": 7.2, "flange_t": 0.6}),
@@ -236,14 +287,18 @@ register(
          dims={"id": 3.0, "od": 10.0, "w": 4.0, "flange_d": 11.5, "flange_t": 1.0}),
     Item("bushing_gfm0304_03", "igus iglide G flange bushing 3 x 4.5 x 3 (GFM-0304-03)",
          "bushing",
-         (Offer("igus", "https://www.igus.com/iglide-ibh/flange-bearings/product-details/"
+         (Offer("TME", "https://www.tme.com/us/en-us/details/gfm-0304-03/plain-bearings/igus/",
+                "GFM-0304-03", pack_qty=10, price_usd=5.3,
+                note=f"$0.53 each at 10 or more; {SEARCHED}"),
+          Offer("igus", "https://www.igus.com/iglide-ibh/flange-bearings/product-details/"
                 "iglidur-g-m?artnr=GFM-0304-03", "GFM-0304-03", verified=True),
-          Offer("TME", "https://www.tme.com/us/en-us/details/gfm-0304-03/plain-bearings/igus/",
-                "GFM-0304-03", pack_qty=10, price_usd=5.3),
           Offer("McMaster-Carr", "https://www.mcmaster.com/2705T111/", "2705T111")),
          dims={"id": 3.0, "od": 4.5, "l": 3.0, "flange_d": 7.5, "flange_t": 0.75}),
     Item("m3_nylock", "M3 nylon-insert lock nut (DIN 985)", "nut",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/93625A100/", "93625A100", pack_qty=100,
+         (Offer("Bolt Depot", "https://boltdepot.com/Product-Details?product=4792", "4792",
+                pack_qty=100, price_usd=4.22,
+                note=f"stainless 18-8 (A-2), DIN 985; {SEARCHED}"),
+          Offer("McMaster-Carr", "https://www.mcmaster.com/93625A100/", "93625A100", pack_qty=100,
                 note="18-8 stainless; seen on the McMaster M3 locknut listing"),
           Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-0-5-din-985-metric-hex-"
                 "nylon-insert-stop-lock-nuts-a2-stainless-steel/", "ME223", pack_qty=250,
@@ -251,7 +306,10 @@ register(
           Offer("Amazon", "https://www.amazon.com/dp/B07KSPTYNZ", "B07KSPTYNZ", pack_qty=100)),
          dims={"af": 5.5, "h": 4.0, "d": 3.0}),
     Item("m3_washer", "M3 flat washer (DIN 125-A, 3.2 x 7 x 0.5)", "washer",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/91166A210/", "91166A210", pack_qty=100,
+         (Offer("Bolt Depot", "https://boltdepot.com/Product-Details?product=4513", "4513",
+                pack_qty=100, price_usd=1.45,
+                note=f"stainless 18-8 (A-2), 3 mm metric flat washer; {SEARCHED}"),
+          Offer("McMaster-Carr", "https://www.mcmaster.com/91166A210/", "91166A210", pack_qty=100,
                 note="18-8 stainless, per the RepRap McMaster BOM"),
           Offer("Amazon", "https://www.amazon.com/dp/B08HJVF49P", "B08HJVF49P", pack_qty=200),
           Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-din-125-type-a-iso-7089-"
