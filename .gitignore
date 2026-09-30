@@ -36,3 +36,6 @@ viewer/node_modules/
 # CAD models are downloaded at build time (mise run fetch-cad)
 *.step
 *.stp
+
+# the spiderpig API's per-project design store (spiderpig/store.py)
+.spiderpig/
