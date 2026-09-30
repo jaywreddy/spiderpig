@@ -996,3 +996,386 @@ the second run went through all three goals without a workaround. The single big
 remaining problem is the engine's, not the surface's: a scaled-down multi-leg design
 costs the planner's whole 60 s deadline per try with no knob and no proof, so the
 iterate loop's one slow step is the one an agent must repeat.
+
+## Round 4 — 2026-09-30 (the confirmation round)
+
+Four goals, to check round 3's verdict with fresh eyes. *Goal 1 (MCP, the regression
+of round 1)*: "a four-legged walker in a 300 × 200 × 150 mm box, at most $100 in
+purchased parts, ground clearance ≥ 40 mm, as fast as possible; sheets, print files,
+BOM, view". *Goal 2 (MCP)*: "the cheapest robot that actually walks (stride over 50 mm
+per turn), any linkage, any module; tell me the bill and what drives the cost". *Goal 3
+(Python API)*: take goal 2's design; `derive` it to the XL330 and to `rod` pins;
+`compare` the designs; `recheck` after editing one link's solid; `verify("full")`
+once and say what the MuJoCo rows add. *Goal 4 (CLI)*: "a single-servo lift whose
+platform rises at least 30 mm and stays level to 1°": find the block from the cards,
+build it, audit it, view it.
+
+Driver: the MCP server as a subprocess (`python -m spiderpig.cli mcp --store <tmp>`
+from the worktree, the official `mcp` 2.2 client, a fresh store per goal); `PYTHONPATH=.
+python -m spiderpig.cli explain|report|build|audit|view`; `spiderpig.api` in a Python
+session on goal 2's store; headless Chromium for the viewer. Allowed reading:
+`README.md`, `docs/agentlib/API.md`, this file's rounds 1 to 3, `--help`, the guide,
+the cards and the catalog.
+
+### Wall clock, first run
+
+| step | wall | note |
+|---|---|---|
+| G1 connect, tools, resources, prompts, guide | 6.3 s (3.4 s connect) | |
+| G1 `describe(strider)`, `catalog`, resolve the goal spec (Strider double), quick | 7.7 s | clearance 22.6 (the servo's pad), cost floor $100.69 "already over" |
+| G1 four derives + quick verifies (plywood; + shin 16; + unit 6.3; XL330 + shin 16) | 87 s | three Strider plans of 20-31 s each |
+| G1 two more derives + quick (XL330 + shin 16 + unit 6.3; shin 15), a standard verify of the sts3215 candidate as a job | 58 s | z 205 and $122.75 on the sts3215 candidate |
+| G1 final (XL330): standard verify 63 s, export step/dxf/print/bom/glb 135 s (jobs in parallel), view 4.6 s, browser 15 s | 163 s | one lost session on my client's key for `get_design` |
+| **G1 total, goal to files and the viewer** | **5.4 min** of session wall (8.8 min with my pauses) | no workaround; two facts decided by hand (entries 1, 2) |
+| G2 `list_linkages(walker)` + 17 `describe` cards | 15 s | the cards' `walks` and `stride_mm` name the candidates in one pass |
+| G2 seven candidates: resolve + quick each, standard verifies as jobs | 193 s | sixbar quad's plan 60.6 s (the deadline); the standards 50-116 s |
+| G2 `export(bom)` of the Strider double + `get_design(summary)` | 81 s | two totals (entry 3) |
+| G2 pillar variants: `bolt` (fails to plan, 4 s, checked patch back to printed), `rod`, `rod` + `rod` pins: quick + standard | 66 s | the same $122.75 |
+| **G2 total** | **5.9 min** | no workaround; the answer needed six builds (entry 1) |
+| G3 import 2.4 s, load, three derives, three standard verifies (46, 30, 33 s), three compares | 111 s | |
+| G3 build (reloaded, 4 s), the API.md edit, recheck 5.4 s | 9 s | the edit missed the solid (entry 5) |
+| G3 `verify("full")` on the XL330 + rod design | 54 s | `sim / sim_failed` (entry 6) |
+| G3 a second `verify("full")` on the sts3215 + rod design (for what the sim adds) | 65 s | four sim rows |
+| **G3 total** | **4.0 min** | one dead end (the XL330 sim), one silent no-op (the edit) |
+| G4 `explain` of the three lift blocks | ~25 s | the output line answers the rise and the level |
+| G4 `report --linkages parallelogram_lift watt_table_lift` | 3 s | crash (entry 8) |
+| G4 `build`: default (refused), `--module single` (refused), `--side-only` alone (refused), `--module single --side-only` (33 s) | ~50 s | three tries (entry 9) |
+| G4 `audit --linkage parallelogram_lift` | 2 s | refused (entry 10) |
+| G4 MCP cards of the three lifts 5 s; `spiderpig view --linkage ... --side-only` to the URL 25 s; browser 14 s; MCP `verify(standard)` as the audit 8 s + `explain` | ~60 s | |
+| **G4 total** | **4.4 min** | one workaround (the audit through the API) |
+
+### Entries
+
+#### 1. The quick cost floor is $37 under the built cost: the constructions' glue, screws and the second sheet are known before a build but not counted — **annoying**
+
+Tried (G1): the goal's Strider double at the defaults, `verify(quick)`:
+`budget.cost_usd: 100.69 USD vs <= 100 [FAIL, estimated] a lower bound already over
+the target: ... Feetech STS3215 x 2 $40.00; PLA ... 1 kg spool $25.49; 3 mm cast acrylic
+$10.99 (a pack of 2); SCIGRIP ... cement $12.84; M3 x 5.7 brass heat-set insert x 4
+$11.37 (a pack of 100); the pivots' hardware, screws, rod and clips are counted after
+a build (verify standard)`. Derived to `plywood_3mm`: `budget.cost_floor_usd: 85.45
+[ok] ... Baltic birch plywood $3.10; Titebond II ... $5.49; ...` and `unverified:
+['budget.cost_usd']`. So I chose plywood on that number. `verify(standard)` of the
+same design: `budget.cost_usd: 122.75 ... 11 items, the largest Feetech STS3215 x 2
+$40.00; Medium CA (cyanoacrylate) glue, 2 oz x 1.16 $27.98; PLA ... $25.49; ... insert
+x 4 $11.37; 3 unpriced ...`. The XL330 variant: `100.43 [FAIL] a lower bound already
+over the target` at quick (I weighed 43 cents), `133.90` at standard. In G2 every one
+of seven walkers read `cost_floor_usd: 85.45` at quick and `122.75`-`126.72` at
+standard. What the floor leaves out is not the pivots' hardware (that is what its
+text says it leaves out) but the CA glue of the printed pillars' anchors and the
+robot's tie spigots ($27.98: two bottles), the crank's horn screws and nuts ($6.22)
+and the second sheet ($3.10): all of it a function of the plan (pillars, ties, the
+crank) that `quick` already has.
+Expected: the floor to count what the constructions of the plan buy (a glue item per
+anchor and spigot, the crank's screws and nuts), so that a quick verdict on the budget
+is within a few dollars of the built one; and its text to name what it still leaves
+out (the sheets' count, the pivots' hardware).
+Recoverable from docs and messages alone: yes, after a 50-100 s standard verify per
+candidate.
+
+#### 2. Two bottles of CA glue for four tie spigots: the robot's glue estimate buys a second $13.99 bottle on every walker — **annoying** (an engine number)
+
+The BOM's glue line (G2, `bom.md`): `1.16 | Medium CA (cyanoacrylate) glue, 2 oz |
+... | 2 × 1 | $27.98 | pillar:J2_leg0 anchors, pillar:J6_leg0 anchors, tie spigots
+into the inner frame plates`. The one-sided lift of G4: `0.08 | ... | 1 × 1 | $13.99 |
+pillar:G1 anchors, pillar:G2 anchors` (two pillars, four anchors: 0.02 a piece, as
+round 3 noted). The robot's four pillars are 0.16; the four tie spigots the other
+1.00: a quarter of a 2 oz bottle (about 14 g of cyanoacrylate) each. That is the
+second-largest item of every walker's bill (23 % of it) and no spec field moves it.
+Expected: a spigot's glue on the same footing as an anchor's, so a robot needs one
+bottle.
+Recoverable: n/a (nothing to do; the number is the engine's).
+
+#### 3. Two totals for one bill: the verify row says $122.75, `bom.md` says $116.55 — the plywood sheets are missing from the BOM — **annoying**
+
+G2, the Strider double on plywood: `verify(standard)`'s `budget.cost_usd: 122.75`
+(`budget.sheets: 2`); `export(bom)`'s `bom.md`: `Estimated purchase total: **$116.55**`,
+and its Buy table has no sheet line at all, though its Laser-cut table lists 39 plywood
+parts; `bom.json`'s `purchased` has no sheet item either. The acrylic lift's BOM (G4)
+does list `1 | 3 mm (1/8 in) cast acrylic sheet, 12 x 12 in | ... | 1 × 2 | $10.99 |
+laser-cut parts`. The difference is exactly two plywood sheets at $3.10.
+Expected: one total; the BOM to carry the sheets whatever the stock.
+Recoverable: yes (the row is right; the file is short).
+
+#### 4. `get_design(design, stage)` answers under `report`, not under the stage's name — **nit**
+
+API.md's table: "`get_design(design, stage?)` | `summary`, `spec`, `resolved`,
+`check`, `plan`, ...". The result is `{ok, failures, design, stage, report}`. Cost one
+crashed client session (`KeyError: 'verify'`) and the running job it was waiting on.
+
+#### 5. On a build reloaded from the store, a part's `solid` sits in the world frame while `pose` reads the identity, so API.md's edit misses the link and `recheck` passes a no-op — **blocker**
+
+Tried (G3): API.md's lightening hole on goal 2's Strider double, whose build the MCP's
+standard verify had written (so `api.build(base)` reloaded it: "157 parts" in 4 s).
+`design.mech.body("L.b2_leg0")`: `outline (('J3', 'J9'), ('J9', 'J10'))`, joints
+`J3 [-76.9, 20.0, 0]`, `J9 [53.0, 22.7, 0]` (z = 0: the side's frame, as documented);
+`design.side.plan.z(link.layers[0])` = `(6.0, 9.0)`. `link.solid.bounding_box()`:
+`min (-82.9, 14.0, -78.5) max (59.0, 35.2, -75.5)`; `link.pose` = the identity;
+`link.placed()` the same box. So the STEP solid carries the left side's world
+placement (z −78.5..−75.5, the robot's chassis offset) and the example's cylinder at
+z 7.5 cut nothing: `volume_mm3 4945.09` before and after, `mass_g 3.3627` both, yet
+`edited: True` and `recheck: ok=True edited=['L.b2_leg0'] checked=['L.b2_leg0']`. The
+docstring of `Part` says "``solid`` is the live build123d solid in the body's own frame
+(for every part of a side that is the side's frame; ``pose`` places it in the world)":
+true of a fresh build (round 2 tested it), not of a reloaded one, and a reloaded build
+is what an agent gets after any standard verify or export in another process.
+Expected: the reloaded part in the same frame as a fresh one (solid in the side's
+frame, `pose` the side's placement), or the docstring and the example to say which
+frame a reloaded solid is in and how to move the cut; and `recheck` to say when an
+"edited" solid has the same volume as the build's.
+Recoverable: no (nothing said the cut missed).
+
+#### 6. `verify("full")` with the XL330 fails in the sim's mesher: `sim / sim_failed: 'NoneType' object has no attribute 'NbNodes'` — **blocker**
+
+G3's XL330 + rod design (`65e97dc5f64f2b2e`): every row green through `budget`, then
+`sim.run: failed [FAIL, measured] 'NoneType' object has no attribute 'NbNodes'`,
+`failures: sim (sim_failed) ...`, `ok: False`. Round 1's entry 14 (the XL330's model
+has three faces the mesher can't triangulate) was fixed for the bake ("meshes face by
+face and skips what the mesher leaves out"); the MJCF's meshing of the same servo
+still dies on it. With the sts3215 the sim runs (entry 7). Nothing in the row says it
+is the servo's purchased model, or that swapping the servo would let the sim run.
+Expected: the MJCF to mesh the purchased model the way the bake does (skip the faces
+it can't, or use the servo's box), and a sim failure's message to name the part.
+Recoverable: only by trial (the sts3215 works), as in round 1.
+
+#### 7. What the sim adds, and two rows with one name — **nit**
+
+`verify("full")` on the sts3215 + rod design (65 s): `motion.speed_mm_s = 164.9 mm/s
+[measured] 4 s at the drives' full speed; the walk model's row above is the spec's`
+(the walk model: 149.8 estimated), `motion.stride_mm = 190.4 mm/rev [measured]
+forward travel per crank revolution in the sim` (the walk model: 172.8),
+`sim.stays_up = True max tilt 4.2 deg`, `sim.torque = 0.212 N·m <= 1.9123 peak 0.212
+N·m of 1.9123 stall`. Good numbers; but two rows carry `motion.speed_mm_s` and two
+`motion.stride_mm`, told apart only by `source`, and `compare` keys rows by name.
+
+#### 8. `spiderpig report` crashes on a mechanism — **annoying**
+
+`spiderpig report --linkages parallelogram_lift watt_table_lift --no-walk`:
+`IndexError: tuple index out of range` at `spiderpig/tools/report.py:37, foot_path:
+_, joint = lk.feet[0]`. The CLI's way to compare the blocks compares walkers only;
+`explain` and the MCP cards answered instead.
+
+#### 9. `spiderpig build` on a mechanism: "is a mechanism, not a walker" and "unknown module 'quad'", three tries to `--module single --side-only` — **annoying**
+
+`build --linkage parallelogram_lift --out ...`: `error: parallelogram_lift is a
+mechanism, not a walker: it has no feet to walk on (walkers: klann, ...)`. With
+`--module single`: the same. With `--side-only` alone: `error: unknown module 'quad';
+have ['single']`. With both: the build (33 s: STEP, STL, 7 print STLs, one DXF sheet,
+the BOM at $80.66). The API's `resolve` infers `single` and `sides: 1` for a mechanism;
+the CLI's defaults are the walker's (`quad`, the robot) and its refusal names the
+linkage's kind instead of the flags. The same defaults sit on `view` (`--module single
+--side-only` needed there too).
+Expected: the CLI to default a mechanism to its one module and one side, as the API
+does, or the message to say "a mechanism is one side: pass --side-only (and --module
+single)".
+Recoverable: yes, by trial (the second message names the module).
+
+#### 10. `spiderpig audit` refuses every mechanism — **blocker** (for "audit it" through the CLI)
+
+`audit --linkage parallelogram_lift`: `error: argument --linkage: invalid choice:
+'parallelogram_lift' (choose from 'klann', 'fourbar', ... 'trotbot_toe')`: the choices
+are the walkers. The README says `mise run audit` "checks every module end to end";
+nothing says a mechanism can't be audited. I ran the MCP's `verify(standard)` on the
+design `view` had resolved into the store instead (26 parts, contract at two angles,
+clashes, solids, plan re-verified: all green, 8 s).
+Expected: `audit` to take a mechanism (one side, its `single` module) as `build`,
+`explain` and `view` do.
+Recoverable: yes, through the API or the MCP, not through the CLI.
+
+#### 11. The output line doesn't name its axes — **nit**
+
+`explain`: `output: parallelogram_lift: b4 (translation_platform) covers 1.62 x
+32.00 mm, stroke 32.00 mm, turns 8.53e-14°`; the card: `extent_mm: [1.616, 32.0]`. That
+the 32 mm is the vertical (the rise) and the 1.62 mm the sway had to be assumed (the
+`hoecken_table`'s `76.48 x 13.99 mm` is the other way round). "covers 1.62 mm across x
+and 32.00 mm along y" would settle it.
+
+#### 12. The constructions' warnings still print to stderr, in the MCP server and in a Python session — **nit**
+
+`pin:J11_leg0 seg0: its snap prongs (5.1 mm) strain 6.0 % while snapping (want at
+most 4.0 %)` (and `seg1`, 6.9 %) printed by the MCP server process on every Strider
+plan (they reach the client's terminal through the subprocess's stderr) and five times
+in the G3 session's output, while the same lines sit on `plan.warnings` /
+`build.warnings`. Round 3's entry 14 said `capture_warnings` stops the propagation; it
+does on the report's path, not on these.
+
+#### 13. The viewer's chrome for a mechanism — **nit**, standing
+
+The lift renders (the platform, its two arms, the crank, the output path as the red
+curve, no console errors) inside the walker's Drive panel, HUD and mode dropdown
+(`double`, `decker`, `double double`); round 3's entry 5.
+
+#### 14. `walks: true` at a 4 mm stride — **nit**
+
+`describe(trotbot_toe).modules.single`: `stride_mm: 4.0, walks: true`; its `double`
+29 mm, `walks: true`. The flag says "not zero", which is not what "walks" reads as; the
+goal's "over 50 mm" filtered on the number, so no time lost.
+
+#### 15. Good — no entry
+
+The sensitivity table (`shin +10 %: lift +36 %, height +8 %`) named the parameter that
+raises the body; the clearance row named the servo's pad, then the crank's sweep once
+the XL330 lifted it; the z row read 205 before any build; the plywood floor answered
+the sheet choice; the bolt-pillar variant came back in 4 s with the proven bound and
+the checked patch back to printed; `derive` + `compare` traced every changed number
+(a servo swap: mass 335.8 -> 238.5 g, speed 149.8 -> 296.7 mm/s, clearance 22.6 ->
+31.5 mm, cost 122.75 -> 133.90); the three lift cards answered the rise and the level
+before any design; `spiderpig view --linkage ... --side-only` resolved the CLI build
+into the store and served it in 25 s; both viewer pages rendered without a console
+error; 17 walker cards in 15 s.
+
+### What I ended up with
+
+**Goal 1.** Strider (coupled pair) `double`, two sides, XL330-M288, plywood, `shin
+13 -> 16`, `unit 6.5 -> 6.3` (design `e5e84260d275aa3e`): four legs, ground clearance
+**50.6 mm** (the crank's sweep is the lowest point), **169 mm/rev, 290 mm/s** at the
+XL330's 103 rpm, built envelope **208 x 145 x 181 mm** (in the 300 x 200 x 150 box
+with 150 up), 20 layers / 60 mm a side (proven), 241 g, 83 g of PLA, 2 sheets;
+`budget.cost_usd` **$133.90 at least** (2 XL330 $54.98, CA glue 2 bottles $27.98, a
+spool $25.49, 100 inserts $11.37, 3 unpriced packs of screws). The $100 is not
+reachable by any servo, sheet or linkage in the catalog: the sts3215 on plywood is
+$122.75 and its body sits 5 mm too wide (z 205) once `shin` lifts the clearance to 41
+mm. The XL330 buys the clearance, the speed and the box for $11.15 more. Files in the
+store's `exports/`: `strider.step`, `laser/strider_sheet_{0,1}.dxf` + `parts.csv`,
+`print/*.stl` (21 distinct) + `parts.csv`, `bom.{csv,md,json}`, `strider.glb`,
+`manifest.json`; viewed (`view`: 166 nodes, 330 tracks, the drive panel seeded from
+the design).
+
+**Goal 2.** Every walking design in the catalog costs the same, because the bill is
+whole packs. Seven candidates (the four two-legs-a-side walkers of the cards: Strider
+`double` 173 mm and `decker` 122 mm, TrotBot-toe `decker` 130 mm, TrotBot-heel
+`decker` 69 mm; and three quads: Klann 102 mm, sixbar 66 mm, the LEGO Spot Micro v2
+4-bar 61 mm) on plywood with the sts3215: `budget.cost_usd` **$122.75** (lower bound)
+for five of them and $126.72 for the two whose extra screw is priced. The cheapest
+that walks is therefore the leanest of the tie: the **Strider `double`** (design
+`7ecb570b728dc83c`): 173 mm/rev, 150 mm/s, 16 layers / 48 mm, 336 g, 97 g of PLA, 2
+sheets. Its bill (`bom.md`, $116.55 without the two sheets the row counts): 2 STS3215
+**$40.00** (33 %), CA glue 2 x 2 oz **$27.98** (23 %, for "1.16 bottles": the tie
+spigots, entry 2), a 1 kg spool of PLA **$25.49** (21 %, for 97 g), 100 heat-set
+inserts **$11.37** (9 %, for 4), 2 plywood sheets $6.20, Titebond $5.49, 8 M3 x 6 SHCS
+$3.83, 4 M3 nuts $2.39, and three unpriced packs of 100 (8 M2 x 6 self-tappers, 4 M3 x
+16 BHCS, 4 M3 x 18 SHCS). What drives the cost: the packs (a spool, a pack of inserts,
+two bottles of glue for a few grams each: $65 of the $123 buys stock that outlives ten
+robots); the linkage moves only the spool's fraction. `rod` pillars or pins change
+nothing priced; `bolt` pillars don't plan (15 layers is the bound; the engine hands
+back printed).
+
+**Goal 3.** From goal 2's design: `derive` to the XL330 (`7b604e4f099c991f`), to `rod`
+pins (`9b92a91c4ab6bce1`), to both (`65e97dc5f64f2b2e`); `verify("standard")` on each
+(46, 30, 33 s); `compare`: the XL330 is 97 g lighter (335.8 -> 238.5 g: drive 115 ->
+39 g), twice as fast (149.8 -> 296.7 mm/s), clears 31.5 mm instead of 22.6 (the crank's
+sweep replaces the servo's pad as the lowest point) and costs $11.15 more (122.75 ->
+133.90); `rod` pins are 37 g heavier (the pin group 14 -> 48 g: steel rod and 48 clips),
+print 14 g less, and cost "the same" (the rod and clips unpriced: 5 unpriced items
+instead of 3); the stack is 48 mm in all four. The edit + `recheck`: 5.4 s, `ok`, but
+a no-op (entry 5). `verify("full")` on the XL330 + rod design: `sim_failed` (entry 6);
+on the sts3215 + rod design, 65 s: the sim adds a measured speed (164.9 mm/s against
+the 149.8 estimated at the no-load rpm: 10 % faster), a measured stride (190.4 against
+172.8 mm/rev), that it stays up (4.2° of tilt) and the peak torque (0.21 of 1.91 N·m
+stall), and two more contract angles and a second clash angle, all green.
+
+**Goal 4.** From the cards: `parallelogram_lift` (`b4 (translation_platform) covers
+1.62 x 32.00 mm, stroke 32.00 mm, turns 8.53e-14°`), `watt_table_lift` (`covers 0.04 x
+32.04 mm, straight to 0.0167 mm, turns 1.42e-13°`, 8 layers), `hoecken_table` (a
+lift-and-carry: 66.9 mm along, 14 mm up). The parallelogram lift: **rises 32.0 mm**
+(1.6 mm of sway) and **turns 8.5e-14°** (level to 1° by fourteen orders), 4 links, 7
+layers / 21 mm, one servo. Built with `spiderpig build --linkage parallelogram_lift
+--module single --side-only`: `parallelogram_lift.step/.stl`, 7 print STLs (10 parts),
+one DXF sheet (6 parts), the BOM ($80.66: the servo $20, the spool, a bottle of CA, a
+sheet, 8 items). Audited through the MCP's `verify(standard)` (the CLI refuses a
+mechanism): 26 parts, contract, clashes, solids, plan re-check all green, 102 g, 121 x
+132 x 59 mm. Viewed with `spiderpig view --linkage parallelogram_lift --module single
+--side-only` (resolved into the store as `af8b33c63bb7b4b0`, 25 s to the URL; the page
+rendered the lift and its output path, no console errors).
+
+### Phase 2 — what was fixed, and the second run
+
+Commits: `20dd70d` (engine: a tie spigot's glue, the shared face-by-face mesher
+for the sim), `53259c0` (the API and reports: the quick cost floor, the BOM's sheets,
+a robot part's frame and the recheck note, the sim's rows, the walks flag, the warnings,
+the CLIs' mechanism defaults, audit and report on a mechanism, the output's axes; API.md,
+the guide, the README, CLAUDE.md), and this round's log in the commit after them. Tests
+for each in
+`tests/test_spiderpig_api.py`, `tests/test_spiderpig_mcp.py`, `tests/test_view.py` and
+`tests/test_robot.py` (the section "Test drive, round 4").
+
+| entry | severity | fixed in | how |
+|---|---|---|---|
+| 1 the quick floor $37 under the built cost | annoying | `53259c0` | `verify.cost_floor` counts what the constructions buy whatever the parts' sizes: a bottle of CA glue with every pivot construction but `bolt` (the pillars' anchors, the inserts) and for the robot's tie spigots, and the printed crank's crankpin nuts (a pack); its detail says what a build adds (`FLOOR_LEAVES_OUT`: the sheets' count, the crank's screws, the pivots' hardware, rod and clips). The plywood Strider double's floor reads $101.83 against $108.76 built (was $85.45 against $122.75); the lift's $72.86 against $80.66 |
+| 2 two bottles of CA for four tie spigots | annoying (engine) | `20dd70d` | `chassis.GLUE_PER_SPIGOT` 0.02 a spigot, as a pillar's anchor, instead of one bottle a robot: every robot's glue line drops from 1.16 to 0.24 bottles, one bottle, $13.99 less on every walker's bill |
+| 3 the BOM without the plywood sheets | annoying | `53259c0` | `api.export` packed the sheets only when writing the DXF, and the sheet line with them; a `bom` export without `dxf` now packs to count them (no files written), so the BOM's total is the verify row's |
+| 4 `get_design` under `report` | nit | `53259c0` | API.md's table says `{ok, failures, design, stage, report}` |
+| 5 a robot part's solid in the world frame, the edit a no-op, `recheck` silent | blocker | `53259c0` | the real cause: a robot's parts (fresh or reloaded) sit in the world with the side's placement baked in (`assemble_robot` moves the solids, the joints stay the side's), and the docstring and example claimed the side's frame. `Part` carries `z_mid` (the robot's mid-plane) and `z_side` (its z range in the side's frame) and `Part.locate(xy, z=None)` gives the `Location` of a tool at the side's coordinates in the solid's frame, whichever side; `recheck.notes` names an edited part whose volume is still the build's; the docstring, API.md's frames paragraph and the worked example (`link.locate((a + b) / 2)`) say so |
+| 6 `verify("full")` with the XL330 dies in the sim's mesher | blocker | `20dd70d` | `spiderpig/mesh.py`: the bake's face-by-face tessellation as one function; the MJCF's hulls (`mjcf._hull`) use it instead of build123d's `tessellate`, so the XL330's three untriangulated faces are skipped there as in the bake: the Strider double with the XL330 loads (36 bodies, 6 meshes) and runs (320 mm/s in the sim) |
+| 7 two rows of one name from the sim | nit | `53259c0` | the sim's rows are `sim.speed_mm_s`, `sim.stride_mm` (still against the spec's target, informational), `sim.stays_up`, `sim.torque`; the guide and API.md name them |
+| 8 `spiderpig report` crashes on a mechanism | annoying | `53259c0` | a mechanism's row carries `output` (the output check's numbers and text) instead of `foot`, plans its own modules only, and skips the walk |
+| 9 `build` on a mechanism: three tries | annoying | `53259c0` | `--module` defaults to `None` and `config_from_args(robot=None)` fills both from the linkage's kind (`config.default_module` / `default_robot`): `spiderpig build --linkage parallelogram_lift` builds the one side; `bake`, `explain`, `view` and the server's query the same; the refusal of a robot of a mechanism says "it builds one side (robot=False; --side-only on the command line)" |
+| 10 `audit` refuses a mechanism | blocker | `53259c0` | `--linkage` takes every linkage; a mechanism audits as its one module, one side (26 parts, OK, 17 s) |
+| 11 the output's axes | nit | `53259c0` | "covers 1.62 mm in x by 32.00 mm in y (up)" |
+| 12 the warnings on stderr | nit | `53259c0` | the leak was the standard verify's contract and clash angles (the parts realized again at each) in the job worker and in a session: wrapped in `capture_warnings` (they are the build's, already on `build.warnings`); `check` captures the static stage's onto `CheckReport.warnings` |
+| 13 the viewer's chrome for a mechanism | nit | not fixed | round 3's entry 5: a viewer change |
+| 14 `walks` at a 4 mm stride | nit | `53259c0` | `api.WALKS_MM` 20: the card's `walks` needs a stride of 20 mm a turn; the walk note says "a shuffle, not a walk: ... (a module walks from 20 mm a turn)" for a stride between 1 and 20 mm, and still lists the modules that walk |
+
+Not fixed, and why:
+
+- The viewer's chrome around a mechanism (entry 13), as in round 3.
+- The bill itself. With one bottle of glue the cheapest walker is $108.76 at least
+  (three packs of screws unpriced), and $65 of it is stock that outlives the robot
+  (a spool for 97 g, 100 inserts for 4, a bottle for a few grams): the catalog's
+  honest packs, not a reporting problem. The floor now says so before any build.
+- The sheets in the quick floor: one sheet is counted; the count needs the layout
+  (a build). The floor's text says so.
+
+### Wall clock, second run
+
+Against the fixed tree, fresh stores, the same scripts in the same order (the first
+run's, unchanged, so the same ids); goals 1 and 2 ran side by side, then goals 3 and 4,
+nothing else on the cores.
+
+| step | wall | note |
+|---|---|---|
+| G1 discover; `describe`, `catalog`, resolve, quick | 5.9 s + 7.1 s | the floor reads $117.07 (acrylic): the glue and the nuts counted |
+| G1 four derives + quick verifies | 88.0 s | plywood $101.83, XL330 $116.81 at quick |
+| G1 two derives + quick, the sts3215 candidate's standard verify (job) | 57.5 s | built $108.76 (was $122.75): within $7 of its floor |
+| G1 final (XL330): standard 63 s, export 126 s (jobs), view, browser | 152.3 s | built $119.91 (was $133.90) against a $116.81 floor: the second sheet |
+| **G1 total** | **315 s** (5.3 min) | no workaround; 5.4 min in the first run |
+| G2 17 cards | 14.5 s | |
+| G2 seven candidates: quick + standard (jobs) | 193.6 s | every one $108.76 or $112.73 (was $122.75 / $126.72); the floor $101.83 for all |
+| G2 `export(bom)` + summary | 74.3 s | `bom.md` **$108.76**, the same as the row (the sheets in) |
+| G2 pillar variants (bolt fails with the checked patch; rod, rod + rod) | 51.9 s | |
+| **G2 total** | **338 s** (5.6 min) | 5.9 min in the first run; the bill is one number now |
+| G3 load, three derives, three standard verifies, three compares | 106 s | cost 108.76 -> 119.91 with the XL330 |
+| G3 build (reloaded) 4 s, the first run's edit + recheck 5.6 s | 10 s | the first run's script, unchanged: its cut still misses, and `recheck.notes` now says so |
+| G3 `verify("full")` on the XL330 + rod design | 54.4 s | **ok**: `sim.speed_mm_s 326.3 mm/s`, `sim.stride_mm 190.7`, stays up (4.2°), torque 0.12 of 0.52 N·m; was `sim_failed` |
+| G3 `verify("full")` on the sts3215 + rod design | 52.5 s | `sim.*` rows beside the walk model's `motion.*` |
+| G3 the edit through `Part.locate` on both sides + a wrong-frame edit + recheck | 14 s | 21.2 mm3 off each link; the note names the missed one |
+| **G3 total** | **244 s** (4.1 min) | no dead end, no silent no-op; 4.0 min with one of each |
+| G4 three `explain`s, `report` | 12 s | the output line names its axes; `report` covers the mechanisms (was a crash) |
+| G4 `build --linkage parallelogram_lift` (no other option) | 9 s | was three tries |
+| G4 `audit --linkage parallelogram_lift` | 19 s | OK, 26 parts (was refused) |
+| G4 `view --linkage parallelogram_lift` to the URL, browser | 25 s + 14 s | the same design id as the first run; no console errors |
+| G4 cards, MCP `verify(standard)` | 5 s + 16 s | |
+| **G4 total** | **91 s** (1.5 min) | no workaround; 4.4 min with one in the first run |
+| **all four** | **~16.5 min** of session wall | ~20 min in the first run, with two dead ends, one silent no-op and one workaround |
+
+Read as the agent: the budget question is answered at `quick` now (the floor within
+$7 of the built total, $3.10 of it the second sheet), and the bill has one number; the
+cheapest walker costs $108.76 at least instead of $122.75 because the glue is counted
+by the drop; a lift is `spiderpig build --linkage parallelogram_lift`, audited and
+viewed by the same option; the full verify of the fastest servo runs and says what the
+sim adds (10 % more speed than the no-load estimate, the torque margin, that it stays
+up); and an edit that misses its part is named. What it still does by hand: choose the
+XL330 over the $100 (nothing in the catalog reaches $100 with a spool, a pack of
+inserts and two servos), and accept that a `double` Strider at 41 mm of clearance is
+205 mm wide with the sts3215.
+
+Verdict on the loop: converged. Round 3's verdict held for the surfaces it drove
+(the spec, the reports, the cards, the MCP's failures) and this round's blockers were
+all in the corners it hadn't reached: the Python handle on a *reloaded robot* build
+(the frame), the *full* verify on the *XL330* (the sim's mesher), and the *CLI* on a
+*mechanism* (audit, report, the defaults). Every one was a fact hidden or a path
+untested, not a missing operation; the second run went through all four goals without a
+workaround, and what remains is nits (the viewer's chrome around a mechanism) and the
+catalog's honest packs. The single biggest remaining problem is the same as round 3's
+and the engine's: the planner's 60 s deadline on a scaled-down multi-leg design (the
+sixbar quad took its whole minute here too), with no knob and no proof.
