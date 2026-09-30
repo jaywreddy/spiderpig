@@ -105,7 +105,8 @@ def _verify(config, plan: bool, deadline: Deadline | None = None) -> str | None:
     except ValueError:
         return None
     if trial is config:
-        return (f"checked: the static stage passes, and it plans in {d.plan.top + 1} layers "
+        own = "" if config.module == "single" else f" ({config.module} module, the design's own)"
+        return (f"checked: the static stage passes, and it plans{own} in {d.plan.top + 1} layers "
                 f"({d.plan.height:g} mm)")
     return (f"checked: the static stage passes, and its single module plans in "
             f"{d.plan.top + 1} layers ({d.plan.height:g} mm); the {config.module} module's own "
@@ -231,6 +232,92 @@ def default_scale(config, plan: bool = True,
         verified=verified)
 
 
+def target_scale(config, misses, measure, deadline: Deadline | None = None,
+                 tries: int = 4) -> tuple[Recommendation | None, str | None]:
+    """The least practical scale of the linkage that meets every missed target in
+    ``misses`` (``(path, value, target)`` triples of metrics linear in the scale parameter:
+    a mechanism's stroke and straightness, a walker's lift), checked by measuring them
+    again (``measure(config) -> {path: value}``) and by the static stage and the design's
+    own plan. ``(recommendation, note)``: the note says why none is given."""
+    lk = linkage.get(config.linkage)
+    names = linkage.scale_params(lk)
+    if not names:
+        return None, f"no parameter of {config.linkage} only scales it: nothing to scale"
+    name = names[0]
+    props = dict(config.proportions)
+    now = float(props.get(name, lk.params[name]))
+    lo, hi = 0.0, math.inf                     # the scale factors the targets allow
+    for _path, v, t in misses:
+        if v <= 0:
+            continue
+        if t.min is not None:
+            lo = max(lo, t.min / v)
+        if t.max is not None:
+            hi = min(hi, t.max / v)
+        if t.value is not None:
+            tol = t.tol if t.tol is not None else abs(t.value) * 0.05
+            lo, hi = max(lo, (t.value - tol) / v), min(hi, (t.value + tol) / v)
+    metrics = ", ".join(p.split(".")[-1] for p, _, _ in misses)
+    if lo > hi + 1e-9:
+        return None, (f"no one scale of {name} meets {metrics} together (one needs x{lo:.3g}, "
+                      f"another at most x{hi:.3g})")
+    s = lo if lo > 0 else hi
+    step = _step(now)
+    value = _up(now * s, step) if s >= 1 else round(math.floor(now * s / step + 1e-9) * step, 6)
+    if abs(value - now) < 1e-9:
+        value = _up(now + step, step) if s >= 1 else round(now - step, 6)
+    deadline = deadline or Deadline(StackSpec().max_seconds)
+    for _ in range(tries):
+        if value <= 0:
+            break
+        trial = replace(config, proportions=tuple(sorted({**props, name: value}.items())))
+        try:
+            got = measure(trial)
+        except ValueError as e:                  # a loop that no longer closes
+            return None, f"{name} {value:g} breaks the linkage: {str(e).splitlines()[0]}"
+        if all(t.check(got[p])[0] for p, _, t in misses if p in got):
+            try:
+                verified = _verify(trial, True, deadline)
+            except _OutOfTime:
+                return None, (f"not checked, the {deadline.seconds:g} s for checking what "
+                              f"would meet it ran out: {name} {value:g}")
+            if verified is None:
+                why = _check(trial) or "it doesn't plan"
+                return None, f"{name} {value:g} meets {metrics} but doesn't build: {why}"
+            what = "; ".join(f"{p.split('.')[-1]} {got[p]:.4g}" for p, _, _ in misses if p in got)
+            plans = verified.removeprefix("checked: the static stage passes, and ")
+            one = len(misses) == 1
+            return Recommendation(
+                ((name, now, value),),
+                why=(f"{metrics} scale{'s' if one else ''} with {name}: x{value / now:.3g} "
+                     f"meets the target{'' if one else 's'}"),
+                effects=(f"every length x{value / now:.2f}; the envelope and the crank torque "
+                         "with it"),
+                verified=f"checked: {what}; {plans}"), None
+        value = _up(value + step, step) if s >= 1 else round(value - step, 6)
+    return None, f"no practical {name} near x{s:.3g} ({now * s:.3g}) meets {metrics}"
+
+
+def printed_pillars(config, deadline: Deadline | None = None) -> Recommendation | None:
+    """A plan that failed with pillars on a purchased shaft (``bolt``: the longest stock
+    screw bounds the stack; ``rod`` / ``bearing`` / ``bushing``: loose rings fill every
+    layer): the same design with printed pillars, verified. ``None`` when the pillars are
+    printed already, or printed pillars don't plan either."""
+    if config.pillar == "printed":
+        return None
+    trial = replace(config, pillar="printed")
+    verified = _verify(trial, True, deadline)          # _OutOfTime crosses to the caller
+    if verified is None:
+        return None
+    return Recommendation(
+        (("pillar", config.pillar, "printed"),),
+        why=(f"{config.pillar} pillars clamp both frame plates on a stock shaft, which bounds "
+             f"the stack and fills every layer they cross; printed pillars neck down between "
+             f"their links and are glued into the plates at any height"),
+        effects=f"the pins stay {config.pin}; the frame pivots are printed, not {config.pillar}",
+        verified=verified)
+
+
 CONFIG_LEVERS = {"thickness_mm": "thickness", "sheet": "sheet", "servo": "servo"}
 
 
@@ -303,6 +390,11 @@ def _recommend(config, gaps: list[Gap], plan: bool,
                 recs.append(r)
         except _OutOfTime:
             unchecked.append("the linkage's default scale")
+        try:
+            if (r := printed_pillars(config, deadline)) is not None:
+                recs.append(r)
+        except _OutOfTime:
+            unchecked.append("printed pillars")
         if not recs:
             lk = linkage.get(config.linkage)
             names = linkage.scale_params(lk)

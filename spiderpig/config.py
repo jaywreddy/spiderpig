@@ -106,7 +106,7 @@ class BuildConfig:
             if not math.isfinite(v):
                 raise ParamError(f"proportion {name} must be a finite number, "
                                  f"got {overrides[name]!r}")
-            if name not in lk.angles and v <= 0:
+            if name not in lk.signed and v <= 0:       # angles and coordinates may be <= 0
                 raise ParamError(f"proportion {name} is a length and must be > 0, got {v:g}")
             if abs(v - float(default)) > 1e-12:
                 out.append((name, v))

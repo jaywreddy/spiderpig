@@ -360,53 +360,96 @@ def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
 
 
 # Nominal mass model (no parts), see :func:`nominal_mass`. Everything of a side but its
-# link plates and servo (frame plates, pillars, crank, pins,
-# horn, half the centre plates, ties and screws), lumped on the crank axis O (its measured
-# centre of mass is within 2.8 mm of it), fitted so the nominal totals match the fabricated
-# default robots (single 289.7 g, double 357.4, decker 341.0, quad 460.8; the pill-shaped
-# nominal links, without holes, are ~5 % heavier than the real ones).
-_CHASSIS_BASE_G = 62.2
-_CHASSIS_PER_LEG_G = 8.6
+# link plates and servo is lumped on the crank axis O (its measured centre of mass is
+# within 2.8 mm of it) in two parts: the laser-cut plates (the frame plates, by fixed
+# pivot; half the centre plates), which follow the sheet's density, and the printed and
+# purchased rest (the crank by crankpin, pillars by pivot, pins by pin joint, the ties,
+# screws and horn). The constants are fitted to the fabricated default Klann robots on
+# 3 mm acrylic (single 289.5 g, double 357.2, decker 340.8, quad 460.6: within 1.3 %).
+_ACRYLIC = 1.19                      # g/cm^3 the plate constants were fitted at
+_FRAME_BASE_G, _FRAME_PER_PIVOT_G = 6.5, 5.2      # the frame plates
+_CENTRE_PLATES_G = 14.7              # half the centre plates (the robot's chassis)
+_CHASSIS_REST_G = 23.6               # ties, inserts, rear screws: printed and steel
+_DRIVE_EXTRA_G = 2.7                 # the horn's screws and hub
+_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.5, 3.2        # the printed crankshaft
+_PILLAR_PER_PIVOT_G, _PIN_PER_JOINT_G = 1.0, 0.53  # printed pivots
 
 
-def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, float]:
-    """Centre of mass (cycle mean) and total mass of the robot without building parts.
+def _pin_joints(lk) -> int:
+    """Pin joints of one leg: joints of its links that are neither fixed nor on the crank,
+    nor a foot or output point."""
+    joints = {j for js, _ in lk.links.values() for j in js}
+    joints -= set(lk.frame) | set(lk.crank) | {f for _, f in lk.feet}
+    if lk.output is not None:
+        joints.discard(lk.output.point)
+    return len(joints)
 
-    Per side: every segment of a link's outline is a pill of the link
-    radius, one pitch thick, at the sheet's density, at its cycle-mean
-    midpoint; the servo is its mass (:func:`servo_info`) at the centre of
-    its body, ``axis_offset`` from O along the direction away from the frame
-    pillars (as :meth:`servos.mount.DriveGroup.direction` places it); the
-    rest is ``_CHASSIS_BASE_G + _CHASSIS_PER_LEG_G`` per leg on O. The two
-    sides are mirror images, so z = 0. On the default robots this is within
-    2.6 % of the fabricated mass and 1.3 mm of its centre of mass (quad:
-    461.8 g at (0, 2.7, 0) vs 460.8 g at (0, 2.1, 0.2)).
-    """
+
+def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool = True
+                           ) -> dict:
+    """The nominal mass without building parts, by what it is made of (grams): ``links``
+    (every outline segment a pill of the link radius, one pitch thick, at the sheet's
+    density, the joint discs counted once and the axle holes taken out), ``servos``,
+    ``plates`` (the frame plates and, for the robot, the centre plates, at the sheet's
+    density), ``printed`` (the crank, pillars, pins, ties: PLA and small hardware), plus
+    ``total``, the cycle-mean centre of mass ``com`` (side coordinates, z = 0) and a
+    ``note`` on how it was made. ``robot``: both sides and the chassis (what the walk
+    model always is), else one side alone. On the default Klann robots this is within
+    1.3 % of the fabricated mass (:func:`body_masses`); a build measures it."""
     lk = config.lk
     pitch = config.pitch
-    r = config.params.link_radius
+    p = config.params
+    r = p.link_radius
     dens = sheet_density(config.sheet)
     spec = servos.get(config.servo)
     servo_g = servo_info(config.servo)["mass_g"]
-    m_acc, c_acc = 0.0, np.zeros(2)
+    hole = p.hole(p.axle_d) / 2
+    links, c_acc = 0.0, np.zeros(2)
     for leg in legs:
-        for _, outline in lk.links.values():
-            for p, q in outline:
-                a, b = leg.joints[p], leg.joints[q]
-                length = np.linalg.norm(b - a, axis=-1).mean()
+        for joints, outline in lk.links.values():
+            seen: dict[str, int] = {}
+            for a_name, b_name in outline:
+                a, b = leg.joints[a_name], leg.joints[b_name]
+                length = float(np.linalg.norm(b - a, axis=-1).mean())
                 grams = dens * pitch * (2 * r * length + math.pi * r * r) / 1000.0
-                m_acc += grams
+                links += grams
                 c_acc += grams * ((a + b) / 2).mean(axis=0)
-    # servo +x: away from the frame pillars (the distinct fixed pivots)
+                seen[a_name] = seen.get(a_name, 0) + 1
+                seen[b_name] = seen.get(b_name, 0) + 1
+            for k in seen.values():                     # a joint's disc counted once
+                links -= dens * pitch * (k - 1) * math.pi * r * r / 1000.0
+            links -= dens * pitch * len(joints) * math.pi * hole * hole / 1000.0
     pivots = {tuple(np.round(leg.joints[j][0], 6)) for leg in legs for j in lk.frame if j != "O"}
-    away = -np.sum([np.asarray(p) for p in pivots], axis=0)
+    # servo +x: away from the frame pillars (the distinct fixed pivots)
+    away = -np.sum([np.asarray(q) for q in pivots], axis=0) if pivots else np.zeros(2)
     norm = np.linalg.norm(away)
     u = away / norm if norm > 1e-9 else np.array([1.0, 0.0])
-    m_acc += servo_g
     c_acc += servo_g * (spec.axis_offset * u)
-    m_acc += _CHASSIS_BASE_G + _CHASSIS_PER_LEG_G * len(legs)   # on O: adds no moment
-    c = c_acc / m_acc
-    return np.array([c[0], c[1], 0.0]), 2.0 * m_acc
+    scale = dens / _ACRYLIC
+    plates = (_FRAME_BASE_G + _FRAME_PER_PIVOT_G * len(pivots)) * scale
+    printed = (_DRIVE_EXTRA_G + _CRANK_BASE_G + _CRANK_PER_PIN_G * len(legs)
+               + _PILLAR_PER_PIVOT_G * len(pivots) + _PIN_PER_JOINT_G * _pin_joints(lk) * len(legs))
+    if robot:
+        plates += _CENTRE_PLATES_G * scale
+        printed += _CHASSIS_REST_G
+    side = links + servo_g + plates + printed
+    sides = 2 if robot else 1
+    c = c_acc / side
+    return {
+        "links": sides * links, "servos": sides * servo_g, "plates": sides * plates,
+        "printed": sides * printed, "total": sides * side,
+        "com": np.array([c[0], c[1], 0.0]),
+        "note": (f"links as {dens:g} g/cm3 pills of the link radius on {pitch:g} mm layers "
+                 f"(holes taken out); the plates and the printed parts from fitted "
+                 f"constants (within about 1.3 % on the default robots); a build measures it"),
+    }
+
+
+def nominal_mass(config: BuildConfig, legs: Sequence[Leg]) -> tuple[np.ndarray, float]:
+    """Centre of mass (cycle mean) and total mass of the robot without building parts
+    (:func:`nominal_mass_breakdown`). The two sides are mirror images, so z = 0."""
+    b = nominal_mass_breakdown(config, legs)
+    return b["com"], float(b["total"])
 
 
 # ---------------------------------------------------------------------------

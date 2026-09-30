@@ -195,6 +195,27 @@ def target_field(section: str, name: str) -> TargetField:
     return TARGET_FIELDS[section][name]
 
 
+OUTPUT_TARGETS = ("stroke_mm", "straightness_mm", "on_line_fraction", "rotation_deg",
+                  "swing_deg", "dwell_deg")
+_OUTPUT_METRICS: dict[str, tuple[str, ...]] = {}
+
+
+def output_metrics(lk) -> tuple[str, ...]:
+    """The output metrics a mechanism measures (the others are ``None`` on its
+    :class:`linkage.checks.OutputCheck`: a line has no dwell, a rocker no straightness),
+    from its output check at the defaults, cached per linkage."""
+    if lk.key not in _OUTPUT_METRICS:
+        try:
+            c = lk.output_check()
+        except ValueError:          # a loop that can't close at the defaults: refuse nothing
+            _OUTPUT_METRICS[lk.key] = OUTPUT_TARGETS
+        else:
+            attr = {"on_line_fraction": "on_line"}
+            _OUTPUT_METRICS[lk.key] = tuple(n for n in OUTPUT_TARGETS
+                                            if getattr(c, attr.get(n, n)) is not None)
+    return _OUTPUT_METRICS[lk.key]
+
+
 def effective_hard(t: Target, f: TargetField) -> bool:
     return f.hard if t.hard is None else t.hard
 
@@ -523,14 +544,23 @@ class _Validator:
         if tol is not None and value is None:
             self.err(f"{path}.tol", "tol goes with value")
 
-    def targets(self, v, section: str, kind: str | None) -> None:
+    def targets(self, v, section: str, kind: str | None, lk=None) -> None:
         table = TARGET_FIELDS[section]
         allowed = [n for n, f in table.items() if kind is None or kind in f.kinds]
         if not isinstance(v, Mapping):
             self.obj(v, section, allowed)
             return
+        # a mechanism's output measures only some of the output metrics (a line has no
+        # dwell, a rocker no straightness): a target on one it lacks is refused here
+        has = output_metrics(lk) if lk is not None and lk.output is not None else None
         for name, t in v.items():
             if name in allowed:
+                if (has is not None and section == "motion" and name in OUTPUT_TARGETS
+                        and name not in has):
+                    self.err(f"{section}.{name}",
+                             f"{lk.key}'s {lk.output.motion} output has no {name}; its metrics: "
+                             f"{', '.join(has)}", has)
+                    continue
                 self.target(t, f"{section}.{name}")
             elif name in table:      # the other kind's metric: say so, not "unknown"
                 self.err(f"{section}.{name}", f"{name} is a metric of a "
@@ -586,7 +616,9 @@ def validate(data: Mapping) -> list[SpecError]:
             if params is not None and lk is not None:
                 for name, val in params.items():
                     if name in lk.params:
-                        v.number(val, f"linkage.params.{name}", positive=name not in lk.angles)
+                        # a length must be > 0; an angle or a coordinate (a fixed pivot's
+                        # x or y, whose default is not positive) may be anything finite
+                        v.number(val, f"linkage.params.{name}", positive=name not in lk.signed)
 
     # legs
     legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides"))
@@ -628,7 +660,7 @@ def validate(data: Mapping) -> list[SpecError]:
     # targets
     for section in SECTIONS:
         if section in top:
-            v.targets(top[section], section, kind)
+            v.targets(top[section], section, kind, lk)
 
     # materials, constructions, fit
     m = v.obj(top.get("materials"), "materials", ("sheet", "thickness_mm", "servo"))
@@ -726,7 +758,9 @@ def spec_schema() -> dict:
                             "description": "a registered linkage (no wildcard)"},
                     "params": {"type": "object", "additionalProperties": {"type": "number"},
                                "description": "overrides of the linkage's parameters (its "
-                                              "names; lengths > 0, angles in degrees)"},
+                                              "names; lengths > 0, angles in degrees, a "
+                                              "coordinate such as a fixed pivot's x or y may "
+                                              "be negative: the card marks them `signed`)"},
                 },
             },
             "legs": {

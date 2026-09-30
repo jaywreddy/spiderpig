@@ -233,11 +233,21 @@ class Linkage:
 
     # -- symbols and program ---------------------------------------------
 
+    @property
+    def signed(self) -> frozenset[str]:
+        """The parameters that may be zero or negative: the angles and the coordinates (a
+        parameter whose default is not positive: a fixed pivot's x or y, an offset). Their
+        symbols are real; every other parameter is a length, its symbol positive
+        (:attr:`symbols`), and a value of 0 or less for it is an error wherever a design is
+        made (:mod:`spiderpig.config`, :mod:`spiderpig.spec`)."""
+        return frozenset(k for k, v in self.params.items() if k in self.angles or v <= 0)
+
     @cached_property
     def symbols(self) -> dict[str, sp.Symbol]:
         """Angles and non-positive defaults (coordinates) are real symbols, the rest positive."""
-        return {k: sp.Symbol(k, real=True) if k in self.angles or v <= 0
-                else sp.Symbol(k, positive=True) for k, v in self.params.items()}
+        signed = self.signed
+        return {k: sp.Symbol(k, real=True) if k in signed else sp.Symbol(k, positive=True)
+                for k in self.params}
 
     @cached_property
     def steps(self) -> Steps:
