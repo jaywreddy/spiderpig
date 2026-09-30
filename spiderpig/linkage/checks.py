@@ -44,6 +44,7 @@ class StepCheck:
     angle_deg: tuple[float, float] | None = None
     fail_fraction: float = 0.0
     worst_t2_deg: float | None = None     # a second input's angle at the worst sample
+    invalid: str | None = None            # the point is not a number at these parameters: why
 
     @property
     def toggles(self) -> bool:
@@ -51,6 +52,9 @@ class StepCheck:
                                                   180 - self.angle_deg[1]) < TOGGLE_DEG
 
     def describe(self) -> str:
+        if self.invalid:
+            return (f"{self.point} ({self.kind}) can't be placed at these parameters: its "
+                    f"coordinates are not a number ({self.invalid})")
         if self.kind != "closure":
             return f"{self.point}: {self.kind} ({', '.join(self.refs) or 'no earlier points'})"
         a, b = self.refs
@@ -89,11 +93,21 @@ def check_steps(key: str, values: tuple[float, ...], n: int = 720) -> tuple[Step
     with np.errstate(all="ignore"):
         pts = LegSolution(1, 0.0, values, key).evaluate(*ins)
     out = []
+    failed_before = False
     for name, expr in lk.steps:
         syms = {s.name for s in expr.free_symbols}
         refs = tuple(p for p in lk.points if p != name and {f"{p}x", f"{p}y"} & syms)
         if len(refs) != 2:
             kind = "derived" if refs else ("crank" if "t" in syms else "fixed")
+            if not failed_before and not np.isfinite(pts[name]).all():
+                # a fixed pivot or a derived point that isn't a number: a length under a
+                # square root went negative (or a division by zero) at these parameters,
+                # which no loop closure would report. Say which expression.
+                failed_before = True
+                out.append(StepCheck(name, kind, refs, margin_mm=-math.inf, worst_deg=0.0,
+                                     fails_deg=(0.0, 360.0), fail_fraction=1.0,
+                                     invalid=_why_invalid(name, expr, lk, values)))
+                continue
             out.append(StepCheck(name, kind, refs))
             continue
         z, a, b = pts[name], pts[refs[0]], pts[refs[1]]
@@ -102,6 +116,7 @@ def check_steps(key: str, values: tuple[float, ...], n: int = 720) -> tuple[Step
                                     (u * v).sum(-1)))
         ok = np.isfinite(ang)
         if not (np.isfinite(a).all() and np.isfinite(b).all()):
+            failed_before = True
             out.append(StepCheck(name, "derived", refs))    # an earlier step already failed
             continue
         if not ok.any():
@@ -124,6 +139,28 @@ def check_steps(key: str, values: tuple[float, ...], n: int = 720) -> tuple[Step
             math.degrees(ins[1][k]) if len(ins) > 1 else None,
         ))
     return tuple(out)
+
+
+def _why_invalid(name: str, expr, lk: Linkage, values: tuple[float, ...]) -> str:
+    """Why a point's expression isn't a number at ``values``: the square root whose
+    argument went negative (named with its value), else the expression itself."""
+    import sympy as sp
+
+    by_name = dict(zip(lk.params, values, strict=True))
+    coords = list(expr) if hasattr(expr, "shape") else [expr]     # a point is a 2-vector
+    for coord in coords:
+        for node in sp.preorder_traversal(coord):
+            if isinstance(node, sp.Pow) and node.exp == sp.Rational(1, 2):
+                arg = node.base
+                subs = {s: by_name[s.name] for s in arg.free_symbols if s.name in by_name}
+                try:
+                    val = float(arg.subs(subs))
+                except (TypeError, ValueError):
+                    continue
+                if val < 0:
+                    return (f"sqrt({arg}) with {arg} = {val:g} at these parameters; the "
+                            f"linkage needs it positive")
+    return f"{name} = ({', '.join(str(c) for c in coords)}) is not finite at these parameters"
 
 
 # ---------------------------------------------------------------------------

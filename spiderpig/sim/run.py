@@ -24,7 +24,7 @@ import numpy as np
 from spiderpig.config import BuildConfig
 from spiderpig.fabricate import template_for
 from spiderpig.linkage import feet_of
-from spiderpig.sim.mjcf import T_REF, SimParams, load_model, robot_model
+from spiderpig.sim.mjcf import T_REF, SimParams, crank_sign, load_model, robot_model
 
 Controls = Callable[[float], Sequence[float]] | Sequence
 
@@ -98,13 +98,22 @@ def simulate(
     *,
     params: SimParams | None = None,
     record_every: int = 1,
+    model_xml: str | None = None,
+    model_meta: dict | None = None,
 ) -> SimResult:
-    """Run the robot for ``seconds`` under ``controls`` (default: both drives full forward)."""
+    """Run the robot for ``seconds`` under ``controls`` (default: both drives full forward).
+    ``model_xml`` with ``model_meta`` runs an exported MJCF (``export(design, ["mjcf"])``,
+    ``spiderpig sim --xml``) instead of building the model from ``config``."""
     import mujoco
 
     config = config or BuildConfig()
     params = params or SimParams()
-    model, meta = load_model(config, params)
+    if model_xml is not None:
+        if model_meta is None:
+            raise ValueError("model_xml needs model_meta (the .json written beside the MJCF)")
+        model, meta = mujoco.MjModel.from_xml_string(model_xml), model_meta
+    else:
+        model, meta = load_model(config, params)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
 
@@ -275,7 +284,21 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
         "fell": bool(r.tilt.max() > FELL_TILT),
         "body_contact": float(r.body_contact[m].mean()),
         "mass": r.mass,
+        **_fall(r, skip),
     }
+
+
+def _fall(r: SimResult, skip: float) -> dict:
+    """When and how the robot fell (``fell_at_s``: seconds into the run, so before ``skip``
+    means while it was still settling or the drives were just starting; ``fell_axis``:
+    ``rolling`` or ``pitching`` by the larger attitude at that moment), or nothing."""
+    over = np.flatnonzero(r.tilt > FELL_TILT)
+    if over.size == 0:
+        return {"fell_at_s": None, "fell_axis": None}
+    k = int(over[0])
+    pitch, roll = float(r.attitude[k, 1]), float(r.attitude[k, 2])
+    return {"fell_at_s": float(r.t[k] - r.t[0]),
+            "fell_axis": "rolling" if abs(roll) >= abs(pitch) else "pitching"}
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +323,9 @@ def kinematic_gait(config: BuildConfig | None = None, samples: int = 1440) -> di
     low = feet[:, :, 1].argmin(axis=0)
     idx = np.arange(samples)
     x_now, x_next = feet[low, idx, 0], feet[low, (idx + 1) % samples, 0]
-    stride = float(-(x_next - x_now).sum())
+    # the body moves against the stance foot; the drives turn the crank the way that walks
+    # forward (crank_sign), so the stride reads positive for the sim's forward
+    stride = float(-(x_next - x_now).sum()) * crank_sign(config)
     lowest = feet[low, idx, 1]
     f0 = feet[0]
     stance = f0[:, 1] <= f0[:, 1].min() + 10.0

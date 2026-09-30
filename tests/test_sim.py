@@ -266,3 +266,33 @@ def test_quad_turns_on_the_spot(quad):
     assert abs(turn["heading_drift"]) > 5.0
     moved = math.hypot(turn["forward"], turn["lateral"])
     assert moved < 0.5 * fwd["forward"], (moved, fwd["forward"])
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): the kinematic stride's sign, when and
+# how a fall is reported, an exported MJCF runs as is
+# ---------------------------------------------------------------------------
+
+
+def test_r5_the_kinematic_stride_reads_forward_for_every_walker():
+    from spiderpig.sim.run import kinematic_gait
+
+    # a side with legs that take turns (one foot alone returns where it started: 0)
+    for key, module in (("klann", "quad"), ("trotbot_heel", "quad"), ("strider", "double")):
+        kin = kinematic_gait(BuildConfig(linkage=key, module=module))         # entry 14
+        assert kin["stride"] > 20, (key, kin["stride"])
+
+
+def test_r5_the_metrics_say_when_and_how_it_fell_and_an_exported_model_runs(built):
+    from spiderpig.sim.mjcf import build_mjcf
+    from spiderpig.sim.run import simulate, walk_metrics
+
+    cfg = built[0]
+    xml, meta = build_mjcf(cfg)
+    r = simulate(cfg, seconds=0.3, model_xml=xml, model_meta=meta)           # entry 6
+    m = walk_metrics(r, skip=0.1)
+    assert set(m) >= {"fell", "fell_at_s", "fell_axis"}
+    assert m["fell_at_s"] is None
+    assert m["fell_axis"] is None
+    with pytest.raises(ValueError, match="model_meta"):
+        simulate(cfg, seconds=0.1, model_xml=xml)
