@@ -256,11 +256,15 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
     phases = (None if spec.legs.phases_deg is None
               else tuple(math.radians(p) for p in spec.legs.phases_deg))
     d = BuildConfig()
+    sheet = spec.materials.sheet or d.sheet
+    thickness = spec.materials.thickness_mm          # the nominal is the default: one id
+    if thickness is not None:
+        thickness = None if float(thickness) == sheet_thickness(sheet) else float(thickness)
     try:
         config = BuildConfig(
             linkage=lk.key, module=module, robot=sides == 2, phases=phases,
             proportions=tuple(sorted(spec.linkage.params.items())),
-            sheet=spec.materials.sheet or d.sheet, thickness=spec.materials.thickness_mm,
+            sheet=sheet, thickness=thickness,
             servo=spec.materials.servo or d.servo,
             pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
             crank=spec.constructions.crank or d.crank, params=spec.fit.params(),

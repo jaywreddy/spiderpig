@@ -637,6 +637,18 @@ def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_p
     assert [w for w in near.warnings if w.startswith("materials.")] == []
 
 
+def test_a_thickness_at_the_nominal_or_as_an_int_is_the_same_design():
+    plain = api.resolve(KLANN_QUAD, store=None)                            # entry 12
+    nominal = api.resolve({**KLANN_QUAD, "materials": {"thickness_mm": 3}}, store=None)
+    assert nominal.id == plain.id
+    assert nominal.resolved["materials"]["thickness_mm"] is None
+    thin = api.resolve({**KLANN_QUAD, "materials": {"thickness_mm": 2}}, store=None)
+    assert thin.id == api.resolve({**KLANN_QUAD, "materials": {"thickness_mm": 2.0}},
+                                  store=None).id
+    assert thin.resolved["materials"]["thickness_mm"] == 2.0
+    assert thin.config.pitch == 2.0
+
+
 def test_the_least_pitch_of_the_printed_crank():
     from spiderpig.construction.crank import PrintedCrank
 
