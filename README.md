@@ -83,7 +83,9 @@ spiderpig build --list                       # linkages, modules, servos, constr
 NAME=VALUE` (the linkage's parameters) work the same way for `spiderpig bake`,
 `spiderpig explain`, the other tools and (`linkage=`, `module=`, `phases=`,
 `p.NAME=`) the viewer's `/api/walk` and `/api/glb`: they all build one
-validated `spiderpig.config.BuildConfig`. `spiderpig build` prints the layer
+validated `spiderpig.config.BuildConfig`; `spiderpig explain` and `spiderpig
+audit` take the build options below (`--servo`, `--pin`, `--pillar`, `--sheet`,
+`--thickness`) too, since the static facts and the plan depend on them. `spiderpig build` prints the layer
 plan of one side and writes
 (stem: the linkage, `--name` to change it):
 
