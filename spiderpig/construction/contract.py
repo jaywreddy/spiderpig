@@ -112,12 +112,19 @@ def clashes(mech) -> list[dict]:
 
 
 def bad_solids(mech) -> list[dict]:
-    """Parts that aren't one valid B-rep solid."""
+    """Parts that aren't a valid B-rep solid: one valid solid for a part the design makes
+    (laser-cut, printed); a purchased part's model (a manufacturer's STEP: a servo) may be
+    a compound of several solids, each of which must be valid."""
     out = []
     for b in mech.bodies:
         if b.part is None:
             continue
-        n = len(b.part.solids())
-        if n != 1 or not b.part.is_valid:
-            out.append({"part": b.name, "solids": n, "valid": bool(b.part.is_valid)})
+        solids = b.part.solids()
+        n = len(solids)
+        purchased = getattr(b, "fab", None) == "purchased"
+        ok = (n >= 1 and all(s.is_valid for s in solids)) if purchased else (
+            n == 1 and b.part.is_valid)
+        if not ok:
+            out.append({"part": b.name, "solids": n, "valid": bool(b.part.is_valid),
+                        "fab": getattr(b, "fab", None)})
     return out

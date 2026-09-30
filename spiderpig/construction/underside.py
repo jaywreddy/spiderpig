@@ -31,11 +31,14 @@ STEP = 0.25     # mm between profile samples along x
 
 @dataclass(frozen=True)
 class Underside:
-    """``ys[i]``: the lowest y the body reaches at ``xs[i]`` (``inf`` where it has nothing)."""
+    """``ys[i]``: the lowest y the body reaches at ``xs[i]`` (``inf`` where it has nothing);
+    ``lowest_part``: which of the body's shapes reaches lowest (what a designer would
+    move to gain ground clearance)."""
 
     xs: np.ndarray
     ys: np.ndarray
     o: tuple[float, float]      # the crank axis O
+    lowest_part: str = ""
 
     @property
     def lowest(self) -> float:
@@ -82,31 +85,36 @@ def _polygon(xs, pts):
 
 
 def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
-    """The body's shapes in side coordinates: ``("disc", c, r)``, ``("pill", a, b, r)`` and
-    ``("poly", [corners])``. ``crank_reach``: the radius the crank sweeps about O."""
+    """The body's shapes in side coordinates, each named: ``(label, "disc", c, r)``,
+    ``(label, "pill", a, b, r)`` and ``(label, "poly", [corners])``. ``crank_reach``: the
+    radius the crank sweeps about O."""
     from spiderpig.servos.mount import away_from_pillars
 
     topo, p, spec = ctx.topo, ctx.params, ctx.servo
     pts = topo.geometry.points
     o = np.asarray(pts["O"][0], float)
-    pillars = [np.asarray(pts[a.name][0], float) for a in topo.axes_of("frame")]
-    out: list[tuple] = [("disc", o, p.frame_radius)]
-    out += [("pill", o, q, p.frame_radius) for q in pillars]
+    frame = topo.axes_of("frame")
+    pillars = [np.asarray(pts[a.name][0], float) for a in frame]
+    out: list[tuple] = [("the frame plates' disc at O", "disc", o, p.frame_radius)]
+    out += [(f"the frame plates' arm to pillar {a.name}", "pill", o, q, p.frame_radius)
+            for a, q in zip(frame, pillars, strict=True)]
     if crank_reach:
-        out.append(("disc", o, crank_reach))
+        out.append(("the crank's sweep", "disc", o, crank_reach))
     u = away_from_pillars(o, pillars)
     v = np.array([u[1], -u[0]])
 
     def world(x, y):
         return o + x * u + y * v
 
-    def rect(x0, x1, y0, y1):
-        return ("poly", [tuple(world(x, y)) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))])
+    def rect(label, x0, x1, y0, y1):
+        return (label, "poly",
+                [tuple(world(x, y)) for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))])
 
     x0, x1, y0, y1 = _footprint(spec)
-    out.append(rect(x0, x1, y0, y1))                              # the servo
+    out.append(rect(f"the servo's body ({spec.key})", x0, x1, y0, y1))
     half = (y1 - y0) / 2 + p.min_wall                             # its pad on the inner plate
-    out.append(("pill", world(x0 + half, 0), world(x1 - half, 0), half * math.sqrt(2)))
+    out.append(("the servo's pad on the inner frame plate", "pill",
+                world(x0 + half, 0), world(x1 - half, 0), half * math.sqrt(2)))
     xs, ys = [x0, x1], [y0, y1]                                   # the centre plates
     try:
         rs = rear_screws(spec, centre_plates(spec, ctx.pitch, p.margin), ctx.pitch)
@@ -122,7 +130,8 @@ def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
     tx = (x0 + d.column, x1 - d.column) if x1 - x0 > 2 * d.column else ((x0 + x1) / 2,)
     xs += [x - tr for x in tx] + [x + tr for x in tx]
     ys += [yt + tr, -yt - tr]
-    out.append(rect(min(xs), max(xs), min(ys), max(ys)))
+    out.append(rect("the centre plates (the chassis between the servos)",
+                    min(xs), max(xs), min(ys), max(ys)))
     return out
 
 
@@ -130,19 +139,23 @@ def underside(ctx: Context, crank_reach: float | None) -> Underside:
     """The body's underside profile (see the module docstring)."""
     shapes = body_shapes(ctx, crank_reach)
     lo, hi = math.inf, -math.inf
-    for s in shapes:
-        if s[0] == "disc":
-            lo, hi = min(lo, s[1][0] - s[2]), max(hi, s[1][0] + s[2])
-        elif s[0] == "pill":
-            lo = min(lo, s[1][0] - s[3], s[2][0] - s[3])
-            hi = max(hi, s[1][0] + s[3], s[2][0] + s[3])
+    for _label, kind, *g in shapes:
+        if kind == "disc":
+            lo, hi = min(lo, g[0][0] - g[1]), max(hi, g[0][0] + g[1])
+        elif kind == "pill":
+            lo = min(lo, g[0][0] - g[2], g[1][0] - g[2])
+            hi = max(hi, g[0][0] + g[2], g[1][0] + g[2])
         else:
-            lo, hi = min([lo] + [x for x, _ in s[1]]), max([hi] + [x for x, _ in s[1]])
+            lo, hi = min([lo] + [x for x, _ in g[0]]), max([hi] + [x for x, _ in g[0]])
     xs = np.arange(lo, hi + STEP, STEP)
     ys = np.full_like(xs, np.inf)
-    for s in shapes:
-        f = {"disc": lambda s: _disc(xs, s[1], s[2]), "pill": lambda s: _pill(xs, *s[1:]),
-             "poly": lambda s: _polygon(xs, s[1])}[s[0]]
-        ys = np.minimum(ys, f(s))
+    lowest_part, lowest = "", math.inf
+    for label, kind, *g in shapes:
+        f = {"disc": lambda g: _disc(xs, g[0], g[1]), "pill": lambda g: _pill(xs, *g),
+             "poly": lambda g: _polygon(xs, g[0])}[kind]
+        prof = f(g)
+        ys = np.minimum(ys, prof)
+        if (low := float(prof.min())) < lowest - 1e-9:
+            lowest_part, lowest = label, low
     o = ctx.topo.geometry.points["O"][0]
-    return Underside(xs, ys, (float(o[0]), float(o[1])))
+    return Underside(xs, ys, (float(o[0]), float(o[1])), lowest_part)

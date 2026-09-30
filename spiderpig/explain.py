@@ -31,7 +31,22 @@ from spiderpig import linkage
 
 
 def explain(key: str, module: str = "single", params=None, phases=None) -> str:
+    """The stages' verdicts for a linkage, module and proportions at the default servo,
+    sheet, constructions and fit (the CLI); :func:`explain_config` takes a full config."""
     from spiderpig.config import BuildConfig
+
+    config = BuildConfig(linkage=key, module=module, robot=False, phases=phases,
+                         proportions=tuple(sorted((params or {}).items())))
+    return explain_config(config)
+
+
+def explain_config(config, side=None, plan_failure: str | None = None) -> str:
+    """The stages' verdicts for one side of ``config`` (its servo, sheet, constructions
+    and fit included). ``side``: an already designed :class:`fabricate.SideDesign` to
+    describe instead of solving again; ``plan_failure``: the planner's recorded message
+    for a design known to fail, printed instead of searching again."""
+    from dataclasses import replace
+
     from spiderpig.fabricate import (
         design_side,
         ground_clearance,
@@ -40,9 +55,10 @@ def explain(key: str, module: str = "single", params=None, phases=None) -> str:
         template_for,
     )
 
+    config = replace(config, robot=False)
+    key, module = config.linkage, config.module
+    params = dict(config.proportions) or None
     lk = linkage.get(key)
-    config = BuildConfig(linkage=key, module=module, robot=False, phases=phases,
-                         proportions=tuple(sorted((params or {}).items())))
     lines = [f"{lk.name} [{key}], module {module}", "", "1. program"]
     steps = lk.check(params)
     lines += [f"  {s.describe()}" for s in steps]
@@ -66,13 +82,16 @@ def explain(key: str, module: str = "single", params=None, phases=None) -> str:
                      f"the planner adds to the crank may sweep {f.allow:.1f} mm about O")
     if (gc := ground_clearance(tmpl, ctx)) is not None:
         lines.append(f"  ground clearance: {gc:.1f} mm")
-    try:
-        static_stage(tmpl, problem, config)
+    try:        # a recorded failure carries its own recommendations: don't check them again
+        static_stage(tmpl, problem, None if plan_failure is not None else config)
     except ValueError as e:
-        return "\n".join([*lines, "", f"STOP: {e}"])
+        return "\n".join([*lines, "", f"STOP: {plan_failure or e}"])
     lines += ["", "3. plan"]
+    if plan_failure is not None and side is None:
+        lines.append(f"  STOP: {plan_failure}")
+        return "\n".join(lines)
     try:
-        d = design_side(tmpl, config)
+        d = side if side is not None else design_side(tmpl, config)
         lines.append(f"  {d.plan.top + 1} layers, {d.plan.height:.0f} mm; "
                      + ("optimal: " if d.plan.optimal else "not proven optimal: ") + d.plan.proof)
         if "crank" in d.plan.choices:

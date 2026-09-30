@@ -389,15 +389,46 @@ def _plan_meshes(bodies: list[Body], anchors: dict[str, dict[str, np.ndarray]],
 # ---------------------------------------------------------------------------
 
 
-def _tessellate(part, tolerance: float = 0.1) -> tuple[np.ndarray, np.ndarray]:
+def _tessellate(part, tolerance: float = 0.1, angular: float = 0.1
+                ) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(positions (nv,3) float32, indices (nt*3,) uint32)``.
 
     No normals: the viewer shades every part flat (``loader.ts``), which
-    three.js computes from the triangles.
+    three.js computes from the triangles. The mesh is OCCT's incremental mesh
+    of the whole shape; a face the mesher leaves without a triangulation (some
+    manufacturers' STEP models have such faces) is skipped and logged rather
+    than failing the bake, since build123d's ``tessellate`` would raise there.
     """
-    verts, tris = part.tessellate(tolerance=tolerance)
-    positions = np.array([(v.X, v.Y, v.Z) for v in verts], dtype=np.float32)
-    return positions, np.array(tris, dtype=np.uint32).flatten()
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.TopAbs import TopAbs_Orientation
+    from OCP.TopLoc import TopLoc_Location
+
+    BRepMesh_IncrementalMesh(part.wrapped, tolerance, True, angular, True)
+    positions: list[tuple[float, float, float]] = []
+    tris: list[tuple[int, int, int]] = []
+    skipped = 0
+    for face in part.faces():
+        loc = TopLoc_Location()
+        poly = BRep_Tool.Triangulation_s(face.wrapped, loc)
+        if poly is None:
+            skipped += 1
+            continue
+        trsf = loc.Transformation()
+        reverse = face.wrapped.Orientation() == TopAbs_Orientation.TopAbs_REVERSED
+        base = len(positions)
+        for i in range(1, poly.NbNodes() + 1):
+            p = poly.Node(i).Transformed(trsf)
+            positions.append((p.X(), p.Y(), p.Z()))
+        for i in range(1, poly.NbTriangles() + 1):
+            t = poly.Triangle(i)
+            a, b, c = t.Value(1) + base - 1, t.Value(2) + base - 1, t.Value(3) + base - 1
+            tris.append((a, c, b) if reverse else (a, b, c))
+    if skipped:
+        logger.warning("tessellate: %d of %d faces have no triangulation; skipped",
+                       skipped, len(part.faces()))
+    return (np.array(positions, dtype=np.float32).reshape(-1, 3),
+            np.array(tris, dtype=np.uint32).flatten())
 
 
 class _Packer:
