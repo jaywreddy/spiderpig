@@ -1,7 +1,7 @@
 """spiderpig over MCP (harness v1, step 3): the agent-facing API as tools over files and
 numbers.
 
-    uv run python cli.py mcp --store .spiderpig      # stdio; or: python -m spiderpig.mcp
+    spiderpig mcp --store .spiderpig      # stdio; or: python -m spiderpig.mcp
 
 Every tool maps one-to-one onto :mod:`spiderpig.api`. Across this boundary a design is
 its id, a report is JSON, a part is the path of its STEP file inside the store
@@ -16,7 +16,9 @@ as jobs when they outlast a grace period).
 
 Tools: ``list_linkages``, ``describe``, ``catalog``, ``resolve``, ``check``, ``plan``,
 ``explain``, ``recommend``, ``walk``, ``build``, ``verify``, ``export``, ``compare``,
-``derive``, ``get_design``, ``list_designs``, ``gc``, ``get_job``, ``wait_job``.
+``derive``, ``get_design``, ``list_designs``, ``gc``, ``get_job``, ``wait_job``, and
+``view`` (the viewer's URL for a design: a ``spiderpig view --serve-only`` child
+process over the store, started once and reused, :mod:`spiderpig.view`).
 Resources: ``spiderpig://guide`` (how to design with spiderpig), ``spiderpig://schema/spec``,
 ``spiderpig://linkages/{key}``, ``spiderpig://catalog/{servos|sheets|constructions}``,
 ``spiderpig://designs/{design}/{stage}``. Prompts: ``design_walker``, ``diagnose``,
@@ -46,14 +48,11 @@ from mcp.server.mcpserver.resources import FunctionResource
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
-import construction
-import linkage
-import servos
-import walk as walk_model
-from hardware import catalog as hw_catalog
-from spiderpig import api
+from spiderpig import api, construction, linkage, servos
+from spiderpig import walk as walk_model
 from spiderpig.design import Design, engine_version, jsonable
 from spiderpig.failure import Failure
+from spiderpig.hardware import catalog as hw_catalog
 from spiderpig.mcp import outputs as o
 from spiderpig.mcp.jobs import Jobs
 from spiderpig.spec import TARGET_FIELDS, SpecErrors, nearest, sheet_keys, spec_schema
@@ -78,7 +77,8 @@ INSTRUCTIONS = (
     "a failing stage is an ordinary result with ok=false and failures as data, each with "
     "checked recommendations and the spec patch that applies them (derive takes it). A design "
     "is its id (from resolve); build, verify(standard|full) and export are jobs: follow them "
-    "with wait_job or get_job. Parts are STEP files inside the store, never solids."
+    "with wait_job or get_job. Parts are STEP files inside the store, never solids. "
+    "view(design) returns the URL of the viewer for a design."
 )
 
 _ENGINE = threading.Lock()      # the engine's caches are per process and not thread-safe
@@ -97,14 +97,36 @@ class Misuse(Exception):
 
 @dataclass
 class State:
-    """What the server holds between calls: the store and its job pool."""
+    """What the server holds between calls: the store, its job pool, and the viewer's
+    server once the ``view`` tool has started it."""
 
     store: Store
     jobs: Jobs
+    viewer: Any = None      # a spiderpig.view.ViewServer: the child serving this store
 
     @property
     def root(self) -> str:
         return str(self.store.root.resolve())
+
+    def view_server(self):
+        """The viewer's server over this store: a ``spiderpig view --serve-only`` child
+        process on a free port (:func:`spiderpig.view.start_background`), started on
+        first use and reused while it lives."""
+        from spiderpig import view as view_module
+
+        if self.viewer is None or not self.viewer.alive():
+            if view_module.viewer_built() is None:
+                raise Misuse(Failure("view", "viewer_not_built", (
+                    "the package has no built viewer (spiderpig/viewer/dist): from a "
+                    "checkout run `mise run viewer-build`; a release wheel ships it"),
+                    notes=["SPIDERPIG_VIEWER_DIST=<dir> points at another build"]))
+            self.viewer = view_module.start_background(self.store)
+        return self.viewer
+
+    def stop_viewer(self) -> None:
+        if self.viewer is not None:
+            self.viewer.stop()
+            self.viewer = None
 
 
 # ---------------------------------------------------------------------------
@@ -369,8 +391,8 @@ def _linkages_table() -> str:
 
 
 def _fit_defaults() -> str:
-    from construction.base import Params
-    from layout import DEFAULT_KERF
+    from spiderpig.construction.base import Params
+    from spiderpig.layout import DEFAULT_KERF
 
     p = Params()
     items = [f"`{f.name}` {getattr(p, f.name):g}" for f in fields(Params)]
@@ -664,6 +686,20 @@ def _register_tools(server: MCPServer, state: State) -> None:
         removed = await _run(api.gc, keep, older_than_seconds, state.store)
         return {"ok": True, "failures": [], "removed": list(removed)}
 
+    @tool(mutates=True)
+    async def view(design: DesignArg) -> o.ViewOut:
+        """The viewer for a design, as a URL (``spiderpig view <design>`` from a shell):
+        the animated robot (or one side), drive mode, and the tune panel seeded with the
+        design's linkage, module, phases and proportions, its servo and constructions
+        behind every call. The server starts once per MCP server (a child process over
+        the store, on a free port) and is reused; a design's first load bakes it
+        (seconds) unless ``export`` wrote its ``glb``. ``ok: false`` with code
+        ``viewer_not_built`` when the package carries no built viewer."""
+        d = await _run(_load, state, design)
+        srv = await anyio.to_thread.run_sync(state.view_server)
+        return {"ok": True, "failures": [], "design": d.id, "url": srv.url(d.id),
+                "server": srv.base, "mode": "robot" if d.config.robot else "side"}
+
 
 def _register_resources(server: MCPServer, state: State) -> None:
     @server.resource("spiderpig://guide", name="guide", title="Designing with spiderpig",
@@ -797,7 +833,7 @@ def _register_prompts(server: MCPServer) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """``python cli.py mcp [--store PATH] [--workers N]``: serve over stdio."""
+    """``spiderpig mcp [--store PATH] [--workers N]``: serve over stdio."""
     ap = argparse.ArgumentParser(prog="spiderpig mcp",
                                  description="serve the spiderpig API over MCP (stdio)")
     ap.add_argument("--store", metavar="PATH",
@@ -812,6 +848,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         server.run("stdio")
     finally:
+        server.spiderpig.stop_viewer()
         server.spiderpig.jobs.shutdown()
     return 0
 

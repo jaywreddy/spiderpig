@@ -35,6 +35,12 @@ interface WalkResponse extends WalkJson {
   side_z?: Partial<Record<Side, number>>;
 }
 
+/** ``/api/design/{id}``: a stored design's card (``spiderpig view``). */
+export interface DesignCard {
+  design: string; kind: 'walker' | 'mechanism'; linkage: string; module: string; sides: number;
+  mode: string; phases_deg: number[]; params: Record<string, number>; servo: string;
+}
+
 /** One entry of ``/api/linkages``. */
 export interface LinkageInfo {
   key: string; name: string; family: string; notes: string; source: string;
@@ -101,6 +107,7 @@ export function createDrive(host: DriveHost) {
   document.body.append(warn);
 
   const design = {
+    id: url.get('design') as string | null,   // a stored design: every query carries it
     linkage: url.get('linkage') ?? 'klann',
     module: url.get('module') ?? 'quad',
     phases: (url.get('phases')?.split(',').map(Number) ?? null) as number[] | null,
@@ -209,9 +216,11 @@ export function createDrive(host: DriveHost) {
   }
 
   // --- tune ------------------------------------------------------------------
-  /** The design as ``/api/walk`` and ``/api/glb`` query parameters (defaults left out). */
+  /** The design as ``/api/walk`` and ``/api/glb`` query parameters (defaults left out;
+   * a stored design's id first: the server starts from its config and applies the rest). */
   function designQuery(): string {
-    const q = new URLSearchParams({ module: design.module });
+    const q = new URLSearchParams(design.id ? { design: design.id, module: design.module }
+      : { module: design.module });
     if (design.linkage !== defaultLinkage) q.set('linkage', design.linkage);
     if (design.phases) q.set('phases', design.phases.map((v) => +v.toFixed(2)).join(','));
     const d = defaults();
@@ -219,6 +228,19 @@ export function createDrive(host: DriveHost) {
       if (!(k in d) || Math.abs(v - d[k]!) > 1e-9) q.set(`p.${k}`, String(+v.toPrecision(6)));
     }
     return q.toString();
+  }
+
+  /** A stored design (``?design=<id>``): its card seeds the tune panel's state (linkage,
+   * module, phases, proportions), and every query carries its id from then on, so the
+   * server answers with its servo, sheet and constructions too. */
+  async function loadDesign(id: string): Promise<DesignCard> {
+    const card = await getJson<DesignCard>(`/api/design/${encodeURIComponent(id)}`);
+    design.id = card.design;
+    design.linkage = card.linkage;
+    design.module = card.module;
+    design.phases = [...card.phases_deg];
+    design.props = { ...card.params };
+    return card;
   }
 
   /** The registered linkages (once): the walker dropdown, the design controls, and a
@@ -397,13 +419,16 @@ export function createDrive(host: DriveHost) {
     opts, sim, view, tune, design, hud, gui, tuneGui,
     model: { parseDrive, evaluate, straightWalk },
     setDrive, setPreview, frame,
-    /** The query a plain load of ``mode`` carries: the selected linkage (and the robot's module). */
+    /** The query a plain load of ``mode`` carries: the stored design's id, the selected
+     * linkage (and the module for the robot or one side of it). */
     baseQuery(mode: string): string {
       const q = new URLSearchParams();
-      if (mode === 'robot' && design.module !== 'quad') q.set('module', design.module);
+      if (design.id) q.set('design', design.id);
+      if ((mode === 'robot' || mode === 'side') && design.module !== 'quad') q.set('module', design.module);
       if (design.linkage !== defaultLinkage) q.set('linkage', design.linkage);
       return q.toString();
     },
+    loadDesign,
     /** A new glb is on screen: split its clip by side; keep driving if it can be driven. */
     async onLoad(l: LoadedScene): Promise<void> {
       engaged = false;

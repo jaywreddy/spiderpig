@@ -7,7 +7,7 @@ import dataclasses
 import numpy as np
 import pytest
 
-from stack import (
+from spiderpig.stack import (
     Claim,
     Geometry,
     Layout,

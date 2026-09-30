@@ -273,8 +273,8 @@ class Store:
         extras. Raises when a file is missing."""
         from build123d import Plane, import_step
 
-        from hardware.bom import BomLine
-        from mechanism import Body, Mechanism, Pose
+        from spiderpig.hardware.bom import BomLine
+        from spiderpig.mechanism import Body, Mechanism, Pose
 
         d = self.dir(id) / "build"
         solids: dict[str, object] = {}

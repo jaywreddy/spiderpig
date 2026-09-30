@@ -9,9 +9,9 @@ import numpy as np
 import pytest
 import sympy as sp
 
-import linkage
-from config import BuildConfig
-from fabricate import design_side, template_for
+from spiderpig import linkage
+from spiderpig.config import BuildConfig
+from spiderpig.fabricate import design_side, template_for
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()

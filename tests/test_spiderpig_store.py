@@ -14,8 +14,8 @@ import pytest
 from spiderpig import api
 from spiderpig.design import jsonable
 from spiderpig.failure import apply_patch, merge_patch
+from spiderpig.stack import verify_plan
 from spiderpig.store import STORE_ENV, Store, StoreError, diff_json
-from stack import verify_plan
 
 KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}, "size": {"stack_mm": {"max": 40}}}
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},

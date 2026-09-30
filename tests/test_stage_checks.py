@@ -6,10 +6,10 @@ import re
 
 import pytest
 
-import linkage
-from config import BuildConfig
-from fabricate import design_side, side_clearances, side_problem, template_for
-from stack import PlanError
+from spiderpig import linkage
+from spiderpig.config import BuildConfig
+from spiderpig.fabricate import design_side, side_clearances, side_problem, template_for
+from spiderpig.stack import PlanError
 
 
 def test_program_stage_names_the_loop_that_cannot_close():

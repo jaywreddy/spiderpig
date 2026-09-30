@@ -1,11 +1,11 @@
-# spiderpig as a compiler: the Python API (harness v1, steps 1-3)
+# spiderpig as a compiler: the Python API (harness v1, steps 1-4)
 
 An agent writes a **Spec** and uses the engine as a compiler to verified geometry.
 Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api.py`
 (the operations), `failure.py` (every engine exception as data), `verify.py` (the
 harness), `design.py` (the handle), `store.py` (the per-project store, below), `mcp/`
-(the MCP server over all of it, at the end). This document is the surface; the CLI
-`spiderpig view` comes in step 4.
+(the MCP server over all of it), `cli.py` (the `spiderpig` command) and `view.py`
+(`spiderpig view`, at the end). This document is the surface.
 
 ```python
 from spiderpig import api
@@ -59,7 +59,7 @@ miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `h
 | `budget.print_g` | both | g | **hard** | bom | measured | filament at 100 % infill |
 | `budget.sheets` | both | sheets | **hard** | layout | measured | sheets the laser parts pack onto |
 
-Semantics are pinned once, in `TARGET_FIELDS`: robot metrics come from `walk.py`;
+Semantics are pinned once, in `TARGET_FIELDS`: robot metrics come from `spiderpig/walk.py`;
 per-leg foot-path numbers (stance stride, ripple) appear only on the linkage card
 (`api.describe`), except `lift_mm`, which is a target.
 
@@ -72,7 +72,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
-| `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
+| `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
 | `list_linkages(kind?)`, `describe(key)` | linkage cards | registry, `Linkage.check`, foot path / output check | ms |
 | `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm` | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table` | `fabricate.design_side` (cached by the engine) | 0.4 s |
@@ -83,7 +83,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids` | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `main.py` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where | 5-60 s (the BOM's grouping dominates) |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `spiderpig build` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where | 5-60 s (the BOM's grouping dominates) |
 | `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
 | `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
 | `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
@@ -246,7 +246,7 @@ The store (decision 4) is the state shared between calls; the server keeps nothi
 else but its job pool.
 
 ```bash
-uv run python cli.py mcp --store .spiderpig      # stdio; also: mise run mcp, python -m spiderpig.mcp
+spiderpig mcp --store .spiderpig      # stdio; also: mise run mcp, python -m spiderpig.mcp
 ```
 
 `--store PATH` picks the store (else `$SPIDERPIG_STORE`, else `./.spiderpig`),
@@ -259,7 +259,7 @@ engine prints can reach the wire). A Claude Code / Claude Desktop entry:
   "mcpServers": {
     "spiderpig": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/spiderpig", "python", "cli.py", "mcp",
+      "args": ["run", "--directory", "/path/to/spiderpig", "spiderpig", "mcp",
                "--store", "/path/to/project/.spiderpig"]
     }
   }
@@ -290,9 +290,11 @@ A design argument is the id `resolve` returned.
 | `get_design(design, stage?)` | `summary`, `spec`, `resolved`, `check`, `plan`, `walk`, `build` (the manifest with paths), `recheck`, `verify`, `export`, `log` |
 | `list_designs()` | the store's cards |
 | `gc(keep?, older_than_seconds?)` | `removed`; refuses to run without either argument |
+| `view(design)` | `url` of the viewer for the design (`?design=<id>`), `server` (its base URL) and `mode`: a `spiderpig view --serve-only` child process over the store, started on a free port on the first call and reused (stopped with the server); the page's first load bakes the design unless it was exported (`ok: false`, code `viewer_not_built`, when the package has no built viewer) |
 
 `tune` and `search` are not in v1 (the guide says so); `recheck` needs solids and stays
-in the Python API.
+in the Python API. `view` is the one tool that isn't an operation: it serves the
+viewer (below).
 
 **Failures.** A stage that fails is an ordinary result: `ok: false` and `failures` as
 data (stage, code, message, culprits, numbers, blockers, recommendations with patches,
@@ -332,3 +334,41 @@ derive / compare loop on one metric).
 (`mcp.Client(server)`, no subprocess). A cold `resolve → verify("quick")` on the Klann
 single takes ~0.7 s through the client once the engine is imported (~3 s of imports
 before that); `build` of the single as a job ~10 s including the worker's start.
+
+## View (step 4, decision 6)
+
+The Python package ships the built viewer as package data (`spiderpig/viewer/dist`,
+Vite's output; `mise run viewer-build` makes it, `mise run release` makes it and
+then the sdist and wheel, and a wheel built without it fails with a message saying
+so), so `spiderpig view` needs no Node on the user's machine:
+
+```bash
+spiderpig view <design> [--store PATH] [--port N] [--open] [--no-export]
+```
+
+It picks the store as the MCP server does (`--store`, else `$SPIDERPIG_STORE`, else
+`./.spiderpig`), loads the design, runs `api.export(design, ["glb"])` (built and baked
+once, cached in the store's `exports/`), starts the FastAPI app of
+`spiderpig/server/app.py` on a free port serving the built viewer, prints the URL,
+`http://127.0.0.1:<port>/?design=<id>`, and serves until Ctrl-C (`--open` opens the
+browser). What the page does with `?design=<id>`:
+
+- `GET /api/design/{id}` is the design's card from its `resolved.json`: `kind`,
+  `linkage`, `module`, `sides`, `mode` (`robot`, or `side` for a one-sided design),
+  `phases_deg`, `params` (the linkage's proportions), `servo`, and `glb`, the URL of
+  its bake. The viewer seeds its mode and the tune panel's state (linkage, module,
+  phases, parameter sliders) from it.
+- Every `/api/glb/{mode}` and `/api/walk` query the page makes then carries
+  `design=<id>` first: the server resolves the design's `BuildConfig` from the store
+  (servo, sheet, thickness, constructions and fit included, which no query string
+  expresses) and applies the tune panel's own `module`, `phases` and `p.NAME` on top
+  of it, so the sliders edit the viewed design; a different `linkage` starts from
+  that linkage's defaults but keeps the design's materials and constructions.
+- The glb of the design itself is served from the store's export when it exists and
+  is newer than the package's sources (response header `X-Spiderpig-Glb: export`);
+  an edited design bakes into the store's `bakes/` under its config key (`bake`),
+  as every dev-server bake does.
+
+`python -m spiderpig.view --serve-only --store PATH --port N` serves a store without
+a design: the MCP `view` tool starts one such child process per server (reused
+across calls, stopped with the server) and returns the design's URL.

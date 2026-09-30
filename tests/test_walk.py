@@ -12,7 +12,6 @@ import argparse
 import asyncio
 import itertools
 import math
-import sys
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -20,14 +19,16 @@ from urllib.parse import urlencode
 import numpy as np
 import pytest
 
-import linkage
-import walk
-from config import BuildConfig, ParamError, config_from_args, parse_phases, parse_proportion
+from spiderpig import linkage, walk
+from spiderpig.config import (
+    BuildConfig,
+    ParamError,
+    config_from_args,
+    parse_phases,
+    parse_proportion,
+)
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
-
-# Phases for the default quad that scripts/tune_gait.py finds (both plan in
+# Phases for the default quad that spiderpig/tools/tune.py finds (both plan in
 # 12 layers like the default): the two cranks half a turn apart, each crank's
 # legs 5-6 degrees apart or, the other way round, each crank's legs half a
 # turn apart and the cranks 5 degrees apart.
@@ -292,15 +293,15 @@ def test_better_phases_lower_the_objective(quad):
 
 @pytest.mark.slow
 def test_tuner_improves_the_quad():
-    import tune_gait
+    from spiderpig.tools import tune as tune_gait
 
     tuner, default, best = tune_gait.tune("quad", grid=90.0, top=1)
     assert best.score < 0.5 * default.score
     assert best.candidate.phases[0] == default.candidate.phases[0]      # leg 0 stays
     assert tuner.feasible(best.candidate.phases)
     use = tune_gait.flags("quad", best.candidate)
-    assert use["main"].startswith("uv run python cli.py build --module quad --phases ")
-    assert use["bake"].startswith("uv run python cli.py bake --module quad --phases ")
+    assert use["main"].startswith("spiderpig build --module quad --phases ")
+    assert use["bake"].startswith("spiderpig bake --module quad --phases ")
     assert use["query"].startswith("?module=quad&phases=")
 
 
@@ -308,7 +309,7 @@ def test_tuner_improves_the_quad():
 def test_tuner_on_other_linkages():
     """The tuner tunes any linkage: it leaves out the parameters that only scale it, and
     its flags name the linkage."""
-    import tune_gait
+    from spiderpig.tools import tune as tune_gait
 
     assert [tune_gait.scale_params(linkage.get(k)) for k in ("klann", "jansen", "strider")] == \
         [("OA",), ("unit",), ("unit",)]
@@ -325,7 +326,7 @@ def test_tuner_on_other_linkages():
 def test_tuner_keeps_crankpins_apart():
     """Coincident crankpins on different cranks can't be planned (quad 0,180,180,0);
     the double's pair shares one by design."""
-    import tune_gait
+    from spiderpig.tools import tune as tune_gait
 
     quad = tune_gait.Tuner("quad", stride_ref=100.0)
     assert not quad.feasible((0.0, 180.0, 180.0, 0.0))
@@ -403,7 +404,7 @@ def test_parameters_are_the_linkages():
 def test_template_joints_are_the_program(key, module, phases, props):
     """The side template's link joints (what gets built) are the legs' program points,
     and the feet are the linkage's feet of every leg."""
-    from fabricate import template_for
+    from spiderpig.fabricate import template_for
 
     cfg = _cfg(module, phases, props, linkage=key)
     tmpl = template_for(cfg)
@@ -555,7 +556,7 @@ class _AsgiClient:
 
 @pytest.fixture(scope="module")
 def server_app():
-    from server import app as server_app
+    from spiderpig.server import app as server_app
 
     return server_app
 
@@ -707,7 +708,7 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
         Path(out).write_bytes(b"glTF-stub")
 
     monkeypatch.setattr(server_app, "bake_gltf", fake_bake)
-    monkeypatch.setattr(server_app, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(server_app, "_data_dir", lambda: tmp_path)
     monkeypatch.setattr(server_app, "_sources_mtime", lambda: 0.0)
     monkeypatch.setattr(server_app, "_FAILED", {})
     monkeypatch.setattr(server_app, "_BAKED", {})
@@ -807,7 +808,7 @@ def test_api_glb_invalid_linkage_is_422(client, stub_bakes):
 
 
 def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
-    from construction import ConstructionError
+    from spiderpig.construction import ConstructionError
 
     for last, err in ((265, ValueError("claim pillar_A can't be built in this layout")),
                       (260, ConstructionError("a tie column is too thin"))):
@@ -819,4 +820,4 @@ def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
         n = len(stub_bakes)
         assert client.get("/api/glb/robot", params=q).status_code == 422      # remembered
         assert len(stub_bakes) == n
-    assert not list(Path(server_app.DATA_DIR).glob("*.glb"))
+    assert not list(server_app._data_dir().glob("*.glb"))

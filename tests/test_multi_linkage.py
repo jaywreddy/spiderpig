@@ -13,8 +13,8 @@ import math
 import numpy as np
 import pytest
 
-import linkage
-from linkage import build_module_template, combine_connectors, fuse_torsos
+from spiderpig import linkage
+from spiderpig.linkage import build_module_template, combine_connectors, fuse_torsos
 
 TS = np.linspace(0.0, 2.0 * math.pi, 24, endpoint=False)
 KLANN = linkage.get("klann")

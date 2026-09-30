@@ -1,4 +1,5 @@
-"""End-to-end test of the CLI (``main.py``): STEP / STL / print STLs / DXF / BOM."""
+"""End-to-end test of the CLI (``spiderpig build``, ``spiderpig/build.py``): STEP / STL /
+print STLs / DXF / BOM."""
 
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ import math
 import ezdxf
 import pytest
 
-import main as cli
+from spiderpig import build as cli
 
 pytestmark = pytest.mark.slow
 

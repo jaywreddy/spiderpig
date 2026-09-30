@@ -14,11 +14,11 @@ from dataclasses import replace
 import pytest
 from build123d import Box, Location
 
-from construction import ConstructionError
-from construction.axle import AxleGroup, PrintedAxle
-from construction.base import Build, Realized
-from construction.printed import Snap, plan_segments, segment_solid
-from shapes import disc
+from spiderpig.construction import ConstructionError
+from spiderpig.construction.axle import AxleGroup, PrintedAxle
+from spiderpig.construction.base import Build, Realized
+from spiderpig.construction.printed import Snap, plan_segments, segment_solid
+from spiderpig.shapes import disc
 
 T = 1.0
 

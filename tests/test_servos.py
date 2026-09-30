@@ -13,12 +13,12 @@ import numpy as np
 import pytest
 from build123d import Cylinder, Location
 
-import servos
-from hardware import catalog
-from servos import cad as cadlib
-from servos import model
-from servos.mount import servo_to_world
-from servos.spec import CadRef
+from spiderpig import servos
+from spiderpig.hardware import catalog
+from spiderpig.servos import cad as cadlib
+from spiderpig.servos import model
+from spiderpig.servos.mount import servo_to_world
+from spiderpig.servos.spec import CadRef
 from tests.conftest import clear_model_caches
 
 KEYS = servos.available()
@@ -290,7 +290,7 @@ def test_mount_screws_clear_the_crank_and_are_claimed(design, side, key):
 
 def test_the_verifier_sees_the_screw_heads(design):
     """Negative control: a screw head moved onto the crank hub is a violation."""
-    from stack import Geometry, verify_plan
+    from spiderpig.stack import Geometry, verify_plan
 
     single, d = design("single")
     plan = d.plan
@@ -305,4 +305,4 @@ def test_the_verifier_sees_the_screw_heads(design):
 def test_no_models_are_checked_in():
     """Manufacturer models are downloaded at build time (``mise run fetch-cad``), never vendored."""
     root = pathlib.Path(__file__).resolve().parents[1]
-    assert not list((root / "servos").rglob("*.st*p"))
+    assert not list((root / "spiderpig" / "servos").rglob("*.st*p"))

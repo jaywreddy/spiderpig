@@ -7,13 +7,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import linkage
-from config import BuildConfig
-from construction.base import ConstructionError
-from construction.crank import CrankRoute, Run
-from construction.route import crank_facts
-from construction.underside import Underside, underside
-from fabricate import (
+from spiderpig import linkage
+from spiderpig.config import BuildConfig
+from spiderpig.construction.base import ConstructionError
+from spiderpig.construction.crank import CrankRoute, Run
+from spiderpig.construction.route import crank_facts
+from spiderpig.construction.underside import Underside, underside
+from spiderpig.fabricate import (
     SideDesign,
     design_side,
     fabricate_side,
@@ -21,7 +21,7 @@ from fabricate import (
     side_problem,
     template_for,
 )
-from stack import ClearanceError, verify_plan
+from spiderpig.stack import ClearanceError, verify_plan
 from tests import brute
 
 

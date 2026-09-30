@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import pytest
 
-import servos
-from construction.contract import bad_solids, check_side, clashes
+from spiderpig import servos
+from spiderpig.construction.contract import bad_solids, check_side, clashes
 
 MODULES = ("single", "double", "decker", "quad")
 OTHERS = [s for s in servos.available() if s != servos.DEFAULT]

@@ -7,9 +7,9 @@ node   = "20"
 UV_PROJECT_ENVIRONMENT = ".venv"
 
 [tasks.view]
-description = "Dev: FastAPI (:8000) + Vite (:5173) with HMR. Open http://localhost:5173"
+description = "Dev: FastAPI + Vite with HMR (per-worktree ports; URL in the banner)"
 depends     = ["viewer-install"]
-run         = "uv run python scripts/dev.py"
+run         = "uv run python -m spiderpig.tools.dev"
 
 [tasks.viewer-install]
 description = "Install npm deps for viewer/"
@@ -19,39 +19,39 @@ sources     = ["viewer/package.json", "viewer/package-lock.json"]
 outputs     = ["viewer/node_modules/.package-lock.json"]
 
 [tasks.viewer-dev]
-description = "Vite dev server (:5173) only"
+description = "Vite dev server only"
 dir         = "{{config_root}}/viewer"
 run         = "npm run dev"
 
 [tasks.viewer-build]
-description = "Build viewer/dist for production"
+description = "Build the viewer into spiderpig/viewer/dist (package data: what `spiderpig view` serves)"
 depends     = ["viewer-install"]
 dir         = "{{config_root}}/viewer"
 run         = "npm run build"
 
 [tasks.bake]
-description = "Bake viewer/data/<design>.glb (pass -- --module single --side etc.)"
-run         = "uv run python cli.py bake"
+description = "Bake <store>/bakes/<design>.glb (pass -- --module single --side etc.)"
+run         = "uv run python -m spiderpig.cli bake"
 
 [tasks.build]
 description = "Robot (default quad; pass -- --module single etc.): STEP/STL, print STLs, DXF sheets, BOM -> build/"
-run         = "uv run python cli.py build"
+run         = "uv run python -m spiderpig.cli build"
 
 [tasks.explain]
 description = "What each pipeline stage says about a design (pass -- --linkage K --module M)"
-run         = "uv run python cli.py explain"
+run         = "uv run python -m spiderpig.cli explain"
 
 [tasks.tune]
 description = "Search crank phases (and proportions) for a smoother walk (pass -- --module decker)"
-run         = "uv run python cli.py tune"
+run         = "uv run python -m spiderpig.cli tune"
 
 [tasks.sim]
 description = "Simulate the walker in MuJoCo and print how it walks"
-run         = "uv run python cli.py sim"
+run         = "uv run python -m spiderpig.cli sim"
 
 [tasks.report]
 description = "Compare every registered linkage -> build/linkages.json"
-run         = "uv run python cli.py report"
+run         = "uv run python -m spiderpig.cli report"
 
 [tasks.test]
 description = "pytest (unit; pass -m e2e for browser tests)"
@@ -60,28 +60,33 @@ run         = "uv run pytest"
 
 [tasks.mcp]
 description = "Serve the agent-facing API over MCP on stdio (pass -- --store PATH); for an MCP client's config, not a terminal"
-run         = "uv run python cli.py mcp"
+run         = "uv run python -m spiderpig.cli mcp"
 
 [tasks.fetch-cad]
 description = "Download the servo manufacturers' CAD models into the cache (sha256-pinned)"
-run = "uv run python -m servos.cad"
+run = "uv run python -m spiderpig.servos.cad"
 
 [tasks.lint]
 description = "ruff check"
 run         = "uv run ruff check ."
 
+[tasks.release]
+description = "Build the viewer, then the sdist + wheel into dist/ (the wheel carries spiderpig/viewer/dist; a build without it fails)"
+depends     = ["viewer-build"]
+run         = "uv build"
+
 [tasks.audit]
 description = "Fabrication audit per module: plan re-check, construction contract, robot clashes, solids, DXF packing, BOM -> build/audit/"
-run         = "uv run python cli.py audit"
+run         = "uv run python -m spiderpig.cli audit"
 
 [tasks.kill]
 description = "Stop dev servers spawned from THIS worktree (path-scoped, parallel-worktree-safe)"
-run         = "uv run python scripts/kill_dev.py --mine"
+run         = "uv run python -m spiderpig.tools.kill_dev --mine"
 
 [tasks."kill-port"]
 description = "Force-stop whoever is listening on a TCP port (e.g. mise run kill-port -- --port 5173)"
-run         = "uv run python scripts/kill_dev.py"
+run         = "uv run python -m spiderpig.tools.kill_dev"
 
 [tasks.clean]
-description = "Remove build/, viewer/data/, viewer/dist/, viewer/node_modules/"
-run         = "uv run python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in [pathlib.Path('build'), pathlib.Path('viewer/data'), pathlib.Path('viewer/dist'), pathlib.Path('viewer/node_modules')]]\""
+description = "Remove build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/"
+run         = "uv run python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in [pathlib.Path('build'), pathlib.Path('dist'), pathlib.Path('.spiderpig/bakes'), pathlib.Path('spiderpig/viewer/dist'), pathlib.Path('viewer/node_modules')]]\""

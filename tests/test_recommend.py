@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-import explain
-from config import BuildConfig
-from construction.base import Params
-from fabricate import design_side, side_problem, static_stage, template_for
-from recommend import Gap, scale
-from stack import ClearanceError
+from spiderpig import explain
+from spiderpig.config import BuildConfig
+from spiderpig.construction.base import Params
+from spiderpig.fabricate import design_side, side_problem, static_stage, template_for
+from spiderpig.recommend import Gap, scale
+from spiderpig.stack import ClearanceError
 
 
 def _heel(unit: float, **params) -> BuildConfig:

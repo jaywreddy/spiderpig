@@ -24,8 +24,11 @@ HEEL = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 
         "legs": {"module": "single"}}
 TOOLS = {"list_linkages", "describe", "catalog", "resolve", "check", "plan", "explain",
          "recommend", "walk", "build", "verify", "export", "compare", "derive", "get_design",
-         "list_designs", "gc", "get_job", "wait_job"}
-MUTATING = {"export", "gc"}
+         "list_designs", "gc", "get_job", "wait_job", "view"}
+MUTATING = {"export", "gc", "view"}
+DIST = Path(__file__).resolve().parents[1] / "spiderpig" / "viewer" / "dist"
+needs_dist = pytest.mark.skipif(not (DIST / "index.html").is_file(),
+                                reason="spiderpig/viewer/dist isn't built (mise run viewer-build)")
 
 
 def run(coro):
@@ -69,6 +72,7 @@ def server():
     """The server over the session's store (``$SPIDERPIG_STORE``)."""
     s = make_server()
     yield s
+    s.spiderpig.stop_viewer()
     s.spiderpig.jobs.shutdown()
 
 
@@ -431,3 +435,38 @@ def test_a_cold_resolve_to_verify_quick_round_trip_is_fast(fresh, design):
     seconds = time.time() - t0
     assert vr["ok"]
     assert seconds < 30, seconds
+
+
+# ---------------------------------------------------------------------------
+# The viewer
+# ---------------------------------------------------------------------------
+
+
+@needs_dist
+@pytest.mark.slow
+def test_view_returns_the_viewers_url_and_reuses_its_server(server, single):
+    """``view`` starts the viewer's server once (a child over the store) and answers
+    with the design's URL; the page's API answers for that design."""
+    import urllib.request
+
+    out = call(server, "view", design=single)
+    assert out["url"] == f"{out['server']}/?design={single}"
+    assert out["mode"] == "side"
+    assert out["design"] == single
+    with urllib.request.urlopen(f"{out['server']}/api/design/{single}") as r:  # noqa: S310
+        card = json.load(r)
+    assert (card["design"], card["module"], card["sides"]) == (single, "single", 1)
+    with urllib.request.urlopen(f"{out['server']}/") as r:  # noqa: S310
+        assert b'id="stage"' in r.read()
+    again = call(server, "view", design=single)
+    assert again["server"] == out["server"]          # reused, not a second process
+    assert server.spiderpig.viewer.alive()
+    server.spiderpig.stop_viewer()
+    assert server.spiderpig.viewer is None
+
+
+def test_view_misuse_is_a_failure_envelope(server):
+    f = misuse(server, "view", design="0000000000000000")
+    assert (f["stage"], f["code"]) == ("store", "no_such_design")
+    f = misuse(server, "view", design="nonsense")
+    assert (f["stage"], f["code"]) == ("store", "bad_design_id")

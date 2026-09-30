@@ -127,6 +127,14 @@ check, and its modules with their default phases.
 
 <<MATERIALS>>
 
+## Seeing a design
+
+`view(design)` returns the URL of the viewer for a design: the animated robot (or
+one side), drive mode, and the tune panel seeded with the design's linkage, module,
+phases and proportions. The server starts once per MCP server on a free port and is
+reused; the first load of a design bakes it (seconds) unless `export` wrote its
+`glb`. The same page is `spiderpig view <design>` from a shell.
+
 ## Long operations
 
 `build`, `verify` at `standard`/`full` and `export` run in worker processes. Each
