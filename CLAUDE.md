@@ -266,13 +266,21 @@ crank route in it:
 4. **Verification**: `problem.plan(layers, top, choices)` and `verify_plan`;
    a failure there is a bug (it raises).
 
-Effort: a short search per size until one finds a plan (then, for a multi-leg
-module, a second strategy: a leg at a time at the single module's layers,
-`hint`), then the thinner sizes it didn't rule out with the full budget (the
-next thinner first), then a cheaper route. Budgets (`StackSpec.quick_nodes`,
-`max_nodes`, `max_total_nodes`) only limit the proof, never validity.
-`tests/brute.py` is an independent brute force (every layering, every
-route) the tests compare the planner's optimum with.
+Effort: a short search per size until one finds a plan (sizes in turn while
+they are ruled out; once one exhausts its short budget, in doubling steps,
+then back down the skipped sizes; for a multi-leg module, a second
+strategy: a leg at a time at the single module's layers, `hint`), then the
+thinner sizes it didn't rule out with the full budget (the next thinner
+first), then a cheaper route. Budgets (`StackSpec.quick_nodes`, `max_nodes`,
+`max_total_nodes`) and the wall-clock deadline (`StackSpec.max_seconds`,
+60 s: a node's cost grows with the stack size) bound all of it, never
+validity: a plan found is returned with `optimal=False` and a `proof`
+naming the sizes left open and what ran out; none found raises `PlanError`
+with the tally (what blocked it, and per size: ruled out, left open at its
+budget with nodes and seconds, or not tried). The checks `recommend.py`
+re-runs share one more such deadline, so `design_side` returns within a few
+minutes at worst. `tests/brute.py` is an independent brute force (every
+layering, every route) the tests compare the planner's optimum with.
 
 **Envelope** (`construction/underside.py`): the body (frame plates, the
 crank's own sweep, servo, centre plates) has an underside profile; what the

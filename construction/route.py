@@ -366,13 +366,14 @@ class CrankRouter:
                        *[Pill("O", p, dims.web) for p in self.points])
         # the joint rules: which points' chains may follow each other, and end at the hub
         self.rules = rules
-        self._why: dict[int, str] = {}      # why the joint rules close a stack, per hub layer
+        self._why: dict[tuple, str] = {}    # why the joint rules close a layering (memo)
         at = [topo.geometry.points[p][0] for p in self.points]
         n = self.n
         if rules is None:
             self.spans: dict[int, int] | None = None
             self.after = [[True] * n for _ in range(n)]
             self.last = [True] * n
+            self.window: int | None = None
         else:
             self.spans = rules.spans
             gap = rules.nut + max(rules.head, rules.post)
@@ -380,6 +381,10 @@ class CrankRouter:
                            for j in range(n)] for i in range(n)]
             self.last = [all(float(np.linalg.norm(at[j] - np.asarray(xy))) >= rules.nut + r
                              for xy, r in rules.horn) for j in range(n)]
+            # one chain per point, its runs strictly between its outer webs, which a stock
+            # screw must span: two run layers of one point are at most this far apart
+            longest = max((k for k, m in rules.spans.items() if m), default=None)
+            self.window = None if longest is None else longest - 3
         self.hub_play = rules is None or rules.hub_play
 
     def hub_bottom(self, top: int) -> int:
@@ -388,12 +393,15 @@ class CrankRouter:
 
     # -- per layer ------------------------------------------------------------------
 
-    def _prepare(self, view: RouteView) -> tuple[int, dict[int, int]] | RouteConflict:
-        """(the hub's bottom layer, layer -> the point its riders ride), or why not."""
+    def _prepare(self, view: RouteView
+                 ) -> tuple[int, dict[int, int], dict[int, tuple[int, int]]] | RouteConflict:
+        """(the hub's bottom layer, layer -> the point its riders ride, point -> the lowest
+        and highest layer of its placed riders), or why not."""
         h0 = self.hub_bottom(view.layout.top)
         if h0 < 2:
             return RouteConflict(1, max(h0, 1), "the hub leaves no layer for the crank below it")
         riding: dict[int, int] = {}
+        ends: dict[int, tuple[tuple[int, str], tuple[int, str]]] = {}
         for link, j in self.riders.items():
             k = view.layout.layers.get(link)
             if k is None:
@@ -404,7 +412,17 @@ class CrankRouter:
                                      "1, with no room for the web below")
             if riding.setdefault(k, j) != j:
                 return RouteConflict(k, k, "links riding two crankpins share a layer")
-        return h0, riding
+            lo, hi = ends.get(j, ((k, link), (k, link)))
+            ends[j] = (min(lo, (k, link)), max(hi, (k, link)))
+        if self.window is not None:
+            for j, ((lo, a), (hi, b)) in ends.items():
+                if hi - lo > self.window:
+                    return RouteConflict(
+                        lo, hi, f"links riding {self.points[j]} sit {hi - lo} layers apart, "
+                        f"more than the {self.window} one chain along it spans (a stock screw "
+                        f"through its webs at most {self.window + 3} layers apart)",
+                        rules=True, links=frozenset({a, b}))
+        return h0, riding, {j: (lo[0], hi[0]) for j, (lo, hi) in ends.items()}
 
     def _valid(self, blocked: int, rider: int | None) -> int:
         """The states a layer allows, from what blocks its pieces and who rides in it."""
@@ -438,16 +456,27 @@ class CrankRouter:
         pre = self._prepare(view)
         if isinstance(pre, RouteConflict):
             return pre
-        h0, riding = pre
+        h0, riding, ridden = pre
         fwd = self._forward(view.blocked, riding, h0)
         if isinstance(fwd, int):
             return self._conflict(view, fwd, riding, h0)
         if isinstance(res, RouteConflict):
-            if h0 not in self._why:
-                self._why[h0] = self._unbuildable(view)
-            return RouteConflict(1, h0, self._why[h0], rules=True)
+            # why, worded once per what the rules see (the riders' layers, what blocks
+            # each piece where): a partial layering doesn't pay for it again
+            key = (h0, tuple(sorted(riding.items())), tuple(sorted(view.blocked.items())))
+            why = self._why.get(key)
+            if why is None:
+                why = self._why[key] = self._unbuildable(view)
+            return RouteConflict(1, h0, why, rules=True)
         bwd = self._backward(view.blocked, riding, h0)
-        return {k: fwd[k] & bwd[k] for k in range(1, h0)}
+        out = {k: fwd[k] & bwd[k] for k in range(1, h0)}
+        if self.window is not None:
+            # every run along a point lies in its one chain: within the window of its riders
+            for j, (lo, hi) in ridden.items():
+                for k in out:
+                    if k < hi - self.window or k > lo + self.window:
+                        out[k] &= ~(16 << j)
+        return out
 
     def _forward(self, blocked, riding, h0) -> list[int] | int:
         """States reachable from the bottom in each layer, or the first layer none reach
@@ -505,7 +534,7 @@ class CrankRouter:
         pre = self._prepare(view)
         if isinstance(pre, RouteConflict):
             return pre
-        h0, riding = pre
+        h0, riding, _ = pre
         blocked = view.blocked
         maybe: dict[int, set[int]] = {}
         for link, j in self.riders.items():

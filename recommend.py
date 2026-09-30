@@ -17,6 +17,11 @@ it:
 
 Each :class:`stack.Recommendation` is verified: the static stage is run again
 with it (and the plan, where that's cheap), and it says what that showed.
+The checks are bounded: together they get one planner deadline
+(:attr:`stack.StackSpec.max_seconds`, or ``seconds``), each planning run
+inside it what is left, so a failure that took the planner its whole
+budget can't take many times that to advise on. A candidate left unchecked
+when it runs out is noted, never recommended.
 """
 
 from __future__ import annotations
@@ -25,7 +30,7 @@ import math
 from dataclasses import dataclass, replace
 
 import linkage
-from stack import Clearance, Recommendation
+from stack import Clearance, Deadline, Recommendation, StackSpec
 
 
 @dataclass(frozen=True)
@@ -63,42 +68,49 @@ def _up(value: float, step: float) -> float:
     return round(math.ceil(value / step - 1e-9) * step, 6)
 
 
-def _check(config, plan: bool) -> str | None:
-    """None if ``config`` passes the static stage (and plans, with ``plan``); else why not."""
-    from fabricate import design_side, side_problem, static_stage, template_for
+class _OutOfTime(Exception):
+    """The deadline for checking recommendations ran out before a check could start."""
+
+
+def _check(config) -> str | None:
+    """None if ``config`` passes the static stage; else why not."""
+    from fabricate import side_problem, static_stage, template_for
 
     try:
         tmpl = template_for(config)
-        if plan:
-            design_side(tmpl, config, advise=False)
-        else:
-            _, _, problem = side_problem(tmpl, config)
-            static_stage(tmpl, problem)
+        _, _, problem = side_problem(tmpl, config, hint=False)
+        static_stage(tmpl, problem)
     except ValueError as e:
         return str(e).splitlines()[0]
     return None
 
 
-def _verify(config, plan: bool) -> str | None:
-    """What re-running showed, or None if it still fails. ``plan``: the plan failed, so it
-    is planned again; else the plan is checked where that's cheap (a single or double
-    module; for a bigger one, its single module)."""
+def _verify(config, plan: bool, deadline: Deadline | None = None) -> str | None:
+    """What re-running showed, or None if it still fails (or its search ran out of the
+    deadline). ``plan``: the plan failed, so it is planned again; else the plan is checked
+    where that's cheap (a single or double module; for a bigger one, its single module).
+    :class:`_OutOfTime` when ``deadline`` had run out before the check."""
     from fabricate import design_side, template_for
 
-    if _check(config, plan=False) is not None:
+    deadline = deadline or Deadline(StackSpec().max_seconds)
+    if deadline.expired:
+        raise _OutOfTime
+    if _check(config) is not None:
         return None
     trial = config
     if not plan and config.module not in ("single", "double"):
         trial = replace(config, module="single", phases=None)
-    if _check(trial, plan=True) is not None:
+    try:
+        d = design_side(template_for(trial), trial, advise=False, deadline=deadline)
+    except ValueError:
         return None
-    d = design_side(template_for(trial), trial)
     where = "" if trial is config else " (its single module)"
     return (f"checked: the static stage passes, and it plans{where} in {d.plan.top + 1} "
             f"layers ({d.plan.height:g} mm)")
 
 
-def scale(config, gaps: list[Gap], plan: bool = False) -> Recommendation | None:
+def scale(config, gaps: list[Gap], plan: bool = False,
+          deadline: Deadline | None = None) -> Recommendation | None:
     """The least practical uniform scale of the linkage that clears every gap (verified)."""
     lk = linkage.get(config.linkage)
     names = linkage.scale_params(lk)
@@ -115,7 +127,10 @@ def scale(config, gaps: list[Gap], plan: bool = False) -> Recommendation | None:
         value = _up(now + step, step)
     for _ in range(3 if plan else 6):
         trial = replace(config, proportions=tuple(sorted({**props, name: value}.items())))
-        verified = _verify(trial, plan)
+        try:
+            verified = _verify(trial, plan, deadline)
+        except _OutOfTime:
+            raise _OutOfTime(f"a scale of the linkage from {name} {value:g} up") from None
         if verified is not None:
             s = value / now
             crank = math.hypot(*lk.solve(params=props).joints_at(0.0)[lk.crank[1]])
@@ -132,7 +147,8 @@ def scale(config, gaps: list[Gap], plan: bool = False) -> Recommendation | None:
     return None
 
 
-def thinner(config, gaps: list[Gap], plan: bool = False) -> Recommendation | str:
+def thinner(config, gaps: list[Gap], plan: bool = False,
+            deadline: Deadline | None = None) -> Recommendation | str:
     """Thinner parts at this scale that clear every gap and every construction accepts
     (verified); or why none does."""
     p = config.params
@@ -152,18 +168,22 @@ def thinner(config, gaps: list[Gap], plan: bool = False) -> Recommendation | str
                                                                            strict=True))
             cands.append((loss, q))
     why = None                  # why the least change that clears the gaps can't be built
-    for _, q in sorted(cands, key=lambda c: c[0])[:8]:
+    for i, (_, q) in enumerate(sorted(cands, key=lambda c: c[0])[:8]):
         # a thinner link keeps min_wall round its axles' holes: thin the axle with it
         axle = min(p.axle_d, math.floor(4 * (q.link_radius - q.min_wall) - 2 * q.running_fit) / 2)
         q = replace(q, axle_d=max(axle, 2.0), neck_d=min(q.neck_d, max(axle, 2.0)))
         trial = replace(config, params=q)
-        verified = _verify(trial, plan)
+        try:
+            verified = _verify(trial, plan, deadline)
+        except _OutOfTime:
+            raise _OutOfTime("thinner parts" + (f" beyond the {i} sizes checked" if i else "")
+                             ) from None
         if verified is not None:
             changes = tuple((f, getattr(p, f), getattr(q, f))
                             for f in ("link_radius", "crankpin_d", "axle_d", "neck_d")
                             if getattr(q, f) != getattr(p, f))
             return Recommendation(changes, why="thinner parts at this scale", verified=verified)
-        why = why or _check(trial, plan=False) or "it still doesn't plan"
+        why = why or _check(trial) or "it still doesn't plan"
     if why is None:
         return "no part sizes at this scale clear it"
     return ("no part sizes at this scale clear it within the constructions' limits (the "
@@ -182,26 +202,40 @@ def _product(lists):
 _DONE: dict[tuple, tuple[list[Recommendation], list[str]]] = {}
 
 
-def recommend(config, failures=(), clearances=(), plan: bool = False
-              ) -> tuple[list[Recommendation], list[str]]:
+def recommend(config, failures=(), clearances=(), plan: bool = False,
+              seconds: float | None = None) -> tuple[list[Recommendation], list[str]]:
     """Checked recommendations for these failures, and notes on what can't help (remembered
-    per design: checking them plans other designs)."""
+    per design: checking them plans other designs). The checks share ``seconds`` of wall
+    clock (the planner's own ``StackSpec.max_seconds`` by default); what they didn't get
+    to is noted."""
     gaps = gaps_of(failures, tuple(clearances), config.params)
     if not gaps:
         return [], []
-    key = (config, tuple(gaps), plan)
+    key = (config, tuple(gaps), plan, seconds)
     if key not in _DONE:
-        _DONE[key] = _recommend(config, gaps, plan)
+        _DONE[key] = _recommend(config, gaps, plan, seconds)
     return _DONE[key]
 
 
-def _recommend(config, gaps: list[Gap], plan: bool) -> tuple[list[Recommendation], list[str]]:
-    recs, notes = [], []
-    if (r := scale(config, gaps, plan)) is not None:
-        recs.append(r)
-    t = thinner(config, gaps, plan)
-    if isinstance(t, Recommendation):
-        recs.append(t)
+def _recommend(config, gaps: list[Gap], plan: bool,
+               seconds: float | None = None) -> tuple[list[Recommendation], list[str]]:
+    deadline = Deadline(StackSpec().max_seconds if seconds is None else seconds)
+    recs, notes, unchecked = [], [], []
+    try:
+        if (r := scale(config, gaps, plan, deadline)) is not None:
+            recs.append(r)
+    except _OutOfTime as e:
+        unchecked.append(str(e) or "a scale of the linkage")
+    try:
+        t = thinner(config, gaps, plan, deadline)
+    except _OutOfTime as e:
+        unchecked.append(str(e) or "thinner parts")
     else:
-        notes.append(t)
+        if isinstance(t, Recommendation):
+            recs.append(t)
+        else:
+            notes.append(t)
+    if unchecked:
+        notes.append(f"not checked, the {deadline.seconds:g} s for checking what would clear "
+                     f"it ran out: {' and '.join(unchecked)}")
     return recs, notes

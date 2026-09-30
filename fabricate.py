@@ -35,6 +35,7 @@ from servos.mount import DriveGroup
 from stack import (
     Clearance,
     ClearanceError,
+    Deadline,
     PlanError,
     StackPlan,
     StackProblem,
@@ -84,10 +85,13 @@ def side_clearances(ctx: Context, groups: list) -> list[Clearance]:
     return static_clearances(ctx.topo, keepouts, ctx.params.link_radius, ctx.params.margin)
 
 
-def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem]:
+def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
+                 hint: bool = True) -> tuple[Context, list, StackProblem]:
     """One side's groups (interfaces resolved) and the layer problem their claims pose: the
     static clearances, the body's underside (``ctx.interfaces["underside"]``) and the
-    crank's router (its static facts in ``problem.router.facts``)."""
+    crank's router (its static facts in ``problem.router.facts``). ``deadline``: what is
+    left of it caps the search (within ``StackSpec.max_seconds``); ``hint``: plan the
+    single module first for the leg hint (not needed for the static stage alone)."""
     topo = topology_from_template(tmpl)
     ctx = Context(topo=topo, params=config.params, pitch=config.pitch,
                   servo=servos.get(config.servo), config=config)
@@ -98,21 +102,23 @@ def side_problem(tmpl, config: BuildConfig) -> tuple[Context, list, StackProblem
             ctx.interfaces[g.name] = iface
     claims = [c for g in groups for c in g.claims(ctx)]
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin)
+    if deadline is not None:
+        spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
     ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
     router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
     return ctx, groups, StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
-                                     hint=_leg_hint(config))
+                                     hint=_leg_hint(config, deadline) if hint else None)
 
 
-def _leg_hint(config: BuildConfig) -> dict[str, int] | None:
+def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str, int] | None:
     """One leg's plan (the single module's), for the planner to try each leg of a bigger
     module at (a hint for the order it tries layers in, nothing more)."""
     if config.module == "single":
         return None
     one = replace(config, module="single", phases=None, robot=False)
     try:
-        return design_side(template_for(one), one).plan.layers
+        return design_side(template_for(one), one, advise=False, deadline=deadline).plan.layers
     except ValueError:
         return None
 
@@ -162,37 +168,49 @@ def _reuse(problem: StackProblem, solved: StackPlan | None) -> StackPlan | None:
     return plan
 
 
-def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True) -> SideDesign:
+def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
+                deadline: Deadline | None = None) -> SideDesign:
     """Rationalize and plan one side (cached per template and config). A failure of the
-    planner's stages says what would clear it (``advise``, :mod:`recommend`)."""
+    planner's stages says what would clear it (``advise``, :mod:`recommend`).
+
+    The planner's search is bounded by its node budgets and ``StackSpec.max_seconds``
+    (a plan cut short is returned unproven; none found raises :class:`stack.PlanError`),
+    and the checks of the recommendations share one more such deadline, so this returns
+    within a few minutes at worst. ``deadline``: a caller's (the recommendation checks'):
+    what is left of it caps every search here, and the design isn't cached.
+    """
     config = replace(config or BuildConfig(), robot=False)
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
-    if key not in _DESIGNS:
-        ctx, groups, problem = side_problem(tmpl, config)
-        static_stage(tmpl, problem, config if advise else None)
-        # The robot's side has the same layout as the side on its own; reuse
-        # a solved layout when every claim still clears (checked, not assumed).
-        layout_key = key[:4] + (replace(config, robot=False),)
-        plan = _reuse(problem, _LAYOUTS.get(layout_key))
-        if plan is None:
-            try:
-                plan = problem.solve()
-            except PlanError as e:
-                involved = [c for c in problem.clearances
-                            if any(c.link in b and c.keepout.owner in b for b in e.blockers)]
-                e = e.with_notes(*(["static clearances behind it:",
-                                    *(c.describe() for c in involved[:8])] if involved else []))
-                if advise and involved:
-                    from recommend import recommend
+    if key in _DESIGNS:
+        return _DESIGNS[key]
+    ctx, groups, problem = side_problem(tmpl, config, deadline)
+    static_stage(tmpl, problem, config if advise else None)
+    # The robot's side has the same layout as the side on its own; reuse
+    # a solved layout when every claim still clears (checked, not assumed).
+    layout_key = key[:4] + (replace(config, robot=False),)
+    plan = _reuse(problem, _LAYOUTS.get(layout_key))
+    if plan is None:
+        try:
+            plan = problem.solve()
+        except PlanError as e:
+            involved = [c for c in problem.clearances
+                        if any(c.link in b and c.keepout.owner in b for b in e.blockers)]
+            e = e.with_notes(*(["static clearances behind it:",
+                                *(c.describe() for c in involved[:8])] if involved else []))
+            if advise and involved:
+                from recommend import recommend
 
-                    recs, notes = recommend(config, clearances=tuple(involved), plan=True)
-                    e = e.with_notes(*notes).with_recommendations(recs)
-                raise e from None
+                recs, notes = recommend(config, clearances=tuple(involved), plan=True)
+                e = e.with_notes(*notes).with_recommendations(recs)
+            raise e from None
+        if deadline is None:
             _LAYOUTS[layout_key] = plan
-        _DESIGNS[key] = SideDesign(config, ctx, groups, plan, list(problem.clearances),
-                                   ground_clearance(tmpl, ctx))
-    return _DESIGNS[key]
+    design = SideDesign(config, ctx, groups, plan, list(problem.clearances),
+                        ground_clearance(tmpl, ctx))
+    if deadline is None:
+        _DESIGNS[key] = design
+    return design
 
 
 def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mechanism:
