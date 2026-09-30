@@ -552,7 +552,11 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     assert [w for w in child["warnings"] if w.startswith("materials.")] == []
     assert call(fresh, "check", design=child["design"])["ok"]
     (card,) = [c for c in call(fresh, "list_designs")["designs"] if c["id"] == child["design"]]
-    assert card["thickness_mm"] == 3.0                                     # entry 9
+    assert card["thickness_mm"] is None                     # entry 12: the nominal is dropped
+    assert child["design"] == call(fresh, "resolve", spec=KLANN_SINGLE)["design"]
+    thin_card = next(c for c in call(fresh, "list_designs")["designs"]
+                     if c["id"] == thin["design"])
+    assert thin_card["thickness_mm"] == 2.0                                # entry 9
     assert card["constructions"] == {"pillar": "printed", "pin": "printed", "crank": "printed"}
     assert card["servo"] == "sts3215"
 

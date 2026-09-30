@@ -716,7 +716,11 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
                        "legs": {"module": "single", "sides": 1},
                        "budget": {"cost_usd": {"max": 100}}}, store=None)
     total, priced, unpriced = cost_floor(one)                              # entry 4
-    assert total == pytest.approx(27.49 + 25.49 + 10.99, abs=0.01)
+    from spiderpig import servos
+    from spiderpig.hardware.catalog import get as item
+
+    servo = item(servos.get("sts3215").bom_key).offer.price_usd
+    assert total == pytest.approx(servo + 25.49 + 10.99, abs=0.01)
     assert unpriced == []
     assert priced[0].startswith("Feetech STS3215")
     rep = api.verify(one, "quick")
@@ -729,7 +733,8 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     robot = api.resolve({**KLANN_QUAD, "materials": {"servo": "xl330_m288"},
                          "budget": {"cost_usd": {"max": 100}}}, store=None)
     total, priced, _ = cost_floor(robot)
-    assert total == pytest.approx(2 * 27.49 + 25.49 + 10.99 + 12.84 + 11.37, abs=0.01)
+    xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
+    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + 12.84 + 11.37, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
