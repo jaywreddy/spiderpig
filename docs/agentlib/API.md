@@ -1,10 +1,10 @@
-# spiderpig as a compiler: the Python API (harness v1, step 1)
+# spiderpig as a compiler: the Python API (harness v1, steps 1-2)
 
 An agent writes a **Spec** and uses the engine as a compiler to verified geometry.
 Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api.py`
 (the operations), `failure.py` (every engine exception as data), `verify.py` (the
-harness), `design.py` (the handle). CLI, MCP and the per-project store come in later
-steps; this document is the surface they will wrap.
+harness), `design.py` (the handle), `store.py` (the per-project store, below). CLI and
+MCP come in later steps; this document is the surface they will wrap.
 
 ```python
 from spiderpig import api
@@ -71,7 +71,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
-| `resolve(spec)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `linkages/*.py` + `StackSpec` defaults | ms |
+| `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
 | `list_linkages(kind?)`, `describe(key)` | linkage cards | registry, `Linkage.check`, foot path / output check | ms |
 | `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm` | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table` | `fabricate.design_side` (cached by the engine) | 0.4 s |
@@ -82,7 +82,11 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | `attach_build(design, mech, t)` | `BuildReport` | adopt a fabricated mechanism (a store, a test fixture) | 2 s |
 | `recheck(design, all_parts=False)` | `RecheckReport`: `edited`, `checked`, `contract`, `clashes`, `bad_solids` | `contract.bad_solids`, `clashes`, edited parts inside their claims | 1-5 s |
 | `verify(design, level)` | `VerifyReport` (below) | quick: check + plan + walk; standard: + build, contract at t = 0 and 3.2, clash and solids at the build's t, `verify_plan`, DXF pack, BOM; full: the audit's four contract angles, clashes at 1 and 4.38, and MuJoCo when it imports | 1 s / 30-45 s / 85 s |
-| `export(design, formats?, out_dir)` | `ExportReport`: `files`, `manifest` | what `main.py` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json` | 5-60 s (the BOM's grouping dominates) |
+| `export(design, formats?, out_dir?)` | `ExportReport`: `files`, `manifest` | what `main.py` writes (`step`, `stl`, `print`, `dxf`, `bom`) plus `glb` (the viewer bake) and `mjcf`; always `manifest.json`; into the design's `exports/` in its store unless `out_dir` says where | 5-60 s (the BOM's grouping dominates) |
+| `load(id, store=PROJECT)` | `Design` | the recorded design (the id must hash to its record); reports load as the operations ask | ms |
+| `derive(design, patch)` | `Design` | `resolve(apply_patch(spec, patch))` with `derived_from` and the patch recorded | ms |
+| `compare(a, b)` | dict | the merge patch between two specs (and resolved specs), whether one derives from the other, every differing value per stage report | ms |
+| `list_designs()`, `gc(keep, older_than)` | cards / removed ids | the store's folders | ms |
 
 ### Solids (decision 3)
 
@@ -122,7 +126,69 @@ Failure {stage, code, message, culprits: [{body?, group?, joint?, point?, ...}],
 | walk / sim | linkage_invalid / sim_failed | `walk.api_payload`, MuJoCo |
 
 A recommendation's `patch` is a spec patch (`{"linkage": {"params": {"unit": 10.5}}}` or
-`{"fit": {"link_radius": 5.5}}`); `apply_patch(spec_doc, patch)` merges it.
+`{"fit": {"link_radius": 5.5}}`): a JSON merge patch (RFC 7386, `null` removes a key);
+`apply_patch(spec_doc, patch)` merges it, `merge_patch(a, b)` is the smallest patch from
+one document to another, `derive(design, patch)` resolves the patched spec.
+
+## Store (step 2, decision 4)
+
+Designs, their reports, parts and the plan cache live in a git-ignored folder next to
+the spec: `$SPIDERPIG_STORE`, else `./.spiderpig`, created on the first write. Every
+operation takes `store=`: the project store by default (`spiderpig.store.PROJECT`), a
+path or a `Store`, or `None` to keep everything in memory. The store is a cache and a
+record, never a second source of truth: the id is the design, and everything under it
+recomputes from `resolved.json`. Several users share one folder (writes are atomic).
+
+```
+.spiderpig/designs/<id>/
+  spec.json            the spec as given
+  resolved.json        id, engine_version, spec_hash, created_at, derived_from, patch,
+                       warnings, and `resolved` (every inferred value written in)
+  check.json, plan.json, walk.json, recheck.json, verify.json, export.json
+                       one file per stage: the report's JSON plus stage, design,
+                       engine_version, written_at
+  build/manifest.json  the build report, plus per part its pose, colour and file
+  build/parts/*.step   one STEP per distinct part at the manifest's t (a right-side part
+                       references its left twin: same_as + mirror, nothing duplicated)
+  exports/             export()'s default out_dir
+  log.jsonl            one line per operation: op, engine_version, seconds, ok, cached, at
+```
+
+What is cached, and when it is stale:
+
+- A stage file is served as is when its `engine_version` is the running engine's; else
+  it is recomputed and rewritten (a `load`ed design says so in `warnings`). `verify.json`
+  holds the latest level; it answers a call for that level only. `export.json` answers
+  the same formats into the same folder while every file is still there.
+- A **plan** is never trusted blindly: `plan(design)` re-makes the stored layout through
+  `stack.StackProblem.plan(layers, top, choices)` (the route rebuilt as
+  `construction.crank.CrankRoute`) and checks it with `stack.verify_plan`, exactly as
+  `fabricate._reuse` does (0.2 s on the quad against a 0.5 s solve; `PlanReport.reused`
+  = `"store"`). From another engine version it is verified on fresh sampling and adopted
+  without its optimality proof (`optimal = False`, the proof says why); when the check
+  fails it is solved again. A new design of the same resolved spec under a new engine
+  (a different id) seeds its plan from the old record the same way (`reused` = that id).
+- A **build** reloads its parts from STEP (`api.attach_build`: masses, layers, groups
+  and the envelope recomputed from the solids; `Part.pose` restored; the quad's 173 parts
+  from 98 files in ~4 s against an 8 s build) when the manifest's `t` and engine match;
+  otherwise it is rebuilt at the requested `t` and the files replaced. The files are what
+  the engine built: an edited `Part.solid` lives in the session only.
+- `check`, `walk`, `recheck`, `verify` are read back through `Report.from_dict`
+  (`Failure.from_dict`, `Row.from_dict`); a failing stage is cached as its failure.
+
+Warm against cold on the Klann quad: `verify("standard")` 40 s cold, ~0 s warm
+(`verify.json`); a second process's `build` 4 s, `plan` 0.5 s, `check`/`walk` ms.
+
+`list_designs()` returns one card per design (id, kind, linkage, module, sides, engine
+version, created/last-used times, `derived_from`, the stages held with their `ok`, the
+latest verify verdict). `gc(keep=[ids or handles])` removes every other design;
+`gc(older_than=timedelta | datetime | seconds)` those last used before then; both
+together remove only what is neither kept nor recent. `derive(design, patch)` records
+the parent and patch on the child; `compare(a, b)` (handles or ids) returns
+`{"spec_patch", "resolved_patch", "derived", "engine_version", "reports": {stage:
+{"dotted.path": {"a", "b"}}}, "only_in"}`, comparing rows and steps by name and
+skipping timings, tables and texts. `Store(root)` itself exposes the files
+(`read_report`, `read_log`, `summary`, `load_mechanism`) for the MCP layer.
 
 ### VerifyReport
 
