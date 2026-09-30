@@ -8,6 +8,7 @@ on the default quad, and against the viewer's reference numbers for it.
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import itertools
 import math
@@ -21,7 +22,7 @@ import pytest
 
 import linkage
 import walk
-from config import BuildConfig, ParamError, parse_phases, parse_proportion
+from config import BuildConfig, ParamError, config_from_args, parse_phases, parse_proportion
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
@@ -360,6 +361,14 @@ def test_normalized_parameters():
             _cfg(**{"module": "quad", **bad})
     assert parse_phases("0, 90") == (0.0, math.pi / 2)
     assert parse_proportion("DF=2.6") == ("DF", 2.6)
+    # the CLIs' parsed arguments, and a field a tool fixes itself (the audit's module per
+    # run, explain's side) over the parsed one
+    args = argparse.Namespace(linkage="jansen", module="quad", phases=None,
+                              proportion=[("m", 14.0)], servo="sts3215")
+    assert config_from_args(args) == BuildConfig(linkage="jansen", module="quad",
+                                                 proportions=(("m", 14.0),))
+    assert config_from_args(args, module="single", robot=False) == BuildConfig(
+        linkage="jansen", module="single", robot=False, proportions=(("m", 14.0),))
     for text in ("0,,90", "a,b"):
         with pytest.raises(ParamError):
             parse_phases(text)

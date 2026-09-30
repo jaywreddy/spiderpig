@@ -247,8 +247,9 @@ def config_from_args(args, **fixed) -> BuildConfig:
     fields = {k: getattr(args, k, getattr(d, k)) for k in ("linkage", "module", "sheet",
                                                             "thickness", "servo", "pillar",
                                                             "pin", "crank")}
-    return BuildConfig(**fields, phases=getattr(args, "phases", None),
-                       proportions=tuple(getattr(args, "proportion", None) or ()), **fixed)
+    fields.update(phases=getattr(args, "phases", None),
+                  proportions=tuple(getattr(args, "proportion", None) or ()))
+    return BuildConfig(**{**fields, **fixed})
 
 
 def design_from_query(query: Mapping, **fixed) -> BuildConfig:
