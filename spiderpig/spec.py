@@ -153,6 +153,10 @@ TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
          "fraction of the cycle the centre of mass falls outside the feet's support"),
         ("ground_clearance_mm", "motion", WALKER, "mm", True, "static", "measured",
          "the body's lowest point above the lowest foot point (SideDesign.ground_clearance_mm)"),
+        ("transmission_angle_deg", "motion", BOTH, "deg", False, "check", "measured",
+         "the least transmission angle over every loop closure of the program, folded about "
+         "90° (a 140° angle is as poor as 40°; under about 40° a joint binds; "
+         "StepCheck.angle_deg)"),
         ("stroke_mm", "motion", MECHANISM, "mm", False, "output", "measured",
          "the output point's travel along its fitted line (OutputCheck.stroke_mm)"),
         ("straightness_mm", "motion", MECHANISM, "mm", False, "output", "measured",
@@ -198,6 +202,9 @@ def target_field(section: str, name: str) -> TargetField:
 OUTPUT_TARGETS = ("stroke_mm", "straightness_mm", "on_line_fraction", "rotation_deg",
                   "swing_deg", "dwell_deg")
 _OUTPUT_METRICS: dict[str, tuple[str, ...]] = {}
+# the budget section's one plain number: what to allow, in all, for the items the catalog
+# doesn't price (they are otherwise left out of the total, which then can't confirm a max)
+ALLOWANCE = "allowance_usd"
 
 
 def output_metrics(lk) -> tuple[str, ...]:
@@ -312,6 +319,7 @@ class Spec:
     fit: FitSpec = field(default_factory=FitSpec)
     budget: dict[str, Target] = field(default_factory=dict)
     outputs: tuple[str, ...] = DEFAULT_OUTPUTS
+    allowance_usd: float | None = None      # ``budget.allowance_usd``: for the unpriced items
 
     @classmethod
     def from_dict(cls, data: Mapping) -> Spec:
@@ -335,6 +343,8 @@ class Spec:
             targets = getattr(self, section)
             if targets:
                 out[section] = {k: t.to_dict() for k, t in targets.items()}
+        if self.allowance_usd is not None:
+            out.setdefault("budget", {})[ALLOWANCE] = self.allowance_usd
         for name in ("materials", "constructions", "fit"):
             sub = _drop_none({f.name: getattr(getattr(self, name), f.name)
                               for f in fields(getattr(self, name))})
@@ -381,8 +391,10 @@ def _build(data: Mapping) -> Spec:
         materials=MaterialsSpec(**(data.get("materials") or {})),
         constructions=ConstructionsSpec(**(data.get("constructions") or {})),
         fit=FitSpec(**fit),
-        budget={k: _target(v) for k, v in (data.get("budget") or {}).items()},
+        budget={k: _target(v) for k, v in (data.get("budget") or {}).items()
+                if k != ALLOWANCE},
         outputs=tuple(data.get("outputs") or DEFAULT_OUTPUTS),
+        allowance_usd=_opt((data.get("budget") or {}).get(ALLOWANCE)),
     )
 
 
@@ -548,18 +560,25 @@ class _Validator:
         table = TARGET_FIELDS[section]
         allowed = [n for n, f in table.items() if kind is None or kind in f.kinds]
         if not isinstance(v, Mapping):
-            self.obj(v, section, allowed)
+            self.obj(v, section, allowed + ([ALLOWANCE] if section == "budget" else []))
             return
         # a mechanism's output measures only some of the output metrics (a line has no
         # dwell, a rocker no straightness): a target on one it lacks is refused here
         has = output_metrics(lk) if lk is not None and lk.output is not None else None
         for name, t in v.items():
+            if section == "budget" and name == ALLOWANCE:
+                self.number(t, f"{section}.{name}", nonneg=True)
+                continue
             if name in allowed:
                 if (has is not None and section == "motion" and name in OUTPUT_TARGETS
                         and name not in has):
+                    others = [n for n in allowed if n not in OUTPUT_TARGETS]
+                    its = (f"its metrics: {', '.join(has)}" if has else
+                           f"an {lk.output.motion} output is measured by its extent alone "
+                           f"(extent_mm on the card), which is no target")
                     self.err(f"{section}.{name}",
-                             f"{lk.key}'s {lk.output.motion} output has no {name}; its metrics: "
-                             f"{', '.join(has)}", has)
+                             f"{lk.key}'s {lk.output.motion} output has no {name}; {its}",
+                             (*has, *others))
                     continue
                 self.target(t, f"{section}.{name}")
             elif name in table:      # the other kind's metric: say so, not "unknown"
@@ -569,7 +588,14 @@ class _Validator:
                 self.err(f"{section}.{name}", f"{name} is a {home} metric: put it under "
                                               f"{home}", allowed)
             else:
-                self.err(f"{section}.{name}", "unknown metric", allowed, nearest(name, allowed))
+                # a misspelling is nearest by letters; a metric of another name (the
+                # transmission angle asked for as a "rotation") is not
+                near = nearest(name, allowed)
+                if near is not None and not name.split("_")[0].startswith(near.split("_")[0][:3]):
+                    near = None
+                self.err(f"{section}.{name}", "unknown metric"
+                         + ("" if section != "budget" else f" (a plain number under budget is "
+                                                           f"{ALLOWANCE} only)"), allowed, near)
 
 
 def _kind(v) -> str:
@@ -603,9 +629,21 @@ def validate(data: Mapping) -> list[SpecError]:
         d = v.obj(top["linkage"], "linkage", ("key", "params"))
         if d is not None:
             if "key" not in d:
-                v.err("linkage.key", "required: a registered linkage", linkage.available())
+                v.err("linkage.key", "required: a registered linkage", linkage.available(kind))
             else:
-                key = v.string(d["key"], "linkage.key", linkage.available())
+                key = d["key"]
+                if (isinstance(key, str) and key not in linkage.available() and kind is not None
+                        and key.strip().lower() not in WILDCARDS):
+                    # unknown: the kind's keys are what is allowed; the nearest key of the
+                    # other kind is still named, with its kind
+                    near = nearest(key, linkage.available())
+                    of = linkage.get(near).kind if near else None
+                    v.err("linkage.key", f"unknown value {key!r}"
+                          + (f"; {near!r} is a {of}, not a {kind}" if of and of != kind else ""),
+                          linkage.available(kind), near)
+                    key = None
+                else:
+                    key = v.string(key, "linkage.key", linkage.available())
                 if key is not None:
                     lk = linkage.get(key)
                     if kind is not None and lk.kind != kind:
@@ -627,12 +665,19 @@ def validate(data: Mapping) -> list[SpecError]:
         mod = legs.get("module")
         if (isinstance(mod, str) and mod not in modules and lk is not None
                 and mod.strip().lower() not in WILDCARDS):
-            legs_of = ", ".join(f"{m} {len(lk.leg_modules[m])} a side "
-                                f"({2 * len(lk.leg_modules[m])} on the robot)" for m in modules)
-            v.err("legs.module", f"unknown value {mod!r}; a module is the legs per side, and "
-                                 f"the robot has two sides: {legs_of}; no linkage has a "
-                                 f"three-leg module (which modules walk is on the linkage's "
-                                 f"card, api.describe)", modules, nearest(mod, modules))
+            if lk.kind == "mechanism":      # one side, no legs: the walker's words don't apply
+                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a mechanism: its one "
+                                     f"module is {', '.join(modules)} (one side, no legs; the leg "
+                                     f"modules double, decker and quad are a walker's)",
+                      modules, nearest(mod, modules))
+            else:
+                legs_of = ", ".join(f"{m} {len(lk.leg_modules[m])} a side "
+                                    f"({2 * len(lk.leg_modules[m])} on the robot)"
+                                    for m in modules)
+                v.err("legs.module", f"unknown value {mod!r}; a module is the legs per side, and "
+                                     f"the robot has two sides: {legs_of}; no linkage has a "
+                                     f"three-leg module (which modules walk is on the linkage's "
+                                     f"card, api.describe)", modules, nearest(mod, modules))
             module = None
         else:
             module = v.string(mod, "legs.module", modules)
@@ -740,6 +785,12 @@ def spec_schema() -> dict:
         s: {"type": "object", "additionalProperties": False,
             "properties": {n: _target_schema(f) for n, f in table.items()}}
         for s, table in TARGET_FIELDS.items()
+    }
+    sections["budget"]["properties"][ALLOWANCE] = {
+        "type": "number", "minimum": 0,
+        "description": "USD allowed, in all, for the items the catalog doesn't price (they are "
+                       "otherwise left out of the total, which then can't confirm a max): the "
+                       "cost row adds it and names them",
     }
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

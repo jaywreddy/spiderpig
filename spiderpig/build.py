@@ -36,6 +36,7 @@ import csv
 import math
 import re
 import sys
+import warnings
 from pathlib import Path
 
 from spiderpig import construction, linkage, servos
@@ -180,7 +181,11 @@ def main(argv=None) -> int:
               f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
 
     step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
-    mech.export_step(step_path)
+    with warnings.catch_warnings():
+        # build123d's "Unknown Compound type, color not set" on a purchased model's
+        # compound: the colours are ours to set, the file is complete
+        warnings.filterwarnings("ignore", message="Unknown Compound type")
+        mech.export_step(step_path)
     mech.export_stl(stl_path)
     print(f"wrote {step_path} and {stl_path}")
 

@@ -58,6 +58,15 @@ miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `h
 | `budget.cost_usd` | both | USD | **hard** | bom (a catalog floor at `quick`) | estimated | purchase total at the preferred offers; unpriced items make it a lower bound, which cannot verify a `max` (the row fails and names them) |
 | `budget.print_g` | both | g | **hard** | bom | measured | filament at 100 % infill |
 | `budget.sheets` | both | sheets | **hard** | layout | measured | sheets the laser parts pack onto |
+| `motion.transmission_angle_deg` | both | deg | soft | check | measured | the least transmission angle over every loop closure, folded about 90° (140° is as poor as 40°; under about 40° a joint binds); the per-closure ranges are on the card's `closures` |
+
+One plain number lives under `budget` beside the targets: **`budget.allowance_usd`**, what
+to allow, in all, for the items the catalog doesn't price (the 3 mm rod, the push-on
+clips, the M2 tapping screws, M3 x 16 / x 18 / x 50: three of those packs are on every
+walker). Without it an unpriced item is left out of the total, which is then a lower
+bound that can refute a `max` but never confirm it, so a hard budget on a walker never
+verifies; with it the cost row reads "$108.76 priced + $15.00 allowed for the 3 unpriced
+items" and verifies against the target.
 
 Semantics are pinned once, in `TARGET_FIELDS`: robot metrics come from `spiderpig/walk.py`;
 per-leg foot-path numbers (stance stride, ripple) appear only on the linkage card
@@ -389,6 +398,19 @@ derive / compare loop on one metric).
 (`mcp.Client(server)`, no subprocess). A cold `resolve → verify("quick")` on the Klann
 single takes ~0.7 s through the client once the engine is imported (~3 s of imports
 before that); `build` of the single as a job ~10 s including the worker's start.
+
+## Export and sim from the command line
+
+`spiderpig export <design> [--formats step stl print dxf bom glb mjcf] [--out DIR]
+[--store PATH] [--force]` is `api.export` on the command line: the stored design's files
+(default: the spec's `outputs`) into its `exports/` in the store or `--out`, with
+`manifest.json`, and its `warnings` on stderr; given the build options instead of an id
+(`--linkage`, `--module`, `--pin`, ... as for `spiderpig build`) it resolves them into the
+store first as `spiderpig view` does. `spiderpig sim <design> [--store PATH]` simulates a
+stored design with its exported MJCF when the store has one (else it builds the model),
+and `spiderpig sim --mjcf FILE.xml` (with `FILE.json` beside it, what `export` and `sim
+--xml` write) runs that model for the design the other options describe; `spiderpig sim
+--json` carries `fell_at_s` and `fell_axis` (when and how it fell) beside `fell`.
 
 ## View (step 4, decision 6)
 

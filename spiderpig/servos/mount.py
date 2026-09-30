@@ -167,10 +167,14 @@ class DriveGroup(Group):
     def interface(self, ctx: Context) -> DriveInterface:
         inputs = linkage.get(ctx.config.linkage).inputs
         if len(inputs) > 1:
+            others = [k for k in linkage.available("mechanism")
+                      if len(linkage.get(k).inputs) == 1]
             raise ConstructionError(
                 f"{ctx.topo.name}: the drive turns one input, the crank at O (one servo); "
                 f"{ctx.config.linkage} has {len(inputs)} ({', '.join(inputs)}), and a drive "
-                f"for {', '.join(inputs[1:])} isn't built")
+                f"for {', '.join(inputs[1:])} isn't built: a limit of v1 (one servo per "
+                f"machine), not of this spec, so no change to it helps; a one-input mechanism "
+                f"builds ({', '.join(others)})")
         s, h = self.spec, self.spec.horn
         t = self.spacer(ctx)
         head = screw("shcs", SIZES.get(h.pattern.thread, "3"))    # an ISO 4762 head, or larger

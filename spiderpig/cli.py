@@ -7,6 +7,7 @@
     spiderpig explain --linkage trotbot_heel               # each stage's verdict
     spiderpig tune --module decker --grid 5                # crank phases
     spiderpig sim --left 40rpm --right 40rpm               # MuJoCo
+    spiderpig export 1a2b3c4d5e6f7a8b --formats glb mjcf   # a stored design's files
     spiderpig report --out build/linkages.json             # every linkage
     spiderpig mcp --store .spiderpig                       # MCP server (stdio)
     spiderpig view 1a2b3c4d5e6f7a8b --open                 # the viewer for a stored design
@@ -30,7 +31,10 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "explain": ("spiderpig.explain", "what each pipeline stage says about a design"),
     "tune": ("spiderpig.tools.tune",
              "search crank phases (and proportions) for a smoother walk"),
-    "sim": ("spiderpig.tools.sim_walk", "simulate the walker in MuJoCo"),
+    "sim": ("spiderpig.tools.sim_walk",
+            "simulate the walker in MuJoCo (a design id, the build options, or --mjcf FILE)"),
+    "export": ("spiderpig.tools.export",
+               "write a design's files: step, stl, print, dxf, bom, glb, mjcf"),
     "report": ("spiderpig.tools.report", "compare every registered linkage"),
     "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
     "view": ("spiderpig.view",

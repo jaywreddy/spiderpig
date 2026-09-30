@@ -725,8 +725,18 @@ def _register_tools(server: MCPServer, state: State) -> None:
         behind every call. The server starts once per MCP server (a child process over
         the store, on a free port) and is reused; a design's first load bakes it
         (seconds) unless ``export`` wrote its ``glb``. ``ok: false`` with code
-        ``viewer_not_built`` when the package carries no built viewer."""
+        ``viewer_not_built`` when the package carries no built viewer, and with the
+        failing stage's failure (as ``check`` / ``plan`` report it) for a design that can't
+        be built, which the page could not bake."""
         d = await _run(_load, state, design)
+        # the page bakes the design (every part built): a design that can't be built is
+        # refused here with the stage that stops it, as `spiderpig view` refuses it
+        for op in (api.check, api.plan):
+            rep = await _run(op, d)
+            if not rep.ok:
+                return {"ok": False, "failures": [f.to_dict() for f in rep.failures],
+                        "design": d.id, "url": "", "server": "",
+                        "mode": "robot" if d.config.robot else "side"}
         srv = await anyio.to_thread.run_sync(state.view_server)
         return {"ok": True, "failures": [], "design": d.id, "url": srv.url(d.id),
                 "server": srv.base, "mode": "robot" if d.config.robot else "side"}

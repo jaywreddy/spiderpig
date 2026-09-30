@@ -912,7 +912,8 @@ def test_a_target_the_output_lacks_is_refused_and_a_mechanism_names_no_lowest_pa
                        "motion": {"dwell_deg": {"min": 90}}})                 # entry 3
     assert err.path == "motion.dwell_deg"
     assert "line output has no dwell_deg" in err.message
-    assert list(err.allowed) == ["stroke_mm", "straightness_mm", "on_line_fraction"]
+    assert list(err.allowed) == ["stroke_mm", "straightness_mm", "on_line_fraction",
+                                 "transmission_angle_deg"]      # round 5: the angle too
     cr = api.check(api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}))
     assert cr.ground_clearance_mm is None       # entry 4
     assert cr.lowest_body_part == ""
@@ -1166,3 +1167,224 @@ def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_term
     br = d.reports["build"]
     assert any("snap prongs" in w for w in br.warnings)      # the printed pins do warn
     assert [r for r in caplog.records if r.name.startswith("spiderpig.construction")] == []
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): the budget's allowance for unpriced
+# items, the transmission angle as a target, a point off the number line, the two-input
+# mechanism's words, the spec messages per kind, a one-sided envelope, the fall's detail
+# ---------------------------------------------------------------------------
+
+
+def test_r5_a_budget_allowance_accepts_the_unpriced_items():
+    from types import SimpleNamespace
+
+    from spiderpig import verify as verify_module
+    from spiderpig.spec import ALLOWANCE
+
+    spec = {"kind": "walker", "linkage": {"key": "klann"}, "legs": {"module": "single"},
+            "budget": {"cost_usd": {"max": 150}, ALLOWANCE: 15}}
+    assert validate(spec) == []                                               # entry 1
+    (e,) = validate({**spec, "budget": {"cost_usd": {"max": 150}, ALLOWANCE: -1}})
+    assert (e.path, e.message) == (f"budget.{ALLOWANCE}", "must be >= 0, got -1")
+    assert ALLOWANCE in spec_schema()["properties"]["budget"]["properties"]
+    d = api.resolve(spec, store=None)
+    assert d.spec.allowance_usd == 15.0
+    assert d.resolved["budget"][ALLOWANCE] == 15.0          # part of the id
+    assert d.spec.to_dict()["budget"][ALLOWANCE] == 15.0
+    plain = api.resolve({**spec, "budget": {"cost_usd": {"max": 150}}}, store=None)
+    assert plain.id != d.id
+    row = SimpleNamespace(key="m2_self_tap_6", name="M2 x 6 mm screw", qty=8, pack_qty=100,
+                          packs=1, vendor="Amazon", cost_usd=None, verified=True,
+                          same_pack_as=None)
+    servo = SimpleNamespace(key="sts3215", name="Feetech STS3215", qty=1, pack_qty=1, packs=1,
+                            vendor="Seeed", cost_usd=100.0, verified=True, same_pack_as=None)
+    bom = SimpleNamespace(purchased=[servo, row], unpriced=[row], cost_usd=100.0)
+    r = verify_module.cost_row(plain, bom)             # no allowance: a lower bound, FAIL
+    assert not r.passed
+    assert r.value == 100.0
+    assert r.detail.startswith("at least; the target can't be verified while items are "
+                               "unpriced (price them in the catalog, or accept them with an "
+                               "allowance: budget.allowance_usd")
+    r = verify_module.cost_row(d, bom)                  # the allowance: added, and it verifies
+    assert r.passed
+    assert r.value == 115.0
+    assert r.detail.startswith("$100.00 priced + $15.00 allowed (budget.allowance_usd) for the "
+                               "1 unpriced item: ")
+    assert "8 x M2 x 6 mm screw (1 pack of 100 at Amazon)" in r.detail
+    over = api.resolve({**spec, "budget": {"cost_usd": {"max": 110}, ALLOWANCE: 15}},
+                       store=None)
+    assert not verify_module.cost_row(over, bom).passed
+
+
+def test_r5_the_transmission_angle_is_a_target_and_a_row():
+    from spiderpig import verify as verify_module
+
+    f = TARGET_FIELDS["motion"]["transmission_angle_deg"]                    # entry 2
+    assert f.kinds == ("walker", "mechanism")
+    assert not f.hard
+    assert f.source == "check"
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "rocker_amplifier"},
+                     "motion": {"swing_deg": {"min": 120},
+                                "transmission_angle_deg": {"min": 40}}}, store=None)
+    rep = api.verify(d, "quick")
+    assert rep.ok
+    row = next(r for r in rep.rows if r.requirement == "motion.transmission_angle_deg")
+    assert row.value == pytest.approx(42.6, abs=0.1)    # K: 43°..136° folded about 90°
+    assert row.passed
+    assert row.tier == "measured"
+    assert not row.hard
+    assert row.detail.startswith("the least over the closures is at K")
+    closures = [s for s in d.reports["check"].steps if s["kind"] == "closure"]
+    angle, at = verify_module.least_transmission_angle(closures)
+    assert (round(angle, 1), at) == (42.6, "K")
+    assert verify_module.least_transmission_angle([]) == (None, "")
+    assert "motion.transmission_angle_deg: 42.62 deg vs >= 40: ok" in api.explain(d)
+    tight = api.resolve({"kind": "mechanism", "linkage": {"key": "rocker_amplifier"},
+                         "motion": {"transmission_angle_deg": {"min": 45, "hard": True}}},
+                        store=None)
+    assert not api.verify(tight, "quick").ok
+    adv = api.advise(tight)                 # a missed target check can read: said, no lever
+    assert adv.stage == "target"
+    assert adv.notes[0].startswith("motion.transmission_angle_deg 42.6")
+    walker = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                          "legs": {"module": "single"}}, store=None)
+    row = next(r for r in api.verify(walker, "quick").rows
+               if r.requirement == "motion.transmission_angle_deg")
+    assert row.target is None
+    assert row.value == pytest.approx(24.7, abs=0.1)
+    # a misspelling is nearest; a metric of another name (a "rotation") is not offered
+    (e,) = validate({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                     "motion": {"transmision_angle_deg": {"min": 40}}})
+    assert (e.path, e.message, e.nearest) == ("motion.transmision_angle_deg", "unknown metric",
+                                              "transmission_angle_deg")
+    (e,) = validate({"kind": "walker", "linkage": {"key": "klann"},
+                     "motion": {"obstacle_mm": {"min": 25}}})
+    assert e.nearest is None
+    assert "transmission_angle_deg" in e.allowed
+
+
+def test_r5_a_point_off_the_number_line_fails_the_program_stage_and_names_the_root():
+    from spiderpig import linkage as linkage_module
+
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "crank_rocker",
+                                                       "params": {"crank": 1.6, "rocker": 1.2}}},
+                    store=None)
+    cr = api.check(d)                                                          # entry 3
+    assert not cr.ok
+    (f,) = cr.failures
+    assert (f.stage, f.code) == ("program", "point_undefined")
+    assert f.message.startswith("crank_rocker: G (fixed) can't be placed at these parameters: "
+                                "its coordinates are not a number (sqrt(-crank**2 + rocker**2) "
+                                "with -crank**2 + rocker**2 = -1.12 at these parameters")
+    assert f.culprits == [{"joint": "G", "refs": []}]
+    assert f.notes
+    assert "square root" in f.notes[0]
+    step = next(s for s in cr.steps if s["point"] == "G")
+    assert step["invalid"]
+    assert step["fails_deg"] == (0.0, 360.0)
+    assert step["fail_fraction"] == 1.0
+    assert cr.output is None
+    assert cr.foot_path is None
+    with pytest.raises(linkage_module.AssemblyError, match="not a number"):
+        d.lk.assert_assembles(dict(d.config.proportions))
+    assert api.advise(d).stage == "program"
+    assert "STOP: crank_rocker: G (fixed) can't be placed" in api.explain(d)
+    assert not api.verify(d, "quick").ok
+    ok = api.resolve({"kind": "mechanism", "linkage": {"key": "crank_rocker",
+                                                        "params": {"rocker": 1.2}}}, store=None)
+    assert api.check(ok).ok                          # the same point, a number again
+
+
+def test_r5_a_two_input_mechanism_is_told_at_resolve_and_by_advise():
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "five_bar"}}, store=None)
+    (w,) = d.warnings                                                          # entry 4
+    assert w.startswith("five_bar has 2 inputs (t, t2) and v1 builds one drive")
+    assert "second_input_no_drive" in w
+    assert "a limit of v1, not of the spec" in w
+    assert "the one-input mechanisms are hoecken, " in w
+    assert "five_bar" not in w.split("are ")[1]
+    cr = api.check(d)
+    (f,) = cr.failures
+    assert (f.stage, f.code) == ("drive", "second_input_no_drive")
+    assert "a limit of v1 (one servo per machine), not of this spec" in f.message
+    assert "a one-input mechanism builds (hoecken, " in f.message
+    adv = api.advise(d)
+    assert adv.stage == "drive"
+    assert adv.recommendations == []
+    assert adv.notes[-1].startswith("no fix: five_bar has 2 inputs")
+    assert api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store=None
+                       ).warnings == []
+
+
+def test_r5_the_spec_messages_fit_the_kind():
+    from spiderpig import linkage as linkage_module
+
+    (e,) = validate({"kind": "mechanism", "linkage": {"key": "five_bar"},
+                     "motion": {"stroke_mm": {"min": 50}}})                     # entry 8
+    assert e.message == ("five_bar's xy output has no stroke_mm; an xy output is measured by "
+                         "its extent alone (extent_mm on the card), which is no target")
+    assert e.allowed == ("transmission_angle_deg",)
+    (e,) = validate({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                     "legs": {"module": "quad"}})                               # entry 9
+    assert e.message == ("unknown value 'quad'; hoecken is a mechanism: its one module is single "
+                         "(one side, no legs; the leg modules double, decker and quad are a "
+                         "walker's)")
+    assert e.allowed == ("single",)
+    (e,) = validate({"kind": "walker", "linkage": {"key": "klan"}})            # entry 10
+    assert e.message == "unknown value 'klan'"
+    assert e.nearest == "klann"
+    assert set(e.allowed) == set(linkage_module.available("walker"))
+    (e,) = validate({"kind": "walker", "linkage": {"key": "hoeken"}})
+    assert e.message == "unknown value 'hoeken'; 'hoecken' is a mechanism, not a walker"
+    assert e.nearest == "hoecken"
+    assert "hoecken" not in e.allowed
+    errs = validate({"linkage": {"key": "klan"}})            # no kind: every key is allowed
+    assert [x.path for x in errs] == ["kind", "linkage.key"]
+    assert set(errs[1].allowed) == set(linkage_module.available())
+
+
+def test_r5_a_one_sided_envelope_row_says_the_stack_not_the_stacks():
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store=None)
+    row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.envelope_z_mm")
+    assert row.detail.startswith("the stack + the servo on the inner plate + ")    # entry 12
+    robot = api.resolve(KLANN_QUAD, store=None)
+    row = next(r for r in api.verify(robot, "quick").rows
+               if r.requirement == "size.envelope_z_mm")
+    assert row.detail.startswith("the two stacks + the chassis + ")
+
+
+def test_r5_the_fall_detail_says_when_how_and_what_the_model_saw():
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from spiderpig import verify as verify_module
+    from spiderpig.sim.run import _fall
+
+    t = np.linspace(0.0, 4.0, 41)
+    tilt = np.where(t >= 0.9, math.radians(92.0), 0.05)
+    attitude = np.zeros((41, 3))
+    attitude[:, 2] = np.where(t >= 0.9, math.radians(92.0), 0.0)        # rolling
+    r = SimpleNamespace(t=t, tilt=tilt, attitude=attitude)
+    fall = _fall(r, 0.5)                                                       # entry 5
+    assert fall == {"fell_at_s": pytest.approx(0.9), "fell_axis": "rolling"}
+    assert _fall(SimpleNamespace(t=t, tilt=np.zeros(41), attitude=attitude), 0.5) == {
+        "fell_at_s": None, "fell_axis": None}
+    m = {"fell": True, "max_tilt": 92.2, **fall}
+    walk = SimpleNamespace(ok=True, metrics={"tipping_fraction": 0.0})
+    design = SimpleNamespace(reports={"walk": walk})
+    text = verify_module.fall_detail(m, design)
+    assert text.startswith("max tilt 92.2 deg; fell over rolling at 0.9 s into the 4 s run")
+    assert "the quasi-static model's tipping fraction is 0.00 (it saw no tipping" in text
+    assert verify_module.fall_detail({"fell": False, "max_tilt": 4.2}) == "max tilt 4.2 deg"
+
+
+def test_r5_the_guide_names_the_allowance_the_angle_and_the_second_input():
+    from spiderpig.mcp import render_guide
+
+    guide = render_guide()
+    assert "`budget.allowance_usd`" in guide                                   # entry 11
+    assert "have vendor links but no price" not in guide
+    assert "transmission_angle_deg" in guide
+    assert "second_input_no_drive" in guide

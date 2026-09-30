@@ -667,3 +667,25 @@ def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(ser
     assert "a bottle of CA glue" in guide
     assert "`sim.speed_mm_s`" in guide                                        # entry 7
     assert "20 mm" in guide                                                   # entry 14
+
+
+# ---------------------------------------------------------------------------
+# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): a two-input mechanism over MCP, and
+# ``view`` on a design the page could not bake
+# ---------------------------------------------------------------------------
+
+
+def test_r5_view_refuses_a_design_that_cannot_be_built_and_resolve_warns_of_a_second_input(
+        server):
+    r = call(server, "resolve", spec={"kind": "mechanism", "linkage": {"key": "five_bar"}})
+    assert r["ok"]
+    (w,) = r["warnings"]                                                       # entry 4
+    assert w.startswith("five_bar has 2 inputs (t, t2) and v1 builds one drive")
+    rec = call(server, "recommend", design=r["design"])
+    assert rec["stage"] == "drive"
+    assert rec["notes"][-1].startswith("no fix: five_bar")
+    v = call(server, "view", design=r["design"])
+    assert v["ok"] is False
+    assert v["url"] == ""
+    assert v["failures"][0]["code"] == "second_input_no_drive"
+    _no_solids(v)

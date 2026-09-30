@@ -173,6 +173,21 @@ def _push(rows: list[Row], row: Row | None) -> None:
         rows.append(row)
 
 
+def least_transmission_angle(closures: list[dict]) -> tuple[float | None, str]:
+    """``(angle, joint)``: the least transmission angle over the closures, folded about 90°
+    (an angle of 140° is as poor as one of 40°: ``min(lo, 180 - hi)`` of each closure's
+    range), and the joint it is at; ``(None, "")`` when no closure has a range."""
+    best: tuple[float, str] | None = None
+    for s in closures:
+        rng = s.get("transmission_deg")
+        if not rng or rng[0] is None:
+            continue
+        folded = min(float(rng[0]), 180.0 - float(rng[1]))
+        if best is None or folded < best[0]:
+            best = (folded, str(s.get("point", "")))
+    return (None, "") if best is None else best
+
+
 def _stage_row(name: str, source: str, failures: list[Failure], value: str, tier: str = "proven"
                ) -> Row:
     if failures:
@@ -210,6 +225,11 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
         rows.append(Row("program.loops_close", "check", min(margins) if margins else None,
                         ">= 0", not prog, "proven", True,
                         f"{len(closures)} closures; least margin at {worst['point']}", unit="mm"))
+        angle, at = least_transmission_angle(closures)
+        if angle is not None:
+            _push(rows, target_row(design, target_field("motion", "transmission_angle_deg"),
+                                   angle, "check", detail=f"the least over the closures is at "
+                                   f"{at}, folded about 90°; the ranges are on the card"))
     if design.kind == "mechanism" and cr.output is not None:
         rows.append(Row("output.promises", "check", cr.output["broken"] or "hold", None,
                         not cr.output["broken"], "proven"))
@@ -440,6 +460,15 @@ def cost_row(design: Design, bom) -> Row | None:
               + (f"; {len(unpriced)} unpriced, so the total is a lower bound: "
                  f"{'; '.join(_unpriced_item(r) for r in unpriced)}" if unpriced else "")
               + f"; {len(unverified)} unverified links")
+    allowance = design.spec.allowance_usd
+    if unpriced and allowance is not None:
+        # the spec accepts the unpriced items at this much in all: the row is the priced
+        # total plus the allowance, no longer a lower bound
+        n = len(unpriced)
+        return target_row(design, f, round(bom.cost_usd + allowance, 2), "bom",
+                          detail=f"${bom.cost_usd:.2f} priced + ${allowance:.2f} allowed "
+                                 f"(budget.allowance_usd) for the {n} unpriced item"
+                                 f"{'s' if n != 1 else ''}: {detail}")
     row = target_row(design, f, bom.cost_usd, "bom", detail=detail)
     if row is None or not unpriced:
         return row
@@ -449,7 +478,9 @@ def cost_row(design: Design, bom) -> Row | None:
         if row.hard:
             row.passed = False
             row.detail = ("at least; the target can't be verified while items are unpriced "
-                          "(price them in the catalog, or accept them by hand): " + row.detail)
+                          "(price them in the catalog, or accept them with an allowance: "
+                          "budget.allowance_usd, USD for all of them, is added to the total "
+                          "and the row then verifies): " + row.detail)
         else:
             row.detail = "at least (the verdict is on the priced part): " + row.detail
     return row
@@ -545,13 +576,15 @@ def _envelope_estimate(design: Design) -> list[Row]:
     z_mid = mid_plane(side) + outside
     z = 2 * z_mid if cfg.robot else z_mid
     rows = []
+    across = (f"the two stacks + the chassis + {outside:g} mm of axle heads outside each "
+              f"outer plate" if cfg.robot else
+              f"the stack + the servo on the inner plate + {outside:g} mm of axle heads "
+              f"outside the outer plate")
     for axis, v in zip("xyz", (x, y, z), strict=True):
         _push(rows, target_row(
             design, target_field("size", f"envelope_{axis}_mm"), v, "sweep", "estimated",
             "the joints' sweep over the cycle + the plates; a build measures one crank angle"
-            if axis != "z" else
-            f"the stacks + the chassis + {outside:g} mm of axle heads outside each outer "
-            "plate; measured after a build"))
+            if axis != "z" else f"{across}; measured after a build"))
     return rows
 
 
@@ -579,12 +612,34 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
         replace(speed, requirement="sim.speed_mm_s"),
         replace(stride, requirement="sim.stride_mm"),
         Row("sim.stays_up", "sim", not m["fell"], None, not m["fell"], "measured", True,
-            f"max tilt {m['max_tilt']:.1f} deg"),
+            fall_detail(m, design)),
         Row("sim.torque", "sim", m["torque_peak"], f"<= {m['torque_limit']:g}",
             not m["saturates"], "measured", False,
             f"peak {m['torque_peak']:.3f} N·m of {m['torque_limit']:g} stall", unit="N·m"),
     ]
     return rows
+
+
+def fall_detail(m: dict, design: Design | None = None) -> str:
+    """The ``sim.stays_up`` row's detail: the max tilt, and for a fall when it happened
+    (from the drives' start), about which axis, and how far the quasi-static walk model
+    was from predicting it (its tipping fraction), so the reader knows whether the fall is
+    a dynamic effect the model can't see or a body the sim landed badly."""
+    out = f"max tilt {m['max_tilt']:.1f} deg"
+    if not m.get("fell"):
+        return out
+    at, axis = m.get("fell_at_s"), m.get("fell_axis")
+    if at is not None:
+        out += (f"; fell over {axis + ' ' if axis else ''}at {at:.1f} s into the "
+                f"{SIM_SECONDS:g} s run (the drives run from the start)")
+    wr = design.reports.get("walk") if design is not None else None
+    tip = (wr.metrics or {}).get("tipping_fraction") if wr is not None and wr.ok else None
+    if tip is not None:
+        out += (f"; the quasi-static model's tipping fraction is {tip:.2f}"
+                + (" (it saw no tipping: the fall is dynamic, or the sim's contacts; a lower "
+                   "stack, a slower drive or other phases are the levers)" if tip < 0.05
+                   else " (it predicted the risk)"))
+    return out
 
 
 def _done(design: Design, rep: VerifyReport, t0: float) -> VerifyReport:

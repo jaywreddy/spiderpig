@@ -67,6 +67,7 @@ from spiderpig.hardware.catalog import sheet_name, sheet_size, sheet_thickness
 from spiderpig.hardware.mass import filament_density, material_of, part_props
 from spiderpig.layout import DEFAULT_KERF, pack, save_sheets
 from spiderpig.spec import (
+    ALLOWANCE,
     FIT_FIELDS,
     SECTIONS,
     Spec,
@@ -294,6 +295,8 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     if lk.kind == "walker" and sides == 1:
         warnings.append("sides = 1 builds one side (no chassis); the walk metrics still "
                         "model the two-sided robot")
+    if len(lk.inputs) > 1:
+        warnings.append(second_input_note(lk))
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
                         f"{walk_model.DEFAULT_RPM:g} rpm")
@@ -312,6 +315,18 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
 
 
 THICKNESS_TOLERANCE = 0.12     # a measured thickness this far from the sheet's nominal warns
+
+
+def second_input_note(lk) -> str:
+    """What a two-input mechanism gets told, at ``resolve`` and at the ``drive`` stage: v1
+    builds one drive, so it can be resolved, checked for its program and its output, and
+    drawn, but not planned or built; which one-input mechanisms can."""
+    others = [k for k in linkage.available("mechanism")
+              if len(linkage.get(k).inputs) == 1]
+    return (f"{lk.key} has {len(lk.inputs)} inputs ({', '.join(lk.inputs)}) and v1 builds one "
+            f"drive: check reads its program and its output, but plan, build, verify and "
+            f"export stop at the drive stage (second_input_no_drive), a limit of v1, not of "
+            f"the spec; the one-input mechanisms are {', '.join(others)}")
 
 
 def _attach_store(design: Design, store: Store | None) -> None:
@@ -514,6 +529,8 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
     targets = {s: {} for s in SECTIONS}
     for f, t in spec.targets():
         targets[f.section][f.name] = t.to_dict(hard=effective_hard(t, f))
+    if spec.allowance_usd is not None:      # the budget's one plain number
+        targets["budget"][ALLOWANCE] = spec.allowance_usd
     return {
         "version": spec.version, "kind": spec.kind,
         "linkage": {"key": config.linkage, "params": design["proportions"]},
@@ -690,7 +707,7 @@ def _step_dict(s) -> dict:
     return {"point": s.point, "kind": s.kind, "refs": list(s.refs), "radii_mm": s.radii,
             "margin_mm": s.margin_mm, "worst_deg": s.worst_deg, "fails_deg": s.fails_deg,
             "transmission_deg": s.angle_deg, "fail_fraction": s.fail_fraction,
-            "toggles": s.toggles, "text": s.describe()}
+            "toggles": s.toggles, "invalid": s.invalid, "text": s.describe()}
 
 
 def _output_dict(c) -> dict:
@@ -777,6 +794,14 @@ def check(design: Design, force: bool = False) -> CheckReport:
     rep.steps = [_step_dict(s) for s in steps]
     bad = next((s for s in steps if s.fails_deg is not None), None)
     if bad is not None:
+        if bad.invalid:      # a point that isn't a number: the parameters, not a loop
+            rep.failures.append(Failure(
+                "program", "point_undefined", f"{lk.key}: {bad.describe()}",
+                culprits=[{"joint": bad.point, "refs": list(bad.refs)}],
+                notes=["the parameters put a length under a square root below zero (or divided "
+                       "by zero): change them so the named expression is positive; the card's "
+                       "defaults are one such set"]))
+            return _finish(design, "check", rep, t0)
         rep.failures.append(Failure(
             "program", "loop_cannot_close", f"{lk.key}: {bad.describe()}",
             culprits=[{"joint": bad.point, "refs": list(bad.refs)}],
@@ -1061,6 +1086,11 @@ def cheap_measures(design: Design) -> dict[str, float]:
     out: dict[str, float] = {}
     cr, pr = design.reports.get("check"), design.reports.get("plan")
     if cr is not None and cr.ok:
+        from spiderpig.verify import least_transmission_angle
+
+        angle, _ = least_transmission_angle([s for s in cr.steps if s["kind"] == "closure"])
+        if angle is not None:
+            out["motion.transmission_angle_deg"] = angle
         if cr.output:
             out.update({f"motion.{k}": cr.output[k] for k in CHEAP_OUTPUT
                         if cr.output.get(k) is not None})
@@ -1130,6 +1160,8 @@ def advise(design: Design) -> AdviceReport:
         rep.stage = f.stage if f is not None else None
         rep.recommendations = list(f.recommendations) if f is not None else []
         rep.notes = list(f.notes) if f is not None else []
+        if f is not None and f.code == "second_input_no_drive":
+            rep.notes.append("no fix: " + second_input_note(design.lk))
         return done(rep)
     misses = missed_targets(design)
     if not misses:
@@ -1602,7 +1634,8 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     return _finish(design, "export", rep, t0)
 
 
-EXPORT_LOGGERS = (*WARNING_LOGGERS, "bake_gltf", "spiderpig.bake", "spiderpig.layout")
+EXPORT_LOGGERS = (*WARNING_LOGGERS, "bake_gltf", "spiderpig.bake", "spiderpig.layout",
+                  "spiderpig.export")
 
 
 def _export_files(design: Design, formats: list[str], out: Path, rep: ExportReport
@@ -1663,14 +1696,21 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         bake_gltf(out / f"{name}.glb", cfg, profile=False)
         files.append(out / f"{name}.glb")
     if "mjcf" in formats:
-        import json
+        if design.kind != "walker":
+            # the MJCF is the walking robot's (two sides on a floor, the drives walking
+            # it); a mechanism has nothing to walk, so the format is skipped, not an error
+            logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
+                "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
+                "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
+        else:
+            import json
 
-        from spiderpig.sim.mjcf import build_mjcf
+            from spiderpig.sim.mjcf import build_mjcf
 
-        xml, meta = build_mjcf(cfg)
-        (out / f"{name}.xml").write_text(xml)
-        (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
-        files += [out / f"{name}.xml", out / f"{name}.json"]
+            xml, meta = build_mjcf(cfg)
+            (out / f"{name}.xml").write_text(xml)
+            (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
+            files += [out / f"{name}.xml", out / f"{name}.json"]
     return files, bom_summary
 
 
