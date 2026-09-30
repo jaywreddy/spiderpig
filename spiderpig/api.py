@@ -19,14 +19,24 @@ only for programming errors and an invalid spec (:class:`SpecErrors` from
 Every operation is memoised on the handle: :func:`plan` runs :func:`check`
 first if it hasn't run, :func:`build` runs :func:`plan`; a report already on
 the handle is returned as is (``force=True`` recomputes).
+
+With a store (:mod:`spiderpig.store`; the project's by default, ``store=None``
+for memory only), each operation first reads its stage from the design's
+folder when the file is valid for the running engine version, else computes
+and writes it: a plan is re-made and verified on reload, a build's parts come
+back from their STEP files, and every operation lands in the design's log.
+:func:`load` opens a recorded design, :func:`derive` resolves a patched spec
+with its parent recorded, :func:`compare` diffs two designs' specs and
+reports, :func:`list_designs` and :func:`gc` manage the folder.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 import sys
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 
 import numpy as np
@@ -35,18 +45,28 @@ import linkage
 import servos
 import walk as walk_model
 from config import BuildConfig, ParamError
-from construction.base import Build, ConstructionError
+from construction.base import Build, ConstructionError, Params
 from construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
+from construction.crank import CrankRoute, Run
 from construction.envelope import claimed_solid
-from fabricate import design_side, fabricate, ground_clearance, side_problem, static_stage
+from construction.robot import FrameTies, assemble_robot
+from fabricate import (
+    SideDesign,
+    design_side,
+    fabricate_side,
+    ground_clearance,
+    side_problem,
+    static_stage,
+)
 from fabricate import template_for as _template_for
 from hardware.bom import BomLine, bom_from_mechanism, group_made
 from hardware.catalog import sheet_name, sheet_size
 from hardware.mass import filament_density, material_of, part_props
 from layout import DEFAULT_KERF, save_sheets
-from spiderpig.design import ROOT, Design, Part, design_id, engine_version, jsonable
-from spiderpig.failure import Failure, Recommendation
+from spiderpig.design import ROOT, Design, Part, design_id, engine_version, jsonable, spec_hash
+from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
 from spiderpig.spec import (
+    FIT_FIELDS,
     SECTIONS,
     Spec,
     SpecError,
@@ -56,15 +76,41 @@ from spiderpig.spec import (
     nearest,
     validate,
 )
-from stack import ClearanceError, PlanError
+from spiderpig.store import PROJECT, Store, diff_json, report_doc
+from stack import ClearanceError, PlanError, verify_plan
+
+log = logging.getLogger("spiderpig")
 
 # ---------------------------------------------------------------------------
 # Reports
 # ---------------------------------------------------------------------------
 
 
+class Report:
+    """A stage report: a dataclass whose JSON form (:func:`spiderpig.design.jsonable`) a
+    store writes and :meth:`from_dict` reads back (unknown keys ignored)."""
+
+    @classmethod
+    def from_dict(cls, d):
+        kw = {}
+        for f in fields(cls):
+            if f.name not in d:
+                continue
+            v = d[f.name]
+            if f.name == "failures":
+                v = [Failure.from_dict(x) for x in v]
+            elif f.name == "rows":
+                from spiderpig.verify import Row
+
+                v = [Row.from_dict(x) for x in v]
+            elif f.name == "envelope_mm" and v is not None:
+                v = tuple(v)
+            kw[f.name] = v
+        return cls(**kw)
+
+
 @dataclass
-class CheckReport:
+class CheckReport(Report):
     """The stages before any layer: the program's loop closures (``steps``), a mechanism's
     ``output`` check, one leg's ``foot_path`` numbers (a walker), the ``drive``, the static
     ``clearances`` (links that can never share a keep-out's layers), the crank's
@@ -84,11 +130,13 @@ class CheckReport:
 
 
 @dataclass
-class PlanReport:
+class PlanReport(Report):
     """The layer plan of one side: every link's layer, the stack (``n_layers`` of
     ``pitch_mm``: ``height_mm``), the crank's ``route`` (runs along its posts, whether it
     keeps its bottom bearing), whether it is proven the thinnest (``optimal``, ``proof``),
-    and the plan's table (``table``). A failure carries the blockers and recommendations."""
+    and the plan's table (``table``). A failure carries the blockers and recommendations.
+    ``reused`` names the stored plan this one was re-made and verified from (``"store"``:
+    the design's own; another design's id: the same spec on another engine version)."""
 
     ok: bool = True
     failures: list[Failure] = field(default_factory=list)
@@ -103,11 +151,12 @@ class PlanReport:
     cost: int | None = None
     ground_clearance_mm: float | None = None
     table: str = ""
+    reused: str | None = None
     seconds: float = 0.0
 
 
 @dataclass
-class WalkReport:
+class WalkReport(Report):
     """The quasi-static walk model's metrics (:func:`walk.api_payload`) with each motion
     target's verdict (``rows``); ``skipped`` for a mechanism. Feet sit at their planned
     layers when the side is planned (``feet_z_planned``), the mass is the model's nominal
@@ -126,7 +175,7 @@ class WalkReport:
 
 
 @dataclass
-class BuildReport:
+class BuildReport(Report):
     """Every part built at crank angle ``t`` (the manifest: ``parts``), how many of each
     fabrication, the total mass, the envelope (x, y, z extents) and the mechanism's meta."""
 
@@ -143,7 +192,7 @@ class BuildReport:
 
 
 @dataclass
-class RecheckReport:
+class RecheckReport(Report):
     """The contract and clash checks over the parts as they now are: which parts were
     ``edited``, which the contract ``checked`` (inside their group's claims), the
     violations, the pairwise ``clashes`` and the ``bad_solids``."""
@@ -159,13 +208,14 @@ class RecheckReport:
 
 
 @dataclass
-class ExportReport:
+class ExportReport(Report):
     """What :func:`export` wrote: the ``files`` and the ``manifest`` (also written as
     ``manifest.json``)."""
 
     ok: bool = True
     failures: list[Failure] = field(default_factory=list)
     out_dir: str = ""
+    formats: list[str] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     manifest: dict = field(default_factory=dict)
     seconds: float = 0.0
@@ -176,11 +226,18 @@ class ExportReport:
 # ---------------------------------------------------------------------------
 
 
-def resolve(spec: Spec | dict) -> Design:
+def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
+            derived_from: str | None = None, patch: dict | None = None) -> Design:
     """Validate ``spec`` (a :class:`Spec` or its document), infer what it leaves out, build
     its :class:`config.BuildConfig` and return the :class:`Design` handle. The inferred
     values are in ``design.resolved`` (the complete spec the id is computed from);
-    :class:`SpecErrors` lists everything wrong with an invalid spec."""
+    :class:`SpecErrors` lists everything wrong with an invalid spec.
+
+    ``store``: where the design and every stage's result are kept: the project store
+    by default (``$SPIDERPIG_STORE``, else ``./.spiderpig``, created now), a path, a
+    :class:`spiderpig.store.Store`, or ``None`` to keep everything in memory. A design
+    already recorded there keeps its record (``created_at``, ``derived_from``,
+    ``patch``); a new one records ``derived_from`` and ``patch`` (see :func:`derive`)."""
     if not isinstance(spec, Spec):
         spec = Spec.from_dict(spec)
     else:
@@ -204,6 +261,15 @@ def resolve(spec: Spec | dict) -> Design:
         )
     except ParamError as e:     # the validator should have said it first
         raise SpecErrors([SpecError("", str(e))]) from None
+    resolved = _resolved(spec, config, module, sides)
+    engine = engine_version()
+    design = Design(design_id(resolved, engine), spec, resolved, config, engine,
+                    _warnings(lk, config, sides), derived_from=derived_from, patch=patch)
+    _attach_store(design, Store.of(store))
+    return design
+
+
+def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     warnings: list[str] = []
     if lk.kind == "walker" and sides == 1:
         warnings.append("sides = 1 builds one side (no chassis); the walk metrics still "
@@ -211,9 +277,169 @@ def resolve(spec: Spec | dict) -> Design:
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
                         f"{walk_model.DEFAULT_RPM:g} rpm")
-    resolved = _resolved(spec, config, module, sides)
+    return warnings
+
+
+def _attach_store(design: Design, store: Store | None) -> None:
+    """Record the design in ``store`` (the first record wins) and hang the store on the
+    handle, so every operation reads and writes its stage there."""
+    design.store = store
+    if store is None:
+        return
+    rec = store.read_design(design.id)
+    if rec is None:
+        store.write_design(design)
+    else:
+        design.created_at = rec.get("created_at") or design.created_at
+        design.derived_from, design.patch = rec.get("derived_from"), rec.get("patch")
+
+
+def _config_from_resolved(resolved: dict) -> BuildConfig:
+    """The config of a recorded design, from its resolved spec alone (every value written
+    in, so a default that moved since never changes a stored design)."""
+    lk = linkage.get(resolved["linkage"]["key"])
+    legs, mat, cons, fit = (resolved[k] for k in ("legs", "materials", "constructions", "fit"))
+    return BuildConfig(
+        linkage=lk.key, module=legs["module"], robot=legs["sides"] == 2,
+        phases=tuple(math.radians(p) for p in legs["phases_deg"]),
+        proportions=tuple(sorted(resolved["linkage"]["params"].items())),
+        sheet=mat["sheet"], thickness=mat.get("thickness_mm"), servo=mat["servo"],
+        pillar=cons["pillar"], pin=cons["pin"], crank=cons["crank"],
+        params=Params(**{k: fit[k] for k in FIT_FIELDS if k in fit}),
+    )
+
+
+# ---------------------------------------------------------------------------
+# The store: load, list, gc, compare, derive
+# ---------------------------------------------------------------------------
+
+
+def load(id: str, store: Store | str | Path | None = PROJECT) -> Design:
+    """The handle of a recorded design: its spec and resolved values from the store (the
+    id must hash to them), its config rebuilt from the resolved spec. Its stage reports
+    load as the operations ask for them; ``design.warnings`` says when the design was
+    recorded under another engine version (its stored plan is then re-verified, the other
+    stages recomputed). ``KeyError`` when the store has no such design."""
+    store = Store.of(store)
+    if store is None:
+        raise ValueError("load(id) needs a store")
+    rec = store.read_design(id)
+    if rec is None:
+        raise KeyError(f"no design {id!r} in {store.root}")
+    store.check_id(id, rec)
+    spec_doc = store.read_spec(id)
+    if spec_doc is None:
+        raise KeyError(f"design {id!r} in {store.root} has no spec.json")
+    resolved = rec["resolved"]
+    spec = Spec.from_dict(spec_doc)
+    config = _config_from_resolved(resolved)
     engine = engine_version()
-    return Design(design_id(resolved, engine), spec, resolved, config, engine, warnings)
+    design = Design(id, spec, resolved, config, engine, list(rec.get("warnings", [])),
+                    derived_from=rec.get("derived_from"), patch=rec.get("patch"),
+                    created_at=rec.get("created_at") or "")
+    if rec.get("engine_version") != engine:
+        design.warnings.append(f"recorded under engine {rec.get('engine_version')}, now "
+                               f"{engine}: the stored plan is re-verified before use, the other "
+                               "stages recomputed")
+    design.store = store
+    return design
+
+
+def list_designs(store: Store | str | Path | None = PROJECT) -> list[dict]:
+    """Every design in the store, oldest first: id, kind, linkage, module, sides, engine
+    version, when it was recorded and last used, what it derives from, the stages it
+    holds (each with ``ok``) and its latest verify verdict."""
+    store = Store.of(store)
+    return [] if store is None else store.list_designs()
+
+
+def gc(keep=None, older_than=None, store: Store | str | Path | None = PROJECT) -> list[str]:
+    """Remove designs from the store (:meth:`spiderpig.store.Store.gc`): those not in
+    ``keep`` (ids or handles) and/or last used before ``older_than`` (a ``datetime``, a
+    ``timedelta`` or seconds). Returns the ids removed."""
+    store = Store.of(store)
+    if store is None:
+        return []
+    if keep is not None:
+        keep = [k.id if isinstance(k, Design) else k for k in keep]
+    return store.gc(keep, older_than)
+
+
+def derive(design: Design, patch: dict, store=PROJECT) -> Design:
+    """Resolve ``design``'s spec with ``patch`` merged in (:func:`apply_patch`; what
+    :func:`recommend` hands out), recording the parent and the patch on the child
+    (``derived_from``, ``patch``). The child lives in the parent's store unless ``store``
+    says otherwise."""
+    if store == PROJECT:
+        store = design.store
+    return resolve(apply_patch(design.spec.to_dict(), patch), store,
+                   derived_from=design.id, patch=patch)
+
+
+def compare(a: Design | str, b: Design | str, store: Store | str | Path | None = PROJECT
+            ) -> dict:
+    """Two designs side by side (handles or ids in ``store``): the merge patch from
+    ``a``'s spec to ``b``'s (and between their resolved specs), whether one derives from
+    the other, and every stage report both hold with each differing value
+    (``{"stage": {"path": {"a": .., "b": ..}}}``, :func:`spiderpig.store.diff_json`)."""
+    st = Store.of(store)
+    ia, sa, ra, docs_a = _docs_of(a, st)
+    ib, sb, rb, docs_b = _docs_of(b, st)
+    ea, eb = _engine_of(a, st), _engine_of(b, st)
+    derived = None
+    if _derived_from(b, st) == ia:
+        derived = f"{ib} derives from {ia}"
+    elif _derived_from(a, st) == ib:
+        derived = f"{ia} derives from {ib}"
+    return {
+        "a": ia, "b": ib,
+        "spec_patch": merge_patch(sa, sb), "resolved_patch": merge_patch(ra, rb),
+        "engine_version": None if ea == eb else {"a": ea, "b": eb},
+        "derived": derived,
+        "reports": {s: diff_json(docs_a[s], docs_b[s]) for s in sorted(set(docs_a) & set(docs_b))},
+        "only_in": {"a": sorted(set(docs_a) - set(docs_b)), "b": sorted(set(docs_b) - set(docs_a))},
+    }
+
+
+def _docs_of(x: Design | str, store: Store | None):
+    """``(id, spec doc, resolved doc, {stage: report doc})`` of a handle (its reports over
+    the store's) or of a recorded id."""
+    if isinstance(x, Design):
+        st = x.store or store
+        docs = {} if st is None else _store_docs(st, x.id)
+        docs.update({k: report_doc(v) for k, v in x.reports.items()})
+        return x.id, x.spec.to_dict(), x.resolved, docs
+    if store is None:
+        raise ValueError(f"compare({x!r}) needs a store to read the design from")
+    rec = store.read_design(x)
+    if rec is None:
+        raise KeyError(f"no design {x!r} in {store.root}")
+    return x, store.read_spec(x) or {}, rec["resolved"], _store_docs(store, x)
+
+
+def _store_docs(store: Store, id: str) -> dict[str, dict]:
+    from spiderpig.store import STAGES
+
+    out = {}
+    for s in STAGES:
+        doc = store.read_report(id, s)
+        if doc is not None:
+            out[s] = doc
+    return out
+
+
+def _engine_of(x: Design | str, store: Store | None) -> str | None:
+    if isinstance(x, Design):
+        return x.engine_version
+    rec = store.read_design(x) if store is not None else None
+    return None if rec is None else rec.get("engine_version")
+
+
+def _derived_from(x: Design | str, store: Store | None) -> str | None:
+    if isinstance(x, Design):
+        return x.derived_from
+    rec = store.read_design(x) if store is not None else None
+    return None if rec is None else rec.get("derived_from")
 
 
 def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
@@ -338,12 +564,60 @@ def _output_dict(c) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _finish(design: Design, stage: str, rep, t0: float):
+def _record(design: Design, op: str, seconds: float, ok: bool, cached: bool = False) -> None:
+    entry = design.record(op, seconds, ok, cached)
+    if design.store is not None:
+        design.store.log(design.id, entry)
+
+
+def _commit(design: Design, stage: str, rep, op: str | None = None, write: bool = True,
+            cached: bool = False, seconds: float | None = None):
+    """Put a finished report on the handle, log the operation (``seconds``: what this
+    call took, else the report's), and write it to the store (``write``; one served from
+    the store, ``cached``, is only logged)."""
+    design.reports[stage] = rep
+    _record(design, op or stage, rep.seconds if seconds is None else seconds, rep.ok, cached)
+    if write and not cached and design.store is not None:
+        design.store.write_report(design, stage, rep)
+    return rep
+
+
+def _finish(design: Design, stage: str, rep, t0: float, **kw):
     rep.ok = not rep.failures
     rep.seconds = round(time.time() - t0, 3)
-    design.reports[stage] = rep
-    design.record(stage, rep.seconds, rep.ok)
-    return rep
+    return _commit(design, stage, rep, **kw)
+
+
+def _stored(design: Design, stage: str, current: bool = True) -> dict | None:
+    """The stage's file in the design's store (``current``: only one written by the
+    running engine version), else ``None``."""
+    if design.store is None:
+        return None
+    doc = design.store.read_report(design.id, stage)
+    if doc is None or (current and doc.get("engine_version") != design.engine_version):
+        return None
+    return doc
+
+
+def _cached(design: Design, stage: str, cls, op: str | None = None, **need):
+    """The stage's report from the handle, else from the store when valid for the running
+    engine (then put on the handle and logged as cached); ``need`` are field values it
+    must match (a verify's ``level``)."""
+    rep = design.reports.get(stage)
+    if rep is not None and all(getattr(rep, k, None) == v for k, v in need.items()):
+        return rep
+    t0 = time.time()
+    doc = _stored(design, stage)
+    if doc is None or any(doc.get(k) != v for k, v in need.items()):
+        return None
+    return _commit(design, stage, cls.from_dict(doc), op, cached=True, seconds=time.time() - t0)
+
+
+def _template(design: Design):
+    """The side's kinematic template (built once per handle)."""
+    if design.template is None:
+        design.template = _template_for(design.config)
+    return design.template
 
 
 def check(design: Design, force: bool = False) -> CheckReport:
@@ -351,8 +625,8 @@ def check(design: Design, force: bool = False) -> CheckReport:
     ``program``), a mechanism's output keeps its promises (else ``output``), the drive
     (``drive``: one servo turns ``t``), the static facts and the crank's route points
     (else ``static``, with what would clear it), the ground clearance."""
-    if not force and "check" in design.reports:
-        return design.reports["check"]
+    if not force and (rep := _cached(design, "check", CheckReport)) is not None:
+        return rep
     t0 = time.time()
     cfg, lk = design.config, design.lk
     params = dict(cfg.proportions)
@@ -420,24 +694,35 @@ def check(design: Design, force: bool = False) -> CheckReport:
 def plan(design: Design, force: bool = False) -> PlanReport:
     """The layer plan of one side (:class:`PlanReport`), from :func:`fabricate.design_side`
     (cached by the engine per template and config). A ``plan`` failure carries the
-    blockers (count, the two shapes, gap, need) and checked recommendations."""
-    if not force and "plan" in design.reports:
-        return design.reports["plan"]
+    blockers (count, the two shapes, gap, need) and checked recommendations.
+
+    With a store, a recorded plan is re-made through :meth:`stack.StackProblem.plan` and
+    checked with :func:`stack.verify_plan` before use (the design's own, else the same
+    spec's on another engine version: ``reused``); one that no longer holds is solved
+    again."""
+    if not force:
+        rep = design.reports.get("plan")
+        if rep is not None and (design.side is not None or not rep.ok):
+            return rep
+        rep = _reuse_plan(design)
+        if rep is not None:
+            return rep
     t0 = time.time()
     rep = PlanReport()
     cr = check(design, force)
     if not cr.ok:
         rep.failures = list(cr.failures)
         return _finish(design, "plan", rep, t0)
-    cfg = design.config
     try:
-        d = design.side = design_side(design.template, cfg)
-    except PlanError as e:
+        design.side = design_side(_template(design), design.config)
+    except (PlanError, ConstructionError) as e:
         rep.failures.append(Failure.from_exception(e, lk=design.lk))
         return _finish(design, "plan", rep, t0)
-    except ConstructionError as e:
-        rep.failures.append(Failure.from_exception(e, lk=design.lk))
-        return _finish(design, "plan", rep, t0)
+    return _finish(design, "plan", _plan_report(design.side, rep), t0)
+
+
+def _plan_report(d: SideDesign, rep: PlanReport | None = None) -> PlanReport:
+    rep = rep or PlanReport()
     p = d.plan
     route = p.choices.get("crank")
     rep.layers = dict(p.layers)
@@ -448,7 +733,76 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     rep.optimal, rep.proof, rep.cost = p.optimal, p.proof, p.cost
     rep.ground_clearance_mm = d.ground_clearance_mm
     rep.table = p.describe()
-    return _finish(design, "plan", rep, t0)
+    return rep
+
+
+def _reuse_plan(design: Design) -> PlanReport | None:
+    """A stored plan the design can use, or ``None``: its own (a failing one only from
+    the running engine; a valid one re-made and verified, then served as cached), else
+    the newest plan of the same resolved spec under another engine version (verified on
+    fresh sampling, then written as this design's, without the optimality proof)."""
+    store = design.store
+    if store is None:
+        return None
+    t0 = time.time()
+    own = store.read_report(design.id, "plan")
+    if own is not None:
+        same = own.get("engine_version") == design.engine_version
+        if not own.get("ok"):
+            if same:
+                return _commit(design, "plan", PlanReport.from_dict(own), cached=True)
+            return None
+        side = _remake_plan(design, own, same)
+        if side is not None:
+            design.side = side
+            rep = _plan_report(side)
+            rep.reused, rep.seconds = "store", round(time.time() - t0, 3)
+            return _commit(design, "plan", rep, cached=same)
+        if same:
+            log.warning("%s: the stored plan no longer holds under this engine: re-solving",
+                        design.id)
+    for other, doc in store.find_plans(spec_hash(design.resolved), exclude=(design.id,))[:3]:
+        side = _remake_plan(design, doc, same_engine=False)
+        if side is not None:
+            design.side = side
+            rep = _plan_report(side)
+            rep.reused, rep.seconds = other, round(time.time() - t0, 3)
+            return _commit(design, "plan", rep)
+    return None
+
+
+def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | None:
+    """The side of ``design`` with the layout of a stored plan, if every claim still
+    clears: the groups and the problem are rebuilt from the template, the plan is re-made
+    (:meth:`stack.StackProblem.plan`) and checked (:func:`stack.verify_plan`: on the
+    plan's own sampling for the same engine, on fresh sampling for another). ``None``
+    when the check fails or the design fails an earlier stage."""
+    if not check(design).ok:
+        return None
+    tmpl, cfg = _template(design), replace(design.config, robot=False)
+    try:
+        ctx, groups, problem = side_problem(tmpl, cfg)
+        static_stage(tmpl, problem)
+        route = doc.get("route")
+        choices = {} if route is None else {
+            "crank": CrankRoute(tuple(Run(r["at"], int(r["lo"]), int(r["hi"]))
+                                      for r in route["runs"]), bool(route.get("bearing", True)))}
+        p = problem.plan({k: int(v) for k, v in doc["layers"].items()}, int(doc["top"]), choices)
+        bad = verify_plan(p) if same_engine else verify_plan(p, tmpl)
+    except (ValueError, KeyError, TypeError) as e:
+        log.info("%s: stored plan not reusable: %s", design.id, e)
+        return None
+    if bad:
+        log.info("%s: stored plan fails verification: %s", design.id, "; ".join(bad[:3]))
+        return None
+    if same_engine:
+        p.optimal, p.proof = bool(doc.get("optimal")), doc.get("proof", "")
+        p.cost = int(doc.get("cost") or 0)
+    else:
+        p.optimal, p.cost = False, int(doc.get("cost") or 0)
+        p.proof = (f"re-verified under engine {design.engine_version} (planned under "
+                   f"{doc.get('engine_version')}); not proven the thinnest here")
+    return SideDesign(cfg, ctx, groups, p, list(problem.clearances), ground_clearance(tmpl, ctx))
 
 
 def explain(design: Design) -> str:
@@ -477,8 +831,8 @@ def recommend(design: Design) -> list[Recommendation]:
 def walk(design: Design, force: bool = False) -> WalkReport:
     """The quasi-static walk model of the robot (:func:`walk.api_payload`; no parts):
     its metrics and each motion target's verdict. A mechanism is skipped."""
-    if not force and "walk" in design.reports:
-        return design.reports["walk"]
+    if not force and (rep := _cached(design, "walk", WalkReport)) is not None:
+        return rep
     t0 = time.time()
     rep = WalkReport()
     cfg = design.config
@@ -513,26 +867,65 @@ def walk(design: Design, force: bool = False) -> WalkReport:
 def build(design: Design, t: float = 1.0, force: bool = False) -> BuildReport:
     """Fabricate every part at crank angle ``t`` (:func:`fabricate.fabricate`: the robot,
     or one side): the parts land in ``design.parts`` with their live solids, the report
-    is the manifest (masses, envelope, counts)."""
-    if not force and "build" in design.reports and design.build_t == t:
+    is the manifest (masses, envelope, counts). A build the store holds at this ``t``
+    (from the running engine) comes back from its STEP files instead."""
+    if not force and "build" in design.reports and design.build_t == t and (
+            design.mech is not None or not design.reports["build"].ok):
         return design.reports["build"]
     t0 = time.time()
+    if not force:
+        rep = _reload_build(design, t, t0)
+        if rep is not None:
+            return rep
     pr = plan(design, force)
     if not pr.ok:
         rep = BuildReport(failures=list(pr.failures), t=t)
         return _finish(design, "build", rep, t0)
     try:
-        mech = fabricate(design.template, design.config, t)
+        mech = fabricate_at(design, t)
     except ConstructionError as e:
         rep = BuildReport(failures=[Failure.from_exception(e, stage="fabricate")], t=t)
         return _finish(design, "build", rep, t0)
     return attach_build(design, mech, t, t0)
 
 
-def attach_build(design: Design, mech, t: float, t0: float | None = None) -> BuildReport:
+def fabricate_at(design: Design, t: float):
+    """The design fabricated at crank angle ``t`` from its own side (what
+    :func:`fabricate.fabricate` does, without planning again): one side, or the robot
+    with its frame ties and chassis."""
+    tmpl, cfg, d = _template(design), design.config, design.side
+    if d is None:
+        raise ValueError("plan(design) first")
+    ties = [FrameTies(d.drive)] if cfg.robot else []
+    side = fabricate_side(d, tmpl.freeze_at(t), ties)
+    return assemble_robot(side, d) if cfg.robot else side
+
+
+def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:
+    """The build the store holds at ``t`` from the running engine, its parts back from
+    their STEP files (a failed build's report as is); ``None`` when there is none or a
+    file is missing."""
+    doc = _stored(design, "build")
+    if doc is None or doc.get("t") != t:
+        return None
+    if not doc.get("ok"):
+        return _commit(design, "build", BuildReport.from_dict(doc), cached=True)
+    if not plan(design).ok:
+        return None
+    try:
+        mech = design.store.load_mechanism(design.id, doc)
+    except (OSError, KeyError, ValueError) as e:
+        log.warning("%s: stored build unreadable (%s): rebuilding", design.id, e)
+        return None
+    return attach_build(design, mech, t, t0, cached=True)
+
+
+def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
+                 cached: bool = False) -> BuildReport:
     """Adopt a fabricated mechanism as the design's build (what :func:`build` does after
     fabricating; a store loading part files, or a test holding a fabricated robot, uses it
-    directly). Needs the plan (runs it if it hasn't)."""
+    directly). Needs the plan (runs it if it hasn't). ``cached``: the parts came from the
+    store, so they are logged as such and not written again."""
     t0 = time.time() if t0 is None else t0
     pr = plan(design)
     if not pr.ok:
@@ -575,7 +968,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None) -> Bui
         meta=jsonable({k: v for k, v in mech.meta.items() if k != "fastened"}),
         parts=[p.to_dict() for p in parts.values()],
     )
-    return _finish(design, "build", rep, t0)
+    return _finish(design, "build", rep, t0, cached=cached)
 
 
 def split_side(name: str) -> tuple[str | None, str]:
@@ -669,7 +1062,7 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
     rep.bad_solids = bad_solids(mech)
     rep.clashes = clashes(mech)
     z_mid = mech.meta.get("mid_plane")
-    build_ = Build(side.ctx, side.plan, design.template.freeze_at(design.build_t))
+    build_ = Build(side.ctx, side.plan, _template(design).freeze_at(design.build_t))
     for name in (list(design.parts) if all_parts else rep.edited):
         part = design.parts[name]
         group = part.group
@@ -720,13 +1113,17 @@ def verify(design: Design, level: str = "quick"):
     return _verify.verify(design, level)
 
 
-def export(design: Design, formats=None, out_dir: str | Path = "build") -> ExportReport:
-    """Write the chosen ``formats`` (default: the spec's ``outputs``) into ``out_dir``, as
-    ``main.py`` does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per
-    different printed part + ``parts.csv``), ``dxf`` (kerf-compensated sheets +
-    ``parts.csv``), ``bom`` (csv, md, json), ``glb`` (the viewer's animated bake),
-    ``mjcf`` (the MuJoCo model + its metadata); and always ``manifest.json``. Builds first
-    if nothing is built; a sheet-packing failure is ``layout``, a catalog miss ``bom``."""
+def export(design: Design, formats=None, out_dir: str | Path | None = None,
+           force: bool = False) -> ExportReport:
+    """Write the chosen ``formats`` (default: the spec's ``outputs``) into ``out_dir``
+    (default: the design's ``exports/`` in its store, else ``build/``), as ``main.py``
+    does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
+    part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
+    (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
+    its metadata); and always ``manifest.json``. Builds first if nothing is built; a
+    sheet-packing failure is ``layout``, a catalog miss ``bom``. An export the store
+    records for the same formats and folder, whose files are all still there, is
+    returned as is (``force`` rewrites)."""
     from spiderpig.spec import OUTPUTS
 
     t0 = time.time()
@@ -734,8 +1131,15 @@ def export(design: Design, formats=None, out_dir: str | Path = "build") -> Expor
     bad = [f for f in formats if f not in OUTPUTS]
     if bad:
         raise ValueError(f"unknown formats {bad}; have {list(OUTPUTS)}")
+    if out_dir is None:
+        out_dir = design.store.exports_dir(design.id) if design.store else Path("build")
     out = Path(out_dir)
-    rep = ExportReport(out_dir=str(out))
+    if not force:
+        prior = _cached(design, "export", ExportReport, formats=formats,
+                        out_dir=str(out.resolve()))
+        if prior is not None and prior.ok and all(Path(f).is_file() for f in prior.files):
+            return prior
+    rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
     if design.mech is None:
         br = build(design)
         if not br.ok:
@@ -824,7 +1228,8 @@ def export(design: Design, formats=None, out_dir: str | Path = "build") -> Expor
 
 
 __all__ = [
-    "BuildReport", "CheckReport", "ExportReport", "PlanReport", "RecheckReport", "WalkReport",
-    "attach_build", "build", "check", "describe", "explain", "export", "foot_path",
-    "list_linkages", "plan", "recheck", "recommend", "resolve", "verify", "walk",
+    "BuildReport", "CheckReport", "ExportReport", "PlanReport", "RecheckReport", "Report",
+    "WalkReport", "attach_build", "build", "check", "compare", "derive", "describe", "explain",
+    "export", "fabricate_at", "foot_path", "gc", "list_designs", "list_linkages", "load",
+    "plan", "recheck", "recommend", "resolve", "verify", "walk",
 ]

@@ -20,10 +20,15 @@ from spiderpig.api import (
     attach_build,
     build,
     check,
+    compare,
+    derive,
     describe,
     explain,
     export,
+    gc,
+    list_designs,
     list_linkages,
+    load,
     plan,
     recheck,
     recommend,
@@ -32,7 +37,7 @@ from spiderpig.api import (
     walk,
 )
 from spiderpig.design import Design, Part, engine_version
-from spiderpig.failure import Failure, Recommendation, apply_patch
+from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
 from spiderpig.spec import (
     SPEC_VERSION,
     TARGET_FIELDS,
@@ -43,12 +48,13 @@ from spiderpig.spec import (
     spec_schema,
     validate,
 )
+from spiderpig.store import Store
 from spiderpig.verify import LEVELS, Row, VerifyReport
 
 __all__ = [
     "LEVELS", "SPEC_VERSION", "TARGET_FIELDS", "Design", "Failure", "Part", "Recommendation",
-    "Row", "Spec", "SpecError", "SpecErrors", "Target", "VerifyReport", "apply_patch",
-    "attach_build", "build", "check", "describe", "engine_version", "explain", "export",
-    "list_linkages", "plan", "recheck", "recommend", "resolve", "spec_schema", "validate",
-    "verify", "walk",
+    "Row", "Spec", "SpecError", "SpecErrors", "Store", "Target", "VerifyReport", "apply_patch",
+    "attach_build", "build", "check", "compare", "derive", "describe", "engine_version",
+    "explain", "export", "gc", "list_designs", "list_linkages", "load", "merge_patch", "plan",
+    "recheck", "recommend", "resolve", "spec_schema", "validate", "verify", "walk",
 ]

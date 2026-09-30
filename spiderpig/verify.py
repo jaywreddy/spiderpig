@@ -34,7 +34,6 @@ import time
 from dataclasses import dataclass, field, replace
 
 from construction.contract import bad_solids, check_side, clashes
-from fabricate import fabricate
 from hardware.bom import BomLine, bom_from_mechanism
 from hardware.catalog import sheet_size
 from layout import pack
@@ -72,6 +71,13 @@ class Row:
                 "hard": self.hard, "detail": self.detail, "score": self.score,
                 "weight": self.weight, "unit": self.unit}
 
+    @classmethod
+    def from_dict(cls, d: dict) -> Row:
+        return cls(d["requirement"], d.get("source", ""), d.get("value"), d.get("target"),
+                   bool(d["pass"] if "pass" in d else d.get("passed")), d.get("tier", ""),
+                   d.get("hard", True), d.get("detail", ""), d.get("score"),
+                   d.get("weight", 1.0), d.get("unit", ""))
+
     def describe(self) -> str:
         v = f"{self.value:.4g}" if isinstance(self.value, float) else str(self.value)
         t = "" if self.target is None else f" vs {self.target}"
@@ -95,6 +101,13 @@ class VerifyReport:
                 "rows": [r.to_dict() for r in self.rows],
                 "failures": [f.to_dict() for f in self.failures],
                 "unverified": list(self.unverified), "seconds": self.seconds}
+
+    @classmethod
+    def from_dict(cls, d: dict) -> VerifyReport:
+        return cls(d["level"], bool(d.get("ok")), float(d.get("score", 1.0)),
+                   [Row.from_dict(r) for r in d.get("rows", [])],
+                   [Failure.from_dict(f) for f in d.get("failures", [])],
+                   list(d.get("unverified", [])), float(d.get("seconds", 0.0)))
 
     def describe(self) -> str:
         head = (f"verify {self.level}: {'ok' if self.ok else 'FAIL'}, score {self.score:.2f} "
@@ -176,6 +189,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     """See the module docstring."""
     if level not in LEVELS:
         raise ValueError(f"level is one of {LEVELS}, got {level!r}")
+    rep = api._cached(design, "verify", VerifyReport, op=f"verify:{level}", level=level)
+    if rep is not None:
+        return rep
     t0 = time.time()
     rep = VerifyReport(level)
     rows = rep.rows
@@ -267,7 +283,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                         "proven", True, "; ".join(problems[:3])))
         _fail(rep, problems, "contract", "part_outside_claim")
     for t in CLASH_TS[level]:
-        m = mech if t == design.build_t else fabricate(tmpl, cfg, t)
+        m = mech if t == design.build_t else api.fabricate_at(design, t)
         cl, solids = clashes(m), bad_solids(m)
         rows.append(Row(f"clash@t={t:g}", "clashes", len(cl), "0", not cl, "measured", True,
                         "; ".join(f"{c['a']} x {c['b']} {c['mm3']} mm^3" for c in cl[:3])))
@@ -375,6 +391,4 @@ def _done(design: Design, rep: VerifyReport, t0: float) -> VerifyReport:
         w = sum(r.weight for r in soft) or 1.0
         rep.score = round(sum(r.score * r.weight for r in soft) / w, 4)
     rep.seconds = round(time.time() - t0, 3)
-    design.reports["verify"] = rep
-    design.record(f"verify:{rep.level}", rep.seconds, rep.ok)
-    return rep
+    return api._commit(design, "verify", rep, op=f"verify:{rep.level}")
