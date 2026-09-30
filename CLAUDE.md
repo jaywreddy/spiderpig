@@ -217,7 +217,8 @@ planning; a layout it can't be built in makes its claim return `None`.
 To add a construction: implement `dims(ctx)` (validation, the radii its
 claims use) and `realize(group, build)` (parts inside those claims), register
 it in `construction/__init__.py`, run the contract tests. To add a leg
-module: add it to `linkage.MODULE_LEGS` (or a linkage's own `modules`). To
+module: a `linkage.Module` (its legs, and which of them share one crank
+body) in `linkage.MODULES` or a linkage's own `modules`. To
 add a linkage: a module in `linkages/` with its params, program, links
 (`b<k>` -> joints, outline), frame, crank and feet (a mechanism: its
 `output`); `tests/test_linkage.py` checks it assembles, stays rigid and

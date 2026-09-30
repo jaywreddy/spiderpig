@@ -88,15 +88,38 @@ Steps = list[tuple[str, sp.Matrix]]
 LinkSpec = tuple[tuple[str, ...], tuple[tuple[str, str], ...]]   # joints, outline segments
 LegList = tuple[tuple[int, float], ...]                         # (orientation, phase) per leg
 
-# Leg modules (one side of the robot): each leg's chirality and default crank
-# phase (radians). 2016 analogues: KlannLinkage, DoubleKlannLinkage,
-# DoubleDeckerKlannLinkage, DoubleDoubleDeckerKlannLinkage.
-MODULE_LEGS: dict[str, LegList] = {
-    "single": ((+1, 0.0),),
-    "double": ((+1, 0.0), (-1, 0.0)),
-    "decker": ((+1, 0.0), (+1, math.pi / 2)),
-    "quad": ((+1, 0.0), (-1, math.pi), (+1, math.pi / 2), (-1, 3 * math.pi / 2)),
+
+@dataclass(frozen=True)
+class Module:
+    """A leg module: one side's legs and which of them share one rigid crank.
+
+    ``legs``: each leg's chirality and default crank phase (radians).
+    ``cranks``: groups of leg indices whose crank links are one body (a
+    mirrored pair rides one crankpin; two legs out of phase share a
+    crankshaft with a crankpin each). A leg in no group keeps its own crank
+    body; the crank construction joins the crank bodies of a side.
+    """
+
+    legs: LegList
+    cranks: tuple[tuple[int, ...], ...] = ()
+
+    def __post_init__(self):
+        seen = [i for g in self.cranks for i in g]
+        if len(set(seen)) != len(seen) or any(i >= len(self.legs) for i in seen):
+            raise ValueError(f"crank groups {self.cranks} must name distinct legs of "
+                             f"{len(self.legs)}")
+
+
+# Leg modules (one side of the robot). 2016 analogues: KlannLinkage,
+# DoubleKlannLinkage, DoubleDeckerKlannLinkage, DoubleDoubleDeckerKlannLinkage.
+MODULES: dict[str, Module] = {
+    "single": Module(((+1, 0.0),)),
+    "double": Module(((+1, 0.0), (-1, 0.0)), cranks=((0, 1),)),
+    "decker": Module(((+1, 0.0), (+1, math.pi / 2))),
+    "quad": Module(((+1, 0.0), (-1, math.pi), (+1, math.pi / 2), (-1, 3 * math.pi / 2)),
+                   cranks=((0, 1), (2, 3))),
 }
+MODULE_LEGS: dict[str, LegList] = {k: m.legs for k, m in MODULES.items()}
 
 
 MOTIONS = ("line", "path", "rotation", "translation_platform", "xy")
@@ -158,9 +181,10 @@ class Linkage:
     first, then the crankpin(s)). A walker's ``feet`` are ``(link, point)``
     pairs; a mechanism has none and declares its ``output``. ``inputs`` are
     the program's input angles, ``t`` first (a second one is placed with
-    :func:`crank_at`). ``modules`` replaces :data:`MODULE_LEGS` entries for
+    :func:`crank_at`). ``modules`` replaces :data:`MODULES` entries for
     linkages whose natural unit differs (e.g. one that already carries a
-    mirrored pair); a mechanism is one unit (``single``).
+    mirrored pair): a :class:`Module`, or just its legs (no shared crank); a
+    mechanism is one unit (``single``).
     """
 
     key: str
@@ -175,7 +199,7 @@ class Linkage:
     inputs: tuple[str, ...] = ("t",)
     angles: frozenset[str] = frozenset()
     labels: Mapping[str, str] = field(default_factory=dict)
-    modules: Mapping[str, LegList] = field(default_factory=dict)
+    modules: Mapping[str, Module | LegList] = field(default_factory=dict)
     family: str = ""
     source: str = ""
     notes: str = ""
@@ -229,8 +253,17 @@ class Linkage:
 
     @property
     def leg_modules(self) -> dict[str, LegList]:
-        base = MODULE_LEGS if self.feet else {"single": MODULE_LEGS["single"]}
-        return {**base, **self.modules}
+        """Module name -> its legs."""
+        return {k: m.legs for k, m in self.modules_of.items()}
+
+    @property
+    def modules_of(self) -> dict[str, Module]:
+        """Module name -> :class:`Module` (the defaults, a mechanism's ``single`` only,
+        and this linkage's own)."""
+        base = MODULES if self.feet else {"single": MODULES["single"]}
+        own = {k: m if isinstance(m, Module) else Module(tuple(m))
+               for k, m in self.modules.items()}
+        return {**base, **own}
 
     @cached_property
     def compiled(self) -> Callable[..., list]:

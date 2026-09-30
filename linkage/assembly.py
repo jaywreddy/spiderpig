@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from linkage.engine import DEFAULT, LegList, LegSolution, Linkage, get
+from linkage.engine import DEFAULT, LegList, LegSolution, Linkage, Module, get
 from mechanism import BodyTemplate, JointTemplate, MechanismTemplate, translation_pose_at
 from stack import body_class
 
@@ -135,18 +135,18 @@ def _suffixed_union(tmpl, olds, suffixes, keep_shared=()) -> tuple[list, dict]:
 
 
 def combine_connectors(
-    tmpl: MechanismTemplate, suffix_a: str, suffix_b: str, *, new_name: str = "conn",
+    tmpl: MechanismTemplate, *suffixes: str, new_name: str = "conn",
 ) -> MechanismTemplate:
-    """Fuse two legs' crank links into one rigid crank (``Project/main.py:494``).
+    """Fuse these legs' crank links into one rigid crank (``Project/main.py:494``).
 
     The cranks share the pivot O, so one rigid body driven by one shaft
-    co-rotates both legs.
+    co-rotates the legs.
     """
-    olds = [f"conn{suffix_a}", f"conn{suffix_b}"]
-    joints, rename = _suffixed_union(tmpl, olds, [suffix_a, suffix_b])
+    olds = [f"conn{s}" for s in suffixes]
+    joints, rename = _suffixed_union(tmpl, olds, list(suffixes))
     outline = tuple(
         (f"{p}{sfx}", f"{q}{sfx}")
-        for old, sfx in zip(olds, (suffix_a, suffix_b), strict=True)
+        for old, sfx in zip(olds, suffixes, strict=True)
         for p, q in tmpl.body(old).outline
     )
     fused = BodyTemplate(
@@ -198,11 +198,20 @@ def legs_template(name: str, legs: Sequence[tuple[int, float]],
     ])
 
 
-def module_legs(module: str, linkage: str = DEFAULT) -> LegList:
-    mods = get(linkage).leg_modules
+def module_of(module: str, linkage: str = DEFAULT) -> Module:
+    mods = get(linkage).modules_of
     if module not in mods:
         raise ValueError(f"unknown module {module!r}; have {sorted(mods)}")
     return mods[module]
+
+
+def module_legs(module: str, linkage: str = DEFAULT) -> LegList:
+    return module_of(module, linkage).legs
+
+
+def crank_name(k: int) -> str:
+    """The k-th shared crank body of a side: ``conn``, ``conn_upper``, ``conn_upper2``..."""
+    return "conn" if k == 0 else f"conn_upper{k if k > 1 else ''}"
 
 
 def build_module_template(
@@ -215,12 +224,15 @@ def build_module_template(
 
     ``phases`` (radians, one per leg) replaces the module's default crank
     phases; ``proportions`` overrides some of the linkage's parameters. The
-    template's ``meta`` records all of it, so caches keyed on it stay honest.
+    legs the module says share a crank (:attr:`Module.cranks`) become one
+    crank body each (:func:`crank_name`). The template's ``meta`` records
+    all of it, so caches keyed on it stay honest.
     """
     lk = get(linkage)
     lk.assert_assembles(proportions)
     lk.assert_output(proportions)
-    legs = module_legs(module, linkage)
+    mod = module_of(module, linkage)
+    legs = mod.legs
     if phases is not None:
         if len(phases) != len(legs):
             raise ValueError(f"{module} has {len(legs)} legs, got {len(phases)} phases")
@@ -231,11 +243,8 @@ def build_module_template(
     else:
         tmpl = legs_template(f"{lk.key}_{module}", legs, proportions, linkage)
         suffixes = [f"_leg{k}" for k in range(len(legs))]
-        if module == "double":
-            tmpl = combine_connectors(tmpl, "_leg0", "_leg1")
-        elif module == "quad":
-            tmpl = combine_connectors(tmpl, "_leg0", "_leg1", new_name="conn")
-            tmpl = combine_connectors(tmpl, "_leg2", "_leg3", new_name="conn_upper")
+        for k, group in enumerate(mod.cranks):
+            tmpl = combine_connectors(tmpl, *(suffixes[i] for i in group), new_name=crank_name(k))
         tmpl = fuse_couplers(tmpl, suffixes)
         tmpl = fuse_torsos(tmpl, suffixes)
     tmpl.meta = {

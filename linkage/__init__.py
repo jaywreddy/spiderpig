@@ -47,6 +47,7 @@ from linkage.assembly import (
     build_leg_template,
     build_module_template,
     combine_connectors,
+    crank_name,
     feet_of,
     fuse_couplers,
     fuse_torsos,
@@ -54,6 +55,7 @@ from linkage.assembly import (
     leg_connections,
     legs_template,
     module_legs,
+    module_of,
 )
 from linkage.checks import (
     ON_LINE_MM,
@@ -67,6 +69,7 @@ from linkage.checks import (
 from linkage.engine import (
     DEFAULT,
     MODULE_LEGS,
+    MODULES,
     MOTIONS,
     REGISTRY,
     AssemblyError,
@@ -74,6 +77,7 @@ from linkage.engine import (
     LegSolution,
     Linkage,
     LinkSpec,
+    Module,
     Output,
     OutputError,
     P,
@@ -95,11 +99,12 @@ from linkage.engine import (
 )
 
 __all__ = [
-    "DEFAULT", "MODULE_LEGS", "MOTIONS", "ON_LINE_MM", "REGISTRY", "STILL_DEG", "TOGGLE_DEG",
-    "AssemblyError", "LegList", "LegSolution", "Linkage", "LinkSpec", "Output", "OutputCheck",
-    "OutputError", "P", "StepCheck", "Steps", "available", "build_leg_template",
-    "build_module_template", "check_output", "check_steps", "circle_x_circle",
-    "combine_connectors", "crank", "crank_at", "extend", "feet_of", "fuse_couplers",
-    "fuse_torsos", "get", "leg_bodies", "leg_connections", "legs_template", "module_legs",
-    "offset", "polar", "register", "rigid", "rotate", "scale_params", "t", "xy",
+    "DEFAULT", "MODULE_LEGS", "MODULES", "MOTIONS", "ON_LINE_MM", "REGISTRY", "STILL_DEG",
+    "TOGGLE_DEG", "AssemblyError", "LegList", "LegSolution", "Linkage", "LinkSpec", "Module",
+    "Output", "OutputCheck", "OutputError", "P", "StepCheck", "Steps", "available",
+    "build_leg_template", "build_module_template", "check_output", "check_steps",
+    "circle_x_circle", "combine_connectors", "crank", "crank_at", "crank_name", "extend",
+    "feet_of", "fuse_couplers", "fuse_torsos", "get", "leg_bodies", "leg_connections",
+    "legs_template", "module_legs", "module_of", "offset", "polar", "register", "rigid",
+    "rotate", "scale_params", "t", "xy",
 ]
