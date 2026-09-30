@@ -70,6 +70,11 @@ run = "uv run python -m spiderpig.servos.cad"
 description = "ruff check"
 run         = "uv run ruff check ."
 
+[tasks.release]
+description = "Build the viewer, then the sdist + wheel into dist/ (the wheel carries spiderpig/viewer/dist; a build without it fails)"
+depends     = ["viewer-build"]
+run         = "uv build"
+
 [tasks.audit]
 description = "Fabrication audit per module: plan re-check, construction contract, robot clashes, solids, DXF packing, BOM -> build/audit/"
 run         = "uv run python -m spiderpig.cli audit"

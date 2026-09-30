@@ -20,10 +20,29 @@ Originally UC Berkeley CS194 coursework built on SolidPython + OpenSCAD +
 
 ## Install
 
+From a checkout (`uv sync` installs the `spiderpig` package editable, with the
+dev tools; the viewer is built once, into the package):
+
 ```bash
-mise install        # pin Python 3.12 + uv + node 20
-uv sync             # resolve pyproject.toml (fetches OCP/OCCT; first run is slow)
+mise install            # pin Python 3.12 + uv + node 20
+uv sync                 # .venv: spiderpig (editable) + dev tools (fetches OCP/OCCT; slow the first time)
+mise run viewer-build   # the viewer -> spiderpig/viewer/dist (node; again after a viewer/ change)
+uv run spiderpig --help
 ```
+
+As a package, with no Node on the machine (the wheel carries the built viewer):
+
+```bash
+uv pip install .                  # or the wheel from `mise run release` (dist/*.whl)
+spiderpig --help
+spiderpig view <design-id>        # the viewer for a stored design (prints the URL; --open)
+spiderpig mcp --store .spiderpig  # the MCP server for an agent (docs/agentlib/API.md)
+```
+
+`mise run release` builds the viewer, then the sdist and wheel into `dist/`
+(`uv build`); a wheel built without the viewer fails with a message saying so
+(`hatch_build.py`), and the wheel is checked to hold `spiderpig/viewer/dist`
+and nothing of `viewer/` (sources, `node_modules`) or `tests/`.
 
 ## Quick start
 
