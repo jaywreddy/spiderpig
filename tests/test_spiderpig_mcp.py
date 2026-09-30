@@ -72,6 +72,15 @@ def server():
     s.spiderpig.jobs.shutdown()
 
 
+@pytest.fixture
+def fresh(tmp_path):
+    """A server over a store of its own (a test whose records must not be another's:
+    the store's first record of a design wins, its parent included)."""
+    s = make_server(tmp_path)
+    yield s
+    s.spiderpig.jobs.shutdown()
+
+
 @pytest.fixture(scope="module")
 def single(server, design) -> str:
     """The Klann single's id, its plan the session's."""
@@ -251,7 +260,8 @@ def test_misuse_is_an_error_result_carrying_a_failure(server):
 # ---------------------------------------------------------------------------
 
 
-def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_plans(server):
+def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_plans(fresh):
+    server = fresh                # its own store: the derived design must be new to it
     heel = call(server, "resolve", spec=HEEL)["design"]
     cr = call(server, "check", design=heel)
     assert cr["ok"] is False
@@ -401,30 +411,23 @@ def test_resources_and_prompts_read(server, single):
     assert "bob_mm" in it.messages[0].content.text
 
 
-def test_gc_refuses_bare_and_removes_what_it_is_told(tmp_path):
-    server = make_server(tmp_path)
-    try:
-        assert server.spiderpig.store == Store(tmp_path)
-        a = call(server, "resolve", spec=KLANN_SINGLE)["design"]
-        b = call(server, "resolve", spec={**KLANN_SINGLE, "outputs": ["step"]})["design"]
-        assert misuse(server, "gc")["code"] == "gc_needs_arguments"
-        assert call(server, "gc", older_than_seconds=3600) == {"ok": True, "failures": [],
-                                                                "removed": []}
-        assert call(server, "gc", keep=[a])["removed"] == [b]
-        assert [d["id"] for d in call(server, "list_designs")["designs"]] == [a]
-    finally:
-        server.spiderpig.jobs.shutdown()
+def test_gc_refuses_bare_and_removes_what_it_is_told(fresh, tmp_path):
+    server = fresh
+    assert server.spiderpig.store == Store(tmp_path)
+    a = call(server, "resolve", spec=KLANN_SINGLE)["design"]
+    b = call(server, "resolve", spec={**KLANN_SINGLE, "outputs": ["step"]})["design"]
+    assert misuse(server, "gc")["code"] == "gc_needs_arguments"
+    assert call(server, "gc", older_than_seconds=3600) == {"ok": True, "failures": [],
+                                                            "removed": []}
+    assert call(server, "gc", keep=[a])["removed"] == [b]
+    assert [d["id"] for d in call(server, "list_designs")["designs"]] == [a]
 
 
-def test_a_cold_resolve_to_verify_quick_round_trip_is_fast(tmp_path, design):
+def test_a_cold_resolve_to_verify_quick_round_trip_is_fast(fresh, design):
     design("single")
-    server = make_server(tmp_path)
-    try:
-        t0 = time.time()
-        d = call(server, "resolve", spec=KLANN_SINGLE)["design"]
-        vr = call(server, "verify", design=d, level="quick")
-        seconds = time.time() - t0
-        assert vr["ok"]
-        assert seconds < 30, seconds
-    finally:
-        server.spiderpig.jobs.shutdown()
+    t0 = time.time()
+    d = call(fresh, "resolve", spec=KLANN_SINGLE)["design"]
+    vr = call(fresh, "verify", design=d, level="quick")
+    seconds = time.time() - t0
+    assert vr["ok"]
+    assert seconds < 30, seconds
