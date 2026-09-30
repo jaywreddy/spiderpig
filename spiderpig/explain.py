@@ -122,8 +122,8 @@ def main(argv=None) -> int:
         ap.error(str(e))
     from spiderpig.api import config_warnings
 
-    for w in config_warnings(config):       # what the API's resolve would warn about
-        print(f"warning: {w}", file=sys.stderr)
+    for w in config_warnings(config, sides=2):     # what resolve would warn about (one
+        print(f"warning: {w}", file=sys.stderr)    # side is what explain always shows)
     print(explain_config(config))
     return 0
 
