@@ -869,6 +869,9 @@ def _parse_args(argv=None) -> argparse.Namespace:
                    help="emit the per-stage wall-clock profile summary (default: on)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="logging level (default: INFO)")
+    p.add_argument("--store", metavar="PATH",
+                   help="the design store the options resolve into, whose plan is reused "
+                        "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
     args = p.parse_args(argv)
     try:            # robot=None: the linkage's kind decides (a mechanism is one side)
         args.config = config_from_args(args, robot=False if args.side else None)
@@ -885,7 +888,19 @@ def main(argv=None) -> int:
     )
     # build123d logs every builder-less primitive at INFO; keep the profile readable.
     logging.getLogger("build123d").setLevel(max(logging.WARNING, logging.root.level))
-    bake_gltf(args.out or default_bake_dir() / f"{args.config.key}.glb", args.config,
+    # the plan through the store (api.plan_config), as build, explain and audit do: the
+    # stored design's when it holds one (re-made and verified), else solved once and
+    # recorded; the bake's fabricate then answers from what plan_config remembered
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store = Store.of(args.store) if args.store else Store.default()
+    try:
+        api.plan_config(args.config, store)
+    except ValueError as e:
+        logger.error("no layer plan: %s", e)
+        return 2
+    bake_gltf(args.out or store.root / "bakes" / f"{args.config.key}.glb", args.config,
               n_frames=args.frames, duration_s=args.duration, profile=args.profile)
     return 0
 
