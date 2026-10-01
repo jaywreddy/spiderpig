@@ -283,6 +283,8 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     """
     from build123d import Location, Plane
 
+    from spiderpig.shapes import moved as _moved
+
     ca, ea, _ = sa.frame
     cb, eb, _ = sb.frame
     for signs in _SIGNS:
@@ -292,7 +294,7 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
         t = cb - r @ ca
         if np.abs(r @ sa.surf + t - sb.surf).max() > _CENTROID_TOL:
             continue
-        moved = a.moved(Location(Plane(tuple(t), tuple(r[:, 0]), tuple(r[:, 2]))))
+        moved = _moved(a, Location(Plane(tuple(t), tuple(r[:, 0]), tuple(r[:, 2]))))
         if sa.volume + sb.volume - 2.0 * _shared_volume(moved, b) < tol:
             return True
     return False

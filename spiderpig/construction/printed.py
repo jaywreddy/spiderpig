@@ -71,6 +71,8 @@ from functools import cache
 import numpy as np
 from build123d import Axis, Box, Cylinder, Face, Location, Solid, Vector, Wire
 
+from spiderpig.shapes import moved
+
 log = logging.getLogger(__name__)
 
 TAN_22_5 = math.sqrt(2.0) - 1.0   # offsets a 45 degree corner by a normal distance
@@ -419,4 +421,4 @@ def segment_solid(seg: Segment, snap: Snap, xy, angle: float = 0.0) -> Solid:
         solid = solids[0]
     if angle:
         solid = solid.rotate(Axis.Z, math.degrees(angle))
-    return solid.moved(Location((float(xy[0]), float(xy[1]), 0.0)))
+    return moved(solid, Location((float(xy[0]), float(xy[1]), 0.0)))

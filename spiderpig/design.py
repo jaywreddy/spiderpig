@@ -207,8 +207,9 @@ class Part:
     def placed(self):
         """The solid in world coordinates (the body's pose applied)."""
         from spiderpig.mechanism import Pose
+        from spiderpig.shapes import moved
 
-        return self.solid.moved(Pose.from_matrix(np.array(self.pose)).to_location())
+        return moved(self.solid, Pose.from_matrix(np.array(self.pose)).to_location())
 
     def to_dict(self) -> dict:
         return {"name": self.name, "group": self.group, "side": self.side, "fab": self.fab,

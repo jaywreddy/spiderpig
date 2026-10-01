@@ -53,3 +53,17 @@ def tessellate(part, tolerance: float = 0.1, angular: float = 0.1
             tris.append((a, c, b) if reverse else (a, b, c))
     return (np.array(positions, dtype=np.float32).reshape(-1, 3),
             np.array(tris, dtype=np.uint32).flatten(), skipped)
+
+
+def export_stl(shape, path, tolerance: float = 1e-3, angular: float = 0.1) -> bool:
+    """A binary STL of ``shape``: build123d's ``export_stl`` (the same mesher parameters and
+    writer), meshing once. build123d constructs ``BRepMesh_IncrementalMesh``, which meshes,
+    and then calls ``Perform()``, which runs the whole mesher again over the finished mesh
+    (a quarter of the time) and keeps it."""
+    from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.StlAPI import StlAPI_Writer
+
+    BRepMesh_IncrementalMesh(shape.wrapped, tolerance, True, angular, True)
+    writer = StlAPI_Writer()
+    writer.ASCIIMode = False
+    return writer.Write(shape.wrapped, str(path))

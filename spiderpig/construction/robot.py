@@ -59,7 +59,7 @@ from build123d import Location, Plane
 from spiderpig.construction.base import FRAME_INNER, Build, Context, Group, Realized
 from spiderpig.construction.chassis import centre_plates, chassis, servo_frame, tie_dims, tie_points
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
-from spiderpig.shapes import Cut
+from spiderpig.shapes import Cut, moved
 
 SIDES = ("L", "R")
 
@@ -128,7 +128,7 @@ def _moved(part, dz: float, mirror: bool):
     if mirror:
         part = part.mirror(Plane.XY)
         dz = -dz
-    return part.moved(Location((0.0, 0.0, dz)))
+    return moved(part, Location((0.0, 0.0, dz)))
 
 
 def assemble_robot(side: Mechanism, design) -> Mechanism:

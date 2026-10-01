@@ -18,7 +18,7 @@ from spiderpig.construction.base import (
 )
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
-from spiderpig.shapes import Cut, disc
+from spiderpig.shapes import Cut, disc, moved
 
 STEEL = "#4a4a4a"
 RING_COLOR = "#a9cbe0"       # laser-cut spacer rings (the same sheet as the links)
@@ -123,7 +123,7 @@ def hex_prism(xy, af: float, z0: float, z1: float, angle: float = 0.0):
     """A hexagonal prism ``af`` across flats, one pair of flats facing ``angle`` (degrees)."""
     boxes = [Box(af, 4 * af, z1 - z0).rotate(Axis.Z, angle + a) for a in (0.0, 60.0, 120.0)]
     prism = boxes[0] & boxes[1] & boxes[2]
-    return prism.moved(Location((float(xy[0]), float(xy[1]), (z0 + z1) / 2)))
+    return moved(prism, Location((float(xy[0]), float(xy[1]), (z0 + z1) / 2)))
 
 
 def bored(part, xy, d: float, z0: float, z1: float):
@@ -161,7 +161,7 @@ def sleeve_solid(xy, pieces: list[tuple[float, float, float]], bore_d: float) ->
             clean.append(p)
     wire = Wire.make_polygon([Vector(r, 0.0, z) for r, z in clean], close=True)
     solid = Solid.revolve(Face(wire), 360.0, Axis.Z)
-    return solid.moved(Location((float(xy[0]), float(xy[1]), 0.0)))
+    return moved(solid, Location((float(xy[0]), float(xy[1]), 0.0)))
 
 
 @dataclass(frozen=True)

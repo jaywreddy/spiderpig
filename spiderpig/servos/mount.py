@@ -50,7 +50,7 @@ from spiderpig.construction.base import (
 from spiderpig.hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
 from spiderpig.servos.model import cut_each, horn_part, servo_part
 from spiderpig.servos.spec import MountHole, ServoSpec
-from spiderpig.shapes import Cut, Rect, disc
+from spiderpig.shapes import Cut, Rect, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
 
 MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
@@ -102,7 +102,7 @@ def _key(xy, u, z) -> tuple:
 def _placed_servo(spec: ServoSpec, key: tuple):
     """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``)."""
     ox, oy, ux, uy, plate_top = key
-    part = servo_part(spec).moved(to_location(servo_to_world((ox, oy), (ux, uy),
+    part = moved(servo_part(spec), to_location(servo_to_world((ox, oy), (ux, uy),
                                                              plate_top + spec.mount_face_z)))
     bb = part.bounding_box()
     if plate_top - bb.min.Z > 1e-6:
@@ -313,7 +313,7 @@ class DriveGroup(Group):
         theta = self.horn_angle(build)
         horn_frame = servo_to_world(o, (math.cos(theta), math.sin(theta)),
                                     plate_top + s.mount_face_z)
-        horn = horn_part(s).moved(to_location(horn_frame))
+        horn = moved(horn_part(s), to_location(horn_frame))
         out.bodies.append(hardware("servo_horn", horn, crank_host or frame_host,
                                    fab="purchased", bom_key=s.horn.bom_key, color=HORN_COLOR))
         t = self.spacer(ctx)
