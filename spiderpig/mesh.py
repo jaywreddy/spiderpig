@@ -18,11 +18,14 @@ parts in one pass.
 from __future__ import annotations
 
 import json
+import logging
 import struct
 import tempfile
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger("spiderpig.mesh")
 
 Mesh = tuple[np.ndarray, np.ndarray, int]     # positions (nv, 3) f32, indices (3 nt,) u32, skipped
 
@@ -76,7 +79,8 @@ def read_meshes(parts) -> list[Mesh]:
     skipped = [_untriangulated(p) for p in parts]
     try:
         arrays = _read_gltf(parts)
-    except _Unread:
+    except _Unread as e:
+        log.debug("read_meshes: %s; reading %d parts node by node", e, len(parts))
         arrays = [_read_faces(p) for p in parts]
     return [(pos, idx, k) for (pos, idx), k in zip(arrays, skipped, strict=True)]
 
@@ -122,15 +126,17 @@ class _Unread(Exception):
 
 def _read_gltf(parts) -> list[tuple[np.ndarray, np.ndarray]]:
     """Every part's triangles through ``RWGltf_CafWriter``: one XCAF document with a free
-    shape per part, written as a binary glTF (faces merged into one primitive per part, no
-    unit or axis conversion) and read back. :class:`_Unread` unless that gives one
-    untransformed root node per part, in order, with one primitive each (two parts
-    sharing a shape would be one mesh instanced twice)."""
+    shape per part (each in a compound of its own, so its location stays on its faces),
+    written as a binary glTF (faces merged into one primitive per part, no unit or axis
+    conversion) and read back. :class:`_Unread` unless that gives one untransformed root
+    node per part, in order, with a mesh of its own and one primitive each."""
+    from OCP.BRep import BRep_Builder
     from OCP.Message import Message_ProgressRange
     from OCP.RWGltf import RWGltf_CafWriter
     from OCP.TCollection import TCollection_AsciiString, TCollection_ExtendedString
     from OCP.TColStd import TColStd_IndexedDataMapOfStringString
     from OCP.TDocStd import TDocStd_Document
+    from OCP.TopoDS import TopoDS_Compound
     from OCP.XCAFApp import XCAFApp_Application
     from OCP.XCAFDoc import XCAFDoc_DocumentTool
 
@@ -140,8 +146,15 @@ def _read_gltf(parts) -> list[tuple[np.ndarray, np.ndarray]]:
     app = XCAFApp_Application.GetApplication_s()
     app.NewDocument(TCollection_ExtendedString("MDTV-XCAF"), doc)
     tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
+    builder = BRep_Builder()
     for part in parts:
-        tool.AddShape(part.wrapped, False)
+        # XCAF turns a located shape into a reference (the location on the glTF node, the
+        # nodes left local); inside a compound of its own the location is the faces', and
+        # the writer applies it to the nodes as the loop does
+        wrapper = TopoDS_Compound()
+        builder.MakeCompound(wrapper)
+        builder.Add(wrapper, part.wrapped)
+        tool.AddShape(wrapper, False)
     with tempfile.TemporaryDirectory(prefix="spiderpig-mesh-") as tmp:
         path = Path(tmp) / "parts.glb"
         writer = RWGltf_CafWriter(TCollection_AsciiString(str(path)), True)
@@ -149,25 +162,25 @@ def _read_gltf(parts) -> list[tuple[np.ndarray, np.ndarray]]:
         writer.SetParallel(False)
         if not writer.Perform(doc, TColStd_IndexedDataMapOfStringString(),
                               Message_ProgressRange()) or not path.is_file():
-            raise _Unread
+            raise _Unread("the glTF writer failed")
         gltf, blob = _glb(path.read_bytes())
     nodes = [gltf["nodes"][i] for i in gltf["scenes"][gltf.get("scene", 0)]["nodes"]]
     if len(nodes) != len(parts):
-        raise _Unread
+        raise _Unread(f"{len(nodes)} root nodes for {len(parts)} parts")
     out = []
     used = set()
     for node in nodes:
         if any(k in node for k in ("matrix", "translation", "rotation", "scale", "children")):
-            raise _Unread
+            raise _Unread("a node with a transform or children")
         if "mesh" not in node:          # nothing triangulated
             out.append((np.zeros((0, 3), np.float32), np.zeros(0, np.uint32)))
             continue
         if node["mesh"] in used:
-            raise _Unread
+            raise _Unread("a mesh instanced twice")
         used.add(node["mesh"])
         prims = gltf["meshes"][node["mesh"]]["primitives"]
         if len(prims) != 1 or prims[0].get("mode", 4) != 4:
-            raise _Unread
+            raise _Unread("not one triangle primitive per part")
         pos = _accessor(gltf, blob, prims[0]["attributes"]["POSITION"])
         idx = _accessor(gltf, blob, prims[0]["indices"])
         out.append((np.ascontiguousarray(pos, dtype=np.float32).reshape(-1, 3),
@@ -178,7 +191,7 @@ def _read_gltf(parts) -> list[tuple[np.ndarray, np.ndarray]]:
 def _glb(data: bytes) -> tuple[dict, bytes]:
     magic, _, length = struct.unpack_from("<4sII", data, 0)
     if magic != b"glTF":
-        raise _Unread
+        raise _Unread("not a binary glTF")
     off, chunks = 12, {}
     while off < length:
         n, kind = struct.unpack_from("<I4s", data, off)

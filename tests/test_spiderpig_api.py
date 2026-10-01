@@ -1120,6 +1120,31 @@ def test_the_sim_rows_have_their_own_names(monkeypatch):
     assert "the walk model's motion.speed_mm_s row is the spec's" in rows[0].detail
 
 
+def test_the_meshes_read_by_occts_gltf_writer_are_the_loops():
+    """mesh.read_meshes takes the triangles out with RWGltf_CafWriter; the node-by-node
+    loop it replaced (mesh._read_faces) must give the very same arrays, located, mirrored
+    (reversed faces), curved and multi-solid parts alike, and parts sharing faces (a part
+    placed twice) each their own."""
+    from build123d import Compound, Cylinder, Plane, Pos, Rot
+
+    from spiderpig import mesh
+    from spiderpig.shapes import moved
+
+    holed = Box(20, 8, 3) - Cylinder(2, 10).moved(Pos(5, 0, 0))
+    parts = [Box(2, 3, 4), holed, moved(holed, Pos(30, 2, 1) * Rot(0, 0, 37)),
+             holed.mirror(Plane.XY), Compound([Box(1, 1, 1), Box(1, 1, 1).moved(Pos(3, 0, 0))])]
+    got = mesh.tessellate_many(parts)
+    assert mesh._read_gltf(parts)          # the writer's path, located parts too: no fallback
+    for part, (pos, tri, skipped) in zip(parts, got, strict=True):
+        mesh.mesh_part(part)
+        want_pos, want_tri = mesh._read_faces(part)
+        assert skipped == 0
+        assert (pos.dtype, tri.dtype) == (want_pos.dtype, want_tri.dtype)
+        assert pos.shape == want_pos.shape
+        assert (pos == want_pos).all()
+        assert (tri == want_tri).all()
+
+
 def test_the_sim_meshes_face_by_face_as_the_bake_does():
     from spiderpig.bake import _tessellate
     from spiderpig.mesh import tessellate
