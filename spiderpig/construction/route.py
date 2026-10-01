@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from itertools import repeat
 
 import numpy as np
 
@@ -62,6 +63,14 @@ BEARING = 10**3
 RUN = 1                          # a tie-break within one layering: not part of Route.cost
 INF = math.inf
 _MISS = object()                 # a memo miss (a memo may hold None)
+
+
+def _first(pair: tuple):
+    return pair[0]
+
+
+def _second(pair: tuple):
+    return pair[1]
 
 
 @dataclass(frozen=True)
@@ -468,7 +477,7 @@ class CrankRouter:
         fwd = self._forward(view.blocked, riding, h0)
         if isinstance(fwd, int):
             return self._conflict(view, fwd, riding, h0)
-        res = self.route(view, pre)
+        res = self._cheapest(view, pre)
         if isinstance(res, RouteConflict) and (res.bound or res.why):
             return res
         if isinstance(res, RouteConflict):
@@ -491,40 +500,53 @@ class CrankRouter:
 
     def _forward(self, blocked, riding, h0) -> list[int] | int:
         """States reachable from the bottom in each layer, or the first layer none reach
-        (``h0``: none enters the hub)."""
+        (``h0``: none enters the hub). (:meth:`_valid` and :meth:`_webs` inlined.)"""
         out = [0] * h0
-        reach = out[1] = self._valid(blocked.get(1, 0), riding.get(1)) & 7
+        full, n2, base = self.full, 2 + self.n, 2 if self.drop_bearing else 0
+        get, rget = blocked.get, riding.get
+        b = get(1, 0)
+        r = rget(1)
+        reach = out[1] = (16 << r if r is not None else
+                          base | (0 if b & 1 else 1) | (0 if b & 2 else 12)
+                          | ((~b >> 2) & full) << 4) & 7
         if not reach:
             return 1
-        web_prev = self._webs(blocked.get(1, 0))
+        web_prev = (~b >> n2) & full
         for k in range(2, h0):
-            b = blocked.get(k, 0)
-            wk = self._webs(b)
+            b = get(k, 0)
+            wk = (~b >> n2) & full
             nxt = (reach & 1) * 5 | (reach & 2) * 3            # S -> S, L; E -> E, L
             if reach & 12:
                 nxt |= web_prev << 4                            # L, J -> R(j) over a web
             nxt |= reach & 8                                    # J -> J
-            r = reach >> 4
-            nxt |= r << 4                                       # R(j) -> R(j)
-            if r & wk:
+            rr = reach >> 4
+            nxt |= rr << 4                                      # R(j) -> R(j)
+            if rr & wk:
                 nxt |= 8                                        # R(j) -> J over a web
-            reach = out[k] = nxt & self._valid(b, riding.get(k))
+            r = rget(k)
+            reach = out[k] = nxt & (16 << r if r is not None else
+                                    base | (0 if b & 1 else 1) | (0 if b & 2 else 12)
+                                    | ((~b >> 2) & full) << 4)
             if not reach:
                 return k
             web_prev = wk
-        wh = self._webs(blocked.get(h0, 0))
+        wh = (~get(h0, 0) >> n2) & full
         if reach & 8 or (reach >> 4) & wh or (reach & 3 and not riding):
             return out
         return h0
 
     def _backward(self, blocked, riding, h0) -> list[int]:
-        """States in each layer from which the hub can be reached (0 from a dead end down)."""
+        """States in each layer from which the hub can be reached (0 from a dead end down).
+        (:meth:`_valid` and :meth:`_webs` inlined.)"""
         out = [0] * h0
-        alive = 8 | self._webs(blocked.get(h0, 0)) << 4 | (0 if riding else 3)
+        full, n2, base = self.full, 2 + self.n, 2 if self.drop_bearing else 0
+        get, rget = blocked.get, riding.get
+        wn = (~get(h0, 0) >> n2) & full
+        alive = 8 | wn << 4 | (0 if riding else 3)
         for k in range(h0 - 1, 0, -1):
-            b = blocked.get(k, 0)
+            b = get(k, 0)
+            wk = (~b >> n2) & full
             if k < h0 - 1:
-                wk, wn = self._webs(b), self._webs(blocked.get(k + 1, 0))
                 here = (1 if alive & 5 else 0) | (2 if alive & 6 else 0)
                 if (alive >> 4) & wk:
                     here |= 12                                  # L, J -> R(j) over a web
@@ -533,9 +555,13 @@ class CrankRouter:
                 if alive & 8:
                     here |= wn << 4                             # R(j) -> J over a web
                 alive = here
-            alive = out[k] = alive & self._valid(b, riding.get(k)) & (7 if k == 1 else -1)
+            r = rget(k)
+            alive = out[k] = alive & (16 << r if r is not None else
+                                      base | (0 if b & 1 else 1) | (0 if b & 2 else 12)
+                                      | ((~b >> 2) & full) << 4) & (7 if k == 1 else -1)
             if not alive:
                 break
+            wn = wk
         return out
 
     def route(self, view: RouteView, pre=None) -> Route | RouteConflict:
@@ -548,6 +574,17 @@ class CrankRouter:
         layering again and again (what it reads: the hub's bottom, the riders' layers, the
         pieces blocked per layer and the run layers unplaced riders may still take), so the
         answer is remembered per that (:meth:`_solve`) and only the bound is applied here."""
+        res = self._cheapest(view, pre)
+        if not isinstance(res, tuple):
+            return res
+        cost, runs, bearing = res
+        return Route(CrankRoute(tuple(Run(at, lo, hi) for at, lo, hi in runs), bearing),
+                     int(cost) // BEARING)
+
+    def _cheapest(self, view: RouteView, pre=None
+                  ) -> tuple[int, tuple, bool] | RouteConflict:
+        """:meth:`route`'s answer as the DP gives it (cost, runs as triples, bearing), so the
+        search's sub-check builds no route it doesn't keep."""
         if pre is None:
             pre = self._prepare(view)
         if isinstance(pre, RouteConflict):
@@ -559,8 +596,7 @@ class CrankRouter:
             for link, j in self.riders.items():
                 for k in view.open.get(link, ()):
                     may[j] |= 1 << k
-        blocked = view.blocked
-        b = tuple(blocked.get(k, 0) for k in range(h0 + 1))
+        b = tuple(map(view.blocked.get, range(h0 + 1), repeat(0)))
         key = (h0, tuple(sorted(riding.items())), b, tuple(may), self._relax)
         found = self._routes.get(key, _MISS)
         if found is _MISS:
@@ -571,11 +607,9 @@ class CrankRouter:
             if view.open is not None:
                 return RouteConflict(1, h0)
             return RouteConflict(1, h0, self._unbuildable(view), rules=True)
-        cost, runs, bearing = found
-        if view.bound is not None and cost // BEARING >= view.bound:
+        if view.bound is not None and found[0] // BEARING >= view.bound:
             return RouteConflict(1, h0, bound=True)
-        return Route(CrankRoute(tuple(Run(at, lo, hi) for at, lo, hi in runs), bearing),
-                     int(cost) // BEARING)
+        return found
 
     def _solve(self, h0: int, riding: dict[int, int], b: tuple[int, ...], may: list[int]
                ) -> tuple[int, tuple[tuple[str, int, int], ...], bool] | None:
@@ -584,7 +618,12 @@ class CrankRouter:
         and chains (module docstring). ``riding``: layer -> the point its rider rides;
         ``b[k]``: the pieces blocked in layer ``k``; ``may[j]``: the layers (bits) an
         unplaced rider of point ``j`` may take. Plain tuples throughout, so what the memo
-        keeps costs the garbage collector nothing to walk."""
+        keeps costs the garbage collector nothing to walk.
+
+        The search asks this at nearly every node, so it is written for speed: a chain's runs
+        are a linked list (``(run, rest)`` pairs, the latest first) until the route is read
+        back, and the steps are inlined; the transitions, and the order ties are broken in
+        (the first reached among equals), are the same as a plain shortest path's."""
         n, pins = self.n, len(self.pins)
         on_o = [k not in riding and not b[k] & 2 for k in range(h0 + 1)]    # the journal fits
         on_o[h0] = True                                                     # the hub
@@ -602,121 +641,150 @@ class CrankRouter:
                 if r == j:
                     rid_m[j] |= 1 << k
         memos: list[dict[int, list]] = [{} for _ in range(n)]      # chains(j, a) per call
+        points, sweep = self.points, self.sweep
 
-        def fits(chain: tuple[int, int, int, int], d: int) -> bool:
-            size, a, first, last = chain
-            return spans is None or bool(spans.get(size, 0) >> (8 * a + 4 * first + 2 * last + d)
-                                         & 1)
-
-        def chains(j: int, a: int) -> list[tuple[int, bool, int, tuple]]:
+        def chains(j: int, a: int) -> list[tuple[int, int, int, tuple]]:
             """Every chain along point j from its lowest web in layer a, the cheapest for each
-            (highest web's layer, whether a rider on its last run layer sets that web back)."""
-            memo = memos[j]
-            got = memo.get(a)
-            if got is not None:
-                return got
+            (highest web's layer, whether a rider on its last run layer sets that web back):
+            ``(end, last, cost, runs)``, runs a linked list."""
             out: dict[tuple[int, bool], tuple[int, tuple]] = {}
-            enter = RUN + (FEATURE + self.sweep[j] * SWEEP if j >= pins else 0)
+            enter = RUN + (FEATURE + sweep[j] * SWEEP if j >= pins else 0)
             wm, pm, rm, mm = web_m[j], post_m[j], rid_m[j], may[j]
-            point = self.points[j]
-            # open run in layer k: (cost, runs before it, its first layer, all ridden so far)
-            run: dict[int, dict[bool, tuple[int, tuple, int]]] = {}
-            inner: dict[int, dict[int, tuple[int, tuple]]] = {}         # after 1, 2 webs
+            point = points[j]
             if wm >> a & 1 and a + 1 < h0:
+                # the run open in k - 1 ({all ridden so far: (cost, runs before it, its first
+                # layer)}), and the cheapest chain so far after one / two inner webs in k - 1
+                prev: dict[bool, tuple[int, tuple, int]] | None = None
+                p1 = p2 = None
                 for k in range(a + 1, h0 + 1):
                     ridden = bool(rm >> k & 1)
-                    web_k = wm >> k & 1
-                    prev = run.get(k - 1)
-                    # the run open in k - 1 ends: a web in k (the chain's end, or an inner one)
-                    if prev and web_k:
-                        ends = [(c, rs + ((point, lo, k - 1),),
-                                 bool(rm >> (k - 1) & 1) and not full)
-                                for full, (c, rs, lo) in prev.items()]
-                        for c, rs, last in ends:
-                            if c < out.get((k, last), (INF,))[0]:
-                                out[(k, last)] = (c, rs)
-                        c, rs, _ = min(ends, key=lambda e: e[0])
-                        inner.setdefault(k, {})[1] = (c, rs)
-                    if 1 in inner.get(k - 1, {}) and web_k:
-                        inner.setdefault(k, {})[2] = inner[k - 1][1]
+                    i1 = i2 = None
+                    if wm >> k & 1:
+                        # the run open in k - 1 ends: a web in k (the chain's end, or an inner one)
+                        if prev:
+                            was = bool(rm >> (k - 1) & 1)
+                            for full, (c, rs, lo) in prev.items():
+                                rs = ((point, lo, k - 1), rs)
+                                key = (k, was and not full)
+                                got = out.get(key)
+                                if got is None or c < got[0]:
+                                    out[key] = (c, rs)
+                                if i1 is None or c < i1[0]:
+                                    i1 = (c, rs)
+                        if p1 is not None:
+                            i2 = p1
+                    opts: dict[bool, tuple[int, tuple, int]] | None = None
                     if k < h0 and pm >> k & 1:
                         here = 0 if ridden or mm >> k & 1 else FEATURE
-                        opts: dict[bool, tuple[int, tuple, int]] = {}
-                        starts = [(enter, (), k)] if k == a + 1 else []
-                        starts += [(c + enter, rs, k) for c, rs in inner.get(k - 1, {}).values()]
-                        for c, rs, lo in starts:
-                            if c + here < opts.get(ridden, (INF,))[0]:
-                                opts[ridden] = (c + here, rs, lo)
+                        lead = (enter + here, (), k) if k == a + 1 else None
+                        for inner in (p1, p2):
+                            if inner is not None:
+                                c = inner[0] + enter + here
+                                if lead is None or c < lead[0]:
+                                    lead = (c, inner[1], k)
+                        opts = {ridden: lead} if lead is not None else {}
                         if prev:
                             for full, (c, rs, lo) in prev.items():
                                 f = full and ridden
-                                if c + here < opts.get(f, (INF,))[0]:
-                                    opts[f] = (c + here, rs, lo)
-                        if opts:
-                            run[k] = opts
-                    if k not in run and k not in inner:
+                                c += here
+                                got = opts.get(f)
+                                if got is None or c < got[0]:
+                                    opts[f] = (c, rs, lo)
+                        if not opts:
+                            opts = None
+                    if opts is None and i1 is None and i2 is None:
                         break
-            got = memo[a] = [(end, last, c, rs) for (end, last), (c, rs) in out.items()]
+                    prev, p1, p2 = opts, i1, i2
+            got = memos[j][a] = [(end, int(last), c, rs) for (end, last), (c, rs) in out.items()]
             return got
 
         # best[(k, used, last point, pending)]: k is on O and no chain spans it; a chain that
         # ends in k waits in ``pending`` (size, flags) until the next step says if a rider sits
         # right over its highest web. States are kept per layer, in the order first reached.
-        best: dict[tuple, tuple[int, tuple | None, tuple]] = {}
+        best: dict[tuple, tuple[int, tuple, tuple]] = {}
         at: dict[int, dict[tuple, None]] = {}
 
-        def push(state, cost, prev, runs):
-            got = best.get(state)
-            if got is None:
-                at.setdefault(state[0], {})[state] = None
-                best[state] = (cost, prev, runs)
-            elif cost < got[0]:
-                best[state] = (cost, prev, runs)
-
-        def start(state, cost, prev, j: int, a: int, under: int) -> None:
+        def start(used: int, cost: int, prev: tuple, j: int, a: int, under: int) -> None:
             first = rid_m[j] >> (a + 1) & 1
-            for end, last, c, runs in chains(j, a):
-                push((end, state[1] | 1 << j, j, (end - a + 1, under, first, int(last))),
-                     cost + c, prev, runs)
+            used |= 1 << j
+            ch = memos[j].get(a)
+            for end, last, c, runs in (ch if ch is not None else chains(j, a)):
+                state = (end, used, j, (end - a + 1, under, first, last))
+                c += cost
+                got = best.get(state)
+                if got is None:
+                    at.setdefault(end, {})[state] = None
+                    best[state] = (c, prev, runs)
+                elif c < got[0]:
+                    best[state] = (c, prev, runs)
 
         stub_ok, empty_ok = True, self.drop_bearing
         for a in range(1, h0 - 1):
             for bearing, ok in ((True, stub_ok), (False, empty_ok)):
                 if ok:
                     for j in range(n):
-                        start((0, 0), 0 if bearing else BEARING, ("start", bearing), j, a, 0)
+                        start(0, 0 if bearing else BEARING, ("start", bearing), j, a, 0)
             stub_ok = stub_ok and a not in riding and not b[a] & 1
             empty_ok = empty_ok and a not in riding
             if not (stub_ok or empty_ok):
                 break
         after = self.after
+        cost_of = _second
         for k in range(1, h0):
             states = at.get(k)
             if not states:
                 continue
-            here = sorted(((s, best[s][0]) for s in states), key=lambda x: x[1])
+            here = sorted([(s, best[s][0]) for s in states], key=cost_of)
             through = on_o[k + 1] and k + 1 not in riding
             for state, cost in here:
                 _, used, last, pend = state
-                if through and (pend is None or fits(pend, 0)):
-                    push((k + 1, used, last, None), cost, state, ())
+                if pend is None:
+                    ok0, under = True, 0
+                else:
+                    size, a, first, under = pend
+                    fit = (spans.get(size, 0) >> (8 * a + 4 * first + 2 * under)
+                           if spans is not None else -1)
+                    ok0 = bool(fit & 1)
+                if through and ok0:
+                    nxt = (k + 1, used, last, None)
+                    got = best.get(nxt)
+                    if got is None:
+                        at.setdefault(k + 1, {})[nxt] = None
+                        best[nxt] = (cost, state, ())
+                    elif cost < got[0]:
+                        best[nxt] = (cost, state, ())
                 ok_after = after[last]
                 for j in range(n):
                     if used >> j & 1 or not ok_after[j]:
                         continue
-                    if pend is not None and not fits(pend, rid_m[j] >> (k + 1) & 1):
+                    if pend is not None and not fit >> (rid_m[j] >> (k + 1) & 1) & 1:
                         continue
-                    start(state, cost, state, j, k, pend[3] if pend is not None else 0)
-        ends = [(best[s][0], s) for s in at.get(h0, ())
-                if self.last[s[2]]
-                and (s[3] is None or fits(s[3], 0) and (self.hub_play or not s[3][3]))]
+                    start(used, cost, state, j, k, under)
+        hub_play, last_ok = self.hub_play, self.last
+        ends = []
+        for s in at.get(h0, ()):
+            if not last_ok[s[2]]:
+                continue
+            pend = s[3]
+            if pend is not None:
+                size, a, first, lastf = pend
+                if spans is not None and not spans.get(size, 0) >> (8 * a + 4 * first
+                                                                     + 2 * lastf) & 1:
+                    continue
+                if not hub_play and lastf:
+                    continue
+            ends.append((best[s][0], s))
         if not ends:
             return None
-        cost, state = min(ends, key=lambda e: e[0])
+        cost, state = min(ends, key=_first)
         runs: list[tuple[str, int, int]] = []
         while True:
             _, prev, rs = best[state]
-            runs[:0] = rs
+            chain = []
+            while rs:
+                run, rs = rs
+                chain.append(run)
+            runs[:0] = chain[::-1]
             if prev[0] == "start":
                 return int(cost), tuple(runs), prev[1]
             state = prev
@@ -728,19 +796,19 @@ class CrankRouter:
         saved = self.spans, self.after, self.last, self.hub_play
         try:
             self.spans, self._relax = None, 1
-            if isinstance(self.route(view), Route):
+            if isinstance(self._cheapest(view), tuple):
                 sizes = sorted(k for k, m in saved[0].items() if m)
                 return ("its crank routes need a joint no stock screw fits (a chain's webs "
                         f"{_ranges(sizes)} layers apart, both counted, take one)")
             self.hub_play, self._relax = True, 2
-            if isinstance(self.route(view), Route):
+            if isinstance(self._cheapest(view), tuple):
                 return ("its crank routes end with a web set back for its rider's end play in "
                         "the hub's lowest layer, which leaves the hub too short for the horn "
                         "screws")
             self.after = [[True] * self.n for _ in range(self.n)]
             self.last = [True] * self.n
             self._relax = 3
-            if isinstance(self.route(view), Route):
+            if isinstance(self._cheapest(view), tuple):
                 return "its crank routes put two joints' pockets together"
         finally:
             self.spans, self.after, self.last, self.hub_play = saved
