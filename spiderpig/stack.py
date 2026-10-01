@@ -52,8 +52,6 @@ from functools import cached_property
 from typing import Literal, Protocol
 
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 
 log = logging.getLogger("stack")
 
@@ -454,15 +452,28 @@ def group_axes(
     nodes = list(joint_xy)
     index = {n: i for i, n in enumerate(nodes)}
     edges = [(index[a], index[b]) for a, b in connections]
-    edges += [(index[a], index[b]) for a, b in itertools.combinations(nodes, 2)
-              if np.abs(joint_xy[a] - joint_xy[b]).max() < tol]
-    rows = np.array([a for a, _ in edges], dtype=int)
-    cols = np.array([b for _, b in edges], dtype=int)
-    graph = coo_matrix((np.ones(len(edges)), (rows, cols)), shape=(len(nodes), len(nodes)))
-    _, labels = connected_components(graph, directed=False)
+    # coincident over every sample: apart at the first sample is apart (the max over the
+    # samples is at least that), so only the pairs close there are compared in full
+    xy = [np.asarray(joint_xy[n], dtype=float).reshape(-1, 2) for n in nodes]
+    first = np.array([a[0] for a in xy])
+    near = np.abs(first[:, None, :] - first[None, :, :]).max(axis=-1) < tol
+    edges += [(i, j) for i, j in zip(*np.nonzero(np.triu(near, 1)), strict=True)
+              if np.abs(xy[i] - xy[j]).max() < tol]
+    parent = list(range(len(nodes)))        # union-find: the connected components
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in edges:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
     groups: dict[int, list[tuple[str, str]]] = {}
-    for node, label in zip(nodes, labels, strict=True):
-        groups.setdefault(int(label), []).append(node)
+    for i, node in enumerate(nodes):
+        groups.setdefault(find(i), []).append(node)
     return list(groups.values())        # in order of each axis's first node
 
 
