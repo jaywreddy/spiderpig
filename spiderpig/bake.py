@@ -75,6 +75,7 @@ from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
+from spiderpig.mesh import mesh_part, read_meshes
 from spiderpig.stack import body_class, is_link
 
 logger = logging.getLogger("bake_gltf")
@@ -402,10 +403,14 @@ def _tessellate(part, tolerance: float = 0.1, angular: float = 0.1
     from spiderpig.mesh import tessellate
 
     positions, tris, skipped = tessellate(part, tolerance, angular)
+    _log_skipped(part, skipped)
+    return positions, tris
+
+
+def _log_skipped(part, skipped: int) -> None:
     if skipped:
         logger.warning("tessellate: %d of %d faces have no triangulation; skipped",
                        skipped, len(part.faces()))
-    return positions, tris
 
 
 class _Packer:
@@ -580,9 +585,16 @@ def _share_and_tessellate(ref: _Reference, prof: _Profiler,
     logger.debug("%d bodies with parts -> %d meshes", len(plan.key_of), len(plan.rep_of))
     class_mesh: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     with prof.timed("2_tessellate_total"):
-        for key, rep in plan.rep_of.items():
+        # each part meshed on its own (its kind timed), then every mesh read out at once
+        # (OCCT's glTF writer, not node by node: :func:`spiderpig.mesh.read_meshes`)
+        for rep in plan.rep_of.values():
             with prof.timed(f"2_tessellate.{_material_of(rep)}"):
-                class_mesh[key] = _tessellate(rep.part)
+                mesh_part(rep.part)
+        reps = list(plan.rep_of.items())
+        for (key, rep), (positions, tris, skipped) in zip(
+                reps, read_meshes([rep.part for _, rep in reps]), strict=True):
+            _log_skipped(rep.part, skipped)
+            class_mesh[key] = positions, tris
             nv = len(class_mesh[key][0])
             nt = len(class_mesh[key][1]) // 3
             prof.set_metric(f"verts.{key}", nv)

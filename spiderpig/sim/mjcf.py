@@ -274,13 +274,23 @@ def _root(body, by_name) -> str:
     return body.name
 
 
+def _hulls(parts, tolerance: float) -> list[np.ndarray]:
+    """:func:`_hull` of each part, the meshes read out in one pass."""
+    from spiderpig.mesh import tessellate_many
+
+    return [_hull_of(verts) for verts, _, _ in tessellate_many(parts, tolerance)]
+
+
 def _hull(part, tolerance: float) -> np.ndarray:
     """The convex hull's vertices of a part's mesh: :func:`spiderpig.mesh.tessellate`, face
     by face, so a purchased model with a face the mesher can't triangulate (the XL330's)
     gives its hull from the faces it has instead of failing the whole model."""
     from spiderpig.mesh import tessellate
 
-    verts, _, _ = tessellate(part, tolerance)
+    return _hull_of(tessellate(part, tolerance)[0])
+
+
+def _hull_of(verts) -> np.ndarray:
     pts = np.unique(np.round(np.asarray(verts, dtype=float), 4), axis=0)
     return pts[ConvexHull(pts).vertices]
 
@@ -461,13 +471,11 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
             u = (c - a) / np.linalg.norm(c - a) * r
             segs.append((a + u if p in on_foot else a, c - u if q in on_foot else c))
         outlines[b.name] = segs
-    hulls = {}
-    for b in robot.bodies:
-        if b.part is None or host[b.name] != "base":
-            continue
-        cls = body_class(b.name)
-        if (b.fab == "laser" and cls in ("torso", "frame_outer")) or cls == "servo":
-            hulls[b.name] = ("base", _hull(b.part, hull_tolerance))
+    hulled = [b for b in robot.bodies if b.part is not None and host[b.name] == "base" and (
+        (b.fab == "laser" and body_class(b.name) in ("torso", "frame_outer"))
+        or body_class(b.name) == "servo")]
+    hulls = {b.name: ("base", pts) for b, pts in zip(
+        hulled, _hulls([b.part for b in hulled], hull_tolerance), strict=True)}
 
     return RobotModel(
         config=config, bodies=ordered, host=host, joints=joints, loops=loops,
