@@ -141,6 +141,46 @@ def test_identical_and_mirrored_parts_are_grouped():
     assert "2 + 1 mirrored" in bom.markdown()
 
 
+@pytest.mark.parametrize("chiral", [True, False])
+def test_a_robots_mirrored_twins_group_as_compared(chiral):
+    """A right-side part mirroring its left twin joins the twin's group without a boolean,
+    counted as :func:`congruent` would count it: mirrored iff the reference is chiral and
+    the twin isn't itself the reference's mirror image."""
+    from spiderpig.hardware import bom as bom_mod
+
+    part = _chiral() if chiral else Box(10, 4, 2) - Cylinder(1, 2)
+    moved = part.rotate(Axis.Z, 70).moved(Pos(40, -3, 9))
+    flipped = part.mirror(Plane.XY).moved(Pos(-30, 0, 0))
+    left = {"L.a": part, "L.b": moved, "L.c": flipped}
+    right = {"R." + n[2:]: p.mirror(Plane.XY) for n, p in left.items()}
+    named = [*left.items(), *right.items()]
+    calls = []
+    real = bom_mod._shared_volume
+
+    def counted(a, b):
+        calls.append(1)
+        return real(a, b)
+
+    for method in ("printed", "laser"):
+        twins = [Body(n, part=p, fab=method) for n, p in named]
+        plain = [Body(n.replace("R.", "Q."), part=p, fab=method) for n, p in named]
+        calls.clear()
+        bom_mod._shared_volume = counted
+        try:
+            (g,) = group_made(twins, method)
+            with_twins = len(calls)
+            (h,) = group_made(plain, method)
+        finally:
+            bom_mod._shared_volume = real
+        assert g.names == [n.replace("Q.", "R.") for n in h.names]
+        assert g.mirrored == [n.replace("Q.", "R.") for n in h.mirrored]
+        assert with_twins < len(calls) - 2          # the right side compared nothing
+        if method == "printed":
+            assert g.mirrored == (["L.c", "R.a", "R.b"] if chiral else [])
+        else:
+            assert g.mirrored == []                     # a flipped plate is the same cut
+
+
 # ---------------------------------------------------------------------------
 # Test drive, round 3 (docs/agentlib/TESTDRIVE.md): the pivot hardware is priced, and each
 # price says where it came from

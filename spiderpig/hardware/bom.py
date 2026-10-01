@@ -197,14 +197,25 @@ def _footprint(part) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _frame(part) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(centroid, principal axes as columns, principal moments), moments ascending."""
-    from build123d import CenterOf
+def _frame(part, vol=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(centroid, principal axes as columns, principal moments), moments ascending.
 
-    c = part.center(CenterOf.MASS)
-    props = sorted(part.principal_properties, key=lambda am: am[1])
-    axes = np.array([[a.X, a.Y, a.Z] for a, _ in props]).T
-    return np.array([c.X, c.Y, c.Z]), axes, np.array([m for _, m in props])
+    ``vol``: the part's volume properties (``GProp_GProps``) when the caller has them:
+    build123d's ``center(CenterOf.MASS)`` and ``principal_properties`` each integrate
+    them again, to the same numbers."""
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    if vol is None:
+        vol = GProp_GProps()
+        BRepGProp.VolumeProperties_s(part.wrapped, vol)
+    c = vol.CentreOfMass()
+    pp = vol.PrincipalProperties()
+    moments = pp.Moments()
+    props = sorted(zip((pp.FirstAxisOfInertia(), pp.SecondAxisOfInertia(),
+                        pp.ThirdAxisOfInertia()), moments, strict=True), key=lambda am: am[1])
+    axes = np.array([[a.X(), a.Y(), a.Z()] for a, _ in props]).T
+    return np.array([c.X(), c.Y(), c.Z()]), axes, np.array([m for _, m in props])
 
 
 @dataclass(frozen=True)
@@ -220,13 +231,17 @@ class _Sig:
 
 
 def _sig(part) -> _Sig:
+    """One volume and one surface integration (the frame and the area from them, as
+    build123d's ``center``, ``principal_properties`` and ``area`` compute them); the volume
+    is build123d's (a compound's is the sum of its solids')."""
     from OCP.BRepGProp import BRepGProp
     from OCP.GProp import GProp_GProps
 
-    surf = GProp_GProps()
+    vol, surf = GProp_GProps(), GProp_GProps()
+    BRepGProp.VolumeProperties_s(part.wrapped, vol)
     BRepGProp.SurfaceProperties_s(part.wrapped, surf)
     sc = surf.CentreOfMass()
-    return _Sig(part.volume, part.area, _frame(part), np.array([sc.X(), sc.Y(), sc.Z()]))
+    return _Sig(part.volume, surf.Mass(), _frame(part, vol), np.array([sc.X(), sc.Y(), sc.Z()]))
 
 
 _SIGNS = ((1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1),
@@ -328,13 +343,42 @@ class MadeGroup:
         return len(self.names)
 
 
+def _twin(name: str) -> str | None:
+    """``"R.x"`` -> ``"L.x"``: the left-side part a robot's right-side part mirrors
+    (:func:`construction.robot.assemble_robot` mirrors one side about z = 0)."""
+    return "L." + name[2:] if len(name) > 2 and name.startswith("R.") else None
+
+
+def _mirrors(sa: _Sig, sb: _Sig, rel: float = 1e-9) -> bool:
+    """Do ``sb``'s measurements mirror ``sa``'s about z = 0 (the twins of an assembly that
+    mirrors exactly; anything else, an edited part, fails and is compared as usual)?"""
+    def close(x, y, scale):
+        return bool(np.all(np.abs(np.asarray(x) - np.asarray(y)) <= rel * max(scale, 1.0)))
+
+    flip = np.array([1.0, 1.0, -1.0])
+    size = max(abs(sa.volume) ** (1 / 3), 1.0)
+    return (close(sa.volume, sb.volume, abs(sa.volume)) and close(sa.area, sb.area, sa.area)
+            and close(sa.frame[2], sb.frame[2], float(np.abs(sa.frame[2]).max()))
+            and close(sa.frame[0] * flip, sb.frame[0], size * 1e3)
+            and close(sa.surf * flip, sb.surf, size * 1e3))
+
+
 def group_made(bodies, method: str) -> list[MadeGroup]:
-    """Group ``method`` bodies by shape. For laser parts a mirror image is the same cut."""
+    """Group ``method`` bodies by shape. For laser parts a mirror image is the same cut.
+
+    A robot's right-side part whose measurements mirror its left twin's (the assembly
+    mirrors one side, so they always do unless a part was edited) joins the twin's group
+    without a comparison: the right part is congruent to the group's reference when the
+    twin is its mirror image, or the reference is its own mirror image (one comparison per
+    printed group, made once); else it is a mirror image (what :func:`congruent` finds).
+    """
     from build123d import Plane
 
     groups: list[MadeGroup] = []
     sigs: dict[int, _Sig] = {}               # id(group) -> the reference's measurements
     mirrors: dict[int, tuple] = {}           # id(group) -> (its mirror image, measurements)
+    achiral: dict[int, bool] = {}            # id(group) -> is the reference its own mirror
+    placed: dict[str, tuple[MadeGroup, str, _Sig]] = {}   # name -> (group, relation, sig)
 
     def mirror_of(g: MadeGroup) -> Callable[[], tuple]:
         def get() -> tuple:
@@ -344,10 +388,29 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
             return mirrors[id(g)]
         return get
 
+    def is_achiral(g: MadeGroup, sb: _Sig) -> bool:
+        if id(g) not in achiral:
+            m, sm = mirror_of(g)()
+            sg = sigs[id(g)]
+            achiral[id(g)] = _proper_fit(m, sm, g.ref.part, sg, max(1e-3, 1e-4 * sb.volume))
+        return achiral[id(g)]
+
     for b in bodies:
         if b.fab != method or b.part is None:
             continue
         sb = _sig(b.part)
+        twin = placed.get(_twin(b.name) or "")
+        if twin is not None and _mirrors(twin[2], sb):
+            g, rel_twin, _ = twin
+            # mirror(twin) is congruent to the reference iff the twin is the reference's
+            # mirror image, or the reference is achiral
+            rel = "same" if rel_twin == "mirror" or (method == "printed"
+                                                     and is_achiral(g, sb)) else "mirror"
+            g.names.append(b.name)
+            if rel == "mirror" and method == "printed":
+                g.mirrored.append(b.name)
+            placed[b.name] = (g, rel, sb)
+            continue
         for g in groups:
             rel = congruent(g.ref.part, b.part, sa=sigs[id(g)], sb=sb, mirror=mirror_of(g))
             if rel is None:
@@ -355,11 +418,13 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
             g.names.append(b.name)
             if rel == "mirror" and method == "printed":
                 g.mirrored.append(b.name)
+            placed[b.name] = (g, rel, sb)
             break
         else:
             g = MadeGroup(method, b, [b.name])
             groups.append(g)
             sigs[id(g)] = sb
+            placed[b.name] = (g, "same", sb)
     return groups
 
 
