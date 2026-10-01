@@ -64,6 +64,9 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--no-dxf", action="store_true", help="skip the DXF sheet-packing pass")
     p.add_argument("--list", action="store_true",
                    help="list modules, servos, constructions and sheet stock")
+    p.add_argument("--store", metavar="PATH",
+                   help="the design store the options resolve into, whose plan is reused "
+                        "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
     args = p.parse_args(argv)
     try:            # robot=None: the linkage's kind decides (a mechanism is one side)
         args.config = config_from_args(args, robot=False if args.side_only else None)
@@ -168,6 +171,17 @@ def main(argv=None) -> int:
                    f"{dict(config.proportions) or 'its defaults'}")
     if custom or config.linkage != linkage.DEFAULT:
         print(f"design: {design_note}")
+    # the plan through the store (api.plan_config), as explain and audit do: the stored
+    # design's when it holds one (re-made and verified), else solved once and recorded;
+    # design_side then answers from what plan_config remembered
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    try:
+        api.plan_config(config, Store.of(args.store) if args.store else Store.default())
+    except ValueError as e:
+        print(f"error: no layer plan: {e}", file=sys.stderr)
+        return 2
     design = design_side(tmpl, config)
     plan = design.plan
     print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
