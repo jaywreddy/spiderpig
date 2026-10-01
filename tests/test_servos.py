@@ -306,3 +306,59 @@ def test_no_models_are_checked_in():
     """Manufacturer models are downloaded at build time (``mise run fetch-cad``), never vendored."""
     root = pathlib.Path(__file__).resolve().parents[1]
     assert not list((root / "spiderpig" / "servos").rglob("*.st*p"))
+
+
+def test_a_derived_record_is_cached_beside_the_model(monkeypatch, tmp_path):
+    """What is derived from a manufacturer's model (which solids the strip keeps) is
+    recorded beside the download and read back by the next process."""
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    ref = _ref(tmp_path, b"not needed: the record is what is cached")
+    path = cadlib.prepared_path(ref, "strip v1")
+    assert path.parent == tmp_path / "cache"
+    assert path.suffix == ".json"
+    assert cadlib.prepared_path(ref, "strip v2") != path
+    assert cadlib.read_prepared(path) is None
+    cadlib.write_prepared(path, {"solids": 3, "keep": [0, 2]})
+    assert cadlib.read_prepared(path) == {"solids": 3, "keep": [0, 2]}
+    path.write_text("garbage")
+    assert cadlib.read_prepared(path) is None       # a bad file is as good as none
+
+
+def test_the_strip_uses_the_recorded_indices(monkeypatch, tmp_path):
+    """``cad_servo`` strips by the recorded indices (no bounding boxes), records them when
+    there is no record, and ignores a record of another solid count."""
+    from build123d import Box, Compound, export_step
+
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    horn = Box(2, 2, 2).moved(Location((0, 0, 6)))
+    body = Compound(children=[Box(10, 10, 10), horn, Box(3, 3, 3).moved(Location((20, 0, 0)))])
+    src = tmp_path / "src" / "m.step"
+    src.parent.mkdir(parents=True)
+    export_step(body, str(src))
+    data = src.read_bytes()
+    ref = CadRef(url=src.as_uri(), sha256=hashlib.sha256(data).hexdigest(), filename="m.step",
+                 strip=((-1.0, -1.0, 5.0, 1.0, 1.0, 7.0),))
+    spec = replace(servos.get("sts3215"), cad=ref)
+    clear_model_caches()
+    got = model.cad_servo(spec)
+    assert got.volume == pytest.approx(1000 + 27)
+    path = cadlib.prepared_path(ref, model._strip_key(ref))
+    doc = cadlib.read_prepared(path)
+    assert doc["solids"] == 3
+    assert len(doc["keep"]) == 2
+
+    def no_boxes(shape, ref):
+        raise AssertionError("the recorded indices should have been used")
+
+    monkeypatch.setattr(model, "strip_indices", no_boxes)
+    clear_model_caches()
+    assert model.cad_servo(spec).volume == pytest.approx(1027)
+    monkeypatch.undo()
+    monkeypatch.setenv(cadlib.CACHE_ENV, str(tmp_path / "cache"))
+    monkeypatch.delenv(cadlib.OFFLINE_ENV, raising=False)
+    cadlib.write_prepared(path, {"solids": 99, "keep": [0]})        # not this model's
+    clear_model_caches()
+    assert model.cad_servo(spec).volume == pytest.approx(1027)
+    assert cadlib.read_prepared(path)["solids"] == 3
+    clear_model_caches()

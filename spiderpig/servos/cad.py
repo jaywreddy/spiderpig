@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import logging
 import os
 import tempfile
@@ -162,6 +163,38 @@ def _load_cached(path: str, fmt: str, ref: CadRef):
     shape = _import(Path(path), fmt)
     moved = BRepBuilderAPI_Transform(shape.wrapped, _trsf(ref), True).Shape()
     return Compound(moved)
+
+
+PREPARED_FORMAT = 1       # bump when what :func:`prepared_path` records is derived differently
+
+
+def prepared_path(ref: CadRef, key: str) -> Path:
+    """Where a record derived from ``ref``'s model is cached (a JSON beside the download):
+    by the model's hash, ``key`` (what the derivation depends on) and the format version."""
+    tag = hashlib.sha256(f"{PREPARED_FORMAT}|{key}".encode()).hexdigest()[:16]
+    return cache_dir() / f"{ref.sha256.lower()}.{tag}.json"
+
+
+def read_prepared(path: Path) -> dict | None:
+    """The record cached at ``path`` (:func:`write_prepared`), or ``None``."""
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def write_prepared(path: Path, doc: dict) -> None:
+    """Cache ``doc`` at ``path`` (atomically; never raises)."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+        with os.fdopen(fd, "w") as f:
+            json.dump(doc, f)
+        os.replace(tmp, path)
+    except (OSError, TypeError, ValueError) as e:
+        log.warning("couldn't cache the record at %s: %s", path, e)
 
 
 def load(ref: CadRef, *, allow_download: bool | None = None):
