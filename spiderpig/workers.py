@@ -17,6 +17,7 @@ than that and needs nothing but what the store holds (a design is loaded by its 
 from __future__ import annotations
 
 import concurrent.futures as cf
+import logging
 import os
 import pickle
 import subprocess
@@ -24,6 +25,8 @@ import sys
 import tempfile
 import threading
 from pathlib import Path
+
+log = logging.getLogger("spiderpig.workers")
 
 ENV_OFF = "SPIDERPIG_WORKERS"      # "0": every job runs in the calling process instead
 
@@ -58,7 +61,9 @@ def _run(job) -> object:
         if not dst.is_file():
             raise RuntimeError(f"worker for {job[1]}.{job[2]} exited with {proc.returncode} "
                                "and no result")
-        ok, value = pickle.loads(dst.read_bytes())
+        ok, value, stats = pickle.loads(dst.read_bytes())
+    log.debug("worker %s.%s: %.1f s, %.1f CPU-s (the engine's import %.1f s)", job[1], job[2],
+              *stats)
     if not ok:
         raise value
     return value
@@ -95,14 +100,23 @@ def load_shape(dumped: tuple[str, bytes]):
 
 def _child(job, out: str) -> None:
     import importlib
+    import resource
+    import time
 
     _, module, name, args = job
+    t0 = time.perf_counter()
     try:
-        result = (True, getattr(importlib.import_module(module), name)(*args))
+        fn = getattr(importlib.import_module(module), name)
+        t_import = time.perf_counter() - t0
+        result = (True, fn(*args))
     except BaseException as e:      # noqa: BLE001 - every failure goes back to the caller
+        t_import = time.perf_counter() - t0
         result = (False, e)
+    r = resource.getrusage(resource.RUSAGE_SELF)
+    stats = (time.perf_counter() - t0, r.ru_utime + r.ru_stime, t_import)
     try:
-        data = pickle.dumps(result)
+        data = pickle.dumps((*result, stats))
     except Exception as e:          # an unpicklable result or exception
-        data = pickle.dumps((False, RuntimeError(f"{module}.{name}: {result[1]!r} ({e})")))
+        data = pickle.dumps((False, RuntimeError(f"{module}.{name}: {result[1]!r} ({e})"),
+                             stats))
     Path(out).write_bytes(data)
