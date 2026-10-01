@@ -31,23 +31,35 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import time
 from pathlib import Path
 
 from spiderpig import linkage
-from spiderpig.config import BuildConfig, ParamError, add_build_args, config_from_args
+from spiderpig.config import (
+    BuildConfig,
+    ParamError,
+    add_build_args,
+    add_design_args,
+    config_from_args,
+)
 from spiderpig.construction.contract import bad_solids, check_side, clashes
-from spiderpig.fabricate import design_side, fabricate, template_for
+from spiderpig.fabricate import fabricate, template_for
 from spiderpig.hardware.bom import BomLine, bom_from_mechanism
 from spiderpig.hardware.catalog import sheet_size
 from spiderpig.layout import pack
 from spiderpig.stack import verify_plan
 
 
-def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash) -> dict:
+def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=None) -> dict:
+    """One module's audit. ``store``: the design store the config resolves into, whose
+    plan is reused when it holds one (:func:`spiderpig.api.plan_config`; the project's by
+    default)."""
+    from spiderpig import api
+
     t0 = time.time()
     tmpl = template_for(config)
-    design = design_side(tmpl, config)
+    design = api.plan_config(config, store if store is not None else api.PROJECT)
     rep: dict = {"layers": design.plan.top + 1, "stack_mm": design.plan.height,
                  "plan": design.plan.describe()}
     rep["plan_violations"] = verify_plan(design.plan, tmpl)
@@ -131,18 +143,23 @@ def markdown(report: dict) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--linkage", choices=linkage.available(), default=linkage.DEFAULT,
-                    help="the linkage (default klann); a mechanism audits as one side")
+    add_design_args(ap)         # --linkage, --module, --phases, --proportion (as build's)
     ap.add_argument("--modules", default=None,
-                    help="comma-separated leg modules (default: all of the linkage's)")
+                    help="comma-separated leg modules (default: --module, else all of the "
+                         "linkage's; a mechanism audits as one side)")
     ap.add_argument("--ts-contract", default="0,1.6,3.2,4.8",
                     help="crank angles for the contract check")
     ap.add_argument("--ts-clash", default="1,4.38", help="crank angles for the OCCT clash check")
     add_build_args(ap)
+    ap.add_argument("--store", metavar="PATH",
+                    help="the design store the options resolve into, whose plans are reused "
+                         "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
     ap.add_argument("--out", type=Path, default=Path("build/audit"))
     args = ap.parse_args(argv)
+    from spiderpig.store import Store
 
-    modules = (args.modules.split(",") if args.modules
+    store = Store.of(args.store) if args.store else Store.default()
+    modules = (args.modules.split(",") if args.modules else [args.module] if args.module
                else list(linkage.get(args.linkage).leg_modules))
     try:        # robot=None: a walker's robot, a mechanism's one side
         configs = [config_from_args(args, module=m, robot=None) for m in modules]
@@ -153,12 +170,17 @@ def main(argv=None) -> int:
                                "pillar": base.pillar, "pin": base.pin, "crank": base.crank,
                                "sheet": base.sheet, "thickness": base.thickness},
                     "modules": {}}
+    if base.proportions:
+        report["config"]["proportions"] = dict(base.proportions)
+    if base.phases is not None:
+        report["config"]["phases_deg"] = [round(math.degrees(p), 6) for p in base.phases]
     ts_contract = [float(x) for x in args.ts_contract.split(",")]
     ts_clash = [float(x) for x in args.ts_clash.split(",")]
     failed = False
     for module, config in zip(modules, configs, strict=True):
         print(f"== {module}", flush=True)
-        rep = report["modules"][module] = audit_module(module, config, ts_contract, ts_clash)
+        rep = report["modules"][module] = audit_module(module, config, ts_contract, ts_clash,
+                                                       store)
         for p in rep["problems"]:
             print(f"  {p}")
         for w in rep["warnings"]:

@@ -52,8 +52,6 @@ from functools import cached_property
 from typing import Literal, Protocol
 
 import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
 
 log = logging.getLogger("stack")
 
@@ -99,12 +97,34 @@ class Geometry:
     most the two can move between samples.
     """
 
-    def __init__(self, points: Mapping[str, np.ndarray]):
-        arrays = {k: np.asarray(v, dtype=float).reshape(-1, 2) for k, v in points.items()}
+    def __init__(self, points: Mapping[str, np.ndarray], shared: Geometry | None = None):
+        # a geometry made from ``shared`` keeps the distances between the points it takes
+        # over unchanged (the very same arrays) in that one's table; what a topology's users
+        # add (a servo's screws, a crank's detours) is measured into this one's own
+        same = ({k for k, v in points.items() if shared.points.get(k) is v}
+                if shared is not None else set())
+        arrays = {k: v if k in same else np.asarray(v, dtype=float).reshape(-1, 2)
+                  for k, v in points.items()}
         n = max((a.shape[0] for a in arrays.values()), default=1)
+        if shared is not None and shared.samples != n:
+            same = set()
         self.samples = n
-        self.points = {k: np.broadcast_to(a, (n, 2)) for k, a in arrays.items()}
+        self.points = {k: a if k in same else np.broadcast_to(a, (n, 2))
+                       for k, a in arrays.items()}
         self._dist: dict[tuple, float] = {}
+        self._shared: dict[tuple, float] | None = None
+        self._shared_names: frozenset[str] = frozenset()
+        if same:
+            if shared._shared is None:
+                self._shared, self._shared_names = shared._dist, frozenset(same)
+            else:
+                self._shared = shared._shared
+                self._shared_names = frozenset(same) & shared._shared_names
+
+    def extend(self, points: Mapping[str, np.ndarray]) -> Geometry:
+        """A geometry with ``points`` added (or replaced), sharing this one's table for the
+        points it keeps unchanged."""
+        return Geometry({**self.points, **points}, shared=self)
 
     @cached_property
     def step(self) -> dict[str, float]:
@@ -130,10 +150,15 @@ class Geometry:
 
     def dist(self, a: Core, b: Core) -> float:
         key = (a, b) if a <= b else (b, a)
-        d = self._dist.get(key)
+        table = self._dist
+        if self._shared is not None:
+            names = self._shared_names
+            if all(nm in names for nm in a[1:]) and all(nm in names for nm in b[1:]):
+                table = self._shared
+        d = table.get(key)
         if d is None:
             d = float(self.sampled(a, b).min()) - (self._step(a) + self._step(b)) / 2
-            self._dist[key] = d
+            table[key] = d
         return d
 
 
@@ -427,7 +452,7 @@ class Topology:
         pin = g[self.axes_of("crankpin")[0].name] - g["O"]
         theta = np.arctan2(pin[:, 1], pin[:, 0]) + np.radians(angle_deg)
         xy = g["O"] + r * np.stack([np.cos(theta), np.sin(theta)], axis=-1)
-        self.geometry = Geometry({**g, name: xy})
+        self.geometry = self.geometry.extend({name: xy})
         self.crank_points[name] = (r, angle_deg)
         return name
 
@@ -454,15 +479,28 @@ def group_axes(
     nodes = list(joint_xy)
     index = {n: i for i, n in enumerate(nodes)}
     edges = [(index[a], index[b]) for a, b in connections]
-    edges += [(index[a], index[b]) for a, b in itertools.combinations(nodes, 2)
-              if np.abs(joint_xy[a] - joint_xy[b]).max() < tol]
-    rows = np.array([a for a, _ in edges], dtype=int)
-    cols = np.array([b for _, b in edges], dtype=int)
-    graph = coo_matrix((np.ones(len(edges)), (rows, cols)), shape=(len(nodes), len(nodes)))
-    _, labels = connected_components(graph, directed=False)
+    # coincident over every sample: apart at the first sample is apart (the max over the
+    # samples is at least that), so only the pairs close there are compared in full
+    xy = [np.asarray(joint_xy[n], dtype=float).reshape(-1, 2) for n in nodes]
+    first = np.array([a[0] for a in xy])
+    near = np.abs(first[:, None, :] - first[None, :, :]).max(axis=-1) < tol
+    edges += [(i, j) for i, j in zip(*np.nonzero(np.triu(near, 1)), strict=True)
+              if np.abs(xy[i] - xy[j]).max() < tol]
+    parent = list(range(len(nodes)))        # union-find: the connected components
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in edges:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[rb] = ra
     groups: dict[int, list[tuple[str, str]]] = {}
-    for node, label in zip(nodes, labels, strict=True):
-        groups.setdefault(int(label), []).append(node)
+    for i, node in enumerate(nodes):
+        groups.setdefault(find(i), []).append(node)
     return list(groups.values())        # in order of each axis's first node
 
 
@@ -475,13 +513,49 @@ def _axis_name(nodes: list[tuple[str, str]]) -> str:
     return "_".join(j for _, j in sorted(nodes))
 
 
+_SAMPLED: dict[tuple, Topology] = {}     # a module template's topology, sampled once
+SAMPLED_MAX = 16                          # templates kept (the newest)
+
+
 def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     """Classify a template's bodies and joints into links and axles.
 
     Links are the b1..b4 bodies. Coincident joints form axles: the one on the
     crank centre (frame + crank, no link) is O; axles joining the crank to b1s
     are crankpins; axles touching the frame are pillars; the rest are pins.
+
+    A module template (:func:`linkage.build_module_template`: its ``meta`` names the
+    linkage, module, phases and proportions that made it) is sampled once per process:
+    the designs an agent derives from one another share the linkage and module, and the
+    check, the plan and its re-make from the store each ask for the same topology. Every
+    call gets its own :class:`Topology` (a plan adds crank points to it) over one shared,
+    read-only :class:`Geometry`, whose distance table then serves them all.
     """
+    meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    key = None
+    if {"linkage", "module", "phases", "proportions"} <= set(meta):
+        key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections),
+               tuple(sorted(meta.items())), samples)
+        base = _SAMPLED.get(key)
+        if base is not None:
+            return _copy_of(base)
+    topo = _sample_topology(tmpl, samples)
+    if key is not None:
+        if len(_SAMPLED) >= SAMPLED_MAX:
+            del _SAMPLED[next(iter(_SAMPLED))]
+        _SAMPLED[key] = topo
+        return _copy_of(topo)
+    return topo
+
+
+def _copy_of(base: Topology) -> Topology:
+    """A topology of ``base``'s links, axes and points with its own geometry (own points,
+    sharing the base's distance table for them) and its own crank points."""
+    geo = Geometry(dict(base.geometry.points), shared=base.geometry)
+    return replace(base, geometry=geo, crank_points={})
+
+
+def _sample_topology(tmpl, samples: int) -> Topology:
     ts = np.linspace(0.0, 2.0 * np.pi, samples, endpoint=False)
     sampled = tmpl.sample(ts)
     xy = {

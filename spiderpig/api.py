@@ -35,6 +35,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
+import re
 import time
 import warnings as pywarnings
 from contextlib import contextmanager
@@ -45,18 +46,27 @@ import numpy as np
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError
+from spiderpig.config import BuildConfig, ParamError, default_robot
 from spiderpig.construction.base import Build, ConstructionError, Params
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.crank import CrankRoute, Run
 from spiderpig.construction.envelope import claimed_solid
 from spiderpig.construction.robot import FrameTies, assemble_robot
-from spiderpig.design import Design, Part, design_id, engine_version, jsonable, spec_hash
+from spiderpig.design import (
+    Design,
+    Part,
+    design_id,
+    engine_version,
+    jsonable,
+    source_version,
+    spec_hash,
+)
 from spiderpig.fabricate import (
     SideDesign,
     design_side,
     fabricate_side,
     ground_clearance,
+    remember,
     side_problem,
     static_stage,
 )
@@ -79,7 +89,7 @@ from spiderpig.spec import (
     validate,
 )
 from spiderpig.stack import ClearanceError, PlanError, verify_plan
-from spiderpig.store import PROJECT, Store, diff_json, report_doc
+from spiderpig.store import PROJECT, Store, _read_json, _write_json, diff_json, report_doc
 
 log = logging.getLogger("spiderpig")
 
@@ -563,17 +573,73 @@ def list_linkages(kind: str | None = None) -> list[dict]:
     return out
 
 
-def describe(key: str) -> dict:
-    """One linkage's card: its parameters (default, angle or length, which only scale it),
-    links and labels, feet or output, modules with their default phases, the closures at
-    the defaults (margins, transmission angles, toggles) and one foot's path numbers (a
-    walker) or the output check (a mechanism)."""
+def _linkage(key: str) -> linkage.Linkage:
     try:
-        lk = linkage.get(key)
+        return linkage.get(key)
     except KeyError:
         near = nearest(key, linkage.available())
         raise KeyError(f"unknown linkage {key!r}" + (f"; did you mean {near!r}?" if near
                                                      else "")) from None
+
+
+# -- per-code caches in the store (the linkage cards, the guide's tables) ----------------
+# ``<store>/cache/<source version>/<name>.json``: a document computed from the code alone,
+# kept per :func:`spiderpig.design.source_version`, so any edit of the checkout starts it
+# afresh; path components never start with a dot (no ``..``).
+_CACHE_NAME = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*$")
+
+
+def _cache_path(st: Store, name: str) -> Path:
+    version = source_version()
+    if not _CACHE_NAME.match(name) or not _CACHE_NAME.match(version):
+        raise ValueError(f"not a cache name: {name!r} / {version!r}")
+    return st.root / "cache" / version / f"{name}.json"
+
+
+def _read_cache(st: Store | None, name: str):
+    return None if st is None else _read_json(_cache_path(st, name))
+
+
+def _write_cache(st: Store | None, name: str, doc) -> None:
+    if st is not None:
+        _write_json(_cache_path(st, name), doc)
+
+
+def describe(key: str, store: Store | str | Path | None = PROJECT) -> dict:
+    """One linkage's card: its parameters (default, angle or length, which only scale it),
+    links and labels, feet or output, modules with their default phases, the closures at
+    the defaults (margins, transmission angles, toggles) and one foot's path numbers (a
+    walker) or the output check (a mechanism); JSON values throughout.
+
+    A card is a function of the code alone (the walk model over every module is the slow
+    part: seconds for a four-legged linkage with many feet), so with a store it is kept
+    there per :func:`spiderpig.design.source_version` (``cache/<version>/cards/<key>.json``)
+    and read back in every later session on the same code; ``store=None`` computes it."""
+    lk = _linkage(key)
+    st = Store.of(store)
+    name = f"cards/{lk.key}"
+    if (doc := _read_cache(st, name)) is not None:
+        return doc
+    card = jsonable(_card(lk))
+    _write_cache(st, name, card)
+    return card
+
+
+def scale_params_table(store: Store | str | Path | None = PROJECT) -> dict[str, list[str]]:
+    """Every linkage's scale parameters (:func:`linkage.scale_params`: the ones that only
+    resize it), by key; kept in the store per :func:`spiderpig.design.source_version` like
+    the cards, since finding them compiles every linkage's program (seconds per session)."""
+    st = Store.of(store)
+    doc = _read_cache(st, "scale_params")
+    if doc is not None and set(doc) == set(linkage.available()):
+        return {k: list(v) for k, v in doc.items()}
+    table = {key: list(linkage.scale_params(linkage.get(key))) for key in linkage.available()}
+    _write_cache(st, "scale_params", table)
+    return table
+
+
+def _card(lk: linkage.Linkage) -> dict:
+    key = lk.key
     scale = linkage.scale_params(lk)
     card = {
         "key": key, "name": lk.name, "family": lk.family or key, "kind": lk.kind,
@@ -833,7 +899,9 @@ def check(design: Design, force: bool = False) -> CheckReport:
     try:
         tmpl = design.template = _template_for(cfg)
         with capture_warnings() as warned:      # the constructions size themselves here
-            ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False))
+            # hint=False: the static stage needs no leg hint (that is one more plan, the
+            # single module's, which only the search uses)
+            ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False), hint=False)
     except ValueError as e:      # AssemblyError / OutputError (caught above) / ConstructionError
         fl = Failure.from_exception(e, lk=lk)
         if isinstance(e, ConstructionError) and getattr(e, "changes", ()):
@@ -908,6 +976,28 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     rep = _plan_report(design.side, rep)
     rep.warnings = list(warned)
     return _finish(design, "plan", rep, t0)
+
+
+def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT) -> SideDesign:
+    """The planned side of a build config (a CLI's options), through the store: the config
+    resolved as a design (:func:`spec_of`, as ``spiderpig view --linkage ...`` does), its
+    plan reused when the store holds one (:func:`plan`: re-made and verified, not searched
+    for again), else solved and recorded there. The side is then what
+    :func:`fabricate.design_side` answers for that config (:func:`fabricate.remember`), so
+    a build that follows plans nothing again. ``ValueError`` with the failing stage's
+    message (the engine's own) when the design has no plan.
+
+    The plan is one side's whatever ``config.robot`` says, so the design is the one the
+    linkage's kind builds (:func:`config.default_robot`: a walker's robot, a mechanism's
+    one side), the very design ``spiderpig export`` / ``view`` by the same options make:
+    ``explain`` (one side) and ``audit`` / ``export`` / ``view`` (the robot) share it."""
+    config = replace(config, robot=default_robot(config.linkage))
+    design = resolve(spec_of(config), store)
+    rep = plan(design)
+    if not rep.ok or design.side is None:
+        raise ValueError("\n  ".join(f.message for f in rep.failures[:1]) or "no plan")
+    remember(_template(design), design.side)
+    return design.side
 
 
 WARNING_LOGGERS = ("spiderpig.construction", "spiderpig.servos", "spiderpig.hardware")
@@ -1000,7 +1090,9 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
         return None
     tmpl, cfg = _template(design), replace(design.config, robot=False)
     try:
-        ctx, groups, problem = side_problem(tmpl, cfg)
+        # hint=False: re-making a layout searches nothing, so the leg hint (the single
+        # module's own plan) would be one more plan for nothing
+        ctx, groups, problem = side_problem(tmpl, cfg, hint=False)
         static_stage(tmpl, problem)
         route = doc.get("route")
         choices = {} if route is None else {
@@ -1021,7 +1113,8 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
         p.optimal, p.cost = False, int(doc.get("cost") or 0)
         p.proof = (f"re-verified under engine {design.engine_version} (planned under "
                    f"{doc.get('engine_version')}); not proven the thinnest here")
-    return SideDesign(cfg, ctx, groups, p, list(problem.clearances), ground_clearance(tmpl, ctx))
+    return SideDesign(cfg, ctx, groups, p, list(problem.clearances), ground_clearance(tmpl, ctx),
+                      problem.router.facts if problem.router is not None else None)
 
 
 def explain(design: Design) -> str:

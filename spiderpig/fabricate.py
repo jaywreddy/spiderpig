@@ -67,6 +67,7 @@ class SideDesign:
     plan: StackPlan
     clearances: list[Clearance] = field(default_factory=list)
     ground_clearance_mm: float | None = None
+    facts: object = None        # the crank router's static facts (construction.route.CrankFacts)
 
     @property
     def drive(self) -> DriveGroup:
@@ -147,6 +148,24 @@ _DESIGNS: dict[tuple, SideDesign] = {}
 _LAYOUTS: dict[tuple, StackPlan] = {}
 
 
+def _key(tmpl, config: BuildConfig) -> tuple:
+    """What a side design is cached by: the template (its name, bodies, connections and
+    the ``meta`` that made it) and the side's config."""
+    meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
+    return (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta,
+            replace(config, robot=False))
+
+
+def remember(tmpl, design: SideDesign) -> None:
+    """Make ``design`` (a side the store re-made and verified, :func:`spiderpig.api.plan`)
+    what :func:`design_side` answers for its template and config, so a build of it
+    (:func:`fabricate`) plans nothing again. A design this process already holds for them
+    stays."""
+    key = _key(tmpl, design.config)
+    _DESIGNS.setdefault(key, design)
+    _LAYOUTS.setdefault(key[:4] + (replace(design.config, robot=False),), design.plan)
+
+
 def static_stage(tmpl, problem: StackProblem, config: BuildConfig | None = None) -> None:
     """The planner's static stage: a link no crank route can let through stops here (with
     ``config``: and what would clear it, checked; :mod:`recommend`)."""
@@ -188,8 +207,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     what is left of it caps every search here, and the design isn't cached.
     """
     config = replace(config or BuildConfig(), robot=False)
-    meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
-    key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta, config)
+    key = _key(tmpl, config)
     if key in _DESIGNS:
         return _DESIGNS[key]
     ctx, groups, problem = side_problem(tmpl, config, deadline)
@@ -215,7 +233,8 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
         if deadline is None:
             _LAYOUTS[layout_key] = plan
     design = SideDesign(config, ctx, groups, plan, list(problem.clearances),
-                        ground_clearance(tmpl, ctx))
+                        ground_clearance(tmpl, ctx),
+                        problem.router.facts if problem.router is not None else None)
     if deadline is None:
         _DESIGNS[key] = design
     return design
