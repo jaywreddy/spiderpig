@@ -1808,24 +1808,18 @@ def _walker_formats(design: Design, formats: list[str]) -> list[str]:
 
 
 def _start_robot_job(design: Design, formats: list[str], out: Path):
-    """The glb and the MJCF in a worker process while this one writes the other formats:
-    they share nothing with them but the design, which the worker loads from the store
-    (its plan re-made and verified) and fabricates at the bake's angle itself, as
-    :func:`_robot_files` does here. ``None`` (written here, after the others) when the
-    design has no store, there is nothing to write, or ``SPIDERPIG_EXPORT_WORKERS=0``."""
-    import os
+    """The glb and the MJCF in a worker process (:mod:`spiderpig.workers`) while this one
+    writes the other formats: they share nothing with them but the design, which the
+    worker loads from the store (its plan re-made and verified) and fabricates at the
+    bake's angle itself, as :func:`_robot_files` does here. ``None`` (written here, after
+    the others) when the design has no store, there is nothing to write, or workers are
+    off (``SPIDERPIG_WORKERS=0``)."""
+    from spiderpig import workers
 
     fmts = _walker_formats(design, formats)
-    if not fmts or design.store is None or os.environ.get("SPIDERPIG_EXPORT_WORKERS") == "0":
+    if not fmts or design.store is None or not workers.enabled():
         return None
-    import concurrent.futures as cf
-    import multiprocessing as mp
-
-    # spawned, never forked: a child forked after OCCT's thread pool has run deadlocks
-    pool = cf.ProcessPoolExecutor(1, mp_context=mp.get_context("spawn"))
-    future = pool.submit(_robot_files_job, str(design.store.root), design.id, fmts, str(out))
-    pool.shutdown(wait=False)
-    return future
+    return workers.submit(_robot_files_job, str(design.store.root), design.id, fmts, str(out))
 
 
 def _robot_files_job(root: str, id: str, formats: list[str], out: str
