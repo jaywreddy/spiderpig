@@ -171,7 +171,8 @@ recomputes from `resolved.json`. Several users share one folder (writes are atom
                        warnings, and `resolved` (every inferred value written in)
   check.json, plan.json, walk.json, recheck.json, verify.json, export.json
                        one file per stage: the report's JSON plus stage, design,
-                       engine_version, written_at
+                       engine_version, written_at; verify.<level>.json keeps a copy
+                       per level beside the latest
   build/manifest.json  the build report, plus per part its pose, colour and file
   build/parts/*.step   one STEP per distinct part at the manifest's t (a right-side part
                        references its left twin: same_as + mirror, nothing duplicated)
@@ -183,8 +184,10 @@ What is cached, and when it is stale:
 
 - A stage file is served as is when its `engine_version` is the running engine's; else
   it is recomputed and rewritten (a `load`ed design says so in `warnings`). `verify.json`
-  holds the latest level; it answers a call for that level only. `export.json` answers
-  the same formats into the same folder while every file is still there.
+  holds the latest level and `verify.<level>.json` one per level, so a `quick` after a
+  `standard` doesn't cost the standard one again (it did: 45 s on the second pass of
+  TIMING.md). `export.json` answers the same formats into the same folder while every
+  file is still there.
 - A **plan** is never trusted blindly: `plan(design)` re-makes the stored layout through
   `stack.StackProblem.plan(layers, top, choices)` (the route rebuilt as
   `construction.crank.CrankRoute`) and checks it with `stack.verify_plan`, exactly as

@@ -747,12 +747,14 @@ def _finish(design: Design, stage: str, rep, t0: float, **kw):
     return _commit(design, stage, rep, **kw)
 
 
-def _stored(design: Design, stage: str, current: bool = True) -> dict | None:
+def _stored(design: Design, stage: str, current: bool = True, variant: str | None = None
+            ) -> dict | None:
     """The stage's file in the design's store (``current``: only one written by the
-    running engine version), else ``None``."""
+    running engine version; ``variant``: the copy kept per variant, a verify's level),
+    else ``None``."""
     if design.store is None:
         return None
-    doc = design.store.read_report(design.id, stage)
+    doc = design.store.read_report(design.id, stage, variant)
     if doc is None or (current and doc.get("engine_version") != design.engine_version):
         return None
     return doc
@@ -761,12 +763,16 @@ def _stored(design: Design, stage: str, current: bool = True) -> dict | None:
 def _cached(design: Design, stage: str, cls, op: str | None = None, **need):
     """The stage's report from the handle, else from the store when valid for the running
     engine (then put on the handle and logged as cached); ``need`` are field values it
-    must match (a verify's ``level``)."""
+    must match (a verify's ``level``: the store keeps one report per level, so the levels
+    don't evict each other)."""
     rep = design.reports.get(stage)
     if rep is not None and all(getattr(rep, k, None) == v for k, v in need.items()):
         return rep
     t0 = time.time()
-    doc = _stored(design, stage)
+    level = need.get("level") if stage == "verify" else None
+    doc = _stored(design, stage, variant=str(level)) if level else None
+    if doc is None:
+        doc = _stored(design, stage)
     if doc is None or any(doc.get(k) != v for k, v in need.items()):
         return None
     return _commit(design, stage, cls.from_dict(doc), op, cached=True, seconds=time.time() - t0)
