@@ -1690,10 +1690,18 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                            "unpriced": [r.key for r in bom.unpriced]}
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
+    robot = None
+    if "glb" in formats or ("mjcf" in formats and design.kind == "walker"):
+        # the viewer's bake and the MuJoCo model are both of the walker at the bake's
+        # reference angle: fabricated once here from the design's own side (its plan), not
+        # again by each from the config (which, in a fresh process, planned again first)
+        from spiderpig.bake import T_REF
+
+        robot = fabricate_at(design, T_REF)
     if "glb" in formats:
         from spiderpig.bake import bake_gltf
 
-        bake_gltf(out / f"{name}.glb", cfg, profile=False)
+        bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side)
         files.append(out / f"{name}.glb")
     if "mjcf" in formats:
         if design.kind != "walker":
@@ -1705,8 +1713,10 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         else:
             import json
 
-            from spiderpig.sim.mjcf import build_mjcf
+            from spiderpig.sim.mjcf import build_mjcf, set_fabricated
 
+            if cfg.robot:        # a one-sided design's MJCF is still the robot's
+                set_fabricated(cfg, robot)
             xml, meta = build_mjcf(cfg)
             (out / f"{name}.xml").write_text(xml)
             (out / f"{name}.json").write_text(json.dumps(meta, indent=1))

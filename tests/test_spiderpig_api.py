@@ -839,7 +839,7 @@ def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
 
     api.attach_build(quad, robot("quad", 1.0), 1.0)
 
-    def fake_bake(path, cfg, profile=False):
+    def fake_bake(path, cfg, profile=False, **kw):         # fabricated=, side=
         logging.getLogger("bake_gltf").warning("tessellate: 3 of 511 faces have no "
                                                "triangulation; skipped")
         Path(path).write_bytes(b"glTF")

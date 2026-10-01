@@ -171,7 +171,7 @@ def default_bake_dir() -> Path:
 
 
 # Crank angle the parts are modelled at; frame 0 of the animation.
-_T_REF = 0.0
+T_REF = 0.0
 
 # Model -> viewer: the linkage moves in XY with +Y up and the layer stack
 # along Z. The root node turns +90 deg about X: +Y -> +Z (up), +Z -> -Y.
@@ -477,15 +477,16 @@ def _json_meta(meta: dict) -> dict:
 def _drive_extra(config: BuildConfig, mech: Mechanism,
                  motion: dict[str, tuple[np.ndarray, np.ndarray]],
                  owner: dict[str, str | None], props: dict[str, PartProps],
-                 duration_s: float) -> dict:
+                 duration_s: float, side=None) -> dict:
     """The root node's ``drive`` extras: :func:`walk.drive_extra` for the fabricated robot.
 
-    Feet z from the side's layer plan; the centre of mass is every part's
+    Feet z from the side's layer plan (``side``: the design the walker was fabricated
+    from, else the config's, cached by fabricate); the centre of mass is every part's
     mass at its centroid (:func:`walk.body_masses`, reusing the mass
     properties the mesh sharing measured) averaged over the animation's
     samples (``motion``: each anchor's planar motion per frame).
     """
-    design = design_side(template_for(config), config)       # cached by fabricate
+    design = side if side is not None else design_side(template_for(config), config)
     masses = walk.body_masses(mech, config, props)
     com, mass = walk.cycle_com(masses, motion, owner)
     model = walk.walker(config, feet_z=walk.foot_z_planned(config, design), com=com,
@@ -495,7 +496,7 @@ def _drive_extra(config: BuildConfig, mech: Mechanism,
 
 @dataclass
 class _Reference:
-    """Stage 1: the fabricated walker at ``_T_REF`` and who moves with whom."""
+    """Stage 1: the fabricated walker at ``T_REF`` and who moves with whom."""
 
     mech: Mechanism
     feet: list[tuple[str, str]]             # (body, joint): lk.feet per leg, or the output point
@@ -550,11 +551,14 @@ class _Animation:
     motion: dict[str, tuple[np.ndarray, np.ndarray]]
 
 
-def _reference(config: BuildConfig, prof: _Profiler) -> _Reference:
-    """Stage 1: fabricate the walker at ``_T_REF``; every body's anchor and its joints."""
+def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | None = None
+               ) -> _Reference:
+    """Stage 1: fabricate the walker at ``T_REF`` (or take ``fabricated``, the walker
+    already fabricated at that angle); every body's anchor and its joints."""
     lk = config.lk
     with prof.timed("1_reference_build"):
-        mech = fabricate(template_for(config), config, _T_REF)
+        mech = fabricated if fabricated is not None else fabricate(template_for(config), config,
+                                                                   T_REF)
     by_name = {b.name: b for b in mech.bodies}
     feet = linkage_mod.feet_of(mech) or [(lk.output.link, lk.output.point)]
     prof.set_metric("n_bodies", len(mech.bodies))
@@ -622,7 +626,7 @@ def _animate(config: BuildConfig, ref: _Reference, meshes: _Meshes, n_frames: in
     planar motion + Z shift) and then the motion.
     """
     logger.debug("sampling %d frames over %.3fs…", n_frames, duration_s)
-    ts = _T_REF + np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
+    ts = T_REF + np.linspace(0.0, 2.0 * math.pi, n_frames, endpoint=False)
     times = np.linspace(0.0, duration_s, n_frames, endpoint=False, dtype=np.float32)
     anim = _Animation(times, {}, {}, {}, {})
     with prof.timed("4_animation_sample_total"):
@@ -716,9 +720,11 @@ def _nodes_and_channels(ref: _Reference, meshes: _Meshes, geom: _Geometry, anim:
 
 
 def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animation,
-           root: pygltflib.Node, duration_s: float, prof: _Profiler) -> pygltflib.Scene:
+           root: pygltflib.Node, duration_s: float, prof: _Profiler, side=None
+           ) -> pygltflib.Scene:
     """Stage 6: the scene with the foot-path extra (leg 0's first foot; a mechanism's output
-    point as ``output_path``) and, for a robot, the walking model's data on the root node."""
+    point as ``output_path``) and, for a robot, the walking model's data on the root node
+    (``side``: the design the walker was fabricated from, for its layer plan)."""
     lk = config.lk
     by_name = {b.name: b for b in ref.bodies}
     with prof.timed("6_foot_path_extra"):
@@ -734,7 +740,7 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
     if config.robot:
         with prof.timed("6b_drive_extra"):
             root.extras["drive"] = _drive_extra(config, ref.mech, anim.motion, ref.owner,
-                                                meshes.mass_props, duration_s)
+                                                meshes.mass_props, duration_s, side)
         drive = root.extras["drive"]
         prof.set_metric("drive.mass_g", drive["mass_g"])
         prof.set_metric("drive.stride_mm", drive["metrics"]["stride_mm"])
@@ -784,10 +790,18 @@ def bake_gltf(
     n_frames: int = 120,
     duration_s: float = 1.0,
     profile: bool = True,
+    fabricated: Mechanism | None = None,
+    side=None,
 ) -> None:
     """Write ``<out>``: the fabricated walker of ``config`` and its animation over one crank
     revolution (the whole robot, or one side with ``robot=False``), stage by stage (see the
     module docstring; each stage is a function here).
+
+    ``fabricated`` is the walker already fabricated at :data:`T_REF` (what
+    :func:`spiderpig.api.export` shares with the MJCF) and ``side`` the
+    :class:`fabricate.SideDesign` it was fabricated from (its layer plan for the drive
+    extras); without them the bake fabricates from ``config`` (planning when the process
+    hasn't).
 
     A layout the planner can't find (:mod:`stack`) and a construction that
     can't be built (:class:`construction.ConstructionError`) raise
@@ -823,12 +837,12 @@ def bake_gltf(
     prof.set_metric("n_frames", n_frames)
 
     with prof.timed("bake_total"):
-        ref = _reference(config, prof)
+        ref = _reference(config, prof, fabricated)
         meshes = _share_and_tessellate(ref, prof)
         geom = _pack_geometry(meshes, prof)
         anim = _animate(config, ref, meshes, n_frames, duration_s, prof)
         nodes, animation = _nodes_and_channels(ref, meshes, geom, anim, prof)
-        scene = _scene(config, ref, meshes, anim, nodes[0], duration_s, prof)
+        scene = _scene(config, ref, meshes, anim, nodes[0], duration_s, prof, side)
         _write(out, scene, nodes, geom, animation, prof)
 
     # Peak resident set (linux: ru_maxrss is KB; mac: bytes — treat as linux here).
