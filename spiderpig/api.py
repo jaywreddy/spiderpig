@@ -46,7 +46,7 @@ import numpy as np
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError
+from spiderpig.config import BuildConfig, ParamError, default_robot
 from spiderpig.construction.base import Build, ConstructionError, Params
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.crank import CrankRoute, Run
@@ -979,7 +979,13 @@ def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT)
     for again), else solved and recorded there. The side is then what
     :func:`fabricate.design_side` answers for that config (:func:`fabricate.remember`), so
     a build that follows plans nothing again. ``ValueError`` with the failing stage's
-    message (the engine's own) when the design has no plan."""
+    message (the engine's own) when the design has no plan.
+
+    The plan is one side's whatever ``config.robot`` says, so the design is the one the
+    linkage's kind builds (:func:`config.default_robot`: a walker's robot, a mechanism's
+    one side), the very design ``spiderpig export`` / ``view`` by the same options make:
+    ``explain`` (one side) and ``audit`` / ``export`` / ``view`` (the robot) share it."""
+    config = replace(config, robot=default_robot(config.linkage))
     design = resolve(spec_of(config), store)
     rep = plan(design)
     if not rep.ok or design.side is None:
