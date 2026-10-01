@@ -72,13 +72,20 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
         lines.append(f"  output: {lk.output_check(params).describe()}")
     try:
         tmpl = template_for(config)
-        ctx, _, problem = side_problem(tmpl, config)
+        if side is not None:        # a designed side carries its static facts
+            ctx, clearances, facts = side.ctx, side.clearances, side.facts
+            problem = None
+        else:
+            # the static facts need no leg hint (the single module's plan): hint=False
+            ctx, _, problem = side_problem(tmpl, config, hint=False)
+            clearances = problem.clearances
+            facts = problem.router.facts if problem.router is not None else None
     except ValueError as e:     # AssemblyError / OutputError; ConstructionError (e.g. the drive)
         return "\n".join([*lines, "", f"STOP: {e}"])
-    lines += ["", f"2. static facts ({len(problem.clearances)} clearances)"]
-    lines += [f"  {c.describe()}" for c in problem.clearances]
-    if problem.router is not None:
-        f = problem.router.facts
+    lines += ["", f"2. static facts ({len(clearances)} clearances)"]
+    lines += [f"  {c.describe()}" for c in clearances]
+    if facts is not None:
+        f = facts
         for link, d in f.o_free.items():
             lines.append(f"  {link} passes O at {max(d, 0.0):.1f} mm: its layer needs the crank "
                          f"running along {', '.join(f.hosts[link]) or 'no crank point'}")
@@ -86,12 +93,14 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
                   f"sweeping {d.sweep:g} mm" for d in f.detours]
         lines.append(f"  body's underside: lowest at {f.envelope.lowest:.1f} mm (O at 0); what "
                      f"the planner adds to the crank may sweep {f.allow:.1f} mm about O")
-    if (gc := ground_clearance(tmpl, ctx)) is not None:
+    gc = side.ground_clearance_mm if side is not None else ground_clearance(tmpl, ctx)
+    if gc is not None:
         lines.append(f"  ground clearance: {gc:.1f} mm")
-    try:        # a recorded failure carries its own recommendations: don't check them again
-        static_stage(tmpl, problem, None if plan_failure is not None else config)
-    except ValueError as e:
-        return "\n".join([*lines, "", f"STOP: {plan_failure or e}"])
+    if problem is not None:     # a designed side passed the static stage
+        try:    # a recorded failure carries its own recommendations: don't check them again
+            static_stage(tmpl, problem, None if plan_failure is not None else config)
+        except ValueError as e:
+            return "\n".join([*lines, "", f"STOP: {plan_failure or e}"])
     lines += ["", "3. plan"]
     if plan_failure is not None and side is None:
         lines.append(f"  STOP: {plan_failure}")
@@ -115,16 +124,26 @@ def main(argv=None) -> int:
     add_design_args(ap)
     add_build_args(ap)
     ap.set_defaults(module="single")
+    ap.add_argument("--store", metavar="PATH",
+                    help="the design store the options resolve into, whose plan is reused "
+                         "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
     args = ap.parse_args(argv)
     try:
         config = config_from_args(args, robot=False)
     except ParamError as e:
         ap.error(str(e))
-    from spiderpig.api import config_warnings
+    from spiderpig import api
+    from spiderpig.store import Store
 
-    for w in config_warnings(config, sides=2):     # what resolve would warn about (one
-        print(f"warning: {w}", file=sys.stderr)    # side is what explain always shows)
-    print(explain_config(config))
+    for w in api.config_warnings(config, sides=2):     # what resolve would warn about (one
+        print(f"warning: {w}", file=sys.stderr)        # side is what explain always shows)
+    # the plan through the store (api.plan_config): the stored design's when it holds one
+    store = Store.of(args.store) if args.store else Store.default()
+    try:
+        side, failure = api.plan_config(config, store), None
+    except ValueError as e:
+        side, failure = None, str(e)
+    print(explain_config(config, side=side, plan_failure=failure))
     return 0
 
 

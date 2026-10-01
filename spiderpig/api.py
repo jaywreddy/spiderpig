@@ -65,6 +65,7 @@ from spiderpig.fabricate import (
     design_side,
     fabricate_side,
     ground_clearance,
+    remember,
     side_problem,
     static_stage,
 )
@@ -949,6 +950,22 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     return _finish(design, "plan", rep, t0)
 
 
+def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT) -> SideDesign:
+    """The planned side of a build config (a CLI's options), through the store: the config
+    resolved as a design (:func:`spec_of`, as ``spiderpig view --linkage ...`` does), its
+    plan reused when the store holds one (:func:`plan`: re-made and verified, not searched
+    for again), else solved and recorded there. The side is then what
+    :func:`fabricate.design_side` answers for that config (:func:`fabricate.remember`), so
+    a build that follows plans nothing again. ``ValueError`` with the failing stage's
+    message (the engine's own) when the design has no plan."""
+    design = resolve(spec_of(config), store)
+    rep = plan(design)
+    if not rep.ok or design.side is None:
+        raise ValueError("\n  ".join(f.message for f in rep.failures[:1]) or "no plan")
+    remember(_template(design), design.side)
+    return design.side
+
+
 WARNING_LOGGERS = ("spiderpig.construction", "spiderpig.servos", "spiderpig.hardware")
 
 
@@ -1062,7 +1079,8 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
         p.optimal, p.cost = False, int(doc.get("cost") or 0)
         p.proof = (f"re-verified under engine {design.engine_version} (planned under "
                    f"{doc.get('engine_version')}); not proven the thinnest here")
-    return SideDesign(cfg, ctx, groups, p, list(problem.clearances), ground_clearance(tmpl, ctx))
+    return SideDesign(cfg, ctx, groups, p, list(problem.clearances), ground_clearance(tmpl, ctx),
+                      problem.router.facts if problem.router is not None else None)
 
 
 def explain(design: Design) -> str:
