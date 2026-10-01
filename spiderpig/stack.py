@@ -1189,23 +1189,26 @@ class _Search:
 
     def undo(self, mark: int) -> None:
         trail = self.trail
+        if len(trail) <= mark:
+            return
+        dom, gone, banned, pending = self.dom, self.gone, self.banned, self.pending
         while len(trail) > mark:
             e = trail.pop()
             kind = e[0]
             if kind == "cut":
-                if (e[1], e[2]) not in self.banned:
-                    self.dom[e[1]].add(e[2])
-                    del self.gone[e[1]][e[2]]
+                if (e[1], e[2]) not in banned:
+                    dom[e[1]].add(e[2])
+                    del gone[e[1]][e[2]]
             elif kind == "shape":
                 self.by_layer[e[1]].pop()
+            elif kind == "pending":
+                pending[e[1]] += 1
             elif kind == "block":
                 lst = self.block[e[1]]
                 lst.pop()
                 if not lst:
                     k, i = e[1]
                     self.bmask[k] &= ~(1 << i)
-            elif kind == "pending":
-                self.pending[e[1]] += 1
             else:
                 del self.layers[e[1]]
 
@@ -1319,22 +1322,33 @@ class _Search:
                     self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
                 return self.explain(res) | {n}
             # a layer none of whose states on a route a link's own shapes leave is closed to it
-            why = frozenset(self.layers)
+            layers, dom, gone, trail, get = self.layers, self.dom, self.gone, self.trail, res.get
+            why = None
             for x in self.links:
-                if x in self.layers:
+                if x in layers:
                     continue
                 allow = self.allow[x]
-                for w in [w for w in self.dom[x] if not res.get(w, -1) & allow[w]]:
-                    self.cut(x, w, why)
-                if (c := self.wiped(x)) is not None:
-                    return c | {n}
+                d = dom[x]
+                bad = [w for w in d if not get(w, -1) & allow[w]]
+                if bad:
+                    if why is None:
+                        why = frozenset(layers)
+                    g = gone[x]
+                    for w in bad:
+                        d.discard(w)
+                        g[w] = why
+                        trail.append(("cut", x, w))
+                if not d:
+                    return frozenset().union(*gone[x].values()) | {n}
         return None
 
     def spans(self, n: str) -> frozenset[str] | None:
         """An axle runs between its links' layers: a link that can't pass it can't sit between
         them, and once one sits on one side of some of them, the rest can't go to the other.
-        A pillar also runs from them to a frame plate: such links can't be on both sides."""
-        layers = self.layers
+        A pillar also runs from them to a frame plate: such links can't be on both sides.
+        (A domain these layers are already gone from is skipped: most are, an axle closes the
+        same layers again at every node; an empty one still answers its conflict.)"""
+        layers, dom, close = self.layers, self.dom, self.close
         for members, links, anchored in self.prob.spans.get(n, ()):
             placed = [m for m in members if m in layers]
             if not placed:
@@ -1343,10 +1357,13 @@ class _Search:
             lo, hi = min(ks), max(ks)
             why = frozenset(placed)
             below = above = None
+            inside = range(lo + 1, hi)
             for x in links:
                 w = layers.get(x)
                 if w is None:
-                    if (c := self.close(x, range(lo + 1, hi), why)) is not None:
+                    d = dom[x]
+                    if (not d or not d.isdisjoint(inside)) and (
+                            c := close(x, inside, why)) is not None:
                         return c
                     continue
                 if lo < w < hi:
@@ -1358,25 +1375,36 @@ class _Search:
                     below = x
                     side = range(1, w + 1)
                 for m in members:
-                    if m not in layers and (c := self.close(m, side, why | {x})) is not None:
-                        return c
+                    if m not in layers:
+                        d = dom[m]
+                        if (not d or not d.isdisjoint(side)) and (
+                                c := close(m, side, why | {x})) is not None:
+                            return c
             if anchored and (below or above):
                 if below and above:
                     return why | {below, above}
                 # the pillar must reach the plate on the other side
                 other = range(hi + 1, self.top) if below else range(1, lo)
                 for x in links:
-                    if x not in layers and (c := self.close(
-                            x, other, why | {below or above})) is not None:
-                        return c
+                    if x not in layers:
+                        d = dom[x]
+                        if (not d or not d.isdisjoint(other)) and (c := close(
+                                x, other, why | {below or above})) is not None:
+                            return c
         return None
 
     def close(self, x: str, ks: range, why: frozenset[str]) -> frozenset[str] | None:
-        """Take layers ``ks`` from unplaced ``x``'s domain; its conflict if none are left."""
-        for u in ks:
-            if u in self.dom[x]:
-                self.cut(x, u, why)
-        return self.wiped(x)
+        """Take layers ``ks`` from unplaced ``x``'s domain; its conflict if none are left.
+        (Most calls take nothing: an axle closes the same layers again at every node.)"""
+        dom = self.dom[x]
+        hit = dom.intersection(ks)
+        if hit:
+            dom -= hit
+            gone, trail = self.gone[x], self.trail
+            for u in hit:
+                gone[u] = why
+                trail.append(("cut", x, u))
+        return None if dom else frozenset().union(*self.gone[x].values())
 
     def values(self, n: str) -> list[int]:
         """Layers next to the links it shares an axle with first; a leg at a time: where the
