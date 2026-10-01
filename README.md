@@ -18,6 +18,9 @@ Originally UC Berkeley CS194 coursework built on SolidPython + OpenSCAD +
 | frontend bundler    | [`vite`](https://vitejs.dev) + TypeScript |
 | tests               | [`pytest`](https://docs.pytest.org)      |
 
+New to the code? [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) walks through how it is
+structured, what each part can do, and its limitations and risks.
+
 ## Install
 
 From a checkout (`uv sync` installs the `spiderpig` package editable, with the

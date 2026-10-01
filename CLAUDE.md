@@ -2,6 +2,8 @@
 
 This file captures non-obvious things you'll want to know before diving into
 the code. Keep it terse.
+For the long-form walkthrough (background, every stage, limitations and risks,
+doc drift), see `docs/ARCHITECTURE.md`.
 
 ## How to run things
 
