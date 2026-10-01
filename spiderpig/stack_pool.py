@@ -194,6 +194,8 @@ class Pool:
         for key in [k for k in self.answers if k[0] == top]:
             del self.answers[key]
         self.pending.pop(top, None)
+        self.issued.pop(top, None)
+        self.phases.pop(top, None)
 
     def close(self) -> None:
         for top in list(self.procs):
@@ -237,6 +239,11 @@ class Pool:
                 if phase == "quick":
                     continue
                 tried = self.adopt(tried)          # its proof or route goes on in a worker
+            if tried is None and phase != "quick" and top in self.procs:
+                # a short search guessed for a size the search never asked one of: its proof
+                # starts from a fresh worker now, in parallel, not as a replay later
+                self.stats["respawned"] = self.stats.get("respawned", 0) + 1
+                self._drop(top)
             q = self.issued.get(top, [])
             ran = self.phases.get(top, set())
             if tried is not None and tried.stale:
