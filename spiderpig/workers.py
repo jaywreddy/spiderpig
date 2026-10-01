@@ -64,6 +64,35 @@ def _run(job) -> object:
     return value
 
 
+def dump_shape(shape) -> tuple[str, bytes]:
+    """A build123d shape as bytes (OCCT's binary BRep: every double as it is, the
+    location included) and its class name, for :func:`load_shape` in a worker. Through a
+    file: OCP's stream overload fails to read some parts back ("UnExpected
+    BRep_PointRepresentation", 13 of round 4's 161, measured)."""
+    from OCP.BinTools import BinTools
+
+    with tempfile.TemporaryDirectory(prefix="spiderpig-brep-") as tmp:
+        path = os.path.join(tmp, "shape.brep")
+        BinTools.Write_s(shape.wrapped, path)
+        return type(shape).__name__, Path(path).read_bytes()
+
+
+def load_shape(dumped: tuple[str, bytes]):
+    """The build123d shape :func:`dump_shape` wrote (the same class)."""
+    import build123d
+    from build123d.topology import downcast
+    from OCP.BinTools import BinTools
+    from OCP.TopoDS import TopoDS_Shape
+
+    cls, data = dumped
+    with tempfile.TemporaryDirectory(prefix="spiderpig-brep-") as tmp:
+        path = os.path.join(tmp, "shape.brep")
+        Path(path).write_bytes(data)
+        shape = TopoDS_Shape()
+        BinTools.Read_s(shape, path)
+    return getattr(build123d, cls)(downcast(shape))
+
+
 def _child(job, out: str) -> None:
     import importlib
 

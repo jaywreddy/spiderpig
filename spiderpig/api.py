@@ -1746,6 +1746,8 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     filament = mech.meta.get("filament", "pla_filament")
     files: list[Path] = []
     job = _start_robot_job(design, formats, out)
+    grouping = (_start_group_job(mech) if ("print" in formats or "bom" in formats)
+                and ("step" in formats or "stl" in formats) else None)
     if "step" in formats:
         mech.export_step(out / f"{name}.step")
         files.append(out / f"{name}.step")
@@ -1754,7 +1756,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         files.append(out / f"{name}.stl")
     groups = None
     if "print" in formats or "bom" in formats:
-        groups = {m: group_made(mech.bodies, m) for m in ("laser", "printed")}
+        groups = _groups(mech, grouping)
     if "print" in formats:
         from spiderpig import build as build_cli
 
@@ -1800,6 +1802,44 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     return files, bom_summary
 
 
+GROUPED = ("laser", "printed")
+
+
+def _start_group_job(mech):
+    """:func:`group_made` of the made parts in a worker (the parts sent as binary BReps:
+    the same doubles, so the same proofs) while this process writes STEP and STL (the
+    caller starts it only then); ``None`` with workers off."""
+    from spiderpig import workers
+
+    if not workers.enabled():
+        return None
+    made = [(b.name, b.fab, workers.dump_shape(b.part)) for b in mech.bodies
+            if b.fab in GROUPED and b.part is not None]
+    return workers.submit(_group_job, made)
+
+
+def _group_job(made) -> dict[str, list[tuple[str, list[str], list[str]]]]:
+    """In a worker: the groups of ``made`` (name, fab, dumped part) by name."""
+    from types import SimpleNamespace
+
+    from spiderpig.workers import load_shape
+
+    bodies = [SimpleNamespace(name=n, fab=fab, part=load_shape(d)) for n, fab, d in made]
+    return {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in group_made(bodies, m)]
+            for m in GROUPED}
+
+
+def _groups(mech, job) -> dict:
+    """The made parts' groups: computed here, or the worker's (``job``) on these bodies."""
+    from spiderpig.hardware.bom import MadeGroup
+
+    if job is None:
+        return {m: group_made(mech.bodies, m) for m in GROUPED}
+    by_name = {b.name: b for b in mech.bodies}
+    return {m: [MadeGroup(m, by_name[ref], names, mirrored) for ref, names, mirrored in gs]
+            for m, gs in job.result().items()}
+
+
 def _walker_formats(design: Design, formats: list[str]) -> list[str]:
     """The formats of the walker at the bake's reference angle: ``glb``, and ``mjcf`` for a
     walker (a mechanism's is skipped, with a warning)."""
@@ -1812,12 +1852,14 @@ def _start_robot_job(design: Design, formats: list[str], out: Path):
     writes the other formats: they share nothing with them but the design, which the
     worker loads from the store (its plan re-made and verified) and fabricates at the
     bake's angle itself, as :func:`_robot_files` does here. ``None`` (written here, after
-    the others) when the design has no store, there is nothing to write, or workers are
-    off (``SPIDERPIG_WORKERS=0``)."""
+    the others) when the design has no store, there is nothing to write or nothing else to
+    write meanwhile (a worker's start, 4-5 s, would only add), or workers are off
+    (``SPIDERPIG_WORKERS=0``)."""
     from spiderpig import workers
 
     fmts = _walker_formats(design, formats)
-    if not fmts or design.store is None or not workers.enabled():
+    others = [f for f in formats if f not in ("glb", "mjcf")]
+    if not fmts or not others or design.store is None or not workers.enabled():
         return None
     return workers.submit(_robot_files_job, str(design.store.root), design.id, fmts, str(out))
 
@@ -1843,7 +1885,9 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
     cfg, name = design.config, design.config.linkage
     files: list[Path] = []
     if job is not None:
+        t0 = time.time()
         done, warned = job.result()
+        log.debug("export: %.1f s waiting for the glb/MJCF worker", time.time() - t0)
         for w in warned:
             logging.getLogger("spiderpig.export").warning("%s", w)
         return [Path(f) for f in done]
