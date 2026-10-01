@@ -305,7 +305,13 @@ with the tally (what blocked it, and per size: ruled out, left open at its
 budget with nodes and seconds, or not tried). The checks `recommend.py`
 re-runs share one more such deadline, so `design_side` returns within a few
 minutes at worst. `tests/brute.py` is an independent brute force (every
-layering, every route) the tests compare the planner's optimum with.
+layering, every route) the tests compare the planner's optimum with. Opt-in
+`StackSpec` flags, all off by default and measured in
+`docs/agentlib/PERF_PLANNER.md`: `workers` (stack sizes searched in forked
+processes, `spiderpig/stack_pool.py`; the serial answer, proof included),
+`symmetry` (one of each mirrored leg pair, `spiderpig/stack_symmetry.py`;
+checked on the sampled layouts only), `quick_first` (a short search stops at its
+first plan) and `prove=False` (the first plan, returned unproven).
 
 **Envelope** (`spiderpig/construction/underside.py`): the body (frame plates, the
 crank's own sweep, servo, centre plates) has an underside profile; what the
