@@ -827,7 +827,9 @@ def check(design: Design, force: bool = False) -> CheckReport:
     try:
         tmpl = design.template = _template_for(cfg)
         with capture_warnings() as warned:      # the constructions size themselves here
-            ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False))
+            # hint=False: the static stage needs no leg hint (that is one more plan, the
+            # single module's, which only the search uses)
+            ctx, _, problem = side_problem(tmpl, replace(cfg, robot=False), hint=False)
     except ValueError as e:      # AssemblyError / OutputError (caught above) / ConstructionError
         fl = Failure.from_exception(e, lk=lk)
         if isinstance(e, ConstructionError) and getattr(e, "changes", ()):
@@ -994,7 +996,9 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
         return None
     tmpl, cfg = _template(design), replace(design.config, robot=False)
     try:
-        ctx, groups, problem = side_problem(tmpl, cfg)
+        # hint=False: re-making a layout searches nothing, so the leg hint (the single
+        # module's own plan) would be one more plan for nothing
+        ctx, groups, problem = side_problem(tmpl, cfg, hint=False)
         static_stage(tmpl, problem)
         route = doc.get("route")
         choices = {} if route is None else {
