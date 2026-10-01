@@ -297,11 +297,23 @@ def crank_sign(config: BuildConfig) -> int:
     return 1 if vx < 0 else -1
 
 
-@cache
+_FABRICATED: dict[BuildConfig, object] = {}
+
+
 def fabricated(config: BuildConfig):
-    """The fabricated robot (both sides) at ``t_ref`` (cached per config)."""
+    """The fabricated robot (both sides) at ``t_ref`` (cached per config; one fabricated
+    elsewhere at that angle comes in through :func:`set_fabricated`)."""
     config = replace(config, robot=True)
-    return fabricate(template_for(config), config, T_REF)
+    if config not in _FABRICATED:
+        _FABRICATED[config] = fabricate(template_for(config), config, T_REF)
+    return _FABRICATED[config]
+
+
+def set_fabricated(config: BuildConfig, robot) -> None:
+    """Adopt ``robot``, the robot of ``config`` fabricated at :data:`T_REF` (both sides), as
+    what :func:`fabricated` returns for it: an export that bakes the glb from the same
+    fabrication doesn't fabricate twice."""
+    _FABRICATED[replace(config, robot=True)] = robot
 
 
 @cache

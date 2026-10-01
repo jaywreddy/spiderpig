@@ -437,3 +437,33 @@ def test_export_lands_in_the_store_and_is_reused(tmp_path, side, monkeypatch):
     assert api.export(back).files == rep.files
     assert back.log[-1]["cached"]
     assert back.mech is None                                 # no build needed for a hit
+
+
+def test_verify_levels_do_not_evict_each_other(tmp_path):
+    """The store keeps one verify report per level beside the latest: a quick verify after
+    a standard one doesn't cost the standard one again."""
+    from spiderpig.verify import VerifyReport
+
+    store = Store(tmp_path)
+    d = api.resolve(KLANN_QUAD, store)
+    std = VerifyReport("standard", seconds=1.0)
+    api._commit(d, "verify", std, op="verify:standard")
+    quick = VerifyReport("quick", seconds=0.1)
+    api._commit(d, "verify", quick, op="verify:quick")
+    assert store.read_report(d.id, "verify")["level"] == "quick"                  # the latest
+    assert store.read_report(d.id, "verify", "standard")["level"] == "standard"
+    assert store.read_report(d.id, "verify", "quick")["level"] == "quick"
+    assert store.stages(d.id)["verify"]["level"] == "quick"
+    back = api.load(d.id, store)
+    got = api._cached(back, "verify", VerifyReport, op="verify:standard", level="standard")
+    assert got is not None
+    assert got.level == "standard"
+    assert back.log[-1] == dict(back.log[-1], op="verify:standard", cached=True)
+    got = api._cached(back, "verify", VerifyReport, op="verify:quick", level="quick")
+    assert got is not None
+    assert got.level == "quick"
+    assert api._cached(back, "verify", VerifyReport, op="verify:full", level="full") is None
+    # a store written before the per-level copies: the latest still serves its own level
+    store.report_path(d.id, "verify", "quick").unlink()
+    fresh = api.load(d.id, store)
+    assert api._cached(fresh, "verify", VerifyReport, level="quick").level == "quick"

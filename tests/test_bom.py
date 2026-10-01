@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 
 import pytest
-from build123d import Axis, Box, Plane, Pos
+from build123d import Axis, Box, Cylinder, Plane, Pos
 
 from spiderpig.hardware import catalog
 from spiderpig.hardware.bom import BomLine, bom_from_mechanism, congruent, group_made
@@ -168,3 +168,29 @@ def test_the_catalog_prices_the_pivot_hardware_and_says_where_from(monkeypatch):
     for key in ("rod_3mm_100", "starlock_3mm", "m2_self_tap_6", "m3_shcs_18", "m3_shcs_50"):
         assert catalog.get(key).offer.price_usd is None, key           # no page priced them
     assert catalog.get("plywood_3mm").offer.pack_qty == 1              # sold per sheet
+
+
+
+def _tolerances(shape) -> list[float]:
+    from OCP.BRep import BRep_Tool
+
+    return ([BRep_Tool.Tolerance_s(v.wrapped) for v in shape.vertices()]
+            + [BRep_Tool.Tolerance_s(e.wrapped) for e in shape.edges()]
+            + [BRep_Tool.Tolerance_s(f.wrapped) for f in shape.faces()])
+
+
+def test_grouping_leaves_the_parts_as_they_were():
+    """The proof of a fit is a boolean that leaves its arguments alone (non-destructive):
+    a part's tolerances are what its construction left however often it was compared, so
+    what it is later meshed as (the print STLs) doesn't depend on the grouping. Two cuts
+    of a slotted pin by its moved copy widened tolerances on both."""
+    pin = (Cylinder(4, 12) - Box(1, 10, 5).moved(Pos(0, 0, 4))) + Cylinder(2, 6).moved(
+        Pos(0, 0, 8))
+    bodies = [Body(n, part=p, fab="printed") for n, p in (
+        ("a", pin), ("b", pin.rotate(Axis.Z, 37).rotate(Axis.X, 11).moved(Pos(13, -7, 3))),
+        ("c", _chiral()))]
+    before = [_tolerances(b.part) for b in bodies]
+    for _ in range(2):
+        pins, other = group_made(bodies, "printed")
+        assert (pins.names, other.names) == (["a", "b"], ["c"])
+    assert [_tolerances(b.part) for b in bodies] == before

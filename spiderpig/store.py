@@ -17,7 +17,9 @@ Layout of ``designs/<id>/``:
                          ``created_at``, ``derived_from`` and the merge ``patch`` from it
 ``check.json``, ...      one file per stage report (``check``, ``plan``, ``walk``,
                          ``recheck``, ``verify``, ``export``): the report's JSON with
-                         ``stage``, ``design``, ``engine_version`` and ``written_at``
+                         ``stage``, ``design``, ``engine_version`` and ``written_at``;
+                         ``verify.json`` is the latest level, ``verify.<level>.json`` a
+                         copy per level (a quick verify doesn't evict a standard one)
 ``build/manifest.json``  the build report plus, per part, its pose, colour and file
 ``build/parts/*.step``   one STEP per distinct part at the manifest's ``t``; a right-side
                          part references its left twin (``same_as``, ``mirror``)
@@ -195,21 +197,29 @@ class Store:
 
     # -- stage reports ---------------------------------------------------------------
 
-    def report_path(self, id: str, stage: str) -> Path:
+    def report_path(self, id: str, stage: str, variant: str | None = None) -> Path:
+        """``<stage>.json``; a ``variant`` (a verify's level) names ``<stage>.<variant>.json``,
+        the copy kept per variant beside the latest."""
         if stage == "build":
             return self.dir(id) / "build" / "manifest.json"
+        if variant:
+            return self.dir(id) / f"{stage}.{_UNSAFE.sub('_', variant)}.json"
         return self.dir(id) / f"{stage}.json"
 
-    def read_report(self, id: str, stage: str) -> dict | None:
+    def read_report(self, id: str, stage: str, variant: str | None = None) -> dict | None:
         """The stage's file as written (meta keys included), or ``None``."""
-        return _read_json(self.report_path(id, stage))
+        return _read_json(self.report_path(id, stage, variant))
 
     def write_report(self, design: Design, stage: str, rep) -> Path:
-        """Write ``rep`` as ``<stage>.json`` (a build: the manifest and the part files)."""
+        """Write ``rep`` as ``<stage>.json`` (a build: the manifest and the part files; a
+        verify: also ``verify.<level>.json``, so a quick verify after a standard one doesn't
+        cost the standard one again)."""
         if stage == "build":
             return self.write_build(design, rep)
         doc = {"stage": stage, "design": design.id, "engine_version": design.engine_version,
                "written_at": now_iso(), **report_doc(rep)}
+        if stage == "verify" and doc.get("level"):
+            _write_json(self.report_path(design.id, stage, str(doc["level"])), doc)
         return _write_json(self.report_path(design.id, stage), doc)
 
     def stages(self, id: str) -> dict[str, dict]:

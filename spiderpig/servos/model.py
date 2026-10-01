@@ -197,29 +197,67 @@ def _matches(solid, box: tuple[float, ...]) -> bool:
     return all(abs(a - b) <= BBOX_TOL for a, b in zip(have, box, strict=True))
 
 
-def strip_horn(shape, ref: CadRef):
-    """Drop the solids ``ref.strip`` names and cut ``ref.strip_cut`` away."""
+def strip_indices(shape, ref: CadRef) -> list[int]:
+    """Which of ``shape``'s solids (by index) survive ``ref.strip``: those whose bounding
+    box matches none of its boxes. A detailed model's boxes take seconds, so
+    :func:`cad_servo` records the answer beside the download."""
+    return [i for i, s in enumerate(shape.solids())
+            if not any(_matches(s, b) for b in ref.strip)]
+
+
+def strip_horn(shape, ref: CadRef, keep: list[int] | None = None):
+    """Drop the solids ``ref.strip`` names (``keep``: the indices :func:`strip_indices`
+    found, else found now) and cut ``ref.strip_cut`` away."""
     solids = shape.solids()
-    keep = [s for s in solids if not any(_matches(s, b) for b in ref.strip)]
+    if keep is None:
+        keep = strip_indices(shape, ref)
     if len(keep) != len(solids) - len(ref.strip):
         log.warning("%s: expected to strip %d solids, stripped %d", ref.filename,
                     len(ref.strip), len(solids) - len(keep))
-    out = keep[0] if len(keep) == 1 else Compound(children=keep)
+    kept = [solids[i] for i in keep]
+    out = kept[0] if len(kept) == 1 else Compound(children=kept)
     if ref.strip_cut is not None:
         r, z0, z1 = ref.strip_cut
         out = cut_each(out, _cyl(r, z0, z1))
     return _one(out)
 
 
+def _strip_key(ref: CadRef) -> str:
+    """What the strip's indices depend on besides the file: its placement and the boxes."""
+    return repr((tuple(ref.transform), ref.scale, ref.strip, BBOX_TOL))
+
+
+def _cached_indices(doc: dict | None, n: int) -> list[int] | None:
+    """The recorded indices, when the record is of a model with ``n`` solids and sound."""
+    if not doc or doc.get("solids") != n:
+        return None
+    keep = doc.get("keep")
+    if not isinstance(keep, list) or not all(isinstance(i, int) and 0 <= i < n for i in keep):
+        return None
+    return keep
+
+
 @lru_cache(maxsize=32)
 def cad_servo(spec: ServoSpec):
-    """The manufacturer's model without its output horn (servo frame), or ``None``."""
+    """The manufacturer's model without its output horn (servo frame), or ``None``.
+
+    Which solids the strip drops is decided by a bounding box of every solid of the
+    imported model (seconds for a detailed one); the answer is recorded beside the
+    download (:func:`servos.cad.prepared_path`) and read back by every later process, so
+    the shape is built from the same import exactly as the first time, without the boxes.
+    """
     for ref in spec.cads:
         shape = cadlib.load(ref)
         if shape is None:
             continue
+        n = len(shape.solids())
+        path = cadlib.prepared_path(ref, _strip_key(ref))
+        keep = _cached_indices(cadlib.read_prepared(path), n)
         try:
-            return strip_horn(shape, ref)
+            if keep is None:
+                keep = strip_indices(shape, ref)
+                cadlib.write_prepared(path, {"solids": n, "keep": keep})
+            return strip_horn(shape, ref, keep)
         except Exception as e:
             log.warning("%s: couldn't strip the horn from %s: %s", spec.key, ref.filename, e)
     return None

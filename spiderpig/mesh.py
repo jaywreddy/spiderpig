@@ -24,9 +24,13 @@ def tessellate(part, tolerance: float = 0.1, angular: float = 0.1
     """
     from OCP.BRep import BRep_Tool
     from OCP.BRepMesh import BRepMesh_IncrementalMesh
+    from OCP.BRepTools import BRepTools
     from OCP.TopAbs import TopAbs_Orientation
     from OCP.TopLoc import TopLoc_Location
 
+    # a finer mesh left on the shape by an earlier call (the bake's, then the hulls') would
+    # be reused by the mesher: start from the geometry, so the mesh is the parameters' alone
+    BRepTools.Clean_s(part.wrapped)
     BRepMesh_IncrementalMesh(part.wrapped, tolerance, True, angular, True)
     positions: list[tuple[float, float, float]] = []
     tris: list[tuple[int, int, int]] = []
