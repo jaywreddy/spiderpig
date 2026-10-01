@@ -35,6 +35,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import math
+import re
 import time
 import warnings as pywarnings
 from contextlib import contextmanager
@@ -88,7 +89,7 @@ from spiderpig.spec import (
     validate,
 )
 from spiderpig.stack import ClearanceError, PlanError, verify_plan
-from spiderpig.store import PROJECT, Store, diff_json, report_doc
+from spiderpig.store import PROJECT, Store, _read_json, _write_json, diff_json, report_doc
 
 log = logging.getLogger("spiderpig")
 
@@ -581,6 +582,29 @@ def _linkage(key: str) -> linkage.Linkage:
                                                      else "")) from None
 
 
+# -- per-code caches in the store (the linkage cards, the guide's tables) ----------------
+# ``<store>/cache/<source version>/<name>.json``: a document computed from the code alone,
+# kept per :func:`spiderpig.design.source_version`, so any edit of the checkout starts it
+# afresh; path components never start with a dot (no ``..``).
+_CACHE_NAME = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*$")
+
+
+def _cache_path(st: Store, name: str) -> Path:
+    version = source_version()
+    if not _CACHE_NAME.match(name) or not _CACHE_NAME.match(version):
+        raise ValueError(f"not a cache name: {name!r} / {version!r}")
+    return st.root / "cache" / version / f"{name}.json"
+
+
+def _read_cache(st: Store | None, name: str):
+    return None if st is None else _read_json(_cache_path(st, name))
+
+
+def _write_cache(st: Store | None, name: str, doc) -> None:
+    if st is not None:
+        _write_json(_cache_path(st, name), doc)
+
+
 def describe(key: str, store: Store | str | Path | None = PROJECT) -> dict:
     """One linkage's card: its parameters (default, angle or length, which only scale it),
     links and labels, feet or output, modules with their default phases, the closures at
@@ -594,11 +618,10 @@ def describe(key: str, store: Store | str | Path | None = PROJECT) -> dict:
     lk = _linkage(key)
     st = Store.of(store)
     name = f"cards/{lk.key}"
-    if st is not None and (doc := st.read_cache(name, source_version())) is not None:
+    if (doc := _read_cache(st, name)) is not None:
         return doc
     card = jsonable(_card(lk))
-    if st is not None:
-        st.write_cache(name, source_version(), card)
+    _write_cache(st, name, card)
     return card
 
 
@@ -607,12 +630,11 @@ def scale_params_table(store: Store | str | Path | None = PROJECT) -> dict[str, 
     resize it), by key; kept in the store per :func:`spiderpig.design.source_version` like
     the cards, since finding them compiles every linkage's program (seconds per session)."""
     st = Store.of(store)
-    doc = st.read_cache("scale_params", source_version()) if st is not None else None
+    doc = _read_cache(st, "scale_params")
     if doc is not None and set(doc) == set(linkage.available()):
         return {k: list(v) for k, v in doc.items()}
     table = {key: list(linkage.scale_params(linkage.get(key))) for key in linkage.available()}
-    if st is not None:
-        st.write_cache("scale_params", source_version(), table)
+    _write_cache(st, "scale_params", table)
     return table
 
 
