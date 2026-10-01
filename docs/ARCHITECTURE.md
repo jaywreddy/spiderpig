@@ -87,14 +87,15 @@ error that names the stage that failed and gives the numbers behind the failure.
 fix exists, the error also proposes it, and the fix has already been checked by running
 the failed stage again with it.
 
-The central promise is that designs are **correct by construction**: no two parts collide
-anywhere in the crank's turn. This promise has a history. On 2026-09-29 an audit of the
+The central promise is that designs are **correct by construction**: no two parts of a
+side collide anywhere in the crank's turn. This promise has a history. On 2026-09-29 an audit of the
 earlier code found every test passing while no design could physically be built: two
 links shared a plane and collided for 13.6 % of every turn, and a foot link silently
 dropped out of the cutting files. The answer was to share out space before any part
 exists (section 5) and then check that each part stays inside its share (section 6). The
 first half is a sound geometric bound over the whole turn; the second is checked at a few
-crank angles, and section 6.3 says what that leaves open.
+crank angles, as is the chassis that joins the two sides, and section 6.3 says what that
+leaves open.
 
 There are three ways to drive it, all calling one engine, and a browser viewer for looking
 at the result:
@@ -114,7 +115,7 @@ In numbers:
 
 | measure | value |
 |---|---|
-| Python package `spiderpig/` | 25,607 lines in 86 files |
+| Python package `spiderpig/` | 25,607 lines in 85 Python files |
 | tests | 9,122 lines; 901 tests |
 | browser viewer (TypeScript) | 1,538 lines |
 | linkages in the catalog | 28: 17 walkers and 11 mechanisms |
@@ -203,7 +204,7 @@ along the bottom on the ground, then up and back over the top.
 
 The linkage catalog holds 17 walkers in six families:
 
-- **Klann** (Joe Klann's patent): six bars and two fixed pivots, as in Figure 1. It lifts
+- **Klann** (Joe Klann's US patent 6,260,862): six bars and two fixed pivots, as in Figure 1. It lifts
   its foot high. It is the project's default; the catalog also has four variants
   transcribed from published drawings.
 - **Jansen** (Theo Jansen's Strandbeest): eight bars and one fixed pivot. Its stance is
@@ -379,8 +380,8 @@ A few words have two meanings in this code base, and the report keeps them apart
 - **frame**: the fixed body; frames of the animation are "animation frames".
 - **straight-line program** (section 4.1): a compiler term for a program with no loops or
   branches. It has nothing to do with straight-line mechanisms.
-- **envelope**: the circle a detour may sweep (section 5.2), not the robot's overall size,
-  which the spec calls `envelope_x/y/z_mm`.
+- **envelope**: the underside of the robot's body, which bounds a detour (section 5.2), not
+  the robot's overall size, which the spec calls `envelope_x/y/z_mm`.
 - **budget**: a cap on the planner's search effort (section 5.4), or money (section 9).
 
 The next section shows the six stages the code goes through to turn a linkage into these
@@ -426,8 +427,9 @@ Here is the running example at each stage:
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
   margin and so on).
 
-It validates itself when made and drops values equal to their defaults, so one design has
-one config however it was asked for. Its `key` (`klann_quad_robot`, plus a hash for
+It checks the linkage, module, servo, phases and parameters when made (not the sheet or the
+constructions, which fail later if unknown), and drops values equal to their defaults, so
+one design has one config however it was asked for. Its `key` (`klann_quad_robot`, plus a hash for
 anything non-default) names every cache.
 
 **Bodies are named by convention**, and the names appear throughout: `b1` to `b<n>` are
@@ -509,7 +511,7 @@ command line and the viewer call parameter overrides *proportions*; the spec cal
 `params`.)
 
 Around the program, a `Linkage` declares its **links** (each `b<k>` with its joints and the
-segments its plate follows), its **frame** joints, its **crank**, and either its **feet** (a
+segments its plate is cut along: `b1` joins M, C and D and is cut along M–D), its **frame** joints, its **crank**, and either its **feet** (a
 walker) or its **output** (a mechanism). Each file in `spiderpig/linkages/` builds its
 linkages and calls `register()` when imported; the registry imports these files on first
 use, Klann first so that it is the default.
@@ -521,10 +523,10 @@ process, and runs the steps in order, feeding each step's values into the next. 
 expression is ever substituted into another, so the cost of compiling doesn't grow with the
 program's depth. The parameters stay symbols, so overriding one needs no recompilation.
 
-This design came out of two performance failures. The 2016 code solved the linkage
-symbolically for every leg at every animation frame, and its expressions grew to about
-34,000 operations. A later version compiled one fully substituted expression per joint,
-which took 140–227 s for TrotBot; compiling step by step takes about 0.1 s (commit
+This design came out of two performance failures. Earlier versions solved the linkage
+symbolically for every leg at every animation frame, and their substituted expressions
+grew to about 34,000 operations. A later version compiled one fully substituted expression
+per joint, which took 140–227 s for TrotBot; compiling step by step takes about 0.1 s (commit
 `33c5bee`). A test keeps every step under 200 operations.
 
 One leg is a `LegSolution(orientation, phase, values)`. Its `evaluate(ts)` runs the
@@ -687,7 +689,8 @@ Some conclusions need no search, and the planner draws them first:
 - **The envelope** (`spiderpig/construction/underside.py`). A detour sweeps a full circle
   about O as the crank turns, so that circle must stay above the underside of the robot's
   body (its frame plates, the crank's own sweep, the servo and the pad it sits on).
-  Otherwise the robot would hang lower. The largest such circle is the envelope.
+  Otherwise the robot would hang lower. The code calls this underside profile the
+  envelope.
 
 A link that no crankpin and no detour inside the envelope can clear makes the design
 impossible as drawn, and the stage stops with a `ClearanceError` that gives the distances.
@@ -763,8 +766,9 @@ raises an error.
    crank route.
 
 A multi-leg module first plans its `single` module and uses that plan as a hint for which
-layers to try first, and for a second strategy that places one leg at a time. Everything
-shares a total of 60,000 nodes and a **60 s wall-clock deadline**.
+layers to try first, and for a second strategy that places one leg at a time. The search
+itself is capped at 60,000 nodes in all and a **60 s wall-clock deadline**; the plan used as
+a hint, and any recommendation checks after a failure, get their own.
 
 **The answer** is a `StackPlan`: each link's layer, the stack size, the crank route, the
 cost, whether the plan is **optimal** (no thinner stack and no cheaper route, both
@@ -790,12 +794,12 @@ run again with it and passed. The fixes it tries are:
 - thinner parts (`Params` such as link radius and axle diameters), within each
   construction's limits;
 - the default scale, for a design that was scaled down;
-- printed pillars, when a bolt pillar's longest stock screw bounds the stack;
-- a construction's own fix, such as a thicker sheet for the printed crank;
-- for a design that plans but misses a target that grows with the linkage (stroke,
-  straightness, lift), the smallest scale that meets it.
+- printed pillars, when a bolt pillar's longest stock screw bounds the stack.
 
-These checks share one more 60 s deadline, and anything left unchecked appears as a note,
+The same checking covers two other cases: a construction that can't be built with the
+given sizes gets its own fix (a thicker sheet for the printed crank, section 6.2), and a
+design that plans but misses a target that grows with the linkage (stroke, straightness,
+lift) gets the smallest scale that meets it. These checks share one more 60 s deadline, and anything left unchecked appears as a note,
 never as a recommendation. `spiderpig explain` prints each stage's verdict, the plan's
 layer table, and any failure with what would clear it.
 
@@ -806,8 +810,8 @@ constructions, twice: once one at a time, and once three at a time on a busy mac
 
 | outcome | cases |
 |---|---|
-| planned and proven thinnest, each in under about 8 s | 66–68 |
-| planned, unproven because the deadline or node budget ran out | 6–8: the six-bar quads, the Strider quad, some TrotBot designs |
+| planned and proven thinnest | 67–68, most in seconds (the TrotBot deckers take up to 26 s) |
+| planned, unproven because the deadline or node budget ran out | 6–8: the six-bar and Strider quads, the TrotBot quads when they plan, the TrotBot decker under load |
 | no plan | 2–5: the TrotBot heel and toe `double` always; the three TrotBot quads when the machine was busy |
 | stopped at the drive stage | 1: `five_bar` |
 
@@ -937,9 +941,11 @@ few angles is strong evidence, but it is not a proof, and the chassis has nothin
   OCCT. The animated model, the walking model and the MuJoCo model share these numbers.
 - **Servos** (`servos/`): three continuous-rotation servos, the Feetech STS3215 (the
   default: 19.5 kg·cm of torque, 52 rpm, 55 g), the ROBOTIS XL430-W250 and the
-  XL330-M288. Each has a datasheet in code with every dimension cited. The manufacturers'
-  STEP models are downloaded at build time, checked against a pinned sha256 hash, cached
-  in `~/.cache/spiderpig/cad`, and never committed (three of them have no stated licence).
+  XL330-M288. Each has a datasheet in code with every dimension cited. Published STEP models of
+  the servos (the STS3215's from the open SO-ARM100 robot-arm project, the others from
+  ROBOTIS) are downloaded at build time, checked against a pinned sha256 hash, cached in
+  `~/.cache/spiderpig/cad`, and never committed (the ROBOTIS models and an alternate
+  STS3215 model state no licence).
   Offline, or on any download problem, a parametric model drawn from the datasheet takes
   their place.
 
@@ -1003,7 +1009,7 @@ on purpose, because scripts parse them:
 | stage | does | running example |
 |---|---|---|
 | `1_reference_build` | fabricate the robot at t = 0 | 16.1 s (56 %) |
-| `2_mesh_share` | let a body reuse another's mesh when its part is a proven rigid copy | 1.7 s |
+| `2_mesh_share` | let a body reuse another's mesh when its part is a rigid copy, checked by exact mass properties | 1.7 s |
 | `2_tessellate_total` | mesh each distinct part with OCCT | 9.7 s (34 %) |
 | `3_gltf_pack_geometry` | pack positions, indices and one material per kind of part | under 1 s |
 | `4_animation_sample_total` | sample the template and fit each body's motion | 0.09 s |
@@ -1035,7 +1041,7 @@ horns and inserts.
 
 - **Meshing** (`spiderpig/mesh.py`): OCCT's mesher on each part. The triangles are read
   back through OCCT's own glTF writer, about eight times faster than walking them from
-  Python. Faces the mesher leaves untriangulated (three in the XL330's model) are skipped
+  Python (project docs). Faces the mesher leaves untriangulated (three in the XL330's model) are skipped
   and counted rather than crashing the bake.
 - **Worker processes** (`spiderpig/workers.py`): OCCT's Python binding holds Python's
   global interpreter lock, so threads don't speed up CAD work. Forking a process after
@@ -1073,7 +1079,9 @@ check, tune and compare designs.
 ### 8.1 The quasi-static walking model
 
 `spiderpig/walk.py` estimates how the robot stands and moves from the kinematics alone, in
-milliseconds, with no physics engine and no parts. *Quasi-static* means it ignores inertia:
+a fraction of a second, with no physics engine and no parts. (Its first call for a linkage
+and module plans the default design to learn where the feet sit across the robot, which
+takes as long as a plan.) *Quasi-static* means it ignores inertia:
 at each moment the robot is assumed to be at rest. The browser runs the same model in
 TypeScript (`viewer/src/drive/model.ts`), so the viewer can drive and tune a robot
 instantly. Its assumptions:
@@ -1123,8 +1131,8 @@ factor of three:
 
 They disagree on whether some robots stand, too. MuJoCo has the TrotBot heel quad roll
 over within a second, while the quasi-static model sees no tipping at all and a 45 mm
-**stability margin** (how far the centre of mass is inside the feet's support area). The
-`verify` report says when and how the simulated robot fell, but not why, and the
+**stability margin** (how far the centre of mass is inside the feet's support area); these
+figures are from the project docs (test-drive round 5). The `verify` report says when and how the simulated robot fell, but not why, and the
 repository holds no measurement of a built robot that could say which model is right.
 Section 12 ranks this as the largest open risk.
 
@@ -1143,7 +1151,7 @@ built with Vite) plays and scrubs the animation and has two panels:
 
 There are two ways to run it. `mise run view` starts the development servers (Vite with hot
 reload, and the API under uvicorn) on ports derived from a hash of the checkout's path, so
-parallel checkouts never collide. `spiderpig view <design>` serves the built viewer, which
+parallel checkouts rarely collide. `spiderpig view <design>` serves the built viewer, which
 ships inside the Python package, for one stored design, and needs no Node.
 
 ### 8.5 Audit, tune and report
@@ -1188,9 +1196,9 @@ each metric's unit, where it is measured, how trustworthy that is, and whether i
 default.
 
 `validate` reports every error at once, with the path, the allowed values and the nearest
-match. A spec with a misspelt linkage, a bare number where a target belongs, a servo under
-its marketing name and a wildcard gets eight errors back (some mistakes produce two),
-among them `linkage.key: unknown value 'klan' (did you mean 'klann'?)` and
+match. A spec with an unknown field, a misspelt linkage, a bare number where a target belongs, a
+target that doesn't exist, a servo under its marketing name and a wildcard gets eight errors
+back, among them `linkage.key: unknown value 'klan' (did you mean 'klann'?)` and
 `constructions.pin: 'any' is a wildcard: name one value (v1 compiles one design; search is
 a separate step)`. `spec_schema()` emits a JSON Schema with the live vocabularies.
 
@@ -1202,8 +1210,8 @@ a separate step)`. `spec_schema()` emits a JSON Schema with the live vocabularie
 so the same folder in the store. The engine version is the package version plus a hash of
 `spiderpig/linkages/*.py` and the planner's default settings.
 
-Every operation is a function of the design handle that maps onto one engine pass, returns
-a report, and caches it on the handle and in the store:
+Each operation is a function of the design handle that maps onto one engine pass and
+returns a report; the stage operations also cache it on the handle and in the store:
 
 | operation | runs | time for the running example |
 |---|---|---|
@@ -1221,7 +1229,7 @@ a report, and caches it on the handle and in the store:
 
 A stage that fails returns `ok: false` and a `Failure` (`spiderpig/failure.py`): a stage, a
 code (`program/loop_cannot_close`, `static/link_no_layer`, `plan/no_plan`,
-`drive/second_input_no_drive` and about a dozen more), the culprits, the numbers, and the
+`drive/second_input_no_drive` and about two dozen more), the culprits, the numbers, and the
 engine's checked recommendations, each with a JSON merge patch (RFC 7386) over the spec.
 Operations raise exceptions only for programming errors, and `resolve` for an invalid spec.
 
@@ -1296,8 +1304,10 @@ reloads its STEP files when the crank angle and engine version match. Writes are
 ### 9.6 Processes, jobs and the MCP server
 
 The MCP server (`spiderpig/mcp/`, built on the official MCP Python SDK 2.x, talking over
-stdio) offers 20 tools: one per operation, plus `get_job`, `wait_job`, `get_design`,
-`list_designs`, `gc`, `catalog` and `view`. It also serves 33 resources (a guide whose
+stdio) offers 20 tools: `list_linkages`, `describe` and `catalog` for the catalogs; `resolve`,
+`check`, `plan`, `explain`, `recommend` (which runs `advise`), `walk`, `build`, `verify`
+and `export`; `get_job` and `wait_job`; `compare`, `derive`, `get_design`, `list_designs`
+and `gc`; and `view`. There is no `recheck` tool, because it needs live solids. It also serves 33 resources (a guide whose
 vocabulary tables are generated from the code, the spec's schema, a card per linkage, and
 pages of the parts catalog) and 3 prompts. Across this boundary a design is its id, and a
 part is the path of its STEP file in the store.
@@ -1326,8 +1336,9 @@ The command line predates the agent surface. `spiderpig <command>` dispatches to
 | `report` | compare every linkage |
 | `mcp` | the MCP server |
 
-The commands share options: `--linkage`, `--module` (by default the linkage's own: `quad`
-and the robot for a walker, `single` and one side for a mechanism), `--phases` in degrees,
+The commands that take a design share options: `--linkage`, `--module` (by default the
+linkage's own: `quad` and the robot for a walker, `single` and one side for a mechanism;
+`explain` alone defaults to `single`), `--phases` in degrees,
 `--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank`, `--sheet` and
 `--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
 `view` resolve them into a design in the store, so they share one stored plan.
@@ -1355,10 +1366,10 @@ the performance work, outside test drives, the tooling, and what is missing.
 
 **Tests.** `pytest` collects 901 tests:
 
-| run | tests | how | time on the review machine |
+| run | tests | how | time, when the planner speed-ups were merged (the same code) |
 |---|---|---|---|
 | default | 880, of which 73 are marked `slow` | `uv run pytest` | 28 min: 873 passed, 7 skipped |
-| without the slow ones | 807 | `-m 'not slow'` | not measured |
+| without the slow ones | 807 | `-m 'not slow and not e2e'` | not measured |
 | browser | 21, marked `e2e` | `-m e2e`, with Playwright's Chromium | 5 min: 21 passed |
 
 The slow tests bake, build and export from the command line, run MuJoCo and the tuner, and
@@ -1368,17 +1379,18 @@ exercise the planner's deadline. Three things make the suite more than a set of 
   session; tests read them and must never change them.
 - **An independent planner.** `tests/brute.py` enumerates every layering and every crank
   route for small designs, and the planner's optimum must match it for Klann and TrotBot
-  `single`.
-- **Every linkage is parametrized.** Assembly, rigidity, the phase and mirror rules, the
-  feet being the lowest points, and a plan for the `single` module are checked for all 28
-  linkages; the contract and clash checks run for every Klann module and every servo.
+  `single`, in the plan's size and the two sizes below it.
+- **Every linkage is parametrized.** Assembly, rigidity and the phase and mirror rules are
+  checked for all 28 linkages; the feet being the lowest points and a plan for the `single`
+  module for every walker, and a plan for every mechanism; the contract and clash checks run for every Klann module and every servo.
 
 The suite forces the servos offline, so it always uses the parametric servo models, never
 the downloaded ones that users get by default.
 
 **Identical-output checks.** Every performance change of 2026-10-01 was merged only after
-its outputs proved identical to the old code's: plans field for field on 86 designs (the
-79 combinations of section 5.6 and seven variants), and DXF entities, STLs, BOMs and
+its outputs proved identical to the old code's (project docs): plans field for field on 86
+designs (the 79 combinations of section 5.6 and seven variants; an earlier gate's four
+failures differed only in the seconds they print), and DXF entities, STLs, BOMs and
 per-solid volumes on exports (STEP files can't be compared byte for byte).
 
 **Test drives.** In five rounds an outside agent drove the public surface towards a goal
@@ -1409,9 +1421,9 @@ of 2026-10-01 fixed, and what it chose to leave.
 
 | step | time |
 |---|---|
-| `import spiderpig.api` | 3–4.5 s, of which build123d 2.1 s |
+| `import spiderpig.api` | 3–4.5 s, of which build123d 2.1 s (project docs) |
 | plan, the running example | about 1 s |
-| re-make a stored plan | 0.45 s in a fresh process; 25 ms in a running server |
+| re-make a stored plan | 0.45 s in a fresh process; 25 ms in a running server (project docs) |
 | plan, a large quad (TrotBot, six-bar, Strider) | the 60 s deadline, after the `single` module's plan as a hint |
 | recommendations after a failed plan | up to 60 s more |
 | `spiderpig build` into a fresh store | 55 s, the plan included |
@@ -1424,7 +1436,8 @@ of 2026-10-01 fixed, and what it chose to leave.
 
 A fabrication of the robot spends about 9 s in OCCT booleans. The planner's cost is per
 node: 0.5–5 ms of pure-Python set and dictionary work (41 % in the crank route's dynamic
-program, 39 % in forward checking), times a few stack sizes. The search is narrow, trying
+program, 39 % in forward checking), times a few stack sizes. (These figures are from the
+project docs.) The search is narrow, trying
 2–4 layers per node.
 
 **What was fixed.** Three performance reports ([PERF.md](agentlib/PERF.md),
@@ -1484,7 +1497,8 @@ rather than a wrong answer.
 - No stacking of mechanisms (a stage mounted on another's output);
   [CLAUDE.md](../CLAUDE.md) sketches what it would take.
 - No search or tuning over designs in the API or MCP: the agent is the optimiser.
-  `recommend` only adjusts the scale, and `tune` exists only on the command line.
+  `recommend` proposes checked changes to one design and never searches, and `tune`
+  exists only on the command line.
 - No firmware and no gait controller.
 
 ### 12.2 Risks, ranked
@@ -1502,8 +1516,9 @@ rather than a wrong answer.
 3. **Stored results can go stale silently.** The engine version hashes only the linkage
    definitions and the planner's defaults (section 9.2). A change to a construction, the
    walking model, `verify`, the bake or the prices leaves every stored report, built STEP
-   part and export in place, and the store serves them as current. Geometry stays safe,
-   because plans are re-verified on every load, but numbers can be old. The workaround is
+   part and export in place, and the store serves them as current. Layer plans stay
+   safe, because they are re-verified on every load, but stored parts built by older
+   construction code, and stored numbers, can be stale. The workaround is
    `force=True`, `gc`, or a fresh store.
 4. **Part of the geometric guarantee rests on samples.** The planner's distances are sound
    lower bounds over the whole turn. The contract, the OCCT clash checks and everything
@@ -1529,17 +1544,17 @@ rather than a wrong answer.
    worker comes back without its traceback. Several per-process caches never evict
    (`fabricate._DESIGNS`, `recommend._DONE`, the MuJoCo builders), which matters for a
    long-running server. In the MCP server, one slow plan blocks every other short tool for
-   up to a minute.
+   a minute or more (up to about three for a large quad that fails).
 10. **Testing is slow and manual.** There is no continuous integration, the default run
     takes 28 minutes, browser tests run only on request, and the opt-in planner speed-ups
     have no tests (section 10).
-11. **The documents have drifted** in about 45 places (Appendix D). The most misleading:
+11. **The documents have drifted** in about 40 places (Appendix D). The most misleading:
     - the README and AGENTS.md give fixed ports that the code no longer uses;
     - `future_work.md` says only printed constructions exist;
     - CLAUDE.md's bake numbers (91 bodies, 6.6 s) are far below today's (179 bodies,
       28.6 s);
-    - three documents say the planner's proof gives each thinner size the full budget,
-      where the code gives half.
+    - three places say the planner's proof gives each thinner size the full budget, where
+      the code gives half.
 12. **Rough edges in the tools** (sections 8.4 and 9.7):
     - the viewer shows a mechanism inside the walker's drive and tune controls;
     - the development server's npm dependencies carry five advisories; none ships in the
@@ -1561,7 +1576,7 @@ Everything you need for a first afternoon with the code.
 uv run spiderpig explain --linkage klann --module quad   # every stage's verdict, the layer table
 uv run spiderpig build                                   # the running example into build/
 uv run spiderpig view --linkage klann                    # the viewer for it, in your browser
-uv run pytest -m 'not slow'                              # the fast tests
+uv run pytest -m 'not slow and not e2e'                 # the fast tests
 ```
 
 **Read, in this order.**
@@ -1739,8 +1754,8 @@ Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
 | [README.md](../README.md) | install, quick start, outputs, how the robot is built | mostly current; title and ports out of date |
 | [AGENTS.md](../AGENTS.md) | "use mise for everything" | partly stale |
 | [future_work.md](../future_work.md) | follow-ups after the 2026-09-29 rework | stale |
-| [viewer/README.md](../viewer/README.md) | how the viewer is fed and drawn | current |
-| [agentlib/API.md](agentlib/API.md) | the agent surface's reference | current |
+| [viewer/README.md](../viewer/README.md) | how the viewer is fed and drawn | current, with the drift in Appendix D |
+| [agentlib/API.md](agentlib/API.md) | the agent surface's reference | current, with the drift in Appendix D |
 | [agentlib/SCOPE.md](agentlib/SCOPE.md), [DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's proposal; the seven decisions | historical design; current decisions |
 | [agentlib/TESTDRIVE.md](agentlib/TESTDRIVE.md) | the five test-drive rounds | current record |
 | [agentlib/TIMING.md](agentlib/TIMING.md), [PERF.md](agentlib/PERF.md), [PERF_EXPORT.md](agentlib/PERF_EXPORT.md), [PERF_PLANNER.md](agentlib/PERF_PLANNER.md) | the timing study and the three performance reports | current record |
@@ -1784,7 +1799,6 @@ group.
 |---|---|
 | `mise run view` serves FastAPI on :8000 and Vite on :5173 (README, AGENTS.md) | ports come from a hash of the checkout path (Vite 5500–5999, API 8500–8999) unless `VITE_PORT` or `API_PORT` is set |
 | "Only printed constructions exist so far" (future_work.md), with links to `stack.py` and others at the root | rod, bolt, bearing and bushing pivots exist; the files are under `spiderpig/` |
-| `--module` defaults to `quad` (README) | it defaults to the linkage's own (`single` for a mechanism) |
 | title "Klann walking-linkage generator" (README) | 28 linkages |
 | `klann.step` and `klann.stl` are colour-tagged (README) | only the STEP carries colours |
 | the `cli.py` commands, without `export` and `view` (README) | ten commands |
@@ -1798,11 +1812,11 @@ group.
 | the planner's proof gives each thinner size the full budget (also PERF.md and the `StackProblem.solve` docstring) | half of it, `max_nodes // 2` (`stack.py:967-977`); PERF_PLANNER.md has it right |
 | "Known hot stage": the robot quad has 91 bodies and 33 meshes and bakes in about 6.6 s; 70 % fabrication, 20 % meshing | 179 bodies, 139 meshes, 28.6 s; 56 % and 34 % |
 | `verify_plan()` re-checks on fresh sampling | only when given the template; the search's own check and same-engine reloads reuse the solver's samples |
-| a recommendation is given only once the stage passes with it | for a static failure of a module bigger than `double`, only its `single` module is planned (the text says so) |
 | `symmetry`: one of each mirrored leg pair | any re-timing symmetry of a module with two or more legs, applied to the first link placed |
 | the bake's `_tessellate` and the MJCF's hulls use `mesh.tessellate` | the bake calls `mesh_part` and `read_meshes`; `_tessellate` is used only by tests |
 | `mise run <command> -- <options>` runs the subcommands | there is no `export` task, and `mise run view` is the development server, not `spiderpig view` |
 | one screw table; the crank's own until its rewrite (also `crank.py`) | the crank's M2 self-tapping lengths (6–12 mm) now differ from `fasteners.py` (4–12 mm) |
+| `-m 'not slow'` skips the slow tests | a command-line `-m` replaces the default `-m 'not e2e'`, so it also runs the 21 browser tests; use `-m 'not slow and not e2e'` |
 | the repository map's construction files | omits `construction/printed.py` and `pivots/common.py` |
 
 ### docs/agentlib
@@ -1812,9 +1826,8 @@ group.
 | offline servo CAD marks a design `estimated` (DECISIONS.md #7) | not implemented; the fallback only logs a warning |
 | the failure-code table (API.md, and the `failure.py` docstring) | lacks `program/point_undefined`, `plan/plan_verification_failed`, `store/corrupt_record`, `job/cancelled`, `job/worker_died` |
 | read-only hints on every MCP tool but `export` and `gc` (API.md) | `view` is marked as changing state too |
-| job workers are spawned fresh, each with a clean cache (API.md) | workers are reused across jobs |
 | `verify standard` takes 30–45 s, and the BOM's grouping dominates an export (API.md) | 32–37 s, and the grouping no longer dominates |
-| `advise`, `spec_of`, `plan_config` and `scale_params_table` are operations (API.md) | none is in `api.__all__` |
+| `advise`, `spec_of` and `plan_config` are operations (API.md) | none is in `api.__all__` |
 | a worked example with ids, costs and body counts; optional extras `[viewer]`, `[sim]`, `[mcp]` (SCOPE.md) | the example's numbers are invented illustrations; those dependencies are mandatory |
 | prices are unverified; Strider's `double` is "a coupled pair at 0° and 180°", the catalog's four-legged walker (the MCP guide, `mcp/guide.md`) | 48 offers are verified; the Strider `double` is two coupled pairs, four feet a side |
 
@@ -1822,7 +1835,6 @@ group.
 
 | where | says | the code |
 |---|---|---|
-| `sim/run.py` | run an exported MJCF with `spiderpig sim --xml` | `--xml` writes a model; `--mjcf` runs one |
 | `sim/__init__.py`, `sim/mjcf.py` | the same MJCF runs in the browser | no browser MuJoCo exists |
 | `sim/mjcf.py` | refers to `fabricate.BuildConfig` and `viewer.bake_gltf` | `config.BuildConfig`, `spiderpig.bake` |
 | `mesh.py`, `sim/mjcf.py` | tessellation tolerance in mm | a relative deflection |
