@@ -44,6 +44,7 @@ from __future__ import annotations
 import itertools
 import logging
 import math
+import multiprocessing
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping
@@ -685,6 +686,15 @@ class StackSpec:
     returned unproven (``StackPlan.optimal`` false, ``proof`` naming the
     sizes left open) and none found raises :class:`PlanError` with the tally.
     ``drop_bearing`` lets the crank lose its bottom bearing as the last resort.
+    ``workers`` (a prototype): search the stack sizes in that many forked processes
+    (:mod:`stack_pool`), with the serial search's answer. ``prove`` (a prototype, on by
+    default): with it off the search stops at the thinnest stack its quick pass finds a
+    plan in (the plan it would return before the proof), and says what is left unproven.
+    ``quick_first`` (a prototype, off by default): a short search stops at its first plan
+    instead of spending the rest of its budget on a cheaper route in a size the next,
+    thinner one may well beat (the size kept gets the cheaper route's full search).
+    ``symmetry`` (a prototype, off by default): a two-leg module whose leg swap is a
+    symmetry of the problem (:mod:`stack_symmetry`) searches one of each mirror pair.
     """
 
     pitch: float = 3.0
@@ -696,6 +706,10 @@ class StackSpec:
     max_total_nodes: int = 60000
     max_seconds: float = 60.0
     drop_bearing: bool = False
+    workers: int = 1
+    prove: bool = True
+    quick_first: bool = False
+    symmetry: bool = False
 
 
 class Deadline:
@@ -888,11 +902,46 @@ class StackProblem:
         self._blocked_by.clear()
         self.spent = 0
         self.deadline = Deadline(spec.max_seconds)
-        tried: dict[int, _Search] = {}
+        self.tried = tried = {}
+        self.runs_of: dict[int, list[tuple]] = {}    # each size's runs: (budget, legs, first)
+        self.syms = []
+        if spec.symmetry:
+            from spiderpig.stack_symmetry import symmetries
+
+            self.syms = symmetries(self)
+        self.pool = None
+        if spec.workers > 1 and "fork" in multiprocessing.get_all_start_methods():
+            from spiderpig.stack_pool import Pool
+
+            self.pool = Pool(self, spec.workers)
+        try:
+            return self._solve(tried)
+        finally:
+            if self.pool is not None:
+                self.pool.close()
+                self.pool = None
+
+    def _new(self, top: int):
+        """A stack size to search: here, or in a worker already searching it
+        (:mod:`stack_pool`)."""
+        if self.pool is None or not self.pool.has(top):
+            return _Search(self, top)
+        from spiderpig.stack_pool import Remote
+
+        return Remote(self, top)
+
+    def _expect(self, ahead: list[tuple[int, str]]) -> None:
+        """What the search will likely run next (``(top, phase)``), for the workers to start."""
+        if self.pool is not None:
+            self.pool.expect(ahead)
+
+    def _solve(self, tried: dict) -> StackPlan:
+        spec = self.spec
         found = self._first(tried)
         if found is None and not self.exhausted:
             # the quick pass found nothing and effort is left: give the sizes it left
             # open the full effort, thinnest first (a bounded search may have only a few)
+            self._expect([])
             for top in sorted(t for t, s in tried.items() if not s.done):
                 if self.exhausted:
                     break
@@ -911,24 +960,31 @@ class StackProblem:
                             f"{bounded} after {self.spent} search steps in "
                             f"{self.deadline.elapsed:.0f} s{ran_out}", self.blockers(),
                             [self.sizes(tried), *self.notes])
+        if spec.prove:
+            self._expect([(found.top, "route")] + [
+                (t, "prove") for t in range(found.top - 1, spec.min_top - 1, -1)
+                if t not in tried or not tried[t].done])
         for top in range(found.top - 1, spec.min_top - 1, -1):   # just thinner first
-            if self.exhausted:
+            if self.exhausted or not spec.prove:
                 break
             s = tried.get(top)
             if s is None:
-                s = tried[top] = _Search(self, top)
+                s = tried[top] = self._new(top)
             self._run(s, spec.max_nodes // 2)
             if s.best is None and self.hint:
                 self._run(s, spec.max_nodes // 2, legs=True)
             if s.best is not None:
                 found = s
-        self._run(found, spec.max_nodes)          # a cheaper route, if not ruled out yet
+        found = tried[found.top]                  # (a worker may search it now)
+        if spec.prove:
+            self._run(found, spec.max_nodes)      # a cheaper route, if not ruled out yet
         plan = found.best
         below = [tried[t] for t in range(spec.min_top, plan.top) if t in tried]
         open_ = [t + 1 for t in range(spec.min_top, plan.top)
                  if t not in tried or not tried[t].done]
         plan.optimal = found.done and not open_
-        why = self.stopped or "the search stopped at its budget"
+        why = self.stopped or ("the search stopped at its budget" if spec.prove else
+                               "the search stopped at the first plan: no proof asked")
         here = (f"{plan.top + 1} layers searched to the end for the cheapest crank route "
                 f"({found.nodes} nodes)" if found.done else
                 f"a cheaper crank route in {plan.top + 1} layers not ruled out ({why}, "
@@ -948,10 +1004,12 @@ class StackProblem:
 
     def _quick(self, tried: dict[int, _Search], top: int) -> _Search:
         """A short search of one stack size (and one a leg at a time, with a hint)."""
-        s = tried[top] = _Search(self, top)
+        s = tried[top] = self._new(top)
+        s.first_only = self.spec.quick_first
         self._run(s, self.spec.quick_nodes)
         if s.best is None and self.hint:
             self._run(s, self.spec.quick_nodes, legs=True)
+        s.first_only = False
         return s
 
     def _first(self, tried: dict[int, _Search]) -> _Search | None:
@@ -967,6 +1025,13 @@ class StackProblem:
         spec = self.spec
         top, jump, found = spec.min_top, 0, None
         while not self.exhausted:
+            last = tried.get(top - 1)
+            if self.pool is not None and last is not None and (last.nodes > 200 or not last.done):
+                # the sizes get dear: the next ones in workers, ruled out or not
+                nxt = [top + 1, top + 2, min(top + (1 << jump), spec.max_top),
+                       min(top + (1 << jump) + (2 << jump), spec.max_top)]
+                self._expect([(t, "quick") for t in dict.fromkeys([top, *nxt])
+                              if t not in tried and t <= spec.max_top])
             s = self._quick(tried, top)
             if s.best is not None:
                 found = s
@@ -981,6 +1046,8 @@ class StackProblem:
             for top in range(found.top - 1, spec.min_top - 1, -1):
                 if top in tried or self.exhausted:
                     break
+                self._expect([(t, "quick") for t in range(top, max(top - 4, spec.min_top - 1), -1)
+                              if t not in tried])
                 s = self._quick(tried, top)
                 if s.best is None:
                     break
@@ -1038,8 +1105,10 @@ class StackProblem:
         if s.done or budget <= 0 or self.deadline.expired:
             return
         before, t0 = s.nodes, time.monotonic()
+        if self.pool is not None:
+            self.runs_of.setdefault(s.top, []).append((budget, legs, s.first_only))
         s.run(budget, legs, self.deadline)
-        s.seconds += time.monotonic() - t0
+        s.seconds += (time.monotonic() - t0) if isinstance(s, _Search) else s.last_seconds
         self.spent += s.nodes - before
         log.debug("%s: %d layers, %d nodes%s, %s", self.topo.name, s.top + 1, s.nodes,
                   " (a leg at a time)" if legs else "",
@@ -1088,6 +1157,7 @@ class _Search:
         self.best: StackPlan | None = None
         self.done = False
         self.legs = False
+        self.first_only = False       # stop at the first plan (a short search, quick_first)
         self.unbuilt: dict[str, int] = {}     # layouts only the router's rules rejected, why
         # learned nogoods, each watched by one of its (link, layer) pairs that doesn't hold
         self.watch: dict[tuple[str, int], list[tuple[tuple[str, int], ...]]] = {}
@@ -1142,6 +1212,8 @@ class _Search:
                             self.allow[n][v] = -1
                         continue
                 self.dom[n].discard(v)
+        self.lex: list[tuple[str, str]] | None = None   # (a, b): layer(a) <= layer(b)
+        self.lexed: frozenset[str] = frozenset()
 
     # -- state --------------------------------------------------------------------
 
@@ -1315,6 +1387,15 @@ class _Search:
                     return conf | {n}
         if (c := self.spans(n)) is not None:
             return c | {n}
+        for a, b in self.lex if n in self.lexed else ():   # (lexed: empty without lex)
+            if n not in (a, b):            # layer(a) <= layer(b): one layering of each orbit
+                continue
+            other, ks = (b, range(1, v)) if n == a else (a, range(v + 1, self.top))
+            if other in self.layers:
+                if self.layers[a] > self.layers[b]:
+                    return frozenset({a, b})
+            elif (c := self.close(other, ks, frozenset({n}))) is not None:
+                return c | {n}
         if self.router is not None and self.dirty:     # else: as the last time it said yes
             res = self.router.check(self.view(partial=True))
             if isinstance(res, RouteConflict):
@@ -1485,6 +1566,8 @@ class _Search:
         self.best, self.bound = plan, cost
         if cost == 0:
             raise _Done
+        if self.first_only:
+            raise _Budget           # a short search has found what it looks for
         return frozenset(self.layers)
 
     def run(self, budget: int, legs: bool = False, deadline: Deadline | None = None) -> bool:
@@ -1509,6 +1592,18 @@ class _Search:
             if any(not d for d in self.dom.values()):
                 self.done = True
                 return True
+            self.first = min(self.links, key=lambda x: (len(self.dom[x]),
+                                                         self.prob.depth.get(x, 99), x))
+        syms = getattr(self.prob, "syms", ())
+        if syms and self.lex is None and (self.nodes or budget > self.prob.spec.quick_nodes):
+            # a size worth more than a short search: the first link the search places, and
+            # its images (a constraint added later prunes only what it would have: sound)
+            from spiderpig.stack_symmetry import claims_commute
+
+            first = self.first
+            self.lex = sorted({(first, g[first]) for g, sig in syms if g[first] != first
+                               and claims_commute(self.prob, g, sig, self.top)})
+            self.lexed = frozenset(x for pair in self.lex for x in pair)
         self.budget, self.legs = self.nodes + budget, legs
         try:
             self.dfs()
