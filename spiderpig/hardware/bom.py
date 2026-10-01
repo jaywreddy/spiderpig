@@ -27,6 +27,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -206,41 +207,109 @@ def _frame(part) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return np.array([c.X, c.Y, c.Z]), axes, np.array([m for _, m in props])
 
 
-def _proper_fit(a, fa, b, fb, tol: float) -> bool:
-    """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?"""
+@dataclass(frozen=True)
+class _Sig:
+    """What :func:`congruent` compares before it moves a part: the invariants a rigid motion
+    keeps (volume, area, the principal moments), and what it maps (the centroid and axes,
+    the surface centroid). Measured once per part (:func:`group_made` keeps them)."""
+
+    volume: float
+    area: float
+    frame: tuple[np.ndarray, np.ndarray, np.ndarray]
+    surf: np.ndarray             # the surface's centroid
+
+
+def _sig(part) -> _Sig:
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    surf = GProp_GProps()
+    BRepGProp.SurfaceProperties_s(part.wrapped, surf)
+    sc = surf.CentreOfMass()
+    return _Sig(part.volume, part.area, _frame(part), np.array([sc.X(), sc.Y(), sc.Z()]))
+
+
+_SIGNS = ((1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1),
+          (-1, -1, -1), (-1, 1, 1), (1, -1, 1), (1, 1, -1))
+_CENTROID_TOL = 1e-3     # mm the mapped surface centroid may miss by before a boolean is run
+
+
+def _shared_volume(a, b) -> float:
+    """The volume ``a`` and ``b`` have in common (one boolean, the parts left as they are:
+    OCCT otherwise widens the arguments' tolerances in place, and what a part is later
+    meshed as would depend on how often it was compared)."""
+    from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+    from OCP.TopTools import TopTools_ListOfShape
+
+    args, tools = TopTools_ListOfShape(), TopTools_ListOfShape()
+    args.Append(a.wrapped)
+    tools.Append(b.wrapped)
+    op = BRepAlgoAPI_Common()
+    op.SetArguments(args)
+    op.SetTools(tools)
+    op.SetNonDestructive(True)
+    op.SetRunParallel(True)
+    op.Build()
+    if not op.IsDone():
+        return 0.0
+    props = GProp_GProps()
+    BRepGProp.VolumeProperties_s(op.Shape(), props)
+    return float(props.Mass())
+
+
+def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
+    """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?
+
+    Each matching of the frames (a sign per axis, proper rotations only) is tried in
+    turn; the motion must take ``a``'s surface centroid onto ``b``'s before the proof,
+    one boolean: the volume ``a`` moved and ``b`` don't share is less than ``tol``.
+    """
     from build123d import Location, Plane
 
-    ca, ea, _ = fa
-    cb, eb, _ = fb
-    for signs in ((1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1),
-                  (-1, -1, -1), (-1, 1, 1), (1, -1, 1), (1, 1, -1)):
+    ca, ea, _ = sa.frame
+    cb, eb, _ = sb.frame
+    for signs in _SIGNS:
         r = eb @ np.diag(signs) @ ea.T
         if np.linalg.det(r) < 0:
             continue
         t = cb - r @ ca
+        if np.abs(r @ sa.surf + t - sb.surf).max() > _CENTROID_TOL:
+            continue
         moved = a.moved(Location(Plane(tuple(t), tuple(r[:, 0]), tuple(r[:, 2]))))
-        diff = sum(s.volume for s in (moved - b).solids()) + sum(
-            s.volume for s in (b - moved).solids())
-        if diff < tol:
+        if sa.volume + sb.volume - 2.0 * _shared_volume(moved, b) < tol:
             return True
     return False
 
 
-def congruent(a, b, rel: float = 1e-4) -> str | None:
-    """``"same"`` if ``b`` is ``a`` moved, ``"mirror"`` if it is ``a``'s mirror image, else None."""
+def congruent(a, b, rel: float = 1e-4, *, sa: _Sig | None = None, sb: _Sig | None = None,
+              mirror: Callable[[], tuple] | None = None) -> str | None:
+    """``"same"`` if ``b`` is ``a`` moved, ``"mirror"`` if it is ``a``'s mirror image, else None.
+
+    ``sa`` / ``sb`` are the parts' measurements when the caller has them; ``mirror()``
+    gives ``a``'s mirror image with its measurements (:func:`group_made` keeps both per
+    group, so a reference is measured and mirrored once).
+    """
     from build123d import Plane
 
-    va, vb = a.volume, b.volume
-    if abs(va - vb) > rel * max(va, vb) or abs(a.area - b.area) > rel * max(a.area, b.area):
+    sa = sa or _sig(a)
+    sb = sb or _sig(b)
+    va, vb = sa.volume, sb.volume
+    if abs(va - vb) > rel * max(va, vb) or abs(sa.area - sb.area) > rel * max(sa.area, sb.area):
         return None
-    fa, fb = _frame(a), _frame(b)
+    fa, fb = sa.frame, sb.frame
     if not np.allclose(fa[2], fb[2], rtol=1e-3, atol=1e-6 * max(fa[2].max(), 1.0)):
         return None
     tol = max(1e-3, 1e-4 * vb)
-    if _proper_fit(a, fa, b, fb, tol):
+    if _proper_fit(a, sa, b, sb, tol):
         return "same"
-    m = a.mirror(Plane.XY)
-    if _proper_fit(m, _frame(m), b, fb, tol):
+    if mirror is None:
+        m = a.mirror(Plane.XY)
+        mirrored = (m, _sig(m))
+    else:
+        mirrored = mirror()
+    if _proper_fit(mirrored[0], mirrored[1], b, sb, tol):
         return "mirror"
     return None
 
@@ -261,12 +330,26 @@ class MadeGroup:
 
 def group_made(bodies, method: str) -> list[MadeGroup]:
     """Group ``method`` bodies by shape. For laser parts a mirror image is the same cut."""
+    from build123d import Plane
+
     groups: list[MadeGroup] = []
+    sigs: dict[int, _Sig] = {}               # id(group) -> the reference's measurements
+    mirrors: dict[int, tuple] = {}           # id(group) -> (its mirror image, measurements)
+
+    def mirror_of(g: MadeGroup) -> Callable[[], tuple]:
+        def get() -> tuple:
+            if id(g) not in mirrors:
+                m = g.ref.part.mirror(Plane.XY)
+                mirrors[id(g)] = (m, _sig(m))
+            return mirrors[id(g)]
+        return get
+
     for b in bodies:
         if b.fab != method or b.part is None:
             continue
+        sb = _sig(b.part)
         for g in groups:
-            rel = congruent(g.ref.part, b.part)
+            rel = congruent(g.ref.part, b.part, sa=sigs[id(g)], sb=sb, mirror=mirror_of(g))
             if rel is None:
                 continue
             g.names.append(b.name)
@@ -274,7 +357,9 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
                 g.mirrored.append(b.name)
             break
         else:
-            groups.append(MadeGroup(method, b, [b.name]))
+            g = MadeGroup(method, b, [b.name])
+            groups.append(g)
+            sigs[id(g)] = sb
     return groups
 
 
