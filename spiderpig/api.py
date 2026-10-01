@@ -1745,6 +1745,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     name = cfg.linkage
     filament = mech.meta.get("filament", "pla_filament")
     files: list[Path] = []
+    job = _start_robot_job(design, formats, out)
     if "step" in formats:
         mech.export_step(out / f"{name}.step")
         files.append(out / f"{name}.step")
@@ -1789,7 +1790,70 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                            "unpriced": [r.key for r in bom.unpriced]}
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
-    robot = None
+    files += _robot_files(design, formats, out, job)
+    if "mjcf" in formats and design.kind != "walker":
+        # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
+        # mechanism has nothing to walk, so the format is skipped, not an error
+        logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
+            "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
+            "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
+    return files, bom_summary
+
+
+def _walker_formats(design: Design, formats: list[str]) -> list[str]:
+    """The formats of the walker at the bake's reference angle: ``glb``, and ``mjcf`` for a
+    walker (a mechanism's is skipped, with a warning)."""
+    return [f for f in ("glb", "mjcf") if f in formats
+            and (f == "glb" or design.kind == "walker")]
+
+
+def _start_robot_job(design: Design, formats: list[str], out: Path):
+    """The glb and the MJCF in a worker process while this one writes the other formats:
+    they share nothing with them but the design, which the worker loads from the store
+    (its plan re-made and verified) and fabricates at the bake's angle itself, as
+    :func:`_robot_files` does here. ``None`` (written here, after the others) when the
+    design has no store, there is nothing to write, or ``SPIDERPIG_EXPORT_WORKERS=0``."""
+    import os
+
+    fmts = _walker_formats(design, formats)
+    if not fmts or design.store is None or os.environ.get("SPIDERPIG_EXPORT_WORKERS") == "0":
+        return None
+    import concurrent.futures as cf
+    import multiprocessing as mp
+
+    # spawned, never forked: a child forked after OCCT's thread pool has run deadlocks
+    pool = cf.ProcessPoolExecutor(1, mp_context=mp.get_context("spawn"))
+    future = pool.submit(_robot_files_job, str(design.store.root), design.id, fmts, str(out))
+    pool.shutdown(wait=False)
+    return future
+
+
+def _robot_files_job(root: str, id: str, formats: list[str], out: str
+                     ) -> tuple[list[str], list[str]]:
+    """:func:`_robot_files` in a worker: the files written and what was warned meanwhile."""
+    design = load(id, root)
+    with contextlib.ExitStack() as stack:
+        warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
+        stack.enter_context(pywarnings.catch_warnings())
+        pywarnings.filterwarnings("ignore", message="Unknown Compound type")
+        if not plan(design).ok:
+            raise RuntimeError(f"{id}: the stored plan no longer holds")
+        files = _robot_files(design, formats, Path(out))
+    return [str(f) for f in files], warned
+
+
+def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> list[Path]:
+    """The ``glb`` and ``mjcf`` formats: written here, or collected from ``job``
+    (:func:`_start_robot_job`), whose warnings are logged again here so the export's
+    report has them, in the order a serial export would."""
+    cfg, name = design.config, design.config.linkage
+    files: list[Path] = []
+    if job is not None:
+        done, warned = job.result()
+        for w in warned:
+            logging.getLogger("spiderpig.export").warning("%s", w)
+        return [Path(f) for f in done]
+    robot, props = None, {}          # the parts' mass properties: the bake's, for the MJCF
     if "glb" in formats or ("mjcf" in formats and design.kind == "walker"):
         # the viewer's bake and the MuJoCo model are both of the walker at the bake's
         # reference angle: fabricated once here from the design's own side (its plan), not
@@ -1800,27 +1864,21 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     if "glb" in formats:
         from spiderpig.bake import bake_gltf
 
-        bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side)
+        bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side,
+                  props=props)
         files.append(out / f"{name}.glb")
-    if "mjcf" in formats:
-        if design.kind != "walker":
-            # the MJCF is the walking robot's (two sides on a floor, the drives walking
-            # it); a mechanism has nothing to walk, so the format is skipped, not an error
-            logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
-                "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
-                "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
-        else:
-            import json
+    if "mjcf" in formats and design.kind == "walker":
+        import json
 
-            from spiderpig.sim.mjcf import build_mjcf, set_fabricated
+        from spiderpig.sim.mjcf import build_mjcf, set_fabricated
 
-            if cfg.robot:        # a one-sided design's MJCF is still the robot's
-                set_fabricated(cfg, robot)
-            xml, meta = build_mjcf(cfg)
-            (out / f"{name}.xml").write_text(xml)
-            (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
-            files += [out / f"{name}.xml", out / f"{name}.json"]
-    return files, bom_summary
+        if cfg.robot:        # a one-sided design's MJCF is still the robot's
+            set_fabricated(cfg, robot, props)
+        xml, meta = build_mjcf(cfg)
+        (out / f"{name}.xml").write_text(xml)
+        (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
+        files += [out / f"{name}.xml", out / f"{name}.json"]
+    return files
 
 
 __all__ = [

@@ -570,9 +570,11 @@ def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | Non
     return _Reference(mech, feet, owner, anchors)
 
 
-def _share_and_tessellate(ref: _Reference, prof: _Profiler) -> _Meshes:
-    """Stage 2: one mesh per congruence group (see :func:`_plan_meshes`), tessellated."""
-    mass_props: dict[str, PartProps] = {}
+def _share_and_tessellate(ref: _Reference, prof: _Profiler,
+                          mass_props: dict[str, PartProps] | None = None) -> _Meshes:
+    """Stage 2: one mesh per congruence group (see :func:`_plan_meshes`), tessellated.
+    ``mass_props`` collects the parts' mass properties as they are measured."""
+    mass_props = {} if mass_props is None else mass_props
     with prof.timed("2_mesh_share"):
         plan = _plan_meshes(ref.bodies, ref.anchors, ref.owner, prof, mass_props)
     logger.debug("%d bodies with parts -> %d meshes", len(plan.key_of), len(plan.rep_of))
@@ -792,6 +794,7 @@ def bake_gltf(
     profile: bool = True,
     fabricated: Mechanism | None = None,
     side=None,
+    props: dict[str, PartProps] | None = None,
 ) -> None:
     """Write ``<out>``: the fabricated walker of ``config`` and its animation over one crank
     revolution (the whole robot, or one side with ``robot=False``), stage by stage (see the
@@ -801,7 +804,8 @@ def bake_gltf(
     :func:`spiderpig.api.export` shares with the MJCF) and ``side`` the
     :class:`fabricate.SideDesign` it was fabricated from (its layer plan for the drive
     extras); without them the bake fabricates from ``config`` (planning when the process
-    hasn't).
+    hasn't). ``props`` receives every part's mass properties (body -> :class:`PartProps`),
+    for the MJCF of the same fabrication.
 
     A layout the planner can't find (:mod:`stack`) and a construction that
     can't be built (:class:`construction.ConstructionError`) raise
@@ -838,7 +842,7 @@ def bake_gltf(
 
     with prof.timed("bake_total"):
         ref = _reference(config, prof, fabricated)
-        meshes = _share_and_tessellate(ref, prof)
+        meshes = _share_and_tessellate(ref, prof, props)
         geom = _pack_geometry(meshes, prof)
         anim = _animate(config, ref, meshes, n_frames, duration_s, prof)
         nodes, animation = _nodes_and_channels(ref, meshes, geom, anim, prof)
