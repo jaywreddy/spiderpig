@@ -82,7 +82,7 @@ programming errors (and `resolve` raises `SpecErrors` for an invalid spec).
 | op | returns | what it runs | cost (Klann quad) |
 |---|---|---|---|
 | `resolve(spec, store=PROJECT)` | `Design` (`id`, `resolved`, `config`, `engine_version`, `warnings`, `store`) | validation, inference, `BuildConfig`; `id = sha256(canonical resolved spec + engine version)[:16]`, engine version = package version + hash of `spiderpig/linkages/*.py` + `StackSpec` defaults; records the design in the store | ms |
-| `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width); a mechanism's carries its `output_check` and a `sensitivity` table of the output's numbers (stroke, straightness, extent, on-line fraction, rotation, swing, dwell: the ones it measures), so a stroke that only scales with `unit` is told from one a proportion moves; every parameter says whether it is an `angle`, `signed` (a coordinate) or a `scale` parameter | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s, the walk per module) |
+| `list_linkages(kind?)`, `describe(key)` | linkage cards; a walker's card carries each module's `stride_mm` / `walks` (the walk model at the defaults) and a `sensitivity` table (what +10 % of each parameter, +5° of an angle, does to the foot path's lift, stride, height and width); a mechanism's carries its `output_check` and a `sensitivity` table of the output's numbers (stroke, straightness, extent, on-line fraction, rotation, swing, dwell: the ones it measures), so a stroke that only scales with `unit` is told from one a proportion moves; every parameter says whether it is an `angle`, `signed` (a coordinate) or a `scale` parameter | registry, `Linkage.check`, foot path / output check | ms (`describe`: ~1 s the first time (`trotbot_toe` ~6 s), the walk per module; then read from the store's `cache/`, per code version) |
 | `check(design)` | `CheckReport`: `steps`, `output`, `foot_path`, `drive`, `clearances`, `crank_facts`, `ground_clearance_mm`, `lowest_body_part` (which body shape sets the clearance); a construction that can't be built at these parameters is a `construction` failure whose `numbers` and checked `recommendations` name the lever (the sheet thickness) | `Linkage.check`, `output_check`, `side_problem`, `static_stage` | 0.5 s |
 | `plan(design)` | `PlanReport`: `layers`, `n_layers`, `height_mm`, `route`, `optimal`, `proof`, `table`, `warnings` (what the constructions warned about: a printed snap that overstrains) | `fabricate.design_side` (cached by the engine); a search is bounded by `StackSpec.max_seconds` (60 s) and the recommendation checks by one more | 0.4 s (Klann quad); up to a minute on a large or scaled-down design, one to three on one that fails |
 | `explain(design)` | text | `explain.explain_config` on the design's full config, from its own plan (a recorded failure is printed, not re-solved); then, for a design that plans, `4. targets`: each spec target `check` and `plan` can read (a mechanism's output numbers, a walker's lift and ground clearance, the stack) as ok / missed, and what `advise` would do about a miss | ms after plan |
@@ -177,6 +177,10 @@ recomputes from `resolved.json`. Several users share one folder (writes are atom
                        references its left twin: same_as + mirror, nothing duplicated)
   exports/             export()'s default out_dir
   log.jsonl            one line per operation: op, engine_version, seconds, ok, cached, at
+.spiderpig/cache/<source version>/
+  cards/<key>.json     describe()'s cards; scale_params.json the guide's scale parameters:
+                       what the code alone decides, kept per package version + a hash of
+                       the package's sources (any edit starts afresh)
 ```
 
 What is cached, and when it is stale:
@@ -406,7 +410,10 @@ before that); `build` of the single as a job ~10 s including the worker's start.
 (default: the spec's `outputs`) into its `exports/` in the store or `--out`, with
 `manifest.json`, and its `warnings` on stderr; given the build options instead of an id
 (`--linkage`, `--module`, `--pin`, ... as for `spiderpig build`) it resolves them into the
-store first as `spiderpig view` does. `spiderpig sim <design> [--store PATH]` simulates a
+store first as `spiderpig view` does. `spiderpig explain` and `spiderpig audit` given the
+build options resolve them into the store the same way (`--store PATH`) and reuse its
+plan, re-made and verified (`api.plan_config`), else solve and record it; `audit` takes
+`--module`, `--phases` and `--proportion` too. `spiderpig sim <design> [--store PATH]` simulates a
 stored design with its exported MJCF when the store has one (else it builds the model),
 and `spiderpig sim --mjcf FILE.xml` (with `FILE.json` beside it, what `export` and `sim
 --xml` write) runs that model for the design the other options describe; `spiderpig sim
