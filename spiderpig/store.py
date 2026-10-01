@@ -58,6 +58,8 @@ META_KEYS = ("stage", "design", "engine_version", "written_at")
 PROJECT = "project"          # the ``store`` argument's default: the project store
 
 _ID = re.compile(r"^[0-9a-f]{16}$")
+_CACHE_NAME = re.compile(          # path components that never start with a dot: no '..'
+    r"^[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*$")
 _UNSAFE = re.compile(r"[^\w.\-]")
 
 
@@ -203,6 +205,21 @@ class Store:
     def read_report(self, id: str, stage: str) -> dict | None:
         """The stage's file as written (meta keys included), or ``None``."""
         return _read_json(self.report_path(id, stage))
+
+    # -- per-code caches (the linkage cards, the guide's tables) -------------------------
+
+    def cache_path(self, name: str, version: str) -> Path:
+        """``cache/<version>/<name>.json``: a document computed from the code alone, kept
+        per :func:`spiderpig.design.source_version` (``name`` may hold ``/``)."""
+        if not _CACHE_NAME.match(name) or not _CACHE_NAME.match(version):
+            raise ValueError(f"not a cache name: {name!r} / {version!r}")
+        return self.root / "cache" / version / f"{name}.json"
+
+    def read_cache(self, name: str, version: str):
+        return _read_json(self.cache_path(name, version))
+
+    def write_cache(self, name: str, version: str, doc) -> Path:
+        return _write_json(self.cache_path(name, version), doc)
 
     def write_report(self, design: Design, stage: str, rep) -> Path:
         """Write ``rep`` as ``<stage>.json`` (a build: the manifest and the part files)."""

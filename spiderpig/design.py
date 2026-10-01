@@ -66,6 +66,22 @@ def engine_version() -> str:
     return f"{version}+{h.hexdigest()[:12]}"
 
 
+_SOURCE_VERSION: list[str] = []
+
+
+def source_version() -> str:
+    """The package version plus a hash of every Python source of the package: the key of
+    what is cached per *code* rather than per design (the linkage cards, the guide's
+    tables), so any edit of the checkout starts them afresh. Computed once per process."""
+    if not _SOURCE_VERSION:
+        h = hashlib.sha256()
+        for p in sorted(ROOT.rglob("*.py")):
+            h.update(str(p.relative_to(ROOT)).encode())
+            h.update(p.read_bytes())
+        _SOURCE_VERSION.append(f"{package_version()}+src.{h.hexdigest()[:12]}")
+    return _SOURCE_VERSION[0]
+
+
 def canonical_json(obj) -> str:
     """One JSON text per value: sorted keys, no spaces, no NaN."""
     return json.dumps(jsonable(obj), sort_keys=True, separators=(",", ":"), allow_nan=False)

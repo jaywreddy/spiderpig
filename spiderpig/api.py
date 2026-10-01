@@ -51,7 +51,15 @@ from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_soli
 from spiderpig.construction.crank import CrankRoute, Run
 from spiderpig.construction.envelope import claimed_solid
 from spiderpig.construction.robot import FrameTies, assemble_robot
-from spiderpig.design import Design, Part, design_id, engine_version, jsonable, spec_hash
+from spiderpig.design import (
+    Design,
+    Part,
+    design_id,
+    engine_version,
+    jsonable,
+    source_version,
+    spec_hash,
+)
 from spiderpig.fabricate import (
     SideDesign,
     design_side,
@@ -563,17 +571,52 @@ def list_linkages(kind: str | None = None) -> list[dict]:
     return out
 
 
-def describe(key: str) -> dict:
-    """One linkage's card: its parameters (default, angle or length, which only scale it),
-    links and labels, feet or output, modules with their default phases, the closures at
-    the defaults (margins, transmission angles, toggles) and one foot's path numbers (a
-    walker) or the output check (a mechanism)."""
+def _linkage(key: str) -> linkage.Linkage:
     try:
-        lk = linkage.get(key)
+        return linkage.get(key)
     except KeyError:
         near = nearest(key, linkage.available())
         raise KeyError(f"unknown linkage {key!r}" + (f"; did you mean {near!r}?" if near
                                                      else "")) from None
+
+
+def describe(key: str, store: Store | str | Path | None = PROJECT) -> dict:
+    """One linkage's card: its parameters (default, angle or length, which only scale it),
+    links and labels, feet or output, modules with their default phases, the closures at
+    the defaults (margins, transmission angles, toggles) and one foot's path numbers (a
+    walker) or the output check (a mechanism); JSON values throughout.
+
+    A card is a function of the code alone (the walk model over every module is the slow
+    part: seconds for a four-legged linkage with many feet), so with a store it is kept
+    there per :func:`spiderpig.design.source_version` (``cache/<version>/cards/<key>.json``)
+    and read back in every later session on the same code; ``store=None`` computes it."""
+    lk = _linkage(key)
+    st = Store.of(store)
+    name = f"cards/{lk.key}"
+    if st is not None and (doc := st.read_cache(name, source_version())) is not None:
+        return doc
+    card = jsonable(_card(lk))
+    if st is not None:
+        st.write_cache(name, source_version(), card)
+    return card
+
+
+def scale_params_table(store: Store | str | Path | None = PROJECT) -> dict[str, list[str]]:
+    """Every linkage's scale parameters (:func:`linkage.scale_params`: the ones that only
+    resize it), by key; kept in the store per :func:`spiderpig.design.source_version` like
+    the cards, since finding them compiles every linkage's program (seconds per session)."""
+    st = Store.of(store)
+    doc = st.read_cache("scale_params", source_version()) if st is not None else None
+    if doc is not None and set(doc) == set(linkage.available()):
+        return {k: list(v) for k, v in doc.items()}
+    table = {key: list(linkage.scale_params(linkage.get(key))) for key in linkage.available()}
+    if st is not None:
+        st.write_cache("scale_params", source_version(), table)
+    return table
+
+
+def _card(lk: linkage.Linkage) -> dict:
+    key = lk.key
     scale = linkage.scale_params(lk)
     card = {
         "key": key, "name": lk.name, "family": lk.family or key, "kind": lk.kind,

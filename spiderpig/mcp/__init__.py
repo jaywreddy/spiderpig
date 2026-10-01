@@ -327,9 +327,9 @@ def catalog_cards(category: str = "all") -> dict:
     return jsonable(out)
 
 
-def linkage_card(key: str) -> dict:
+def linkage_card(key: str, store: Store | None = None) -> dict:
     try:
-        return jsonable(api.describe(key))
+        return jsonable(api.describe(key, store))
     except KeyError as e:
         raise Misuse(Failure("spec", "unknown_linkage", str(e).strip("'\""),
                              culprits=[{"path": "linkage.key"}],
@@ -384,13 +384,14 @@ def _targets_table() -> str:
     return "\n".join(lines)
 
 
-def _linkages_table() -> str:
+def _linkages_table(store: Store | None = None) -> str:
     lines = ["| key | kind | name | modules (legs per side) | scale params | output |",
              "|---|---|---|---|---|---|"]
+    scales = api.scale_params_table(store)      # the store's per-code cache, else computed
     for key in linkage.available():
         lk = linkage.get(key)
         mods = ", ".join(f"{m} ({len(legs)})" for m, legs in lk.leg_modules.items())
-        scale = ", ".join(linkage.scale_params(lk)) or "-"
+        scale = ", ".join(scales[key]) or "-"
         out = lk.output.motion if lk.output else "feet"
         lines.append(f"| `{key}` | {lk.kind} | {lk.name} | {mods} | {scale} | {out} |")
     return "\n".join(lines)
@@ -429,8 +430,9 @@ def render_guide(state: State | None = None) -> str:
     """The guide (``guide.md``) with the live vocabularies written in."""
     if "text" not in _GUIDE_CACHE:
         text = (_ROOT / "guide.md").read_text()
+        store = state.store if state is not None else None
         _GUIDE_CACHE["text"] = (text.replace("<<TARGETS>>", _targets_table())
-                                .replace("<<LINKAGES>>", _linkages_table())
+                                .replace("<<LINKAGES>>", _linkages_table(store))
                                 .replace("<<FIT>>", _fit_defaults())
                                 .replace("<<MATERIALS>>", _materials_table())
                                 .replace("<<ENGINE>>", engine_version()))
@@ -502,7 +504,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         loop closures at the defaults (margins, transmission angles, toggles), one foot's
         path numbers and the ``sensitivity`` of the foot path (lift, stride, height, width)
         to +10 % of each parameter (a walker), or the output check (a mechanism)."""
-        return {"ok": True, "failures": [], "card": await _run(linkage_card, key)}
+        return {"ok": True, "failures": [], "card": await _run(linkage_card, key, state.store)}
 
     @tool
     async def catalog(category: Literal["servos", "sheets", "constructions", "all"] = "all"
@@ -762,7 +764,7 @@ def _register_resources(server: MCPServer, state: State) -> None:
                                  "closures, foot path or output, modules")
     async def linkage_resource(key: str) -> str:
         try:
-            return json.dumps(await _run(linkage_card, key), indent=1)
+            return json.dumps(await _run(linkage_card, key, state.store), indent=1)
         except Misuse as e:
             raise ResourceNotFoundError(e.failure.message) from None
 
@@ -771,7 +773,8 @@ def _register_resources(server: MCPServer, state: State) -> None:
         server.add_resource(FunctionResource(
             uri=f"spiderpig://linkages/{key}", name=f"linkage-{key}", title=lk.name,
             description=f"{lk.kind}: the card of {lk.name} [{key}]",
-            mime_type="application/json", fn=partial(_json_card, linkage_card, key)))
+            mime_type="application/json",
+            fn=partial(_json_card, linkage_card, key, state.store)))
 
     @server.resource("spiderpig://catalog/{category}", name="catalog", title="The catalog",
                      mime_type="application/json",
