@@ -274,13 +274,23 @@ def _root(body, by_name) -> str:
     return body.name
 
 
+def _hulls(parts, tolerance: float) -> list[np.ndarray]:
+    """:func:`_hull` of each part, the meshes read out in one pass."""
+    from spiderpig.mesh import tessellate_many
+
+    return [_hull_of(verts) for verts, _, _ in tessellate_many(parts, tolerance)]
+
+
 def _hull(part, tolerance: float) -> np.ndarray:
     """The convex hull's vertices of a part's mesh: :func:`spiderpig.mesh.tessellate`, face
     by face, so a purchased model with a face the mesher can't triangulate (the XL330's)
     gives its hull from the faces it has instead of failing the whole model."""
     from spiderpig.mesh import tessellate
 
-    verts, _, _ = tessellate(part, tolerance)
+    return _hull_of(tessellate(part, tolerance)[0])
+
+
+def _hull_of(verts) -> np.ndarray:
     pts = np.unique(np.round(np.asarray(verts, dtype=float), 4), axis=0)
     return pts[ConvexHull(pts).vertices]
 
@@ -298,6 +308,7 @@ def crank_sign(config: BuildConfig) -> int:
 
 
 _FABRICATED: dict[BuildConfig, object] = {}
+_PROPS: dict[BuildConfig, tuple[object, dict]] = {}     # config -> (robot, its parts' props)
 
 
 def fabricated(config: BuildConfig):
@@ -309,11 +320,15 @@ def fabricated(config: BuildConfig):
     return _FABRICATED[config]
 
 
-def set_fabricated(config: BuildConfig, robot) -> None:
+def set_fabricated(config: BuildConfig, robot, props: dict | None = None) -> None:
     """Adopt ``robot``, the robot of ``config`` fabricated at :data:`T_REF` (both sides), as
     what :func:`fabricated` returns for it: an export that bakes the glb from the same
-    fabrication doesn't fabricate twice."""
-    _FABRICATED[replace(config, robot=True)] = robot
+    fabrication doesn't fabricate twice. ``props``: its parts' mass properties already
+    measured (body -> :class:`hardware.mass.PartProps`: the bake's), not measured again."""
+    key = replace(config, robot=True)
+    _FABRICATED[key] = robot
+    if props:
+        _PROPS[key] = (robot, props)
 
 
 @cache
@@ -323,6 +338,8 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
     config = replace(config, robot=True)
     robot = fabricated(config)
     servo = servos.get(config.servo)
+    known = _PROPS.get(config, (None, {}))
+    known = known[1] if known[0] is robot else {}
     by_name = {b.name: b for b in robot.bodies}
 
     # kinematic bodies and where every robot body goes
@@ -350,17 +367,17 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
                                                  servo)
         if material == "printed":
             density *= printed_fill
-        props = part_props(b.part)
+        props = known.get(b.name) or part_props(b.part)
         vol, com, inertia = props.volume, props.com, props.inertia
         if vol <= 0:
             raise ValueError(f"part of {b.name!r} has no volume")
         rho = (fixed_g / vol) if fixed_g is not None else density * 1e-3   # g/mm³
         acc[mb.name].append((rho * vol * 1e-3, com, rho * inertia * 1e-3))  # kg, mm, kg·mm²
         mb.mass_by[material] = mb.mass_by.get(material, 0.0) + rho * vol * 1e-3
-        bb = b.part.bounding_box()
-        mb.z_range = (min(mb.z_range[0], bb.min.Z), max(mb.z_range[1], bb.max.Z))
+        z0, z1 = props.z_range          # the part's (optimal) bounding box's z extent
+        mb.z_range = (min(mb.z_range[0], z0), max(mb.z_range[1], z1))
         if b.name in mb.kinematic:
-            mb.layer_z = 0.5 * (bb.min.Z + bb.max.Z)
+            mb.layer_z = 0.5 * (z0 + z1)
     for name, mb in bodies.items():
         parts = acc[name]
         if not parts:
@@ -454,13 +471,11 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
             u = (c - a) / np.linalg.norm(c - a) * r
             segs.append((a + u if p in on_foot else a, c - u if q in on_foot else c))
         outlines[b.name] = segs
-    hulls = {}
-    for b in robot.bodies:
-        if b.part is None or host[b.name] != "base":
-            continue
-        cls = body_class(b.name)
-        if (b.fab == "laser" and cls in ("torso", "frame_outer")) or cls == "servo":
-            hulls[b.name] = ("base", _hull(b.part, hull_tolerance))
+    hulled = [b for b in robot.bodies if b.part is not None and host[b.name] == "base" and (
+        (b.fab == "laser" and body_class(b.name) in ("torso", "frame_outer"))
+        or body_class(b.name) == "servo")]
+    hulls = {b.name: ("base", pts) for b, pts in zip(
+        hulled, _hulls([b.part for b in hulled], hull_tolerance), strict=True)}
 
     return RobotModel(
         config=config, bodies=ordered, host=host, joints=joints, loops=loops,

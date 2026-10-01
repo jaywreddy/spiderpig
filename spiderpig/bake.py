@@ -75,6 +75,7 @@ from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
+from spiderpig.mesh import mesh_part, read_meshes
 from spiderpig.stack import body_class, is_link
 
 logger = logging.getLogger("bake_gltf")
@@ -402,10 +403,14 @@ def _tessellate(part, tolerance: float = 0.1, angular: float = 0.1
     from spiderpig.mesh import tessellate
 
     positions, tris, skipped = tessellate(part, tolerance, angular)
+    _log_skipped(part, skipped)
+    return positions, tris
+
+
+def _log_skipped(part, skipped: int) -> None:
     if skipped:
         logger.warning("tessellate: %d of %d faces have no triangulation; skipped",
                        skipped, len(part.faces()))
-    return positions, tris
 
 
 class _Packer:
@@ -570,17 +575,26 @@ def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | Non
     return _Reference(mech, feet, owner, anchors)
 
 
-def _share_and_tessellate(ref: _Reference, prof: _Profiler) -> _Meshes:
-    """Stage 2: one mesh per congruence group (see :func:`_plan_meshes`), tessellated."""
-    mass_props: dict[str, PartProps] = {}
+def _share_and_tessellate(ref: _Reference, prof: _Profiler,
+                          mass_props: dict[str, PartProps] | None = None) -> _Meshes:
+    """Stage 2: one mesh per congruence group (see :func:`_plan_meshes`), tessellated.
+    ``mass_props`` collects the parts' mass properties as they are measured."""
+    mass_props = {} if mass_props is None else mass_props
     with prof.timed("2_mesh_share"):
         plan = _plan_meshes(ref.bodies, ref.anchors, ref.owner, prof, mass_props)
     logger.debug("%d bodies with parts -> %d meshes", len(plan.key_of), len(plan.rep_of))
     class_mesh: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     with prof.timed("2_tessellate_total"):
-        for key, rep in plan.rep_of.items():
+        # each part meshed on its own (its kind timed), then every mesh read out at once
+        # (OCCT's glTF writer, not node by node: :func:`spiderpig.mesh.read_meshes`)
+        for rep in plan.rep_of.values():
             with prof.timed(f"2_tessellate.{_material_of(rep)}"):
-                class_mesh[key] = _tessellate(rep.part)
+                mesh_part(rep.part)
+        reps = list(plan.rep_of.items())
+        for (key, rep), (positions, tris, skipped) in zip(
+                reps, read_meshes([rep.part for _, rep in reps]), strict=True):
+            _log_skipped(rep.part, skipped)
+            class_mesh[key] = positions, tris
             nv = len(class_mesh[key][0])
             nt = len(class_mesh[key][1]) // 3
             prof.set_metric(f"verts.{key}", nv)
@@ -792,6 +806,7 @@ def bake_gltf(
     profile: bool = True,
     fabricated: Mechanism | None = None,
     side=None,
+    props: dict[str, PartProps] | None = None,
 ) -> None:
     """Write ``<out>``: the fabricated walker of ``config`` and its animation over one crank
     revolution (the whole robot, or one side with ``robot=False``), stage by stage (see the
@@ -801,7 +816,8 @@ def bake_gltf(
     :func:`spiderpig.api.export` shares with the MJCF) and ``side`` the
     :class:`fabricate.SideDesign` it was fabricated from (its layer plan for the drive
     extras); without them the bake fabricates from ``config`` (planning when the process
-    hasn't).
+    hasn't). ``props`` receives every part's mass properties (body -> :class:`PartProps`),
+    for the MJCF of the same fabrication.
 
     A layout the planner can't find (:mod:`stack`) and a construction that
     can't be built (:class:`construction.ConstructionError`) raise
@@ -838,7 +854,7 @@ def bake_gltf(
 
     with prof.timed("bake_total"):
         ref = _reference(config, prof, fabricated)
-        meshes = _share_and_tessellate(ref, prof)
+        meshes = _share_and_tessellate(ref, prof, props)
         geom = _pack_geometry(meshes, prof)
         anim = _animate(config, ref, meshes, n_frames, duration_s, prof)
         nodes, animation = _nodes_and_channels(ref, meshes, geom, anim, prof)
@@ -869,6 +885,9 @@ def _parse_args(argv=None) -> argparse.Namespace:
                    help="emit the per-stage wall-clock profile summary (default: on)")
     p.add_argument("--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"],
                    help="logging level (default: INFO)")
+    p.add_argument("--store", metavar="PATH",
+                   help="the design store the options resolve into, whose plan is reused "
+                        "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
     args = p.parse_args(argv)
     try:            # robot=None: the linkage's kind decides (a mechanism is one side)
         args.config = config_from_args(args, robot=False if args.side else None)
@@ -885,7 +904,19 @@ def main(argv=None) -> int:
     )
     # build123d logs every builder-less primitive at INFO; keep the profile readable.
     logging.getLogger("build123d").setLevel(max(logging.WARNING, logging.root.level))
-    bake_gltf(args.out or default_bake_dir() / f"{args.config.key}.glb", args.config,
+    # the plan through the store (api.plan_config), as build, explain and audit do: the
+    # stored design's when it holds one (re-made and verified), else solved once and
+    # recorded; the bake's fabricate then answers from what plan_config remembered
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store = Store.of(args.store) if args.store else Store.default()
+    try:
+        api.plan_config(args.config, store)
+    except ValueError as e:
+        logger.error("no layer plan: %s", e)
+        return 2
+    bake_gltf(args.out or store.root / "bakes" / f"{args.config.key}.glb", args.config,
               n_frames=args.frames, duration_s=args.duration, profile=args.profile)
     return 0
 

@@ -1697,9 +1697,17 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
                 and all(Path(f).is_file() for f in prior.files)):
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
+    job = None
     if design.mech is None:
-        br = build(design)
+        # the glb and the MJCF need the plan, not the build: their worker starts first
+        job = _start_robot_job(design, formats, before_build=True)
+        try:
+            br = build(design)
+        except BaseException:
+            _drop_robot_job(job)
+            raise
         if not br.ok:
+            _drop_robot_job(job)
             rep.failures = list(br.failures)
             return _finish(design, "export", rep, t0)
     out.mkdir(parents=True, exist_ok=True)
@@ -1707,7 +1715,7 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
         warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
         stack.enter_context(pywarnings.catch_warnings())
         pywarnings.filterwarnings("ignore", message="Unknown Compound type")
-        files, bom_summary = _export_files(design, formats, out, rep)
+        files, bom_summary = _export_files(design, formats, out, rep, job)
     rep.warnings = warned
     cfg = design.config
     pr, br = design.reports["plan"], design.reports["build"]
@@ -1737,28 +1745,35 @@ EXPORT_LOGGERS = (*WARNING_LOGGERS, "bake_gltf", "spiderpig.bake", "spiderpig.la
                   "spiderpig.export")
 
 
-def _export_files(design: Design, formats: list[str], out: Path, rep: ExportReport
-                  ) -> tuple[list[Path], dict | None]:
+def _export_files(design: Design, formats: list[str], out: Path, rep: ExportReport,
+                  job=None) -> tuple[list[Path], dict | None]:
     """Write the formats into ``out`` (see :func:`export`): the files written, and the
-    BOM's summary."""
+    BOM's summary. ``job``: the glb/MJCF worker if it is already running."""
     cfg, mech, spec = design.config, design.mech, design.spec
     name = cfg.linkage
     filament = mech.meta.get("filament", "pla_filament")
     files: list[Path] = []
+    job = job or _start_robot_job(design, formats)
+    grouping = (_start_group_job(mech) if ("print" in formats or "bom" in formats)
+                and ("step" in formats or "stl" in formats) else None)
     if "step" in formats:
-        mech.export_step(out / f"{name}.step")
+        with _timed("step"):
+            mech.export_step(out / f"{name}.step")
         files.append(out / f"{name}.step")
     if "stl" in formats:
-        mech.export_stl(out / f"{name}.stl")
+        with _timed("stl"):
+            mech.export_stl(out / f"{name}.stl")
         files.append(out / f"{name}.stl")
     groups = None
     if "print" in formats or "bom" in formats:
-        groups = {m: group_made(mech.bodies, m) for m in ("laser", "printed")}
+        with _timed("grouping" if grouping is None else "grouping (waiting for its worker)"):
+            groups = _groups(mech, grouping)
     if "print" in formats:
         from spiderpig import build as build_cli
 
-        build_cli.export_prints(groups["printed"], out / "print",
-                                density=filament_density(filament))
+        with _timed("print"):
+            build_cli.export_prints(groups["printed"], out / "print",
+                                    density=filament_density(filament))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
@@ -1766,8 +1781,9 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     kerf = spec.fit.kerf_mm if spec.fit.kerf_mm is not None else DEFAULT_KERF
     if "dxf" in formats:
         try:
-            sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
-                                 kerf=kerf)
+            with _timed("dxf"):
+                sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
+                                     kerf=kerf)
             files += sheets + [out / "laser" / f"{name}_sheet_parts.csv"]
             extras.append(BomLine(cfg.sheet, len(sheets), "laser-cut parts"))
         except ValueError as e:
@@ -1789,7 +1805,141 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                            "unpriced": [r.key for r in bom.unpriced]}
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
-    robot = None
+    with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
+        files += _robot_files(design, formats, out, job)
+    if "mjcf" in formats and design.kind != "walker":
+        # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
+        # mechanism has nothing to walk, so the format is skipped, not an error
+        logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
+            "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
+            "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
+    return files, bom_summary
+
+
+GROUPED = ("laser", "printed")
+
+
+@contextmanager
+def _timed(what: str):
+    """Log (debug) how long a step of the export took in this process."""
+    t0 = time.perf_counter()
+    try:
+        yield
+    finally:
+        log.debug("export: %s %.1f s", what, time.perf_counter() - t0)
+
+
+def _start_group_job(mech):
+    """:func:`group_made` of the made parts in a worker (the parts sent as binary BReps:
+    the same doubles, so the same proofs) while this process writes STEP and STL (the
+    caller starts it only then); ``None`` with workers off."""
+    from spiderpig import workers
+
+    if not workers.enabled():
+        return None
+    made = [(b.name, b.fab, workers.dump_shape(b.part)) for b in mech.bodies
+            if b.fab in GROUPED and b.part is not None]
+    return workers.submit(_group_job, made)
+
+
+def _group_job(made) -> dict[str, list[tuple[str, list[str], list[str]]]]:
+    """In a worker: the groups of ``made`` (name, fab, dumped part) by name."""
+    from types import SimpleNamespace
+
+    from spiderpig.workers import load_shape
+
+    bodies = [SimpleNamespace(name=n, fab=fab, part=load_shape(d)) for n, fab, d in made]
+    return {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in group_made(bodies, m)]
+            for m in GROUPED}
+
+
+def _groups(mech, job) -> dict:
+    """The made parts' groups: computed here, or the worker's (``job``) on these bodies."""
+    from spiderpig.hardware.bom import MadeGroup
+
+    if job is None:
+        return {m: group_made(mech.bodies, m) for m in GROUPED}
+    by_name = {b.name: b for b in mech.bodies}
+    return {m: [MadeGroup(m, by_name[ref], names, mirrored) for ref, names, mirrored in gs]
+            for m, gs in job.result().items()}
+
+
+def _walker_formats(design: Design, formats: list[str]) -> list[str]:
+    """The formats of the walker at the bake's reference angle: ``glb``, and ``mjcf`` for a
+    walker (a mechanism's is skipped, with a warning)."""
+    return [f for f in ("glb", "mjcf") if f in formats
+            and (f == "glb" or design.kind == "walker")]
+
+
+def _start_robot_job(design: Design, formats: list[str], before_build: bool = False):
+    """The glb and the MJCF in a worker process (:mod:`spiderpig.workers`) while this one
+    builds (``before_build``) or writes the other formats: they share nothing with them
+    but the design, which the worker loads from the store (its plan re-made and
+    verified) and fabricates at the bake's angle itself, as :func:`_robot_files` does
+    here. The worker writes into a folder of its own, whose files :func:`_robot_files`
+    moves into the export's. ``None`` (written here, after the others) when the design
+    has no store or no plan, there is nothing to write or nothing to do meanwhile (a
+    worker's start, 4-5 s, would only add), or workers are off (``SPIDERPIG_WORKERS=0``).
+    """
+    import tempfile
+
+    from spiderpig import workers
+
+    fmts = _walker_formats(design, formats)
+    others = [f for f in formats if f not in ("glb", "mjcf")]
+    if (not fmts or not (others or before_build) or design.store is None
+            or not workers.enabled() or not plan(design).ok):
+        return None
+    staging = Path(tempfile.mkdtemp(prefix="spiderpig-export-"))
+    future = workers.submit(_robot_files_job, str(design.store.root), design.id, fmts,
+                            str(staging))
+    future.staging = staging
+    return future
+
+
+def _drop_robot_job(job) -> None:
+    """Forget a glb/MJCF worker whose export failed: its folder goes when it is done."""
+    if job is not None:
+        import shutil
+
+        job.add_done_callback(lambda _: shutil.rmtree(job.staging, ignore_errors=True))
+
+
+def _robot_files_job(root: str, id: str, formats: list[str], out: str
+                     ) -> tuple[list[str], list[str]]:
+    """:func:`_robot_files` in a worker: the files written and what was warned meanwhile."""
+    design = load(id, root)
+    with contextlib.ExitStack() as stack:
+        warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
+        stack.enter_context(pywarnings.catch_warnings())
+        pywarnings.filterwarnings("ignore", message="Unknown Compound type")
+        if not plan(design).ok:
+            raise RuntimeError(f"{id}: the stored plan no longer holds")
+        files = _robot_files(design, formats, Path(out))
+    return [str(f) for f in files], warned
+
+
+def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> list[Path]:
+    """The ``glb`` and ``mjcf`` formats: written here, or collected from ``job``
+    (:func:`_start_robot_job`), whose warnings are logged again here so the export's
+    report has them, in the order a serial export would."""
+    cfg, name = design.config, design.config.linkage
+    files: list[Path] = []
+    if job is not None:
+        import shutil
+
+        try:
+            done, warned = job.result()
+            moved = []
+            for f in map(Path, done):
+                shutil.move(f, out / f.name)
+                moved.append(out / f.name)
+        finally:
+            shutil.rmtree(job.staging, ignore_errors=True)
+        for w in warned:
+            logging.getLogger("spiderpig.export").warning("%s", w)
+        return moved
+    robot, props = None, {}          # the parts' mass properties: the bake's, for the MJCF
     if "glb" in formats or ("mjcf" in formats and design.kind == "walker"):
         # the viewer's bake and the MuJoCo model are both of the walker at the bake's
         # reference angle: fabricated once here from the design's own side (its plan), not
@@ -1800,27 +1950,21 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     if "glb" in formats:
         from spiderpig.bake import bake_gltf
 
-        bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side)
+        bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side,
+                  props=props)
         files.append(out / f"{name}.glb")
-    if "mjcf" in formats:
-        if design.kind != "walker":
-            # the MJCF is the walking robot's (two sides on a floor, the drives walking
-            # it); a mechanism has nothing to walk, so the format is skipped, not an error
-            logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
-                "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
-                "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
-        else:
-            import json
+    if "mjcf" in formats and design.kind == "walker":
+        import json
 
-            from spiderpig.sim.mjcf import build_mjcf, set_fabricated
+        from spiderpig.sim.mjcf import build_mjcf, set_fabricated
 
-            if cfg.robot:        # a one-sided design's MJCF is still the robot's
-                set_fabricated(cfg, robot)
-            xml, meta = build_mjcf(cfg)
-            (out / f"{name}.xml").write_text(xml)
-            (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
-            files += [out / f"{name}.xml", out / f"{name}.json"]
-    return files, bom_summary
+        if cfg.robot:        # a one-sided design's MJCF is still the robot's
+            set_fabricated(cfg, robot, props)
+        xml, meta = build_mjcf(cfg)
+        (out / f"{name}.xml").write_text(xml)
+        (out / f"{name}.json").write_text(json.dumps(meta, indent=1))
+        files += [out / f"{name}.xml", out / f"{name}.json"]
+    return files
 
 
 __all__ = [

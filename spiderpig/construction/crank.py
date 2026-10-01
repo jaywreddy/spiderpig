@@ -88,7 +88,7 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.envelope import shape_solid
 from spiderpig.hardware.parts import SHCS_LENGTHS, shcs
-from spiderpig.shapes import Cut, disc, union
+from spiderpig.shapes import Cut, disc, moved, union
 from spiderpig.stack import Claim, Disc, Keepout, Layout, Pill, Placed, Unbuildable
 
 GROUP = "crank"
@@ -371,7 +371,7 @@ def _hex(xy, af: float, z0: float, z1: float, angle: float):
     ang = math.degrees(angle)
     boxes = [Box(af, 4 * af, z1 - z0).rotate(Axis.Z, ang + a) for a in (0.0, 60.0, 120.0)]
     prism = boxes[0] & boxes[1] & boxes[2]
-    return prism.moved(Location((float(xy[0]), float(xy[1]), (z0 + z1) / 2)))
+    return moved(prism, Location((float(xy[0]), float(xy[1]), (z0 + z1) / 2)))
 
 
 @dataclass(frozen=True)

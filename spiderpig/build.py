@@ -110,14 +110,18 @@ def _on_plate(part):
     """``part`` moved so it stands on z = 0, centred on the origin in XY."""
     from build123d import Location
 
+    from spiderpig.shapes import moved
+
     bb = part.bounding_box()
-    return part.moved(Location((-(bb.min.X + bb.max.X) / 2, -(bb.min.Y + bb.max.Y) / 2,
-                                -bb.min.Z)))
+    return moved(part, Location((-(bb.min.X + bb.max.X) / 2, -(bb.min.Y + bb.max.Y) / 2,
+                                 -bb.min.Z)))
 
 
 def export_prints(groups, out_dir: Path, density: float = 1.24) -> list[dict]:
     """One STL per different printed part (and its mirror image where needed)."""
-    from build123d import Plane, export_stl
+    from build123d import Plane
+
+    from spiderpig.mesh import export_stl
 
     out_dir.mkdir(parents=True, exist_ok=True)
     rows, taken = [], set()

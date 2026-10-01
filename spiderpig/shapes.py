@@ -7,6 +7,7 @@ constructions (:mod:`construction`, :mod:`servos`) decide what goes where.
 
 from __future__ import annotations
 
+import copy
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -15,6 +16,28 @@ import numpy as np
 from build123d import Align, Axis, Box, Compound, Cylinder, Part, Pos
 
 XY = Sequence[float]
+
+
+def moved(shape, loc):
+    """``shape.moved(loc)``, without the B-rep copy build123d makes and throws away.
+
+    build123d's ``Shape.moved`` deep-copies the shape (``BRepBuilderAPI_Copy`` of every
+    face) and then replaces the copy's B-rep with ``wrapped.Moved(loc)``, which shares the
+    original's: the result is that, its Python attributes (label, colour, children)
+    deep-copied as before. Same shape, same attributes; only the discarded copy is gone.
+    """
+    from build123d.topology import downcast
+
+    w = shape.wrapped
+    if w is None:
+        return shape.moved(loc)          # build123d's own error
+    shape.wrapped = None                 # deepcopy copies the B-rep only when set
+    try:
+        out = copy.deepcopy(shape)
+    finally:
+        shape.wrapped = w
+    out.wrapped = downcast(w.Moved(loc.wrapped))
+    return out
 
 
 @dataclass(frozen=True)

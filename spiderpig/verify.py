@@ -297,6 +297,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
         return _done(design, rep, t0)
 
     # -- build, contract, clash ---------------------------------------------------
+    # the contract's crank angles are each a fabrication of the side from the plan alone:
+    # workers check them (the design loaded from the store) while this process builds
+    contract = _start_contracts(design, CONTRACT_TS[level])
     br = api.build(design)
     rep.failures += br.failures
     rows.append(_stage_row("build.parts", "build", br.failures,
@@ -319,8 +322,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     # the parts are realized again at every other crank angle: what the constructions
     # warn about then is the build's (already on build.warnings), not a terminal's
     with api.capture_warnings():
-        for t in CONTRACT_TS[level]:
-            problems = check_side(side, tmpl.freeze_at(t))
+        for i, t in enumerate(CONTRACT_TS[level]):
+            problems = (contract[i].result() if contract is not None
+                        else check_side(side, tmpl.freeze_at(t)))
             rows.append(Row(f"contract@t={t:g}", "check_side", len(problems), "0",
                             not problems, "proven", True, "; ".join(problems[:3])))
             _fail(rep, problems, "contract", "part_outside_claim")
@@ -363,6 +367,27 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if level == "full" and design.kind == "walker":
         rows += _sim_rows(design, rep)
     return _done(design, rep, t0)
+
+
+def _start_contracts(design: Design, ts) -> list | None:
+    """:func:`check_side` at each of ``ts`` in a worker process of its own
+    (:mod:`spiderpig.workers`), the design loaded from its store with its plan re-made:
+    futures of the problems, in order. ``None`` (checked here, one after the other)
+    without a store, or with workers off (``SPIDERPIG_WORKERS=0``)."""
+    from spiderpig import workers
+
+    if not ts or design.store is None or not workers.enabled():
+        return None
+    return [workers.submit(_contract_job, str(design.store.root), design.id, t) for t in ts]
+
+
+def _contract_job(root: str, id: str, t: float) -> list[str]:
+    """In a worker: the contract of the stored design's side at crank angle ``t``."""
+    design = api.load(id, root)
+    with api.capture_warnings():
+        if not api.plan(design).ok:
+            raise RuntimeError(f"{id}: the stored plan no longer holds")
+        return check_side(design.side, design.template.freeze_at(t))
 
 
 def _mass_estimate(design: Design, wr) -> Row | None:

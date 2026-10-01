@@ -102,7 +102,10 @@ class Body:
     def placed_part(self):
         if self.part is None:
             return None
-        return self.part.moved(self.pose.to_location())
+        # build123d's moved, without the copy it discards
+        from spiderpig.shapes import moved
+
+        return moved(self.part, self.pose.to_location())
 
 
 # ((parent_index, parent_body, parent_joint), (child_index, child_body, child_joint))
@@ -150,9 +153,9 @@ class Mechanism:
         export_step(self.to_compound(), str(path))
 
     def export_stl(self, path) -> None:
-        from build123d import export_stl  # lazy import
+        from spiderpig.mesh import export_stl  # lazy import
 
-        export_stl(self.to_compound(), str(path))
+        export_stl(self.to_compound(), path)
 
 
 # ---------------------------------------------------------------------------
