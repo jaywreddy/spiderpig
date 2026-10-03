@@ -7,7 +7,9 @@ model. Its central idea is to share out space between the parts before any part 
 so that no two of them can collide as the crank turns. This report explains how the code
 does that, what it can and cannot do, and where it could mislead you.
 
-It describes the code at commit `97bec2d` (2026-10-01).
+It describes the code at commit `97bec2d` (2026-10-01). An illustrated version, with renders
+from the viewer and drawings computed from the code, is
+[docs/architecture/index.html](architecture/index.html): open it in a browser.
 
 **In short.**
 
