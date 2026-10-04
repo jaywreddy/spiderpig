@@ -1917,7 +1917,7 @@ class BoltCrank:
         return out + self.hex_washer()[2] + washers * self.extra_washer_t() + self.hex_screw()[1]
 
     def fit_hex(self, span: float, t_lo: float, t_hi: float, sleeve: bool = True,
-                out_hi_max: float | None = None) -> HexJoint | None:
+                out_hi_max: float | None = None, capped: bool = False) -> HexJoint | None:
         """The hex standoff between two single-plate webs whose outer faces are ``span``
         apart (plates ``t_lo`` and ``t_hi`` thick): the stock length nearest ``span`` that
         either stands past the plates by what the two ends' stacks take (``protrude_max``
@@ -1942,16 +1942,23 @@ class BoltCrank:
                 continue
             L, k, e = scr
             if extra >= -EPS:
-                out_lo = min(max(extra, 0.0), self.protrude_max)
-                out_hi = max(0.0, extra - out_lo)
+                x = max(extra, 0.0)
+                lo = min(x, self.protrude_max)
+                # the lower end first, else shared (each stack within its gap)
+                splits = [(lo, x - lo)]
+                if hi_max > 0:
+                    splits.append((x / 2, x / 2))
             else:
-                out_lo = out_hi = extra / 2              # recessed in both pockets
-            if (self.hex_stack(max(out_lo, 0.0), k) > room + EPS
-                    or self.hex_stack(max(out_hi, 0.0), k) > room + EPS):
-                continue
-            rank = (extra < -EPS, abs(extra))
-            if best is None or rank < best[0]:
-                best = (rank, S, out_lo, out_hi, L, k, e)
+                splits = [(extra / 2, extra / 2)]       # recessed in both pockets
+            for out_lo, out_hi in splits:
+                if (out_lo > self.protrude_max + EPS or out_hi > hi_max + EPS
+                        or self.hex_stack(max(out_lo, 0.0), k) > room + EPS
+                        or self.hex_stack(max(out_hi, 0.0), k) > room + EPS):
+                    continue
+                rank = (extra < -EPS, abs(extra))
+                if best is None or rank < best[0]:
+                    best = (rank, S, out_lo, out_hi, L, k, e)
+                break
         if best is None:
             return None
         _, S, out_lo, out_hi, L, k, e = best
@@ -1966,11 +1973,13 @@ class BoltCrank:
         key = BHCS["3"].key(L)
         return HexJoint(
             self.hex_key(S), S, round(span, 3), round(out_lo, 3), round(out_hi, 3),
-            collar(out_lo), collar(out_hi), key, e, k, key, e, k,
+            collar(out_lo), collar(out_hi), key, e, k,
+            "" if capped else key, 0.0 if capped else e, 0 if capped else k,
             round(t_lo + min(out_lo, 0.0), 3), round(t_hi + min(out_hi, 0.0), 3),
             round(sl, 3) if sleeve else 0.0,
             stack_lo=round(self.hex_stack(max(out_lo, 0.0), k), 3),
-            stack_hi=round(self.hex_stack(max(out_hi, 0.0), k), 3), segments=(S,))
+            stack_hi=0.0 if capped else round(self.hex_stack(max(out_hi, 0.0), k), 3),
+            segments=(S,))
 
     def _web_dims(self, ctx: Context) -> CrankDims:
         p: Params = ctx.params
@@ -1991,7 +2000,9 @@ class BoltCrank:
                       math.ceil((3.4 / 2 + (sheet(sh).min_edge if sh else wall)) * 10) / 10)
             journal = math.ceil((self.hex_pocket_af() / math.sqrt(3) + 0.2) * 10) / 10
         else:
-            web = max(p.web_radius, math.ceil((self.pin_hole / 2 + wall) * 10) / 10,
+            # its screw holes the service's edge distance (2 t) from the web's rim
+            edge = max(wall, sheet(sh).min_edge) if sh is not None else wall
+            web = max(p.web_radius, math.ceil((self.pin_hole / 2 + edge) * 10) / 10,
                       self.head_r())
             journal = self.pin_od / 2
         rd = self.rider_d()
@@ -2067,8 +2078,45 @@ class BoltCrank:
         z0, z1 = L.z(k)
         return (z1 - t, z1) if k == hub else (z0, z0 + t)
 
+    def hub_capped(self, ctx: Context, at: str) -> bool:
+        """Whether a hex crankpin whose chain ends in the hub plate sits wholly under the
+        printed horn spacer (or the horn), which then caps its upper end: no screw over the
+        hub plate (a short crank, the Hoecken pantograph's), only the one from below."""
+        if not self.hex:
+            return False
+        drive: DriveInterface = ctx.interfaces["drive"]
+        g = ctx.topo.geometry.points
+        R = float(np.linalg.norm(g[at][0] - g["O"][0]))
+        return self._capped(R, drive.horn_radius, drive.center_head_d, ctx.params)
+
+    def hub_head_need(self, ctx: Context, horn_radius: float, center_d: float) -> float:
+        """How thick the printed horn spacer must be for a crankpin's screw head over the hub
+        plate (it stands in a pocket of the spacer, under the horn): a crankpin within a
+        head's reach of the horn's rim that the spacer doesn't cap (:meth:`hub_capped`);
+        0 when none is (:meth:`servos.mount.DriveGroup.spacer` adds a layer for it: the
+        Hoecken pantograph's 12 mm crank)."""
+        if not self.single:
+            return 0.0
+        hr = self.head_r()
+        g = ctx.topo.geometry.points
+        head = (self.hex_stack(0.0, 0) if self.hex else self.pin_screw()[1]) + self.head_clear
+        need = 0.0
+        for a in ctx.topo.axes_of("crankpin"):
+            R = float(np.linalg.norm(g[a.name][0] - g["O"][0]))
+            if horn_radius + hr + ctx.params.margin <= R:
+                continue
+            if self.hex and self._capped(R, horn_radius, center_d, ctx.params):
+                continue
+            need = max(need, head)
+        return need
+
+    def _capped(self, R: float, horn_radius: float, center_d: float, p: Params) -> bool:
+        reach = self.hex_af / math.sqrt(3)
+        centre = (center_d + p.print_fit) / 2 if center_d else 0.0
+        return R + reach + p.margin <= horn_radius and R - reach > centre + 0.5
+
     def chain_fit_web(self, L: Layout, lo: int, hi: int, low: int = 0, t: float | None = None,
-                      hub: int | None = None, sleeve: bool = True
+                      hub: int | None = None, sleeve: bool = True, capped: bool = False
                       ) -> WebJoint | HexJoint | None:
         """:meth:`fit_web` for a chain over runs ``lo``..``hi`` at the layout's z: its webs
         in ``lo - 1`` and ``hi + 1``, plates ``t`` thick (default: the layers'). Its
@@ -2079,8 +2127,10 @@ class BoltCrank:
         t1 = L.t(w1) if t is None else t
         if self.hex:
             span = self.plate_z(L, w1, t1, hub)[1] - self.plate_z(L, w0, t0, hub)[0]
-            # over the hub plate the upper end stands in the horn spacer's pocket
-            return self.fit_hex(span, t0, t1, sleeve=sleeve)
+            # over the hub plate the upper end stands in the horn spacer's pocket, or (capped)
+            # ends in the hub plate under the spacer
+            return self.fit_hex(span, t0, t1, sleeve=sleeve,
+                                out_hi_max=0.0 if capped or w1 == hub else None, capped=capped)
         top_face = self.plate_z(L, w0, t0, hub)[1]
         bottom = self.plate_z(L, w1, t1, hub)[0]
         floor = L.z(lo)[0]
@@ -2269,7 +2319,8 @@ class BoltCrank:
 
         for ch in chains:
             at, lo, hi = ch[0].at, ch[0].lo, ch[-1].hi
-            j = self.chain_fit_web(L, lo, hi, t=t, hub=hub)
+            capped = hi + 1 == hub and self.hub_capped(ctx, at)
+            j = self.chain_fit_web(L, lo, hi, t=t, hub=hub, capped=capped)
             if j is None and L.final:
                 raise Unbuildable(f"at the plan's z no stock standoff fits the crankpin at {at} "
                                   f"(webs in layers {lo - 1} and {hi + 1})")
@@ -2278,6 +2329,11 @@ class BoltCrank:
             h_lo, h_hi = heights(j)
             out.append(Placed(lo - 2, Disc(at, hr), GROUP, f"crankpin screw {at}", gap=True,
                               height=h_lo, toward=-1))
+            if capped:
+                # under the horn spacer, which caps its upper end: no screw there
+                out.append(Placed(lo - 1, Disc(at, spacer_r), GROUP,
+                                  f"crankpin {at} spacer", gap=True, height=0.0))
+                continue
             out.append(Placed(hi + 1, Disc(at, hr), GROUP, f"crankpin screw {at}", gap=True,
                               height=h_hi, toward=1))
             # the standoff and its shims through the gap over the lowest web (the height:
@@ -2785,8 +2841,9 @@ class _WebPlates(_BoltPlates):
         past a plate, the riders' printed sleeve between the plates; its note."""
         c, b = self.c, self.build
         journal = at == "O"
+        capped = hi + 1 == self.hub_layer and not journal and c.hub_capped(b.ctx, at)
         j = c.chain_fit_web(b.plan.layout, lo, hi, t=self.t, hub=self.hub_layer,
-                            sleeve=not journal)
+                            sleeve=not journal, capped=capped)
         if j is None:
             raise ConstructionError(f"no stock hex standoff fits the crankpin at {at} (webs in "
                                     f"layers {lo - 1} and {hi + 1})")
@@ -2812,6 +2869,8 @@ class _WebPlates(_BoltPlates):
                                                ("hi", e1, j.collar_hi, j.screw_hi, j.washers_hi,
                                                 1.0)):
             face = z_lo if side == "lo" else z_hi
+            if not key:
+                continue                    # capped by the horn spacer: no screw
             # the washer on the standoff's end, or on the plate when the end is recessed
             end = min(end, face) if side == "lo" else max(end, face)
             if collar > 0:
@@ -2845,8 +2904,10 @@ class _WebPlates(_BoltPlates):
                                            f"crankpin {tag} screws"))
         return {
             "at": tag, "standoff": j.standoff, "length_mm": j.length, "span_mm": j.span,
+            "capped": capped,
             "segments_mm": [j.length], "out_mm": [j.out_lo, j.out_hi],
-            "collars_mm": [j.collar_lo, j.collar_hi], "screws": [j.screw_lo, j.screw_hi],
+            "collars_mm": [j.collar_lo, j.collar_hi],
+            "screws": [x for x in (j.screw_lo, j.screw_hi) if x],
             "engage_mm": [j.engage_lo, j.engage_hi], "washers": [j.washers_lo, j.washers_hi],
             "hex_engaged_mm": [j.engaged_lo, j.engaged_hi], "sleeve_mm": j.sleeve,
             "run_layers": hi - lo + 1, "layers": [lo - 2, hi + 1],
