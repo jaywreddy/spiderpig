@@ -195,3 +195,55 @@ register(
          dims={"id": 4.3, "od": 9.0, "t": 0.8}),
 )
 
+# -- the hex-standoff crankpin (the user's decision of 2026-10-04) ----------------------
+#
+# ``hex_standoff_m3_<L>``: M3 x 5.5 mm AF hexagon spacers, female-female, zinc-plated steel,
+# tapped through (Accu's HHTPS-M3-5.5-<L>-S-Z range). The crank's crankpins and journals:
+# each hex end sits in a hex pocket of an aluminium crank plate, an M3 button head and a
+# DIN 9021 washer screwed into each end retain the plates; the riders turn on a printed
+# sleeve over the hex (:class:`construction.crank.BoltCrank`, ``pin="hex"``). Lengths: the
+# 10, 12, 35, 40, 50 and 60 mm parts were seen on Accu's site in a 2026-10-04 web search
+# (product pages not fetched: Accu answers 403 to a fetch); the rest are the series every
+# hex-spacer vendor stocks (Accu, Vital Parts, McMaster), UNVERIFIED per length. No prices:
+# Accu quotes per pack size (estimate $0.30-0.60 each).
+
+HEX_M3_SEEN: tuple[float, ...] = (10, 12, 35, 40, 50, 60)
+HEX_M3_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 16, 18, 20, 22, 25, 30, 35, 40, 45,
+                                     50, 60)
+"""Stock lengths of the M3 x 5.5 AF F-F steel hex standoff (mm)."""
+
+
+def hex_standoff_m3(length: float) -> str:
+    return f"hex_standoff_m3_{length:g}"
+
+
+for _L in HEX_M3_LENGTHS:
+    register(Item(
+        hex_standoff_m3(_L), f"M3 x {_L:g} mm hex standoff, 5.5 mm AF, female-female, "
+        "zinc-plated steel (tapped through)", "standoff",
+        (Offer("Accu", "https://accu-components.com/us/threaded-standoffs/",
+               f"HHTPS-M3-5.5-{_L:g}-S-Z",
+               note=("seen in a 2026-10-04 web search of Accu's site (page not fetched)"
+                     if _L in HEX_M3_SEEN else "a length of the standard series; not "
+                     "confirmed at Accu (UNVERIFIED)")),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/products/standoffs/",
+               note="female threaded hex standoffs, M3, 5.5 mm hex, steel or brass; pick the "
+                    "length; part number not confirmed")),
+        dims={"d": 3.0, "af": 5.5, "length": float(_L), "thread_depth": float(_L),
+              "yield_mpa": 300.0},
+        notes="Free-cutting steel (11SMnPb30 or similar), zinc plated; the strength check "
+              "takes 300 MPa for its flats in bearing. A brass part (CuZn39Pb3, about 250 MPa) "
+              "is a drop-in: the aluminium pocket governs either way.",
+    ))
+
+register(
+    Item("m3_washer_9021", "M3 wide flat washer (DIN 9021, 3.2 x 9 x 0.8)", "washer",
+         (Offer("Accu", "https://accu-components.com/us/flat-washers/",
+                note="DIN 9021 M3, A2 stainless or zinc-plated steel; part number not "
+                     "confirmed"),
+          Offer("Amazon", "https://www.amazon.com/s?k=M3+DIN+9021+washer", note="search")),
+         dims={"id": 3.2, "od": 9.0, "t": 0.8},
+         notes="Under each hex crankpin's screw head: it spans the hex pocket and bears on "
+               "the standoff's end and the crank plate round it."),
+)
+

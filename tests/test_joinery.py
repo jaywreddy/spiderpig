@@ -15,12 +15,13 @@ from spiderpig.config import DEFAULT_CRANKS, BuildConfig
 def test_each_part_gets_the_thinnest_sheet_that_passes():
     """The user's rule: plates as thin as strength and the service's rules allow. The frame
     plate's 2.4 mm servo holes rule out 0.100 in and up (SendCutSend: a hole at least the
-    thickness); its pillar ends rule out 0.063 in; the crank webs take 0.063 in."""
+    thickness); its pillar ends rule out 0.063 in; the crank webs take 0.100 in 6061-T6, the
+    thinnest whose hex crankpin pockets hold the jam twist at SF 2 (2026-10-04)."""
     from spiderpig.materials import role_report, thinnest_sheet
 
     cfg = BuildConfig()
     assert cfg.frame_sheet == thinnest_sheet("frame") == "al5052_2mm"
-    assert cfg.crank_sheet == thinnest_sheet("crank") == "al5052_1p6mm"
+    assert cfg.crank_sheet == thinnest_sheet("crank") == "al6061_2p5mm"
     rows = {r["sheet"]: r["why_not"] for r in role_report("frame")}
     assert "minimum" in rows["al5052_3p2mm"]
     assert "SF" in rows["al5052_1p6mm"]

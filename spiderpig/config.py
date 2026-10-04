@@ -62,8 +62,9 @@ class BuildConfig:
     #                                     can't take their load; the user's call 2026-10-04):
     #                                     0.080 in 5052, the thinnest stock that passes
     #                                     (materials.thinnest_sheet("frame"); tests pin it)
-    crank_sheet: str = "al5052_1p6mm"   # the crank's laser-cut plates: 0.063 in 5052
-    #                                     (materials.thinnest_sheet("crank"))
+    crank_sheet: str = "al6061_2p5mm"   # the crank's laser-cut plates: 0.100 in 6061-T6, the
+    #                                     thinnest whose hex pockets hold the jam twist at SF 2
+    #                                     (materials.thinnest_sheet("crank"), 2026-10-04)
     heads: str = "best"               # fasteners' heads: "sink" into the layer beside their
     #                                   link, "gap" (a thin clearance gap where a link passes),
     #                                   "best" (sunk, else in gaps; stack.StackSpec)

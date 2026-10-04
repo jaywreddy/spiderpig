@@ -87,11 +87,16 @@ AL_THIN: dict[str, float] = {"al5052_1mm": 0.040, "al5052_1p6mm": 0.063,
                              "al5052_2mm": 0.080, "al5052_2p3mm": 0.090,
                              "al5052_2p5mm": 0.100}
 ACRYLIC_THIN: dict[str, float] = {"acrylic_1mm": 1.0, "acrylic_1p5mm": 1.5, "acrylic_2mm": 2.0}
+AL6061_THIN: dict[str, float] = {"al6061_1p6mm": 0.063, "al6061_2mm": 0.080,
+                                 "al6061_2p5mm": 0.100}
+"""SendCutSend's thinner 6061-T6 (its 6061 page lists .040, .063, .080, .100, .125 in and up;
+no .090), for the crank's hex-pocket plates (2026-10-04); price an estimate."""
 
 register(
     _al("al5052_3p2mm", 0.125, price=28.0),
     _al("al6061_3p2mm", 0.125, alloy="6061", price=32.0),
     *(_al(k, v, price=18.0) for k, v in AL_THIN.items()),
+    *(_al(k, v, alloy="6061", price=21.0) for k, v in AL6061_THIN.items()),
     *(_acrylic(k, v, price=9.0) for k, v in ACRYLIC_THIN.items()),
     Item("epoxy_2part", "Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
          "Loctite EA E-30CL), 2 x 25 ml", "adhesive",

@@ -190,6 +190,7 @@ FRAME_WIDTH = 27.0      # the plate width a pillar's clamped end bends (3 x its 
 WEB_SPAN = 24.0         # the longest crankpin between its webs
 WEB_WIDTH = 14.0        # a crank web's width
 ROLE_SF = 2.0           # against the sheet's yield
+CRANK_TWIST_NM = 2.0 * 0.85   # a crankpin's jam twist: chord / radius 2 x the torque limit
 
 
 @dataclass(frozen=True)
@@ -203,9 +204,25 @@ class RoleCheck:
     span: float
     width: float
     smallest_hole: float      # the smallest hole the part has (mm)
+    twist_nm: float = 0.0     # (the crank) the jam twist a hex crankpin's pocket must carry
+    hex_af: float = 5.5       # ... the hex standoff's across-flats (M3)
+    hex_recess: float = 0.3   # ... the most its end may stand inside the pocket
+    #                           (construction.crank.BoltCrank.recess_max)
+
+    def hex_nm(self, sh: Sheet) -> float:
+        """The twist a hex in this sheet's pocket carries over the sheet's thickness less the
+        recess: :func:`construction.crank.hex_bearing_nm` at the sheet's yield (the steel
+        standoff, 300 MPa, is stronger), each flat short by 0.3 mm for the standoff's
+        rounded corners."""
+        a = self.hex_af / math.sqrt(3) - 0.3
+        return 0.75 * min(sh.yield_mpa, 300.0) * a * a * (sh.thickness - self.hex_recess) / 1e3
 
     def why_not(self, sh: Sheet) -> str | None:
         t = sh.thickness
+        if self.twist_nm > 0 and self.hex_nm(sh) / self.twist_nm < ROLE_SF:
+            return (f"{self.name}: a {self.hex_af:g} AF hex pocket holds "
+                    f"{self.hex_nm(sh):.2f} N·m against a {self.twist_nm:g} N·m jam twist, "
+                    f"SF {self.hex_nm(sh) / self.twist_nm:.2f} under {ROLE_SF:g}")
         m = self.load_n * self.span / 8
         sigma = 6 * m / (self.width * t * t)
         if sh.yield_mpa / sigma < ROLE_SF:
@@ -222,8 +239,11 @@ ROLES = {
     "frame": RoleCheck("frame plate (a pillar's clamped end)", ROLE_LOAD_N, FRAME_SPAN,
                        FRAME_WIDTH, 2.4),
     # the horn screws' 3.4 mm holes and the stub screw's are the crank plates' smallest
+    # and since 2026-10-04 (the hex standoff crankpin) the hex pockets: the jam twist of
+    # two crankpins 180 deg apart (chord / radius 2, the Strider double and every quad) at
+    # the STS3215's 0.85 N·m torque limit
     "crank": RoleCheck("crank web (a crankpin's clamped end)", ROLE_LOAD_N, WEB_SPAN,
-                       WEB_WIDTH, 3.4),
+                       WEB_WIDTH, 3.4, twist_nm=CRANK_TWIST_NM),
 }
 
 
@@ -232,13 +252,23 @@ def aluminium_sheets(alloy: str = "5052") -> list[str]:
     from spiderpig.hardware.catalog import CATALOG
 
     keys = [k for k, it in CATALOG.items() if it.category == "sheet"
-            and str(it.dims.get("alloy", "")).startswith(alloy)]
-    return sorted(keys, key=lambda k: sheet(k).thickness)
+            and it.dims.get("alloy") and str(it.dims["alloy"]).startswith(alloy)]
+    return sorted(keys, key=lambda k: (sheet(k).thickness, str(get(k).dims.get("alloy"))))
+
+
+ROLE_ALLOYS = {"crank": ""}
+"""A role whose thinnest sheet may be of any aluminium (``""``: 5052 or 6061, the thinner;
+5052 on a tie): the crank's hex pockets (2026-10-04), where 6061-T6's 276 MPa lets a plate
+that fits its 3 mm layer (0.100 in) hold the jam twist 5052 needs 0.125 in for, which is
+thicker than the layer and moves every pillar's column off the stock lengths."""
 
 
 @cache
-def thinnest_sheet(role: str, alloy: str = "5052") -> str:
-    """The thinnest stock ``alloy`` sheet that passes ``role``'s checks (:data:`ROLES`)."""
+def thinnest_sheet(role: str, alloy: str | None = None) -> str:
+    """The thinnest stock ``alloy`` sheet that passes ``role``'s checks (:data:`ROLES`;
+    ``alloy`` None: the role's, :data:`ROLE_ALLOYS`, else 5052)."""
+    if alloy is None:
+        alloy = ROLE_ALLOYS.get(role, "5052")
     check = ROLES[role]
     for key in aluminium_sheets(alloy):
         if check.why_not(sheet(key)) is None:
@@ -246,7 +276,9 @@ def thinnest_sheet(role: str, alloy: str = "5052") -> str:
     raise ValueError(f"no {alloy} sheet passes the {role} checks")
 
 
-def role_report(role: str, alloy: str = "5052") -> list[dict]:
+def role_report(role: str, alloy: str | None = None) -> list[dict]:
     """Each stock sheet of ``alloy`` against ``role``'s checks (for the docs and the audit)."""
+    if alloy is None:
+        alloy = ROLE_ALLOYS.get(role, "5052")
     return [{"sheet": k, "thickness_mm": sheet(k).thickness,
              "why_not": ROLES[role].why_not(sheet(k))} for k in aluminium_sheets(alloy)]
