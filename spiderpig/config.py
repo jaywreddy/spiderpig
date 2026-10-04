@@ -39,10 +39,32 @@ def _wrap(a: float) -> float:
 
 
 DEFAULT_CRANKS = {"walker": "bolt", "mechanism": "bolt"}
-"""The crank a design gets when it names none, per kind: a walker's is the bolt crank (the
-crank study of 2026-10-03, which it was gated on: it plans and audits on the Strider double
-and ``klann_lego`` quad at 0,0,180,180); a mechanism keeps the keyed crank (its pins sit
-closer than the bolt crank's 12 mm hex pockets allow on the Hoecken pantograph)."""
+"""The crank a design gets when it names none, per kind (:func:`default_crank`): the bolt
+crank for both (the crank study of 2026-10-03; mechanisms since 2026-10-04): the strongest
+crank that plans, jam SF 3.57 on every one-input mechanism (a single-plate web clamped on
+each crankpin's ends) against the keyed crank's 0.64 and the printed one's 0.20. Which
+construction a design gets is data here, not code, so the hex-standoff crankpins of the
+user's decision of 2026-10-04 (1) land by changing this table (and :data:`LINKAGE_CRANKS`)."""
+
+LINKAGE_CRANKS: dict[str, str] = {
+    # The bolt crank finds no plan for these (the sweep of 2026-10-04, every one-input
+    # mechanism x crank, docs/audit/STRENGTH.md): their crankpin M is so short a crank that
+    # its top screw head over the hub plate needs 2.5 mm of the printed horn spacer, which
+    # is 1.83 mm, at every layering (the planner's deadline runs out on it). The keyed crank
+    # plans them (10 and 7 layers) but rates jam SF 0.64 (its key in the printed web
+    # socket), an audit error: the strongest that plans, until the drive's horn spacer or
+    # the hex-standoff crank takes that head.
+    "hoecken_pantograph": "keyed",
+    "dwell_rocker": "keyed",
+}
+"""Per linkage: the crank it gets when it names none, where :data:`DEFAULT_CRANKS`'
+doesn't plan (each with why)."""
+
+
+def default_crank(lk: linkage.Linkage) -> str:
+    """The crank construction ``lk`` gets when the config names none: its own
+    (:data:`LINKAGE_CRANKS`), else its kind's (:data:`DEFAULT_CRANKS`)."""
+    return LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind])
 
 
 @dataclass(frozen=True)
@@ -77,12 +99,12 @@ class BuildConfig:
     pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
     #                                   rings, PTFE washer and shims (construction.pivots.chicago;
     #                                   "rod": 3 mm rod and push-on clips; "printed": snap pins)
-    crank: str = ""                   # the crankshaft ("": the kind's, DEFAULT_CRANKS: a walker's
-    #                                   "bolt", laser-cut two-plate web stacks keyed on M6 hex-bolt
-    #                                   crankpins, construction.crank.BoltCrank; a mechanism's
-    #                                   "keyed", printed segments keyed by brass hex standoffs, the
-    #                                   walkers' default before 2026-10-03; "printed": clamp
-    #                                   friction only)
+    crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
+    #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
+    #                                   construction.crank.BoltCrank, single aluminium web plates
+    #                                   on the 0.063 in crank sheet; "keyed", printed segments
+    #                                   keyed by brass hex standoffs, the default before
+    #                                   2026-10-03; "printed": clamp friction only)
     params: Params = field(default_factory=Params)
 
     def __post_init__(self) -> None:
@@ -97,7 +119,7 @@ class BuildConfig:
         if not self.module:
             object.__setattr__(self, "module", default_module(lk.key))
         if not self.crank:
-            object.__setattr__(self, "crank", DEFAULT_CRANKS[lk.kind])
+            object.__setattr__(self, "crank", default_crank(lk))
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
@@ -332,7 +354,9 @@ def add_build_args(p) -> None:
                    help=f"construction of the pivots between links (default {d.pin})")
     p.add_argument("--crank", default=None, choices=cranks,
                    help="crank construction (default: "
-                        + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items()) + ")")
+                        + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())
+                        + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
+                        + ")")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
                    help="measured sheet thickness in mm (default: the sheet's nominal)")
