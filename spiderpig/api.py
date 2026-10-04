@@ -208,6 +208,7 @@ class BuildReport(Report):
     meta: dict = field(default_factory=dict)
     parts: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)   # the constructions' while building
+    cut_rules: dict = field(default_factory=dict)  # manufacture.summary + its issues
     seconds: float = 0.0
 
 
@@ -1541,8 +1542,32 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         meta=jsonable({k: v for k, v in mech.meta.items() if k != "fastened"}),
         parts=[p.to_dict() for p in parts.values()],
         warnings=list(warnings or []),
+        cut_rules=cut_rules_of(mech, cfg.sheet),
     )
     return _finish(design, "build", rep, t0, cached=cached)
+
+
+def cut_rules_of(mech, default_sheet: str) -> dict:
+    """Every laser-cut part of ``mech`` against its service's cut rules
+    (:func:`manufacture.check`): :func:`manufacture.summary` (``ok``, errors and warnings
+    per rule, the sheets, a message per rule with why and the fix) plus every ``issue``."""
+    from spiderpig import manufacture
+
+    m = manufacture.check(mech, default_sheet)
+    return jsonable(dict(manufacture.summary(m), issues=m["issues"]))
+
+
+def cut_rules(design: Design) -> dict | None:
+    """The cut-rule summary of the design's build (:attr:`BuildReport.cut_rules`), from the
+    build held in memory or stored by the running engine; ``None`` when it hasn't been
+    built (the design card's ``cut_rules``: it never fabricates)."""
+    rep = design.reports.get("build")
+    if rep is not None:
+        cr = rep.cut_rules if rep.ok else None
+    else:
+        doc = _stored(design, "build") or {}
+        cr = doc.get("cut_rules") if doc.get("ok") else None
+    return {k: v for k, v in cr.items() if k != "issues"} if cr else None
 
 
 def split_side(name: str) -> tuple[str | None, str]:

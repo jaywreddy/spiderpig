@@ -6,8 +6,8 @@ Two materials (the user's direction of 2026-10-04): **acrylic** by default
 only where acrylic can't take the load: the frame plates and the robot's centre plates
 (:attr:`config.BuildConfig.frame_sheet`, 5052, 0.125 in), the crank's plates
 (:attr:`config.BuildConfig.crank_sheet`, 5052) and, on the Klann variants, the foot
-links (6061-T6: 125-158 MPa at a jam, which no plastic survives;
-:func:`default_link_sheets`). A layer is as thick as the thickest plate in it
+links (6061-T6: 125-158 MPa at a jam, which no plastic survives) and ``klann_lego``'s
+crank rider b1 (:func:`default_link_sheets`). A layer is as thick as the thickest plate in it
 (:func:`stack.finalize`), so a 3.175 mm aluminium plate and 3.0 mm acrylic stack at
 their own z.
 
@@ -85,12 +85,21 @@ def sheet(key: str) -> Sheet:
         sheet_mm=tuple(float(v) for v in d.get("sheet_mm", (300.0, 300.0))))
 
 
+LINK_SHEETS: dict[str, dict[str, str]] = {
+    # the user's decision of 2026-10-04 (3): klann_lego's crank rider b1 jams past what
+    # acrylic holds (strength.link_rows names 6061 for it), so it is cut from 6061 by default
+    "klann_lego": {"b1": FOOT_SHEET},
+}
+"""Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
+(:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""
+
+
 def default_link_sheets(lk) -> dict[str, str]:
     """A linkage's links that aren't cut from the default sheet: a Klann variant's foot
-    links (aluminium 6061-T6, the joinery plan of 2026-10-03)."""
-    if lk.family == "klann":
-        return {link: FOOT_SHEET for link, _ in lk.feet}
-    return {}
+    links (aluminium 6061-T6, the joinery plan of 2026-10-03) and :data:`LINK_SHEETS`."""
+    out = {link: FOOT_SHEET for link, _ in lk.feet} if lk.family == "klann" else {}
+    out.update(LINK_SHEETS.get(lk.key, {}))
+    return out
 
 
 def link_sheets(config) -> dict[str, str]:

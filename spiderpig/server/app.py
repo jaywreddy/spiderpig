@@ -408,6 +408,9 @@ def get_design(design_id: str) -> dict:
         "constructions": {"pillar": cfg.pillar, "pin": cfg.pin, "crank": cfg.crank},
         "engine_version": d.engine_version, "store": str(store().root.resolve()),
         "glb": f"/api/glb/{mode}?design={d.id}",
+        # the build's cut-rule review (spiderpig.manufacture): ok, errors / warnings per
+        # rule, one message each with why and the fix; None until the design is built
+        "cut_rules": api.cut_rules(d),
     }
 
 
