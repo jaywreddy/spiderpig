@@ -255,10 +255,16 @@ def test_explain_takes_the_build_options(capsys):
 
     assert explain.main(["--linkage", "klann", "--module", "single", "--thickness", "2"]) == 0
     out = capsys.readouterr().out                                          # entry 8
-    assert "STOP: no M6 hex bolt and nylock fit a bolt crank joint in 2 mm layers" in out
+    # the standoff pillar's end screw is the first construction 2 mm layers stop (before the
+    # crank: the pillars are checked first since they became the default, 2026-10-03)
+    assert ("STOP: an M4 button head and washer (3 mm) don't fit a 2 mm layer outside the "
+            "plate") in out
     assert "materials.thickness_mm 2 -> 3" in out
+    # bearing pivots assume full layers, which the default single-plate crank's gaps
+    # don't give (it says so and names --crank keyed): the keyed crank here
     assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "bearing",
-                         "--pillar", "bearing", "--servo", "xl330_m288"]) == 0
+                         "--pillar", "bearing", "--servo", "xl330_m288",
+                         "--crank", "keyed"]) == 0
     out = capsys.readouterr().out
     assert "ground clearance:" in out
     assert "3. plan" in out

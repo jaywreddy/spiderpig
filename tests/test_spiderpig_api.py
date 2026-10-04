@@ -195,15 +195,16 @@ def test_check_plan_walk_on_the_default_quad(quad):
     assert cr.crank_facts["hosts"]["b1_leg0"] == ["M_leg0"]
     pr = api.plan(quad)
     assert pr.ok
-    # the bolt crank's two-plate stacks, a bare layer under each rider (the bolt's plain
-    # shank) and the shared mid stacks: 31 layers (the keyed crank's were 16; 26 while the
-    # catalog listed an M6 x 25 partially threaded bolt, which isn't sold: from 30 mm the
-    # shortest chain's run is 4 layers)
-    assert pr.n_layers == 31
-    assert pr.height_mm == pytest.approx(95.975)      # aluminium frame plates and foot links
-    assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": 4 + 6 * k, "hi": 7 + 6 * k}
-                                 for k in range(4)], "bearing": True}
-    assert pr.layers["b1_leg0"] == 5
+    # the bolt crank's single aluminium webs (2026-10-04): a one-layer run per crankpin, the
+    # screw heads in clearance gaps (11 of them), 0.080 in frame plates: 14 layers, 77.164
+    # mm (the two-plate stacks took 31 layers, 95.975 mm; the keyed crank's were 16)
+    assert pr.n_layers == 14
+    assert pr.height_mm == pytest.approx(77.164)
+    assert len(pr.gaps_mm) == 11
+    assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": lo, "hi": lo}
+                                 for k, lo in ((0, 4), (2, 6), (1, 8), (3, 10))],
+                        "bearing": True}
+    assert pr.layers["b1_leg0"] == 4
     assert "inner frame plate" in pr.table
     wr = api.walk(quad)
     assert wr.ok
@@ -225,7 +226,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == pytest.approx(95.975)
+    assert rows["size.stack_mm"].value == pytest.approx(77.164)
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -243,7 +244,8 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert row.hard
-    assert row.value == pytest.approx(49.05)       # 16 layers: the keyed crank's top webs
+    # 17 layers: the keyed crank's top webs (0.080 in frame plates; 3.175 mm ones: 16, 49.05)
+    assert row.value == pytest.approx(49.764)
     assert row.target == "<= 30"
     assert rep.score == 1.0                        # the stride, the only soft target, is met
     soft = api.resolve({**KLANN_QUAD, **OLD, "size": {"stack_mm": {"max": 30, "hard": False}},
@@ -253,8 +255,8 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert not row.hard
-    assert row.score == pytest.approx(0.365)       # 49.05 mm against 30: 1 - 19.05 / 30
-    assert rep.score == pytest.approx(0.6825)      # the mean of stride 1.0 and stack 0.365
+    assert row.score == pytest.approx(0.3412)      # 49.764 mm against 30: 1 - 19.764 / 30
+    assert rep.score == pytest.approx(0.6706)      # the mean of stride 1.0 and stack 0.3412
     assert hard.id != soft.id
 
 
@@ -278,7 +280,8 @@ def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_
     (rec,) = f.recommendations
     assert rec.patch == {"linkage": {"params": {"unit": 12.0}}}
     assert rec.changes == [{"name": "unit", "before": 7.0, "after": 12.0}]
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 14 ")
+    # 15 layers on the 0.080 in frame plates of 2026-10-04 (14 on 0.125 in)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 15 ")
     assert api.recommend(heel) == [rec]
     assert api.plan(heel).failures == cr.failures
     rep = api.verify(heel, "quick")
@@ -289,7 +292,7 @@ def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_
     assert fixed.id != heel.id
     pr = api.plan(fixed)
     assert pr.ok
-    assert pr.n_layers == 14
+    assert pr.n_layers == 15
 
 
 def test_a_broken_loop_is_a_program_failure_with_its_numbers():
@@ -352,9 +355,9 @@ def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
     b1 = quad.parts["L.b1_leg0"]
     assert b1.solid is robot("quad", 1.0).body("L.b1_leg0").part
     assert (b1.group, b1.side, b1.fab, b1.material) == ("links", "L", "laser", "sheet")
-    assert b1.layers == (5,)
+    assert b1.layers == (4,)
     assert not b1.edited
-    assert quad.parts["R.b1_leg0"].layers == (5,)
+    assert quad.parts["R.b1_leg0"].layers == (4,)
     assert quad.parts["R.b1_leg0"].side == "R"
     assert quad.parts["L.servo"].group == "drive"
     assert quad.parts["L.servo"].mass_g == 55.0
@@ -438,17 +441,20 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     rep = api.export(d, out_dir=tmp_path)
     assert rep.ok
     names = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
-    assert {"klann.step", "laser/klann_sheet_acrylic_3mm_0.dxf",          # a set per sheet
-            "laser/klann_sheet_al5052_3p2mm_0.dxf", "laser/klann_sheet_parts.csv", "bom.csv",
+    # a set per sheet, each part on its thinnest (2026-10-04): the links in acrylic, the
+    # frame plates 0.080 in 5052, the crank's webs 0.063 in 5052, the foot link 6061
+    assert {"klann.step", "laser/klann_sheet_acrylic_3mm_0.dxf",
+            "laser/klann_sheet_al5052_2mm_0.dxf", "laser/klann_sheet_al5052_1p6mm_0.dxf",
+            "laser/klann_sheet_al6061_3p2mm_0.dxf", "laser/klann_sheet_parts.csv", "bom.csv",
             "bom.md", "bom.json", "manifest.json"} <= names
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["design"] == d.id
-    assert manifest["plan"]["layers"] == 13          # the bolt crank's (keyed: 7)
+    assert manifest["plan"]["layers"] == 10          # the single-plate bolt crank's (keyed: 8)
     assert manifest["bom"]["items"] > 0
-    # the bolt crank's plates, bolts, nuts and stub, the standoff pillars' segments, rings,
-    # screws and washers (keyed and printed: 35)
-    assert len(manifest["parts"]) == 58          # 54 with the M6 x 25 bolt (11 layers)
-                                          # and shims, + the keyed crank's key
+    # the bolt crank's webs, standoff crankpin, screws, shims and stub, the standoff
+    # pillars' segments, sleeves, screws and washers, the Chicago pins (keyed and printed:
+    # 36; the two-plate bolt crank's 13 layers had 58)
+    assert len(manifest["parts"]) == 64
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -646,7 +652,8 @@ def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_p
     assert rec.patch == {"materials": {"thickness_mm": 3.0}}
     assert rec.changes == [{"name": "thickness_mm", "before": 2, "after": 3.0}]
     assert rec.why.startswith("the keyed crank's crankpin joints need layers of at least 3 mm")
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 7 layers")
+    # 8 layers (22.239 mm) on the 0.080 in frame plates of 2026-10-04 (7 on 0.125 in)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 8 layers")
     assert api.recommend(thin) == [rec]
     assert api.plan(thin).failures == cr.failures
     rep = api.verify(thin, "quick")
@@ -658,7 +665,7 @@ def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_p
     fixed = api.derive(thin, rec.patch, store=None)
     assert [w for w in fixed.warnings if w.startswith("materials.")] == []
     assert api.check(fixed).ok
-    assert api.plan(fixed).n_layers == 7
+    assert api.plan(fixed).n_layers == 8
     near = api.resolve({**THIN, "materials": {"thickness_mm": 3.2}}, store=None)
     assert [w for w in near.warnings if w.startswith("materials.")] == []
 
@@ -747,9 +754,12 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
 
     servo = item(servos.get("sts3215").bom_key).offer.price_usd
     glue, nuts = 13.99, 2.39     # round 4: a bottle of CA for the anchors, the crank's nuts
-    al, al6061 = 28.0, 32.0      # a blank of each aluminium sheet: the frame, a Klann's feet
+    # a blank of each aluminium sheet: the frame (0.080 in, 2026-10-04), a Klann's feet
+    al, al6061 = 18.0, 32.0
     assert total == pytest.approx(servo + 25.49 + 10.99 + al + al6061 + glue + nuts, abs=0.01)
-    assert unpriced == ["M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F",
+    assert unpriced == ["Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
+                        "Loctite EA E-30CL), 2 x 25 ml",          # the Chicago barrels' bond
+                        "M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F",
                         "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml"]
     assert priced[0].startswith("Feetech STS3215")
     rep = api.verify(one, "quick")
@@ -763,7 +773,8 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
                          "budget": {"cost_usd": {"max": 100}}}, store=None)
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
-    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + al + al6061 + 12.84 + 11.37
+    # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)
+    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + al + al6061 + 11.37
                                   + glue + nuts, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
@@ -780,11 +791,13 @@ def test_the_recommendation_says_which_module_it_checked():
 
     text = rec._verify(BuildConfig(linkage="klann", module="quad", robot=False),
                        plan=False)                                                # entry 5
+    # the bolt crank's single webs, heads in gaps, 0.080 in frame plates (2026-10-04)
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "13 layers (40.4 mm); the quad module's own plan is not checked here")
+                           "10 layers (34.939 mm); the quad module's own plan is not checked "
+                           "here")
     assert "the planner's deadline is 60 s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 13 layers (40.4 mm)"
+        == "checked: the static stage passes, and it plans in 10 layers (34.939 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
@@ -951,7 +964,10 @@ def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_print
     from spiderpig.fabricate import side_problem, template_for
 
     assert BoltAxle().max_stack(3.0) == pytest.approx(45.0)                   # entry 7
-    cfg = BuildConfig(linkage="klann", module="single", pillar="bolt", robot=False)
+    # (the keyed crank: bolt pivots assume full layers, which the default single-plate
+    # crank's clearance gaps don't give, fabricate.side_problem says so)
+    cfg = BuildConfig(linkage="klann", module="single", pillar="bolt", crank="keyed",
+                      robot=False)
     _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
     assert problem.spec.max_top == 14
     assert problem.notes == ["pillar:A: the longest stock M3 screw (50 mm) clamps at most 15 "
@@ -967,7 +983,8 @@ def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_print
     assert any("clamps at most 15 layers" in n for n in f.notes)
     rec = next(r for r in f.recommendations
                if r.patch == {"constructions": {"pillar": "printed"}})
-    assert "plans (quad module, the design's own) in 16 layers" in rec.verified
+    # 17 layers on the 0.080 in frame plates of 2026-10-04 (16 on 0.125 in)
+    assert "plans (quad module, the design's own) in 17 layers" in rec.verified
 
 
 def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it(quad):
@@ -976,13 +993,13 @@ def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it(quad):
     row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.stack_mm")
     assert not row.passed                            # entry 11
     assert row.tier == "proven"
-    assert row.detail.startswith("49.05 mm is proven the thinnest for klann's quad module on "
-                                 "3 mm layers (16 layers")
+    assert row.detail.startswith("49.764 mm is proven the thinnest for klann's quad module "
+                                 "on 3 mm layers (17 layers")       # 0.080 in frame plates
     assert "no module of klann with fewer walks" in row.detail
     adv = api.advise(d)
     assert adv.stage == "target"
     assert adv.recommendations == []
-    assert adv.notes[0].startswith("size.stack_mm 49.05 vs <= 30: 49.05 mm is proven the "
+    assert adv.notes[0].startswith("size.stack_mm 49.764 vs <= 30: 49.764 mm is proven the "
                                    "thinnest")
 
 
@@ -992,7 +1009,9 @@ def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups
 
     cfg = quad.config
     b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg))     # entry 12
-    assert b["total"] == pytest.approx(1088.4, rel=0.02)   # the default quad + its deck
+    # the default quad + its deck: 0.080 in frame, 0.063 in crank and 0.090 in centre
+    # plates (the thinnest per part, 2026-10-04; 1088 g on 0.125 in aluminium)
+    assert b["total"] == pytest.approx(975.0, rel=0.02)
     assert (b["links"] + b["servos"] + b["plates"] + b["printed"] + b["deck"]
             == pytest.approx(b["total"]))
     row = next(r for r in api.verify(quad, "quick").rows if r.requirement == "size.mass_g")
@@ -1051,27 +1070,30 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
 
     d = api.resolve(STRIDER_DOUBLE_PLY, store=None)
     total, priced, unpriced = verify_module.cost_floor(d)                     # entry 1
-    # the bolt crank's nylocks and threadlockers (its bolts; the Chicago pins and the standoff
-    # pillars' screws take the low-strength one) are bought whatever the sizes, but the
-    # catalog has no verified price for them yet; the plates' glue (wood glue, plywood) once
-    assert total == pytest.approx(99.44 + 28.0)    # keyed and printed: 101.83 (+ the frame's Al)
-    assert unpriced == ["M6 nylon-insert lock nut (DIN 985), 8 zinc",
-                        "Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
-                        "Loctite EA E-30CL), 2 x 25 ml",          # the Al crank's stacks
+    # the threadlockers (the Chicago pins and the standoff pillars' screws take the
+    # low-strength one) and the Chicago barrels' epoxy are bought whatever the sizes, but the
+    # catalog has no verified price for them yet. The thin sheets of 2026-10-04: a 0.080 in
+    # frame blank and a 0.063 in crank blank ($18 each, the 0.125 in was $28); the
+    # single-plate crank has no nylocks, and nothing is glued to a plate any more (no wood
+    # glue: the glue-free joinery), the CA is the battery cradle's
+    assert total == pytest.approx(40.0 + 25.49 + 3.10 + 18.0 + 18.0 + 11.37 + 13.99)
+    assert unpriced == ["Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
+                        "Loctite EA E-30CL), 2 x 25 ml",          # the Chicago barrels
                         "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
                         "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml"]
     assert any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
-    assert sum(line.startswith("Titebond II") for line in priced) == 1
+    assert sum(line.startswith("Titebond II") for line in priced) == 0
+    assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 2
     lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}, **OLD},
                        store=None)
-    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86 + 28.0)   # + its Al frame
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86 + 18.0)   # + its Al frame
     bolted = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"},
                           "constructions": {"pillar": "bolt", "pin": "bolt", "crank": "keyed"}},
                          store=None)
-    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.86 + 28.0 - 13.99)   # unglued
+    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.86 + 18.0 - 13.99)   # unglued
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
-    assert row.value == pytest.approx(72.86 + 28.0)
+    assert row.value == pytest.approx(72.86 + 18.0)
     assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
     assert "the sheets' count, the crank's screws" in row.detail
 

@@ -232,7 +232,8 @@ def test_cut_rule_levels_and_messages():
     (e,) = part_issues(near, "al5052_3p2mm")          # 2.0 mm of web: under 1 x t
     assert (e["rule"], e["level"]) == ("edge", "error")
     assert e["value"] == pytest.approx(2.0, abs=0.01)
-    assert "1 x the thickness" in e["why"] and e["fix"]
+    assert "1 x the thickness" in e["why"]
+    assert e["fix"]
     mid = Body("mid", _plate(40, 20, t, [(7.0, 10, 4.0)]), fab="laser", sheet="al5052_3p2mm")
     (w,) = part_issues(mid, "al5052_3p2mm")           # 5.0 mm: over 1 x t, under 2 x t
     assert (w["rule"], w["level"]) == ("edge", "warning")

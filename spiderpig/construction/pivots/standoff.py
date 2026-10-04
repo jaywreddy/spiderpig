@@ -185,8 +185,18 @@ class StandoffAxle:
                                     f"in {ctx.pitch:g} mm layers")
         w_od, _, w_t = self.washer()
         if screw[3] + w_t > ctx.pitch + EPS:
-            raise ConstructionError(f"an M4 button head and washer ({screw[3] + w_t:g} mm) "
-                                    f"don't fit a {ctx.pitch:g} mm layer outside the plate")
+            from spiderpig.hardware.catalog import sheet_thickness
+
+            need = screw[3] + w_t
+            nominal = sheet_thickness(ctx.config.sheet) if ctx.config is not None else None
+            after = nominal if nominal is not None and nominal >= need - EPS else need
+            raise ConstructionError(
+                f"an M4 button head and washer ({need:g} mm) don't fit a {ctx.pitch:g} mm "
+                f"layer outside the plate; the layer pitch is the sheet's thickness: "
+                f"materials.thickness_mm {ctx.pitch:g} -> {after:g}, or a thicker sheet",
+                changes=(("thickness_mm", ctx.pitch, after),),
+                lever=f"a standoff pillar's end screw needs layers of at least {need:g} mm",
+                numbers={"pitch_mm": ctx.pitch, "least_pitch_mm": need})
         head = max(w_od, screw[2]) / 2
         from spiderpig.materials import washer_od
 

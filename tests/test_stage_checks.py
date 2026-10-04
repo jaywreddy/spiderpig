@@ -73,8 +73,9 @@ def test_plan_stage_names_what_blocked_it(monkeypatch):
     assert scaled.effects.startswith("crank 22.5 -> 24.0 mm")
     assert thinner.changes == (("neck_d", 4.0, 3.0),)
     for r in (scaled, thinner):
+        # 14 layers on the 0.080 in frame plates of 2026-10-04 (13, 39.35 mm, on 0.125 in)
         assert r.verified == ("checked: the static stage passes, and it plans (decker module, "
-                              "the design's own) in 13 layers (39.35 mm)")
+                              "the design's own) in 14 layers (40.064 mm)")
 
 
 def test_legs_that_must_sit_in_disjoint_blocks_are_found():

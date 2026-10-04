@@ -220,7 +220,7 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     _no_solids(cr)
     pr = call(server, "plan", design=single)
     assert pr["ok"]
-    assert pr["n_layers"] == 7
+    assert pr["n_layers"] == 8       # 0.080 in frame plates (2026-10-04; 7 on 0.125 in)
     assert pr["layers"]["b1"] == 2
     assert pr["route"]["runs"] == [{"at": "M", "lo": 2, "hi": 2}]
     assert pr["optimal"] is True
@@ -239,7 +239,8 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["program.loops_close"]["tier"] == "proven"
     assert rows["program.loops_close"]["pass"] is True
-    assert rows["size.stack_mm"]["value"] == pytest.approx(21.525)   # Al frame and feet
+    # 0.080 in frame plates, the 6061 foot link's 3.175 mm layer (2026-10-04)
+    assert rows["size.stack_mm"]["value"] == pytest.approx(22.239)
     assert rows["motion.speed_mm_s"]["tier"] == "estimated"
     _no_solids(vr)
     recs = call(server, "recommend", design=single)
@@ -303,7 +304,7 @@ def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_pla
     assert child["resolved"]["linkage"]["params"]["unit"] == 12.0
     pr = call(server, "plan", design=child["design"])
     assert pr["ok"]
-    assert pr["n_layers"] == 14
+    assert pr["n_layers"] == 15      # 0.080 in frame plates (2026-10-04; 14 on 0.125 in)
     cmp = call(server, "compare", a=heel, b=child["design"])
     assert cmp["spec_patch"] == rec["patch"]
     assert cmp["derived"] == f"{child['design']} derives from {heel}"
@@ -337,26 +338,29 @@ def test_build_through_the_long_op_path_returns_a_manifest_of_files_in_the_store
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    assert manifest["n_parts"] == len(manifest["parts"]) == 35     # Chicago pins, keyed crank
+    # Chicago pins, keyed crank; 36 since the 8-layer plan of the 0.080 in frame plates
+    assert manifest["n_parts"] == len(manifest["parts"]) == 36
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     store = Store.default()
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 35                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 36                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
     assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [2])
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 35
+    assert stored["n_parts"] == 36
+    assert stored["cut_rules"]["parts"] > 0          # the build's cut-rule review, stored
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 35
+    assert again["n_parts"] == 36
+    assert again["cut_rules"] == stored["cut_rules"]   # reloaded from the store: checked again
     assert "result" not in again["job"]
 
 
@@ -374,7 +378,7 @@ def test_export_as_a_job_writes_the_files(server, single, tmp_path):
     assert {"klann.step", "bom.csv", "bom.md", "bom.json", "manifest.json"} <= names
     assert all(Path(f).is_file() for f in rep["files"])
     assert rep["manifest"]["design"] == single
-    assert rep["manifest"]["plan"]["layers"] == 7
+    assert rep["manifest"]["plan"]["layers"] == 8    # 0.080 in frame plates (7 on 0.125 in)
     bad = run(_call(server, "export", design=single, formats=["pdf"]))   # the input schema
     assert bad.is_error
     assert "pdf" in bad.content[0].text
@@ -419,7 +423,7 @@ def test_resources_and_prompts_read(server, single):
     assert reads["spiderpig://schema/spec"].mime_type == "application/json"
     assert json.loads(reads["spiderpig://linkages/klann"].text)["key"] == "klann"
     assert json.loads(reads["spiderpig://catalog/servos"].text)["servos"][0]["key"] == "sts3215"
-    assert json.loads(reads[f"spiderpig://designs/{single}/plan"].text)["n_layers"] == 7
+    assert json.loads(reads[f"spiderpig://designs/{single}/plan"].text)["n_layers"] == 8
     assert json.loads(reads[f"spiderpig://designs/{single}/summary"].text)["id"] == single
     assert missing is not None
     assert "unknown stage" in missing
@@ -555,7 +559,8 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     assert recs["stage"] == "construction"
     (rec,) = recs["recommendations"]
     assert rec["patch"] == {"materials": {"thickness_mm": 3.0}}
-    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 7 ")
+    # 8 layers on the 0.080 in frame plates of 2026-10-04 (7 on 0.125 in)
+    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 8 ")
     vr = call(fresh, "verify", design=thin["design"], level="quick")
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["drive.one_servo"]["pass"]
@@ -634,8 +639,8 @@ def test_a_stack_that_is_proven_the_floor_is_explained_by_recommend(fresh):
     recs = call(fresh, "recommend", design=r["design"])                       # entry 11
     assert recs["stage"] == "target"
     assert recs["recommendations"] == []
-    assert recs["notes"][0].startswith("size.stack_mm 49.05 vs <= 30: 49.05 mm is proven the "
-                                       "thinnest for klann's quad module")
+    assert recs["notes"][0].startswith("size.stack_mm 49.764 vs <= 30: 49.764 mm is proven "
+                                       "the thinnest for klann's quad module")
 
 
 @pytest.mark.slow

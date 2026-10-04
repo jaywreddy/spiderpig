@@ -402,7 +402,7 @@ def test_compare_and_derive(tmp_path):
     assert cmp["derived"] == f"{child.id} derives from {heel.id}"
     assert cmp["engine_version"] is None
     assert cmp["reports"]["check"]["ok"] == {"a": False, "b": True}
-    assert cmp["reports"]["plan"]["n_layers"] == {"a": None, "b": 14}
+    assert cmp["reports"]["plan"]["n_layers"] == {"a": None, "b": 15}   # 0.080 in frames
     assert cmp["only_in"] == {"a": [], "b": []}
     by_id = api.compare(heel.id, child.id, store)
     assert by_id["spec_patch"] == cmp["spec_patch"]
