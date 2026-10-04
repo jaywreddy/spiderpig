@@ -478,6 +478,7 @@ class CrankGroup(Group):
                 if route.bearing:     # the stub standoff under the lowest web
                     out += [Placed(k, Disc("O", d.stub), GROUP, "journal stub")
                             for k in range(1, lo)]
+                    out.append(Placed(-1, Disc("O", d.stub), GROUP, "journal stub"))
                     out.append(Placed(0, Disc("O", d.stub), GROUP, "journal stub", seat=True))
                 check = getattr(self.construction, "check_route", None)
                 if L.final and check is not None:
@@ -1374,6 +1375,9 @@ class BoltCrank:
     plates: bool = True              # laser-cut plates (the crank's sheet, config.crank_sheet)
     washer_r: float = 6.0            # PTFE washers / shims (6 x 12) on a crankpin through a gap
     web_t: float = 3.175             # (single webs) the crank sheet's thickness, set by resolve
+    stub_below: float = 2.5          # (single webs) the stub may stand this far out under the
+    #                                  outer frame plate (a thin plate leaves a stock length
+    #                                  too little room to end inside it); claimed in layer -1
     # -- single-plate webs (:meth:`resolve`: a metal crank sheet, the joinery plan) --------
     single: bool = False             # one plate per web (resolved from the crank's sheet)
     webs: str = "auto"               # "auto": single on a metal sheet; "stack": two plates
@@ -1582,9 +1586,10 @@ class BoltCrank:
         from spiderpig.hardware.catalog import get
         from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS, m3_round_standoff
 
+        below = self.stub_below if self.single else 0.0
         for S in sorted(M3_ROUND_STANDOFF_LENGTHS, reverse=True):
             z0 = top - S
-            if not -EPS <= z0 <= plate - self.stub_seat + EPS:
+            if not -below - EPS <= z0 <= plate - self.stub_seat + EPS:
                 continue
             depth = float(get(m3_round_standoff(S)).dims["thread_depth"])
             for L in BHCS["3"].lengths:
@@ -1966,10 +1971,11 @@ class BoltCrank:
                               height=head, toward=-1))
             out.append(Placed(hi + 1, Disc(at, hr), GROUP, f"crankpin screw {at}", gap=True,
                               height=head, toward=1))
-            if j is not None and j.gap > 0:
-                # the standoff's length past the layers between the webs, with its shims
-                out.append(Placed(lo - 1, Disc(at, self.pin_od / 2 + 1.0), GROUP,
-                                  f"crankpin {at} spacer", gap=True, height=j.gap))
+            # the standoff and its shims through the gap over the lowest web (the height:
+            # its length past the layers and the air over the plate)
+            out.append(Placed(lo - 1, Disc(at, self.pin_od / 2 + 1.0), GROUP,
+                              f"crankpin {at} spacer", gap=True,
+                              height=j.gap if j is not None else 0.0))
             g = ctx.topo.geometry.points
             R = float(np.linalg.norm(g[at][0] - g["O"][0]))
             if hi + 1 == hub and drive.horn_radius + hr + ctx.params.margin > R:
@@ -1999,9 +2005,9 @@ class BoltCrank:
                               height=head, toward=-1))
             out.append(Placed(f, Disc("O", hr), GROUP, "journal screw", gap=True,
                               height=head, toward=1))
-            if j is not None and j.gap > 0:
-                out.append(Placed(e, Disc("O", self.pin_od / 2 + 1.0), GROUP,
-                                  "crank journal spacer", gap=True, height=j.gap))
+            out.append(Placed(e, Disc("O", self.pin_od / 2 + 1.0), GROUP,
+                              "crank journal spacer", gap=True,
+                              height=j.gap if j is not None else 0.0))
         first = min(chains, key=lambda ch: ch[0].lo)
         a = first[0].lo - 1
         if route.bearing:
@@ -2320,17 +2326,19 @@ class _BoltPlates:
 
 class _WebPlates(_BoltPlates):
     """The single-plate bolt crank of one side (:meth:`BoltCrank.for_sheet`): every crank
-    layer one aluminium plate, every crankpin an M6 bolt with its head in the top web's
-    pocket and a jammed pair of thin nuts on the lowest web (one in its pocket), the stub
-    standoff screwed to a stub plate under the lowest web (its screw's head in the web's
-    hole: no gap at O), the horn screws up through the top plates."""
+    layer one aluminium plate (on its layer's floor; the hub plate at its layer's top,
+    against the horn spacer), every crankpin and journal a round standoff clamped between
+    two webs by M4 screws, the stub standoff screwed to the lowest web from above, the horn
+    screws up through the hub plate."""
 
     def __init__(self, c: BoltCrank, group: CrankGroup, build: Build):
         super().__init__(c, group, build)
-        for pl in build.shapes(GROUP):
-            if not pl.gap and pl.label == "crank stub plate":
-                self.plates.setdefault(pl.layer, []).append(pl)
-        self.cuts = {k: [] for k in self.plates}
+        hub = [pl.layer for pl in build.shapes(GROUP) if pl.label == "crank hub"]
+        self.hub_layer = max(hub) if hub else None
+        self.t = self.sheet_t
+
+    def pz(self, k: int) -> tuple[float, float]:
+        return self.c.plate_z(self.build.plan.layout, k, self.t, self.hub_layer)
 
     def layer_cut(self, k: int, xy, r: float, z0: float | None = None,
                   z1: float | None = None) -> None:
@@ -2370,12 +2378,12 @@ class _WebPlates(_BoltPlates):
 
         c, b = self.c, self.build
         hd, hh = c.pin_screw()
-        j = c.chain_fit_web(b.plan.layout, lo, hi)
+        j = c.chain_fit_web(b.plan.layout, lo, hi, t=self.t, hub=self.hub_layer)
         if j is None:
             raise ConstructionError(f"no stock standoff fits the crankpin at {at} (webs in "
                                     f"layers {lo - 1} and {hi + 1})")
         w0, w1 = lo - 1, hi + 1
-        z_lo, z_hi = b.z(w0)[1], b.z(w1)[0]
+        z_lo, z_hi = self.pz(w0)[1], self.pz(w1)[0]
         for k in (w0, w1):
             self.layer_cut(k, xy, c.pin_hole / 2)
         # a crank plate under or over the chain at the pin (the stub plate, a hub plate)
@@ -2405,8 +2413,8 @@ class _WebPlates(_BoltPlates):
         sk_lo = get(j.screw_lo).dims
         sk_hi = get(j.screw_hi).dims
         for name, key, d, bearing, up in (
-                (f"crank_pin_screw_lo_{tag}", j.screw_lo, sk_lo, b.z(w0)[0], True),
-                (f"crank_pin_screw_hi_{tag}", j.screw_hi, sk_hi, b.z(w1)[1], False)):
+                (f"crank_pin_screw_lo_{tag}", j.screw_lo, sk_lo, self.pz(w0)[0], True),
+                (f"crank_pin_screw_hi_{tag}", j.screw_hi, sk_hi, self.pz(w1)[1], False)):
             s_ = 1.0 if up else -1.0
             body = union([disc(xy, hd / 2, *sorted((bearing - s_ * hh, bearing))),
                           disc(xy, 1.95, *sorted((bearing, bearing + s_ * d["length"])))])
@@ -2424,26 +2432,23 @@ class _WebPlates(_BoltPlates):
     def stub(self) -> None:
         c, b = self.c, self.build
         o = self.xy("O")
-        stub_plates = [pl.layer for pl in b.shapes(GROUP) if pl.label == "crank stub plate"]
-        if not self.route.bearing or not stub_plates:
+        if not self.route.bearing or not self.chains:
             return
-        k = stub_plates[0]
-        got = c.stub_z(b.z(k)[0] - b.z(0)[0], b.plan.t(0), b.z(k + 1)[0] - b.z(k)[0])
+        k = min(ch[0].lo for ch in self.chains) - 1           # the lowest web
+        got = c.stub_z(b.z(k)[0] - b.z(0)[0], b.plan.t(0), self.t)
         if got is None:
             raise ConstructionError(f"no stock stub standoff reaches the outer frame plate from "
-                                    f"the stub plate (layer {k})")
+                                    f"the lowest web (layer {k})")
         key, S, z0, L = got
         z0 += b.z(0)[0]
-        top = b.z(k)[0]
+        top = self.pz(k)[0]
         od = c.stub_od()
         st = disc(o, od / 2 - 0.01, z0, top) - disc(o, 1.5, z0 - 1, top + 1)   # M3 thread
         self.buy("crank_stub", st, key, "#c0c0c0")
         sk = BHCS["3"]
-        bearing = b.z(k + 1)[0]          # the head on the stub plate (or the filler over it)
+        bearing = self.pz(k)[1]          # the head on the lowest web, from above
         self.buy("crank_stub_screw", screw_body(o, sk, bearing, L, up=False), sk.key(L))
         self.layer_cut(k, o, 3.4 / 2)
-        # the head in the lowest web's hole: a close fit, the journal located on the crank
-        self.layer_cut(k + 1, o, (sk.head_d + 0.2) / 2, bearing, b.z(k + 1)[1] + 3)
         self.out.cut(FRAME_OUTER, Cut(o, od + 0.6))      # +/-0.3 mm: the journal's clearance
 
     def hub(self) -> None:
@@ -2452,16 +2457,16 @@ class _WebPlates(_BoltPlates):
         if not hub:
             return
         top = hub[-1]
-        seg = c.top_segment(set(self.plates), top)
+        seg = top
         spacer = c.horn_spacer(b.plan.layout, drive, top)
-        got = c.horn_joint_web(b.ctx, b.z(top)[1] - b.z(seg)[0], spacer)
+        got = c.horn_joint_web(b.ctx, self.t, spacer)
         if got is None:
             raise ConstructionError(f"no screw fits the bolt crank's top plates and the "
                                     f"{b.ctx.servo.key} horn")
         sk, L, _ = got
         o = np.asarray(self.xy("O"))
         theta = b.angle("O", self.pins[0].name) + drive.pattern_angle
-        bearing = b.z(seg)[0]
+        bearing = self.pz(top)[0]
         for i in range(drive.screw_count):
             a = theta + 2 * math.pi * i / drive.screw_count
             xy = tuple(o + drive.screw_pcd / 2 * np.array([math.cos(a), math.sin(a)]))
@@ -2480,8 +2485,7 @@ class _WebPlates(_BoltPlates):
         out = self.out
         n_plates = 0
         for k, shapes in sorted(self.plates.items()):
-            z0 = b.z(k)[0]
-            z = (z0, min(b.z(k)[1], z0 + self.sheet_t))
+            z = self.pz(k)
             solid = union([shape_solid(b, pl, z=z) for pl in shapes])
             if self.cuts[k]:
                 solid = solid - union(self.cuts[k])

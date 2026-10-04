@@ -121,7 +121,10 @@ def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
                 world(x0 + half, 0), world(x1 - half, 0), half * math.sqrt(2)))
     xs, ys = [x0, x1], [y0, y1]                                   # the centre plates
     try:
-        rs = rear_screws(spec, centre_plates(spec, ctx.pitch, p.margin), ctx.pitch)
+        from spiderpig.construction.chassis import centre_t
+
+        ct = centre_t(ctx)
+        rs = rear_screws(spec, centre_plates(spec, ct, p.margin), ct)
         d = tie_dims(ctx)
     except ValueError:          # no chassis for this servo: the servo alone
         return out
@@ -130,8 +133,11 @@ def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
         for h in rs.holes:     # each servo's own holes: +y on the left, -y on the right
             xs += [h.x - rr, h.x + rr]
             ys += [h.y + rr, -h.y - rr]
-    tr, yt = d.column + 1.0, y1 + p.margin + d.column
-    tx = (x0 + d.column, x1 - d.column) if x1 - x0 > 2 * d.column else ((x0 + x1) / 2,)
+    from spiderpig.construction.chassis import tie_pad_r
+
+    c = max(d.column, d.head_r)
+    tr, yt = tie_pad_r(ctx), y1 + p.margin + c
+    tx = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
     xs += [x - tr for x in tx] + [x + tr for x in tx]
     ys += [yt + tr, -yt - tr]
     out.append(rect("the centre plates (the chassis between the servos)",

@@ -170,9 +170,12 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     z_in = abs(design.plan.z(design.plan.top)[1] - z_mid)
+    # what stands up under the rails (a part that starts above them, a pillar's end screw
+    # over the inner plate, is the OCCT clash check's to judge)
     top = max((bb.max.Y for b in bodies if b.part is not None
                for bb in (b.part.bounding_box(),)
-               if z_in + 1e-6 > bb.max.Z and -z_in - 1e-6 < bb.min.Z), default=-math.inf)
+               if z_in + 1e-6 > bb.max.Z and -z_in - 1e-6 < bb.min.Z
+               and place.rail_y0 > bb.min.Y), default=-math.inf)
     if top > place.rail_y0 - 0.5 * DECK_FLOOR_MARGIN:      # deck_floor missed a part
         return [], [], {"fitted": False,
                         "why": f"the chassis reaches y = {top:.1f} mm between the inner plates, "

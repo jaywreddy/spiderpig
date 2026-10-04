@@ -106,6 +106,14 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # single-plate crank webs keep their screws' heads in clearance gaps (a sunk head
         # would stand in a rider's layer): no plan with every head sunk exists
         heads = "gap"
+        stuck = sorted({g.construction.key for g in groups
+                        if not getattr(getattr(g, "construction", None), "gaps", True)})
+        if stuck:
+            raise construction.ConstructionError(
+                f"the single-plate crank plans its screw heads in clearance gaps, and "
+                f"--pin/--pillar {', '.join(stuck)} isn't built for gaps (its retainers assume "
+                "full layers): use --crank keyed, or the chicago / standoff / rod pivots",
+                changes=[("crank", ctx.config.crank, "keyed")])
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
                      **plate_z(ctx))
     if deadline is not None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 
 import pytest
-from build123d import Location
 
 from spiderpig import servos
 from spiderpig.construction.base import FRAME_INNER, Build, Realized
@@ -13,6 +12,7 @@ from spiderpig.construction.chassis import (
     MIN_ENGAGE,
     ServoFrame,
     centre_plates,
+    centre_t,
     servo_frame,
     tie_dims,
 )
@@ -21,7 +21,6 @@ from spiderpig.construction.robot import FrameTies
 from spiderpig.hardware import fasteners
 from spiderpig.hardware.catalog import CATALOG, _load, get
 from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
-from spiderpig.shapes import disc
 from tests.tiers import quick
 
 TS = (1.0, 4.38)
@@ -71,8 +70,9 @@ def test_rear_screws_sit_on_the_servo_pilots(design, robot):
     spec = d.ctx.servo
     frames = _frames(d, tmpl.freeze_at(TS[0]))
     pilots = {(h.x, h.y) for h in spec.rear_mount}
-    n = centre_plates(spec, d.ctx.pitch, d.ctx.params.margin)
-    half = n * d.ctx.pitch / 2
+    t = centre_t(d.ctx)                 # the centre plates: the frame's aluminium (2026-10-04)
+    n = centre_plates(spec, t, d.ctx.params.margin)
+    half = n * t / 2
     engage = mech.meta["rear_engagement_mm"]
     assert 3.0 <= engage <= 5.0
     screws = [b for b in mech.bodies if ".rear_screw" in b.name]
@@ -127,43 +127,39 @@ def test_robot_is_mirror_symmetric(design, robot):
 
 
 def test_ties_join_the_inner_plates_above_them(design, robot):
+    """Each tie: a standoff chain per side from the inner plate's servo-side face to the
+    centre plates, an M4 screw up through the inner plate from the leg side (its head in
+    the gap under the plate), a stud through the centre plates (2026-10-04: no glue)."""
     _, d = design("single")
     mech = robot("single", TS[0])
-    td = tie_dims(d.ctx)
-    halves = [b for b in mech.bodies if "tie_screw_half" in b.name or "tie_insert_half" in b.name]
-    assert len(halves) == 2 * mech.meta["ties"] == 8
+    chains = [b for b in mech.bodies if ".tie_standoff" in b.name]
+    assert mech.meta["ties"] == 4
+    assert {b.name[0] for b in chains} == {"L", "R"}
     plates = [b for b in mech.bodies if b.name.startswith("centre_plate")]
-    for b in halves:
-        side = b.name[0]
-        plate = mech.body(f"{side}.torso").part
-        pb, tb = plate.bounding_box(), b.part.bounding_box()
-        if side == "L":        # nothing below the inner plate's leg-side face
-            assert tb.min.Z > pb.min.Z
-            face = pb.max.Z
+    lo = min(b.part.bounding_box().min.Z for b in plates)
+    for side in ("L", "R"):
+        plate = mech.body(f"{side}.torso").part.bounding_box()
+        mine = [b.part.bounding_box() for b in chains if b.name[0] == side]
+        if side == "L":
+            assert min(bb.min.Z for bb in mine) >= plate.max.Z - 1e-3
+            assert max(bb.max.Z for bb in mine) == pytest.approx(lo, abs=0.01)
         else:
-            assert tb.max.Z < pb.max.Z
-            face = pb.min.Z
-        # the column bears on the plate's top face all round its spigot
-        xy = ((tb.min.X + tb.max.X) / 2, (tb.min.Y + tb.max.Y) / 2)
-        ring = (disc(xy, td.column - 0.05, face - 0.5, face + 0.5)
-                - disc(xy, td.spigot_d / 2 + 0.3, face - 1, face + 1))
-        under = ring.moved(Location((0, 0, -0.5 if side == "L" else 0.5)))
-        assert _volume(under & plate) == pytest.approx(_volume(under), rel=1e-3)
-        # and on the centre plates at the other end
-        stack = [p.part for p in plates]
-        end = tb.max.Z if side == "L" else tb.min.Z
-        cap = (disc(xy, td.column - 0.05, end - 0.25, end + 0.25)
-               - disc(xy, td.clearance_d / 2 + 0.3, end - 1, end + 1))
-        cap = cap.moved(Location((0, 0, 0.25 if side == "L" else -0.25)))
-        got = sum(_volume(cap & s) for s in stack)
-        assert got == pytest.approx(_volume(cap), rel=1e-3)
+            assert max(bb.max.Z for bb in mine) <= plate.min.Z + 1e-3
+        for i in range(mech.meta["ties"]):
+            screw = mech.body(f"{side}.tie_screw{i}").part.bounding_box()
+            # its head on the leg side of the inner plate
+            assert (screw.min.Z < plate.min.Z) if side == "L" else (screw.max.Z > plate.max.Z)
+    studs = [b for b in mech.bodies if b.name.startswith("tie_stud")]
+    assert len(studs) == mech.meta["ties"]
+    assert not [line for line in mech.bom_extras if line.key == "ca_glue"
+                and "tie" in line.where]
 
 
 def test_frame_ties_only_touch_the_inner_plate(design):
     """The ties are the robot's: a side's design has none, and what they add to the side
-    (their spigot holes and pads, and the electronics deck rail's two spigot holes) is all
-    in the inner plate."""
-    from spiderpig.construction.deck import SPIGOT_D, spigot_points
+    (their screw holes and pads, and the electronics deck rails' two screw holes) is all in
+    the inner plate; the screws' heads under it are the drive group's claims."""
+    from spiderpig.construction.deck import RAIL_HOLE, spigot_points
 
     tmpl, d = design("single")
     assert not any(isinstance(g, FrameTies) for g in d.groups)
@@ -176,10 +172,11 @@ def test_frame_ties_only_touch_the_inner_plate(design):
     build = Build(d.ctx, d.plan, tmpl.freeze_at(1.0))
     deck = spigot_points(build, d.drive)
     assert len(deck) == 2                                    # the deck fits the Strider
-    p = d.ctx.params
     holes = sorted(c.d for c in got.cuts[FRAME_INNER])
     assert len(holes) == 4 + len(deck)
-    assert holes.count(p.hole(SPIGOT_D, "glue")) == len(deck)
+    assert holes.count(RAIL_HOLE) == len(deck)
+    heads = {s.label for s in d.plan.shapes("drive")}
+    assert {"frame tie screw head", "deck rail screw head"} <= heads
 
 
 def test_ties_keep_clear_of_the_servo(design, robot):
@@ -191,7 +188,7 @@ def test_ties_keep_clear_of_the_servo(design, robot):
     x0, x1 = spec.axis_offset - L / 2, spec.axis_offset + L / 2
     td = tie_dims(d.ctx)
     for b in mech.bodies:
-        if "tie_screw_half" in b.name:
+        if ".tie_standoff" in b.name:
             bb = b.part.bounding_box()
             x, y = frame.local(((bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2))
             dx = max(x0 - x, 0.0, x - x1)
@@ -249,18 +246,16 @@ def test_catalog_data_the_code_reads():
 # ---------------------------------------------------------------------------
 
 
-def test_the_robots_glue_is_a_few_drops_per_anchor_and_spigot(robot):
-    from spiderpig.construction.chassis import GLUE_PER_SPIGOT
+def test_the_robots_glue_is_a_few_drops_on_the_battery_cradle(robot):
+    """No glue in the structure since 2026-10-04 (ties, pillars, deck rails, centre plates
+    are screwed): CA only for the battery cradle, epoxy for the Chicago barrels."""
     from spiderpig.hardware.bom import bom_from_mechanism
 
     mech = robot("single", 1.0)
-    glue = [line for line in mech.bom_extras if line.key == "ca_glue"]      # entry 2
-    ties = next(line for line in glue if line.where.startswith("tie spigots"))
-    assert ties.qty == pytest.approx(GLUE_PER_SPIGOT * mech.meta["ties"])
-    assert 0 < ties.qty < 0.2
-    total = sum(line.qty for line in glue)
-    assert 0 < total < 1                                   # one bottle covers the robot
+    glue = [line for line in mech.bom_extras if line.key == "ca_glue"]
+    assert all("cradle" in line.where for line in glue)
+    assert 0 < sum(line.qty for line in glue) < 1
+    assert any(line.key == "epoxy_2part" for line in mech.bom_extras)
     bom = bom_from_mechanism(mech, group=False)
     row = next(r for r in bom.purchased if r.key == "ca_glue")
     assert row.packs == 1
-    assert row.cost_usd == pytest.approx(13.99)

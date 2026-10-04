@@ -291,12 +291,13 @@ LINK_HOLE = 6.35       # the largest pin hole a link has (a 6 mm standoff's runn
 def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     """Every link plate's stress at the design's own pin loads (``loads["joints"]``, the
     sim's), against its sheet's allowable: the net section at the most loaded hole
-    (``LINK_KT`` x the pin load over ``(w - d) t``) and, for a link of three or more pins
-    (or a foot off its pins), the bending of the plate at that pin as a cantilever to its
-    nearest other pin (``F a`` over the net section's modulus). Conservative: the pin
-    loads' directions aren't used. ``needs`` names the sheet that would hold it when the
-    link's own doesn't (jam SF under 2): the user's rule, aluminium only where acrylic
-    can't take the load."""
+    (``LINK_KT`` x the pin load over ``(w - d) t``) and, for a link of three or more pins,
+    the plate as a beam between its two farthest pins with the largest pin load between
+    them (``F L / 4`` over the gross section's ``t w^2 / 6``; the loads balance, so no pin
+    load is a cantilever's); a foot link whose foot is off its pins, the foot's lever to its
+    nearest pin. Conservative: the loads' directions aren't used. ``needs`` names the sheet
+    that would hold it when the link's own doesn't (jam SF under 2): the user's rule,
+    aluminium only where acrylic can't take the load."""
     from spiderpig import linkage as lk_mod
     from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
 
@@ -309,11 +310,9 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     sheets = link_sheets(config)
     w = 2 * config.params.link_radius
     rows = []
-    for key, (names, _segs) in sorted(lk.links.items()):
+    for key in sorted(lk.links):
         at: dict[str, tuple[float, float]] = {}
         for j in joints:
-            if j.get("crank") and not any(m.startswith(key + "_") for m in j["links"]):
-                continue
             if any(m == key or m.startswith(key + "_") for m in j["links"]):
                 w_, j_ = at.get(j["stem"], (0.0, 0.0))
                 at[j["stem"]] = (max(w_, j["walk"]["n"]), max(j_, j["jam"]["n"]))
@@ -323,28 +322,25 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         t = sh.thickness if sheets.get(key) else config.pitch
         an = (w - LINK_HOLE) * t
         zn = t * (w ** 3 - LINK_HOLE ** 3) / (6 * w)
-        holes = [n for n in names if n in pts]
-        bending = len(holes) >= 3 or (key in feet and feet[key] not in at)
-
-        def lever(n: str, holes: list[str] = holes) -> float:
-            others = [math.dist(pts[n], pts[m]) for m in holes if m != n and m in pts]
-            return min(others, default=0.0)
+        zg = t * w * w / 6
+        pins = [n for n in at if n in pts]
+        span = max((math.dist(pts[a], pts[b]) for a in pins for b in pins), default=0.0)
+        bending = len(pins) >= 3
+        foot = feet.get(key)
+        foot_lever = (min(math.dist(pts[foot], pts[n]) for n in pins)
+                      if foot is not None and foot not in at and foot in pts and pins else 0.0)
 
         row = {"joint": f"link:{key}", "kind": "link", "links": [key],
                "sheet": sh.key, "thickness_mm": t, "allowable_mpa": sh.yield_mpa,
                "pins": sorted(at), "bending": bending}
         for i, tag in enumerate(("walk", "jam")):
-            sig = 0.0
-            for n, f in at.items():
-                F = f[i]
-                s_t = LINK_KT * F / an
-                s_b = F * lever(n) / zn if bending and n in pts else 0.0
-                sig = max(sig, s_t, s_b)
-            if key in feet and feet[key] not in at and feet[key] in pts:
-                F = max(f[i] for f in at.values())
-                sig = max(sig, F * lever(feet[key]) / zn)
-            row[tag] = {"stress_mpa": round(sig, 2), "load_n": round(max(f[i] for f in
-                                                                         at.values()), 2),
+            F = max(f[i] for f in at.values())
+            sig = LINK_KT * F / an
+            if bending:
+                sig = max(sig, F * span / 4 / zg)
+            if foot_lever:
+                sig = max(sig, F * foot_lever / zn)
+            row[tag] = {"stress_mpa": round(sig, 2), "load_n": round(F, 2),
                         "safety": round(sh.yield_mpa / sig, 2) if sig > 0 else None}
         jam = (row.get("jam") or {}).get("safety")
         row["needs"] = None

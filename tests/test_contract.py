@@ -35,7 +35,7 @@ def test_single_side_parts_do_not_intersect(side, servo, t):
     """Every body, screws and nuts included."""
     mech = side("single", t, servo)
     names = {b.name for b in mech.bodies if b.part is not None}
-    for prefix in ("pin_", "pillar_", "servo_screw", "crank_nut"):
+    for prefix in ("pin_", "pillar_", "servo_screw", "crank_pin"):
         assert any(n.startswith(prefix) for n in names), prefix
     assert clashes(mech) == []
 

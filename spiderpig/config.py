@@ -58,12 +58,15 @@ class BuildConfig:
     sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
     #                                   the layer pitch (spiderpig.materials)
     thickness: float | None = None    # override the sheet's nominal thickness
-    frame_sheet: str = "al5052_3p2mm"   # the frame and centre plates (aluminium: acrylic
-    #                                     can't take their load; the user's call 2026-10-04)
-    crank_sheet: str = "al5052_3p2mm"   # the crank's laser-cut plates
+    frame_sheet: str = "al5052_2mm"     # the frame and centre plates (aluminium: acrylic
+    #                                     can't take their load; the user's call 2026-10-04):
+    #                                     0.080 in 5052, the thinnest stock that passes
+    #                                     (materials.thinnest_sheet("frame"); tests pin it)
+    crank_sheet: str = "al5052_1p6mm"   # the crank's laser-cut plates: 0.063 in 5052
+    #                                     (materials.thinnest_sheet("crank"))
     heads: str = "best"               # fasteners' heads: "sink" into the layer beside their
     #                                   link, "gap" (a thin clearance gap where a link passes),
-    #                                   "best" (both planned, the lower stack kept; stack.StackSpec)
+    #                                   "best" (sunk, else in gaps; stack.StackSpec)
     link_sheets: tuple[tuple[str, str], ...] | None = None   # link class -> sheet; None: the
     #                                   linkage's (materials.default_link_sheets: a Klann
     #                                   variant's foot links in 6061)

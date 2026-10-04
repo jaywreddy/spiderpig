@@ -92,8 +92,8 @@ pin's clip, the servo's screws) is a *clearance shape* (`Placed.gap`, `height`, 
 it sits in a thin gap over/under its link's layer, or sinks into the layer beside it where
 nothing there is in its way (the old full-layer head). An axle claims its washers through
 every gap it crosses. `StackSpec.heads`: "sink" (every head in a layer, no gaps), "gap", or
-"best" (the default: plans both, keeps the lower stack in mm; the gap search only below the
-sink plan's layer count). The plan's z (`stack.finalize`, also what re-makes a stored plan):
+"best" (the default: heads sunk; in gaps only when that finds no plan, the user's rule of
+2026-10-04, which restored the suite's time; a single-plate crank plans "gap" directly). The plan's z (`stack.finalize`, also what re-makes a stored plan):
 the heads that can't sink keep gaps, each gap sized to its tallest head (a gap a plate stack
 runs through is a thin sheet's thickness, `materials.gap_options`; else any 0.1 mm of
 washers and DIN 988 shims up to 4 mm), each layer as thick as its thickest plate
@@ -133,6 +133,22 @@ store, `$SPIDERPIG_STORE` else `./.spiderpig`; `strider_double_robot.glb`, a has
 suffix for a non-default design). A design with no layer plan (the planner says why, e.g.
 TrotBot's heel scaled back to its drawing's 7 mm unit, `p.unit=7`) bakes a
 422; its `/api/walk` still works.
+
+**Thinnest sheet per part** (2026-10-04, the user's rule: no weight budget, every plate as
+thin as strength and the service allow): `materials.thinnest_sheet(role)` takes the
+thinnest stock 5052 that passes the role's checks (`materials.ROLES`: the out-of-plane
+bending at a pin's clamped end at 155 N jam, SF 2; and the role's smallest hole against
+SendCutSend's minimum hole = thickness). Frame plates 0.080 in (`al5052_2mm`: 0.100 in and
+up can't take the servo's 2.4 mm holes, 0.063 in fails the pillar end), crank plates
+0.063 in (`al5052_1p6mm`); `BuildConfig` pins both and `tests/test_joinery.py` checks it.
+The centre plates take the thinnest that seats the most rear screws
+(`chassis.centre_sheet`: 0.090 in on the STS3215). A crank plate thinner than its 3 mm layer
+sits on the layer's floor, the hub plate at its top (`BoltCrank.plate_z`). Cut rules
+(`spiderpig/manufacture.py`): a hole closer than 1 x the thickness to an edge or hole in
+metal, or under the service's minimum hole, is an **error** (the audit fails); under 2 x a
+warning. Standoff pillar splices are rated at a 1.0 N·m clamp (segments turned together in
+soft-jaw pliers, `StandoffAxle.splice_nm`, UNVERIFIED; 0.4 N·m finger tight failed the
+Strider quad's jam).
 
 **Glue-free chassis, feet, link plates** (2026-10-04, the joinery plan). Frame ties
 (`construction/chassis.py`): per tie and side a goBILDA 1501 standoff chain from the inner

@@ -192,7 +192,8 @@ def test_warnings_and_errors_name_the_joint_sf_load_and_a_fix():
 def test_the_crank_twist_against_each_element_of_the_joint():
     """Every crank is rated element by element with one hex-bearing model; the keyed crank's
     key in its 1.6 mm printed sockets (0.55 N·m) is far under the jam twist, the bolt
-    crank's weakest element (the nut's lock) holds it with a warning's margin; the old
+    crank's weakest element (its webs' clamp on the standoff crankpin) holds it with a
+    warning's margin; the old
     1.8 N·m post-shell figure is gone."""
     from spiderpig.construction.crank import hex_bearing_nm
 
@@ -209,7 +210,8 @@ def test_the_crank_twist_against_each_element_of_the_joint():
     assert any("--crank bolt" in x for x in f["fixes"])
     bolt = _check({}, 0.0, crank="bolt")
     br = next(r for r in bolt["rows"] if r["kind"] == "crank")
-    assert br["weakest"].startswith("nut lock")
+    # the single aluminium webs' standoff crankpin (2026-10-04): a friction clamp
+    assert br["weakest"].startswith("web clamped")
     assert 1.0 < br["jam"]["safety"] < 2.0
     bf = next(f for f in bolt["findings"] if f["kind"] == "crank")
     assert bf["level"] == "warning"

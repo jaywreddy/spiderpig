@@ -871,8 +871,11 @@ class CrankRouter:
 
         stub_ok, empty_ok = True, self.drop_bearing
         allowed = self.bottom_layers
+        o_gap = len(self.gap_pieces) - 1
         for a in range(1, h0 - 1):
-            for bearing, ok in ((True, stub_ok and (not allowed or a in allowed)),
+            # (gap pieces) the stub's screw head over the lowest web, at O, in the gap there
+            head_ok = not (gb and gb[a] >> o_gap & 1)
+            for bearing, ok in ((True, stub_ok and (not allowed or a in allowed) and head_ok),
                                 (False, empty_ok)):
                 if ok:
                     for j in range(n):

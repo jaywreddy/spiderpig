@@ -74,6 +74,7 @@ from spiderpig.construction.chassis import (
     seat_keepouts,
     servo_frame_ctx,
     tie_dims,
+    tie_pad_r,
     tie_points_ctx,
 )
 from spiderpig.hardware.bom import BomLine
@@ -151,8 +152,7 @@ def deck_floor(build: Build | Context, drive=None) -> float:
     L, W, _ = spec.body
     x0, x1 = spec.axis_offset - L / 2, spec.axis_offset + L / 2
     ys = [frame.xy(x, y)[1] for x in (x0, x1) for y in (-W / 2, W / 2)]
-    d = tie_dims(ctx)
-    ys += [xy[1] + d.column + 1.0 for xy in tie_points_ctx(ctx)]   # centre plate corner
+    ys += [xy[1] + tie_pad_r(ctx) for xy in tie_points_ctx(ctx)]   # centre plate corner
     return max(ys)
 
 

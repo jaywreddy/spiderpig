@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import ClassVar
 
 from spiderpig.construction.axle import AxleDims, AxleGroup, End
 from spiderpig.construction.base import (
@@ -85,6 +86,8 @@ MINOR_D = 2.387    # M3 minor diameter (ISO 724 d3): the bending core
 @dataclass(frozen=True)
 class BoltAxle:
     """M3 SHCS axle, laser-cut spacer rings, flat washer and nylock nut."""
+
+    gaps: ClassVar[bool] = False    # its retainers assume full layers (no clearance gaps)
 
     key: str = "bolt"
     label: str = "M3 socket head cap screw as the axle, laser-cut spacer rings, nylock nut"

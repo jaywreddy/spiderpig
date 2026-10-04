@@ -38,14 +38,16 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
             assert "mirrored" in r["print"]
             assert (single_out / "print" / r["file"].replace(".stl", "_mirrored.stl")).exists()
     files = {r["file"] for r in rows}
-    assert {"tie_screw_half0.stl", "tie_insert_half0.stl"} <= files
+    # the frame ties are bought standoffs and screws since 2026-10-04 (no printed halves);
+    # the feet's TPU socks print
+    assert not any(f.startswith("tie_") for f in files)
+    assert any(f.endswith("_sock.stl") for f in files)
     # the pillars are bought standoffs and the crank laser-cut plates now: what prints is the
     # chassis's and the drive's (its horn spacer: the bolt crank's hub plates need the horn's
     # face on a layer boundary)
     assert not any("pillar_" in f and "_seg" in f for f in files)
     assert any("horn_spacer" in f for f in files)
     by_file = {r["file"]: int(r["qty"]) for r in rows}
-    assert by_file["tie_screw_half0.stl"] == by_file["tie_insert_half0.stl"] == 4
     # left and right side parts are one row each: every part is printed twice or more,
     # but the electronics deck's battery cradle, one per robot on the centre line
     assert by_file["deck_cradle.stl"] == 1
@@ -80,7 +82,8 @@ def test_bom_lists_purchases_sheets_and_filament(single_out):
     assert keys["servo_sts3215"]["qty"] == 2
     assert keys["acrylic_3mm"]["qty"] >= 1            # laser sheets
     assert 0 < keys["pla_filament"]["qty"] < 1        # a fraction of a spool
-    assert keys["m3_heat_set_insert"]["qty"] == 4 + 4  # the frame ties' and the deck rails'
+    assert keys["m3_heat_set_insert"]["qty"] == 4      # the deck's (the ties are standoffs)
+    assert any(k.startswith("gobilda_1501_") for k in keys)
     assert any(k.startswith("m2_self_tap_") for k in keys)
     assert bom["cost_usd"] > 0
     md = (single_out / "bom.md").read_text()

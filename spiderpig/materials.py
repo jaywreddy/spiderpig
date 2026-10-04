@@ -26,7 +26,7 @@ from functools import cache
 from spiderpig.hardware.catalog import get
 
 DEFAULT_SHEET = "acrylic_3mm"
-FRAME_SHEET = "al5052_3p2mm"
+FRAME_SHEET = "al5052_3p2mm"      # (stage 1's; the defaults are now thinnest_sheet's)
 CRANK_SHEET = "al5052_3p2mm"
 FOOT_SHEET = "al6061_3p2mm"
 THIN_SHEETS = ("acrylic_1mm", "acrylic_1p5mm", "acrylic_2mm", "al5052_1mm", "al5052_1p6mm",
@@ -175,3 +175,78 @@ def washer_stack(shaft_d: float, t: float) -> tuple[list[tuple[str, float]], flo
         out += [(shim, s)] * k
         left = round(left - k * s, 3)
     return out, max(left, 0.0)
+
+
+# -- the thinnest sheet each part may be cut from ----------------------------------------
+#
+# The user's rule of 2026-10-04: no weight budget, but every plate as thin as strength and
+# the service's cut rules allow, per part, aluminium above all. Each role's checks below
+# are simple, conservative and named; :func:`thinnest_sheet` takes the thinnest stock sheet
+# of the material that passes them all (and the cut rules the role's holes need).
+
+ROLE_LOAD_N = 155.0     # the most loaded family's jam pin load (strength.GENERIC_PIN_LOADS)
+FRAME_SPAN = 84.0       # the longest pillar bay between the frame plates (the Strider quad)
+FRAME_WIDTH = 27.0      # the plate width a pillar's clamped end bends (3 x its 9 mm washer)
+WEB_SPAN = 24.0         # the longest crankpin between its webs
+WEB_WIDTH = 14.0        # a crank web's width
+ROLE_SF = 2.0           # against the sheet's yield
+
+
+@dataclass(frozen=True)
+class RoleCheck:
+    """One role's checks: the out-of-plane bending a part takes at a pin's clamped end
+    (a fixed-fixed shaft's end moment ``F L / 8`` over the plate's ``b t^2 / 6``), and the
+    holes it must hold (SendCutSend: a hole at least the thickness)."""
+
+    name: str
+    load_n: float
+    span: float
+    width: float
+    smallest_hole: float      # the smallest hole the part has (mm)
+
+    def why_not(self, sh: Sheet) -> str | None:
+        t = sh.thickness
+        m = self.load_n * self.span / 8
+        sigma = 6 * m / (self.width * t * t)
+        if sh.yield_mpa / sigma < ROLE_SF:
+            return (f"{self.name}: {sigma:.0f} MPa at a {self.load_n:g} N jam, SF "
+                    f"{sh.yield_mpa / sigma:.2f} under {ROLE_SF:g}")
+        if sh.min_hole > self.smallest_hole + 1e-6:
+            return (f"{self.name}: its {self.smallest_hole:g} mm holes under {sh.service}'s "
+                    f"{sh.min_hole:g} mm minimum")
+        return None
+
+
+ROLES = {
+    # the servo's M2 screw holes (2.4 mm) are the frame plate's smallest
+    "frame": RoleCheck("frame plate (a pillar's clamped end)", ROLE_LOAD_N, FRAME_SPAN,
+                       FRAME_WIDTH, 2.4),
+    # the horn screws' 3.4 mm holes and the stub screw's are the crank plates' smallest
+    "crank": RoleCheck("crank web (a crankpin's clamped end)", ROLE_LOAD_N, WEB_SPAN,
+                       WEB_WIDTH, 3.4),
+}
+
+
+def aluminium_sheets(alloy: str = "5052") -> list[str]:
+    """Every stock sheet of ``alloy`` in the catalog, thinnest first."""
+    from spiderpig.hardware.catalog import CATALOG
+
+    keys = [k for k, it in CATALOG.items() if it.category == "sheet"
+            and str(it.dims.get("alloy", "")).startswith(alloy)]
+    return sorted(keys, key=lambda k: sheet(k).thickness)
+
+
+@cache
+def thinnest_sheet(role: str, alloy: str = "5052") -> str:
+    """The thinnest stock ``alloy`` sheet that passes ``role``'s checks (:data:`ROLES`)."""
+    check = ROLES[role]
+    for key in aluminium_sheets(alloy):
+        if check.why_not(sheet(key)) is None:
+            return key
+    raise ValueError(f"no {alloy} sheet passes the {role} checks")
+
+
+def role_report(role: str, alloy: str = "5052") -> list[dict]:
+    """Each stock sheet of ``alloy`` against ``role``'s checks (for the docs and the audit)."""
+    return [{"sheet": k, "thickness_mm": sheet(k).thickness,
+             "why_not": ROLES[role].why_not(sheet(k))} for k in aluminium_sheets(alloy)]

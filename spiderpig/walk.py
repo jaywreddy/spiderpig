@@ -402,10 +402,11 @@ def _sheet_scale(config: BuildConfig, key: str) -> float:
 # The electronics deck (construction.deck), robot only: its fabricated mass on 3 mm acrylic
 # (plate 33 g of it, at the sheet's density; the rest the electronics, rails and hardware)
 # and its centre of mass from the servo body's centre (x) and the chassis' top, which is
-# the servo's highest corner plus 0.9 mm (the centre plates round the ties): measured on
-# the Strider double and the Klann quad (both 113 g, centre 13.45 mm over the chassis top).
-_DECK_PLATE_G, _DECK_REST_G = 33.4, 79.9
-_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 0.9
+# the servo's highest corner plus 2.36 mm (the centre plates round the ties, 2 thicknesses
+# of aluminium to the edge): measured on the Strider double (116.6 g since the rails are
+# screwed on, 2026-10-04; 113 g with glued spigots), centre 13.45 mm over the chassis top.
+_DECK_PLATE_G, _DECK_REST_G = 33.3, 83.3
+_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 2.36
 
 
 def _pin_joints(lk) -> int:

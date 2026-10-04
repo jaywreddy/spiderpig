@@ -278,10 +278,13 @@ def test_mount_screws_clear_the_crank_and_are_claimed(design, side, key):
     screws = drive.front_screws(ctx)
     assert len(screws) >= 2
     hub = next(p.shape.r for p in d.plan.shapes("crank") if p.label == "crank hub")
+    iface = ctx.interfaces["drive"]
+    if iface.horn_layers >= 1:      # the hub a layer under the horn: the heads meet the horn
+        hub = iface.horn_radius
     for _, mh, sk, _ in screws:
         assert math.hypot(mh.x, mh.y) - sk.head_d / 2 >= hub + ctx.params.margin
-    if key == "sts3215":
-        assert sorted({mh.x for _, mh, _, _ in screws}) == [29.0]
+    if key == "sts3215":            # all four front screws (2026-10-04: the hub stepped down)
+        assert sorted({mh.x for _, mh, _, _ in screws}) == [8.3, 29.0]
     heads = [p for p in d.plan.shapes("drive") if p.label == "servo screw head"]
     assert {p.layer for p in heads} == {d.plan.top - 1}
     assert {p.shape.at for p in heads} == {name for name, *_ in screws}

@@ -31,10 +31,55 @@ STEEL = "#8a8d91"
 BRASS = "#c9a227"
 
 
+def centre_sheet(ctx: Context) -> str | None:
+    """The centre plates' sheet: the thinnest aluminium of the frame's alloy that seats the
+    most rear screws (the plates' count and thickness set where the screws' heads sit
+    against the two servos' rear bumps; 0.080 in leaves one hole per servo on the STS3215,
+    0.125 in two); the frame's sheet when nothing is better (or no chassis)."""
+    key = ctx.sheet("frame")
+    try:
+        return _centre_sheet(ctx.servo, key, ctx.params.margin)
+    except Exception:         # noqa: BLE001 - a servo with no rear holes: the frame's sheet
+        return key
+
+
+def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
+    from spiderpig.materials import aluminium_sheets, sheet
+
+    if frame_key is None or not sheet(frame_key).metal:
+        return frame_key
+    alloy = str(get(frame_key).dims.get("alloy", "5052"))[:4]
+    left = ServoFrame((0.0, 0.0), (1.0, 0.0))
+    frames = (left, replace(left, hand=-1))
+    best = (0, frame_key)
+    for key in aluminium_sheets(alloy):
+        t = sheet(key).thickness
+        if t < sheet(frame_key).thickness - 1e-9:
+            continue
+        n = centre_plates(spec, t, margin)
+        half = n * t / 2
+        reliefs = _relief_volumes(spec, frames, half)
+        most = 0
+        for own in range(1, max(2, n)):
+            try:
+                rs = rear_screws(spec, n, t, own)
+            except ConstructionError:
+                continue
+            if rs is not None:
+                most = max(most, len(_clear_holes(rs, frames, reliefs, half, t)))
+        if most > best[0]:
+            best = (most, key)
+    return best[1]
+
+
 def centre_t(ctx: Context) -> float:
-    """The centre plates' thickness: the frame's sheet (5052 aluminium, clamped by the ties;
-    the joinery plan of 2026-10-03)."""
-    return ctx.sheet_t("frame")
+    """The centre plates' thickness (:func:`centre_sheet`)."""
+    key = centre_sheet(ctx)
+    if key is None or key == getattr(ctx.config, "sheet", None):
+        return ctx.pitch
+    from spiderpig.materials import thickness
+
+    return thickness(ctx.config, key)
 
 
 def centre_plates(spec, pitch: float, margin: float) -> int:
@@ -150,6 +195,13 @@ def seat_keepouts(ctx: Context) -> list[tuple[tuple[float, float], float]]:
     return out
 
 
+def tie_pad_r(ctx: Context) -> float:
+    """The centre plates' outline round a tie: its hole and two thicknesses of the frame's
+    sheet to the edge (SendCutSend's hole-to-edge rule; under one thickness is an error)."""
+    d = tie_dims(ctx)
+    return max(d.column + 1.0, d.hole_d / 2 + 2 * centre_t(ctx) + 0.1)
+
+
 def tie_points_ctx(ctx: Context) -> list[tuple[float, float]]:
     """World XY of the frame ties: beside the servo's long sides, near its ends; a tie whose
     head would meet the horn's hole or a pillar's end in the inner plate is dropped."""
@@ -213,9 +265,10 @@ def _screw_choice(hole_key: str | None, grip: float, depth: float) -> tuple[Scre
     return sk, float(min(fits, key=lambda L: (abs(L - grip - target), -L)))
 
 
-def rear_screws(spec, n: int, pitch: float) -> RearScrews | None:
-    """The rear screw set, or ``None`` if the servo can't be screwed to the centre plates."""
-    own = n // 2
+def rear_screws(spec, n: int, pitch: float, own: int | None = None) -> RearScrews | None:
+    """The rear screw set, or ``None`` if the servo can't be screwed to the centre plates;
+    ``own``: the centre plates each servo's screws clamp (default half of them)."""
+    own = n // 2 if own is None else own
     holes = tuple(h for h in spec.rear_mount if h.y > 1e-6)
     if own < 1 or not holes:
         return None
@@ -293,7 +346,7 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
     tie_xy = tie_points(build, design.drive)
     extras: list[BomLine] = []
     bodies += _tie_parts(ctx, plan, tie_xy, z_mid, half, host, info, fastened, extras)
-    info["centre_plate_sheet"] = ctx.sheet("frame")
+    info["centre_plate_sheet"] = centre_sheet(ctx)
     bodies += _centre_plate_parts(ctx, left, reliefs, rs, screws, tie_xy, n, half, pitch,
                                   host, extras)
     info["fastened"] = fastened
@@ -306,10 +359,20 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
     screw, bodies)``."""
     bodies: list[Body] = []
     screws: list[tuple[str, tuple[float, float], tuple, tuple, object]] = []
-    rs = rear_screws(spec, n, pitch)
-    if rs is not None:
-        usable = _clear_holes(rs, frames, reliefs, half, pitch)
-        rs = replace(rs, holes=usable) if usable else None
+    # the own plates that leave the most holes whose heads clear the other servo's bumps
+    # (thinner aluminium centre plates: more of them, so the heads' z is a choice)
+    best = None
+    for own in range(1, max(2, n)):
+        try:
+            cand = rear_screws(spec, n, pitch, own)
+        except ConstructionError:
+            continue
+        if cand is None:
+            continue
+        usable = _clear_holes(cand, frames, reliefs, half, pitch)
+        if usable and (best is None or len(usable) > len(best.holes)):
+            best = replace(cand, holes=usable)
+    rs = best
     if rs is not None:
         for i, h in enumerate(rs.holes):
             for s, frame, sign in (("L", frames[0], 1.0), ("R", frames[1], -1.0)):
@@ -461,7 +524,7 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
         ys += [ly - rr, ly + rr]
     corner = 3.0
     if tie_xy:
-        tr = tie_dims(ctx).column + 1.0
+        tr = tie_pad_r(ctx)
         corner = tr
         for xy in tie_xy:
             lx, ly = left.local(xy)
@@ -470,7 +533,7 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
     tie_d = tie_dims(ctx).hole_d if tie_xy else 0.0
     from spiderpig.materials import sheet
 
-    sheet_key = ctx.sheet("frame")
+    sheet_key = centre_sheet(ctx)
     min_hole = sheet(sheet_key).min_hole if sheet_key else 0.0
     for k in range(n):
         z0 = -half + k * pitch

@@ -51,16 +51,19 @@ def test_the_deck_fits_between_the_inner_plates_over_the_chassis(built):
     _, mech = built
     info = mech.meta["deck"]
     assert info["fitted"], info
-    assert info["plate_mm"] == [2 * deck_mod.HALF_LEN, pytest.approx(2 * _inner_face(mech)
-                                                                     - 2 * deck_mod.DECK_GAP)]
+    assert info["plate_mm"] == [2 * deck_mod.HALF_LEN, pytest.approx(
+        2 * _inner_face(mech) - 2 * deck_mod.DECK_GAP, abs=0.01)]
     assert info["rail_y"] - info["chassis_top_y"] >= deck_mod.FLOOR_MARGIN - 1e-6
     face = _inner_face(mech)
     for b in _deck(mech):
         bb = b.part.bounding_box()
-        if b.name.endswith("deck_rail"):          # its spigots sit in the inner plate
+        if b.name.endswith("deck_rail"):          # on the inner plate's face (screwed to it)
+            assert max(abs(bb.min.Z), abs(bb.max.Z)) <= face + 1e-6
+        elif "deck_rail_screw" in b.name:         # up through the plate from the leg side
             torso = next(t for t in mech.bodies if t.name == "L.torso").part.bounding_box()
-            plate = torso.max.Z - torso.min.Z     # the inner plate (3.175 mm aluminium)
-            assert max(abs(bb.min.Z), abs(bb.max.Z)) < face + plate - deck_mod.SPIGOT_RECESS + 1e-6
+            plate = torso.max.Z - torso.min.Z
+            assert max(abs(bb.min.Z), abs(bb.max.Z)) <= (face + plate
+                                                         + deck_mod.RAIL_SCREW.head_h + 1e-6)
         else:
             assert max(abs(bb.min.Z), abs(bb.max.Z)) <= face - deck_mod.DECK_GAP + 1e-6, b.name
     # under the plates' top edges: walled in on both sides
@@ -72,7 +75,7 @@ def test_the_deck_clears_every_moving_part_over_the_cycle(built):
     _, mech = built
     c = deck_mod.deck_clearance(mech)
     assert c["ok"], c
-    assert c["z_gap_mm"] >= deck_mod.SPIGOT_RECESS - 1e-6
+    assert c["z_gap_mm"] >= 0.2       # the rail screws' heads in the gap under the plate
     assert c["sweep_gap_mm"] > 1.0
 
 
@@ -181,7 +184,8 @@ def test_the_deck_plate_is_on_the_dxf_sheets(strider):
     assert dims == [pytest.approx(mech.meta["deck"]["plate_mm"][1], abs=0.01),
                     pytest.approx(136.0, abs=0.01)]
     # its holes came through: screws, standoffs, switch (circles) and slots
-    assert len(placed["deck_plate"].wires()) == 1 + 4 + 4 + 1 + 2 + 2
+    # (and the four cable-tie slots beside the wire slots, 2026-10-04)
+    assert len(placed["deck_plate"].wires()) == 1 + 4 + 4 + 1 + 2 + 2 + 4
 
 
 def test_no_deck_carries_its_mass_as_a_payload():

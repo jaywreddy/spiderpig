@@ -30,9 +30,16 @@ KEYS = ("rod", "bolt", "bearing", "bushing")
 T = 1.0
 
 
+NO_GAPS = ("bolt", "bearing", "bushing", "chicago_bushing")
+
+
 def _config(key: str, **kw) -> BuildConfig:
+    """(2026-10-04: the default single-plate crank plans its heads in clearance gaps, which
+    the bolt and insert pivots aren't built for: they take the keyed crank, a full-layer
+    plan, as before.)"""
+    crank = {"crank": "keyed"} if key in NO_GAPS else {}
     return BuildConfig(**{"linkage": "klann", "module": "single", "robot": False, "pin": key,
-                          "pillar": key, **kw})
+                          "pillar": key, **crank, **kw})
 
 
 def _vol(a, b) -> float:
@@ -243,7 +250,7 @@ def test_spacers_and_retainers_are_what_the_key_says(side):
         col = Column.of(build, g)
         if key in ("rod", "bolt"):
             assert {f"ring{k}" for k in col.between} == {n for n in fabs if n.startswith("ring")}
-            assert all(fabs[n] == "laser" for n in fabs if n.startswith("ring"))
+            assert all(fabs[n] == "printed" for n in fabs if n.startswith("ring"))
         else:
             assert {f"sleeve{r[0]}" for r in col.runs} == {n for n in fabs if "sleeve" in n}
             assert all(fabs[n] == "printed" for n in fabs if "sleeve" in n)
@@ -333,7 +340,10 @@ def test_mixed_constructions_plan_and_build(pin, pillar):
 def test_quad_plans_with_every_construction():
     heights = {}
     for key in ("printed", *KEYS):
-        cfg = BuildConfig(linkage="klann", module="quad", robot=False, pin=key, pillar="printed")
+        # the keyed crank (full layers): the bolt and insert pins aren't built for the
+        # single-plate crank's clearance gaps (NO_GAPS), and one crank keeps it comparable
+        cfg = BuildConfig(linkage="klann", module="quad", robot=False, pin=key, pillar="printed",
+                          crank="keyed")
         tmpl = template_for(cfg)
         plan = design_side(tmpl, cfg).plan
         assert verify_plan(plan, tmpl) == [], key

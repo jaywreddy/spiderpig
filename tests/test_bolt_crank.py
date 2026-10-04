@@ -63,8 +63,11 @@ def test_joint_rules_for_the_router(design):
     from spiderpig.construction.route import joint_rules
     from spiderpig.fabricate import side_problem
 
+    # the two-plate stack crank: an acrylic crank sheet (the single aluminium webs' rules:
+    # test_single_web_rules_for_the_router)
     ctx, groups, problem = side_problem(tmpl, BuildConfig(linkage="klann", module="single",
-                                                          robot=False, crank="bolt"))
+                                                          robot=False, crank="bolt",
+                                                          crank_sheet="acrylic_3mm"))
     crank = next(g for g in groups if g.name == "crank")
     rules = joint_rules(crank.construction, ctx, crank.dims(ctx))
     for flag in ("two_layer_top", "two_layer_bottom", "tip", "low_count", "share_stack"):
@@ -76,6 +79,27 @@ def test_joint_rules_for_the_router(design):
     for n, m in rules.spans.items():
         for low in range(4):
             assert bool(m >> (4 * low) & 1) == (c.fit(n - 4, low, ctx.pitch) is not None)
+
+
+def test_single_web_rules_for_the_router():
+    """On an aluminium crank sheet the bolt crank is single plates (2026-10-04): chains share
+    a web or a journal standoff joins them, never a journal plate; its screw heads are gap
+    pieces the router keeps clear (one per crank point, the horn screws', one at O)."""
+    from spiderpig.construction.route import joint_rules
+    from spiderpig.fabricate import side_problem, template_for
+
+    cfg = BuildConfig(linkage="klann", module="single", robot=False, crank="bolt")
+    ctx, groups, problem = side_problem(template_for(cfg), cfg)
+    crank = next(g for g in groups if g.name == "crank")
+    assert crank.construction.single
+    rules = joint_rules(crank.construction, ctx, crank.dims(ctx))
+    assert rules.j_last
+    assert not rules.two_layer_top
+    assert not rules.two_layer_bottom
+    assert rules.gap_head > 0
+    assert rules.horn_heads
+    assert problem.spec.heads == "gap"
+    assert len(problem.router.gap_pieces) == problem.router.n + len(rules.horn_heads) + 1
 
 
 def test_capacity_per_element_and_no_post_shell():
@@ -166,7 +190,7 @@ def test_the_chains_rule_the_thinner_sizes_out():
     planner starts there; the keyed crank's rules give none."""
     from spiderpig.fabricate import side_problem, template_for
 
-    cfg = BuildConfig(linkage="klann", module="quad", robot=False)
+    cfg = BuildConfig(linkage="klann", module="quad", robot=False, crank_sheet="acrylic_3mm")
     _, _, problem = side_problem(template_for(cfg), cfg)
     assert problem.spec.min_top == 29
     assert "4 crankpin chains, each at least 8 layers" in problem.floor

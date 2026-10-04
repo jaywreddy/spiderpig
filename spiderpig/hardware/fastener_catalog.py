@@ -69,7 +69,8 @@ register(
 # fetch are quoted as the search result showed them and stay ``verified=False``.
 # ---------------------------------------------------------------------------
 
-CHICAGO_LENGTHS: tuple[float, ...] = (4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 30)
+CHICAGO_LENGTHS: tuple[float, ...] = (4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 30, 35, 40, 45,
+                                      50)
 """Barrel lengths under the head (mm) of the M3 sets: Harfington's Phillips/slotted 18-8
 listing (p-1528133, fetched 2026-10-03) offers 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25,
 30, 35, 40, 45 and 50 mm; 2 mm steps from 6 to 22 mm."""

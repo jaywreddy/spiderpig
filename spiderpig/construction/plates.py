@@ -20,7 +20,7 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
-from spiderpig.shapes import Rect, box, disc, plate, union
+from spiderpig.shapes import Rect, box, cut_holes, disc, pill, plate, union
 from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, body_class
 
 SOCK_T = 1.5            # a TPU foot sock's wall round the toe (mm)
@@ -49,6 +49,38 @@ def chords(o, pillars) -> list[tuple]:
         if 1e-6 < math.degrees(gap) <= CHORD_MAX_DEG:
             out.append((q, r))
     return out
+
+
+CORNER_R = 1.5          # a lightening pocket's inside corners (SendCutSend cuts 0.8 mm)
+
+
+def window(part, tri, r: float, z0: float, z1: float):
+    """``part`` with the triangle ``tri`` (O and two pillars) filled and a lightening pocket
+    cut in it: the triangle shrunk by ``r`` (the arms' and the chord's half-width), its
+    corners rounded to :data:`CORNER_R`. A pocket too small for that stays filled."""
+    from build123d import Polygon, offset
+
+    pts = [tuple(map(float, q)) for q in tri]
+    area = abs((pts[1][0] - pts[0][0]) * (pts[2][1] - pts[0][1])
+               - (pts[2][0] - pts[0][0]) * (pts[1][1] - pts[0][1])) / 2
+    if area < 1e-6:
+        return part
+    face = Polygon(*pts, align=None)
+    filled = union([part, _prism(face, z0, z1)])
+    try:
+        inner = offset(face, -(r + CORNER_R))
+        inner = offset(inner, CORNER_R)
+    except Exception:          # noqa: BLE001 - nothing left inside: the window stays filled
+        return filled
+    if not getattr(inner, "area", 0) or inner.area < 4 * CORNER_R ** 2:
+        return filled
+    return filled - _prism(inner, z0, z1)
+
+
+def _prism(face, z0: float, z1: float):
+    from build123d import Pos, extrude
+
+    return Pos(0, 0, z0) * extrude(face, z1 - z0)
 
 
 def foot_links(topo, lk) -> list[tuple[str, str, str]]:
@@ -159,11 +191,17 @@ class FramePlates(Group):
         arms = [(o, q, p.frame_radius) for q in pillars]
         arms += [(a, b, p.frame_radius) for a, b in chords(o, pillars)]
         frame = topo.frame_bodies[0]
+        tris = [(o, a, b) for a, b in chords(o, pillars)]
         for key, layer, name in ((FRAME_INNER, build.top, frame),
                                  (FRAME_OUTER, 0, "frame_outer")):
             z0, z1 = build.z(layer)
-            pills = arms + done.pads.get(key, [])
-            part = plate(pills, z0, z1, done.cuts.get(key, []), discs=[(o, p.frame_radius)])
+            part = plate(arms, z0, z1, discs=[(o, p.frame_radius)])
+            for tri in tris:        # the window an arm pair and its chord close: a lightening
+                part = window(part, tri, p.frame_radius, z0, z1)    # pocket, corners rounded
+            extra = [pill(a, b, r, z0, z1) for a, b, r in done.pads.get(key, [])]
+            if extra:
+                part = union([part, *extra])
+            part = cut_holes(part, done.cuts.get(key, []), z0, z1)
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
                                        sheet=build.ctx.sheet("frame")))
         return out

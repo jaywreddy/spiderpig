@@ -107,7 +107,10 @@ class StandoffAxle:
     min_segment: float = 12.0        # thread for the end screw and the stud in each end
     min_engage: float = 4.0          # M4 thread in a standoff's end
     tighten_nm: float = 0.8          # the end screws
-    splice_nm: float = 0.4           # a splice's segments turned together by hand
+    splice_nm: float = 1.0           # a splice's segments turned together on the stud, each
+    #                                  held in soft-jaw pliers (round standoffs have no flats):
+    #                                  the "supported splice" of 2026-10-04 (0.4, finger tight,
+    #                                  failed the Strider quad's jam); UNVERIFIED
     shim_key: str = "shim_din988_4x8"   # a splice plate: steel shims stacked to the layer
     set_play: float = 0.1            # axial play of the column (plates touch; assumed)
     washer_key: str = "m4_washer"
@@ -209,6 +212,8 @@ class StandoffAxle:
     max_long: float = 0.8            # a segment may be this much longer than its gap (the
     #                                  column then holds the plates that far apart: axial play)
     max_short: float = 0.1           # or this much shorter (the plates' and rings' tolerance)
+    max_shims: float = 2.0           # or shorter by shims, where its upper end's layer is a
+    #                                  spacer (its sleeve shortened for them), not a link
 
     def splices(self, links: list[int] | set[int], top: int, pitch: float,
                 lo: int = 0, layout=None, air=None) -> list[int] | None:
@@ -225,11 +230,13 @@ class StandoffAxle:
         got = _splices(self, frozenset(links), top, pitch, lo, zs)
         return None if got is None else list(got)
 
-    def segment(self, gap: float) -> float | None:
+    def segment(self, gap: float, shims: bool = False) -> float | None:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
-        ``max_long`` over, the nearest), ``None`` when none is."""
+        ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, DIN 988
+        shims taking the rest up at its upper end), ``None`` when none is."""
+        short = self.max_shims if shims else self.max_short
         ok = [L for L in self.lengths() if self.min_segment - EPS <= L
-              and gap - self.max_short - EPS <= L <= gap + self.max_long + EPS]
+              and gap - short - EPS <= L <= gap + self.max_long + EPS]
         return min(ok, key=lambda L: (abs(L - gap), L)) if ok else None
 
     def _splices(self, links, top: int, pitch: float, lo: int,
@@ -255,7 +262,7 @@ class StandoffAxle:
 
         def fits(sp) -> bool:
             faces = [lo, *sp, top]
-            return all(self.segment(gap(a, b)) is not None
+            return all(self.segment(gap(a, b), b - 1 > a and b - 1 not in links) is not None
                        for a, b in itertools.pairwise(faces))
 
         za, zb = lo + 0.5, top - 0.5                # the column's ends (layer units)
@@ -303,13 +310,15 @@ class StandoffAxle:
                             name="6 mm Al standoff (6061, as a 6 x 3.3 tube)")
 
     def splice_preload_n(self) -> float:
-        """The splice's clamp: the two segments screwed together on the stud by hand (round
-        standoffs have no flats for a spanner: ``splice_nm``, ``T / 0.2 d``)."""
+        """The splice's clamp: the two segments screwed together on the stud, each held in
+        soft-jaw pliers (round standoffs have no flats for a spanner: ``splice_nm``, ``T /
+        0.2 d``)."""
         return self.splice_nm / (0.2 * 0.004)
 
     def splice_basis(self) -> str:
-        return (f"{self.splice_preload_n():.0f} N: the segments turned together by hand to "
-                f"{self.splice_nm:g} N·m on steel shims (UNVERIFIED: the test build)")
+        return (f"{self.splice_preload_n():.0f} N: the segments turned together to "
+                f"{self.splice_nm:g} N·m in soft-jaw pliers on steel shims, threadlocked "
+                "(UNVERIFIED: the test build)")
 
     def splice_capacity_nmm(self) -> float:
         """The moment (N·mm) that starts to open a splice: the clamp's preload
@@ -379,10 +388,34 @@ class StandoffAxle:
         for a, b in zip(faces, faces[1:], strict=False):
             z0, z1 = build.z(a)[1], build.z(b)[0]
             span = z1 - z0 - column_air(build, group, a + 1, b - 1)
-            length = self.segment(span)
+            free = b - 1 > a and b - 1 not in col.links
+            length = self.segment(span, free)
             if length is None:
                 raise ConstructionError(f"{group.name}: no stock standoff fits {span:.2f} mm")
             long += max(0.0, length - span)
+            short = span - length
+            if short > self.max_short + EPS:
+                # shims under the face over it, in a spacer layer whose sleeve they shorten
+                sh = self.splice_shims(round(short, 1))
+                t = sum(sh)
+                z1 = min(z1, build.z(b - 1)[1])     # in the spacer layer, under any gap
+                zs0 = z1 - t
+                out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
+                                                                    self.stud_hole, zs0, z1),
+                                           host, fab="purchased", bom_key=self.shim_key,
+                                           color=STEEL))
+                if len(sh) > 1:
+                    out.extras.append(BomLine(self.shim_key, len(sh) - 1,
+                                              f"{group.name}: {t:.1f} mm under layer {b}"))
+                sleeve = f"{stem}_ring{b - 1}"
+                for i, body in enumerate(out.bodies):
+                    if body.name == sleeve:
+                        bb = body.part.bounding_box()
+                        r = (bb.max.X - bb.min.X) / 2
+                        out.bodies[i] = hardware(sleeve, ring(xy, 2 * r, self.od + self.ring_fit,
+                                                              bb.min.Z, min(bb.max.Z, zs0)),
+                                                 host, fab="printed", color=SLEEVE_COLOR)
+                z1 = zs0
             seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, 2.0, z0 - 1, z1 + 1)
             out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                        bom_key=gobilda_1501(length), color=ALU))

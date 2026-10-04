@@ -154,7 +154,7 @@ for _L in GOBILDA_LENGTHS:
               "(240 MPa): conservative for a part tapped only at its ends.",
     ))
 
-M4_BHCS_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 16)
+M4_BHCS_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 16)
 M4_SET_LENGTHS: tuple[float, ...] = (8, 10, 12, 16)
 
 

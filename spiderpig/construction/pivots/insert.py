@@ -23,6 +23,7 @@ motion.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 from spiderpig.construction.axle import AxleDims, AxleGroup, flange_sides
 from spiderpig.construction.base import Build, ConstructionError, Context, Realized, hardware
@@ -61,6 +62,8 @@ class InsertDims:
 @dataclass(frozen=True)
 class InsertAxle:
     """A flanged bearing or bushing in every link, on a 3 mm rod with printed sleeves."""
+
+    gaps: ClassVar[bool] = False    # its retainers assume full layers (no clearance gaps)
 
     key: str
     label: str

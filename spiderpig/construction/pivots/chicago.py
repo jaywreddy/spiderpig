@@ -213,9 +213,17 @@ class ChicagoShaft:
             stack = layout.z(max(links))[1] - layout.z(min(links))[0]
             if air is not None:         # its own parts' stack: the barrel closes the air
                 stack -= air(min(links), max(links))
-        if stack + self.washer_t + self.min_play > max(CHICAGO_LENGTHS) + EPS:
+        need = stack + self.washer_t + self.min_play
+        if need > max(CHICAGO_LENGTHS) + EPS:
             raise Unbuildable(f"no stock Chicago screw spans its {stack:g} mm stack (longest "
                               f"{max(CHICAGO_LENGTHS):g} mm)")
+        length = next(L for L in CHICAGO_LENGTHS if need - EPS <= L)
+        it = self.item()
+        room = 2 * pitch - float(it["head_h"]) - float(it["screw_head_h"]) - self.washer_t
+        if length - need > max(room, 0.0) + max(self.shim_steps) + EPS:
+            # the longer barrels come in 5 mm steps: more shims than its end slots hold
+            raise Unbuildable(f"no stock Chicago screw fits its {stack:g} mm stack: a "
+                              f"{length:g} mm barrel leaves {length - need:.1f} mm of shims")
 
     def fit(self, stack: float, pitch: float, extra_hi: float = 0.0,
             extra_lo: float = 0.0, *, slot_hi: float | None = None,

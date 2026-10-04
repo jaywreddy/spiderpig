@@ -103,7 +103,7 @@ def test_chicago_catalog_and_refusals():
         with pytest.raises(ConstructionError, match="link pin only"):
             c.dims(ctx, True)
     with pytest.raises(ConstructionError, match="no stock Chicago screw"):
-        ChicagoShaft().fit(40.0, 3.0)
+        ChicagoShaft().fit(60.0, 3.0)
 
 
 # -- built on the Klann single ------------------------------------------------------------------

@@ -34,12 +34,13 @@ def test_a_splice_goes_where_the_moment_is_least_among_stock_lengths():
     s = StandoffAxle()
     sp = s.splices({3, 9, 12}, top=23, pitch=PITCH)           # 66 mm: one splice
     assert len(sp) == 1
-    # goBILDA sells 12, 18, 24, 27, 30, 36, 42, 48, 54, 60 mm (of the 3 mm multiples): one
-    # splice cuts 66 mm into two of them only at layer 10 (27 + 36) or 13 (36 + 27); 13,
-    # past the last link, sees less moment
-    assert sp == [13]
+    # goBILDA's stock lengths, and since 2026-10-04 a segment may also be up to 2 mm short
+    # where DIN 988 shims fit under its upper face (a spacer layer, not a link): layer 18,
+    # far past the last link, sees the least moment of the splices that fit
+    assert sp == [18]
     faces = [0, *sp, 23]
-    assert all((b - a - 1) * PITCH in s.lengths() for a, b in zip(faces, faces[1:], strict=False))
+    for a, b in zip(faces, faces[1:], strict=False):
+        assert s.segment((b - a - 1) * PITCH, b - 1 not in {3, 9, 12}) is not None
 
 
 def test_only_lengths_gobilda_sells():
@@ -116,8 +117,10 @@ def test_the_section_against_printed():
 
 
 def test_splice_capacity_is_the_gapping_moment():
+    """The hand-tight preload of two round standoffs on steel shims (2026-10-04: the end
+    screws' 0.8 N·m on an acrylic ring overclaimed it)."""
     s = StandoffAxle()
-    f = 0.8 / (0.2 * 0.004)
+    f = 0.4 / (0.2 * 0.004)
     assert s.splice_capacity_nmm() == pytest.approx(f * (9 + 2.15 ** 2) / 12)
 
 
