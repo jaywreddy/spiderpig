@@ -295,18 +295,21 @@ def ring_z(build: Build, k: int) -> tuple[float, float]:
 
 
 def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaft_d: float,
-                host: str, stem: str, color: str = "#f2f2f2") -> float:
+                host: str, stem: str, color: str = "#f2f2f2",
+                trim: dict[int, float] | None = None) -> float:
     """The washers an axle carries through every clearance gap of its column (the plan's):
     a PTFE washer and DIN 988 shims stacked to the gap (:func:`materials.washer_stack`),
-    one body per gap (its first washer's BOM line, the rest as extras). Returns the play
-    the stacks leave in all (mm)."""
+    one body per gap (its first washer's BOM line, the rest as extras). ``trim[k]``: the
+    height at the top of gap ``k`` something else of the axle's takes (a standoff
+    column's end shims), so its washers stack under it. Returns the play the stacks leave
+    in all (mm)."""
     from spiderpig.materials import washer_od, washer_stack
 
     xy = xy_of(build, group)
     play = 0.0
     for k in col.washers:
-        g = build.plan.gaps.get(k, 0.0)
-        if g <= 0:
+        g = build.plan.gaps.get(k, 0.0) - (trim or {}).get(k, 0.0)
+        if g <= 1e-6:
             continue
         items, left = washer_stack(shaft_d, g)
         play += left

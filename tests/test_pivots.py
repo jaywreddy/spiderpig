@@ -20,7 +20,13 @@ from spiderpig.construction.base import FRAME_INNER, FRAME_OUTER, Build, Params,
 from spiderpig.construction.contract import check_side
 from spiderpig.construction.pivots import BEARING, BUSHING, BoltAxle, InsertAxle, RodAxle
 from spiderpig.construction.pivots.common import Column
-from spiderpig.fabricate import design_side, fabricate, fabricate_side, template_for
+from spiderpig.fabricate import (
+    design_side,
+    fabricate,
+    fabricate_side,
+    side_problem,
+    template_for,
+)
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
 from spiderpig.stack import Layout, Unbuildable, verify_plan
@@ -324,7 +330,12 @@ def test_flanges_point_at_free_faces(side):
 @pytest.mark.slow
 @pytest.mark.parametrize(("pin", "pillar"), [("bearing", "printed"), ("rod", "bolt")])
 def test_mixed_constructions_plan_and_build(pin, pillar):
-    cfg = BuildConfig(linkage="klann", module="single", robot=False, pin=pin, pillar=pillar)
+    # the keyed crank (full layers): the bearing pin and the bolt pillar aren't built for
+    # the single-plate crank's clearance gaps, which the bolt crank refuses by name
+    bolt = BuildConfig(linkage="klann", module="single", robot=False, pin=pin, pillar=pillar)
+    with pytest.raises(ConstructionError, match="isn't built for gaps"):
+        side_problem(template_for(bolt), bolt)
+    cfg = replace(bolt, crank="keyed")
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
     assert verify_plan(design.plan, tmpl) == []
@@ -386,22 +397,29 @@ def test_the_default_pin_is_the_chicago_screw_on_standoff_pillars():
 
 @pytest.mark.slow
 @pytest.mark.parametrize(("linkage", "module", "crank", "max_layers"),
-                         [("strider", "double", "keyed", 18), ("klann", "quad", "keyed", 16),
-                          ("strider", "double", "printed", 16), ("klann", "quad", "printed", 12)])
+                         [("strider", "double", "keyed", 19), ("klann", "quad", "keyed", 17),
+                          ("strider", "double", "printed", 17), ("klann", "quad", "printed", 13)])
 def test_the_default_designs_plan_quickly_with_rod_pins(linkage, module, crank, max_layers):
     """Rod pins (the default before the Chicago screw) with printed pillars plan the Strider
-    double at 18 layers and the Klann quad at 16 with the keyed crank (its two-layer top
-    webs; 16 and 12 with the printed one) within the default budget (seconds, proven; a
+    double at 19 layers and the Klann quad at 17 with the keyed crank (its two-layer top
+    webs; 17 and 13 with the printed one) within the default budget (seconds, proven; a
     bolt pin's two-layer nut needs 19 on the Strider at ten times the budget), with a
     pin's links stacked with at most one
     ring between them (Klann: adjacent, a 3 mm span; Strider's three-link J7 has one ring)
-    and a cut list of a few repeated lengths in the BOM."""
+    and a cut list of a few repeated lengths in the BOM. Each is a layer more than before
+    2026-10-04: the glue-free chassis puts screws up through the inner plate from the leg
+    side (the servo's four front screws, the frame ties', the deck rails'), and their heads
+    take the layer under the plate (sunk: the default ``heads="best"`` plans no gaps when
+    a plan without them exists)."""
     cfg = BuildConfig(linkage=linkage, module=module, robot=False, crank=crank, pin="rod",
                       pillar="printed")
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
     assert design.plan.top + 1 <= max_layers
     assert design.plan.optimal
+    under = {s.label for s in design.plan.shapes("drive", design.plan.top - 1)}
+    assert {"frame tie screw head", "deck rail screw head"} <= under
+    assert not [m for m, k in design.plan.layers.items() if k == design.plan.top - 1]
     assert verify_plan(design.plan, tmpl) == []
     layers = design.plan.layers
     for g in design.groups:

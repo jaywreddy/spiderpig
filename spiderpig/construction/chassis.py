@@ -17,12 +17,13 @@ from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fasteners import Screw, parse
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
-from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, ring, union
+from spiderpig.shapes import Cut, box, cut_holes, disc, ring, union
 
 REAR_ENGAGE = 4.0        # target thread engagement of a rear screw in its servo's pilot (mm)
 MIN_ENGAGE = 2.0         # least thread engagement that still holds
 HEAD_CLEARANCE = 0.3     # radial clearance around a screw head in a laser-cut recess (mm)
 RELIEF_GROW = 0.5        # a relief cut-out is this much bigger than the bump, per side (mm)
+RELIEF_CORNER = 1.0      # its inside corners' radius (SendCutSend cuts 0.8 mm in aluminium)
 MODEL_GAP = 0.01         # radial gap between modelled parts that touch in reality (mm)
 EPS_CH = 1e-6
 CHASSIS_COLOR = "#eb6834"
@@ -202,25 +203,91 @@ def tie_pad_r(ctx: Context) -> float:
     return max(d.column + 1.0, d.hole_d / 2 + 2 * centre_t(ctx) + 0.1)
 
 
-def tie_points_ctx(ctx: Context) -> list[tuple[float, float]]:
-    """World XY of the frame ties: beside the servo's long sides, near its ends; a tie whose
-    head would meet the horn's hole or a pillar's end in the inner plate is dropped."""
+TIE_SHIFT_STEP = 0.25    # a tie moves along the servo's long side in these steps (mm) ...
+TIE_SHIFT_MAX = 6.0      # ... at most this far, to keep its hole 2 x t off its neighbours'
+
+
+def _min_edge(key: str | None) -> float:
+    """The service's least hole-to-edge distance in sheet ``key`` (2 x t in metal)."""
+    if key is None:
+        return 0.0
+    from spiderpig.materials import sheet
+
+    return sheet(key).min_edge
+
+
+def tie_neighbours(ctx: Context) -> list[tuple[float, float, float, float]]:
+    """The holes a tie's hole shares a plate with, in the left servo's frame: ``(x, y,
+    radius, least web)``: the servo's front screw holes in the inner plate, and both
+    servos' rear screw holes and head recesses in the centre plates (each servo's on its
+    own +y side, the right one's mirrored), each with the service's hole-to-edge rule for
+    its plate (2 x t, :attr:`materials.Sheet.min_edge`)."""
+    from spiderpig.materials import sheet
+
+    spec = ctx.servo
+    frame_key = ctx.sheet("frame")
+    centre_key = centre_sheet(ctx)
+    min_hole = sheet(frame_key).min_hole if frame_key else 0.0
+    out = [(h.x, h.y, max(h.d, min_hole + 0.025) / 2, _min_edge(frame_key))
+           for h in spec.mount]
+    for h in spec.rear_mount:
+        if h.y <= 1e-6:
+            continue
+        parsed = parse(h.screw or "m2_self_tap_6")
+        r = max(h.d, (parsed[0].head_d + 2 * HEAD_CLEARANCE) if parsed else h.d) / 2
+        out += [(h.x, h.y, r, _min_edge(centre_key)), (h.x, -h.y, r, _min_edge(centre_key))]
+    return out
+
+
+def tie_locals(ctx: Context) -> list[tuple[float, float]]:
+    """The frame ties' places in the left servo's frame (before the inner plate's keep-outs:
+    :func:`tie_points_ctx`): beside the servo's long sides near its ends, each moved along
+    the side (outward first, at most :data:`TIE_SHIFT_MAX`) until its hole is the service's
+    two thicknesses off every hole it shares a plate with (:func:`tie_neighbours`; the
+    design review's warning level); where none is, the unmoved place (the audit warns)."""
     spec, p, d = ctx.servo, ctx.params, tie_dims(ctx)
-    frame = servo_frame_ctx(ctx)
     x0, x1, y0, y1 = _footprint(spec)
     c = max(d.column, d.head_r)
     yt = y1 + p.margin + c
     xs = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
+    near = tie_neighbours(ctx)
+    r = d.hole_d / 2
+    n = int(round(TIE_SHIFT_MAX / TIE_SHIFT_STEP))
+    out = []
+    for x in xs:
+        outward = -1.0 if x < (x0 + x1) / 2 else 1.0
+        steps = [0.0] + [s * k * TIE_SHIFT_STEP for k in range(1, n + 1)
+                         for s in (outward, -outward)]
+        for y in (yt, -yt):
+            best = next((x + dx for dx in steps
+                         if all(math.hypot(x + dx - hx, y - hy) >= r + hr + web + 0.05
+                                for hx, hy, hr, web in near)), x)
+            out.append((best, y))
+    return out
+
+
+def tie_points_ctx(ctx: Context) -> list[tuple[float, float]]:
+    """World XY of the frame ties (:func:`tie_locals`); a tie whose head would meet the
+    horn's hole or a pillar's end in the inner plate is dropped."""
+    p, d = ctx.params, tie_dims(ctx)
+    frame = servo_frame_ctx(ctx)
     keep_out = seat_keepouts(ctx)
     points = []
-    for x in xs:
-        for y in (yt, -yt):
-            xy = frame.xy(x, y)
-            if all(math.dist(xy, q) >= d.head_r + r + p.min_wall for q, r in keep_out):
-                points.append(xy)
+    for x, y in tie_locals(ctx):
+        xy = frame.xy(x, y)
+        if all(math.dist(xy, q) >= d.head_r + r + p.min_wall for q, r in keep_out):
+            points.append(xy)
     if len(points) < 2:
         raise ConstructionError("fewer than two frame ties fit beside the servo")
     return points
+
+
+def recess_wall(ctx: Context, head_d: float) -> float:
+    """The centre plates' outline round a rear screw's head recess: the recess and two
+    thicknesses of the centre plates' sheet (the service's hole-to-edge rule), at least
+    the old wall (``min_wall``)."""
+    rec = head_d / 2 + HEAD_CLEARANCE
+    return max(rec + ctx.params.min_wall, rec + _min_edge(centre_sheet(ctx)) + 0.1)
 
 
 def tie_points(build: Build, drive=None) -> list[tuple[float, float]]:
@@ -516,7 +583,7 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
     p = ctx.params
     bodies: list[Body] = []
     x0, x1, y0, y1 = _footprint(ctx.servo)
-    rr = (rs.head_d / 2 + HEAD_CLEARANCE if rs else 0.0) + p.min_wall   # wall round a recess
+    rr = recess_wall(ctx, rs.head_d) if rs else p.min_wall   # 2 x t round a recess
     xs, ys = [x0, x1], [y0, y1]
     for _, xy, _, _, _ in screws:
         lx, ly = left.local(xy)
@@ -539,11 +606,15 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
         z0 = -half + k * pitch
         z1 = z0 + pitch
         cuts: list = []
+        pockets = []
         for rf, rect, zr in reliefs:
             if _overlaps((z0, z1), zr):
+                # its corners rounded past the service's inside radius, grown so the rounded
+                # pocket still holds the bump's rectangle
                 rx0, rx1, ry0, ry1 = rect
-                cuts.append(Rect(rf.xy((rx0 + rx1) / 2, (ry0 + ry1) / 2),
-                                 (rx1 - rx0, ry1 - ry0), rf.angle))
+                g = RELIEF_CORNER * (1 - math.sqrt(0.5)) + 0.05
+                pockets.append(_rounded_rect(rf, rx0 - g, rx1 + g, ry0 - g, ry1 + g,
+                                             RELIEF_CORNER, z0 - 1.0, z1 + 1.0))
         for _, xy, head, shank, h in screws:
             if _overlaps((z0, z1), tuple(sorted(shank))):
                 cuts.append(Cut(xy, max(h.d, min_hole)))
@@ -552,6 +623,8 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
         cuts += [Cut(xy, tie_d) for xy in tie_xy]
         part = _rounded_rect(left, min(xs), max(xs), min(ys), max(ys), corner, z0, z1)
         part = cut_holes(part, cuts, z0, z1)
+        if pockets:
+            part = part - union(pockets)
         # A servo's face is flat round its own mounting holes (the relief rectangles are
         # bounding boxes of round features): keep a seat for the screw head there.
         seats = [disc(xy, rs.head_d / 2 + HEAD_CLEARANCE, z0, z1) - disc(xy, h.d / 2, z0, z1)

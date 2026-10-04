@@ -36,12 +36,25 @@ through: conservative for a part tapped at its ends) of 6061-T6, 240 MPa; the co
 a beam **per bay** between its supports, the frame plates' faces (``supports`` in the
 note). A splice plate is a joint, not a support: nothing ties it sideways to the frame,
 so it doesn't shorten the span. Its capacity, the moment that starts to open the
-clamped end faces (the hand-tight preload x ``(ro^2 + ri^2) / 4 ro`` of the 6 / 4.3 mm
+clamped end faces (the clamp's preload x ``(ro^2 + ri^2) / 4 ro`` of the 6 / 4.3 mm
 annulus, on steel shims: an honest clamp; until 2026-10-04 it took the end screws' preload
 on an acrylic ring, which the end screws don't load and acrylic creeps out of), is
 reported per splice (``splices`` in the note) and checked against the bay's moment
 there. (A splice layer tied to the frame, a mid frame plate, would make it a support and
 halve the span; no design here has a layer free for one.)
+
+**The supported splice** (the user's call of 2026-10-04, decision 2): the two segments are
+turned together on the stud to ``splice_nm`` = 1.0 N·m, each held in soft-jaw pliers
+(1250 N, 1.42 N·m to open); finger tight (0.4 N·m, 0.57 N·m to open) failed the Strider
+quad's jam. The figure is accepted UNVERIFIED and **to be tested on the first build**:
+torque a spliced pair to 1.0 N·m in soft jaws, check the jaws leave the 6 mm running
+surface unmarked where a link turns, and load it in bending to the gapping moment.
+
+**Shims.** A segment may be up to ``max_shims`` shorter than its gap where its upper end
+is under a spacer layer: DIN 988 shims sit between its end and the face over it, so the
+column stays one contiguous stack (in the clearance gap under the face when there is one,
+its washers trimmed to make room; else in the spacer layer, whose sleeve they shorten),
+and the end screw or the splice's stud is chosen for the plate plus the shims.
 
 Against the printed 6 mm PETG pillar (50 MPa) the section holds about 4.4 x the
 moment; the pillar review's numbers (``docs/audit/STRENGTH.md``) have it per design.
@@ -328,7 +341,8 @@ class StandoffAxle:
     def splice_basis(self) -> str:
         return (f"{self.splice_preload_n():.0f} N: the segments turned together to "
                 f"{self.splice_nm:g} N·m in soft-jaw pliers on steel shims, threadlocked "
-                "(UNVERIFIED: the test build)")
+                "(the supported splice, accepted 2026-10-04; UNVERIFIED: to be tested on the "
+                "first build)")
 
     def splice_capacity_nmm(self) -> float:
         """The moment (N·mm) that starts to open a splice: the clamp's preload
@@ -394,6 +408,8 @@ class StandoffAxle:
 
         faces = [lo_face, *splices, hi_face]
         segments = []
+        shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
+        trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how much longer the stock segments are than their gaps
         for a, b in zip(faces, faces[1:], strict=False):
             z0, z1 = build.z(a)[1], build.z(b)[0]
@@ -405,11 +421,17 @@ class StandoffAxle:
             long += max(0.0, length - span)
             short = span - length
             if short > self.max_short + EPS:
-                # shims under the face over it, in a spacer layer whose sleeve they shorten
+                # DIN 988 shims between the segment's upper end and the face over it (the
+                # column stays one contiguous stack up to the face): in the clearance gap
+                # under the face where there is one (its washers trimmed to make room),
+                # else, or for what the gap can't take, in the spacer layer under it, whose
+                # sleeve they shorten
                 sh = self.splice_shims(round(short, 1))
                 t = sum(sh)
-                z1 = min(z1, build.z(b - 1)[1])     # in the spacer layer, under any gap
                 zs0 = z1 - t
+                g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
+                if g > 0:
+                    trim[b - 1] = min(t, g)
                 out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
                                                                     self.stud_hole, zs0, z1),
                                            host, fab="purchased", bom_key=self.shim_key,
@@ -421,20 +443,28 @@ class StandoffAxle:
                 for i, body in enumerate(out.bodies):
                     if body.name == sleeve:
                         bb = body.part.bounding_box()
-                        r = (bb.max.X - bb.min.X) / 2
-                        out.bodies[i] = hardware(sleeve, ring(xy, 2 * r, self.od + self.ring_fit,
-                                                              bb.min.Z, min(bb.max.Z, zs0)),
-                                                 host, fab="printed", color=SLEEVE_COLOR)
+                        if zs0 + EPS < bb.max.Z:
+                            r = (bb.max.X - bb.min.X) / 2
+                            out.bodies[i] = hardware(
+                                sleeve, ring(xy, 2 * r, self.od + self.ring_fit, bb.min.Z,
+                                             zs0), host, fab="printed", color=SLEEVE_COLOR)
+                shimmed[b] = t
                 z1 = zs0
             seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, 2.0, z0 - 1, z1 + 1)
             out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                        bom_key=gobilda_1501(length), color=ALU))
             segments.append(length)
-        long += gap_washers(build, group, col, out, self.od, host, stem)
+        long += gap_washers(build, group, col, out, self.od, host, stem, trim=trim)
         w_od, w_id, w_t = self.washer()
         ends = [(lo_face, -1.0, anchored[0]), (hi_face, 1.0, anchored[1])]
         for k, sign, plate in ends:
-            key, L, hd, hh = self.end_screw(build.plan.t(k) if plate else pitch, plate)
+            # through the plate (and any shims under it) into the segment's end
+            grip = (build.plan.t(k) if plate else pitch) + shimmed.get(k, 0.0)
+            got = self.end_screw(grip, plate)
+            if got is None:
+                raise ConstructionError(f"{group.name}: no stock M4 screw takes a {grip:.2f} mm "
+                                        f"grip at layer {k}")
+            key, L, hd, hh = got
             if plate:            # outside the frame plate
                 face = build.z(k)[0] if sign < 0 else build.z(k)[1]
             else:                # in the end layer, on the column's free end
@@ -449,10 +479,17 @@ class StandoffAxle:
                          bom_key=self.washer_key, color=STEEL),
                 hardware(f"{stem}_screw{k}", union([head, shank]), host, fab="purchased",
                          bom_key=key, color=STEEL)]
-        stud_key, stud_len = self.stud(pitch)
         for k in splices:
+            # the stud: through the splice plate (and any shims under it), half in each
+            # segment
+            t = shimmed.get(k, 0.0)
+            got = self.stud(pitch + t)
+            if got is None:
+                raise ConstructionError(f"{group.name}: no stock M4 set screw joins the splice "
+                                        f"at layer {k}")
+            stud_key, stud_len = got
             z0, z1 = build.z(k)
-            zm = (z0 + z1) / 2
+            zm = (z0 - t + z0 + pitch) / 2
             out.bodies.append(hardware(f"{stem}_stud{k}", disc(xy, 3.9 / 2, zm - stud_len / 2,
                                                                zm + stud_len / 2),
                                        host, fab="purchased", bom_key=stud_key, color=STEEL))
@@ -477,6 +514,7 @@ class StandoffAxle:
         note["splices"] = [{"layer": k, "capacity_nmm": round(cap, 1),
                             "basis": self.splice_basis()} for k in splices]
         note["segments_mm"] = segments
+        note["shims_mm"] = {int(k): round(t, 3) for k, t in shimmed.items()}
         out.notes["wobble"] = {group.name: note}
         return out
 

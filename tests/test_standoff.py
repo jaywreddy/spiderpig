@@ -117,11 +117,24 @@ def test_the_section_against_printed():
 
 
 def test_splice_capacity_is_the_gapping_moment():
-    """The hand-tight preload of two round standoffs on steel shims (2026-10-04: the end
-    screws' 0.8 N·m on an acrylic ring overclaimed it)."""
+    """The preload of two round standoffs turned together on steel shims (2026-10-04: the
+    end screws' 0.8 N·m on an acrylic ring overclaimed it). The user's call of 2026-10-04:
+    the **supported splice**, 1.0 N·m with each segment in soft-jaw pliers (finger tight,
+    0.4 N·m, failed the Strider quad's jam), accepted as UNVERIFIED and to be tested on
+    the first build."""
     s = StandoffAxle()
-    f = 0.4 / (0.2 * 0.004)
+    assert s.splice_nm == 1.0
+    f = 1.0 / (0.2 * 0.004)                              # 1250 N
     assert s.splice_capacity_nmm() == pytest.approx(f * (9 + 2.15 ** 2) / 12)
+    assert s.splice_capacity_nmm() == pytest.approx(1419.0, abs=0.1)
+    basis = s.splice_basis()
+    for word in ("UNVERIFIED", "first build", "soft-jaw"):
+        assert word in basis
+    # finger tight is still what it was, so the call is visible in the numbers
+    from dataclasses import replace
+
+    assert replace(s, splice_nm=0.4).splice_capacity_nmm() == pytest.approx(
+        0.4 / (0.2 * 0.004) * (9 + 2.15 ** 2) / 12)
 
 
 @pytest.mark.slow
@@ -134,12 +147,20 @@ def test_the_klann_single_builds_clean_with_standoff_pillars(design, side):
     notes = mech.meta["wobble"]
     pillars = {k: v for k, v in notes.items() if k.startswith("pillar:")}
     assert pillars
-    gap = (d.plan.top - 1) * d.ctx.pitch
+    plan, s = d.plan, StandoffAxle()
+    # between the frame plates' inner faces at the plan's own z (its clearance gaps and
+    # thicker aluminium layers included; since 2026-10-04 the column ends on the inner
+    # plate's face, screwed through it, not glued flush in it)
+    gap = plan.z(plan.top)[0] - plan.z(0)[1]
+    air = sum(max(0.0, plan.t(k) - d.ctx.pitch) for k in range(1, plan.top))
     for v in pillars.values():
         assert v["supports"] == v["anchors"]
-        column = sum(v["segments_mm"]) + len(v["splices"]) * d.ctx.pitch
+        column = (sum(v["segments_mm"]) + sum(v["shims_mm"].values())
+                  + len(v["splices"]) * d.ctx.pitch)
         if v["anchors"] == [0, d.plan.top]:                 # a beam between the plates
-            assert column == pytest.approx(gap + d.ctx.pitch)   # through the inner plate
+            # stock lengths and shims to within the tolerances the column takes
+            assert gap - air - s.max_short - 1e-6 <= column <= gap + s.max_long + 1e-6, \
+                (column, gap)
         else:                                               # a cantilever: to its last link
             assert len(v["anchors"]) == 1
             ks = sorted(v["layers"].values())
@@ -149,3 +170,16 @@ def test_the_klann_single_builds_clean_with_standoff_pillars(design, side):
     keys = {b.bom_key for b in mech.bodies if b.name.startswith("pillar_")}
     assert any(k and k.startswith("gobilda_1501_") for k in keys)
     assert "m4_washer" in keys
+    # each standoff is modelled at its stock length (BOM) or its gap's span, never shorter
+    # than the stock part, and its shims close the column up to the face over it
+    for b in mech.bodies:
+        if b.name.startswith("pillar_") and "_standoff" in b.name:
+            bb = b.part.bounding_box()
+            stock = float(b.bom_key.rsplit("_", 1)[1])
+            least = stock - s.max_short - air - 1e-3
+            assert least <= bb.max.Z - bb.min.Z, b.name
+    for name, v in pillars.items():
+        stem = name.replace(":", "_")
+        for k in v["shims_mm"]:
+            sh = next(b for b in mech.bodies if b.name == f"{stem}_shims{k}")
+            assert pytest.approx(plan.z(int(k))[0], abs=1e-3) == sh.part.bounding_box().max.Z

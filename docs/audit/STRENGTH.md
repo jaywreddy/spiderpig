@@ -106,6 +106,13 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   moment at the splice (`wobble.moment_at_per_newton`), and the splice goes at the fewest
   ring layers where, under the check's unit load patterns on a beam between the column's
   ends, the worst splice sees the least moment.
+  **Since 2026-10-04 (the user's decision 2): the supported splice.** The splice plate is a
+  stack of DIN 988 steel shims and the clamp is the two segments turned together on the
+  stud to 1.0 N·m, each in soft-jaw pliers (1250 N: 1.42 N·m to open; finger tight, 0.4
+  N·m, 0.57 N·m, failed the Strider quad's jam). Accepted UNVERIFIED: **to be tested on the
+  first build** (torque a spliced pair to 1.0 N·m in soft jaws, check the running surface
+  where a link turns is unmarked, load it in bending to the gapping moment). The sweep's
+  tables below predate it (they rate the splices at 1.14 N·m).
 * **Limits**: jam SF < 1 is an **error** (the audit fails, `verify` reports
   `strength` / `joint_overload` with the joint and its fixes as culprits); jam SF < 2
   or walking SF < 3 a **warning**. Each finding names the joint, its links, the case,

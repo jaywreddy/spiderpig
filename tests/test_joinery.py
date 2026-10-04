@@ -127,15 +127,21 @@ def test_link_plates_are_rated_against_their_sheet():
     assert link_rows(cfg, {"source": "fallback"}) == []
 
 
-@pytest.mark.slow
-def test_the_default_robot_has_no_glue_in_its_structure():
-    """Frame ties are standoff chains and screws, the deck rails are screwed, the centre
-    plates are clamped: the only adhesive left is the Chicago barrels' epoxy (and the
-    battery cradle's CA)."""
+@pytest.fixture(scope="module")
+def default_robot():
+    """The default design's robot (the Strider double), built once for this module."""
     from spiderpig.fabricate import fabricate, template_for
 
     cfg = BuildConfig()
-    mech = fabricate(template_for(cfg), cfg)
+    return cfg, fabricate(template_for(cfg), cfg)
+
+
+@pytest.mark.slow
+def test_the_default_robot_has_no_glue_in_its_structure(default_robot):
+    """Frame ties are standoff chains and screws, the deck rails are screwed, the centre
+    plates are clamped: the only adhesive left is the Chicago barrels' epoxy (and the
+    battery cradle's CA)."""
+    cfg, mech = default_robot
     glue = [x for x in mech.bom_extras if x.key in ("ca_glue", "acrylic_cement",
                                                      "epoxy_2part")]
     assert {x.key for x in glue} <= {"epoxy_2part", "ca_glue"}
@@ -149,3 +155,39 @@ def test_the_default_robot_has_no_glue_in_its_structure():
     assert centre
     assert all(b.sheet == mech.meta["centre_plate_sheet"] for b in centre)
     assert math.isfinite(mech.meta["tie_engagement_mm"])
+
+
+@pytest.mark.slow
+def test_the_body_plates_keep_two_thicknesses_round_every_hole(default_robot):
+    """The design review's levels on the body side of the default robot: the frame plates
+    (a boss round every hole) and the centre plates (the ties moved off the servo's screw
+    holes, the outline two thicknesses round each recess, the bump reliefs' corners
+    rounded past SendCutSend's 0.8 mm) have no cut-rule finding at all, not even a
+    warning; nothing anywhere is an error."""
+    from spiderpig.manufacture import check
+
+    cfg, mech = default_robot
+    got = check(mech, cfg.sheet)
+    assert got["errors"] == {}
+    body = [i for i in got["issues"] if i["part"].endswith(("torso", "frame_outer"))
+            or i["part"].startswith("centre_plate")]
+    assert body == []
+    assert mech.meta["centre_plate_sheet"] == "al5052_2p3mm"      # decision 4: 0.090 in
+
+
+def test_a_frame_plate_boss_is_two_thicknesses():
+    from spiderpig.construction.plates import boss_web
+    from spiderpig.materials import sheet
+
+    assert boss_web("al5052_2mm") == pytest.approx(2 * sheet("al5052_2mm").thickness + 0.1)
+    assert boss_web(None) == 0.0
+
+
+def test_the_centre_plates_are_0p090_in():
+    """The user's decision of 2026-10-04 (4): 0.090 in 5052 centre plates on the default
+    servo, the thinnest that seats the most rear screws."""
+    from spiderpig.construction.chassis import _centre_sheet
+    from spiderpig.servos import get
+
+    cfg = BuildConfig()
+    assert _centre_sheet(get(cfg.servo), cfg.frame_sheet, cfg.params.margin) == "al5052_2p3mm"
