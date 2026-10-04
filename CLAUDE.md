@@ -76,14 +76,29 @@ under every run unless the bolt is cut, and nothing is cut. Router rules (`Joint
 `j_last`, `j_spans`, `gap_head`, `horn_heads`): the router's gap pieces (`gap_pieces`,
 blocked by other groups' heads and washers in a gap, keyed by its slot `layer + 0.5`) keep a
 route off gaps a screw head can't use, which is what makes these plans fast (Strider double
-16 layers / 71.9 mm in ~3 s, `klann_lego` quad 14 / 59.8 mm in ~2 s). A single-plate crank
-forces `heads="gap"` for its design (a sunk head would stand in a rider's layer). Its joint
+15 layers / 66.1 mm in ~3 s, `klann_lego` quad 14 / 58.2 mm in ~3 s, on the thinnest sheets). A single-plate crank
+plans its design `heads="gap_sink"` (`stack.HEADS_ORDER`, since 2026-10-04 evening): in gaps
+first (a sunk crank head would stand in a rider's layer), and only when that search gives
+up (below; a full gap search that finds nothing isn't followed by it: no design of the
+2026-10-04 sweep planned that way) with the pivots' heads sunk and the crank's (and the drive's, `stack.GAP_GROUPS`) still in
+their gaps (`heads_claims(keep=...)`, `finalize(sink_all_but=...)`: an axle crossing a crank
+gap carries its washers there). TrotBot's heel and toe plan only that way (14 layers in ~1
+s; in gaps no route keeps the crankpin's washers clear of the pins' caps, and the gap search
+gives up after `stack.GIVE_UP` such layerings with no plan, ~3 s, instead of its 60 s
+deadline). At a leaf the planner routes again round the gaps the plan has where the
+crankpin's run washers met another group's (`JointRules.gap_washer`, `_Search._washer_blocks`,
+`CrankRouter.washer_bit`: bits only the leaf sets, never the search). Its joint
 is a friction clamp, rated in `_web_capacity` (UNVERIFIED coefficients). On an acrylic crank
 sheet (stored designs before 2026-10-04) it is the two-plate stack crank: M6 bolts, head and
 nylock in hex pockets, cemented stacks (`_BoltPlates`, the `two_layer_*`, `tip`,
 `low_count`, `share_stack` rules). Mechanisms default to it too (`config.DEFAULT_CRANKS`,
 2026-10-04): a short crank's top screw head over the hub plate sits in a pocket of the
-printed horn spacer (`DriveGroup.realize`), which resolved the Hoecken pantograph.
+printed horn spacer (`DriveGroup.realize`). The construction a design gets is data
+(`config.default_crank`: `LINKAGE_CRANKS` per linkage, else `DEFAULT_CRANKS` per kind), so
+the hex-standoff crank lands by editing those tables: the mechanisms' sweep of 2026-10-04
+(`docs/audit/STRENGTH.md`) has the bolt crank planning every one-input mechanism at jam SF
+3.57 but `hoecken_pantograph` and `dwell_rocker` (their crankpin M's top screw head needs 2.5
+mm of the 1.83 mm horn spacer), which keep the keyed crank (SF 0.64, an audit error).
 Since 2026-10-04 `StackSpec.max_top` is 60.
 
 **Clearance gaps, layer thicknesses, per-part sheets** (2026-10-04, `stack.finalize`,
@@ -93,7 +108,7 @@ it sits in a thin gap over/under its link's layer, or sinks into the layer besid
 nothing there is in its way (the old full-layer head). An axle claims its washers through
 every gap it crosses. `StackSpec.heads`: "sink" (every head in a layer, no gaps), "gap", or
 "best" (the default: heads sunk; in gaps only when that finds no plan, the user's rule of
-2026-10-04, which restored the suite's time; a single-plate crank plans "gap" directly). The plan's z (`stack.finalize`, also what re-makes a stored plan):
+2026-10-04, which restored the suite's time; a single-plate crank plans "gap_sink", above). The plan's z (`stack.finalize`, also what re-makes a stored plan):
 the heads that can't sink keep gaps, each gap sized to its tallest head (a gap a plate stack
 runs through is a thin sheet's thickness, `materials.gap_options`; else any 0.1 mm of
 washers and DIN 988 shims up to 4 mm), each layer as thick as its thickest plate
@@ -102,11 +117,18 @@ crank's bolts, the stub, the Chicago barrels and the standoff segments are check
 `Layout.final`), and a gap thickened (`_thicker_gaps`) when that lets a stock part fit; a
 layering that doesn't build there is a dead end for the search (`PlanReject`).
 `Layout.z`/`gap_z`/`slot_z`, `StackPlan.gaps`/`thick`/`heads`. Sheets: `BuildConfig.sheet`
-(acrylic, the links, rings, deck), `frame_sheet` and `crank_sheet` (5052 0.125 in),
-`link_sheets` (a Klann variant's foot link in 6061); `Body.sheet` carries it to the mass,
-the BOM (a line per sheet), the DXFs (`layout.save_sheets`: a set per sheet) and the audit's
-cut-rule check (`spiderpig/manufacture.py`: SendCutSend / Ponoko minimum hole, 2 t edge
-distance in metal, minimum part, inside-corner radius; warnings). The Klann variants'
+(acrylic, the links, rings, deck), `frame_sheet` and `crank_sheet` (5052, the thinnest
+that passes: below), `link_sheets` (a Klann variant's foot link in 6061, and `klann_lego`'s
+crank rider b1, the user's decision of 2026-10-04: `materials.LINK_SHEETS`); `Body.sheet`
+carries it to the mass, the BOM (a line per sheet), the DXFs (`layout.save_sheets`: a set
+per sheet) and the cut-rule review (`spiderpig/manufacture.py`: SendCutSend / Ponoko minimum
+hole, edge distance, minimum part, inside-corner radius; levels below; every issue with its
+`why` and `fix`, `manufacture.messages` / `summary`): the audit's problems and warnings, a
+"cut rules" column and a per-part table in `audit.md` (and `manufacture` in `audit.json`),
+`verify` standard's `manufacture.cut_rules` row (errors: the `manufacture` / `cut_rule`
+failure) and soft `manufacture.warnings`, the build report's `cut_rules`
+(`api.BuildReport.cut_rules`, the MCP build's too) and the design card's (`/api/design/{id}`
+`cut_rules`, `api.cut_rules`: from the stored build, never fabricating). The Klann variants'
 quads (`klann_patent`, `klann_lego`, `klann_long_legs`, `klann_high_step`) default to
 phases 0,0,180,180 (`linkage.KLANN_QUAD`); the demo `klann` keeps the generic quad (at
 0,0,180,180 its quad finds no plan with standoff pillars in 60000 nodes). The **standoff pillar**
