@@ -100,6 +100,26 @@ the hex-standoff crank lands by editing those tables: the mechanisms' sweep of 2
 3.57 but `hoecken_pantograph` and `dwell_rocker` (their crankpin M's top screw head needs 2.5
 mm of the 1.83 mm horn spacer), which keep the keyed crank (SF 0.64, an audit error).
 Since 2026-10-04 `StackSpec.max_top` is 60.
+**Hex-standoff crankpins** (the user's decision of 2026-10-04, `BoltCrank.pin="hex"`, the
+default; the round friction clamp above is `--crank bolt_round`): every crankpin and journal
+is a stock M3 x 5.5 AF F-F steel hex standoff (`crank_catalog.HEX_M3_LENGTHS`) whose ends sit
+in hex pockets of the single webs (`BoltCrank.hex_cut`: 0.1 mm over the AF, a dog-bone relief
+of the service's 0.8 mm inside radius through each corner, so the flats stay whole); an M3
+button head and a DIN 9021 washer into each end retain the plates; where the stock length
+stands past a plate (at most `protrude_max` 1.2 mm per end, each stack inside a 4 mm gap) a
+printed hex-bore collar takes it up, or both ends sit up to `recess_max` 0.3 mm inside their
+pockets (`fit_hex`). The riders turn on a printed 8.5 mm sleeve over the hex (`rider_d`:
+their holes), printed rings fill the gaps along a run. Rated by `hex_bearing_nm` in the
+plate's own depth at min(plate, 300 MPa steel) yield (`hex_capacity`). The crank sheet is
+**0.100 in 6061-T6** (`config.crank_sheet`, `materials.thinnest_sheet("crank")`: the
+thinnest whose pockets hold 2 x 0.85 N·m at SF 2 with the recess; 5052 would need 0.125 in,
+thicker than its 3 mm layer, which moved the pillars' columns off stock lengths). Horn
+screws take DIN 988 shims under the head where a stock length is too long (the XL430,
+`horn_fit_web`); the horn holes and the hub's and webs' rims keep SendCutSend's minimum hole
+and 2 t edge distance; a crankpin within a head's reach of the horn's rim makes the horn
+spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`) or, wholly under it,
+is capped by it (`hub_capped`). Strider double 14 layers / 78 mm, `klann` quad 13 / 84,
+`klann_lego` quad 13 / 74, the Hoecken pantograph 9 / 40.
 
 **Clearance gaps, layer thicknesses, per-part sheets** (2026-10-04, `stack.finalize`,
 `spiderpig/materials.py`). A fastener's head or nut beside a link (a Chicago screw's, a rod
@@ -162,7 +182,7 @@ thinnest stock 5052 that passes the role's checks (`materials.ROLES`: the out-of
 bending at a pin's clamped end at 155 N jam, SF 2; and the role's smallest hole against
 SendCutSend's minimum hole = thickness). Frame plates 0.080 in (`al5052_2mm`: 0.100 in and
 up can't take the servo's 2.4 mm holes, 0.063 in fails the pillar end), crank plates
-0.063 in (`al5052_1p6mm`); `BuildConfig` pins both and `tests/test_joinery.py` checks it.
+0.100 in 6061-T6 (`al6061_2p5mm`, since the hex crankpins: their pockets' SF 2); `BuildConfig` pins both and `tests/test_joinery.py` checks it.
 The centre plates take the thinnest that seats the most rear screws
 (`chassis.centre_sheet`: 0.090 in on the STS3215). A crank plate thinner than its 3 mm layer
 sits on the layer's floor, the hub plate at its top (`BoltCrank.plate_z`). Cut rules

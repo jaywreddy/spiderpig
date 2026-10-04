@@ -21,7 +21,13 @@ from collections.abc import Callable
 from spiderpig.construction.axle import AxleGroup as AxleGroup
 from spiderpig.construction.axle import PrintedAxle
 from spiderpig.construction.base import ConstructionError, Context, Group
-from spiderpig.construction.crank import KEYED_FLOAT, BoltCrank, KeyedCrank, PrintedCrank
+from spiderpig.construction.crank import (
+    BOLT_ROUND,
+    KEYED_FLOAT,
+    BoltCrank,
+    KeyedCrank,
+    PrintedCrank,
+)
 from spiderpig.construction.crank import CrankGroup as CrankGroup
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
@@ -31,7 +37,10 @@ AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
 # ``keyed`` is the default (config.BuildConfig.crank, its keys pressed in, the chain screws
 # threadlocked); ``keyed_float`` the same with sliding keys and dry screws (6.25 deg of play
 # per interface); ``printed`` the crank held by clamp friction alone; both kept to compare
-CRANKS = {c.key: c for c in (KeyedCrank(), KEYED_FLOAT, PrintedCrank(), BoltCrank())}
+# ``bolt`` (the default): hex standoff crankpins on an aluminium crank sheet; ``bolt_round``
+# the same with the friction-clamped round standoff (2026-10-04, kept to compare)
+CRANKS = {c.key: c for c in (KeyedCrank(), KEYED_FLOAT, PrintedCrank(), BoltCrank(),
+                             BOLT_ROUND)}
 
 
 def _pick(registry: dict, key: str, what: str):

@@ -198,8 +198,8 @@ def test_cards(server):
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["bolt"]["hardware"]["nut_key"]["key"] == "m3_nylock"
     assert axles["printed"]["roles"] == ["pillar", "pin"]
-    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "keyed", "keyed_float",
-                                                                 "printed"]
+    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round", "keyed",
+                                                                  "keyed_float", "printed"]
     keyed = next(c for c in cat["constructions"]["cranks"] if c["key"] == "keyed")
     assert keyed["hardware"]["standoff_key"]["key"] == "m3_hex_standoff_ff_4"
     assert set(call(server, "catalog", category="sheets")) == {"ok", "failures", "sheets"}

@@ -389,11 +389,12 @@ def markdown(report: dict) -> str:
                 + ("chain screws threadlocked." if k["threadlocker"] else "chain screws dry."))
         if (k := rep.get("crank_bolt")) and k.get("webs") == "single":
             pins = ", ".join(f"{c['at']} {c['standoff'].rsplit('_', 1)[1]} mm"
-                             + (f" + {c['shims_mm']:g} mm shims" if c["shims_mm"] else "")
+                             + (f" + {c['shims_mm']:g} mm shims" if c.get("shims_mm") else "")
                              for c in k["chains"] + k.get("journals", []))
             lines.append(
                 f"Crank (per side): {k['plates']} single aluminium plates; crankpins and "
-                f"journals round standoffs clamped by M4 screws: {pins}.")
+                f"journals {k.get('crankpin', 'round standoffs clamped by M4 screws')}: "
+                f"{pins}.")
         elif k := rep.get("crank_bolt"):
             bolts = ", ".join(
                 f"{c['at']} {c['bolt'].rsplit('_', 1)[1]} mm"

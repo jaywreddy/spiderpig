@@ -3,6 +3,32 @@
 What `spiderpig audit` (step 9, `spiderpig/strength.py`) says about whether the pins,
 the pillars and the crank's joints hold, at each design's own loads.
 
+## The hex-standoff crank (2026-10-04, the walkers' and mechanisms' default)
+
+The user's decision of 2026-10-04: every crankpin (and journal) of the single-plate bolt
+crank is a stock M3 x 5.5 AF female-female steel hex standoff whose hex ends sit in hex
+pockets of the aluminium webs; screws and DIN 9021 washers retain the plates, the riders turn
+on a printed sleeve. One element carries the twist, the hex in each pocket, rated with the
+one bearing model (`hex_bearing_nm`) in the plate's own depth, at the weaker of the plate's
+yield and the standoff's (300 MPa steel), each flat 0.3 mm short for the standoff's rounded
+corners (the pocket's dog-bone reliefs leave the flats whole but 0.09 mm at each end):
+
+| crank sheet | hex engaged | holds | jam SF at 2 x 0.85 N·m |
+|---|---|---|---|
+| 0.063 in 5052 (the sheet before) | 1.6 mm | 1.91 N·m | 1.13 |
+| 0.100 in 5052 | 2.24 mm (recessed 0.3) | 2.68 N·m | 1.58 |
+| **0.100 in 6061-T6 (the default)** | 2.24-2.54 mm | 3.83-4.35 N·m | **2.25-2.56** |
+| 0.125 in 5052 | 2.875-3.175 mm | 3.44-3.80 N·m | 2.02-2.24 |
+
+The standoff's torsion (the tube in its flats round the M3 thread, 300 MPa) is 5.16 N·m.
+0.125 in 5052 passes too, but is thicker than its 3 mm layer: every crank layer became
+3.175 mm and the demo Klann quad's pillar columns stopped landing on stock standoff lengths
+(no plan), so the crank takes 6061, the thinnest sheet that passes inside its layer
+(`materials.ROLES["crank"]`, `ROLE_ALLOYS`). The crank on the default Strider double was a
+warning at 1.71 (the round standoff's friction clamp, UNVERIFIED); with the hex it holds at
+SF >= 2.25 on every design (factor 2 the worst), so it no longer warns. UNVERIFIED: the
+fully plastic bearing at the sheet's yield (a pressed test of one pocket settles it).
+
 ## The model
 
 * **Loads, per design** (`spiderpig/sim/loads.py`, cached per design in the store's

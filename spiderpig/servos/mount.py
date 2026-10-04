@@ -141,8 +141,28 @@ class DriveGroup(Group):
             t = plate + n * layer - self.spec.horn_face_depth
             if 1e-6 < t < MIN_SPACER:
                 t += layer
+            # a crankpin's screw head over the hub plate stands in a pocket of the spacer
+            # (a short crank: the Hoecken pantograph's): the spacer at least that thick
+            need = self._hub_head_need(ctx)
+            while need > 0 and t < need - 1e-6:
+                t += layer
             return 0.0 if t <= 1e-6 else t
         return 0.0 if t <= 1e-6 else max(t, MIN_SPACER)
+
+    def _hub_head_need(self, ctx: Context) -> float:
+        """What the side's crank needs of the horn spacer over its hub plate (0: nothing):
+        :meth:`construction.crank.BoltCrank.hub_head_need`."""
+        key = getattr(ctx.config, "crank", None)
+        if key is None or ctx.topo.center is None:
+            return 0.0
+        from spiderpig.construction import CRANKS
+
+        crank = CRANKS.get(key)
+        if crank is None or not hasattr(crank, "hub_head_need"):
+            return 0.0
+        crank = crank.resolve(ctx)
+        h = self.spec.horn
+        return crank.hub_head_need(ctx, h.diameter / 2, h.center_screw_head_d)
 
     @staticmethod
     def _face_on_layer(ctx: Context) -> bool:
