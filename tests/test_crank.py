@@ -395,9 +395,11 @@ def test_keyed_sides_are_clash_free_round_the_cycle(linkage_key, module, t):
 
 @pytest.mark.slow
 def test_the_default_designs_pay_two_layers_for_the_keyed_crank():
-    """18 layers (54 mm) on the Strider double, 16 (48 mm) on the Klann quad, proven, each
-    chain's top web two layers thick with the crank on its axis in the second."""
-    for (lk, module), (layers, mm) in zip(KEYED, ((18, 54.0), (16, 48.0)), strict=True):
+    """19 layers (57 mm) on the Strider double, 17 (51 mm) on the Klann quad, proven, each
+    chain's top web two layers thick with the crank on its axis in the second. (One more
+    than before the 0.080 in frame plates: the horn's face under the inner plate drops the
+    hub a layer.)"""
+    for (lk, module), (layers, mm) in zip(KEYED, ((19, 57.0), (17, 51.0)), strict=True):
         tmpl, design, _ = _keyed(lk, module)
         plan = design.plan
         assert (plan.top + 1, plan.optimal) == (layers, True)
@@ -499,9 +501,9 @@ ROUTES = {  # config, link layers, top, route, detour point, screw length per jo
                    CrankRoute((Run("M", 2, 2),), bearing=False), None, {"M": 6}),
     # TrotBot's B8 (b6) sweeps across O: it sits in the crankpin's run beside the post (with
     # pin J8's head and cap, which would sweep across a web), b4 at the run's foot
-    "trotbot": (TROTBOT, TROT_LAYERS, 11, CrankRoute((Run("J1", 2, 8),)), None, {"J1": 25}),
+    "trotbot": (TROTBOT, TROT_LAYERS, 12, CrankRoute((Run("J1", 2, 8),)), None, {"J1": 25}),
     # ... or b4 on a run of its own, its upper web on the next run's lower web: one screw
-    "trotbot chain": (TROTBOT, TROT_LAYERS, 11,
+    "trotbot chain": (TROTBOT, TROT_LAYERS, 12,
                       CrankRoute((Run("J1", 2, 2), Run("J1", 5, 8))), None, {"J1": 25}),
 }
 _ROUTED: dict[str, tuple] = {}

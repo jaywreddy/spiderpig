@@ -163,13 +163,14 @@ def test_a_chain_ends_set_back_in_the_hub_only_if_the_horn_screws_still_fit():
 
 
 @pytest.mark.parametrize(("module", "crank", "height"), [
-    ("single", "keyed", 21), ("double", "keyed", 24), ("decker", "keyed", 33),
-    ("quad", "keyed", 48), ("quad", "printed", 36)])
+    ("single", "keyed", 24), ("double", "keyed", 27), ("decker", "keyed", 36),
+    ("quad", "keyed", 51), ("quad", "printed", 39)])
 def test_klann_plans_keep_their_heights_and_are_proven_thinnest(module, crank, height):
     """The keyed crank's two-layer top webs cost the quad four layers (every chain's top web
     sits under the next leg's riders); the single, double and decker had the room. (Heights
-    in 3 mm layers: since 2026-10-04 the frame plates and the foot links are 3.175 mm
-    aluminium, which the plan's z adds.)"""
+    in 3 mm layers: since 2026-10-04 the frame plates and the foot links are aluminium,
+    which the plan's z adds; with the 0.080 in frame plates the STS3215 horn's face is
+    1.17 mm under the inner plate, so these cranks' hubs sit a layer lower: one more each.)"""
     tmpl, design = _design("klann", module, crank=crank)
     plan = design.plan
     assert plan.top + 1 == height // 3
@@ -212,8 +213,8 @@ def test_the_keyed_cranks_post_stops_the_heel_at_its_default_scale():
             "radius + 6 link half-width + 1 margin)") in msg
     (rec,) = e.value.recommendations
     assert rec.changes == (("unit", 10.5, 12.0),)
-    assert "plans in 14 layers" in rec.verified
-    assert _design("trotbot_heel", **HEEL)[1].plan.top == 11       # the printed crank's plan
+    assert "plans in 15 layers" in rec.verified       # (0.080 in frame plates: +1)
+    assert _design("trotbot_heel", **HEEL)[1].plan.top == 12       # the printed crank's plan
 
 
 # -- optimality against the brute force ---------------------------------------------------
