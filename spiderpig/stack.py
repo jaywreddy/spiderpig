@@ -806,7 +806,10 @@ class StackSpec:
     # Where a fastener's head (a clearance shape that may sink, :attr:`Placed.toward`) goes:
     # "sink" claims the layer beside its link, as a full-layer head (no gap ever); "gap"
     # puts it in a thin clearance gap unless it fits that layer; "best" plans them sunk, and
-    # in gaps only when that fails. :attr:`StackPlan.heads` says which.
+    # in gaps only when that fails; "gap_sink" (a router with its own heads in gaps: the
+    # single-plate crank) in gaps, and only when that fails the pivots' heads sunk with the
+    # router's (and :data:`GAP_GROUPS`') still in their gaps. :attr:`StackPlan.heads` says
+    # which ("sink" or "gap").
     heads: str = "best"
 
 
@@ -951,15 +954,28 @@ class StackProblem:
         self.topo = topo
         self.hint = dict(hint or {})
         self.notes = list(notes)      # facts behind the spec (a stack size some group bounds)
+        self.give_up = 0              # (solve_heads) stop once this many layerings failed on
+        #                               the crank's washers in the plan's gaps with no plan
+        #                               found (0: never); ``gave_up`` says so
+        self.gave_up = ""
+        self.found_any = False
+        self.washer_misses = 0
         self.floor = ""               # why ``spec.min_top`` is above the default (the sizes
         #                               under it ruled out without a search: the crank's rules)
         self.leg = {n: int(m.group(1)) if (m := re.search(r"_leg(\d+)$", n)) else 0
                     for n in topo.links}
         self.spec = spec or StackSpec()
         self.raw_claims = tuple(claims)
-        self.heads = "gap" if self.spec.heads == "best" else self.spec.heads
-        self.claims = heads_claims(self.raw_claims, self.heads)
+        self.heads = "gap" if self.spec.heads in HEADS_ORDER else self.spec.heads
         self.router = router
+        # a router whose own heads sit in clearance gaps (gap pieces: the single-plate
+        # crank's) keeps them there whatever the other groups' heads do, and so do the
+        # fixed screws its gap pieces are checked against (the drive's, under the inner
+        # plate): with heads "sink" only the pivots' heads go into layers
+        self.gap_groups: frozenset[str] = (
+            frozenset((router.group, *GAP_GROUPS)) if router is not None
+            and getattr(router, "gap_pieces", ()) else frozenset())
+        self.claims = heads_claims(self.raw_claims, self.heads, self.gap_groups)
         self.clearances = tuple(clearances)
         self.links = tuple(topo.links)
         self.blocked: dict[tuple[str, str], int] = {}
@@ -1030,7 +1046,8 @@ class StackProblem:
         """The thinnest plan, with the cheapest route in it; :class:`PlanError` (saying what
         blocked it, and how far each stack size got) when there is none up to
         ``spec.max_top``, or none was found before the effort ran out. With
-        ``spec.heads`` "best": sunk, else in gaps (:meth:`solve_heads`).
+        ``spec.heads`` "best": sunk, else in gaps; "gap_sink": the other way round
+        (:meth:`solve_heads`).
 
         First the thinnest stack a short search finds a plan in, then, with the
         full effort, the thinner sizes that short search didn't rule out, then a
@@ -1039,8 +1056,8 @@ class StackProblem:
         never runs longer than the deadline, whatever a node costs.
         """
         spec = self.spec
-        if spec.heads == "best":
-            return self.solve_heads()
+        if spec.heads in HEADS_ORDER:
+            return self.solve_heads(HEADS_ORDER[spec.heads])
         self.blocked.clear()
         self._blocked_by.clear()
         self.spent = 0
@@ -1064,24 +1081,44 @@ class StackProblem:
                 self.pool.close()
                 self.pool = None
 
-    def solve_heads(self) -> StackPlan:
+    def solve_heads(self, order: tuple[str, str] = ("sink", "gap")) -> StackPlan:
         """Plan with the heads sunk into layers (the full-layer heads); in clearance gaps
         only when that finds no plan (2026-10-04: searching both doubled the suite's time).
-        Each search has the whole budget."""
+        ``order`` ("gap", "sink" for a single-plate crank: its gap plans are the thinner and
+        the faster nearly everywhere, and with only the pivots' heads sunk it plans what
+        gaps don't, TrotBot's heel and toe): then the sunk search runs only when the gap
+        search gave up (:data:`GIVE_UP`), and the gap search again in full when the sunk
+        one finds none either. Each search has the whole budget."""
         plans, errors = [], []
-        for heads in ("sink", "gap"):
+        gave_up = ""
+        runs = list(order)
+        if order[0] == "gap":
+            # a gap search whose layerings keep failing on the crank's washers in the plan's
+            # gaps (TrotBot's heel and toe: no route keeps its washers clear of the pins'
+            # caps there) gives up early for the sunk one; with none there either it runs
+            # again in full (GIVE_UP)
+            runs.append("gap")
+        for i, heads in enumerate(runs):
             spec = replace(self.spec, heads=heads)
             if plans:
                 # the gap search only when the sunk plan failed (the user's rule of
                 # 2026-10-04: two searches doubled the suite's time for a few mm)
                 break
+            if len(runs) > 2 and i >= 1 and not gave_up:
+                # the gap search ran in full and found none: the sunk one found none on any
+                # design of the sweep of 2026-10-04 either (the Jansen decker and quad), so it
+                # isn't searched, and there is nothing to resume
+                break
             sub = StackProblem(self.topo, self.raw_claims, spec,
                                self.router, self.clearances, self.hint, self.notes)
+            if i == 0 and len(runs) > 2:
+                sub.give_up = GIVE_UP
             sub.floor = self.floor
             try:
                 plans.append(sub.solve())
             except PlanError as e:
                 errors.append(e)
+            gave_up = gave_up or sub.gave_up
             for key, n in sub.blocked.items():
                 self.blocked[key] = self.blocked.get(key, 0) + n
                 self._blocked_by.setdefault(key, sub._blocked_by[key])
@@ -1099,7 +1136,8 @@ class StackProblem:
                            f"{o.height:.1f} mm with them {o.heads} ({o.top + 1} layers"
                            + (f", {len(o.gaps)} gaps" if o.gaps else "") + ")")
         elif errors:
-            best.proof += f"; with the heads {'gap' if best.heads == 'sink' else 'sink'}: none"
+            best.proof += (f"; with the heads {'gap' if best.heads == 'sink' else 'sink'}: "
+                           + (f"none (it {gave_up})" if gave_up else "none"))
         return best
 
     def _new(self, top: int):
@@ -1243,12 +1281,16 @@ class StackProblem:
 
     @property
     def exhausted(self) -> bool:
-        """The deadline or the total node budget ran out: no search starts or goes on."""
-        return self.deadline.expired or self.spent >= self.spec.max_total_nodes
+        """The deadline or the total node budget ran out (or the search gave up: ``gave_up``):
+        no search starts or goes on."""
+        return (self.deadline.expired or self.spent >= self.spec.max_total_nodes
+                or bool(self.gave_up))
 
     @property
     def stopped(self) -> str:
         """Which of the two ran out, as a phrase (``""``: neither)."""
+        if self.gave_up:
+            return self.gave_up
         if self.deadline.expired:
             return f"the {self.spec.max_seconds:g} CPU s deadline ran out"
         if self.spent >= self.spec.max_total_nodes:
@@ -1306,7 +1348,16 @@ class StackProblem:
         ``ValueError``) when that can't be built. ``heads``: how the plan placed heads
         (:attr:`StackPlan.heads`; default: this problem's)."""
         heads = heads or self.heads
-        claims = self.claims if heads == self.heads else heads_claims(self.raw_claims, heads)
+        if heads == "sink" and self.gap_groups:
+            # the router's heads in their gaps, every other head sunk (as the search placed
+            # them): the claims as they are, every other head forced into its layer, so
+            # an axle crossing one of the router's gaps carries its washers there
+            plan = finalize(self.topo, self.raw_claims, self.spec, layers, top, choices,
+                            sink_all_but=self.gap_groups)
+            plan.heads = heads
+            return plan
+        claims = (self.claims if heads == self.heads
+                  else heads_claims(self.raw_claims, heads, self.gap_groups))
         plan = finalize(self.topo, claims, self.spec, layers, top, choices)
         plan.heads = heads
         return plan
@@ -1739,34 +1790,96 @@ class _Search:
             self.watch.setdefault(ng[-1], []).append(ng)
         return out
 
+    LEAF_REROUTES = 4    # routes a leaf tries past its plan's gaps (see :meth:`leaf`)
+
     def leaf(self) -> frozenset[str]:
-        """Every link has a layer: the final claims, the route, the plan checked."""
+        """Every link has a layer: the final claims, the route, the plan checked.
+
+        A route whose crankpin washers meet another group's shapes in a clearance gap the
+        plan has (the router can't know which gaps a plan will have: the search would
+        otherwise block every gap a pin's column crosses) is routed again with those gaps
+        closed to that crankpin's run (``Router.washer_bit``), a few times; what is left
+        fails the layering as before."""
         choices, cost = {}, 0
-        if self.router is not None:
-            res = self.router.route(self.view(partial=False))
-            if isinstance(res, RouteConflict):
-                if res.rules:
-                    self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
-                return self.explain(res)
-            choices, cost = {self.router.group: res.choice}, res.cost
-        try:
-            plan = self.prob.plan(self.layers, self.top, choices)
-        except PlanReject as e:
-            # the layering clears at the nominal z, but not at its own (the clearance gaps
-            # and the plates' thicknesses moved something a stock part had to fit)
-            self.prob._tally_why("the plan at its z", str(e))
-            return frozenset(self.layers)
+        extra: dict[float, int] = {}
+        for attempt in range(self.LEAF_REROUTES + 1):
+            if self.router is not None:
+                view = self.view(partial=False)
+                if extra:
+                    bm = dict(view.blocked)
+                    for slot, bits in extra.items():
+                        bm[slot] = bm.get(slot, 0) | bits
+                    view = replace(view, blocked=bm)
+                res = self.router.route(view)
+                if isinstance(res, RouteConflict):
+                    if extra:           # the gaps closed: the whole layering is to blame
+                        prob = self.prob
+                        prob._tally_why(self.router.group, "crank route: its crankpin washers "
+                                        "meet another group's in the plan's clearance gaps")
+                        prob.washer_misses += 1
+                        if (prob.give_up and not prob.found_any
+                                and prob.washer_misses >= prob.give_up):
+                            prob.gave_up = (f"gave up after {prob.washer_misses} layerings whose "
+                                            "crank washers met another group's in the plan's "
+                                            "gaps, with no plan found")
+                            raise _Budget
+                        return frozenset(self.layers)
+                    if res.rules:
+                        self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
+                    return self.explain(res)
+                choices, cost = {self.router.group: res.choice}, res.cost
+            try:
+                plan = self.prob.plan(self.layers, self.top, choices)
+            except PlanReject as e:
+                # the layering clears at the nominal z, but not at its own (the clearance
+                # gaps and the plates' thicknesses moved something a stock part had to fit)
+                self.prob._tally_why("the plan at its z", str(e))
+                return frozenset(self.layers)
+            more = self._washer_blocks(plan, extra) if attempt < self.LEAF_REROUTES else {}
+            if not more:
+                break
+            for slot, bits in more.items():
+                extra[slot] = extra.get(slot, 0) | bits
         bad = verify_plan(plan)
         if bad:
             self.prob._tally_why("the plan at its z", bad[0])
             return frozenset(self.layers)
         plan.cost = cost
         self.best, self.bound = plan, cost
+        self.prob.found_any = True
         if cost == 0:
             raise _Done
         if self.first_only:
             raise _Budget           # a short search has found what it looks for
         return frozenset(self.layers)
+
+    def _washer_blocks(self, plan: StackPlan, have: Mapping[float, int]) -> dict[float, int]:
+        """The router's washer bits (``washer_bit + j``) per gap slot where crankpin j's run
+        washers meet another group's shape in a clearance gap ``plan`` has (at the search's
+        sampling), beyond those in ``have``."""
+        router = self.router
+        wb = getattr(router, "washer_bit", -1) if router is not None else -1
+        if wb < 0 or not plan.layout.gaps:
+            return {}
+        made_: list[Placed] = []
+        for c in plan.claims:
+            out, _ = made(c, plan.layout)
+            if out is not None:
+                made_.extend(out)
+        shapes = [p for p in settle(made_, plan.sunk, plan.layout) if p.gap and not p.seat]
+        index = {pt: j for j, pt in enumerate(router.points)}
+        mine = [(p, index[p.shape.at]) for p in shapes
+                if p.group == router.group and p.label.endswith(" washer")
+                and isinstance(p.shape, Disc) and p.shape.at in index]
+        out: dict[float, int] = {}
+        for p, j in mine:
+            bit = 1 << (wb + j)
+            if have.get(p.slot, 0) & bit or out.get(p.slot, 0) & bit:
+                continue
+            if any(q.group != p.group and q.slot == p.slot and self.hit(p.shape, q.shape)
+                   for q in shapes):
+                out[p.slot] = out.get(p.slot, 0) | bit
+        return out
 
     def run(self, budget: int, legs: bool = False, deadline: Deadline | None = None) -> bool:
         """Search this stack size with ``budget`` more nodes, until ``deadline`` (``legs``: a
@@ -2092,10 +2205,29 @@ def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
                      "thicker)")
 
 
-def heads_claims(claims: Iterable[Claim], heads: str) -> tuple[Claim, ...]:
+HEADS_ORDER = {"best": ("sink", "gap"), "gap_sink": ("gap", "sink")}
+
+GIVE_UP = 200
+"""(``gap_sink``) The first gap search gives up for the sunk one after this many layerings
+failed on the crank's washers in the plan's gaps with no plan found (TrotBot's heel meets
+~65 a CPU second; the designs that plan in gaps meet a handful first)."""
+"""The heads searches :meth:`StackProblem.solve_heads` tries in turn, per
+:attr:`StackSpec.heads`."""
+
+GAP_GROUPS = ("drive",)
+"""Groups whose heads stay in their clearance gaps beside a router's (the servo's, the
+frame ties' and the deck rails' screws under the inner plate: the crank's horn screws
+share that gap), when the other heads sink (:func:`heads_claims`)."""
+
+
+def heads_claims(claims: Iterable[Claim], heads: str, keep: frozenset[str] = frozenset()
+                 ) -> tuple[Claim, ...]:
     """The claims as the search sees them for ``heads`` (:attr:`StackSpec.heads`): "sink"
     puts every head that may sink into the layer beside its link (and drops what would
-    only be in a gap: there is none), "gap" leaves them."""
+    only be in a gap: an axle's washers), "gap" leaves them. ``keep``: groups whose shapes
+    stay as they are either way (a single-plate crank's, whose router places its heads in
+    gaps: sunk, they would stand in a rider's layer; :data:`GAP_GROUPS`); the plan's z
+    gives what crosses their gaps its washers (:meth:`StackProblem.plan`)."""
     claims = tuple(claims)
     if heads != "sink":
         return claims
@@ -2108,8 +2240,10 @@ def heads_claims(claims: Iterable[Claim], heads: str) -> tuple[Claim, ...]:
             out = make(L)
             if out is None:
                 return None
-            got = [replace(p, layer=p.layer + (1 if p.toward > 0 else 0), gap=False)
-                   if p.gap and p.toward else p for p in out if not p.gap or p.toward]
+            got = [p if p.group in keep else
+                   replace(p, layer=p.layer + (1 if p.toward > 0 else 0), gap=False)
+                   if p.gap and p.toward else p
+                   for p in out if not p.gap or p.toward or p.group in keep]
             for p in got:
                 if p.height > L.t(p.layer) + EPS_Z:
                     raise Unbuildable(f"{p.label or p.group} needs {p.height:.2f} mm, more "
@@ -2122,18 +2256,25 @@ def heads_claims(claims: Iterable[Claim], heads: str) -> tuple[Claim, ...]:
 
 def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
              layers: Mapping[str, int], top: int,
-             choices: Mapping[str, object] | None = None) -> StackPlan:
+             choices: Mapping[str, object] | None = None,
+             sink_all_but: frozenset[str] | None = None) -> StackPlan:
     """The plan of a layering: which heads sink into a layer and which keep a clearance
     gap (:func:`_sinkable`), each gap's stock thickness and each layer's (the plates'
     sheets), and every claim made again at the z those give, until they settle (a
     claim's head may need more at its real z: a Chicago screw's shims). Deterministic in
-    its arguments, so a stored layering re-makes the same plan."""
+    its arguments, so a stored layering re-makes the same plan. ``sink_all_but``: every
+    head but those groups' sinks into its layer (the search placed them there:
+    :meth:`StackProblem.plan` with a router's heads in gaps), unless the plan's z or a gap
+    kept beside it says otherwise."""
     claims = tuple(claims)
     choices = dict(choices or {})
     layers = dict(layers)
     nominal = Layout(layers, top, spec.pitch, choices)
     shapes = _make_all(claims, nominal)
     sunk = _sinkable(shapes, nominal, topo.geometry, spec.margin)
+    if sink_all_but is not None:
+        sunk |= {sunk_key(p) for p in shapes
+                 if p.gap and p.toward and p.group not in sink_all_but}
     gaps: dict[int, float] = {}
     thick: dict[int, float] = {}
     layout = nominal

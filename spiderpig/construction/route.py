@@ -141,6 +141,15 @@ class JointRules:
     #                               a screw each, its heads in the gaps beyond them), and the
     #                               last chain ends in the hub's layer (the single-plate bolt
     #                               crank, whose every plate is one part: no stack to lock)
+    gap_washer: float = 0.0       # (gap_head) the washers a chain's run carries through every
+    #                               clearance gap along it (its first run layer up): the
+    #                               radius they need clear there (0: none). Not a gap piece
+    #                               the search blocks (every gap a pin's column crosses
+    #                               would then close the crank's runs, a gap the plan may
+    #                               never have): the planner's leaf sets these bits
+    #                               (``CrankRouter.washer_bit``) for the gaps its plan has
+    #                               where the run's washers met another group's, and routes
+    #                               again (stack._Search.leaf)
 
 
 def joint_rules(construction, ctx: Context, dims: CrankDims) -> JointRules | None:
@@ -460,6 +469,10 @@ class CrankRouter:
             self.gap_pieces = (*[Disc(p, self.gap_head) for p in self.points],
                                *[Disc(h, r) for h, r in rules.horn_heads],
                                Disc("O", self.gap_head))
+        # (gap_washer) bit washer_bit + j of a gap slot's blocked bits: point j's run washers
+        # can't cross that gap (set by the planner's leaf only; -1: no such bits)
+        self.washer_bit = (len(self.gap_pieces)
+                           if self.gap_head > 0 and rules.gap_washer > 0 else -1)
         # (j_last) how many layers a journal standoff between two chains may span
         self.j_ok = dict(rules.j_spans) if rules is not None else {}
         self.horn_mask = ((1 << len(rules.horn_heads)) - 1) << self.n if self.gap_head else 0
@@ -774,6 +787,7 @@ class CrankRouter:
         two = self.two_layer_top
         bot = self.bottom_web
         inner_ok = self.inner_webs
+        washer_bit = self.washer_bit
 
         def chains(j: int, a: int) -> list[tuple[int, int, int, tuple]]:
             """Every chain along point j from its lowest web in layer a, the cheapest for each
@@ -785,12 +799,18 @@ class CrankRouter:
             enter = RUN + (FEATURE + sweep[j] * SWEEP if j >= pins else 0)
             wm, pm, rm, mm = web_m[j], post_m[j], rid_m[j], may[j]
             point = points[j]
+            wb = washer_bit + j if washer_bit >= 0 and gb else -1
             if wm >> a & 1 and a + bot < h0 and (bot == 1 or wm >> (a + 1) & 1):
                 # the run open in k - 1 ({all ridden so far: (cost, runs before it, its first
                 # layer)}), and the cheapest chain so far after one / two inner webs in k - 1
                 prev: dict[bool, tuple[int, tuple, int]] | None = None
                 p1 = p2 = None
                 for k in range(a + bot, h0 + 1):
+                    if wb >= 0 and gb[k - 1] >> wb & 1 and k > a + bot:
+                        # the run's washers can't cross the gap over layer k - 1 (another
+                        # group's head or washers there): no run goes on past it, and no
+                        # run starts after an inner web under it
+                        prev = p1 = None
                     ridden = bool(rm >> k & 1)
                     i1 = i2 = None
                     if wm >> k & 1:

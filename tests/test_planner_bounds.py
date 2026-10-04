@@ -9,6 +9,7 @@ from dataclasses import replace
 
 import pytest
 
+from spiderpig import stack
 from spiderpig.config import BuildConfig
 from spiderpig.fabricate import design_side, side_problem, template_for
 from spiderpig.recommend import recommend
@@ -26,12 +27,15 @@ def _problem(key: str, module: str, **spec):
 
 
 def test_a_plan_cut_short_by_its_budget_is_valid_and_unproven():
-    """TrotBot's heel plans within 40 nodes (its heads in layers, or in clearance gaps: the
-    lower of the two is kept); with 1 node left for the proof, the plan comes back valid,
-    unproven, and the proof says what the budget left open."""
+    """TrotBot's heel plans within 40 nodes with its heads sunk into layers (the gap search
+    runs only when that finds none: the user's rule of 2026-10-04, ``StackSpec.heads``
+    "best"); with 1 node left for the proof, the plan comes back valid, unproven, and the
+    proof says what the budget left open."""
     tmpl, problem = _problem("trotbot_heel", "single", quick_nodes=40, max_nodes=2)
     plan = problem.solve()
-    assert "against" in plan.proof or "with the heads" in plan.proof     # both were tried
+    assert plan.heads == "sink"
+    assert "against" not in plan.proof                      # no gap search
+    assert "with the heads" not in plan.proof
     assert not plan.optimal
     assert "not ruled out (the search stopped at its budget" in plan.proof
     assert verify_plan(plan, tmpl) == []
@@ -42,11 +46,14 @@ def test_nothing_found_within_the_node_budget_raises_with_the_tally():
     with pytest.raises(PlanError) as e:
         problem.solve()
     msg = str(e.value)
-    assert msg.startswith("klann_double: no layer plan found with up to 7 layers after 6 search "
+    # 7 layers are ruled out at once since the standoff pillars (no stock standoff fills
+    # pillar A's 9 mm column: goBILDA's shortest is 12 mm)
+    assert msg.startswith("klann_double: no layer plan found with up to 8 layers after 6 search "
                           "steps in 0 CPU s; the 5 search-step budget ran out; what blocked it")
     assert e.value.blockers
-    assert ("sizes: 3-6 layers ruled out (0-1 nodes each, 0 s in all); 7 layers left open at "
-            "their budget (5 nodes, 0 s in all); 8-61 layers not tried") in msg
+    assert "no stock standoffs (12-60 mm)" in msg
+    assert ("sizes: 3-7 layers ruled out (0-1 nodes each, 0 s in all); 8 layers left open at "
+            "their budget (4 nodes, 0 s in all); 9-61 layers not tried") in msg
 
 
 def test_nothing_found_before_the_deadline_raises_with_the_tally():
@@ -76,7 +83,7 @@ def test_the_recommendation_checks_share_one_deadline():
     ("trotbot_heel", "double", "either"), ("trotbot_toe", "double", "either"),
     ("trotbot_toe", "decker", "plan"), ("trotbot_toe", "quad", "either"),
 ])
-def test_the_trotbot_modules_return_inside_the_deadlines(key, module, expect):
+def test_the_trotbot_modules_return_inside_the_deadlines(key, module, expect, monkeypatch):
     """These ran for over 40 minutes once. (Since the clearance gaps of 2026-10-04 the doubles
     may plan: with the heads in gaps the chain finds a layering.) A double module puts both
     legs on one crankpin,
@@ -84,7 +91,12 @@ def test_the_trotbot_modules_return_inside_the_deadlines(key, module, expect):
     lets a stock screw fit it: the search says so, with the tally, once its deadline is
     up (and the checks of what would clear it theirs). The toe's decker plans in seconds;
     its quad (39 layers) takes most of the deadline, so a slow machine may get the tally
-    instead. Whatever the machine, each returns within the deadlines."""
+    instead. Whatever the machine, each returns within the deadlines. (The "either" cases
+    under a 15 s deadline, what the bound is checked against too: the heads sunk, then in
+    gaps, then the checks of what would clear it, each up to its deadline, took 4 minutes
+    a case at 60 s for the same verdict.)"""
+    if expect == "either":
+        monkeypatch.setattr(stack, "MAX_SECONDS", 15.0)
     cfg = BuildConfig(linkage=key, module=module, robot=False, crank="printed")
     t0 = time.monotonic()
     try:
@@ -101,3 +113,31 @@ def test_the_trotbot_modules_return_inside_the_deadlines(key, module, expect):
         assert verify_plan(outcome.plan) == []
     # heads in layers and in gaps: two searches, each within the deadline (StackSpec.heads)
     assert took < 7 * StackSpec().max_seconds
+
+
+@pytest.mark.slow
+def test_a_single_plate_crank_falls_back_to_the_pivots_heads_sunk():
+    """TrotBot's heel with the default single-plate crank: in clearance gaps no crank route
+    keeps the crankpin's washers clear of the pins' caps, so the gap search gives up after
+    ``stack.GIVE_UP`` such layerings (seconds, not its 60 s deadline), and the plan has the
+    pivots' heads sunk into layers with the crank's and the drive's screws still in gaps
+    (``heads="gap_sink"``): 14 layers, proven, and it verifies."""
+    from spiderpig.stack import GIVE_UP
+
+    cfg = BuildConfig(linkage="trotbot_heel", module="single", robot=False)
+    t0 = time.monotonic()
+    plan = design_side(template_for(cfg), cfg).plan
+    assert time.monotonic() - t0 < StackSpec().max_seconds
+    assert plan.heads == "sink"
+    assert plan.top + 1 == 14
+    assert plan.optimal
+    assert f"with the heads gap: none (it gave up after {GIVE_UP} layerings" in plan.proof
+    crank_heads = [p for p in plan.placed if p.group == "crank" and p.gap and p.height > 0]
+    assert crank_heads                          # its screw heads beyond its webs, in gaps
+    # most pivot heads sunk into the layer beside their link (the rest keep a gap the plan
+    # has anyway, or need more than a layer gives at the plan's z)
+    sunk = [k for k in plan.sunk if k[0].startswith(("pin:", "pillar:"))]
+    in_gaps = [p for p in plan.placed if p.group.startswith(("pin:", "pillar:"))
+               and p.gap and p.toward]
+    assert len(sunk) > len(in_gaps)
+    assert verify_plan(plan, template_for(cfg)) == []
