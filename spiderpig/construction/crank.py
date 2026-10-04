@@ -1210,6 +1210,7 @@ KEYED_FLOAT = KeyedCrank(
 BOLT_COLOR = "#8fb3e0"           # the crank's acrylic plates (the study's blue)
 HEX_RELIEF_D = 0.5               # corner relief circles of a laser-cut hex pocket (mm)
 SHIM_KEY = "shim_din988_3x6"     # under a horn screw's head (M2 and M3: the head bears on it)
+HORN_TIP_CLEAR = 0.3             # a horn screw's tip under the inner plate's top face (mm)
 
 
 def shim_stack(t: float) -> list[float]:
@@ -2188,7 +2189,7 @@ class BoltCrank:
         return frozenset(a for a in range(2, most)
                          if self.stub_z(t0 + (a - 1) * pitch, t0, t) is not None)
 
-    horn_shim_max: float = 1.5       # DIN 988 shims under a horn screw's head, at most (mm)
+    horn_shim_max: float = 2.0       # DIN 988 shims under a horn screw's head, at most (mm)
 
     def horn_joint_web(self, ctx: Context, seg: float, spacer: float
                        ) -> tuple[ScrewKind, float, float] | None:
@@ -2206,6 +2207,7 @@ class BoltCrank:
         plate) takes 0.1 mm steps of shims under its head (up to ``horn_shim_max``, in the
         gap under the hub where its head hangs)."""
         from spiderpig.hardware.fasteners import SCREWS
+        from spiderpig.stack import GAP_MAX
 
         spec = ctx.servo
         pat = spec.horn.pattern
@@ -2213,7 +2215,8 @@ class BoltCrank:
         order = ("self_tap",) if pat.tapping else ("bhcs", "shcs")
         kinds = [SCREWS[(k, size)] for k in order if (k, size) in SCREWS]
         reach = pat.reach if pat.reach is not None else spec.horn.thickness
-        e_max = min(reach, spec.horn_face_depth)
+        # the tip stays HORN_TIP_CLEAR under the inner plate's top face (inside the horn)
+        e_max = min(reach, spec.horn_face_depth - HORN_TIP_CLEAR)
         e_want = min(pat.thread_depth if pat.thread_depth is not None else e_max, e_max)
         e_min = min(e_want, 1.5)
         for sk in kinds:
@@ -2222,8 +2225,14 @@ class BoltCrank:
                 e = L - seg - spacer
                 shim = 0.0
                 if e > e_max + EPS:
-                    shim = math.ceil((e - e_max) * 10 - 1e-6) / 10
-                    if shim > self.horn_shim_max + EPS:
+                    # shims to the wanted thread, else to the most the horn takes; no more
+                    # than the gap under the hub holds over the head
+                    most = min(self.horn_shim_max,
+                               GAP_MAX - sk.head_h - self.head_clear)
+                    shim = math.ceil((e - e_want) * 10 - 1e-6) / 10
+                    if shim > most + EPS:
+                        shim = math.ceil((e - e_max) * 10 - 1e-6) / 10
+                    if shim > most + EPS:
                         continue
                     e -= shim
                 if not e_min - EPS <= e <= e_max + EPS:
@@ -2248,12 +2257,20 @@ class BoltCrank:
 
         return max(drive.screw_clearance_d, sheet(key).min_hole + 0.025)
 
-    def horn_head_r(self, ctx: Context) -> float:
-        """A horn screw head's clearance shape under the hub: the head, or the DIN 988
-        shims under it (6 mm), whichever is wider."""
+    def horn_head_r(self, ctx: Context, shim: float | None = None) -> float:
+        """A horn screw head's clearance shape under the hub: the head, or with ``shim`` mm
+        of DIN 988 shims under it (6 mm OD) the wider of them; ``None``: whether the plan's
+        nominal z needs shims."""
         from spiderpig.hardware.catalog import get
 
-        return max(self.horn_kind(ctx).head_d, float(get(SHIM_KEY).dims["od"])) / 2 + 0.3
+        if shim is None:
+            drive: DriveInterface = ctx.interfaces["drive"]
+            got = self.horn_fit_web(ctx, ctx.sheet_t("crank"), drive.spacer_t)
+            shim = got[3] if got is not None else 0.0
+        d = self.horn_kind(ctx).head_d
+        if shim > 0:
+            d = max(d, float(get(SHIM_KEY).dims["od"]))
+        return d / 2 + 0.3
 
     def horn_kind(self, ctx: Context) -> ScrewKind:
         """The horn screws' kind (its head is what hangs under the crank's top plates)."""
@@ -2399,7 +2416,7 @@ class BoltCrank:
         if got is not None and got[0].head_h > sk.head_h:
             sk = got[0]
         for name in horn_pts:
-            out.append(Placed(seg - 1, Disc(name, self.horn_head_r(ctx)), GROUP,
+            out.append(Placed(seg - 1, Disc(name, self.horn_head_r(ctx, shim)), GROUP,
                               "horn screw head", gap=True, height=sk.head_h + shim + clear,
                               toward=-1))
         return out
