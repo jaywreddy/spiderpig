@@ -82,7 +82,7 @@ first (a sunk crank head would stand in a rider's layer), and only when that sea
 up (below; a full gap search that finds nothing isn't followed by it: no design of the
 2026-10-04 sweep planned that way) with the pivots' heads sunk and the crank's (and the drive's, `stack.GAP_GROUPS`) still in
 their gaps (`heads_claims(keep=...)`, `finalize(sink_all_but=...)`: an axle crossing a crank
-gap carries its washers there). TrotBot's heel and toe plan only that way (14 layers in ~1
+gap carries its washers there). TrotBot's heel and toe plan only that way (the heel single: 14 layers in ~6
 s; in gaps no route keeps the crankpin's washers clear of the pins' caps, and the gap search
 gives up after `stack.GIVE_UP` such layerings with no plan, ~3 s, instead of its 60 s
 deadline). At a leaf the planner routes again round the gaps the plan has where the
