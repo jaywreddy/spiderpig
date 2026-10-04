@@ -121,6 +121,9 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
 
 ## Every walker x module, 2026-10-04 evening (thinnest sheets, single-plate crank)
 
+(On the round standoff crank, before the hex-standoff crank merged: the crank column and the
+plan heights here are the round one's; see the merged numbers at the top and in CLAUDE.md.)
+
 A sweep of `spiderpig audit --linkage L --modules M`, 68 audits 6 at a time on
 ao-server in a fresh store (run `20261004-160408`, `build/remote/20261004-160408/sweep`),
 on branch `pw/rules`: the thinnest stock sheet per part (0.080 in 5052 frame plates, 0.063
@@ -252,6 +255,13 @@ and the toe quad (the heel and toe in gaps give up on the crankpin's washers, su
 out of budget).
 
 ## Mechanisms x crank, 2026-10-04 evening
+
+**Since the merge of 2026-10-04** (the hex-standoff crank is the `bolt` crank): this table
+is the round standoff's (now `bolt_round`). With the hex crank `hoecken_pantograph` and
+`dwell_rocker` plan (9 layers each: the horn spacer is a layer thicker for the short crank's
+head, or caps a pin wholly under it), so they no longer keep the keyed crank
+(`config.LINKAGE_CRANKS` holds only TrotBot's heel and toe, on `bolt_round`: the hex's 8.5
+mm sleeve doesn't clear b7 at crankpin J1).
 
 Every one-input mechanism, one side, with each crank (`config.DEFAULT_CRANKS` /
 `LINKAGE_CRANKS`; the crank's rating from the drive torque alone, factor 1; run

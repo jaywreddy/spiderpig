@@ -164,8 +164,18 @@ def test_the_klann_single_builds_clean_with_standoff_pillars(design, side):
         else:                                               # a cantilever: to its last link
             assert len(v["anchors"]) == 1
             ks = sorted(v["layers"].values())
-            reach = (ks[-1] if v["anchors"] == [0] else d.plan.top + 1 - ks[0]) * d.ctx.pitch
-            assert column == pytest.approx(reach)
+            # from the plate's inner face to the end layer's face over (under) its last link,
+            # at the plan's own z: a clearance gap under the end layer (its washers, where the
+            # crank's screw heads sit since the hex crank) is part of the column
+            if v["anchors"] == [0]:
+                reach = plan.z(ks[-1] + 1)[0] - plan.z(0)[1]
+                rng = range(1, ks[-1] + 1)
+            else:
+                reach = plan.z(plan.top)[0] - plan.z(ks[0] - 1)[1]
+                rng = range(ks[0], plan.top)
+            reach -= sum(max(0.0, plan.t(k) - d.ctx.pitch) for k in rng)
+            assert reach - s.max_short - 1e-6 <= column <= reach + s.max_long + 1e-6, \
+                (column, reach)
         assert v["section"]["yield_mpa"] == 240.0
     keys = {b.bom_key for b in mech.bodies if b.name.startswith("pillar_")}
     assert any(k and k.startswith("gobilda_1501_") for k in keys)
@@ -176,7 +186,9 @@ def test_the_klann_single_builds_clean_with_standoff_pillars(design, side):
         if b.name.startswith("pillar_") and "_standoff" in b.name:
             bb = b.part.bounding_box()
             stock = float(b.bom_key.rsplit("_", 1)[1])
-            least = stock - s.max_short - air - 1e-3
+            # a stock segment up to max_long over its span is drawn at the span: the column
+            # holds its faces that far apart (the note's play), as StandoffAxle.segment allows
+            least = stock - s.max_short - air - s.max_long - 1e-3
             assert least <= bb.max.Z - bb.min.Z, b.name
     for name, v in pillars.items():
         stem = name.replace(":", "_")

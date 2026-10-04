@@ -60,9 +60,11 @@ mechanism's `single` and one side), so a CLI never needs `--module single
 --side-only` for a mechanism. The project's default design is `linkage.DEFAULT`
 (Strider) in its default module: `BuildConfig()` is the Strider double, built `--pin chicago
 --pillar standoff --crank bolt` (since 2026-10-03; before, `--pillar printed --crank keyed`).
-The **bolt crank** (`construction/crank.py` `BoltCrank`). On the default crank sheet (5052,
-0.125 in) it resolves to **single plates** (`BoltCrank.for_sheet` / `resolve(ctx)`, since
-2026-10-04, `_WebPlates`): every web one aluminium plate; every crankpin a goBILDA 1501 round
+The **bolt crank** (`construction/crank.py` `BoltCrank`). On an aluminium crank sheet (the
+default 0.100 in 6061-T6) it resolves to **single plates** (`BoltCrank.for_sheet` / `resolve(ctx)`, since
+2026-10-04, `_WebPlates`): every web one aluminium plate; every crankpin (since the merge of
+2026-10-04 a hex standoff in hex pockets, below; this paragraph is the round one, `--crank
+bolt_round`) a goBILDA 1501 round
 standoff (6 mm OD, stock lengths in 1-2 mm steps, two joined by a stud past 60 mm) clamped
 between its two webs by an M4 button head into each end (heads in the clearance gaps beyond
 the webs; DIN 988 shims and a "spacer" gap take up the standoff's length past the layers);
@@ -94,11 +96,14 @@ nylock in hex pockets, cemented stacks (`_BoltPlates`, the `two_layer_*`, `tip`,
 `low_count`, `share_stack` rules). Mechanisms default to it too (`config.DEFAULT_CRANKS`,
 2026-10-04): a short crank's top screw head over the hub plate sits in a pocket of the
 printed horn spacer (`DriveGroup.realize`). The construction a design gets is data
-(`config.default_crank`: `LINKAGE_CRANKS` per linkage, else `DEFAULT_CRANKS` per kind), so
-the hex-standoff crank lands by editing those tables: the mechanisms' sweep of 2026-10-04
-(`docs/audit/STRENGTH.md`) has the bolt crank planning every one-input mechanism at jam SF
-3.57 but `hoecken_pantograph` and `dwell_rocker` (their crankpin M's top screw head needs 2.5
-mm of the 1.83 mm horn spacer), which keep the keyed crank (SF 0.64, an audit error).
+(`config.default_crank`: `LINKAGE_CRANKS` per linkage, else `DEFAULT_CRANKS` per kind). The
+mechanisms' sweep of 2026-10-04 (`docs/audit/STRENGTH.md`, on the round standoff) left
+`hoecken_pantograph` and `dwell_rocker` on the keyed crank; with the hex crank both plan (9
+layers: the horn spacer takes the short crank's head, `hub_head_need` / `hub_capped`), so
+since the merge `LINKAGE_CRANKS` holds only TrotBot's heel and toe on `bolt_round` (b7 passes
+crankpin J1 at 10.2 mm, the hex's 8.5 mm sleeve needs 11.2; the round 6 mm standoff plans,
+14 layers). The demo Klann quad on the XL330 plans with the hex crank only after ~6 CPU
+minutes (15 layers; the 60 s default gives up), the STS3215 in 3 s.
 Since 2026-10-04 `StackSpec.max_top` is 60.
 **Hex-standoff crankpins** (the user's decision of 2026-10-04, `BoltCrank.pin="hex"`, the
 default; the round friction clamp above is `--crank bolt_round`): every crankpin and journal
@@ -137,8 +142,8 @@ crank's bolts, the stub, the Chicago barrels and the standoff segments are check
 `Layout.final`), and a gap thickened (`_thicker_gaps`) when that lets a stock part fit; a
 layering that doesn't build there is a dead end for the search (`PlanReject`).
 `Layout.z`/`gap_z`/`slot_z`, `StackPlan.gaps`/`thick`/`heads`. Sheets: `BuildConfig.sheet`
-(acrylic, the links, rings, deck), `frame_sheet` and `crank_sheet` (5052, the thinnest
-that passes: below), `link_sheets` (a Klann variant's foot link in 6061, and `klann_lego`'s
+(acrylic, the links, rings, deck), `frame_sheet` and `crank_sheet` (the thinnest that
+passes: 5052 frame, 6061 crank, below), `link_sheets` (a Klann variant's foot link in 6061, and `klann_lego`'s
 crank rider b1, the user's decision of 2026-10-04: `materials.LINK_SHEETS`); `Body.sheet`
 carries it to the mass, the BOM (a line per sheet), the DXFs (`layout.save_sheets`: a set
 per sheet) and the cut-rule review (`spiderpig/manufacture.py`: SendCutSend / Ponoko minimum

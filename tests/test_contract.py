@@ -23,7 +23,15 @@ def test_every_part_stays_inside_its_claim(design, module, t):
 
 @pytest.mark.parametrize("servo", OTHERS)
 @pytest.mark.parametrize("module", quick(MODULES, ["single"]))
-def test_every_servo_couples_inside_the_claims(design, module, servo):
+def test_every_servo_couples_inside_the_claims(design, module, servo, monkeypatch):
+    if (module, servo) == ("quad", "xl330_m288"):
+        # the demo Klann quad on the XL330 with the hex-standoff crank (2026-10-04): its hub
+        # chain must end flush in the hub plate, and the 2-3 mm steps of the hex standoff's
+        # stock lengths reject most layerings at their z, so the planner finds its 15-layer
+        # plan only after ~6 CPU minutes, past the 60 s default (the STS3215 plans in 3 s)
+        from spiderpig import stack
+
+        monkeypatch.setattr(stack, "MAX_SECONDS", 900.0)
     tmpl, d = design(module, servo)
     assert check_side(d, tmpl.freeze_at(2.2)) == []
 

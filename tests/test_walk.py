@@ -240,7 +240,8 @@ def test_quad_reference(com):
     ``--crank printed``, whose 12 layers put the feet at z -62 / -50 mm. The keyed crank
     plans 16 layers, the feet at -74 to -53 mm, which widens the margin to 57.4 mm; the bolt
     crank (the default since 2026-10-03) with its single aluminium webs and heads in gaps
-    (2026-10-04) 14 layers, 77.2 mm on 0.080 in frame plates: 55.9 mm (its two-plate
+    (2026-10-04) 14 layers, 77.2 mm on 0.080 in frame plates: 55.9 mm, with the hex-standoff
+    crankpins on 0.100 in 6061 webs 76.8 mm: 52.4 mm (its two-plate
     stacks' 31 layers gave 70.5; checked at the end)."""
     quad = walk.walker(_cfg("quad", crank="printed", pillar="printed", **OLD))
     assert walk.foot_z_nominal(quad.config) == [-62.0, -62.0, -50.0, -50.0]
@@ -271,7 +272,8 @@ def test_quad_reference(com):
                                                              pillar="printed", **OLD)))
         assert keyed["min_margin_mm"] == pytest.approx(57.4, abs=0.5)
         bolt = walk.straight_walk_metrics(walk.walker(_cfg("quad")))
-        assert bolt["min_margin_mm"] == pytest.approx(55.9, abs=0.5)
+        # the hex-standoff crankpins (2026-10-04): 52.4 mm (the round standoff's 55.9)
+        assert bolt["min_margin_mm"] == pytest.approx(52.4, abs=0.5)
 
 
 @pytest.mark.parametrize("module", list(linkage.MODULE_LEGS))
@@ -517,8 +519,9 @@ def test_nominal_mass_and_servo():
     cfg = _cfg("quad")
     com, mass = walk.nominal_mass(cfg, walk.side_legs(cfg))
     # the fabricated quad robot with its deck: the thinnest sheet per part (2026-10-04: 0.080
-    # in frame, 0.063 in crank, 0.090 in centre plates; 1088 g on 0.125 in aluminium)
-    assert mass == pytest.approx(975.0, rel=0.015)
+    # in frame, 0.100 in 6061 crank (the hex crankpins' pockets; 975 g on 0.063 in), 0.090
+    # in centre plates; 1088 g on 0.125 in aluminium)
+    assert mass == pytest.approx(1009.6, rel=0.015)
     assert com[2] == 0.0
     assert com[0] == pytest.approx(-0.4, abs=0.2)          # the deck's battery end is -x
     assert com[1] == pytest.approx(4.3, abs=1.0)           # the deck raises it ~3 mm

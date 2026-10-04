@@ -426,14 +426,13 @@ class PrintedAxle:
         for m in group.axis.members:
             links[build.layers[m]] = links.get(build.layers[m], ()) + (m,)
 
-        def z(k: int) -> tuple[float, float]:
-            """A layer's z, and the clearance gap over it where the axle goes on through it
-            (printed through: its washers' claim)."""
-            z0, z1 = build.z(k)
-            return z0, z1 + (build.plan.gaps.get(k, 0.0) if k + 1 in column else 0.0)
+        # the clearance gap over a layer where the axle goes on through it is printed
+        # through, at the narrower of the two layers' radii (what stack.bridges claims there)
+        gaps = {k: g for k, g in build.plan.gaps.items() if k in column and k + 1 in column}
 
         return plan_segments(
-            column, z, links, axle=group.dims(build.ctx).axle, snap=self.snap(build.ctx),
+            column, build.z, links, axle=group.dims(build.ctx).axle, snap=self.snap(build.ctx),
+            gaps=gaps,
             play=self.axial_play, bridge=self.bridge, base=self.base, slot_max=self.slot_max,
             min_prong=self.min_prong, max_strain=self.max_strain,
             min_engage=self.snap_engage_min, name=group.name, strain_target=self.strain_target)

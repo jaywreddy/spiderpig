@@ -270,6 +270,7 @@ def plan_segments(
     min_engage: float | None = None,
     name: str = "axle",
     strain_target: float | None = None,
+    gaps: Mapping[int, float] | None = None,
 ) -> list[Segment]:
     """Split an axle's claimed column into snap-together segments.
 
@@ -280,8 +281,12 @@ def plan_segments(
     (``engage`` down to ``min_engage``; ``None``: the axle's); past both it is
     a ``ValueError`` (see the module doc). ``strain_target`` (at most ``max_strain``)
     is the margin the planner aims for: a prong over it is relieved the same way, down to
-    the target when the lip allows, else to just under ``max_strain``.
+    the target when the lip allows, else to just under ``max_strain``. ``gaps``: the
+    clearance gap over a layer that the axle runs on through (both layers beside it in its
+    column): it is printed through it at the narrower of the two layers' radii, which is
+    what the plan claims there (:func:`spiderpig.stack.bridges`).
     """
+    gaps = gaps or {}
     ks = sorted(column)
     if ks != list(range(ks[0], ks[-1] + 1)):
         raise ValueError(f"{name}: its claim skips a layer ({ks})")
@@ -290,6 +295,7 @@ def plan_segments(
     for k in ks:
         role, r = column[k]
         z0, z1 = z(k)
+        g = gaps.get(k, 0.0) if k + 1 in column else 0.0
         if role in RETAINERS:      # stop short of the links beside it
             lo = z0 + play if k - 1 in member else z0
             hi = z1 - play if k + 1 in member else z1
@@ -300,6 +306,8 @@ def plan_segments(
                 pieces.append(Piece(hi, z1, min(axle, r), "play", k))
         else:
             pieces.append(Piece(z0, z1, r, role, k))
+        if g > 0:                  # on through the gap over it, at the narrower radius
+            pieces.append(Piece(z1, z1 + g, min(r, column[k + 1][1]), "bridge", k))
 
     # split above every run of links that a shoulder or cap retains
     splits = sorted(z(k + 1)[0] + play for k in member

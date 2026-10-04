@@ -158,8 +158,10 @@ def test_sheets_per_part():
     6061, and klann_lego's crank rider b1 too (the user's decision 3 of 2026-10-04: its jam
     load is past what acrylic holds, strength.link_rows)."""
     cfg = BuildConfig()
+    # the crank plates 0.100 in 6061-T6 since the hex-standoff crankpins (their pockets' jam
+    # SF 2; 0.063 in 5052 before)
     assert (cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == ("acrylic_3mm", "al5052_2mm",
-                                                              "al5052_1p6mm")
+                                                              "al6061_2p5mm")
     assert cfg.frame_sheet == materials.thinnest_sheet("frame")
     assert cfg.crank_sheet == materials.thinnest_sheet("crank")
     assert materials.link_sheets(cfg) == {}

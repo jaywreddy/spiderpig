@@ -199,8 +199,10 @@ def test_check_plan_walk_on_the_default_quad(quad):
     # screw heads in clearance gaps (11 of them), 0.080 in frame plates: 14 layers, 77.164
     # mm (the two-plate stacks took 31 layers, 95.975 mm; the keyed crank's were 16)
     assert pr.n_layers == 14
-    assert pr.height_mm == pytest.approx(77.164)
-    assert len(pr.gaps_mm) == 11
+    # the hex-standoff crankpins on 0.100 in 6061 webs (2026-10-04): 76.789 mm (77.164 on
+    # the round standoff)
+    assert pr.height_mm == pytest.approx(76.789)
+    assert len(pr.gaps_mm) == 10      # the hex crank's (the round standoff's: 11)
     assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": lo, "hi": lo}
                                  for k, lo in ((0, 4), (2, 6), (1, 8), (3, 10))],
                         "bearing": True}
@@ -226,7 +228,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == pytest.approx(77.164)
+    assert rows["size.stack_mm"].value == pytest.approx(76.789)     # the hex crank's
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -442,9 +444,10 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     assert rep.ok
     names = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
     # a set per sheet, each part on its thinnest (2026-10-04): the links in acrylic, the
-    # frame plates 0.080 in 5052, the crank's webs 0.063 in 5052, the foot link 6061
+    # frame plates 0.080 in 5052, the crank's webs 0.100 in 6061 (the hex crankpins'
+    # pockets), the foot link 6061
     assert {"klann.step", "laser/klann_sheet_acrylic_3mm_0.dxf",
-            "laser/klann_sheet_al5052_2mm_0.dxf", "laser/klann_sheet_al5052_1p6mm_0.dxf",
+            "laser/klann_sheet_al5052_2mm_0.dxf", "laser/klann_sheet_al6061_2p5mm_0.dxf",
             "laser/klann_sheet_al6061_3p2mm_0.dxf", "laser/klann_sheet_parts.csv", "bom.csv",
             "bom.md", "bom.json", "manifest.json"} <= names
     manifest = json.loads((tmp_path / "manifest.json").read_text())
@@ -453,8 +456,9 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     assert manifest["bom"]["items"] > 0
     # the bolt crank's webs, standoff crankpin, screws, shims and stub, the standoff
     # pillars' segments, sleeves, screws and washers, the Chicago pins (keyed and printed:
-    # 36; the two-plate bolt crank's 13 layers had 58)
-    assert len(manifest["parts"]) == 64
+    # 36; the two-plate bolt crank's 13 layers had 58); with the hex-standoff crankpins
+    # (2026-10-04) 75 (the round standoff's: 64)
+    assert len(manifest["parts"]) == 75
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -791,13 +795,14 @@ def test_the_recommendation_says_which_module_it_checked():
 
     text = rec._verify(BuildConfig(linkage="klann", module="quad", robot=False),
                        plan=False)                                                # entry 5
-    # the bolt crank's single webs, heads in gaps, 0.080 in frame plates (2026-10-04)
+    # the bolt crank's single webs, heads in gaps, 0.080 in frame plates (2026-10-04); the
+    # hex crankpins' screw stacks in their gaps: 39.339 mm (the round standoff's 34.939)
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "10 layers (34.939 mm); the quad module's own plan is not checked "
+                           "10 layers (39.339 mm); the quad module's own plan is not checked "
                            "here")
     assert "the planner's deadline is 60 s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 10 layers (34.939 mm)"
+        == "checked: the static stage passes, and it plans in 10 layers (39.339 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
@@ -1009,9 +1014,10 @@ def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups
 
     cfg = quad.config
     b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg))     # entry 12
-    # the default quad + its deck: 0.080 in frame, 0.063 in crank and 0.090 in centre
-    # plates (the thinnest per part, 2026-10-04; 1088 g on 0.125 in aluminium)
-    assert b["total"] == pytest.approx(975.0, rel=0.02)
+    # the default quad + its deck: 0.080 in frame, 0.100 in 6061 crank (the hex crankpins'
+    # pockets; 975 g on 0.063 in) and 0.090 in centre plates (the thinnest per part,
+    # 2026-10-04; 1088 g on 0.125 in aluminium)
+    assert b["total"] == pytest.approx(1009.6, rel=0.02)
     assert (b["links"] + b["servos"] + b["plates"] + b["printed"] + b["deck"]
             == pytest.approx(b["total"]))
     row = next(r for r in api.verify(quad, "quick").rows if r.requirement == "size.mass_g")
@@ -1073,17 +1079,20 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # the threadlockers (the Chicago pins and the standoff pillars' screws take the
     # low-strength one) and the Chicago barrels' epoxy are bought whatever the sizes, but the
     # catalog has no verified price for them yet. The thin sheets of 2026-10-04: a 0.080 in
-    # frame blank and a 0.063 in crank blank ($18 each, the 0.125 in was $28); the
-    # single-plate crank has no nylocks, and nothing is glued to a plate any more (no wood
-    # glue: the glue-free joinery), the CA is the battery cradle's
-    assert total == pytest.approx(40.0 + 25.49 + 3.10 + 18.0 + 18.0 + 11.37 + 13.99)
+    # frame blank ($18, the 0.125 in was $28) and, since the hex-standoff crankpins, a 0.100
+    # in 6061 crank blank ($21; the 0.063 in 5052 was $18); the single-plate crank has no
+    # nylocks, and nothing is glued to a plate any more (no wood glue: the glue-free
+    # joinery), the CA is the battery cradle's
+    assert total == pytest.approx(40.0 + 25.49 + 3.10 + 18.0 + 21.0 + 11.37 + 13.99)
     assert unpriced == ["Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
                         "Loctite EA E-30CL), 2 x 25 ml",          # the Chicago barrels
                         "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
                         "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml"]
     assert any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
-    assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 2
+    # the frame blank in 5052, the crank's in 6061 (the hex crankpins' pockets)
+    assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 1
+    assert sum(line.startswith("6061 aluminium sheet") for line in priced) == 1
     lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}, **OLD},
                        store=None)
     assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86 + 18.0)   # + its Al frame

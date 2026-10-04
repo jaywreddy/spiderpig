@@ -40,22 +40,26 @@ def _wrap(a: float) -> float:
 
 DEFAULT_CRANKS = {"walker": "bolt", "mechanism": "bolt"}
 """The crank a design gets when it names none, per kind (:func:`default_crank`): the bolt
-crank for both (the crank study of 2026-10-03; mechanisms since 2026-10-04): the strongest
-crank that plans, jam SF 3.57 on every one-input mechanism (a single-plate web clamped on
-each crankpin's ends) against the keyed crank's 0.64 and the printed one's 0.20. Which
-construction a design gets is data here, not code, so the hex-standoff crankpins of the
-user's decision of 2026-10-04 (1) land by changing this table (and :data:`LINKAGE_CRANKS`)."""
+crank for both (the crank study of 2026-10-03; mechanisms since 2026-10-04), which is the
+single-plate web crank with hex-standoff crankpins in hex pockets (the user's decision of
+2026-10-04 (1), ``BoltCrank.pin="hex"``; jam SF >= 2.25 on 0.100 in 6061-T6). The round
+friction-clamped standoff it replaced is ``bolt_round``. Which construction a design gets is
+data here, not code."""
 
 LINKAGE_CRANKS: dict[str, str] = {
-    # The bolt crank finds no plan for these (the sweep of 2026-10-04, every one-input
-    # mechanism x crank, docs/audit/STRENGTH.md): their crankpin M is so short a crank that
-    # its top screw head over the hub plate needs 2.5 mm of the printed horn spacer, which
-    # is 1.83 mm, at every layering (the planner's deadline runs out on it). The keyed crank
-    # plans them (10 and 7 layers) but rates jam SF 0.64 (its key in the printed web
-    # socket), an audit error: the strongest that plans, until the drive's horn spacer or
-    # the hex-standoff crank takes that head.
-    "hoecken_pantograph": "keyed",
-    "dwell_rocker": "keyed",
+    # Empty since the hex-standoff crank merged (2026-10-04): hoecken_pantograph and
+    # dwell_rocker, which kept the keyed crank (jam SF 0.64) because the round crankpin's top
+    # screw head over the hub plate needed 2.5 mm of the 1.83 mm horn spacer, plan with it
+    # (9 layers each): DriveGroup.spacer adds a layer for that head (BoltCrank.hub_head_need)
+    # or the spacer caps a pin wholly under it (hub_capped).
+    #
+    # TrotBot's heel and toe: b7 sweeps across the crank at O and passes crankpin J1 at 10.2
+    # mm; the hex crankpin's 8.5 mm printed sleeve needs 11.2 mm there (static stage stops).
+    # The round 6 mm standoff of bolt_round clears it and plans (14 layers, single module;
+    # its friction clamp rates jam SF 3.57 at factor 1, UNVERIFIED coefficients). The
+    # alternative, the hex crank at unit 12 (x1.14), changes the linkage's size.
+    "trotbot_heel": "bolt_round",
+    "trotbot_toe": "bolt_round",
 }
 """Per linkage: the crank it gets when it names none, where :data:`DEFAULT_CRANKS`'
 doesn't plan (each with why)."""
@@ -103,7 +107,9 @@ class BuildConfig:
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates
-    #                                   on the 0.063 in crank sheet; "keyed", printed segments
+    #                                   on the crank sheet, hex-standoff crankpins in hex
+    #                                   pockets; "bolt_round": the round friction-clamped
+    #                                   standoff; "keyed", printed segments
     #                                   keyed by brass hex standoffs, the default before
     #                                   2026-10-03; "printed": clamp friction only)
     params: Params = field(default_factory=Params)
