@@ -26,14 +26,14 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `kind` | `walker` \| `mechanism` | required |
 | `linkage.key` | a registered linkage (`api.list_linkages()`) | required; its kind must match |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them: a length must be > 0; an angle, or a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
-| `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`: a stride of at least 20 mm a turn; a few mm is a shuffle, and a stride under 1 mm gets `walk`'s "no net travel" note) | `quad` (walker), `single` (mechanism) |
+| `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`: a stride of at least 20 mm a turn; a few mm is a shuffle, and a stride under 1 mm gets `walk`'s "no net travel" note) | the linkage's own default module (Strider: `double`), else `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
 | `materials.sheet` | a catalog sheet item: `acrylic_3mm`, `plywood_3mm` (sets the layer pitch) | `acrylic_3mm` |
-| `materials.thickness_mm` | a measured sheet thickness: **the layer pitch** every construction sizes its parts by (a value more than 12 % off the sheet's nominal is a warning on `resolve`; the printed crank's crankpin joints need at least about 2.9 mm, and a `check` at a thinner pitch fails at `construction` with the thickness that works as a checked recommendation) | the sheet's nominal |
+| `materials.thickness_mm` | a measured sheet thickness: **the layer pitch** every construction sizes its parts by (a value more than 12 % off the sheet's nominal is a warning on `resolve`; the printed crank's crankpin joints need at least about 2.9 mm, the keyed crank's 3.0, and a `check` at a thinner pitch fails at `construction` with the thickness that works as a checked recommendation) | the sheet's nominal |
 | `materials.servo` | `sts3215`, `xl330_m288`, `xl430_w250` | `sts3215` |
-| `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing` | `printed` |
-| `constructions.crank` | `printed` | `printed` |
+| `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing` | pillar `printed`, pin `rod` (a 3 mm rod with push-on clips; `printed` is the zero-hardware snap pin) |
+| `constructions.crank` | `keyed` (segments keyed through each crankpin by a brass M3 hex standoff floating in hex pockets, each chain clamped by a screw and nut in a two-layer top web: +2 layers a side, 18 on the Strider double, 16 on the Klann quad), `printed` (the same crank held by clamp friction alone: 16 / 12 layers) | `keyed` |
 | `fit.*` | every `construction.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf 0.15; the sheet stock's size |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
 
@@ -144,7 +144,7 @@ Failure {stage, code, message, culprits: [{body?, group?, joint?, point?, ...}],
 | drive | second_input_no_drive | `ConstructionError` from the drive |
 | construction | unbuildable | any other `ConstructionError` before planning |
 | static | link_no_layer | `ClearanceError` (`NoCrankPoint` per culprit: dist, need, post, detour) + recommendations |
-| plan | no_plan, no_plan_in_budget | `PlanError` (blockers parsed, recommendations) |
+| plan | no_plan, no_plan_in_budget, no_plan_in_time | `PlanError` (blockers parsed, recommendations); `no_plan_in_time`: the CPU deadline ran out, not kept as a verdict |
 | fabricate | unbuildable | `ConstructionError` while building |
 | contract / clash | part_outside_claim / parts_clash, bad_solid | `check_side`, `clashes`, `bad_solids` |
 | layout / bom | part_exceeds_sheet / unknown_catalog_key | `layout.pack`, the BOM |
@@ -201,8 +201,8 @@ What is cached, and when it is stale:
   fails it is solved again. A new design of the same resolved spec under a new engine
   (a different id) seeds its plan from the old record the same way (`reused` = that id).
 - A **build** reloads its parts from STEP (`api.attach_build`: masses, layers, groups
-  and the envelope recomputed from the solids; `Part.pose` restored; the quad's 173 parts
-  from 98 files in ~4 s against an 8 s build) when the manifest's `t` and engine match;
+  and the envelope recomputed from the solids; `Part.pose` restored; the quad's 197 parts
+  in a few seconds against an 8 s build) when the manifest's `t` and engine match;
   otherwise it is rebuilt at the requested `t` and the files replaced. The files are what
   the engine built: an edited `Part.solid` lives in the session only.
 - `check`, `walk`, `recheck`, `verify` are read back through `Report.from_dict`
@@ -246,7 +246,7 @@ hand (a soft target keeps the priced part's verdict, with the same note); at `qu
 the row `budget.cost_floor_usd` prices what the design buys whatever its parts (the
 servos, a spool, a sheet, the robot's cement and inserts, a bottle of CA glue for the
 pillars' anchors and the robot's tie spigots with every pivot construction but `bolt`,
-the printed crank's crankpin nuts) from the catalog, and a floor already over a `max`
+the crank's crankpin nuts and, keyed, its hex standoffs) from the catalog, and a floor already over a `max`
 fails `budget.cost_usd` before any build; the floor's detail says what a build adds
 (the sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few
 dollars on a printed-pivot design); `plan.warnings`

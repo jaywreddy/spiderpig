@@ -18,10 +18,14 @@ from spiderpig import api
 from spiderpig.mcp import make_server
 from spiderpig.store import Store
 
+# The numbers below are the keyed crank's and the printed pillars' (the defaults before the
+# bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
+# height, parts and cost stay what these tests check
+OLD = {"constructions": {"crank": "keyed", "pillar": "printed"}}
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
-                "legs": {"module": "single", "sides": 1}}
+                "legs": {"module": "single", "sides": 1}, **OLD}
 HEEL = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
-        "legs": {"module": "single"}}
+        "legs": {"module": "single"}, **OLD}
 TOOLS = {"list_linkages", "describe", "catalog", "resolve", "check", "plan", "explain",
          "recommend", "walk", "build", "verify", "export", "compare", "derive", "get_design",
          "list_designs", "gc", "get_job", "wait_job", "view"}
@@ -88,7 +92,7 @@ def fresh(tmp_path):
 @pytest.fixture(scope="module")
 def single(server, design) -> str:
     """The Klann single's id, its plan the session's."""
-    design("single")
+    design("single", crank="keyed", pillar="printed")
     return call(server, "resolve", spec=KLANN_SINGLE)["design"]
 
 
@@ -119,7 +123,7 @@ def test_every_tool_is_listed_with_schemas_and_hints(server):
     assert tools["export"].annotations.destructive_hint is False
     spec = tools["resolve"].input_schema["properties"]["spec"]
     assert spec["required"] == ["kind", "linkage"]
-    assert spec["properties"]["linkage"]["properties"]["key"]["enum"][0] == "klann"
+    assert spec["properties"]["linkage"]["properties"]["key"]["enum"][0] == "strider"
     assert spec["additionalProperties"] is False
     assert tools["verify"].input_schema["properties"]["level"]["enum"] == ["quick", "standard",
                                                                            "full"]
@@ -170,7 +174,8 @@ def test_resolve_agrees_with_the_python_api_and_an_invalid_spec_lists_its_errors
 
 def test_cards(server):
     keys = [c["key"] for c in call(server, "list_linkages", kind="walker")["linkages"]]
-    assert keys[0] == "klann"
+    assert keys[0] == "strider"
+    assert "klann" in keys
     card = call(server, "describe", key="klann")["card"]
     assert card["scale_params"] == ["OA"]
     assert card["foot_path"]["lift_mm"] == pytest.approx(86.5, abs=0.1)
@@ -187,10 +192,16 @@ def test_cards(server):
     assert sheet["sheet_mm"] == [300.0, 300.0]
     assert sheet["price_usd"] == 10.99
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
-    assert set(axles) == {"printed", "rod", "bolt", "bearing", "bushing"}
+    assert set(axles) == {"printed", "rod", "bolt", "bearing", "bushing", "chicago",
+                          "chicago_bushing", "ptfe", "standoff"}
+    assert axles["standoff"]["roles"] == ["pillar"]
+    assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["bolt"]["hardware"]["nut_key"]["key"] == "m3_nylock"
     assert axles["printed"]["roles"] == ["pillar", "pin"]
-    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["printed"]
+    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "keyed", "keyed_float",
+                                                                 "printed"]
+    keyed = next(c for c in cat["constructions"]["cranks"] if c["key"] == "keyed")
+    assert keyed["hardware"]["standoff_key"]["key"] == "m3_hex_standoff_ff_4"
     assert set(call(server, "catalog", category="sheets")) == {"ok", "failures", "sheets"}
 
 
@@ -228,7 +239,7 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["program.loops_close"]["tier"] == "proven"
     assert rows["program.loops_close"]["pass"] is True
-    assert rows["size.stack_mm"]["value"] == 21.0
+    assert rows["size.stack_mm"]["value"] == pytest.approx(21.525)   # Al frame and feet
     assert rows["motion.speed_mm_s"]["tier"] == "estimated"
     _no_solids(vr)
     recs = call(server, "recommend", design=single)
@@ -274,9 +285,9 @@ def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_pla
     (f,) = cr["failures"]
     assert (f["stage"], f["code"]) == ("static", "link_no_layer")
     assert f["culprits"][0]["body"] == "b7"
-    assert f["numbers"]["need_mm"] == 10.0
+    assert f["numbers"]["need_mm"] == 11.25    # the keyed crank's 8.5 mm post: 4.25 + 6 + 1
     (rec,) = f["recommendations"]
-    assert rec["patch"] == {"linkage": {"params": {"unit": 10.5}}}
+    assert rec["patch"] == {"linkage": {"params": {"unit": 12.0}}}
     assert rec["verified"].startswith("checked: the static stage passes")
     recs = call(server, "recommend", design=heel)
     assert recs["stage"] == "static"
@@ -289,10 +300,10 @@ def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_pla
     assert child["design"] != heel
     assert child["derived_from"] == heel
     assert child["patch"] == rec["patch"]
-    assert child["resolved"]["linkage"]["params"]["unit"] == 10.5
+    assert child["resolved"]["linkage"]["params"]["unit"] == 12.0
     pr = call(server, "plan", design=child["design"])
     assert pr["ok"]
-    assert pr["n_layers"] == 12
+    assert pr["n_layers"] == 14
     cmp = call(server, "compare", a=heel, b=child["design"])
     assert cmp["spec_patch"] == rec["patch"]
     assert cmp["derived"] == f"{child['design']} derives from {heel}"
@@ -326,26 +337,26 @@ def test_build_through_the_long_op_path_returns_a_manifest_of_files_in_the_store
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    assert manifest["n_parts"] == len(manifest["parts"]) == 28
+    assert manifest["n_parts"] == len(manifest["parts"]) == 35     # Chicago pins, keyed crank
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     store = Store.default()
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 28                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 35                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
     assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [2])
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 28
+    assert stored["n_parts"] == 35
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 28
+    assert again["n_parts"] == 35
     assert "result" not in again["job"]
 
 
@@ -432,7 +443,7 @@ def test_gc_refuses_bare_and_removes_what_it_is_told(fresh, tmp_path):
 
 
 def test_a_cold_resolve_to_verify_quick_round_trip_is_fast(fresh, design):
-    design("single")
+    design("single", crank="keyed", pillar="printed")
     t0 = time.time()
     d = call(fresh, "resolve", spec=KLANN_SINGLE)["design"]
     vr = call(fresh, "verify", design=d, level="quick")
@@ -521,7 +532,7 @@ def test_recommend_carries_the_failures_notes_and_a_plan_its_warnings(fresh):
     assert recs["stage"] == "static"
     assert isinstance(recs["notes"], list)
     assert len(recs["recommendations"]) == 1
-    child = call(fresh, "derive", design=heel, patch={"linkage": {"params": {"unit": 10.5}}})
+    child = call(fresh, "derive", design=heel, patch={"linkage": {"params": {"unit": 12.0}}})
     pr = call(fresh, "plan", design=child["design"])
     assert pr["ok"]
     assert isinstance(pr["warnings"], list)
@@ -539,7 +550,7 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     cr = call(fresh, "check", design=thin["design"])
     assert not cr["ok"]
     assert cr["failures"][0]["stage"] == "construction"
-    assert cr["failures"][0]["numbers"]["least_pitch_mm"] == 2.9
+    assert cr["failures"][0]["numbers"]["least_pitch_mm"] == 3.0       # the keyed crank
     recs = call(fresh, "recommend", design=thin["design"])
     assert recs["stage"] == "construction"
     (rec,) = recs["recommendations"]
@@ -558,7 +569,8 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     thin_card = next(c for c in call(fresh, "list_designs")["designs"]
                      if c["id"] == thin["design"])
     assert thin_card["thickness_mm"] == 2.0                                # entry 9
-    assert card["constructions"] == {"pillar": "printed", "pin": "printed", "crank": "printed"}
+    assert card["constructions"] == {"pillar": "printed", "pin": "chicago", "crank": "keyed",
+                                     "heads": "best"}
     assert card["servo"] == "sts3215"
 
 
@@ -570,7 +582,8 @@ def test_the_guide_explains_the_budgets_lower_bound_and_the_layer_pitch(server):
     guide = run(go())
     assert "can refute a `max` but not confirm it" in guide                # entries 3, 4
     assert "`budget.cost_floor_usd`" in guide
-    assert "layers of at least about 2.9 mm" in guide                      # entry 2
+    assert ("layers of at least 2.6 mm with the bolt crank, 3 mm keyed (2.9 mm with"
+            in " ".join(guide.split()))                                    # entry 2
     assert "there is no three-leg module" in guide                         # entry 1
 
 
@@ -617,14 +630,15 @@ def test_recommend_meets_a_missed_stroke_by_a_checked_scale(fresh):
 
 def test_a_stack_that_is_proven_the_floor_is_explained_by_recommend(fresh):
     r = call(fresh, "resolve", spec={"kind": "walker", "linkage": {"key": "klann"},
-                                     "size": {"stack_mm": {"max": 30}}})
+                                     "size": {"stack_mm": {"max": 30}}, **OLD})
     recs = call(fresh, "recommend", design=r["design"])                       # entry 11
     assert recs["stage"] == "target"
     assert recs["recommendations"] == []
-    assert recs["notes"][0].startswith("size.stack_mm 36 vs <= 30: 36 mm is proven the "
+    assert recs["notes"][0].startswith("size.stack_mm 49.05 vs <= 30: 49.05 mm is proven the "
                                        "thinnest for klann's quad module")
 
 
+@pytest.mark.slow
 def test_export_carries_its_warnings_and_the_guide_the_round_3_vocabulary(fresh):
     from spiderpig.mcp import render_guide
 

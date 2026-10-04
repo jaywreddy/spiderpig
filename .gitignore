@@ -25,6 +25,9 @@ __pycache__/
 
 mise.local.toml
 
+# MuJoCo writes its warnings here, in the cwd of whatever ran it
+MUJOCO_LOG.TXT
+
 build/
 dist/
 viewer/data/

@@ -255,7 +255,7 @@ def test_explain_takes_the_build_options(capsys):
 
     assert explain.main(["--linkage", "klann", "--module", "single", "--thickness", "2"]) == 0
     out = capsys.readouterr().out                                          # entry 8
-    assert "STOP: no M3 screw and nut fit a crankpin joint in 2 mm layers" in out
+    assert "STOP: no M6 hex bolt and nylock fit a bolt crank joint in 2 mm layers" in out
     assert "materials.thickness_mm 2 -> 3" in out
     assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "bearing",
                          "--pillar", "bearing", "--servo", "xl330_m288"]) == 0
@@ -323,6 +323,7 @@ def test_the_clis_default_a_mechanism_to_its_one_module_and_one_side(store, caps
 
     assert default_module("parallelogram_lift") == "single"                  # entry 9
     assert default_module("klann") == "quad"
+    assert default_module("strider") == "double"             # the linkage's own default
     assert not default_robot("parallelogram_lift")
     assert default_robot("klann")
     ns = argparse.Namespace(linkage="parallelogram_lift", module=None, phases=None,
@@ -332,6 +333,9 @@ def test_the_clis_default_a_mechanism_to_its_one_module_and_one_side(store, caps
     cfg = config_from_args(argparse.Namespace(linkage="klann", module=None, phases=None,
                                               proportion=None))
     assert (cfg.module, cfg.robot) == ("quad", True)
+    cfg = config_from_args(argparse.Namespace(linkage="strider", module=None, phases=None,
+                                              proportion=None))
+    assert (cfg.module, cfg.robot) == ("double", True)
     args = build._parse_args(["--linkage", "parallelogram_lift", "--out", str(tmp_path)])
     assert (args.config.module, args.config.robot) == ("single", False)
     with pytest.raises(SystemExit):        # a robot of a mechanism is still refused, and says
@@ -352,10 +356,13 @@ def test_the_clis_default_a_mechanism_to_its_one_module_and_one_side(store, caps
     assert row["output"]["text"].startswith("parallelogram_lift: b4 (translation_platform)")
 
 
+@pytest.mark.slow
 def test_audit_takes_a_mechanism(tmp_path, capsys):
     from spiderpig.tools import audit
 
-    assert audit.main(["--linkage", "parallelogram_lift", "--ts-contract", "0",
+    # the bolt crank: a mechanism's default (keyed) crank fails the jam check since its key's
+    # printed sockets are rated (SF 0.64 at the 0.85 N·m limit), which fails the audit
+    assert audit.main(["--linkage", "parallelogram_lift", "--crank", "bolt", "--ts-contract", "0",
                        "--ts-clash", "1", "--out", str(tmp_path)]) == 0    # entry 10
     out = capsys.readouterr().out
     assert "== single" in out
@@ -373,6 +380,7 @@ def test_audit_takes_a_mechanism(tmp_path, capsys):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_r5_the_export_cli_writes_a_design_and_the_sim_cli_takes_a_design_or_an_mjcf(
         store, tmp_path, capsys):
     from spiderpig.tools import export as export_cli

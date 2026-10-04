@@ -15,6 +15,31 @@ The thread rides in the holes (an M3 is 2.87-2.98 mm across its threads):
 holes are ISO 273 fine (3.2 mm) in the links, medium (3.4 mm) in rings and
 plates. Tighten the nylock only until the joint still turns freely: the
 links are clamped in series with the rings.
+
+Not the default pin (that is :mod:`.chicago`; before it :mod:`.rod`), for two reasons the pin review
+found (2026-10):
+
+* **Access.** Assembly is bottom up (:mod:`construction.axle`), and a pin's
+  head sits under its lowest link, so once that link is on there is no axial
+  access for the 2.5 mm key; a nylock's prevailing torque then spins a free
+  screw. Pre-joining a leg's links off the frame doesn't work either: the
+  planner interleaves the two legs of a side in the same layers (Klann's
+  leg0 and leg1 both occupy layers 2-4, Strider's likewise), so a pre-joined
+  unit can't be lowered past the other leg.
+* **Stack.** The nut end claims two layers (``pin_nut_layers``) against links
+  that sweep the pin, so the Strider double doesn't plan within the default
+  budget (3-16 layers ruled out, 17+ open at 60 CPU-s) and needs 19 layers
+  (57 mm per side, +19 %) at ten times the budget, where rod and printed
+  pins plan at 16 in seconds; the Klann quad takes 13 layers to their 12.
+
+Strength isn't the issue: an A2-70 M3's 2.39 mm core at 450 MPa is about as strong
+in bending as the 3 mm 304 rod (1.34 against 2.65 mm^3, 450 against 215 MPa), and the
+strength check (``docs/audit/STRENGTH.md``) lists ``--pin bolt`` with its recomputed SF
+among a weak pin's fixes, so the stainless offers in the catalog are fine. A
+``bolt_captive`` variant would fix both points if a strong bolted pin is ever wanted: a
+plain DIN 934 nut (2.4 mm, under a 3 mm sheet) keyed in a hex pocket of the top link with
+threadlocker, the head driven from above; it claims no extra layer and needs
+no access below.
 """
 
 from __future__ import annotations
@@ -34,15 +59,18 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.pivots.common import (
     EPS,
-    RING_COLOR,
+    SLEEVE_COLOR,
     STEEL,
     Column,
     bored,
+    gap_washers,
     hex_prism,
     host_of,
+    ring_z,
     stem_of,
     xy_of,
 )
+from spiderpig.construction.wobble import Section, column_wobble
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fastener_catalog import BOLT_LENGTHS
 from spiderpig.hardware.fasteners import CLEARANCE, shcs
@@ -50,6 +78,8 @@ from spiderpig.shapes import Cut, disc, ring, union
 from spiderpig.stack import Unbuildable
 
 SHANK = 0.97      # modelled shank over the nominal diameter (ISO 965 6g major: 2.874-2.98)
+SHANK_MID = 0.976  # the mid major diameter (2.927 mm) over nominal: the thread rides the hole
+MINOR_D = 2.387    # M3 minor diameter (ISO 724 d3): the bending core
 
 
 @dataclass(frozen=True)
@@ -64,6 +94,7 @@ class BoltAxle:
     pin_nut_layers: int = 2
     pillar_nut_layers: int = 3
     nut_key: str = "m3_nylock"
+    snug_play: float = 0.05        # axial play a nylock tightened "snug, still turning" leaves
     washer_key: str = "m3_washer"
 
     d: float = 3.0
@@ -124,13 +155,15 @@ class BoltAxle:
                         head=max(head_d / 2, nut_r, w_od / 2), neck=ring_min, fill=True)
 
     def ends(self, d: AxleDims, pillar: bool, anchored: tuple[bool, bool], n_layers: int,
-             pitch: float) -> tuple[tuple[End, ...], tuple[End, ...]]:
-        """Head and nut ends (see the module docstring); unbuildable without a standard length."""
+             pitch: float, span: float | None = None
+             ) -> tuple[tuple[End, ...], tuple[End, ...]]:
+        """Head and nut ends (see the module docstring); unbuildable without a standard length
+        (``span``: the stack at the plan's own z, else ``n_layers`` pitches)."""
         head_d, _ = self.head()
         _, nut_h, nut_r = self.nut()
         w_od, _, w_t = self.washer()
         n = self.pillar_nut_layers if pillar else self.pin_nut_layers
-        stack = n_layers * pitch
+        stack = n_layers * pitch if span is None else span
         if self.length(stack, n * pitch) is None:
             need = stack + w_t + nut_h + self.min_tip
             raise Unbuildable(f"no standard M3 screw for its {stack:g} mm stack (needs "
@@ -151,9 +184,10 @@ class BoltAxle:
             role, r = col.roles[k]
             if role == "neck":
                 raise ConstructionError(f"{group.name}: a screw can't neck down (layer {k})")
-            z0, z1 = build.z(k)
+            z0, z1 = ring_z(build, k)
             out.bodies.append(hardware(f"{stem}_ring{k}", ring(xy, 2 * r, ring_d, z0, z1), host,
-                                       fab="laser", color=RING_COLOR))
+                                       fab="printed", color=SLEEVE_COLOR))
+        gap_washers(build, group, col, out, self.d, host, stem)
         z_lo, z_hi = build.z(col.k0)[0], build.z(col.k1)[1]
         n_nut = len(col.below) if group.pillar else len(col.above)
         length = self.length(z_hi - z_lo, n_nut * pitch)
@@ -188,4 +222,9 @@ class BoltAxle:
         plates = {0: FRAME_OUTER, build.top: FRAME_INNER}
         for k in col.anchors:
             out.cut(plates[k], Cut(xy, CLEARANCE["3"]))
+        out.notes["wobble"] = {group.name: column_wobble(
+            build, group, col, clearance=self.running_fit + self.d * (1 - SHANK_MID),
+            length=pitch, play=self.snug_play,
+            play_basis=f"nylock snug ({self.snug_play:g} mm assumed)",
+            section=Section.rod(MINOR_D, 450.0, name="M3 A2-70 core"))}
         return out

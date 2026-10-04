@@ -2,7 +2,8 @@
 
 Every pillar and pin is printed in segments that snap together: do they go
 together, thread every link and hold? (Inside their claims and clash-free:
-``test_contract.py``.)
+``test_contract.py``.) The pins are asked for explicitly (``pin="printed"``):
+the default pin is the Chicago screw (:mod:`construction.pivots.chicago`).
 """
 
 from __future__ import annotations
@@ -36,10 +37,10 @@ def _above(part, z: float):
 @pytest.fixture(params=["single", "double", "decker", "quad"])
 def axles(request, design, side):
     """``(design, build, fabricated side, its axle groups)`` per module at ``T``."""
-    tmpl, d = design(request.param)
+    tmpl, d = design(request.param, pin="printed", pillar="printed")
     build = Build(d.ctx, d.plan, tmpl.freeze_at(T))
     groups = [g for g in d.groups if isinstance(g, AxleGroup)]
-    return d, build, side(request.param, T), groups
+    return d, build, side(request.param, T, pin="printed", pillar="printed"), groups
 
 
 def _segments(fab, group):
@@ -96,22 +97,30 @@ def test_every_link_is_threaded_by_exactly_one_bearing(axles):
 
 
 def test_snap_pegs_fit_their_sockets_and_hold(axles):
-    design, _, fab, groups = axles
+    """Every joint's peg (the axle's snap, or that joint's own relieved one: the planner
+    eases a lip whose prongs would strain past the limit) fits its socket with the print
+    clearance, catches, and strains within the construction's limit."""
+    design, build, fab, groups = axles
     for g in groups:
         snap = g.construction.snap(design.ctx)
         c = snap.clearance
         assert c == pytest.approx(design.ctx.params.print_fit / 2)
-        for lower, upper in itertools.pairwise(b.part for b in _segments(fab, g)):
+        planned = g.construction.segments(g, build)
+        parts = [b.part for b in _segments(fab, g)]
+        for i, (lower, upper) in enumerate(itertools.pairwise(parts)):
+            joint = planned[i].peg_snap or snap
+            assert planned[i].strain_pct <= 100 * g.construction.max_strain + 1e-9, g.name
+            assert joint.engage >= g.construction.snap_engage_min - 1e-9
             split, tip = upper.bounding_box().min.Z, lower.bounding_box().max.Z
-            assert tip == pytest.approx(split + snap.height)
+            assert tip == pytest.approx(split + joint.height)
             peg = _above(lower, split + 1e-3)
             assert peg.distance_to(upper) == pytest.approx(c, abs=1e-3), g.name
             # the barb catches the ledge once pulled more than the clearance apart
             assert _vol(lower, upper.moved(Location((0.0, 0.0, c - 0.02)))) < 1e-3, g.name
             assert _vol(lower, upper.moved(Location((0.0, 0.0, c + 0.05)))) > 1e-3, g.name
-        # and the prongs can close far enough to push it on
-        assert snap.deflection() < snap.slot / 2
-        assert snap.barb > snap.throat > snap.shank
+            # and the prongs can close far enough to push it on
+            assert joint.deflection() < joint.slot / 2
+            assert joint.barb > joint.throat > joint.shank
 
 
 def test_axle_ends(axles):
@@ -228,7 +237,7 @@ def test_pin_splits_above_each_run_of_links():
 
 
 def test_snap_that_cannot_fit_is_refused(design):
-    ctx = design("single")[1].ctx
+    ctx = design("single", pin="printed", pillar="printed")[1].ctx
     with pytest.raises(ConstructionError):
         PrintedAxle(slot_width=4.5).dims(ctx, False)          # prongs too thin
     with pytest.raises(ConstructionError):
@@ -236,3 +245,26 @@ def test_snap_that_cannot_fit_is_refused(design):
     with pytest.raises(ConstructionError):
         PrintedAxle().dims(replace(ctx, pitch=2.0), True)     # socket taller than a shoulder
     PrintedAxle().dims(ctx, True)
+
+
+def test_a_prong_over_the_strain_target_is_relieved_to_it():
+    """The planner aims a prong at ``strain_target`` (3.5 %) under the 4 % limit: one at
+    3.95 % with its slot as deep as it goes has its lip relieved until it is under the
+    target; an unreachable target leaves a prong under the limit as it was."""
+    column = {0: ("head", 4.0), 1: ("axle", 3.0), 2: ("shoulder", 4.0), 3: ("axle", 3.0),
+              4: ("cap", 4.0)}
+    links = {1: ("a",), 3: ("b",)}
+    kw = dict(axle=3.0, snap=_snap(), play=0.1, bridge=0.8, base=2.0, slot_max=12.0)
+    plain = plan_segments(column, _z, links, max_strain=1.0, **kw)
+    worst = max(s.strain_pct for s in plain if s.strain_pct is not None)
+    limit = (worst + 0.5) / 100
+    target = (worst - 0.3) / 100
+    aimed = plan_segments(column, _z, links, max_strain=limit, strain_target=target,
+                          min_engage=0.05, **kw)
+    got = max(s.strain_pct for s in aimed if s.strain_pct is not None)
+    assert got <= 100 * target + 1e-9
+    assert any(s.peg_snap is not None and s.peg_snap.engage < _snap().engage for s in aimed)
+    # the lip may not go below 0.25: the target is out of reach and the prong stays put
+    kept = plan_segments(column, _z, links, max_strain=limit, strain_target=target,
+                         min_engage=_snap().engage, **kw)
+    assert [s.strain_pct for s in kept] == [s.strain_pct for s in plain]

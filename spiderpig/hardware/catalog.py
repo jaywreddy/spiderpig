@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 Category = str  # "fastener" | "nut" | "washer" | "bearing" | "bushing" | "dowel" | "spacer"
-#                  | "servo" | "horn" | "sheet" | "adhesive" | "clip" | "misc"
+#                  | "servo" | "horn" | "sheet" | "adhesive" | "clip" | "electronics" | "misc"
 
 
 @dataclass(frozen=True)
@@ -95,8 +95,14 @@ def sheet_size(sheet: str) -> tuple[float, float]:
 
 
 def adhesive(sheet: str) -> str:
-    """The catalog item that laminates plates of this sheet."""
-    return "wood_glue" if "plywood" in sheet else "acrylic_cement"
+    """The catalog item that laminates plates of this sheet (aluminium: epoxy)."""
+    if "plywood" in sheet:
+        return "wood_glue"
+    try:
+        metal = get(sheet).dims.get("material") == "aluminium"
+    except KeyError:
+        metal = False
+    return "epoxy_2part" if metal else "acrylic_cement"
 
 
 _LOADED = False
@@ -108,5 +114,8 @@ def _load() -> None:
     if _LOADED:
         return
     _LOADED = True
-    from spiderpig.hardware import parts  # noqa: F401  (registers fasteners, bearings, sheets, ...)
+    from spiderpig.hardware import (
+        electronics,  # noqa: F401  (the deck's electronics)
+        parts,  # noqa: F401  (registers fasteners, bearings, sheets, ...)
+    )
     from spiderpig.servos import catalog  # noqa: F401  (registers servos and horns)

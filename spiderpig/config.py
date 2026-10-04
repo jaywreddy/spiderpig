@@ -38,21 +38,48 @@ def _wrap(a: float) -> float:
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
+DEFAULT_CRANKS = {"walker": "bolt", "mechanism": "bolt"}
+"""The crank a design gets when it names none, per kind: a walker's is the bolt crank (the
+crank study of 2026-10-03, which it was gated on: it plans and audits on the Strider double
+and ``klann_lego`` quad at 0,0,180,180); a mechanism keeps the keyed crank (its pins sit
+closer than the bolt crank's 12 mm hex pockets allow on the Hoecken pantograph)."""
+
+
 @dataclass(frozen=True)
 class BuildConfig:
     """What to build and how. Construction keys refer to :mod:`construction` registries."""
 
-    linkage: str = "klann"            # see linkage.available()
-    module: str = "quad"              # legs per side: one of the linkage's modules
+    linkage: str = linkage.DEFAULT    # see linkage.available()
+    module: str = ""                  # legs per side: one of the linkage's modules ("": its
+    #                                   default, config.default_module: Strider's double)
     robot: bool = True                # two mirrored sides, servos back to back in one frame
     phases: tuple[float, ...] | None = None          # crank phase per leg (rad); None = module's
     proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
-    sheet: str = "acrylic_3mm"        # catalog item for the sheet stock (sets the layer pitch)
+    sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
+    #                                   the layer pitch (spiderpig.materials)
     thickness: float | None = None    # override the sheet's nominal thickness
+    frame_sheet: str = "al5052_3p2mm"   # the frame and centre plates (aluminium: acrylic
+    #                                     can't take their load; the user's call 2026-10-04)
+    crank_sheet: str = "al5052_3p2mm"   # the crank's laser-cut plates
+    heads: str = "best"               # fasteners' heads: "sink" into the layer beside their
+    #                                   link, "gap" (a thin clearance gap where a link passes),
+    #                                   "best" (both planned, the lower stack kept; stack.StackSpec)
+    link_sheets: tuple[tuple[str, str], ...] | None = None   # link class -> sheet; None: the
+    #                                   linkage's (materials.default_link_sheets: a Klann
+    #                                   variant's foot links in 6061)
     servo: str = servos.DEFAULT
-    pillar: str = "printed"           # frame pivots
-    pin: str = "printed"              # pivots between links
-    crank: str = "printed"
+    pillar: str = "standoff"          # frame pivots: 6 mm round aluminium standoffs, spliced at
+    #                                   plate rings (construction.pivots.standoff; "printed":
+    #                                   the printed stepped pillar, the default before 2026-10-03)
+    pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
+    #                                   rings, PTFE washer and shims (construction.pivots.chicago;
+    #                                   "rod": 3 mm rod and push-on clips; "printed": snap pins)
+    crank: str = ""                   # the crankshaft ("": the kind's, DEFAULT_CRANKS: a walker's
+    #                                   "bolt", laser-cut two-plate web stacks keyed on M6 hex-bolt
+    #                                   crankpins, construction.crank.BoltCrank; a mechanism's
+    #                                   "keyed", printed segments keyed by brass hex standoffs, the
+    #                                   walkers' default before 2026-10-03; "printed": clamp
+    #                                   friction only)
     params: Params = field(default_factory=Params)
 
     def __post_init__(self) -> None:
@@ -64,12 +91,51 @@ class BuildConfig:
             raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on, "
                              f"so it builds one side (robot=False; --side-only on the command "
                              f"line) (walkers: {', '.join(linkage.available('walker'))})")
+        if not self.module:
+            object.__setattr__(self, "module", default_module(lk.key))
+        if not self.crank:
+            object.__setattr__(self, "crank", DEFAULT_CRANKS[lk.kind])
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
             raise ParamError(f"unknown servo {self.servo!r}; have {servos.available()}")
         object.__setattr__(self, "phases", self._phases(lk))
         object.__setattr__(self, "proportions", self._proportions(lk))
+        object.__setattr__(self, "link_sheets", self._link_sheets(lk))
+        if self.heads not in ("best", "sink", "gap"):
+            raise ParamError(f"heads must be best, sink or gap, got {self.heads!r}")
+        from spiderpig.hardware.catalog import get
+
+        for what in ("sheet", "frame_sheet", "crank_sheet"):
+            key = getattr(self, what)
+            try:
+                if get(key).category != "sheet":
+                    raise KeyError(key)
+            except KeyError:
+                raise ParamError(f"{what} {key!r} is not a sheet in the catalog") from None
+
+    def _link_sheets(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...] | None:
+        """Link class -> sheet, validated; ``None`` when it is the linkage's own."""
+        if self.link_sheets is None:
+            return None
+        from spiderpig.hardware.catalog import get
+        from spiderpig.materials import default_link_sheets
+
+        out = {}
+        for link, key in dict(self.link_sheets).items():
+            if link not in lk.links:
+                raise ParamError(f"link_sheets: {lk.key} has no link {link!r} "
+                                 f"(have {list(lk.links)})")
+            try:
+                ok = get(key).category == "sheet"
+            except KeyError:
+                ok = False
+            if not ok:
+                raise ParamError(f"link_sheets: {key!r} is not a sheet in the catalog")
+            out[link] = key
+        if out == default_link_sheets(lk):
+            return None
+        return tuple(sorted(out.items()))
 
     def _phases(self, lk: linkage.Linkage) -> tuple[float, ...] | None:
         """Radians per leg; ``None`` for the module's own (mod 2 pi), however given."""
@@ -145,7 +211,7 @@ class BuildConfig:
 
     @property
     def key(self) -> str:
-        """A file-name stem: ``klann_quad_robot``, plus a hash for anything but a default."""
+        """A file-name stem: ``strider_double_robot``, plus a hash for anything but a default."""
         stem = f"{self.linkage}_{self.module}_{'robot' if self.robot else 'side'}"
         if self.is_default:
             return stem
@@ -190,17 +256,20 @@ def parse_proportion(item: str) -> tuple[str, float]:
         raise ParamError(f"proportion {name} must be a number, got {value!r}") from None
 
 
-DEFAULT_MODULE = "quad"           # a walker's, when none is asked for
+DEFAULT_MODULE = "quad"           # a walker's, when neither it nor the linkage says
 
 
 def default_module(key: str) -> str:
-    """The module a design gets when none is asked for: a walker's ``quad`` (its first
-    module if it has no quad), a mechanism's one module (:class:`ParamError` for an
-    unknown linkage)."""
+    """The module a design gets when none is asked for: the linkage's own
+    (``Linkage.default_module``: Strider's ``double``), else a walker's ``quad`` (its
+    first module if it has no quad), a mechanism's one module (:class:`ParamError` for
+    an unknown linkage)."""
     try:
         lk = linkage.get(key)
     except KeyError as e:
         raise ParamError(e.args[0]) from None
+    if lk.default_module:
+        return lk.default_module
     if DEFAULT_MODULE in lk.leg_modules:
         return DEFAULT_MODULE
     return next(iter(lk.leg_modules))
@@ -235,7 +304,9 @@ def add_design_args(p) -> None:
     p.add_argument("--module", default=None,
                    help="legs per side (the linkage's modules): single, double (mirrored "
                    "pair), decker (two legs on one crankshaft), quad (two mirrored deckers). "
-                   f"Default: a walker's {DEFAULT_MODULE}, a mechanism's single")
+                   f"Default: the linkage's ({linkage.DEFAULT}'s "
+                   f"{default_module(linkage.DEFAULT)}; a walker's {DEFAULT_MODULE} otherwise, "
+                   "a mechanism's single)")
     p.add_argument("--phases", type=arg(parse_phases), default=None, metavar="DEG,...",
                    help="crank phase of every leg of a side, in degrees (default: the "
                    "module's, e.g. quad 0,180,90,270)")
@@ -256,11 +327,24 @@ def add_build_args(p) -> None:
                    help=f"construction of the frame pivots (default {d.pillar})")
     p.add_argument("--pin", default=d.pin, choices=axles,
                    help=f"construction of the pivots between links (default {d.pin})")
-    p.add_argument("--crank", default=d.crank, choices=cranks,
-                   help=f"crank construction (default {d.crank})")
+    p.add_argument("--crank", default=None, choices=cranks,
+                   help="crank construction (default: "
+                        + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items()) + ")")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
                    help="measured sheet thickness in mm (default: the sheet's nominal)")
+    p.add_argument("--frame-sheet", dest="frame_sheet", default=d.frame_sheet,
+                   help=f"sheet of the frame and centre plates (default {d.frame_sheet})")
+    p.add_argument("--crank-sheet", dest="crank_sheet", default=d.crank_sheet,
+                   help=f"sheet of the crank's plates (default {d.crank_sheet})")
+    p.add_argument("--heads", default=d.heads, choices=("best", "sink", "gap"),
+                   help="fasteners' heads: sunk into a layer, in thin clearance gaps, or "
+                        f"the lower of both plans (default {d.heads})")
+    p.add_argument("--link-sheet", dest="link_sheet", action="append", default=None,
+                   metavar="LINK=SHEET",
+                   help="cut a link class from another sheet, e.g. b4=al6061_3p2mm "
+                        "(repeatable; default: the linkage's, a Klann variant's foot links "
+                        "in 6061 aluminium)")
 
 
 def config_from_args(args, **fixed) -> BuildConfig:
@@ -273,7 +357,18 @@ def config_from_args(args, **fixed) -> BuildConfig:
     """
     d = BuildConfig()
     fields = {k: getattr(args, k, getattr(d, k)) for k in ("linkage", "sheet", "thickness",
-                                                            "servo", "pillar", "pin", "crank")}
+                                                            "servo", "pillar", "pin",
+                                                            "frame_sheet", "crank_sheet",
+                                                            "heads")}
+    if getattr(args, "link_sheet", None):
+        pairs = []
+        for item in args.link_sheet:
+            link, sep, key = str(item).partition("=")
+            if not sep:
+                raise ParamError(f"--link-sheet wants LINK=SHEET, got {item!r}")
+            pairs.append((link.strip(), key.strip()))
+        fields["link_sheets"] = tuple(pairs)
+    fields["crank"] = getattr(args, "crank", None) or ""        # the kind's default
     fields.update(phases=getattr(args, "phases", None),
                   proportions=tuple(getattr(args, "proportion", None) or ()))
     fields.update(fixed)

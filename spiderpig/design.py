@@ -157,6 +157,7 @@ class Part:
     bom_key: str | None = None
     rigid_with: str | None = None
     pose: list[list[float]] = field(default_factory=list)
+    sheet: str | None = None                    # a laser-cut part's sheet (catalog key)
     z_mid: float | None = None                  # the robot's mid-plane; None on one side
     z_side: tuple[float, float] | None = None   # the solid's z range in its side's frame
     built: object = field(default=None, repr=False)
@@ -216,7 +217,8 @@ class Part:
                 "material": self.material, "mass_g": round(self.mass_g, 3),
                 "volume_mm3": round(self.volume_mm3, 3),
                 "dims_mm": [round(d, 3) for d in self.dims_mm], "layers": list(self.layers),
-                "bom_key": self.bom_key, "rigid_with": self.rigid_with, "edited": self.edited}
+                "bom_key": self.bom_key, "rigid_with": self.rigid_with, "sheet": self.sheet,
+                "edited": self.edited}
 
 
 @dataclass

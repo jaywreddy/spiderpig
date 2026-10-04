@@ -17,7 +17,9 @@ def test_links_sit_in_their_planned_layers(design, side):
     for name, k in d.plan.layers.items():
         bb = mech.body(name).part.bounding_box()
         z = (bb.min.Z, bb.max.Z)
-        assert z == pytest.approx(d.plan.z(k))
+        z0 = d.plan.z(k)[0]          # on its layer's floor, its own sheet thick (a layer an
+        assert z == pytest.approx((z0, z0 + d.ctx.sheet_t("link", name)))   # Al plate thickens)
+        assert z[1] <= d.plan.z(k)[1] + 1e-9
         assert mech.body(name).fab == "laser"
 
 
@@ -36,8 +38,8 @@ def test_every_body_says_how_it_is_made(side):
     for b in mech.bodies:
         if b.part is not None:
             assert b.fab in ("laser", "printed", "purchased"), b.name
-            if b.fab == "purchased" and b.name != "servo_horn":
-                assert b.bom_key, b.name
+            if b.fab == "purchased" and b.name != "servo_horn" and not b.name.endswith("_rod"):
+                assert b.bom_key, b.name       # a pin's rod is a cut of stock: a BomLine extra
 
 
 def test_robot_is_two_mirrored_sides(robot):
@@ -54,5 +56,5 @@ def test_robot_is_two_mirrored_sides(robot):
 def test_the_robot_shares_the_sides_design(design):
     """One design per side however it's asked for: the frame ties join at build time."""
     tmpl, d = design("single")
-    assert design_side(tmpl, BuildConfig(module="single", robot=True)) is d
+    assert design_side(tmpl, BuildConfig(linkage="klann", module="single", robot=True)) is d
     assert not d.config.robot

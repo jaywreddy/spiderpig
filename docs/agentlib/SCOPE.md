@@ -101,7 +101,7 @@ Structured failure, the boundary type (exceptions stay as they are inside the en
 Failure {
   stage: spec|program|output|drive|static|plan|fabricate|contract|clash|layout|bom|walk|sim
   code:  loop_cannot_close | promise_broken | second_input_no_drive | link_no_layer | no_plan |
-         no_plan_in_budget | screw_no_stock_length | part_outside_claim | parts_clash |
+         no_plan_in_budget | no_plan_in_time | screw_no_stock_length | part_outside_claim | parts_clash |
          part_exceeds_sheet | unknown_catalog_key | ...
   message: str                                  # today's text, unchanged
   culprits: [{body?, group?, joint?, layer?, side?, point?}]

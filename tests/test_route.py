@@ -23,10 +23,20 @@ from spiderpig.fabricate import (
 )
 from spiderpig.stack import ClearanceError, verify_plan
 from tests import brute
+from tests.tiers import quick
 
 
 def _cfg(key: str, module: str = "single", **kw) -> BuildConfig:
+    """The printed crank's routes are this file's subject: printed pillars and the keyed
+    crank unless ``kw`` names others (the defaults are the bolt crank and standoffs)."""
+    kw = {"pillar": "printed", "crank": "keyed", **kw}
     return BuildConfig(linkage=key, module=module, robot=False, **kw)
+
+
+# TrotBot's heel cases are the printed crank's numbers (a 3 mm post radius: b7 needs 10 mm
+# from J1); the keyed crank's 8.5 mm post asks 11.2 of it, which the heel's default scale
+# hasn't (test_the_keyed_cranks_post_stops_the_heel_at_its_default_scale).
+HEEL = {"crank": "printed"}
 
 
 def _design(key: str, module: str = "single", **kw):
@@ -55,7 +65,7 @@ def test_the_envelope_is_the_largest_circle_about_o_above_the_profile():
 def test_a_detour_outside_the_envelope_is_refused_and_one_inside_is_used():
     """trotbot_heel at its drawing's 7 mm unit: the heel link b7 clears no crankpin and the
     nearest point off them that clears it sweeps beyond the body's underside."""
-    cfg = _cfg("trotbot_heel", proportions=(("unit", 7.0),))
+    cfg = _cfg("trotbot_heel", proportions=(("unit", 7.0),), **HEEL)
     tmpl = template_for(cfg)
     ctx, groups, problem = side_problem(tmpl, cfg)
     facts = problem.router.facts
@@ -92,7 +102,7 @@ def test_ground_clearance_is_the_body_above_the_feet():
 
 def test_the_heel_stops_the_static_stage_with_the_numbers():
     with pytest.raises(ClearanceError) as e:
-        _design("trotbot_heel", proportions=(("unit", 7.0),))
+        _design("trotbot_heel", proportions=(("unit", 7.0),), **HEEL)
     msg = str(e.value)
     assert msg.startswith("trotbot_heel: b7 sweeps right across the crank at O, so its layer "
                           "needs the crank off its axis, and no crank point clears it: it passes "
@@ -127,11 +137,14 @@ def test_a_chain_ends_set_back_in_the_hub_only_if_the_horn_screws_still_fit():
     M3x6 horn screw (the xl330's 6 mm hub still does). The route rules refuse that end, the
     brute force agrees, the construction would have caught it, and the planner's own plan
     (b4 elsewhere) builds."""
-    cfg = _cfg("trotbot_heel")
+    # (the scenario on 3 mm acrylic frame plates and full-layer heads, as it was found)
+    old = {"frame_sheet": "acrylic_3mm", "heads": "sink"}
+    cfg = _cfg("trotbot_heel", **old, **HEEL)
     tmpl = template_for(cfg)
     ctx, groups, problem = side_problem(tmpl, cfg)
     assert not problem.router.hub_play
-    assert side_problem(tmpl, _cfg("trotbot_heel", servo="xl330_m288"))[2].router.hub_play
+    assert side_problem(tmpl, _cfg("trotbot_heel", servo="xl330_m288", **old,
+                                   **HEEL))[2].router.hub_play
     h0 = problem.router.hub_bottom(11)
     assert h0 == 9
     under = {"b1": 3, "b2": 2, "b3": 3, "b4": 8, "b5": 2, "b6": 4, "b7": 6, "b8": 3}
@@ -149,24 +162,69 @@ def test_a_chain_ends_set_back_in_the_hub_only_if_the_horn_screws_still_fit():
     assert verify_plan(plan, tmpl) == []
 
 
-@pytest.mark.parametrize(("module", "height"), [("single", 21), ("double", 24), ("decker", 33),
-                                                ("quad", 36)])
-def test_klann_plans_keep_their_heights_and_are_proven_thinnest(module, height):
-    """walk._NOMINAL_LAYERS depends on these."""
-    tmpl, design = _design("klann", module)
-    assert design.plan.height == height
+@pytest.mark.parametrize(("module", "crank", "height"), [
+    ("single", "keyed", 21), ("double", "keyed", 24), ("decker", "keyed", 33),
+    ("quad", "keyed", 48), ("quad", "printed", 36)])
+def test_klann_plans_keep_their_heights_and_are_proven_thinnest(module, crank, height):
+    """The keyed crank's two-layer top webs cost the quad four layers (every chain's top web
+    sits under the next leg's riders); the single, double and decker had the room. (Heights
+    in 3 mm layers: since 2026-10-04 the frame plates and the foot links are 3.175 mm
+    aluminium, which the plan's z adds.)"""
+    tmpl, design = _design("klann", module, crank=crank)
+    plan = design.plan
+    assert plan.top + 1 == height // 3
+    assert plan.height == pytest.approx(sum(plan.t(k) for k in range(plan.top + 1))
+                                        + sum(plan.gaps.values()))
     assert design.plan.optimal, design.plan.proof
     assert design.plan.proof.startswith(f"no plan in {design.plan.top} layers or fewer")
+
+
+def test_the_keyed_rules_end_a_chain_one_layer_higher():
+    """The keyed crank's rules: the same stock-screw spans as the printed crank's at a 3 mm
+    pitch (3-6, 9 or 11 layers between a chain's outer webs, the top web's two layers
+    counted), one layer less of window for a point's riders, and the pocket radius of the
+    key socket's lead-in."""
+    from spiderpig.construction.crank import KeyedCrank, standoff_dims
+
+    keyed, printed = (side_problem(template_for(c), c)[2].router
+                      for c in (_cfg("klann"), _cfg("klann", crank="printed")))
+    assert keyed.two_layer_top
+    assert not printed.two_layer_top
+    feasible = {n for n, m in keyed.spans.items() if m}
+    assert feasible == {n for n, m in printed.spans.items() if m} == {3, 4, 5, 6, 9, 11}
+    assert (keyed.window, printed.window) == (7, 8)
+    crank = KeyedCrank()
+    af, _ = standoff_dims(crank.standoff_key)
+    assert crank.pocket_af() == pytest.approx(af)          # pressed: cut to the key's AF
+    assert keyed.rules.nut == pytest.approx(
+        max(5.5 + 0.3, af + 2 * crank.pocket_chamfer) / 3 ** 0.5)
+    assert printed.rules.nut == pytest.approx((5.5 + 0.3) / 3 ** 0.5)
+
+
+def test_the_keyed_cranks_post_stops_the_heel_at_its_default_scale():
+    """The keyed crank's 8.5 mm post (room for its hex key) needs 11.2 mm from b7, which
+    passes J1 at 10.2 at the heel's default scale: the static stage says so and the checked
+    recommendation is the next scale up."""
+    with pytest.raises(ClearanceError) as e:
+        _design("trotbot_heel")
+    msg = str(e.value)
+    assert ("it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs (4.25 post "
+            "radius + 6 link half-width + 1 margin)") in msg
+    (rec,) = e.value.recommendations
+    assert rec.changes == (("unit", 10.5, 12.0),)
+    assert "plans in 14 layers" in rec.verified
+    assert _design("trotbot_heel", **HEEL)[1].plan.top == 11       # the printed crank's plan
 
 
 # -- optimality against the brute force ---------------------------------------------------
 
 
-@pytest.mark.parametrize("key", ["klann", "trotbot"])
+@pytest.mark.parametrize("key", quick(["klann", "trotbot"], ["klann"]))
 def test_the_planner_matches_the_brute_force_optimum(key):
     """Every layering and every route up to the planner's stack size: none thinner, and none
-    in it with fewer added crank features."""
-    cfg = _cfg(key)
+    in it with fewer added crank features. (The brute force knows full-layer heads only:
+    the planner's with its heads sunk.)"""
+    cfg = _cfg(key, heads="sink")
     tmpl = template_for(cfg)
     plan = design_side(tmpl, cfg).plan
     ctx, _, problem = side_problem(tmpl, cfg)

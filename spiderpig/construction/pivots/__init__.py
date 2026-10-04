@@ -1,7 +1,17 @@
 """Pivot constructions on purchased metal shafts, for pillars and pins alike.
 
 Registered in :data:`construction.AXLES` next to the printed axle and picked
-with ``BuildConfig.pin`` / ``.pillar`` (``spiderpig build --pin rod --pillar bolt``):
+with ``BuildConfig.pin`` / ``.pillar`` (``spiderpig build --pin bolt --pillar printed``).
+**The default is ``--pin chicago --pillar printed``**: an M3 Chicago screw through each
+pin's stack, printed stepped pillars glued into the frame plates (the pivot review's
+table, the reasons and the assembly steps: :mod:`construction.pivots.chicago`; the rod
+it replaced: :mod:`construction.pivots.rod`; why not ``bolt``:
+:mod:`construction.pivots.bolt`). Every construction reports its links' tilt
+(:mod:`construction.wobble`). ``--pin printed`` stays the zero-hardware option (on the
+Strider its J7 snap lip is relieved to 0.13 mm). Pillars stay printed whichever pin is
+chosen: bolt pillars don't plan on either default design (the 50 mm stock-screw bound
+and a ring-filled column; 60-70 mm screws plan the Klann only at 21 layers) and rod
+pillars fill the whole stack with rings.
 
 =============  ================================================================
 key            construction
@@ -16,6 +26,14 @@ key            construction
                printed spacer sleeves, clips (:mod:`construction.pivots.insert`)
 ``bushing``    igus GFM-0304-03 flange bushing pressed in every link, same
                rod, sleeves and clips (:mod:`construction.pivots.insert`)
+``chicago``    M3 Chicago screw (4 mm barrel through the stack), laser-cut
+               rings, PTFE washer and DIN 988 shims, lowest link bonded to
+               the barrel; pins only (:mod:`construction.pivots.chicago`)
+``chicago_``   the same screw with an igus GFM-0405-03 flange bushing in
+``bushing``    every link but the lowest, printed sleeves; pins only
+``ptfe``       the ``rod`` with a 3 x 4 mm PTFE tube liner pressed in every
+               link (:mod:`construction.pivots.ptfe`; the liner's 10 MPa is
+               its limit: fine walking, a warning jammed on the test designs)
 =============  ================================================================
 
 All four state their claims through :class:`construction.axle.AxleDims`: a
@@ -52,13 +70,21 @@ which links were verified.
     coupon. Play 0.2-0.4 mm at the joint; the holes wear.
     *Cost*: about $0.10-0.20 per joint from an M3 kit (Amazon B0DNM4HK5Q
     covers 6-30 mm) plus a nylock; a 5-pack of 100 mm rod (uxcell
-    B082ZP313B) makes 12 axles, clips about $0.03 each from a 300-pc
-    Starlock kit (B0B219S4FW). *Vendors*: McMaster (91290A1xx, 93625A100,
-    91166A210), Amazon, Aspen Fasteners (nylocks, washers, verified).
+    B082ZP313B, $5.49 as searched 2026-10-03) cuts a Strider's 24 pins of
+    9.6-15.6 mm (266 mm; the Klann quad's 24 are 9.6 mm each),
+    clips about $0.33 each from a 300-pc Starlock kit (MCMASKE, 60 per
+    size, $19.99 at mcmaske.com on 2026-10-03; the 280-pc Glarks kit
+    B076D3FZM4 is $12.99 for about 40 per size), so a rod pin is about
+    $0.90 all in and a Strider's 24 pins (48 clips) one kit and one 5-pack:
+    $25.48. *Vendors*: McMaster (91290A1xx, 93625A100, 91166A210), Amazon,
+    Aspen Fasteners (nylocks, washers, verified).
     *Verdict*: what hobby builders actually do (the Make: Klann "Spiderbot"
     uses M3 button heads and nylocs; the hackaday Strandbeest "3 mm MDF and
     a ton of M3 screws and nuts"). Implemented as ``bolt`` (screw) and
-    ``rod`` (rod + clips: smooth shaft, no clamping, single-use clips).
+    ``rod`` (rod + clips: smooth shaft, no clamping, single-use clips); the
+    rod is the default pin, the screw's head being unreachable in a
+    bottom-up stack (:mod:`.bolt`). The Starlock push-on / pull-off figures
+    above are from a Starlock table and not verified here.
 
 (b) Flanged ball bearing in the link, 3 mm shaft
     *Parts*: MF63ZZ 3 x 6 x 2.5 (flange 7.2 x 0.6) or F683ZZ 3 x 7 x 3
@@ -123,8 +149,12 @@ under 5 mm (perimeter-only, weak: Hubs).
 from __future__ import annotations
 
 from spiderpig.construction.pivots.bolt import BoltAxle
+from spiderpig.construction.pivots.chicago import CHICAGO_BUSHING, ChicagoAxle
 from spiderpig.construction.pivots.insert import BEARING, BUSHING
 from spiderpig.construction.pivots.insert import InsertAxle as InsertAxle
+from spiderpig.construction.pivots.ptfe import PtfeAxle
 from spiderpig.construction.pivots.rod import RodAxle
+from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (RodAxle(), BoltAxle(), BEARING, BUSHING)
+PIVOTS = (RodAxle(), BoltAxle(), BEARING, BUSHING, ChicagoAxle(), CHICAGO_BUSHING,
+          PtfeAxle(), StandoffAxle())

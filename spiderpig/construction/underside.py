@@ -98,6 +98,10 @@ def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
     out: list[tuple] = [("the frame plates' disc at O", "disc", o, p.frame_radius)]
     out += [(f"the frame plates' arm to pillar {a.name}", "pill", o, q, p.frame_radius)
             for a, q in zip(frame, pillars, strict=True)]
+    from spiderpig.construction.plates import chords
+
+    out += [("the frame plates' chord", "pill", np.asarray(a), np.asarray(b), p.frame_radius)
+            for a, b in chords(tuple(o), [tuple(q) for q in pillars])]
     if crank_reach:
         out.append(("the crank's sweep", "disc", o, crank_reach))
     u = away_from_pillars(o, pillars)

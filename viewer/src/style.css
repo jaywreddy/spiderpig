@@ -65,7 +65,10 @@ html, body {
   position: fixed;
   top: 12px;
   left: 12px;
+  /* wraps short of the drive panel (300 px + its margins) instead of running under it */
+  max-width: calc(100% - 360px);
   font-size: 12px;
+  line-height: 1.3;
   opacity: 0.7;
 }
 
@@ -77,9 +80,12 @@ html, body {
 #drive-spark { display: block; margin: 4px 6px 6px; }
 #drive-warn {
   position: fixed;
-  top: 12px;
+  top: 72px;          /* below the status bar and the Tune panel's header (top 34 px) */
   left: 50%;
   transform: translateX(-50%);
+  max-width: calc(100% - 680px);   /* between the two 300 px panels */
+  min-width: 240px;
+  text-align: center;
   padding: 6px 14px;
   border-radius: 6px;
   background: rgba(200, 40, 40, 0.9);

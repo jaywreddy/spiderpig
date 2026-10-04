@@ -32,11 +32,13 @@ from spiderpig.construction.pivots.common import (
     Column,
     RodShaft,
     bored,
+    gap_washers,
     host_of,
     sleeve_solid,
     stem_of,
     xy_of,
 )
+from spiderpig.construction.wobble import Section, column_wobble
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.shapes import Cut, disc, union
@@ -65,12 +67,26 @@ class InsertAxle:
     insert: str                   # catalog key of the flanged insert
     seat_fit: float               # a link's hole over the insert's outside diameter
     glued: bool                   # CA-glue each insert into its hole
-    shaft: RodShaft = field(default_factory=RodShaft)
+    shaft: RodShaft = field(default_factory=RodShaft)   # or a ChicagoShaft (.chicago)
+    spacer_d: float | None = None   # sleeves' and spacers' diameter when not Params.spacer_d
+    bore_clearance: float = 0.05    # the insert's bore over the shaft, diametral (wobble)
     sleeve_fit: float = 0.3       # sleeve bore over the rod (a printed part sliding on)
     sleeve_wall: float = 0.85     # thinnest printed wall of a sleeve
     flange_play: float = 0.1      # gap between a flange and the sleeve beside it
     min_sleeve: float = 1.0       # least sleeve left in a layer a flange reaches into
     glue_per_insert: float = 0.005
+
+    def column(self, *args, **kw) -> None:
+        """The shaft's own rule over the column, if it has one (a Chicago screw's stock
+        barrel lengths)."""
+        rule = getattr(self.shaft, "column", None)
+        if rule is not None:
+            rule(*args, **kw)
+
+    @property
+    def roles(self) -> tuple[str, ...]:
+        """What it may build: pillars and pins, unless its shaft is a pin only."""
+        return getattr(self.shaft, "roles", ("pillar", "pin"))
 
     def insert_dims(self) -> InsertDims:
         item = get(self.insert)
@@ -104,15 +120,16 @@ class InsertAxle:
             raise ConstructionError(f"the {ins.flange_t:g} mm flange of {name} leaves no room "
                                     f"for a sleeve in a {ctx.pitch:g} mm layer")
         self.shaft.check(ctx, pillar, extra=ins.flange_t)
-        spacer = p.spacer_d / 2
+        spacer = (p.spacer_d if self.spacer_d is None else self.spacer_d) / 2
         clip_od, _ = self.shaft.clip()
-        if ins.flange_d / 2 > min(spacer, clip_od / 2):
+        if ins.flange_d / 2 > spacer or (self.spacer_d is None and ins.flange_d > clip_od):
             raise ConstructionError(f"the {ins.flange_d:g} mm flange of {name} is wider than a "
-                                    f"{p.spacer_d:g} mm spacer or a {clip_od:g} mm clip")
+                                    f"{2 * spacer:g} mm spacer or a {clip_od:g} mm clip")
         neck = (rod + self.sleeve_fit) / 2 + self.sleeve_wall
         if neck > spacer:
             raise ConstructionError("a sleeve's wall doesn't fit inside a spacer")
-        return AxleDims(axle=rod / 2, spacer=spacer, head=clip_od / 2, neck=neck, fill=True,
+        return AxleDims(axle=rod / 2, spacer=spacer, head=max(clip_od, ins.flange_d) / 2,
+                        neck=neck, fill=True,
                         flange=ins.flange_d / 2, seat=ins.od / 2)
 
     def realize(self, group: AxleGroup, build: Build) -> Realized:
@@ -122,6 +139,7 @@ class InsertAxle:
         ins = self.insert_dims()
         names = {k: ", ".join(ms) for k, ms in col.links.items()}
         sides = flange_sides(sorted(col.links), col.room, ins.flange_d / 2, names)
+        bonded = host if hasattr(self.shaft, "host_hole") else None   # a Chicago barrel's host
         # the inserts, each glued or pressed into its link, flange on the free face
         for k, members in col.links.items():
             s = sides[k]
@@ -130,6 +148,8 @@ class InsertAxle:
             body = disc(xy, ins.od / 2, *sorted((face, face - s * ins.body)))
             flange = disc(xy, ins.flange_d / 2, *sorted((face, face + s * ins.flange_t)))
             for m in members:
+                if m == bonded:
+                    continue
                 part = bored(union([body, flange]), xy, ins.id, z0 - 1, z1 + 1)
                 out.bodies.append(hardware(f"{stem}_{m}_{self.key}", part, m, fab="purchased",
                                            bom_key=self.insert, color=STEEL))
@@ -148,11 +168,30 @@ class InsertAxle:
                                        color=SLEEVE_COLOR))
         # the rod and its clips: a clip bears on a flange where the end link's points its way
         faces = {}
-        if sides.get(col.k0) == -1:
+        if sides.get(col.k0) == -1 and not (bonded and col.links[col.k0] == (bonded,)):
             faces["lo"] = ins.flange_t
         if sides.get(col.k1) == +1:
             faces["hi"] = ins.flange_t
-        self.shaft.realize(build, group, col, out, faces=faces)
+        fit = self.shaft.realize(build, group, col, out, faces=faces)
+        gap_washers(build, group, col, out, self.shaft.d, host, stem)
+        if bonded:
+            play = fit.play + self.flange_play * sum(
+                1 for run in col.runs for k in (run[0] - 1, run[-1] + 1)
+                if sides.get(k) == (1 if k < run[0] else -1))
+            basis = f"barrel length less stack and shims ({fit.length:g} mm barrel)"
+            section = Section.tube(self.shaft.d, 3.0, name="chicago barrel 4 x 3 tube")
+        else:
+            play = self.shaft.set_play + self.flange_play * sum(
+                1 for run in col.runs for k in (run[0] - 1, run[-1] + 1)
+                if sides.get(k) == (1 if k < run[0] else -1))
+            basis = (f"push-on clip set to touch ({self.shaft.set_play:g} mm assumed) plus "
+                     "the flange-to-sleeve gaps")
+            section = Section.rod(self.shaft.d)
+        out.notes["wobble"] = {group.name: column_wobble(
+            build, group, col,
+            clearance=lambda m: 0.0 if m == bonded else self.bore_clearance,
+            length=lambda m: build.ctx.pitch if m == bonded else ins.body,
+            play=play, play_basis=basis, section=section, bearing_len=ins.body)}
         if self.glued:
             n = len(group.axis.members)
             out.extras.append(BomLine("ca_glue", self.glue_per_insert * n,

@@ -212,26 +212,94 @@ class Placed:
     group: str
     label: str = ""
     seat: bool = False
+    # A **clearance** shape (``gap``): it sits in the thin clearance gap above ``layer``
+    # (between ``layer`` and ``layer + 1``), not in the layer: a fastener's head or nut on a
+    # link's face, or the washers an axle carries through such a gap. ``height`` is the z it
+    # needs there (a head and its washers, plus clearance): the plan sizes each gap to the
+    # tallest it holds, from the stock thin-sheet thicknesses (``StackSpec.gaps``); a gap
+    # whose shapes all need 0 (an axle's washers) doesn't make one. ``toward``: the layer a
+    # head may sink into instead when nothing there is in its way (the old full-layer head:
+    # +1 the layer over the gap, a head on its link's top face; -1 the layer under it, a
+    # head hanging under its link; 0 it can't). A head the plan sank keeps its ``height``.
+    gap: bool = False
+    height: float = 0.0
+    toward: int = 0
+    # a laser-cut plate of this thickness (mm; 0: none): its layer is at least that thick
+    sheet: float = 0.0
+
+    @property
+    def slot(self) -> float:
+        """Where it sits in the stack: its layer, or ``layer + 0.5`` for the gap above it."""
+        return self.layer + 0.5 if self.gap else self.layer
 
 
 @dataclass
 class Layout:
     """What a claim sees: the (possibly partial) link layers, the stack size, and the
     choices the planner made for groups with a shape to choose (``choices[group]``, e.g.
-    the crank's route; absent: the group's default)."""
+    the crank's route; absent: the group's default).
+
+    Z: layer ``k`` is ``thick[k]`` thick (``pitch`` when absent: the default sheet), and
+    the clearance gap above it ``gaps[k]`` (none when absent); layer 0's bottom face is
+    z 0. While the planner searches, a layout has neither (every layer ``pitch``, no gaps:
+    the nominal stack); the plan's (``final``) has both, sized from what it holds."""
 
     layers: Mapping[str, int]
     top: int
     pitch: float
     choices: Mapping[str, object] = field(default_factory=dict)
+    gaps: Mapping[int, float] = field(default_factory=dict)
+    thick: Mapping[int, float] = field(default_factory=dict)
+    final: bool = False
+
+    def t(self, layer: int) -> float:
+        """Layer ``layer``'s thickness."""
+        return self.thick.get(layer, self.pitch)
+
+    def gap(self, layer: int) -> float:
+        """The clearance gap above layer ``layer`` (0: none)."""
+        return self.gaps.get(layer, 0.0)
+
+    def _z0(self, layer: int) -> float:
+        cache = self.__dict__.setdefault("_zcache", {})
+        z = cache.get(layer)
+        if z is None:
+            if layer >= 0:
+                z = sum(self.t(j) + self.gap(j) for j in range(layer))
+            else:
+                z = -sum(self.t(j) + self.gap(j) for j in range(layer, 0))
+            cache[layer] = z
+        return z
 
     def z(self, layer: int) -> tuple[float, float]:
-        return layer * self.pitch, (layer + 1) * self.pitch
+        if not self.thick and not self.gaps:
+            return layer * self.pitch, (layer + 1) * self.pitch
+        z0 = self._z0(layer)
+        return z0, z0 + self.t(layer)
+
+    def gap_z(self, layer: int) -> tuple[float, float]:
+        """The clearance gap above layer ``layer`` (empty when there is none)."""
+        z1 = self.z(layer)[1]
+        return z1, z1 + self.gap(layer)
+
+    def slot_z(self, p: Placed) -> tuple[float, float]:
+        """Where a placed shape sits: its layer, or its gap."""
+        return self.gap_z(p.layer) if p.gap else self.z(p.layer)
 
     def layers_between(self, z0: float, z1: float) -> range:
         """Layers whose Z range overlaps the open interval ``(z0, z1)``."""
         eps = 1e-9
-        return range(int(np.floor((z0 + eps) / self.pitch)), int(np.ceil((z1 - eps) / self.pitch)))
+        lo = int(np.floor((z0 + eps) / self.pitch))
+        hi = int(np.ceil((z1 - eps) / self.pitch))
+        if not self.thick and not self.gaps:
+            return range(lo, hi)
+        span = range(min(lo, 0) - 16, max(hi, self.top) + 17)
+        ks = [k for k in span if self.z(k)[0] < z1 - eps and self.z(k)[1] > z0 + eps]
+        return range(ks[0], ks[-1] + 1) if ks else range(lo, lo)
+
+    def height(self) -> float:
+        """Both frame plates' outer faces apart (mm)."""
+        return self.z(self.top)[1] - self.z(0)[0]
 
 
 class Unbuildable(Exception):
@@ -363,12 +431,16 @@ class Recommendation:
 
 class PlanError(ValueError):
     """No layer plan: the message says what the search kept running into, and what would
-    clear it (:class:`Recommendation`, checked)."""
+    clear it (:class:`Recommendation`, checked). ``expired``: the search's CPU budget
+    (``StackSpec.max_seconds``) ran out before it could rule the sizes out, so this says
+    the machine was busy, not that the design has no plan (a caller shouldn't remember
+    it as unbuildable)."""
 
     def __init__(self, summary: str, blockers: Iterable[str] = (), notes: Iterable[str] = (),
-                 recommendations: Iterable[Recommendation] = ()):
+                 recommendations: Iterable[Recommendation] = (), expired: bool = False):
         self.summary, self.blockers, self.notes = summary, list(blockers), list(notes)
         self.recommendations = list(recommendations)
+        self.expired = expired
         lines = [summary + ("; what blocked it (count x shape vs shape):" if self.blockers
                             else ""), *self.blockers]
         lines += [n for n in self.notes if n]
@@ -378,10 +450,11 @@ class PlanError(ValueError):
 
     def with_notes(self, *notes: str) -> PlanError:
         return type(self)(self.summary, self.blockers, [*self.notes, *notes],
-                          self.recommendations)
+                          self.recommendations, expired=self.expired)
 
     def with_recommendations(self, recs: Iterable[Recommendation]) -> PlanError:
-        return type(self)(self.summary, self.blockers, self.notes, [*self.recommendations, *recs])
+        return type(self)(self.summary, self.blockers, self.notes, [*self.recommendations, *recs],
+                          expired=self.expired)
 
 
 class ClearanceError(PlanError):
@@ -673,6 +746,13 @@ class Router(Protocol):
 # ---------------------------------------------------------------------------
 
 
+MAX_SECONDS = 60.0
+"""The planner's default CPU-seconds budget (:attr:`StackSpec.max_seconds`, and the
+shared deadline of the recommendation checks, :mod:`recommend`). ``math.inf`` leaves the
+node budgets as the only bound, which makes how far a search gets the same on every
+machine (``tests/test_stage_checks.py`` does that)."""
+
+
 @dataclass(frozen=True)
 class StackSpec:
     """Stack dimensions (mm): ``pitch`` = sheet thickness; ``margin`` = clearance.
@@ -687,7 +767,11 @@ class StackSpec:
     sizes left open) and none found raises :class:`PlanError` with the tally.
     ``drop_bearing`` lets the crank lose its bottom bearing as the last resort.
     ``workers`` (a prototype): search the stack sizes in that many forked processes
-    (:mod:`stack_pool`), with the serial search's answer. ``prove`` (a prototype, on by
+    (:mod:`stack_pool`), with the serial search's answer. ``max_seconds`` is CPU time of
+    this process (:class:`Deadline`), so how far a search gets doesn't depend on what else
+    the machine is doing (a 60 s wall-clock budget made the same design plan at load 3 and
+    fail at load 25, measured); a forked pool worker counts its own CPU from zero, so it
+    gets about that much on top. ``prove`` (a prototype, on by
     default): with it off the search stops at the thinnest stack its quick pass finds a
     plan in (the plan it would return before the proof), and says what is left unproven.
     ``quick_first`` (a prototype, off by default): a short search stops at its first plan
@@ -700,39 +784,65 @@ class StackSpec:
     pitch: float = 3.0
     margin: float = 1.0
     min_top: int = 2
-    max_top: int = 40
+    max_top: int = 60
     quick_nodes: int = 1500
     max_nodes: int = 20000
     max_total_nodes: int = 60000
-    max_seconds: float = 60.0
+    # of CPU time (Deadline): a loaded machine doesn't shorten it; read from MAX_SECONDS when
+    # a spec is made, so a test can take the clock out and bound a search by its nodes alone
+    max_seconds: float = field(default_factory=lambda: MAX_SECONDS)
     drop_bearing: bool = False
     workers: int = 1
     prove: bool = True
     quick_first: bool = False
     symmetry: bool = False
+    # z of the plan (:meth:`StackProblem.plan`): the frame plates' thickness (``None``: the
+    # pitch), each link's sheet thickness (a link not named: the pitch; a layer is as thick
+    # as the thickest plate in it), and the thicknesses a clearance gap may have (the thin
+    # sheet a filler plate is cut from, and what an axle's washers stack to), thinnest first
+    frame_t: float | None = None
+    link_t: tuple[tuple[str, float], ...] = ()
+    gaps: tuple[float, ...] = (1.0, 1.5, 2.0, 2.29, 2.54)
+    # Where a fastener's head (a clearance shape that may sink, :attr:`Placed.toward`) goes:
+    # "sink" claims the layer beside its link, as a full-layer head (no gap ever); "gap"
+    # puts it in a thin clearance gap unless it fits that layer; "best" plans them sunk, and
+    # in gaps only when that fails. :attr:`StackPlan.heads` says which.
+    heads: str = "best"
+
+
+def thread_time() -> float:
+    """CPU seconds of the calling thread (:data:`time.CLOCK_THREAD_CPUTIME_ID`; the process's
+    where a platform lacks it): what the planner's deadline counts, so neither the machine's
+    load nor another thread of the same process (a server baking a glb) shortens a search."""
+    try:
+        return time.clock_gettime(time.CLOCK_THREAD_CPUTIME_ID)
+    except (AttributeError, OSError):
+        return time.process_time()
 
 
 class Deadline:
-    """A wall-clock deadline ``seconds`` from its creation, shared by nested planner runs
-    (a design's plan, the leg hint's, the checks of a recommendation): each takes what is
-    left of it. ``math.inf``: none."""
+    """A CPU-time deadline ``seconds`` from its creation (``clock``: :func:`thread_time`, the
+    calling thread's CPU; a wall clock would make a plan's reach depend on the machine's
+    load), shared by nested planner runs (a design's plan, the leg hint's, the checks of a
+    recommendation): each takes what is left of it. ``math.inf``: none."""
 
-    def __init__(self, seconds: float = math.inf):
+    def __init__(self, seconds: float = math.inf, clock=thread_time):
         self.seconds = seconds
-        self.start = time.monotonic()
+        self.clock = clock
+        self.start = clock()
         self.at = self.start + seconds
 
     @property
     def remaining(self) -> float:
-        return max(self.at - time.monotonic(), 0.0)
+        return max(self.at - self.clock(), 0.0)
 
     @property
     def expired(self) -> bool:
-        return time.monotonic() >= self.at
+        return self.clock() >= self.at
 
     @property
     def elapsed(self) -> float:
-        return time.monotonic() - self.start
+        return self.clock() - self.start
 
 
 @dataclass
@@ -753,31 +863,55 @@ class StackPlan:
     optimal: bool = False
     proof: str = ""
     cost: int = 0
+    gaps: dict[int, float] = field(default_factory=dict)    # layer -> clearance gap above it
+    thick: dict[int, float] = field(default_factory=dict)   # layer -> thickness (not pitch)
+    sunk: frozenset = frozenset()       # the heads sunk into a layer (``sunk_key``)
+    heads: str = "gap"                  # how the plan placed heads (StackSpec.heads)
 
-    @property
+    @cached_property
     def layout(self) -> Layout:
-        return Layout(dict(self.layers), self.top, self.spec.pitch, dict(self.choices))
+        return Layout(dict(self.layers), self.top, self.spec.pitch, dict(self.choices),
+                      dict(self.gaps), dict(self.thick), final=True)
 
     def z(self, layer: int) -> tuple[float, float]:
         return self.layout.z(layer)
 
+    def gap_z(self, layer: int) -> tuple[float, float]:
+        return self.layout.gap_z(layer)
+
+    def slot_z(self, p: Placed) -> tuple[float, float]:
+        return self.layout.slot_z(p)
+
+    def t(self, layer: int) -> float:
+        return self.layout.t(layer)
+
     @property
     def height(self) -> float:
-        """Total thickness of the stack, both frame plates included (mm)."""
-        return (self.top + 1) * self.spec.pitch
+        """Total thickness of the stack, both frame plates and every gap included (mm)."""
+        return self.layout.height()
 
-    def shapes(self, group: str | None = None, layer: int | None = None) -> list[Placed]:
+    def shapes(self, group: str | None = None, layer: int | None = None,
+               gaps: bool = True) -> list[Placed]:
+        """Placed shapes, of ``group`` and in ``layer`` (the gap above it too, unless
+        ``gaps`` is false)."""
         return [p for p in self.placed
-                if (group is None or p.group == group) and (layer is None or p.layer == layer)]
+                if (group is None or p.group == group) and (layer is None or p.layer == layer)
+                and (gaps or not p.gap)]
 
     def describe(self) -> str:
         lo = min((p.layer for p in self.placed), default=0)
         hi = max((p.layer for p in self.placed), default=self.top)
         rows = []
         for k in range(max(hi, self.top), min(lo, 0) - 1, -1):
+            if self.gaps.get(k):
+                held = sorted({p.label or p.group for p in self.placed
+                               if p.gap and p.layer == k and p.height > 0})
+                rows.append(f"  gap      z {self.gap_z(k)[0]:6.1f}  {self.gaps[k]:g} mm "
+                            f"clearance: {', '.join(held)}")
             names = sorted(n for n, s in self.layers.items() if s == k)
             groups = sorted({p.label or p.group for p in self.placed
-                             if p.layer == k and not p.seat and p.group not in self.layers})
+                             if p.layer == k and not p.gap and not p.seat
+                             and p.group not in self.layers})
             if k == self.top:
                 label = "inner frame plate"
             elif k == 0:
@@ -786,7 +920,9 @@ class StackPlan:
                 label = ", ".join(names + groups) or "·"
             if k < 0 or k > self.top:
                 label = "(outside) " + (", ".join(groups) or "·")
-            rows.append(f"  layer {k:2d}  z {k * self.spec.pitch:6.1f}  {label}")
+            t = self.t(k)
+            rows.append(f"  layer {k:2d}  z {self.z(k)[0]:6.1f}  "
+                        + (f"{t:g} mm  " if abs(t - self.spec.pitch) > 1e-9 else "") + label)
         return "\n".join(rows)
 
 
@@ -815,10 +951,14 @@ class StackProblem:
         self.topo = topo
         self.hint = dict(hint or {})
         self.notes = list(notes)      # facts behind the spec (a stack size some group bounds)
+        self.floor = ""               # why ``spec.min_top`` is above the default (the sizes
+        #                               under it ruled out without a search: the crank's rules)
         self.leg = {n: int(m.group(1)) if (m := re.search(r"_leg(\d+)$", n)) else 0
                     for n in topo.links}
         self.spec = spec or StackSpec()
-        self.claims = tuple(claims)
+        self.raw_claims = tuple(claims)
+        self.heads = "gap" if self.spec.heads == "best" else self.spec.heads
+        self.claims = heads_claims(self.raw_claims, self.heads)
         self.router = router
         self.clearances = tuple(clearances)
         self.links = tuple(topo.links)
@@ -889,7 +1029,8 @@ class StackProblem:
     def solve(self) -> StackPlan:
         """The thinnest plan, with the cheapest route in it; :class:`PlanError` (saying what
         blocked it, and how far each stack size got) when there is none up to
-        ``spec.max_top``, or none was found before the effort ran out.
+        ``spec.max_top``, or none was found before the effort ran out. With
+        ``spec.heads`` "best": sunk, else in gaps (:meth:`solve_heads`).
 
         First the thinnest stack a short search finds a plan in, then, with the
         full effort, the thinner sizes that short search didn't rule out, then a
@@ -898,6 +1039,8 @@ class StackProblem:
         never runs longer than the deadline, whatever a node costs.
         """
         spec = self.spec
+        if spec.heads == "best":
+            return self.solve_heads()
         self.blocked.clear()
         self._blocked_by.clear()
         self.spent = 0
@@ -920,6 +1063,44 @@ class StackProblem:
             if self.pool is not None:
                 self.pool.close()
                 self.pool = None
+
+    def solve_heads(self) -> StackPlan:
+        """Plan with the heads sunk into layers (the full-layer heads); in clearance gaps
+        only when that finds no plan (2026-10-04: searching both doubled the suite's time).
+        Each search has the whole budget."""
+        plans, errors = [], []
+        for heads in ("sink", "gap"):
+            spec = replace(self.spec, heads=heads)
+            if plans:
+                # the gap search only when the sunk plan failed (the user's rule of
+                # 2026-10-04: two searches doubled the suite's time for a few mm)
+                break
+            sub = StackProblem(self.topo, self.raw_claims, spec,
+                               self.router, self.clearances, self.hint, self.notes)
+            sub.floor = self.floor
+            try:
+                plans.append(sub.solve())
+            except PlanError as e:
+                errors.append(e)
+            for key, n in sub.blocked.items():
+                self.blocked[key] = self.blocked.get(key, 0) + n
+                self._blocked_by.setdefault(key, sub._blocked_by[key])
+            self.tried = getattr(sub, "tried", {})
+            self.spent = getattr(self, "spent", 0) + getattr(sub, "spent", 0)
+        if not plans:
+            e = errors[-1]
+            raise type(e)(e.summary, self.blockers(), e.notes, e.recommendations,
+                          expired=any(x.expired for x in errors))
+        best = min(plans, key=lambda p: (round(p.height, 3), len(p.gaps)))
+        other = [p for p in plans if p is not best]
+        if other:
+            o = other[0]
+            best.proof += (f"; heads {best.heads}: {best.height:.1f} mm against "
+                           f"{o.height:.1f} mm with them {o.heads} ({o.top + 1} layers"
+                           + (f", {len(o.gaps)} gaps" if o.gaps else "") + ")")
+        elif errors:
+            best.proof += f"; with the heads {'gap' if best.heads == 'sink' else 'sink'}: none"
+        return best
 
     def _new(self, top: int):
         """A stack size to search: here, or in a worker already searching it
@@ -958,8 +1139,8 @@ class StackProblem:
             bounded = " (the most a group allows)" if self.notes and last >= spec.max_top else ""
             raise PlanError(f"{self.topo.name}: no layer plan found with up to {last + 1} layers"
                             f"{bounded} after {self.spent} search steps in "
-                            f"{self.deadline.elapsed:.0f} s{ran_out}", self.blockers(),
-                            [self.sizes(tried), *self.notes])
+                            f"{self.deadline.elapsed:.0f} CPU s{ran_out}", self.blockers(),
+                            [self.sizes(tried), *self.notes], expired=self.deadline.expired)
         if spec.prove:
             self._expect([(found.top, "route")] + [
                 (t, "prove") for t in range(found.top - 1, spec.min_top - 1, -1)
@@ -1069,7 +1250,7 @@ class StackProblem:
     def stopped(self) -> str:
         """Which of the two ran out, as a phrase (``""``: neither)."""
         if self.deadline.expired:
-            return f"the {self.spec.max_seconds:g} s deadline ran out"
+            return f"the {self.spec.max_seconds:g} CPU s deadline ran out"
         if self.spent >= self.spec.max_total_nodes:
             return f"the {self.spec.max_total_nodes} search-step budget ran out"
         return ""
@@ -1087,6 +1268,9 @@ class StackProblem:
             else:
                 runs.append((state, [top]))
         out = []
+        if self.floor and self.spec.min_top > StackSpec.min_top:
+            out.append(f"{StackSpec.min_top + 1}-{self.spec.min_top} layers ruled out by "
+                       f"{self.floor}")
         for state, tops in runs:
             layers = (f"{tops[0] + 1}-{tops[-1] + 1} layers" if len(tops) > 1 else
                       f"{tops[0] + 1} layers")
@@ -1115,16 +1299,17 @@ class StackProblem:
                   "found" if s.best else "none" if s.done else "budget")
 
     def plan(self, layers: Mapping[str, int], top: int,
-             choices: Mapping[str, object] | None = None) -> StackPlan:
-        layout = Layout(dict(layers), top, self.spec.pitch, dict(choices or {}))
-        placed: list[Placed] = []
-        for c in self.claims:
-            out, why = made(c, layout)
-            if out is None:
-                raise ValueError(why)
-            placed.extend(out)
-        return StackPlan(self.spec, dict(layers), top, self.topo, self.claims, tuple(placed),
-                         dict(choices or {}))
+             choices: Mapping[str, object] | None = None, heads: str | None = None
+             ) -> StackPlan:
+        """The plan of a layering (:func:`finalize`): its clearance gaps and layer
+        thicknesses, every claim made at the z they give; :class:`PlanReject` (a
+        ``ValueError``) when that can't be built. ``heads``: how the plan placed heads
+        (:attr:`StackPlan.heads`; default: this problem's)."""
+        heads = heads or self.heads
+        claims = self.claims if heads == self.heads else heads_claims(self.raw_claims, heads)
+        plan = finalize(self.topo, claims, self.spec, layers, top, choices)
+        plan.heads = heads
+        return plan
 
 
 class _Search:
@@ -1199,13 +1384,14 @@ class _Search:
                         break
                     shapes += out
                 else:
-                    if not any(not p.seat and p.layer in (0, top) for p in shapes):
+                    if not any(not p.seat and not p.gap and p.layer in (0, top)
+                               for p in shapes):
                         for p in shapes:
                             if not p.seat:
-                                self.touch[n].setdefault(p.layer, []).append((v, p))
+                                self.touch[n].setdefault(p.slot, []).append((v, p))
                         if self.router is not None:
                             bits = sum(1 << i for i, piece in enumerate(self.router.pieces)
-                                       if any(p.layer == v and not p.seat
+                                       if any(p.layer == v and not p.seat and not p.gap
                                               and self.hit(piece, p.shape) for p in shapes))
                             self.allow[n][v] = self.router.states(n, bits)
                         else:
@@ -1226,13 +1412,19 @@ class _Search:
 
     def effects(self, p: Placed) -> tuple[tuple[int, ...], tuple[tuple[str, int], ...]]:
         """(the router pieces ``p`` blocks, the (link, layer) choices it rules out)."""
-        key = (p.shape, p.layer, p.group)
+        key = (p.shape, p.slot, p.group)
         fx = self.fx.get(key)
         if fx is None:
-            k = p.layer
+            k = p.slot
             pieces: tuple[int, ...] = ()
-            if self.router is not None and p.group != self.router.group and 0 < k < self.top:
+            if (self.router is not None and p.group != self.router.group and not p.gap
+                    and 0 < k < self.top):
                 pieces = tuple(i for i, piece in enumerate(self.router.pieces)
+                               if self.hit(piece, p.shape))
+            elif (self.router is not None and p.group != self.router.group and p.gap
+                  and getattr(self.router, "gap_pieces", ())):
+                # a head or washer in a clearance gap blocks the router's pieces there
+                pieces = tuple(i for i, piece in enumerate(self.router.gap_pieces)
                                if self.hit(piece, p.shape))
             ruled = tuple((n, v) for n in self.links for v, s in self.touch[n].get(k, ())
                           if s.group != p.group and self.hit(s.shape, p.shape))
@@ -1289,8 +1481,8 @@ class _Search:
         blocks router pieces and removes the layers it rules out for unplaced links."""
         if p.seat:
             return None
-        k, top = p.layer, self.top
-        if k in (0, top):
+        k, top = p.slot, self.top
+        if not p.gap and k in (0, top):
             self.prob._tally(p, None)
             return deps
         for q, qd in self.by_layer.get(k, ()):
@@ -1557,11 +1749,17 @@ class _Search:
                     self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
                 return self.explain(res)
             choices, cost = {self.router.group: res.choice}, res.cost
-        plan = self.prob.plan(self.layers, self.top, choices)
+        try:
+            plan = self.prob.plan(self.layers, self.top, choices)
+        except PlanReject as e:
+            # the layering clears at the nominal z, but not at its own (the clearance gaps
+            # and the plates' thicknesses moved something a stock part had to fit)
+            self.prob._tally_why("the plan at its z", str(e))
+            return frozenset(self.layers)
         bad = verify_plan(plan)
         if bad:
-            raise AssertionError(f"{self.prob.topo.name}: the planner accepted a plan its "
-                                 f"verification rejects: {bad[:3]}")
+            self.prob._tally_why("the plan at its z", bad[0])
+            return frozenset(self.layers)
         plan.cost = cost
         self.best, self.bound = plan, cost
         if cost == 0:
@@ -1623,7 +1821,9 @@ class _Search:
 
 
 def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e-6) -> list[str]:
-    """Re-check a plan from scratch: every claim re-evaluated, every pair tested.
+    """Re-check a plan from scratch: every claim re-evaluated at the plan's z, the heads it
+    sank sunk again, every pair in one layer or one clearance gap tested, every gap and
+    sunk head checked for height.
 
     With ``tmpl`` the geometry is re-sampled (denser than the solver's), so
     the check doesn't reuse any solver table. Returns human-readable
@@ -1643,28 +1843,336 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
             topo.add_crank_point(name, r, ang)
     geo, sp, layout = topo.geometry, plan.spec, plan.layout
     bad: list[str] = []
-    shapes: list[Placed] = []
+    made_: list[Placed] = []
     for c in plan.claims:
         out, why = made(c, layout)
         if out is None:
             bad.append(why)
             continue
-        shapes.extend(out)
+        made_.extend(out)
+    shapes = settle(made_, plan.sunk, layout)
     for n in topo.links:
         if n not in plan.layers:
             bad.append(f"{n} has no layer")
         elif not 0 < plan.layers[n] < plan.top:
             bad.append(f"{n} sits in layer {plan.layers[n]}, outside the frame plates")
     for p in shapes:
-        if not p.seat and p.layer in (0, plan.top):
+        if not p.seat and not p.gap and p.layer in (0, plan.top):
             bad.append(f"{p.label or p.group} sits in frame-plate layer {p.layer}")
-    live = [p for p in shapes if not p.seat]
-    for a, b in itertools.combinations(live, 2):
-        if a.layer != b.layer or a.group == b.group:
-            continue
-        need = a.shape.r + b.shape.r + sp.margin
-        d = geo.dist(a.shape.core, b.shape.core)
-        if d < need - tol:
-            bad.append(f"layer {a.layer}: {a.label or a.group} x {b.label or b.group} "
-                       f"clear {d - a.shape.r - b.shape.r:.2f} mm (need {sp.margin:.2f})")
+        if p.height > 0:
+            room = layout.gap(p.layer) if p.gap else layout.t(p.layer)
+            if p.height > room + tol:
+                where = f"the {room:g} mm gap over layer {p.layer}" if p.gap else \
+                    f"layer {p.layer} ({room:g} mm)"
+                bad.append(f"{p.label or p.group} needs {p.height:.2f} mm, more than {where}")
+    by_slot: dict[float, list[Placed]] = {}
+    for p in shapes:
+        if not p.seat:
+            by_slot.setdefault(p.slot, []).append(p)
+    for slot, live in sorted(by_slot.items()):
+        for a, b in itertools.combinations(live, 2):
+            if a.group == b.group:
+                continue
+            need = a.shape.r + b.shape.r + sp.margin
+            d = geo.dist(a.shape.core, b.shape.core)
+            if d < need - tol:
+                where = f"gap over layer {int(slot)}" if slot != int(slot) else f"layer {slot}"
+                bad.append(f"{where}: {a.label or a.group} x {b.label or b.group} "
+                           f"clear {d - a.shape.r - b.shape.r:.2f} mm (need {sp.margin:.2f})")
     return bad
+
+
+# ---------------------------------------------------------------------------
+# The plan's z: clearance gaps, sunk heads, layer thicknesses
+# ---------------------------------------------------------------------------
+
+
+class PlanReject(ValueError):
+    """A layering whose plan can't be built at its own z (:func:`finalize`): a claim a
+    clearance gap or a thicker plate moved can't be built, or a head needs a gap no stock
+    sheet is thick enough for. The search takes it as a dead end."""
+
+
+EPS_Z = 1e-6
+SunkKey = tuple
+
+
+def sunk_key(p: Placed) -> SunkKey:
+    return (p.group, p.label, p.layer, p.shape.core, p.toward)
+
+
+def _hit(geo: Geometry, a: Shape, b: Shape, margin: float) -> bool:
+    return geo.dist(a.core, b.core) < a.r + b.r + margin - 1e-9
+
+
+def bridges(shapes: Iterable[Placed], gaps: Mapping[int, float] | None = None) -> list[Placed]:
+    """What runs on through a clearance gap: a group's piece (one core) in the layers on
+    both sides of it is in the gap too, at the narrower of the two (a crank stack, a
+    hub, a post); a group that put shapes of its own at that core in the gap (an axle's
+    washers) is left as it said. Only the gaps in ``gaps`` (all, when ``None``)."""
+    cores: dict[tuple, dict[int, float]] = {}
+    own = set()
+    for p in shapes:
+        if p.gap:
+            own.add((p.group, p.shape.core, p.layer))
+            continue
+        d = cores.setdefault((p.group, p.shape.core), {})
+        r, t = d.get(p.layer, (0.0, math.inf))
+        d[p.layer] = (max(r, p.shape.r), min(t, p.sheet))
+    out = []
+    for (g, core), d in cores.items():
+        for k, (r, t) in sorted(d.items()):
+            if k + 1 not in d or (g, core, k) in own:
+                continue
+            if gaps is not None and not gaps.get(k):
+                continue
+            rr = min(r, d[k + 1][0])
+            shape = Disc(core[1], rr) if core[0] == "pt" else Pill(core[1], core[2], rr)
+            # a plate stack on both sides (``sheet``: the thinner): a filler plate fills it
+            out.append(Placed(k, shape, g, f"{g} through the gap", gap=True,
+                              sheet=min(t, d[k + 1][1])))
+    return out
+
+
+def settle(shapes: Iterable[Placed], sunk: Iterable[SunkKey], layout: Layout) -> list[Placed]:
+    """The claims' shapes as the plan builds them: the heads in ``sunk`` moved into the layer
+    they sink into, the shapes of a gap the plan doesn't have dropped, and what runs on
+    through the gaps it has added (:func:`bridges`)."""
+    sunk = set(sunk)
+    out = []
+    for p in shapes:
+        if p.gap and p.toward and sunk_key(p) in sunk:
+            out.append(replace(p, layer=p.layer + (1 if p.toward > 0 else 0), gap=False))
+        elif p.gap and not layout.gap(p.layer):
+            continue
+        else:
+            out.append(p)
+    return out + bridges(out, layout.gaps)
+
+
+def _sinkable(shapes: list[Placed], layout: Layout, geo: Geometry, margin: float
+              ) -> set[SunkKey]:
+    """The heads that go into the layer beside their gap instead (the full-layer head):
+    a gap goes when every head in it fits the layer it would sink into (not a frame
+    plate, tall enough, clear of every other group's shape there and of the heads
+    already sunk into it), going up the stack."""
+    top = layout.top
+    plate: dict[int, list[Placed]] = {}
+    heads: dict[int, list[Placed]] = {}
+    for p in shapes:
+        if p.seat:
+            continue
+        if not p.gap:
+            plate.setdefault(p.layer, []).append(p)
+        elif p.height > 0:
+            heads.setdefault(p.layer, []).append(p)
+    sunk: set[SunkKey] = set()
+    for b in sorted(heads):
+        moves = []
+        for h in heads[b]:
+            tgt = b + 1 if h.toward > 0 else b if h.toward < 0 else None
+            if tgt is None or not 0 < tgt < top or h.height > layout.t(tgt) + EPS_Z:
+                break
+            if any(q.group != h.group and _hit(geo, h.shape, q.shape, margin)
+                   for q in [*plate.get(tgt, ()), *(m for t, m in moves if t == tgt)]):
+                break
+            moves.append((tgt, h))
+        else:
+            for tgt, h in moves:
+                plate.setdefault(tgt, []).append(h)
+                sunk.add(sunk_key(h))
+    return sunk
+
+
+def _thicknesses(layers: Mapping[str, int], shapes: Iterable[Placed], spec: StackSpec,
+                 top: int) -> dict[int, float]:
+    """Each layer's thickness where it isn't the pitch: the frame plates', the thickest
+    link's or plate's in it."""
+    t: dict[int, float] = {}
+    if spec.frame_t is not None:
+        t[0] = t[top] = spec.frame_t
+    lt = dict(spec.link_t)
+    for n, k in layers.items():
+        if n in lt:
+            t[k] = max(t.get(k, spec.pitch), lt[n])
+    for p in shapes:
+        if p.sheet > 0 and not p.gap and 0 < p.layer < top:
+            t[p.layer] = max(t.get(p.layer, spec.pitch), p.sheet)
+    return {k: v for k, v in t.items() if abs(v - spec.pitch) > EPS_Z}
+
+
+def _gap_options(k: int, h: float, spec: StackSpec, bridged: set[int]) -> list[float]:
+    """The thicknesses gap ``k`` may have for heads ``h`` tall, thinnest first: a thin
+    sheet's where plates go on through it (``bridged``), else any :data:`GAP_STEP` up to
+    :data:`GAP_MORE` over the need."""
+    if k in bridged:
+        return [o for o in sorted(spec.gaps) if o >= h - EPS_Z]
+    if h > GAP_MAX + EPS_Z:
+        return []
+    g = math.ceil(h / GAP_STEP - 1e-6) * GAP_STEP
+    return [round(g + i * GAP_STEP, 3) for i in range(int(GAP_MORE / GAP_STEP) + 1)
+            if g + i * GAP_STEP <= max(GAP_MAX, g) + EPS_Z]
+
+
+def _gap_sizes(shapes: Iterable[Placed], spec: StackSpec, top: int,
+               bridged: set[int] = frozenset()) -> dict[int, float]:
+    """Each clearance gap the heads in it need: the thinnest it may be over the tallest
+    (:func:`_gap_options`; :class:`PlanReject` when none is tall enough)."""
+    need: dict[int, float] = {}
+    for p in shapes:
+        if p.gap and p.height > 0:
+            need[p.layer] = max(need.get(p.layer, 0.0), p.height)
+    out = {}
+    for k, h in need.items():
+        if not 0 <= k < top:
+            raise PlanReject(f"a clearance gap over layer {k} is outside the frame plates")
+        g = next(iter(_gap_options(k, h, spec, bridged)), None)
+        if g is None:
+            who = sorted({p.label or p.group for p in shapes
+                          if p.gap and p.layer == k and p.height > h - EPS_Z})
+            most = max(spec.gaps) if k in bridged else GAP_MAX
+            raise PlanReject(f"{', '.join(who)} needs a {h:.2f} mm clearance gap over layer "
+                             f"{k}, more than the thickest it may have ({most:g} mm)")
+        out[k] = g
+    return out
+
+
+def _make_all(claims: Iterable[Claim], layout: Layout) -> list[Placed]:
+    out: list[Placed] = []
+    for c in claims:
+        got, why = made(c, layout)
+        if got is None:
+            e = PlanReject(why)
+            e.claim = c
+            raise e
+        out.extend(got)
+    return out
+
+
+def plate_bridged(shapes: Iterable[Placed]) -> set[int]:
+    """The gaps a stack of plates runs on through (a group's plates at one core in the
+    layers on both sides): a filler plate fills such a gap, so it is a thin sheet's
+    thickness; any other gap is a stack of washers and shims, so any 0.1 mm."""
+    plates: dict[tuple, set[int]] = {}
+    for p in shapes:
+        if p.sheet > 0 and not p.gap:
+            plates.setdefault((p.group, p.shape.core), set()).add(p.layer)
+    return {k for ks in plates.values() for k in ks if k + 1 in ks}
+
+
+GAP_STEP = 0.1        # a gap only washers and shims fill: any multiple of the thinnest shim
+GAP_MAX = 4.0         # ... up to this (a head with its shims; a taller one keeps a layer)
+GAP_TRIES = 60        # thicker gaps a plan's z tries for a claim that fails (finalize)
+GAP_MORE = 3.0        # the most a plan's z thickens a gap past its heads' need (a layer's worth)
+
+
+def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
+                  gaps: dict[int, float], thick: dict[int, float],
+                  bridged: set[int]) -> dict[int, float]:
+    """The gaps thickened the least (one gap at a time, then two) at which the claim that
+    failed (``err.claim``) builds; ``err`` again when none does."""
+    claim = getattr(err, "claim", None)
+    if claim is None:
+        raise err
+    ks = sorted(gaps)
+    more = {k: [o for o in _gap_options(k, gaps[k], spec, bridged) if o > gaps[k] + EPS_Z]
+            for k in ks}
+    tries: list[tuple[float, dict[int, float]]] = []
+    for k in ks:
+        tries += [(o - gaps[k], {**gaps, k: o}) for o in more[k]]
+    for a, b in itertools.combinations(ks, 2):
+        tries += [(oa + ob - gaps[a] - gaps[b], {**gaps, a: oa, b: ob})
+                  for oa in more[a][:8] for ob in more[b][:8]]
+    tries.sort(key=lambda t: (round(t[0], 6), sorted(t[1].items())))
+    for _, g in tries[:GAP_TRIES]:
+        layout = Layout(layers, top, spec.pitch, choices, dict(g), dict(thick), final=True)
+        if made(claim, layout)[0] is not None:
+            return g
+    raise PlanReject(f"{err} (nor with any of its clearance gaps up to {GAP_MORE:g} mm "
+                     "thicker)")
+
+
+def heads_claims(claims: Iterable[Claim], heads: str) -> tuple[Claim, ...]:
+    """The claims as the search sees them for ``heads`` (:attr:`StackSpec.heads`): "sink"
+    puts every head that may sink into the layer beside its link (and drops what would
+    only be in a gap: there is none), "gap" leaves them."""
+    claims = tuple(claims)
+    if heads != "sink":
+        return claims
+
+    def sunk(make):
+        if make is None:
+            return None
+
+        def f(L: Layout):
+            out = make(L)
+            if out is None:
+                return None
+            got = [replace(p, layer=p.layer + (1 if p.toward > 0 else 0), gap=False)
+                   if p.gap and p.toward else p for p in out if not p.gap or p.toward]
+            for p in got:
+                if p.height > L.t(p.layer) + EPS_Z:
+                    raise Unbuildable(f"{p.label or p.group} needs {p.height:.2f} mm, more "
+                                      f"than layer {p.layer} ({L.t(p.layer):g} mm)")
+            return got
+        return f
+
+    return tuple(replace(c, make=sunk(c.make), early=sunk(c.early)) for c in claims)
+
+
+def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
+             layers: Mapping[str, int], top: int,
+             choices: Mapping[str, object] | None = None) -> StackPlan:
+    """The plan of a layering: which heads sink into a layer and which keep a clearance
+    gap (:func:`_sinkable`), each gap's stock thickness and each layer's (the plates'
+    sheets), and every claim made again at the z those give, until they settle (a
+    claim's head may need more at its real z: a Chicago screw's shims). Deterministic in
+    its arguments, so a stored layering re-makes the same plan."""
+    claims = tuple(claims)
+    choices = dict(choices or {})
+    layers = dict(layers)
+    nominal = Layout(layers, top, spec.pitch, choices)
+    shapes = _make_all(claims, nominal)
+    sunk = _sinkable(shapes, nominal, topo.geometry, spec.margin)
+    gaps: dict[int, float] = {}
+    thick: dict[int, float] = {}
+    layout = nominal
+    for _ in range(8):
+        # a head that needs more at the plan's z than the layer it sank into keeps its gap
+        sunk -= {sunk_key(p) for p in shapes if p.gap and p.toward and sunk_key(p) in sunk
+                 and p.height > layout.t(p.layer + (1 if p.toward > 0 else 0)) + EPS_Z}
+        bridged = plate_bridged(shapes)
+        while True:
+            kept = [p for p in shapes if not (p.gap and p.toward and sunk_key(p) in sunk)]
+            want = _gap_sizes(kept, spec, top, bridged)
+            # a head can't sink past a gap the plan keeps there (it hangs off its link's
+            # face): every head in a gap the others keep stays in it
+            have = set(want) | {k for k, v in gaps.items() if v}
+            back = {sunk_key(p) for p in shapes if p.gap and p.toward
+                    and sunk_key(p) in sunk and p.layer in have}
+            if not back:
+                break
+            sunk -= back
+        new_gaps = {k: max(v, gaps.get(k, 0.0)) for k, v in {**gaps, **want}.items()}
+        new_thick = _thicknesses(layers, shapes, spec, top)
+        new_thick = {k: max(v, thick.get(k, 0.0)) for k, v in {**thick, **new_thick}.items()}
+        if layout is not nominal and new_gaps == gaps and new_thick == thick:
+            break
+        gaps, thick = new_gaps, new_thick
+        layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick), final=True)
+        try:
+            shapes = _make_all(claims, layout)
+        except PlanReject as e:
+            if not gaps:
+                raise
+            # a stock part (a crank bolt, a standoff) that misses at these gaps may fit at
+            # thicker ones: the least thickening that builds the claim, then all of them
+            gaps = _thicker_gaps(e, spec, layers, top, choices, gaps, thick, bridged)
+            layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick),
+                            final=True)
+            shapes = _make_all(claims, layout)
+    else:
+        raise PlanReject("the clearance gaps and the claims made at their z don't settle")
+    placed = settle(shapes, sunk, layout)
+    return StackPlan(spec, layers, top, topo, claims, tuple(placed), choices,
+                     gaps=dict(gaps), thick=dict(thick), sunk=frozenset(sunk))

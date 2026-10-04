@@ -319,7 +319,7 @@ def catalog_cards(category: str = "all") -> dict:
         out["sheets"] = [_sheet_card(k) for k in sheet_keys()]
     if category in ("constructions", "all"):
         out["constructions"] = {
-            "axles": [_construction_card(c, ["pillar", "pin"])
+            "axles": [_construction_card(c, list(getattr(c, "roles", ("pillar", "pin"))))
                       for _, c in sorted(construction.AXLES.items())],
             "cranks": [_construction_card(c, ["crank"])
                        for _, c in sorted(construction.CRANKS.items())],
@@ -422,7 +422,9 @@ def _materials_table() -> str:
         hw = ", ".join(h["key"] for h in c["hardware"].values()) or "printed"
         lines.append(f"| pillar / pin | `{c['key']}` | {c['label']} | - | {hw} |")
     for c in cards["constructions"]["cranks"]:
-        lines.append(f"| crank | `{c['key']}` | {c['label']} | - | - |")
+        hw = ", ".join(h["key"] for h in c["hardware"].values())
+        lines.append(f"| crank | `{c['key']}` | {c['label']} | - | "
+                     f"{'m3 screw, m3_nut, ' + hw if hw else 'm3 screw, m3_nut'} |")
     return "\n".join(lines)
 
 

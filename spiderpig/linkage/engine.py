@@ -121,6 +121,13 @@ MODULES: dict[str, Module] = {
 }
 MODULE_LEGS: dict[str, LegList] = {k: m.legs for k, m in MODULES.items()}
 
+KLANN_QUAD = Module(((+1, 0.0), (-1, 0.0), (+1, math.pi), (-1, math.pi)), cranks=((0, 1), (2, 3)))
+"""The Klann variants' quad (the user's call, 2026-10-04; the diywalkers variants of
+:mod:`linkages.klann_variants`, not the demo ``klann``, whose quad finds no plan this way
+with standoff pillars): crank phases 0, 0, 180, 180, each
+mirrored pair on one crankpin, the two pairs half a turn apart (two crankpins, not the
+generic quad's four: a thinner crank, and the phasing the Klann audits used)."""
+
 
 MOTIONS = ("line", "path", "rotation", "translation_platform", "xy")
 
@@ -200,6 +207,7 @@ class Linkage:
     angles: frozenset[str] = frozenset()
     labels: Mapping[str, str] = field(default_factory=dict)
     modules: Mapping[str, Module | LegList] = field(default_factory=dict)
+    default_module: str = ""        # the module a design gets when none is asked for ("": quad)
     family: str = ""
     source: str = ""
     notes: str = ""
@@ -219,6 +227,9 @@ class Linkage:
             raise ValueError(f"{self.key}: frame/crank joints {loose} carry no link")
         if bool(self.feet) == (self.output is not None):
             raise ValueError(f"{self.key}: a walker has feet, a mechanism an output: one of them")
+        if self.default_module and self.default_module not in self.modules_of:
+            raise ValueError(f"{self.key}: default module {self.default_module!r} is not one of "
+                             f"its modules {list(self.modules_of)}")
         if self.inputs not in (("t",), ("t", "t2")):
             raise ValueError(f"{self.key}: inputs are the crank angle t, and maybe t2")
         o = self.output
@@ -378,7 +389,7 @@ class OutputError(AssemblyError):
 # ---------------------------------------------------------------------------
 
 REGISTRY: dict[str, Linkage] = {}
-DEFAULT = "klann"
+DEFAULT = "strider"            # the project's walker; Klann stays the wobbly demo
 
 
 def register(linkage: Linkage) -> Linkage:
@@ -401,7 +412,7 @@ def get(key: str) -> Linkage:
 
 
 def available(kind: str | None = None) -> list[str]:
-    """Registered keys, Klann first; ``kind`` (``walker`` / ``mechanism``) keeps those."""
+    """Registered keys, the default first; ``kind`` (``walker`` / ``mechanism``) keeps those."""
     _load()
     return [k for k, lk in REGISTRY.items() if kind in (None, lk.kind)]
 

@@ -24,6 +24,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 THREAD_D = {"M2": 2.0, "M2.5": 2.5, "M2.6": 2.6, "M3": 3.0}   # nominal diameters (mm)
+KGF_CM = 9.80665e-2             # N·m per kgf·cm
+
+# A jam puts the servo's whole torque limit on the crank's joints (times chord / crank
+# radius, 2.0 on the Strider double and the 180 deg quads: spiderpig.strength rates each
+# crank construction's joints), so the limit is set to TORQUE_LIMIT_FRACTION of the stall
+# torque and never above JAM_TORQUE_NM (the Strider's 0.18 N·m walking peak keeps 4.7x of
+# headroom under it).
+JAM_TORQUE_NM = 0.85
+TORQUE_LIMIT_FRACTION = 0.45
 
 
 @dataclass(frozen=True)
@@ -221,7 +230,8 @@ class ServoSpec:
     continuous: bool = False        # can turn a crank (full rotation, speed mode)
     idler: Idler | None = None
     cad: CadRef | None = None
-    torque_kgcm: float | None = None
+    torque_kgcm: float | None = None          # stall torque at the upper voltage
+    rated_kgcm: float | None = None           # rated (continuous) torque, if published
     voltage: tuple[float, float] | None = None
     interface: str = ""
     notes: str = ""
@@ -233,6 +243,19 @@ class ServoSpec:
     cad_alternates: tuple[CadRef, ...] = ()   # tried in order when ``cad`` is unavailable
     weight_g: float | None = None
     speed_rpm: float | None = None  # no-load output speed at the upper voltage
+
+    @property
+    def stall_torque_nm(self) -> float | None:
+        return None if self.torque_kgcm is None else self.torque_kgcm * KGF_CM
+
+    @property
+    def torque_limit_nm(self) -> float | None:
+        """The torque limit to set in the servo's firmware (N·m): :data:`TORQUE_LIMIT_FRACTION`
+        of the stall torque, at most :data:`JAM_TORQUE_NM` (what a jam puts on the crank's
+        joints: :mod:`spiderpig.strength`); ``None`` without a stall torque."""
+        stall = self.stall_torque_nm
+        return None if stall is None else round(min(TORQUE_LIMIT_FRACTION * stall,
+                                                    JAM_TORQUE_NM), 3)
 
     @property
     def horn_bottom(self) -> float:

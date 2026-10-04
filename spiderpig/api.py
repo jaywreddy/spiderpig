@@ -72,10 +72,11 @@ from spiderpig.fabricate import (
 )
 from spiderpig.fabricate import template_for as _template_for
 from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
-from spiderpig.hardware.bom import BomLine, bom_from_mechanism, group_made
+from spiderpig.hardware.bom import bom_from_mechanism, group_made
 from spiderpig.hardware.catalog import sheet_name, sheet_size, sheet_thickness
 from spiderpig.hardware.mass import filament_density, material_of, part_props
-from spiderpig.layout import DEFAULT_KERF, pack, save_sheets
+from spiderpig.layout import DEFAULT_KERF, save_sheets, sheet_lines
+from spiderpig.materials import link_sheets
 from spiderpig.spec import (
     ALLOWANCE,
     FIT_FIELDS,
@@ -168,6 +169,8 @@ class PlanReport(Report):
     reused: str | None = None
     warnings: list[str] = field(default_factory=list)   # the constructions' (a strained snap)
     seconds: float = 0.0
+    heads: str | None = None       # fasteners' heads sunk into layers, or in clearance gaps
+    gaps_mm: dict[str, float] = field(default_factory=dict)   # layer -> the gap over it
 
 
 @dataclass
@@ -279,8 +282,11 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             proportions=tuple(sorted(spec.linkage.params.items())),
             sheet=sheet, thickness=thickness,
             servo=spec.materials.servo or d.servo,
+            frame_sheet=spec.materials.frame_sheet or d.frame_sheet,
+            crank_sheet=spec.materials.crank_sheet or d.crank_sheet,
             pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
-            crank=spec.constructions.crank or d.crank, params=spec.fit.params(),
+            crank=spec.constructions.crank or "", heads=spec.constructions.heads or d.heads,
+            params=spec.fit.params(),
         )
     except ParamError as e:     # the validator should have said it first
         raise SpecErrors([SpecError("", str(e))]) from None
@@ -368,11 +374,13 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
     if config.phases is not None:
         legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
     doc["legs"] = legs
-    mats: dict = {"sheet": config.sheet, "servo": config.servo}
+    mats: dict = {"sheet": config.sheet, "servo": config.servo,
+                  "frame_sheet": config.frame_sheet, "crank_sheet": config.crank_sheet}
     if config.thickness is not None:
         mats["thickness_mm"] = config.thickness
     doc["materials"] = mats
-    doc["constructions"] = {"pillar": config.pillar, "pin": config.pin, "crank": config.crank}
+    doc["constructions"] = {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
+                            "heads": config.heads}
     default = Params()
     fit = {k: getattr(config.params, k) for k in FIT_FIELDS
            if getattr(config.params, k) != getattr(default, k)}
@@ -391,7 +399,11 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
         phases=tuple(math.radians(p) for p in legs["phases_deg"]),
         proportions=tuple(sorted(resolved["linkage"]["params"].items())),
         sheet=mat["sheet"], thickness=mat.get("thickness_mm"), servo=mat["servo"],
+        frame_sheet=mat.get("frame_sheet") or mat["sheet"],
+        crank_sheet=mat.get("crank_sheet") or mat["sheet"],
+        link_sheets=tuple(sorted((mat.get("link_sheets") or {}).items())),
         pillar=cons["pillar"], pin=cons["pin"], crank=cons["crank"],
+        heads=cons.get("heads") or "sink",
         params=Params(**{k: fit[k] for k in FIT_FIELDS if k in fit}),
     )
 
@@ -547,8 +559,11 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
         "legs": {"module": module, "phases_deg": design["phases_deg"], "sides": sides},
         "motion": targets["motion"], "size": targets["size"], "budget": targets["budget"],
         "materials": {"sheet": config.sheet, "thickness_mm": config.thickness,
-                      "pitch_mm": config.pitch, "servo": config.servo},
-        "constructions": {"pillar": config.pillar, "pin": config.pin, "crank": config.crank},
+                      "pitch_mm": config.pitch, "servo": config.servo,
+                      "frame_sheet": config.frame_sheet, "crank_sheet": config.crank_sheet,
+                      "link_sheets": link_sheets(config)},
+        "constructions": {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
+                          "heads": config.heads},
         "fit": fit,
         "outputs": list(spec.outputs),
     }
@@ -956,8 +971,8 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     again."""
     if not force:
         rep = design.reports.get("plan")
-        if rep is not None and (design.side is not None or not rep.ok):
-            return rep
+        if rep is not None and (design.side is not None or (not rep.ok and not timed_out(rep))):
+            return rep                  # (a failure for want of CPU time is searched again)
         rep = _reuse_plan(design)
         if rep is not None:
             return rep
@@ -978,6 +993,17 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     return _finish(design, "plan", rep, t0)
 
 
+def timed_out(rep) -> bool:
+    """Did this plan report fail only because the planner's CPU budget ran out
+    (``no_plan_in_time``: the machine was busy, the design may well plan)?"""
+    return bool(rep.failures) and all(f.code == "no_plan_in_time" for f in rep.failures)
+
+
+class PlanTimeout(ValueError):
+    """:func:`plan_config`'s error when the planner's CPU budget ran out (``no_plan_in_time``):
+    not a verdict on the design; a server shouldn't remember it as unbuildable."""
+
+
 def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT) -> SideDesign:
     """The planned side of a build config (a CLI's options), through the store: the config
     resolved as a design (:func:`spec_of`, as ``spiderpig view --linkage ...`` does), its
@@ -985,7 +1011,8 @@ def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT)
     for again), else solved and recorded there. The side is then what
     :func:`fabricate.design_side` answers for that config (:func:`fabricate.remember`), so
     a build that follows plans nothing again. ``ValueError`` with the failing stage's
-    message (the engine's own) when the design has no plan.
+    message (the engine's own) when the design has no plan; :class:`PlanTimeout` (one)
+    when the planner's CPU budget ran out before it could say.
 
     The plan is one side's whatever ``config.robot`` says, so the design is the one the
     linkage's kind builds (:func:`config.default_robot`: a walker's robot, a mechanism's
@@ -995,7 +1022,8 @@ def plan_config(config: BuildConfig, store: Store | str | Path | None = PROJECT)
     design = resolve(spec_of(config), store)
     rep = plan(design)
     if not rep.ok or design.side is None:
-        raise ValueError("\n  ".join(f.message for f in rep.failures[:1]) or "no plan")
+        msg = "\n  ".join(f.message for f in rep.failures[:1]) or "no plan"
+        raise PlanTimeout(msg) if timed_out(rep) else ValueError(msg)
     remember(_template(design), design.side)
     return design.side
 
@@ -1040,6 +1068,7 @@ def _plan_report(d: SideDesign, rep: PlanReport | None = None) -> PlanReport:
                  {"runs": [{"at": r.at, "lo": r.lo, "hi": r.hi} for r in route.runs],
                   "bearing": route.bearing})
     rep.optimal, rep.proof, rep.cost = p.optimal, p.proof, p.cost
+    rep.heads, rep.gaps_mm = p.heads, {str(k): v for k, v in sorted(p.gaps.items())}
     rep.ground_clearance_mm = d.ground_clearance_mm
     rep.table = p.describe()
     return rep
@@ -1098,7 +1127,8 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
         choices = {} if route is None else {
             "crank": CrankRoute(tuple(Run(r["at"], int(r["lo"]), int(r["hi"]))
                                       for r in route["runs"]), bool(route.get("bearing", True)))}
-        p = problem.plan({k: int(v) for k, v in doc["layers"].items()}, int(doc["top"]), choices)
+        p = problem.plan({k: int(v) for k, v in doc["layers"].items()}, int(doc["top"]), choices,
+                         doc.get("heads") or "gap")
         bad = verify_plan(p) if same_engine else verify_plan(p, tmpl)
     except (ValueError, KeyError, TypeError) as e:
         log.info("%s: stored plan not reusable: %s", design.id, e)
@@ -1495,6 +1525,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
             material=material, dims_mm=(bb.size.X, bb.size.Y, bb.size.Z),
             layers=side_layers(side.plan, z_side), density=density, fixed_mass_g=fixed,
             bom_key=b.bom_key, rigid_with=b.rigid_with, pose=b.pose.matrix.tolist(),
+            sheet=b.sheet,
             z_mid=z_mid, z_side=(float(z_side[0]), float(z_side[1])),
             built=b.part, _measured=(b.part, float(props.volume)),
         )
@@ -1543,15 +1574,9 @@ def to_side(solid, tag: str | None, z_mid: float | None):
 
 
 def side_layers(plan, z: tuple[float, float], eps: float = 1e-6) -> tuple[int, ...]:
-    """The layers a z range (side coordinates) reaches into (outside the plates too)."""
-    pitch = plan.spec.pitch
-    lo, hi = math.floor(z[0] / pitch + eps) - 1, math.ceil(z[1] / pitch - eps) + 1
-    out = []
-    for k in range(lo, hi + 1):
-        z0, z1 = plan.z(k)
-        if z0 < z[1] - eps and z1 > z[0] + eps:
-            out.append(k)
-    return tuple(out)
+    """The layers a z range (side coordinates) reaches into (outside the plates too; its
+    clearance gaps and thicker plates at their own z)."""
+    return tuple(plan.layout.layers_between(z[0] + eps, z[1] - eps))
 
 
 def group_of(name: str, plan) -> str:
@@ -1777,20 +1802,20 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
-    size = tuple(spec.fit.sheet_size_mm or sheet_size(cfg.sheet))
+    size = tuple(spec.fit.sheet_size_mm) if spec.fit.sheet_size_mm else None
     kerf = spec.fit.kerf_mm if spec.fit.kerf_mm is not None else DEFAULT_KERF
     if "dxf" in formats:
         try:
             with _timed("dxf"):
                 sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
-                                     kerf=kerf)
+                                     kerf=kerf, default=cfg.sheet)
             files += sheets + [out / "laser" / f"{name}_sheet_parts.csv"]
-            extras.append(BomLine(cfg.sheet, len(sheets), "laser-cut parts"))
+            extras += sheet_lines(mech, cfg.sheet, size)
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))
     elif "bom" in formats:      # the BOM buys the sheets whether or not the DXF is written
         try:
-            extras.append(BomLine(cfg.sheet, len(pack(mech, size)), "laser-cut parts"))
+            extras += sheet_lines(mech, cfg.sheet, size)
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))
     if "bom" in formats:

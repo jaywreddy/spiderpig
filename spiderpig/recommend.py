@@ -50,8 +50,16 @@ class Gap:
 def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) -> list[Gap]:
     """The gaps behind the static stage's failures (:class:`construction.route.NoCrankPoint`)
     and the static clearances behind a plan's failure (an axle's neck)."""
-    out = [Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-               (("crankpin_d", 0.5), ("link_radius", 1.0)), f.margin) for f in failures]
+    out = []
+    for f in failures:
+        if params is not None and f.post > 0.5 * params.crankpin_d + 1e-9:
+            # a post sized by the crank itself (the keyed crank's 8.5 mm, round its key): a
+            # thinner crankpin doesn't shrink it, so it is part of the margin
+            out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
+                           (("link_radius", 1.0),), f.margin + f.post))
+        else:
+            out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
+                           (("crankpin_d", 0.5), ("link_radius", 1.0)), f.margin))
     for c in clearances:
         if c.keepout.span and c.dist > 0:
             out.append(Gap(f"{c.link} past {c.keepout.owner}", c.dist,
@@ -300,8 +308,8 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
 
 def printed_pillars(config, deadline: Deadline | None = None) -> Recommendation | None:
     """A plan that failed with pillars on a purchased shaft (``bolt``: the longest stock
-    screw bounds the stack; ``rod`` / ``bearing`` / ``bushing``: loose rings fill every
-    layer): the same design with printed pillars, verified. ``None`` when the pillars are
+    screw bounds the stack; ``rod`` / ``bearing`` / ``bushing`` / ``standoff``: loose rings
+    fill every layer): the same design with printed pillars, verified. ``None`` when the pillars are
     printed already, or printed pillars don't plan either."""
     if config.pillar == "printed":
         return None
@@ -311,9 +319,14 @@ def printed_pillars(config, deadline: Deadline | None = None) -> Recommendation 
         return None
     return Recommendation(
         (("pillar", config.pillar, "printed"),),
-        why=(f"{config.pillar} pillars clamp both frame plates on a stock shaft, which bounds "
-             f"the stack and fills every layer they cross; printed pillars neck down between "
-             f"their links and are glued into the plates at any height"),
+        why=(("standoff pillars fill every layer they cross with a ring (a standoff can't "
+              "neck down past a link that sweeps close) and come in stock segments spliced only "
+              "at a free layer"
+              if config.pillar == "standoff" else
+              f"{config.pillar} pillars clamp both frame plates on a stock shaft, which bounds "
+              "the stack and fills every layer they cross")
+             + "; printed pillars neck down between their links and are glued into the plates "
+               "at any height"),
         effects=f"the pins stay {config.pin}; the frame pivots are printed, not {config.pillar}",
         verified=verified)
 

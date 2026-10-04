@@ -92,6 +92,7 @@ class Body:
     rigid_with: str | None = None
     fab: str | None = None
     bom_key: str | None = None
+    sheet: str | None = None     # a laser-cut part's sheet (catalog key; None: the default)
 
     def joint(self, name: str) -> Joint:
         for j in self.joints:

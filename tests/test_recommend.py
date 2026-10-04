@@ -12,9 +12,12 @@ from spiderpig.recommend import Gap, scale
 from spiderpig.stack import ClearanceError
 
 
-def _heel(unit: float, **params) -> BuildConfig:
-    return BuildConfig(linkage="trotbot_heel", module="single", robot=False,
-                       proportions=(("unit", unit),), params=Params(**params))
+def _heel(unit: float, crank: str = "printed", **params) -> BuildConfig:
+    """The heel with the printed crank, whose 3 mm post radius these numbers are (the keyed
+    crank's 8.5 mm post asks more of b7, and sizes the post itself: test_the_keyed_crank_
+    post_sends_the_heel_up_a_scale)."""
+    return BuildConfig(linkage="trotbot_heel", module="single", robot=False, crank=crank,
+                       pillar="printed", proportions=(("unit", unit),), params=Params(**params))
 
 
 def _fail(cfg) -> ClearanceError:
@@ -63,6 +66,17 @@ def test_the_heel_just_misses_below_its_scale(unit, params, dist, need):
         static_stage(tmpl, problem)
 
 
+def test_the_keyed_crank_post_sends_the_heel_up_a_scale():
+    """With the keyed crank (the default) the heel at its own 10.5 mm unit passes J1 at 10.2
+    mm of the 11.2 a 4.25 mm post needs; thinner parts can't help (the keyed crank sizes
+    its post from the key), so the one recommendation is the scale, checked."""
+    e = _fail(_heel(10.5, crank="keyed"))
+    assert "it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs" in str(e)
+    (rec,) = e.recommendations
+    assert rec.changes == (("unit", 10.5, 12.0),)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 14 layers")
+
+
 def test_gap_arithmetic():
     gap = Gap("b7 past J1", 6.8, (("crankpin_d", 0.5), ("link_radius", 1.0)), 1.0)
     assert gap.need(Params()) == pytest.approx(10.0)
@@ -75,4 +89,4 @@ def test_explain_prints_what_would_clear_it():
     out = explain.explain("trotbot_heel", params={"unit": 7.0})
     assert "STOP: trotbot_heel: b7 sweeps right across the crank at O" in out
     assert "what would clear it:" in out
-    assert "unit 7 -> 10.5" in out
+    assert "unit 7 -> 10.5" in out    # the bolt crank's 6 mm shank (default; keyed: -> 12)

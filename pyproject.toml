@@ -33,6 +33,7 @@ dev = [
     "playwright>=1.49",
     "pytest-playwright>=0.6",
     "httpx>=0.28.1",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.uv]

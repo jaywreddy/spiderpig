@@ -207,6 +207,8 @@ _MATERIALS: dict[str, _Material] = {
     # purchased: the servo body, and metal hardware (screws, horns)
     "servo": _Material((0.05, 0.05, 0.06, 1.0), 0.1, 0.45),
     "metal": _Material((0.78, 0.79, 0.81, 1.0), 0.85, 0.30),
+    # the deck's electronics (boards, battery, switch: simple boxes)
+    "electronics": _Material((0.12, 0.42, 0.23, 1.0), 0.1, 0.5),
     # anything without a ``fab`` (shouldn't happen)
     "other": _Material((0.55, 0.55, 0.55, 1.0), 0.0, 0.7),
 }
@@ -227,7 +229,10 @@ def _material_of(body: Body) -> str:
     if body.fab == "printed":
         return "printed"
     if body.fab == "purchased":
-        servo = _catalog_category(body.bom_key) == "servo" or cls == "servo"
+        category = _catalog_category(body.bom_key)
+        if category == "electronics":
+            return "electronics"
+        servo = category == "servo" or cls == "servo"
         return "servo" if servo else "metal"
     return "other"
 

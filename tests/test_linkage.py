@@ -12,15 +12,18 @@ import sympy as sp
 from spiderpig import linkage
 from spiderpig.config import BuildConfig
 from spiderpig.fabricate import design_side, template_for
+from spiderpig.stack import ClearanceError
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
 WALKERS = linkage.available("walker")
 
 
-def test_registry_has_klann_first_and_the_others():
-    assert ALL[0] == linkage.DEFAULT == "klann"
-    assert "strider" in ALL
+def test_registry_has_the_default_first_and_the_others():
+    assert ALL[0] == linkage.DEFAULT == "strider"
+    assert linkage.get("strider").default_module == "double"
+    assert "klann" in ALL                     # the wobbly demo stays registered
+    assert not linkage.get("klann").default_module
 
 
 def test_klann_reference_foot_value():
@@ -155,11 +158,22 @@ def test_strider_matches_its_plan_drawing():
         assert np.hypot(*(got - xy)) < 0.2, f"{j}: {got} vs plan {xy}"
 
 
+# TrotBot's heel link (the heel and toe variants) passes one plan unit from the crankpin:
+# the family's 10.5 mm unit clears the bolt crank's 6 mm shank (the default) and the printed
+# crank's 6 mm post, but the keyed crank's 8.5 mm post needs a 12 mm unit
+KEYED_UNIT = {"trotbot_heel": 12.0, "trotbot_toe": 12.0}
+
+
 @pytest.mark.parametrize("key", WALKERS)     # mechanisms: tests/test_mechanisms.py
 def test_one_side_plans(key):
-    """A single-module side lays out with the default constructions (TrotBot's heel link,
-    one plan unit from the crankpin, needs the family's 10.5 mm unit: tests/test_recommend.py
-    has it stop the static stage at the drawing's 7)."""
+    """A single-module side lays out with the default constructions (TrotBot's heel link
+    at its family's 10.5 mm unit: the bolt crank's shank clears it; with the keyed crank's
+    post it stops at the static stage and is sent to 12)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
+    if key in KEYED_UNIT:
+        keyed = BuildConfig(linkage=key, module="single", robot=False, crank="keyed",
+                            pillar="printed")
+        with pytest.raises(ClearanceError, match="what would clear it:\n  unit 10.5 -> 12"):
+            design_side(template_for(keyed), keyed)
     design = design_side(template_for(cfg), cfg)
     assert design.plan.top >= 2

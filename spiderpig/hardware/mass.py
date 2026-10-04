@@ -2,7 +2,8 @@
 
 What a body is made of follows ``Body.fab`` and its catalog item
 (:func:`material_of`): laser-cut sheet at the sheet's density, printed parts
-at the filament's (100 % infill), the servo at its datasheet mass, a horn
+at the filament's (100 % infill), the servo at its datasheet mass, an item whose catalog
+entry lists ``mass_g`` (the deck's electronics and nylon hardware) at that mass, a horn
 aluminium or a plastic, heat-set inserts brass, other purchased parts steel.
 :func:`part_props` reads a part's exact B-rep invariants once; the walking
 model, the MuJoCo model and the bake share them.
@@ -67,22 +68,38 @@ def _category(bom_key: str | None) -> str | None:
         return None
 
 
+def _fixed_mass(bom_key: str | None) -> float | None:
+    """A catalog item's ``mass_g`` (grams per piece), if it lists one."""
+    if not bom_key:
+        return None
+    try:
+        m = get(bom_key).dims.get("mass_g")
+    except KeyError:
+        return None
+    return float(m) if m else None
+
+
 def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, float, float | None]:
     """``(material, density g/cm^3, fixed mass g)`` of a fabricated body.
 
     A fixed mass (the servo's) replaces volume x density. ``sheet`` and
-    ``filament`` are the build's catalog items; ``servo`` its spec.
+    ``filament`` are the build's catalog items; ``servo`` its spec. A laser-cut body
+    cut from another sheet than the build's default names it (``Body.sheet``: the frame
+    plates' aluminium).
     """
     cls = body_class(body.name)
     category = _category(body.bom_key)
     if body.fab == "laser":
-        return "sheet", sheet_density(sheet), None
+        return "sheet", sheet_density(getattr(body, "sheet", None) or sheet), None
     if body.fab == "printed":
         return "printed", filament_density(filament), None
     if body.fab != "purchased":
         raise ValueError(f"body {body.name!r} has a part but no known fabrication ({body.fab!r})")
     if category == "servo" or cls == "servo":
         return "servo", 0.0, servo_mass_g(servo)
+    fixed = _fixed_mass(body.bom_key)
+    if fixed is not None:       # a part catalogued by its mass (the deck's electronics)
+        return ("electronics" if category == "electronics" else "nylon"), 0.0, fixed
     if category == "horn" or cls.startswith("servo_horn"):
         alu = "alumin" in servo.horn.name.lower()
         return ("aluminium", DENSITY["aluminium"], None) if alu else ("plastic", DENSITY["plastic"],

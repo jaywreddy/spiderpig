@@ -40,11 +40,15 @@ def _square(y=-100.0, hx=50.0, hz=40.0):
     return np.array([[-hx, y, -hz], [-hx, y, hz], [hx, y, -hz], [hx, y, hz]])
 
 
+OLD = {"frame_sheet": "acrylic_3mm", "link_sheets": (), "heads": "sink"}
+"""The materials and full-layer heads the reference numbers were taken with."""
+
+
 def _cfg(module: str, phases_deg=None, proportions=None, **kw) -> BuildConfig:
-    """A robot's config from the phases in degrees and a proportions dict."""
+    """A Klann robot's config from the phases in degrees and a proportions dict."""
     phases = None if phases_deg is None else tuple(math.radians(p) for p in phases_deg)
-    return BuildConfig(module=module, phases=phases, proportions=tuple((proportions or {}).items()),
-                       **kw)
+    return BuildConfig(**{"linkage": "klann", "module": module, "phases": phases,
+                          "proportions": tuple((proportions or {}).items()), **kw})
 
 
 @pytest.fixture(scope="module")
@@ -230,9 +234,16 @@ def test_quad_support_follows_the_contract(quad):
 
 
 @pytest.mark.parametrize("com", ["nominal", "pivots"])
-def test_quad_reference(quad, com):
-    """The viewer's numbers for the default quad (centre of mass: the frame
-    pivots' centroid there; the nominal mass model here gives the same)."""
+def test_quad_reference(com):
+    """The viewer's numbers for the Klann quad (centre of mass: the frame pivots' centroid
+    there; the nominal mass model here gives the same), on the stack they were taken at:
+    ``--crank printed``, whose 12 layers put the feet at z -62 / -50 mm. The keyed crank
+    plans 16 layers, the feet at -74 to -53 mm, which widens the margin to 57.4 mm; the bolt
+    crank (the default since 2026-10-03) 31, the feet at -110 to -62 mm, 70.5 mm (aluminium frame
+    and foot links, 2026-10-04; checked at
+    the end)."""
+    quad = walk.walker(_cfg("quad", crank="printed", pillar="printed", **OLD))
+    assert walk.foot_z_nominal(quad.config) == [-62.0, -62.0, -50.0, -50.0]
     if com == "pivots":
         piv = np.array([leg.joints[j][0] for leg in quad.legs for j in ("O", "A", "B")])
         model = walk.walker(quad.config, com=[piv[:, 0].mean(), piv[:, 1].mean(), 0.0],
@@ -255,6 +266,12 @@ def test_quad_reference(quad, com):
     assert m["degenerate_fraction"] == 0.0
     assert m["roll_deg"] == pytest.approx([0.0, 0.0], abs=1e-9)     # left/right symmetric
     assert m["speed_mm_s"] == pytest.approx(m["stride_mm"] * 52.0 / 60.0)
+    if com == "nominal":        # the default (bolt crank, standoffs) stack is wider still
+        keyed = walk.straight_walk_metrics(walk.walker(_cfg("quad", crank="keyed",
+                                                             pillar="printed", **OLD)))
+        assert keyed["min_margin_mm"] == pytest.approx(57.4, abs=0.5)
+        bolt = walk.straight_walk_metrics(walk.walker(_cfg("quad")))
+        assert bolt["min_margin_mm"] == pytest.approx(70.5, abs=0.5)
 
 
 @pytest.mark.parametrize("module", list(linkage.MODULE_LEGS))
@@ -295,11 +312,12 @@ def test_better_phases_lower_the_objective(quad):
 def test_tuner_improves_the_quad():
     from spiderpig.tools import tune as tune_gait
 
-    tuner, default, best = tune_gait.tune("quad", grid=90.0, top=1)
+    tuner, default, best = tune_gait.tune("quad", grid=90.0, top=1, linkage_key="klann")
     assert best.score < 0.5 * default.score
     assert best.candidate.phases[0] == default.candidate.phases[0]      # leg 0 stays
     assert tuner.feasible(best.candidate.phases)
-    use = tune_gait.flags("quad", best.candidate)
+    use = tune_gait.flags("quad", best.candidate, "klann")
+    assert use["main"].endswith(" --linkage klann")                     # not the default
     assert use["main"].startswith("spiderpig build --module quad --phases ")
     assert use["bake"].startswith("spiderpig bake --module quad --phases ")
     assert use["query"].startswith("?module=quad&phases=")
@@ -328,11 +346,11 @@ def test_tuner_keeps_crankpins_apart():
     the double's pair shares one by design."""
     from spiderpig.tools import tune as tune_gait
 
-    quad = tune_gait.Tuner("quad", stride_ref=100.0)
+    quad = tune_gait.Tuner("quad", stride_ref=100.0, linkage="klann")
     assert not quad.feasible((0.0, 180.0, 180.0, 0.0))
     assert quad.feasible(TUNED_QUAD)
     assert quad.score(tune_gait.Candidate((0.0, 180.0, 182.0, 0.0))).score == math.inf
-    assert tune_gait.Tuner("double", stride_ref=0.0).feasible((0.0, 0.0))
+    assert tune_gait.Tuner("double", stride_ref=0.0, linkage="klann").feasible((0.0, 0.0))
 
 
 # ---------------------------------------------------------------------------
@@ -498,10 +516,11 @@ def test_nominal_mass_and_servo():
     assert info == {"key": "sts3215", "rpm_max": 52.0, "mass_g": 55.0}
     cfg = _cfg("quad")
     com, mass = walk.nominal_mass(cfg, walk.side_legs(cfg))
-    assert mass == pytest.approx(460.8, rel=0.01)          # the fabricated quad robot
+    # the fabricated quad robot with its deck (aluminium frame and crank plates, 2026-10-04)
+    assert mass == pytest.approx(1088.4, rel=0.015)
     assert com[2] == 0.0
-    assert abs(com[0]) < 1e-9
-    assert com[1] == pytest.approx(2.1, abs=1.0)
+    assert com[0] == pytest.approx(-0.4, abs=0.2)          # the deck's battery end is -x
+    assert com[1] == pytest.approx(4.3, abs=1.0)           # the deck raises it ~3 mm
 
 
 # ---------------------------------------------------------------------------
@@ -572,11 +591,11 @@ def client(server_app):
 
 
 def test_api_walk_quad(client, server_app):
-    client.get("/api/walk", params={"module": "quad"})   # warm: the program compiles, the
-    server_app._walk_json.cache_clear()                  # default design plans, once
+    client.get("/api/walk", params={"linkage": "klann", "module": "quad"})   # warm: the program
+    server_app._walk_json.cache_clear()                  # compiles, the design plans, once
     t0 = time.perf_counter()
-    r = client.get("/api/walk", params={"module": "quad", "phases": "0,180,90,270",
-                                        "p.OB": "1.121"})
+    r = client.get("/api/walk", params={"linkage": "klann", "module": "quad",
+                                        "phases": "0,180,90,270", "p.OB": "1.121"})
     elapsed = time.perf_counter() - t0
     assert r.status_code == 200
     w = r.json()
@@ -609,12 +628,52 @@ def test_api_walk_quad(client, server_app):
 
 
 def test_api_walk_parameters(client):
-    w = client.get("/api/walk", params={"module": "decker", "phases": "0,180",
-                                        "p.DF": "2.4"}).json()
+    w = client.get("/api/walk", params={"linkage": "klann", "module": "decker",
+                                        "phases": "0,180", "p.DF": "2.4"}).json()
     assert w["valid"]
     assert w["phases_deg"] == [0, 180]
     assert w["proportions"]["DF"] == 2.4
     assert len(w["feet"]) == 4
+
+
+def test_api_walk_flags_a_design_that_would_tip(client):
+    """A design whose stability margin dips under ``MIN_MARGIN_MM`` is valid (it previews)
+    but not stable, and says why; the default design (Strider's double) and the Klann quad
+    are both."""
+    from spiderpig.walk import MIN_MARGIN_MM
+
+    w = client.get("/api/walk").json()
+    assert (w["linkage"], w["module"]) == ("strider", "double")
+    assert w["valid"]
+    assert w["stable"]
+    assert w["warning"] is None
+    w = client.get("/api/walk", params={"linkage": "klann", "module": "quad"}).json()
+    assert w["valid"]
+    assert w["stable"]
+    assert w["warning"] is None
+    assert w["metrics"]["min_margin_mm"] >= MIN_MARGIN_MM
+    w = client.get("/api/walk", params={"linkage": "jansen", "module": "quad"}).json()
+    assert w["valid"]
+    assert w["walks"]
+    assert not w["stable"]
+    assert "tip" in w["warning"]
+    assert w["metrics"]["min_margin_mm"] < MIN_MARGIN_MM
+
+
+def test_api_walk_flags_a_design_that_does_not_walk(client):
+    """Klann's double covers no ground (its four feet stay coplanar: a 2e-13 mm stride that
+    the margin gate alone let through) and says so; MuJoCo crawls it with its body down."""
+    from spiderpig.walk import MIN_STRIDE_MM
+
+    w = client.get("/api/walk", params={"linkage": "klann", "module": "double"}).json()
+    assert w["valid"]
+    assert not w["walks"]
+    assert not w["metrics"]["walks"]
+    assert w["metrics"]["stride_mm"] < MIN_STRIDE_MM
+    assert "does not walk" in w["warning"]
+    w = client.get("/api/walk", params={"linkage": "klann", "module": "quad"}).json()
+    assert w["walks"]
+    assert w["metrics"]["walks"]
 
 
 @pytest.mark.parametrize(("key", "module", "name", "value", "n_feet"), [
@@ -638,10 +697,14 @@ def test_api_walk_other_linkages(client, key, module, name, value, n_feet):
 
 def test_api_linkages(client):
     body = client.get("/api/linkages").json()
-    assert body["default"] == "klann"
+    assert body["default"] == "strider"
     by_key = {lk["key"]: lk for lk in body["linkages"]}
     assert list(by_key) == linkage.available()
+    assert list(by_key)[0] == "strider"
+    assert by_key["strider"]["default_module"] == "double"
+    assert by_key["hoecken"]["default_module"] == "single"
     klann = by_key["klann"]
+    assert klann["default_module"] == "quad"
     assert klann["name"]
     assert klann["family"] == "klann"
     assert klann["source"].startswith("http")
@@ -668,9 +731,9 @@ def test_api_linkages(client):
     {"module": "quad", "phases": "0,90"},
     {"module": "quad", "phases": "0,a,90,270"},
     {"module": "quad", "p.XX": "1"},
-    {"module": "quad", "p.OB": "-1"},
-    {"module": "quad", "p.OB": "abc"},
-    {"module": "quad", "p.OB": "inf"},
+    {"linkage": "klann", "module": "quad", "p.OB": "-1"},
+    {"linkage": "klann", "module": "quad", "p.OB": "abc"},
+    {"linkage": "klann", "module": "quad", "p.OB": "inf"},
 ])
 def test_api_walk_rejects_bad_parameters(client, params):
     r = client.get("/api/walk", params=params)
@@ -680,7 +743,7 @@ def test_api_walk_rejects_bad_parameters(client, params):
 
 
 def test_api_walk_invalid_linkage(client):
-    r = client.get("/api/walk", params={"module": "quad", "p.MC": "0.3"})
+    r = client.get("/api/walk", params={"linkage": "klann", "module": "quad", "p.MC": "0.3"})
     assert r.status_code == 200
     w = r.json()
     assert w["valid"] is False
@@ -693,6 +756,17 @@ class _Calls(list):
     def __init__(self) -> None:
         super().__init__()
         self.errors: dict = {}
+
+
+@pytest.fixture
+def stub_plans(server_app, monkeypatch):
+    """The bake's plan stubbed too, for the tests of what an id or a query means (the Strider
+    quad's and a tuned Klann quad's plans are slow, and with the bolt crank the Strider quad
+    doesn't plan within the default budget: ``docs/audit/STRENGTH.md``)."""
+    from types import SimpleNamespace
+
+    fake = SimpleNamespace(plan=SimpleNamespace(top=1, optimal=True, proof=""))
+    monkeypatch.setattr(server_app.api, "plan_config", lambda config, store=None: fake)
 
 
 @pytest.fixture
@@ -715,11 +789,12 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
     return calls
 
 
-def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
-    r = client.get("/api/glb/robot", params={"module": "quad", "phases": "0,180,90,270"})
+def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, stub_plans, tmp_path):
+    r = client.get("/api/glb/robot", params={"linkage": "klann", "module": "quad",
+                                             "phases": "0,180,90,270"})
     assert r.status_code == 200
-    assert (tmp_path / "klann_quad_robot.glb").exists()             # the default's path
-    q = {"module": "quad", "phases": "0,175,180,355", "p.DF": "2.4"}
+    assert (tmp_path / "klann_quad_robot.glb").exists()             # its default's path
+    q = {"linkage": "klann", "module": "quad", "phases": "0,175,180,355", "p.DF": "2.4"}
     assert client.get("/api/glb/robot", params=q).status_code == 200
     assert client.get("/api/glb/robot", params=q).status_code == 200      # cached
     assert len(stub_bakes) == 2
@@ -728,40 +803,49 @@ def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, tmp_path):
     assert config.proportions == (("DF", 2.4),)
     assert config.phases == pytest.approx(tuple(math.radians(p) for p in TUNED_QUAD))
     assert len(list(tmp_path.glob("klann_quad_robot_*.glb"))) == 1
-    assert client.get("/api/glb/klann", params={"phases": "90"}).status_code == 200
+    r = client.get("/api/glb/klann", params={"linkage": "klann", "phases": "90"})
+    assert r.status_code == 200
     assert (stub_bakes[-1].module, stub_bakes[-1].robot) == ("single", False)
     assert stub_bakes[-1].phases == (math.pi / 2,)
 
 
 def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path):
-    """``linkage=klann`` is the default design; another linkage bakes (and caches) its own."""
-    assert client.get("/api/glb/robot", params={"linkage": "klann"}).status_code == 200
+    """``linkage=strider`` (its ``double``) is the default design, a plain ``/api/glb/robot``
+    too; another linkage bakes (and caches) its own, with its own default module."""
+    assert client.get("/api/glb/robot", params={"linkage": "strider"}).status_code == 200
+    assert client.get("/api/glb/robot").status_code == 200       # cached: the same design
     assert stub_bakes == [BuildConfig()]                         # the plain default bake
-    assert (tmp_path / "klann_quad_robot.glb").exists()
+    assert stub_bakes[0].key == "strider_double_robot"
+    assert (tmp_path / "strider_double_robot.glb").exists()
     for _ in range(2):                                           # the second one is cached
         r = client.get("/api/glb/robot", params={"linkage": "jansen", "module": "double"})
         assert r.status_code == 200
-    q = {"linkage": "strider", "module": "double"}               # same module, other linkage
+    q = {"linkage": "klann", "module": "double"}                 # same module, other linkage
     assert client.get("/api/glb/robot", params=q).status_code == 200
+    assert client.get("/api/glb/robot", params={"linkage": "klann"}).status_code == 200
     assert [(c.linkage, c.module) for c in stub_bakes[1:]] == [("jansen", "double"),
-                                                                ("strider", "double")]
+                                                                ("klann", "double"),
+                                                                ("klann", "quad")]
     assert {p.name for p in tmp_path.glob("*_double_robot.glb")} == {"jansen_double_robot.glb",
+                                                                     "klann_double_robot.glb",
                                                                      "strider_double_robot.glb"}
 
 
 @pytest.mark.parametrize(("mode", "params", "expected"), [
-    ("robot", {}, ("klann", "quad", True)),
-    ("robot", {"module": "single"}, ("klann", "single", True)),
-    ("side", {}, ("klann", "quad", False)),
+    ("robot", {}, ("strider", "double", True)),                  # the default design
+    ("robot", {"module": "single"}, ("strider", "single", True)),
+    ("robot", {"linkage": "klann"}, ("klann", "quad", True)),    # Klann's default module
+    ("side", {}, ("strider", "double", False)),
     ("side", {"module": "double", "linkage": "jansen"}, ("jansen", "double", False)),
-    ("klann", {}, ("klann", "single", False)),                   # the ids old URLs use
+    ("klann", {}, ("strider", "single", False)),                 # the ids old URLs use: a
+    ("klann", {"linkage": "klann"}, ("klann", "single", False)),  # module, not a linkage
     ("klann", {"linkage": "crank_rocker"}, ("crank_rocker", "single", False)),   # a mechanism
-    ("double", {}, ("klann", "double", False)),
-    ("decker", {"module": "decker"}, ("klann", "decker", False)),
-    ("double_double", {}, ("klann", "quad", False)),
+    ("double", {}, ("strider", "double", False)),
+    ("decker", {"module": "decker"}, ("strider", "decker", False)),
+    ("double_double", {}, ("strider", "quad", False)),
 ])
-def test_api_glb_mode_ids_are_a_module_and_a_side(client, stub_bakes, tmp_path, mode, params,
-                                                  expected):
+def test_api_glb_mode_ids_are_a_module_and_a_side(client, stub_bakes, stub_plans, tmp_path,
+                                                  mode, params, expected):
     """Every id is (linkage, module, robot?) of :class:`config.BuildConfig`; the file is
     the config's key."""
     assert client.get(f"/api/glb/{mode}", params=params).status_code == 200
@@ -781,7 +865,7 @@ def test_api_modes_are_the_dropdown(client, server_app):
 
 @pytest.mark.parametrize(("mode", "params"), [
     ("robot", {"module": "octo"}),
-    ("robot", {"phases": "0,90"}),
+    ("robot", {"linkage": "klann", "phases": "0,90"}),   # its quad has four legs
     ("robot", {"p.XX": "2"}),
     ("robot", {"linkage": "octopus"}),
     ("robot", {"linkage": "jansen", "p.DF": "2"}),
@@ -801,7 +885,7 @@ def test_api_glb_unknown_mode(client, stub_bakes):
 
 
 def test_api_glb_invalid_linkage_is_422(client, stub_bakes):
-    r = client.get("/api/glb/robot", params={"p.MC": "0.3"})
+    r = client.get("/api/glb/robot", params={"linkage": "klann", "p.MC": "0.3"})
     assert r.status_code == 422
     assert "C can't be placed" in r.json()["detail"]
     assert stub_bakes == []                    # caught from the kinematics, before baking
@@ -813,7 +897,7 @@ def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
     for last, err in ((265, ValueError("claim pillar_A can't be built in this layout")),
                       (260, ConstructionError("a tie column is too thin"))):
         stub_bakes.errors["next"] = err
-        q = {"phases": f"0,180,90,{last}"}
+        q = {"linkage": "klann", "phases": f"0,180,90,{last}"}      # the Klann quad
         r = client.get("/api/glb/robot", params=q)
         assert r.status_code == 422
         assert str(err) in r.json()["detail"]

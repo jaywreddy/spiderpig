@@ -7,6 +7,10 @@ pads other groups need (the servo footprint, chassis tabs).
 
 from __future__ import annotations
 
+import math
+
+import numpy as np
+
 from spiderpig.construction.base import (
     FRAME_INNER,
     FRAME_OUTER,
@@ -16,8 +20,53 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
-from spiderpig.shapes import plate
-from spiderpig.stack import Claim, Layout, Pill, Placed
+from spiderpig.shapes import Rect, box, disc, plate, union
+from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, body_class
+
+SOCK_T = 1.5            # a TPU foot sock's wall round the toe (mm)
+SOCK_REACH = 2.5        # its claim past the link's edge: the wall and its legs' corners
+NOTCH = (2.2, 0.8)      # the toe's flank notches its lugs snap into (along, deep)
+NOTCH_BACK = 2.0        # a notch's centre behind the toe's centre (mm)
+SOCK_COLOR = "#2b2b2b"
+
+
+CHORD_MAX_DEG = 120.0   # pillars at most this far apart about O get a chord between them
+
+
+def chords(o, pillars) -> list[tuple]:
+    """The frame plates' chords (the joinery plan): a bar between pillars next to each other
+    about O (at most ``CHORD_MAX_DEG`` apart), which closes each arm pair into a triangle;
+    the plates are in their own layers, so it costs the legs nothing."""
+    if len(pillars) < 2:
+        return []
+    ang = sorted((math.atan2(q[1] - o[1], q[0] - o[0]), tuple(q)) for q in pillars)
+    out = []
+    for i, (a, q) in enumerate(ang):
+        b, r = ang[(i + 1) % len(ang)]
+        gap = (b - a) % (2 * math.pi)
+        if len(ang) == 2 and i == 1:
+            break
+        if 1e-6 < math.degrees(gap) <= CHORD_MAX_DEG:
+            out.append((q, r))
+    return out
+
+
+def foot_links(topo, lk) -> list[tuple[str, str, str]]:
+    """``(link, foot point, the link's other end)`` of every foot link of the side: the
+    linkage's feet (``lk.feet``: link class and point), per leg."""
+    out = []
+    for cls, point in getattr(lk, "feet", ()):
+        for name, segs in topo.links.items():
+            if body_class(name) != cls:
+                continue
+            suffix = name[len(cls):]
+            for cand in (f"{point}{suffix}", f"{name}.{point}"):
+                seg = next((sg for sg in segs if cand in sg), None)
+                if seg is not None:
+                    other = seg[0] if seg[1] == cand else seg[1]
+                    out.append((name, cand, other))
+                    break
+    return out
 
 
 class LinkPlates(Group):
@@ -29,9 +78,16 @@ class LinkPlates(Group):
     def claims(self, ctx: Context) -> list[Claim]:
         r = ctx.params.link_radius
 
+        feet = {name: foot for name, foot, _ in foot_links(ctx.topo, ctx.config.lk)} \
+            if hasattr(ctx.config, "lk") else {}
+
         def make(link: str, segs):
             def f(L: Layout):
-                return [Placed(L.layers[link], Pill(a, b, r), link, link) for a, b in segs]
+                out = [Placed(L.layers[link], Pill(a, b, r), link, link) for a, b in segs]
+                if link in feet:        # its TPU sock round the toe, in its own layer
+                    out.append(Placed(L.layers[link], Disc(feet[link], r + SOCK_REACH), link,
+                                      f"{link} sock"))
+                return out
             return f
 
         return [Claim(n, frozenset((n,)), make(n, segs)) for n, segs in ctx.topo.links.items()]
@@ -39,12 +95,50 @@ class LinkPlates(Group):
     def realize(self, build: Build, done: Realized) -> Realized:
         out = Realized()
         r = build.ctx.params.link_radius
+        ctx = build.ctx
+        feet = {name: (foot, other) for name, foot, other in
+                (foot_links(build.plan.topo, ctx.config.lk) if hasattr(ctx.config, "lk")
+                 else ())}
         for name, segs in build.plan.topo.links.items():
             z0, z1 = build.z(build.layers[name])
-            part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1,
-                         done.cuts.get(name, []))
-            out.bodies.append(hardware(name, part, name, fab="laser"))
+            z1 = min(z1, z0 + ctx.sheet_t("link", name))     # its own sheet, on the layer's floor
+            cuts = list(done.cuts.get(name, []))
+            if name in feet:
+                sock, notches = foot_sock(build.xy(feet[name][0]), build.xy(feet[name][1]), r,
+                                          z0, z1)
+                cuts += notches
+                out.bodies.append(hardware(f"{name}_sock", sock, name, fab="printed",
+                                           color=SOCK_COLOR))
+                out.notes.setdefault("feet", {})[name] = {
+                    "sock": "TPU 95A", "wall_mm": SOCK_T, "point": feet[name][0]}
+            part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1, cuts)
+            out.bodies.append(hardware(name, part, name, fab="laser",
+                                       sheet=ctx.sheet("link", name)))
         return out
+
+
+def foot_sock(foot, other, r: float, z0: float, z1: float):
+    """A printed TPU 95A sock on a foot link's toe (the joinery plan): a 1.5 mm wall round
+    the toe's rounded end, in the link's own layer (nothing stands into the layers beside
+    it), its two legs along the flanks with a lug each snapped into a notch laser-cut in
+    the flank; replaceable as it wears, and the grip the sim's floor friction assumes
+    (:attr:`sim.mjcf.SimParams.friction`). Returns (the sock, the link's notch cuts)."""
+    f, o = np.asarray(foot, float), np.asarray(other, float)
+    d = f - o
+    d = d / max(float(np.linalg.norm(d)), 1e-9)
+    n = np.array([-d[1], d[0]])
+    ang = math.atan2(d[1], d[0])
+    ring = disc(tuple(f), r + SOCK_T, z0, z1) - disc(tuple(f), r, z0 - 1, z1 + 1)
+    half = box(tuple(f + d * (r + SOCK_T) / 2), (r + SOCK_T + 0.01, 2 * (r + SOCK_T) + 1,
+                                                z1 - z0), z0, ang)
+    legs = [box(tuple(f - d * (NOTCH_BACK + 0.5) / 2 + s * n * (r + SOCK_T / 2)),
+                (NOTCH_BACK + 0.5 + 0.02, SOCK_T, z1 - z0), z0, ang) for s in (-1, 1)]
+    lugs = [box(tuple(f - d * NOTCH_BACK + s * n * (r - NOTCH[1] / 2 + 0.05)),
+                (NOTCH[0] - 0.2, NOTCH[1], z1 - z0), z0, ang) for s in (-1, 1)]
+    sock = union([ring & half, *legs, *lugs])
+    notches = [Rect(tuple(f - d * NOTCH_BACK + s * n * (r - NOTCH[1] / 2 + 0.05)),
+                    (NOTCH[0], NOTCH[1] + 0.1), ang) for s in (-1, 1)]
+    return sock, notches
 
 
 class FramePlates(Group):
@@ -61,12 +155,15 @@ class FramePlates(Group):
         p = build.ctx.params
         topo = build.plan.topo
         o = tuple(build.xy("O"))
-        arms = [(o, tuple(build.xy(a.name)), p.frame_radius) for a in topo.axes_of("frame")]
+        pillars = [tuple(build.xy(a.name)) for a in topo.axes_of("frame")]
+        arms = [(o, q, p.frame_radius) for q in pillars]
+        arms += [(a, b, p.frame_radius) for a, b in chords(o, pillars)]
         frame = topo.frame_bodies[0]
         for key, layer, name in ((FRAME_INNER, build.top, frame),
                                  (FRAME_OUTER, 0, "frame_outer")):
             z0, z1 = build.z(layer)
             pills = arms + done.pads.get(key, [])
             part = plate(pills, z0, z1, done.cuts.get(key, []), discs=[(o, p.frame_radius)])
-            out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834"))
+            out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
+                                       sheet=build.ctx.sheet("frame")))
         return out

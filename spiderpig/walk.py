@@ -103,6 +103,14 @@ from spiderpig.hardware.mass import PartProps, material_of, part_props, servo_ma
 from spiderpig.linkage import AssemblyError
 
 N_THETA = 360        # crank-angle samples per revolution
+# A design whose stability margin dips under this (mm) tips in MuJoCo (Jansen's quad: 4 mm
+# predicted, over within 3 s): ``/api/walk`` says so (``stable``) and the viewer refuses to
+# drive it in physics until it is tuned.
+MIN_MARGIN_MM = 15.0
+# Under this much ground per revolution the design doesn't walk (Klann's double: 2e-13 mm,
+# its four feet stay coplanar; MuJoCo crawls it at 11 mm/s with the body on the floor):
+# ``/api/walk`` says so (``walks``) and the viewer warns like the margin.
+MIN_STRIDE_MM = 5.0
 AREA_MIN = 1.0       # mm^2: smaller foot triangles don't define a plane
 ON_PLANE = 1e-6      # mm: a foot this far below a candidate plane still counts as on it
 CONTACT = 0.5        # mm: feet this close to the support plane are contacts
@@ -247,7 +255,9 @@ def foot_z_planned(config: BuildConfig, design=None) -> list[float]:
     if design is None:
         design = design_side(template_for(config), config)
     plan, z_mid = design.plan, mid_plane(design)
-    return [sum(plan.z(plan.layers[body])) / 2 - z_mid for _, body, _ in side_feet(config)]
+    # the foot link's own mid-plane: its sheet's thickness on its layer's floor
+    return [plan.z(plan.layers[body])[0] + design.ctx.sheet_t("link", body) / 2 - z_mid
+            for _, body, _ in side_feet(config)]
 
 
 # ---------------------------------------------------------------------------
@@ -361,20 +371,41 @@ def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
 
 # Nominal mass model (no parts), see :func:`nominal_mass`. Everything of a side but its
 # link plates and servo is lumped on the crank axis O (its measured centre of mass is
-# within 2.8 mm of it) in two parts: the laser-cut plates (the frame plates, by fixed
-# pivot; half the centre plates), which follow the sheet's density, and the printed and
-# purchased rest (the crank by crankpin, pillars by pivot, pins by pin joint, the ties,
-# screws and horn). The constants are fitted to the fabricated default Klann robots on
-# 3 mm acrylic (single 289.5 g, double 357.2, decker 340.8, quad 460.6: within 1 %).
-_ACRYLIC = 1.19                      # g/cm^3 the plate constants were fitted at
-_FRAME_BASE_G, _FRAME_PER_PIVOT_G = 6.5, 5.2      # the frame plates
-_CENTRE_PLATES_G = 14.7              # half the centre plates (the robot's chassis)
-_CHASSIS_REST_G = 23.6               # ties, inserts, rear screws: printed and steel
-_DRIVE_EXTRA_G = 2.7                 # the horn's screws and hub
-_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.3, 3.5        # the printed crankshaft, per distinct crankpin
-_PILLAR_PER_PIVOT_G = 0.7            # a printed pillar, plus per leg (a taller stack)
-_PILLAR_PER_PIVOT_LEG_G = 0.22
-_PIN_PER_JOINT_G = 0.53              # a printed pin
+# within a few mm of it): the laser-cut plates (the frame plates, by fixed pivot; the bolt
+# crank's plates, by crankpin; half the centre plates), which follow their sheets' density
+# and thickness (the constants are per 3 mm of acrylic: :func:`_sheet_scale`), and the
+# purchased and printed rest (the crank's bolts and stub, the standoff pillars by pivot,
+# the Chicago pins by pin joint, the ties, screws and horn). Refitted 2026-10-04 to the
+# fabricated Klann quad and Strider double robots built the default way (aluminium frame
+# and crank plates, a Klann's foot links in 6061; 1088.4 and 775.8 g with the deck: within
+# 1.2 %).
+_ACRYLIC = 1.19                      # g/cm^3 the plate constants are per (3 mm thick)
+_FRAME_BASE_G, _FRAME_PER_PIVOT_G = 16.2, 2.85    # the frame plates (per 3 mm acrylic)
+_CENTRE_PLATES_G = 11.05             # half the centre plates (the robot's chassis)
+_CHASSIS_REST_G = 27.25              # half the ties and rear screws: printed and steel
+_DRIVE_EXTRA_G = 3.6                 # the servo's screws and horn
+_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.3, 3.5        # a printed crankshaft, per crankpin
+_CRANK_PLATES_BASE_G, _CRANK_PLATES_PER_PIN_G = 3.78, 5.07   # the bolt crank's plates
+_CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 10.9, 8.28            # ... its bolts, nuts, stub
+_PILLAR_PER_PIVOT_G = 13.0           # a standoff pillar (segments, rings, screws, washers)
+_PILLAR_PER_PIVOT_LEG_G = 0.0
+_PIN_PER_JOINT_G = 3.3               # a Chicago pin (screw, rings, washer, shims)
+
+
+def _sheet_scale(config: BuildConfig, key: str) -> float:
+    """A sheet's mass per area over 3 mm acrylic's (the plate constants')."""
+    from spiderpig.materials import thickness
+
+    return sheet_density(key) * thickness(config, key) / (_ACRYLIC * 3.0)
+
+
+# The electronics deck (construction.deck), robot only: its fabricated mass on 3 mm acrylic
+# (plate 33 g of it, at the sheet's density; the rest the electronics, rails and hardware)
+# and its centre of mass from the servo body's centre (x) and the chassis' top, which is
+# the servo's highest corner plus 0.9 mm (the centre plates round the ties): measured on
+# the Strider double and the Klann quad (both 113 g, centre 13.45 mm over the chassis top).
+_DECK_PLATE_G, _DECK_REST_G = 33.4, 79.9
+_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 0.9
 
 
 def _pin_joints(lk) -> int:
@@ -387,51 +418,85 @@ def _pin_joints(lk) -> int:
     return len(joints)
 
 
+def nominal_deck(spec, u: np.ndarray, scale: float = 1.0) -> tuple[float, np.ndarray]:
+    """The electronics deck's nominal mass (g) and centre of mass (side XY, mm) for a servo
+    ``spec`` whose +x is ``u`` (its frame centred on the crank axis): over the servo body's
+    centre, :data:`_DECK_COM_DY` above the chassis' top. ``scale``: the deck sheet's mass
+    per area over 3 mm acrylic's."""
+    L, W, _ = spec.body
+    v = np.array([u[1], -u[0]])
+    corners = [(spec.axis_offset + a) * u + b * v for a in (-L / 2, L / 2) for b in (-W / 2, W / 2)]
+    floor = max(q[1] for q in corners) + _DECK_FLOOR_DY
+    com = np.array([spec.axis_offset * u[0] + _DECK_COM_DX, floor + _DECK_COM_DY])
+    return _DECK_PLATE_G * scale + _DECK_REST_G, com
+
+
 def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool = True
                            ) -> dict:
     """The nominal mass without building parts, by what it is made of (grams): ``links``
     (every outline segment a pill of the link radius, one pitch thick, at the sheet's
     density, the joint discs counted once and the axle holes taken out), ``servos``,
     ``plates`` (the frame plates and, for the robot, the centre plates, at the sheet's
-    density), ``printed`` (the crank, pillars, pins, ties: PLA and small hardware), plus
+    density), ``printed`` (the crank, pillars, pins, ties: PLA and small hardware),
+    ``deck`` (the robot's electronics deck, :mod:`construction.deck`: fitted), plus
     ``total``, the cycle-mean centre of mass ``com`` (side coordinates, z = 0) and a
     ``note`` on how it was made. ``robot``: both sides and the chassis (what the walk
-    model always is), else one side alone. On the default Klann robots this is within
+    model always is), else one side alone. On the Klann robots built the default way this is within
     1 % of the fabricated mass (:func:`body_masses`); a build measures it."""
+    from spiderpig.materials import link_sheets, thickness
+
     lk = config.lk
     pitch = config.pitch
     p = config.params
     r = p.link_radius
     dens = sheet_density(config.sheet)
+    own = link_sheets(config)          # link class -> its sheet, where not the default
+
+    def mass_per(link: str) -> float:
+        """g per mm^3 / 1000 x thickness: a link's sheet's density times its thickness."""
+        key = own.get(link)
+        if key is None:
+            return dens * pitch
+        return sheet_density(key) * thickness(config, key)
     spec = servos.get(config.servo)
     servo_g = servo_info(config.servo)["mass_g"]
     hole = p.hole(p.axle_d) / 2
     links, c_acc = 0.0, np.zeros(2)
     for leg in legs:
-        for joints, outline in lk.links.values():
+        for link, (joints, outline) in lk.links.items():
+            m = mass_per(link)
             seen: dict[str, int] = {}
             for a_name, b_name in outline:
                 a, b = leg.joints[a_name], leg.joints[b_name]
                 length = float(np.linalg.norm(b - a, axis=-1).mean())
-                grams = dens * pitch * (2 * r * length + math.pi * r * r) / 1000.0
+                grams = m * (2 * r * length + math.pi * r * r) / 1000.0
                 links += grams
                 c_acc += grams * ((a + b) / 2).mean(axis=0)
                 seen[a_name] = seen.get(a_name, 0) + 1
                 seen[b_name] = seen.get(b_name, 0) + 1
             for k in seen.values():                     # a joint's disc counted once
-                links -= dens * pitch * (k - 1) * math.pi * r * r / 1000.0
-            links -= dens * pitch * len(joints) * math.pi * hole * hole / 1000.0
+                links -= m * (k - 1) * math.pi * r * r / 1000.0
+            links -= m * len(joints) * math.pi * hole * hole / 1000.0
     pivots = {tuple(np.round(leg.joints[j][0], 6)) for leg in legs for j in lk.frame if j != "O"}
     # servo +x: away from the frame pillars (the distinct fixed pivots)
     away = -np.sum([np.asarray(q) for q in pivots], axis=0) if pivots else np.zeros(2)
     norm = np.linalg.norm(away)
     u = away / norm if norm > 1e-9 else np.array([1.0, 0.0])
     c_acc += servo_g * (spec.axis_offset * u)
-    scale = dens / _ACRYLIC
-    plates = (_FRAME_BASE_G + _FRAME_PER_PIVOT_G * len(pivots)) * scale
+    scale = _sheet_scale(config, config.sheet)
+    plates = (_FRAME_BASE_G + _FRAME_PER_PIVOT_G * len(pivots)) * _sheet_scale(
+        config, config.frame_sheet)
     # crankpins at distinct positions (a mirrored pair shares one; a decker's are 90° apart)
     crankpins = {tuple(np.round(leg.joints[p][0], 3)) for leg in legs for p in lk.crank[1:]}
-    printed = (_DRIVE_EXTRA_G + _CRANK_BASE_G + _CRANK_PER_PIN_G * len(crankpins)
+    from spiderpig import construction
+
+    if getattr(construction.crank(config.crank), "plates", False):     # the bolt crank
+        plates += (_CRANK_PLATES_BASE_G + _CRANK_PLATES_PER_PIN_G * len(crankpins)) \
+            * _sheet_scale(config, config.crank_sheet)
+        crank = _CRANK_HW_BASE_G + _CRANK_HW_PER_PIN_G * len(crankpins)
+    else:
+        crank = _CRANK_BASE_G + _CRANK_PER_PIN_G * len(crankpins)
+    printed = (_DRIVE_EXTRA_G + crank
                + (_PILLAR_PER_PIVOT_G + _PILLAR_PER_PIVOT_LEG_G * len(legs)) * len(pivots)
                + _PIN_PER_JOINT_G * _pin_joints(lk) * len(legs))
     if robot:
@@ -440,12 +505,18 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
     side = links + servo_g + plates + printed
     sides = 2 if robot else 1
     c = c_acc / side
+    deck = 0.0
+    if robot:                     # the electronics deck over the servos, between the frames
+        deck, dc = nominal_deck(spec, u, scale)
+        c = (c * sides * side + deck * dc) / (sides * side + deck)
     return {
         "links": sides * links, "servos": sides * servo_g, "plates": sides * plates,
-        "printed": sides * printed, "total": sides * side,
+        "printed": sides * printed, "deck": deck, "total": sides * side + deck,
         "com": np.array([c[0], c[1], 0.0]),
         "note": (f"links as {dens:g} g/cm3 pills of the link radius on {pitch:g} mm layers "
-                 f"(holes taken out); the plates and the printed parts from fitted "
+                 f"(holes taken out; a link of another sheet at its own), the frame plates "
+                 f"at their sheet ({config.frame_sheet}); the plates and the printed parts "
+                 f"from fitted "
                  f"constants (within about 1 % on the default robots); a build measures it"),
     }
 
@@ -805,7 +876,9 @@ def straight_walk_metrics(model: Walker, *, rpm_max: float | None = None,
     fraction of the cycle each foot (in ``model.feet`` order) is a contact;
     ``speed_mm_s`` at the servo's ``rpm_max``. Extras: ``drift_mm``
     (lateral per revolution), ``yaw_deg_per_rev``, ``foot_bob_mm`` (range of
-    the lowest foot's y), ``mean_contacts``.
+    the lowest foot's y), ``mean_contacts``; ``walks``: the stride is at least
+    :data:`MIN_STRIDE_MM` and the support isn't degenerate (fewer than three
+    feet) half the cycle or more.
     """
     n = model.n
     ts = theta_grid(n)
@@ -839,6 +912,7 @@ def straight_walk_metrics(model: Walker, *, rpm_max: float | None = None,
         "yaw_deg_per_rev": float(np.degrees(trace.yaw[n])),
         "foot_bob_mm": float(np.ptp(P[..., 1].min(axis=-1))),
         "mean_contacts": float(sup.contacts[:n].sum(axis=-1).mean()),
+        "walks": bool(abs(stride) >= MIN_STRIDE_MM and sup.degenerate[:n].mean() < 0.5),
     }
 
 
@@ -926,7 +1000,12 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
                 com: Sequence[float] | None = None, mass_g: float | None = None) -> dict:
     """The ``/api/walk`` response for ``config`` (no parts built).
 
-    An invalid linkage gives ``valid: false`` and the reason in ``error``.
+    An invalid linkage gives ``valid: false`` and the reason in ``error``. A design that
+    assembles but whose stability margin dips under :data:`MIN_MARGIN_MM` is ``valid`` (it
+    previews and drives on the walking model) but not ``stable``, with the reason in
+    ``warning``: MuJoCo may tip it over (the physics drive asks MuJoCo and refuses only
+    when it fell). One that covers no ground (under :data:`MIN_STRIDE_MM` per revolution,
+    or on fewer than three feet half the time) is not ``walks``, with that in ``warning``.
     """
     servo = servo_info(config.servo)
     base = {
@@ -938,11 +1017,26 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
     try:
         model = walker(config, feet_z=feet_z, com=com, mass_g=mass_g)
     except LinkageError as e:
-        return jsonable(base | {"valid": False, "error": str(e), "feet": [], "legs": [],
+        return jsonable(base | {"valid": False, "error": str(e), "stable": False,
+                                "walks": False, "warning": None, "feet": [], "legs": [],
                                 "side_z": None, "z_nominal": feet_z is None, "com": None,
                                 "mass_g": None, "metrics": None})
     zs = {s: float(np.mean([f.z for f in model.feet if f.side == s])) for s in SIDES}
+    metrics = straight_walk_metrics(model, rpm_max=servo["rpm_max"])
+    stable = metrics["min_margin_mm"] >= MIN_MARGIN_MM
+    walks = metrics["walks"]
+    warning = None
+    if not walks:
+        warning = (f"does not walk: {metrics['stride_mm']:.1f} mm per revolution (under "
+                   f"{MIN_STRIDE_MM:g}) and on fewer than three feet "
+                   f"{metrics['degenerate_fraction'] * 100:.0f} % of the cycle")
+    elif not stable:
+        warning = (f"stability margin {metrics['min_margin_mm']:.1f} mm dips under "
+                   f"{MIN_MARGIN_MM:g} mm: the robot may tip over (MuJoCo decides)")
     return jsonable(base | {
+        "stable": stable,
+        "walks": walks,
+        "warning": warning,
         "feet": [f.as_json() for f in model.feet],
         "legs": [{"leg": leg.leg, "orientation": leg.orientation,
                   "phase_deg": round(math.degrees(leg.phase), 6),
@@ -953,5 +1047,5 @@ def api_payload(config: BuildConfig, *, feet_z: Sequence[float] | None = None,
         "com": _round(model.com),
         "com_nominal": model.com_nominal,
         "mass_g": round(float(model.mass_g), 2),
-        "metrics": straight_walk_metrics(model, rpm_max=servo["rpm_max"]),
+        "metrics": metrics,
     })

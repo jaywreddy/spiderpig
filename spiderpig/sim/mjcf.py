@@ -2,9 +2,10 @@
 
 :func:`build_mjcf` turns a :class:`fabricate.BuildConfig` into one
 self-contained MJCF document (no external files) plus a JSON-able metadata
-dict. The same XML runs in Python (``mujoco``) and in the browser (the
-official WebAssembly bindings); the metadata tells the viewer how to put the
-simulated poses on the glb nodes of :mod:`viewer.bake_gltf`.
+dict. The XML runs in Python (``mujoco``); the browser's physics drive
+streams the server's session of it (:mod:`sim.live`, ``/ws/sim``), and the
+metadata tells the viewer how to put the simulated poses on the glb nodes of
+:mod:`viewer.bake_gltf`.
 
 Units and frames
 ----------------
@@ -27,7 +28,11 @@ Units and frames
   ``(0, 0, h)`` with quaternion ``Rx(+90°) · Rz(pitch)``: standing on its feet
   at ``t_ref`` (:func:`rest_pose`: the pair of feet under the centre of mass
   level, :attr:`SimParams.clearance` above the floor). The metadata has the
-  resulting ``mech_to_world_ref``.
+  resulting ``mech_to_world_ref`` and ``rest_height``. That height is the
+  base's origin over the floor with the lowest foot sphere's bottom
+  ``clearance`` above it; the quasi-static walking model (:mod:`walk`) rests
+  the body on the feet's *centres*, so its height reads ``link_radius`` (+ the
+  clearance) lower than the base's here (Klann quad: 88.8 vs 94.4 mm).
 
 Kinematic tree
 --------------
@@ -83,7 +88,17 @@ off: geoms carry no mass). Materials and densities are
 steel 7.85, brass 8.5, an aluminium horn 2.70); printed parts are scaled by
 :attr:`SimParams.printed_fill` (1.0 = the BOM's 100 % infill, an upper
 bound); the servo is its datasheet mass (``ServoSpec.weight_g``, 55 g for
-the STS3215) spread uniformly over its modelled case.
+the STS3215) spread uniformly over its modelled case. The battery and the
+boards ride the base as parts (the electronics deck, :mod:`construction.deck`: its
+plate, rails, boards, battery and switch are parts of the robot like any other, the
+electronics at their catalogued masses, ``mass_g``), plus :attr:`SimParams.payload_g`
+(0 by default; a point mass at :attr:`SimParams.payload_pos` for anything else carried;
+the wiring, ~5-10 g, is not modelled). A robot whose frame has no room for the deck
+(``meta["deck"]["fitted"]`` false) carries :data:`DECK_FALLBACK_G` there instead, the
+deck's measured mass on the default designs. (Before the deck, a 100 g ESTIMATE at the
+crank axis stood for the electronics: +100 / +200 g on the Klann quad cost 1 / 3 % of
+speed and raised the mean torque from 0.05 to 0.055 / 0.065 N·m.) ``mass.total``
+counts all of it.
 
 Collision geometry
 ------------------
@@ -95,21 +110,33 @@ planner already guarantees robot parts never meet each other).
   rounded end of the foot link, Klann's ``b4.F``; the plate's 3 mm width is
   ignored), geom and site ``S.foot<suffix>`` (``S.foot_<joint><suffix>``
   when a leg has several feet);
-* links: capsules along their outline at their layer, link radius; a foot
-  link's capsule stops one radius short of the foot so the foot sphere alone
-  makes the foot contact;
+* links: capsules along their outline at their layer, link radius; every
+  capsule that ends on a foot joint (the foot link's and any link pinned
+  there: Strider's ``b4`` and ``b8``) stops two radii short of it so the foot
+  sphere alone makes the foot contact (a near-horizontal link would
+  otherwise touch the floor with its end cap beside the foot); the metadata
+  names those links per foot (``feet[..]["links"]``) and
+  :func:`sim.run.simulate` doesn't count their floor contacts as a fall;
 * base: the convex hull of each frame plate and servo (so a fall or tip
   shows).
 
 Friction is one coefficient for everything on the floor
-(:attr:`SimParams.friction`, 0.5: acrylic or PLA on a hard floor, dry;
-torsional and rolling friction small). Contacts use ``condim=3``, elliptic
+(:attr:`SimParams.friction`, 0.5: acrylic or PLA on a hard floor, dry). The
+feet use ``condim=4`` so :attr:`SimParams.torsional_friction` acts (a 6 mm
+sphere standing in for a 3 mm plate edge spinning on the floor, second-order
+for skid steering); every other geom uses ``condim=3``, where MuJoCo ignores
+the torsional and rolling coefficients. Contacts use elliptic
 cones, and a moderately soft contact (``solref 0.01 1``, MuJoCo's default
-``solimp 0.9 0.95 0.001``): about 0.4 mm of static give and 1-1.5 mm at
-impacts, standing in for the leg's compliance and the play of its running
-fits (an acrylic foot on a hard floor alone is stiffer). Speed, stride and
-mean drive torque don't depend on it; the impact torque peaks, foot slip
-and the number of feet down do (stiffer: higher peaks, fewer feet down).
+``solimp 0.9 0.95 0.001``): about 0.4 mm of static give and 2.2 mm at
+impacts (Klann quad at full speed; 1.2 mm with ``solref`` 5 ms, 4.2 mm with
+20 ms), standing in for the leg's compliance and the play of its running fits
+(an acrylic foot on a hard floor alone is stiffer). The softness is
+UNVALIDATED (one leg's deflection under 5 N on the real build would set it).
+Speed, stride and mean drive torque don't depend on it (Klann quad: 161-164
+mm/s across 5-20 ms); the impact torque peaks, foot slip and every support
+metric do: feet down 2.6 / 3.1 / 3.6, airborne 9 / 4 / 0 %, a side on fewer
+than two feet 66 / 47 / 26 % of the time at 5 / 10 / 20 ms
+(:func:`sim.run.compare_with_walk` says so in its ``notes``).
 
 Drives and joints
 -----------------
@@ -120,12 +147,40 @@ One ``velocity`` actuator per side on its crank hinge (``L.drive``,
 that the stall torque is reached at a speed error of
 :attr:`SimParams.stall_error` (10 %) of the no-load speed, a stiff speed
 loop like the servo's own. The actuator force is then the torque on the
-output shaft, directly comparable with the servo's ratings. The crank hinge
-carries the gear train's reflected rotor inertia as ``armature`` and no extra
-damping: the servo's own losses are inside its speed and torque ratings.
-Passive pins carry a tiny armature and damping (numerical regularization).
-:func:`sim.run.walk_metrics` also checks the torque against a DC motor's
-speed-torque line, which a velocity actuator doesn't enforce.
+output shaft, directly comparable with the servo's ratings. The MJCF alone
+lets that loop deliver the stall torque at any speed; :func:`motor_line`
+(applied every step by :func:`sim.run.simulate` and :class:`sim.live.LiveSim`)
+narrows ``forcerange`` to a DC motor's speed-torque line while motoring,
+``stall · (1 - |speed| / no_load)``, so the drives can't push harder than the
+servo at the speed they turn (braking keeps the full stall torque). The crank
+hinge carries the gear train's reflected rotor inertia as ``armature`` and no
+extra damping: the servo's own losses are inside its speed and torque
+ratings. Passive pins carry a tiny armature and damping (numerical
+regularization) and a Coulomb ``frictionloss`` (:attr:`SimParams.pin_frictionloss`,
+an estimate of mu · load · r for a steel pin in an acrylic running fit).
+The armature is an UNVERIFIED estimate (a coast-down
+measurement of the servo would settle it); between 5e-4 and 2e-2 kg·m² the
+walking speed and loop closure don't change (measured) while the torque
+peaks do (0.89 / 0.43 / 0.16 N·m), so present peaks as a range; below
+:data:`MIN_CRANK_ARMATURE` the model is refused.
+
+What the model assumes (and the hardware must deliver)
+-------------------------------------------------------
+* **Phase-locked sides.** The two cranks are driven by two servos, and every
+  straight-walk figure here comes from cranks that keep their phase: the Klann
+  quad stands only while they do (open-loop, a 2 / 5 / 10 % speed mismatch
+  rolls it over at 17 / 8 / 3 s; a held offset of 90° or more within a second;
+  measured). The commands therefore go through :class:`sim.run.PhaseLock`, a
+  PI lock on the sides' crank difference with the right servo
+  :attr:`SimParams.servo_mismatch` slower than told. The real STS3215 bus
+  needs position feedback and that controller, not open-loop wheel mode.
+* **A rigid crankshaft.** Each side's crank is one body (``S.conn``): the
+  printed crankshaft, its segments, screws and horn flex not at all. The pin
+  loads (``walk_metrics`` ``loop_force``) are what that rigid chain carries.
+* **Contact softness** stands in for the legs' compliance and the play of the
+  running fits and is UNVALIDATED (above); the impulsive gait (airborne a few
+  per cent of the time at full speed) and its torque and acceleration peaks
+  follow it.
 
 Solver
 ------
@@ -142,9 +197,11 @@ from __future__ import annotations
 import itertools
 import math
 import re
+import threading
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from dataclasses import asdict, dataclass, field, replace
-from functools import cache
+from functools import lru_cache
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -158,6 +215,7 @@ from spiderpig.linkage import get as get_linkage
 from spiderpig.stack import body_class, is_crank, is_frame, is_link
 
 T_REF = 0.0                     # crank angle the model's qpos0 is at (the glb's frame 0)
+MIN_CRANK_ARMATURE = 5e-4       # kg·m²; see SimParams.crank_armature
 MM = 1e-3                       # m per mm
 KGF_CM = 9.80665e-2             # N·m per kgf·cm
 RPM = 2.0 * math.pi / 60.0      # rad/s per rpm
@@ -167,7 +225,9 @@ RPM = 2.0 * math.pi / 60.0      # rad/s per rpm
 class SimParams:
     """Physical and numerical parameters of the model (SI unless named otherwise)."""
 
-    friction: float = 0.5           # sliding friction robot / floor (acrylic or PLA, dry)
+    friction: float = 0.65          # sliding friction robot / floor: the feet's TPU 95A
+    #                                 socks on a hard floor, dry (0.6-0.7, the joinery plan;
+    #                                 0.5 for bare acrylic or PLA before 2026-10-04)
     torsional_friction: float = 0.005
     rolling_friction: float = 0.0001
     timestep: float = 1e-3
@@ -179,7 +239,26 @@ class SimParams:
     crank_armature: float = 5e-3    # kg·m²
     crank_damping: float = 0.0      # N·m·s/rad (the servo's losses are inside its ratings)
     pin_armature: float = 1e-6      # kg·m², passive pins (regularization)
+    # Below MIN_CRANK_ARMATURE the model is ill-posed (measured at 0: loop error 2.5 mm,
+    # roll 8 deg, the robot shoots backwards): build_mjcf refuses it.
     pin_damping: float = 1e-4       # N·m·s/rad, passive pins
+    # Coulomb friction of a passive pin, N·m: mu · load · r for a 3 mm steel pin in an
+    # acrylic running fit (mu ~0.2) under the ~5 N a loaded leg's pin carries while
+    # walking (r = 1.5 mm): 1.5e-3. An ESTIMATE (the walking pin loads peak at ~110 N,
+    # the jammed ones at 155 N, so the real friction is spiky, not constant).
+    pin_frictionloss: float = 1.5e-3
+    # What rides on the frame besides the parts, as a point mass at ``payload_pos`` (mech
+    # mm on the base): nothing by default, the electronics deck is modelled
+    # (construction.deck); a design without the deck gets DECK_FALLBACK_G there instead.
+    payload_g: float = 0.0
+    payload_pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # The controller (:class:`sim.run.PhaseLock`), not the model: the right servo turns
+    # ``servo_mismatch`` slower than told (servo-to-servo variation, battery sag per side)
+    # and the host holds the cranks' phase with a PI lock of these gains (fraction of the
+    # no-load speed per rad, per rad·s; 0 and 0: open loop).
+    servo_mismatch: float = 0.03
+    phase_lock_kp: float = 1.0
+    phase_lock_ki: float = 4.0
     eq_solref: tuple[float, float] = (0.002, 1.0)
     eq_solimp: tuple[float, ...] = (0.99, 0.999, 0.0001, 0.5, 2.0)
     contact_solref: tuple[float, float] = (0.01, 1.0)
@@ -230,6 +309,7 @@ class RobotModel:
     loops: list[tuple[str, str, str, np.ndarray]]   # (name, body1, body2, xy mm)
     outlines: dict[str, list[tuple[np.ndarray, np.ndarray]]]   # link -> capsule segments (mm)
     feet: dict[str, tuple[str, str, np.ndarray]]   # foot -> (foot link, joint, xy mm)
+    foot_links: dict[str, list[str]]    # foot -> every link with a joint on that foot point
     hulls: dict[str, tuple[str, np.ndarray]]  # robot body -> (MuJoCo body, hull points mm)
     link_radius: float                  # mm
     crank_sign: int
@@ -307,8 +387,39 @@ def crank_sign(config: BuildConfig) -> int:
     return 1 if vx < 0 else -1
 
 
-_FABRICATED: dict[BuildConfig, object] = {}
-_PROPS: dict[BuildConfig, tuple[object, dict]] = {}     # config -> (robot, its parts' props)
+CACHE_SIZE = 8      # designs kept per cache (a design's model is ~37 MB of RSS)
+
+# config -> fabricated robot; config -> (robot, its parts' props). Newest last, the
+# oldest dropped past CACHE_SIZE.
+_FABRICATED: OrderedDict[BuildConfig, object] = OrderedDict()
+_PROPS: OrderedDict[BuildConfig, tuple[object, dict]] = OrderedDict()
+_MODELS: OrderedDict[tuple[BuildConfig, SimParams], tuple] = OrderedDict()  # compiled
+_BUILD_LOCKS: dict[BuildConfig, threading.Lock] = {}    # single-flight builds per config
+_LOCKS_LOCK = threading.Lock()
+
+
+def _remember(cache: OrderedDict, key, value) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    while len(cache) > CACHE_SIZE:
+        cache.popitem(last=False)
+
+
+def build_lock(config: BuildConfig) -> threading.Lock:
+    """The lock two threads building the same design's model share (so the second waits
+    for the first's cached result instead of fabricating it again)."""
+    with _LOCKS_LOCK:
+        return _BUILD_LOCKS.setdefault(replace(config, robot=True), threading.Lock())
+
+
+def clear_caches() -> None:
+    """Forget every fabricated robot, reduced model, MJCF and compiled model (the sources
+    changed: the server's watcher calls this beside its re-bake)."""
+    _FABRICATED.clear()
+    _PROPS.clear()
+    _MODELS.clear()
+    robot_model.cache_clear()
+    _build_mjcf.cache_clear()
 
 
 def fabricated(config: BuildConfig):
@@ -316,7 +427,7 @@ def fabricated(config: BuildConfig):
     elsewhere at that angle comes in through :func:`set_fabricated`)."""
     config = replace(config, robot=True)
     if config not in _FABRICATED:
-        _FABRICATED[config] = fabricate(template_for(config), config, T_REF)
+        _remember(_FABRICATED, config, fabricate(template_for(config), config, T_REF))
     return _FABRICATED[config]
 
 
@@ -326,12 +437,12 @@ def set_fabricated(config: BuildConfig, robot, props: dict | None = None) -> Non
     fabrication doesn't fabricate twice. ``props``: its parts' mass properties already
     measured (body -> :class:`hardware.mass.PartProps`: the bake's), not measured again."""
     key = replace(config, robot=True)
-    _FABRICATED[key] = robot
+    _remember(_FABRICATED, key, robot)
     if props:
-        _PROPS[key] = (robot, props)
+        _remember(_PROPS, key, (robot, props))
 
 
-@cache
+@lru_cache(maxsize=CACHE_SIZE)
 def robot_model(config: BuildConfig, printed_fill: float = 1.0,
                 hull_tolerance: float = 0.5) -> RobotModel:
     """The fabricated robot at ``t_ref`` reduced to MuJoCo bodies (cached per config)."""
@@ -449,37 +560,45 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
             if n not in ordered and mb.parent in ordered:
                 ordered[n] = mb
 
-    # collision geometry: link capsules (a foot link's stops a radius short of the
+    # collision geometry: link capsules (a foot link's stops two radii short of the
     # foot: the foot sphere alone makes the contact) and foot spheres
     n_feet = len(get_linkage(config.linkage).feet)
     r = config.params.link_radius
     feet = {}
-    foot_joints: dict[str, set[str]] = {}
+    foot_links: dict[str, list[str]] = {}
+    # per side, the joint names at the feet (Klann: F_leg0, ...): every link's capsule
+    # stops short of them, whichever link ends there
+    foot_points: dict[str, set[str]] = {}
     for body, joint in feet_of(robot):
         tag = "" if n_feet == 1 else f"_{joint}"
         foot = re.sub(r"^([LR])\.b\d+", rf"\g<1>.foot{tag}", body)
         feet[foot] = (body, joint, joints[body][joint])
-        foot_joints.setdefault(body, set()).add(joint)
+        foot_points.setdefault(_side(body), set()).add(joint)
+        foot_links[foot] = sorted(b.name for b in kinematic if is_link(b.name)
+                                  and _side(b.name) == _side(body) and joint in joints[b.name])
     outlines = {}
     for b in kinematic:
         if not is_link(b.name):
             continue
-        on_foot = foot_joints.get(b.name, set())
+        on_foot = foot_points.get(_side(b.name), set())
         segs = []
         for p, q in b.outline:
             a, c = joints[b.name][p], joints[b.name][q]
-            u = (c - a) / np.linalg.norm(c - a) * r
+            u = (c - a) / np.linalg.norm(c - a) * 2.0 * r
+            if np.linalg.norm(c - a) <= 2.0 * r * ((p in on_foot) + (q in on_foot)):
+                continue                        # a stub shorter than its own trims
             segs.append((a + u if p in on_foot else a, c - u if q in on_foot else c))
         outlines[b.name] = segs
     hulled = [b for b in robot.bodies if b.part is not None and host[b.name] == "base" and (
         (b.fab == "laser" and body_class(b.name) in ("torso", "frame_outer"))
-        or body_class(b.name) == "servo")]
+        or body_class(b.name) in ("servo", "deck_plate", "deck_battery", "deck_board"))]
     hulls = {b.name: ("base", pts) for b, pts in zip(
         hulled, _hulls([b.part for b in hulled], hull_tolerance), strict=True)}
 
     return RobotModel(
         config=config, bodies=ordered, host=host, joints=joints, loops=loops,
-        outlines=outlines, feet=feet, hulls=hulls, link_radius=config.params.link_radius,
+        outlines=outlines, feet=feet, foot_links=foot_links, hulls=hulls,
+        link_radius=config.params.link_radius,
         crank_sign=crank_sign(config), meta=dict(robot.meta), servo=servo,
     )
 
@@ -513,6 +632,12 @@ def drive_limits(servo) -> tuple[float, float]:
     return servo.speed_rpm * RPM, servo.torque_kgcm * KGF_CM
 
 
+def rated_torque(servo) -> float | None:
+    """The servo's rated (continuous) torque in N·m, if its catalog entry has one."""
+    kgcm = getattr(servo, "rated_kgcm", None)
+    return None if kgcm is None else kgcm * KGF_CM
+
+
 def rest_pose(rm: RobotModel, clearance: float) -> tuple[float, float]:
     """The base's pitch (rad, about mech ``z``) and height (m) at ``qpos0``.
 
@@ -538,6 +663,31 @@ def rest_pose(rm: RobotModel, clearance: float) -> tuple[float, float]:
     return pitch, (clearance - heights.min() + rm.link_radius) * MM
 
 
+DECK_FALLBACK_G = 113.0
+"""Grams standing in for the electronics deck on a robot it doesn't fit (its measured
+mass on the Strider double and the Klann quad: plate, rails, hardware, electronics)."""
+
+
+def payload_g(rm: RobotModel, params: SimParams) -> float:
+    """The point mass the base carries: :attr:`SimParams.payload_g`, plus
+    :data:`DECK_FALLBACK_G` when the robot has no electronics deck."""
+    fitted = rm.meta.get("deck", {}).get("fitted", False)
+    return params.payload_g + (0.0 if fitted else DECK_FALLBACK_G)
+
+
+def _with_payload(mb: MjBody, grams: float, pos) -> tuple[float, np.ndarray, np.ndarray]:
+    """``mb``'s mass (kg), centre (mm) and inertia (kg·mm², about the new centre) with a
+    point mass of ``grams`` at ``pos`` (mech mm) added: the payload on the base."""
+    m2, p = grams * 1e-3, np.asarray(pos, dtype=float)
+    mass = mb.mass + m2
+    com = (mb.mass * mb.com + m2 * p) / mass
+    inertia = mb.inertia.copy()                 # about mb.com; the parallel-axis shifts:
+    for mi, ci in ((mb.mass, mb.com), (m2, p)):
+        d = ci - com
+        inertia += mi * (d @ d * np.eye(3) - np.outer(d, d))
+    return mass, com, inertia
+
+
 def _world_from_mech(pitch: float) -> tuple[np.ndarray, tuple[float, ...]]:
     """Rotation (3x3) and quaternion (wxyz) of the base at rest: ``Rx(90°) · Rz(pitch)``."""
     c, s = math.cos(pitch), math.sin(pitch)
@@ -553,14 +703,21 @@ def build_mjcf(config: BuildConfig | None = None,
     return _build_mjcf(config or BuildConfig(), params or SimParams())
 
 
-@cache
+@lru_cache(maxsize=CACHE_SIZE)
 def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
-    rm = robot_model(config, params.printed_fill, params.hull_tolerance)
+    if params.crank_armature < MIN_CRANK_ARMATURE:
+        raise ValueError(f"crank_armature {params.crank_armature:g} kg·m² is under "
+                         f"{MIN_CRANK_ARMATURE:g}: the model is ill-posed there (loop closure "
+                         "and roll blow up); the STS3215's reflected rotor inertia is estimated "
+                         "at 5e-3")
+    with build_lock(config):
+        rm = robot_model(config, params.printed_fill, params.hull_tolerance)
     vmax, tau = drive_limits(rm.servo)
     kv = tau / (params.stall_error * vmax)
     r = rm.link_radius * MM
     pitch, height = rest_pose(rm, params.clearance)
     rot, quat = _world_from_mech(pitch)
+    payload = payload_g(rm, params)
 
     root = ET.Element("mujoco", model=f"spiderpig_{rm.config.module}")
     ET.SubElement(root, "compiler", angle="radian", autolimits="true", inertiafromgeom="false")
@@ -573,7 +730,7 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
     ET.SubElement(default, "geom", contype="1", conaffinity="0", condim="3", friction=friction,
                   solref=_v(params.contact_solref), solimp=_v(params.contact_solimp))
     ET.SubElement(default, "joint", type="hinge", axis="0 0 1", armature=_f(params.pin_armature),
-                  damping=_f(params.pin_damping))
+                  damping=_f(params.pin_damping), frictionloss=_f(params.pin_frictionloss))
     ET.SubElement(default, "site", size="0.002", rgba="1 0 0 1")
     visual = ET.SubElement(root, "visual")
     ET.SubElement(visual, "global", offwidth="1280", offheight="720")
@@ -606,8 +763,11 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
             else:
                 ET.SubElement(el, "joint", name=name)
         elems[name] = el
-        i = mb.inertia * 1e-6                                   # kg·m²
-        ET.SubElement(el, "inertial", pos=_v((mb.com - mb.origin) * MM), mass=_f(mb.mass),
+        mass, com, inertia = mb.mass, mb.com, mb.inertia
+        if name == "base" and payload > 0:                     # what else rides the frame
+            mass, com, inertia = _with_payload(mb, payload, params.payload_pos)
+        i = inertia * 1e-6                                      # kg·m²
+        ET.SubElement(el, "inertial", pos=_v((com - mb.origin) * MM), mass=_f(mass),
                       fullinertia=_v((i[0, 0], i[1, 1], i[2, 2], i[0, 1], i[0, 2], i[1, 2])))
         # collision geometry, in the body's own layer
         z = mb.z
@@ -620,7 +780,7 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
             if link == name:
                 pos = _v((np.array([xy[0], xy[1], z]) - mb.origin) * MM)
                 ET.SubElement(el, "geom", name=foot, type="sphere", size=_f(r), pos=pos,
-                              rgba=_RGBA["foot"])
+                              condim="4", rgba=_RGBA["foot"])
                 ET.SubElement(el, "site", name=foot, pos=pos)
         for part, (host, _) in rm.hulls.items():
             if host == name:
@@ -657,11 +817,14 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
     mech_to_world = np.eye(4)
     mech_to_world[:3, :3] = rot * MM
     mech_to_world[2, 3] = height
-    total = sum(mb.mass for mb in rm.bodies.values())
+    payload = payload_g(rm, params)
+    total = sum(mb.mass for mb in rm.bodies.values()) + payload * 1e-3
     by_material: dict[str, float] = {}
     for mb in rm.bodies.values():
         for k, v in mb.mass_by.items():
             by_material[k] = by_material.get(k, 0.0) + v
+    if payload > 0:
+        by_material["payload"] = payload * 1e-3
     cfg = rm.config
     return {
         "format": "spiderpig-mjcf/1",
@@ -706,11 +869,12 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
                            "ctrlrange": [-vmax, vmax], "forcerange": [-tau, tau],
                            "ctrl_units": "rad/s crank speed, positive = forward",
                            "servo": rm.servo.key, "speed_rpm": rm.servo.speed_rpm,
-                           "stall_torque_kgcm": rm.servo.torque_kgcm}
+                           "stall_torque_kgcm": rm.servo.torque_kgcm,
+                           "rated_torque": rated_torque(rm.servo)}
             for s in sides
         },
         "feet": {foot: {"body": link, "joint": joint, "site": foot, "geom": foot,
-                        "radius": rm.link_radius * MM}
+                        "radius": rm.link_radius * MM, "links": rm.foot_links[foot]}
                  for foot, (link, joint, _) in rm.feet.items()},
         "loops": [{"name": n, "body1": b1, "body2": b2} for n, b1, b2, _ in rm.loops],
         "mass": {"total": total, "by_material": by_material},
@@ -720,13 +884,46 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
 
 
 def load_model(config: BuildConfig | None = None, params: SimParams | None = None):
-    """``(mujoco.MjModel, metadata)`` for ``config``, compiled once per config and params."""
-    return _load_model(config or BuildConfig(), params or SimParams())
+    """``(mujoco.MjModel, metadata)`` for ``config``, compiled once per config and params
+    (the newest :data:`CACHE_SIZE` kept). The model is shared: copy it before changing it
+    (:func:`motor_line` does, per session)."""
+    config, params = config or BuildConfig(), params or SimParams()
+    key = (config, params)
+    if key not in _MODELS:
+        xml, meta = _build_mjcf(config, params)
+        adopt_mjcf(config, params, xml, meta)
+    _MODELS.move_to_end(key)
+    return _MODELS[key]
 
 
-@cache
-def _load_model(config: BuildConfig, params: SimParams):
+def cached_model(config: BuildConfig | None = None, params: SimParams | None = None):
+    """:func:`load_model`'s answer when it is already compiled, else ``None`` (nothing is
+    built)."""
+    key = (config or BuildConfig(), params or SimParams())
+    if key in _MODELS:
+        _MODELS.move_to_end(key)
+        return _MODELS[key]
+    return None
+
+
+def adopt_mjcf(config: BuildConfig, params: SimParams, xml: str, meta: dict):
+    """Compile ``xml`` (``meta`` beside it: :func:`build_mjcf`'s, built in another process)
+    as :func:`load_model`'s answer for ``config`` and ``params``; the ``(model, meta)``."""
     import mujoco
 
-    xml, meta = _build_mjcf(config, params)
-    return mujoco.MjModel.from_xml_string(xml), meta
+    key = (config, params)
+    if key not in _MODELS:
+        _remember(_MODELS, key, (mujoco.MjModel.from_xml_string(xml), meta))
+    return _MODELS[key]
+
+
+def motor_line(model, data, act, vmax: float, tau: float) -> None:
+    """Narrow each drive's ``forcerange`` to the servo's speed-torque line at its speed
+    now: motoring (torque with the motion) at most ``tau · (1 - |w| / vmax)``, braking
+    the full ``tau``. Call before every ``mj_step`` on a copy of the shared model."""
+    w = data.actuator_velocity[act]
+    avail = tau * np.clip(1.0 - np.abs(w) / vmax, 0.0, None)
+    lo = np.where(w < 0, -avail, -tau)
+    hi = np.where(w > 0, avail, tau)
+    model.actuator_forcerange[act, 0] = lo
+    model.actuator_forcerange[act, 1] = hi

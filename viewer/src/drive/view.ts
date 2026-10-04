@@ -117,14 +117,22 @@ export class DriveView {
     this.poly.visible = this.com.visible = showSupport;
     this.com.position.copy(com);
     this.stickPose(sim.modelTheta);
-    this.grid.position.set(Math.round(m.elements[12]! / 1000) * 1000, Math.round(m.elements[13]! / 1000) * 1000, -0.5);
-    // Trail: the body origin on the ground (world), a point every 4 mm, the last 4000.
-    const p = new THREE.Vector3(sim.x, 0.5, sim.z).applyQuaternion(STAND), n = this.trailPts.length;
-    if (n && Math.hypot(this.trailPts[n - 3]! - p.x, this.trailPts[n - 2]! - p.y) < 4) return;
-    this.trailPts.push(p.x, p.y, p.z);
+    this.trailTo(new THREE.Vector3(sim.x, 0.5, sim.z).applyQuaternion(STAND));
+  }
+
+  /** Keep the ground under the body at world ``p`` and extend the trail to it (on the ground,
+   * a point every 4 mm, the last 4000). */
+  trailTo(p: THREE.Vector3): void {
+    this.grid.position.set(Math.round(p.x / 1000) * 1000, Math.round(p.y / 1000) * 1000, -0.5);
+    const q = new THREE.Vector3(p.x, p.y, 0.5), n = this.trailPts.length;
+    if (n && Math.hypot(this.trailPts[n - 3]! - q.x, this.trailPts[n - 2]! - q.y) < 4) return;
+    this.trailPts.push(q.x, q.y, q.z);
     if (n > 12000) this.trailPts.splice(0, 6000);
     put(this.trail.geometry, 'position', this.trailPts);
   }
+
+  /** The walking model's feet, support polygon and COM (not drawn under physics). */
+  set overlayVisible(on: boolean) { this.overlay.visible = on; }
 
   /** Stick figure of an ``/api/walk`` design: every link of every leg, both sides (R = z-mirror of L). */
   setStick(walk: { legs: { leg: number; joints: Record<string, [number, number][]> }[]; links: [string, string][];
@@ -143,7 +151,7 @@ export class DriveView {
   }
 
   private stickPose(theta: Record<Side, number>): void {
-    if (!this.stick.visible) return;
+    if (!this.stick.visible || !this.stickLegs.length) return;   // nothing to pose yet
     const pts: number[] = [];
     for (const leg of this.stickLegs) {
       const n = leg.joints[0]!.length / 2, [i, t] = gridAt(theta[leg.side], n), i1 = (i + 1) % n;

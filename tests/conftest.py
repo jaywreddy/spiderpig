@@ -12,6 +12,18 @@ behind a ``pytestmark`` in those modules and keep everything else plain-pytest.
 
 from __future__ import annotations
 
+import os
+
+# Under pytest-xdist every worker is its own process: one BLAS / OpenMP thread each, or
+# N workers x N cores of threads fight over the machine (set before numpy is imported).
+if os.environ.get("PYTEST_XDIST_WORKER"):
+    for _var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        os.environ.setdefault(_var, "1")
+    # OCCT's parallel booleans and meshing share its default pool (every core by default)
+    from OCP.OSD import OSD_ThreadPool
+
+    OSD_ThreadPool.DefaultPool_s(int(os.environ.get("SPIDERPIG_TEST_OCCT_THREADS", "1")))
+
 import socket
 import subprocess
 import sys
@@ -52,14 +64,18 @@ def _offline(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def design():
-    """``design(module, servo=DEFAULT, linkage="klann") -> (side template, SideDesign)``."""
+    """``design(module, servo=DEFAULT, linkage="klann", **build) -> (side template,
+    SideDesign)``, built the default way (Chicago screw pins, standoff pillars, the bolt
+    crank) unless ``build`` names a construction (``pin="printed"``: the printed snap pins'
+    tests; ``crank="keyed", pillar="printed"``: the defaults before 2026-10-03)."""
     cache: dict = {}
 
-    def get(module: str = "single", servo: str = servos.DEFAULT, linkage: str = "klann"):
-        key = (module, servo, linkage)
+    def get(module: str = "single", servo: str = servos.DEFAULT, linkage: str = "klann",
+            **build: str):
+        key = (module, servo, linkage, tuple(sorted(build.items())))
         if key not in cache:
             tmpl = build_module_template(module, linkage=linkage)
-            cfg = BuildConfig(module=module, servo=servo, linkage=linkage, robot=False)
+            cfg = BuildConfig(module=module, servo=servo, linkage=linkage, robot=False, **build)
             cache[key] = (tmpl, design_side(tmpl, cfg))
         return cache[key]
 
@@ -68,13 +84,14 @@ def design():
 
 @pytest.fixture(scope="session")
 def side(design):
-    """``side(module, t, servo=DEFAULT)``: the fabricated side (one build per key per session)."""
+    """``side(module, t, servo=DEFAULT, **build)``: the fabricated side (one build per key per
+    session)."""
     cache: dict = {}
 
-    def get(module: str = "single", t: float = 1.0, servo: str = servos.DEFAULT):
-        key = (module, t, servo)
+    def get(module: str = "single", t: float = 1.0, servo: str = servos.DEFAULT, **build: str):
+        key = (module, t, servo, tuple(sorted(build.items())))
         if key not in cache:
-            tmpl, d = design(module, servo)
+            tmpl, d = design(module, servo, **build)
             cache[key] = fabricate_side(d, tmpl.freeze_at(t))
         return cache[key]
 
@@ -83,14 +100,16 @@ def side(design):
 
 @pytest.fixture(scope="session")
 def robot(design):
-    """``robot(module, t)``: the fabricated robot (both sides and the chassis)."""
+    """``robot(module, t, **build)``: the fabricated Klann robot (both sides and the chassis),
+    the default constructions unless ``build`` names others."""
     cache: dict = {}
 
-    def get(module: str = "single", t: float = 1.0):
-        if (module, t) not in cache:
-            tmpl, _ = design(module)
-            cache[module, t] = fabricate(tmpl, BuildConfig(module=module), t)
-        return cache[module, t]
+    def get(module: str = "single", t: float = 1.0, **build: str):
+        key = (module, t, tuple(sorted(build.items())))
+        if key not in cache:
+            tmpl, _ = design(module, **build)
+            cache[key] = fabricate(tmpl, BuildConfig(linkage="klann", module=module, **build), t)
+        return cache[key]
 
     return get
 

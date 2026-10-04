@@ -54,7 +54,7 @@ const drive = createDrive({
   stage,
   loaded: () => loaded,
   loadRobot: (query) => loadMode('robot', query),
-  loadSide: (query) => loadMode('klann', query),   // 'klann': the server's side-only single mode
+  loadSide: (query) => loadMode('klann', query),   // 'klann': the server's side-only single mode (an old URL id, any linkage)
   status: (text) => ui.setStatus(text),
   seek,
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
@@ -102,7 +102,7 @@ async function loadMode(mode: Mode, query = ''): Promise<void> {
       `${next.clip.tracks.length} tracks · ${next.clipDuration.toFixed(2)}s loop`,
     );
     ui.setReadout(formatTime(0));
-    await drive.onLoad(next);
+    await drive.onLoad(next, query);
     invalidate();
   } finally {
     ui.setModeDisabled(false);

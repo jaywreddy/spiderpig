@@ -100,7 +100,14 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         if iface is not None:
             ctx.interfaces[g.name] = iface
     claims = [c for g in groups for c in g.claims(ctx)]
-    spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin)
+    heads = config.heads
+    if heads == "best" and any(getattr(getattr(g, "construction", None), "single", False)
+                               for g in groups):
+        # single-plate crank webs keep their screws' heads in clearance gaps (a sunk head
+        # would stand in a rider's layer): no plan with every head sunk exists
+        heads = "gap"
+    spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
+                     **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
     # a group that can't be built above some stack size (a bolt pillar's stock screw)
@@ -115,9 +122,26 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
     ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
     router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
-    return ctx, groups, StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
-                                     hint=_leg_hint(config, deadline) if hint else None,
-                                     notes=notes)
+    # the crank's joint rules rule the thinner sizes out at once (the bolt crank's chains)
+    least = router and hasattr(router, "min_top") and router.min_top(spec.min_top, spec.max_top)
+    if least:
+        spec = replace(spec, min_top=least[0])
+    problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
+                           hint=_leg_hint(config, deadline) if hint else None, notes=notes)
+    if least:
+        problem.floor = least[1]
+    return ctx, groups, problem
+
+
+def plate_z(ctx: Context) -> dict:
+    """What the plan's z needs from the materials (:class:`stack.StackSpec`): the frame
+    plates' thickness, each link's that isn't cut from the default sheet, and the
+    thicknesses a clearance gap may have (:func:`materials.gap_options`)."""
+    from spiderpig.materials import gap_options
+
+    link_t = tuple(sorted((n, ctx.sheet_t("link", n)) for n in ctx.topo.links
+                          if abs(ctx.sheet_t("link", n) - ctx.pitch) > 1e-9))
+    return {"frame_t": ctx.sheet_t("frame"), "link_t": link_t, "gaps": gap_options()}
 
 
 def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str, int] | None:
@@ -186,7 +210,7 @@ def _reuse(problem: StackProblem, solved: StackPlan | None) -> StackPlan | None:
     if solved is None:
         return None
     try:
-        plan = problem.plan(solved.layers, solved.top, solved.choices)
+        plan = problem.plan(solved.layers, solved.top, solved.choices, solved.heads)
     except ValueError:
         return None
     if verify_plan(plan):
@@ -256,7 +280,7 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
     for b in done.bodies:
         if b.name in bodies:    # a group built a kinematic body's part (a link, the frame)
             kin = bodies[b.name]
-            kin.part, kin.fab, kin.bom_key = b.part, b.fab, b.bom_key
+            kin.part, kin.fab, kin.bom_key, kin.sheet = b.part, b.fab, b.bom_key, b.sheet
             kin.color = b.color or kin.color
         else:
             extra.append(b)
@@ -266,6 +290,7 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
         sheet=cfg.sheet, sheet_name=sheet_name(cfg.sheet), pitch=design.ctx.pitch,
         servo=cfg.servo, pillar=cfg.pillar, pin=cfg.pin, crank=cfg.crank,
         layers=design.plan.top + 1, stack_mm=design.plan.height,
+        **done.notes,
     )
     return Mechanism(
         name=mech.name,

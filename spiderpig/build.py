@@ -14,7 +14,7 @@ writes into ``--out``:
 * ``bom.csv`` / ``bom.md`` / ``bom.json`` — what to buy (quantities, packs,
   vendor links, estimated cost), cut and print.
 
-The design parameters: ``--linkage`` (Klann by default; ``--list`` shows
+The design parameters: ``--linkage`` (Strider by default; ``--list`` shows
 them all), ``--phases`` (every leg's crank phase in degrees, e.g.
 ``0,175,180,355`` for a quad) and ``--proportion NAME=VALUE`` (repeatable;
 overrides one of the linkage's parameters). ``spiderpig tune``
@@ -42,10 +42,10 @@ from pathlib import Path
 from spiderpig import construction, linkage, servos
 from spiderpig.config import ParamError, add_build_args, add_design_args, config_from_args
 from spiderpig.fabricate import design_side, fabricate, template_for
-from spiderpig.hardware.bom import BomLine, bom_from_mechanism, group_made
-from spiderpig.hardware.catalog import CATALOG, _load, sheet_size
+from spiderpig.hardware.bom import bom_from_mechanism, group_made
+from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
-from spiderpig.layout import DEFAULT_KERF, save_sheets
+from spiderpig.layout import DEFAULT_KERF, save_sheets, sheet_lines
 
 
 def _parse_args(argv) -> argparse.Namespace:
@@ -60,7 +60,7 @@ def _parse_args(argv) -> argparse.Namespace:
                    help="usable sheet size in mm (default: the sheet stock's size)")
     p.add_argument("--out", type=Path, default=Path("build"),
                    help="output directory (created if missing). Default: ./build")
-    p.add_argument("--name", default=None, help="file-name stem. Default: the linkage (klann)")
+    p.add_argument("--name", default=None, help="file-name stem. Default: the linkage (strider)")
     p.add_argument("--no-dxf", action="store_true", help="skip the DXF sheet-packing pass")
     p.add_argument("--list", action="store_true",
                    help="list modules, servos, constructions and sheet stock")
@@ -216,13 +216,15 @@ def main(argv=None) -> int:
         print(f"  {r['file']:28} {r['print']}")
 
     if not args.no_dxf:
-        size = tuple(args.sheet_size) if args.sheet_size else sheet_size(config.sheet)
+        size = tuple(args.sheet_size) if args.sheet_size else None
         sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
-                             kerf=args.kerf)
+                             kerf=args.kerf, default=config.sheet)
         n_laser = sum(g.qty for g in groups["laser"])
-        print(f"wrote {len(sheets)} DXF sheet(s) of {size[0]:.0f} x {size[1]:.0f} mm with "
-              f"{n_laser} laser-cut parts ({len(groups['laser'])} different) to {out / 'laser'}")
-        mech.bom_extras.append(BomLine(config.sheet, len(sheets), "laser-cut parts"))
+        print(f"wrote {len(sheets)} DXF sheet(s) with {n_laser} laser-cut parts "
+              f"({len(groups['laser'])} different) to {out / 'laser'}, one set per sheet:")
+        for line in sheet_lines(mech, config.sheet, size):
+            print(f"  {line.qty} x {line.key}")
+            mech.bom_extras.append(line)
 
     title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
              f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")

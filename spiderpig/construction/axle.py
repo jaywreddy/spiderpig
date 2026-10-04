@@ -70,6 +70,15 @@ class AxleDims:
     flange: float = 0.0     # radius of a flange each link carries on one face (a bearing's);
     #                         it needs a free layer beside the link at least this wide
     seat: float | None = None   # radius seated in a link's hole when not ``axle`` (a bearing)
+    # The height each end's retainer (a head, a nut, a clip, with its washers and a
+    # clearance) needs beyond the retained stack, below and above: one that needs any
+    # (> 0) sits in the thin clearance gap beside its link (:attr:`stack.Placed.gap`), or
+    # the layer beyond when nothing there is in its way; 0: a full layer, as a printed cap.
+    # Only a construction with a single retainer per end and no flange sets it.
+    end_h: tuple[float, float] = (0.0, 0.0)
+    # the radius of the washers the axle carries through a clearance gap it crosses
+    # (0: ``spacer``)
+    washer: float = 0.0
 
 
 End = tuple[str, float]     # (label, radius) of one layer claimed beyond an axle's end
@@ -167,7 +176,10 @@ class AxleGroup(Group):
         can't cross it. A pillar is anchored in both frame plates when it can
         reach them, else in the one it can reach, with a cap at its free end.
         A pin ends in a head below its lowest link and a cap above its
-        highest. A construction with an ``ends`` method claims its own
+        highest. A construction with a ``column`` method may refuse a column
+        (its links' layers, the stack, which plates it reaches) with
+        :class:`Unbuildable` (the standoff pillar: no stock segments and splices
+        fit). A construction with an ``ends`` method claims its own
         retainers beyond each end instead (:func:`default_ends` is the
         printed axle's); it may raise :class:`Unbuildable` for a stack it
         can't span.
@@ -187,10 +199,23 @@ class AxleGroup(Group):
             if free < max(d.spacer, d.head):
                 room[n] = free
         ends = getattr(self.construction, "ends", None)
+        link_t = {m: ctx.sheet_t("link", m) for m in members}
 
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
+            own: dict[int, float] = {}
+            for m in members:
+                own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
+
+            def air(a: int, b: int) -> float:
+                """What the plan's z leaves free in layers ``a``..``b`` around this axle's
+                own parts (its links and its default-sheet rings, in layers an aluminium
+                plate elsewhere made thicker): its stack closes it up."""
+                if not L.final:
+                    return 0.0
+                return sum(max(0.0, L.t(k) - own.get(k, ctx.pitch))
+                           for k in range(a, b + 1) if 0 < k < L.top)
             free: dict[int, float] = {}
             who: dict[int, str] = {}
             for n, r in room.items():
@@ -220,6 +245,9 @@ class AxleGroup(Group):
                 if not (down or up):
                     raise Unbuildable("can't reach either frame plate: " + crossing(kd)
                                       + " below its links and " + crossing(ku) + " above")
+            column = getattr(self.construction, "column", None)
+            if column is not None:          # a construction's own rule over the whole column
+                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air)
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]
@@ -229,11 +257,28 @@ class AxleGroup(Group):
             if ends is None:
                 below, above = default_ends(d, self.pillar, (down, up))
             else:
-                below, above = ends(d, self.pillar, (down, up), k1 - k0 + 1, L.pitch)
-            out += [Placed(k0 - 1 - i, Disc(ax, r), g, f"{g} {label}")
-                    for i, (label, r) in enumerate(below)]
-            out += [Placed(k1 + 1 + i, Disc(ax, r), g, f"{g} {label}")
-                    for i, (label, r) in enumerate(above)]
+                below, above = ends(d, self.pillar, (down, up), k1 - k0 + 1, L.pitch,
+                                    span=L.z(k1)[1] - L.z(k0)[0] if L.final else None)
+            h_lo, h_hi = d.end_h
+            heights = getattr(self.construction, "end_heights", None)
+            if heights is not None:                 # what the retainers need at this z
+                h_lo, h_hi = heights(d, L, k0, k1, air=air(k0, k1))
+            for i, (label, r) in enumerate(below):
+                if i == 0 and h_lo > 0 and k0 >= 1:     # in the clearance gap under k0
+                    out.append(Placed(k0 - 1, Disc(ax, r), g, f"{g} {label}", gap=True,
+                                      height=h_lo, toward=-1))
+                else:
+                    out.append(Placed(k0 - 1 - i, Disc(ax, r), g, f"{g} {label}"))
+            for i, (label, r) in enumerate(above):
+                if i == 0 and h_hi > 0 and k1 <= L.top - 1:   # in the gap over k1
+                    out.append(Placed(k1, Disc(ax, r), g, f"{g} {label}", gap=True,
+                                      height=h_hi, toward=+1))
+                else:
+                    out.append(Placed(k1 + 1 + i, Disc(ax, r), g, f"{g} {label}"))
+            # the washers it carries through every clearance gap of its column (only a gap
+            # the plan has is built; the planner keeps other groups' heads off them)
+            wr = d.washer or d.spacer
+            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(k0, k1)]
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
             claimed: dict[int, float] = {}
             for k in range(k0 + 1, k1):
@@ -271,10 +316,17 @@ class AxleGroup(Group):
             lo, hi = ms[0], ms[-1]
             beside = {k for m in ms for k in (m - 1, m + 1)}
             out = [Placed(k, Disc(ax, d.axle), g, f"{g} axle", seat=True) for k in ms]
+            h_lo, h_hi = d.end_h
             for k in range(lo - 1, hi + 2):
                 if k in mset or (self.pillar and k in (0, L.top)):
                     continue
-                if not self.pillar and k in (lo - 1, hi + 1):
+                if not self.pillar and k == lo - 1 and h_lo > 0:
+                    out.append(Placed(k, Disc(ax, d.head), g, f"{g} head", gap=True,
+                                      height=h_lo, toward=-1))
+                elif not self.pillar and k == hi + 1 and h_hi > 0:
+                    out.append(Placed(hi, Disc(ax, d.head), g, f"{g} cap", gap=True,
+                                      height=h_hi, toward=+1))
+                elif not self.pillar and k in (lo - 1, hi + 1):
                     out.append(Placed(k, Disc(ax, d.head), g, f"{g} {'head' if k < lo else 'cap'}"))
                 elif k in beside:
                     out.append(Placed(k, Disc(ax, stop), g, f"{g} shoulder"))
@@ -309,7 +361,10 @@ class PrintedAxle:
     snap_flats: float = 3.0      # width across the flats trimmed on the barb
     slot_width: float = 1.2      # slot splitting the peg (and the bearing below it)
     slot_max: float = 12.0       # deepest the slot runs, measured down from the peg's tip
-    max_strain: float = 0.04     # peak prong strain while snapping (PETG); more is logged
+    max_strain: float = 0.04     # peak prong strain while snapping (PETG); more: see below
+    strain_target: float = 0.035  # what the planner aims for under max_strain (a margin):
+    #                               a prong over it is relieved too, when the lip allows
+    snap_engage_min: float = 0.12  # the least the lip may be relieved to for that strain
     bridge: float = 0.8          # least solid between a socket and the slot above it
     base: float = 2.0            # least solid under a slot's root at a segment's bottom
     min_prong: float = 0.8       # thinnest a prong of the peg's shank may be
@@ -366,14 +421,22 @@ class PrintedAxle:
     def segments(self, group: AxleGroup, build: Build) -> list[Segment]:
         """The axle's printed segments for the solved plan (see :func:`plan_segments`)."""
         column = {s.layer: (s.label.rsplit(" ", 1)[1], s.shape.r)
-                  for s in build.shapes(group.name)}
+                  for s in build.shapes(group.name) if not s.gap}
         links: dict[int, tuple[str, ...]] = {}
         for m in group.axis.members:
             links[build.layers[m]] = links.get(build.layers[m], ()) + (m,)
+
+        def z(k: int) -> tuple[float, float]:
+            """A layer's z, and the clearance gap over it where the axle goes on through it
+            (printed through: its washers' claim)."""
+            z0, z1 = build.z(k)
+            return z0, z1 + (build.plan.gaps.get(k, 0.0) if k + 1 in column else 0.0)
+
         return plan_segments(
-            column, build.z, links, axle=group.dims(build.ctx).axle, snap=self.snap(build.ctx),
+            column, z, links, axle=group.dims(build.ctx).axle, snap=self.snap(build.ctx),
             play=self.axial_play, bridge=self.bridge, base=self.base, slot_max=self.slot_max,
-            min_prong=self.min_prong, max_strain=self.max_strain, name=group.name)
+            min_prong=self.min_prong, max_strain=self.max_strain,
+            min_engage=self.snap_engage_min, name=group.name, strain_target=self.strain_target)
 
     def realize(self, group: AxleGroup, build: Build) -> Realized:
         """One printed body per segment; holes in its links and in the plates it's glued into."""
@@ -393,6 +456,11 @@ class PrintedAxle:
             out.bodies.append(hardware(f"{stem}_seg{seg.index}", part, host, fab="printed",
                                        color="#1baf7a"))
             anchors += seg.anchors
+            if seg.peg is not None:     # what the audit reports per snap joint
+                out.notes.setdefault("snap_strain", {})[f"{group.name} seg{seg.index}"] = {
+                    "strain_pct": round(seg.strain_pct, 2), "max_pct": 100 * self.max_strain,
+                    "prong_mm": round(seg.flex(snap), 2),
+                    "engage_mm": (seg.peg_snap or snap).engage}
         xy = (float(xy[0]), float(xy[1]))
         for m in ax.members:
             out.cut(m, Cut(xy, p.hole(p.axle_d)))
@@ -402,4 +470,13 @@ class PrintedAxle:
         if anchors:
             out.extras.append(BomLine("ca_glue", self.glue_per_anchor * len(anchors),
                                       f"{group.name} anchors"))
+        from spiderpig.construction.pivots.common import Column  # (it imports this module)
+        from spiderpig.construction.wobble import Section, column_wobble
+
+        p = build.ctx.params
+        out.notes["wobble"] = {group.name: column_wobble(
+            build, group, Column.of(build, group), clearance=p.running_fit,
+            length=build.ctx.pitch, play=2 * self.axial_play,
+            play_basis=f"printed shoulders, {self.axial_play:g} mm each side",
+            section=Section.rod(p.axle_d, 50.0, name="printed PETG axle"))}
         return out

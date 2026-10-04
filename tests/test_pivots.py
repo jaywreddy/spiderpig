@@ -24,13 +24,15 @@ from spiderpig.fabricate import design_side, fabricate, fabricate_side, template
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
 from spiderpig.stack import Layout, Unbuildable, verify_plan
+from tests.tiers import quick
 
 KEYS = ("rod", "bolt", "bearing", "bushing")
 T = 1.0
 
 
 def _config(key: str, **kw) -> BuildConfig:
-    return BuildConfig(module="single", robot=False, pin=key, pillar=key, **kw)
+    return BuildConfig(**{"linkage": "klann", "module": "single", "robot": False, "pin": key,
+                          "pillar": key, **kw})
 
 
 def _vol(a, b) -> float:
@@ -148,7 +150,7 @@ def test_constructions_refuse_what_they_cannot_build():
 # -- the contract, the plan, the clashes ---------------------------------------------
 
 
-@pytest.mark.parametrize("t", [0.0, 4.38])
+@pytest.mark.parametrize("t", quick([0.0, 4.38], [4.38]))
 def test_parts_stay_inside_their_claims(side, t):
     _, tmpl, design, *_ = side
     assert check_side(design, tmpl.freeze_at(t)) == []
@@ -159,6 +161,7 @@ def test_plan_verifies(side):
     assert verify_plan(design.plan, tmpl) == []
 
 
+@pytest.mark.slow
 def test_jansen_single_builds_with_every_construction(jansen):
     for key, (tmpl, design) in jansen.items():
         assert verify_plan(design.plan, tmpl) == [], key
@@ -206,7 +209,10 @@ def test_nothing_on_an_axle_can_slide(side):
     """From the bottom retainer to the top one the stack is continuous: links, rings or
     sleeves, flanges, clips, nuts, heads and the plates it is anchored in."""
     key, _, design, build, fab, axles = side
-    play = 0.1 + 1e-6
+    # a 3.0 mm acrylic part in a layer an aluminium plate thickens to 3.175 mm leaves the
+    # difference; a gap's washer stack, under one shim step
+    plan = design.plan
+    play = 0.1 + max([plan.t(k) - plan.spec.pitch for k in range(plan.top + 1)] + [0.0]) + 1e-6
     for g in axles:
         col = Column.of(build, g)
         spans = [build.z(k) for k in col.links] + [build.z(k) for k in col.anchors]
@@ -266,7 +272,7 @@ def test_bom_counts_per_construction(side):
     if key == "bolt":
         assert rows["m3_nylock"].qty == rows["m3_washer"].qty == len(axles)
         screws = sum(r.qty for k, r in rows.items() if k.startswith("m3_shcs_") and r.qty)
-        assert screws >= len(axles) + 4      # the axles' and the servo's screws
+        assert screws >= len(axles)          # the axles' (the bolt crank's are M6 and buttons)
         assert "rod_3mm_100" not in rows
     else:
         assert rows["starlock_3mm"].qty == ends
@@ -308,9 +314,10 @@ def test_flanges_point_at_free_faces(side):
 # -- mixed builds and the quad -----------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(("pin", "pillar"), [("bearing", "printed"), ("rod", "bolt")])
 def test_mixed_constructions_plan_and_build(pin, pillar):
-    cfg = BuildConfig(module="single", robot=False, pin=pin, pillar=pillar)
+    cfg = BuildConfig(linkage="klann", module="single", robot=False, pin=pin, pillar=pillar)
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
     assert verify_plan(design.plan, tmpl) == []
@@ -326,7 +333,7 @@ def test_mixed_constructions_plan_and_build(pin, pillar):
 def test_quad_plans_with_every_construction():
     heights = {}
     for key in ("printed", *KEYS):
-        cfg = BuildConfig(module="quad", robot=False, pin=key, pillar="printed")
+        cfg = BuildConfig(linkage="klann", module="quad", robot=False, pin=key, pillar="printed")
         tmpl = template_for(cfg)
         plan = design_side(tmpl, cfg).plan
         assert verify_plan(plan, tmpl) == [], key
@@ -335,6 +342,7 @@ def test_quad_plans_with_every_construction():
         assert heights[key] <= heights["printed"] + 3.0, heights
 
 
+@pytest.mark.slow
 def test_robot_bom_doubles_the_side(side):
     key, tmpl, design, *_ = side
     if key != "rod":
@@ -347,6 +355,61 @@ def test_robot_bom_doubles_the_side(side):
                                                      group=False).purchased}
     assert rows["starlock_3mm"].qty == 2 * side_bom["starlock_3mm"].qty
     assert rows["rod_3mm_100"].qty == pytest.approx(2 * side_bom["rod_3mm_100"].qty)
+
+
+# -- the default pin --------------------------------------------------------------------------
+
+
+def test_the_default_pin_is_the_chicago_screw_on_standoff_pillars():
+    """The pivot review's decision (:mod:`construction.pivots.chicago`): Chicago screw pins
+    between the links; since 2026-10-03 standoff pillars and the bolt crank (the crank
+    study, :class:`construction.crank.BoltCrank`); the default's key carries no hash, and
+    the rod, printed pillars and the keyed crank stay selectable."""
+    cfg = BuildConfig()
+    assert (cfg.linkage, cfg.module) == ("strider", "double")
+    assert (cfg.pin, cfg.pillar, cfg.crank) == ("chicago", "standoff", "bolt")
+    assert BuildConfig(pillar="printed", crank="keyed").key != cfg.key
+    assert cfg.key == "strider_double_robot"
+    assert BuildConfig(pin="rod").key != cfg.key
+    assert BuildConfig(linkage="klann", module="quad").pin == "chicago"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(("linkage", "module", "crank", "max_layers"),
+                         [("strider", "double", "keyed", 18), ("klann", "quad", "keyed", 16),
+                          ("strider", "double", "printed", 16), ("klann", "quad", "printed", 12)])
+def test_the_default_designs_plan_quickly_with_rod_pins(linkage, module, crank, max_layers):
+    """Rod pins (the default before the Chicago screw) with printed pillars plan the Strider
+    double at 18 layers and the Klann quad at 16 with the keyed crank (its two-layer top
+    webs; 16 and 12 with the printed one) within the default budget (seconds, proven; a
+    bolt pin's two-layer nut needs 19 on the Strider at ten times the budget), with a
+    pin's links stacked with at most one
+    ring between them (Klann: adjacent, a 3 mm span; Strider's three-link J7 has one ring)
+    and a cut list of a few repeated lengths in the BOM."""
+    cfg = BuildConfig(linkage=linkage, module=module, robot=False, crank=crank, pin="rod",
+                      pillar="printed")
+    tmpl = template_for(cfg)
+    design = design_side(tmpl, cfg)
+    assert design.plan.top + 1 <= max_layers
+    assert design.plan.optimal
+    assert verify_plan(design.plan, tmpl) == []
+    layers = design.plan.layers
+    for g in design.groups:
+        if isinstance(g, AxleGroup) and not g.pillar:
+            ks = sorted(layers[m] for m in g.axis.members)
+            # at most four layers apart: the keyed crank's plans put the Strider's J4 across
+            # 12 mm and the Klann quad's E across 9 (the pivot review's strength check)
+            assert ks[-1] - ks[0] <= 4, (g.name, ks)
+    bom = bom_from_mechanism(fabricate_side(design, tmpl.freeze_at(T)), group=False)
+    (cut,) = bom.cuts
+    pins = sum(1 for g in design.groups if isinstance(g, AxleGroup) and not g.pillar)
+    assert (cut.key, cut.count) == ("rod_3mm_100", pins)
+    assert all(9.0 <= L <= 19.0 for L, _ in cut.pieces), cut.pieces     # 2-5 layers + clips
+    assert len(cut.pieces) <= 4                                           # repeated lengths
+    rows = {r.key: r for r in bom.purchased}
+    assert rows["starlock_3mm"].qty == 2 * pins
+    assert rows["rod_3mm_100"].cost_usd                  # priced: no unpriced pin hardware
+    assert rows["starlock_3mm"].cost_usd
 
 
 # -- refusals the planner reports ----------------------------------------------------------
@@ -373,8 +436,10 @@ def test_bolt_refuses_a_stack_no_standard_screw_spans():
     with pytest.raises(Unbuildable, match="no standard M3 screw for its 21 mm stack"):
         claim.make(layout)
     layout = Layout({**design.plan.layers, a: 2, b: 3}, 12, design.ctx.pitch)
-    labels = {p.layer: p.label.rsplit(" ", 1)[1] for p in claim.make(layout)}
+    labels = {p.layer: p.label.rsplit(" ", 1)[1] for p in claim.make(layout) if not p.gap}
     assert labels == {1: "head", 2: "axle", 3: "axle", 4: "nut", 5: "nut"}
+    # the washers it would carry through a clearance gap between its links
+    assert [(p.layer, p.label) for p in claim.make(layout) if p.gap] == [(2, f"{pin.name} washer")]
 
 
 def test_new_catalog_items():

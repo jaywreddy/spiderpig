@@ -18,6 +18,7 @@ from spiderpig.stack import (
     seg_seg,
     verify_plan,
 )
+from tests.tiers import quick
 
 
 @pytest.fixture(params=["single", "double", "decker", "quad"])
@@ -92,9 +93,23 @@ def test_verifier_catches_a_bad_plan(design):
     assert any("b1" in v and "b2" in v for v in verify_plan(broken, tmpl))
 
 
-def test_every_pillar_is_held_by_both_frame_plates(planned):
+def test_every_pillar_is_held_by_a_frame_plate(planned):
+    """Every pillar is anchored in a frame plate, both where its links let it reach them (a
+    standoff pillar, the default, can't neck down past a link that sweeps close: then it is
+    a cantilever from the plate it reaches)."""
     _, design = planned
     plan = design.plan
+    for ax in plan.topo.axes_of("frame"):
+        labels = {p.label for p in plan.shapes(f"pillar:{ax.name}")}
+        anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
+        assert anchors, (ax.name, labels)
+        assert set(anchors) <= {0, plan.top}, (ax.name, labels)
+
+
+@pytest.mark.parametrize("module", quick(["single", "quad"], ["single"]))
+def test_every_printed_pillar_is_held_by_both_frame_plates(design, module):
+    """A printed pillar necks down past the links, so it reaches both plates."""
+    plan = design(module, pillar="printed", crank="keyed")[1].plan
     for ax in plan.topo.axes_of("frame"):
         labels = {p.label for p in plan.shapes(f"pillar:{ax.name}")}
         anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
@@ -105,7 +120,7 @@ def test_crank_crosses_a_b1_layer_only_along_its_crankpin(planned):
     _, design = planned
     plan = design.plan
     riders = {plan.layers[b] for b in plan.topo.riders}
-    for p in plan.shapes("crank"):
+    for p in plan.shapes("crank", gaps=False):
         if p.layer in riders:
             assert p.seat, p
             assert p.label.startswith("crankpin"), p
@@ -119,8 +134,13 @@ def test_every_link_is_held_on_its_axles(planned):
         if ax.kind not in ("pin", "frame"):
             continue
         group = ("pillar:" if ax.kind == "frame" else "pin:") + ax.name
-        held = {p.layer for p in plan.shapes(group)
+        held = {p.layer for p in plan.shapes(group, gaps=False)
                 if not p.label.endswith("neck")} | {plan.layers[m] for m in ax.members}
+        # a head or cap in the clearance gap beside a link holds it there
+        held |= {p.layer for p in plan.shapes(group) if p.gap and p.height > 0
+                 and p.toward < 0}                   # under the link over the gap
+        held |= {p.layer + 1 for p in plan.shapes(group) if p.gap and p.height > 0
+                 and p.toward > 0}                   # over the link under it
         for m in ax.members:
             k = plan.layers[m]
             assert {k - 1, k + 1} <= held, (ax.name, m)

@@ -21,7 +21,10 @@ stage          code                            raised by
                                                before planning
 ``static``     ``link_no_layer``               :class:`stack.ClearanceError`
 ``plan``       ``no_plan`` /                   :class:`stack.PlanError` (in budget:
-               ``no_plan_in_budget``           the search hit ``max_total_nodes``)
+               ``no_plan_in_budget`` /         the search hit ``max_total_nodes``; in
+               ``no_plan_in_time``             time: its CPU deadline ran out, so the
+                                               machine was busy, and :func:`api.plan`
+                                               searches again instead of keeping it)
 ``fabricate``  ``unbuildable``                 :class:`ConstructionError` while
                                                building parts
 ``contract``   ``part_outside_claim``          :func:`construction.contract.check_side`
@@ -31,6 +34,10 @@ stage          code                            raised by
 ``bom``        ``unknown_catalog_key``         the BOM's ``KeyError``
 ``walk``       ``linkage_invalid``             :func:`walk.api_payload` ``valid: false``
 ``sim``        ``sim_failed``                  MuJoCo
+``strength``   ``joint_overload``              :func:`strength.check`: a pin, pillar or
+                                               the crank under jam SF 1 at the design's
+                                               loads (culprits: joint, links, case,
+                                               SF, load, fixes)
 =============  ==============================  =======================================
 
 A :class:`Recommendation` is the engine's (:class:`stack.Recommendation`:
@@ -182,7 +189,9 @@ class Failure:
         if isinstance(exc, PlanError):
             m = _STEPS.search(exc.summary)
             spent = int(m.group(1)) if m else 0
-            code = "no_plan_in_budget" if spent >= StackSpec().max_total_nodes else "no_plan"
+            code = ("no_plan_in_time" if getattr(exc, "expired", False)
+                    else "no_plan_in_budget" if spent >= StackSpec().max_total_nodes
+                    else "no_plan")
             return cls(stage or "plan", code, msg,
                        numbers={"search_steps": spent} if m else {},
                        recommendations=[Recommendation.from_engine(r, lk)

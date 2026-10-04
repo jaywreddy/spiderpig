@@ -84,6 +84,10 @@ STRIDER = register(Linkage(
     feet=(("b3", "J4"), ("b7", "J8")),
     # One Strider already is a mirrored pair: modules add pairs out of phase, each pair
     # of a double on one crank body (as Klann's mirrored pair), a decker's on its own.
+    # The double (four feet per side, 180° apart) is the project's default walker: it
+    # never leaves the ground, bobs 5.5 mm, steers and audits clean (docs/audit); the
+    # quad only adds layers.
+    default_module="double",
     modules={
         "single": Module(((+1, 0.0),)),
         "double": Module(((+1, 0.0), (+1, math.pi)), cranks=((0, 1),)),

@@ -155,7 +155,7 @@ export function evaluate(data: DriveData, theta: Record<Side, number>, omega: Re
 /** Per-revolution metrics of a straight walk (SPEC "Metrics"), when the data source has none. */
 export function straightWalk(data: DriveData): Record<string, number | number[] | string> {
   const n = data.n, dth = TAU / n;
-  let x = 0, yaw = 0, slip2 = 0, tip = 0, degen = 0, minMargin = Infinity;
+  let x = 0, yaw = 0, slip2 = 0, tip = 0, degen = 0, minMargin = Infinity, minSide = Infinity;
   const h: number[] = [], pitch: number[] = [], roll: number[] = [], duty = data.feet.map(() => 0);
   for (let i = 0; i < n; i++) {
     const s = evaluate(data, { L: i * dth, R: i * dth }, { L: 1, R: 1 });
@@ -165,6 +165,10 @@ export function straightWalk(data: DriveData): Record<string, number | number[] 
     slip2 += s.slip ** 2; minMargin = Math.min(minMargin, s.margin);
     tip += +s.tipping; degen += +s.degenerate;
     s.contacts.forEach((c, k) => { duty[k]! += +c / n; });
+    // the fewest feet either side stands on at once (one: a skid-steer turn pivots on it)
+    for (const side of ['L', 'R'] as const) {
+      minSide = Math.min(minSide, s.contacts.filter((c, k) => c && data.feet[k]!.side === side).length);
+    }
   }
   const range = (a: number[]): number[] => [Math.min(...a), Math.max(...a)];
   const slip = Math.sqrt(slip2 / n);
@@ -173,6 +177,6 @@ export function straightWalk(data: DriveData): Record<string, number | number[] 
     speed_mm_s: (Math.abs(x) * data.rpmMax) / 60, bob_mm: Math.max(...h) - Math.min(...h),
     pitch_deg: range(pitch), roll_deg: range(roll),
     slip_rms_mm_per_rad: slip, slip_rms_mm_per_rev: slip * TAU, min_margin_mm: minMargin,
-    tipping_fraction: tip / n, degenerate_fraction: degen / n, duty,
+    tipping_fraction: tip / n, degenerate_fraction: degen / n, duty, min_side_contacts: minSide,
   };
 }

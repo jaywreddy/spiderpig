@@ -9,7 +9,10 @@ Everything is derived from the mechanism :func:`fabricate.fabricate` returns:
   filament line (``mech.meta["filament"]`` or the ``filament`` argument: grams
   at 100 % infill from the catalog item's density, as a fraction of a spool);
 * ``mech.bom_extras`` adds purchases that aren't modelled as bodies
-  (washers, glue, shims, sheet stock).
+  (washers, glue, shims, sheet stock); a line whose ``where`` ends in ``cut X
+  mm`` (the metal pivots' rod, :class:`construction.pivots.common.RodShaft`)
+  also goes on the **cut list** (:func:`cut_list`): identical lengths
+  grouped, the total, so the buyer knows how many rods to cut them from.
 
 Made parts that are the same shape are one row with a quantity
 (:func:`group_made`): a laser-cut plate and its mirror image are the same cut
@@ -27,13 +30,14 @@ from __future__ import annotations
 import csv
 import json
 import math
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
-from spiderpig.hardware.catalog import get
+from spiderpig.hardware.catalog import get, sheet_name
 from spiderpig.hardware.mass import filament_density
 
 
@@ -82,6 +86,52 @@ class MadeRow:
     mirrored: int = 0    # of qty, how many are mirror images (printed parts: "print mirrored")
 
 
+@dataclass(frozen=True)
+class CutList:
+    """Pieces cut from one stock item (a rod): ``pieces`` is ``(length mm, qty)`` longest
+    first, ``total_mm`` their sum, ``stock_mm`` one piece of stock."""
+
+    key: str
+    name: str
+    pieces: tuple[tuple[float, int], ...]
+    stock_mm: float
+
+    @property
+    def count(self) -> int:
+        return sum(q for _, q in self.pieces)
+
+    @property
+    def total_mm(self) -> float:
+        return sum(L * q for L, q in self.pieces)
+
+    def describe(self) -> str:
+        """``24 pieces of 3 mm stainless rod, 100 mm (456 mm in all): 8 x 21.0, ...``"""
+        runs = ", ".join(f"{q} x {L:.1f}" for L, q in self.pieces)
+        return (f"{self.count} pieces of {self.name} ({self.total_mm:.0f} mm in all, from "
+                f"{self.stock_mm:g} mm stock): {runs} mm")
+
+
+_CUT = re.compile(r"cut ([\d.]+) mm$")
+
+
+def cut_list(lines: list[BomLine]) -> list[CutList]:
+    """The cut lists the ``cut X mm`` lines ask for, one per stock item, by key."""
+    by_key: dict[str, dict[float, int]] = {}
+    for line in lines:
+        m = _CUT.search(line.where)
+        if m is None:
+            continue
+        pieces = by_key.setdefault(line.key, {})
+        L = round(float(m.group(1)), 1)
+        pieces[L] = pieces.get(L, 0) + 1
+    out = []
+    for key, pieces in sorted(by_key.items()):
+        item = get(key)
+        out.append(CutList(key, item.name, tuple(sorted(pieces.items(), reverse=True)),
+                           float(item.dims.get("length", 0.0))))
+    return out
+
+
 @dataclass
 class Bom:
     purchased: list[PurchaseRow]
@@ -90,6 +140,7 @@ class Bom:
     notes: list[str] = field(default_factory=list)
     printed_g: float | None = None     # filament for the printed parts at 100 % infill
     filament: str = "PLA"
+    cuts: list[CutList] = field(default_factory=list)   # stock cut to length (the rod pins)
 
     @property
     def cost_usd(self) -> float:
@@ -127,6 +178,10 @@ class Bom:
                 note = f"{m.mirrored} mirrored" if m.mirrored else ""
                 w.writerow([m.method, m.name, m.qty, "", "", "", m.material, "", "", note,
                             f"{m.size_mm}; {', '.join(m.names or [m.name])}"])
+            for c in self.cuts:
+                for L, q in c.pieces:
+                    w.writerow(["cut", c.name, q, "", "", "", "", "", "", f"{L:.1f} mm",
+                                f"from {c.stock_mm:g} mm stock; deburr"])
 
     def markdown(self) -> str:
         lines = [f"# Bill of materials{': ' + self.title if self.title else ''}", ""]
@@ -168,6 +223,11 @@ class Bom:
                     grams = sum(m.volume_cm3 * m.qty for m in rows) * filament_density(None)
                 lines += ["", f"About {grams:.0f} g of {self.filament} at 100% infill."]
             lines.append("")
+        if self.cuts:
+            lines += ["## Cut to length", ""]
+            for c in self.cuts:
+                lines += [f"* {c.describe()}; deburr every cut end."]
+            lines.append("")
         if self.notes:
             lines += ["## Notes", ""] + [f"* {n}" for n in self.notes] + [""]
         return "\n".join(lines)
@@ -180,6 +240,9 @@ class Bom:
             "cost_usd": self.cost_usd,
             "printed_g": self.printed_g,
             "notes": self.notes,
+            "cuts": [{"key": c.key, "name": c.name, "stock_mm": c.stock_mm,
+                      "pieces": [list(p) for p in c.pieces], "count": c.count,
+                      "total_mm": round(c.total_mm, 1)} for c in self.cuts],
         }
 
 
@@ -402,6 +465,8 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
             continue
         sb = _sig(b.part)
         twin = placed.get(_twin(b.name) or "")
+        if twin is not None and getattr(twin[0].ref, "sheet", None) != getattr(b, "sheet", None):
+            twin = None
         if twin is not None and _mirrors(twin[2], sb):
             g, rel_twin, _ = twin
             # mirror(twin) is congruent to the reference iff the twin is the reference's
@@ -414,6 +479,8 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
             placed[b.name] = (g, rel, sb)
             continue
         for g in groups:
+            if getattr(g.ref, "sheet", None) != getattr(b, "sheet", None):
+                continue        # the same shape from another sheet is another part
             rel = congruent(g.ref.part, b.part, sa=sigs[id(g)], sb=sb, mirror=mirror_of(g))
             if rel is None:
                 continue
@@ -465,7 +532,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         for g in found:
             made.append(MadeRow(
                 name=g.ref.name, method=method,
-                material=sheet if method == "laser" else fil_name,
+                material=(sheet_name(g.ref.sheet) if getattr(g.ref, "sheet", None) else sheet)
+                if method == "laser" else fil_name,
                 size_mm=_footprint(g.ref.part), volume_cm3=g.ref.part.volume / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
             ))
@@ -516,4 +584,4 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     made.sort(key=lambda m: (m.method, m.name))
     return Bom(purchased=purchased, made=made, title=title, notes=notes,
                printed_g=grams if filament else None,
-               filament=fil_name.split()[0] if filament else "PLA")
+               filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines))

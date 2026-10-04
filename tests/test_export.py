@@ -39,11 +39,17 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
             assert (single_out / "print" / r["file"].replace(".stl", "_mirrored.stl")).exists()
     files = {r["file"] for r in rows}
     assert {"tie_screw_half0.stl", "tie_insert_half0.stl"} <= files
-    assert any(f.startswith("pin_C_seg") for f in files)
+    # the pillars are bought standoffs and the crank laser-cut plates now: what prints is the
+    # chassis's and the drive's (its horn spacer: the bolt crank's hub plates need the horn's
+    # face on a layer boundary)
+    assert not any("pillar_" in f and "_seg" in f for f in files)
+    assert any("horn_spacer" in f for f in files)
     by_file = {r["file"]: int(r["qty"]) for r in rows}
     assert by_file["tie_screw_half0.stl"] == by_file["tie_insert_half0.stl"] == 4
-    # left and right side parts are one row each: every part is printed twice or more
-    assert all(q >= 2 for q in by_file.values())
+    # left and right side parts are one row each: every part is printed twice or more,
+    # but the electronics deck's battery cradle, one per robot on the centre line
+    assert by_file["deck_cradle.stl"] == 1
+    assert all(q >= 2 for f, q in by_file.items() if f != "deck_cradle.stl")
 
 
 def test_dxf_sheets_hold_every_laser_part(single_out):
@@ -63,7 +69,8 @@ def test_dxf_sheets_hold_every_laser_part(single_out):
             assert e.dxf.layer == "CUT"
             outlines += e.dxftype() == "LWPOLYLINE"
             circles += e.dxftype() == "CIRCLE"
-    assert outlines >= len(placed)       # an outline per part, plus rectangular cut-outs
+    rings = sum("_ring" in n for n in placed)          # a ring's outline is a circle
+    assert outlines >= len(placed) - rings     # an outline per part, plus rectangular cut-outs
     assert circles > len(placed)
 
 
@@ -73,7 +80,7 @@ def test_bom_lists_purchases_sheets_and_filament(single_out):
     assert keys["servo_sts3215"]["qty"] == 2
     assert keys["acrylic_3mm"]["qty"] >= 1            # laser sheets
     assert 0 < keys["pla_filament"]["qty"] < 1        # a fraction of a spool
-    assert keys["m3_heat_set_insert"]["qty"] == 4
+    assert keys["m3_heat_set_insert"]["qty"] == 4 + 4  # the frame ties' and the deck rails'
     assert any(k.startswith("m2_self_tap_") for k in keys)
     assert bom["cost_usd"] > 0
     md = (single_out / "bom.md").read_text()
@@ -104,7 +111,9 @@ def test_linkage_flag():
     assert (args.config.linkage, args.config.module) == ("jansen", "double")
     assert args.config.proportions == (("m", 14.0),)
     assert args.name == "jansen"
-    assert cli._parse_args([]).name == "klann"
+    assert cli._parse_args([]).name == "strider"
+    assert (cli._parse_args([]).config.linkage, cli._parse_args([]).config.module) == \
+        ("strider", "double")
     for bad in (["--linkage", "octopus"], ["--linkage", "jansen", "--proportion", "DF=2"]):
         with pytest.raises(SystemExit):
             cli._parse_args(bad)
@@ -112,21 +121,22 @@ def test_linkage_flag():
 
 def test_design_flags():
     """``--phases`` (degrees) and ``--proportion NAME=VALUE`` reach the BuildConfig."""
-    args = cli._parse_args(["--phases", "0,175,180,355", "--proportion", "DF=2.4",
-                            "--proportion", "OB=1.121"])
+    args = cli._parse_args(["--linkage", "klann", "--phases", "0,175,180,355",
+                            "--proportion", "DF=2.4", "--proportion", "OB=1.121"])
     assert args.config.phases == pytest.approx(
         tuple(math.radians(p) for p in (0, 175, 180, 355)))
     assert args.config.proportions == (("DF", 2.4),)          # Klann's OB is no override
-    assert cli._parse_args(["--phases", "0,180,90,270"]).config.phases is None
-    assert cli._parse_args(["--module", "decker", "--phases", "0,180"]).config.phases == \
-        pytest.approx((0.0, math.pi))
+    klann = ["--linkage", "klann"]
+    assert cli._parse_args([*klann, "--phases", "0,180,90,270"]).config.phases is None
+    assert cli._parse_args([*klann, "--module", "decker", "--phases", "0,180"]).config.phases \
+        == pytest.approx((0.0, math.pi))
     for bad in (["--module", "single", "--phases", "0,90"], ["--phases", "0,x,1,2"],
                 ["--proportion", "XX=1"], ["--proportion", "OB"], ["--proportion", "OB=-1"]):
         with pytest.raises(SystemExit):
-            cli._parse_args(bad)
+            cli._parse_args([*klann, *bad])
 
 
 def test_unassemblable_design_is_refused(tmp_path, capsys):
-    assert cli.main(["--module", "single", "--proportion", "MC=0.3", "--no-dxf",
-                     "--out", str(tmp_path)]) == 2
+    assert cli.main(["--linkage", "klann", "--module", "single", "--proportion", "MC=0.3",
+                     "--no-dxf", "--out", str(tmp_path)]) == 2
     assert "C can't be placed" in capsys.readouterr().err

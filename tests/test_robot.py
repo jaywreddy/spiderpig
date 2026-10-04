@@ -22,6 +22,7 @@ from spiderpig.hardware import fasteners
 from spiderpig.hardware.catalog import CATALOG, _load, get
 from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
 from spiderpig.shapes import disc
+from tests.tiers import quick
 
 TS = (1.0, 4.38)
 
@@ -34,7 +35,7 @@ def _volume(shape) -> float:
     return 0.0 if shape is None else sum(s.volume for s in shape.solids())
 
 
-@pytest.mark.parametrize("t", TS)
+@pytest.mark.parametrize("t", quick(TS, [TS[0]]))
 def test_no_two_parts_of_the_robot_intersect(robot, t):
     assert clashes(robot("single", t)) == []
 
@@ -160,7 +161,10 @@ def test_ties_join_the_inner_plates_above_them(design, robot):
 
 def test_frame_ties_only_touch_the_inner_plate(design):
     """The ties are the robot's: a side's design has none, and what they add to the side
-    (their spigot holes and pads) is all in the inner plate."""
+    (their spigot holes and pads, and the electronics deck rail's two spigot holes) is all
+    in the inner plate."""
+    from spiderpig.construction.deck import SPIGOT_D, spigot_points
+
     tmpl, d = design("single")
     assert not any(isinstance(g, FrameTies) for g in d.groups)
     ties = FrameTies(d.drive)
@@ -169,7 +173,13 @@ def test_frame_ties_only_touch_the_inner_plate(design):
     assert got.bodies == []
     assert set(got.cuts) == {FRAME_INNER}
     assert set(got.pads) == {FRAME_INNER}
-    assert len(got.cuts[FRAME_INNER]) == 4
+    build = Build(d.ctx, d.plan, tmpl.freeze_at(1.0))
+    deck = spigot_points(build, d.drive)
+    assert len(deck) == 2                                    # the deck fits the Strider
+    p = d.ctx.params
+    holes = sorted(c.d for c in got.cuts[FRAME_INNER])
+    assert len(holes) == 4 + len(deck)
+    assert holes.count(p.hole(SPIGOT_D, "glue")) == len(deck)
 
 
 def test_ties_keep_clear_of_the_servo(design, robot):

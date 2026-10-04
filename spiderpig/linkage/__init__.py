@@ -68,6 +68,7 @@ from spiderpig.linkage.checks import (
 )
 from spiderpig.linkage.engine import (
     DEFAULT,
+    KLANN_QUAD,
     MODULE_LEGS,
     MODULES,
     MOTIONS,
@@ -99,7 +100,8 @@ from spiderpig.linkage.engine import (
 )
 
 __all__ = [
-    "DEFAULT", "MODULE_LEGS", "MODULES", "MOTIONS", "ON_LINE_MM", "REGISTRY", "STILL_DEG",
+    "DEFAULT", "KLANN_QUAD", "MODULE_LEGS", "MODULES", "MOTIONS", "ON_LINE_MM", "REGISTRY",
+    "STILL_DEG",
     "TOGGLE_DEG", "AssemblyError", "LegList", "LegSolution", "Linkage", "LinkSpec", "Module",
     "Output", "OutputCheck", "OutputError", "P", "StepCheck", "Steps", "available",
     "build_leg_template", "build_module_template", "check_output", "check_steps",

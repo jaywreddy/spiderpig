@@ -230,13 +230,6 @@ def main(argv: list[str] | None = None) -> int:
     from spiderpig.store import Store
 
     store = Store.of(args.store) if args.store else Store.default()
-    if viewer_built() is None:
-        from spiderpig.server.app import VIEWER_DIST
-
-        print(f"error: the viewer isn't built ({VIEWER_DIST} has no index.html). From a "
-              "checkout run `mise run viewer-build`; a release wheel ships it. "
-              "SPIDERPIG_VIEWER_DIST=<dir> points at another build.", file=sys.stderr)
-        return 2
     design = None
     if args.design:
         try:
@@ -256,6 +249,15 @@ def main(argv: list[str] | None = None) -> int:
         if design is not None:
             print(f"resolved the build options into {store.root.resolve()} as design "
                   f"{design.id} (spiderpig view {design.id} shows it again)", file=sys.stderr)
+    # the arguments first (an unknown design, a missing one), then whether there is a
+    # viewer to serve them with, before anything is exported
+    if viewer_built() is None:
+        from spiderpig.server.app import VIEWER_DIST
+
+        print(f"error: the viewer isn't built ({VIEWER_DIST} has no index.html). From a "
+              "checkout run `mise run viewer-build`; a release wheel ships it. "
+              "SPIDERPIG_VIEWER_DIST=<dir> points at another build.", file=sys.stderr)
+        return 2
     if design is not None and not args.no_export:
         print(f"exporting the glb of {design.id} (built and baked once, then cached)...",
               file=sys.stderr, flush=True)

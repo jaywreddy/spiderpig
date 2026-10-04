@@ -130,8 +130,30 @@ class DriveGroup(Group):
         The crank bolts on at or below the inner plate's bottom face (it turns
         against the plate otherwise).
         """
-        t = ctx.pitch - self.spec.horn_face_depth
+        plate = ctx.sheet_t("frame")            # the inner frame plate
+        t = plate - self.spec.horn_face_depth
+        if self._face_on_layer(ctx):
+            # a crank of laser plates (the bolt crank) needs the face on a layer boundary:
+            # the plate's bottom face, or a layer's under it (the horn's layers hold no
+            # plate of the crank's: the default sheet's thickness)
+            layer = ctx.pitch
+            n = max(0, math.ceil((self.spec.horn_face_depth - plate) / layer - 1e-9))
+            t = plate + n * layer - self.spec.horn_face_depth
+            if 1e-6 < t < MIN_SPACER:
+                t += layer
+            return 0.0 if t <= 1e-6 else t
         return 0.0 if t <= 1e-6 else max(t, MIN_SPACER)
+
+    @staticmethod
+    def _face_on_layer(ctx: Context) -> bool:
+        """Whether the side's crank construction needs the horn's face on a layer boundary
+        (its hub is whole laser-cut plates)."""
+        key = getattr(ctx.config, "crank", None)
+        if key is None:
+            return False
+        from spiderpig.construction import CRANKS
+
+        return bool(getattr(CRANKS.get(key), "face_on_layer", False))
 
     def pattern_angle(self, ctx: Context) -> float:
         """Horn-hole angle (from the first crankpin) farthest from every crankpin.
@@ -190,6 +212,10 @@ class DriveGroup(Group):
             center_head_d=h.center_screw_head_d,
             center_head_h=max(0.0, h.center_screw_head_h - t),
             pattern_angle=self.pattern_angle(ctx),
+            plate_t=ctx.sheet_t("frame"),
+            horn_layers=(round((s.horn_face_depth + t - ctx.sheet_t("frame")) / ctx.pitch)
+                         if self._face_on_layer(ctx) else 0),
+            spacer_t=t,
         )
 
     # -- mounting screws ------------------------------------------------------------
@@ -204,6 +230,10 @@ class DriveGroup(Group):
         iface = self.interface(ctx)
         p = ctx.params
         hub = max(iface.horn_radius, iface.screw_pcd / 2 + iface.screw_head_d / 2 + p.min_wall)
+        if iface.horn_layers >= 1:
+            # the hub steps down a layer under the horn (a crank of whole plates): the heads
+            # under the plate meet only the horn and its spacer, so all four front screws
+            hub = iface.horn_radius
         out = []
         for i, mh in enumerate(self.spec.mount):
             parsed = parse(mh.screw)
@@ -231,26 +261,67 @@ class DriveGroup(Group):
         if ctx.topo.center is None:
             return []
         screws = self.front_screws(ctx)
-        if not screws:
-            return []
         geo = ctx.topo.geometry
         o, u = self._frame(ctx)
         v = np.array([u[1], -u[0]])
-        for name, mh, _, _ in screws:
+        heads: list[tuple[str, float, float, float, str]] = []   # name, hole r, head r, h
+        for name, mh, sk, _ in screws:
             xy = o + mh.x * u + mh.y * v
             geo.points[name] = np.broadcast_to(xy, (geo.samples, 2))
+            heads.append((name, mh.d / 2, sk.head_d / 2, sk.head_h, "servo screw"))
+        # the frame ties' and the deck rails' screws come up through the inner plate from the
+        # leg side too (construction.chassis, construction.deck): their heads are claimed here
+        for name, xy, hole, r, h, what in self.chassis_screws(ctx):
+            geo.points[name] = np.broadcast_to(np.asarray(xy, dtype=float), (geo.samples, 2))
+            heads.append((name, hole, r, h, what))
         geo.__dict__.pop("step", None)      # cached per point; recompute with the new ones
+        if not heads:
+            return []
+
+        from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
         def make(L: Layout):
-            plate_bottom = L.z(L.top)[0]
             out = []
-            for name, mh, sk, _ in screws:
-                out.append(Placed(L.top, Disc(name, mh.d / 2), GROUP, "servo screw", seat=True))
-                out += [Placed(k, Disc(name, sk.head_d / 2), GROUP, "servo screw head")
-                        for k in L.layers_between(plate_bottom - sk.head_h, plate_bottom)]
+            for name, hole, r, h, what in heads:
+                out.append(Placed(L.top, Disc(name, hole), GROUP, what, seat=True))
+                # the head under the plate: in the clearance gap there, or the layer under
+                # it where nothing else is (its height declared, the gap sized to it)
+                out.append(Placed(L.top - 1, Disc(name, r), GROUP, f"{what} head", gap=True,
+                                  height=h + HEAD_CLEARANCE, toward=-1))
             return out
 
         return [Claim("servo screws", frozenset(), make)]
+
+    def chassis_screws(self, ctx: Context) -> list[tuple[str, tuple, float, float, float, str]]:
+        """The screws the robot's chassis puts up through this side's inner plate from the
+        leg side: ``(point, xy, hole radius, head radius, head height, what)``; none for a
+        servo with no chassis (a frame tie or deck that doesn't fit: the robot says why)."""
+        from spiderpig.construction.chassis import tie_dims, tie_points_ctx
+        from spiderpig.construction.deck import (
+            RAIL_HOLE,
+            RAIL_SCREW,
+            RAIL_SCREW_R,
+            rail_screw_points,
+        )
+
+        out = []
+        lk = getattr(ctx.config, "lk", None)
+        if lk is not None and lk.kind != "walker":
+            return out          # a mechanism is one side: no chassis
+        try:
+            d = tie_dims(ctx)
+            for i, xy in enumerate(tie_points_ctx(ctx)):
+                out.append((f"frame.tie{i}", xy, d.hole_d / 2, d.head_r + 0.3, d.head_h,
+                            "frame tie screw"))
+        except (ConstructionError, ValueError):
+            pass
+        try:
+            for i, xy in enumerate(rail_screw_points(ctx)):
+                out.append((f"frame.rail{i}", xy, RAIL_HOLE / 2, RAIL_SCREW_R,
+                            RAIL_SCREW.head_h, "deck rail screw"))
+        except (ConstructionError, ValueError):
+            pass
+        return out
 
     # -- build ------------------------------------------------------------------
 
@@ -303,9 +374,15 @@ class DriveGroup(Group):
         body = _placed_servo(s, _key(o, u, plate_top))
         out.bodies.append(hardware("servo", body, frame_host, fab="purchased",
                                    bom_key=s.bom_key, color=SERVO_COLOR))
+        from spiderpig.materials import sheet
+
+        key = ctx.sheet("frame")
+        min_hole = sheet(key).min_hole if key else 0.0
         for i, (_, mh, sk, length) in enumerate(self.front_screws(ctx)):
             xy = world(mh.x, mh.y)
-            out.cut(FRAME_INNER, Cut(xy, mh.d))
+            # a hole the service cuts (SendCutSend: at least the sheet's thickness); a pan
+            # head still bears on the ring round it
+            out.cut(FRAME_INNER, Cut(xy, max(mh.d, min_hole + 0.025)))
             out.bodies.append(hardware(f"servo_screw{i}", screw_solid(xy, sk, plate_bottom, length),
                                        frame_host, fab="purchased", bom_key=mh.screw, color=STEEL))
 
@@ -317,6 +394,11 @@ class DriveGroup(Group):
         out.bodies.append(hardware("servo_horn", horn, crank_host or frame_host,
                                    fab="purchased", bom_key=s.horn.bom_key, color=HORN_COLOR))
         t = self.spacer(ctx)
+        iface: DriveInterface = ctx.interfaces[self.name]
+        if iface.horn_layers:       # the hub's top face, at the plan's z
+            hub_top = build.z(build.top - iface.horn_layers - 1)[1]   # over a gap too
+            t = plate_top - s.horn_face_depth - hub_top
+            t = 0.0 if t <= 1e-6 else t
         if t > 0:
             face = plate_top - s.horn_face_depth
             spacer = disc(tuple(o), s.horn.diameter / 2, face - t, face)
@@ -327,6 +409,15 @@ class DriveGroup(Group):
             if s.horn.center_screw_head_d > 0:
                 holes.append(disc(tuple(o), (s.horn.center_screw_head_d + p.print_fit) / 2,
                                   face - t - 1, face + 1))
+            # a crankpin's screw head over the crank's hub plate (a short crank): a pocket
+            hub = build.top - iface.horn_layers - 1 if iface.horn_layers else None
+            for sh in build.plan.shapes("crank"):
+                if (hub is not None and sh.label.startswith("crankpin screw")
+                        and sh.toward > 0
+                        and sh.layer == (hub if sh.gap else hub + 1)):    # in its gap, or sunk
+                    xy = tuple(build.xy(sh.shape.at))
+                    if math.dist(xy, tuple(o)) - sh.shape.r < s.horn.diameter / 2:
+                        holes.append(disc(xy, sh.shape.r, face - t - 1, face + 1))
             for hole in holes:
                 spacer = spacer - hole
             out.bodies.append(hardware("servo_horn_spacer", spacer, crank_host or frame_host,

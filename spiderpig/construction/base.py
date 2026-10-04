@@ -99,7 +99,8 @@ class Params:
     neck_d: float = 4.0            # thinnest an axle may neck down where a link passes
     head_d: float = 8.5            # head / cap outside the plates it retains
     # printed crank
-    crankpin_d: float = 6.0        # post b1 turns on
+    crankpin_d: float = 6.0        # post b1 turns on (at least: the keyed crank's hex cavity
+    #                                needs its 8.5 mm post, KeyedCrank.post_d)
     web_radius: float = 6.0        # half-width of a crank web (O to crankpin)
     journal_d: float = 12.0        # crank body on the axis O
     stub_d: float = 8.0            # journal stub turning in the outer frame plate
@@ -129,6 +130,12 @@ class DriveInterface:
     center_head_d: float      # pocket for the horn's centre screw head
     center_head_h: float
     pattern_angle: float = 0.0  # first horn hole, radians from the crank's first crankpin
+    plate_t: float = 0.0        # the inner frame plate's thickness (0: the pitch)
+    # a crank of whole plates (face on a layer boundary): the horn's face is the bottom
+    # face of the ``horn_layers``-th layer under the inner plate, whatever their thickness
+    # (the printed horn spacer takes up the rest: ``spacer_t`` is its nominal thickness)
+    horn_layers: int = 0
+    spacer_t: float = 0.0
 
 
 @dataclass
@@ -144,6 +151,24 @@ class Context:
 
     def layout(self, layers, top: int) -> Layout:
         return Layout(layers, top, self.pitch)
+
+    def sheet(self, role: str, link: str | None = None) -> str | None:
+        """The sheet a part of ``role`` is cut from (:func:`materials.sheet_of`: "frame",
+        "crank", "link", else the default sheet); ``None`` without a build config."""
+        if not hasattr(self.config, "frame_sheet"):
+            return getattr(self.config, "sheet", None)
+        from spiderpig.materials import sheet_of
+
+        return sheet_of(self.config, role, link)
+
+    def sheet_t(self, role: str, link: str | None = None) -> float:
+        """That sheet's thickness (the pitch for the default sheet, which may be measured)."""
+        key = self.sheet(role, link)
+        if key is None or key == getattr(self.config, "sheet", None):
+            return self.pitch
+        from spiderpig.materials import thickness
+
+        return thickness(self.config, key)
 
 
 @dataclass
@@ -212,6 +237,9 @@ class Realized:
     # frame plate -> pills to add to its outline
     pads: dict[str, list[tuple[XY, XY, float]]] = field(default_factory=dict)
     extras: list[BomLine] = field(default_factory=list)
+    # what a construction wants the mechanism's meta to say (key -> dict merged per key):
+    # the printed axles' snap strains ("snap_strain")
+    notes: dict[str, dict] = field(default_factory=dict)
 
     def cut(self, plate: str, cut: Cut) -> None:
         self.cuts.setdefault(plate, []).append(cut)
@@ -226,6 +254,8 @@ class Realized:
         for k, v in other.pads.items():
             self.pads.setdefault(k, []).extend(v)
         self.extras.extend(other.extras)
+        for k, v in other.notes.items():
+            self.notes.setdefault(k, {}).update(v)
 
 
 class Group:
@@ -265,6 +295,8 @@ class Group:
 
 
 def hardware(name: str, part, host: str, *, fab: str, bom_key: str | None = None,
-             color: str | None = None) -> Body:
-    """A non-kinematic body riding ``host`` (world-coordinate part)."""
-    return Body(name=name, part=part, color=color, rigid_with=host, fab=fab, bom_key=bom_key)
+             color: str | None = None, sheet: str | None = None) -> Body:
+    """A non-kinematic body riding ``host`` (world-coordinate part); a laser-cut one names
+    its ``sheet`` (``None``: the default sheet)."""
+    return Body(name=name, part=part, color=color, rigid_with=host, fab=fab, bom_key=bom_key,
+                sheet=sheet)

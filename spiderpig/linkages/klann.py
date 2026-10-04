@@ -12,7 +12,16 @@ from __future__ import annotations
 
 import sympy as sp
 
-from spiderpig.linkage import Linkage, P, circle_x_circle, crank, extend, register, rotate, xy
+from spiderpig.linkage import (
+    Linkage,
+    P,
+    circle_x_circle,
+    crank,
+    extend,
+    register,
+    rotate,
+    xy,
+)
 
 PARAMS = {
     "OA": sp.Integer(60),

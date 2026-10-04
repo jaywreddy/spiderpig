@@ -14,6 +14,7 @@ from spiderpig.config import BuildConfig, ParamError
 from spiderpig.construction import ConstructionError
 from spiderpig.construction.contract import check_side
 from spiderpig.fabricate import design_side, template_for
+from tests.tiers import quick
 
 MECHANISMS = linkage.available("mechanism")
 
@@ -101,7 +102,7 @@ def test_two_inputs_are_checked_over_their_torus():
     assert pts["M2"][:, 0] == pytest.approx([80.0, 120.0])        # t2 turns the second crank
 
 
-@pytest.mark.parametrize("key", MECHANISMS)
+@pytest.mark.parametrize("key", quick(MECHANISMS, ["five_bar", "hoecken"]))
 def test_one_side_plans_or_the_pipeline_says_why(key):
     """One side lays out and every part stays inside its claims, or a stage says why."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
@@ -120,7 +121,7 @@ def test_one_side_plans_or_the_pipeline_says_why(key):
     for t in (0.0, 2.2):
         assert check_side(design, tmpl.freeze_at(t)) == []
     if key == "peaucellier_crank":      # the long arms sweep over Y: its pillar holds one side
-        assert ("b3 passes pillar:Y at 0.1 mm, under the 9.0 mm its thinnest part needs, so it "
+        assert ("b3 passes pillar:Y at 0.1 mm, under the 11.7 mm its thinnest part needs, so it "
                 "can't be in any layer pillar:Y spans") in [c.describe() for c in design.clearances]
 
 

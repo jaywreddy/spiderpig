@@ -16,7 +16,11 @@ from spiderpig.config import BuildConfig
 from spiderpig.failure import Failure, apply_patch, parse_blocker
 from spiderpig.spec import TARGET_FIELDS, Spec, SpecErrors, Target, spec_schema, validate
 
-KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}}
+# The numbers below are the keyed crank's and the printed pillars' (the defaults before the
+# bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
+# height, parts and cost stay what these tests check
+OLD = {"constructions": {"crank": "keyed", "pillar": "printed"}}
+KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}}      # the default quad
 
 
 def _errors(doc: dict) -> dict[str, list]:
@@ -111,7 +115,7 @@ def test_schema_is_json_and_lists_the_vocabularies():
     schema = spec_schema()
     text = json.dumps(schema)
     assert schema["required"] == ["kind", "linkage"]
-    assert schema["properties"]["linkage"]["properties"]["key"]["enum"][0] == "klann"
+    assert schema["properties"]["linkage"]["properties"]["key"]["enum"][0] == "strider"
     assert schema["properties"]["size"]["properties"]["stack_mm"]["properties"]["hard"]["default"]
     assert not schema["properties"]["motion"]["properties"]["bob_mm"]["properties"]["hard"][
         "default"]
@@ -129,7 +133,7 @@ def test_resolve_infers_the_rest_and_the_id_is_stable_with_defaults_dropped():
     b = api.resolve({"kind": "walker", "linkage": {"key": "klann", "params": {"OA": 60}},
                      "legs": {"module": "quad", "sides": 2, "phases_deg": [0, 180, 90, 270]},
                      "materials": {"sheet": "acrylic_3mm", "servo": "sts3215"},
-                     "constructions": {"pillar": "printed", "pin": "printed", "crank": "printed"},
+                     "constructions": {"pillar": "standoff", "pin": "chicago", "crank": "bolt"},
                      "fit": {"link_radius": 6.0}})
     assert a.id == b.id == api.resolve(KLANN_QUAD).id
     assert len(a.id) == 16
@@ -155,7 +159,8 @@ def test_resolve_infers_the_rest_and_the_id_is_stable_with_defaults_dropped():
 
 def test_linkage_cards():
     keys = [c["key"] for c in api.list_linkages("walker")]
-    assert keys[0] == "klann"
+    assert keys[0] == "strider"
+    assert "klann" in keys
     assert "hoecken" not in keys
     card = api.describe("klann")
     assert card["scale_params"] == ["OA"]
@@ -190,12 +195,15 @@ def test_check_plan_walk_on_the_default_quad(quad):
     assert cr.crank_facts["hosts"]["b1_leg0"] == ["M_leg0"]
     pr = api.plan(quad)
     assert pr.ok
-    assert pr.n_layers == 12
-    assert pr.height_mm == 36.0
-    assert pr.optimal
-    assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": 2 + 2 * k, "hi": 2 + 2 * k}
+    # the bolt crank's two-plate stacks, a bare layer under each rider (the bolt's plain
+    # shank) and the shared mid stacks: 31 layers (the keyed crank's were 16; 26 while the
+    # catalog listed an M6 x 25 partially threaded bolt, which isn't sold: from 30 mm the
+    # shortest chain's run is 4 layers)
+    assert pr.n_layers == 31
+    assert pr.height_mm == pytest.approx(95.975)      # aluminium frame plates and foot links
+    assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": 4 + 6 * k, "hi": 7 + 6 * k}
                                  for k in range(4)], "bearing": True}
-    assert pr.layers["b1_leg0"] == 2
+    assert pr.layers["b1_leg0"] == 5
     assert "inner frame plate" in pr.table
     wr = api.walk(quad)
     assert wr.ok
@@ -204,7 +212,8 @@ def test_check_plan_walk_on_the_default_quad(quad):
     assert wr.metrics["stride_mm"] == pytest.approx(102.4, abs=0.1)
     assert api.recommend(quad) == []
     assert "3. plan" in api.explain(quad)
-    assert [e["op"] for e in quad.log][:3] == ["check", "plan", "walk"]
+    ops = [e["op"] for e in quad.log]     # the handle is the module's: other tests of it log
+    assert {"check", "plan", "walk"} <= set(ops)   # their ops too, in xdist's order
     json.dumps(quad.to_dict())     # every report is JSON-able
 
 
@@ -216,7 +225,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == 36.0
+    assert rows["size.stack_mm"].value == pytest.approx(95.975)
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -227,25 +236,25 @@ def test_verify_quick_passes_with_tiers(quad):
 
 
 def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score():
-    hard = api.resolve({**KLANN_QUAD, "size": {"stack_mm": {"max": 30}},
+    hard = api.resolve({**KLANN_QUAD, **OLD, "size": {"stack_mm": {"max": 30}},
                         "motion": {"stride_mm": {"min": 90}}})
     rep = api.verify(hard, "quick")
     assert not rep.ok
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert row.hard
-    assert row.value == 36.0
+    assert row.value == pytest.approx(49.05)       # 16 layers: the keyed crank's top webs
     assert row.target == "<= 30"
     assert rep.score == 1.0                        # the stride, the only soft target, is met
-    soft = api.resolve({**KLANN_QUAD, "size": {"stack_mm": {"max": 30, "hard": False}},
+    soft = api.resolve({**KLANN_QUAD, **OLD, "size": {"stack_mm": {"max": 30, "hard": False}},
                         "motion": {"stride_mm": {"min": 90}}})
     rep = api.verify(soft, "quick")
     assert rep.ok
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert not row.hard
-    assert row.score == pytest.approx(0.8)
-    assert rep.score == pytest.approx(0.9)         # the mean of stride 1.0 and stack 0.8
+    assert row.score == pytest.approx(0.365)       # 49.05 mm against 30: 1 - 19.05 / 30
+    assert rep.score == pytest.approx(0.6825)      # the mean of stride 1.0 and stack 0.365
     assert hard.id != soft.id
 
 
@@ -257,7 +266,7 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
 def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_plans():
     heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
                                                       "params": {"unit": 7}},
-                        "legs": {"module": "single"}})
+                        "legs": {"module": "single"}, **OLD})      # the keyed crank's post
     cr = api.check(heel)
     assert not cr.ok
     (f,) = cr.failures
@@ -265,22 +274,22 @@ def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_
     assert f.culprits[0]["body"] == "b7"
     assert f.culprits[0]["point"] == "J1"
     assert f.numbers["dist_mm"] == pytest.approx(6.8, abs=0.05)
-    assert f.numbers["need_mm"] == 10.0
+    assert f.numbers["need_mm"] == 11.25          # the keyed crank's 8.5 mm post: 4.25 + 6 + 1
     (rec,) = f.recommendations
-    assert rec.patch == {"linkage": {"params": {"unit": 10.5}}}
-    assert rec.changes == [{"name": "unit", "before": 7.0, "after": 10.5}]
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 12 ")
+    assert rec.patch == {"linkage": {"params": {"unit": 12.0}}}
+    assert rec.changes == [{"name": "unit", "before": 7.0, "after": 12.0}]
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 14 ")
     assert api.recommend(heel) == [rec]
     assert api.plan(heel).failures == cr.failures
     rep = api.verify(heel, "quick")
     assert not rep.ok
     assert rep.failures[0].code == "link_no_layer"
     fixed = api.resolve(apply_patch(heel.spec.to_dict(), rec.patch))
-    assert fixed.resolved["linkage"]["params"]["unit"] == 10.5
+    assert fixed.resolved["linkage"]["params"]["unit"] == 12.0
     assert fixed.id != heel.id
     pr = api.plan(fixed)
     assert pr.ok
-    assert pr.n_layers == 12
+    assert pr.n_layers == 14
 
 
 def test_a_broken_loop_is_a_program_failure_with_its_numbers():
@@ -343,14 +352,17 @@ def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
     b1 = quad.parts["L.b1_leg0"]
     assert b1.solid is robot("quad", 1.0).body("L.b1_leg0").part
     assert (b1.group, b1.side, b1.fab, b1.material) == ("links", "L", "laser", "sheet")
-    assert b1.layers == (2,)
+    assert b1.layers == (5,)
     assert not b1.edited
-    assert quad.parts["R.b1_leg0"].layers == (2,)
+    assert quad.parts["R.b1_leg0"].layers == (5,)
     assert quad.parts["R.b1_leg0"].side == "R"
     assert quad.parts["L.servo"].group == "drive"
     assert quad.parts["L.servo"].mass_g == 55.0
-    assert quad.parts["L.pillar_A_leg0_seg0"].group == "pillar:A_leg0"
-    assert quad.parts["L.crank_seg0"].group == "crank"
+    standoff = next(k for k in quad.parts if k.startswith("L.pillar_A_leg0_standoff"))
+    assert quad.parts[standoff].group == "pillar:A_leg0"
+    plate = next(k for k in quad.parts if k.startswith("L.crank_plate"))
+    assert quad.parts[plate].group == "crank"
+    assert quad.parts[plate].fab == "laser"
     assert quad.parts["centre_plate0"].group == "chassis"
     assert quad.parts["centre_plate0"].side \
         is None
@@ -362,6 +374,7 @@ def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
     assert quad.parts["L.b1_leg0"].solid is robot("quad", 1.0).body("L.b1_leg0").part
 
 
+@pytest.mark.slow
 def test_an_edited_solid_that_leaves_its_claim_or_clashes_is_caught():
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                      "legs": {"module": "single", "sides": 1}})
@@ -425,13 +438,17 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     rep = api.export(d, out_dir=tmp_path)
     assert rep.ok
     names = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
-    assert {"klann.step", "laser/klann_sheet_0.dxf", "laser/klann_sheet_parts.csv", "bom.csv",
+    assert {"klann.step", "laser/klann_sheet_acrylic_3mm_0.dxf",          # a set per sheet
+            "laser/klann_sheet_al5052_3p2mm_0.dxf", "laser/klann_sheet_parts.csv", "bom.csv",
             "bom.md", "bom.json", "manifest.json"} <= names
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["design"] == d.id
-    assert manifest["plan"]["layers"] == 7
+    assert manifest["plan"]["layers"] == 13          # the bolt crank's (keyed: 7)
     assert manifest["bom"]["items"] > 0
-    assert len(manifest["parts"]) == 28
+    # the bolt crank's plates, bolts, nuts and stub, the standoff pillars' segments, rings,
+    # screws and washers (keyed and printed: 35)
+    assert len(manifest["parts"]) == 58          # 54 with the M6 x 25 bolt (11 layers)
+                                          # and shims, + the keyed crank's key
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -441,7 +458,7 @@ def test_export_writes_what_the_cli_writes(tmp_path):
 # ---------------------------------------------------------------------------
 
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
-                "legs": {"module": "single", "sides": 1}}
+                "legs": {"module": "single", "sides": 1}, **OLD}
 
 
 def test_a_walkers_card_says_which_modules_walk_and_how_each_parameter_moves_the_foot():
@@ -575,12 +592,17 @@ def test_recommend_offers_the_default_scale_when_a_scaled_down_plan_ran_out_of_r
     monkeypatch.setattr(rec, "_DONE", {})
     small = BuildConfig(linkage="jansen", module="quad", proportions=(("unit", 1.1),))
     recs, notes = rec.recommend(small, plan=True)                     # entry 9
-    (r,) = recs
+    r, printed = recs           # the scale first; printed pillars (the standoffs' rings fill)
+    assert printed.changes == (("pillar", "standoff", "printed"),)
     assert r.changes == (("unit", 1.1, 1.6),)
     assert r.verified == checked
     assert "default scale" in r.why
     assert notes == []
     recs, notes = rec.recommend(BuildConfig(linkage="jansen", module="quad"), plan=True)
+    assert [r.changes for r in recs] == [(("pillar", "standoff", "printed"),)]   # no scale
+    assert notes == []                        # a lever left: printed pillars
+    recs, notes = rec.recommend(BuildConfig(linkage="jansen", module="quad", pillar="printed"),
+                                plan=True)
     assert recs == []
     assert "stack's own room" in notes[0]
     assert "levers left" in notes[0]
@@ -604,7 +626,7 @@ def test_capture_warnings_collects_the_constructions_warnings_once():
 
 
 THIN = {"kind": "walker", "linkage": {"key": "klann"}, "legs": {"module": "single", "sides": 1},
-        "materials": {"thickness_mm": 2}}
+        "materials": {"thickness_mm": 2}, **OLD}
 
 
 def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_patch():
@@ -615,14 +637,15 @@ def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_p
     assert not cr.ok
     (f,) = cr.failures
     assert (f.stage, f.code) == ("construction", "unbuildable")
-    assert f.message.startswith("no M3 screw and nut fit a crankpin joint in 2 mm layers: ")
-    assert "the least layer pitch that fits is 2.9 mm" in f.message
-    assert "materials.thickness_mm 2 -> 3 (the acrylic_3mm sheet's nominal)" in f.message
-    assert f.numbers == {"pitch_mm": 2, "least_pitch_mm": 2.9}
+    assert f.message.startswith("no M3 screw, nut and 4 mm hex key fit a keyed crankpin joint "
+                                "in 2 mm layers: ")
+    assert "the least layer pitch that fits is 3 mm" in f.message
+    assert "materials.thickness_mm 2 -> 3, or a thicker sheet" in f.message    # 3 is nominal
+    assert f.numbers == {"pitch_mm": 2, "least_pitch_mm": 3.0}
     (rec,) = f.recommendations
     assert rec.patch == {"materials": {"thickness_mm": 3.0}}
     assert rec.changes == [{"name": "thickness_mm", "before": 2, "after": 3.0}]
-    assert rec.why.startswith("the printed crank's crankpin joints need layers of at least 2.9 mm")
+    assert rec.why.startswith("the keyed crank's crankpin joints need layers of at least 3 mm")
     assert rec.verified.startswith("checked: the static stage passes, and it plans in 7 layers")
     assert api.recommend(thin) == [rec]
     assert api.plan(thin).failures == cr.failures
@@ -717,15 +740,17 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
 
     one = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                        "legs": {"module": "single", "sides": 1},
-                       "budget": {"cost_usd": {"max": 100}}}, store=None)
+                       "budget": {"cost_usd": {"max": 200}}, **OLD}, store=None)
     total, priced, unpriced = cost_floor(one)                              # entry 4
     from spiderpig import servos
     from spiderpig.hardware.catalog import get as item
 
     servo = item(servos.get("sts3215").bom_key).offer.price_usd
     glue, nuts = 13.99, 2.39     # round 4: a bottle of CA for the anchors, the crank's nuts
-    assert total == pytest.approx(servo + 25.49 + 10.99 + glue + nuts, abs=0.01)
-    assert unpriced == []
+    al, al6061 = 28.0, 32.0      # a blank of each aluminium sheet: the frame, a Klann's feet
+    assert total == pytest.approx(servo + 25.49 + 10.99 + al + al6061 + glue + nuts, abs=0.01)
+    assert unpriced == ["M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F",
+                        "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml"]
     assert priced[0].startswith("Feetech STS3215")
     rep = api.verify(one, "quick")
     rows = {r.requirement: r for r in rep.rows}
@@ -734,12 +759,12 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     assert "counted after a build (verify standard)" in rows["budget.cost_floor_usd"].detail
     assert rep.unverified == ["budget.cost_usd"]
     assert rep.ok
-    robot = api.resolve({**KLANN_QUAD, "materials": {"servo": "xl330_m288"},
+    robot = api.resolve({**KLANN_QUAD, **OLD, "materials": {"servo": "xl330_m288"},
                          "budget": {"cost_usd": {"max": 100}}}, store=None)
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
-    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + 12.84 + 11.37 + glue + nuts,
-                                  abs=0.01)
+    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + al + al6061 + 12.84 + 11.37
+                                  + glue + nuts, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
@@ -753,12 +778,13 @@ def test_the_recommendation_says_which_module_it_checked():
     from spiderpig import recommend as rec
     from spiderpig.config import BuildConfig
 
-    text = rec._verify(BuildConfig(module="quad", robot=False), plan=False)   # entry 5
+    text = rec._verify(BuildConfig(linkage="klann", module="quad", robot=False),
+                       plan=False)                                                # entry 5
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "7 layers (21 mm); the quad module's own plan is not checked here")
+                           "13 layers (40.4 mm); the quad module's own plan is not checked here")
     assert "the planner's deadline is 60 s" in text
-    assert rec._verify(BuildConfig(module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 7 layers (21 mm)"
+    assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
+        == "checked: the static stage passes, and it plans in 13 layers (40.4 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
@@ -824,7 +850,7 @@ def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
                     store=tmp_path)
     cards = {c["id"]: c for c in api.list_designs(store=tmp_path)}         # entry 9
     assert cards[a.id]["constructions"] == {"pillar": "bearing", "pin": "bearing",
-                                            "crank": "printed"}
+                                            "crank": "bolt", "heads": "best"}
     assert cards[b.id]["constructions"]["pin"] == "bushing"
     for c in (cards[a.id], cards[b.id]):
         assert c["servo"] == "xl330_m288"
@@ -834,6 +860,7 @@ def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
         assert c["targets"] == {"budget": ["cost_usd"]}
 
 
+@pytest.mark.slow
 def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
     import logging
 
@@ -924,15 +951,15 @@ def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_print
     from spiderpig.fabricate import side_problem, template_for
 
     assert BoltAxle().max_stack(3.0) == pytest.approx(45.0)                   # entry 7
-    cfg = BuildConfig(module="single", pillar="bolt", robot=False)
+    cfg = BuildConfig(linkage="klann", module="single", pillar="bolt", robot=False)
     _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
     assert problem.spec.max_top == 14
     assert problem.notes == ["pillar:A: the longest stock M3 screw (50 mm) clamps at most 15 "
                              "layers of 3 mm (45 mm), so no taller stack was searched"]
-    printed = BuildConfig(module="single", robot=False)
-    assert side_problem(template_for(printed), printed, hint=False)[2].spec.max_top == 40
+    printed = BuildConfig(linkage="klann", module="single", robot=False)
+    assert side_problem(template_for(printed), printed, hint=False)[2].spec.max_top == 60
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
-                     "constructions": {"pillar": "bolt"}})
+                     "constructions": {"pillar": "bolt", "crank": "keyed"}})
     pr = api.plan(d)
     assert not pr.ok
     (f,) = pr.failures
@@ -940,22 +967,23 @@ def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_print
     assert any("clamps at most 15 layers" in n for n in f.notes)
     rec = next(r for r in f.recommendations
                if r.patch == {"constructions": {"pillar": "printed"}})
-    assert "plans (quad module, the design's own) in 12 layers" in rec.verified
+    assert "plans (quad module, the design's own) in 16 layers" in rec.verified
 
 
 def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it(quad):
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
-                     "size": {"stack_mm": {"max": 30}}})
+                     "size": {"stack_mm": {"max": 30}}, **OLD})
     row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.stack_mm")
     assert not row.passed                            # entry 11
     assert row.tier == "proven"
-    assert row.detail.startswith("36 mm is proven the thinnest for klann's quad module on "
-                                 "3 mm layers (12 layers")
+    assert row.detail.startswith("49.05 mm is proven the thinnest for klann's quad module on "
+                                 "3 mm layers (16 layers")
     assert "no module of klann with fewer walks" in row.detail
     adv = api.advise(d)
     assert adv.stage == "target"
     assert adv.recommendations == []
-    assert adv.notes[0].startswith("size.stack_mm 36 vs <= 30: 36 mm is proven the thinnest")
+    assert adv.notes[0].startswith("size.stack_mm 49.05 vs <= 30: 49.05 mm is proven the "
+                                   "thinnest")
 
 
 def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups(quad, robot):
@@ -964,8 +992,9 @@ def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups
 
     cfg = quad.config
     b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg))     # entry 12
-    assert b["total"] == pytest.approx(460.6, rel=0.02)          # the fabricated default quad
-    assert b["links"] + b["servos"] + b["plates"] + b["printed"] == pytest.approx(b["total"])
+    assert b["total"] == pytest.approx(1088.4, rel=0.02)   # the default quad + its deck
+    assert (b["links"] + b["servos"] + b["plates"] + b["printed"] + b["deck"]
+            == pytest.approx(b["total"]))
     row = next(r for r in api.verify(quad, "quick").rows if r.requirement == "size.mass_g")
     assert row.tier == "estimated"
     assert row.detail.startswith("estimated before a build: links ")
@@ -994,7 +1023,8 @@ def test_captured_warnings_stay_off_the_terminal(caplog):
 
 
 def test_spec_of_a_config_round_trips():
-    cfg = BuildConfig(module="single", pin="bolt", thickness=2.9, servo="xl330_m288")
+    cfg = BuildConfig(linkage="klann", module="single", pin="bolt", thickness=2.9,
+                      servo="xl330_m288")
     doc = api.spec_of(cfg)                                                    # entry 10
     assert doc["constructions"]["pin"] == "bolt"
     assert doc["materials"]["thickness_mm"] == 2.9
@@ -1021,19 +1051,27 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
 
     d = api.resolve(STRIDER_DOUBLE_PLY, store=None)
     total, priced, unpriced = verify_module.cost_floor(d)                     # entry 1
-    assert total == pytest.approx(101.83)              # was 85.45: + a bottle of CA, a nut pack
-    assert unpriced == []
+    # the bolt crank's nylocks and threadlockers (its bolts; the Chicago pins and the standoff
+    # pillars' screws take the low-strength one) are bought whatever the sizes, but the
+    # catalog has no verified price for them yet; the plates' glue (wood glue, plywood) once
+    assert total == pytest.approx(99.44 + 28.0)    # keyed and printed: 101.83 (+ the frame's Al)
+    assert unpriced == ["M6 nylon-insert lock nut (DIN 985), 8 zinc",
+                        "Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
+                        "Loctite EA E-30CL), 2 x 25 ml",          # the Al crank's stacks
+                        "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
+                        "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml"]
     assert any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
-    assert any(line.startswith("M3 hex nut") and "(a pack of 100)" in line for line in priced)
-    lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}},
+    assert sum(line.startswith("Titebond II") for line in priced) == 1
+    lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}, **OLD},
                        store=None)
-    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86)    # the BOM says 80.66
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86 + 28.0)   # + its Al frame
     bolted = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"},
-                          "constructions": {"pillar": "bolt", "pin": "bolt"}}, store=None)
-    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.86 - 13.99)   # nothing glued
+                          "constructions": {"pillar": "bolt", "pin": "bolt", "crank": "keyed"}},
+                         store=None)
+    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.86 + 28.0 - 13.99)   # unglued
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
-    assert row.value == pytest.approx(72.86)
+    assert row.value == pytest.approx(72.86 + 28.0)
     assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
     assert "the sheets' count, the crank's screws" in row.detail
 
@@ -1049,6 +1087,7 @@ def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
     assert bom["cost_usd"] == pytest.approx(sum(r["cost_usd"] or 0 for r in bom["purchased"]))
 
 
+@pytest.mark.slow
 def test_a_robot_part_locates_a_cut_by_the_sides_coordinates_and_recheck_notes_a_miss(design):
     from build123d import Cylinder
 
@@ -1178,11 +1217,13 @@ def test_walks_means_a_stride_of_twenty_millimetres():
     assert "single (" not in note                       # a 4 mm shuffle isn't offered as a walk
 
 
+@pytest.mark.slow
 def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_terminal(caplog):
     import logging
 
     d = api.resolve({"kind": "walker", "linkage": {"key": "strider"},
-                     "legs": {"module": "single", "sides": 1}}, store=None)
+                     "legs": {"module": "single", "sides": 1},
+                     "constructions": {"pin": "printed"}}, store=None)     # not the rod default
     with caplog.at_level(logging.WARNING):
         cr = api.check(d)
         rep = api.verify(d, "standard")                                     # entry 12
@@ -1190,7 +1231,10 @@ def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_term
     assert isinstance(cr.warnings, list)
     assert rep.ok
     br = d.reports["build"]
-    assert any("snap prongs" in w for w in br.warnings)      # the printed pins do warn
+    # the planner relieves a snap lip it would once have warned about (the audit's snap
+    # column reports it), so a printed pin builds without a warning either way
+    assert isinstance(br.warnings, list)
+    assert not any("snap prongs" in w for w in br.warnings)
     assert [r for r in caplog.records if r.name.startswith("spiderpig.construction")] == []
 
 

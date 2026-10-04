@@ -10,16 +10,19 @@ const TAU = 2 * Math.PI;
 /** Held keys -> a command per track in [-1, 1] (left / right as seen walking forward). */
 export class Input {
   readonly held = new Set<string>();
+  /** Called when the held keys change (a key down, up, or the window losing focus): the
+   * physics drive sends its command then, not only from the animation loop. */
+  onChange: (() => void) | null = null;
   constructor(private readonly enabled: () => boolean) {
     addEventListener('keydown', (e) => {
       const t = e.target as HTMLInputElement;   // typing in a text / number field isn't driving
       if (!this.enabled() || !/^(Key[WASD]|Arrow)/.test(e.code)) return;
       if (t.tagName === 'INPUT' && /text|number/.test(t.type)) return;
-      this.held.add(e.code);
+      if (!this.held.has(e.code)) { this.held.add(e.code); this.onChange?.(); }
       e.preventDefault();
     });
-    addEventListener('keyup', (e) => this.held.delete(e.code));
-    addEventListener('blur', () => this.held.clear());
+    addEventListener('keyup', (e) => { if (this.held.delete(e.code)) this.onChange?.(); });
+    addEventListener('blur', () => { if (this.held.size) { this.held.clear(); this.onChange?.(); } });
   }
 
   read(scheme: Scheme): [number, number] {

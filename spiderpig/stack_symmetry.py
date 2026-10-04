@@ -149,15 +149,15 @@ def claims_commute(prob: stack.StackProblem, g: dict[str, str], sig: dict[str, s
                         break
                     if out1 is None:
                         continue
-                    a = sorted((p.layer, _shape(p.shape, sig), p.seat) for p in out1)
-                    b = sorted((p.layer, _shape(p.shape), p.seat) for p in out2)
+                    a = sorted((p.slot, _shape(p.shape, sig), p.seat) for p in out1)
+                    b = sorted((p.slot, _shape(p.shape), p.seat) for p in out2)
                     if a != b:
                         ok = False
                         break
                     for p in out1:
-                        key = (p.layer, _shape(p.shape, sig), p.seat)
+                        key = (p.slot, _shape(p.shape, sig), p.seat)
                         for q in out2:
-                            if (q.layer, _shape(q.shape), q.seat) == key:
+                            if (q.slot, _shape(q.shape), q.seat) == key:
                                 seen.setdefault(p.group, q.group)
                 if not ok:
                     break

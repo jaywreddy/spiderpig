@@ -34,7 +34,7 @@ description = "Bake <store>/bakes/<design>.glb (pass -- --module single --side e
 run         = "uv run python -m spiderpig.cli bake"
 
 [tasks.build]
-description = "Robot (default quad; pass -- --module single etc.): STEP/STL, print STLs, DXF sheets, BOM -> build/"
+description = "Robot (default: the Strider double; pass -- --linkage klann, --module single etc.): STEP/STL, print STLs, DXF sheets, BOM -> build/"
 run         = "uv run python -m spiderpig.cli build"
 
 [tasks.explain]
@@ -57,6 +57,22 @@ run         = "uv run python -m spiderpig.cli report"
 description = "pytest (unit; pass -m e2e for browser tests)"
 depends     = ["viewer-build"]
 run         = "uv run pytest"
+
+[tasks."test-quick"]
+description = "The quick tier for iteration: pytest -m 'not slow' on local cores (pass more pytest args after --)"
+run         = "uv run pytest -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal"
+
+[tasks.remote]
+description = "Run a command on $SPIDERPIG_REMOTE (default root@ao-server) in a synced copy of this worktree (e.g. mise run remote -- uv run python -m spiderpig.cli audit); logs and build/ come back to build/remote/<run>/"
+run         = "uv run python -m spiderpig.tools.remote --"
+
+[tasks."remote-test"]
+description = "The full suite on $SPIDERPIG_REMOTE with xdist (pass pytest args after --); junit + log in build/remote/<run>/"
+run         = "uv run python -m spiderpig.tools.remote --test --"
+
+[tasks."remote-audit"]
+description = "Each module's audit on $SPIDERPIG_REMOTE, one process per module (pass audit options after --, e.g. --linkage klann); reports in build/remote/<run>/audit/<module>/. Every module of the linkage (the Strider's quad plans since max_top 60, 2026-10-04)"
+run         = '''uv run python -m spiderpig.tools.remote -- bash -c 'mods="single double decker quad"; for m in $mods; do uv run --no-sync python -m spiderpig.cli audit --modules $m --out build/audit/$m "$@" > build/audit-$m.log 2>&1 & done; rc=0; for p in $(jobs -p); do wait $p || rc=1; done; for m in $mods; do tail -n 3 build/audit-$m.log; done; exit $rc' audit'''
 
 [tasks.mcp]
 description = "Serve the agent-facing API over MCP on stdio (pass -- --store PATH); for an MCP client's config, not a terminal"

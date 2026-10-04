@@ -30,6 +30,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
+from spiderpig.config import DEFAULT_CRANKS, BuildConfig
+from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
 from spiderpig.hardware.catalog import CATALOG
 from spiderpig.hardware.catalog import _load as _load_catalog
@@ -259,6 +261,8 @@ class MaterialsSpec:
     sheet: str | None = None
     thickness_mm: float | None = None
     servo: str | None = None
+    frame_sheet: str | None = None      # the frame plates' (aluminium by default)
+    crank_sheet: str | None = None      # the crank's plates'
 
 
 @dataclass(frozen=True)
@@ -269,6 +273,7 @@ class ConstructionsSpec:
     pillar: str | None = None
     pin: str | None = None
     crank: str | None = None
+    heads: str | None = None     # fasteners' heads: "sink", "gap" or "best" (stack.StackSpec)
 
 
 @dataclass(frozen=True)
@@ -708,13 +713,17 @@ def validate(data: Mapping) -> list[SpecError]:
             v.targets(top[section], section, kind, lk)
 
     # materials, constructions, fit
-    m = v.obj(top.get("materials"), "materials", ("sheet", "thickness_mm", "servo"))
+    m = v.obj(top.get("materials"), "materials", ("sheet", "thickness_mm", "servo",
+                                                  "frame_sheet", "crank_sheet"))
     if m is not None:
         v.string(m.get("sheet"), "materials.sheet", sheet_keys())
+        v.string(m.get("frame_sheet"), "materials.frame_sheet", sheet_keys())
+        v.string(m.get("crank_sheet"), "materials.crank_sheet", sheet_keys())
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
-    c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank"))
+    c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
     if c is not None:
+        v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
         v.string(c.get("pillar"), "constructions.pillar", sorted(construction.AXLES))
         v.string(c.get("pin"), "constructions.pin", sorted(construction.AXLES))
         v.string(c.get("crank"), "constructions.crank", sorted(construction.CRANKS))
@@ -743,8 +752,9 @@ def validate(data: Mapping) -> list[SpecError]:
 
 
 def default_module(lk: linkage.Linkage) -> str:
-    """The module inferred when a spec names none: a walker's ``quad``, else ``single``."""
-    return "quad" if lk.kind == "walker" and "quad" in lk.leg_modules else "single"
+    """The module inferred when a spec names none: the linkage's own (Strider's ``double``),
+    else a walker's ``quad``, else ``single`` (:func:`spiderpig.config.default_module`)."""
+    return config_default_module(lk.key)
 
 
 # ---------------------------------------------------------------------------
@@ -837,14 +847,25 @@ def spec_schema() -> dict:
                                      "description": "measured sheet thickness (default: "
                                                     "the stock's nominal)"},
                     "servo": {"enum": servos.available(), "default": servos.DEFAULT},
+                    "frame_sheet": {"enum": sheet_keys(), "default": BuildConfig.frame_sheet,
+                                    "description": "the frame and centre plates' sheet"},
+                    "crank_sheet": {"enum": sheet_keys(), "default": BuildConfig.crank_sheet,
+                                    "description": "the crank's plates' sheet"},
                 },
             },
             "constructions": {
                 "type": "object", "additionalProperties": False,
                 "properties": {
-                    "pillar": {"enum": sorted(construction.AXLES), "default": "printed"},
-                    "pin": {"enum": sorted(construction.AXLES), "default": "printed"},
-                    "crank": {"enum": sorted(construction.CRANKS), "default": "printed"},
+                    # the engine's defaults (what ``resolve`` fills in): BuildConfig's
+                    "pillar": {"enum": sorted(construction.AXLES), "default": BuildConfig.pillar},
+                    "pin": {"enum": sorted(construction.AXLES), "default": BuildConfig.pin},
+                    "crank": {"enum": sorted(construction.CRANKS),
+                              "default": DEFAULT_CRANKS["walker"],
+                              "description": "default: " + ", ".join(
+                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())},
+                    "heads": {"enum": ["best", "gap", "sink"], "default": BuildConfig.heads,
+                              "description": "fasteners' heads: sunk into a layer, in thin "
+                                             "clearance gaps, or the lower plan of both"},
                 },
             },
             "fit": {"type": "object", "additionalProperties": False, "properties": fit_props},

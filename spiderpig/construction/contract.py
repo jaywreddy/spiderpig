@@ -72,8 +72,8 @@ def check_side(design, mech) -> list[str]:
                                     "outside the horn claim")
             continue
         if g.name == "links":
-            for b in got.bodies:
-                env = claimed_solid(build, build.shapes(b.name), TOL)
+            for b in got.bodies:          # a link, or what it carries (a foot's sock)
+                env = claimed_solid(build, build.shapes(b.rigid_with or b.name), TOL)
                 vol = _outside(b.part, env)
                 if vol > MAX_OUTSIDE:
                     problems.append(f"{b.name}: {vol:.3f} mm^3 outside its claim")

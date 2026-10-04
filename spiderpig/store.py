@@ -301,7 +301,7 @@ class Store:
                 solids[e["name"]] = src.mirror(Plane.XY) if e.get("mirror") else src
         bodies = [Body(name=e["name"], part=solids[e["name"]], color=e.get("color"),
                        pose=Pose(np.array(e["pose"], dtype=float)), rigid_with=e.get("rigid_with"),
-                       fab=e.get("fab"), bom_key=e.get("bom_key"))
+                       fab=e.get("fab"), bom_key=e.get("bom_key"), sheet=e.get("sheet"))
                   for e in entries]
         meta = dict(manifest.get("meta", {}))
         meta["fastened"] = [tuple(p) for p in manifest.get("fastened", [])]

@@ -48,8 +48,16 @@ Snap joint (:class:`Snap`)
     snapping (a stepped cantilever from the slot's root). The wide shoulders
     and heads barely bend, so a short bearing over one of them strains most:
     about 2 % for a pin through two links, up to 4 % for one link over a
-    shoulder. Print axles in PETG (about 4 % is fine for one-time assembly).
-    :func:`plan_segments` logs a warning above ``max_strain``.
+    shoulder. Print axles in PETG (about 4 % is fine for one-time assembly;
+    6-7 % is past the yield of printed PLA or PETG prongs). Above
+    ``max_strain`` :func:`plan_segments` first runs the slot deeper (past
+    ``slot_max``, down to what the segment allows), then relieves that
+    joint's lip (a smaller ``engage``, down to ``min_engage``: the barb has
+    less to climb, so it holds less too) and records the joint's own
+    :class:`Snap` on the two segments it joins (``peg_snap`` / ``socket_snap``);
+    when neither brings the strain down it raises ``ValueError`` (the pin
+    can't be snapped without breaking). ``Segment.strain_pct`` and
+    ``engage`` are what :mod:`tools.audit` reports per pin.
 
 Printing (every segment is modelled z-up, as printed)
     Each segment stands on a flat bottom face: a head, a shoulder or a cap,
@@ -62,6 +70,7 @@ Printing (every segment is modelled z-up, as printed)
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 from collections.abc import Callable, Mapping
@@ -188,6 +197,9 @@ class Segment:
     peg: float | None = None             # split above: its peg stands at this z
     slot_root: float | None = None       # lowest point of the peg's slot
     anchors: tuple[int, ...] = field(default=())   # frame-plate layers it is glued in
+    peg_snap: Snap | None = None         # this joint's snap when relieved (else the axle's)
+    socket_snap: Snap | None = None      # the joint below's, likewise
+    strain_pct: float | None = None      # peak prong strain while snapping, % (pegs only)
 
     @property
     def z0(self) -> float:
@@ -201,7 +213,7 @@ class Segment:
         """Length of the peg's prongs, from the slot's root to the barb."""
         if self.peg is None or self.slot_root is None:
             return None
-        return self.peg + snap.shank_h - self.slot_root
+        return self.peg + (self.peg_snap or snap).shank_h - self.slot_root
 
     def strain(self, snap: Snap) -> float | None:
         """Peak bending strain in the prongs while the barb passes the throat.
@@ -213,6 +225,7 @@ class Segment:
         """
         if self.peg is None or self.slot_root is None:
             return None
+        snap = self.peg_snap or snap
         root, zb = self.slot_root, self.peg + snap.shank_h
         spans = [(max(p.z0, root), p.z1, p.r) for p in self.pieces if p.z1 > root + EPS]
         spans.append((self.peg, zb, snap.shank))
@@ -254,14 +267,20 @@ def plan_segments(
     slot_max: float,
     min_prong: float = 0.8,
     max_strain: float = 1.0,
+    min_engage: float | None = None,
     name: str = "axle",
+    strain_target: float | None = None,
 ) -> list[Segment]:
     """Split an axle's claimed column into snap-together segments.
 
     ``column`` maps each layer to its claim's (role, radius); ``z`` gives a
     layer's Z range; ``links`` the links that turn on the axle, per layer;
     ``axle`` is the bearing radius. A prong strained more than
-    ``max_strain`` while snapping is logged as a warning.
+    ``max_strain`` while snapping gets a deeper slot, then a relieved lip
+    (``engage`` down to ``min_engage``; ``None``: the axle's); past both it is
+    a ``ValueError`` (see the module doc). ``strain_target`` (at most ``max_strain``)
+    is the margin the planner aims for: a prong over it is relieved the same way, down to
+    the target when the lip allows, else to just under ``max_strain``.
     """
     ks = sorted(column)
     if ks != list(range(ks[0], ks[-1] + 1)):
@@ -304,15 +323,58 @@ def plan_segments(
             anchors=tuple(sorted({p.layer for p in g if p.role == "anchor"})),
         )
         if seg.peg is not None:
-            seg.slot_root = _slot_root(seg, g[0].z1, snap, bridge, base, slot_max,
-                                       snap.slot / 2 + min_prong)
-            strain = seg.strain(snap)
-            if strain > max_strain:
-                log.warning("%s seg%d: its snap prongs (%.1f mm) strain %.1f %% while snapping "
-                            "(want at most %.1f %%)", name, i, seg.flex(snap), 100 * strain,
-                            100 * max_strain)
+            thin = snap.slot / 2 + min_prong
+            seg.slot_root = _slot_root(seg, g[0].z1, snap, bridge, base, slot_max, thin)
+            strain = was = seg.strain(snap)
+            goal = max_strain if strain_target is None else min(strain_target, max_strain)
+            if strain > goal:
+                low = snap.engage if min_engage is None else min_engage
+                root = seg.slot_root
+                strain = _relieve(seg, g[0].z1, snap, bridge, base, thin, goal, low, name,
+                                  limit=max_strain)
+                if strain > goal + EPS:         # the target is out of reach: the limit will do
+                    seg.slot_root, seg.peg_snap, strain = root, None, was
+                    if was > max_strain:
+                        strain = _relieve(seg, g[0].z1, snap, bridge, base, thin, max_strain,
+                                          low, name)
+            seg.strain_pct = 100.0 * strain
+        if i and segs[-1].peg_snap is not None:
+            seg.socket_snap = segs[-1].peg_snap
         segs.append(seg)
     return segs
+
+
+def _relieve(seg: Segment, first: float, snap: Snap, bridge: float, base: float, thin: float,
+             max_strain: float, min_engage: float, name: str,
+             limit: float | None = None) -> float:
+    """Bring a peg's snapping strain under ``max_strain``: the slot as deep as the segment
+    allows, then the joint's lip relieved in 0.01 mm steps down to ``min_engage`` (the
+    joint's own :class:`Snap` goes on ``seg.peg_snap``). The strain reached; ``ValueError``
+    when even that is over ``limit`` (``max_strain`` when not given)."""
+    limit = max_strain if limit is None else limit
+    was = seg.strain(snap)
+    seg.slot_root = _slot_root(seg, first, snap, bridge, base, math.inf, thin)
+    strain = seg.strain(snap)
+    if strain <= max_strain:
+        log.info("%s seg%d: snap prongs run deeper (%.1f mm): strain %.1f %% -> %.1f %%",
+                 name, seg.index, seg.flex(snap), 100 * was, 100 * strain)
+        return strain
+    engage = snap.engage
+    while strain > max_strain and engage - 0.01 >= min_engage - EPS:
+        engage = round(engage - 0.01, 6)
+        eased = dataclasses.replace(snap, engage=engage)
+        seg.slot_root = _slot_root(seg, first, eased, bridge, base, math.inf, thin)
+        strain = seg.strain(eased)
+        seg.peg_snap = eased
+    if strain > limit:
+        raise ValueError(
+            f"{name} seg{seg.index}: its snap prongs ({seg.flex(snap):.1f} mm) would strain "
+            f"{100 * strain:.1f} % while snapping even with the lip relieved to "
+            f"{engage:.2f} mm (want at most {100 * max_strain:.1f} %): the pin can't be "
+            "snapped together without breaking (a metal pin, --pin rod or bolt, would do)")
+    log.info("%s seg%d: snap lip relieved to %.2f mm engage: strain %.1f %% -> %.1f %%", name,
+             seg.index, engage, 100 * was, 100 * strain)
+    return strain
 
 
 def _merge(pieces: list[Piece]) -> list[Piece]:
@@ -362,11 +424,11 @@ def outline(seg: Segment, snap: Snap) -> Outline:
             pts.append((cur, p.z0 + rise))
         pts.append((cur, p.z1))
     if seg.peg is not None:
-        pts += snap.peg(seg.z1)
+        pts += (seg.peg_snap or snap).peg(seg.z1)
     else:
         pts.append((0.0, seg.z1))
     if seg.socket is not None:
-        pts += snap.socket(seg.z0)
+        pts += (seg.socket_snap or snap).socket(seg.z0)
     else:
         pts.append((0.0, seg.z0))
     return _clean(pts)
@@ -399,6 +461,7 @@ def segment_solid(seg: Segment, snap: Snap, xy, angle: float = 0.0) -> Solid:
     The peg's slot runs along direction ``angle`` (radians, world XY).
     """
     pts = outline(seg, snap)
+    snap = seg.peg_snap or snap             # the peg's own joint when relieved
     wire = Wire.make_polygon([Vector(r, 0.0, zz) for r, zz in pts], close=True)
     solid = Solid.revolve(Face(wire), 360.0, Axis.Z)
     if seg.peg is not None:

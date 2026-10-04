@@ -93,10 +93,19 @@ def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, 
             chains.append([r])
     if len({c[0].at for c in chains}) < len(chains):
         return False
+    two = getattr(crank, "two_layer_top", False)     # the keyed crank's two-layer top web
+
+    def face(k: int, top: bool) -> float:
+        return k * pitch + play * (k in above) if top else (k + 1) * pitch - play * (k in below)
+
     for c in chains:
         lo, hi = c[0].lo - 1, c[-1].hi + 1
-        faces = [k * pitch + play * (k in above) if top else (k + 1) * pitch - play * (k in below)
-                 for k, top in ((lo, True), (lo, False), (hi, True), (hi, False))]
+        faces = [face(lo, True), face(lo, False), face(hi, True),
+                 face(hi + 1 if two else hi, False)]
+        if two:
+            if hi + 1 in {k for r in runs for k in range(r.lo, r.hi + 1)} or hi + 1 > h0:
+                return False
+            faces.append(face(c[0].hi + 1, True))       # the first post's top
         if crank.post_joint(*faces) is None:
             return False
     if h0 in above and crank.hub_joint(ctx, problem.router.dims.hub_thickness, play) is None:
@@ -104,6 +113,8 @@ def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, 
     xy = {p: geo.points[p][0] for p in {r.at for r in runs}}
     head = max(sk.head_d for sk in POST_SCREWS) / 2 + crank.screw_fit / 2
     nut = (NUT_AF + crank.nut_fit) / math.sqrt(3)
+    if two:
+        nut = max(nut, (crank.pocket_af() + 2 * crank.pocket_chamfer) / math.sqrt(3))
     post = problem.router.dims.post
     for x, y in itertools.pairwise(chains):
         if math.dist(xy[x[0].at], xy[y[0].at]) < nut + max(head, post):

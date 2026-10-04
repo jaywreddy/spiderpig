@@ -345,7 +345,12 @@ layer
 3. Links `b3` and `b4` share layer 3 with that web, and `b2` shares layer 4 with the hub,
 because none of them ever comes near O. One screw runs up through the post, from its head
 in the lower web to a nut in the upper web, and holds the two halves of the crank
-together.
+together. (This is the `printed` crank's picture; the `keyed` crank, section 6.2, adds a
+brass hex standoff as a key between the post and the web above it and makes the upper web
+two layers thick, so this leg takes 8 layers; the walkers' default since 2026-10-03, the
+`bolt` crank, makes both webs two laser-cut plates, the crankpin an M6 hex bolt, and needs
+a bare layer under the rider (its run at least 4 layers: the shortest partially threaded
+M6, 30 mm, has a 12 mm plain shank) and a layer for the bolt's tip: 13 layers.)
 
 ### 2.5 How parts are made
 
@@ -353,7 +358,7 @@ Every part is made in one of three ways, and the code tags each part with it (`f
 
 - **laser**: links, frame plates and the chassis's centre plates, cut from sheet;
 - **printed**: axles, crankshaft segments and chassis columns, on a 3D printer;
-- **purchased**: servos, screws, nuts, heat-set inserts, bearings, rod, glue.
+- **purchased**: servos, screws, nuts, hex standoffs, heat-set inserts, bearings, rod, glue.
 
 Axles are printed by default, with four alternatives on a metal shaft: steel rod, M3 bolt,
 ball bearing and plastic bushing. The crank is always printed.
@@ -434,9 +439,9 @@ Here is the running example at each stage:
 | 1 symbolic | 8 steps placing joints O, A, B, M, C, D, E, F; 11 parameters |
 | 2 compiled | about 1.8 s once per process, mostly first-use imports; the compile itself about 0.1 s |
 | 3 template | each side: 4 legs, 16 links, 20 bodies |
-| 4 rationalized | 12 layers (36 mm) per side, proven the thinnest possible, in about 1 s |
-| 5 fabricated | 173 parts: 39 laser-cut, 90 printed, 44 purchased |
-| 6 serialized | STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $124.87 (a lower bound, section 7.5), glb 9.5 MB |
+| 4 rationalized | 31 layers (93 mm) per side with the bolt crank and standoff pillars (the defaults since 2026-10-03; the search starts at the crank's lower bound, 30), not proven the thinnest within the budget; 16 (48 mm) with `--crank keyed --pillar printed`, the defaults before, in about 1 s (12 layers, 36 mm with `--crank printed`) |
+| 5 fabricated | 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins are rods, rings and clips; with `--pin printed`: 173 parts, 90 printed, 44 purchased) |
+| 6 serialized | STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $150.35 (a lower bound, section 7.5; $124.87 with printed pins), glb 9.5 MB |
 
 **One record says what to build.** Every stage takes a `BuildConfig`
 (`spiderpig/config.py`), which holds:
@@ -445,15 +450,16 @@ Here is the running example at each stage:
 - the legs' phases, and any parameter overrides;
 - the sheet material and its measured thickness;
 - the servo;
-- the pillar, pin and crank constructions: how each is built (printed by default, or on a
-  metal shaft for the axles);
+- the pillar, pin and crank constructions: how each is built (the pins on a 3 mm rod with
+  push-on clips by default, `rod`; the pillars and the crank printed; or any axle on
+  another metal shaft, `bolt`, `bearing`, `bushing`, or every axle printed);
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
   margin and so on).
 
 It checks the linkage, module, servo, phases and parameters when made (not the sheet, its
 thickness or the constructions, which fail later if wrong), and drops values equal to
 their defaults, so one design has one config however it was asked for. Its `key`
-(`klann_quad_robot`, plus a hash for anything non-default) names every cache.
+(`strider_double_robot`, plus a hash for anything non-default) names every cache.
 
 **Bodies are named by convention**, and the names appear throughout: `b1` to `b<n>` are
 links, `conn` is a crank, `torso` the frame, and `coupler` a shaft coupler at O (not the
@@ -537,8 +543,10 @@ Around the program, a `Linkage` declares its **links** (each `b<k>` with its joi
 the segments its plate is cut along: `b1` joins M, C and D and is cut along M–D), its
 **frame** joints, its **crank**, and either its **feet** (a walker) or its **output** (a
 mechanism). Each file in `spiderpig/linkages/` builds its linkages and calls `register()`
-when imported; the registry imports these files on first use, Klann first so that it is
-the default.
+when imported; the registry imports these files on first use, Strider first so that it is
+the default (`linkage.DEFAULT`; Klann stays registered as the wobbly demo). A linkage may
+name its `default_module`, the module a design gets when none is asked for (Strider's
+`double`; a walker's `quad` otherwise).
 
 ### 4.2 Compiled once, evaluated on arrays
 
@@ -617,7 +625,7 @@ walking model) recovers it by fitting a planar rigid motion to the link's joints
 | Klann variants | `klann_patent`, `klann_lego`, `klann_long_legs`, `klann_high_step` | `unit` = 8 mm |
 | Jansen | `jansen` | `unit` = 1.6 mm, not the drawing's 1.5: at 1.5 a link passes 8.7 mm from a pillar, under the 9 mm its neck needs |
 | Strider | `strider` | `unit` = 6.5 mm, so the foot links clear the crank; its own modules |
-| TrotBot | `trotbot`, `trotbot_heel`, `trotbot_toe` | `unit` = 10.5 mm, the drawing's 7 mm scaled 1.5×, so the heel clears the crank |
+| TrotBot | `trotbot`, `trotbot_heel`, `trotbot_toe` | `unit` = 10.5 mm, the drawing's 7 mm scaled 1.5×, so the heel clears the printed crank's post and the bolt crank's 6 mm shank (the default); the keyed crank's 8.5 mm post needs `unit` = 12 for `trotbot_heel` / `trotbot_toe` (`recommend` says so, checked) |
 | four-bar | `fourbar`, `fourbar_spot_micro`, `fourbar_spot_micro_v2` | `unit` = 0.6–0.8 mm |
 | six-bar | `sixbar`, `sixbar_v1`, `sixbar_v2`, `sixbar_v3` | `unit` = 0.6 or 1.0 mm |
 
@@ -775,7 +783,11 @@ from the printed crank's own rules (`JointRules`):
 - each chain needs a stock screw that fits it. The screw's head sits sunk in the lowest
   web and its nut is trapped in the highest, it must hold enough thread in the nut, and
   nothing may poke out; with screws sold only in stock lengths, at 3 mm layers the number
-  of layers between the chain's two outer webs must be 1, 2, 3, 4, 7 or 9;
+  of layers between the chain's two outer webs must be 1, 2, 3, 4, 7 or 9. The keyed
+  crank's highest web is two layers thick (a hex socket under the nut), so a keyed chain
+  ends one layer higher, where the crank must be on its axis with the web piece free, and
+  the layers between its outer webs must be 1, 2, 3, 4, 7 or 9 counting that extra layer
+  (`JointRules.two_layer_top`);
 - the screw pockets of neighbouring chains must not meet;
 - a rider can't sit in layer 1 (there would be no layer below it for its web) or in the
   hub's layers under the servo.
@@ -837,8 +849,11 @@ as a hint, and any recommendation checks after a failure, get their own.
 **The answer** is a `StackPlan`: each link's layer, the stack size, the crank route, the
 cost, whether the plan is **optimal** (no thinner stack and no cheaper route, both
 searched to the end), and a **proof** saying how that was established. For the running
-example: 12 layers, 36 mm, optimal, with the proof "no plan in 11 layers or fewer (48
-nodes); 12 layers searched to the end for the cheapest crank route (18 nodes)". A plan
+example: 16 layers, 48 mm, optimal, with the proof "no plan in 15 layers or fewer (240
+nodes); the crank's own rules forced it taller: in 15 layers the search met 239 layouts
+that fit everything else but no crank route passes; 16 layers searched to the end for the
+cheapest crank route (17 nodes)" (with `--crank printed`: 12 layers, 36 mm, "no plan in 11
+layers or fewer (48 nodes); 12 layers searched to the end ... (18 nodes)"). A plan
 that ran out of budget or time is still valid, because it was verified, but its proof
 names the sizes left open.
 
@@ -882,7 +897,9 @@ constructions, twice: once one at a time, and once three at a time on a busy mac
 | no plan | 2–5: the TrotBot heel and toe `double` always; the three TrotBot quads when the machine was busy |
 | stopped at the drive stage | 1: `five_bar` |
 
-Layers per side (unproven results marked *):
+Layers per side with the `printed` crank (unproven results marked *; the default `keyed`
+crank's two-layer top webs add layers: the Klann quad 16, the Strider double 18, and its
+8.5 mm post stops TrotBot's heel at its default scale, section 6.2):
 
 | linkage | `single` | `double` | `decker` | `quad` |
 |---|---|---|---|---|
@@ -955,11 +972,126 @@ once: both sides use the same plan.
   every layer it crosses holds a spacer as wide as its narrowest ring, which often makes
   the stack taller. Flanges need a free face beside the link. The hardware research behind
   these choices, with prices and suppliers, is in the package's docstring.
+  **The default pillar is the standoff** (`--pillar standoff`, `pivots/standoff.py`, since
+  2026-10-03): goBILDA 1501 round 6 mm aluminium standoffs, an M4 button head and washer
+  through the outer plate, the top end glued flush in the inner plate (a head there would
+  stand where the electronics deck goes), the links turning on the standoff, a laser-cut
+  ring in every other layer; a column longer than the 60 mm stock is spliced through a ring
+  (an M4 stud, threadlocked) at the fewest ring layers, placed where a beam's
+  moment is least; a column no stock segments fill is unbuildable to the planner (the
+  axle's `column` hook). Its strength is a beam per bay between supports, the plates (a
+  splice is a joint whose gapping moment is checked, not a support); the 6 x 3.3 mm 6061
+  tube holds 4.4 times the printed 6 mm pillar's moment. A link sweeping close to a pillar
+  stops it short of one plate (a ring can't neck): then it is a cantilever.
+  **The default pin is the Chicago screw** (`--pin chicago`), from the pivot review of 2026-10-03 (`pivots/chicago.py` has its table): a
+  4 mm barrel through the stack plans the same stacks as the rod, its axial play is set by
+  the barrel length and shims (0.05-0.15 mm) instead of by feel, its lowest link is bonded
+  to the barrel, its bending stress is 0.6 times the rod's, which tells where a pin spans
+  more than a layer (the demo Klann, `--linkage klann`, quad at 0,0,180,180 puts pin E
+  across 9 mm: jam SF 0.80 against the rod's 0.53 at the design's own loads, both
+  failing at 245 N; on `klann_lego` quad at 0,0,180,180, the second test design, every
+  pin spans 3 mm and it is 2.62 against 2.02, 13 layers each, $206.09 against $227.58),
+  and it comes apart. The
+  audit's strength check (`spiderpig/strength.py`, `docs/audit/STRENGTH.md`) takes each
+  design's own MuJoCo pin loads (walking p99, jammed at the servo's torque limit), bends a
+  two-link pin by `F s / 2` (a pillar as a cantilever or a beam between the plates) and
+  fails a joint under jam SF 1, warns under 2 jammed or 3 walking.
+  The audit reports each link's tilt out of plane (`construction/wobble.py`): free (bore
+  clearance over bearing length, 3.8 deg for a 0.2 mm fit in 3 mm sheet) and held by the
+  faces beside it (0.72 deg worst, 0.39 mean on the Strider double); the printed pillars
+  (1.35 deg, 6.7 free) are now the loosest joints. Before it, **the default pin was the
+  rod** (`--pin rod`), from a review of every pin on the Strider double and the Klann quad: rod pins plan the same
+  stacks as the printed pin (16 and 12 layers with the printed crank, 18 and 16 with the
+  keyed one) in seconds where a bolt pin's two-layer nut
+  needs 19 layers on the Strider at ten times the planner's budget and leaves its head
+  unreachable in a bottom-up stack; the smooth rod has the least play of the plain pivots
+  (0.20-0.23 mm) and SF ~5 at the Klann jam load over the 3 mm spans every plan has; and
+  with the pins metal only the pillars and crank snap, so the audit's worst snap strain
+  falls from 3.8 % to 1.6 % on the Strider. Pillars stay printed because bolt pillars don't
+  plan on either design (the 50 mm stock-screw bound, a ring-filled column) and rod pillars
+  fill the whole stack with rings. The cost is cutting the rod (24 pieces of 9.6-15.6 mm on a
+  Strider, three lengths, 266 mm in all; the BOM carries the cut list) and pushing the
+  top clip on with a tube until it just touches the link; the rod and clip kit are priced
+  in the catalog. `--pin printed` remains the zero-hardware build (its J7 snap lip relieved
+  to 0.13 mm on the Strider); the assembly steps are in `pivots/rod.py`.
+- **The bolt crank** (`construction/crank.py`, `BoltCrank`; `--crank bolt`, the walkers'
+  default since 2026-10-03, from the crank study's recommendation "C+"): laser-cut instead
+  of printed. Every crank layer that isn't a run is one acrylic plate (the claims' outline,
+  on the DXF sheets); a chain's lowest and top webs are two plates each; the crankpin is an
+  ISO 4014 M6 hex bolt, its head (10 AF x 4 mm) in a hex pocket through the top stack, a
+  DIN 985 M6 nylock (10 x 6 mm) in one through the lowest stack (10.1 mm AF, 0.5 mm corner
+  reliefs), threadlocked (medium), the riders on the plain shank; the plates of a segment
+  are solvent-welded; a round M3 standoff screwed to the lowest stack is the journal stub;
+  the top two plates carry the horn screws, the drive's printed horn spacer putting the
+  horn's face on a layer boundary. The router learnt what it needs (`JointRules`): the
+  two-plate lowest web, the layer under it for the bolt's tip, no plate between runs of
+  one chain, a mid stack that is one chain's top and the next one's bottom, the stub's
+  stock lengths, and the stock bolt lengths as spans counted by the bare layers under the
+  riders: the shank's full diameter ends 2.5 pitches (the runout) above the thread, and
+  the nut must sit on complete thread, so a rider can never sit right on the nut's stack.
+  Rated element by element (`spiderpig/strength.py`): head pocket 4.2 N·m, nut pocket 6.3,
+  thread torsion 8.6, the nut's lock on its thread (the nylock's prevailing torque and the
+  threadlocker, halved for plated steel) 2.9, the weakest plate bond; against the jam's
+  2 x 0.85 = 1.7 N·m: SF 1.71 (a warning), where the keyed crank's key holds 0.55 (SF
+  0.32, an error). What it costs: layers. 24 a side on the Strider double (18 keyed), 31 on
+  the Klann quad (16), 20 on `klann_lego` quad at 0,0,180,180 (13), with the real stock
+  (M6 ISO 4014 from 30 mm; goBILDA's own standoff lengths, 2026-10-04). The chains give the
+  planner a lower bound (`route.CrankRouter.min_top`, the search starts there: without it
+  the 31-layer quads didn't plan within the budget). The Strider quad plans since
+  `max_top` went from 40 to 60 (2026-10-04: 44 layers, unproven), and the Hoecken pantograph
+  none at all (its pins too close for the pockets), so mechanisms keep the keyed crank
+  (`config.DEFAULT_CRANKS`). The study's PTFE thrust washers have no room (plates touch in
+  3 mm layers) and its Chicago lock screws' heads would stand in a rider's layer; both are
+  left out (the docstring says why). Since 2026-10-04 the planner reserves such heads thin
+  clearance gaps (`Placed.gap`, `stack.finalize`; CLAUDE.md, "Clearance gaps"), which is
+  what bringing them back needs. `docs/audit/STRENGTH.md` has the sweep.
 - **The printed crank** (`construction/crank.py`): segments split at every run, so that
   each rider can be threaded onto its post, as in Figure 2. Each chain gets one M3 screw
   and nut: a button-head screw, because a socket head is 3 mm tall and doesn't fit a 3 mm
   web. The horn screws run from below through the hub. The crank needs layers at least
   2.9 mm thick; a 2 mm sheet is refused, and the recommended fix is a thicker sheet.
+  **The keyed crank** (`--crank keyed`, `KeyedCrank`; the default before 2026-10-03, still
+  the mechanisms'), from a review of
+  the crank joints: in a built-up crankshaft the only connection between the segments
+  above and below a rider is inside the rider's hole, so the drive torque twists each
+  post-to-web joint by chord / crank radius times itself, 2.0 on the Strider (pins 180°
+  apart) and the Klann: 0.36 N·m walking on the Strider, up to 1.3 N·m on the Klann,
+  against 0.17-0.67 N·m of clamp friction that PLA creep erodes. The keyed crank puts a
+  brass M3 female-female hex standoff (4 mm long, 5 mm across flats, read from the
+  catalog item) at every post-to-web interface as a key: half in a hex cavity in
+  the post's top, half in a hex socket in the underside of the web above, 0.8 mm of axial
+  float (a key threaded on the screw sits where the thread puts it), 1.6 mm of hex
+  engagement either side at worst. The pockets are cut to the key's across-flats
+  (`key_fit="press"`, `press_fit` 0.0; `key_af` for a measured kit): a light press,
+  since FDM holes print 0.05-0.15 mm small. From the key review (2026-10-03): with the
+  first design's 0.15 mm sliding fit (`--crank keyed_float`) the key turns 3.13 deg in each
+  pocket, 6.25 deg either way between post and web, and each time the twist beats the
+  clamp's friction the joint slips through that play about the screw's own axis, working
+  it loose (on the Klann every stroke: 1.33 N·m walking against 0.17-0.67). Pressed, the
+  play is 0 (2.0 deg if a pocket prints 0.05 mm over) and the chain screw takes a drop of
+  low-strength threadlocker (`lock_key`, 0.01 bottle per screw in the BOM). Two keys side
+  by side, a lock independent of the hex fit, need a 13.9 mm post (11.6 with M2 keys)
+  where b1's hole leaves room for 8.8; a cross pin has nowhere to go (the joint face is
+  level and the screw is on the axis); crush ribs on the flats centre the key but do not
+  stop it turning (a flat slides past a rib at its middle). The press fit changes no layer,
+  part or route; the threadlocker is already in the default BOM for the Chicago pins.
+  The screw and nut stay and clamp every rider interface as before; the nut now sits in a **two-layer top web** (socket, 1 mm of floor, nut),
+  which the router knows and which costs two layers a side: the Strider double 18 layers
+  (54 mm) instead of 16, the Klann quad 16 instead of 12. The post grows to 8.5 mm for
+  1.3 mm of wall round the cavity's corners (the acrylic rider keeps a 1.58 mm ring), which
+  TrotBot's heel at its default scale cannot clear (b7 passes J1 at 10.2 mm, a post there
+  needs 11.2: `--crank printed`, or a scale of 1.1, plans it). A 5 mm key is refused at a
+  3 mm pitch: its cavity overflows the post into the web below and leaves 0.05 mm over the
+  socket of the run below. Its limit is the key's bearing in those 1.6 mm printed sockets
+  (`strength.py`'s hex-bearing model, 50 MPa on the flats: 0.38 N·m plus the clamp's
+  0.17), 0.55 N·m, far under a jam's 1.7 at the servo's torque limit
+  (`ServoSpec.torque_limit_nm`: 45 % of stall, at most 0.85 N·m); the earlier rating by
+  the PLA post shell round the key (1.8 N·m) overstated it. Assembly adds one step per interface: press the
+  key into the post before the rider (flat block or vise), turn the next segment until its
+  socket indexes on the key (a 60° mis-index shows: the webs point the wrong way), nut in
+  the top trap, a drop of threadlocker, screw from below, which draws the web over the key. Per Strider side: 5 printed segments, 4 standoffs, 2 M3 nuts, 2 button-head
+  M3 x 16, 4 M3 x 6 horn screws. The friction-only crank stays as `--crank printed` for
+  comparison.
 - **The drive** (`servos/mount.py`): the servo sits on top of the inner plate, output face
   down, its axis on O, its body pointing away from the pillars. Its horn is turned on the
   toothed output shaft so the horn screws fall between the crank's webs, and the mounting
@@ -1100,11 +1232,18 @@ is a body on a hinge; the joints that close each loop become equality constraint
 and inertias are exact, taken from the fabricated parts. Contacts are computed only
 between the robot and the floor; self-collision is off, because the planner already
 guarantees the parts never meet. Feet are spheres, links capsules, and the base is made of
-convex hulls. Each side has a velocity-controlled motor limited to the servo's speed and
-stall torque. The model also maps every node of the glb to its MuJoCo body, so a viewer
-could replay a simulation on the baked meshes. The running example has 35 bodies, 16 loop
-constraints (joints C and E of each of the 8 legs) and a mass of 460.6 g: sheet 227 g,
-servos 110 g, printed parts 95 g, and 29 g of screws, horns and inserts.
+convex hulls (every link capsule stops short of a foot joint, so the foot spheres alone
+touch the floor). Each side has a velocity-controlled motor limited to the servo's speed
+and stall torque, and every step narrows its torque to a DC motor's speed-torque line
+(`motor_line`: the loop alone would deliver the stall torque at the no-load speed, which no
+servo does; the clamp cut the running example's peak from 1.26 to 0.43 N·m and costs 2 %
+of speed). The model also maps every node of the glb to its MuJoCo body, which is how the
+viewer's physics drive (8.4) poses the baked meshes. The running example has 35 bodies, 16
+loop constraints (joints C and E of each of the 8 legs) and a mass of 460.6 g: sheet 227 g,
+servos 110 g, printed parts 95 g, and 29 g of screws, horns and inserts. The crank's
+reflected rotor inertia (`crank_armature`) is an unverified estimate; the speed is
+insensitive to it over 5e-4..2e-2 kg·m², the torque peaks are not (0.89 to 0.16 N·m), and
+below 5e-4 the model is ill-posed and refused.
 
 ### 7.4 Shared machinery
 
@@ -1186,9 +1325,48 @@ shuffle forward isn't modelled.
 simulator, with gravity, friction (coefficient 0.5) and soft contacts. For the running
 example, with both servos at 80 % of their no-load speed (a loaded servo can't reach the
 full no-load speed), 4.5 simulated seconds take
-4.2 s of wall-clock time. The robot walks at 133 mm/s, 192 mm per crank turn, with 24 mm
-of bob and 8.6° of peak tilt. It doesn't fall, and its peak torque is 1.0 N·m, 53 % of the
-servo's stall torque.
+4.2 s of wall-clock time. The robot walks at 134 mm/s, 193 mm per crank turn, with 24 mm
+of bob and 8.6° of peak tilt. It doesn't fall; its peak torque is 0.59 N·m, 31 % of the
+servo's stall torque, with the drives held to the motor's speed-torque line (1 % of the
+time on it at 80 %, 77 % at a full command), and its mean load is 8 % of the rated 0.49
+N·m. One side stands on a single foot 41 % of the time, which is why it cannot steer
+(8.4).
+
+Three assumptions sit behind those figures, and the model now states them
+(`spiderpig/sim/mjcf.py`, "What the model assumes"):
+
+- **The sides are phase-locked.** Every straight-walk figure comes from two cranks that
+  keep their phase. Two servos told the same speed open-loop do not: with the right one
+  2 / 5 / 10 % slower the Klann quad rolls over at 17 / 8 / 3 s, and a held side offset of
+  90° or more rolls it over within a second (measured). The sim therefore runs the
+  controller the real STS3215 bus needs, `sim.run.PhaseLock`: a PI lock on the sides'
+  crank difference (kp 1, ki 4 in fractions of the no-load speed per rad and rad·s), the
+  right servo 3 % slower than told (`SimParams.servo_mismatch`), the correction split
+  between the drives. With it the sides stay within 0.7°, a 5 % mismatch walks 10 s at
+  under 15° of tilt, and the heading still drifts 1.3°/s at a full command (the servo on
+  its torque line has little speed authority, so the weaker side pushes less; 0.2°/s at
+  80 %). The lock also bounds a steering excursion: `steering_check` finds the largest
+  side offset the design walks with (`step_deg`: 45° for the Klann quad at 18° of tilt;
+  90° and 180° roll it over), and the live session re-locks after it. Position feedback
+  and this controller, not open-loop wheel mode, is what the hardware must provide.
+- **A rigid crankshaft** (one body per side) carries the pin loads, which the metrics now
+  report (`loop_force`: the in-plane constraint force per loop, 99.9th percentile and
+  peak; the Klann quad's walking peak is of the order of 100 N, the jammed load 155 N),
+  with the base's peak vertical acceleration (7.5 g at full speed) and the airborne
+  fraction per revolution (2 %); the passive pins carry a Coulomb friction estimate
+  (`pin_frictionloss`, 1.5 mN·m) and the frame a 100 g payload for the battery and board
+  the BOM doesn't list (`payload_g`; 561 g in all).
+- **The contact softness is unvalidated**, as before; the support and impact figures
+  follow it, and the torque peak is a range (0.33–0.60 N·m over the servo's loop
+  stiffness, 0.16–0.89 N·m over its rotor inertia) that `compare_with_walk` notes.
+
+The wobble itself is kinematic, not numerical: binned against the crank angle, the sim's
+base height and pitch match the quasi-static support plane of 8.1 within 0.6 mm and 0.3°
+rms (the means apart: the base sits a link radius higher), unchanged from a 2 ms step to
+0.25 ms (`tests/test_sim.py::test_the_sim_height_and_pitch_follow_the_quasi_static_support`).
+A design that covers no ground is now flagged by both models (`walks`: Klann's double,
+whose four feet stay coplanar, strides 2e-13 mm in the quasi-static model and crawls at
+11 mm/s with its body on the floor 16 % of the time in MuJoCo).
 
 ### 8.3 Three estimates that disagree
 
@@ -1219,9 +1397,47 @@ design; `/ws` pushes live reloads during development. The viewer (`viewer/src/`,
 built with Vite) plays and scrubs the animation and has two panels:
 
 - **Drive** steers the robot with keyboard or gamepad by per-side crank speed, and shows
-  contacts, slip and stability live.
+  contacts, slip and stability live, on the quasi-static model (8.1). Its **physics**
+  toggle hands the same parts to the MuJoCo model instead: the server (`/ws/sim`,
+  `spiderpig/sim/live.py`) builds the MJCF of the glb on screen in a worker process,
+  steps it in real time (60 frames a second, deadline-ticked, the physics in a thread)
+  and streams every body's pose with the drive torques; the viewer interpolates between
+  frames and reads speed, yaw rate, torque against the servo's ratings (over the rated
+  torque for two seconds is a stall warning), the sim/wall ratio (a loaded server runs
+  the session in slow motion, and says so) and per-revolution stats from a short history
+  of them. Commands go up on every key change and at 20 Hz besides, so a slow or hidden
+  tab can't leave the robot walking on its last key. The two modes are exclusive with
+  the stick preview. The gate is MuJoCo's own verdict: the server's steering check (run
+  once per model build, `sim.run.steering_check`) starts with a straight run, and a
+  design that fell in it is refused; the quasi-static margin under 15 mm is a warning
+  in the status (Jansen's quad, 4 mm, walks at 17° of tilt and connects). The check then
+  runs a 0.4 differential while walking, a half-speed turn in place and the bounded
+  excursions, four seconds each; the default Klann quad rolls over in the differential
+  and tilts 23° in the spin, so it gets 0 for both, walks a 45° excursion, and the HUD's
+  steering row says so ("45° excursions only"; the steering tests also record the
+  differentials as expected failures). The turn authority defaults to what the server
+  proved (the slider only raises it beyond, with the warning); a design with nothing
+  proven shows "steering DISABLED" and a banner when a steering key is held, instead of
+  silently walking straight. A glb whose nodes the model doesn't name is refused rather
+  than half-animated. The websocket reader never touches the simulation state under the
+  stepping thread: a reset is requested and applied by the next tick; a reset is a new
+  epoch of the sim clock on the client (every HUD history starts over, the real-time
+  factor is clamped at 1 and read over 3 s with hysteresis). The frame carries, besides
+  the poses and torques, whether a body is on the floor, the sides' phase, the vertical
+  acceleration and the largest pin load, which the HUD shows ("loads"). The server
+  rebuilds a model whose sources changed while it was building rather than caching the
+  stale one, keeps a client's command or reset sent during the build, compiles the
+  model off the event loop, steps at most three frames of physics per tick (slow motion
+  under load, not bursts) and caps the live sessions at ten (`{"error": "busy"}`).
 - **Tune** has a slider per parameter and redraws a stick figure from `/api/walk` at once.
   It rebuilds the parts only on request, with a full bake that takes tens of seconds.
+
+Layer plans for the server's bakes go through the store (`api.plan_config`, as the bake
+CLI does), so a design that planned once is never searched for again; the planner's
+budget is CPU time (`stack.Deadline`), so how far a search gets no longer depends on the
+machine's load (a 60 s wall-clock budget made the Strider quad plan at load 3 and fail at
+load 25), and a search that ran out of it (`no_plan_in_time`) is not remembered as
+unbuildable by the server or the store.
 
 There are two ways to run it. `mise run view` (section 10) starts the development servers
 (Vite with hot reload, and the API under uvicorn) on ports derived from a hash of the
@@ -1419,11 +1635,12 @@ The command line predates the agent surface. `spiderpig <command>` dispatches to
 | `report` | compare every linkage |
 | `mcp` | the MCP server |
 
-The commands that take a design share options: `--linkage`, `--module` (by default the
-linkage's own: `quad` and the robot for a walker, `single` and one side for a mechanism;
+The commands that take a design share options: `--linkage` (Strider by default), `--module`
+(by default the linkage's own: its `default_module` when it names one, Strider's `double`,
+else `quad`, and the robot for a walker; `single` and one side for a mechanism;
 `explain` alone defaults to `single`), `--phases` in degrees,
-`--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank`, `--sheet` and
-`--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
+`--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank` (by default `printed`,
+`rod`, `printed`), `--sheet` and `--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
 `view` resolve them into a design in the store, so they share one stored plan.
 
 ### 9.8 The decisions behind it
@@ -1719,7 +1936,7 @@ surface's manual. The appendices below are for looking things up.
 | branch | which of two circle crossings a step takes |
 | `BuildConfig` | the validated record of what to build; its `key` names caches |
 | cap | an axle's upper end |
-| chain | runs of the crankshaft along one point whose webs meet; one screw holds it |
+| chain | runs of the crankshaft along one point whose webs meet; one screw holds it (keyed: and a hex standoff keys each of its posts to the web above) |
 | claim | the space a group will occupy in each layer, as discs and pills around moving points |
 | construction | how a group is built (`printed`, `rod`, `bolt`, `bearing`, `bushing`); sets its claims' radii |
 | contract | the check that every part lies inside its own group's claims |
@@ -1846,6 +2063,7 @@ Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
 | [agentlib/TESTDRIVE.md](agentlib/TESTDRIVE.md) | the five test-drive rounds | current record |
 | [agentlib/TIMING.md](agentlib/TIMING.md), [PERF.md](agentlib/PERF.md), [PERF_EXPORT.md](agentlib/PERF_EXPORT.md), [PERF_PLANNER.md](agentlib/PERF_PLANNER.md) | the timing study and the three performance reports | current record |
 | [audit/AUDIT.md](audit/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |
+| [audit/STRENGTH.md](audit/STRENGTH.md) | joint strength at each design's own loads: the model, every walker x module, the PTFE liner pin | current (2026-10-03) |
 
 **History.**
 

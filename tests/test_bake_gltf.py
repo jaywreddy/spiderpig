@@ -29,10 +29,10 @@ KLANN = linkage.get("klann")
 N_FRAMES = 12
 DURATION = 0.5
 CASES = {
-    "side": BuildConfig(module="single", robot=False),
-    "robot": BuildConfig(module="single"),
+    "side": BuildConfig(linkage="klann", module="single", robot=False),
+    "robot": BuildConfig(linkage="klann", module="single"),
 }
-EXTRA = {"phased": BuildConfig(module="single", phases=(math.pi / 2,)),
+EXTRA = {"phased": BuildConfig(linkage="klann", module="single", phases=(math.pi / 2,)),
          "strider": BuildConfig(linkage="strider", module="single"),
          "mechanism": BuildConfig(linkage="crank_rocker", module="single", robot=False)}
 PHASED = EXTRA["phased"]
@@ -263,8 +263,12 @@ def test_materials_follow_fab(robot_gltf):
     assert by_node["L.b1"].name == "acrylic"
     assert by_node["L.torso"].name == "acrylic_frame"
     assert by_node["centre_plate0"].name == "acrylic_frame"
-    assert by_node["L.pin_C_seg0"].name == "printed"
-    assert by_node["L.crank_seg0"].name == "printed"
+    assert by_node["L.pin_C_screw"].name == "metal"        # the default pin: a Chicago screw
+    assert by_node["L.pin_C_shims_hi"].name == "metal"
+    standoff = next(n for n in by_node if n.startswith("L.pillar_") and "_standoff" in n)
+    assert by_node[standoff].name == "metal"              # the default pillar: a standoff
+    plate = next(n for n in by_node if n.startswith("L.crank_plate"))
+    assert by_node[plate].name.startswith("acrylic")      # the bolt crank's plates
     assert by_node["L.servo"].name == "servo"
     assert by_node["L.servo_horn"].name == "metal"
     for name, mat in by_node.items():
@@ -375,25 +379,30 @@ def test_phases_are_baked(bakes):
 
 def test_design_parameters_are_normalized():
     """One config (and one file name) per design, however it was asked for."""
-    default = BuildConfig()
+    assert BuildConfig() == BuildConfig(linkage="strider", module="double")   # the default
+    assert BuildConfig().is_default
+    assert BuildConfig().key == "strider_double_robot"
+    assert BuildConfig(linkage="klann") == BuildConfig(linkage="klann", module="quad")
+    default = BuildConfig(linkage="klann")
     quarter = (0.0, math.pi, math.pi / 2, 3 * math.pi / 2)
-    assert BuildConfig(module="quad", phases=quarter) == default
-    assert BuildConfig(proportions=(("DF", 2.577),)) == default
+    assert BuildConfig(linkage="klann", module="quad", phases=quarter) == default
+    assert BuildConfig(linkage="klann", proportions=(("DF", 2.577),)) == default
     assert default.is_default
     assert default.key == "klann_quad_robot"
-    other = BuildConfig(phases=(0.0, math.pi, math.pi / 2, 1.0), proportions=(("DF", 2.4),))
+    other = BuildConfig(linkage="klann", phases=(0.0, math.pi, math.pi / 2, 1.0),
+                        proportions=(("DF", 2.4),))
     assert not other.is_default
     assert other.proportions == (("DF", 2.4),)
-    assert other.key == BuildConfig(phases=[0.0, math.pi, math.pi / 2, 1.0],
+    assert other.key == BuildConfig(linkage="klann", phases=[0.0, math.pi, math.pi / 2, 1.0],
                                     proportions={"DF": 2.4}.items()).key
     assert other.key.startswith("klann_quad_robot_")
     assert other.key != default.key
-    assert BuildConfig(module="single").is_default            # its module's default design
-    assert BuildConfig(module="single") != default
+    assert BuildConfig(linkage="klann", module="single").is_default   # its module's default
+    assert BuildConfig(linkage="klann", module="single") != default
     with pytest.raises(ValueError, match="4 legs"):
-        BuildConfig(phases=(0.0,))
+        BuildConfig(linkage="klann", phases=(0.0,))
     with pytest.raises(ValueError, match="unknown klann proportions"):
-        BuildConfig(proportions=(("XX", 1.0),))
+        BuildConfig(linkage="klann", proportions=(("XX", 1.0),))
     jansen = BuildConfig(linkage="jansen", module="double", proportions=(("m", 14.0),))
     assert (jansen.linkage, jansen.proportions) == ("jansen", (("m", 14.0),))
     assert not jansen.is_default

@@ -97,7 +97,7 @@ A failure is always the same document under `failures`:
 | output | promise_broken | a mechanism's output misses its promise (straightness, dwell, rotation) |
 | drive | second_input_no_drive | the mechanism has a second input; v1 drives one |
 | static | link_no_layer | a link passes too close to every crank point: the crank can't cross its layer (distances, need; recommendations) |
-| plan | no_plan / no_plan_in_budget | no layer plan (the blockers with gaps and needs; recommendations) |
+| plan | no_plan / no_plan_in_budget / no_plan_in_time | no layer plan (the blockers with gaps and needs; recommendations); `no_plan_in_time`: the planner's CPU budget ran out, so `plan` searches again next time |
 | fabricate / contract / clash | unbuildable / part_outside_claim / parts_clash | a part can't be made or leaves its claims or intersects another |
 | layout / bom | part_exceeds_sheet / unknown_catalog_key | a part is larger than the sheet; a hardware key is unknown |
 | walk | linkage_invalid | the walk model can't use the linkage |
@@ -116,14 +116,14 @@ design: there is no search in v1.
 | `kind` | `walker` or `mechanism` | required |
 | `linkage.key` | a registered linkage (below) whose kind matches | required |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm and > 0, angles in degrees; a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
-| `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | `quad` (walker), `single` (mechanism) |
+| `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | the linkage's own default (Strider: `double`), else `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
 | `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
 | `materials.sheet` | a sheet item (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness | the sheet's nominal |
 | `materials.servo` | a continuous-rotation servo | `sts3215` |
-| `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing` | `printed` |
-| `constructions.crank` | `printed` | `printed` |
+| `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing`, `chicago`, `chicago_bushing`, `ptfe` (pins), `standoff` (pillars: 6 mm round aluminium standoffs, laser-cut rings in every layer, spliced at a ring layer where a column is longer than 60 mm, an M4 screw through the outer plate, glued flush in the inner) | pillar `standoff`, pin `chicago` (an M3 Chicago screw; `printed` is the zero-hardware snap pin) |
+| `constructions.crank` | `bolt` (laser-cut acrylic plates: every web a two-plate stack, each crankpin an M6 hex bolt, its head and nylock in hex pockets through the stacks, the riders on its plain shank over a bare layer; about +6-15 layers a side against `keyed`), `keyed` (printed segments keyed through each crankpin by a brass M3 hex standoff pressed into both, clamped by a threadlocked screw and nut in a two-layer top web), `keyed_float` (the same, keys a sliding fit: 6.25 deg of play per interface), `printed` (the same crank held by clamp friction alone) | `bolt` |
 | `fit.*` | part sizes and fits in mm (below), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
 | `motion.*`, `size.*`, `budget.*` | **targets** (below) | none |
@@ -179,15 +179,19 @@ priced total; the row then reads "$108.76 priced + $15.00 allowed for the 3 unpr
 items" and verifies against the target. At `quick`, `budget.cost_floor_usd` prices what the design
 buys whatever its parts (servos, spool, sheet, cement, inserts, a bottle of CA glue for
 the pillars' anchors and the robot's tie spigots with every pivot construction but
-`bolt`, the printed crank's crankpin nuts) from the catalog, and a floor already over
+`bolt`, the crank's nuts (the bolt crank's nylocks) and, keyed, its hex standoffs, the bolt
+crank's plate cement, a bottle of each threadlocker) from the catalog, and a floor already over
 the `max` fails the target before any build; its detail says what a build adds (the
 sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few dollars
 on a printed-pivot design), so the floor is within about 10 % of the built total.
 
 `materials.thickness_mm` is the layer pitch: every construction sizes its parts by it,
 and a value more than 12 % off the sheet's nominal is a warning on `resolve`. The
-printed crank's crankpin joints (a stock M3 screw and nut through one-layer webs) need
-layers of at least about 2.9 mm, so a 2 mm sheet fails at `check` (stage
+crank's crankpin joints (the bolt crank, the default: an M6 hex head and a 6 mm nylock in
+pockets through two-plate stacks; keyed, a hex key socket and the nut in a two-layer top
+web) need layers of at least 2.6 mm with the bolt crank, 3 mm keyed (2.9 mm with
+`constructions.crank: printed`), so a 2 mm sheet
+fails at `check` (stage
 `construction`) with the thickness that works as a checked recommendation.
 
 `fit` defaults (mm): <<FIT>>

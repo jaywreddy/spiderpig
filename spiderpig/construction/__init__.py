@@ -21,14 +21,17 @@ from collections.abc import Callable
 from spiderpig.construction.axle import AxleGroup as AxleGroup
 from spiderpig.construction.axle import PrintedAxle
 from spiderpig.construction.base import ConstructionError, Context, Group
+from spiderpig.construction.crank import KEYED_FLOAT, BoltCrank, KeyedCrank, PrintedCrank
 from spiderpig.construction.crank import CrankGroup as CrankGroup
-from spiderpig.construction.crank import PrintedCrank
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
 from spiderpig.servos.mount import DriveGroup
 
 AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
-CRANKS = {c.key: c for c in (PrintedCrank(),)}
+# ``keyed`` is the default (config.BuildConfig.crank, its keys pressed in, the chain screws
+# threadlocked); ``keyed_float`` the same with sliding keys and dry screws (6.25 deg of play
+# per interface); ``printed`` the crank held by clamp friction alone; both kept to compare
+CRANKS = {c.key: c for c in (KeyedCrank(), KEYED_FLOAT, PrintedCrank(), BoltCrank())}
 
 
 def _pick(registry: dict, key: str, what: str):
@@ -52,7 +55,10 @@ def _drive_groups(ctx: Context, config) -> list[Group]:
 
 
 def _crank_groups(ctx: Context, config) -> list[Group]:
-    return [CrankGroup(crank(config.crank))] if ctx.topo.center is not None else []
+    if ctx.topo.center is None:
+        return []
+    c = crank(config.crank)
+    return [CrankGroup(c.resolve(ctx) if hasattr(c, "resolve") else c)]
 
 
 def _axle_groups(ctx: Context, config) -> list[Group]:

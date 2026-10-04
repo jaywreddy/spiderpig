@@ -261,7 +261,14 @@ def test_drive_interface_couples_below_the_plate(design, key):
     assert iface.screw_pcd == pytest.approx(s.horn.pattern.pcd)
     spacer = d.drive.spacer(d.ctx)
     assert iface.horn_face_depth == pytest.approx(s.horn_face_depth + spacer)
-    assert (spacer > 0) == (key == "xl430_w250")   # its horn face is inside the plate
+    # the bolt crank's hub is whole plates: the spacer puts the horn's face on a layer
+    # boundary under the 3.175 mm aluminium inner plate (the STS3215's 3.2 mm -> 6.175, the
+    # XL430's 2 -> 3.175; the XL330's 3 -> 6.175: 0.175 mm is too thin to print)
+    plate = d.ctx.sheet_t("frame")
+    n = (iface.horn_face_depth - plate) / d.ctx.pitch
+    assert n == pytest.approx(round(n))
+    assert iface.horn_layers == round(n)
+    assert spacer > 0
 
 
 @pytest.mark.parametrize("key", KEYS)
@@ -292,7 +299,7 @@ def test_the_verifier_sees_the_screw_heads(design):
     """Negative control: a screw head moved onto the crank hub is a violation."""
     from spiderpig.stack import Geometry, verify_plan
 
-    single, d = design("single")
+    single, d = design("single", crank="keyed", pillar="printed")   # its hub under the plate
     plan = d.plan
     assert verify_plan(plan, single) == []              # the fixed points carry over
     pts = dict(plan.topo.geometry.points)

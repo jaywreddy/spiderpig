@@ -5,6 +5,7 @@ coordinates (:mod:`construction.robot` says how the robot is put together and wh
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, replace
 
@@ -12,25 +13,28 @@ import numpy as np
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.catalog import adhesive, get, pick_length
-from spiderpig.hardware.fasteners import CLEARANCE, Screw, parse, screw
+from spiderpig.hardware.catalog import get
+from spiderpig.hardware.fasteners import Screw, parse
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
-from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, union
+from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, ring, union
 
-TIE_SCREW = screw("shcs", "3")   # the frame ties' M3 socket head screws
 REAR_ENGAGE = 4.0        # target thread engagement of a rear screw in its servo's pilot (mm)
 MIN_ENGAGE = 2.0         # least thread engagement that still holds
 HEAD_CLEARANCE = 0.3     # radial clearance around a screw head in a laser-cut recess (mm)
 RELIEF_GROW = 0.5        # a relief cut-out is this much bigger than the bump, per side (mm)
-SPIGOT_RECESS = 0.2      # a tie spigot stops this short of the inner plate's leg-side face
-GLUE_PER_SPIGOT = 0.02   # CA glue per tie spigot glued into its plate, as a fraction of a bottle
-INSERT_ENGAGE = 5.0      # target thread engagement of a tie screw in its insert (mm)
 MODEL_GAP = 0.01         # radial gap between modelled parts that touch in reality (mm)
+EPS_CH = 1e-6
 CHASSIS_COLOR = "#eb6834"
 TIE_COLOR = "#2a7ab0"
 STEEL = "#8a8d91"
 BRASS = "#c9a227"
+
+
+def centre_t(ctx: Context) -> float:
+    """The centre plates' thickness: the frame's sheet (5052 aluminium, clamped by the ties;
+    the joinery plan of 2026-10-03)."""
+    return ctx.sheet_t("frame")
 
 
 def centre_plates(spec, pitch: float, margin: float) -> int:
@@ -102,63 +106,74 @@ def _footprint(spec) -> tuple[float, float, float, float]:
 
 @dataclass(frozen=True)
 class TieDims:
-    """A tie column (mm). Radii except where named ``_d``."""
+    """A frame tie (mm): a chain of goBILDA 1501 round standoffs (6 mm OD, M4) from each
+    inner plate to the centre plates, an M4 button head through each inner plate from the
+    leg side (its head in the clearance gap under the plate, which the drive group claims),
+    an M4 set screw through the centre plates joining the two chains."""
 
-    column: float        # radius of a column
-    spigot_d: float      # spigot seated in the inner plate
-    bore_d: float        # screw half: bore the screw head passes down
-    floor: float         # screw half: thickness of the floor the head bears on
-    clearance_d: float   # screw clearance hole (floor, centre plates)
-    insert_d: float      # insert half: hole for the heat-set insert
-    insert_len: float
-    screw_d: float
-    head_d: float
+    column: float        # radius of a column (the standoff)
+    head_r: float        # the end screw's head
     head_h: float
+    hole_d: float        # its hole in the inner and the centre plates (ISO 273 medium)
+    screw_d: float
 
 
 def tie_dims(ctx: Context) -> TieDims:
+    from spiderpig.hardware.crank_catalog import m4_bhcs
+
+    hd = get(m4_bhcs(8)).dims
+    return TieDims(column=3.0, head_r=float(hd["head_d"]) / 2, head_h=float(hd["head_h"]),
+                   hole_d=4.5, screw_d=4.0)
+
+
+def servo_frame_ctx(ctx: Context) -> ServoFrame:
+    """The left servo's frame from the side's geometry alone (before any plan: the claims
+    of the screws the drive group puts under the inner plate need it)."""
+    from spiderpig.servos.mount import away_from_pillars
+
+    pts = ctx.topo.geometry.points
+    o = np.asarray(pts["O"][0], dtype=float)
+    u = away_from_pillars(o, [pts[a.name][0] for a in ctx.topo.axes_of("frame")])
+    u = u / np.linalg.norm(u)
+    return ServoFrame((float(o[0]), float(o[1])), (float(u[0]), float(u[1])))
+
+
+def seat_keepouts(ctx: Context) -> list[tuple[tuple[float, float], float]]:
+    """What the inner plate holds that a screw through it must keep clear of, known before
+    a plan: the horn's clearance hole and every pillar's end (its M4 head and washer)."""
     p = ctx.params
-    ins = get("m3_heat_set_insert").dims
-    sk = TIE_SCREW
-    bore = sk.head_d + 2 * p.print_fit
-    spigot = round(bore + 2 * max(p.min_wall, 1.2), 1)
-    column = spigot / 2 + 2.5
-    dims = TieDims(column=column, spigot_d=spigot, bore_d=bore, floor=3.0,
-                   clearance_d=CLEARANCE[sk.size], insert_d=ins["hole_d"],
-                   insert_len=ins["length"], screw_d=sk.d, head_d=sk.head_d, head_h=sk.head_h)
-    if column - dims.insert_d / 2 < ins["min_wall"]:
-        raise ConstructionError("a tie column is too thin for its heat-set insert")
-    return dims
+    pts = ctx.topo.geometry.points
+    o = pts["O"][0]
+    out = [((float(o[0]), float(o[1])), ctx.servo.horn.diameter / 2 + p.margin)]
+    out += [((float(pts[a.name][0][0]), float(pts[a.name][0][1])), 4.5 + p.min_wall)
+            for a in ctx.topo.axes_of("frame")]
+    return out
 
 
-def tie_points(build: Build, drive) -> list[tuple[float, float]]:
-    """World XY of the frame ties: beside the servo's long sides, near its ends.
-
-    A tie is dropped if its spigot hole would cut into anything seated in the
-    inner plate (a pillar's anchor, the servo horn's clearance hole).
-    """
-    ctx = build.ctx
+def tie_points_ctx(ctx: Context) -> list[tuple[float, float]]:
+    """World XY of the frame ties: beside the servo's long sides, near its ends; a tie whose
+    head would meet the horn's hole or a pillar's end in the inner plate is dropped."""
     spec, p, d = ctx.servo, ctx.params, tie_dims(ctx)
-    frame = servo_frame(build, drive)
+    frame = servo_frame_ctx(ctx)
     x0, x1, y0, y1 = _footprint(spec)
-    yt = y1 + p.margin + d.column
-    xs = (x0 + d.column, x1 - d.column) if x1 - x0 > 2 * d.column else ((x0 + x1) / 2,)
-    hole_r = p.hole(d.spigot_d, "glue") / 2
-    keep_out = [(build.xy("O"), spec.horn.diameter / 2 + p.margin)]   # the horn's clearance hole
-    for s in build.plan.shapes(layer=build.top):
-        if s.seat and hasattr(s.shape, "at"):
-            keep_out.append((build.xy(s.shape.at), s.shape.r))
+    c = max(d.column, d.head_r)
+    yt = y1 + p.margin + c
+    xs = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
+    keep_out = seat_keepouts(ctx)
     points = []
     for x in xs:
         for y in (yt, -yt):
-            if _rect_distance((x, y), x0, x1, y0, y1) < d.column + p.margin - 1e-9:
-                raise ConstructionError("a frame tie would touch the servo")
             xy = frame.xy(x, y)
-            if all(math.dist(xy, c) >= hole_r + r + p.min_wall for c, r in keep_out):
+            if all(math.dist(xy, q) >= d.head_r + r + p.min_wall for q, r in keep_out):
                 points.append(xy)
     if len(points) < 2:
         raise ConstructionError("fewer than two frame ties fit beside the servo")
     return points
+
+
+def tie_points(build: Build, drive=None) -> list[tuple[float, float]]:
+    """:func:`tie_points_ctx` for a build."""
+    return tie_points_ctx(build.ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +278,8 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
     unmodelled purchases and what ``mech.meta`` records about them. ``host`` is the frame
     body every part of a side rides (``{"L": "L.torso", "R": "R.torso"}``)."""
     ctx, plan = design.ctx, design.plan
-    spec, p, pitch = ctx.servo, ctx.params, ctx.pitch
+    spec, p = ctx.servo, ctx.params
+    pitch = centre_t(ctx)               # the centre plates' sheet (the frame's: aluminium)
     build = Build(ctx, plan, side)
     left = servo_frame(build, design.drive)
     frames = (left, replace(left, hand=-1))
@@ -277,6 +293,7 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
     tie_xy = tie_points(build, design.drive)
     extras: list[BomLine] = []
     bodies += _tie_parts(ctx, plan, tie_xy, z_mid, half, host, info, fastened, extras)
+    info["centre_plate_sheet"] = ctx.sheet("frame")
     bodies += _centre_plate_parts(ctx, left, reliefs, rs, screws, tie_xy, n, half, pitch,
                                   host, extras)
     info["fastened"] = fastened
@@ -313,53 +330,119 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
     return rs, screws, bodies
 
 
+def _chain(D: float) -> tuple[list[float], float] | None:
+    """Stock goBILDA 1501 lengths (at most 60 mm each, joined by M4 set screws) that fill
+    ``D`` mm with less than 2 mm left over (taken up by DIN 988 shims): the fewest
+    segments, then the least left over."""
+    from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS
+
+    lengths = sorted(GOBILDA_LENGTHS)
+    for n in range(1, 5):
+        best = None
+        for combo in itertools.combinations_with_replacement(lengths, n):
+            if n > 1 and min(combo) < 12:
+                continue                     # a joined segment needs thread both ends
+            left = round(D - sum(combo), 3)
+            if 0 <= left < 2.0 and (best is None or left < best[1]):
+                best = (list(combo), left)
+        if best is not None:
+            return best
+    return None
+
+
+def _shims(t: float) -> list[float]:
+    steps = sorted((float(x) for x in get("shim_din988_4x8").dims["t"]), reverse=True)
+    out, left = [], round(t, 3)
+    for s in steps:
+        k = int(left / s + 1e-6)
+        out += [s] * k
+        left = round(left - k * s, 3)
+    return out
+
+
 def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastened,
                extras) -> list[Body]:
-    """The frame ties' columns (a screw half on the left, an insert half on the right),
-    their screws and inserts."""
-    pitch = ctx.pitch
+    """The frame ties: per tie and side a chain of round standoffs from the inner plate's
+    servo-side face to the centre plates, shims at the plate, an M4 button head through
+    the inner plate from the leg side, and an M4 set screw through the centre plates into
+    both chains, which clamps them (no glue, no tapped plate, no insert)."""
+    from spiderpig.hardware.crank_catalog import (
+        M4_BHCS_LENGTHS,
+        M4_SET_LENGTHS,
+        gobilda_1501,
+        m4_bhcs,
+        m4_set_screw,
+    )
+
     bodies: list[Body] = []
-    if tie_xy:
-        d = tie_dims(ctx)
-        z_top = plan.z(plan.top)[1] - z_mid           # inner plate's top face (left side)
-        z_spigot = z_top - (pitch - SPIGOT_RECESS)
-        need = d.floor + 2 * half + min(INSERT_ENGAGE, d.insert_len)
-        length = pick_length(need, TIE_SCREW.lengths)
-        key = TIE_SCREW.key(length)
-        engage = length - d.floor - 2 * half
-        pocket = max(d.insert_len, engage) + 1.0
-        if -half - z_top < d.floor + d.head_h + 1.0 or pocket > -half - z_top - 1.0:
-            raise ConstructionError("the servo is too short for the frame ties")
-        for i, xy in enumerate(tie_xy):
-            z_floor = -half - d.floor
-            screw_half = union([disc(xy, d.column, z_top, -half),
-                                disc(xy, d.spigot_d / 2, z_spigot, z_top)])
-            screw_half = cut_holes(screw_half, [Cut(xy, d.clearance_d)], z_floor, -half)
-            screw_half = screw_half - disc(xy, d.bore_d / 2, z_spigot - 1.0, z_floor)
-            insert_half = union([disc(xy, d.column, half, -z_top),
-                                 disc(xy, d.spigot_d / 2, -z_top, -z_spigot)])
-            insert_half = insert_half - disc(xy, d.insert_d / 2, half - 1.0, half + pocket)
-            screw = union([disc(xy, d.head_d / 2, z_floor - d.head_h, z_floor),
-                           disc(xy, d.screw_d / 2 - 0.05, z_floor, z_floor + length)])
-            insert = (disc(xy, d.insert_d / 2 - MODEL_GAP, half, half + d.insert_len)
-                      - disc(xy, d.screw_d / 2, half - 1.0, half + d.insert_len + 1.0))
-            bodies += [
-                Body(name=f"L.tie_screw_half{i}", part=screw_half, rigid_with=host["L"],
-                     fab="printed", color=TIE_COLOR),
-                Body(name=f"R.tie_insert_half{i}", part=insert_half, rigid_with=host["R"],
-                     fab="printed", color=TIE_COLOR),
-                Body(name=f"L.tie_screw{i}", part=screw, rigid_with=host["L"],
-                     fab="purchased", bom_key=key, color=STEEL),
-                Body(name=f"R.tie_insert{i}", part=insert, rigid_with=host["R"],
-                     fab="purchased", bom_key="m3_heat_set_insert", color=BRASS),
-            ]
-            fastened.append((f"L.tie_screw{i}", f"R.tie_insert{i}"))
-        # a spigot is glued like a pillar's anchor (a few drops each), not a bottle a robot
-        extras.append(BomLine("ca_glue", GLUE_PER_SPIGOT * len(tie_xy),
-                              "tie spigots into the inner frame plates"))
-        info.update(ties=len(tie_xy), tie_screw=key, tie_engagement_mm=engage)
-    else:
+    if not tie_xy:
         info.update(ties=0)
+        return bodies
+    d = tie_dims(ctx)
+    z_top = plan.z(plan.top)[1] - z_mid           # inner plate's servo-side face (left side)
+    t_in = plan.t(plan.top)
+    D = -half - z_top
+    got = _chain(D)
+    if got is None:
+        raise ConstructionError(f"no stock standoffs fill the {D:.1f} mm from an inner plate "
+                                "to the centre plates")
+    segs, left = got
+    shims = _shims(left)
+    t_sh = round(sum(shims), 3)
+    depth = min(8.0, min(segs) / 2)
+    end = next(((L, L - t_in - t_sh) for L in M4_BHCS_LENGTHS
+                if 4.0 - EPS_CH <= L - t_in - t_sh <= depth + EPS_CH), None)
+    stud = next(((L, (L - 2 * half) / 2) for L in M4_SET_LENGTHS
+                 if 3.0 - EPS_CH <= (L - 2 * half) / 2 <= depth + EPS_CH), None)
+    if end is None or stud is None:
+        raise ConstructionError("no stock M4 screw closes a frame tie's chain")
+    for i, xy in enumerate(tie_xy):
+        for side, sign in (("L", 1.0), ("R", -1.0)):
+            face = sign * z_top                          # inner plate's servo-side face
+            z = face
+            if shims:
+                zs = sorted((z, z + sign * t_sh))
+                bodies.append(Body(name=f"{side}.tie_shims{i}", part=ring(xy, 8.0, 4.1, *zs),
+                                   rigid_with=host[side], fab="purchased",
+                                   bom_key="shim_din988_4x8", color=STEEL))
+                if len(shims) > 1:
+                    extras.append(BomLine("shim_din988_4x8", len(shims) - 1,
+                                          f"frame tie {i}, {side}"))
+                z += sign * t_sh
+            for k, L in enumerate(segs):
+                zs = sorted((z, z + sign * L))
+                part = disc(xy, d.column - 0.01, *zs) - disc(xy, 2.0, zs[0] - 1, zs[1] + 1)
+                bodies.append(Body(name=f"{side}.tie_standoff{i}_{k}", part=part,
+                                   rigid_with=host[side], fab="purchased",
+                                   bom_key=gobilda_1501(L), color=TIE_COLOR))
+                z += sign * L
+                if k + 1 < len(segs):
+                    bodies.append(Body(name=f"{side}.tie_joint{i}_{k}",
+                                       part=disc(xy, 1.95, *sorted((z - 6, z + 6))),
+                                       rigid_with=host[side], fab="purchased",
+                                       bom_key=m4_set_screw(12), color=STEEL))
+            # the end screw from the leg side: its head under the inner plate
+            leg = face - sign * t_in
+            L, _ = end
+            screw = union([disc(xy, d.head_r, *sorted((leg, leg - sign * d.head_h))),
+                           disc(xy, 1.95, *sorted((leg, leg + sign * L)))])
+            bodies.append(Body(name=f"{side}.tie_screw{i}", part=screw, rigid_with=host[side],
+                               fab="purchased", bom_key=m4_bhcs(L), color=STEEL))
+        L, _ = stud
+        bodies.append(Body(name=f"tie_stud{i}", part=disc(xy, 1.95, -L / 2, L / 2),
+                           rigid_with=host["L"], fab="purchased", bom_key=m4_set_screw(L),
+                           color=STEEL))
+        fastened += [(f"L.tie_screw{i}", f"L.tie_standoff{i}_0"),
+                     (f"R.tie_screw{i}", f"R.tie_standoff{i}_0"),
+                     (f"tie_stud{i}", f"L.tie_standoff{i}_{len(segs) - 1}"),
+                     (f"tie_stud{i}", f"R.tie_standoff{i}_{len(segs) - 1}")]
+        fastened += [(f"{s_}.tie_joint{i}_{k}", f"{s_}.tie_standoff{i}_{k + kk}")
+                     for s_ in ("L", "R") for k in range(len(segs) - 1) for kk in (0, 1)]
+    extras.append(BomLine("threadlocker_243", 0.01 * len(tie_xy),
+                          "frame tie screws and studs"))
+    info.update(ties=len(tie_xy), tie_screw=m4_bhcs(end[0]), tie_standoffs=segs,
+                tie_shims_mm=t_sh, tie_stud=m4_set_screw(stud[0]),
+                tie_engagement_mm=round(end[1], 2), tie_stud_engagement_mm=round(stud[1], 2))
     return bodies
 
 
@@ -384,7 +467,11 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
             lx, ly = left.local(xy)
             xs += [lx - tr, lx + tr]
             ys += [ly - tr, ly + tr]
-    tie_d = tie_dims(ctx).clearance_d if tie_xy else 0.0
+    tie_d = tie_dims(ctx).hole_d if tie_xy else 0.0
+    from spiderpig.materials import sheet
+
+    sheet_key = ctx.sheet("frame")
+    min_hole = sheet(sheet_key).min_hole if sheet_key else 0.0
     for k in range(n):
         z0 = -half + k * pitch
         z1 = z0 + pitch
@@ -396,7 +483,7 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
                                  (rx1 - rx0, ry1 - ry0), rf.angle))
         for _, xy, head, shank, h in screws:
             if _overlaps((z0, z1), tuple(sorted(shank))):
-                cuts.append(Cut(xy, h.d))
+                cuts.append(Cut(xy, max(h.d, min_hole)))
             if _overlaps((z0, z1), head):
                 cuts.append(Cut(xy, rs.head_d + 2 * HEAD_CLEARANCE))
         cuts += [Cut(xy, tie_d) for xy in tie_xy]
@@ -409,7 +496,7 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
         if seats:
             part = union([part, *seats])
         bodies.append(Body(name=f"centre_plate{k}", part=part, rigid_with=host["L"],
-                           fab="laser", color=CHASSIS_COLOR))
-    if n > 1:
-        extras.append(BomLine(adhesive(ctx.config.sheet), 1, "laminate the centre plates"))
+                           fab="laser", color=CHASSIS_COLOR, sheet=sheet_key))
+    # (no adhesive: the ties' studs clamp the stack, and the rear screws hold each servo's
+    # own plates)
     return bodies

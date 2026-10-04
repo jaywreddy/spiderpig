@@ -17,11 +17,17 @@ from spiderpig.failure import apply_patch, merge_patch
 from spiderpig.stack import verify_plan
 from spiderpig.store import STORE_ENV, Store, StoreError, diff_json
 
-KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}, "size": {"stack_mm": {"max": 40}}}
+# the Klann quad stacks 48 mm (16 layers with the keyed crank's two-layer top webs)
+# The numbers below are the keyed crank's and the printed pillars' (the defaults before the
+# bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
+# height, parts and cost stay what these tests check
+OLD = {"constructions": {"crank": "keyed", "pillar": "printed"}}
+KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}, "size": {"stack_mm": {"max": 50}},
+              **OLD}
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
-                "legs": {"module": "single", "sides": 1}}
+                "legs": {"module": "single", "sides": 1}, **OLD}
 HEEL = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
-        "legs": {"module": "single"}}
+        "legs": {"module": "single"}, **OLD}
 
 
 def _doc(rep) -> dict:
@@ -123,7 +129,7 @@ def test_a_record_that_does_not_hash_to_its_id_is_refused(tmp_path):
 
 
 def test_reports_round_trip_and_the_second_run_hits_the_cache(tmp_path, design, monkeypatch):
-    design("quad")                       # the session's plan (design_side is cached)
+    design("quad", crank="keyed", pillar="printed")       # the session's plan (cached)
     store = Store(tmp_path)
     d = api.resolve(KLANN_QUAD, store)
     reps = {"check": api.check(d), "plan": api.plan(d), "walk": api.walk(d),
@@ -160,7 +166,7 @@ def test_reports_round_trip_and_the_second_run_hits_the_cache(tmp_path, design, 
 
 
 def test_a_reloaded_plan_is_verified_and_identical(tmp_path, design):
-    tmpl, side = design("quad")
+    tmpl, side = design("quad", crank="keyed", pillar="printed")     # KLANN_QUAD's
     store = Store(tmp_path)
     d = api.resolve(KLANN_QUAD, store)
     api.plan(d)
@@ -191,7 +197,7 @@ def test_a_failing_check_and_plan_are_cached_as_failures(tmp_path):
     assert _doc(api.plan(back)) == _doc(pr)
     assert back.log[-1]["cached"]
     (rec,) = api.recommend(back)
-    assert rec.patch == {"linkage": {"params": {"unit": 10.5}}}
+    assert rec.patch == {"linkage": {"params": {"unit": 12.0}}}       # the keyed crank's post
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +205,10 @@ def test_a_failing_check_and_plan_are_cached_as_failures(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.slow
 def test_parts_reload_from_step_and_recheck_passes(tmp_path, design, robot, monkeypatch):
-    design("quad")
-    mech = robot("quad", 1.0)
+    design("quad", crank="keyed", pillar="printed")
+    mech = robot("quad", 1.0, crank="keyed", pillar="printed")
     store = Store(tmp_path)
     d = api.resolve(KLANN_QUAD, store)
     rep = api.attach_build(d, mech, 1.0)
@@ -218,7 +225,7 @@ def test_parts_reload_from_step_and_recheck_passes(tmp_path, design, robot, monk
                and e["mirror"] for e in refs)
     assert all((store.dir(d.id) / "build" / e["file"]).is_file() for e in files)
     assert manifest["fastened"]
-    assert manifest["bom_extras"][0]["key"] == "ca_glue"
+    assert "ca_glue" in {b["key"] for b in manifest["bom_extras"]}
 
     fabricated = _count(monkeypatch, api, "fabricate_side")
     back = api.load(d.id, store)
@@ -255,12 +262,12 @@ def test_parts_reload_from_step_and_recheck_passes(tmp_path, design, robot, monk
 def test_a_build_at_another_angle_replaces_the_stored_one(tmp_path, side):
     store = Store(tmp_path)
     d = api.resolve(KLANN_SINGLE, store)
-    api.attach_build(d, side("single", 1.0), 1.0)
+    api.attach_build(d, side("single", 1.0, crank="keyed", pillar="printed"), 1.0)
     assert store.read_report(d.id, "build")["t"] == 1.0
     n = len(list((store.dir(d.id) / "build" / "parts").iterdir()))
     assert n == len(d.parts)                                 # one side: no mirrors
     back = api.load(d.id, store)
-    api.attach_build(back, side("single", 2.0), 2.0)
+    api.attach_build(back, side("single", 2.0, crank="keyed", pillar="printed"), 2.0)
     assert store.read_report(d.id, "build")["t"] == 2.0
     assert len(list((store.dir(d.id) / "build" / "parts").iterdir())) == n
     again = api.load(d.id, store)
@@ -275,12 +282,12 @@ def test_a_build_at_another_angle_replaces_the_stored_one(tmp_path, side):
 
 def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
         tmp_path, design, side, monkeypatch):
-    design("single")
+    design("single", crank="keyed", pillar="printed")
     store = Store(tmp_path)
     d = api.resolve(KLANN_SINGLE, store)
     api.check(d)
     pr = api.plan(d)
-    api.attach_build(d, side("single", 1.0), 1.0)
+    api.attach_build(d, side("single", 1.0, crank="keyed", pillar="printed"), 1.0)
     real = d.engine_version
     monkeypatch.setattr(api, "engine_version", lambda: "0.0.0+fake")
 
@@ -323,7 +330,7 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
 
 
 def test_a_stored_plan_that_no_longer_holds_is_solved_again(tmp_path, design, monkeypatch):
-    design("single")
+    design("single", crank="keyed", pillar="printed")
     store = Store(tmp_path)
     d = api.resolve(KLANN_SINGLE, store)
     pr = api.plan(d)
@@ -380,7 +387,7 @@ def test_compare_and_derive(tmp_path):
     assert child.store == store
     assert child.derived_from == heel.id
     assert child.patch == rec.patch
-    assert child.resolved["linkage"]["params"]["unit"] == 10.5
+    assert child.resolved["linkage"]["params"]["unit"] == 12.0
     record = store.read_design(child.id)
     assert record["derived_from"] == heel.id
     assert record["patch"] == rec.patch
@@ -391,11 +398,11 @@ def test_compare_and_derive(tmp_path):
     assert api.plan(child).ok
     cmp = api.compare(heel, child)
     assert cmp["spec_patch"] == rec.patch
-    assert cmp["resolved_patch"] == {"linkage": {"params": {"unit": 10.5}}}
+    assert cmp["resolved_patch"] == {"linkage": {"params": {"unit": 12.0}}}
     assert cmp["derived"] == f"{child.id} derives from {heel.id}"
     assert cmp["engine_version"] is None
     assert cmp["reports"]["check"]["ok"] == {"a": False, "b": True}
-    assert cmp["reports"]["plan"]["n_layers"] == {"a": None, "b": 12}
+    assert cmp["reports"]["plan"]["n_layers"] == {"a": None, "b": 14}
     assert cmp["only_in"] == {"a": [], "b": []}
     by_id = api.compare(heel.id, child.id, store)
     assert by_id["spec_patch"] == cmp["spec_patch"]
@@ -422,7 +429,7 @@ def test_compare_and_derive(tmp_path):
 def test_export_lands_in_the_store_and_is_reused(tmp_path, side, monkeypatch):
     store = Store(tmp_path)
     d = api.resolve({**KLANN_SINGLE, "outputs": ["step", "bom"]}, store)
-    api.attach_build(d, side("single", 1.0), 1.0)
+    api.attach_build(d, side("single", 1.0, crank="keyed", pillar="printed"), 1.0)
     rep = api.export(d)
     assert rep.ok
     assert rep.out_dir == str(store.exports_dir(d.id).resolve())

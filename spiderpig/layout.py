@@ -74,10 +74,26 @@ def _long_axis_degrees(body) -> float:
     return 0.0
 
 
+def _lay_flat(part):
+    """The part turned so its thinnest bounding-box axis is Z: every plate of the stack
+    already is; the electronics deck (:mod:`construction.deck`) lies in the XZ plane."""
+    bb = part.bounding_box()
+    size = (bb.max.X - bb.min.X, bb.max.Y - bb.min.Y, bb.max.Z - bb.min.Z)
+    thin = min((2, 1, 0), key=lambda i: size[i])     # Z on a tie
+    if size[thin] > size[2] - 1e-6:
+        return part
+    if thin == 1:
+        return part.rotate(Axis.X, 90)
+    if thin == 0:
+        return part.rotate(Axis.Y, 90)
+    return part
+
+
 def _profile(body, sheet: tuple[float, float], margin: float):
     """The body's mid-slot section, turned to lie flat (or along the sheet diagonal)."""
-    bb = body.part.bounding_box()
-    sketch = section(body.part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+    part = _lay_flat(body.part)
+    bb = part.bounding_box()
+    sketch = section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
     sketch = sketch.rotate(Axis.Z, -_long_axis_degrees(body))
     usable = (sheet[0] - 2 * margin, sheet[1] - 2 * margin)
     for extra in (0.0, 90.0, math.degrees(math.atan2(usable[1], usable[0]))):
@@ -154,24 +170,73 @@ def pack(mech, sheet_size: tuple[float, float] = _DEFAULT_SHEET, margin: float =
     return sheets
 
 
+def sheet_key(body, default: str) -> str:
+    """The sheet a laser-cut body is cut from (``Body.sheet``, else ``default``)."""
+    return getattr(body, "sheet", None) or default
+
+
+def by_sheet(mech, default: str) -> dict[str, list]:
+    """The laser-cut bodies per sheet (material and thickness), the default sheet first."""
+    out: dict[str, list] = {}
+    for b in sorted(laser_bodies(mech), key=lambda b: sheet_key(b, default) != default):
+        out.setdefault(sheet_key(b, default), []).append(b)
+    return out
+
+
+def pack_sheets(mech, default: str, sheet_size: tuple[float, float] | None = None,
+                margin: float = _MARGIN) -> dict[str, list]:
+    """:func:`pack` per sheet: ``{sheet key: [sheet, ...]}``, each on its own blank size
+    (``sheet_size`` for all, when given)."""
+    from types import SimpleNamespace
+
+    from spiderpig.hardware.catalog import sheet_size as blank
+
+    return {key: pack(SimpleNamespace(bodies=bodies), sheet_size or blank(key), margin)
+            for key, bodies in by_sheet(mech, default).items()}
+
+
+def sheet_lines(mech, default: str, sheet_size: tuple[float, float] | None = None) -> list:
+    """The BOM's sheet lines: how many blanks of each sheet the laser-cut parts take."""
+    from spiderpig.hardware.bom import BomLine
+
+    return [BomLine(key, len(sheets), "laser-cut parts")
+            for key, sheets in pack_sheets(mech, default, sheet_size).items() if sheets]
+
+
 def save_sheets(
     mech,
     prefix,
-    sheet_size: tuple[float, float] = _DEFAULT_SHEET,
+    sheet_size: tuple[float, float] | None = None,
     margin: float = _MARGIN,
     kerf: float = DEFAULT_KERF,
+    default: str | None = None,
 ) -> list[Path]:
-    """Pack the mechanism's laser-cut parts onto sheets and write DXFs.
+    """Pack the mechanism's laser-cut parts onto sheets, one set per sheet (material and
+    thickness: one order per service), and write DXFs.
 
-    Returns the DXF paths written (``<prefix>_<i>.dxf``); also writes
+    Returns the DXF paths written (``<prefix>_<sheet key>_<i>.dxf``); also writes
     ``<prefix>_parts.csv`` (sheet, part, position). Raises if any part can't
-    be placed.
+    be placed. ``default``: the sheet of a body that names none (the build's
+    ``config.sheet``; ``mech.meta["sheet"]`` when not given).
     """
     prefix = Path(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
-    sheets = pack(mech, sheet_size, margin)
+    default = default or (mech.meta.get("sheet") if hasattr(mech, "meta") else None) \
+        or "acrylic_3mm"
     written: list[Path] = []
     rows = []
+    for key, sheets in pack_sheets(mech, default, sheet_size, margin).items():
+        written += _write_sheets(sheets, Path(f"{prefix}_{key}"), kerf, key, rows)
+    if rows:
+        with open(f"{prefix}_parts.csv", "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["material", "sheet", "part", "x_mm", "y_mm", "width_mm", "height_mm"])
+            w.writerows(rows)
+    return written
+
+
+def _write_sheets(sheets, prefix: Path, kerf: float, key: str, rows: list) -> list[Path]:
+    written: list[Path] = []
     for sheet_idx, placed in enumerate(sheets):
         doc = ezdxf.new(dxfversion="R2010")
         doc.units = ezdxf.units.MM
@@ -184,14 +249,9 @@ def save_sheets(
             for wire in wires:
                 _emit(msp, wire, off, kerf / 2 if wire is outer else -kerf / 2)
             x0, y0, x1, y1 = _bbox_2d(sketch)
-            rows.append((sheet_idx, name, round(x0 + off[0], 1), round(y0 + off[1], 1),
+            rows.append((key, sheet_idx, name, round(x0 + off[0], 1), round(y0 + off[1], 1),
                          round(x1 - x0, 1), round(y1 - y0, 1)))
         path = Path(f"{prefix}_{sheet_idx}.dxf")
         doc.saveas(str(path))
         written.append(path)
-    if rows:
-        with open(f"{prefix}_parts.csv", "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow(["sheet", "part", "x_mm", "y_mm", "width_mm", "height_mm"])
-            w.writerows(rows)
     return written

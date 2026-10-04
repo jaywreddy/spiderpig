@@ -2,15 +2,15 @@
 
 Each module here defines one family with :class:`linkage.Linkage` (and its
 published variants with :meth:`linkage.Linkage.variant`) and registers it.
-Klann registers first: it is the default. Every version is registered, even
-one the current constructions can't build: the pipeline says why, and what would
+Strider registers first: it is the default (:data:`linkage.DEFAULT`). Every version
+is registered, even one the current constructions can't build: the pipeline says why, and what would
 clear it (e.g. a link that sweeps across the crank axis and no crank point clears).
 """
 
 import importlib
 import pkgutil
 
-from . import klann  # noqa: F401 - the default registers first
+from . import strider  # noqa: F401 - the default registers first
 
 for _mod in sorted(m.name for m in pkgutil.iter_modules(__path__)):
     importlib.import_module(f"{__name__}.{_mod}")

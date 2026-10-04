@@ -133,7 +133,8 @@ STS3215 = register_servo(ServoSpec(
             strip=((-9.6, -9.6, 0.2, 9.6, 9.6, 4.7),),     # the output horn
         ),
     ),
-    torque_kgcm=19.5,               # [C001] stall at 7.4 V (16.5 at 6 V); rated 5 kg.cm
+    torque_kgcm=19.5,               # [C001] stall at 7.4 V (16.5 at 6 V)
+    rated_kgcm=5.0,                 # [C001] rated torque
     voltage=(4.0, 7.4),             # [C001]
     speed_rpm=52,                   # [C001] 0.192 s/60 deg at 7.4 V, no load
     weight_g=55,                    # [FT]

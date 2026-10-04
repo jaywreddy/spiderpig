@@ -3,7 +3,9 @@
 combining both (``quad``), and the template rewrites they share
 (``combine_connectors``, ``fuse_couplers``, ``fuse_torsos``).
 
-Kinematics only: Z placement belongs to the stack plan (``test_stack.py``).
+Kinematics only: Z placement belongs to the stack plan (``test_stack.py``). The joint
+names and body counts are the Klann's (``KLANN``, named explicitly: the default linkage
+is the Strider since 2026-10), unless a test names another.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ def _assert_connections_close(tmpl):
 
 
 def _body_names(module: str) -> list[str]:
-    return [b.name for b in build_module_template(module).bodies]
+    return [b.name for b in build_module_template(module, linkage="klann").bodies]
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +43,8 @@ def _body_names(module: str) -> list[str]:
 
 
 def test_combine_connectors_merges_joints_and_outline():
-    tmpl = combine_connectors(linkage.legs_template("pair", [(+1, 0.0), (-1, 0.0)]),
+    tmpl = combine_connectors(linkage.legs_template("pair", [(+1, 0.0), (-1, 0.0)],
+                                                    linkage="klann"),
                               "_leg0", "_leg1")
     conn = tmpl.body("conn")
     assert {j.name for j in conn.joints} == {"O_leg0", "M_leg0", "O_leg1", "M_leg1"}
@@ -54,7 +57,7 @@ def test_combine_connectors_merges_joints_and_outline():
 
 
 def test_fuse_torsos_shares_O_and_suffixes_pivots():
-    tmpl = build_module_template("double")
+    tmpl = build_module_template("double", linkage="klann")
     torso = tmpl.body("torso")
     assert sorted(j.name for j in torso.joints) == ["A_leg0", "A_leg1", "B_leg0", "B_leg1", "O"]
     with pytest.raises(KeyError):
@@ -75,7 +78,7 @@ def test_double_body_count():
 
 
 def test_double_all_connections_close():
-    _assert_connections_close(build_module_template("double"))
+    _assert_connections_close(build_module_template("double", linkage="klann"))
 
 
 def test_double_mirror_produces_distinct_foot():
@@ -88,7 +91,7 @@ def test_double_mirror_produces_distinct_foot():
 
 
 def test_double_mirrored_legs_share_the_crankpin():
-    conn = build_module_template("double").body("conn")
+    conn = build_module_template("double", linkage="klann").body("conn")
     ts = np.array([0.7])
     np.testing.assert_allclose(conn.joint("M_leg0").eval(ts)[0, :2, 3],
                                conn.joint("M_leg1").eval(ts)[0, :2, 3], atol=1e-12)
@@ -109,7 +112,7 @@ def test_decker_body_count():
 
 
 def test_decker_frame_holds_both_decks():
-    tmpl = build_module_template("decker")
+    tmpl = build_module_template("decker", linkage="klann")
     torso = tmpl.body("torso")
     assert sorted(j.name for j in torso.joints) == ["A_leg0", "A_leg1", "B_leg0", "B_leg1", "O"]
     # same chirality: both decks pivot on the same A and B
@@ -134,22 +137,34 @@ def test_quad_body_count():
 
 
 def test_quad_all_connections_close():
-    _assert_connections_close(build_module_template("quad"))
+    _assert_connections_close(build_module_template("quad", linkage="klann"))
 
 
 def test_quad_cranks_are_arms_across_the_centre():
-    """Each mirrored pair's crank is one bar through O with a crankpin at each end."""
-    tmpl = build_module_template("quad")
+    """The generic quad (the demo Klann's): each crank body is one bar through O with a crankpin at
+    each end. A Klann variant's quad (0, 0, 180, 180, :data:`linkage.KLANN_QUAD`): each
+    mirrored pair rides one crankpin, the two pairs' half a turn apart."""
     ts = np.array([0.4])
+    tmpl = build_module_template("quad", linkage="klann")
     for name, (a, b) in {"conn": ("_leg0", "_leg1"), "conn_upper": ("_leg2", "_leg3")}.items():
         crank = tmpl.body(name)
         ma = crank.joint(f"M{a}").eval(ts)[0, :2, 3]
         mb = crank.joint(f"M{b}").eval(ts)[0, :2, 3]
         np.testing.assert_allclose(ma, -mb, atol=1e-9)
+    tmpl = build_module_template("quad", linkage="klann_lego")
+    pins = {}
+    for name, (a, b) in {"conn": ("_leg0", "_leg1"), "conn_upper": ("_leg2", "_leg3")}.items():
+        crank = tmpl.body(name)
+        ma = crank.joint(f"M{a}").eval(ts)[0, :2, 3]
+        mb = crank.joint(f"M{b}").eval(ts)[0, :2, 3]
+        np.testing.assert_allclose(ma, mb, atol=1e-9)
+        pins[name] = ma
+    np.testing.assert_allclose(pins["conn"], -pins["conn_upper"], atol=1e-9)
 
 
 def test_quad_every_leg_pivots_on_the_frame():
-    torso_joints = {j.name for j in build_module_template("quad").body("torso").joints}
+    torso = build_module_template("quad", linkage="klann").body("torso")
+    torso_joints = {j.name for j in torso.joints}
     for k in range(4):
         assert {f"A_leg{k}", f"B_leg{k}"} <= torso_joints
 

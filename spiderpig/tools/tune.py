@@ -28,7 +28,7 @@ moves where the cycle starts. Then
    ``--names`` to choose) join the pattern search, each within +-PCT % of
    its default.
 
-``--linkage`` picks the linkage (Klann by default).
+``--linkage`` picks the linkage (Strider by default).
 
 Two legs' phases stay at least ``--min-gap`` degrees apart (default 5)
 unless the module's own design has them together (the double's pair):
@@ -71,14 +71,14 @@ import numpy as np
 
 from spiderpig import linkage as linkage_mod
 from spiderpig import walk
-from spiderpig.config import BuildConfig
+from spiderpig.config import BuildConfig, default_module
 from spiderpig.linkage import scale_params
 
 PHASE_STEPS = (8.0, 4.0, 2.0, 1.0)          # degrees
 MIN_GAP = 5.0                               # degrees between two legs' crank phases
 REPORT = ("stride_mm", "bob_mm", "pitch_deg", "roll_deg", "slip_rms_mm_per_rev",
           "min_margin_mm", "tipping_fraction", "degenerate_fraction", "speed_mm_s",
-          "yaw_deg_per_rev", "mean_contacts")
+          "yaw_deg_per_rev", "mean_contacts", "walks")
 
 
 @dataclass(frozen=True)
@@ -282,7 +282,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--linkage", choices=linkage_mod.available("walker"),
                     default=linkage_mod.DEFAULT)
-    ap.add_argument("--module", default="quad", help="one of the linkage's modules (quad)")
+    ap.add_argument("--module", default=None,
+                    help="one of the linkage's modules (default: the linkage's, "
+                    "config.default_module)")
     ap.add_argument("--grid", type=float, default=30.0,
                     help="phase grid step in degrees (default 30)")
     ap.add_argument("--coarse", type=int, default=120,
@@ -299,6 +301,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", type=Path, default=None, help="write the result as JSON")
     args = ap.parse_args(argv)
     lk = linkage_mod.get(args.linkage)
+    args.module = args.module or default_module(lk.key)
     names = tuple(s.strip() for s in args.names.split(",")) if args.names else None
     if names and (bad := [n for n in names if n not in lk.params]):
         ap.error(f"unknown proportions {bad}; have {list(lk.params)}")
@@ -320,6 +323,12 @@ def main(argv=None) -> int:
     if not tuner.stride_ref or tuner.stride_ref < 1.0:
         print("  note: the default design doesn't walk in this model (one leg a side can't "
               "stand; with two, the four feet stay coplanar, all on the ground): no stride term")
+    for label, scored in (("default", default), ("best", best)):
+        if scored.metrics is not None and not scored.metrics.get("walks", True):
+            print(f"  WARNING: the {label} design does not walk (stride "
+                  f"{scored.metrics['stride_mm']:.1f} mm/rev, on fewer than three feet "
+                  f"{scored.metrics['degenerate_fraction'] * 100:.0f} % of the cycle); MuJoCo "
+                  "crawls such a design with its body on the floor")
     print(f"  {'':22} {'default':>22} {'best':>22}")
     print(f"  {'phases (deg)':22} {_phases_arg(default.candidate.phases):>22} "
           f"{_phases_arg(best.candidate.phases):>22}")

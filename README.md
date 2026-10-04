@@ -1,7 +1,9 @@
-# spiderpig — Klann walking-linkage generator
+# spiderpig — walking-linkage generator
 
-Python tooling that turns the symbolic definition of a
-[Klann linkage](https://en.wikipedia.org/wiki/Klann_linkage) into a
+Python tooling that turns the symbolic definition of a walking linkage (the
+[Strider](https://www.diywalkers.com/strider-linkage-plans.html) by default; the
+[Klann linkage](https://en.wikipedia.org/wiki/Klann_linkage), Jansen, TrotBot and
+others are registered too) into a
 ready-to-build walking robot: laser-cut plates (DXF), 3D-printed parts
 (STL), a bill of materials with vendor links, and an animated 3D view.
 
@@ -78,13 +80,15 @@ uv run uvicorn spiderpig.server.app:app --host 127.0.0.1 --port 8000
 ## Run
 
 ```bash
-spiderpig build --out build/                 # the quad robot (4 legs per side)
+spiderpig build --out build/                 # the Strider double (two coupled pairs per side)
+spiderpig build --linkage klann --out build/klann   # the Klann quad (the wobbly demo)
 spiderpig build --module single --out build/single
 spiderpig build --linkage jansen --module double --out build/jansen
 spiderpig build --list                       # linkages, modules, servos, constructions, sheets
 ```
 
-`--linkage` (Klann by default), `--module`, `--phases` and `--proportion
+`--linkage` (Strider by default), `--module` (the linkage's own by default: Strider's
+`double`, another walker's `quad`), `--phases` and `--proportion
 NAME=VALUE` (the linkage's parameters) work the same way for `spiderpig bake`,
 `spiderpig explain`, the other tools and (`linkage=`, `module=`, `phases=`,
 `p.NAME=`) the viewer's `/api/walk` and `/api/glb`: they all build one
@@ -94,21 +98,30 @@ audit` take the build options below (`--servo`, `--pin`, `--pillar`, `--sheet`,
 plan of one side and writes
 (stem: the linkage, `--name` to change it):
 
-- `build/klann.step` / `klann.stl` — the whole robot (both sides, servos,
+- `build/strider.step` / `strider.stl` — the whole robot (both sides, servos,
   frame), colour-tagged.
 - `build/print/` — one STL per different printed part, flat on the build
   plate, `*_mirrored.stl` where the right side needs the mirror image, and
   `parts.csv` with how many of each to print.
-- `build/laser/klann_sheet_*.dxf` — every laser-cut part, kerf-compensated
+- `build/laser/strider_sheet_*.dxf` — every laser-cut part, kerf-compensated
   and packed on the sheet stock; outer contours as `LWPOLYLINE`, holes as
-  `CIRCLE`, layer `CUT`, mm. `klann_sheet_parts.csv` says which part is where.
+  `CIRCLE`, layer `CUT`, mm. `strider_sheet_parts.csv` says which part is where.
 - `build/bom.csv` / `bom.md` / `bom.json` — what to buy (quantities, packs,
   vendor links, whether each link was checked, estimated cost), what to
   print (filament) and what to cut (sheets).
 
-Useful flags: `--module {single,double,decker,quad}` (legs per side; default
-`quad`), `--side-only`, `--servo` (continuous-rotation servos only; default
-`sts3215`), `--pillar` / `--pin` / `--crank` (constructions), `--sheet`,
+Useful flags: `--module {single,double,decker,quad}` (legs per side; default: the
+linkage's, `config.default_module`), `--side-only`, `--servo` (continuous-rotation servos only; default
+`sts3215`), `--pillar` / `--pin` / `--crank` (constructions; the default is `--pin chicago
+--pillar standoff --crank bolt` since 2026-10-03: round 6 mm aluminium standoff pillars,
+spliced at a ring layer where a column is longer than 60 mm or not a length goBILDA sells,
+and the laser-cut bolt crank,
+two-plate acrylic web stacks keyed on M6 hex-bolt crankpins (a mechanism keeps `--crank
+keyed`); `--pillar printed --crank keyed` was the default before: the keyed crank's printed
+segments are keyed through each crankpin by a brass hex standoff and clamped by a
+threadlocked screw and nut, `--crank keyed_float` the same with sliding keys, `--crank
+printed` the same crank held by clamp friction alone; `docs/audit/STRENGTH.md` has why the
+default changed and what it costs), `--sheet`,
 `--thickness` (measure your sheet: acrylic varies by up to 8 %), `--kerf`,
 `--no-dxf`. A mechanism (`--linkage hoecken`, `parallelogram_lift`, ...) needs
 no `--module` or `--side-only`: it is its one module and one side, for `build`,
@@ -139,14 +152,37 @@ functional group at a time (see `spiderpig/construction/base.py`):
 
 - **servo drive** — an STS3215 stands on the inner frame plate, output face
   down; its horn turns in a hole in the plate;
-- **crank** — a printed built-up crankshaft bolted to the horn: every b1
-  sweeps across the crank axis, so the crank reaches each b1 only along its
-  crankpin, with webs in the layers either side;
-- **pillars** — the frame pivots: printed stepped axles held by both the
-  inner and the outer frame plate, with shoulders (built-in spacers) beside
-  each link and thin necks where other links pass;
-- **pins** — the pivots between links: printed stepped axles with a head
-  and a snap cap;
+- **crank** — a built-up crankshaft bolted to the horn: every b1 sweeps across the
+  crank axis, so the crank reaches each b1 only along its crankpin, with webs in the
+  layers either side. The default (`--crank bolt`, the crank study of 2026-10-03) is
+  laser-cut: every web a stack of two acrylic plates, each crankpin an ISO 4014 M6 hex
+  bolt whose head sits in a hex pocket through the top stack and whose nylock sits in one
+  through the lowest stack, the riders turning on its plain shank (a bare layer over the
+  nut's stack keeps them off the thread's runout), the plates of a segment
+  solvent-welded, a round M3 standoff as the journal stub; it holds a jam's twist with
+  margin (its weakest element, the nut's lock, 2.9 N·m against 1.7) where the keyed
+  crank's printed key sockets hold 0.55, but it stacks taller: 24 layers / 72 mm a side
+  on the Strider double against the keyed crank's 18 / 54, 31 on a Klann-family quad
+  against 16 (the shortest partially threaded M6 is 30 mm, so each chain's run is at
+  least 4 layers), and the Strider quad finds no plan within the planner's budget. `--crank keyed` (printed
+  segments keyed through every crankpin by a brass M3 hex standoff, clamped by one
+  threadlocked screw and nut per chain) is the mechanisms' default;
+- **pillars** — the frame pivots: goBILDA 1501 round aluminium standoffs (6 mm OD,
+  `--pillar standoff`, the default) from the outer plate (an M4 button head and washer
+  outside it) to the inner (glued flush), the links turning on the standoff, a laser-cut
+  ring in every other layer, spliced at a ring layer (an M4 stud through it) where the
+  column is longer than a 60 mm stock length or isn't a length goBILDA sells (in 3 mm
+  layers: 12, 18, 24, 27, 30, 36, 42, 48, 54 or 60 mm); `--pillar printed` is the printed stepped
+  axle with shoulders beside each link and thin necks where other links pass;
+- **pins** — the pivots between links: an M3 Chicago screw (a 4 mm barrel through
+  the stack, a screw driven into it from above until it bottoms), laser-cut spacer
+  rings, a PTFE washer and shims under the top head, the lowest link bonded to the
+  barrel (`--pin chicago`, the default: the same 18-layer stack as the rod, the axial
+  play set by the barrel length to 0.05-0.15 mm, a stronger shaft, nothing to cut, and
+  it comes apart; the audit reports every link's tilt). `--pin rod` (3 mm rod cut to
+  length, Starlock clips) was the default before it; `--pin printed` is the zero-hardware printed
+  snap pin, on the Strider with its J7 snap lip relieved to 0.13 mm; `bolt`,
+  `bearing`, `bushing`, `chicago_bushing` are the other options, `spiderpig/construction/pivots/`);
 - **links and frame plates** — laser-cut, holes cut for everything above.
 
 Each group first *claims* the space it needs, per 3 mm layer and relative

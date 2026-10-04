@@ -37,10 +37,10 @@ from spiderpig import api, servos
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.design import Design
 from spiderpig.failure import Failure
-from spiderpig.hardware.bom import BomLine, bom_from_mechanism
-from spiderpig.hardware.catalog import adhesive, sheet_size
+from spiderpig.hardware.bom import bom_from_mechanism
+from spiderpig.hardware.catalog import adhesive
 from spiderpig.hardware.catalog import get as catalog_item
-from spiderpig.layout import pack
+from spiderpig.layout import sheet_lines
 from spiderpig.spec import Target, TargetField, effective_hard, target_field
 from spiderpig.stack import verify_plan
 
@@ -340,13 +340,14 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
             _fail(rep, [s["part"] for s in solids], "clash", "bad_solid")
 
     # -- layout, bom -------------------------------------------------------------
-    size = tuple(design.spec.fit.sheet_size_mm or sheet_size(cfg.sheet))
+    size = tuple(design.spec.fit.sheet_size_mm) if design.spec.fit.sheet_size_mm else None
     extras = list(mech.bom_extras)
     try:
-        sheets = pack(mech, size)
-        _push(rows, target_row(design, target_field("budget", "sheets"), len(sheets), "layout",
-                               detail=f"of {size[0]:g} x {size[1]:g} mm"))
-        extras.append(BomLine(cfg.sheet, len(sheets), "laser-cut parts"))
+        lines = sheet_lines(mech, cfg.sheet, size)
+        n = sum(int(x.qty) for x in lines)
+        _push(rows, target_row(design, target_field("budget", "sheets"), n, "layout",
+                               detail=", ".join(f"{int(x.qty)} x {x.key}" for x in lines)))
+        extras += lines
     except ValueError as e:
         f = Failure.from_exception(e, stage="layout")
         rep.failures.append(f)
@@ -363,10 +364,56 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
         rep.failures.append(f)
         rows.append(Row("bom.resolves", "bom", None, None, False, "measured", True, f.message))
 
+    # -- joint strength -----------------------------------------------------------
+    if design.kind == "walker":
+        rows += _strength_rows(design, rep, level)
+
     # -- sim (full) --------------------------------------------------------------
     if level == "full" and design.kind == "walker":
         rows += _sim_rows(design, rep)
     return _done(design, rep, t0)
+
+
+def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
+    """Every joint's safety factor at the design's loads (:func:`strength.check`): a
+    joint under jam SF 1 fails (``strength`` / ``joint_overload``, the joint, its
+    numbers and fixes as culprits) when the loads are the design's own (simulated, or
+    given); one under the warning limits is a soft row. ``full`` simulates the loads
+    (cached per design); ``standard`` uses them when stored, else the family's, whose
+    verdict is an estimate: a soft row, no failure (``verify full`` decides)."""
+    from spiderpig import strength
+
+    mech = design.mech
+    try:
+        loads = strength.design_loads(design.config, design.store,
+                                      sim=True if level == "full" else "cached")
+    except Exception as e:  # noqa: BLE001 - never fail verify over the loads themselves
+        return [Row("strength.joints", "strength", None, None, True, "estimated", False,
+                    f"no loads: {e}")]
+    st = strength.check(mech.meta.get("wobble") or {}, mech.meta, design.config, loads)
+    tier = "measured" if loads.get("source") == "sim" else "estimated"
+    own = loads.get("source") in ("sim", "override")
+    sfs = [r["jam"]["safety"] for r in st["rows"] if r.get("jam")]
+    errors = [f for f in st["findings"] if f["level"] == "error"]
+    warns = [f for f in st["findings"] if f["level"] == "warning"]
+    if errors and own:
+        rep.failures.append(Failure(
+            "strength", "joint_overload", "; ".join(f["message"] for f in errors),
+            culprits=[{"joint": f["joint"], "kind": f["kind"], "sf_jam": f["sf_jam"],
+                       "sf_walk": f["sf_walk"], "load_jam": f["load_jam"],
+                       "fixes": f["fixes"]} for f in errors],
+            numbers={"sf_jam_min": min(sfs) if sfs else None},
+            notes=[f"loads: {loads.get('note', '')}"]))
+    rows = [Row("strength.joints", "strength", min(sfs) if sfs else None,
+                f">= {strength.JAM_ERROR:g}", not errors, tier, own,
+                (f"the weakest joint's jam safety factor; loads: {loads.get('note', '')}"
+                 + ("" if own else " (an estimate: verify full simulates the design's own)")
+                 + ("; " + "; ".join(f["message"] for f in errors) if errors else "")))]
+    if warns:
+        rows.append(Row("strength.warnings", "strength", len(warns), None, True, tier, False,
+                        "; ".join(f"{f['message']} (fix: {f['fixes'][0]})"
+                                  for f in warns[:4])))
+    return rows
 
 
 def _start_contracts(design: Design, ts) -> list | None:
@@ -411,7 +458,9 @@ def _mass_estimate(design: Design, wr) -> Row | None:
     plates = f"frame{' and centre' if cfg.robot else ''} plates"
     printed = f"printed crank, pillars, pins{' and ties' if cfg.robot else ''}"
     detail = (f"estimated before a build: links {b['links']:.0f} g, {servos_} {b['servos']:.0f} g, "
-              f"{plates} {b['plates']:.0f} g, {printed} {b['printed']:.0f} g ({b['note']})")
+              f"{plates} {b['plates']:.0f} g, {printed} {b['printed']:.0f} g"
+              + (f", electronics deck {b['deck']:.0f} g" if b.get("deck") else "")
+              + f" ({b['note']})")
     return target_row(design, f, b["total"], "walk", "estimated", detail)
 
 
@@ -451,8 +500,12 @@ def stack_floor_note(design: Design, pr) -> str:
             note += (f"; a thinner stack needs fewer legs a side, and no module of "
                      f"{cfg.linkage} with fewer walks ({', '.join(fewer)} stand still in the "
                      f"walk model)")
-    return note + ("; the sheet sets the layer pitch (the printed crank's joints need at least "
-                   "about 2.9 mm)")
+    from spiderpig import construction
+
+    crank = construction.crank(cfg.crank)
+    least = crank.least_pitch(1.0) if hasattr(crank, "least_pitch") else None
+    return note + ("; the sheet sets the layer pitch" + (
+        f" (the {cfg.crank} crank's joints need at least {least:g} mm)" if least else ""))
 
 
 def _cost_item(r) -> str:
@@ -511,32 +564,62 @@ def cost_row(design: Design, bom) -> Row | None:
     return row
 
 
-GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")   # anchored in the plates with CA glue
+GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")  # anchored in the plates with CA glue
+LOCKED_PILLARS = ("standoff",)                              # threadlocker on its M4 screws
 GLUED_PINS = ("bearing", "bushing")                         # an insert glued into each link
+EPOXY_PINS = ("chicago", "chicago_bushing")                 # the barrel bonded in its lowest link
+LOCKED_PINS = ("chicago", "chicago_bushing")                # threadlocker on each screw
 FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws, the pivots' hardware, rod and "
                     "clips are counted after a build (verify standard)")
 
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
-    """What the design buys whatever its parts turn out to be, priced from the catalog
-    before any build: the servos (one per side), a spool of filament (the crank is
-    printed), one sheet, for the robot the centre plates' cement and the frame ties'
-    inserts, and what the constructions buy whatever the parts' sizes: a bottle of CA
-    glue when a pillar is anchored in the plates or an insert glued into its links (every
-    construction but ``bolt``) or the robot's tie spigots are glued, and the printed
-    crank's crankpin nuts (a pack). ``(total, priced lines, unpriced names)``: a lower
-    bound on the BOM's total; :data:`FLOOR_LEAVES_OUT` says what a build adds."""
+    """What the design buys whatever its parts turn out to be, priced from the catalog before
+    any build: the servos (one per side), a spool of filament (the crank is printed), one
+    blank of each sheet the parts are cut from, for the robot the centre plates' cement and
+    the frame ties' inserts, and what the constructions buy whatever the parts' sizes: a
+    bottle of CA glue when a pillar is anchored in the plates or an insert glued into its
+    links (every construction but ``bolt``) or the robot's tie spigots are glued, and the
+    printed crank's crankpin nuts (a pack) and, keyed, its hex standoffs (a pack), the bolt
+    crank's nylocks (a pack) and its plates' cement, and a bottle of each threadlocker a
+    crank's screws, a Chicago screw pin or a standoff pillar's screws take. ``(total, priced
+    lines, unpriced names)``: a lower bound on the BOM's total; :data:`FLOOR_LEAVES_OUT`
+    says what a build adds."""
+    from spiderpig import construction
     from spiderpig.construction.crank import NUT_KEY
 
     cfg = design.config
     sides = 2 if cfg.robot else 1
-    lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1), (cfg.sheet, 1)]
+    from spiderpig.materials import link_sheets
+
+    crank_plates = getattr(construction.crank(cfg.crank), "plates", False)
+    sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
+                           + ([cfg.crank_sheet] if crank_plates else []))
+    lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
+    lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     if cfg.robot:
-        lines += [(adhesive(cfg.sheet), 1), ("m3_heat_set_insert", 4)]
+        lines += [("m3_heat_set_insert", 4)]      # the deck's (the centre plates: no adhesive)
     if cfg.robot or cfg.pillar in GLUED_PILLARS or cfg.pin in GLUED_PINS:
         lines.append(("ca_glue", 1))
-    if cfg.crank == "printed":
+    if cfg.pin in EPOXY_PINS:
+        lines.append(("epoxy_2part", 1))
+    crank = construction.crank(cfg.crank)
+    if hasattr(crank, "for_sheet"):
+        crank = crank.for_sheet(cfg.crank_sheet)
+    if hasattr(crank, "post_joint"):
         lines.append((NUT_KEY, 1))
+    if getattr(crank, "nut_key", None) and not getattr(crank, "single", False):
+        # the two-plate bolt crank's nylocks
+        lines.append((crank.nut_key, 1))
+    if hasattr(crank, "standoff_key"):
+        lines.append((crank.standoff_key, 1))
+    if getattr(crank, "cement_per_plate", 0) and not any(k == adhesive(cfg.crank_sheet)
+                                                         for k, _ in lines):
+        lines.append((adhesive(cfg.crank_sheet), 1))   # the bolt crank's bonded plate stacks
+    locks = {getattr(crank, "lock_key", None)}
+    if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
+        locks.add("threadlocker_222")
+    lines += [(k, 1) for k in sorted(k for k in locks if k)]
     total, priced, unpriced = 0.0, [], []
     for key, qty in lines:
         item = catalog_item(key)

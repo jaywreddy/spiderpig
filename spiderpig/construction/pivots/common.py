@@ -3,7 +3,7 @@ clips, laser-cut rings, printed sleeves and small hardware solids."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from build123d import Axis, Box, Face, Location, Solid, Vector, Wire
 
@@ -59,15 +59,50 @@ class Column:
 
     roles: dict[int, tuple[str, float]]
     links: dict[int, tuple[str, ...]]        # layer -> the links turning on the axle there
+    # the clearance gaps the column has (the plan's): layer under the gap -> (role, radius,
+    # height): its end retainers ("head", "cap", "nut", ... with the height they need) and
+    # the washers it carries through a gap ("washer", height 0)
+    gaps: dict[int, tuple[str, float, float]] = field(default_factory=dict)
 
     @classmethod
     def of(cls, build: Build, group: AxleGroup) -> Column:
-        roles = {s.layer: (s.label.rsplit(" ", 1)[1], s.shape.r) for s in build.shapes(group.name)}
+        roles, gaps = {}, {}
+        for s in build.shapes(group.name):
+            role = s.label.rsplit(" ", 1)[1]
+            if s.gap:
+                gaps[s.layer] = (role, s.shape.r, s.height)
+            else:
+                roles[s.layer] = (role, s.shape.r)
         links: dict[int, tuple[str, ...]] = {}
         for m in group.axis.members:
             k = build.layers[m]
             links[k] = links.get(k, ()) + (m,)
-        return cls(roles, links)
+        return cls(roles, links, gaps)
+
+    @property
+    def lo_gap(self) -> bool:
+        """The bottom end's retainer sits in the clearance gap under the stack."""
+        return self.gaps.get(self.k0 - 1, ("",))[0] not in ("", "washer")
+
+    @property
+    def hi_gap(self) -> bool:
+        return self.gaps.get(self.k1, ("",))[0] not in ("", "washer")
+
+    def end_z(self, build: Build, side: str) -> tuple[float, float] | None:
+        """Where the ``"lo"`` / ``"hi"`` end's retainer may go: its clearance gap, or the
+        layer beyond the stack (``None``: it has none)."""
+        if side == "lo":
+            if self.lo_gap:
+                return build.plan.gap_z(self.k0 - 1)
+            return build.z(self.k0 - 1) if self.k0 - 1 in self.roles else None
+        if self.hi_gap:
+            return build.plan.gap_z(self.k1)
+        return build.z(self.k1 + 1) if self.k1 + 1 in self.roles else None
+
+    @property
+    def washers(self) -> list[int]:
+        """The clearance gaps the column crosses (the layer under each)."""
+        return sorted(k for k, (role, _, _) in self.gaps.items() if role == "washer")
 
     def role(self, k: int) -> str:
         return self.roles[k][0]
@@ -86,12 +121,15 @@ class Column:
 
     @property
     def below(self) -> list[int]:
-        """Layers claimed beyond the bottom end, nearest first."""
-        return sorted((k for k in self.roles if k < self.k0), reverse=True)
+        """Layers claimed beyond the bottom end, nearest first (a retainer in the clearance
+        gap under the stack: that gap's layer, ``k0 - 1``)."""
+        out = sorted((k for k in self.roles if k < self.k0), reverse=True)
+        return [self.k0 - 1] + out if self.lo_gap else out
 
     @property
     def above(self) -> list[int]:
-        return sorted(k for k in self.roles if k > self.k1)
+        out = sorted(k for k in self.roles if k > self.k1)
+        return [self.k1 + 1] + out if self.hi_gap else out
 
     @property
     def between(self) -> list[int]:
@@ -176,6 +214,8 @@ class RodShaft:
     rod_key: str = ROD_KEY
     clip_key: str = CLIP_KEY
     protrude: float = 0.5            # rod beyond a clip
+    set_play: float = 0.1            # axial play a clip pushed on "until it just touches" leaves
+    #                                  (an assumption: a push-on clip is set by feel)
     model_gap: float = 0.01
     glue_per_anchor: float = 0.02    # CA glue per plate anchor, as a fraction of a bottle
 
@@ -191,6 +231,11 @@ class RodShaft:
         """(outside diameter, height) of the push-on clip."""
         c = get(self.clip_key).dims
         return float(c["od"]), float(c["h"])
+
+    def end_height(self) -> float:
+        """What a clip and the rod's end need in a clearance gap."""
+        _, h = self.clip()
+        return h + self.protrude + HEAD_CLEARANCE
 
     def check(self, ctx, pillar: bool, extra: float = 0.0) -> None:
         """The clip and the rod's end fit an end layer (``extra``: a flange under the clip)."""
@@ -237,3 +282,57 @@ class RodShaft:
         if col.anchors:
             out.extras.append(BomLine("ca_glue", self.glue_per_anchor * len(col.anchors),
                                       f"{group.name} anchors"))
+
+
+HEAD_CLEARANCE = 0.25    # a retainer in a clearance gap stays this far off the next layer (mm)
+
+
+def ring_z(build: Build, k: int) -> tuple[float, float]:
+    """A laser-cut ring's z in layer ``k``: the default sheet's thickness on the layer's
+    floor (a layer an aluminium plate thickens is a little taller than a ring)."""
+    z0, z1 = build.z(k)
+    return z0, min(z1, z0 + build.ctx.pitch)
+
+
+def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaft_d: float,
+                host: str, stem: str, color: str = "#f2f2f2") -> float:
+    """The washers an axle carries through every clearance gap of its column (the plan's):
+    a PTFE washer and DIN 988 shims stacked to the gap (:func:`materials.washer_stack`),
+    one body per gap (its first washer's BOM line, the rest as extras). Returns the play
+    the stacks leave in all (mm)."""
+    from spiderpig.materials import washer_od, washer_stack
+
+    xy = xy_of(build, group)
+    play = 0.0
+    for k in col.washers:
+        g = build.plan.gaps.get(k, 0.0)
+        if g <= 0:
+            continue
+        items, left = washer_stack(shaft_d, g)
+        play += left
+        if not items:
+            continue
+        z0, _ = build.plan.gap_z(k)
+        t = sum(x[1] for x in items)
+        od = washer_od(shaft_d)
+        part = bored(disc(xy, od / 2, z0, z0 + t), xy, shaft_d + 0.2, z0, z0 + t)
+        out.bodies.append(hardware(f"{stem}_gap{k}_washers", part, host, fab="purchased",
+                                   bom_key=items[0][0], color=color))
+        for key, tt in items[1:]:
+            out.extras.append(BomLine(key, 1, f"{group.name}: {tt:g} mm in the gap over "
+                                              f"layer {k}"))
+    return play
+
+
+def column_air(build: Build, group: AxleGroup, a: int, b: int) -> float:
+    """What the plan's z leaves free around an axle's own parts in layers ``a``..``b`` (its
+    links at their sheets' thickness, a default-sheet ring elsewhere, in layers an aluminium
+    plate made thicker): the axle's stack closes it up (the planner's ``air``,
+    :meth:`construction.axle.AxleGroup.claims`)."""
+    plan, ctx = build.plan, build.ctx
+    own: dict[int, float] = {}
+    for m in group.axis.members:
+        k = plan.layers[m]
+        own[k] = max(own.get(k, 0.0), ctx.sheet_t("link", m))
+    return sum(max(0.0, plan.t(k) - own.get(k, ctx.pitch)) for k in range(a, b + 1)
+               if 0 < k < plan.top)

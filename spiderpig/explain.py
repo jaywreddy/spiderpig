@@ -24,6 +24,11 @@ plan depend on them.
    naming what blocked it, the static clearances involved and what would
    clear it (:mod:`recommend`: each recommendation checked by re-running).
 
+4. strength (``--strength``): :func:`strength.check` on the side fabricated at
+   ``t = 1``: every pin's, pillar's and the crank's safety factor at the design's own
+   loads (MuJoCo, cached per design in the store: :mod:`sim.loads`), and each joint
+   under the limits (jam SF 1 an error, 2 jammed or 3 walking a warning) with its fixes.
+
 Nothing here computes anything the pipeline doesn't: the stages report
 their own failures.
 """
@@ -127,6 +132,11 @@ def main(argv=None) -> int:
     ap.add_argument("--store", metavar="PATH",
                     help="the design store the options resolve into, whose plan is reused "
                          "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
+    ap.add_argument("--strength", action="store_true",
+                    help="4. the joints' safety factors at the design's own loads (builds "
+                         "the side and simulates the robot once per design, ~30 s)")
+    ap.add_argument("--no-sim", action="store_true",
+                    help="with --strength: the family's loads, no sim")
     args = ap.parse_args(argv)
     try:
         config = config_from_args(args, robot=False)
@@ -144,7 +154,23 @@ def main(argv=None) -> int:
     except ValueError as e:
         side, failure = None, str(e)
     print(explain_config(config, side=side, plan_failure=failure))
+    if args.strength and side is not None:
+        print("\n" + strength_text(config, side, store, sim=not args.no_sim))
     return 0
+
+
+def strength_text(config, side, store=None, sim: bool = True) -> str:
+    """Stage 4: the strength check of ``side`` (designed) at the design's loads."""
+    from dataclasses import replace
+
+    from spiderpig import strength
+    from spiderpig.fabricate import fabricate_side, template_for
+    from spiderpig.tools.audit import strength_lines
+
+    fab = fabricate_side(side, template_for(config).freeze_at(1.0))
+    loads = strength.design_loads(replace(config, robot=True), store, sim=sim)
+    st = strength.check(fab.meta.get("wobble") or {}, fab.meta, config, loads)
+    return "\n".join(["4. strength", *(f"  {x}" for x in strength_lines(st))])
 
 
 if __name__ == "__main__":

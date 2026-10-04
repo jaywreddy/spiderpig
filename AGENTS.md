@@ -13,7 +13,8 @@ chains consistent.
 mise run view           # FastAPI :8000 + Vite :5173 (HMR) — open http://localhost:5173
 mise run bake           # bake <store>/bakes/*.glb (the project store, .spiderpig/)
 mise run build          # STEP/STL/DXF -> build/
-mise run test           # pytest (auto-builds spiderpig/viewer/dist for e2e)
+mise run test-quick     # the quick tier (-m 'not slow', xdist); full suite: mise run remote-test
+mise run test           # pytest, every test, serial (auto-builds spiderpig/viewer/dist for e2e)
 mise run lint           # ruff
 mise run clean          # rm build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/
 mise tasks              # list everything available
@@ -22,6 +23,44 @@ mise tasks              # list everything available
 `viewer-install`, `viewer-dev`, `viewer-build` exist as sub-tasks but are
 auto-pulled by `view` / `test` via `depends`. Don't call them by hand
 unless you're debugging the build itself.
+
+## Running tests, audits and sims: quick here, heavy remotely
+
+The full suite (~1000 tests: OCCT solids, plans, MuJoCo, bakes) takes ~45 min serially;
+don't run it on a laptop. Two tiers:
+
+```bash
+mise run test-quick                      # local iteration: -m 'not slow', -n 4 (~3.5 min)
+mise run test-quick -- tests/test_stack.py -k route   # narrowed further
+mise run remote-test                     # every test on the remote, -n 12 (~6 min)
+mise run remote-test -- -m slow -k sim   # any pytest args
+mise run remote-audit                    # the default Strider's four modules' audits at once
+mise run remote-audit -- --linkage klann # a linkage named: all four modules
+mise run remote -- uv run python -m spiderpig.cli sim --module quad   # sims, bakes, any command
+```
+
+`remote` / `remote-test` / `remote-audit` (`spiderpig/tools/remote.py`) rsync the
+working tree as it is (uncommitted edits included; not `.venv`, `node_modules`,
+`.spiderpig/`, `build/`, caches) to `$SPIDERPIG_REMOTE` (default `root@ao-server`)
+under `~/spiderpig-ci/<checkout>-<hash>/` (one folder per worktree and machine; a
+second run from the same worktree waits for its lock), `uv sync --locked` there
+(Python 3.12; uv's cache and interpreter under `~/spiderpig-ci/` too), stream the
+output, and copy the log, the junit XML and the remote `build/` (audit reports,
+exports) back to `build/remote/<run>/`. The exit status is the remote command's. The
+remote keeps its own store (`.spiderpig/` in that folder), so plans and bakes stay
+warm between runs of a worktree. `SPIDERPIG_REMOTE_WORKERS` changes `-n`.
+
+Compare a run's failures with the junit XML in `build/remote/<run>/`, not with a local
+run: a few tests hold the planner to a CPU-seconds deadline and a busier machine (more
+workers than 12 there, or a loaded laptop) can run it out.
+
+Mark a test `slow` when it takes more than ~5 s (a robot or side the session fixtures
+don't share, a plan search, a bake, MuJoCo, a CLI run); a heavy parametrized check
+keeps one cheap case quick with `tests/tiers.py`'s `quick(values, keep)`. The quick tier
+skips the rest; the full tier runs everything. Tests must stay xdist-safe: write only
+under `tmp_path` / `tmp_path_factory` (the session store already is one per worker),
+pick free ports, never mutate the session fixtures' objects. Under xdist each worker
+gets one BLAS and one OCCT thread (`tests/conftest.py`).
 
 ## When NOT to use mise
 

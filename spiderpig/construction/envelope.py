@@ -16,8 +16,9 @@ from spiderpig.stack import Disc, Placed
 
 
 def shape_solid(build: Build, p: Placed, grow: float = 0.0, z: tuple[float, float] | None = None):
-    """The solid of one placed shape (its whole layer unless ``z`` narrows it)."""
-    z0, z1 = z if z is not None else build.z(p.layer)
+    """The solid of one placed shape (its whole layer, or its clearance gap, unless ``z``
+    narrows it)."""
+    z0, z1 = z if z is not None else build.plan.slot_z(p)
     s = p.shape
     if isinstance(s, Disc):
         return disc(build.xy(s.at), s.r + grow, z0, z1)

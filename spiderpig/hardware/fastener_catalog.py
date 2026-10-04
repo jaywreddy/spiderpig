@@ -62,3 +62,93 @@ register(
          dims={"af": 5.5, "h": 3.9, "d": 3.0},
          notes="Only 0.1 mm lower than DIN 985: it needs the same two layers."),
 )
+
+# ---------------------------------------------------------------------------
+# Chicago screws (binding barrels and screws, "sex bolts") and what goes with them
+# (construction.pivots.chicago). Searched 2026-10-03; vendor pages that refuse a
+# fetch are quoted as the search result showed them and stay ``verified=False``.
+# ---------------------------------------------------------------------------
+
+CHICAGO_LENGTHS: tuple[float, ...] = (4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 30)
+"""Barrel lengths under the head (mm) of the M3 sets: Harfington's Phillips/slotted 18-8
+listing (p-1528133, fetched 2026-10-03) offers 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25,
+30, 35, 40, 45 and 50 mm; 2 mm steps from 6 to 22 mm."""
+
+
+def chicago(length: float) -> str:
+    return f"chicago_m3_{length:g}"
+
+
+for _L in CHICAGO_LENGTHS:
+    register(Item(
+        chicago(_L), f"M3 Chicago screw (binding barrel + screw), 4 mm barrel x {_L:g} mm",
+        "fastener",
+        (Offer("AliExpress", "https://www.aliexpress.com/w/wholesale-m3-chicago-screw.html",
+               pack_qty=10, price_usd=1.33,
+               note="'10sets M3 M4 304 Stainless Steel Binding Chicago Screw', $1.33 per 10 sets "
+                    "on the search page fetched 2026-10-03 (length variant not shown: the "
+                    "price is taken for every length)"),
+         Offer("Harfington", "https://www.harfington.com/products/p-1528133", pack_qty=50,
+               verified=True, note="uxcell-family 18-8 Phillips/slotted, M3 x 4-50 mm; the "
+                                   "black M3 x 4 mm 50-set (p-1788004) is $8.79"),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/products/binding-barrels-and-screws/",
+               note="M3 filter on the binding barrel listing; part number not confirmed")),
+        dims={"thread": 3.0, "barrel_d": 4.0, "head_d": 8.0, "head_h": 1.5,
+              "screw_head_h": 1.5, "length": float(_L)},
+        notes="Barrel 4 mm: Amazon titles '10Pcs M3 M4 304 Stainless Steel Binding Chicago "
+              "Screw ... (10mm(L), OD 4mm (M3))' (B0FKT51435) and '(Φ4 x 5mm, M3)' "
+              "(B0CGKX8L78); head 8 mm: Bettomshin M3 x 10 (B09SL48Z14) 'Nut Head Diameter: "
+              "8mm; Nut Aperture: 4mm', all as a 2026-10-03 web search quoted them (Amazon "
+              "refuses a fetch). Head height 1.5 mm is not from a page: the flat leather-"
+              "craft head of that size; measure a sample.",
+    ))
+
+register(
+    Item("ptfe_washer_4x8x0p5", "PTFE flat washer 4.2 x 8 x 0.5 mm", "washer",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
+                note="PTFE washers for M4 / #8, 0.5 mm; part number not confirmed"),
+          Offer("Amazon", "https://www.amazon.com/s?k=PTFE+flat+washer+M4+0.5mm",
+                note="search; uxcell lists nylon 8 x 4 mm washers (B07MXB78ZN) and PTFE in "
+                     "other sizes; acetal (POM) 4 x 8 x 0.5 shims are an equal substitute")),
+         dims={"id": 4.2, "od": 8.0, "t": 0.5},
+         notes="The thrust face between a link and a Chicago screw's head: PTFE on acrylic "
+               "and steel, mu about 0.05-0.1."),
+    Item("shim_din988_4x8", "DIN 988 shim ring 4 x 8 mm (0.1 / 0.2 / 0.3 / 0.5 / 1.0 mm)",
+         "washer",
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/", note="DIN 988 shim "
+                "rings, 4 x 8 in 0.1-1.0 mm; part number per thickness not confirmed"),
+          Offer("McMaster-Carr", "https://www.mcmaster.com/products/shims/",
+                note="ring shims for 4 mm shafts")),
+         dims={"id": 4.0, "od": 8.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
+         notes="Takes up a Chicago screw's fixed barrel length against a 3 mm layer stack."),
+    Item("threadlocker_222", "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
+         "adhesive",
+         (Offer("Amazon", "https://www.amazon.com/s?k=Loctite+222+10ml",
+                note="search; purple, removable by hand tools on M3"),),
+         notes="One drop per Chicago screw; anaerobic, cures without preload."),
+    Item("bushing_gfm0405_03", "igus iglide G flange bushing 4 x 5.5 x 3 (GFM-0405-03)",
+         "bushing",
+         (Offer("TME", "https://www.tme.com/us/en-us/details/gfm-0405-03/plain-bearings/igus/",
+                "GFM-0405-03", pack_qty=10, price_usd=23.0,
+                note="$2.30 each at 10 or more, as a 2026-10-03 search quoted the page"),
+          Offer("igus", "https://www.igus.com/iglide-ibh/flange-bearings/product-details/"
+                "iglidur-g-m?artnr=GFM-0405-03", "GFM-0405-03", verified=True,
+                note="d1 4, d2 5.5, d3 9.5, b1 3, b2 0.75 (fetched 2026-10-03)")),
+         dims={"id": 4.0, "od": 5.5, "l": 3.0, "flange_d": 9.5, "flange_t": 0.75}),
+)
+
+# The PTFE-lined rod pin (construction.pivots.ptfe): a 3 x 4 mm PTFE tube cut into
+# sheet-thick liners, one pressed into each link.
+register(
+    Item("ptfe_tube_3x4_1m", "PTFE tube 3 mm ID x 4 mm OD, 1 m", "bushing",
+         (Offer("West3D", "https://west3d.com/products/bowden-ptfe-tube-4mm-od-3mm-id",
+                pack_qty=1, price_usd=2.50,
+                note="$2.50 per metre, as a 2026-10-03 web search quoted the page"),
+          Offer("Walmart Business", "https://business.walmart.com/ip/Uxcell-3mm-ID-4mm-OD-"
+                "PTFE-Tubing-Tube-Pipe-1-Meter-3-3ft-Lengh-For-3D-Printer-RepRap/565280381",
+                "565280381", pack_qty=1, price_usd=7.86,
+                note="uxcell 1 m, $7.86 as a 2026-10-03 web search quoted the page")),
+         dims={"id": 3.0, "od": 4.0, "length": 1000.0},
+         notes="Bowden tube for 1.75 mm filament; the bore runs on a 3 mm h9 rod (the tube's "
+               "ID tolerance, about +/-0.05, is the liner's clearance)."),
+)

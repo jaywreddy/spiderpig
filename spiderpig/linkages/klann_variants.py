@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import sympy as sp
 
-from spiderpig.linkage import Linkage, P, circle_x_circle, crank, register, rotate, xy
+from spiderpig.linkage import KLANN_QUAD, Linkage, P, circle_x_circle, crank, register, rotate, xy
 
 R = sp.Rational
 
@@ -110,6 +110,7 @@ KLANN_PATENT = register(Linkage(
     frame=("A", "O", "B"),
     crank=("O", "M"),
     feet=(("b4", "F"),),
+    modules={"quad": KLANN_QUAD},
     source=PLANS,
     notes=(
         "Klann's patent drawing as diywalkers transcribes it. Not the default `klann` "
