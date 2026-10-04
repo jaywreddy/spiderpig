@@ -210,10 +210,17 @@ def test_the_crank_twist_against_each_element_of_the_joint():
     assert any("--crank bolt" in x for x in f["fixes"])
     bolt = _check({}, 0.0, crank="bolt")
     br = next(r for r in bolt["rows"] if r["kind"] == "crank")
-    # the single aluminium webs' standoff crankpin (2026-10-04): a friction clamp
-    assert br["weakest"].startswith("web clamped")
-    assert 1.0 < br["jam"]["safety"] < 2.0
-    bf = next(f for f in bolt["findings"] if f["kind"] == "crank")
+    # the single aluminium webs' hex standoff crankpin (the default since 2026-10-04): the
+    # hex in its 0.100 in 6061 pocket holds the jam twist at SF 2 (no finding)
+    assert br["weakest"].startswith("hex 5.5 AF in its plate's pocket")
+    assert br["jam"]["safety"] >= 2.0
+    assert not any(f["kind"] == "crank" for f in bolt["findings"])
+    # the friction-clamped round standoff (--crank bolt_round) stays a warning
+    rnd = _check({}, 0.0, crank="bolt_round")
+    rr = next(r for r in rnd["rows"] if r["kind"] == "crank")
+    assert rr["weakest"].startswith("web clamped")
+    assert 1.0 < rr["jam"]["safety"] < 2.0
+    bf = next(f for f in rnd["findings"] if f["kind"] == "crank")
     assert bf["level"] == "warning"
     assert "torque limit" in bf["fixes"][0]
     printed = _check({}, 0.0, crank="printed")
@@ -226,7 +233,7 @@ def test_errors_fail_the_audit_and_warnings_dont():
     from spiderpig.tools.audit import strength_lines, strength_messages
 
     notes = {"pin:J4_leg0": note({"b3_leg0": 2, "b4_leg0": 6})}
-    st = _check(notes, 400.0, crank="bolt")
+    st = _check(notes, 400.0, crank="bolt_round")       # (the hex crank holds: no warning)
     errors, warns = strength_messages(st, "error"), strength_messages(st, "warning")
     assert errors
     assert all(e.startswith("strength: pin:J4_leg0") for e in errors)
