@@ -173,20 +173,41 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
 
 
 def manufacture_messages(m: dict, lv: str = "warning") -> list[str]:
-    """One message per cut rule some parts break at level ``lv`` (:mod:`spiderpig.manufacture`:
-    an edge under 1 x the thickness in metal, or a hole the service won't cut, is an error):
-    how many parts, and the worst."""
-    out = []
-    counts: dict[str, int] = {}
-    for i in m["issues"]:
-        if i.get("level", "warning") == lv:
-            counts[i["rule"]] = counts.get(i["rule"], 0) + 1
-    for rule, n in sorted(counts.items()):
-        worst = next(i for i in m["issues"] if i["rule"] == rule
-                     and i.get("level", "warning") == lv)
-        out.append(f"manufacture: {n} part(s) break the {rule} rule; worst {worst['part']} "
-                   f"({worst['sheet']}): {worst['detail']}")
-    return out
+    """One message per cut rule some parts break at level ``lv``
+    (:func:`spiderpig.manufacture.messages`: an edge under 1 x the thickness in metal, or a
+    hole the service won't cut, is an error): how many parts, the worst, why and the fix."""
+    return manufacture.messages(m, lv)
+
+
+def cut_cell(rep: dict) -> str:
+    """The audit table's cut-rule cell: ``ok``, or errors and warnings."""
+    m = rep.get("manufacture")
+    if not m:
+        return "-"
+    e = sum((m.get("errors") or {}).values())
+    w = len(m["issues"]) - e
+    return "ok" if not m["issues"] else f"{e} err, {w} warn"
+
+
+def cut_lines(m: dict) -> list[str]:
+    """The cut-rule section of a module (:mod:`spiderpig.manufacture`): the sheets and their
+    services, the levels, and every part that breaks a rule with why and the fix."""
+    from spiderpig.manufacture import EDGE_ERROR_T, RULES
+
+    lines = ["Cut rules (" + ", ".join(f"{k}: {v}" for k, v in m["sheets"].items())
+             + f"; {m['parts']} laser-cut parts): a hole closer than {EDGE_ERROR_T:g} x the "
+             "thickness to an edge or another hole in metal, or under the service's minimum "
+             "hole, is an error; under the service's edge distance (2 x in metal), its minimum "
+             "part or its inside-corner radius a warning."]
+    if not m["issues"]:
+        return lines + ["", "Every part passes."]
+    lines += ["", "| level | rule | part | sheet | what | why | fix |",
+              "|---|---|---|---|---|---|---|"]
+    for i in sorted(m["issues"], key=lambda i: i.get("level") != "error"):
+        lines.append(f"| {i.get('level', 'warning')} | {RULES.get(i['rule'], i['rule'])} "
+                     f"| {i['part']} | {i['sheet']} | {i['detail']} | {i.get('why', '')} "
+                     f"| {i.get('fix', '')} |")
+    return lines
 
 
 def strength_messages(st: dict, lv: str) -> list[str]:
@@ -315,8 +336,9 @@ def markdown(report: dict) -> str:
              "Config: " + ", ".join(f"{k} `{v}`" for k, v in cfg.items()), "",
              "| module | layers | parts | clashes | contract | plan | DXF sheets | BOM items "
              "| est. cost | snap strain | pin tilt | pillar tilt | pin SF | pillar SF | crank SF "
-             "| link SF | result |",
-             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
+             "| link SF | cut rules | result |",
+             "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|"
+             "---|"]
     for module, rep in report["modules"].items():
         n_clash = sum(len(v) for v in rep["clash"].values())
         n_contract = sum(len(v) for v in rep["contract"].values())
@@ -327,7 +349,8 @@ def markdown(report: dict) -> str:
             f"| {_snap_cell(rep['snap'])} "
             f"| {_wobble_cell(rep['wobble'])} | {_wobble_cell(rep['wobble'], 'pillar')} "
             f"| {sf_cell(rep, 'pin')} | {sf_cell(rep, 'pillar')} | {sf_cell(rep, 'crank')} "
-            f"| {sf_cell(rep, 'link')} | {'OK' if not rep['problems'] else 'FAIL'} |")
+            f"| {sf_cell(rep, 'link')} | {cut_cell(rep)} "
+            f"| {'OK' if not rep['problems'] else 'FAIL'} |")
     lines.append("")
     for module, rep in report["modules"].items():
         lines += [f"## {module}", "", "```", rep["plan"], "```", "",
@@ -349,6 +372,8 @@ def markdown(report: dict) -> str:
             lines.append(line)
         if rep.get("strength"):
             lines += [""] + strength_lines(rep["strength"]) + [""]
+        if rep.get("manufacture"):
+            lines += cut_lines(rep["manufacture"]) + [""]
         if rep.get("chicago"):
             lens: dict = {}
             for v in rep["chicago"].values():

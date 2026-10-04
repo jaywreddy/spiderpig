@@ -104,8 +104,9 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
     if heads == "best" and any(getattr(getattr(g, "construction", None), "single", False)
                                for g in groups):
         # single-plate crank webs keep their screws' heads in clearance gaps (a sunk head
-        # would stand in a rider's layer): no plan with every head sunk exists
-        heads = "gap"
+        # would stand in a rider's layer): no plan with every head sunk exists; in gaps,
+        # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
+        heads = "gap_sink"
         stuck = sorted({g.construction.key for g in groups
                         if not getattr(getattr(g, "construction", None), "gaps", True)})
         if stuck:

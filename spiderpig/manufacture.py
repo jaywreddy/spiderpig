@@ -18,7 +18,10 @@ Levels (the user's rule of 2026-10-04, the design-review limits): a hole closer 
 or another hole than **1 x the thickness** in metal is an **error** (the audit fails), under
 the service's 2 x a **warning**; a hole under SendCutSend's minimum (the thickness) is an
 error (they don't cut it); the rest are warnings. :func:`check` lists them part by part,
-the worst first, each with its ``level``.
+the worst first, each with its ``level``, the rule's ``why`` and a ``fix``;
+:func:`messages` turns them into one line per rule and level (the audit's problems and
+warnings, ``verify``'s ``manufacture.cut_rules`` row), :func:`summary` into the design
+card's ``cut_rules``.
 """
 
 from __future__ import annotations
@@ -72,7 +75,11 @@ def part_issues(body, key: str) -> list[dict]:
         out.append({"rule": "min_part", "part": body.name, "level": "warning",
                     "value": [round(w, 2), round(h, 2)],
                     "limit": [lo, hi],
-                    "detail": f"{w:.1f} x {h:.1f} mm, under {sh.service}'s {lo:g} x {hi:g} mm"})
+                    "detail": f"{w:.1f} x {h:.1f} mm, under {sh.service}'s {lo:g} x {hi:g} mm",
+                    "why": f"{sh.service} may reject or lose a part under its smallest "
+                           f"({lo:g} x {hi:g} mm in {sh.material})",
+                    "fix": "print it, or grow it (or merge it with a neighbour) past the "
+                           "service's smallest part"})
     holes, pockets = [], []
     for wire in wires:
         if wire is outer:
@@ -88,7 +95,12 @@ def part_issues(body, key: str) -> list[dict]:
         out.append({"rule": "min_hole", "part": body.name, "value": round(2 * worst_hole[1], 2),
                     "limit": sh.min_hole, "level": "error" if sh.metal else "warning",
                     "detail": f"a {2 * worst_hole[1]:.2f} mm hole, under {sh.service}'s "
-                              f"{sh.min_hole:g} mm in {sh.thickness:g} mm {sh.material}"})
+                              f"{sh.min_hole:g} mm in {sh.thickness:g} mm {sh.material}",
+                    "why": (f"{sh.service} doesn't cut a hole smaller than "
+                            + ("the sheet's thickness: an error, the part comes back "
+                               "without it" if sh.metal else f"{sh.min_hole:g} mm")),
+                    "fix": "a thinner sheet (materials.thinnest_sheet), a bigger hole, or "
+                           "drill it after cutting from a marked centre"})
     need = sh.min_edge
     if need > 0 and holes:
         worst = None
@@ -100,10 +112,18 @@ def part_issues(body, key: str) -> list[dict]:
                 worst = (d, 2 * r)
         if worst is not None and worst[0] < need - TOL:
             hard = sh.metal and worst[0] < EDGE_ERROR_T * sh.thickness - TOL
+            one_t = EDGE_ERROR_T * sh.thickness
+            why = (f"under {EDGE_ERROR_T:g} x the thickness ({one_t:.2f} mm): the web distorts "
+                   "or burns through, an error" if hard else
+                   f"under {sh.service}'s {sh.edge_t:g} x the thickness, a warning" if sh.metal
+                   else f"under {sh.service}'s {need:g} mm minimum feature, a warning")
             out.append({"rule": "edge", "part": body.name, "value": round(worst[0], 2),
                         "limit": round(need, 2), "level": "error" if hard else "warning",
                         "detail": f"{worst[0]:.2f} mm from a {worst[1]:.1f} mm hole to an edge "
-                                  f"or hole, under {sh.service}'s {need:.2f} mm"})
+                                  f"or hole, under {sh.service}'s {need:.2f} mm",
+                        "why": f"{why} ({sh.thickness:g} mm {sh.material})",
+                        "fix": "move the hole in, widen the plate round it, or a thinner "
+                               "sheet (the limit scales with the thickness)"})
     if sh.metal and sh.corner_r > 0:     # (a laser's kerf in acrylic: sharp enough)
         for wire in pockets:
             edges = wire.edges()
@@ -120,7 +140,12 @@ def part_issues(body, key: str) -> list[dict]:
                                        + (f"{tight:.2f} mm corner reliefs" if arcs else
                                           "sharp corners")
                                        + f": {sh.service} cuts inside corners {sh.corner_r:g} "
-                                       f"mm round in {sh.material}")})
+                                       f"mm round in {sh.material}"),
+                            "why": "a square-cornered part (a nut, a bolt head, a standoff's "
+                                   "hex, a servo's corner) won't seat in a rounded corner",
+                            "fix": f"dog-bone or T-bone corner reliefs of at least "
+                                   f"{sh.corner_r:g} mm radius, or round the mating part's "
+                                   "corners"})
                 break
     return out
 
@@ -147,3 +172,43 @@ def check(mech, default: str) -> dict:
                                else min(i["value"])))
     return {"parts": len(bodies), "by_rule": by_rule, "errors": errors, "issues": issues,
             "sheets": sheets}
+
+
+RULES = {"min_hole": "minimum hole", "edge": "hole-to-edge distance",
+         "min_part": "minimum part size", "corner": "inside corner radius"}
+"""Each cut rule's name in a message."""
+
+
+def messages(m: dict, lv: str = "warning") -> list[str]:
+    """One line per cut rule some parts break at level ``lv`` (``error`` / ``warning``) of a
+    :func:`check` report: how many parts, the worst one, why it is that level, the fix."""
+    out = []
+    counts: dict[str, int] = {}
+    for i in m["issues"]:
+        if i.get("level", "warning") == lv:
+            counts[i["rule"]] = counts.get(i["rule"], 0) + 1
+    for rule, n in sorted(counts.items()):
+        worst = next(i for i in m["issues"] if i["rule"] == rule
+                     and i.get("level", "warning") == lv)
+        line = (f"manufacture: {n} part(s) break the {RULES.get(rule, rule)} rule; worst "
+                f"{worst['part']} ({worst['sheet']}): {worst['detail']}")
+        if worst.get("why"):
+            line += f"; {worst['why']}"
+        if worst.get("fix"):
+            line += f" (fix: {worst['fix']})"
+        out.append(line)
+    return out
+
+
+def summary(m: dict) -> dict:
+    """A :func:`check` report in brief (the design card's ``cut_rules``): the parts checked,
+    errors and warnings per rule, the sheets and their services, and every message (errors
+    first)."""
+    warnings: dict[str, int] = {}
+    for i in m["issues"]:
+        if i.get("level", "warning") == "warning":
+            warnings[i["rule"]] = warnings.get(i["rule"], 0) + 1
+    return {"parts": m["parts"], "ok": not m.get("errors"),
+            "errors": dict(m.get("errors") or {}), "warnings": warnings,
+            "sheets": dict(m.get("sheets") or {}),
+            "messages": messages(m, "error") + messages(m, "warning")}

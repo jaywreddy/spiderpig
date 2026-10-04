@@ -1870,7 +1870,7 @@ class BoltCrank:
                           bottom_layers=self.stub_layers_web(ctx.sheet_t("frame"), p, t),
                           gap_head=r, horn_heads=tuple((h, hr) for h in self.horn_points(ctx)),
                           j_spans=tuple((n, self._web_span_ok(n, 0, p, t)) for n in range(64)),
-                          j_last=True)
+                          j_last=True, gap_washer=self.washer_r)
 
     def stub_layers_web(self, t0: float, pitch: float, t: float, most: int = 64
                         ) -> frozenset[int]:

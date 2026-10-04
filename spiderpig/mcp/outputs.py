@@ -192,6 +192,7 @@ class BuildOut(Result):
     dir: NotRequired[str]
     files: NotRequired[int]
     warnings: NotRequired[list[str]]
+    cut_rules: NotRequired[JSON]
     seconds: NotRequired[float]
     job: NotRequired[JobOut]
 
@@ -240,6 +241,7 @@ class JobResult(Result):
     dir: NotRequired[str]
     files: NotRequired[int | list[str]]
     warnings: NotRequired[list[str]]
+    cut_rules: NotRequired[JSON]
     # verify
     level: NotRequired[str]
     score: NotRequired[float]

@@ -1,4 +1,4 @@
-# Joint strength — 2026-10-03 (the bolt crank and standoff pillars: 2026-10-04, real stock lengths)
+# Joint strength — 2026-10-03 (the bolt crank and standoff pillars: 2026-10-04, real stock lengths; re-swept 2026-10-04 evening: thinnest sheets, single-plate crank, cut rules)
 
 What `spiderpig audit` (step 9, `spiderpig/strength.py`) says about whether the pins,
 the pillars and the crank's joints hold, at each design's own loads.
@@ -65,6 +65,10 @@ the pillars and the crank's joints hold, at each design's own loads.
   0.17 N·m: **0.55 N·m**, SF 0.32 at the torque limit. Before 2026-10-03 the keyed crank was
   rated by the PLA post shell round the key's cavity (1.8 N·m), which the key's own
   sockets don't reach: that figure is gone. The printed crank: its clamp's friction (0.17).
+  The **single-plate bolt crank** (on the aluminium crank sheet, since 2026-10-04): each
+  web clamped on its standoff crankpin's end by an M4 screw, a friction joint (`BoltCrank.
+  _web_capacity`: 2200 N clamp, mu 0.3 at the web, 0.2 under the head; UNVERIFIED), 3.032
+  N·m; the hex-standoff crankpins of the user's decision 1 will rate a hex bearing instead.
 * **Pillars**: a printed pillar glued into one plate is a cantilever from the plate's face,
   into both a beam between the faces. The **standoff pillar** (the default since
   2026-10-03, `construction/pivots/standoff.py`) is a 6 x 3.3 mm 6061 tube (240 MPa; the M4
@@ -82,7 +86,164 @@ the pillars and the crank's joints hold, at each design's own loads.
   the load and the SF, and fixes recomputed to clear it (another construction, the
   links in adjacent layers, a thicker printed pillar, a lower torque limit).
 
-## Every walker x module (default constructions: chicago pins, standoff pillars, bolt crank)
+## Every walker x module, 2026-10-04 evening (thinnest sheets, single-plate crank)
+
+A sweep of `spiderpig audit --linkage L --modules M`, 68 audits 6 at a time on
+ao-server in a fresh store (run `20261004-160408`, `build/remote/20261004-160408/sweep`),
+on branch `pw/rules`: the thinnest stock sheet per part (0.080 in 5052 frame plates, 0.063
+in crank webs, 0.090 in centre plates), the **single-plate bolt crank** (every web one
+aluminium plate, every crankpin a goBILDA 1501 round standoff clamped between its webs by an
+M4 button head into each end, rated as a friction clamp: 3.032 N·m, UNVERIFIED
+coefficients), heads in clearance gaps (`heads="gap_sink"`: TrotBot's heel and toe with the
+pivots' heads sunk), the splices at a 1.0 N·m clamp, the glue-free joinery, `klann_lego`'s
+b1 in 6061 (the user's decision 3), and the cut rules as errors and warnings. SF columns
+are `jam / walking`; "cut rules" counts the parts (an error fails the audit: a hole under 1 x
+the thickness from an edge in metal, or under the service's minimum hole); "audit" counts
+the problems and warnings (one per rule or joint). The morning's table (below) is
+superseded.
+
+| design | plans? | worst pin SF jam / walk (joint) | worst pillar SF jam / walk (joint) | crank SF jam / walk | link SF jam / walk (link) | cut rules | audit |
+|---|---|---|---|---|---|---|---|
+| fourbar_decker | yes (10 layers, 40.7 mm) | 6.32 / 819.21 (pin:K_leg0) | 11.97 / 1491.66 (pillar:H_leg0) | 2.52 / 142.93 (crank) | 0.52 / 89.67 (link:b1) | 0 err, 14 warn | 1 err, 4 warn |
+| fourbar_double | yes (9 layers, 33.2 mm) | 6.32 / 57.18 (pin:K_leg1) | 12.02 / 118.13 (pillar:H_leg1) | 3.57 / 25.08 (crank) | 0.52 / 5.33 (link:b1) | 0 err, 14 warn | 9 err, 3 warn |
+| fourbar_quad | yes (14 layers, 63.8 mm) | 6.29 / 45.49 (pin:K_leg2) | 7.04 / 41.73 (pillar:H_leg0) | 1.78 / 8.97 (crank) | 0.52 / 5.08 (link:b1) | 0 err, 14 warn | 9 err, 10 warn |
+| fourbar_single | yes (8 layers, 28.8 mm) | 6.33 / 1348.43 (pin:K) | 14.27 / 2763.84 (pillar:H) | 3.57 / 369.76 (crank) | 0.52 / 150.77 (link:b1) | 0 err, 14 warn | 1 err, 4 warn |
+| fourbar_spot_micro_decker | yes (10 layers, 40.7 mm) | 5.48 / 1163.15 (pin:K_leg0) | 10.37 / 2554 (pillar:H_leg0) | 2.52 / 171.52 (crank) | 0.35 / 139.34 (link:b1) | 0 err, 14 warn | 1 err, 4 warn |
+| fourbar_spot_micro_double | yes (9 layers, 33.2 mm) | 5.47 / 61.02 (pin:K_leg1) | 10.41 / 126.36 (pillar:H_leg1) | 3.57 / 25 (crank) | 0.35 / 5.93 (link:b1) | 0 err, 14 warn | 9 err, 3 warn |
+| fourbar_spot_micro_quad | yes (14 layers, 64.9 mm) | 1.81 / 17.04 (pin:K_leg1) | 6.45 / 58.58 (pillar:H_leg1) | 1.78 / 6.42 (crank) | 0.34 / 3.58 (link:b1) | 0 err, 14 warn | 13 err, 9 warn |
+| fourbar_spot_micro_single | yes (8 layers, 28.8 mm) | 5.49 / 1626.76 (pin:K) | 12.38 / 3241.87 (pillar:H) | 3.57 / 374.32 (crank) | 0.36 / 194.88 (link:b1) | 0 err, 14 warn | 1 err, 4 warn |
+| fourbar_spot_micro_v2_decker | yes (10 layers, 40.7 mm) | 5.37 / 942.51 (pin:K_leg0) | 10.18 / 2185.4 (pillar:H_leg0) | 2.52 / 154.24 (crank) | 0.53 / 117.09 (link:b1) | 0 err, 14 warn | 1 err, 4 warn |
+| fourbar_spot_micro_v2_double | yes (9 layers, 33.2 mm) | 5.49 / 67.83 (pin:K_leg0) | 10.49 / 139.37 (pillar:H_leg1) | 3.57 / 26.62 (crank) | 0.53 / 6.36 (link:b1) | 0 err, 14 warn | 9 err, 3 warn |
+| fourbar_spot_micro_v2_quad | yes (14 layers, 63.8 mm) | 5.36 / 45.96 (pin:K_leg2) | 5.99 / 47.79 (pillar:H_leg0) | 1.78 / 10.88 (crank) | 0.53 / 5.66 (link:b1) | 0 err, 14 warn | 9 err, 10 warn |
+| fourbar_spot_micro_v2_single | yes (8 layers, 28.8 mm) | 5.42 / 1015.82 (pin:K) | 12.23 / 2134.4 (pillar:H) | 3.57 / 329.57 (crank) | 0.53 / 126.2 (link:b1) | 0 err, 14 warn | 1 err, 4 warn |
+| jansen_decker | no | - | - | - | - | - | no plan within the budget |
+| jansen_double | yes (11 layers, 42.1 mm) | 0.78 / 5.17 (pin:C_leg1) | 1.35 / 9.58 (pillar:A_leg1) | 3.57 / 23.29 (crank) | 0.24 / 0.81 (link:b6) | 0 err, 14 warn | 11 err, 14 warn |
+| jansen_quad | no | - | - | - | - | - | no plan within the budget |
+| jansen_single | yes (10 layers, 38.8 mm) | 1.05 / 16.98 (pin:C) | 1.44 / 54.29 (pillar:A) | 3.57 / 32.29 (crank) | 0.24 / 4.22 (link:b6) | 0 err, 14 warn | 6 err, 10 warn |
+| klann_decker | yes (12 layers, 54.1 mm) | 0.57 / 14.99 (pin:D_leg1) | 2.21 / 67.98 (pillar:B_leg0) | 2.52 / 17.85 (crank) | 0.47 / 14.24 (link:b4) | 0 err, 18 warn | 3 err, 13 warn |
+| klann_double | yes (11 layers, 42.6 mm) | 0.72 / 7.29 (pin:D_leg0) | 2.52 / 16.23 (pillar:B_leg0) | 3.57 / 6.83 (crank) | 0.55 / 3.06 (link:b4) | 0 err, 16 warn | 4 err, 8 warn |
+| klann_high_step_decker | yes (10 layers, 41.4 mm) | 3.53 / 79.64 (pin:D_leg1) | 7.5 / 226.65 (pillar:A_leg0) | 2.52 / 39.92 (crank) | 1.07 / 20.7 (link:b1) | 0 err, 18 warn | 0 err, 7 warn |
+| klann_high_step_double | yes (9 layers, 34.0 mm) | 3.53 / 25.3 (pin:D_leg1) | 7.54 / 51.94 (pillar:A_leg1) | 3.57 / 14.6 (crank) | 1.07 / 7.66 (link:b1) | 0 err, 16 warn | 0 err, 10 warn |
+| klann_high_step_quad | yes (14 layers, 58.5 mm) | 2.16 / 28.66 (pin:D_leg2) | 4.74 / 32.58 (pillar:A_leg0) | 1.78 / 8.93 (crank) | 1.05 / 8.68 (link:b1) | 0 err, 20 warn | 4 err, 20 warn |
+| klann_high_step_single | yes (8 layers, 30.7 mm) | 3.58 / 138.61 (pin:D) | 8.98 / 399.89 (pillar:A) | 3.57 / 59.33 (crank) | 1.08 / 39.55 (link:b1) | 0 err, 16 warn | 0 err, 7 warn |
+| klann_lego_decker | yes (10 layers, 42.8 mm) | 3.28 / 62.38 (pin:D_leg1) | 6.36 / 161.64 (pillar:A_leg0) | 2.52 / 28.32 (crank) | 1.61 / 37 (link:b4) | 4 err, 18 warn | 1 err, 8 warn |
+| klann_lego_double | yes (9 layers, 34.1 mm) | 3.27 / 70.6 (pin:D_leg1) | 6.43 / 135.26 (pillar:A_leg1) | 3.57 / 21.22 (crank) | 1.6 / 40.18 (link:b4) | 4 err, 17 warn | 1 err, 10 warn |
+| klann_lego_quad | yes (14 layers, 58.2 mm) | 3.23 / 31.5 (pin:D_leg0) | 4.02 / 38.85 (pillar:A_leg0) | 1.78 / 10.97 (crank) | 1.58 / 21.77 (link:b4) | 8 err, 21 warn | 1 err, 10 warn |
+| klann_lego_single | yes (8 layers, 30.9 mm) | 3.27 / 89.97 (pin:D) | 7.59 / 206.51 (pillar:A) | 3.57 / 65.2 (crank) | 1.6 / 52.42 (link:b4) | 2 err, 16 warn | 1 err, 6 warn |
+| klann_long_legs_decker | yes (10 layers, 42.4 mm) | 3.26 / 81.04 (pin:C_leg0) | 6.18 / 249.87 (pillar:A_leg0) | 2.52 / 37.55 (crank) | 0.99 / 20.79 (link:b1) | 0 err, 18 warn | 1 err, 8 warn |
+| klann_long_legs_double | yes (9 layers, 34.0 mm) | 3.26 / 69.99 (pin:C_leg0) | 6.23 / 133.89 (pillar:A_leg1) | 3.57 / 23.4 (crank) | 0.99 / 21.2 (link:b1) | 0 err, 17 warn | 1 err, 10 warn |
+| klann_long_legs_quad | yes (14 layers, 58.1 mm) | 3.21 / 35.12 (pin:D_leg3) | 3.91 / 40.13 (pillar:A_leg0) | 1.78 / 12.24 (crank) | 0.97 / 10.51 (link:b1) | 0 err, 21 warn | 1 err, 18 warn |
+| klann_long_legs_single | yes (8 layers, 30.7 mm) | 3.26 / 130.57 (pin:D) | 7.38 / 472.25 (pillar:A) | 3.57 / 57.86 (crank) | 0.99 / 39.55 (link:b1) | 0 err, 16 warn | 1 err, 6 warn |
+| klann_patent_decker | yes (10 layers, 42.4 mm) | 3 / 90.97 (pin:D_leg1) | 6.17 / 216.06 (pillar:A_leg0) | 2.52 / 40.15 (crank) | 0.91 / 23.79 (link:b1) | 0 err, 18 warn | 1 err, 8 warn |
+| klann_patent_double | yes (9 layers, 34.0 mm) | 3.01 / 63.31 (pin:D_leg0) | 6.25 / 120.86 (pillar:A_leg1) | 3.57 / 16.95 (crank) | 0.89 / 20.15 (link:b1) | 0 err, 18 warn | 1 err, 10 warn |
+| klann_patent_quad | yes (14 layers, 58.1 mm) | 2.96 / 27.76 (pin:D_leg0) | 3.9 / 26.45 (pillar:A_leg0) | 1.78 / 11.25 (crank) | 0.9 / 8.25 (link:b1) | 0 err, 22 warn | 1 err, 18 warn |
+| klann_patent_single | yes (8 layers, 30.7 mm) | 3.01 / 371.64 (pin:D) | 7.35 / 802.27 (pillar:A) | 3.57 / 117.98 (crank) | 0.91 / 118.3 (link:b1) | 0 err, 16 warn | 1 err, 6 warn |
+| klann_quad | yes (14 layers, 77.2 mm) | 0.66 / 4.26 (pin:D_leg1) | 1.22 / 6.03 (pillar:A_leg1) | 1.78 / 1.98 (crank) | 0.46 / 1.77 (link:b1) | 0 err, 20 warn | 5 err, 26 warn |
+| klann_single | yes (10 layers, 34.9 mm) | 0.96 / 41.28 (pin:D) | 2.58 / 116.9 (pillar:B) | 3.57 / 66.64 (crank) | 0.57 / 19.39 (link:b4) | 0 err, 16 warn | 3 err, 4 warn |
+| sixbar_decker | yes (13 layers, 55.8 mm) | 5.94 / 179.12 (pin:F_leg1) | 11.15 / 201.04 (pillar:H_leg0) | 2.52 / 60.22 (crank) | 3.9 / 103.09 (link:b1) | 0 err, 14 warn | 4 err, 10 warn |
+| sixbar_double | yes (12 layers, 45.2 mm) | 3.73 / 44.4 (pin:F_leg0) | 13.03 / 162.37 (pillar:H_leg1) | 3.57 / 21.94 (crank) | 3.87 / 38.37 (link:b1) | 0 err, 14 warn | 0 err, 5 warn |
+| sixbar_quad | yes (19 layers, 88.0 mm) | 3.74 / 54.19 (pin:F_leg0) | 3.71 / 30.38 (pillar:H_leg1) | 1.78 / 9.14 (crank) | 3.89 / 34.09 (link:b1) | 0 err, 14 warn | 0 err, 16 warn |
+| sixbar_single | yes (10 layers, 38.5 mm) | 5.95 / 222.12 (pin:F) | 15.08 / 388.96 (pillar:H) | 3.57 / 123.25 (crank) | 3.9 / 145.77 (link:b1) | 0 err, 14 warn | 4 err, 4 warn |
+| sixbar_v1_decker | yes (13 layers, 55.8 mm) | 6.09 / 114.25 (pin:F_leg1) | 10.33 / 109.88 (pillar:H_leg0) | 2.52 / 32.83 (crank) | 4 / 56.98 (link:b1) | 0 err, 14 warn | 4 err, 10 warn |
+| sixbar_v1_double | yes (12 layers, 45.2 mm) | 3.78 / 44.81 (pin:F_leg0) | 12.09 / 143.74 (pillar:H_leg1) | 3.57 / 19.74 (crank) | 3.96 / 35.51 (link:b1) | 0 err, 14 warn | 0 err, 5 warn |
+| sixbar_v1_quad | yes (19 layers, 88.0 mm) | 2.64 / 40.59 (pin:F_leg0) | 3.44 / 28.74 (pillar:H_leg1) | 1.78 / 8.56 (crank) | 3.98 / 31.6 (link:b1) | 0 err, 14 warn | 0 err, 16 warn |
+| sixbar_v1_single | yes (10 layers, 38.5 mm) | 6.08 / 139.96 (pin:Q) | 13.97 / 231.74 (pillar:H) | 3.57 / 61.01 (crank) | 3.99 / 78.23 (link:b1) | 0 err, 14 warn | 4 err, 4 warn |
+| sixbar_v2_decker | yes (12 layers, 52.3 mm) | 10.57 / 56.99 (pin:F_leg1) | 21.25 / 71.61 (pillar:H_leg0) | 2.52 / 6.98 (crank) | 7.84 / 27.25 (link:b3) | 0 err, 14 warn | 0 err, 6 warn |
+| sixbar_v2_double | yes (11 layers, 44.8 mm) | 10.13 / 57.2 (pin:P_leg0) | 23.44 / 92.08 (pillar:H_leg0) | 3.57 / 14.21 (crank) | 7.83 / 30.03 (link:b1) | 0 err, 14 warn | 0 err, 5 warn |
+| sixbar_v2_quad | yes (18 layers, 86.5 mm) | 10.59 / 33.71 (pin:F_leg3) | 7.99 / 19.92 (pillar:H_leg1) | 1.78 / 5.11 (crank) | 7.86 / 17.7 (link:b3) | 0 err, 14 warn | 0 err, 13 warn |
+| sixbar_v2_single | yes (9 layers, 39.8 mm) | 4.51 / 58.73 (pin:F) | 33.63 / 128.15 (pillar:H) | 3.57 / 20.34 (crank) | 7.78 / 30.83 (link:b3) | 0 err, 14 warn | 0 err, 5 warn |
+| sixbar_v3_decker | yes (12 layers, 50.6 mm) | 4.81 / 1016.63 (pin:F_leg1) | 18.23 / 8231.81 (pillar:H_leg0) | 2.52 / 109.95 (crank) | 5.77 / 1141.41 (link:b1) | 0 err, 14 warn | 0 err, 7 warn |
+| sixbar_v3_double | yes (11 layers, 44.7 mm) | 6.66 / 38.09 (pin:K_leg0) | 19.67 / 109.54 (pillar:H_leg0) | 3.57 / 33.69 (crank) | 5.71 / 45.95 (link:b1) | 0 err, 14 warn | 0 err, 5 warn |
+| sixbar_v3_quad | yes (19 layers, 84.1 mm) | 4.82 / 45.63 (pin:F_leg0) | 4.6 / 29.08 (pillar:H_leg1) | 1.78 / 8.95 (crank) | 5.74 / 33.84 (link:b1) | 0 err, 14 warn | 0 err, 11 warn |
+| sixbar_v3_single | yes (9 layers, 33.6 mm) | 3.34 / 1693.03 (pin:F) | 25.93 / 5568.21 (pillar:H) | 3.57 / 240.63 (crank) | 5.76 / 1164.95 (link:b1) | 0 err, 14 warn | 0 err, 5 warn |
+| strider_decker | yes (16 layers, 70.4 mm) | 3.69 / 18.29 (pin:J7_leg0) | 5.02 / 26.89 (pillar:J6_leg0) | 2.52 / 7.06 (crank) | 2.18 / 7.11 (link:b6) | 0 err, 14 warn | 0 err, 15 warn |
+| **strider_double (default)** | yes (15 layers, 66.1 mm) | 3.73 / 24.74 (pin:J7_leg0) | 9.29 / 169.49 (pillar:J6_leg0) | 1.78 / 8.05 (crank) | 2.2 / 13.5 (link:b6) | 0 err, 14 warn | 0 err, 10 warn |
+| strider_quad | yes (25 layers, 119.3 mm) | 3.72 / 91.42 (pin:J7_leg0) | 1.71 / 39.56 (pillar:J2_leg0) | 1.78 / 31.65 (crank) | 2.19 / 25.29 (link:b6) | 0 err, 14 warn | 0 err, 22 warn |
+| strider_single | yes (11 layers, 43.4 mm) | 3.71 / 16.07 (pin:J7) | 22.91 / 86.94 (pillar:J2) | 3.57 / 13.04 (crank) | 2.19 / 7.1 (link:b6) | 0 err, 14 warn | 0 err, 7 warn |
+| trotbot_decker | yes (14 layers, 63.6 mm) | 11.38 / 56.08 (pin:J6_leg1) | 27.07 / 90.32 (pillar:J3_leg0) | 2.52 / 9.21 (crank) | 4.77 / 15.9 (link:b1) | 0 err, 14 warn | 0 err, 14 warn |
+| trotbot_double | yes (12 layers, 47.2 mm) | 5.19 / 9.6 (pin:J5_leg0) | 24.07 / 63.56 (pillar:J3_leg1) | 3.57 / 13.04 (crank) | 4.65 / 10.87 (link:b1) | 0 err, 14 warn | 0 err, 6 warn |
+| trotbot_heel_decker | no | - | - | - | - | - | no plan within the budget |
+| trotbot_heel_double | yes (19 layers, 68.1 mm) | 2.17 / 4.9 (pin:J5_leg0) | 13.11 / 38.48 (pillar:J3_leg1) | 3.57 / 12.84 (crank) | 2.77 / 11.42 (link:b1) | 0 err, 14 warn | 0 err, 4 warn |
+| trotbot_heel_quad | no | - | - | - | - | - | no plan within the budget |
+| trotbot_heel_single | yes (14 layers, 56.6 mm) | 3.01 / 17.07 (pin:J11) | 21.63 / 105.87 (pillar:J3) | 3.57 / 23.93 (crank) | 2.78 / 23.66 (link:b1) | 0 err, 14 warn | 0 err, 4 warn |
+| trotbot_quad | yes (22 layers, 104.6 mm) | 5.99 / 19.5 (pin:J7_leg0) | 2.67 / 7.45 (pillar:J3_leg0) | 1.78 / 2.83 (crank) | 2.29 / 6.85 (link:b2) | 0 err, 14 warn | 0 err, 28 warn |
+| trotbot_single | yes (10 layers, 41.7 mm) | 5.93 / 20.08 (pin:J7) | 31.07 / 144.7 (pillar:J3) | 3.57 / 23.8 (crank) | 4.87 / 22.69 (link:b2) | 0 err, 14 warn | 0 err, 7 warn |
+| trotbot_toe_decker | yes (22 layers, 77.6 mm) | 1.93 / 17.69 (pin:J11_leg0) | 7.07 / 69.82 (pillar:J3_leg0) | 2.52 / 5.87 (crank) | 1.72 / 11.27 (link:b6) | 0 err, 14 warn | 0 err, 10 warn |
+| trotbot_toe_double | yes (19 layers, 68.2 mm) | 1.49 / 4.82 (pin:J5_leg0) | 7.59 / 35.37 (pillar:J3_leg1) | 3.57 / 7.36 (crank) | 1.7 / 7.14 (link:b6) | 0 err, 14 warn | 0 err, 7 warn |
+| trotbot_toe_quad | no | - | - | - | - | - | no plan within the budget |
+| trotbot_toe_single | yes (14 layers, 47.9 mm) | 2.26 / 17.07 (pin:J10) | 15.48 / 108.44 (pillar:J3) | 3.57 / 22.76 (crank) | 1.75 / 19.58 (link:b6) | 0 err, 14 warn | 0 err, 5 warn |
+
+Reading it.
+
+**The default Strider double passes**: 15 layers (66.1 mm a side), 399 parts, $266.14, 0
+errors and 10 warnings. The crank is the weakest joint, jam SF **1.78** (the friction
+clamp's 3.032 N·m against 2 x 0.85 N·m; a warning, and an estimate: the test build should
+measure the slip torque, and the hex-standoff crankpins of the user's decision 1 replace it
+with a hex bearing); then the link b6 (acrylic, a three-pin plate in bending) 2.2, the pins
+3.73 (J7), the pillars 9.29 (J6; J2 3.08 walking at 50 N jammed). The **Strider quad plans**
+now (25 layers, 119.3 mm, not proven thinnest within the budget) and passes with warnings:
+its 51 mm pillar J2 at jam SF **1.71**, the splice rated at the 1.0 N·m clamp of the user's
+decision 2 (segments turned together in soft-jaw pliers): **to be tested on the first
+build** (finger tight, 0.4 N·m, it failed). Every Strider module passes; so do the six-bar
+v2 and v3, TrotBot and its heel and toe (single and double; the toe decker too), and the
+Klann high-step but its quad (four deck findings).
+
+**The crank** is 1.78 wherever two crankpins sit 180° apart (factor 2), 2.52 on a decker,
+3.57 elsewhere: never an error, a warning at factor 2 on every design.
+
+**The link plates** (`strength.link_rows`, the sim's pin loads on each link's net section
+and, with three pins, its bending) are the new errors, honest ones: acrylic can't take the
+jam loads on fourbar b1 (SF 0.35-0.53), the Jansen b6 and b3 (0.24, 0.71), the demo Klann b1
+(0.46-0.63) and the Klann variants' b1 (`klann_patent` 0.89-0.91, `klann_long_legs`
+0.97-0.99; `klann_high_step` 1.05-1.08, a warning). Each row names the aluminium sheet that
+would hold it. The user's rule (aluminium only where acrylic can't take the load) says
+those go to aluminium; only `klann_lego`'s b1 has been decided (6061), and there the **cut
+rules** fail instead: the crank rider's 6.3 mm bore in a 12 mm link leaves a 2.82 mm web,
+under 1 x the 3.175 mm thickness. 6061 holds it at jam SF 5.7-5.8; 5052 0.090 in would hold
+it at about 2.9 with a 2.82 mm web over 1 x its 2.29 mm (a warning), in a 3 mm layer (0.7 mm
+of end play to take up); or a wider link end round the crank bore (the plates). Left for the
+user: `link_sheets` selects either.
+
+**The pins**: the demo Klann (D, 0.57-0.96) and the Jansen double (C, 0.78) as before; the
+rest hold (TrotBot's toe double 1.49 and decker 1.93 warn).
+
+**The pillars**: no errors anywhere (the demo Klann quad 1.22, the Jansen 1.35-1.44 warn).
+
+**Other problems the audit finds** (not strength, other builders' parts): on the four-bar doubles and quads and
+the six-bar single and decker (v1 too) a pillar H screw clashes with the deck plate (5-37 mm^3),
+the Jansen's foot socks clash with b6, and on the four-bar spot-micro and Klann high-step
+quads a pin screw sweeps through the deck rail screws.
+
+**What doesn't plan** (5 of 68): the Jansen decker and quad, the TrotBot heel decker and quad
+and the toe quad (the heel and toe in gaps give up on the crankpin's washers, sunk they run
+out of budget).
+
+## Mechanisms x crank, 2026-10-04 evening
+
+Every one-input mechanism, one side, with each crank (`config.DEFAULT_CRANKS` /
+`LINKAGE_CRANKS`; the crank's rating from the drive torque alone, factor 1; run
+`20261004-143516`). The bolt crank plans all but two, at jam SF **3.57** (the keyed crank's
+key in its printed web socket holds 0.545 N·m, SF 0.64, an error; the printed crank's clamp
+0.17, SF 0.20); `hoecken_pantograph` and `dwell_rocker` find no bolt-crank plan (their
+crankpin M is so short that its top screw head over the hub plate needs 2.5 mm of the
+printed horn spacer, which is 1.83 mm, at every layering), so they keep the keyed crank, the
+strongest that plans for them, and their audit fails on it until the drive's horn spacer or
+the hex-standoff crank takes that head. `five_bar` has two inputs (one servo per machine).
+
+| mechanism | bolt (default) | keyed | printed |
+|---|---|---|---|
+| hoecken | 8 layers, 28.2 mm, SF 3.57 | 8 layers, SF 0.64 | 7 layers, SF 0.20 |
+| watt_crank | 8 layers, 30.0 mm, SF 3.57 | 8, 0.64 | 7, 0.20 |
+| peaucellier_crank | 9 layers, 35.6 mm, SF 3.57 | 10, 0.64 | 10, 0.20 |
+| parallelogram_lift | 8 layers, 30.0 mm, SF 3.57 | 8, 0.64 | 7, 0.20 |
+| watt_table_lift | 8 layers, 35.7 mm, SF 3.57 | 8, 0.64 | 8, 0.20 |
+| hoecken_pantograph | no plan (horn spacer) | **11 layers, 31.1 mm, SF 0.64 (default)** | 11, 0.20 |
+| crank_rocker | 8 layers, 28.2 mm, SF 3.57 | 8, 0.64 | 7, 0.20 |
+| rocker_amplifier | 8 layers, 32.3 mm, SF 3.57 | 9, 0.64 | 9, 0.20 |
+| dwell_rocker | no plan (horn spacer) | **8 layers, 22.1 mm, SF 0.64 (default)** | 7, 0.20 |
+| hoecken_table | 8 layers, 35.9 mm, SF 3.57 | 8, 0.64 | 7, 0.20 |
+
+## Superseded: every walker x module, 2026-10-04 morning (the two-plate bolt crank, 0.125 in plates)
 
 `mise run remote -- ...` sweep of `spiderpig audit --linkage L --modules M`, 70 audits
 10 at a time on ao-server in a fresh store (run `20261004-033639`,

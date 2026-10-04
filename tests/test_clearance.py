@@ -153,18 +153,31 @@ def test_chicago_heights_split_the_shims_between_two_gaps():
 
 
 def test_sheets_per_part():
+    """The thinnest stock sheet per part (2026-10-04): 0.080 in 5052 frame plates, 0.063 in
+    crank plates (materials.thinnest_sheet), acrylic links; a Klann variant's foot link in
+    6061, and klann_lego's crank rider b1 too (the user's decision 3 of 2026-10-04: its jam
+    load is past what acrylic holds, strength.link_rows)."""
     cfg = BuildConfig()
-    assert (cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == ("acrylic_3mm", "al5052_3p2mm",
-                                                              "al5052_3p2mm")
+    assert (cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == ("acrylic_3mm", "al5052_2mm",
+                                                              "al5052_1p6mm")
+    assert cfg.frame_sheet == materials.thinnest_sheet("frame")
+    assert cfg.crank_sheet == materials.thinnest_sheet("crank")
     assert materials.link_sheets(cfg) == {}
     kl = BuildConfig(linkage="klann_lego", module="single")
-    assert materials.link_sheets(kl) == {"b4": "al6061_3p2mm"}       # the foot link
-    assert materials.sheet_of(kl, "link", "b4_leg1") == "al6061_3p2mm"
+    assert materials.link_sheets(kl) == {"b4": "al6061_3p2mm", "b1": "al6061_3p2mm"}
+    assert materials.sheet_of(kl, "link", "b4_leg1") == "al6061_3p2mm"     # the foot link
+    assert materials.sheet_of(kl, "link", "b1_leg1") == "al6061_3p2mm"     # the crank rider
     assert materials.sheet_of(kl, "link", "b2_leg1") == "acrylic_3mm"
+    patent = BuildConfig(linkage="klann_patent", module="single")
+    assert materials.link_sheets(patent) == {"b4": "al6061_3p2mm"}      # its foot link only
     acrylic = BuildConfig(linkage="klann_lego", module="single", link_sheets=())
     assert materials.link_sheets(acrylic) == {}
     assert BuildConfig(linkage="klann_lego", module="single",
-                       link_sheets=(("b4", "al6061_3p2mm"),)).link_sheets is None
+                       link_sheets=(("b4", "al6061_3p2mm"), ("b1", "al6061_3p2mm"))
+                       ).link_sheets is None             # the default, dropped
+    foot_only = BuildConfig(linkage="klann_lego", module="single",
+                            link_sheets=(("b4", "al6061_3p2mm"),))
+    assert materials.link_sheets(foot_only) == {"b4": "al6061_3p2mm"}  # b1 back in acrylic
     with pytest.raises(ParamError):
         BuildConfig(frame_sheet="m3_washer")
     with pytest.raises(ParamError):
@@ -205,3 +218,36 @@ def test_the_services_cut_rules():
     assert part_issues(acrylic, "acrylic_3mm") == []
     tiny = replace(al, part=_plate(5, 8, 3.175, []))
     assert {i["rule"] for i in part_issues(tiny, "al5052_3p2mm")} == {"min_part"}
+
+
+def test_cut_rule_levels_and_messages():
+    """The design review's levels (the user's rule of 2026-10-04): in metal a hole closer
+    than 1 x the thickness to an edge is an error, under SendCutSend's 2 x a warning, a hole
+    under the minimum an error; every issue says why and how to fix it, and the messages
+    (the audit's, verify's, the design card's) name the rule, the worst part and the fix."""
+    from spiderpig import manufacture
+
+    t = 3.175
+    near = Body("near", _plate(40, 20, t, [(4.0, 10, 4.0)]), fab="laser", sheet="al5052_3p2mm")
+    (e,) = part_issues(near, "al5052_3p2mm")          # 2.0 mm of web: under 1 x t
+    assert (e["rule"], e["level"]) == ("edge", "error")
+    assert e["value"] == pytest.approx(2.0, abs=0.01)
+    assert "1 x the thickness" in e["why"]
+    assert e["fix"]
+    mid = Body("mid", _plate(40, 20, t, [(7.0, 10, 4.0)]), fab="laser", sheet="al5052_3p2mm")
+    (w,) = part_issues(mid, "al5052_3p2mm")           # 5.0 mm: over 1 x t, under 2 x t
+    assert (w["rule"], w["level"]) == ("edge", "warning")
+    assert "2 x the thickness" in w["why"]
+    issues = [dict(i, sheet="al5052_3p2mm") for i in (e, w)]
+    m = {"parts": 2, "issues": issues, "errors": {"edge": 1},
+         "sheets": {"al5052_3p2mm": materials.sheet("al5052_3p2mm").label}}
+    (err,) = manufacture.messages(m, "error")
+    assert err.startswith("manufacture: 1 part(s) break the hole-to-edge distance rule; "
+                          "worst near (al5052_3p2mm)")
+    assert "(fix: " in err
+    (warn,) = manufacture.messages(m, "warning")
+    assert "worst mid" in warn
+    s = manufacture.summary(m)
+    assert not s["ok"]
+    assert (s["errors"], s["warnings"]) == ({"edge": 1}, {"edge": 1})
+    assert s["messages"] == [err, warn]                # errors first

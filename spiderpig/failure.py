@@ -38,6 +38,10 @@ stage          code                            raised by
                                                the crank under jam SF 1 at the design's
                                                loads (culprits: joint, links, case,
                                                SF, load, fixes)
+``manufacture`` ``cut_rule``                   :func:`manufacture.check` (``verify``
+                                               standard/full): a part the service
+                                               won't cut (culprits: part, sheet, rule,
+                                               detail, why, fix)
 =============  ==============================  =======================================
 
 A :class:`Recommendation` is the engine's (:class:`stack.Recommendation`:

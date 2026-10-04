@@ -364,6 +364,8 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
         rep.failures.append(f)
         rows.append(Row("bom.resolves", "bom", None, None, False, "measured", True, f.message))
 
+    rows += _cut_rule_rows(br.cut_rules or api.cut_rules_of(mech, cfg.sheet), rep)
+
     # -- joint strength -----------------------------------------------------------
     if design.kind == "walker":
         rows += _strength_rows(design, rep, level)
@@ -372,6 +374,31 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if level == "full" and design.kind == "walker":
         rows += _sim_rows(design, rep)
     return _done(design, rep, t0)
+
+
+def _cut_rule_rows(m: dict, rep: VerifyReport) -> list[Row]:
+    """Every laser-cut part against its service's cut rules (:mod:`spiderpig.manufacture`):
+    ``manufacture.cut_rules``, the errors (a hole under 1 x the thickness from an edge in
+    metal, a hole the service won't cut; ``manufacture`` / ``cut_rule`` with each part as a
+    culprit), and a soft ``manufacture.warnings`` row with the rest. ``m``: the build's
+    :attr:`api.BuildReport.cut_rules`."""
+    from spiderpig import manufacture
+
+    errors = [i for i in m["issues"] if i.get("level") == "error"]
+    n_warn = len(m["issues"]) - len(errors)
+    if errors:
+        rep.failures.append(Failure(
+            "manufacture", "cut_rule", "; ".join(manufacture.messages(m, "error")),
+            culprits=[{k: i.get(k) for k in ("part", "sheet", "rule", "value", "limit",
+                                             "detail", "why", "fix")} for i in errors]))
+    rows = [Row("manufacture.cut_rules", "manufacture", len(errors), "0", not errors,
+                "measured", True,
+                "; ".join(manufacture.messages(m, "error"))
+                or f"{m['parts']} laser-cut parts within every service's hard limits")]
+    if n_warn:
+        rows.append(Row("manufacture.warnings", "manufacture", n_warn, None, True, "measured",
+                        False, "; ".join(manufacture.messages(m, "warning"))))
+    return rows
 
 
 def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:

@@ -35,7 +35,8 @@ def test_the_heel_is_told_the_scale_that_clears_it():
     assert rec.why.startswith("scale trotbot_heel x1.50 (the least that clears it is x1.47; "
                               "b7 past crankpin J1 is 6.8 mm, needs 10.0)")
     assert rec.effects.startswith("crank 28.0 -> 42.0 mm; about 1.5x the crank torque")
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 12 ")
+    # 13 layers (37.064 mm) on the 0.080 in frame plates of 2026-10-04 (12 on 0.125 in)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 13 ")
     assert "what would clear it:\n  unit 7 -> 10.5: scale trotbot_heel x1.50" in str(e)
     # no thinner parts do: the crankpin takes an M3 screw, and b1 a wall round it
     assert any(n.startswith("no part sizes at this scale clear it within the constructions' "
@@ -74,7 +75,8 @@ def test_the_keyed_crank_post_sends_the_heel_up_a_scale():
     assert "it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs" in str(e)
     (rec,) = e.recommendations
     assert rec.changes == (("unit", 10.5, 12.0),)
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 14 layers")
+    # 15 layers (43.064 mm) on the 0.080 in frame plates (14, 42.35 mm, on 0.125 in)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 15 layers")
 
 
 def test_gap_arithmetic():

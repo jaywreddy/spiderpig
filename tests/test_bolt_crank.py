@@ -98,7 +98,8 @@ def test_single_web_rules_for_the_router():
     assert not rules.two_layer_bottom
     assert rules.gap_head > 0
     assert rules.horn_heads
-    assert problem.spec.heads == "gap"
+    assert problem.spec.heads == "gap_sink"     # in gaps, else the pivots' heads sunk
+    assert rules.gap_washer > 0                    # its run washers: the leaf routes round
     assert len(problem.router.gap_pieces) == problem.router.n + len(rules.horn_heads) + 1
 
 
