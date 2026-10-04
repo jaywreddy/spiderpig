@@ -20,7 +20,7 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
-from spiderpig.shapes import Rect, box, cut_holes, disc, pill, plate, union
+from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, pill, plate, union
 from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, body_class
 
 SOCK_T = 1.5            # a TPU foot sock's wall round the toe (mm)
@@ -52,6 +52,18 @@ def chords(o, pillars) -> list[tuple]:
 
 
 CORNER_R = 1.5          # a lightening pocket's inside corners (SendCutSend cuts 0.8 mm)
+
+
+def boss_web(key: str | None) -> float:
+    """The plate a frame plate keeps round a hole (mm): the service's least hole-to-edge
+    distance in its sheet (:attr:`materials.Sheet.min_edge`: 2 x t in aluminium), and a
+    little over; 0 for a sheet with no rule."""
+    if key is None:
+        return 0.0
+    from spiderpig.materials import sheet
+
+    edge = sheet(key).min_edge
+    return edge + 0.1 if edge > 0 else 0.0
 
 
 def window(part, tri, r: float, z0: float, z1: float):
@@ -192,6 +204,7 @@ class FramePlates(Group):
         arms += [(a, b, p.frame_radius) for a, b in chords(o, pillars)]
         frame = topo.frame_bodies[0]
         tris = [(o, a, b) for a, b in chords(o, pillars)]
+        web = boss_web(build.ctx.sheet("frame"))
         for key, layer, name in ((FRAME_INNER, build.top, frame),
                                  (FRAME_OUTER, 0, "frame_outer")):
             z0, z1 = build.z(layer)
@@ -199,9 +212,15 @@ class FramePlates(Group):
             for tri in tris:        # the window an arm pair and its chord close: a lightening
                 part = window(part, tri, p.frame_radius, z0, z1)    # pocket, corners rounded
             extra = [pill(a, b, r, z0, z1) for a, b, r in done.pads.get(key, [])]
+            cuts = done.cuts.get(key, [])
+            # a boss round every round hole: the service's two thicknesses of plate to the
+            # edge (the design review's warning level; under one an error), the plate's own
+            # layer, so it costs the legs nothing
+            extra += [disc(c.xy, c.d / 2 + web, z0, z1) for c in cuts
+                      if isinstance(c, Cut) and web > 0]
             if extra:
                 part = union([part, *extra])
-            part = cut_holes(part, done.cuts.get(key, []), z0, z1)
+            part = cut_holes(part, cuts, z0, z1)
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
                                        sheet=build.ctx.sheet("frame")))
         return out

@@ -125,21 +125,20 @@ def body_shapes(ctx: Context, crank_reach: float | None) -> list[tuple]:
 
         ct = centre_t(ctx)
         rs = rear_screws(spec, centre_plates(spec, ct, p.margin), ct)
-        d = tie_dims(ctx)
+        tie_dims(ctx)
     except ValueError:          # no chassis for this servo: the servo alone
         return out
+    from spiderpig.construction.chassis import recess_wall, tie_locals, tie_pad_r
+
     if rs is not None:
-        rr = rs.head_d / 2 + 0.3 + p.min_wall
+        rr = recess_wall(ctx, rs.head_d)        # (the chassis' own outline rule)
         for h in rs.holes:     # each servo's own holes: +y on the left, -y on the right
             xs += [h.x - rr, h.x + rr]
             ys += [h.y + rr, -h.y - rr]
-    from spiderpig.construction.chassis import tie_pad_r
-
-    c = max(d.column, d.head_r)
-    tr, yt = tie_pad_r(ctx), y1 + p.margin + c
-    tx = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
-    xs += [x - tr for x in tx] + [x + tr for x in tx]
-    ys += [yt + tr, -yt - tr]
+    tr = tie_pad_r(ctx)
+    for tx, ty in tie_locals(ctx):              # (where the chassis puts them)
+        xs += [tx - tr, tx + tr]
+        ys += [ty + tr, ty - tr]
     out.append(rect("the centre plates (the chassis between the servos)",
                     min(xs), max(xs), min(ys), max(ys)))
     return out

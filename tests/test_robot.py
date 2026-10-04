@@ -179,6 +179,21 @@ def test_frame_ties_only_touch_the_inner_plate(design):
     assert {"frame tie screw head", "deck rail screw head"} <= heads
 
 
+def test_tie_holes_keep_two_thicknesses_off_the_screw_holes(design):
+    """A tie's hole shares the inner plate with the servo's front screw holes and the
+    centre plates with both servos' rear screw holes and head recesses: each tie is moved
+    along the servo until it is the service's two thicknesses off all of them."""
+    from spiderpig.construction.chassis import tie_locals, tie_neighbours
+
+    _, d = design("single")
+    r = tie_dims(d.ctx).hole_d / 2
+    near = tie_neighbours(d.ctx)
+    assert near
+    for x, y in tie_locals(d.ctx):
+        for hx, hy, hr, web in near:
+            assert math.hypot(x - hx, y - hy) - r - hr >= web, (x, y, hx, hy)
+
+
 def test_ties_keep_clear_of_the_servo(design, robot):
     tmpl, d = design("single")
     mech = robot("single", TS[0])
