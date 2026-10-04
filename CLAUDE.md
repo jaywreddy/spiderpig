@@ -100,9 +100,15 @@ printed horn spacer (`DriveGroup.realize`). The construction a design gets is da
 mechanisms' sweep of 2026-10-04 (`docs/audit/STRENGTH.md`, on the round standoff) left
 `hoecken_pantograph` and `dwell_rocker` on the keyed crank; with the hex crank both plan (9
 layers: the horn spacer takes the short crank's head, `hub_head_need` / `hub_capped`), so
-since the merge `LINKAGE_CRANKS` holds only TrotBot's heel and toe on `bolt_round` (b7 passes
+since the merge `LINKAGE_CRANKS` holds TrotBot's heel and toe on `bolt_round` (b7 passes
 crankpin J1 at 10.2 mm, the hex's 8.5 mm sleeve needs 11.2; the round 6 mm standoff plans,
-14 layers). The demo Klann quad on the XL330 plans with the hex crank only after ~6 CPU
+14 layers) and `klann_lego` (its 6061 b1's crank bore is 8.5 mm from pin C: the hex's 8.8 mm
+bore leaves a 2.02 mm web, a cut-rule error; the round's 6.3 mm, 3.27), and
+`config.MODULE_CRANKS` (per linkage and module, first) the Strider's decker and quad on
+`bolt_round` (no hex plan in 600 CPU s: its sleeve's post blocks the links passing the
+crankpins; the round plans them in 17 and 25 layers). An aluminium link riding a crankpin
+grows a boss round its bore to 1 x its thickness of web where its width leaves less
+(`plates.rider_bosses`, `RIDER_BOSS_T`; claimed, so the planner sees it). The demo Klann quad on the XL330 plans with the hex crank only after ~6 CPU
 minutes (15 layers; the 60 s default gives up), the STS3215 in 3 s.
 Since 2026-10-04 `StackSpec.max_top` is 60.
 **Hex-standoff crankpins** (the user's decision of 2026-10-04, `BoltCrank.pin="hex"`, the
@@ -123,8 +129,9 @@ screws take DIN 988 shims under the head where a stock length is too long (the X
 `horn_fit_web`); the horn holes and the hub's and webs' rims keep SendCutSend's minimum hole
 and 2 t edge distance; a crankpin within a head's reach of the horn's rim makes the horn
 spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`) or, wholly under it,
-is capped by it (`hub_capped`). Strider double 14 layers / 78 mm, `klann` quad 13 / 84,
-`klann_lego` quad 13 / 74, the Hoecken pantograph 9 / 40.
+is capped by it (`hub_capped`). Merged (2026-10-04, with gap_sink and the body plates): the
+Strider double 15 layers / 75.3 mm (audit clean, crank jam SF 2.56), single 11, the demo
+`klann` quad 14 / 76.8, the Hoecken pantograph and dwell rocker 9 each.
 
 **Clearance gaps, layer thicknesses, per-part sheets** (2026-10-04, `stack.finalize`,
 `spiderpig/materials.py`). A fastener's head or nut beside a link (a Chicago screw's, a rod

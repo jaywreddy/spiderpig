@@ -60,15 +60,35 @@ LINKAGE_CRANKS: dict[str, str] = {
     # alternative, the hex crank at unit 12 (x1.14), changes the linkage's size.
     "trotbot_heel": "bolt_round",
     "trotbot_toe": "bolt_round",
+    # klann_lego: its b1 (6061, the user's decision 3) carries the crank bore 8.5 mm from
+    # pin C's hole; the hex sleeve's 8.8 mm bore leaves 2.02 mm between them, under 1 x the
+    # 3.175 mm sheet (a cut-rule error). The round standoff's 6.3 mm bore leaves 3.27 mm
+    # (its end grown round the bore, plates.rider_bosses, keeps the edge too).
+    "klann_lego": "bolt_round",
 }
 """Per linkage: the crank it gets when it names none, where :data:`DEFAULT_CRANKS`'
 doesn't plan (each with why)."""
 
 
-def default_crank(lk: linkage.Linkage) -> str:
-    """The crank construction ``lk`` gets when the config names none: its own
-    (:data:`LINKAGE_CRANKS`), else its kind's (:data:`DEFAULT_CRANKS`)."""
-    return LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind])
+MODULE_CRANKS: dict[tuple[str, str], str] = {
+    # The Strider's decker and quad find no plan with the hex-standoff crank (the merge of
+    # 2026-10-04: none in 600 CPU s on ao-server; "no crank route passes", the 8.5 mm hex
+    # sleeve's post blocking the links that pass the crankpins, "no way past the layer of
+    # b8"). The round standoff plans them (decker 17 layers in 11 s, quad 25 in 50 s, on the
+    # 0.100 in 6061 crank sheet), rated as its friction clamp (UNVERIFIED coefficients).
+    ("strider", "decker"): "bolt_round",
+    ("strider", "quad"): "bolt_round",
+}
+"""Per (linkage, module): the crank it gets when it names none, ahead of
+:data:`LINKAGE_CRANKS` (each with why)."""
+
+
+def default_crank(lk: linkage.Linkage, module: str = "") -> str:
+    """The crank construction ``lk`` (in ``module``) gets when the config names none: its
+    module's (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's
+    (:data:`DEFAULT_CRANKS`)."""
+    return MODULE_CRANKS.get((lk.key, module),
+                             LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
 
 
 @dataclass(frozen=True)
@@ -126,7 +146,7 @@ class BuildConfig:
         if not self.module:
             object.__setattr__(self, "module", default_module(lk.key))
         if not self.crank:
-            object.__setattr__(self, "crank", default_crank(lk))
+            object.__setattr__(self, "crank", default_crank(lk, self.module))
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
@@ -363,6 +383,8 @@ def add_build_args(p) -> None:
                    help="crank construction (default: "
                         + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())
                         + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
+                        + "; " + ", ".join(f"{v} for the {k[0]} {k[1]}"
+                                           for k, v in MODULE_CRANKS.items())
                         + ")")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,

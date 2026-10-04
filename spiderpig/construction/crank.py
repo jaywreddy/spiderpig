@@ -2828,6 +2828,10 @@ class _WebPlates(_BoltPlates):
             items, _ = washer_stack(4.0, j.shims)
             items = [x for x in items if not x[0].startswith("ptfe")] or items
             t = sum(x[1] for x in items)
+            if 0 < z_lo + t - z0 <= 0.1:
+                # the stack's rounding (stock shim steps and the fit's tolerance) leaves the
+                # standoff a hair onto the shims: they are what gives, drawn up to its end
+                t = z0 - z_lo
             shim = disc(xy, 3.95, z_lo, z_lo + t) - disc(xy, 2.05, z_lo - 1, z_lo + t + 1)
             self.buy(f"crank_pin_shims_{tag}", shim, items[0][0], "#9a9a9a")
             for key, _ in items[1:]:

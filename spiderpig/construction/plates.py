@@ -113,14 +113,42 @@ def foot_links(topo, lk) -> list[tuple[str, str, str]]:
     return out
 
 
+RIDER_BOSS_T = 1.0      # a metal link keeps this many x its thickness round its crank bore
+
+
+def rider_bosses(ctx: Context) -> dict[str, tuple[str, float]]:
+    """Per aluminium link riding a crankpin: (the crankpin, the radius of the boss its end
+    grows round the bore), where the link's own width leaves less than ``RIDER_BOSS_T`` x
+    its thickness of web there (the cut rules' error, 2026-10-04: the hex crankpin's 8.5 mm
+    sleeve in klann_lego's 6061 b1 left 1.57 mm). The bore is the crank's rider hole."""
+    from spiderpig import construction
+    from spiderpig.materials import sheet
+
+    crank = construction.CRANKS.get(getattr(ctx.config, "crank", ""), None)
+    rider = getattr(crank, "rider_d", None)
+    d = rider() if callable(rider) else ctx.params.crankpin_d
+    hole = ctx.params.hole(d)
+    out = {}
+    for link, at in ctx.topo.riders.items():
+        key = ctx.sheet("link", link)
+        if key is None or sheet(key).min_edge <= 0:
+            continue
+        r = hole / 2 + RIDER_BOSS_T * ctx.sheet_t("link", link) + 0.1
+        if r > ctx.params.link_radius + 1e-9:
+            out[link] = (at, r)
+    return out
+
+
 class LinkPlates(Group):
-    """Every leg link, cut from the sheet, in the layer the plan gives it."""
+    """Every leg link, cut from the sheet, in the layer the plan gives it (an aluminium
+    link's end grown round a crank bore its width can't hold: :func:`rider_bosses`)."""
 
     name = "links"
     cuts = True
 
     def claims(self, ctx: Context) -> list[Claim]:
         r = ctx.params.link_radius
+        bosses = rider_bosses(ctx)
 
         feet = {name: foot for name, foot, _ in foot_links(ctx.topo, ctx.config.lk)} \
             if hasattr(ctx.config, "lk") else {}
@@ -128,6 +156,9 @@ class LinkPlates(Group):
         def make(link: str, segs):
             def f(L: Layout):
                 out = [Placed(L.layers[link], Pill(a, b, r), link, link) for a, b in segs]
+                if link in bosses:      # its end grown round the crank bore
+                    at, rb = bosses[link]
+                    out.append(Placed(L.layers[link], Disc(at, rb), link, f"{link} boss"))
                 if link in feet:        # its TPU sock round the toe, in its own layer
                     out.append(Placed(L.layers[link], Disc(feet[link], r + SOCK_REACH), link,
                                       f"{link} sock"))
@@ -140,6 +171,7 @@ class LinkPlates(Group):
         out = Realized()
         r = build.ctx.params.link_radius
         ctx = build.ctx
+        bosses = rider_bosses(ctx)
         feet = {name: (foot, other) for name, foot, other in
                 (foot_links(build.plan.topo, ctx.config.lk) if hasattr(ctx.config, "lk")
                  else ())}
@@ -155,7 +187,9 @@ class LinkPlates(Group):
                                            color=SOCK_COLOR))
                 out.notes.setdefault("feet", {})[name] = {
                     "sock": "TPU 95A", "wall_mm": SOCK_T, "point": feet[name][0]}
-            part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1, cuts)
+            boss = bosses.get(name)
+            part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1, cuts,
+                         discs=[(build.xy(boss[0]), boss[1])] if boss else ())
             out.bodies.append(hardware(name, part, name, fab="laser",
                                        sheet=ctx.sheet("link", name)))
         return out

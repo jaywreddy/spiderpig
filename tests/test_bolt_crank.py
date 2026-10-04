@@ -317,3 +317,17 @@ def test_horn_screws_take_shims_where_the_hub_plate_is_thin():
         assert length == pytest.approx(seg + 3.032 + shim + e)
         assert 0 <= shim <= c.horn_shim_max
     assert c.horn_hole(ctx) >= get(ctx.sheet("crank")).dims["min_hole"]
+
+
+def test_the_crank_defaults_per_module_and_linkage():
+    """The hex-standoff crank is the default; the tables name where it doesn't plan or
+    breaks a cut rule (the merge of 2026-10-04, config.MODULE_CRANKS / LINKAGE_CRANKS)."""
+    from spiderpig.config import BuildConfig as Cfg
+
+    assert Cfg().crank == "bolt"                                        # the Strider double
+    assert Cfg(module="single", robot=False).crank == "bolt"
+    assert Cfg(module="decker").crank == Cfg(module="quad").crank == "bolt_round"
+    assert Cfg(linkage="klann_lego").crank == "bolt_round"
+    assert Cfg(linkage="trotbot_heel").crank == "bolt_round"
+    assert Cfg(linkage="hoecken_pantograph", robot=False).crank == "bolt"
+    assert Cfg(module="quad", crank="bolt").crank == "bolt"               # named: as named
