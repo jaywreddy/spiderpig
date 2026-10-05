@@ -606,3 +606,83 @@ def test_pockets_that_meet_are_reported():
     tmpl, design = _routed(config, layers, top, route, ("X", 22.0, 8.0))
     with pytest.raises(ConstructionError, match="pockets for M and X"):
         fabricate_side(design, tmpl.freeze_at(1.0))
+
+
+# -- the Strider decker and quad on the hex crank (the debug of 2026-10-05) -----------------
+
+def _hex_crank():
+    from spiderpig.construction.crank import BoltCrank
+
+    return BoltCrank().for_sheet("al6061_2p5mm")
+
+
+def test_a_span_between_stock_hex_lengths_opens_the_chain_gaps():
+    """No stock hex standoff fits a span of 26.5 mm capped in the hub plate (25 mm is 1.5
+    short, 30 mm stands 3.5 past the lower plate): the gaps along the chain open, the one
+    over the lowest web first, each up to the 4 mm a gap holds, to the next stock length;
+    what is already in a gap counts."""
+    from spiderpig.stack import GAP_MAX
+
+    c = _hex_crank()
+    t = c.web_t
+    assert c.fit_hex(26.5, t, t, out_hi_max=0.0, capped=True) is None
+    j = c.hex_gap_fit(26.5, [(9, 2.8), (10, 2.5)], t, t, out_hi_max=0.0, capped=True)
+    assert j is not None
+    assert j.length == 30.0
+    gaps = dict(j.gaps)
+    assert gaps[9] == pytest.approx(GAP_MAX)                 # the lowest web's gap first
+    assert sum(g - h for g, h in ((gaps[9], 2.8), (gaps.get(10, 2.5), 2.5))) == pytest.approx(
+        j.span - 26.5)
+    assert j.gap == gaps[9]
+    assert j.out_lo <= c.protrude_max + 1e-9
+    assert j.out_hi == 0.0
+    # no room left in the gaps: none
+    assert c.hex_gap_fit(26.5, [(9, GAP_MAX)], t, t, out_hi_max=0.0, capped=True) is None
+
+
+def test_the_upper_end_of_a_hex_pin_uses_the_air_over_its_plate():
+    """What a standoff stands past its plates goes where the two gaps' needs come out even,
+    the upper stack using the air over its plate in its layer first (a 0.100 in plate in a
+    3 mm layer: 0.46 mm)."""
+    c = _hex_crank()
+    t = c.web_t
+    span = 3.0 + 2 * 3.0 + t + 0.5                    # a 12 mm standoff stands ~0.46 past
+    plain = c.fit_hex(span, t, t)
+    air = c.fit_hex(span, t, t, air_hi=3.0 - t)
+    extra = plain.length - span
+    assert plain.out_lo + plain.out_hi == pytest.approx(extra)
+    assert air.out_lo + air.out_hi == pytest.approx(extra)
+    assert max(air.out_lo, air.out_hi - (3.0 - t)) <= max(plain.out_lo, plain.out_hi) + 1e-9
+    assert air.out_hi >= air.out_lo
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("module", ["decker", "quad"])
+def test_the_strider_decker_and_quad_plan_on_the_hex_crank(module):
+    """The Strider's decker and quad default to the hex-standoff crank (they were on the
+    round friction crank, whose hub chain screw no assembly order drives): each plans, every
+    chain's standoff a stock length at the plan's z, the hub chain capped (no screw over the
+    hub plate), and the side builds inside its claims."""
+    from spiderpig.construction.crank import chains_of as chains
+
+    cfg = BuildConfig(module=module)
+    assert cfg.crank == "bolt"
+    tmpl = template_for(cfg)
+    design = design_side(tmpl, cfg, advise=False)
+    plan = design.plan
+    assert verify_plan(plan, tmpl) == []
+    crank = next(g for g in design.groups if g.name == "crank")
+    c = crank.construction.resolve(design.ctx)
+    assert c.hex
+    route = route_of(plan.layout, [a.name for a in design.ctx.topo.axes_of("crankpin")])
+    hub = max(k for k in range(plan.top) if any(
+        p.label == "crank hub" for p in plan.shapes("crank") if p.layer == k))
+    for ch in chains(route.runs):
+        capped = ch[-1].hi + 1 == hub and c.hub_capped(design.ctx, ch[0].at)
+        j = c.chain_fit_web(plan.layout, ch[0].lo, ch[-1].hi, t=c.web_t, hub=hub,
+                            capped=capped)
+        assert j is not None, ch
+        assert j.gap == 0.0, ch                       # a stock length as the plan stands
+        if ch[-1].hi + 1 == hub:
+            assert capped
+            assert not j.screw_hi
