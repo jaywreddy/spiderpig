@@ -78,7 +78,11 @@ def _crank_groups(ctx: Context, config) -> list[Group]:
 def _axle_groups(ctx: Context, config) -> list[Group]:
     """One axle per pillar (``config.pillar``) and per link pin (``config.pin``)."""
     kinds = {"frame": config.pillar, "pin": config.pin}
-    return [AxleGroup(ax, axle(kinds[ax.kind])) for ax in ctx.topo.axes if ax.kind in kinds]
+    made = {}
+    for kind, key in kinds.items():
+        a = axle(key)
+        made[kind] = a.resolve(ctx) if hasattr(a, "resolve") else a   # per design (a rule)
+    return [AxleGroup(ax, made[ax.kind]) for ax in ctx.topo.axes if ax.kind in kinds]
 
 
 def _plate_groups(ctx: Context, config) -> list[Group]:

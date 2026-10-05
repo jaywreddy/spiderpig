@@ -241,11 +241,11 @@ def joint_strength(name: str, note: dict, loads: dict) -> dict:
         if s and splices and s["moment_nmm"] > 0:
             # a spliced pillar's joints: the moment that opens a splice against the moment at
             # the splice (its plate's mid-plane), the worst splice
-            from spiderpig.construction.wobble import moment_at_per_newton
+            from spiderpig.construction.wobble import layer_mid, moment_at_per_newton
 
-            t = note.get("pitch_mm") or 3.0
             sf = min(x["capacity_nmm"] / max(f * moment_at_per_newton(
-                note, (x["layer"] + 0.5) * t, jl[f"{tag}_patterns"]), 1e-9) for x in splices)
+                note, layer_mid(note, x["layer"]), jl[f"{tag}_patterns"]), 1e-9)
+                for x in splices)
             sf = round(sf, 2)
             s = dict(s, splice_safety=sf)
             if s["safety"] is None or sf < s["safety"]:
@@ -452,7 +452,8 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         order = sorted(set(layers.values()))
         tight = {m: order.index(k) for m, k in layers.items()}
         if order[-1] - order[0] > len(order) - 1:
-            n = dict(note, layers=tight, span_mm=(len(order) - 1) * note.get("pitch_mm", 3.0))
+            n = dict(note, layers=tight, span_mm=(len(order) - 1) * note.get("pitch_mm", 3.0),
+                     layer_z={})       # adjacent layers, no gaps between them: every layer t
             j, w = sfs(n)
             out.append(f"a shorter span ({note['span_mm']:g} -> {n['span_mm']:g} mm, the links in "
                        f"adjacent layers: a plan constraint): {fmt(j, w)}")

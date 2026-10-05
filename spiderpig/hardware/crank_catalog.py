@@ -160,6 +160,50 @@ for _L in GOBILDA_LENGTHS:
               "(240 MPa): conservative for a part tapped only at its ends.",
     ))
 
+PILLAR_SHAFT_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(80, 3001))
+"""The one-piece pillar's lengths (:meth:`construction.pivots.standoff.StandoffAxle.one_piece`):
+MISUMI makes it to any length from 8 to 300 mm in 0.1 mm steps (+-0.1)."""
+PILLAR_SHAFT_ID = 2.5          # the strength check's bore: the M3 tap drill, as if tapped through
+PILLAR_SHAFT_YIELD = 220.0     # MPa: 1018 steel at its hot-rolled minimum (cold drawn: ~370);
+#                                MISUMI states the grade, not the temper (conservative)
+PILLAR_SHAFT_PRICES = (15.32, 11.12, 5.61)
+"""USD each at 1-4, 5-9 and 10-19 pieces (NETRF6-128; NETRF6-62 $14.97 / 10.86 / 5.47): the
+MISUMI page rendered 2026-10-05. The discount is per line: five cost less than four."""
+
+
+PILLAR_SHAFT_SEEN: tuple[float, ...] = (62.0, 62.4, 127.5, 128.0, 128.1)
+"""The NETRF6 lengths whose MISUMI page was rendered (2026-10-05) with the part and its price
+(62.4 and 128.1: the Strider double's and quad's columns, unit price as 62 and 128)."""
+
+
+def pillar_shaft(length: float) -> str:
+    return f"pillar_shaft_6_m3_{length:g}"
+
+
+for _L in PILLAR_SHAFT_LENGTHS:
+    _pn = f"NETRF6-{_L:g}"
+    register(Item(
+        pillar_shaft(_L), f"6 mm round steel standoff, {_L:g} mm, tapped M3 both ends "
+        f"(MISUMI {_pn})", "standoff",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
+               + _pn, _pn, pack_qty=5,
+               price_usd=round(5 * (10.86 if _L < 95 else PILLAR_SHAFT_PRICES[1]), 2),
+               verified=_L in PILLAR_SHAFT_SEEN,
+               note="MISUMI circular standoff, tapped both ends, configurable length: 1018 "
+                    "steel, oiled (no plating), 6 mm OD (0/-0.1), M3 x 6 deep each end, length "
+                    "+-0.1 mm in 0.1 mm steps (the part number's number). Sold singly: USD "
+                    "15.32 each at 1-4, 11.12 at 5-9, 5.61 at 10-19 (NETRF6-128; NETRF6-62 "
+                    "14.97 / 10.86 / 5.47; 2026-10-05), the discount per line, so it is listed "
+                    "as 5 (USD 55.60, less than 4 at 61.28): order 5 of the length (one "
+                    "spare)"),),
+        dims={"d": 3.0, "od": 6.0, "length": _L, "thread_depth": 6.0, "id": PILLAR_SHAFT_ID,
+              "yield_mpa": PILLAR_SHAFT_YIELD},
+        notes="A standoff pillar's column no single goBILDA length fills (longer than 60 mm, or "
+              "a length goBILDA lacks): one piece made to its length, never spliced. The "
+              "strength check takes it as a 6 x 2.5 tube (the M3 tap drill, as if tapped "
+              "through) of 1018 at 220 MPa. Oiled bare steel: wipe it, and keep it dry.",
+    ))
+
 M4_BHCS_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 16)
 M4_SET_LENGTHS: tuple[float, ...] = (8, 10, 12, 16)
 

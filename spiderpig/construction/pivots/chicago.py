@@ -108,7 +108,7 @@ is in its way.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from spiderpig.construction.axle import AxleDims, AxleGroup
@@ -169,6 +169,9 @@ class ChicagoShaft:
     shim_key: str = "shim_din988_4x8"
     lock_key: str = "threadlocker_222"
     min_play: float = 0.05          # least axial play left in the column
+    max_length: float | None = None  # the longest barrel a pin may take (None: the longest
+    #                                  stock): a planner rule, a long barrel being a long span;
+    #                                  per linkage, MAX_BARREL (ChicagoAxle.resolve)
     model_gap: float = 0.01
     glue_fit: float = 0.15          # the lowest link's hole over the barrel (bonded)
     glue_per_pin: float = 0.005
@@ -227,6 +230,9 @@ class ChicagoShaft:
         if need > max(CHICAGO_LENGTHS) + EPS:
             raise Unbuildable(f"no stock Chicago screw spans its {stack:g} mm stack (longest "
                               f"{max(CHICAGO_LENGTHS):g} mm)")
+        if self.max_length is not None and need > self.max_length + EPS:
+            raise Unbuildable(f"its {stack:g} mm stack needs a barrel over the "
+                              f"{self.max_length:g} mm a pin may take (its bending)")
         length = next(L for L in CHICAGO_LENGTHS if need - EPS <= L)
         it = self.item()
         room = 2 * pitch - float(it["head_h"]) - float(it["screw_head_h"]) - self.washer_t
@@ -413,6 +419,15 @@ def chicago_section(shaft: ChicagoShaft) -> Section:
     return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
 
 
+MAX_BARREL: dict[str, float] = {"strider": 23.0}
+"""The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
+a long barrel is a long span, and a pin bends as its span. The Strider (2026-10-05): the quad's
+J7 on a 30 mm barrel, its links 26 mm apart at the plan's z, was jam SF 1.8; capped at 23 mm
+the same 24 layers put it on 23 mm (SF 2.6), and the quad buys 8 barrel lengths, not 10 (the
+double and single plan as before). Not the Klann: the demo quad needs its longer barrels
+(capped at 23 it finds no plan in 60 s)."""
+
+
 @dataclass(frozen=True)
 class ChicagoAxle:
     """M3 Chicago screw, laser-cut spacer rings, PTFE washer and shims (pins only)."""
@@ -432,6 +447,14 @@ class ChicagoAxle:
 
     def column(self, *args, **kw) -> None:
         self.shaft.column(*args, **kw)
+
+    def resolve(self, ctx: Context) -> ChicagoAxle:
+        """This construction for the design ``ctx`` builds: its linkage's longest barrel
+        (:data:`MAX_BARREL`)."""
+        cap = MAX_BARREL.get(getattr(ctx.config, "linkage", None))
+        if cap is None or self.shaft.max_length is not None:
+            return self
+        return replace(self, shaft=replace(self.shaft, max_length=cap))
 
     def end_heights(self, d: AxleDims, L, k0: int, k1: int, air: float = 0.0
                     ) -> tuple[float, float]:

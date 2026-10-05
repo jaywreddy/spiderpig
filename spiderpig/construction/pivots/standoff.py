@@ -15,8 +15,19 @@ other layer between the plates holds a printed spacer **sleeve** (``fill``; an 8
 laser-cut ring is under both services' smallest part), so every link has a face on both
 sides.
 
-**Long gaps are spliced.** A stock standoff is at most ``max_segment`` long (60 mm), so a
-column longer than that is a chain of **segments**, each a stock length, joined end to
+**A long column is one piece** (the default, ``splice_build="shaft"``, since 2026-10-05):
+a column no single goBILDA length fills (longer than 60 mm, or a length goBILDA lacks) is
+one 6 mm round 1018 steel standoff made to its length, tapped M3 both ends (MISUMI NETRF6,
+0.1 mm steps, +-0.1; :meth:`StandoffAxle.one_piece`), an M3 button head and DIN 9021 washer
+through each plate. Why: a splice is a joint mid-span, and rated at the plan's own z (its
+clearance gaps included: a stack is up to twice its layers x pitch) the hand-tight splices
+opened at jam SF 1.43 on the Strider double and 0.51 on the quad; even the bench-built 1.0
+N·m splice can't reach SF 2 on the quad's 128 mm column, wherever the splices go. One piece
+rates as a beam: SF 10.4 and 5.1 there.
+
+**Long gaps were spliced** (``--pillar standoff_hand`` / ``standoff_bench``). A stock
+standoff is at most ``max_segment`` long (60 mm), so a column longer than that is a chain
+of **segments**, each a stock length, joined end to
 end through a **splice plate**: in a layer no link of the pillar sits in, a stack of DIN 988
 steel shims (4 x 8) to the layer's thickness, clamped between the two segments' end faces
 by an M4 set screw threaded half into each, a dab of medium threadlocker (243 or 263) on
@@ -83,7 +94,7 @@ from __future__ import annotations
 
 import functools
 import itertools
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import ClassVar
 
 from spiderpig.construction.axle import AxleDims, AxleGroup, End
@@ -125,8 +136,9 @@ class StandoffAxle:
     """goBILDA 1501 round standoffs (6 mm OD) as a pillar, spliced at plate rings."""
 
     key: str = "standoff"
-    label: str = ("6 mm round aluminium standoffs (M4, spliced at plate rings), laser-cut "
-                  "rings, M4 button heads through both frame plates")
+    label: str = ("6 mm round aluminium standoffs (goBILDA M4) where one stock length fills the "
+                  "column, else one 6 mm steel shaft made to its length (tapped M3), printed "
+                  "rings, button heads through both frame plates")
     roles: ClassVar[tuple[str, ...]] = ("pillar",)
     od: float = 6.0
     id_: float = 3.3                 # the strength check's bore (M4 tap drill)
@@ -137,10 +149,14 @@ class StandoffAxle:
     min_segment: float = 12.0        # thread for the end screw and the stud in each end
     min_engage: float = 4.0          # M4 thread in a standoff's end
     tighten_nm: float = 0.8          # the end screws
-    splice_build: str = "hand"       # "hand": in the stack, bottom up, the upper segment turned
-    #                                  onto the stud by hand (the user's decision of
-    #                                  2026-10-05); "bench": the column spliced on the bench
-    #                                  first, each segment in soft-jaw pliers
+    splice_build: str = "shaft"      # a column no one stock standoff fills: "shaft" (the
+    #                                  default since 2026-10-05, r5), never spliced, one
+    #                                  tapped steel shaft made to its length (one_piece);
+    #                                  "hand": spliced in the stack, bottom up, the upper
+    #                                  segment turned onto the stud by hand (the user's
+    #                                  decision of 2026-10-05, --pillar standoff_hand); "bench":
+    #                                  the column spliced on the bench first, each segment in
+    #                                  soft-jaw pliers; "none": the one shaft itself
     splice_nm: float = 0.4           # the splice's clamp torque (hand: 0.4 N·m; bench: 1.0,
     #                                  the "supported splice" of 2026-10-04, UNVERIFIED)
     splice_lock_key: str = "threadlocker_243"   # a dab on each splice's stud (243 or 263)
@@ -151,6 +167,9 @@ class StandoffAxle:
     lock_per_screw: float = 0.01
     size: str = "M4"                 # "M3": uxcell 6 mm round M3 standoffs, M3 button
     #                                  heads and set screws (the hardware study, SIMPLIFY.md)
+    stock: str = ""                  # "": by size (goBILDA M4, uxcell M3); "shaft": a 6 mm
+    #                                  round steel standoff tapped M3 both ends, made to
+    #                                  length (MISUMI NETRF6, one_piece)
 
     @property
     def screw_d(self) -> float:
@@ -159,10 +178,14 @@ class StandoffAxle:
     @property
     def thread_max(self) -> float:
         """The deepest thread a segment's end has (goBILDA M4: 8; the M3 ones: 6, counted
-        conservatively: uxcell's are threaded through)."""
+        conservatively: uxcell's are threaded through; the shaft's taps are 2 x M deep)."""
         return 6.0 if self.size == "M3" else 8.0
 
     def segment_key(self, length: float) -> str:
+        if self.stock == "shaft":
+            from spiderpig.hardware.crank_catalog import pillar_shaft
+
+            return pillar_shaft(length)
         if self.size == "M3":
             from spiderpig.hardware.crank_catalog import m3_round_standoff
 
@@ -174,8 +197,14 @@ class StandoffAxle:
     # -- catalog ----------------------------------------------------------------------
 
     def lengths(self) -> tuple[float, ...]:
-        from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS, M3_ROUND_STANDOFF_LENGTHS
+        from spiderpig.hardware.crank_catalog import (
+            GOBILDA_LENGTHS,
+            M3_ROUND_STANDOFF_LENGTHS,
+            PILLAR_SHAFT_LENGTHS,
+        )
 
+        if self.stock == "shaft":
+            return PILLAR_SHAFT_LENGTHS
         if self.size == "M3":
             return M3_ROUND_STANDOFF_LENGTHS
 
@@ -184,6 +213,31 @@ class StandoffAxle:
     @property
     def max_segment(self) -> float:
         return max(self.lengths())
+
+    def one_piece(self) -> StandoffAxle:
+        """What a column no single stock standoff fills becomes (``splice_build="shaft"``):
+        one 6 mm round steel standoff made to the column's length (MISUMI NETRF6, 0.1 mm
+        steps; :data:`hardware.crank_catalog.PILLAR_SHAFT_LENGTHS`), tapped M3 both ends, an
+        M3 button head and DIN 9021 washer through each plate, never spliced. (A splice is a
+        joint mid-span: at the plan's own z, its clearance gaps included, the hand-tight
+        splices of the Strider double and quad open at jam SF 1.43 and 0.51.)"""
+        from spiderpig.hardware.crank_catalog import PILLAR_SHAFT_ID, PILLAR_SHAFT_YIELD
+
+        return replace(self, stock="shaft", size="M3", splice_build="none",
+                       id_=PILLAR_SHAFT_ID, yield_mpa=PILLAR_SHAFT_YIELD, end_hole=3.4,
+                       stud_hole=3.2, min_engage=3.0, min_segment=12.0,
+                       washer_key="m3_washer_9021", shim_key="shim_din988_3x6")
+
+    def column_axle(self, links, top: int, pitch: float, lo: int = 0, layout=None,
+                    air=None) -> StandoffAxle:
+        """The construction a column is built with: this one, or (``splice_build="shaft"``,
+        when no single stock standoff fills it) :meth:`one_piece`."""
+        if self.splice_build != "shaft":
+            return self
+        stock = replace(self, splice_build="none")
+        if stock.splices(links, top, pitch, lo, layout, air) is not None:
+            return stock
+        return self.one_piece()
 
     def washer(self) -> tuple[float, float, float]:
         w = get(self.washer_key).dims
@@ -337,8 +391,25 @@ class StandoffAxle:
         end's head layer) into segments of stock lengths at least ``min_segment`` long;
         ``None`` when none does. ``zs``: each layer's z from ``lo`` to ``top`` (else every
         layer ``pitch``)."""
+        if self.splice_build == "shaft":
+            # one stock standoff; else one shaft wherever the column would have been spliced
+            # (or is longer than any stock length): the columns the spliced pillar took, every
+            # splice made one piece (a short odd column, 15 mm, stays refused as before, so
+            # the planner's layerings don't move where nothing was spliced)
+            got = replace(self, splice_build="none")._splices(links, top, pitch, lo, zs)
+            if got is not None:
+                return got
+            if replace(self, splice_build="hand")._splices(links, top, pitch, lo, zs) is None:
+                z_lo = zs[0][1] if zs is not None else (lo + 1) * pitch
+                z_hi = zs[top - lo][0] if zs is not None else top * pitch
+                air = sum(z[2] for z in zs[1:top - lo]) if zs is not None else 0.0
+                if z_hi - z_lo - air <= self.max_segment + self.max_long + EPS:
+                    return None
+            return self.one_piece()._splices(links, top, pitch, lo, zs)
         links = set(links)
         cand = [k for k in range(lo + 2, top - 1) if k not in links]
+        if self.splice_build == "none":
+            cand = []
         if self.splice_build == "bench" and links:
             # a built column takes its links over its top: none may sit under a splice
             cand = [k for k in cand if k < min(links)]
@@ -400,8 +471,11 @@ class StandoffAxle:
     # -- strength ---------------------------------------------------------------------------
 
     def section(self) -> Section:
+        if self.stock == "shaft":
+            return Section.tube(self.od, self.id_, self.yield_mpa,
+                                name=f"6 mm 1018 steel standoff (as a 6 x {self.id_:g} tube)")
         return Section.tube(self.od, self.id_, self.yield_mpa,
-                            name="6 mm Al standoff (6061, as a 6 x 3.3 tube)")
+                            name=f"6 mm Al standoff (6061, as a 6 x {self.id_:g} tube)")
 
     def splice_preload_n(self) -> float:
         """The splice's clamp: the two segments screwed together on the stud to
@@ -459,6 +533,11 @@ class StandoffAxle:
         top = build.top
         anchored = (0 in col.anchors, top in col.anchors)
         lo_face, hi_face = self.faces(col.links, top, anchored)
+        if self.splice_build == "shaft":
+            # one stock standoff, or else the one shaft made to the column's length
+            axle = self.column_axle(set(col.links), hi_face, pitch, lo_face, build.plan.layout,
+                                    lambda a, b: column_air(build, group, a, b))
+            return axle.realize(group, build)
         splices = self.splices(set(col.links), hi_face, pitch, lo_face, build.plan.layout,
                                lambda a, b: column_air(build, group, a, b))
         if splices is None:
@@ -619,8 +698,18 @@ STANDOFF_BENCH = StandoffAxle(
 pillars: ``--pillar standoff_bench``."""
 
 
+STANDOFF_HAND = StandoffAxle(
+    key="standoff_hand", splice_build="hand",
+    label=("6 mm round aluminium standoffs, a long column spliced in the stack (M4 stud, "
+           "the upper segment turned on by hand to 0.4 N·m), laser-cut rings, M4 button heads "
+           "through both frame plates"))
+"""The hand-spliced column (the user's decision of 2026-10-05), the default until the one-piece
+shaft replaced splices the same day: ``--pillar standoff_hand``."""
+
+
 STANDOFF_M3 = StandoffAxle(
-    key="standoff_m3", size="M3", id_=2.5, end_hole=3.4, stud_hole=3.2, min_engage=3.0,
+    key="standoff_m3", size="M3", splice_build="hand", id_=2.5, end_hole=3.4, stud_hole=3.2,
+    min_engage=3.0,
     shim_key="shim_din988_3x6", washer_key="m3_washer_9021",
     label=("6 mm round aluminium M3 standoffs (uxcell, spliced at plate rings), M3 button "
            "heads and DIN 9021 washers through both frame plates (the hardware study)"))

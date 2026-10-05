@@ -1,5 +1,7 @@
-"""The standoff pillar (:mod:`construction.pivots.standoff`): round 6 mm aluminium standoffs
-spliced at plate rings, and its strength per bay."""
+"""The standoff pillar (:mod:`construction.pivots.standoff`): round 6 mm aluminium standoffs,
+a column longer than any stock length one tapped steel shaft made to its length (the default
+since 2026-10-05) or spliced at plate rings (``standoff_hand`` / ``standoff_bench``), and its
+strength per bay."""
 
 from __future__ import annotations
 
@@ -31,7 +33,7 @@ def test_a_short_column_is_one_segment():
 
 
 def test_a_splice_goes_where_the_moment_is_least_among_stock_lengths():
-    s = StandoffAxle()
+    s = AXLES["standoff_hand"]
     sp = s.splices({3, 9, 12}, top=23, pitch=PITCH)           # 66 mm: one splice
     assert len(sp) == 1
     # goBILDA's stock lengths, and since 2026-10-04 a segment may also be up to 2 mm short
@@ -67,7 +69,7 @@ def test_the_moment_at_a_splice():
 
 
 def test_a_long_column_splices_only_at_ring_layers():
-    s = StandoffAxle()
+    s = AXLES["standoff_hand"]
     links = {2, 5, 9, 14, 20, 21, 25, 30}
     top = 34                                                  # 99 mm between the plates
     sp = s.splices(links, top, PITCH)
@@ -80,8 +82,35 @@ def test_a_long_column_splices_only_at_ring_layers():
         assert get(gobilda_1501(length)).dims["od"] == 6.0
 
 
+def test_a_long_column_is_one_shaft_made_to_its_length():
+    """The default (2026-10-05): a column no single goBILDA length fills is never spliced
+    (a splice is a joint mid-span: at the plan's own z the Strider's hand-tight splices
+    opened at jam SF 0.5-1.4) but one 6 mm round steel standoff tapped M3 both ends, made to
+    its length (MISUMI NETRF6: 0.1 mm steps)."""
+    s = AXLES["standoff"]
+    assert s.splice_build == "shaft"
+    links = {2, 5, 9, 14, 20, 21, 25, 30}
+    assert s.splices(links, 34, PITCH) == []                    # 99 mm: no splice
+    one = s.column_axle(links, 34, PITCH)
+    assert (one.stock, one.size, one.splice_build) == ("shaft", "M3", "none")
+    length = one.segment(99.0, True)
+    assert length is not None
+    assert abs(length - 99.0) <= 0.1 + 1e-9
+    item = get(one.segment_key(length))
+    assert item.dims["od"] == 6.0
+    assert item.offers[0].vendor == "MISUMI"
+    # 1018 taken at its hot-rolled 220 MPa: about the goBILDA tube's bending strength, and
+    # no splice in it
+    steel, alu = one.section(), s.section()
+    assert steel.z_bend * steel.yield_mpa == pytest.approx(alu.z_bend * alu.yield_mpa, rel=0.05)
+    # a column one stock length fills stays a goBILDA standoff
+    assert s.column_axle({3, 5}, 17, PITCH).stock == ""
+    # even every layer a link: one shaft, nothing to splice
+    assert s.splices(set(range(1, 34)), 34, PITCH) == []
+
+
 def test_no_splice_layer_means_no_column():
-    s = StandoffAxle()
+    s = AXLES["standoff_hand"]
     links = set(range(1, 34))                                 # every layer a link
     assert s.splices(links, 34, PITCH) is None
 
@@ -122,7 +151,7 @@ def test_splice_capacity_is_the_gapping_moment():
     2026-10-05: the splice is turned on **by hand** in the bottom-up assembly, rated at 0.4
     N·m, with medium threadlocker on the stud; the bench-built column (1.0 N·m in soft-jaw
     pliers, the supported splice of 2026-10-04) stays selectable as ``standoff_bench``."""
-    s = StandoffAxle()
+    s = AXLES["standoff_hand"]
     assert (s.splice_build, s.splice_nm) == ("hand", 0.4)
     f = 0.4 / (0.2 * 0.004)                              # 500 N
     assert s.splice_capacity_nmm() == pytest.approx(f * (9 + 2.15 ** 2) / 12)
@@ -141,7 +170,7 @@ def test_splice_capacity_is_the_gapping_moment():
 def test_a_bench_built_column_splices_only_under_its_links():
     """A link can't pass a splice's 8 mm shims, so a column spliced on the bench takes its
     links over its top: its splices lie below the lowest link, or it doesn't build."""
-    hand, bench = StandoffAxle(), AXLES["standoff_bench"]
+    hand, bench = AXLES["standoff_hand"], AXLES["standoff_bench"]
     links = {9, 12, 15}
     top = 23                                                  # 66 mm: one splice
     sp = bench.splices(links, top, PITCH)
@@ -154,7 +183,7 @@ def test_a_bench_built_column_splices_only_under_its_links():
 
 
 def test_the_splice_stud_takes_medium_threadlocker():
-    s = StandoffAxle()
+    s = AXLES["standoff_hand"]
     assert s.splice_lock_key == "threadlocker_243"
     assert get(s.splice_lock_key).offers
 

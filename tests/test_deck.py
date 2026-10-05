@@ -211,7 +211,7 @@ def test_the_deck_lowers_straight_down_onto_its_rails(built):
 
 
 def test_the_deck_is_notched_round_the_pillar_heads_in_its_way(strider):
-    """On the Strider double the plate's corners pass over J2's and J6's inner heads and
+    """On the Strider double the plate's corners pass by J2's and J6's inner heads and
     washers: each one the unnotched plate would meet on its way down has a notch round it,
     0.5 mm clear."""
     _, mech = strider
@@ -226,7 +226,11 @@ def test_the_deck_is_notched_round_the_pillar_heads_in_its_way(strider):
               if bb.max.Y > plate.min.Y and bb.min.X < plate.max.X and bb.max.X > plate.min.X
               and min(abs(bb.min.Z), abs(bb.max.Z)) < hw and max(abs(bb.min.Z),
                                                                 abs(bb.max.Z)) >= face - 1e-6]
-    assert in_way                                   # the check has something to do here
+    # (since 2026-10-05 the double's pillars are one-piece M3 standoffs: their 5.7 mm button
+    # heads stand clear of the plate's corners and only the washers' 0.5 mm clearance is
+    # notched, so nothing may overlap the plate itself; with the M4 heads before, the corners
+    # met the heads)
+    assert in_way or info["notches"]                # the check has something to do here
     notches = info["notches"]
     c = deck_mod.NOTCH_CLEAR - 0.01
     for bb in in_way:

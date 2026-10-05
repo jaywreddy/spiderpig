@@ -116,13 +116,19 @@ def column_wobble(build, group, col, *, clearance, length, play: float, play_bas
     ``clearance(link)`` / ``length(link)``: a link's diametral clearance on the shaft and
     its bearing length (callables, or numbers for every link); ``play``: the column's
     axial play; ``col``: its :class:`construction.pivots.common.Column` (or anything with
-    ``links`` and ``roles``). A face is a neighbouring link of the same axle (its pad,
-    ``link_radius``), else whatever the column holds in that layer at its claimed radius
-    (a ring, a sleeve, a washer, a clip, a head, a frame plate: the plate's arm).
+    ``links`` and ``roles``, and ``gaps``). A face is what the column holds in the clearance
+    gap beside the link where there is one (an end's head, cap or printed head spacer, the
+    washers or ring it carries through: their claimed radius; until 2026-10-05 a link next
+    to a gap read no face and fell back to its free tilt), else a neighbouring link of the
+    same axle (its pad, ``link_radius``), else whatever the column holds in that layer at
+    its claimed radius (a ring, a sleeve, a washer, a clip, a head, a frame plate: the
+    plate's arm).
     """
     p = build.ctx.params
     pad = p.link_radius if link_radius is None else link_radius
     t = build.ctx.pitch
+
+    gaps = getattr(col, "gaps", None) or {}
 
     def face(k: int) -> float:
         if k in col.links:
@@ -132,15 +138,39 @@ def column_wobble(build, group, col, *, clearance, length, play: float, play_bas
             return p.frame_radius
         return min(r, pad)
 
+    def side(k: int, up: int) -> float:
+        """The face beside link layer ``k`` above (``up`` 1) or below (-1): what the column
+        holds in the clearance gap between them where it has one (an end's head or spacer,
+        the washers or ring it carries through), else the next layer's."""
+        g = gaps.get(k if up > 0 else k - 1)
+        if g is not None and g[1] > 0:
+            return min(g[1], pad)
+        return face(k + up)
+
     entries = []
     for k in sorted(col.links):
         for m in col.links[k]:
             c = clearance(m) if callable(clearance) else clearance
             L = length(m) if callable(length) else length
             entries.append(link_entry(m, clearance=c, length=L, thickness=t, play=play,
-                                      face_r=min(face(k - 1), face(k + 1))))
+                                      face_r=min(side(k, -1), side(k, 1))))
     ks = sorted(col.links)
-    span = (ks[-1] - ks[0]) * t if ks else 0.0
+    # every layer's z at the plan (gaps and thicker plates included): the beam's lengths
+    # are the stack's own, not ``k x pitch`` (since the clearance gaps of 2026-10-04 a
+    # stack is up to twice its layer count x pitch)
+    anchors = sorted(getattr(col, "anchors", ()))
+    lo = min([*ks, *anchors], default=0)
+    hi = max([*ks, *anchors], default=-1)
+    layer_z = {}
+    z_of = getattr(build, "z", None)
+    if z_of is not None:
+        for k in range(lo, hi + 1):
+            z0, z1 = z_of(k)
+            layer_z[str(k)] = [round(z0, 3), round(z1, 3)]
+    if ks and layer_z:
+        span = (sum(layer_z[str(ks[-1])]) - sum(layer_z[str(ks[0])])) / 2
+    else:
+        span = (ks[-1] - ks[0]) * t if ks else 0.0
     return {"links": entries, "play_mm": round(play, 3), "play_basis": play_basis,
             "worst_deg": max((e["tilt_deg"] for e in entries), default=0.0),
             "worst_free_deg": max((e["free_deg"] for e in entries), default=0.0),
@@ -148,8 +178,28 @@ def column_wobble(build, group, col, *, clearance, length, play: float, play_bas
             "bearing_len_mm": round(t if bearing_len is None else bearing_len, 3),
             "pitch_mm": round(t, 4),
             "layers": {m: k for k in ks for m in col.links[k]},
-            "anchors": sorted(getattr(col, "anchors", ())),
+            "anchors": anchors,
+            "layer_z": layer_z,
             "section": section.as_dict()}
+
+
+def layer_mid(note: dict, k: int) -> float:
+    """Layer ``k``'s mid-plane (mm from layer 0's bottom face): the plan's z where the note
+    has it (``layer_z``), else ``(k + 1/2) x pitch``."""
+    lz = (note.get("layer_z") or {}).get(str(k))
+    if lz is not None:
+        return (lz[0] + lz[1]) / 2
+    t = note.get("pitch_mm") or note.get("bearing_len_mm") or 3.0
+    return (k + 0.5) * t
+
+
+def _face(note: dict, k: int, side: int) -> float:
+    """Layer ``k``'s upper (``side`` 1) or lower (-1) face, at the plan's z where known."""
+    lz = (note.get("layer_z") or {}).get(str(k))
+    if lz is not None:
+        return lz[1] if side > 0 else lz[0]
+    t = note.get("pitch_mm") or note.get("bearing_len_mm") or 3.0
+    return (k + (1.0 if side > 0 else 0.0)) * t
 
 
 def _layout(note: dict) -> tuple[list[str], np.ndarray, tuple]:
@@ -165,9 +215,27 @@ def _layout(note: dict) -> tuple[list[str], np.ndarray, tuple]:
         return ["a", "b"], np.array([0.0, max(note["span_mm"], note["bearing_len_mm"])]), \
             ("free",)
     links = sorted(layers, key=lambda m: (layers[m], m))
-    zs = np.array([layers[m] * t for m in links], dtype=float)
     anchors = note.get("anchors") or []
     supports = sorted(note.get("supports") or [])
+    if note.get("layer_z"):
+        # the plan's z (its gaps and plate thicknesses): each link at its layer's mid-plane,
+        # a plate's support at its face toward the links (where the column ends)
+        zs = np.array([layer_mid(note, layers[m]) for m in links], dtype=float)
+        if len(supports) > 2:
+            faces = [_face(note, supports[0], 1),
+                     *(_face(note, k, -1) for k in supports[1:-1]), _face(note, supports[-1], -1)]
+            return links, zs, ("bays", tuple(faces))
+        if len(anchors) >= 2:
+            return links, zs, ("simple", _face(note, min(anchors), 1),
+                               _face(note, max(anchors), -1))
+        if len(anchors) == 1:
+            k = anchors[0]
+            sign = 1.0 if zs.mean() >= layer_mid(note, k) else -1.0
+            return links, zs, ("cantilever", _face(note, k, 1 if sign > 0 else -1), sign)
+        return links, zs, ("free",)
+    # (a note without the plan's z, an older one or a test's: every layer ``t``, the plates'
+    # supports at their mid-planes, as before 2026-10-05)
+    zs = np.array([layers[m] * t for m in links], dtype=float)
     if len(supports) > 2:
         # a beam per bay between consecutive supports (each bay simply supported)
         faces = [supports[0] * t + t / 2, *(k * t for k in supports[1:-1]),

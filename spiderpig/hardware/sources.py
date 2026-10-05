@@ -211,8 +211,10 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                                  note="4.6 OD x 5.7 long, for a 4.0 mm hole"),),
     "m2_self_tap_6": (
         Offer("Accu", "https://accu-components.com/us/torx-pan-head-thread-forming-screws/"
-              "993377-SHPRC-M2-6-CS-BZP", "SHPRC-M2-6-CS-BZP", pack_qty=1,
-              note="M2 x 6 Torx pan head thread-former for plastics, head 4.0 x 1.72; buy only "
+              "993377-SHPRC-M2-6-CS-BZP", "SHPRC-M2-6-CS-BZP", pack_qty=1, price_usd=0.46,
+              verified=True,
+              note="M2 x 6 Torx pan head thread-former for plastics (DIN 7500C, bright zinc), "
+                   "head 4.0 x 1.72; USD 0.46 each at 6 (page rendered 2026-10-05); buy only "
                    "if the servo's bag runs short: every STS3215 ships with its M2 x 6 case "
                    "screws (the SO-101 arm fastens its STS3215s with them and lists none)"),),
     "m25_nylon_screw_5": (
@@ -289,8 +291,10 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               price_usd=30.74, verified=True, note="61.9 x 16.3 x 13.4 mm, 28 g: the cradle's "
                                                      "size; four per pack"),),
     "ip2326_charger": (
-        Offer("Amazon", "https://www.amazon.com/dp/B0GTNBCCQM", "B0GTNBCCQM",
-              note="generic IP2326 2S USB-C module (no distributor stocks one); sizes run 30-40 x "
+        Offer("Amazon", "https://www.amazon.com/dp/B0GTNBCCQM", "B0GTNBCCQM", verified=True,
+              note="generic IP2326 2S USB-C module (no distributor stocks one; the page, rendered "
+                   "2026-10-05, is 'IP2326 5V Boost Charging Module 8.4/12.6V ... (2S 8.4V)', no "
+                   "price shown to a scripted browser); sizes run 30-40 x "
                    "20 x 5-6.9 mm: measure yours against the deck's 30 x 20 x 5 box"),),
     "bms_hx_2s_jh20": (
         Offer("diymore (brand store)", "https://www.diymore.cc/products/2s-10a-8-4v-7-4v-18650-"

@@ -193,8 +193,8 @@ def test_cards(server):
     assert sheet["price_usd"] == 10.99
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
     assert set(axles) == {"printed", "rod", "bolt", "bearing", "bushing", "chicago",
-                          "chicago_bushing", "ptfe", "standoff", "standoff_bench",
-                          "standoff_m3"}
+                          "chicago_bushing", "ptfe", "standoff", "standoff_hand",
+                          "standoff_bench", "standoff_m3"}
     assert axles["standoff"]["roles"] == ["pillar"]
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["bolt"]["hardware"]["nut_key"]["key"] == "m3_nylock"
