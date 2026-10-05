@@ -201,6 +201,13 @@ def cut_lines(m: dict) -> list[str]:
              "thickness to an edge or another hole in metal, or under the service's minimum "
              "hole, is an error; under the service's edge distance (2 x in metal), its minimum "
              "part or its inside-corner radius a warning."]
+    if m.get("dxf_worst_mm") is not None:     # the DXF read back against the solids
+        lines.append(f"DXF contours against the solids: at most {m['dxf_worst_mm']:.4f} mm "
+                     f"off over {len(m.get('dxf') or {})} parts (exact lines and arcs; an "
+                     f"error past {manufacture.DXF_DEVIATION:g} mm or "
+                     f"{100 * manufacture.DXF_AREA_REL:g} % of a part's area); kerf per "
+                     "sheet: " + ", ".join(f"{k} {v:g} mm" for k, v in
+                                          (m.get("kerf") or {}).items()) + ".")
     if not m["issues"]:
         return lines + ["", "Every part passes."]
     lines += ["", "| level | rule | part | sheet | what | why | fix |",

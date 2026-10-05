@@ -34,7 +34,7 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `materials.servo` | `sts3215`, `xl330_m288`, `xl430_w250` | `sts3215` |
 | `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing` | pillar `printed`, pin `rod` (a 3 mm rod with push-on clips; `printed` is the zero-hardware snap pin) |
 | `constructions.crank` | `keyed` (segments keyed through each crankpin by a brass M3 hex standoff floating in hex pockets, each chain clamped by a screw and nut in a two-layer top web: +2 layers a side, 18 on the Strider double, 16 on the Klann quad), `printed` (the same crank held by clamp friction alone: 16 / 12 layers) | `keyed` |
-| `fit.*` | every `construction.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf 0.15; the sheet stock's size |
+| `fit.*` | every `construction.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf each sheet's service's (0 SendCutSend, 0.2 Ponoko); the sheet stock's size |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
 
 Every metric under `motion`, `size` and `budget` is a **Target**

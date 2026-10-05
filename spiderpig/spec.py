@@ -786,8 +786,11 @@ def spec_schema() -> dict:
     d = Params()
     fit_props = {name: {"type": "number", "exclusiveMinimum": 0, "default": getattr(d, name)}
                  for name in FIT_FIELDS}
-    fit_props["kerf_mm"] = {"type": "number", "minimum": 0, "default": DEFAULT_KERF,
-                            "description": "laser kerf compensation"}
+    fit_props["kerf_mm"] = {"type": "number", "minimum": 0,
+                            "description": "laser kerf compensation on every sheet (default: "
+                                           "each sheet's service's: 0 at SendCutSend, which "
+                                           "compensates itself, 0.2 mm at Ponoko; "
+                                           f"{DEFAULT_KERF:g} where a sheet names none)"}
     fit_props["sheet_size_mm"] = {"type": "array", "items": {"type": "number",
                                                              "exclusiveMinimum": 0},
                                   "minItems": 2, "maxItems": 2,

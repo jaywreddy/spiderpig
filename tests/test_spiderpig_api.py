@@ -144,7 +144,7 @@ def test_resolve_infers_the_rest_and_the_id_is_stable_with_defaults_dropped():
     assert r["linkage"]["params"]["OA"] == 60.0
     assert r["materials"]["pitch_mm"] == 3.0
     assert r["fit"]["link_radius"] == 6.0
-    assert r["fit"]["kerf_mm"] == 0.15
+    assert r["fit"]["kerf_mm"] is None          # each sheet's service kerf (layout.sheet_kerf)
     assert r["outputs"] == ["step", "stl", "print", "dxf", "bom"]
     assert a.engine_version.startswith("0.1.0+")
     c = api.resolve({**KLANN_QUAD, "linkage": {"key": "klann", "params": {"OA": 50}}})

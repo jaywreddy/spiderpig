@@ -13,7 +13,8 @@ nominal), ``material`` (a :data:`hardware.mass.DENSITY` key), ``density`` (g/cm^
 rules: ``min_hole`` (mm), ``edge_t`` (least hole-to-edge distance in thicknesses),
 ``min_part`` (mm, the smaller and the larger side of the smallest part it cuts),
 ``edge_mm`` (the least web anywhere: Ponoko's minimum feature), ``corner_r`` (mm, how
-round it cuts an inside corner) and ``sheet_mm`` (the blank the DXF sheets are packed on).
+round it cuts an inside corner), ``kerf_mm`` (the kerf the DXF compensates for:
+:func:`layout.sheet_kerf`) and ``sheet_mm`` (the blank the DXF sheets are packed on).
 Fetched 2026-10-04:
 
 * SendCutSend 5052-H32 aluminium (sendcutsend.com/materials/5052-aluminum): .040, .063,
@@ -24,7 +25,13 @@ Fetched 2026-10-04:
   min part .187 x .375 in; "at least 1.5x the material thickness between a hole and the
   nearest edge"; cutting tolerance +/- .009 in.
 * Ponoko clear acrylic (ponoko.com/materials/clear-acrylic): 1.0, 1.5, 2.0, 3.0 mm and up;
-  min part 6.0 mm; min hole / feature 1.0 mm; kerf 0.2 mm.
+  min part 6.0 mm; min hole / feature 1.0 mm; kerf 0.2 mm ("Kerf width: 0.20mm", one
+  figure for every thickness, page re-read 2026-10-04); Ponoko's laser follows the line
+  in acrylic (its help page "How much material does the laser burn away?": no offset
+  except on metal), so the DXF compensates: ``kerf_mm`` 0.2.
+* SendCutSend compensates for the kerf itself (its FAQ "Do I need to compensate for kerf
+  in my design?": no, draw the part at size; a compensated file comes back off size), so
+  its sheets' ``kerf_mm`` is 0.
 
 The inside-corner radius SendCutSend cuts in aluminium (0.8 mm) is the joinery plan's
 figure, not from a page; the laser's in acrylic is about its kerf (0.1 mm). Prices are
@@ -48,9 +55,10 @@ PONOKO_ACRYLIC = "https://www.ponoko.com/materials/clear-acrylic"
 FETCHED = "service rules fetched 2026-10-04; price an estimate (quote by DXF upload)"
 
 SCS_RULES_AL = {"service": "SendCutSend", "min_part": (0.25 * IN, 0.375 * IN),
-                "edge_t": 2.0, "corner_r": 0.8, "metal": True}
+                "edge_t": 2.0, "corner_r": 0.8, "metal": True, "kerf_mm": 0.0}
 PONOKO_RULES_ACRYLIC = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6.0, 6.0),
-                        "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1, "metal": False}
+                        "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1, "metal": False,
+                        "kerf_mm": 0.2}
 
 
 def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) -> Item:
