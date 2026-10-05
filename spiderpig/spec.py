@@ -30,7 +30,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import DEFAULT_CRANKS, BuildConfig
+from spiderpig.config import CRANK_SHEET, DEFAULT_CRANKS, BuildConfig
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
 from spiderpig.hardware.catalog import CATALOG
@@ -850,7 +850,7 @@ def spec_schema() -> dict:
                     "servo": {"enum": servos.available(), "default": servos.DEFAULT},
                     "frame_sheet": {"enum": sheet_keys(), "default": BuildConfig.frame_sheet,
                                     "description": "the frame and centre plates' sheet"},
-                    "crank_sheet": {"enum": sheet_keys(), "default": BuildConfig.crank_sheet,
+                    "crank_sheet": {"enum": sheet_keys(), "default": CRANK_SHEET,
                                     "description": "the crank's plates' sheet"},
                 },
             },

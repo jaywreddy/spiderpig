@@ -374,7 +374,7 @@ def test_the_crank_defaults_per_module_and_linkage():
     assert Cfg().crank == "bolt"                                        # the Strider double
     assert Cfg(module="single", robot=False).crank == "bolt"
     assert Cfg(module="decker").crank == Cfg(module="quad").crank == "bolt_round"
-    assert Cfg(linkage="klann_lego").crank == "bolt_round"
+    assert Cfg(linkage="klann_lego").crank == "bolt"   # r4: b1 grown round the hex bore
     assert Cfg(linkage="trotbot_heel").crank == "bolt_round"
     assert Cfg(linkage="hoecken_pantograph", robot=False).crank == "bolt"
     assert Cfg(module="quad", crank="bolt").crank == "bolt"               # named: as named

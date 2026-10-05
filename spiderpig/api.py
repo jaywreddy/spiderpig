@@ -284,7 +284,7 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             sheet=sheet, thickness=thickness,
             servo=spec.materials.servo or d.servo,
             frame_sheet=spec.materials.frame_sheet or d.frame_sheet,
-            crank_sheet=spec.materials.crank_sheet or d.crank_sheet,
+            crank_sheet=spec.materials.crank_sheet or "",     # the linkage's (config)
             pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
             crank=spec.constructions.crank or "", heads=spec.constructions.heads or d.heads,
             params=spec.fit.params(),
