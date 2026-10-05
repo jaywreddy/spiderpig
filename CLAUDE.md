@@ -338,9 +338,9 @@ planner's CPU budget, 60; left out of `engine_version`'s hash, so it doesn't re-
 designs), `SPIDERPIG_WORKERS=0` (no worker processes), `SPIDERPIG_VIEWER_DIST`,
 `SPIDERPIG_OFFLINE=1` / `SPIDERPIG_SERVO_CAD=0` / `SPIDERPIG_CAD_CACHE` (servo CAD
 downloads), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks,
-AGENTS.md), `VITE_PORT` / `API_PORT` and `VITE_ALLOWED_HOSTS` (below), and
-`SPIDERPIG_BARRELS` (an experiment hook: the Chicago barrel lengths the planner may pick;
-not part of a design's id). There is no hardware switch: the hardware is plain code.
+AGENTS.md), and `VITE_PORT` / `API_PORT` and `VITE_ALLOWED_HOSTS` (below). Nothing in
+the environment changes a design's parts: the hardware is plain code, and a design's id
+holds everything that shapes it.
 
 The viewer is a Vite + TypeScript app under `viewer/src/`. In dev, Vite
 serves on a port derived from a CRC32 hash of the worktree path

@@ -39,9 +39,6 @@ and `docs/ARCHITECTURE.md` how they work.
 - **Slow tests without the mark.** The quick tier (`-m "not slow"`) relies on every test
   over ~5 s being marked `slow`, and some aren't: `pytest --durations=30` on the quick
   tier finds them (`tests/tiers.py` keeps one cheap case of a heavy parametrized check).
-- **`SPIDERPIG_BARRELS`** (restricts the Chicago barrels the planner may pick) is an
-  experiment hook read at import, not part of a design's id: make it a config field or
-  drop it.
 
 ## Planner and model
 

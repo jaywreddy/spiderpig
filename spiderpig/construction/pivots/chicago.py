@@ -216,8 +216,7 @@ class ChicagoShaft:
         steps = [b - a for a, b in zip(CHICAGO_LENGTHS, CHICAGO_LENGTHS[1:], strict=False)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
-        if max(steps, default=0.0) > room + min(self.shim_steps) + EPS and not \
-                __import__("os").environ.get("SPIDERPIG_BARRELS"):
+        if max(steps, default=0.0) > room + min(self.shim_steps) + EPS:
             raise ConstructionError(f"a {max(steps):g} mm step between barrel lengths needs "
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
