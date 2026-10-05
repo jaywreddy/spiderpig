@@ -307,7 +307,8 @@ class StandoffAxle:
         shims taking the rest up at its upper end), ``None`` when none is."""
         from spiderpig import hwflags
 
-        short = self.max_shims if shims and not hwflags.on("oneshim") else self.max_short
+        one = hwflags.on("oneshim") and self.size == "M3"
+        short = self.max_shims if shims and not one else self.max_short
         # (oneshim, M3: no end shims, so a segment within -0.1..+0.2 of its gap; the plan's z
         # thickens a clearance gap, whose printed ring takes it up, until stock lengths fit)
         long = (float(__import__("os").environ.get("SPIDERPIG_PILLAR_LONG", "0.2"))

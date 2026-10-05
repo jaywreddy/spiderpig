@@ -2394,8 +2394,9 @@ class BoltCrank:
                     shim = math.ceil((e - e_want) * 10 - 1e-6) / 10
                     from spiderpig import hwflags
 
-                    if hwflags.on("oneshim"):      # whole 1 mm shims, thread up to e_max
-                        shim = float(math.ceil(e - e_max - 1e-6))
+                    whole = float(math.ceil(e - e_max - 1e-6))
+                    if hwflags.on("oneshim") and e - whole >= e_min - EPS:
+                        shim = whole       # whole 1 mm shims, the thread up to e_max
                     if shim > most + EPS:
                         shim = math.ceil((e - e_max) * 10 - 1e-6) / 10
                     if shim > most + EPS:

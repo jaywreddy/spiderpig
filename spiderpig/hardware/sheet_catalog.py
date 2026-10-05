@@ -118,8 +118,7 @@ register(
          "washer",
          (Offer("Accu", "https://accu-components.com/us/shim-washers/",
                 note="DIN 988 shim rings 3 x 6; part number per thickness not confirmed"),),
-         dims={"id": 3.0, "od": 6.0, "t": ((1.0,) if __import__("spiderpig.hwflags").hwflags
-                                            .on("oneshim") else (0.1, 0.2, 0.3, 0.5, 1.0))},
+         dims={"id": 3.0, "od": 6.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
          notes="Fills a clearance gap on a 3 mm rod."),
     Item("ptfe_washer_3x6x0p5", "PTFE flat washer 3.2 x 6 x 0.5 mm", "washer",
          (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",

@@ -313,7 +313,7 @@ for _L, _p in ARL_M3_PRICES.items():
     register(Item(
         arl_m3(_L), f"M3 x {_L:g} mm round aluminium standoff, 6 mm OD, female-female "
         f"(Hirosugi ARL-3{_L:g}BE)", "standoff",
-        (Offer("Hirosugi-Keiki (MISUMI)", "http://hirosugi.jp/products/A/ARL-BE.html",
+        (Offer("Hirosugi-Keiki (MISUMI)", "https://hirosugi.jp/products/A/ARL-BE.html",
                f"ARL-3{_L:g}BE", price_usd=_p, verified=True,
                note=f"USD {_p:.2f} each on the maker's table (fetched 2026-10-05; MOQ 50 "
                     "direct, MISUMI resells)"),),

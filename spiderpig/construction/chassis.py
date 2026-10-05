@@ -317,7 +317,7 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
     design review's warning level); where none is, the unmoved place (the audit warns)."""
     spec, p, d = ctx.servo, ctx.params, tie_dims(ctx)
     x0, x1, y0, y1 = _footprint(spec)
-    c = max(d.column, d.head_r)
+    c = max(d.column, d.head_r, 3.8 if _m3() else 0.0)   # (m3: the M4 tie's places)
     yt = y1 + p.margin + c
     xs = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
     near = tie_neighbours(ctx)
