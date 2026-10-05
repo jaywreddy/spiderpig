@@ -1329,10 +1329,12 @@ class HexJoint:
     engaged_lo: float    # the hex in each plate's pocket (mm)
     engaged_hi: float
     sleeve: float        # the printed sleeve the riders turn on (0: a journal, none)
-    gap: float = 0.0     # (WebJoint's: the gap over the lowest web its length needs: none)
+    gap: float = 0.0     # the clearance gap over the lowest web its length needs (mm; 0:
+    #                      a stock length fits as the plan stands, BoltCrank.hex_gap_fit)
     stack_lo: float = 0.0   # what hangs under the lower plate: standoff end, washers, head
     stack_hi: float = 0.0   # ... over the upper plate
     segments: tuple[float, ...] = ()
+    gaps: tuple[tuple[int, float], ...] = ()   # (gap slot, mm) the length needs in all
 
 
 @dataclass(frozen=True)
@@ -1963,7 +1965,15 @@ class BoltCrank:
         return out + self.hex_washer()[2] + washers * self.extra_washer_t() + self.hex_screw()[1]
 
     def fit_hex(self, span: float, t_lo: float, t_hi: float, sleeve: bool = True,
-                out_hi_max: float | None = None, capped: bool = False) -> HexJoint | None:
+                out_hi_max: float | None = None, capped: bool = False,
+                air_hi: float = 0.0) -> HexJoint | None:
+        """:meth:`_fit_hex`, remembered (the planner asks it at every node's layouts)."""
+        return _fit_hex(self, round(span, 6), round(t_lo, 6), round(t_hi, 6), bool(sleeve),
+                        out_hi_max, bool(capped), round(max(air_hi, 0.0), 6))
+
+    def _fit_hex(self, span: float, t_lo: float, t_hi: float, sleeve: bool = True,
+                 out_hi_max: float | None = None, capped: bool = False,
+                 air_hi: float = 0.0) -> HexJoint | None:
         """The hex standoff between two single-plate webs whose outer faces are ``span``
         apart (plates ``t_lo`` and ``t_hi`` thick): the stock length nearest ``span`` that
         either stands past the plates by what the two ends' stacks take (``protrude_max``
@@ -1971,7 +1981,12 @@ class BoltCrank:
         clearance gap: the washer then bears on the standoff's end and a printed collar)
         or ends inside both pockets by at most ``recess_max`` (the washers then clamp the
         plates on the printed sleeve, as long as the inner faces are apart, and the hex is
-        in that much less of each pocket). Flush or standing past first, then shortest."""
+        in that much less of each pocket). Flush or standing past first, then shortest.
+        What stands past is split between the ends so the taller of the two stacks' gaps is
+        the least (``air_hi``: the air over the upper plate in its own layer, which its stack
+        uses first; since the debug of 2026-10-05, before: the lower end first, which made
+        every crankpin gap under a chain 4 mm and pushed the Strider decker's Chicago pins
+        off their stock barrels)."""
         from spiderpig.stack import GAP_MAX
 
         room = GAP_MAX - self.head_clear
@@ -1990,27 +2005,31 @@ class BoltCrank:
             if extra >= -EPS:
                 x = max(extra, 0.0)
                 lo = min(x, self.protrude_max)
-                # the lower end first, else shared (each stack within its gap)
                 splits = [(lo, x - lo)]
                 if hi_max > 0:
-                    splits.append((x / 2, x / 2))
+                    # the upper end as far as evens the two gaps' needs (its stack has the
+                    # air over its plate first), else shared
+                    up = min(max((x + air_hi) / 2, 0.0), x, hi_max)
+                    splits += [(x - up, up), (x / 2, x / 2)]
             else:
                 splits = [(extra / 2, extra / 2)]       # recessed in both pockets
-            for out_lo, out_hi in splits:
-                if (out_lo > self.protrude_max + EPS or out_hi > hi_max + EPS
-                        or self.hex_stack(max(out_lo, 0.0), k) > room + EPS
-                        or self.hex_stack(max(out_hi, 0.0), k) > room + EPS):
-                    continue
+            ok = [(max(o_lo, o_hi - air_hi), i, o_lo, o_hi)
+                  for i, (o_lo, o_hi) in enumerate(splits)
+                  if not (o_lo > self.protrude_max + EPS or o_hi > hi_max + EPS
+                          or self.hex_stack(max(o_lo, 0.0), k) > room + EPS
+                          or self.hex_stack(max(o_hi, 0.0), k) > room + EPS)]
+            if ok:
+                _, _, out_lo, out_hi = min(ok)
                 rank = (extra < -EPS, abs(extra))
                 if best is None or rank < best[0]:
                     best = (rank, S, out_lo, out_hi, L, k, e)
-                break
         if best is None:
             return None
         _, S, out_lo, out_hi, L, k, e = best
 
         def collar(o: float) -> float:
-            return round(o, 2) if o >= self.collar_min - EPS else 0.0
+            # to 0.01 mm under what stands past (never over: the washer bears on the end)
+            return math.floor(o * 100 + 1e-6) / 100 if o >= self.collar_min - EPS else 0.0
 
         inner = span - t_lo - t_hi
         # standing past: the plates captured between the washers and the sleeve, which is
@@ -2199,8 +2218,18 @@ class BoltCrank:
             span = self.plate_z(L, w1, t1, hub)[1] - self.plate_z(L, w0, t0, hub)[0]
             # over the hub plate the upper end stands in the horn spacer's pocket, or (capped)
             # ends in the hub plate under the spacer
-            return self.fit_hex(span, t0, t1, sleeve=sleeve,
-                                out_hi_max=0.0 if capped or w1 == hub else None, capped=capped)
+            hi_max = 0.0 if capped or w1 == hub else None
+            air = self.air_over(L, w1, t1, hub)
+            j = self.fit_hex(span, t0, t1, sleeve=sleeve, out_hi_max=hi_max, capped=capped,
+                             air_hi=air)
+            if j is not None:
+                return j
+            # the gaps over the lowest web and along the run (a journal: over its lowest
+            # web only), those the plan has first
+            ks = [w0] + (list(range(lo, hi + 1)) if sleeve else [])
+            ks.sort(key=lambda k: (L.gap(k) <= 0, k))
+            return self.hex_gap_fit(span, [(k, L.gap(k)) for k in ks], t0, t1, sleeve,
+                                    hi_max, capped, air)
         top_face = self.plate_z(L, w0, t0, hub)[1]
         bottom = self.plate_z(L, w1, t1, hub)[0]
         floor = L.z(lo)[0]
@@ -2209,6 +2238,65 @@ class BoltCrank:
             return None
         air = L.z(w0)[1] - top_face
         return replace(j, gap=round(max(0.0, j.gap - air), 3))
+
+    def hex_gap_fit(self, span: float, slots: list[tuple[int, float]], t_lo: float,
+                    t_hi: float, sleeve: bool = True, out_hi_max: float | None = None,
+                    capped: bool = False, air_hi: float = 0.0) -> HexJoint | None:
+        """:meth:`_hex_gap_fit`, remembered."""
+        return _hex_gap_fit(self, round(span, 6), tuple((k, round(h, 6)) for k, h in slots),
+                            round(t_lo, 6), round(t_hi, 6), bool(sleeve), out_hi_max,
+                            bool(capped), round(air_hi, 6))
+
+    def _hex_gap_fit(self, span: float, slots: tuple[tuple[int, float], ...], t_lo: float,
+                     t_hi: float, sleeve: bool = True, out_hi_max: float | None = None,
+                     capped: bool = False, air_hi: float = 0.0) -> HexJoint | None:
+        """A hex standoff for a chain no stock length fits at ``span``: the clearance gaps
+        ``slots`` (``(slot, mm now)``, in the order to use them: the chain's own gap slots,
+        from its lowest web's up) opened or thickened, in 0.1 mm steps each up to
+        :data:`stack.GAP_MAX`, by the least that one fits (its ``gaps``: the heights it
+        claims there; printed rings on the sleeve fill them, :meth:`web_claims`; ``gap``:
+        the one over the lowest web). The round standoff's rule (:meth:`fit_web`'s ``gap``)
+        for the hex, whose stock lengths are 5 mm apart past 25 mm: no length fits a span
+        in 25.7-27.6 mm (25.7-28.8 capped in the hub plate), which kept the Strider decker
+        and quad off the hex crank (the debug of 2026-10-05)."""
+        from spiderpig.stack import GAP_MAX, GAP_STEP
+
+        room = sum(max(0.0, GAP_MAX - h) for _, h in slots)
+        for i in range(1, int(room / GAP_STEP + 1e-6) + 1):
+            dz = i * GAP_STEP
+            j = self.fit_hex(span + dz, t_lo, t_hi, sleeve=sleeve, out_hi_max=out_hi_max,
+                             capped=capped, air_hi=air_hi)
+            if j is None:
+                continue
+            left, gaps = dz, []
+            for k, h in slots:
+                take = min(left, max(0.0, GAP_MAX - h))
+                if take > EPS:
+                    gaps.append((k, round(h + take, 3)))
+                    left -= take
+            w0 = slots[0][0]
+            return replace(j, gap=dict(gaps).get(w0, 0.0), gaps=tuple(sorted(gaps)))
+        return None
+
+    def hex_gap_needed(self, L: Layout, lo: int, hi: int, t: float, hub: int | None,
+                       capped: bool) -> bool:
+        """Whether the clearance gap the plan has over a hex chain's lowest web (layer
+        ``lo - 1``) is one its standoff needs: no stock length fits the span without it
+        (:meth:`hex_gap_fit` opened it)."""
+        w0, w1 = lo - 1, hi + 1
+        g = L.gap(w0)
+        if not self.hex or g <= 0:
+            return False
+        span = self.plate_z(L, w1, t, hub)[1] - self.plate_z(L, w0, t, hub)[0] - g
+        hi_max = 0.0 if capped or w1 == hub else None
+        return self.fit_hex(span, t, t, out_hi_max=hi_max, capped=capped,
+                            air_hi=self.air_over(L, w1, t, hub)) is None
+
+    def air_over(self, L: Layout, k: int, t: float, hub: int | None = None) -> float:
+        """The air over the crank plate in layer ``k`` inside its own layer (a plate thinner
+        than its layer sits on the floor; the hub plate at the top: none): a crankpin's
+        stack over that plate uses it before the clearance gap above."""
+        return max(0.0, L.z(k)[1] - self.plate_z(L, k, t, hub)[1])
 
     def _web_span_ok(self, run: int, low: int, pitch: float, t: float) -> bool:
         """Whether a chain whose webs are ``run`` layers apart takes a stock standoff at the
@@ -2397,10 +2485,13 @@ class BoltCrank:
         t = plate_t
         spacer_r = (self.rider_d() / 2 + 0.5) if self.hex else self.pin_od / 2 + 1.0
 
-        def heights(j) -> tuple[float, float]:
-            """What hangs under the lowest web and over the top web (with clearance)."""
+        def heights(j, w1: int) -> tuple[float, float]:
+            """What hangs under the lowest web and over the top web (in layer ``w1``; with
+            clearance): the hex pin's upper stack in the gap over that web's layer less the
+            air over the plate in it."""
             if isinstance(j, HexJoint):
-                return round(j.stack_lo + clear, 3), round(j.stack_hi + clear, 3)
+                up = max(0.0, j.stack_hi + clear - self.air_over(L, w1, t, hub))
+                return round(j.stack_lo + clear, 3), round(up, 3)
             return head, head
 
         for ch in chains:
@@ -2412,9 +2503,20 @@ class BoltCrank:
                                   f"(webs in layers {lo - 1} and {hi + 1})")
             if lo - 2 < 0:
                 raise Unbuildable(f"the screw under crankpin {at} needs layer {lo - 2}")
-            h_lo, h_hi = heights(j)
+            h_lo, h_hi = heights(j, hi + 1)
             out.append(Placed(lo - 2, Disc(at, hr), GROUP, f"crankpin screw {at}", gap=True,
                               height=h_lo, toward=-1))
+            if self.hex and j is not None and (j.gap > 0 or self.hex_gap_needed(
+                    L, lo, hi, t, hub, capped)):
+                # the gap over the lowest web the standoff's length opened (hex_gap_fit): a
+                # printed ring on the sleeve fills it, so the lowest rider keeps its layer
+                # (_BoltPlates.gap_parts prints it, as the run's rings)
+                out.append(Placed(lo - 1, Disc(at, self.washer_r), GROUP,
+                                  f"crankpin {at} washer", gap=True, height=j.gap))
+            if isinstance(j, HexJoint):
+                # the gaps along the run it needs (their rings: the run's washer claims)
+                out += [Placed(k, Disc(at, spacer_r), GROUP, f"crankpin {at} gap", gap=True,
+                               height=h) for k, h in j.gaps if k != lo - 1]
             if capped:
                 # under the horn spacer, which caps its upper end: no screw there
                 out.append(Placed(lo - 1, Disc(at, spacer_r), GROUP,
@@ -2450,7 +2552,7 @@ class BoltCrank:
             if j is None and L.final:
                 raise Unbuildable(f"at the plan's z no stock standoff joins the crank's webs "
                                   f"in layers {e} and {f} on O")
-            h_lo, h_hi = heights(j)
+            h_lo, h_hi = heights(j, f)
             out += [Placed(k, Disc("O", d.journal), GROUP, "crank journal")
                     for k in range(e + 1, f)]
             out.append(Placed(e - 1, Disc("O", hr), GROUP, "journal screw", gap=True,
@@ -3135,6 +3237,16 @@ class _WebPlates(_BoltPlates):
                 "pocket_af_mm": round(c.hex_pocket_af(), 3), "dogbone_r_mm": c.dogbone_r,
                 "play_deg": round(2 * hex_play(c.hex_af, c.hex_pocket_af()), 2)})
         return out
+
+
+@functools.lru_cache(maxsize=1 << 16)
+def _fit_hex(c: BoltCrank, *args) -> HexJoint | None:
+    return c._fit_hex(*args)
+
+
+@functools.lru_cache(maxsize=1 << 14)
+def _hex_gap_fit(c: BoltCrank, *args) -> HexJoint | None:
+    return c._hex_gap_fit(*args)
 
 
 BOLT_ROUND = BoltCrank(
