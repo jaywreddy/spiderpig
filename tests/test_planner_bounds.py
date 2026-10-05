@@ -121,7 +121,8 @@ def test_a_single_plate_crank_falls_back_to_the_pivots_heads_sunk():
     keeps the crankpin's washers clear of the pins' caps, so the gap search gives up after
     ``stack.GIVE_UP`` such layerings (seconds, not its 60 s deadline), and the plan has the
     pivots' heads sunk into layers with the crank's and the drive's screws still in gaps
-    (``heads="gap_sink"``): 14 layers, proven, and it verifies."""
+    (``heads="gap_sink"``): 13 layers (14 before the simplified hardware's printed fills),
+    proven, and it verifies."""
     from spiderpig.stack import GIVE_UP
 
     cfg = BuildConfig(linkage="trotbot_heel", module="single", robot=False)
@@ -129,7 +130,7 @@ def test_a_single_plate_crank_falls_back_to_the_pivots_heads_sunk():
     plan = design_side(template_for(cfg), cfg).plan
     assert time.monotonic() - t0 < StackSpec().max_seconds
     assert plan.heads == "sink"
-    assert plan.top + 1 == 14
+    assert plan.top + 1 == 13
     assert plan.optimal
     assert f"with the heads gap: none (it gave up after {GIVE_UP} layerings" in plan.proof
     crank_heads = [p for p in plan.placed if p.group == "crank" and p.gap and p.height > 0]

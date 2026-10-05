@@ -303,9 +303,8 @@ def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaf
     height at the top of gap ``k`` something else of the axle's takes (a standoff
     column's end shims), so its washers stack under it. Returns the play the stacks leave
     in all (mm)."""
-    from spiderpig.materials import washer_od, washer_stack
-
     from spiderpig import hwflags
+    from spiderpig.materials import washer_od, washer_stack
 
     xy = xy_of(build, group)
     play = 0.0

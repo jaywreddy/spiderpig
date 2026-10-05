@@ -603,6 +603,19 @@ _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
 _STACK_SHIMS = re.compile(r"DIN 988 shims ([\d.]+(?: \+ [\d.]+)*) mm")
 
 
+SHIM_AS: dict[str, tuple[str, int]] = {
+    "shim_din988_3x6_t1": ("m3_washer_433", 2),
+    "shim_din988_3x6_t0p5": ("m3_washer_433", 1),
+    "shim_din988_4x8_t1": ("m4_washer_433", 2),
+    "shim_din988_4x8_t0p5": ("m4_washer_433", 1),
+}
+"""A thickness bought as stock washers instead: a DIN 433 M3 washer (3.2 x 6 x 0.5, +-0.05)
+is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
+2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
+family. Clamped shims only (a horn screw's head, a pillar splice or end, a frame tie): the
+unclamped ones are printed (hwflags printfill)."""
+
+
 def shim_key(family: str, t: float) -> str:
     """The catalog item of one thickness of a DIN 988 family: ``shim_din988_4x8_t0p5``."""
     return f"{family}_t{t:g}".replace(".", "p")
@@ -624,7 +637,7 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
     for line in lines:
         (fam_lines.setdefault(line.key, []) if line.key in SHIM_FAMILIES else out).append(line)
     for fam, fl in fam_lines.items():
-        sizes = get(fam).dims.get("t") or ()
+        sizes = stack_steps(fam)
         split: list[BomLine] = []
         rest = 0.0           # the stacks' other rings, which the ring bodies account for
         others = 0           # rings beyond the first that the ring bodies stand for
@@ -634,7 +647,7 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
                 bb = body.part.bounding_box()
                 total = round(min(bb.size.X, bb.size.Y, bb.size.Z), 2)
                 stack = shim_breakdown(total, sizes)
-                others += len(stack) - 1
+                others += max(len(stack) - 1, 0)
                 what = " + ".join(f"{t:g}" for t in stack)
                 split += [BomLine(shim_key(fam, t), line.qty, f"{line.where} ({what} mm)")
                           for t in stack]
@@ -648,6 +661,8 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
                 rest += line.qty
         # ``rest`` may fall short of ``others`` (a construction that doesn't list a stack's
         # other rings: the split counts them); more is shims no stack accounts for
+        split = [BomLine(SHIM_AS[x.key][0], x.qty * SHIM_AS[x.key][1], x.where)
+                 if x.key in SHIM_AS else x for x in split]
         if rest > others + 1e-6 or not all(_known(x.key) for x in split):
             notes.append(f"{get(fam).name}: listed as one line (the thicknesses could not be "
                          f"accounted for: {rest:g} rings described, {others} in the stacks).")
@@ -655,6 +670,19 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
         else:
             out += split
     return out, notes
+
+
+def stack_steps(family: str) -> tuple[float, ...]:
+    """The thicknesses the constructions stack a family's shims from: its catalog ``t``, or,
+    with the hardware study's ``oneshim`` (hwflags), the 1.0 mm shim and the thin step (0.5 mm:
+    a DIN 433 washer, :data:`construction.pivots.standoff.SHIM_STEP`)."""
+    from spiderpig import hwflags
+
+    if hwflags.on("oneshim") and family in ("shim_din988_3x6", "shim_din988_4x8"):
+        from spiderpig.construction.pivots.standoff import SHIM_STEP
+
+        return (1.0, SHIM_STEP)
+    return tuple(get(family).dims.get("t") or ())
 
 
 def _known(key: str) -> bool:

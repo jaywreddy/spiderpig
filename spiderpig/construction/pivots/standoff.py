@@ -114,7 +114,10 @@ from spiderpig.shapes import Cut, disc, ring, union
 from spiderpig.stack import Unbuildable
 
 ALU = "#c8ccd0"
-SHIM_STEP_M3 = 0.2      # (the study) the thin DIN 988 shim stacked under an M3 column's end
+SHIM_STEP = 0.5         # (oneshim) the thin step stacked under a column's end: one DIN 433
+#                         washer (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
+#                         shim is $5-13 sold singly, 2026-10-05: hardware.bom.SHIM_AS)
+COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
 
 
 @dataclass(frozen=True)
@@ -146,7 +149,7 @@ class StandoffAxle:
     washer_key: str = "m4_washer"
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
-    size: str = "M4"                 # "M3": Hirosugi ARL 6 mm round M3 standoffs, M3 button
+    size: str = "M4"                 # "M3": uxcell 6 mm round M3 standoffs, M3 button
     #                                  heads and set screws (the hardware study, SIMPLIFY.md)
 
     @property
@@ -155,14 +158,15 @@ class StandoffAxle:
 
     @property
     def thread_max(self) -> float:
-        """The deepest thread a segment's end has (goBILDA M4: 8; Hirosugi M3: 6)."""
+        """The deepest thread a segment's end has (goBILDA M4: 8; the M3 ones: 6, counted
+        conservatively: uxcell's are threaded through)."""
         return 6.0 if self.size == "M3" else 8.0
 
     def segment_key(self, length: float) -> str:
         if self.size == "M3":
-            from spiderpig.hardware.crank_catalog import arl_m3
+            from spiderpig.hardware.crank_catalog import m3_round_standoff
 
-            return arl_m3(length)
+            return m3_round_standoff(length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
@@ -170,10 +174,10 @@ class StandoffAxle:
     # -- catalog ----------------------------------------------------------------------
 
     def lengths(self) -> tuple[float, ...]:
-        from spiderpig.hardware.crank_catalog import ARL_M3_LENGTHS, GOBILDA_LENGTHS
+        from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS, M3_ROUND_STANDOFF_LENGTHS
 
         if self.size == "M3":
-            return ARL_M3_LENGTHS
+            return M3_ROUND_STANDOFF_LENGTHS
 
         return GOBILDA_LENGTHS
 
@@ -309,14 +313,17 @@ class StandoffAxle:
         from spiderpig import hwflags
 
         if hwflags.on("oneshim") and self.size == "M3":
-            # (the study's M3 standoff: 1 mm steps of stock, end shims in 0.2 mm steps only
-            # (DIN 988 3 x 6 x 0.2 and x 1.0), the column within +/-0.1 of its gap)
+            # (oneshim on M3: stock lengths, end shims in SHIM_STEP steps only (DIN 433
+            # washers, two to a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA
+            # M4 keeps its rule below, its take-up rounded to the step in splice_shims: at
+            # most half a step over, inside max_long)
             def resid(L: float) -> float:
                 d = gap - L
-                return abs(d - round(d / SHIM_STEP_M3) * SHIM_STEP_M3) if d > EPS else abs(d)
+                return abs(d - round(d / SHIM_STEP) * SHIM_STEP) if d > EPS else abs(d)
             hi = self.max_shims if shims else self.max_short
             ok = [L for L in self.lengths() if self.min_segment - EPS <= L
-                  and gap - hi - EPS <= L <= gap + 0.1 + EPS and resid(L) <= 0.1 + EPS]
+                  and gap - hi - EPS <= L <= gap + 0.1 + EPS
+                  and resid(L) <= COLUMN_TOL + EPS]
             return min(ok, key=lambda L: (round(resid(L), 3), abs(L - gap), L)) if ok else None
         short = self.max_shims if shims else self.max_short
         ok = [L for L in self.lengths() if self.min_segment - EPS <= L
@@ -429,9 +436,9 @@ class StandoffAxle:
         from spiderpig import hwflags
 
         steps = sorted((float(t) for t in get(self.shim_key).dims["t"]), reverse=True)
-        if hwflags.on("oneshim") and self.size == "M3":
-            steps = [1.0, SHIM_STEP_M3]
-            pitch = round(pitch / SHIM_STEP_M3) * SHIM_STEP_M3
+        if hwflags.on("oneshim"):
+            steps = [1.0, SHIM_STEP]
+            pitch = round(pitch / SHIM_STEP) * SHIM_STEP
         out, left = [], round(pitch, 3)
         for t in steps:
             k = int(left / t + 1e-6)
@@ -498,29 +505,30 @@ class StandoffAxle:
                 # else, or for what the gap can't take, in the spacer layer under it, whose
                 # sleeve they shorten
                 sh = self.splice_shims(round(short, 1))
-                t = sum(sh)
-                zs0 = z1 - t
-                g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
-                if g > 0:
-                    trim[b - 1] = min(t, g)
-                out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
-                                                                    self.stud_hole, zs0, z1),
-                                           host, fab="purchased", bom_key=self.shim_key,
-                                           color=STEEL))
-                if len(sh) > 1:
-                    out.extras.append(BomLine(self.shim_key, len(sh) - 1,
-                                              f"{group.name}: {t:.1f} mm under layer {b}"))
-                sleeve = f"{stem}_ring{b - 1}"
-                for i, body in enumerate(out.bodies):
-                    if body.name == sleeve:
-                        bb = body.part.bounding_box()
-                        if zs0 + EPS < bb.max.Z:
-                            r = (bb.max.X - bb.min.X) / 2
-                            out.bodies[i] = hardware(
-                                sleeve, ring(xy, 2 * r, self.od + self.ring_fit, bb.min.Z,
-                                             zs0), host, fab="printed", color=SLEEVE_COLOR)
-                shimmed[b] = t
-                z1 = zs0
+                if sh:              # (M3: under half the thin step, 0.25 mm, is left as play)
+                    t = sum(sh)
+                    zs0 = z1 - t
+                    g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
+                    if g > 0:
+                        trim[b - 1] = min(t, g)
+                    out.bodies.append(hardware(f"{stem}_shims{b}", ring(xy, self.shim_od(),
+                                                                        self.stud_hole, zs0, z1),
+                                               host, fab="purchased", bom_key=self.shim_key,
+                                               color=STEEL))
+                    if len(sh) > 1:
+                        out.extras.append(BomLine(self.shim_key, len(sh) - 1,
+                                                  f"{group.name}: {t:.1f} mm under layer {b}"))
+                    sleeve = f"{stem}_ring{b - 1}"
+                    for i, body in enumerate(out.bodies):
+                        if body.name == sleeve:
+                            bb = body.part.bounding_box()
+                            if zs0 + EPS < bb.max.Z:
+                                r = (bb.max.X - bb.min.X) / 2
+                                out.bodies[i] = hardware(
+                                    sleeve, ring(xy, 2 * r, self.od + self.ring_fit, bb.min.Z,
+                                                 zs0), host, fab="printed", color=SLEEVE_COLOR)
+                    shimmed[b] = t
+                    z1 = zs0
             seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, 2.0, z0 - 1, z1 + 1)
             out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                        bom_key=self.segment_key(length), color=ALU))
@@ -614,6 +622,6 @@ pillars: ``--pillar standoff_bench``."""
 STANDOFF_M3 = StandoffAxle(
     key="standoff_m3", size="M3", id_=2.5, end_hole=3.4, stud_hole=3.2, min_engage=3.0,
     shim_key="shim_din988_3x6", washer_key="m3_washer_9021",
-    label=("6 mm round aluminium M3 standoffs (Hirosugi ARL, spliced at plate rings), M3 button "
+    label=("6 mm round aluminium M3 standoffs (uxcell, spliced at plate rings), M3 button "
            "heads and DIN 9021 washers through both frame plates (the hardware study)"))
 """The standoff pillar on M3 hardware (SIMPLIFY.md): ``--pillar standoff_m3``."""

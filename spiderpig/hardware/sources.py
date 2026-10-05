@@ -166,6 +166,18 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                                    + (" (partially threaded)" if L >= 25 else "")
                                    + f"; {_MCM_NOTE}; pack size not confirmed"),)
        for L, pn in _MCM_M3_SHCS.items()},
+    "m3_set_screw_12": (Offer("Accu", "https://accu-components.com/us/flat-point-set-screws/"
+                              "4517-SSF-M3-12-A2", "SSF-M3-12-A2", price_usd=0.57, verified=True,
+                              note="A2 stainless ISO 4026 flat point M3 x 12; USD 0.57 each at "
+                                   "4 (page rendered 2026-10-05)"),
+                        Offer(_MCM, "https://www.mcmaster.com/92605A106/", "92605A106",
+                              verified=True, note="18-8 flat-tip M3 x 12 (McMaster's page "
+                                                  "title, rendered 2026-10-05)")),
+    "m3_set_screw_16": (Offer("Accu", "https://accu-components.com/us/flat-point-set-screws/"
+                              "4518-SSF-M3-16-A2", "SSF-M3-16-A2", price_usd=0.66, verified=True,
+                              note="A2 stainless ISO 4026 flat point M3 x 16; USD 0.66 each at "
+                                   "4 (page rendered 2026-10-05). McMaster's 92605A108 (the "
+                                   "mirror's M3 x 16) did not render: not listed"),),
     **{f"m3_round_standoff_ff_{L}": (Offer(
         "Harfington (uxcell)", f"https://www.harfington.com/products/{handle}", sku, pack_qty=6,
         price_usd=usd, verified=True,
@@ -184,14 +196,15 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
     ),
     # -- screws, nuts, washers, inserts ------------------------------------------------
     "m3_nut": (Offer(_MCM, "https://www.mcmaster.com/91828A211/", "91828A211", pack_qty=100,
-                     note="18-8 stainless, 5.5 AF x 2.4 mm; part number from NSN and "
-                          "distributor records"),),
+                     verified=True, note="18-8 stainless M3 hex nut (McMaster's page title, "
+                                         "rendered 2026-10-05; price behind its login)"),),
     "m3_washer_9021": (Offer(_MCM, "https://www.mcmaster.com/91116A120/", "91116A120",
-                             pack_qty=100, note="18-8 stainless DIN 9021, 3.2 x 9 x 0.8; seen "
-                                                "on McMaster's own DIN 9021 listing"),),
+                             pack_qty=100, verified=True,
+                             note="18-8 stainless oversized M3 washer, 3.2 x 9.0 x 0.7-0.9 "
+                                  "(McMaster's page title, rendered 2026-10-05)"),),
     "m4_washer": (Offer(_MCM, "https://www.mcmaster.com/93475A230/", "93475A230", pack_qty=100,
-                        note="18-8 stainless DIN 125, 4.3 x 9 x 0.8; part number from NSN "
-                             "and distributor records"),),
+                        verified=True, note="18-8 stainless M4 washer, 4.3 x 9.0 (McMaster's "
+                                            "page title, rendered 2026-10-05)"),),
     "m3_heat_set_insert": (Offer("CNC Kitchen (US store)", "https://cnckitchenus.store/"
                                  "products/heat-set-insert-m3-x-5-7-100-pieces", "TC-M3x5.7",
                                  pack_qty=100, price_usd=10.90, verified=True,

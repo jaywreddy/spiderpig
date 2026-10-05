@@ -599,9 +599,9 @@ def _chain(D: float) -> tuple[list[float], float] | None:
     """Stock goBILDA 1501 lengths (at most 60 mm each, joined by M4 set screws) that fill
     ``D`` mm with less than 2 mm left over (taken up by DIN 988 shims): the fewest
     segments, then the least left over."""
-    from spiderpig.hardware.crank_catalog import ARL_M3_LENGTHS, GOBILDA_LENGTHS
+    from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS, M3_ROUND_STANDOFF_LENGTHS
 
-    lengths = sorted(ARL_M3_LENGTHS if _m3() else GOBILDA_LENGTHS)
+    lengths = sorted(M3_ROUND_STANDOFF_LENGTHS if _m3() else GOBILDA_LENGTHS)
     most = 2.0 + 1e-6 if _m3() else 2.0      # (M3: two 1 mm shims, the one thickness)
     for n in range(1, 5):
         best = None
@@ -644,8 +644,8 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
         M3_SET_LENGTHS,
         M4_BHCS_LENGTHS,
         M4_SET_LENGTHS,
-        arl_m3,
         gobilda_1501,
+        m3_round_standoff,
         m3_set_screw,
         m4_bhcs,
         m4_set_screw,
@@ -655,7 +655,7 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
     m3 = _m3()
     if m3:
         M4_BHCS_LENGTHS, M4_SET_LENGTHS = SCREWS["bhcs", "3"].lengths, M3_SET_LENGTHS  # noqa: N806
-        gobilda_1501, m4_set_screw = arl_m3, m3_set_screw  # noqa: F811
+        gobilda_1501, m4_set_screw = m3_round_standoff, m3_set_screw  # noqa: F811
         m4_bhcs = SCREWS["bhcs", "3"].key  # noqa: F811
     thread_max, engage_min = (6.0, 3.0) if m3 else (8.0, 4.0)
     shim_key = _shim_key()

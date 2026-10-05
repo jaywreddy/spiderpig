@@ -198,18 +198,20 @@ def test_check_plan_walk_on_the_default_quad(quad):
     # the bolt crank's single aluminium webs (2026-10-04): a one-layer run per crankpin, the
     # screw heads in clearance gaps (11 of them), 0.080 in frame plates: 14 layers, 77.164
     # mm (the two-plate stacks took 31 layers, 95.975 mm; the keyed crank's were 16)
-    assert pr.n_layers == 14
+    assert pr.n_layers == 13            # 13 with the simplified hardware (hwflags, 2026-10-05)
     # the hex-standoff crankpins on 0.100 in 6061 webs (2026-10-04): 76.789 mm (77.164 on
     # the round standoff); 74.289 with the hub chain capped (no screw over the hub plate);
     # 73.789 since a hex pin's upper stack uses the air over its plate (2026-10-05); 73.464
-    # with the Chicago screws as bought (Harfington's 8.5 mm heads, 1 mm length steps)
-    assert pr.height_mm == pytest.approx(73.464)
-    assert len(pr.gaps_mm) == 9       # the hex crank's, hub chain capped (10 with the
+    # with the Chicago screws as bought (Harfington's 8.5 mm heads, 1 mm length steps);
+    # 72.989 with the simplified hardware (printed fills, M3 ties: 13 layers)
+    assert pr.height_mm == pytest.approx(72.989)
+    assert len(pr.gaps_mm) == 10      # (10 in the simplified hardware's 13-layer plan) the
+    # hex crank's, hub chain capped (10 with the
     #                                   screw over the hub plate; the round standoff's: 11)
     assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": lo, "hi": lo}
-                                 for k, lo in ((0, 4), (2, 6), (1, 8), (3, 10))],
+                                 for k, lo in ((0, 3), (2, 5), (1, 7), (3, 9))],
                         "bearing": True}
-    assert pr.layers["b1_leg0"] == 4
+    assert pr.layers["b1_leg0"] == 3
     assert "inner frame plate" in pr.table
     wr = api.walk(quad)
     assert wr.ok
@@ -231,7 +233,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == pytest.approx(73.464)     # the hex crank's
+    assert rows["size.stack_mm"].value == pytest.approx(72.989)     # the hex crank's
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -360,9 +362,9 @@ def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
     b1 = quad.parts["L.b1_leg0"]
     assert b1.solid is robot("quad", 1.0).body("L.b1_leg0").part
     assert (b1.group, b1.side, b1.fab, b1.material) == ("links", "L", "laser", "sheet")
-    assert b1.layers == (4,)
+    assert b1.layers == (3,)              # (3 in the simplified hardware's 13-layer plan)
     assert not b1.edited
-    assert quad.parts["R.b1_leg0"].layers == (4,)
+    assert quad.parts["R.b1_leg0"].layers == (3,)
     assert quad.parts["R.b1_leg0"].side == "R"
     assert quad.parts["L.servo"].group == "drive"
     assert quad.parts["L.servo"].mass_g == 55.0
@@ -811,13 +813,14 @@ def test_the_recommendation_says_which_module_it_checked():
     # hex crankpins' screw stacks in their gaps: 39.339 mm (the round standoff's 34.939);
     # 36.839 with the hub chain capped (no screw over the hub plate, 2026-10-04); 37.439 since
     # the hex crank's gap rules of 2026-10-05 (another 10-layer layering found first); 37.839
-    # with the Chicago screws as bought (Harfington's heads, 2026-10-05)
+    # with the Chicago screws as bought (Harfington's heads, 2026-10-05); 37.639 with the
+    # simplified hardware (its printed head spacers)
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "10 layers (37.839 mm); the quad module's own plan is not checked "
+                           "10 layers (37.639 mm); the quad module's own plan is not checked "
                            "here")
     assert "the planner's deadline is 60 s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 10 layers (37.839 mm)"
+        == "checked: the static stage passes, and it plans in 10 layers (37.639 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):

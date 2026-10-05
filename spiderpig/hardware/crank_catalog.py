@@ -119,9 +119,13 @@ for _L in M3_ROUND_STANDOFF_LENGTHS:
                                "standoffs in 5-30 mm, 10-20 packs (length steps unverified)"),
          Offer("AliExpress", "https://www.aliexpress.com/w/wholesale-m3-round-aluminum-"
                "standoff.html", note="search; 6 mm OD, 5-40 mm")),
-        dims={"d": 3.0, "od": 6.0, "length": float(_L), "thread_depth": min(6.0, _L / 2)},
-        notes="The bolt crank's journal stub: screwed to the lowest web stack, turning in the "
-              "outer frame plate. OD and lengths UNVERIFIED (measure).",
+        dims={"d": 3.0, "od": 6.0, "length": float(_L), "thread_depth": float(_L),
+              "id": 2.5, "yield_mpa": 240.0},
+        notes="uxcell (Harfington), black anodised aluminium, threaded through (coupling-nut "
+              "style): the bolt crank's journal stub and, on M3 (hwflags m3), the standoff "
+              "pillars' and frame ties' segments. The strength check takes a 6 x 2.5 tube (the "
+              "M3 tap drill) at 240 MPa: the alloy is not stated (UNVERIFIED). No length "
+              "tolerance stated: measure one against its gap.",
     ))
 
 GOBILDA_PRICES: dict[int, float] = {
@@ -251,10 +255,10 @@ def _hex_offers(length: float) -> tuple[Offer, ...]:
         pn = f"970{int(length):02d}0321"
         return (Offer("Mouser", f"https://www.mouser.com/ProductDetail/Wurth-Elektronik/{pn}",
                       f"710-{pn}", price_usd=WURTH_HEX_PRICES.get(int(length)), verified=True,
-                      note=f"Wurth WA-SSTII {pn}, steel, gloss zinc, 5.5 AF (the maker's "
-                           "datasheet; price and stock via Octopart and FindChips, about "
-                           "USD 0.50 each; Mouser refuses a scripted fetch). DigiKey stocks "
-                           "the same part"),)
+                      note=f"Wurth WA-SSTII {pn}, steel, gloss zinc, 5.5 AF: Active in "
+                           "Wurth's catalog (rendered 2026-10-05) and its datasheet; price "
+                           "and stock via Octopart (about USD 0.50 each). Mouser and DigiKey "
+                           "block automated browsers. DigiKey stocks the same part"),)
     return LONG_HEX_PAGES.get(int(length), (
         Offer("Accu", "https://accu-components.com/us/threaded-standoffs/",
               f"HHTPS-M3-5.5-{length:g}-S-Z",

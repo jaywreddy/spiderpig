@@ -85,6 +85,7 @@ from dataclasses import dataclass
 
 from build123d import Axis, Box, Cylinder, Pos, scale
 
+from spiderpig import hwflags as _hw  # noqa: E402
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
     BRASS,
@@ -102,8 +103,6 @@ from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.mechanism import Body
 from spiderpig.shapes import union
 from spiderpig.stack import body_class
-
-from spiderpig import hwflags as _hw  # noqa: E402
 
 DECK_SCREW = screw("bhcs" if _hw.on("lengths") else "shcs", "3")
 DECK_GAP = 1.0           # deck plate edge to an inner plate's face (mm): frame tolerance

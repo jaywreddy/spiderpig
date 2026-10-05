@@ -1720,13 +1720,15 @@ class BoltCrank:
         """:meth:`stub` at a plan's own z: ``top`` the lowest stack's bottom face over the
         outer frame plate's bottom face, ``plate`` that plate's thickness, ``upper`` the
         lowest stack's plate the screw passes."""
-        from spiderpig.hardware.catalog import get
         from spiderpig import hwflags
+        from spiderpig.hardware.catalog import get
         from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS, m3_round_standoff
 
         if hwflags.on("m3"):        # the same 6 mm round M3 standoff as the pillars (Hirosugi)
-            from spiderpig.hardware.crank_catalog import ARL_M3_LENGTHS as M3_ROUND_STANDOFF_LENGTHS
-            from spiderpig.hardware.crank_catalog import arl_m3 as m3_round_standoff
+            from spiderpig.hardware.crank_catalog import (
+                M3_ROUND_STANDOFF_LENGTHS,
+                m3_round_standoff,
+            )
         below = self.stub_below if self.single else 0.0
         for S in sorted(M3_ROUND_STANDOFF_LENGTHS, reverse=True):
             z0 = top - S
