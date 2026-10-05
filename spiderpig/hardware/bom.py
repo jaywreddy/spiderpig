@@ -657,8 +657,10 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
                 bb = body.part.bounding_box()
                 total = round(min(bb.size.X, bb.size.Y, bb.size.Z), 2)
                 stack = shim_breakdown(total, sizes)
-                if abs(total - sum(stack)) > 0.05:
-                    unmatched = True          # a height the steps can't make: don't drop it
+                if abs(total - sum(stack)) > 0.02:      # finer than the steps (a clamp's
+                    stack = shim_breakdown(total, get(fam).dims.get("t") or ())  # take-up)
+                if abs(total - sum(stack)) > 0.02:     # (heights are 0.1 mm multiples)
+                    unmatched = True          # a height no step makes: don't drop it
                 others += max(len(stack) - 1, 0)
                 what = " + ".join(f"{t:g}" for t in stack)
                 split += [BomLine(shim_key(fam, t), line.qty, f"{line.where} ({what} mm)")

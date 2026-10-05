@@ -374,8 +374,12 @@ class ChicagoShaft:
         from spiderpig.construction.pivots.common import PRINT_MIN
 
         bond_gap = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
-        for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
-            if t <= EPS or (tag == "lo" and bond_gap):
+        # an upper spacer thinner than a print (the bushed pins have no washer in it) isn't
+        # printed either: the top link gets that much more axial play
+        hi_t = self.washer_t + f.shims_hi
+        loose = hi_t if EPS < hi_t < PRINT_MIN - EPS else 0.0
+        for tag, z0, t in (("hi", z, hi_t), ("lo", zb, f.shims_lo)):
+            if t <= EPS or (tag == "lo" and bond_gap) or (tag == "hi" and loose):
                 continue
             sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
                        d + 0.2, z0, z0 + t)
@@ -389,8 +393,10 @@ class ChicagoShaft:
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-            "play_mm": f.play, "item": chicago(f.length), "printed": True,
-            "bond_gap_mm": round(bond_gap, 3)}
+            "play_mm": round(f.play + loose, 3), "item": chicago(f.length), "printed": True,
+            "bond_gap_mm": round(bond_gap, 3), "unprinted_hi_mm": round(loose, 3)}
+        if loose:
+            f = replace(f, play=f.play + loose)
         return f
 
 

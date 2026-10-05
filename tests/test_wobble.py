@@ -142,7 +142,9 @@ def test_chicago_hardware_and_bom(chicago_side):
     assert "threadlocker_222" in rows
     for g in pins:
         note = fab.meta["chicago"][g.name]
-        assert 0.05 - 1e-9 <= note["play_mm"] < 0.15 + 1e-9
+        # the barrel length's play, plus an upper gap too thin to print (the bushed pins)
+        play = note["play_mm"] - note["unprinted_hi_mm"]
+        assert 0.05 - 1e-9 <= play < 0.15 + 1e-9
         assert note["length_mm"] >= note["stack_mm"]
 
 
@@ -197,9 +199,7 @@ def test_the_fallback_pin_loads_come_from_the_family():
 
 
 def test_thin_lower_chicago_spacers_are_bonded_gaps_not_prints(chicago_side):
-    key, _, _, fab = chicago_side
-    if key != "chicago":
-        pytest.skip("the bushed pins take the same spacers")
+    _, _, _, fab = chicago_side
     from spiderpig.construction.pivots.common import PRINT_MIN
 
     names = {b.name for b in fab.bodies}
