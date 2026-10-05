@@ -7,9 +7,11 @@ Screw keys come from :mod:`hardware.fasteners` (``shcs("3", 12) ->
 Sources: the research notes of 2026-09-29 (``joinery.json``: ISO/DIN
 dimension tables, vendor pages) plus the pages cited per offer. An offer is
 ``verified=True`` only if its page was fetched and showed the product;
-McMaster-Carr pages don't render to a fetcher, so every McMaster part number
-here is unverified (most were confirmed on a mirror or category listing).
-Prices are per pack and only where a page showed one.
+McMaster-Carr pages don't render to a plain fetcher, so the McMaster part numbers
+registered here are unverified (most were confirmed on a mirror or category listing).
+Prices are per pack and only where a page showed one. The items the default build
+buys take a direct product page as their first offer from :mod:`hardware.sources`
+(2026-10-05; McMaster pages rendered in a browser there), ahead of these.
 
 Servo-specific items (servos, horns sold separately) live in
 :mod:`servos.catalog`.
@@ -21,9 +23,9 @@ result quoted from that page on that day, ``verified=False`` and said so in the 
 Nothing is priced from memory; an item no page priced stays unpriced (the M2 tapping
 kit, M3 x 18 and x 50 SHCS).
 
-Prices added 2026-10-03 (the rod pin became the default link pivot): the 3 mm rod and the
-Starlock kit, both from Amazon pages a search quoted (``SEARCHED_1003``), so the default
-BOM has no unpriced pin hardware.
+Prices added 2026-10-03 (the rod pin, the default link pivot that day; the Chicago screw
+since): the 3 mm rod and the Starlock kit, both from Amazon pages a search quoted
+(``SEARCHED_1003``).
 """
 
 from __future__ import annotations
@@ -389,7 +391,7 @@ register(
                 "7090-metric-standard-flat-washers-a2-stainless-steel/", pack_qty=6300,
                 price_usd=272.85, verified=True, note="bulk only")),
          dims={"id": 3.2, "od": 7.0, "t": 0.5}),
-    # The default link pin's hardware (construction.pivots.rod): a Strider double cuts
+    # The rod pin's hardware (construction.pivots.rod, --pin rod): a Strider double cuts
     # 24 pins of 9.6-15.6 mm (266 mm of rod), a Klann quad 24 x 9.6 mm; a clip per pin end.
     Item("rod_3mm_100", "3 mm stainless rod, 100 mm", "dowel",
          (Offer("Amazon", "https://www.amazon.com/dp/B082ZP313B", "B082ZP313B", pack_qty=5,

@@ -9,15 +9,19 @@ becomes its item's first (preferred) offer, ahead of what the item registered be
 with the item (they were corrected there where the part found differs: the Chicago screws'
 heads, the PTFE washers, the M2.5 standoff's stud, the deck's switch).
 
-``verified=True``: the page (or the maker's own datasheet for it) was fetched and showed
-that part. McMaster-Carr, DigiKey and Mouser refuse a scripted fetch, so their part numbers
-were confirmed from the vendor's own listing tables, a mirror of McMaster's spec table, the
-manufacturer's datasheet or a search result quoting the page, and stay ``verified=False``
-with how in the note. A price is per pack and only where a page showed one.
+``verified=True``: the page (or the maker's own datasheet for it) was fetched or rendered
+and showed that part. McMaster-Carr, DigiKey and Mouser refuse a plain scripted fetch: a
+McMaster page rendered in a browser shows the part in its title (``verified=True``) but its
+price only behind a login; other part numbers were confirmed from the vendor's own listing
+tables, a mirror of McMaster's spec table, the manufacturer's datasheet or a search result
+quoting the page, and stay ``verified=False`` with how in the note. A price is per pack and
+only where a page showed one; ``ORDER.md`` (:mod:`hardware.order`) estimates an unpriced
+line from its item's first priced alternative and totals those apart.
 
 What has no better source than a marketplace: the IP2326 2S USB-C charger module (a generic
-board, no distributor stocks one; measure the one you get) and the M3 Chicago screws (no
-distributor sells M3 with a 4 mm barrel; uxcell's own store, Harfington, has every length).
+board, no distributor stocks one; measure the one you get), the M3 Chicago screws and the
+6 mm round M3 standoffs (no distributor sells M3 with a 4 mm barrel, or a threaded 6 mm OD
+M3 standoff; uxcell's own store, Harfington, has every length).
 """
 
 from __future__ import annotations
@@ -149,12 +153,29 @@ def _chicago_offers(length: int) -> tuple[Offer, ...]:
     return tuple(out)
 
 
+_BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-05: key -> (product, USD/100)
+    "m3_bhcs_6": ("7218", 3.97), "m3_bhcs_8": ("7219", 4.10), "m3_nut": ("4773", 2.39),
+}
+"""Priced alternatives to McMaster (whose prices need a login): ORDER.md estimates an
+unpriced line from them (:func:`hardware.order.estimate`)."""
+
+
+def _bolt_depot(key: str) -> tuple[Offer, ...]:
+    if key not in _BOLT_DEPOT:
+        return ()
+    product, usd = _BOLT_DEPOT[key]
+    return (Offer("Bolt Depot", f"https://boltdepot.com/Product-Details?product={product}",
+                  product, pack_qty=100, price_usd=usd, verified=True,
+                  note="18-8 stainless (A-2); page rendered 2026-10-05"),)
+
+
 SOURCES: dict[str, tuple[Offer, ...]] = {
     **{f"m{d}_bhcs_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
                                 verified=True,
                                 note=f"18-8 stainless ISO 7380 M{d} x {L}; seen with its "
                                      "length and pack on McMaster's own listing (price "
-                                     "shown only on the product page)"),)
+                                     "shown only on the product page)"),
+                          *_bolt_depot(f"m{d}_bhcs_{L}"))
        for d, by_l in _MCM_BHCS.items() for L, (pn, n) in by_l.items()},
     **{f"m4_set_screw_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
                                    verified=True,
@@ -197,7 +218,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
     # -- screws, nuts, washers, inserts ------------------------------------------------
     "m3_nut": (Offer(_MCM, "https://www.mcmaster.com/91828A211/", "91828A211", pack_qty=100,
                      verified=True, note="18-8 stainless M3 hex nut (McMaster's page title, "
-                                         "rendered 2026-10-05; price behind its login)"),),
+                                         "rendered 2026-10-05; price behind its login)"),
+               *_bolt_depot("m3_nut")),
     "m3_washer_9021": (Offer(_MCM, "https://www.mcmaster.com/91116A120/", "91116A120",
                              pack_qty=100, verified=True,
                              note="18-8 stainless oversized M3 washer, 3.2 x 9.0 x 0.7-0.9 "
@@ -220,8 +242,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
     "m25_nylon_screw_5": (
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/essentra-components/"
               "50M025045N005/11638495", "50M025045N005", pack_qty=1,
-              note="Essentra nylon 6/6 slotted pan head M2.5 x 5, head 5.0 mm (ISO 7045) "
-                   "against the modelled 4.5: the board's pad takes it"),),
+              note="Essentra nylon 6/6 slotted pan head M2.5 x 5, head 5.0 x 1.7 mm (ISO "
+                   "7045), as modelled"),),
     "m25_nylon_nut": (
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/essentra-components/"
               "04M025045HN/9677099", "04M025045HN", pack_qty=1,

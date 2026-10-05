@@ -7,7 +7,9 @@ model. Its central idea is to share out space between the parts before any part 
 so that no two of them can collide as the crank turns. This report explains how the code
 does that, what it can and cannot do, and where it could mislead you.
 
-It describes the code at commit `97bec2d` (2026-10-01). An illustrated version, with renders
+It describes the code at commit `97bec2d` (2026-10-01); the hardware it builds (sections
+2.4, 2.5, 6.2 and 7.1, the defaults in 9.7) was brought up to date on 2026-10-05, while
+the running example's numbers are still the snapshot's. An illustrated version, with renders
 from the viewer and drawings computed from the code, is
 [docs/architecture/index.html](architecture/index.html): open it in a browser.
 
@@ -347,21 +349,27 @@ because none of them ever comes near O. One screw runs up through the post, from
 in the lower web to a nut in the upper web, and holds the two halves of the crank
 together. (This is the `printed` crank's picture; the `keyed` crank, section 6.2, adds a
 brass hex standoff as a key between the post and the web above it and makes the upper web
-two layers thick, so this leg takes 8 layers; the walkers' default since 2026-10-03, the
-`bolt` crank, makes both webs two laser-cut plates, the crankpin an M6 hex bolt, and needs
-a bare layer under the rider (its run at least 4 layers: the shortest partially threaded
-M6, 30 mm, has a 12 mm plain shank) and a layer for the bolt's tip: 13 layers.)
+two layers thick, so this leg takes 8 layers. The default since 2026-10-03, the `bolt`
+crank, is laser-cut aluminium: each web one plate, the crankpin a stock steel hex standoff
+whose ends sit in hex pockets of the two webs, retained by a screw into each end, the
+rider turning on a printed sleeve over the hex; section 6.2.)
 
 ### 2.5 How parts are made
 
 Every part is made in one of three ways, and the code tags each part with it (`fab`):
 
-- **laser**: links, frame plates and the chassis's centre plates, cut from sheet;
-- **printed**: axles, crankshaft segments and chassis columns, on a 3D printer;
-- **purchased**: servos, screws, nuts, hex standoffs, heat-set inserts, bearings, rod, glue.
+- **laser**: links (acrylic, a few in aluminium), the aluminium frame plates, crank
+  plates and the chassis's centre plates, the electronics deck, cut from sheet;
+- **printed**: every pivot's spacer rings and head spacers, the crank's sleeves, collars
+  and rings, the horn spacer, the deck's rails and battery cradle, the feet's TPU socks
+  (and, with the printed constructions, axles and crankshaft segments), on a 3D printer;
+- **purchased**: servos, electronics, screws, nuts, washers and shims, Chicago screws,
+  round and hex standoffs, heat-set inserts, glue.
 
-Axles are printed by default, with four alternatives on a metal shaft: steel rod, M3 bolt,
-ball bearing and plastic bushing. The crank is always printed.
+By default the pins are M3 Chicago screws, the pillars 6 mm round standoff columns and
+the crank laser-cut on steel hex standoffs (section 6.2); printed axles and a printed
+crank, and other metal pivots (steel rod, M3 bolt, ball bearing, plastic bushing, a PTFE
+liner), stay selectable.
 
 The motors are **continuous-rotation servos**: geared motors with built-in speed control,
 which turn fully at a commanded speed rather than holding an angle as a hobby servo does.
@@ -382,8 +390,9 @@ iron; a **nylock** nut has a nylon ring that keeps it from loosening.
   which 3D-printing software reads. **DXF** files hold 2D outlines for the laser cutter.
   **glTF** is a 3D scene format for the web, with animation; `.glb` is its one-file binary
   form. **MJCF** is the XML model format of **MuJoCo**, a rigid-body physics simulator.
-- A laser burns away a thin strip as it cuts, the **kerf** (0.15 mm by default here), so
-  outlines are moved out by half of it and holes in by half of it. A 3D printer of the
+- A laser burns away a thin strip as it cuts, the **kerf** (the sheet's service's: 0.2 mm
+  at Ponoko; SendCutSend compensates for its own), so where the service doesn't, outlines
+  are moved out by half of it and holes in by half of it. A 3D printer of the
   kind assumed here (FDM) lays down plastic layer by layer; an overhang needs printed
   support under it, and **infill** is how solid the inside of a part is.
 - The viewer is a **three.js** page built with **Vite** and served by a **FastAPI** web
@@ -439,7 +448,7 @@ Here is the running example at each stage:
 | 1 symbolic | 8 steps placing joints O, A, B, M, C, D, E, F; 11 parameters |
 | 2 compiled | about 1.8 s once per process, mostly first-use imports; the compile itself about 0.1 s |
 | 3 template | each side: 4 legs, 16 links, 20 bodies |
-| 4 rationalized | 31 layers (93 mm) per side with the bolt crank and standoff pillars (the defaults since 2026-10-03; the search starts at the crank's lower bound, 30), not proven the thinnest within the budget; 16 (48 mm) with `--crank keyed --pillar printed`, the defaults before, in about 1 s (12 layers, 36 mm with `--crank printed`) |
+| 4 rationalized | 31 layers (93 mm) per side with the bolt crank in its first, acrylic M6 form and spliced standoff pillars (the defaults of 2026-10-03; the search starts at the crank's lower bound, 30), not proven the thinnest within the budget; 16 (48 mm) with `--crank keyed --pillar printed`, the defaults before, in about 1 s (12 layers, 36 mm with `--crank printed`) |
 | 5 fabricated | 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins are rods, rings and clips; with `--pin printed`: 173 parts, 90 printed, 44 purchased) |
 | 6 serialized | STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $150.35 (a lower bound, section 7.5; $124.87 with printed pins), glb 9.5 MB |
 
@@ -450,9 +459,10 @@ Here is the running example at each stage:
 - the legs' phases, and any parameter overrides;
 - the sheet material and its measured thickness;
 - the servo;
-- the pillar, pin and crank constructions: how each is built (the pins on a 3 mm rod with
-  push-on clips by default, `rod`; the pillars and the crank printed; or any axle on
-  another metal shaft, `bolt`, `bearing`, `bushing`, or every axle printed);
+- the pillar, pin and crank constructions: how each is built (by default the pins are M3
+  Chicago screws, `chicago`, the pillars round standoff columns, `standoff`, and the crank
+  the laser-cut `bolt` crank; or any axle on another metal shaft, `rod`, `bolt`,
+  `bearing`, `bushing`, `ptfe`, or printed);
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
   margin and so on).
 
@@ -965,27 +975,37 @@ once: both sides use the same plan.
   PLA the parts list assumes) takes for a one-time assembly. Assembly: glue each pillar's
   first segment into the outer plate, thread the links on, snap on the next segments,
   repeat up the stack, glue the inner plate on top.
-- **Metal pivots** (`construction/pivots/`): `rod` (3 mm steel rod, laser-cut spacer
+- **Metal pivots** (`construction/pivots/`): `rod` (3 mm steel rod, printed spacer
   rings, push-on clips), `bolt` (an M3 socket-head screw with washer and nylock nut; a
-  bolt pillar clamps both plates), `bearing` (a flanged ball bearing glued into each link)
-  and `bushing` (a plastic bushing pressed into each link). A metal shaft can't neck, so
+  bolt pillar clamps both plates), `bearing` (a flanged ball bearing glued into each link),
+  `bushing` (a plastic bushing pressed into each link) and `ptfe` (the rod in a PTFE
+  liner). Every pivot's spacer rings, and the rings it carries through a clearance gap,
+  are printed: an unclamped spacer only sets play. A metal shaft can't neck, so
   every layer it crosses holds a spacer as wide as its narrowest ring, which often makes
   the stack taller. Flanges need a free face beside the link. The hardware research behind
   these choices, with prices and suppliers, is in the package's docstring.
   **The default pillar is the standoff** (`--pillar standoff`, `pivots/standoff.py`, since
-  2026-10-03): goBILDA 1501 round 6 mm aluminium standoffs, an M4 button head and washer
-  through the outer plate, the top end glued flush in the inner plate (a head there would
-  stand where the electronics deck goes), the links turning on the standoff, a laser-cut
-  ring in every other layer; a column longer than the 60 mm stock is spliced through a ring
-  (an M4 stud, threadlocked) at the fewest ring layers, placed where a beam's
-  moment is least; a column no stock segments fill is unbuildable to the planner (the
-  axle's `column` hook). Its strength is a beam per bay between supports, the plates (a
-  splice is a joint whose gapping moment is checked, not a support); the 6 x 3.3 mm 6061
-  tube holds 4.4 times the printed 6 mm pillar's moment. A link sweeping close to a pillar
-  stops it short of one plate (a ring can't neck): then it is a cantilever.
+  2026-10-03): a 6 mm round standoff column from plate to plate, a button head and washer
+  through each plate (no glue; the inner heads stand 3 mm into the electronics bay, which
+  the deck plate is notched round), the links turning on the standoff, a printed ring in
+  every other layer. A column one stock goBILDA 1501 length fills is that aluminium M4
+  standoff; any other (longer than 60 mm, or a length goBILDA lacks) is one MISUMI NETRF6
+  steel standoff made to its length in 0.1 mm steps, tapped M3 (since 2026-10-05: at the
+  plan's own z the splices it replaced opened at jam SF 1.43 on the Strider double and
+  0.51 on the quad). A column no stock part fills is unbuildable to the planner (the
+  axle's `column` hook). Its strength is a beam per bay between supports, the plates; the
+  6 x 3.3 mm 6061 tube holds 4.4 times the printed 6 mm pillar's moment. A link sweeping
+  close to a pillar stops it short of one plate (a ring can't neck): then it is a
+  cantilever. The spliced columns stay selectable: `standoff_hand` (goBILDA segments
+  joined through a ring layer by an M4 stud and steel shims, hand-tight at 0.4 N·m; a
+  splice is a joint whose gapping moment is checked, not a support), `standoff_bench`
+  (built on the bench at 1.0 N·m) and `standoff_m3` (uxcell M3 segments).
   **The default pin is the Chicago screw** (`--pin chicago`), from the pivot review of 2026-10-03 (`pivots/chicago.py` has its table): a
   4 mm barrel through the stack plans the same stacks as the rod, its axial play is set by
-  the barrel length and shims (0.05-0.15 mm) instead of by feel, its lowest link is bonded
+  the barrel length and a printed head spacer per end (0.05-0.15 mm; a PTFE washer and
+  DIN 988 shims until 2026-10-05) instead of by feel; barrels come in 1 mm steps from 4 to
+  16 mm, then 18-80 mm, at most 23 mm on the Strider (a planner rule: a long barrel is a
+  long span); its lowest link is bonded
   to the barrel, its bending stress is 0.6 times the rod's, which tells where a pin spans
   more than a layer (the demo Klann, `--linkage klann`, quad at 0,0,180,180 puts pin E
   across 9 mm: jam SF 0.80 against the rod's 0.53 at the design's own loads, both
@@ -1015,8 +1035,23 @@ once: both sides use the same plan.
   in the catalog. `--pin printed` remains the zero-hardware build (its J7 snap lip relieved
   to 0.13 mm on the Strider); the assembly steps are in `pivots/rod.py`.
 - **The bolt crank** (`construction/crank.py`, `BoltCrank`; `--crank bolt`, the walkers'
-  default since 2026-10-03, from the crank study's recommendation "C+"): laser-cut instead
-  of printed. Every crank layer that isn't a run is one acrylic plate (the claims' outline,
+  default since 2026-10-03, the mechanisms' since 2026-10-04): laser-cut instead of
+  printed. **Its current form** (an aluminium crank sheet, 0.100 in 6061-T6, the default
+  since 2026-10-04): every web is one plate; every crankpin and journal is a stock M3 x
+  5.5 AF steel hex standoff whose ends sit in hex pockets of its two webs (dog-bone corner
+  reliefs), an M3 button head and a DIN 9021 washer screwed into each end to retain them,
+  a printed collar taking up what a stock length stands past a plate; the riders turn on
+  a printed 8.5 mm sleeve over the hex, printed rings fill the clearance gaps along a run;
+  a round M3 standoff is the journal stub, a printed thrust sleeve round it the crank's
+  stop toward the outer plate; the chain that ends in the hub plate has no screw over it
+  (the hub plate caps it, held by the horn screws, so the hub plate, horn, servo and inner
+  plate go on as one unit: `construction.robot.ASSEMBLY`). It is rated by the hex's
+  bearing in the aluminium pocket (`hex_bearing_nm`, jam SF about 2.5 on the Strider).
+  TrotBot's heel and toe take `bolt_round` (round standoffs clamped between the webs by
+  friction: the hex's sleeve doesn't clear b7 there). The Strider double plans 14 layers
+  / 66.5 mm a side, the quad 24. **Its first form**, what an acrylic crank sheet still
+  builds (the crank study's recommendation "C+"): every crank layer that isn't a run is
+  one acrylic plate (the claims' outline,
   on the DXF sheets); a chain's lowest and top webs are two plates each; the crankpin is an
   ISO 4014 M6 hex bolt, its head (10 AF x 4 mm) in a hex pocket through the top stack, a
   DIN 985 M6 nylock (10 x 6 mm) in one through the lowest stack (10.1 mm AF, 0.5 mm corner
@@ -1039,8 +1074,8 @@ once: both sides use the same plan.
   planner a lower bound (`route.CrankRouter.min_top`, the search starts there: without it
   the 31-layer quads didn't plan within the budget). The Strider quad plans since
   `max_top` went from 40 to 60 (2026-10-04: 44 layers, unproven), and the Hoecken pantograph
-  none at all (its pins too close for the pockets), so mechanisms keep the keyed crank
-  (`config.DEFAULT_CRANKS`). The study's PTFE thrust washers have no room (plates touch in
+  none at all (its pins too close for the pockets), so mechanisms kept the keyed crank
+  until the hex form planned them (2026-10-04, `config.DEFAULT_CRANKS`). The study's PTFE thrust washers have no room (plates touch in
   3 mm layers) and its Chicago lock screws' heads would stand in a rider's layer; both are
   left out (the docstring says why). Since 2026-10-04 the planner reserves such heads thin
   clearance gaps (`Placed.gap`, `stack.finalize`; CLAUDE.md, "Clearance gaps"), which is
@@ -1050,8 +1085,8 @@ once: both sides use the same plan.
   and nut: a button-head screw, because a socket head is 3 mm tall and doesn't fit a 3 mm
   web. The horn screws run from below through the hub. The crank needs layers at least
   2.9 mm thick; a 2 mm sheet is refused, and the recommended fix is a thicker sheet.
-  **The keyed crank** (`--crank keyed`, `KeyedCrank`; the default before 2026-10-03, still
-  the mechanisms'), from a review of
+  **The keyed crank** (`--crank keyed`, `KeyedCrank`; the default before 2026-10-03, the
+  mechanisms' until 2026-10-04), from a review of
   the crank joints: in a built-up crankshaft the only connection between the segments
   above and below a rider is inside the rider's hole, so the drive torque twists each
   post-to-web joint by chord / crank radius times itself, 2.0 on the Strider (pins 180°
@@ -1099,9 +1134,11 @@ once: both sides use the same plan.
   stops here with `ConstructionError`: there is one servo per side, so a second input has
   no drive.
 - **The robot's chassis** (`construction/robot.py`, `chassis.py`): the two servos back to
-  back between laser-cut centre plates; printed columns with heat-set inserts and M3
-  screws (the **frame ties**) joining the two inner plates; and rear screws into the
-  servos' pilot holes. The chassis sits outside both sides' stacks, so the planner never
+  back between laser-cut aluminium centre plates; four chains of 6 mm round M3 standoffs
+  (the **frame ties**, an M3 button head up through each inner plate, an M3 set screw
+  through the centre plates joining each pair and clamping them, no glue) joining the two
+  inner plates; rear screws into the servos' pilot holes; and the electronics deck between
+  the inner plates over the servos (`construction/deck.py`). The chassis sits outside both sides' stacks, so the planner never
   sees it; it is checked for collisions only by intersecting solids at sampled crank
   angles.
 
@@ -1180,15 +1217,25 @@ and writes:
 | `klann.step` | the whole robot, one named, coloured product per part | 11.4 MB, 173 solids |
 | `klann.stl` | the whole robot as one binary mesh | 21.8 MB, 436,932 triangles |
 | `print/*.stl`, `print/parts.csv` | one STL per distinct printed part (a mirrored copy where the right side needs one), with quantities and grams | 16 parts and 1 mirrored |
-| `laser/*.dxf`, `laser/*_parts.csv` | the laser-cut parts packed onto sheets | 2 sheets of 300 × 300 mm |
-| `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
+| `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock | 2 sheets of 300 × 300 mm |
+| `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts one DXF per distinct part (blue `CUT` layer, R2007) with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (since 2026-10-05) | not in the snapshot |
+| `bom.csv`, `bom.md`, `bom.json` | the bill of materials (shims one line per thickness) | 11 purchase rows, at least $124.87 |
+| `ORDER.md` | the shopping list (`hardware/order.py`): a cart per vendor, each line a direct product page (`hardware/sources.py`), the uploads per cutting service, the prints per filament, shop supplies (filament, threadlocker) taken as on hand, unpriced lines estimated from a priced alternative (since 2026-10-05) | not in the snapshot |
+
+`api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
+(section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
+from `spiderpig build`.
 
 **DXF sheets** (`spiderpig/layout.py`): each laser part is cut through its mid-thickness,
-turned so its long axis runs along x, and offset by half the kerf: outer contours grow by
-0.075 mm, holes shrink by as much. The parts' bounding rectangles are packed with
+turned so its long axis runs along x, and offset by half its sheet's kerf where the
+service doesn't compensate for it (Ponoko's 0.2 mm in acrylic: outer contours grow by
+0.1 mm, holes shrink by as much; SendCutSend compensates itself, so its files are nominal;
+`--kerf` overrides every sheet). The parts' bounding rectangles are packed with
 `rectpack`, and any part that doesn't fit raises an error rather than vanishing. Round
-holes are written as exact circles; every other outline is a closed polyline of 96
-points.
+holes are written as exact circles; every other contour is one closed `LWPOLYLINE` whose
+lines and arcs are exact (an arc is a vertex's bulge), any other curve flattened within
+0.02 mm (`CHORD_TOL`). `layout.fidelity` reads the contours back against the solid (the
+cut-rule review's `dxf` check).
 
 **The BOM** (`hardware/bom.py`): every purchased body is one unit of its catalog key.
 Laser-cut and printed parts are grouped by shape. Two parts join a group only if their
@@ -1260,17 +1307,18 @@ below 5e-4 the model is ill-posed and refused.
 
 ### 7.5 Limits of the outputs
 
-- **DXF accuracy.** With 96 points per outline whatever its size, the rounded end of a
-  210 mm link gets about four points, and the polyline cuts up to 0.47 mm inside the true
-  outline, about six times the 0.075 mm kerf offset. Non-circular holes are approximated
-  the same way. The output has no arcs.
+- **DXF accuracy.** Lines and arcs are written exactly (at the snapshot, a 96-point
+  polyline per outline cut up to 0.47 mm inside a long link's rounded end); only a curve
+  that is neither, which none of the plates has, is flattened, within 0.02 mm. The kerf is
+  the service's published figure, not a measured one: cut a test coupon.
 - **Sheet use.** Packing is by bounding rectangle, not true nesting.
 - **Printing.** Print STLs keep their as-built orientation; nothing chooses how to lay a
   part on the printer's bed or where supports go.
-- **Cost.** The BOM total is a lower bound. Unpriced rows are left out, and 40 of the 67
-  catalog items have no price on their preferred offer. Every row is costed in whole packs
-  of that one offer (a 100-pack for 8 screws, a whole spool for 95 g). The prices are
-  snapshots from 2026-09-29 and 2026-09-30.
+- **Cost.** The BOM total is a lower bound. Unpriced rows are left out (McMaster-Carr
+  shows prices only behind a login; `ORDER.md` estimates such a line from a priced
+  alternative and totals those apart). Every row is costed in whole packs of its preferred
+  offer (a 100-pack for 8 screws, a whole spool for 95 g). The prices are snapshots, the
+  default build's from the sourcing round of 2026-10-05.
 - **Reproducibility.** STEP files differ byte for byte between runs (the order of their
   colour records); compare geometry, not hashes.
 - **The glb's size.** Mesh sharing is decided by body names, so the 24 identical pin heads
@@ -1639,8 +1687,9 @@ The commands that take a design share options: `--linkage` (Strider by default),
 (by default the linkage's own: its `default_module` when it names one, Strider's `double`,
 else `quad`, and the robot for a walker; `single` and one side for a mechanism;
 `explain` alone defaults to `single`), `--phases` in degrees,
-`--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank` (by default `printed`,
-`rod`, `printed`), `--sheet` and `--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
+`--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank` (by default
+`standoff`, `chicago`, `bolt`; TrotBot's heel and toe `bolt_round`), `--sheet` and
+`--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
 `view` resolve them into a design in the store, so they share one stored plan.
 
 ### 9.8 The decisions behind it
@@ -1850,8 +1899,9 @@ rather than a wrong answer.
     takes 28 minutes, browser tests run only on request, and the opt-in planner speed-ups
     have no tests (section 10).
 11. **The documents have drifted** in over 40 places (Appendix D). The most misleading:
-    - the README and AGENTS.md give fixed ports that the code no longer uses;
-    - `future_work.md` says only printed constructions exist;
+    - the README and AGENTS.md gave fixed ports that the code no longer uses (fixed
+      2026-10-05);
+    - `future_work.md` said only printed constructions exist (rewritten 2026-10-05);
     - CLAUDE.md's bake numbers (91 bodies, 6.6 s) are far below today's (179 bodies,
       28.6 s);
     - three places say the planner's proof gives each thinner size the full budget, where
@@ -2056,7 +2106,7 @@ Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
 | [CLAUDE.md](../CLAUDE.md) | the terse map for agents: tasks, profiler, repository map, pipeline contract, planner, house rules | current, with the drift in Appendix D |
 | [README.md](../README.md) | install, quick start, outputs, how the robot is built | mostly current; title and ports out of date |
 | [AGENTS.md](../AGENTS.md) | "use mise for everything" | partly stale |
-| [future_work.md](../future_work.md) | follow-ups after the 2026-09-29 rework | stale |
+| [future_work.md](../future_work.md) | open items | rewritten 2026-10-05 |
 | [viewer/README.md](../viewer/README.md) | how the viewer is fed and drawn | current, with the drift in Appendix D |
 | [agentlib/API.md](agentlib/API.md) | the agent surface's reference | current, with the drift in Appendix D |
 | [agentlib/SCOPE.md](agentlib/SCOPE.md), [DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's proposal; the seven decisions | historical design; current decisions |
@@ -2095,7 +2145,9 @@ against the code for accuracy, and for its prose.
 ## Appendix D. Where the documents and the code disagree
 
 Each item was checked against the code at `97bec2d`. The most misleading come first in
-each group.
+each group. The documentation pass of 2026-10-05 fixed the first group's rows (README,
+AGENTS.md, future_work.md, which now lists open items) and the `vite.config.ts` row; the
+rest stand as found.
 
 ### README.md, AGENTS.md and future_work.md
 

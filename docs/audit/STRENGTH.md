@@ -98,12 +98,17 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   The **single-plate bolt crank** (on the aluminium crank sheet, since 2026-10-04): each
   web clamped on its standoff crankpin's end by an M4 screw, a friction joint (`BoltCrank.
   _web_capacity`: 2200 N clamp, mu 0.3 at the web, 0.2 under the head; UNVERIFIED), 3.032
-  N·m; the hex-standoff crankpins of the user's decision 1 will rate a hex bearing instead.
+  N·m (`--crank bolt_round` since; the default hex-standoff crankpins rate a hex bearing:
+  the first section).
 * **Pillars**: a printed pillar glued into one plate is a cantilever from the plate's face,
   into both a beam between the faces. The **standoff pillar** (the default since
-  2026-10-03, `construction/pivots/standoff.py`) is a 6 x 3.3 mm 6061 tube (240 MPa; the M4
-  tap drill as if through) as a **beam per bay** between its supports, the frame plates
-  (a pillar a link stops short of one plate: a cantilever). A splice (two stock segments
+  2026-10-03, `construction/pivots/standoff.py`) is a **beam per bay** between its
+  supports, the frame plates (a pillar a link stops short of one plate: a cantilever), its
+  section the standoff as a tube bored to its tap drill (as if tapped through): a goBILDA
+  column a 6 x 3.3 mm 6061 tube (240 MPa), the one-piece MISUMI NETRF6 column the default
+  makes of any column no stock length fills (since 2026-10-05, r5, below) a 6 x 2.5 mm 1018
+  tube (220 MPa). The rest of this bullet is the spliced column (`--pillar standoff_hand` /
+  `standoff_bench` / `standoff_m3`, the default until r5). A splice (two stock segments
   butted on a ring by an M4 stud) is a joint, not a support: nothing ties the ring to the
   frame. Its capacity is the moment that starts to open it, the stud's preload (0.8 N·m:
   1 kN) x `(ro^2 + ri^2) / 4 ro` of the 6 / 4.3 mm annulus, 1.14 N·m, against the bay's
@@ -124,7 +129,9 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   pillars (`--pillar standoff_bench`: its splices only under the pillar's lowest link, so
   the finished column takes its links over its top). A spliced pillar whose jam moment at
   the splice exceeds 0.57 N·m now reads under 1 (the Strider quad's 51 mm J2 was 1.71 at
-  1.0 N·m: about 0.68 at 0.4); the default Strider double has no splice.
+  1.0 N·m: about 0.68 at 0.4); the Strider double's J6 had one, at layer 3 (2.31 at
+  `k x pitch`, 1.43 at the plan's own z: the r5 table below). Since r5 the default pillar
+  has no splice at all.
 * **Limits**: jam SF < 1 is an **error** (the audit fails, `verify` reports
   `strength` / `joint_overload` with the joint and its fixes as culprits); jam SF < 2
   or walking SF < 3 a **warning**. Each finding names the joint, its links, the case,

@@ -31,6 +31,21 @@ ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222
 """Shop supplies taken as on hand (the user's, 2026-10-05): listed, not ordered or totalled."""
 
 
+def estimate(row) -> tuple[float, str] | None:
+    """An unpriced line's cost from the first priced alternative offer of its item (whole
+    packs of that offer): ``(usd, vendor)``, ``None`` when no offer has a price."""
+    import math
+
+    try:
+        offers = get(row.key).offers[1:]
+    except KeyError:
+        return None
+    for o in offers:
+        if o.price_usd is not None:
+            return math.ceil(row.qty / max(o.pack_qty, 1) - 1e-9) * o.price_usd, o.vendor
+    return None
+
+
 def _money(v: float | None) -> str:
     return "" if v is None else f"${v:.2f}"
 
@@ -54,6 +69,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
              "add it.", ""]
     total = 0.0
     unpriced = 0
+    estimated = 0.0
     lines += ["## Buy (one cart per vendor)", ""]
     for vendor in sorted(carts, key=lambda v: (-len(carts[v]), v)):
         rows = carts[vendor]
@@ -66,15 +82,20 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
         for r in sorted(rows, key=lambda r: r.name):
             buy = f"{r.packs} × {r.pack_qty}" if r.pack_qty > 1 else f"{r.packs}"
             need = f"{r.qty:g}" if r.qty >= 1 else f"{r.qty:.3g} of one"
+            est = _money(r.cost_usd)
             if r.cost_usd is None:
                 unpriced += 1
+                if (got := estimate(r)) is not None:
+                    estimated += got[0]
+                    est = f"≈{_money(got[0])} ({got[1]})"
             link = f"[product page]({r.url})" + ("" if r.verified else " *page not fetched*")
-            lines.append(f"| {buy} | {r.name} | {r.sku} | {need} | {_money(r.cost_usd)} | "
-                         f"{link} |")
+            lines.append(f"| {buy} | {r.name} | {r.sku} | {need} | {est} | {link} |")
         lines.append("")
     lines += [f"Purchases: **{_money(total)}** at the listed pack prices ({unpriced} line(s) "
-              "unpriced: the vendor shows its price only in the cart or to an account), "
-              "before shipping and the cut parts.", ""]
+              "unpriced: the vendor shows its price only in the cart or to an account"
+              + (f"; ≈{_money(estimated)} more estimated from another vendor's price for the "
+                 "same part" if estimated else "")
+              + "), before shipping and the cut parts.", ""]
     if on_hand:
         lines += ["## From the shop (on hand, not ordered)", ""] + [
             f"* {r.name}: {r.where[0] if len(r.where) == 1 else f'{len(r.where)} uses'}"

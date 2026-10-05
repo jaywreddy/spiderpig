@@ -1,4 +1,4 @@
-"""``bolt``: an M3 socket head cap screw as the axle, laser-cut rings, a nylock nut.
+"""``bolt``: an M3 socket head cap screw as the axle, printed rings, a nylock nut.
 
 What most hobby walkers use. A **pin** is a screw with its head under the
 lowest link and a flat washer plus nylock nut on the highest, the rings
@@ -85,12 +85,12 @@ MINOR_D = 2.387    # M3 minor diameter (ISO 724 d3): the bending core
 
 @dataclass(frozen=True)
 class BoltAxle:
-    """M3 SHCS axle, laser-cut spacer rings, flat washer and nylock nut."""
+    """M3 SHCS axle, printed spacer rings, flat washer and nylock nut."""
 
     gaps: ClassVar[bool] = False    # its retainers assume full layers (no clearance gaps)
 
     key: str = "bolt"
-    label: str = "M3 socket head cap screw as the axle, laser-cut spacer rings, nylock nut"
+    label: str = "M3 socket head cap screw as the axle, printed spacer rings, nylock nut"
     running_fit: float = 0.2       # link hole over M3 (3.2 mm: ISO 273 fine)
     clearance_fit: float = 0.4     # ring and plate holes over M3 (3.4 mm: ISO 273 medium)
     min_tip: float = 0.5           # thread standing proud of the nut

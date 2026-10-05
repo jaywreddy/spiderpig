@@ -78,18 +78,13 @@ series (p-1788004; every M3 variant fetched 2026-10-05), whose plain 18-8 series
 20, 22, 23, 25, 28 and on to 80."""
 
 
-CHICAGO_ALL = CHICAGO_LENGTHS
-if __import__("os").environ.get("SPIDERPIG_BARRELS"):
-    # the hardware study (SIMPLIFY.md): the barrels the planner may pick, restricted
-    CHICAGO_LENGTHS = tuple(float(x) for x in
-                            __import__("os").environ["SPIDERPIG_BARRELS"].split(","))
 
 
 def chicago(length: float) -> str:
     return f"chicago_m3_{length:g}"
 
 
-for _L in CHICAGO_ALL:
+for _L in CHICAGO_LENGTHS:
     register(Item(
         chicago(_L), f"M3 Chicago screw (binding barrel + screw), 4 mm barrel x {_L:g} mm",
         "fastener",
@@ -121,7 +116,9 @@ register(
           Offer("McMaster-Carr", "https://www.mcmaster.com/products/shims/",
                 note="ring shims for 4 mm shafts")),
          dims={"id": 4.0, "od": 8.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
-         notes="Takes up a Chicago screw's fixed barrel length against a 3 mm layer stack."),
+         notes="The 4 x 8 family's steps: a pillar's clamped shims (bought per thickness, "
+               "the 1.0 and 0.5 mm as DIN 433 washers: bom.SHIM_AS); a Chicago screw's "
+               "take-up uses its steps for a printed spacer."),
     Item("threadlocker_222", "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
          "adhesive",
          (Offer("Amazon", "https://www.amazon.com/s?k=Loctite+222+10ml",

@@ -14,9 +14,11 @@ the outer frame plate (without it the crank hangs from the servo side). That
 shape (:meth:`CrankGroup.claims`) is the same for every construction; a
 construction decides radii and how the pieces are made and joined.
 
-Two constructions build it, both printed segments split at every run (a
-rider has to be threaded onto its post): :class:`KeyedCrank` (``keyed``, the
-default) keys every post to the web above it with a brass hex standoff and
+The default, :class:`BoltCrank` (``bolt``), builds it from laser-cut aluminium web
+plates on stock hex-standoff crankpins (its own docstring, further down). Two printed
+constructions, kept to compare, build it from printed segments split at every run (a
+rider has to be threaded onto its post): :class:`KeyedCrank` (``keyed``, the default
+before 2026-10-03) keys every post to the web above it with a brass hex standoff and
 clamps each chain with a screw and nut through a two-layer top web;
 :class:`PrintedCrank` (``printed``) is the same stack held by the screw's
 clamp friction alone, kept for comparison (its joints are free to twist about
@@ -995,7 +997,7 @@ class _Stack:
 
 
 # ---------------------------------------------------------------------------
-# The keyed crankshaft (the default)
+# The keyed crankshaft (the default before 2026-10-03; kept to compare)
 # ---------------------------------------------------------------------------
 
 
@@ -1339,10 +1341,19 @@ class HexJoint:
 
 @dataclass(frozen=True)
 class BoltCrank:
-    """Laser-cut acrylic crank: every web a stack of two plates, each crankpin an M6 hex bolt.
+    """The laser-cut crank (``bolt``, the default): its form is set by the crank's sheet.
 
-    The construction the crank study of 2026-10-03 recommends ("C+"), with what the layer
-    model made of it:
+    On an aluminium crank sheet (the default, 0.100 in 6061-T6: :meth:`resolve`) every web
+    is **one plate** and every crankpin and journal a stock M3 x 5.5 AF steel **hex
+    standoff** whose ends sit in hex pockets of the webs, an M3 button head and DIN 9021
+    washer into each end, the riders turning on a printed sleeve over the hex (``pin="hex"``;
+    ``pin="round"``, ``--crank bolt_round``: a round standoff clamped between its webs by
+    friction). The fields and methods below the ``single`` marker build it
+    (:class:`_WebPlates`); the planner's rules for it are in :mod:`construction.route`.
+
+    On an acrylic crank sheet (stored designs before 2026-10-04) it is the two-plate stack
+    crank the crank study of 2026-10-03 recommended ("C+"), every web a stack of two plates,
+    each crankpin an M6 hex bolt, with what the layer model made of it:
 
     * **plates**: every crank layer that isn't a run (the webs, the journal on O, the hub)
       is one laser-cut plate from the link sheet, its outline the crank's claimed shapes in
@@ -1418,9 +1429,10 @@ class BoltCrank:
     """
 
     key: str = "bolt"
-    label: str = ("laser-cut acrylic crank: two-plate web stacks keyed on M6 hex-bolt "
-                  "crankpins (head and nylock in hex pockets), a round standoff stub, bolted "
-                  "to the horn")
+    label: str = ("laser-cut crank bolted to the horn: on aluminium one plate per web on steel "
+                  "hex-standoff crankpins in hex pockets; on acrylic two-plate web stacks keyed "
+                  "on M6 hex-bolt crankpins (head and nylock in hex pockets); a round standoff "
+                  "stub")
     axial_play: float = 0.0       # plates touch (laser sheet in its layer)
     bolt_d: float = 6.0
     shank_model: float = 5.9      # the modelled shank (inside its claim, clear of a 6.4 bore)
@@ -1720,15 +1732,9 @@ class BoltCrank:
         """:meth:`stub` at a plan's own z: ``top`` the lowest stack's bottom face over the
         outer frame plate's bottom face, ``plate`` that plate's thickness, ``upper`` the
         lowest stack's plate the screw passes."""
-        from spiderpig import hwflags
         from spiderpig.hardware.catalog import get
         from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS, m3_round_standoff
 
-        if hwflags.on("m3"):        # the same 6 mm round M3 standoff as the pillars (Hirosugi)
-            from spiderpig.hardware.crank_catalog import (
-                M3_ROUND_STANDOFF_LENGTHS,
-                m3_round_standoff,
-            )
         below = self.stub_below if self.single else 0.0
         for S in sorted(M3_ROUND_STANDOFF_LENGTHS, reverse=True):
             z0 = top - S
@@ -2394,11 +2400,9 @@ class BoltCrank:
                     most = min(self.horn_shim_max,
                                GAP_MAX - sk.head_h - self.head_clear)
                     shim = math.ceil((e - e_want) * 10 - 1e-6) / 10
-                    from spiderpig import hwflags
-
                     whole = float(math.ceil(e - e_max - 1e-6))
-                    if hwflags.on("oneshim") and e - whole >= e_min - EPS:
-                        shim = whole       # whole 1 mm shims, the thread up to e_max
+                    if e - whole >= e_min - EPS:
+                        shim = whole       # whole 1 mm shims (DIN 433 pairs), thread to e_max
                     if shim > most + EPS:
                         shim = math.ceil((e - e_max) * 10 - 1e-6) / 10
                     if shim > most + EPS:

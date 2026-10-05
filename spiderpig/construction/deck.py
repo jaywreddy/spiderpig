@@ -22,9 +22,11 @@ Construction
   :class:`robot.FrameTies` cuts the holes: :func:`rail_screw_points`). Two M3 heat-set inserts
   per rail, vertical, take the deck's screws. The rails sit 1 mm above the chassis' top.
 * **Deck plate** (laser-cut, the build's sheet): 136 x 71 mm, 1 mm from each inner
-  plate, centred over the servos, screwed to the rails with four M3 SHCS into the
-  inserts. Cut-outs: the screws' clearance holes, the board's four M2.5 holes, two strap
-  slots beside the battery, a 6.4 mm hole for the switch's bushing and two 12 x 6 mm
+  plate, centred over the servos, screwed to the rails with four M3 button heads into the
+  inserts (centred in the rails, or moved 1.5 mm into the bay where a path notch would
+  leave a screw hole under the sheet's least web: :func:`insert_z`). Cut-outs: the screws'
+  clearance holes, the board's four M2.5 holes, two strap slots beside the battery, a
+  6.5 mm hole for the switch's 1/4-40 bushing and two 12 x 6 mm
   wire slots, one each side of the board over a servo: each takes that servo's bus
   cable (connector first) up to the board and one pair of the power harness (the
   battery's XT30 mates on top with an XT30 pigtail whose wires go down to the protection
@@ -39,11 +41,12 @@ Construction
   **Battery** on top, the rear half, in a printed cradle (a 5 mm rim, 1.6 mm
   walls, open at the inner end for the leads; screwed to the deck through two ears by M3
   button heads from above into M3 nuts under the deck, no glue: the user's decision of
-  2026-10-05) and held by a 10 mm hook-and-loop strap through the two slots.
+  2026-10-05) and held by a 10 mm strap (Lumenier 10 x 180) through the two slots.
   **Charger** (IP2326) under the deck at the front, its USB-C end at the deck's front edge
   (0.8 mm back on the Strider, where a pillar's head stands in its way down: below);
   **protection board** under the
-  deck behind the servos; both on foam tape. **Toggle switch** through the deck at the
+  deck behind the servos; both on double-sided foam tape (3M VHB 5952, 1.14 mm).
+  **Toggle switch** (E-Switch 100SP1T1B1M1QEH) through the deck at the
   rear, lever up, its body hanging below the deck behind the chassis.
 * Every port is reachable with the robot assembled: the board's DC jack and the charger's
   USB-C face forward out of the open front of the bay between the plates, the switch lever
@@ -53,12 +56,13 @@ Construction
 * Length: 136 mm is the board (65) and the battery's cradle (65.7) end to end. It sits
   inside the Strider's inner plates (x +-78.5) but overhangs the Klann quad's (+-61.9)
   by 6 mm at each end, where nothing moves (every leg is outboard of the plates).
-* UNVERIFIED: the board's connector edges (from the product photo), every component
-  height (the barrel jack taken as 11 mm), the charger's and the protection board's
-  masses; the MTS-102's DC rating (3 A at 250 V AC; two stalled STS3215 draw ~5 A at 2S:
-  switch the supply only with the servos idle, or fit a 6 A DC switch).
+* UNVERIFIED: the charger's and the protection board's sizes and masses (the board's
+  connector edges and heights are measured on Waveshare's STEP model: the jack 7.3 mm, the
+  headers 5.7 mm). The switch is rated 5 A at 28 V DC; two stalled STS3215 draw ~5 A at 2S
+  (about 2.4 A at the design's 45 % torque limit): switch the supply only with the servos
+  idle.
 
-* **Lowering it in** (2026-10-05): the pillars' inner M4 heads and washers stand 3 mm
+* **Lowering it in** (2026-10-05): the pillars' inner button heads and washers stand 3 mm
   into the bay from each inner plate's face, where the deck's edges pass. The deck plate is
   notched round every static part in its path (:func:`path_notches`, from the robot's real
   parts: on the Strider double the four corners, round J2's and J6's heads) and the charger
@@ -85,7 +89,6 @@ from dataclasses import dataclass, replace
 
 from build123d import Axis, Box, Cylinder, Pos, scale
 
-from spiderpig import hwflags as _hw  # noqa: E402
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
     BRASS,
@@ -105,7 +108,7 @@ from spiderpig.mechanism import Body
 from spiderpig.shapes import union
 from spiderpig.stack import body_class
 
-DECK_SCREW = screw("bhcs" if _hw.on("lengths") else "shcs", "3")
+DECK_SCREW = screw("bhcs", "3")
 DECK_GAP = 1.0           # deck plate edge to an inner plate's face (mm): frame tolerance
 FLOOR_MARGIN = 1.0       # a rail's underside above the chassis' top
 HALF_LEN = 68.0          # the deck plate's half length along x (mm)
@@ -125,7 +128,7 @@ RAIL_SCREW_R = 5.7 / 2 + 0.3             # its head's clearance shape under the 
 RAIL_NUT_AF, RAIL_NUT_H = 5.5, 2.4       # an M3 hex nut in a trap in the rail
 NUT_DEPTH = 3.0          # the trap's floor over the rail's plate face
 CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm cable tie
-RAIL_SCREW_L = 8.0 if _hw.on("lengths") else 10.0   # through the plate, past the nut trap
+RAIL_SCREW_L = 8.0       # through the plate, past the nut trap
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
@@ -142,7 +145,7 @@ CRADLE_SCREW = screw("bhcs", "3")    # the cradle's two ears to the deck, nuts u
 CRADLE_EARS = ((3.5, 1.0), (19.5, -1.0))   # (x from the cradle's outer inside end, z side):
 #                                      clear of the switch's body and the strap's run
 #                                      under the deck, and of the BMS (behind the servos)
-EAR_R, EAR_H = 3.5, (2.0 if _hw.on("lengths") else 3.0)   # an ear's radius, its height
+EAR_R, EAR_H = 3.5, 2.0  # an ear's radius, its height
 EAR_HEAD_GAP = 0.25                  # the screw head's edge to the cradle wall
 NOTCH_CLEAR = 0.5                    # a path notch's clearance round what it passes
 SETBACK_MAX = 3.0                    # the charger's USB-C end back from the front edge, at most

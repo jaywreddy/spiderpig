@@ -7,19 +7,26 @@ an ADC pin for the battery voltage. ``dims`` holds what the deck is drawn from (
 ``mass_g`` the mass :func:`hardware.mass.material_of` gives the part (spread over its
 modelled box) instead of volume x density.
 
-Sources (research agents' web lookups of 2026-10-03, so ``verified=False`` unless the
-page itself was fetched): the Waveshare wiki and product page (65 x 30 mm, 21 g, 2.75 mm
-holes on 58 x 23 mm, 5.5 x 2.1 mm DC jack 6-12 V, USB-C, $15.99); its photo puts the DC
-jack on one short end and the USB-C at the other; the component heights are NOT on the
-wiki (its STEP model, ``Servo_Driver_with_ESP32_STEP.zip``, has them): the barrel jack is
-taken as 11 mm, the usual height of a 5.5 x 2.1 mm PCB jack. The LiPo is the Ovonic 2S
-450 mAh 80C "long" (61.9 x 16.3 x 13.4 mm, 28 g, XT30; Amazon 4-pack $29.69 with a
-coupon, search snippet). The IP2326 module's listings say 30-32 x 18-20 x 5 mm (the 5 mm
-may exclude the USB-C receptacle; mass unlisted, a bare module of this size is 2-4 g);
-the HX-2S-JH20 is 46.7 x 23 x 3.15 mm, rated 10 A by most listings (20 A peak), mass
-unlisted. The MTS-102 toggle (SPDT, 6 mm bushing, 2-3 A at 250 V AC: fine at 8.4 V DC)
-is about 4.4 g (a 5-pack's listed 22 g). Unverified numbers say so in ``notes``; weigh
-and measure the parts on arrival.
+Where to buy: each item's first offer is the direct product page of the sourcing round of
+2026-10-05 (:mod:`hardware.sources`): the Waveshare store, the Ovonic maker's store
+(LiPo 4-pack), diymore (protection board), DigiKey (the E-Switch toggle, the resistors,
+the right-angle DC plug, the Essentra M2.5 nylon screw and nut), Mouser (the Wurth M2.5
+nylon standoff), Rotor Riot (one XT30 pigtail: the battery has its own XT30), GetFPV (a
+Lumenier 10 x 180 mm strap, 3-pack), Ellsworth (3M VHB 5952 tape, 1.14 mm); the IP2326
+module only from a marketplace. The offers registered here follow it as alternatives.
+
+Dimensions (research agents' web lookups of 2026-10-03, so ``verified=False`` unless the
+page itself was fetched, corrected 2026-10-05): the Waveshare wiki and product page (65 x
+30 mm, 21 g, 2.75 mm holes on 58 x 23 mm, 5.5 x 2.1 mm DC jack 6-12 V, USB-C, $15.99);
+Waveshare's STEP model (``Servo_Driver_with_ESP32_STEP.zip``) puts the DC jack, 7.3 mm
+tall, on one short end and the USB-C on a long edge, the headers 5.7 mm tall. The LiPo
+is the Ovonic 2S 450 mAh 80C "long" (61.9 x 16.3 x 13.4 mm, 28 g, XT30). The IP2326
+module's listings say 30-32 x 18-20 x 5 mm (the 5 mm may exclude the USB-C receptacle;
+mass unlisted, a bare module of this size is 2-4 g); the HX-2S-JH20 is 46.7 x 23 x 3.15
+mm, rated 10 A by most listings (20 A peak), mass unlisted. The toggle is an E-Switch
+100SP1T1B1M1QEH (SPDT, 1/4-40 bushing in a 6.5 mm hole, 5 A at 28 V DC), modelled in the
+larger envelope of the MTS-102 it replaced, 4.4 g. Unverified numbers say so in
+``notes``; weigh and measure the parts on arrival.
 """
 
 from __future__ import annotations
@@ -93,14 +100,16 @@ register(
     Item("resistor_33k", "33 kOhm 1/4 W resistor (battery divider, bottom)", "electronics",
          (Offer("DigiKey", "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/"
                 "1686", "CFR-25JB-52-33K", price_usd=0.10, note=SEARCHED),)),
-    Item("lipo_strap_10mm", "Hook-and-loop battery strap, 10 x 130 mm (iFlight 10-pack)",
+    Item("lipo_strap_10mm", "Battery strap, 10 x 180 mm (Lumenier Kevlar, 3-pack)",
          "electronics",
          (Offer("Amazon", "https://www.amazon.com/iFlight-Rubberized-Non-Slip-Fastening-"
                 "Quadcopter/dp/B07XL8NLLZ", "B07XL8NLLZ", pack_qty=10,
                 note="rubberized, metal buckle; price not seen"),),
          notes="Loops through the deck's two strap slots under the deck and over the "
-               "battery: 2 x (13.4 + 3) + 2 x 17 + 10 = ~77 mm of a 130 mm strap."),
-    Item("xt30_pigtail_pair", "XT30 male + female pigtail pair, 16 AWG, 10 cm", "electronics",
+               "battery: 2 x (13.4 + 3) + 2 x 17 + 10 = ~77 mm of a 180 mm strap (the "
+               "iFlight 130 mm one, the alternative, is long enough too)."),
+    Item("xt30_pigtail_pair", "XT30 pigtail, 16 AWG, 10 cm (mates the battery's XT30)",
+         "electronics",
          (Offer("Amazon", "https://www.amazon.com/Female-Connector-Extension-Silicone-Battery/"
                 "dp/B0D2V8ZN9V", "B0D2V8ZN9V", pack_qty=5, price_usd=8.99, note=SEARCHED),)),
     Item("dc_plug_5521_pigtail", "5.5 x 2.1 mm DC plug pigtail (male), 15 cm", "electronics",
@@ -108,15 +117,17 @@ register(
                 "Applications/dp/B00R1XZ09K", "B00R1XZ09K", pack_qty=5,
                 note="price not seen"),),
          notes="Switched battery to the driver board's DC jack."),
-    Item("foam_tape", "Double-sided foam mounting tape, 1 mm (3M VHB-style), 19 mm roll",
+    Item("foam_tape", "Double-sided foam tape, 3M VHB 5952 (1.14 mm), 1/2 in roll",
          "adhesive",
          (Offer("Amazon", "https://www.amazon.com/s?k=double+sided+foam+tape+1mm",
                 note="search; any 1 mm foam tape"),),
          notes="The charger and the protection board stick under the deck (0.3 mm modelled "
-               "gap; 1 mm tape lowers them 0.7 mm more, still clear of the servos)."),
+               "gap; the 1.14 mm tape lowers them about 0.84 mm more)."),
 )
 
-# The board's M2.5 nylon hardware: one kit (vendor + SKU shared, so the BOM buys one pack).
+# The board's M2.5 nylon hardware. Each piece is sourced singly first (hardware.sources: the
+# Essentra screw and nut at DigiKey, the Wurth standoff at Mouser); this kit, their shared
+# alternative (vendor + SKU shared), would be one pack for all three.
 _KIT = Offer("Amazon", "https://www.amazon.com/clp/B08XLHQVWM", "B08XLHQVWM", pack_qty=360,
              note="Heayzoki 360 pc M2 / M2.5 / M3 nylon standoff kit; price not seen")
 register(

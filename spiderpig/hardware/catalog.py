@@ -7,10 +7,12 @@ stable ``key``. Modules that model hardware (:mod:`construction`,
 resolves those keys against this catalog. The sheet helpers below read what
 the build needs from the sheet stock item.
 
-Offers list where to buy, best first. Prefer large vendors (manufacturer
-stores, McMaster-Carr, Amazon, Misumi, igus, RobotShop, Pololu, Adafruit,
-DigiKey). ``verified`` records whether the link was checked when it was
-added; unverified links are still listed, flagged in the BOM.
+Offers list where to buy, best first: a direct product page for the exact part, from
+the makers' own stores, McMaster-Carr, DigiKey, Mouser, Accu or MISUMI first, marketplaces
+(Amazon, eBay, AliExpress) last, only where nothing better sells the part
+(:mod:`hardware.sources` puts the default build's sourced pages first). ``verified``
+records whether the link was checked when it was added; unverified links are still
+listed, flagged in the BOM.
 """
 
 from __future__ import annotations

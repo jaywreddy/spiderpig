@@ -13,8 +13,9 @@ their own z.
 
 A **clearance gap** (:attr:`stack.Placed.gap`) is one of the thin sheets' thicknesses
 (:func:`gap_options`): a plate stack it splits (a crank stack) gets a filler plate cut
-from that sheet (:func:`filler_sheet`), and an axle that crosses it a stack of washers
-and shims to that thickness (:func:`washer_stack`).
+from that sheet (:func:`filler_sheet`), and an axle that crosses it a printed ring to that
+thickness (:func:`construction.pivots.common.gap_washers`; the round and M6 crankpins a
+stack of washers and shims, :func:`washer_stack`).
 """
 
 from __future__ import annotations

@@ -2,8 +2,8 @@
 
 Registries map a config key to a construction:
 
-* ``AXLES``: pillars and link pins (:mod:`construction.axle`; the metal-shaft
-  ones, ``rod`` / ``bolt`` / ``bearing`` / ``bushing``, in
+* ``AXLES``: pillars and link pins (:mod:`construction.axle`, the printed one; the
+  metal-shaft ones, the default ``standoff`` pillar and ``chicago`` pin among them, in
   :mod:`construction.pivots`)
 * ``CRANKS``: the crankshaft (:mod:`construction.crank`)
 
@@ -36,14 +36,16 @@ from spiderpig.construction.plates import FramePlates, LinkPlates
 from spiderpig.servos.mount import DriveGroup
 
 AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
-# ``keyed`` is the default (config.BuildConfig.crank, its keys pressed in, the chain screws
-# threadlocked); ``keyed_float`` the same with sliding keys and dry screws (6.25 deg of play
-# per interface); ``printed`` the crank held by clamp friction alone; both kept to compare
-# ``bolt`` (the default): hex standoff crankpins on an aluminium crank sheet; ``bolt_round``
+# ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on an aluminium
+# crank sheet; ``bolt_round``
 # the same with the friction-clamped round standoff (2026-10-04, kept to compare);
 # ``bolt_hub_screw`` the hex crank with a screw over the hub plate (before the assembly
 # audit of 2026-10-04: no assembly order drives it); ``bolt_unretained`` the hex crank
-# without the capped chain's pressed sleeve and the stub's thrust sleeve (before that audit)
+# without the capped chain's pressed sleeve and the stub's thrust sleeve (before that audit).
+# The printed cranks, kept to compare: ``keyed`` (printed segments keyed by pressed brass hex
+# standoffs, the chain screws threadlocked; the default before 2026-10-03), ``keyed_float``
+# the same with sliding keys and dry screws (6.25 deg of play per interface), ``printed``
+# held by clamp friction alone
 CRANKS = {c.key: c for c in (KeyedCrank(), KEYED_FLOAT, PrintedCrank(), BoltCrank(),
                              BOLT_ROUND, BOLT_HUB_SCREW, BOLT_UNRETAINED)}
 

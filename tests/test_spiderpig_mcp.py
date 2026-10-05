@@ -91,9 +91,12 @@ def fresh(tmp_path):
 
 @pytest.fixture(scope="module")
 def single(server, design) -> str:
-    """The Klann single's id, its plan the session's."""
+    """The Klann single's id, planned (the session's plan: the stage resources and the
+    reports read it whatever ran before, under xdist too)."""
     design("single", crank="keyed", pillar="printed")
-    return call(server, "resolve", spec=KLANN_SINGLE)["design"]
+    got = call(server, "resolve", spec=KLANN_SINGLE)["design"]
+    call(server, "plan", design=got)
+    return got
 
 
 # ---------------------------------------------------------------------------

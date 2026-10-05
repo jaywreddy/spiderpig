@@ -1,5 +1,5 @@
 """Pieces the metal-shaft pivots share: the claimed column, the rod with its push-on
-clips, laser-cut rings, printed sleeves and small hardware solids."""
+clips, printed rings and sleeves, and small hardware solids."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from spiderpig.hardware.catalog import get
 from spiderpig.shapes import Cut, disc, moved
 
 STEEL = "#4a4a4a"
-RING_COLOR = "#a9cbe0"       # laser-cut spacer rings (the same sheet as the links)
+RING_COLOR = "#a9cbe0"       # the laser-cut spacer rings' colour (rings are printed now)
 SLEEVE_COLOR = "#1baf7a"     # printed spacer sleeves (the printed axle's green)
 EPS = 1e-9
 
@@ -31,6 +31,10 @@ RETAINED = ("axle", "anchor")            # column roles the ends clamp between
 SPACER_ROLES = ("shoulder", "spacer", "neck")
 FLANGE_ROOM = ("shoulder", "spacer", "head", "cap")
 
+
+
+PRINT_MIN = 0.4      # thinnest printed spacer (two 0.2 mm layers); thinner is left as play
+PRINT_TOL = 0.1      # a printed spacer's height tolerance (mm), counted as a pin's play
 
 def xy_of(build: Build, group: AxleGroup) -> tuple[float, float]:
     xy = build.xy(group.axis.name)
@@ -288,7 +292,7 @@ HEAD_CLEARANCE = 0.25    # a retainer in a clearance gap stays this far off the 
 
 
 def ring_z(build: Build, k: int) -> tuple[float, float]:
-    """A laser-cut ring's z in layer ``k``: the default sheet's thickness on the layer's
+    """A spacer ring's z in layer ``k``: the default sheet's thickness on the layer's
     floor (a layer an aluminium plate thickens is a little taller than a ring)."""
     z0, z1 = build.z(k)
     return z0, min(z1, z0 + build.ctx.pitch)
@@ -297,14 +301,12 @@ def ring_z(build: Build, k: int) -> tuple[float, float]:
 def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaft_d: float,
                 host: str, stem: str, color: str = "#f2f2f2",
                 trim: dict[int, float] | None = None) -> float:
-    """The washers an axle carries through every clearance gap of its column (the plan's):
-    a PTFE washer and DIN 988 shims stacked to the gap (:func:`materials.washer_stack`),
-    one body per gap (its first washer's BOM line, the rest as extras). ``trim[k]``: the
-    height at the top of gap ``k`` something else of the axle's takes (a standoff
-    column's end shims), so its washers stack under it. Returns the play the stacks leave
-    in all (mm)."""
-    from spiderpig import hwflags
-    from spiderpig.materials import washer_od, washer_stack
+    """What an axle carries through every clearance gap of its column (the plan's): one
+    printed ring at the gap's height (unclamped: it only locates the links; under
+    :data:`PRINT_MIN` the gap is left as play). ``trim[k]``: the height at the top of gap
+    ``k`` something else of the axle's takes (a standoff column's end shims), so its ring
+    stops under it. Returns the play left in all (mm)."""
+    from spiderpig.materials import washer_od
 
     xy = xy_of(build, group)
     play = 0.0
@@ -312,30 +314,14 @@ def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaf
         g = build.plan.gaps.get(k, 0.0) - (trim or {}).get(k, 0.0)
         if g <= 1e-6:
             continue
-        if hwflags.on("printfill"):
-            # one printed ring at the gap's height (unclamped: it only locates the links)
-            if g < hwflags.PRINT_MIN - 1e-6:
-                play += g
-                continue
-            z0, _ = build.plan.gap_z(k)
-            od = washer_od(shaft_d)
-            part = bored(disc(xy, od / 2, z0, z0 + g), xy, shaft_d + 0.3, z0, z0 + g)
-            out.bodies.append(hardware(f"{stem}_gap{k}_spacer", part, host, fab="printed",
-                                       color=SLEEVE_COLOR))
-            continue
-        items, left = washer_stack(shaft_d, g)
-        play += left
-        if not items:
+        if g < PRINT_MIN - 1e-6:
+            play += g
             continue
         z0, _ = build.plan.gap_z(k)
-        t = sum(x[1] for x in items)
         od = washer_od(shaft_d)
-        part = bored(disc(xy, od / 2, z0, z0 + t), xy, shaft_d + 0.2, z0, z0 + t)
-        out.bodies.append(hardware(f"{stem}_gap{k}_washers", part, host, fab="purchased",
-                                   bom_key=items[0][0], color=color))
-        for key, tt in items[1:]:
-            out.extras.append(BomLine(key, 1, f"{group.name}: {tt:g} mm in the gap over "
-                                              f"layer {k}"))
+        part = bored(disc(xy, od / 2, z0, z0 + g), xy, shaft_d + 0.3, z0, z0 + g)
+        out.bodies.append(hardware(f"{stem}_gap{k}_spacer", part, host, fab="printed",
+                                   color=SLEEVE_COLOR))
     return play
 
 

@@ -2,7 +2,7 @@
 
 A 3 x 4 mm PTFE tube (Bowden tube, :data:`TUBE_KEY`) is cut into liners one sheet
 long, and each link gets one, pressed into a 4 mm hole cut ``seat_fit`` under the
-tube's outside diameter; the 3 mm rod, its laser-cut spacer rings and its Starlock
+tube's outside diameter; the 3 mm rod, its printed spacer rings and its Starlock
 clips are the ``rod`` construction's (:class:`construction.pivots.common.RodShaft`).
 Each link then turns PTFE on steel (mu about 0.05-0.1, no lubricant) instead of acrylic
 on steel, with the liner's ID tolerance as the bore clearance.
@@ -63,11 +63,11 @@ def ptfe_section(d: float = 3.0) -> Section:
 
 @dataclass(frozen=True)
 class PtfeAxle:
-    """3 mm rod, a PTFE liner pressed in every link, laser-cut rings, push-on clips."""
+    """3 mm rod, a PTFE liner pressed in every link, printed rings, push-on clips."""
 
     key: str = "ptfe"
     label: str = ("3 mm steel rod in PTFE tube liners (3 x 4 mm, one pressed in each link), "
-                  "laser-cut spacer rings, push-on clips")
+                  "printed spacer rings, push-on clips")
     running_fit: float = 0.2      # a ring's hole over the rod
     seat_fit: float = -0.05       # a link's hole over the tube's OD: a light press
     bore_clearance: float = 0.05  # the liner's bore over the rod (the tube's ID tolerance)

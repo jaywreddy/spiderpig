@@ -11,7 +11,8 @@ Everything is derived from the mechanism :func:`fabricate.fabricate` returns:
   argument), and add a filament line per filament (grams at 100 % infill from its catalog
   item's density, as a fraction of a spool);
 * ``mech.bom_extras`` adds purchases that aren't modelled as bodies
-  (washers, glue, shims, sheet stock); a line whose ``where`` ends in ``cut X
+  (glue, threadlocker, a shim stack's other rings, sheet stock); a line whose ``where`` ends
+  in ``cut X
   mm`` (the metal pivots' rod, :class:`construction.pivots.common.RodShaft`)
   also goes on the **cut list** (:func:`cut_list`): identical lengths
   grouped, the total, so the buyer knows how many rods to cut them from.
@@ -26,12 +27,19 @@ the first (preferred) offer. Lines whose preferred offer is the same product
 (same vendor and SKU, e.g. one screw assortment for several lengths) are
 bought once.
 
+**Shims** are ordered per thickness (:func:`split_shims`, the items of
+:mod:`hardware.shims`): a stack's rings from its height, thickest first. Every shim in
+the robot is clamped (under a horn screw's head, at a pillar's end, in a frame tie; the
+unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as DIN 433 washers
+(:data:`SHIM_AS`: two make 1 mm), the thinner steps as DIN 988 shims.
+
 What the constructions don't say but the parts do (:func:`fitting_lines`): each horn
-screw's DIN 988 shims as the stack under its head (``0.5 + 0.2 mm``, from the shim
-body's height), threadlocker 222 on the horn screws where they thread into a metal horn
-(metal to metal only: none in a plastic horn), and threadlocker 243 (or 263) on each
-pillar splice's stud (the user's decision of 2026-10-05: the splice hand-tightened at
-0.4 N·m, a dab of threadlocker on the stud, metal to metal, kept off the acrylic).
+screw's shims as the stack under its head (e.g. ``1 mm``, from the shim body's height),
+threadlocker 222 on the horn screws where they thread into a metal horn (metal to metal
+only: none in a plastic horn), and threadlocker 243 (or 263) on each splice's stud of a
+spliced pillar (``--pillar standoff_hand``: the splice hand-tightened at 0.4 N·m, a dab of
+threadlocker on the stud, metal to metal, kept off the acrylic; the default one-piece
+pillars have none).
 """
 
 from __future__ import annotations
@@ -613,7 +621,8 @@ SHIM_AS: dict[str, tuple[str, int]] = {
 is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
 2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
 family. Clamped shims only (a horn screw's head, a pillar splice or end, a frame tie): the
-unclamped ones are printed (hwflags printfill)."""
+unclamped ones are printed (construction.pivots.common.gap_washers, the Chicago pins' head
+spacers)."""
 
 
 def shim_key(family: str, t: float) -> str:
@@ -673,12 +682,10 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
 
 
 def stack_steps(family: str) -> tuple[float, ...]:
-    """The thicknesses the constructions stack a family's shims from: its catalog ``t``, or,
-    with the hardware study's ``oneshim`` (hwflags), the 1.0 mm shim and the thin step (0.5 mm:
-    a DIN 433 washer, :data:`construction.pivots.standoff.SHIM_STEP`)."""
-    from spiderpig import hwflags
-
-    if hwflags.on("oneshim") and family in ("shim_din988_3x6", "shim_din988_4x8"):
+    """The thicknesses the constructions stack a family's shims from: for the M3 and M4
+    families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
+    :data:`construction.pivots.standoff.SHIM_STEP`), else its catalog ``t``."""
+    if family in ("shim_din988_3x6", "shim_din988_4x8"):
         from spiderpig.construction.pivots.standoff import SHIM_STEP
 
         return (1.0, SHIM_STEP)

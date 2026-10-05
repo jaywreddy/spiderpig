@@ -189,12 +189,15 @@ class BuildConfig:
     #                                   linkage's (materials.default_link_sheets: a Klann
     #                                   variant's foot links in 6061)
     servo: str = servos.DEFAULT
-    pillar: str = "standoff"          # frame pivots: 6 mm round aluminium standoffs, spliced at
-    #                                   plate rings (construction.pivots.standoff; "printed":
+    pillar: str = "standoff"          # frame pivots: a 6 mm round standoff column, a stock
+    #                                   goBILDA one or else one steel standoff made to length,
+    #                                   never spliced (construction.pivots.standoff;
+    #                                   "standoff_hand" / "_bench" / "_m3": spliced; "printed":
     #                                   the printed stepped pillar, the default before 2026-10-03)
     pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
-    #                                   rings, PTFE washer and shims (construction.pivots.chicago;
-    #                                   "rod": 3 mm rod and push-on clips; "printed": snap pins)
+    #                                   printed rings and head spacers (construction.pivots.
+    #                                   chicago; "rod": 3 mm rod and push-on clips; "printed":
+    #                                   snap pins)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates

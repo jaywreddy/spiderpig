@@ -198,7 +198,7 @@ def test_check_plan_walk_on_the_default_quad(quad):
     # the bolt crank's single aluminium webs (2026-10-04): a one-layer run per crankpin, the
     # screw heads in clearance gaps (11 of them), 0.080 in frame plates: 14 layers, 77.164
     # mm (the two-plate stacks took 31 layers, 95.975 mm; the keyed crank's were 16)
-    assert pr.n_layers == 13            # 13 with the simplified hardware (hwflags, 2026-10-05)
+    assert pr.n_layers == 13            # 13 with the simplified hardware (2026-10-05)
     # the hex-standoff crankpins on 0.100 in 6061 webs (2026-10-04): 76.789 mm (77.164 on
     # the round standoff); 74.289 with the hub chain capped (no screw over the hub plate);
     # 73.789 since a hex pin's upper stack uses the air over its plate (2026-10-05); 73.464

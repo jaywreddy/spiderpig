@@ -1,34 +1,51 @@
-"""Catalog data for the bolt crank (:class:`construction.crank.BoltCrank`) and the standoff
-pillar (:mod:`construction.pivots.standoff`).
+"""Catalog data for the bolt crank (:class:`construction.crank.BoltCrank`), the standoff
+pillar (:mod:`construction.pivots.standoff`) and the frame ties (:mod:`construction.chassis`).
 
-Appended to the catalog from the end of :mod:`hardware.parts` (new items only). Searched
-2026-10-03; an offer is ``verified=True`` only where the page was fetched and showed the
-product and its price. Prices a search result quoted (not fetched) say so in their note.
+Appended to the catalog from the end of :mod:`hardware.parts` (new items only). First
+searched 2026-10-03; an offer is ``verified=True`` only where the page was fetched or
+rendered and showed the product. Prices a search result quoted (not fetched) say so in their
+note. The default build's items take their first offer from :mod:`hardware.sources`.
 
-* ``m6_hex_bolt_<L>``: ISO 4014 (DIN 931) M6 partially threaded hex bolts, class 8.8
-  zinc plated, every stock length the bolt crank may pick (:data:`M6_BOLT_LENGTHS`: 30-80
-  mm in 5 mm steps, FMW Fasteners' DIN 931 listing fetched 2026-10-04 with prices; M6 x 25
-  and shorter are sold only fully threaded, DIN 933, which would put the riders on thread).
-  Thread length ``b`` is 18 mm for every length here (ISO 4014: ``b = 2d + 6`` up to
-  125 mm), so the plain shank is ``L - 18`` (``lg``); the incomplete thread (ISO 3508
-  runout, at most 2.5 pitches) sits above that, which the crank keeps clear of its riders.
+What the default robot uses:
+
+* ``hex_standoff_m3_<L>``: M3 x 5.5 AF female-female steel hex standoffs, the hex crank's
+  crankpins and journals (:data:`HEX_M3_LENGTHS`; Wurth WA-SSTII at Mouser up to 40 mm),
+  with ``m3_washer_9021`` under each end's M3 button head.
+* ``pillar_shaft_6_m3_<L>``: MISUMI NETRF6, a 6 mm round 1018 steel standoff tapped M3 both
+  ends, made to any length from 8 to 300 mm in 0.1 mm steps: a pillar column no single
+  goBILDA length fills, in one piece (:data:`PILLAR_SHAFT_LENGTHS`).
+* ``m3_round_standoff_ff_<L>``: uxcell 6 mm OD round aluminium M3 female-female standoffs
+  (:data:`M3_ROUND_STANDOFF_LENGTHS`): the crank's journal stub, the frame ties' chains and
+  ``--pillar standoff_m3``'s segments; ``m3_set_screw_<L>`` (ISO 4026) joins the ties'
+  chains (and splices those segments).
+* ``gobilda_1501_<L>``: goBILDA 1501 series M4 x 0.7 round aluminium standoffs, 6 mm OD: a
+  pillar column one stock length fills, and the spliced pillars' segments; only the lengths
+  goBILDA sells (:data:`GOBILDA_LENGTHS`, their M4 standoff listing fetched 2026-10-04 with
+  each 4-pack's price: 3-12, then 14-60 mm in mostly 2 mm steps, plus 19, 27 and 43; 13, 15,
+  17, 21, 23, 25, 29, 31, 33, 35, 37, 39, 41, 45, 47, 49, 51, 53, 55, 57 and 59 mm don't
+  exist: the 33, 39 and 45 mm product pages answer 404).
+* ``m4_bhcs_<L>``, ``m4_washer``, ``m4_set_screw_<L>``: a goBILDA column's end screws (an
+  ISO 7380 button head and a DIN 125 washer, 3.0 mm together: one layer outside each frame
+  plate) and a spliced column's studs (ISO 4026 set screws threaded into both segments).
+
+Kept for the other crank constructions and the comparisons:
+
+* ``m6_hex_bolt_<L>``: ISO 4014 (DIN 931) M6 partially threaded hex bolts, class 8.8 zinc
+  plated, the acrylic crank's crankpins (:data:`M6_BOLT_LENGTHS`: 30-80 mm in 5 mm steps,
+  FMW Fasteners' DIN 931 listing fetched 2026-10-04 with prices; M6 x 25 and shorter are
+  sold only fully threaded, DIN 933, which would put the riders on thread). Thread length
+  ``b`` is 18 mm for every length here (ISO 4014: ``b = 2d + 6`` up to 125 mm), so the
+  plain shank is ``L - 18`` (``lg``); the incomplete thread (ISO 3508 runout, at most 2.5
+  pitches) sits above that, which the crank keeps clear of its riders.
 * ``m6_nylock``: DIN 985 M6 (10 AF, 6.0 mm; the nylon ring takes about 1.5 mm).
-* ``threadlocker_243``: medium strength, on each crank bolt's thread under its nut.
-* ``m3_round_standoff_ff_<L>``: 6 mm OD round aluminium M3 female-female standoffs, the
-  bolt crank's journal stub.
-* ``gobilda_1501_<L>``: goBILDA 1501 series M4 x 0.7 round aluminium standoffs, 6 mm OD,
-  the standoff pillar's segments: only the lengths goBILDA sells (:data:`GOBILDA_LENGTHS`,
-  their M4 standoff listing fetched 2026-10-04 with each 4-pack's price: 3-12, then 14-60
-  mm in mostly 2 mm steps, plus 19, 27 and 43; 13, 15, 17, 21, 23, 25, 29, 31, 33, 35, 37,
-  39, 41, 45, 47, 49, 51, 53, 55, 57 and 59 mm don't exist: the 33, 39 and 45 mm product
-  pages answer 404).
-* ``m4_bhcs_<L>``, ``m4_washer``, ``m4_set_screw_<L>``: the standoff pillar's end screws
-  (an ISO 7380 button head and a DIN 125 washer, 3.0 mm together: one layer outside each
-  frame plate) and the splices' studs (ISO 4026 set screws threaded into both segments).
+* ``threadlocker_243``: medium strength, on each crank bolt's thread under its nut (and on
+  a spliced pillar's studs).
 * ``ptfe_washer_6x12x0p5``: the crank study's thrust washer for the riders, listed but not
   built: in a 3 mm layer pitch the plates touch, so a 0.5 mm washer between a crank plate
-  and a rider has no room (the riders turn against the crank's acrylic plates and the bolt
-  head and nut faces, as every link on a pin turns against its neighbours).
+  and a rider has no room (the riders turn against the crank's plates and the bolt head and
+  nut faces, as every link on a pin turns against its neighbours).
+* ``arl_m3_<L>``: Hirosugi ARL-xxBE round M3 standoffs, registered from the M3 hardware
+  comparison of 2026-10-05; no construction uses them (MISUMI US doesn't sell them).
 """
 
 from __future__ import annotations
@@ -122,8 +139,8 @@ for _L in M3_ROUND_STANDOFF_LENGTHS:
         dims={"d": 3.0, "od": 6.0, "length": float(_L), "thread_depth": float(_L),
               "id": 2.5, "yield_mpa": 240.0},
         notes="uxcell (Harfington), black anodised aluminium, threaded through (coupling-nut "
-              "style): the bolt crank's journal stub and, on M3 (hwflags m3), the standoff "
-              "pillars' and frame ties' segments. The strength check takes a 6 x 2.5 tube (the "
+              "style): the bolt crank's journal stub, the frame ties' segments and those of "
+              "--pillar standoff_m3. The strength check takes a 6 x 2.5 tube (the "
               "M3 tap drill) at 240 MPa: the alloy is not stated (UNVERIFIED). No length "
               "tolerance stated: measure one against its gap.",
     ))
@@ -252,10 +269,10 @@ register(
 # each hex end sits in a hex pocket of an aluminium crank plate, an M3 button head and a
 # DIN 9021 washer screwed into each end retain the plates; the riders turn on a printed
 # sleeve over the hex (:class:`construction.crank.BoltCrank`, ``pin="hex"``). Lengths: the
-# 10, 12, 35, 40, 50 and 60 mm parts were seen on Accu's site in a 2026-10-04 web search
-# (product pages not fetched: Accu answers 403 to a fetch); the rest are the series every
-# hex-spacer vendor stocks (Accu, Vital Parts, McMaster), UNVERIFIED per length. No prices:
-# Accu quotes per pack size (estimate $0.30-0.60 each).
+# series every hex-spacer vendor stocks; 5-40 mm are Wurth's WA-SSTII parts at Mouser
+# (:data:`WURTH_HEX_LENGTHS`, datasheets fetched 2026-10-05; priced where the default designs
+# use them, :data:`WURTH_HEX_PRICES`), 50 and 60 mm Vital Parts' or Accu's pages
+# (:data:`LONG_HEX_PAGES`), 45 mm only in Accu's length selector.
 
 HEX_M3_SEEN: tuple[float, ...] = (10, 12, 35, 40, 50, 60)
 HEX_M3_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 16, 18, 20, 22, 25, 30, 35, 40, 45,
@@ -275,10 +292,11 @@ The 45, 50 and 60 mm parts are Accu's or Vital Parts' (A1 stainless). McMaster s
 standoffs only 5 and 6 mm across flats; Accu's series has no 22 mm."""
 
 
-WURTH_HEX_PRICES: dict[int, float] = {16: 0.51, 20: 0.48, 22: 0.49, 30: 0.53}
-"""USD each at Mouser, the lengths the default build (22, 30: Octopart) and the
-``klann_lego`` quad (16, 20: Findchips' Mouser rows, and Wurth's datasheets 970160321 /
-970200321, M3 tapped through, 5.5 AF, steel gloss zinc, status Valid; 2026-10-05) use."""
+WURTH_HEX_PRICES: dict[int, float] = {16: 0.51, 18: 0.63, 20: 0.48, 22: 0.49, 25: 0.57,
+                                      30: 0.53}
+"""USD each at Mouser (one piece), the lengths the default designs use: 22, 30 from Octopart;
+16, 20, 18, 25 from Findchips' Mouser rows (rendered 2026-10-05; Wurth's datasheets: M3,
+5.5 AF, steel gloss zinc, status Valid)."""
 LONG_HEX_PAGES: dict[int, tuple[Offer, ...]] = {
     50: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
                "female/7886-hff-m3-50-s55-a1", "HFF-M3-50-S55-A1", verified=True,
@@ -336,7 +354,11 @@ register(
 )
 
 
-# -- the M3 hardware study (SIMPLIFY.md, 2026-10-05) ------------------------------------
+# -- M3 standoffs and set screws (the M3 hardware comparison, 2026-10-05) -----------------
+#
+# ``arl_m3_<L>`` is registered but used by no construction: the frame ties and standoff_m3
+# take uxcell's round M3 standoffs (m3_round_standoff_ff_<L>, above), which are sold in the
+# US; Hirosugi's aren't through MISUMI US.
 #
 # ``arl_m3_<L>``: Hirosugi-Keiki ARL-3<L>BE, lead-free free-cutting aluminium (KS26), black
 # anodised, round 6 mm OD, M3 female both ends, L +/-0.1 (the maker's page and drawing

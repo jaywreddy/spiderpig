@@ -7,29 +7,33 @@ The barrel runs
 the pin's whole stack, so every link on the pin bears on the 4 mm barrel; the
 screw's head bottoms on the barrel's end, so the head-to-head distance is the
 barrel length whatever the screw is tightened to, and the links turn between the
-heads. Barrels come in fixed lengths (2 mm steps from 6 to 22 mm: the catalog's
-``CHICAGO_LENGTHS``) against a stack of 3 mm layers, so the construction picks
-the shortest barrel that clears the stack plus the PTFE washer plus ``min_play``
-and takes up the rest with **DIN 988 shim rings** (0.1 mm steps): above the top
-link up to what that end layer holds, the rest under the barrel's head. What is
-left is the column's axial play, between ``min_play`` and ``min_play`` plus one
-shim step, set by the barrel length rather than by feel.
+heads. Barrels come in fixed lengths (the catalog's ``CHICAGO_LENGTHS``: 1 mm steps
+from 4 to 16 mm, then 18, 20, 22, 23, 25, 28 and on to 80; on the Strider at most 23 mm,
+:data:`MAX_BARREL`) against a stack of 3 mm layers, so the construction picks the
+shortest barrel that clears the stack plus the top spacer's 0.5 mm plus ``min_play`` and
+takes up the rest with **one printed head spacer per end** (unclamped: the screw bottoms
+on the barrel, so a spacer only sets the column's axial play): above the top link up to
+what that end slot holds, the rest under the barrel's head. What is left is the column's
+axial play, between ``min_play`` and ``min_play`` plus 0.1 mm, set by the barrel length
+rather than by feel, plus the spacers' print tolerance (``PRINT_TOL``, counted as play).
+(Until 2026-10-05 a PTFE washer and DIN 988 shim rings did this; the shim catalog item
+still sets the spacers' 8 mm OD and 0.1 mm steps.)
 
 Pins only (``--pin chicago``): a pillar's head would stand outside a frame plate.
 
-**The default link pin** (``BuildConfig.pin == "chicago"``, with ``printed`` pillars),
-from the pivot review of 2026-10-03: ``rod``, ``chicago``, ``chicago_bushing`` and
-``bushing`` built and audited as robots on the Strider double (S) and **the demo Klann**
-(``--linkage klann``, K) quad at phases 0,0,180,180 (``spiderpig audit``; wobble from
-:mod:`construction.wobble`). The K columns are the demo's, not ``klann_lego``'s (the
-second test design: below the table). The jam safety factors are the strength check's
-of 2026-10-03 (``docs/audit/STRENGTH.md``): each design's own MuJoCo loads, jammed at
-the servo's 0.85 N·m torque limit, a two-link pin bending by ``F s / 2`` (the review's
-first figures, 2.27 / 1.57 for K, were at a family-wide 155 N and ``F s / 4``, half the
-bending; a first run with a soft foot pin, K 2.57 chicago / 1.62 rod, under-read the jam); the demo
-Klann's 9 mm-span pin E fails jammed with either pin (245 N), which is the demo's
-problem, not the pin's; the bushed rows were not re-run (the same barrel / rod, so the
-same SF):
+**The default link pin** (``BuildConfig.pin == "chicago"``), from the pivot review of
+2026-10-03 (with the printed pillars then; standoff pillars since): ``rod``, ``chicago``,
+``chicago_bushing`` and ``bushing`` built and audited as robots on the Strider double (S)
+and **the demo Klann** (``--linkage klann``, K) quad at phases 0,0,180,180 (``spiderpig
+audit``; wobble from :mod:`construction.wobble`). The K columns are the demo's, not
+``klann_lego``'s (the second test design: below the table). The jam safety factors are the
+strength check's of 2026-10-03 (``docs/audit/STRENGTH.md``): each design's own MuJoCo loads,
+jammed at the servo's 0.85 N·m torque limit, a two-link pin bending by ``F s / 2`` (the
+review's first figures, 2.27 / 1.57 for K, were at a family-wide 155 N and ``F s / 4``, half
+the bending; a first run with a soft foot pin, K 2.57 chicago / 1.62 rod, under-read the
+jam); the demo Klann's 9 mm-span pin E fails jammed with either pin (245 N), which is the
+demo's problem, not the pin's; the bushed rows were not re-run (the same barrel / rod, so
+the same SF):
 
 ==================  =======  =========================  =============  ===========  ======
 pin                 layers   pin tilt worst / mean       free tilt      jam SF       parts
@@ -71,18 +75,19 @@ the rod stays selectable (``--pin rod``). The rod in a PTFE tube liner (3 x 4 mm
 ruled out at the family-wide Klann loads (13-17 MPa on its 3 x 3 mm bore), is built
 since the per-design loads (``--pin ptfe``, :mod:`.ptfe`): fine walking, but jammed a
 warning on the Strider double (SF 1.79) and an error on ``klann_lego`` (0.52), where
-this screw holds 3.55 / 2.62, so it stays an option. The PTFE washers here carry only
-axial load: even a 155 N jam on a 36 mm^2 washer is 4.3 MPa, and the walking axial load
-is a small fraction of that.
+this screw holds 3.55 / 2.62, so it stays an option. The thrust face under the head (a
+PTFE washer at the review, a printed spacer since 2026-10-05) carries only axial load:
+even a 155 N jam on a 36 mm^2 face is 4.3 MPa, and the walking axial load is a small
+fraction of that.
 
-* ``chicago``: plain 4.2 mm running holes in the links, printed spacer sleeves
+* ``chicago``: plain 4.2 mm running holes in the links, printed spacer rings
   between (a 4.2 mm bore; an 8.5 mm laser-cut ring is under both services' smallest
-  part), a **PTFE washer** between the top link and the shims
-  under the screw's head (the head turns against the link).
+  part), a **printed head spacer** under the screw's head (and under the barrel's where
+  the take-up needs it): the head turns against it.
 * ``chicago_bushing``: an igus GFM-0405-03 flange bushing (4 x 5.5 x 3, flange
   9.5 x 0.75) pressed into every link but the lowest, printed sleeves between
-  (:mod:`.insert`); the flanges are the thrust faces, so no PTFE washer is needed
-  but the claim's spacers grow to the 9.5 mm flange.
+  (:mod:`.insert`); the flanges are the thrust faces, so the top spacer has no washer's
+  0.5 mm in it, but the claim's spacers grow to the 9.5 mm flange.
 
 **The lowest link is bonded to the barrel** (slow two-part epoxy in a 4.15 mm glue-fit
 hole: CA crazes acrylic; about 0.75 N·m, well over the screw's tightening torque), in
@@ -94,11 +99,11 @@ unscrewing the screw against it. The lowest link then turns with the barrel
 and every other link turns on it.
 
 Assembly, bottom up: glue each pin's barrel into its lowest link with its head
-underneath (the lower shims, if the BOM's cut list names any, under the head as a
-gluing jig); thread the rings (or sleeves) and links on in layer order as the
-layer plan says; at the pin's top link put on the PTFE washer and the listed
-shims, check with a feeler gauge that the barrel stands 0.05-0.15 mm proud of the
-top shim (a sheet thicker than nominal: drop a shim), put a drop of low-strength
+underneath (its lower printed spacer, where it has one, under the head as a gluing jig);
+thread the rings (or sleeves) and links on in layer order as the layer plan says; at the
+pin's top link put on its upper printed spacer, check with a feeler gauge that the barrel
+stands 0.05-0.15 mm proud of it (a sheet thicker than nominal: sand the spacer down or
+reprint it thinner), put a drop of low-strength
 threadlocker on the screw and drive it from above (Phillips or slot, the only
 tool) holding the lowest link until it bottoms. The links must turn freely. The
 tool comes in from above, the side assembly is open on, so no part placed later
@@ -139,10 +144,10 @@ PTFE_COLOR = "#f2f2f2"
 
 
 def _hw_tol() -> float:
-    """The printed head spacers' height tolerance, counted as play (``printfill``)."""
-    from spiderpig import hwflags
+    """The printed head spacers' height tolerance, counted as play."""
+    from spiderpig.construction.pivots.common import PRINT_TOL
 
-    return hwflags.PRINT_TOL if hwflags.on("printfill") else 0.0
+    return PRINT_TOL
 
 
 @dataclass(frozen=True)
@@ -165,8 +170,10 @@ class ChicagoShaft:
     :class:`construction.pivots.common.RodShaft` (``d``, ``check``, ``clip``, ``realize``)."""
 
     roles: ClassVar[tuple[str, ...]] = ("pin",)       # a pillar's head would leave the plates
-    washer_key: str | None = "ptfe_washer_4x8x0p5"   # under the screw's head (None: a flange is)
-    shim_key: str = "shim_din988_4x8"
+    washer_key: str | None = "ptfe_washer_4x8x0p5"   # the thrust face under the screw's head:
+    #                                  its 0.5 mm is part of the printed top spacer (None: a
+    #                                  flange is the face)
+    shim_key: str = "shim_din988_4x8"   # the take-up's steps and the spacers' OD (printed)
     lock_key: str = "threadlocker_222"
     min_play: float = 0.05          # least axial play left in the column
     max_length: float | None = None  # the longest barrel a pin may take (None: the longest
@@ -209,8 +216,7 @@ class ChicagoShaft:
         steps = [b - a for a, b in zip(CHICAGO_LENGTHS, CHICAGO_LENGTHS[1:], strict=False)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
-        if max(steps, default=0.0) > room + min(self.shim_steps) + EPS and not \
-                __import__("os").environ.get("SPIDERPIG_BARRELS"):
+        if max(steps, default=0.0) > room + min(self.shim_steps) + EPS:
             raise ConstructionError(f"a {max(steps):g} mm step between barrel lengths needs "
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
@@ -329,7 +335,7 @@ class ChicagoShaft:
 
     def realize(self, build: Build, group: AxleGroup, col: Column, out: Realized, *,
                 faces: dict[str, float] | None = None) -> Fit:
-        """The Chicago screw, its washer and shims, and the bonded lowest link's hole. An
+        """The Chicago screw, its printed head spacers, and the bonded lowest link's hole. An
         end in a clearance gap keeps :data:`common.HEAD_CLEARANCE` under the next layer."""
         from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
@@ -361,55 +367,24 @@ class ChicagoShaft:
         out.bodies.append(hardware(f"{stem}_screw", screw, host, fab="purchased",
                                    bom_key=chicago(f.length), color=STEEL))
         z = z_hi
-        from spiderpig import hwflags
-
-        if hwflags.on("printfill"):
-            # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
-            # the screw bottoms on the barrel, so they only set the column's axial play)
-            for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
-                if t <= EPS:
-                    continue
-                sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
-                           d + 0.2, z0, z0 + t)
-                out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
-                                           color=SLEEVE_COLOR))
-            out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
-                                      f"{group.name}: barrel into {host} (slow epoxy: CA "
-                                      "crazes acrylic)"))
-            out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
-            out.cut(host, Cut(xy, self.host_hole()))
-            out.notes.setdefault("chicago", {})[group.name] = {
-                "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
-                "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-                "play_mm": f.play, "item": chicago(f.length), "printed": True}
-            return f
-        if self.washer_key:
-            w = get(self.washer_key).dims
-            washer = bored(disc(xy, float(w["od"]) / 2, z, z + self.washer_t), xy,
-                           float(w["id"]), z, z + self.washer_t)
-            out.bodies.append(hardware(f"{stem}_washer", washer, host, fab="purchased",
-                                       bom_key=self.washer_key, color=PTFE_COLOR))
-            z += self.washer_t
-        od = float(get(self.shim_key).dims["od"])
-        for tag, z0, t, where in (("hi", z, f.shims_hi, "under the screw head"),
-                                  ("lo", zb, f.shims_lo, "under the barrel head")):
+        # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
+        # the screw bottoms on the barrel, so they only set the column's axial play)
+        for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
             if t <= EPS:
                 continue
-            # one body per stack of shims (its BOM line), the rest of the stack as an extra
-            shim = bored(disc(xy, od / 2, z0, z0 + t), xy, d + 0.1, z0, z0 + t)
-            out.bodies.append(hardware(f"{stem}_shims_{tag}", shim, host, fab="purchased",
-                                       bom_key=self.shim_key, color=STEEL))
-            if (n := self.shim_count(t)) > 1:
-                out.extras.append(BomLine(self.shim_key, n - 1,
-                                          f"{group.name}: {t:.1f} mm {where}"))
+            sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
+                       d + 0.2, z0, z0 + t)
+            out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
+                                       color=SLEEVE_COLOR))
         out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
-                                  f"{group.name}: barrel into {host} (slow epoxy: CA crazes "
-                                  "acrylic)"))
+                                  f"{group.name}: barrel into {host} (slow epoxy: CA "
+                                  "crazes acrylic)"))
         out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
         out.cut(host, Cut(xy, self.host_hole()))
         out.notes.setdefault("chicago", {})[group.name] = {
-            "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3), "shims_lo_mm": f.shims_lo,
-            "shims_hi_mm": f.shims_hi, "play_mm": f.play, "item": chicago(f.length)}
+            "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
+            "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
+            "play_mm": f.play, "item": chicago(f.length), "printed": True}
         return f
 
 
@@ -430,11 +405,11 @@ double and single plan as before). Not the Klann: the demo quad needs its longer
 
 @dataclass(frozen=True)
 class ChicagoAxle:
-    """M3 Chicago screw, laser-cut spacer rings, PTFE washer and shims (pins only)."""
+    """M3 Chicago screw, printed spacer rings and head spacers (pins only)."""
 
     key: str = "chicago"
-    label: str = ("M3 Chicago screw (4 mm barrel) through the stack, laser-cut rings, PTFE "
-                  "washer and shims; lowest link bonded (pins only)")
+    label: str = ("M3 Chicago screw (4 mm barrel) through the stack, printed rings and head "
+                  "spacers; lowest link bonded (pins only)")
     running_fit: float = 0.2      # a link's and a ring's hole over the 4 mm barrel
     shaft: ChicagoShaft = field(default_factory=ChicagoShaft)
 
