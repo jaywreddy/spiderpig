@@ -658,11 +658,12 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
         if offer is None or offer.price_usd is None:
             unpriced.append(item.name)
             continue
-        packs = max(1, -(-qty // max(offer.pack_qty, 1)))
-        cost = packs * offer.price_usd
+        packs, cost = offer.buy(qty)
         total += cost
         priced.append(f"{item.name}{f' x {qty}' if qty != 1 else ''} ${cost:.2f}"
-                      + (f" (a pack of {offer.pack_qty})" if offer.pack_qty > qty else ""))
+                      + (f" (a pack of {offer.pack_qty})" if offer.pack_qty > qty else "")
+                      + (f" (buying {packs}: the price break)"
+                         if offer.tiers and packs * offer.pack_qty > qty else ""))
     return round(total, 2), priced, unpriced
 
 

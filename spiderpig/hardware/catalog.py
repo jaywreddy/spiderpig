@@ -17,6 +17,7 @@ listed, flagged in the BOM.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 Category = str  # "fastener" | "nut" | "washer" | "bearing" | "bushing" | "dowel" | "spacer"
@@ -34,6 +35,24 @@ class Offer:
     price_usd: float | None = None    # per pack
     verified: bool = False
     note: str = ""
+    tiers: tuple[tuple[int, float], ...] = ()
+    """Quantity pricing (packs from, USD per pack), ascending; ``price_usd`` is the first."""
+
+    def buy(self, qty: float) -> tuple[int, float | None]:
+        """``(packs, usd)``: the cheapest way to have ``qty``, whole packs, buying more
+        where a price break makes that cheaper (five of a part at 10.86 cost less than
+        four at 14.97)."""
+        need = max(1, math.ceil(qty / max(self.pack_qty, 1) - 1e-9))
+        if self.price_usd is None:
+            return need, None
+        if not self.tiers:
+            return need, need * self.price_usd
+
+        def cost(n: int) -> float:
+            return n * max((t for t in self.tiers if t[0] <= n), default=(1, self.price_usd))[1]
+
+        n = min([need] + [m for m, _ in self.tiers if m > need], key=lambda n: (cost(n), n))
+        return n, round(cost(n), 2)
 
 
 @dataclass(frozen=True)

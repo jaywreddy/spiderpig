@@ -34,7 +34,6 @@ ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222
 def estimate(row) -> tuple[float, str] | None:
     """An unpriced line's cost from the first priced alternative offer of its item (whole
     packs of that offer): ``(usd, vendor)``, ``None`` when no offer has a price."""
-    import math
 
     try:
         offers = get(row.key).offers[1:]
@@ -42,7 +41,7 @@ def estimate(row) -> tuple[float, str] | None:
         return None
     for o in offers:
         if o.price_usd is not None:
-            return math.ceil(row.qty / max(o.pack_qty, 1) - 1e-9) * o.price_usd, o.vendor
+            return o.buy(row.qty)[1], o.vendor
     return None
 
 
