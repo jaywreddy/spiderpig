@@ -114,6 +114,7 @@ from spiderpig.shapes import Cut, disc, ring, union
 from spiderpig.stack import Unbuildable
 
 ALU = "#c8ccd0"
+SHIM_STEP_M3 = 0.2      # (the study) the thin DIN 988 shim stacked under an M3 column's end
 
 
 @dataclass(frozen=True)
@@ -307,14 +308,19 @@ class StandoffAxle:
         shims taking the rest up at its upper end), ``None`` when none is."""
         from spiderpig import hwflags
 
-        one = hwflags.on("oneshim") and self.size == "M3"
-        short = self.max_shims if shims and not one else self.max_short
-        # (oneshim, M3: no end shims, so a segment within -0.1..+0.2 of its gap; the plan's z
-        # thickens a clearance gap, whose printed ring takes it up, until stock lengths fit)
-        long = (float(__import__("os").environ.get("SPIDERPIG_PILLAR_LONG", "0.2"))
-                if hwflags.on("oneshim") and self.size == "M3" else self.max_long)
+        if hwflags.on("oneshim") and self.size == "M3":
+            # (the study's M3 standoff: 1 mm steps of stock, end shims in 0.2 mm steps only
+            # (DIN 988 3 x 6 x 0.2 and x 1.0), the column within +/-0.1 of its gap)
+            def resid(L: float) -> float:
+                d = gap - L
+                return abs(d - round(d / SHIM_STEP_M3) * SHIM_STEP_M3) if d > EPS else abs(d)
+            hi = self.max_shims if shims else self.max_short
+            ok = [L for L in self.lengths() if self.min_segment - EPS <= L
+                  and gap - hi - EPS <= L <= gap + 0.1 + EPS and resid(L) <= 0.1 + EPS]
+            return min(ok, key=lambda L: (round(resid(L), 3), abs(L - gap), L)) if ok else None
+        short = self.max_shims if shims else self.max_short
         ok = [L for L in self.lengths() if self.min_segment - EPS <= L
-              and gap - short - EPS <= L <= gap + long + EPS]
+              and gap - short - EPS <= L <= gap + self.max_long + EPS]
         return min(ok, key=lambda L: (abs(L - gap), L)) if ok else None
 
     def _splices(self, links, top: int, pitch: float, lo: int,
@@ -420,7 +426,12 @@ class StandoffAxle:
 
     def splice_shims(self, pitch: float) -> list[float]:
         """The DIN 988 shims that stack to a splice layer's thickness, thickest first."""
+        from spiderpig import hwflags
+
         steps = sorted((float(t) for t in get(self.shim_key).dims["t"]), reverse=True)
+        if hwflags.on("oneshim") and self.size == "M3":
+            steps = [1.0, SHIM_STEP_M3]
+            pitch = round(pitch / SHIM_STEP_M3) * SHIM_STEP_M3
         out, left = [], round(pitch, 3)
         for t in steps:
             k = int(left / t + 1e-6)
