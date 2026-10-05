@@ -168,13 +168,15 @@ def test_the_bom_lists_the_deck(built):
         assert rows[key].qty == 1, key
     for key in ("m25_nylon_standoff_mf_6", "m25_nylon_nut", "m25_nylon_screw_5"):
         assert rows[key].qty == 4
-    assert rows["m25_nylon_nut"].same_pack_as      # one kit
+    assert all(rows[k].sku for k in ("m25_nylon_standoff_mf_6", "m25_nylon_nut",
+                                     "m25_nylon_screw_5"))   # distributor parts, not a kit
     screw = mech.meta["deck"]["screw"]
     assert sum("deck_screw" in w for w in rows[screw].where) == 4
     assert sum("deck_insert" in w for w in rows["m3_heat_set_insert"].where) == 4
     for key in (*ELECTRONICS, "resistor_100k", "resistor_33k"):
         assert rows[key].url.startswith("https://")
-        assert rows[key].pack_price_usd
+        # the generic IP2326 module's listing shows no price to a fetch (hardware.sources)
+        assert rows[key].pack_price_usd or key == "ip2326_charger"
 
 
 def test_the_deck_plate_is_on_the_dxf_sheets(strider):

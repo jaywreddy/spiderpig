@@ -264,7 +264,8 @@ def test_materials_follow_fab(robot_gltf):
     assert by_node["L.torso"].name == "acrylic_frame"
     assert by_node["centre_plate0"].name == "acrylic_frame"
     assert by_node["L.pin_C_screw"].name == "metal"        # the default pin: a Chicago screw
-    assert by_node["L.pin_C_shims_hi"].name == "metal"
+    shims = [n for n in by_node if n.startswith("L.pin_") and "_shims" in n]
+    assert all(by_node[n].name == "metal" for n in shims)   # (few: barrels in 1 mm steps)
     standoff = next(n for n in by_node if n.startswith("L.pillar_") and "_standoff" in n)
     assert by_node[standoff].name == "metal"              # the default pillar: a standoff
     plate = next(n for n in by_node if n.startswith("L.crank_plate"))

@@ -1,7 +1,9 @@
 """``chicago`` / ``chicago_bushing``: an M3 Chicago screw (binding barrel and screw) as the pin.
 
-A Chicago screw is a **barrel** (a 4 mm tube with a flat 8 mm head, threaded M3
-inside) and a **screw** with the same head that threads into it. The barrel runs
+A Chicago screw is a **barrel** (a 4 mm tube with a flat 8.5 mm head, threaded M3
+inside) and a **screw** with the same head that threads into it (the parts bought,
+Harfington's 18-8 set: barrel head 1.9 mm tall, screw head 1.4; :mod:`hardware.sources`).
+The barrel runs
 the pin's whole stack, so every link on the pin bears on the 4 mm barrel; the
 screw's head bottoms on the barrel's end, so the head-to-head distance is the
 barrel length whatever the screw is tightened to, and the links turn between the

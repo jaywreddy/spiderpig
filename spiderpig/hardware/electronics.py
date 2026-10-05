@@ -38,10 +38,12 @@ register(
                 verified=True, note="65 x 30 mm, holes 2.75 mm on 58 x 23 mm; STEP model "
                 "and schematic under Resources")),
          dims={"length": 65.0, "width": 30.0, "pcb": 1.6, "hole_d": 2.75,
-               "hole_pitch": (58.0, 23.0), "jack_h": 11.0, "parts_h": 4.0, "mass_g": 21.0},
-         notes="DC jack (5.5 x 2.1 mm, 6-12 V) on one short end, USB-C on the other (from "
-               "the product photo); the 11 mm jack height and 4 mm for the rest (OLED, "
-               "headers) are assumptions until the STEP model is measured. M2.5 screws."),
+               "hole_pitch": (58.0, 23.0), "jack_h": 7.3, "parts_h": 5.7, "mass_g": 21.0},
+         notes="Measured on Waveshare's STEP model (2026-10-05): the DC jack (5.5 x 2.1 mm, "
+               "6-12 V) on one short end, 7.3 mm tall, 0.9 mm past the board's end; the servo "
+               "headers 5.7 mm tall across the board; the USB-C on a long edge 47-57 mm from "
+               "the jack end (not the other short end); the ESP32 module under the board, "
+               "2.3 mm down. M2.5 screws."),
     Item("lipo_2s_450", "2S 7.4 V 450 mAh LiPo, XT30 (Ovonic 80C long size)", "electronics",
          (Offer("Amazon", "https://www.amazon.com/OVONIC-Battery-Package-Including-Batteries/"
                 "dp/B0D3F6BRB9", "B0D3F6BRB9", pack_qty=4, price_usd=29.69,
@@ -72,16 +74,19 @@ register(
          dims={"length": 46.7, "width": 23.0, "height": 3.15, "mass_g": 3.0},
          notes="Over-discharge 2.9 V/cell, overcharge 4.25 V/cell. Mass unlisted (3 g "
                "assumed). The ESP32 also cuts the drives at 3.3 V/cell from the divider."),
-    Item("toggle_mts102", "MTS-102 mini toggle switch, SPDT, 6 mm bushing", "electronics",
+    Item("toggle_mts102", "Mini toggle switch, SPDT, 1/4-40 bushing (E-Switch 100SP1T1B1M1QEH)",
+         "electronics",
          (Offer("eBay", "https://www.ebay.com/itm/335475840428", pack_qty=20, price_usd=5.50,
                 note=SEARCHED),
           Offer("Amazon", "https://www.amazon.com/MTS-102-Toggle-Switch-Position-125VAC/dp/"
                 "B07TS92M8H", "B07TS92M8H", pack_qty=10, note="5-6 A at 125 V AC; price not "
                 "seen")),
-         dims={"bushing_d": 6.0, "hole_d": 6.4, "body": (13.0, 8.0, 10.0), "lugs": 6.0,
-               "bushing_h": 6.0, "lever_h": 10.0, "mass_g": 4.4},
-         notes="Body ~13 x 8 x 10 mm under the panel plus ~6 mm of solder lugs (typical "
-               "MTS-102; UNVERIFIED); 4.4 g from a 5-pack's 22 g."),
+         dims={"bushing_d": 6.35, "hole_d": 6.5, "body": (13.0, 8.0, 10.0), "lugs": 6.0,
+               "bushing_h": 8.89, "lever_h": 10.0, "mass_g": 4.4},
+         notes="E-Switch 100 series (datasheet, 2026-10-05): 1/4-40 bushing 6.35 x 8.89 mm, "
+               "body 12.70 x 6.86 x 8.89 mm plus 3.96 mm lugs (the model keeps the larger "
+               "13 x 8 x 10 + 6 envelope of the MTS-102 it replaced), 5 A at 28 VDC; 4.4 g "
+               "taken from an MTS-102."),
     Item("resistor_100k", "100 kOhm 1/4 W resistor (battery divider, top)", "electronics",
          (Offer("DigiKey", "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-100K"
                 "/245", "CFR-25JB-52-100K", price_usd=0.10, note=SEARCHED),)),
@@ -116,9 +121,10 @@ _KIT = Offer("Amazon", "https://www.amazon.com/clp/B08XLHQVWM", "B08XLHQVWM", pa
              note="Heayzoki 360 pc M2 / M2.5 / M3 nylon standoff kit; price not seen")
 register(
     Item("m25_nylon_standoff_mf_6", "M2.5 x 6 mm nylon hex standoff, male-female", "standoff",
-         (_KIT,), dims={"af": 5.0, "length": 6.0, "thread": 6.0, "mass_g": 0.15}),
+         (_KIT,), dims={"af": 5.0, "length": 6.0, "thread": 8.0,   # Wurth 971060155
+                        "mass_g": 0.15}),
     Item("m25_nylon_nut", "M2.5 nylon hex nut", "nut", (_KIT,),
          dims={"af": 5.0, "h": 2.0, "mass_g": 0.05}),
     Item("m25_nylon_screw_5", "M2.5 x 5 mm nylon pan head screw", "fastener", (_KIT,),
-         dims={"d": 2.5, "length": 5.0, "head_d": 4.5, "head_h": 1.7, "mass_g": 0.05}),
+         dims={"d": 2.5, "length": 5.0, "head_d": 5.0, "head_h": 1.7, "mass_g": 0.05}),  # ISO 7045
 )

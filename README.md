@@ -106,9 +106,17 @@ plan of one side and writes
 - `build/laser/strider_sheet_*.dxf` — every laser-cut part, kerf-compensated
   and packed on the sheet stock; outer contours as `LWPOLYLINE`, holes as
   `CIRCLE`, layer `CUT`, mm. `strider_sheet_parts.csv` says which part is where.
+- `build/laser/parts/` — the same laser-cut parts one DXF per different part
+  (`<service>_<sheet>/<part>_x<qty>.dxf`, mm, blue `CUT` layer) and `order.csv`:
+  what SendCutSend and Ponoko take (one part per file, the quantity at checkout).
 - `build/bom.csv` / `bom.md` / `bom.json` — what to buy (quantities, packs,
   vendor links, whether each link was checked, estimated cost), what to
-  print (filament) and what to cut (sheets).
+  print (filament) and what to cut (sheets); DIN 988 shims one line per thickness.
+- `build/ORDER.md` — the shopping list: a cart per vendor, each line the vendor's
+  product page for the exact part (`spiderpig/hardware/sources.py`: the default
+  build's every item, sourced 2026-10-05, McMaster-Carr / DigiKey / Mouser / Accu /
+  MISUMI / makers' stores first), the uploads per cutting service, the prints per
+  filament, and what to check before ordering.
 
 Useful flags: `--module {single,double,decker,quad}` (legs per side; default: the
 linkage's, `config.default_module`), `--side-only`, `--servo` (continuous-rotation servos only; default

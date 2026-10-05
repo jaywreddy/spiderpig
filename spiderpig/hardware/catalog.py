@@ -117,5 +117,9 @@ def _load() -> None:
     from spiderpig.hardware import (
         electronics,  # noqa: F401  (the deck's electronics)
         parts,  # noqa: F401  (registers fasteners, bearings, sheets, ...)
+        shims,  # noqa: F401  (each DIN 988 thickness, after parts)
+        sources,
     )
     from spiderpig.servos import catalog  # noqa: F401  (registers servos and horns)
+
+    sources.apply()     # each bought item's direct product page first (2026-10-05), last

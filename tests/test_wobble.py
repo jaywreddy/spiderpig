@@ -71,7 +71,7 @@ def test_stresses_of_a_two_link_pin():
 # -- the Chicago screw's fit ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("stack", "length"), [(6, 8), (9, 10), (12, 14), (15, 16), (18, 20)])
+@pytest.mark.parametrize(("stack", "length"), [(6, 7), (9, 10), (12, 13), (15, 16), (18, 20)])
 def test_chicago_fit_takes_up_the_barrel_length(stack, length):
     s = ChicagoShaft()
     f = s.fit(stack, 3.0)
@@ -85,11 +85,11 @@ def test_chicago_fit_takes_up_the_barrel_length(stack, length):
 
 
 def test_chicago_catalog_and_refusals():
-    assert CHICAGO_LENGTHS[:6] == (4, 5, 6, 8, 10, 12)
+    assert CHICAGO_LENGTHS[:6] == (4, 5, 6, 7, 8, 9)       # Harfington's black series
     for L in CHICAGO_LENGTHS:
         item = get(chicago(L))
         assert item.dims["barrel_d"] == 4.0
-        assert item.dims["head_d"] == 8.0
+        assert item.dims["head_d"] == 8.5          # Harfington's drawing (sources.py)
         assert item.offers
         assert all(o.url.startswith("https://") for o in item.offers)
     for key in ("ptfe_washer_4x8x0p5", "shim_din988_4x8", "threadlocker_222",
@@ -103,7 +103,7 @@ def test_chicago_catalog_and_refusals():
         with pytest.raises(ConstructionError, match="link pin only"):
             c.dims(ctx, True)
     with pytest.raises(ConstructionError, match="no stock Chicago screw"):
-        ChicagoShaft().fit(60.0, 3.0)
+        ChicagoShaft().fit(90.0, 3.0)        # past the longest (80 mm)
 
 
 # -- built on the Klann single ------------------------------------------------------------------

@@ -93,15 +93,17 @@ register(
                "torque of about 26 N·m on M10 steel nuts and bolts; on plated or stainless "
                "(passive) surfaces less: the strength check takes half, scaled to the M6 "
                "nut's thread (UNVERIFIED for this nut: a test of one joint settles it)."),
-    Item("ptfe_washer_6x12x0p5", "PTFE flat washer 6.4 x 12 x 0.5 mm", "washer",
+    Item("ptfe_washer_6x12x0p5", "PTFE flat washer 6.3 x 12 x 0.5 mm", "washer",
          (Offer("eBay", "https://www.ebay.com/itm/121716489464",
                 note=f"PTFE M6 6.4 x 12 mm, 50 pcs ({SEARCHED}; thickness not stated: 1.5-2 "
                      "mm is the common size, 0.5 mm is rare)"),),
-         dims={"id": 6.4, "od": 12.0, "t": 0.5},
+         dims={"id": 6.3, "od": 12.0, "t": 0.5},   # MISUMI TT-0612-05
          notes="Listed, not built: no room for it in a 3 mm layer pitch (module docstring)."),
 )
 
-M3_ROUND_STANDOFF_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 18, 20, 25, 30)
+M3_ROUND_STANDOFF_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 15, 18, 20, 25, 30)
+"""The 6 mm OD lengths uxcell sells threaded (hardware.sources, 2026-10-05): no threaded
+6 mm OD x 5 mm exists."""
 
 
 def m3_round_standoff(length: float) -> str:
@@ -217,19 +219,55 @@ def hex_standoff_m3(length: float) -> str:
     return f"hex_standoff_m3_{length:g}"
 
 
+WURTH_HEX_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 16, 18, 20, 22, 25, 30, 35, 40)
+"""The lengths of Wurth Elektronik's WA-SSTII M3 x 5.5 AF steel F-F spacer (part 970<LL>0321;
+each datasheet fetched 2026-10-05): tapped through up to 20 mm, from 22 mm a 7 mm blind thread
+at each end (an M3 x 6 button head through a crank plate and washer engages about 2.7 mm).
+The 45, 50 and 60 mm parts are Accu's or Vital Parts' (A1 stainless). McMaster sells M3 hex
+standoffs only 5 and 6 mm across flats; Accu's series has no 22 mm."""
+
+
+WURTH_HEX_PRICES: dict[int, float] = {22: 0.49, 30: 0.53}
+"""USD each at Mouser (Octopart, 2026-10-05), the lengths the default build uses."""
+LONG_HEX_PAGES: dict[int, tuple[Offer, ...]] = {
+    50: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
+               "female/7886-hff-m3-50-s55-a1", "HFF-M3-50-S55-A1", verified=True,
+               note="A1 stainless, 5.5 AF, 12 mm thread each end; GBP 2.02 (fetched "
+                    "2026-10-05)"),
+         Offer("Accu", "https://accu-components.com/us/threaded-standoffs/464767-HHTPS-M3-5-5-"
+               "50-S-Z", "HHTPS-M3-5.5-50-S-Z", price_usd=13.60, verified=True,
+               note="zinc-plated steel, made to order (123 days)")),
+    60: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
+               "female/7902-hff-m3-60-s55-a1", "HFF-M3-60-S55-A1", verified=True,
+               note="A1 stainless, 5.5 AF, 12 mm thread each end; GBP 2.18 (fetched "
+                    "2026-10-05)"),
+         Offer("Accu", "https://accu-components.com/us/threaded-standoffs/464770-HHTPS-M3-5-5-"
+               "60-S-Z", "HHTPS-M3-5.5-60-S-Z", price_usd=29.52, verified=True)),
+}
+
+
+def _hex_offers(length: float) -> tuple[Offer, ...]:
+    if length in WURTH_HEX_LENGTHS:
+        pn = f"970{int(length):02d}0321"
+        return (Offer("Mouser", f"https://www.mouser.com/ProductDetail/Wurth-Elektronik/{pn}",
+                      f"710-{pn}", price_usd=WURTH_HEX_PRICES.get(int(length)), verified=True,
+                      note=f"Wurth WA-SSTII {pn}, steel, gloss zinc, 5.5 AF (the maker's "
+                           "datasheet; price and stock via Octopart and FindChips, about "
+                           "USD 0.50 each; Mouser refuses a scripted fetch). DigiKey stocks "
+                           "the same part"),)
+    return LONG_HEX_PAGES.get(int(length), (
+        Offer("Accu", "https://accu-components.com/us/threaded-standoffs/",
+              f"HHTPS-M3-5.5-{length:g}-S-Z",
+              note="in the length selector of Accu's series (page not loaded): pick it there"),))
+
+
 for _L in HEX_M3_LENGTHS:
     register(Item(
         hex_standoff_m3(_L), f"M3 x {_L:g} mm hex standoff, 5.5 mm AF, female-female, "
-        "zinc-plated steel (tapped through)", "standoff",
-        (Offer("Accu", "https://accu-components.com/us/threaded-standoffs/",
-               f"HHTPS-M3-5.5-{_L:g}-S-Z",
-               note=("seen in a 2026-10-04 web search of Accu's site (page not fetched)"
-                     if _L in HEX_M3_SEEN else "a length of the standard series; not "
-                     "confirmed at Accu (UNVERIFIED)")),
-         Offer("McMaster-Carr", "https://www.mcmaster.com/products/standoffs/",
-               note="female threaded hex standoffs, M3, 5.5 mm hex, steel or brass; pick the "
-                    "length; part number not confirmed")),
-        dims={"d": 3.0, "af": 5.5, "length": float(_L), "thread_depth": float(_L),
+        f"zinc-plated steel ({'tapped through' if _L <= 20 else '7 mm thread each end'})",
+        "standoff", _hex_offers(_L),
+        dims={"d": 3.0, "af": 5.5, "length": float(_L),
+              "thread_depth": float(_L) if _L <= 20 else 7.0,
               "yield_mpa": 300.0},
         notes="Free-cutting steel (11SMnPb30 or similar), zinc plated; the strength check "
               "takes 300 MPa for its flats in bearing. A brass part (CuZn39Pb3, about 250 MPa) "

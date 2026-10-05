@@ -30,9 +30,13 @@ Construction
   battery's XT30 mates on top with an XT30 pigtail whose wires go down to the protection
   board; the switched supply comes back up to the board's DC jack).
 * **Driver board** on top, the front half (+x), on four M2.5 x 6 nylon standoffs (male
-  end through the deck, a nylon nut under it), its USB-C end 2 mm in from the front edge
-  and its DC jack facing the battery (the board's photo has them on opposite short
-  ends). **Battery** on top, the rear half, in a printed cradle (a 5 mm rim, 1.6 mm
+  end through the deck, a nylon nut under it), 2 mm in from the front edge with its DC jack
+  at the front, so the switched supply's right-angle plug goes in from the open front of
+  the bay (2026-10-05: the jack facing the battery left 4-5 mm for a plug that needs 12;
+  Waveshare's STEP model puts the jack on a short end and the USB-C on a long edge, 47-57
+  mm from the jack end, so the USB-C faces an inner plate about 21 mm away: flash the board
+  before the deck goes in, then over the air, or with a right-angle USB-C cable).
+  **Battery** on top, the rear half, in a printed cradle (a 5 mm rim, 1.6 mm
   walls, open at the inner end for the leads; screwed to the deck through two ears by M3
   button heads from above into M3 nuts under the deck, no glue: the user's decision of
   2026-10-05) and held by a 10 mm hook-and-loop strap through the two slots.
@@ -41,9 +45,10 @@ Construction
   **protection board** under the
   deck behind the servos; both on foam tape. **Toggle switch** through the deck at the
   rear, lever up, its body hanging below the deck behind the chassis.
-* Every port is reachable with the robot assembled: the board's and the charger's USB-C
-  face forward out of the open front of the bay between the plates, the switch lever
-  points up out of its open top. The divider (100k / 33k, battery + to an ADC pin) is
+* Every port is reachable with the robot assembled: the board's DC jack and the charger's
+  USB-C face forward out of the open front of the bay between the plates, the switch lever
+  points up out of its open top; the board's USB-C faces an inner plate (above). The
+  divider (100k / 33k, battery + to an ADC pin) is
   wired in the harness: BOM only.
 * Length: 136 mm is the board (65) and the battery's cradle (65.7) end to end. It sits
   inside the Strider's inner plates (x +-78.5) but overhangs the Klann quad's (+-61.9)
@@ -117,6 +122,7 @@ CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm c
 RAIL_SCREW_L = 10.0      # through the 3.175 mm plate, past the nut trap
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
+JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
 BATTERY_X1 = -4.0        # the cradle's inner end (inside), from x_c
 BATTERY_FIT = 0.3        # cradle clearance round the battery (each way)
 CRADLE_WALL, CRADLE_H, CRADLE_GAP = 1.6, 5.0, 10.0
@@ -518,8 +524,10 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     x0, x1, y0, y1, bhw = board["x0"], board["x1"], board["y0"], board["y1"], board["half_w"]
     pcb = _box(x0, x1, y0, y1, -bhw, bhw) - union(
         [_cyl_y(x, z, bd["hole_d"] / 2, y0 - 1, y1 + 1) for x, z in board["holes"]])
-    jack = _box(x0 + 1.0, x0 + 15.0, y1, y1 + bd["jack_h"], -4.5, 4.5)       # DC jack, inner end
-    parts = _box(x0 + 15.0, x1 - 0.5, y1, y1 + bd["parts_h"], -9.0, 9.0)       # OLED, USB-C, ...
+    # its DC jack at the front end (0.9 mm past the board, a right-angle plug out of the open
+    # front of the bay), the headers and the rest behind it (Waveshare's STEP model)
+    jack = _box(x1 - 14.0, x1 + JACK_PROUD, y1, y1 + bd["jack_h"], -4.5, 4.5)
+    parts = _box(x0 + 0.5, x1 - 14.0, y1, y1 + bd["parts_h"], -9.0, 9.0)   # clear of the holes
     bodies.append(Body(name="deck_board", part=union([pcb, jack, parts]), rigid_with=host["L"],
                        fab="purchased", bom_key="esp32_servo_driver", color=PCB_COLOR))
 
