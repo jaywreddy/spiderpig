@@ -75,7 +75,7 @@ from spiderpig.failure import Failure, Recommendation, apply_patch, merge_patch
 from spiderpig.hardware.bom import bom_from_mechanism, group_made
 from spiderpig.hardware.catalog import sheet_name, sheet_size, sheet_thickness
 from spiderpig.hardware.mass import filament_density, material_of, part_props
-from spiderpig.layout import DEFAULT_KERF, save_sheets, sheet_lines
+from spiderpig.layout import save_sheets, sheet_lines
 from spiderpig.materials import link_sheets
 from spiderpig.spec import (
     ALLOWANCE,
@@ -547,7 +547,7 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
     a stored design never depends on a default that later moves)."""
     design = config.design_json()
     fit = {k: getattr(config.params, k) for k in config.params.__dataclass_fields__}
-    fit["kerf_mm"] = spec.fit.kerf_mm if spec.fit.kerf_mm is not None else DEFAULT_KERF
+    fit["kerf_mm"] = spec.fit.kerf_mm     # None: each sheet's service kerf (layout.sheet_kerf)
     fit["sheet_size_mm"] = list(spec.fit.sheet_size_mm or sheet_size(config.sheet))
     targets = {s: {} for s in SECTIONS}
     for f, t in spec.targets():
@@ -1828,7 +1828,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     extras = list(mech.bom_extras)
     bom_summary = None
     size = tuple(spec.fit.sheet_size_mm) if spec.fit.sheet_size_mm else None
-    kerf = spec.fit.kerf_mm if spec.fit.kerf_mm is not None else DEFAULT_KERF
+    kerf = spec.fit.kerf_mm               # None: each sheet's service kerf (layout.sheet_kerf)
     if "dxf" in formats:
         try:
             with _timed("dxf"):

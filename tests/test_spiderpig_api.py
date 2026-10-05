@@ -144,7 +144,7 @@ def test_resolve_infers_the_rest_and_the_id_is_stable_with_defaults_dropped():
     assert r["linkage"]["params"]["OA"] == 60.0
     assert r["materials"]["pitch_mm"] == 3.0
     assert r["fit"]["link_radius"] == 6.0
-    assert r["fit"]["kerf_mm"] == 0.15
+    assert r["fit"]["kerf_mm"] is None          # each sheet's service kerf (layout.sheet_kerf)
     assert r["outputs"] == ["step", "stl", "print", "dxf", "bom"]
     assert a.engine_version.startswith("0.1.0+")
     c = api.resolve({**KLANN_QUAD, "linkage": {"key": "klann", "params": {"OA": 50}}})
@@ -444,12 +444,15 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     rep = api.export(d, out_dir=tmp_path)
     assert rep.ok
     names = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
-    # a set per sheet, each part on its thinnest (2026-10-04): the links in acrylic, the
+    # a set per service and sheet, each part on its thinnest (2026-10-04): the links in
+    # acrylic (Ponoko), the
     # frame plates 0.080 in 5052, the crank's webs 0.100 in 6061 (the hex crankpins'
     # pockets), the foot link 6061
-    assert {"klann.step", "laser/klann_sheet_acrylic_3mm_0.dxf",
-            "laser/klann_sheet_al5052_2mm_0.dxf", "laser/klann_sheet_al6061_2p5mm_0.dxf",
-            "laser/klann_sheet_al6061_3p2mm_0.dxf", "laser/klann_sheet_parts.csv", "bom.csv",
+    assert {"klann.step", "laser/klann_sheet_Ponoko_acrylic_3mm_0.dxf",
+            "laser/klann_sheet_SendCutSend_al5052_2mm_0.dxf",
+            "laser/klann_sheet_SendCutSend_al6061_2p5mm_0.dxf",
+            "laser/klann_sheet_SendCutSend_al6061_3p2mm_0.dxf", "laser/klann_sheet_parts.csv",
+            "bom.csv",
             "bom.md", "bom.json", "manifest.json"} <= names
     manifest = json.loads((tmp_path / "manifest.json").read_text())
     assert manifest["design"] == d.id

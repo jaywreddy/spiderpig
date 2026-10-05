@@ -16,7 +16,16 @@ item carries (:mod:`hardware.sheet_catalog`, read through :func:`materials.sheet
 * **inside corners**: a pocket's corners come out ``corner_r`` round (SendCutSend in
   aluminium: 0.8 mm), so a pocket that must take a square corner (a hex pocket for a nut or
   a bolt head) needs corner reliefs at least that round: a pocket of straight edges only,
-  or with relief arcs tighter than that, is reported.
+  or with relief arcs tighter than that, is reported;
+* **the DXF matches the solid** (``dxf``, an error): each part's contours as
+  :func:`layout.save_sheets` emits them (exact lines and arcs), read back and measured
+  against the solid's section (:func:`layout.fidelity`): no farther off than
+  :data:`DXF_DEVIATION` mm, the area within :data:`DXF_AREA_REL`; ``check``'s ``dxf``
+  holds each part's figures.
+
+Every distance is to the part's outer edge, another hole, and every pocket or window
+(a non-circular cut-out: ``web``); the hole-to-edge one is exact (BRepExtrema), as the
+cut-outs' are.
 
 Levels (the user's rule of 2026-10-04, the design-review limits): a hole closer to an edge
 or another hole than **1 x the thickness** in metal is an **error** (the audit fails), under
@@ -32,26 +41,28 @@ from __future__ import annotations
 
 import math
 
-from build123d import GeomType, Plane, section
+from build123d import GeomType, Vector
 
-from spiderpig.layout import _lay_flat, _wire_is_circle, laser_bodies, sheet_key
+from spiderpig.layout import (
+    CHORD_TOL,
+    _wire_is_circle,
+    fidelity,
+    laser_bodies,
+    section_of,
+    sheet_key,
+)
 from spiderpig.materials import sheet
 
 TOL = 1e-3
 EDGE_ERROR_T = 1.0      # hole-to-edge under this many thicknesses in metal: an error
 
 
-def _sample(wire, n: int = 96) -> list[tuple[float, float]]:
-    import numpy as np
-
-    return [(v.X, v.Y) for v in (wire.position_at(u) for u in np.linspace(0, 1, n,
-                                                                            endpoint=False))]
+DXF_DEVIATION = CHORD_TOL + 0.005   # mm: the emitted contour off the solid's section, at most
+DXF_AREA_REL = 1e-3                  # the emitted area off the section's, at most (relative)
 
 
 def _profile(body):
-    part = _lay_flat(body.part)
-    bb = part.bounding_box()
-    return section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+    return section_of(body)
 
 
 def _pocket_web(outer, holes, pockets) -> tuple[float, str] | None:
@@ -60,8 +71,6 @@ def _pocket_web(outer, holes, pockets) -> tuple[float, str] | None:
     distances, BRepExtrema), as ``(mm, what it is to)``; ``None`` without pockets. The
     hole rule above sees round holes only, so a relief beside a hole or another relief was
     never measured (the centre and frame plates' audit of 2026-10-04)."""
-    from build123d import Vector
-
     worst: tuple[float, str] | None = None
 
     def take(d: float, what: str) -> None:
@@ -79,15 +88,34 @@ def _pocket_web(outer, holes, pockets) -> tuple[float, str] | None:
     return worst
 
 
-def part_issues(body, key: str) -> list[dict]:
+def dxf_issue(body, fid: dict) -> dict | None:
+    """The ``dxf`` rule: the part's emitted contours (:func:`layout.fidelity`) off its
+    solid's section by more than :data:`DXF_DEVIATION` mm or :data:`DXF_AREA_REL` of the
+    area (an error: the file wouldn't cut the part the model checked); ``None``: within."""
+    dev, rel = fid["deviation_mm"], fid["area_rel"]
+    if dev <= DXF_DEVIATION and rel <= DXF_AREA_REL:
+        return None
+    return {"rule": "dxf", "part": body.name, "level": "error",
+            "value": round(dev, 4), "limit": DXF_DEVIATION,
+            "detail": f"the DXF contours are {dev:.3f} mm off the solid's section, their area "
+                      f"{fid['dxf_area_mm2']:.2f} mm^2 against {fid['area_mm2']:.2f} "
+                      f"({100 * rel:.2f} %)",
+            "why": "the cut file is what the service cuts: a contour off the model cuts a "
+                   "part the checks never saw",
+            "fix": "emit the contour's lines and arcs exactly (layout.wire_vertices), or "
+                   f"flatten its curves within {CHORD_TOL:g} mm through their endpoints"}
+
+
+def part_issues(body, key: str, sketch=None) -> list[dict]:
     """The rules ``body`` breaks on sheet ``key``: ``{"rule", "part", "value", "limit",
-    "detail"}`` each (empty: none)."""
+    "detail"}`` each (empty: none). ``sketch``: its section when the caller has it."""
     sh = sheet(key)
     out: list[dict] = []
-    try:
-        sketch = _profile(body)
-    except Exception:       # noqa: BLE001 - a part that won't section: nothing to check here
-        return out
+    if sketch is None:
+        try:
+            sketch = _profile(body)
+        except Exception:   # noqa: BLE001 - a part that won't section: nothing to check here
+            return out
     wires = list(sketch.wires())
     if not wires:
         return out
@@ -118,7 +146,6 @@ def part_issues(body, key: str) -> list[dict]:
             holes.append(c)
         else:
             pockets.append(wire)
-    edge_pts = _sample(outer, 192)
     worst_hole = min(holes, key=lambda c: c[1], default=None)
     if worst_hole is not None and 2 * worst_hole[1] < sh.min_hole - TOL:
         out.append({"rule": "min_hole", "part": body.name, "value": round(2 * worst_hole[1], 2),
@@ -133,8 +160,11 @@ def part_issues(body, key: str) -> list[dict]:
     need = sh.min_edge
     if need > 0 and holes:
         worst = None
+        z = outer.bounding_box().center().Z
         for i, ((cx, cy), r) in enumerate(holes):
-            d = min(math.hypot(x - cx, y - cy) for x, y in edge_pts) - r
+            # exact (BRepExtrema) to the outline; it was 192 points round it, which
+            # overstates the distance where a hole sits by a sampled arc's chord
+            d = outer.distance_to(Vector(cx, cy, z)) - r
             for (qx, qy), rq in holes[i + 1:]:
                 d = min(d, math.hypot(qx - cx, qy - cy) - r - rq)
             if worst is None or d < worst[0]:
@@ -197,17 +227,35 @@ def part_issues(body, key: str) -> list[dict]:
     return out
 
 
-def check(mech, default: str) -> dict:
+def check(mech, default: str, dxf: bool = True) -> dict:
     """Every laser-cut part of ``mech`` against its sheet's rules: ``{"parts": n, "by_rule":
-    {rule: count}, "issues": [...], "sheets": {key: label}}`` (the issues worst first per
-    rule: the least edge, the smallest hole or part)."""
+    {rule: count}, "issues": [...], "sheets": {key: label}, "kerf": {key: mm}, "dxf":
+    {part: fidelity}, "dxf_worst_mm"}`` (the issues worst first per rule: the least edge,
+    the smallest hole or part, the DXF farthest off). ``dxf``: also read each part's
+    emitted contours back against its solid (:func:`layout.fidelity`, the ``dxf`` rule)."""
+    from spiderpig.layout import sheet_kerf
+
     issues: list[dict] = []
     sheets: dict[str, str] = {}
+    kerf: dict[str, float] = {}
+    fids: dict[str, dict] = {}
     bodies = laser_bodies(mech)
     for b in bodies:
         key = sheet_key(b, default)
         sheets.setdefault(key, sheet(key).label)
-        for i in part_issues(b, key):
+        kerf.setdefault(key, sheet_kerf(key))
+        try:
+            sketch = _profile(b)
+        except Exception:   # noqa: BLE001 - a part that won't section: nothing to check here
+            continue
+        found = part_issues(b, key, sketch)
+        if dxf:
+            fid = fidelity(sketch)
+            fids[b.name] = {k: (round(v, 5) if isinstance(v, float) else v)
+                            for k, v in fid.items()}
+            if (bad := dxf_issue(b, fid)) is not None:
+                found.append(bad)
+        for i in found:
             issues.append(dict(i, sheet=key))
     by_rule: dict[str, int] = {}
     errors: dict[str, int] = {}
@@ -215,14 +263,18 @@ def check(mech, default: str) -> dict:
         by_rule[i["rule"]] = by_rule.get(i["rule"], 0) + 1
         if i.get("level") == "error":
             errors[i["rule"]] = errors.get(i["rule"], 0) + 1
-    issues.sort(key=lambda i: (i["rule"], i["value"] if isinstance(i["value"], (int, float))
-                               else min(i["value"])))
+    def worst_first(i: dict):
+        v = i["value"] if isinstance(i["value"], (int, float)) else min(i["value"])
+        return (i["rule"], -v if i["rule"] == "dxf" else v)
+
+    issues.sort(key=worst_first)
     return {"parts": len(bodies), "by_rule": by_rule, "errors": errors, "issues": issues,
-            "sheets": sheets}
+            "sheets": sheets, "kerf": kerf, "dxf": fids,
+            "dxf_worst_mm": max((f["deviation_mm"] for f in fids.values()), default=None)}
 
 
 RULES = {"min_hole": "minimum hole", "edge": "hole-to-edge distance",
-         "web": "web round a cut-out",
+         "web": "web round a cut-out", "dxf": "DXF matches the solid",
          "min_part": "minimum part size", "corner": "inside corner radius"}
 """Each cut rule's name in a message."""
 
@@ -258,5 +310,6 @@ def summary(m: dict) -> dict:
             warnings[i["rule"]] = warnings.get(i["rule"], 0) + 1
     return {"parts": m["parts"], "ok": not m.get("errors"),
             "errors": dict(m.get("errors") or {}), "warnings": warnings,
-            "sheets": dict(m.get("sheets") or {}),
+            "sheets": dict(m.get("sheets") or {}), "kerf": dict(m.get("kerf") or {}),
+            "dxf_worst_mm": m.get("dxf_worst_mm"),
             "messages": messages(m, "error") + messages(m, "warning")}

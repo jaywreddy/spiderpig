@@ -173,7 +173,10 @@ layering that doesn't build there is a dead end for the search (`PlanReject`).
 passes: 5052 frame, 6061 crank, below), `link_sheets` (a Klann variant's foot link in 6061, and `klann_lego`'s
 crank rider b1, the user's decision of 2026-10-04: `materials.LINK_SHEETS`); `Body.sheet`
 carries it to the mass, the BOM (a line per sheet), the DXFs (`layout.save_sheets`: a set
-per sheet) and the cut-rule review (`spiderpig/manufacture.py`: SendCutSend / Ponoko minimum
+per service and sheet, `<prefix>_<service>_<sheet>_<i>.dxf`; exact lines and arcs, bulged
+LWPOLYLINEs, other curves within `CHORD_TOL` 0.02 mm; kerf per sheet, `layout.sheet_kerf`:
+the item's `kerf_mm`, 0 at SendCutSend, which compensates itself, 0.2 at Ponoko; `--kerf` /
+`fit.kerf_mm` overrides every sheet, since 2026-10-05) and the cut-rule review (`spiderpig/manufacture.py`: SendCutSend / Ponoko minimum
 hole, edge distance, the web round every non-circular cut-out (`web`: to the edge, a hole or
 another cut-out, since 2026-10-04), minimum part, inside-corner radius; levels below; every issue with its
 `why` and `fix`, `manufacture.messages` / `summary`): the audit's problems and warnings, a
@@ -267,7 +270,9 @@ plate (`DriveGroup.claims`, `chassis_screws`; the tie and rail positions are kno
 plan: `chassis.tie_points_ctx`, `deck.rail_screw_points`). The servo uses all four front
 screws when the crank's hub sits a layer under the horn (`horn_layers`). Feet
 (`construction/plates.py` `foot_sock`): a printed TPU 95A sock round each foot link's toe,
-in its own layer, snapped into two notches; the sim's floor friction is 0.65
+in its own layer, snapped into two notches (the BOM prints them in TPU 95A,
+`hardware.bom.part_filament`: a filament line per filament; a printed part pressed on metal,
+the capped crankpin's sleeve, in PETG); the sim's floor friction is 0.65
 (`SimParams.friction`). Frame plates get a chord between pillars next to each other about
 O (`plates.chords`, also in the underside). The audit's strength check rates every link
 plate (`strength.link_rows`: net section at the most loaded hole, plus bending for a link of
@@ -390,7 +395,7 @@ hatchling; `uv sync` installs it editable, `spiderpig` is its console script).
 | `spiderpig/shapes.py` | build123d primitives (disc, pill, plate, cuts incl. D-holes and rectangles) |
 | `spiderpig/mesh.py` | `tessellate(part)` / `tessellate_many(parts)`: OCCT's incremental mesh of each part, skipping (and counting) faces the mesher leaves without a triangulation (the XL330's model has three); the triangles read out by OCCT's glTF writer (`RWGltf_CafWriter`, each part in a compound of its own) instead of node by node, to the same arrays (a fallback is logged); the bake's `_tessellate` and the MJCF's hulls both use it, so a purchased model never fails either. `export_stl`: build123d's, meshing once |
 | `spiderpig/workers.py` | `submit(fn, *args)`: a module-level function of the package in a fresh `python -c` process (OCP holds the GIL; a fork after OCCT's thread pool deadlocks; multiprocessing's spawn re-imports the caller's `__main__`); `dump_shape` / `load_shape` (BinTools through a file). The export's glb/MJCF and grouping and verify's contract angles run in workers; `SPIDERPIG_WORKERS=0` keeps everything in-process. `docs/agentlib/PERF_EXPORT.md` has the measurements |
-| `spiderpig/layout.py` | DXF sheets of every laser-cut body, kerf-compensated; errors instead of dropping parts |
+| `spiderpig/layout.py` | DXF sheets of every laser-cut body, exact lines and arcs, kerf-compensated per sheet's service, a set per service; `fidelity` reads a part's contours back against its solid (the cut rules' `dxf` error); errors instead of dropping parts |
 | `spiderpig/cli.py` | the one entry point, the `spiderpig` console script (`python -m spiderpig.cli` from a checkout): `build` (`spiderpig/build.py`: STEP/STL/DXF/BOM), `bake` (`spiderpig/bake.py`), `audit`, `tune`, `sim`, `export`, `report` (`spiderpig/tools/`), `explain`, `mcp`, `view` (each a module's `main(argv)`); the `mise` tasks run it. It imports nothing of the engine until a command runs |
 | `spiderpig/view.py` | `spiderpig view <design> [--store] [--port] [--open]`, or `spiderpig view --linkage ... --pin bolt` (the build options: `resolve_args` turns them into a design in the store through `api.spec_of`): the store as the MCP picks it, `api.export(design, ["glb"])` (cached), the server below on a free port, the URL `/?design=<id>`; `start_background()` runs it as a child process (`--serve-only`) for the MCP `view` tool |
 | `spiderpig/tools/` | `audit.py` (`mise run audit`: plan re-check, contract, OCCT clashes, DXF, BOM, snap strain, link tilt, and the joints' strength (`spiderpig/strength.py`: every pin's, pillar's and the crank's safety factor at the design's own MuJoCo loads, `spiderpig/sim/loads.py`, walking p99 and jammed at the servo's 45 % torque limit (a foot pinned stiffly, 24 angles, every case must stall: the loads note and audit warn otherwise), cached per design in the store's `pin_loads/`; `--pin-load WALK,JAM` overrides, `--no-sim` falls back to the family's; a two-link pin bends `F s / 2`, a pillar is a cantilever or a beam between the plates; jam SF < 1 fails the audit, < 2 jammed or < 3 walking warns, each finding with recomputed fixes; `verify` standard/full has `strength.joints` and the `strength` / `joint_overload` failure; `explain --strength`; the sweep of every walker x module is `docs/audit/STRENGTH.md`), `construction/wobble.py`; `construction.contract` has the checks), `tune.py` (crank phases and proportions for a smoother walk), `sim_walk.py` (the MuJoCo CLI: the build options, a stored design's id, or `--mjcf FILE` with its `.json`), `export.py` (`spiderpig export`: `api.export` on the command line, a stored design or the build options, every format), `report.py` (every linkage compared, mechanisms included, a log line per plan), `dev.py` / `kill_dev.py` (`mise run view` / `kill`: the dev servers, a checkout only) |

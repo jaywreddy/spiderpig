@@ -403,7 +403,7 @@ def _fit_defaults() -> str:
 
     p = Params()
     items = [f"`{f.name}` {getattr(p, f.name):g}" for f in fields(Params)]
-    items.append(f"`kerf_mm` {DEFAULT_KERF:g}")
+    items.append(f"`kerf_mm` each sheet's service's (else {DEFAULT_KERF:g})")
     return ", ".join(items)
 
 

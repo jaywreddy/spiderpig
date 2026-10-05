@@ -5,9 +5,11 @@ Everything is derived from the mechanism :func:`fabricate.fabricate` returns:
 * bodies with ``fab == "purchased"`` count one each of their ``bom_key``;
 * bodies with ``fab == "laser"`` are listed as cut parts (with the sheet
   stock they need, from ``mech.meta["sheet"]``);
-* bodies with ``fab == "printed"`` are listed with their volume, and add a
-  filament line (``mech.meta["filament"]`` or the ``filament`` argument: grams
-  at 100 % infill from the catalog item's density, as a fraction of a spool);
+* bodies with ``fab == "printed"`` are listed with their volume and filament
+  (:func:`part_filament`: TPU 95A for the feet's socks, PETG for a printed part pressed
+  on (the capped crankpin's sleeve), else ``mech.meta["filament"]`` or the ``filament``
+  argument), and add a filament line per filament (grams at 100 % infill from its catalog
+  item's density, as a fraction of a spool);
 * ``mech.bom_extras`` adds purchases that aren't modelled as bodies
   (washers, glue, shims, sheet stock); a line whose ``where`` ends in ``cut X
   mm`` (the metal pivots' rod, :class:`construction.pivots.common.RodShaft`)
@@ -23,6 +25,13 @@ Purchased lines are grouped by catalog key and rounded up to whole packs of
 the first (preferred) offer. Lines whose preferred offer is the same product
 (same vendor and SKU, e.g. one screw assortment for several lengths) are
 bought once.
+
+What the constructions don't say but the parts do (:func:`fitting_lines`): each horn
+screw's DIN 988 shims as the stack under its head (``0.5 + 0.2 mm``, from the shim
+body's height), threadlocker 222 on the horn screws where they thread into a metal horn
+(metal to metal only: none in a plastic horn), and threadlocker 243 (or 263) on each
+pillar splice's stud (the user's decision of 2026-10-05: the splice hand-tightened at
+0.4 N·m, a dab of threadlocker on the stud, metal to metal, kept off the acrylic).
 """
 
 from __future__ import annotations
@@ -141,6 +150,7 @@ class Bom:
     printed_g: float | None = None     # filament for the printed parts at 100 % infill
     filament: str = "PLA"
     cuts: list[CutList] = field(default_factory=list)   # stock cut to length (the rod pins)
+    filaments: dict[str, float] = field(default_factory=dict)   # grams per filament (name)
 
     @property
     def cost_usd(self) -> float:
@@ -221,7 +231,11 @@ class Bom:
                 grams = self.printed_g
                 if grams is None:
                     grams = sum(m.volume_cm3 * m.qty for m in rows) * filament_density(None)
-                lines += ["", f"About {grams:.0f} g of {self.filament} at 100% infill."]
+                if len(self.filaments) > 1:
+                    each = ", ".join(f"{g:.0f} g of {n}" for n, g in self.filaments.items())
+                    lines += ["", f"About {grams:.0f} g at 100% infill: {each}."]
+                else:
+                    lines += ["", f"About {grams:.0f} g of {self.filament} at 100% infill."]
             lines.append("")
         if self.cuts:
             lines += ["## Cut to length", ""]
@@ -239,6 +253,7 @@ class Bom:
             "made": [m.__dict__ for m in self.made],
             "cost_usd": self.cost_usd,
             "printed_g": self.printed_g,
+            "filaments": {n: round(g, 1) for n, g in self.filaments.items()},
             "notes": self.notes,
             "cuts": [{"key": c.key, "name": c.name, "stock_mm": c.stock_mm,
                       "pieces": [list(p) for p in c.pieces], "count": c.count,
@@ -498,6 +513,179 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
 
 
 # ---------------------------------------------------------------------------
+# Filament per printed part
+# ---------------------------------------------------------------------------
+
+TPU_FILAMENT = "tpu95a_filament"
+"""The feet's socks (:func:`construction.plates.foot_sock`: TPU 95A, the joinery plan)."""
+PRESS_FILAMENT = "petg_filament"
+"""A printed part pressed onto metal: the capped crankpin's sleeve, a light press on its
+hex standoff (``BoltCrank.capped_press``, the crank note's ``sleeve_press_mm``). PETG
+takes a press with less creep and cracking than PLA (``construction.printed`` prints its
+snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
+FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
+                PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
+_SOCK = re.compile(r"_sock$")
+_SLEEVE = re.compile(r"crank_pin_sleeve_(.+)$")
+
+
+def _filament_name(key: str) -> str:
+    """``"PLA filament"`` from the catalog item's name (``key`` when it isn't one)."""
+    try:
+        return get(key).name.split(",")[0]
+    except KeyError:
+        return key
+
+
+def pressed_sleeves(meta: dict) -> set[str]:
+    """The crankpins (``at`` tags) whose printed sleeve is pressed on its standoff: the
+    crank note's chains with ``sleeve_press_mm`` > 0."""
+    chains = ((meta or {}).get("crank_bolt") or {}).get("chains") or []
+    return {c["at"] for c in chains if (c.get("sleeve_press_mm") or 0) > 0}
+
+
+def part_filament(body, meta: dict, default: str | None) -> str | None:
+    """The filament (catalog key) a printed ``body`` is printed in: TPU 95A for a foot's
+    sock, :data:`PRESS_FILAMENT` for a sleeve pressed on its crankpin, else ``default``."""
+    if _SOCK.search(body.name):
+        return TPU_FILAMENT
+    m = _SLEEVE.search(body.name)
+    if PRESS_FILAMENT and m and m.group(1) in pressed_sleeves(meta):
+        return PRESS_FILAMENT
+    return default
+
+
+def printed_filaments(mech, default: str | None) -> dict[str, str | None]:
+    """:func:`part_filament` of every printed body, by name."""
+    return {b.name: part_filament(b, mech.meta, default)
+            for b in mech.bodies if b.fab == "printed"}
+
+
+def _split_by(g: MadeGroup, fil_of: dict, by_name: dict) -> list[MadeGroup]:
+    """A printed group split where its parts take different filaments (the same shape in
+    two filaments is two print jobs); one group, as it was, when they all agree."""
+    keys = {fil_of.get(n) for n in g.names}
+    if len(keys) <= 1:
+        return [g]
+    out = []
+    for k in sorted(keys, key=str):
+        names = [n for n in g.names if fil_of.get(n) == k]
+        ref = g.ref if g.ref.name in names else by_name.get(names[0], g.ref)
+        out.append(MadeGroup(g.method, ref, names, [n for n in g.mirrored if n in names]))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# What the fitting needs (shim stacks, threadlocker)
+# ---------------------------------------------------------------------------
+
+_HORN_SHIMS = re.compile(r"crank_horn_shims(\d+)$")
+_HORN_SCREW = re.compile(r"crank_horn_screw(\d+)$")
+_SPLICE_STUD = re.compile(r"pillar_(.+)_stud(\d+)$")
+HORN_LOCK = "threadlocker_222"      # low strength: an M2 / M3 horn screw comes out again
+SPLICE_LOCK = "threadlocker_243"    # medium (or 263): the hand-tight splice's retention
+LOCK_PER_THREAD = 0.01              # of a 10 ml bottle, a drop per thread
+
+
+def shim_breakdown(total: float, sizes) -> list[float]:
+    """DIN 988 shims making up ``total`` mm (0.1 mm steps), thickest first (the crank's
+    ``shim_stack``, on the item's sizes)."""
+    left, out = round(total, 3), []
+    for s in sorted((float(v) for v in sizes), reverse=True):
+        while left >= s - 1e-6:
+            out.append(s)
+            left = round(left - s, 3)
+    return out
+
+
+def _metal_horn(meta: dict) -> bool | None:
+    """Is the build's servo horn metal (the horn screws thread metal into metal)? Its name
+    says so (the STS3215's aluminium disc), or its holes are machine threads (tapped in
+    metal: the XL430's HN11-N101); a self-tapping pattern is a plastic horn (the XL330's).
+    ``None``: no servo named."""
+    key = (meta or {}).get("servo")
+    if not key:
+        return None
+    try:
+        from spiderpig import servos
+
+        horn = servos.get(key).horn
+    except (KeyError, AttributeError, ValueError):
+        return None
+    name = horn.name.lower()
+    if any(m in name for m in ("alumin", "steel", "brass", "metal")):
+        return True
+    return not getattr(horn.pattern, "tapping", True)
+
+
+def _side(name: str) -> str:
+    return name[:2] if name[:2] in ("L.", "R.") else ""
+
+
+def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
+    """What the fitting needs that the constructions don't list per part: ``(lines, notes,
+    bodies whose own line these replace)``.
+
+    * each horn screw's shims (``crank_horn_shims<i>``, a stack modelled as one ring):
+      the ring's line says the stack, e.g. ``horn screw 0: DIN 988 shims 0.5 + 0.2 mm``
+      (its height is the stack, :func:`shim_breakdown`; the crank lists the stack's other
+      rings itself), and a note lists every screw's;
+    * threadlocker 222 on each horn screw when the horn is metal (aluminium: the STS3215's
+      stock horn), a drop each; none in a plastic horn (metal to metal only);
+    * threadlocker 243 on each pillar splice's stud (``pillar_<joint>_stud<k>``), a dab
+      each, metal to metal, kept off the acrylic (the user's decision of 2026-10-05; 263
+      holds as well).
+    """
+    lines: list[BomLine] = []
+    notes: list[str] = []
+    replaced: set[str] = set()
+    stacks: dict[str, list[str]] = {}
+    horn_screws: list[str] = []
+    studs: list[str] = []
+    for b in mech.bodies:
+        if b.fab != "purchased" or not b.bom_key:
+            continue
+        if (m := _HORN_SHIMS.search(b.name)) and b.part is not None:
+            try:
+                sizes = get(b.bom_key).dims.get("t")
+            except KeyError:
+                sizes = None
+            if not sizes:
+                continue
+            bb = b.part.bounding_box()
+            total = round(min(bb.size.X, bb.size.Y, bb.size.Z), 1)
+            stack = shim_breakdown(total, sizes)
+            what = " + ".join(f"{s:g}" for s in stack)
+            where = (f"{b.name}: horn screw {m.group(1)}, DIN 988 shims {what} mm "
+                     f"({total:g} mm) under its head")
+            lines.append(BomLine(b.bom_key, 1, where))
+            replaced.add(b.name)
+            stacks.setdefault(f"{what} mm", []).append(f"{_side(b.name)}{m.group(1)}")
+        elif _HORN_SCREW.search(b.name):
+            horn_screws.append(b.name)
+        elif _SPLICE_STUD.search(b.name):
+            studs.append(b.name)
+    if stacks:
+        notes.append("Horn screw shims (DIN 988 3 x 6 under each head): " + "; ".join(
+            f"screws {', '.join(s)}: {k}" for k, s in stacks.items()) + ".")
+    metal = _metal_horn(mech.meta)
+    if horn_screws and metal:
+        for n in horn_screws:
+            lines.append(BomLine(HORN_LOCK, LOCK_PER_THREAD,
+                                 f"{n}: into the metal horn (a drop, metal to metal)"))
+        notes.append(f"Horn screws: a drop of low-strength threadlocker (Loctite 222) each "
+                     f"({len(horn_screws)}), steel into the metal horn; none in a plastic horn.")
+    for n in studs:
+        lines.append(BomLine(SPLICE_LOCK, LOCK_PER_THREAD,
+                             f"{n}: splice stud (243 or 263; metal to metal, off the acrylic)"))
+    if studs:
+        notes.append(f"Pillar splices ({len(studs)}): a dab of medium threadlocker "
+                     "(Loctite 243, or 263) on each splice stud for retention, metal to "
+                     "metal only: keep it off the acrylic.")
+    return lines, notes, replaced
+
+
+# ---------------------------------------------------------------------------
 # The BOM
 # ---------------------------------------------------------------------------
 
@@ -516,11 +704,16 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     notes: list[str] = []
     sheet = mech.meta.get("sheet_name", "sheet")
     filament = filament or mech.meta.get("filament")
-    density = filament_density(filament)
-    fil_name = get(filament).name.split(",")[0] if filament else "PLA/PETG"
+    fil_name = _filament_name(filament) if filament else "PLA/PETG"
+    fitted, fit_notes, replaced = fitting_lines(mech)
     for body in mech.bodies:
-        if body.fab == "purchased" and body.bom_key:
+        if body.fab == "purchased" and body.bom_key and body.name not in replaced:
             lines.append(BomLine(body.bom_key, 1, body.name))
+    lines += fitted
+    notes += fit_notes
+    by_name = {b.name: b for b in mech.bodies}
+    fil_of = printed_filaments(mech, filament)
+    grams: dict[str | None, float] = {}         # filament key -> grams at 100 % infill
     for method in ("laser", "printed"):
         bodies = [b for b in mech.bodies if b.fab == method and b.part is not None]
         if groups is not None and method in groups:
@@ -529,21 +722,33 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             found = group_made(bodies, method)
         else:
             found = [MadeGroup(method, b, [b.name]) for b in bodies]
+        if method == "printed":
+            found = [part for g in found for part in _split_by(g, fil_of, by_name)]
         for g in found:
+            fil = fil_of.get(g.ref.name, filament) if method == "printed" else None
             made.append(MadeRow(
                 name=g.ref.name, method=method,
                 material=(sheet_name(g.ref.sheet) if getattr(g.ref, "sheet", None) else sheet)
-                if method == "laser" else fil_name,
+                if method == "laser" else (_filament_name(fil) if fil else fil_name),
                 size_mm=_footprint(g.ref.part), volume_cm3=g.ref.part.volume / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
             ))
-    grams = sum(m.volume_cm3 * m.qty for m in made if m.method == "printed") * density
-    if filament and grams > 0:
-        spool = float(get(filament).dims.get("spool_g", 1000.0))
-        lines.append(BomLine(filament, round(grams / spool, 3),
-                             f"printed parts: {grams:.0f} g at 100 % infill"))
-        notes.append(f"Printed parts need about {grams:.0f} g of filament at 100 % infill "
-                     f"({density} g/cm3); less with sparse infill.")
+            if method == "printed":
+                grams[fil] = grams.get(fil, 0.0) + (made[-1].volume_cm3 * g.qty
+                                                    * filament_density(fil))
+    total = sum(grams.values())
+    for fil, g in grams.items():
+        if not fil or g <= 0:
+            continue
+        spool = float(get(fil).dims.get("spool_g", 1000.0))
+        what = "printed parts" if fil == filament else \
+            ", ".join(sorted({FILAMENT_USE.get(fil, "printed parts")}))
+        lines.append(BomLine(fil, round(g / spool, 3), f"{what}: {g:.0f} g at 100 % infill"))
+    if filament and total > 0:
+        each = "; ".join(f"{g:.0f} g of {_filament_name(f)} ({filament_density(f)} g/cm3)"
+                         for f, g in grams.items() if f and g > 0)
+        notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
+                     f"({each}); less with sparse infill.")
     lines.extend(mech.bom_extras)
 
     grouped: dict[str, PurchaseRow] = {}
@@ -583,5 +788,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             lead.packs = max(lead.packs, row.packs)
     made.sort(key=lambda m: (m.method, m.name))
     return Bom(purchased=purchased, made=made, title=title, notes=notes,
-               printed_g=grams if filament else None,
-               filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines))
+               printed_g=total if filament else None,
+               filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines),
+               filaments={(_filament_name(f) if f else fil_name): g
+                          for f, g in grams.items() if g > 0})
