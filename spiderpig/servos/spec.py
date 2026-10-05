@@ -21,6 +21,7 @@ unverified values are marked where they are set (:mod:`servos.catalog`).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 THREAD_D = {"M2": 2.0, "M2.5": 2.5, "M2.6": 2.6, "M3": 3.0}   # nominal diameters (mm)
@@ -164,6 +165,48 @@ class Relief:
 
 
 @dataclass(frozen=True)
+class BusPorts:
+    """The bus sockets in a rear bump and the plugs that go into them (servo frame, mm).
+
+    ``x0..x1`` by ``y0..y1``: the bump that holds the sockets. ``opening``: which way the
+    plugs go in, which sets the centre plates' access cut (:mod:`construction.chassis`):
+    ``"end"``: along ``-x`` from the bump's ``+x`` end, toward the case's far end, side by
+    side across ``y`` (the centre plates get an open slot from the bump to their ``+x``
+    edge); ``"pocket"``: nothing past the bump's own relief (the plugs can't go in with the
+    rear face on the plates: kept only to compare). ``count`` plugs ``plug_w`` wide (across
+    the slot), ``plug_h`` thick beyond the rear face and ``plug_len`` long (insertion),
+    ``clear`` round each in the cut."""
+
+    x0: float
+    x1: float
+    y0: float
+    y1: float
+    opening: str = "end"
+    count: int = 2
+    plug_w: float = 9.9
+    plug_h: float = 3.9
+    plug_len: float = 8.0
+    clear: float = 0.5
+    label: str = ""
+
+    @property
+    def height(self) -> float:
+        """How far the plugs stand beyond the rear face (0 for ``"pocket"``: no plug)."""
+        return self.plug_h if self.opening != "pocket" else 0.0
+
+    def slot(self) -> tuple[float, float, float, float] | None:
+        """The plugs' way in and out as a rectangle in the servo frame, ``clear`` round
+        them, running from the bump to ``x = inf`` (``"end"``); ``None`` for ``"pocket"``."""
+        if self.opening == "pocket":
+            return None
+        if self.opening != "end":
+            raise ValueError(f"bus ports opening {self.opening!r}: 'end' or 'pocket'")
+        cy = (self.y0 + self.y1) / 2
+        w = max(self.y1 - self.y0, self.count * self.plug_w) / 2 + self.clear
+        return (self.x0 - self.clear, math.inf, cy - w, cy + w)
+
+
+@dataclass(frozen=True)
 class Recess:
     """Where a case face is recessed around the output axis (servo frame).
 
@@ -243,6 +286,7 @@ class ServoSpec:
     cad_alternates: tuple[CadRef, ...] = ()   # tried in order when ``cad`` is unavailable
     weight_g: float | None = None
     speed_rpm: float | None = None  # no-load output speed at the upper voltage
+    bus_ports: BusPorts | None = None   # the rear bump's bus sockets and their plugs
 
     @property
     def stall_torque_nm(self) -> float | None:

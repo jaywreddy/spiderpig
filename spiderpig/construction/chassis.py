@@ -24,6 +24,8 @@ MIN_ENGAGE = 2.0         # least thread engagement that still holds
 HEAD_CLEARANCE = 0.3     # radial clearance around a screw head in a laser-cut recess (mm)
 RELIEF_GROW = 0.5        # a relief cut-out is this much bigger than the bump, per side (mm)
 RELIEF_CORNER = 1.0      # its inside corners' radius (SendCutSend cuts 0.8 mm in aluminium)
+RELIEF_ROUND = RELIEF_CORNER * (1 - math.sqrt(0.5)) + 0.05   # a pocket grown round its
+#                          rectangle so the rounded corners still hold it (each side)
 MODEL_GAP = 0.01         # radial gap between modelled parts that touch in reality (mm)
 EPS_CH = 1e-6
 CHASSIS_COLOR = "#eb6834"
@@ -52,7 +54,7 @@ def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
     alloy = str(get(frame_key).dims.get("alloy", "5052"))[:4]
     left = ServoFrame((0.0, 0.0), (1.0, 0.0))
     frames = (left, replace(left, hand=-1))
-    best = (0, frame_key)
+    best = None
     for key in aluminium_sheets(alloy):
         t = sheet(key).thickness
         if t < sheet(frame_key).thickness - 1e-9:
@@ -60,6 +62,7 @@ def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
         n = centre_plates(spec, t, margin)
         half = n * t / 2
         reliefs = _relief_volumes(spec, frames, half)
+        slots = _port_slots(spec, frames, half)
         most = 0
         for own in range(1, max(2, n)):
             try:
@@ -67,10 +70,13 @@ def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
             except ConstructionError:
                 continue
             if rs is not None:
-                most = max(most, len(_clear_holes(rs, frames, reliefs, half, t)))
-        if most > best[0]:
-            best = (most, key)
-    return best[1]
+                most = max(most, len(_clear_holes(rs, frames, reliefs, half, t, slots)))
+        # the most screws, then the thinnest stack (the bus plugs can need a fifth thin
+        # plate where four of the next sheet do), then the thinnest sheet
+        rank = (-most, round(n * t, 3))
+        if best is None or rank < best[0]:
+            best = (rank, key)
+    return frame_key if best is None or best[0][0] == 0 else best[1]
 
 
 def centre_t(ctx: Context) -> float:
@@ -84,8 +90,12 @@ def centre_t(ctx: Context) -> float:
 
 
 def centre_plates(spec, pitch: float, margin: float) -> int:
-    """Centre plates needed so the two servos' rear bumps clear each other."""
+    """Centre plates needed so the two servos' rear bumps, and the bus plugs in their
+    sockets (``ServoSpec.bus_ports``: the two servos' plugs sit at the same place, from
+    either side), clear each other."""
     proud = max((r.height for r in spec.rear_reliefs), default=0.0)
+    if spec.bus_ports is not None:
+        proud = max(proud, spec.bus_ports.height)
     return max(1, math.ceil((2 * proud + margin) / pitch - 1e-9))
 
 
@@ -253,6 +263,10 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
     near = tie_neighbours(ctx)
     r = d.hole_d / 2
     n = int(round(TIE_SHIFT_MAX / TIE_SHIFT_STEP))
+    # the bus plugs' slot through the centre plates (:func:`_port_slots`): a tie beside it
+    # moves out across the servo until its hole is two thicknesses off the slot's side
+    slot = spec.bus_ports.slot() if spec.bus_ports is not None else None
+    slot_web = _min_edge(centre_sheet(ctx))
     out = []
     for x in xs:
         outward = -1.0 if x < (x0 + x1) / 2 else 1.0
@@ -262,6 +276,10 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
             best = next((x + dx for dx in steps
                          if all(math.hypot(x + dx - hx, y - hy) >= r + hr + web + 0.05
                                 for hx, hy, hr, web in near)), x)
+            if (slot is not None
+                    and slot[0] - RELIEF_ROUND - r - slot_web < best < slot[1] + r + slot_web):
+                side = (slot[3] if y > 0 else -slot[2]) + RELIEF_ROUND
+                y = math.copysign(max(abs(y), side + r + slot_web + 0.05), y)
             out.append((best, y))
     return out
 
@@ -349,15 +367,22 @@ def rear_screws(spec, n: int, pitch: float, own: int | None = None) -> RearScrew
     return rs
 
 
-def _clear_holes(rs: RearScrews, frames, reliefs, half: float, pitch: float) -> tuple:
-    """The holes whose heads (on either servo) stay out of every rear bump's space."""
+def _clear_holes(rs: RearScrews, frames, reliefs, half: float, pitch: float,
+                 slots=()) -> tuple:
+    """The holes whose heads (on either servo) stay out of every rear bump's space, and
+    whose head recesses stay two plate thicknesses (the cut rules' warning level) off the
+    bus plugs' slots (:func:`_port_slots`), which run through every plate there."""
     head_r = rs.head_d / 2 + HEAD_CLEARANCE
     seat = -half + rs.own * pitch                     # the left heads bear here
     heads = ((frames[0], (seat, seat + rs.head_h)), (frames[1], (-seat - rs.head_h, -seat)))
     keep = []
     for h in rs.holes:
-        if all(not (_overlaps(hz, zr) and _rect_distance(rf.local(f.xy(h.x, h.y)), *rect) < head_r)
-               for f, hz in heads for rf, rect, zr in reliefs):
+        if (all(not (_overlaps(hz, zr)
+                     and _rect_distance(rf.local(f.xy(h.x, h.y)), *rect) < head_r)
+                for f, hz in heads for rf, rect, zr in reliefs)
+                and all(_rect_distance(rf.local(f.xy(h.x, h.y)), *rect)
+                        >= head_r + 2 * pitch + RELIEF_ROUND
+                        for f, _ in heads for rf, rect, _ in slots)):
             keep.append(h)
     return tuple(keep)
 
@@ -370,6 +395,24 @@ def _relief_volumes(spec, frames, half: float):
             z = sorted((face, face + sign * r.height))
             rect = (r.x0 - RELIEF_GROW, r.x1 + RELIEF_GROW, r.y0 - RELIEF_GROW, r.y1 + RELIEF_GROW)
             out.append((frame, rect, tuple(z)))
+    return out
+
+
+def _port_slots(spec, frames, half: float):
+    """The bus plugs' way to their sockets (``ServoSpec.bus_ports``) as (frame, rect in its
+    servo frame, z range), like :func:`_relief_volumes`: per servo an open slot from its
+    socket bump to the centre plates' far edge through every plate the plugs stand in
+    (from its rear face out to the plug's thickness). The rear face is on the plates, so
+    a closed relief the size of the bump leaves no way in for a plug (assembly audit,
+    2026-10-04); which way the sockets open is UNVERIFIED (:data:`servos.catalog`)."""
+    ports = spec.bus_ports
+    rect = ports.slot() if ports is not None else None
+    if rect is None:
+        return []
+    out = []
+    for frame, face, sign in ((frames[0], -half, 1.0), (frames[1], half, -1.0)):
+        z = sorted((face, face + sign * ports.height))
+        out.append((frame, rect, tuple(z)))
     return out
 
 
@@ -408,20 +451,23 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
     fastened: list[tuple[str, str]] = []
     info: dict = {"centre_plates": n}
     reliefs = _relief_volumes(spec, frames, half)
+    slots = _port_slots(spec, frames, half)
     rs, screws, bodies = _rear_screw_parts(spec, frames, reliefs, n, half, pitch, host, info,
-                                           fastened)
+                                           fastened, slots)
     tie_xy = tie_points(build, design.drive)
     extras: list[BomLine] = []
     bodies += _tie_parts(ctx, plan, tie_xy, z_mid, half, host, info, fastened, extras)
     info["centre_plate_sheet"] = centre_sheet(ctx)
-    bodies += _centre_plate_parts(ctx, left, reliefs, rs, screws, tie_xy, n, half, pitch,
-                                  host, extras)
+    bodies += _centre_plate_parts(ctx, left, reliefs + slots, rs, screws, tie_xy, n, half,
+                                  pitch, host, extras)
+    if spec.bus_ports is not None:
+        info["bus_ports"] = spec.bus_ports.opening
     info["fastened"] = fastened
     return bodies, extras, info
 
 
 def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, host, info,
-                      fastened) -> tuple:
+                      fastened, slots=()) -> tuple:
     """The servos' rear screws: ``(the screw set, (side, xy, head z, shank z, hole) per
     screw, bodies)``."""
     bodies: list[Body] = []
@@ -436,7 +482,7 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
             continue
         if cand is None:
             continue
-        usable = _clear_holes(cand, frames, reliefs, half, pitch)
+        usable = _clear_holes(cand, frames, reliefs, half, pitch, slots)
         if usable and (best is None or len(usable) > len(best.holes)):
             best = replace(cand, holes=usable)
     rs = best
@@ -579,7 +625,8 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
 def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: int,
                         half: float, pitch: float, host, extras) -> list[Body]:
     """The centre plates: the servo footprint grown round every screw recess and tie,
-    relieved where a rear bump reaches a plate, with the screws' holes and seats."""
+    relieved where a rear bump reaches a plate and slotted to the far edge where the bus
+    plugs pass (``reliefs`` holds both), with the screws' holes and seats."""
     p = ctx.params
     bodies: list[Body] = []
     x0, x1, y0, y1 = _footprint(ctx.servo)
@@ -612,7 +659,8 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
                 # its corners rounded past the service's inside radius, grown so the rounded
                 # pocket still holds the bump's rectangle
                 rx0, rx1, ry0, ry1 = rect
-                g = RELIEF_CORNER * (1 - math.sqrt(0.5)) + 0.05
+                rx1 = min(rx1, max(xs) + 10.0)           # an open slot: past the far edge
+                g = RELIEF_ROUND
                 pockets.append(_rounded_rect(rf, rx0 - g, rx1 + g, ry0 - g, ry1 + g,
                                              RELIEF_CORNER, z0 - 1.0, z1 + 1.0))
         for _, xy, head, shank, h in screws:

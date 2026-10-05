@@ -75,7 +75,7 @@ def test_the_deck_clears_every_moving_part_over_the_cycle(built):
     _, mech = built
     c = deck_mod.deck_clearance(mech)
     assert c["ok"], c
-    assert c["z_gap_mm"] >= 0.2       # the rail screws' heads in the gap under the plate
+    assert c["z_gap_mm"] >= 0.2       # (the rail screws' heads are the planner's claims)
     assert c["sweep_gap_mm"] > 1.0
 
 

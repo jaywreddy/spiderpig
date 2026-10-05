@@ -476,9 +476,14 @@ def deck_clearance(mech) -> dict:
     inner plate's face into the servo bay) sweeps a disc about the crank axis O: it
     clears a deck part whose band it shares when that disc misses the part's XY box
     (``sweep_gap_mm``). Any other moving part sharing a band is a failure
-    (``overlapping``). ``ok`` is all of it."""
+    (``overlapping``). ``ok`` is all of it. The rails' screws are left out: they come up
+    through the inner plate from the leg side, and their heads are the drive group's
+    claims (:meth:`servos.mount.DriveGroup.claims`), which the planner keeps clear of every
+    moving part in XY over the cycle wherever they sit, in the gap under the plate or sunk
+    into the layer there (the plan's ``heads``)."""
     by_name = {b.name: b for b in mech.bodies}
-    deck = [b for b in mech.bodies if b.part is not None and "deck" in b.name]
+    deck = [b for b in mech.bodies if b.part is not None and "deck" in b.name
+            and "deck_rail_screw" not in b.name]
     if not deck:
         return {"fitted": False, "ok": True}
 

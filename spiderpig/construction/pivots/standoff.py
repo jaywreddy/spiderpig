@@ -59,11 +59,13 @@ and the end screw or the splice's stud is chosen for the plate plus the shims.
 Against the printed 6 mm PETG pillar (50 MPa) the section holds about 4.4 x the
 moment; the pillar review's numbers (``docs/audit/STRENGTH.md``) have it per design.
 
-Assembly, bottom up: the outer plate down; per pillar, its lowest segment onto the plate's
-hole with the M4 screw and washer from outside (finger tight, threadlocker), then the
-links and rings in layer order (the plan says which), at each splice the splice plate and
-the stud (threadlocker) into the next segment; the inner plate last, its M4 screws from
-above, each to ``tighten_nm``.
+Assembly, bottom up (:data:`construction.robot.ASSEMBLY` has the whole robot's order):
+the outer plate down; per pillar, its lowest segment onto the plate's hole with the M4
+screw and washer from outside (finger tight, threadlocker), then the links and rings in
+layer order (the plan says which), at each splice the splice plate and the stud
+(threadlocker) into the next segment; the inner plate last, as part of its unit (the
+servo, horn and hub plate on it), its M4 screws from the servo bay, each to
+``tighten_nm``.
 """
 
 from __future__ import annotations

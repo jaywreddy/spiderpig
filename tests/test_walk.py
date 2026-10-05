@@ -272,8 +272,9 @@ def test_quad_reference(com):
                                                              pillar="printed", **OLD)))
         assert keyed["min_margin_mm"] == pytest.approx(57.4, abs=0.5)
         bolt = walk.straight_walk_metrics(walk.walker(_cfg("quad")))
-        # the hex-standoff crankpins (2026-10-04): 52.4 mm (the round standoff's 55.9)
-        assert bolt["min_margin_mm"] == pytest.approx(52.4, abs=0.5)
+        # the hex-standoff crankpins (2026-10-04): 52.4 mm (the round standoff's 55.9);
+        # 49.9 with the hub chain capped (2.5 mm less stack, no screw over the hub plate)
+        assert bolt["min_margin_mm"] == pytest.approx(49.9, abs=0.5)
 
 
 @pytest.mark.parametrize("module", list(linkage.MODULE_LEGS))

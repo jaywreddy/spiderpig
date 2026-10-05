@@ -1377,19 +1377,23 @@ class BoltCrank:
     solvent-welded, and the head and nut pockets run through both plates of their stack,
     so the twist enters each plate directly.
 
-    Assembly (the servo side up, as the printed crank): cement each segment's plates
-    (align them on the bolts' pockets and a 6 mm rod through the pin holes; acrylic cement
-    by capillary, 24 h); screw the stub standoff to the lowest stack (button head from
-    above, threadlocker); the hub stack to the horn (the horn spacer between, screws from
-    the hub's underside); then going down, per chain: a bolt through the top stack's
-    pocket (head in its hex), the riders onto the shank (and the bare layers' links past
-    it, the plan's order), a drop of medium threadlocker on the thread, the nylock from
+    Single plates (an aluminium crank sheet, the default): bottom up with the legs, the
+    hub chain capped by the hub plate, which comes on with the horn, the servo and the
+    inner plate as one unit (:data:`construction.robot.ASSEMBLY`, steps 2 to 4).
+
+    Assembly of the acrylic stacks (the servo side up, as the printed crank): cement each
+    segment's plates (align them on the bolts' pockets and a 6 mm rod through the pin holes;
+    acrylic cement by capillary, 24 h); screw the stub standoff to the lowest stack (button
+    head from above, threadlocker); the hub stack to the horn (the horn spacer between,
+    screws from the hub's underside); then going down, per chain: a bolt through the top
+    stack's pocket (head in its hex), the riders onto the shank (and the bare layers' links
+    past it, the plan's order), a drop of medium threadlocker on the thread, the nylock from
     below with a 10 mm spanner to its height (the lowest stack held against the riders as a
     gauge: the nut's bottom face flush with the stack's), then turned to the nearest flat
     (1/6 turn is 0.17 mm) and the stack pushed up over it, its pocket on the nut's hex; the
-    riders must still turn. A bolt cut to length: cut before assembly, chase the thread
-    with a nut. The outer frame plate last, over the stub. Apart: heat the nut
-    (threadlocker), unscrew it, the stack off first.
+    riders must still turn. A bolt cut to length: cut before assembly, chase the thread with
+    a nut. The outer frame plate last, over the stub. Apart: heat the nut (threadlocker),
+    unscrew it, the stack off first.
     """
 
     key: str = "bolt"
@@ -1465,6 +1469,15 @@ class BoltCrank:
     hex_min_engage: float = 2.5      # least M3 thread of a screw in the standoff (5 turns)
     hex_tip_gap: float = 0.3         # between the two screws' tips inside the standoff
     hex_engage_max: float = 6.0      # the screws' thread in the standoff, at most
+    hub_screw: bool = False          # (hex) a screw over the hub plate into the top of the
+    #                                  chain that ends in it. Off (the assembly audit of
+    #                                  2026-10-04): no order drives it once the hub plate, the
+    #                                  horn screws from below and the inner plate's screws are
+    #                                  all wanted (the hub plate, horn, servo and inner plate go
+    #                                  on as one unit, ``construction.robot.ASSEMBLY``), so
+    #                                  that chain is capped by the hub plate, whose z the horn
+    #                                  holds; on:
+    #                                  ``--crank bolt_hub_screw``, the plan before that audit
 
     # -- the sheet decides the webs -----------------------------------------------------
 
@@ -2080,11 +2093,16 @@ class BoltCrank:
         return (z1 - t, z1) if k == hub else (z0, z0 + t)
 
     def hub_capped(self, ctx: Context, at: str) -> bool:
-        """Whether a hex crankpin whose chain ends in the hub plate sits wholly under the
-        printed horn spacer (or the horn), which then caps its upper end: no screw over the
-        hub plate (a short crank, the Hoecken pantograph's), only the one from below."""
+        """Whether a hex crankpin whose chain ends in the hub plate takes no screw over the
+        hub plate, only the one from below: always without ``hub_screw`` (the default: the
+        hub plate, held to the horn by the horn screws, caps its upper end; the hex keeps
+        its whole depth in the hub plate's pocket), else when it sits wholly under the
+        printed horn spacer (or the horn), which then caps it (a short crank, the Hoecken
+        pantograph's)."""
         if not self.hex:
             return False
+        if not self.hub_screw:
+            return True
         drive: DriveInterface = ctx.interfaces["drive"]
         g = ctx.topo.geometry.points
         R = float(np.linalg.norm(g[at][0] - g["O"][0]))
@@ -2106,7 +2124,8 @@ class BoltCrank:
             R = float(np.linalg.norm(g[a.name][0] - g["O"][0]))
             if horn_radius + hr + ctx.params.margin <= R:
                 continue
-            if self.hex and self._capped(R, horn_radius, center_d, ctx.params):
+            if self.hex and (not self.hub_screw
+                             or self._capped(R, horn_radius, center_d, ctx.params)):
                 continue
             need = max(need, head)
         return need
@@ -3032,3 +3051,13 @@ BOLT_ROUND = BoltCrank(
            "aluminium webs by M4 screws (friction; the default before the hex standoff of "
            "2026-10-04), two-plate M6 bolt stacks on an acrylic crank sheet"))
 """The friction-clamped round-standoff crankpin (``--crank bolt_round``), kept selectable."""
+
+BOLT_HUB_SCREW = BoltCrank(
+    key="bolt_hub_screw", hub_screw=True,
+    label=("laser-cut aluminium crank on hex standoff crankpins, the chain ending in the hub "
+           "plate screwed over it too (its head in the horn spacer's layer; the plan before "
+           "the assembly audit of 2026-10-04, which found no order that drives that screw)"))
+"""The hex crank with a screw over the hub plate (``--crank bolt_hub_screw``), kept
+selectable: :data:`construction.robot.ASSEMBLY` has no step that can drive it with the
+horn screws coming up through the hub plate from below."""
+

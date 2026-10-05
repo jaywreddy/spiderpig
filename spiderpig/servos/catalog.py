@@ -21,6 +21,7 @@ from spiderpig.hardware.catalog import Item, Offer, register
 from spiderpig.hardware.fasteners import shcs
 from spiderpig.servos import register as register_servo
 from spiderpig.servos.spec import (
+                   BusPorts,
                    CadRef,
                    HolePattern,
                    Horn,
@@ -101,6 +102,13 @@ STS3215 = register_servo(ServoSpec(
         # [SO] only: six 2 x 2 mm pins at x = 13..15 reaching z = -33.8 (not in [WS3])
         Relief(12.9, 15.2, -8.8, 8.8, 3.3, solid=False, label="pins in the SO-ARM100 model"),
     ),
+    # The two bus sockets (5264 3P, [WS wiki]) in the connector housing. UNVERIFIED: which
+    # way they open (both STEP models draw the housing solid); "end" is the SO-ARM100's
+    # wiring, the plugs in along -x from the housing's far end. Plug: Molex 50-37-5033
+    # (5264, 3 circuits) 9.9 wide, 3.9 thick, 8 long [Molex via distributors]. Measure a
+    # servo and a plug before the centre plates are cut (assembly audit, 2026-10-04).
+    bus_ports=BusPorts(17.2, 30.0, -9.3, 9.3, opening="end", count=2, plug_w=9.9,
+                       plug_h=3.9, plug_len=8.0, label="bus sockets (5264 3P)"),
     continuous=True,                # [C001] "Limit angle: no limit", mode 1 = closed-loop speed
     idler=Idler(
         boss_d=6.0, boss_h=4.1, base_z=-29.0,    # [FT] rear boss 6 x 4.1 on the -29.0 face

@@ -200,9 +200,10 @@ def test_check_plan_walk_on_the_default_quad(quad):
     # mm (the two-plate stacks took 31 layers, 95.975 mm; the keyed crank's were 16)
     assert pr.n_layers == 14
     # the hex-standoff crankpins on 0.100 in 6061 webs (2026-10-04): 76.789 mm (77.164 on
-    # the round standoff)
-    assert pr.height_mm == pytest.approx(76.789)
-    assert len(pr.gaps_mm) == 10      # the hex crank's (the round standoff's: 11)
+    # the round standoff); 74.289 with the hub chain capped (no screw over the hub plate)
+    assert pr.height_mm == pytest.approx(74.289)
+    assert len(pr.gaps_mm) == 9       # the hex crank's, hub chain capped (10 with the
+    #                                   screw over the hub plate; the round standoff's: 11)
     assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": lo, "hi": lo}
                                  for k, lo in ((0, 4), (2, 6), (1, 8), (3, 10))],
                         "bearing": True}
@@ -228,7 +229,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == pytest.approx(76.789)     # the hex crank's
+    assert rows["size.stack_mm"].value == pytest.approx(74.289)     # the hex crank's
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -457,8 +458,9 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     # the bolt crank's webs, standoff crankpin, screws, shims and stub, the standoff
     # pillars' segments, sleeves, screws and washers, the Chicago pins (keyed and printed:
     # 36; the two-plate bolt crank's 13 layers had 58); with the hex-standoff crankpins
-    # (2026-10-04) 75 (the round standoff's: 64)
-    assert len(manifest["parts"]) == 75
+    # (2026-10-04) 75 (the round standoff's: 64); 72 with the hub chain capped (no screw,
+    # washer or collar over the hub plate)
+    assert len(manifest["parts"]) == 72
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -796,13 +798,14 @@ def test_the_recommendation_says_which_module_it_checked():
     text = rec._verify(BuildConfig(linkage="klann", module="quad", robot=False),
                        plan=False)                                                # entry 5
     # the bolt crank's single webs, heads in gaps, 0.080 in frame plates (2026-10-04); the
-    # hex crankpins' screw stacks in their gaps: 39.339 mm (the round standoff's 34.939)
+    # hex crankpins' screw stacks in their gaps: 39.339 mm (the round standoff's 34.939);
+    # 36.839 with the hub chain capped (no screw over the hub plate, 2026-10-04)
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "10 layers (39.339 mm); the quad module's own plan is not checked "
+                           "10 layers (36.839 mm); the quad module's own plan is not checked "
                            "here")
     assert "the planner's deadline is 60 s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 10 layers (39.339 mm)"
+        == "checked: the static stage passes, and it plans in 10 layers (36.839 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):

@@ -34,6 +34,15 @@ def test_registered_and_selectable():
     assert not round_.hex
 
 
+def test_the_hub_chain_is_capped_by_default():
+    """The assembly audit of 2026-10-04: no order drives a screw over the hub plate once
+    the hub plate, horn, servo and inner plate go on as one unit, so the chain that ends
+    in the hub plate has none (the hub plate caps it); ``bolt_hub_screw`` keeps it."""
+    assert not CRANKS["bolt"].hub_screw
+    assert CRANKS["bolt_hub_screw"].hub_screw
+    assert CRANKS["bolt_hub_screw"].for_sheet(BuildConfig().crank_sheet).hex
+
+
 @pytest.mark.parametrize("run_layers", range(1, 14))
 @pytest.mark.parametrize("low", range(4))
 def test_every_fit_keeps_the_riders_on_the_plain_shank(run_layers, low):

@@ -129,9 +129,17 @@ screws take DIN 988 shims under the head where a stock length is too long (the X
 `horn_fit_web`); the horn holes and the hub's and webs' rims keep SendCutSend's minimum hole
 and 2 t edge distance; a crankpin within a head's reach of the horn's rim makes the horn
 spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`) or, wholly under it,
-is capped by it (`hub_capped`). Merged (2026-10-04, with gap_sink and the body plates): the
-Strider double 15 layers / 75.3 mm (audit clean, crank jam SF 2.56), single 11, the demo
-`klann` quad 14 / 76.8, the Hoecken pantograph and dwell rocker 9 each.
+is capped by it (`hub_capped`). **Since the assembly audit of 2026-10-04 the chain that ends
+in the hub plate is always capped** (`BoltCrank.hub_screw` False: no screw over the hub
+plate, the hub plate held by the horn screws; `--crank bolt_hub_screw` keeps the screw):
+no order drove that screw with the horn screws coming up through the hub plate from below,
+so the hub plate, horn, servo and inner plate go on as one unit
+(`construction.robot.ASSEMBLY`, the whole robot's order, which the pivots' and the crank's
+docstrings defer to). Merged (2026-10-04, with gap_sink and the body plates): the
+Strider double 15 layers / 75.3 mm (72.8 since the capped hub chain: the gap over layer 13
+went), single 11, the demo `klann` quad 14 / 76.8, the Hoecken pantograph and dwell rocker
+9 each. The round standoff (`bolt_round`: the Strider decker and quad, TrotBot,
+`klann_lego`) still screws over the hub plate: its friction clamp needs both screws.
 
 **Clearance gaps, layer thicknesses, per-part sheets** (2026-10-04, `stack.finalize`,
 `spiderpig/materials.py`). A fastener's head or nut beside a link (a Chicago screw's, a rod
@@ -213,6 +221,15 @@ servo until their holes are 2 t off the servo's front and rear screw holes and r
 (`chassis.tie_locals` / `tie_neighbours`, which the underside reads too), the centre
 plates' outline keeps 2 t round each rear screw recess (`chassis.recess_wall`) and their
 bump reliefs have 1 mm corners (`RELIEF_CORNER`). Centre plates 0.090 in (decision 4).
+**Bus plugs** (assembly audit, 2026-10-04): the servo's sockets are in the connector housing
+on the rear face, screwed flat to the centre plates, so `ServoSpec.bus_ports` (the
+STS3215's: 5264 3P, opening "end", UNVERIFIED: measure a servo and a plug before cutting)
+gives the plates an open slot from the housing to their far edge through every plate the
+plugs stand in (`chassis._port_slots`); `centre_plates` counts the two servos' plugs (at
+the same place from either side), the rear holes within 2 t of the slot are dropped (each
+servo keeps one rear screw, its near hole), the ties beside it move out to 2 t
+(`tie_locals`), and `centre_sheet` ranks the most screws, then the thinnest stack (0.090 in
+x 4 over 0.080 x 5). `opening="pocket"` (no access) is kept to compare.
 
 **Glue-free chassis, feet, link plates** (2026-10-04, the joinery plan). Frame ties
 (`construction/chassis.py`): per tie and side a goBILDA 1501 standoff chain from the inner

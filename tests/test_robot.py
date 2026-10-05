@@ -76,7 +76,8 @@ def test_rear_screws_sit_on_the_servo_pilots(design, robot):
     engage = mech.meta["rear_engagement_mm"]
     assert 3.0 <= engage <= 5.0
     screws = [b for b in mech.bodies if ".rear_screw" in b.name]
-    assert len(screws) == 2 * mech.meta["rear_screws_per_servo"] >= 4
+    # one per servo since the bus plugs' slot (2026-10-04) took the far holes
+    assert len(screws) == 2 * mech.meta["rear_screws_per_servo"] >= 2
     world = {"L": set(), "R": set()}
     for b in screws:
         side = b.name[0]
@@ -274,3 +275,39 @@ def test_the_robots_glue_is_a_few_drops_on_the_battery_cradle(robot):
     bom = bom_from_mechanism(mech, group=False)
     row = next(r for r in bom.purchased if r.key == "ca_glue")
     assert row.packs == 1
+
+
+def test_the_bus_plugs_have_a_way_in():
+    """The assembly audit of 2026-10-04: the STS3215's bus sockets are in the connector
+    housing on its rear face, screwed flat to the centre plates; each servo's plates the
+    plugs stand in carry an open slot from the housing to the far edge, and no rear screw
+    is left within two plate thicknesses of it (each servo keeps its near rear hole)."""
+    from dataclasses import replace as _replace
+
+    from spiderpig.config import BuildConfig
+    from spiderpig.construction import chassis as ch
+    from spiderpig.materials import sheet
+
+    spec = servos.get(BuildConfig().servo)
+    ports = spec.bus_ports
+    assert ports is not None and ports.opening == "end"
+    x0, x1, y0, y1 = ports.slot()
+    assert x1 == math.inf and x0 <= ports.x0
+    assert y1 - y0 >= ports.count * ports.plug_w
+    t = sheet("al5052_2p3mm").thickness
+    n = centre_plates(spec, t, 1.0)
+    assert n * t >= 2 * ports.plug_h + 1.0          # the two servos' plugs clear each other
+    left = ServoFrame((0.0, 0.0), (1.0, 0.0))
+    frames = (left, _replace(left, hand=-1))
+    half = n * t / 2
+    slots = ch._port_slots(spec, frames, half)
+    # the left plugs pass the left servo's plates (0, 1), the right ones the right's (2, 3)
+    assert [z for _, _, z in slots] == [pytest.approx((-half, -half + ports.plug_h)),
+                                        pytest.approx((half - ports.plug_h, half))]
+    rs = ch.rear_screws(spec, n, t, 2)
+    kept = ch._clear_holes(rs, frames, ch._relief_volumes(spec, frames, half), half, t, slots)
+    assert [(h.x, h.y) for h in kept] == [(8.3, 10.25)]
+    # with no plug access (kept to compare) the far hole is usable again
+    pocket = _replace(spec, bus_ports=_replace(ports, opening="pocket"))
+    assert ch._port_slots(pocket, frames, half) == []
+
