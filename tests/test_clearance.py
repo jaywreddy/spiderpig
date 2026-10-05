@@ -253,3 +253,25 @@ def test_cut_rule_levels_and_messages():
     assert not s["ok"]
     assert (s["errors"], s["warnings"]) == ({"edge": 1}, {"edge": 1})
     assert s["messages"] == [err, warn]                # errors first
+
+
+def test_the_webs_round_a_cut_out_are_measured():
+    """A relief beside a hole, the outline or another relief: the hole rule sees round holes
+    only, so the web rule measures every non-circular cut-out (the assembly audit of
+    2026-10-04: the centre plates' pins relief 0.31 mm off the bus plugs' slot, the inner
+    plate's front screw holes 1.01 mm off the horn's hole merged with the panel relief)."""
+    t = 3.175
+    part = _plate(40, 20, t, [(4.0, 10.0, 2.4)])
+    slot = Box(10, 6, 3 * t).moved(Location((12.6, 10, t / 2)))      # x 7.6..17.6
+    near = Body("near", part - slot, fab="laser", sheet="al5052_3p2mm")
+    (e,) = [i for i in part_issues(near, "al5052_3p2mm") if i["rule"] == "web"]
+    assert e["level"] == "error"
+    assert e["value"] == pytest.approx(7.6 - 4.0 - 1.2, abs=0.01)      # 2.4 < 1 x t
+    assert "hole" in e["detail"]
+    other = Box(4, 6, 3 * t).moved(Location((23.0, 10, t / 2)))       # x 21.0..25.0
+    two = Body("two", _plate(40, 20, t, []) - slot - other, fab="laser", sheet="al5052_3p2mm")
+    (w,) = [i for i in part_issues(two, "al5052_3p2mm") if i["rule"] == "web"]
+    assert (w["level"], w["value"]) == ("warning", pytest.approx(3.4, abs=0.01))
+    assert "another cut-out" in w["detail"]
+    far = Body("far", _plate(40, 20, t, []) - slot, fab="laser", sheet="al5052_3p2mm")
+    assert [i for i in part_issues(far, "al5052_3p2mm") if i["rule"] == "web"] == []

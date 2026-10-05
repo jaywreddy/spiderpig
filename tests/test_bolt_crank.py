@@ -37,10 +37,34 @@ def test_registered_and_selectable():
 def test_the_hub_chain_is_capped_by_default():
     """The assembly audit of 2026-10-04: no order drives a screw over the hub plate once
     the hub plate, horn, servo and inner plate go on as one unit, so the chain that ends
-    in the hub plate has none (the hub plate caps it); ``bolt_hub_screw`` keeps it."""
+    in the hub plate has none (the hub plate caps it); ``bolt_hub_screw`` keeps it. The
+    capped standoff is carried by its pressed sleeve and the crank body stopped by the
+    stub's thrust sleeve; ``bolt_unretained`` keeps the build before."""
     assert not CRANKS["bolt"].hub_screw
     assert CRANKS["bolt_hub_screw"].hub_screw
     assert CRANKS["bolt_hub_screw"].for_sheet(BuildConfig().crank_sheet).hex
+    bolt = CRANKS["bolt"].for_sheet(BuildConfig().crank_sheet)
+    assert bolt.capped_press > 0
+    assert bolt.stub_thrust
+    free = CRANKS["bolt_unretained"].for_sheet(BuildConfig().crank_sheet)
+    assert free.hex
+    assert free.capped_press == 0
+    assert not free.stub_thrust
+    # the capped hex is rated in what the crank body's float leaves of the hub's pocket
+    span, t = 29.9, bolt.web_t
+    assert bolt.fit_hex(span, t, t, capped=True).engaged_hi == pytest.approx(
+        t - bolt.thrust_play)
+    assert free.fit_hex(span, t, t, capped=True).engaged_hi == pytest.approx(t)
+
+
+@pytest.mark.slow
+def test_a_screw_over_the_hub_plate_has_no_assembly_order(side):
+    """The round standoff's friction clamp screws over the hub plate, which no order can
+    drive with the horn screws coming up through it from below: the crank's note says so
+    and the audit fails it (the Strider quad's and klann_lego's, 2026-10-04)."""
+    note = side("single", crank="bolt_round").meta["crank_bolt"]
+    assert "no order drives both" in note["assembly"]
+    assert side("single", crank="bolt").meta["crank_bolt"]["assembly"] is None
 
 
 @pytest.mark.parametrize("run_layers", range(1, 14))
@@ -193,12 +217,26 @@ def test_the_klann_single_builds_clean_with_the_bolt_crank(design, side):
     drive = d.ctx.interfaces["drive"]
     n = (drive.horn_face_depth - d.ctx.sheet_t("frame")) / d.ctx.pitch   # under the Al plate
     assert n == pytest.approx(round(n))
-    # the service's rules on every crank plate: no error, and no edge or corner warning
+    # the service's rules on every crank plate: no error, and no edge or corner warning;
+    # the hex pockets stand 1 x t (web_edge_t) inside the webs' rims, which the web rule
+    # (since 2026-10-04) reports as a warning
     from spiderpig.manufacture import check
 
     issues = [i for i in check(mech, d.config.sheet)["issues"]
               if i["part"].startswith("crank_plate")]
-    assert issues == []
+    assert all(i["rule"] == "web" and i["level"] == "warning" for i in issues)
+    assert all(i["value"] >= c.web_t - 1e-6 for i in issues)
+    # the chain capped by the hub plate: its sleeve pressed on the hex, the stub's thrust
+    # sleeve the crank body's stop toward the outer plate (the assembly audit of 2026-10-04)
+    capped = [ch for ch in note["chains"] if ch["capped"]]
+    assert capped
+    assert all(ch["sleeve_press_mm"] == c.capped_press > 0 for ch in capped)
+    assert all(ch["hex_engaged_mm"][1] == pytest.approx(c.web_t - c.thrust_play)
+               for ch in capped)
+    assert note["stub_thrust"]["play_mm"] == c.thrust_play
+    thrust = [b for b in mech.bodies if b.name == "crank_stub_thrust"]
+    assert [b.fab for b in thrust] == ["printed"]
+    assert note["assembly"] is None
 
 
 @pytest.mark.slow

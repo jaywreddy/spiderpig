@@ -459,8 +459,9 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     # pillars' segments, sleeves, screws and washers, the Chicago pins (keyed and printed:
     # 36; the two-plate bolt crank's 13 layers had 58); with the hex-standoff crankpins
     # (2026-10-04) 75 (the round standoff's: 64); 72 with the hub chain capped (no screw,
-    # washer or collar over the hub plate)
-    assert len(manifest["parts"]) == 72
+    # washer or collar over the hub plate); 71 since the second assembly audit (the
+    # stub's thrust sleeve; the STS3215's two near front screws left out)
+    assert len(manifest["parts"]) == 71
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 

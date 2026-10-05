@@ -162,16 +162,25 @@ def test_the_body_plates_keep_two_thicknesses_round_every_hole(default_robot):
     """The design review's levels on the body side of the default robot: the frame plates
     (a boss round every hole) and the centre plates (the ties moved off the servo's screw
     holes, the outline two thicknesses round each recess, the bump reliefs' corners
-    rounded past SendCutSend's 0.8 mm) have no cut-rule finding at all, not even a
-    warning; nothing anywhere is an error."""
+    rounded past SendCutSend's 0.8 mm) have no error; nothing anywhere is an error. Since
+    the checker measures the webs round non-circular cut-outs too (the assembly audit of
+    2026-10-04), two warnings are inherent in the STS3215 and stay at least 1 x t: the
+    inner plate's far front screw holes 2.05 mm from the raised panel's relief, and the
+    centre plates' rear screw holes 2.6 mm from the bus plugs' slot (into which the
+    SO-ARM100 model's pins relief is merged)."""
     from spiderpig.manufacture import check
+    from spiderpig.materials import sheet
 
     cfg, mech = default_robot
     got = check(mech, cfg.sheet)
     assert got["errors"] == {}
     body = [i for i in got["issues"] if i["part"].endswith(("torso", "frame_outer"))
             or i["part"].startswith("centre_plate")]
-    assert body == []
+    assert all(i["level"] == "warning" for i in body)
+    assert all(i["value"] >= sheet(i["sheet"]).thickness - 1e-6 for i in body)
+    assert {(i["part"].split(".")[-1].rstrip("0123456789"), i["rule"]) for i in body} <= {
+        ("torso", "web"), ("centre_plate", "edge")}
+    assert not [i for i in body if i["part"].endswith("frame_outer")]
     assert mech.meta["centre_plate_sheet"] == "al5052_2p3mm"      # decision 4: 0.090 in
 
 

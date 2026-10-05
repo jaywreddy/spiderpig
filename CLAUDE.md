@@ -139,7 +139,19 @@ docstrings defer to). Merged (2026-10-04, with gap_sink and the body plates): th
 Strider double 15 layers / 75.3 mm (72.8 since the capped hub chain: the gap over layer 13
 went), single 11, the demo `klann` quad 14 / 76.8, the Hoecken pantograph and dwell rocker
 9 each. The round standoff (`bolt_round`: the Strider decker and quad, TrotBot,
-`klann_lego`) still screws over the hub plate: its friction clamp needs both screws.
+`klann_lego`) still screws over the hub plate: its friction clamp needs both screws, so
+**those designs have no assembly order** (`_WebPlates.assembly_issue`, the crank note's
+`assembly`, an `assembly:` audit error since the second assembly audit of 2026-10-04; a
+user decision: a hex plan for them, a hub joint fastened from the horn side, or leaving
+them out of the first build). **Axial retention of the capped chain** (that audit): its
+printed sleeve is a light press on the hex (`BoltCrank.capped_press` 0.1 mm), pushed onto
+its lower web, so the sleeve, caught between the plates, carries the standoff; the crank
+body stops toward the outer plate on a printed **thrust sleeve** round the stub
+(`stub_thrust`, 8.5 mm, its end 0.1 mm over the outer plate: claimed in the stub's layers
+and gaps, `stub_thrust_r`) and toward the hub on the capped sleeve, and the capped hex is
+rated in the hub's depth less that 0.1 (2.44 mm). `--crank bolt_unretained` keeps the
+build before (both slide, no stop). (An M3 retainer under the outer plate, which that audit
+proposed, stops the stub moving *in*, which the capped sleeve already does, not out.)
 
 **Clearance gaps, layer thicknesses, per-part sheets** (2026-10-04, `stack.finalize`,
 `spiderpig/materials.py`). A fastener's head or nut beside a link (a Chicago screw's, a rod
@@ -162,7 +174,8 @@ passes: 5052 frame, 6061 crank, below), `link_sheets` (a Klann variant's foot li
 crank rider b1, the user's decision of 2026-10-04: `materials.LINK_SHEETS`); `Body.sheet`
 carries it to the mass, the BOM (a line per sheet), the DXFs (`layout.save_sheets`: a set
 per sheet) and the cut-rule review (`spiderpig/manufacture.py`: SendCutSend / Ponoko minimum
-hole, edge distance, minimum part, inside-corner radius; levels below; every issue with its
+hole, edge distance, the web round every non-circular cut-out (`web`: to the edge, a hole or
+another cut-out, since 2026-10-04), minimum part, inside-corner radius; levels below; every issue with its
 `why` and `fix`, `manufacture.messages` / `summary`): the audit's problems and warnings, a
 "cut rules" column and a per-part table in `audit.md` (and `manufacture` in `audit.json`),
 `verify` standard's `manufacture.cut_rules` row (errors: the `manufacture` / `cut_rule`
@@ -229,7 +242,17 @@ plugs stand in (`chassis._port_slots`); `centre_plates` counts the two servos' p
 the same place from either side), the rear holes within 2 t of the slot are dropped (each
 servo keeps one rear screw, its near hole), the ties beside it move out to 2 t
 (`tie_locals`), and `centre_sheet` ranks the most screws, then the thinnest stack (0.090 in
-x 4 over 0.080 x 5). `opening="pocket"` (no access) is kept to compare.
+x 4 over 0.080 x 5). `opening="pocket"` (no access) is kept to compare. Since the second
+assembly audit of 2026-10-04 the STS3215's rear idler horn stays in the box (`Idler.fitted`;
+`servos.model.unfit_idler` cuts it from the CAD model): its 21 mm square relief left the
+near rear screw 1.1 mm of web; the plates clear the 6 mm boss (a round relief,
+`Relief.round`, `chassis.RoundRelief`). Reliefs closer than the service's web are one cut
+(`chassis._merge_close`: the SO-ARM100 model's pins relief, 0.31 mm off the slot, merged
+into it) and a head recess that close opens into the relief (`_recess_bridges`). The
+inner plate's front screws: a hole with less than `Params.servo_screw_web_t` (1.0) x t of
+web to the horn's hole or a relief is left out (`DriveGroup.screw_web`): the STS3215 keeps
+its two far ones (2.05 mm to the panel relief, now cut at the models' rectangle,
+`mount.RELIEF_CUT_GROW` 0; the near ones had 1.01 mm); `servo_screw_web_t=0` keeps all four.
 
 **Glue-free chassis, feet, link plates** (2026-10-04, the joinery plan). Frame ties
 (`construction/chassis.py`): per tie and side a goBILDA 1501 standoff chain from the inner

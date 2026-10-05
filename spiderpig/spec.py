@@ -297,6 +297,7 @@ class FitSpec:
     journal_d: float | None = None
     stub_d: float | None = None
     hub_thickness: float | None = None
+    servo_screw_web_t: float | None = None
     kerf_mm: float | None = None
     sheet_size_mm: tuple[float, float] | None = None
 

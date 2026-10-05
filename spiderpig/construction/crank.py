@@ -220,6 +220,9 @@ BRASS = "#b08d3c"
 KEY_FITS = ("press", "float")              # KeyedCrank.key_fit
 
 
+PRESS_DRAWN = 0.02      # a pressed printed bore drawn this much over its steel (no clash)
+
+
 def hex_play(af: float, pocket_af: float) -> float:
     """Rotation (deg, either way) of a hex ``af`` across flats in a hex pocket
     ``pocket_af`` across flats before its corners (``af / sqrt 3`` out) meet the pocket's
@@ -480,6 +483,13 @@ class CrankGroup(Group):
                             for k in range(1, lo)]
                     out.append(Placed(-1, Disc("O", d.stub), GROUP, "journal stub"))
                     out.append(Placed(0, Disc("O", d.stub), GROUP, "journal stub", seat=True))
+                    thrust = getattr(self.construction, "stub_thrust_r", None)
+                    tr = thrust(ctx, route, hi) if thrust is not None else 0.0
+                    if tr > 0:        # its thrust sleeve, through the layers and gaps there
+                        out += [Placed(k, Disc("O", tr), GROUP, "stub thrust sleeve")
+                                for k in range(1, lo)]
+                        out += [Placed(k, Disc("O", tr), GROUP, "stub thrust sleeve",
+                                       gap=True) for k in range(0, lo)]
                 check = getattr(self.construction, "check_route", None)
                 if L.final and check is not None:
                     check(L, route, ridden, {p.layer for p in out if p.sheet > 0}, drive=drive)
@@ -1379,7 +1389,16 @@ class BoltCrank:
 
     Single plates (an aluminium crank sheet, the default): bottom up with the legs, the
     hub chain capped by the hub plate, which comes on with the horn, the servo and the
-    inner plate as one unit (:data:`construction.robot.ASSEMBLY`, steps 2 to 4).
+    inner plate as one unit (:data:`construction.robot.ASSEMBLY`, steps 2 to 4). Axially
+    (the assembly audit of 2026-10-04): the capped standoff is carried by its sleeve, a
+    light press on the hex caught between its two plates (``capped_press``; it slid in two
+    slide-fit pockets before), and the crank body (stub, webs, standoffs) stops toward
+    the outer plate on the stub's printed thrust sleeve (``stub_thrust``: it had no stop
+    that way, the hex only sliding in the hub plate's pocket), and toward the hub on the
+    capped sleeve (``sleeve_play``): it floats 0.1 + 0.2 mm, and the capped hex is rated
+    in the hub's depth less the 0.1. ``--crank bolt_unretained`` keeps the build before. A
+    chain screwed over the hub plate (``bolt_round``, ``bolt_hub_screw``) has no assembly
+    order (:meth:`_WebPlates.assembly_issue`, an audit error).
 
     Assembly of the acrylic stacks (the servo side up, as the printed crank): cement each
     segment's plates (align them on the bolts' pockets and a 6 mm rod through the pin holes;
@@ -1469,6 +1488,19 @@ class BoltCrank:
     hex_min_engage: float = 2.5      # least M3 thread of a screw in the standoff (5 turns)
     hex_tip_gap: float = 0.3         # between the two screws' tips inside the standoff
     hex_engage_max: float = 6.0      # the screws' thread in the standoff, at most
+    capped_press: float = 0.1        # (hex) the capped chain's printed sleeve: its hex bore
+    #                                  printed this much under the standoff's AF, a light
+    #                                  press (the assembly audit of 2026-10-04): the sleeve,
+    #                                  captured between its two plates, then carries the
+    #                                  standoff, which nothing else holds axially (no screw
+    #                                  over the hub plate); 0: the slide fit (sleeve_fit)
+    stub_thrust: bool = True         # (hex, a capped chain) a printed thrust sleeve round the
+    #                                  stub from the lowest web down to the outer plate's
+    #                                  inner face: the crank body's stop toward the outer plate
+    #                                  (it had none: the capped hex only slides in the hub
+    #                                  plate's pocket)
+    thrust_od: float = 8.5           # its outside (it bears on the plate round the 6.6 hole)
+    thrust_play: float = 0.1         # its end short of the outer plate's inner face
     hub_screw: bool = False          # (hex) a screw over the hub plate into the top of the
     #                                  chain that ends in it. Off (the assembly audit of
     #                                  2026-10-04): no order drives it once the hub plate, the
@@ -1989,7 +2021,11 @@ class BoltCrank:
             self.hex_key(S), S, round(span, 3), round(out_lo, 3), round(out_hi, 3),
             collar(out_lo), collar(out_hi), key, e, k,
             "" if capped else key, 0.0 if capped else e, 0 if capped else k,
-            round(t_lo + min(out_lo, 0.0), 3), round(t_hi + min(out_hi, 0.0), 3),
+            round(t_lo + min(out_lo, 0.0), 3),
+            # capped: the crank body's float toward the outer plate (the thrust sleeve's
+            # play) draws the hex that much out of the hub plate's pocket
+            round(t_hi + min(out_hi, 0.0) - (self.thrust_play if capped and self.stub_thrust
+                                             else 0.0), 3),
             round(sl, 3) if sleeve else 0.0,
             stack_lo=round(self.hex_stack(max(out_lo, 0.0), k), 3),
             stack_hi=0.0 if capped else round(self.hex_stack(max(out_hi, 0.0), k), 3),
@@ -2107,6 +2143,20 @@ class BoltCrank:
         g = ctx.topo.geometry.points
         R = float(np.linalg.norm(g[at][0] - g["O"][0]))
         return self._capped(R, drive.horn_radius, drive.center_head_d, ctx.params)
+
+    def stub_thrust_r(self, ctx: Context, route: CrankRoute, hub: int) -> float:
+        """The radius of the stub's thrust sleeve (:attr:`stub_thrust`) when the route has
+        a chain capped in the hub plate (0: none): with no screw over the hub plate, the hex
+        only slides in its pocket, and nothing else stops the crank body (stub, webs,
+        standoffs) moving toward the outer plate (the assembly audit of 2026-10-04: the hex
+        would leave the hub plate's pocket after 2.54 mm, the screw heads meet the links
+        first)."""
+        if not (self.hex and self.stub_thrust and route.bearing):
+            return 0.0
+        for ch in chains_of(route.runs):
+            if ch[-1].hi + 1 == hub and self.hub_capped(ctx, ch[0].at):
+                return self.thrust_od / 2
+        return 0.0
 
     def hub_head_need(self, ctx: Context, horn_radius: float, center_d: float) -> float:
         """How thick the printed horn spacer must be for a crankpin's screw head over the hub
@@ -2933,10 +2983,17 @@ class _WebPlates(_BoltPlates):
             sk, length = screw_from_key(key)
             self.buy(f"crank_pin_screw_{side}_{tag}",
                      screw_body(xy, sk, bearing, length, up=side == "lo"), key)
+        press = capped and c.capped_press > 0
         if j.sleeve > 0:
             z0 = self.pz(w0)[1] + (self.pz(w1)[0] - self.pz(w0)[1] - j.sleeve) / 2
+            bore = pocket
+            if press:
+                # pressed on the hex resting on the lower plate (the washer under that plate
+                # drawn up against it), so the play is all over it; drawn a hair over the AF
+                # (the print is ``capped_press`` under it)
+                z0, bore = self.pz(w0)[1], c.hex_af + PRESS_DRAWN
             sleeve = (disc(xy, c.sleeve_od / 2, z0, z0 + j.sleeve)
-                      - _hex(xy, pocket, z0 - 1, z0 + j.sleeve + 1, ang))
+                      - _hex(xy, bore, z0 - 1, z0 + j.sleeve + 1, ang))
             self.out.bodies.append(hardware(f"crank_pin_sleeve_{tag}", sleeve, self.host,
                                             fab="printed", color=SEGMENT_COLOR))
         if c.lock_key is not None:
@@ -2950,8 +3007,30 @@ class _WebPlates(_BoltPlates):
             "screws": [x for x in (j.screw_lo, j.screw_hi) if x],
             "engage_mm": [j.engage_lo, j.engage_hi], "washers": [j.washers_lo, j.washers_hi],
             "hex_engaged_mm": [j.engaged_lo, j.engaged_hi], "sleeve_mm": j.sleeve,
+            "sleeve_press_mm": c.capped_press if press and j.sleeve > 0 else 0.0,
             "run_layers": hi - lo + 1, "layers": [lo - 2, hi + 1],
             "capacity_nm": c.capacity(j)}
+
+    def assembly_issue(self) -> str | None:
+        """Why this crank can't be put together, or ``None``: a chain that ends in the hub
+        plate with a screw over it (the round standoff's clamp, ``--crank bolt_hub_screw``).
+        The horn screws come up through the hub plate from below, so the hub plate, the horn,
+        the servo and the inner plate go on as one unit (:data:`construction.robot.ASSEMBLY`)
+        once the stack under the hub plate is closed, which buries that screw's head under
+        the horn spacer; and built the other way round (the hub plate screwed to the chain
+        first), the horn screws' heads are inside the closed stack. The assembly audit of
+        2026-10-04 (the Strider quad's J1_leg3, ``klann_lego``'s M_leg2)."""
+        for n in self.notes:
+            if (self.hub_layer is not None and n["layers"][1] == self.hub_layer
+                    and not n.get("capped") and len(n["screws"]) > 1):
+                return (f"crankpin {n['at']}'s chain ends in the hub plate (layer "
+                        f"{self.hub_layer}) with a screw over it ({n['screws'][-1]}), and the "
+                        "horn screws come up through the hub plate from below: no order "
+                        "drives both (the hub plate, horn, servo and inner plate go on as one "
+                        "unit once the stack under it is closed; construction.robot.ASSEMBLY)"
+                        "; a crank that caps that chain (the hex crank, --crank bolt) has an "
+                        "order, the round standoff's friction clamp needs both screws")
+        return None
 
     def stub(self) -> None:
         c, b = self.c, self.build
@@ -2974,6 +3053,17 @@ class _WebPlates(_BoltPlates):
         self.buy("crank_stub_screw", screw_body(o, sk, bearing, L, up=False), sk.key(L))
         self.layer_cut(k, o, 3.4 / 2)
         self.out.cut(FRAME_OUTER, Cut(o, od + 0.6))      # +/-0.3 mm: the journal's clearance
+        if c.hex and c.stub_thrust and any(n.get("capped") for n in self.notes):
+            # the crank body's stop toward the outer plate: a printed sleeve round the stub
+            # from the lowest web's underside to just over the outer plate's inner face,
+            # bearing on the plate round the journal's hole
+            zb = b.z(0)[1] + c.thrust_play
+            ring = (disc(o, c.thrust_od / 2, zb, top)
+                    - disc(o, (od + self.p.print_fit) / 2, zb - 1, top + 1))
+            self.out.bodies.append(hardware("crank_stub_thrust", ring, self.host,
+                                            fab="printed", color=SEGMENT_COLOR))
+            self.thrust = {"od_mm": c.thrust_od, "length_mm": round(top - zb, 3),
+                           "play_mm": c.thrust_play}
 
     def hub(self) -> None:
         c, b, drive = self.c, self.build, self.drive
@@ -3036,6 +3126,8 @@ class _WebPlates(_BoltPlates):
             "crankpin": ("hex standoff in hex pockets, the riders on a printed sleeve"
                          if c.hex else "round standoff clamped by M4 screws"),
             "chains": self.notes, "journals": self.journals, "plates": n_plates,
+            "stub_thrust": getattr(self, "thrust", None),
+            "assembly": self.assembly_issue(),
             "segments": [], "sheet_mm": self.t,
             "weakest_bond": None, "threadlocker": c.lock_key}
         if c.hex:
@@ -3061,3 +3153,13 @@ BOLT_HUB_SCREW = BoltCrank(
 selectable: :data:`construction.robot.ASSEMBLY` has no step that can drive it with the
 horn screws coming up through the hub plate from below."""
 
+
+BOLT_UNRETAINED = BoltCrank(
+    key="bolt_unretained", capped_press=0.0, stub_thrust=False,
+    label=("laser-cut aluminium crank on hex standoff crankpins, the capped hub chain's sleeve "
+           "a slide fit and no thrust sleeve on the stub (the build before the assembly "
+           "audit of 2026-10-04: the capped standoff and the crank body held axially by "
+           "friction alone)"))
+"""The hex crank as it was before the capped chain's retention (``--crank
+bolt_unretained``), kept selectable: the capped standoff slides in its two slide-fit
+pockets and the crank body has no stop toward the outer plate."""

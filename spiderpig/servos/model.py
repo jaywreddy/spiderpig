@@ -181,7 +181,8 @@ def parametric_servo(spec: ServoSpec) -> Part:
     if idl is not None and idl.included:
         base = idl.base_z if idl.base_z is not None else zr
         adds.append(_cyl(idl.boss_d / 2, base - idl.boss_h, base + 0.01))
-        if idl.horn_d > 0 and idl.horn_thickness > 0 and idl.horn_face_z is not None:
+        if (idl.fitted and idl.horn_d > 0 and idl.horn_thickness > 0
+                and idl.horn_face_z is not None):
             horn = _cyl(idl.horn_d / 2, idl.horn_face_z, idl.horn_face_z + idl.horn_thickness)
             adds.append(horn - _fuse(_pattern_holes(idl.pattern, idl.horn_face_z - 1,
                                                     idl.horn_face_z + idl.horn_thickness + 1)))
@@ -277,9 +278,25 @@ def drill_mounts(spec: ServoSpec, part):
     return cut_each(part, _fuse(cutters)) if cutters else part
 
 
+def unfit_idler(spec: ServoSpec, part):
+    """``part`` (a manufacturer's model, which may draw the idler horn fitted or fused in)
+    without the idler horn when the build leaves it off (``Idler.fitted`` false): the ring
+    from the boss out past the horn's rim, from beyond its outer face to just short of the
+    case's face round the shaft; the boss stays."""
+    idl = spec.idler
+    if (idl is None or idl.fitted or idl.horn_d <= 0 or idl.horn_face_z is None
+            or idl.base_z is None):
+        return part
+    z0, z1 = idl.horn_face_z - 1.0, idl.base_z - 0.05
+    ring = _cyl(idl.horn_d / 2 + 0.5, z0, z1) - _cyl(idl.boss_d / 2 + 0.05, z0 - 1, z1 + 1)
+    return cut_each(part, ring)
+
+
 @lru_cache(maxsize=32)
 def _servo_part(spec: ServoSpec, use_cad: bool):
     part = cad_servo(spec) if use_cad else None
+    if part is not None:
+        part = unfit_idler(spec, part)
     return drill_mounts(spec, part if part is not None else parametric_servo(spec))
 
 

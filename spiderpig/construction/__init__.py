@@ -24,6 +24,7 @@ from spiderpig.construction.base import ConstructionError, Context, Group
 from spiderpig.construction.crank import (
     BOLT_HUB_SCREW,
     BOLT_ROUND,
+    BOLT_UNRETAINED,
     KEYED_FLOAT,
     BoltCrank,
     KeyedCrank,
@@ -41,9 +42,10 @@ AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
 # ``bolt`` (the default): hex standoff crankpins on an aluminium crank sheet; ``bolt_round``
 # the same with the friction-clamped round standoff (2026-10-04, kept to compare);
 # ``bolt_hub_screw`` the hex crank with a screw over the hub plate (before the assembly
-# audit of 2026-10-04: no assembly order drives it)
+# audit of 2026-10-04: no assembly order drives it); ``bolt_unretained`` the hex crank
+# without the capped chain's pressed sleeve and the stub's thrust sleeve (before that audit)
 CRANKS = {c.key: c for c in (KeyedCrank(), KEYED_FLOAT, PrintedCrank(), BoltCrank(),
-                             BOLT_ROUND, BOLT_HUB_SCREW)}
+                             BOLT_ROUND, BOLT_HUB_SCREW, BOLT_UNRETAINED)}
 
 
 def _pick(registry: dict, key: str, what: str):

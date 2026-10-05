@@ -155,6 +155,8 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
            for a, b in (rep.get("deck") or {}).get("clearance", {}).get("overlapping", [])]
         + strength_messages(rep["strength"], "error")
         + manufacture_messages(rep["manufacture"], "error")
+        + ([f"assembly: {rep['crank_bolt']['assembly']}"]
+           if (rep.get("crank_bolt") or {}).get("assembly") else [])
     )
     rep["warnings"] = ([f"wobble: {w}" for w in rep["wobble"]["warnings"]]
                        + strength_messages(rep["strength"], "warning")

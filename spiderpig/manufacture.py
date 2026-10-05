@@ -8,6 +8,10 @@ item carries (:mod:`hardware.sheet_catalog`, read through :func:`materials.sheet
 * **edge distance**: from a hole to the part's edge or to another hole at least
   :attr:`materials.Sheet.min_edge` (SendCutSend: 2 x the thickness in aluminium; Ponoko:
   its 1 mm minimum feature);
+* **webs round a cut-out** (``web``): the same distances and levels from every
+  non-circular cut-out (a pocket, a relief, a slot inside the outline) to the part's edge,
+  a hole or another cut-out (since the assembly audit of 2026-10-04: a relief beside a
+  hole or another relief was never measured);
 * **part size**: at least ``min_part`` (SendCutSend aluminium 6.35 x 9.5 mm, Ponoko 6 mm);
 * **inside corners**: a pocket's corners come out ``corner_r`` round (SendCutSend in
   aluminium: 0.8 mm), so a pocket that must take a square corner (a hex pocket for a nut or
@@ -48,6 +52,31 @@ def _profile(body):
     part = _lay_flat(body.part)
     bb = part.bounding_box()
     return section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+
+
+def _pocket_web(outer, holes, pockets) -> tuple[float, str] | None:
+    """The thinnest web round a non-circular cut-out (a pocket, a relief, a slot that stays
+    inside the outline): to the part's edge, a round hole or another cut-out (exact
+    distances, BRepExtrema), as ``(mm, what it is to)``; ``None`` without pockets. The
+    hole rule above sees round holes only, so a relief beside a hole or another relief was
+    never measured (the centre and frame plates' audit of 2026-10-04)."""
+    from build123d import Vector
+
+    worst: tuple[float, str] | None = None
+
+    def take(d: float, what: str) -> None:
+        nonlocal worst
+        if worst is None or d < worst[0]:
+            worst = (d, what)
+
+    for i, pw in enumerate(pockets):
+        z = pw.bounding_box().center().Z
+        take(pw.distance_to(outer), "the part's edge")
+        for (cx, cy), r in holes:
+            take(pw.distance_to(Vector(cx, cy, z)) - r, f"a {2 * r:.1f} mm hole")
+        for qw in pockets[i + 1:]:
+            take(pw.distance_to(qw), "another cut-out")
+    return worst
 
 
 def part_issues(body, key: str) -> list[dict]:
@@ -124,6 +153,24 @@ def part_issues(body, key: str) -> list[dict]:
                         "why": f"{why} ({sh.thickness:g} mm {sh.material})",
                         "fix": "move the hole in, widen the plate round it, or a thinner "
                                "sheet (the limit scales with the thickness)"})
+    if need > 0 and pockets:
+        web = _pocket_web(outer, holes, pockets)
+        if web is not None and web[0] < need - TOL:
+            d, what = web
+            hard = sh.metal and d < EDGE_ERROR_T * sh.thickness - TOL
+            one_t = EDGE_ERROR_T * sh.thickness
+            why = (f"under {EDGE_ERROR_T:g} x the thickness ({one_t:.2f} mm): the web distorts "
+                   "or burns through (a web under a kerf doesn't come back at all), an error"
+                   if hard else
+                   f"under {sh.service}'s {sh.edge_t:g} x the thickness, a warning" if sh.metal
+                   else f"under {sh.service}'s {need:g} mm minimum feature, a warning")
+            out.append({"rule": "web", "part": body.name, "value": round(d, 2),
+                        "limit": round(need, 2), "level": "error" if hard else "warning",
+                        "detail": f"{d:.2f} mm of web between a cut-out and {what}, under "
+                                  f"{sh.service}'s {need:.2f} mm",
+                        "why": f"{why} ({sh.thickness:g} mm {sh.material})",
+                        "fix": "merge the cut-outs into one cut, move or shrink one, or widen "
+                               "the plate there (the limit scales with the thickness)"})
     if sh.metal and sh.corner_r > 0:     # (a laser's kerf in acrylic: sharp enough)
         for wire in pockets:
             edges = wire.edges()
@@ -175,6 +222,7 @@ def check(mech, default: str) -> dict:
 
 
 RULES = {"min_hole": "minimum hole", "edge": "hole-to-edge distance",
+         "web": "web round a cut-out",
          "min_part": "minimum part size", "corner": "inside corner radius"}
 """Each cut rule's name in a message."""
 

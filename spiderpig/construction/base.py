@@ -105,6 +105,12 @@ class Params:
     journal_d: float = 12.0        # crank body on the axis O
     stub_d: float = 8.0            # journal stub turning in the outer frame plate
     hub_thickness: float = 5.0     # coupling disc under the servo horn
+    # the servo on the inner frame plate
+    servo_screw_web_t: float = 1.0  # a front screw is left out when its hole would leave
+    #                                less web than this many of the inner plate's thicknesses
+    #                                to the horn's hole or a relief (the cut rules' error
+    #                                level; the assembly audit of 2026-10-04: the STS3215's
+    #                                near front holes leave 1.01 mm in 0.080 in); 0 keeps all
 
     def hole(self, d: float, fit: str = "running") -> float:
         """Finished hole diameter for a part of diameter ``d``."""

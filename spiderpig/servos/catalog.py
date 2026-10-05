@@ -97,8 +97,12 @@ STS3215 = register_servo(ServoSpec(
         # connector bump: [WS3 measured] x 17.4..29.7, |y| <= 9.2, to z = -32.4;
         # [SO] x 17.3..29.9, |y| <= 9.2
         Relief(17.2, 30.0, -9.3, 9.3, 1.9, label="connector housing"),
-        # idler boss tip (z = -33.1 [FT]) and the rear horn (outer face -32.55 [WS3])
-        Relief(-10.0, 10.0, -10.0, 10.0, 2.6, solid=False, label="idler boss and rear horn"),
+        # the idler boss (6 mm, tip at z = -33.1 [FT]) alone: the rear horn (19.95 mm, outer
+        # face -32.55 [WS3]) is left in the box (Idler.fitted, the assembly audit of
+        # 2026-10-04): its 21 mm relief left the near rear screw 1.1-1.5 mm of web in the
+        # 0.090 in centre plates, under 1 x t, and nothing on this robot uses the idler
+        Relief(-3.0, 3.0, -3.0, 3.0, 2.6, solid=False, round=True,
+               label="idler boss (the rear horn left off)"),
         # [SO] only: six 2 x 2 mm pins at x = 13..15 reaching z = -33.8 (not in [WS3])
         Relief(12.9, 15.2, -8.8, 8.8, 3.3, solid=False, label="pins in the SO-ARM100 model"),
     ),
@@ -116,6 +120,7 @@ STS3215 = register_servo(ServoSpec(
         # UNVERIFIED: passive idler inferred from the rear horn's plain 6.05 mm bore [FT]
         horn_d=19.95, horn_thickness=3.35, horn_face_z=-32.55,           # [FT] / [WS3]
         included=True,
+        fitted=False,       # the rear horn stays in the box (the centre plates' webs)
     ),
     cad=CadRef(
         url="https://raw.githubusercontent.com/TheRobotStudio/SO-ARM100/"

@@ -142,11 +142,58 @@ def servo_frame(build: Build, drive) -> ServoFrame:
     return ServoFrame((float(o[0]), float(o[1])), (float(u[0]), float(u[1])))
 
 
+class RoundRelief(tuple):
+    """A relief's rectangle ``(x0, x1, y0, y1)`` (servo frame) that stands for the circle
+    inscribed in it (``servos.spec.Relief.round``: an idler boss)."""
+
+    @property
+    def centre(self) -> tuple[float, float]:
+        return (self[0] + self[1]) / 2, (self[2] + self[3]) / 2
+
+    @property
+    def r(self) -> float:
+        return (self[1] - self[0]) / 2
+
+
 def _rect_distance(p: tuple[float, float], x0, x1, y0, y1) -> float:
     """Distance from a point to an axis-aligned rectangle (0 inside)."""
     dx = max(x0 - p[0], 0.0, p[0] - x1)
     dy = max(y0 - p[1], 0.0, p[1] - y1)
     return math.hypot(dx, dy)
+
+
+def _relief_distance(p: tuple[float, float], rect) -> float:
+    """Distance from a point to a relief's cut-out (a :class:`RoundRelief`'s circle, else
+    the rectangle; 0 inside)."""
+    if isinstance(rect, RoundRelief):
+        c = rect.centre
+        return max(0.0, math.hypot(p[0] - c[0], p[1] - c[1]) - rect.r)
+    return _rect_distance(p, *rect)
+
+
+def _merge_close(rects: list[tuple], web: float) -> list[tuple]:
+    """A plate's rectangular cut-outs (``(frame, (x0, x1, y0, y1))``, servo frame) with every
+    two of one frame that face each other across less than ``web`` (the service's edge
+    distance: a thinner web distorts, under a kerf it doesn't come back at all) merged into
+    their bounding rectangle: one cut (the assembly audit of 2026-10-04: the STS3215's
+    "pins" relief stood 0.31 mm off the bus plugs' slot). Round reliefs stay apart."""
+    out = list(rects)
+    merged = True
+    while merged:
+        merged = False
+        for i, j in itertools.combinations(range(len(out)), 2):
+            (fa, a), (fb, b) = out[i], out[j]
+            if fa is not fb or isinstance(a, RoundRelief) or isinstance(b, RoundRelief):
+                continue
+            gx = max(a[0] - b[1], b[0] - a[1])
+            gy = max(a[2] - b[3], b[2] - a[3])
+            # facing across a gap in one direction, overlapping in the other
+            if (gx < web and gy < 0) or (gy < web and gx < 0):
+                box_ = (min(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), max(a[3], b[3]))
+                out = [r for k, r in enumerate(out) if k not in (i, j)] + [(fa, box_)]
+                merged = True
+                break
+    return out
 
 
 def _footprint(spec) -> tuple[float, float, float, float]:
@@ -378,7 +425,7 @@ def _clear_holes(rs: RearScrews, frames, reliefs, half: float, pitch: float,
     keep = []
     for h in rs.holes:
         if (all(not (_overlaps(hz, zr)
-                     and _rect_distance(rf.local(f.xy(h.x, h.y)), *rect) < head_r)
+                     and _relief_distance(rf.local(f.xy(h.x, h.y)), rect) < head_r)
                 for f, hz in heads for rf, rect, zr in reliefs)
                 and all(_rect_distance(rf.local(f.xy(h.x, h.y)), *rect)
                         >= head_r + 2 * pitch + RELIEF_ROUND
@@ -394,7 +441,7 @@ def _relief_volumes(spec, frames, half: float):
         for r in spec.rear_reliefs:
             z = sorted((face, face + sign * r.height))
             rect = (r.x0 - RELIEF_GROW, r.x1 + RELIEF_GROW, r.y0 - RELIEF_GROW, r.y1 + RELIEF_GROW)
-            out.append((frame, rect, tuple(z)))
+            out.append((frame, RoundRelief(rect) if r.round else rect, tuple(z)))
     return out
 
 
@@ -413,6 +460,35 @@ def _port_slots(spec, frames, half: float):
     for frame, face, sign in ((frames[0], -half, 1.0), (frames[1], half, -1.0)):
         z = sorted((face, face + sign * ports.height))
         out.append((frame, rect, tuple(z)))
+    return out
+
+
+def _recess_bridges(xy, r: float, rects, web: float, z0: float, z1: float) -> list:
+    """Cuts joining a round head recess at ``xy`` (radius ``r``) to each rectangular relief
+    of ``rects`` (``(frame, rect)``) it stands closer to than ``web``: a band as wide as
+    the recess from it into the relief, its corners rounded (one cut-out, no thin web)."""
+    out = []
+    for rf, rect in rects:
+        if isinstance(rect, RoundRelief):
+            continue
+        lx, ly = rf.local(xy)
+        rx0, rx1, ry0, ry1 = rect
+        if _rect_distance((lx, ly), rx0, rx1, ry0, ry1) - r >= web:
+            continue
+        if ry0 <= ly <= ry1 or not (rx0 <= lx <= rx1):
+            # beside it along x (or diagonal: along x first)
+            bx0, bx1 = (lx, rx0 + 1.0) if lx < rx0 else (rx1 - 1.0, lx)
+            out.append(_rounded_rect(rf, bx0, bx1, ly - r, ly + r, min(RELIEF_CORNER, r),
+                                     z0 - 1.0, z1 + 1.0))
+            if not ry0 <= ly <= ry1:
+                by0, by1 = (ly, ry0 + 1.0) if ly < ry0 else (ry1 - 1.0, ly)
+                xin = min(max(lx, rx0 + r), rx1 - r)
+                out.append(_rounded_rect(rf, xin - r, xin + r, by0, by1,
+                                         min(RELIEF_CORNER, r), z0 - 1.0, z1 + 1.0))
+        else:
+            by0, by1 = (ly, ry0 + 1.0) if ly < ry0 else (ry1 - 1.0, ly)
+            out.append(_rounded_rect(rf, lx - r, lx + r, by0, by1, min(RELIEF_CORNER, r),
+                                     z0 - 1.0, z1 + 1.0))
     return out
 
 
@@ -649,25 +725,35 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
 
     sheet_key = centre_sheet(ctx)
     min_hole = sheet(sheet_key).min_hole if sheet_key else 0.0
+    web = sheet(sheet_key).min_edge if sheet_key else 0.0
     for k in range(n):
         z0 = -half + k * pitch
         z1 = z0 + pitch
         cuts: list = []
         pockets = []
-        for rf, rect, zr in reliefs:
-            if _overlaps((z0, z1), zr):
-                # its corners rounded past the service's inside radius, grown so the rounded
-                # pocket still holds the bump's rectangle
-                rx0, rx1, ry0, ry1 = rect
-                rx1 = min(rx1, max(xs) + 10.0)           # an open slot: past the far edge
-                g = RELIEF_ROUND
-                pockets.append(_rounded_rect(rf, rx0 - g, rx1 + g, ry0 - g, ry1 + g,
-                                             RELIEF_CORNER, z0 - 1.0, z1 + 1.0))
+        here = [(rf, rect) for rf, rect, zr in reliefs if _overlaps((z0, z1), zr)]
+        # reliefs closer than the service's web: one cut (the pins relief into the slot)
+        here = _merge_close(here, web + 2 * RELIEF_ROUND)
+        for rf, rect in here:
+            if isinstance(rect, RoundRelief):
+                pockets.append(disc(rf.xy(*rect.centre), rect.r, z0 - 1.0, z1 + 1.0))
+                continue
+            # its corners rounded past the service's inside radius, grown so the rounded
+            # pocket still holds the bump's rectangle
+            rx0, rx1, ry0, ry1 = rect
+            rx1 = min(rx1, max(xs) + 10.0)           # an open slot: past the far edge
+            g = RELIEF_ROUND
+            pockets.append(_rounded_rect(rf, rx0 - g, rx1 + g, ry0 - g, ry1 + g,
+                                         RELIEF_CORNER, z0 - 1.0, z1 + 1.0))
         for _, xy, head, shank, h in screws:
             if _overlaps((z0, z1), tuple(sorted(shank))):
                 cuts.append(Cut(xy, max(h.d, min_hole)))
             if _overlaps((z0, z1), head):
                 cuts.append(Cut(xy, rs.head_d + 2 * HEAD_CLEARANCE))
+                # a head recess within the web of a relief opens into it: one cut (the
+                # recess only clears the head, which bears on the plate under it)
+                pockets += _recess_bridges(xy, rs.head_d / 2 + HEAD_CLEARANCE, here,
+                                           web + RELIEF_ROUND, z0, z1)
         cuts += [Cut(xy, tie_d) for xy in tie_xy]
         part = _rounded_rect(left, min(xs), max(xs), min(ys), max(ys), corner, z0, z1)
         part = cut_holes(part, cuts, z0, z1)

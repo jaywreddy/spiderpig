@@ -20,6 +20,10 @@ corners (the pocket's dog-bone reliefs leave the flats whole but 0.09 mm at each
 | **0.100 in 6061-T6 (the default)** | 2.24-2.54 mm | 3.83-4.35 N·m | **2.25-2.56** |
 | 0.125 in 5052 | 2.875-3.175 mm | 3.44-3.80 N·m | 2.02-2.24 |
 
+The chain capped by the hub plate (no screw over it) is rated in the hub plate's pocket less
+the crank body's float toward the outer plate (the stub's thrust sleeve's 0.1 mm play, the
+assembly audit of 2026-10-04): 2.44 mm on the default, inside the table's 2.24-2.54.
+
 The standoff's torsion (the tube in its flats round the M3 thread, 300 MPa) is 5.16 N·m.
 0.125 in 5052 passes too, but is thicker than its 3 mm layer: every crank layer became
 3.175 mm and the demo Klann quad's pillar columns stopped landing on stock standoff lengths

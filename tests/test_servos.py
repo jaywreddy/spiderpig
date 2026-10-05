@@ -283,8 +283,19 @@ def test_mount_screws_clear_the_crank_and_are_claimed(design, side, key):
         hub = iface.horn_radius
     for _, mh, sk, _ in screws:
         assert math.hypot(mh.x, mh.y) - sk.head_d / 2 >= hub + ctx.params.margin
-    if key == "sts3215":            # all four front screws (2026-10-04: the hub stepped down)
-        assert sorted({mh.x for _, mh, _, _ in screws}) == [8.3, 29.0]
+    if key == "sts3215":
+        # the two far front screws: the hub stepped down a layer clears all four heads
+        # (2026-10-04), but the near holes (r 13.19) leave the inner plate 1.01 mm of web to
+        # the horn's hole, under 1 x t (the assembly audit of 2026-10-04, Params.
+        # servo_screw_web_t); the far ones 2.05 to the raised panel's relief
+        assert sorted({mh.x for _, mh, _, _ in screws}) == [29.0]
+        webs = {mh.x: drive.screw_web(ctx, mh) for mh in drive.spec.mount}
+        assert webs[8.3] == pytest.approx(1.01, abs=0.01)
+        assert webs[29.0] == pytest.approx(2.05, abs=0.01)
+        assert min(drive.screw_web(ctx, mh) for _, mh, _, _ in screws) >= ctx.sheet_t("frame")
+        every = drive.front_screws(replace(ctx, params=replace(ctx.params,
+                                                               servo_screw_web_t=0.0)))
+        assert len(every) == 4
     heads = [p for p in d.plan.shapes("drive") if p.label == "servo screw head"]
     assert {p.layer for p in heads} == {d.plan.top - 1}
     assert {p.shape.at for p in heads} == {name for name, *_ in screws}

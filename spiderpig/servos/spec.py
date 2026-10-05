@@ -129,7 +129,9 @@ class Idler:
 
     Optional: ``horn_d``/``horn_thickness``/``horn_face_z`` the idler horn
     (its outer face, servo z); ``included`` whether the idler parts come with
-    the servo (else ``horn_bom_key`` names what to buy).
+    the servo (else ``horn_bom_key`` names what to buy); ``fitted``: whether the
+    build fits the idler horn (``False``: it stays in the box, the boss alone
+    stands past the rear face, and the models are drawn without it).
     """
 
     boss_d: float
@@ -141,6 +143,7 @@ class Idler:
     horn_thickness: float = 0.0
     horn_face_z: float | None = None
     included: bool = True
+    fitted: bool = True
 
 
 @dataclass(frozen=True)
@@ -152,7 +155,9 @@ class Relief:
 
     ``solid``: the relief is part of the case (a parametric model draws it);
     ``False`` marks clearance for something else (an idler horn, pins that
-    only one CAD model shows). ``label`` says what it is.
+    only one CAD model shows). ``label`` says what it is. ``round``: the
+    feature is a disc (an idler boss): the plates' cut-out is the circle in the
+    rectangle, not the rectangle (whose corners would reach 41 % further).
     """
 
     x0: float
@@ -162,6 +167,7 @@ class Relief:
     height: float
     solid: bool = True
     label: str = ""
+    round: bool = False
 
 
 @dataclass(frozen=True)

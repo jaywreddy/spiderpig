@@ -54,6 +54,11 @@ from spiderpig.shapes import Cut, Rect, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
 
 MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
+RELIEF_CUT_GROW = 0.0     # a front relief's cut-out past its rectangle, per side (mm): none
+#                           since the assembly audit of 2026-10-04 (0.25 before): the STS3215's
+#                           panel rectangle already holds both models ([SO] |y| <= 7.0,
+#                           [WS3] 6.7), and 0.25 left its far front holes 1.80 mm of web in
+#                           0.080 in, under 1 x t (2.05 now: a warning)
 SERVO_COLOR = "#1f1f1f"
 HORN_COLOR = "#c0c0c0"
 SPACER_COLOR = "#6a4fc7"
@@ -262,8 +267,36 @@ class DriveGroup(Group):
             sk, length = parsed
             if math.hypot(mh.x, mh.y) - sk.head_d / 2 < hub + p.margin:
                 continue
+            if self.screw_web(ctx, mh) < p.servo_screw_web_t * self._plate_t(ctx) - 1e-6:
+                continue
             out.append((f"servo.screw{i}", mh, sk, length))
         return out
+
+    @staticmethod
+    def _plate_t(ctx: Context) -> float:
+        return ctx.sheet_t("frame") if ctx.sheet("frame") is not None else ctx.pitch
+
+    def hole_d(self, ctx: Context, mh: MountHole) -> float:
+        """A front screw's hole in the inner plate: the servo's, at least the service's
+        smallest (SendCutSend: the sheet's thickness)."""
+        from spiderpig.materials import sheet
+
+        key = ctx.sheet("frame")
+        min_hole = sheet(key).min_hole if key else 0.0
+        return max(mh.d, min_hole + 0.025)
+
+    def screw_web(self, ctx: Context, mh: MountHole) -> float:
+        """The inner plate's web round a front screw's hole: to the horn's clearance hole and
+        to the front reliefs' cut-outs (mm). The STS3215's near holes (r 13.19) leave 1.01
+        mm to the horn's (r 10.975), its far ones 2.05 to the raised panel's relief."""
+        r = self.hole_d(ctx, mh) / 2
+        s = self.spec
+        web = math.hypot(mh.x, mh.y) - r - (s.horn.diameter / 2 + ctx.params.margin)
+        for f in s.front_reliefs:
+            dx = max(f.x0 - RELIEF_CUT_GROW - mh.x, 0.0, mh.x - f.x1 - RELIEF_CUT_GROW)
+            dy = max(f.y0 - RELIEF_CUT_GROW - mh.y, 0.0, mh.y - f.y1 - RELIEF_CUT_GROW)
+            web = min(web, math.hypot(dx, dy) - r)
+        return web
 
     def _frame(self, ctx: Context) -> tuple[np.ndarray, np.ndarray]:
         """(O, servo +x) from the side's geometry (both fixed: any sample will do)."""
@@ -383,8 +416,9 @@ class DriveGroup(Group):
         # plate: horn clearance, screw holes, reliefs; a pad under the whole footprint
         out.cut(FRAME_INNER, Cut(tuple(o), s.horn.diameter + 2 * p.margin))
         for r in s.front_reliefs:
+            g = 2 * RELIEF_CUT_GROW
             out.cut(FRAME_INNER, Rect(world((r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2),
-                                      (r.x1 - r.x0 + 0.5, r.y1 - r.y0 + 0.5), ang))
+                                      (r.x1 - r.x0 + g, r.y1 - r.y0 + g), ang))
         x0, x1 = s.axis_offset - L / 2, s.axis_offset + L / 2
         half = W / 2 + p.min_wall
         out.pad(FRAME_INNER, world(x0 + half, 0), world(x1 - half, 0), half * math.sqrt(2))
@@ -394,15 +428,11 @@ class DriveGroup(Group):
         body = _placed_servo(s, _key(o, u, plate_top))
         out.bodies.append(hardware("servo", body, frame_host, fab="purchased",
                                    bom_key=s.bom_key, color=SERVO_COLOR))
-        from spiderpig.materials import sheet
-
-        key = ctx.sheet("frame")
-        min_hole = sheet(key).min_hole if key else 0.0
         for i, (_, mh, sk, length) in enumerate(self.front_screws(ctx)):
             xy = world(mh.x, mh.y)
             # a hole the service cuts (SendCutSend: at least the sheet's thickness); a pan
             # head still bears on the ring round it
-            out.cut(FRAME_INNER, Cut(xy, max(mh.d, min_hole + 0.025)))
+            out.cut(FRAME_INNER, Cut(xy, self.hole_d(ctx, mh)))
             out.bodies.append(hardware(f"servo_screw{i}", screw_solid(xy, sk, plate_bottom, length),
                                        frame_host, fab="purchased", bom_key=mh.screw, color=STEEL))
 
