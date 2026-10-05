@@ -2028,7 +2028,8 @@ class BoltCrank:
         _, S, out_lo, out_hi, L, k, e = best
 
         def collar(o: float) -> float:
-            return round(o, 2) if o >= self.collar_min - EPS else 0.0
+            # to 0.01 mm under what stands past (never over: the washer bears on the end)
+            return math.floor(o * 100 + 1e-6) / 100 if o >= self.collar_min - EPS else 0.0
 
         inner = span - t_lo - t_hi
         # standing past: the plates captured between the washers and the sleeve, which is
