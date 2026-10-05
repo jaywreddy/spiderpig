@@ -16,8 +16,12 @@ from __future__ import annotations
 import os
 
 
+DEFAULT = "printfill,m3,lengths,oneshim"
+
+
 def flags() -> frozenset[str]:
-    return frozenset(f.strip() for f in os.environ.get("SPIDERPIG_HW", "").split(",") if f.strip())
+    return frozenset(f.strip() for f in os.environ.get("SPIDERPIG_HW", DEFAULT).split(",")
+                     if f.strip())
 
 
 def on(name: str) -> bool:

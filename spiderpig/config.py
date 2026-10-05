@@ -147,7 +147,7 @@ class BuildConfig:
     #                                   linkage's (materials.default_link_sheets: a Klann
     #                                   variant's foot links in 6061)
     servo: str = servos.DEFAULT
-    pillar: str = "standoff"          # frame pivots: 6 mm round aluminium standoffs, spliced at
+    pillar: str = "standoff_m3"          # frame pivots: 6 mm round aluminium standoffs, spliced at
     #                                   plate rings (construction.pivots.standoff; "printed":
     #                                   the printed stepped pillar, the default before 2026-10-03)
     pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
