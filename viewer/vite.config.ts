@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 // Ports are driven by env so parallel worktrees don't collide:
-//   VITE_PORT     — defaults to 5173 (overridden by scripts/dev.py with a
+//   VITE_PORT     — defaults to 5173 (overridden by spiderpig/tools/dev.py with a
 //                   per-worktree hash-derived port; user can pin via
 //                   mise.local.toml [env] VITE_PORT = "...")
 //   VITE_API_PORT — FastAPI port we proxy /api and /ws to (default 8000).

@@ -54,18 +54,21 @@ and nothing of `viewer/` (sources, `node_modules`) or `tests/`.
 ## Quick start
 
 ```bash
-mise run view           # FastAPI :8000 + Vite :5173 with HMR — open http://localhost:5173
+mise run view           # FastAPI + Vite with HMR — open the URL the banner prints
 mise run build          # STEP/STL/DXF/BOM → build/
 mise run bake           # <store>/bakes/*.glb (the project store, .spiderpig/)
-mise run test           # pytest (unit; -m e2e for browser tests)
+mise run test-quick     # pytest's quick tier (-m "not slow", xdist); `mise run test`: all
 mise run audit          # do the parts physically fit? (clashes, solids, plan, DXF)
 mise run lint           # ruff check
 mise run clean          # rm build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/
 ```
 
-`mise run view` starts FastAPI on `:8000` (bakes `.glb` on first request,
-watches `*.py` and re-bakes on change, broadcasts over `/ws`) and Vite on
-`:5173` (HMR for the TypeScript viewer; proxies `/api` and `/ws` to FastAPI).
+`mise run view` starts FastAPI (bakes `.glb` on first request, watches `*.py` and
+re-bakes on change, broadcasts over `/ws`) and Vite (HMR for the TypeScript viewer;
+proxies `/api` and `/ws` to FastAPI) on ports derived from the worktree's path (Vite in
+5500-5999, the API in 8500-8999), so parallel worktrees don't collide; `VITE_PORT` /
+`API_PORT` pin them, and `VITE_ALLOWED_HOSTS` (comma-separated, e.g. `.ts.net` behind
+`tailscale serve`) lets Vite answer other host names.
 Edit a `.ts` file → instant HMR. Edit a `.py` kinematics file → re-bake →
 viewer hot-swaps the GLB without a full page reload.
 
@@ -99,37 +102,43 @@ plan of one side and writes
 (stem: the linkage, `--name` to change it):
 
 - `build/strider.step` / `strider.stl` — the whole robot (both sides, servos,
-  frame), colour-tagged.
+  frame); the STEP is colour-tagged.
 - `build/print/` — one STL per different printed part, flat on the build
   plate, `*_mirrored.stl` where the right side needs the mirror image, and
   `parts.csv` with how many of each to print.
-- `build/laser/strider_sheet_*.dxf` — every laser-cut part, kerf-compensated
-  and packed on the sheet stock; outer contours as `LWPOLYLINE`, holes as
-  `CIRCLE`, layer `CUT`, mm. `strider_sheet_parts.csv` says which part is where.
+- `build/laser/strider_sheet_<service>_<sheet>_<i>.dxf` — every laser-cut part packed
+  on the sheet stock, one set per cutting service and sheet (acrylic at Ponoko, the
+  aluminium at SendCutSend), kerf-compensated where the service doesn't compensate
+  itself (Ponoko's 0.2 mm; SendCutSend's files are nominal); exact lines and arcs as
+  bulged `LWPOLYLINE`s, round holes as `CIRCLE`, layer `CUT`, mm.
+  `strider_sheet_parts.csv` says which part is where.
 - `build/laser/parts/` — the same laser-cut parts one DXF per different part
   (`<service>_<sheet>/<part>_x<qty>.dxf`, mm, blue `CUT` layer) and `order.csv`:
   what SendCutSend and Ponoko take (one part per file, the quantity at checkout).
 - `build/bom.csv` / `bom.md` / `bom.json` — what to buy (quantities, packs,
   vendor links, whether each link was checked, estimated cost), what to
-  print (filament) and what to cut (sheets); DIN 988 shims one line per thickness.
-- `build/ORDER.md` — the shopping list: a cart per vendor, each line the vendor's
-  product page for the exact part (`spiderpig/hardware/sources.py`: the default
-  build's every item, sourced 2026-10-05, McMaster-Carr / DigiKey / Mouser / Accu /
-  MISUMI / makers' stores first), the uploads per cutting service, the prints per
-  filament, and what to check before ordering.
+  print (filament) and what to cut (sheets); shims one line per thickness (the
+  clamped 1.0 and 0.5 mm ones bought as DIN 433 washers, `hardware/shims.py`,
+  `bom.SHIM_AS`).
+- `build/ORDER.md` — the shopping list (`spiderpig/hardware/order.py`): a cart per
+  vendor, each line the vendor's product page for the exact part
+  (`spiderpig/hardware/sources.py`: the default build's every item, sourced
+  2026-10-05, the makers' stores / McMaster-Carr / DigiKey / Mouser / Accu / MISUMI
+  first, marketplaces last), an unpriced line estimated from a priced alternative
+  (McMaster shows prices only behind a login), the uploads per cutting service, the
+  prints per filament, shop supplies taken as on hand (filament, threadlocker: listed,
+  not ordered), and what to check before ordering (a design-level servo torque limit,
+  e.g. `klann_lego`'s 0.60 N·m, is a firmware note there and in the BOM).
 
 Useful flags: `--module {single,double,decker,quad}` (legs per side; default: the
-linkage's, `config.default_module`), `--side-only`, `--servo` (continuous-rotation servos only; default
-`sts3215`), `--pillar` / `--pin` / `--crank` (constructions; the default is `--pin chicago
---pillar standoff --crank bolt` since 2026-10-03: round 6 mm aluminium standoff pillars,
-spliced at a ring layer where a column is longer than 60 mm or not a length goBILDA sells,
-and the laser-cut bolt crank,
-two-plate acrylic web stacks keyed on M6 hex-bolt crankpins (a mechanism keeps `--crank
-keyed`); `--pillar printed --crank keyed` was the default before: the keyed crank's printed
-segments are keyed through each crankpin by a brass hex standoff and clamped by a
-threadlocked screw and nut, `--crank keyed_float` the same with sliding keys, `--crank
-printed` the same crank held by clamp friction alone; `docs/audit/STRENGTH.md` has why the
-default changed and what it costs), `--sheet`,
+linkage's, `config.default_module`), `--side-only`, `--servo` (continuous-rotation servos
+only; default `sts3215`), `--pillar` / `--pin` / `--crank` (constructions; the default is
+`--pin chicago --pillar standoff --crank bolt`, below; the others stay selectable:
+`--pillar standoff_hand` / `standoff_bench` / `standoff_m3` (spliced columns), `--pillar
+printed`, `--pin rod` / `ptfe` / `printed`, `--crank bolt_round` (TrotBot's heel and
+toe default to it), `--crank keyed` / `keyed_float` / `printed` (the printed cranks, the
+default before 2026-10-03); `docs/audit/STRENGTH.md` has why the defaults changed and what
+they cost), `--sheet`,
 `--thickness` (measure your sheet: acrylic varies by up to 8 %), `--kerf`,
 `--no-dxf`. A mechanism (`--linkage hoecken`, `parallelogram_lift`, ...) needs
 no `--module` or `--side-only`: it is its one module and one side, for `build`,
@@ -139,10 +148,14 @@ parallelogram_lift watt_table_lift` compares mechanisms by their output numbers
 
 `spiderpig export --linkage trotbot_heel --formats step stl print dxf bom glb mjcf`
 writes every format at once (the build options as for `spiderpig build`, or a stored
-design's id, into the store's `exports/` or `--out`), and `spiderpig sim --mjcf
+design's id, into the store's `exports/` or `--out`; its `dxf` is the packed sheets:
+the shopping list `ORDER.md` and the per-part DXFs `laser/parts/` come only from
+`spiderpig build`), and `spiderpig sim --mjcf
 out/trotbot_heel.xml --linkage trotbot_heel` (or `spiderpig sim <design-id>`) runs that
 MJCF; `spiderpig report` covers every linkage, walkers and mechanisms, and says which
-module it is planning (a quad takes the planner's minute).
+module it is planning (a quad takes the planner's minute: `SPIDERPIG_PLAN_SECONDS`
+sets that CPU budget, 60 s by default; it bounds the search, not what a plan is, so it
+doesn't enter the engine version stored designs are keyed by).
 `spiderpig view <design-id>` serves the animated viewer for a design recorded in
 the project store by the Python API or the MCP server (`docs/agentlib/API.md`),
 with the drive and tune panels answering for that design. `spiderpig view
@@ -162,35 +175,38 @@ functional group at a time (see `spiderpig/construction/base.py`):
   down; its horn turns in a hole in the plate;
 - **crank** — a built-up crankshaft bolted to the horn: every b1 sweeps across the
   crank axis, so the crank reaches each b1 only along its crankpin, with webs in the
-  layers either side. The default (`--crank bolt`, the crank study of 2026-10-03) is
-  laser-cut: every web a stack of two acrylic plates, each crankpin an ISO 4014 M6 hex
-  bolt whose head sits in a hex pocket through the top stack and whose nylock sits in one
-  through the lowest stack, the riders turning on its plain shank (a bare layer over the
-  nut's stack keeps them off the thread's runout), the plates of a segment
-  solvent-welded, a round M3 standoff as the journal stub; it holds a jam's twist with
-  margin (its weakest element, the nut's lock, 2.9 N·m against 1.7) where the keyed
-  crank's printed key sockets hold 0.55, but it stacks taller: 24 layers / 72 mm a side
-  on the Strider double against the keyed crank's 18 / 54, 31 on a Klann-family quad
-  against 16 (the shortest partially threaded M6 is 30 mm, so each chain's run is at
-  least 4 layers), and the Strider quad finds no plan within the planner's budget. `--crank keyed` (printed
-  segments keyed through every crankpin by a brass M3 hex standoff, clamped by one
-  threadlocked screw and nut per chain) is the mechanisms' default;
-- **pillars** — the frame pivots: goBILDA 1501 round aluminium standoffs (6 mm OD,
-  `--pillar standoff`, the default) from the outer plate (an M4 button head and washer
-  outside it) to the inner (glued flush), the links turning on the standoff, a laser-cut
-  ring in every other layer, spliced at a ring layer (an M4 stud through it) where the
-  column is longer than a 60 mm stock length or isn't a length goBILDA sells (in 3 mm
-  layers: 12, 18, 24, 27, 30, 36, 42, 48, 54 or 60 mm); `--pillar printed` is the printed stepped
-  axle with shoulders beside each link and thin necks where other links pass;
+  layers either side. The default (`--crank bolt`, walkers and mechanisms alike,
+  `config.DEFAULT_CRANKS`) is laser-cut from 0.100 in 6061-T6: every web one aluminium
+  plate, every crankpin and journal a stock M3 x 5.5 AF steel hex standoff whose ends sit
+  in hex pockets of the webs, an M3 button head and wide washer into each end, the riders
+  turning on a printed sleeve over the hex, a round M3 standoff as the journal stub; the
+  chain that ends in the hub plate is capped by it (the hub plate, horn, servo and inner
+  plate go on as one unit). The Strider double plans 14 layers / 66.5 mm a side, the
+  Strider quad 24. `--crank bolt_round` puts round standoffs, clamped by friction, in
+  place of the hex (TrotBot's heel and toe, where the hex's sleeve doesn't clear b7); on
+  an acrylic crank sheet `bolt` is the older two-plate stack crank on M6 hex bolts;
+- **pillars** — the frame pivots (`--pillar standoff`, the default): a 6 mm round standoff
+  column from the outer plate to the inner, a button head and washer through each plate
+  (no glue), the links turning on the standoff, a printed ring in every other layer. A
+  column one stock length fills is a goBILDA 1501 aluminium standoff (M4; in 3 mm
+  layers 12, 18, 24, 27, 30, 36, 42, 48, 54 or 60 mm); any other is one MISUMI NETRF6
+  steel standoff made to its length (0.1 mm steps, M3 ends): never spliced (the Strider
+  double's four pillars are NETRF6-62.4). `--pillar standoff_hand` / `standoff_bench`
+  keep the goBILDA column spliced past 60 mm (hand-tight in the stack / built on the
+  bench), `--pillar standoff_m3` the same on uxcell's M3 standoffs (on the Strider its
+  splices hold a jam at SF 1.62 only: a warning), and `--pillar printed` is the printed
+  stepped axle with shoulders beside each link and thin necks where other links pass;
 - **pins** — the pivots between links: an M3 Chicago screw (a 4 mm barrel through
-  the stack, a screw driven into it from above until it bottoms), laser-cut spacer
-  rings, a PTFE washer and shims under the top head, the lowest link bonded to the
-  barrel (`--pin chicago`, the default: the same 18-layer stack as the rod, the axial
-  play set by the barrel length to 0.05-0.15 mm, a stronger shaft, nothing to cut, and
-  it comes apart; the audit reports every link's tilt). `--pin rod` (3 mm rod cut to
-  length, Starlock clips) was the default before it; `--pin printed` is the zero-hardware printed
-  snap pin, on the Strider with its J7 snap lip relieved to 0.13 mm; `bolt`,
-  `bearing`, `bushing`, `chicago_bushing` are the other options, `spiderpig/construction/pivots/`);
+  the stack, a screw driven into it from above until it bottoms), printed spacer rings,
+  one printed head spacer per end taking up the barrel's fixed length, the lowest link
+  bonded to the barrel with epoxy (`--pin chicago`, the default: the axial play set by
+  the barrel length to 0.05-0.15 mm, a stronger shaft than the rod, nothing to cut, and
+  it comes apart; barrels in 1 mm steps from 4 to 16 mm, then 18-80, at most 23 mm on the
+  Strider; the audit reports every link's tilt). `--pin rod` (3 mm rod cut to length,
+  Starlock clips) was the default before it; `--pin printed` is the zero-hardware
+  printed snap pin, on the Strider with its J7 snap lip relieved to 0.13 mm; `bolt`,
+  `bearing`, `bushing`, `chicago_bushing`, `ptfe` are the other options,
+  `spiderpig/construction/pivots/`);
 - **links and frame plates** — laser-cut, holes cut for everything above.
 
 Each group first *claims* the space it needs, per 3 mm layer and relative
@@ -201,12 +217,17 @@ parts can't collide, and a construction that can't fit is an error, never
 broken geometry.
 
 The robot is two mirror-image sides with their servos back to back on
-centre plates, tied into one frame by printed columns.
+aluminium centre plates, tied into one frame by four chains of 6 mm round M3 standoffs
+(an M3 button head up through each inner plate, an M3 set screw through the centre
+plates joining each pair; no glue). An electronics deck (ESP32 servo driver, 2S LiPo,
+charger, protection board, switch) sits between the inner plates over the servos.
+`construction/robot.py`'s `ASSEMBLY` is the order every fastener can be driven in.
 
 ## Test
 
 ```bash
-uv run pytest
+mise run test-quick     # the quick tier: -m "not slow", xdist -n 4 (minutes)
+uv run pytest           # everything, serial (40-50 min; AGENTS.md: run it remotely)
 ```
 
 Unit tests cover the symbolic core (reference foot values, rigidity,
@@ -224,7 +245,7 @@ spiderpig/                   # the checkout
 ├── mise.toml                # tool versions (python/uv/node) + tasks (view/build/bake/test/lint/audit/...)
 ├── pyproject.toml           # the installable package (hatchling); `spiderpig` console script
 ├── spiderpig/               # the Python package: engine, agent API, CLI, server, built viewer
-│   ├── cli.py               # `spiderpig <command>`: build | bake | audit | explain | tune | sim | report | mcp
+│   ├── cli.py               # `spiderpig <command>`: build | bake | audit | explain | tune | sim | export | report | mcp | view
 │   ├── build.py             # fabrication CLI (STEP/STL/DXF/BOM)
 │   ├── bake.py              # the viewer's animated .glb bake (cached in the store's bakes/)
 │   ├── linkage/             # the symbolic engine (engine.py), stage checks (checks.py), leg module templates (assembly.py)
@@ -235,11 +256,11 @@ spiderpig/                   # the checkout
 │   ├── fabricate.py         # design a side, fabricate the robot
 │   ├── construction/        # the groups: axle, crank, plates, robot, chassis; contract check
 │   ├── servos/              # servo data (spec, catalog), drive group, models, CAD cache
-│   ├── hardware/            # catalog, screw families, materials and masses, the bill of materials
+│   ├── hardware/            # catalog, sources (product pages), screw families, masses, BOM, ORDER.md
 │   ├── walk.py              # quasi-static walking model (/api/walk, the viewer's drive mode)
 │   ├── sim/                 # MuJoCo model of the fabricated robot and its runner
 │   ├── shapes.py            # build123d part primitives
-│   ├── layout.py            # 2D section + rectpack + ezdxf sheet writer
+│   ├── layout.py            # 2D section + rectpack + ezdxf: packed sheets and per-part DXFs
 │   ├── tools/               # audit.py (`mise run audit`), tune.py, sim_walk.py, report.py, dev.py, kill_dev.py
 │   ├── server/              # the viewer's FastAPI app + watchfiles live-reload
 │   ├── viewer/dist/         # the built viewer (gitignored; `mise run viewer-build`; ships in the wheel)

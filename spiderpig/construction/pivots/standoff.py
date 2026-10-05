@@ -1,93 +1,97 @@
-"""``standoff``: round 6 mm aluminium standoffs as pillars, spliced at supported layers.
+"""``standoff``: round 6 mm standoffs as pillars; a long column is one piece made to length.
 
-A **pillar** (frame pivot; pins are not built this way) is a column of goBILDA 1501 round
-aluminium standoffs (6 mm OD, M4 x 0.7 female both ends; :mod:`hardware.crank_catalog`)
-from the outer frame plate's inner face to the inner plate's: an M4 button head and a
-DIN 125 washer (9 mm) outside each plate screw into the column's ends (3.0 mm together,
-one layer outside the plate, as the printed pillar's head; the inner one's stands in the
-space between the robot's inner plates, clear of the chassis and the deck), tightened to at
-most ``tighten_nm``; no glue (until 2026-10-04 the top end was glued flush in the inner
-plate). Both ends fixed in the plates: a beam. A
-pillar a link's sweep stops short of one plate is a cantilever from the other, its free
-end over its last link closed by the same screw and washer in the next layer.
-The links turn on the standoff's 6 mm OD (a running fit, ``Params.running_fit``); every
-other layer between the plates holds a printed spacer **sleeve** (``fill``; an 8.5 mm
-laser-cut ring is under both services' smallest part), so every link has a face on both
-sides.
+A **pillar** (frame pivot; pins are not built this way) is a column from the outer frame
+plate's inner face to the inner plate's, screwed through each plate from outside (no glue):
+a button head and a washer (3.0 mm together, one layer outside the plate, as the printed
+pillar's head; the inner one's stands in the space between the robot's inner plates, clear
+of the chassis, and the deck lowers past it), tightened to at most ``tighten_nm``. Both
+ends fixed in the plates: a beam. A pillar a link's sweep stops short of one plate is a
+cantilever from the other, its free end over its last link closed by the same screw and
+washer in the next layer. The links turn on the standoff's 6 mm OD (a running fit,
+``Params.running_fit``); every other layer between the plates holds a printed spacer
+**ring** (``fill``; an 8.5 mm laser-cut ring is under both services' smallest part), so
+every link has a face on both sides. Where an aluminium link made a layer thicker than the
+sheet and a stock standoff stands longer than its stack, the rings in those layers grow to
+take the air up (:meth:`StandoffAxle.ring_fill`), so the links keep their play.
 
-**A long column is one piece** (the default, ``splice_build="shaft"``, since 2026-10-05):
-a column no single goBILDA length fills (longer than 60 mm, or a length goBILDA lacks) is
-one 6 mm round 1018 steel standoff made to its length, tapped M3 both ends (MISUMI NETRF6,
-0.1 mm steps, +-0.1; :meth:`StandoffAxle.one_piece`), an M3 button head and DIN 9021 washer
-through each plate. Why: a splice is a joint mid-span, and rated at the plan's own z (its
-clearance gaps included: a stack is up to twice its layers x pitch) the hand-tight splices
-opened at jam SF 1.43 on the Strider double and 0.51 on the quad; even the bench-built 1.0
-N·m splice can't reach SF 2 on the quad's 128 mm column, wherever the splices go. One piece
-rates as a beam: SF 10.4 and 5.1 there.
+**The column** (``--pillar standoff``, the default; ``splice_build="shaft"``):
 
-**Long gaps were spliced** (``--pillar standoff_hand`` / ``standoff_bench``). A stock
-standoff is at most ``max_segment`` long (60 mm), so a column longer than that is a chain
-of **segments**, each a stock length, joined end to
-end through a **splice plate**: in a layer no link of the pillar sits in, a stack of DIN 988
-steel shims (4 x 8) to the layer's thickness, clamped between the two segments' end faces
-by an M4 set screw threaded half into each, a dab of medium threadlocker (243 or 263) on
-the stud (metal to metal only: keep it off the acrylic). Splices go only there (a supported
-layer: a plate, never a bare joint mid-span), and :meth:`StandoffAxle.splices` picks the
-fewest, each segment at least ``min_segment`` long (thread for the stud and the end screws); a
-column no choice fits is :class:`stack.Unbuildable` for the planner (the ``column``
-hook of :class:`construction.axle.AxleGroup`). The plate rings are one layer, so a
-segment spans whole layers, ``n`` x the layer pitch, and must be a length goBILDA sells
-(:data:`hardware.crank_catalog.GOBILDA_LENGTHS`: not every mm; in 3 mm layers 12, 18, 24,
-27, 30, 36, 42, 48, 54 and 60 mm, so a 15, 21, 33, 39, 45, 51 or 57 mm column is
-spliced too, e.g. 57 = 30 + a 3 mm splice plate + 24).
+* where one stock length fills it: a goBILDA 1501 round aluminium standoff (6 mm OD,
+  M4 x 0.7 female both ends; :data:`hardware.crank_catalog.GOBILDA_LENGTHS`: not every mm,
+  in 3 mm layers 12, 18, 24, 27, 30, 36, 42, 48, 54 and 60 mm), an M4 button head and a
+  DIN 125 washer (9 mm) through each plate;
+* else (longer than 60 mm, or a length goBILDA lacks): **one** 6 mm round 1018 steel
+  standoff made to the column's length, tapped M3 both ends (MISUMI NETRF6, 0.1 mm steps,
+  +-0.1; :meth:`StandoffAxle.one_piece`), an M3 button head and a DIN 9021 washer through
+  each plate. Never spliced. (The default Strider double's four pillars are NETRF6-62.4.)
+  A short column that no stock length fills and the old splices couldn't either (15 mm)
+  stays refused, so plans don't move where nothing was spliced.
 
-**How a splice is built** (the user's decisions of 2026-10-05; ``splice_build``):
+Why one piece: a splice is a joint mid-span, and rated at the plan's own z (its clearance
+gaps included: a stack is up to twice its layers x pitch) the hand-tight splices opened at
+jam SF 1.43 on the Strider double and 0.51 on the quad; even the bench-built 1.0 N·m splice
+can't reach SF 2 on the quad's 128 mm column, wherever the splices go. One piece rates as a
+beam: SF 10.4 and 5.1 there.
 
-* ``hand`` (``--pillar standoff``, the default): in the normal bottom-up assembly order,
-  as the splice's layer comes. The lower segment is already screwed to the outer plate
-  (its end screw at ``tighten_nm``), so it holds; the stud (threadlocked) goes into its top
-  end, the shims over it, and the upper segment is turned onto the stud **by hand** to
-  ``splice_nm`` = 0.4 N·m (round standoffs have no flats, and in the stack there is
-  nothing to grip the lower one with). Rated at that clamp: 500 N, 0.57 N·m to open. The
-  threadlocker keeps it from backing off; it adds no rated clamp.
-* ``bench`` (``--pillar standoff_bench``, for long-pillar builds): the spliced column is
-  built **on the bench** before the leg stack, each segment in soft-jaw pliers, turned
-  together to 1.0 N·m (1250 N, 1.42 N·m to open; UNVERIFIED: torque a spliced pair, check
-  the jaws leave the running surface unmarked, load it in bending to the gapping moment).
-  A link can't pass a splice's 8 mm shims, so the finished column goes onto the outer
-  plate and every link drops over its top: its splices must lie below the pillar's lowest
-  link (a planner rule here: a column that needs one higher is unbuildable this way).
+**Spliced columns stay selectable** (``--pillar standoff_hand`` / ``standoff_bench``, and
+``standoff_m3`` on uxcell's M3 standoffs). A stock standoff is at most ``max_segment`` long
+(60 mm), so a longer column is a chain of **segments**, each a stock length, joined end to
+end through a **splice plate**: in a layer no link of the pillar sits in, a stack of steel
+shims to the layer's thickness, clamped between the two segments' end faces by a set screw
+threaded half into each, a dab of medium threadlocker (243 or 263) on the stud (metal to
+metal only: keep it off the acrylic). Splices go only there (a supported layer: a plate,
+never a bare joint mid-span), and :meth:`StandoffAxle.splices` picks the fewest, each
+segment at least ``min_segment`` long (thread for the stud and the end screws); a column no
+choice fits is :class:`stack.Unbuildable` for the planner (the ``column`` hook of
+:class:`construction.axle.AxleGroup`), e.g. 57 = 30 + a 3 mm splice plate + 24.
 
-**Strength** (:mod:`spiderpig.strength`, :func:`construction.wobble.stresses`): the
-section is the standoff taken as a 6 x 3.3 mm tube (the M4 tap drill, as if tapped
-through: conservative for a part tapped at its ends) of 6061-T6, 240 MPa; the column is
-a beam **per bay** between its supports, the frame plates' faces (``supports`` in the
-note). A splice plate is a joint, not a support: nothing ties it sideways to the frame,
-so it doesn't shorten the span. Its capacity, the moment that starts to open the
-clamped end faces (the clamp's preload x ``(ro^2 + ri^2) / 4 ro`` of the 6 / 4.3 mm
-annulus, on steel shims: an honest clamp; until 2026-10-04 it took the end screws' preload
-on an acrylic ring, which the end screws don't load and acrylic creeps out of), is
-reported per splice (``splices`` in the note) and checked against the bay's moment
-there. (A splice layer tied to the frame, a mid frame plate, would make it a support and
-halve the span; no design here has a layer free for one.)
+* ``hand`` (``--pillar standoff_hand``; the user's decision of 2026-10-05, the default
+  until the one-piece column replaced it the same day): in the normal bottom-up assembly
+  order, as the splice's layer comes. The lower segment is already screwed to the outer
+  plate (its end screw at ``tighten_nm``), so it holds; the stud (threadlocked) goes into
+  its top end, the shims over it, and the upper segment is turned onto the stud **by
+  hand** to ``splice_nm`` = 0.4 N·m (round standoffs have no flats, and in the stack there
+  is nothing to grip the lower one with). Rated at that clamp: 500 N, 0.57 N·m to open.
+  The threadlocker keeps it from backing off; it adds no rated clamp.
+* ``bench`` (``--pillar standoff_bench``): the spliced column is built **on the bench**
+  before the leg stack, each segment in soft-jaw pliers, turned together to 1.0 N·m
+  (1250 N, 1.42 N·m to open; UNVERIFIED: torque a spliced pair, check the jaws leave the
+  running surface unmarked, load it in bending to the gapping moment). A link can't pass a
+  splice's 8 mm shims, so the finished column goes onto the outer plate and every link
+  drops over its top: its splices must lie below the pillar's lowest link (a planner rule
+  here: a column that needs one higher is unbuildable this way).
+* ``standoff_m3``: the hand splice on uxcell's 6 mm round M3 standoffs (M3 button heads,
+  set screws and DIN 9021 washers). On their coarse lengths the Strider's pillars splice
+  inside a loaded span: jam SF 1.62 (an audit warning).
 
-**Shims.** A segment may be up to ``max_shims`` shorter than its gap where its upper end
-is under a spacer layer: DIN 988 shims sit between its end and the face over it, so the
-column stays one contiguous stack (in the clearance gap under the face when there is one,
-its washers trimmed to make room; else in the spacer layer, whose sleeve they shorten),
-and the end screw or the splice's stud is chosen for the plate plus the shims.
+**Strength** (:mod:`spiderpig.strength`, :func:`construction.wobble.stresses`): the section
+is the standoff taken as a tube bored to its tap drill (as if tapped through: conservative
+for a part tapped at its ends): goBILDA's 6 x 3.3 mm of 6061-T6 at 240 MPa, the steel
+shaft's 6 x 2.5 mm of 1018 at 220 MPa. The column is a beam **per bay** between its
+supports, the frame plates' faces (``supports`` in the note), at the plan's own z. A splice
+plate is a joint, not a support: nothing ties it sideways to the frame, so it doesn't
+shorten the span. Its capacity, the moment that starts to open the clamped end faces (the
+clamp's preload x ``(ro^2 + ri^2) / 4 ro`` of the end annulus, on steel shims), is reported
+per splice (``splices`` in the note) and checked against the bay's moment there. Against
+the printed 6 mm PETG pillar (50 MPa) the aluminium section holds about 4.4 x the moment;
+``docs/audit/STRENGTH.md`` has it per design.
 
-Against the printed 6 mm PETG pillar (50 MPa) the section holds about 4.4 x the
-moment; the pillar review's numbers (``docs/audit/STRENGTH.md``) have it per design.
+**Shims.** A column may be up to ``max_shims`` shorter than its gap where its upper end is
+under a spacer layer: steel shims sit between its end and the face over it, so the column
+stays one contiguous stack (in the clearance gap under the face when there is one, its
+gap ring trimmed to make room; else in the spacer layer, whose ring they shorten), and the
+end screw or the splice's stud is chosen for the plate plus the shims. They come in whole
+1 mm and :data:`SHIM_STEP` (0.5 mm) steps, bought as DIN 433 washers
+(:data:`hardware.bom.SHIM_AS`: two make 1 mm).
 
-Assembly, bottom up (:data:`construction.robot.ASSEMBLY` has the whole robot's order):
-the outer plate down; per pillar, its lowest segment onto the plate's hole with the M4
-screw and washer from outside (threadlocker, to ``tighten_nm`` while the segment is still
-bare to hold), then the links and rings in layer order (the plan says which), at each
-splice the stud (threadlocker), the splice plate's shims and the next segment, turned on
-by hand to ``splice_nm`` (``bench``: the column built first, as above); the inner plate
-last, as part of its unit (the servo, horn and hub plate on it), its M4 screws from the
-servo bay, each to ``tighten_nm``.
+Assembly, bottom up (:data:`construction.robot.ASSEMBLY` has the whole robot's order): the
+outer plate down; per pillar, its column onto the plate's hole with the button head and
+washer from outside (threadlocker, to ``tighten_nm`` while the column is still bare to
+hold), then the links and printed rings in layer order (the plan says which; a spliced
+column: at each splice the stud, the shims and the next segment, turned on by hand to
+``splice_nm``, or the column built first with ``bench``); the inner plate last, as part of
+its unit (the servo, horn and hub plate on it), its screws from the servo bay, each to
+``tighten_nm``.
 """
 
 from __future__ import annotations
@@ -125,15 +129,17 @@ from spiderpig.shapes import Cut, disc, ring, union
 from spiderpig.stack import Unbuildable
 
 ALU = "#c8ccd0"
-SHIM_STEP = 0.5         # (oneshim) the thin step stacked under a column's end: one DIN 433
-#                         washer (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
+SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
+#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
 #                         shim is $5-13 sold singly, 2026-10-05: hardware.bom.SHIM_AS)
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
 
 
 @dataclass(frozen=True)
 class StandoffAxle:
-    """goBILDA 1501 round standoffs (6 mm OD) as a pillar, spliced at plate rings."""
+    """A 6 mm round standoff column as a pillar: one stock goBILDA 1501 standoff, else one
+    steel standoff made to length (:meth:`one_piece`); spliced only by the ``hand`` /
+    ``bench`` variants."""
 
     key: str = "standoff"
     label: str = ("6 mm round aluminium standoffs (goBILDA M4) where one stock length fills the "
@@ -166,7 +172,7 @@ class StandoffAxle:
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
     size: str = "M4"                 # "M3": uxcell 6 mm round M3 standoffs, M3 button
-    #                                  heads and set screws (the hardware study, SIMPLIFY.md)
+    #                                  heads and set screws (--pillar standoff_m3)
     stock: str = ""                  # "": by size (goBILDA M4, uxcell M3); "shaft": a 6 mm
     #                                  round steel standoff tapped M3 both ends, made to
     #                                  length (MISUMI NETRF6, one_piece)
@@ -245,10 +251,10 @@ class StandoffAxle:
 
     def end_screw(self, pitch: float, plate: bool = True
                   ) -> tuple[str, float, float, float] | None:
-        """(key, length, head diameter, head height) of the M4 button head through a frame
-        plate (``plate``; else straight into the column's free end, over the last link)
-        and its washer into a segment's end: the most thread up to the segment's depth
-        (taken as the shortest segment's)."""
+        """(key, length, head diameter, head height) of the button head (M4, or M3 for an
+        M3 column) through a frame plate (``plate``; else straight into the column's free
+        end, over the last link) and its washer into a segment's end: the most thread up to
+        the segment's depth (taken as the shortest segment's)."""
         from spiderpig.hardware.crank_catalog import M4_BHCS_LENGTHS, m4_bhcs
         from spiderpig.hardware.fasteners import SCREWS
 
@@ -326,7 +332,7 @@ class StandoffAxle:
     def ends(self, d: AxleDims, pillar: bool, anchored: tuple[bool, bool], n_layers: int,
              pitch: float, span: float | None = None
              ) -> tuple[tuple[End, ...], tuple[End, ...]]:
-        """An M4 screw head and washer outside each frame plate it reaches (over the inner
+        """A button head and washer outside each frame plate it reaches (over the inner
         plate: in the chassis' space between the robot's two inner plates), or over its last
         link at a free end (a cantilever from the other plate)."""
         return (("head", d.head),), (("head", d.head),)
@@ -362,8 +368,8 @@ class StandoffAxle:
 
     def segment(self, gap: float, shims: bool = False) -> float | None:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
-        ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, DIN 988
-        shims taking the rest up at its upper end), ``None`` when none is."""
+        ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, steel
+        shims (DIN 433 washers) taking the rest up at its upper end), ``None`` when none is."""
         if self.size == "M3":
             # (M3: stock lengths, end shims in SHIM_STEP steps only (DIN 433 washers, two to
             # a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA M4 keeps its rule
@@ -605,11 +611,11 @@ class StandoffAxle:
             long += max(0.0, length - span - sum(fill.get(k, 0.0) for k in range(a + 1, b)))
             short = span - length
             if short > self.max_short + EPS:
-                # DIN 988 shims between the segment's upper end and the face over it (the
+                # steel shims between the segment's upper end and the face over it (the
                 # column stays one contiguous stack up to the face): in the clearance gap
-                # under the face where there is one (its washers trimmed to make room),
+                # under the face where there is one (its gap ring trimmed to make room),
                 # else, or for what the gap can't take, in the spacer layer under it, whose
-                # sleeve they shorten
+                # ring they shorten
                 sh = self.splice_shims(round(short, 1))
                 if sh:              # (M3: under half the thin step, 0.25 mm, is left as play)
                     t = sum(sh)
@@ -718,18 +724,18 @@ def _splices(axle: StandoffAxle, links: frozenset[int], top: int, pitch: float,
 
 STANDOFF_BENCH = StandoffAxle(
     key="standoff_bench", splice_build="bench", splice_nm=1.0,
-    label=("6 mm round aluminium standoffs, each spliced column built on the bench (1.0 N·m "
-           "in soft-jaw pliers, splices only under the pillar's links), laser-cut rings, M4 "
-           "button heads through both frame plates"))
+    label=("6 mm round aluminium standoffs (goBILDA M4), each spliced column built on the "
+           "bench (1.0 N·m in soft-jaw pliers, splices only under the pillar's links), printed "
+           "rings, M4 button heads through both frame plates"))
 """The bench-built column (the supported splice of 2026-10-04), kept selectable for long
 pillars: ``--pillar standoff_bench``."""
 
 
 STANDOFF_HAND = StandoffAxle(
     key="standoff_hand", splice_build="hand",
-    label=("6 mm round aluminium standoffs, a long column spliced in the stack (M4 stud, "
-           "the upper segment turned on by hand to 0.4 N·m), laser-cut rings, M4 button heads "
-           "through both frame plates"))
+    label=("6 mm round aluminium standoffs (goBILDA M4), a long column spliced in the stack "
+           "(M4 stud, the upper segment turned on by hand to 0.4 N·m), printed rings, M4 "
+           "button heads through both frame plates"))
 """The hand-spliced column (the user's decision of 2026-10-05), the default until the one-piece
 shaft replaced splices the same day: ``--pillar standoff_hand``."""
 
@@ -738,6 +744,8 @@ STANDOFF_M3 = StandoffAxle(
     key="standoff_m3", size="M3", splice_build="hand", id_=2.5, end_hole=3.4, stud_hole=3.2,
     min_engage=3.0,
     shim_key="shim_din988_3x6", washer_key="m3_washer_9021",
-    label=("6 mm round aluminium M3 standoffs (uxcell, spliced at plate rings), M3 button "
-           "heads and DIN 9021 washers through both frame plates (the hardware study)"))
-"""The standoff pillar on M3 hardware (SIMPLIFY.md): ``--pillar standoff_m3``."""
+    label=("6 mm round aluminium M3 standoffs (uxcell, spliced at plate rings), printed "
+           "rings, M3 button heads and DIN 9021 washers through both frame plates"))
+"""The hand-spliced pillar on uxcell's M3 standoffs: ``--pillar standoff_m3``. Kept to
+compare: on their coarse lengths the Strider's pillars splice inside a loaded span (jam
+SF 1.62, where the one-piece column holds 5.7)."""

@@ -209,10 +209,10 @@ def _footprint(spec) -> tuple[float, float, float, float]:
 
 @dataclass(frozen=True)
 class TieDims:
-    """A frame tie (mm): a chain of goBILDA 1501 round standoffs (6 mm OD, M4) from each
-    inner plate to the centre plates, an M4 button head through each inner plate from the
-    leg side (its head in the clearance gap under the plate, which the drive group claims),
-    an M4 set screw through the centre plates joining the two chains."""
+    """A frame tie (mm): a chain of uxcell 6 mm round M3 standoffs from each inner plate to
+    the centre plates, an M3 button head through each inner plate from the leg side (its
+    head in the clearance gap under the plate, which the drive group claims), an M3 set
+    screw through the centre plates joining the two chains (:func:`_tie_parts`)."""
 
     column: float        # radius of a column (the standoff)
     head_r: float        # the end screw's head
@@ -221,8 +221,9 @@ class TieDims:
     screw_d: float
 
 
-TIE_SHIM_KEY = "shim_din988_3x6"   # a tie's clamped shims (bought as DIN 433 washers)
-TIE_PLACE_R = 3.8                  # the ties keep the places the M4 ties had (their column)
+TIE_SHIM_KEY = "shim_din988_3x6"   # a tie's clamped 1 mm shims (bought as DIN 433 pairs)
+TIE_PLACE_R = 3.8                  # the ties keep the places the M4 ties had (their
+#                                    M4 head's radius; the ties are M3 since 2026-10-05)
 
 
 def tie_dims(ctx: Context) -> TieDims:
@@ -248,7 +249,8 @@ def servo_frame_ctx(ctx: Context) -> ServoFrame:
 
 def seat_keepouts(ctx: Context) -> list[tuple[tuple[float, float], float]]:
     """What the inner plate holds that a screw through it must keep clear of, known before
-    a plan: the horn's clearance hole and every pillar's end (its M4 head and washer)."""
+    a plan: the horn's clearance hole and every pillar's end (its button head and 9 mm
+    washer)."""
     p = ctx.params
     pts = ctx.topo.geometry.points
     o = pts["O"][0]

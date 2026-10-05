@@ -1,5 +1,5 @@
 """Pieces the metal-shaft pivots share: the claimed column, the rod with its push-on
-clips, laser-cut rings, printed sleeves and small hardware solids."""
+clips, printed rings and sleeves, and small hardware solids."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from spiderpig.hardware.catalog import get
 from spiderpig.shapes import Cut, disc, moved
 
 STEEL = "#4a4a4a"
-RING_COLOR = "#a9cbe0"       # laser-cut spacer rings (the same sheet as the links)
+RING_COLOR = "#a9cbe0"       # the laser-cut spacer rings' colour (rings are printed now)
 SLEEVE_COLOR = "#1baf7a"     # printed spacer sleeves (the printed axle's green)
 EPS = 1e-9
 
@@ -292,7 +292,7 @@ HEAD_CLEARANCE = 0.25    # a retainer in a clearance gap stays this far off the 
 
 
 def ring_z(build: Build, k: int) -> tuple[float, float]:
-    """A laser-cut ring's z in layer ``k``: the default sheet's thickness on the layer's
+    """A spacer ring's z in layer ``k``: the default sheet's thickness on the layer's
     floor (a layer an aluminium plate thickens is a little taller than a ring)."""
     z0, z1 = build.z(k)
     return z0, min(z1, z0 + build.ctx.pitch)

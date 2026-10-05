@@ -23,12 +23,13 @@ servo's side are its own: its screws pass through them into the pilot holes
 plate, recessed in the plates beyond it.
 
 **Frame ties** (2026-10-04, no glue, no insert, no tapped plate): four columns between the
-two inner frame plates, beside the servo's long sides, each a chain of goBILDA 1501 round
+two inner frame plates, beside the servo's long sides, each a chain of uxcell 6 mm round M3
 standoffs per side, from the inner plate's servo-side face to the centre plates (stock
-lengths, DIN 988 shims at the plate). An M4 button head comes up through each inner plate
-from the leg side into the chain (its head in the clearance gap under the plate, which the
-drive group claims, so the planner keeps the legs clear of it), and an M4 set screw through
-the centre plates joins the two chains and clamps the centre plates between them.
+lengths, 1 mm steel shims at the plate, bought as DIN 433 washers). An M3 button head comes
+up through each inner plate from the leg side into the chain (its head in the clearance gap
+under the plate, which the drive group claims, so the planner keeps the legs clear of it),
+and an M3 set screw through the centre plates joins the two chains and clamps the centre
+plates between them.
 (Assembly: :data:`ASSEMBLY`. Not both sides' chains on their inner plates first: the
 studs then can't be threaded, neither chain turning and the stud's socket buried.)
 
@@ -87,15 +88,16 @@ SIDES = ("L", "R")
 ASSEMBLY: tuple[str, ...] = (
     # (the assembly audit of 2026-10-04: the order every fastener of the default walker
     # can be driven in; the pivots' and the crank's docstrings defer to it)
-    "1. Each side's leg stack, bottom up on its outer frame plate: per pillar its lowest "
-    "standoff segment on the plate (M4 button head and washer from outside, "
-    "threadlocker, to 0.8 N·m while the segment is bare to hold); the links, Chicago pins "
-    "and rings in the plan's layer order (each pin's screw from its cap side once its "
-    "bonded barrel and host link are on); the pillars' splices as their layers come: a dab "
-    "of medium threadlocker (243 or 263; metal only, off the acrylic) on the M4 stud, the "
-    "stud into the lower segment, its DIN 988 shims, the upper segment turned on by hand "
-    "to 0.4 N·m (StandoffAxle.splice_nm; --pillar standoff_bench: each spliced column "
-    "built on the bench first at 1.0 N·m and stood on the plate before its links).",
+    "1. Each side's leg stack, bottom up on its outer frame plate: per pillar its standoff "
+    "column on the plate (one piece: the steel shaft made to length, M3, or a stock goBILDA "
+    "standoff, M4; its button head and washer from outside, threadlocker, to 0.8 N·m while "
+    "the column is bare to hold); the links, Chicago pins and printed rings in the plan's "
+    "layer order (each pin's screw from its cap side once its bonded barrel and host link "
+    "are on), any take-up shims on a column's top last. (A spliced pillar, --pillar "
+    "standoff_hand: at each splice's layer a dab of medium threadlocker on the stud, the "
+    "stud into the lower segment, its shims, the upper segment turned on by hand to "
+    "0.4 N·m; standoff_bench: each spliced column built on the bench first at 1.0 N·m and "
+    "stood on the plate before its links.)",
     "2. The crank with it, bottom up: the stub standoff screwed to the lowest web (button "
     "head from above), the stub's printed thrust sleeve slid over it up to the web, and "
     "the stub through the outer plate's journal hole (the sleeve's end then 0.1 mm over "
@@ -113,23 +115,23 @@ ASSEMBLY: tuple[str, ...] = (
     "rear idler horn stays in the box), the horn on the spline "
     "and its centre screw, the hub plate on the horn (the horn screws up through it from "
     "below, with their shims), the deck rail (its two screws from the leg side), and on "
-    "the left side only, the frame ties' standoff chains (shims at the plate, the M4 "
+    "the left side only, the frame ties' M3 standoff chains (shims at the plate, the M3 "
     "button head up through the plate from the leg side, threadlocker).",
     "4. Left side: the unit onto its leg stack, the hub plate's hex pocket over the "
     "hub chain's standoff (turn the crank to line it up) and the pillars' tops into the "
-    "inner plate; each pillar's inner M4 screw from the servo bay (a ball-end key).",
-    "5. The M4 set-screw studs into the left chains' ends (threadlocker); the left "
+    "inner plate; each pillar's inner screw from the servo bay (a ball-end key).",
+    "5. The M3 set-screw studs into the left chains' ends (threadlocker); the left "
     "servo's own centre plates (0, 1) on its rear face over the studs, its rear screw "
     "through them; the right servo's own plates (3, 2) screwed to the right servo the "
     "same way, then that servo and its plates onto the studs, rear faces together.",
     "6. Right side: its tie chains turned onto the studs from the inner plate's side (they "
     "turn freely: no inner plate yet), shims on their ends; the right inner plate onto "
     "the servo's front (its front screws from the leg side) and onto the chains (their "
-    "M4 button heads from the leg side); the deck rail; the horn, its centre screw and the "
+    "M3 button heads from the leg side); the deck rail; the horn, its centre screw and the "
     "hub plate with the horn screws from below.",
     "7. The body turned over onto the right side's leg stack (built as in 1 and 2): the "
     "hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner "
-    "plate, their inner M4 screws from the servo bay.",
+    "plate, their inner screws from the servo bay.",
     "8. Bus cables: each plug into its servo's socket along the centre plates' slot from "
     "their far edge, the cable up to the board through the deck's wire slot (connector "
     "first); then the deck, its electronics fitted on the bench (the battery cradle "
@@ -247,7 +249,7 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
                         "why": f"the chassis reaches y = {top:.1f} mm between the inner plates, "
                                f"over the deck rails' underside at {place.rail_y0:.1f} mm"}
     # what the deck must lower past: the static parts between the inner plates (the
-    # pillars' inner M4 heads, the chassis), each as its box
+    # pillars' inner screw heads, the chassis), each as its box
     by_name = {b.name: b for b in bodies}
 
     def root(b):

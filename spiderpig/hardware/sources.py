@@ -9,15 +9,19 @@ becomes its item's first (preferred) offer, ahead of what the item registered be
 with the item (they were corrected there where the part found differs: the Chicago screws'
 heads, the PTFE washers, the M2.5 standoff's stud, the deck's switch).
 
-``verified=True``: the page (or the maker's own datasheet for it) was fetched and showed
-that part. McMaster-Carr, DigiKey and Mouser refuse a scripted fetch, so their part numbers
-were confirmed from the vendor's own listing tables, a mirror of McMaster's spec table, the
-manufacturer's datasheet or a search result quoting the page, and stay ``verified=False``
-with how in the note. A price is per pack and only where a page showed one.
+``verified=True``: the page (or the maker's own datasheet for it) was fetched or rendered
+and showed that part. McMaster-Carr, DigiKey and Mouser refuse a plain scripted fetch: a
+McMaster page rendered in a browser shows the part in its title (``verified=True``) but its
+price only behind a login; other part numbers were confirmed from the vendor's own listing
+tables, a mirror of McMaster's spec table, the manufacturer's datasheet or a search result
+quoting the page, and stay ``verified=False`` with how in the note. A price is per pack and
+only where a page showed one; ``ORDER.md`` (:mod:`hardware.order`) estimates an unpriced
+line from its item's first priced alternative and totals those apart.
 
 What has no better source than a marketplace: the IP2326 2S USB-C charger module (a generic
-board, no distributor stocks one; measure the one you get) and the M3 Chicago screws (no
-distributor sells M3 with a 4 mm barrel; uxcell's own store, Harfington, has every length).
+board, no distributor stocks one; measure the one you get), the M3 Chicago screws and the
+6 mm round M3 standoffs (no distributor sells M3 with a 4 mm barrel, or a threaded 6 mm OD
+M3 standoff; uxcell's own store, Harfington, has every length).
 """
 
 from __future__ import annotations
@@ -238,8 +242,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
     "m25_nylon_screw_5": (
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/essentra-components/"
               "50M025045N005/11638495", "50M025045N005", pack_qty=1,
-              note="Essentra nylon 6/6 slotted pan head M2.5 x 5, head 5.0 mm (ISO 7045) "
-                   "against the modelled 4.5: the board's pad takes it"),),
+              note="Essentra nylon 6/6 slotted pan head M2.5 x 5, head 5.0 x 1.7 mm (ISO "
+                   "7045), as modelled"),),
     "m25_nylon_nut": (
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/essentra-components/"
               "04M025045HN/9677099", "04M025045HN", pack_qty=1,

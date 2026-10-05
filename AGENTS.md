@@ -10,7 +10,7 @@ chains consistent.
 ## Day-to-day commands
 
 ```bash
-mise run view           # FastAPI :8000 + Vite :5173 (HMR) — open http://localhost:5173
+mise run view           # FastAPI + Vite (HMR) on per-worktree ports — open the banner's URL
 mise run bake           # bake <store>/bakes/*.glb (the project store, .spiderpig/)
 mise run build          # STEP/STL/DXF -> build/
 mise run test-quick     # the quick tier (-m 'not slow', xdist); full suite: mise run remote-test
@@ -65,7 +65,7 @@ gets one BLAS and one OCCT thread (`tests/conftest.py`).
 ## When NOT to use mise
 
 Use raw commands only for **one-off validation scripts** — small
-throwaway probes for a hypothesis (e.g. `uv run python -c "import linkage;
+throwaway probes for a hypothesis (e.g. `uv run python -c "from spiderpig import linkage;
 print(linkage.get('klann').check())"`, a tiny temp `.py` to dump a value, an `npx tsc
 --noEmit` to look at type errors during a refactor). If a probe is going
 to be used more than twice, promote it to a `mise.toml` task instead.
@@ -78,9 +78,11 @@ Also raw, never via mise:
 ## Adding a new task
 
 Edit `mise.toml`, not `spiderpig/tools/`. Tasks should be one-liners that
-delegate to `uv run …` or `npm run …`. The only existing helper script,
-`spiderpig/tools/dev.py`, is justified because it spawns FastAPI + Vite *in
-parallel* — something a single task command can't express portably.
+delegate to `uv run …` or `npm run …`. `spiderpig/tools/` otherwise holds the
+`spiderpig` subcommands (audit, export, report, sim, tune) and the helpers the
+tasks need: `dev.py` spawns FastAPI + Vite *in parallel* (something a single task
+command can't express portably), `kill_dev.py` stops them, `remote.py` runs the
+`remote*` tasks.
 
 ## What the server does
 
@@ -98,5 +100,6 @@ watch-and-rebake channel. In dev, Vite proxies `/api` and `/ws` to FastAPI
 `tests/conftest.py` will refuse to start if `spiderpig/viewer/dist/` is missing —
 that's intentional, it forces e2e to test what users actually see.
 
-For a quick visual smoke check, `mise run view` and look at
-http://localhost:5173.
+For a quick visual smoke check, `mise run view` and open the URL its banner prints
+(ports come from a hash of the worktree's path; `VITE_PORT` / `API_PORT` pin them,
+`VITE_ALLOWED_HOSTS` lets Vite answer other host names, e.g. behind `tailscale serve`).

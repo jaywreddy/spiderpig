@@ -88,7 +88,7 @@ class Params:
     # laser-cut plates
     link_radius: float = 6.0       # half-width of a leg link (pill radius)
     frame_radius: float = 7.0      # half-width of a frame plate arm
-    min_wall: float = 1.5          # thinnest laser-cut ring around a hole
+    min_wall: float = 1.5          # thinnest ring (or link) wall around a hole
     # fits (diametral clearances)
     running_fit: float = 0.35      # a part that turns in a laser-cut hole
     glue_fit: float = 0.15         # a part glued into a laser-cut hole

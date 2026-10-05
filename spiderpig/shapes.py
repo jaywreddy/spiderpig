@@ -143,9 +143,9 @@ def box(center: XY, size: tuple[float, float, float], z0: float, angle: float = 
     return b.rotate(Axis.Z, math.degrees(angle)).move(Pos(float(center[0]), float(center[1]), z0))
 
 
-# Restored for the metal-shaft pivots (construction/pivots): laser-cut spacer rings.
+# The metal-shaft pivots' spacer rings and washers (construction/pivots).
 def ring(xy: XY, od: float, id_: float, z0: float, z1: float) -> Part:
-    """A spacer ring (laser-cut washer)."""
+    """A spacer ring or washer: a disc with a bore."""
     return drill(disc(xy, od / 2, z0, z1), [(xy, id_ / 2)], z0, z1)
 
 

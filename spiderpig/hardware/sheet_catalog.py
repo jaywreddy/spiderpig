@@ -40,7 +40,11 @@ nested parts.
 
 ``shim_din988_3x6`` / ``shim_din988_6x12`` and ``ptfe_washer_3x6x0p5`` join the 4 mm ones
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)
-as the washers an axle carries through a clearance gap (:func:`materials.washer_stack`).
+as the washer families of :data:`materials.WASHERS`: their ODs size what an axle carries
+through a clearance gap (a printed ring on the pivots and the hex crank:
+:func:`construction.pivots.common.gap_washers`; bought washers and shims only on the round
+or M6 crankpins, :func:`materials.washer_stack`) and the clamped shims are bought per
+thickness (:mod:`hardware.shims`).
 """
 
 from __future__ import annotations
@@ -119,7 +123,9 @@ register(
          (Offer("Accu", "https://accu-components.com/us/shim-washers/",
                 note="DIN 988 shim rings 3 x 6; part number per thickness not confirmed"),),
          dims={"id": 3.0, "od": 6.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
-         notes="Fills a clearance gap on a 3 mm rod."),
+         notes="Clamped shims: under a horn screw's head, at a one-piece pillar's or a frame "
+               "tie's end (ordered per thickness; the 1.0 and 0.5 mm as DIN 433 washers, "
+               "bom.SHIM_AS). Its OD also sizes the printed gap rings on a 3 mm shaft."),
     Item("ptfe_washer_3x6x0p5", "PTFE flat washer 3.2 x 6 x 0.5 mm", "washer",
          (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
                 note="PTFE washers for M3, 0.5 mm; part number not confirmed"),),
@@ -131,5 +137,7 @@ register(
           Offer("McMaster-Carr", "https://www.mcmaster.com/products/shims/",
                 note="ring shims for 6 mm shafts")),
          dims={"id": 6.0, "od": 12.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
-         notes="Fills a clearance gap on a 6 mm standoff or crank bolt."),
+         notes="Gap washers on a round 6 mm crankpin (--crank bolt_round, the acrylic M6 "
+               "crank); the default hex crank and the pillars print theirs (its OD sizes "
+               "them, materials.WASHERS)."),
 )

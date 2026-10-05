@@ -1,14 +1,13 @@
-"""``rod``: a 3 mm steel rod with laser-cut spacer rings and push-on clips.
+"""``rod``: a 3 mm steel rod with printed spacer rings and push-on clips.
 
-The rod is cut to length from stock. Every layer between the ends that holds
-no link holds a **ring** cut from the same sheet as the links (one layer
-thick by construction, bore a running fit on the rod, outside diameter the
-claim's), so each link is held by a ring, a clip or a frame plate on each
-face. A **pillar**'s rod is glued (CA) into both frame plates it reaches,
-with a clip under the outer plate; a **pin**'s rod carries a clip against
-its lowest and its highest link. The rod can't neck down, so a link passing
-closer than the narrowest ring the laser should cut blocks the layer
-(``neck`` is that ring's radius) and the planner has to route around it.
+The rod is cut to length from stock. Every layer between the ends that holds no link
+holds a printed **ring** (one sheet thick, :func:`common.ring_z`; bore a running fit on
+the rod, outside diameter the claim's), so each link is held by a ring, a clip or a
+frame plate on each face. A **pillar**'s rod is glued (CA) into both frame plates it
+reaches, with a clip under the outer plate; a **pin**'s rod carries a clip against its
+lowest and its highest link. The rod can't neck down, so a link passing closer than the
+narrowest ring worth making blocks the layer (``neck`` is that ring's radius) and the
+planner has to route around it.
 
 **The default link pin until the pivot review of 2026-10-03** (now :mod:`.chicago`: the
 same stacks, play set by the barrel instead of by feel, a stronger 4 mm barrel; the
@@ -69,10 +68,10 @@ from spiderpig.shapes import Cut, ring
 
 @dataclass(frozen=True)
 class RodAxle:
-    """3 mm rod, laser-cut spacer rings, Starlock push-on clips."""
+    """3 mm rod, printed spacer rings, Starlock push-on clips."""
 
     key: str = "rod"
-    label: str = "3 mm steel rod, laser-cut spacer rings, push-on clips (glued into the frame)"
+    label: str = "3 mm steel rod, printed spacer rings, push-on clips (glued into the frame)"
     running_fit: float = 0.2      # a link's and a ring's hole over the rod (3.2 mm: ISO 273 fine)
     shaft: RodShaft = field(default_factory=RodShaft)
 
