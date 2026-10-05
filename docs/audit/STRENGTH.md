@@ -117,6 +117,14 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   first build** (torque a spliced pair to 1.0 N·m in soft jaws, check the running surface
   where a link turns is unmarked, load it in bending to the gapping moment). The sweep's
   tables below predate it (they rate the splices at 1.14 N·m).
+  **Since 2026-10-05 (the user's decision): the hand-tight splice.** The splice is built in
+  the normal bottom-up order, the upper segment turned onto the threadlocked stud (243 or
+  263) by hand, and rated at 0.4 N·m (500 N: 0.57 N·m to open); the threadlocker retains
+  it, it adds no rated clamp. The bench-built 1.0 N·m column stays selectable for long
+  pillars (`--pillar standoff_bench`: its splices only under the pillar's lowest link, so
+  the finished column takes its links over its top). A spliced pillar whose jam moment at
+  the splice exceeds 0.57 N·m now reads under 1 (the Strider quad's 51 mm J2 was 1.71 at
+  1.0 N·m: about 0.68 at 0.4); the default Strider double has no splice.
 * **Limits**: jam SF < 1 is an **error** (the audit fails, `verify` reports
   `strength` / `joint_overload` with the joint and its fixes as culprits); jam SF < 2
   or walking SF < 3 a **warning**. Each finding names the joint, its links, the case,

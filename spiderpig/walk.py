@@ -405,7 +405,7 @@ def _sheet_scale(config: BuildConfig, key: str) -> float:
 # the servo's highest corner plus 2.36 mm (the centre plates round the ties, 2 thicknesses
 # of aluminium to the edge): measured on the Strider double (116.6 g since the rails are
 # screwed on, 2026-10-04; 113 g with glued spigots), centre 13.45 mm over the chassis top.
-_DECK_PLATE_G, _DECK_REST_G = 33.3, 83.3
+_DECK_PLATE_G, _DECK_REST_G = 33.3, 85.8     # (+2.5 g: the cradle screwed down, 2026-10-05)
 _DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 2.36
 
 

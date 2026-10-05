@@ -118,23 +118,45 @@ def test_the_section_against_printed():
 
 def test_splice_capacity_is_the_gapping_moment():
     """The preload of two round standoffs turned together on steel shims (2026-10-04: the
-    end screws' 0.8 N·m on an acrylic ring overclaimed it). The user's call of 2026-10-04:
-    the **supported splice**, 1.0 N·m with each segment in soft-jaw pliers (finger tight,
-    0.4 N·m, failed the Strider quad's jam), accepted as UNVERIFIED and to be tested on
-    the first build."""
+    end screws' 0.8 N·m on an acrylic ring overclaimed it). The user's decision of
+    2026-10-05: the splice is turned on **by hand** in the bottom-up assembly, rated at 0.4
+    N·m, with medium threadlocker on the stud; the bench-built column (1.0 N·m in soft-jaw
+    pliers, the supported splice of 2026-10-04) stays selectable as ``standoff_bench``."""
     s = StandoffAxle()
-    assert s.splice_nm == 1.0
-    f = 1.0 / (0.2 * 0.004)                              # 1250 N
+    assert (s.splice_build, s.splice_nm) == ("hand", 0.4)
+    f = 0.4 / (0.2 * 0.004)                              # 500 N
     assert s.splice_capacity_nmm() == pytest.approx(f * (9 + 2.15 ** 2) / 12)
-    assert s.splice_capacity_nmm() == pytest.approx(1419.0, abs=0.1)
+    assert s.splice_capacity_nmm() == pytest.approx(567.6, abs=0.1)
     basis = s.splice_basis()
-    for word in ("UNVERIFIED", "first build", "soft-jaw"):
+    for word in ("UNVERIFIED", "by hand", "threadlocker"):
         assert word in basis
-    # finger tight is still what it was, so the call is visible in the numbers
-    from dataclasses import replace
+    bench = AXLES["standoff_bench"]
+    assert (bench.splice_build, bench.splice_nm) == ("bench", 1.0)
+    assert bench.splice_capacity_nmm() == pytest.approx(1419.0, abs=0.1)
+    for word in ("UNVERIFIED", "first build", "soft-jaw", "bench"):
+        assert word in bench.splice_basis()
+    assert bench.roles == ("pillar",)
 
-    assert replace(s, splice_nm=0.4).splice_capacity_nmm() == pytest.approx(
-        0.4 / (0.2 * 0.004) * (9 + 2.15 ** 2) / 12)
+
+def test_a_bench_built_column_splices_only_under_its_links():
+    """A link can't pass a splice's 8 mm shims, so a column spliced on the bench takes its
+    links over its top: its splices lie below the lowest link, or it doesn't build."""
+    hand, bench = StandoffAxle(), AXLES["standoff_bench"]
+    links = {9, 12, 15}
+    top = 23                                                  # 66 mm: one splice
+    sp = bench.splices(links, top, PITCH)
+    assert sp
+    assert max(sp) < min(links)
+    assert hand.splices(links, top, PITCH) is not None
+    # a link low in the column leaves no room under it for a splice
+    assert bench.splices({2, 9, 12}, top, PITCH) is None
+    assert hand.splices({2, 9, 12}, top, PITCH)
+
+
+def test_the_splice_stud_takes_medium_threadlocker():
+    s = StandoffAxle()
+    assert s.splice_lock_key == "threadlocker_243"
+    assert get(s.splice_lock_key).offers
 
 
 @pytest.mark.slow

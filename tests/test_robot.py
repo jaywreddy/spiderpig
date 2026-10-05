@@ -262,19 +262,17 @@ def test_catalog_data_the_code_reads():
 # ---------------------------------------------------------------------------
 
 
-def test_the_robots_glue_is_a_few_drops_on_the_battery_cradle(robot):
+def test_the_robot_buys_no_ca_glue(robot):
     """No glue in the structure since 2026-10-04 (ties, pillars, deck rails, centre plates
-    are screwed): CA only for the battery cradle, epoxy for the Chicago barrels."""
+    are screwed), and since 2026-10-05 the battery cradle is screwed to the deck too: the
+    only adhesive is the Chicago barrels' epoxy (threadlocker on metal threads aside)."""
     from spiderpig.hardware.bom import bom_from_mechanism
 
     mech = robot("single", 1.0)
-    glue = [line for line in mech.bom_extras if line.key == "ca_glue"]
-    assert all("cradle" in line.where for line in glue)
-    assert 0 < sum(line.qty for line in glue) < 1
+    assert not [line for line in mech.bom_extras if line.key == "ca_glue"]
     assert any(line.key == "epoxy_2part" for line in mech.bom_extras)
     bom = bom_from_mechanism(mech, group=False)
-    row = next(r for r in bom.purchased if r.key == "ca_glue")
-    assert row.packs == 1
+    assert not [r for r in bom.purchased if r.key == "ca_glue"]
 
 
 def test_the_bus_plugs_have_a_way_in():
@@ -290,9 +288,11 @@ def test_the_bus_plugs_have_a_way_in():
 
     spec = servos.get(BuildConfig().servo)
     ports = spec.bus_ports
-    assert ports is not None and ports.opening == "end"
+    assert ports is not None
+    assert ports.opening == "end"
     x0, x1, y0, y1 = ports.slot()
-    assert x1 == math.inf and x0 <= ports.x0
+    assert x1 == math.inf
+    assert x0 <= ports.x0
     assert y1 - y0 >= ports.count * ports.plug_w
     t = sheet("al5052_2p3mm").thickness
     n = centre_plates(spec, t, 1.0)

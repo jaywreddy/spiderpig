@@ -178,8 +178,7 @@ under `budget` (not a target), USD for all the unpriced items in all, added to t
 priced total; the row then reads "$108.76 priced + $15.00 allowed for the 3 unpriced
 items" and verifies against the target. At `quick`, `budget.cost_floor_usd` prices what the design
 buys whatever its parts (servos, spool, sheet, cement, inserts, a bottle of CA glue for
-the pillars' anchors and the robot's tie spigots with every pivot construction but
-`bolt`, the crank's nuts (the bolt crank's nylocks) and, keyed, its hex standoffs, the bolt
+glued pillars' anchors or link inserts (the robot itself glues nothing), the crank's nuts (the bolt crank's nylocks) and, keyed, its hex standoffs, the bolt
 crank's plate cement, a bottle of each threadlocker) from the catalog, and a floor already over
 the `max` fails the target before any build; its detail says what a build adds (the
 sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few dollars
