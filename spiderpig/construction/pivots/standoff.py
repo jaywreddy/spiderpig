@@ -448,6 +448,35 @@ class StandoffAxle:
 
     # -- parts ----------------------------------------------------------------------------
 
+    def ring_fill(self, build: Build, group: AxleGroup, col, faces: list[int]
+                  ) -> dict[int, float]:
+        """Per ring layer, how much taller than the default sheet its printed ring is made
+        (on top of :func:`ring_z`), where a stock segment stands longer than its gap: a
+        layer an aluminium plate elsewhere made thicker leaves the column air
+        (:func:`column_air`), the plates then held apart by the segment, and that much axial
+        play for the links (``klann_lego``'s pillars: 0.70 mm, 5.0 deg of tilt, before
+        2026-10-05). Each ring takes up to its layer's air, lowest first, until the column's
+        stack is the segment's length; a link's layer keeps its air (the link is its own
+        sheet)."""
+        fill: dict[int, float] = {}
+        pitch = build.ctx.pitch
+        for a, b in zip(faces, faces[1:], strict=False):
+            z0, z1 = build.z(a)[1], build.z(b)[0]
+            span = z1 - z0 - column_air(build, group, a + 1, b - 1)
+            length = self.segment(span, b - 1 > a and b - 1 not in col.links)
+            over = 0.0 if length is None else length - span
+            for k in range(a + 1, b):
+                if over <= EPS:
+                    break
+                if k in col.links or k not in col.between or col.roles[k][0] == "neck":
+                    continue
+                lo, hi = ring_z(build, k)
+                room = build.z(k)[1] - hi
+                if room > EPS and hi - lo >= pitch - EPS:
+                    fill[k] = min(room, over)
+                    over -= fill[k]
+        return fill
+
     def realize(self, group: AxleGroup, build: Build) -> Realized:
         out = Realized()
         col = Column.of(build, group)
@@ -465,11 +494,14 @@ class StandoffAxle:
             raise ConstructionError(f"{group.name}: no stock standoffs and splices fill its "
                                     "column")
         shims = self.splice_shims(pitch)
+        faces = [lo_face, *splices, hi_face]
+        fill = self.ring_fill(build, group, col, faces)
         for k in col.between:
             role, r = col.roles[k]
             if role == "neck":
                 raise ConstructionError(f"{group.name}: a standoff can't neck down (layer {k})")
             z0, z1 = ring_z(build, k)
+            z1 += fill.get(k, 0.0)
             if k in splices:
                 # the splice plate: a stack of steel shims (stock), clamped between the
                 # segments' end faces (an acrylic ring would creep out of the clamp)
@@ -484,7 +516,6 @@ class StandoffAxle:
             out.bodies.append(hardware(f"{stem}_ring{k}",
                                        ring(xy, 2 * r, self.od + self.ring_fit, z0, z1), host,
                                        fab="printed", color=SLEEVE_COLOR))
-        faces = [lo_face, *splices, hi_face]
         segments = []
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
         trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
@@ -496,7 +527,7 @@ class StandoffAxle:
             length = self.segment(span, free)
             if length is None:
                 raise ConstructionError(f"{group.name}: no stock standoff fits {span:.2f} mm")
-            long += max(0.0, length - span)
+            long += max(0.0, length - span - sum(fill.get(k, 0.0) for k in range(a + 1, b)))
             short = span - length
             if short > self.max_short + EPS:
                 # DIN 988 shims between the segment's upper end and the face over it (the

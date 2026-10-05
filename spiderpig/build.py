@@ -45,7 +45,13 @@ import warnings
 from pathlib import Path
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import ParamError, add_build_args, add_design_args, config_from_args
+from spiderpig.config import (
+    ParamError,
+    add_build_args,
+    add_design_args,
+    config_from_args,
+    torque_limit_note,
+)
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filaments
 from spiderpig.hardware.catalog import CATALOG, _load
@@ -257,6 +263,8 @@ def main(argv=None) -> int:
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
+    if config.robot and (note := torque_limit_note(config)):
+        bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")
     paths = bom.write(out)

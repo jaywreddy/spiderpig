@@ -12,8 +12,9 @@ measured one (which link pushes against which), and how big it gets:
 * **jammed**: the base welded where it stands, one foot of the left side caught (a foot
   under something), the left drive commanded full speed one way or the other with its
   torque limited to the servo's firmware limit
-  (:attr:`servos.spec.ServoSpec.torque_limit_nm`, :data:`servos.spec.TORQUE_LIMIT_FRACTION`
-  of stall, 45 %), held until it stalls, at ``JAM_ANGLES`` crank angles per foot, both
+  (:func:`config.torque_limit_nm`: :data:`servos.spec.TORQUE_LIMIT_FRACTION` of stall,
+  45 %, or the linkage's lower limit), held until it stalls, at ``JAM_ANGLES`` crank
+  angles per foot, both
   directions, the foot *pinned* to the world (``JAM_MODES``; ``"path"`` instead blocks
   it along its path only, see there), the floor's contacts off (``JAM_FLOOR``: the
   caught foot is the only hold besides the weld, no other foot shares the stalled
@@ -53,7 +54,7 @@ from pathlib import Path
 
 import numpy as np
 
-from spiderpig.config import BuildConfig
+from spiderpig.config import BuildConfig, torque_limit_nm
 
 VERSION = 3                # 3: the floor's contacts off during the jam (see JAM_FLOOR)
 WALK_SECONDS = 3.0
@@ -287,7 +288,6 @@ def jam_loads(config: BuildConfig, angles: int = JAM_ANGLES, steps: int = JAM_ST
     """The jammed case (see the module doc): per joint of the left side."""
     import mujoco
 
-    from spiderpig import servos
     from spiderpig.sim.mjcf import SimParams, _v, build_mjcf, load_model
     from spiderpig.sim.run import kinematic_qpos
 
@@ -327,7 +327,7 @@ def jam_loads(config: BuildConfig, angles: int = JAM_ANGLES, steps: int = JAM_ST
     index = JointIndex(model, meta)
     left = [j for j, g in enumerate(index.joints) if g["side"] == "L"]
     lrows = [i for i, (j, _) in enumerate(index.rows) if j in set(left)]
-    limit = servos.get(config.servo).torque_limit_nm
+    limit = torque_limit_nm(config)
     vmax = meta["actuators"]["L.drive"]["ctrlrange"][1]
     act = {s: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{s}.drive")
            for s in ("L", "R")}
