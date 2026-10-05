@@ -221,8 +221,21 @@ class TieDims:
     screw_d: float
 
 
+def _m3() -> bool:
+    from spiderpig import hwflags
+
+    return hwflags.on("m3")
+
+
 def tie_dims(ctx: Context) -> TieDims:
     from spiderpig.hardware.crank_catalog import m4_bhcs
+
+    if _m3():
+        from spiderpig.hardware.fasteners import SCREWS
+
+        sk = SCREWS["bhcs", "3"]
+        return TieDims(column=3.0, head_r=sk.head_d / 2, head_h=sk.head_h, hole_d=3.4,
+                       screw_d=3.0)
 
     hd = get(m4_bhcs(8)).dims
     return TieDims(column=3.0, head_r=float(hd["head_d"]) / 2, head_h=float(hd["head_h"]),
@@ -304,7 +317,7 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
     design review's warning level); where none is, the unmoved place (the audit warns)."""
     spec, p, d = ctx.servo, ctx.params, tie_dims(ctx)
     x0, x1, y0, y1 = _footprint(spec)
-    c = max(d.column, d.head_r)
+    c = max(d.column, d.head_r, 3.8 if _m3() else 0.0)   # (m3: the M4 tie's places)
     yt = y1 + p.margin + c
     xs = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
     near = tie_neighbours(ctx)
@@ -586,24 +599,33 @@ def _chain(D: float) -> tuple[list[float], float] | None:
     """Stock goBILDA 1501 lengths (at most 60 mm each, joined by M4 set screws) that fill
     ``D`` mm with less than 2 mm left over (taken up by DIN 988 shims): the fewest
     segments, then the least left over."""
-    from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS
+    from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS, M3_ROUND_STANDOFF_LENGTHS
 
-    lengths = sorted(GOBILDA_LENGTHS)
+    lengths = sorted(M3_ROUND_STANDOFF_LENGTHS if _m3() else GOBILDA_LENGTHS)
+    most = 2.0 + 1e-6 if _m3() else 2.0      # (M3: two 1 mm shims, the one thickness)
     for n in range(1, 5):
         best = None
         for combo in itertools.combinations_with_replacement(lengths, n):
             if n > 1 and min(combo) < 12:
                 continue                     # a joined segment needs thread both ends
             left = round(D - sum(combo), 3)
-            if 0 <= left < 2.0 and (best is None or left < best[1]):
+            from spiderpig import hwflags
+
+            if hwflags.on("oneshim") and abs(left - round(left)) > 0.1 + 1e-6:
+                continue
+            if 0 <= left < most and (best is None or left < best[1]):
                 best = (list(combo), left)
         if best is not None:
             return best
     return None
 
 
+def _shim_key() -> str:
+    return "shim_din988_3x6" if _m3() else "shim_din988_4x8"
+
+
 def _shims(t: float) -> list[float]:
-    steps = sorted((float(x) for x in get("shim_din988_4x8").dims["t"]), reverse=True)
+    steps = sorted((float(x) for x in get(_shim_key()).dims["t"]), reverse=True)
     out, left = [], round(t, 3)
     for s in steps:
         k = int(left / s + 1e-6)
@@ -619,12 +641,26 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
     the inner plate from the leg side, and an M4 set screw through the centre plates into
     both chains, which clamps them (no glue, no tapped plate, no insert)."""
     from spiderpig.hardware.crank_catalog import (
+        M3_SET_LENGTHS,
         M4_BHCS_LENGTHS,
         M4_SET_LENGTHS,
         gobilda_1501,
+        m3_round_standoff,
+        m3_set_screw,
         m4_bhcs,
         m4_set_screw,
     )
+    from spiderpig.hardware.fasteners import SCREWS
+
+    m3 = _m3()
+    if m3:
+        M4_BHCS_LENGTHS, M4_SET_LENGTHS = SCREWS["bhcs", "3"].lengths, M3_SET_LENGTHS  # noqa: N806
+        gobilda_1501, m4_set_screw = m3_round_standoff, m3_set_screw  # noqa: F811
+        m4_bhcs = SCREWS["bhcs", "3"].key  # noqa: F811
+    thread_max, engage_min = (6.0, 3.0) if m3 else (8.0, 4.0)
+    shim_key = _shim_key()
+    shim_od, shim_id = (6.0, 3.1) if m3 else (8.0, 4.1)
+    r_screw = 1.45 if m3 else 1.95
 
     bodies: list[Body] = []
     if not tie_xy:
@@ -641,9 +677,9 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
     segs, left = got
     shims = _shims(left)
     t_sh = round(sum(shims), 3)
-    depth = min(8.0, min(segs) / 2)
+    depth = min(thread_max, min(segs) / 2)
     end = next(((L, L - t_in - t_sh) for L in M4_BHCS_LENGTHS
-                if 4.0 - EPS_CH <= L - t_in - t_sh <= depth + EPS_CH), None)
+                if engage_min - EPS_CH <= L - t_in - t_sh <= depth + EPS_CH), None)
     stud = next(((L, (L - 2 * half) / 2) for L in M4_SET_LENGTHS
                  if 3.0 - EPS_CH <= (L - 2 * half) / 2 <= depth + EPS_CH), None)
     if end is None or stud is None:
@@ -654,11 +690,12 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
             z = face
             if shims:
                 zs = sorted((z, z + sign * t_sh))
-                bodies.append(Body(name=f"{side}.tie_shims{i}", part=ring(xy, 8.0, 4.1, *zs),
+                bodies.append(Body(name=f"{side}.tie_shims{i}",
+                                   part=ring(xy, shim_od, shim_id, *zs),
                                    rigid_with=host[side], fab="purchased",
-                                   bom_key="shim_din988_4x8", color=STEEL))
+                                   bom_key=shim_key, color=STEEL))
                 if len(shims) > 1:
-                    extras.append(BomLine("shim_din988_4x8", len(shims) - 1,
+                    extras.append(BomLine(shim_key, len(shims) - 1,
                                           f"frame tie {i}, {side}"))
                 z += sign * t_sh
             for k, L in enumerate(segs):
@@ -670,18 +707,18 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
                 z += sign * L
                 if k + 1 < len(segs):
                     bodies.append(Body(name=f"{side}.tie_joint{i}_{k}",
-                                       part=disc(xy, 1.95, *sorted((z - 6, z + 6))),
+                                       part=disc(xy, r_screw, *sorted((z - 6, z + 6))),
                                        rigid_with=host[side], fab="purchased",
                                        bom_key=m4_set_screw(12), color=STEEL))
             # the end screw from the leg side: its head under the inner plate
             leg = face - sign * t_in
             L, _ = end
             screw = union([disc(xy, d.head_r, *sorted((leg, leg - sign * d.head_h))),
-                           disc(xy, 1.95, *sorted((leg, leg + sign * L)))])
+                           disc(xy, r_screw, *sorted((leg, leg + sign * L)))])
             bodies.append(Body(name=f"{side}.tie_screw{i}", part=screw, rigid_with=host[side],
                                fab="purchased", bom_key=m4_bhcs(L), color=STEEL))
         L, _ = stud
-        bodies.append(Body(name=f"tie_stud{i}", part=disc(xy, 1.95, -L / 2, L / 2),
+        bodies.append(Body(name=f"tie_stud{i}", part=disc(xy, r_screw, -L / 2, L / 2),
                            rigid_with=host["L"], fab="purchased", bom_key=m4_set_screw(L),
                            color=STEEL))
         fastened += [(f"L.tie_screw{i}", f"L.tie_standoff{i}_0"),

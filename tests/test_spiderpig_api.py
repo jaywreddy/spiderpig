@@ -198,17 +198,20 @@ def test_check_plan_walk_on_the_default_quad(quad):
     # the bolt crank's single aluminium webs (2026-10-04): a one-layer run per crankpin, the
     # screw heads in clearance gaps (11 of them), 0.080 in frame plates: 14 layers, 77.164
     # mm (the two-plate stacks took 31 layers, 95.975 mm; the keyed crank's were 16)
-    assert pr.n_layers == 14
+    assert pr.n_layers == 13            # 13 with the simplified hardware (hwflags, 2026-10-05)
     # the hex-standoff crankpins on 0.100 in 6061 webs (2026-10-04): 76.789 mm (77.164 on
     # the round standoff); 74.289 with the hub chain capped (no screw over the hub plate);
-    # 73.789 since a hex pin's upper stack uses the air over its plate (2026-10-05)
-    assert pr.height_mm == pytest.approx(73.789)
-    assert len(pr.gaps_mm) == 9       # the hex crank's, hub chain capped (10 with the
+    # 73.789 since a hex pin's upper stack uses the air over its plate (2026-10-05); 73.464
+    # with the Chicago screws as bought (Harfington's 8.5 mm heads, 1 mm length steps);
+    # 72.989 with the simplified hardware (printed fills, M3 ties: 13 layers)
+    assert pr.height_mm == pytest.approx(72.989)
+    assert len(pr.gaps_mm) == 10      # (10 in the simplified hardware's 13-layer plan) the
+    # hex crank's, hub chain capped (10 with the
     #                                   screw over the hub plate; the round standoff's: 11)
     assert pr.route == {"runs": [{"at": f"M_leg{k}", "lo": lo, "hi": lo}
-                                 for k, lo in ((0, 4), (2, 6), (1, 8), (3, 10))],
+                                 for k, lo in ((0, 3), (2, 5), (1, 7), (3, 9))],
                         "bearing": True}
-    assert pr.layers["b1_leg0"] == 4
+    assert pr.layers["b1_leg0"] == 3
     assert "inner frame plate" in pr.table
     wr = api.walk(quad)
     assert wr.ok
@@ -230,7 +233,7 @@ def test_verify_quick_passes_with_tiers(quad):
     rows = {r.requirement: r for r in rep.rows}
     assert rows["program.loops_close"].tier == "proven"
     assert rows["program.loops_close"].passed
-    assert rows["size.stack_mm"].value == pytest.approx(73.789)     # the hex crank's
+    assert rows["size.stack_mm"].value == pytest.approx(72.989)     # the hex crank's
     assert rows["size.stack_mm"].tier == "proven"
     assert rows["motion.speed_mm_s"].tier == "estimated"
     assert rows["motion.stride_mm"].tier == "measured"
@@ -359,9 +362,9 @@ def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
     b1 = quad.parts["L.b1_leg0"]
     assert b1.solid is robot("quad", 1.0).body("L.b1_leg0").part
     assert (b1.group, b1.side, b1.fab, b1.material) == ("links", "L", "laser", "sheet")
-    assert b1.layers == (4,)
+    assert b1.layers == (3,)              # (3 in the simplified hardware's 13-layer plan)
     assert not b1.edited
-    assert quad.parts["R.b1_leg0"].layers == (4,)
+    assert quad.parts["R.b1_leg0"].layers == (3,)
     assert quad.parts["R.b1_leg0"].side == "R"
     assert quad.parts["L.servo"].group == "drive"
     assert quad.parts["L.servo"].mass_g == 55.0
@@ -465,8 +468,9 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     # (2026-10-04) 75 (the round standoff's: 64); 72 with the hub chain capped (no screw,
     # washer or collar over the hub plate); 71 since the second assembly audit (the
     # stub's thrust sleeve; the STS3215's two near front screws left out); 69 since the hex
-    # crank's gap rules of 2026-10-05 (another 10-layer layering: fewer pivot washers/shims)
-    assert len(manifest["parts"]) == 69
+    # crank's gap rules of 2026-10-05 (another 10-layer layering: fewer pivot washers/shims);
+    # 65 with the Chicago screws as bought (1 mm barrel steps: fewer shims)
+    assert len(manifest["parts"]) == 65
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 
@@ -765,14 +769,16 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     from spiderpig.hardware.catalog import get as item
 
     servo = item(servos.get("sts3215").bom_key).offer.price_usd
-    glue, nuts = 13.99, 2.39     # round 4: a bottle of CA for the anchors, the crank's nuts
+    glue = 13.99                 # round 4: a bottle of CA for the anchors
     # a blank of each aluminium sheet: the frame (0.080 in, 2026-10-04), a Klann's feet
     al, al6061 = 18.0, 32.0
-    assert total == pytest.approx(servo + 25.49 + 10.99 + al + al6061 + glue + nuts, abs=0.01)
-    assert unpriced == ["Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
-                        "Loctite EA E-30CL), 2 x 25 ml",          # the Chicago barrels' bond
-                        "M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F",
-                        "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml"]
+    # the sourcing of 2026-10-05 (hardware.sources): PLA $29.99, the Chicago barrels' J-B Weld
+    # $7.99, Loctite 222 $21.05 priced; McMaster's nut shows its price only on its page
+    epoxy, lock222 = 7.99, 21.05
+    assert total == pytest.approx(servo + 29.99 + 10.99 + al + al6061 + glue + epoxy + lock222,
+                                  abs=0.01)
+    assert unpriced == ["M3 hex nut (ISO 4032)",
+                        "M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F"]
     assert priced[0].startswith("Feetech STS3215")
     rep = api.verify(one, "quick")
     rows = {r.requirement: r for r in rep.rows}
@@ -786,8 +792,8 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
     # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)
-    assert total == pytest.approx(2 * xl330 + 25.49 + 10.99 + al + al6061 + 11.37
-                                  + glue + nuts, abs=0.01)
+    assert total == pytest.approx(2 * xl330 + 29.99 + 10.99 + al + al6061 + 10.90
+                                  + glue + epoxy + lock222, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
@@ -806,13 +812,15 @@ def test_the_recommendation_says_which_module_it_checked():
     # the bolt crank's single webs, heads in gaps, 0.080 in frame plates (2026-10-04); the
     # hex crankpins' screw stacks in their gaps: 39.339 mm (the round standoff's 34.939);
     # 36.839 with the hub chain capped (no screw over the hub plate, 2026-10-04); 37.439 since
-    # the hex crank's gap rules of 2026-10-05 (another 10-layer layering found first)
+    # the hex crank's gap rules of 2026-10-05 (another 10-layer layering found first); 37.839
+    # with the Chicago screws as bought (Harfington's heads, 2026-10-05); 37.639 with the
+    # simplified hardware (its printed head spacers)
     assert text.startswith("checked: the static stage passes, and its single module plans in "
-                           "10 layers (37.439 mm); the quad module's own plan is not checked "
+                           "10 layers (37.639 mm); the quad module's own plan is not checked "
                            "here")
     assert "the planner's deadline is 60 s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
-        == "checked: the static stage passes, and it plans in 10 layers (37.439 mm)"
+        == "checked: the static stage passes, and it plans in 10 layers (37.639 mm)"
 
 
 def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
@@ -1093,11 +1101,11 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # in 6061 crank blank ($21; the 0.063 in 5052 was $18); the single-plate crank has no
     # nylocks, and nothing is glued to a plate any more (no wood glue: the glue-free
     # joinery), and no CA since the battery cradle is screwed to the deck (2026-10-05)
-    assert total == pytest.approx(40.0 + 25.49 + 3.10 + 18.0 + 21.0 + 11.37)
-    assert unpriced == ["Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
-                        "Loctite EA E-30CL), 2 x 25 ml",          # the Chicago barrels
-                        "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
-                        "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml"]
+    # priced since the sourcing of 2026-10-05 (hardware.sources): two servos at $21.99, PLA
+    # $29.99, the inserts $10.90, the epoxy and both threadlockers
+    assert total == pytest.approx(43.98 + 29.99 + 3.10 + 18.0 + 21.0 + 10.90 + 7.99 + 21.05
+                                  + 21.45)
+    assert unpriced == []
     assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
     # the frame blank in 5052, the crank's in 6061 (the hex crankpins' pockets)
@@ -1105,14 +1113,17 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     assert sum(line.startswith("6061 aluminium sheet") for line in priced) == 1
     lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}, **OLD},
                        store=None)
-    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.86 + 18.0)   # + its Al frame
+    # + its Al frame; the sourcing of 2026-10-05 priced its epoxy and threadlocker, and the
+    # servo and PLA went up (hardware.sources)
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(124.0)
     bolted = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"},
                           "constructions": {"pillar": "bolt", "pin": "bolt", "crank": "keyed"}},
                          store=None)
-    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.86 + 18.0 - 13.99)   # unglued
+    # unglued, and no Chicago barrels to bond (the epoxy)
+    assert verify_module.cost_floor(bolted)[0] == pytest.approx(124.0 - 13.99 - 7.99)
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
-    assert row.value == pytest.approx(72.86 + 18.0)
+    assert row.value == pytest.approx(124.0)
     assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
     assert "the sheets' count, the crank's screws" in row.detail
 

@@ -26,6 +26,11 @@ robot), we:
    endpoints. All on layer ``CUT``, units = mm; and ``<prefix>_parts.csv`` saying which
    part is where (service, sheet, the kerf compensated).
 
+:func:`save_parts` writes the other form a service may want: one DXF per different part
+(``<dir>/<service>_<sheet>/<part>_x<qty>.dxf``, the part at the origin, the same contours
+and kerf), and ``order.csv`` with each file's material, thickness and quantity: SendCutSend
+quotes and nests per part and takes one part per file.
+
 :func:`fidelity` reads a part's emitted contours back and measures them against the
 solid's section (area and outline deviation); the cut-rule review
 (:mod:`spiderpig.manufacture`, the audit's ``manufacture``) reports it per part.
@@ -45,6 +50,7 @@ from build123d import Axis, GeomType, Plane, section
 from rectpack import newPacker
 
 _CUT_LAYER = "CUT"
+CUT_COLOR = 5        # blue (ACI 5): Ponoko's convention for a cut line, mapped at upload
 _DEFAULT_SHEET = (200.0, 200.0)
 _MARGIN = 3.0
 CHORD_TOL = 0.02     # mm: a curve that is neither a line nor an arc, flattened within this
@@ -475,7 +481,7 @@ def _write_sheets(sheets, prefix: Path, kerf: float, key: str, service: str,
         doc = ezdxf.new(dxfversion="R2010")
         doc.units = ezdxf.units.MM
         if _CUT_LAYER not in doc.layers:
-            doc.layers.add(name=_CUT_LAYER)
+            doc.layers.add(name=_CUT_LAYER, color=CUT_COLOR)
         msp = doc.modelspace()
         for name, sketch, off in placed:
             wires = list(sketch.wires())
@@ -489,3 +495,54 @@ def _write_sheets(sheets, prefix: Path, kerf: float, key: str, service: str,
         doc.saveas(str(path))
         written.append(path)
     return written
+
+
+def _part_slug(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "-", name).strip("-") or "part"
+
+
+def save_parts(groups, out_dir, default: str, kerf: float | None = None,
+               margin: float = _MARGIN) -> list[dict]:
+    """One DXF per different laser-cut part (``groups``: :func:`hardware.bom.group_made`'s
+    laser groups; a part and its mirror image are one cut, flipped), for a service that
+    quotes and nests per part: ``<out_dir>/<service>_<sheet>/<part>_x<qty>.dxf``, the part
+    at the origin on layer ``CUT`` in mm, kerf-compensated as :func:`save_sheets` does
+    (``kerf``: ``None`` for each sheet's service's). Writes ``<out_dir>/order.csv`` (a row
+    per file: service, sheet, material, thickness, quantity, size, the parts it makes) and
+    returns those rows."""
+    from spiderpig.hardware.catalog import sheet_name, sheet_thickness
+    from spiderpig.hardware.catalog import sheet_size as blank
+
+    out_dir = Path(out_dir)
+    rows: list[dict] = []
+    for g in sorted(groups, key=lambda g: (sheet_service(sheet_key(g.ref, default)),
+                                           sheet_key(g.ref, default), g.ref.name)):
+        key = sheet_key(g.ref, default)
+        service = sheet_service(key)
+        k = sheet_kerf(key) if kerf is None else kerf
+        sketch = _profile(g.ref, blank(key), margin)
+        x0, y0, x1, y1 = _bbox_2d(sketch)
+        doc = ezdxf.new(dxfversion="R2007")     # Ponoko's most compatible; SendCutSend's too
+        doc.units = ezdxf.units.MM
+        doc.layers.add(name=_CUT_LAYER, color=CUT_COLOR)
+        msp = doc.modelspace()
+        wires = list(sketch.wires())
+        outer = _outer(wires)
+        for wire in wires:
+            _emit(msp, wire, (-x0, -y0), k / 2 if wire is outer else -k / 2)
+        folder = out_dir / f"{_slug(service)}_{key}"
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{_part_slug(g.ref.name)}_x{g.qty}.dxf"
+        doc.saveas(str(path))
+        rows.append({"service": service or "any", "sheet": key, "material": sheet_name(key),
+                     "thickness_mm": round(sheet_thickness(key), 3), "kerf_mm": k,
+                     "file": str(path.relative_to(out_dir)), "qty": g.qty,
+                     "size_mm": f"{x1 - x0:.1f} x {y1 - y0:.1f}",
+                     "parts": " ".join(g.names)})
+    if rows:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with open(out_dir / "order.csv", "w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+    return rows

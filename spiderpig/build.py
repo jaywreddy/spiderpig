@@ -11,8 +11,13 @@ writes into ``--out``:
 * ``laser/<name>_sheet_*.dxf`` — every laser-cut part, kerf-compensated and
   packed on the sheet stock's size, with ``<name>_sheet_parts.csv`` saying
   which part is where;
+* ``laser/parts/`` — the same parts one DXF per different part
+  (``<service>_<sheet>/<part>_x<qty>.dxf``) with ``order.csv`` (material,
+  thickness, quantity per file): what a per-part service (SendCutSend) takes;
 * ``bom.csv`` / ``bom.md`` / ``bom.json`` — what to buy (quantities, packs,
-  vendor links, estimated cost), cut and print.
+  vendor links, estimated cost), cut and print;
+* ``ORDER.md`` — the same as orders: a cart per vendor (direct product pages),
+  an upload per cutting service (the per-part DXFs), the prints per filament.
 
 The design parameters: ``--linkage`` (Strider by default; ``--list`` shows
 them all), ``--phases`` (every leg's crank phase in degrees, e.g.
@@ -40,12 +45,18 @@ import warnings
 from pathlib import Path
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import ParamError, add_build_args, add_design_args, config_from_args
+from spiderpig.config import (
+    ParamError,
+    add_build_args,
+    add_design_args,
+    config_from_args,
+    torque_limit_note,
+)
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filaments
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
-from spiderpig.layout import DEFAULT_KERF, save_sheets, sheet_lines
+from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
 
 
 def _parse_args(argv) -> argparse.Namespace:
@@ -231,6 +242,7 @@ def main(argv=None) -> int:
     for r in rows:
         print(f"  {r['file']:28} {r['print']}")
 
+    order: list[dict] = []
     if not args.no_dxf:
         size = tuple(args.sheet_size) if args.sheet_size else None
         sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
@@ -241,17 +253,28 @@ def main(argv=None) -> int:
         for line in sheet_lines(mech, config.sheet, size):
             print(f"  {line.qty} x {line.key}")
             mech.bom_extras.append(line)
+        order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
+                           kerf=args.kerf)
+        print(f"wrote {len(order)} per-part DXFs ({sum(r['qty'] for r in order)} parts) and "
+              f"order.csv to {out / 'laser' / 'parts'}")
 
     title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
              f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
+    if config.robot and (note := torque_limit_note(config)):
+        bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")
     paths = bom.write(out)
     print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
           f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")
+    from spiderpig.hardware.order import order_markdown
+
+    (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
+                                                 build_dir=str(out)))
+    print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     return 0
 
 

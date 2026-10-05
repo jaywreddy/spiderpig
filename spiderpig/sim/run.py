@@ -29,8 +29,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from spiderpig import linkage, servos
-from spiderpig.config import BuildConfig
+from spiderpig import linkage
+from spiderpig.config import BuildConfig, torque_limit_nm
 from spiderpig.fabricate import template_for
 from spiderpig.linkage import feet_of
 from spiderpig.sim.mjcf import (
@@ -374,7 +374,7 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
       element of a crankpin joint of the design's crank holds, nominal:
       :func:`spiderpig.strength.crank_capacity`; ``crank_weakest`` names it),
       ``torque_limit_recommended`` (N·m, the servo's firmware limit that keeps a jam
-      under it, :attr:`servos.spec.ServoSpec.torque_limit_nm`) and
+      under it, :func:`config.torque_limit_nm`) and
       ``joint_moment_at_limit`` (the joint's moment in a jam at that limit);
     * ``walks``: it covered ground (|stride| ≥ :data:`MIN_STRIDE_MM` per revolution)
       with its body off the floor (``body_contact`` under :data:`BODY_DOWN`).
@@ -439,7 +439,7 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
             "speed_under_load": float(r.speed_max * (1.0 - mean_abs / r.torque_max)),
         }
     factor = crank_joint_factor(r.config) if r.config is not None else 1.0
-    limit = servos.get(r.config.servo).torque_limit_nm if r.config is not None else None
+    limit = torque_limit_nm(r.config) if r.config is not None else None
     from spiderpig.strength import crank_capacity
 
     caps = (crank_capacity({}, r.config) if r.config is not None else None) or {}

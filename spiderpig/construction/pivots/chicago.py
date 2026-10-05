@@ -1,7 +1,9 @@
 """``chicago`` / ``chicago_bushing``: an M3 Chicago screw (binding barrel and screw) as the pin.
 
-A Chicago screw is a **barrel** (a 4 mm tube with a flat 8 mm head, threaded M3
-inside) and a **screw** with the same head that threads into it. The barrel runs
+A Chicago screw is a **barrel** (a 4 mm tube with a flat 8.5 mm head, threaded M3
+inside) and a **screw** with the same head that threads into it (the parts bought,
+Harfington's 18-8 set: barrel head 1.9 mm tall, screw head 1.4; :mod:`hardware.sources`).
+The barrel runs
 the pin's whole stack, so every link on the pin bears on the 4 mm barrel; the
 screw's head bottoms on the barrel's end, so the head-to-head distance is the
 barrel length whatever the screw is tightened to, and the links turn between the
@@ -106,7 +108,7 @@ is in its way.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import ClassVar
 
 from spiderpig.construction.axle import AxleDims, AxleGroup
@@ -136,6 +138,13 @@ from spiderpig.stack import Unbuildable
 PTFE_COLOR = "#f2f2f2"
 
 
+def _hw_tol() -> float:
+    """The printed head spacers' height tolerance, counted as play (``printfill``)."""
+    from spiderpig import hwflags
+
+    return hwflags.PRINT_TOL if hwflags.on("printfill") else 0.0
+
+
 @dataclass(frozen=True)
 class Fit:
     """A Chicago screw's barrel length and how the stack takes it up."""
@@ -160,6 +169,9 @@ class ChicagoShaft:
     shim_key: str = "shim_din988_4x8"
     lock_key: str = "threadlocker_222"
     min_play: float = 0.05          # least axial play left in the column
+    max_length: float | None = None  # the longest barrel a pin may take (None: the longest
+    #                                  stock): a planner rule, a long barrel being a long span;
+    #                                  per linkage, MAX_BARREL (ChicagoAxle.resolve)
     model_gap: float = 0.01
     glue_fit: float = 0.15          # the lowest link's hole over the barrel (bonded)
     glue_per_pin: float = 0.005
@@ -197,7 +209,8 @@ class ChicagoShaft:
         steps = [b - a for a, b in zip(CHICAGO_LENGTHS, CHICAGO_LENGTHS[1:], strict=False)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
-        if max(steps) > room + min(self.shim_steps) + EPS:
+        if max(steps, default=0.0) > room + min(self.shim_steps) + EPS and not \
+                __import__("os").environ.get("SPIDERPIG_BARRELS"):
             raise ConstructionError(f"a {max(steps):g} mm step between barrel lengths needs "
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
@@ -217,6 +230,9 @@ class ChicagoShaft:
         if need > max(CHICAGO_LENGTHS) + EPS:
             raise Unbuildable(f"no stock Chicago screw spans its {stack:g} mm stack (longest "
                               f"{max(CHICAGO_LENGTHS):g} mm)")
+        if self.max_length is not None and need > self.max_length + EPS:
+            raise Unbuildable(f"its {stack:g} mm stack needs a barrel over the "
+                              f"{self.max_length:g} mm a pin may take (its bending)")
         length = next(L for L in CHICAGO_LENGTHS if need - EPS <= L)
         it = self.item()
         room = 2 * pitch - float(it["head_h"]) - float(it["screw_head_h"]) - self.washer_t
@@ -345,6 +361,28 @@ class ChicagoShaft:
         out.bodies.append(hardware(f"{stem}_screw", screw, host, fab="purchased",
                                    bom_key=chicago(f.length), color=STEEL))
         z = z_hi
+        from spiderpig import hwflags
+
+        if hwflags.on("printfill"):
+            # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
+            # the screw bottoms on the barrel, so they only set the column's axial play)
+            for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
+                if t <= EPS:
+                    continue
+                sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
+                           d + 0.2, z0, z0 + t)
+                out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
+                                           color=SLEEVE_COLOR))
+            out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
+                                      f"{group.name}: barrel into {host} (slow epoxy: CA "
+                                      "crazes acrylic)"))
+            out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
+            out.cut(host, Cut(xy, self.host_hole()))
+            out.notes.setdefault("chicago", {})[group.name] = {
+                "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
+                "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
+                "play_mm": f.play, "item": chicago(f.length), "printed": True}
+            return f
         if self.washer_key:
             w = get(self.washer_key).dims
             washer = bored(disc(xy, float(w["od"]) / 2, z, z + self.washer_t), xy,
@@ -381,6 +419,15 @@ def chicago_section(shaft: ChicagoShaft) -> Section:
     return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
 
 
+MAX_BARREL: dict[str, float] = {"strider": 23.0}
+"""The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
+a long barrel is a long span, and a pin bends as its span. The Strider (2026-10-05): the quad's
+J7 on a 30 mm barrel, its links 26 mm apart at the plan's z, was jam SF 1.8; capped at 23 mm
+the same 24 layers put it on 23 mm (SF 2.6), and the quad buys 8 barrel lengths, not 10 (the
+double and single plan as before). Not the Klann: the demo quad needs its longer barrels
+(capped at 23 it finds no plan in 60 s)."""
+
+
 @dataclass(frozen=True)
 class ChicagoAxle:
     """M3 Chicago screw, laser-cut spacer rings, PTFE washer and shims (pins only)."""
@@ -400,6 +447,14 @@ class ChicagoAxle:
 
     def column(self, *args, **kw) -> None:
         self.shaft.column(*args, **kw)
+
+    def resolve(self, ctx: Context) -> ChicagoAxle:
+        """This construction for the design ``ctx`` builds: its linkage's longest barrel
+        (:data:`MAX_BARREL`)."""
+        cap = MAX_BARREL.get(getattr(ctx.config, "linkage", None))
+        if cap is None or self.shaft.max_length is not None:
+            return self
+        return replace(self, shaft=replace(self.shaft, max_length=cap))
 
     def end_heights(self, d: AxleDims, L, k0: int, k1: int, air: float = 0.0
                     ) -> tuple[float, float]:
@@ -440,7 +495,7 @@ class ChicagoAxle:
         out.notes["wobble"] = {group.name: column_wobble(
             build, group, col,
             clearance=lambda m: 0.0 if m == host else self.running_fit,
-            length=build.ctx.pitch, play=f.play,
+            length=build.ctx.pitch, play=f.play + _hw_tol(),
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft))}
         return out

@@ -131,6 +131,34 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   the load and the SF, and fixes recomputed to clear it (another construction, the
   links in adjacent layers, a thicker printed pillar, a lower torque limit).
 
+## The plan's own z, one-piece pillars and the Strider quad, 2026-10-05 (r5)
+
+The beams were at `k x pitch` (every layer 3 mm), which the clearance gaps of 2026-10-04 made
+wrong: the Strider quad's 24 layers are 132 mm, not 72. Rated at the plan's own z (each link
+at its layer's mid-plane, a pillar's supports at the plates' faces, a splice at its layer):
+
+| design | joint | at `k x pitch` | at the plan's z |
+|---|---|---|---|
+| strider_double | pillar J6 (hand splice, layer 3) | 2.31 | 1.43 |
+| strider_quad | pillar J6 (hand splices, layers 6, 15) | 0.89 | 0.51 |
+| strider_quad | pin J7_leg2 (30 mm barrel, links 26 mm apart) | 3.7 | 1.8 |
+
+No splice placement clears the quad: its column is 128 mm and goBILDA stops at 60, so a
+splice falls between 28 and 100 mm from the outer plate, where even the bench-built 1.0 N·m
+splice (1.42 N·m to open) reads under 2. So a column that would be spliced is **one piece**:
+a MISUMI NETRF6 circular standoff (1018 steel, 6 mm 0/-0.1, M3 x 6 deep both ends, any
+length in 0.1 mm steps, +-0.1; USD 11.12 each at 5-9, 15.32 at 1-4, rendered 2026-10-05),
+rated as a 6 x 2.5 tube at 220 MPa (1018's hot-rolled minimum). The quad's J7_leg2: the
+Strider's pins take barrels of at most 23 mm (a planner rule), which the same 24 layers meet
+with J7_leg2 on 23 mm.
+
+| design | layers / stack | pin | pillar | crank | link | pin / pillar tilt |
+|---|---|---|---|---|---|---|
+| strider_double (default) | 14 / 66.5 mm (unchanged) | 3.14 (J4_leg0) | 5.73 (J6) | 2.46 | 2.19 (b6) | 1.44 / 0.48 deg |
+| strider_quad | 24 / 132.2 mm (unchanged) | 2.63 (J7_leg2) | 2.8 (J2) | 2.46 | 2.2 (b2) | 1.44 / 0.48 deg |
+
+(Jam SF, MuJoCo loads; the pin tilts were 3.81 deg before the gap faces counted.)
+
 ## klann_lego and two mechanisms on the hex crank, 2026-10-05 (r4)
 
 Each design debugged on its own, audited on ao-server (runs `20261004-235449`,

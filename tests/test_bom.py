@@ -201,7 +201,9 @@ def test_the_catalog_prices_the_pivot_hardware_and_says_where_from(monkeypatch):
               "bearing_mf63zz": 17.67, "bushing_gfm0304_03": 5.3, "ca_glue": 13.99,
               "wood_glue": 5.49, "plywood_3mm": 3.10,
               "rod_3mm_100": 5.49, "starlock_3mm": 19.99,     # the rod pin's hardware
-              "chicago_m3_8": 1.33, "bushing_gfm0405_03": 23.0}    # the default pin's screw
+              "bushing_gfm0405_03": 23.0}
+    # (the Chicago screws' per-length prices are the sourcing's, hardware.sources, which this
+    # reload of the item modules leaves out)
     for key, price in priced.items():                                         # entry 9
         offer = catalog.get(key).offer
         assert offer.price_usd == pytest.approx(price), key

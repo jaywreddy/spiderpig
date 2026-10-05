@@ -49,7 +49,7 @@ from spiderpig.hardware.catalog import Item, Offer, register
 
 IN = 25.4
 SCS_AL = "https://sendcutsend.com/materials/5052-aluminum/"
-SCS_6061 = "https://sendcutsend.com/materials/6061-t6-aluminum/"
+SCS_6061 = "https://sendcutsend.com/materials/6061-aluminum/"
 SCS_ACRYLIC = "https://sendcutsend.com/materials/acrylic/"
 PONOKO_ACRYLIC = "https://www.ponoko.com/materials/clear-acrylic"
 FETCHED = "service rules fetched 2026-10-04; price an estimate (quote by DXF upload)"

@@ -61,7 +61,8 @@ def test_plan_stage_names_what_blocked_it(monkeypatch):
     # the Chicago screw pins' heads and caps, against a frame plate and the links that sweep
     # them (the tally of a search bounded by its node budget alone: the same on any machine)
     assert "x pin:B_leg0 head vs a frame plate: it would sit in a frame plate's layer" in msg
-    assert "x pin:B_leg0 cap vs b1_leg1: -10.2 mm apart in one layer, need 1.0" in msg
+    # (-10.4 with the Chicago screws as bought: 8.5 mm heads, hardware.sources)
+    assert "x pin:B_leg0 cap vs b1_leg1: -10.4 mm apart in one layer, need 1.0" in msg
     assert "static clearances behind it:" in msg
     assert re.search(r"b2_leg\d passes pillar:A_leg\d at 8.7 mm, under the 9.0 mm its thinnest "
                      r"part needs, so it can't be in any layer pillar:A_leg\d spans", msg)

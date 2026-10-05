@@ -193,7 +193,8 @@ def test_cards(server):
     assert sheet["price_usd"] == 10.99
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
     assert set(axles) == {"printed", "rod", "bolt", "bearing", "bushing", "chicago",
-                          "chicago_bushing", "ptfe", "standoff", "standoff_bench"}
+                          "chicago_bushing", "ptfe", "standoff", "standoff_hand",
+                          "standoff_bench", "standoff_m3"}
     assert axles["standoff"]["roles"] == ["pillar"]
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["bolt"]["hardware"]["nut_key"]["key"] == "m3_nylock"
@@ -340,28 +341,30 @@ def test_build_through_the_long_op_path_returns_a_manifest_of_files_in_the_store
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    # Chicago pins, keyed crank; 36 since the 8-layer plan of the 0.080 in frame plates
-    assert manifest["n_parts"] == len(manifest["parts"]) == 36
+    # Chicago pins, keyed crank; 36 since the 8-layer plan of the 0.080 in frame plates; 33
+    # with the barrels bought in 1 mm steps (fewer shims, 2026-10-05); 30 with the simplified
+    # hardware (a printed head spacer for a pin's washer and shims)
+    assert manifest["n_parts"] == len(manifest["parts"]) == 30
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     store = Store.default()
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 36                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 30                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
     assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [2])
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 36
+    assert stored["n_parts"] == 30
     assert stored["cut_rules"]["parts"] > 0          # the build's cut-rule review, stored
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 36
+    assert again["n_parts"] == 30
     assert again["cut_rules"] == stored["cut_rules"]   # reloaded from the store: checked again
     assert "result" not in again["job"]
 

@@ -7,7 +7,7 @@ import math
 
 import pytest
 
-from spiderpig import construction
+from spiderpig import construction, hwflags
 from spiderpig.config import BuildConfig
 from spiderpig.construction import ConstructionError
 from spiderpig.construction.axle import AxleGroup
@@ -71,7 +71,7 @@ def test_stresses_of_a_two_link_pin():
 # -- the Chicago screw's fit ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("stack", "length"), [(6, 8), (9, 10), (12, 14), (15, 16), (18, 20)])
+@pytest.mark.parametrize(("stack", "length"), [(6, 7), (9, 10), (12, 13), (15, 16), (18, 20)])
 def test_chicago_fit_takes_up_the_barrel_length(stack, length):
     s = ChicagoShaft()
     f = s.fit(stack, 3.0)
@@ -85,11 +85,11 @@ def test_chicago_fit_takes_up_the_barrel_length(stack, length):
 
 
 def test_chicago_catalog_and_refusals():
-    assert CHICAGO_LENGTHS[:6] == (4, 5, 6, 8, 10, 12)
+    assert CHICAGO_LENGTHS[:6] == (4, 5, 6, 7, 8, 9)       # Harfington's black series
     for L in CHICAGO_LENGTHS:
         item = get(chicago(L))
         assert item.dims["barrel_d"] == 4.0
-        assert item.dims["head_d"] == 8.0
+        assert item.dims["head_d"] == 8.5          # Harfington's drawing (sources.py)
         assert item.offers
         assert all(o.url.startswith("https://") for o in item.offers)
     for key in ("ptfe_washer_4x8x0p5", "shim_din988_4x8", "threadlocker_222",
@@ -103,7 +103,7 @@ def test_chicago_catalog_and_refusals():
         with pytest.raises(ConstructionError, match="link pin only"):
             c.dims(ctx, True)
     with pytest.raises(ConstructionError, match="no stock Chicago screw"):
-        ChicagoShaft().fit(60.0, 3.0)
+        ChicagoShaft().fit(90.0, 3.0)        # past the longest (80 mm)
 
 
 # -- built on the Klann single ------------------------------------------------------------------
@@ -136,7 +136,8 @@ def test_chicago_hardware_and_bom(chicago_side):
     assert screws == len(pins)
     assert {v["item"] for v in fab.meta["chicago"].values()} <= set(rows)
     if key == "chicago":
-        assert rows["ptfe_washer_4x8x0p5"].qty == len(pins)
+        if not hwflags.on("printfill"):  # (printed head spacers since the simplified hardware)
+            assert rows["ptfe_washer_4x8x0p5"].qty == len(pins)
     else:
         assert "ptfe_washer_4x8x0p5" not in rows
         links = sum(len(g.axis.members) for g in pins)
@@ -165,7 +166,9 @@ def test_wobble_notes_for_every_axle(chicago_side):
         assert e["tilt_deg"] == 0.0                    # bonded to the barrel
     rep = wobble_check(notes, (119.0, 155.0))
     assert rep["pin"]["joints"] == len(host)
-    assert rep["pin"]["worst_deg"] < 1.0
+    # 1.52 with printed head spacers (hwflags printfill: +-0.1 mm taken as play), under 1.0
+    # with the DIN 988 shims they replace
+    assert rep["pin"]["worst_deg"] < (1.6 if hwflags.on("printfill") else 1.0)
     assert 1 < rep["pin"]["jam"]["safety"] < rep["pin"]["walk"]["safety"]
     if key == "chicago_bushing":
         assert rep["pin"]["worst_free_deg"] < 2.0

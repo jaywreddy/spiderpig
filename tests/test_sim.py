@@ -403,16 +403,20 @@ def test_a_held_side_offset_under_the_lock(quad, offset_deg, survives):
     speed with the lock bounding the offset there: 45 deg walks on (18 deg of tilt at most,
     measured; what ``steering_check`` grants as ``step_deg``), 180 deg rolls it over within
     two seconds (the quasi-static support says the margin is 0 at any offset past 30 deg;
-    MuJoCo is kinder up to 45, measured). Open loop, 90 deg and more fell within a second."""
+    MuJoCo is kinder up to 45, measured). Open loop, 90 deg and more fell within a second.
+    Since the Chicago screws as bought (2026-10-05: taller heads, a wider stack) 180 deg tips it
+    to about 25 deg without a fall: past the 20 deg that counts as walking on, so unsafe still."""
     cfg, vmax = quad
     hold = math.radians(offset_deg) / (0.4 * vmax)
     lock = PhaseLock(vmax, mismatch=SimParams().servo_mismatch, max_offset=math.radians(offset_deg))
     r = simulate(cfg, [(0.0, 0.0, 0.0), (SETTLE, vmax, 0.6 * vmax), (SETTLE + hold, vmax, vmax)],
                  SETTLE + hold + 4.0, lock=lock, record_every=4)
     m = walk_metrics(r, skip=SETTLE + hold)
-    assert m["fell"] == (not survives), (m["fell_at_s"], m["max_tilt"])
     if survives:
+        assert not m["fell"], (m["fell_at_s"], m["max_tilt"])
         assert m["max_tilt"] < 20.0
+    else:
+        assert m["fell"] or m["max_tilt"] > 20.0, (m["fell_at_s"], m["max_tilt"])
         assert m["side_phase_max"] < offset_deg + 5.0
 
 

@@ -30,9 +30,13 @@ Construction
   battery's XT30 mates on top with an XT30 pigtail whose wires go down to the protection
   board; the switched supply comes back up to the board's DC jack).
 * **Driver board** on top, the front half (+x), on four M2.5 x 6 nylon standoffs (male
-  end through the deck, a nylon nut under it), its USB-C end 2 mm in from the front edge
-  and its DC jack facing the battery (the board's photo has them on opposite short
-  ends). **Battery** on top, the rear half, in a printed cradle (a 5 mm rim, 1.6 mm
+  end through the deck, a nylon nut under it), 2 mm in from the front edge with its DC jack
+  at the front, so the switched supply's right-angle plug goes in from the open front of
+  the bay (2026-10-05: the jack facing the battery left 4-5 mm for a plug that needs 12;
+  Waveshare's STEP model puts the jack on a short end and the USB-C on a long edge, 47-57
+  mm from the jack end, so the USB-C faces an inner plate about 21 mm away: flash the board
+  before the deck goes in, then over the air, or with a right-angle USB-C cable).
+  **Battery** on top, the rear half, in a printed cradle (a 5 mm rim, 1.6 mm
   walls, open at the inner end for the leads; screwed to the deck through two ears by M3
   button heads from above into M3 nuts under the deck, no glue: the user's decision of
   2026-10-05) and held by a 10 mm hook-and-loop strap through the two slots.
@@ -41,9 +45,10 @@ Construction
   **protection board** under the
   deck behind the servos; both on foam tape. **Toggle switch** through the deck at the
   rear, lever up, its body hanging below the deck behind the chassis.
-* Every port is reachable with the robot assembled: the board's and the charger's USB-C
-  face forward out of the open front of the bay between the plates, the switch lever
-  points up out of its open top. The divider (100k / 33k, battery + to an ADC pin) is
+* Every port is reachable with the robot assembled: the board's DC jack and the charger's
+  USB-C face forward out of the open front of the bay between the plates, the switch lever
+  points up out of its open top; the board's USB-C faces an inner plate (above). The
+  divider (100k / 33k, battery + to an ADC pin) is
   wired in the harness: BOM only.
 * Length: 136 mm is the board (65) and the battery's cradle (65.7) end to end. It sits
   inside the Strider's inner plates (x +-78.5) but overhangs the Klann quad's (+-61.9)
@@ -76,10 +81,11 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from build123d import Axis, Box, Cylinder, Pos, scale
 
+from spiderpig import hwflags as _hw  # noqa: E402
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
     BRASS,
@@ -94,11 +100,12 @@ from spiderpig.construction.chassis import (
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get, pick_length
 from spiderpig.hardware.fasteners import CLEARANCE, screw
+from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
 from spiderpig.shapes import union
 from spiderpig.stack import body_class
 
-DECK_SCREW = screw("shcs", "3")
+DECK_SCREW = screw("bhcs" if _hw.on("lengths") else "shcs", "3")
 DECK_GAP = 1.0           # deck plate edge to an inner plate's face (mm): frame tolerance
 FLOOR_MARGIN = 1.0       # a rail's underside above the chassis' top
 HALF_LEN = 68.0          # the deck plate's half length along x (mm)
@@ -107,6 +114,10 @@ RAIL_T = 11.0            # a rail's thickness (z): 3.5 mm insert walls, and the 
 #                          screw holes 3.3 mm from the plate's edge
 RAIL_H = 8.0             # a rail's height (y): the insert's 5.7 mm and a 1.3 mm floor
 INSERT_X = 24.0          # the rails' inserts at x_c +- this
+INSERT_ZS = (RAIL_T / 2, 7.0)    # the inserts' distance from the inner plate's face, tried
+#                          in turn: centred in the rail, else 1.5 mm further into the bay
+#                          (2.0 mm of wall to the rail's bay face, over the insert's 1.6),
+#                          where a path notch would leave the deck screw's hole too little web
 SPIGOT_XS = (12.0, 16.0, 8.0, 20.0)      # rail screw offsets tried, nearest-first preference
 RAIL_SCREW = screw("bhcs", "3")          # up through the inner plate from the leg side
 RAIL_HOLE = 3.4          # its hole in the inner plate (ISO 273 medium; over the 5052's 3.175)
@@ -114,9 +125,10 @@ RAIL_SCREW_R = 5.7 / 2 + 0.3             # its head's clearance shape under the 
 RAIL_NUT_AF, RAIL_NUT_H = 5.5, 2.4       # an M3 hex nut in a trap in the rail
 NUT_DEPTH = 3.0          # the trap's floor over the rail's plate face
 CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm cable tie
-RAIL_SCREW_L = 10.0      # through the 3.175 mm plate, past the nut trap
+RAIL_SCREW_L = 8.0 if _hw.on("lengths") else 10.0   # through the plate, past the nut trap
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
+JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
 BATTERY_X1 = -4.0        # the cradle's inner end (inside), from x_c
 BATTERY_FIT = 0.3        # cradle clearance round the battery (each way)
 CRADLE_WALL, CRADLE_H, CRADLE_GAP = 1.6, 5.0, 10.0
@@ -130,7 +142,7 @@ CRADLE_SCREW = screw("bhcs", "3")    # the cradle's two ears to the deck, nuts u
 CRADLE_EARS = ((3.5, 1.0), (19.5, -1.0))   # (x from the cradle's outer inside end, z side):
 #                                      clear of the switch's body and the strap's run
 #                                      under the deck, and of the BMS (behind the servos)
-EAR_R, EAR_H = 3.5, 3.0              # an ear's radius round its screw, its height
+EAR_R, EAR_H = 3.5, (2.0 if _hw.on("lengths") else 3.0)   # an ear's radius, its height
 EAR_HEAD_GAP = 0.25                  # the screw head's edge to the cradle wall
 NOTCH_CLEAR = 0.5                    # a path notch's clearance round what it passes
 SETBACK_MAX = 3.0                    # the charger's USB-C end back from the front edge, at most
@@ -247,6 +259,7 @@ class DeckLayout:
     z_in: float          # the left inner plate's servo-side face (negative)
     z_leg: float         # the left inner plate's leg-side face
     spigot_x: float
+    insert_z: float = RAIL_T / 2    # the inserts' (and deck screws') distance from z_in
 
     @property
     def deck_top(self) -> float:
@@ -284,7 +297,7 @@ class DeckLayout:
         return [(self.x_c, s * WIRE_SLOT_Z) for s in (-1, 1)]
 
     def screws(self) -> list[tuple[float, float]]:
-        zc = self.z_in + RAIL_T / 2
+        zc = self.z_in + self.insert_z
         return [(self.x_c + s * INSERT_X, side * -zc) for side in (-1, 1) for s in (-1, 1)]
 
     def switch(self) -> tuple[float, float]:
@@ -315,7 +328,7 @@ def _rail(lay: DeckLayout, side: str):
     y0, y1 = lay.rail_y0, lay.deck_y
     part = _box(lay.x_c - RAIL_HALF, lay.x_c + RAIL_HALF, y0, y1, *zs)
     pocket = max(ins["length"], 5.0) + 1.0
-    zc = sign * (lay.z_in + RAIL_T / 2)
+    zc = sign * (lay.z_in + lay.insert_z)
     for s in (-1, 1):
         part = part - _cyl_y(lay.x_c + s * INSERT_X, zc, ins["hole_d"] / 2, y1 - pocket, y1 + 1)
     ym = (y0 + y1) / 2
@@ -340,6 +353,19 @@ def lowered(name: str) -> bool:
         return False
     return not ("deck_rail" in name or "deck_insert" in name
                 or re.fullmatch(r"deck_screw\d+", name) is not None)
+
+
+def insert_z(lay: DeckLayout, notches: Sequence[tuple[float, ...]], web: float) -> float:
+    """The first of :data:`INSERT_ZS` whose deck screw holes keep ``web`` (the deck sheet's
+    least hole-to-edge distance) to every path notch (:func:`path_notches`); the centred
+    one when none does. ``klann_lego``'s B pillars' inner heads stand at the inserts' x:
+    their notches came 0.30 mm from the screw holes (2026-10-05)."""
+    r = CLEARANCE["3"] / 2
+    for zi in INSERT_ZS:
+        pts = replace(lay, insert_z=zi).screws()
+        if all(_rect_dist(p, *n) - r >= web - EPS_D for p in pts for n in notches):
+            return zi
+    return INSERT_ZS[0]
 
 
 def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
@@ -429,6 +455,8 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     notched round them (:func:`path_notches`) and the charger steps back from the front
     edge; another lowered part in one's way is a :class:`ConstructionError`."""
     lay = layout(design, z_mid, place)
+    lay = replace(lay, insert_z=insert_z(lay, path_notches(lay, obstacles),
+                                         sheet(design.config.sheet).min_edge))
     ins = get("m3_heat_set_insert").dims
     bodies: list[Body] = []
     fastened: list[tuple[str, str]] = []
@@ -518,8 +546,10 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     x0, x1, y0, y1, bhw = board["x0"], board["x1"], board["y0"], board["y1"], board["half_w"]
     pcb = _box(x0, x1, y0, y1, -bhw, bhw) - union(
         [_cyl_y(x, z, bd["hole_d"] / 2, y0 - 1, y1 + 1) for x, z in board["holes"]])
-    jack = _box(x0 + 1.0, x0 + 15.0, y1, y1 + bd["jack_h"], -4.5, 4.5)       # DC jack, inner end
-    parts = _box(x0 + 15.0, x1 - 0.5, y1, y1 + bd["parts_h"], -9.0, 9.0)       # OLED, USB-C, ...
+    # its DC jack at the front end (0.9 mm past the board, a right-angle plug out of the open
+    # front of the bay), the headers and the rest behind it (Waveshare's STEP model)
+    jack = _box(x1 - 14.0, x1 + JACK_PROUD, y1, y1 + bd["jack_h"], -4.5, 4.5)
+    parts = _box(x0 + 0.5, x1 - 14.0, y1, y1 + bd["parts_h"], -9.0, 9.0)   # clear of the holes
     bodies.append(Body(name="deck_board", part=union([pcb, jack, parts]), rigid_with=host["L"],
                        fab="purchased", bom_key="esp32_servo_driver", color=PCB_COLOR))
 
@@ -614,7 +644,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                                 f"{b} on the way down")
     info = {"fitted": True, "x_c": round(lay.x_c, 2), "deck_y": round(yd, 2),
             "rail_y": round(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, round(2 * hw, 2)],
-            "screw": key, "spigot_x": place.spigot_x,
+            "screw": key, "spigot_x": place.spigot_x, "insert_z": lay.insert_z,
             "notches": [[round(v, 2) for v in n] for n in notches],
             "charger_setback_mm": round(lay.x_c + HALF_LEN - cx1, 2),
             "charger_z_mm": [round(cz0, 2), round(cz1, 2)], "charger_pad_mm": round(pad, 2),

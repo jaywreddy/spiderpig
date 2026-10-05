@@ -168,13 +168,15 @@ def test_the_bom_lists_the_deck(built):
         assert rows[key].qty == 1, key
     for key in ("m25_nylon_standoff_mf_6", "m25_nylon_nut", "m25_nylon_screw_5"):
         assert rows[key].qty == 4
-    assert rows["m25_nylon_nut"].same_pack_as      # one kit
+    assert all(rows[k].sku for k in ("m25_nylon_standoff_mf_6", "m25_nylon_nut",
+                                     "m25_nylon_screw_5"))   # distributor parts, not a kit
     screw = mech.meta["deck"]["screw"]
     assert sum("deck_screw" in w for w in rows[screw].where) == 4
     assert sum("deck_insert" in w for w in rows["m3_heat_set_insert"].where) == 4
     for key in (*ELECTRONICS, "resistor_100k", "resistor_33k"):
         assert rows[key].url.startswith("https://")
-        assert rows[key].pack_price_usd
+        # the generic IP2326 module's listing shows no price to a fetch (hardware.sources)
+        assert rows[key].pack_price_usd or key == "ip2326_charger"
 
 
 def test_the_deck_plate_is_on_the_dxf_sheets(strider):
@@ -209,7 +211,7 @@ def test_the_deck_lowers_straight_down_onto_its_rails(built):
 
 
 def test_the_deck_is_notched_round_the_pillar_heads_in_its_way(strider):
-    """On the Strider double the plate's corners pass over J2's and J6's inner heads and
+    """On the Strider double the plate's corners pass by J2's and J6's inner heads and
     washers: each one the unnotched plate would meet on its way down has a notch round it,
     0.5 mm clear."""
     _, mech = strider
@@ -224,7 +226,11 @@ def test_the_deck_is_notched_round_the_pillar_heads_in_its_way(strider):
               if bb.max.Y > plate.min.Y and bb.min.X < plate.max.X and bb.max.X > plate.min.X
               and min(abs(bb.min.Z), abs(bb.max.Z)) < hw and max(abs(bb.min.Z),
                                                                 abs(bb.max.Z)) >= face - 1e-6]
-    assert in_way                                   # the check has something to do here
+    # (since 2026-10-05 the double's pillars are one-piece M3 standoffs: their 5.7 mm button
+    # heads stand clear of the plate's corners and only the washers' 0.5 mm clearance is
+    # notched, so nothing may overlap the plate itself; with the M4 heads before, the corners
+    # met the heads)
+    assert in_way or info["notches"]                # the check has something to do here
     notches = info["notches"]
     c = deck_mod.NOTCH_CLEAR - 0.01
     for bb in in_way:
@@ -265,6 +271,25 @@ def test_deck_path_sees_a_part_in_the_way_and_a_notch_clears_it():
     assert not deck_mod.lowered("R.deck_insert1")
     assert deck_mod.lowered("deck_cradle_screw0")
     assert deck_mod.lowered("deck_board")
+
+
+def test_a_screw_hole_a_notch_crowds_moves_into_the_bay(strider):
+    """:func:`deck.insert_z`: ``klann_lego``'s B pillars' inner heads stand at the inserts'
+    x, so their path notches came 0.30 mm from the deck screws' holes (under Ponoko's 1 mm);
+    the inserts then sit 1.5 mm further into the bay. The Strider's corner notches leave
+    them centred in the rails."""
+    lay = deck_mod.DeckLayout(x_c=0.0, rail_y0=13.7, deck_y=21.7, pitch=3.0, z_in=-36.57,
+                              z_leg=-38.6, spigot_x=12.0)
+    near = [(19.7, 28.3, -36.57, -33.07)]                  # klann_lego's, round a head
+    assert deck_mod.insert_z(lay, near, 1.0) == 7.0
+    assert deck_mod.insert_z(lay, [], 1.0) == deck_mod.RAIL_T / 2
+    far = [(55.0, 69.0, -36.57, -33.07)]                   # a corner's
+    assert deck_mod.insert_z(lay, far, 1.0) == deck_mod.RAIL_T / 2
+    r = deck_mod.CLEARANCE["3"] / 2
+    moved = deck_mod.replace(lay, insert_z=7.0)
+    assert min(deck_mod._rect_dist(p, *near[0]) for p in moved.screws()) - r >= 1.0
+    _, mech = strider
+    assert mech.meta["deck"]["insert_z"] == deck_mod.RAIL_T / 2
 
 
 def test_the_battery_cradle_is_screwed_to_the_deck(strider):

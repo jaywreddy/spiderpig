@@ -69,49 +69,49 @@ register(
 # fetch are quoted as the search result showed them and stay ``verified=False``.
 # ---------------------------------------------------------------------------
 
-CHICAGO_LENGTHS: tuple[float, ...] = (4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 30, 35, 40, 45,
-                                      50)
-"""Barrel lengths under the head (mm) of the M3 sets: Harfington's Phillips/slotted 18-8
-listing (p-1528133, fetched 2026-10-03) offers 4, 5, 6, 8, 10, 12, 14, 16, 18, 20, 22, 25,
-30, 35, 40, 45 and 50 mm; 2 mm steps from 6 to 22 mm."""
+CHICAGO_LENGTHS: tuple[float, ...] = (4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 23,
+                                      25, 28, 30, 32, 33, 35, 38, 40, 43, 45, 48, 50, 55, 60,
+                                      65, 70, 75, 80)
+"""Barrel lengths under the head (mm) of the M3 sets: Harfington's black zinc-plated 18-8
+series (p-1788004; every M3 variant fetched 2026-10-05), whose plain 18-8 series
+(p-1528133, preferred: hardware.sources) has a subset: 1 mm steps from 4 to 16 mm, then 18,
+20, 22, 23, 25, 28 and on to 80."""
+
+
+CHICAGO_ALL = CHICAGO_LENGTHS
+if __import__("os").environ.get("SPIDERPIG_BARRELS"):
+    # the hardware study (SIMPLIFY.md): the barrels the planner may pick, restricted
+    CHICAGO_LENGTHS = tuple(float(x) for x in
+                            __import__("os").environ["SPIDERPIG_BARRELS"].split(","))
 
 
 def chicago(length: float) -> str:
     return f"chicago_m3_{length:g}"
 
 
-for _L in CHICAGO_LENGTHS:
+for _L in CHICAGO_ALL:
     register(Item(
         chicago(_L), f"M3 Chicago screw (binding barrel + screw), 4 mm barrel x {_L:g} mm",
         "fastener",
-        (Offer("AliExpress", "https://www.aliexpress.com/w/wholesale-m3-chicago-screw.html",
-               pack_qty=10, price_usd=1.33,
-               note="'10sets M3 M4 304 Stainless Steel Binding Chicago Screw', $1.33 per 10 sets "
-                    "on the search page fetched 2026-10-03 (length variant not shown: the "
-                    "price is taken for every length)"),
-         Offer("Harfington", "https://www.harfington.com/products/p-1528133", pack_qty=50,
-               verified=True, note="uxcell-family 18-8 Phillips/slotted, M3 x 4-50 mm; the "
-                                   "black M3 x 4 mm 50-set (p-1788004) is $8.79"),
-         Offer("McMaster-Carr", "https://www.mcmaster.com/products/binding-barrels-and-screws/",
-               note="M3 filter on the binding barrel listing; part number not confirmed")),
-        dims={"thread": 3.0, "barrel_d": 4.0, "head_d": 8.0, "head_h": 1.5,
-              "screw_head_h": 1.5, "length": float(_L)},
-        notes="Barrel 4 mm: Amazon titles '10Pcs M3 M4 304 Stainless Steel Binding Chicago "
-              "Screw ... (10mm(L), OD 4mm (M3))' (B0FKT51435) and '(Φ4 x 5mm, M3)' "
-              "(B0CGKX8L78); head 8 mm: Bettomshin M3 x 10 (B09SL48Z14) 'Nut Head Diameter: "
-              "8mm; Nut Aperture: 4mm', all as a 2026-10-03 web search quoted them (Amazon "
-              "refuses a fetch). Head height 1.5 mm is not from a page: the flat leather-"
-              "craft head of that size; measure a sample.",
+        (Offer("Harfington", "https://www.harfington.com/products/p-1528133", verified=True,
+               note="uxcell's 18-8 M3 binding barrels and screws (the per-length variants: "
+                    "hardware.sources)"),),
+        dims={"thread": 3.0, "barrel_d": 4.0, "head_d": 8.5, "head_h": 1.9,
+              "screw_head_h": 1.4, "length": float(_L)},
+        notes="Harfington's drawings (2026-10-05): barrel 4.0 OD, M3 inside, heads 8.5 mm; the "
+              "plain series' barrel head 1.9 mm and screw head 1.4 mm tall, the black series' "
+              "1.3 and 1.3 (the item models the taller); the screw's thread 5 mm. The heads "
+              "are domed at the rim: measure a sample. McMaster sells no M3 (M4 and up).",
     ))
 
 register(
-    Item("ptfe_washer_4x8x0p5", "PTFE flat washer 4.2 x 8 x 0.5 mm", "washer",
+    Item("ptfe_washer_4x8x0p5", "PTFE flat washer 4.2 x 7 x 0.5 mm", "washer",
          (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
                 note="PTFE washers for M4 / #8, 0.5 mm; part number not confirmed"),
           Offer("Amazon", "https://www.amazon.com/s?k=PTFE+flat+washer+M4+0.5mm",
                 note="search; uxcell lists nylon 8 x 4 mm washers (B07MXB78ZN) and PTFE in "
                      "other sizes; acetal (POM) 4 x 8 x 0.5 shims are an equal substitute")),
-         dims={"id": 4.2, "od": 8.0, "t": 0.5},
+         dims={"id": 4.2, "od": 7.0, "t": 0.5},   # MISUMI TT-0407-05: no 4.2 x 8 x 0.5 exists
          notes="The thrust face between a link and a Chicago screw's head: PTFE on acrylic "
                "and steel, mu about 0.05-0.1."),
     Item("shim_din988_4x8", "DIN 988 shim ring 4 x 8 mm (0.1 / 0.2 / 0.3 / 0.5 / 1.0 mm)",

@@ -259,9 +259,12 @@ def test_horn_screws_get_their_shim_stack_and_threadlocker():
     assert sum(x.qty for x in lines if x.key == "threadlocker_222") == pytest.approx(0.04)
     assert any("0.5 + 0.2 mm" in n for n in notes)
     bom = bom_from_mechanism(_fitted_mech(), group=False)
-    shim_row = next(r for r in bom.purchased if r.key == "shim_din988_3x6")
-    assert shim_row.qty == 1
-    assert "0.5 + 0.2" in shim_row.where[0]
+    # the BOM orders the stack per thickness (split_shims): the 0.5 mm ring bought as a DIN 433
+    # washer (bom.SHIM_AS), the 0.2 mm one a DIN 988 shim
+    rows = {r.key: r for r in bom.purchased
+            if r.key.startswith("shim_din988_3x6") or r.key == "m3_washer_433"}
+    assert set(rows) == {"m3_washer_433", "shim_din988_3x6_t0p2"}
+    assert all(r.qty == 1 and "0.5 + 0.2" in r.where[0] for r in rows.values())
     # a plastic horn (the XL330's, self-tapping): no threadlocker into it
     lines, _, _ = fitting_lines(_fitted_mech("xl330_m288"))
     assert not any(x.key == "threadlocker_222" for x in lines)

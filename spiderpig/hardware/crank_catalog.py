@@ -93,15 +93,17 @@ register(
                "torque of about 26 N·m on M10 steel nuts and bolts; on plated or stainless "
                "(passive) surfaces less: the strength check takes half, scaled to the M6 "
                "nut's thread (UNVERIFIED for this nut: a test of one joint settles it)."),
-    Item("ptfe_washer_6x12x0p5", "PTFE flat washer 6.4 x 12 x 0.5 mm", "washer",
+    Item("ptfe_washer_6x12x0p5", "PTFE flat washer 6.3 x 12 x 0.5 mm", "washer",
          (Offer("eBay", "https://www.ebay.com/itm/121716489464",
                 note=f"PTFE M6 6.4 x 12 mm, 50 pcs ({SEARCHED}; thickness not stated: 1.5-2 "
                      "mm is the common size, 0.5 mm is rare)"),),
-         dims={"id": 6.4, "od": 12.0, "t": 0.5},
+         dims={"id": 6.3, "od": 12.0, "t": 0.5},   # MISUMI TT-0612-05
          notes="Listed, not built: no room for it in a 3 mm layer pitch (module docstring)."),
 )
 
-M3_ROUND_STANDOFF_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 18, 20, 25, 30)
+M3_ROUND_STANDOFF_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 15, 18, 20, 25, 30)
+"""The 6 mm OD lengths uxcell sells threaded (hardware.sources, 2026-10-05): no threaded
+6 mm OD x 5 mm exists."""
 
 
 def m3_round_standoff(length: float) -> str:
@@ -117,9 +119,13 @@ for _L in M3_ROUND_STANDOFF_LENGTHS:
                                "standoffs in 5-30 mm, 10-20 packs (length steps unverified)"),
          Offer("AliExpress", "https://www.aliexpress.com/w/wholesale-m3-round-aluminum-"
                "standoff.html", note="search; 6 mm OD, 5-40 mm")),
-        dims={"d": 3.0, "od": 6.0, "length": float(_L), "thread_depth": min(6.0, _L / 2)},
-        notes="The bolt crank's journal stub: screwed to the lowest web stack, turning in the "
-              "outer frame plate. OD and lengths UNVERIFIED (measure).",
+        dims={"d": 3.0, "od": 6.0, "length": float(_L), "thread_depth": float(_L),
+              "id": 2.5, "yield_mpa": 240.0},
+        notes="uxcell (Harfington), black anodised aluminium, threaded through (coupling-nut "
+              "style): the bolt crank's journal stub and, on M3 (hwflags m3), the standoff "
+              "pillars' and frame ties' segments. The strength check takes a 6 x 2.5 tube (the "
+              "M3 tap drill) at 240 MPa: the alloy is not stated (UNVERIFIED). No length "
+              "tolerance stated: measure one against its gap.",
     ))
 
 GOBILDA_PRICES: dict[int, float] = {
@@ -152,6 +158,50 @@ for _L in GOBILDA_LENGTHS:
         notes="Aluminium, clear anodised, M4 x 0.7 female both ends. The strength check takes "
               "it as a 6 x 3.3 mm tube (the tap drill's bore, as if tapped through) of 6061-T6 "
               "(240 MPa): conservative for a part tapped only at its ends.",
+    ))
+
+PILLAR_SHAFT_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(80, 3001))
+"""The one-piece pillar's lengths (:meth:`construction.pivots.standoff.StandoffAxle.one_piece`):
+MISUMI makes it to any length from 8 to 300 mm in 0.1 mm steps (+-0.1)."""
+PILLAR_SHAFT_ID = 2.5          # the strength check's bore: the M3 tap drill, as if tapped through
+PILLAR_SHAFT_YIELD = 220.0     # MPa: 1018 steel at its hot-rolled minimum (cold drawn: ~370);
+#                                MISUMI states the grade, not the temper (conservative)
+PILLAR_SHAFT_PRICES = (15.32, 11.12, 5.61)
+"""USD each at 1-4, 5-9 and 10-19 pieces (NETRF6-128; NETRF6-62 $14.97 / 10.86 / 5.47): the
+MISUMI page rendered 2026-10-05. The discount is per line: five cost less than four."""
+
+
+PILLAR_SHAFT_SEEN: tuple[float, ...] = (62.0, 62.4, 127.5, 128.0, 128.1)
+"""The NETRF6 lengths whose MISUMI page was rendered (2026-10-05) with the part and its price
+(62.4 and 128.1: the Strider double's and quad's columns, unit price as 62 and 128)."""
+
+
+def pillar_shaft(length: float) -> str:
+    return f"pillar_shaft_6_m3_{length:g}"
+
+
+for _L in PILLAR_SHAFT_LENGTHS:
+    _pn = f"NETRF6-{_L:g}"
+    register(Item(
+        pillar_shaft(_L), f"6 mm round steel standoff, {_L:g} mm, tapped M3 both ends "
+        f"(MISUMI {_pn})", "standoff",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
+               + _pn, _pn, pack_qty=5,
+               price_usd=round(5 * (10.86 if _L < 95 else PILLAR_SHAFT_PRICES[1]), 2),
+               verified=_L in PILLAR_SHAFT_SEEN,
+               note="MISUMI circular standoff, tapped both ends, configurable length: 1018 "
+                    "steel, oiled (no plating), 6 mm OD (0/-0.1), M3 x 6 deep each end, length "
+                    "+-0.1 mm in 0.1 mm steps (the part number's number). Sold singly: USD "
+                    "15.32 each at 1-4, 11.12 at 5-9, 5.61 at 10-19 (NETRF6-128; NETRF6-62 "
+                    "14.97 / 10.86 / 5.47; 2026-10-05), the discount per line, so it is listed "
+                    "as 5 (USD 55.60, less than 4 at 61.28): order 5 of the length (one "
+                    "spare)"),),
+        dims={"d": 3.0, "od": 6.0, "length": _L, "thread_depth": 6.0, "id": PILLAR_SHAFT_ID,
+              "yield_mpa": PILLAR_SHAFT_YIELD},
+        notes="A standoff pillar's column no single goBILDA length fills (longer than 60 mm, or "
+              "a length goBILDA lacks): one piece made to its length, never spliced. The "
+              "strength check takes it as a 6 x 2.5 tube (the M3 tap drill, as if tapped "
+              "through) of 1018 at 220 MPa. Oiled bare steel: wipe it, and keep it dry.",
     ))
 
 M4_BHCS_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 16)
@@ -217,19 +267,57 @@ def hex_standoff_m3(length: float) -> str:
     return f"hex_standoff_m3_{length:g}"
 
 
+WURTH_HEX_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 15, 16, 18, 20, 22, 25, 30, 35, 40)
+"""The lengths of Wurth Elektronik's WA-SSTII M3 x 5.5 AF steel F-F spacer (part 970<LL>0321;
+each datasheet fetched 2026-10-05): tapped through up to 20 mm, from 22 mm a 7 mm blind thread
+at each end (an M3 x 6 button head through a crank plate and washer engages about 2.7 mm).
+The 45, 50 and 60 mm parts are Accu's or Vital Parts' (A1 stainless). McMaster sells M3 hex
+standoffs only 5 and 6 mm across flats; Accu's series has no 22 mm."""
+
+
+WURTH_HEX_PRICES: dict[int, float] = {16: 0.51, 20: 0.48, 22: 0.49, 30: 0.53}
+"""USD each at Mouser, the lengths the default build (22, 30: Octopart) and the
+``klann_lego`` quad (16, 20: Findchips' Mouser rows, and Wurth's datasheets 970160321 /
+970200321, M3 tapped through, 5.5 AF, steel gloss zinc, status Valid; 2026-10-05) use."""
+LONG_HEX_PAGES: dict[int, tuple[Offer, ...]] = {
+    50: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
+               "female/7886-hff-m3-50-s55-a1", "HFF-M3-50-S55-A1", verified=True,
+               note="A1 stainless, 5.5 AF, 12 mm thread each end; GBP 2.02 (fetched "
+                    "2026-10-05)"),
+         Offer("Accu", "https://accu-components.com/us/threaded-standoffs/464767-HHTPS-M3-5-5-"
+               "50-S-Z", "HHTPS-M3-5.5-50-S-Z", price_usd=13.60, verified=True,
+               note="zinc-plated steel, made to order (123 days)")),
+    60: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
+               "female/7902-hff-m3-60-s55-a1", "HFF-M3-60-S55-A1", verified=True,
+               note="A1 stainless, 5.5 AF, 12 mm thread each end; GBP 2.18 (fetched "
+                    "2026-10-05)"),
+         Offer("Accu", "https://accu-components.com/us/threaded-standoffs/464770-HHTPS-M3-5-5-"
+               "60-S-Z", "HHTPS-M3-5.5-60-S-Z", price_usd=29.52, verified=True)),
+}
+
+
+def _hex_offers(length: float) -> tuple[Offer, ...]:
+    if length in WURTH_HEX_LENGTHS:
+        pn = f"970{int(length):02d}0321"
+        return (Offer("Mouser", f"https://www.mouser.com/ProductDetail/Wurth-Elektronik/{pn}",
+                      f"710-{pn}", price_usd=WURTH_HEX_PRICES.get(int(length)), verified=True,
+                      note=f"Wurth WA-SSTII {pn}, steel, gloss zinc, 5.5 AF: Active in "
+                           "Wurth's catalog (rendered 2026-10-05) and its datasheet; price "
+                           "and stock via Octopart (about USD 0.50 each). Mouser and DigiKey "
+                           "block automated browsers. DigiKey stocks the same part"),)
+    return LONG_HEX_PAGES.get(int(length), (
+        Offer("Accu", "https://accu-components.com/us/threaded-standoffs/",
+              f"HHTPS-M3-5.5-{length:g}-S-Z",
+              note="in the length selector of Accu's series (page not loaded): pick it there"),))
+
+
 for _L in HEX_M3_LENGTHS:
     register(Item(
         hex_standoff_m3(_L), f"M3 x {_L:g} mm hex standoff, 5.5 mm AF, female-female, "
-        "zinc-plated steel (tapped through)", "standoff",
-        (Offer("Accu", "https://accu-components.com/us/threaded-standoffs/",
-               f"HHTPS-M3-5.5-{_L:g}-S-Z",
-               note=("seen in a 2026-10-04 web search of Accu's site (page not fetched)"
-                     if _L in HEX_M3_SEEN else "a length of the standard series; not "
-                     "confirmed at Accu (UNVERIFIED)")),
-         Offer("McMaster-Carr", "https://www.mcmaster.com/products/standoffs/",
-               note="female threaded hex standoffs, M3, 5.5 mm hex, steel or brass; pick the "
-                    "length; part number not confirmed")),
-        dims={"d": 3.0, "af": 5.5, "length": float(_L), "thread_depth": float(_L),
+        f"zinc-plated steel ({'tapped through' if _L <= 20 else '7 mm thread each end'})",
+        "standoff", _hex_offers(_L),
+        dims={"d": 3.0, "af": 5.5, "length": float(_L),
+              "thread_depth": float(_L) if _L <= 20 else 7.0,
               "yield_mpa": 300.0},
         notes="Free-cutting steel (11SMnPb30 or similar), zinc plated; the strength check "
               "takes 300 MPa for its flats in bearing. A brass part (CuZn39Pb3, about 250 MPa) "
@@ -247,3 +335,56 @@ register(
                "the standoff's end and the crank plate round it."),
 )
 
+
+# -- the M3 hardware study (SIMPLIFY.md, 2026-10-05) ------------------------------------
+#
+# ``arl_m3_<L>``: Hirosugi-Keiki ARL-3<L>BE, lead-free free-cutting aluminium (KS26), black
+# anodised, round 6 mm OD, M3 female both ends, L +/-0.1 (the maker's page and drawing
+# M_AR-30.gif fetched 2026-10-05: http://hirosugi.jp/products/A/ARL-BE.html). Tapped through
+# up to 15 mm, from 16 mm a 6 mm thread each end. Lengths 4-12.5 mm in 0.5 mm steps
+# (no 10.5 / 11.5), 13-30 mm in 1 mm steps, 35-60 mm in 5 mm steps; USD 0.61-1.40 each
+# (MOQ 50 direct; MISUMI resells Hirosugi in small quantities, as it does the PTFE washers).
+# ``m3_set_screw_<L>``: ISO 4026 M3 flat point set screws (the splices' and ties' studs).
+
+ARL_M3_PRICES: dict[float, float] = {
+    4: 0.61, 4.5: 0.61, 5: 0.61, 5.5: 0.61, 6: 0.61, 6.5: 0.62, 7: 0.62, 7.5: 0.62, 8: 0.63,
+    8.5: 0.63, 9: 0.64, 9.5: 0.66, 10: 0.66, 11: 0.67, 12: 0.68, 12.5: 0.68, 13: 0.68,
+    14: 0.70, 15: 0.70, 16: 0.71, 16.5: 0.72, 17: 0.72, 17.5: 0.72, 18: 0.73, 19: 0.77,
+    20: 0.78, 21: 0.79, 22: 0.79, 23: 0.80, 24: 0.82, 25: 0.96, 26: 0.96, 27: 0.97, 28: 0.98,
+    29: 0.99, 30: 1.01, 35: 1.06, 40: 1.10, 45: 1.29, 50: 1.34, 55: 1.40, 60: 1.40}
+ARL_M3_LENGTHS: tuple[float, ...] = tuple(float(L) for L in ARL_M3_PRICES)
+
+
+def arl_m3(length: float) -> str:
+    return f"arl_m3_{length:g}"
+
+
+for _L, _p in ARL_M3_PRICES.items():
+    register(Item(
+        arl_m3(_L), f"M3 x {_L:g} mm round aluminium standoff, 6 mm OD, female-female "
+        f"(Hirosugi ARL-3{_L:g}BE)", "standoff",
+        (Offer("Hirosugi-Keiki (MISUMI)", "https://hirosugi.jp/products/A/ARL-BE.html",
+               f"ARL-3{_L:g}BE", price_usd=_p, verified=True,
+               note=f"USD {_p:.2f} each on the maker's table (fetched 2026-10-05; MOQ 50 "
+                    "direct, MISUMI resells)"),),
+        dims={"d": 3.0, "od": 6.0, "length": float(_L),
+              "thread_depth": float(_L) if _L <= 15 else 6.0, "id": 2.5, "yield_mpa": 240.0},
+        notes="KS26 lead-free free-cutting aluminium, black anodised, L +/-0.1. The strength "
+              "check takes a 6 x 2.5 tube (the M3 tap drill) at 240 MPa (UNVERIFIED for KS26).",
+    ))
+
+M3_SET_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 16)
+
+
+def m3_set_screw(length: float) -> str:
+    return f"m3_set_screw_{length:g}"
+
+
+for _L in M3_SET_LENGTHS:
+    register(Item(
+        m3_set_screw(_L), f"M3 x {_L:g} mm set screw (ISO 4026, flat point)", "fastener",
+        (Offer("McMaster-Carr", "https://www.mcmaster.com/products/set-screws/",
+               pack_qty=50, note="M3 x 0.5 flat point, 18-8; part number not confirmed"),),
+        dims={"d": 3.0, "length": float(_L)},
+        notes="A splice's or a frame tie's stud.",
+    ))
