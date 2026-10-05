@@ -573,12 +573,14 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     if pad:
         # two printed strips the charger is taped to, between it and the deck, clear of the
         # board's nuts it now passes under
-        strips = union([_box(cx1 - ch["length"], cx1, cy1, yu, z0, z0 + PAD_STRIP)
-                        for z0 in (cz0, cz1 - PAD_STRIP)])
-        strips = strips - union([_cyl_y(x, z, nut_r, yd - 10, yd + 1)
-                                 for x, z in board["holes"]])
-        bodies.append(Body(name="deck_charger_pad", part=strips, rigid_with=host["L"],
-                           fab="printed", color=RAIL_COLOR))
+        nuts = union([_cyl_y(x, z, nut_r, yd - 10, yd + 1) for x, z in board["holes"]])
+        for i, z0 in enumerate((cz0, cz1 - PAD_STRIP)):
+            strip = _box(cx1 - ch["length"], cx1, cy1, yu, z0, z0 + PAD_STRIP) - nuts
+            if len(strip.solids()) != 1:
+                raise ConstructionError("the charger's pad strip is cut in two by the "
+                                        "board's nuts")
+            bodies.append(Body(name=f"deck_charger_pad{i}", part=strip, rigid_with=host["L"],
+                               fab="printed", color=RAIL_COLOR))
     bms = get("bms_hx_2s_jh20").dims
     bx1 = lay.x_c - WIRE_SLOT[0] / 2 - 0.5
     bodies += [

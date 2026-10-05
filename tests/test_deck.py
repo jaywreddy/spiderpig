@@ -192,6 +192,13 @@ def test_the_deck_plate_is_on_the_dxf_sheets(strider):
     assert len(placed["deck_plate"].wires()) == 1 + 4 + 4 + 1 + 2 + 2 + 4 + 2
 
 
+def test_every_deck_part_is_one_valid_solid(built):
+    from spiderpig.construction.contract import bad_solids
+
+    _, mech = built
+    assert [b for b in bad_solids(mech) if "deck" in b["part"]] == []
+
+
 def test_the_deck_lowers_straight_down_onto_its_rails(built):
     """The assembly's last step: the deck, electronics on, goes down between the inner plates
     past the pillars' inner M4 heads (3 mm into the bay from each plate) onto the rails.
