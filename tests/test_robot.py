@@ -290,9 +290,11 @@ def test_the_bus_plugs_have_a_way_in():
 
     spec = servos.get(BuildConfig().servo)
     ports = spec.bus_ports
-    assert ports is not None and ports.opening == "end"
+    assert ports is not None
+    assert ports.opening == "end"
     x0, x1, y0, y1 = ports.slot()
-    assert x1 == math.inf and x0 <= ports.x0
+    assert x1 == math.inf
+    assert x0 <= ports.x0
     assert y1 - y0 >= ports.count * ports.plug_w
     t = sheet("al5052_2p3mm").thickness
     n = centre_plates(spec, t, 1.0)
