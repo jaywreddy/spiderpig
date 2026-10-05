@@ -567,6 +567,7 @@ def test_export_returns_a_prior_export_that_covers_the_formats(tmp_path):
     files = [out / "klann.step", out / "bom.csv", out / "manifest.json"]
     for f in files:
         f.write_text("x")
+    files[-1].write_text(json.dumps({"design": d.id}))     # the folder's last export
     prior = api.ExportReport(out_dir=str(out.resolve()), formats=["step", "bom"],
                              files=[str(f) for f in files])
     store.write_report(d, "export", prior)
