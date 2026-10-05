@@ -26,6 +26,11 @@ SERVICE_NOTES = {
 }
 
 
+ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222",
+           "threadlocker_243")
+"""Shop supplies taken as on hand (the user's, 2026-10-05): listed, not ordered or totalled."""
+
+
 def _money(v: float | None) -> str:
     return "" if v is None else f"${v:.2f}"
 
@@ -36,9 +41,10 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
     services = {r["sheet"] for r in laser_rows}
     carts: dict[str, list] = defaultdict(list)
     for r in bom.purchased:
-        if r.key in services or r.same_pack_as:
+        if r.key in services or r.same_pack_as or r.key in ON_HAND:
             continue                  # a cut service's sheet is its upload; a shared pack once
         carts[r.vendor or "(no vendor)"].append(r)
+    on_hand = [r for r in bom.purchased if r.key in ON_HAND]
     lines = [f"# Order list{': ' + title if title else ''}", "",
              "Everything to buy, cut and print for this build. Each purchase links the "
              "vendor's product page for the exact part (SKU / part number given); quantities "
@@ -69,6 +75,10 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
     lines += [f"Purchases: **{_money(total)}** at the listed pack prices ({unpriced} line(s) "
               "unpriced: the vendor shows its price only in the cart or to an account), "
               "before shipping and the cut parts.", ""]
+    if on_hand:
+        lines += ["## From the shop (on hand, not ordered)", ""] + [
+            f"* {r.name}: {r.where[0] if len(r.where) == 1 else f'{len(r.where)} uses'}"
+            for r in on_hand] + [""]
 
     if laser_rows:
         lines += ["## Cut (upload per service)", ""]
