@@ -244,8 +244,8 @@ bound, which can refute a `max` but never confirm it, so a hard `max` / `value` 
 then **fails** ("at least ...") until the items are priced in the catalog or accepted by
 hand (a soft target keeps the priced part's verdict, with the same note); at `quick`
 the row `budget.cost_floor_usd` prices what the design buys whatever its parts (the
-servos, a spool, a sheet, the robot's cement and inserts, a bottle of CA glue for the
-pillars' anchors and the robot's tie spigots with every pivot construction but `bolt`,
+servos, a spool, a sheet, the robot's inserts, a bottle of CA glue for glued pillars'
+anchors or link inserts (printed, rod, bearing, bushing; the robot itself glues nothing),
 the crank's crankpin nuts and, keyed, its hex standoffs) from the catalog, and a floor already over a `max`
 fails `budget.cost_usd` before any build; the floor's detail says what a build adds
 (the sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few

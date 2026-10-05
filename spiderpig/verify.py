@@ -606,7 +606,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     blank of each sheet the parts are cut from, for the robot the centre plates' cement and
     the frame ties' inserts, and what the constructions buy whatever the parts' sizes: a
     bottle of CA glue when a pillar is anchored in the plates or an insert glued into its
-    links (every construction but ``bolt``) or the robot's tie spigots are glued, and the
+    links (the robot's chassis and battery cradle are screwed since 2026-10-05), and the
     printed crank's crankpin nuts (a pack) and, keyed, its hex standoffs (a pack), the bolt
     crank's nylocks (a pack) and its plates' cement, and a bottle of each threadlocker a
     crank's screws, a Chicago screw pin or a standoff pillar's screws take. ``(total, priced
@@ -626,7 +626,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     if cfg.robot:
         lines += [("m3_heat_set_insert", 4)]      # the deck's (the centre plates: no adhesive)
-    if cfg.robot or cfg.pillar in GLUED_PILLARS or cfg.pin in GLUED_PINS:
+    if cfg.pillar in GLUED_PILLARS or cfg.pin in GLUED_PINS:
         lines.append(("ca_glue", 1))
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))

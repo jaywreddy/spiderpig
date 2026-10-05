@@ -33,9 +33,12 @@ Construction
   end through the deck, a nylon nut under it), its USB-C end 2 mm in from the front edge
   and its DC jack facing the battery (the board's photo has them on opposite short
   ends). **Battery** on top, the rear half, in a printed cradle (a 5 mm rim, 1.6 mm
-  walls, open at the inner end for the leads; CA-glued to the deck) and held by a 10 mm
-  hook-and-loop strap through the two slots. **Charger** (IP2326) under the deck at the
-  front, its USB-C end flush with the deck's front edge; **protection board** under the
+  walls, open at the inner end for the leads; screwed to the deck through two ears by M3
+  button heads from above into M3 nuts under the deck, no glue: the user's decision of
+  2026-10-05) and held by a 10 mm hook-and-loop strap through the two slots.
+  **Charger** (IP2326) under the deck at the front, its USB-C end at the deck's front edge
+  (0.8 mm back on the Strider, where a pillar's head stands in its way down: below);
+  **protection board** under the
   deck behind the servos; both on foam tape. **Toggle switch** through the deck at the
   rear, lever up, its body hanging below the deck behind the chassis.
 * Every port is reachable with the robot assembled: the board's and the charger's USB-C
@@ -50,10 +53,19 @@ Construction
   masses; the MTS-102's DC rating (3 A at 250 V AC; two stalled STS3215 draw ~5 A at 2S:
   switch the supply only with the servos idle, or fit a 6 A DC switch).
 
-Assembly: screw the rails to the inner plates with the sides (before the legs), fit the
-electronics to the deck (wires tied down through the cable-tie slots beside each wire
-slot), join the sides, lower the deck between the
-plates onto the rails and screw it down.
+* **Lowering it in** (2026-10-05): the pillars' inner M4 heads and washers stand 3 mm
+  into the bay from each inner plate's face, where the deck's edges pass. The deck plate is
+  notched round every static part in its path (:func:`path_notches`, from the robot's real
+  parts: on the Strider double the four corners, round J2's and J6's heads) and the charger
+  steps back from the front edge as far as a head in its band needs, so the whole deck,
+  electronics on, goes straight down onto the rails; :func:`deck_clearance` proves it from
+  the parts' geometry (``blocked``: each lowered part swept straight up against everything
+  else; an audit problem).
+
+Assembly (the last step of :data:`construction.robot.ASSEMBLY`): screw the rails to the
+inner plates with the sides (before the legs), fit the electronics to the deck (the cradle
+screwed on, wires tied down through the cable-tie slots beside each wire slot), join the
+sides, lower the deck between the plates onto the rails and screw it down.
 
 Everything here is a body of the robot (mass, centre of mass, BOM, DXF, bake): the
 sim's and the walking model's electronics are these parts, not an allowance.
@@ -62,9 +74,11 @@ sim's and the walking model's electronics are these parts, not an allowance.
 from __future__ import annotations
 
 import math
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from build123d import Axis, Box, Cylinder, Pos
+from build123d import Axis, Box, Cylinder, Pos, scale
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
@@ -110,8 +124,18 @@ STRAP_SLOT = (12.0, 3.0)  # along x, across (z)
 WIRE_SLOT = (12.0, 6.0)
 WIRE_SLOT_Z = 21.0
 TAPE_GAP = 0.3           # modelled gap for the foam tape under the deck
-SWITCH_X, SWITCH_Z = -55.0, 20.0     # +z: balances the charger (-z)
-GLUE_CRADLE = 0.02
+SWITCH_X, SWITCH_Z = -55.0, 21.0     # +z: balances the charger (-z); 21 (was 20): 1 mm
+#                                      clear of the cradle's outer screw's nut under the deck
+CRADLE_SCREW = screw("bhcs", "3")    # the cradle's two ears to the deck, nuts under it
+CRADLE_EARS = ((3.5, 1.0), (19.5, -1.0))   # (x from the cradle's outer inside end, z side):
+#                                      clear of the switch's body and the strap's run
+#                                      under the deck, and of the BMS (behind the servos)
+EAR_R, EAR_H = 3.5, 3.0              # an ear's radius round its screw, its height
+EAR_HEAD_GAP = 0.25                  # the screw head's edge to the cradle wall
+NOTCH_CLEAR = 0.5                    # a path notch's clearance round what it passes
+SETBACK_MAX = 3.0                    # the charger's USB-C end back from the front edge, at most
+PAD_STRIP = 3.0                      # the width of the charger pad's two strips (z)
+EPS_D = 1e-6
 DECK_COLOR = "#eb6834"
 RAIL_COLOR = "#2a7ab0"
 PCB_COLOR = "#1f6b3a"
@@ -266,6 +290,12 @@ class DeckLayout:
     def switch(self) -> tuple[float, float]:
         return self.x_c + SWITCH_X, SWITCH_Z
 
+    def cradle_ears(self) -> list[tuple[float, float]]:
+        """XZ of the cradle's two screws (through its ears and the deck)."""
+        ix0, _, ihw = self.battery()["inner"]
+        z = ihw + CRADLE_WALL + CRADLE_SCREW.head_d / 2 + EAR_HEAD_GAP
+        return [(ix0 + dx, side * z) for dx, side in CRADLE_EARS]
+
 
 def layout(design, z_mid: float, place: DeckPlace) -> DeckLayout:
     plan, pitch = design.plan, design.ctx.pitch
@@ -299,11 +329,105 @@ def _rail(lay: DeckLayout, side: str):
     return part
 
 
-def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str]
+Box6 = tuple[float, float, float, float, float, float]     # x0, x1, y0, y1, z0, z1
+
+
+def lowered(name: str) -> bool:
+    """A body that goes in with the deck, lowered onto the rails as one unit (the plate and
+    everything fitted to it on the bench); the rails, their screws, nuts and inserts are on
+    the inner plates already, the deck's four screws go in after."""
+    if "deck" not in name:
+        return False
+    return not ("deck_rail" in name or "deck_insert" in name
+                or re.fullmatch(r"deck_screw\d+", name) is not None)
+
+
+def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
+    return a0 < b1 - EPS_D and b0 < a1 - EPS_D
+
+
+def path_notches(lay: DeckLayout, obstacles: Sequence[Box6]) -> list[tuple[float, ...]]:
+    """XZ rectangles ``(x0, x1, z0, z1)`` cut from the deck plate so it lowers straight down
+    past ``obstacles`` (static parts' boxes over its underside: the pillars' inner M4
+    heads): each grown by :data:`NOTCH_CLEAR`, opened to the nearer side edge, and to the
+    end when it comes within a thickness of it (no sliver left)."""
+    x0, x1, hw = lay.x_c - HALF_LEN, lay.x_c + HALF_LEN, lay.half_w
+    out = []
+    for ox0, ox1, _, oy1, oz0, oz1 in obstacles:
+        nx0, nx1 = ox0 - NOTCH_CLEAR, ox1 + NOTCH_CLEAR
+        nz0, nz1 = oz0 - NOTCH_CLEAR, oz1 + NOTCH_CLEAR
+        if oy1 <= lay.deck_y + EPS_D or not (_overlap(nx0, nx1, x0, x1)
+                                             and _overlap(nz0, nz1, -hw, hw)):
+            continue
+        if nz0 + nz1 < 0:
+            nz0 = -hw - 1.0
+        else:
+            nz1 = hw + 1.0
+        if nx1 > x1 - lay.pitch:
+            nx1 = x1 + 1.0
+        if nx0 < x0 + lay.pitch:
+            nx0 = x0 - 1.0
+        out.append((nx0, nx1, nz0, nz1))
+    return out
+
+
+def _clear_x1(x1: float, length: float, y0: float, z0: float, z1: float,
+              obstacles: Sequence[Box6]) -> float:
+    """The farthest ``+x`` end, at most ``x1``, a part ``length`` long over ``y0`` in
+    ``z0..z1`` can have and still lower past ``obstacles``."""
+    for _ in range(len(obstacles) + 1):
+        hit = [ox0 for ox0, ox1, _, oy1, oz0, oz1 in obstacles
+               if oy1 > y0 + EPS_D and _overlap(oz0, oz1, z0 - NOTCH_CLEAR, z1 + NOTCH_CLEAR)
+               and _overlap(ox0, ox1, x1 - length - NOTCH_CLEAR, x1 + NOTCH_CLEAR)]
+        if not hit:
+            return x1
+        x1 = min(hit) - NOTCH_CLEAR
+    raise ConstructionError("the deck's charger finds no place to lower past the parts "
+                            "between the inner plates")
+
+
+def _charger_place(lay: DeckLayout, ch: dict, yu: float, obstacles: Sequence[Box6],
+                   nuts: Sequence[tuple[float, float, float]], nut_h: float
+                   ) -> tuple[float, float, float]:
+    """``(x1, z0, pad)`` of the charger under the deck: its USB-C end ``x1`` at the front
+    edge, 1 mm in from the left inner plate (``z0``), where nothing stands in its way down;
+    else stepped back up to :data:`SETBACK_MAX` from the edge (the Strider's corner heads);
+    else at the edge, moved in past what stands there (a pillar's head 3 mm into the bay),
+    on a printed pad (``pad`` mm) under the board's nuts when that brings it over them."""
+    front = lay.x_c + HALF_LEN
+    L, w, h = ch["length"], ch["width"], ch["height"]
+    z0 = -(lay.half_w - 1.0)
+    try:
+        x1 = _clear_x1(front, L, yu - h, z0, z0 + w, obstacles)
+    except ConstructionError:
+        x1 = -math.inf
+    if front - x1 <= SETBACK_MAX + EPS_D:
+        return x1, z0, 0.0
+    for _ in range(len(obstacles) + 1):
+        hit = [oz1 for ox0, ox1, _, oy1, oz0, oz1 in obstacles
+               if oy1 > yu - h - nut_h - 1.0 and oz1 < 0
+               and _overlap(oz0, oz1, z0 - NOTCH_CLEAR, z0 + w + NOTCH_CLEAR)
+               and _overlap(ox0, ox1, front - L - NOTCH_CLEAR, front + NOTCH_CLEAR)]
+        if not hit:
+            break
+        z0 = max(hit) + NOTCH_CLEAR
+    else:
+        raise ConstructionError("the deck's charger finds no place to lower past the parts "
+                                "between the inner plates")
+    over = any(_overlap(x - r, x + r, front - L, front) and _overlap(z - r, z + r, z0, z0 + w)
+               for x, z, r in nuts)
+    return front, z0, (nut_h + 0.3 if over else 0.0)
+
+
+def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
+               obstacles: Sequence[Box6] = ()
                ) -> tuple[list[Body], list[BomLine], dict, list[tuple[str, str]]]:
     """The rails, inserts, screws, deck plate and electronics (world coordinates): bodies,
     the purchases they don't model, what ``mech.meta["deck"]`` says, and the fastened
-    pairs."""
+    pairs. ``obstacles``: the boxes of the static parts between the inner plates (the
+    chassis', the pillars' inner heads), which the deck must lower past: the plate is
+    notched round them (:func:`path_notches`) and the charger steps back from the front
+    edge; another lowered part in one's way is a :class:`ConstructionError`."""
     lay = layout(design, z_mid, place)
     ins = get("m3_heat_set_insert").dims
     bodies: list[Body] = []
@@ -350,8 +474,9 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str]
                         fab="purchased", bom_key=key, color=STEEL)]
         fastened.append((f"deck_screw{i}", f"{s}.deck_insert{k}"))
 
-    # the deck plate
+    # the deck plate, notched where it passes the pillars' inner heads on its way down
     plate = _box(lay.x_c - HALF_LEN, lay.x_c + HALF_LEN, yd, yt, -hw, hw)
+    notches = path_notches(lay, obstacles)
     cuts = [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1) for x, z in lay.screws()]
     board = lay.board()
     cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
@@ -363,6 +488,8 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str]
     sx, sz = lay.switch()
     sw = get("toggle_mts102").dims
     cuts.append(_cyl_y(sx, sz, sw["hole_d"] / 2, yd - 1, yt + 1))
+    cuts += [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1) for x, z in lay.cradle_ears()]
+    cuts += [_box(nx0, nx1, yd - 1, yt + 1, nz0, nz1) for nx0, nx1, nz0, nz1 in notches]
     plate = plate - union(cuts)
     bodies.append(Body(name="deck_plate", part=plate, rigid_with=host["L"], fab="laser",
                        color=DECK_COLOR))
@@ -409,17 +536,49 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str]
            - _box(ix0, ix1, yt - 1, yt + CRADLE_H + 1, -ihw, ihw)
            - _box(ix1 - 1, ix1 + w + 1, yt - 1, yt + CRADLE_H + 1, -CRADLE_GAP / 2,
                   CRADLE_GAP / 2))
+    # its two ears, screwed to the deck (no glue: the user's decision of 2026-10-05): an M3
+    # button head from above through each ear and the deck, an M3 nut under the deck
+    nut_d = get("m3_nut").dims
+    nut_af, nut_h = float(nut_d.get("af", RAIL_NUT_AF)), float(nut_d.get("h", RAIL_NUT_H))
+    ear_len = pick_length(EAR_H + lay.pitch + nut_h + 0.5, CRADLE_SCREW.lengths)
+    ye = yt + EAR_H
+    for i, (ex, ez) in enumerate(lay.cradle_ears()):
+        side = 1.0 if ez > 0 else -1.0
+        za, zb = sorted((side * (ihw + w / 2), ez))
+        ear = union([_box(ex - EAR_R, ex + EAR_R, yt, ye, za, zb),
+                     _cyl_y(ex, ez, EAR_R, yt, ye)])
+        rim = union([rim, ear]) - _cyl_y(ex, ez, CLEARANCE["3"] / 2, yt - 1, ye + 1)
+        scr = union([_cyl_y(ex, ez, CRADLE_SCREW.head_d / 2, ye, ye + CRADLE_SCREW.head_h),
+                     _cyl_y(ex, ez, CRADLE_SCREW.d / 2 - 0.05, ye - ear_len, ye)])
+        nut = (_cyl_y(ex, ez, nut_af / 2, yd - nut_h, yd)
+               - _cyl_y(ex, ez, CRADLE_SCREW.d / 2, yd - nut_h - 1, yd + 1))
+        bodies += [Body(name=f"deck_cradle_screw{i}", part=scr, rigid_with=host["L"],
+                        fab="purchased", bom_key=CRADLE_SCREW.key(ear_len), color=STEEL),
+                   Body(name=f"deck_cradle_nut{i}", part=nut, rigid_with=host["L"],
+                        fab="purchased", bom_key="m3_nut", color=STEEL)]
+        fastened.append((f"deck_cradle_screw{i}", f"deck_cradle_nut{i}"))
     bodies.append(Body(name="deck_cradle", part=rim, rigid_with=host["L"], fab="printed",
                        color=RAIL_COLOR))
-    extras += [BomLine("ca_glue", GLUE_CRADLE, "battery cradle onto the deck"),
-               BomLine("lipo_strap_10mm", 1, "battery strap through the deck's slots")]
+    extras.append(BomLine("lipo_strap_10mm", 1, "battery strap through the deck's slots"))
 
     # under the deck: charger at the front, protection board behind the servos
     ch = get("ip2326_charger").dims
     yu = yd - TAPE_GAP
-    cx1 = lay.x_c + HALF_LEN
-    cz0 = -(hw - 1.0)                     # beside the board's nuts, 1 mm in from the edge
-    charger = _box(cx1 - ch["length"], cx1, yu - ch["height"], yu, cz0, cz0 + ch["width"])
+    nut_r = STANDOFF_AF / 2 + 0.3                      # the board's nuts under the deck
+    cx1, cz0, pad = _charger_place(lay, ch, yu, obstacles,
+                                   [(x, z, nut_r) for x, z in board["holes"]],
+                                   get("m25_nylon_nut").dims["h"])
+    cz1, cy1 = cz0 + ch["width"], yu - pad
+    charger = _box(cx1 - ch["length"], cx1, cy1 - ch["height"], cy1, cz0, cz1)
+    if pad:
+        # two printed strips the charger is taped to, between it and the deck, clear of the
+        # board's nuts it now passes under
+        strips = union([_box(cx1 - ch["length"], cx1, cy1, yu, z0, z0 + PAD_STRIP)
+                        for z0 in (cz0, cz1 - PAD_STRIP)])
+        strips = strips - union([_cyl_y(x, z, nut_r, yd - 10, yd + 1)
+                                 for x, z in board["holes"]])
+        bodies.append(Body(name="deck_charger_pad", part=strips, rigid_with=host["L"],
+                           fab="printed", color=RAIL_COLOR))
     bms = get("bms_hx_2s_jh20").dims
     bx1 = lay.x_c - WIRE_SLOT[0] / 2 - 0.5
     bodies += [
@@ -446,9 +605,17 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str]
                BomLine("resistor_33k", 1, "battery divider (bottom)"),
                BomLine("xt30_pigtail_pair", 1, "battery lead to the protection board"),
                BomLine("dc_plug_5521_pigtail", 1, "switched battery to the board's DC jack")]
+    blocked = _blocked_boxes(bodies, obstacles)
+    if blocked:
+        a, b = blocked[0]
+        raise ConstructionError(f"the deck can't be lowered onto its rails: {a} meets "
+                                f"{b} on the way down")
     info = {"fitted": True, "x_c": round(lay.x_c, 2), "deck_y": round(yd, 2),
             "rail_y": round(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, round(2 * hw, 2)],
             "screw": key, "spigot_x": place.spigot_x,
+            "notches": [[round(v, 2) for v in n] for n in notches],
+            "charger_setback_mm": round(lay.x_c + HALF_LEN - cx1, 2),
+            "charger_z_mm": [round(cz0, 2), round(cz1, 2)], "charger_pad_mm": round(pad, 2),
             "top_y": round(max(b.part.bounding_box().max.Y for b in bodies), 2)}
     return bodies, extras, info, fastened
 
@@ -467,6 +634,65 @@ def _swept_radius(part, n: int = 24) -> float:
     return r / math.cos(math.pi / n)          # a sampled arc's chord, covered
 
 
+def _sweep_up(part, prism: bool, top: float):
+    """``part`` swept straight up to ``top``: a part that is a prism along y (the deck
+    plate: every cut goes through) stretched exactly, any other its bounding box."""
+    bb = part.bounding_box()
+    if prism:
+        h = bb.max.Y - bb.min.Y
+        k = (top - bb.min.Y) / h
+        return scale(part.moved(Pos(0, -bb.min.Y, 0)), by=(1.0, k, 1.0)).moved(
+            Pos(0, bb.min.Y, 0))
+    return _box(bb.min.X, bb.max.X, bb.min.Y, top, bb.min.Z, bb.max.Z)
+
+
+def _box6(bb) -> Box6:
+    return (bb.min.X, bb.max.X, bb.min.Y, bb.max.Y, bb.min.Z, bb.max.Z)
+
+
+def _blocked_boxes(bodies, obstacles: Sequence[Box6]) -> list[tuple[str, str]]:
+    """Lowered parts (but the plate, which :func:`path_notches` cut) whose box, swept up,
+    meets an obstacle's box (the build-time check; :func:`deck_path` is the exact one)."""
+    out = []
+    for b in bodies:
+        if b.part is None or not lowered(b.name) or b.name == "deck_plate":
+            continue
+        x0, x1, y0, _, z0, z1 = _box6(b.part.bounding_box())
+        for i, (ox0, ox1, _, oy1, oz0, oz1) in enumerate(obstacles):
+            if oy1 > y0 + 1e-3 and _overlap(x0, x1, ox0, ox1) and _overlap(z0, z1, oz0, oz1):
+                out.append((b.name, f"obstacle {i}"))
+    return out
+
+
+def deck_path(mech, clash_mm3: float = 0.01) -> list[tuple[str, str, float]]:
+    """``(deck part, other part, mm^3)`` for every part that would stop the deck going
+    straight down onto its rails: each lowered part (:func:`lowered`: the plate and what
+    is fitted to it) swept up from where it sits, against every other part of the robot
+    (the deck plate's sweep is exact, the rest their boxes). Empty: it goes in."""
+    deck = [b for b in mech.bodies if b.part is not None and lowered(b.name)]
+    if not deck:
+        return []
+    top = max(b.part.bounding_box().max.Y for b in mech.bodies if b.part is not None) + 1.0
+    others = [(b.name, b.part, b.part.bounding_box()) for b in mech.bodies
+              if b.part is not None and not lowered(b.name)
+              and re.fullmatch(r"deck_screw\d+", b.name) is None]
+    out = []
+    for b in deck:
+        bb = b.part.bounding_box()
+        sweep = None
+        for name, part, ob in others:
+            if not (ob.max.Y > bb.min.Y + 1e-3 and _overlap(bb.min.X, bb.max.X, ob.min.X, ob.max.X)
+                    and _overlap(bb.min.Z, bb.max.Z, ob.min.Z, ob.max.Z)):
+                continue
+            if sweep is None:
+                sweep = _sweep_up(b.part, b.name == "deck_plate", top)
+            inter = sweep & part
+            vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
+            if vol > clash_mm3:
+                out.append((b.name, name, round(vol, 3)))
+    return out
+
+
 def deck_clearance(mech) -> dict:
     """How far the deck's parts are from every moving part over the whole crank cycle.
 
@@ -476,11 +702,12 @@ def deck_clearance(mech) -> dict:
     inner plate's face into the servo bay) sweeps a disc about the crank axis O: it
     clears a deck part whose band it shares when that disc misses the part's XY box
     (``sweep_gap_mm``). Any other moving part sharing a band is a failure
-    (``overlapping``). ``ok`` is all of it. The rails' screws are left out: they come up
-    through the inner plate from the leg side, and their heads are the drive group's
-    claims (:meth:`servos.mount.DriveGroup.claims`), which the planner keeps clear of every
-    moving part in XY over the cycle wherever they sit, in the gap under the plate or sunk
-    into the layer there (the plan's ``heads``)."""
+    (``overlapping``). ``blocked``: what stops the deck going in (:func:`deck_path`, the
+    assembly's way down onto the rails). ``ok`` is all of it. The rails' screws are left
+    out of the moving-part check: they come up through the inner plate from the leg side,
+    and their heads are the drive group's claims (:meth:`servos.mount.DriveGroup.claims`),
+    which the planner keeps clear of every moving part in XY over the cycle wherever they
+    sit, in the gap under the plate or sunk into the layer there (the plan's ``heads``)."""
     by_name = {b.name: b for b in mech.bodies}
     deck = [b for b in mech.bodies if b.part is not None and "deck" in b.name
             and "deck_rail_screw" not in b.name]
@@ -514,6 +741,7 @@ def deck_clearance(mech) -> dict:
                     overlapping.append((b.name, name))
             else:
                 overlapping.append((b.name, name))
+    blocked = deck_path(mech)
     return {"fitted": True, "z_gap_mm": round(z_gap, 3), "nearest": nearest,
             "sweep_gap_mm": round(sweep_gap, 3), "overlapping": overlapping,
-            "ok": not overlapping}
+            "blocked": blocked, "ok": not overlapping and not blocked}

@@ -1086,13 +1086,13 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # frame blank ($18, the 0.125 in was $28) and, since the hex-standoff crankpins, a 0.100
     # in 6061 crank blank ($21; the 0.063 in 5052 was $18); the single-plate crank has no
     # nylocks, and nothing is glued to a plate any more (no wood glue: the glue-free
-    # joinery), the CA is the battery cradle's
-    assert total == pytest.approx(40.0 + 25.49 + 3.10 + 18.0 + 21.0 + 11.37 + 13.99)
+    # joinery), and no CA since the battery cradle is screwed to the deck (2026-10-05)
+    assert total == pytest.approx(40.0 + 25.49 + 3.10 + 18.0 + 21.0 + 11.37)
     assert unpriced == ["Two-part slow-cure structural epoxy (e.g. J-B Weld Original or "
                         "Loctite EA E-30CL), 2 x 25 ml",          # the Chicago barrels
                         "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
                         "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml"]
-    assert any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
+    assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
     # the frame blank in 5052, the crank's in 6061 (the hex crankpins' pockets)
     assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 1

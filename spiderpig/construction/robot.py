@@ -80,6 +80,7 @@ from spiderpig.construction.deck import (
 )
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
 from spiderpig.shapes import Cut, moved
+from spiderpig.stack import body_class
 
 SIDES = ("L", "R")
 
@@ -131,7 +132,11 @@ ASSEMBLY: tuple[str, ...] = (
     "plate, their inner M4 screws from the servo bay.",
     "8. Bus cables: each plug into its servo's socket along the centre plates' slot from "
     "their far edge, the cable up to the board through the deck's wire slot (connector "
-    "first); then the deck, as construction.deck says.",
+    "first); then the deck, its electronics fitted on the bench (the battery cradle "
+    "screwed down: two M3 button heads through its ears, nuts under the deck), lowered "
+    "straight down between the inner plates past the pillars' inner heads (its notches, "
+    "deck.path_notches; deck.deck_path checks the way) onto the rails, and its four "
+    "screws into the rails' inserts.",
 )
 """The robot's assembly order (the default walker: chicago pins, standoff pillars, the hex
 bolt crank, the frame ties): what the pivots' (``construction.pivots.standoff``) and the
@@ -241,7 +246,23 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
         return [], [], {"fitted": False,
                         "why": f"the chassis reaches y = {top:.1f} mm between the inner plates, "
                                f"over the deck rails' underside at {place.rail_y0:.1f} mm"}
-    parts, extras, info, fastened = deck_parts(design, z_mid, place, host)
+    # what the deck must lower past: the static parts between the inner plates (the
+    # pillars' inner M4 heads, the chassis), each as its box
+    by_name = {b.name: b for b in bodies}
+
+    def root(b):
+        while b.rigid_with is not None and b.rigid_with in by_name:
+            b = by_name[b.rigid_with]
+        return b
+
+    obstacles = [(bb.min.X, bb.max.X, bb.min.Y, bb.max.Y, bb.min.Z, bb.max.Z)
+                 for b in bodies if b.part is not None and body_class(root(b).name) == "torso"
+                 for bb in (b.part.bounding_box(),)
+                 if z_in - 1e-6 > bb.min.Z and -z_in + 1e-6 < bb.max.Z]
+    try:
+        parts, extras, info, fastened = deck_parts(design, z_mid, place, host, obstacles)
+    except ConstructionError as e:
+        return [], [], {"fitted": False, "why": str(e)}
     info["chassis_top_y"] = round(top, 2)
     info["fastened"] = fastened
     return parts, extras, info

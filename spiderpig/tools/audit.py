@@ -153,6 +153,8 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
         + [f"snap: {p}" for p in rep["snap"]["problems"]]
         + [f"deck: {a} sweeps through {b}"
            for a, b in (rep.get("deck") or {}).get("clearance", {}).get("overlapping", [])]
+        + [f"deck: {a} can't be lowered past {b} ({v} mm^3)"
+           for a, b, v in (rep.get("deck") or {}).get("clearance", {}).get("blocked", [])]
         + strength_messages(rep["strength"], "error")
         + manufacture_messages(rep["manufacture"], "error")
         + ([f"assembly: {rep['crank_bolt']['assembly']}"]

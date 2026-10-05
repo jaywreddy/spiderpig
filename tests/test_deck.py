@@ -103,8 +103,11 @@ def test_the_ports_and_the_switch_are_reachable(strider):
     by = {b.name: b.part.bounding_box() for b in mech.bodies if b.part is not None}
     plate = by["deck_plate"]
     face = _inner_face(mech)
-    # the board's and the charger's USB-C ends face the open front of the bay
-    assert plate.max.X - by["deck_charger"].max.X < 0.01
+    # the board's and the charger's USB-C ends face the open front of the bay (the charger
+    # stepped back from the edge only as far as a pillar's head in its way down needs)
+    assert pytest.approx(
+        mech.meta["deck"]["charger_setback_mm"], abs=0.01) == plate.max.X - by["deck_charger"].max.X
+    assert plate.max.X - by["deck_charger"].max.X <= 3.0
     assert plate.max.X - by["deck_board"].max.X <= 3.0
     for port in ("deck_board", "deck_charger"):
         p = by[port]
@@ -184,8 +187,102 @@ def test_the_deck_plate_is_on_the_dxf_sheets(strider):
     assert dims == [pytest.approx(mech.meta["deck"]["plate_mm"][1], abs=0.01),
                     pytest.approx(136.0, abs=0.01)]
     # its holes came through: screws, standoffs, switch (circles) and slots
-    # (and the four cable-tie slots beside the wire slots, 2026-10-04)
-    assert len(placed["deck_plate"].wires()) == 1 + 4 + 4 + 1 + 2 + 2 + 4
+    # (and the four cable-tie slots beside the wire slots, 2026-10-04; the battery cradle's
+    # two screw holes, 2026-10-05; the path notches are in the outline)
+    assert len(placed["deck_plate"].wires()) == 1 + 4 + 4 + 1 + 2 + 2 + 4 + 2
+
+
+def test_the_deck_lowers_straight_down_onto_its_rails(built):
+    """The assembly's last step: the deck, electronics on, goes down between the inner plates
+    past the pillars' inner M4 heads (3 mm into the bay from each plate) onto the rails.
+    Checked on the parts' geometry: each lowered part swept straight up meets nothing."""
+    _, mech = built
+    assert deck_mod.deck_path(mech) == []
+    assert deck_mod.deck_clearance(mech)["blocked"] == []
+
+
+def test_the_deck_is_notched_round_the_pillar_heads_in_its_way(strider):
+    """On the Strider double the plate's corners pass over J2's and J6's inner heads and
+    washers: each one the unnotched plate would meet on its way down has a notch round it,
+    0.5 mm clear."""
+    _, mech = strider
+    info = mech.meta["deck"]
+    plate = next(b for b in mech.bodies if b.name == "deck_plate").part.bounding_box()
+    hw = (plate.max.Z - plate.min.Z) / 2
+    face = _inner_face(mech)
+    heads = [b.part.bounding_box() for b in mech.bodies
+             if b.name.startswith(("L.pillar_", "R.pillar_"))
+             and ("_screw" in b.name or "_washer" in b.name)]
+    in_way = [bb for bb in heads
+              if bb.max.Y > plate.min.Y and bb.min.X < plate.max.X and bb.max.X > plate.min.X
+              and min(abs(bb.min.Z), abs(bb.max.Z)) < hw and max(abs(bb.min.Z),
+                                                                abs(bb.max.Z)) >= face - 1e-6]
+    assert in_way                                   # the check has something to do here
+    notches = info["notches"]
+    c = deck_mod.NOTCH_CLEAR - 0.01
+    for bb in in_way:
+        # what of it the plate's outline covers, and its clearance, is inside a notch
+        lo_x, hi_x = max(bb.min.X - c, plate.min.X), min(bb.max.X + c, plate.max.X)
+        lo_z, hi_z = max(bb.min.Z - c, plate.min.Z), min(bb.max.Z + c, plate.max.Z)
+        assert any(x0 <= lo_x and x1 >= hi_x and z0 <= lo_z and z1 >= hi_z
+                   for x0, x1, z0, z1 in notches), bb
+    # small corner notches only: the plate keeps its rails' screw holes' webs
+    for x0, x1, z0, z1 in notches:
+        assert min(x1, plate.max.X) - max(x0, plate.min.X) < 5.0
+        assert min(z1, hw) - max(z0, -hw) < 4.0
+
+
+def test_deck_path_sees_a_part_in_the_way_and_a_notch_clears_it():
+    """:func:`deck.deck_path` on a toy: a plate under a head standing over its edge is
+    blocked; the same plate notched round the head is not."""
+    from types import SimpleNamespace
+
+    from build123d import Box, Cylinder, Pos
+
+    from spiderpig.mechanism import Body
+
+    plate = Box(40, 3, 20).move(Pos(0, 1.5, 0))
+    head = Cylinder(3.8, 2.2).move(Pos(18.0, 10.0, 9.0))     # over the corner, z 7.9..10.1
+    notched = plate - Box(10, 10, 5).move(Pos(18.0, 1.5, 9.5))
+
+    def mech(p):
+        return SimpleNamespace(bodies=[Body(name="deck_plate", part=p),
+                                       Body(name="L.pillar_A_screw9", part=head)])
+
+    got = deck_mod.deck_path(mech(plate))
+    assert [(a, b) for a, b, _ in got] == [("deck_plate", "L.pillar_A_screw9")]
+    assert deck_mod.deck_path(mech(notched)) == []
+    # the deck's own screws go in after it, the rails are on the plates first
+    assert not deck_mod.lowered("deck_screw0")
+    assert not deck_mod.lowered("L.deck_rail")
+    assert not deck_mod.lowered("R.deck_insert1")
+    assert deck_mod.lowered("deck_cradle_screw0")
+    assert deck_mod.lowered("deck_board")
+
+
+def test_the_battery_cradle_is_screwed_to_the_deck(strider):
+    """The user's decision of 2026-10-05: two M3 screws and nuts, no glue."""
+    _, mech = strider
+    assert not [x for x in mech.bom_extras if x.key == "ca_glue"]
+    screws = [b for b in mech.bodies if b.name.startswith("deck_cradle_screw")]
+    nuts = [b for b in mech.bodies if b.name.startswith("deck_cradle_nut")]
+    assert len(screws) == len(nuts) == 2
+    assert {b.bom_key for b in nuts} == {"m3_nut"}
+    assert all(b.bom_key.startswith("m3_bhcs_") for b in screws)
+    pairs = {frozenset(p) for p in mech.meta["fastened"]}
+    for i in range(2):
+        assert frozenset((f"deck_cradle_screw{i}", f"deck_cradle_nut{i}")) in pairs
+    by = {b.name: b.part.bounding_box() for b in mech.bodies if b.part is not None}
+    plate = by["deck_plate"]
+    for i in range(2):
+        s, n = by[f"deck_cradle_screw{i}"], by[f"deck_cradle_nut{i}"]
+        assert s.max.Y > plate.max.Y                 # head on the ear, over the deck
+        assert pytest.approx(plate.min.Y) == n.max.Y      # nut under it
+        assert s.min.Y < n.min.Y                     # through the nut
+    # one each side of the battery, diagonal
+    zs = sorted((by[f"deck_cradle_screw{i}"].min.Z + by[f"deck_cradle_screw{i}"].max.Z) / 2
+                for i in range(2))
+    assert zs[0] < 0 < zs[1]
 
 
 def test_no_deck_carries_its_mass_as_a_payload():

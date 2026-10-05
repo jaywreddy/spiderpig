@@ -140,13 +140,12 @@ def default_robot():
 @pytest.mark.slow
 def test_the_default_robot_has_no_glue_in_its_structure(default_robot):
     """Frame ties are standoff chains and screws, the deck rails are screwed, the centre
-    plates are clamped: the only adhesive left is the Chicago barrels' epoxy (and the
-    battery cradle's CA)."""
+    plates are clamped, the battery cradle is screwed to the deck (2026-10-05): the only
+    adhesive left is the Chicago barrels' epoxy."""
     cfg, mech = default_robot
     glue = [x for x in mech.bom_extras if x.key in ("ca_glue", "acrylic_cement",
                                                      "epoxy_2part")]
-    assert {x.key for x in glue} <= {"epoxy_2part", "ca_glue"}
-    assert all("cradle" in x.where for x in glue if x.key == "ca_glue")
+    assert {x.key for x in glue} == {"epoxy_2part"}
     names = {b.name for b in mech.bodies}
     assert any(n.startswith("L.tie_standoff") for n in names)
     assert any(n.startswith("L.deck_rail_screw") for n in names)
