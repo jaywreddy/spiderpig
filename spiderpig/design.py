@@ -28,7 +28,7 @@ import json
 import math
 import tomllib
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -56,13 +56,15 @@ def package_version() -> str:
 def engine_version() -> str:
     """The package version plus a hash of what changes a design's result: the linkage
     definitions (``spiderpig/linkages/*.py``) and the planner's defaults
-    (:class:`spiderpig.stack.StackSpec`)."""
+    (:class:`spiderpig.stack.StackSpec`), less its time budget (``max_seconds``, which
+    ``SPIDERPIG_PLAN_SECONDS`` sets: a budget bounds the search, not what a plan is, and a
+    stored plan is re-verified on reload anyway)."""
     version = package_version()
     h = hashlib.sha256()
     for p in sorted((ROOT / "linkages").glob("*.py")):
         h.update(p.name.encode())
         h.update(p.read_bytes())
-    h.update(repr(StackSpec()).encode())
+    h.update(repr(replace(StackSpec(), max_seconds=60.0)).encode())
     return f"{version}+{h.hexdigest()[:12]}"
 
 

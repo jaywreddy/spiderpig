@@ -139,10 +139,10 @@ PTFE_COLOR = "#f2f2f2"
 
 
 def _hw_tol() -> float:
-    """The printed head spacers' height tolerance, counted as play (``printfill``)."""
-    from spiderpig import hwflags
+    """The printed head spacers' height tolerance, counted as play."""
+    from spiderpig.construction.pivots.common import PRINT_TOL
 
-    return hwflags.PRINT_TOL if hwflags.on("printfill") else 0.0
+    return PRINT_TOL
 
 
 @dataclass(frozen=True)
@@ -361,55 +361,24 @@ class ChicagoShaft:
         out.bodies.append(hardware(f"{stem}_screw", screw, host, fab="purchased",
                                    bom_key=chicago(f.length), color=STEEL))
         z = z_hi
-        from spiderpig import hwflags
-
-        if hwflags.on("printfill"):
-            # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
-            # the screw bottoms on the barrel, so they only set the column's axial play)
-            for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
-                if t <= EPS:
-                    continue
-                sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
-                           d + 0.2, z0, z0 + t)
-                out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
-                                           color=SLEEVE_COLOR))
-            out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
-                                      f"{group.name}: barrel into {host} (slow epoxy: CA "
-                                      "crazes acrylic)"))
-            out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
-            out.cut(host, Cut(xy, self.host_hole()))
-            out.notes.setdefault("chicago", {})[group.name] = {
-                "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
-                "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-                "play_mm": f.play, "item": chicago(f.length), "printed": True}
-            return f
-        if self.washer_key:
-            w = get(self.washer_key).dims
-            washer = bored(disc(xy, float(w["od"]) / 2, z, z + self.washer_t), xy,
-                           float(w["id"]), z, z + self.washer_t)
-            out.bodies.append(hardware(f"{stem}_washer", washer, host, fab="purchased",
-                                       bom_key=self.washer_key, color=PTFE_COLOR))
-            z += self.washer_t
-        od = float(get(self.shim_key).dims["od"])
-        for tag, z0, t, where in (("hi", z, f.shims_hi, "under the screw head"),
-                                  ("lo", zb, f.shims_lo, "under the barrel head")):
+        # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
+        # the screw bottoms on the barrel, so they only set the column's axial play)
+        for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
             if t <= EPS:
                 continue
-            # one body per stack of shims (its BOM line), the rest of the stack as an extra
-            shim = bored(disc(xy, od / 2, z0, z0 + t), xy, d + 0.1, z0, z0 + t)
-            out.bodies.append(hardware(f"{stem}_shims_{tag}", shim, host, fab="purchased",
-                                       bom_key=self.shim_key, color=STEEL))
-            if (n := self.shim_count(t)) > 1:
-                out.extras.append(BomLine(self.shim_key, n - 1,
-                                          f"{group.name}: {t:.1f} mm {where}"))
+            sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
+                       d + 0.2, z0, z0 + t)
+            out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
+                                       color=SLEEVE_COLOR))
         out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
-                                  f"{group.name}: barrel into {host} (slow epoxy: CA crazes "
-                                  "acrylic)"))
+                                  f"{group.name}: barrel into {host} (slow epoxy: CA "
+                                  "crazes acrylic)"))
         out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
         out.cut(host, Cut(xy, self.host_hole()))
         out.notes.setdefault("chicago", {})[group.name] = {
-            "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3), "shims_lo_mm": f.shims_lo,
-            "shims_hi_mm": f.shims_hi, "play_mm": f.play, "item": chicago(f.length)}
+            "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
+            "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
+            "play_mm": f.play, "item": chicago(f.length), "printed": True}
         return f
 
 

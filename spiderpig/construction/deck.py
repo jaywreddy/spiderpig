@@ -85,7 +85,6 @@ from dataclasses import dataclass, replace
 
 from build123d import Axis, Box, Cylinder, Pos, scale
 
-from spiderpig import hwflags as _hw  # noqa: E402
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
     BRASS,
@@ -105,7 +104,7 @@ from spiderpig.mechanism import Body
 from spiderpig.shapes import union
 from spiderpig.stack import body_class
 
-DECK_SCREW = screw("bhcs" if _hw.on("lengths") else "shcs", "3")
+DECK_SCREW = screw("bhcs", "3")
 DECK_GAP = 1.0           # deck plate edge to an inner plate's face (mm): frame tolerance
 FLOOR_MARGIN = 1.0       # a rail's underside above the chassis' top
 HALF_LEN = 68.0          # the deck plate's half length along x (mm)
@@ -125,7 +124,7 @@ RAIL_SCREW_R = 5.7 / 2 + 0.3             # its head's clearance shape under the 
 RAIL_NUT_AF, RAIL_NUT_H = 5.5, 2.4       # an M3 hex nut in a trap in the rail
 NUT_DEPTH = 3.0          # the trap's floor over the rail's plate face
 CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm cable tie
-RAIL_SCREW_L = 8.0 if _hw.on("lengths") else 10.0   # through the plate, past the nut trap
+RAIL_SCREW_L = 8.0       # through the plate, past the nut trap
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
@@ -142,7 +141,7 @@ CRADLE_SCREW = screw("bhcs", "3")    # the cradle's two ears to the deck, nuts u
 CRADLE_EARS = ((3.5, 1.0), (19.5, -1.0))   # (x from the cradle's outer inside end, z side):
 #                                      clear of the switch's body and the strap's run
 #                                      under the deck, and of the BMS (behind the servos)
-EAR_R, EAR_H = 3.5, (2.0 if _hw.on("lengths") else 3.0)   # an ear's radius, its height
+EAR_R, EAR_H = 3.5, 2.0  # an ear's radius, its height
 EAR_HEAD_GAP = 0.25                  # the screw head's edge to the cradle wall
 NOTCH_CLEAR = 0.5                    # a path notch's clearance round what it passes
 SETBACK_MAX = 3.0                    # the charger's USB-C end back from the front edge, at most

@@ -149,12 +149,29 @@ def _chicago_offers(length: int) -> tuple[Offer, ...]:
     return tuple(out)
 
 
+_BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-05: key -> (product, USD/100)
+    "m3_bhcs_6": ("7218", 3.97), "m3_bhcs_8": ("7219", 4.10), "m3_nut": ("4773", 2.39),
+}
+"""Priced alternatives to McMaster (whose prices need a login): ORDER.md estimates an
+unpriced line from them (:func:`hardware.order.estimate`)."""
+
+
+def _bolt_depot(key: str) -> tuple[Offer, ...]:
+    if key not in _BOLT_DEPOT:
+        return ()
+    product, usd = _BOLT_DEPOT[key]
+    return (Offer("Bolt Depot", f"https://boltdepot.com/Product-Details?product={product}",
+                  product, pack_qty=100, price_usd=usd, verified=True,
+                  note="18-8 stainless (A-2); page rendered 2026-10-05"),)
+
+
 SOURCES: dict[str, tuple[Offer, ...]] = {
     **{f"m{d}_bhcs_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
                                 verified=True,
                                 note=f"18-8 stainless ISO 7380 M{d} x {L}; seen with its "
                                      "length and pack on McMaster's own listing (price "
-                                     "shown only on the product page)"),)
+                                     "shown only on the product page)"),
+                          *_bolt_depot(f"m{d}_bhcs_{L}"))
        for d, by_l in _MCM_BHCS.items() for L, (pn, n) in by_l.items()},
     **{f"m4_set_screw_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
                                    verified=True,
@@ -197,7 +214,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
     # -- screws, nuts, washers, inserts ------------------------------------------------
     "m3_nut": (Offer(_MCM, "https://www.mcmaster.com/91828A211/", "91828A211", pack_qty=100,
                      verified=True, note="18-8 stainless M3 hex nut (McMaster's page title, "
-                                         "rendered 2026-10-05; price behind its login)"),),
+                                         "rendered 2026-10-05; price behind its login)"),
+               *_bolt_depot("m3_nut")),
     "m3_washer_9021": (Offer(_MCM, "https://www.mcmaster.com/91116A120/", "91116A120",
                              pack_qty=100, verified=True,
                              note="18-8 stainless oversized M3 washer, 3.2 x 9.0 x 0.7-0.9 "

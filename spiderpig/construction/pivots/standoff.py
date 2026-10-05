@@ -364,13 +364,11 @@ class StandoffAxle:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
         ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, DIN 988
         shims taking the rest up at its upper end), ``None`` when none is."""
-        from spiderpig import hwflags
-
-        if hwflags.on("oneshim") and self.size == "M3":
-            # (oneshim on M3: stock lengths, end shims in SHIM_STEP steps only (DIN 433
-            # washers, two to a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA
-            # M4 keeps its rule below, its take-up rounded to the step in splice_shims: at
-            # most half a step over, inside max_long)
+        if self.size == "M3":
+            # (M3: stock lengths, end shims in SHIM_STEP steps only (DIN 433 washers, two to
+            # a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA M4 keeps its rule
+            # below, its take-up rounded to the step in splice_shims: at most half a step
+            # over, inside max_long)
             def resid(L: float) -> float:
                 d = gap - L
                 return abs(d - round(d / SHIM_STEP) * SHIM_STEP) if d > EPS else abs(d)
@@ -506,13 +504,11 @@ class StandoffAxle:
         return float(get(self.shim_key).dims["od"])
 
     def splice_shims(self, pitch: float) -> list[float]:
-        """The DIN 988 shims that stack to a splice layer's thickness, thickest first."""
-        from spiderpig import hwflags
-
-        steps = sorted((float(t) for t in get(self.shim_key).dims["t"]), reverse=True)
-        if hwflags.on("oneshim"):
-            steps = [1.0, SHIM_STEP]
-            pitch = round(pitch / SHIM_STEP) * SHIM_STEP
+        """The shims that stack to a splice layer's thickness (or an end's take-up), thickest
+        first: whole 1 mm shims and :data:`SHIM_STEP` (bought as DIN 433 washers,
+        :data:`hardware.bom.SHIM_AS`), the thickness rounded to the step."""
+        steps = [1.0, SHIM_STEP]
+        pitch = round(pitch / SHIM_STEP) * SHIM_STEP
         out, left = [], round(pitch, 3)
         for t in steps:
             k = int(left / t + 1e-6)

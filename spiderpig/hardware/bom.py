@@ -613,7 +613,8 @@ SHIM_AS: dict[str, tuple[str, int]] = {
 is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
 2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
 family. Clamped shims only (a horn screw's head, a pillar splice or end, a frame tie): the
-unclamped ones are printed (hwflags printfill)."""
+unclamped ones are printed (construction.pivots.common.gap_washers, the Chicago pins' head
+spacers)."""
 
 
 def shim_key(family: str, t: float) -> str:
@@ -673,12 +674,10 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
 
 
 def stack_steps(family: str) -> tuple[float, ...]:
-    """The thicknesses the constructions stack a family's shims from: its catalog ``t``, or,
-    with the hardware study's ``oneshim`` (hwflags), the 1.0 mm shim and the thin step (0.5 mm:
-    a DIN 433 washer, :data:`construction.pivots.standoff.SHIM_STEP`)."""
-    from spiderpig import hwflags
-
-    if hwflags.on("oneshim") and family in ("shim_din988_3x6", "shim_din988_4x8"):
+    """The thicknesses the constructions stack a family's shims from: for the M3 and M4
+    families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
+    :data:`construction.pivots.standoff.SHIM_STEP`), else its catalog ``t``."""
+    if family in ("shim_din988_3x6", "shim_din988_4x8"):
         from spiderpig.construction.pivots.standoff import SHIM_STEP
 
         return (1.0, SHIM_STEP)

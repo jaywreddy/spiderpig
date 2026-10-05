@@ -122,8 +122,8 @@ for _L in M3_ROUND_STANDOFF_LENGTHS:
         dims={"d": 3.0, "od": 6.0, "length": float(_L), "thread_depth": float(_L),
               "id": 2.5, "yield_mpa": 240.0},
         notes="uxcell (Harfington), black anodised aluminium, threaded through (coupling-nut "
-              "style): the bolt crank's journal stub and, on M3 (hwflags m3), the standoff "
-              "pillars' and frame ties' segments. The strength check takes a 6 x 2.5 tube (the "
+              "style): the bolt crank's journal stub, the frame ties' segments and those of "
+              "--pillar standoff_m3. The strength check takes a 6 x 2.5 tube (the "
               "M3 tap drill) at 240 MPa: the alloy is not stated (UNVERIFIED). No length "
               "tolerance stated: measure one against its gap.",
     ))
@@ -275,10 +275,11 @@ The 45, 50 and 60 mm parts are Accu's or Vital Parts' (A1 stainless). McMaster s
 standoffs only 5 and 6 mm across flats; Accu's series has no 22 mm."""
 
 
-WURTH_HEX_PRICES: dict[int, float] = {16: 0.51, 20: 0.48, 22: 0.49, 30: 0.53}
-"""USD each at Mouser, the lengths the default build (22, 30: Octopart) and the
-``klann_lego`` quad (16, 20: Findchips' Mouser rows, and Wurth's datasheets 970160321 /
-970200321, M3 tapped through, 5.5 AF, steel gloss zinc, status Valid; 2026-10-05) use."""
+WURTH_HEX_PRICES: dict[int, float] = {16: 0.51, 18: 0.63, 20: 0.48, 22: 0.49, 25: 0.57,
+                                      30: 0.53}
+"""USD each at Mouser (one piece), the lengths the default designs use: 22, 30 from Octopart;
+16, 20, 18, 25 from Findchips' Mouser rows (rendered 2026-10-05; Wurth's datasheets: M3,
+5.5 AF, steel gloss zinc, status Valid)."""
 LONG_HEX_PAGES: dict[int, tuple[Offer, ...]] = {
     50: (Offer("Vital Parts", "https://www.vital-parts.co.uk/threaded-hex-standoffs-female-"
                "female/7886-hff-m3-50-s55-a1", "HFF-M3-50-S55-A1", verified=True,

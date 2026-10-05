@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from spiderpig import hwflags, servos
+from spiderpig import servos
 from spiderpig.construction.base import FRAME_INNER, Build, Realized
 from spiderpig.construction.chassis import (
     MIN_ENGAGE,
@@ -175,8 +175,7 @@ def test_frame_ties_only_touch_the_inner_plate(design):
     assert len(deck) == 2                                    # the deck fits the Strider
     holes = sorted(c.d for c in got.cuts[FRAME_INNER])
     assert len(holes) == 4 + len(deck)
-    # the rails' holes, and since the simplified hardware (hwflags m3) the four M3 ties' too
-    assert holes.count(RAIL_HOLE) == len(deck) + (4 if hwflags.on("m3") else 0)
+    assert holes.count(RAIL_HOLE) == len(deck) + 4           # the rails' and the 4 M3 ties'
     heads = {s.label for s in d.plan.shapes("drive")}
     assert {"frame tie screw head", "deck rail screw head"} <= heads
 
