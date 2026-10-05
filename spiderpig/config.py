@@ -71,13 +71,16 @@ doesn't plan (each with why)."""
 
 
 MODULE_CRANKS: dict[tuple[str, str], str] = {
-    # The Strider's decker and quad find no plan with the hex-standoff crank (the merge of
-    # 2026-10-04: none in 600 CPU s on ao-server; "no crank route passes", the 8.5 mm hex
-    # sleeve's post blocking the links that pass the crankpins, "no way past the layer of
-    # b8"). The round standoff plans them (decker 17 layers in 11 s, quad 25 in 50 s, on the
-    # 0.100 in 6061 crank sheet), rated as its friction clamp (UNVERIFIED coefficients).
-    ("strider", "decker"): "bolt_round",
-    ("strider", "quad"): "bolt_round",
+    # Empty since the debug of 2026-10-05: the Strider's decker and quad were here on
+    # bolt_round ("no hex plan in 600 CPU s", put down to the 8.5 mm sleeve's post). The
+    # post wasn't it: the round crank's own layerings route with the hex crank; what failed
+    # was the plan's z, where no stock hex standoff fit the long crankpins (the stock series
+    # steps 5 mm past 25 mm: spans of 25.7-27.6 mm, 28.8 capped in the hub plate, have
+    # none), and every crankpin gap was 4 mm (what stood past a plate went to the lower end
+    # first), which pushed the Chicago pins off their stock barrels. BoltCrank.hex_gap_fit
+    # (the gaps along a chain opened to the next stock length, printed rings in them) and
+    # fit_hex's split (the upper end uses the air over its plate) fixed both: the decker
+    # plans in 17 layers (~8 CPU s to the first plan), the quad in 25 (~30 s).
 }
 """Per (linkage, module): the crank it gets when it names none, ahead of
 :data:`LINKAGE_CRANKS` (each with why)."""
