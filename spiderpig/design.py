@@ -60,7 +60,7 @@ the command lines): left out of :func:`engine_version`."""
 _ENGINE_VERSION: list[str] = []
 
 
-def _code_digest(source: str) -> bytes:
+def _code_digest(source: str | bytes) -> bytes:
     """A source's code without its docstrings (a docs-only edit keeps the engine version)."""
     tree = ast.parse(source)
     for node in ast.walk(tree):
@@ -88,7 +88,7 @@ def engine_version() -> str:
             if rel.parts[0] in ENGINE_EXCLUDE:
                 continue
             h.update(str(rel).encode())
-            h.update(_code_digest(p.read_text()))
+            h.update(_code_digest(p.read_bytes()))
         h.update(repr(replace(StackSpec(), max_seconds=60.0)).encode())
         _ENGINE_VERSION.append(f"{package_version()}+{h.hexdigest()[:12]}")
     return _ENGINE_VERSION[0]

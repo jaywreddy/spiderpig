@@ -994,6 +994,16 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     return _finish(design, "plan", rep, t0)
 
 
+def _manifest_design(out: Path) -> str | None:
+    """The design id ``out/manifest.json`` names (the last export into ``out``)."""
+    import json
+
+    try:
+        return json.loads((out / "manifest.json").read_text()).get("design")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def timed_out(rep) -> bool:
     """Did this plan report fail only because the planner's CPU budget ran out
     (``no_plan_in_time``: the machine was busy, the design may well plan)?"""
@@ -1088,8 +1098,9 @@ def _reuse_plan(design: Design) -> PlanReport | None:
     if own is not None:
         same = own.get("engine_version") == design.engine_version
         if not own.get("ok"):
-            if same:
-                return _commit(design, "plan", PlanReport.from_dict(own), cached=True)
+            stored = PlanReport.from_dict(own)
+            if same and not timed_out(stored):   # (one for want of CPU time: search again)
+                return _commit(design, "plan", stored, cached=True)
             return None
         side = _remake_plan(design, own, same)
         if side is not None:
@@ -1744,7 +1755,8 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     if not force:      # a prior export of these formats (or more) into this folder
         prior = _cached(design, "export", ExportReport, out_dir=str(out.resolve()))
         if (prior is not None and prior.ok and set(formats) <= set(prior.formats)
-                and all(Path(f).is_file() for f in prior.files)):
+                and all(Path(f).is_file() for f in prior.files)
+                and _manifest_design(out) == design.id):   # (not since overwritten)
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
     job = None
@@ -1822,6 +1834,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         from spiderpig import build as build_cli
 
         with _timed("print"):
+            build_cli.clear_generated(out / "print")     # no STLs of another design
             build_cli.export_prints(groups["printed"], out / "print",
                                     density=filament_density(filament))
         files += sorted((out / "print").glob("*"))
@@ -1832,6 +1845,9 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     if "dxf" in formats:
         try:
             with _timed("dxf"):
+                from spiderpig.build import clear_generated
+
+                clear_generated(out / "laser")       # no sheets of another design
                 sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
                                      kerf=kerf, default=cfg.sheet)
             files += sheets + [out / "laser" / f"{name}_sheet_parts.csv"]

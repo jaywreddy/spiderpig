@@ -630,7 +630,9 @@ def shim_key(family: str, t: float) -> str:
     return f"{family}_t{t:g}".replace(".", "p")
 
 
-def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], list[str]]:
+def split_shims(lines: list[BomLine], by_name: dict,
+                stacks: dict[str, list[float]] | None = None
+                ) -> tuple[list[BomLine], list[str]]:
     """Each DIN 988 family's lines as lines per thickness (what can be ordered).
 
     The constructions model a shim stack as one ring as thick as the stack (its line
@@ -653,6 +655,17 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
         others = 0           # rings beyond the first that the ring bodies stand for
         for line in fl:
             body = by_name.get(line.where)
+            name = line.where or ""
+            told = (stacks or {}).get(name) or (stacks or {}).get(
+                name[2:] if name[:2] in ("L.", "R.") else None)
+            if body is not None and told:
+                # the construction said what it stacked (``Realized.notes["shim_stacks"]``)
+                stack = [float(t) for t in told]
+                others += max(len(stack) - 1, 0)
+                what = " + ".join(f"{t:g}" for t in stack)
+                split += [BomLine(shim_key(fam, t), line.qty, f"{line.where} ({what} mm)")
+                          for t in stack]
+                continue
             if body is not None and body.part is not None:
                 bb = body.part.bounding_box()
                 total = round(min(bb.size.X, bb.size.Y, bb.size.Z), 2)
@@ -868,7 +881,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
     lines.extend(mech.bom_extras)
-    lines, shim_notes = split_shims(lines, by_name)
+    lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes
 
     grouped: dict[str, PurchaseRow] = {}
@@ -891,7 +904,13 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             row.where.append(line.where)
     for row in grouped.values():
         row.qty = round(row.qty, 6)
-        row.packs = max(1, math.ceil(row.qty / max(row.pack_qty, 1) - 1e-9))
+        offer = get(row.key).offer
+        if offer is None:
+            row.packs = max(1, math.ceil(row.qty / max(row.pack_qty, 1) - 1e-9))
+            continue
+        row.packs, usd = offer.buy(row.qty)        # at its price break, where it has them
+        if usd is not None:
+            row.pack_price_usd = round(usd / row.packs, 4)
     order = ["servo", "horn", "fastener", "insert", "nut", "washer", "standoff", "spacer",
              "bearing", "bushing", "dowel", "clip", "sheet", "filament", "adhesive", "misc"]
     purchased = sorted(

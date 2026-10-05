@@ -177,6 +177,26 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
     return rows
 
 
+GENERATED = (".dxf", ".stl", ".csv")
+"""What a build or an export writes under ``laser/`` and ``print/`` (the DXFs, the STLs,
+their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``)."""
+
+
+def clear_generated(folder: Path) -> None:
+    """Delete the files a build writes (:data:`GENERATED`) under ``folder`` and the
+    folders that leaves empty; anything else there (a user's notes) stays."""
+    if not folder.is_dir():
+        return
+    for f in folder.rglob("*"):
+        if f.is_file() and f.suffix.lower() in GENERATED:
+            f.unlink()
+    for d in sorted((d for d in folder.rglob("*") if d.is_dir()), key=lambda d: -len(d.parts)):
+        if not any(d.iterdir()):
+            d.rmdir()
+    if not any(folder.iterdir()):
+        folder.rmdir()
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     if args.list:
@@ -185,10 +205,8 @@ def main(argv=None) -> int:
     config = args.config
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
-    import shutil
-
-    for owned in ("laser", "print"):     # the build's own folders: no files left from before
-        shutil.rmtree(out / owned, ignore_errors=True)
+    for owned in ("laser", "print"):     # no cut or print files left from an earlier build
+        clear_generated(out / owned)
     from spiderpig.api import config_warnings
 
     for w in config_warnings(config):       # what the API's resolve would warn about

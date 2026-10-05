@@ -84,25 +84,35 @@ def test_the_rail_screw_reaches_through_its_nut_on_any_frame_plate():
 
 
 @pytest.mark.slow
-def test_a_round_crankpins_shims_are_its_take_up_and_ordered_exactly():
+@pytest.mark.parametrize("kw", [dict(linkage="trotbot_heel", module="single"),
+                                dict(linkage="strider", module="double", crank="bolt_round")])
+def test_a_round_crankpins_shims_are_its_take_up_and_ordered_exactly(kw):
     from spiderpig.config import BuildConfig
-    from spiderpig.fabricate import design_side, fabricate, template_for
-    from spiderpig.hardware.bom import bom_from_mechanism
+    from spiderpig.fabricate import fabricate, template_for
+    from spiderpig.hardware.bom import SHIM_AS, bom_from_mechanism, shim_key
 
-    cfg = BuildConfig(linkage="trotbot_heel", module="single", robot=False)
-    tmpl = template_for(cfg)
-    design_side(tmpl, cfg)
-    mech = fabricate(tmpl, cfg, 1.0)
-    shims = [b for b in mech.bodies if b.name.startswith("crank_pin_shims_")]
+    cfg = BuildConfig(**kw)                     # the robot: its bodies are L./R. prefixed
+    mech = fabricate(template_for(cfg), cfg, 1.0)
+    shims = [b for b in mech.bodies if "crank_pin_shims_" in b.name]
     assert shims
     notes = mech.meta["crank_bolt"]["chains"]
+    want = {c["at"]: c["shims_mm"] for c in notes if c.get("shims_mm")}
     for b in shims:
-        bb = b.part.bounding_box()
-        tag = b.name.removeprefix("crank_pin_shims_")
-        want = next(c["shims_mm"] for c in notes if c["at"] == tag)
-        assert abs(bb.size.Z - want) <= 0.11                   # the stack, not 0.5 mm short
+        tag = b.name.split("crank_pin_shims_")[1]
+        assert abs(b.part.bounding_box().size.Z - want[tag]) <= 0.11
     bom = bom_from_mechanism(mech, group=False)
-    assert not any(r.key == "shim_din988_4x8" for r in bom.purchased)   # per thickness
+    assert not any(r.key in ("shim_din988_4x8", "shim_din988_6x12") for r in bom.purchased)
+    # every crankpin's stack is ordered: its thicknesses add up to it, each on its own line
+    for side in ("L.", "R."):
+        for tag, mm in want.items():
+            name = f"{side}crank_pin_shims_{tag} ("
+            rows = [(r.key, w) for r in bom.purchased for w in r.where if w.startswith(name)]
+            stack = [float(t) for t in rows[0][1][len(name):].split(" mm)")[0].split(" + ")]
+            assert abs(sum(stack) - mm) <= 0.11, (side, tag, stack, mm)
+            keys = {k for k, _ in rows}
+            for t in stack:
+                assert (SHIM_AS.get(shim_key("shim_din988_4x8", t), (shim_key(
+                    "shim_din988_4x8", t),))[0]) in keys, (t, keys)
 
 
 @pytest.mark.slow
@@ -119,3 +129,69 @@ def test_a_build_leaves_no_cut_or_print_files_from_before(tmp_path):
     assert not stale.exists()
     assert not (tmp_path / "print" / "old.stl").exists()
     assert list((tmp_path / "laser" / "parts").rglob("*.dxf"))
+
+
+def test_a_stored_plan_that_ran_out_of_time_is_searched_again(tmp_path):
+    import json
+
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store = Store(tmp_path)
+    heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
+                                                      "params": {"unit": 7}},
+                        "legs": {"module": "single"},
+                        "constructions": {"crank": "keyed", "pillar": "printed"}}, store)
+    assert not api.plan(heel).ok
+    path = store.report_path(heel.id, "plan")
+    doc = json.loads(path.read_text())
+    assert api._reuse_plan(api.load(heel.id, store)) is not None   # a real failure: cached
+    for f in doc["failures"]:
+        f["code"] = "no_plan_in_time"
+    path.write_text(json.dumps(doc))
+    assert api._reuse_plan(api.load(heel.id, store)) is None        # CPU time: not cached
+
+
+def test_an_export_into_a_folder_another_design_wrote_last_is_not_reused(tmp_path):
+    import json
+
+    from spiderpig import api
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "manifest.json").write_text(json.dumps({"design": "someone-else"}))
+    assert api._manifest_design(out) == "someone-else"
+    assert api._manifest_design(tmp_path) is None
+
+
+def test_clearing_generated_files_keeps_the_users_own(tmp_path):
+    from spiderpig.build import clear_generated
+
+    (tmp_path / "laser" / "parts" / "x").mkdir(parents=True)
+    (tmp_path / "laser" / "parts" / "x" / "a.dxf").write_text("")
+    (tmp_path / "laser" / "notes.txt").write_text("mine")
+    (tmp_path / "print").mkdir()
+    (tmp_path / "print" / "a.stl").write_text("")
+    clear_generated(tmp_path / "laser")
+    clear_generated(tmp_path / "print")
+    assert (tmp_path / "laser" / "notes.txt").read_text() == "mine"
+    assert not (tmp_path / "laser" / "parts").exists()
+    assert not (tmp_path / "print").exists()
+
+
+def test_the_engine_digest_reads_a_source_in_its_declared_encoding():
+    from spiderpig.design import _code_digest
+
+    src = "# -*- coding: latin-1 -*-\ns = '\xe9'\n"
+    assert _code_digest(src.encode("latin-1")) == _code_digest(src.encode("latin-1"))
+    assert _code_digest(b"x = 1\n") == _code_digest("x = 1\n")
+
+
+def test_a_made_to_length_pillar_is_bought_at_its_price_break():
+    from spiderpig.hardware.catalog import get
+
+    offer = get("pillar_shaft_6_m3_62.4").offer
+    assert offer.buy(1) == (1, 14.97)
+    assert offer.buy(4) == (5, 54.3)            # five at 10.86 cost less than four at 14.97
+    assert offer.buy(6) == (10, 54.7)           # ten at 5.47 less than six at 10.86
+    assert offer.buy(12) == (12, 65.64)

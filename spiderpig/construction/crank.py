@@ -2871,8 +2871,8 @@ class _BoltPlates:
             part = disc(xy, od / 2, z0, z0 + t) - disc(xy, self.c.bore / 2, z0 - 1, z0 + t + 1)
             tag = f"{pl.shape.at}_{pl.layer}"
             self.buy(f"crank_washers_{tag}", part, items[0][0], "#f2f2f2")
-            for key, _ in items[1:]:
-                out.extras.append(BomLine(key, 1, f"crankpin {tag}: gap washers"))
+            for key, tt in items[1:]:     # each shim by its thickness (the BOM orders them so)
+                out.extras.append(BomLine(key, 1, f"crankpin {tag}: {tt:g} mm in the gap"))
 
     def finish(self) -> Realized:
         from build123d import Plane, section
@@ -3024,6 +3024,10 @@ class _WebPlates(_BoltPlates):
                 t = z0 - z_lo
             shim = disc(xy, 3.95, z_lo, z_lo + t) - disc(xy, 2.05, z_lo - 1, z_lo + t + 1)
             self.buy(f"crank_pin_shims_{tag}", shim, items[0][0], "#9a9a9a")
+            # the stack as bought (the body may be drawn a hair short of it, above): the BOM
+            # orders these thicknesses, not a breakdown of the drawn height
+            self.out.notes.setdefault("shim_stacks", {})[f"crank_pin_shims_{tag}"] = [
+                x[1] for x in items]
             for key, _ in items[1:]:
                 self.out.extras.append(BomLine(key, 1, f"crankpin {tag}: shims"))
         sk_lo = get(j.screw_lo).dims
