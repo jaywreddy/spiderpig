@@ -118,6 +118,10 @@ feet on the ground don't slide (least squares; the residual is the *slip*).
   *chase* / *follow* / *free* (orbit works in all), *support + COM* overlay
   (support polygon, COM and its drop, green or red), contact feet (green
   dots), trail, *reset*.
+- **Drive pad** (bottom right; above the play bar on a phone): ▲ ▼ ◀ ▶,
+  held with a finger or the mouse (several at once with several fingers),
+  read arcade-style in either scheme (▲ ▼ throttle, ◀ ▶ turn) and added to
+  the keys. A press starts drive mode.
 - **HUD**: speed along the heading, yaw rate, height, pitch, roll, contacts,
   slip, stability margin, the cranks' rpm and relative phase, the last
   revolution (net distance and path, turn, bob, pitch / roll range, slip,
@@ -146,6 +150,7 @@ viewer/
 ├── src/
 │   ├── main.ts        # entry; render loop, deep links, window.__viewer
 │   ├── scene.ts       # renderer, camera + view presets, lights, grid, orbit
+│   ├── layout.ts      # phone / tablet layout (COMPACT) and the chrome's insets
 │   ├── loader.ts      # GLTFLoader + foot-path overlay
 │   ├── controls.ts    # slider / play / mode dropdown wiring
 │   ├── live-reload.ts # /ws client → re-load GLB on rebake
@@ -153,9 +158,21 @@ viewer/
 │   ├── style.css
 │   └── drive/
 │       ├── model.ts   # SPEC walking model: support, no-slip motion, metrics
-│       ├── sim.ts     # keyboard / gamepad input, crank rates, pose integration
+│       ├── sim.ts     # keyboard / gamepad / pad input, crank rates, pose integration
 │       ├── view.ts    # body pose, per-side animation, overlays, stick figure, camera
 │       └── index.ts   # drive + tune panels (lil-gui), data sources, deep links
 └── node_modules/      # gitignored; never ships
 ../spiderpig/viewer/dist/   # gitignored — `mise run viewer-build` output (Vite's outDir): package data
 ```
+
+## Phones and tablets
+
+Under `layout.ts`'s `COMPACT` (narrower than 700 px, or a touch screen) the
+status is one line, the Drive and Tune panels start collapsed as two title
+bars side by side and open one at a time like tabs (full width, stopping
+short of the dock), and the drive pad sits above the play bar (beside it on
+a phone held sideways). Everywhere, the camera frames the model in the band
+between the top bar and the dock (a view offset, `Stage.setInsets`), a
+portrait screen gets a wider vertical field of view so the horizontal one
+doesn't shrink to a slit, and drive mode's camera starts further back where
+the screen is narrow or short (`scene.followScale`).

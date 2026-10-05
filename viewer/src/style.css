@@ -1,6 +1,8 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;   /* a drag on the canvas orbits; it never scrolls or pulls to refresh */
   background: #101418;
   color: #cfd6de;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -9,13 +11,30 @@ html, body {
 #stage {
   position: fixed;
   inset: 0;
+  /* The CSS size: without it the canvas shows at its drawing-buffer size, devicePixelRatio
+     times the viewport, and a phone sees a cropped, magnified corner of the scene. */
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
 }
 
-#panel {
+/* The bottom dock: the play bar, and the drive pad to its right (above it on a phone). */
+#dock {
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  pointer-events: none;        /* the gaps between the bar and the pad orbit the camera */
+}
+#dock > * { pointer-events: auto; }
+
+#panel {
+  flex: 1;
+  min-width: 0;
   background: rgba(16, 20, 24, 0.85);
   backdrop-filter: blur(6px);
   border: 1px solid #2a333d;
@@ -26,7 +45,7 @@ html, body {
   align-items: center;
 }
 
-#panel button {
+#panel button, #pad button {
   background: #2a333d;
   color: #cfd6de;
   border: 1px solid #3a444f;
@@ -36,7 +55,7 @@ html, body {
   font-size: 14px;
 }
 
-#panel button:hover {
+#panel button:hover, #pad button:hover {
   background: #36414d;
 }
 
@@ -52,6 +71,7 @@ html, body {
 
 #slider {
   flex: 1;
+  min-width: 0;
   accent-color: #3060ff;
 }
 
@@ -60,6 +80,36 @@ html, body {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 13px;
 }
+
+/* The drive pad: arrow keys, held while pressed (drive/sim.ts ``Input.bindPad``). */
+#pad {
+  display: grid;
+  grid-template-areas: ". up ." "left down right";
+  grid-template-columns: repeat(3, 48px);
+  grid-template-rows: repeat(2, 40px);
+  gap: 6px;
+  padding: 6px;
+  background: rgba(16, 20, 24, 0.85);
+  backdrop-filter: blur(6px);
+  border: 1px solid #2a333d;
+  border-radius: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+#pad button {
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  touch-action: none;          /* no double-tap zoom, no scroll: a held button is a held key */
+  -webkit-tap-highlight-color: transparent;
+}
+#pad [data-dir="up"] { grid-area: up; }
+#pad [data-dir="left"] { grid-area: left; }
+#pad [data-dir="down"] { grid-area: down; }
+#pad [data-dir="right"] { grid-area: right; }
+#pad button.held { background: #3060ff; border-color: #5a80ff; color: #fff; }
+body:not(.driving) #pad button:not(.held) { opacity: 0.75; }   /* a press starts drive mode */
 
 #status {
   position: fixed;
@@ -74,10 +124,14 @@ html, body {
 
 /* Drive mode (drive/): lil-gui panels (drive + HUD top right, tune top left),
    tipping warning top centre. */
-#drive-gui, #tune-gui { --name-width: 42%; max-height: calc(100% - 100px); overflow-y: auto; }
+#drive-gui, #tune-gui {
+  --name-width: 42%;
+  max-height: calc(100% - var(--dock-h, 100px) - 24px);   /* short of the dock (main.ts) */
+  overflow-y: auto;
+}
 #tune-gui { position: fixed; top: 34px; left: 12px; z-index: 1000; }
 #drive-gui .controller.disabled, #tune-gui .controller.disabled { opacity: 0.9; }
-#drive-spark { display: block; margin: 4px 6px 6px; }
+#drive-spark { display: block; margin: 4px 6px 6px; max-width: calc(100% - 12px); }
 #drive-warn {
   position: fixed;
   top: 72px;          /* below the status bar and the Tune panel's header (top 34 px) */
@@ -93,3 +147,70 @@ html, body {
   font-weight: 600;
 }
 body.driving #play, body.driving #slider, body.driving #readout { visibility: hidden; }
+
+/* Phones and tablets (layout.ts ``COMPACT``): a one-line status, the two panels' title bars
+   side by side under it (collapsed at first, drive/index.ts; one open at a time, full width,
+   stopping short of the dock), the pad big enough for a thumb, centred above the play bar. */
+@media (max-width: 700px), (pointer: coarse) {
+  #status {
+    top: calc(6px + env(safe-area-inset-top));
+    left: 10px;
+    right: 10px;
+    max-width: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11px;
+  }
+  #tune-gui, #drive-gui {
+    top: calc(24px + env(safe-area-inset-top));
+    width: min(calc(50% - 12px), 300px) !important;
+    max-height: calc(100% - 24px - env(safe-area-inset-top) - var(--dock-h, 200px) - 8px);
+  }
+  #tune-gui { left: 8px; }
+  #drive-gui { right: 8px; }
+  #tune-gui:not(.closed), #drive-gui:not(.closed) { width: auto !important; left: 8px; right: 8px; z-index: 1002; }
+  /* The other title stays on top of the open panel's: the two read as tabs. */
+  #tune-gui.closed, #drive-gui.closed { z-index: 1003; }
+  #drive-gui:not(.closed) > .title { padding-left: calc(50% + 6px); }   /* its label in its own tab */
+  #drive-warn {
+    top: calc(64px + env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: none;
+    min-width: 0;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  #dock {
+    left: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 8px;
+  }
+  #pad {
+    align-self: center;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(2, 52px);
+    gap: 8px;
+    padding: 8px;
+    border-radius: 12px;
+  }
+  #pad button { font-size: 22px; border-radius: 10px; }
+  #panel { padding: 6px 8px; gap: 8px; }
+  #panel select { font-size: 16px; }   /* iOS zooms into a focused field under 16 px */
+  #readout { display: none; }
+  body.driving #play, body.driving #slider { display: none; }
+  body.driving #panel { flex: 0 1 auto; align-self: center; }
+}
+
+/* A phone on its side: little height, so the pad goes back beside the play bar. */
+@media (orientation: landscape) and (max-height: 500px) {
+  #dock { flex-direction: row; align-items: flex-end; }
+  #pad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 42px); gap: 6px; padding: 6px; }
+  body.driving #panel { align-self: flex-end; }
+}

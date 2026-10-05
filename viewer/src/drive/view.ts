@@ -162,13 +162,16 @@ export class DriveView {
     put(this.stick.geometry, 'position', pts);
   }
 
-  /** Keep the camera with the robot (orbit still works): translate with it; in chase, turn with it too. */
-  follow(camera: THREE.Camera, controls: OrbitControls, m: THREE.Matrix4, heading: number, chase: boolean): void {
+  /** Keep the camera with the robot (orbit still works): translate with it; in chase, turn with it too.
+   * It starts ``scale`` × a desktop window's distance away (``scene.followScale``: further on a phone). */
+  follow(camera: THREE.Camera, controls: OrbitControls, m: THREE.Matrix4, heading: number, chase: boolean,
+    scale = 1): void {
     const p = new THREE.Vector3().setFromMatrixPosition(m).setZ(80);
     if (!this.last) {   // start behind the robot, a little to its left and above
       const back = new THREE.Vector3(-Math.cos(heading), -Math.sin(heading), 0);
       controls.target.copy(p);
-      camera.position.copy(p).addScaledVector(back, 900).add(new THREE.Vector3(back.y * 400, -back.x * 400, 380));
+      camera.position.copy(p).add(back.clone().multiplyScalar(900)
+        .add(new THREE.Vector3(back.y * 400, -back.x * 400, 380)).multiplyScalar(scale));
     } else {
       if (chase) {
         const off = camera.position.clone().sub(controls.target)
