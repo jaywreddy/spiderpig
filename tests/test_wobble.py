@@ -194,3 +194,22 @@ def test_the_fallback_pin_loads_come_from_the_family():
     assert pin_loads_for("strider") == FALLBACK_PIN_LOADS["strider"]
     assert pin_loads_for("jansen") is None
     assert pin_loads_for("hoecken") is None
+
+
+def test_thin_lower_chicago_spacers_are_bonded_gaps_not_prints(chicago_side):
+    key, _, _, fab = chicago_side
+    if key != "chicago":
+        pytest.skip("the bushed pins take the same spacers")
+    from spiderpig.construction.pivots.common import PRINT_MIN
+
+    names = {b.name for b in fab.bodies}
+    for pin, note in fab.meta["chicago"].items():
+        gap = note["bond_gap_mm"]
+        lo = [n for n in names if n.endswith(f"{pin.split(':')[-1]}_spacer_lo")]
+        if gap:
+            assert gap < PRINT_MIN
+            assert not lo                          # no part thinner than a print
+        for body in fab.bodies:
+            if body.fab == "printed" and body.name.endswith(("_spacer_lo", "_spacer_hi")):
+                bb = body.part.bounding_box()
+                assert min(bb.size.X, bb.size.Y, bb.size.Z) >= PRINT_MIN - 1e-6, body.name

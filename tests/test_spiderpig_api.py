@@ -470,7 +470,8 @@ def test_export_writes_what_the_cli_writes(tmp_path):
     # stub's thrust sleeve; the STS3215's two near front screws left out); 69 since the hex
     # crank's gap rules of 2026-10-05 (another 10-layer layering: fewer pivot washers/shims);
     # 65 with the Chicago screws as bought (1 mm barrel steps: fewer shims)
-    assert len(manifest["parts"]) == 65
+    # 63: no printed lower spacer thinner than a print (bonded gaps, 2026-10-05)
+    assert len(manifest["parts"]) == 63
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 

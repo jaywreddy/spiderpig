@@ -593,7 +593,8 @@ def cost_row(design: Design, bom) -> Row | None:
 
 GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")  # anchored in the plates with CA glue
 # threadlocker on its end screws (M4; M3 for standoff_m3)
-LOCKED_PILLARS = ("standoff", "standoff_bench", "standoff_m3")
+LOCKED_PILLARS = ("standoff", "standoff_hand", "standoff_bench", "standoff_m3")
+SPLICED_PILLARS = ("standoff_hand", "standoff_bench", "standoff_m3")   # 243 on the splices
 GLUED_PINS = ("bearing", "bushing")                         # an insert glued into each link
 EPOXY_PINS = ("chicago", "chicago_bushing")                 # the barrel bonded in its lowest link
 LOCKED_PINS = ("chicago", "chicago_bushing")                # threadlocker on each screw
@@ -647,6 +648,8 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     locks = {getattr(crank, "lock_key", None)}
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
+    if cfg.pillar in SPLICED_PILLARS:
+        locks.add("threadlocker_243")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
     total, priced, unpriced = 0.0, [], []
     for key, qty in lines:
