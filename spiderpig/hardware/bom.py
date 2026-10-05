@@ -634,7 +634,8 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
       stock horn), a drop each; none in a plastic horn (metal to metal only);
     * threadlocker 243 on each pillar splice's stud (``pillar_<joint>_stud<k>``), a dab
       each, metal to metal, kept off the acrylic (the user's decision of 2026-10-05; 263
-      holds as well).
+      holds as well), unless the pillar construction already listed them (its
+      ``splice_lock_key`` line in ``mech.bom_extras``); the note is written either way.
     """
     lines: list[BomLine] = []
     notes: list[str] = []
@@ -675,7 +676,10 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
                                  f"{n}: into the metal horn (a drop, metal to metal)"))
         notes.append(f"Horn screws: a drop of low-strength threadlocker (Loctite 222) each "
                      f"({len(horn_screws)}), steel into the metal horn; none in a plastic horn.")
-    for n in studs:
+    # the pillar construction lists its splice studs' threadlocker itself
+    # (StandoffAxle.splice_lock_key, a line per pillar in bom_extras): don't count them twice
+    listed = any("splice stud" in (x.where or "") for x in getattr(mech, "bom_extras", ()))
+    for n in ([] if listed else studs):
         lines.append(BomLine(SPLICE_LOCK, LOCK_PER_THREAD,
                              f"{n}: splice stud (243 or 263; metal to metal, off the acrylic)"))
     if studs:

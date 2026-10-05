@@ -88,6 +88,8 @@ def sheet(key: str) -> Sheet:
 LINK_SHEETS: dict[str, dict[str, str]] = {
     # the user's decision of 2026-10-04 (3): klann_lego's crank rider b1 jams past what
     # acrylic holds (strength.link_rows names 6061 for it), so it is cut from 6061 by default
+    # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
+    # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links

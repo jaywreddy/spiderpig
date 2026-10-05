@@ -26,6 +26,7 @@ from spiderpig import manufacture
 from spiderpig.hardware.bom import (
     PRESS_FILAMENT,
     TPU_FILAMENT,
+    BomLine,
     bom_from_mechanism,
     fitting_lines,
     part_filament,
@@ -274,4 +275,15 @@ def test_splice_studs_get_medium_threadlocker():
     assert [x.where.split(":")[0] for x in studs] == ["L.pillar_J2_leg0_stud3"]  # not the ties'
     assert "243 or 263" in studs[0].where
     assert "off the acrylic" in studs[0].where
+    assert any("splice stud" in n for n in notes)
+
+
+def test_splice_stud_threadlocker_is_not_counted_twice():
+    """The pillar construction lists its splice studs' 243 itself (``splice_lock_key``, in
+    ``bom_extras``); the fitting lines then add only the note (merge of r4, 2026-10-05)."""
+    mech = _fitted_mech()
+    mech.bom_extras.append(BomLine("threadlocker_243", 0.01,
+                                   "pillar_J2_leg0 splice studs (metal to metal only)"))
+    lines, notes, _ = fitting_lines(mech)
+    assert not any(x.key == "threadlocker_243" for x in lines)
     assert any("splice stud" in n for n in notes)

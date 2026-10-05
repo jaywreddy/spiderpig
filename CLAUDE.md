@@ -102,8 +102,7 @@ mechanisms' sweep of 2026-10-04 (`docs/audit/STRENGTH.md`, on the round standoff
 layers: the horn spacer takes the short crank's head, `hub_head_need` / `hub_capped`), so
 since the merge `LINKAGE_CRANKS` holds TrotBot's heel and toe on `bolt_round` (b7 passes
 crankpin J1 at 10.2 mm, the hex's 8.5 mm sleeve needs 11.2; the round 6 mm standoff plans,
-14 layers) and `klann_lego` (its 6061 b1's crank bore is 8.5 mm from pin C: the hex's 8.8 mm
-bore leaves a 2.02 mm web, a cut-rule error; the round's 6.3 mm, 3.27), and
+14 layers), and
 `config.MODULE_CRANKS` (per linkage and module, first; empty since 2026-10-05: the Strider's
 decker and quad were on `bolt_round`, "no hex plan in 600 CPU s"; the sleeve's post wasn't
 why, the round's own layerings route with the hex: no stock hex standoff fit their long
@@ -116,7 +115,14 @@ stands past the plates so the taller gap need is least, the upper stack using th
 its plate (`air_over`). The decker plans in 17 layers (~8 CPU s to a first plan), the quad
 in 25 (~30 s), both audit OK with no `assembly:` error; the double went 72.8 to 64.3 mm). An aluminium link riding a crankpin
 grows a boss round its bore to 1 x its thickness of web where its width leaves less
-(`plates.rider_bosses`, `RIDER_BOSS_T`; claimed, so the planner sees it). The demo Klann quad on the XL330 plans with the hex crank only after ~6 CPU
+(`plates.rider_bosses`, `RIDER_BOSS_T`; claimed, so the planner sees it; sized on the crank
+*resolved* for the crank sheet since r4, 2026-10-05: unresolved it read the round 6 mm pin, which
+left `klann_lego`'s 8.8 mm hex bore 2.02 mm from b1's edge and kept it on `bolt_round`; now every
+`klann_lego` module is on the hex crank: 8 / 9 / 10 / 14 layers, audits OK). A crank sheet per
+linkage: `config.LINKAGE_CRANK_SHEETS` (`BuildConfig.crank_sheet` "" fills it in, like `crank`):
+`hoecken_pantograph` on 0.080 in 6061 (on 0.100 in its 12 mm crank leaves 2.16 mm between the hub
+plate's hex pocket and a horn screw hole, under 1 x t; hex SF 3.89); `dwell_rocker` passes on the
+defaults. The demo Klann quad on the XL330 plans with the hex crank only after ~6 CPU
 minutes (15 layers; the 60 s default gives up), the STS3215 in 3 s.
 Since 2026-10-04 `StackSpec.max_top` is 60.
 **Hex-standoff crankpins** (the user's decision of 2026-10-04, `BoltCrank.pin="hex"`, the
@@ -146,8 +152,8 @@ so the hub plate, horn, servo and inner plate go on as one unit
 docstrings defer to). Merged (2026-10-04, with gap_sink and the body plates): the
 Strider double 15 layers / 75.3 mm (72.8 since the capped hub chain: the gap over layer 13
 went), single 11, the demo `klann` quad 14 / 76.8, the Hoecken pantograph and dwell rocker
-9 each. The round standoff (`bolt_round`: TrotBot,
-`klann_lego`; the Strider decker and quad until 2026-10-05) still screws over the hub plate: its friction clamp needs both screws, so
+9 each. The round standoff (`bolt_round`: TrotBot's heel and toe; the Strider decker and
+quad until 2026-10-05, `klann_lego` until r4) still screws over the hub plate: its friction clamp needs both screws, so
 **those designs have no assembly order** (`_WebPlates.assembly_issue`, the crank note's
 `assembly`, an `assembly:` audit error since the second assembly audit of 2026-10-04; a
 user decision: a hex plan for them, a hub joint fastened from the horn side, or leaving

@@ -131,6 +131,45 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   the load and the SF, and fixes recomputed to clear it (another construction, the
   links in adjacent layers, a thicker printed pillar, a lower torque limit).
 
+## klann_lego and two mechanisms on the hex crank, 2026-10-05 (r4)
+
+Each design debugged on its own, audited on ao-server (runs `20261004-235449`,
+`20261004-235940`). `klann_lego`'s quad at 0,0,180,180.
+
+| design | crank (sheet) | layers | pin SF | pillar SF | crank SF | link SF | cut rules | audit |
+|---|---|---|---|---|---|---|---|---|
+| klann_lego_single | hex (0.100 in 6061) | 8 | 3.27 / 86.2 | 7.62 / 199.48 | 4.91 / 86.64 | 1.6 / 52.59 (b4) | 0 err, 12 warn | OK |
+| klann_lego_double | hex (0.100 in 6061) | 9 | 3.28 / 68.73 | 6.43 / 131.42 | 4.91 / 28.84 | 1.6 / 40.2 (b4) | 0 err, 16 warn | OK |
+| klann_lego_decker | hex (0.100 in 6061) | 10 | 3.29 / 62.72 | 6.38 / 160.31 | 3.08 / 35.45 | 1.61 / 35.82 (b4) | 0 err, 18 warn | OK |
+| klann_lego_quad | hex (0.100 in 6061) | 14 | 3.23 / 29.55 | 4.05 / 36.2 | 2.46 / 14.3 | 1.58 / 20.24 (b4) | 0 err, 28 warn | OK |
+| hoecken_pantograph | hex (0.080 in 6061) | 9 | - | - | 3.89 | - | 0 err, 3 warn | OK |
+| dwell_rocker | hex (0.100 in 6061) | 8 | - | - | 4.91 | - | 0 err, 3 warn | OK |
+
+What was wrong and what fixed it:
+
+* **klann_lego** (every module; it was on the round crank, `bolt_round`, which screws over
+  the hub plate: no assembly order). On the hex crank its 6061 b1's 8.8 mm sleeve bore was
+  2.02 mm from the link's **edge**, not from pin C (56 mm off, as the earlier note had it):
+  `plates.rider_bosses` read the crank from the registry unresolved, and an unresolved
+  `BoltCrank` reports the round 6 mm pin, so b1's end grew for a 6.3 mm bore (6.43 mm
+  radius). Resolved for the crank sheet, the end grows to 7.7 mm round the 8.8 mm bore:
+  3.27 mm of web, over 1 x t (a warning under 2 x t). That is the "wider end on a metal
+  link" (a boss at the crank end only; the rest of b1 keeps the 6 mm half-width: its 4.2 mm
+  pin holes have 3.9 mm, over 1 x t). The double then showed a 0.165 mm^3 clash between a
+  printed hex collar and its washer: `BoltCrank.fit_hex` rounded the collar to 0.01 mm, up
+  as often as down; it is floored now. b1 stays 0.125 in 6061 (jam SF 5.7+); the acrylic
+  links pass (b2, b3); b4 (6061, the foot) is the weakest link, 1.6, a warning.
+* **hoecken_pantograph** (the hex crank, a cut-rule error): its 12 mm crank puts crankpin
+  M's hex pocket in the hub plate 2.16 mm from a horn screw hole (r 7 mm), under 1 x the
+  0.100 in sheet. On 0.080 in 6061 (2.03 mm) that web is over 1 x t, and the hex pocket
+  holds the drive's torque at SF 3.89. `config.LINKAGE_CRANK_SHEETS` gives it that sheet
+  (the thinnest-sheet rule, at a mechanism's load); `--crank-sheet al6061_2p5mm` keeps the
+  thicker one. The round standoff plans (10 layers) but has no assembly order; the keyed
+  crank's key holds SF 0.64.
+* **dwell_rocker**: nothing wrong on the defaults (the hex crank since the merge of
+  2026-10-04: the horn spacer takes the short crank's head). Pinned by
+  `tests/test_klann_lego_cranks.py`.
+
 ## Every walker x module, 2026-10-04 evening (thinnest sheets, single-plate crank)
 
 (On the round standoff crank, before the hex-standoff crank merged: the crank column and the

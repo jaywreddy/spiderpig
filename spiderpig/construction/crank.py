@@ -2028,7 +2028,8 @@ class BoltCrank:
         _, S, out_lo, out_hi, L, k, e = best
 
         def collar(o: float) -> float:
-            # to 0.01 mm under what stands past (never over: the washer bears on the end)
+            # to 0.01 mm, never past the standoff's end (rounded up, it stood into the
+            # washer on that end: klann_lego double's 0.165 mm^3 clash, r4 2026-10-05)
             return math.floor(o * 100 + 1e-6) / 100 if o >= self.collar_min - EPS else 0.0
 
         inner = span - t_lo - t_hi

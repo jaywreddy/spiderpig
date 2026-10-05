@@ -60,11 +60,11 @@ LINKAGE_CRANKS: dict[str, str] = {
     # alternative, the hex crank at unit 12 (x1.14), changes the linkage's size.
     "trotbot_heel": "bolt_round",
     "trotbot_toe": "bolt_round",
-    # klann_lego: its b1 (6061, the user's decision 3) carries the crank bore 8.5 mm from
-    # pin C's hole; the hex sleeve's 8.8 mm bore leaves 2.02 mm between them, under 1 x the
-    # 3.175 mm sheet (a cut-rule error). The round standoff's 6.3 mm bore leaves 3.27 mm
-    # (its end grown round the bore, plates.rider_bosses, keeps the edge too).
-    "klann_lego": "bolt_round",
+    # klann_lego is on the hex crank since r4 (2026-10-05): its 6061 b1's 8.8 mm hex-sleeve
+    # bore left 2.02 mm to the link's *edge* (not to pin C, 56 mm off), because
+    # plates.rider_bosses read the unresolved BoltCrank (the round 6 mm pin) and grew the
+    # end for a 6.3 mm bore; resolved, the end grows to 7.7 mm round the 8.8 mm bore (3.27
+    # mm of web, over 1 x t) and every module plans and has an assembly order.
 }
 """Per linkage: the crank it gets when it names none, where :data:`DEFAULT_CRANKS`'
 doesn't plan (each with why)."""
@@ -84,6 +84,30 @@ MODULE_CRANKS: dict[tuple[str, str], str] = {
 }
 """Per (linkage, module): the crank it gets when it names none, ahead of
 :data:`LINKAGE_CRANKS` (each with why)."""
+
+
+CRANK_SHEET = "al6061_2p5mm"
+"""The crank's plates when nothing names a sheet: 0.100 in 6061-T6, the thinnest whose hex
+pockets hold the walkers' jam twist (2 x 0.85 N·m) at SF 2 (``materials.thinnest_sheet
+("crank")``, 2026-10-04)."""
+
+LINKAGE_CRANK_SHEETS: dict[str, str] = {
+    # hoecken_pantograph (r4, 2026-10-05): its 12 mm crank puts crankpin M's hex pocket in
+    # the hub plate 2.16 mm from the horn's screw holes (r 7 mm), under 1 x the 2.54 mm
+    # sheet (a cut-rule error). On 0.080 in 6061 (2.03 mm) that web is over 1 x t (a
+    # warning) and the hex holds the drive's torque at SF 3.89 (factor 1, a mechanism). The
+    # round standoff plans but screws over the hub plate (no assembly order); the keyed
+    # crank's key holds SF 0.64. The 0.100 in sheet stays selectable (--crank-sheet).
+    "hoecken_pantograph": "al6061_2mm",
+}
+"""Per linkage: the crank sheet it gets when the config names none, where :data:`CRANK_SHEET`
+breaks a rule (each with why)."""
+
+
+def default_crank_sheet(lk: linkage.Linkage) -> str:
+    """The crank sheet ``lk`` gets when the config names none (:data:`LINKAGE_CRANK_SHEETS`,
+    else :data:`CRANK_SHEET`)."""
+    return LINKAGE_CRANK_SHEETS.get(lk.key, CRANK_SHEET)
 
 
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
@@ -111,9 +135,11 @@ class BuildConfig:
     #                                     can't take their load; the user's call 2026-10-04):
     #                                     0.080 in 5052, the thinnest stock that passes
     #                                     (materials.thinnest_sheet("frame"); tests pin it)
-    crank_sheet: str = "al6061_2p5mm"   # the crank's laser-cut plates: 0.100 in 6061-T6, the
-    #                                     thinnest whose hex pockets hold the jam twist at SF 2
-    #                                     (materials.thinnest_sheet("crank"), 2026-10-04)
+    crank_sheet: str = ""               # the crank's laser-cut plates ("": default_crank_sheet:
+    #                                     the linkage's, LINKAGE_CRANK_SHEETS, else CRANK_SHEET,
+    #                                     0.100 in 6061-T6, the thinnest whose hex pockets hold
+    #                                     the jam twist at SF 2: materials.thinnest_sheet
+    #                                     ("crank"), 2026-10-04)
     heads: str = "best"               # fasteners' heads: "sink" into the layer beside their
     #                                   link, "gap" (a thin clearance gap where a link passes),
     #                                   "best" (sunk, else in gaps; stack.StackSpec)
@@ -150,6 +176,8 @@ class BuildConfig:
             object.__setattr__(self, "module", default_module(lk.key))
         if not self.crank:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
+        if not self.crank_sheet:
+            object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
@@ -394,8 +422,10 @@ def add_build_args(p) -> None:
                    help="measured sheet thickness in mm (default: the sheet's nominal)")
     p.add_argument("--frame-sheet", dest="frame_sheet", default=d.frame_sheet,
                    help=f"sheet of the frame and centre plates (default {d.frame_sheet})")
-    p.add_argument("--crank-sheet", dest="crank_sheet", default=d.crank_sheet,
-                   help=f"sheet of the crank's plates (default {d.crank_sheet})")
+    p.add_argument("--crank-sheet", dest="crank_sheet", default=None,
+                   help=f"sheet of the crank's plates (default {CRANK_SHEET}; "
+                        + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANK_SHEETS.items())
+                        + ")")
     p.add_argument("--heads", default=d.heads, choices=("best", "sink", "gap"),
                    help="fasteners' heads: sunk into a layer, in thin clearance gaps, or "
                         f"the lower of both plans (default {d.heads})")
@@ -428,6 +458,7 @@ def config_from_args(args, **fixed) -> BuildConfig:
             pairs.append((link.strip(), key.strip()))
         fields["link_sheets"] = tuple(pairs)
     fields["crank"] = getattr(args, "crank", None) or ""        # the kind's default
+    fields["crank_sheet"] = getattr(args, "crank_sheet", None) or ""   # the linkage's
     fields.update(phases=getattr(args, "phases", None),
                   proportions=tuple(getattr(args, "proportion", None) or ()))
     fields.update(fixed)
