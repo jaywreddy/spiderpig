@@ -368,9 +368,14 @@ class ChicagoShaft:
                                    bom_key=chicago(f.length), color=STEEL))
         z = z_hi
         # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
-        # the screw bottoms on the barrel, so they only set the column's axial play)
+        # the screw bottoms on the barrel, so they only set the column's axial play). A lower
+        # one thinner than PRINT_MIN isn't printed: the lowest link is bonded to the barrel,
+        # so that gap is set with a feeler gauge as the epoxy cures (``bond_gap_mm``)
+        from spiderpig.construction.pivots.common import PRINT_MIN
+
+        bond_gap = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
         for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
-            if t <= EPS:
+            if t <= EPS or (tag == "lo" and bond_gap):
                 continue
             sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
                        d + 0.2, z0, z0 + t)
@@ -384,7 +389,8 @@ class ChicagoShaft:
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-            "play_mm": f.play, "item": chicago(f.length), "printed": True}
+            "play_mm": f.play, "item": chicago(f.length), "printed": True,
+            "bond_gap_mm": round(bond_gap, 3)}
         return f
 
 

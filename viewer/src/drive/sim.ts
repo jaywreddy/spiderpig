@@ -36,13 +36,18 @@ export class Input {
   bindPad(el: HTMLElement, onPress: () => void): void {
     el.querySelectorAll<HTMLElement>('[data-dir]').forEach((b) => {
       const dir = b.dataset.dir as PadDir;
-      const up = (): void => {
+      const pointers = new Set<number>();        // the pointers holding this button
+      this.padPointers.set(b, pointers);
+      const up = (e: PointerEvent): void => {
+        pointers.delete(e.pointerId);
+        if (pointers.size) return;              // another finger still holds it
         b.classList.remove('held');
         if (this.pad.delete(dir)) this.onChange?.();
       };
       b.addEventListener('pointerdown', (e) => {
         e.preventDefault();               // no focus, no text selection, no emulated mouse events
         b.setPointerCapture(e.pointerId);
+        pointers.add(e.pointerId);
         b.classList.add('held');
         onPress();
         if (!this.pad.has(dir)) { this.pad.add(dir); this.onChange?.(); }
@@ -52,9 +57,11 @@ export class Input {
     });
   }
 
+  private readonly padPointers = new Map<HTMLElement, Set<number>>();
+
   private clearPad(): void {
     this.pad.clear();
-    document.querySelectorAll('[data-dir].held').forEach((b) => b.classList.remove('held'));
+    this.padPointers.forEach((ids, b) => { ids.clear(); b.classList.remove('held'); });
   }
 
   /** The command: keys and gamepad in ``scheme``, plus the pad, which reads arcade-style in

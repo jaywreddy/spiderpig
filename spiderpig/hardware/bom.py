@@ -649,6 +649,7 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
         sizes = stack_steps(fam)
         split: list[BomLine] = []
         rest = 0.0           # the stacks' other rings, which the ring bodies account for
+        unmatched = False
         others = 0           # rings beyond the first that the ring bodies stand for
         for line in fl:
             body = by_name.get(line.where)
@@ -656,6 +657,8 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
                 bb = body.part.bounding_box()
                 total = round(min(bb.size.X, bb.size.Y, bb.size.Z), 2)
                 stack = shim_breakdown(total, sizes)
+                if abs(total - sum(stack)) > 0.05:
+                    unmatched = True          # a height the steps can't make: don't drop it
                 others += max(len(stack) - 1, 0)
                 what = " + ".join(f"{t:g}" for t in stack)
                 split += [BomLine(shim_key(fam, t), line.qty, f"{line.where} ({what} mm)")
@@ -672,7 +675,7 @@ def split_shims(lines: list[BomLine], by_name: dict) -> tuple[list[BomLine], lis
         # other rings: the split counts them); more is shims no stack accounts for
         split = [BomLine(SHIM_AS[x.key][0], x.qty * SHIM_AS[x.key][1], x.where)
                  if x.key in SHIM_AS else x for x in split]
-        if rest > others + 1e-6 or not all(_known(x.key) for x in split):
+        if unmatched or rest > others + 1e-6 or not all(_known(x.key) for x in split):
             notes.append(f"{get(fam).name}: listed as one line (the thicknesses could not be "
                          f"accounted for: {rest:g} rings described, {others} in the stacks).")
             out += fl
@@ -784,6 +787,13 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
     for n in ([] if listed else studs):
         lines.append(BomLine(SPLICE_LOCK, LOCK_PER_THREAD,
                              f"{n}: splice stud (243 or 263; metal to metal, off the acrylic)"))
+    gaps = {name: n.get("bond_gap_mm", 0.0)
+            for name, n in ((mech.meta or {}).get("chicago") or {}).items() if n.get("bond_gap_mm")}
+    if gaps:
+        notes.append("Chicago pins bonded off the barrel head (no printed spacer under it, "
+                     "thinner than a print): " + ", ".join(
+                         f"{k} {v:g} mm" for k, v in sorted(gaps.items()))
+                     + "; set the gap with a feeler gauge while the epoxy cures.")
     if studs:
         notes.append(f"Pillar splices ({len(studs)}): a dab of medium threadlocker "
                      "(Loctite 243, or 263) on each splice stud for retention, metal to "

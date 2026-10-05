@@ -589,37 +589,43 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
     return rs, screws, bodies
 
 
+TIE_TAKE_UP = (2.0, 3.0)   # the most a tie's shims take up: 2 mm, else (no chain fits) 3 mm
+TIE_TOL = 0.1              # a chain within this of its span after the shims (the plates' fit)
+
+
 def _chain(D: float) -> tuple[list[float], float] | None:
-    """Stock uxcell 6 mm round M3 standoff lengths (joined by M3 set screws) that fill ``D``
-    mm with at most 2 mm left over, within 0.1 mm of whole millimetres (taken up by 1 mm
-    shims, bought as pairs of DIN 433 washers): the fewest segments, then the least left
-    over."""
+    """Stock uxcell 6 mm round M3 standoff lengths (joined by M3 set screws) and the shim
+    stack (a multiple of :data:`construction.pivots.standoff.SHIM_STEP`, bought as DIN 433
+    washers) that fill ``D`` mm within :data:`TIE_TOL`: ``(segments, shims mm)``, the fewest
+    segments, then the thinnest stack; the stack up to 2 mm, else 3 mm (the XL330's 23 mm:
+    no M3 pair fills it), ``None`` when none does."""
+    from spiderpig.construction.pivots.standoff import SHIM_STEP
     from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS
 
     lengths = sorted(M3_ROUND_STANDOFF_LENGTHS)
-    for n in range(1, 5):
-        best = None
-        for combo in itertools.combinations_with_replacement(lengths, n):
-            if n > 1 and min(combo) < 12:
-                continue                     # a joined segment needs thread both ends
-            left = round(D - sum(combo), 3)
-            if abs(left - round(left)) > 0.1 + 1e-6:
-                continue
-            if 0 <= left <= 2.0 + 1e-6 and (best is None or left < best[1]):
-                best = (list(combo), left)
-        if best is not None:
-            return best
+    for most in TIE_TAKE_UP:
+        for n in range(1, 5):
+            best = None
+            for combo in itertools.combinations_with_replacement(lengths, n):
+                if n > 1 and min(combo) < 12:
+                    continue                 # a joined segment needs thread both ends
+                left = round(D - sum(combo), 3)
+                take = round(left / SHIM_STEP) * SHIM_STEP
+                if abs(left - take) > TIE_TOL + 1e-6:
+                    continue
+                if 0 <= take <= most + 1e-6 and (best is None or take < best[1]):
+                    best = (list(combo), round(take, 3))
+            if best is not None:
+                return best
     return None
 
 
 def _shims(t: float) -> list[float]:
-    steps = sorted((float(x) for x in get(TIE_SHIM_KEY).dims["t"]), reverse=True)
-    out, left = [], round(t, 3)
-    for s in steps:
-        k = int(left / s + 1e-6)
-        out += [s] * k
-        left = round(left - k * s, 3)
-    return out
+    """The shims stacking to ``t`` (a multiple of the step): whole 1 mm and SHIM_STEP, the
+    steps the BOM orders (:func:`hardware.bom.stack_steps`)."""
+    from spiderpig.hardware.bom import shim_breakdown, stack_steps
+
+    return shim_breakdown(t, stack_steps(TIE_SHIM_KEY))
 
 
 def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastened,

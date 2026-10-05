@@ -600,7 +600,7 @@ class StandoffAxle:
         segments = []
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
         trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
-        long = 0.0          # how much longer the stock segments are than their gaps
+        long = 0.0          # how far the stock segments (and take-up) are off their gaps
         for a, b in zip(faces, faces[1:], strict=False):
             z0, z1 = build.z(a)[1], build.z(b)[0]
             span = z1 - z0 - column_air(build, group, a + 1, b - 1)
@@ -617,7 +617,10 @@ class StandoffAxle:
                 # else, or for what the gap can't take, in the spacer layer under it, whose
                 # ring they shorten
                 sh = self.splice_shims(round(short, 1))
-                if sh:              # (M3: under half the thin step, 0.25 mm, is left as play)
+                # what the stock length and the rounded take-up leave off the gap (under half
+                # a step, either way) is the column's play, not lost
+                long += abs(short - sum(sh))
+                if sh:              # (under half the thin step, 0.25 mm: left as play)
                     t = sum(sh)
                     zs0 = z1 - t
                     g = build.plan.gaps.get(b - 1, 0.0) if b - 1 in col.washers else 0.0
@@ -701,7 +704,8 @@ class StandoffAxle:
             build, group, col, clearance=p.running_fit, length=pitch,
             play=self.set_play + long,
             play_basis=(f"plates and rings touching ({self.set_play:g} mm assumed)"
-                        + (f", the stock segments {long:.2f} mm over their gaps" if long else "")),
+                        + (f", the stock segments and shims {long:.2f} mm off their gaps"
+                           if long else "")),
             section=self.section())
         note["supports"] = [k for k, a in ((0, anchored[0]), (top, anchored[1])) if a]
         cap = self.splice_capacity_nmm()
