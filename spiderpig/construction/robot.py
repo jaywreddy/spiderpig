@@ -88,9 +88,13 @@ ASSEMBLY: tuple[str, ...] = (
     # can be driven in; the pivots' and the crank's docstrings defer to it)
     "1. Each side's leg stack, bottom up on its outer frame plate: per pillar its lowest "
     "standoff segment on the plate (M4 button head and washer from outside, "
-    "threadlocker); the links, Chicago pins and rings in the plan's layer order (each "
-    "pin's screw from its cap side once its bonded barrel and host link are on); the "
-    "pillars' splices as their layers come.",
+    "threadlocker, to 0.8 N·m while the segment is bare to hold); the links, Chicago pins "
+    "and rings in the plan's layer order (each pin's screw from its cap side once its "
+    "bonded barrel and host link are on); the pillars' splices as their layers come: a dab "
+    "of medium threadlocker (243 or 263; metal only, off the acrylic) on the M4 stud, the "
+    "stud into the lower segment, its DIN 988 shims, the upper segment turned on by hand "
+    "to 0.4 N·m (StandoffAxle.splice_nm; --pillar standoff_bench: each spliced column "
+    "built on the bench first at 1.0 N·m and stood on the plate before its links).",
     "2. The crank with it, bottom up: the stub standoff screwed to the lowest web (button "
     "head from above), the stub's printed thrust sleeve slid over it up to the web, and "
     "the stub through the outer plate's journal hole (the sleeve's end then 0.1 mm over "

@@ -191,11 +191,14 @@ the robot's inner plates), printed spacer sleeves in every other layer (an 8.5 m
 is under both services' smallest part; every pivot's rings are printed now), spliced (an M4
 stud) where a column is longer than 60 mm, at the fewest splice layers that leave every
 segment a length goBILDA sells, placed where the beam's moment under unit loads is least; a
-splice "plate" is a stack of DIN 988 steel shims (`splice_shims`), rated at the **supported
-splice**'s clamp (`splice_nm` 1.0 N·m, the segments turned together in soft-jaw pliers;
-`splice_capacity_nmm` 1.42 N·m to open; the user's decision 2 of 2026-10-04, accepted
-UNVERIFIED and to be tested on the first build; it was the end screws' preload on an acrylic
-ring, then 0.4 N·m finger tight). A segment up to 2 mm short of its gap takes DIN 988 end
+splice "plate" is a stack of DIN 988 steel shims (`splice_shims`), the upper segment turned
+onto the stud **by hand** in the normal bottom-up order, rated at that clamp (`splice_nm`
+0.4 N·m, `splice_capacity_nmm` 0.57 N·m to open; the user's decision of 2026-10-05), a dab of
+medium threadlocker on the stud (`splice_lock_key` 243; metal to metal only, never on
+acrylic). The bench-built column (1.0 N·m in soft-jaw pliers, 1.42 N·m to open, the
+supported splice of 2026-10-04, UNVERIFIED) stays selectable for long pillars: `--pillar
+standoff_bench` (`StandoffAxle.splice_build="bench"`; a link can't pass the 8 mm shims, so
+its splices must lie under the pillar's lowest link, a planner rule). A segment up to 2 mm short of its gap takes DIN 988 end
 shims under the face over it (in the clearance gap there, its washers trimmed, else in the
 spacer layer; the end screw or stud sized for the plate plus shims; `shims_mm` in the note). Strength: a beam per bay between its supports
 (the plates: a splice is a joint with its gapping moment checked, not a support). Chicago
@@ -225,9 +228,9 @@ The centre plates take the thinnest that seats the most rear screws
 sits on the layer's floor, the hub plate at its top (`BoltCrank.plate_z`). Cut rules
 (`spiderpig/manufacture.py`): a hole closer than 1 x the thickness to an edge or hole in
 metal, or under the service's minimum hole, is an **error** (the audit fails); under 2 x a
-warning. Standoff pillar splices are rated at a 1.0 N·m clamp (segments turned together in
-soft-jaw pliers, `StandoffAxle.splice_nm`, UNVERIFIED; 0.4 N·m finger tight failed the
-Strider quad's jam; the user accepted it 2026-10-04: to be tested on the first build).
+warning. Standoff pillar splices are rated at a 0.4 N·m hand-tight clamp (`StandoffAxle.splice_nm`,
+the user's decision of 2026-10-05: built bottom up in the stack, threadlocker on the stud;
+`--pillar standoff_bench` keeps the bench-built 1.0 N·m column).
 The body plates meet the 2 x t rule without warnings on the default designs: every round
 hole in a frame plate gets a boss of 2 t (`plates.boss_web`), the frame ties move along the
 servo until their holes are 2 t off the servo's front and rear screw holes and recesses

@@ -154,7 +154,7 @@ from spiderpig.construction.pivots.insert import BEARING, BUSHING
 from spiderpig.construction.pivots.insert import InsertAxle as InsertAxle
 from spiderpig.construction.pivots.ptfe import PtfeAxle
 from spiderpig.construction.pivots.rod import RodAxle
-from spiderpig.construction.pivots.standoff import StandoffAxle
+from spiderpig.construction.pivots.standoff import STANDOFF_BENCH, StandoffAxle
 
 PIVOTS = (RodAxle(), BoltAxle(), BEARING, BUSHING, ChicagoAxle(), CHICAGO_BUSHING,
-          PtfeAxle(), StandoffAxle())
+          PtfeAxle(), StandoffAxle(), STANDOFF_BENCH)

@@ -87,6 +87,7 @@ def test_a_splice_is_steel_shims_rated_at_a_hand_tight_clamp():
     ro, ri = a.od / 2, a.stud_hole / 2
     assert a.splice_capacity_nmm() == pytest.approx(f * (ro * ro + ri * ri) / (4 * ro))
     assert "UNVERIFIED" in a.splice_basis()
+    assert a.splice_nm == 0.4                    # hand tight, bottom up (2026-10-05)
 
 
 def test_frame_chords_join_neighbouring_pillars():

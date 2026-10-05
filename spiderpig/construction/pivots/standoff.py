@@ -19,16 +19,33 @@ sides.
 column longer than that is a chain of **segments**, each a stock length, joined end to
 end through a **splice plate**: in a layer no link of the pillar sits in, a stack of DIN 988
 steel shims (4 x 8) to the layer's thickness, clamped between the two segments' end faces
-by an M4 set screw threaded half into each (threadlocked), the segments turned together by
-hand (``splice_nm``: round standoffs have no flats). Splices go only there (a supported layer: a
-plate, never a bare joint mid-span), and :meth:`StandoffAxle.splices` picks the fewest,
-each segment at least ``min_segment`` long (thread for the stud and the end screws); a
+by an M4 set screw threaded half into each, a dab of medium threadlocker (243 or 263) on
+the stud (metal to metal only: keep it off the acrylic). Splices go only there (a supported
+layer: a plate, never a bare joint mid-span), and :meth:`StandoffAxle.splices` picks the
+fewest, each segment at least ``min_segment`` long (thread for the stud and the end screws); a
 column no choice fits is :class:`stack.Unbuildable` for the planner (the ``column``
 hook of :class:`construction.axle.AxleGroup`). The plate rings are one layer, so a
 segment spans whole layers, ``n`` x the layer pitch, and must be a length goBILDA sells
 (:data:`hardware.crank_catalog.GOBILDA_LENGTHS`: not every mm; in 3 mm layers 12, 18, 24,
 27, 30, 36, 42, 48, 54 and 60 mm, so a 15, 21, 33, 39, 45, 51 or 57 mm column is
 spliced too, e.g. 57 = 30 + a 3 mm splice plate + 24).
+
+**How a splice is built** (the user's decisions of 2026-10-05; ``splice_build``):
+
+* ``hand`` (``--pillar standoff``, the default): in the normal bottom-up assembly order,
+  as the splice's layer comes. The lower segment is already screwed to the outer plate
+  (its end screw at ``tighten_nm``), so it holds; the stud (threadlocked) goes into its top
+  end, the shims over it, and the upper segment is turned onto the stud **by hand** to
+  ``splice_nm`` = 0.4 N·m (round standoffs have no flats, and in the stack there is
+  nothing to grip the lower one with). Rated at that clamp: 500 N, 0.57 N·m to open. The
+  threadlocker keeps it from backing off; it adds no rated clamp.
+* ``bench`` (``--pillar standoff_bench``, for long-pillar builds): the spliced column is
+  built **on the bench** before the leg stack, each segment in soft-jaw pliers, turned
+  together to 1.0 N·m (1250 N, 1.42 N·m to open; UNVERIFIED: torque a spliced pair, check
+  the jaws leave the running surface unmarked, load it in bending to the gapping moment).
+  A link can't pass a splice's 8 mm shims, so the finished column goes onto the outer
+  plate and every link drops over its top: its splices must lie below the pillar's lowest
+  link (a planner rule here: a column that needs one higher is unbuildable this way).
 
 **Strength** (:mod:`spiderpig.strength`, :func:`construction.wobble.stresses`): the
 section is the standoff taken as a 6 x 3.3 mm tube (the M4 tap drill, as if tapped
@@ -43,13 +60,6 @@ reported per splice (``splices`` in the note) and checked against the bay's mome
 there. (A splice layer tied to the frame, a mid frame plate, would make it a support and
 halve the span; no design here has a layer free for one.)
 
-**The supported splice** (the user's call of 2026-10-04, decision 2): the two segments are
-turned together on the stud to ``splice_nm`` = 1.0 N·m, each held in soft-jaw pliers
-(1250 N, 1.42 N·m to open); finger tight (0.4 N·m, 0.57 N·m to open) failed the Strider
-quad's jam. The figure is accepted UNVERIFIED and **to be tested on the first build**:
-torque a spliced pair to 1.0 N·m in soft jaws, check the jaws leave the 6 mm running
-surface unmarked where a link turns, and load it in bending to the gapping moment.
-
 **Shims.** A segment may be up to ``max_shims`` shorter than its gap where its upper end
 is under a spacer layer: DIN 988 shims sit between its end and the face over it, so the
 column stays one contiguous stack (in the clearance gap under the face when there is one,
@@ -61,11 +71,12 @@ moment; the pillar review's numbers (``docs/audit/STRENGTH.md``) have it per des
 
 Assembly, bottom up (:data:`construction.robot.ASSEMBLY` has the whole robot's order):
 the outer plate down; per pillar, its lowest segment onto the plate's hole with the M4
-screw and washer from outside (finger tight, threadlocker), then the links and rings in
-layer order (the plan says which), at each splice the splice plate and the stud
-(threadlocker) into the next segment; the inner plate last, as part of its unit (the
-servo, horn and hub plate on it), its M4 screws from the servo bay, each to
-``tighten_nm``.
+screw and washer from outside (threadlocker, to ``tighten_nm`` while the segment is still
+bare to hold), then the links and rings in layer order (the plan says which), at each
+splice the stud (threadlocker), the splice plate's shims and the next segment, turned on
+by hand to ``splice_nm`` (``bench``: the column built first, as above); the inner plate
+last, as part of its unit (the servo, horn and hub plate on it), its M4 screws from the
+servo bay, each to ``tighten_nm``.
 """
 
 from __future__ import annotations
@@ -122,10 +133,13 @@ class StandoffAxle:
     min_segment: float = 12.0        # thread for the end screw and the stud in each end
     min_engage: float = 4.0          # M4 thread in a standoff's end
     tighten_nm: float = 0.8          # the end screws
-    splice_nm: float = 1.0           # a splice's segments turned together on the stud, each
-    #                                  held in soft-jaw pliers (round standoffs have no flats):
-    #                                  the "supported splice" of 2026-10-04 (0.4, finger tight,
-    #                                  failed the Strider quad's jam); UNVERIFIED
+    splice_build: str = "hand"       # "hand": in the stack, bottom up, the upper segment turned
+    #                                  onto the stud by hand (the user's decision of
+    #                                  2026-10-05); "bench": the column spliced on the bench
+    #                                  first, each segment in soft-jaw pliers
+    splice_nm: float = 0.4           # the splice's clamp torque (hand: 0.4 N·m; bench: 1.0,
+    #                                  the "supported splice" of 2026-10-04, UNVERIFIED)
+    splice_lock_key: str = "threadlocker_243"   # a dab on each splice's stud (243 or 263)
     shim_key: str = "shim_din988_4x8"   # a splice plate: steel shims stacked to the layer
     set_play: float = 0.1            # axial play of the column (plates touch; assumed)
     washer_key: str = "m4_washer"
@@ -273,6 +287,9 @@ class StandoffAxle:
         layer ``pitch``)."""
         links = set(links)
         cand = [k for k in range(lo + 2, top - 1) if k not in links]
+        if self.splice_build == "bench" and links:
+            # a built column takes its links over its top: none may sit under a splice
+            cand = [k for k in cand if k < min(links)]
         mid = (lo + top) / 2
 
         def z(k: int) -> tuple[float, float]:
@@ -335,16 +352,20 @@ class StandoffAxle:
                             name="6 mm Al standoff (6061, as a 6 x 3.3 tube)")
 
     def splice_preload_n(self) -> float:
-        """The splice's clamp: the two segments screwed together on the stud, each held in
-        soft-jaw pliers (round standoffs have no flats for a spanner: ``splice_nm``, ``T /
-        0.2 d``)."""
+        """The splice's clamp: the two segments screwed together on the stud to
+        ``splice_nm`` (``T / 0.2 d``); the threadlocker retains it, it adds no clamp."""
         return self.splice_nm / (0.2 * 0.004)
 
     def splice_basis(self) -> str:
-        return (f"{self.splice_preload_n():.0f} N: the segments turned together to "
-                f"{self.splice_nm:g} N·m in soft-jaw pliers on steel shims, threadlocked "
-                "(the supported splice, accepted 2026-10-04; UNVERIFIED: to be tested on the "
-                "first build)")
+        if self.splice_build == "bench":
+            return (f"{self.splice_preload_n():.0f} N: the column spliced on the bench, the "
+                    f"segments turned together to {self.splice_nm:g} N·m in soft-jaw pliers "
+                    "on steel shims, threadlocker on the stud (the supported splice of "
+                    "2026-10-04; UNVERIFIED: to be tested on the first build)")
+        return (f"{self.splice_preload_n():.0f} N: the upper segment turned onto the stud by "
+                f"hand to {self.splice_nm:g} N·m in the bottom-up assembly, on steel shims, "
+                "threadlocker on the stud (the user's decision of 2026-10-05; UNVERIFIED: "
+                "measure a hand-tight splice's torque on the first build)")
 
     def splice_capacity_nmm(self) -> float:
         """The moment (N·mm) that starts to open a splice: the clamp's preload
@@ -496,9 +517,11 @@ class StandoffAxle:
                                                                zm + stud_len / 2),
                                        host, fab="purchased", bom_key=stud_key, color=STEEL))
         if self.lock_key is not None:
-            out.extras.append(BomLine(self.lock_key, self.lock_per_screw * (len(ends)
-                                                                            + len(splices)),
-                                      f"{group.name} screws and studs"))
+            out.extras.append(BomLine(self.lock_key, self.lock_per_screw * len(ends),
+                                      f"{group.name} end screws"))
+        if splices and self.splice_lock_key is not None:
+            out.extras.append(BomLine(self.splice_lock_key, self.lock_per_screw * len(splices),
+                                      f"{group.name} splice studs (metal to metal only)"))
         for m in group.axis.members:
             out.cut(m, Cut(xy, p.hole(self.od)))
         if anchored[0]:
@@ -514,6 +537,7 @@ class StandoffAxle:
         note["supports"] = [k for k, a in ((0, anchored[0]), (top, anchored[1])) if a]
         cap = self.splice_capacity_nmm()
         note["splices"] = [{"layer": k, "capacity_nmm": round(cap, 1),
+                            "build": self.splice_build, "torque_nm": self.splice_nm,
                             "basis": self.splice_basis()} for k in splices]
         note["segments_mm"] = segments
         note["shims_mm"] = {int(k): round(t, 3) for k, t in shimmed.items()}
@@ -527,3 +551,12 @@ def _splices(axle: StandoffAxle, links: frozenset[int], top: int, pitch: float,
              lo: int, zs: tuple | None = None) -> tuple[int, ...] | None:
     """:meth:`StandoffAxle.splices`, remembered (the planner asks per layout)."""
     return axle._splices(links, top, pitch, lo, zs)
+
+
+STANDOFF_BENCH = StandoffAxle(
+    key="standoff_bench", splice_build="bench", splice_nm=1.0,
+    label=("6 mm round aluminium standoffs, each spliced column built on the bench (1.0 N·m "
+           "in soft-jaw pliers, splices only under the pillar's links), laser-cut rings, M4 "
+           "button heads through both frame plates"))
+"""The bench-built column (the supported splice of 2026-10-04), kept selectable for long
+pillars: ``--pillar standoff_bench``."""
