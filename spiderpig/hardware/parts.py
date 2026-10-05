@@ -249,7 +249,7 @@ register(
          dims={"thickness": 3.0, "sheet_mm": (300.0, 300.0), "material": "acrylic",
                "density": 1.19, "yield_mpa": 50.0, "service": "Ponoko", "min_hole": 1.0,
                "min_part": (6.0, 6.0), "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1,
-               "metal": False},
+               "metal": False, "kerf_mm": 0.2},
          notes="Nominal 3 mm; real sheets vary by up to about 8 %. "
                "Measure yours and pass --thickness."),
     Item("plywood_3mm", "3 mm (1/8 in) Baltic birch plywood, 12 x 12 in", "sheet",
@@ -315,6 +315,16 @@ register(
           Offer("Amazon", "https://www.amazon.com/dp/B09Q28K49W", "B09Q28K49W",
                 note="Polymaker PETG")),
          dims={"density": 1.27, "spool_g": 1000.0, "diameter": 1.75}),
+    Item("tpu95a_filament", "TPU 95A flexible filament, 1.75 mm, 0.75 kg spool", "filament",
+         (Offer("Polymaker", "https://shop.polymaker.com/products/polyflex-tpu95",
+                "PolyFlex TPU95 1.75 mm 0.75 kg", price_usd=29.99, verified=True,
+                note="PolyFlex TPU95, shore 95A; 1.75 mm / 0.75 kg variants $29.99 "
+                     "(store listing fetched 2026-10-04)"),
+          Offer("Amazon", "https://www.amazon.com/s?k=TPU+95A+filament+1.75mm",
+                note="search; any TPU 95A, 1.75 mm")),
+         dims={"density": 1.22, "spool_g": 750.0, "diameter": 1.75, "shore": "95A"},
+         notes="The feet's socks (construction.plates.foot_sock). Density about 1.2 g/cm3 "
+               "(TPU 95A, typical; not on the listing). Print slow, direct drive."),
 )
 
 # Pivot hardware the metal-shaft constructions use (construction/pivots).

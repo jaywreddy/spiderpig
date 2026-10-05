@@ -42,7 +42,7 @@ from pathlib import Path
 from spiderpig import construction, linkage, servos
 from spiderpig.config import ParamError, add_build_args, add_design_args, config_from_args
 from spiderpig.fabricate import design_side, fabricate, template_for
-from spiderpig.hardware.bom import bom_from_mechanism, group_made
+from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filaments
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_sheets, sheet_lines
@@ -54,8 +54,10 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--side-only", action="store_true",
                    help="build one side (no second side, no chassis)")
     add_build_args(p)
-    p.add_argument("--kerf", type=float, default=DEFAULT_KERF,
-                   help=f"laser kerf compensation in mm (default {DEFAULT_KERF})")
+    p.add_argument("--kerf", type=float, default=None,
+                   help="laser kerf compensation in mm on every sheet (default: each sheet's "
+                        "service's: 0 at SendCutSend, which compensates itself, 0.2 at "
+                        f"Ponoko; {DEFAULT_KERF:g} where a sheet names none)")
     p.add_argument("--sheet-size", type=float, nargs=2, metavar=("W", "H"), default=None,
                    help="usable sheet size in mm (default: the sheet stock's size)")
     p.add_argument("--out", type=Path, default=Path("build"),
@@ -117,15 +119,26 @@ def _on_plate(part):
                                  -bb.min.Z)))
 
 
-def export_prints(groups, out_dir: Path, density: float = 1.24) -> list[dict]:
-    """One STL per different printed part (and its mirror image where needed)."""
+def export_prints(groups, out_dir: Path, density: float = 1.24,
+                  filaments: dict[str, str | None] | None = None) -> list[dict]:
+    """One STL per different printed part (and its mirror image where needed).
+
+    ``filaments``: each printed body's filament (catalog key, by name:
+    :func:`hardware.bom.printed_filaments`): a group whose parts take two filaments is
+    two rows, and each row says its filament and grams at its density; without it every
+    part is at ``density`` and the filament column is empty."""
     from build123d import Plane
 
+    from spiderpig.hardware.bom import _filament_name, _split_by
     from spiderpig.mesh import export_stl
 
     out_dir.mkdir(parents=True, exist_ok=True)
     rows, taken = [], set()
+    if filaments is not None:
+        by_name = {g.ref.name: g.ref for g in groups}
+        groups = [part for g in groups for part in _split_by(g, filaments, by_name)]
     for g in groups:
+        fil = (filaments or {}).get(g.ref.name)
         stem = _file_stem(g.ref.name, taken)
         part = _on_plate(g.ref.part)
         export_stl(part, str(out_dir / f"{stem}.stl"))
@@ -141,7 +154,9 @@ def export_prints(groups, out_dir: Path, density: float = 1.24) -> list[dict]:
         rows.append({
             "file": files[0], "qty": g.qty, "mirrored": len(g.mirrored), "print": todo,
             "size_mm": f"{bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f}",
-            "grams_each_100pct": round(g.ref.part.volume / 1000 * density, 1),
+            "filament": _filament_name(fil) if fil else "",
+            "grams_each_100pct": round(g.ref.part.volume / 1000
+                                       * (filament_density(fil) if fil else density), 1),
             "parts": " ".join(g.names),
         })
     with open(out_dir / "parts.csv", "w", newline="") as f:
@@ -209,7 +224,8 @@ def main(argv=None) -> int:
 
     groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
     filament = mech.meta.get("filament", "pla_filament")
-    rows = export_prints(groups["printed"], out / "print", density=filament_density(filament))
+    rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
+                         filaments=printed_filaments(mech, filament))
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
