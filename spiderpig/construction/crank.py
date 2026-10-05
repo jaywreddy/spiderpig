@@ -2981,7 +2981,6 @@ class _WebPlates(_BoltPlates):
         """A round standoff between the webs in layers ``lo - 1`` and ``hi + 1`` at ``xy``,
         an M4 button head into each end, shims under its lower end; its note."""
         from spiderpig.hardware.catalog import get
-        from spiderpig.materials import washer_stack
 
         c, b = self.c, self.build
         if c.hex:
@@ -3012,8 +3011,12 @@ class _WebPlates(_BoltPlates):
                 self.buy(f"crank_pin_stud_{tag}", disc(xy, 1.95, za - 6, za + 6),
                          m4_set_screw(12))
         if j.shims > 0:
-            items, _ = washer_stack(4.0, j.shims)
-            items = [x for x in items if not x[0].startswith("ptfe")] or items
+            # DIN 988 4 x 8 shims to the clamp's take-up, thickest first (the BOM orders
+            # them per thickness, hardware.bom.split_shims); no PTFE washer in a clamp
+            from spiderpig.hardware.bom import shim_breakdown
+
+            key = "shim_din988_4x8"
+            items = [(key, t) for t in shim_breakdown(j.shims, get(key).dims["t"])]
             t = sum(x[1] for x in items)
             if 0 < z_lo + t - z0 <= 0.1:
                 # the stack's rounding (stock shim steps and the fit's tolerance) leaves the

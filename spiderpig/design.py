@@ -22,6 +22,7 @@ passes on it.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import importlib.metadata
 import json
@@ -53,19 +54,44 @@ def package_version() -> str:
         return "0.0.0"
 
 
+ENGINE_EXCLUDE = ("server", "mcp", "tools", "cli.py", "view.py", "__main__.py")
+"""Package sources that never change a design's result (the viewer's server, the MCP layer,
+the command lines): left out of :func:`engine_version`."""
+_ENGINE_VERSION: list[str] = []
+
+
+def _code_digest(source: str) -> bytes:
+    """A source's code without its docstrings (a docs-only edit keeps the engine version)."""
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+                and body and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            node.body = body[1:] or [ast.Pass()]
+    return ast.dump(tree).encode()
+
+
 def engine_version() -> str:
-    """The package version plus a hash of what changes a design's result: the linkage
-    definitions (``spiderpig/linkages/*.py``) and the planner's defaults
-    (:class:`spiderpig.stack.StackSpec`), less its time budget (``max_seconds``, which
-    ``SPIDERPIG_PLAN_SECONDS`` sets: a budget bounds the search, not what a plan is, and a
-    stored plan is re-verified on reload anyway)."""
-    version = package_version()
-    h = hashlib.sha256()
-    for p in sorted((ROOT / "linkages").glob("*.py")):
-        h.update(p.name.encode())
-        h.update(p.read_bytes())
-    h.update(repr(replace(StackSpec(), max_seconds=60.0)).encode())
-    return f"{version}+{h.hexdigest()[:12]}"
+    """The package version plus a hash of what changes a design's result: the code of every
+    package source but :data:`ENGINE_EXCLUDE` (the linkages, the constructions, the planner,
+    the catalog and the BOM: a hardware change is a new engine, so a store's stages from
+    before it are recomputed, its plans re-verified), docstrings stripped, and the planner's
+    defaults (:class:`spiderpig.stack.StackSpec`) less its time budget (``max_seconds``,
+    ``SPIDERPIG_PLAN_SECONDS``: a budget bounds the search, not what a plan is). Computed
+    once per process."""
+    if not _ENGINE_VERSION:
+        h = hashlib.sha256()
+        for p in sorted(ROOT.rglob("*.py")):
+            rel = p.relative_to(ROOT)
+            if rel.parts[0] in ENGINE_EXCLUDE:
+                continue
+            h.update(str(rel).encode())
+            h.update(_code_digest(p.read_text()))
+        h.update(repr(replace(StackSpec(), max_seconds=60.0)).encode())
+        _ENGINE_VERSION.append(f"{package_version()}+{h.hexdigest()[:12]}")
+    return _ENGINE_VERSION[0]
 
 
 _SOURCE_VERSION: list[str] = []

@@ -185,6 +185,10 @@ def main(argv=None) -> int:
     config = args.config
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
+    import shutil
+
+    for owned in ("laser", "print"):     # the build's own folders: no files left from before
+        shutil.rmtree(out / owned, ignore_errors=True)
     from spiderpig.api import config_warnings
 
     for w in config_warnings(config):       # what the API's resolve would warn about

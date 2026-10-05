@@ -128,7 +128,13 @@ RAIL_SCREW_R = 5.7 / 2 + 0.3             # its head's clearance shape under the 
 RAIL_NUT_AF, RAIL_NUT_H = 5.5, 2.4       # an M3 hex nut in a trap in the rail
 NUT_DEPTH = 3.0          # the trap's floor over the rail's plate face
 CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm cable tie
-RAIL_SCREW_L = 8.0       # through the plate, past the nut trap
+RAIL_SCREW_L = 8.0       # the rail's bore past its plate face (the screw's tip stays in it)
+
+
+def rail_screw_length(t_plate: float) -> float:
+    """The shortest stock button head through an inner plate ``t_plate`` thick and the whole
+    nut in its trap (and 0.3 mm past it): 8 mm on the 0.080 in frame, 10 on 0.125 in."""
+    return pick_length(t_plate + NUT_DEPTH + RAIL_NUT_H + 0.3, RAIL_SCREW.lengths)
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
@@ -478,13 +484,14 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
             leg = lay.z_leg
             head = _cyl_z(x, ym, RAIL_SCREW.head_d / 2,
                           *sorted((sign * leg, sign * (leg - RAIL_SCREW.head_h))))
-            shank = _cyl_z(x, ym, 1.45, *sorted((sign * leg, sign * (leg + RAIL_SCREW_L))))
+            screw_l = rail_screw_length(abs(lay.z_in - leg))
+            shank = _cyl_z(x, ym, 1.45, *sorted((sign * leg, sign * (leg + screw_l))))
             n0 = lay.z_in + NUT_DEPTH
             nut = (_cyl_z(x, ym, RAIL_NUT_AF / 2, *sorted((sign * n0, sign * (n0 + RAIL_NUT_H))))
                    - _cyl_z(x, ym, 1.5, *sorted((sign * (n0 - 1), sign * (n0 + 4)))))
             bodies += [Body(name=f"{s}.deck_rail_screw{i}", part=union([head, shank]),
                             rigid_with=host[s], fab="purchased",
-                            bom_key=RAIL_SCREW.key(RAIL_SCREW_L), color=STEEL),
+                            bom_key=RAIL_SCREW.key(screw_l), color=STEEL),
                        Body(name=f"{s}.deck_rail_nut{i}", part=nut, rigid_with=host[s],
                             fab="purchased", bom_key="m3_nut", color=STEEL)]
             fastened.append((f"{s}.deck_rail_screw{i}", f"{s}.deck_rail_nut{i}"))
