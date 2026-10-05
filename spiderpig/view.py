@@ -167,7 +167,8 @@ def start_background(store, host: str = DEFAULT_HOST, port: int | None = None,
 
 
 DESIGN_OPTIONS = ("linkage", "module", "phases", "proportion", "servo", "pillar", "pin",
-                  "crank", "sheet", "thickness", "side_only")
+                  "crank", "sheet", "thickness", "frame_sheet", "crank_sheet", "heads",
+                  "link_sheet", "side_only")
 
 
 def resolve_args(args, store):
@@ -178,18 +179,18 @@ def resolve_args(args, store):
     given = {k: getattr(args, k) for k in DESIGN_OPTIONS if getattr(args, k, None) is not None}
     if not given or given == {"side_only": False}:
         return None
-    from spiderpig import api
-    from spiderpig.config import BuildConfig, ParamError, default_module, default_robot
+    from types import SimpleNamespace
 
-    d = BuildConfig()
-    fields = {k: given.get(k, getattr(d, k)) for k in ("linkage", "sheet", "thickness",
-                                                        "servo", "pillar", "pin", "crank")}
-    fields["phases"] = given.get("phases")
-    fields["proportions"] = tuple(given.get("proportion") or ())
+    from spiderpig import api
+    from spiderpig.config import BuildConfig, ParamError, config_from_args
+
+    d = BuildConfig()       # what `spiderpig build` makes of the same options
+    opts = SimpleNamespace(**{k: getattr(d, k) for k in ("linkage", "sheet", "servo", "pillar",
+                                                         "pin", "frame_sheet", "heads")})
+    for k, v in given.items():
+        setattr(opts, k, v)
     try:            # a mechanism: its one module, one side, with no option saying so
-        fields["module"] = given.get("module") or default_module(fields["linkage"])
-        robot = False if given.get("side_only") else default_robot(fields["linkage"])
-        config = BuildConfig(**fields, robot=robot)
+        config = config_from_args(opts, robot=False if given.get("side_only") else None)
     except ParamError as e:
         raise ValueError(str(e)) from None
     return api.resolve(api.spec_of(config), store)
@@ -212,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--side-only", action="store_true",
                     help="with the build options: one side (no second side, no chassis)")
     ap.set_defaults(linkage=None, module=None, servo=None, pillar=None, pin=None, crank=None,
-                    sheet=None)       # None: not given (the design id, or the defaults)
+                    sheet=None, frame_sheet=None, heads=None)   # None: not given
     ap.add_argument("--store", metavar="PATH",
                     help="the design store (default: $SPIDERPIG_STORE, else ./.spiderpig)")
     ap.add_argument("--host", default=DEFAULT_HOST)

@@ -263,6 +263,7 @@ class MaterialsSpec:
     servo: str | None = None
     frame_sheet: str | None = None      # the frame plates' (aluminium by default)
     crank_sheet: str | None = None      # the crank's plates'
+    link_sheets: dict | None = None     # link class -> sheet; None: the linkage's own
 
 
 @dataclass(frozen=True)
@@ -715,8 +716,15 @@ def validate(data: Mapping) -> list[SpecError]:
 
     # materials, constructions, fit
     m = v.obj(top.get("materials"), "materials", ("sheet", "thickness_mm", "servo",
-                                                  "frame_sheet", "crank_sheet"))
+                                                  "frame_sheet", "crank_sheet", "link_sheets"))
     if m is not None:
+        ls = m.get("link_sheets")
+        if ls is not None and not isinstance(ls, Mapping):
+            v.err("materials.link_sheets", f"must be an object of link -> sheet, got "
+                                           f"{_kind(ls)}", None)
+        elif ls is not None:
+            for k, s in ls.items():
+                v.string(s, f"materials.link_sheets.{k}", sheet_keys())
         v.string(m.get("sheet"), "materials.sheet", sheet_keys())
         v.string(m.get("frame_sheet"), "materials.frame_sheet", sheet_keys())
         v.string(m.get("crank_sheet"), "materials.crank_sheet", sheet_keys())
@@ -855,6 +863,11 @@ def spec_schema() -> dict:
                                     "description": "the frame and centre plates' sheet"},
                     "crank_sheet": {"enum": sheet_keys(), "default": CRANK_SHEET,
                                     "description": "the crank's plates' sheet"},
+                    "link_sheets": {"type": "object",
+                                    "additionalProperties": {"enum": sheet_keys()},
+                                    "description": "link class (b1) -> its sheet, for links "
+                                                   "not cut from `sheet` (default: the "
+                                                   "linkage's own; {} for none)"},
                 },
             },
             "constructions": {

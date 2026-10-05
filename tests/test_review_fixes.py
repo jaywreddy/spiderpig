@@ -124,11 +124,13 @@ def test_a_build_leaves_no_cut_or_print_files_from_before(tmp_path):
     stale.write_text("")
     (tmp_path / "print").mkdir()
     (tmp_path / "print" / "old.stl").write_text("")
+    (tmp_path / "manifest.json").write_text('{"design": "an earlier export"}')
     assert build.main(["--linkage", "klann", "--module", "single", "--side-only",
                        "--out", str(tmp_path)]) == 0
     assert not stale.exists()
     assert not (tmp_path / "print" / "old.stl").exists()
     assert list((tmp_path / "laser" / "parts").rglob("*.dxf"))
+    assert not (tmp_path / "manifest.json").exists()     # (api.export reuses by it)
 
 
 def test_a_stored_plan_that_ran_out_of_time_is_searched_again(tmp_path):
@@ -195,3 +197,84 @@ def test_a_made_to_length_pillar_is_bought_at_its_price_break():
     assert offer.buy(4) == (5, 54.3)            # five at 10.86 cost less than four at 14.97
     assert offer.buy(6) == (10, 54.7)           # ten at 5.47 less than six at 10.86
     assert offer.buy(12) == (12, 65.64)
+
+
+def test_a_report_behind_a_plan_that_ran_out_of_time_is_never_stored(tmp_path):
+    import json
+
+    from spiderpig import api
+    from spiderpig.failure import Failure
+    from spiderpig.store import Store
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                     "legs": {"module": "single", "sides": 1}}, store)
+    late = Failure(stage="plan", code="no_plan_in_time", message="out of time")
+    api._finish(d, "build", api.BuildReport(failures=[late], t=1.0), 0.0)
+    assert store.read_report(d.id, "build") is None
+    # one stored before this rule: not served
+    path = store.report_path(d.id, "verify")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"stage": "verify", "design": d.id, "level": "quick",
+                                "engine_version": d.engine_version, "ok": False,
+                                "failures": [late.to_dict()], "rows": []}))
+    from spiderpig.verify import VerifyReport
+
+    back = api.load(d.id, store)
+    assert api._cached(back, "verify", VerifyReport, level="quick") is None
+
+
+def test_view_and_export_take_every_build_option_and_the_spec_keeps_link_sheets(tmp_path):
+    import argparse
+
+    from spiderpig import api
+    from spiderpig.config import BuildConfig, add_build_args, add_design_args
+    from spiderpig.store import Store
+    from spiderpig.view import resolve_args
+
+    ap = argparse.ArgumentParser()
+    add_design_args(ap)
+    add_build_args(ap)
+    ap.add_argument("--side-only", action="store_true")
+    ap.set_defaults(linkage=None, module=None, servo=None, pillar=None, pin=None, crank=None,
+                    sheet=None, frame_sheet=None, heads=None)
+    store = Store(tmp_path)
+    assert resolve_args(ap.parse_args([]), store) is None
+    c = resolve_args(ap.parse_args(["--frame-sheet", "al5052_3p2mm", "--crank-sheet",
+                                    "al6061_3p2mm", "--heads", "gap", "--link-sheet",
+                                    "b1=al6061_3p2mm"]), store).config
+    assert (c.frame_sheet, c.crank_sheet, c.heads) == ("al5052_3p2mm", "al6061_3p2mm", "gap")
+    assert c.link_sheets == (("b1", "al6061_3p2mm"),)
+    assert resolve_args(ap.parse_args(["--linkage", "strider"]), store).config == BuildConfig()
+    cfg = BuildConfig(link_sheets=(("b1", "al6061_3p2mm"),))
+    assert api.resolve(api.spec_of(cfg), store).config == cfg
+
+
+def test_every_bolt_crank_is_rated():
+    from spiderpig.config import BuildConfig
+    from spiderpig.construction import CRANKS
+    from spiderpig.construction.crank import BoltCrank
+    from spiderpig.strength import crank_capacity
+
+    keys = [k for k, c in CRANKS.items() if isinstance(c, BoltCrank)]
+    assert {"bolt", "bolt_round", "bolt_hub_screw", "bolt_unretained"} <= set(keys)
+    for k in keys:
+        assert crank_capacity({}, BuildConfig(crank=k)), k
+
+
+def test_purchased_parts_are_massed_in_their_own_material():
+    from spiderpig.hardware.mass import item_material
+
+    assert item_material("gobilda_1501_10") == "aluminium"
+    assert item_material("m3_round_standoff_ff_6") == "aluminium"
+    assert item_material("hex_standoff_m3_5") is None                  # steel
+    assert item_material("pillar_shaft_6_m3_62.4") is None             # steel
+    assert item_material("m3_nylock") is None                          # a steel nut
+    assert item_material("ptfe_washer_6x12x0p5") == "ptfe"
+
+
+def test_a_horn_screws_shims_say_what_is_bought():
+    from spiderpig.hardware.bom import shim_as_bought
+
+    assert "DIN 433" in shim_as_bought("shim_din988_3x6", 1.0)
+    assert shim_as_bought("shim_din988_3x6", 0.2) == "a 0.2 mm DIN 988 shim"

@@ -285,6 +285,8 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             servo=spec.materials.servo or d.servo,
             frame_sheet=spec.materials.frame_sheet or d.frame_sheet,
             crank_sheet=spec.materials.crank_sheet or "",     # the linkage's (config)
+            link_sheets=(None if spec.materials.link_sheets is None
+                         else tuple(sorted(spec.materials.link_sheets.items()))),
             pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
             crank=spec.constructions.crank or "", heads=spec.constructions.heads or d.heads,
             params=spec.fit.params(),
@@ -379,6 +381,8 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
                   "frame_sheet": config.frame_sheet, "crank_sheet": config.crank_sheet}
     if config.thickness is not None:
         mats["thickness_mm"] = config.thickness
+    if config.link_sheets is not None:
+        mats["link_sheets"] = dict(config.link_sheets)
     doc["materials"] = mats
     doc["constructions"] = {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
                             "heads": config.heads}
@@ -818,6 +822,8 @@ def _commit(design: Design, stage: str, rep, op: str | None = None, write: bool 
     the store, ``cached``, is only logged)."""
     design.reports[stage] = rep
     _record(design, op or stage, rep.seconds if seconds is None else seconds, rep.ok, cached)
+    if ran_out(rep):
+        write = False       # the planner's CPU budget, not the design: never a stored verdict
     if write and not cached and design.store is not None:
         design.store.write_report(design, stage, rep)
     return rep
@@ -848,7 +854,8 @@ def _cached(design: Design, stage: str, cls, op: str | None = None, **need):
     must match (a verify's ``level``: the store keeps one report per level, so the levels
     don't evict each other)."""
     rep = design.reports.get(stage)
-    if rep is not None and all(getattr(rep, k, None) == v for k, v in need.items()):
+    if (rep is not None and not ran_out(rep)
+            and all(getattr(rep, k, None) == v for k, v in need.items())):
         return rep
     t0 = time.time()
     level = need.get("level") if stage == "verify" else None
@@ -857,7 +864,10 @@ def _cached(design: Design, stage: str, cls, op: str | None = None, **need):
         doc = _stored(design, stage)
     if doc is None or any(doc.get(k) != v for k, v in need.items()):
         return None
-    return _commit(design, stage, cls.from_dict(doc), op, cached=True, seconds=time.time() - t0)
+    rep = cls.from_dict(doc)
+    if ran_out(rep):            # (written before such reports stopped being stored)
+        return None
+    return _commit(design, stage, rep, op, cached=True, seconds=time.time() - t0)
 
 
 def _template(design: Design):
@@ -1002,6 +1012,14 @@ def _manifest_design(out: Path) -> str | None:
         return json.loads((out / "manifest.json").read_text()).get("design")
     except (OSError, ValueError, AttributeError):
         return None
+
+
+def ran_out(rep) -> bool:
+    """Did any of this report's failures come from the planner's CPU budget running out
+    (``no_plan_in_time``)? Such a report (a plan, or a build or verify behind it) is not a
+    verdict on the design: it is never written to the store or served from it."""
+    return any(getattr(f, "code", None) == "no_plan_in_time"
+               for f in getattr(rep, "failures", None) or ())
 
 
 def timed_out(rep) -> bool:
@@ -1443,7 +1461,8 @@ def build(design: Design, t: float = 1.0, force: bool = False) -> BuildReport:
     is the manifest (masses, envelope, counts). A build the store holds at this ``t``
     (from the running engine) comes back from its STEP files instead."""
     if not force and "build" in design.reports and design.build_t == t and (
-            design.mech is not None or not design.reports["build"].ok):
+            design.mech is not None or not (design.reports["build"].ok
+                                            or ran_out(design.reports["build"]))):
         return design.reports["build"]
     t0 = time.time()
     if not force:
@@ -1483,7 +1502,10 @@ def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:
     if doc is None or doc.get("t") != t:
         return None
     if not doc.get("ok"):
-        return _commit(design, "build", BuildReport.from_dict(doc), cached=True)
+        rep = BuildReport.from_dict(doc)
+        if ran_out(rep):                # the planner's budget ran out: plan again
+            return None
+        return _commit(design, "build", rep, cached=True)
     if not plan(design).ok:
         return None
     try:
@@ -1835,8 +1857,11 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
 
         with _timed("print"):
             build_cli.clear_generated(out / "print")     # no STLs of another design
+            from spiderpig.hardware.bom import printed_filaments
+
             build_cli.export_prints(groups["printed"], out / "print",
-                                    density=filament_density(filament))
+                                    density=filament_density(filament),
+                                    filaments=printed_filaments(mech, filament))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None

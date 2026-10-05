@@ -207,6 +207,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     for owned in ("laser", "print"):     # no cut or print files left from an earlier build
         clear_generated(out / owned)
+    # an export's manifest no longer describes the folder (api.export reuses one by it)
+    (out / "manifest.json").unlink(missing_ok=True)
     from spiderpig.api import config_warnings
 
     for w in config_warnings(config):       # what the API's resolve would warn about

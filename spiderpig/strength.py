@@ -61,7 +61,17 @@ the Klann's the demo Klann quad's, which bounds the variants (``klann_lego`` qua
 GENERIC_PIN_LOADS = (119.0, 155.0)
 """A family nobody measured: the most loaded family's (the demo Klann's)."""
 
-BOLT_CRANKS = ("bolt", "bolt_round")   # construction.crank.BoltCrank's keys
+
+
+def bolt_crank(key: str) -> bool:
+    """Is crank ``key`` a :class:`construction.crank.BoltCrank` (``bolt``, ``bolt_round``,
+    ``bolt_hub_screw``, ``bolt_unretained``, ...)?"""
+    from spiderpig.construction import CRANKS
+    from spiderpig.construction.crank import BoltCrank
+
+    return isinstance(CRANKS.get(key), BoltCrank)
+
+
 CLAMP_FRICTION_NM = 0.17     # the printed crank's clamp friction, the low end (crank.py)
 BRASS_YIELD_MPA = 250.0      # CuZn39Pb3 (a brass standoff), 0.2 % proof, half hard
 KEY_BORE_MM = 3.0            # the standoff's M3 thread, taken at its major diameter
@@ -86,7 +96,7 @@ def crank_capacity(meta: dict, config: BuildConfig) -> dict[str, float] | None:
     construction = CRANKS.get(config.crank)
     if construction is None:
         return None
-    if config.crank in BOLT_CRANKS:
+    if bolt_crank(config.crank):
         construction = construction.for_sheet(config.crank_sheet)
         bolt = meta.get("crank_bolt")
         if bolt and bolt.get("chains"):
@@ -403,14 +413,14 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         if row["construction"] in ("printed", "keyed", "keyed_float"):
             out.append("--crank bolt (laser-cut plate stacks keyed on M6 hex-bolt crankpins: "
                        "the head and nut pockets hold ~4-6 N·m)")
-        if row["construction"] in BOLT_CRANKS and "pocket" in row["weakest"] and "hex" in row[
+        if bolt_crank(row["construction"]) and "pocket" in row["weakest"] and "hex" in row[
                 "weakest"]:
             out.append("a thicker or stronger crank sheet (--crank-sheet al6061_3p2mm: 6061-T6, "
                        "276 MPa against 5052's 193 in the hex pockets)")
-        if row["construction"] in BOLT_CRANKS and "nut lock" in row["weakest"]:
+        if bolt_crank(row["construction"]) and "nut lock" in row["weakest"]:
             out.append("a stronger threadlocker under the nut (Loctite 2701/270: about 2x the "
                        "breakaway of 243), or a primer on the plated thread")
-        if row["construction"] in BOLT_CRANKS and "clamped" in row["weakest"]:
+        if bolt_crank(row["construction"]) and "clamped" in row["weakest"]:
             out.append("medium threadlocker on the crankpin screws and the screws tightened to "
                        "2 N·m (the friction clamp is the joint): measure the slip torque on "
                        "the test build")

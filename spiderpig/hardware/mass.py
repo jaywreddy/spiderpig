@@ -29,6 +29,8 @@ DENSITY = {
     "aluminium": 2.70,    # 6061-T6 (ASM handbook)
     "plastic": 1.41,      # acetal, a plastic horn
     "bushing": 1.4,       # igus iglide
+    "ptfe": 2.2,          # PTFE washers and tube liners
+    "nylon": 1.14,        # PA66 standoffs, screws and nuts
 }
 SERVO_BOX_DENSITY = 1.5   # g/cm^3 of a servo's body box, when its spec has no weight
 
@@ -79,6 +81,27 @@ def _fixed_mass(bom_key: str | None) -> float | None:
     return float(m) if m else None
 
 
+def item_material(bom_key: str | None) -> str | None:
+    """The material of a purchased item when it isn't steel: its ``dims["material"]``,
+    else what its name says (aluminium or brass standoffs, PTFE washers, nylon hardware;
+    a nylon-*insert* lock nut is steel); ``None``: the default (steel)."""
+    if not bom_key:
+        return None
+    try:
+        item = get(bom_key)
+    except KeyError:
+        return None
+    if item.dims.get("material"):
+        return str(item.dims["material"])
+    name = item.name.lower()
+    for word, material in (("alumin", "aluminium"), ("brass", "brass"), ("ptfe", "ptfe")):
+        if word in name:
+            return material
+    if "nylon" in name.replace("nylon-insert", ""):
+        return "nylon"
+    return None
+
+
 def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, float, float | None]:
     """``(material, density g/cm^3, fixed mass g)`` of a fabricated body.
 
@@ -107,6 +130,9 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
     if category in ("insert", "bushing"):
         return ("brass", DENSITY["brass"], None) if category == "insert" else (
             "bushing", DENSITY["bushing"], None)
+    material = item_material(body.bom_key)
+    if material in DENSITY:
+        return material, DENSITY[material], None
     return "steel", DENSITY["steel"], None
 
 
