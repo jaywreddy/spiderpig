@@ -17,7 +17,8 @@ import * as THREE from 'three';
 import type { Quaternion, Vector3 } from 'three';
 import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import type { LoadedScene } from '../loader';
-import type { Stage } from '../scene';
+import { followScale, type Stage } from '../scene';
+import { isCompact } from '../layout';
 import { evaluate, parseDrive, straightWalk, type DriveData, type Side, type WalkJson } from './model';
 import { Input, Sim, type Sample, type Scheme } from './sim';
 import { PhysicsLink, type PhysicsFrame, type Steering } from './physics';
@@ -186,6 +187,8 @@ export function createDrive(host: DriveHost) {
   hudF.add(opts, 'plot', PLOTS);
   const spark = Object.assign(document.createElement('canvas'), { width: 290, height: 56, id: 'drive-spark' });
   hudF.$children.append(spark);
+  const pad = document.getElementById('pad');      // the on-screen arrows: a press starts driving
+  if (pad) input.bindPad(pad, () => { if (!opts.drive) void setDrive(true).catch(fail); });
   const warn = Object.assign(document.createElement('div'), { id: 'drive-warn', hidden: true });
   document.body.append(warn);
 
@@ -217,6 +220,17 @@ export function createDrive(host: DriveHost) {
   tuneGui.add(tune, 'reset').name('Reset to defaults');
   tuneGui.add(tune, 'status').disable().listen();
   const metricF = tuneGui.addFolder('metrics (per revolution)');
+  // A phone or tablet starts with both panels collapsed (title bars only) and opens one at a time:
+  // either one open covers most of the screen.
+  const compact = isCompact();
+  if (compact) { gui.close(); hudF.close(); }
+  const exclusive = (a: GUI, b: GUI): void => {
+    a.domElement.querySelector(':scope > .title')?.addEventListener('click', () => {
+      if (isCompact() && !a._closed) b.close();
+    });
+  };
+  exclusive(gui, tuneGui);
+  exclusive(tuneGui, gui);
   let moduleC: ReturnType<GUI['add']> | null = null, linkageC: ReturnType<GUI['add']> | null = null;
 
   function fail(e: unknown): void {
@@ -308,6 +322,7 @@ export function createDrive(host: DriveHost) {
     if (l) l.root.visible = !on;
     if (on) {
       tuneGui.open();
+      if (compact) gui.close();
       if (!opts.drive) await setDrive(true);
       await loadLinkages();
       request(0);
@@ -653,7 +668,7 @@ export function createDrive(host: DriveHost) {
     }
     view.update(m, s, sim.data.com, sim, opts.support);
     const heading = sim.yaw + (sim.forward < 0 ? Math.PI : 0);
-    if (opts.camera !== 'free') view.follow(stage.camera, stage.controls, m, heading, opts.camera === 'chase');
+    if (opts.camera !== 'free') view.follow(stage.camera, stage.controls, m, heading, opts.camera === 'chase', followScale(stage));
     if (performance.now() - hudAt > 120) { hudAt = performance.now(); updateHud(); }
   }
 
@@ -694,7 +709,7 @@ export function createDrive(host: DriveHost) {
     const heading = Math.atan2(ax.y, ax.x);
     const m = new THREE.Matrix4().compose(fr.pos, fr.quat, new THREE.Vector3(1, 1, 1));
     view.trailTo(fr.pos);
-    if (opts.camera !== 'free') view.follow(stage.camera, stage.controls, m, heading, opts.camera === 'chase');
+    if (opts.camera !== 'free') view.follow(stage.camera, stage.controls, m, heading, opts.camera === 'chase', followScale(stage));
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(fr.quat);   // mech +y
     const pitch = deg(Math.atan2(up.x * Math.cos(heading) + up.y * Math.sin(heading), up.z));
     const roll = deg(Math.atan2(-up.x * Math.sin(heading) + up.y * Math.cos(heading), up.z));

@@ -5,6 +5,7 @@ import { loadGlb, teardown, type LoadedScene } from './loader';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
+import { chromeInsets } from './layout';
 import type { Mode, View, ViewerHandle } from './types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
@@ -59,6 +60,24 @@ const drive = createDrive({
   seek,
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
 });
+
+// The chrome over the canvas (the top bar, the dock): the camera frames the band between,
+// and an open panel stops short of the dock (``--dock-h``).
+function syncChrome(): void {
+  const insets = chromeInsets();
+  document.documentElement.style.setProperty('--dock-h', `${insets.bottom}px`);
+  stage.setInsets(insets);
+  invalidate();
+}
+syncChrome();
+new ResizeObserver(syncChrome).observe(document.getElementById('dock')!);
+window.addEventListener('resize', syncChrome);
+// A phone turned over: frame the model for the new shape (once the resize has landed; not
+// while driving, where the camera follows the robot).
+matchMedia('(orientation: portrait)').addEventListener('change', () => requestAnimationFrame(() => {
+  if (loaded && !drive.active) frameView(stage, loaded.root, view);
+  invalidate();
+}));
 
 function formatTime(t: number): string {
   const dur = loaded?.clipDuration ?? 1;

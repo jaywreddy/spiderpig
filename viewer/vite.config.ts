@@ -5,6 +5,8 @@ import { defineConfig } from 'vite';
 //                   per-worktree hash-derived port; user can pin via
 //                   mise.local.toml [env] VITE_PORT = "...")
 //   VITE_API_PORT — FastAPI port we proxy /api and /ws to (default 8000).
+//   VITE_ALLOWED_HOSTS — comma-separated extra Host names to accept (e.g.
+//                   ".ts.net" behind `tailscale serve`); unset, only localhost/IPs.
 // strictPort=false so a stale process on the chosen port doesn't crash
 // startup — Vite picks the next free one and prints the real URL.
 // (``process`` via globalThis: the viewer's tsconfig has no @types/node.)
@@ -12,6 +14,7 @@ const env = (globalThis as { process?: { env: Record<string, string | undefined>
   .process?.env ?? {};
 const port = Number(env.VITE_PORT) || 5173;
 const apiPort = Number(env.VITE_API_PORT) || 8000;
+const allowedHosts = env.VITE_ALLOWED_HOSTS?.split(',').filter(Boolean);
 
 // The build lands inside the Python package (``spiderpig/viewer/dist``, git-ignored):
 // it ships as package data, and ``spiderpig view`` / ``spiderpig.server.app`` serve it
@@ -26,6 +29,7 @@ export default defineConfig({
   server: {
     port,
     strictPort: false,
+    allowedHosts,
     proxy: {
       '/api': `http://127.0.0.1:${apiPort}`,
       '/ws': { target: `ws://127.0.0.1:${apiPort}`, ws: true },

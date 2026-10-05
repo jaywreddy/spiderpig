@@ -3,22 +3,31 @@
 <head>
   <meta charset="utf-8" />
   <title>Spiderpig viewer</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 </head>
 <body>
   <canvas id="stage"></canvas>
   <div id="status">loading…</div>
-  <div id="panel">
-    <button id="play" title="Play/pause">▶</button>
-    <select id="mode" title="Assembly">
-      <option value="robot" selected>robot</option>
-      <option value="klann">single (one leg)</option>
-      <option value="double">double</option>
-      <option value="decker">decker</option>
-      <option value="double_double">double double</option>
-    </select>
-    <input id="slider" type="range" min="0" max="1" step="1" value="0" />
-    <span id="readout">frame 0 / phase 0.000</span>
+  <div id="dock">
+    <div id="panel">
+      <button id="play" title="Play/pause">▶</button>
+      <select id="mode" title="Assembly">
+        <option value="robot" selected>robot</option>
+        <option value="klann">single (one leg)</option>
+        <option value="double">double</option>
+        <option value="decker">decker</option>
+        <option value="double_double">double double</option>
+      </select>
+      <input id="slider" type="range" min="0" max="1" step="1" value="0" />
+      <span id="readout">frame 0 / phase 0.000</span>
+    </div>
+    <!-- Drive pad: hold to walk (arcade: ▲ ▼ throttle, ◀ ▶ turn); a press starts drive mode. -->
+    <div id="pad" role="group" aria-label="Drive">
+      <button data-dir="up" title="Forward (W / ↑)" aria-label="forward" tabindex="-1">▲</button>
+      <button data-dir="left" title="Turn left (A / ←)" aria-label="turn left" tabindex="-1">◀</button>
+      <button data-dir="down" title="Back (S / ↓)" aria-label="back" tabindex="-1">▼</button>
+      <button data-dir="right" title="Turn right (D / →)" aria-label="turn right" tabindex="-1">▶</button>
+    </div>
   </div>
 
   <script type="module" src="/src/main.ts"></script>

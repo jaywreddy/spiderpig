@@ -1,5 +1,5 @@
 /**
- * Driving: operator input (keyboard, gamepad) -> per-side crank rates, and
+ * Driving: operator input (keyboard, gamepad, the on-screen pad) -> per-side crank rates, and
  * the robot's pose on the ground integrated from the walking model.
  */
 import { evaluate, type DriveData, type Side, type WalkState } from './model';
@@ -7,9 +7,13 @@ import { evaluate, type DriveData, type Side, type WalkState } from './model';
 export type Scheme = 'tank' | 'arcade';
 const TAU = 2 * Math.PI;
 
+export type PadDir = 'up' | 'down' | 'left' | 'right';
+
 /** Held keys -> a command per track in [-1, 1] (left / right as seen walking forward). */
 export class Input {
   readonly held = new Set<string>();
+  /** The on-screen arrow pad's held buttons (``bindPad``). */
+  readonly pad = new Set<PadDir>();
   /** Called when the held keys change (a key down, up, or the window losing focus): the
    * physics drive sends its command then, not only from the animation loop. */
   onChange: (() => void) | null = null;
@@ -22,10 +26,48 @@ export class Input {
       e.preventDefault();
     });
     addEventListener('keyup', (e) => { if (this.held.delete(e.code)) this.onChange?.(); });
-    addEventListener('blur', () => { if (this.held.size) { this.held.clear(); this.onChange?.(); } });
+    addEventListener('blur', () => {
+      if (this.held.size || this.pad.size) { this.held.clear(); this.clearPad(); this.onChange?.(); }
+    });
   }
 
+  /** The on-screen pad: each ``[data-dir]`` button of ``el`` is held while a pointer (a finger, the
+   * mouse) is down on it; several at once with several fingers. ``onPress`` runs on every press. */
+  bindPad(el: HTMLElement, onPress: () => void): void {
+    el.querySelectorAll<HTMLElement>('[data-dir]').forEach((b) => {
+      const dir = b.dataset.dir as PadDir;
+      const up = (): void => {
+        b.classList.remove('held');
+        if (this.pad.delete(dir)) this.onChange?.();
+      };
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();               // no focus, no text selection, no emulated mouse events
+        b.setPointerCapture(e.pointerId);
+        b.classList.add('held');
+        onPress();
+        if (!this.pad.has(dir)) { this.pad.add(dir); this.onChange?.(); }
+      });
+      for (const t of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) b.addEventListener(t, up);
+      b.addEventListener('contextmenu', (e) => e.preventDefault());   // a long press isn't a menu
+    });
+  }
+
+  private clearPad(): void {
+    this.pad.clear();
+    document.querySelectorAll('[data-dir].held').forEach((b) => b.classList.remove('held'));
+  }
+
+  /** The command: keys and gamepad in ``scheme``, plus the pad, which reads arcade-style in
+   * either scheme (▲ ▼ throttle, ◀ ▶ turn: tank's arrows would drive one side only). */
   read(scheme: Scheme): [number, number] {
+    const [l, r] = this.keys(scheme);
+    if (!this.pad.size) return [l, r];
+    const p = (d: PadDir): number => +this.pad.has(d);
+    const [pl, pr] = arcade(p('up') - p('down'), p('right') - p('left'));
+    return [clamp(l + pl), clamp(r + pr)];
+  }
+
+  private keys(scheme: Scheme): [number, number] {
     const k = (c: string): number => +this.held.has(c);
     const pad = navigator.getGamepads?.().find((p) => p?.connected);
     const ax = (i: number): number => { const v = pad?.axes[i] ?? 0; return Math.abs(v) < 0.12 ? 0 : v; };
@@ -34,9 +76,14 @@ export class Input {
     }
     const throttle = clamp(Math.max(k('KeyW'), k('ArrowUp')) - Math.max(k('KeyS'), k('ArrowDown')) - ax(1));
     const turn = clamp(Math.max(k('KeyD'), k('ArrowRight')) - Math.max(k('KeyA'), k('ArrowLeft')) + ax(0));
-    const m = Math.max(1, Math.abs(throttle + turn), Math.abs(throttle - turn));
-    return [(throttle + turn) / m, (throttle - turn) / m];
+    return arcade(throttle, turn);
   }
+}
+
+/** Throttle and turn in [-1, 1] -> (left, right) tracks, scaled down together so neither saturates. */
+function arcade(throttle: number, turn: number): [number, number] {
+  const m = Math.max(1, Math.abs(throttle + turn), Math.abs(throttle - turn));
+  return [(throttle + turn) / m, (throttle - turn) / m];
 }
 
 const clamp = (v: number): number => Math.max(-1, Math.min(1, v));
