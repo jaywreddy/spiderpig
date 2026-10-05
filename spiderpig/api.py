@@ -46,7 +46,7 @@ import numpy as np
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError, default_robot
+from spiderpig.config import BuildConfig, ParamError, default_robot, torque_limit_note
 from spiderpig.construction.base import Build, ConstructionError, Params
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.crank import CrankRoute, Run
@@ -1849,6 +1849,8 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         try:
             bom = bom_from_mechanism(replace(mech, bom_extras=extras), title=title,
                                      filament=filament, groups=groups)
+            if cfg.robot and (note := torque_limit_note(cfg)):
+                bom.notes.append(note)
             files += bom.write(out)
             bom_summary = {"items": len(bom.purchased), "cost_usd": round(bom.cost_usd, 2),
                            "printed_g": bom.printed_g,

@@ -110,6 +110,48 @@ def default_crank_sheet(lk: linkage.Linkage) -> str:
     return LINKAGE_CRANK_SHEETS.get(lk.key, CRANK_SHEET)
 
 
+LINKAGE_TORQUE_LIMITS: dict[str, float] = {
+    # klann_lego (2026-10-05): its 6061 leg b4 bends at D under the foot's 80 mm lever; at
+    # the servo's 0.85 N·m limit the jam rates it SF 1.58 (strength.link_rows), and no
+    # thicker 6061 fits its layer. The quad walks at 0.13 N·m (p99; 0.14 peak, 146 mm/s in
+    # the sim), so 0.60 N·m keeps 4.2 x of headroom over walking (the Strider double's 0.85
+    # over its 0.18 is 4.7 x) and puts every joint and link at jam SF >= 2 with no part
+    # added or changed.
+    "klann_lego": 0.60,
+}
+"""Per linkage: a servo torque limit (N·m) under the servo's own
+(:attr:`servos.spec.ServoSpec.torque_limit_nm`), where a joint or link holds a jam at SF 2
+only below it (each with why): :func:`torque_limit_nm`."""
+
+
+def torque_limit_nm(config: BuildConfig) -> float | None:
+    """The torque limit to set in the robot's servo firmware (N·m), the one the jam loads
+    and the joints' ratings assume: the servo's (``TORQUE_LIMIT_FRACTION`` of stall, at
+    most ``JAM_TORQUE_NM``), lowered to the linkage's :data:`LINKAGE_TORQUE_LIMITS` entry;
+    ``None`` for a servo with no stall torque."""
+    limit = servos.get(config.servo).torque_limit_nm
+    own = LINKAGE_TORQUE_LIMITS.get(config.linkage)
+    if limit is None or own is None:
+        return limit
+    return min(limit, own)
+
+
+def torque_limit_note(config: BuildConfig) -> str | None:
+    """What the builder must set for :func:`torque_limit_nm` (a BOM / ORDER.md note), or
+    ``None`` when the servo has no limit."""
+    limit = torque_limit_nm(config)
+    spec = servos.get(config.servo)
+    stall = spec.stall_torque_nm
+    if limit is None or not stall:
+        return None
+    why = (" (lowered for this linkage: config.LINKAGE_TORQUE_LIMITS)"
+           if config.linkage in LINKAGE_TORQUE_LIMITS else "")
+    return (f"Servo firmware: before the first run, set the torque limit of every servo "
+            f"({spec.name.split(' (')[0]}) to {limit:g} N·m, {limit / stall * 100:.0f} % of "
+            f"its {stall:.2f} N·m stall{why}: every joint and link is rated (spiderpig audit, "
+            "strength) at a jammed foot holding the servo at that limit.")
+
+
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
     """The crank construction ``lk`` (in ``module``) gets when the config names none: its
     module's (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's

@@ -148,9 +148,9 @@ def design_loads(config: BuildConfig, store=None, *, override: tuple[float, floa
     loads (``walk_n``, ``jam_n``), the sim's ``joints`` and the crank's torques.
     ``sim="cached"``: the design's simulated loads only if the store has them."""
     from spiderpig import linkage as lk
-    from spiderpig import servos
+    from spiderpig.config import torque_limit_nm
 
-    limit = servos.get(config.servo).torque_limit_nm
+    limit = torque_limit_nm(config)
     if override is not None:
         out = uniform_loads(*override, "override", f"--pin-load {override[0]:g},{override[1]:g} "
                             "N on every joint")

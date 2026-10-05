@@ -273,6 +273,25 @@ def test_deck_path_sees_a_part_in_the_way_and_a_notch_clears_it():
     assert deck_mod.lowered("deck_board")
 
 
+def test_a_screw_hole_a_notch_crowds_moves_into_the_bay(strider):
+    """:func:`deck.insert_z`: ``klann_lego``'s B pillars' inner heads stand at the inserts'
+    x, so their path notches came 0.30 mm from the deck screws' holes (under Ponoko's 1 mm);
+    the inserts then sit 1.5 mm further into the bay. The Strider's corner notches leave
+    them centred in the rails."""
+    lay = deck_mod.DeckLayout(x_c=0.0, rail_y0=13.7, deck_y=21.7, pitch=3.0, z_in=-36.57,
+                              z_leg=-38.6, spigot_x=12.0)
+    near = [(19.7, 28.3, -36.57, -33.07)]                  # klann_lego's, round a head
+    assert deck_mod.insert_z(lay, near, 1.0) == 7.0
+    assert deck_mod.insert_z(lay, [], 1.0) == deck_mod.RAIL_T / 2
+    far = [(55.0, 69.0, -36.57, -33.07)]                   # a corner's
+    assert deck_mod.insert_z(lay, far, 1.0) == deck_mod.RAIL_T / 2
+    r = deck_mod.CLEARANCE["3"] / 2
+    moved = deck_mod.replace(lay, insert_z=7.0)
+    assert min(deck_mod._rect_dist(p, *near[0]) for p in moved.screws()) - r >= 1.0
+    _, mech = strider
+    assert mech.meta["deck"]["insert_z"] == deck_mod.RAIL_T / 2
+
+
 def test_the_battery_cradle_is_screwed_to_the_deck(strider):
     """The user's decision of 2026-10-05: two M3 screws and nuts, no glue."""
     _, mech = strider

@@ -81,7 +81,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from build123d import Axis, Box, Cylinder, Pos, scale
 
@@ -100,6 +100,7 @@ from spiderpig.construction.chassis import (
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get, pick_length
 from spiderpig.hardware.fasteners import CLEARANCE, screw
+from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
 from spiderpig.shapes import union
 from spiderpig.stack import body_class
@@ -113,6 +114,10 @@ RAIL_T = 11.0            # a rail's thickness (z): 3.5 mm insert walls, and the 
 #                          screw holes 3.3 mm from the plate's edge
 RAIL_H = 8.0             # a rail's height (y): the insert's 5.7 mm and a 1.3 mm floor
 INSERT_X = 24.0          # the rails' inserts at x_c +- this
+INSERT_ZS = (RAIL_T / 2, 7.0)    # the inserts' distance from the inner plate's face, tried
+#                          in turn: centred in the rail, else 1.5 mm further into the bay
+#                          (2.0 mm of wall to the rail's bay face, over the insert's 1.6),
+#                          where a path notch would leave the deck screw's hole too little web
 SPIGOT_XS = (12.0, 16.0, 8.0, 20.0)      # rail screw offsets tried, nearest-first preference
 RAIL_SCREW = screw("bhcs", "3")          # up through the inner plate from the leg side
 RAIL_HOLE = 3.4          # its hole in the inner plate (ISO 273 medium; over the 5052's 3.175)
@@ -254,6 +259,7 @@ class DeckLayout:
     z_in: float          # the left inner plate's servo-side face (negative)
     z_leg: float         # the left inner plate's leg-side face
     spigot_x: float
+    insert_z: float = RAIL_T / 2    # the inserts' (and deck screws') distance from z_in
 
     @property
     def deck_top(self) -> float:
@@ -291,7 +297,7 @@ class DeckLayout:
         return [(self.x_c, s * WIRE_SLOT_Z) for s in (-1, 1)]
 
     def screws(self) -> list[tuple[float, float]]:
-        zc = self.z_in + RAIL_T / 2
+        zc = self.z_in + self.insert_z
         return [(self.x_c + s * INSERT_X, side * -zc) for side in (-1, 1) for s in (-1, 1)]
 
     def switch(self) -> tuple[float, float]:
@@ -322,7 +328,7 @@ def _rail(lay: DeckLayout, side: str):
     y0, y1 = lay.rail_y0, lay.deck_y
     part = _box(lay.x_c - RAIL_HALF, lay.x_c + RAIL_HALF, y0, y1, *zs)
     pocket = max(ins["length"], 5.0) + 1.0
-    zc = sign * (lay.z_in + RAIL_T / 2)
+    zc = sign * (lay.z_in + lay.insert_z)
     for s in (-1, 1):
         part = part - _cyl_y(lay.x_c + s * INSERT_X, zc, ins["hole_d"] / 2, y1 - pocket, y1 + 1)
     ym = (y0 + y1) / 2
@@ -347,6 +353,19 @@ def lowered(name: str) -> bool:
         return False
     return not ("deck_rail" in name or "deck_insert" in name
                 or re.fullmatch(r"deck_screw\d+", name) is not None)
+
+
+def insert_z(lay: DeckLayout, notches: Sequence[tuple[float, ...]], web: float) -> float:
+    """The first of :data:`INSERT_ZS` whose deck screw holes keep ``web`` (the deck sheet's
+    least hole-to-edge distance) to every path notch (:func:`path_notches`); the centred
+    one when none does. ``klann_lego``'s B pillars' inner heads stand at the inserts' x:
+    their notches came 0.30 mm from the screw holes (2026-10-05)."""
+    r = CLEARANCE["3"] / 2
+    for zi in INSERT_ZS:
+        pts = replace(lay, insert_z=zi).screws()
+        if all(_rect_dist(p, *n) - r >= web - EPS_D for p in pts for n in notches):
+            return zi
+    return INSERT_ZS[0]
 
 
 def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
@@ -436,6 +455,8 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     notched round them (:func:`path_notches`) and the charger steps back from the front
     edge; another lowered part in one's way is a :class:`ConstructionError`."""
     lay = layout(design, z_mid, place)
+    lay = replace(lay, insert_z=insert_z(lay, path_notches(lay, obstacles),
+                                         sheet(design.config.sheet).min_edge))
     ins = get("m3_heat_set_insert").dims
     bodies: list[Body] = []
     fastened: list[tuple[str, str]] = []
@@ -623,7 +644,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                                 f"{b} on the way down")
     info = {"fitted": True, "x_c": round(lay.x_c, 2), "deck_y": round(yd, 2),
             "rail_y": round(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, round(2 * hw, 2)],
-            "screw": key, "spigot_x": place.spigot_x,
+            "screw": key, "spigot_x": place.spigot_x, "insert_z": lay.insert_z,
             "notches": [[round(v, 2) for v in n] for n in notches],
             "charger_setback_mm": round(lay.x_c + HALF_LEN - cx1, 2),
             "charger_z_mm": [round(cz0, 2), round(cz1, 2)], "charger_pad_mm": round(pad, 2),

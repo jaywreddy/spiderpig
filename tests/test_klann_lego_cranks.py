@@ -107,3 +107,46 @@ def test_plans_cuts_and_assembles_on_its_default_crank(linkage, module):
     m = manufacture.check(mech, cfg.sheet)
     assert not m["errors"], manufacture.messages(m, "error")
     assert mech.meta["crank_bolt"]["assembly"] is None
+
+
+def test_klann_lego_sets_a_lower_servo_torque_limit():
+    """``klann_lego``'s 6061 leg b4 holds a jam at SF 2 only under 0.67 N·m (its foot's
+    80 mm lever bends it at D): the design sets 0.60 N·m (``config.LINKAGE_TORQUE_LIMITS``),
+    4.2 x its 0.14 N·m walking peak, and the BOM tells the builder; every other design keeps
+    the servo's own 0.85 N·m."""
+    from spiderpig.config import LINKAGE_TORQUE_LIMITS, torque_limit_nm, torque_limit_note
+
+    kl = BuildConfig(linkage="klann_lego", module="quad")
+    assert torque_limit_nm(kl) == pytest.approx(0.60) == LINKAGE_TORQUE_LIMITS["klann_lego"]
+    assert torque_limit_nm(BuildConfig()) == pytest.approx(0.85)
+    assert torque_limit_nm(BuildConfig(linkage="klann", module="quad")) == pytest.approx(0.85)
+    note = torque_limit_note(kl)
+    assert "0.6 N·m" in note
+    assert "31 %" in note
+    assert "LINKAGE_TORQUE_LIMITS" in note
+    assert "LINKAGE_TORQUE_LIMITS" not in torque_limit_note(BuildConfig())
+
+
+@pytest.mark.slow
+def test_the_pillar_rings_close_the_columns_air():
+    """``klann_lego``'s 6061 links make their layers 3.175 mm, so a 60 mm pillar segment
+    stood 0.70 mm over the 3 mm rings' stack: 0.8 mm of play, 5.0 deg of tilt. The printed
+    rings in those layers now fill them (``StandoffAxle.ring_fill``): the pillars keep only
+    the 0.1 mm assumed play (0.61 deg, the Strider double's)."""
+    from spiderpig import api
+    from spiderpig.fabricate import fabricate, template_for
+
+    cfg = BuildConfig(linkage="klann_lego", module="quad", robot=False)
+    api.plan_config(cfg, None)
+    mech = fabricate(template_for(cfg), cfg, 1.0)
+    notes = {k: v for k, v in mech.meta["wobble"].items() if k.startswith("pillar")}
+    assert len(notes) == 4
+    for name, note in notes.items():
+        assert note["segments_mm"] == [60.0], name
+        assert note["play_mm"] == pytest.approx(0.1), name
+        assert max(lk["tilt_deg"] for lk in note["links"]) < 1.0, name
+    rings = [b for b in mech.bodies if "pillar" in b.name and "_ring" in b.name]
+    tall = [b for b in rings if b.part.bounding_box().size.Z > 3.1]
+    assert tall
+    for b in tall:
+        assert abs(b.part.bounding_box().size.Z - 3.175) < 1e-3, b.name
