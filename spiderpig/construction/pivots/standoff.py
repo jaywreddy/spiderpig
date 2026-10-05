@@ -145,11 +145,34 @@ class StandoffAxle:
     washer_key: str = "m4_washer"
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
+    size: str = "M4"                 # "M3": Hirosugi ARL 6 mm round M3 standoffs, M3 button
+    #                                  heads and set screws (the hardware study, SIMPLIFY.md)
+
+    @property
+    def screw_d(self) -> float:
+        return 3.0 if self.size == "M3" else 4.0
+
+    @property
+    def thread_max(self) -> float:
+        """The deepest thread a segment's end has (goBILDA M4: 8; Hirosugi M3: 6)."""
+        return 6.0 if self.size == "M3" else 8.0
+
+    def segment_key(self, length: float) -> str:
+        if self.size == "M3":
+            from spiderpig.hardware.crank_catalog import arl_m3
+
+            return arl_m3(length)
+        from spiderpig.hardware.crank_catalog import gobilda_1501
+
+        return gobilda_1501(length)
 
     # -- catalog ----------------------------------------------------------------------
 
     def lengths(self) -> tuple[float, ...]:
-        from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS
+        from spiderpig.hardware.crank_catalog import ARL_M3_LENGTHS, GOBILDA_LENGTHS
+
+        if self.size == "M3":
+            return ARL_M3_LENGTHS
 
         return GOBILDA_LENGTHS
 
@@ -168,29 +191,38 @@ class StandoffAxle:
         and its washer into a segment's end: the most thread up to the segment's depth
         (taken as the shortest segment's)."""
         from spiderpig.hardware.crank_catalog import M4_BHCS_LENGTHS, m4_bhcs
+        from spiderpig.hardware.fasteners import SCREWS
 
         _, _, wt = self.washer()
-        depth = min(8.0, self.min_segment / 2)
+        depth = min(self.thread_max, self.min_segment / 2)
         best = None
-        for L in M4_BHCS_LENGTHS:
+        lengths = SCREWS["bhcs", "3"].lengths if self.size == "M3" else M4_BHCS_LENGTHS
+        for L in lengths:
             e = L - (pitch if plate else 0.0) - wt
             if self.min_engage - EPS <= e <= depth + EPS and (best is None or e > best[1]):
                 best = (L, e)
         if best is None:
             return None
-        d = get(m4_bhcs(best[0])).dims
-        return m4_bhcs(best[0]), best[0], float(d["head_d"]), float(d["head_h"])
+        key = SCREWS["bhcs", "3"].key(best[0]) if self.size == "M3" else m4_bhcs(best[0])
+        d = get(key).dims
+        return key, best[0], float(d["head_d"]), float(d["head_h"])
 
     def stud(self, pitch: float) -> tuple[str, float] | None:
         """(key, length) of a splice's set screw: one layer of plate and at least
         ``min_engage`` in each segment."""
-        from spiderpig.hardware.crank_catalog import M4_SET_LENGTHS, m4_set_screw
+        from spiderpig.hardware.crank_catalog import (
+            M3_SET_LENGTHS,
+            M4_SET_LENGTHS,
+            m3_set_screw,
+            m4_set_screw,
+        )
 
-        depth = min(8.0, self.min_segment / 2)
-        for L in M4_SET_LENGTHS:
+        depth = min(self.thread_max, self.min_segment / 2)
+        m3 = self.size == "M3"
+        for L in (M3_SET_LENGTHS if m3 else M4_SET_LENGTHS):
             e = (L - pitch) / 2
             if self.min_engage - EPS <= e <= depth + EPS:
-                return m4_set_screw(L), L
+                return (m3_set_screw(L) if m3 else m4_set_screw(L)), L
         return None
 
     # -- dimensions and rules ---------------------------------------------------------------
@@ -273,9 +305,15 @@ class StandoffAxle:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
         ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, DIN 988
         shims taking the rest up at its upper end), ``None`` when none is."""
-        short = self.max_shims if shims else self.max_short
+        from spiderpig import hwflags
+
+        short = self.max_shims if shims and not hwflags.on("oneshim") else self.max_short
+        # (oneshim, M3: no end shims, so a segment within -0.1..+0.2 of its gap; the plan's z
+        # thickens a clearance gap, whose printed ring takes it up, until stock lengths fit)
+        long = (float(__import__("os").environ.get("SPIDERPIG_PILLAR_LONG", "0.2"))
+                if hwflags.on("oneshim") and self.size == "M3" else self.max_long)
         ok = [L for L in self.lengths() if self.min_segment - EPS <= L
-              and gap - short - EPS <= L <= gap + self.max_long + EPS]
+              and gap - short - EPS <= L <= gap + long + EPS]
         return min(ok, key=lambda L: (abs(L - gap), L)) if ok else None
 
     def _splices(self, links, top: int, pitch: float, lo: int,
@@ -354,7 +392,7 @@ class StandoffAxle:
     def splice_preload_n(self) -> float:
         """The splice's clamp: the two segments screwed together on the stud to
         ``splice_nm`` (``T / 0.2 d``); the threadlocker retains it, it adds no clamp."""
-        return self.splice_nm / (0.2 * 0.004)
+        return self.splice_nm / (0.2 * self.screw_d / 1000)
 
     def splice_basis(self) -> str:
         if self.splice_build == "bench":
@@ -427,8 +465,6 @@ class StandoffAxle:
             out.bodies.append(hardware(f"{stem}_ring{k}",
                                        ring(xy, 2 * r, self.od + self.ring_fit, z0, z1), host,
                                        fab="printed", color=SLEEVE_COLOR))
-        from spiderpig.hardware.crank_catalog import gobilda_1501
-
         faces = [lo_face, *splices, hi_face]
         segments = []
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
@@ -475,7 +511,7 @@ class StandoffAxle:
                 z1 = zs0
             seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, 2.0, z0 - 1, z1 + 1)
             out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
-                                       bom_key=gobilda_1501(length), color=ALU))
+                                       bom_key=self.segment_key(length), color=ALU))
             segments.append(length)
         long += gap_washers(build, group, col, out, self.od, host, stem, trim=trim)
         w_od, w_id, w_t = self.washer()
@@ -496,7 +532,7 @@ class StandoffAxle:
                            *sorted((face, face + sign * w_t)))
             bear = face + sign * w_t
             head = disc(xy, hd / 2, *sorted((bear, bear + sign * hh)))
-            shank = disc(xy, 3.9 / 2, *sorted((bear, bear - sign * L)))
+            shank = disc(xy, 0.97 * self.screw_d / 2, *sorted((bear, bear - sign * L)))
             out.bodies += [
                 hardware(f"{stem}_washer{k}", washer, host, fab="purchased",
                          bom_key=self.washer_key, color=STEEL),
@@ -513,7 +549,8 @@ class StandoffAxle:
             stud_key, stud_len = got
             z0, z1 = build.z(k)
             zm = (z0 - t + z0 + pitch) / 2
-            out.bodies.append(hardware(f"{stem}_stud{k}", disc(xy, 3.9 / 2, zm - stud_len / 2,
+            out.bodies.append(hardware(f"{stem}_stud{k}", disc(xy, 0.97 * self.screw_d / 2,
+                                                               zm - stud_len / 2,
                                                                zm + stud_len / 2),
                                        host, fab="purchased", bom_key=stud_key, color=STEEL))
         if self.lock_key is not None:
@@ -560,3 +597,11 @@ STANDOFF_BENCH = StandoffAxle(
            "button heads through both frame plates"))
 """The bench-built column (the supported splice of 2026-10-04), kept selectable for long
 pillars: ``--pillar standoff_bench``."""
+
+
+STANDOFF_M3 = StandoffAxle(
+    key="standoff_m3", size="M3", id_=2.5, end_hole=3.4, stud_hole=3.2, min_engage=3.0,
+    shim_key="shim_din988_3x6", washer_key="m3_washer_9021",
+    label=("6 mm round aluminium M3 standoffs (Hirosugi ARL, spliced at plate rings), M3 button "
+           "heads and DIN 9021 washers through both frame plates (the hardware study)"))
+"""The standoff pillar on M3 hardware (SIMPLIFY.md): ``--pillar standoff_m3``."""

@@ -138,6 +138,13 @@ from spiderpig.stack import Unbuildable
 PTFE_COLOR = "#f2f2f2"
 
 
+def _hw_tol() -> float:
+    """The printed head spacers' height tolerance, counted as play (``printfill``)."""
+    from spiderpig import hwflags
+
+    return hwflags.PRINT_TOL if hwflags.on("printfill") else 0.0
+
+
 @dataclass(frozen=True)
 class Fit:
     """A Chicago screw's barrel length and how the stack takes it up."""
@@ -199,7 +206,8 @@ class ChicagoShaft:
         steps = [b - a for a, b in zip(CHICAGO_LENGTHS, CHICAGO_LENGTHS[1:], strict=False)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
-        if max(steps) > room + min(self.shim_steps) + EPS:
+        if max(steps, default=0.0) > room + min(self.shim_steps) + EPS and not \
+                __import__("os").environ.get("SPIDERPIG_BARRELS"):
             raise ConstructionError(f"a {max(steps):g} mm step between barrel lengths needs "
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
@@ -347,6 +355,28 @@ class ChicagoShaft:
         out.bodies.append(hardware(f"{stem}_screw", screw, host, fab="purchased",
                                    bom_key=chicago(f.length), color=STEEL))
         z = z_hi
+        from spiderpig import hwflags
+
+        if hwflags.on("printfill"):
+            # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
+            # the screw bottoms on the barrel, so they only set the column's axial play)
+            for tag, z0, t in (("hi", z, self.washer_t + f.shims_hi), ("lo", zb, f.shims_lo)):
+                if t <= EPS:
+                    continue
+                sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
+                           d + 0.2, z0, z0 + t)
+                out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
+                                           color=SLEEVE_COLOR))
+            out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
+                                      f"{group.name}: barrel into {host} (slow epoxy: CA "
+                                      "crazes acrylic)"))
+            out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
+            out.cut(host, Cut(xy, self.host_hole()))
+            out.notes.setdefault("chicago", {})[group.name] = {
+                "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
+                "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
+                "play_mm": f.play, "item": chicago(f.length), "printed": True}
+            return f
         if self.washer_key:
             w = get(self.washer_key).dims
             washer = bored(disc(xy, float(w["od"]) / 2, z, z + self.washer_t), xy,
@@ -442,7 +472,7 @@ class ChicagoAxle:
         out.notes["wobble"] = {group.name: column_wobble(
             build, group, col,
             clearance=lambda m: 0.0 if m == host else self.running_fit,
-            length=build.ctx.pitch, play=f.play,
+            length=build.ctx.pitch, play=f.play + _hw_tol(),
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft))}
         return out

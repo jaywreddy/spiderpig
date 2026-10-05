@@ -78,11 +78,18 @@ series (p-1788004; every M3 variant fetched 2026-10-05), whose plain 18-8 series
 20, 22, 23, 25, 28 and on to 80."""
 
 
+CHICAGO_ALL = CHICAGO_LENGTHS
+if __import__("os").environ.get("SPIDERPIG_BARRELS"):
+    # the hardware study (SIMPLIFY.md): the barrels the planner may pick, restricted
+    CHICAGO_LENGTHS = tuple(float(x) for x in
+                            __import__("os").environ["SPIDERPIG_BARRELS"].split(","))
+
+
 def chicago(length: float) -> str:
     return f"chicago_m3_{length:g}"
 
 
-for _L in CHICAGO_LENGTHS:
+for _L in CHICAGO_ALL:
     register(Item(
         chicago(_L), f"M3 Chicago screw (binding barrel + screw), 4 mm barrel x {_L:g} mm",
         "fastener",

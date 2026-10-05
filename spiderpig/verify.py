@@ -592,7 +592,7 @@ def cost_row(design: Design, bom) -> Row | None:
 
 
 GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")  # anchored in the plates with CA glue
-LOCKED_PILLARS = ("standoff", "standoff_bench")            # threadlocker on its M4 screws
+LOCKED_PILLARS = ("standoff", "standoff_bench", "standoff_m3")            # threadlocker on its M4 screws
 GLUED_PINS = ("bearing", "bushing")                         # an insert glued into each link
 EPOXY_PINS = ("chicago", "chicago_bushing")                 # the barrel bonded in its lowest link
 LOCKED_PINS = ("chicago", "chicago_bushing")                # threadlocker on each screw

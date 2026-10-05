@@ -746,7 +746,7 @@ class Router(Protocol):
 # ---------------------------------------------------------------------------
 
 
-MAX_SECONDS = 60.0
+MAX_SECONDS = float(__import__("os").environ.get("SPIDERPIG_PLAN_SECONDS", "60"))
 """The planner's default CPU-seconds budget (:attr:`StackSpec.max_seconds`, and the
 shared deadline of the recommendation checks, :mod:`recommend`). ``math.inf`` leaves the
 node budgets as the only bound, which makes how far a search gets the same on every

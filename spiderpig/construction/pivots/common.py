@@ -305,11 +305,24 @@ def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaf
     in all (mm)."""
     from spiderpig.materials import washer_od, washer_stack
 
+    from spiderpig import hwflags
+
     xy = xy_of(build, group)
     play = 0.0
     for k in col.washers:
         g = build.plan.gaps.get(k, 0.0) - (trim or {}).get(k, 0.0)
         if g <= 1e-6:
+            continue
+        if hwflags.on("printfill"):
+            # one printed ring at the gap's height (unclamped: it only locates the links)
+            if g < hwflags.PRINT_MIN - 1e-6:
+                play += g
+                continue
+            z0, _ = build.plan.gap_z(k)
+            od = washer_od(shaft_d)
+            part = bored(disc(xy, od / 2, z0, z0 + g), xy, shaft_d + 0.3, z0, z0 + g)
+            out.bodies.append(hardware(f"{stem}_gap{k}_spacer", part, host, fab="printed",
+                                       color=SLEEVE_COLOR))
             continue
         items, left = washer_stack(shaft_d, g)
         play += left
