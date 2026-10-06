@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 
 import numpy as np
+from build123d import Location
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.hardware.bom import BomLine
@@ -18,7 +19,7 @@ from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fasteners import Screw, parse
 from spiderpig.mechanism import Body, Mechanism
 from spiderpig.servos.model import UNKNOWN_HOLE_DEPTH
-from spiderpig.shapes import Cut, box, cut_holes, disc, ring, union
+from spiderpig.shapes import Cut, box, cut_holes, disc, moved, ring, union
 
 REAR_ENGAGE = 4.0        # target thread engagement of a rear screw in its servo's pilot (mm)
 MIN_ENGAGE = 2.0         # least thread engagement that still holds
@@ -520,14 +521,29 @@ def _overlaps(a: tuple[float, float], b: tuple[float, float]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+_ROUNDED: dict[tuple, object] = {}
+""":func:`_rounded_rect`'s outlines standing on z = 0, by frame, rectangle, radius and height:
+each centre plate, and each relief through them, is the same outline a plate higher."""
+
+
 def _rounded_rect(frame: ServoFrame, x0, x1, y0, y1, r: float, z0: float, z1: float):
-    """A plate outline: rectangle ``x0..x1`` by ``y0..y1`` in ``frame``, corners of radius r."""
-    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-    c, ang, h = frame.xy(cx, cy), frame.angle, z1 - z0
-    parts = [box(c, (x1 - x0, y1 - y0 - 2 * r, h), z0, ang),
-             box(c, (x1 - x0 - 2 * r, y1 - y0, h), z0, ang)]
-    parts += [disc(frame.xy(x, y), r, z0, z1) for x in (x0 + r, x1 - r) for y in (y0 + r, y1 - r)]
-    return union(parts)
+    """A plate outline: rectangle ``x0..x1`` by ``y0..y1`` in ``frame``, corners of radius r
+    (the union made once per outline and height, moved up to ``z0``)."""
+    h = z1 - z0
+    key = (tuple(map(float, frame.o)), tuple(map(float, frame.u)), int(frame.hand),
+           *map(float, (x0, x1, y0, y1, r, h)))
+    flat = _ROUNDED.get(key)
+    if flat is None:
+        if len(_ROUNDED) >= 256:
+            _ROUNDED.clear()
+        cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+        c, ang = frame.xy(cx, cy), frame.angle
+        parts = [box(c, (x1 - x0, y1 - y0 - 2 * r, h), 0.0, ang),
+                 box(c, (x1 - x0 - 2 * r, y1 - y0, h), 0.0, ang)]
+        parts += [disc(frame.xy(x, y), r, 0.0, h) for x in (x0 + r, x1 - r)
+                  for y in (y0 + r, y1 - r)]
+        flat = _ROUNDED[key] = union(parts)
+    return moved(flat, Location((0.0, 0.0, float(z0))))
 
 
 def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],

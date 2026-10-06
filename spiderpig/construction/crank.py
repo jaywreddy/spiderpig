@@ -1955,17 +1955,17 @@ class BoltCrank:
         the corner, centred out along its bisector (the flats keep their whole length; the
         service's inside radius is the circle's)."""
         af = self.hex_pocket_af()
-        cut = _hex(xy, af, z0, z1, angle)
         rc = af / math.sqrt(3)
+        reliefs = []
         for i in range(6):
             a = angle + math.pi / 6 + i * math.pi / 3
             # 0.05 mm over the corner, so the pocket is one outline (a circle through the
             # corner only touches it): each flat 0.09 mm shorter at each end, within the
             # rating's corner loss
             r = rc + self.dogbone_r - 0.05
-            cut = cut + disc((float(xy[0]) + r * math.cos(a), float(xy[1]) + r * math.sin(a)),
-                             self.dogbone_r, z0, z1)
-        return cut
+            reliefs.append(disc((float(xy[0]) + r * math.cos(a), float(xy[1]) + r * math.sin(a)),
+                                self.dogbone_r, z0, z1))
+        return _hex(xy, af, z0, z1, angle) + reliefs     # one fuse (and clean), not six
 
     def hex_screws(self, length: float) -> tuple[float, int, float] | None:
         """The screw into each end of a ``length`` mm standoff (tapped through): (its stock
