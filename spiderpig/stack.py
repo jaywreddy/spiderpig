@@ -1092,6 +1092,7 @@ class StackProblem:
         one finds none either. Each search has the whole budget."""
         plans, errors = [], []
         gave_up = ""
+        searched: list[str] = []
         runs = list(order)
         if order[0] == "gap":
             # a gap search whose layerings keep failing on the crank's washers in the plan's
@@ -1115,6 +1116,7 @@ class StackProblem:
             if i == 0 and len(runs) > 2:
                 sub.give_up = GIVE_UP
             sub.floor = self.floor
+            searched.append(heads)
             try:
                 plans.append(sub.solve())
             except PlanError as e:
@@ -1139,6 +1141,12 @@ class StackProblem:
         elif errors:
             best.proof += (f"; with the heads {'gap' if best.heads == 'sink' else 'sink'}: "
                            + (f"none (it {gave_up})" if gave_up else "none"))
+        unsearched = [m for m in dict.fromkeys(order) if m not in searched]
+        if unsearched:
+            # optimal is the thinnest with the heads as searched: the other placement wasn't
+            # (heads "best": sunk first, in gaps only when that finds no plan)
+            best.proof += (f"; the thinnest with the heads {best.heads} (with them "
+                           f"{', '.join(unsearched)}: not searched, it may be thinner)")
         return best
 
     def _new(self, top: int):
@@ -2183,27 +2191,30 @@ GAP_MORE = 3.0        # the most a plan's z thickens a gap past its heads' need 
 def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
                   gaps: dict[int, float], thick: dict[int, float],
                   bridged: set[int]) -> dict[int, float]:
-    """The gaps thickened the least (one gap at a time, then two) at which the claim that
-    failed (``err.claim``) builds; ``err`` again when none does."""
+    """The gaps thickened the least at which the claim that failed (``err.claim``) builds:
+    every single gap at every option it has (up to :data:`GAP_MORE` thicker), least added
+    first, then the :data:`GAP_TRIES` least pairs; ``err`` again when none does."""
     claim = getattr(err, "claim", None)
     if claim is None:
         raise err
     ks = sorted(gaps)
     more = {k: [o for o in _gap_options(k, gaps[k], spec, bridged) if o > gaps[k] + EPS_Z]
             for k in ks}
-    tries: list[tuple[float, dict[int, float]]] = []
+    singles: list[tuple[float, dict[int, float]]] = []
     for k in ks:
-        tries += [(o - gaps[k], {**gaps, k: o}) for o in more[k]]
+        singles += [(o - gaps[k], {**gaps, k: o}) for o in more[k]]
+    pairs: list[tuple[float, dict[int, float]]] = []
     for a, b in itertools.combinations(ks, 2):
-        tries += [(oa + ob - gaps[a] - gaps[b], {**gaps, a: oa, b: ob})
+        pairs += [(oa + ob - gaps[a] - gaps[b], {**gaps, a: oa, b: ob})
                   for oa in more[a][:8] for ob in more[b][:8]]
-    tries.sort(key=lambda t: (round(t[0], 6), sorted(t[1].items())))
-    for _, g in tries[:GAP_TRIES]:
+    order = lambda t: (round(t[0], 6), sorted(t[1].items()))  # noqa: E731
+    tries = sorted(singles, key=order) + sorted(pairs, key=order)[:GAP_TRIES]
+    for _, g in tries:
         layout = Layout(layers, top, spec.pitch, choices, dict(g), dict(thick), final=True)
         if made(claim, layout)[0] is not None:
             return g
-    raise PlanReject(f"{err} (nor with any of its clearance gaps up to {GAP_MORE:g} mm "
-                     "thicker)")
+    raise PlanReject(f"{err} (nor with any one of its clearance gaps up to {GAP_MORE:g} mm "
+                     f"thicker, nor the {min(len(pairs), GAP_TRIES)} least thickenings of two)")
 
 
 HEADS_ORDER = {"best": ("sink", "gap"), "gap_sink": ("gap", "sink")}

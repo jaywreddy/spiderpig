@@ -1553,6 +1553,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
     if not pr.ok:
         return _finish(design, "build", BuildReport(failures=list(pr.failures), t=t), t0)
     cfg, side = design.config, design.side
+    old_t = design.build_t
     design.mech, design.build_t = mech, t
     z_mid = mech.meta.get("mid_plane")
     servo = servos.get(cfg.servo)
@@ -1583,8 +1584,15 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         )
         assert abs(parts[b.name].mass_g - mass) < 1e-9
     design.parts = parts
-    if design.edited:       # the parts as built: the accepted edits are gone, and with them
-        _forget(design, "export", "verify")       # what was exported and verified of them
+    if design.edited or (old_t is not None and old_t != t):
+        # the parts as built at ``t``: the accepted edits, or the other crank angle's parts,
+        # are gone, and with them what was exported and verified of them
+        _forget(design, "export", "verify")
+    if not cached and design.store is not None:
+        prev = design.store.read_report(design.id, "build")
+        if prev is not None and prev.get("t") != t:
+            # the store's build moves to ``t``: its export and verify were of the other's
+            _drop_stored(design, "export", "verify")
     design.edited = False
     counts = {}
     for p in parts.values():
@@ -1802,6 +1810,16 @@ def _recheck_parts(design: Design, rep: RecheckReport, all_parts: bool) -> None:
             numbers={"mm3": max(c["mm3_outside"] for c in rep.contract)}))
 
 
+def _drop_stored(design: Design, *stages: str) -> None:
+    """Delete ``stages``' reports from the store (a verify's per-level copies too)."""
+    from spiderpig.verify import LEVELS
+
+    for stage in stages:
+        design.store.report_path(design.id, stage).unlink(missing_ok=True)
+        for level in LEVELS if stage == "verify" else ():
+            design.store.report_path(design.id, stage, level).unlink(missing_ok=True)
+
+
 EDITED_STAGES = ("export", "verify")
 """What an edited handle (:attr:`Design.edited`) neither reads from nor writes to the store:
 the store's are the unedited design's."""
@@ -1859,12 +1877,16 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
                 # the folder's last writer was this design's export of these formats (not
                 # since overwritten: another design's, or any `spiderpig build`'s)
                 and last.get("design") == design.id
-                and set(formats) <= set(last.get("formats") or ())):
+                and set(formats) <= set(last.get("formats") or ())
+                # nor an edited handle's (its parts aren't the design's: never reused)
+                and not last.get("edited") and not design.edited):
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
     # a folder whose manifest (an export's, or a `spiderpig build`'s) names another design,
     # or none: its cut and print files and its shopping list aren't this design's
-    foreign = out.is_dir() and _manifest_design(out) != design.id
+    last = _manifest(out) if out.is_dir() else {}
+    foreign = out.is_dir() and (last.get("design") != design.id
+                                or bool(last.get("edited")) != design.edited)
     job = None
     if design.mech is None:
         # the glb and the MJCF need the plan, not the build: their worker starts first
@@ -1896,6 +1918,7 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     vr = design.reports.get("verify")
     rep.manifest = jsonable({
         "design": design.id, "engine_version": design.engine_version, "t_ref": design.build_t,
+        "edited": design.edited,         # an edited handle's parts (not the design's own)
         "formats": formats, "files": [str(f.relative_to(out)) for f in files],
         "parts": br.parts, "counts": br.counts, "mass_g": br.mass_g,
         "envelope_mm": br.envelope_mm, "sheet": sheet_name(cfg.sheet),
