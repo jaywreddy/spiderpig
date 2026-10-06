@@ -252,7 +252,10 @@ class RodShaft:
         if layout is not None and layout.final:
             run = layout.z(k1)[1] - layout.z(k0)[0]
         else:
-            run = (k1 - k0 + 1) * pitch
+            # during the search a lower bound only (never prune what fits at the final z): the
+            # layers between its ends at the pitch, the end layers (a frame plate is thinner
+            # than the pitch) and the gaps not counted
+            run = max(k1 - k0 - 1, 0) * pitch
         _, h = self.clip()
         run += (h + self.protrude) * ((not down) + (not up))
         if run > self.stock + EPS:

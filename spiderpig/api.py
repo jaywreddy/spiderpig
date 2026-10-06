@@ -824,6 +824,8 @@ def _commit(design: Design, stage: str, rep, op: str | None = None, write: bool 
     _record(design, op or stage, rep.seconds if seconds is None else seconds, rep.ok, cached)
     if ran_out(rep):
         write = False       # the planner's CPU budget, not the design: never a stored verdict
+    if design.edited and stage in EDITED_STAGES:
+        write = False       # the edited parts' (the store's are the unedited design's)
     if write and not cached and design.store is not None:
         design.store.write_report(design, stage, rep)
     return rep
@@ -857,6 +859,8 @@ def _cached(design: Design, stage: str, cls, op: str | None = None, **need):
     if (rep is not None and not ran_out(rep)
             and all(getattr(rep, k, None) == v for k, v in need.items())):
         return rep
+    if design.edited and stage in EDITED_STAGES:
+        return None         # the store's are the unedited design's
     t0 = time.time()
     level = need.get("level") if stage == "verify" else None
     doc = _stored(design, stage, variant=str(level)) if level else None
@@ -1751,24 +1755,23 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
             br.mass_g = round(sum(p.mass_g for p in design.parts.values()), 2)
             br.parts = [p.to_dict() for p in design.parts.values()]
         # what was written or checked from the parts before the edit (the cut files, the
-        # verify's rows) no longer describes them: exported and verified again on asking
+        # verify's rows) no longer describes them: exported and verified again on asking,
+        # and kept off the store (whose build is the unedited design: a reload's)
+        design.edited = True
         _forget(design, "export", "verify")
     return _finish(design, "recheck", rep, t0)
 
 
+EDITED_STAGES = ("export", "verify")
+"""What an edited handle (:attr:`Design.edited`) neither reads from nor writes to the store:
+the store's are the unedited design's."""
+
+
 def _forget(design: Design, *stages: str) -> None:
-    """Drop ``stages``' reports from the handle and the store (a verify's per-level copies
-    too), so the next call computes them afresh."""
+    """Drop ``stages``' reports from the handle, so the next call computes them afresh (an
+    edited handle never reads the store's: :data:`EDITED_STAGES`)."""
     for stage in stages:
         design.reports.pop(stage, None)
-        if design.store is None:
-            continue
-        design.store.report_path(design.id, stage).unlink(missing_ok=True)
-        if stage == "verify":
-            from spiderpig.verify import LEVELS
-
-            for level in LEVELS:
-                design.store.report_path(design.id, stage, level).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1805,6 +1808,8 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
         raise ValueError(f"unknown formats {bad}; have {list(OUTPUTS)}")
     if out_dir is None:
         out_dir = design.store.exports_dir(design.id) if design.store else Path("build")
+        if design.edited:       # not over the store's own exports (the unedited design's)
+            out_dir = Path(out_dir) / "edited"
     out = Path(out_dir)
     if not force:      # a prior export of these formats (or more) into this folder
         prior = _cached(design, "export", ExportReport, out_dir=str(out.resolve()))

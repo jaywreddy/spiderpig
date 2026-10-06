@@ -116,12 +116,17 @@ def walking(key: str, module: str) -> dict:
 
 def cost(key: str, module: str) -> dict:
     """The robot's purchase total and part counts (builds every part: slow)."""
+    from dataclasses import replace
+
     from spiderpig.config import BuildConfig
     from spiderpig.fabricate import fabricate, template_for
     from spiderpig.hardware.bom import bom_from_mechanism
+    from spiderpig.layout import sheet_lines
 
     cfg = BuildConfig(linkage=key, module=module)
     mech = fabricate(template_for(cfg), cfg, 0.0)
+    # the sheet stock too (what a build's BOM buys: spiderpig build, export, verify)
+    mech = replace(mech, bom_extras=[*mech.bom_extras, *sheet_lines(mech, cfg.sheet, None)])
     bom = bom_from_mechanism(mech)
     return {"module": module, "cost_usd": round(bom.cost_usd, 2), "bodies": len(mech.bodies),
             "laser": sum(b.fab == "laser" for b in mech.bodies),

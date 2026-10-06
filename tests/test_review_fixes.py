@@ -754,3 +754,74 @@ def test_a_pre_build_estimate_doesnt_fail_a_hard_target(tmp_path):
     row = next(r for r in rep.rows if r.requirement == "size.mass_g")
     assert row.tier == "estimated"
     assert not row.hard
+
+
+# -- round 12 ----------------------------------------------------------------------------
+
+
+def test_two_pillars_get_their_chord_either_side_of_the_crank():
+    from spiderpig.construction.plates import chords
+
+    assert len(chords((0, 0), [(10, 1), (10, -1)])) == 1
+    assert len(chords((0, 0), [(-10, 1), (-10, -1)])) == 1             # across +-180 deg
+    assert chords((0, 0), [(10, 0), (-10, 0)]) == []                   # 180 deg apart
+
+
+def test_a_foot_at_a_links_corner_gets_no_sock():
+    from types import SimpleNamespace
+
+    from spiderpig.construction.plates import foot_links
+
+    lk = SimpleNamespace(feet=[("b6", "F"), ("b4", "G")])
+    topo = SimpleNamespace(links={"b6": [("C", "E"), ("E", "F"), ("F", "C")],
+                                  "b4": [("D", "G")]})
+    assert foot_links(topo, lk) == [("b4", "G", "D")]
+
+
+def test_the_crank_advice_skips_pivots_that_cant_plan_in_gaps():
+    from spiderpig import strength
+    from spiderpig.config import BuildConfig
+
+    row = {"kind": "crank", "factor": 1.0, "capacity_nm": {"x": 0.5}, "weakest": "x",
+           "construction": "keyed", "jam": {"torque_nm": 0.85, "safety": 0.5}}
+    for pin in ("bearing", "bushing", "bolt"):
+        got = strength.fixes(row, None, {}, BuildConfig(crank="keyed", pin=pin))
+        assert not any("--crank bolt" in f for f in got), pin
+
+
+def test_a_hard_target_only_estimated_is_unverified_and_unscored():
+    from spiderpig import api
+
+    d = api.resolve({"kind": "walker", "linkage": {"key": "strider"},
+                     "size": {"mass_g": {"max": 50}},
+                     "motion": {"stride_mm": {"min": 10, "hard": False}}}, store=None)
+    rep = api.verify(d, "quick")
+    assert "size.mass_g" in rep.unverified
+    assert rep.score == 1.0                        # the soft stride only
+    row = next(r for r in rep.rows if r.requirement == "size.mass_g")
+    assert row.score is None
+    assert not row.hard
+
+
+@pytest.mark.slow
+def test_an_edited_handles_export_stays_off_the_store(tmp_path):
+    import numpy as np
+    from build123d import Cylinder
+
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
+    assert api.build(d).ok
+    name = next(n for n, p in d.parts.items() if p.group == "links")
+    part, body = d.parts[name], d.mech.body(name)
+    a, b = ((body.pose @ j.pose).matrix[:2, 3] for j in body.joints[:2])
+    part.solid = part.solid - Cylinder(1.0, 10).moved(part.locate((np.asarray(a) + b) / 2))
+    assert api.recheck(d).ok
+    edited = api.export(d, ["bom"])
+    assert "edited" in edited.out_dir
+    back = api.load(d.id, store)
+    plain = api.export(back, ["bom"])
+    assert plain.out_dir != edited.out_dir
+    assert plain.manifest["mass_g"] != edited.manifest["mass_g"]
