@@ -97,13 +97,13 @@ def test_plans_cuts_and_assembles_on_its_default_crank(linkage, module):
     """Each plans on its default crank, breaks no cut rule at the error level and has an
     assembly order (the crank's ``assembly`` note empty)."""
     from spiderpig import api
-    from spiderpig.fabricate import fabricate, template_for
+    from tests import cache
 
     lk = get(linkage)
     cfg = BuildConfig(linkage=linkage, module=module, robot=lk.kind == "walker")
-    tmpl = template_for(cfg)
     api.plan_config(cfg, None)
-    mech = fabricate(tmpl, cfg, 0.0)
+    # the parts from the fabrication cache (built from this plan when it has none)
+    mech = (cache.cached_robot if cfg.robot else cache.cached_side)(cfg, 0.0)
     m = manufacture.check(mech, cfg.sheet)
     assert not m["errors"], manufacture.messages(m, "error")
     assert mech.meta["crank_bolt"]["assembly"] is None
@@ -134,11 +134,11 @@ def test_the_pillar_rings_close_the_columns_air():
     rings in those layers now fill them (``StandoffAxle.ring_fill``): the pillars keep only
     the 0.1 mm assumed play (0.61 deg, the Strider double's)."""
     from spiderpig import api
-    from spiderpig.fabricate import fabricate, template_for
+    from tests import cache
 
     cfg = BuildConfig(linkage="klann_lego", module="quad", robot=False)
     api.plan_config(cfg, None)
-    mech = fabricate(template_for(cfg), cfg, 1.0)
+    mech = cache.cached_side(cfg, 1.0)          # from the fabrication cache
     notes = {k: v for k, v in mech.meta["wobble"].items() if k.startswith("pillar")}
     assert len(notes) == 4
     for name, note in notes.items():

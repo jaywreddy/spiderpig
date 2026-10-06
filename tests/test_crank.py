@@ -1,9 +1,13 @@
 """Tests for the printed crankshafts (:mod:`construction.crank`): the keyed one (the default)
-and the friction-only one, with every servo."""
+and the friction-only one, with every servo.
+
+The Klann single sides they look at come from the fabrication cache (:mod:`tests.cache`);
+a test of the crank alone realizes the crank group alone (:func:`tests._construction.
+realize_groups`), and the contract's fast cases check the crank and the drive
+(``check_side(groups=)``), the whole side in the slow tier."""
 
 from __future__ import annotations
 
-import itertools
 import math
 
 import numpy as np
@@ -12,7 +16,7 @@ import pytest
 from spiderpig import linkage, servos
 from spiderpig.config import BuildConfig
 from spiderpig.construction import CRANKS as CRANK_REGISTRY
-from spiderpig.construction.base import FRAME_OUTER, Build, ConstructionError, Realized
+from spiderpig.construction.base import FRAME_OUTER, Build, ConstructionError
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.construction.crank import (
     BHCS,
@@ -40,6 +44,8 @@ from spiderpig.servos import cad as cadlib
 from spiderpig.servos import model
 from spiderpig.shapes import disc
 from spiderpig.stack import Axis, Layout, verify_plan
+from tests import cache
+from tests._construction import overlapping_pairs, realize_groups
 from tests.tiers import quick
 
 TEMPLATES = {         # the Klann's: the default linkage is the Strider, whose crank differs
@@ -65,24 +71,31 @@ def _offline(tmp_path_factory):
             f.cache_clear()
 
 
-@pytest.fixture(scope="module")
-def templates():
-    return {k: f() for k, f in TEMPLATES.items()}
-
-
 CRANKS = ["keyed", "printed"]
 
 
-def _design(tmpl, servo=servos.DEFAULT, crank="keyed"):
-    return design_side(tmpl, BuildConfig(linkage="klann", module="single", robot=False,
-                                         pillar="printed",
-                                         servo=servo, crank=crank))
+def _cfg(mode="single", servo=servos.DEFAULT, crank="keyed") -> BuildConfig:
+    return BuildConfig(linkage="klann", module=mode, robot=False, pillar="printed",
+                       servo=servo, crank=crank)
+
+
+def _design(mode="single", servo=servos.DEFAULT, crank="keyed"):
+    """``(template, design)`` of the Klann ``mode`` side (the plan seeded from the cache)."""
+    return cache.cached_design(_cfg(mode, servo, crank))
+
+
+def _side(t=1.0, servo=servos.DEFAULT, crank="keyed", mode="single"):
+    """``(design, the fabricated side at t)`` of the Klann ``mode`` side, from the cache."""
+    cfg = _cfg(mode, servo, crank)
+    return _design(mode, servo, crank)[1], cache.cached_side(cfg, t)
 
 
 def _clashes(mech) -> list[tuple[str, str, float]]:
+    """Every pair of parts sharing more than 1e-3 mm^3 (a pair whose boxes don't meet
+    shares none)."""
     parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
     out = []
-    for a, b in itertools.combinations(parts, 2):
+    for a, b in overlapping_pairs(parts):
         inter = parts[a] & parts[b]
         vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
         if vol > 1e-3:
@@ -97,19 +110,35 @@ def _volume(shape) -> float:
 # -- the contract ---------------------------------------------------------------------
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("crank", CRANKS)
-@pytest.mark.parametrize("mode", quick(sorted(TEMPLATES), ["single"]))
-@pytest.mark.parametrize("t", quick([0.0, 2.2, 4.38], [2.2]))
-def test_crank_stays_inside_its_claims(templates, mode, t, crank):
-    tmpl = templates[mode]
-    assert check_side(_design(tmpl, crank=crank), tmpl.freeze_at(t)) == []
+@pytest.mark.parametrize("mode", sorted(TEMPLATES))
+@pytest.mark.parametrize("t", [0.0, 2.2, 4.38])
+def test_crank_stays_inside_its_claims(mode, t, crank):
+    """The whole side (the fast tier checks the crank and the drive alone, below)."""
+    tmpl, design = _design(mode, crank=crank)
+    assert check_side(design, tmpl.freeze_at(t)) == []
 
 
-@pytest.mark.parametrize("mode", quick(sorted(TEMPLATES), ["single"]))
+@pytest.mark.parametrize("crank", CRANKS)
+def test_the_crank_alone_stays_inside_its_claims(crank):
+    tmpl, design = _design(crank=crank)
+    assert check_side(design, tmpl.freeze_at(2.2), groups=("drive", "crank")) == []
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("mode", sorted(TEMPLATES))
 @pytest.mark.parametrize("servo", OTHERS)
-def test_every_servo_couples_inside_the_claims(templates, servo, mode):
-    tmpl = templates[mode]
-    assert check_side(_design(tmpl, servo), tmpl.freeze_at(2.2)) == []
+def test_every_servo_couples_inside_the_claims(servo, mode):
+    """The whole side (the fast tier checks the crank and the drive alone, below)."""
+    tmpl, design = _design(mode, servo)
+    assert check_side(design, tmpl.freeze_at(2.2)) == []
+
+
+@pytest.mark.parametrize("servo", OTHERS)
+def test_every_servo_couples_the_crank_inside_the_claims(servo):
+    tmpl, design = _design(servo=servo)
+    assert check_side(design, tmpl.freeze_at(2.2), groups=("drive", "crank")) == []
 
 
 # -- the parts ------------------------------------------------------------------------
@@ -117,10 +146,8 @@ def test_every_servo_couples_inside_the_claims(templates, servo, mode):
 
 @pytest.mark.parametrize("crank", CRANKS)
 @pytest.mark.parametrize("mode", quick(["single", "double", "quad"], ["single"]))
-def test_every_segment_is_one_valid_solid(templates, mode, crank):
-    tmpl = templates[mode]
-    design = _design(tmpl, crank=crank)
-    mech = fabricate_side(design, tmpl.freeze_at(1.0))
+def test_every_segment_is_one_valid_solid(mode, crank):
+    design, mech = _side(1.0, crank=crank, mode=mode)
     segs = [b for b in mech.bodies if b.name.startswith("crank_seg")]
     assert len(segs) == len(_runs(design)) + 1
     for b in mech.bodies:
@@ -135,10 +162,9 @@ def test_every_segment_is_one_valid_solid(templates, mode, crank):
 
 @pytest.mark.parametrize("servo", quick(SERVOS, [servos.DEFAULT]))
 @pytest.mark.parametrize("t", quick([1.0, 4.38], [4.38]))
-def test_single_side_parts_do_not_intersect(templates, servo, t):
+def test_single_side_parts_do_not_intersect(servo, t):
     """Every body, screws, nuts and keys included."""
-    tmpl = templates["single"]
-    mech = fabricate_side(_design(tmpl, servo), tmpl.freeze_at(t))
+    _, mech = _side(t, servo)
     assert any(b.name.startswith("servo_screw") for b in mech.bodies)
     assert any(b.name.startswith("crank_nut") for b in mech.bodies)
     assert any(b.name.startswith("crank_key") for b in mech.bodies)
@@ -146,11 +172,10 @@ def test_single_side_parts_do_not_intersect(templates, servo, t):
 
 
 @pytest.mark.parametrize("servo", SERVOS)
-def test_horn_screws_land_in_the_horn_holes(templates, servo):
-    tmpl = templates["single"]
-    design = _design(tmpl, servo)
+def test_horn_screws_land_in_the_horn_holes(servo):
+    tmpl = _design(servo=servo)[0]
+    design, mech = _side(1.0, servo)
     frozen = tmpl.freeze_at(1.0)
-    mech = fabricate_side(design, frozen)
     build = Build(design.ctx, design.plan, frozen)
     spec = servos.get(servo)
     pat = spec.horn.pattern
@@ -192,10 +217,9 @@ def _runs(design) -> tuple[Run, ...]:
 
 
 @pytest.mark.parametrize("servo", SERVOS)
-def test_the_hub_turns_clear_of_the_inner_plate(templates, servo):
-    tmpl = templates["single"]
-    design = _design(tmpl, servo)
-    mech = fabricate_side(design, tmpl.freeze_at(1.0))
+def test_the_hub_turns_clear_of_the_inner_plate(servo):
+    tmpl = _design(servo=servo)[0]
+    design, mech = _side(1.0, servo)
     hub = mech.body(f"crank_seg{len(_runs(design))}").part
     plate_bottom = design.plan.z(design.plan.top)[0]
     margin = design.ctx.params.margin
@@ -220,10 +244,8 @@ def test_default_route_merges_adjacent_riders_of_one_pin():
 
 @pytest.mark.parametrize("crank", CRANKS)
 @pytest.mark.parametrize("mode", quick(["single", "double", "quad"], ["single"]))
-def test_crankpins_are_screwed_through(templates, mode, crank):
-    tmpl = templates[mode]
-    design = _design(tmpl, crank=crank)
-    mech = fabricate_side(design, tmpl.freeze_at(1.0))
+def test_crankpins_are_screwed_through(mode, crank):
+    design, mech = _side(1.0, crank=crank, mode=mode)
     gaps = _runs(design)
     construction = {"keyed": KeyedCrank(), "printed": PrintedCrank()}[crank]
     top = 2 if crank == "keyed" else 1                 # the keyed chain's top web: two layers
@@ -248,11 +270,10 @@ def test_crankpins_are_screwed_through(templates, mode, crank):
             assert mech.body(f"crank_screw_{gaps[0].at}").bom_key == BHCS["3"].key(10)
 
 
-def test_b1_has_end_play(templates):
-    tmpl = templates["single"]
-    design = _design(tmpl)
+def test_b1_has_end_play():
+    tmpl = _design()[0]
+    design, mech = _side(1.0)
     frozen = tmpl.freeze_at(1.0)
-    mech = fabricate_side(design, frozen)
     (g,) = _runs(design)
     b1_bottom = design.plan.z(g.lo)[0]
     play = PrintedCrank().axial_play
@@ -278,11 +299,11 @@ def test_post_joint_lengths():
 
 
 @pytest.mark.parametrize("crank", CRANKS)
-def test_too_thin_sheet_is_refused(templates, crank):
+def test_too_thin_sheet_is_refused(crank):
     with pytest.raises(ConstructionError, match="crankpin joint"):
-        design_side(templates["single"], BuildConfig(linkage="klann", module="single", robot=False,
-                                                    thickness=2.0, crank=crank,
-                                                    pillar="printed"))
+        design_side(TEMPLATES["single"](), BuildConfig(linkage="klann", module="single",
+                                                       robot=False, thickness=2.0, crank=crank,
+                                                       pillar="printed"))
 
 
 # -- the keyed crank ------------------------------------------------------------------------
@@ -533,6 +554,23 @@ def _part(mech, name: str):
     return next(b.part for b in mech.bodies if b.name == name)
 
 
+_CRANK_ONLY: dict[str, tuple] = {}
+
+
+def _route_crank(name: str):
+    """(template, design, the crank group's :class:`Realized` at t = 4.38) for a case of
+    :data:`ROUTES`: the crank realized alone, as :func:`fabricate_side` builds it."""
+    if name not in _CRANK_ONLY:
+        if name in _ROUTED:
+            tmpl, design, _ = _ROUTED[name]
+        else:
+            config, layers, top, route, point, _ = ROUTES[name]
+            tmpl, design = _routed(config, layers, top, route, point)
+        _CRANK_ONLY[name] = tmpl, design, realize_groups(design, 4.38, ["crank"],
+                                                         tmpl.freeze_at(4.38))
+    return _CRANK_ONLY[name]
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("case", sorted(ROUTES))
 def test_every_route_builds_inside_its_claims(case):
@@ -556,7 +594,7 @@ def test_every_route_builds_inside_its_claims(case):
 
 @pytest.mark.parametrize(("case", "rider", "bare"), [("past b1", 2, 3), ("under b1", 3, 2)])
 def test_a_run_past_its_rider_is_bare_with_end_play_at_the_rider_only(case, rider, bare):
-    tmpl, design, mech = _route_case(case)
+    tmpl, design, mech = _route_crank(case)
     z, play = design.plan.z, PrintedCrank().axial_play
     xy = tuple(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)).xy("M"))
     lower, upper = _part(mech, "crank_seg0"), _part(mech, "crank_seg1")
@@ -572,7 +610,8 @@ def test_a_run_past_its_rider_is_bare_with_end_play_at_the_rider_only(case, ride
 
 
 def test_a_crank_point_turns_with_the_crank():
-    tmpl, design, _ = _route_case("detour")
+    config, layers, top, route, point, _ = ROUTES["detour"]
+    tmpl, design = _routed(config, layers, top, route, point)
     for t in (0.0, 1.0, 4.38):
         build = Build(design.ctx, design.plan, tmpl.freeze_at(t))
         x, m = build.xy("X") - build.xy("O"), build.xy("M") - build.xy("O")
@@ -581,11 +620,9 @@ def test_a_crank_point_turns_with_the_crank():
 
 
 def test_without_the_bearing_the_crank_ends_at_its_lowest_web():
-    tmpl, design, mech = _route_case("no bearing")
-    bottom = _part(mech, "crank_seg0").bounding_box().min.Z
+    tmpl, design, got = _route_crank("no bearing")
+    bottom = _part(got, "crank_seg0").bounding_box().min.Z
     assert pytest.approx(design.plan.z(1)[0]) == bottom   # the web's face, no journal stub
-    crank = next(g for g in design.groups if g.name == "crank")
-    got = crank.realize(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)), Realized())
     assert FRAME_OUTER not in got.cuts                 # no journal hole in the outer plate
 
 

@@ -15,7 +15,7 @@ from spiderpig.construction.contract import CLASH_MM3
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
 from spiderpig.layout import pack
-from spiderpig.linkage import build_module_template
+from tests import cache
 
 ELECTRONICS = {"esp32_servo_driver": "deck_board", "lipo_2s_450": "deck_battery",
                "ip2326_charger": "deck_charger", "bms_hx_2s_jh20": "deck_bms",
@@ -24,11 +24,9 @@ ELECTRONICS = {"esp32_servo_driver": "deck_board", "lipo_2s_450": "deck_battery"
 
 @pytest.fixture(scope="module")
 def strider():
-    """The default design's robot (the Strider double), built once for this module."""
-    from spiderpig.fabricate import fabricate
-
+    """The default design's robot (the Strider double), from the fabrication cache."""
     cfg = BuildConfig()
-    return cfg, fabricate(build_module_template(cfg.module, linkage=cfg.linkage), cfg, 1.0)
+    return cfg, cache.cached_robot(cfg, 1.0)
 
 
 @pytest.fixture(scope="module", params=["strider", "klann"])

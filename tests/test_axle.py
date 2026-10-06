@@ -20,6 +20,7 @@ from spiderpig.construction.axle import AxleGroup, PrintedAxle
 from spiderpig.construction.base import Build, Realized
 from spiderpig.construction.printed import Snap, plan_segments, segment_solid
 from spiderpig.shapes import disc
+from tests.tiers import quick
 
 T = 1.0
 
@@ -34,9 +35,10 @@ def _above(part, z: float):
     return part & Box(1e3, 1e3, 1e3).moved(Location((0.0, 0.0, z + 500.0)))
 
 
-@pytest.fixture(params=["single", "double", "decker", "quad"])
+@pytest.fixture(params=quick(["single", "double", "decker", "quad"], ["single", "double"]))
 def axles(request, design, side):
-    """``(design, build, fabricated side, its axle groups)`` per module at ``T``."""
+    """``(design, build, fabricated side, its axle groups)`` per module at ``T`` (the decker
+    and the quad, the same constructions on more axles, in the slow tier)."""
     tmpl, d = design(request.param, pin="printed", pillar="printed")
     build = Build(d.ctx, d.plan, tmpl.freeze_at(T))
     groups = [g for g in d.groups if isinstance(g, AxleGroup)]
