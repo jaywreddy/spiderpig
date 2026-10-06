@@ -409,12 +409,13 @@ def path_notches(lay: DeckLayout, obstacles: Sequence[Box6]) -> list[tuple[float
 
 
 def _bms_place(bms: dict, x1: float, room: float, x_min: float,
-               under: Sequence[tuple[float, float, float, float]]
-               ) -> tuple[float, float, float, float]:
+               under: Sequence[tuple[float, float, float, float]],
+               x_max: float | None = None) -> tuple[float, float, float, float]:
     """``(x extent, z half, x1, z centre)`` of the protection board under the deck: across
     the bay (its length in z) where the rails leave ``room`` (z half), else turned along it;
-    its +x end at ``x1``, moved toward -z/+z, then back toward ``x_min``, until clear of the
-    ``under`` boxes (x0, x1, z0, z1: what else hangs under the deck)."""
+    its +x end at ``x1`` or as near it as it goes (from ``x_min`` to ``x_max``, 0.5 mm
+    steps; behind it first), moved toward -z/+z, clear of the ``under`` boxes (x0, x1, z0,
+    z1: what else hangs under the deck)."""
     def clear(xa: float, xb: float, za: float, zb: float) -> bool:
         return not any(_overlap(xa, xb, u0, u1) and _overlap(za, zb, v0, v1)
                        for u0, u1, v0, v1 in under)        # (each with its own clearance)
@@ -424,12 +425,13 @@ def _bms_place(bms: dict, x1: float, room: float, x_min: float,
         slack = room - b_z
         zs = sorted({round(s * k * 0.5, 3) for k in range(int(slack / 0.5) + 1)
                      for s in (-1, 1)}, key=abs)
-        x = x1
-        while x - b_x >= x_min - 1e-9:
+        hi = x1 if x_max is None else x_max
+        xs = [x1 + 0.5 * k for k in range(int((hi - x1) / 0.5) + 1)]
+        xs += [x1 - 0.5 * k for k in range(1, int((x1 - x_min - b_x) / 0.5) + 1)]
+        for x in sorted(xs, key=lambda x: (abs(x - x1), x > x1)):
             for z in zs:
                 if clear(x - b_x, x, z - b_z, z + b_z):
                     return b_x, b_z, x, z
-            x -= 1.0
     raise ConstructionError(f"the deck's protection board ({bms['length']:g} x "
                             f"{bms['width']:g} mm) finds no place under the deck between the "
                             f"rails ({2 * room:.1f} mm apart)")
@@ -681,7 +683,13 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
               (cx1 - ch["length"], cx1, cz0, cz1)]
     under += [(x - STRAP_W / 2, x + STRAP_W / 2, -abs(z), abs(z))
               for x, z in lay.strap_slots()[:1]]
-    b_x, b_z, bx1, bz = _bms_place(bms, bx1, room, lay.x_c - HALF_LEN, under)
+    # the wire slots and the cable ties beside them: each tie runs under the deck from one
+    # of its slots to the other, round the wires over the wire slot
+    tie_dx = WIRE_SLOT[0] / 2 + 3.0 + CABLE_TIE_SLOT[0] / 2
+    under += [(x - tie_dx, x + tie_dx, z - max(WIRE_SLOT[1], CABLE_TIE_SLOT[1]) / 2,
+               z + max(WIRE_SLOT[1], CABLE_TIE_SLOT[1]) / 2) for x, z in lay.wire_slots()]
+    b_x, b_z, bx1, bz = _bms_place(bms, bx1, room, lay.x_c - HALF_LEN, under,
+                                   lay.x_c + HALF_LEN)
     bodies += [
         Body(name="deck_charger", part=charger, rigid_with=host["L"], fab="purchased",
              bom_key="ip2326_charger", color=PCB_COLOR),

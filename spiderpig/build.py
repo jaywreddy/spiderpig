@@ -207,7 +207,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     for owned in ("laser", "print"):     # no cut or print files left from an earlier build
         clear_generated(out / owned)
-    # an export's manifest no longer describes the folder (api.export reuses one by it)
+    # an export's manifest no longer describes the folder (api.export reuses one by it):
+    # this build writes its own once it has written everything
     (out / "manifest.json").unlink(missing_ok=True)
     from spiderpig.api import config_warnings
 
@@ -299,7 +300,22 @@ def main(argv=None) -> int:
     (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
                                                  build_dir=str(out)))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
+    _write_manifest(out, config)
     return 0
+
+
+def _write_manifest(out: Path, config) -> None:
+    """``manifest.json`` naming the design built here (its id as :func:`api.resolve` gives
+    it), so an ``api.export`` of the same design into this folder keeps its cut and print
+    files and ORDER.md, and one of another design clears them."""
+    import json
+
+    from spiderpig import api
+
+    design = api.resolve(api.spec_of(config), store=None)
+    (out / "manifest.json").write_text(json.dumps(
+        {"design": design.id, "engine_version": design.engine_version,
+         "written_by": "spiderpig build"}, indent=1))
 
 
 if __name__ == "__main__":
