@@ -511,6 +511,8 @@ def _docs_of(x: Design | str, store: Store | None):
     if isinstance(x, Design):
         st = x.store or store
         docs = {} if st is None else _store_docs(st, x.id)
+        if x.edited:            # the store's are the unedited design's
+            docs = {k: v for k, v in docs.items() if k not in EDITED_STAGES}
         docs.update({k: report_doc(v) for k, v in x.reports.items()})
         return x.id, x.spec.to_dict(), x.resolved, docs
     if store is None:
@@ -1581,6 +1583,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         )
         assert abs(parts[b.name].mass_g - mass) < 1e-9
     design.parts = parts
+    design.edited = False           # (the parts as built: any accepted edit is gone)
     counts = {}
     for p in parts.values():
         counts[p.fab] = counts.get(p.fab, 0) + 1
@@ -1759,7 +1762,13 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
         # and kept off the store (whose build is the unedited design: a reload's)
         design.edited = True
         _forget(design, "export", "verify")
-    return _finish(design, "recheck", rep, t0)
+    elif rep.failures:
+        # rejected: the mechanism (what an export or a verify reads) goes back to the parts
+        # last accepted; the rejected solids stay only on the parts, to be edited again
+        for n, part in design.parts.items():
+            mech.body(n).part = part.built
+    # a recheck of handle-local edits says nothing about the store's (unedited) build
+    return _finish(design, "recheck", rep, t0, write=not rep.edited)
 
 
 EDITED_STAGES = ("export", "verify")

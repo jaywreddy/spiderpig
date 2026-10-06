@@ -306,7 +306,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     # the contract's crank angles are each a fabrication of the side from the plan alone:
     # workers check them (the design loaded from the store) while this process builds
     contract = _start_contracts(design, CONTRACT_TS[level])
-    br = api.build(design)
+    # at the handle's own crank angle when it has a build (another would build afresh and
+    # drop its accepted edits)
+    br = api.build(design, design.build_t if design.build_t is not None else 1.0)
     rep.failures += br.failures
     rows.append(_stage_row("build.parts", "build", br.failures,
                            f"{br.n_parts} parts" if br.ok else "", "measured"))
