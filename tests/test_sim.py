@@ -91,6 +91,8 @@ def test_model_compiles_with_the_documented_names(built):
 
 def test_masses_match_the_fabricated_robot(built):
     """Every part counted once, at its material's density (the servo at its datasheet mass)."""
+    from spiderpig.hardware.mass import item_material
+
     _, model, meta, robot = built
     grams = 0.0
     for b in robot.bodies:
@@ -109,8 +111,9 @@ def test_masses_match_the_fabricated_robot(built):
             grams += 2.70 * cm3                                 # aluminium
         elif "insert" in (b.bom_key or ""):
             grams += 8.5 * cm3                                  # brass
-        else:
-            grams += 7.85 * cm3                                 # steel
+        else:   # steel, unless the item says (aluminium standoffs, PTFE, nylon: round 4)
+            grams += {"aluminium": 2.70, "brass": 8.5, "ptfe": 2.2, "nylon": 1.14}.get(
+                item_material(b.bom_key), 7.85) * cm3
     total = float(model.body_mass.sum())
     assert SimParams().payload_g == 0.0                 # the electronics deck is modelled
     assert meta["mass"]["by_material"]["electronics"] > 0.05
