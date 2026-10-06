@@ -1,5 +1,12 @@
 """Tests for the MuJoCo model of the walker (:mod:`sim`): the model is the fabricated
-robot, it stands, its loops stay closed, it walks and turns, and its servos cope."""
+robot, it stands, its loops stay closed, it walks and turns, and its servos cope.
+
+The models come from the test cache (``tests/_sim.py``: each design's MJCF built once per
+engine version from the cached robot, byte for byte the model of a fresh fabrication,
+``test_recorded_mjcf_current``), adopted as :func:`load_model`'s answer, so a test steps
+the model at once; the fabricated robot it is compared with is the cached one. The long
+walks are ``slow``.
+"""
 
 from __future__ import annotations
 
@@ -17,9 +24,9 @@ from spiderpig.hardware.catalog import get  # noqa: E402
 from spiderpig.sim.mjcf import (  # noqa: E402
     MIN_CRANK_ARMATURE,
     MM,
+    T_REF,
     SimParams,
     build_mjcf,
-    fabricated,
     load_model,
 )
 from spiderpig.sim.run import (  # noqa: E402
@@ -34,8 +41,8 @@ from spiderpig.sim.run import (  # noqa: E402
     walk_metrics,
 )
 from spiderpig.stack import body_class, is_link  # noqa: E402
-
-pytestmark = pytest.mark.slow
+from tests import _sim, cache  # noqa: E402
+from tests.tiers import quick  # noqa: E402
 
 # (linkage, module): Klann's single and quad, and a Strider (one coupled pair, two feet)
 DESIGNS = (("klann", "single"), ("klann", "quad"), ("strider", "single"))
@@ -46,11 +53,13 @@ WALK = 0.8              # drive speed, fraction of the servo's no-load speed
 
 @pytest.fixture(scope="module", params=DESIGNS, ids=[f"{k}-{m}" for k, m in DESIGNS])
 def built(request):
-    """(config, model, metadata, fabricated robot) per design."""
+    """(config, model, metadata, fabricated robot) per design (the model seeded from the
+    cache: :func:`load_model` answers with it; the robot the cached one at ``t_ref``)."""
     key, module = request.param
     cfg = BuildConfig(linkage=key, module=module)
+    _sim.seed(cfg)
     model, meta = load_model(cfg)
-    return cfg, model, meta, fabricated(cfg)
+    return cfg, model, meta, cache.cached_robot(cfg, T_REF)
 
 
 def _vmax(meta) -> float:
@@ -124,6 +133,7 @@ def test_masses_match_the_fabricated_robot(built):
     assert 0.2 < total < 1.5          # kg (aluminium frame and crank plates since 2026-10-04)
     # a payload rides the base alone, at its com when it sits on the crank axis
     payload = 100.0
+    _sim.seed(built[0], SimParams(payload_g=payload))
     loaded, lmeta = load_model(built[0], SimParams(payload_g=payload))
     assert lmeta["mass"]["by_material"]["payload"] == pytest.approx(payload / 1000.0)
     base = model.body("base").id
@@ -280,7 +290,7 @@ OLD = {"crank": "keyed", "pillar": "printed"}
 @pytest.fixture(scope="module")
 def quad():
     cfg = BuildConfig(linkage="klann", module="quad", **OLD)
-    _, meta = load_model(cfg)
+    _, meta = _sim.seed(cfg)
     return cfg, _vmax(meta)
 
 
@@ -317,6 +327,7 @@ def _run(cfg, left, right, seconds=3.0):
     return r, walk_metrics(r, skip=SETTLE + 0.7)
 
 
+@pytest.mark.slow
 def test_quad_walks_forward_and_back(quad):
     cfg, vmax = quad
     w = WALK * vmax
@@ -345,6 +356,7 @@ def test_quad_walks_forward_and_back(quad):
     assert abs(back["speed"]) == pytest.approx(m["speed"], rel=0.25)
 
 
+@pytest.mark.slow
 def test_quad_turns_on_the_spot(quad):
     """Drives opposed (at 40 % speed): the heading turns while the robot stays near its
     starting point; walking forward at that speed it would go much further."""
@@ -378,6 +390,7 @@ MISMATCH_NOTE = ("two open-loop servos drift apart: the right one 5 % slower rol
                  "quad over at 8 s (measured); the phase lock the real bus needs keeps it up")
 
 
+@pytest.mark.slow
 def test_the_phase_lock_keeps_a_mismatched_pair_walking(quad):
     """10 s at 80 % with the right servo 5 % slower: open loop (``lock=False`` keeps the
     mismatch out, so it is applied by hand) the quad rolls over; through the lock it
@@ -385,6 +398,7 @@ def test_the_phase_lock_keeps_a_mismatched_pair_walking(quad):
     cfg, vmax = quad
     u = WALK * vmax
     params = SimParams(servo_mismatch=0.05)
+    _sim.seed(cfg, params)
     loose = simulate(cfg, lambda t: (0.0, 0.0) if t < SETTLE else (u, u * 0.95), SETTLE + 10.0,
                      params=params, lock=False, record_every=4)
     m0 = walk_metrics(loose, skip=1.0)
@@ -400,6 +414,7 @@ def test_the_phase_lock_keeps_a_mismatched_pair_walking(quad):
     assert abs(m["yaw_rate"]) < 3.0
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(("offset_deg", "survives"), [(45.0, True), (180.0, False)])
 def test_a_held_side_offset_under_the_lock(quad, offset_deg, survives):
     """The right side held back until the cranks are ``offset_deg`` apart, then both at full
@@ -423,6 +438,7 @@ def test_a_held_side_offset_under_the_lock(quad, offset_deg, survives):
         assert m["side_phase_max"] < offset_deg + 5.0
 
 
+@pytest.mark.slow
 def test_the_sim_height_and_pitch_follow_the_quasi_static_support(quad):
     """The wobble is kinematic, not numerical: the base height and pitch against the crank
     angle match the quasi-static support plane (``walk.support``) within 1 mm / 1 deg rms
@@ -451,6 +467,7 @@ def test_the_sim_height_and_pitch_follow_the_quasi_static_support(quad):
     assert np.ptp(hs) == pytest.approx(np.ptp(hq), abs=3.0)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(("left", "right"), [
     pytest.param(1.0, -1.0, marks=pytest.mark.xfail(reason=STEER_REQUIREMENT, strict=False)),
     pytest.param(1.0, 0.0, marks=pytest.mark.xfail(reason=STEER_REQUIREMENT, strict=False)),
@@ -467,11 +484,12 @@ def test_quad_steers_without_tipping(quad, left, right):
     assert math.isfinite(m["turn_radius"])
 
 
-@pytest.mark.parametrize("armature", [MIN_CRANK_ARMATURE, 5e-3, 2e-2])
+@pytest.mark.parametrize("armature", quick([MIN_CRANK_ARMATURE, 5e-3, 2e-2], keep=[5e-3]))
 def test_the_model_is_well_posed_across_the_crank_armature(quad, armature):
     """The crank's reflected rotor inertia is an estimate: over its plausible range the
     loops stay closed and a straight walk doesn't roll; below it the model is refused."""
     cfg, vmax = quad
+    _sim.seed(cfg, SimParams(crank_armature=armature))
     r = simulate(cfg, [(0.0, 0.0, 0.0), (SETTLE, vmax, vmax)], SETTLE + 2.0,
                  params=SimParams(crank_armature=armature))
     m = walk_metrics(r, skip=SETTLE + 0.5)
@@ -486,11 +504,12 @@ def test_too_little_crank_armature_is_refused():
         build_mjcf(BuildConfig(linkage="klann", module="quad"), SimParams(crank_armature=0.0))
 
 
+@pytest.mark.slow
 def test_strider_walks_on_its_feet_alone():
     """Strider's ``b4`` / ``b8`` end on the foot joints: their capsules must not touch the
     floor beside the feet (``body_contact`` 0), and the walk reads as the model's."""
     cfg = BuildConfig(linkage="strider", module="quad", **OLD)   # the bolt crank's doesn't plan
-    _, meta = load_model(cfg)
+    _, meta = _sim.seed(cfg)
     for info in meta["feet"].values():
         assert len(info["links"]) >= 2
         assert info["body"] in info["links"]
@@ -512,6 +531,7 @@ WALKERS = [      # the Strider quad keyed (with the bolt crank it doesn't plan i
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(("key", "module"), WALKERS)
 def test_each_walker_walks_forward_upright(key, module):
     """4 s at full speed: still on its feet (up-vector z > 0.7) and walking the way the
@@ -519,7 +539,7 @@ def test_each_walker_walks_forward_upright(key, module):
     from spiderpig import walk
 
     cfg = BuildConfig(linkage=key, module=module, **(OLD if key == "strider" else {}))
-    _, meta = load_model(cfg)
+    _, meta = _sim.seed(cfg)
     vmax = _vmax(meta)
     r = simulate(cfg, [(0.0, 0.0, 0.0), (SETTLE, vmax, vmax)], SETTLE + 4.0)
     m = walk_metrics(r, skip=SETTLE + 0.7)
@@ -530,6 +550,7 @@ def test_each_walker_walks_forward_upright(key, module):
     assert abs(m["speed"]) > 50
 
 
+@pytest.mark.slow
 def test_mujoco_and_the_quasi_static_model_are_compared(quad):
     """The comparison the tune panel and the HUD show: Klann's quad walks 1.9x faster in
     MuJoCo than the quasi-static model says (a known gap, flagged) and one side stands
@@ -552,7 +573,7 @@ def test_mujoco_and_the_quasi_static_model_are_compared(quad):
     assert sum(m["feet_down_hist"]) == pytest.approx(1.0)
     assert m["airborne"] < 0.1
     strider = BuildConfig(linkage="strider", module="quad", **OLD)
-    _, meta = load_model(strider)
+    _, meta = _sim.seed(strider)
     _, ms = _run(strider, _vmax(meta), _vmax(meta), seconds=3.0)
     cs = compare_with_walk(ms, strider)
     assert abs(cs["speed_ratio"] - 1.0) < 0.25, cs
@@ -627,11 +648,10 @@ def test_r5_the_kinematic_stride_reads_forward_for_every_walker():
 
 
 def test_r5_the_metrics_say_when_and_how_it_fell_and_an_exported_model_runs(built):
-    from spiderpig.sim.mjcf import build_mjcf
     from spiderpig.sim.run import simulate, walk_metrics
 
     cfg = built[0]
-    xml, meta = build_mjcf(cfg)
+    xml, meta = _sim.mjcf_of(cfg)          # build_mjcf(cfg), from the cache
     r = simulate(cfg, seconds=0.3, model_xml=xml, model_meta=meta)           # entry 6
     m = walk_metrics(r, skip=0.1)
     assert set(m) >= {"fell", "fell_at_s", "fell_axis"}
@@ -639,3 +659,38 @@ def test_r5_the_metrics_say_when_and_how_it_fell_and_an_exported_model_runs(buil
     assert m["fell_axis"] is None
     with pytest.raises(ValueError, match="model_meta"):
         simulate(cfg, seconds=0.1, model_xml=xml)
+
+
+# ---------------------------------------------------------------------------
+# The recorded MJCFs (tests/fixtures/sim/): an export runs as is, and the engine still
+# builds it byte for byte (from a fresh fabrication, and from the test cache)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", list(_sim.RECORDED))
+def test_a_recorded_export_runs_as_is(name):
+    """A model exported by an earlier engine (the recorded XML and its ``.json``) runs
+    through ``simulate(model_xml=, model_meta=)`` and its metrics, standing."""
+    key, module = _sim.RECORDED[name]
+    cfg = BuildConfig(linkage=key, module=module)
+    xml, meta = _sim.recorded_mjcf(name)
+    assert meta["format"] == "spiderpig-mjcf/1"
+    assert meta["config"]["linkage"] == key
+    r = simulate(cfg, (0.0, 0.0), 0.5, model_xml=xml, model_meta=meta)
+    assert np.isfinite(r.base_pos).all()
+    assert r.loop_error.max() < 0.5e-3
+    m = walk_metrics(r, skip=0.1)
+    assert m["fell_at_s"] is None
+    assert m["mass"] == pytest.approx(meta["mass"]["total"])
+    assert set(m["loop_force"]) == {lp["name"] for lp in meta["loops"]}
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+@pytest.mark.parametrize("name", list(_sim.RECORDED))
+def test_recorded_mjcf_current(name):
+    """The engine builds the recorded MJCF and meta byte for byte from a fresh fabrication,
+    and the test cache's model (built from the cached robot) is that model too."""
+    fresh = cache.assert_current("sim", f"mjcf_{name}", lambda: _sim.fresh_mjcf(name))
+    key, module = _sim.RECORDED[name]
+    assert _sim.mjcf_doc(*_sim.mjcf_of(BuildConfig(linkage=key, module=module))) == fresh

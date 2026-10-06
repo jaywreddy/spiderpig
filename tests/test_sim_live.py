@@ -1,9 +1,13 @@
 """Tests for the live MuJoCo session the viewer drives (:mod:`sim.live`, ``/ws/sim``).
 
-The websocket tests build models in this process (``SPIDERPIG_WORKERS=0``: the
-``live`` fixture's model is already compiled, so a session starts at once); the
-server's own worker-process path is :mod:`spiderpig.workers`' and is covered by the
-e2e tests.
+The websocket tests build models in this process (``SPIDERPIG_WORKERS=0``); the Klann
+quad's model is seeded from the test cache with its steering check (``tests/_sim.py``:
+what the server's build job hands over, made once per engine version), so a session
+starts at once, and the server doesn't bake the default robot at startup (its tests are
+``test_view.py``'s). The tests of the build itself stub the builder with that cached
+output, and ``test_a_finished_build_is_forgotten_after_a_real_build`` (slow) runs the real
+one. The server's own worker-process path is :mod:`spiderpig.workers`' and is covered by
+the e2e tests.
 """
 
 from __future__ import annotations
@@ -22,29 +26,31 @@ mujoco = pytest.importorskip("mujoco")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from spiderpig.bake import bake_gltf  # noqa: E402
 from spiderpig.config import BuildConfig  # noqa: E402
 from spiderpig.server import app as server  # noqa: E402
 from spiderpig.server.app import app  # noqa: E402
 from spiderpig.sim.live import HEADER, MAX_CATCH_UP, LiveSim  # noqa: E402
-from spiderpig.sim.mjcf import load_model  # noqa: E402
 from spiderpig.sim.run import STEER_TILT, body_motions  # noqa: E402
+from tests import _sim  # noqa: E402
+from tests.tiers import quick  # noqa: E402
 
 # The design these sessions step: the Klann quad (the sim's calibrated reference), named,
 # since the server's default is the Strider double.
 KLANN_QUAD_WS = "/ws/sim?linkage=klann&module=quad"
-
-pytestmark = pytest.mark.slow
+KLANN_QUAD = BuildConfig(linkage="klann", module="quad")
 
 
 @pytest.fixture(autouse=True)
 def _in_process(monkeypatch):
     monkeypatch.setenv("SPIDERPIG_WORKERS", "0")
+    monkeypatch.setattr(server, "_PREBAKE_DEFAULT", False)
+    _sim.seed(KLANN_QUAD, steering=True)
 
 
 @pytest.fixture(scope="module")
 def live():
-    return LiveSim(BuildConfig(linkage="klann", module="quad"))
+    _sim.seed(KLANN_QUAD, steering=True)
+    return LiveSim(KLANN_QUAD)
 
 
 def _unpack(sim: LiveSim) -> np.ndarray:
@@ -133,6 +139,21 @@ def test_hello_carries_the_servo_ratings_and_the_steering_check(live):
     assert h["phase_lock"]["step_deg"] == steer["step_deg"]
     assert live.lock.max_offset == pytest.approx(math.radians(steer["step_deg"]))
     assert live.hello()["steering"] is steer       # computed once per model
+
+
+@pytest.mark.slow
+def test_hello_runs_the_steering_check_for_a_model_without_one():
+    """A model that comes without the verdict (one built here, not by the server's job):
+    the session runs the check once, and it is the verdict the cache holds (what the other
+    tests' seeded model carries)."""
+    model, meta = _sim.seed(KLANN_QUAD)
+    sim = LiveSim(KLANN_QUAD, model=model,
+                  meta={k: v for k, v in meta.items() if k != "steering"})
+    assert math.isinf(sim.lock.max_offset)
+    steer = sim.hello()["steering"]
+    assert _json(steer) == _sim.steering_of(KLANN_QUAD)
+    assert sim.lock.max_offset == pytest.approx(math.radians(steer["step_deg"]))
+    assert sim.hello()["steering"] is steer
 
 
 def test_a_requested_reset_lands_on_the_next_advance(live):
@@ -406,7 +427,7 @@ def test_a_client_leaving_during_the_build_logs_no_traceback(monkeypatch, caplog
     the build itself finishes for the next client."""
     from spiderpig.sim import mjcf
 
-    xml, meta = mjcf.build_mjcf(BuildConfig(linkage="klann", module="quad"))
+    xml, meta = _sim.job_output(KLANN_QUAD)        # what the in-process build returns
     started, finished = threading.Event(), threading.Event()
 
     def slow_build(config):
@@ -449,10 +470,9 @@ def _slow_builder(monkeypatch, started: threading.Event, release: threading.Even
 
 @pytest.fixture
 def quad_mjcf():
-    from spiderpig.sim import mjcf
-
-    xml, meta = mjcf.build_mjcf(BuildConfig(linkage="klann", module="quad"))
-    return xml, meta
+    """What the in-process build of the Klann quad returns (the MJCF, its meta and the
+    steering check), from the cache."""
+    return _sim.job_output(KLANN_QUAD)
 
 
 def test_a_command_and_a_reset_during_the_build_still_yield_the_hello(monkeypatch, quad_mjcf,
@@ -542,17 +562,63 @@ def test_a_busy_server_refuses_the_next_session(monkeypatch):
     assert server._SIM_SESSIONS == 0
 
 
-def test_a_finished_build_is_forgotten(monkeypatch):
-    """The shared build future is dropped once adopted into the model cache (it held the
-    MJCF text and metadata for every design ever built otherwise)."""
+def _json(doc):
+    import json
+
+    return json.loads(json.dumps(doc))
+
+
+def _forgotten_after_a_build(cfg):
     from spiderpig.sim import mjcf
 
-    cfg = BuildConfig(linkage="klann", module="quad")
     server._SIM_BUILDS.clear()
     with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
-        _hello(ws)
+        hello = _hello(ws)
         assert mjcf.cached_model(cfg) is not None
         assert server._SIM_BUILDS == {}
+    return hello
+
+
+def test_a_finished_build_is_forgotten(monkeypatch):
+    """The shared build future is dropped once adopted into the model cache (it held the
+    MJCF text and metadata for every design ever built otherwise). The model isn't cached
+    yet, so the server builds it (the in-process builder: here its cached output)."""
+    from spiderpig.sim import mjcf
+
+    built = []
+
+    def build(config):
+        built.append(config)
+        return _sim.job_output(config)
+
+    monkeypatch.setattr(server, "_build_mjcf_in_process", build)
+    mjcf.clear_caches()
+    try:
+        _forgotten_after_a_build(KLANN_QUAD)
+    finally:
+        mjcf.clear_caches()
+    assert built == [KLANN_QUAD]
+
+
+@pytest.mark.slow
+def test_a_finished_build_is_forgotten_after_a_real_build():
+    """The same through the real in-process build (``build_mjcf`` and the steering check,
+    from the cached robot rather than a fabrication): the hello carries the very model and
+    verdict the cache holds."""
+    from spiderpig.sim import mjcf
+
+    mjcf.clear_caches()
+    try:
+        mjcf.set_fabricated(KLANN_QUAD, _sim.robot_at_ref(KLANN_QUAD))
+        hello = _forgotten_after_a_build(KLANN_QUAD)
+        _, meta = mjcf.cached_model(KLANN_QUAD)
+        xml, cached = _sim.mjcf_of(KLANN_QUAD)
+        assert mjcf.build_mjcf(KLANN_QUAD)[0] == xml
+        assert _json({k: v for k, v in meta.items() if k not in ("steering", "kinematic")}) \
+            == cached
+        assert _json(hello["steering"]) == _sim.steering_of(KLANN_QUAD)
+    finally:
+        mjcf.clear_caches()
 
 
 # ---------------------------------------------------------------------------
@@ -572,15 +638,16 @@ def _glb_node_names(path) -> set[str]:
     return {n["name"] for n in doc["nodes"] if n.get("name") and n["name"] != "walker"}
 
 
-@pytest.mark.parametrize(("linkage", "module"), [("klann", "quad"), ("klann", "double"),
-                                                 ("strider", "quad")])
-def test_the_glb_bake_and_the_model_name_the_same_nodes(tmp_path, linkage, module):
+@pytest.mark.parametrize(("linkage", "module"), quick(
+    [("klann", "quad"), ("klann", "double"), ("strider", "quad")], keep=[("klann", "quad")]))
+def test_the_glb_bake_and_the_model_name_the_same_nodes(linkage, module):
     """What ``PhysicsLink.bind`` relies on: every node of the baked robot is in the
-    model's ``nodes`` map, and nothing else is."""
+    model's ``nodes`` map, and nothing else is (both from the cache: the bake and the model
+    of the cached fabrication, which are a fresh one's, ``test_bake_gltf.py`` and
+    ``test_sim.py``'s ``test_recorded_mjcf_current``)."""
     # the Strider quad keyed: with the bolt crank it doesn't plan within the default budget
     old = {"crank": "keyed", "pillar": "printed"} if linkage == "strider" else {}
     cfg = BuildConfig(linkage=linkage, module=module, **old)
-    path = tmp_path / f"{cfg.key}.glb"
-    bake_gltf(path, cfg, n_frames=4, profile=False)
-    _, meta = load_model(cfg)
+    path, _ = _sim.baked(cfg, n_frames=4)
+    _, meta = _sim.seed(cfg)
     assert _glb_node_names(path) == set(meta["nodes"])
