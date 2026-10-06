@@ -41,6 +41,7 @@ search ran to the end, :attr:`StackPlan.proof` how far it went.
 
 from __future__ import annotations
 
+import heapq
 import itertools
 import logging
 import math
@@ -265,10 +266,19 @@ class Layout:
         cache = self.__dict__.setdefault("_zcache", {})
         z = cache.get(layer)
         if z is None:
+            # ``sum`` of each layer and the gap over it, the same terms in the same order
+            # (its float summation is compensated: a running total would differ in the
+            # last bits), the terms made once per layout
             if layer >= 0:
-                z = sum(self.t(j) + self.gap(j) for j in range(layer))
+                up = self.__dict__.setdefault("_zup", [])         # layers 0, 1, ...
+                while len(up) < layer:
+                    up.append(self.t(len(up)) + self.gap(len(up)))
+                z = sum(up[:layer])
             else:
-                z = -sum(self.t(j) + self.gap(j) for j in range(layer, 0))
+                down = self.__dict__.setdefault("_zdown", [])     # layers -1, -2, ...
+                while len(down) < -layer:
+                    down.append(self.t(-1 - len(down)) + self.gap(-1 - len(down)))
+                z = -sum(down[-layer - 1::-1])                    # layers layer..-1
             cache[layer] = z
         return z
 
@@ -294,13 +304,27 @@ class Layout:
         hi = int(np.ceil((z1 - eps) / self.pitch))
         if not self.thick and not self.gaps:
             return range(lo, hi)
-        span = range(min(lo, 0) - 16, max(hi, self.top) + 17)
-        ks = [k for k in span if self.z(k)[0] < z1 - eps and self.z(k)[1] > z0 + eps]
-        return range(ks[0], ks[-1] + 1) if ks else range(lo, lo)
+        # a function of the stack's z alone, asked again and again of equal layouts (the
+        # crank's hub under the inner plate, for every route the planner tries)
+        key = (self.top, self.pitch, tuple(self.thick.items()), tuple(self.gaps.items()),
+               z0, z1)
+        got = _BETWEEN.get(key)
+        if got is None:
+            span = range(min(lo, 0) - 16, max(hi, self.top) + 17)
+            ks = [k for k in span if self.z(k)[0] < z1 - eps and self.z(k)[1] > z0 + eps]
+            got = range(ks[0], ks[-1] + 1) if ks else range(lo, lo)
+            if len(_BETWEEN) >= 1 << 14:
+                _BETWEEN.clear()
+            _BETWEEN[key] = got
+        return got
 
     def height(self) -> float:
         """Both frame plates' outer faces apart (mm)."""
         return self.z(self.top)[1] - self.z(0)[0]
+
+
+_BETWEEN: dict[tuple, range] = {}
+"""(:meth:`Layout.layers_between`) answers by the stack's z and the interval."""
 
 
 class Unbuildable(Exception):
@@ -2188,6 +2212,35 @@ GAP_TRIES = 60        # thicker gaps a plan's z tries for a claim that fails (fi
 GAP_MORE = 3.0        # the most a plan's z thickens a gap past its heads' need (a layer's worth)
 
 
+class _ReadGaps(Mapping):
+    """A layout's gaps that note every gap a claim read (``read``: layer -> thickness).
+    Only values are noted: the keys, and so ``len``, iteration and membership, are the
+    same in every try of :func:`_thicker_gaps`."""
+
+    __slots__ = ("_gaps", "read")
+
+    def __init__(self, gaps: Mapping[int, float]):
+        self._gaps = gaps
+        self.read: dict[int, float] = {}
+
+    def __getitem__(self, k: int) -> float:
+        v = self._gaps[k]
+        self.read[k] = v
+        return v
+
+    def get(self, k, default=None):
+        return self[k] if k in self._gaps else default
+
+    def __contains__(self, k) -> bool:
+        return k in self._gaps
+
+    def __iter__(self):
+        return iter(self._gaps)
+
+    def __len__(self) -> int:
+        return len(self._gaps)
+
+
 def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
                   gaps: dict[int, float], thick: dict[int, float],
                   bridged: set[int]) -> dict[int, float]:
@@ -2203,18 +2256,41 @@ def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
     ks = sorted(gaps)
     more = {k: [o for o in _gap_options(k, gaps[k], spec, bridged) if o > gaps[k] + EPS_Z]
             for k in ks}
-    tries: list[tuple[float, dict[int, float]]] = []
+    # every thickening (its total, then what it changes), in the order of sorting the gap
+    # dicts by (rounded total, sorted items) and keeping the first GAP_TRIES: only those
+    # whose total is within rounding (1e-5) of the GAP_TRIES-th least can be among them, and
+    # every gap dict has the keys ``ks``, so its items compare as its values in that order
+    cands: list[tuple[float, tuple]] = []
     for k in ks:
-        tries += [(o - gaps[k], {**gaps, k: o}) for o in more[k]]
+        cands += [(o - gaps[k], ((k, o),)) for o in more[k]]
     for a, b in itertools.combinations(ks, 2):
-        tries += [(oa + ob - gaps[a] - gaps[b], {**gaps, a: oa, b: ob})
+        cands += [(oa + ob - gaps[a] - gaps[b], ((a, oa), (b, ob)))
                   for oa in more[a][:8] for ob in more[b][:8]]
-    tries.sort(key=lambda t: (round(t[0], 6), sorted(t[1].items())))
-    tries = tries[:GAP_TRIES]
+    if len(cands) > GAP_TRIES:
+        cut = heapq.nsmallest(GAP_TRIES, (c[0] for c in cands))[-1] + 1e-5
+        cands = [c for c in cands if c[0] <= cut]
+    keyed = []
+    for i, (d, how) in enumerate(cands):
+        g = {**gaps, **dict(how)}
+        keyed.append(((round(d, 6), tuple(g[k] for k in ks), i), d, g))
+    keyed.sort(key=lambda t: t[0])
+    tries = [(d, g) for _, d, g in keyed[:GAP_TRIES]]
+    # A claim's ``make`` is a function of what it reads of its layout: a try that agrees
+    # with a failed one on every gap that one read fails too, and is skipped (the gaps
+    # read through :class:`_ReadGaps`; every try has the same keys, layers and thicknesses)
+    failed: list[dict[int, float]] = []
+    seen = _ReadGaps(gaps)
+    if made(claim, Layout(layers, top, spec.pitch, choices, seen, dict(thick),
+                          final=True))[0] is None:
+        failed.append(seen.read)
     for _, g in tries:
-        layout = Layout(layers, top, spec.pitch, choices, dict(g), dict(thick), final=True)
+        if any(all(g[k] == v for k, v in r.items()) for r in failed):
+            continue
+        seen = _ReadGaps(g)
+        layout = Layout(layers, top, spec.pitch, choices, seen, dict(thick), final=True)
         if made(claim, layout)[0] is not None:
             return g
+        failed.append(seen.read)
     most = max((t[0] for t in tries), default=0.0)
     raise PlanReject(f"{err} (nor with its clearance gaps thickened by up to {most:.2g} mm "
                      f"in all: the {len(tries)} least thickenings of one or two gaps)")
