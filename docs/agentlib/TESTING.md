@@ -106,7 +106,7 @@ model, a loaded one doesn't), and therefore one of 201 meshes when the parts are
 after another build's (a shared TShape keeps its first triangulation). DXF *files* differ
 byte for byte between any two builds (timestamps, GUIDs): compare entities.
 
-**Timings** (one process, OCCT pool 1): see the table at the end.
+**Load vs build** and sizes: see Timings at the end.
 
 ## Recorded fixtures (`tests/fixtures/<module>/<name>.json`)
 
@@ -203,3 +203,42 @@ Compare against it from any worktree whose `spiderpig/` should be master's:
 - Product edits: the gate before and after, "identical" in the PR.
 
 ## Timings
+
+Measured 2026-10-06 on the 20-core development box, shared with other agents' jobs (the
+load average at the end of each run in brackets): wall times move by 10-20 % with the
+load, CPU sums (`/usr/bin/time`, user + sys over every worker) less.
+
+| | master `d53fbf1` | with the cache, cold (empty `CACHE_DIR`) | with the cache, warm |
+|---|---|---|---|
+| full suite, `-m 'not e2e' -n 12` | 587 s [4.7], 694 s [4.4]; 625 s / 6125 CPU-s [4.2] | 689 s [14.9] | 583 s [6.6]; 580 s / 6151 CPU-s [6.1] |
+| quick tier, `-m 'not slow and not e2e' -n 4` | 241 s [2.9], 244 s [4.7]; 252 s / 874 CPU-s [3.5] | 239 s [4.0] | 207 s [3.5]; 213 s / 751 CPU-s; 209 s / 725 CPU-s [4.3] |
+| `mise run test-construction` | | 118 s / 441 CPU-s | 85 s / 324 CPU-s |
+
+Every module tier, warm, at P0 (before the module packages move anything): `test-linkage`
+394 tests 149 s (the `/api/walk` tests plan designs), `test-planner` 70 / 27 s,
+`test-construction` 457 / 85 s, `test-hardware` 28 / 9 s, `test-strength` 37 / 31 s,
+`test-api` 134 / 55 s, `test-sim` 0 (every sim test is slow today), `test-server` 17 /
+20 s, `test-viewer` 102 s (the first `npm install` included).
+
+Master has no state across runs, so its "warm" run is a second cold one. The factories'
+share was smaller than the plan's estimate: a warm quick tier saves ~17 % CPU, the full
+suite's CPU is unchanged within the noise (its time is in tests that fabricate, plan,
+check or simulate by themselves). Those move onto the cache in P1-P6; what is left in a
+warm construction tier is exactly them (`--durations`: `test_deck`'s own Strider-robot
+fixture 17 s, the axle and contract tests' `check_side` and fabrications 5-11 s each).
+
+Cache entries, loaded vs built (one process, OCCT pool 1):
+
+| entry | bodies | load | build | size |
+|---|---:|---:|---:|---:|
+| Klann single side | 65 | 0.01 s | 4-8 s | 0.5 MB |
+| Klann single robot | 205 | 0.04 s | 10 s | 1.4 MB |
+| Klann quad side | 221 | 0.04 s | 29 s | 1.6 MB |
+| Klann quad robot | 519 | 0.09 s | 34 s | 3.1 MB |
+| plan seed, Klann quad / Strider double | | 3.7 / 1.3 CPU-s (re-made, verified) | 11.4 / 3.5 CPU-s (solved) | 1-2 kB |
+| prebuilt store, hoecken (copy) | 43 | 0.02 s | 4.3 s | |
+
+The whole suite fills ~23 MB per engine version (25 fabrications, the plans).
+
+The identity gate: ~5 min wall for the six designs at once (the Strider quad 290 s, the
+Strider double 150 s, the Klann quads 180-200 s, the mechanisms 45-50 s).

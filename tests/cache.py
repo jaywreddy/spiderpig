@@ -458,11 +458,16 @@ def prebuilt_store(cfg, tmp_path: Path, t: float = 1.0):
     and built at ``t`` (``build/manifest.json`` + STEP parts): a copy of
     ``CACHE_DIR/stores/<cfg.key>_t<t>/``, made once per engine version. Its one design is
     ``store.ids()[0]``; ``api.load(id, store)`` then ``api.build(design, t)`` serves the
-    parts from STEP. The copy is the test's own to change."""
+    parts from STEP. The copy is the test's own to change (a second call for the same
+    ``tmp_path`` copies to ``store_2``, ...)."""
     from spiderpig import api
     from spiderpig.store import Store
 
     dest = Path(tmp_path) / "store"
+    n = 1
+    while dest.exists():            # a second store in the same test: store_2, ...
+        n += 1
+        dest = Path(tmp_path) / f"store_{n}"
 
     def make(root: Path) -> None:
         design = api.resolve(api.spec_of(cfg), Store.of(root))
@@ -496,9 +501,16 @@ def fixture_path(module: str, name: str) -> Path:
     return FIXTURES / module / f"{name}.json"
 
 
+def _rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return str(path)
+
+
 def _jsonable(data) -> Any:
     """``data`` as it reads back from the fixture (tuples lists, keys strings)."""
-    return json.loads(json.dumps(data, sort_keys=True, allow_nan=False))
+    return json.loads(json.dumps(data, allow_nan=False))
 
 
 def _generator() -> str:
@@ -538,7 +550,7 @@ def recorded(module: str, name: str, make: Callable[[], Any]) -> Any:
     doc = json.loads(path.read_text())
     if doc.get("engine_version") != engine_version():
         warnings.warn(StaleFixture(
-            f"{path.relative_to(REPO)} was recorded under engine {doc.get('engine_version')}, "
+            f"{_rel(path)} was recorded under engine {doc.get('engine_version')}, "
             f"this is {engine_version()}: `mise run test-fixtures` checks and rewrites it"),
             stacklevel=2)
     return doc["data"]
@@ -556,7 +568,7 @@ def assert_current(module: str, name: str, make: Callable[[], Any]) -> Any:
     old = json.loads(path.read_text())["data"]
     if old != data:
         raise AssertionError(
-            f"{path.relative_to(REPO)} no longer matches the engine:\n"
+            f"{_rel(path)} no longer matches the engine:\n"
             + "\n".join(_diff(old, data)[:40])
             + "\nIf the change is intended: `mise run test-fixtures` (pytest --regen "
               "-m fixture_regen) rewrites it.")
