@@ -7,9 +7,10 @@ cases, the full tier (``mise run remote-test``) runs them all. Test ids are unch
 For a parametrize over several names, ``values`` are tuples and ``keep`` holds tuples.
 
 ``python -m tests.tiers <module> [pytest args]`` (``mise run test-<module>``) runs one
-module's fast tier: ``-m "<module> and not slow and not e2e" -n 4 --dist worksteal``
-(``SPIDERPIG_TIER_WORKERS`` changes ``-n``); a module with no fast test yet passes, saying
-so. ``python -m tests.tiers fixtures`` (``mise run test-fixtures``) runs the recorded
+module's fast tier: its own files (:func:`module_files`) with ``-m "<module> and not slow
+and not e2e"``, on :data:`TIER_WORKERS` xdist workers (``SPIDERPIG_TIER_WORKERS`` changes
+it; 0 runs in this process); a module with no fast test yet passes, saying so.
+``python -m tests.tiers fixtures`` (``mise run test-fixtures``) runs the recorded
 fixtures' currency tests with ``--regen``. ``docs/agentlib/TESTING.md`` has the tiers.
 """
 
@@ -34,6 +35,29 @@ def quick(values: Iterable, keep: Iterable) -> list:
     return out
 
 
+TIER_WORKERS = {"linkage": 2, "planner": 2, "construction": 4, "hardware": 0, "strength": 0,
+                "api": 2, "sim": 2, "server": 0}
+"""xdist workers per module's fast tier (0: none, in this process): a worker costs its own
+imports and the engine's version hash, which a small tier doesn't win back (the hardware
+tier: 8 s in one process against 13 s on 4 workers). ``SPIDERPIG_TIER_WORKERS`` overrides."""
+
+
+def module_files(module: str) -> list[str]:
+    """The test files of ``module``: its files in :data:`tests._modules.MODULE_OF_FILE`, and
+    any other file that marks a test ``@pytest.mark.<module>``."""
+    from pathlib import Path
+
+    from tests._modules import MODULE_OF_FILE
+
+    here = Path(__file__).resolve().parent
+    files = {here / f for f, m in MODULE_OF_FILE.items() if m == module}
+    mark = f"pytest.mark.{module}"
+    for f in here.rglob("test_*.py"):
+        if f not in files and mark in f.read_text():
+            files.add(f)
+    return sorted(str(f) for f in files if f.exists())
+
+
 def main(argv: list[str] | None = None) -> int:
     from tests._modules import MODULES
 
@@ -43,12 +67,15 @@ def main(argv: list[str] | None = None) -> int:
               file=sys.stderr)
         return 2
     module, rest = argv[0], argv[1:]
-    workers = os.environ.get("SPIDERPIG_TIER_WORKERS", "4")
+    workers = os.environ.get("SPIDERPIG_TIER_WORKERS", str(TIER_WORKERS.get(module, 4)))
     if module == "fixtures":
         args = ["--regen", "-m", "fixture_regen"]
     else:
-        args = ["-m", f"{module} and not slow and not e2e"]
-    rc = pytest.main(["-p", "no:warnings", *args, "-n", workers, "--dist", "worksteal", *rest])
+        # only the module's own files (and any file that marks a test of it): collecting
+        # every file costs each worker its imports (a 12 s floor before, for one test)
+        args = [*module_files(module), "-m", f"{module} and not slow and not e2e"]
+    xdist = ["-p", "no:xdist"] if workers == "0" else ["-n", workers, "--dist", "worksteal"]
+    rc = pytest.main(["-p", "no:warnings", *args, *xdist, *rest])
     if rc == pytest.ExitCode.NO_TESTS_COLLECTED:
         print(f"no {'currency' if module == 'fixtures' else 'fast'} tests in {module!r} yet")
         return 0
