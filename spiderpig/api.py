@@ -1781,17 +1781,9 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
                 and _manifest_design(out) == design.id):   # (not since overwritten)
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
-    if out.is_dir():
-        from spiderpig.build import clear_generated
-
-        if _manifest_design(out) != design.id:
-            # a folder another design (or a `spiderpig build`) wrote last: its cut and print
-            # files aren't this design's, whichever formats this export writes
-            clear_generated(out / "laser")
-            clear_generated(out / "print")
-        if _manifest_design(out) != design.id or "dxf" in formats:
-            # a build's shopping list points at laser/parts/, which the export clears
-            (out / "ORDER.md").unlink(missing_ok=True)
+    # a folder whose manifest (an export's, or a `spiderpig build`'s) names another design,
+    # or none: its cut and print files and its shopping list aren't this design's
+    foreign = out.is_dir() and _manifest_design(out) != design.id
     job = None
     if design.mech is None:
         # the glb and the MJCF need the plan, not the build: their worker starts first
@@ -1806,6 +1798,12 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
             rep.failures = list(br.failures)
             return _finish(design, "export", rep, t0)
     out.mkdir(parents=True, exist_ok=True)
+    if foreign:                     # (only once this design has built: nothing lost before)
+        from spiderpig.build import clear_generated
+
+        clear_generated(out / "laser")
+        clear_generated(out / "print")
+        (out / "ORDER.md").unlink(missing_ok=True)
     with contextlib.ExitStack() as stack:
         warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
         stack.enter_context(pywarnings.catch_warnings())
@@ -1881,9 +1879,12 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     if "dxf" in formats:
         try:
             with _timed("dxf"):
-                from spiderpig.build import clear_generated
-
-                clear_generated(out / "laser")       # no sheets of another design
+                # the packed sheets are written again: none left from before (a build's
+                # laser/parts/ of this design, which ORDER.md lists, stay)
+                if (out / "laser").is_dir():
+                    for f in (out / "laser").glob(f"{name}_sheet*"):
+                        if f.suffix in (".dxf", ".csv"):
+                            f.unlink()
                 sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
                                      kerf=kerf, default=cfg.sheet)
             files += sheets + [out / "laser" / f"{name}_sheet_parts.csv"]

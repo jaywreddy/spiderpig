@@ -130,7 +130,15 @@ def test_a_build_leaves_no_cut_or_print_files_from_before(tmp_path):
     assert not stale.exists()
     assert not (tmp_path / "print" / "old.stl").exists()
     assert list((tmp_path / "laser" / "parts").rglob("*.dxf"))
-    assert not (tmp_path / "manifest.json").exists()     # (api.export reuses by it)
+    # (api.export reuses and clears by it): the build's own, naming its design
+    import json
+
+    from spiderpig import api
+    from spiderpig.config import BuildConfig
+
+    cfg = BuildConfig(linkage="klann", module="single", robot=False)
+    got = json.loads((tmp_path / "manifest.json").read_text())["design"]
+    assert got == api.resolve(api.spec_of(cfg), store=None).id
 
 
 def test_a_stored_plan_that_ran_out_of_time_is_searched_again(tmp_path):
@@ -426,3 +434,35 @@ def test_the_protection_board_finds_its_place_under_the_deck_or_says_it_has_none
     assert z - b_z >= -6.0 or x1 - b_x >= -15.0 or x1 <= -20.0
     with pytest.raises(ConstructionError):
         _bms_place(bms, -6.5, 15.3, -68.0, [strap])      # (the strap's run blocks it)
+
+
+@pytest.mark.slow
+def test_an_export_into_its_own_build_folder_keeps_the_builds_files(tmp_path):
+    from spiderpig import api, build
+    from spiderpig.config import BuildConfig
+
+    assert build.main(["--linkage", "klann", "--module", "single", "--side-only",
+                       "--out", str(tmp_path)]) == 0
+    parts = sorted(tmp_path.glob("laser/parts/**/*.dxf"))
+    prints = sorted(tmp_path.glob("print/*.stl"))
+    assert parts
+    cfg = BuildConfig(linkage="klann", module="single", robot=False)
+    d = api.resolve(api.spec_of(cfg), store=None)
+    assert api.export(d, ["bom", "dxf"], tmp_path).ok
+    assert (tmp_path / "ORDER.md").exists()                       # the same design's
+    assert sorted(tmp_path.glob("laser/parts/**/*.dxf")) == parts
+    assert sorted(tmp_path.glob("print/*.stl")) == prints
+
+
+@pytest.mark.slow
+def test_the_protection_board_is_clear_of_the_decks_wire_and_cable_tie_slots(robot):
+    from spiderpig.construction.deck import CABLE_TIE_SLOT, WIRE_SLOT, WIRE_SLOT_Z
+
+    mech = robot("quad")                     # the demo Klann robot
+    bb = next(b for b in mech.bodies if b.name == "deck_bms").part.bounding_box()
+    x_c = mech.meta["deck"]["x_c"]
+    tie_dx = WIRE_SLOT[0] / 2 + 3.0 + CABLE_TIE_SLOT[0] / 2
+    for z in (-WIRE_SLOT_Z, WIRE_SLOT_Z):
+        over_x = x_c + tie_dx > bb.min.X and x_c - tie_dx < bb.max.X
+        over_z = z + WIRE_SLOT[1] / 2 > bb.min.Z and z - WIRE_SLOT[1] / 2 < bb.max.Z
+        assert not (over_x and over_z), (bb.min.X, bb.max.X, z)
