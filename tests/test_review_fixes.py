@@ -912,3 +912,61 @@ def test_a_recheck_that_raises_leaves_the_built_parts_in_the_mechanism():
     with pytest.raises(TypeError):
         api.recheck(d)
     assert body.part is None                            # nothing taken before the check
+
+
+# -- round 15 ----------------------------------------------------------------------------
+
+
+def test_the_gap_fallback_says_what_it_tried():
+    from spiderpig.stack import Claim, PlanReject, StackSpec, Unbuildable, _thicker_gaps
+
+    def make(L):          # a stock part that fits only once gap 3 is a whole 1 mm thicker
+        if L.gap(3) < 2.0 - 1e-6:
+            raise Unbuildable("misses its stock length")
+        return []
+
+    err = PlanReject("crank: misses its stock length")
+    err.claim = Claim("crank", frozenset(), make)
+    assert _thicker_gaps(err, StackSpec(), {}, 10, {}, {3: 1.0}, {}, set())[3] == \
+        pytest.approx(2.0)
+    with pytest.raises(PlanReject, match="least thickenings of one or two gaps"):
+        _thicker_gaps(err, StackSpec(), {}, 10, {}, {k: 1.0 for k in range(1, 7)}, {}, set())
+
+
+@pytest.mark.slow
+def test_an_edited_export_into_a_folder_is_never_reused(tmp_path):
+    import json
+
+    import numpy as np
+    from build123d import Cylinder
+
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store, out = Store(tmp_path / "s"), tmp_path / "out"
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
+    assert api.export(d, ["bom"], out).ok
+    name = next(n for n, p in d.parts.items() if p.group == "links")
+    part, body = d.parts[name], d.mech.body(name)
+    a, b = ((body.pose @ j.pose).matrix[:2, 3] for j in body.joints[:2])
+    part.solid = part.solid - Cylinder(1.0, 10).moved(part.locate((np.asarray(a) + b) / 2))
+    assert api.recheck(d).ok
+    assert api.export(d, ["bom"], out).ok
+    assert json.loads((out / "manifest.json").read_text())["edited"]
+    fresh = api.load(d.id, store)
+    api.export(fresh, ["bom"], out)
+    assert not fresh.log[-1]["cached"]
+    assert not json.loads((out / "manifest.json").read_text())["edited"]
+
+
+@pytest.mark.slow
+def test_a_build_at_another_angle_forgets_the_other_angles_export(tmp_path):
+    from spiderpig import api
+
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
+    assert api.build(d, 1.0).ok
+    first = api.export(d, ["bom"], tmp_path)
+    assert api.build(d, 2.0).ok
+    again = api.export(d, ["bom"], tmp_path)
+    assert again is not first
+    assert again.manifest["t_ref"] == 2.0

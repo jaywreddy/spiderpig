@@ -473,7 +473,8 @@ def add_build_args(p) -> None:
                         + ")")
     p.add_argument("--heads", default=d.heads, choices=("best", "sink", "gap"),
                    help="fasteners' heads: sunk into a layer, in thin clearance gaps, or "
-                        f"the lower of both plans (default {d.heads})")
+                        "best: sunk, and in gaps only when no sunk plan exists (the plan's "
+                        f"proof says which was searched; default {d.heads})")
     p.add_argument("--link-sheet", dest="link_sheet", action="append", default=None,
                    metavar="LINK=SHEET",
                    help="cut a link class from another sheet, e.g. b4=al6061_3p2mm "

@@ -128,7 +128,6 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     add_design_args(ap)
     add_build_args(ap)
-    ap.set_defaults(module="single")
     ap.add_argument("--store", metavar="PATH",
                     help="the design store the options resolve into, whose plan is reused "
                          "(default: $SPIDERPIG_STORE, else ./.spiderpig)")

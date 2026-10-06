@@ -898,7 +898,9 @@ def spec_schema() -> dict:
                                   f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())},
                     "heads": {"enum": ["best", "gap", "sink"], "default": BuildConfig.heads,
                               "description": "fasteners' heads: sunk into a layer, in thin "
-                                             "clearance gaps, or the lower plan of both"},
+                                             "clearance gaps, or best: sunk, and in gaps "
+                                             "only when no sunk plan exists (the plan's "
+                                             "proof says which was searched)"},
                 },
             },
             "fit": {"type": "object", "additionalProperties": False, "properties": fit_props},

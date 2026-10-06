@@ -1092,6 +1092,7 @@ class StackProblem:
         one finds none either. Each search has the whole budget."""
         plans, errors = [], []
         gave_up = ""
+        searched: list[str] = []
         runs = list(order)
         if order[0] == "gap":
             # a gap search whose layerings keep failing on the crank's washers in the plan's
@@ -1115,6 +1116,7 @@ class StackProblem:
             if i == 0 and len(runs) > 2:
                 sub.give_up = GIVE_UP
             sub.floor = self.floor
+            searched.append(heads)
             try:
                 plans.append(sub.solve())
             except PlanError as e:
@@ -1139,6 +1141,12 @@ class StackProblem:
         elif errors:
             best.proof += (f"; with the heads {'gap' if best.heads == 'sink' else 'sink'}: "
                            + (f"none (it {gave_up})" if gave_up else "none"))
+        unsearched = [m for m in dict.fromkeys(order) if m not in searched]
+        if unsearched:
+            # optimal is the thinnest with the heads as searched: the other placement wasn't
+            # (heads "best": sunk first, in gaps only when that finds no plan)
+            best.proof += (f"; heads {', '.join(unsearched)}: not searched (heads "
+                           f"{best.heads} first; it may be thinner)")
         return best
 
     def _new(self, top: int):
@@ -2184,7 +2192,11 @@ def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
                   gaps: dict[int, float], thick: dict[int, float],
                   bridged: set[int]) -> dict[int, float]:
     """The gaps thickened the least (one gap at a time, then two) at which the claim that
-    failed (``err.claim``) builds; ``err`` again when none does."""
+    failed (``err.claim``) builds, among the :data:`GAP_TRIES` least thickenings; ``err``
+    again when none does. Bounded on purpose: the search takes the first layering that
+    builds at a size, so a layering let through on a far thicker gap would end it on a
+    taller plan than the next layering gives (measured: a 37.6 mm single module went 44.2
+    mm when every single thickening was tried)."""
     claim = getattr(err, "claim", None)
     if claim is None:
         raise err
@@ -2198,12 +2210,14 @@ def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
         tries += [(oa + ob - gaps[a] - gaps[b], {**gaps, a: oa, b: ob})
                   for oa in more[a][:8] for ob in more[b][:8]]
     tries.sort(key=lambda t: (round(t[0], 6), sorted(t[1].items())))
-    for _, g in tries[:GAP_TRIES]:
+    tries = tries[:GAP_TRIES]
+    for _, g in tries:
         layout = Layout(layers, top, spec.pitch, choices, dict(g), dict(thick), final=True)
         if made(claim, layout)[0] is not None:
             return g
-    raise PlanReject(f"{err} (nor with any of its clearance gaps up to {GAP_MORE:g} mm "
-                     "thicker)")
+    most = max((t[0] for t in tries), default=0.0)
+    raise PlanReject(f"{err} (nor with its clearance gaps thickened by up to {most:.2g} mm "
+                     f"in all: the {len(tries)} least thickenings of one or two gaps)")
 
 
 HEADS_ORDER = {"best": ("sink", "gap"), "gap_sink": ("gap", "sink")}
