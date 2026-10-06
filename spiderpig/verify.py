@@ -559,7 +559,10 @@ def cost_row(design: Design, bom) -> Row | None:
     f = target_field("budget", "cost_usd")
     unpriced = sorted(bom.unpriced, key=lambda r: (-r.qty, r.name))
     unverified = [r.key for r in bom.purchased if not r.verified and not r.same_pack_as]
-    top = sorted((r for r in bom.purchased if r.cost_usd), key=lambda r: -r.cost_usd)[:4]
+    from spiderpig.hardware.bom import ON_HAND
+
+    top = sorted((r for r in bom.purchased if r.cost_usd and r.key not in ON_HAND),
+                 key=lambda r: -r.cost_usd)[:4]
     detail = (f"{len(bom.purchased)} items"
               + (f", the largest {'; '.join(_cost_item(r) for r in top)}" if top else "")
               + (f"; {len(unpriced)} unpriced, so the total is a lower bound: "

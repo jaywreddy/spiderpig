@@ -193,11 +193,12 @@ class Bom:
                         "est_cost_usd", "url", "link_verified", "used_at"])
             for r in self.purchased:
                 packs = 0 if r.same_pack_as else r.packs
-                cost = "" if r.cost_usd is None else f"{r.cost_usd:.2f}"
+                cost = "" if r.cost_usd is None or r.key in ON_HAND else f"{r.cost_usd:.2f}"
                 where = "; ".join(r.where)
                 if r.same_pack_as:
                     where = f"(in the same pack as {r.same_pack_as}) {where}"
-                w.writerow(["buy", r.name, _num(r.qty), packs, r.pack_qty, r.vendor, r.sku,
+                w.writerow(["on hand" if r.key in ON_HAND else "buy", r.name, _num(r.qty),
+                            packs, r.pack_qty, r.vendor, r.sku,
                             cost, r.url, "yes" if r.verified else "no", where])
             for m in self.made:
                 note = f"{m.mirrored} mirrored" if m.mirrored else ""
@@ -267,7 +268,11 @@ class Bom:
     def as_dict(self) -> dict:
         return {
             "title": self.title,
-            "purchased": [dict(r.__dict__, cost_usd=r.cost_usd) for r in self.purchased],
+            # a shop supply on hand (ON_HAND) costs this build nothing: listed, its pack
+            # price kept, ``on_hand`` set
+            "purchased": [dict(r.__dict__, on_hand=r.key in ON_HAND,
+                               cost_usd=0.0 if r.key in ON_HAND else r.cost_usd)
+                          for r in self.purchased],
             "made": [m.__dict__ for m in self.made],
             "cost_usd": self.cost_usd,
             "printed_g": self.printed_g,

@@ -127,12 +127,12 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
         alu = "alumin" in servo.horn.name.lower()
         return ("aluminium", DENSITY["aluminium"], None) if alu else ("plastic", DENSITY["plastic"],
                                                                      None)
+    material = item_material(body.bom_key)        # what the item says it is, first (a
+    if material in DENSITY:                        # PTFE liner is a "bushing" too)
+        return material, DENSITY[material], None
     if category in ("insert", "bushing"):
         return ("brass", DENSITY["brass"], None) if category == "insert" else (
             "bushing", DENSITY["bushing"], None)
-    material = item_material(body.bom_key)
-    if material in DENSITY:
-        return material, DENSITY[material], None
     return "steel", DENSITY["steel"], None
 
 

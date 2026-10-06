@@ -142,8 +142,9 @@ thinnest whose pockets hold 2 x 0.85 N·m at SF 2 with the recess; 5052 would ne
 thicker than its 3 mm layer, which moved the pillars' columns off stock lengths). Horn
 screws take shims under the head where a stock length is too long (`horn_fit_web`: whole
 1 mm ones, bought as DIN 433 pairs, where the horn keeps enough thread, else 0.1 mm DIN 988
-steps, the XL430); the horn holes and the hub's and webs' rims keep SendCutSend's minimum hole
-and 2 t edge distance; a crankpin within a head's reach of the horn's rim makes the horn
+steps, the XL430); the horn holes keep SendCutSend's minimum hole and 2 t edge distance, the
+hub's and webs' rims 1 t (`BoltCrank.web_edge_t`: the cut rules' error level; their 2.6 mm round
+a hex pocket is a warning on 0.100 in); a crankpin within a head's reach of the horn's rim makes the horn
 spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`) or, wholly under it,
 is capped by it (`hub_capped`). **Since the assembly audit of 2026-10-04 the chain that ends
 in the hub plate is always capped** (`BoltCrank.hub_screw` False: no screw over the hub
@@ -262,7 +263,8 @@ or printed spacer, a gap ring) for its tilt: before, it read no face and fell ba
 tilt (3.8 deg on every Chicago pin end). **Chicago barrels on the Strider are at most 23 mm**
 (`chicago.MAX_BARREL`, `ChicagoAxle.resolve`, a planner rule): the quad's J7 on 30 mm was jam
 SF 1.8; capped, the same 24 layers, SF 2.6, and 8 barrel lengths instead of 10.
-The body plates meet the 2 x t rule without warnings on the default designs: every round
+The body plates keep 1 x t everywhere (no cut-rule error on the default designs; the Strider
+double's audit warns, under 2 x t, on its torsos' 2.05 mm and two centre plates' 2.58 mm): every round
 hole in a frame plate gets a boss of 2 t (`plates.boss_web`), the frame ties move along the
 servo until their holes are 2 t off the servo's front and rear screw holes and recesses
 (`chassis.tie_locals` / `tie_neighbours`, which the underside reads too), the centre

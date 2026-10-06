@@ -142,9 +142,11 @@ BATTERY_X1 = -4.0        # the cradle's inner end (inside), from x_c
 BATTERY_FIT = 0.3        # cradle clearance round the battery (each way)
 CRADLE_WALL, CRADLE_H, CRADLE_GAP = 1.6, 5.0, 10.0
 STRAP_SLOT = (12.0, 3.0)  # along x, across (z)
+STRAP_W = 10.0             # the strap itself (lipo_strap_10mm), centred in its slots
 WIRE_SLOT = (12.0, 6.0)
 WIRE_SLOT_Z = 21.0
 TAPE_GAP = 0.3           # modelled gap for the foam tape under the deck
+BMS_CLEAR = 0.5          # the protection board's long side off a rail's inner face
 SWITCH_X, SWITCH_Z = -55.0, 21.0     # +z: balances the charger (-z); 21 (was 20): 1 mm
 #                                      clear of the cradle's outer screw's nut under the deck
 CRADLE_SCREW = screw("bhcs", "3")    # the cradle's two ears to the deck, nuts under it
@@ -406,6 +408,33 @@ def path_notches(lay: DeckLayout, obstacles: Sequence[Box6]) -> list[tuple[float
     return out
 
 
+def _bms_place(bms: dict, x1: float, room: float, x_min: float,
+               under: Sequence[tuple[float, float, float, float]]
+               ) -> tuple[float, float, float, float]:
+    """``(x extent, z half, x1, z centre)`` of the protection board under the deck: across
+    the bay (its length in z) where the rails leave ``room`` (z half), else turned along it;
+    its +x end at ``x1``, moved toward -z/+z, then back toward ``x_min``, until clear of the
+    ``under`` boxes (x0, x1, z0, z1: what else hangs under the deck)."""
+    def clear(xa: float, xb: float, za: float, zb: float) -> bool:
+        return not any(_overlap(xa, xb, u0, u1) and _overlap(za, zb, v0, v1)
+                       for u0, u1, v0, v1 in under)        # (each with its own clearance)
+    for b_x, b_z in ((bms["width"], bms["length"] / 2), (bms["length"], bms["width"] / 2)):
+        if b_z > room + 1e-9:
+            continue
+        slack = room - b_z
+        zs = sorted({round(s * k * 0.5, 3) for k in range(int(slack / 0.5) + 1)
+                     for s in (-1, 1)}, key=abs)
+        x = x1
+        while x - b_x >= x_min - 1e-9:
+            for z in zs:
+                if clear(x - b_x, x, z - b_z, z + b_z):
+                    return b_x, b_z, x, z
+            x -= 1.0
+    raise ConstructionError(f"the deck's protection board ({bms['length']:g} x "
+                            f"{bms['width']:g} mm) finds no place under the deck between the "
+                            f"rails ({2 * room:.1f} mm apart)")
+
+
 def _clear_x1(x1: float, length: float, y0: float, z0: float, z1: float,
               obstacles: Sequence[Box6]) -> float:
     """The farthest ``+x`` end, at most ``x1``, a part ``length`` long over ``y0`` in
@@ -432,12 +461,27 @@ def _charger_place(lay: DeckLayout, ch: dict, yu: float, obstacles: Sequence[Box
     front = lay.x_c + HALF_LEN
     L, w, h = ch["length"], ch["width"], ch["height"]
     z0 = -(lay.half_w - 1.0)
+
+    def padded(x1: float, z0: float) -> tuple[float, float, float]:
+        # on a pad under what the board's standoffs put under the deck (their nuts and the
+        # threads past them) when the charger's place is under them; the pad's drop is
+        # cleared of the obstacles again
+        over = any(_overlap(x - r, x + r, x1 - L, x1) and _overlap(z - r, z + r, z0, z0 + w)
+                   for x, z, r in nuts)
+        if not over:
+            return x1, z0, 0.0
+        pad = nut_h + 0.3
+        if _clear_x1(x1, L, yu - pad - h, z0, z0 + w, obstacles) < x1 - EPS_D:
+            raise ConstructionError("the deck's charger, on its pad under the board's "
+                                    "standoffs, meets the parts under the deck")
+        return x1, z0, pad
+
     try:
         x1 = _clear_x1(front, L, yu - h, z0, z0 + w, obstacles)
     except ConstructionError:
         x1 = -math.inf
     if front - x1 <= SETBACK_MAX + EPS_D:
-        return x1, z0, 0.0
+        return padded(x1, z0)
     for _ in range(len(obstacles) + 1):
         hit = [oz1 for ox0, ox1, _, oy1, oz0, oz1 in obstacles
                if oy1 > yu - h - nut_h - 1.0 and oz1 < 0
@@ -449,9 +493,7 @@ def _charger_place(lay: DeckLayout, ch: dict, yu: float, obstacles: Sequence[Box
     else:
         raise ConstructionError("the deck's charger finds no place to lower past the parts "
                                 "between the inner plates")
-    over = any(_overlap(x - r, x + r, front - L, front) and _overlap(z - r, z + r, z0, z0 + w)
-               for x, z, r in nuts)
-    return front, z0, (nut_h + 0.3 if over else 0.0)
+    return padded(front, z0)
 
 
 def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
@@ -605,9 +647,10 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     ch = get("ip2326_charger").dims
     yu = yd - TAPE_GAP
     nut_r = STANDOFF_AF / 2 + 0.3                      # the board's nuts under the deck
+    # what the board's standoffs put under the deck: their nuts, and the threads past them
+    drop = max(get("m25_nylon_nut").dims["h"], so["thread"] - lay.pitch)
     cx1, cz0, pad = _charger_place(lay, ch, yu, obstacles,
-                                   [(x, z, nut_r) for x, z in board["holes"]],
-                                   get("m25_nylon_nut").dims["h"])
+                                   [(x, z, nut_r) for x, z in board["holes"]], drop)
     cz1, cy1 = cz0 + ch["width"], yu - pad
     charger = _box(cx1 - ch["length"], cx1, cy1 - ch["height"], cy1, cz0, cz1)
     if pad:
@@ -623,11 +666,27 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                                fab="printed", color=RAIL_COLOR))
     bms = get("bms_hx_2s_jh20").dims
     bx1 = lay.x_c - WIRE_SLOT[0] / 2 - 0.5
+    # across the bay between the rails, else turned along it where the bay is narrower
+    # (the XL330's): its long side clear of the rails' inner faces
+    # and clear of what else hangs under the deck (the cradle's nuts, the board's nuts and
+    # threads, the switch, the charger, the battery strap's run between its slots)
+    room = -(lay.z_in + RAIL_T) - BMS_CLEAR
+    sw_d = get("toggle_mts102").dims
+    sx_, sz_ = lay.switch()
+    under = [(x - r, x + r, z - r, z + r) for x, z, r in
+             [(x, z, nut_af / 2 + 0.3) for x, z in lay.cradle_ears()]
+             + [(x, z, nut_r) for x, z in board["holes"]]]
+    under += [(sx_ - sw_d["body"][0] / 2, sx_ + sw_d["body"][0] / 2,
+               sz_ - sw_d["body"][1] / 2, sz_ + sw_d["body"][1] / 2),
+              (cx1 - ch["length"], cx1, cz0, cz1)]
+    under += [(x - STRAP_W / 2, x + STRAP_W / 2, -abs(z), abs(z))
+              for x, z in lay.strap_slots()[:1]]
+    b_x, b_z, bx1, bz = _bms_place(bms, bx1, room, lay.x_c - HALF_LEN, under)
     bodies += [
         Body(name="deck_charger", part=charger, rigid_with=host["L"], fab="purchased",
              bom_key="ip2326_charger", color=PCB_COLOR),
-        Body(name="deck_bms", part=_box(bx1 - bms["width"], bx1, yu - bms["height"], yu,
-                                        -bms["length"] / 2, bms["length"] / 2),
+        Body(name="deck_bms", part=_box(bx1 - b_x, bx1, yu - bms["height"], yu, bz - b_z,
+                                        bz + b_z),
              rigid_with=host["L"], fab="purchased", bom_key="bms_hx_2s_jh20",
              color=PCB_COLOR),
     ]

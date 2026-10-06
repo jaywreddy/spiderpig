@@ -70,7 +70,8 @@ def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
             except ConstructionError:
                 continue
             if rs is not None:
-                most = max(most, len(_clear_holes(rs, frames, reliefs, half, t, slots)))
+                most = max(most, len(_clear_holes(rs, frames, reliefs, half, t, slots,
+                                                  sheet(key).min_hole)))
         # the most screws, then the thinnest stack (the bus plugs can need a fifth thin
         # plate where four of the next sheet do), then the thinnest sheet
         rank = (-most, round(n * t, 3))
@@ -422,18 +423,26 @@ def rear_screws(spec, n: int, pitch: float, own: int | None = None) -> RearScrew
 
 
 def _clear_holes(rs: RearScrews, frames, reliefs, half: float, pitch: float,
-                 slots=()) -> tuple:
-    """The holes whose heads (on either servo) stay out of every rear bump's space, and
-    whose head recesses stay two plate thicknesses (the cut rules' warning level) off the
-    bus plugs' slots (:func:`_port_slots`), which run through every plate there."""
+                 slots=(), min_hole: float = 0.0) -> tuple:
+    """The holes whose heads (on either servo) stay out of every rear bump's space, whose
+    head recesses stay two plate thicknesses (the cut rules' warning level) off the bus
+    plugs' slots (:func:`_port_slots`), which run through every plate there, and whose
+    shank holes, as cut (at least ``min_hole``, the service's), keep one plate thickness
+    of web (the cut rules' error level) to the reliefs in the plates they pass."""
     head_r = rs.head_d / 2 + HEAD_CLEARANCE
     seat = -half + rs.own * pitch                     # the left heads bear here
     heads = ((frames[0], (seat, seat + rs.head_h)), (frames[1], (-seat - rs.head_h, -seat)))
+    shanks = ((frames[0], (-half, seat)), (frames[1], (-seat, half)))
     keep = []
     for h in rs.holes:
+        hole_r = max(h.d, min_hole) / 2
         if (all(not (_overlaps(hz, zr)
                      and _relief_distance(rf.local(f.xy(h.x, h.y)), rect) < head_r)
                 for f, hz in heads for rf, rect, zr in reliefs)
+                and all(not (_overlaps(sz, zr)
+                             and _relief_distance(rf.local(f.xy(h.x, h.y)), rect)
+                             < hole_r + RELIEF_ROUND + pitch)
+                        for f, sz in shanks for rf, rect, zr in reliefs)
                 and all(_rect_distance(rf.local(f.xy(h.x, h.y)), *rect)
                         >= head_r + 2 * pitch + RELIEF_ROUND
                         for f, _ in heads for rf, rect, _ in slots)):
@@ -535,8 +544,13 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
     info: dict = {"centre_plates": n}
     reliefs = _relief_volumes(spec, frames, half)
     slots = _port_slots(spec, frames, half)
+    from spiderpig.materials import sheet as sheet_spec
+
+    centre_key = centre_sheet(ctx)
     rs, screws, bodies = _rear_screw_parts(spec, frames, reliefs, n, half, pitch, host, info,
-                                           fastened, slots)
+                                           fastened, slots,
+                                           sheet_spec(centre_key).min_hole if centre_key
+                                           else 0.0)
     tie_xy = tie_points(build, design.drive)
     extras: list[BomLine] = []
     bodies += _tie_parts(ctx, plan, tie_xy, z_mid, half, host, info, fastened, extras)
@@ -550,7 +564,7 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
 
 
 def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, host, info,
-                      fastened, slots=()) -> tuple:
+                      fastened, slots=(), min_hole: float = 0.0) -> tuple:
     """The servos' rear screws: ``(the screw set, (side, xy, head z, shank z, hole) per
     screw, bodies)``."""
     bodies: list[Body] = []
@@ -565,7 +579,7 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
             continue
         if cand is None:
             continue
-        usable = _clear_holes(cand, frames, reliefs, half, pitch, slots)
+        usable = _clear_holes(cand, frames, reliefs, half, pitch, slots, min_hole)
         if usable and (best is None or len(usable) > len(best.holes)):
             best = replace(cand, holes=usable)
     rs = best
@@ -765,7 +779,16 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
             rx0, rx1, ry0, ry1 = rect
             rx1 = min(rx1, max(xs) + 10.0)           # an open slot: past the far edge
             g = RELIEF_ROUND
-            pockets.append(_rounded_rect(rf, rx0 - g, rx1 + g, ry0 - g, ry1 + g,
+            # in the plate's own frame (the frames share their origin and x axis; the
+            # right servo's is mirrored in y): a pocket closer than one plate thickness
+            # to the outline (the cut rules' error level) opens through it instead
+            lx = (rx0 - g, rx1 + g)
+            ly = tuple(sorted(left.local(rf.xy(0.0, y))[1] for y in (ry0 - g, ry1 + g)))
+            lx0 = min(xs) - 10.0 if lx[0] - min(xs) < pitch + 1e-6 else lx[0]
+            lx1 = max(xs) + 10.0 if max(xs) - lx[1] < pitch + 1e-6 else lx[1]
+            ly0 = min(ys) - 10.0 if ly[0] - min(ys) < pitch + 1e-6 else ly[0]
+            ly1 = max(ys) + 10.0 if max(ys) - ly[1] < pitch + 1e-6 else ly[1]
+            pockets.append(_rounded_rect(left, lx0, lx1, ly0, ly1,
                                          RELIEF_CORNER, z0 - 1.0, z1 + 1.0))
         for _, xy, head, shank, h in screws:
             if _overlaps((z0, z1), tuple(sorted(shank))):
@@ -783,7 +806,8 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
             part = part - union(pockets)
         # A servo's face is flat round its own mounting holes (the relief rectangles are
         # bounding boxes of round features): keep a seat for the screw head there.
-        seats = [disc(xy, rs.head_d / 2 + HEAD_CLEARANCE, z0, z1) - disc(xy, h.d / 2, z0, z1)
+        seats = [disc(xy, rs.head_d / 2 + HEAD_CLEARANCE, z0, z1)
+                 - disc(xy, max(h.d, min_hole) / 2, z0, z1)       # (the hole as cut above)
                  for _, xy, _, shank, h in screws if _overlaps((z0, z1), tuple(sorted(shank)))]
         if seats:
             part = union([part, *seats])
