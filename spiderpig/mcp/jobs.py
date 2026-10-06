@@ -47,7 +47,13 @@ def run_op(root: str, op: str, design: str, args: dict) -> dict:
     d = api.load(design, store)
     if op == "build":
         rep = api.build(d, float(args.get("t", 1.0)))
-        doc = store.read_report(design, "build") or report_doc(rep)
+        doc = store.read_report(design, "build")
+        if (doc is None or not rep.ok or doc.get("t") != rep.t or not doc.get("ok")
+                or doc.get("engine_version") != d.engine_version):
+            # the store's manifest only when it is this build's (its crank angle, this
+            # engine, a success): a failed build (one that ran out of planner time isn't
+            # stored at all) is its own report, with its failures
+            doc = report_doc(rep)
         build_dir = store.dir(design) / "build"
         parts = []
         for e in doc.get("parts", []):

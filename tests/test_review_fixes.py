@@ -547,3 +547,71 @@ def test_a_fit_of_zero_servo_screw_web_keeps_every_front_screw():
 
     cfg = BuildConfig(params=replace(Params(), servo_screw_web_t=0.0))
     assert api.resolve(api.spec_of(cfg), store=None).config == cfg
+
+
+# -- round 9 -----------------------------------------------------------------------------
+
+
+def test_a_crank_rider_is_rated_at_the_crank_bore():
+    from spiderpig import strength
+    from spiderpig.config import BuildConfig
+
+    cfg = BuildConfig(linkage="jansen", module="double")
+    bore = strength.rider_hole(cfg)
+    assert bore > strength.LINK_HOLE                  # the hex crankpin's sleeve: 8.85 mm
+    loads = {"source": "sim", "joints": [
+        {"stem": "M", "links": ["b1_leg0"], "crank": True,
+         "walk": {"n": 10.0}, "jam": {"n": 133.0}},
+        {"stem": "B", "links": ["b1_leg0"], "crank": False,
+         "walk": {"n": 10.0}, "jam": {"n": 133.0}}]}
+    (row,) = [r for r in strength.link_rows(cfg, loads) if r["joint"] == "link:b1"]
+    w, t = 2 * cfg.params.link_radius, cfg.pitch
+    assert row["jam"]["stress_mpa"] == pytest.approx(strength.LINK_KT * 133.0 / ((w - bore) * t),
+                                                     abs=0.01)
+
+
+def test_the_mcp_plan_output_carries_every_plan_report_field():
+    from dataclasses import fields
+
+    from spiderpig.api import PlanReport
+    from spiderpig.mcp.outputs import PlanOut
+
+    have = set(PlanOut.__annotations__) | {"ok", "failures"}
+    for k in PlanOut.__mro__:
+        have |= set(getattr(k, "__annotations__", {}))
+    assert {f.name for f in fields(PlanReport)} <= have
+
+
+@pytest.mark.slow
+def test_the_mcp_build_job_reports_its_own_failed_build(tmp_path, monkeypatch):
+    from spiderpig import api
+    from spiderpig.failure import Failure
+    from spiderpig.mcp.jobs import run_op
+    from spiderpig.store import Store
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
+                     "legs": {"module": "single", "sides": 1}}, store)
+    assert run_op(str(tmp_path), "build", d.id, {"t": 1.0})["ok"]       # stored
+    late = Failure(stage="plan", code="no_plan_in_time", message="out of time")
+    monkeypatch.setattr(api, "build", lambda d, t=1.0, force=False:
+                        api.BuildReport(failures=[late], t=t, ok=False))
+    got = run_op(str(tmp_path), "build", d.id, {"t": 1.0})
+    assert not got["ok"]
+    assert [f["code"] for f in got["failures"]] == ["no_plan_in_time"]
+
+
+@pytest.mark.slow
+def test_the_anchor_both_plates_fix_is_the_two_plate_beam():
+    from spiderpig import strength
+    from spiderpig.config import BuildConfig
+    from spiderpig.fabricate import fabricate, template_for
+
+    cfg = BuildConfig(robot=False)
+    note = fabricate(template_for(cfg), cfg, 1.0).meta["wobble"]["pillar:J2_leg0"]
+    loads = {"walk_n": 60.0, "jam_n": 155.0, "source": "family"}
+    both = strength.joint_strength("pillar:J2_leg0", note, loads)
+    cant = dict(note, anchors=[0])
+    row = strength.joint_strength("pillar:J2_leg0", cant, loads)
+    (fix,) = [f for f in strength.fixes(row, cant, loads, cfg) if "both frame plates" in f]
+    assert f"jam SF {both['jam']['safety']:g}" in fix

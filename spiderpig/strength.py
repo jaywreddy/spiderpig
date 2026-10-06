@@ -296,7 +296,20 @@ def crank_strength(meta: dict, config: BuildConfig, loads: dict) -> dict | None:
 # -- the link plates --------------------------------------------------------------------
 
 LINK_KT = 2.5          # a pin-loaded hole's stress concentration on the net section
-LINK_HOLE = 6.35       # the largest pin hole a link has (a 6 mm standoff's running fit)
+LINK_HOLE = 6.35       # a pin hole (a 6 mm standoff's running fit), but a crank rider's
+
+
+def rider_hole(config: BuildConfig) -> float:
+    """The bore of a link riding a crankpin (the crank's rider hole: the hex crankpin's
+    8.5 mm sleeve, 8.85 mm), as :func:`construction.plates.rider_bosses` cuts it."""
+    from spiderpig.construction import CRANKS
+
+    crank = CRANKS.get(config.crank)
+    if hasattr(crank, "for_sheet"):
+        crank = crank.for_sheet(config.crank_sheet)
+    rider = getattr(crank, "rider_d", None)
+    d = rider() if callable(rider) else config.params.crankpin_d
+    return config.params.hole(d)
 
 
 def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
@@ -310,6 +323,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     that would hold it when the link's own doesn't (jam SF under 2): the user's rule,
     aluminium only where acrylic can't take the load."""
     from spiderpig import linkage as lk_mod
+    from spiderpig.construction.plates import RIDER_BOSS_T
     from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
 
     joints = loads.get("joints") or []
@@ -320,6 +334,8 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     feet = {link: point for link, point in lk.feet}
     sheets = link_sheets(config)
     w = 2 * config.params.link_radius
+    crank_pins = set(lk.crank[1:])
+    bore = rider_hole(config)
     rows = []
     for key in sorted(lk.links):
         at: dict[str, tuple[float, float]] = {}
@@ -333,6 +349,11 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         t = sh.thickness if sheets.get(key) else config.pitch
         an = (w - LINK_HOLE) * t
         zn = t * (w ** 3 - LINK_HOLE ** 3) / (6 * w)
+        # the net section (mm^2) at each pin's hole: a crank rider's bore is the crank's
+        # (an aluminium rider's end grown to a boss of 1 x t of web round it,
+        # plates.rider_bosses), else LINK_HOLE
+        boss_w = max(w, bore + 2 * (RIDER_BOSS_T * t + 0.1)) if sh.metal else w
+        net = {pin: (boss_w - bore) * t if pin in crank_pins else an for pin in at}
         zg = t * w * w / 6
         pins = [n for n in at if n in pts]
         span = max((math.dist(pts[a], pts[b]) for a in pins for b in pins), default=0.0)
@@ -346,7 +367,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
                "pins": sorted(at), "bending": bending}
         for i, tag in enumerate(("walk", "jam")):
             F = max(f[i] for f in at.values())
-            sig = LINK_KT * F / an
+            sig = max(LINK_KT * f[i] / net[pin] for pin, f in at.items())
             if bending:
                 sig = max(sig, F * span / 4 / zg)
             if foot_lever:
@@ -468,9 +489,14 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
             out.append(f"a shorter span ({note['span_mm']:g} -> {n['span_mm']:g} mm, the links in "
                        f"adjacent layers: a plan constraint): {fmt(j, w)}")
     if kind == "pillar" and len(note.get("anchors") or []) == 1:
-        n = dict(note, anchors=[0, max(layers.values(), default=0) + 1])
+        # held by both frame plates: the outer (layer 0) and the inner (the plan's top; an
+        # older note without it, past its highest link)
+        top = note.get("top")
+        if top is None:
+            top = max(layers.values(), default=0) + 1
+        n = dict(note, anchors=[0, top])
         j, w = sfs(n)
-        out.append(f"glue the pillar into both frame plates (a beam, not a cantilever): "
+        out.append(f"anchor the pillar in both frame plates (a beam, not a cantilever): "
                    f"{fmt(j, w)}")
     sec = note["section"]
     jam_sf = _sf(row, "jam")
