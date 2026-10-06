@@ -12,6 +12,7 @@ model, the MuJoCo model and the bake share them.
 from __future__ import annotations
 
 import math
+import weakref
 from dataclasses import dataclass
 
 import numpy as np
@@ -149,13 +150,106 @@ class PartProps:
     z_range: tuple[float, float]
 
 
-def part_props(part) -> PartProps:
+# -- the integrals, once per part ---------------------------------------------------------
+#
+# A part's volume and surface integrals (``BRepGProp``) are the costly half of its mass
+# properties, and every consumer of a fabricated mechanism wants them: the BOM's grouping
+# (``bom._sig``), the walking model, ``api.attach_build``, the bake, the MJCF. They are a
+# pure function of the B-rep (no side effect on it; the exact geometry, not a mesh), so
+# they are measured once per part and shared: keyed on the part object itself (a weak
+# reference, so an entry goes with its part) and valid while its shape is the one measured
+# (the same TShape, location and orientation: ``TopoDS_Shape.IsEqual`` against a copy of
+# the handle taken then, so a part moved in place is measured again). The bounding box is
+# not kept: ``bounding_box()`` also strips a part's mesh, which later meshing depends on.
+
+
+class _Measured:
+    __slots__ = ("ref", "shape", "vol", "surf", "volume")
+
+    def __init__(self, ref, shape) -> None:
+        self.ref, self.shape = ref, shape
+        self.vol = self.surf = self.volume = None
+
+
+_MEASURED: dict[int, _Measured] = {}
+
+
+def _measured(part) -> _Measured | None:
+    """``part``'s entry (a fresh one when it has none or its shape changed); ``None`` for a
+    part that can't be weakly referenced (measured every time)."""
+    key = id(part)
+    m = _MEASURED.get(key)
+    if m is not None and m.ref() is part and m.shape.IsEqual(part.wrapped):
+        return m
+
+    def gone(ref, key=key) -> None:
+        e = _MEASURED.get(key)
+        if e is not None and e.ref is ref:
+            del _MEASURED[key]
+
+    try:
+        ref = weakref.ref(part, gone)
+    except TypeError:
+        return None
+    w = part.wrapped
+    m = _MEASURED[key] = _Measured(ref, w.Oriented(w.Orientation()))
+    return m
+
+
+def volume_props(part):
+    """``BRepGProp.VolumeProperties_s`` of ``part`` (a ``GProp_GProps``: read it, don't
+    change it), integrated once per part."""
     from OCP.BRepGProp import BRepGProp
     from OCP.GProp import GProp_GProps
 
-    vol, surf = GProp_GProps(), GProp_GProps()
+    m = _measured(part)
+    if m is not None and m.vol is not None:
+        return m.vol
+    vol = GProp_GProps()
     BRepGProp.VolumeProperties_s(part.wrapped, vol)
+    if m is not None:
+        m.vol = vol
+    return vol
+
+
+def surface_props(part):
+    """``BRepGProp.SurfaceProperties_s`` of ``part``, integrated once per part."""
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    m = _measured(part)
+    if m is not None and m.surf is not None:
+        return m.surf
+    surf = GProp_GProps()
     BRepGProp.SurfaceProperties_s(part.wrapped, surf)
+    if m is not None:
+        m.surf = surf
+    return surf
+
+
+def volume(part) -> float:
+    """build123d's ``part.volume``, measured once per part: a ``Solid``'s is its volume
+    integral's mass (``Shape.compute_mass``: the same ``VolumeProperties_s`` call, so the
+    one :func:`volume_props` keeps), a compound's the sum of its solids' (build123d's own)."""
+    from build123d import Solid
+    from OCP.TopAbs import TopAbs_SOLID
+
+    m = _measured(part)
+    if m is not None and m.volume is not None:
+        return m.volume
+    if type(part).volume is Solid.volume and part.wrapped.ShapeType() == TopAbs_SOLID:
+        v = volume_props(part).Mass()
+    else:
+        v = part.volume
+    if m is not None:
+        m.volume = v
+    return v
+
+
+def part_props(part) -> PartProps:
+    """``part``'s :class:`PartProps` (its integrals shared with every other consumer:
+    :func:`volume_props`, :func:`surface_props`; its bounding box measured now)."""
+    vol, surf = volume_props(part), surface_props(part)
     c, sc = vol.CentreOfMass(), surf.CentreOfMass()
     m = vol.MatrixOfInertia()
     bb = part.bounding_box()
