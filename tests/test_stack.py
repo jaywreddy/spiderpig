@@ -3,21 +3,32 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
+import json
+import random
 
 import numpy as np
 import pytest
 
+from spiderpig import fabricate, stack
+from spiderpig.config import BuildConfig
+from spiderpig.construction.crank import CrankRoute, Run
+from spiderpig.design import engine_version
+from spiderpig.fabricate import side_problem, template_for
 from spiderpig.stack import (
     Claim,
+    Disc,
     Geometry,
     Layout,
     Pill,
     Placed,
     StackProblem,
+    StackSpec,
     Topology,
     seg_seg,
     verify_plan,
 )
+from tests import cache
 from tests.tiers import quick
 
 
@@ -150,3 +161,268 @@ def test_layout_layers_between():
     L = Layout({}, 5, 3.0)
     assert list(L.layers_between(2.9, 6.1)) == [0, 1, 2]
     assert list(L.layers_between(3.0, 6.0)) == [1]
+
+
+# -- the plan's z (stack.finalize) on hand-made claims ------------------------------------
+
+
+def _still(**pts) -> Geometry:
+    """Fixed points (two samples each)."""
+    return Geometry({n: np.array([xy, xy], dtype=float) for n, xy in pts.items()})
+
+
+def _z_problem(*claims) -> Topology:
+    topo = Topology("z", _still(O=(0, 0), P=(40, 0), Q=(80, 0)), {"a": (("O", "P"),)}, (), {})
+    return topo, (Claim("a", frozenset("a"),
+                        lambda L: [Placed(L.layers["a"], Pill("O", "P", 3.0), "a", "a")]),
+                  *claims)
+
+
+def _head(layer: int, h: float, at: str = "Q", group: str = "pin", toward: int = 0) -> Claim:
+    return Claim(group, frozenset(), lambda L: [
+        Placed(layer, Disc(at, 3.0), group, f"{group} head", gap=True, height=h,
+               toward=toward)])
+
+
+def test_a_gap_is_a_stock_sheet_where_plates_run_through_it_else_any_tenth():
+    """A head in the gap over layer 2, where the crank's plates stand in layers 2 and 3 (a
+    filler plate fills it: the thinnest stock sheet over the head), and one over layer 4
+    (washers and shims: the next 0.1 mm); the plates run on through their gap."""
+    plates = Claim("crank", frozenset(), lambda L: [
+        Placed(k, Disc("O", 5.0), "crank", "crank web", sheet=3.175) for k in (2, 3)])
+    topo, claims = _z_problem(plates, _head(2, 1.2), _head(4, 1.23, group="pillar"))
+    plan = stack.finalize(topo, claims, StackSpec(), {"a": 5}, 7)
+    assert plan.gaps == {2: 1.5, 4: 1.3}
+    assert plan.thick == {2: 3.175, 3: 3.175}         # a plate thicker than its layer
+    (through,) = [p for p in plan.placed if p.label == "crank through the gap"]
+    assert (through.layer, through.gap, through.sheet) == (2, True, 3.175)
+    assert plan.z(3)[0] == pytest.approx(3.0 + 3.0 + 3.175 + 1.5)
+    assert verify_plan(plan) == []
+
+
+def test_a_head_with_room_beside_it_sinks_and_one_without_keeps_its_gap():
+    """``toward``: a head may sink into the layer over (+1) or under (-1) its gap when
+    nothing of another group is there; link ``a`` in layer 3 sweeps P."""
+    topo, claims = _z_problem(_head(1, 2.0, at="Q", toward=+1),
+                              _head(2, 2.0, at="P", group="cap", toward=+1))
+    plan = stack.finalize(topo, claims, StackSpec(), {"a": 3}, 6)
+    assert plan.gaps == {2: 2.0}                       # P's head can't go into a's layer
+    sunk = {k[0]: k[2] for k in plan.sunk}
+    assert sunk == {"pin": 1}
+    (pin,) = plan.shapes("pin")
+    assert (pin.layer, pin.gap) == (2, False)          # in layer 2 now, at its full height
+    # every head sunk but the drive's, as the search placed them (``sink_all_but``)
+    forced = stack.finalize(topo, claims, StackSpec(), {"a": 3}, 6,
+                            sink_all_but=frozenset({"cap"}))
+    assert {k[0] for k in forced.sunk} == {"pin"}
+
+
+def _counted(make, read: bool = True):
+    """``make``, noting the gap over layer 4 of every final layout it is made at (what it
+    reads anyway: noting more would be reading more)."""
+    calls = []
+
+    def f(L):
+        calls.append((L.gap(4) if read else 0.0) if L.final else None)
+        return make(L)
+    return f, calls
+
+
+def test_a_stock_part_that_misses_at_its_gaps_gets_the_least_thickening():
+    """A claim that only builds once the gap over layer 4 is 1.6 mm: the plan's z thickens
+    that gap the least (one gap, then two), and skips the tries that change only gaps the
+    claim never read (the gap over layer 2 here)."""
+    def need(L):
+        if L.final and L.gap(4) < 1.6 - 1e-9:
+            raise stack.Unbuildable("its stock length needs 1.6 mm over layer 4")
+        return []
+
+    make, calls = _counted(need)
+    topo, claims = _z_problem(_head(2, 1.2), _head(4, 1.2, group="pillar"),
+                              Claim("stock", frozenset(), make))
+    plan = stack.finalize(topo, claims, StackSpec(), {"a": 5}, 7)
+    assert plan.gaps == {2: 1.2, 4: 1.6}
+    # the final z, then (in the thickening) once more at it, then only the thickenings of
+    # the gap over layer 4: 1.3 .. 1.6 (layer 2's, alone or with layer 4's at a value it
+    # failed at, skipped), then the plan's z made again
+    assert [c for c in calls if c is not None] == [1.2, 1.2, 1.3, 1.4, 1.5, 1.6, 1.6]
+
+
+def test_a_claim_no_thickening_helps_is_refused_after_one_more_try():
+    """A claim that fails at the plan's z whatever its gaps (it reads none): every
+    thickening agrees with the failed try on what it read, so none is made, and the
+    refusal is the one the 60 tries would give."""
+    make, calls = _counted(lambda L: None if L.final else [], read=False)
+    topo, claims = _z_problem(_head(2, 1.2), _head(4, 1.2, group="pillar"),
+                              Claim("stock", frozenset(), make))
+    with pytest.raises(stack.PlanReject, match=r"stock can't be built in this layout \(nor "
+                       r"with its clearance gaps thickened by up to 1 mm in all: the 60 "
+                       r"least thickenings of one or two gaps\)"):
+        stack.finalize(topo, claims, StackSpec(), {"a": 5}, 7)
+    assert len([c for c in calls if c is not None]) == 2      # the plan's z, and once more
+
+
+def _reference_tries(gaps, spec, bridged):
+    """The thickenings ``_thicker_gaps`` tries, in its order, as first written: every one
+    made, sorted whole by (total rounded, sorted items), the first GAP_TRIES kept."""
+    ks = sorted(gaps)
+    more = {k: [o for o in stack._gap_options(k, gaps[k], spec, bridged)
+                if o > gaps[k] + stack.EPS_Z] for k in ks}
+    tries = []
+    for k in ks:
+        tries += [(o - gaps[k], {**gaps, k: o}) for o in more[k]]
+    for a, b in itertools.combinations(ks, 2):
+        tries += [(oa + ob - gaps[a] - gaps[b], {**gaps, a: oa, b: ob})
+                  for oa in more[a][:8] for ob in more[b][:8]]
+    tries.sort(key=lambda t: (round(t[0], 6), sorted(t[1].items())))
+    return tries[:stack.GAP_TRIES]
+
+
+def test_the_thickenings_are_tried_in_the_order_of_sorting_them_all():
+    """``_thicker_gaps`` sorts only the thickenings within rounding of the GAP_TRIES-th
+    least: the same tries, in the same order, as sorting them all; with a claim that reads
+    every gap, none is skipped."""
+    rng = random.Random(7)
+    spec = StackSpec()
+    for _ in range(150):
+        ks = rng.sample(range(1, 19), rng.randint(1, 7))
+        gaps = {k: rng.choice([0.3, 0.5, 0.8128, 1.0, 1.016, 1.3, 2.0, 2.4, 3.6, 3.9, 4.0])
+                for k in ks}
+        bridged = {k for k in ks if rng.random() < 0.3}
+        seen = []
+
+        def make(L, seen=seen):
+            seen.append(dict(L.gaps.items()))
+
+        err = stack.PlanReject("x")
+        err.claim = Claim("x", frozenset(), make)
+        with pytest.raises(stack.PlanReject):
+            stack._thicker_gaps(err, spec, {}, 20, {}, dict(gaps), {}, bridged)
+        assert seen[1:] == [g for _, g in _reference_tries(gaps, spec, bridged)]
+
+
+def test_the_plans_z_is_the_sum_of_its_layers_and_gaps_in_order():
+    """``Layout.z``: each layer's bottom is ``sum`` over the layers and gaps under it, in
+    order, to the last bit (float sums are compensated: no running total), and
+    ``layers_between`` (remembered per z and interval) is the layers overlapping it."""
+    rng = random.Random(3)
+    for _ in range(300):
+        top = rng.randint(6, 30)
+        thick = {k: rng.choice([3.0, 2.032, 2.54, 2.286, 3.175, 1.5])
+                 for k in rng.sample(range(-3, top + 3), rng.randint(0, 6))}
+        gaps = {k: round(rng.uniform(0.1, 4.0), 1)
+                for k in rng.sample(range(0, top), rng.randint(0, 6))}
+        L = Layout({}, top, 3.0, {}, gaps, thick, final=True)
+        ks = list(range(-20, top + 20))
+        rng.shuffle(ks)
+        for k in ks:
+            z0 = (k * L.pitch if not thick and not gaps
+                  else sum(L.t(j) + L.gap(j) for j in range(k)) if k >= 0
+                  else -sum(L.t(j) + L.gap(j) for j in range(k, 0)))
+            assert repr(L.z(k)) == repr((z0, z0 + L.t(k)))
+        again = Layout({}, top, 3.0, {}, dict(gaps), dict(thick))
+        for _ in range(10):
+            a = rng.uniform(-10, 100)
+            b = a + rng.uniform(0, 20)
+            got = L.layers_between(a, b)
+            assert again.layers_between(a, b) == got
+            want = [k for k in range(-40, top + 40)
+                    if L.z(k)[0] < b - 1e-9 and L.z(k)[1] > a + 1e-9]
+            assert list(got) == (want if want else [])
+
+
+# -- recorded plans: made again from their layering, and the cache's seeded plans ---------
+
+PLANS: dict[str, dict] = {
+    "klann-single": {"module": "single"},
+    "klann-double": {"module": "double"},
+    "klann-decker": {"module": "decker"},
+    "klann-quad": {"module": "quad"},
+    "strider-double": {"linkage": "strider", "module": "double"},
+    "klann_lego-quad": {"linkage": "klann_lego", "module": "quad"},
+    "hoecken": {"linkage": "hoecken", "module": "single"},
+    "hoecken_pantograph": {"linkage": "hoecken_pantograph", "module": "single"},
+    "dwell_rocker": {"linkage": "dwell_rocker", "module": "single"},
+    "klann-single-keyed": {"module": "single", "crank": "keyed", "pillar": "printed"},
+    "klann-quad-keyed": {"module": "quad", "crank": "keyed", "pillar": "printed"},
+    "klann-single-printed-pivots": {"module": "single", "pin": "printed", "pillar": "printed"},
+    "klann-quad-printed-pivots": {"module": "quad", "pin": "printed", "pillar": "printed"},
+}
+"""The designs whose plans ``tests/fixtures/planner/plans/<name>.json`` record: the order
+designs, the mechanisms, and the constructions other modules' tests pin."""
+
+
+def _plan_cfg(name: str) -> BuildConfig:
+    return BuildConfig(**{"linkage": "klann", "robot": False, **PLANS[name]})
+
+
+def _plan_record(name: str) -> dict:
+    """A recorded plan: the layering, the crank's route and the plan's z, as the planner
+    solves it now (not its proof, whose budget is the machine's)."""
+    cfg = _plan_cfg(name)
+    tmpl = template_for(cfg)
+    _, _, problem = side_problem(tmpl, cfg)
+    plan = problem.solve()
+    doc = cache.plan_doc(plan)
+    for k in ("optimal", "proof", "cost"):
+        doc.pop(k)
+    return {**doc, "height": plan.height}
+
+
+def _choices(doc: dict) -> dict:
+    route = doc["route"]
+    return {} if route is None else {"crank": CrankRoute(
+        tuple(Run(r["at"], r["lo"], r["hi"]) for r in route["runs"]), route["bearing"])}
+
+
+@pytest.mark.parametrize("name", list(PLANS))
+def test_a_recorded_plan_is_made_again_and_verifies(name):
+    """The plan of a recorded layering and route (``StackProblem.plan``, what the store and
+    the robot's side do instead of searching): it builds at its own z, verifies on a denser
+    sampling, and (on the engine that recorded it) has the recorded gaps, thicknesses and
+    height."""
+    doc = cache.recorded("planner", f"plans/{name}", lambda: _plan_record(name))
+    cfg = _plan_cfg(name)
+    tmpl = template_for(cfg)
+    _, _, problem = side_problem(tmpl, cfg, hint=False)
+    plan = problem.plan(doc["layers"], doc["top"], _choices(doc), doc["heads"])
+    assert verify_plan(plan, tmpl) == []
+    assert plan.heads == doc["heads"]
+    if cache.read_fixture("planner", f"plans/{name}")["engine_version"] == engine_version():
+        got = cache.plan_doc(plan)
+        assert (got["gaps"], got["thick"]) == (doc["gaps"], doc["thick"])
+        assert plan.height == pytest.approx(doc["height"], abs=1e-9)
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+@pytest.mark.parametrize("name", list(PLANS))
+def test_the_recorded_plans_are_current(name):
+    """The planner still solves each recorded design to its recorded plan."""
+    cache.assert_current("planner", f"plans/{name}", lambda: _plan_record(name))
+
+
+@pytest.mark.parametrize("name", ["klann-single", "strider-double"])
+def test_a_seeded_plan_is_the_solved_plan(name):
+    """The cache's seed (``tests.cache``: the plan written as JSON, read back as a ``_Seed``)
+    re-made the way ``design_side`` re-makes a known layout (``fabricate._reuse``: the plan
+    of its layering, verified) is the solved plan: every placed shape, the gaps, the
+    thicknesses, the sunk heads, the route, and the proof it carries."""
+    cfg = _plan_cfg(name)
+    tmpl = template_for(cfg)
+    _, _, problem = side_problem(tmpl, cfg)
+    solved = problem.solve()
+    doc = json.loads(json.dumps(cache.plan_doc(solved)))
+    _, _, again = side_problem(tmpl, cfg, hint=False)
+    seeded = fabricate._reuse(again, cache._Seed(doc))
+    assert seeded is not None
+    for field in ("layers", "top", "choices", "gaps", "thick", "sunk", "heads", "optimal",
+                  "proof", "cost"):
+        assert getattr(seeded, field) == getattr(solved, field), field
+    assert sorted(map(repr, seeded.placed)) == sorted(map(repr, solved.placed))
+    assert seeded.height == solved.height
+    assert verify_plan(seeded, tmpl) == verify_plan(solved, tmpl) == []
+    # a seed whose layering doesn't verify (every link in one layer) is never reused:
+    # design_side solves instead
+    bad = {**doc, "layers": dict.fromkeys(doc["layers"], 2)}
+    assert fabricate._reuse(again, cache._Seed(bad)) is None

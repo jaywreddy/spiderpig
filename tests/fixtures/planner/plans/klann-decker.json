@@ -1,0 +1,48 @@
+{
+ "data": {
+  "gaps": {
+   "1": 4.0,
+   "10": 2.4,
+   "2": 1.5,
+   "3": 3.0,
+   "4": 3.6,
+   "8": 3.0
+  },
+  "heads": "gap",
+  "height": 51.914,
+  "layers": {
+   "b1_leg0": 3,
+   "b1_leg1": 5,
+   "b2_leg0": 7,
+   "b2_leg1": 10,
+   "b3_leg0": 2,
+   "b3_leg1": 6,
+   "b4_leg0": 2,
+   "b4_leg1": 9
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M_leg0",
+     "hi": 3,
+     "lo": 3
+    },
+    {
+     "at": "M_leg1",
+     "hi": 8,
+     "lo": 5
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "11": 2.032,
+   "2": 3.175,
+   "9": 3.175
+  },
+  "top": 11
+ },
+ "engine_version": "0.1.0+df7870e36945",
+ "generator": "tests/test_stack.py::test_a_recorded_plan_is_made_again_and_verifies[klann-decker]"
+}

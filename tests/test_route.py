@@ -4,6 +4,8 @@ a brute-force reference (:mod:`tests.brute`)."""
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
 
@@ -21,7 +23,7 @@ from spiderpig.fabricate import (
     side_problem,
     template_for,
 )
-from spiderpig.stack import ClearanceError, verify_plan
+from spiderpig.stack import ClearanceError, Layout, RouteConflict, RouteView, verify_plan
 from tests import brute
 from tests.tiers import quick
 
@@ -235,3 +237,39 @@ def test_the_planner_matches_the_brute_force_optimum(key):
     ours = brute.cost(plan.choices["crank"], plan.layers, problem.topo.riders, {})
     assert best is not None
     assert ours == best[0]
+
+
+@pytest.mark.parametrize(("key", "crank", "module", "top"), [
+    ("klann", "keyed", "single", 8), ("klann", "printed", "double", 9),
+    ("klann", "keyed", "decker", 11), ("trotbot", "keyed", "single", 12),
+    ("trotbot", "printed", "single", 12), ("strider", "keyed", "single", 10),
+    ("jansen", "keyed", "single", 9)])
+def test_the_routers_joint_rules_are_the_brute_forces_on_every_rider_layering(
+        key, crank, module, top):
+    """The router's joint rules (``JointRules``, compiled from the printed crank's joints)
+    against the brute force's own model of those joints (:func:`tests.brute.buildable`, as
+    ``realize`` builds them), on hand-made layerings: every layer of the riders under the
+    hub, nothing else in the way. The router's cheapest route builds by the brute force's
+    joints and costs what the brute force's cheapest does, or neither has one."""
+    cfg = _cfg(key, module, crank=crank, heads="sink")
+    ctx, _, problem = side_problem(template_for(cfg), cfg, hint=False)
+    router, riders = problem.router, problem.topo.riders
+    h0 = router.hub_bottom(top)
+    names = sorted(riders)
+    points = list(dict.fromkeys(riders.values()))
+    seen = 0
+    for ks in itertools.product(range(2, h0), repeat=len(names)):
+        layers = dict(zip(names, ks, strict=True))
+        if len({(k, riders[n]) for n, k in layers.items()}) > len(set(ks)):
+            continue                    # riders of two crankpins in one layer: never a route
+        res = router.route(RouteView(Layout(layers, top, problem.spec.pitch), {}))
+        need = {k: riders[n] for n, k in layers.items()}
+        costs = [brute.cost(r, layers, riders, {}) for r in brute.routes(points, 2, h0 - 1, need)
+                 if brute.buildable(r, layers, problem, ctx, h0)]
+        if isinstance(res, RouteConflict):
+            assert not costs, (layers, res)
+        else:
+            assert brute.buildable(res.choice, layers, problem, ctx, h0), (layers, res)
+            assert brute.cost(res.choice, layers, riders, {}) == min(costs), layers
+        seen += 1
+    assert seen

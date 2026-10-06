@@ -92,3 +92,34 @@ def test_explain_prints_what_would_clear_it():
     assert "STOP: trotbot_heel: b7 sweeps right across the crank at O" in out
     assert "what would clear it:" in out
     assert "unit 7 -> 10.5" in out    # the bolt crank's 6 mm shank (default; keyed: -> 12)
+
+
+def test_a_missed_stroke_is_met_by_the_least_practical_scale_checked():
+    """``target_scale`` on the Hoecken mechanism (plans in a fraction of a second): a stroke
+    target over the drawing's is met by scaling up, one under it by scaling down to the
+    middle of its band, each measured again and planned; a straightness the design meets
+    now bounds the scale too, and a target the bound excludes gets a note, not a fix."""
+    from spiderpig.api import measure_config
+    from spiderpig.recommend import target_scale
+    from spiderpig.spec import Target
+
+    cfg = BuildConfig(linkage="hoecken", module="single", robot=False)
+    got = measure_config(cfg)
+    stroke = got["motion.stroke_mm"]
+    assert stroke == pytest.approx(66.89, abs=0.01)
+    rec, note = target_scale(cfg, [("motion.stroke_mm", stroke, Target(min=80.0))],
+                             measure_config)
+    assert note is None
+    assert rec.changes == (("unit", 16.0, 19.5),)
+    assert rec.why == "stroke_mm scales with unit: x1.22 meets the target"
+    assert rec.verified == "checked: stroke_mm 81.53; it plans in 7 layers (27.864 mm)"
+    rec, note = target_scale(cfg, [("motion.stroke_mm", stroke, Target(value=50.0, tol=1.0))],
+                             measure_config)
+    assert rec.changes == (("unit", 16.0, 12.0),)
+    assert rec.verified.startswith("checked: stroke_mm 50.17; it plans in 7 layers")
+    straight = ("motion.straightness_mm", got["motion.straightness_mm"], Target(max=0.07))
+    rec, note = target_scale(cfg, [("motion.stroke_mm", stroke, Target(min=80.0))],
+                             measure_config, keep=[straight])
+    assert rec is None
+    assert note == ("no one scale of unit meets stroke_mm, straightness_mm together (one "
+                    "needs x1.2, another at most x1.09)")

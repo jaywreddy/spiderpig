@@ -1,0 +1,35 @@
+{
+ "data": {
+  "gaps": {
+   "2": 4.0,
+   "3": 1.7,
+   "4": 3.0
+  },
+  "heads": "gap",
+  "height": 30.939,
+  "layers": {
+   "b1": 4,
+   "b2": 2,
+   "b3": 3,
+   "b4": 3
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M",
+     "hi": 4,
+     "lo": 4
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "3": 3.175,
+   "7": 2.032
+  },
+  "top": 7
+ },
+ "engine_version": "0.1.0+df7870e36945",
+ "generator": "tests/test_stack.py::test_a_recorded_plan_is_made_again_and_verifies[klann-single-printed-pivots]"
+}
