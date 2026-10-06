@@ -241,12 +241,14 @@ def default_scale(config, plan: bool = True,
 
 
 def target_scale(config, misses, measure, deadline: Deadline | None = None,
-                 tries: int = 4) -> tuple[Recommendation | None, str | None]:
+                 tries: int = 4, keep=()) -> tuple[Recommendation | None, str | None]:
     """The least practical scale of the linkage that meets every missed target in
     ``misses`` (``(path, value, target)`` triples of metrics linear in the scale parameter:
     a mechanism's stroke and straightness, a walker's lift), checked by measuring them
     again (``measure(config) -> {path: value}``) and by the static stage and the design's
-    own plan. ``(recommendation, note)``: the note says why none is given."""
+    own plan. ``keep``: the scaled targets the design meets now (the same triples), which
+    the scale must keep meeting: they bound it too and are measured again with the
+    misses. ``(recommendation, note)``: the note says why none is given."""
     lk = linkage.get(config.linkage)
     names = linkage.scale_params(lk)
     if not names:
@@ -255,7 +257,8 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
     props = dict(config.proportions)
     now = float(props.get(name, lk.params[name]))
     lo, hi = 0.0, math.inf                     # the scale factors the targets allow
-    for _path, v, t in misses:
+    bound = [*misses, *keep]
+    for _path, v, t in bound:
         if v <= 0:
             continue
         if t.min is not None:
@@ -267,7 +270,8 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
             lo, hi = max(lo, (t.value - tol) / v), min(hi, (t.value + tol) / v)
     metrics = ", ".join(p.split(".")[-1] for p, _, _ in misses)
     if lo > hi + 1e-9:
-        return None, (f"no one scale of {name} meets {metrics} together (one needs x{lo:.3g}, "
+        every = ", ".join(p.split(".")[-1] for p, _, _ in bound)
+        return None, (f"no one scale of {name} meets {every} together (one needs x{lo:.3g}, "
                       f"another at most x{hi:.3g})")
     step = _step(now)
     if lo > 0 and hi < math.inf:
@@ -298,7 +302,7 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
             got = measure(trial)
         except ValueError as e:                  # a loop that no longer closes
             return None, f"{name} {value:g} breaks the linkage: {str(e).splitlines()[0]}"
-        if all(t.check(got[p])[0] for p, _, t in misses if p in got):
+        if all(t.check(got[p])[0] for p, _, t in bound if p in got):
             try:
                 verified = _verify(trial, True, deadline)
             except _OutOfTime:

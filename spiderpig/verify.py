@@ -479,7 +479,7 @@ def _mass_estimate(design: Design, wr) -> Row | None:
         if wr.mass_g is None:
             return None
         return target_row(design, f, wr.mass_g, "walk", "estimated",
-                          "the walk model's nominal mass")
+                          "the walk model's nominal mass" + ESTIMATE_NOTE, hard=False)
     n = 2 if cfg.robot else 1
     servos_ = f"{n} servo{'s' if n > 1 else ''}"
     plates = f"frame{' and centre' if cfg.robot else ''} plates"
@@ -488,7 +488,12 @@ def _mass_estimate(design: Design, wr) -> Row | None:
               f"{plates} {b['plates']:.0f} g, {printed} {b['printed']:.0f} g"
               + (f", electronics deck {b['deck']:.0f} g" if b.get("deck") else "")
               + f" ({b['note']})")
-    return target_row(design, f, b["total"], "walk", "estimated", detail)
+    return target_row(design, f, b["total"], "walk", "estimated", detail + ESTIMATE_NOTE,
+                      hard=False)
+
+
+ESTIMATE_NOTE = ("; an estimate, not a bound (within a few percent on the default robots, "
+                 "more on others): it can't refute a target, a build measures it")
 
 
 def mass_by_group(br) -> str:
@@ -598,7 +603,7 @@ GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")  # anchored in the plat
 # threadlocker on its end screws (M4; M3 for standoff_m3)
 LOCKED_PILLARS = ("standoff", "standoff_hand", "standoff_bench", "standoff_m3")
 SPLICED_PILLARS = ("standoff_hand", "standoff_bench", "standoff_m3")   # 243 on the splices
-GLUED_PINS = ("bearing", "bushing")                         # an insert glued into each link
+GLUED_PINS = ("bearing",)          # an insert glued into each link (a bushing is pressed in)
 EPOXY_PINS = ("chicago", "chicago_bushing")                 # the barrel bonded in its lowest link
 LOCKED_PINS = ("chicago", "chicago_bushing")                # threadlocker on each screw
 FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws, the pivots' hardware, rod and "
@@ -608,8 +613,8 @@ FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws, the pivots' hardware
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog before
     any build: the servos (one per side), a spool of filament (the crank is printed), one
-    blank of each sheet the parts are cut from, for the robot the centre plates' cement and
-    the frame ties' inserts, and what the constructions buy whatever the parts' sizes: a
+    blank of each sheet the parts are cut from, and what the constructions buy whatever the
+    parts' sizes: a
     bottle of CA glue when a pillar is anchored in the plates or an insert glued into its
     links (the robot's chassis and battery cradle are screwed since 2026-10-05), and the
     printed crank's crankpin nuts (a pack) and, keyed, its hex standoffs (a pack), the bolt
@@ -729,8 +734,9 @@ def _envelope_estimate(design: Design) -> list[Row]:
     for axis, v in zip("xyz", (x, y, z), strict=True):
         _push(rows, target_row(
             design, target_field("size", f"envelope_{axis}_mm"), v, "sweep", "estimated",
-            "the joints' sweep over the cycle + the plates; a build measures one crank angle"
-            if axis != "z" else f"{across}; measured after a build"))
+            ("the joints' sweep over the cycle + the plates; a build measures one crank angle"
+             if axis != "z" else f"{across}; measured after a build") + ESTIMATE_NOTE,
+            hard=False))
     return rows
 
 

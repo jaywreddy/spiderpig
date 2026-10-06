@@ -48,6 +48,22 @@ function buildFootPath(
   return line;
 }
 
+/** The baked clip with its loop closed. The bake writes keys over [0, D) evenly (no key at D,
+ *  the first one's repeat), so without a closing key the last interval never plays and the
+ *  loop jumps from the last key to the first. The same closing key drive mode adds
+ *  (``drive/view.ts`` ``sideActions``, which takes the baked clip as it is). */
+function closedLoop(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const t = clip.tracks[0]?.times;
+  if (!t || t.length < 2) return clip;
+  const period = t[t.length - 1]! + (t[1]! - t[0]!);
+  type Ctor = new (n: string, t: ArrayLike<number>, v: ArrayLike<number>) => THREE.KeyframeTrack;
+  return new THREE.AnimationClip(clip.name, period, clip.tracks.map((tr) => {
+    const k = tr.getValueSize(), v = new Float32Array(tr.values.length + k);
+    v.set(tr.values); v.set(tr.values.subarray(0, k), tr.values.length);
+    return new (tr.constructor as Ctor)(tr.name, [...tr.times, period], v);
+  }));
+}
+
 function disposeRoot(root: THREE.Object3D): void {
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh | THREE.Line;
@@ -106,8 +122,9 @@ export async function loadGlb(scene: THREE.Scene, mode: Mode, query = ''): Promi
 
   const clip = gltf.animations[0];
   if (!clip) throw new Error(`${mode}.glb has no animations`);
+  const loop = closedLoop(clip);
   const mixer = new THREE.AnimationMixer(root);
-  const action = mixer.clipAction(clip);
+  const action = mixer.clipAction(loop);
   action.play();
 
   const nodeCount = (gltf.parser.json as { nodes?: unknown[] }).nodes?.length
@@ -119,7 +136,7 @@ export async function loadGlb(scene: THREE.Scene, mode: Mode, query = ''): Promi
     walker,
     mixer,
     action,
-    clipDuration: clip.duration,
+    clipDuration: loop.duration,
     clip,
     footLine,
     nodeCount,

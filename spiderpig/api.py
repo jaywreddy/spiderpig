@@ -1336,7 +1336,13 @@ def advise(design: Design) -> AdviceReport:
     rep.stage = "target"
     scaled = [m for m in misses if m[0] in SCALED_METRICS]
     if scaled:
-        rec, note = target_scale(design.config, scaled, measure_config)
+        # the scaled targets met now bound the scale too: a fix mustn't break one
+        got = cheap_measures(design)
+        missed = {m[0] for m in scaled}
+        keep = [(f.path, float(got[f.path]), t) for f, t in design.spec.targets()
+                if f.path in SCALED_METRICS and f.path not in missed
+                and got.get(f.path) is not None]
+        rec, note = target_scale(design.config, scaled, measure_config, keep=keep)
         if rec is not None:
             rep.recommendations.append(Recommendation.from_engine(rec, design.lk))
         if note:
@@ -1676,9 +1682,11 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
     (:func:`construction.contract.clashes`), and the edited parts (``all_parts``: every
     part) of a claim-bound group (links, crank, pillars, pins) inside their group's claims
     at the build's crank angle. A passing recheck accepts the edited solids as the
-    design's; until then an edited solid is outside the correct-by-construction
-    guarantee (the plates, the drive and the chassis are covered by the clash check
-    alone)."""
+    design's on this handle (its build report, and an ``export`` or ``verify`` after it,
+    which run afresh: the earlier ones are dropped); the store's build keeps the parts as
+    built (a reloaded design is the unedited one), so export the edited design from this
+    handle. Until then an edited solid is outside the correct-by-construction guarantee
+    (the plates, the drive and the chassis are covered by the clash check alone)."""
     t0 = time.time()
     if design.mech is None:
         raise ValueError("nothing built yet: build(design) first")
@@ -1742,7 +1750,25 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
         if br is not None:      # the handle's build now describes the edited parts
             br.mass_g = round(sum(p.mass_g for p in design.parts.values()), 2)
             br.parts = [p.to_dict() for p in design.parts.values()]
+        # what was written or checked from the parts before the edit (the cut files, the
+        # verify's rows) no longer describes them: exported and verified again on asking
+        _forget(design, "export", "verify")
     return _finish(design, "recheck", rep, t0)
+
+
+def _forget(design: Design, *stages: str) -> None:
+    """Drop ``stages``' reports from the handle and the store (a verify's per-level copies
+    too), so the next call computes them afresh."""
+    for stage in stages:
+        design.reports.pop(stage, None)
+        if design.store is None:
+            continue
+        design.store.report_path(design.id, stage).unlink(missing_ok=True)
+        if stage == "verify":
+            from spiderpig.verify import LEVELS
+
+            for level in LEVELS:
+                design.store.report_path(design.id, stage, level).unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------

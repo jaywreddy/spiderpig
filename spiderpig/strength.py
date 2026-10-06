@@ -420,6 +420,13 @@ def _alt_sections(kind: str, note: dict) -> list[tuple[str, Section]]:
     return [(k, s) for k, s in out if k is not None and s.name != note["section"]["name"]]
 
 
+def materials_sheet(key: str):
+    """:func:`spiderpig.materials.sheet` (imported late: the engine's import order)."""
+    from spiderpig.materials import sheet
+
+    return sheet(key)
+
+
 def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> list[str]:
     """What would bring ``row`` to :data:`JAM_WARN` jammed and :data:`WALK_WARN` walking,
     each recomputed with the change."""
@@ -431,13 +438,28 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
                    f"keep the servo's torque limit under {lim:.2f} N·m")
-        if row["construction"] in ("printed", "keyed", "keyed_float"):
-            out.append("--crank bolt (laser-cut plate stacks keyed on M6 hex-bolt crankpins: "
-                       "the head and nut pockets hold ~4-6 N·m)")
+        if (row["construction"] in ("printed", "keyed", "keyed_float")
+                and "bolt" not in (config.pin, config.pillar)):
+            # (the bolt crank plans its heads in clearance gaps, which bolt pins and pillars
+            # aren't built for: no fix for those)
+            from dataclasses import replace as _replace
+
+            bolt = _replace(config, crank="bolt")
+            caps = crank_capacity({}, bolt) or {}
+            held = min(caps.values()) if caps else None
+            kind = ("single aluminium plates on steel hex-standoff crankpins"
+                    if materials_sheet(bolt.crank_sheet).metal else
+                    "laser-cut plate stacks keyed on M6 hex-bolt crankpins")
+            out.append(f"--crank bolt ({kind}"
+                       + (f": holds {held:.2f} N·m a joint)" if held else ")"))
         if bolt_crank(row["construction"]) and "pocket" in row["weakest"] and "hex" in row[
                 "weakest"]:
-            out.append("a thicker or stronger crank sheet (--crank-sheet al6061_3p2mm: 6061-T6, "
-                       "276 MPa against 5052's 193 in the hex pockets)")
+            now = materials_sheet(config.crank_sheet)
+            thick = materials_sheet("al6061_3p2mm")
+            if thick.thickness > now.thickness + 1e-9:
+                out.append(f"a thicker crank sheet (--crank-sheet al6061_3p2mm: "
+                           f"{thick.thickness:g} mm of hex pocket against "
+                           f"{now.thickness:g} mm now)")
         if bolt_crank(row["construction"]) and "nut lock" in row["weakest"]:
             out.append("a stronger threadlocker under the nut (Loctite 2701/270: about 2x the "
                        "breakaway of 243), or a primer on the plated thread")

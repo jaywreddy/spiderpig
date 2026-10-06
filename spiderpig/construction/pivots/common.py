@@ -231,6 +231,36 @@ class RodShaft:
     def stock(self) -> float:
         return float(get(self.rod_key).dims["length"])
 
+    def max_stack(self, pitch: float) -> float:
+        """The tallest stack a pillar's rod spans (mm): one stock length, glued through both
+        frame plates (:meth:`construction.base.Group.max_top`)."""
+        return self.stock
+
+    def stock_note(self) -> str:
+        return f"the {self.d:g} mm rod's stock length ({self.stock:g} mm)"
+
+    def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
+               pitch: float, layout=None, air=None) -> None:
+        """The planner's rule: the rod (from the outer plate, or a clip under the lowest
+        link, to the inner plate or a clip over the highest; at the plan's own z when
+        ``layout`` is final) is one stock length at most: :class:`stack.Unbuildable`."""
+        if not links:
+            return
+        down, up = anchored if pillar else (False, False)
+        k0 = 0 if down else min(links)
+        k1 = top if up else max(links)
+        if layout is not None and layout.final:
+            run = layout.z(k1)[1] - layout.z(k0)[0]
+        else:
+            run = (k1 - k0 + 1) * pitch
+        _, h = self.clip()
+        run += (h + self.protrude) * ((not down) + (not up))
+        if run > self.stock + EPS:
+            from spiderpig.stack import Unbuildable
+
+            raise Unbuildable(f"its {run:.1f} mm rod is longer than the {self.stock:g} mm "
+                              "stock it is cut from")
+
     def clip(self) -> tuple[float, float]:
         """(outside diameter, height) of the push-on clip."""
         c = get(self.clip_key).dims
@@ -276,6 +306,9 @@ class RodShaft:
             out.bodies.append(hardware(f"{stem}_clip_hi", clip, host, fab="purchased",
                                        bom_key=self.clip_key, color=STEEL))
             z1 = face + h + self.protrude
+        if z1 - z0 > self.stock + EPS:
+            raise ConstructionError(f"{group.name}: a {z1 - z0:.1f} mm rod is longer than its "
+                                    f"{self.stock:g} mm stock")
         rod = disc(xy, (d - self.model_gap) / 2, z0, z1)
         out.bodies.append(hardware(f"{stem}_rod", rod, host, fab="purchased", color=STEEL))
         out.extras.append(BomLine(self.rod_key, (z1 - z0) / self.stock,
