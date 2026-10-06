@@ -4,6 +4,10 @@ The support and motion rules are checked on synthetic feet first, then
 against a literal per-sample transcription of the contract (SPEC: every
 triangle, the most level face containing the centre of mass's projection)
 on the default quad, and against the viewer's reference numbers for it.
+
+The feet's lateral z come from the layer plans of the linkages' default designs: the fast
+tests read them from ``tests/fixtures/linkage/foot_z.json`` (``tests/_linkage.py``; the
+planner's own answer in the slow twins and the fixture's currency test).
 """
 
 from __future__ import annotations
@@ -27,6 +31,8 @@ from spiderpig.config import (
     parse_phases,
     parse_proportion,
 )
+from tests import _linkage
+from tests.tiers import quick
 
 # Phases for the default quad that spiderpig/tools/tune.py finds (both plan in
 # 12 layers like the default): the two cranks half a turn apart, each crank's
@@ -40,7 +46,7 @@ def _square(y=-100.0, hx=50.0, hz=40.0):
     return np.array([[-hx, y, -hz], [-hx, y, hz], [hx, y, -hz], [hx, y, hz]])
 
 
-OLD = {"frame_sheet": "acrylic_3mm", "link_sheets": (), "heads": "sink"}
+OLD = _linkage.OLD
 """The materials and full-layer heads the reference numbers were taken with."""
 
 
@@ -49,6 +55,42 @@ def _cfg(module: str, phases_deg=None, proportions=None, **kw) -> BuildConfig:
     phases = None if phases_deg is None else tuple(math.radians(p) for p in phases_deg)
     return BuildConfig(**{"linkage": "klann", "module": module, "phases": phases,
                           "proportions": tuple((proportions or {}).items()), **kw})
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _recorded_foot_z():
+    """Every test here reads the default designs' foot z from the recorded fixture (a test
+    that asks the planner says so: :func:`tests._linkage.use_live_foot_z`)."""
+    with _linkage.recorded_foot_z_ctx() as table:
+        yield table
+
+
+@pytest.fixture
+def live_foot_z(monkeypatch, server_app):
+    """The planner answers the default designs' foot z again (and ``/api/walk`` forgets
+    what it answered from the fixture)."""
+    _linkage.use_live_foot_z(monkeypatch)
+    server_app._walk_json.cache_clear()
+    yield
+    server_app._walk_json.cache_clear()
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+def test_foot_z_fixture_is_current():
+    """The recorded foot z are the planner's (``mise run test-fixtures`` rewrites them)."""
+    from tests import cache
+
+    cache.assert_current("linkage", "foot_z", _linkage.foot_z_doc)
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+def test_walk_reference_fixture_is_current():
+    """The walk reference (the viewer's test reads it too) is the engine's."""
+    from tests import cache
+
+    cache.assert_current("linkage", "walk_reference", _linkage.walk_reference_doc)
 
 
 @pytest.fixture(scope="module")
@@ -181,6 +223,43 @@ def test_slip_is_the_rms_residual():
     assert slip == pytest.approx(math.sqrt(2 / 4))
 
 
+def test_jsonable():
+    """Numpy as Python, non-finite floats as ``None``, mappings' keys as strings; a list of
+    plain floats (the fast path) the same as any other list."""
+    nan, inf = float("nan"), float("inf")
+
+    class Sub(dict):
+        pass
+
+    cases = [
+        ([1.0, nan, -0.0, inf], [1.0, None, -0.0, None]),
+        ((1.0, 2), [1.0, 2]),
+        ([True, 1, 1.5, None, "s"], [True, 1, 1.5, None, "s"]),
+        ({"a": (np.float64(2), np.int64(3), np.bool_(True))}, {"a": [2.0, 3, True]}),
+        ([[1.0, 2.0], [-inf, 3.0]], [[1.0, 2.0], [None, 3.0]]),
+        (np.array([0.0, np.nan]), [0.0, None]),
+        ([np.float64("nan"), 1.0], [None, 1.0]),
+        ({1: [np.nan]}, {"1": [None]}),
+        (Sub(x=nan), {"x": None}),
+        (np.float32(1.5), 1.5),
+        ([], []),
+        ((), []),
+    ]
+    for given, want in cases:
+        got = walk.jsonable(given)
+        assert got == want
+        assert [type(v) for v in _flat(got)] == [type(v) for v in _flat(want)]
+    assert math.copysign(1.0, walk.jsonable([-0.0])[0]) == -1.0
+
+
+def _flat(obj):
+    if isinstance(obj, dict):
+        return [x for v in obj.values() for x in _flat(v)]
+    if isinstance(obj, list):
+        return [x for v in obj for x in _flat(v)]
+    return [obj]
+
+
 def test_simulate_turns_with_one_side_stopped(quad):
     """Only the left side walking: the robot turns (and still moves forward)."""
     n = walk.N_THETA
@@ -242,9 +321,12 @@ def test_quad_reference(com):
     crank (the default since 2026-10-03) with its single aluminium webs and heads in gaps
     (2026-10-04) 14 layers, 77.2 mm on 0.080 in frame plates: 55.9 mm, with the hex-standoff
     crankpins on 0.100 in 6061 webs 76.8 mm: 52.4 mm (its two-plate
-    stacks' 31 layers gave 70.5; checked at the end)."""
+    stacks' 31 layers gave 70.5; checked at the end). The numbers are
+    ``walk_reference.json``'s, which the viewer's model test reads too."""
+    ref = _linkage.walk_reference()["reference"]
     quad = walk.walker(_cfg("quad", crank="printed", pillar="printed", **OLD))
-    assert walk.foot_z_nominal(quad.config) == [-62.0, -62.0, -50.0, -50.0]
+    assert quad.config == _linkage.REFERENCE_CONFIG
+    assert walk.foot_z_nominal(quad.config) == ref["foot_z"]
     if com == "pivots":
         piv = np.array([leg.joints[j][0] for leg in quad.legs for j in ("O", "A", "B")])
         model = walk.walker(quad.config, com=[piv[:, 0].mean(), piv[:, 1].mean(), 0.0],
@@ -256,17 +338,18 @@ def test_quad_reference(com):
     s = walk.support(P[0], model.com)
     assert len(_containing_faces(P[0], model.com)) > 1
     assert s.pitch_deg == pytest.approx(0.0, abs=0.01)
-    assert s.contacts.tolist() == [True, False, False, True] * 2   # legs 0 and 3, both sides
+    assert s.contacts.tolist() == ref["contacts_135"]       # legs 0 and 3, both sides
     m = walk.straight_walk_metrics(model)
-    assert max(abs(v) for v in m["pitch_deg"]) == pytest.approx(8.4, abs=0.1)
-    assert m["bob_mm"] == pytest.approx(24.0, abs=0.5)
-    assert m["stride_mm"] == pytest.approx(102.0, abs=1.0)
-    assert m["direction"] == "+x"
-    assert m["min_margin_mm"] == pytest.approx(50.0, abs=0.5)
-    assert m["tipping_fraction"] == 0.0
-    assert m["degenerate_fraction"] == 0.0
-    assert m["roll_deg"] == pytest.approx([0.0, 0.0], abs=1e-9)     # left/right symmetric
-    assert m["speed_mm_s"] == pytest.approx(m["stride_mm"] * 52.0 / 60.0)
+    assert max(abs(v) for v in m["pitch_deg"]) == pytest.approx(*ref["pitch_deg_max_abs"])
+    assert m["bob_mm"] == pytest.approx(ref["bob_mm"][0], abs=ref["bob_mm"][1])
+    assert m["stride_mm"] == pytest.approx(ref["stride_mm"][0], abs=ref["stride_mm"][1])
+    assert m["direction"] == ref["direction"]
+    assert m["min_margin_mm"] == pytest.approx(ref["min_margin_mm"][0],
+                                               abs=ref["min_margin_mm"][1])
+    assert m["tipping_fraction"] == ref["tipping_fraction"]
+    assert m["degenerate_fraction"] == ref["degenerate_fraction"]
+    assert m["roll_deg"] == pytest.approx(ref["roll_deg"], abs=1e-9)    # left/right symmetric
+    assert m["speed_mm_s"] == pytest.approx(m["stride_mm"] * ref["rpm_max"] / 60.0)
     if com == "nominal":        # the default (bolt crank, standoffs) stack is wider still
         keyed = walk.straight_walk_metrics(walk.walker(_cfg("quad", crank="keyed",
                                                              pillar="printed", **OLD)))
@@ -276,6 +359,35 @@ def test_quad_reference(com):
         # 49.9 with the hub chain capped (2.5 mm less stack, no screw over the hub plate);
         # 52.8 with the Chicago screws as bought (their taller heads widen the stack)
         assert bolt["min_margin_mm"] == pytest.approx(52.8, abs=0.5)
+
+
+def test_walk_reference_is_the_models():
+    """The walk reference's feet and centre of mass (what the viewer's model test feeds
+    ``drive/model.ts``) give the recorded metrics in this model, and are the reference
+    quad's own; its numbers are the reference's."""
+    doc = _linkage.walk_reference()
+    w = doc["walk"]
+    feet = [walk.Foot(f["body"], f["side"], f["leg"], f["z"], np.asarray(f["xy"], dtype=float))
+            for f in w["feet"]]
+    model = walk.Walker(feet=feet, com=w["com"], mass_g=float("nan"),
+                        config=_linkage.REFERENCE_CONFIG)
+    m = walk.straight_walk_metrics(model, rpm_max=w["servo"]["rpm_max"])
+    for key, want in doc["metrics"].items():
+        if key == "direction":
+            assert m[key] == want
+        else:
+            np.testing.assert_allclose(m[key], want, rtol=1e-6, atol=1e-6, err_msg=key)
+    quad = walk.walker(_linkage.REFERENCE_CONFIG)
+    assert [f.body for f in quad.feet] == [f["body"] for f in w["feet"]]
+    for f, rec in zip(quad.feet, w["feet"], strict=True):
+        assert f.z == pytest.approx(rec["z"], abs=1e-6)
+        np.testing.assert_allclose(f.xy, rec["xy"], atol=1e-6)
+    np.testing.assert_allclose(quad.com, w["com"], atol=1e-9)
+    ref = doc["reference"]
+    assert ref == _linkage.QUAD_REFERENCE
+    assert m["stride_mm"] == pytest.approx(ref["stride_mm"][0], abs=ref["stride_mm"][1])
+    assert m["min_margin_mm"] == pytest.approx(ref["min_margin_mm"][0],
+                                               abs=ref["min_margin_mm"][1])
 
 
 @pytest.mark.parametrize("module", list(linkage.MODULE_LEGS))
@@ -455,19 +567,36 @@ def test_phase_is_a_time_shift():
                                atol=1e-9)
 
 
-@pytest.mark.parametrize(("key", "module"), [("klann", "decker"), ("klann", "quad"),
-                                             ("jansen", "double"), ("strider", "single")])
-def test_nominal_foot_z_is_the_default_plan(key, module):
-    """Klann's from its table, another linkage's from planning its default design once."""
+NOMINAL = [("klann", "decker"), ("klann", "quad"), ("jansen", "double"), ("strider", "single")]
+
+
+def _nominal_is_the_default_plan(key, module, design=None):
     cfg = _cfg(module, linkage=key)
-    assert walk.foot_z_nominal(cfg) == pytest.approx(walk.foot_z_planned(cfg), abs=1e-9)
+    assert walk.foot_z_nominal(cfg) == pytest.approx(walk.foot_z_planned(cfg, design), abs=1e-9)
     assert all(z < 0 for z in walk.foot_z_nominal(cfg))                  # left side: -z
     name, default = next(iter(linkage.get(key).params.items()))
     tuned = _cfg(module, proportions={name: 1.1 * float(default)}, linkage=key)
     assert walk.foot_z_nominal(tuned) == walk.foot_z_nominal(cfg)       # no new plan
 
 
-def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch):
+@pytest.mark.parametrize(("key", "module"), NOMINAL)
+def test_nominal_foot_z_is_the_default_plan(key, module):
+    """Klann's from its table, another linkage's from planning its default design once:
+    the recorded foot z are the default design's plan (the test cache's, re-made)."""
+    from tests import cache
+
+    _, design = cache.cached_design(_cfg(module, linkage=key))
+    _nominal_is_the_default_plan(key, module, design)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(("key", "module"), NOMINAL)
+def test_nominal_foot_z_is_the_default_plan_live(key, module, live_foot_z):
+    """The same, every plan the planner's: ``foot_z_nominal`` plans the default design."""
+    _nominal_is_the_default_plan(key, module)
+
+
+def test_foot_z_without_a_layer_plan_is_a_guess(monkeypatch, live_foot_z):
     """A default design the planner can't lay out (cached as such): feet a layer apart."""
 
     def no_plan(*_a, **_k):
@@ -642,11 +771,16 @@ def test_api_walk_parameters(client):
     assert len(w["feet"]) == 4
 
 
-def test_api_walk_flags_a_design_that_would_tip(client):
+@pytest.mark.parametrize("plans", quick(["recorded", "live"], ["recorded"]))
+def test_api_walk_flags_a_design_that_would_tip(client, request, plans):
     """A design whose stability margin dips under ``MIN_MARGIN_MM`` is valid (it previews)
     but not stable, and says why; the default design (Strider's double) and the Klann quad
-    are both."""
+    are both. ``live``: the foot z from the planner (the Jansen quad's search runs ~120 s
+    to no plan, and its feet are guessed)."""
     from spiderpig.walk import MIN_MARGIN_MM
+
+    if plans == "live":
+        request.getfixturevalue("live_foot_z")
 
     w = client.get("/api/walk").json()
     assert (w["linkage"], w["module"]) == ("strider", "double")
@@ -815,9 +949,13 @@ def test_api_glb_parameters_are_cached_per_set(client, stub_bakes, stub_plans, t
     assert stub_bakes[-1].phases == (math.pi / 2,)
 
 
-def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path):
+@pytest.mark.parametrize("plans", quick(["stub", "live"], ["stub"]))
+def test_api_glb_linkage_is_part_of_the_design(client, stub_bakes, tmp_path, request, plans):
     """``linkage=strider`` (its ``double``) is the default design, a plain ``/api/glb/robot``
-    too; another linkage bakes (and caches) its own, with its own default module."""
+    too; another linkage bakes (and caches) its own, with its own default module. ``live``:
+    each design planned through the store first, as a bake does."""
+    if plans == "stub":
+        request.getfixturevalue("stub_plans")
     assert client.get("/api/glb/robot", params={"linkage": "strider"}).status_code == 200
     assert client.get("/api/glb/robot").status_code == 200       # cached: the same design
     assert stub_bakes == [BuildConfig()]                         # the plain default bake
@@ -897,8 +1035,14 @@ def test_api_glb_invalid_linkage_is_422(client, stub_bakes):
     assert stub_bakes == []                    # caught from the kinematics, before baking
 
 
-def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app):
+@pytest.mark.parametrize("plans", quick(["stub", "live"], ["stub"]))
+def test_api_glb_unbuildable_design_is_422(client, stub_bakes, server_app, request, plans):
+    """A bake that raises is a 422 with its reason, remembered (``live``: the tuned Klann
+    quads planned through the store first, as a bake does)."""
     from spiderpig.construction import ConstructionError
+
+    if plans == "stub":
+        request.getfixturevalue("stub_plans")
 
     for last, err in ((265, ValueError("claim pillar_A can't be built in this layout")),
                       (260, ConstructionError("a tie column is too thin"))):

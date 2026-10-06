@@ -19,6 +19,7 @@ import pytest
 
 from spiderpig import api, cli, view
 from spiderpig.store import Store
+from tests import _linkage
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "spiderpig" / "viewer" / "dist"
@@ -110,6 +111,14 @@ def test_bakes_live_in_the_store(monkeypatch, tmp_path):
 
 
 @pytest.fixture(scope="module")
+def _recorded_foot_z():
+    """``/api/walk`` reads the default designs' foot z from the recorded fixture
+    (``tests/_linkage.py``; its currency test is in ``test_walk.py``)."""
+    with _linkage.recorded_foot_z_ctx() as table:
+        yield table
+
+
+@pytest.fixture(scope="module")
 def store(tmp_path_factory) -> Store:
     return Store(tmp_path_factory.mktemp("view-store"))
 
@@ -125,8 +134,9 @@ def phased(store):
 
 
 @pytest.fixture(scope="module")
-def client(store):
-    """The app over ``store``, not entered (no lifespan: no default bake, no watcher)."""
+def client(store, _recorded_foot_z):
+    """The app over ``store``, not entered (no lifespan: no default bake, no watcher); its
+    ``/api/walk`` on the recorded foot z."""
     from fastapi.testclient import TestClient
 
     from spiderpig.server import app as server_app

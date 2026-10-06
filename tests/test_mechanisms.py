@@ -1,6 +1,7 @@
 """Building-block mechanisms (``linkages/mechanisms.py``): each output measures what the
 research measured, the template stage enforces what it promises, and each one-input
-mechanism plans and builds inside its claims, or the pipeline says why."""
+mechanism plans (the planner's tier) and builds inside its claims (the constructions'),
+or the pipeline says why."""
 
 from __future__ import annotations
 
@@ -102,9 +103,10 @@ def test_two_inputs_are_checked_over_their_torus():
     assert pts["M2"][:, 0] == pytest.approx([80.0, 120.0])        # t2 turns the second crank
 
 
-@pytest.mark.parametrize("key", quick(MECHANISMS, ["five_bar", "hoecken"]))
+@pytest.mark.planner
+@pytest.mark.parametrize("key", MECHANISMS)
 def test_one_side_plans_or_the_pipeline_says_why(key):
-    """One side lays out and every part stays inside its claims, or a stage says why."""
+    """One side lays out, or a stage says why (its parts: the test below)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
     tmpl = template_for(cfg)
     if key in EXPECTED:
@@ -118,11 +120,21 @@ def test_one_side_plans_or_the_pipeline_says_why(key):
         return
     design = design_side(tmpl, cfg)
     assert design.plan.top >= 2
-    for t in (0.0, 2.2):
-        assert check_side(design, tmpl.freeze_at(t)) == []
     if key == "peaucellier_crank":      # the long arms sweep over Y: its pillar holds one side
         assert ("b3 passes pillar:Y at 0.1 mm, under the 11.7 mm its thinnest part needs, so it "
                 "can't be in any layer pillar:Y spans") in [c.describe() for c in design.clearances]
+
+
+@pytest.mark.construction
+@pytest.mark.parametrize("key", quick([k for k in MECHANISMS if k not in EXPECTED], ["hoecken"]))
+def test_one_side_stays_inside_its_claims(key):
+    """Every part of each one-input mechanism's side stays inside its claims (at two crank
+    angles; the plan is the test above's, cached by the engine)."""
+    cfg = BuildConfig(linkage=key, module="single", robot=False)
+    tmpl = template_for(cfg)
+    design = design_side(tmpl, cfg)
+    for t in (0.0, 2.2):
+        assert check_side(design, tmpl.freeze_at(t)) == []
 
 
 def test_walking_takes_walkers_only():

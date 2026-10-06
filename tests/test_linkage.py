@@ -13,6 +13,7 @@ from spiderpig import linkage
 from spiderpig.config import BuildConfig
 from spiderpig.fabricate import design_side, template_for
 from spiderpig.stack import ClearanceError
+from tests.tiers import quick
 
 TS = np.linspace(0.0, 2.0 * math.pi, 720, endpoint=False)
 ALL = linkage.available()
@@ -164,8 +165,9 @@ def test_strider_matches_its_plan_drawing():
 KEYED_UNIT = {"trotbot_heel": 12.0, "trotbot_toe": 12.0}
 
 
-@pytest.mark.parametrize("key", WALKERS)     # mechanisms: tests/test_mechanisms.py
-def test_one_side_plans(key):
+@pytest.mark.planner            # the planner's tier; TrotBot's heel and toe (5-10 s) are slow
+@pytest.mark.parametrize("key", quick(WALKERS, [k for k in WALKERS if k not in KEYED_UNIT]))
+def test_one_side_plans(key):         # mechanisms: tests/test_mechanisms.py
     """A single-module side lays out with the default constructions (TrotBot's heel link
     at its family's 10.5 mm unit: the bolt crank's shank clears it; with the keyed crank's
     post it stops at the static stage and is sent to 12)."""
