@@ -917,7 +917,7 @@ def test_a_recheck_that_raises_leaves_the_built_parts_in_the_mechanism():
 # -- round 15 ----------------------------------------------------------------------------
 
 
-def test_one_gap_a_whole_step_thicker_is_found_among_many():
+def test_the_gap_fallback_says_what_it_tried():
     from spiderpig.stack import Claim, PlanReject, StackSpec, Unbuildable, _thicker_gaps
 
     def make(L):          # a stock part that fits only once gap 3 is a whole 1 mm thicker
@@ -927,8 +927,10 @@ def test_one_gap_a_whole_step_thicker_is_found_among_many():
 
     err = PlanReject("crank: misses its stock length")
     err.claim = Claim("crank", frozenset(), make)
-    gaps = {k: 1.0 for k in range(1, 7)}
-    assert _thicker_gaps(err, StackSpec(), {}, 10, {}, gaps, {}, set())[3] == pytest.approx(2.0)
+    assert _thicker_gaps(err, StackSpec(), {}, 10, {}, {3: 1.0}, {}, set())[3] == \
+        pytest.approx(2.0)
+    with pytest.raises(PlanReject, match="least thickenings of one or two gaps"):
+        _thicker_gaps(err, StackSpec(), {}, 10, {}, {k: 1.0 for k in range(1, 7)}, {}, set())
 
 
 @pytest.mark.slow
