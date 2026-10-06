@@ -98,7 +98,12 @@ class Recommendation:
         patch: dict = {}
         notes = []
         for name, _before, after in rec.changes:
-            if lk is not None and name in lk.params:
+            if name in CONFIG_FIELDS and isinstance(after, str):
+                # a material or construction key (a string): before a linkage parameter of
+                # the same name (the Strider's ``crank`` is its crank radius, a number)
+                section, key = CONFIG_FIELDS[name]
+                patch.setdefault(section, {})[key] = after
+            elif lk is not None and name in lk.params:
                 patch.setdefault("linkage", {}).setdefault("params", {})[name] = after
             elif name in FIT_FIELDS:
                 patch.setdefault("fit", {})[name] = after

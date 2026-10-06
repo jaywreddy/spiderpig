@@ -795,7 +795,7 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
     # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)
-    assert total == pytest.approx(2 * xl330 + 10.99 + al + al6061 + 10.90
+    assert total == pytest.approx(2 * xl330 + 10.99 + al + al6061       # (no deck inserts)
                                   + glue + epoxy, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
@@ -1107,7 +1107,8 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # priced since the sourcing of 2026-10-05 (hardware.sources): two servos at $21.99, PLA
     # $29.99, the inserts $10.90, the epoxy and both threadlockers
     # (the PLA and both threadlockers on hand since round 4, bom.ON_HAND: not in the floor)
-    assert total == pytest.approx(43.98 + 3.10 + 18.0 + 21.0 + 10.90 + 7.99)
+    # (not the deck's inserts since round 10: a robot whose deck doesn't fit buys none)
+    assert total == pytest.approx(43.98 + 3.10 + 18.0 + 21.0 + 7.99)
     assert unpriced == []
     assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0

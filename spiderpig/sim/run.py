@@ -136,7 +136,10 @@ class PhaseLock:
                 d = home + math.copysign(min(abs(d - home), self.relock_rate * dt), d - home) \
                     if abs(d - home) > self.relock_rate * dt else home
             elif u[0] * u[1] >= 0.0:                          # a differential while walking
-                d = max(-self.max_offset, min(self.max_offset, d))
+                # about the whole revolution the sides are locked at (after a spin, not
+                # zero: clipping to zero would unwind every revolution the spin made)
+                home = round(d / (2 * math.pi)) * 2 * math.pi
+                d = home + max(-self.max_offset, min(self.max_offset, d - home))
             self.ref[1] = self.ref[0] - d
         self.error = err = float((phi[0] - phi[1]) - d)
         self.integral = max(-1.0, min(1.0, self.integral + err * dt))

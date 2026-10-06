@@ -604,6 +604,13 @@ class PrintedCrank:
 
     # -- dimensions and checks ----------------------------------------------------
 
+    def rider_d(self, params=None) -> float:
+        """What the riders turn on (their bore before its running fit): the printed post,
+        ``Params.crankpin_d`` (``params``: the design's, else the defaults)."""
+        from spiderpig.construction.base import Params
+
+        return (params or Params()).crankpin_d
+
     def dims(self, ctx: Context) -> CrankDims:
         p: Params = ctx.params
         drive: DriveInterface = ctx.interfaces["drive"]
@@ -1062,6 +1069,13 @@ class KeyedCrank(PrintedCrank):
         (:func:`hex_play`), the pockets printed ``print_error`` over their model."""
         af = self.key_dims()[0]
         return 2 * hex_play(af, self.pocket_af() + print_error)
+
+    def rider_d(self, params=None) -> float:
+        """The post the riders turn on: :attr:`post_d`, unless ``Params.crankpin_d`` is
+        wider (what :meth:`dims` makes it; its holes are cut at it)."""
+        from spiderpig.construction.base import Params
+
+        return max((params or Params()).crankpin_d, self.post_d)
 
     def dims(self, ctx: Context) -> CrankDims:
         p: Params = ctx.params
@@ -1892,8 +1906,9 @@ class BoltCrank:
             return max(self.hex_screw()[0], self.hex_washer()[1]) / 2 + 0.3
         return self.pin_screw()[0] / 2 + 0.3
 
-    def rider_d(self) -> float:
-        """What the riders turn on: the hex pin's printed sleeve, else the round standoff."""
+    def rider_d(self, params=None) -> float:
+        """What the riders turn on: the hex pin's printed sleeve, else the round standoff
+        (``params`` unused: the crank's own)."""
         return self.sleeve_od if self.hex else self.pin_od
 
     # -- the hex standoff crankpin --------------------------------------------------------

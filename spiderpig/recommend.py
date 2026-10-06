@@ -269,13 +269,28 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
     if lo > hi + 1e-9:
         return None, (f"no one scale of {name} meets {metrics} together (one needs x{lo:.3g}, "
                       f"another at most x{hi:.3g})")
-    s = lo if lo > 0 else hi
     step = _step(now)
-    value = _up(now * s, step) if s >= 1 else round(math.floor(now * s / step + 1e-9) * step, 6)
-    if abs(value - now) < 1e-9:
-        value = _up(now + step, step) if s >= 1 else round(now - step, 6)
+    if lo > 0 and hi < math.inf:
+        # a band (a value and its tolerance, or a min and a max): from its middle outward,
+        # on the practical steps (an end's step can fall outside a narrow band)
+        s = (lo + hi) / 2
+        mid = now * s
+        base = round(round(mid / step) * step, 6)
+        values = sorted({round(base + k * step, 6) for k in range(-tries, tries + 1)},
+                        key=lambda v: (abs(v - mid), v))
+        values = [v for v in values if abs(v - now) > 1e-9][:tries]
+    else:
+        s = lo if lo > 0 else hi
+        value = (_up(now * s, step) if s >= 1
+                 else round(math.floor(now * s / step + 1e-9) * step, 6))
+        if abs(value - now) < 1e-9:
+            value = _up(now + step, step) if s >= 1 else round(now - step, 6)
+        values = []
+        for _ in range(tries):              # away from the bound, toward what meets it
+            values.append(value)
+            value = _up(value + step, step) if s >= 1 else round(value - step, 6)
     deadline = deadline or Deadline(StackSpec().max_seconds)
-    for _ in range(tries):
+    for value in values:
         if value <= 0:
             break
         trial = replace(config, proportions=tuple(sorted({**props, name: value}.items())))
@@ -302,7 +317,6 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
                 effects=(f"every length x{value / now:.2f}; the envelope and the crank torque "
                          "with it"),
                 verified=f"checked: {what}; {plans}"), None
-        value = _up(value + step, step) if s >= 1 else round(value - step, 6)
     return None, f"no practical {name} near x{s:.3g} ({now * s:.3g}) meets {metrics}"
 
 
@@ -331,7 +345,15 @@ def printed_pillars(config, deadline: Deadline | None = None) -> Recommendation 
         verified=verified)
 
 
-CONFIG_LEVERS = {"thickness_mm": "thickness", "sheet": "sheet", "servo": "servo"}
+CONFIG_LEVERS = {"thickness_mm": "thickness", "sheet": "sheet", "servo": "servo",
+                 "pillar": "pillar", "pin": "pin", "crank": "crank"}
+"""A construction's change (``ConstructionError.changes``) by its ``BuildConfig`` field:
+every one the spec sets (:data:`failure.CONFIG_FIELDS`)."""
+
+
+def _val(v) -> str:
+    """A change's value as written: a number in ``g`` form, a key as it is."""
+    return f"{v:g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v)
 
 
 def construction_fix(config, exc, seconds: float | None = None
@@ -360,7 +382,7 @@ def construction_fix(config, exc, seconds: float | None = None
     trial = replace(config, **fields)
     if params:
         trial = replace(trial, params=replace(config.params, **params))
-    what = ", ".join(f"{n} {b:g} -> {a:g}" for n, b, a in changes)
+    what = ", ".join(f"{n} {_val(b)} -> {_val(a)}" for n, b, a in changes)
     try:
         verified = _verify(trial, plan=True, deadline=deadline)
     except _OutOfTime:
