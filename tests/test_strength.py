@@ -21,6 +21,10 @@ from spiderpig.construction.wobble import (
     moment_per_newton,
     stresses,
 )
+from tests import _strength
+
+_LOADS_REL = 1e-3
+"""How far a recorded pin load may move in its currency test (MuJoCo on another machine)."""
 
 
 def note(layers: dict, anchors=(), section: Section | None = None, pitch: float = 3.0):
@@ -286,14 +290,21 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
 
 
 @pytest.mark.slow
+@pytest.mark.fixture_regen
 def test_the_default_designs_own_loads(tmp_path):
     """MuJoCo: every joint of the Strider double with its walking and jam loads, the jam
-    at the torque limit above walking, cached per design in the store."""
+    at the torque limit above walking, cached per design in the store. Also the currency
+    test of ``tests/fixtures/strength/pin_loads_strider_double.json`` (the fast tests'
+    input)."""
     pytest.importorskip("mujoco")
     from spiderpig.sim import loads as sim_loads
 
     cfg = BuildConfig()
     doc = sim_loads.design_loads(cfg, tmp_path)
+    assert cfg == _strength.ORDER_DESIGNS["strider_double"]
+    _strength.assert_current("strength", "pin_loads_strider_double",
+                             {k: v for k, v in doc.items() if k not in _strength.LOADS_VOLATILE},
+                             rel=_LOADS_REL)
     assert doc["source"] == "sim"
     assert doc["torque_limit_nm"] == pytest.approx(0.85)
     pins = [j for j in doc["joints"] if not j["crank"] and not j["frame"]]
@@ -320,20 +331,31 @@ def test_the_default_designs_own_loads(tmp_path):
     assert again == doc
 
 
-@pytest.mark.slow
-def test_the_ptfe_pin_plans_builds_and_lists_its_liners():
-    from spiderpig.construction.axle import AxleGroup
-    from spiderpig.construction.contract import check_side
-    from spiderpig.fabricate import design_side, fabricate_side, template_for
-    from spiderpig.hardware.bom import bom_from_mechanism
-    from spiderpig.stack import verify_plan
+_PTFE = BuildConfig(linkage="klann", module="single", robot=False, pin="ptfe")
 
-    cfg = BuildConfig(linkage="klann", module="single", robot=False, pin="ptfe")
-    tmpl = template_for(cfg)
-    design = design_side(tmpl, cfg)
+
+@pytest.mark.slow
+def test_the_ptfe_pin_plans_and_keeps_its_contract():
+    """The PTFE-lined pin's side: the plan re-checked and every part inside its group's
+    claims (:func:`test_the_ptfe_pin_builds_and_lists_its_liners`: its parts)."""
+    from spiderpig.construction.contract import check_side
+    from spiderpig.stack import verify_plan
+    from tests import cache
+
+    tmpl, design = cache.cached_design(_PTFE)
     assert verify_plan(design.plan, tmpl) == []
     assert check_side(design, tmpl.freeze_at(1.0)) == []
-    fab = fabricate_side(design, tmpl.freeze_at(1.0))
+
+
+def test_the_ptfe_pin_builds_and_lists_its_liners():
+    """The PTFE-lined pin built (the fabrication cache's side): a liner in every link of
+    every pin, the tube bought and cut to length, the liner's bearing limit in its notes."""
+    from spiderpig.construction.axle import AxleGroup
+    from spiderpig.hardware.bom import bom_from_mechanism
+    from tests import cache
+
+    _, design = cache.cached_design(_PTFE)
+    fab = cache.cached_side(_PTFE, 1.0)
     pins = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
     liners = [b for b in fab.bodies if b.name.endswith("_liner")]
     assert len(liners) == sum(len(g.axis.members) for g in pins)
@@ -370,3 +392,157 @@ def test_the_jam_isolates_the_caught_foot_from_the_floor(monkeypatch):
     assert jam["floor"] is False
     assert seen
     assert max(seen) == 0
+
+
+# -- the recorded inputs: the order designs' meta and pin loads ----------------------------
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+@pytest.mark.parametrize("name", [n for n in _strength.ORDER_DESIGNS if n != "strider_double"])
+def test_the_order_designs_pin_loads_current(name, tmp_path):
+    """MuJoCo: the quads' recorded pin loads (the Strider double's:
+    :func:`test_the_default_designs_own_loads`) are still what the sim gives."""
+    pytest.importorskip("mujoco")
+    doc = _strength.make_pin_loads(name, tmp_path)
+    assert doc["source"] == "sim"
+    _strength.assert_current("strength", f"pin_loads_{name}", doc, rel=_LOADS_REL)
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+@pytest.mark.parametrize("name", list(_strength.ORDER_DESIGNS))
+def test_the_order_designs_meta_current(name, monkeypatch):
+    """The recorded ``meta`` is the robot's (the fabrication cache's, one build per engine),
+    and the strength check reads it as it reads the built robot's own (tuples and all)."""
+    from spiderpig import strength
+    from tests import cache
+
+    mech = cache.cached_robot(_strength.ORDER_DESIGNS[name])
+    data = _strength.assert_current("strength", f"meta_{name}", mech.meta)
+    cfg = _strength.ORDER_DESIGNS[name]
+    loads = _strength.strength_loads(name, monkeypatch)
+    live = strength.check(mech.meta.get("wobble") or {}, mech.meta, cfg, loads)
+    assert strength.check(data["wobble"], data, cfg, loads) == cache._jsonable(live)
+
+
+def _order_check(name: str, monkeypatch, doc: dict | None = None):
+    """The audit's strength check of an order design on its recorded ``meta`` and pin
+    loads (``doc``: other pin loads)."""
+    meta = _strength.meta(name)
+    loads = _strength.strength_loads(name, monkeypatch, doc)
+    cfg = _strength.ORDER_DESIGNS[name]
+    return meta, loads, strength.check(meta["wobble"], meta, cfg, loads)
+
+
+@pytest.mark.parametrize("name", list(_strength.ORDER_DESIGNS))
+def test_the_order_designs_joints_hold_their_own_loads(name, monkeypatch):
+    """Every pivot of an order design rated at its own sim joint's loads (the wobble notes'
+    names and the sim's joints agree), the crank at the torque limit on its hex pockets,
+    every loaded link plate at its own sheet; no joint under the audit's error limit."""
+    from spiderpig.config import torque_limit_nm
+    from spiderpig.construction.crank import BoltCrank
+    from spiderpig.materials import link_sheets
+    from spiderpig.tools.audit import strength_messages
+
+    cfg = _strength.ORDER_DESIGNS[name]
+    meta, loads, st = _order_check(name, monkeypatch)
+    assert loads["source"] == "sim"
+    assert "MuJoCo" in loads["note"]
+    assert "WARNING" not in loads["note"]
+    rows = {r["joint"]: r for r in st["rows"]}
+    notes = meta["wobble"]
+    assert {j for j in rows if not j.startswith(("crank", "link:"))} == set(notes)
+    for joint, note in notes.items():
+        r = rows[joint]
+        assert r["basis"] == "sim", joint                 # its own sim joint's loads
+        assert r["links"] == [e["link"] for e in note["links"]]
+        assert r["jam"]["load_n"] >= r["walk"]["load_n"] > 0, joint
+        assert r["jam"]["safety"] <= r["walk"]["safety"], joint
+    assert {r["kind"] for r in st["rows"]} == {"pin", "pillar", "crank", "link"}
+    crank = rows["crank"]
+    assert crank["construction"] == cfg.crank
+    assert isinstance(BoltCrank().for_sheet(cfg.crank_sheet), BoltCrank)
+    assert crank["weakest"].startswith("hex 5.5 AF in its plate's pocket")
+    assert crank["factor"] == pytest.approx(loads["joint_moment_factor"])
+    assert crank["jam"]["torque_nm"] == pytest.approx(torque_limit_nm(cfg))
+    cap = min(crank["capacity_nm"].values())
+    assert crank["jam"]["safety"] == pytest.approx(cap / crank["jam"]["moment_nm"], abs=0.01)
+    sheets = link_sheets(cfg)
+    for r in (r for r in st["rows"] if r["kind"] == "link"):
+        key = r["links"][0]
+        assert r["sheet"] == sheets.get(key, cfg.sheet), key
+    assert strength_messages(st, "error") == []
+    assert all(f["fixes"] for f in st["findings"])
+    for kind, worst in st["worst"].items():
+        assert worst["jam"]["safety"] >= strength.JAM_ERROR, kind
+
+
+@pytest.mark.parametrize("name", list(_strength.ORDER_DESIGNS))
+def test_an_order_design_overloaded_fails_with_fixes(name, monkeypatch):
+    """The same design with every joint's jam load scaled until its weakest pin is at SF
+    0.5: that pin is an error naming itself, its load and fixes; each other construction a
+    fix offers rates it higher than now."""
+    import copy
+    import re
+
+    from spiderpig.tools.audit import strength_lines, strength_messages
+
+    _, _, st = _order_check(name, monkeypatch)
+    weakest = st["worst"]["pin"]["jam"]
+    scale = weakest["safety"] / 0.5
+    doc = copy.deepcopy(_strength.pin_loads(name))
+    for j in doc["joints"]:
+        j["jam"]["n"] *= scale
+    _, _, hot = _order_check(name, monkeypatch, doc)
+    f = next(f for f in hot["findings"] if f["joint"] == weakest["joint"])
+    assert f["level"] == "error"
+    assert f["sf_jam"] == pytest.approx(0.5, abs=0.02)
+    assert hot["findings"][0]["level"] == "error"                       # worst first
+    assert f"{weakest['joint']} (" in f["message"]
+    assert "jam SF" in f["message"]
+    assert f["fixes"]
+    for fix in f["fixes"]:
+        m = re.match(r"--(?:pin|pillar) \S+ \(.*?\): jam SF ([\d.]+)", fix)
+        if m:
+            assert float(m.group(1)) > f["sf_jam"], fix
+    errors = strength_messages(hot, "error")
+    assert any(e.startswith(f"strength: {weakest['joint']} ") for e in errors)
+    assert f"**ERROR** {weakest['joint']}" in "\n".join(strength_lines(hot))
+
+
+@pytest.mark.parametrize("name", list(_strength.ORDER_DESIGNS))
+def test_the_order_designs_audit_report(name, monkeypatch):
+    """The audit's wobble, strength, crank and Chicago sections of an order design, from
+    its recorded ``meta`` and pin loads (:func:`tools.audit.markdown`)."""
+    from spiderpig.tools.audit import markdown, wobble_check
+
+    meta, loads, st = _order_check(name, monkeypatch)
+    wob = wobble_check(meta["wobble"], (loads["walk_n"], loads["jam_n"]))
+    for kind in ("pin", "pillar"):
+        row = wob[kind]
+        assert row["joints"] == sum(1 for j in meta["wobble"] if j.startswith(kind + ":"))
+        assert 0 <= row["mean_deg"] <= row["worst_deg"] <= row["worst_free_deg"]
+        assert row["jam"]["safety"] <= row["walk"]["safety"]
+    assert wob["pin"]["worst_deg"] < 2.0                   # Chicago pins: under the warning
+    assert wob["warnings"] == []
+    rep = {"layers": meta["layers"], "parts": 0, "plan": "(recorded)", "plan_violations": [],
+           "contract": {"t=1": []}, "clash": {"t=1": []}, "solids": {"t=1": []},
+           "dxf_sheets": 0, "bom": {}, "snap": {"joints": 0, "worst_pct": None,
+                                                "max_pct": None, "relieved": {},
+                                                "problems": []},
+           "wobble": wob, "strength": st, "chicago": meta["chicago"],
+           "crank_bolt": meta["crank_bolt"], "chassis": {}, "seconds": 0.0,
+           "problems": [], "warnings": []}
+    md = markdown({"config": {"linkage": _strength.ORDER_DESIGNS[name].linkage},
+                   "modules": {name: rep}})
+    assert f"| {name} | {meta['layers']} |" in md
+    assert "| OK |" in md
+    for r in st["rows"]:
+        if r["kind"] in ("pin", "pillar"):
+            assert f"| {r['joint']} | {', '.join(r['links'])} | {r['case']} |" in md
+    assert "| crank | crankpins (bolt) |" in md
+    assert f"Crank (per side): {meta['crank_bolt']['plates']} single aluminium plates" in md
+    assert "hex standoff in hex pockets" in md
+    assert "Chicago screws (per side): " in md
+    assert f"Wobble, pins: worst {wob['pin']['worst_deg']:.2f} deg" in md

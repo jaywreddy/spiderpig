@@ -55,7 +55,8 @@ from pathlib import Path
 import numpy as np
 
 from spiderpig.hardware.catalog import get, sheet_name
-from spiderpig.hardware.mass import filament_density
+from spiderpig.hardware.mass import filament_density, surface_props, volume_props
+from spiderpig.hardware.mass import volume as part_volume
 
 
 @dataclass(frozen=True)
@@ -324,12 +325,8 @@ def _frame(part, vol=None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ``vol``: the part's volume properties (``GProp_GProps``) when the caller has them:
     build123d's ``center(CenterOf.MASS)`` and ``principal_properties`` each integrate
     them again, to the same numbers."""
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-
     if vol is None:
-        vol = GProp_GProps()
-        BRepGProp.VolumeProperties_s(part.wrapped, vol)
+        vol = volume_props(part)
     c = vol.CentreOfMass()
     pp = vol.PrincipalProperties()
     moments = pp.Moments()
@@ -353,16 +350,13 @@ class _Sig:
 
 def _sig(part) -> _Sig:
     """One volume and one surface integration (the frame and the area from them, as
-    build123d's ``center``, ``principal_properties`` and ``area`` compute them); the volume
-    is build123d's (a compound's is the sum of its solids')."""
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-
-    vol, surf = GProp_GProps(), GProp_GProps()
-    BRepGProp.VolumeProperties_s(part.wrapped, vol)
-    BRepGProp.SurfaceProperties_s(part.wrapped, surf)
+    build123d's ``center``, ``principal_properties`` and ``area`` compute them), shared with
+    the part's other consumers (:func:`hardware.mass.volume_props`); the volume is
+    build123d's (a compound's is the sum of its solids': :func:`hardware.mass.volume`)."""
+    vol, surf = volume_props(part), surface_props(part)
     sc = surf.CentreOfMass()
-    return _Sig(part.volume, surf.Mass(), _frame(part, vol), np.array([sc.X(), sc.Y(), sc.Z()]))
+    return _Sig(part_volume(part), surf.Mass(), _frame(part, vol),
+                np.array([sc.X(), sc.Y(), sc.Z()]))
 
 
 _SIGNS = ((1, 1, 1), (1, -1, -1), (-1, 1, -1), (-1, -1, 1),
@@ -908,7 +902,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                 name=g.ref.name, method=method,
                 material=(sheet_name(g.ref.sheet) if getattr(g.ref, "sheet", None) else sheet)
                 if method == "laser" else (_filament_name(fil) if fil else fil_name),
-                size_mm=_footprint(g.ref.part), volume_cm3=g.ref.part.volume / 1000.0,
+                size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
             ))
             if method == "printed":

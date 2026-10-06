@@ -1,10 +1,17 @@
 """ORDER.md (:mod:`spiderpig.hardware.order`): a cart per vendor, uploads per cut service,
-shop supplies left out, and an unpriced line estimated from another vendor's price."""
+shop supplies left out, and an unpriced line estimated from another vendor's price; the
+user's three order designs' BOM (recorded, ``tests/fixtures/hardware/``) and order list."""
 
 from __future__ import annotations
 
+import re
+
+import pytest
+
 from spiderpig.hardware.bom import Bom, PurchaseRow
 from spiderpig.hardware.order import estimate, order_markdown
+from tests import _strength, cache
+from tests.tiers import quick
 
 
 def _row(key: str, name: str, vendor: str, qty: float, pack_qty: int = 1,
@@ -70,3 +77,90 @@ def test_the_bom_total_leaves_out_the_shop_supplies_on_hand():
                          _row("threadlocker_243", "243", "McMaster-Carr", 0.1)], made=[])
     assert bom.cost_usd == 2.39
     assert [r.key for r in bom.unpriced] == []
+
+
+# -- the user's three order designs: their BOM (recorded) and its order list ---------------
+
+
+def _bom_of(doc: dict) -> Bom:
+    """A :class:`Bom` again from its ``as_dict()`` (the recorded BOM)."""
+    from dataclasses import fields
+
+    from spiderpig.hardware.bom import MadeRow
+
+    names = {f.name for f in fields(PurchaseRow)}
+    return Bom(purchased=[PurchaseRow(**{k: v for k, v in r.items() if k in names})
+                          for r in doc["purchased"]],
+               made=[MadeRow(**m) for m in doc["made"]], title=doc["title"], notes=doc["notes"],
+               printed_g=doc["printed_g"])
+
+
+def _purchases(doc: dict) -> dict[str, dict]:
+    """The purchase rows by key; a filament's quantity (grams of the printed parts' volume,
+    summed in another order without the grouping) to 1e-6 of a spool."""
+    return {r["key"]: dict(r, qty=round(r["qty"], 6) if r["category"] != "filament"
+                           else pytest.approx(r["qty"], abs=1e-6)) for r in doc["purchased"]}
+
+
+@pytest.mark.parametrize("name", quick(_strength.ORDER_DESIGNS, ["strider_double"]))
+def test_the_order_designs_buy_what_the_robot_needs(name):
+    """The robot's purchases (the fabrication cache's robot, ``group=False``: the grouping
+    only merges made parts) are the recorded BOM's, row for row: what to buy, how many,
+    which packs, where it is used, at what price. (The quads in the full tier: a robot of
+    each in the cache.)"""
+    from spiderpig.hardware.bom import bom_from_mechanism
+
+    golden = _strength.bom(name)
+    live = bom_from_mechanism(cache.cached_robot(_strength.ORDER_DESIGNS[name]), group=False)
+    got = live.as_dict()
+    assert [r["key"] for r in got["purchased"]] == [r["key"] for r in golden["purchased"]]
+    want = _purchases(golden)
+    for r in got["purchased"]:
+        assert r == want[r["key"]], r["key"]
+    assert got["notes"] == golden["notes"]
+    assert got["cuts"] == golden["cuts"]
+    assert got["cost_usd"] == pytest.approx(golden["cost_usd"], abs=1e-9)
+    assert sum(m["qty"] for m in got["made"]) == sum(m["qty"] for m in golden["made"])
+
+
+@pytest.mark.parametrize("name", list(_strength.ORDER_DESIGNS))
+def test_the_order_designs_order_list(name):
+    """ORDER.md of the recorded BOM: every line bought is in its vendor's cart, a pack
+    shared by two rows is bought once, the shop supplies on hand (filament, threadlocker)
+    are listed apart and in no total, and the carts add up to the BOM's total."""
+    from spiderpig.hardware.bom import ON_HAND
+
+    doc = _strength.bom(name)
+    bom = _bom_of(doc)
+    assert bom.cost_usd == pytest.approx(doc["cost_usd"], abs=1e-9)
+    md = order_markdown(bom, [], [], title=name)
+    buy, _, rest = md.partition("## From the shop")
+    carts = {}
+    for section in buy.split("\n### ")[1:]:
+        vendor = re.match(r"(.*) \(\d+ lines?[,)]", section).group(1)
+        carts[vendor] = section
+    bought = [r for r in bom.purchased if not r.same_pack_as and r.key not in ON_HAND]
+    assert bought
+    for r in bought:
+        assert f"| {r.name}" in carts[r.vendor or "(no vendor)"], (r.key, r.vendor)
+    for r in bom.purchased:
+        if r.same_pack_as:                      # in its lead row's pack, not bought again
+            assert f"also {r.name}: need {r.qty:g}" in buy
+        if r.key in ON_HAND:
+            assert f"* {r.name}:" in rest
+            assert f"| {r.name} |" not in buy
+    packs = [(r.vendor, r.sku) for r in bought if r.sku]
+    assert len(packs) == len(set(packs))        # one product bought once
+    total = sum(r.cost_usd or 0.0 for r in bought)
+    assert total == pytest.approx(bom.cost_usd, abs=1e-6)
+    assert f"Purchases: **${total:.2f}**" in md
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+@pytest.mark.parametrize("name", list(_strength.ORDER_DESIGNS))
+def test_the_order_designs_bom_current(name):
+    """The BOM of each order design, grouped (the made parts compared shape by shape), is
+    the recorded one (``tests/fixtures/hardware/bom_<design>.json``): what the user orders
+    from changes only on purpose."""
+    _strength.assert_current("hardware", f"bom_{name}", _strength.make_bom(name))
