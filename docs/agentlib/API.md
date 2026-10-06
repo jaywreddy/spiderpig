@@ -234,7 +234,10 @@ Row {requirement, source, value, target, pass, tier: proven|measured|estimated, 
 `ok` is false when any hard row fails or any stage failed; `score` is the weighted mean
 over the soft targets of `max(0, 1 - miss / |bound|)`. Rows without a target are
 informational (every metric the level measured is reported); `unverified` lists the
-spec's targets the level didn't measure (budget at `quick`). What a row's `detail`
+spec's targets the level didn't measure (budget at `quick`). At `quick` the mass and the
+envelope are pre-build estimates (tier `estimated`, never hard, not a bound): a hard target
+on them stays in `unverified` and out of `score` until `standard` measures the build; a soft
+one is scored on the estimate. What a row's `detail`
 says: the ground clearance names the body part that sets it; the envelope at `quick`
 is the joints' sweep plus the plates (x, y) and the stacks, the chassis and the axle
 heads outside the outer plates (z), at `standard` the built extent at the build's

@@ -438,10 +438,13 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
                    f"keep the servo's torque limit under {lim:.2f} N·m")
+        from spiderpig.construction import AXLES
+
         if (row["construction"] in ("printed", "keyed", "keyed_float")
-                and "bolt" not in (config.pin, config.pillar)):
-            # (the bolt crank plans its heads in clearance gaps, which bolt pins and pillars
-            # aren't built for: no fix for those)
+                and all(getattr(AXLES.get(k), "gaps", True) for k in (config.pin,
+                                                                         config.pillar))):
+            # (the bolt crank plans its heads in clearance gaps, which some pins and pillars
+            # aren't built for, ``gaps`` False: bolt, bearing, bushing; no fix for those)
             from dataclasses import replace as _replace
 
             bolt = _replace(config, crank="bolt")

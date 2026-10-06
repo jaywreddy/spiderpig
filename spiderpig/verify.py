@@ -127,11 +127,14 @@ class VerifyReport:
 
 
 def target_row(design: Design, f: TargetField, value: float | None, source: str,
-               tier: str | None = None, detail: str = "", hard: bool | None = None
-               ) -> Row | None:
+               tier: str | None = None, detail: str = "", hard: bool | None = None,
+               estimate: bool = False) -> Row | None:
     """The row of a metric against the spec's target for it (informational when the spec
     sets none; ``None`` when there is neither a value nor a target). ``hard`` overrides the
-    target's (an informational second measurement)."""
+    target's (an informational second measurement). ``estimate``: a pre-build estimate,
+    not a bound (the nominal mass, the swept envelope): the row is never hard, and against
+    a hard target it has no score and leaves the target in ``unverified`` (:func:`_done`)
+    until a level measures it."""
     t: Target | None = getattr(design.spec, f.section).get(f.name)
     tier = tier or f.tier
     if value is None:
@@ -144,6 +147,9 @@ def target_row(design: Design, f: TargetField, value: float | None, source: str,
     is_hard = effective_hard(t, f) if hard is None else hard
     met, miss = t.check(float(value))
     score = None if is_hard else (1.0 if met else max(0.0, 1.0 - miss / t.scale_at(float(value))))
+    if estimate:
+        score = None if is_hard else score      # (a hard target: not a soft score's term)
+        is_hard = False
     return Row(f.path, source, float(value), t.describe(), met, tier, is_hard, detail, score,
                t.weight, f.unit)
 
@@ -479,7 +485,7 @@ def _mass_estimate(design: Design, wr) -> Row | None:
         if wr.mass_g is None:
             return None
         return target_row(design, f, wr.mass_g, "walk", "estimated",
-                          "the walk model's nominal mass" + ESTIMATE_NOTE, hard=False)
+                          "the walk model's nominal mass" + ESTIMATE_NOTE, estimate=True)
     n = 2 if cfg.robot else 1
     servos_ = f"{n} servo{'s' if n > 1 else ''}"
     plates = f"frame{' and centre' if cfg.robot else ''} plates"
@@ -489,11 +495,12 @@ def _mass_estimate(design: Design, wr) -> Row | None:
               + (f", electronics deck {b['deck']:.0f} g" if b.get("deck") else "")
               + f" ({b['note']})")
     return target_row(design, f, b["total"], "walk", "estimated", detail + ESTIMATE_NOTE,
-                      hard=False)
+                      estimate=True)
 
 
 ESTIMATE_NOTE = ("; an estimate, not a bound (within a few percent on the default robots, "
-                 "more on others): it can't refute a target, a build measures it")
+                 "more on others): it neither meets nor refutes a hard target (unverified "
+                 "until a build measures it: verify standard)")
 
 
 def mass_by_group(br) -> str:
@@ -736,7 +743,7 @@ def _envelope_estimate(design: Design) -> list[Row]:
             design, target_field("size", f"envelope_{axis}_mm"), v, "sweep", "estimated",
             ("the joints' sweep over the cycle + the plates; a build measures one crank angle"
              if axis != "z" else f"{across}; measured after a build") + ESTIMATE_NOTE,
-            hard=False))
+            estimate=True))
     return rows
 
 
@@ -796,7 +803,10 @@ def fall_detail(m: dict, design: Design | None = None) -> str:
 
 def _done(design: Design, rep: VerifyReport, t0: float) -> VerifyReport:
     targeted = {f.path for f, _ in design.spec.targets()}
-    seen = {r.requirement for r in rep.rows if r.value is not None}
+    hard = {f.path for f, t in design.spec.targets() if effective_hard(t, f)}
+    # a hard target only an estimate read (the nominal mass, the swept envelope) is unverified
+    seen = {r.requirement for r in rep.rows if r.value is not None
+            and not (r.tier == "estimated" and not r.hard and r.requirement in hard)}
     rep.unverified = sorted(targeted - seen)
     rep.ok = not rep.failures and all(r.passed for r in rep.rows if r.hard)
     soft = [r for r in rep.rows if r.score is not None and r.target is not None]

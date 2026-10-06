@@ -270,6 +270,8 @@ class Design:
     derived_from: str | None = None                        # the design this one's spec patches
     patch: dict | None = None                              # the merge patch from it
     created_at: str = field(default_factory=now_iso)
+    edited: bool = False        # a recheck accepted edited parts: this handle's parts aren't
+    #                             the store's (its exports and verifies stay off the store)
 
     @property
     def lk(self):

@@ -40,12 +40,14 @@ def chords(o, pillars) -> list[tuple]:
     if len(pillars) < 2:
         return []
     ang = sorted((math.atan2(q[1] - o[1], q[0] - o[0]), tuple(q)) for q in pillars)
+    if len(ang) == 2:           # one pair: one chord, across the smaller of its two gaps
+        (a, q), (b, r) = ang
+        gap = min((b - a) % (2 * math.pi), (a - b) % (2 * math.pi))
+        return [(q, r)] if 1e-6 < math.degrees(gap) <= CHORD_MAX_DEG else []
     out = []
     for i, (a, q) in enumerate(ang):
         b, r = ang[(i + 1) % len(ang)]
         gap = (b - a) % (2 * math.pi)
-        if len(ang) == 2 and i == 1:
-            break
         if 1e-6 < math.degrees(gap) <= CHORD_MAX_DEG:
             out.append((q, r))
     return out
@@ -97,7 +99,10 @@ def _prism(face, z0: float, z1: float):
 
 def foot_links(topo, lk) -> list[tuple[str, str, str]]:
     """``(link, foot point, the link's other end)`` of every foot link of the side: the
-    linkage's feet (``lk.feet``: link class and point), per leg."""
+    linkage's feet (``lk.feet``: link class and point), per leg, where the foot is a free
+    pill end (one segment of the link ends there: the sock's legs and notches run along
+    it). A foot at a corner of the link's outline (two segments meet there: Jansen's
+    triangle b6) gets no sock: one along either side would sit in the other's material."""
     out = []
     for cls, point in getattr(lk, "feet", ()):
         for name, segs in topo.links.items():
@@ -105,7 +110,10 @@ def foot_links(topo, lk) -> list[tuple[str, str, str]]:
                 continue
             suffix = name[len(cls):]
             for cand in (f"{point}{suffix}", f"{name}.{point}"):
-                seg = next((sg for sg in segs if cand in sg), None)
+                at = [sg for sg in segs if cand in sg]
+                if len(at) > 1:             # a corner: no sock
+                    break
+                seg = at[0] if at else None
                 if seg is not None:
                     other = seg[0] if seg[1] == cand else seg[1]
                     out.append((name, cand, other))
