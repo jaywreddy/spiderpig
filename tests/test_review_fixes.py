@@ -648,7 +648,8 @@ def test_the_phase_lock_steers_about_the_revolution_it_is_locked_at():
 
     lock = PhaseLock(5.0, max_offset=0.3)
     lock.ref[:] = [6 * math.pi + 10.0, 10.0]          # three revolutions apart, after a spin
-    lock.ctrl(np.array([5.0, 4.5]), np.array([6 * math.pi + 10.0, 10.0]), 0.01)
+    lock.ctrl(np.array([5.0, 5.0]), np.array([6 * math.pi + 10.0, 10.0]), 0.01)   # walking
+    lock.ctrl(np.array([5.0, 4.5]), np.array([6 * math.pi + 10.0, 10.0]), 0.01)   # steering
     d = lock.ref[0] - lock.ref[1]
     assert abs(d - 6 * math.pi) <= 0.3 + 1e-9         # not unwound to zero
 
