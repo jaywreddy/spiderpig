@@ -47,6 +47,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -116,6 +117,16 @@ def _plan_doc(plan) -> dict:
         "optimal": plan.optimal, "proof": plan.proof, "cost": plan.cost,
         "describe": plan.describe(),
     }
+
+
+_VOLATILE = re.compile(r'"(design|engine_version)": "[^"]*"')
+
+
+def _mask(rel: str, text: str) -> str:
+    """A text output with what any engine edit changes masked: ``manifest.json``'s design id
+    and engine version (the id hashes the engine version, so every edit under spiderpig/
+    changes it, whatever the parts)."""
+    return _VOLATILE.sub(r'"\1": "<masked>"', text) if rel.endswith("manifest.json") else text
 
 
 def _r(x: float) -> float:
@@ -196,7 +207,7 @@ def run_one(name: str, out: Path) -> None:
         elif f.suffix in (".step", ".stp"):
             continue        # (a timestamp in its header; the parts above are its geometry)
         else:
-            files[rel] = f.read_text().replace(str(work), "<WORK>")
+            files[rel] = _mask(rel, f.read_text().replace(str(work), "<WORK>"))
     doc = {
         "design": name, "argv": DESIGNS[name], "engine_version": engine_version(),
         "config": repr(config), "plan": _plan_doc(plan), "audit": rep, "parts": parts,
@@ -371,7 +382,12 @@ def _parts_diff(a: dict, b: dict) -> tuple[list[str], list[str]]:
 
 
 def compare_docs(a: dict, b: dict) -> tuple[list[str], list[str]]:
-    """(differences, order-only differences) between two designs' snapshots."""
+    """(differences, order-only differences) between two designs' snapshots (a baseline
+    recorded before the masking is masked here too)."""
+    for doc in (a, b):
+        files = doc.get("files") or {}
+        for rel in list(files):
+            files[rel] = _mask(rel, files[rel])
     diff, order = [], []
     diff += deep_diff(a["plan"], b["plan"], "plan")
     diff += deep_diff(a["audit"], b["audit"], "audit")
