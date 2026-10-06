@@ -1781,6 +1781,17 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
                 and _manifest_design(out) == design.id):   # (not since overwritten)
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
+    if out.is_dir():
+        from spiderpig.build import clear_generated
+
+        if _manifest_design(out) != design.id:
+            # a folder another design (or a `spiderpig build`) wrote last: its cut and print
+            # files aren't this design's, whichever formats this export writes
+            clear_generated(out / "laser")
+            clear_generated(out / "print")
+        if _manifest_design(out) != design.id or "dxf" in formats:
+            # a build's shopping list points at laser/parts/, which the export clears
+            (out / "ORDER.md").unlink(missing_ok=True)
     job = None
     if design.mech is None:
         # the glb and the MJCF need the plan, not the build: their worker starts first

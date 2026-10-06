@@ -18,13 +18,34 @@ SERVICE_ORDER_URL = {
     "Ponoko": "https://www.ponoko.com/designs",
 }
 SERVICE_NOTES = {
-    "SendCutSend": "one part per file, units mm at upload, quantity per file as below; "
-                   "SendCutSend compensates the kerf (the files are nominal size)",
-    "Ponoko": "one part per file, mm, the blue CUT layer mapped to cut; the files carry "
-              "Ponoko's 0.2 mm kerf (it doesn't compensate in acrylic); 3 mm sheet arrives "
+    "SendCutSend": "one part per file, units mm at upload, quantity per file as below",
+    "Ponoko": "one part per file, mm, the blue CUT layer mapped to cut; 3 mm sheet arrives "
               "2.49-3.51 mm thick: measure it and rebuild with --thickness if it is off "
               "by more than a few percent",
 }
+COMPENSATES = {"SendCutSend": True, "Ponoko": False}
+"""Whether a service offsets its cut path for the kerf itself (SendCutSend does; Ponoko
+doesn't in acrylic): what the files' own kerf (:func:`layout.sheet_kerf`, ``--kerf``)
+must be."""
+
+
+def kerf_note(service: str, kerfs: set[float]) -> str:
+    """What the files of ``service`` carry for the kerf (``kerfs``: their rows' ``kerf_mm``),
+    and a warning where that is wrong for the service."""
+    k = ", ".join(f"{x:g}" for x in sorted(kerfs))
+    if COMPENSATES.get(service):
+        if any(x > 0 for x in kerfs):
+            return (f"**the files carry a {k} mm kerf offset (--kerf), and {service} "
+                    "compensates the kerf itself: the parts would come back offset twice. "
+                    "Rebuild without --kerf before uploading**")
+        return f"{service} compensates the kerf (the files are nominal size)"
+    if service in COMPENSATES and not any(x > 0 for x in kerfs):
+        return (f"**the files are nominal size and {service} doesn't compensate the kerf: "
+                "the parts come back a kerf small. Rebuild without --kerf 0**")
+    if service in COMPENSATES:
+        return f"the files carry a {k} mm kerf offset ({service} doesn't compensate it)"
+    return (f"the files carry a {k} mm kerf offset: leave your laser's own kerf "
+            "compensation off, or rebuild with --kerf 0 and use it")
 
 
 
@@ -118,8 +139,10 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             head = service if url or service not in ("", "any") else (
                 "your own laser (or any service): the sheet stock is in the carts above")
             lines += [f"### {head}" + (f": [upload and quote]({url})" if url else ""), ""]
-            if service in SERVICE_NOTES:
-                lines += [SERVICE_NOTES[service] + ".", ""]
+            kerfs = {float(r.get("kerf_mm") or 0.0) for r in rows}
+            note = "; ".join(x for x in (SERVICE_NOTES.get(service),
+                                         kerf_note(service, kerfs)) if x)
+            lines += [note + ".", ""]
             lines += ["| qty | file | material | thickness | size mm | makes |",
                       "|---:|---|---|---:|---|---|"]
             for r in rows:

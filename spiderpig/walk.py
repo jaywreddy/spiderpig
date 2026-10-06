@@ -378,15 +378,18 @@ def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
 # the Chicago pins by pin joint, the ties, screws and horn). Refitted 2026-10-04 to the
 # fabricated Klann quad and Strider double robots built the default way (aluminium frame
 # and crank plates, a Klann's foot links in 6061; 1088.4 and 775.8 g with the deck: within
-# 1.2 %).
+# 1.2 %). Refitted 2026-10-05 when purchased parts took their own material
+# (:func:`hardware.mass.item_material`: the ties' and the stub's aluminium standoffs, the
+# deck's nylon standoffs, -9.6, -1.3 and -5.7 g; the pillars stay at the steel one-piece
+# column's): the Strider double -1.7 %, the demo Klann quad -0.5 %, klann_lego +1.7 %.
 _ACRYLIC = 1.19                      # g/cm^3 the plate constants are per (3 mm thick)
 _FRAME_BASE_G, _FRAME_PER_PIVOT_G = 16.2, 2.85    # the frame plates (per 3 mm acrylic)
 _CENTRE_PLATES_G = 11.05             # half the centre plates (the robot's chassis)
-_CHASSIS_REST_G = 27.25              # half the ties and rear screws: printed and steel
+_CHASSIS_REST_G = 17.65              # half the ties and rear screws: aluminium, steel
 _DRIVE_EXTRA_G = 3.6                 # the servo's screws and horn
 _CRANK_BASE_G, _CRANK_PER_PIN_G = 6.3, 3.5        # a printed crankshaft, per crankpin
 _CRANK_PLATES_BASE_G, _CRANK_PLATES_PER_PIN_G = 3.78, 5.07   # the bolt crank's plates
-_CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 10.9, 8.28            # ... its bolts, nuts, stub
+_CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 9.6, 8.28             # ... its bolts, nuts, stub
 _PILLAR_PER_PIVOT_G = 13.0           # a standoff pillar (segments, rings, screws, washers)
 _PILLAR_PER_PIVOT_LEG_G = 0.0
 _PIN_PER_JOINT_G = 3.3               # a Chicago pin (screw, rings, washer, shims)
@@ -407,7 +410,7 @@ def _sheet_scale(config: BuildConfig, key: str) -> float:
 # screwed on, 2026-10-04; 113 g with glued spigots), centre 13.45 mm over the chassis top.
 # (+2.5 g: the cradle screwed down; -1.4 g: the simplified hardware's button-head deck
 # screws and 8 mm-stud board standoffs, 2026-10-05)
-_DECK_PLATE_G, _DECK_REST_G = 33.3, 84.4
+_DECK_PLATE_G, _DECK_REST_G = 33.3, 78.7       # (-5.7 g: its nylon standoffs, 2026-10-05)
 _DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 2.36
 
 
@@ -444,8 +447,9 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
     ``deck`` (the robot's electronics deck, :mod:`construction.deck`: fitted), plus
     ``total``, the cycle-mean centre of mass ``com`` (side coordinates, z = 0) and a
     ``note`` on how it was made. ``robot``: both sides and the chassis (what the walk
-    model always is), else one side alone. On the Klann robots built the default way this is within
-    1 % of the fabricated mass (:func:`body_masses`); a build measures it."""
+    model always is), else one side alone. On the default robots (Strider, Klann,
+    klann_lego) this is within 2 % of the fabricated mass (:func:`body_masses`); a build
+    measures it."""
     from spiderpig.materials import link_sheets, thickness
 
     lk = config.lk
@@ -520,7 +524,7 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
                  f"(holes taken out; a link of another sheet at its own), the frame plates "
                  f"at their sheet ({config.frame_sheet}); the plates and the printed parts "
                  f"from fitted "
-                 f"constants (within about 1 % on the default robots); a build measures it"),
+                 f"constants (within 2 % on the default robots); a build measures it"),
     }
 
 

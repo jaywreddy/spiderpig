@@ -168,7 +168,11 @@ def strength_text(config, side, store=None, sim: bool = True) -> str:
     from spiderpig.tools.audit import strength_lines
 
     fab = fabricate_side(side, template_for(config).freeze_at(1.0))
-    loads = strength.design_loads(replace(config, robot=True), store, sim=sim)
+    from spiderpig.config import default_robot
+
+    # a walker's loads are the robot's (it walks on both sides); a mechanism has one side
+    loads = strength.design_loads(replace(config, robot=default_robot(config.linkage)), store,
+                                  sim=sim)
     st = strength.check(fab.meta.get("wobble") or {}, fab.meta, config, loads)
     return "\n".join(["4. strength", *(f"  {x}" for x in strength_lines(st))])
 

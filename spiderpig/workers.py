@@ -33,8 +33,11 @@ ENV_OFF = "SPIDERPIG_WORKERS"      # "0": every job runs in the calling process 
 _LOCK = threading.Lock()
 _THREADS: cf.ThreadPoolExecutor | None = None
 
-_CHILD = ("import pickle, sys; job = pickle.load(open(sys.argv[1], 'rb')); "
-          "sys.path[:0] = job[0]; from spiderpig.workers import _child; _child(job, sys.argv[2])")
+_CHILD = ("import pickle, sys; f = open(sys.argv[1], 'rb'); sys.path[:0] = pickle.load(f); "
+          "job = pickle.load(f); from spiderpig.workers import _child; _child(job, sys.argv[2])")
+"""The worker's bootstrap: the caller's ``sys.path`` first (a plain list), so the job's
+arguments (a :class:`config.BuildConfig`) unpickle from the caller's package, not from
+whichever ``spiderpig`` the interpreter would find by itself."""
 
 
 def enabled() -> bool:
@@ -56,7 +59,7 @@ def submit(fn, *args) -> cf.Future:
 def _run(job) -> object:
     with tempfile.TemporaryDirectory(prefix="spiderpig-worker-") as tmp:
         src, dst = Path(tmp) / "job.pickle", Path(tmp) / "result.pickle"
-        src.write_bytes(pickle.dumps(job))
+        src.write_bytes(pickle.dumps(job[0]) + pickle.dumps(job))
         proc = subprocess.run([sys.executable, "-c", _CHILD, str(src), str(dst)], check=False)
         if not dst.is_file():
             raise RuntimeError(f"worker for {job[1]}.{job[2]} exited with {proc.returncode} "

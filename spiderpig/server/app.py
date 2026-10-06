@@ -79,7 +79,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketState
 
-from spiderpig import api, linkage, walk
+from spiderpig import api, linkage, walk, workers
 from spiderpig.bake import bake_gltf
 from spiderpig.config import (
     BuildConfig,
@@ -161,8 +161,10 @@ def _config_from_query(query, **fixed) -> BuildConfig:
         return design_from_query(query, **fixed)
     base = _design(design_id).config
     materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
+                 "frame_sheet": base.frame_sheet, "crank_sheet": base.crank_sheet,
                  "pillar": base.pillar, "pin": base.pin, "crank": base.crank,
-                 "params": base.params}
+                 "heads": base.heads, "params": base.params}
+    # (link_sheets name a linkage's own links: kept only with its linkage, below)
     if (query.get("linkage") or base.linkage) != base.linkage:
         return design_from_query(query, **materials, **fixed)
     items = query.multi_items() if hasattr(query, "multi_items") else query.items()
@@ -238,8 +240,28 @@ def _sources_mtime() -> float:
     return newest
 
 
+_LOADED_AT = _sources_mtime()
+"""The sources as this process imported them: after an edit (the dev server's watcher) its
+modules are the old code, so a bake or a walk runs in a fresh worker process instead
+(:func:`_stale_code`), which imports the new."""
+
+
+def _stale_code() -> bool:
+    """Have the sources changed since this process imported them (and may a worker
+    process run the new code: :func:`spiderpig.workers.enabled`)?"""
+    return workers.enabled() and _sources_mtime() > _LOADED_AT
+
+
 def _is_fresh(path: Path) -> bool:
     return path.is_file() and path.stat().st_mtime >= _sources_mtime()
+
+
+def _bake_job(config: BuildConfig, store_root: str, out: str) -> tuple[int, bool, str]:
+    """:func:`_bake`'s work (the plan through the store, then the bake into ``out``), for a
+    worker process: ``(layers, optimal, proof)``."""
+    side = api.plan_config(config, Store.of(store_root))
+    bake_gltf(Path(out), config)
+    return side.plan.top + 1, bool(side.plan.optimal), str(side.plan.proof)
 
 
 def _bake(config: BuildConfig) -> Path:
@@ -252,11 +274,13 @@ def _bake(config: BuildConfig) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.stem}.partial{path.suffix}")
     try:
-        side = api.plan_config(config, store())
-        log.info("plan for %s: %d layers, %s", config.key, side.plan.top + 1,
-                 "proven optimal" if side.plan.optimal
-                 else f"not proven optimal ({side.plan.proof})")
-        bake_gltf(tmp, config)
+        if _stale_code():       # the sources changed under this process: bake the new code
+            layers, optimal, proof = workers.submit(_bake_job, config, str(store().root),
+                                                    str(tmp)).result()
+        else:
+            layers, optimal, proof = _bake_job(config, str(store().root), str(tmp))
+        log.info("plan for %s: %d layers, %s", config.key, layers,
+                 "proven optimal" if optimal else f"not proven optimal ({proof})")
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -327,6 +351,7 @@ def _rebake_all() -> None:
         from spiderpig.sim import mjcf
 
         mjcf.clear_caches()
+        _walk_json.cache_clear()
         _SIM_BUILDS.clear()
         _SIM_GENERATION += 1
         for path, config in list(_BAKED.items()):
@@ -370,9 +395,12 @@ def linkage_info(lk: linkage.Linkage) -> dict:
 
 @lru_cache(maxsize=64)
 def _walk_json(config: BuildConfig) -> bytes:
-    """``/api/walk``'s body for a (normalized) config, encoded once."""
-    return json.dumps(walk.api_payload(config), allow_nan=False,
-                      separators=(",", ":")).encode()
+    """``/api/walk``'s body for a (normalized) config, encoded once (in a worker process
+    once the sources changed under this one: :func:`_stale_code`; the cache is cleared on
+    every change, :func:`_rebake_all`)."""
+    payload = (workers.submit(walk.api_payload, config).result() if _stale_code()
+               else walk.api_payload(config))
+    return json.dumps(payload, allow_nan=False, separators=(",", ":")).encode()
 
 
 @app.get("/api/modes")
