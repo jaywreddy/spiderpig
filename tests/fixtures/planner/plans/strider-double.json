@@ -52,6 +52,6 @@
   },
   "top": 13
  },
- "engine_version": "0.1.0+df7870e36945",
- "generator": "tests/test_stack.py::test_a_recorded_plan_is_made_again_and_verifies[strider-double]"
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[strider-double]"
 }
