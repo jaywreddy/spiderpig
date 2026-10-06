@@ -75,6 +75,19 @@ class PtfeAxle:
     model_gap: float = 0.01
     shaft: RodShaft = field(default_factory=RodShaft)
 
+
+    @property
+    def max_stack(self):
+        """The shaft's bound on a pillar's stack (a rod's stock length), else ``None``."""
+        return getattr(self.shaft, "max_stack", None)
+
+    @property
+    def stock_note(self):
+        return getattr(self.shaft, "stock_note", None)
+
+    def column(self, *args, **kw) -> None:
+        """The shaft's rule over the column (a rod: one stock length)."""
+        self.shaft.column(*args, **kw)
     def tube(self) -> tuple[float, float]:
         d = get(self.tube_key).dims
         return float(d["id"]), float(d["od"])

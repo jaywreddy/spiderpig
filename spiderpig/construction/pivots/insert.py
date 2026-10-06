@@ -79,6 +79,15 @@ class InsertAxle:
     min_sleeve: float = 1.0       # least sleeve left in a layer a flange reaches into
     glue_per_insert: float = 0.005
 
+
+    @property
+    def max_stack(self):
+        """The shaft's bound on a pillar's stack (a rod's stock length), else ``None``."""
+        return getattr(self.shaft, "max_stack", None)
+
+    @property
+    def stock_note(self):
+        return getattr(self.shaft, "stock_note", None)
     def column(self, *args, **kw) -> None:
         """The shaft's own rule over the column, if it has one (a Chicago screw's stock
         barrel lengths)."""

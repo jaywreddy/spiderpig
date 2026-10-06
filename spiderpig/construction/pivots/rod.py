@@ -75,6 +75,19 @@ class RodAxle:
     running_fit: float = 0.2      # a link's and a ring's hole over the rod (3.2 mm: ISO 273 fine)
     shaft: RodShaft = field(default_factory=RodShaft)
 
+
+    @property
+    def max_stack(self):
+        """The shaft's bound on a pillar's stack (a rod's stock length), else ``None``."""
+        return getattr(self.shaft, "max_stack", None)
+
+    @property
+    def stock_note(self):
+        return getattr(self.shaft, "stock_note", None)
+
+    def column(self, *args, **kw) -> None:
+        """The shaft's rule over the column (a rod: one stock length)."""
+        self.shaft.column(*args, **kw)
     def hole(self) -> float:
         return self.shaft.d + self.running_fit
 

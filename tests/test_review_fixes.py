@@ -675,3 +675,82 @@ def test_a_value_target_under_the_scale_is_met_from_the_band():
                      "motion": {"stroke_mm": {"value": round(0.8 * stroke, 1),
                                               "tol": round(0.016 * stroke, 2)}}}, None)
     assert api.advise(d).recommendations
+
+
+# -- round 11 ----------------------------------------------------------------------------
+
+
+def test_rod_stock_bounds_a_rod_pillar_and_is_bought_in_whole_pieces():
+    from spiderpig.construction import AXLES
+    from spiderpig.hardware.bom import CutList
+
+    for key in ("rod", "ptfe", "bearing", "bushing"):
+        assert AXLES[key].max_stack(3.0) == pytest.approx(100.0), key
+    assert getattr(AXLES["chicago"], "max_stack", None) is None
+    # three 60 mm pieces don't come out of two 100 mm rods (1.8 rods by length)
+    assert CutList("rod_3mm_100", "rod", ((60.0, 3),), 100.0).stock_pieces() == 3
+    assert CutList("rod_3mm_100", "rod", ((40.0, 4),), 100.0).stock_pieces() == 2
+
+
+def test_the_cost_floor_glues_only_what_is_glued():
+    from spiderpig.verify import GLUED_PINS
+
+    assert "bushing" not in GLUED_PINS                 # pressed in (insert.BUSHING)
+    assert "bearing" in GLUED_PINS
+
+
+def test_the_crank_advice_names_the_crank_it_would_build():
+    from spiderpig import strength
+    from spiderpig.config import BuildConfig
+
+    row = {"kind": "crank", "factor": 1.0, "capacity_nm": {"x": 0.5}, "weakest": "x",
+           "construction": "keyed", "jam": {"torque_nm": 0.85, "safety": 0.5}}
+    got = strength.fixes(row, None, {}, BuildConfig(crank="keyed"))
+    assert any("hex-standoff crankpins" in f for f in got)
+    assert not any("--crank bolt" in f
+                   for f in strength.fixes(row, None, {}, BuildConfig(crank="keyed", pin="bolt")))
+
+
+@pytest.mark.slow
+def test_an_export_after_an_accepted_edit_is_written_afresh(tmp_path):
+    import numpy as np
+    from build123d import Cylinder
+
+    from spiderpig import api
+
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
+    assert api.build(d).ok
+    first = api.export(d, ["dxf"], tmp_path)
+    name = next(n for n, p in d.parts.items() if p.group == "links")
+    part, body = d.parts[name], d.mech.body(name)
+    a, b = ((body.pose @ j.pose).matrix[:2, 3] for j in body.joints[:2])
+    part.solid = part.solid - Cylinder(1.0, 10).moved(part.locate((np.asarray(a) + b) / 2))
+    assert api.recheck(d).ok
+    again = api.export(d, ["dxf"], tmp_path)
+    assert again is not first
+
+
+@pytest.mark.slow
+def test_scale_advice_keeps_a_met_target_met():
+    from spiderpig import api
+
+    base = api.measure_config(api.resolve({"kind": "mechanism",
+                                           "linkage": {"key": "hoecken"}}, None).config)
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}, "motion": {
+        "stroke_mm": {"min": round(1.3 * base["motion.stroke_mm"], 2)},
+        "straightness_mm": {"max": round(1.1 * base["motion.straightness_mm"], 4)}}}, None)
+    rep = api.advise(d)
+    assert not rep.recommendations
+    assert any("together" in n for n in rep.notes)
+
+
+@pytest.mark.slow
+def test_a_pre_build_estimate_doesnt_fail_a_hard_target(tmp_path):
+    from spiderpig import api
+
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                     "size": {"mass_g": {"max": 120}}}, tmp_path)
+    rep = api.verify(d, "quick")
+    row = next(r for r in rep.rows if r.requirement == "size.mass_g")
+    assert row.tier == "estimated"
+    assert not row.hard

@@ -103,6 +103,9 @@ class MadeRow:
     mirrored: int = 0    # of qty, how many are mirror images (printed parts: "print mirrored")
 
 
+SAW_KERF = 1.0     # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
+
+
 @dataclass(frozen=True)
 class CutList:
     """Pieces cut from one stock item (a rod): ``pieces`` is ``(length mm, qty)`` longest
@@ -121,11 +124,28 @@ class CutList:
     def total_mm(self) -> float:
         return sum(L * q for L, q in self.pieces)
 
+    def stock_pieces(self, kerf: float = SAW_KERF) -> int:
+        """How many stock pieces the cuts take: first-fit decreasing, ``kerf`` lost per cut
+        (a piece no stock length holds counts one stock piece of its own: the constructions
+        refuse such a rod, so it doesn't arise)."""
+        if self.stock_mm <= 0:
+            return self.count
+        free: list[float] = []
+        for L, q in self.pieces:            # longest first
+            for _ in range(q):
+                for i, f in enumerate(free):
+                    if f + 1e-9 >= L:
+                        free[i] = f - L - kerf
+                        break
+                else:
+                    free.append(self.stock_mm - L - kerf)
+        return len(free)
+
     def describe(self) -> str:
         """``24 pieces of 3 mm stainless rod, 100 mm (456 mm in all): 8 x 21.0, ...``"""
         runs = ", ".join(f"{q} x {L:.1f}" for L, q in self.pieces)
         return (f"{self.count} pieces of {self.name} ({self.total_mm:.0f} mm in all, from "
-                f"{self.stock_mm:g} mm stock): {runs} mm")
+                f"{self.stock_pieces()} x {self.stock_mm:g} mm stock): {runs} mm")
 
 
 _CUT = re.compile(r"cut ([\d.]+) mm$")
@@ -929,6 +949,9 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         row.qty += line.qty
         if line.where:
             row.where.append(line.where)
+    for cut in cut_list(lines):          # stock cut to length: whole pieces, packed
+        if cut.key in grouped:
+            grouped[cut.key].qty = float(cut.stock_pieces())
     for row in grouped.values():
         row.qty = round(row.qty, 6)
         offer = get(row.key).offer
