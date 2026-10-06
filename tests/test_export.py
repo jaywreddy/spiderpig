@@ -12,22 +12,40 @@ import pytest
 
 from spiderpig import build as cli
 
-pytestmark = pytest.mark.slow
+# the builds are slow (the CLI's outputs of a robot: 15-25 s; a fabrication); the option
+# parsing and the refusals are not
+slow = pytest.mark.slow
 
 
 @pytest.fixture(scope="module")
 def single_out(tmp_path_factory):
+    """``spiderpig build --module single`` (the Strider single robot) into a folder: the
+    plan and the robot from the test cache (the CLI's fabrication is what
+    ``test_side_only_without_dxf`` and the review tests' CLI builds run), everything it
+    writes from them as the CLI writes it."""
+    from spiderpig.config import BuildConfig
+    from tests import _api
+
+    cfg = BuildConfig(linkage="strider", module="single")
+    _api.seed(cfg)
     out = tmp_path_factory.mktemp("single")
-    assert cli.main(["--module", "single", "--out", str(out), "--name", "walker"]) == 0
+    with pytest.MonkeyPatch.context() as mp:
+        def fabricate(tmpl, config, t):
+            assert (config, t) == (cfg, 1.0)
+            return _api.own(_api.fabricated(cfg, t))
+        mp.setattr(cli, "fabricate", fabricate)
+        assert cli.main(["--module", "single", "--out", str(out), "--name", "walker"]) == 0
     return out
 
 
+@slow
 def test_whole_robot_step_and_stl(single_out):
     for name in ("walker.step", "walker.stl"):
         path = single_out / name
         assert path.stat().st_size > 10_000, name
 
 
+@slow
 def test_one_stl_per_printed_part_with_quantities(single_out):
     with open(single_out / "print" / "parts.csv") as f:
         rows = list(csv.DictReader(f))
@@ -54,6 +72,7 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
     assert all(q >= 2 for f, q in by_file.items() if f != "deck_cradle.stl")
 
 
+@slow
 def test_dxf_sheets_hold_every_laser_part(single_out):
     sheets = sorted((single_out / "laser").glob("walker_sheet_*.dxf"))
     assert sheets
@@ -76,6 +95,7 @@ def test_dxf_sheets_hold_every_laser_part(single_out):
     assert circles > len(placed)
 
 
+@slow
 def test_bom_lists_purchases_sheets_and_filament(single_out):
     bom = json.loads((single_out / "bom.json").read_text())
     keys = {r["key"]: r for r in bom["purchased"]}
@@ -92,6 +112,7 @@ def test_bom_lists_purchases_sheets_and_filament(single_out):
     assert (single_out / "bom.csv").exists()
 
 
+@slow
 def test_side_only_without_dxf(tmp_path):
     assert cli.main(["--module", "single", "--side-only", "--no-dxf", "--out", str(tmp_path)]) == 0
     bom = json.loads((tmp_path / "bom.json").read_text())

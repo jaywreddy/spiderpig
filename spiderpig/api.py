@@ -1459,13 +1459,27 @@ def module_stride(key: str, module: str) -> float | None:
     k = (key, module)
     if k not in _MODULE_STRIDES:
         try:
-            cfg = BuildConfig(linkage=key, module=module)
-            payload = walk_model.api_payload(cfg, feet_z=walk_model.foot_z_guess(cfg))
-            m = payload["metrics"] if payload["valid"] else None
-            _MODULE_STRIDES[k] = None if m is None else round(float(m["stride_mm"]), 2)
+            _MODULE_STRIDES[k] = _module_stride(BuildConfig(linkage=key, module=module))
         except (ValueError, KeyError, ParamError):
             _MODULE_STRIDES[k] = None
     return _MODULE_STRIDES[k]
+
+
+def _module_stride(cfg: BuildConfig) -> float | None:
+    """:func:`walk.api_payload`'s ``metrics["stride_mm"]`` (rounded to 0.01 mm) at the
+    nominal feet, ``None`` where the payload isn't ``valid``: the same steps in the same
+    order (the payload's head, the walk model, its straight-walk metrics), without making
+    JSON of the feet's and legs' paths, which the stride doesn't read (a second a card)."""
+    feet_z = walk_model.foot_z_guess(cfg)
+    servo = walk_model.servo_info(cfg.servo)
+    cfg.design_json()
+    walk_model.links_of(cfg.lk)
+    try:
+        model = walk_model.walker(cfg, feet_z=feet_z)
+    except walk_model.LinkageError:
+        return None
+    m = walk_model.straight_walk_metrics(model, rpm_max=servo["rpm_max"])
+    return round(float(walk_model.jsonable(m["stride_mm"])), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -1542,12 +1556,17 @@ def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:
 
 
 def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
-                 cached: bool = False, warnings: list[str] | None = None) -> BuildReport:
+                 cached: bool = False, warnings: list[str] | None = None,
+                 props: dict | None = None) -> BuildReport:
     """Adopt a fabricated mechanism as the design's build (what :func:`build` does after
     fabricating; a store loading part files, or a test holding a fabricated robot, uses it
     directly). Needs the plan (runs it if it hasn't). ``cached``: the parts came from the
     store, so they are logged as such and not written again. ``warnings``: what the
-    constructions warned about while fabricating (:func:`capture_warnings`)."""
+    constructions warned about while fabricating (:func:`capture_warnings`). ``props``:
+    body name -> :class:`hardware.mass.PartProps` of ``mech``'s parts as they are (the
+    bake's and the MJCF's ``props``): a body found there is not measured again, one
+    missing is measured and added, so the caller can hand the dict on to the next
+    consumer of the same parts."""
     t0 = time.time() if t0 is None else t0
     pr = plan(design)
     if not pr.ok:
@@ -1566,8 +1585,12 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
             continue
         tag, base = split_side(b.name)
         material, density, fixed = material_of(b, cfg.sheet, filament, servo)
-        props = part_props(b.part)
-        mass = fixed if fixed is not None else props.volume / 1000.0 * density
+        pp = None if props is None else props.get(b.name)
+        if pp is None:
+            pp = part_props(b.part)
+            if props is not None:
+                props[b.name] = pp
+        mass = fixed if fixed is not None else pp.volume / 1000.0 * density
         bb = b.placed_part().bounding_box()
         lo, hi = np.minimum(lo, [bb.min.X, bb.min.Y, bb.min.Z]), np.maximum(hi, [bb.max.X,
                                                                                   bb.max.Y,
@@ -1580,7 +1603,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
             bom_key=b.bom_key, rigid_with=b.rigid_with, pose=b.pose.matrix.tolist(),
             sheet=b.sheet,
             z_mid=z_mid, z_side=(float(z_side[0]), float(z_side[1])),
-            built=b.part, _measured=(b.part, float(props.volume)),
+            built=b.part, _measured=(b.part, float(pp.volume)),
         )
         assert abs(parts[b.name].mass_g - mass) < 1e-9
     design.parts = parts

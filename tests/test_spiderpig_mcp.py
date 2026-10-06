@@ -15,8 +15,10 @@ import pytest
 from mcp import Client
 
 from spiderpig import api
+from spiderpig.config import BuildConfig
 from spiderpig.mcp import make_server
 from spiderpig.store import Store
+from tests import _api, cache
 
 # The numbers below are the keyed crank's and the printed pillars' (the defaults before the
 # bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
@@ -26,6 +28,11 @@ KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
                 "legs": {"module": "single", "sides": 1}, **OLD}
 HEEL = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
         "legs": {"module": "single"}, **OLD}
+KLANN_SINGLE_CFG = BuildConfig(linkage="klann", module="single", robot=False, crank="keyed",
+                               pillar="printed")          # KLANN_SINGLE's config
+# the plan the heel's checked patch (unit 12) has
+HEEL_12 = BuildConfig(linkage="trotbot_heel", module="single", crank="keyed", pillar="printed",
+                      proportions=(("unit", 12.0),))
 TOOLS = {"list_linkages", "describe", "catalog", "resolve", "check", "plan", "explain",
          "recommend", "walk", "build", "verify", "export", "compare", "derive", "get_design",
          "list_designs", "gc", "get_job", "wait_job", "view"}
@@ -286,6 +293,8 @@ def test_misuse_is_an_error_result_carrying_a_failure(server):
 
 def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_plans(fresh):
     server = fresh                # its own store: the derived design must be new to it
+    _api.seed(HEEL_12)            # the patch's plan from the test cache (the server's
+    #                               engine calls run in this process)
     heel = call(server, "resolve", spec=HEEL)["design"]
     cr = call(server, "check", design=heel)
     assert cr["ok"] is False
@@ -326,8 +335,28 @@ def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_pla
 # ---------------------------------------------------------------------------
 
 
+def test_build_through_the_long_op_path_serves_the_stored_build_as_a_manifest(tmp_path):
+    """The long-operation path on a store that holds the build (the test cache's prebuilt
+    store): a job in a worker process, ``wait_job``'s manifest of the store's STEP files,
+    ``get_job``, the stored report, and a second build within the grace period. The
+    fabrication in the job is the slow twin's, below."""
+    store = cache.prebuilt_store(KLANN_SINGLE_CFG, tmp_path)
+    (single,) = store.ids()
+    assert single == api.resolve(KLANN_SINGLE, store=None).id
+    server = make_server(store.root)
+    try:
+        _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, store)
+    finally:
+        server.spiderpig.jobs.shutdown()
+
+
+@pytest.mark.slow
 def test_build_through_the_long_op_path_returns_a_manifest_of_files_in_the_store(
         server, single):
+    _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, Store.default())
+
+
+def _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, store):
     out = call(server, "build", design=single, wait_seconds=0)
     assert out["ok"]
     job = out["job"]
@@ -350,7 +379,6 @@ def test_build_through_the_long_op_path_returns_a_manifest_of_files_in_the_store
     assert manifest["n_parts"] == len(manifest["parts"]) == 30
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
-    store = Store.default()
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
     assert manifest["files"] == len(files) == 30                     # one side: no mirrors

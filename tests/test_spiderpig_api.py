@@ -16,12 +16,18 @@ from spiderpig.config import BuildConfig
 from spiderpig.failure import Failure, apply_patch, parse_blocker
 from spiderpig.hardware.bom import ON_HAND
 from spiderpig.spec import TARGET_FIELDS, Spec, SpecErrors, Target, spec_schema, validate
+from tests import _api, cache
 
 # The numbers below are the keyed crank's and the printed pillars' (the defaults before the
 # bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
 # height, parts and cost stay what these tests check
 OLD = {"constructions": {"crank": "keyed", "pillar": "printed"}}
 KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}}      # the default quad
+# the plans the heel at the drawing's 7 mm unit is advised to (its static failure's checked
+# scale): the keyed crank's at unit 12, the default constructions' at the default unit
+HEEL_12_KEYED = BuildConfig(linkage="trotbot_heel", module="single",
+                            proportions=(("unit", 12.0),), crank="keyed", pillar="printed")
+HEEL_DEFAULT = BuildConfig(linkage="trotbot_heel", module="single")
 
 
 def _errors(doc: dict) -> dict[str, list]:
@@ -245,6 +251,7 @@ def test_verify_quick_passes_with_tiers(quad):
 
 
 def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score():
+    _api.seed(BuildConfig(linkage="klann", module="quad", crank="keyed", pillar="printed"))
     hard = api.resolve({**KLANN_QUAD, **OLD, "size": {"stack_mm": {"max": 30}},
                         "motion": {"stride_mm": {"min": 90}}})
     rep = api.verify(hard, "quick")
@@ -274,6 +281,7 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
 
 
 def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_plans():
+    _api.seed(HEEL_12_KEYED)                  # the patch's plan from the test cache
     heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
                                                       "params": {"unit": 7}},
                         "legs": {"module": "single"}, **OLD})      # the keyed crank's post
@@ -354,7 +362,52 @@ def test_exceptions_map_to_stages():
 # ---------------------------------------------------------------------------
 
 
-def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
+KLANN_ROBOT = {"kind": "walker", "linkage": {"key": "klann"}, "legs": {"module": "single"}}
+
+
+def test_parts_expose_live_solids_and_recheck_passes():
+    # the Klann single robot (both sides, the chassis: the smallest walker robot), built
+    # from the test cache (tests._api.built)
+    d = api.resolve(KLANN_ROBOT, store=None)
+    rep = _api.built(d)
+    mech = d.mech
+    assert rep.ok
+    assert rep.n_parts == sum(1 for b in mech.bodies if b.part is not None)
+    assert rep.counts["laser"] > 0
+    assert rep.mass_g == pytest.approx(sum(p.mass_g for p in d.parts.values()), abs=0.01)
+    b1 = d.parts["L.b1"]
+    assert b1.solid is mech.body("L.b1").part
+    assert (b1.group, b1.side, b1.fab, b1.material) == ("links", "L", "laser", "sheet")
+    assert b1.layers == (6,)
+    assert not b1.edited
+    assert d.parts["R.b1"].layers == (6,)
+    assert d.parts["R.b1"].side == "R"
+    assert d.parts["L.servo"].group == "drive"
+    assert d.parts["L.servo"].mass_g == 55.0
+    standoff = next(k for k in d.parts if k.startswith("L.pillar_A_standoff"))
+    assert d.parts[standoff].group == "pillar:A"
+    plate = next(k for k in d.parts if k.startswith("L.crank_plate"))
+    assert d.parts[plate].group == "crank"
+    assert d.parts[plate].fab == "laser"
+    assert d.parts["centre_plate0"].group == "chassis"
+    assert d.parts["centre_plate0"].side is None
+    # nothing edited: solids and clashes only, no mutation (on the tiny design: a robot's
+    # clash check is the quad twin's, below)
+    h = api.resolve(_api.HOECKEN, store=None)
+    assert _api.built(h).ok
+    link = h.parts["b1"]
+    rr = api.recheck(h)
+    assert rr.ok
+    assert rr.edited == []
+    assert rr.checked == []
+    assert rr.clashes == []
+    assert rr.bad_solids == []
+    assert h.parts["b1"].solid is link.solid is h.mech.body("b1").part
+    assert not h.edited
+
+
+@pytest.mark.slow
+def test_parts_expose_live_solids_and_recheck_passes_on_the_quad(quad, robot):
     rep = api.attach_build(quad, robot("quad", 1.0), 1.0)
     assert rep.ok
     assert rep.n_parts == sum(1 for b in robot("quad", 1.0).bodies if b.part is not None)
@@ -386,7 +439,8 @@ def test_parts_expose_live_solids_and_recheck_passes(quad, robot):
 
 
 @pytest.mark.slow
-def test_an_edited_solid_that_leaves_its_claim_or_clashes_is_caught():
+def test_an_edited_solid_that_leaves_its_claim_or_clashes_is_caught(monkeypatch):
+    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                      "legs": {"module": "single", "sides": 1}})
     assert api.build(d).ok
@@ -442,7 +496,8 @@ def test_verify_standard_passes_on_the_default_quad(quad, robot):
 
 
 @pytest.mark.slow
-def test_export_writes_what_the_cli_writes(tmp_path):
+def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                      "legs": {"module": "single", "sides": 1},
                      "outputs": ["step", "dxf", "bom"]})
@@ -540,6 +595,7 @@ def test_check_names_the_body_part_that_sets_the_ground_clearance_and_z_counts_t
 
 
 def test_explain_prints_a_recorded_failure_without_solving_or_advising_again(monkeypatch):
+    _api.seed(HEEL_DEFAULT)                   # what its recommendation checks, cached
     heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
                                                       "params": {"unit": 7}},
                         "legs": {"module": "single"}})
@@ -826,9 +882,10 @@ def test_the_recommendation_says_which_module_it_checked():
         == "checked: the static stage passes, and it plans in 10 layers (37.639 mm)"
 
 
-def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
-    api.attach_build(quad, robot("quad", 1.0), 1.0)
-    part = quad.parts["L.b2_leg0"]                                         # entry 7
+def test_a_parts_mass_and_volume_follow_its_edited_solid():
+    d = api.resolve(_api.HOECKEN, store=None)          # the tiny design, from the test cache
+    assert _api.built(d).ok
+    part = d.parts["b2"]                                                   # entry 7
     mass, volume = part.mass_g, part.volume_mm3
     assert part.density == pytest.approx(1.19, abs=0.05)
     assert mass == pytest.approx(volume / 1000 * part.density)
@@ -840,17 +897,18 @@ def test_a_parts_mass_and_volume_follow_its_edited_solid(quad, robot):
         assert part.mass_g == pytest.approx(part.volume_mm3 / 1000 * part.density)
         assert part.to_dict()["mass_g"] == pytest.approx(part.mass_g, abs=1e-3)
     finally:
-        part.solid = part.built                       # the session's robot: never mutated
+        part.solid = part.built
     assert part.mass_g == mass
     assert part.volume_mm3 == volume
-    servo = quad.parts["L.servo"]
+    servo = d.parts["servo"]
     assert servo.fixed_mass_g == 55.0
     assert servo.mass_g == 55.0
 
 
 @pytest.mark.slow
 def test_a_reloaded_build_carries_the_links_joints_and_outlines_and_takes_the_example_edit(
-        tmp_path):
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     from build123d import Cylinder, Location
 
     spec = {"kind": "walker", "linkage": {"key": "klann"},
@@ -903,6 +961,7 @@ def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
 def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
     import logging
 
+    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     api.attach_build(quad, robot("quad", 1.0), 1.0)
 
     def fake_bake(path, cfg, profile=False, **kw):         # fabricated=, side=
@@ -1013,7 +1072,8 @@ def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_print
     assert "plans (quad module, the design's own) in 17 layers" in rec.verified
 
 
-def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it(quad):
+def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it():
+    _api.seed(BuildConfig(linkage="klann", module="quad", crank="keyed", pillar="printed"))
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                      "size": {"stack_mm": {"max": 30}}, **OLD})
     row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.stack_mm")
@@ -1029,11 +1089,11 @@ def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it(quad):
                                    "thinnest")
 
 
-def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups(quad, robot):
+def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups(tmp_path):
     from spiderpig import verify as verify_module
     from spiderpig import walk as walk_model
 
-    cfg = quad.config
+    cfg = api.resolve(KLANN_QUAD, store=None).config
     b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg))     # entry 12
     # the default quad + its deck: 0.080 in frame, 0.100 in 6061 crank (the hex crankpins'
     # pockets; 975 g on 0.063 in) and 0.090 in centre plates (the thinnest per part,
@@ -1041,6 +1101,35 @@ def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups
     assert b["total"] == pytest.approx(988.8, rel=0.02)   # (988.8 g: parts in their material)
     assert (b["links"] + b["servos"] + b["plates"] + b["printed"] + b["deck"]
             == pytest.approx(b["total"]))
+    robot = api.resolve(KLANN_ROBOT, store=None)       # any robot: two servos (the quad's
+    _api.seed(robot.config)                            # plan is the slow twin's, below)
+    row = next(r for r in api.verify(robot, "quick").rows if r.requirement == "size.mass_g")
+    assert row.tier == "estimated"
+    assert row.detail.startswith("estimated before a build: links ")
+    assert "2 servos 110 g" in row.detail
+    # a robot's build (the chassis has a group): the Klann single robot's, as the store
+    # holds it (the test cache's prebuilt store)
+    store = cache.prebuilt_store(BuildConfig(linkage="klann", module="single"), tmp_path)
+    (robot_id,) = store.ids()
+    br = api.BuildReport.from_dict(store.read_report(robot_id, "build"))
+    text = verify_module.mass_by_group(br)
+    assert text.startswith("by group: ")
+    grams = {g: float(w.removesuffix(" g")) for g, w in
+             (x.split(" ", 1) for x in text.removeprefix("by group: ").split(", "))}
+    assert {"links", "drive", "chassis", "crank", "frame"} <= set(grams)
+    assert list(grams.values()) == sorted(grams.values(), reverse=True)    # heaviest first
+    assert sum(grams.values()) == pytest.approx(br.mass_g, abs=len(grams))
+    one = BuildConfig(linkage="jansen", module="single", robot=False)
+    side = walk_model.nominal_mass_breakdown(one, walk_model.side_legs(one), robot=False)
+    both = walk_model.nominal_mass_breakdown(one, walk_model.side_legs(one))
+    assert side["servos"] == pytest.approx(both["servos"] / 2)
+    assert side["plates"] < both["plates"] / 2                   # no centre plates on one side
+
+
+@pytest.mark.slow
+def test_the_measured_mass_row_of_the_quad_lists_its_groups_heaviest_first(quad, robot):
+    from spiderpig import verify as verify_module
+
     row = next(r for r in api.verify(quad, "quick").rows if r.requirement == "size.mass_g")
     assert row.tier == "estimated"
     assert row.detail.startswith("estimated before a build: links ")
@@ -1050,11 +1139,6 @@ def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups
     assert text.startswith("by group: links ")
     assert "drive " in text
     assert "chassis " in text
-    one = BuildConfig(linkage="jansen", module="single", robot=False)
-    side = walk_model.nominal_mass_breakdown(one, walk_model.side_legs(one), robot=False)
-    both = walk_model.nominal_mass_breakdown(one, walk_model.side_legs(one))
-    assert side["servos"] == pytest.approx(both["servos"] / 2)
-    assert side["plates"] < both["plates"] / 2                   # no centre plates on one side
 
 
 def test_captured_warnings_stay_off_the_terminal(caplog):
@@ -1134,6 +1218,7 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
 
 def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
     d = api.resolve(KLANN_SINGLE, store=None)
+    assert _api.built(d).ok                     # the build from the test cache
     rep = api.export(d, ["bom"], tmp_path)                                    # entry 3
     assert rep.ok
     bom = json.loads((tmp_path / "bom.json").read_text())
@@ -1145,7 +1230,9 @@ def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
 
 
 @pytest.mark.slow
-def test_a_robot_part_locates_a_cut_by_the_sides_coordinates_and_recheck_notes_a_miss(design):
+def test_a_robot_part_locates_a_cut_by_the_sides_coordinates_and_recheck_notes_a_miss(
+        design, monkeypatch):
+    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     from build123d import Cylinder
 
     design("single")                                # the side's plan is the session's
@@ -1258,7 +1345,20 @@ def test_the_sim_meshes_face_by_face_as_the_bake_does():
     assert sorted(map(tuple, hull))[0] == pytest.approx((-1.0, -1.5, -2.0))
 
 
+def test_a_modules_stride_is_the_walk_payloads():
+    """``api.module_stride`` reads the stride without the payload's JSON: the very number
+    ``walk.api_payload`` gives at the nominal feet (a walking module and one that can't)."""
+    from spiderpig import walk as walk_model
+
+    for key, module in (("klann", "quad"), ("klann", "double"), ("trotbot_toe", "single")):
+        cfg = BuildConfig(linkage=key, module=module)
+        payload = walk_model.api_payload(cfg, feet_z=walk_model.foot_z_guess(cfg))
+        assert payload["valid"]
+        assert api._module_stride(cfg) == round(float(payload["metrics"]["stride_mm"]), 2)
+
+
 def test_walks_means_a_stride_of_twenty_millimetres():
+    _api.seed(BuildConfig(linkage="trotbot_toe", module="single"))    # the walk's planned z
     assert api.WALKS_MM == 20.0
     card = api.describe("trotbot_toe")
     single = card["modules"]["single"]                                       # entry 14
@@ -1474,7 +1574,8 @@ def test_r5_a_one_sided_envelope_row_says_the_stack_not_the_stacks():
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store=None)
     row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.envelope_z_mm")
     assert row.detail.startswith("the stack + the servo on the inner plate + ")    # entry 12
-    robot = api.resolve(KLANN_QUAD, store=None)
+    robot = api.resolve(KLANN_ROBOT, store=None)       # a robot: two sides, the chassis
+    _api.seed(robot.config)
     row = next(r for r in api.verify(robot, "quick").rows
                if r.requirement == "size.envelope_z_mm")
     assert row.detail.startswith("the two stacks + the chassis + ")
