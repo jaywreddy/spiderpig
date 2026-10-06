@@ -466,3 +466,48 @@ def test_the_protection_board_is_clear_of_the_decks_wire_and_cable_tie_slots(rob
         over_x = x_c + tie_dx > bb.min.X and x_c - tie_dx < bb.max.X
         over_z = z + WIRE_SLOT[1] / 2 > bb.min.Z and z - WIRE_SLOT[1] / 2 < bb.max.Z
         assert not (over_x and over_z), (bb.min.X, bb.max.X, z)
+
+
+# -- round 7 -----------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("kerf", [0.2, 0.5])
+def test_the_hex_crank_plates_lay_out_at_ponokos_kerf(tmp_path, kerf):
+    from build123d import Face
+
+    from spiderpig.config import BuildConfig
+    from spiderpig.fabricate import fabricate, template_for
+    from spiderpig.layout import _outer, _wire_is_circle, offset_wires, save_sheets, section_of
+
+    cfg = BuildConfig(robot=False)
+    mech = fabricate(template_for(cfg), cfg, 1.0)
+    assert save_sheets(mech, tmp_path / "s", kerf=kerf, default=cfg.sheet)
+    plate = next(b for b in mech.bodies if b.name == "crank_plate2")
+    wires = list(section_of(plate).wires())
+    pocket = next(w for w in wires if w is not _outer(wires) and _wire_is_circle(w) is None)
+    got = offset_wires(pocket, -kerf / 2)            # the hex and its dog-bone lobes, apart
+    area = sum(Face(w).area for w in got)
+    assert area < Face(pocket).area - 0.5 * kerf / 2 * pocket.length
+
+
+@pytest.mark.slow
+def test_an_export_is_not_reused_once_a_build_wrote_its_folder(tmp_path):
+    import json
+
+    from spiderpig import api, build
+    from spiderpig.config import BuildConfig
+    from spiderpig.store import Store
+
+    cfg = BuildConfig(linkage="klann", module="single", robot=False)
+    d = api.resolve(api.spec_of(cfg), Store(tmp_path / "store"))
+    out = tmp_path / "out"
+    first = api.export(d, ["bom"], out)
+    assert first.ok
+    assert build.main(["--linkage", "klann", "--module", "single", "--side-only", "--kerf",
+                       "0.1", "--no-dxf", "--out", str(out)]) == 0
+    m = json.loads((out / "manifest.json").read_text())
+    assert m["design"] != d.id                        # the kerf shapes the cut files: its own
+    again = api.export(api.load(d.id, d.store), ["bom"], out)
+    assert again.ok
+    assert json.loads((out / "manifest.json").read_text())["formats"] == ["bom"]

@@ -208,8 +208,10 @@ def main(argv=None) -> int:
     for owned in ("laser", "print"):     # no cut or print files left from an earlier build
         clear_generated(out / owned)
     # an export's manifest no longer describes the folder (api.export reuses one by it):
-    # this build writes its own once it has written everything
-    (out / "manifest.json").unlink(missing_ok=True)
+    # this build writes its own once it has written everything; nor do an earlier build's
+    # shopping list and BOM (a build that stops short leaves none of them behind)
+    for owned in ("manifest.json", "ORDER.md", "bom.csv", "bom.md", "bom.json"):
+        (out / owned).unlink(missing_ok=True)
     from spiderpig.api import config_warnings
 
     for w in config_warnings(config):       # what the API's resolve would warn about
@@ -270,16 +272,24 @@ def main(argv=None) -> int:
     order: list[dict] = []
     if not args.no_dxf:
         size = tuple(args.sheet_size) if args.sheet_size else None
-        sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
-                             kerf=args.kerf, default=config.sheet)
+        try:
+            sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
+                                 kerf=args.kerf, default=config.sheet)
+        except ValueError as e:
+            print(f"error: the cut files can't be laid out: {e}", file=sys.stderr)
+            return 1
         n_laser = sum(g.qty for g in groups["laser"])
         print(f"wrote {len(sheets)} DXF sheet(s) with {n_laser} laser-cut parts "
               f"({len(groups['laser'])} different) to {out / 'laser'}, one set per sheet:")
         for line in sheet_lines(mech, config.sheet, size):
             print(f"  {line.qty} x {line.key}")
             mech.bom_extras.append(line)
-        order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
-                           kerf=args.kerf)
+        try:
+            order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
+                               kerf=args.kerf)
+        except ValueError as e:
+            print(f"error: the per-part cut files can't be written: {e}", file=sys.stderr)
+            return 1
         print(f"wrote {len(order)} per-part DXFs ({sum(r['qty'] for r in order)} parts) and "
               f"order.csv to {out / 'laser' / 'parts'}")
 
@@ -300,22 +310,33 @@ def main(argv=None) -> int:
     (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
                                                  build_dir=str(out)))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
-    _write_manifest(out, config)
+    _write_manifest(out, config, args)
     return 0
 
 
-def _write_manifest(out: Path, config) -> None:
+def _write_manifest(out: Path, config, args=None) -> None:
     """``manifest.json`` naming the design built here (its id as :func:`api.resolve` gives
-    it), so an ``api.export`` of the same design into this folder keeps its cut and print
-    files and ORDER.md, and one of another design clears them."""
+    it: with ``--kerf``, which shapes the cut files, as the Spec's ``fit.kerf_mm``), so an
+    ``api.export`` of the same design into this folder keeps its cut and print files and
+    ORDER.md, and one of another design clears them. It lists no ``formats``: an export
+    never takes a build's files for its own earlier ones (:func:`api.export`'s reuse)."""
     import json
 
     from spiderpig import api
 
-    design = api.resolve(api.spec_of(config), store=None)
+    spec = api.spec_of(config)
+    kerf = getattr(args, "kerf", None)
+    size = getattr(args, "sheet_size", None)
+    if kerf is not None:
+        spec.setdefault("fit", {})["kerf_mm"] = kerf
+    if size:
+        spec.setdefault("fit", {})["sheet_size_mm"] = list(size)
+    design = api.resolve(spec, store=None)
     (out / "manifest.json").write_text(json.dumps(
         {"design": design.id, "engine_version": design.engine_version,
-         "written_by": "spiderpig build"}, indent=1))
+         "written_by": "spiderpig build", "kerf_mm": kerf,
+         "sheet_size_mm": list(size) if size else None,
+         "name": getattr(args, "name", None)}, indent=1))
 
 
 if __name__ == "__main__":

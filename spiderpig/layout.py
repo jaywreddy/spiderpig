@@ -226,6 +226,76 @@ def _outer(wires):
     return max(wires, key=area)
 
 
+def offset_wires(wire, grow: float) -> list:
+    """``wire`` offset by ``grow`` (> 0: the region it bounds grows), kind "arc": an offset
+    line or arc stays one; one wire, or several where the offset splits the region.
+    OCCT's 2D offset fails on a wire with features finer than the offset (a hex pocket's
+    dog-bone lobes, joined to the hex by 0.05 mm cusps: shrunk 0.1 mm they come apart,
+    "Unexpected result type"); then the region is grown or shrunk as a boolean with a
+    band of ``|grow|`` round each edge, which is the same offset, still exact lines and
+    arcs: every piece is a contour to cut (the laser cuts each, and its kerf takes the
+    region back to the drawn one but for the cusps). ``ValueError`` when neither works."""
+    from build123d import Face
+
+    try:
+        return [wire.offset_2d(grow)]
+    except (RuntimeError, ValueError):     # (OCCT: "Unexpected result type")
+        pass
+    try:
+        region = Face(wire)
+        pieces = [f for e in wire.edges() for f in _edge_band(e, abs(grow))]
+        got = region.fuse(*pieces) if grow > 0 else region.cut(*pieces)
+        shapes = got if isinstance(got, list) else [got]
+        faces = [f for sh in shapes for f in sh.clean().faces() if f.area > 1e-4]
+        if grow > 0:            # (a grown region stays one: its outline)
+            return [max(faces, key=lambda f: f.area).outer_wire()]
+        return [f.outer_wire() for f in faces]
+    except Exception as e:      # noqa: BLE001 - OCCT's own failures, as the layout's error
+        raise ValueError(f"no {grow:+g} mm kerf offset of a {len(wire.edges())}-edge "
+                         f"contour ({e})") from None
+
+
+def _edge_band(edge, g: float):
+    """The region within ``g`` of a line or arc ``edge`` (in a plane z = const), as faces:
+    a rectangle or an annular sector, and a disc at each end (built from their own exact
+    lines and arcs: OCCT's offset of a near-full arc alone fails)."""
+    from build123d import Edge, Face, GeomType, Plane, Vector, Wire
+
+    p0, p1 = edge.position_at(0), edge.position_at(1)
+    z = p0.Z
+    discs = [Face(Wire([Edge.make_circle(g, Plane(origin=(q.X, q.Y, z)))])) for q in (p0, p1)]
+    if edge.geom_type == GeomType.LINE:
+        d = (p1 - p0).normalized()
+        n = Vector(-d.Y, d.X, 0) * g
+        body = Face(Wire.make_polygon([p0 + n, p1 + n, p1 - n, p0 - n], close=True))
+    elif edge.geom_type == GeomType.CIRCLE:
+        c, r = edge.arc_center, edge.radius
+        a0 = math.atan2(p0.Y - c.Y, p0.X - c.X)
+        pm = edge.position_at(0.5)
+        am = math.atan2(pm.Y - c.Y, pm.X - c.X)
+        a1 = math.atan2(p1.Y - c.Y, p1.X - c.X)
+        ccw = (am - a0) % (2 * math.pi) < (a1 - a0) % (2 * math.pi) or abs(
+            (a1 - a0) % (2 * math.pi)) < 1e-9
+        lo, hi = (a0, a1) if ccw else (a1, a0)
+        sweep = (hi - lo) % (2 * math.pi) or 2 * math.pi
+        plane = Plane(origin=(c.X, c.Y, z))
+        ro, ri = r + g, max(r - g, 0.0)
+        deg0, deg1 = math.degrees(lo), math.degrees(lo + sweep)
+        outer = Edge.make_circle(ro, plane, start_angle=deg0, end_angle=deg1)
+        if ri > 1e-6:
+            inner = Edge.make_circle(ri, plane, start_angle=deg0, end_angle=deg1)
+            ends = [Edge.make_line(outer.position_at(0), inner.position_at(0)),
+                    Edge.make_line(outer.position_at(1), inner.position_at(1))]
+            body = Face(Wire([outer, ends[1], inner.reversed(), ends[0].reversed()]))
+        else:
+            ctr = Vector(c.X, c.Y, z)
+            body = Face(Wire([Edge.make_line(ctr, outer.position_at(0)), outer,
+                              Edge.make_line(outer.position_at(1), ctr)]))
+    else:
+        raise ValueError(f"a {edge.geom_type} edge (lines and arcs only)")
+    return [body, *discs]
+
+
 def _emit(msp, wire, offset_xy, grow: float):
     """Emit a wire shifted by ``offset_xy``, offset by ``grow`` (kerf compensation): a
     CIRCLE for a round hole, else one closed LWPOLYLINE of exact lines and arcs."""
@@ -234,12 +304,11 @@ def _emit(msp, wire, offset_xy, grow: float):
     if circle is not None:
         (cx, cy), r = circle
         return msp.add_circle((cx + ox, cy + oy), r + grow, dxfattribs={"layer": _CUT_LAYER})
-    if abs(grow) > 1e-9:
-        wire = wire.offset_2d(grow)     # kind "arc": an offset line or arc stays one
-    return msp.add_lwpolyline(
-        [(x + ox, y + oy, b) for x, y, b in wire_vertices(wire)], format="xyb",
+    wires = offset_wires(wire, grow) if abs(grow) > 1e-9 else [wire]
+    return [msp.add_lwpolyline(
+        [(x + ox, y + oy, b) for x, y, b in wire_vertices(w)], format="xyb",
         close=True, dxfattribs={"layer": _CUT_LAYER},
-    )
+    ) for w in wires][0]
 
 
 # ---------------------------------------------------------------------------
