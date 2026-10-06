@@ -406,6 +406,23 @@ def test_parts_expose_live_solids_and_recheck_passes():
     assert not h.edited
 
 
+def test_attach_build_takes_the_parts_props_it_is_handed_and_adds_what_it_measures(
+        monkeypatch):
+    _api.seed(_api.HOECKEN_CFG)
+    mech = _api.fabricated(_api.HOECKEN_CFG)
+    props: dict = {}
+    first = api.attach_build(api.resolve(_api.HOECKEN, store=None), _api.own(mech), 1.0,
+                             props=props)
+    assert set(props) == {b.name for b in mech.bodies if b.part is not None}
+    monkeypatch.setattr(api, "part_props", lambda part: pytest.fail("measured again"))
+    d = api.resolve(_api.HOECKEN, store=None)
+    again = api.attach_build(d, _api.own(mech), 1.0, props=props)
+    from spiderpig.design import jsonable
+
+    assert jsonable(again) | {"seconds": 0} == jsonable(first) | {"seconds": 0}
+    assert d.parts["b1"].volume_mm3 == props["b1"].volume
+
+
 @pytest.mark.slow
 def test_parts_expose_live_solids_and_recheck_passes_on_the_quad(quad, robot):
     rep = api.attach_build(quad, robot("quad", 1.0), 1.0)
