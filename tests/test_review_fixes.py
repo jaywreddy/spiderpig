@@ -869,3 +869,46 @@ def test_verify_keeps_an_edited_handles_crank_angle_and_edits():
     assert d.parts[name].volume_mm3 == pytest.approx(edited)
     assert api.build(d, 1.0).ok
     assert not d.edited                                 # a fresh build: the edits are gone
+
+
+# -- round 14 ----------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_an_accepted_edit_is_graded_and_forgotten_as_itself(tmp_path):
+    import numpy as np
+    from build123d import Cylinder
+
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
+    assert api.build(d).ok
+    plate = d.parts["crank_plate2"]
+    bb = plate.solid.bounding_box()
+    c = np.array([bb.center().X, bb.center().Y])
+    hole = Cylinder(0.25, 50).moved(plate.locate(c + [0.0, 0.0]))
+    plate.solid = plate.solid - hole                     # a 0.5 mm hole: under the minimum
+    assert api.recheck(d).ok
+    assert not d.reports["build"].cut_rules["ok"]       # graded as edited, not as built
+    assert api.recheck(d).ok                            # a second recheck of the edits:
+    assert store.read_report(d.id, "recheck") is None   # still not the store's
+    api.verify(d, "quick")
+    assert api.build(d, 1.0, force=True).ok             # a fresh build: the edits gone
+    assert "verify" not in d.reports                    # and what was verified of them
+
+
+def test_a_recheck_that_raises_leaves_the_built_parts_in_the_mechanism():
+    from types import SimpleNamespace
+
+    from spiderpig import api
+
+    built = object()
+    body = SimpleNamespace(part=None)
+    mech = SimpleNamespace(body=lambda n: body)
+    part = SimpleNamespace(solid="not a shape", built=built, edited=True)
+    d = SimpleNamespace(mech=mech, parts={"b1": part}, side=None)
+    with pytest.raises(TypeError):
+        api.recheck(d)
+    assert body.part is None                            # nothing taken before the check

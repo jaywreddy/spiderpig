@@ -109,14 +109,16 @@ ASSEMBLY: tuple[str, ...] = (
     "caps it, and its printed sleeve is a light press on the hex, pushed down onto its "
     "lower web with that end's washer drawn up against the web, so the sleeve, caught "
     "between the two plates, carries the standoff (BoltCrank.capped_press).",
-    "3. Each side's inner-plate unit, loose on the bench: the servo on the inner plate "
+    "3. The left side's inner-plate unit, loose on the bench (the right side's is put "
+    "together on the robot, step 6: its tie chains go onto the studs before its inner "
+    "plate): the servo on the inner plate "
     "(its two far front screws from the leg side, heads under the plate: the near holes "
     "would leave the plate 1 mm of web to the horn's hole, Params.servo_screw_web_t; the "
     "rear idler horn stays in the box), the horn on the spline "
     "and its centre screw, the hub plate on the horn (the horn screws up through it from "
-    "below, with their shims), the deck rail (its two screws from the leg side), and on "
-    "the left side only, the frame ties' M3 standoff chains (shims at the plate, the M3 "
-    "button head up through the plate from the leg side, threadlocker).",
+    "below, with their shims), the deck rail (its two screws from the leg side), and the "
+    "frame ties' M3 standoff chains (shims at the plate, the M3 button head up through "
+    "the plate from the leg side, threadlocker).",
     "4. Left side: the unit onto its leg stack, the hub plate's hex pocket over the "
     "hub chain's standoff (turn the crank to line it up) and the pillars' tops into the "
     "inner plate; each pillar's inner screw from the servo bay (a ball-end key).",

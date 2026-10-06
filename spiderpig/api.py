@@ -1583,7 +1583,9 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         )
         assert abs(parts[b.name].mass_g - mass) < 1e-9
     design.parts = parts
-    design.edited = False           # (the parts as built: any accepted edit is gone)
+    if design.edited:       # the parts as built: the accepted edits are gone, and with them
+        _forget(design, "export", "verify")       # what was exported and verified of them
+    design.edited = False
     counts = {}
     for p in parts.values():
         counts[p.fab] = counts.get(p.fab, 0) + 1
@@ -1597,6 +1599,18 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
         cut_rules=cut_rules_of(mech, cfg.sheet),
     )
     return _finish(design, "build", rep, t0, cached=cached)
+
+
+def _envelope(mech) -> tuple[float, float, float] | None:
+    """The mechanism's extent (mm) over its parts as placed, as a build reports it."""
+    lo, hi = np.full(3, math.inf), np.full(3, -math.inf)
+    for b in mech.bodies:
+        if b.part is None:
+            continue
+        bb = b.placed_part().bounding_box()
+        lo = np.minimum(lo, [bb.min.X, bb.min.Y, bb.min.Z])
+        hi = np.maximum(hi, [bb.max.X, bb.max.Y, bb.max.Z])
+    return tuple(float(v) for v in (hi - lo)) if np.isfinite(lo).all() else None
 
 
 def cut_rules_of(mech, default_sheet: str) -> dict:
@@ -1700,12 +1714,48 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
     from build123d import Shape
 
     rep = RecheckReport(edited=[n for n, p in design.parts.items() if p.edited])
-    mech, side = design.mech, design.side
-    for n, part in design.parts.items():       # the mechanism mirrors the parts as they are
+    mech = design.mech
+    for n, part in design.parts.items():       # every solid a shape before any is taken
         if not isinstance(part.solid, Shape):
             raise TypeError(f"parts[{n!r}].solid must be a build123d Shape (a Part, Solid or "
                             f"Compound), got {type(part.solid).__name__}")
+    for n, part in design.parts.items():       # the mechanism mirrors the parts as they are
         mech.body(n).part = part.solid
+    try:
+        _recheck_parts(design, rep, all_parts)
+    except BaseException:
+        # nothing accepted: the mechanism (what export and verify read) back to the parts
+        # last accepted
+        for n, part in design.parts.items():
+            mech.body(n).part = part.built
+        raise
+    if not rep.failures and rep.edited:
+        for n in rep.edited:
+            design.parts[n].built = design.parts[n].solid
+        br = design.reports.get("build")
+        if br is not None:      # the handle's build now describes the edited parts
+            br.mass_g = round(sum(p.mass_g for p in design.parts.values()), 2)
+            br.parts = [p.to_dict() for p in design.parts.values()]
+            br.envelope_mm = _envelope(mech)
+            br.cut_rules = cut_rules_of(mech, design.config.sheet)
+        # what was written or checked from the parts before the edit (the cut files, the
+        # verify's rows) no longer describes them: exported and verified again on asking,
+        # and kept off the store (whose build is the unedited design: a reload's)
+        design.edited = True
+        _forget(design, "export", "verify")
+    elif rep.failures:
+        # rejected: the mechanism (what an export or a verify reads) goes back to the parts
+        # last accepted; the rejected solids stay only on the parts, to be edited again
+        for n, part in design.parts.items():
+            mech.body(n).part = part.built
+    # a recheck of handle-local edits says nothing about the store's (unedited) build
+    return _finish(design, "recheck", rep, t0, write=not (rep.edited or design.edited))
+
+
+def _recheck_parts(design: Design, rep: RecheckReport, all_parts: bool) -> None:
+    """:func:`recheck`'s checks over the mechanism as it now is: no-op edits, solids,
+    clashes, each edited part inside its group's claims; the failures on ``rep``."""
+    mech, side = design.mech, design.side
     for n in rep.edited:      # an edit that missed its part (a cut placed in the wrong frame)
         part = design.parts[n]
         built = float(part_props(part.built).volume)
@@ -1750,25 +1800,6 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
                       for c in rep.contract),
             culprits=[{"body": c["part"], "group": c["group"]} for c in rep.contract],
             numbers={"mm3": max(c["mm3_outside"] for c in rep.contract)}))
-    if not rep.failures and rep.edited:
-        for n in rep.edited:
-            design.parts[n].built = design.parts[n].solid
-        br = design.reports.get("build")
-        if br is not None:      # the handle's build now describes the edited parts
-            br.mass_g = round(sum(p.mass_g for p in design.parts.values()), 2)
-            br.parts = [p.to_dict() for p in design.parts.values()]
-        # what was written or checked from the parts before the edit (the cut files, the
-        # verify's rows) no longer describes them: exported and verified again on asking,
-        # and kept off the store (whose build is the unedited design: a reload's)
-        design.edited = True
-        _forget(design, "export", "verify")
-    elif rep.failures:
-        # rejected: the mechanism (what an export or a verify reads) goes back to the parts
-        # last accepted; the rejected solids stay only on the parts, to be edited again
-        for n, part in design.parts.items():
-            mech.body(n).part = part.built
-    # a recheck of handle-local edits says nothing about the store's (unedited) build
-    return _finish(design, "recheck", rep, t0, write=not rep.edited)
 
 
 EDITED_STAGES = ("export", "verify")
