@@ -409,3 +409,20 @@ def test_the_nominal_mass_is_within_two_percent_of_the_built_robot():
         fab = sum(g for g, _ in walk.body_masses(fabricate(template_for(cfg), cfg, 1.0),
                                                  cfg).values())
         assert abs(nom - fab) / fab < 0.02, (cfg.linkage, nom, fab)
+
+
+def test_the_protection_board_finds_its_place_under_the_deck_or_says_it_has_none():
+    from spiderpig.construction.base import ConstructionError
+    from spiderpig.construction.deck import _bms_place
+
+    bms = {"length": 46.7, "width": 23.0}
+    strap = (-40.2, -30.2, -12.1, 12.1)
+    # the STS3215's bay: across it, where it always sat
+    assert _bms_place(bms, -6.5, 25.07, -68.0, [strap]) == (23.0, 23.35, -6.5, 0.0)
+    # a narrower bay: turned along it, clear of a nut in its way
+    nut = (-20.0, -15.0, -12.0, -6.0)
+    b_x, b_z, x1, z = _bms_place(bms, -6.5, 15.3, -68.0, [nut])
+    assert (b_x, b_z) == (46.7, 11.5)
+    assert z - b_z >= -6.0 or x1 - b_x >= -15.0 or x1 <= -20.0
+    with pytest.raises(ConstructionError):
+        _bms_place(bms, -6.5, 15.3, -68.0, [strap])      # (the strap's run blocks it)

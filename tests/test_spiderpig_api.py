@@ -1038,7 +1038,7 @@ def test_the_mass_estimate_says_what_it_counts_and_the_measured_row_lists_groups
     # the default quad + its deck: 0.080 in frame, 0.100 in 6061 crank (the hex crankpins'
     # pockets; 975 g on 0.063 in) and 0.090 in centre plates (the thinnest per part,
     # 2026-10-04; 1088 g on 0.125 in aluminium)
-    assert b["total"] == pytest.approx(1009.6, rel=0.02)
+    assert b["total"] == pytest.approx(988.8, rel=0.02)   # (988.8 g: parts in their material)
     assert (b["links"] + b["servos"] + b["plates"] + b["printed"] + b["deck"]
             == pytest.approx(b["total"]))
     row = next(r for r in api.verify(quad, "quick").rows if r.requirement == "size.mass_g")
