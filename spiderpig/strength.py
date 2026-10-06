@@ -308,7 +308,7 @@ def rider_hole(config: BuildConfig) -> float:
     if hasattr(crank, "for_sheet"):
         crank = crank.for_sheet(config.crank_sheet)
     rider = getattr(crank, "rider_d", None)
-    d = rider() if callable(rider) else config.params.crankpin_d
+    d = rider(config.params) if callable(rider) else config.params.crankpin_d
     return config.params.hole(d)
 
 

@@ -113,6 +113,7 @@ class PhaseLock:
         self.ref = np.zeros(2)          # the commanded crank travel, rad
         self.integral = 0.0
         self.error = 0.0                # the last side phase error, rad
+        self.home = 0.0                 # the whole revolution the sides are locked at, rad
 
     @property
     def on(self) -> bool:
@@ -120,7 +121,7 @@ class PhaseLock:
 
     def reset(self) -> None:
         self.ref[:] = 0.0
-        self.integral = self.error = 0.0
+        self.integral = self.error = self.home = 0.0
 
     def ctrl(self, cmd: np.ndarray, phi: np.ndarray, dt: float) -> np.ndarray:
         """The drives' ``ctrl`` for the commanded speeds ``cmd`` at crank travel ``phi``
@@ -132,11 +133,16 @@ class PhaseLock:
         d = self.ref[0] - self.ref[1]
         if math.isfinite(self.max_offset):
             if abs(u[0] - u[1]) <= self.AGREE * self.vmax:      # agreeing: re-lock
-                home = round(d / (2 * math.pi)) * 2 * math.pi
+                home = self.home = round(d / (2 * math.pi)) * 2 * math.pi
                 d = home + math.copysign(min(abs(d - home), self.relock_rate * dt), d - home) \
                     if abs(d - home) > self.relock_rate * dt else home
             elif u[0] * u[1] >= 0.0:                          # a differential while walking
-                d = max(-self.max_offset, min(self.max_offset, d))
+                # about the whole revolution the sides were locked at (after a spin, not
+                # zero: clipping to zero would unwind every revolution the spin made; held,
+                # not re-rounded, so an offset up to half a turn and more stays one)
+                d = self.home + max(-self.max_offset, min(self.max_offset, d - self.home))
+            else:                                             # a spin: free, and re-homed
+                self.home = round(d / (2 * math.pi)) * 2 * math.pi
             self.ref[1] = self.ref[0] - d
         self.error = err = float((phi[0] - phi[1]) - d)
         self.integral = max(-1.0, min(1.0, self.integral + err * dt))

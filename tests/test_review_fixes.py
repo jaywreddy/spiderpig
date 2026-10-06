@@ -615,3 +615,63 @@ def test_the_anchor_both_plates_fix_is_the_two_plate_beam():
     row = strength.joint_strength("pillar:J2_leg0", cant, loads)
     (fix,) = [f for f in strength.fixes(row, cant, loads, cfg) if "both frame plates" in f]
     assert f"jam SF {both['jam']['safety']:g}" in fix
+
+
+# -- round 10 ----------------------------------------------------------------------------
+
+
+def test_every_crank_states_the_bore_its_riders_are_cut_to():
+    from spiderpig import strength
+    from spiderpig.config import BuildConfig
+
+    assert strength.rider_hole(BuildConfig(crank="keyed")) == pytest.approx(8.85)
+    assert strength.rider_hole(BuildConfig(crank="keyed_float")) == pytest.approx(8.85)
+    assert strength.rider_hole(BuildConfig(crank="printed")) == pytest.approx(6.35)
+    assert strength.rider_hole(BuildConfig()) == pytest.approx(8.85)          # the hex pin
+
+
+def test_a_range_target_is_scored_against_the_bound_it_misses():
+    from spiderpig.spec import Target
+
+    t = Target(min=100.0, max=1000.0)
+    assert t.scale_at(66.9) == 100.0
+    assert t.scale_at(1200.0) == 1000.0
+    assert Target(value=50.0, tol=1.0).scale_at(10.0) == 50.0
+
+
+def test_the_phase_lock_steers_about_the_revolution_it_is_locked_at():
+    import math
+
+    import numpy as np
+
+    from spiderpig.sim.run import PhaseLock
+
+    lock = PhaseLock(5.0, max_offset=0.3)
+    lock.ref[:] = [6 * math.pi + 10.0, 10.0]          # three revolutions apart, after a spin
+    lock.ctrl(np.array([5.0, 5.0]), np.array([6 * math.pi + 10.0, 10.0]), 0.01)   # walking
+    lock.ctrl(np.array([5.0, 4.5]), np.array([6 * math.pi + 10.0, 10.0]), 0.01)   # steering
+    d = lock.ref[0] - lock.ref[1]
+    assert abs(d - 6 * math.pi) <= 0.3 + 1e-9         # not unwound to zero
+
+
+def test_a_construction_change_is_patched_under_constructions():
+    from spiderpig import linkage
+    from spiderpig.failure import Recommendation
+    from spiderpig.stack import Recommendation as EngineRec
+
+    rec = EngineRec((("crank", "bolt", "keyed"),), why="w")
+    got = Recommendation.from_engine(rec, linkage.get("strider"))    # (its ``crank`` param)
+    assert got.patch == {"constructions": {"crank": "keyed"}}
+
+
+@pytest.mark.slow
+def test_a_value_target_under_the_scale_is_met_from_the_band():
+    from spiderpig import api
+
+    st = api.measure_config(api.resolve({"kind": "mechanism",
+                                         "linkage": {"key": "hoecken"}}, None).config)
+    stroke = st["motion.stroke_mm"]
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                     "motion": {"stroke_mm": {"value": round(0.8 * stroke, 1),
+                                              "tol": round(0.016 * stroke, 2)}}}, None)
+    assert api.advise(d).recommendations

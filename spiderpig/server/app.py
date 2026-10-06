@@ -704,8 +704,16 @@ async def _stream(websocket: WebSocket, sim, generation: int) -> None:
 
     async def receive() -> None:
         while True:
+            msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                raise WebSocketDisconnect(msg.get("code", 1000))
+            text = msg.get("text")
+            if text is None:                # a binary frame: say so, carry on
+                await websocket.send_json({"error": "commands are JSON text frames, not "
+                                                    "binary ones"})
+                continue
             try:
-                _apply(sim, await websocket.receive_json())
+                _apply(sim, json.loads(text))
             except ValueError as e:         # bad JSON, bad shape, NaN: say so, carry on
                 await websocket.send_json({"error": str(e)})
 

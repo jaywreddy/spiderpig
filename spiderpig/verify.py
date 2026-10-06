@@ -143,7 +143,7 @@ def target_row(design: Design, f: TargetField, value: float | None, source: str,
         return Row(f.path, source, float(value), None, True, tier, detail=detail, unit=f.unit)
     is_hard = effective_hard(t, f) if hard is None else hard
     met, miss = t.check(float(value))
-    score = None if is_hard else (1.0 if met else max(0.0, 1.0 - miss / t.scale))
+    score = None if is_hard else (1.0 if met else max(0.0, 1.0 - miss / t.scale_at(float(value))))
     return Row(f.path, source, float(value), t.describe(), met, tier, is_hard, detail, score,
                t.weight, f.unit)
 
@@ -629,8 +629,8 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
                            + ([cfg.crank_sheet] if crank_plates else []))
     lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
-    if cfg.robot:
-        lines += [("m3_heat_set_insert", 4)]      # the deck's (the centre plates: no adhesive)
+    # (not the deck's heat-set inserts: a robot whose deck doesn't fit buys none, and a
+    # floor is what every build of the design buys)
     if cfg.pillar in GLUED_PILLARS or cfg.pin in GLUED_PINS:
         lines.append(("ca_glue", 1))
     if cfg.pin in EPOXY_PINS:
@@ -795,7 +795,8 @@ def _done(design: Design, rep: VerifyReport, t0: float) -> VerifyReport:
     rep.ok = not rep.failures and all(r.passed for r in rep.rows if r.hard)
     soft = [r for r in rep.rows if r.score is not None and r.target is not None]
     if soft:
-        w = sum(r.weight for r in soft) or 1.0
-        rep.score = round(sum(r.score * r.weight for r in soft) / w, 4)
+        w = sum(r.weight for r in soft)
+        # (every soft target weighted 0: none counts, nothing is missed by weight)
+        rep.score = round(sum(r.score * r.weight for r in soft) / w, 4) if w > 0 else 1.0
     rep.seconds = round(time.time() - t0, 3)
     return api._commit(design, "verify", rep, op=f"verify:{rep.level}")

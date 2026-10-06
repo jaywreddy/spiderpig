@@ -82,11 +82,22 @@ class Target:
 
     @property
     def scale(self) -> float:
-        """The magnitude a miss is scored against (the bound it misses; 1 for a zero bound)."""
+        """The magnitude a miss is scored against when the value isn't known (the value,
+        else a bound; 1 for a zero bound): :meth:`scale_at` is the one a miss uses."""
         for v in (self.value, self.max, self.min):
             if v is not None and v != 0:
                 return abs(v)
         return 1.0
+
+    def scale_at(self, x: float) -> float:
+        """The magnitude ``x``'s miss is scored against: the bound it misses (a range's min
+        when under it, its max when over), else :attr:`scale`; 1 for a zero bound."""
+        if self.value is None:
+            if self.min is not None and x < self.min:
+                return abs(self.min) or 1.0
+            if self.max is not None and x > self.max:
+                return abs(self.max) or 1.0
+        return self.scale
 
     def describe(self) -> str:
         parts = []
