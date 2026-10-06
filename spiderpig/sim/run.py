@@ -39,7 +39,6 @@ from spiderpig.sim.mjcf import (
     crank_sign,
     load_model,
     motor_line,
-    robot_model,
 )
 
 Controls = Callable[[float], Sequence[float]] | Sequence
@@ -255,6 +254,7 @@ def simulate(
     eq_ids = np.flatnonzero(model.eq_type == mujoco.mjtEq.mjEQ_CONNECT)
     loops = eq_ids.size > 0
     loop_names = [lp["name"] for lp in meta.get("loops", [])] or [f"eq{i}" for i in eq_ids]
+    gaps = _LoopGaps(model)
     if lock is None:
         lock = phase_lock(params, vmax)
     elif lock is False:
@@ -300,14 +300,13 @@ def simulate(
         out["torque"][row] = data.actuator_force[act]
         out["base_acc"][row] = data.qacc[base_dof:base_dof + 3]
         if loops:
-            out["loop_error"][row] = loop_errors(model, data).max()
+            out["loop_error"][row] = gaps(model, data).max()
             out["loop_force"][row] = loop_forces(data, eq_ids)
-        for i in range(data.ncon):
-            c = data.contact[i]
-            if floor not in (c.geom1, c.geom2):
-                continue
-            g = c.geom2 if c.geom1 == floor else c.geom1
-            out["penetration"][row] = max(out["penetration"][row], -c.dist)
+        con = data.contact                  # the floor's contacts, from the arrays
+        g1, g2 = con.geom1[:data.ncon], con.geom2[:data.ncon]
+        for i in np.flatnonzero((g1 == floor) | (g2 == floor)).tolist():
+            g = int(g2[i] if g1[i] == floor else g1[i])
+            out["penetration"][row] = max(out["penetration"][row], -con.dist[i])
             k = foot_geom.get(g)
             if k is None:
                 if model.geom_bodyid[g] not in foot_bodies:
@@ -316,8 +315,8 @@ def simulate(
             mujoco.mj_contactForce(model, data, i, f6)
             b = model.geom_bodyid[g]
             mujoco.mj_objectVelocity(model, data, mujoco.mjtObj.mjOBJ_XBODY, b, v6, 0)
-            v = v6[3:] + np.cross(v6[:3], c.pos - data.xpos[b])
-            nrm = c.frame[:3]
+            v = v6[3:] + _cross(v6[:3], con.pos[i] - data.xpos[b])
+            nrm = con.frame[i, :3]
             slip = float(np.linalg.norm(v - (v @ nrm) * nrm))
             out["foot_contact"][row, k] = True
             out["foot_force"][row, k] += f6[0]
@@ -740,31 +739,30 @@ def kinematic_qpos(config: BuildConfig | None, t: float, params: SimParams | Non
 
     config = config or BuildConfig()
     model, meta = load_model(config, params)
-    rm = robot_model(config, (params or SimParams()).printed_fill,
-                     (params or SimParams()).hull_tolerance)
+    bodies = meta["bodies"]         # the model's bodies, parents first (its kinematic tree)
     tmpl = template_for(config)
     jw = tmpl.sample(np.array([T_REF, float(t)])).joint_world
 
     def angle(mj: str) -> float:
         if mj == "base":
             return 0.0
-        mb = rm.bodies[mj]
-        if mb.kind == "crank":
+        mb = bodies[mj]
+        if mb["kind"] == "crank":
             return float(t) - T_REF
-        kin = mb.kinematic[0].split(".", 1)[1]      # "L.b1_leg0" -> "b1_leg0" (side template)
+        kin = mb["kinematic"][0].split(".", 1)[1]   # "L.b1_leg0" -> "b1_leg0" (side template)
         j = [b for b in tmpl.bodies if b.name == kin][0].joints
         d = jw[kin][j[1].name] - jw[kin][j[0].name]
         a = np.arctan2(d[:, 1], d[:, 0])
         return float(a[1] - a[0])
 
     qpos = model.qpos0.copy()
-    for name, mb in rm.bodies.items():
+    for name, mb in bodies.items():
         if name == "base":
             continue
-        joint = f"{mb.side}.crank" if mb.kind == "crank" else name
+        joint = f"{mb['side']}.crank" if mb["kind"] == "crank" else name
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint)
-        rel = angle(name) - angle(mb.parent)
-        if mb.kind == "crank":
+        rel = angle(name) - angle(mb["parent"])
+        if mb["kind"] == "crank":
             qpos[model.jnt_qposadr[jid]] = rel * meta["crank_sign"]
         else:
             qpos[model.jnt_qposadr[jid]] = math.remainder(rel, 2 * math.pi)
@@ -825,23 +823,49 @@ def loop_forces(data, eq_ids: np.ndarray) -> np.ndarray:
     rows = np.flatnonzero(data.efc_type[:n] == mujoco.mjtConstraint.mjCNSTR_EQUALITY)
     ids, force = data.efc_id[rows], data.efc_force[rows]
     out = np.zeros(eq_ids.size)
-    for k, e in enumerate(eq_ids):
-        f = force[ids == e]
-        if f.size >= 3:
-            out[k] = math.hypot(f[0], f[2])
-        elif f.size:
-            out[k] = float(np.linalg.norm(f))
+    if not ids.size:
+        return out
+    # each equality's rows in solver order (a stable sort by id), found by bisection: what
+    # ``force[ids == e]`` gave, without a mask per equality per step
+    order = np.argsort(ids, kind="stable")
+    ids, force = ids[order], force[order]
+    lo = np.searchsorted(ids, eq_ids, side="left").tolist()
+    hi = np.searchsorted(ids, eq_ids, side="right").tolist()
+    f = force.tolist()
+    for k, (a, b) in enumerate(zip(lo, hi, strict=True)):
+        if b - a >= 3:
+            out[k] = math.hypot(f[a], f[a + 2])
+        elif b > a:
+            out[k] = float(np.linalg.norm(force[a:b]))
     return out
+
+
+def _cross(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """``np.cross`` of two 3-vectors, the same products and differences in the same order
+    (bit for bit), without its axis bookkeeping (a third of a recorded step's time)."""
+    a0, a1, a2 = a.tolist()
+    b0, b1, b2 = b.tolist()
+    return np.array([a1 * b2 - a2 * b1, a2 * b0 - a0 * b2, a0 * b1 - a1 * b0])
+
+
+class _LoopGaps:
+    """:func:`loop_errors` of one model, its equalities looked up once."""
+
+    def __init__(self, model) -> None:
+        import mujoco
+
+        self.eq = np.flatnonzero(model.eq_type == mujoco.mjtEq.mjEQ_CONNECT)
+        self.b1, self.b2 = model.eq_obj1id[self.eq], model.eq_obj2id[self.eq]
+
+    def __call__(self, model, data) -> np.ndarray:
+        eq, b1, b2 = self.eq, self.b1, self.b2
+        p1 = data.xpos[b1] + np.einsum("nij,nj->ni", data.xmat[b1].reshape(-1, 3, 3),
+                                       model.eq_data[eq, 0:3])
+        p2 = data.xpos[b2] + np.einsum("nij,nj->ni", data.xmat[b2].reshape(-1, 3, 3),
+                                       model.eq_data[eq, 3:6])
+        return np.linalg.norm(p1 - p2, axis=1)
 
 
 def loop_errors(model, data) -> np.ndarray:
     """Gap (m) of every ``connect`` equality in the current ``data`` (after kinematics)."""
-    import mujoco
-
-    eq = np.flatnonzero(model.eq_type == mujoco.mjtEq.mjEQ_CONNECT)
-    b1, b2 = model.eq_obj1id[eq], model.eq_obj2id[eq]
-    p1 = data.xpos[b1] + np.einsum("nij,nj->ni", data.xmat[b1].reshape(-1, 3, 3),
-                                   model.eq_data[eq, 0:3])
-    p2 = data.xpos[b2] + np.einsum("nij,nj->ni", data.xmat[b2].reshape(-1, 3, 3),
-                                   model.eq_data[eq, 3:6])
-    return np.linalg.norm(p1 - p2, axis=1)
+    return _LoopGaps(model)(model, data)
