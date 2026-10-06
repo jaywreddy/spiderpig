@@ -651,6 +651,9 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     if cfg.pillar in SPLICED_PILLARS:
         locks.add("threadlocker_243")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
+    from spiderpig.hardware.bom import ON_HAND
+
+    lines = [(k, q) for k, q in lines if k not in ON_HAND]    # the shop's supplies
     total, priced, unpriced = 0.0, [], []
     for key, qty in lines:
         item = catalog_item(key)

@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--side-only", action="store_true",
                     help="with the build options: one side (no second side, no chassis)")
     ap.set_defaults(linkage=None, module=None, servo=None, pillar=None, pin=None, crank=None,
-                    sheet=None)
+                    sheet=None, frame_sheet=None, heads=None)
     ap.add_argument("--formats", nargs="+", choices=OUTPUTS, metavar="FORMAT",
                     help=f"what to write: {', '.join(OUTPUTS)} (default: the spec's outputs)")
     ap.add_argument("--out", type=Path, default=None,

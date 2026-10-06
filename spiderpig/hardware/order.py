@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from spiderpig.hardware.bom import ON_HAND  # shop supplies: listed, not ordered or totalled
 from spiderpig.hardware.catalog import get
 
 SERVICE_ORDER_URL = {
@@ -26,9 +27,6 @@ SERVICE_NOTES = {
 }
 
 
-ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222",
-           "threadlocker_243")
-"""Shop supplies taken as on hand (the user's, 2026-10-05): listed, not ordered or totalled."""
 
 
 def estimate(row) -> tuple[float, str] | None:
@@ -52,11 +50,19 @@ def _money(v: float | None) -> str:
 def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: str = "",
                    build_dir: str = ".") -> str:
     """The shopping list of a build: carts per vendor, uploads per service, prints."""
-    services = {r["sheet"] for r in laser_rows}
+    from spiderpig.layout import sheet_service
+
+    # a sheet a service cuts is its upload (the service sells the stock); one no service
+    # cuts (plywood: cut it yourself) is bought like any part
+    services = {r["sheet"] for r in laser_rows if sheet_service(r["sheet"])}
     carts: dict[str, list] = defaultdict(list)
+    shared: dict[str, list] = defaultdict(list)     # a pack's lead row -> the rows it covers
     for r in bom.purchased:
-        if r.key in services or r.same_pack_as or r.key in ON_HAND:
-            continue                  # a cut service's sheet is its upload; a shared pack once
+        if r.same_pack_as:
+            shared[r.same_pack_as].append(r)
+            continue
+        if r.key in services or r.key in ON_HAND:
+            continue
         carts[r.vendor or "(no vendor)"].append(r)
     on_hand = [r for r in bom.purchased if r.key in ON_HAND]
     lines = [f"# Order list{': ' + title if title else ''}", "",
@@ -81,6 +87,8 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
         for r in sorted(rows, key=lambda r: r.name):
             buy = f"{r.packs} × {r.pack_qty}" if r.pack_qty > 1 else f"{r.packs}"
             need = f"{r.qty:g}" if r.qty >= 1 else f"{r.qty:.3g} of one"
+            also = "".join(f"; also {o.name}: need {o.qty:g}" for o in shared.get(r.name, ()))
+            name = r.name + (f" (the same pack{also})" if also else "")
             est = _money(r.cost_usd)
             if r.cost_usd is None:
                 unpriced += 1
@@ -88,7 +96,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                     estimated += got[0]
                     est = f"≈{_money(got[0])} ({got[1]})"
             link = f"[product page]({r.url})" + ("" if r.verified else " *page not fetched*")
-            lines.append(f"| {buy} | {r.name} | {r.sku} | {need} | {est} | {link} |")
+            lines.append(f"| {buy} | {name} | {r.sku} | {need} | {est} | {link} |")
         lines.append("")
     lines += [f"Purchases: **{_money(total)}** at the listed pack prices ({unpriced} line(s) "
               "unpriced: the vendor shows its price only in the cart or to an account"
@@ -107,7 +115,9 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             by_service[r["service"]].append(r)
         for service, rows in by_service.items():
             url = SERVICE_ORDER_URL.get(service, "")
-            lines += [f"### {service}" + (f": [upload and quote]({url})" if url else ""), ""]
+            head = service if url or service not in ("", "any") else (
+                "your own laser (or any service): the sheet stock is in the carts above")
+            lines += [f"### {head}" + (f": [upload and quote]({url})" if url else ""), ""]
             if service in SERVICE_NOTES:
                 lines += [SERVICE_NOTES[service] + ".", ""]
             lines += ["| qty | file | material | thickness | size mm | makes |",

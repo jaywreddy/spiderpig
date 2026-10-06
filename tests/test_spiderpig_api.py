@@ -14,6 +14,7 @@ from build123d import Box, Location
 from spiderpig import api
 from spiderpig.config import BuildConfig
 from spiderpig.failure import Failure, apply_patch, parse_blocker
+from spiderpig.hardware.bom import ON_HAND
 from spiderpig.spec import TARGET_FIELDS, Spec, SpecErrors, Target, spec_schema, validate
 
 # The numbers below are the keyed crank's and the printed pillars' (the defaults before the
@@ -776,9 +777,9 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     al, al6061 = 18.0, 32.0
     # the sourcing of 2026-10-05 (hardware.sources): PLA $29.99, the Chicago barrels' J-B Weld
     # $7.99, Loctite 222 $21.05 priced; McMaster's nut shows its price only on its page
-    epoxy, lock222 = 7.99, 21.05
-    assert total == pytest.approx(servo + 29.99 + 10.99 + al + al6061 + glue + epoxy + lock222,
-                                  abs=0.01)
+    # (the PLA and the Loctite are on hand since round 4, bom.ON_HAND: not in the floor)
+    epoxy = 7.99
+    assert total == pytest.approx(servo + 10.99 + al + al6061 + glue + epoxy, abs=0.01)
     assert unpriced == ["M3 hex nut (ISO 4032)",
                         "M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F"]
     assert priced[0].startswith("Feetech STS3215")
@@ -794,8 +795,8 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
     # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)
-    assert total == pytest.approx(2 * xl330 + 29.99 + 10.99 + al + al6061 + 10.90
-                                  + glue + epoxy + lock222, abs=0.01)
+    assert total == pytest.approx(2 * xl330 + 10.99 + al + al6061 + 10.90
+                                  + glue + epoxy, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
@@ -1105,8 +1106,8 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # joinery), and no CA since the battery cradle is screwed to the deck (2026-10-05)
     # priced since the sourcing of 2026-10-05 (hardware.sources): two servos at $21.99, PLA
     # $29.99, the inserts $10.90, the epoxy and both threadlockers
-    assert total == pytest.approx(43.98 + 29.99 + 3.10 + 18.0 + 21.0 + 10.90 + 7.99 + 21.05
-                                  + 21.45)
+    # (the PLA and both threadlockers on hand since round 4, bom.ON_HAND: not in the floor)
+    assert total == pytest.approx(43.98 + 3.10 + 18.0 + 21.0 + 10.90 + 7.99)
     assert unpriced == []
     assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
@@ -1117,15 +1118,15 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
                        store=None)
     # + its Al frame; the sourcing of 2026-10-05 priced its epoxy and threadlocker, and the
     # servo and PLA went up (hardware.sources)
-    assert verify_module.cost_floor(lift)[0] == pytest.approx(124.0)
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.96)   # (PLA, 222 on hand)
     bolted = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"},
                           "constructions": {"pillar": "bolt", "pin": "bolt", "crank": "keyed"}},
                          store=None)
     # unglued, and no Chicago barrels to bond (the epoxy)
-    assert verify_module.cost_floor(bolted)[0] == pytest.approx(124.0 - 13.99 - 7.99)
+    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.96 - 13.99 - 7.99)
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
-    assert row.value == pytest.approx(124.0)
+    assert row.value == pytest.approx(72.96)
     assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
     assert "the sheets' count, the crank's screws" in row.detail
 
@@ -1138,7 +1139,8 @@ def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
     sheet = next(r for r in bom["purchased"] if r["key"] == "acrylic_3mm")
     assert sheet["qty"] >= 1
     assert sheet["cost_usd"] == pytest.approx(10.99)
-    assert bom["cost_usd"] == pytest.approx(sum(r["cost_usd"] or 0 for r in bom["purchased"]))
+    assert bom["cost_usd"] == pytest.approx(sum(r["cost_usd"] or 0 for r in bom["purchased"]
+                                                if r["key"] not in ON_HAND))   # (on hand)
 
 
 @pytest.mark.slow

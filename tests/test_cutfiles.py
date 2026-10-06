@@ -253,8 +253,7 @@ def test_horn_screws_get_their_shim_stack_and_threadlocker():
     lines, notes, replaced = fitting_lines(_fitted_mech())
     shims = [x for x in lines if x.key == "shim_din988_3x6"]
     assert [x.where for x in shims] == [
-        "L.crank_horn_shims0: horn screw 0, DIN 988 shims 0.5 + 0.2 mm (0.7 mm) under its "
-        "head"]
+        "L.crank_horn_shims0: horn screw 0, shims 0.5 + 0.2 mm (0.7 mm) under its head"]
     assert replaced == {"L.crank_horn_shims0"}
     assert sum(x.qty for x in lines if x.key == "threadlocker_222") == pytest.approx(0.04)
     assert any("0.5 + 0.2 mm" in n for n in notes)

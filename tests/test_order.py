@@ -46,3 +46,27 @@ def test_order_markdown_carts_uploads_and_shop_supplies():
     assert "L-torso_x2.dxf" in md
     assert "### Prusa" not in md                                  # on hand, not a cart
     assert "5052 sheet |" not in md.split("## Cut")[0]            # a cut sheet is its upload
+
+
+def test_a_sheet_no_service_cuts_is_bought_and_a_shared_pack_names_its_rows():
+    ply = _row("plywood_3mm", "3 mm Baltic birch plywood", "Woodpeckers", 2, price=3.1)
+    m2_10 = _row("m2_bhcs_10", "M2 x 10 screw", "Amazon", 4, pack_qty=100, price=9.0)
+    m2_8 = _row("m2_bhcs_8", "M2 x 8 screw", "Amazon", 12, pack_qty=100, price=9.0)
+    m2_8.same_pack_as = m2_10.name
+    bom = Bom(purchased=[ply, m2_10, m2_8], made=[])
+    laser = [{"service": "any", "sheet": "plywood_3mm", "material": "plywood",
+              "thickness_mm": 3.0, "file": "any_plywood_3mm/b1_x2.dxf", "qty": 2,
+              "size_mm": "50 x 10", "parts": "b1"}]
+    md = order_markdown(bom, laser, [])
+    buy = md.split("## Cut")[0]
+    assert "3 mm Baltic birch plywood" in buy                      # no service sells it
+    assert "also M2 x 8 screw: need 12" in buy                     # in the M2 x 10's pack
+    assert "### any\n" not in md
+
+
+def test_the_bom_total_leaves_out_the_shop_supplies_on_hand():
+    bom = Bom(purchased=[_row("m3_nut", "M3 nut", "Bolt Depot", 6, price=2.39),
+                         _row("pla_filament", "PLA", "Prusa", 0.3, price=29.99),
+                         _row("threadlocker_243", "243", "McMaster-Carr", 0.1)], made=[])
+    assert bom.cost_usd == 2.39
+    assert [r.key for r in bom.unpriced] == []

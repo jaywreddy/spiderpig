@@ -149,6 +149,12 @@ def cut_list(lines: list[BomLine]) -> list[CutList]:
     return out
 
 
+ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222",
+           "threadlocker_243")
+"""Shop supplies taken as on hand (the user's, 2026-10-05): listed, not ordered (ORDER.md)
+and not in any total (:attr:`Bom.cost_usd`, verify's cost floor)."""
+
+
 @dataclass
 class Bom:
     purchased: list[PurchaseRow]
@@ -162,11 +168,12 @@ class Bom:
 
     @property
     def cost_usd(self) -> float:
-        return sum(r.cost_usd or 0.0 for r in self.purchased)
+        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, left out)."""
+        return sum(r.cost_usd or 0.0 for r in self.purchased if r.key not in ON_HAND)
 
     @property
     def unpriced(self) -> list[PurchaseRow]:
-        return [r for r in self.purchased if r.cost_usd is None]
+        return [r for r in self.purchased if r.cost_usd is None and r.key not in ON_HAND]
 
     # -- writers ----------------------------------------------------------
 
@@ -214,10 +221,13 @@ class Bom:
             packs = f"{r.packs} × {r.pack_qty}"
             if r.same_pack_as:
                 packs, cost = f"with {r.same_pack_as}", "–"
+            elif r.key in ON_HAND:
+                cost = f"on hand ({cost})" if cost else "on hand"
             where = ", ".join(sorted(set(r.where)))[:120]
             lines.append(f"| {_num(r.qty)} | {r.name} | {link} | {packs} | {cost} | {where} |")
         lines += ["", f"Estimated purchase total: **${self.cost_usd:.2f}** "
-                  "(pack prices at the listed vendor; excludes shipping)."]
+                  "(pack prices at the listed vendor; excludes shipping and the shop "
+                  "supplies on hand)."]
         if self.unpriced:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
@@ -608,7 +618,7 @@ def shim_breakdown(total: float, sizes) -> list[float]:
 
 SHIM_FAMILIES = ("shim_din988_3x6", "shim_din988_4x8", "shim_din988_6x12")
 _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
-_STACK_SHIMS = re.compile(r"DIN 988 shims ([\d.]+(?: \+ [\d.]+)*) mm")
+_STACK_SHIMS = re.compile(r"\bshims ([\d.]+(?: \+ [\d.]+)*) mm")
 
 
 SHIM_AS: dict[str, tuple[str, int]] = {
@@ -628,6 +638,16 @@ spacers)."""
 def shim_key(family: str, t: float) -> str:
     """The catalog item of one thickness of a DIN 988 family: ``shim_din988_4x8_t0p5``."""
     return f"{family}_t{t:g}".replace(".", "p")
+
+
+def shim_as_bought(family: str, t: float) -> str:
+    """One shim of a stack as the BOM orders it: ``two DIN 433 washers`` for a 1 mm M3
+    shim (:data:`SHIM_AS`), else ``a 0.2 mm DIN 988 shim``."""
+    key = shim_key(family, t)
+    if key in SHIM_AS:
+        washer, n = SHIM_AS[key]
+        return f"{n} x {get(washer).name}"
+    return f"a {t:g} mm DIN 988 shim"
 
 
 def split_shims(lines: list[BomLine], by_name: dict,
@@ -777,17 +797,19 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
             total = round(min(bb.size.X, bb.size.Y, bb.size.Z), 1)
             stack = shim_breakdown(total, sizes)
             what = " + ".join(f"{s:g}" for s in stack)
-            where = (f"{b.name}: horn screw {m.group(1)}, DIN 988 shims {what} mm "
+            where = (f"{b.name}: horn screw {m.group(1)}, shims {what} mm "
                      f"({total:g} mm) under its head")
             lines.append(BomLine(b.bom_key, 1, where))
             replaced.add(b.name)
-            stacks.setdefault(f"{what} mm", []).append(f"{_side(b.name)}{m.group(1)}")
+            bought = " + ".join(shim_as_bought(b.bom_key, s) for s in stack)
+            stacks.setdefault(f"{what} mm ({bought})", []).append(
+                f"{_side(b.name)}{m.group(1)}")
         elif _HORN_SCREW.search(b.name):
             horn_screws.append(b.name)
         elif _SPLICE_STUD.search(b.name):
             studs.append(b.name)
     if stacks:
-        notes.append("Horn screw shims (DIN 988 3 x 6 under each head): " + "; ".join(
+        notes.append("Horn screw shims (under each head): " + "; ".join(
             f"screws {', '.join(s)}: {k}" for k, s in stacks.items()) + ".")
     metal = _metal_horn(mech.meta)
     if horn_screws and metal:

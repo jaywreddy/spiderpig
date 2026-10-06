@@ -171,6 +171,7 @@ for _L in GOBILDA_LENGTHS:
                price_usd=_price, verified=True,
                note=f"${_price:.2f} per 4, on the M4 standoff listing ({FETCHED})"),),
         dims={"d": 4.0, "od": 6.0, "length": _L, "thread_depth": min(8.0, _L / 2),
+              "material": "aluminium",
               "id": 3.3, "yield_mpa": 240.0},
         notes="Aluminium, clear anodised, M4 x 0.7 female both ends. The strength check takes "
               "it as a 6 x 3.3 mm tube (the tap drill's bore, as if tapped through) of 6061-T6 "
