@@ -5,11 +5,15 @@ and the robot with a single leg per side (``robot`` / ``module="single"``);
 a third, the robot with its leg's crank phase moved (``phased``), is baked
 for the design-parameter tests only, and a fourth, a Strider robot
 (``strider``), for another linkage's.
+
+Every bake comes from the test cache (``tests/_sim.py`` ``baked``: the bake of the cached
+fabrication, made once per engine version) and the fabrications it is compared with from
+:mod:`tests.cache`; ``test_a_fresh_bake_is_the_cached_one`` (slow) bakes each case from
+scratch, as ``spiderpig bake`` does, and checks it is byte for byte the cached one.
 """
 
 from __future__ import annotations
 
-import logging
 import math
 from dataclasses import replace
 
@@ -18,12 +22,10 @@ import pygltflib
 import pytest
 
 from spiderpig import linkage, walk
-from spiderpig.bake import _MATERIALS, _congruent, _Planar, bake_gltf
+from spiderpig.bake import _MATERIALS, _congruent, _Planar
 from spiderpig.config import BuildConfig, ParamError
-from spiderpig.fabricate import fabricate, template_for
 from spiderpig.hardware.mass import part_props
-
-pytestmark = pytest.mark.slow
+from tests import _sim, cache
 
 KLANN = linkage.get("klann")
 N_FRAMES = 12
@@ -39,41 +41,29 @@ PHASED = EXTRA["phased"]
 
 
 def _assembly(config: BuildConfig, t: float):
-    """The fabricated walker at crank angle ``t`` (parts in world coordinates)."""
-    return fabricate(template_for(config), config, t)
+    """The fabricated walker at crank angle ``t`` (parts in world coordinates): the cached
+    fabrication (read only)."""
+    return cache.cached_robot(config, t) if config.robot else cache.cached_side(config, t)
 
 
 class _Bakes(dict):
-    """``case -> GLTF2``, each case baked once per module; ``logs[case]`` its log."""
+    """``case -> GLTF2``, each case read once per module; ``logs[case]`` its log."""
 
-    def __init__(self, root) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.root, self.logs = root, {}
+        self.logs = {}
 
     def __call__(self, case: str) -> pygltflib.GLTF2:
         if case not in self:
-            out = self.root.mktemp("glb") / f"{case}.glb"
-            lines: list[str] = []
-            handler = logging.Handler()
-            handler.emit = lambda record: lines.append(record.getMessage())
-            log = logging.getLogger("bake_gltf")
-            log.addHandler(handler)
-            level = log.level
-            log.setLevel(logging.INFO)
-            try:
-                bake_gltf(out, EXTRA.get(case) or CASES[case], n_frames=N_FRAMES,
-                          duration_s=DURATION)
-            finally:
-                log.removeHandler(handler)
-                log.setLevel(level)
-            self.logs[case] = "\n".join(lines) + "\n"
-            self[case] = pygltflib.GLTF2().load(str(out))
+            path, self.logs[case] = _sim.baked(EXTRA.get(case) or CASES[case], N_FRAMES,
+                                               DURATION)
+            self[case] = pygltflib.GLTF2().load(str(path))
         return self[case]
 
 
 @pytest.fixture(scope="module")
-def bakes(tmp_path_factory):
-    return _Bakes(tmp_path_factory)
+def bakes():
+    return _Bakes()
 
 
 @pytest.fixture(params=list(CASES))
@@ -85,6 +75,22 @@ def baked(request, bakes):
 @pytest.fixture
 def robot_gltf(bakes):
     return bakes("robot")
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("case", [*CASES, *EXTRA])
+def test_a_fresh_bake_is_the_cached_one(tmp_path, case):
+    """``spiderpig bake``'s way (the bake fabricates and plans by itself) gives the very
+    file the other tests read (the cached fabrication's bake), byte for byte, its profile
+    counting the same bodies and meshes."""
+    cfg = EXTRA.get(case) or CASES[case]
+    log = _sim.bake(tmp_path / "fresh.glb", cfg, n_frames=N_FRAMES, duration_s=DURATION)
+    path, cached_log = _sim.baked(cfg, N_FRAMES, DURATION)
+    assert (tmp_path / "fresh.glb").read_bytes() == path.read_bytes()
+    for metric in ("n_bodies", "n_legs", "n_meshes", "mesh_shared", "gltf_bytes"):
+        lines = [[ln for ln in text.splitlines() if ln.strip().startswith(f"{metric}:")]
+                 for text in (log, cached_log)]
+        assert lines[0] == lines[1], metric
 
 
 def _read_accessor(gltf: pygltflib.GLTF2, accessor_idx: int) -> np.ndarray:
