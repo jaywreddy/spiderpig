@@ -97,10 +97,10 @@ description = "Fast tier: the viewer's server and spiderpig view"
 run         = "uv run python -m tests.tiers server"
 
 [tasks."test-viewer"]
-description = "The viewer's TypeScript: typecheck (vitest joins it with the viewer's tests)"
+description = "The viewer's TypeScript: typecheck, then its vitest unit tests (src/**/*.test.ts)"
 depends     = ["viewer-install"]
 dir         = "{{config_root}}/viewer"
-run         = "npm run typecheck"
+run         = "npm run typecheck && npm test"
 
 [tasks."test-fixtures"]
 description = "Regenerate the recorded fixtures (tests/fixtures/): their currency tests with --regen"
