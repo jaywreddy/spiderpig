@@ -3,6 +3,8 @@
 !viewer/package-lock.json
 !viewer/tsconfig.json
 !.claude/settings.json
+# the tests' recorded fixtures (tests/cache.py recorded(); docs/agentlib/TESTING.md)
+!tests/fixtures/**/*.json
 
 *.scad
 *.stl
