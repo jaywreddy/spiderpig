@@ -969,7 +969,22 @@ def _round(a, digits: int = 4):
 
 
 def jsonable(obj):
-    """``obj`` with numpy scalars/arrays as Python ones and non-finite floats as ``None``."""
+    """``obj`` with numpy scalars/arrays as Python ones and non-finite floats as ``None``.
+
+    The plain types go first, by their exact type, and a list of plain floats (a foot's or
+    a joint's track: most of an ``/api/walk`` body) in one comprehension: the values the
+    general rules below give, which everything else (numpy, subclasses) goes through."""
+    t = type(obj)
+    if t is float:
+        return obj if math.isfinite(obj) else None
+    if t is list or t is tuple:
+        if all(type(v) is float for v in obj):
+            return [v if math.isfinite(v) else None for v in obj]
+        return [jsonable(v) for v in obj]
+    if t is dict:
+        return {str(k): jsonable(v) for k, v in obj.items()}
+    if t is str or t is int or t is bool or obj is None:
+        return obj
     if isinstance(obj, Mapping):
         return {str(k): jsonable(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
