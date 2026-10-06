@@ -1,10 +1,17 @@
-"""Shared fixtures for the spiderpig test suite.
+"""Shared fixtures and hooks for the spiderpig test suite.
 
-Fabrication is the slow part, so the session builds each design, side and
-robot once (the ``design`` / ``side`` / ``robot`` factories below, cached
-per key) and every test reads them: never mutate what they return. Tests
-never download servo models (``_offline``): every servo is drawn
-parametrically.
+Fabrication is the slow part, so each design, side and robot is built once per engine
+version, not once per run or per xdist worker: the ``design`` / ``side`` / ``robot``
+factories below are thin wrappers over :mod:`tests.cache` (plans seeded from disk,
+fabrications as BREP files under ``CACHE_DIR``; one object per key per process), and
+every test reads them: never mutate what they return. Tests never download servo models
+(``_offline``): every servo is drawn parametrically.
+
+Hooks: ``--regen`` (rewrite the recorded fixtures, ``tests/fixtures/``), ``--no-test-cache``
+(the disk cache off: every process builds what it needs once, as before the cache), and
+the module markers (every test gets exactly one, its file's default from
+``tests/_modules.py`` unless it names its own: ``mise run test-<module>``). See
+``docs/agentlib/TESTING.md``.
 
 Only ``tests/e2e/`` needs Playwright, so we gate the browser-context fixture
 behind a ``pytestmark`` in those modules and keep everything else plain-pytest.
@@ -35,12 +42,67 @@ import pytest
 
 from spiderpig import servos
 from spiderpig.config import BuildConfig
-from spiderpig.fabricate import design_side, fabricate, fabricate_side
-from spiderpig.linkage import build_module_template
 from spiderpig.servos import cad as cadlib
 from spiderpig.servos import model
+from tests import cache
+from tests._modules import MODULE_OF_FILE, MODULES
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def pytest_addoption(parser):
+    parser.addoption("--regen", action="store_true", default=False,
+                     help="rewrite the recorded fixtures (tests/fixtures/) from the engine "
+                          "(`mise run test-fixtures`: with -m fixture_regen)")
+    parser.addoption("--no-test-cache", action="store_true", default=False,
+                     help="don't read or write the fabrication cache (tests/cache.py)")
+
+
+def pytest_configure(config):
+    cache.REGEN = config.getoption("regen")
+    if config.getoption("no_test_cache"):
+        cache.ENABLED = False
+    if not hasattr(config, "workerinput") and cache.ENABLED and cache.enabled():
+        cache.prune()       # the controller only: engine folders nobody used for 14 days
+
+
+def pytest_report_header(config):
+    if not cache.ENABLED or not cache.enabled():
+        return ["spiderpig test cache: off"]
+    lines = [f"spiderpig test cache: {cache.cache_dir()}"]
+    stale = cache.stale_fixtures()
+    if stale:
+        lines.append(f"recorded fixtures from another engine version: {len(stale)} "
+                     "(used as they are; `mise run test-fixtures` checks and rewrites them)")
+    return lines
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(config, items):
+    """Every test gets exactly one module marker before ``-m`` selects: its own, else its
+    file's (``tests/_modules.py``)."""
+    tests_dir = _REPO_ROOT / "tests"
+    unknown, double = set(), []
+    for item in items:
+        own = {m.name for m in item.iter_markers() if m.name in MODULES}
+        if len(own) > 1:
+            double.append(f"{item.nodeid}: {sorted(own)}")
+        elif not own:
+            try:
+                rel = Path(item.path).resolve().relative_to(tests_dir).as_posix()
+            except ValueError:
+                rel = str(item.path)
+            module = MODULE_OF_FILE.get(rel)
+            if module is None:
+                unknown.add(rel)
+            else:
+                item.add_marker(getattr(pytest.mark, module))
+    if unknown or double:
+        raise pytest.UsageError(
+            "every test needs exactly one module marker (" + ", ".join(MODULES) + "):\n"
+            + "".join(f"  {f}: not in tests/_modules.py MODULE_OF_FILE\n"
+                      for f in sorted(unknown))
+            + "".join(f"  {d}: more than one\n" for d in double[:20]))
 
 
 def clear_model_caches() -> None:
@@ -67,49 +129,38 @@ def design():
     """``design(module, servo=DEFAULT, linkage="klann", **build) -> (side template,
     SideDesign)``, built the default way (Chicago screw pins, standoff pillars, the bolt
     crank) unless ``build`` names a construction (``pin="printed"``: the printed snap pins'
-    tests; ``crank="keyed", pillar="printed"``: the defaults before 2026-10-03)."""
-    cache: dict = {}
+    tests; ``crank="keyed", pillar="printed"``: the defaults before 2026-10-03).
+    :func:`tests.cache.cached_design`: the plan seeded from the cache."""
 
     def get(module: str = "single", servo: str = servos.DEFAULT, linkage: str = "klann",
             **build: str):
-        key = (module, servo, linkage, tuple(sorted(build.items())))
-        if key not in cache:
-            tmpl = build_module_template(module, linkage=linkage)
-            cfg = BuildConfig(module=module, servo=servo, linkage=linkage, robot=False, **build)
-            cache[key] = (tmpl, design_side(tmpl, cfg))
-        return cache[key]
+        cfg = BuildConfig(module=module, servo=servo, linkage=linkage, robot=False, **build)
+        return cache.cached_design(cfg)
 
     return get
 
 
 @pytest.fixture(scope="session")
-def side(design):
-    """``side(module, t, servo=DEFAULT, **build)``: the fabricated side (one build per key per
-    session)."""
-    cache: dict = {}
+def side():
+    """``side(module, t, servo=DEFAULT, **build)``: the fabricated side
+    (:func:`tests.cache.cached_side`: one build per key and engine version)."""
 
     def get(module: str = "single", t: float = 1.0, servo: str = servos.DEFAULT, **build: str):
-        key = (module, t, servo, tuple(sorted(build.items())))
-        if key not in cache:
-            tmpl, d = design(module, servo, **build)
-            cache[key] = fabricate_side(d, tmpl.freeze_at(t))
-        return cache[key]
+        linkage = build.pop("linkage", "klann")
+        cfg = BuildConfig(module=module, servo=servo, linkage=linkage, robot=False, **build)
+        return cache.cached_side(cfg, t)
 
     return get
 
 
 @pytest.fixture(scope="session")
-def robot(design):
+def robot():
     """``robot(module, t, **build)``: the fabricated Klann robot (both sides and the chassis),
-    the default constructions unless ``build`` names others."""
-    cache: dict = {}
+    the default constructions unless ``build`` names others
+    (:func:`tests.cache.cached_robot`: one build per key and engine version)."""
 
     def get(module: str = "single", t: float = 1.0, **build: str):
-        key = (module, t, tuple(sorted(build.items())))
-        if key not in cache:
-            tmpl, _ = design(module, **build)
-            cache[key] = fabricate(tmpl, BuildConfig(linkage="klann", module=module, **build), t)
-        return cache[key]
+        return cache.cached_robot(BuildConfig(linkage="klann", module=module, **build), t)
 
     return get
 

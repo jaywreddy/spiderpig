@@ -62,6 +62,54 @@ run         = "uv run pytest"
 description = "The quick tier for iteration: pytest -m 'not slow' on local cores (pass more pytest args after --)"
 run         = "uv run pytest -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal"
 
+# The module tiers (docs/agentlib/TESTING.md): -m "<module> and not slow and not e2e" -n 4,
+# on the fabrication cache (tests/cache.py); pass pytest args after --.
+[tasks."test-linkage"]
+description = "Fast tier: linkages, kinematics, the walk model"
+run         = "uv run python -m tests.tiers linkage"
+
+[tasks."test-planner"]
+description = "Fast tier: the layer planner, the crank router, recommendations"
+run         = "uv run python -m tests.tiers planner"
+
+[tasks."test-construction"]
+description = "Fast tier: constructions, fabrication, contract and clashes"
+run         = "uv run python -m tests.tiers construction"
+
+[tasks."test-hardware"]
+description = "Fast tier: catalog, BOM, order, layout, cut rules"
+run         = "uv run python -m tests.tiers hardware"
+
+[tasks."test-strength"]
+description = "Fast tier: joint strength, wobble, loads"
+run         = "uv run python -m tests.tiers strength"
+
+[tasks."test-api"]
+description = "Fast tier: the agent API, store, verify, MCP, CLI build"
+run         = "uv run python -m tests.tiers api"
+
+[tasks."test-sim"]
+description = "Fast tier: MuJoCo and the glTF bake"
+run         = "uv run python -m tests.tiers sim"
+
+[tasks."test-server"]
+description = "Fast tier: the viewer's server and spiderpig view"
+run         = "uv run python -m tests.tiers server"
+
+[tasks."test-viewer"]
+description = "The viewer's TypeScript: typecheck (vitest joins it with the viewer's tests)"
+depends     = ["viewer-install"]
+dir         = "{{config_root}}/viewer"
+run         = "npm run typecheck"
+
+[tasks."test-fixtures"]
+description = "Regenerate the recorded fixtures (tests/fixtures/): their currency tests with --regen"
+run         = "uv run python -m tests.tiers fixtures"
+
+[tasks.gate]
+description = "Identity gate: snapshot DIR before a product change, compare DIR after (tests/gate/identity_gate.py)"
+run         = "uv run python tests/gate/identity_gate.py"
+
 [tasks.remote]
 description = "Run a command on $SPIDERPIG_REMOTE (default root@ao-server) in a synced copy of this worktree (e.g. mise run remote -- uv run python -m spiderpig.cli audit); logs and build/ come back to build/remote/<run>/"
 run         = "uv run python -m spiderpig.tools.remote --"
