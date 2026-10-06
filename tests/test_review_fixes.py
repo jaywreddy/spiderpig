@@ -825,3 +825,47 @@ def test_an_edited_handles_export_stays_off_the_store(tmp_path):
     plain = api.export(back, ["bom"])
     assert plain.out_dir != edited.out_dir
     assert plain.manifest["mass_g"] != edited.manifest["mass_g"]
+
+
+# -- round 13 ----------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_a_rejected_edit_leaves_the_built_parts_in_the_mechanism(tmp_path):
+    from build123d import Box, Location
+
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
+    assert api.build(d).ok
+    name = next(n for n, p in d.parts.items() if p.group == "links")
+    part = d.parts[name]
+    part.solid = part.solid + Box(200, 200, 2).moved(Location(part.solid.bounding_box().center()))
+    assert not api.recheck(d).ok
+    assert d.mech.body(name).part is part.built        # what export and verify read
+    assert not d.edited
+    assert store.read_report(d.id, "recheck") is None  # handle-local edits: not stored
+
+
+@pytest.mark.slow
+def test_verify_keeps_an_edited_handles_crank_angle_and_edits():
+    import numpy as np
+    from build123d import Cylinder
+
+    from spiderpig import api
+
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
+    assert api.build(d, 0.5).ok
+    name = next(n for n, p in d.parts.items() if p.group == "links")
+    part, body = d.parts[name], d.mech.body(name)
+    a, b = ((body.pose @ j.pose).matrix[:2, 3] for j in body.joints[:2])
+    part.solid = part.solid - Cylinder(1.0, 10).moved(part.locate((np.asarray(a) + b) / 2))
+    edited = part.volume_mm3
+    assert api.recheck(d).ok
+    api.verify(d, "standard")
+    assert d.build_t == 0.5
+    assert d.parts[name].volume_mm3 == pytest.approx(edited)
+    assert api.build(d, 1.0).ok
+    assert not d.edited                                 # a fresh build: the edits are gone

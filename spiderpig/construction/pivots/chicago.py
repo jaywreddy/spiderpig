@@ -239,6 +239,9 @@ class ChicagoShaft:
         if self.max_length is not None and need > self.max_length + EPS:
             raise Unbuildable(f"its {stack:g} mm stack needs a barrel over the "
                               f"{self.max_length:g} mm a pin may take (its bending)")
+        if layout is None or not layout.final:
+            return      # (the shims' rule at the plan's own z only: the stack only grows
+            #             there, so a search-time estimate could rule out what fits)
         length = next(L for L in CHICAGO_LENGTHS if need - EPS <= L)
         it = self.item()
         room = 2 * pitch - float(it["head_h"]) - float(it["screw_head_h"]) - self.washer_t
