@@ -141,6 +141,8 @@ class PlanOut(Result):
     table: str
     reused: str | None
     warnings: list[str]
+    heads: str | None           # fasteners' heads sunk into layers, or in clearance gaps
+    gaps_mm: dict[str, float]   # layer -> the clearance gap over it (height_mm counts them)
     seconds: float
 
 
@@ -174,6 +176,7 @@ class RecommendOut(Result):
     stage: str | None
     recommendations: list[RecommendationOut]
     notes: list[str]
+    seconds: NotRequired[float]
 
 
 class BuildOut(Result):

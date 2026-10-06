@@ -159,8 +159,13 @@ def column_wobble(build, group, col, *, clearance, length, play: float, play_bas
     # are the stack's own, not ``k x pitch`` (since the clearance gaps of 2026-10-04 a
     # stack is up to twice its layer count x pitch)
     anchors = sorted(getattr(col, "anchors", ()))
+    top = getattr(getattr(build, "plan", None), "top", None)
     lo = min([*ks, *anchors], default=0)
     hi = max([*ks, *anchors], default=-1)
+    if anchors and top is not None:
+        # a pillar's note keeps both frame plates' z (the strength check's "anchored in both
+        # plates" fix for a cantilever reads the inner plate's face)
+        lo, hi = min(lo, 0), max(hi, top)
     layer_z = {}
     z_of = getattr(build, "z", None)
     if z_of is not None:
@@ -179,6 +184,7 @@ def column_wobble(build, group, col, *, clearance, length, play: float, play_bas
             "pitch_mm": round(t, 4),
             "layers": {m: k for k in ks for m in col.links[k]},
             "anchors": anchors,
+            "top": top,
             "layer_z": layer_z,
             "section": section.as_dict()}
 
