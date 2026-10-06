@@ -1,13 +1,14 @@
 """Tests for the metal-shaft pivots (:mod:`construction.pivots`): rod, bolt, bearing, bushing.
 
 Each is checked as both pillar and pin on the Klann single (one fabrication
-per construction, shared by the tests) and on the Jansen single, plus the
-Klann quad's plan; mixed builds; and the ways they refuse a design.
+per construction, from the fabrication cache, :mod:`tests.cache`) and on the Jansen single,
+plus the Klann quad's plan; mixed builds; and the ways they refuse a design. The contract's
+fast case checks the axle groups alone (``check_side(groups=)``), the whole side in the
+slow tier.
 """
 
 from __future__ import annotations
 
-import itertools
 from dataclasses import replace
 
 import pytest
@@ -30,7 +31,8 @@ from spiderpig.fabricate import (
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
 from spiderpig.stack import Layout, Unbuildable, verify_plan
-from tests.tiers import quick
+from tests import cache
+from tests._construction import overlapping_pairs
 
 KEYS = ("rod", "bolt", "bearing", "bushing")
 T = 1.0
@@ -57,7 +59,7 @@ def _clashes(mech, allowed=()) -> list[tuple[str, str, float]]:
     allowed = {frozenset(p) for p in allowed}
     parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
     out = []
-    for a, b in itertools.combinations(parts, 2):
+    for a, b in overlapping_pairs(parts):     # a pair whose boxes don't meet shares nothing
         if frozenset((a, b)) in allowed:
             continue
         vol = _vol(parts[a], parts[b])
@@ -68,14 +70,12 @@ def _clashes(mech, allowed=()) -> list[tuple[str, str, float]]:
 
 @pytest.fixture(scope="module", params=KEYS)
 def side(request):
-    """The Klann single, one side, ``key`` for both pillars and pins."""
+    """The Klann single, one side, ``key`` for both pillars and pins (from the cache)."""
     key = request.param
     cfg = _config(key)
-    tmpl = template_for(cfg)
-    design = design_side(tmpl, cfg)
-    mech = tmpl.freeze_at(T)
-    build = Build(design.ctx, design.plan, mech)
-    fab = fabricate_side(design, mech)
+    tmpl, design = cache.cached_design(cfg)
+    build = Build(design.ctx, design.plan, tmpl.freeze_at(T))
+    fab = cache.cached_side(cfg, T)
     axles = [g for g in design.groups if isinstance(g, AxleGroup)]
     return key, tmpl, design, build, fab, axles
 
@@ -163,10 +163,17 @@ def test_constructions_refuse_what_they_cannot_build():
 # -- the contract, the plan, the clashes ---------------------------------------------
 
 
-@pytest.mark.parametrize("t", quick([0.0, 4.38], [4.38]))
+@pytest.mark.slow
+@pytest.mark.parametrize("t", [0.0, 4.38])
 def test_parts_stay_inside_their_claims(side, t):
+    """The whole side (the fast tier checks the axles alone, below)."""
     _, tmpl, design, *_ = side
     assert check_side(design, tmpl.freeze_at(t)) == []
+
+
+def test_the_axles_stay_inside_their_claims(side):
+    _, tmpl, design, *_, axles = side
+    assert check_side(design, tmpl.freeze_at(4.38), groups=[g.name for g in axles]) == []
 
 
 def test_plan_verifies(side):
@@ -355,8 +362,8 @@ def test_quad_plans_with_every_construction():
         # single-plate crank's clearance gaps (NO_GAPS), and one crank keeps it comparable
         cfg = BuildConfig(linkage="klann", module="quad", robot=False, pin=key, pillar="printed",
                           crank="keyed")
-        tmpl = template_for(cfg)
-        plan = design_side(tmpl, cfg).plan
+        tmpl, design = cache.cached_design(cfg)       # the plan seeded, re-made, verified
+        plan = design.plan
         assert verify_plan(plan, tmpl) == [], key
         heights[key] = plan.height
     for key in KEYS:            # a nut end costs at most a layer over a printed cap

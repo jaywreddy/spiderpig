@@ -43,15 +43,37 @@ def _slab(z0: float, z1: float, size: float = 1e4):
     return Box(size, size, z1 - z0).moved(Location((0.0, 0.0, (z0 + z1) / 2)))
 
 
-def check_side(design, mech) -> list[str]:
-    """Violations of the contract for one side at ``mech``'s crank angle (empty if none)."""
+def _realized_for(design, groups) -> list:
+    """The groups :func:`check_side` realizes to check ``groups`` (``None``: every group):
+    those named, and every group before a named one that cuts (a plate cuts the holes the
+    groups before it asked for), in build order."""
+    if groups is None:
+        return list(design.groups)
+    names = set(groups)
+    unknown = names - {g.name for g in design.groups}
+    if unknown:
+        raise ValueError(f"no such group: {', '.join(sorted(unknown))} (the side's groups: "
+                         f"{', '.join(g.name for g in design.groups)})")
+    last = max((i for i, g in enumerate(design.groups) if g.cuts and g.name in names),
+               default=-1)
+    return [g for i, g in enumerate(design.groups) if i <= last or g.name in names]
+
+
+def check_side(design, mech, groups=None) -> list[str]:
+    """Violations of the contract for one side at ``mech``'s crank angle (empty if none).
+
+    ``groups``: the names of the groups to check (default every group); the others are
+    realized only where a named plate group needs their holes, and never checked."""
     build = Build(design.ctx, design.plan, mech)
     problems: list[str] = []
     done = Realized()
     plate_top = build.z(build.top)[1]
-    for g in design.groups:
+    names = None if groups is None else set(groups)
+    for g in _realized_for(design, groups):
         got = g.realize(build, done)
         done.merge(got)
+        if names is not None and g.name not in names:
+            continue
         if g.name == "frame":
             for b in got.bodies:
                 bb = b.part.bounding_box()
@@ -92,16 +114,20 @@ def _overlap(a, b, eps: float = 1e-6) -> bool:
                for c in "XYZ")
 
 
-def clashes(mech) -> list[dict]:
+def clashes(mech, names=None) -> list[dict]:
     """Pairs of parts that intersect by more than :data:`CLASH_MM3`.
 
     A screw in the part it threads into (``mech.meta["fastened"]``) is not a clash.
+    ``names``: only the pairs with at least one of these bodies (default every pair).
     """
     allowed = {frozenset(p) for p in mech.meta.get("fastened", [])}
     parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
     boxes = {n: p.bounding_box() for n, p in parts.items()}
+    some = None if names is None else set(names)
     out = []
     for a, b in itertools.combinations(parts, 2):
+        if some is not None and a not in some and b not in some:
+            continue
         if frozenset((a, b)) in allowed or not _overlap(boxes[a], boxes[b]):
             continue
         inter = parts[a] & parts[b]

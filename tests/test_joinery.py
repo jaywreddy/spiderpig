@@ -130,11 +130,11 @@ def test_link_plates_are_rated_against_their_sheet():
 
 @pytest.fixture(scope="module")
 def default_robot():
-    """The default design's robot (the Strider double), built once for this module."""
-    from spiderpig.fabricate import fabricate, template_for
+    """The default design's robot (the Strider double), from the fabrication cache."""
+    from tests import cache
 
     cfg = BuildConfig()
-    return cfg, fabricate(template_for(cfg), cfg)
+    return cfg, cache.cached_robot(cfg, 1.0)
 
 
 @pytest.mark.slow

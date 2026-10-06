@@ -8,6 +8,7 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass, replace
+from functools import lru_cache
 
 import numpy as np
 
@@ -46,7 +47,9 @@ def centre_sheet(ctx: Context) -> str | None:
         return key
 
 
+@lru_cache(maxsize=64)
 def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
+    # pure (the servo's spec, the catalogued sheets): asked 15-40 times per design and robot
     from spiderpig.materials import aluminium_sheets, sheet
 
     if frame_key is None or not sheet(frame_key).metal:

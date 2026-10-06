@@ -240,10 +240,17 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     z_in = abs(design.plan.z(design.plan.top)[1] - z_mid)
+    boxes: dict[int, object] = {}       # each part's box, measured once (twice asked below)
+
+    def box_of(part):
+        if id(part) not in boxes:
+            boxes[id(part)] = part.bounding_box()
+        return boxes[id(part)]
+
     # what stands up under the rails (a part that starts above them, a pillar's end screw
     # over the inner plate, is the OCCT clash check's to judge)
     top = max((bb.max.Y for b in bodies if b.part is not None
-               for bb in (b.part.bounding_box(),)
+               for bb in (box_of(b.part),)
                if z_in + 1e-6 > bb.max.Z and -z_in - 1e-6 < bb.min.Z
                and place.rail_y0 > bb.min.Y), default=-math.inf)
     if top > place.rail_y0 - 0.5 * DECK_FLOOR_MARGIN:      # deck_floor missed a part
@@ -261,7 +268,7 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
 
     obstacles = [(bb.min.X, bb.max.X, bb.min.Y, bb.max.Y, bb.min.Z, bb.max.Z)
                  for b in bodies if b.part is not None and body_class(root(b).name) == "torso"
-                 for bb in (b.part.bounding_box(),)
+                 for bb in (box_of(b.part),)
                  if z_in - 1e-6 > bb.min.Z and -z_in + 1e-6 < bb.max.Z]
     try:
         parts, extras, info, fastened = deck_parts(design, z_mid, place, host, obstacles)
