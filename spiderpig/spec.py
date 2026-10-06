@@ -43,6 +43,7 @@ OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
 DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
 FIT_FIELDS = tuple(f.name for f in fields(Params))
+FIT_NONNEG = frozenset({"servo_screw_web_t"})   # 0 is a setting (keep every front screw)
 SECTIONS = ("motion", "size", "budget")
 
 
@@ -738,8 +739,11 @@ def validate(data: Mapping) -> list[SpecError]:
         v.string(c.get("crank"), "constructions.crank", sorted(construction.CRANKS))
     f = v.obj(top.get("fit"), "fit", (*FIT_FIELDS, "kerf_mm", "sheet_size_mm"))
     if f is not None:
-        for name in FIT_FIELDS:
-            v.number(f.get(name), f"fit.{name}", positive=True)
+        for name in FIT_FIELDS:      # (servo_screw_web_t 0: no front screw left out)
+            if name in FIT_NONNEG:
+                v.number(f.get(name), f"fit.{name}", nonneg=True)
+            else:
+                v.number(f.get(name), f"fit.{name}", positive=True)
         v.number(f.get("kerf_mm"), "fit.kerf_mm", nonneg=True)
         size = f.get("sheet_size_mm")
         if size is not None:
@@ -792,7 +796,8 @@ def spec_schema() -> dict:
     registries. A linkage's parameter names and its modules depend on its key (see
     :func:`spiderpig.api.describe`); the validator checks those exactly."""
     d = Params()
-    fit_props = {name: {"type": "number", "exclusiveMinimum": 0, "default": getattr(d, name)}
+    fit_props = {name: {"type": "number", "default": getattr(d, name),
+                        **({"minimum": 0} if name in FIT_NONNEG else {"exclusiveMinimum": 0})}
                  for name in FIT_FIELDS}
     fit_props["kerf_mm"] = {"type": "number", "minimum": 0,
                             "description": "laser kerf compensation on every sheet (default: "

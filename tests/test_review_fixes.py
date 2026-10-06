@@ -511,3 +511,39 @@ def test_an_export_is_not_reused_once_a_build_wrote_its_folder(tmp_path):
     again = api.export(api.load(d.id, d.store), ["bom"], out)
     assert again.ok
     assert json.loads((out / "manifest.json").read_text())["formats"] == ["bom"]
+
+
+# -- round 8 -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("ccw", [True, False])
+def test_a_grown_contour_that_falls_back_grows_every_edge(monkeypatch, ccw):
+    import math
+
+    from build123d import Edge, Face, Plane, Wire
+
+    from spiderpig import layout
+
+    def fails(self, *a, **k):
+        raise RuntimeError("Unexpected result type")
+    # a 10 x 6 slot (two lines, two half circles), either way round
+    lines = [Edge.make_line((0, 0), (10, 0)), Edge.make_line((10, 6), (0, 6))]
+    arcs = [Edge.make_circle(3, Plane(origin=(10, 3, 0)), start_angle=-90, end_angle=90),
+            Edge.make_circle(3, Plane(origin=(0, 3, 0)), start_angle=90, end_angle=270)]
+    wire = Wire([lines[0], arcs[0], lines[1], arcs[1]])
+    if not ccw:
+        wire = Wire([e.reversed() for e in reversed(wire.edges())])
+    a, perim, g = Face(wire).area, wire.length, 0.25
+    monkeypatch.setattr(Wire, "offset_2d", fails)
+    (got,) = layout.offset_wires(wire, g)
+    assert Face(got).area == pytest.approx(a + perim * g + math.pi * g * g, rel=1e-4)
+
+
+def test_a_fit_of_zero_servo_screw_web_keeps_every_front_screw():
+    from dataclasses import replace
+
+    from spiderpig import api
+    from spiderpig.config import BuildConfig, Params
+
+    cfg = BuildConfig(params=replace(Params(), servo_screw_web_t=0.0))
+    assert api.resolve(api.spec_of(cfg), store=None).config == cfg

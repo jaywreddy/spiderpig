@@ -243,16 +243,30 @@ def offset_wires(wire, grow: float) -> list:
         pass
     try:
         region = Face(wire)
-        pieces = [f for e in wire.edges() for f in _edge_band(e, abs(grow))]
+        # every face facing +z: OCCT's fuse leaves coplanar faces of opposite normals
+        # unmerged (a clockwise band, or wire, would come back as its own face)
+        region = _facing_up(region)
+        pieces = [_facing_up(f) for e in wire.edges() for f in _edge_band(e, abs(grow))]
         got = region.fuse(*pieces) if grow > 0 else region.cut(*pieces)
         shapes = got if isinstance(got, list) else [got]
         faces = [f for sh in shapes for f in sh.clean().faces() if f.area > 1e-4]
-        if grow > 0:            # (a grown region stays one: its outline)
-            return [max(faces, key=lambda f: f.area).outer_wire()]
+        if not faces:
+            raise ValueError("the contour vanishes under the kerf")
+        if grow > 0:            # a grown region stays one: its outline
+            if len(faces) != 1:
+                raise ValueError(f"the grown contour came back as {len(faces)} faces")
+            return [faces[0].outer_wire()]
         return [f.outer_wire() for f in faces]
     except Exception as e:      # noqa: BLE001 - OCCT's own failures, as the layout's error
         raise ValueError(f"no {grow:+g} mm kerf offset of a {len(wire.edges())}-edge "
                          f"contour ({e})") from None
+
+
+def _facing_up(face):
+    """``face`` with its normal along +z (reversed if it faces down)."""
+    from build123d import Face
+
+    return face if face.normal_at().Z > 0 else Face(face.wrapped.Reversed())
 
 
 def _edge_band(edge, g: float):
@@ -267,7 +281,7 @@ def _edge_band(edge, g: float):
     if edge.geom_type == GeomType.LINE:
         d = (p1 - p0).normalized()
         n = Vector(-d.Y, d.X, 0) * g
-        body = Face(Wire.make_polygon([p0 + n, p1 + n, p1 - n, p0 - n], close=True))
+        body = Face(Wire.make_polygon([p0 - n, p1 - n, p1 + n, p0 + n], close=True))
     elif edge.geom_type == GeomType.CIRCLE:
         c, r = edge.arc_center, edge.radius
         a0 = math.atan2(p0.Y - c.Y, p0.X - c.X)
