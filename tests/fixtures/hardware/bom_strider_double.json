@@ -1,0 +1,1953 @@
+{
+ "data": {
+  "cost_usd": 279.65999999999997,
+  "cuts": [],
+  "filaments": {
+   "PETG filament": 1.8,
+   "PLA filament": 42.3,
+   "TPU 95A flexible filament": 1.2
+  },
+  "made": [
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b1_leg0",
+    "names": [
+     "L.b1_leg0",
+     "L.b5_leg0",
+     "L.b5_leg1",
+     "R.b1_leg0",
+     "R.b5_leg0",
+     "R.b5_leg1"
+    ],
+    "qty": 6,
+    "size_mm": "17 x 44 x 3.0 mm",
+    "volume_cm3": 1.3737047946495795
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b1_leg1",
+    "names": [
+     "L.b1_leg1",
+     "R.b1_leg1"
+    ],
+    "qty": 2,
+    "size_mm": "32 x 38 x 3.0 mm",
+    "volume_cm3": 1.3727210834499235
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b2_leg0",
+    "names": [
+     "L.b2_leg0",
+     "L.b6_leg1",
+     "R.b2_leg0",
+     "R.b6_leg1"
+    ],
+    "qty": 4,
+    "size_mm": "142 x 21 x 3.0 mm",
+    "volume_cm3": 5.019082328703814
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b2_leg1",
+    "names": [
+     "L.b2_leg1",
+     "R.b2_leg1"
+    ],
+    "qty": 2,
+    "size_mm": "126 x 81 x 3.0 mm",
+    "volume_cm3": 5.021049751103123
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b3_leg0",
+    "names": [
+     "L.b3_leg0",
+     "L.b7_leg1",
+     "R.b3_leg0",
+     "R.b7_leg1"
+    ],
+    "qty": 4,
+    "size_mm": "65 x 78 x 3.0 mm",
+    "volume_cm3": 3.288589176173368
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b4_leg0",
+    "names": [
+     "L.b4_leg0",
+     "L.b8_leg1",
+     "R.b4_leg0",
+     "R.b8_leg1"
+    ],
+    "qty": 4,
+    "size_mm": "14 x 77 x 3.0 mm",
+    "volume_cm3": 2.596165464973712
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b6_leg0",
+    "names": [
+     "L.b6_leg0",
+     "R.b6_leg0"
+    ],
+    "qty": 2,
+    "size_mm": "140 x 42 x 3.0 mm",
+    "volume_cm3": 5.02006603990347
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b7_leg0",
+    "names": [
+     "L.b7_leg0",
+     "L.b3_leg1",
+     "R.b7_leg0",
+     "R.b3_leg1"
+    ],
+    "qty": 4,
+    "size_mm": "47 x 89 x 3.0 mm",
+    "volume_cm3": 3.287605464973712
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.b8_leg0",
+    "names": [
+     "L.b8_leg0",
+     "L.b4_leg1",
+     "R.b8_leg0",
+     "R.b4_leg1"
+    ],
+    "qty": 4,
+    "size_mm": "27 x 75 x 3.0 mm",
+    "volume_cm3": 2.5981328873730227
+   },
+   {
+    "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.crank_plate11",
+    "names": [
+     "L.crank_plate11",
+     "R.crank_plate11"
+    ],
+    "qty": 2,
+    "size_mm": "35 x 43 x 2.5 mm",
+    "volume_cm3": 2.02739637350072
+   },
+   {
+    "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.crank_plate2",
+    "names": [
+     "L.crank_plate2",
+     "R.crank_plate2"
+    ],
+    "qty": 2,
+    "size_mm": "29 x 37 x 2.5 mm",
+    "volume_cm3": 1.2917339841147195
+   },
+   {
+    "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.crank_plate6",
+    "names": [
+     "L.crank_plate6",
+     "R.crank_plate6"
+    ],
+    "qty": 2,
+    "size_mm": "43 x 59 x 2.5 mm",
+    "volume_cm3": 2.1926249394704502
+   },
+   {
+    "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.frame_outer",
+    "names": [
+     "L.frame_outer",
+     "R.frame_outer"
+    ],
+    "qty": 2,
+    "size_mm": "157 x 66 x 2.0 mm",
+    "volume_cm3": 8.648740753254403
+   },
+   {
+    "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "L.torso",
+    "names": [
+     "L.torso",
+     "R.torso"
+    ],
+    "qty": 2,
+    "size_mm": "157 x 100 x 2.0 mm",
+    "volume_cm3": 10.533370057650897
+   },
+   {
+    "material": "5052 aluminium sheet 0.090 in (2.286 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "centre_plate0",
+    "names": [
+     "centre_plate0",
+     "centre_plate3"
+    ],
+    "qty": 2,
+    "size_mm": "47 x 48 x 2.3 mm",
+    "volume_cm3": 3.749551497057943
+   },
+   {
+    "material": "5052 aluminium sheet 0.090 in (2.286 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "centre_plate1",
+    "names": [
+     "centre_plate1",
+     "centre_plate2"
+    ],
+    "qty": 2,
+    "size_mm": "47 x 48 x 2.3 mm",
+    "volume_cm3": 3.6959640595409367
+   },
+   {
+    "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "deck_plate",
+    "names": [
+     "deck_plate"
+    ],
+    "qty": 1,
+    "size_mm": "136 x 3 x 71.1 mm",
+    "volume_cm3": 27.93511475029955
+   },
+   {
+    "material": "TPU 95A flexible filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.b3_leg0_sock",
+    "names": [
+     "L.b3_leg0_sock",
+     "L.b7_leg0_sock",
+     "L.b3_leg1_sock",
+     "L.b7_leg1_sock",
+     "R.b3_leg0_sock",
+     "R.b7_leg0_sock",
+     "R.b3_leg1_sock",
+     "R.b7_leg1_sock"
+    ],
+    "qty": 8,
+    "size_mm": "15 x 14 x 3.0 mm",
+    "volume_cm3": 0.12716287700695808
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 1,
+    "name": "L.crank_pin_collar_hi_J1_leg0",
+    "names": [
+     "L.crank_pin_collar_hi_J1_leg0",
+     "R.crank_pin_collar_hi_J1_leg0"
+    ],
+    "qty": 2,
+    "size_mm": "9 x 9 x 0.9 mm",
+    "volume_cm3": 0.02844733278788686
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 1,
+    "name": "L.crank_pin_collar_lo_J1_leg0",
+    "names": [
+     "L.crank_pin_collar_lo_J1_leg0",
+     "R.crank_pin_collar_lo_J1_leg0"
+    ],
+    "qty": 2,
+    "size_mm": "9 x 9 x 0.4 mm",
+    "volume_cm3": 0.013231317575761405
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 1,
+    "name": "L.crank_pin_collar_lo_J1_leg1",
+    "names": [
+     "L.crank_pin_collar_lo_J1_leg1",
+     "R.crank_pin_collar_lo_J1_leg1"
+    ],
+    "qty": 2,
+    "size_mm": "9 x 9 x 0.8 mm",
+    "volume_cm3": 0.02646263515152271
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 1,
+    "name": "L.crank_pin_sleeve_J1_leg0",
+    "names": [
+     "L.crank_pin_sleeve_J1_leg0",
+     "R.crank_pin_sleeve_J1_leg0"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 18.5 mm",
+    "volume_cm3": 0.50971609345102
+   },
+   {
+    "material": "PETG filament",
+    "method": "printed",
+    "mirrored": 1,
+    "name": "L.crank_pin_sleeve_J1_leg1",
+    "names": [
+     "L.crank_pin_sleeve_J1_leg1",
+     "R.crank_pin_sleeve_J1_leg1"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 23.9 mm",
+    "volume_cm3": 0.7261364940604544
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg0_3",
+    "names": [
+     "L.crank_ring_J1_leg0_3",
+     "R.crank_ring_J1_leg0_3"
+    ],
+    "qty": 2,
+    "size_mm": "12 x 12 x 2.6 mm",
+    "volume_cm3": 0.13103740037755693
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg0_5",
+    "names": [
+     "L.crank_ring_J1_leg0_5",
+     "R.crank_ring_J1_leg0_5"
+    ],
+    "qty": 2,
+    "size_mm": "12 x 12 x 3.9 mm",
+    "volume_cm3": 0.19655610056633555
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg1_10",
+    "names": [
+     "L.crank_ring_J1_leg1_10",
+     "R.crank_ring_J1_leg1_10"
+    ],
+    "qty": 2,
+    "size_mm": "12 x 12 x 2.9 mm",
+    "volume_cm3": 0.1461571004211217
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg1_6",
+    "names": [
+     "L.crank_ring_J1_leg1_6",
+     "R.crank_ring_J1_leg1_6"
+    ],
+    "qty": 2,
+    "size_mm": "12 x 12 x 3.4 mm",
+    "volume_cm3": 0.1713566004937289
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg1_7",
+    "names": [
+     "L.crank_ring_J1_leg1_7",
+     "R.crank_ring_J1_leg1_7"
+    ],
+    "qty": 2,
+    "size_mm": "12 x 12 x 2.1 mm",
+    "volume_cm3": 0.10583790030495042
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_ring_J1_leg1_8",
+    "names": [
+     "L.crank_ring_J1_leg1_8",
+     "R.crank_ring_J1_leg1_8"
+    ],
+    "qty": 2,
+    "size_mm": "12 x 12 x 2.4 mm",
+    "volume_cm3": 0.1209576003485146
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.crank_stub_thrust",
+    "names": [
+     "L.crank_stub_thrust",
+     "R.crank_stub_thrust"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 8.9 mm",
+    "volume_cm3": 0.22759582138196632
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.deck_rail",
+    "names": [
+     "L.deck_rail",
+     "R.deck_rail"
+    ],
+    "qty": 2,
+    "size_mm": "60 x 8 x 11.0 mm",
+    "volume_cm3": 4.786735084417516
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap0_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap0_spacer",
+     "L.pillar_J2_leg0_gap3_spacer",
+     "L.pillar_J6_leg0_gap0_spacer",
+     "L.pillar_J6_leg0_gap3_spacer",
+     "R.pillar_J2_leg0_gap0_spacer",
+     "R.pillar_J2_leg0_gap3_spacer",
+     "R.pillar_J6_leg0_gap0_spacer",
+     "R.pillar_J6_leg0_gap3_spacer"
+    ],
+    "qty": 8,
+    "size_mm": "12 x 12 x 2.7 mm",
+    "volume_cm3": 0.2211971825447671
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap10_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap10_spacer",
+     "L.pillar_J6_leg0_gap10_spacer",
+     "R.pillar_J2_leg0_gap10_spacer",
+     "R.pillar_J6_leg0_gap10_spacer"
+    ],
+    "qty": 4,
+    "size_mm": "12 x 12 x 3.0 mm",
+    "volume_cm3": 0.24577464727196338
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap1_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap1_spacer",
+     "L.pillar_J6_leg0_gap1_spacer",
+     "R.pillar_J2_leg0_gap1_spacer",
+     "R.pillar_J6_leg0_gap1_spacer"
+    ],
+    "qty": 4,
+    "size_mm": "12 x 12 x 3.3 mm",
+    "volume_cm3": 0.2703521119991596
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap2_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap2_spacer",
+     "L.pillar_J2_leg0_gap8_spacer",
+     "L.pillar_J6_leg0_gap2_spacer",
+     "L.pillar_J6_leg0_gap8_spacer",
+     "R.pillar_J2_leg0_gap2_spacer",
+     "R.pillar_J2_leg0_gap8_spacer",
+     "R.pillar_J6_leg0_gap2_spacer",
+     "R.pillar_J6_leg0_gap8_spacer"
+    ],
+    "qty": 8,
+    "size_mm": "12 x 12 x 2.5 mm",
+    "volume_cm3": 0.20481220605996953
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap5_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap5_spacer",
+     "L.pillar_J6_leg0_gap5_spacer",
+     "R.pillar_J2_leg0_gap5_spacer",
+     "R.pillar_J6_leg0_gap5_spacer"
+    ],
+    "qty": 4,
+    "size_mm": "12 x 12 x 4.0 mm",
+    "volume_cm3": 0.3276995296959511
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap6_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap6_spacer",
+     "L.pillar_J6_leg0_gap6_spacer",
+     "R.pillar_J2_leg0_gap6_spacer",
+     "R.pillar_J6_leg0_gap6_spacer"
+    ],
+    "qty": 4,
+    "size_mm": "12 x 12 x 3.5 mm",
+    "volume_cm3": 0.2867370884839573
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_gap7_spacer",
+    "names": [
+     "L.pillar_J2_leg0_gap7_spacer",
+     "L.pillar_J6_leg0_gap7_spacer",
+     "R.pillar_J2_leg0_gap7_spacer",
+     "R.pillar_J6_leg0_gap7_spacer"
+    ],
+    "qty": 4,
+    "size_mm": "12 x 12 x 2.2 mm",
+    "volume_cm3": 0.18023474133277342
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pillar_J2_leg0_ring2",
+    "names": [
+     "L.pillar_J2_leg0_ring2",
+     "L.pillar_J2_leg0_ring3",
+     "L.pillar_J2_leg0_ring4",
+     "L.pillar_J2_leg0_ring5",
+     "L.pillar_J2_leg0_ring6",
+     "L.pillar_J2_leg0_ring7",
+     "L.pillar_J2_leg0_ring9",
+     "L.pillar_J2_leg0_ring10",
+     "L.pillar_J2_leg0_ring11",
+     "L.pillar_J2_leg0_ring12",
+     "L.pillar_J6_leg0_ring2",
+     "L.pillar_J6_leg0_ring3",
+     "L.pillar_J6_leg0_ring4",
+     "L.pillar_J6_leg0_ring5",
+     "L.pillar_J6_leg0_ring7",
+     "L.pillar_J6_leg0_ring8",
+     "L.pillar_J6_leg0_ring9",
+     "L.pillar_J6_leg0_ring10",
+     "L.pillar_J6_leg0_ring11",
+     "L.pillar_J6_leg0_ring12",
+     "R.pillar_J2_leg0_ring2",
+     "R.pillar_J2_leg0_ring3",
+     "R.pillar_J2_leg0_ring4",
+     "R.pillar_J2_leg0_ring5",
+     "R.pillar_J2_leg0_ring6",
+     "R.pillar_J2_leg0_ring7",
+     "R.pillar_J2_leg0_ring9",
+     "R.pillar_J2_leg0_ring10",
+     "R.pillar_J2_leg0_ring11",
+     "R.pillar_J2_leg0_ring12",
+     "R.pillar_J6_leg0_ring2",
+     "R.pillar_J6_leg0_ring3",
+     "R.pillar_J6_leg0_ring4",
+     "R.pillar_J6_leg0_ring5",
+     "R.pillar_J6_leg0_ring7",
+     "R.pillar_J6_leg0_ring8",
+     "R.pillar_J6_leg0_ring9",
+     "R.pillar_J6_leg0_ring10",
+     "R.pillar_J6_leg0_ring11",
+     "R.pillar_J6_leg0_ring12"
+    ],
+    "qty": 40,
+    "size_mm": "9 x 9 x 3.0 mm",
+    "volume_cm3": 0.11097676048805946
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg0_gap1_spacer",
+    "names": [
+     "L.pin_J10_leg0_gap1_spacer",
+     "L.pin_J3_leg0_gap1_spacer",
+     "L.pin_J7_leg0_gap1_spacer",
+     "L.pin_J8_leg0_gap1_spacer",
+     "R.pin_J10_leg0_gap1_spacer",
+     "R.pin_J3_leg0_gap1_spacer",
+     "R.pin_J7_leg0_gap1_spacer",
+     "R.pin_J8_leg0_gap1_spacer"
+    ],
+    "qty": 8,
+    "size_mm": "8 x 8 x 3.3 mm",
+    "volume_cm3": 0.11795345237351887
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg0_gap2_spacer",
+    "names": [
+     "L.pin_J10_leg0_gap2_spacer",
+     "L.pin_J11_leg1_gap8_spacer",
+     "L.pin_J3_leg0_gap2_spacer",
+     "L.pin_J3_leg1_gap8_spacer",
+     "L.pin_J4_leg0_gap2_spacer",
+     "L.pin_J4_leg1_gap8_spacer",
+     "L.pin_J7_leg0_gap2_spacer",
+     "L.pin_J7_leg1_gap8_spacer",
+     "R.pin_J10_leg0_gap2_spacer",
+     "R.pin_J11_leg1_gap8_spacer",
+     "R.pin_J3_leg0_gap2_spacer",
+     "R.pin_J3_leg1_gap8_spacer",
+     "R.pin_J4_leg0_gap2_spacer",
+     "R.pin_J4_leg1_gap8_spacer",
+     "R.pin_J7_leg0_gap2_spacer",
+     "R.pin_J7_leg1_gap8_spacer"
+    ],
+    "qty": 16,
+    "size_mm": "8 x 8 x 2.5 mm",
+    "volume_cm3": 0.08935867604054465
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg0_ring2",
+    "names": [
+     "L.pin_J10_leg0_ring2",
+     "L.pin_J4_leg0_ring3",
+     "L.pin_J4_leg0_ring4",
+     "L.pin_J7_leg0_ring3",
+     "L.pin_J7_leg1_ring8",
+     "R.pin_J10_leg0_ring2",
+     "R.pin_J4_leg0_ring3",
+     "R.pin_J4_leg0_ring4",
+     "R.pin_J7_leg0_ring3",
+     "R.pin_J7_leg1_ring8"
+    ],
+    "qty": 10,
+    "size_mm": "8 x 8 x 3.0 mm",
+    "volume_cm3": 0.12867178110940392
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg0_spacer_hi",
+    "names": [
+     "L.pin_J10_leg0_spacer_hi",
+     "L.pin_J11_leg0_spacer_hi",
+     "L.pin_J3_leg0_spacer_hi",
+     "R.pin_J10_leg0_spacer_hi",
+     "R.pin_J11_leg0_spacer_hi",
+     "R.pin_J3_leg0_spacer_hi"
+    ],
+    "qty": 6,
+    "size_mm": "8 x 8 x 0.9 mm",
+    "volume_cm3": 0.03276995296959497
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg1_gap7_spacer",
+    "names": [
+     "L.pin_J10_leg1_gap7_spacer",
+     "L.pin_J3_leg1_gap7_spacer",
+     "L.pin_J7_leg1_gap7_spacer",
+     "L.pin_J8_leg1_gap7_spacer",
+     "R.pin_J10_leg1_gap7_spacer",
+     "R.pin_J3_leg1_gap7_spacer",
+     "R.pin_J7_leg1_gap7_spacer",
+     "R.pin_J8_leg1_gap7_spacer"
+    ],
+    "qty": 8,
+    "size_mm": "8 x 8 x 2.2 mm",
+    "volume_cm3": 0.0786356349156794
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J10_leg1_spacer_hi",
+    "names": [
+     "L.pin_J10_leg1_spacer_hi",
+     "L.pin_J4_leg0_spacer_hi",
+     "L.pin_J8_leg1_spacer_hi",
+     "R.pin_J10_leg1_spacer_hi",
+     "R.pin_J4_leg0_spacer_hi",
+     "R.pin_J8_leg1_spacer_hi"
+    ],
+    "qty": 6,
+    "size_mm": "8 x 8 x 0.7 mm",
+    "volume_cm3": 0.025487741198574092
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J11_leg1_spacer_hi",
+    "names": [
+     "L.pin_J11_leg1_spacer_hi",
+     "L.pin_J4_leg1_spacer_hi",
+     "L.pin_J7_leg0_spacer_hi",
+     "R.pin_J11_leg1_spacer_hi",
+     "R.pin_J4_leg1_spacer_hi",
+     "R.pin_J7_leg0_spacer_hi"
+    ],
+    "qty": 6,
+    "size_mm": "8 x 8 x 1.4 mm",
+    "volume_cm3": 0.05097548239714792
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J3_leg1_spacer_hi",
+    "names": [
+     "L.pin_J3_leg1_spacer_hi",
+     "R.pin_J3_leg1_spacer_hi"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 1.2 mm",
+    "volume_cm3": 0.04369327062612695
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J4_leg0_gap3_spacer",
+    "names": [
+     "L.pin_J4_leg0_gap3_spacer",
+     "L.pin_J7_leg0_gap3_spacer",
+     "R.pin_J4_leg0_gap3_spacer",
+     "R.pin_J7_leg0_gap3_spacer"
+    ],
+    "qty": 4,
+    "size_mm": "8 x 8 x 2.7 mm",
+    "volume_cm3": 0.09650737012378832
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J7_leg1_gap6_spacer",
+    "names": [
+     "L.pin_J7_leg1_gap6_spacer",
+     "R.pin_J7_leg1_gap6_spacer"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 3.5 mm",
+    "volume_cm3": 0.1251021464567626
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J7_leg1_spacer_hi",
+    "names": [
+     "L.pin_J7_leg1_spacer_hi",
+     "R.pin_J7_leg1_spacer_hi"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 1.5 mm",
+    "volume_cm3": 0.05461658828265856
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "L.pin_J8_leg0_spacer_hi",
+    "names": [
+     "L.pin_J8_leg0_spacer_hi",
+     "R.pin_J8_leg0_spacer_hi"
+    ],
+    "qty": 2,
+    "size_mm": "8 x 8 x 0.6 mm",
+    "volume_cm3": 0.021846635313063346
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 1,
+    "name": "L.servo_horn_spacer",
+    "names": [
+     "L.servo_horn_spacer",
+     "R.servo_horn_spacer"
+    ],
+    "qty": 2,
+    "size_mm": "20 x 20 x 1.8 mm",
+    "volume_cm3": 0.44902534041142783
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "deck_cradle",
+    "names": [
+     "deck_cradle"
+    ],
+    "qty": 1,
+    "size_mm": "66 x 5 x 33.3 mm",
+    "volume_cm3": 1.3690522089374515
+   }
+  ],
+  "notes": [
+   "Horn screw shims (under each head): screws L.0, L.1, L.2, L.3, R.0, R.1, R.2, R.3: 1 mm (2 x M3 small flat washer (DIN 433, 3.2 x 6 x 0.5)).",
+   "Horn screws: a drop of low-strength threadlocker (Loctite 222) each (8), steel into the metal horn; none in a plastic horn.",
+   "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J10_leg0 0.2 mm, pin:J3_leg0 0.2 mm, pin:J7_leg1 0.2 mm; set the gap with a feeler gauge while the epoxy cures.",
+   "Printed parts need about 45 g of filament at 100 % infill (42 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 1 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
+  ],
+  "printed_g": 45.37785151324057,
+  "purchased": [
+   {
+    "alternatives": [
+     "https://www.waveshare.com/st3215-servo.htm?sku=33014",
+     "https://www.waveshare.com/st3215-servo.htm",
+     "https://www.amazon.com/dp/B0F87Z9M3P"
+    ],
+    "category": "servo",
+    "cost_usd": 43.98,
+    "key": "servo_sts3215",
+    "name": "Feetech STS3215 servo, 7.4 V 19.5 kg.cm (C001)",
+    "on_hand": false,
+    "pack_price_usd": 21.99,
+    "pack_qty": 1,
+    "packs": 2,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "108090023",
+    "url": "https://www.seeedstudio.com/STS3215-19kg-cm-7-4V-Serial-Servo-p-6338.html",
+    "vendor": "Seeed Studio",
+    "verified": true,
+    "where": [
+     "L.servo",
+     "R.servo"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/dp/B0GV338JJK",
+     "https://www.mcmaster.com/products/pan-head-thread-forming-screws",
+     "https://www.amazon.com/dp/B07N79RKTH"
+    ],
+    "category": "fastener",
+    "cost_usd": 2.7600000000000002,
+    "key": "m2_self_tap_6",
+    "name": "M2 x 6 mm pan-head self-tapping screw (for plastic)",
+    "on_hand": false,
+    "pack_price_usd": 0.46,
+    "pack_qty": 1,
+    "packs": 6,
+    "qty": 6.0,
+    "same_pack_as": "",
+    "sku": "SHPRC-M2-6-CS-BZP",
+    "url": "https://accu-components.com/us/torx-pan-head-thread-forming-screws/993377-SHPRC-M2-6-CS-BZP",
+    "vendor": "Accu",
+    "verified": true,
+    "where": [
+     "L.servo_screw0",
+     "L.servo_screw1",
+     "R.servo_screw0",
+     "R.servo_screw1",
+     "L.rear_screw0",
+     "R.rear_screw0"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/clp/B08XLHQVWM"
+    ],
+    "category": "fastener",
+    "cost_usd": null,
+    "key": "m25_nylon_screw_5",
+    "name": "M2.5 x 5 mm nylon pan head screw",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 4,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "50M025045N005",
+    "url": "https://www.digikey.com/en/products/detail/essentra-components/50M025045N005/11638495",
+    "vendor": "DigiKey",
+    "verified": false,
+    "where": [
+     "deck_board_screw0",
+     "deck_board_screw1",
+     "deck_board_screw2",
+     "deck_board_screw3"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1788004?variant=46564350263545",
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 7.27,
+    "key": "chicago_m3_10",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 10 mm",
+    "on_hand": false,
+    "pack_price_usd": 7.27,
+    "pack_qty": 20,
+    "packs": 1,
+    "qty": 6.0,
+    "same_pack_as": "",
+    "sku": "a24041700ux0602",
+    "url": "https://www.harfington.com/products/p-1528133?variant=47148414566649",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J11_leg1_screw",
+     "L.pin_J4_leg1_screw",
+     "L.pin_J8_leg0_screw",
+     "R.pin_J11_leg1_screw",
+     "R.pin_J4_leg1_screw",
+     "R.pin_J8_leg0_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 10.91,
+    "key": "chicago_m3_15",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 15 mm",
+    "on_hand": false,
+    "pack_price_usd": 10.91,
+    "pack_qty": 50,
+    "packs": 1,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "a25051200ux2391",
+    "url": "https://www.harfington.com/products/p-1788004?variant=46564350427385",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J3_leg1_screw",
+     "R.pin_J3_leg1_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1788004?variant=46564350460153",
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 6.37,
+    "key": "chicago_m3_16",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 16 mm",
+    "on_hand": false,
+    "pack_price_usd": 6.37,
+    "pack_qty": 10,
+    "packs": 1,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "a24041700ux0605",
+    "url": "https://www.harfington.com/products/p-1528133?variant=47148414632185",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J10_leg0_screw",
+     "L.pin_J3_leg0_screw",
+     "R.pin_J10_leg0_screw",
+     "R.pin_J3_leg0_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1788004?variant=46564350492921",
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 6.62,
+    "key": "chicago_m3_18",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 18 mm",
+    "on_hand": false,
+    "pack_price_usd": 6.62,
+    "pack_qty": 10,
+    "packs": 1,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "a24041700ux0606",
+    "url": "https://www.harfington.com/products/p-1528133?variant=47148414664953",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J4_leg0_screw",
+     "R.pin_J4_leg0_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1788004?variant=46564350558457",
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 6.76,
+    "key": "chicago_m3_22",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 22 mm",
+    "on_hand": false,
+    "pack_price_usd": 6.76,
+    "pack_qty": 10,
+    "packs": 1,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "a24041700ux0608",
+    "url": "https://www.harfington.com/products/p-1528133?variant=47148414697721",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J7_leg0_screw",
+     "L.pin_J7_leg1_screw",
+     "R.pin_J7_leg0_screw",
+     "R.pin_J7_leg1_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 9.68,
+    "key": "chicago_m3_7",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 7 mm",
+    "on_hand": false,
+    "pack_price_usd": 9.68,
+    "pack_qty": 50,
+    "packs": 1,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "a25051200ux2383",
+    "url": "https://www.harfington.com/products/p-1788004?variant=46564350165241",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J11_leg0_screw",
+     "R.pin_J11_leg0_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.harfington.com/products/p-1528133"
+    ],
+    "category": "fastener",
+    "cost_usd": 10.14,
+    "key": "chicago_m3_9",
+    "name": "M3 Chicago screw (binding barrel + screw), 4 mm barrel x 9 mm",
+    "on_hand": false,
+    "pack_price_usd": 10.14,
+    "pack_qty": 50,
+    "packs": 1,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "a25051200ux2385",
+    "url": "https://www.harfington.com/products/p-1788004?variant=46564350230777",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.pin_J10_leg1_screw",
+     "L.pin_J8_leg1_screw",
+     "R.pin_J10_leg1_screw",
+     "R.pin_J8_leg1_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.mcmaster.com/products/set-screws/"
+    ],
+    "category": "fastener",
+    "cost_usd": 2.64,
+    "key": "m3_set_screw_16",
+    "name": "M3 x 16 mm set screw (ISO 4026, flat point)",
+    "on_hand": false,
+    "pack_price_usd": 0.66,
+    "pack_qty": 1,
+    "packs": 4,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "SSF-M3-16-A2",
+    "url": "https://accu-components.com/us/flat-point-set-screws/4518-SSF-M3-16-A2",
+    "vendor": "Accu",
+    "verified": true,
+    "where": [
+     "tie_stud0",
+     "tie_stud1",
+     "tie_stud2",
+     "tie_stud3"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://boltdepot.com/Product-Details?product=7218",
+     "https://www.mcmaster.com/products/button-head-screws/",
+     "https://www.amazon.com/s?k=M3+button+head+socket+screw+assortment"
+    ],
+    "category": "fastener",
+    "cost_usd": null,
+    "key": "m3_bhcs_6",
+    "name": "M3 x 6 mm button head socket screw",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 8.0,
+    "same_pack_as": "",
+    "sku": "92095A179",
+    "url": "https://www.mcmaster.com/92095A179/",
+    "vendor": "McMaster-Carr",
+    "verified": true,
+    "where": [
+     "L.crank_pin_screw_lo_J1_leg0",
+     "L.crank_pin_screw_hi_J1_leg0",
+     "L.crank_pin_screw_lo_J1_leg1",
+     "L.crank_stub_screw",
+     "R.crank_pin_screw_lo_J1_leg0",
+     "R.crank_pin_screw_hi_J1_leg0",
+     "R.crank_pin_screw_lo_J1_leg1",
+     "R.crank_stub_screw"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://boltdepot.com/Product-Details?product=7219",
+     "https://www.mcmaster.com/products/button-head-screws/",
+     "https://www.amazon.com/s?k=M3+button+head+socket+screw+assortment"
+    ],
+    "category": "fastener",
+    "cost_usd": null,
+    "key": "m3_bhcs_8",
+    "name": "M3 x 8 mm button head socket screw",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 34.0,
+    "same_pack_as": "",
+    "sku": "92095A181",
+    "url": "https://www.mcmaster.com/92095A181/",
+    "vendor": "McMaster-Carr",
+    "verified": true,
+    "where": [
+     "L.crank_horn_screw0",
+     "L.crank_horn_screw1",
+     "L.crank_horn_screw2",
+     "L.crank_horn_screw3",
+     "L.pillar_J2_leg0_screw0",
+     "L.pillar_J2_leg0_screw13",
+     "L.pillar_J6_leg0_screw0",
+     "L.pillar_J6_leg0_screw13",
+     "R.crank_horn_screw0",
+     "R.crank_horn_screw1",
+     "R.crank_horn_screw2",
+     "R.crank_horn_screw3",
+     "R.pillar_J2_leg0_screw0",
+     "R.pillar_J2_leg0_screw13",
+     "R.pillar_J6_leg0_screw0",
+     "R.pillar_J6_leg0_screw13",
+     "L.tie_screw0",
+     "R.tie_screw0",
+     "L.tie_screw1",
+     "R.tie_screw1",
+     "L.tie_screw2",
+     "R.tie_screw2",
+     "L.tie_screw3",
+     "R.tie_screw3",
+     "L.deck_rail_screw0",
+     "L.deck_rail_screw1",
+     "R.deck_rail_screw0",
+     "R.deck_rail_screw1",
+     "deck_screw0",
+     "deck_screw1",
+     "deck_screw2",
+     "deck_screw3",
+     "deck_cradle_screw0",
+     "deck_cradle_screw1"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.3djake.com/cnc-kitchen/threaded-inserts-m3-standard",
+     "https://cnckitchen.store/products/heat-set-insert-m3-x-5-7-100-pieces",
+     "https://www.ruthex.de/en/products/ruthex-gewindeeinsatz-m3-100-stuck-rx-m3x5-7-messing-gewindebuchsen",
+     "https://www.mcmaster.com/94180A331/"
+    ],
+    "category": "insert",
+    "cost_usd": 10.9,
+    "key": "m3_heat_set_insert",
+    "name": "M3 x 5.7 brass heat-set insert (for printed parts)",
+    "on_hand": false,
+    "pack_price_usd": 10.9,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "TC-M3x5.7",
+    "url": "https://cnckitchenus.store/products/heat-set-insert-m3-x-5-7-100-pieces",
+    "vendor": "CNC Kitchen (US store)",
+    "verified": true,
+    "where": [
+     "L.deck_insert0",
+     "L.deck_insert1",
+     "R.deck_insert0",
+     "R.deck_insert1"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/clp/B08XLHQVWM"
+    ],
+    "category": "nut",
+    "cost_usd": null,
+    "key": "m25_nylon_nut",
+    "name": "M2.5 nylon hex nut",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 4,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "04M025045HN",
+    "url": "https://www.digikey.com/en/products/detail/essentra-components/04M025045HN/9677099",
+    "vendor": "DigiKey",
+    "verified": false,
+    "where": [
+     "deck_nut0",
+     "deck_nut1",
+     "deck_nut2",
+     "deck_nut3"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://boltdepot.com/Product-Details?product=4773",
+     "https://www.boltdepot.com/Product-Details.aspx?product=4773",
+     "https://www.mcmaster.com/90592A085/",
+     "https://www.amazon.com/dp/B0DNM4HK5Q"
+    ],
+    "category": "nut",
+    "cost_usd": null,
+    "key": "m3_nut",
+    "name": "M3 hex nut (ISO 4032)",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 6.0,
+    "same_pack_as": "",
+    "sku": "91828A211",
+    "url": "https://www.mcmaster.com/91828A211/",
+    "vendor": "McMaster-Carr",
+    "verified": true,
+    "where": [
+     "L.deck_rail_nut0",
+     "L.deck_rail_nut1",
+     "R.deck_rail_nut0",
+     "R.deck_rail_nut1",
+     "deck_cradle_nut0",
+     "deck_cradle_nut1"
+    ]
+   },
+   {
+    "alternatives": [],
+    "category": "washer",
+    "cost_usd": 5.0,
+    "key": "m3_washer_433",
+    "name": "M3 small flat washer (DIN 433, 3.2 x 6 x 0.5)",
+    "on_hand": false,
+    "pack_price_usd": 5.0,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 48.0,
+    "same_pack_as": "",
+    "sku": "HRDW-M3-A2",
+    "url": "https://accu-components.com/us/metric-flat-washers/404896-HRDW-M3-A2",
+    "vendor": "Accu",
+    "verified": true,
+    "where": [
+     "L.tie_shims0 (1 + 1 mm)",
+     "L.tie_shims0 (1 + 1 mm)",
+     "R.tie_shims0 (1 + 1 mm)",
+     "R.tie_shims0 (1 + 1 mm)",
+     "L.tie_shims1 (1 + 1 mm)",
+     "L.tie_shims1 (1 + 1 mm)",
+     "R.tie_shims1 (1 + 1 mm)",
+     "R.tie_shims1 (1 + 1 mm)",
+     "L.tie_shims2 (1 + 1 mm)",
+     "L.tie_shims2 (1 + 1 mm)",
+     "R.tie_shims2 (1 + 1 mm)",
+     "R.tie_shims2 (1 + 1 mm)",
+     "L.tie_shims3 (1 + 1 mm)",
+     "L.tie_shims3 (1 + 1 mm)",
+     "R.tie_shims3 (1 + 1 mm)",
+     "R.tie_shims3 (1 + 1 mm)",
+     "L.crank_horn_shims0: horn screw 0, shims 1 mm (1 mm) under its head",
+     "L.crank_horn_shims1: horn screw 1, shims 1 mm (1 mm) under its head",
+     "L.crank_horn_shims2: horn screw 2, shims 1 mm (1 mm) under its head",
+     "L.crank_horn_shims3: horn screw 3, shims 1 mm (1 mm) under its head",
+     "R.crank_horn_shims0: horn screw 0, shims 1 mm (1 mm) under its head",
+     "R.crank_horn_shims1: horn screw 1, shims 1 mm (1 mm) under its head",
+     "R.crank_horn_shims2: horn screw 2, shims 1 mm (1 mm) under its head",
+     "R.crank_horn_shims3: horn screw 3, shims 1 mm (1 mm) under its head"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://accu-components.com/us/flat-washers/",
+     "https://www.amazon.com/s?k=M3+DIN+9021+washer"
+    ],
+    "category": "washer",
+    "cost_usd": null,
+    "key": "m3_washer_9021",
+    "name": "M3 wide flat washer (DIN 9021, 3.2 x 9 x 0.8)",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 14.0,
+    "same_pack_as": "",
+    "sku": "91116A120",
+    "url": "https://www.mcmaster.com/91116A120/",
+    "vendor": "McMaster-Carr",
+    "verified": true,
+    "where": [
+     "L.crank_pin_washer_lo_J1_leg0",
+     "L.crank_pin_washer_hi_J1_leg0",
+     "L.crank_pin_washer_lo_J1_leg1",
+     "L.pillar_J2_leg0_washer0",
+     "L.pillar_J2_leg0_washer13",
+     "L.pillar_J6_leg0_washer0",
+     "L.pillar_J6_leg0_washer13",
+     "R.crank_pin_washer_lo_J1_leg0",
+     "R.crank_pin_washer_hi_J1_leg0",
+     "R.crank_pin_washer_lo_J1_leg1",
+     "R.pillar_J2_leg0_washer0",
+     "R.pillar_J2_leg0_washer13",
+     "R.pillar_J6_leg0_washer0",
+     "R.pillar_J6_leg0_washer13"
+    ]
+   },
+   {
+    "alternatives": [],
+    "category": "standoff",
+    "cost_usd": 54.3,
+    "key": "pillar_shaft_6_m3_62.4",
+    "name": "6 mm round steel standoff, 62.4 mm, tapped M3 both ends (MISUMI NETRF6-62.4)",
+    "on_hand": false,
+    "pack_price_usd": 10.86,
+    "pack_qty": 1,
+    "packs": 5,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "NETRF6-62.4",
+    "url": "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode=NETRF6-62.4",
+    "vendor": "MISUMI",
+    "verified": true,
+    "where": [
+     "L.pillar_J2_leg0_standoff0",
+     "L.pillar_J6_leg0_standoff0",
+     "R.pillar_J2_leg0_standoff0",
+     "R.pillar_J6_leg0_standoff0"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/clp/B08XLHQVWM"
+    ],
+    "category": "standoff",
+    "cost_usd": null,
+    "key": "m25_nylon_standoff_mf_6",
+    "name": "M2.5 x 6 mm nylon hex standoff, male-female",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 4,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "971060155",
+    "url": "https://www.mouser.com/ProductDetail/Wurth-Elektronik/971060155",
+    "vendor": "Mouser",
+    "verified": true,
+    "where": [
+     "deck_standoff0",
+     "deck_standoff1",
+     "deck_standoff2",
+     "deck_standoff3"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/s?k=M3+round+aluminum+standoff+female+female+6mm+OD",
+     "https://www.aliexpress.com/w/wholesale-m3-round-aluminum-standoff.html"
+    ],
+    "category": "standoff",
+    "cost_usd": 8.26,
+    "key": "m3_round_standoff_ff_12",
+    "name": "M3 x 12 mm round aluminium standoff, female-female, 6 mm OD",
+    "on_hand": false,
+    "pack_price_usd": 8.26,
+    "pack_qty": 6,
+    "packs": 1,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "a24061600ux0022",
+    "url": "https://www.harfington.com/products/p-1633425",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.crank_stub",
+     "R.crank_stub"
+    ]
+   },
+   {
+    "alternatives": [],
+    "category": "standoff",
+    "cost_usd": 1.14,
+    "key": "hex_standoff_m3_25",
+    "name": "M3 x 25 mm hex standoff, 5.5 mm AF, female-female, zinc-plated steel (7 mm thread each end)",
+    "on_hand": false,
+    "pack_price_usd": 0.57,
+    "pack_qty": 1,
+    "packs": 2,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "710-970250321",
+    "url": "https://www.mouser.com/ProductDetail/Wurth-Elektronik/970250321",
+    "vendor": "Mouser",
+    "verified": true,
+    "where": [
+     "L.crank_pin_J1_leg0",
+     "R.crank_pin_J1_leg0"
+    ]
+   },
+   {
+    "alternatives": [],
+    "category": "standoff",
+    "cost_usd": 1.06,
+    "key": "hex_standoff_m3_30",
+    "name": "M3 x 30 mm hex standoff, 5.5 mm AF, female-female, zinc-plated steel (7 mm thread each end)",
+    "on_hand": false,
+    "pack_price_usd": 0.53,
+    "pack_qty": 1,
+    "packs": 2,
+    "qty": 2.0,
+    "same_pack_as": "",
+    "sku": "710-970300321",
+    "url": "https://www.mouser.com/ProductDetail/Wurth-Elektronik/970300321",
+    "vendor": "Mouser",
+    "verified": true,
+    "where": [
+     "L.crank_pin_J1_leg1",
+     "R.crank_pin_J1_leg1"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/s?k=M3+round+aluminum+standoff+female+female+6mm+OD",
+     "https://www.aliexpress.com/w/wholesale-m3-round-aluminum-standoff.html"
+    ],
+    "category": "standoff",
+    "cost_usd": 18.62,
+    "key": "m3_round_standoff_ff_30",
+    "name": "M3 x 30 mm round aluminium standoff, female-female, 6 mm OD",
+    "on_hand": false,
+    "pack_price_usd": 9.31,
+    "pack_qty": 6,
+    "packs": 2,
+    "qty": 8.0,
+    "same_pack_as": "",
+    "sku": "a24061600ux0028",
+    "url": "https://www.harfington.com/products/p-1633431",
+    "vendor": "Harfington (uxcell)",
+    "verified": true,
+    "where": [
+     "L.tie_standoff0_0",
+     "R.tie_standoff0_0",
+     "L.tie_standoff1_0",
+     "R.tie_standoff1_0",
+     "L.tie_standoff2_0",
+     "R.tie_standoff2_0",
+     "L.tie_standoff3_0",
+     "R.tie_standoff3_0"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.matterhackers.com/store/l/polymaker-polylite-petg-black-175mm-1kg/sk/MAW5MH42",
+     "https://www.amazon.com/dp/B09Q28K49W"
+    ],
+    "category": "filament",
+    "cost_usd": 0.0,
+    "key": "petg_filament",
+    "name": "PETG filament, 1.75 mm, 1 kg spool",
+    "on_hand": true,
+    "pack_price_usd": 29.99,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 0.002,
+    "same_pack_as": "",
+    "sku": "Prusament PETG Jet Black 1kg",
+    "url": "https://www.prusa3d.com/product/prusament-petg-jet-black-1kg/",
+    "vendor": "Prusa Research",
+    "verified": true,
+    "where": [
+     "printed parts pressed on metal (the capped crankpin sleeves): 2 g at 100 % infill"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.matterhackers.com/store/l/polymaker-polylite-pla-black-175mm-1kg",
+     "https://www.amazon.com/dp/B01IAVQP2C"
+    ],
+    "category": "filament",
+    "cost_usd": 0.0,
+    "key": "pla_filament",
+    "name": "PLA filament, 1.75 mm, 1 kg spool",
+    "on_hand": true,
+    "pack_price_usd": 29.99,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 0.042,
+    "same_pack_as": "",
+    "sku": "Prusament PLA Jet Black 1kg",
+    "url": "https://www.prusa3d.com/product/prusament-pla-jet-black-1kg-nfc/",
+    "vendor": "Prusa Research",
+    "verified": true,
+    "where": [
+     "printed parts: 42 g at 100 % infill"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://shop.polymaker.com/products/polyflex-tpu95",
+     "https://www.amazon.com/s?k=TPU+95A+filament+1.75mm"
+    ],
+    "category": "filament",
+    "cost_usd": 0.0,
+    "key": "tpu95a_filament",
+    "name": "TPU 95A flexible filament, 1.75 mm, 0.75 kg spool",
+    "on_hand": true,
+    "pack_price_usd": 29.99,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 0.002,
+    "same_pack_as": "",
+    "sku": "PD01001",
+    "url": "https://shop.polymaker.com/products/polyflex-tpu95?variant=39574341681209",
+    "vendor": "Polymaker",
+    "verified": true,
+    "where": [
+     "the feet's TPU socks: 1 g at 100 % infill"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/s?k=double+sided+foam+tape+1mm"
+    ],
+    "category": "adhesive",
+    "cost_usd": null,
+    "key": "foam_tape",
+    "name": "Double-sided foam tape, 3M VHB 5952 (1.14 mm), 1/2 in roll",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "3M VHB 5952 1/2 in x 5 yd",
+    "url": "https://www.ellsworth.com/products/by-manufacturer/3m/tapes/double-coated/structural-vhb/3m-vhb-tape-5952-gray-0.5-in-x-5-yd-roll/",
+    "vendor": "Ellsworth Adhesives",
+    "verified": true,
+    "where": [
+     "charger and protection board under the deck"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/s?k=Loctite+222+10ml"
+    ],
+    "category": "adhesive",
+    "cost_usd": 0.0,
+    "key": "threadlocker_222",
+    "name": "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
+    "on_hand": true,
+    "pack_price_usd": 21.05,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 0.4,
+    "same_pack_as": "",
+    "sku": "Loctite 222MS 10 ml (IDH 135333)",
+    "url": "https://www.ellsworth.com/products/adhesives/anaerobic/henkel-loctite-222ms-threadlocker-anaerobic-adhesive-purple-10-ml-bottle/",
+    "vendor": "Ellsworth Adhesives",
+    "verified": true,
+    "where": [
+     "L.crank_horn_screw0: into the metal horn (a drop, metal to metal)",
+     "L.crank_horn_screw1: into the metal horn (a drop, metal to metal)",
+     "L.crank_horn_screw2: into the metal horn (a drop, metal to metal)",
+     "L.crank_horn_screw3: into the metal horn (a drop, metal to metal)",
+     "R.crank_horn_screw0: into the metal horn (a drop, metal to metal)",
+     "R.crank_horn_screw1: into the metal horn (a drop, metal to metal)",
+     "R.crank_horn_screw2: into the metal horn (a drop, metal to metal)",
+     "R.crank_horn_screw3: into the metal horn (a drop, metal to metal)",
+     "pin:J10_leg0",
+     "pin:J10_leg1",
+     "pin:J11_leg0",
+     "pin:J11_leg1",
+     "pillar:J2_leg0 end screws",
+     "pin:J3_leg0",
+     "pin:J3_leg1",
+     "pin:J4_leg0",
+     "pin:J4_leg1",
+     "pillar:J6_leg0 end screws",
+     "pin:J7_leg0",
+     "pin:J7_leg1",
+     "pin:J8_leg0",
+     "pin:J8_leg1",
+     "pin:J10_leg0",
+     "pin:J10_leg1",
+     "pin:J11_leg0",
+     "pin:J11_leg1",
+     "pillar:J2_leg0 end screws",
+     "pin:J3_leg0",
+     "pin:J3_leg1",
+     "pin:J4_leg0",
+     "pin:J4_leg1",
+     "pillar:J6_leg0 end screws",
+     "pin:J7_leg0",
+     "pin:J7_leg1",
+     "pin:J8_leg0",
+     "pin:J8_leg1"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.digikey.com/en/products/detail/loctite/1329837/10272563",
+     "https://www.amazon.com/s?k=Loctite+243+10ml"
+    ],
+    "category": "adhesive",
+    "cost_usd": 0.0,
+    "key": "threadlocker_243",
+    "name": "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml",
+    "on_hand": true,
+    "pack_price_usd": 21.45,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 0.12,
+    "same_pack_as": "",
+    "sku": "Loctite 243 10 ml (IDH 1329837)",
+    "url": "https://www.ellsworth.com/products/adhesives/anaerobic/henkel-loctite-243-threadlocker-anaerobic-adhesive-blue-10-ml-bottle/",
+    "vendor": "Ellsworth Adhesives",
+    "verified": true,
+    "where": [
+     "crankpin J1_leg0 screws",
+     "crankpin J1_leg1 screws",
+     "crankpin J1_leg0 screws",
+     "crankpin J1_leg1 screws",
+     "frame tie screws and studs"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/s?k=two+part+slow+cure+epoxy"
+    ],
+    "category": "adhesive",
+    "cost_usd": 7.99,
+    "key": "epoxy_2part",
+    "name": "Two-part slow-cure structural epoxy (e.g. J-B Weld Original or Loctite EA E-30CL), 2 x 25 ml",
+    "on_hand": false,
+    "pack_price_usd": 7.99,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 0.12,
+    "same_pack_as": "",
+    "sku": "8265S",
+    "url": "https://www.jbweld.com/product/j-b-weld-twin-tube",
+    "vendor": "J-B Weld",
+    "verified": true,
+    "where": [
+     "pin:J10_leg0: barrel into b8_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J10_leg1: barrel into b2_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J11_leg0: barrel into b6_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J11_leg1: barrel into b4_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J3_leg0: barrel into b1_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J3_leg1: barrel into b2_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J4_leg0: barrel into b3_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J4_leg1: barrel into b4_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J7_leg0: barrel into b5_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J7_leg1: barrel into b5_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J8_leg0: barrel into b8_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J8_leg1: barrel into b7_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J10_leg0: barrel into b8_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J10_leg1: barrel into b2_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J11_leg0: barrel into b6_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J11_leg1: barrel into b4_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J3_leg0: barrel into b1_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J3_leg1: barrel into b2_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J4_leg0: barrel into b3_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J4_leg1: barrel into b4_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J7_leg0: barrel into b5_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J7_leg1: barrel into b5_leg1 (slow epoxy: CA crazes acrylic)",
+     "pin:J8_leg0: barrel into b8_leg0 (slow epoxy: CA crazes acrylic)",
+     "pin:J8_leg1: barrel into b7_leg1 (slow epoxy: CA crazes acrylic)"
+    ]
+   },
+   {
+    "alternatives": [],
+    "category": "electronics",
+    "cost_usd": 0.1,
+    "key": "resistor_100k",
+    "name": "100 kOhm 1/4 W resistor (battery divider, top)",
+    "on_hand": false,
+    "pack_price_usd": 0.1,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "100KQBK-ND",
+    "url": "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-100K/245",
+    "vendor": "DigiKey",
+    "verified": false,
+    "where": [
+     "battery divider (top) to an ESP32 ADC pin"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/OVONIC-Battery-Package-Including-Batteries/dp/B0D3F6BRB9",
+     "https://www.ampow.com/products/ovonic-70c-7-4v-450mah-2s1p-xt30-4pcs-lipo-battery"
+    ],
+    "category": "electronics",
+    "cost_usd": 30.74,
+    "key": "lipo_2s_450",
+    "name": "2S 7.4 V 450 mAh LiPo, XT30 (Ovonic 80C long size)",
+    "on_hand": false,
+    "pack_price_usd": 30.74,
+    "pack_qty": 4,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "O-80C-450-2S1P-L-XT30-4P",
+    "url": "https://us.ovonicshop.com/products/4-x-ovonic-7-4v-80c-450mah-2s-lipo-battery-long-size-with-xt30-plug-for-fpv-freestyle-racing-drones-tiny-whoop-drones-quadcopter",
+    "vendor": "Ovonic (maker's store)",
+    "verified": true,
+    "where": [
+     "deck_battery"
+    ]
+   },
+   {
+    "alternatives": [],
+    "category": "electronics",
+    "cost_usd": 0.1,
+    "key": "resistor_33k",
+    "name": "33 kOhm 1/4 W resistor (battery divider, bottom)",
+    "on_hand": false,
+    "pack_price_usd": 0.1,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "33KQBK-ND",
+    "url": "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/1686",
+    "vendor": "DigiKey",
+    "verified": false,
+    "where": [
+     "battery divider (bottom)"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/JacobsParts-Pigtail-Security-Voltage-Applications/dp/B00R1XZ09K"
+    ],
+    "category": "electronics",
+    "cost_usd": null,
+    "key": "dc_plug_5521_pigtail",
+    "name": "5.5 x 2.1 mm DC plug pigtail (male), 15 cm",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "839-053-0188R-ND",
+    "url": "https://www.digikey.com/en/products/detail/tensility-international-corp/CA-2189/568580",
+    "vendor": "DigiKey",
+    "verified": false,
+    "where": [
+     "switched battery to the board's DC jack"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/iFlight-Rubberized-Non-Slip-Fastening-Quadcopter/dp/B07XL8NLLZ"
+    ],
+    "category": "electronics",
+    "cost_usd": 8.49,
+    "key": "lipo_strap_10mm",
+    "name": "Battery strap, 10 x 180 mm (Lumenier Kevlar, 3-pack)",
+    "on_hand": false,
+    "pack_price_usd": 8.49,
+    "pack_qty": 3,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "8872",
+    "url": "https://www.getfpv.com/lumenier-indestructible-kevlar-lipo-strap-10x180mm-3pcs.html",
+    "vendor": "GetFPV",
+    "verified": true,
+    "where": [
+     "battery strap through the deck's slots"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://usa.banggood.com/HX-2S-JH20-2S-7_4V-8_4V-18650-Lithium-Battery-Protection-Board-with-Equalization-Overcharged-Protection-p-1816422.html",
+     "https://www.amazon.com/HX-2S-JH20-Protection-Balanced-Function-Overcharged/dp/B0DTPHVHLL"
+    ],
+    "category": "electronics",
+    "cost_usd": 4.99,
+    "key": "bms_hx_2s_jh20",
+    "name": "HX-2S-JH20 2S protection board with balancing (10 A)",
+    "on_hand": false,
+    "pack_price_usd": 4.99,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "012759",
+    "url": "https://www.diymore.cc/products/2s-10a-8-4v-7-4v-18650-lithium-protection-board-bms-pcm-pcb-li-ion-lipo-2-cell-pack-with-balance-function-charger-protect-module",
+    "vendor": "diymore (brand store)",
+    "verified": true,
+    "where": [
+     "deck_bms"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.aliexpress.us/item/3256808840546226.html",
+     "https://store.aaenics.com/product/ip2326-lithium-battery-fast-charging-module-2s-3s-15w/"
+    ],
+    "category": "electronics",
+    "cost_usd": null,
+    "key": "ip2326_charger",
+    "name": "IP2326 2S USB-C charger module (5 V in, 8.4 V / 1.5 A out)",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "B0GTNBCCQM",
+    "url": "https://www.amazon.com/dp/B0GTNBCCQM",
+    "vendor": "Amazon",
+    "verified": true,
+    "where": [
+     "deck_charger"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.ebay.com/itm/335475840428",
+     "https://www.amazon.com/MTS-102-Toggle-Switch-Position-125VAC/dp/B07TS92M8H"
+    ],
+    "category": "electronics",
+    "cost_usd": 3.36,
+    "key": "toggle_mts102",
+    "name": "Mini toggle switch, SPDT, 1/4-40 bushing (E-Switch 100SP1T1B1M1QEH)",
+    "on_hand": false,
+    "pack_price_usd": 3.36,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "EG2350-ND",
+    "url": "https://www.digikey.com/en/products/detail/e-switch/100SP1T1B1M1QEH/378819",
+    "vendor": "DigiKey",
+    "verified": false,
+    "where": [
+     "deck_switch"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.waveshare.com/wiki/Servo_Driver_with_ESP32"
+    ],
+    "category": "electronics",
+    "cost_usd": 15.99,
+    "key": "esp32_servo_driver",
+    "name": "Waveshare Servo Driver with ESP32 (serial bus servo driver)",
+    "on_hand": false,
+    "pack_price_usd": 15.99,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "21593",
+    "url": "https://www.waveshare.com/servo-driver-with-esp32.htm",
+    "vendor": "Waveshare",
+    "verified": true,
+    "where": [
+     "deck_board"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://www.amazon.com/Female-Connector-Extension-Silicone-Battery/dp/B0D2V8ZN9V"
+    ],
+    "category": "electronics",
+    "cost_usd": 1.49,
+    "key": "xt30_pigtail_pair",
+    "name": "XT30 pigtail, 16 AWG, 10 cm (mates the battery's XT30)",
+    "on_hand": false,
+    "pack_price_usd": 1.49,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "RR1630",
+    "url": "https://rotorriot.com/products/xt30-pigtail",
+    "vendor": "Rotor Riot",
+    "verified": true,
+    "where": [
+     "battery lead to the protection board"
+    ]
+   }
+  ],
+  "title": ""
+ },
+ "engine_version": "0.1.0+ca04651e114f",
+ "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_double]"
+}

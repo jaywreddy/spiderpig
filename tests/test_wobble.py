@@ -19,13 +19,13 @@ from spiderpig.construction.wobble import (
     stresses,
     supported_tilt_deg,
 )
-from spiderpig.fabricate import design_side, fabricate_side, template_for
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fastener_catalog import CHICAGO_LENGTHS, chicago
 from spiderpig.stack import verify_plan
 from spiderpig.strength import FALLBACK_PIN_LOADS
 from spiderpig.tools.audit import pin_loads_for, wobble_check
+from tests import cache
 
 T = 1.0
 
@@ -97,7 +97,7 @@ def test_chicago_catalog_and_refusals():
         assert get(key).offers
     assert get("bushing_gfm0405_03").dims["flange_d"] == 9.5
     cfg = BuildConfig(linkage="klann", module="single", robot=False, pin="chicago")
-    ctx = design_side(template_for(cfg), cfg).ctx
+    ctx = cache.cached_design(cfg)[1].ctx
     for c in (ChicagoAxle(), CHICAGO_BUSHING):
         c.dims(ctx, False)
         with pytest.raises(ConstructionError, match="link pin only"):
@@ -109,17 +109,86 @@ def test_chicago_catalog_and_refusals():
 # -- built on the Klann single ------------------------------------------------------------------
 
 
+def _chicago_config(pin: str) -> BuildConfig:
+    return BuildConfig(linkage="klann", module="single", robot=False, pin=pin,
+                       crank="keyed", pillar="printed")     # the layout these tilts were read on
+
+
 @pytest.fixture(scope="module", params=["chicago", "chicago_bushing"])
 def chicago_side(request):
-    cfg = BuildConfig(linkage="klann", module="single", robot=False, pin=request.param,
-                      crank="keyed", pillar="printed")     # the layout these tilts were read on
-    tmpl = template_for(cfg)
-    design = design_side(tmpl, cfg)
-    fab = fabricate_side(design, tmpl.freeze_at(T))
-    return request.param, tmpl, design, fab
+    """The Klann single side with Chicago pins, from the fabrication cache
+    (:mod:`tests.cache`: its plan and parts built once per engine version). Read it, never
+    change it."""
+    cfg = _chicago_config(request.param)
+    tmpl, design = cache.cached_design(cfg)
+    return request.param, tmpl, design, cache.cached_side(cfg, T)
 
 
+def _pin_groups(design) -> list[AxleGroup]:
+    return [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
+
+
+def _outside_claims(design, tmpl, t: float, groups) -> list[str]:
+    """:func:`construction.contract.check_side` for ``groups`` alone (its rule for a group
+    of no special kind: every body inside the group's own claims, grown by ``TOL``), at
+    crank angle ``t``. A pin builds from its own claims (``AxleGroup.realize`` reads no
+    other group's work), so it is realized alone."""
+    from spiderpig.construction.base import Build, Realized
+    from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside
+    from spiderpig.construction.envelope import claimed_solid
+
+    build = Build(design.ctx, design.plan, tmpl.freeze_at(t))
+    problems = []
+    for g in groups:
+        envelope = claimed_solid(build, build.shapes(g.name), TOL)
+        for b in g.realize(build, Realized()).bodies:
+            vol = _outside(b.part, envelope)
+            if vol > MAX_OUTSIDE:
+                problems.append(f"{g.name}/{b.name}: {vol:.3f} mm^3 outside its claims")
+    return problems
+
+
+def _clashes_with(mech, names: set[str]) -> list[tuple[str, str, float]]:
+    """``tests.test_pivots._clashes`` (every pair's shared volume over 1e-3 mm^3) for the
+    pairs with a part of ``names`` in them, boxes that don't overlap skipped (they share
+    nothing)."""
+    from spiderpig.construction.contract import _overlap
+    from tests.test_pivots import _vol
+
+    parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
+    boxes = {n: p.bounding_box() for n, p in parts.items()}
+    out = []
+    for a in sorted(names & set(parts)):
+        for b in parts:
+            if b == a or (b in names and b < a) or not _overlap(boxes[a], boxes[b]):
+                continue
+            vol = _vol(parts[a], parts[b])
+            if vol > 1e-3:
+                out.append((a, b, round(vol, 4)))
+    return out
+
+
+def test_chicago_pins_plan_and_stay_in_their_claims(chicago_side):
+    """The fast half of :func:`test_chicago_pins_plan_build_and_stay_in_their_claims`: the
+    plan re-checked, every Chicago pin's parts inside its claims at two crank angles, and
+    none of them meeting another part."""
+    key, tmpl, design, fab = chicago_side
+    assert verify_plan(design.plan, tmpl) == []
+    pins = _pin_groups(design)
+    assert pins
+    assert _outside_claims(design, tmpl, T, pins) == []
+    assert _outside_claims(design, tmpl, 4.38, pins) == []
+    stems = tuple(g.name.replace(":", "_") for g in pins)
+    mine = {b.name for b in fab.bodies if b.part is not None and b.name.startswith(stems)}
+    assert len(mine) >= len(pins)
+    assert _clashes_with(fab, mine) == []
+
+
+@pytest.mark.slow
 def test_chicago_pins_plan_build_and_stay_in_their_claims(chicago_side):
+    """The whole side's contract (every group) at two crank angles and every pair of its
+    parts clash-checked (:func:`test_chicago_pins_plan_and_stay_in_their_claims` checks the
+    pins' part of it in the fast tier)."""
     key, tmpl, design, fab = chicago_side
     assert verify_plan(design.plan, tmpl) == []
     assert check_side(design, tmpl.freeze_at(T)) == []
@@ -178,8 +247,7 @@ def test_every_construction_reports_wobble():
     for key in ("printed", "rod", "bolt", "bearing", "bushing"):
         assert key in construction.AXLES
     cfg = BuildConfig(linkage="klann", module="single", robot=False, pin="rod")
-    tmpl = template_for(cfg)
-    fab = fabricate_side(design_side(tmpl, cfg), tmpl.freeze_at(T))
+    fab = cache.cached_side(cfg, T)
     rep = wobble_check(fab.meta["wobble"])
     assert rep["pin"]["worst_free_deg"] == pytest.approx(3.81, abs=0.01)
     assert rep["pillar"]["worst_free_deg"] > rep["pin"]["worst_free_deg"]   # printed: 0.35 fit

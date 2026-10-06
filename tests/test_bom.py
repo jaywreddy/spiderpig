@@ -270,3 +270,38 @@ def test_grouping_leaves_the_parts_as_they_were():
         pins, other = group_made(bodies, "printed")
         assert (pins.names, other.names) == (["a", "b"], ["c"])
     assert [_tolerances(b.part) for b in bodies] == before
+
+
+def test_a_parts_integrals_are_measured_once_and_shared():
+    """``hardware.mass``: a part's volume and surface integrals are measured once and
+    shared by every consumer (the BOM's grouping, ``part_props``), to the same numbers as a
+    fresh measurement; a part moved in place is measured again, and an entry goes with its
+    part."""
+    import gc
+
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    from spiderpig.hardware import mass
+
+    def fresh(part):
+        vol, surf = GProp_GProps(), GProp_GProps()
+        BRepGProp.VolumeProperties_s(part.wrapped, vol)
+        BRepGProp.SurfaceProperties_s(part.wrapped, surf)
+        return vol.Mass(), surf.Mass(), vol.CentreOfMass().X(), vol.MatrixOfInertia().Value(1, 1)
+
+    part = (_chiral() - Cylinder(0.5, 9)).solids()[0]
+    first = mass.part_props(part)
+    assert mass.volume_props(part) is mass.volume_props(part)          # measured once
+    want = fresh(part)
+    assert (first.volume, first.area, first.com[0], first.inertia[0, 0]) == want
+    assert mass.volume(part) == part.volume                             # build123d's, exactly
+    box = Box(2, 3, 4)                                                  # a compound's volume
+    assert mass.volume(box) == box.volume
+    part.move(Pos(5, 0, 0))                                             # in place: again
+    moved = mass.part_props(part)
+    assert moved.com[0] == fresh(part)[2] != first.com[0]
+    n = len(mass._MEASURED)
+    del part
+    gc.collect()
+    assert len(mass._MEASURED) == n - 1
