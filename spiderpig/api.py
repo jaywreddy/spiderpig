@@ -1004,14 +1004,20 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     return _finish(design, "plan", rep, t0)
 
 
-def _manifest_design(out: Path) -> str | None:
-    """The design id ``out/manifest.json`` names (the last export into ``out``)."""
+def _manifest(out: Path) -> dict:
+    """``out/manifest.json`` (the last export's, or a ``spiderpig build``'s), else ``{}``."""
     import json
 
     try:
-        return json.loads((out / "manifest.json").read_text()).get("design")
-    except (OSError, ValueError, AttributeError):
-        return None
+        doc = json.loads((out / "manifest.json").read_text())
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def _manifest_design(out: Path) -> str | None:
+    """The design id ``out/manifest.json`` names (the last export or build into ``out``)."""
+    return _manifest(out).get("design")
 
 
 def ran_out(rep) -> bool:
@@ -1776,9 +1782,13 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     out = Path(out_dir)
     if not force:      # a prior export of these formats (or more) into this folder
         prior = _cached(design, "export", ExportReport, out_dir=str(out.resolve()))
+        last = _manifest(out)
         if (prior is not None and prior.ok and set(formats) <= set(prior.formats)
                 and all(Path(f).is_file() for f in prior.files)
-                and _manifest_design(out) == design.id):   # (not since overwritten)
+                # the folder's last writer was this design's export of these formats (not
+                # since overwritten: another design's, or any `spiderpig build`'s)
+                and last.get("design") == design.id
+                and set(formats) <= set(last.get("formats") or ())):
             return prior
     rep = ExportReport(out_dir=str(out.resolve()), formats=formats)
     # a folder whose manifest (an export's, or a `spiderpig build`'s) names another design,
