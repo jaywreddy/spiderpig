@@ -63,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
     if command == "build" and any(a in ("--profile", "-h", "--help")
                                   or a.startswith("--profile-json") for a in rest):
         target = "spiderpig.tools.build_profile"    # the stage timings (and their --help)
+    if target == "spiderpig.build":
+        from spiderpig import uptodate
+
+        if uptodate.skip(rest):     # --out holds this very build: before the engine's import
+            return 0
     module = importlib.import_module(target)
     sys.argv[0] = f"spiderpig {command}"       # argparse's prog
     return int(module.main(rest) or 0)
