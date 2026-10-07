@@ -1,14 +1,18 @@
-# The cheap checks on every push and PR (docs/agentlib/ROADMAP.md, W0): ruff, the lock,
-# the viewer's typecheck + vitest, the quick tier on the fabrication cache, and the doc
+# The cheap checks on pushes to master and every PR (docs/agentlib/ROADMAP.md, W0): ruff,
+# the lock, the viewer's typecheck + vitest, the quick tier on the fabrication cache, and the doc
 # check (report-only until W7). The full suite stays on `mise run remote-test`.
 name: CI
 
 on:
   push:
+    branches: [master]          # a PR's branch runs once, as the PR
   pull_request:
 
-concurrency:
-  group: ci-${{ github.ref }}
+permissions:
+  contents: read
+
+concurrency:                    # a newer push to a ref cancels its older run
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -63,17 +67,28 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
+      # the viewer's vitest runs inside the quick tier too (the walk-model parity test):
+      # with node and its packages here, SPIDERPIG_REQUIRE_VIEWER_TESTS=1 makes a skip a failure
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - run: npm ci
+        working-directory: viewer
       # the fabrication cache (tests/cache.py) keyed by the engine version: its folders are
       # named by the engine version and the library versions too, so an entry restored for
       # another engine is never read (no restore-keys: a new engine starts empty)
       - id: engine
-        run: echo "version=$(uv run --locked python -m spiderpig.design)" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
       - id: restore
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/spiderpig/test-cache
           key: test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
       - name: quick tier
+        env:
+          SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
         run: uv run --locked pytest -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal
       # saved even when a test failed: entries are written whole (renamed into place)
       - if: always() && steps.restore.outputs.cache-hit != 'true'
