@@ -154,3 +154,21 @@ run         = "uv run python -m spiderpig.tools.kill_dev"
 [tasks.clean]
 description = "Remove build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/"
 run         = "uv run python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in [pathlib.Path('build'), pathlib.Path('dist'), pathlib.Path('.spiderpig/bakes'), pathlib.Path('spiderpig/viewer/dist'), pathlib.Path('viewer/node_modules')]]\""
+
+[tasks.scorecard]
+description = "Every roadmap number in one JSON: build stages, tier times, quick-tier coverage, pyright, ruff RUF, module sizes -> build/scorecard.json (--gate/--full/--audit opt-in; --compare A B)"
+depends     = ["viewer-install"]
+run         = "uv run python -m tests.scorecard"
+
+[tasks.doc-check]
+description = "Resolve every backticked name, path, task, flag and env var in the docs against the code (report-only; -- --strict fails on a miss)"
+run         = "uv run python -m tests.doc_check"
+
+[tasks.pyright]
+description = "pyright, basic mode ([tool.pyright]; the viewer's pinned devDependency)"
+depends     = ["viewer-install"]
+run         = "viewer/node_modules/.bin/pyright"
+
+[tasks."engine-version"]
+description = "Print the engine version (the stores' and the test cache's key)"
+run         = "uv run python -m spiderpig.tools.engine_version"

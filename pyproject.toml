@@ -34,6 +34,8 @@ dev = [
     "pytest-playwright>=0.6",
     "httpx>=0.28.1",
     "pytest-xdist>=3.8.0",
+    "coverage>=7.16.2",
+    "pytest-cov>=7.1.0",
 ]
 
 [tool.uv]
@@ -81,3 +83,27 @@ markers = [
     "sim: MuJoCo and the glTF bake (`mise run test-sim`)",
     "server: the viewer's server and `spiderpig view` (`mise run test-server`)",
 ]
+
+# pyright (viewer/node_modules/.bin/pyright, a pinned viewer devDependency; `mise run
+# pyright`): basic mode, measured by the scorecard (tests/scorecard.py). The compiled
+# extensions without stubs (OCP, mujoco) report no missing-source noise; W6 tightens this.
+[tool.pyright]
+include = ["spiderpig"]
+exclude = ["**/node_modules", "**/__pycache__", "spiderpig/viewer/dist", "build", ".spiderpig"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingModuleSource = false
+
+# coverage.py over the package (the scorecard's quick-tier coverage: pytest-cov, which
+# combines the xdist workers' data)
+[tool.coverage.run]
+source = ["spiderpig"]
+omit = ["spiderpig/viewer/*"]
+# measure the Python subprocesses too (spiderpig.workers' jobs, the CLI runs): pytest-cov 7
+# no longer does; coverage.py's own patch, their data combined with the run's
+patch = ["subprocess"]
+
+[tool.coverage.report]
+skip_empty = true

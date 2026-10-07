@@ -17,11 +17,45 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 | `mise run test-fixtures` | the currency tests (`-m fixture_regen`) with `--regen` | after an intended engine change |
 | `mise run test-viewer` | `npm run typecheck` (P1 adds vitest) | viewer edits |
 | `mise run gate -- snapshot DIR` / `compare DIR` | the identity gate (below) | before / after a product change |
+| `mise run scorecard` | every ROADMAP number (below) | before and after a workstream |
+| `mise run doc-check` | the docs' backticked names against the code | doc edits |
 
 `<module>` is one of `linkage`, `planner`, `construction`, `hardware`, `strength`, `api`,
 `sim`, `server`. Pytest args go after `--` (`mise run test-planner -- -k route -x`);
 `SPIDERPIG_TIER_WORKERS` changes `-n`. A module with no fast test yet passes and says so
 (`tests/tiers.py`'s runner turns pytest's "no tests" into success).
+
+## The scorecard, CI, the doc check
+
+`mise run scorecard` (`tests/scorecard.py`) writes `build/scorecard.json` and prints a table:
+`spiderpig build --profile` of the Strider double (an empty store, then the same store: the
+stages, wall and CPU), each module tier's and the quick tier's wall, CPU and tests (the
+quick tier under coverage.py, `COVERAGE_CORE=sysmon`, pytest-cov combining the workers; its
+10 slowest tests), pyright's errors (`[tool.pyright]`, basic; also without OCP/mujoco stub
+noise), ruff's `RUF` findings, every module over 800 lines, CLAUDE.md's lines, the doc
+check's misses and the load average around each section. `--gate`, `--full` (`--cold`: on
+an empty test cache) and `--audit` add the heavy ones; the build runs 3 times (`--runs`),
+medians reported; the static checks run alone (`--parallel-static`: beside the tiers);
+`--compare A.json B.json` prints changed or non-zero exit codes first, warns when the two
+used other xdist workers or ran at loads over 2x apart, then every delta. CPU is each process's `wait4` rusage (its xdist
+workers included). The baseline is `docs/agentlib/scorecard-baseline.json`.
+
+CI (`.github/workflows/ci.yml`: pushes to master and every PR, read-only token, a newer
+run of a ref cancels the older): ruff, `uv lock --check`, the viewer's typecheck + vitest,
+the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages installed with
+`SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
+cache restored and saved with `actions/cache`, keyed by the engine version, `python -m
+spiderpig.tools.engine_version`, plus `uv.lock` and `tests/cache.py`: no restore-keys, so a
+new engine starts empty), and the doc check, report-only until W7. `.pre-commit-config.yaml` runs ruff and
+`uv lock --check` (opt-in: `uvx pre-commit install`).
+
+`mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
+task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
+AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md
+statically against the package's AST (identifiers and key-like strings; docstrings,
+comments and prose strings name nothing; no engine import); `-v` lists every check,
+`--strict` fails on a miss. `tests/doc_check_allow.txt` holds what is legitimately not code
+(output file names, protocol fields, the roadmap's planned names), never drift.
 
 ## Markers
 

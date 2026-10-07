@@ -5,6 +5,8 @@
 !.claude/settings.json
 # the tests' recorded fixtures (tests/cache.py recorded(); docs/agentlib/TESTING.md)
 !tests/fixtures/**/*.json
+# the scorecard's committed baseline (tests/scorecard.py)
+!docs/agentlib/scorecard-baseline.json
 
 *.scad
 *.stl
@@ -47,3 +49,7 @@ spiderpig/viewer/dist/
 
 # the spiderpig API's per-project design store (spiderpig/store.py)
 .spiderpig/
+
+# coverage.py's data (the scorecard writes its own under a temporary folder)
+.coverage
+.coverage.*
