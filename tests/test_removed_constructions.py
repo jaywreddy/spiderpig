@@ -193,28 +193,48 @@ def test_an_unknown_construction_names_the_registry():
 
 
 @pytest.mark.construction
-def test_a_context_without_a_build_config_has_its_default_sheet():
+def test_a_context_whose_config_names_no_part_sheets_cuts_everything_from_its_sheet():
+    """``Context.sheet``: a config without per-part sheets (no ``frame_sheet``) cuts every
+    role from its one ``sheet``."""
     import dataclasses
     import types
 
     from spiderpig.fabricate import side_problem, template_for
 
     cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
-    ctx, _, problem = side_problem(template_for(cfg), cfg)
+    ctx, _, _ = side_problem(template_for(cfg), cfg)
+    assert ctx.sheet("frame") == cfg.frame_sheet != cfg.sheet
     bare = dataclasses.replace(ctx, config=types.SimpleNamespace(sheet="acrylic_3mm"))
-    assert bare.sheet("crank") == bare.sheet("frame") == "acrylic_3mm"
-    assert ctx.layout({}, 5).top == 5
-    with pytest.raises(ValueError, match="depends on unknown links"):
-        problem.__class__(problem.topo, [*problem.raw_claims, problem.raw_claims[0].__class__(
-            "probe", frozenset({"no_such_link"}), lambda L: [])], problem.spec)
+    assert bare.sheet("crank") == bare.sheet("frame") == bare.sheet("link") == "acrylic_3mm"
+
+
+@pytest.mark.planner
+def test_a_claim_on_an_unknown_link_is_refused():
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.stack import Claim, StackProblem
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg)
+    probe = Claim("probe", frozenset({"no_such_link"}), lambda L: [])
+    with pytest.raises(ValueError, match=r"depends on unknown links \['no_such_link'\]"):
+        StackProblem(problem.topo, [*problem.raw_claims, probe], problem.spec)
 
 
 @pytest.mark.construction
 def test_the_side_design_reports_its_linkage_checks():
+    """``SideDesign.checks``: the linkage's loop checks at the design's proportions: the
+    Klann's two loops (closing at C and E) close all round, each with a margin and a transmission
+    angle short of a toggle."""
     from tests import cache
 
-    _, design = cache.cached_design(BuildConfig(linkage="hoecken_pantograph", robot=False))
-    assert design.checks == design.config.lk.check(dict(design.config.proportions))
+    _, design = cache.cached_design(BuildConfig(linkage="klann", module="single", robot=False))
+    closures = [c for c in design.checks if c.kind == "closure"]
+    assert [c.point for c in closures] == ["C", "E"]
+    margins = [round(c.margin_mm, 2) for c in closures]
+    assert margins == [21.24, 9.45]          # how far each loop stays from failing to close
+    for c in closures:
+        assert c.fail_fraction == 0.0, c
+        assert 0 < c.angle_deg[0] <= c.angle_deg[1] < 180, c
 
 
 def test_a_misshapen_spec_section_is_reported_at_its_path():

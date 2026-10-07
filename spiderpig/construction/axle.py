@@ -232,8 +232,6 @@ class AxleGroup(Group):
                 elif not self.pillar and k == hi + 1 and h_hi > 0:
                     out.append(Placed(hi, Disc(ax, d.head), g, f"{g} cap", gap=True,
                                       height=h_hi, toward=+1))
-                elif not self.pillar and k in (lo - 1, hi + 1):
-                    out.append(Placed(k, Disc(ax, d.head), g, f"{g} {'head' if k < lo else 'cap'}"))
                 elif k in beside:
                     out.append(Placed(k, Disc(ax, stop), g, f"{g} shoulder"))
                 else:

@@ -445,3 +445,15 @@ def test_a_claim_that_cant_be_built_at_the_plans_z_rejects_a_plan_with_no_gaps()
     claims = [stack.Claim("probe", frozenset(), make)]
     with pytest.raises(stack.PlanReject, match="no stock part fits at this z"):
         stack.finalize(problem.topo, claims, problem.spec, {}, 4)
+
+
+
+def test_the_gaps_a_claim_reads_are_a_mapping_of_the_layouts():
+    gaps = stack._ReadGaps({3: 2.4, 5: 4.0})
+    assert len(gaps) == 2
+    assert sorted(gaps) == [3, 5]
+    assert 3 in gaps
+    assert gaps.read == {}
+    assert gaps[5] == 4.0
+    assert gaps.get(7, 0.0) == 0.0
+    assert gaps.read == {5: 4.0}

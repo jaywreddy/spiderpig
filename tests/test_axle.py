@@ -142,3 +142,33 @@ def test_the_early_claim_is_a_lower_bound(axles):
                 cover = [s for s in final if not s.gap and s.layer == e.layer]
             r = max((s.shape.r for s in cover), default=0.0)
             assert r >= e.shape.r - 1e-9, (g.name, e.layer, e.label)
+
+
+
+def test_a_link_that_leaves_no_room_for_a_shoulder_is_refused():
+    """A link passing a pin in the layer beside one of its links, closer than a shoulder
+    needs (a ring that overlaps the link's hole by ``STOP_OVERLAP``) but not so close the
+    pin's thinnest ring can't pass: the claim is unbuildable there. (The defaults' rings are
+    never thinner than a shoulder, so the case needs a thin ``min_wall``.)"""
+    import dataclasses
+
+    from spiderpig.config import BuildConfig
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.stack import Layout, Unbuildable
+
+    cfg = BuildConfig(linkage="klann", module="single", robot=False)
+    ctx, groups, _ = side_problem(template_for(cfg), cfg)
+    pin = next(g for g in groups if g.name == "pin:C")
+    assert set(pin.axis.members) == {"b1", "b3"}
+    thin = dataclasses.replace(ctx, params=dataclasses.replace(ctx.params, min_wall=0.3))
+    d, p = pin.dims(thin), thin.params
+    stop = p.hole(2 * d.axle) / 2 + STOP_OVERLAP
+    assert d.neck < stop
+    geo = ctx.topo.geometry
+    dmin = min(geo.dist(("pt", "C"), ("seg", a, b)) for a, b in ctx.topo.links["b2"])
+    margin = dmin - p.link_radius - (d.neck + stop) / 2      # b2 leaves halfway between
+    tight = dataclasses.replace(thin, params=dataclasses.replace(p, margin=margin))
+    (claim,) = AxleGroup(pin.axis, pin.construction).claims(tight)
+    with pytest.raises(Unbuildable, match="no room for a shoulder in layer 3 beside its "
+                                          "link: b2 leaves"):
+        claim.make(Layout({"b1": 2, "b3": 4, "b2": 3}, 8, ctx.pitch))

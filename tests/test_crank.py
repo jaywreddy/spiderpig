@@ -544,3 +544,35 @@ def test_the_strider_decker_and_quad_plan_on_the_hex_crank(module):
         if ch[-1].hi + 1 == hub:
             assert capped
             assert not j.screw_hi
+
+
+
+def test_a_screw_key_reads_back_as_its_kind_and_length():
+    from spiderpig.construction.crank import BHCS, SHCS, screw_from_key
+
+    for key, kind in (("m3_shcs_10", SHCS["3"]), ("m3_bhcs_8", BHCS["3"])):
+        sk, length = screw_from_key(key)
+        assert (sk, length) == (kind, float(key.rsplit("_", 1)[1]))
+        assert sk.key(length) == key
+    assert screw_from_key("m3_nut") is None
+    assert screw_from_key("m5_shcs_10") is None        # no M5 kind modelled
+
+
+def test_the_hub_sits_right_under_the_inner_plate_when_the_horn_needs_no_layer():
+    """The XL430's horn face is 3.175 mm under the inner plate's top face, which is the
+    0.125 in plate's own bottom face: the horn takes no layer of the stack
+    (``horn_layers`` 0), its layers are the plate's and the hub's is the one under it."""
+    from spiderpig.construction.crank import hub_layers
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.stack import Layout
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False, frame_sheet="al5052_3p2mm",
+                      servo="xl430_w250")
+    ctx, groups, _ = side_problem(template_for(cfg), cfg)
+    drive = ctx.interfaces["drive"]
+    assert drive.horn_layers == 0
+    assert drive.horn_face_depth == pytest.approx(drive.plate_t)
+    hub_t = next(g for g in groups if g.name == "crank").dims(ctx).hub_thickness
+    horn, hub = hub_layers(Layout({}, 8, ctx.pitch), drive, hub_t)
+    assert horn.start == 8          # from the inner plate up into the servo
+    assert hub == range(7, 8)

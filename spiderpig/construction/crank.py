@@ -280,7 +280,7 @@ class CrankGroup(Group):
 
         def hub(L: Layout):
             horn, hub = hub_layers(L, drive, d.hub_thickness)
-            if L.final and c.face_on_layer and drive.horn_layers and hub:
+            if L.final and drive.horn_layers and hub:
                 # the printed horn spacer takes up what the plan's z leaves over the hub
                 t = (L.z(L.top)[1] - L.z(max(hub))[1]
                      - (drive.horn_face_depth - drive.spacer_t))
@@ -502,7 +502,6 @@ class BoltCrank:
     stub_screw_engage: float = 2.5   # least thread of the stub screw in the standoff (5
     #                                  turns of M3; 3.0 before the 3.175 mm aluminium plates)
     stub_seat: float = 1.5           # least of the stub in the outer frame plate
-    face_on_layer: bool = True       # the drive's horn face on a layer boundary
     washer_r: float = 6.0            # PTFE washers / shims (6 x 12) on a crankpin through a gap
     web_t: float = 3.175             # the crank sheet's thickness, set by resolve
     stub_below: float = 2.5          # the stub may stand this far out under the

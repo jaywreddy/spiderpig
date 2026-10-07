@@ -136,23 +136,20 @@ class DriveGroup(Group):
         against the plate otherwise).
         """
         plate = ctx.sheet_t("frame")            # the inner frame plate
-        t = plate - self.spec.horn_face_depth
-        if self._face_on_layer(ctx):
-            # a crank of laser plates (the bolt crank) needs the face on a layer boundary:
-            # the plate's bottom face, or a layer's under it (the horn's layers hold no
-            # plate of the crank's: the default sheet's thickness)
-            layer = ctx.pitch
-            n = max(0, math.ceil((self.spec.horn_face_depth - plate) / layer - 1e-9))
-            t = plate + n * layer - self.spec.horn_face_depth
-            if 1e-6 < t < MIN_SPACER:
-                t += layer
-            # a crankpin's screw head over the hub plate stands in a pocket of the spacer
-            # (a short crank: the Hoecken pantograph's): the spacer at least that thick
-            need = self._hub_head_need(ctx)
-            while need > 0 and t < need - 1e-6:
-                t += layer
-            return 0.0 if t <= 1e-6 else t
-        return 0.0 if t <= 1e-6 else max(t, MIN_SPACER)
+        # the crank's laser plates need the face on a layer boundary: the plate's bottom
+        # face, or a layer's under it (the horn's layers hold no plate of the crank's: the
+        # default sheet's thickness)
+        layer = ctx.pitch
+        n = max(0, math.ceil((self.spec.horn_face_depth - plate) / layer - 1e-9))
+        t = plate + n * layer - self.spec.horn_face_depth
+        if 1e-6 < t < MIN_SPACER:
+            t += layer
+        # a crankpin's screw head over the hub plate stands in a pocket of the spacer (a
+        # short crank: the Hoecken pantograph's): the spacer at least that thick
+        need = self._hub_head_need(ctx)
+        while need > 0 and t < need - 1e-6:
+            t += layer
+        return 0.0 if t <= 1e-6 else t
 
     def _hub_head_need(self, ctx: Context) -> float:
         """What the side's crank needs of the horn spacer over its hub plate (0: nothing):
@@ -168,17 +165,6 @@ class DriveGroup(Group):
         crank = crank.resolve(ctx)
         h = self.spec.horn
         return crank.hub_head_need(ctx, h.diameter / 2, h.center_screw_head_d)
-
-    @staticmethod
-    def _face_on_layer(ctx: Context) -> bool:
-        """Whether the side's crank construction needs the horn's face on a layer boundary
-        (its hub is whole laser-cut plates)."""
-        key = getattr(ctx.config, "crank", None)
-        if key is None:
-            return False
-        from spiderpig.construction import CRANKS
-
-        return bool(getattr(CRANKS.get(key), "face_on_layer", False))
 
     def pattern_angle(self, ctx: Context) -> float:
         """Horn-hole angle (from the first crankpin) farthest from every crankpin.
@@ -238,8 +224,7 @@ class DriveGroup(Group):
             center_head_h=max(0.0, h.center_screw_head_h - t),
             pattern_angle=self.pattern_angle(ctx),
             plate_t=ctx.sheet_t("frame"),
-            horn_layers=(round((s.horn_face_depth + t - ctx.sheet_t("frame")) / ctx.pitch)
-                         if self._face_on_layer(ctx) else 0),
+            horn_layers=round((s.horn_face_depth + t - ctx.sheet_t("frame")) / ctx.pitch),
             spacer_t=t,
         )
 

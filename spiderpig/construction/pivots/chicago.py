@@ -164,7 +164,7 @@ class ChicagoShaft:
     ``realize``)."""
 
     roles: ClassVar[tuple[str, ...]] = ("pin",)       # a pillar's head would leave the plates
-    washer_key: str | None = "ptfe_washer_4x8x0p5"   # the thrust face under the screw's head:
+    washer_key: str = "ptfe_washer_4x8x0p5"   # the thrust face under the screw's head:
     #                                  its 0.5 mm is part of the printed top spacer (None: a
     #                                  flange is the face)
     shim_key: str = "shim_din988_4x8"   # the take-up's steps and the spacers' OD (printed)
@@ -191,7 +191,7 @@ class ChicagoShaft:
 
     @property
     def washer_t(self) -> float:
-        return float(get(self.washer_key).dims["t"]) if self.washer_key else 0.0
+        return float(get(self.washer_key).dims["t"])
 
     def clip(self) -> tuple[float, float]:
         """(outside diameter, height) of an end: the head (and the washer under the top one)."""
@@ -371,12 +371,10 @@ class ChicagoShaft:
         from spiderpig.construction.pivots.common import PRINT_MIN
 
         bond_gap = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
-        # an upper spacer thinner than a print (the bushed pins have no washer in it) isn't
-        # printed either: the top link gets that much more axial play
+        # the upper spacer holds the washer's thickness at least (0.5 mm), always a print
         hi_t = self.washer_t + f.shims_hi
-        loose = hi_t if EPS < hi_t < PRINT_MIN - EPS else 0.0
         for tag, z0, t in (("hi", z, hi_t), ("lo", zb, f.shims_lo)):
-            if t <= EPS or (tag == "lo" and bond_gap) or (tag == "hi" and loose):
+            if t <= EPS or (tag == "lo" and bond_gap):
                 continue
             sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
                        d + 0.2, z0, z0 + t)
@@ -390,10 +388,8 @@ class ChicagoShaft:
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-            "play_mm": round(f.play + loose, 3), "item": chicago(f.length), "printed": True,
-            "bond_gap_mm": round(bond_gap, 3), "unprinted_hi_mm": round(loose, 3)}
-        if loose:
-            f = replace(f, play=f.play + loose)
+            "play_mm": round(f.play, 3), "item": chicago(f.length), "printed": True,
+            "bond_gap_mm": round(bond_gap, 3), "unprinted_hi_mm": 0.0}
         return f
 
 
@@ -455,7 +451,7 @@ class ChicagoAxle:
             raise ConstructionError(f"a {p.spacer_d} mm spacer ring leaves less than {p.min_wall} "
                                     f"mm around a {self.hole():.2f} mm hole")
         head_d, _ = self.shaft.clip()
-        w_od = float(get(self.shaft.washer_key).dims["od"]) if self.shaft.washer_key else 0.0
+        w_od = float(get(self.shaft.washer_key).dims["od"])
         return AxleDims(axle=self.shaft.d / 2, spacer=p.spacer_d / 2,
                         head=max(head_d, w_od) / 2, neck=ring_min,
                         end_h=self.shaft.base_heights(), washer=washer_od(self.shaft.d) / 2)

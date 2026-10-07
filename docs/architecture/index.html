@@ -1358,11 +1358,8 @@ run again with it and passed. The fixes it tries are:</p>
 <li>thinner parts (<code>Params</code> such as link radius and axle diameters), within each
 construction's limits;</li>
 <li>the default scale, for a design that was scaled down;</li>
-<li>printed pillars, when a bolt pillar's longest stock screw bounds the stack.</li>
 </ul>
-<p>The same checking covers two other cases: a construction that can't be built with the
-given sizes gets its own fix (a thicker sheet for the printed crank, section 6.2), and a
-design that plans but misses a target that grows with the linkage (stroke, straightness,
+<p>The same checking covers one other case: a design that plans but misses a target that grows with the linkage (stroke, straightness,
 lift) gets the smallest scale that meets it. These checks share one more 60 s deadline,
 and anything left unchecked appears as a note, never as a recommendation. <code>spiderpig explain</code> prints each stage's verdict, the plan's layer table, and any failure with what
 would clear it.</p>
@@ -1405,10 +1402,6 @@ links lets a stock screw fit that chain. A test pins this outcome.</li>
 quad failed; run alone, it planned in 36 layers, unproven, after 61 s. The six-bar quad
 came out at 25 layers on the busy machine and 24 without load. A plan found is always
 valid; what varies is how thin it is, and whether one is found at all (section 12.2).</li>
-<li><strong>Bolt pillars bound the stack.</strong> The longest stock M3 bolt clamps at most 15 layers of
-3 mm. A metal shaft can't neck (section 6.2), so links pass it less closely and stacks
-grow: a Klann quad or Strider double on bolt pillars has no plan within those 15 layers,
-and the recommendation is printed pillars.</li>
 </ul>
 <p>The planner also has four opt-in speed-ups, all off by default (section 11).</p>
 <p>A plan says where every part may go. The next stage builds the parts.</p>

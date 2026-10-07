@@ -881,9 +881,7 @@ run again with it and passed. The fixes it tries are:
   construction's limits;
 - the default scale, for a design that was scaled down;
 
-The same checking covers two other cases: a construction that can't be built with the
-given sizes gets its own fix (a thicker sheet for the printed crank, section 6.2), and a
-design that plans but misses a target that grows with the linkage (stroke, straightness,
+The same checking covers one other case: a design that plans but misses a target that grows with the linkage (stroke, straightness,
 lift) gets the smallest scale that meets it. These checks share one more 60 s deadline,
 and anything left unchecked appears as a note, never as a recommendation. `spiderpig
 explain` prints each stage's verdict, the plan's layer table, and any failure with what

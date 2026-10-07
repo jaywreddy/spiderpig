@@ -133,17 +133,33 @@ def test_a_missed_stroke_is_met_by_the_least_practical_scale_checked():
 
 
 
-def test_a_scale_that_doesnt_plan_is_stepped_up_and_none_is_offered(monkeypatch):
-    """``scale``: a gap already clear still starts a step up; a scale whose plan fails
-    (here: no CPU time for the planner) is not offered, the next is tried, and with none
-    left ``None``. (``_verify`` takes the failing plan as not verified.)"""
-    from spiderpig import stack
-    from spiderpig.stack import Deadline
+def test_a_scale_that_doesnt_plan_is_stepped_up(monkeypatch):
+    """``scale``: a gap already clear still starts a step up from the linkage's own scale;
+    a scale whose plan fails (``_verify`` takes the planner's ``ValueError`` as not
+    verified) is not offered, and the next step up, which plans, is."""
+    from spiderpig import fabricate, linkage
+    from spiderpig.recommend import _step
 
-    monkeypatch.setattr(stack, "MAX_SECONDS", 0.0)
     cfg = BuildConfig(linkage="dwell_rocker", robot=False)
+    lk = linkage.get(cfg.linkage)
+    name = linkage.scale_params(lk)[0]
+    now = float(lk.params[name])
+    first, second = now + _step(now), now + 2 * _step(now)
+    real, tried = fabricate.design_side, []
+
+    def design_side(tmpl, config, *args, **kw):
+        unit = dict(config.proportions)[name]
+        tried.append(unit)
+        if unit == first:
+            raise fabricate.PlanError("no plan (a stub)", [], [])
+        return real(tmpl, config, *args, **kw)
+
+    monkeypatch.setattr(fabricate, "design_side", design_side)
     clear = Gap("b2 past pillar A", 20.0, (("link_radius", 1.0),), 1.0)
-    assert scale(cfg, [clear], plan=True, deadline=Deadline(60.0)) is None
+    rec = scale(cfg, [clear], plan=True)
+    assert tried == [first, second]
+    assert rec.changes == ((name, now, second),)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in")
 
 
 def test_no_thinner_part_clears_a_gap_too_far_off():

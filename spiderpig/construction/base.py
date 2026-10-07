@@ -49,7 +49,7 @@ import numpy as np
 from spiderpig.hardware.bom import BomLine
 from spiderpig.mechanism import Body
 from spiderpig.shapes import Cut
-from spiderpig.stack import Claim, Keepout, Layout, Placed, StackPlan, Topology
+from spiderpig.stack import Claim, Keepout, Placed, StackPlan, Topology
 
 if TYPE_CHECKING:
     from spiderpig.mechanism import Mechanism
@@ -154,9 +154,6 @@ class Context:
     servo: ServoSpec
     config: object                              # fabricate.BuildConfig
     interfaces: dict[str, object] = field(default_factory=dict)
-
-    def layout(self, layers, top: int) -> Layout:
-        return Layout(layers, top, self.pitch)
 
     def sheet(self, role: str, link: str | None = None) -> str | None:
         """The sheet a part of ``role`` is cut from (:func:`materials.sheet_of`: "frame",

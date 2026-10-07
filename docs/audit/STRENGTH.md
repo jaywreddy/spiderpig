@@ -76,8 +76,8 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   `beam`): a pin is held by nothing but its links, so the couple its loads leave is
   shared equally by the bores. Two links `s` apart: `M = F s / 2` (the old `F s / 4`
   assumed both ends clamped square; it halved every pin's bending). A clevis (middle
-  link against the outer two): `F a b / s`. A printed pillar glued into one plate is a
-  cantilever from the plate's face; into both, a beam between the faces. With the sim's
+  link against the outer two): `F a b / s`. A pillar anchored in one plate is a
+  cantilever from the plate's face; in both, a beam between the faces. With the sim's
   vectors the measured patterns are used; with a bare load, the worst pair or clevis.
 * **The crank**: each crankpin joint carries the drive torque x chord / crank radius
   (2.0 on the Strider double and the 180° quads, 1.41 on a decker, 1.0 single), rated
@@ -104,8 +104,8 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   _web_capacity`: 2200 N clamp, mu 0.3 at the web, 0.2 under the head; UNVERIFIED), 3.032
   N·m (`--crank bolt_round` since; the default hex-standoff crankpins rate a hex bearing:
   the first section).
-* **Pillars**: a printed pillar glued into one plate is a cantilever from the plate's face,
-  into both a beam between the faces. The **standoff pillar** (the default since
+* **Pillars**: (the printed pillar, removed in 2026-10, was a cantilever from the face of
+  the plate it was glued into, or a beam between both faces.) The **standoff pillar** (the default since
   2026-10-03, `construction/pivots/standoff.py`) is a **beam per bay** between its
   supports, the frame plates (a pillar a link stops short of one plate: a cantilever), its
   section the standoff as a tube bored to its tap drill (as if tapped through): a goBILDA
@@ -140,7 +140,8 @@ fully plastic bearing at the sheet's yield (a pressed test of one pocket settles
   `strength` / `joint_overload` with the joint and its fixes as culprits); jam SF < 2
   or walking SF < 3 a **warning**. Each finding names the joint, its links, the case,
   the load and the SF, and fixes recomputed to clear it (another construction, the
-  links in adjacent layers, a thicker printed pillar, a lower torque limit).
+  links in adjacent layers, a pillar anchored in both plates, a thicker crank or link
+  sheet, a lower torque limit).
 
 ## The plan's own z, one-piece pillars and the Strider quad, 2026-10-05 (r5)
 

@@ -1589,10 +1589,13 @@ def test_r5_the_guide_names_the_allowance_the_angle_and_the_second_input():
 
 def test_a_plan_the_planner_doesnt_find_is_the_plan_reports_failure(monkeypatch):
     """``api.plan``: the planner's ``PlanError`` (here: no CPU time) is the report's
-    failure, not an exception."""
-    from spiderpig import stack
+    failure, not an exception. (The process's design and layout memos are emptied for the
+    test: a design another test planned would be answered from them.)"""
+    from spiderpig import fabricate, stack
 
     monkeypatch.setattr(stack, "MAX_SECONDS", 0.0)
+    monkeypatch.setattr(fabricate, "_DESIGNS", {})
+    monkeypatch.setattr(fabricate, "_LAYOUTS", {})
     design = api.resolve(api.spec_of(BuildConfig(linkage="dwell_rocker", robot=False)),
                          store=None)
     rep = api.plan(design)
@@ -1600,7 +1603,6 @@ def test_a_plan_the_planner_doesnt_find_is_the_plan_reports_failure(monkeypatch)
     (f,) = rep.failures
     assert (f.stage, f.code) == ("plan", "no_plan_in_time")
     assert "deadline ran out" in f.message
-
 
 
 def test_an_unpriced_item_is_named_not_counted_in_the_cost_floor(monkeypatch):
