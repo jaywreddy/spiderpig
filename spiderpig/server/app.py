@@ -378,7 +378,7 @@ def _on_loop(fn) -> None:
     """Run ``fn`` on the app's event loop: now when called on it (or with no loop
     running), else scheduled there from this thread."""
     loop = _LOOP
-    if loop is None or loop.is_closed():
+    if loop is None or loop.is_closed() or not loop.is_running():
         fn()
         return
     try:
@@ -431,6 +431,7 @@ async def _lifespan(_app: FastAPI):
         yield
     finally:
         await broadcaster.stop()
+        _LOOP = None
 
 
 # ---------------------------------------------------------------------------
