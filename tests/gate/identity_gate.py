@@ -9,8 +9,10 @@ after it, on the branch::
     mise run gate -- compare DIR           # snapshots the tree again and diffs against DIR
     mise run gate -- diff DIR_A DIR_B      # two snapshots
 
-For every design of :data:`DESIGNS` (one process each, ``-j`` at once) it records, as
-``spiderpig audit --no-sim`` and ``spiderpig build`` make them:
+For every design of :data:`DESIGNS` (one process each, ``-j`` at once, with its workers:
+the contract angles and the ``t=1`` half in processes of their own, :data:`SPLIT`; both
+follow the free cores unless given, :func:`plan_cores`) it records, as ``spiderpig audit
+--no-sim`` and ``spiderpig build`` make them:
 
 - the **plan**: layers, top, crank route, heads, gaps, thicknesses, sunk heads, height,
   optimality and proof, ``describe()``;
@@ -20,10 +22,11 @@ For every design of :data:`DESIGNS` (one process each, ``-j`` at once) it record
 - every **part** of the fabrications at the audit's clash angles (``t=1``, ``t=4.38``):
   class, fab, BOM key, sheet, colour, pose, volume, area, centre of mass, bounding box,
   solid / face / edge counts, and the body order;
-- the **build** (``spiderpig build`` of the audit's own ``t=1`` fabrication): ``bom.json``
-  and every text it writes (``bom.csv/md``, ``ORDER.md``, the ``parts.csv`` /
-  ``order.csv`` files, ``manifest.json``), every DXF (sheets and per-part) as its entities,
-  and a hash of every STL.
+- the **build** (``spiderpig build`` of the audit's ``t=1`` fabrication, or with the
+  build's worker of that worker's own): ``bom.json`` and every text it writes
+  (``bom.csv/md``, ``ORDER.md``, the ``parts.csv`` / ``order.csv`` files,
+  ``manifest.json``), every DXF (sheets and per-part) as its entities, and a hash of every
+  STL (the STEP file, never read, isn't written).
 
 ``compare`` reports, per design, **identical**, **geometry identical, order differs** (a
 DXF's entities or a closed outline's start vertex in another order, body order, a text
@@ -91,14 +94,25 @@ ENV = {
 
 
 def _part_doc(b) -> dict:
+    from build123d import Solid
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
     p = b.part
     bb = p.bounding_box()
-    com = p.center()
+    if type(p) is Solid:    # (Solid's volume and center() each make this one call)
+        props = GProp_GProps()
+        BRepGProp.VolumeProperties_s(p.wrapped, props)
+        c = props.CentreOfMass()
+        volume, com = props.Mass(), [c.X(), c.Y(), c.Z()]
+    else:
+        c = p.center()
+        volume, com = p.volume, [c.X, c.Y, c.Z]
     return {
         "name": b.name, "class": type(p).__name__, "fab": b.fab, "bom_key": b.bom_key,
         "sheet": b.sheet, "color": b.color, "rigid_with": b.rigid_with,
         "pose": [list(map(float, row)) for row in b.pose.matrix],
-        "volume": p.volume, "area": p.area, "com": [com.X, com.Y, com.Z],
+        "volume": volume, "area": p.area, "com": com,
         "bbox": [bb.min.X, bb.min.Y, bb.min.Z, bb.max.X, bb.max.Y, bb.max.Z],
         "topology": [len(p.solids()), len(p.faces()), len(p.edges()), len(p.vertices())],
     }
@@ -158,39 +172,63 @@ def _dxf_entities(path: Path) -> list:
     return out
 
 
-def run_one(name: str, out: Path) -> None:
-    """Snapshot one design into ``out/<name>.json``."""
+SPLIT = "contract:0,1.6|contract:3.2,4.8|build"
+"""The work beside the audit's own process, one process per ``|`` (``GATE_SPLIT``; empty:
+everything in one process): ``contract:T,...`` the contract at those angles, ``build`` the
+``t=1`` fabrication with its clashes, solids and parts, and the build of it. Each worker
+takes the plan from the design's store (re-made and verified), where the audit's process
+recorded it first. Unset, :func:`plan_cores` picks it from the cores free."""
+
+
+def free_cores() -> int:
+    """The cores this process may run on less the load average (at least 1)."""
+    cores = (len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity")
+             else os.cpu_count() or 1)
+    return max(1, round(cores - os.getloadavg()[0]))
+
+
+def plan_cores(n_designs: int, jobs: int | None, split: str | None) -> tuple[int, str]:
+    """``(jobs, split)``: the designs at once and each one's workers (:data:`SPLIT`), those
+    not given from the free cores: the whole split while a design gets 4 cores, the build's
+    worker alone with 2-3, none with 1; then as many designs at once as their processes
+    have cores (at least 1)."""
+    free = free_cores()
+    if split is None:
+        split = SPLIT if free >= 4 else "build" if free >= 2 else ""
+    if jobs is None:
+        per = 1 + len([t for t in split.split("|") if t])
+        jobs = min(n_designs, max(1, free // per))
+    return jobs, split
+
+
+def _occt(default: int) -> None:
+    """OCCT's pool for this process (``GATE_OCCT_THREADS`` when set): one thread where it
+    only cuts and checks (the audit's process, the contract workers), two where the build
+    meshes its STLs (``spiderpig.workers.occt_threads`` has the measurements)."""
     from OCP.OSD import OSD_ThreadPool
 
-    OSD_ThreadPool.DefaultPool_s(2)
+    OSD_ThreadPool.DefaultPool_s(int(os.environ.get("GATE_OCCT_THREADS", default)))
+
+
+def _setup(name: str, work: Path):
     import spiderpig.build as build_mod
-    import spiderpig.tools.audit as audit_mod
-    from spiderpig.design import engine_version
-    from spiderpig.fabricate import design_side, template_for
-    from spiderpig.store import Store
 
-    t0 = time.time()
-    work = Path(tempfile.mkdtemp(prefix=f"gate-{name}-"))
-    store = Store.of(work / "store")
     argv = DESIGNS[name] + ["--store", str(work / "store"), "--out", str(work / "build")]
-    config = build_mod._parse_args(argv).config
-    captured: dict[float, object] = {}
-    fabricate = audit_mod.fabricate
+    return argv, build_mod._parse_args(argv).config
 
-    def capture(tmpl, cfg, t=1.0):
-        mech = fabricate(tmpl, cfg, t)
-        captured.setdefault(float(t), mech)
-        return mech
 
-    audit_mod.fabricate = capture
-    rep = audit_mod.audit_module(config.module, config, TS_CONTRACT, TS_CLASH, store, sim=False)
-    rep.pop("seconds", None)
-    plan = design_side(template_for(config), config).plan
-    parts = {f"t={t:g}": [_part_doc(b) for b in m.bodies if b.part is not None]
-             for t, m in sorted(captured.items())}
-    # the build of the audit's own t=1 fabrication (the same call `spiderpig build` makes)
-    build_mod.fabricate = lambda tmpl, cfg, t=1.0: (captured[1.0] if float(t) == 1.0
+def _build_outputs(name: str, work: Path, argv: list[str], mech) -> dict:
+    """``spiderpig build`` of the fabrication ``mech`` (its ``t=1``; the call the command
+    makes): every text it writes, every DXF as its entities, a hash of every STL. The STEP
+    file is never read (a timestamp in its header; the parts are its geometry), so it is
+    not written."""
+    import spiderpig.build as build_mod
+    from spiderpig.mechanism import Mechanism
+
+    fabricate = build_mod.fabricate
+    build_mod.fabricate = lambda tmpl, cfg, t=1.0: (mech if float(t) == 1.0
                                                     else fabricate(tmpl, cfg, t))
+    Mechanism.export_step = lambda self, path: None
     rc = build_mod.main(argv)
     if rc != 0:
         raise SystemExit(f"{name}: spiderpig build exited {rc}")
@@ -205,14 +243,141 @@ def run_one(name: str, out: Path) -> None:
         elif f.suffix == ".stl":
             mesh[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
         elif f.suffix in (".step", ".stp"):
-            continue        # (a timestamp in its header; the parts above are its geometry)
+            continue
         else:
             files[rel] = _mask(rel, f.read_text().replace(str(work), "<WORK>"))
+    return {"files": files, "dxf": dxf, "mesh": mesh}
+
+
+def _build_task(name: str, work: Path) -> dict:
+    """The audit's ``t=1`` half (clashes, solids, the parts) and the build of that same
+    fabrication."""
+    from spiderpig.construction.contract import bad_solids, clashes
+    from spiderpig.fabricate import fabricate, template_for
+
+    argv, config = _setup(name, work)
+    _plan(config, work)
+    mech = fabricate(template_for(config), config, 1.0)
+    res = {"clash": clashes(mech), "solids": bad_solids(mech),
+           "parts": [_part_doc(b) for b in mech.bodies if b.part is not None]}
+    res.update(_build_outputs(name, work, argv, mech))
+    return res
+
+
+def _plan(config, work: Path):
+    from spiderpig import api
+    from spiderpig.store import Store
+
+    return api.plan_config(config, Store.of(work / "store"))
+
+
+def _contract_task(name: str, work: Path, ts) -> dict:
+    from spiderpig.construction.contract import check_side
+    from spiderpig.fabricate import template_for
+
+    _, config = _setup(name, work)
+    design = _plan(config, work)
+    tmpl = template_for(config)
+    return {f"t={t:g}": check_side(design, tmpl.freeze_at(t)) for t in ts}
+
+
+def run_task(name: str, work: Path, task: str, result: Path) -> None:
+    kind, _, arg = task.partition(":")
+    _occt(2 if kind == "build" else 1)
+    if kind == "build":
+        res = _build_task(name, work)
+    elif kind == "contract":
+        res = _contract_task(name, work, [float(x) for x in arg.split(",")])
+    else:
+        raise SystemExit(f"unknown task {task!r}")
+    result.write_text(json.dumps(res, default=str))
+
+
+def run_one(name: str, out: Path) -> None:
+    """Snapshot one design into ``out/<name>.json``."""
+    tasks = [t for t in os.environ.get("GATE_SPLIT", SPLIT).split("|") if t]
+    _occt(1 if "build" in tasks else 2)
+    import spiderpig.tools.audit as audit_mod
+    from spiderpig.design import engine_version
+    from spiderpig.fabricate import design_side, template_for
+
+    t0 = time.time()
+    work = Path(tempfile.mkdtemp(prefix=f"gate-{name}-"))
+    argv, config = _setup(name, work)
+    from spiderpig.store import Store
+
+    store = Store.of(work / "store")
+    procs = {}
+    if tasks:
+        _plan(config, work)         # solved here once, recorded in the store for the workers
+        for i, task in enumerate(tasks):
+            res = work / f"task{i}.json"
+            log = open(work / f"task{i}.log", "w")  # noqa: SIM115 (closed in result())
+            procs[task] = (subprocess.Popen(
+                [sys.executable, __file__, "_task", name, str(work), task, str(res)],
+                stdout=log, stderr=subprocess.STDOUT, cwd=REPO), res, log)
+
+    results: dict[str, dict] = {}
+
+    def result(task: str) -> dict:
+        if task not in results:
+            p, res, log = procs[task]
+            rc = p.wait()
+            log.close()
+            sys.stdout.write((work / f"task{tasks.index(task)}.log").read_text())
+            if rc != 0:
+                raise SystemExit(f"{name}: task {task} exited {rc}")
+            results[task] = json.loads(res.read_text())
+        return results[task]
+
+    contract_tasks = {float(x): t for t in tasks if t.startswith("contract:")
+                      for x in t.partition(":")[2].split(",")}
+    build_remote = "build" in procs
+    captured: dict[float, object] = {}
+    fabricate = audit_mod.fabricate
+    check_side, clashes, bad_solids = audit_mod.check_side, audit_mod.clashes, audit_mod.bad_solids
+    remote_t1 = object()            # the t=1 fabrication, made in the build worker
+
+    def capture(tmpl, cfg, t=1.0):
+        if build_remote and float(t) == 1.0:
+            return remote_t1
+        mech = fabricate(tmpl, cfg, t)
+        captured.setdefault(float(t), mech)
+        return mech
+
+    contract_ts = iter(TS_CONTRACT)
+
+    def contract(design, mech):
+        t = next(contract_ts)
+        if t in contract_tasks:
+            return result(contract_tasks[t])[f"t={t:g}"]
+        return check_side(design, mech)
+
+    audit_mod.fabricate = capture
+    audit_mod.check_side = contract
+    audit_mod.clashes = lambda m, *a, **k: (result("build")["clash"] if m is remote_t1
+                                            else clashes(m, *a, **k))
+    audit_mod.bad_solids = lambda m: (result("build")["solids"] if m is remote_t1
+                                      else bad_solids(m))
+    rep = audit_mod.audit_module(config.module, config, TS_CONTRACT, TS_CLASH, store, sim=False)
+    rep.pop("seconds", None)
+    plan = design_side(template_for(config), config).plan
+    parts = {f"t={t:g}": [_part_doc(b) for b in m.bodies if b.part is not None]
+             for t, m in sorted(captured.items())}
+    if build_remote:
+        built = result("build")
+        parts["t=1"] = built["parts"]
+        parts = dict(sorted(parts.items(), key=lambda kv: float(kv[0][2:])))
+    else:       # the build of the audit's own t=1 fabrication
+        built = _build_outputs(name, work, argv, captured[1.0])
+    for task in procs:              # every worker done (and its failure raised)
+        result(task)
+    files = built["files"]
     doc = {
         "design": name, "argv": DESIGNS[name], "engine_version": engine_version(),
         "config": repr(config), "plan": _plan_doc(plan), "audit": rep, "parts": parts,
-        "bom": json.loads(files.pop("bom.json")), "files": files, "dxf": dxf, "mesh": mesh,
-        "seconds": round(time.time() - t0, 1),
+        "bom": json.loads(files.pop("bom.json")), "files": files, "dxf": built["dxf"],
+        "mesh": built["mesh"], "seconds": round(time.time() - t0, 1),
     }
     (out / f"{name}.json").write_text(json.dumps(doc, indent=1, default=str))
 
@@ -230,10 +395,14 @@ def _git(*args: str) -> str:
         return ""
 
 
-def snapshot(out: Path, names: list[str], jobs: int) -> int:
+def snapshot(out: Path, names: list[str], jobs: int | None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     cad = tempfile.mkdtemp(prefix="gate-cad-")
-    env = {**os.environ, **ENV, "SPIDERPIG_CAD_CACHE": cad}
+    jobs, split = plan_cores(len(names), jobs, os.environ.get("GATE_SPLIT"))
+    print(f"{len(names)} designs, {jobs} at once, each with "
+          f"{split.replace('|', ', ') or 'no'} workers ({free_cores()} cores free)",
+          flush=True)
+    env = {**os.environ, **ENV, "SPIDERPIG_CAD_CACHE": cad, "GATE_SPLIT": split}
     t0 = time.time()
 
     def one(name: str) -> tuple[str, int, float]:
@@ -458,8 +627,9 @@ def main(argv=None) -> int:
         p.add_argument("dir", type=Path, help="the snapshot folder (compare: the baseline)")
         p.add_argument("--designs", default=",".join(DESIGNS),
                        help=f"comma-separated, of {', '.join(DESIGNS)}")
-        p.add_argument("-j", "--jobs", type=int, default=len(DESIGNS),
-                       help="designs at once (one process each)")
+        p.add_argument("-j", "--jobs", type=int, default=None,
+                       help="designs at once (default: as the free cores allow, "
+                            "plan_cores)")
         if cmd == "compare":
             p.add_argument("--out", type=Path, default=None,
                            help="where this tree's snapshot goes (default: a temporary folder)")
@@ -470,9 +640,15 @@ def main(argv=None) -> int:
     p = sub.add_parser("_one")
     p.add_argument("name")
     p.add_argument("out", type=Path)
+    p = sub.add_parser("_task")
+    for a in ("name", "work", "task", "result"):
+        p.add_argument(a)
     args = ap.parse_args(argv)
     if args.cmd == "_one":
         run_one(args.name, args.out)
+        return 0
+    if args.cmd == "_task":
+        run_task(args.name, Path(args.work), args.task, Path(args.result))
         return 0
     names = (args.designs.split(",") if args.designs
              else sorted(p.stem for p in args.a.glob("*.json") if p.stem in DESIGNS))
