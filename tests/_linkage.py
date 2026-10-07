@@ -139,14 +139,23 @@ def recorded_foot_z_ctx() -> Iterator[dict]:
         yield table
 
 
-@functools.cache
-def _seeded_live(config: BuildConfig):
-    """The planner's answer, its plan seeded from the test cache first
-    (:func:`tests.cache.seed_plan`: ``design_side`` re-makes and verifies it instead of
-    searching again)."""
+def seed_default_plan(config: BuildConfig) -> None:
+    """Seed ``config``'s plan, and the single module's its search would plan first for the
+    leg hint (``fabricate._leg_hint``), from the test cache (:func:`tests.cache.seed_plan`):
+    ``design_side`` then re-makes and verifies them instead of searching."""
     from tests import cache
 
     cache.seed_plan(config)
+    hint = cache._hint_config(config)
+    if hint is not None:
+        cache.seed_plan(hint)
+
+
+@functools.cache
+def _seeded_live(config: BuildConfig):
+    """The planner's answer, its plan seeded from the test cache first
+    (:func:`seed_default_plan`)."""
+    seed_default_plan(config)
     return _REAL_DEFAULT_PLAN_Z.__wrapped__(config)
 
 

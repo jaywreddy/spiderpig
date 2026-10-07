@@ -195,12 +195,13 @@ def _seeded_default_plan_z():
     import functools
 
     from spiderpig import walk
+    from tests._linkage import seed_default_plan
 
     real = walk._default_plan_z
 
     @functools.cache
     def seeded(config):
-        cache.seed_plan(config)
+        seed_default_plan(config)           # and the leg hint's single module
         return real(config)
 
     def clear():
