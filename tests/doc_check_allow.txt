@@ -1,0 +1,54 @@
+# The doc check's allow-list (tests/doc_check.py): backticked spans that are legitimately
+# not code. One per line: `token` (anywhere) or `doc-path: token` (in that doc only).
+# Drift is NOT allowed here: a name the code lost is fixed in the doc (W7), not listed.
+
+# names that aren't code
+README.md: digifab
+docs/ARCHITECTURE.md: monospace
+# files the build writes as f"{name}.stl" / f"{name}_sheet_parts.csv", the store's stage files
+strider.stl
+klann.stl
+strider_sheet_parts.csv
+export.json
+docs/agentlib/API.md: FILE.json
+# the MCP protocol's annotation names (the SDK's ToolAnnotations fields, read_only_hint, ...)
+readOnlyHint
+idempotentHint
+# `envelope_x/_y/_z_mm` shorthand
+_y_mm
+_z_mm
+
+# docs/agentlib/ROADMAP.md: what the workstreams will add or name (not code yet)
+docs/agentlib/ROADMAP.md: TrustedHostMiddleware
+docs/agentlib/ROADMAP.md: Origin
+docs/agentlib/ROADMAP.md: loop.call_soon_threadsafe
+docs/agentlib/ROADMAP.md: config.REMOVED_CONSTRUCTIONS
+docs/agentlib/ROADMAP.md: tests/_ctx.py
+docs/agentlib/ROADMAP.md: hex.py
+docs/agentlib/ROADMAP.md: web.py
+docs/agentlib/ROADMAP.md: capacity.py
+docs/agentlib/ROADMAP.md: geometry.py
+docs/agentlib/ROADMAP.md: topology.py
+docs/agentlib/ROADMAP.md: search.py
+docs/agentlib/ROADMAP.md: finalize.py
+docs/agentlib/ROADMAP.md: store_ops
+docs/agentlib/ROADMAP.md: tune.ts
+docs/agentlib/ROADMAP.md: hud.ts
+docs/agentlib/ROADMAP.md: m2_self_tap_4
+docs/agentlib/ROADMAP.md: bom.stack(total, steps, round_to=None) -> (stack, left)
+docs/agentlib/ROADMAP.md: docs/agentlib/DESIGNS.md
+docs/agentlib/ROADMAP.md: docs/history/
+docs/agentlib/ROADMAP.md: construction/crank/
+docs/agentlib/ROADMAP.md: stack/
+docs/agentlib/ROADMAP.md: api/
+# ruff's rule families and pyright's rule names
+docs/agentlib/ROADMAP.md: C4
+docs/agentlib/ROADMAP.md: PIE
+docs/agentlib/ROADMAP.md: RET
+docs/agentlib/ROADMAP.md: BLE
+docs/agentlib/ROADMAP.md: PLE
+docs/agentlib/ROADMAP.md: noqa
+docs/agentlib/ROADMAP.md: reportOptionalMemberAccess
+# the doc check's own placeholders
+docs/agentlib/ROADMAP.md: Class.attr
+docs/agentlib/ROADMAP.md: mise run X
