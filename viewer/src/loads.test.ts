@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { loadGlb } from './loader';
-import { isAbort, latestOnly } from './loads';
+import { isAbort, latestLoader, latestOnly } from './loads';
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -33,6 +33,47 @@ describe('latestOnly', () => {
     };
     await Promise.all([load('slow, first', 30), load('fast, second', 5)]);
     expect(shown).toEqual(['fast, second']);
+  });
+});
+
+describe('latestLoader (main.ts loadMode)', () => {
+  /** A host whose fetches the test settles, recording what reached the screen. */
+  function harness() {
+    const pending: { mode: string; signal: AbortSignal; resolve(s: string): void; reject(e: unknown): void }[] = [];
+    const log: string[] = [];
+    const load = latestLoader<string>({
+      begin: (mode) => { log.push(`begin ${mode}`); },
+      fetch: (mode, _q, signal) => new Promise<string>((resolve, reject) => {
+        pending.push({ mode, signal, resolve, reject });
+      }),
+      show: async (scene) => { log.push(`show ${scene}`); },
+      discard: (scene) => { log.push(`discard ${scene}`); },
+      end: () => { log.push('end'); },
+    });
+    return { pending, log, load };
+  }
+
+  it('shows only the latest of two loads that land out of order', async () => {
+    const { pending, log, load } = harness();
+    const first = load('robot', 'linkage=klann');
+    const second = load('robot', 'linkage=strider');
+    expect(pending[0]!.signal.aborted).toBe(true);     // the first fetch is aborted
+    pending[1]!.resolve('strider');
+    await second;
+    pending[0]!.resolve('klann');                       // (a fetch that ignored its abort)
+    await first;
+    expect(log).toEqual(['begin robot', 'begin robot', 'show strider', 'end', 'discard klann']);
+  });
+
+  it('swallows the superseded load\'s abort but reports the latest one\'s failure', async () => {
+    const { pending, log, load } = harness();
+    const first = load('robot');
+    const second = load('side');
+    pending[0]!.reject(new DOMException('aborted', 'AbortError'));
+    await expect(first).resolves.toBeUndefined();
+    pending[1]!.reject(new Error('422 no plan'));
+    await expect(second).rejects.toThrow('422 no plan');
+    expect(log).toEqual(['begin robot', 'begin side', 'end']);
   });
 });
 

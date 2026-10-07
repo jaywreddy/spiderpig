@@ -195,7 +195,7 @@ export function createDrive(host: DriveHost) {
   const design = {
     id: url.get('design') as string | null,   // a stored design: every query carries it
     linkage: url.get('linkage') ?? SERVER_DEFAULT.linkage,
-    module: url.get('module') ?? SERVER_DEFAULT.module,
+    module: url.get('module') ?? '',          // '': the linkage's own default (below)
     phases: (url.get('phases')?.split(',').map(Number) ?? null) as number[] | null,
     props: Object.fromEntries(paramKeys(url).filter((k) => k.startsWith('p.'))
       .map((k) => [k.slice(2), Number(url.get(k))])) as Record<string, number>,
@@ -206,6 +206,10 @@ export function createDrive(host: DriveHost) {
    * ``default_module`` (Strider's double, another walker's quad); ``SERVER_DEFAULT`` before it. */
   const defaultModule = (): string => info()?.default_module
     ?? (design.linkage === SERVER_DEFAULT.linkage ? SERVER_DEFAULT.module : 'quad');
+  // A URL naming a linkage but no module gets that linkage's default module (Klann's quad), not
+  // the default linkage's (it used to get Strider's double: ?linkage=klann loaded a Klann double).
+  if (!design.module) design.module = defaultModule();
+  const guessedModule = url.has('module') || design.id ? null : design.module;
   const defaults = (): Record<string, number> =>
     Object.fromEntries((info()?.params ?? []).map((p) => [p.name, p.default]));
   const tune = { preview: false, status: '', rebuild: () => void rebuild(), reset: () => resetDefaults() };
@@ -286,7 +290,9 @@ export function createDrive(host: DriveHost) {
     opts.drive = on;
     try {
       if (on && !preview && side?.usable) await bindGlb();
-      else if (on && !preview) await loadRobot(glbQuery);   // its onLoad binds it
+      // its onLoad binds it; with no glb on screen yet (the page's own load failed), the page's
+      // design, not '' (the server's default: ?drive=1&linkage=X used to drive a Strider)
+      else if (on && !preview) await loadRobot(host.loaded() ? glbQuery : baseQuery('robot'));
     } catch (e) {
       opts.drive = false;
       gui.controllers[0]!.updateDisplay();
@@ -512,6 +518,8 @@ export function createDrive(host: DriveHost) {
     const r = await getJson<{ default: string; linkages: LinkageInfo[] }>('/api/linkages');
     [linkages, defaultLinkage] = [r.linkages.filter((l) => l.kind === 'walker'), r.default];
     if (!info()) design.linkage = r.default;
+    // a module guessed before the catalogue came (and not changed since): the catalogue's
+    if (guessedModule !== null && design.module === guessedModule) design.module = info()!.default_module;
     design.props = { ...defaults(), ...design.props };     // the URL's p.NAME win
     linkageC = designF.add(design, 'linkage', Object.fromEntries(linkages.map((l) => [l.name, l.key])))
       .onChange(() => queueMicrotask(switchLinkage));
