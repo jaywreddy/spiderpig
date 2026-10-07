@@ -42,7 +42,7 @@ import re
 import sys
 import tomllib
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cache, cached_property
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -609,10 +609,17 @@ def load_allow(path: Path = ALLOW_FILE) -> set[tuple[str | None, str]]:
     return out
 
 
+@cache
+def default_index() -> Index:
+    """The index of this checkout, built once per process."""
+    return Index()
+
+
+
 def check(docs, index: Index | None = None, allow=None, *, every: bool = False
           ) -> list[Result]:
     """The misses (every result with ``every``) of ``docs`` (repo-relative paths)."""
-    index = index or Index()
+    index = index or default_index()
     allow = load_allow() if allow is None else allow
     out: list[Result] = []
     seen: dict[str, tuple[str, str, str]] = {}

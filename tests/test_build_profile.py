@@ -114,16 +114,89 @@ def test_instrumenting_puts_every_call_back():
                for o, n, f in before)
 
 
-def test_the_measuring_tools_are_outside_the_engine_hash():
-    """The profiler, the build's profile, the engine-version printer, the scorecard and the
-    doc check never change ``engine_version()``: none is among the files it hashes (W0 review:
-    a measuring tool must not re-key the stores, the test cache or CI's cache)."""
+TOOLS = ("tools/profiler.py", "tools/build_profile.py", "tools/engine_version.py")
+
+
+def _engine_version_of(root, monkeypatch):
+    """``engine_version()`` itself, run over the package copy at ``root`` (its own file
+    selection, no digest cache, nothing remembered)."""
     from spiderpig import design
 
-    hashed = {p.relative_to(design.ROOT).as_posix() for p in design.ROOT.rglob("*.py")
-              if p.relative_to(design.ROOT).parts[0] not in design.ENGINE_EXCLUDE}
-    for tool in ("tools/profiler.py", "tools/build_profile.py", "tools/engine_version.py"):
-        assert (design.ROOT / tool).exists(), tool
-        assert tool not in hashed, tool
-    assert design.ROOT.name == "spiderpig"      # tests/ (scorecard, doc check) are outside
-    assert not (design.ROOT / "profiler.py").exists()
+    monkeypatch.setattr(design, "ROOT", root)
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    monkeypatch.setenv(design.DIGEST_CACHE_ENV, "off")
+    return design.engine_version()
+
+
+def test_the_measuring_tools_are_outside_the_engine_hash(tmp_path, monkeypatch):
+    """A code change to any measuring tool (the profiler, the build's profile, the
+    engine-version printer) leaves ``engine_version()`` as it was, while the same change to
+    an engine module changes it: measured with ``engine_version``'s own file selection over
+    a copy of the package, so the test fails if a tool module is ever hashed (W0 review: a
+    measuring tool must not re-key the stores, the test cache or CI's cache). The scorecard
+    and the doc check live in ``tests/``, outside the package."""
+    import shutil
+
+    from spiderpig import design
+
+    root = tmp_path / "spiderpig"
+    shutil.copytree(design.ROOT, root, ignore=shutil.ignore_patterns(
+        "__pycache__", "viewer", "*.pyc"))
+    base = _engine_version_of(root, monkeypatch)
+    for tool in TOOLS:                          # every tool changed at once: one more hash
+        path = root / tool
+        assert path.exists(), tool
+        path.write_text(path.read_text() + "\n\ndef _a_change():\n    return 1\n")
+    assert _engine_version_of(root, monkeypatch) == base
+    (root / "stack.py").write_text((root / "stack.py").read_text()
+                                   + "\n\ndef _a_change():\n    return 1\n")
+    assert _engine_version_of(root, monkeypatch) != base     # the check can see a change
+
+
+def test_every_stage_is_timed_and_each_wrapped_call_is_the_builds(monkeypatch, tmp_path):
+    """The fast twin of the slow drift test: each stage has a wrapped call, each wrapped
+    build name is one ``spiderpig.build.main`` really calls, and a run through
+    ``build_profile.main`` (the calls stubbed) logs every stage key."""
+    import ast
+    import inspect
+
+    import spiderpig.build as build_mod
+    from spiderpig.tools import build_profile
+
+    targets = build_profile._targets()
+    assert {stage for *_, stage in targets} == set(build_profile.STAGES) - {"import"}
+    used = {n.id if isinstance(n, ast.Name) else n.attr
+            for n in ast.walk(ast.parse(inspect.getsource(build_mod.main)))
+            if isinstance(n, ast.Name | ast.Attribute)}
+    for _obj, name, _ in targets:
+        assert name in used, name               # a renamed call would time nothing
+
+    for obj, name, _ in targets:                # cheap stand-ins, put back by monkeypatch
+        monkeypatch.setattr(obj, name, lambda *a, **kw: None)
+
+    def build_main(argv):
+        for obj, name, _ in build_profile._targets():
+            getattr(obj, name)(None) if isinstance(obj, type) else getattr(obj, name)()
+        return 0
+
+    monkeypatch.setattr(build_mod, "main", build_main)
+    out = tmp_path / "p.json"
+    assert build_profile.main(["--profile-json", str(out)]) == 0
+    stages = json.loads(out.read_text())["stages"]
+    assert set(build_profile.STAGES) - {"import"} <= set(stages)
+
+
+def test_build_help_lists_the_profile_options_and_profiles_nothing(capsys, caplog):
+    from spiderpig import cli
+
+    with caplog.at_level(logging.INFO, logger="spiderpig.build"), \
+            pytest.raises(SystemExit) as done:
+        cli.main(["build", "--profile", "--help"])
+    assert done.value.code == 0
+    out = capsys.readouterr().out
+    assert "--side-only" in out                 # the build's own options
+    assert "--profile-json FILE" in out
+    assert not [r for r in caplog.records if "profile summary" in r.getMessage()]
+    with pytest.raises(SystemExit):
+        cli.main(["build", "--help"])
+    assert "--profile-json FILE" in capsys.readouterr().out

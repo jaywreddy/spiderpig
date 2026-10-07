@@ -10,7 +10,7 @@ from tests import doc_check
 
 @pytest.fixture(scope="module")
 def index():
-    return doc_check.Index()
+    return doc_check.default_index()
 
 
 @pytest.mark.parametrize("token", [

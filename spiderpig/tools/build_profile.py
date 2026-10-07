@@ -93,14 +93,31 @@ def instrumented(prof: Profiler):
         yield
 
 
+def _options() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(add_help=False, prog="spiderpig build")
+    g = p.add_argument_group(
+        "profile (spiderpig/tools/build_profile.py)",
+        "the build's stage timings (import, template, plan, fabricate, step, stl, group, "
+        "prints, dxf_sheets, dxf_parts, bom, order) on the spiderpig.build logger")
+    g.add_argument("--profile", action="store_true", help="log each stage's wall-clock time")
+    g.add_argument("--profile-json", type=Path, default=None, metavar="FILE",
+                   help="also write the profile to FILE as JSON (implies --profile)")
+    return p
+
+
 def main(argv=None) -> int:
     import spiderpig.build as build_mod  # the imports, counted in `import`
 
     age = process_age()
-    p = argparse.ArgumentParser(add_help=False)
-    p.add_argument("--profile", action="store_true")
-    p.add_argument("--profile-json", type=Path, default=None)
+    p = _options()
     ours, rest = p.parse_known_args(argv)
+    if "-h" in rest or "--help" in rest:        # the build's help, then these options
+        try:
+            return build_mod.main(rest)
+        finally:
+            print("\n" + p.format_help().split("\n", 2)[2].strip())
+    if not (ours.profile or ours.profile_json):
+        return build_mod.main(rest)
     if not logging.getLogger().handlers and not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))

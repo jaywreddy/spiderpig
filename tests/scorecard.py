@@ -406,8 +406,14 @@ def comparability(a: dict, b: dict) -> list[str]:
     for a metric, a load more than :data:`LOAD_RATIO` apart, another host."""
     out = []
     fa, fb = flatten(a), flatten(b)
-    for k in sorted(set(fa) & set(fb)):
-        if k.split(".")[-1] in ("workers", "runs") and fa[k] != fb[k]:
+    both = {s for s in SECTIONS if s in a and s in b}
+    for k in sorted(set(fa) | set(fb)):
+        if k.split(".")[-1] not in ("workers", "runs") or k.split(".")[0] not in both:
+            continue
+        if k not in fa or k not in fb:      # an older scorecard, or a section run otherwise
+            side = "A" if k not in fa else "B"
+            out.append(f"{k}: not recorded in {side} (timings may not be comparable)")
+        elif fa[k] != fb[k]:
             out.append(f"{k}: {fa[k]:g} vs {fb[k]:g} (timings not comparable)")
     la, lb = mean_load(a), mean_load(b)
     if la and lb and max(la, lb) / max(min(la, lb), 0.01) > LOAD_RATIO:
