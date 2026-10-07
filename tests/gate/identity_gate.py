@@ -181,10 +181,11 @@ recorded it first. Unset, :func:`plan_cores` picks it from the cores free."""
 
 
 def free_cores() -> int:
-    """The cores this process may run on less the load average (at least 1)."""
-    cores = (len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity")
-             else os.cpu_count() or 1)
-    return max(1, round(cores - os.getloadavg()[0]))
+    """The machine's cores less its load average, at most the cores this process may run
+    on (at least 1)."""
+    total = os.cpu_count() or 1
+    mine = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else total
+    return max(1, min(mine, round(total - os.getloadavg()[0])))
 
 
 def plan_cores(n_designs: int, jobs: int | None, split: str | None) -> tuple[int, str]:
