@@ -21,6 +21,7 @@ from spiderpig.fabricate import (
     fabricate_side,
     ground_clearance,
     side_problem,
+    static_stage,
     template_for,
 )
 from spiderpig.stack import ClearanceError, Layout, RouteConflict, RouteView, verify_plan
@@ -206,16 +207,18 @@ def test_the_keyed_rules_end_a_chain_one_layer_higher():
 
 def test_the_keyed_cranks_post_stops_the_heel_at_its_default_scale():
     """The keyed crank's 8.5 mm post (room for its hex key) needs 11.2 mm from b7, which
-    passes J1 at 10.2 at the heel's default scale: the static stage says so and the checked
-    recommendation is the next scale up."""
+    passes J1 at 10.2 at the heel's default scale: the static stage says so. (Its checked
+    recommendation, the next scale up, planning in 15 layers, is
+    tests/test_recommend.py::test_the_keyed_crank_post_sends_the_heel_up_a_scale: the
+    same design, the same recommendation.)"""
+    cfg = _cfg("trotbot_heel")
+    tmpl = template_for(cfg)
+    _, _, problem = side_problem(tmpl, cfg, hint=False)
     with pytest.raises(ClearanceError) as e:
-        _design("trotbot_heel")
+        static_stage(tmpl, problem)
     msg = str(e.value)
     assert ("it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs (4.25 post "
             "radius + 6 link half-width + 1 margin)") in msg
-    (rec,) = e.value.recommendations
-    assert rec.changes == (("unit", 10.5, 12.0),)
-    assert "plans in 15 layers" in rec.verified       # (0.080 in frame plates: +1)
     assert _design("trotbot_heel", **HEEL)[1].plan.top == 12       # the printed crank's plan
 
 
