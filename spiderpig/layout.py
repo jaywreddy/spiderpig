@@ -196,11 +196,34 @@ def _lay_flat(part):
     return part
 
 
+_SECTIONS: dict[int, tuple] = {}     # id(part) -> (weakref to it, its shape, the section)
+
+
 def section_of(body):
-    """The body's section through the middle of its own layer, laid flat."""
+    """The body's section through the middle of its own layer, laid flat: one boolean per
+    part, remembered while the part lives (the packing, ``sheet_lines``, the per-part DXFs
+    and the cut-rule review all ask for it). Read it, don't change it."""
+    import weakref
+
+    key = id(body.part)
+    hit = _SECTIONS.get(key)
+    if hit is not None and hit[0]() is body.part and hit[1].IsEqual(body.part.wrapped):
+        return hit[2]
     part = _lay_flat(body.part)
     bb = part.bounding_box()
-    return section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+    out = section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+
+    def gone(ref, key=key) -> None:
+        e = _SECTIONS.get(key)
+        if e is not None and e[0] is ref:
+            del _SECTIONS[key]
+
+    try:
+        ref = weakref.ref(body.part, gone)
+    except TypeError:       # a part that can't be weakly referenced: not remembered
+        return out
+    _SECTIONS[key] = (ref, body.part.wrapped, out)
+    return out
 
 
 def _profile(body, sheet: tuple[float, float], margin: float):
