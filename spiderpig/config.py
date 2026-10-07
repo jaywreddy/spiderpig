@@ -47,11 +47,9 @@ friction-clamped standoff it replaced is ``bolt_round``. Which construction a de
 data here, not code."""
 
 LINKAGE_CRANKS: dict[str, str] = {
-    # Empty since the hex-standoff crank merged (2026-10-04): hoecken_pantograph and
-    # dwell_rocker, which kept the keyed crank (jam SF 0.64) because the round crankpin's top
-    # screw head over the hub plate needed 2.5 mm of the 1.83 mm horn spacer, plan with it
-    # (9 layers each): DriveGroup.spacer adds a layer for that head (BoltCrank.hub_head_need)
-    # or the spacer caps a pin wholly under it (hub_capped).
+    # hoecken_pantograph and dwell_rocker plan with the hex crank since it merged
+    # (2026-10-04; 9 layers each): the hub plate caps a crankpin under the horn spacer
+    # (BoltCrank.hub_capped).
     #
     # TrotBot's heel and toe: b7 sweeps across the crank at O and passes crankpin J1 at 10.2
     # mm; the hex crankpin's 8.5 mm printed sleeve needs 11.2 mm there (static stage stops).
@@ -96,12 +94,58 @@ LINKAGE_CRANK_SHEETS: dict[str, str] = {
     # the hub plate 2.16 mm from the horn's screw holes (r 7 mm), under 1 x the 2.54 mm
     # sheet (a cut-rule error). On 0.080 in 6061 (2.03 mm) that web is over 1 x t (a
     # warning) and the hex holds the drive's torque at SF 3.89 (factor 1, a mechanism). The
-    # round standoff plans but screws over the hub plate (no assembly order); the keyed
-    # crank's key holds SF 0.64. The 0.100 in sheet stays selectable (--crank-sheet).
+    # round standoff plans but screws over the hub plate (no assembly order). The 0.100 in
+    # sheet stays selectable (--crank-sheet).
     "hoecken_pantograph": "al6061_2mm",
 }
 """Per linkage: the crank sheet it gets when the config names none, where :data:`CRANK_SHEET`
 breaks a rule (each with why)."""
+
+
+REMOVED = "2026-10-07"
+_PIVOTS_GONE = {
+    "printed": "the printed snap-together axle",
+    "rod": "the 3 mm rod with push-on clips",
+    "bolt": "the M3 socket-head screw and nylock",
+    "bearing": "the MF63ZZ flanged bearings on a 3 mm rod",
+    "bushing": "the igus GFM-0304 bushings on a 3 mm rod",
+    "ptfe": "the PTFE-lined 3 mm rod",
+    "chicago_bushing": "the Chicago screw in igus GFM-0405 bushings",
+    "standoff_hand": "the standoff column spliced in the stack by hand",
+    "standoff_bench": "the standoff column spliced on the bench",
+    "standoff_m3": "the spliced column of uxcell M3 standoffs",
+}
+REMOVED_CONSTRUCTIONS: dict[str, dict[str, tuple[str, str, str]]] = {
+    "crank": {
+        "printed": ("bolt", REMOVED, "the printed crankshaft held by clamp friction alone"),
+        "keyed": ("bolt", REMOVED, "the printed crankshaft keyed by pressed brass hex "
+                  "standoffs (the default before 2026-10-03)"),
+        "keyed_float": ("bolt", REMOVED, "the keyed printed crankshaft with sliding keys"),
+        "bolt_hub_screw": ("bolt", REMOVED, "the hex crank with a screw over the hub plate, "
+                           "which no assembly order can drive"),
+        "bolt_unretained": ("bolt", REMOVED, "the hex crank without the capped chain's "
+                            "pressed sleeve and the stub's thrust sleeve"),
+    },
+    "pin": {k: ("chicago", REMOVED, why) for k, why in _PIVOTS_GONE.items()},
+    "pillar": {k: ("standoff", REMOVED, why) for k, why in _PIVOTS_GONE.items()},
+}
+"""Construction keys removed from :mod:`construction`'s registries, per
+:class:`BuildConfig` field: ``key -> (replacement, the date removed, what it was)``. The
+user's decision D1 of 2026-10-07 (``docs/agentlib/ROADMAP.md``, W2) kept the ``bolt`` and
+``bolt_round`` cranks, the ``chicago`` pin and the one-piece ``standoff`` pillar. A config
+naming one of these raises :class:`ParamError` naming its replacement, so a stored design
+or spec that names one loads as a ``bad_parameter`` failure."""
+
+
+def removed_construction(field: str, key: str) -> str | None:
+    """Why ``field`` (``crank``, ``pin`` or ``pillar``) can't be ``key`` any more, naming
+    the replacement (:data:`REMOVED_CONSTRUCTIONS`); ``None`` when it wasn't removed."""
+    gone = REMOVED_CONSTRUCTIONS.get(field, {}).get(key)
+    if gone is None:
+        return None
+    replacement, when, what = gone
+    return (f"{field} {key!r} ({what}) was removed on {when}; use {field}={replacement!r} "
+            "(config.REMOVED_CONSTRUCTIONS)")
 
 
 def default_crank_sheet(lk: linkage.Linkage) -> str:
@@ -191,21 +235,17 @@ class BuildConfig:
     servo: str = servos.DEFAULT
     pillar: str = "standoff"          # frame pivots: a 6 mm round standoff column, a stock
     #                                   goBILDA one or else one steel standoff made to length,
-    #                                   never spliced (construction.pivots.standoff;
-    #                                   "standoff_hand" / "_bench" / "_m3": spliced; "printed":
-    #                                   the printed stepped pillar, the default before 2026-10-03)
+    #                                   never spliced (construction.pivots.standoff)
     pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
     #                                   printed rings and head spacers (construction.pivots.
-    #                                   chicago; "rod": 3 mm rod and push-on clips; "printed":
-    #                                   snap pins)
+    #                                   chicago)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates
     #                                   on the crank sheet, hex-standoff crankpins in hex
     #                                   pockets; "bolt_round": the round friction-clamped
-    #                                   standoff; "keyed", printed segments
-    #                                   keyed by brass hex standoffs, the default before
-    #                                   2026-10-03; "printed": clamp friction only)
+    #                                   standoff). The keys removed on 2026-10-07:
+    #                                   REMOVED_CONSTRUCTIONS
     params: Params = field(default_factory=Params)
 
     def __post_init__(self) -> None:
@@ -223,6 +263,9 @@ class BuildConfig:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
+        for what in ("crank", "pin", "pillar"):
+            if (why := removed_construction(what, getattr(self, what))) is not None:
+                raise ParamError(why)
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
@@ -241,6 +284,13 @@ class BuildConfig:
                     raise KeyError(key)
             except KeyError:
                 raise ParamError(f"{what} {key!r} is not a sheet in the catalog") from None
+        from spiderpig.materials import sheet
+
+        if not sheet(self.crank_sheet).metal:
+            raise ParamError(
+                f"crank_sheet {self.crank_sheet!r} is not metal: the bolt crank's web plates "
+                f"are single aluminium plates (the acrylic two-plate crank was removed on "
+                f"{REMOVED}); use an aluminium sheet, e.g. {CRANK_SHEET!r} (the default)")
 
     def _link_sheets(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...] | None:
         """Link class -> sheet, validated; ``None`` when it is the linkage's own."""

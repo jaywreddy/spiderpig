@@ -12,10 +12,9 @@ crank rider b1 (:func:`default_link_sheets`). A layer is as thick as the thickes
 their own z.
 
 A **clearance gap** (:attr:`stack.Placed.gap`) is one of the thin sheets' thicknesses
-(:func:`gap_options`): a plate stack it splits (a crank stack) gets a filler plate cut
-from that sheet (:func:`filler_sheet`), and an axle that crosses it a printed ring to that
-thickness (:func:`construction.pivots.common.gap_washers`; the round and M6 crankpins a
-stack of washers and shims, :func:`washer_stack`).
+(:func:`gap_options`): an axle that crosses it carries a printed ring to that thickness
+(:func:`construction.pivots.common.gap_washers`; the round crankpin a stack of washers and
+shims, :func:`washer_stack`).
 """
 
 from __future__ import annotations
@@ -138,16 +137,6 @@ def thickness(config, key: str) -> float:
 def gap_options() -> tuple[float, ...]:
     """The thicknesses a clearance gap may have: the thin sheets', thinnest first."""
     return tuple(sorted({sheet(k).thickness for k in THIN_SHEETS}))
-
-
-def filler_sheet(material: str, t: float) -> str:
-    """The thin sheet a ``t`` mm filler plate is cut from: of ``material`` when one is
-    that thick, else any (acrylic first)."""
-    near = [k for k in THIN_SHEETS if abs(sheet(k).thickness - t) < 1e-6]
-    if not near:
-        raise ValueError(f"no {t:g} mm thin sheet")
-    same = [k for k in near if sheet(k).material == material]
-    return (same or near)[0]
 
 
 WASHERS: dict[float, tuple[str, str]] = {

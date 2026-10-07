@@ -388,7 +388,6 @@ _FRAME_BASE_G, _FRAME_PER_PIVOT_G = 16.2, 2.85    # the frame plates (per 3 mm a
 _CENTRE_PLATES_G = 11.05             # half the centre plates (the robot's chassis)
 _CHASSIS_REST_G = 17.65              # half the ties and rear screws: aluminium, steel
 _DRIVE_EXTRA_G = 3.6                 # the servo's screws and horn
-_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.3, 3.5        # a printed crankshaft, per crankpin
 _CRANK_PLATES_BASE_G, _CRANK_PLATES_PER_PIN_G = 3.78, 5.07   # the bolt crank's plates
 _CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 9.6, 8.28             # ... its bolts, nuts, stub
 _PILLAR_PER_PIVOT_G = 12.0           # a standoff pillar (segments, rings, screws, washers)
@@ -496,14 +495,9 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
         config, config.frame_sheet)
     # crankpins at distinct positions (a mirrored pair shares one; a decker's are 90° apart)
     crankpins = {tuple(np.round(leg.joints[p][0], 3)) for leg in legs for p in lk.crank[1:]}
-    from spiderpig import construction
-
-    if getattr(construction.crank(config.crank), "plates", False):     # the bolt crank
-        plates += (_CRANK_PLATES_BASE_G + _CRANK_PLATES_PER_PIN_G * len(crankpins)) \
-            * _sheet_scale(config, config.crank_sheet)
-        crank = _CRANK_HW_BASE_G + _CRANK_HW_PER_PIN_G * len(crankpins)
-    else:
-        crank = _CRANK_BASE_G + _CRANK_PER_PIN_G * len(crankpins)
+    plates += (_CRANK_PLATES_BASE_G + _CRANK_PLATES_PER_PIN_G * len(crankpins)) \
+        * _sheet_scale(config, config.crank_sheet)
+    crank = _CRANK_HW_BASE_G + _CRANK_HW_PER_PIN_G * len(crankpins)
     printed = (_DRIVE_EXTRA_G + crank
                + (_PILLAR_PER_PIVOT_G + _PILLAR_PER_PIVOT_LEG_G * len(legs)) * len(pivots)
                + _PIN_PER_JOINT_G * _pin_joints(lk) * len(legs))

@@ -28,22 +28,11 @@ What the default robot uses:
   ISO 7380 button head and a DIN 125 washer, 3.0 mm together: one layer outside each frame
   plate) and a spliced column's studs (ISO 4026 set screws threaded into both segments).
 
-Kept for the other crank constructions and the comparisons:
+Kept for the comparisons, and the round crankpin's washers:
 
-* ``m6_hex_bolt_<L>``: ISO 4014 (DIN 931) M6 partially threaded hex bolts, class 8.8 zinc
-  plated, the acrylic crank's crankpins (:data:`M6_BOLT_LENGTHS`: 30-80 mm in 5 mm steps,
-  FMW Fasteners' DIN 931 listing fetched 2026-10-04 with prices; M6 x 25 and shorter are
-  sold only fully threaded, DIN 933, which would put the riders on thread). Thread length
-  ``b`` is 18 mm for every length here (ISO 4014: ``b = 2d + 6`` up to 125 mm), so the
-  plain shank is ``L - 18`` (``lg``); the incomplete thread (ISO 3508 runout, at most 2.5
-  pitches) sits above that, which the crank keeps clear of its riders.
-* ``m6_nylock``: DIN 985 M6 (10 AF, 6.0 mm; the nylon ring takes about 1.5 mm).
-* ``threadlocker_243``: medium strength, on each crank bolt's thread under its nut (and on
-  a spliced pillar's studs).
-* ``ptfe_washer_6x12x0p5``: the crank study's thrust washer for the riders, listed but not
-  built: in a 3 mm layer pitch the plates touch, so a 0.5 mm washer between a crank plate
-  and a rider has no room (the riders turn against the crank's plates and the bolt head and
-  nut faces, as every link on a pin turns against its neighbours).
+* ``threadlocker_243``: medium strength, on the crankpins' screws.
+* ``ptfe_washer_6x12x0p5``: the thrust washer the round crankpin's runs carry through a
+  clearance gap (:func:`materials.washer_stack`).
 * ``arl_m3_<L>``: Hirosugi ARL-xxBE round M3 standoffs, registered from the M3 hardware
   comparison of 2026-10-05; no construction uses them (MISUMI US doesn't sell them).
 """
@@ -55,67 +44,22 @@ from spiderpig.hardware.catalog import Item, Offer, register
 SEARCHED = "as a 2026-10-03 web search quoted the page (not fetched)"
 FETCHED = "fetched 2026-10-04"
 
-M6_BOLT_PRICES: dict[int, float] = {30: 0.35, 35: 0.52, 40: 0.58, 45: 0.63, 50: 0.69, 55: 0.74,
-                                    60: 0.80, 65: 1.25, 70: 1.00, 75: 1.49, 80: 1.15}
-"""FMW Fasteners' M6-1.0 DIN 931 8.8 zinc listing (fetched 2026-10-04), USD each."""
-M6_BOLT_LENGTHS: tuple[float, ...] = tuple(float(L) for L in M6_BOLT_PRICES)
-"""ISO 4014 M6 stock lengths (mm under the head): 30 mm is the shortest sold partially
-threaded (ISO 4014's M6 range starts there; FMW sells M6 x 25 only as DIN 933, fully
-threaded), plain shank 12 mm."""
-M6_THREAD_B = 18.0
-
-
-def m6_bolt(length: float) -> str:
-    return f"m6_hex_bolt_{length:g}"
-
-
-for _L in M6_BOLT_LENGTHS:
-    register(Item(
-        m6_bolt(_L), f"M6 x {_L:g} mm hex bolt, partially threaded (ISO 4014 / DIN 931), 8.8 "
-        "zinc", "fastener",
-        (Offer("FMW Fasteners",
-               "https://www.fmwfasteners.com/search?q=M6-1.0+hex+cap+screw+8.8+DIN+931",
-               price_usd=M6_BOLT_PRICES[int(_L)], verified=True,
-               note=f"M6-1.0 x {_L:g} DIN 931 8.8 zinc, ${M6_BOLT_PRICES[int(_L)]:.2f} each "
-                    f"(the listing {FETCHED})"),
-         Offer("Fastenal", "https://www.fastenal.com/products/details/M72550030A20000",
-               "M72550030A20000", note=f"A2-70 30 mm: $0.29 each, $5.84 per 100 ({SEARCHED})"),
-         Offer("McMaster-Carr", "https://www.mcmaster.com/products/hex-head-screws/",
-               note="pick M6 x 1 mm, partially threaded, from the listing; part number not "
-                    "confirmed")),
-        dims={"d": 6.0, "pitch": 1.0, "length": float(_L), "head_af": 10.0,
-              "head_af_min": 9.78, "head_h": 4.0, "b": M6_THREAD_B, "stress_d": 4.92,
-              "yield_mpa": 640.0},
-        notes="ISO 4014 M6: s 10 (9.78 min), k 4.0, b 18; class 8.8 (640 MPa proof). A2-70 "
-              "(450 MPa) is the stainless alternative: the strength check's thread torsion "
-              "drops by 30 %, the hex pockets don't change.",
-    ))
-
 register(
-    Item("m6_nylock", "M6 nylon-insert lock nut (DIN 985), 8 zinc", "nut",
-         (Offer("Bolt Depot", "https://www.boltdepot.com/Metric_nylon_insert_lock_nuts.aspx",
-                note="M6-1.0 nylon insert lock nut; part number not confirmed"),
-          Offer("Amazon", "https://www.amazon.com/s?k=M6+nylon+insert+lock+nut+DIN+985",
-                note="search; 50-100 packs")),
-         dims={"d": 6.0, "af": 10.0, "h": 6.0, "metal_h": 4.5, "prevailing_nm": 0.4},
-         notes="DIN 985 M6: s 10, m 6.0 (the nylon ring about 1.5 mm of it). Prevailing "
-               "torque: ISO 2320's least on removal for M6, 0.4 N·m (the strength check's "
-               "nut lock counts it)."),
     Item("threadlocker_243", "Medium-strength threadlocker (Loctite 243 or equivalent), 10 ml",
          "adhesive",
          (Offer("Amazon", "https://www.amazon.com/s?k=Loctite+243+10ml",
                 note="search; blue, removable with hand tools; oil tolerant"),),
          dims={"breakaway_m10_nm": 26.0},
-         notes="On each crank bolt's thread where the nylock sits. The TDS gives a breakaway "
-               "torque of about 26 N·m on M10 steel nuts and bolts; on plated or stainless "
-               "(passive) surfaces less: the strength check takes half, scaled to the M6 "
-               "nut's thread (UNVERIFIED for this nut: a test of one joint settles it)."),
+         notes="On the crankpins' screws. The TDS gives a breakaway torque of about 26 N·m "
+               "on M10 steel nuts and bolts; on plated or stainless (passive) surfaces less: "
+               "the strength check takes half, scaled to the thread (UNVERIFIED: a test of one "
+               "joint settles it)."),
     Item("ptfe_washer_6x12x0p5", "PTFE flat washer 6.3 x 12 x 0.5 mm", "washer",
          (Offer("eBay", "https://www.ebay.com/itm/121716489464",
                 note=f"PTFE M6 6.4 x 12 mm, 50 pcs ({SEARCHED}; thickness not stated: 1.5-2 "
                      "mm is the common size, 0.5 mm is rare)"),),
          dims={"id": 6.3, "od": 12.0, "t": 0.5},   # MISUMI TT-0612-05
-         notes="Listed, not built: no room for it in a 3 mm layer pitch (module docstring)."),
+         notes="On the round crankpin's runs through a clearance gap (materials.washer_stack)."),
 )
 
 M3_ROUND_STANDOFF_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 15, 18, 20, 25, 30)

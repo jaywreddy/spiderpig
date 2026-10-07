@@ -1,4 +1,4 @@
-"""``chicago`` / ``chicago_bushing``: an M3 Chicago screw (binding barrel and screw) as the pin.
+"""``chicago``: an M3 Chicago screw (binding barrel and screw) as the link pin.
 
 A Chicago screw is a **barrel** (a 4 mm tube with a flat 8.5 mm head, threaded M3
 inside) and a **screw** with the same head that threads into it (the parts bought,
@@ -69,29 +69,24 @@ pin, J7, at 3.55 against 2.23 (on ``klann_lego``'s 3 mm spans, 2.62 against 2.02
 above); nothing to cut or deburr; and a joint that comes apart (a Starlock is
 single-use). Its costs: +14 parts on the Strider double (washers, shims), a glue step
 per pin, and parts that are less documented than the rod (the head height is not from a
-page). The bushed variant has the lowest free tilt but, with its printed sleeves kept
-``flange_play`` off the flanges, more play, and $2.30 a bushing (+$91 on the Strider);
-the rod stays selectable (``--pin rod``). The rod in a PTFE tube liner (3 x 4 mm), first
-ruled out at the family-wide Klann loads (13-17 MPa on its 3 x 3 mm bore), is built
-since the per-design loads (``--pin ptfe``, :mod:`.ptfe`): fine walking, but jammed a
-warning on the Strider double (SF 1.79) and an error on ``klann_lego`` (0.52), where
-this screw holds 3.55 / 2.62, so it stays an option. The thrust face under the head (a
+page). The bushed variant had the lowest free tilt but, with its printed sleeves kept
+off the flanges, more play, and $2.30 a bushing (+$91 on the Strider). The rod in a PTFE
+tube liner (3 x 4 mm) was fine walking, but jammed a warning on the Strider double (SF
+1.79) and an error on ``klann_lego`` (0.52), where this screw holds 3.55 / 2.62. (The rod,
+the bushed and the PTFE-lined pins were removed on 2026-10-07: the user's decision D1,
+:data:`config.REMOVED_CONSTRUCTIONS`.) The thrust face under the head (a
 PTFE washer at the review, a printed spacer since 2026-10-05) carries only axial load:
 even a 155 N jam on a 36 mm^2 face is 4.3 MPa, and the walking axial load is a small
 fraction of that.
 
-* ``chicago``: plain 4.2 mm running holes in the links, printed spacer rings
-  between (a 4.2 mm bore; an 8.5 mm laser-cut ring is under both services' smallest
-  part), a **printed head spacer** under the screw's head (and under the barrel's where
-  the take-up needs it): the head turns against it.
-* ``chicago_bushing``: an igus GFM-0405-03 flange bushing (4 x 5.5 x 3, flange
-  9.5 x 0.75) pressed into every link but the lowest, printed sleeves between
-  (:mod:`.insert`); the flanges are the thrust faces, so the top spacer has no washer's
-  0.5 mm in it, but the claim's spacers grow to the 9.5 mm flange.
+The construction: plain 4.2 mm running holes in the links, printed spacer rings between
+(a 4.2 mm bore; an 8.5 mm laser-cut ring is under both services' smallest part), a
+**printed head spacer** under the screw's head (and under the barrel's where the take-up
+needs it): the head turns against it.
 
 **The lowest link is bonded to the barrel** (slow two-part epoxy in a 4.15 mm glue-fit
-hole: CA crazes acrylic; about 0.75 N·m, well over the screw's tightening torque), in
-both: assembly is bottom up, so once the lowest link is on nothing reaches the
+hole: CA crazes acrylic; about 0.75 N·m, well over the screw's tightening torque):
+assembly is bottom up, so once the lowest link is on nothing reaches the
 barrel's head, and a barrel that isn't held spins with the screw. Bonded, the
 barrel is held by holding that link, which is always within reach (it is the
 pin's host, the link its other parts ride with), and the joint comes apart by
@@ -131,7 +126,6 @@ from spiderpig.construction.pivots.common import (
     stem_of,
     xy_of,
 )
-from spiderpig.construction.pivots.insert import InsertAxle
 from spiderpig.construction.wobble import Section, column_wobble
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
@@ -166,8 +160,8 @@ class Fit:
 
 @dataclass(frozen=True)
 class ChicagoShaft:
-    """The Chicago screw as a pin's shaft: the same interface as
-    :class:`construction.pivots.common.RodShaft` (``d``, ``check``, ``clip``, ``realize``)."""
+    """The Chicago screw as a pin's shaft (``d``, ``check``, ``clip``, ``column``, ``fit``,
+    ``realize``)."""
 
     roles: ClassVar[tuple[str, ...]] = ("pin",)       # a pillar's head would leave the plates
     washer_key: str | None = "ptfe_washer_4x8x0p5"   # the thrust face under the screw's head:
@@ -463,7 +457,7 @@ class ChicagoAxle:
         head_d, _ = self.shaft.clip()
         w_od = float(get(self.shaft.washer_key).dims["od"]) if self.shaft.washer_key else 0.0
         return AxleDims(axle=self.shaft.d / 2, spacer=p.spacer_d / 2,
-                        head=max(head_d, w_od) / 2, neck=ring_min, fill=True,
+                        head=max(head_d, w_od) / 2, neck=ring_min,
                         end_h=self.shaft.base_heights(), washer=washer_od(self.shaft.d) / 2)
 
     def realize(self, group: AxleGroup, build: Build) -> Realized:
@@ -489,15 +483,3 @@ class ChicagoAxle:
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft))}
         return out
-
-
-CHICAGO_BUSHING = InsertAxle(
-    key="chicago_bushing",
-    label=("igus GFM-0405-03 flange bushing pressed in each link but the lowest, M3 Chicago "
-           "screw (4 mm barrel), printed sleeves, shims (pins only)"),
-    insert="bushing_gfm0405_03", seat_fit=0.02, glued=False,
-    shaft=ChicagoShaft(washer_key=None), spacer_d=10.5,
-    bore_clearance=0.06,
-)
-"""E10 after pressing (4.020-4.068 mm, igus) on the barrel (4 mm nominal, its tolerance not
-published): about 0.06 mm diametral at mid tolerances."""

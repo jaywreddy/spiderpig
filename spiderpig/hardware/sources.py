@@ -119,8 +119,7 @@ _MCM_M4_SET = {8: ("92605A113", 25), 10: ("92605A115", 50), 12: ("92605A117", 50
 # partially threaded (about 18 mm of thread)
 _MCM_M3_SHCS = {6: "91290A111", 8: "91290A113", 10: "91290A115", 12: "91290A117",
                 14: "91290A119", 16: "91290A120", 18: "91290A121", 20: "91290A123",
-                25: "91290A125", 30: "91290A130", 35: "91290A135", 40: "91290A136",
-                45: "91290A079", 50: "91290A137"}
+                25: "91290A125", 30: "91290A130", 35: "91290A135", 40: "91290A136"}
 # uxcell's black anodised 6 mm OD round M3 F-F aluminium standoffs, threaded through, 6 per
 # pack (Harfington's product data, fetched 2026-10-05): length -> (handle, SKU, USD per pack).
 # No threaded 6 mm OD x 5 mm exists (crank_catalog drops it).

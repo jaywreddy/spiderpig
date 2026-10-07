@@ -53,8 +53,8 @@ def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) ->
     out = []
     for f in failures:
         if params is not None and f.post > 0.5 * params.crankpin_d + 1e-9:
-            # a post sized by the crank itself (the keyed crank's 8.5 mm, round its key): a
-            # thinner crankpin doesn't shrink it, so it is part of the margin
+            # a post sized by the crank itself (the hex crankpin's 8.5 mm sleeve): a thinner
+            # crankpin doesn't shrink it, so it is part of the margin
             out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
                            (("link_radius", 1.0),), f.margin + f.post))
         else:
@@ -324,31 +324,6 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
     return None, f"no practical {name} near x{s:.3g} ({now * s:.3g}) meets {metrics}"
 
 
-def printed_pillars(config, deadline: Deadline | None = None) -> Recommendation | None:
-    """A plan that failed with pillars on a purchased shaft (``bolt``: the longest stock
-    screw bounds the stack; ``rod`` / ``bearing`` / ``bushing`` / ``standoff``: loose rings
-    fill every layer): the same design with printed pillars, verified. ``None`` when the pillars are
-    printed already, or printed pillars don't plan either."""
-    if config.pillar == "printed":
-        return None
-    trial = replace(config, pillar="printed")
-    verified = _verify(trial, True, deadline)          # _OutOfTime crosses to the caller
-    if verified is None:
-        return None
-    return Recommendation(
-        (("pillar", config.pillar, "printed"),),
-        why=(("standoff pillars fill every layer they cross with a ring (a standoff can't "
-              "neck down past a link that sweeps close) and come in stock segments spliced only "
-              "at a free layer"
-              if config.pillar == "standoff" else
-              f"{config.pillar} pillars clamp both frame plates on a stock shaft, which bounds "
-              "the stack and fills every layer they cross")
-             + "; printed pillars neck down between their links and are glued into the plates "
-               "at any height"),
-        effects=f"the pins stay {config.pin}; the frame pivots are printed, not {config.pillar}",
-        verified=verified)
-
-
 CONFIG_LEVERS = {"thickness_mm": "thickness", "sheet": "sheet", "servo": "servo",
                  "pillar": "pillar", "pin": "pin", "crank": "crank"}
 """A construction's change (``ConstructionError.changes``) by its ``BuildConfig`` field:
@@ -429,11 +404,6 @@ def _recommend(config, gaps: list[Gap], plan: bool,
                 recs.append(r)
         except _OutOfTime:
             unchecked.append("the linkage's default scale")
-        try:
-            if (r := printed_pillars(config, deadline)) is not None:
-                recs.append(r)
-        except _OutOfTime:
-            unchecked.append("printed pillars")
         if not recs:
             lk = linkage.get(config.linkage)
             names = linkage.scale_params(lk)
@@ -445,8 +415,7 @@ def _recommend(config, gaps: list[Gap], plan: bool,
                 "(the crank's route, pin heads against the frame plates)"
                 + ("; the linkage's default scale doesn't plan either"
                    if scaled_down and not unchecked else
-                   "; levers left: a bigger scale of the linkage, another module, "
-                   "another pillar or pin construction"))
+                   "; levers left: a bigger scale of the linkage, another module"))
         if unchecked:
             notes.append(f"not checked, the {deadline.seconds:g} s for checking what would "
                          f"clear it ran out: {' and '.join(unchecked)}")

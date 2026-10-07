@@ -15,15 +15,14 @@ of:
 and the hub's layers end it. A link that sweeps across O ("needs O free")
 can only sit in a run layer whose post it clears.
 
-The route must also be buildable (:class:`JointRules`, from the printed
-crank's joints): the runs along one point form one **chain**, runs whose webs
-meet (in one layer or two adjacent ones), screwed together by one screw from
-the chain's lowest web to its highest, so the webs' span must take a stock
-screw; the keyed crank's highest web is two layers thick (``two_layer_top``:
-the chain ends one layer higher, where the web piece must be free and the
-crank on its axis, and the span counts both layers); and the pockets of two
-joints in one segment (consecutive chains, or the last chain and the horn
-screws) must not meet.
+The route must also be buildable (:class:`JointRules`, from the bolt crank's
+standoffs, :meth:`construction.crank.BoltCrank.joint_rules`): the runs along one
+point form one **chain**, one standoff between the chain's lowest web and its
+highest, so the webs' span must take a stock standoff; two chains share a web or a
+journal standoff on O joins them, and the last ends in the hub's layer
+(``j_last``); the screw heads beyond a chain's webs need their clearance gaps
+(``gap_head``); and the pockets of two consecutive chains (or the last chain's and
+the horn screws') must not meet.
 
 :meth:`CrankRouter.route` finds, for one layering, the cheapest route whose
 pieces clear everything else in their layers: a shortest path over layers
@@ -89,17 +88,15 @@ class Detour:
 class JointRules:
     """What a buildable crankshaft asks of its route.
 
-    ``spans[n]``: whether a stock screw fits a chain whose webs span ``n``
+    ``spans[n]``: whether a stock standoff fits a chain whose webs span ``n``
     layers (the lowest and highest included), for each set of faces set back
     by the riders' end play, bit ``16a + 4b + 2c + d``: the lowest web's bottom
     face (a rider under it) and top face (a rider on the chain's first run
     layer), the highest web's bottom face (a rider on the last run layer, the
-    run not all riders) and top face (a rider over it); with ``low_count``, ``b``
-    is instead how many layers at the bottom of the chain's run no rider of its
-    point sits in (0-3, 3 meaning at least 3). Pocket radii (mm): a
-    screw head's counterbore, a nut's trap, a post. Horn pockets, fixed on the
-    crank: ``(point on the crank at sample 0, radius)``. ``hub_play``: whether
-    the horn screws still fit the hub with its bottom face set back for a
+    run not all riders) and top face (a rider over it). Pocket radii (mm): a
+    screw head's, a nut's (the bolt crank's: its screw heads, both), a post.
+    Horn pockets, fixed on the crank: ``(point on the crank at sample 0, radius)``.
+    ``hub_play``: whether the horn screws still fit the hub with its bottom face set back for a
     rider's end play; else no chain may end in the hub's lowest layer with
     that web set back.
     """
@@ -110,20 +107,9 @@ class JointRules:
     post: float
     horn: tuple[tuple[tuple[float, float], float], ...] = ()
     hub_play: bool = True
-    two_layer_top: bool = False   # a chain's highest web takes the layer above it as well
-    two_layer_bottom: bool = False  # a chain's lowest web takes the layer above it as well
-    #                                 (the bolt crank's: its runs start a layer higher)
-    tip: bool = False             # the layer under a chain's lowest web holds the crankpin's
-    #                               tip at its point (the bolt crank's thread past its nut)
-    low_count: bool = False       # ``spans``' first-run flag counts the layers at the bottom
-    #                               of the chain's run no rider of its point sits in (0-3;
-    #                               the bolt crank's riders must stay on the plain shank)
-    share_stack: bool = False     # a chain's two-layer lowest web may be the chain below's
-    #                               two-layer top web, both layers (the bolt crank's mid
-    #                               stack: one pin's head pocket and the next pin's nut)
     inner_webs: bool = True       # a chain may return to O between its runs (a one-layer web
     #                               its screw passes); the bolt crank's can't: such a plate
-    #                               would turn loose on the bolt's round shank
+    #                               would turn loose on the standoff
     bottom_layers: frozenset[int] = frozenset()   # the first chain's lowest web may sit in
     #                               these layers only (empty: any; the bolt crank's stub
     #                               standoff comes in stock lengths)
@@ -421,16 +407,8 @@ class CrankRouter:
         self._routes: dict[tuple, tuple | None] = {}    # _solve per what it reads
         at = [topo.geometry.points[p][0] for p in self.points]
         n = self.n
-        # a chain's highest web: one layer, or two (the keyed crank's), which its span counts
-        self.two_layer_top = rules is not None and rules.two_layer_top
-        self.top_web = 2 if self.two_layer_top else 1
-        self.two_layer_bottom = rules is not None and rules.two_layer_bottom
-        self.bottom_web = 2 if self.two_layer_bottom else 1
-        self.tip = rules is not None and rules.tip
-        self.low_count = rules is not None and rules.low_count
         self.bottom_layers = rules.bottom_layers if rules is not None else frozenset()
         self.inner_webs = rules is None or rules.inner_webs
-        self.share_stack = rules is not None and rules.share_stack
         self.j_last = rules is not None and rules.j_last
         # pieces in the clearance gaps (the planner blocks them with other groups' heads and
         # washers there, keyed by the gap's slot, layer + 0.5)
@@ -463,50 +441,11 @@ class CrankRouter:
             self.last = [all(float(np.linalg.norm(at[j] - np.asarray(xy))) >= rules.nut + r
                              for xy, r in rules.horn) for j in range(n)]
             # one chain per point, its runs strictly between its outer webs, which a stock
-            # screw must span: two run layers of one point are at most this far apart
+            # standoff must span: two run layers of one point are at most this far apart
             longest = max((k for k, m in rules.spans.items() if m), default=None)
-            self.window = (None if longest is None
-                           else longest - 1 - self.bottom_web - self.top_web)
+            self.window = None if longest is None else longest - 3
         self.hub_play = rules is None or rules.hub_play
         self._h0: dict[int, int] = {}       # stack size -> the hub's bottom layer (memo)
-
-    def min_top(self, lo: int, hi: int) -> tuple[int, str] | None:
-        """The thinnest stack size (inner plate's layer, from ``lo`` up to ``hi``) the joint
-        rules leave room for, with why, else ``None`` (no bound, or none up to ``hi``).
-
-        A lower bound, sound by the rules alone (no layout): every crankpin a link rides
-        needs its own chain (one per point), whose webs span at least the shortest span a
-        stock screw fits (``spans``), the chains' runs never share a layer and two
-        consecutive chains share at most their webs (two layers: the bolt crank's mid
-        stack); the first chain starts over the tip layer and the stub's lowest stock
-        length (``bottom_layers``), and the last ends at the latest in the hub's top layer
-        (the hub ends the route). Only for rules that count bare layers (``low_count``,
-        the bolt crank's), whose spans are long enough for it to matter: its quads need ~31
-        layers, which the search's size-by-size quick pass did not reach within its
-        budget (2026-10-04: 9 quads), while the sizes under the bound are ruled out
-        here, for free."""
-        rules = self.rules
-        if rules is None or not self.low_count or not self.spans:
-            return None
-        ridden = len(set(self.riders.values()))
-        spans = [k for k, m in self.spans.items() if m]
-        if not ridden or not spans:
-            return None
-        overlap = max(self.bottom_web, self.top_web)
-        total = ridden * min(spans) - (ridden - 1) * overlap
-        start = max(2 if self.tip else 1, min(self.bottom_layers, default=1))
-        last = start + total - 1
-        for top in range(lo, hi + 1):
-            _, hub = hub_layers(Layout({}, top, self.pitch), self.drive, self.dims.hub_thickness)
-            if last <= (hub.stop - 1 if len(hub) else top - 1):
-                if top == lo:
-                    return None
-                chains = f"{ridden} crankpin chain" + ("s" if ridden > 1 else "")
-                return top, (f"the {self.group}'s joint rules ({chains}, "
-                             f"each at least {min(spans)} layers between its outer webs for a "
-                             f"stock bolt, at most {overlap} shared by two, from layer {start} "
-                             "up to the hub)")
-        return None
 
     def hub_bottom(self, top: int) -> int:
         h0 = self._h0.get(top)
@@ -543,10 +482,8 @@ class CrankRouter:
                 if hi - lo > self.window:
                     return RouteConflict(
                         lo, hi, f"links riding {self.points[j]} sit {hi - lo} layers apart, "
-                        f"more than the {self.window} one chain along it spans (a stock screw "
-                        "through its webs at most "
-                        f"{self.window + 1 + self.bottom_web + self.top_web} layers "
-                        "apart)",
+                        f"more than the {self.window} one chain along it spans (a stock standoff "
+                        f"between its webs at most {self.window + 3} layers apart)",
                         rules=True, links=frozenset({a, b}))
         return h0, riding, {j: (lo[0], hi[0]) for j, (lo, hi) in ends.items()}
 
@@ -755,29 +692,25 @@ class CrankRouter:
                     rid_m[j] |= 1 << k
         memos: list[dict[int, list]] = [{} for _ in range(n)]      # chains(j, a) per call
         points, sweep = self.points, self.sweep
-        two = self.two_layer_top
-        bot = self.bottom_web
         inner_ok = self.inner_webs
         washer_bit = self.washer_bit
 
         def chains(j: int, a: int) -> list[tuple[int, int, int, tuple]]:
             """Every chain along point j from its lowest web in layer a, the cheapest for each
             (highest web's layer, whether a rider on its last run layer sets that web back):
-            ``(end, last, cost, runs)``, runs a linked list. With a two-layer top web the
-            chain ends in the layer over its highest web, where the web piece must be free
-            and the crank on its axis (``web_m``)."""
+            ``(end, last, cost, runs)``, runs a linked list."""
             out: dict[tuple[int, bool], tuple[int, tuple]] = {}
             enter = RUN + (FEATURE + sweep[j] * SWEEP if j >= pins else 0)
             wm, pm, rm, mm = web_m[j], post_m[j], rid_m[j], may[j]
             point = points[j]
             wb = washer_bit + j if washer_bit >= 0 and gb else -1
-            if wm >> a & 1 and a + bot < h0 and (bot == 1 or wm >> (a + 1) & 1):
+            if wm >> a & 1 and a + 1 < h0:
                 # the run open in k - 1 ({all ridden so far: (cost, runs before it, its first
                 # layer)}), and the cheapest chain so far after one / two inner webs in k - 1
                 prev: dict[bool, tuple[int, tuple, int]] | None = None
                 p1 = p2 = None
-                for k in range(a + bot, h0 + 1):
-                    if wb >= 0 and gb[k - 1] >> wb & 1 and k > a + bot:
+                for k in range(a + 1, h0 + 1):
+                    if wb >= 0 and gb[k - 1] >> wb & 1 and k > a + 1:
                         # the run's washers can't cross the gap over layer k - 1 (another
                         # group's head or washers there): no run goes on past it, and no
                         # run starts after an inner web under it
@@ -788,7 +721,7 @@ class CrankRouter:
                         # the run open in k - 1 ends: a web in k (the chain's end, or an inner one)
                         if prev:
                             was = bool(rm >> (k - 1) & 1)
-                            end = k + 1 if two else k
+                            end = k
                             ends = end <= h0 and wm >> end & 1 and not (gb and gb[end] >> j & 1)
                             for full, (c, rs, lo) in prev.items():
                                 rs = ((point, lo, k - 1), rs)
@@ -804,7 +737,7 @@ class CrankRouter:
                     opts: dict[bool, tuple[int, tuple, int]] | None = None
                     if k < h0 and pm >> k & 1:
                         here = 0 if ridden or mm >> k & 1 else FEATURE
-                        lead = (enter + here, (), k) if k == a + bot else None
+                        lead = (enter + here, (), k) if k == a + 1 else None
                         for inner in (p1, p2):
                             if inner is not None:
                                 c = inner[0] + enter + here
@@ -832,22 +765,10 @@ class CrankRouter:
         best: dict[tuple, tuple[int, tuple, tuple]] = {}
         at: dict[int, dict[tuple, None]] = {}
 
-        tip, low_count = self.tip, self.low_count
-        share = self.share_stack and self.two_layer_top and self.two_layer_bottom
-
         def start(used: int, cost: int, prev: tuple, j: int, a: int, under: int) -> None:
-            if tip and (a < 2 or not post_m[j] >> (a - 1) & 1):
-                return            # the crankpin's tip under the lowest web needs its layer
             if gb and (gb[a - 1] >> j & 1 or gb[a] >> j & 1):
                 return            # its screw head under the lowest web, its spacer over it
-            if low_count:
-                # layers at the bottom of the run no rider of j sits in (at most 3 counted)
-                first = 0
-                while (first < 3 and a + bot + first < h0
-                       and not rid_m[j] >> (a + bot + first) & 1):
-                    first += 1
-            else:
-                first = rid_m[j] >> (a + bot) & 1
+            first = rid_m[j] >> (a + 1) & 1
             used |= 1 << j
             ch = memos[j].get(a)
             for end, last, c, runs in (ch if ch is not None else chains(j, a)):
@@ -929,9 +850,6 @@ class CrankRouter:
                     if pend is not None and not fit >> (rid_m[j] >> (k + 1) & 1) & 1:
                         continue
                     start(used, cost, state, j, k, under)
-                    if share and pend is not None:
-                        # the next chain's lowest stack is this one's top stack: both layers
-                        start(used, cost, state, j, k - 1, under)
         hub_play, last_ok = self.hub_play, self.last
         ends = []
         for s in at.get(h0, ()):
@@ -972,12 +890,8 @@ class CrankRouter:
             self.spans, self._relax = None, 1
             if isinstance(self._cheapest(view), tuple):
                 sizes = sorted(k for k, m in saved[0].items() if m)
-                counted = ("both layers of the lowest and the top web counted"
-                           if self.two_layer_top and self.two_layer_bottom
-                           else "both layers of the top web counted" if self.two_layer_top
-                           else "both counted")
                 return ("its crank routes need a joint no stock screw fits (a chain's webs "
-                        f"{_ranges(sizes)} layers apart, {counted}, take one)")
+                        f"{_ranges(sizes)} layers apart, both counted, take one)")
             self.hub_play, self._relax = True, 2
             if isinstance(self._cheapest(view), tuple):
                 return ("its crank routes end with a web set back for its rider's end play in "

@@ -101,20 +101,11 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
             ctx.interfaces[g.name] = iface
     claims = [c for g in groups for c in g.claims(ctx)]
     heads = config.heads
-    if heads == "best" and any(getattr(getattr(g, "construction", None), "single", False)
-                               for g in groups):
-        # single-plate crank webs keep their screws' heads in clearance gaps (a sunk head
-        # would stand in a rider's layer): no plan with every head sunk exists; in gaps,
+    if heads == "best" and any(isinstance(g, construction.CrankGroup) for g in groups):
+        # the crank's single-plate webs keep their screws' heads in clearance gaps (a sunk
+        # head would stand in a rider's layer): no plan with every head sunk exists; in gaps,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
-        stuck = sorted({g.construction.key for g in groups
-                        if not getattr(getattr(g, "construction", None), "gaps", True)})
-        if stuck:
-            raise construction.ConstructionError(
-                f"the single-plate crank plans its screw heads in clearance gaps, and "
-                f"--pin/--pillar {', '.join(stuck)} isn't built for gaps (its retainers assume "
-                "full layers): use --crank keyed, or the chicago / standoff / rod pivots",
-                changes=[("crank", ctx.config.crank, "keyed")])
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
                      **plate_z(ctx))
     if deadline is not None:
@@ -131,14 +122,8 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
     ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
     router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
-    # the crank's joint rules rule the thinner sizes out at once (the bolt crank's chains)
-    least = router and hasattr(router, "min_top") and router.min_top(spec.min_top, spec.max_top)
-    if least:
-        spec = replace(spec, min_top=least[0])
     problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
                            hint=_leg_hint(config, deadline) if hint else None, notes=notes)
-    if least:
-        problem.floor = least[1]
     return ctx, groups, problem
 
 

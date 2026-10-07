@@ -30,7 +30,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import CRANK_SHEET, DEFAULT_CRANKS, BuildConfig
+from spiderpig.config import (
+    CRANK_SHEET,
+    DEFAULT_CRANKS,
+    REMOVED_CONSTRUCTIONS,
+    BuildConfig,
+    removed_construction,
+)
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
 from spiderpig.hardware.catalog import CATALOG
@@ -739,15 +745,30 @@ def validate(data: Mapping) -> list[SpecError]:
                 v.string(s, f"materials.link_sheets.{k}", sheet_keys())
         v.string(m.get("sheet"), "materials.sheet", sheet_keys())
         v.string(m.get("frame_sheet"), "materials.frame_sheet", sheet_keys())
-        v.string(m.get("crank_sheet"), "materials.crank_sheet", sheet_keys())
+        cs = v.string(m.get("crank_sheet"), "materials.crank_sheet", sheet_keys())
+        if cs is not None:
+            from spiderpig.materials import sheet
+
+            if not sheet(cs).metal:
+                metal = [k for k in sheet_keys() if sheet(k).metal]
+                v.err("materials.crank_sheet",
+                      f"{cs!r} is not metal: the bolt crank's web plates are single aluminium "
+                      "plates (the acrylic two-plate crank was removed on 2026-10-07)",
+                      metal, CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
     c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
     if c is not None:
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
-        v.string(c.get("pillar"), "constructions.pillar", sorted(construction.AXLES))
-        v.string(c.get("pin"), "constructions.pin", sorted(construction.AXLES))
-        v.string(c.get("crank"), "constructions.crank", sorted(construction.CRANKS))
+        for what, registry in (("pillar", construction.AXLES), ("pin", construction.AXLES),
+                               ("crank", construction.CRANKS)):
+            val = c.get(what)
+            why = removed_construction(what, val) if isinstance(val, str) else None
+            if why is not None:     # removed on 2026-10-07: the error names the replacement
+                v.err(f"constructions.{what}", why, sorted(registry),
+                      REMOVED_CONSTRUCTIONS[what][val][0])
+            else:
+                v.string(val, f"constructions.{what}", sorted(registry))
     f = v.obj(top.get("fit"), "fit", (*FIT_FIELDS, "kerf_mm", "sheet_size_mm"))
     if f is not None:
         for name in FIT_FIELDS:      # (servo_screw_web_t 0: no front screw left out)

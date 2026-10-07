@@ -249,8 +249,8 @@ class DriveGroup(Group):
         """Front mounting holes used: ``(point name, hole, screw family, length)``.
 
         A hole is used when its screw head, under the plate, clears the widest
-        crank hub (the horn, or the horn screws' counterbores plus a wall, as
-        :class:`construction.crank.PrintedCrank` builds it) by the margin.
+        crank hub (the horn, or the horn screws' counterbores plus a wall) by the
+        margin.
         """
         iface = self.interface(ctx)
         p = ctx.params

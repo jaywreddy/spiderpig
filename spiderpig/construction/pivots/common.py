@@ -1,35 +1,21 @@
-"""Pieces the metal-shaft pivots share: the claimed column, the rod with its push-on
-clips, printed rings and sleeves, and small hardware solids."""
+"""Pieces the metal-shaft pivots share: the claimed column, printed rings, small hardware
+solids."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from build123d import Axis, Box, Face, Location, Solid, Vector, Wire
-
 from spiderpig.construction.axle import AxleGroup
-from spiderpig.construction.base import (
-    FRAME_INNER,
-    FRAME_OUTER,
-    Build,
-    ConstructionError,
-    Realized,
-    hardware,
-)
-from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.catalog import get
-from spiderpig.shapes import Cut, disc, moved
+from spiderpig.construction.base import Build, Realized, hardware
+from spiderpig.shapes import disc
 
 STEEL = "#4a4a4a"
 RING_COLOR = "#a9cbe0"       # the laser-cut spacer rings' colour (rings are printed now)
 SLEEVE_COLOR = "#1baf7a"     # printed spacer sleeves (the printed axle's green)
 EPS = 1e-9
 
-ROD_KEY = "rod_3mm_100"
-CLIP_KEY = "starlock_3mm"
 RETAINED = ("axle", "anchor")            # column roles the ends clamp between
 SPACER_ROLES = ("shoulder", "spacer", "neck")
-FLANGE_ROOM = ("shoulder", "spacer", "head", "cap")
 
 
 
@@ -155,173 +141,9 @@ class Column:
     def anchors(self) -> list[int]:
         return sorted(k for k, (role, _) in self.roles.items() if role == "anchor")
 
-    def room(self, k: int) -> float:
-        """Radius free for a link's flange in layer ``k`` (0 at a link or a frame plate)."""
-        role, r = self.roles.get(k, ("", 0.0))
-        return r if role in FLANGE_ROOM else 0.0
-
-
-def hex_prism(xy, af: float, z0: float, z1: float, angle: float = 0.0):
-    """A hexagonal prism ``af`` across flats, one pair of flats facing ``angle`` (degrees)."""
-    boxes = [Box(af, 4 * af, z1 - z0).rotate(Axis.Z, angle + a) for a in (0.0, 60.0, 120.0)]
-    prism = boxes[0] & boxes[1] & boxes[2]
-    return moved(prism, Location((float(xy[0]), float(xy[1]), (z0 + z1) / 2)))
-
-
 def bored(part, xy, d: float, z0: float, z1: float):
     """``part`` with a through-bore of diameter ``d``."""
     return part - disc(xy, d / 2, z0 - 1.0, z1 + 1.0)
-
-
-def sleeve_solid(xy, pieces: list[tuple[float, float, float]], bore_d: float) -> Solid:
-    """A printed spacer sleeve on a rod: cylinders ``(z0, z1, r)`` stacked bottom to top.
-
-    Where the radius changes the outside runs along a 45 degree cone inside
-    the wider piece, so the sleeve prints on either end without support and
-    never leaves its claimed layers.
-    """
-    pts: list[tuple[float, float]] = []
-    for i, (z0, z1, r) in enumerate(pieces):
-        if i == 0:
-            pts.append((r, z0))
-        else:
-            _, _, r_prev = pieces[i - 1]
-            step = abs(r - r_prev)
-            if step > EPS:
-                if step > min(z1 - z0, pieces[i - 1][1] - pieces[i - 1][0]) + EPS:
-                    raise ConstructionError(f"a sleeve steps by {step:.2f} mm between pieces "
-                                            f"shorter than that")
-                if r > r_prev:                   # step out going up: cone into this piece
-                    pts += [(r_prev, z0), (r, z0 + step)]
-                else:                            # step in going up: cone into the piece below
-                    pts += [(r_prev, z0 - step), (r, z0)]
-        pts.append((r, z1))
-    pts += [(bore_d / 2, pieces[-1][1]), (bore_d / 2, pieces[0][0])]
-    clean: list[tuple[float, float]] = []
-    for p in pts:
-        if not clean or abs(clean[-1][0] - p[0]) > 1e-9 or abs(clean[-1][1] - p[1]) > 1e-9:
-            clean.append(p)
-    wire = Wire.make_polygon([Vector(r, 0.0, z) for r, z in clean], close=True)
-    solid = Solid.revolve(Face(wire), 360.0, Axis.Z)
-    return moved(solid, Location((float(xy[0]), float(xy[1]), 0.0)))
-
-
-@dataclass(frozen=True)
-class RodShaft:
-    """A 3 mm rod cut to length: glued into the frame plates it reaches, a push-on clip
-    (Starlock) against the stack at every free end, the rod's end just proud of the clip.
-
-    The rod is modelled ``model_gap`` under size so it clears the bores it
-    runs in (the clip's, a bearing's), which are modelled at size.
-    """
-
-    rod_key: str = ROD_KEY
-    clip_key: str = CLIP_KEY
-    protrude: float = 0.5            # rod beyond a clip
-    set_play: float = 0.1            # axial play a clip pushed on "until it just touches" leaves
-    #                                  (an assumption: a push-on clip is set by feel)
-    model_gap: float = 0.01
-    glue_per_anchor: float = 0.02    # CA glue per plate anchor, as a fraction of a bottle
-
-    @property
-    def d(self) -> float:
-        return float(get(self.rod_key).dims["d"])
-
-    @property
-    def stock(self) -> float:
-        return float(get(self.rod_key).dims["length"])
-
-    def max_stack(self, pitch: float) -> float:
-        """The tallest stack a pillar's rod spans (mm): one stock length, glued through both
-        frame plates (:meth:`construction.base.Group.max_top`)."""
-        return self.stock
-
-    def stock_note(self) -> str:
-        return f"the {self.d:g} mm rod's stock length ({self.stock:g} mm)"
-
-    def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None) -> None:
-        """The planner's rule: the rod (from the outer plate, or a clip under the lowest
-        link, to the inner plate or a clip over the highest; at the plan's own z when
-        ``layout`` is final) is one stock length at most: :class:`stack.Unbuildable`."""
-        if not links:
-            return
-        down, up = anchored if pillar else (False, False)
-        k0 = 0 if down else min(links)
-        k1 = top if up else max(links)
-        if layout is not None and layout.final:
-            run = layout.z(k1)[1] - layout.z(k0)[0]
-        else:
-            # during the search a lower bound only (never prune what fits at the final z): the
-            # layers between its ends at the pitch, the end layers (a frame plate is thinner
-            # than the pitch) and the gaps not counted
-            run = max(k1 - k0 - 1, 0) * pitch
-        _, h = self.clip()
-        run += (h + self.protrude) * ((not down) + (not up))
-        if run > self.stock + EPS:
-            from spiderpig.stack import Unbuildable
-
-            raise Unbuildable(f"its {run:.1f} mm rod is longer than the {self.stock:g} mm "
-                              "stock it is cut from")
-
-    def clip(self) -> tuple[float, float]:
-        """(outside diameter, height) of the push-on clip."""
-        c = get(self.clip_key).dims
-        return float(c["od"]), float(c["h"])
-
-    def end_height(self) -> float:
-        """What a clip and the rod's end need in a clearance gap."""
-        _, h = self.clip()
-        return h + self.protrude + HEAD_CLEARANCE
-
-    def check(self, ctx, pillar: bool, extra: float = 0.0) -> None:
-        """The clip and the rod's end fit an end layer (``extra``: a flange under the clip)."""
-        p = ctx.params
-        _, h = self.clip()
-        if h + self.protrude + extra > ctx.pitch + EPS:
-            raise ConstructionError(f"a {h:g} mm push-on clip and the rod's end don't fit a "
-                                    f"{ctx.pitch:g} mm layer")
-        if pillar and p.hole(self.d, "glue") / 2 + p.min_wall > p.frame_radius:
-            raise ConstructionError(f"a {self.d:g} mm rod doesn't fit the frame plate arms")
-
-    def realize(self, build: Build, group: AxleGroup, col: Column, out: Realized, *,
-                faces: dict[str, float] | None = None) -> None:
-        """Add the rod, its clips, the plate holes and the glue to ``out``.
-
-        ``faces["lo"]`` / ``["hi"]``: how far a link's flange holds the bottom /
-        top clip off the retained stack's face.
-        """
-        faces = faces or {}
-        p = build.ctx.params
-        xy, host, stem = xy_of(build, group), host_of(build, group), stem_of(group)
-        od, h = self.clip()
-        d = self.d
-        z0, z1 = build.z(col.k0)[0], build.z(col.k1)[1]
-        if col.below:
-            face = z0 - faces.get("lo", 0.0)
-            clip = bored(disc(xy, od / 2, face - h, face), xy, d, face - h, face)
-            out.bodies.append(hardware(f"{stem}_clip_lo", clip, host, fab="purchased",
-                                       bom_key=self.clip_key, color=STEEL))
-            z0 = face - h - self.protrude
-        if col.above:
-            face = z1 + faces.get("hi", 0.0)
-            clip = bored(disc(xy, od / 2, face, face + h), xy, d, face, face + h)
-            out.bodies.append(hardware(f"{stem}_clip_hi", clip, host, fab="purchased",
-                                       bom_key=self.clip_key, color=STEEL))
-            z1 = face + h + self.protrude
-        if z1 - z0 > self.stock + EPS:
-            raise ConstructionError(f"{group.name}: a {z1 - z0:.1f} mm rod is longer than its "
-                                    f"{self.stock:g} mm stock")
-        rod = disc(xy, (d - self.model_gap) / 2, z0, z1)
-        out.bodies.append(hardware(f"{stem}_rod", rod, host, fab="purchased", color=STEEL))
-        out.extras.append(BomLine(self.rod_key, (z1 - z0) / self.stock,
-                                  f"{group.name}: cut {z1 - z0:.1f} mm"))
-        plates = {0: FRAME_OUTER, build.top: FRAME_INNER}
-        for k in col.anchors:
-            out.cut(plates[k], Cut(xy, p.hole(d, "glue")))
-        if col.anchors:
-            out.extras.append(BomLine("ca_glue", self.glue_per_anchor * len(col.anchors),
-                                      f"{group.name} anchors"))
 
 
 HEAD_CLEARANCE = 0.25    # a retainer in a clearance gap stays this far off the next layer (mm)

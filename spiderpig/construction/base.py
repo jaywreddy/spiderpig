@@ -93,14 +93,14 @@ class Params:
     running_fit: float = 0.35      # a part that turns in a laser-cut hole
     glue_fit: float = 0.15         # a part glued into a laser-cut hole
     print_fit: float = 0.3         # two printed parts that slide together
-    # printed axles (pillars and link pins)
+    # printed axles (pillars and link pins; the printed axle was removed on 2026-10-07, these
+    # stay in every stored design's Params)
     axle_d: float = 6.0            # the diameter plates turn on
     spacer_d: float = 8.5          # shoulder beside a link (built-in spacer)
     neck_d: float = 4.0            # thinnest an axle may neck down where a link passes
     head_d: float = 8.5            # head / cap outside the plates it retains
-    # printed crank
-    crankpin_d: float = 6.0        # post b1 turns on (at least: the keyed crank's hex cavity
-    #                                needs its 8.5 mm post, KeyedCrank.post_d)
+    # the crank (the printed crank's, removed on 2026-10-07; the bolt crank's are its own)
+    crankpin_d: float = 6.0        # post b1 turns on
     web_radius: float = 6.0        # half-width of a crank web (O to crankpin)
     journal_d: float = 12.0        # crank body on the axis O
     stub_d: float = 8.0            # journal stub turning in the outer frame plate
@@ -244,7 +244,7 @@ class Realized:
     pads: dict[str, list[tuple[XY, XY, float]]] = field(default_factory=dict)
     extras: list[BomLine] = field(default_factory=list)
     # what a construction wants the mechanism's meta to say (key -> dict merged per key):
-    # the printed axles' snap strains ("snap_strain")
+    # the crank's ("crank_bolt"), the pivots' tilt ("wobble")
     notes: dict[str, dict] = field(default_factory=dict)
 
     def cut(self, plate: str, cut: Cut) -> None:
