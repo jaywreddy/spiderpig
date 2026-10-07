@@ -500,6 +500,27 @@ step with the gate baseline.
 
 ---
 
+## W8: Approved output changes (one batch, one new gate baseline)
+
+**Goal.** Land the changes that alter output, which the user approved on 2026-10-07, as one
+package. Each change gets its own commit and its own listed gate diff, and the batch ends
+with a re-taken gate baseline.
+
+| # | change | decision | expected gate diff |
+|---|---|---|---|
+| D2 | Cantilever standoff pillar: claim and fill the clearance gap over its last link, so the link can't slide (`test_pivots::test_nothing_on_a_cantilever_pillar_can_slide` stops being xfail) | fix | parts and BOM of designs with a cantilever pillar |
+| D3 | Tie-stable rounding of reported measurements (`spiderpig.rounding`, branch `w3a-rounding`): mirror twins report the same number, and the number doesn't depend on OCCT's thread count | accept | klann_quad R.b4_leg0 3.93→3.92; klann_lego_quad L/R.b1_leg0 3.28→3.27 |
+| D4 | `shapes.pill` as one extruded stadium instead of fused primitives (~25-30 % CPU everywhere) | do it | DXF start vertices, the Klann quad's sheet packing, STL meshes |
+| D5 | Mirror-identical printed parts grouped as "same" (`bom._proper_fit` translation-first) | do it | six print groups "1 mirrored" → "2 same"; their `_mirrored.stl` files go |
+| — | The robot's preview STL stays at 0.1 rad | keep | none |
+| bugs | `materials.aluminium_sheets` loads the catalog; `build.export_prints` labels split filament rows by their own filament (found by W4a) | fix | PETG/TPU print rows |
+
+**Criteria.**
+- [ ] Every gate diff is one of the expected ones above; nothing else moves.
+- [ ] `mise run audit` is green on the six gate designs.
+- [ ] The new baseline is snapshotted and named in TESTING.md.
+- [ ] The full suite is green.
+
 ## Later (not in this plan)
 
 From `future_work.md`. These are product work, not cleanup:
