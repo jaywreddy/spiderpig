@@ -136,7 +136,8 @@ def test_a_foreign_page_cant_open_a_websocket(monkeypatch):
     ("http://localhost:8123", "localhost:8123", {}, True),
     ("http://127.0.0.1:5173", "127.0.0.1:5173", {}, True),
     ("http://mybox", "mybox", {}, True),                                 # default ports
-    ("https://mybox", "mybox", {}, False),          # (an https page, a ws:// request)
+    ("https://mybox", "mybox", {}, True),           # (TLS ended by a proxy: tailscale serve)
+    ("https://mybox:8443", "mybox", {}, False),
     ("http://localhost:80", "localhost", {}, True),
     ("http://[::1]:8000", "[::1]:8000", {}, True),
     # another local port: some other dev server's page
@@ -148,9 +149,20 @@ def test_a_foreign_page_cant_open_a_websocket(monkeypatch):
     ("http://localhost:3000", "127.0.0.1:8500", {"SPIDERPIG_DEV_ORIGIN_PORT": "5173"}, False),
     ("http://evil.example:5173", "127.0.0.1:8500", {"SPIDERPIG_DEV_ORIGIN_PORT": "5173"},
      False),
-    # the user's own names
-    ("https://robot.tail1.ts.net", "localhost:5173", {"VITE_ALLOWED_HOSTS": ".ts.net"}, True),
+    # the user's own names: on the request's port, or the Vite port; never any port
+    ("https://robot.tail1.ts.net", "robot.tail1.ts.net", {"VITE_ALLOWED_HOSTS": ".ts.net"},
+     True),
+    ("http://box.lan:5173", "localhost:5173", {"VITE_ALLOWED_HOSTS": "box.lan"}, True),
+    ("https://x.ts.net:4444", "localhost:8000", {"VITE_ALLOWED_HOSTS": ".ts.net"}, False),
+    ("https://robot.tail1.ts.net", "localhost:5173", {"VITE_ALLOWED_HOSTS": ".ts.net"}, False),
+    ("https://x.ts.net:5173", "127.0.0.1:8500",
+     {"VITE_ALLOWED_HOSTS": ".ts.net", "SPIDERPIG_DEV_ORIGIN_PORT": "5173"}, True),
     ("https://evil.example", "localhost:5173", {"VITE_ALLOWED_HOSTS": ".ts.net"}, False),
+    # a loopback name allowed by the user is still only its own port (or the Vite port)
+    ("http://localhost:3000", "localhost:8000", {"VITE_ALLOWED_HOSTS": "localhost"}, False),
+    ("http://evil.localhost:3000", "localhost:8000", {"VITE_ALLOWED_HOSTS": ".localhost"},
+     False),
+    ("http://localhost:8000", "localhost:8000", {"VITE_ALLOWED_HOSTS": "localhost"}, True),
 ])
 def test_a_websockets_origin_must_be_its_own_host_and_port(origin, host, env, allowed,
                                                           monkeypatch):
@@ -159,6 +171,25 @@ def test_a_websockets_origin_must_be_its_own_host_and_port(origin, host, env, al
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     assert srv.origin_allowed(origin, host) is allowed
+
+
+def test_spiderpig_view_trusts_no_vite_port(tmp_path, monkeypatch):
+    """``SPIDERPIG_DEV_ORIGIN_PORT`` is the dev server's: ``spiderpig view`` (and the MCP's
+    child, which inherits the MCP's environment) drops it before serving."""
+    import uvicorn
+
+    from spiderpig import view
+
+    monkeypatch.setenv("SPIDERPIG_DEV_ORIGIN_PORT", "5173")
+    seen = {}
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: seen.update(
+        port=srv.os.environ.get("SPIDERPIG_DEV_ORIGIN_PORT"),
+        allowed=srv.origin_allowed("http://localhost:5173", "127.0.0.1:8500")))
+    try:
+        view.run_server(str(tmp_path), "127.0.0.1", 8500)
+    finally:
+        srv.configure(None, prebake_default=True)
+    assert seen == {"port": None, "allowed": False}
 
 
 def test_dev_tells_the_api_the_vite_port():

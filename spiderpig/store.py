@@ -85,6 +85,7 @@ STAGES = ("check", "plan", "walk", "build", "recheck", "verify", "export")
 META_KEYS = ("stage", "design", "engine_version", "written_at")
 PROJECT = "project"          # the ``store`` argument's default: the project store
 
+TRASH = ".removed-"     # designs/.removed-<id>-<random>/: a removal in progress (or crashed)
 _ID = re.compile(r"[0-9a-f]{16}")   # matched whole (fullmatch: no trailing newline)
 _UNSAFE = re.compile(r"[^\w.\-]")
 
@@ -383,12 +384,35 @@ class Store:
             return self._write_build(design, rep)
 
     def _write_build(self, design: Design, rep) -> Path:
+        """Into a new folder beside ``build/`` (manifest last), then swapped in by two
+        renames: a crash at any point leaves the previous build whole, or no build, never
+        a manifest naming files that aren't its own (and the file hashes in the manifest
+        let :meth:`load_mechanism` notice if they were)."""
+        top = self.dir(design.id)
+        for stale in top.glob(".build-*"):          # what an earlier crash left (locked)
+            shutil.rmtree(stale, ignore_errors=True)
+        d = Path(tempfile.mkdtemp(prefix=".build-new-", dir=top))
+        try:
+            self._write_build_into(d, design, rep)
+            final = top / "build"
+            if final.exists():
+                old = Path(tempfile.mkdtemp(prefix=".build-old-", dir=top))
+                os.rename(final, old / "build")
+                os.rename(d, final)
+                shutil.rmtree(old, ignore_errors=True)
+            else:
+                os.rename(d, final)
+        except BaseException:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
+        return final / "manifest.json"
+
+    def _write_build_into(self, d: Path, design: Design, rep) -> Path:
+        import hashlib
+
         from build123d import export_step
 
-        d = self.dir(design.id) / "build"
         parts_dir = d / "parts"
-        if parts_dir.exists():
-            shutil.rmtree(parts_dir)
         entries = []
         mech = design.mech if rep.ok else None
         if mech is not None:
@@ -405,6 +429,7 @@ class Store:
                     export_step(part.built, str(tmp))
                     os.replace(tmp, parts_dir / fn)
                     entry["file"] = f"parts/{fn}"
+                    entry["sha256"] = hashlib.sha256((parts_dir / fn).read_bytes()).hexdigest()
                 entries.append(entry)
         doc = {"stage": "build", "design": design.id, "engine_version": design.engine_version,
                "written_at": now_iso(), **report_doc(rep), "parts": entries}
@@ -419,7 +444,10 @@ class Store:
         """The fabricated :class:`mechanism.Mechanism` the manifest describes: every part's
         solid from its STEP file (a referenced part from its twin's, mirrored), at its pose,
         with the meta the checks read (the mid-plane, the fastened pairs) and the BOM's
-        extras. Raises when a file is missing."""
+        extras. Raises when a file is missing (``FileNotFoundError``) or isn't the one the
+        manifest names (``ValueError``: its hash differs)."""
+        import hashlib
+
         from build123d import Plane, import_step
 
         from spiderpig.hardware.bom import BomLine
@@ -433,6 +461,10 @@ class Store:
                 path = d / e["file"]
                 if not path.is_file():
                     raise FileNotFoundError(f"{path} is missing")
+                if e.get("sha256") and \
+                        hashlib.sha256(path.read_bytes()).hexdigest() != e["sha256"]:
+                    raise ValueError(f"{path} is not the file its manifest names (its hash "
+                                     "differs)")
                 solids[e["name"]] = import_step(str(path))
         for e in entries:
             if e.get("same_as"):
@@ -544,10 +576,11 @@ class Store:
                 if not got:
                     return False
                 # renamed away first: whoever waits on the lock wakes to a design that is
-                # gone (DesignRemoved), never to a half-deleted folder
-                trash = d.with_name(f".removed-{id}-{os.getpid()}-{threading.get_ident()}")
-                os.rename(d, trash)
-                shutil.rmtree(trash)
+                # gone (DesignRemoved), never to a half-deleted folder; into a folder of its
+                # own (a unique name: a crash leaves one, gc sweeps it)
+                trash = Path(tempfile.mkdtemp(prefix=f"{TRASH}{id}-", dir=self.designs))
+                os.rename(d, trash / id)
+                shutil.rmtree(trash, ignore_errors=True)
         except DesignRemoved:
             return False
         return True
@@ -564,6 +597,7 @@ class Store:
         kept = None if keep is None else set(keep)
         cutoff = _cutoff(older_than)
         removed = []
+        self.sweep()
         for i in self.ids():
             if kept is not None and i in kept:
                 continue
@@ -571,9 +605,24 @@ class Store:
                 last = self.last_activity(i)
                 if last is not None and last >= cutoff:
                     continue
-            if self.remove(i, blocking=False):
-                removed.append(i)
+            try:
+                if self.remove(i, blocking=False):
+                    removed.append(i)
+            except OSError as e:            # one design's trouble doesn't stop the rest
+                log.warning("gc: %s not removed: %s", i, e)
         return removed
+
+    def sweep(self) -> list[str]:
+        """Delete what interrupted removals left (``designs/.removed-*``, folders a crash
+        between the rename and the delete left behind). Returns their names."""
+        if not self.designs.is_dir():
+            return []
+        out = []
+        for p in self.designs.iterdir():
+            if p.name.startswith(TRASH) and p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+                out.append(p.name)
+        return out
 
 
 def _cutoff(older_than) -> datetime | None:

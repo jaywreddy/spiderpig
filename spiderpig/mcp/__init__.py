@@ -907,9 +907,13 @@ def _on_sigterm(state: State):
     ``SystemExit``: the interpreter would then wait for the AnyIO thread blocked reading
     stdin, which a client that sent SIGTERM may never close."""
     def handler(signum, _frame) -> None:
+        # no locks here: the interrupted thread (the event loop) may hold any of them
         try:
-            state.stop_viewer()
-            state.jobs.shutdown(kill=True)
+            viewer = state.viewer
+            proc = getattr(viewer, "proc", None)
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+            state.jobs.kill()
         finally:
             os._exit(128 + signum)
 

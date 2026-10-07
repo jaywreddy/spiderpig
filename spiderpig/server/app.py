@@ -517,15 +517,27 @@ def _port(netloc: str, scheme: str = "") -> str:
     return {"http": "80", "https": "443"}.get(scheme, "")
 
 
+def _loopback(host: str) -> bool:
+    return host in LOOPBACK_HOSTS or host.endswith(".localhost")
+
+
 def origin_allowed(origin: str | None, host_header: str, scheme: str = "ws") -> bool:
     """May a WebSocket from this ``Origin`` connect? Browsers don't apply CORS to
-    WebSockets, so without this any page could drive ``/ws/sim``. Allowed: no Origin (not
-    a browser); the page's own host *and port* (the ``Host`` it connects to: ``spiderpig
-    view``, or Vite's ``/ws`` proxy, which passes Host on); a ``$VITE_ALLOWED_HOSTS`` name
-    (the user's own, any port); a loopback page on the Vite dev port
-    (``$SPIDERPIG_DEV_ORIGIN_PORT``). A page on another local port (any dev server's) is
-    not. ``scheme`` is the request's (``ws`` / ``wss``): a ``Host`` naming no port means
-    its default."""
+    WebSockets, so without this any page could drive ``/ws/sim``. Allowed:
+
+    - no Origin (not a browser);
+    - the page's own host *and port*: the ``Host`` it connects to (``spiderpig view``, or
+      Vite's ``/ws`` proxy, which passes Host on). A Host naming no port matches the
+      default port of the Origin's scheme (``https://box.ts.net`` through a
+      TLS-terminating ``tailscale serve``, which speaks ``ws`` to us);
+    - the Vite dev page: an Origin on ``$SPIDERPIG_DEV_ORIGIN_PORT`` (set by
+      ``spiderpig.tools.dev`` for the API it starts, and stripped by ``spiderpig view``),
+      on a loopback or a ``$VITE_ALLOWED_HOSTS`` name;
+    - a ``$VITE_ALLOWED_HOSTS`` name (not a loopback one) on the request's own port.
+
+    A page on any other port is refused, a loopback one above all (any local dev
+    server's). ``scheme`` (the request's) is kept for callers; the ports compared are
+    the Origin's and the Host's."""
     if origin is None:
         return True
     from urllib.parse import urlsplit
@@ -537,14 +549,16 @@ def origin_allowed(origin: str | None, host_header: str, scheme: str = "ws") -> 
     if parts.scheme not in ("http", "https") or not parts.netloc:
         return False                                # "null" (a sandbox, a file), garbage
     host, port = _hostname(parts.netloc), _port(parts.netloc, parts.scheme)
-    want = _port(host_header, {"ws": "http", "wss": "https"}.get(scheme, scheme))
+    want = _port(host_header) or _port("", parts.scheme)
     if host == _hostname(host_header) and port == want:
         return True
-    extra = [h.strip().lower() for h in os.environ.get(ALLOWED_HOSTS_ENV, "").split(",")]
-    if _named(host, [h for h in extra if h]):
-        return True
+    extra = [h for h in (x.strip().lower() for x in
+                         os.environ.get(ALLOWED_HOSTS_ENV, "").split(",")) if h]
+    named = _named(host, extra)
     dev = os.environ.get(DEV_ORIGIN_PORT_ENV, "").strip()
-    return bool(dev) and host in LOOPBACK_HOSTS and port == dev
+    if dev and port == dev and (_loopback(host) or named):
+        return True
+    return named and not _loopback(host) and port == want
 
 
 class HostGuard:

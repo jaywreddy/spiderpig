@@ -472,12 +472,12 @@ def _install(_st):
     def _b_blocked(parts_dir):
         # is a process waiting on this design's lock? (an flock waiter in /proc/locks)
         try:
-            ino = os.stat(os.path.join(os.path.dirname(os.path.dirname(parts_dir)),
-                                       ".lock")).st_ino
+            st = os.stat(os.path.join(os.path.dirname(os.path.dirname(parts_dir)), ".lock"))
+            key = f"{os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}:{st.st_ino}"
             locks = open("/proc/locks").read().splitlines()
         except OSError:
             return False                # no lock file: nobody locks (the code before)
-        return any("->" in ln and ln.split()[-3].endswith(f":{ino}") for ln in locks)
+        return any("->" in ln and ln.split()[-3] == key for ln in locks)
 
     def export_step(part, path, *a, **kw):
         _n[0] += 1
@@ -676,3 +676,229 @@ def test_builds_and_exports_run_under_the_designs_lock(tmp_path, monkeypatch, op
         holder.wait(10)
     assert ran.wait(5.0)
     t.join(5)
+
+
+
+# ---------------------------------------------------------------------------
+# Review round 2
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.slow
+def test_sigterm_never_waits_on_a_lock_the_loop_holds(tmp_path):
+    """SIGTERM landing while the event loop's thread holds ``Jobs._lock`` (``submit``,
+    ``get``, ``list``, ``_prune``): the handler used to take that lock and hang forever."""
+    import signal
+    import sys
+
+    code = (
+        "import os, signal, threading, time\n"
+        "from spiderpig.mcp import make_server, _on_sigterm\n"
+        f"state = make_server({str(tmp_path)!r}, workers=1).spiderpig\n"
+        "signal.signal(signal.SIGTERM, _on_sigterm(state))\n"
+        "threading.Timer(0.5, lambda: os.kill(os.getpid(), signal.SIGTERM)).start()\n"
+        "with state.jobs._lock:\n"
+        "    time.sleep(2.0)\n"
+        "print('UNREACHABLE', flush=True)\n")
+    proc = subprocess.Popen([sys.executable, "-c", code], stdout=subprocess.PIPE, text=True)
+    try:
+        assert proc.wait(timeout=30) == 128 + signal.SIGTERM
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+    assert "UNREACHABLE" not in proc.stdout.read()
+
+
+def _spawn_grandchild(pidfile: str) -> int:
+    """In a pool worker: start a long ``python -c`` (as ``workers.submit`` does), record
+    its pid, and wait on it."""
+    import sys
+
+    child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    Path(pidfile).write_text(str(child.pid))
+    return child.wait()
+
+
+def _alive(pid: int) -> bool:
+    import os
+
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    with contextlib.suppress(OSError):
+        if Path(f"/proc/{pid}/stat").read_text().split()[2] == "Z":     # a zombie: dead
+            return False
+    return True
+
+
+@pytest.mark.slow
+def test_killing_the_jobs_ends_their_workers_children(tmp_path):
+    """``Jobs.kill`` (SIGTERM's path) kills each worker's process group, so the
+    ``python -c`` processes a job started (``workers.submit``) don't outlive it."""
+    import multiprocessing as mp
+
+    from spiderpig.mcp import jobs as jobs_module
+
+    jobs = jobs_module.Jobs(str(tmp_path), workers=1)
+    jobs._pool = cf.ProcessPoolExecutor(1, mp_context=mp.get_context("spawn"),
+                                        initializer=jobs_module._init_worker)
+    pidfile = tmp_path / "grandchild.pid"
+    fut = jobs._pool.submit(_spawn_grandchild, str(pidfile))
+    deadline = time.monotonic() + 60
+    while not pidfile.exists() or not pidfile.read_text():
+        assert time.monotonic() < deadline, "the worker didn't start its child"
+        time.sleep(0.1)
+    grandchild = int(pidfile.read_text())
+    assert _alive(grandchild)
+    jobs.shutdown(kill=True)
+    deadline = time.monotonic() + 10
+    while _alive(grandchild) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    alive = _alive(grandchild)
+    if alive:
+        import os
+        import signal
+
+        os.kill(grandchild, signal.SIGKILL)
+    assert not alive, "the worker's child outlived the kill"
+    with contextlib.suppress(Exception):
+        fut.result(timeout=5)
+
+
+def _recorded(store: Store, id_: str = ID) -> Path:
+    d = store.dir(id_)
+    d.mkdir(parents=True)
+    (d / "resolved.json").write_text("{}")
+    (d / "check.json").write_text("{}")
+    return d
+
+
+def test_a_removed_design_disappears_before_its_files_are_deleted(tmp_path, monkeypatch):
+    """``remove`` renames the folder away first: while its files are being deleted the
+    design is already gone (no half-deleted design a reader or a waiter could see)."""
+    from spiderpig import store as store_module
+
+    store = Store(tmp_path)
+    _recorded(store)
+    seen = []
+    real = store_module.shutil.rmtree
+
+    def rmtree(path, *a, **kw):
+        seen.append((store.dir(ID).exists(), store.ids()))
+        return real(path, *a, **kw)
+
+    monkeypatch.setattr(store_module.shutil, "rmtree", rmtree)
+    assert store.remove(ID)
+    assert seen
+    assert seen[0] == (False, [])
+    assert sorted(p.name for p in store.designs.iterdir()) == []
+
+
+def test_a_report_for_a_removed_design_doesnt_make_its_folder_again(tmp_path):
+    store = Store(tmp_path)
+    _recorded(store)
+    assert store.remove(ID)
+    design = SimpleNamespace(id=ID, engine_version="e")
+    rep = SimpleNamespace(to_dict=lambda: {"ok": True})
+    store.write_report(design, "check", rep)
+    store.write_report(design, "verify", SimpleNamespace(to_dict=lambda: {"level": "quick"}))
+    store.log(ID, {"op": "check"})
+    assert not store.dir(ID).exists()
+    assert list(store.designs.iterdir()) == []
+
+
+def test_gc_sweeps_what_a_crashed_removal_left_and_goes_on_past_a_failure(tmp_path,
+                                                                          monkeypatch):
+    """A crash between the rename and the delete leaves ``designs/.removed-*``: gc deletes
+    it. A stale trash folder with the old fixed name (a reused pid and thread id) no longer
+    blocks a removal, and one design that can't be removed doesn't stop gc."""
+    import os
+    import threading as th
+
+    from spiderpig import store as store_module
+
+    store = Store(tmp_path)
+    a, b, c, e = ID, "fedcba9876543210", "00112233445566ff", "aabbccddeeff0011"
+    for i in (a, b, c, e):
+        _recorded(store, i)
+    real = store_module.shutil.rmtree
+    monkeypatch.setattr(store_module.shutil, "rmtree",
+                        lambda *_a, **_k: (_ for _ in ()).throw(KeyboardInterrupt("crash")))
+    with pytest.raises(KeyboardInterrupt):
+        store.remove(a)
+    monkeypatch.setattr(store_module.shutil, "rmtree", real)
+    assert set(store.ids()) == {b, c, e}
+    # a trash folder of the old fixed name (a reused pid and thread id) is in the way
+    stale = store.dir(b).with_name(f".removed-{b}-{os.getpid()}-{th.get_ident()}")
+    (stale / "x").mkdir(parents=True)
+    assert store.remove(b)
+    real_remove = store.remove
+
+    def remove(i, blocking=True):
+        if i == c:
+            raise PermissionError(f"{i}: read-only")
+        return real_remove(i, blocking=blocking)
+
+    monkeypatch.setattr(store, "remove", remove)
+    assert store.gc(keep=[]) == [e]                     # c failed; gc went on
+    assert sorted(p.name for p in store.designs.iterdir()) == [c]   # the trash swept
+
+
+def _built(store: Store, files: dict[str, bytes]):
+    """A design whose build ``write_build`` writes ``files`` (name -> STEP bytes)."""
+    _recorded(store)
+    parts = {n: SimpleNamespace(to_dict=lambda n=n: {"name": n}, pose=[[1.0]], built=data)
+             for n, data in files.items()}
+    mech = SimpleNamespace(body=lambda _n: SimpleNamespace(color="#fff"), name="m",
+                           meta={}, bom_extras=[])
+    design = SimpleNamespace(id=ID, engine_version="e", mech=mech, parts=parts)
+    return design, SimpleNamespace(ok=True, to_dict=lambda: {"ok": True, "t": 1.0})
+
+
+def test_a_build_killed_mid_write_leaves_the_previous_build_whole(tmp_path, monkeypatch):
+    """A worker killed while it writes a build (``Jobs.kill``): the previous build stays
+    whole (its manifest names its own files), and the next write cleans up."""
+    import build123d
+
+    store = Store(tmp_path)
+    design, rep = _built(store, {"a": b"old-a", "b": b"old-b", "c": b"old-c"})
+    monkeypatch.setattr(build123d, "export_step",
+                        lambda data, path: Path(path).write_bytes(data))
+    store.write_build(design, rep)
+    before = (store.dir(ID) / "build" / "manifest.json").read_text()
+    calls = [0]
+
+    def dying(data, path):
+        calls[0] += 1
+        if calls[0] == 2:
+            raise SystemExit("killed")        # the worker dies at its second file
+        Path(path).write_bytes(b"new-" + data)
+
+    monkeypatch.setattr(build123d, "export_step", dying)
+    with pytest.raises(SystemExit):
+        store.write_build(design, rep)
+    build = store.dir(ID) / "build"
+    assert (build / "manifest.json").read_text() == before
+    assert [p.read_bytes() for p in _manifest_files(store)] == [b"old-a", b"old-b", b"old-c"]
+
+
+def test_a_manifest_naming_other_files_is_refused(tmp_path, monkeypatch):
+    """``load_mechanism`` checks each STEP file against the hash its manifest recorded:
+    a file replaced since (or a manifest that isn't the files') is an error, so the API
+    rebuilds instead of loading the wrong parts."""
+    import json
+
+    import build123d
+
+    store = Store(tmp_path)
+    design, rep = _built(store, {"a": b"A"})
+    monkeypatch.setattr(build123d, "export_step",
+                        lambda data, path: Path(path).write_bytes(data))
+    store.write_build(design, rep)
+    manifest = json.loads((store.dir(ID) / "build" / "manifest.json").read_text())
+    assert manifest["parts"][0]["sha256"]
+    (store.dir(ID) / "build" / "parts" / "a.step").write_bytes(b"something else")
+    with pytest.raises(ValueError, match="hash"):
+        store.load_mechanism(ID, manifest)

@@ -97,10 +97,25 @@ def _run_op(store, op: str, design: str, args: dict) -> dict:
 
 
 def _init_worker() -> None:
-    """A worker's stdout is stderr: the protocol stream belongs to the server alone."""
+    """A worker's stdout is stderr: the protocol stream belongs to the server alone. Each
+    worker leads a process group of its own, so killing the group (:meth:`Jobs.kill`) also
+    ends the ``python -c`` processes it started (:func:`spiderpig.workers.submit`)."""
+    with contextlib.suppress(OSError):
+        os.setsid()
     with contextlib.suppress(OSError):
         os.dup2(2, 1)
     sys.stdout = sys.stderr
+
+
+def _kill_group(pid: int) -> None:
+    """SIGKILL the process group ``pid`` leads (a worker and its children), else ``pid``."""
+    import signal
+
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        with contextlib.suppress(OSError):
+            os.kill(pid, signal.SIGKILL)
 
 
 @dataclass
@@ -262,17 +277,27 @@ class Jobs:
             return list(self._jobs.values())
 
     def shutdown(self, kill: bool = False) -> None:
-        """Stop the pool (queued jobs cancelled); ``kill``: terminate its worker processes
-        too (the process is about to exit without running their shutdown)."""
+        """Stop the pool (queued jobs cancelled); ``kill``: kill its workers' process groups
+        too (:meth:`kill`)."""
+        if kill:
+            self.kill()
         with self._lock:
             pool, self._pool = self._pool, None
-        if pool is None:
-            return
-        procs = list((getattr(pool, "_processes", None) or {}).values()) if kill else []
-        pool.shutdown(wait=False, cancel_futures=True)
-        for p in procs:
-            with contextlib.suppress(Exception):
-                p.terminate()
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def kill(self) -> None:
+        """SIGKILL every worker's process group (the worker and the processes it started).
+        Takes no lock (a signal handler calls it, maybe while this thread holds
+        ``_lock``): it reads the pool and its process table as they are."""
+        pool = self._pool
+        try:
+            pids = [p.pid for p in list((getattr(pool, "_processes", None) or {}).values())]
+        except RuntimeError:            # the table changed under the copy: once more
+            pids = [p.pid for p in list((getattr(pool, "_processes", None) or {}).values())]
+        for pid in pids:
+            if pid:
+                _kill_group(pid)
 
 
 __all__ = ["KEEP_FINISHED", "KEEP_SECONDS", "LONG_OPS", "Job", "Jobs", "job_key", "run_op"]
