@@ -129,9 +129,22 @@ def pytest_terminal_summary(terminalreporter):
     tr.section(f"tests not marked slow over {SLOW_WARN_S:g} s (warning only)", yellow=True)
     for s, n in over:
         tr.line(f"{s:6.1f} s  {n}")
-    tr.line("make each fast through a seam or the cache, keep one cheap case quick "
-            "(tests/tiers.py quick()), or mark it slow with a reason "
+    tr.line("warning only, never a failure, even for a repeat offender (on a shared, loaded "
+            "machine every test slows down); make each fast through a seam or the cache, keep "
+            "one cheap case quick (tests/tiers.py quick()), or mark it slow with a reason "
             "(docs/agentlib/TESTING.md, Markers)")
+
+
+@pytest.fixture
+def fresh_plan_memo(monkeypatch):
+    """Empty ``fabricate``'s process memo (``_DESIGNS``, ``_LAYOUTS``) for one test: a test
+    that asserts what the planner's search does (its proof, its fallback, its time) must
+    search, not re-make a plan another test in this worker seeded or solved
+    (``tests.cache``, the walk's seeded default plans)."""
+    from spiderpig import fabricate
+
+    monkeypatch.setattr(fabricate, "_DESIGNS", {})
+    monkeypatch.setattr(fabricate, "_LAYOUTS", {})
 
 
 def _refused_fabricate(*args, **kwargs):

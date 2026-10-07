@@ -42,6 +42,7 @@ def test_static_clearances_state_the_forced_layer_facts():
 
 
 @pytest.mark.slow
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_plan_stage_names_what_blocked_it(monkeypatch):
     """The plan stage's error: the tally of what blocked it and the static clearances
     behind it (what would clear it: the test below, from the same clearance).

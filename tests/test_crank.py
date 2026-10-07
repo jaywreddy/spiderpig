@@ -516,6 +516,7 @@ def test_the_upper_end_of_a_hex_pin_uses_the_air_over_its_plate():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("module", ["decker", "quad"])
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_the_strider_decker_and_quad_plan_on_the_hex_crank(module):
     """The Strider's decker and quad default to the hex-standoff crank (they were on the
     round friction crank, whose hub chain screw no assembly order drives): each plans, every

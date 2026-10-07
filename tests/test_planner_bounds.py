@@ -16,6 +16,9 @@ from spiderpig.fabricate import design_side, side_problem, template_for
 from spiderpig.recommend import recommend
 from spiderpig.stack import PlanError, StackSpec, verify_plan
 
+# every test here asserts what the search does: none re-makes a memoised or seeded plan
+pytestmark = pytest.mark.usefixtures("fresh_plan_memo")
+
 
 def _problem(key: str, module: str, **spec):
     # the default constructions (the bolt crank; TrotBot's heel and toe on its round

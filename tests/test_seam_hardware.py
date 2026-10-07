@@ -79,7 +79,12 @@ def test_the_aluminium_sheets_come_thinnest_first():
     assert ts == sorted(ts)
 
 
-@pytest.mark.xfail(strict=True, reason="materials.aluminium_sheets reads hardware.catalog."
+class CatalogNotLoaded(AssertionError):
+    """The known bug's symptom: a fresh process's thinnest_sheet finds no sheet."""
+
+
+@pytest.mark.xfail(strict=True, raises=CatalogNotLoaded,
+                   reason="materials.aluminium_sheets reads hardware.catalog."
                    "CATALOG without loading it (catalog._load), so in a fresh process "
                    "thinnest_sheet / role_report find no sheet until something else calls "
                    "catalog.get (W4a finding; a product fix, outside the test lane)")
@@ -88,6 +93,8 @@ def test_the_thinnest_sheet_doesnt_depend_on_the_catalog_being_loaded_first():
             "print(materials.thinnest_sheet('frame'), len(materials.role_report('frame')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                          timeout=60)
+    if "ValueError: no 5052 sheet passes the frame checks" in out.stderr:
+        raise CatalogNotLoaded(out.stderr.strip().splitlines()[-1])
     assert out.stdout.split() == ["al5052_2mm", "6"], out.stderr[-500:]
 
 

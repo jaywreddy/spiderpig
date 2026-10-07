@@ -167,6 +167,7 @@ HEX_UNIT = {"trotbot_heel": 12.0, "trotbot_toe": 12.0}
 
 @pytest.mark.planner            # the planner's tier; TrotBot's heel and toe (5-10 s) are slow
 @pytest.mark.parametrize("key", quick(WALKERS, [k for k in WALKERS if k not in HEX_UNIT]))
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_one_side_plans(key):         # mechanisms: tests/test_mechanisms.py
     """A single-module side lays out with the default constructions (TrotBot's heel link
     at its family's 10.5 mm unit: the round standoff crankpin clears it; with the hex

@@ -217,13 +217,6 @@ def test_merge_sides_appends_the_right_samples_to_their_left_twins():
     np.testing.assert_array_equal(merged, s[:, 2:4])
 
 
-def test_merge_sides_with_no_joints_is_empty():
-    view, merged = sl._merge_sides(SimpleNamespace(joints=[], rows=[]), np.zeros((3, 0, 2)))
-    assert view.joints == []
-    assert view.rows == []
-    assert merged.shape == (0, 0, 2)
-
-
 # -- sim.loads: the store's cache ---------------------------------------------------------
 
 

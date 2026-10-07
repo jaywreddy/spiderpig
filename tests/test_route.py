@@ -95,6 +95,7 @@ def test_ground_clearance_is_the_body_above_the_feet():
 # -- the static stage ------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_the_heel_stops_the_static_stage_with_the_numbers():
     """The stage's own message (``advise=False``: what would clear it, the scale checked by
     planning the scaled heel, ~4 s, is test_recommend.py::test_the_heel_is_told_the_scale_
@@ -188,6 +189,7 @@ def test_the_routers_rules_are_the_bolt_cranks():
 
 @pytest.mark.parametrize("key", quick(["klann", "trotbot", "dwell_rocker",
                                        "hoecken_pantograph"], ["klann"]))
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_the_planner_matches_the_brute_force_optimum(key):
     """Every layering and every route up to the planner's stack size: none thinner, and none
     in it with fewer added crank features. (The brute force knows the ``heads="gap"``

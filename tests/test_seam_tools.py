@@ -46,13 +46,26 @@ def test_hashed_port_is_crc32_of_the_worktree_and_salt():
     assert dev._hashed_port("anything", 7000, 7000) == 7000      # a one-port range
 
 
-def test_module_ports_honour_env_or_hash():
-    if not os.environ.get("VITE_PORT"):
-        assert dev._hashed_port("vite", 5500, 5999) == dev.WEB_PORT
-    if not os.environ.get("API_PORT"):
-        assert dev._hashed_port("api", 8500, 8999) == dev.API_PORT
-    assert f"http://localhost:{dev.WEB_PORT}" == dev.VIEWER_URL
-    assert dev.API_HOST_PORT == ("127.0.0.1", dev.API_PORT)
+def test_module_ports_honour_env_or_hash(monkeypatch):
+    """``VITE_PORT`` / ``API_PORT`` pin the ports; unset, each is the worktree path's CRC32
+    port in its range (the module reads them at import: reloaded under each environment)."""
+    import importlib
+    import zlib
+
+    monkeypatch.setenv("VITE_PORT", "5173")
+    monkeypatch.setenv("API_PORT", "8000")
+    pinned = importlib.reload(dev)
+    assert (pinned.WEB_PORT, pinned.API_PORT) == (5173, 8000)
+    assert pinned.VIEWER_URL == "http://localhost:5173"
+    assert pinned.API_HOST_PORT == ("127.0.0.1", 8000)
+    monkeypatch.delenv("VITE_PORT")
+    monkeypatch.delenv("API_PORT")
+    hashed = importlib.reload(dev)
+    root = hashed.REPO_ROOT
+    assert 5500 + zlib.crc32(f"{root}|vite".encode()) % 500 == hashed.WEB_PORT
+    assert 8500 + zlib.crc32(f"{root}|api".encode()) % 500 == hashed.API_PORT
+    monkeypatch.undo()
+    importlib.reload(dev)
 
 
 class _Out:
@@ -954,7 +967,11 @@ def test_export_prints_writes_stls_and_parts_csv(tmp_path):
         placed.min.Z, placed.min.X + placed.max.X, placed.min.Y + placed.max.Y)
 
 
-@pytest.mark.xfail(strict=True, reason=(
+class WrongFilament(AssertionError):
+    """The known export_prints bug's symptom: R.sock's row named by L.sock's filament."""
+
+
+@pytest.mark.xfail(strict=True, raises=WrongFilament, reason=(
     "export_prints labels a filament-split row by its ref body's filament: "
     "hardware.bom._split_by keeps the group's ref (L.sock, TPU) for the R.sock part when "
     "R.sock is no group's ref, and export_prints looks the filament up by g.ref.name, so "
@@ -969,8 +986,12 @@ def test_export_prints_split_row_names_its_own_filament(tmp_path):
                                tmp_path / "print",
                                filaments={"L.sock": "tpu95a_filament",
                                           "R.sock": "petg_filament"})
-    assert {r["parts"]: r["filament"] for r in rows} == {
-        "L.sock": "TPU 95A flexible filament", "R.sock": "PETG filament"}
+    got = {r["parts"]: r["filament"] for r in rows}
+    assert set(got) == {"L.sock", "R.sock"}
+    assert got["L.sock"] == "TPU 95A flexible filament"
+    if got["R.sock"] == "TPU 95A flexible filament":
+        raise WrongFilament(f"R.sock's row says {got['R.sock']!r}")
+    assert got["R.sock"] == "PETG filament"
 
 
 def test_export_prints_empty(tmp_path):

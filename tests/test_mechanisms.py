@@ -105,6 +105,7 @@ def test_two_inputs_are_checked_over_their_torus():
 
 @pytest.mark.planner
 @pytest.mark.parametrize("key", MECHANISMS)
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_one_side_plans_or_the_pipeline_says_why(key):
     """One side lays out, or a stage says why (its parts: the test below)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)

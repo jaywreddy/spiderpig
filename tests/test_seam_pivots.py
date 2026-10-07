@@ -18,6 +18,7 @@ from spiderpig.config import BuildConfig
 from spiderpig.construction.base import ConstructionError
 from spiderpig.construction.pivots.chicago import MAX_BARREL, ChicagoAxle, ChicagoShaft, Fit
 from spiderpig.construction.pivots.standoff import COLUMN_TOL, SHIM_STEP, StandoffAxle
+from spiderpig.hardware.fastener_catalog import CHICAGO_LENGTHS
 from spiderpig.stack import Unbuildable
 from tests import _ctx
 
@@ -33,7 +34,14 @@ SHAFT = PILLAR.one_piece()
 
 @pytest.mark.parametrize("links", [[3], [3, 4], [2, 6], [1, 9]])
 def test_a_stock_barrel_spans_the_links_while_searching(links):
-    PIN.column(False, links, 12, (True, True), 3.0)
+    """The rule passes (no Unbuildable), and the barrel it stands for is the shortest stock
+    length over the links' stack, the 0.5 mm washer and the 0.05 mm play."""
+    assert PIN.column(False, links, 12, (True, True), 3.0) is None
+    stack = (max(links) - min(links) + 1) * 3.0
+    fit = PIN.fit(stack, 3.0)
+    assert fit.length in CHICAGO_LENGTHS
+    assert fit.length >= stack + 0.55 - 1e-9
+    assert all(stack + 0.55 - 1e-9 > L for L in CHICAGO_LENGTHS if fit.length > L)
 
 
 def test_no_barrel_spans_a_stack_past_the_longest():

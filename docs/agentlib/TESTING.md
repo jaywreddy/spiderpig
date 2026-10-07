@@ -70,8 +70,10 @@ test with two module markers, stops the run with the list. Adding a test file = 
 `tiers.quick(values, keep)` still keeps one cheap case of a heavy parametrized test in the
 fast tiers. `fixture_regen` marks a recorded fixture's currency test (always with `slow`).
 A test not marked `slow` that takes over 5 s (setup + call + teardown;
-`SPIDERPIG_SLOW_WARN_S`) is listed at the end of the run, a warning only (load slows
-everything): make it fast through a seam or the cache, keep a cheap case quick, or mark it
+`SPIDERPIG_SLOW_WARN_S`) is listed at the end of the run, a warning only. The roadmap
+asked for a failure when a test is over the budget twice in a row; it stays warn-only by
+decision (W4a review): on the shared, loaded box every test slows down, and a timing
+failure would be noise. Make it fast through a seam or the cache, keep a cheap case quick, or mark it
 `slow` with a reason in the commit.
 
 **Seam tests** (`tests/test_seam_*.py`, W4a): a construction's or the planner's rule on
