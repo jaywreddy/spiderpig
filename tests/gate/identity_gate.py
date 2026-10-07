@@ -209,7 +209,8 @@ def plan_cores(n_designs: int, jobs: int | None, split: str | None,
 
 def _occt() -> None:
     """OCCT's pool for this process: two threads (``GATE_OCCT_THREADS``), as the baselines
-    were snapshotted (OCCT's last digits depend on it: ``workers.occt_threads``)."""
+    were snapshotted. Not one: OCCT's numbers depend on it (one thread moves a cut-rule
+    distance of the demo Klann quad's audit, 3.93 -> 3.92 mm; ``workers.occt_threads``)."""
     from OCP.OSD import OSD_ThreadPool
 
     OSD_ThreadPool.DefaultPool_s(int(os.environ.get("GATE_OCCT_THREADS", "2")))
