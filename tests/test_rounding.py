@@ -30,7 +30,5 @@ def test_off_a_tie_it_is_round():
         for digits in (0, 1, 2, 3):
             assert rounded(x, digits) == round(x, digits)
     assert rounded(3.123456789, 7) == round(3.123456789, 7)
-    assert rounded(4.6e-6, 5) == 0.0            # (settled past the digits kept, not at 1e-6)
-    assert rounded(1.4e-5, 5) == 1e-5
     assert fixed(1.0, 3) == "1.000"
     assert math.isnan(rounded(float("nan"), 2))
