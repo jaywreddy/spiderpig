@@ -52,7 +52,9 @@ from __future__ import annotations
 import argparse
 import logging
 import math
+import time
 from collections import defaultdict
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
@@ -74,20 +76,91 @@ from spiderpig.hardware.catalog import get as catalog_get
 from spiderpig.hardware.mass import PartProps, part_props
 from spiderpig.mechanism import Body, Mechanism, MechanismTemplate
 from spiderpig.mesh import mesh_part, read_meshes
-from spiderpig.profiler import Profiler
 from spiderpig.stack import body_class, is_link
 
 logger = logging.getLogger("bake_gltf")
 
 
 @dataclass
-class _Profiler(Profiler):
-    """The bake's profiler (:class:`spiderpig.profiler.Profiler`): its summary is ``bake
-    profile summary:`` on the ``bake_gltf`` logger, each stage's share of ``bake_total``."""
+class _Profiler:
+    """Lightweight perf recorder: nested wall-clock timers + counters + metrics.
 
-    name: str = "bake"
-    total: str = "bake_total"
-    logger_name: str = "bake_gltf"
+    Durations are accumulated per label so the same bracket can be entered
+    many times (e.g. once per animation frame) and reported as total / mean /
+    p50 / p95.
+    """
+
+    enabled: bool = True
+    _durations: dict[str, list[float]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    _counters: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    _metrics: dict[str, float] = field(default_factory=dict)
+
+    @contextmanager
+    def timed(self, label: str):
+        if not self.enabled:
+            yield
+            return
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._durations[label].append(time.perf_counter() - start)
+
+    def bump(self, label: str, n: int = 1) -> None:
+        if self.enabled:
+            self._counters[label] += n
+
+    def set_metric(self, key: str, value: float) -> None:
+        if self.enabled:
+            self._metrics[key] = float(value)
+
+    def log_summary(self) -> None:
+        if not self.enabled:
+            return
+
+        bake_total = sum(self._durations.get("bake_total", [])) or None
+
+        rows = []
+        for label, times_ in self._durations.items():
+            n = len(times_)
+            total = sum(times_)
+            mean_ms = (total / n) * 1000.0 if n else 0.0
+            ts = sorted(times_)
+            p50 = ts[n // 2] * 1000.0 if n else 0.0
+            p95 = ts[min(n - 1, int(n * 0.95))] * 1000.0 if n else 0.0
+            pct = (total / bake_total * 100.0) if bake_total else 0.0
+            rows.append((label, n, total, mean_ms, p50, p95, pct))
+        rows.sort(key=lambda r: -r[2])
+
+        lines = [
+            "bake profile summary:",
+            f"  {'label':40} {'calls':>6} {'total_s':>9} "
+            f"{'mean_ms':>9} {'p50_ms':>9} {'p95_ms':>9} {'%bake':>6}",
+            f"  {'-' * 40} {'-' * 6} {'-' * 9} {'-' * 9} "
+            f"{'-' * 9} {'-' * 9} {'-' * 6}",
+        ]
+        for label, n, total, mean_ms, p50, p95, pct in rows:
+            lines.append(
+                f"  {label:40} {n:6d} {total:9.3f} "
+                f"{mean_ms:9.3f} {p50:9.3f} {p95:9.3f} {pct:6.1f}"
+            )
+        if self._counters:
+            lines.append("  counters:")
+            for k, v in sorted(self._counters.items()):
+                lines.append(f"    {k}: {v}")
+        if self._metrics:
+            lines.append("  metrics:")
+            for k, v in sorted(self._metrics.items()):
+                # Integers stay integers for readability (vert counts, bytes).
+                if v == int(v):
+                    lines.append(f"    {k}: {int(v)}")
+                else:
+                    lines.append(f"    {k}: {v:.3f}")
+
+        logger.info("\n".join(lines))
+
 
 
 def default_bake_dir() -> Path:

@@ -384,7 +384,3 @@ class Design:
             "parts": [p.to_dict() for p in self.parts.values()],
             "build_t": self.build_t, "log": list(self.log),
         }
-
-
-if __name__ == "__main__":       # python -m spiderpig.design: the engine version (CI's cache key)
-    print(engine_version())

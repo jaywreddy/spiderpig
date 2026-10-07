@@ -440,9 +440,10 @@ per-frame solves.
 
 ### How to extend
 
-The profiler is `spiderpig/profiler.py`'s `Profiler` (the bake's `_Profiler` names its
-summary, logger and total; `spiderpig build --profile` uses it too, stages
-`spiderpig.build.STAGES`). To add a new bracket:
+The profiler lives in `spiderpig/bake.py` as `_Profiler`; `spiderpig/tools/profiler.py` is its
+generalised copy that `spiderpig build --profile` uses (`spiderpig/tools/build_profile.py`,
+stages `build_profile.STAGES`; under `tools/`, outside the engine hash). To add a new
+bracket:
 
 ```python
 with prof.timed("label"):

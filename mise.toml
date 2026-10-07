@@ -171,4 +171,4 @@ run         = "viewer/node_modules/.bin/pyright"
 
 [tasks."engine-version"]
 description = "Print the engine version (the stores' and the test cache's key)"
-run         = "uv run python -m spiderpig.design"
+run         = "uv run python -m spiderpig.tools.engine_version"

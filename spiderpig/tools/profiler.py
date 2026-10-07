@@ -1,9 +1,12 @@
 """A small stage profiler: nested wall-clock timers, counters and metrics, summarised
 through a logger (never ``print``).
 
-The bake (:mod:`spiderpig.bake`, logger ``bake_gltf``, stages ``1_reference_build`` ...)
-and the build (:mod:`spiderpig.build` ``--profile``, logger ``spiderpig.build``, stages
-``import`` ... ``order``) both use it::
+The bake's ``_Profiler`` (:mod:`spiderpig.bake`, logger ``bake_gltf``) generalised: a
+title, a total label and a logger of its own. ``spiderpig build --profile``
+(:mod:`spiderpig.tools.build_profile`, logger ``spiderpig.build``, stages ``import`` ...
+``order``) uses it. It lives under ``tools/``, outside :func:`spiderpig.design.engine_version`'s
+hash, so measuring never re-keys a store or a cache; the bake keeps its own copy until an
+engine change folds it in::
 
     prof = Profiler(name="build", total="build_total", logger_name="spiderpig.build")
     with prof.timed("plan"):

@@ -1,5 +1,6 @@
-"""The stage profiler (``spiderpig/profiler.py``): the bake's summary unchanged, the build's
-``--profile`` stages (``spiderpig.build.STAGES``) adding up to its wall time."""
+"""The stage profiler (``spiderpig/tools/profiler.py``): the bake's summary unchanged, the
+build's ``--profile`` stages (``spiderpig.tools.build_profile.STAGES``) adding up to its wall
+time, and none of the measuring tools in the engine's hash."""
 
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from spiderpig.profiler import Profiler, process_age
+from spiderpig.tools.profiler import Profiler, process_age
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,7 +80,7 @@ def test_build_profile_has_every_stage_and_adds_up(tmp_path):
     W0 criterion) in its own process: every stage key, their sum within 5 % of the wall time
     measured from outside (which also holds the interpreter's exit, ~1 s, after the profile
     is logged), the outputs written."""
-    from spiderpig.build import STAGES
+    from spiderpig.tools.build_profile import STAGES
 
     prof = tmp_path / "profile.json"
     env = {**os.environ, "SPIDERPIG_OFFLINE": "1", "SPIDERPIG_STORE": str(tmp_path / "store")}
@@ -99,3 +100,30 @@ def test_build_profile_has_every_stage_and_adds_up(tmp_path):
     assert abs(summed - doc["wall_s"]) <= 0.05 * doc["wall_s"]
     assert abs(summed - outside) <= 0.05 * outside, (summed, outside)
     assert (tmp_path / "out" / "ORDER.md").exists()
+
+
+def test_instrumenting_puts_every_call_back():
+    from spiderpig.tools import build_profile
+
+    before = [(o, n, o.__dict__[n] if isinstance(o, type) else getattr(o, n))
+              for o, n, _ in build_profile._targets()]
+    with build_profile.instrumented(Profiler()):
+        assert all((o.__dict__[n] if isinstance(o, type) else getattr(o, n)) is not f
+                   for o, n, f in before)
+    assert all((o.__dict__[n] if isinstance(o, type) else getattr(o, n)) is f
+               for o, n, f in before)
+
+
+def test_the_measuring_tools_are_outside_the_engine_hash():
+    """The profiler, the build's profile, the engine-version printer, the scorecard and the
+    doc check never change ``engine_version()``: none is among the files it hashes (W0 review:
+    a measuring tool must not re-key the stores, the test cache or CI's cache)."""
+    from spiderpig import design
+
+    hashed = {p.relative_to(design.ROOT).as_posix() for p in design.ROOT.rglob("*.py")
+              if p.relative_to(design.ROOT).parts[0] not in design.ENGINE_EXCLUDE}
+    for tool in ("tools/profiler.py", "tools/build_profile.py", "tools/engine_version.py"):
+        assert (design.ROOT / tool).exists(), tool
+        assert tool not in hashed, tool
+    assert design.ROOT.name == "spiderpig"      # tests/ (scorecard, doc check) are outside
+    assert not (design.ROOT / "profiler.py").exists()
