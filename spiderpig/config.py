@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from spiderpig import construction, linkage, servos
 from spiderpig.construction.base import Params
@@ -548,15 +548,60 @@ def config_from_args(args, **fixed) -> BuildConfig:
     return BuildConfig(**fields)
 
 
-def design_from_query(query: Mapping, **fixed) -> BuildConfig:
+def query_proportions(query: Mapping) -> list[tuple[str, float]]:
+    """The ``p.<NAME>=<value>`` items of a query string, in order (a multi-dict's every
+    item)."""
+    items = query.multi_items() if hasattr(query, "multi_items") else query.items()
+    return [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
+
+
+def own_constructions(base: BuildConfig) -> dict[str, str]:
+    """``crank`` and ``crank_sheet`` as ``base`` *chose* them: each one its linkage and
+    module would get anyway (:func:`default_crank`, :func:`default_crank_sheet`, filled in
+    by the config) is ``""``, so a design moved to another linkage or module gets that
+    one's own default instead of carrying the old one's (TrotBot heel's ``bolt_round``,
+    the Hoecken pantograph's 0.080 in crank sheet)."""
+    lk = linkage.get(base.linkage)
+    return {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
+            "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
+                            else base.crank_sheet)}
+
+
+def design_from_query(query: Mapping, base: BuildConfig | None = None,
+                      **fixed) -> BuildConfig:
     """The config a query string asks for: ``linkage``, ``module`` (default: the linkage's,
     :func:`default_module`), ``phases`` (degrees, comma-separated) and ``p.<NAME>=<value>``;
-    other keys are ignored."""
-    items = query.multi_items() if hasattr(query, "multi_items") else query.items()
-    proportions = [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
-    key = query.get("linkage") or linkage.DEFAULT
-    kw = {"linkage": key,
-          "module": query.get("module") or default_module(key),
-          "phases": parse_phases(query["phases"]) if query.get("phases") else None,
-          "proportions": tuple(proportions)}
-    return BuildConfig(**{**kw, **fixed})
+    other keys are ignored. ``fixed`` (``robot``, a mode's ``module``) wins.
+
+    With ``base`` (a stored design's config), the query applies on top of it: its servo,
+    sheets, thickness, heads, constructions and fit, which no query string expresses,
+    stay; ``module``, ``phases`` and ``p.NAME`` change. Another ``linkage`` starts from
+    that linkage's defaults (its own parameters, phases and link sheets) and keeps the
+    materials and constructions; a crank or crank sheet that was only the old linkage's
+    (or module's) default is not kept (:func:`own_constructions`)."""
+    proportions = query_proportions(query)
+    if base is None:
+        key = query.get("linkage") or linkage.DEFAULT
+        kw = {"linkage": key,
+              "module": query.get("module") or default_module(key),
+              "phases": parse_phases(query["phases"]) if query.get("phases") else None,
+              "proportions": tuple(proportions)}
+        return BuildConfig(**{**kw, **fixed})
+    own = own_constructions(base)
+    if (query.get("linkage") or base.linkage) != base.linkage:
+        # (link_sheets name a linkage's own links: kept only with its linkage)
+        materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
+                     "frame_sheet": base.frame_sheet, "pillar": base.pillar, "pin": base.pin,
+                     "heads": base.heads, "params": base.params, **own}
+        return design_from_query(query, **{**materials, **fixed})
+    props = dict(base.proportions)
+    props.update(proportions)
+    module = fixed.get("module") or query.get("module") or base.module
+    if query.get("phases"):
+        phases = parse_phases(query["phases"])
+    else:
+        phases = base.phases if module == base.module else None     # the module's own
+    rest = {k: v for k, v in fixed.items() if k != "module"}
+    rest.setdefault("crank", base.crank if module == base.module else own["crank"])
+    return replace(base, module=module, phases=phases,
+                   proportions=tuple(sorted(props.items())), **rest)

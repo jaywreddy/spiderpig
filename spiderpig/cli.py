@@ -63,6 +63,9 @@ def main(argv: list[str] | None = None) -> int:
     if command == "build" and any(a in ("--profile", "-h", "--help")
                                   or a.startswith("--profile-json") for a in rest):
         target = "spiderpig.tools.build_profile"    # the stage timings (and their --help)
+    from spiderpig.workers import occt_threads
+
+    occt_threads()          # $SPIDERPIG_OCCT_THREADS, when set (the commands' own defaults else)
     module = importlib.import_module(target)
     sys.argv[0] = f"spiderpig {command}"       # argparse's prog
     return int(module.main(rest) or 0)

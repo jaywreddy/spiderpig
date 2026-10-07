@@ -58,3 +58,51 @@ def test_the_robot_shares_the_sides_design(design):
     tmpl, d = design("single")
     assert design_side(tmpl, BuildConfig(linkage="klann", module="single", robot=True)) is d
     assert not d.config.robot
+
+
+@pytest.mark.slow           # (three fabrications and every export: ~20 s)
+def test_a_static_frame_plate_is_made_once_and_never_changed(tmp_path):
+    """The frame plates don't move: a fabrication at another crank angle takes the B-rep an
+    earlier one made (``plates._FRAME_MEMO``) under a wrapper of its own, so nothing a
+    build, a check or an export does to one mechanism's plate, nor moving it in place
+    (``part.move``, as an edited ``design.Part.solid`` may), reaches another's."""
+    from build123d import Pos
+
+    from spiderpig.construction import plates
+    from spiderpig.hardware.bom import bom_from_mechanism, group_made
+    from spiderpig.layout import save_parts, save_sheets, sheet_lines
+    from spiderpig.manufacture import check
+    from tests import cache
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    cache.seed_plan(cfg)
+    a = cache.cached_side(cfg, 1.0, fresh=True)
+    b = cache.cached_side(cfg, 4.38, fresh=True)
+    memo = list(plates._FRAME_MEMO.values())
+    shared = {x.name: x.part for x in a.bodies if x.part is not None
+              and any(x.part.wrapped.IsPartner(m.wrapped) for m in memo)}
+    assert len(shared) == 2
+    assert "frame_outer" in shared
+    for n, part in shared.items():
+        other = b.body(n).part
+        assert other.wrapped.IsPartner(part.wrapped)     # one B-rep ...
+        assert other is not part                        # ... two wrappers
+        assert other.wrapped is not part.wrapped
+
+    def state(p):
+        return p.volume, p.bounding_box().min.Z
+    before = {n: state(p) for n, p in shared.items()}
+    a.export_stl(tmp_path / "a.stl")
+    a.export_step(tmp_path / "a.step")
+    save_sheets(a, tmp_path / "sheet", default=cfg.sheet)
+    save_parts(group_made(a.bodies, "laser"), tmp_path / "parts", cfg.sheet)
+    sheet_lines(a, cfg.sheet)
+    check(a, cfg.sheet)
+    bom_from_mechanism(a)
+    for n, p in shared.items():
+        assert state(p) == before[n]
+        assert state(b.body(n).part) == before[n]
+    a.body("frame_outer").part.move(Pos(0, 0, 5))       # an edit in place
+    c = cache.cached_side(cfg, 3.0, fresh=True)
+    for m in (b, c):
+        assert state(m.body("frame_outer").part) == pytest.approx(before["frame_outer"])

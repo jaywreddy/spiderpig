@@ -28,7 +28,7 @@ from spiderpig.stack import (
     seg_seg,
     verify_plan,
 )
-from tests import cache
+from tests import cache, tiers
 
 
 @pytest.fixture(params=["single", "double", "decker", "quad"])
@@ -457,3 +457,52 @@ def test_the_gaps_a_claim_reads_are_a_mapping_of_the_layouts():
     assert gaps[5] == 4.0
     assert gaps.get(7, 0.0) == 0.0
     assert gaps.read == {5: 4.0}
+
+
+MEMO_DESIGNS = {
+    "klann-single": {"linkage": "klann", "module": "single"},
+    "jansen-single": {"linkage": "jansen", "module": "single"},
+    "klann-quad": {"linkage": "klann", "module": "quad"},
+    "trotbot_heel": {"linkage": "trotbot_heel", "module": "single"},    # heads gap_sink
+}
+"""Designs whose solves re-make claims in ``finalize`` (the Strider double and the
+mechanisms make each once)."""
+
+
+@pytest.mark.parametrize("name", tiers.quick(list(MEMO_DESIGNS), keep=["klann-single"]))
+def test_a_remembered_claim_make_equals_a_fresh_one(name, monkeypatch):
+    """``finalize``'s memo of claim makes (``StackProblem._makes``, keyed by what a make
+    reads: its deps' layers, the stack, the z and the choices) gives exactly what making the
+    claims afresh gives, for every ``_make_all`` of a whole solve (both heads searches on
+    TrotBot's heel, whose sunk one makes the raw claims)."""
+    cfg = BuildConfig(**{"robot": False, **MEMO_DESIGNS[name]})
+    _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
+    original = stack._make_all
+    calls = {"memo": 0, "makes": 0}
+    memos: dict[int, dict] = {}         # (each heads search's problem has its own)
+
+    def outcome(claims, layout, memo):
+        try:
+            return original(claims, layout, memo), None
+        except stack.PlanReject as e:
+            return None, (str(e), e.claim)
+
+    def checked(claims, layout, memo=None):
+        claims = tuple(claims)
+        got = outcome(claims, layout, memo)
+        if memo is not None:
+            calls["memo"] += 1
+            calls["makes"] += len(claims)
+            memos[id(memo)] = memo
+            assert got == outcome(claims, layout, None), layout
+        if got[1] is not None:
+            e = stack.PlanReject(got[1][0])
+            e.claim = got[1][1]
+            raise e
+        return got[0]
+
+    monkeypatch.setattr(stack, "_make_all", checked)
+    problem.solve()
+    entries = sum(len(m) - 2 for m in memos.values())   # (less their "z" and "deps")
+    assert calls["memo"] > 1
+    assert 0 < entries < calls["makes"]         # the memo was hit

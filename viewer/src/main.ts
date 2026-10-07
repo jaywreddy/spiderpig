@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { createStage, frameView } from './scene';
 import { loadGlb, teardown, type LoadedScene } from './loader';
+import { latestLoader } from './loads';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
@@ -96,14 +97,19 @@ function seek(t: number): void {
   invalidate();
 }
 
-async function loadMode(mode: Mode, query = ''): Promise<void> {
-  currentMode = mode;
-  currentQuery = query;
-  ui.setModeValue(mode);
-  ui.setStatus(`loading ${mode}…`);
-  ui.setModeDisabled(true);
-  try {
-    const next = await loadGlb(stage.scene, mode, query);
+// One GLB load at a time (loads.ts ``latestLoader``): a newer one aborts the one before (its
+// fetch: the server then skips a bake still queued for it) and only the latest lands on screen.
+const loadMode = latestLoader<LoadedScene, Mode>({
+  begin(mode, query) {
+    currentMode = mode;
+    currentQuery = query;
+    ui.setModeValue(mode);
+    ui.setStatus(`loading ${mode}…`);
+    ui.setModeDisabled(true);
+  },
+  fetch: (mode, query, signal) => loadGlb(stage.scene, mode, query, signal),
+  discard: (next) => teardown(stage.scene, next),
+  async show(next, mode, query) {
     teardown(stage.scene, loaded);
     const reframe = mode !== loadedMode;  // a live reload keeps the user's camera
     loaded = next;
@@ -123,10 +129,9 @@ async function loadMode(mode: Mode, query = ''): Promise<void> {
     ui.setReadout(formatTime(0));
     await drive.onLoad(next, query);
     invalidate();
-  } finally {
-    ui.setModeDisabled(false);
-  }
-}
+  },
+  end() { ui.setModeDisabled(false); },
+});
 
 function tick(): void {
   const dt = clock.getDelta();

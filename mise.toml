@@ -115,7 +115,8 @@ description = "Run a command on $SPIDERPIG_REMOTE (default root@ao-server) in a 
 run         = "uv run python -m spiderpig.tools.remote --"
 
 [tasks."remote-test"]
-description = "The full suite on $SPIDERPIG_REMOTE with xdist (pass pytest args after --); junit + log in build/remote/<run>/"
+description = "The full suite on $SPIDERPIG_REMOTE with xdist (pass pytest args after --); junit + log in build/remote/<run>/. The viewer's tests (typecheck, vitest: the walk-model parity) run here first: the remote has no node_modules, where tests/test_viewer_parity.py skips"
+depends     = ["test-viewer"]
 run         = "uv run python -m spiderpig.tools.remote --test --"
 
 [tasks."remote-audit"]

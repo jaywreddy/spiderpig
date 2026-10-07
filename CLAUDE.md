@@ -350,7 +350,16 @@ downloads), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks
 AGENTS.md), `SPIDERPIG_DIGEST_CACHE` (where `engine_version()` keeps its digest, keyed by
 the sources' stats: `off` recomputes it, ~1.3 s), `SPIDERPIG_TEST_CACHE` (the tests'
 fabrication cache, `~/.cache/spiderpig/test-cache/`; `off` builds afresh) and
-`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), and `VITE_PORT` / `API_PORT` and
+`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), `SPIDERPIG_DEV_ORIGIN_PORT`
+(set by `mise run view` for the API: the Vite port whose loopback pages may open its
+WebSockets) and `SPIDERPIG_REQUIRE_VIEWER_TESTS=1` (the walk-model parity test fails, not
+skips, without Node),
+`SPIDERPIG_OCCT_THREADS` (OCCT's
+thread pool per process, `workers.occt_threads`, read by every command and worker; unset,
+OCCT's own pool, every core: `build` needs it, its STL meshing takes 4 s threaded, 22 s on
+one; one thread would save the audit ~15-30 % CPU, but OCCT's numbers depend on it: the demo
+Klann quad's audit reports a hole 3.92 mm from an edge on one thread, 3.93 on a pool; the
+test workers use one, the identity gate two, as its baseline), and `VITE_PORT` / `API_PORT` and
 `VITE_ALLOWED_HOSTS` (below). Nothing in
 the environment changes a design's parts: the hardware is plain code, and a design's id
 holds everything that shapes it.
@@ -368,7 +377,7 @@ and bookmark the URL printed in the banner. Override via env vars in
 [env]
 VITE_PORT = "5173"   # pin the main checkout to the canonical port
 API_PORT  = "8000"
-VITE_ALLOWED_HOSTS = ".ts.net"   # extra Host names Vite answers (behind `tailscale serve`)
+VITE_ALLOWED_HOSTS = ".ts.net"   # extra Host names Vite and the API answer (`tailscale serve`)
 ```
 
 For single-port runs (e2e tests, prod-like), build first with

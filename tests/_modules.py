@@ -22,8 +22,10 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_transforms.py": "linkage",
     "test_mechanisms.py": "linkage",
     "test_walk.py": "linkage",
+    "test_viewer_parity.py": "linkage",
     # server / view (P1)
     "test_view.py": "server",
+    "test_server_hardening.py": "server",
     "e2e/test_drive.py": "server",
     "e2e/test_viewer.py": "server",
     # the planner (P2)
@@ -64,6 +66,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_spiderpig_store.py": "api",
     "test_spiderpig_mcp.py": "api",
     "test_review_fixes.py": "api",
+    "test_store_concurrency.py": "api",
     "test_export.py": "api",
     "test_removed_constructions.py": "api",
     # the measuring stick (W0): the build profiler, the doc check

@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { Vector3 } from 'three';
 import raw from '../../../tests/fixtures/linkage/walk_reference.json?raw';
+import striderRaw from '../../../tests/fixtures/linkage/walk_reference_strider.json?raw';
 import { evaluate, gridAt, motion, parseDrive, straightWalk, support, type WalkJson } from './model';
 
 type Tol = [number, number];   // [value, absolute tolerance]
@@ -64,6 +65,34 @@ describe('the reference Klann quad', () => {
       pair(k).forEach((v, i) => { expect(v, `${k}[${i}]`).toBeCloseTo(want[i]!, 6); });
     }
     expect(metrics.direction).toBe(py.direction);
+  });
+});
+
+// The default design, the Strider double (``walk_reference_strider.json``: its feet and centre of
+// mass at its planned foot z, and the Python model's metrics of them).
+describe('the reference Strider double', () => {
+  const doc = (JSON.parse(striderRaw) as { data: { walk: WalkJson; metrics: Record<string, number | number[] | string | boolean> } }).data;
+  const sd = parseDrive(doc.walk);
+  const sm = straightWalk(sd);
+  const spy = doc.metrics;
+
+  it('reads the walk data', () => {
+    expect(sd.n).toBe(doc.walk.theta_samples);
+    expect(sd.feet).toHaveLength(doc.walk.feet.length);
+    expect(sd.feet.map((f) => f.side)).toEqual(doc.walk.feet.map((f) => f.side));
+    expect(new Set(sd.feet.map((f) => f.side))).toEqual(new Set(['L', 'R']));
+  });
+
+  it('gives the Python model\'s metrics', () => {
+    for (const k of ['stride_mm', 'stride_signed_mm', 'bob_mm', 'min_margin_mm', 'speed_mm_s',
+      'slip_rms_mm_per_rad', 'slip_rms_mm_per_rev', 'tipping_fraction', 'degenerate_fraction']) {
+      expect(sm[k] as number, k).toBeCloseTo(spy[k] as number, 6);
+    }
+    for (const k of ['pitch_deg', 'roll_deg', 'duty']) {
+      const want = spy[k] as number[];
+      (sm[k] as number[]).forEach((v, i) => { expect(v, `${k}[${i}]`).toBeCloseTo(want[i]!, 6); });
+    }
+    expect(sm.direction).toBe(spy.direction);
   });
 });
 
