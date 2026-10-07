@@ -49,7 +49,7 @@ def test_a_config_naming_a_removed_construction_names_its_replacement(field, key
     with pytest.raises(ParamError) as e:
         BuildConfig(**{field: key})
     msg = str(e.value)
-    assert msg == removed_construction(field, key)
+    assert removed_construction(field, key) == (msg, replacement)
     assert f"{field} {key!r}" in msg
     assert "removed on 2026-10-07" in msg
     assert f"use {field}={replacement!r}" in msg
@@ -76,19 +76,21 @@ def test_an_acrylic_crank_sheet_names_an_aluminium_one():
 
 def test_a_spec_naming_a_removed_construction_is_invalid_with_the_replacement():
     spec = {"kind": "mechanism", "linkage": {"key": "hoecken_pantograph"},
-            "constructions": {"crank": "keyed", "pillar": "printed", "pin": "rod"},
-            "materials": {"crank_sheet": "acrylic_3mm"}}
+            "constructions": {"crank": "keyed", "pillar": "printed", "pin": "rod"}}
     with pytest.raises(SpecErrors) as e:
         api.resolve(spec, store=None)
     errors = {err.path: err for err in e.value.errors}
     assert errors["constructions.crank"].nearest == "bolt"
     assert errors["constructions.pillar"].nearest == "standoff"
     assert errors["constructions.pin"].nearest == "chicago"
-    assert errors["materials.crank_sheet"].nearest == CRANK_SHEET
     assert "removed on 2026-10-07" in errors["constructions.crank"].message
     failure = Failure.from_exception(e.value)
     assert (failure.stage, failure.code) == ("spec", "invalid_spec")
     assert "use crank='bolt'" in failure.message
+    # an acrylic crank sheet: the config refuses it, naming the aluminium default
+    with pytest.raises(SpecErrors, match=f"crank_sheet 'acrylic_3mm' is not metal.*{CRANK_SHEET}"):
+        api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken_pantograph"},
+                     "materials": {"crank_sheet": "acrylic_3mm"}}, store=None)
 
 
 def _store_with_a_keyed_design(root, in_spec: bool) -> tuple[Store, str]:
