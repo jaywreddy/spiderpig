@@ -103,9 +103,6 @@ class JointRules:
     nut: float
     post: float
     horn: tuple[tuple[tuple[float, float], float], ...] = ()
-    inner_webs: bool = True       # a chain may return to O between its runs (a one-layer web
-    #                               its screw passes); the bolt crank's can't: such a plate
-    #                               would turn loose on the standoff
     bottom_layers: frozenset[int] = frozenset()   # the first chain's lowest web may sit in
     #                               these layers only (empty: any; the bolt crank's stub
     #                               standoff comes in stock lengths)
@@ -114,13 +111,12 @@ class JointRules:
     #                               radius they need clear there (0: none)
     horn_heads: tuple[tuple[str, float], ...] = ()   # crank points of the horn screws' heads,
     #                               in the gap under the hub, and their radius
-    j_spans: tuple[tuple[int, bool], ...] = ()   # (j_last) layers a journal standoff
-    #                               between two chains may span: whether a stock one fits
-    j_last: bool = False          # no journal plate: two chains share their web, or a
-    #                               journal standoff on O joins them (clamped to both webs by
-    #                               a screw each, its heads in the gaps beyond them), and the
-    #                               last chain ends in the hub's layer (the single-plate bolt
-    #                               crank, whose every plate is one part: no stack to lock)
+    j_spans: tuple[tuple[int, bool], ...] = ()   # layers a journal standoff between two
+    #                               chains may span: whether a stock one fits. (The bolt
+    #                               crank's chains: one run each, no plate between two runs of
+    #                               a point (it would turn loose on the standoff); two chains
+    #                               share a plate or a journal standoff on O joins them; the
+    #                               last ends in the hub's layer)
     gap_washer: float = 0.0       # (gap_head) the washers a chain's run carries through every
     #                               clearance gap along it (its first run layer up): the
     #                               radius they need clear there (0: none). Not a gap piece
@@ -401,8 +397,6 @@ class CrankRouter:
         at = [topo.geometry.points[p][0] for p in self.points]
         n = self.n
         self.bottom_layers = rules.bottom_layers
-        self.inner_webs = rules.inner_webs
-        self.j_last = rules.j_last
         # pieces in the clearance gaps (the planner blocks them with other groups' heads and
         # washers there, keyed by the gap's slot, layer + 0.5)
         self.gap_head = rules.gap_head
@@ -415,7 +409,7 @@ class CrankRouter:
         # can't cross that gap (set by the planner's leaf only; -1: no such bits)
         self.washer_bit = (len(self.gap_pieces)
                            if self.gap_head > 0 and rules.gap_washer > 0 else -1)
-        # (j_last) how many layers a journal standoff between two chains may span
+        # how many layers a journal standoff between two chains may span
         self.j_ok = dict(rules.j_spans)
         self.horn_mask = ((1 << len(rules.horn_heads)) - 1) << self.n if self.gap_head else 0
         self.rider_mask = 0
@@ -484,9 +478,6 @@ class CrankRouter:
             v |= 12
         return v | ((~blocked >> 2) & self.full) << 4
 
-    def _webs(self, blocked: int) -> int:
-        return (~blocked >> (2 + self.n)) & self.full
-
     # -- the route --------------------------------------------------------------------
 
     def states(self, link: str, blocked: int) -> int:
@@ -531,7 +522,7 @@ class CrankRouter:
 
     def _forward(self, blocked, riding, h0) -> list[int] | int:
         """States reachable from the bottom in each layer, or the first layer none reach
-        (``h0``: none enters the hub). (:meth:`_valid` and :meth:`_webs` inlined.)"""
+        (``h0``: none enters the hub). (:meth:`_valid` inlined.)"""
         out = [0] * h0
         full, n2, base = self.full, 2 + self.n, 2 if self.drop_bearing else 0
         get, rget = blocked.get, riding.get
@@ -568,7 +559,7 @@ class CrankRouter:
 
     def _backward(self, blocked, riding, h0) -> list[int]:
         """States in each layer from which the hub can be reached (0 from a dead end down).
-        (:meth:`_valid` and :meth:`_webs` inlined.)"""
+        (:meth:`_valid` inlined.)"""
         out = [0] * h0
         full, n2, base = self.full, 2 + self.n, 2 if self.drop_bearing else 0
         get, rget = blocked.get, riding.get
@@ -678,7 +669,6 @@ class CrankRouter:
                     rid_m[j] |= 1 << k
         memos: list[dict[int, list]] = [{} for _ in range(n)]      # chains(j, a) per call
         points, sweep = self.points, self.sweep
-        inner_ok = self.inner_webs
         washer_bit = self.washer_bit
 
         def chains(j: int, a: int) -> list[tuple[int, int, int, tuple]]:
@@ -692,44 +682,26 @@ class CrankRouter:
             wb = washer_bit + j if washer_bit >= 0 and gb else -1
             if wm >> a & 1 and a + 1 < h0:
                 # the run open in k - 1 ({all ridden so far: (cost, runs before it, its first
-                # layer)}), and the cheapest chain so far after one / two inner webs in k - 1
+                # layer)}); a chain is one run (no plate between two runs of a point)
                 prev: dict[bool, tuple[int, tuple, int]] | None = None
-                p1 = p2 = None
                 for k in range(a + 1, h0 + 1):
                     if wb >= 0 and gb[k - 1] >> wb & 1 and k > a + 1:
                         # the run's washers can't cross the gap over layer k - 1 (another
-                        # group's head or washers there): no run goes on past it, and no
-                        # run starts after an inner web under it
-                        prev = p1 = None
+                        # group's head or washers there): no run goes on past it
+                        prev = None
                     ridden = bool(rm >> k & 1)
-                    i1 = i2 = None
-                    if wm >> k & 1:
-                        # the run open in k - 1 ends: a web in k (the chain's end, or an inner one)
-                        if prev:
-                            was = bool(rm >> (k - 1) & 1)
-                            end = k
-                            ends = end <= h0 and wm >> end & 1 and not (gb and gb[end] >> j & 1)
-                            for full, (c, rs, lo) in prev.items():
-                                rs = ((point, lo, k - 1), rs)
-                                if ends:
-                                    key = (end, was and not full)
-                                    got = out.get(key)
-                                    if got is None or c < got[0]:
-                                        out[key] = (c, rs)
-                                if inner_ok and (i1 is None or c < i1[0]):
-                                    i1 = (c, rs)
-                        if p1 is not None:
-                            i2 = p1
+                    if prev and wm >> k & 1 and not (gb and gb[k] >> j & 1):
+                        # the run open in k - 1 ends: a web in k, the chain's end
+                        was = bool(rm >> (k - 1) & 1)
+                        for full, (c, rs, lo) in prev.items():
+                            key = (k, was and not full)
+                            got = out.get(key)
+                            if got is None or c < got[0]:
+                                out[key] = (c, ((point, lo, k - 1), rs))
                     opts: dict[bool, tuple[int, tuple, int]] | None = None
                     if k < h0 and pm >> k & 1:
                         here = 0 if ridden or mm >> k & 1 else FEATURE
-                        lead = (enter + here, (), k) if k == a + 1 else None
-                        for inner in (p1, p2):
-                            if inner is not None:
-                                c = inner[0] + enter + here
-                                if lead is None or c < lead[0]:
-                                    lead = (c, inner[1], k)
-                        opts = {ridden: lead} if lead is not None else {}
+                        opts = {ridden: (enter + here, (), k)} if k == a + 1 else {}
                         if prev:
                             for full, (c, rs, lo) in prev.items():
                                 f = full and ridden
@@ -739,9 +711,9 @@ class CrankRouter:
                                     opts[f] = (c, rs, lo)
                         if not opts:
                             opts = None
-                    if opts is None and i1 is None and i2 is None:
+                    if opts is None:
                         break
-                    prev, p1, p2 = opts, i1, i2
+                    prev = opts
             got = memos[j][a] = [(end, int(last), c, rs) for (end, last), (c, rs) in out.items()]
             return got
 
@@ -784,7 +756,7 @@ class CrankRouter:
                 break
         after = self.after
         cost_of = _second
-        j_last, rider_mask, j_ok = self.j_last, self.rider_mask, self.j_ok
+        rider_mask, j_ok = self.rider_mask, self.j_ok
         o_bit = len(self.gap_pieces) - 1
         for k in range(1, h0):
             states = at.get(k)
@@ -794,10 +766,8 @@ class CrankRouter:
             through = on_o[k + 1] and k + 1 not in riding
             for state, cost in here:
                 _, used, last, pend = state
-                jn = -1                     # (j_last) layers on O since the last chain's web
-                if pend is None:
-                    ok0, under = True, 0
-                elif pend[0] < 0:
+                jn = -1                     # layers on O since the last chain's web
+                if pend[0] < 0:
                     ok0, under, jn = True, 0, pend[1]
                     pend = None
                 else:
@@ -805,15 +775,7 @@ class CrankRouter:
                     fit = (spans.get(size, 0) >> (16 * a + 4 * first + 2 * under)
                            if spans is not None else -1)
                     ok0 = bool(fit & 1)
-                if through and ok0 and not j_last:
-                    nxt = (k + 1, used, last, None)
-                    got = best.get(nxt)
-                    if got is None:
-                        at.setdefault(k + 1, {})[nxt] = None
-                        best[nxt] = (cost, state, ())
-                    elif cost < got[0]:
-                        best[nxt] = (cost, state, ())
-                elif (through and ok0 and j_last and used & rider_mask != rider_mask
+                if (through and ok0 and used & rider_mask != rider_mask
                       and (jn >= 0 or not (gb and (gb[k - 1] | gb[k]) >> o_bit & 1))):
                     # a journal standoff on O to the next chain: screwed to this chain's top
                     # web from under it (its head in the gap there) and to the next one's
@@ -825,7 +787,7 @@ class CrankRouter:
                         best[nxt] = (cost, state, ())
                     elif cost < got[0]:
                         best[nxt] = (cost, state, ())
-                if j_last and pend is None and not (
+                if pend is None and not (
                         jn >= 1 and j_ok.get(jn - 1, False)
                         and not (gb and gb[k] >> o_bit & 1)):
                     continue          # no chain starts there

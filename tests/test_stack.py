@@ -411,3 +411,37 @@ def test_a_seeded_plan_is_the_solved_plan(name):
     # design_side solves instead
     bad = {**doc, "layers": dict.fromkeys(doc["layers"], 2)}
     assert fabricate._reuse(again, cache._Seed(bad)) is None
+
+
+
+def test_a_shape_in_a_frame_plates_layer_is_a_blocker_the_failure_parses():
+    """A shape the search found in a frame plate's layer is tallied against the plate, and
+    the blocker line :func:`failure.parse_blocker` reads back."""
+    from spiderpig.failure import parse_blocker
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg)
+    p = stack.Placed(0, stack.Disc("O", 3.0), "probe", "a probe shape")
+    problem._tally(p, None)
+    problem._tally(p, None)
+    (line,) = [b for b in problem.blockers() if "probe" in b]
+    assert line == "      2 x a probe shape vs a frame plate: it would sit in a frame plate's layer"
+    assert parse_blocker(line) == {"count": 2, "a": "a probe shape", "b": "a frame plate",
+                                   "why": "it would sit in a frame plate's layer",
+                                   "text": line.strip()}
+
+
+def test_a_claim_that_cant_be_built_at_the_plans_z_rejects_a_plan_with_no_gaps():
+    """``finalize``: a claim that refuses the plan's own z with no clearance gap to thicken
+    rejects the layering (``PlanReject``) as it is."""
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg)
+
+    def make(L):
+        if L.final:
+            raise stack.PlanReject("no stock part fits at this z")
+        return []
+
+    claims = [stack.Claim("probe", frozenset(), make)]
+    with pytest.raises(stack.PlanReject, match="no stock part fits at this z"):
+        stack.finalize(problem.topo, claims, problem.spec, {}, 4)

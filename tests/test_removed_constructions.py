@@ -87,10 +87,15 @@ def test_a_spec_naming_a_removed_construction_is_invalid_with_the_replacement():
     failure = Failure.from_exception(e.value)
     assert (failure.stage, failure.code) == ("spec", "invalid_spec")
     assert "use crank='bolt'" in failure.message
-    # an acrylic crank sheet: the config refuses it, naming the aluminium default
-    with pytest.raises(SpecErrors, match=f"crank_sheet 'acrylic_3mm' is not metal.*{CRANK_SHEET}"):
+    # an acrylic crank sheet: the validator refuses it at its path, the default its nearest
+    with pytest.raises(SpecErrors) as e:
         api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken_pantograph"},
                      "materials": {"crank_sheet": "acrylic_3mm"}}, store=None)
+    (err,) = e.value.errors
+    assert (err.path, err.nearest) == ("materials.crank_sheet", CRANK_SHEET)
+    assert "'acrylic_3mm' is not metal" in err.message
+    assert "acrylic_3mm" not in err.allowed
+    assert set(err.allowed) >= {CRANK_SHEET, "al6061_2mm", "al5052_2mm"}
 
 
 def _store_with_a_keyed_design(root, in_spec: bool) -> tuple[Store, str]:
@@ -152,3 +157,20 @@ def test_the_mcp_answers_a_stored_keyed_design_with_the_failure(tmp_path, in_spe
     assert (failure["stage"], failure["code"]) == ("spec", "bad_parameter")
     assert "use crank='bolt'" in failure["message"]
     assert "Traceback" not in json.dumps(doc)
+
+
+@pytest.mark.parametrize(("argv", "field", "replacement"), [
+    (["--crank", "keyed"], "crank", "bolt"), (["--pin", "rod"], "pin", "chicago"),
+    (["--pillar", "printed"], "pillar", "standoff")])
+def test_the_cli_names_a_removed_constructions_replacement(capsys, argv, field, replacement):
+    """``spiderpig build --crank keyed`` and the like: argparse's usage error (exit 2) with
+    the replacement and the date, not ``invalid choice``."""
+    from spiderpig import cli
+
+    with pytest.raises(SystemExit) as e:
+        cli.main(["build", *argv])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert f"use {field}={replacement!r}" in err
+    assert "removed on 2026-10-07" in err
+    assert "invalid choice" not in err

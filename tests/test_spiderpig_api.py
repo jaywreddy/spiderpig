@@ -1584,3 +1584,41 @@ def test_r5_the_guide_names_the_allowance_the_angle_and_the_second_input():
     assert "have vendor links but no price" not in guide
     assert "transmission_angle_deg" in guide
     assert "second_input_no_drive" in guide
+
+
+
+def test_a_plan_the_planner_doesnt_find_is_the_plan_reports_failure(monkeypatch):
+    """``api.plan``: the planner's ``PlanError`` (here: no CPU time) is the report's
+    failure, not an exception."""
+    from spiderpig import stack
+
+    monkeypatch.setattr(stack, "MAX_SECONDS", 0.0)
+    design = api.resolve(api.spec_of(BuildConfig(linkage="dwell_rocker", robot=False)),
+                         store=None)
+    rep = api.plan(design)
+    assert not rep.ok
+    (f,) = rep.failures
+    assert (f.stage, f.code) == ("plan", "no_plan_in_time")
+    assert "deadline ran out" in f.message
+
+
+
+def test_an_unpriced_item_is_named_not_counted_in_the_cost_floor(monkeypatch):
+    """``cost_floor``: an item with no price on its first offer is listed by name and kept
+    out of the total (a lower bound)."""
+    import dataclasses
+
+    from spiderpig import verify as verify_module
+    from spiderpig.hardware.catalog import CATALOG
+
+    d = api.resolve(STRIDER_DOUBLE_PLY, store=None)
+    total, _, _ = verify_module.cost_floor(d)
+    epoxy = CATALOG["epoxy_2part"]
+    price = epoxy.offer.buy(1)[1]
+    unpriced = dataclasses.replace(epoxy, offers=tuple(
+        dataclasses.replace(o, price_usd=None) for o in epoxy.offers))
+    monkeypatch.setitem(CATALOG, "epoxy_2part", unpriced)
+    total2, priced2, names = verify_module.cost_floor(d)
+    assert names == [epoxy.name]
+    assert not any(epoxy.name in p for p in priced2)
+    assert total2 == pytest.approx(total - price)

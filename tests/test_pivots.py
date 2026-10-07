@@ -213,22 +213,22 @@ def test_holes_cut_for_each_construction(side):
             assert {e.key for e in got.extras} == {"epoxy_2part", "threadlocker_222"}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "engine bug found by W2's re-pointing (in 93dfe31 too; the removed pivots' designs hid "
-    "it): a cantilever standoff pillar leaves the clearance gap over its last link empty "
-    "(AxleGroup.claims puts washers in range(k0, k1) only): Klann single pillar B's b2 "
-    "slides 4.0 mm. Fixing it changes the kept designs' parts: a user decision"))
-def test_nothing_on_an_axle_can_slide(side):
-    """From the bottom retainer to the top one the stack is continuous: links, rings,
-    printed spacers, gap spacers, heads and washers, and the plates it is anchored in; the
-    shaft (the Chicago screw, the standoff with its end screws) runs through all of it."""
+def _assert_nothing_slides(side, which) -> list[str]:
+    """From the bottom retainer to the top one each axle's stack is continuous: links,
+    rings, printed spacers, gap spacers, heads and washers, and the plates it is anchored
+    in; the shaft (the Chicago screw, the standoff with its end screws) runs through all of
+    it. ``which(group, column)`` picks the axles; returns their names."""
     _, design, build, fab, axles = side
     # a 3.0 mm acrylic part in a layer an aluminium plate thickens to 3.175 mm leaves the
     # difference; the columns' play (a printed spacer's tolerance, a barrel's take-up)
     plan = design.plan
     play = 0.25 + max([plan.t(k) - plan.spec.pitch for k in range(plan.top + 1)] + [0.0]) + 1e-6
+    seen = []
     for g in axles:
         col = Column.of(build, g)
+        if not which(g, col):
+            continue
+        seen.append(g.name)
         spans = [build.z(k) for k in col.links] + [build.z(k) for k in col.anchors]
         shafts = []
         for b in _group_bodies(fab, g):
@@ -248,6 +248,25 @@ def test_nothing_on_an_axle_can_slide(side):
         s0, s1 = min(z0 for z0, _ in shafts), max(z1 for _, z1 in shafts)
         assert s0 < lo + 1e-6, g.name
         assert s1 > hi - 1e-6, g.name
+    return seen
+
+
+def test_nothing_on_a_pin_or_a_two_plate_pillar_can_slide(side):
+    """The Chicago pins, and the standoff pillars anchored in both frame plates."""
+    seen = _assert_nothing_slides(
+        side, lambda g, col: not g.pillar or len(col.anchors) == 2)
+    assert any(n.startswith("pin:") for n in seen)
+    assert any(n.startswith("pillar:") for n in seen)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "engine bug found by W2's re-pointing (in 93dfe31 too; the removed pivots' designs hid "
+    "it): a cantilever standoff pillar leaves the clearance gap over its last link empty "
+    "(AxleGroup.claims puts washers in range(k0, k1) only): Klann single pillar B's b2 "
+    "slides 4.0 mm. Fixing it changes the kept designs' parts: a user decision"))
+def test_nothing_on_a_cantilever_pillar_can_slide(side):
+    """A standoff pillar a link's sweep stops short of one frame plate."""
+    assert _assert_nothing_slides(side, lambda g, col: g.pillar and len(col.anchors) == 1)
 
 
 def test_spacers_and_retainers_are_what_the_key_says(side):

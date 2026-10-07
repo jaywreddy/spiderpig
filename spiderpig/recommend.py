@@ -52,14 +52,10 @@ def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) ->
     and the static clearances behind a plan's failure (an axle's neck)."""
     out = []
     for f in failures:
-        if params is not None and f.post > 0.5 * params.crankpin_d + 1e-9:
-            # a post sized by the crank itself (the hex crankpin's 8.5 mm sleeve): a thinner
-            # crankpin doesn't shrink it, so it is part of the margin
-            out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-                           (("link_radius", 1.0),), f.margin + f.post))
-        else:
-            out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-                           (("crankpin_d", 0.5), ("link_radius", 1.0)), f.margin))
+        # the post is the crank's own (its standoff or sleeve, BoltCrank.rider_d): no Params
+        # field shrinks it, so it is part of the margin
+        out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
+                       (("link_radius", 1.0),), f.margin + f.post))
     for c in clearances:
         if c.keepout.span and c.dist > 0:
             # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
@@ -184,9 +180,6 @@ def thinner(config, gaps: list[Gap], plan: bool = False,
             cands.append((loss, q))
     why = None                  # why the least change that clears the gaps can't be built
     for i, (_, q) in enumerate(sorted(cands, key=lambda c: c[0])[:8]):
-        # a thinner link keeps min_wall round its axles' holes: thin the axle with it
-        axle = min(p.axle_d, math.floor(4 * (q.link_radius - q.min_wall) - 2 * q.running_fit) / 2)
-        q = replace(q, axle_d=max(axle, 2.0), neck_d=min(q.neck_d, max(axle, 2.0)))
         trial = replace(config, params=q)
         try:
             verified = _verify(trial, plan, deadline)
@@ -194,8 +187,7 @@ def thinner(config, gaps: list[Gap], plan: bool = False,
             raise _OutOfTime("thinner parts" + (f" beyond the {i} sizes checked" if i else "")
                              ) from None
         if verified is not None:
-            changes = tuple((f, getattr(p, f), getattr(q, f))
-                            for f in ("link_radius", "crankpin_d", "axle_d", "neck_d")
+            changes = tuple((f, getattr(p, f), getattr(q, f)) for f in fields
                             if getattr(q, f) != getattr(p, f))
             return Recommendation(changes, why="thinner parts at this scale", verified=verified)
         why = why or _check(trial) or "it still doesn't plan"

@@ -103,26 +103,22 @@ _PIVOTS_GONE = {            # a removed pin or pillar key -> what it was
 REMOVED_CONSTRUCTIONS: dict[str, dict[str, tuple[str, str, str]]] = {
     "crank": {
         "printed": ("bolt", REMOVED, "the printed crankshaft held by clamp friction alone"),
-        "keyed": ("bolt", REMOVED, "the printed crankshaft keyed by pressed brass hex "
-                  "standoffs (the default before 2026-10-03)"),
+        "keyed": ("bolt", REMOVED, "the printed crankshaft keyed by brass hex standoffs"),
         "keyed_float": ("bolt", REMOVED, "the keyed printed crankshaft with sliding keys"),
-        "bolt_hub_screw": ("bolt", REMOVED, "the hex crank with a screw over the hub plate, "
-                           "which no assembly order can drive"),
-        "bolt_unretained": ("bolt", REMOVED, "the hex crank without the capped chain's "
-                            "pressed sleeve and the stub's thrust sleeve"),
+        "bolt_hub_screw": ("bolt", REMOVED, "the hex crank screwed over its hub plate"),
+        "bolt_unretained": ("bolt", REMOVED, "the hex crank without its thrust sleeves"),
     },
-    "pin": {k: ("chicago", REMOVED, why) for k, why in _PIVOTS_GONE.items()},
-    "pillar": {k: ("standoff", REMOVED, why) for k, why in _PIVOTS_GONE.items()},
+    "pin": {k: ("chicago", REMOVED, w) for k, w in _PIVOTS_GONE.items() if "standoff" not in k},
+    "pillar": {k: ("standoff", REMOVED, w) for k, w in _PIVOTS_GONE.items()
+               if k not in ("ptfe", "chicago_bushing")},          # (those two: pins only)
 }
-"""Construction keys removed from :mod:`construction` (the user's decision D1, W2), per
-:class:`BuildConfig` field: ``key -> (replacement, date removed, what it was)``. A config
-naming one raises :class:`ParamError` naming the replacement (:func:`removed_construction`):
-a stored design or spec naming one loads as a ``bad_parameter`` failure."""
+"""Construction keys removed from :mod:`construction` (D1, W2), per :class:`BuildConfig`
+field: ``key -> (replacement, date removed, what it was)``; a config, spec, stored design or
+CLI option naming one fails with its replacement (:func:`removed_construction`)."""
 
 
 def removed_construction(field: str, key) -> tuple[str, str] | None:
-    """Why ``field`` (``crank``, ``pin`` or ``pillar``) can't be ``key`` any more, and its
-    replacement (:data:`REMOVED_CONSTRUCTIONS`); ``None`` when it wasn't removed."""
+    """(why ``field`` can't be ``key`` any more, its replacement), or ``None``."""
     gone = REMOVED_CONSTRUCTIONS.get(field, {}).get(key) if isinstance(key, str) else None
     if gone is None:
         return None
@@ -270,10 +266,8 @@ class BuildConfig:
         from spiderpig.materials import sheet
 
         if not sheet(self.crank_sheet).metal:
-            raise ParamError(
-                f"crank_sheet {self.crank_sheet!r} is not metal: the bolt crank's web plates "
-                f"are single aluminium plates (the acrylic two-plate crank was removed on "
-                f"{REMOVED}); use an aluminium sheet, e.g. {CRANK_SHEET!r} (the default)")
+            raise ParamError(f"crank_sheet {self.crank_sheet!r} is not metal (the acrylic crank "
+                             f"was removed on {REMOVED}): an aluminium sheet, e.g. {CRANK_SHEET!r}")
 
     def _link_sheets(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...] | None:
         """Link class -> sheet, validated; ``None`` when it is the linkage's own."""
@@ -482,18 +476,24 @@ def add_build_args(p) -> None:
     """The build options: ``--servo``, the constructions, the sheet."""
     d = BuildConfig()
     axles, cranks = sorted(construction.AXLES), sorted(construction.CRANKS)
+    import argparse
+
+    def kept(field: str):       # a removed key's error names its replacement (argparse: exit 2)
+        def check(text: str) -> str:
+            if gone := removed_construction(field, text):
+                raise argparse.ArgumentTypeError(gone[0])
+            return text
+        return check
     p.add_argument("--servo", default=d.servo, choices=servos.available(),
                    help=f"servo model (default {d.servo})")
-    p.add_argument("--pillar", default=d.pillar, choices=axles,
+    p.add_argument("--pillar", default=d.pillar, choices=axles, type=kept("pillar"),
                    help=f"construction of the frame pivots (default {d.pillar})")
-    p.add_argument("--pin", default=d.pin, choices=axles,
+    p.add_argument("--pin", default=d.pin, choices=axles, type=kept("pin"),
                    help=f"construction of the pivots between links (default {d.pin})")
-    p.add_argument("--crank", default=None, choices=cranks,
+    p.add_argument("--crank", default=None, choices=cranks, type=kept("crank"),
                    help="crank construction (default: "
                         + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())
                         + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
-                        + "; " + ", ".join(f"{v} for the {k[0]} {k[1]}"
-                                           for k, v in MODULE_CRANKS.items())
                         + ")")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,

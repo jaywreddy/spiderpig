@@ -448,8 +448,8 @@ Here is the running example at each stage:
 | 1 symbolic | 8 steps placing joints O, A, B, M, C, D, E, F; 11 parameters |
 | 2 compiled | about 1.8 s once per process, mostly first-use imports; the compile itself about 0.1 s |
 | 3 template | each side: 4 legs, 16 links, 20 bodies |
-| 4 rationalized | 31 layers (93 mm) per side with the bolt crank in its first, acrylic M6 form and spliced standoff pillars (the defaults of 2026-10-03; the search starts at the crank's lower bound, 30), not proven the thinnest within the budget; 16 (48 mm) with `--crank keyed --pillar printed`, the defaults before, in about 1 s (12 layers, 36 mm with `--crank printed`) |
-| 5 fabricated | 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins are rods, rings and clips; with `--pin printed`: 173 parts, 90 printed, 44 purchased) |
+| 4 rationalized | 31 layers (93 mm) per side with the bolt crank in its first, acrylic M6 form and spliced standoff pillars (the defaults of 2026-10-03, since removed); 16 (48 mm) with the keyed crank and printed pillars before them |
+| 5 fabricated | 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins rods, rings and clips then) |
 | 6 serialized | STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $150.35 (a lower bound, section 7.5; $124.87 with printed pins), glb 9.5 MB |
 
 **One record says what to build.** Every stage takes a `BuildConfig`
@@ -459,10 +459,9 @@ Here is the running example at each stage:
 - the legs' phases, and any parameter overrides;
 - the sheet material and its measured thickness;
 - the servo;
-- the pillar, pin and crank constructions: how each is built (by default the pins are M3
-  Chicago screws, `chicago`, the pillars round standoff columns, `standoff`, and the crank
-  the laser-cut `bolt` crank; or any axle on another metal shaft, `rod`, `bolt`,
-  `bearing`, `bushing`, `ptfe`, or printed);
+- the pillar, pin and crank constructions: the pins M3 Chicago screws, `chicago`, the
+  pillars round standoff columns, `standoff`, and the crank the laser-cut `bolt` crank
+  (`bolt_round` on TrotBot's heel and toe), the only ones since 2026-10-07;
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
   margin and so on).
 
@@ -788,16 +787,12 @@ M0 and M1 sit on opposite sides of O, as do M2 and M3; each pair's crank body of
 
 `CrankRouter.route` finds the exact cheapest route for a complete layering by dynamic
 programming over layers and chains. Only buildable routes count, and buildability comes
-from the printed crank's own rules (`JointRules`):
+from the bolt crank's own rules (`JointRules`, `BoltCrank.joint_rules`):
 
-- each chain needs a stock screw that fits it. The screw's head sits sunk in the lowest
-  web and its nut is trapped in the highest, it must hold enough thread in the nut, and
-  nothing may poke out; with screws sold only in stock lengths, at 3 mm layers the number
-  of layers between the chain's two outer webs must be 1, 2, 3, 4, 7 or 9. The keyed
-  crank's highest web is two layers thick (a hex socket under the nut), so a keyed chain
-  ends one layer higher, where the crank must be on its axis with the web piece free, and
-  the layers between its outer webs must be 1, 2, 3, 4, 7 or 9 counting that extra layer
-  (`JointRules.two_layer_top`);
+- each chain is one run between two plates, and needs a stock standoff that fits it
+  (`spans`); two chains share a plate or a journal standoff on O joins them (`j_spans`),
+  and the last ends in the hub plate;
+- the screw heads beyond a chain's plates need their clearance gaps (`gap_head`);
 - the screw pockets of neighbouring chains must not meet;
 - a rider can't sit in layer 1 (there would be no layer below it for its web) or in the
   hub's layers under the servo.
@@ -885,7 +880,6 @@ run again with it and passed. The fixes it tries are:
 - thinner parts (`Params` such as link radius and axle diameters), within each
   construction's limits;
 - the default scale, for a design that was scaled down;
-- printed pillars, when a bolt pillar's longest stock screw bounds the stack.
 
 The same checking covers two other cases: a construction that can't be built with the
 given sizes gets its own fix (a thicker sheet for the printed crank, section 6.2), and a
@@ -929,10 +923,6 @@ Every mechanism plans in 6–10 layers in under 2 s. Three results need explaini
   quad failed; run alone, it planned in 36 layers, unproven, after 61 s. The six-bar quad
   came out at 25 layers on the busy machine and 24 without load. A plan found is always
   valid; what varies is how thin it is, and whether one is found at all (section 12.2).
-- **Bolt pillars bound the stack.** The longest stock M3 bolt clamps at most 15 layers of
-  3 mm. A metal shaft can't neck (section 6.2), so links pass it less closely and stacks
-  grow: a Klann quad or Strider double on bolt pillars has no plan within those 15 layers,
-  and the recommendation is printed pillars.
 
 The planner also has four opt-in speed-ups, all off by default (section 11).
 
@@ -967,23 +957,13 @@ once: both sides use the same plan.
 - **Links and frame plates** (`construction/plates.py`): a link is a pill of the link
   radius (6 mm) along each outline segment, minus its holes. Each frame plate is a disc on
   O with arms to every pillar, plus pads, minus cut-outs.
-- **Printed axles** (`construction/axle.py`, `printed.py`): stepped axles printed in
-  segments that snap together, so the links can be threaded on between them. Each segment
-  stands on a flat face and its overhangs are 45° cones, so it prints without support. The
-  strain on the snap's prongs is estimated (about 2 % for a pin through two links, up to 4
-  %), and a warning is logged above 4 %, which PETG (a tougher printing plastic than the
-  PLA the parts list assumes) takes for a one-time assembly. Assembly: glue each pillar's
-  first segment into the outer plate, thread the links on, snap on the next segments,
-  repeat up the stack, glue the inner plate on top.
-- **Metal pivots** (`construction/pivots/`): `rod` (3 mm steel rod, printed spacer
-  rings, push-on clips), `bolt` (an M3 socket-head screw with washer and nylock nut; a
-  bolt pillar clamps both plates), `bearing` (a flanged ball bearing glued into each link),
-  `bushing` (a plastic bushing pressed into each link) and `ptfe` (the rod in a PTFE
-  liner). Every pivot's spacer rings, and the rings it carries through a clearance gap,
-  are printed: an unclamped spacer only sets play. A metal shaft can't neck, so
-  every layer it crosses holds a spacer as wide as its narrowest ring, which often makes
-  the stack taller. Flanges need a free face beside the link. The hardware research behind
-  these choices, with prices and suppliers, is in the package's docstring.
+- **Pivots** (`construction/pivots/`): the `standoff` pillar and the `chicago` pin, the
+  only two since 2026-10-07 (the printed stepped axle and the rod, bolt, bearing,
+  bushing and PTFE pivots were removed: `config.REMOVED_CONSTRUCTIONS`). Every pivot's
+  spacer rings, and the rings it carries through a clearance gap, are printed: an
+  unclamped spacer only sets play. A metal shaft can't neck, so every layer it crosses
+  holds a spacer as wide as its narrowest ring. The hardware research behind these
+  choices is in `construction/pivots/chicago.py`'s docstring.
   **The default pillar is the standoff** (`--pillar standoff`, `pivots/standoff.py`, since
   2026-10-03): a 6 mm round standoff column from plate to plate, a button head and washer
   through each plate (no glue; the inner heads stand 3 mm into the electronics bay, which
@@ -996,10 +976,8 @@ once: both sides use the same plan.
   axle's `column` hook). Its strength is a beam per bay between supports, the plates; the
   6 x 3.3 mm 6061 tube holds 4.4 times the printed 6 mm pillar's moment. A link sweeping
   close to a pillar stops it short of one plate (a ring can't neck): then it is a
-  cantilever. The spliced columns stay selectable: `standoff_hand` (goBILDA segments
-  joined through a ring layer by an M4 stud and steel shims, hand-tight at 0.4 N·m; a
-  splice is a joint whose gapping moment is checked, not a support), `standoff_bench`
-  (built on the bench at 1.0 N·m) and `standoff_m3` (uxcell M3 segments).
+  cantilever. (The spliced columns, `standoff_hand` / `_bench` / `_m3`, were removed on
+  2026-10-07.)
   **The default pin is the Chicago screw** (`--pin chicago`), from the pivot review of 2026-10-03 (`pivots/chicago.py` has its table): a
   4 mm barrel through the stack plans the same stacks as the rod, its axial play is set by
   the barrel length and a printed head spacer per end (0.05-0.15 mm; a PTFE washer and
@@ -1018,22 +996,7 @@ once: both sides use the same plan.
   fails a joint under jam SF 1, warns under 2 jammed or 3 walking.
   The audit reports each link's tilt out of plane (`construction/wobble.py`): free (bore
   clearance over bearing length, 3.8 deg for a 0.2 mm fit in 3 mm sheet) and held by the
-  faces beside it (0.72 deg worst, 0.39 mean on the Strider double); the printed pillars
-  (1.35 deg, 6.7 free) are now the loosest joints. Before it, **the default pin was the
-  rod** (`--pin rod`), from a review of every pin on the Strider double and the Klann quad: rod pins plan the same
-  stacks as the printed pin (16 and 12 layers with the printed crank, 18 and 16 with the
-  keyed one) in seconds where a bolt pin's two-layer nut
-  needs 19 layers on the Strider at ten times the planner's budget and leaves its head
-  unreachable in a bottom-up stack; the smooth rod has the least play of the plain pivots
-  (0.20-0.23 mm) and SF ~5 at the Klann jam load over the 3 mm spans every plan has; and
-  with the pins metal only the pillars and crank snap, so the audit's worst snap strain
-  falls from 3.8 % to 1.6 % on the Strider. Pillars stay printed because bolt pillars don't
-  plan on either design (the 50 mm stock-screw bound, a ring-filled column) and rod pillars
-  fill the whole stack with rings. The cost is cutting the rod (24 pieces of 9.6-15.6 mm on a
-  Strider, three lengths, 266 mm in all; the BOM carries the cut list) and pushing the
-  top clip on with a tube until it just touches the link; the rod and clip kit are priced
-  in the catalog. `--pin printed` remains the zero-hardware build (its J7 snap lip relieved
-  to 0.13 mm on the Strider); the assembly steps are in `pivots/rod.py`.
+  faces beside it (0.72 deg worst, 0.39 mean on the Strider double).
 - **The bolt crank** (`construction/crank.py`, `BoltCrank`; `--crank bolt`, the walkers'
   default since 2026-10-03, the mechanisms' since 2026-10-04): laser-cut instead of
   printed. **Its current form** (an aluminium crank sheet, 0.100 in 6061-T6, the default
@@ -1049,84 +1012,13 @@ once: both sides use the same plan.
   bearing in the aluminium pocket (`hex_bearing_nm`, jam SF about 2.5 on the Strider).
   TrotBot's heel and toe take `bolt_round` (round standoffs clamped between the webs by
   friction: the hex's sleeve doesn't clear b7 there). The Strider double plans 14 layers
-  / 66.5 mm a side, the quad 24. **Its first form**, what an acrylic crank sheet still
-  builds (the crank study's recommendation "C+"): every crank layer that isn't a run is
-  one acrylic plate (the claims' outline,
-  on the DXF sheets); a chain's lowest and top webs are two plates each; the crankpin is an
-  ISO 4014 M6 hex bolt, its head (10 AF x 4 mm) in a hex pocket through the top stack, a
-  DIN 985 M6 nylock (10 x 6 mm) in one through the lowest stack (10.1 mm AF, 0.5 mm corner
-  reliefs), threadlocked (medium), the riders on the plain shank; the plates of a segment
-  are solvent-welded; a round M3 standoff screwed to the lowest stack is the journal stub;
-  the top two plates carry the horn screws, the drive's printed horn spacer putting the
-  horn's face on a layer boundary. The router learnt what it needs (`JointRules`): the
-  two-plate lowest web, the layer under it for the bolt's tip, no plate between runs of
-  one chain, a mid stack that is one chain's top and the next one's bottom, the stub's
-  stock lengths, and the stock bolt lengths as spans counted by the bare layers under the
-  riders: the shank's full diameter ends 2.5 pitches (the runout) above the thread, and
-  the nut must sit on complete thread, so a rider can never sit right on the nut's stack.
-  Rated element by element (`spiderpig/strength.py`): head pocket 4.2 N·m, nut pocket 6.3,
-  thread torsion 8.6, the nut's lock on its thread (the nylock's prevailing torque and the
-  threadlocker, halved for plated steel) 2.9, the weakest plate bond; against the jam's
-  2 x 0.85 = 1.7 N·m: SF 1.71 (a warning), where the keyed crank's key holds 0.55 (SF
-  0.32, an error). What it costs: layers. 24 a side on the Strider double (18 keyed), 31 on
-  the Klann quad (16), 20 on `klann_lego` quad at 0,0,180,180 (13), with the real stock
-  (M6 ISO 4014 from 30 mm; goBILDA's own standoff lengths, 2026-10-04). The chains give the
-  planner a lower bound (`route.CrankRouter.min_top`, the search starts there: without it
-  the 31-layer quads didn't plan within the budget). The Strider quad plans since
-  `max_top` went from 40 to 60 (2026-10-04: 44 layers, unproven), and the Hoecken pantograph
-  none at all (its pins too close for the pockets), so mechanisms kept the keyed crank
-  until the hex form planned them (2026-10-04, `config.DEFAULT_CRANKS`). The study's PTFE thrust washers have no room (plates touch in
-  3 mm layers) and its Chicago lock screws' heads would stand in a rider's layer; both are
-  left out (the docstring says why). Since 2026-10-04 the planner reserves such heads thin
-  clearance gaps (`Placed.gap`, `stack.finalize`; CLAUDE.md, "Clearance gaps"), which is
-  what bringing them back needs. `docs/audit/STRENGTH.md` has the sweep.
-- **The printed crank** (`construction/crank.py`): segments split at every run, so that
-  each rider can be threaded onto its post, as in Figure 2. Each chain gets one M3 screw
-  and nut: a button-head screw, because a socket head is 3 mm tall and doesn't fit a 3 mm
-  web. The horn screws run from below through the hub. The crank needs layers at least
-  2.9 mm thick; a 2 mm sheet is refused, and the recommended fix is a thicker sheet.
-  **The keyed crank** (`--crank keyed`, `KeyedCrank`; the default before 2026-10-03, the
-  mechanisms' until 2026-10-04), from a review of
-  the crank joints: in a built-up crankshaft the only connection between the segments
-  above and below a rider is inside the rider's hole, so the drive torque twists each
-  post-to-web joint by chord / crank radius times itself, 2.0 on the Strider (pins 180°
-  apart) and the Klann: 0.36 N·m walking on the Strider, up to 1.3 N·m on the Klann,
-  against 0.17-0.67 N·m of clamp friction that PLA creep erodes. The keyed crank puts a
-  brass M3 female-female hex standoff (4 mm long, 5 mm across flats, read from the
-  catalog item) at every post-to-web interface as a key: half in a hex cavity in
-  the post's top, half in a hex socket in the underside of the web above, 0.8 mm of axial
-  float (a key threaded on the screw sits where the thread puts it), 1.6 mm of hex
-  engagement either side at worst. The pockets are cut to the key's across-flats
-  (`key_fit="press"`, `press_fit` 0.0; `key_af` for a measured kit): a light press,
-  since FDM holes print 0.05-0.15 mm small. From the key review (2026-10-03): with the
-  first design's 0.15 mm sliding fit (`--crank keyed_float`) the key turns 3.13 deg in each
-  pocket, 6.25 deg either way between post and web, and each time the twist beats the
-  clamp's friction the joint slips through that play about the screw's own axis, working
-  it loose (on the Klann every stroke: 1.33 N·m walking against 0.17-0.67). Pressed, the
-  play is 0 (2.0 deg if a pocket prints 0.05 mm over) and the chain screw takes a drop of
-  low-strength threadlocker (`lock_key`, 0.01 bottle per screw in the BOM). Two keys side
-  by side, a lock independent of the hex fit, need a 13.9 mm post (11.6 with M2 keys)
-  where b1's hole leaves room for 8.8; a cross pin has nowhere to go (the joint face is
-  level and the screw is on the axis); crush ribs on the flats centre the key but do not
-  stop it turning (a flat slides past a rib at its middle). The press fit changes no layer,
-  part or route; the threadlocker is already in the default BOM for the Chicago pins.
-  The screw and nut stay and clamp every rider interface as before; the nut now sits in a **two-layer top web** (socket, 1 mm of floor, nut),
-  which the router knows and which costs two layers a side: the Strider double 18 layers
-  (54 mm) instead of 16, the Klann quad 16 instead of 12. The post grows to 8.5 mm for
-  1.3 mm of wall round the cavity's corners (the acrylic rider keeps a 1.58 mm ring), which
-  TrotBot's heel at its default scale cannot clear (b7 passes J1 at 10.2 mm, a post there
-  needs 11.2: `--crank printed`, or a scale of 1.1, plans it). A 5 mm key is refused at a
-  3 mm pitch: its cavity overflows the post into the web below and leaves 0.05 mm over the
-  socket of the run below. Its limit is the key's bearing in those 1.6 mm printed sockets
-  (`strength.py`'s hex-bearing model, 50 MPa on the flats: 0.38 N·m plus the clamp's
-  0.17), 0.55 N·m, far under a jam's 1.7 at the servo's torque limit
-  (`ServoSpec.torque_limit_nm`: 45 % of stall, at most 0.85 N·m); the earlier rating by
-  the PLA post shell round the key (1.8 N·m) overstated it. Assembly adds one step per interface: press the
-  key into the post before the rider (flat block or vise), turn the next segment until its
-  socket indexes on the key (a 60° mis-index shows: the webs point the wrong way), nut in
-  the top trap, a drop of threadlocker, screw from below, which draws the web over the key. Per Strider side: 5 printed segments, 4 standoffs, 2 M3 nuts, 2 button-head
-  M3 x 16, 4 M3 x 6 horn screws. The friction-only crank stays as `--crank printed` for
-  comparison.
+  / 66.5 mm a side, the quad 24. (Its first form, two acrylic plates a web on M6 hex
+  bolts, went on 2026-10-07 with the hex crank's `bolt_hub_screw` / `bolt_unretained`
+  variants: an acrylic crank sheet is refused.)
+- **The printed and keyed cranks** (segments printed between runs, screwed or keyed
+  through each crankpin; the defaults until 2026-10-03) were removed on 2026-10-07 (W2):
+  `config.REMOVED_CONSTRUCTIONS`; git history and `docs/audit/STRENGTH.md` keep their
+  numbers.
 - **The drive** (`servos/mount.py`): the servo sits on top of the inner plate, output face
   down, its axis on O, its body pointing away from the pillars. Its horn is turned on the
   toothed output shaft so the horn screws fall between the crank's webs, and the mounting

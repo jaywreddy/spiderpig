@@ -475,20 +475,16 @@ def nearest(key: str, options: Iterable[str]) -> str | None:
     return close[0] if close else None
 
 
-def sheet_keys() -> list[str]:
+def sheet_keys(metal: bool = False) -> list[str]:
     _load_catalog()
-    return sorted(k for k, it in CATALOG.items() if it.category == "sheet")
+    return sorted(k for k, it in CATALOG.items()
+                  if it.category == "sheet" and (it.dims.get("metal") or not metal))
 
 
 def module_keys() -> list[str]:
     """Every leg module any linkage offers (the union; :func:`validate` checks the exact
     ones)."""
-    out: list[str] = []
-    for key in linkage.available():
-        for m in linkage.get(key).leg_modules:
-            if m not in out:
-                out.append(m)
-    return out
+    return list(dict.fromkeys(m for k in linkage.available() for m in linkage.get(k).leg_modules))
 
 
 class _Validator:
@@ -618,8 +614,7 @@ class _Validator:
 
 def _kind(v) -> str:
     return {dict: "an object", list: "a list", str: "a string", bool: "a boolean",
-            int: "a number", float: "a number", type(None): "null"}.get(type(v),
-                                                                         type(v).__name__)
+            int: "a number", float: "a number", type(None): "null"}.get(type(v), type(v).__name__)
 
 
 def validate(data: Mapping) -> list[SpecError]:
@@ -738,6 +733,9 @@ def validate(data: Mapping) -> list[SpecError]:
                 v.string(s, f"materials.link_sheets.{k}", sheet_keys())
         for what in ("sheet", "frame_sheet", "crank_sheet"):
             v.string(m.get(what), f"materials.{what}", sheet_keys())
+        if (cs := m.get("crank_sheet")) in sheet_keys() and cs not in sheet_keys(metal=True):
+            v.err("materials.crank_sheet", f"{cs!r} is not metal: the crank's plates are aluminium "
+                  "(the acrylic crank was removed on 2026-10-07)", sheet_keys(True), CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
     c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
@@ -878,7 +876,7 @@ def spec_schema() -> dict:
                     "servo": {"enum": servos.available(), "default": servos.DEFAULT},
                     "frame_sheet": {"enum": sheet_keys(), "default": BuildConfig.frame_sheet,
                                     "description": "the frame and centre plates' sheet"},
-                    "crank_sheet": {"enum": sheet_keys(), "default": CRANK_SHEET,
+                    "crank_sheet": {"enum": sheet_keys(metal=True), "default": CRANK_SHEET,
                                     "description": "the crank's plates' sheet"},
                     "link_sheets": {"type": "object",
                                     "additionalProperties": {"enum": sheet_keys()},

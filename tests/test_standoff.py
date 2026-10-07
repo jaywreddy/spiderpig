@@ -83,19 +83,6 @@ def test_only_lengths_gobilda_sells():
     assert all(get(gobilda_1501(L)).offers[0].verified for L in GOBILDA_LENGTHS)
 
 
-def test_the_moment_at_a_splice():
-    from spiderpig.construction.wobble import moment_at_per_newton
-
-    t = 3.0
-    note = {"pitch_mm": t, "span_mm": 0.0, "bearing_len_mm": t, "anchors": [0, 20],
-            "layers": {"a": 10}, "section": StandoffAxle().section().as_dict()}
-    za, zb, zf = 1.5, 58.5, 30.0                       # the link at layer 10: z 30
-    near = moment_at_per_newton(note, 6.0)
-    mid = moment_at_per_newton(note, zf)
-    assert mid == pytest.approx((zf - za) * (zb - zf) / (zb - za))
-    assert near < mid / 3
-
-
 def test_a_long_column_is_one_shaft_made_to_its_length():
     """The default (2026-10-05): a column no single goBILDA length fills is never spliced
     (a splice is a joint mid-span: at the plan's own z the Strider's hand-tight splices

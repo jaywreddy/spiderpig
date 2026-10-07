@@ -975,10 +975,9 @@ class StackProblem:
 
     def __init__(self, topo: Topology, claims: Iterable[Claim], spec: StackSpec | None = None,
                  router: Router | None = None, clearances: Iterable[Clearance] = (),
-                 hint: Mapping[str, int] | None = None, notes: Iterable[str] = ()):
+                 hint: Mapping[str, int] | None = None):
         self.topo = topo
         self.hint = dict(hint or {})
-        self.notes = list(notes)      # facts behind the spec (a stack size some group bounds)
         self.give_up = 0              # (solve_heads) stop once this many layerings failed on
         #                               the crank's washers in the plan's gaps with no plan
         #                               found (0: never); ``gave_up`` says so
@@ -1134,7 +1133,7 @@ class StackProblem:
                 # isn't searched, and there is nothing to resume
                 break
             sub = StackProblem(self.topo, self.raw_claims, spec,
-                               self.router, self.clearances, self.hint, self.notes)
+                               self.router, self.clearances, self.hint)
             if i == 0 and len(runs) > 2:
                 sub.give_up = GIVE_UP
             searched.append(heads)
@@ -1204,11 +1203,10 @@ class StackProblem:
         if found is None:
             last = max(tried, default=spec.min_top - 1)
             ran_out = f"; {self.stopped}" if self.stopped else ""
-            bounded = " (the most a group allows)" if self.notes and last >= spec.max_top else ""
             raise PlanError(f"{self.topo.name}: no layer plan found with up to {last + 1} layers"
-                            f"{bounded} after {self.spent} search steps in "
+                            f" after {self.spent} search steps in "
                             f"{self.deadline.elapsed:.0f} CPU s{ran_out}", self.blockers(),
-                            [self.sizes(tried), *self.notes], expired=self.deadline.expired)
+                            [self.sizes(tried)], expired=self.deadline.expired)
         if spec.prove:
             self._expect([(found.top, "route")] + [
                 (t, "prove") for t in range(found.top - 1, spec.min_top - 1, -1)

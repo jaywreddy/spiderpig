@@ -130,3 +130,25 @@ def test_a_missed_stroke_is_met_by_the_least_practical_scale_checked():
     assert rec is None
     assert note == ("no one scale of unit meets stroke_mm, straightness_mm together (one "
                     "needs x1.2, another at most x1.09)")
+
+
+
+def test_a_scale_that_doesnt_plan_is_stepped_up_and_none_is_offered(monkeypatch):
+    """``scale``: a gap already clear still starts a step up; a scale whose plan fails
+    (here: no CPU time for the planner) is not offered, the next is tried, and with none
+    left ``None``. (``_verify`` takes the failing plan as not verified.)"""
+    from spiderpig import stack
+    from spiderpig.stack import Deadline
+
+    monkeypatch.setattr(stack, "MAX_SECONDS", 0.0)
+    cfg = BuildConfig(linkage="dwell_rocker", robot=False)
+    clear = Gap("b2 past pillar A", 20.0, (("link_radius", 1.0),), 1.0)
+    assert scale(cfg, [clear], plan=True, deadline=Deadline(60.0)) is None
+
+
+def test_no_thinner_part_clears_a_gap_too_far_off():
+    from spiderpig.recommend import thinner
+
+    cfg = BuildConfig(linkage="dwell_rocker", robot=False)
+    far = Gap("b2 past pillar A", 1.0, (("link_radius", 1.0),), 50.0)
+    assert thinner(cfg, [far]) == "no part sizes at this scale clear it"

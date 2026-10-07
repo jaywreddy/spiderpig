@@ -28,9 +28,8 @@ def xy_of(build: Build, group: AxleGroup) -> tuple[float, float]:
 
 
 def host_of(build: Build, group: AxleGroup) -> str:
-    """What the axle's loose parts move with: the frame (pillars) or the lowest link (pins)."""
-    if group.pillar:
-        return build.plan.topo.frame_bodies[0]
+    """What a pin's loose parts move with: its lowest link (a pillar's: the frame,
+    ``topo.frame_bodies[0]``)."""
     return min(group.axis.members, key=lambda m: (build.layers[m], m))
 
 
@@ -97,9 +96,6 @@ class Column:
     def role(self, k: int) -> str:
         return self.roles[k][0]
 
-    def r(self, k: int) -> float:
-        return self.roles[k][1]
-
     @property
     def k0(self) -> int:
         """The lowest retained layer: the outer anchor, or the lowest link."""
@@ -110,36 +106,14 @@ class Column:
         return max(k for k, (role, _) in self.roles.items() if role in RETAINED)
 
     @property
-    def below(self) -> list[int]:
-        """Layers claimed beyond the bottom end, nearest first (a retainer in the clearance
-        gap under the stack: that gap's layer, ``k0 - 1``)."""
-        out = sorted((k for k in self.roles if k < self.k0), reverse=True)
-        return [self.k0 - 1] + out if self.lo_gap else out
-
-    @property
-    def above(self) -> list[int]:
-        out = sorted(k for k in self.roles if k > self.k1)
-        return [self.k1 + 1] + out if self.hi_gap else out
-
-    @property
     def between(self) -> list[int]:
         """The spacer layers between the ends (every non-link layer, for a filled column)."""
         return [k for k in range(self.k0 + 1, self.k1) if self.role(k) in SPACER_ROLES]
 
     @property
-    def runs(self) -> list[list[int]]:
-        """Maximal runs of adjacent spacer layers: one sleeve each."""
-        out: list[list[int]] = []
-        for k in self.between:
-            if out and out[-1][-1] == k - 1:
-                out[-1].append(k)
-            else:
-                out.append([k])
-        return out
-
-    @property
     def anchors(self) -> list[int]:
         return sorted(k for k, (role, _) in self.roles.items() if role == "anchor")
+
 
 def bored(part, xy, d: float, z0: float, z1: float):
     """``part`` with a through-bore of diameter ``d``."""

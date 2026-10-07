@@ -659,11 +659,10 @@ class BoltCrank:
         r = self.head_r()
         hr = self.horn_head_r(ctx)
         return JointRules(spans, head=r, nut=r, post=dims.post, horn=horn_pockets(ctx),
-                          inner_webs=False,
                           bottom_layers=self.stub_layers_web(ctx.sheet_t("frame"), p, t),
                           gap_head=r, horn_heads=tuple((h, hr) for h in self.horn_points(ctx)),
                           j_spans=tuple((n, self._web_span_ok(n, 0, p, t)) for n in range(64)),
-                          j_last=True, gap_washer=self.washer_r)
+                          gap_washer=self.washer_r)
 
     # -- the stub and the strength check's capacities -------------------------------
 
@@ -1496,7 +1495,7 @@ class _WebPlates:
                 raise ConstructionError(
                     f"the crank's route returns to O between runs of {at} (layers "
                     f"{ch[0].hi + 1}..{ch[1].lo - 1}): a plate there would turn loose on the "
-                    "standoff (JointRules.inner_webs)")
+                    "standoff (one run per point: the router's rule)")
             self.notes.append(self.pin(at, xy, tag, lo, hi))
         order = sorted(self.chains, key=lambda ch: ch[0].lo)
         for c0, c1 in itertools.pairwise(order):

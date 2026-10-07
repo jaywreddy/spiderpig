@@ -1,5 +1,9 @@
 # Joint strength — 2026-10-03 (the bolt crank and standoff pillars: 2026-10-04, real stock lengths; re-swept 2026-10-04 evening: thinnest sheets, single-plate crank, cut rules)
 
+(A dated record. Since 2026-10-07 only the `bolt` / `bolt_round` cranks, the `chicago` pin
+and the `standoff` pillar exist: the printed, keyed, rod, PTFE and spliced options below
+were removed, `config.REMOVED_CONSTRUCTIONS`.)
+
 What `spiderpig audit` (step 9, `spiderpig/strength.py`) says about whether the pins,
 the pillars and the crank's joints hold, at each design's own loads.
 

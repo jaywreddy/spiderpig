@@ -284,13 +284,6 @@ class Group:
         """What later groups may read as ``ctx.interfaces[name]`` (``None``: nothing)."""
         return None
 
-    def max_top(self, ctx: Context) -> tuple[int, str] | None:
-        """The tallest stack the group can be built in, whatever the layout: ``(top, why)``
-        with ``top`` the highest inner-plate layer index it allows, or ``None`` for no
-        bound. The planner searches no size above it and names ``why`` when no plan is
-        found (a bolt pillar: the longest stock screw clamps only so many layers)."""
-        return None
-
     def claims(self, ctx: Context) -> list[Claim]:
         raise NotImplementedError
 

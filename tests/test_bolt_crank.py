@@ -117,8 +117,6 @@ def test_single_web_rules_for_the_router():
     crank = next(g for g in groups if g.name == "crank")
     c = crank.construction.resolve(ctx)
     rules = joint_rules(crank.construction, ctx, crank.dims(ctx))
-    assert rules.j_last
-    assert not rules.inner_webs
     assert rules.gap_head == pytest.approx(c.head_r())
     assert rules.gap_head > 0
     assert rules.horn_heads

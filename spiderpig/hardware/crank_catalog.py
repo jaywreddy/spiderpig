@@ -16,17 +16,16 @@ What the default robot uses:
   goBILDA length fills, in one piece (:data:`PILLAR_SHAFT_LENGTHS`).
 * ``m3_round_standoff_ff_<L>``: uxcell 6 mm OD round aluminium M3 female-female standoffs
   (:data:`M3_ROUND_STANDOFF_LENGTHS`): the crank's journal stub, the frame ties' chains and
-  ``--pillar standoff_m3``'s segments; ``m3_set_screw_<L>`` (ISO 4026) joins the ties'
-  chains (and splices those segments).
+  ``m3_set_screw_<L>`` (ISO 4026) joins the ties' chains.
 * ``gobilda_1501_<L>``: goBILDA 1501 series M4 x 0.7 round aluminium standoffs, 6 mm OD: a
-  pillar column one stock length fills, and the spliced pillars' segments; only the lengths
+  pillar column one stock length fills, and the round crankpin; only the lengths
   goBILDA sells (:data:`GOBILDA_LENGTHS`, their M4 standoff listing fetched 2026-10-04 with
   each 4-pack's price: 3-12, then 14-60 mm in mostly 2 mm steps, plus 19, 27 and 43; 13, 15,
   17, 21, 23, 25, 29, 31, 33, 35, 37, 39, 41, 45, 47, 49, 51, 53, 55, 57 and 59 mm don't
   exist: the 33, 39 and 45 mm product pages answer 404).
 * ``m4_bhcs_<L>``, ``m4_washer``, ``m4_set_screw_<L>``: a goBILDA column's end screws (an
   ISO 7380 button head and a DIN 125 washer, 3.0 mm together: one layer outside each frame
-  plate) and a spliced column's studs (ISO 4026 set screws threaded into both segments).
+  plate), and the stud joining a round crankpin's two standoffs (ISO 4026).
 
 Kept for the comparisons, and the round crankpin's washers:
 
@@ -199,8 +198,8 @@ for _L in M4_SET_LENGTHS:
                note="M4-0.7 socket set screw; length per page"),
          Offer("Amazon", f"https://www.amazon.com/s?k=M4+x+{_L:g}mm+set+screw", note="search")),
         dims={"d": 4.0, "length": float(_L)},
-        notes="A splice's stud: threaded half into each standoff segment through the splice "
-              "plate, threadlocked.",
+        notes="The stud joining a round crankpin's two goBILDA standoffs (bolt_round), "
+              "threaded half into each.",
     ))
 
 register(
@@ -315,7 +314,7 @@ register(
 # up to 15 mm, from 16 mm a 6 mm thread each end. Lengths 4-12.5 mm in 0.5 mm steps
 # (no 10.5 / 11.5), 13-30 mm in 1 mm steps, 35-60 mm in 5 mm steps; USD 0.61-1.40 each
 # (MOQ 50 direct; MISUMI resells Hirosugi in small quantities, as it does the PTFE washers).
-# ``m3_set_screw_<L>``: ISO 4026 M3 flat point set screws (the splices' and ties' studs).
+# ``m3_set_screw_<L>``: ISO 4026 M3 flat point set screws (the frame ties' studs).
 
 ARL_M3_PRICES: dict[float, float] = {
     4: 0.61, 4.5: 0.61, 5: 0.61, 5.5: 0.61, 6: 0.61, 6.5: 0.62, 7: 0.62, 7.5: 0.62, 8: 0.63,
@@ -357,5 +356,5 @@ for _L in M3_SET_LENGTHS:
         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/set-screws/",
                pack_qty=50, note="M3 x 0.5 flat point, 18-8; part number not confirmed"),),
         dims={"d": 3.0, "length": float(_L)},
-        notes="A splice's or a frame tie's stud.",
+        notes="A frame tie's stud.",
     ))

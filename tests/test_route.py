@@ -159,8 +159,8 @@ def test_klann_plans_keep_their_layers_and_are_proven_thinnest(module, layers):
 
 def test_the_routers_rules_are_the_bolt_cranks():
     """The bolt crank's rules (``BoltCrank.joint_rules``): no plate between two runs of one
-    point (``inner_webs``), no journal plate: two chains share a plate or a journal
-    standoff joins them, and the last ends in the hub plate (``j_last``); the screw heads
+    point, no journal plate: two chains share a plate or a journal standoff joins them
+    (``j_spans``), and the last ends in the hub plate; the screw heads
     beyond its plates claim their clearance gaps (``gap_head``); a chain's span is one a
     stock standoff fits, the window the longest of those."""
     cfg = _cfg("klann")
@@ -168,10 +168,6 @@ def test_the_routers_rules_are_the_bolt_cranks():
     router = problem.router
     rules = router.rules
     crank = next(g for g in groups if g.name == "crank").construction
-    assert not rules.inner_webs
-    assert not router.inner_webs
-    assert rules.j_last
-    assert router.j_last
     assert rules.gap_head > 0
     assert rules.gap_head == pytest.approx(crank.head_r())
     assert router.gap_pieces
@@ -181,6 +177,7 @@ def test_the_routers_rules_are_the_bolt_cranks():
     assert feasible == [n for n in range(3, 64) if crank._web_span_ok(n - 2, 0, pitch, t)]
     assert router.window == max(feasible) - 3
     assert rules.bottom_layers == crank.stub_layers_web(ctx.sheet_t("frame"), pitch, t)
+    assert dict(rules.j_spans) == {n: crank._web_span_ok(n, 0, pitch, t) for n in range(64)}
 
 
 # -- optimality against the brute force ---------------------------------------------------
@@ -241,3 +238,19 @@ def test_the_routers_joint_rules_are_the_brute_forces_on_every_rider_layering(
         seen += 1
     assert routed       # both outcomes met
     assert routed < seen
+
+
+
+def test_the_router_explains_a_dead_end_in_layer_one():
+    """The crank leaves layer 1 on the stub or the journal: both blocked there, no route
+    gets in (the conflict is layer 1); a rider in layer 1 has no web under it."""
+    cfg = _cfg("klann")
+    _, _, problem = side_problem(template_for(cfg), cfg)
+    router, pitch = problem.router, problem.spec.pitch
+    (rider,) = problem.topo.riders
+    res = router.check(RouteView(Layout({rider: 5}, 9, pitch), {1: 0b11}))
+    assert isinstance(res, RouteConflict)
+    assert (res.lo, res.hi) == (1, 1)
+    res = router.check(RouteView(Layout({rider: 1}, 9, pitch), {}))
+    assert isinstance(res, RouteConflict)
+    assert "layer 1, with no room for the web below" in res.why

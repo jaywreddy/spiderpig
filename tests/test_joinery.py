@@ -206,3 +206,18 @@ def test_the_centre_plates_are_0p090_in():
 
     cfg = BuildConfig()
     assert _centre_sheet(get(cfg.servo), cfg.frame_sheet, cfg.params.margin) == "al5052_2p3mm"
+
+
+
+def test_frame_plates_of_the_default_sheet_are_their_own_centre_plates():
+    """A frame cut from a non-metal sheet keeps it for the centre plates (no aluminium
+    stack to rank), and the default sheet's plates are the layer pitch thick."""
+    from spiderpig.construction.chassis import _centre_sheet, centre_t
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.servos import get as servo
+
+    assert _centre_sheet(servo("sts3215"), "acrylic_3mm", 1.0) == "acrylic_3mm"
+    assert _centre_sheet(servo("sts3215"), None, 1.0) is None
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False, frame_sheet="acrylic_3mm")
+    ctx, _, _ = side_problem(template_for(cfg), cfg)
+    assert centre_t(ctx) == ctx.pitch

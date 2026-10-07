@@ -110,20 +110,11 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
                      **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
-    # a group that can't be built above some stack size (a bolt pillar's stock screw)
-    # bounds the search: the sizes above it are never tried, and the failure says why
-    bounds = [b for g in groups if (b := g.max_top(ctx)) is not None]
-    notes = []
-    if bounds:
-        top, why = min(bounds, key=lambda b: b[0])
-        if top < spec.max_top:
-            spec = replace(spec, max_top=max(top, spec.min_top))
-            notes.append(why)
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
     ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
     router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
     problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
-                           hint=_leg_hint(config, deadline) if hint else None, notes=notes)
+                           hint=_leg_hint(config, deadline) if hint else None)
     return ctx, groups, problem
 
 
