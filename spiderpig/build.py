@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
 import math
 import re
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -57,6 +59,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filam
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
+from spiderpig.profiler import Profiler, process_age
 
 
 def _parse_args(argv) -> argparse.Namespace:
@@ -80,6 +83,13 @@ def _parse_args(argv) -> argparse.Namespace:
     p.add_argument("--store", metavar="PATH",
                    help="the design store the options resolve into, whose plan is reused "
                         "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
+    p.add_argument("--profile", action=argparse.BooleanOptionalAction, default=False,
+                   help="log each stage's wall-clock time (import, template, plan, fabricate, "
+                        "step, stl, group, prints, dxf_sheets, dxf_parts, bom, order) on the "
+                        "spiderpig.build logger (default: off)")
+    p.add_argument("--profile-json", type=Path, default=None, metavar="FILE",
+                   help="write the profile (stage seconds, wall, metrics) to FILE as JSON "
+                        "(implies --profile)")
     args = p.parse_args(argv)
     try:            # robot=None: the linkage's kind decides (a mechanism is one side)
         args.config = config_from_args(args, robot=False if args.side_only else None)
@@ -197,54 +207,116 @@ def clear_generated(folder: Path) -> None:
         folder.rmdir()
 
 
+STAGES = ("import", "template", "plan", "fabricate", "step", "stl", "group", "prints",
+          "dxf_sheets", "dxf_parts", "bom", "order")
+"""The stages ``--profile`` times (``build_total`` is the wall time: the process's age at
+the end): ``import`` is the process's age when :func:`main` first runs (the interpreter and
+every import),
+``template`` the options' checks and the template, ``plan`` the layer plan through the
+store, ``fabricate`` the robot, ``step`` / ``stl`` its two files, ``group`` the laser and
+printed parts grouped (mass properties), ``prints`` the print STLs, ``dxf_sheets`` /
+``dxf_parts`` the packed sheets and the per-part DXFs, ``bom`` the BOM's files, ``order``
+``ORDER.md`` and ``manifest.json``. The summary goes to the ``spiderpig.build`` logger."""
+
+logger = logging.getLogger("spiderpig.build")
+_FIRST_MAIN = [True]
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     if args.list:
         _list_options()
         return 0
+    prof = Profiler(enabled=args.profile or args.profile_json is not None, name="build",
+                    total="build_total", logger_name=logger.name)
+    if prof.enabled:
+        if not logging.getLogger().handlers and not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter(
+                "%(asctime)s %(levelname)s %(name)s: %(message)s"))
+            logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+    started = time.perf_counter()
+    age = process_age() if _FIRST_MAIN[0] else None
+    if age is not None:           # the interpreter and the imports, up to here
+        prof.add("import", age)
+    _FIRST_MAIN[0] = False
+    try:
+        return _build(args, prof)
+    finally:
+        if prof.enabled:
+            _profile_out(prof, args, time.perf_counter() - started + (age or 0.0),
+                         age is not None)
+
+
+def _profile_out(prof: Profiler, args, wall: float, imports: bool) -> None:
+    """Log the build's profile and write ``--profile-json``: the stages, ``build_total``
+    the wall time since the process started (since :func:`main` began when ``imports`` is
+    false: no process start time, or not the process's first build), and their
+    difference."""
+    summed = sum(v for k, v in prof.as_dict()["stages"].items() if k in STAGES)
+    prof.add("build_total", wall)
+    prof.set_metric("wall_s", wall)
+    prof.set_metric("stages_sum_s", summed)
+    prof.set_metric("unaccounted_pct", 100.0 * (wall - summed) / wall if wall else 0.0)
+    prof.log_summary()
+    if args.profile_json is not None:
+        import json
+
+        args.profile_json.parent.mkdir(parents=True, exist_ok=True)
+        args.profile_json.write_text(json.dumps(
+            {**prof.as_dict(), "wall_s": wall, "stages_sum_s": summed,
+             "import_measured": imports}, indent=1))
+
+
+def _build(args, prof: Profiler) -> int:
     config = args.config
     out: Path = args.out
-    out.mkdir(parents=True, exist_ok=True)
-    for owned in ("laser", "print"):     # no cut or print files left from an earlier build
-        clear_generated(out / owned)
-    # an export's manifest no longer describes the folder (api.export reuses one by it):
-    # this build writes its own once it has written everything; nor do an earlier build's
-    # shopping list and BOM (a build that stops short leaves none of them behind)
-    for owned in ("manifest.json", "ORDER.md", "bom.csv", "bom.md", "bom.json"):
-        (out / owned).unlink(missing_ok=True)
-    from spiderpig.api import config_warnings
+    with prof.timed("template"):
+        out.mkdir(parents=True, exist_ok=True)
+        for owned in ("laser", "print"):     # no cut or print files left from an earlier build
+            clear_generated(out / owned)
+        # an export's manifest no longer describes the folder (api.export reuses one by it):
+        # this build writes its own once it has written everything; nor do an earlier
+        # build's shopping list and BOM (a build that stops short leaves none of them behind)
+        for owned in ("manifest.json", "ORDER.md", "bom.csv", "bom.md", "bom.json"):
+            (out / owned).unlink(missing_ok=True)
+        from spiderpig.api import config_warnings
 
-    for w in config_warnings(config):       # what the API's resolve would warn about
-        print(f"warning: {w}", file=sys.stderr)
+        for w in config_warnings(config):       # what the API's resolve would warn about
+            print(f"warning: {w}", file=sys.stderr)
 
-    try:
-        tmpl = template_for(config)     # the template stage checks every loop closes
-    except linkage.AssemblyError as e:
-        print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
-        return 2
-    phases = ",".join(f"{math.degrees(p):g}" for _, p in config.legs)
-    custom = config.phases is not None or config.proportions
-    design_note = (f"{config.linkage} linkage, leg phases {phases} deg, proportions "
-                   f"{dict(config.proportions) or 'its defaults'}")
-    if custom or config.linkage != linkage.DEFAULT:
-        print(f"design: {design_note}")
+        try:
+            tmpl = template_for(config)     # the template stage checks every loop closes
+        except linkage.AssemblyError as e:
+            print(f"error: the linkage can't be assembled: {e}", file=sys.stderr)
+            return 2
+        phases = ",".join(f"{math.degrees(p):g}" for _, p in config.legs)
+        custom = config.phases is not None or config.proportions
+        design_note = (f"{config.linkage} linkage, leg phases {phases} deg, proportions "
+                       f"{dict(config.proportions) or 'its defaults'}")
+        if custom or config.linkage != linkage.DEFAULT:
+            print(f"design: {design_note}")
     # the plan through the store (api.plan_config), as explain and audit do: the stored
     # design's when it holds one (re-made and verified), else solved once and recorded;
     # design_side then answers from what plan_config remembered
-    from spiderpig import api
-    from spiderpig.store import Store
+    with prof.timed("plan"):
+        from spiderpig import api
+        from spiderpig.store import Store
 
-    try:
-        api.plan_config(config, Store.of(args.store) if args.store else Store.default())
-    except ValueError as e:
-        print(f"error: no layer plan: {e}", file=sys.stderr)
-        return 2
-    design = design_side(tmpl, config)
-    plan = design.plan
-    print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
-          f"{config.pitch:g} mm ({plan.height:.1f} mm):")
-    print(plan.describe())
-    mech = fabricate(tmpl, config, 1.0)
+        try:
+            api.plan_config(config, Store.of(args.store) if args.store else Store.default())
+        except ValueError as e:
+            print(f"error: no layer plan: {e}", file=sys.stderr)
+            return 2
+        design = design_side(tmpl, config)
+        plan = design.plan
+        print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
+              f"{config.pitch:g} mm ({plan.height:.1f} mm):")
+        print(plan.describe())
+    with prof.timed("fabricate"):
+        mech = fabricate(tmpl, config, 1.0)
+    prof.set_metric("n_bodies", len(mech.bodies))
     if config.robot:
         m = mech.meta
         print(f"chassis: {m['centre_plates']} centre plates; rear screws "
@@ -252,65 +324,75 @@ def main(argv=None) -> int:
               f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
 
     step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
-    with warnings.catch_warnings():
+    with prof.timed("step"), warnings.catch_warnings():
         # build123d's "Unknown Compound type, color not set" on a purchased model's
         # compound: the colours are ours to set, the file is complete
         warnings.filterwarnings("ignore", message="Unknown Compound type")
         mech.export_step(step_path)
-    mech.export_stl(stl_path)
+    with prof.timed("stl"):
+        mech.export_stl(stl_path)
     print(f"wrote {step_path} and {stl_path}")
 
-    groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
-    filament = mech.meta.get("filament", "pla_filament")
-    rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
-                         filaments=printed_filaments(mech, filament))
-    n_print = sum(r["qty"] for r in rows)
-    print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
-    for r in rows:
-        print(f"  {r['file']:28} {r['print']}")
+    with prof.timed("group"):
+        groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
+    with prof.timed("prints"):
+        filament = mech.meta.get("filament", "pla_filament")
+        rows = export_prints(groups["printed"], out / "print",
+                             density=filament_density(filament),
+                             filaments=printed_filaments(mech, filament))
+        n_print = sum(r["qty"] for r in rows)
+        print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
+        for r in rows:
+            print(f"  {r['file']:28} {r['print']}")
 
     order: list[dict] = []
     if not args.no_dxf:
         size = tuple(args.sheet_size) if args.sheet_size else None
-        try:
-            sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
-                                 kerf=args.kerf, default=config.sheet)
-        except ValueError as e:
-            print(f"error: the cut files can't be laid out: {e}", file=sys.stderr)
-            return 1
-        n_laser = sum(g.qty for g in groups["laser"])
-        print(f"wrote {len(sheets)} DXF sheet(s) with {n_laser} laser-cut parts "
-              f"({len(groups['laser'])} different) to {out / 'laser'}, one set per sheet:")
-        for line in sheet_lines(mech, config.sheet, size):
-            print(f"  {line.qty} x {line.key}")
-            mech.bom_extras.append(line)
-        try:
-            order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
-                               kerf=args.kerf)
-        except ValueError as e:
-            print(f"error: the per-part cut files can't be written: {e}", file=sys.stderr)
-            return 1
-        print(f"wrote {len(order)} per-part DXFs ({sum(r['qty'] for r in order)} parts) and "
-              f"order.csv to {out / 'laser' / 'parts'}")
+        with prof.timed("dxf_sheets"):
+            try:
+                sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet",
+                                     sheet_size=size, kerf=args.kerf, default=config.sheet)
+            except ValueError as e:
+                print(f"error: the cut files can't be laid out: {e}", file=sys.stderr)
+                return 1
+            n_laser = sum(g.qty for g in groups["laser"])
+            print(f"wrote {len(sheets)} DXF sheet(s) with {n_laser} laser-cut parts "
+                  f"({len(groups['laser'])} different) to {out / 'laser'}, one set per sheet:")
+            for line in sheet_lines(mech, config.sheet, size):
+                print(f"  {line.qty} x {line.key}")
+                mech.bom_extras.append(line)
+        with prof.timed("dxf_parts"):
+            try:
+                order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
+                                   kerf=args.kerf)
+            except ValueError as e:
+                print(f"error: the per-part cut files can't be written: {e}", file=sys.stderr)
+                return 1
+            print(f"wrote {len(order)} per-part DXFs ({sum(r['qty'] for r in order)} parts) "
+                  f"and order.csv to {out / 'laser' / 'parts'}")
 
-    title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
-             f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
-    bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
-    if args.no_dxf:
-        bom.notes.append("Sheet stock not counted (--no-dxf).")
-    if config.robot and (note := torque_limit_note(config)):
-        bom.notes.append(note)
-    if custom or config.linkage != linkage.DEFAULT:
-        bom.notes.append(f"Design: {design_note}.")
-    paths = bom.write(out)
-    print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
-          f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")
-    from spiderpig.hardware.order import order_markdown
+    with prof.timed("bom"):
+        title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
+                 f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, "
+                 f"{config.sheet}")
+        bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
+        if args.no_dxf:
+            bom.notes.append("Sheet stock not counted (--no-dxf).")
+        if config.robot and (note := torque_limit_note(config)):
+            bom.notes.append(note)
+        if custom or config.linkage != linkage.DEFAULT:
+            bom.notes.append(f"Design: {design_note}.")
+        paths = bom.write(out)
+        print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
+              f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")
+    with prof.timed("order"):
+        from spiderpig.hardware.order import order_markdown
 
-    (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
-                                                 build_dir=str(out)))
-    print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
-    _write_manifest(out, config, args)
+        (out / "ORDER.md").write_text(order_markdown(bom, order, rows, title=title,
+                                                     build_dir=str(out)))
+        print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, "
+              "prints)")
+        _write_manifest(out, config, args)
     return 0
 
 
