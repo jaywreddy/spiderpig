@@ -36,6 +36,7 @@ import atexit
 import functools
 import json
 import logging
+import os
 import signal
 import threading
 from dataclasses import dataclass, field, fields
@@ -901,8 +902,18 @@ def _register_prompts(server: MCPServer) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _exit_on_sigterm(signum, _frame) -> None:
-    raise SystemExit(128 + signum)
+def _on_sigterm(state: State):
+    """SIGTERM's handler: stop the viewer's child and the job pool, then exit at once. Not
+    ``SystemExit``: the interpreter would then wait for the AnyIO thread blocked reading
+    stdin, which a client that sent SIGTERM may never close."""
+    def handler(signum, _frame) -> None:
+        try:
+            state.stop_viewer()
+            state.jobs.shutdown(kill=True)
+        finally:
+            os._exit(128 + signum)
+
+    return handler
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -918,9 +929,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="the server's logging (stderr)")
     args = ap.parse_args(argv)
     server = make_server(args.store, workers=args.workers, log_level=args.log_level)
-    # SIGTERM (a client closing the server) exits through the finally below, which stops
-    # the viewer's child process; without it the child outlives the server
-    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    # SIGTERM (a client closing the server) stops the viewer's child process and exits;
+    # without it the child outlives the server
+    signal.signal(signal.SIGTERM, _on_sigterm(server.spiderpig))
     try:
         server.run("stdio")
     finally:

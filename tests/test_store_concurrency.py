@@ -6,6 +6,8 @@ and design ids matched whole."""
 from __future__ import annotations
 
 import concurrent.futures as cf
+import contextlib
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -48,8 +50,13 @@ def test_a_second_build_waits_for_the_first_instead_of_deleting_its_files(tmp_pa
                                                                            monkeypatch):
     """Build A writes its STEP files; build B of the same design starts meanwhile. Before
     the lock, B's ``rmtree`` deleted A's files while A was still writing, so the manifest A
-    returned named files that weren't there (what ``mcp.jobs.run_op`` hands the client)."""
+    wrote named files that weren't there. The interleaving is forced (events): A pauses at
+    its second file until B has cleared the folder (or 3 s: B waits on the lock), B pauses
+    after its rmtree until A is done; the files A's manifest names are looked at as A
+    writes it."""
     import build123d
+
+    from spiderpig import store as store_module
 
     store = Store(tmp_path)
     design, rep = _fake_design(store)
@@ -60,21 +67,30 @@ def test_a_second_build_waits_for_the_first_instead_of_deleting_its_files(tmp_pa
         me = owner[threading.get_ident()]
         if me == "A" and Path(path).name.startswith(".b"):      # A, at its second file
             a_writing.set()
-            b_cleared.wait(1.0)        # before the fix B's rmtree lands here; after, B waits
+            b_cleared.wait(3.0)        # before the fix B's rmtree lands here; after, B waits
         if me == "B" and not b_cleared.is_set():                # B, past its rmtree
             b_cleared.set()
-            a_done.wait(1.0)           # (A finishes before B writes its first file)
+            a_done.wait(3.0)           # (A writes its manifest before B's first file)
         Path(path).write_text(me)
 
-    monkeypatch.setattr(build123d, "export_step", export_step)
     seen: dict[str, list[bool]] = {}
+    real_write = store_module._write_json
+
+    def write_json(path, doc, *a, **kw):
+        if Path(path).name == "manifest.json":      # what the manifest names, as written
+            build = Path(path).parent
+            seen[owner[threading.get_ident()]] = [
+                (build / e["file"]).is_file() for e in doc["parts"] if e["file"]]
+        return real_write(path, doc, *a, **kw)
+
+    monkeypatch.setattr(build123d, "export_step", export_step)
+    monkeypatch.setattr(store_module, "_write_json", write_json)
     errors: dict[str, BaseException] = {}
 
     def build(name: str) -> None:
         owner[threading.get_ident()] = name
         try:
             store.write_build(design, rep)
-            seen[name] = [p.is_file() for p in _manifest_files(store)]
         except BaseException as e:      # noqa: BLE001 - the test reports it
             errors[name] = e
         finally:
@@ -86,11 +102,12 @@ def test_a_second_build_waits_for_the_first_instead_of_deleting_its_files(tmp_pa
     assert a_writing.wait(5.0)
     b = threading.Thread(target=build, args=("B",))
     b.start()
-    a.join(10.0)
-    b.join(10.0)
+    a.join(15.0)
+    b.join(15.0)
     assert errors == {}
     assert seen["A"] == [True, True, True], "A's manifest names files B deleted"
     assert seen["B"] == [True, True, True]
+    assert all(p.is_file() for p in _manifest_files(store))
     leftovers = [p.name for p in (store.dir(ID) / "build" / "parts").iterdir()
                  if p.name.startswith(".")]
     assert leftovers == []
@@ -136,17 +153,203 @@ def test_gc_leaves_a_design_being_written_alone(tmp_path, monkeypatch):
 def test_the_lock_is_one_holder_across_processes(tmp_path):
     """The design's lock is an ``flock``: another process can't take it while this one
     holds it, and can once it is released."""
-    import subprocess
     import sys
 
     store = Store(tmp_path)
-    probe = ("import sys; from spiderpig.store import Store\n"
-             f"with Store({str(tmp_path)!r}).lock({ID!r}, blocking=False) as got:\n"
-             "    sys.exit(0 if got else 3)\n")
+    store.dir(ID).mkdir(parents=True)
+    probe = ("import fcntl, os, sys\n"
+             f"fd = os.open({str(store.lock_path(ID))!r}, os.O_RDWR | os.O_CREAT)\n"
+             "try:\n"
+             "    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+             "except BlockingIOError:\n"
+             "    sys.exit(3)\n")
     with store.lock(ID), store.lock(ID):            # re-entrant in this thread
         held = subprocess.run([sys.executable, "-c", probe], check=False)
     free = subprocess.run([sys.executable, "-c", probe], check=False)
     assert (held.returncode, free.returncode) == (3, 0)
+
+
+def _hold_lock(root, id_: str, then: str = "") -> subprocess.Popen:
+    """Another process holding design ``id_``'s lock file (an ``flock``, as a pool job's
+    ``Store.lock`` does) until its stdin closes, then running ``then`` (``shutil``, ``d``:
+    the design's folder) before it lets go; returns once it holds the lock."""
+    import sys
+
+    d = Store(root).dir(id_)
+    code = ("import fcntl, os, shutil, sys\n"
+            f"d = {str(d)!r}\n"
+            "fd = os.open(os.path.join(d, '.lock'), os.O_RDWR | os.O_CREAT)\n"
+            "fcntl.flock(fd, fcntl.LOCK_EX)\n"
+            "print('held', flush=True)\n"
+            "sys.stdin.read()\n"
+            f"{then or 'pass'}\n")
+    proc = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == "held"
+    return proc
+
+
+def test_a_report_write_never_waits_on_a_build(tmp_path):
+    """Review round 1: the MCP's in-process tools (``check``, ``plan``, ``walk``, ``view``)
+    run under ``_ENGINE`` and write single reports; a pool job holds the design's lock for
+    its whole build. Report writes take no lock (atomic files), so a tool neither waits on
+    the build nor holds ``_ENGINE`` while it does."""
+    from spiderpig import api
+    from spiderpig.mcp import _ENGINE
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
+    holder = _hold_lock(tmp_path, d.id)
+    try:
+        done = threading.Event()
+
+        def tool() -> None:
+            with _ENGINE:
+                api.check(d)
+            done.set()
+
+        t = threading.Thread(target=tool, daemon=True)
+        t.start()
+        assert done.wait(30.0), "check waited on the build's lock while holding _ENGINE"
+        assert _ENGINE.acquire(timeout=5.0)
+        _ENGINE.release()
+        assert store.read_report(d.id, "check")["ok"]
+    finally:
+        holder.stdin.close()
+        holder.wait(10)
+
+
+def test_a_store_spelled_through_a_symlink_is_one_lock(tmp_path):
+    real = tmp_path / "store"
+    (real / "designs" / ID).mkdir(parents=True)
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    done = threading.Event()
+
+    def nested() -> None:
+        with Store(real).lock(ID), Store(link).lock(ID):    # one thread: re-entrant
+            done.set()
+
+    threading.Thread(target=nested, daemon=True).start()
+    assert done.wait(5.0), "a nested lock through the symlink waited on itself"
+
+
+def test_a_waiter_wakes_to_a_removed_design_and_doesnt_make_it_again(tmp_path):
+    """A process holds the design's lock and removes the design (what ``gc`` does) while
+    this one waits for it: the waiter must not proceed on the unlinked lock file (an
+    inode re-check) nor make the design's folder again (an orphan ``designs/<id>/``)."""
+    from spiderpig.store import DesignRemoved
+
+    store = Store(tmp_path)
+    store.dir(ID).mkdir(parents=True)
+    (store.dir(ID) / "resolved.json").write_text("{}")
+    holder = _hold_lock(tmp_path, ID, then="shutil.rmtree(d)")
+    got: list[object] = []
+
+    def waiter() -> None:
+        try:
+            with store.lock(ID):
+                got.append("locked")
+        except DesignRemoved as e:
+            got.append(e)
+
+    t = threading.Thread(target=waiter)
+    t.start()
+    time.sleep(0.5)                     # the waiter is in flock
+    holder.stdin.close()                # the holder removes the design and lets go
+    holder.wait(10)
+    t.join(10)
+    assert len(got) == 1
+    assert isinstance(got[0], DesignRemoved), got
+    assert not store.dir(ID).exists()
+    assert store.list_designs() == []
+
+
+def test_a_job_runs_under_the_designs_lock(tmp_path, monkeypatch):
+    """``run_op`` holds the design's lock across the operation and its reads (a build and
+    an export of one design, or a gc, wait for it)."""
+    from spiderpig.mcp import jobs as jobs_module
+
+    store = Store(tmp_path)
+    store.dir(ID).mkdir(parents=True)
+    (store.dir(ID) / "resolved.json").write_text("{}")
+    ran = threading.Event()
+    monkeypatch.setattr(jobs_module, "_run_op",
+                        lambda *_a: ran.set() or {"ok": True})
+    with store.lock(ID):
+        t = threading.Thread(target=jobs_module.run_op,
+                             args=(str(tmp_path), "build", ID, {}))
+        t.start()
+        assert not ran.wait(0.5), "the job ran while another held the design's lock"
+    assert ran.wait(5.0)
+    t.join(5)
+
+
+def test_a_cache_name_is_matched_whole(tmp_path):
+    from spiderpig import api
+
+    st = Store(tmp_path)
+    assert api._cache_path(st, "walk/abc").name == "abc.json"
+    with pytest.raises(ValueError, match="not a cache name"):
+        api._cache_path(st, "walk/abc\n")
+
+
+@pytest.mark.slow
+def test_sigterm_ends_the_mcp_server_and_its_viewer(tmp_path):
+    """SIGTERM ends ``spiderpig mcp`` at once (the stdio reader thread used to keep it
+    alive while its stdin stayed open) and stops the viewer's child process first."""
+    import os
+    import signal
+    import subprocess
+    import sys
+
+    pidfile = tmp_path / "viewer.pid"
+    code = f"""
+import subprocess, sys
+from spiderpig import view
+from spiderpig import mcp
+
+def start_background(store, **kw):
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+    open({str(pidfile)!r}, "w").write(str(proc.pid))
+    return view.ViewServer("127.0.0.1", 1, str(store.root), proc)
+
+view.viewer_built = lambda: "dist"
+view.start_background = start_background
+real = mcp.make_server
+
+def make_server(*a, **kw):
+    server = real(*a, **kw)
+    server.spiderpig.view_server()
+    print("up", file=sys.stderr, flush=True)
+    return server
+
+mcp.make_server = make_server
+sys.exit(mcp.main(["--store", {str(tmp_path / "store")!r}]))
+"""
+    proc = subprocess.Popen([sys.executable, "-c", code], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        assert proc.stderr.readline().strip() == "up"
+        time.sleep(1.0)                 # serving: the stdio reader is blocked on stdin
+        child = int(pidfile.read_text())
+        proc.send_signal(signal.SIGTERM)
+        assert proc.wait(timeout=10) == 128 + signal.SIGTERM
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child, 0)
+        except ProcessLookupError:
+            break
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(child, os.WNOHANG)
+        time.sleep(0.1)
+    else:
+        os.kill(child, signal.SIGKILL)
+        pytest.fail("the viewer's child outlived the server")
 
 
 # ---------------------------------------------------------------------------
@@ -231,12 +434,136 @@ def test_finished_jobs_are_evicted_and_their_ids_still_answer(tmp_path, monkeypa
     assert result.structured_content["failures"][0]["code"] == "no_such_job"
 
 
+_RACE_HOOK = """
+import importlib.machinery, json, os, pathlib, sys, time
+
+D = os.environ.get("W1_RACE_DIR")
+
+
+def _install(_st):
+    import build123d
+
+    _export, _write, _me, _n = build123d.export_step, _st._write_json, [], [0]
+
+    def _role():
+        if not _me:
+            try:
+                os.close(os.open(os.path.join(D, "A"), os.O_CREAT | os.O_EXCL))
+                _me.append("A")
+            except FileExistsError:
+                _me.append("B")
+        return _me[0]
+
+    def _flag(name):
+        open(os.path.join(D, name), "w").close()
+
+    def _wait(name, seconds):
+        end = time.time() + seconds
+        while time.time() < end and not os.path.exists(os.path.join(D, name)):
+            time.sleep(0.05)
+
+    _write_build = _st.Store.write_build
+
+    def write_build(self, design, rep):
+        if _role() == "B":              # B starts writing once A is at its second file
+            _wait("a_writing", 30)
+        return _write_build(self, design, rep)
+
+    def _b_blocked(parts_dir):
+        # is a process waiting on this design's lock? (an flock waiter in /proc/locks)
+        try:
+            ino = os.stat(os.path.join(os.path.dirname(os.path.dirname(parts_dir)),
+                                       ".lock")).st_ino
+            locks = open("/proc/locks").read().splitlines()
+        except OSError:
+            return False                # no lock file: nobody locks (the code before)
+        return any("->" in ln and ln.split()[-3].endswith(f":{ino}") for ln in locks)
+
+    def export_step(part, path, *a, **kw):
+        _n[0] += 1
+        if _role() == "A" and _n[0] == 2:
+            # B's rmtree lands here, unless B waits on the design's lock
+            _flag("a_writing")
+            end = time.time() + 120
+            while time.time() < end and not os.path.exists(os.path.join(D, "b_cleared")):
+                if _b_blocked(os.path.dirname(path)):
+                    _flag("b_blocked")
+                    break
+                time.sleep(0.05)
+        if _role() == "B" and _n[0] == 1:
+            _flag("b_cleared")
+            _wait("a_done", 30)         # A writes its manifest before B's first file
+        return _export(part, path, *a, **kw)
+
+    def write_json(path, doc, *a, **kw):
+        out = _write(path, doc, *a, **kw)
+        if pathlib.Path(path).name == "manifest.json" and _role() == "A":
+            b = pathlib.Path(path).parent
+            gone = [e["file"] for e in doc.get("parts", [])
+                    if e.get("file") and not (b / e["file"]).is_file()]
+            with open(os.path.join(D, "A_missing.json"), "w") as f:
+                json.dump(gone, f)
+            _flag("a_done")
+        return out
+
+    build123d.export_step = export_step
+    _st._write_json = write_json
+    _st.Store.write_build = write_build
+
+
+class _Hook:
+    # patch spiderpig.store once it is imported: from the worker's own sys.path (the
+    # checkout under test), set only after this file runs
+    def find_spec(self, name, path, target=None):
+        if name != "spiderpig.store":
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        if spec is None:
+            return None
+        run = spec.loader.exec_module
+
+        def exec_module(module):
+            run(module)
+            _install(module)
+
+        spec.loader.exec_module = exec_module
+        return spec
+
+
+if D:
+    sys.meta_path.insert(0, _Hook())
+"""
+
+
+def test_finished_jobs_dont_pile_up(tmp_path, monkeypatch):
+    """Every finished job used to stay, its result with it (a build's whole manifest):
+    after many jobs the server holds at most :data:`KEEP_FINISHED` of them."""
+    from spiderpig.mcp import jobs as jobs_module
+
+    jobs = jobs_module.Jobs(str(tmp_path))
+    pool = _Pool()
+    monkeypatch.setattr(jobs, "pool", lambda: pool)
+    for i in range(200):
+        jobs.submit("export", ID, {"n": i})
+        pool.futures[-1].set_result({"ok": True, "big": "x" * 10_000})
+    held = jobs.list()
+    assert len(held) <= 64                              # the roadmap's cap
+    assert jobs.get(held[-1].id) is held[-1]                # the newest stay
+
+
 @pytest.mark.slow
-def test_two_concurrent_build_jobs_leave_one_consistent_build(tmp_path):
-    """Two builds of one design at once, through the real pool (two spawned workers): both
-    finish, and the store holds one complete build: its manifest's every file there, no
-    file it doesn't name, no temporary file."""
+def test_two_concurrent_build_jobs_leave_one_consistent_build(tmp_path, monkeypatch):
+    """Two builds of one design at once through the real pool (two spawned workers),
+    their interleaving forced by a ``sitecustomize`` in the workers (files as events): the
+    first to reach ``write_build`` is A; B starts writing once A is at its second STEP file,
+    where A pauses until B has cleared the parts folder or is seen waiting on the design's
+    lock (an flock waiter on its ``.lock`` in ``/proc/locks``), and B pauses after its
+    rmtree until A has written its manifest.
+    Before the lock, A's manifest named a file B had deleted; now both finish, A's manifest
+    names only files that are there, and the store holds one complete build (every file
+    its manifest names, no other, no temporary file)."""
     import json
+    import os
 
     from spiderpig.config import BuildConfig
     from spiderpig.mcp.jobs import Jobs
@@ -244,6 +571,13 @@ def test_two_concurrent_build_jobs_leave_one_consistent_build(tmp_path):
 
     store = cache.prebuilt_store(BuildConfig(linkage="hoecken", robot=False), tmp_path)
     (design,) = store.ids()
+    hooks, race = tmp_path / "hooks", tmp_path / "race"
+    hooks.mkdir()
+    race.mkdir()
+    (hooks / "sitecustomize.py").write_text(_RACE_HOOK)
+    monkeypatch.setenv("W1_RACE_DIR", str(race))
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(
+        [str(hooks), *filter(None, [os.environ.get("PYTHONPATH")])]))
     jobs = Jobs(str(store.root), workers=2)
     try:
         a = jobs.submit("build", design, {"t": 2.0})
@@ -254,9 +588,12 @@ def test_two_concurrent_build_jobs_leave_one_consistent_build(tmp_path):
             doc = j.to_dict()
             assert doc["state"] == "done", doc
             assert doc["result"]["ok"]
-            assert all(Path(p["path"]).is_file() for p in doc["result"]["parts"] if p["path"])
     finally:
         jobs.shutdown()
+    assert (race / "b_cleared").exists()             # the hook ran in both workers
+    assert json.loads((race / "A_missing.json").read_text()) == [], \
+        "A's manifest names files B deleted"
+    assert (race / "b_blocked").exists()             # B waited on the lock while A wrote
     build = store.dir(design) / "build"
     manifest = json.loads((build / "manifest.json").read_text())
     assert manifest["t"] in (2.0, 3.0)
@@ -316,3 +653,26 @@ def test_a_design_id_is_matched_whole(tmp_path, bad):
     assert store.dir(ID) == tmp_path / "designs" / ID
     with pytest.raises(ValueError, match="not a design id"):
         store.dir(bad)
+
+
+@pytest.mark.parametrize("op", ["build", "export"])
+def test_builds_and_exports_run_under_the_designs_lock(tmp_path, monkeypatch, op):
+    """``api.build`` and ``api.export`` (``spiderpig export``, ``spiderpig view``'s glb, a
+    pool job) write many files: they hold the design's lock, so a ``gc`` or a job of the
+    same design waits for them, and they for it."""
+    from spiderpig import api
+
+    store = Store(tmp_path)
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
+    ran = threading.Event()
+    monkeypatch.setattr(api, f"_{op}", lambda *_a, **_k: ran.set())
+    holder = _hold_lock(tmp_path, d.id)
+    try:
+        t = threading.Thread(target=getattr(api, op), args=(d,), daemon=True)
+        t.start()
+        assert not ran.wait(0.5), f"{op} ran while another process held the design's lock"
+    finally:
+        holder.stdin.close()
+        holder.wait(10)
+    assert ran.wait(5.0)
+    t.join(5)

@@ -37,13 +37,25 @@ without its optimality proof, or re-solved when the check fails; the
 other stages are recomputed under the new engine. Files are written
 atomically, so several users may share one folder.
 
-Concurrency: the writers (:meth:`Store.write_design`, :meth:`Store.write_report`,
-:meth:`Store.write_build`) and :meth:`Store.remove` hold the design's lock
-(:meth:`Store.lock`: an ``fcntl.flock`` on ``designs/<id>/.lock``, re-entrant within a
-process), so two processes building one design (the MCP's job pool) don't delete each
-other's STEP files; a caller that writes and then reads (``mcp.jobs.run_op``) holds it
-across both. :meth:`Store.gc` skips a design whose lock is held (in use) instead of
-removing it under its writer.
+Concurrency, two kinds of write:
+
+- **Single files** (``spec.json``, ``resolved.json``, a stage report, the log) are written
+  atomically (a temp file renamed into place) and take **no lock**: a reader sees the old
+  file or the new one, two writers of one report write the same thing, and nothing waits.
+  They never create a removed design's folder again (:meth:`Store.write_report` skips a
+  design that is gone).
+- **The multi-file operations** (a build's manifest and STEP parts, an export's files, and
+  removing a design) hold the design's lock (:meth:`Store.lock`: an ``fcntl.flock`` on
+  ``designs/<id>/.lock``, re-entrant in the thread that holds it, keyed by the file's real
+  path). ``api.build`` and ``api.export`` take it, :meth:`Store.write_build` and
+  :meth:`Store.remove` too, and ``mcp.jobs.run_op`` holds it across its operation and the
+  reads of what it wrote. :meth:`Store.gc` skips a design whose lock is held (in use).
+  :meth:`Store.remove` renames the folder away before deleting it, so a waiter wakes to a
+  design that is gone (:class:`DesignRemoved`) and never re-creates its folder.
+
+The order: a thread never waits on a design's lock while holding a lock of its own over
+other designs (the MCP server's ``_ENGINE``): the MCP runs only single-file writes under
+``_ENGINE``; the builds and exports run in its worker processes.
 """
 
 from __future__ import annotations
@@ -51,6 +63,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
+import logging
 import os
 import re
 import shutil
@@ -63,6 +76,8 @@ from pathlib import Path
 import numpy as np
 
 from spiderpig.design import Design, design_id, jsonable, now_iso, spec_hash
+
+log = logging.getLogger("spiderpig.store")
 
 STORE_ENV = "SPIDERPIG_STORE"
 DEFAULT_ROOT = ".spiderpig"
@@ -78,6 +93,10 @@ class StoreError(ValueError):
     """A design folder that doesn't hold what its id says."""
 
 
+class DesignRemoved(StoreError):
+    """The design was removed (``gc``) while this waited for its lock."""
+
+
 def _parse_time(s: str | None) -> datetime | None:
     if not s:
         return None
@@ -88,9 +107,11 @@ def _parse_time(s: str | None) -> datetime | None:
     return t if t.tzinfo is not None else t.replace(tzinfo=UTC)
 
 
-def _write_json(path: Path, doc) -> Path:
-    """Write ``doc`` as JSON atomically (a temp file in the same folder, then a rename)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _write_json(path: Path, doc, parents: bool = True) -> Path:
+    """Write ``doc`` as JSON atomically (a temp file in the same folder, then a rename);
+    ``parents=False``: the folder must exist (``FileNotFoundError`` otherwise)."""
+    if parents:
+        path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
@@ -126,18 +147,23 @@ _LOCKS_GUARD = threading.Lock()
 
 
 def _held(path: Path) -> _HeldLock:
-    key = os.path.abspath(path)
+    # the real path: one store spelled through a symlink is one lock (else a nested lock
+    # by the other spelling would wait on the flock this thread holds)
+    key = os.path.realpath(path)
     with _LOCKS_GUARD:
         return _LOCKS.setdefault(key, _HeldLock())
 
 
 def _flock(path: Path, blocking: bool) -> int | None:
-    """An open ``path`` holding an exclusive ``flock`` (``None``: busy, non-blocking). A
-    file removed (a ``gc``) while this waited is opened again: a lock on an unlinked inode
-    excludes no one."""
+    """An open ``path`` holding an exclusive ``flock`` (``None``: busy, non-blocking).
+    ``path``'s folder (the design's) must exist: a design removed before or while this
+    waited raises :class:`DesignRemoved` (a lock on its unlinked file excludes no one, and
+    its folder is not made again)."""
     while True:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        except FileNotFoundError:
+            raise DesignRemoved(f"{path.parent.name}: the design was removed") from None
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
         except BlockingIOError:
@@ -152,7 +178,7 @@ def _flock(path: Path, blocking: bool) -> int | None:
             same = False
         if same:
             return fd
-        os.close(fd)
+        os.close(fd)        # removed while this waited: open it again (then it's gone)
 
 
 def report_doc(rep) -> dict:
@@ -228,7 +254,8 @@ class Store:
         while the block runs: other processes and other threads wait; the thread holding
         it may take it again. Yields ``True``; with ``blocking=False`` yields ``False``
         at once instead of waiting when someone else holds it (the block must then not
-        touch the design)."""
+        touch the design). The design's folder must exist: :class:`DesignRemoved` when it
+        doesn't, or was removed while this waited."""
         path = self.lock_path(id)
         held = _held(path)
         if not held.thread.acquire(blocking=blocking):
@@ -261,18 +288,17 @@ class Store:
         if (d / "resolved.json").is_file():
             return False
         cfg = design.config
-        with self.lock(design.id):
-            if (d / "resolved.json").is_file():
-                return False
-            _write_json(d / "spec.json", design.spec.to_dict())
-            _write_json(d / "resolved.json", {
-                "id": design.id, "engine_version": design.engine_version,
-                "spec_hash": spec_hash(design.resolved), "created_at": design.created_at,
-                "derived_from": design.derived_from, "patch": design.patch,
-                "kind": design.kind, "linkage": cfg.linkage, "module": cfg.module,
-                "sides": 2 if cfg.robot else 1, "warnings": list(design.warnings),
-                "resolved": design.resolved,
-            })
+        # single files, atomic, no lock (module docstring): resolved.json, written last,
+        # is what makes the design recorded
+        _write_json(d / "spec.json", design.spec.to_dict())
+        _write_json(d / "resolved.json", {
+            "id": design.id, "engine_version": design.engine_version,
+            "spec_hash": spec_hash(design.resolved), "created_at": design.created_at,
+            "derived_from": design.derived_from, "patch": design.patch,
+            "kind": design.kind, "linkage": cfg.linkage, "module": cfg.module,
+            "sides": 2 if cfg.robot else 1, "warnings": list(design.warnings),
+            "resolved": design.resolved,
+        })
         return True
 
     def read_design(self, id: str) -> dict | None:
@@ -309,13 +335,26 @@ class Store:
         verify: also ``verify.<level>.json``, so a quick verify after a standard one doesn't
         cost the standard one again)."""
         if stage == "build":
-            return self.write_build(design, rep)
+            try:
+                return self.write_build(design, rep)
+            except DesignRemoved:
+                log.warning("build not written: design %s is no longer in %s", design.id,
+                            self.root)
+                return self.report_path(design.id, stage)
         doc = {"stage": stage, "design": design.id, "engine_version": design.engine_version,
                "written_at": now_iso(), **report_doc(rep)}
-        with self.lock(design.id):
+        path = self.report_path(design.id, stage)
+        # one file, atomic: no lock (it must never wait on a build's: module docstring);
+        # a design removed meanwhile is not made again
+        try:
             if stage == "verify" and doc.get("level"):
-                _write_json(self.report_path(design.id, stage, str(doc["level"])), doc)
-            return _write_json(self.report_path(design.id, stage), doc)
+                _write_json(self.report_path(design.id, stage, str(doc["level"])), doc,
+                            parents=False)
+            return _write_json(path, doc, parents=False)
+        except FileNotFoundError:
+            log.warning("%s: not written: design %s is no longer in %s", path.name,
+                        design.id, self.root)
+            return path
 
     def stages(self, id: str) -> dict[str, dict]:
         """The stage files present: ``{stage: {ok, engine_version, written_at, ...}}``."""
@@ -412,9 +451,13 @@ class Store:
 
     def log(self, id: str, entry: Mapping) -> None:
         d = self.dir(id)
-        d.mkdir(parents=True, exist_ok=True)
-        with open(d / "log.jsonl", "a") as f:
-            f.write(json.dumps(jsonable(entry), allow_nan=False) + "\n")
+        if not d.is_dir():          # removed (gc): don't make its folder again
+            return
+        try:
+            with open(d / "log.jsonl", "a") as f:
+                f.write(json.dumps(jsonable(entry), allow_nan=False) + "\n")
+        except FileNotFoundError:
+            return
 
     def read_log(self, id: str) -> list[dict]:
         path = self.dir(id) / "log.jsonl"
@@ -496,11 +539,17 @@ class Store:
         d = self.dir(id)
         if not d.is_dir():
             return False
-        with self.lock(id, blocking=blocking) as got:
-            if not got:
-                return False
-            if d.is_dir():
-                shutil.rmtree(d)
+        try:
+            with self.lock(id, blocking=blocking) as got:
+                if not got:
+                    return False
+                # renamed away first: whoever waits on the lock wakes to a design that is
+                # gone (DesignRemoved), never to a half-deleted folder
+                trash = d.with_name(f".removed-{id}-{os.getpid()}-{threading.get_ident()}")
+                os.rename(d, trash)
+                shutil.rmtree(trash)
+        except DesignRemoved:
+            return False
         return True
 
     def gc(self, keep: Iterable[str] | None = None,
@@ -614,5 +663,6 @@ def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-__all__ = ["DEFAULT_ROOT", "PROJECT", "STAGES", "STORE_ENV", "Store", "StoreError", "diff_json",
+__all__ = ["DEFAULT_ROOT", "PROJECT", "STAGES", "STORE_ENV", "DesignRemoved", "Store",
+           "StoreError", "diff_json",
            "is_mirror", "mirror_twin", "now_iso", "report_doc"]

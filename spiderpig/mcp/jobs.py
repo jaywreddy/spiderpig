@@ -261,11 +261,18 @@ class Jobs:
             self._prune()
             return list(self._jobs.values())
 
-    def shutdown(self) -> None:
+    def shutdown(self, kill: bool = False) -> None:
+        """Stop the pool (queued jobs cancelled); ``kill``: terminate its worker processes
+        too (the process is about to exit without running their shutdown)."""
         with self._lock:
             pool, self._pool = self._pool, None
-        if pool is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
+        if pool is None:
+            return
+        procs = list((getattr(pool, "_processes", None) or {}).values()) if kill else []
+        pool.shutdown(wait=False, cancel_futures=True)
+        for p in procs:
+            with contextlib.suppress(Exception):
+                p.terminate()
 
 
 __all__ = ["KEEP_FINISHED", "KEEP_SECONDS", "LONG_OPS", "Job", "Jobs", "job_key", "run_op"]

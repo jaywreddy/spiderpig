@@ -349,7 +349,10 @@ downloads), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks
 AGENTS.md), `SPIDERPIG_DIGEST_CACHE` (where `engine_version()` keeps its digest, keyed by
 the sources' stats: `off` recomputes it, ~1.3 s), `SPIDERPIG_TEST_CACHE` (the tests'
 fabrication cache, `~/.cache/spiderpig/test-cache/`; `off` builds afresh) and
-`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), and `VITE_PORT` / `API_PORT` and
+`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), `SPIDERPIG_DEV_ORIGIN_PORT`
+(set by `mise run view` for the API: the Vite port whose loopback pages may open its
+WebSockets) and `SPIDERPIG_REQUIRE_VIEWER_TESTS=1` (the walk-model parity test fails, not
+skips, without Node), and `VITE_PORT` / `API_PORT` and
 `VITE_ALLOWED_HOSTS` (below). Nothing in
 the environment changes a design's parts: the hardware is plain code, and a design's id
 holds everything that shapes it.

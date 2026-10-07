@@ -1487,11 +1487,30 @@ def _module_stride(cfg: BuildConfig) -> float | None:
 # ---------------------------------------------------------------------------
 
 
+@contextmanager
+def design_lock(design: Design):
+    """Hold the design's store lock (:meth:`spiderpig.store.Store.lock`) when it is recorded
+    in a store: what the multi-file operations (:func:`build`, :func:`export`) run under,
+    so a second build, an export or a ``gc`` of the same design waits for them."""
+    st = design.store
+    if st is None or not st.has(design.id):
+        yield
+        return
+    with st.lock(design.id):
+        yield
+
+
 def build(design: Design, t: float = 1.0, force: bool = False) -> BuildReport:
     """Fabricate every part at crank angle ``t`` (:func:`fabricate.fabricate`: the robot,
     or one side): the parts land in ``design.parts`` with their live solids, the report
     is the manifest (masses, envelope, counts). A build the store holds at this ``t``
-    (from the running engine) comes back from its STEP files instead."""
+    (from the running engine) comes back from its STEP files instead. Under the design's
+    lock (:func:`design_lock`)."""
+    with design_lock(design):
+        return _build(design, t, force)
+
+
+def _build(design: Design, t: float, force: bool) -> BuildReport:
     if not force and "build" in design.reports and design.build_t == t and (
             design.mech is not None or not (design.reports["build"].ok
                                             or ran_out(design.reports["build"]))):
@@ -1880,6 +1899,11 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     skipped) is on the report (``warnings``) and in the manifest. An export the store
     records for the same formats and folder, whose files are all still there, is
     returned as is (``force`` rewrites)."""
+    with design_lock(design):
+        return _export(design, formats, out_dir, force)
+
+
+def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
     from spiderpig.spec import OUTPUTS
 
     t0 = time.time()
