@@ -143,13 +143,16 @@ def solve(problem: StackProblem, top: int, ctx,
           only=None) -> tuple[tuple, dict[str, int], CrankRoute] | None:
     """The cheapest layering and route in ``top + 1`` layers (``ctx``: the side's context, for
     the crank's construction and the drive), or ``None``. ``only(layers, h0)``: the routes
-    to try instead of every route (e.g. one run per crankpin over the whole stack)."""
+    to try instead of every route (e.g. one run per crankpin over the whole stack).
+    A problem with no router (a hand-made one, no crank): the first layering, in the order
+    links are enumerated, whose plan builds at its own z and verifies, as ``((), layers,
+    None)``; ``ctx`` unused."""
     geo, m, pitch = problem.topo.geometry, problem.spec.margin, problem.spec.pitch
     router = problem.router
     links = list(problem.links)
     riders = problem.topo.riders
-    h0 = router.hub_bottom(top)
-    detours = {d.name: d.sweep for d in router.facts.detours}
+    h0 = router.hub_bottom(top) if router is not None else top
+    detours = {d.name: d.sweep for d in router.facts.detours} if router is not None else {}
     points = [a.name for a in problem.topo.axes_of("crankpin")] + list(detours)
     fixed = [c for c in problem.claims if c.choice is None]
     routed = [c for c in problem.claims if c.choice is not None]
@@ -237,6 +240,15 @@ def solve(problem: StackProblem, top: int, ctx,
     start: dict[float, list[Placed]] = {}
     for p in first:
         start.setdefault(p.slot, []).append(p)
+    if router is None:
+        for layers, _ in layerings(0, {}, start):
+            try:
+                plan = problem.plan(layers, top, {})
+            except PlanReject:
+                continue
+            if not verify_plan(plan):
+                return (), dict(layers), None
+        return None
     group = router.group
     for layers, by_slot in layerings(0, {}, start):
         need = {k: riders[n] for n, k in layers.items() if n in riders}

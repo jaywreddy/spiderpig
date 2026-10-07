@@ -29,6 +29,7 @@ MODULE_OF_FILE: dict[str, str] = {
     # the planner (P2)
     "test_stack.py": "planner",
     "test_route.py": "planner",
+    "test_seam_stack.py": "planner",
     "test_planner_bounds.py": "planner",
     "test_stage_checks.py": "planner",
     "test_recommend.py": "planner",
@@ -46,10 +47,14 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_klann_lego_cranks.py": "construction",
     "test_fabricate.py": "construction",
     "test_contract.py": "construction",
+    "test_seam_crank.py": "construction",
+    "test_seam_pivots.py": "construction",
+    "test_seam_chassis.py": "construction",
     # hardware / BOM / order / layout / manufacture (P4)
     "test_bom.py": "hardware",
     "test_order.py": "hardware",
     "test_cutfiles.py": "hardware",
+    "test_seam_hardware.py": "hardware",
     # strength / wobble / loads (P4)
     "test_strength.py": "strength",
     "test_wobble.py": "strength",
