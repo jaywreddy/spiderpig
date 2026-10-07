@@ -35,11 +35,13 @@ def quick(values: Iterable, keep: Iterable) -> list:
     return out
 
 
-TIER_WORKERS = {"linkage": 2, "planner": 2, "construction": 4, "hardware": 0, "strength": 0,
-                "api": 2, "sim": 2, "server": 0}
+TIER_WORKERS = {"linkage": 0, "planner": 4, "construction": 4, "hardware": 0, "strength": 0,
+                "api": 4, "sim": 4, "server": 0}
 """xdist workers per module's fast tier (0: none, in this process): a worker costs its own
-imports and the engine's version hash, which a small tier doesn't win back (the hardware
-tier: 8 s in one process against 13 s on 4 workers). ``SPIDERPIG_TIER_WORKERS`` overrides."""
+imports, which a small tier doesn't win back. The fastest wall time of 0 / 2 / 4 per tier,
+warm, measured on master after the module packages (2026-10-06): linkage 11 s, hardware
+7.5 s, strength 7.3 s, server 12 s in one process; planner 24 s, construction 33 s, api
+29 s, sim 27 s on 4. ``SPIDERPIG_TIER_WORKERS`` overrides."""
 
 
 def module_files(module: str) -> list[str]:

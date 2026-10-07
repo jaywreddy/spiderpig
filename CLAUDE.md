@@ -12,7 +12,13 @@ Tasks live in `mise.toml`:
 ```bash
 mise run view       # FastAPI + Vite (HMR); URL printed in startup banner
 mise run bake       # bake <store>/bakes/<design>.glb (the project store, .spiderpig/)
-mise run test-quick # the quick tier: -m "not slow", xdist -n 4 (~3.5 min; iterate with this)
+mise run test-<module>  # one module's fast tier, ~10-60 s: linkage, planner, construction,
+                        # hardware, strength, api, sim, server; test-viewer (tsc + vitest).
+                        # Iterate with these (docs/agentlib/TESTING.md); the gate below on
+                        # product edits
+mise run gate -- compare ~/.cache/spiderpig/gate/<baseline>   # parts/plans/BOM/DXF identity
+mise run test-fixtures # rewrite the recorded fixtures (after an engine edit: they warn stale)
+mise run test-quick # the quick tier: -m "not slow", xdist -n 4 (~3.5 min)
 mise run remote-test               # the full suite on ao-server, xdist (~6 min, not ~45)
 mise run remote-audit              # modules audited at once there (~3 min, not ~8): the
                                    # Strider's four modules (the quad plans since max_top 60);
@@ -340,7 +346,11 @@ planner's CPU budget, 60; left out of `engine_version`'s hash, so it doesn't re-
 designs), `SPIDERPIG_WORKERS=0` (no worker processes), `SPIDERPIG_VIEWER_DIST`,
 `SPIDERPIG_OFFLINE=1` / `SPIDERPIG_SERVO_CAD=0` / `SPIDERPIG_CAD_CACHE` (servo CAD
 downloads), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks,
-AGENTS.md), and `VITE_PORT` / `API_PORT` and `VITE_ALLOWED_HOSTS` (below). Nothing in
+AGENTS.md), `SPIDERPIG_DIGEST_CACHE` (where `engine_version()` keeps its digest, keyed by
+the sources' stats: `off` recomputes it, ~1.3 s), `SPIDERPIG_TEST_CACHE` (the tests'
+fabrication cache, `~/.cache/spiderpig/test-cache/`; `off` builds afresh) and
+`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), and `VITE_PORT` / `API_PORT` and
+`VITE_ALLOWED_HOSTS` (below). Nothing in
 the environment changes a design's parts: the hardware is plain code, and a design's id
 holds everything that shapes it.
 
@@ -651,8 +661,10 @@ Physical rules the claims encode:
   test over ~5 s are marked `slow` (in the default run; `-m 'not slow'`, the quick
   tier, skips them). A heavy parametrized check keeps one cheap case in the quick
   tier through `tests/tiers.py` (`quick(values, keep)`; ids unchanged).
-- Don't run the full suite locally (40-50 min): `mise run test-quick` while
-  iterating, `mise run remote-test` before handing back (AGENTS.md, "Running tests").
+- Iterate with the module tiers (`mise run test-<module>`, seconds each, on the
+  fabrication cache and recorded fixtures, `docs/agentlib/TESTING.md`); run the identity
+  gate on any product edit and the full suite (`mise run remote-test`, or locally
+  `-n 12`) before handing back (AGENTS.md, "Running tests").
   Audits (75-120 s each), sims and bakes go through `mise run remote -- ...`; its
   output, the junit XML and the remote `build/` land in `build/remote/<run>/`. Tests
   must stay xdist-safe: write under `tmp_path`, free ports only.

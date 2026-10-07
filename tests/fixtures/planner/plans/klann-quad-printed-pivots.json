@@ -65,6 +65,6 @@
   },
   "top": 12
  },
- "engine_version": "0.1.0+9cb2d06a61c8",
+ "engine_version": "0.1.0+094f801c3c66",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-quad-printed-pivots]"
 }

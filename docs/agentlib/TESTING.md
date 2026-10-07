@@ -242,3 +242,24 @@ The whole suite fills ~23 MB per engine version (25 fabrications, the plans).
 
 The identity gate: ~5 min wall for the six designs at once (the Strider quad 290 s, the
 Strider double 150 s, the Klann quads 180-200 s, the mechanisms 45-50 s).
+
+
+## Tier timings after the module packages (2026-10-06)
+
+Warm cache, master after P0-P6, `mise run test-<module>` with its default workers
+(`tests.tiers.TIER_WORKERS`), wall seconds; before = the same tier on master before P1-P6.
+
+| tier | before | after |
+|---|---|---|
+| linkage | 151 | 11 |
+| planner | 28-31 (96 tests) | 24 (126 tests) |
+| construction | 112 | 33 |
+| hardware | 29 | 7.5 |
+| strength | 57 | 7.3 |
+| api | 82 | 29 |
+| sim | no fast tests | 27 (83 tests) |
+| server | 21 | 12 |
+
+The recorded fixtures were regenerated on that master: only their engine stamps changed, every
+document's data byte-identical; the identity gate was identical on all six designs and the full
+suite green.
