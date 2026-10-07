@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { createStage, frameView } from './scene';
 import { loadGlb, teardown, type LoadedScene } from './loader';
+import { isAbort, latestOnly } from './loads';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
@@ -96,14 +97,29 @@ function seek(t: number): void {
   invalidate();
 }
 
+// One GLB load at a time: a newer one aborts the one before (its fetch: the server then skips a
+// bake still queued for it) and only the latest lands on screen.
+const loads = latestOnly();
+
 async function loadMode(mode: Mode, query = ''): Promise<void> {
+  const ticket = loads.begin();
   currentMode = mode;
   currentQuery = query;
   ui.setModeValue(mode);
   ui.setStatus(`loading ${mode}…`);
   ui.setModeDisabled(true);
   try {
-    const next = await loadGlb(stage.scene, mode, query);
+    let next: LoadedScene;
+    try {
+      next = await loadGlb(stage.scene, mode, query, ticket.signal);
+    } catch (err) {
+      if (!ticket.current || isAbort(err)) return;   // superseded: the newer load reports
+      throw err;
+    }
+    if (!ticket.current) {        // a newer load began while this one parsed: drop it
+      teardown(stage.scene, next);
+      return;
+    }
     teardown(stage.scene, loaded);
     const reframe = mode !== loadedMode;  // a live reload keeps the user's camera
     loaded = next;
@@ -124,7 +140,7 @@ async function loadMode(mode: Mode, query = ''): Promise<void> {
     await drive.onLoad(next, query);
     invalidate();
   } finally {
-    ui.setModeDisabled(false);
+    if (ticket.current) ui.setModeDisabled(false);
   }
 }
 
