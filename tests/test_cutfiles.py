@@ -265,3 +265,35 @@ def test_horn_screws_get_their_shim_stack_and_threadlocker():
     assert not any(x.key == "threadlocker_222" for x in lines)
     lines, _, _ = fitting_lines(_fitted_mech("xl430_w250"))     # the HN11-N101: tapped metal
     assert any(x.key == "threadlocker_222" for x in lines)
+
+
+def test_a_remembered_section_follows_its_part_and_is_never_shared():
+    """``layout.section_of`` remembers a part's section, but a part moved in place since is
+    sectioned again (the memo keeps a copy of the wrapper, not the live one), and no caller
+    gets the wrapper another holds."""
+    from types import SimpleNamespace
+
+    from build123d import Box, Pos
+
+    from spiderpig.layout import section_of
+
+    body = SimpleNamespace(name="probe", part=Box(10, 10, 2))
+    assert pytest.approx(-5) == section_of(body).bounding_box().min.X
+    body.part.move(Pos(50, 0, 0))
+    assert pytest.approx(45) == section_of(body).bounding_box().min.X
+    got = section_of(body)
+    got.move(Pos(0, 100, 0))
+    assert pytest.approx(-5) == section_of(body).bounding_box().min.Y
+
+
+def test_a_shared_wrapper_moves_alone():
+    from build123d import Box, Pos
+
+    from spiderpig.shapes import share
+
+    a = Box(4, 4, 4)
+    b = share(a)
+    assert b.wrapped.IsPartner(a.wrapped)
+    b.move(Pos(0, 0, 10))
+    assert pytest.approx(-2) == a.bounding_box().min.Z
+    assert pytest.approx(8) == b.bounding_box().min.Z
