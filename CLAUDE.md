@@ -25,7 +25,11 @@ mise run remote-audit              # modules audited at once there (~3 min, not 
                                    # --linkage L: that linkage's four
 mise run remote -- uv run python -m spiderpig.cli sim   # sims/bakes/anything there
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run build      # STEP/STL/DXF -> build/
+mise run build      # STEP/STL/DXF -> build/ (-- --profile: stage timings, spiderpig.build log)
+mise run scorecard  # every ROADMAP number -> build/scorecard.json (~6 min; --gate/--full/--audit
+                    # opt-in; -- --compare A B); baseline docs/agentlib/scorecard-baseline.json
+mise run doc-check  # backticked names/paths/tasks/flags/env vars in the docs vs the code
+                    # (report-only; -- --strict). CI: .github/workflows/ci.yml
 mise run lint       # ruff check
 mise run audit      # do the parts physically fit? (see docs/audit/AUDIT.md)
 mise run explain    # each pipeline stage's verdict on a design
@@ -436,8 +440,9 @@ per-frame solves.
 
 ### How to extend
 
-The profiler lives in `spiderpig/bake.py` as `_Profiler`. To add a new
-bracket:
+The profiler is `spiderpig/profiler.py`'s `Profiler` (the bake's `_Profiler` names its
+summary, logger and total; `spiderpig build --profile` uses it too, stages
+`spiderpig.build.STAGES`). To add a new bracket:
 
 ```python
 with prof.timed("label"):
