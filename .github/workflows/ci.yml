@@ -1,0 +1,96 @@
+# The cheap checks on every push and PR (docs/agentlib/ROADMAP.md, W0): ruff, the lock,
+# the viewer's typecheck + vitest, the quick tier on the fabrication cache, and the doc
+# check (report-only until W7). The full suite stays on `mise run remote-test`.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SPIDERPIG_OFFLINE: "1"          # never download a servo's CAD model: parametric servos
+  UV_PYTHON: "3.12"
+  FORCE_COLOR: "1"
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv run --locked --only-dev ruff check .
+
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv lock --check
+
+  test-viewer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - run: npm ci
+        working-directory: viewer
+      - run: npm run typecheck && npm test
+        working-directory: viewer
+
+  quick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      # the fabrication cache (tests/cache.py) keyed by the engine version: its folders are
+      # named by the engine version and the library versions too, so an entry restored for
+      # another engine is never read (no restore-keys: a new engine starts empty)
+      - id: engine
+        run: echo "version=$(uv run --locked python -m spiderpig.design)" >> "$GITHUB_OUTPUT"
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      - name: quick tier
+        run: uv run --locked pytest -p no:warnings -m 'not slow and not e2e' -n 4 --dist worksteal
+      # saved even when a test failed: entries are written whole (renamed into place)
+      - if: always() && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+
+  doc-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      # report-only (exit 0) until W7 makes it blocking with --strict
+      - run: uv run --locked python -m tests.doc_check
