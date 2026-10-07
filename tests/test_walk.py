@@ -93,6 +93,41 @@ def test_walk_reference_fixture_is_current():
     cache.assert_current("linkage", "walk_reference", _linkage.walk_reference_doc)
 
 
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+def test_strider_walk_reference_fixture_is_current():
+    """The Strider double's walk reference (the viewer's model test reads it) is the
+    engine's."""
+    from tests import cache
+
+    cache.assert_current("linkage", "walk_reference_strider",
+                         _linkage.strider_walk_reference_doc)
+
+
+def test_strider_walk_reference_is_the_models():
+    """The Strider double's recorded feet and centre of mass give its recorded metrics in
+    the Python model (the viewer's model test checks its own against the same), and are
+    the default design's own."""
+    doc = _linkage.strider_walk_reference()
+    w = doc["walk"]
+    feet = [walk.Foot(f["body"], f["side"], f["leg"], f["z"], np.asarray(f["xy"], dtype=float))
+            for f in w["feet"]]
+    model = walk.Walker(feet=feet, com=w["com"], mass_g=float("nan"),
+                        config=_linkage.STRIDER_REFERENCE_CONFIG)
+    m = walk.straight_walk_metrics(model, rpm_max=w["servo"]["rpm_max"])
+    for key, want in doc["metrics"].items():
+        if key == "direction":
+            assert m[key] == want
+        else:
+            np.testing.assert_allclose(m[key], want, rtol=1e-6, atol=1e-6, err_msg=key)
+    double = walk.walker(_linkage.STRIDER_REFERENCE_CONFIG)    # the recorded foot z
+    assert [f.body for f in double.feet] == [f["body"] for f in w["feet"]]
+    for f, rec in zip(double.feet, w["feet"], strict=True):
+        assert f.z == pytest.approx(rec["z"], abs=1e-6)
+        np.testing.assert_allclose(f.xy, rec["xy"], atol=1e-6)
+    assert doc["metrics"]["walks"]
+
+
 @pytest.fixture(scope="module")
 def quad():
     return walk.walker(_cfg("quad"))
@@ -686,7 +721,7 @@ class _AsgiClient:
         scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                  "method": "GET", "scheme": "http", "path": path, "raw_path": path.encode(),
                  "query_string": query.encode(), "root_path": "",
-                 "headers": [(b"host", b"testserver")], "client": ("testclient", 50000),
+                 "headers": [(b"host", b"localhost")], "client": ("testclient", 50000),
                  "server": ("testserver", 80)}
         sent = False
         messages = []
@@ -722,7 +757,7 @@ def client(server_app):
         from fastapi.testclient import TestClient
     except ImportError:
         return _AsgiClient(server_app.app)
-    return TestClient(server_app.app)         # not entered: no lifespan (no default bake)
+    return TestClient(server_app.app, base_url="http://localhost")   # no lifespan: no bake
 
 
 def test_api_walk_quad(client, server_app):
