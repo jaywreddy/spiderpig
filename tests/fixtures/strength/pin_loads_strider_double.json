@@ -2556,6 +2556,6 @@
   "walk_torque_peak_nm": 0.1777,
   "walks": true
  },
- "engine_version": "0.1.0+b9baba81f496",
+ "engine_version": "0.1.0+d86fde59ff92",
  "generator": "tests/test_strength.py::test_the_default_designs_own_loads"
 }

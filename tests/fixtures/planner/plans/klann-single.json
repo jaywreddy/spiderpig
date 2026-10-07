@@ -30,6 +30,6 @@
   },
   "top": 9
  },
- "engine_version": "0.1.0+b9baba81f496",
+ "engine_version": "0.1.0+d86fde59ff92",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-single]"
 }

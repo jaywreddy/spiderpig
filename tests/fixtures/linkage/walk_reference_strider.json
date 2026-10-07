@@ -11637,6 +11637,6 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+40678ddb3ee8",
+ "engine_version": "0.1.0+d86fde59ff92",
  "generator": "tests/test_walk.py::test_strider_walk_reference_fixture_is_current"
 }
