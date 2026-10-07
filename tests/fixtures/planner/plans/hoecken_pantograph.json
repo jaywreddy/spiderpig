@@ -32,6 +32,6 @@
   },
   "top": 8
  },
- "engine_version": "0.1.0+f91f368e27b7",
+ "engine_version": "0.1.0+b9baba81f496",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[hoecken_pantograph]"
 }
