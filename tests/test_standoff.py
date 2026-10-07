@@ -29,7 +29,9 @@ def test_registered_as_a_pillar_only():
 
 def test_a_short_column_is_one_segment():
     s = StandoffAxle()
-    assert s.column_axle({3, 5}, top=17, pitch=PITCH) is s     # 48 mm, one stock length
+    # == (not is): column_axle is remembered per equal axle (an lru_cache), so another
+    # test's equal StandoffAxle() may have answered first in this process (flaked, W4a)
+    assert s.column_axle({3, 5}, top=17, pitch=PITCH) == s     # 48 mm, one stock length
 
 
 def test_a_short_column_no_stock_length_fills():
