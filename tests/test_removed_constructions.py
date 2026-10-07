@@ -174,3 +174,70 @@ def test_the_cli_names_a_removed_constructions_replacement(capsys, argv, field, 
     assert f"use {field}={replacement!r}" in err
     assert "removed on 2026-10-07" in err
     assert "invalid choice" not in err
+
+
+
+# -- the small kept paths the removed constructions used to reach (W2 review round 1) ----
+
+
+@pytest.mark.construction
+def test_an_unknown_construction_names_the_registry():
+    from spiderpig import construction
+    from spiderpig.construction.base import ConstructionError
+
+    with pytest.raises(ConstructionError, match=r"no crank construction 'nope'; have \['bolt', "
+                                                r"'bolt_round'\]"):
+        construction.crank("nope")
+    with pytest.raises(ConstructionError, match=r"no axle construction 'nope'"):
+        construction.axle("nope")
+
+
+@pytest.mark.construction
+def test_a_context_without_a_build_config_has_its_default_sheet():
+    import dataclasses
+    import types
+
+    from spiderpig.fabricate import side_problem, template_for
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    ctx, _, problem = side_problem(template_for(cfg), cfg)
+    bare = dataclasses.replace(ctx, config=types.SimpleNamespace(sheet="acrylic_3mm"))
+    assert bare.sheet("crank") == bare.sheet("frame") == "acrylic_3mm"
+    assert ctx.layout({}, 5).top == 5
+    with pytest.raises(ValueError, match="depends on unknown links"):
+        problem.__class__(problem.topo, [*problem.raw_claims, problem.raw_claims[0].__class__(
+            "probe", frozenset({"no_such_link"}), lambda L: [])], problem.spec)
+
+
+@pytest.mark.construction
+def test_the_side_design_reports_its_linkage_checks():
+    from tests import cache
+
+    _, design = cache.cached_design(BuildConfig(linkage="hoecken_pantograph", robot=False))
+    assert design.checks == design.config.lk.check(dict(design.config.proportions))
+
+
+def test_a_misshapen_spec_section_is_reported_at_its_path():
+    from spiderpig.spec import validate
+
+    errs = validate({"kind": "mechanism", "linkage": {"key": "hoecken_pantograph"},
+                     "materials": {"link_sheets": ["b1"]}, "outputs": "step"})
+    assert {e.path for e in errs} == {"materials.link_sheets", "outputs"}
+
+
+@pytest.mark.hardware
+def test_unknown_catalog_keys_read_as_themselves():
+    from spiderpig.hardware.bom import _filament_name, _known
+
+    assert _filament_name("no_such_filament") == "no_such_filament"
+    assert _filament_name("pla_filament") == "PLA filament"
+    assert not _known("no_such_item")
+
+
+@pytest.mark.linkage
+def test_the_walk_model_wants_a_foot_z_per_foot():
+    from spiderpig import walk
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    with pytest.raises(ValueError, match="foot z values"):
+        walk.make_feet(cfg, [], [0.0])
