@@ -80,18 +80,97 @@ def engine_version() -> str:
     before it are recomputed, its plans re-verified), docstrings stripped, and the planner's
     defaults (:class:`spiderpig.stack.StackSpec`) less its time budget (``max_seconds``,
     ``SPIDERPIG_PLAN_SECONDS``: a budget bounds the search, not what a plan is). Computed
-    once per process."""
+    once per process, and kept on disk (:func:`_digest_cache`) under a signature of the
+    files it hashes, so a process on unchanged sources reads it (milliseconds) instead of
+    parsing every source again (1-2 s)."""
     if not _ENGINE_VERSION:
+        files = [p for p in sorted(ROOT.rglob("*.py"))
+                 if p.relative_to(ROOT).parts[0] not in ENGINE_EXCLUDE]
+        spec = repr(replace(StackSpec(), max_seconds=60.0))
+        version = package_version()
+        cached = _digest_cache(files, spec, version)
+        known = None if cached is None else cached.read()
+        if known is not None:
+            _ENGINE_VERSION.append(known)
+            return known
         h = hashlib.sha256()
-        for p in sorted(ROOT.rglob("*.py")):
-            rel = p.relative_to(ROOT)
-            if rel.parts[0] in ENGINE_EXCLUDE:
-                continue
-            h.update(str(rel).encode())
+        for p in files:
+            h.update(str(p.relative_to(ROOT)).encode())
             h.update(_code_digest(p.read_bytes()))
-        h.update(repr(replace(StackSpec(), max_seconds=60.0)).encode())
-        _ENGINE_VERSION.append(f"{package_version()}+{h.hexdigest()[:12]}")
+        h.update(spec.encode())
+        _ENGINE_VERSION.append(f"{version}+{h.hexdigest()[:12]}")
+        if cached is not None:
+            cached.write(_ENGINE_VERSION[0])
     return _ENGINE_VERSION[0]
+
+
+DIGEST_CACHE_ENV = "SPIDERPIG_DIGEST_CACHE"
+"""A directory for :func:`engine_version`'s cached digests, or ``off`` (``0``) to compute it
+every time; default ``$XDG_CACHE_HOME/spiderpig/engine-version`` (``~/.cache/...``)."""
+
+
+@dataclass
+class _DigestEntry:
+    """One cached :func:`engine_version`: the file named by the signature of what it
+    hashes, holding the signature in full and the version (a read checks both)."""
+
+    path: Path
+    signature: str
+
+    def read(self) -> str | None:
+        try:
+            doc = json.loads(self.path.read_text())
+        except (OSError, ValueError):
+            return None
+        if not isinstance(doc, dict) or doc.get("signature") != self.signature:
+            return None
+        v = doc.get("version")
+        return v if isinstance(v, str) else None
+
+    def write(self, version: str) -> None:
+        import os
+        import tempfile
+
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".engine-")
+            with os.fdopen(fd, "w") as f:
+                json.dump({"signature": self.signature, "version": version}, f)
+            os.replace(tmp, self.path)
+        except OSError:
+            pass                # a read-only cache: computed again next time, no harm
+
+
+def _digest_cache(files: list[Path], spec: str, version: str) -> _DigestEntry | None:
+    """Where :func:`engine_version`'s digest of ``files`` is kept: a file named by the
+    signature of everything the digest reads or depends on (the package root, every
+    hashed file's path, size, modification and change times and inode, the planner's
+    defaults, the package version, the Python that parses them), so any edit, added or
+    removed source, or another interpreter is another entry and computes afresh. ``None``
+    when off (:data:`DIGEST_CACHE_ENV`) or a file can't be read."""
+    import os
+    import sys
+
+    env = os.environ.get(DIGEST_CACHE_ENV, "").strip()
+    if env.lower() in ("off", "0", "false", "no"):
+        return None
+    if env:
+        root = Path(env).expanduser()
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+        root = Path(base) / "spiderpig" / "engine-version"
+    h = hashlib.sha256()
+    for part in (str(ROOT), sys.version, version, spec):
+        h.update(part.encode() + b"\0")
+    try:
+        for p in files:
+            st = p.stat()
+            h.update(f"{p.relative_to(ROOT)}\0{st.st_size}\0{st.st_mtime_ns}\0"
+                     f"{st.st_ctime_ns}\0{st.st_ino}\n".encode())
+    except OSError:
+        return None
+    sig = h.hexdigest()
+    return _DigestEntry(root / f"{sig[:32]}.json", sig)
 
 
 _SOURCE_VERSION: list[str] = []

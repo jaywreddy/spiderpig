@@ -485,3 +485,29 @@ def test_verify_levels_do_not_evict_each_other(tmp_path):
     store.report_path(d.id, "verify", "quick").unlink()
     fresh = api.load(d.id, store)
     assert api._cached(fresh, "verify", VerifyReport, level="quick").level == "quick"
+
+
+def test_the_engine_version_is_read_back_from_its_digest_cache_only_while_it_holds(
+        tmp_path, monkeypatch):
+    """``engine_version`` keeps its digest on disk under a signature of the sources it
+    hashes: a later process reads the very string it computed, and an entry whose
+    signature isn't this tree's is computed afresh (and rewritten)."""
+    from spiderpig import design
+
+    code_digest = design._code_digest
+    monkeypatch.setenv(design.DIGEST_CACHE_ENV, str(tmp_path))
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    computed = design.engine_version()                     # parsed, then written
+    (entry,) = tmp_path.glob("*.json")
+    assert json.loads(entry.read_text())["version"] == computed
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    monkeypatch.setattr(design, "_code_digest", lambda src: pytest.fail("parsed again"))
+    assert design.engine_version() == computed             # read back
+    doc = json.loads(entry.read_text())
+    entry.write_text(json.dumps({"signature": doc["signature"][::-1], "version": "0.0.0+x"}))
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    monkeypatch.setattr(design, "_code_digest", code_digest)
+    assert design.engine_version() == computed             # not this tree's: computed again
+    assert json.loads(entry.read_text())["version"] == computed
+    monkeypatch.setenv(design.DIGEST_CACHE_ENV, "off")
+    assert design._digest_cache([], "", "") is None
