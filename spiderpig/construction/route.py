@@ -132,12 +132,9 @@ class JointRules:
     #                               again (stack._Search.leaf)
 
 
-def joint_rules(construction, ctx: Context, dims: CrankDims) -> JointRules | None:
-    """The joint rules a crank construction asks of its route (its own ``joint_rules``;
-    ``None`` for a construction without them)."""
-    if hasattr(construction, "joint_rules"):
-        return construction.joint_rules(ctx, dims)
-    return None
+def joint_rules(construction, ctx: Context, dims: CrankDims) -> JointRules:
+    """The joint rules a crank construction asks of its route (its own ``joint_rules``)."""
+    return construction.joint_rules(ctx, dims)
 
 
 def horn_pockets(ctx: Context) -> tuple[tuple[tuple[float, float], float], ...]:
@@ -379,7 +376,7 @@ class CrankRouter:
     MEMO_ROUTES = 100_000        # routes remembered before the memo is dropped
 
     def __init__(self, ctx: Context, dims: CrankDims, facts: CrankFacts, drop_bearing: bool,
-                 rules: JointRules | None = None):
+                 rules: JointRules):
         topo = ctx.topo
         self.drive = ctx.interfaces["drive"]
         self.pitch = ctx.pitch
@@ -403,12 +400,12 @@ class CrankRouter:
         self._routes: dict[tuple, tuple | None] = {}    # _solve per what it reads
         at = [topo.geometry.points[p][0] for p in self.points]
         n = self.n
-        self.bottom_layers = rules.bottom_layers if rules is not None else frozenset()
-        self.inner_webs = rules is None or rules.inner_webs
-        self.j_last = rules is not None and rules.j_last
+        self.bottom_layers = rules.bottom_layers
+        self.inner_webs = rules.inner_webs
+        self.j_last = rules.j_last
         # pieces in the clearance gaps (the planner blocks them with other groups' heads and
         # washers there, keyed by the gap's slot, layer + 0.5)
-        self.gap_head = rules.gap_head if rules is not None else 0.0
+        self.gap_head = rules.gap_head
         self.gap_pieces = ()
         if self.gap_head > 0:
             self.gap_pieces = (*[Disc(p, self.gap_head) for p in self.points],
@@ -419,27 +416,21 @@ class CrankRouter:
         self.washer_bit = (len(self.gap_pieces)
                            if self.gap_head > 0 and rules.gap_washer > 0 else -1)
         # (j_last) how many layers a journal standoff between two chains may span
-        self.j_ok = dict(rules.j_spans) if rules is not None else {}
+        self.j_ok = dict(rules.j_spans)
         self.horn_mask = ((1 << len(rules.horn_heads)) - 1) << self.n if self.gap_head else 0
         self.rider_mask = 0
         for j in set(self.riders.values()):
             self.rider_mask |= 1 << j
-        if rules is None:
-            self.spans: dict[int, int] | None = None
-            self.after = [[True] * n for _ in range(n)]
-            self.last = [True] * n
-            self.window: int | None = None
-        else:
-            self.spans = rules.spans
-            gap = rules.nut + max(rules.head, rules.post)
-            self.after = [[i == j or float(np.linalg.norm(at[i] - at[j])) >= gap
-                           for j in range(n)] for i in range(n)]
-            self.last = [all(float(np.linalg.norm(at[j] - np.asarray(xy))) >= rules.nut + r
-                             for xy, r in rules.horn) for j in range(n)]
-            # one chain per point, its runs strictly between its outer webs, which a stock
-            # standoff must span: two run layers of one point are at most this far apart
-            longest = max((k for k, m in rules.spans.items() if m), default=None)
-            self.window = None if longest is None else longest - 3
+        self.spans: dict[int, int] | None = rules.spans     # (None: _unbuildable's relaxing)
+        gap = rules.nut + max(rules.head, rules.post)
+        self.after = [[i == j or float(np.linalg.norm(at[i] - at[j])) >= gap
+                       for j in range(n)] for i in range(n)]
+        self.last = [all(float(np.linalg.norm(at[j] - np.asarray(xy))) >= rules.nut + r
+                         for xy, r in rules.horn) for j in range(n)]
+        # one chain per point, its runs strictly between its outer webs, which a stock
+        # standoff must span: two run layers of one point are at most this far apart
+        longest = max((k for k, m in rules.spans.items() if m), default=None)
+        self.window: int | None = None if longest is None else longest - 3
         self._h0: dict[int, int] = {}       # stack size -> the hub's bottom layer (memo)
 
     def hub_bottom(self, top: int) -> int:
