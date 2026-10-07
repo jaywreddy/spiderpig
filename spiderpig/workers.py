@@ -48,12 +48,14 @@ def occt_threads(default: int | None = None) -> None:
     process: ``$SPIDERPIG_OCCT_THREADS`` when set (0 leaves OCCT's own: every core), else
     ``default`` (``None``: leave it). Call it before the first OCCT operation.
 
-    Measured on the Strider double (2026-10-07, 6 pinned cores at load ~15-27): one thread
-    makes ``spiderpig build`` 44-50 -> 72-76 s wall (the STL export's meshing 4 -> 22 s)
-    for 85 -> 73 CPU-s, so the build keeps the pool; ``spiderpig audit --no-sim`` (no
-    meshing) 171-177 s / 238 CPU-s -> 172-218 s / 171-205 CPU-s, so the audit runs on one
-    thread (:func:`spiderpig.tools.audit.main`). Results are the same either way (the
-    identity gate)."""
+    No command sets a default: every one keeps OCCT's pool. Measured on the Strider double
+    (2026-10-07, 6 pinned cores at load ~15-27): one thread makes ``spiderpig build``
+    44-50 -> 72-76 s wall (the STL export's meshing 4 -> 22 s) for 85 -> 73 CPU-s; it would
+    cut ``spiderpig audit --no-sim``'s CPU (238 -> 171-205 CPU-s at about the same wall
+    time), but OCCT's results depend on it: on one thread the demo Klann quad's audit
+    reports R.b4_leg0's hole 3.92 mm from its edge, 3.93 on a pool (the parts themselves
+    the same), on this branch's code and before it alike. One thread is for runs whose
+    numbers are compared only with runs on one thread (the test workers)."""
     raw = os.environ.get(ENV_OCCT)
     n = int(raw) if raw not in (None, "") else default
     if not n:

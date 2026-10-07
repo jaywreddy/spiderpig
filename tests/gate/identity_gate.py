@@ -202,13 +202,13 @@ def plan_cores(n_designs: int, jobs: int | None, split: str | None) -> tuple[int
     return jobs, split
 
 
-def _occt(default: int) -> None:
-    """OCCT's pool for this process (``GATE_OCCT_THREADS`` when set): one thread where it
-    only cuts and checks (the audit's process, the contract workers), two where the build
-    meshes its STLs (``spiderpig.workers.occt_threads`` has the measurements)."""
+def _occt() -> None:
+    """OCCT's pool for this process: two threads (``GATE_OCCT_THREADS``), as the baselines
+    were snapshotted. Not one: OCCT's numbers depend on it (one thread moves a cut-rule
+    distance of the demo Klann quad's audit, 3.93 -> 3.92 mm; ``workers.occt_threads``)."""
     from OCP.OSD import OSD_ThreadPool
 
-    OSD_ThreadPool.DefaultPool_s(int(os.environ.get("GATE_OCCT_THREADS", default)))
+    OSD_ThreadPool.DefaultPool_s(int(os.environ.get("GATE_OCCT_THREADS", "2")))
 
 
 def _setup(name: str, work: Path):
@@ -284,7 +284,7 @@ def _contract_task(name: str, work: Path, ts) -> dict:
 
 def run_task(name: str, work: Path, task: str, result: Path) -> None:
     kind, _, arg = task.partition(":")
-    _occt(2 if kind == "build" else 1)
+    _occt()
     if kind == "build":
         res = _build_task(name, work)
     elif kind == "contract":
@@ -296,8 +296,8 @@ def run_task(name: str, work: Path, task: str, result: Path) -> None:
 
 def run_one(name: str, out: Path) -> None:
     """Snapshot one design into ``out/<name>.json``."""
+    _occt()
     tasks = [t for t in os.environ.get("GATE_SPLIT", SPLIT).split("|") if t]
-    _occt(1 if "build" in tasks else 2)
     import spiderpig.tools.audit as audit_mod
     from spiderpig.design import engine_version
     from spiderpig.fabricate import design_side, template_for
