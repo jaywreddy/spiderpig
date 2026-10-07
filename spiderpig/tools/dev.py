@@ -132,8 +132,10 @@ def main() -> int:
     if sys.platform == "win32":
         api_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
 
+    # the API takes a WebSocket from a loopback page on Vite's port (its Origin check)
+    api_env = {**os.environ, "SPIDERPIG_DEV_ORIGIN_PORT": str(WEB_PORT)}
     _log(f"starting FastAPI: {' '.join(api_cmd)}")
-    api = subprocess.Popen(api_cmd, cwd=REPO_ROOT, **api_kwargs)
+    api = subprocess.Popen(api_cmd, cwd=REPO_ROOT, env=api_env, **api_kwargs)
     _log(f"starting Vite: {' '.join(web_cmd)} (cwd={VIEWER_DIR})")
     web = subprocess.Popen(web_cmd, cwd=VIEWER_DIR, env=web_env)
 

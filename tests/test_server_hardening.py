@@ -121,13 +121,52 @@ def test_a_foreign_page_cant_open_a_websocket(monkeypatch):
                 path, headers={"origin": "https://evil.example"}):
             pass
         assert refused.value.code == 1008
-    for origin in (None, "http://localhost", "http://localhost:5173", "http://127.0.0.1:9"):
+    for origin in (None, "http://localhost"):          # the page's own host (Host: localhost)
         headers = {"origin": origin} if origin else {}
         with client.websocket_connect("ws://localhost/ws", headers=headers) as ws:
             ws.send_text("ping")                    # accepted: the socket is open
-    with pytest.raises(WebSocketDisconnect), client.websocket_connect(
-            "ws://localhost/ws", headers={"origin": "null"}):
-        pass
+    for origin in ("null", "http://localhost:3000", "http://127.0.0.1:9"):
+        with pytest.raises(WebSocketDisconnect), client.websocket_connect(
+                "ws://localhost/ws", headers={"origin": origin}):
+            pass
+
+
+@pytest.mark.parametrize(("origin", "host", "env", "allowed"), [
+    # the page's own host and port: spiderpig view, and Vite's /ws proxy (Host passed on)
+    ("http://localhost:8123", "localhost:8123", {}, True),
+    ("http://127.0.0.1:5173", "127.0.0.1:5173", {}, True),
+    ("http://mybox", "mybox", {}, True),                                 # default ports
+    ("https://mybox", "mybox", {}, False),          # (an https page, a ws:// request)
+    ("http://localhost:80", "localhost", {}, True),
+    ("http://[::1]:8000", "[::1]:8000", {}, True),
+    # another local port: some other dev server's page
+    ("http://localhost:3000", "localhost:8123", {}, False),
+    ("http://127.0.0.1:3000", "127.0.0.1:8123", {}, False),
+    ("http://localhost", "localhost:8123", {}, False),
+    # the Vite dev port, when the API runs behind Vite (spiderpig.tools.dev sets it)
+    ("http://localhost:5173", "127.0.0.1:8500", {"SPIDERPIG_DEV_ORIGIN_PORT": "5173"}, True),
+    ("http://localhost:3000", "127.0.0.1:8500", {"SPIDERPIG_DEV_ORIGIN_PORT": "5173"}, False),
+    ("http://evil.example:5173", "127.0.0.1:8500", {"SPIDERPIG_DEV_ORIGIN_PORT": "5173"},
+     False),
+    # the user's own names
+    ("https://robot.tail1.ts.net", "localhost:5173", {"VITE_ALLOWED_HOSTS": ".ts.net"}, True),
+    ("https://evil.example", "localhost:5173", {"VITE_ALLOWED_HOSTS": ".ts.net"}, False),
+])
+def test_a_websockets_origin_must_be_its_own_host_and_port(origin, host, env, allowed,
+                                                          monkeypatch):
+    for k in ("VITE_ALLOWED_HOSTS", "SPIDERPIG_DEV_ORIGIN_PORT"):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert srv.origin_allowed(origin, host) is allowed
+
+
+def test_dev_tells_the_api_the_vite_port():
+    import inspect
+
+    from spiderpig.tools import dev
+
+    assert '"SPIDERPIG_DEV_ORIGIN_PORT": str(WEB_PORT)' in inspect.getsource(dev.main)
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +190,34 @@ def test_failed_bakes_are_pruned(stored, monkeypatch):
     assert len(srv._BAKED) <= srv.CACHE_SIZE
     newest = srv._glb_path(cfg)
     assert newest in srv._FAILED                # the newest failures are kept
+
+
+def test_failures_older_than_the_sources_are_dropped(stored, monkeypatch):
+    """A failure recorded before the sources last changed no longer answers (the next
+    request bakes again): ``_prune`` drops it however few there are, and the ``_BAKED``
+    entry of a design that failed (no file) with it."""
+    old, new = srv._glb_path(BuildConfig(linkage="hoecken", robot=False,
+                                         proportions=(("unit", 17.0),))), srv._data_dir() / "x.glb"
+    mtime = srv._sources_mtime()
+    monkeypatch.setattr(srv, "_FAILED", {old: (mtime - 10.0, "old"), new: (mtime, "new")})
+    monkeypatch.setattr(srv, "_BAKED", {old: BuildConfig(linkage="hoecken", robot=False,
+                                                         proportions=(("unit", 17.0),))})
+    srv._data_dir().mkdir(parents=True, exist_ok=True)
+    srv._prune()
+    assert list(srv._FAILED) == [new]
+    assert srv._BAKED == {}
+
+
+def test_a_client_gone_by_the_time_the_lock_is_free_gets_no_bake(stored, monkeypatch):
+    """The lock was free (or came free between two polls) but the client has left: no
+    bake for no one."""
+    baked = []
+    monkeypatch.setattr(srv, "_bake", lambda cfg: baked.append(cfg))
+    cfg = BuildConfig(linkage="hoecken", robot=False, proportions=(("unit", 16.5),))
+    with pytest.raises(srv.ClientGone):
+        srv._ensure_baked(cfg, gone=lambda: True)
+    assert baked == []
+    assert not srv._BAKE_LOCK.locked()
 
 
 def test_the_watchers_rebake_changes_the_sessions_state_on_the_loop(monkeypatch):
