@@ -605,8 +605,8 @@ def cost_row(design: Design, bom) -> Row | None:
 LOCKED_PILLARS = ("standoff",)     # threadlocker on its end screws
 EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link
 LOCKED_PINS = ("chicago",)         # threadlocker on each screw
-FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws, the pivots' hardware, rod and "
-                    "clips are counted after a build (verify standard)")
+FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardware are "
+                    "counted after a build (verify standard)")
 
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:

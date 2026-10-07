@@ -96,9 +96,6 @@ class JointRules:
     run not all riders) and top face (a rider over it). Pocket radii (mm): a
     screw head's, a nut's (the bolt crank's: its screw heads, both), a post.
     Horn pockets, fixed on the crank: ``(point on the crank at sample 0, radius)``.
-    ``hub_play``: whether the horn screws still fit the hub with its bottom face set back for a
-    rider's end play; else no chain may end in the hub's lowest layer with
-    that web set back.
     """
 
     spans: dict[int, int]
@@ -106,7 +103,6 @@ class JointRules:
     nut: float
     post: float
     horn: tuple[tuple[tuple[float, float], float], ...] = ()
-    hub_play: bool = True
     inner_webs: bool = True       # a chain may return to O between its runs (a one-layer web
     #                               its screw passes); the bolt crank's can't: such a plate
     #                               would turn loose on the standoff
@@ -444,7 +440,6 @@ class CrankRouter:
             # standoff must span: two run layers of one point are at most this far apart
             longest = max((k for k, m in rules.spans.items() if m), default=None)
             self.window = None if longest is None else longest - 3
-        self.hub_play = rules is None or rules.hub_play
         self._h0: dict[int, int] = {}       # stack size -> the hub's bottom layer (memo)
 
     def hub_bottom(self, top: int) -> int:
@@ -850,7 +845,7 @@ class CrankRouter:
                     if pend is not None and not fit >> (rid_m[j] >> (k + 1) & 1) & 1:
                         continue
                     start(used, cost, state, j, k, under)
-        hub_play, last_ok = self.hub_play, self.last
+        last_ok = self.last
         ends = []
         for s in at.get(h0, ()):
             if not last_ok[s[2]]:
@@ -862,8 +857,6 @@ class CrankRouter:
                 size, a, first, lastf = pend
                 if spans is not None and not spans.get(size, 0) >> (16 * a + 4 * first
                                                                       + 2 * lastf) & 1:
-                    continue
-                if not hub_play and lastf:
                     continue
             ends.append((best[s][0], s))
         if not ends:
@@ -885,25 +878,20 @@ class CrankRouter:
         """Why no route is buildable although the relaxation lets one through."""
         if self.spans is None:
             return "no crank route passes"
-        saved = self.spans, self.after, self.last, self.hub_play
+        saved = self.spans, self.after, self.last
         try:
             self.spans, self._relax = None, 1
             if isinstance(self._cheapest(view), tuple):
                 sizes = sorted(k for k, m in saved[0].items() if m)
                 return ("its crank routes need a joint no stock screw fits (a chain's webs "
                         f"{_ranges(sizes)} layers apart, both counted, take one)")
-            self.hub_play, self._relax = True, 2
-            if isinstance(self._cheapest(view), tuple):
-                return ("its crank routes end with a web set back for its rider's end play in "
-                        "the hub's lowest layer, which leaves the hub too short for the horn "
-                        "screws")
             self.after = [[True] * self.n for _ in range(self.n)]
             self.last = [True] * self.n
-            self._relax = 3
+            self._relax = 2
             if isinstance(self._cheapest(view), tuple):
                 return "its crank routes put two joints' pockets together"
         finally:
-            self.spans, self.after, self.last, self.hub_play = saved
+            self.spans, self.after, self.last = saved
             self._relax = 0
         return "no crank route passes"
 

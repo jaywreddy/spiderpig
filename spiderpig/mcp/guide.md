@@ -67,10 +67,7 @@ given only after the stage passes with it, plus the failure's `notes` on what ca
 help or wasn't checked. The engine can compute a fix from a *gap* (a link passing an
 axle too closely: scale the linkage, or thinner parts) and, for a plan that ran into
 the stack's own room (the crank's route, pin heads against the frame plates) after the
-linkage was scaled down, it checks the linkage's default scale; for a plan that failed
-with pillars on a purchased shaft (`bolt`: the longest stock M3 screw, 50 mm, clamps at
-most 15 layers of 3 mm, and the planner searches no taller stack) it checks printed
-pillars. When every stage passes, `recommend` answers for the **targets** (stage
+linkage was scaled down, it checks the linkage's default scale. When every stage passes, `recommend` answers for the **targets** (stage
 `target`): a missed stroke, straightness or lift is met by a scale of the linkage (these
 scale with `unit` exactly; the least practical scale is measured again and planned
 before it is offered, as `{"linkage": {"params": {"unit": 19.5}}}`); a missed stack
@@ -122,8 +119,8 @@ design: there is no search in v1.
 | `materials.sheet` | a sheet item (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness | the sheet's nominal |
 | `materials.servo` | a continuous-rotation servo | `sts3215` |
-| `constructions.pillar`, `.pin` | `printed`, `rod`, `bolt`, `bearing`, `bushing`; pins only: `chicago`, `chicago_bushing`, `ptfe`; pillars only: `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced), `standoff_hand` / `standoff_bench` (goBILDA segments spliced past 60 mm, hand-tight in the stack / built on the bench), `standoff_m3` (uxcell M3 segments, spliced) | pillar `standoff`, pin `chicago` (an M3 Chicago screw, printed rings and head spacers; `printed` is the zero-hardware snap pin) |
-| `constructions.crank` | `bolt` (laser-cut: on the default aluminium crank sheet one plate per web, each crankpin a steel M3 hex standoff in hex pockets, M3 screws and wide washers retaining it, the riders on a printed sleeve; on an acrylic sheet two-plate stacks on M6 hex bolts), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe default to it), `bolt_hub_screw` / `bolt_unretained` (the hex crank before the assembly audit: kept to compare), `keyed` (printed segments keyed through each crankpin by a brass M3 hex standoff pressed into both, clamped by a threadlocked screw and nut in a two-layer top web), `keyed_float` (the same, keys a sliding fit: 6.25 deg of play per interface), `printed` (the same crank held by clamp friction alone) | the linkage's (`config.default_crank`): `bolt`, `bolt_round` for TrotBot's heel and toe |
+| `constructions.pillar`, `.pin` | pillar `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced); pin `chicago` (an M3 Chicago screw, printed rings and head spacers). The other pivots were removed on 2026-10-07: naming one is a `bad_parameter` failure that names its replacement | pillar `standoff`, pin `chicago` |
+| `constructions.crank` | `bolt` (laser-cut aluminium, one plate per web, each crankpin a steel M3 hex standoff in hex pockets, M3 screws and wide washers retaining it, the riders on a printed sleeve), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe default to it). The printed, keyed and acrylic cranks and the hex crank's variants were removed on 2026-10-07 (a `bad_parameter` failure naming `bolt`); `materials.crank_sheet` must be aluminium | the linkage's (`config.default_crank`): `bolt`, `bolt_round` for TrotBot's heel and toe |
 | `fit.*` | part sizes and fits in mm (below), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults |
 | `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
 | `motion.*`, `size.*`, `budget.*` | **targets** (below) | none |
@@ -168,30 +165,25 @@ the total rarely goes under about $100 whatever the linkage; the row's detail li
 the largest items. An item with no listed price is not in the total, so a total with
 unpriced items is a lower bound: it can refute a `max` but not confirm it, and a hard
 `max` target then fails ("at least ...") with every unpriced item named by quantity.
-Most hardware is priced (the servos, sheets, glues, inserts, the MF63ZZ bearing, the
-igus bushing, the M3 socket caps, button heads, nuts, nylocks and washers); what is not
-is the 3 mm rod, the push-on clips, the M2 tapping screws and the M3 x 16 / x 18 /
-x 50 screws, and three of those packs are on every walker (the servo horn's
+Most hardware is priced (the servos, sheets, glues, inserts, the M3 socket caps, button
+heads, nuts and washers); what is not is the M2 tapping screws and the M3 x 16 / x 18
+screws among others, and three of those packs are on every walker (the servo horn's
 self-tappers, the crank's button heads, the frame ties' screws), so a hard budget
 never verifies on its own. **`budget.allowance_usd`** accepts them: a plain number
 under `budget` (not a target), USD for all the unpriced items in all, added to the
 priced total; the row then reads "$108.76 priced + $15.00 allowed for the 3 unpriced
 items" and verifies against the target. At `quick`, `budget.cost_floor_usd` prices what the design
-buys whatever its parts (servos, spool, sheet, cement, inserts, a bottle of CA glue for
-glued pillars' anchors or link inserts (the robot itself glues nothing), the crank's nuts (the bolt crank's nylocks) and, keyed, its hex standoffs, the bolt
-crank's plate cement, a bottle of each threadlocker) from the catalog, and a floor already over
-the `max` fails the target before any build; its detail says what a build adds (the
-sheets' count, the crank's screws, the pivots' hardware, rod and clips: a few dollars
-on a printed-pivot design), so the floor is within about 10 % of the built total.
+buys whatever its parts (servos, spool, a blank of each sheet, the Chicago pins' epoxy, a
+bottle of each threadlocker) from the catalog, and a floor already over the `max` fails
+the target before any build; its detail says what a build adds (the sheets' count, the
+crank's screws, the pivots' hardware).
 
 `materials.thickness_mm` is the layer pitch: every construction sizes its parts by it,
-and a value more than 12 % off the sheet's nominal is a warning on `resolve`. The
-crank's crankpin joints (the bolt crank, the default: an M6 hex head and a 6 mm nylock in
-pockets through two-plate stacks; keyed, a hex key socket and the nut in a two-layer top
-web) need layers of at least 2.6 mm with the bolt crank, 3 mm keyed (2.9 mm with
-`constructions.crank: printed`), so a 2 mm sheet
-fails at `check` (stage
-`construction`) with the thickness that works as a checked recommendation.
+and a value more than 12 % off the sheet's nominal is a warning on `resolve`. Too thin a
+layer fails at `check` (stage `construction`) with the thickness that works, where the part
+that doesn't fit says it: a standoff pillar's end screw (an M4 button head and washer, one
+layer outside the frame plate) names the least pitch that holds it as a checked
+recommendation.
 
 `fit` defaults (mm): <<FIT>>
 
@@ -241,8 +233,6 @@ server process; the store keeps what they produced.
   with `derive` and read `compare` (the card's `sensitivity` says which way each
   parameter pushes the foot path, or a mechanism's output). The one search the engine
   does is `recommend`'s scale for a missed stroke, straightness or lift target.
-- The planner searches no stack a construction can't span: with `bolt` pillars the
-  longest stock M3 screw (50 mm) bounds it at 15 layers of 3 mm, and a failure says so.
 - The planner's 60 s deadline is fixed; a design it can't plan in that time is
   reported as such, with what blocked it, not searched longer.
 - `speed_mm_s` is the stride at the servo's no-load rpm, tier `estimated`, until a

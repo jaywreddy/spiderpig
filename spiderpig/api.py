@@ -435,8 +435,8 @@ def load(id: str, store: Store | str | Path | None = PROJECT) -> Design:
     if spec_doc is None:
         raise KeyError(f"design {id!r} in {store.root} has no spec.json")
     resolved = rec["resolved"]
+    config = _config_from_resolved(resolved)    # first: a removed construction is a ParamError
     spec = Spec.from_dict(spec_doc)
-    config = _config_from_resolved(resolved)
     engine = engine_version()
     design = Design(id, spec, resolved, config, engine, list(rec.get("warnings", [])),
                     derived_from=rec.get("derived_from"), patch=rec.get("patch"),

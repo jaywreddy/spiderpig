@@ -51,34 +51,19 @@ LINKAGE_CRANKS: dict[str, str] = {
     # (2026-10-04; 9 layers each): the hub plate caps a crankpin under the horn spacer
     # (BoltCrank.hub_capped).
     #
-    # TrotBot's heel and toe: b7 sweeps across the crank at O and passes crankpin J1 at 10.2
-    # mm; the hex crankpin's 8.5 mm printed sleeve needs 11.2 mm there (static stage stops).
-    # The round 6 mm standoff of bolt_round clears it and plans (14 layers, single module;
-    # its friction clamp rates jam SF 3.57 at factor 1, UNVERIFIED coefficients). The
-    # alternative, the hex crank at unit 12 (x1.14), changes the linkage's size.
+    # TrotBot's heel and toe: b7 passes crankpin J1 at 10.2 mm; the hex crankpin's 8.5 mm
+    # sleeve needs 11.2 (the static stage stops). The round 6 mm standoff clears it and plans
+    # (its friction clamp: jam SF 3.57, UNVERIFIED); the hex crank at unit 12 rescales it.
     "trotbot_heel": "bolt_round",
     "trotbot_toe": "bolt_round",
-    # klann_lego is on the hex crank since r4 (2026-10-05): its 6061 b1's 8.8 mm hex-sleeve
-    # bore left 2.02 mm to the link's *edge* (not to pin C, 56 mm off), because
-    # plates.rider_bosses read the unresolved BoltCrank (the round 6 mm pin) and grew the
-    # end for a 6.3 mm bore; resolved, the end grows to 7.7 mm round the 8.8 mm bore (3.27
-    # mm of web, over 1 x t) and every module plans and has an assembly order.
 }
 """Per linkage: the crank it gets when it names none, where :data:`DEFAULT_CRANKS`'
 doesn't plan (each with why)."""
 
 
 MODULE_CRANKS: dict[tuple[str, str], str] = {
-    # Empty since the debug of 2026-10-05: the Strider's decker and quad were here on
-    # bolt_round ("no hex plan in 600 CPU s", put down to the 8.5 mm sleeve's post). The
-    # post wasn't it: the round crank's own layerings route with the hex crank; what failed
-    # was the plan's z, where no stock hex standoff fit the long crankpins (the stock series
-    # steps 5 mm past 25 mm: spans of 25.7-27.6 mm, 28.8 capped in the hub plate, have
-    # none), and every crankpin gap was 4 mm (what stood past a plate went to the lower end
-    # first), which pushed the Chicago pins off their stock barrels. BoltCrank.hex_gap_fit
-    # (the gaps along a chain opened to the next stock length, printed rings in them) and
-    # fit_hex's split (the upper end uses the air over its plate) fixed both: the decker
-    # plans in 17 layers (~8 CPU s to the first plan), the quad in 25 (~30 s).
+    # empty since BoltCrank.hex_gap_fit (2026-10-05) put the Strider decker and quad on the
+    # hex crank (git log has the debug)
 }
 """Per (linkage, module): the crank it gets when it names none, ahead of
 :data:`LINKAGE_CRANKS` (each with why)."""
@@ -103,7 +88,7 @@ breaks a rule (each with why)."""
 
 
 REMOVED = "2026-10-07"
-_PIVOTS_GONE = {
+_PIVOTS_GONE = {            # a removed pin or pillar key -> what it was
     "printed": "the printed snap-together axle",
     "rod": "the 3 mm rod with push-on clips",
     "bolt": "the M3 socket-head screw and nylock",
@@ -129,23 +114,21 @@ REMOVED_CONSTRUCTIONS: dict[str, dict[str, tuple[str, str, str]]] = {
     "pin": {k: ("chicago", REMOVED, why) for k, why in _PIVOTS_GONE.items()},
     "pillar": {k: ("standoff", REMOVED, why) for k, why in _PIVOTS_GONE.items()},
 }
-"""Construction keys removed from :mod:`construction`'s registries, per
-:class:`BuildConfig` field: ``key -> (replacement, the date removed, what it was)``. The
-user's decision D1 of 2026-10-07 (``docs/agentlib/ROADMAP.md``, W2) kept the ``bolt`` and
-``bolt_round`` cranks, the ``chicago`` pin and the one-piece ``standoff`` pillar. A config
-naming one of these raises :class:`ParamError` naming its replacement, so a stored design
-or spec that names one loads as a ``bad_parameter`` failure."""
+"""Construction keys removed from :mod:`construction` (the user's decision D1, W2), per
+:class:`BuildConfig` field: ``key -> (replacement, date removed, what it was)``. A config
+naming one raises :class:`ParamError` naming the replacement (:func:`removed_construction`):
+a stored design or spec naming one loads as a ``bad_parameter`` failure."""
 
 
-def removed_construction(field: str, key: str) -> str | None:
-    """Why ``field`` (``crank``, ``pin`` or ``pillar``) can't be ``key`` any more, naming
-    the replacement (:data:`REMOVED_CONSTRUCTIONS`); ``None`` when it wasn't removed."""
-    gone = REMOVED_CONSTRUCTIONS.get(field, {}).get(key)
+def removed_construction(field: str, key) -> tuple[str, str] | None:
+    """Why ``field`` (``crank``, ``pin`` or ``pillar``) can't be ``key`` any more, and its
+    replacement (:data:`REMOVED_CONSTRUCTIONS`); ``None`` when it wasn't removed."""
+    gone = REMOVED_CONSTRUCTIONS.get(field, {}).get(key) if isinstance(key, str) else None
     if gone is None:
         return None
     replacement, when, what = gone
     return (f"{field} {key!r} ({what}) was removed on {when}; use {field}={replacement!r} "
-            "(config.REMOVED_CONSTRUCTIONS)")
+            "(config.REMOVED_CONSTRUCTIONS)"), replacement
 
 
 def default_crank_sheet(lk: linkage.Linkage) -> str:
@@ -264,8 +247,8 @@ class BuildConfig:
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
         for what in ("crank", "pin", "pillar"):
-            if (why := removed_construction(what, getattr(self, what))) is not None:
-                raise ParamError(why)
+            if (gone := removed_construction(what, getattr(self, what))) is not None:
+                raise ParamError(gone[0])
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():

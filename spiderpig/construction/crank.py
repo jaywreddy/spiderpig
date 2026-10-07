@@ -659,7 +659,7 @@ class BoltCrank:
         r = self.head_r()
         hr = self.horn_head_r(ctx)
         return JointRules(spans, head=r, nut=r, post=dims.post, horn=horn_pockets(ctx),
-                          hub_play=True, inner_webs=False,
+                          inner_webs=False,
                           bottom_layers=self.stub_layers_web(ctx.sheet_t("frame"), p, t),
                           gap_head=r, horn_heads=tuple((h, hr) for h in self.horn_points(ctx)),
                           j_spans=tuple((n, self._web_span_ok(n, 0, p, t)) for n in range(64)),
