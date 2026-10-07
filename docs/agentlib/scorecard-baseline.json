@@ -1,102 +1,115 @@
 {
  "meta": {
-  "time": "2026-10-07T10:27:17-0400",
-  "commit": "e7517f82758497324d082223b492761b22e9f1a1",
+  "time": "2026-10-07T11:58:00-0400",
+  "commit": "41997b4ea7eaf9e25cd89675097e4f17c6439963",
   "branch": "w0-scorecard",
   "dirty": false,
-  "engine_version": "0.1.0+11e2cf249d30",
+  "engine_version": "0.1.0+094f801c3c66",
   "host": "ao-server",
   "cpus": 20,
   "python": "3.12.14"
  },
  "loadavg": {
   "start": [
-   13.74,
-   15.34,
-   13.81
+   29.42,
+   18.31,
+   15.52
   ],
   "build": {
    "before": [
-    13.74,
-    15.34,
-    13.81
+    29.42,
+    18.31,
+    15.52
    ],
    "after": [
-    17.92,
-    16.92,
-    14.55
+    14.51,
+    15.71,
+    15.09
    ],
-   "seconds": 92.2
+   "seconds": 229.4
   },
   "tiers": {
    "before": [
-    17.92,
-    16.92,
-    14.55
+    14.51,
+    15.71,
+    15.09
    ],
    "after": [
-    15.55,
-    15.94,
-    14.64
+    23.42,
+    20.6,
+    17.29
    ],
-   "seconds": 227.2
+   "seconds": 251.3
   },
   "quick": {
    "before": [
-    15.55,
-    15.94,
-    14.64
+    23.42,
+    20.6,
+    17.29
    ],
    "after": [
-    16.16,
-    16.31,
-    14.98
+    29.77,
+    22.86,
+    18.54
    ],
-   "seconds": 125.9
+   "seconds": 144.7
+  },
+  "static": {
+   "before": [
+    29.77,
+    22.86,
+    18.54
+   ],
+   "after": [
+    23.84,
+    22.36,
+    18.67
+   ],
+   "seconds": 68.9
   },
   "gate": {
    "before": [
-    16.16,
-    16.31,
-    14.98
+    23.84,
+    22.36,
+    18.67
    ],
    "after": [
-    11.75,
-    13.54,
-    14.44
+    11.53,
+    15.05,
+    16.87
    ],
-   "seconds": 567.5
+   "seconds": 586.3
   },
   "full": {
    "before": [
-    11.75,
-    13.54,
-    14.44
+    11.53,
+    15.05,
+    16.87
    ],
    "after": [
-    11.97,
-    16.14,
-    17.3
+    10.22,
+    14.35,
+    15.98
    ],
-   "seconds": 1912.5
+   "seconds": 1713.1
   },
   "audit": {
    "before": [
-    11.97,
-    16.14,
-    17.3
+    10.22,
+    14.35,
+    15.98
    ],
    "after": [
-    20.84,
-    18.92,
-    18.14
+    11.32,
+    11.98,
+    14.48
    ],
-   "seconds": 342.5
+   "seconds": 291.6
   },
   "end": [
-   20.84,
-   18.92,
-   18.14
+   11.32,
+   11.98,
+   14.48
   ]
  },
  "sections": [
@@ -110,70 +123,252 @@
  ],
  "build": {
   "design": "strider double robot (BuildConfig())",
-  "runs": 1,
+  "runs": 3,
   "cold": {
    "rc": [
+    0,
+    0,
     0
    ],
-   "wall_s": 50.08,
-   "cpu_s": 101.33,
-   "internal_wall_s": 48.817,
-   "stages_sum_s": 48.813,
+   "wall_s": 38.48,
+   "cpu_s": 112.01,
+   "internal_wall_s": 37.697,
+   "stages_sum_s": 37.65,
    "stages": {
-    "import": 4.394,
-    "template": 0.318,
-    "plan": 2.554,
-    "fabricate": 17.863,
-    "step": 2.571,
-    "stl": 2.668,
-    "group": 9.606,
-    "prints": 1.268,
-    "dxf_sheets": 6.011,
-    "dxf_parts": 1.529,
-    "bom": 0.028,
-    "order": 0.003
-   },
-   "samples": [
-    {
-     "rc": 0,
-     "wall_s": 50.08,
-     "cpu_s": 101.33,
-     "internal_wall_s": 48.81656406703405,
-     "stages_sum_s": 48.8132498099003
-    }
-   ]
-  },
-  "warm": {
-   "rc": [
-    0
-   ],
-   "wall_s": 42.11,
-   "cpu_s": 110.52,
-   "internal_wall_s": 41.21,
-   "stages_sum_s": 41.186,
-   "stages": {
-    "import": 4.77,
-    "template": 0.461,
-    "plan": 0.451,
-    "fabricate": 16.023,
-    "step": 3.019,
-    "stl": 2.29,
-    "group": 8.141,
-    "prints": 0.948,
-    "dxf_sheets": 3.943,
-    "dxf_parts": 1.12,
+    "import": 3.715,
+    "template": 0.295,
+    "plan": 2.061,
+    "fabricate": 13.181,
+    "step": 2.488,
+    "stl": 2.171,
+    "group": 7.554,
+    "prints": 0.771,
+    "dxf_sheets": 4.369,
+    "dxf_parts": 1.08,
     "bom": 0.017,
     "order": 0.002
    },
    "samples": [
     {
      "rc": 0,
-     "wall_s": 42.11,
-     "cpu_s": 110.52,
-     "internal_wall_s": 41.210281948093325,
-     "stages_sum_s": 41.186433691415004
+     "wall_s": 42.15,
+     "cpu_s": 108.77,
+     "internal_wall_s": 41.31055658694822,
+     "stages_sum_s": 41.250730152009055
+    },
+    {
+     "rc": 0,
+     "wall_s": 38.48,
+     "cpu_s": 112.22,
+     "internal_wall_s": 37.696605110075325,
+     "stages_sum_s": 37.649603540310636
+    },
+    {
+     "rc": 0,
+     "wall_s": 36.22,
+     "cpu_s": 112.01,
+     "internal_wall_s": 35.51774922804907,
+     "stages_sum_s": 35.470319780288264
     }
    ]
+  },
+  "warm": {
+   "rc": [
+    0,
+    0,
+    0
+   ],
+   "wall_s": 37.92,
+   "cpu_s": 104.38,
+   "internal_wall_s": 37.181,
+   "stages_sum_s": 37.097,
+   "stages": {
+    "import": 3.375,
+    "template": 0.239,
+    "plan": 0.337,
+    "fabricate": 13.799,
+    "step": 2.715,
+    "stl": 2.323,
+    "group": 8.274,
+    "prints": 0.782,
+    "dxf_sheets": 4.291,
+    "dxf_parts": 1.046,
+    "bom": 0.017,
+    "order": 0.002
+   },
+   "samples": [
+    {
+     "rc": 0,
+     "wall_s": 38.87,
+     "cpu_s": 101.61,
+     "internal_wall_s": 38.137762171099894,
+     "stages_sum_s": 38.066275096614845
+    },
+    {
+     "rc": 0,
+     "wall_s": 35.7,
+     "cpu_s": 116.83,
+     "internal_wall_s": 35.074275663122535,
+     "stages_sum_s": 34.982794622774236
+    },
+    {
+     "rc": 0,
+     "wall_s": 37.92,
+     "cpu_s": 104.38,
+     "internal_wall_s": 37.18145022611134,
+     "stages_sum_s": 37.09717294073198
+    }
+   ]
+  }
+ },
+ "tiers": {
+  "linkage": {
+   "rc": 0,
+   "wall_s": 15.32,
+   "cpu_s": 18.04,
+   "workers": 0,
+   "tests": 377,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "passed": 377
+  },
+  "planner": {
+   "rc": 0,
+   "wall_s": 39.26,
+   "cpu_s": 121.06,
+   "workers": 4,
+   "tests": 127,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "passed": 127
+  },
+  "construction": {
+   "rc": 0,
+   "wall_s": 60.51,
+   "cpu_s": 211.05,
+   "workers": 4,
+   "tests": 454,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 2,
+   "passed": 452
+  },
+  "hardware": {
+   "rc": 0,
+   "wall_s": 15.01,
+   "cpu_s": 17.11,
+   "workers": 0,
+   "tests": 43,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "passed": 43
+  },
+  "strength": {
+   "rc": 0,
+   "wall_s": 12.42,
+   "cpu_s": 15.44,
+   "workers": 0,
+   "tests": 53,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "passed": 53
+  },
+  "api": {
+   "rc": 0,
+   "wall_s": 50.37,
+   "cpu_s": 177.25,
+   "workers": 4,
+   "tests": 173,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "passed": 173
+  },
+  "sim": {
+   "rc": 0,
+   "wall_s": 37.97,
+   "cpu_s": 109.02,
+   "workers": 4,
+   "tests": 84,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 1,
+   "passed": 83
+  },
+  "server": {
+   "rc": 0,
+   "wall_s": 20.23,
+   "cpu_s": 28.29,
+   "workers": 0,
+   "tests": 19,
+   "failures": 0,
+   "errors": 0,
+   "skipped": 0,
+   "passed": 19
+  },
+  "total_wall_s": 251.1
+ },
+ "quick": {
+  "rc": 0,
+  "wall_s": 144.64,
+  "cpu_s": 483.46,
+  "workers": 4,
+  "coverage_on": true,
+  "tests": 1330,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 3,
+  "passed": 1327,
+  "slowest": [
+   {
+    "test": "tests.test_mechanisms::test_one_side_stays_inside_its_claims[hoecken]",
+    "s": 10.77
+   },
+   {
+    "test": "tests.test_contract::test_every_part_stays_inside_its_claim[single-2.2]",
+    "s": 10.03
+   },
+   {
+    "test": "tests.test_spiderpig_mcp::test_build_through_the_long_op_path_serves_the_stored_build_as_a_manifest",
+    "s": 9.64
+   },
+   {
+    "test": "tests.test_sim::test_the_steering_check_follows_its_runs",
+    "s": 9.55
+   },
+   {
+    "test": "tests.test_contract::test_every_servo_couples_inside_the_claims[single-xl430_w250]",
+    "s": 9.45
+   },
+   {
+    "test": "tests.test_doc_check::test_report_only_unless_strict",
+    "s": 8.92
+   },
+   {
+    "test": "tests.test_contract::test_every_servo_couples_inside_the_claims[single-xl330_m288]",
+    "s": 8.58
+   },
+   {
+    "test": "tests.test_sim::test_full_speed_torque_stays_on_the_motor_line",
+    "s": 7.93
+   },
+   {
+    "test": "tests.test_axle::test_snap_pegs_fit_their_sockets_and_hold[double]",
+    "s": 7.2
+   },
+   {
+    "test": "tests.test_robot::test_no_two_parts_of_the_robot_intersect[1.0]",
+    "s": 7.09
+   }
+  ],
+  "coverage_pct": 79.19,
+  "coverage_lines": {
+   "covered": 16683,
+   "statements": 21066
   }
  },
  "static": {
@@ -182,7 +377,7 @@
    "errors_excl_stub_noise": 619,
    "stub_noise": 114,
    "warnings": 2,
-   "files": 103,
+   "files": 105,
    "version": "1.1.406",
    "by_rule": {
     "reportAttributeAccessIssue": 344,
@@ -200,7 +395,7 @@
     "reportOptionalIterable": 3,
     "reportUnusedExcept": 1
    },
-   "seconds": 47.2
+   "seconds": 55.6
   },
   "ruff": {
    "ruf": 117,
@@ -230,24 +425,24 @@
     "spiderpig/walk.py": 1074,
     "spiderpig/construction/route.py": 1033,
     "spiderpig/hardware/bom.py": 977,
+    "spiderpig/bake.py": 930,
     "spiderpig/sim/mjcf.py": 929,
     "spiderpig/spec.py": 911,
     "spiderpig/mcp/__init__.py": 905,
     "viewer/src/drive/index.ts": 899,
     "spiderpig/sim/run.py": 871,
-    "spiderpig/bake.py": 857,
     "spiderpig/construction/deck.py": 856,
     "spiderpig/construction/chassis.py": 821,
     "spiderpig/verify.py": 820
    },
-   "product_py_lines": 40756,
-   "product_py_files": 103,
+   "product_py_lines": 40899,
+   "product_py_files": 105,
    "largest_py": 3315,
    "viewer_ts_lines": 2546
   },
   "docs": {
-   "claude_md_lines": 678,
-   "claude_md_words": 9379,
+   "claude_md_lines": 679,
+   "claude_md_words": 9383,
    "doc_check_misses": 48
   },
   "ci": {
@@ -262,267 +457,125 @@
    ]
   }
  },
- "tiers": {
-  "linkage": {
-   "rc": 0,
-   "wall_s": 17.05,
-   "cpu_s": 18.72,
-   "tests": 377,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 0,
-   "passed": 377
-  },
-  "planner": {
-   "rc": 0,
-   "wall_s": 32.71,
-   "cpu_s": 101.4,
-   "tests": 127,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 0,
-   "passed": 127
-  },
-  "construction": {
-   "rc": 0,
-   "wall_s": 41.65,
-   "cpu_s": 148.84,
-   "tests": 454,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 2,
-   "passed": 452
-  },
-  "hardware": {
-   "rc": 0,
-   "wall_s": 11.84,
-   "cpu_s": 16.17,
-   "tests": 43,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 0,
-   "passed": 43
-  },
-  "strength": {
-   "rc": 0,
-   "wall_s": 9.54,
-   "cpu_s": 13.59,
-   "tests": 53,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 0,
-   "passed": 53
-  },
-  "api": {
-   "rc": 0,
-   "wall_s": 46.79,
-   "cpu_s": 165.9,
-   "tests": 163,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 0,
-   "passed": 163
-  },
-  "sim": {
-   "rc": 0,
-   "wall_s": 46.56,
-   "cpu_s": 117.24,
-   "tests": 84,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 1,
-   "passed": 83
-  },
-  "server": {
-   "rc": 0,
-   "wall_s": 21.03,
-   "cpu_s": 28.37,
-   "tests": 19,
-   "failures": 0,
-   "errors": 0,
-   "skipped": 0,
-   "passed": 19
-  },
-  "total_wall_s": 227.2
- },
- "quick": {
-  "rc": 0,
-  "wall_s": 125.86,
-  "cpu_s": 435.95,
-  "workers": 4,
-  "coverage_on": true,
-  "tests": 1320,
-  "failures": 0,
-  "errors": 0,
-  "skipped": 3,
-  "passed": 1317,
-  "slowest": [
-   {
-    "test": "tests.test_mechanisms::test_one_side_stays_inside_its_claims[hoecken]",
-    "s": 11.6
-   },
-   {
-    "test": "tests.test_spiderpig_mcp::test_build_through_the_long_op_path_serves_the_stored_build_as_a_manifest",
-    "s": 9.27
-   },
-   {
-    "test": "tests.test_contract::test_every_part_stays_inside_its_claim[single-2.2]",
-    "s": 8.36
-   },
-   {
-    "test": "tests.test_deck::test_no_deck_part_clashes_at_the_built_angle[klann]",
-    "s": 8.35
-   },
-   {
-    "test": "tests.test_sim::test_the_steering_check_follows_its_runs",
-    "s": 7.98
-   },
-   {
-    "test": "tests.test_contract::test_every_servo_couples_inside_the_claims[single-xl330_m288]",
-    "s": 7.1
-   },
-   {
-    "test": "tests.test_contract::test_every_servo_couples_inside_the_claims[single-xl430_w250]",
-    "s": 6.99
-   },
-   {
-    "test": "tests.test_axle::test_snap_pegs_fit_their_sockets_and_hold[double]",
-    "s": 6.41
-   },
-   {
-    "test": "tests.test_sim::test_a_spin_has_no_full_speed_scaling",
-    "s": 6.11
-   },
-   {
-    "test": "tests.test_view::test_import_spiderpig_loads_no_engine",
-    "s": 5.93
-   }
-  ],
-  "coverage_pct": 79.17,
-  "coverage_lines": {
-   "covered": 16618,
-   "statements": 20991
-  }
- },
  "gate": {
   "rc": 0,
-  "wall_s": 567.4,
-  "cpu_s": 1402.84,
+  "wall_s": 586.18,
+  "cpu_s": 1419.71,
   "jobs": 2,
   "per_design_s": {
-   "dwell_rocker": 39.5,
-   "hoecken_pantograph": 43.2,
-   "klann_lego_quad": 208.5,
-   "klann_quad": 203.0,
-   "snapshot": 567,
-   "strider_double": 174.6,
-   "strider_quad": 355.4
+   "dwell_rocker": 47.5,
+   "hoecken_pantograph": 55.3,
+   "klann_lego_quad": 198.4,
+   "klann_quad": 227.8,
+   "snapshot": 586,
+   "strider_double": 182.8,
+   "strider_quad": 347.0
   }
  },
  "full": {
   "warm": {
    "rc": 0,
-   "wall_s": 964.47,
-   "cpu_s": 5719.76,
+   "wall_s": 816.88,
+   "cpu_s": 4888.55,
    "workers": 6,
-   "tests": 1594,
+   "tests": 1604,
    "failures": 0,
    "errors": 0,
    "skipped": 13,
-   "passed": 1581,
+   "passed": 1591,
    "slowest": [
     {
      "test": "tests.test_sim::test_each_walker_walks_forward_upright[trotbot_heel-quad]",
-     "s": 342.9
+     "s": 338.09
     },
     {
      "test": "tests.test_stage_checks::test_plan_stage_names_what_blocked_it",
-     "s": 187.94
-    },
-    {
-     "test": "tests.test_strength::test_the_order_designs_pin_loads_current[strider_quad]",
-     "s": 137.52
+     "s": 164.87
     },
     {
      "test": "tests.test_walk::test_foot_z_fixture_is_current",
-     "s": 132.33
+     "s": 130.51
     },
     {
      "test": "tests.test_walk::test_api_walk_flags_a_design_that_would_tip[live]",
-     "s": 124.97
+     "s": 123.72
     },
     {
      "test": "tests.test_sim::test_each_walker_walks_forward_upright[jansen-quad]",
-     "s": 122.37
+     "s": 121.39
     },
     {
-     "test": "tests.test_sim::test_strider_walks_on_its_feet_alone",
-     "s": 101.8
+     "test": "tests.test_strength::test_the_order_designs_pin_loads_current[strider_quad]",
+     "s": 116.69
     },
     {
-     "test": "tests.test_order::test_the_order_designs_buy_what_the_robot_needs[strider_quad]",
-     "s": 86.88
+     "test": "tests.test_sim::test_each_walker_walks_forward_upright[strider-quad]",
+     "s": 67.25
     },
     {
      "test": "tests.test_spiderpig_api::test_verify_standard_passes_on_the_default_quad",
-     "s": 66.05
+     "s": 63.51
     },
     {
      "test": "tests.test_planner_bounds::test_the_trotbot_modules_return_inside_the_deadlines[trotbot_toe-double-either]",
-     "s": 63.34
+     "s": 62.48
+    },
+    {
+     "test": "tests.test_planner_bounds::test_the_trotbot_modules_return_inside_the_deadlines[trotbot_toe-quad-either]",
+     "s": 62.24
     }
    ]
   },
   "cold": {
    "rc": 0,
-   "wall_s": 947.99,
-   "cpu_s": 5788.89,
+   "wall_s": 896.19,
+   "cpu_s": 5440.68,
    "workers": 6,
-   "tests": 1594,
+   "tests": 1604,
    "failures": 0,
    "errors": 0,
    "skipped": 13,
-   "passed": 1581,
+   "passed": 1591,
    "slowest": [
     {
      "test": "tests.test_sim::test_each_walker_walks_forward_upright[trotbot_heel-quad]",
-     "s": 342.28
-    },
-    {
-     "test": "tests.test_stage_checks::test_plan_stage_names_what_blocked_it",
-     "s": 153.26
+     "s": 335.53
     },
     {
      "test": "tests.test_walk::test_foot_z_fixture_is_current",
-     "s": 129.21
+     "s": 130.39
+    },
+    {
+     "test": "tests.test_stage_checks::test_plan_stage_names_what_blocked_it",
+     "s": 123.62
     },
     {
      "test": "tests.test_walk::test_api_walk_flags_a_design_that_would_tip[live]",
-     "s": 122.95
+     "s": 123.01
     },
     {
      "test": "tests.test_sim::test_each_walker_walks_forward_upright[jansen-quad]",
-     "s": 122.23
+     "s": 122.03
     },
     {
      "test": "tests.test_strength::test_the_order_designs_pin_loads_current[strider_quad]",
-     "s": 117.33
+     "s": 105.67
     },
     {
      "test": "tests.test_sim::test_strider_walks_on_its_feet_alone",
-     "s": 100.72
+     "s": 97.18
     },
     {
      "test": "tests.test_order::test_the_order_designs_buy_what_the_robot_needs[strider_quad]",
-     "s": 82.49
+     "s": 68.53
     },
     {
-     "test": "tests.test_planner_bounds::test_the_trotbot_modules_return_inside_the_deadlines[trotbot_toe-double-either]",
-     "s": 63.22
+     "test": "tests.test_planner_bounds::test_the_trotbot_modules_return_inside_the_deadlines[trotbot_heel-double-either]",
+     "s": 62.19
     },
     {
      "test": "tests.test_planner_bounds::test_the_trotbot_modules_return_inside_the_deadlines[trotbot_toe-quad-either]",
-     "s": 62.02
+     "s": 62.03
     }
    ]
   }
@@ -530,16 +583,16 @@
  "audit": {
   "cold": {
    "rc": 0,
-   "wall_s": 182.94,
-   "cpu_s": 328.99
+   "wall_s": 158.81,
+   "cpu_s": 385.29
   },
   "warm": {
    "rc": 0,
-   "wall_s": 159.61,
-   "cpu_s": 258.48
+   "wall_s": 132.77,
+   "cpu_s": 350.46
   },
   "module": "double (strider)"
  },
- "seconds": 3267.8,
- "seconds_excl_gate": 2700.3
+ "seconds": 3285.2,
+ "seconds_excl_gate": 2698.9
 }
