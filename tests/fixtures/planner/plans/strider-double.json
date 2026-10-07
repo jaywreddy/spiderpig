@@ -1,0 +1,57 @@
+{
+ "data": {
+  "gaps": {
+   "0": 2.7,
+   "1": 3.3,
+   "10": 3.0,
+   "2": 2.5,
+   "3": 2.7,
+   "5": 4.0,
+   "6": 3.5,
+   "7": 2.2,
+   "8": 2.5
+  },
+  "heads": "gap",
+  "height": 66.464,
+  "layers": {
+   "b1_leg0": 1,
+   "b1_leg1": 8,
+   "b2_leg0": 3,
+   "b2_leg1": 7,
+   "b3_leg0": 2,
+   "b3_leg1": 9,
+   "b4_leg0": 5,
+   "b4_leg1": 8,
+   "b5_leg0": 1,
+   "b5_leg1": 6,
+   "b6_leg0": 4,
+   "b6_leg1": 9,
+   "b7_leg0": 2,
+   "b7_leg1": 7,
+   "b8_leg0": 1,
+   "b8_leg1": 8
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "J1_leg0",
+     "hi": 5,
+     "lo": 3
+    },
+    {
+     "at": "J1_leg1",
+     "hi": 10,
+     "lo": 7
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "13": 2.032
+  },
+  "top": 13
+ },
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[strider-double]"
+}

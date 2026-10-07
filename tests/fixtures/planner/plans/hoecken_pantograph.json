@@ -1,0 +1,37 @@
+{
+ "data": {
+  "gaps": {
+   "0": 2.9,
+   "3": 4.0,
+   "4": 1.8,
+   "5": 3.0
+  },
+  "heads": "gap",
+  "height": 36.763999999999996,
+  "layers": {
+   "b1": 5,
+   "b2": 4,
+   "b3": 2,
+   "b4": 1,
+   "b5": 1,
+   "b6": 2
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M",
+     "hi": 5,
+     "lo": 5
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "8": 2.032
+  },
+  "top": 8
+ },
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[hoecken_pantograph]"
+}

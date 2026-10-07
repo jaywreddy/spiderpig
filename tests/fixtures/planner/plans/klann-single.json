@@ -1,0 +1,35 @@
+{
+ "data": {
+  "gaps": {
+   "4": 4.0,
+   "5": 2.4,
+   "6": 3.0
+  },
+  "heads": "gap",
+  "height": 37.638999999999996,
+  "layers": {
+   "b1": 6,
+   "b2": 4,
+   "b3": 5,
+   "b4": 5
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M",
+     "hi": 6,
+     "lo": 6
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "5": 3.175,
+   "9": 2.032
+  },
+  "top": 9
+ },
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-single]"
+}

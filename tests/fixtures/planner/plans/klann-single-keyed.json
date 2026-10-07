@@ -1,0 +1,31 @@
+{
+ "data": {
+  "gaps": {},
+  "heads": "sink",
+  "height": 22.239,
+  "layers": {
+   "b1": 2,
+   "b2": 4,
+   "b3": 3,
+   "b4": 3
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M",
+     "hi": 2,
+     "lo": 2
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "3": 3.175,
+   "7": 2.032
+  },
+  "top": 7
+ },
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-single-keyed]"
+}

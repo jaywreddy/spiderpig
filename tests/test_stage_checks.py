@@ -90,3 +90,27 @@ def test_legs_that_must_sit_in_disjoint_blocks_are_found():
     leg1 = [k for n, k in plan.layers.items() if n.endswith("_leg1")]
     assert max(leg0) < min(leg1)
     assert plan.optimal, plan.proof
+
+
+def test_the_plan_stages_recommendations_are_checked_by_planning_them(monkeypatch):
+    """The recommendation half of :func:`test_plan_stage_names_what_blocked_it` (whose
+    node-bounded search for the error's tally takes two minutes): from the static clearance
+    behind that error (b2 past pillar A), what would clear it, each checked by planning it
+    with the clock taken out: a larger scale, or narrower spacer rings."""
+    from spiderpig.recommend import recommend
+
+    monkeypatch.setattr(stack, "MAX_SECONDS", math.inf)
+    cfg = BuildConfig(linkage="jansen", module="decker", robot=False, proportions=(("unit", 1.5),),
+                      pin="chicago", pillar="printed", crank="keyed")
+    _, _, problem = side_problem(template_for(cfg), cfg)
+    involved = tuple(c for c in problem.clearances if c.keepout.owner == "pillar:A_leg0")
+    assert {c.link for c in involved} == {"b2_leg0", "b2_leg1"}
+    recs, notes = recommend(cfg, clearances=involved, plan=True)
+    assert notes == []
+    scaled, thinner = recs
+    assert scaled.changes == (("unit", 1.5, 1.6),)
+    assert scaled.effects.startswith("crank 22.5 -> 24.0 mm")
+    assert thinner.changes == (("neck_d", 4.0, 3.0),)
+    for r in (scaled, thinner):
+        assert r.verified == ("checked: the static stage passes, and it plans (decker module, "
+                              "the design's own) in 14 layers (40.064 mm)")

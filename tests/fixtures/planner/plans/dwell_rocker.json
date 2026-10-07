@@ -1,0 +1,35 @@
+{
+ "data": {
+  "gaps": {
+   "0": 2.4,
+   "1": 4.0,
+   "2": 2.5,
+   "3": 3.0
+  },
+  "heads": "gap",
+  "height": 30.964000000000002,
+  "layers": {
+   "b1": 3,
+   "b2": 2,
+   "b3": 2,
+   "b4": 1
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M",
+     "hi": 3,
+     "lo": 3
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "6": 2.032
+  },
+  "top": 6
+ },
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[dwell_rocker]"
+}

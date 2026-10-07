@@ -144,9 +144,16 @@ def solve(problem: StackProblem, top: int, ctx,
     fixed = [c for c in problem.claims if c.choice is None]
     routed = [c for c in problem.claims if c.choice is not None]
 
+    dists: dict[tuple, float] = {}
+
     def clear(a: Placed, b: Placed) -> bool:
-        return (a.seat or b.seat or a.layer != b.layer or a.group == b.group
-                or geo.dist(a.shape.core, b.shape.core) >= a.shape.r + b.shape.r + m)
+        if a.seat or b.seat or a.layer != b.layer or a.group == b.group:
+            return True
+        key = (a.shape.core, b.shape.core)
+        d = dists.get(key)
+        if d is None:
+            d = dists[key] = geo.dist(*key)
+        return d >= a.shape.r + b.shape.r + m
 
     def own(n: str, k: int) -> list[Placed]:
         return [p for c in fixed if c.deps == {n}
@@ -163,51 +170,85 @@ def solve(problem: StackProblem, top: int, ctx,
             memo[key] = made(c, Layout(layers, top, pitch))[0]
         return memo[key]
 
-    def layerings(i: int, layers: dict[str, int]) -> Iterator[dict[str, int]]:
-        """Every layering, skipping only links whose own shapes collide in a shared layer."""
+    # A fixed claim's shapes depend on its links' layers only (``built``'s key): each is
+    # made and checked as soon as its last link has a layer (a claim with no links before
+    # the first, a ``final`` one at the end), so a layering that fails is cut off where it
+    # first fails. The layerings that pass, in the order they pass, are those of
+    # enumerating them all and checking each whole.
+    ready: list[list] = [[] for _ in range(len(links) + 1)]    # ready[i]: once links[:i]
+    for c in fixed:
+        need_ = set(links) if c.final else set(c.deps)
+        ready[max((links.index(d) + 1 for d in need_), default=0)].append(c)
+
+    def place(cs, layers, by_layer) -> list[Placed] | None:
+        """The shapes of claims ``cs`` when they build and clear ``by_layer`` and each
+        other (nothing but seats in a frame plate's layer), else ``None``."""
+        new: list[Placed] = []
+        for c in cs:
+            out = built(c, layers)
+            if out is None:
+                return None
+            new += out
+        if any(not p.seat and p.layer in (0, top) for p in new):
+            return None
+        if not all(clear(a, b) for a, b in itertools.combinations(new, 2)):
+            return None
+        if not all(clear(a, b) for a in new for b in by_layer.get(a.layer, ())):
+            return None
+        return new
+
+    def layerings(i: int, layers: dict[str, int], by_layer: dict[int, list[Placed]]
+                  ) -> Iterator[tuple[dict[str, int], dict[int, list[Placed]]]]:
+        """Every layering whose fixed claims build and clear each other (skipping first
+        links whose own shapes collide in a shared layer), with its shapes by layer."""
         if i == len(links):
-            yield dict(layers)
+            yield dict(layers), by_layer
             return
         n = links[i]
         for k in range(1, top):
             if all(layers[m] != k or apart[(m, n, k)] for m in links[:i]):
                 layers[n] = k
-                yield from layerings(i + 1, layers)
+                new = place(ready[i + 1], layers, by_layer)
+                if new is not None:
+                    grown = {j: list(ps) for j, ps in by_layer.items()}
+                    for p in new:
+                        grown.setdefault(p.layer, []).append(p)
+                    yield from layerings(i + 1, layers, grown)
                 del layers[n]
 
     best = None
-    for layers in layerings(0, {}):
-        shapes: list[Placed] = []
-        for c in fixed:
-            out = built(c, layers)
-            if out is None:
-                break
-            shapes += out
-        else:
-            if any(not p.seat and p.layer in (0, top) for p in shapes):
+    joints: dict[tuple, bool] = {}
+    first = place(ready[0], {}, {})
+    if first is None:
+        return None
+    start: dict[int, list[Placed]] = {}
+    for p in first:
+        start.setdefault(p.layer, []).append(p)
+    for layers, by_layer in layerings(0, {}, start):
+        need = {k: riders[n] for n, k in layers.items() if n in riders}
+        keep = (True, False) if problem.spec.drop_bearing else (True,)
+        for route in (only(layers, h0) if only else routes(points, 2, h0 - 1, need, keep)):
+            c = cost(route, layers, riders, detours)
+            if best is not None and c >= best[0]:
                 continue
-            by_layer: dict[int, list[Placed]] = {}
-            for p in shapes:
-                by_layer.setdefault(p.layer, []).append(p)
-            if not all(clear(a, b) for ps in by_layer.values()
-                       for a, b in itertools.combinations(ps, 2)):
+            # (the printed crank's joints first: they rule out most routes, and cost a
+            # quarter of making the crank)
+            # (``buildable`` reads the layering only at the riders' layers)
+            jkey = (route, *(layers[n] for n in riders))
+            ok = joints.get(jkey)
+            if ok is None:
+                ok = joints[jkey] = buildable(route, layers, problem, ctx, h0)
+            if not ok:
                 continue
-            need = {k: riders[n] for n, k in layers.items() if n in riders}
-            keep = (True, False) if problem.spec.drop_bearing else (True,)
-            for route in (only(layers, h0) if only else routes(points, 2, h0 - 1, need, keep)):
-                c = cost(route, layers, riders, detours)
-                if best is not None and c >= best[0]:
+            crank: list[Placed] = []
+            for claim in routed:
+                out, _ = made(claim, Layout(layers, top, pitch, {router.group: route}))
+                if out is None:
+                    break
+                crank += out
+            else:
+                if any(not p.seat and p.layer in (0, top) for p in crank):
                     continue
-                crank: list[Placed] = []
-                for claim in routed:
-                    out, _ = made(claim, Layout(layers, top, pitch, {router.group: route}))
-                    if out is None:
-                        break
-                    crank += out
-                else:
-                    if any(not p.seat and p.layer in (0, top) for p in crank):
-                        continue
-                    if all(clear(a, b) for a in crank for b in by_layer.get(a.layer, ())) \
-                            and buildable(route, layers, problem, ctx, h0):
-                        best = (c, dict(layers), route)
+                if all(clear(a, b) for a in crank for b in by_layer.get(a.layer, ())):
+                    best = (c, dict(layers), route)
     return best

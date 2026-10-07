@@ -1,0 +1,62 @@
+{
+ "data": {
+  "gaps": {
+   "0": 2.7,
+   "1": 3.3,
+   "2": 2.7,
+   "4": 4.0,
+   "5": 3.3,
+   "6": 3.7,
+   "7": 3.6,
+   "9": 3.0
+  },
+  "heads": "gap",
+  "height": 64.414,
+  "layers": {
+   "b1_leg0": 3,
+   "b1_leg1": 4,
+   "b1_leg2": 8,
+   "b1_leg3": 9,
+   "b2_leg0": 1,
+   "b2_leg1": 2,
+   "b2_leg2": 6,
+   "b2_leg3": 7,
+   "b3_leg0": 2,
+   "b3_leg1": 3,
+   "b3_leg2": 7,
+   "b3_leg3": 8,
+   "b4_leg0": 2,
+   "b4_leg1": 3,
+   "b4_leg2": 7,
+   "b4_leg3": 8
+  },
+  "route": {
+   "bearing": true,
+   "runs": [
+    {
+     "at": "M_leg0",
+     "hi": 4,
+     "lo": 3
+    },
+    {
+     "at": "M_leg2",
+     "hi": 9,
+     "lo": 8
+    }
+   ]
+  },
+  "thick": {
+   "0": 2.032,
+   "12": 2.032,
+   "2": 3.175,
+   "3": 3.175,
+   "4": 3.175,
+   "7": 3.175,
+   "8": 3.175,
+   "9": 3.175
+  },
+  "top": 12
+ },
+ "engine_version": "0.1.0+9cb2d06a61c8",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann_lego-quad]"
+}

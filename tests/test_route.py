@@ -4,6 +4,8 @@ a brute-force reference (:mod:`tests.brute`)."""
 
 from __future__ import annotations
 
+import itertools
+
 import numpy as np
 import pytest
 
@@ -19,9 +21,10 @@ from spiderpig.fabricate import (
     fabricate_side,
     ground_clearance,
     side_problem,
+    static_stage,
     template_for,
 )
-from spiderpig.stack import ClearanceError, verify_plan
+from spiderpig.stack import ClearanceError, Layout, RouteConflict, RouteView, verify_plan
 from tests import brute
 from tests.tiers import quick
 
@@ -204,16 +207,18 @@ def test_the_keyed_rules_end_a_chain_one_layer_higher():
 
 def test_the_keyed_cranks_post_stops_the_heel_at_its_default_scale():
     """The keyed crank's 8.5 mm post (room for its hex key) needs 11.2 mm from b7, which
-    passes J1 at 10.2 at the heel's default scale: the static stage says so and the checked
-    recommendation is the next scale up."""
+    passes J1 at 10.2 at the heel's default scale: the static stage says so. (Its checked
+    recommendation, the next scale up, planning in 15 layers, is
+    tests/test_recommend.py::test_the_keyed_crank_post_sends_the_heel_up_a_scale: the
+    same design, the same recommendation.)"""
+    cfg = _cfg("trotbot_heel")
+    tmpl = template_for(cfg)
+    _, _, problem = side_problem(tmpl, cfg, hint=False)
     with pytest.raises(ClearanceError) as e:
-        _design("trotbot_heel")
+        static_stage(tmpl, problem)
     msg = str(e.value)
     assert ("it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs (4.25 post "
             "radius + 6 link half-width + 1 margin)") in msg
-    (rec,) = e.value.recommendations
-    assert rec.changes == (("unit", 10.5, 12.0),)
-    assert "plans in 15 layers" in rec.verified       # (0.080 in frame plates: +1)
     assert _design("trotbot_heel", **HEEL)[1].plan.top == 12       # the printed crank's plan
 
 
@@ -235,3 +240,39 @@ def test_the_planner_matches_the_brute_force_optimum(key):
     ours = brute.cost(plan.choices["crank"], plan.layers, problem.topo.riders, {})
     assert best is not None
     assert ours == best[0]
+
+
+@pytest.mark.parametrize(("key", "crank", "module", "top"), [
+    ("klann", "keyed", "single", 8), ("klann", "printed", "double", 9),
+    ("klann", "keyed", "decker", 11), ("trotbot", "keyed", "single", 12),
+    ("trotbot", "printed", "single", 12), ("strider", "keyed", "single", 10),
+    ("jansen", "keyed", "single", 9)])
+def test_the_routers_joint_rules_are_the_brute_forces_on_every_rider_layering(
+        key, crank, module, top):
+    """The router's joint rules (``JointRules``, compiled from the printed crank's joints)
+    against the brute force's own model of those joints (:func:`tests.brute.buildable`, as
+    ``realize`` builds them), on hand-made layerings: every layer of the riders under the
+    hub, nothing else in the way. The router's cheapest route builds by the brute force's
+    joints and costs what the brute force's cheapest does, or neither has one."""
+    cfg = _cfg(key, module, crank=crank, heads="sink")
+    ctx, _, problem = side_problem(template_for(cfg), cfg, hint=False)
+    router, riders = problem.router, problem.topo.riders
+    h0 = router.hub_bottom(top)
+    names = sorted(riders)
+    points = list(dict.fromkeys(riders.values()))
+    seen = 0
+    for ks in itertools.product(range(2, h0), repeat=len(names)):
+        layers = dict(zip(names, ks, strict=True))
+        if len({(k, riders[n]) for n, k in layers.items()}) > len(set(ks)):
+            continue                    # riders of two crankpins in one layer: never a route
+        res = router.route(RouteView(Layout(layers, top, problem.spec.pitch), {}))
+        need = {k: riders[n] for n, k in layers.items()}
+        costs = [brute.cost(r, layers, riders, {}) for r in brute.routes(points, 2, h0 - 1, need)
+                 if brute.buildable(r, layers, problem, ctx, h0)]
+        if isinstance(res, RouteConflict):
+            assert not costs, (layers, res)
+        else:
+            assert brute.buildable(res.choice, layers, problem, ctx, h0), (layers, res)
+            assert brute.cost(res.choice, layers, riders, {}) == min(costs), layers
+        seen += 1
+    assert seen
