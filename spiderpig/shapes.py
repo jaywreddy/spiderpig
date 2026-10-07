@@ -18,6 +18,21 @@ from build123d import Align, Axis, Box, Compound, Cylinder, Part, Pos
 XY = Sequence[float]
 
 
+def share(shape):
+    """A wrapper of its own round ``shape``'s B-rep: the same TShape (no copy), under a
+    TopoDS_Shape of its own with its own location, so moving either in place (build123d's
+    ``move`` / ``locate``) leaves the other where it was. Reads ``shape`` only (unlike
+    :func:`moved`, it never touches its ``wrapped``); its label and colour are kept."""
+    from build123d.topology import downcast
+    from OCP.TopLoc import TopLoc_Location
+
+    # its topology class (a Box's is Part: an object's own constructor takes dimensions)
+    cls = next(c for c in type(shape).__mro__ if c.__module__.startswith("build123d.topology"))
+    out = cls(downcast(shape.wrapped.Moved(TopLoc_Location())))
+    out.label, out.color = shape.label, shape.color
+    return out
+
+
 def moved(shape, loc):
     """``shape.moved(loc)``, without the B-rep copy build123d makes and throws away.
 

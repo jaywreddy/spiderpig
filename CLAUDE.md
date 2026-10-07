@@ -353,7 +353,13 @@ fabrication cache, `~/.cache/spiderpig/test-cache/`; `off` builds afresh) and
 `SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), `SPIDERPIG_DEV_ORIGIN_PORT`
 (set by `mise run view` for the API: the Vite port whose loopback pages may open its
 WebSockets) and `SPIDERPIG_REQUIRE_VIEWER_TESTS=1` (the walk-model parity test fails, not
-skips, without Node), and `VITE_PORT` / `API_PORT` and
+skips, without Node),
+`SPIDERPIG_OCCT_THREADS` (OCCT's
+thread pool per process, `workers.occt_threads`, read by every command and worker; unset,
+OCCT's own pool, every core: `build` needs it, its STL meshing takes 4 s threaded, 22 s on
+one; one thread would save the audit ~15-30 % CPU, but OCCT's numbers depend on it: the demo
+Klann quad's audit reports a hole 3.92 mm from an edge on one thread, 3.93 on a pool; the
+test workers use one, the identity gate two, as its baseline), and `VITE_PORT` / `API_PORT` and
 `VITE_ALLOWED_HOSTS` (below). Nothing in
 the environment changes a design's parts: the hardware is plain code, and a design's id
 holds everything that shapes it.

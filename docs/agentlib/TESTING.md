@@ -209,6 +209,13 @@ entities, a hash of every STL. Servos parametric, a fresh store, `PYTHONHASHSEED
 `SPIDERPIG_PLAN_SECONDS=3600` (node budgets alone bound the planner: the Strider quad's
 search ends on its node budget at ~54 CPU-s, too near the 60 s default to be stable).
 
+Each design's contract angles and its `t=1` half (that fabrication's clashes, solids and
+parts, and the build of it) run in worker processes of their own (`GATE_SPLIT`, default
+`contract:0,1.6|contract:3.2,4.8|build`; empty: one process), each taking the plan from the
+design's store; unless given, `-j` and the split follow the free cores (`plan_cores`: the
+cores less the load average). OCCT runs two threads per process, as the baseline did
+(`GATE_OCCT_THREADS`; one thread moves a cut-rule number). The STEP file, never read, isn't written.
+
 Verdicts per design, and the exit status: **identical** (0); **geometry identical, order
 differs** (1: a DXF's entities in another order or a closed outline from another start
 vertex, bodies reordered, a text file's lines reordered, a part's faces/edges counted

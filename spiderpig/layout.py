@@ -196,11 +196,41 @@ def _lay_flat(part):
     return part
 
 
+_SECTIONS: dict[int, tuple] = {}
+"""id(part) -> (a weakref to it, a copy of its shape's wrapper: its TShape, location and
+orientation as they were, the section: a wrapper never handed out)."""
+
+
 def section_of(body):
-    """The body's section through the middle of its own layer, laid flat."""
+    """The body's section through the middle of its own layer, laid flat: one boolean per
+    part, remembered while the part lives (the packing, ``sheet_lines``, the per-part DXFs
+    and the cut-rule review all ask for it). A part moved in place since is sectioned
+    again; each caller gets a wrapper of its own (:func:`shapes.share`)."""
+    import weakref
+
+    from OCP.TopLoc import TopLoc_Location
+
+    from spiderpig.shapes import share
+
+    key = id(body.part)
+    hit = _SECTIONS.get(key)
+    if hit is not None and hit[0]() is body.part and hit[1].IsEqual(body.part.wrapped):
+        return share(hit[2])
     part = _lay_flat(body.part)
     bb = part.bounding_box()
-    return section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+    out = section(part, Plane.XY.offset((bb.min.Z + bb.max.Z) / 2))
+
+    def gone(ref, key=key) -> None:
+        e = _SECTIONS.get(key)
+        if e is not None and e[0] is ref:
+            del _SECTIONS[key]
+
+    try:
+        ref = weakref.ref(body.part, gone)
+    except TypeError:       # a part that can't be weakly referenced: not remembered
+        return out
+    _SECTIONS[key] = (ref, body.part.wrapped.Moved(TopLoc_Location()), share(out))
+    return out
 
 
 def _profile(body, sheet: tuple[float, float], margin: float):
