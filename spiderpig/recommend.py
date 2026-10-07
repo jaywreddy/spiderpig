@@ -62,9 +62,11 @@ def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) ->
                            (("crankpin_d", 0.5), ("link_radius", 1.0)), f.margin))
     for c in clearances:
         if c.keepout.span and c.dist > 0:
+            # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
+            # barrel's ring round its bore): a thinner link narrows the gap's need, no Params
+            # field narrows the ring
             out.append(Gap(f"{c.link} past {c.keepout.owner}", c.dist,
-                           (("neck_d", 0.5), ("link_radius", 1.0)),
-                           c.need - c.keepout.r - params.link_radius))
+                           (("link_radius", 1.0),), c.need - params.link_radius))
     return out
 
 
