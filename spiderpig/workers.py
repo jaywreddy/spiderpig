@@ -40,6 +40,29 @@ arguments (a :class:`config.BuildConfig`) unpickle from the caller's package, no
 whichever ``spiderpig`` the interpreter would find by itself."""
 
 
+ENV_OCCT = "SPIDERPIG_OCCT_THREADS"   # OCCT's thread pool size (0: OCCT's own, every core)
+
+
+def occt_threads(default: int | None = None) -> None:
+    """Size OCCT's default thread pool (its parallel booleans and meshing) for this
+    process: ``$SPIDERPIG_OCCT_THREADS`` when set (0 leaves OCCT's own: every core), else
+    ``default`` (``None``: leave it). Call it before the first OCCT operation.
+
+    Measured on the Strider double (2026-10-07, 6 pinned cores at load ~15-27): one thread
+    makes ``spiderpig build`` 44-50 -> 72-76 s wall (the STL export's meshing 4 -> 22 s)
+    for 85 -> 73 CPU-s, so the build keeps the pool; ``spiderpig audit --no-sim`` (no
+    meshing) 171-177 s / 238 CPU-s -> 172-218 s / 171-205 CPU-s, so the audit runs on one
+    thread (:func:`spiderpig.tools.audit.main`). Results are the same either way (the
+    identity gate)."""
+    raw = os.environ.get(ENV_OCCT)
+    n = int(raw) if raw not in (None, "") else default
+    if not n:
+        return
+    from OCP.OSD import OSD_ThreadPool
+
+    OSD_ThreadPool.DefaultPool_s(n)
+
+
 def enabled() -> bool:
     """Whether :func:`submit` starts processes (``SPIDERPIG_WORKERS=0`` turns them off)."""
     return os.environ.get(ENV_OFF) != "0"
@@ -107,6 +130,7 @@ def _child(job, out: str) -> None:
     import time
 
     _, module, name, args = job
+    occt_threads()                  # (the caller's $SPIDERPIG_OCCT_THREADS)
     t0 = time.perf_counter()
     try:
         fn = getattr(importlib.import_module(module), name)

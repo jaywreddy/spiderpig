@@ -416,6 +416,9 @@ def markdown(report: dict) -> str:
 
 
 def main(argv=None) -> int:
+    from spiderpig.workers import occt_threads
+
+    occt_threads(1)     # booleans only, no meshing: OCCT's pool costs CPU, not wall time
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_design_args(ap)         # --linkage, --module, --phases, --proportion (as build's)
     ap.add_argument("--modules", default=None,

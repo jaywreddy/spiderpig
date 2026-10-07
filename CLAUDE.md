@@ -350,7 +350,11 @@ downloads), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks
 AGENTS.md), `SPIDERPIG_DIGEST_CACHE` (where `engine_version()` keeps its digest, keyed by
 the sources' stats: `off` recomputes it, ~1.3 s), `SPIDERPIG_TEST_CACHE` (the tests'
 fabrication cache, `~/.cache/spiderpig/test-cache/`; `off` builds afresh) and
-`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), and `VITE_PORT` / `API_PORT` and
+`SPIDERPIG_TIER_WORKERS` (a module tier's xdist workers), `SPIDERPIG_OCCT_THREADS` (OCCT's
+thread pool per process, `workers.occt_threads`; 0 = OCCT's own, every core: unset, `audit`
+runs on one thread, ~15-30 % less CPU at the same wall time, and everything else keeps the
+pool, which `build` needs: its STL meshing takes 4 s threaded, 22 s on one; the test workers
+and the gate's audit and contract processes use one, the gate's build worker two), and `VITE_PORT` / `API_PORT` and
 `VITE_ALLOWED_HOSTS` (below). Nothing in
 the environment changes a design's parts: the hardware is plain code, and a design's id
 holds everything that shapes it.
