@@ -34,23 +34,28 @@ quick tier under coverage.py, `COVERAGE_CORE=sysmon`, pytest-cov combining the w
 10 slowest tests), pyright's errors (`[tool.pyright]`, basic; also without OCP/mujoco stub
 noise), ruff's `RUF` findings, every module over 800 lines, CLAUDE.md's lines, the doc
 check's misses and the load average around each section. `--gate`, `--full` (`--cold`: on
-an empty test cache) and `--audit` add the heavy ones; `--runs 3` takes the build's medians;
-`--compare A.json B.json` prints the deltas. CPU is each process's `wait4` rusage (its xdist
+an empty test cache) and `--audit` add the heavy ones; the build runs 3 times (`--runs`),
+medians reported; the static checks run alone (`--parallel-static`: beside the tiers);
+`--compare A.json B.json` prints changed or non-zero exit codes first, warns when the two
+used other xdist workers or ran at loads over 2x apart, then every delta. CPU is each process's `wait4` rusage (its xdist
 workers included). The baseline is `docs/agentlib/scorecard-baseline.json`.
 
-CI (`.github/workflows/ci.yml`, every push and PR): ruff, `uv lock --check`, the viewer's
-typecheck + vitest, the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`, the fabrication cache
-restored and saved with `actions/cache`, keyed by `python -m spiderpig.design`, the engine
-version, plus `uv.lock` and `tests/cache.py`: no restore-keys, so a new engine starts
-empty), and the doc check, report-only until W7. `.pre-commit-config.yaml` runs ruff and
+CI (`.github/workflows/ci.yml`: pushes to master and every PR, read-only token, a newer
+run of a ref cancels the older): ruff, `uv lock --check`, the viewer's typecheck + vitest,
+the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages installed with
+`SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
+cache restored and saved with `actions/cache`, keyed by the engine version, `python -m
+spiderpig.tools.engine_version`, plus `uv.lock` and `tests/cache.py`: no restore-keys, so a
+new engine starts empty), and the doc check, report-only until W7. `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
-`mise run X`, `spiderpig X`, `--flag` and env var in CLAUDE.md, AGENTS.md, README.md,
-ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md statically (the package's AST;
-no engine import); `-v` lists every check, `--strict` fails on a miss.
-`tests/doc_check_allow.txt` holds what is legitimately not code (output file names, the
-roadmap's planned names), never drift.
+task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
+AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md
+statically against the package's AST (identifiers and key-like strings; docstrings,
+comments and prose strings name nothing; no engine import); `-v` lists every check,
+`--strict` fails on a miss. `tests/doc_check_allow.txt` holds what is legitimately not code
+(output file names, protocol fields, the roadmap's planned names), never drift.
 
 ## Markers
 

@@ -96,6 +96,18 @@ class Result:
 # --------------------------------------------------------------------------- the code index
 
 
+def _uncommented(path: Path) -> str:
+    """A non-Python source's text without its comments (``//`` and ``/* */`` in TypeScript
+    and JavaScript, ``#`` elsewhere)."""
+    text = path.read_text()
+    if path.suffix in (".ts", ".js"):
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        return re.sub(r"(?m)(^|[^:\\])//.*$", r"\1", text)
+    if path.suffix == ".json":
+        return text
+    return re.sub(r"(?m)(^|\s)#.*$", r"\1", text)
+
+
 @dataclass
 class _Module:
     name: str
@@ -136,9 +148,23 @@ class _Module:
         return out
 
     @cached_property
+    def docstrings(self) -> set[int]:
+        """The ids of the docstring nodes: every string standing as a statement (a module's,
+        class's or function's docstring, an attribute's after its assignment): prose, never a
+        name of the code."""
+        out = set()
+        for n in ast.walk(self.tree):
+            if (isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)
+                    and isinstance(n.value.value, str)):
+                out.add(id(n.value))
+        return out
+
+    @cached_property
     def strings(self) -> set[str]:
-        return {n.value for n in ast.walk(self.tree)
-                if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+        """Every string constant of the code but the docstrings."""
+        docs = self.docstrings
+        return {n.value for n in ast.walk(self.tree) if isinstance(n, ast.Constant)
+                and isinstance(n.value, str) and id(n) not in docs}
 
 
 class Index:
@@ -172,15 +198,16 @@ class Index:
 
     @cached_property
     def _texts(self) -> list[str]:
-        texts = [m.path.read_text() for m in self.modules.values()]
+        """The code's strings (no docstrings, no comments: the AST's) and the other sources
+        with their comments stripped."""
+        texts = ["\n".join(sorted(m.strings)) for m in self.modules.values()]
         for src in TEXT_SOURCES:
             p = self.root / src
-            if p.is_file():
-                texts.append(p.read_text())
-            elif p.is_dir():
-                texts += [f.read_text() for f in p.rglob("*") if f.is_file()
-                          and f.suffix in (".ts", ".js", ".yml", ".yaml", ".json", ".toml")
-                          and not SKIP_DIRS & set(f.parts)]
+            files = [p] if p.is_file() else sorted(
+                f for f in p.rglob("*") if f.is_file()
+                and f.suffix in (".ts", ".js", ".yml", ".yaml", ".json", ".toml")
+                and not SKIP_DIRS & set(f.parts)) if p.is_dir() else []
+            texts += [_uncommented(f) for f in files]
         return texts
 
     @cached_property
@@ -201,9 +228,12 @@ class Index:
                 elif isinstance(n, ast.alias):
                     out.update((n.asname or n.name).split("."))
                     out.update(n.name.split("."))
-                elif isinstance(n, ast.Constant) and isinstance(n.value, str):
-                    out.add(n.value)
-                    for w in re.findall(r"\w+", n.value):
+            # strings that are keys (no space: "gap_sink", "SPIDERPIG_STORE", "2_mesh_share"),
+            # whole and in words; prose strings (messages) and docstrings name nothing
+            for value in m.strings:
+                if not re.search(r"\s", value):
+                    out.add(value)
+                    for w in re.findall(r"\w+", value):
                         out.update((w, w.lstrip("0123456789_")))   # 2_mesh_share: mesh_share
         for text in self._texts[len(self.modules):]:
             out.update(re.findall(r"\w+", text))
@@ -418,7 +448,7 @@ class Index:
         t = t.split("?")[0].split("#")[0]
         if t.startswith(("/api", "/ws")):
             route = re.sub(r"\{[^}]*\}", "", t).rstrip("/")
-            server = "".join(m.path.read_text() for k, m in self.modules.items()
+            server = "\n".join(s for k, m in self.modules.items() for s in m.strings
                              if k.startswith("spiderpig.server"))
             head = "/".join(route.split("/")[:3])
             return ("ok", "") if head in server else ("miss", f"no route {head} in the server")

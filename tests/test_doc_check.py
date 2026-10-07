@@ -78,3 +78,12 @@ def test_the_allow_list_holds_a_miss(tmp_path, index):
     results = doc_check.check([str(doc)], index, doc_check.load_allow(allow), every=True)
     status = {r.token: r.status for r in results}
     assert status == {"frobnicate_widget_zz": "allowed", "stack.frobnicate_layers": "miss"}
+
+
+@pytest.mark.parametrize("token", ["use_recorded_foot_z", "compute_mass", "bolt_captive",
+                                   "pdot_ix"])
+def test_docstrings_and_comments_name_nothing(index, token):
+    """Each word stands only in a docstring or a comment of the code (W0 review, round 1):
+    the doc check doesn't take it for a name."""
+    kind, status, why = doc_check.check_token(index, token)
+    assert status == "miss", (token, kind, why)

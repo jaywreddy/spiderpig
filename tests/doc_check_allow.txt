@@ -10,9 +10,12 @@ strider.stl
 klann.stl
 strider_sheet_parts.csv
 export.json
+verify.json
 docs/agentlib/API.md: FILE.json
-# the MCP protocol's annotation names (the SDK's ToolAnnotations fields, read_only_hint, ...)
+# the MCP protocol's names (the SDK's ToolAnnotations fields, read_only_hint, ...; a
+# result's isError)
 readOnlyHint
+isError
 idempotentHint
 # `envelope_x/_y/_z_mm` shorthand
 _y_mm
@@ -47,8 +50,13 @@ docs/agentlib/ROADMAP.md: PIE
 docs/agentlib/ROADMAP.md: RET
 docs/agentlib/ROADMAP.md: BLE
 docs/agentlib/ROADMAP.md: PLE
+docs/agentlib/ROADMAP.md: PERF
+# the main branch
+docs/agentlib/ROADMAP.md: master
 docs/agentlib/ROADMAP.md: noqa
 docs/agentlib/ROADMAP.md: reportOptionalMemberAccess
 # the doc check's own placeholders
 docs/agentlib/ROADMAP.md: Class.attr
 docs/agentlib/ROADMAP.md: mise run X
+docs/agentlib/ROADMAP.md: mod.func
+docs/agentlib/ROADMAP.md: --flag
