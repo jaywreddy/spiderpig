@@ -101,6 +101,9 @@ reportMissingModuleSource = false
 [tool.coverage.run]
 source = ["spiderpig"]
 omit = ["spiderpig/viewer/*"]
+# measure the Python subprocesses too (spiderpig.workers' jobs, the CLI runs): pytest-cov 7
+# no longer does; coverage.py's own patch, their data combined with the run's
+patch = ["subprocess"]
 
 [tool.coverage.report]
 skip_empty = true
