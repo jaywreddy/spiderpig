@@ -118,6 +118,20 @@ def test_a_store_it_cant_write_fabricates(on, tmp_path, caplog):
     assert "can't lock" in caplog.text
 
 
+def test_a_read_only_store_still_serves_its_entries(on, monkeypatch, caplog):
+    build = _Counter()
+    fabcache.fabricated(on, None, None, None, 1.0, build)
+
+    def no_lock(entry):
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(fabcache, "locked", no_lock)
+    assert fabcache.fabricated(on, None, None, None, 1.0, build).name == "m"
+    assert build.calls == 1                         # served, without the lock
+    fabcache.fabricated(on, None, None, None, 2.0, build)
+    assert build.calls == 2                         # none there: fabricated, not cached
+
+
 def test_gc_removes_other_keys_and_leftovers(on):
     build = _Counter()
     fabcache.fabricated(on, None, None, None, 1.0, build)
@@ -138,6 +152,8 @@ def test_gc_removes_other_keys_and_leftovers(on):
     os.utime(entry, (old, old))
     on.gc(older_than=3600)
     assert not entry.exists()
+    assert (fab / "fab-test-key" / "entry_t1.0.lock").exists()     # (a builder may hold it)
+    assert not list((fab / "fab-test-key").glob("*.tmp"))
 
 
 def test_the_servo_model_in_play_is_in_the_key(monkeypatch):
@@ -223,6 +239,17 @@ def test_a_loaded_fabrication_equals_a_fresh_one(name, tmp_path, monkeypatch):
     assert not diffs, (len(diffs), diffs[:10])
     assert [b.name for b in fresh.bodies] == [b.name for b in loaded.bodies]
     assert fresh.meta == loaded.meta
+    assert fresh.connections == loaded.connections
+    assert fresh.bom_extras == loaded.bom_extras
+
+    def kinematics(m):
+        return [{"name": b.name, "outline": [list(p) for p in b.outline],
+                 "joints": [[j.name, [list(map(float, r)) for r in j.pose.matrix]]
+                            for j in b.joints]} for b in m.bodies]
+
+    diffs = [d for x, y in zip(kinematics(fresh), kinematics(loaded), strict=True)
+             for d in gate.deep_diff(x, y, x["name"])]
+    assert not diffs, (len(diffs), diffs[:10])
     assert bom_from_mechanism(fresh).as_dict() == bom_from_mechanism(loaded).as_dict()
     assert _dxf_docs(fresh, cfg.sheet, tmp_path / "a") == \
         _dxf_docs(loaded, cfg.sheet, tmp_path / "b")

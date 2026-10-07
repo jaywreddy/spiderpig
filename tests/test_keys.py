@@ -75,10 +75,24 @@ EDITS = [
      None, "X = 1\n", True, True),
     ("a module that patches the planner when imported", "spiderpig.zz_patch",
      None, "from spiderpig import stack\nstack.GIVE_UP = 5\n", True, True),
+    ("a function elsewhere that setattr()s the planner", "spiderpig.zz_rt", None,
+     "from spiderpig import stack\n\n\ndef go():\n    setattr(stack, 'GIVE_UP', 5)\n",
+     True, True),
+    ("a function elsewhere that writes vars() of the planner", "spiderpig.zz_vars", None,
+     "import spiderpig.stack as st\n\n\ndef go():\n    vars(st)['GIVE_UP'] = 5\n",
+     True, True),
+    ("a method elsewhere that patches the planner", "spiderpig.zz_cls", None,
+     "class P:\n    def go(self):\n        from spiderpig import stack\n"
+     "        stack.GIVE_UP = 5\n", True, True),
+    ("setattr() on the planner when imported", "spiderpig.zz_imp", None,
+     "from spiderpig import stack\nsetattr(stack, 'GIVE_UP', 5)\n", True, True),
+    ("a function elsewhere that patches a deck colour", "spiderpig.zz_deck", None,
+     "from spiderpig.construction import deck\n\n\ndef go():\n"
+     "    deck.DECK_COLOR = 'x'\n", False, True),
     ("a module that registers a sheet when imported", "spiderpig.zz_sheet", None,
      "from spiderpig.hardware.catalog import register\nregister(None)\n", True, True),
     ("the fabrication cache's format", "spiderpig.fabcache",
-     "FORMAT = 1", "FORMAT = 2", False, True),
+     "FORMAT = 2", "FORMAT = 3", False, True),
 ]
 
 
@@ -156,3 +170,48 @@ def test_a_fixture_is_stale_when_its_generators_code_changes(tmp_path, monkeypat
     assert cache._source(lambda: 1)["name"] is None               # a lambda: its module
     assert not cache.is_stale({"engine_version": engine_version()})
     assert cache.is_stale({"engine_version": "0.0.0+old"})
+
+
+PATCH_ALLOWED = {
+    ("spiderpig/__init__.py", "__getattr__"): "caches a lazy export under its own name",
+    ("spiderpig/uptodate.py", "preparse"): "sets a field of its own argparse.Namespace",
+    ("spiderpig/view.py", "resolve_args"): "sets a field of a SimpleNamespace of options",
+    ("spiderpig/tools/build_profile.py", "instrumented"):
+        "the profiler wraps the build's calls in timers for the run, puts them back after; "
+        "the results are the calls' own",
+}
+"""Every store into another object's namespace by name in the package, reviewed: none
+patches an engine module in a way that changes what it computes."""
+
+
+def test_nothing_in_the_package_monkeypatches_the_engine():
+    """``setattr`` / ``delattr``, ``vars(x)[...] =``, ``x.__dict__[...] =``,
+    ``globals()[...] =`` anywhere in ``spiderpig/`` (outside ``tests/``) is a site the
+    keys can't always see through (a patched module computes something else under the same
+    key): each must be in :data:`PATCH_ALLOWED`, with why it is harmless. And no code
+    assigns into an engine module it imported (``stack.GIVE_UP = 5``)."""
+    import ast
+
+    found, stores = set(), []
+    for path in sorted(PKG.rglob("*.py")):
+        rel = path.relative_to(PKG.parent).as_posix()
+        tree = ast.parse(path.read_bytes())
+        for top in tree.body:
+            holder = getattr(top, "name", "<module>")
+            for n in ast.walk(top):
+                if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                        and n.func.id in ("setattr", "delattr")):
+                    found.add((rel, holder))
+                elif isinstance(n, ast.Subscript) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                    v = n.value
+                    if ((isinstance(v, ast.Call) and isinstance(v.func, ast.Name)
+                         and v.func.id in ("vars", "globals"))
+                            or (isinstance(v, ast.Attribute) and v.attr == "__dict__")):
+                        found.add((rel, holder))
+    for m in keys.Graph().modules.values():
+        for target, attr, holder in m.patches:
+            if target.startswith("spiderpig") and (m.name, target) != ("spiderpig",
+                                                                       "spiderpig"):
+                stores.append((m.name, holder, target, attr))
+    assert found <= set(PATCH_ALLOWED), sorted(found - set(PATCH_ALLOWED))
+    assert stores == [], stores

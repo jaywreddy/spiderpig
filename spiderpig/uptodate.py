@@ -26,7 +26,15 @@ build answers in well under a second.
   ``SPIDERPIG_CAD_CACHE`` as they were, each pinned CAD file as it was (path, size,
   modification time), and none missing that a build could download now;
 - **every output** there with its size and SHA-256, and no other cut, print, STEP or
-  STL file beside them (the files a build owns: :func:`outputs`).
+  STL file beside them (the files a build owns: :func:`outputs`). A file whose size,
+  modification and change times and inode are the recorded ones isn't read again (a
+  change of content changes its ctime, which no one can set); any other is hashed.
+
+The servo model's derived strip record (:func:`spiderpig.servos.cad.prepared_path`) is
+one of its files. What the build read (the plan, the servo files) is captured when it
+reads it (:func:`inputs`), not after it wrote: a re-plan or a download meanwhile makes
+the next build build. The check runs once per command (:func:`check_once`: the CLI's
+answer is the build's).
 """
 
 from __future__ import annotations
@@ -92,18 +100,55 @@ def preparse(argv: list[str]) -> Options | None:
     return opts
 
 
+def _dists_fingerprint() -> str:
+    """Every installed distribution's name and version, hashed; kept on disk by the
+    site-packages folders' modification times (an install or removal changes them), so
+    a check reads it in milliseconds instead of listing every distribution (~0.3 s)."""
+    import site
+    import sys
+
+    sites = [d for d in (*site.getsitepackages(), site.getusersitepackages())
+             if os.path.isdir(d)]
+    sig = hashlib.sha256(repr((sys.prefix, sys.version, [
+        (d, os.stat(d).st_mtime_ns) for d in sites])).encode()).hexdigest()
+    env = os.environ.get("SPIDERPIG_DIGEST_CACHE", "").strip()
+    memo = None
+    if env.lower() not in ("off", "0", "false", "no"):
+        base = Path(env).expanduser() if env else Path(
+            os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "spiderpig" \
+            / "engine-version"
+        memo = base / f"dists-{sig[:32]}.json"
+        try:
+            doc = json.loads(memo.read_text())
+            if doc.get("signature") == sig:
+                return doc["dists"]
+        except (OSError, ValueError, KeyError, AttributeError):
+            pass
+    from importlib import metadata
+
+    dists = sorted({(d.metadata["Name"] or "", d.version) for d in metadata.distributions()})
+    fp = hashlib.sha256(json.dumps(dists).encode()).hexdigest()
+    if memo is not None:
+        try:
+            memo.parent.mkdir(parents=True, exist_ok=True)
+            tmp = memo.with_name(f".{memo.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"signature": sig, "dists": fp}))
+            os.replace(tmp, memo)
+        except OSError:
+            pass
+    return fp
+
+
 def build_key(opts: Options) -> str:
     """The engine's sources, the options as given (but ``--out`` / ``--force``), the
     store's folder, the Python and every installed distribution's version (an ezdxf or
     build123d upgrade builds again) (module docstring)."""
     import sys
-    from importlib import metadata
 
     from spiderpig.keys import engine_digest
 
-    dists = sorted({(d.metadata["Name"] or "", d.version) for d in metadata.distributions()})
     doc = {"engine": engine_digest(), "argv": opts.argv, "store": str(opts.store),
-           "python": sys.version, "dists": dists}
+           "python": sys.version, "dists": _dists_fingerprint()}
     return hashlib.sha256(json.dumps(doc, sort_keys=True).encode()).hexdigest()
 
 
@@ -113,6 +158,21 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def stamp(path: Path) -> list:
+    """``[size, mtime_ns, ctime_ns, inode, sha256]`` of a file."""
+    st = Path(path).stat()
+    return [st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino, sha256(path)]
+
+
+def unchanged(path: Path, want: list) -> bool:
+    """Whether ``path`` still is the file :func:`stamp` recorded: its stat the same (not
+    read), else its size and SHA-256."""
+    st = Path(path).stat()
+    if [st.st_size, st.st_mtime_ns, st.st_ctime_ns, st.st_ino] == list(want[:4]):
+        return True
+    return st.st_size == want[0] and sha256(path) == want[4]
 
 
 def outputs(out: Path) -> list[Path]:
@@ -151,22 +211,39 @@ def cad_env() -> dict:
 
 
 def servo_files(config) -> list[list]:
-    """Each of the servo's pinned CAD files: its path in the download cache, whether it
-    is there, its size and modification time (none when manufacturer models are off)."""
+    """Each of the servo's pinned CAD files and its derived strip record
+    (:func:`spiderpig.servos.cad.prepared_path`): path, whether it is there, size,
+    modification time (none when manufacturer models are off)."""
     from spiderpig import servos
     from spiderpig.servos import cad as cadlib
+    from spiderpig.servos.model import _strip_key
 
     if not cadlib.cad_enabled():
         return []
     out = []
     for ref in servos.get(config.servo).cads:
-        p = cadlib.cached_path(ref)
-        try:
-            st = p.stat()
-            out.append([str(p), True, st.st_size, st.st_mtime_ns])
-        except OSError:
-            out.append([str(p), False, None, None])
+        for p, kind in ((cadlib.cached_path(ref), "model"),
+                        (cadlib.prepared_path(ref, _strip_key(ref)), "record")):
+            try:
+                st = p.stat()
+                out.append([str(p), True, st.st_size, st.st_mtime_ns, kind])
+            except OSError:
+                out.append([str(p), False, None, None, kind])
     return out
+
+
+def inputs(opts: Options, config) -> dict:
+    """What the build of ``config`` reads beside its code, captured when it reads it
+    (after the plan, before fabricating): the stored plan, the servo model's files."""
+    from dataclasses import replace
+
+    from spiderpig import api
+    from spiderpig.config import default_robot
+
+    plan_id = api.resolve(api.spec_of(replace(config, robot=default_robot(config.linkage))),
+                          store=None).id
+    return {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
+            "cad_env": cad_env(), "servo_files": servo_files(config)}
 
 
 def record_path(opts: Options) -> Path:
@@ -180,29 +257,18 @@ def forget(opts: Options) -> None:
     record_path(opts).unlink(missing_ok=True)
 
 
-def record(opts: Options, config, key: str) -> dict:
-    """Record the build of ``config`` into ``opts.out``, every output written: ``key``
-    (:func:`build_key`, computed before the build read anything), the stored plan it read,
-    the servo model's files, every output's size and SHA-256 and the manifest's. The
-    record, as written (atomically)."""
-    from dataclasses import replace
-
-    from spiderpig import api
-    from spiderpig.config import default_robot
-
-    plan_id = api.resolve(api.spec_of(replace(config, robot=default_robot(config.linkage))),
-                          store=None).id
+def record(opts: Options, key: str, read: dict) -> dict:
+    """Record the build into ``opts.out``, every output written: ``key``
+    (:func:`build_key`, computed before the build read anything), what it read
+    (:func:`inputs`, captured then), every output's stamp and the manifest's. The record,
+    as written (atomically)."""
     out = Path(opts.out)
     doc = {
         "out": str(out.resolve()),
         "build_key": key,
-        "plan_design": plan_id,
-        "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
-        "cad_env": cad_env(),
-        "servo_files": servo_files(config),
-        "outputs": {str(f.relative_to(out)): [f.stat().st_size, sha256(f)]
-                    for f in outputs(out)},
-        "manifest": sha256(out / "manifest.json"),
+        **read,
+        "outputs": {str(f.relative_to(out)): stamp(f) for f in outputs(out)},
+        "manifest": stamp(out / "manifest.json"),
     }
     path = record_path(opts)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,18 +278,19 @@ def record(opts: Options, config, key: str) -> dict:
     return doc
 
 
-def check(opts: Options) -> str | None:
+def check(opts: Options, key: str | None = None) -> str | None:
     """Why ``opts.out`` already holds what this build would write, or ``None`` (module
-    docstring)."""
+    docstring). ``key``: :func:`build_key` of ``opts``, when known."""
     try:
         cur = json.loads(record_path(opts).read_text())
         if cur.get("out") != str(Path(opts.out).resolve()):
             return None
         manifest = opts.out / "manifest.json"
         doc = json.loads(manifest.read_text())
-        if doc.get("written_by") != "spiderpig build" or sha256(manifest) != cur["manifest"]:
+        if doc.get("written_by") != "spiderpig build" or not unchanged(manifest,
+                                                                       cur["manifest"]):
             return None
-        if cur.get("build_key") != build_key(opts):
+        if cur.get("build_key") != (key or build_key(opts)):
             return None
         want = cur.get("plan_hash")
         if want is None or plan_hash(plan_file(opts.store, cur["plan_design"])) != want:
@@ -232,10 +299,10 @@ def check(opts: Options) -> str | None:
             return None
         offline = (os.environ.get("SPIDERPIG_OFFLINE", "").strip().lower()
                    in ("1", "true", "yes", "on"))
-        for path, present, size, mtime in cur.get("servo_files", []):
+        for path, present, size, mtime, *kind in cur.get("servo_files", []):
             p = Path(path)
             if not present:
-                if p.exists() or not offline:
+                if p.exists() or (not offline and kind != ["record"]):
                     return None         # a build now would read it, or try to download it
                 continue
             st = p.stat()
@@ -244,13 +311,44 @@ def check(opts: Options) -> str | None:
         listed = cur["outputs"]
         if {str(f.relative_to(opts.out)) for f in outputs(opts.out)} != set(listed):
             return None
-        for rel, (size, digest) in listed.items():
-            f = opts.out / rel
-            if f.stat().st_size != size or sha256(f) != digest:
+        for rel, want_stamp in listed.items():
+            if not unchanged(opts.out / rel, want_stamp):
                 return None
-    except (OSError, KeyError, TypeError, ValueError, AttributeError):
+    except (OSError, KeyError, TypeError, ValueError, AttributeError, IndexError):
         return None
     return f"design {doc.get('design')}, {len(listed)} files unchanged"
+
+
+class Checked(argparse.Namespace):
+    """:func:`check_once`'s answer: ``skip`` (said on stdout), ``opts`` (``None``: the
+    check doesn't apply) and ``key`` (the build key, for the build's record)."""
+
+    skip: bool
+    opts: Options | None
+    key: str | None
+
+
+_ANSWERS: dict[tuple, Checked] = {}
+
+
+def check_once(argv: list[str]) -> Checked:
+    """The check for ``spiderpig build argv``, done once per command: the CLI's answer is
+    kept for the build it then runs (:func:`take`), which neither checks nor keys again.
+    Says on stdout when there is nothing to do."""
+    opts = preparse(list(argv))
+    key = build_key(opts) if opts is not None else None
+    why = None if opts is None or opts.force else check(opts, key)
+    if why is not None:
+        print(f"{opts.out} is up to date ({why}): nothing to do (--force rebuilds)")
+    ans = Checked(skip=why is not None, opts=opts, key=key)
+    if not ans.skip:
+        _ANSWERS[tuple(argv)] = ans
+    return ans
+
+
+def take(argv: list[str]) -> Checked:
+    """The CLI's answer for ``argv`` (consumed), else :func:`check_once` now."""
+    return _ANSWERS.pop(tuple(argv), None) or check_once(argv)
 
 
 def skip(argv: list[str]) -> bool:

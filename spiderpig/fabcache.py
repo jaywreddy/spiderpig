@@ -127,14 +127,18 @@ def servo_state(config) -> tuple:
     """What decides the servo's model: ``("parametric",)`` when manufacturer models are off
     (``SPIDERPIG_SERVO_CAD=0``) or the servo has none, else each pinned model's hash and
     whether it is in reach (in the download cache, or downloaded now unless
-    ``SPIDERPIG_OFFLINE=1``: what the fabrication itself would do)."""
+    ``SPIDERPIG_OFFLINE=1``: what the fabrication itself would do), and
+    :func:`spiderpig.servos.model.cad_state` (the download's stat and the content of its
+    derived strip record, whose own key holds the strip code's key)."""
     from spiderpig import servos
     from spiderpig.servos import cad as cadlib
+    from spiderpig.servos.model import cad_state
 
     spec = servos.get(config.servo)
     if not spec.cads or not cadlib.cad_enabled():
         return ("parametric",)
-    return ("cad", tuple((ref.sha256, cadlib.fetch(ref) is not None) for ref in spec.cads))
+    present = tuple((ref.sha256, cadlib.fetch(ref) is not None) for ref in spec.cads)
+    return ("cad", present, cad_state(spec))
 
 
 def plan_fingerprint(plan) -> str:
@@ -195,7 +199,14 @@ def fabricated(store, tmpl, config, design, t: float, build: Callable[[], object
     with contextlib.ExitStack() as held:
         try:
             held.enter_context(locked(entry))
-        except OSError as e:        # (a read-only store: no cache, never a failure)
+        except OSError as e:
+            # a read-only store: an entry there was published whole (renamed into place),
+            # so it is read without the lock; nothing is written; never a failure
+            if entry.is_dir():
+                try:
+                    return load_mechanism(entry)
+                except Exception as e2:     # noqa: BLE001
+                    log.warning("%s: unreadable cache entry (%s)", entry, e2)
             log.warning("%s: can't lock (%s): fabricating", entry, e)
             return build()
         if entry.is_dir():
@@ -237,9 +248,17 @@ def gc(store, older_than: float | None = None) -> list[str]:
             stale = e.name.endswith(".tmp") and time.time() - e.stat().st_mtime > 3600
             old = cutoff is not None and e.is_dir() and e.stat().st_mtime < cutoff
             if stale or old:
+                # an old entry goes under its lock, renamed away first (a builder waiting
+                # on the lock then finds none and builds); its lock file stays: removing it
+                # would let a second builder lock a new file while one holds the old
                 with locked(e) if old else contextlib.nullcontext():
-                    shutil.rmtree(e, ignore_errors=True)
-                (d / f"{e.name}.lock").unlink(missing_ok=True)
+                    trash = e.with_name(f".{e.name}.{os.getpid()}.{uuid.uuid4().hex[:8]}"
+                                        ".gone.tmp")
+                    try:
+                        os.rename(e, trash)
+                    except OSError:
+                        continue
+                shutil.rmtree(trash, ignore_errors=True)
                 gone.append(f"{FOLDER}/{d.name}/{e.name}")
     return gone
 

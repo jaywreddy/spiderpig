@@ -75,9 +75,9 @@ def _folder(tmp_path: Path, argv=("--linkage", "klann")):
         "out": str(out.resolve()), "build_key": uptodate.build_key(opts),
         "plan_design": PLAN_ID, "plan_hash": uptodate.plan_hash(plan),
         "cad_env": uptodate.cad_env(), "servo_files": [],
-        "outputs": {str(f.relative_to(out)): [f.stat().st_size, uptodate.sha256(f)]
+        "outputs": {str(f.relative_to(out)): uptodate.stamp(f)
                     for f in uptodate.outputs(out)},
-        "manifest": uptodate.sha256(out / "manifest.json"),
+        "manifest": uptodate.stamp(out / "manifest.json"),
     }
     _write_record(opts, record)
     return opts, out, store
@@ -135,6 +135,14 @@ def test_anything_else_builds(tmp_path, monkeypatch, change):
         argv[argv.index(str(out))] = str(tmp_path / "moved")
     assert uptodate.check(uptodate.preparse(argv)) is None
     assert not uptodate.skip(argv)
+
+
+def test_a_touched_output_with_its_bytes_is_still_current(tmp_path):
+    """A file whose stat changed (a copy, a touch) is hashed: the same bytes are current;
+    one whose stat didn't is not read at all."""
+    opts, out, _ = _folder(tmp_path)
+    os.utime(out / "k.stl", ns=(1, 1))
+    assert uptodate.check(opts) is not None
 
 
 def test_the_plans_timestamps_dont_count(tmp_path):
@@ -200,3 +208,18 @@ def test_build_twice_does_nothing_the_second_time(tmp_path):
     assert (other / "bom.json").read_text() == (out / "bom.json").read_text()
     assert len([e for e in (tmp_path / "store" / "fab").glob("*/*_t1.0_*")
                 if e.is_dir()]) == 1
+
+
+def test_a_strip_record_never_derived_is_no_download(tmp_path, monkeypatch):
+    """A second pinned model's strip record is never written when the first one loads:
+    missing, it is no reason to build (online too); appearing, it is."""
+    monkeypatch.delenv("SPIDERPIG_OFFLINE", raising=False)
+    opts, _, _ = _folder(tmp_path)
+    rec = tmp_path / "cad" / "x.json"
+    doc = json.loads(uptodate.record_path(opts).read_text())
+    doc["servo_files"] = [[str(rec), False, None, None, "record"]]
+    _write_record(opts, doc)
+    assert uptodate.check(opts) is not None
+    rec.parent.mkdir()
+    rec.write_text("{}")
+    assert uptodate.check(opts) is None

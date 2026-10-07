@@ -199,10 +199,10 @@ def clear_generated(folder: Path) -> None:
 
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if uptodate.skip(argv):         # --out holds this very build already (says so)
+    checked = uptodate.take(argv)   # the CLI's answer, else checked now (before any read)
+    if checked.skip:                # --out holds this very build already (said so)
         return 0
-    opts = uptodate.preparse(argv)
-    key = uptodate.build_key(opts) if opts is not None else None   # before anything is read
+    opts, key = checked.opts, checked.key
     args = _parse_args(argv)
     if args.list:
         _list_options()
@@ -252,6 +252,7 @@ def main(argv=None) -> int:
     print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
           f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
+    read = uptodate.inputs(opts, config) if key is not None else None   # what it reads
     with fabcache.serving(store):       # the store's fabrication when it holds this one
         mech = fabricate(tmpl, config, 1.0)
     if config.robot:
@@ -321,7 +322,7 @@ def main(argv=None) -> int:
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     _write_manifest(out, config, args)
     if key is not None:     # what makes the same build again a no-op (the store keeps it)
-        uptodate.record(opts, config, key)
+        uptodate.record(opts, key, read)
     return 0
 
 

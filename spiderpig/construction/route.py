@@ -615,7 +615,11 @@ class CrankRouter:
         n = self.n
         may = [0] * n       # per point: the run layers an unplaced rider of it may still take
         if view.open:
+            bits = view.open_bits
             for link, j in self.riders.items():
+                if bits is not None:
+                    may[j] |= bits.get(link, 0)
+                    continue
                 for k in view.open.get(link, ()):
                     may[j] |= 1 << k
         b = tuple(map(view.blocked.get, range(h0 + 1), repeat(0)))

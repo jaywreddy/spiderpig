@@ -61,6 +61,7 @@ fixtures always were): never mutate it.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -356,7 +357,9 @@ def _mechanism(kind: str, cfg, t: float, build: Callable[[], Any], fresh: bool):
     if not enabled():
         _MEMO[memo] = build()
         return _MEMO[memo]
-    entry = fab_dir() / _slug(f"{cfg.key}_{kind}_t{float(t)!r}")
+    if not _plan_path(replace(cfg, robot=False)).is_file():
+        cached_design(cfg)                  # (the plan first: its record names the entry)
+    entry = _entry(kind, cfg, t)
     mech = None
     with _locked(entry):
         if entry.is_dir():
@@ -367,9 +370,30 @@ def _mechanism(kind: str, cfg, t: float, build: Callable[[], Any], fresh: bool):
                 shutil.rmtree(entry, ignore_errors=True)
         if mech is None:
             mech = build()
-            _publish(entry, lambda d: dump_mechanism(mech, d))
+            # (the build re-made the plan from its record; solved again, the record
+            # changed: the entry is the new record's)
+            done = _entry(kind, cfg, t)
+            with _locked(done) if done != entry else contextlib.nullcontext():
+                if not done.exists():
+                    _publish(done, lambda d: dump_mechanism(mech, d))
     _MEMO[memo] = mech
     return mech
+
+
+def _entry(kind: str, cfg, t: float) -> Path:
+    """``FAB_DIR/<cfg.key>_<kind>_t<t>_<hash>``: the hash of the side's plan record (what
+    its plan is re-made from) and of the code this module's fabrication path reaches
+    (:func:`spiderpig.keys.function_key`: :func:`cached_side`, :func:`cached_robot`)."""
+    from spiderpig.keys import function_key
+
+    try:
+        plan = _plan_path(replace(cfg, robot=False)).read_bytes()
+    except OSError:
+        plan = b"no plan record"
+    h = hashlib.sha256(plan + function_key(
+        Path(__file__), ("cached_side", "cached_robot", "_mechanism", "cached_design"),
+        "testcache").encode()).hexdigest()[:12]
+    return fab_dir() / _slug(f"{cfg.key}_{kind}_t{float(t)!r}_{h}")
 
 
 def cached_side(cfg, t: float = 1.0, *, fresh: bool = False):

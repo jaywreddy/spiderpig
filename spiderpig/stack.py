@@ -742,6 +742,7 @@ class RouteView:
     blocked: Mapping[int, int]
     open: Mapping[str, set[int]] | None = None
     bound: int | None = None
+    open_bits: Mapping[str, int] | None = None     # ``open`` as bits over the layers
 
 
 class Router(Protocol):
@@ -998,6 +999,7 @@ class StackProblem:
             frozenset((router.group, *GAP_GROUPS)) if router is not None
             and getattr(router, "gap_pieces", ()) else frozenset())
         self.claims = heads_claims(self.raw_claims, self.heads, self.gap_groups)
+        self._makes: dict = {}        # (finalize) the claims' makes at the plans' z, memo
         self.clearances = tuple(clearances)
         self.links = tuple(topo.links)
         self.blocked: dict[tuple[str, str], int] = {}
@@ -1378,12 +1380,13 @@ class StackProblem:
             # them): the claims as they are, every other head forced into its layer, so
             # an axle crossing one of the router's gaps carries its washers there
             plan = finalize(self.topo, self.raw_claims, self.spec, layers, top, choices,
-                            sink_all_but=self.gap_groups)
+                            sink_all_but=self.gap_groups, memo=self._makes)
             plan.heads = heads
             return plan
         claims = (self.claims if heads == self.heads
                   else heads_claims(self.raw_claims, heads, self.gap_groups))
-        plan = finalize(self.topo, claims, self.spec, layers, top, choices)
+        plan = finalize(self.topo, claims, self.spec, layers, top, choices,
+                        memo=self._makes if claims is self.claims else None)
         plan.heads = heads
         return plan
 
@@ -1438,6 +1441,12 @@ class _Search:
         firsts = [c for c in self.claims if c.early is not None and c.early_deps < self.deps[id(c)]]
         self.pending.update({-id(c): len(c.early_deps) for c in firsts})
         self.by_early = {n: [c for c in firsts if n in c.early_deps] for n in self.links}
+        # the pending counts an assignment of each link takes one from (early parts', then
+        # the claims'), undone by one trail entry
+        self.pend_keys = {n: tuple([-id(c) for c in self.by_early[n]]
+                                   + [id(c) for c in self.by_dep[n]]) for n in self.links}
+        self.early_of = {n: [(-id(c), id(c), c) for c in self.by_early[n]] for n in self.links}
+        self.dep_of = {n: [(id(c), c) for c in self.by_dep[n]] for n in self.links}
         self.by_layer: dict[int, list[tuple[Placed, frozenset[str]]]] = {}
         self.block: dict[tuple[int, int], list[frozenset[str]]] = {}
         self.bmask: dict[int, int] = {}             # layer -> bit i: router piece i blocked
@@ -1474,6 +1483,9 @@ class _Search:
                             self.allow[n][v] = -1
                         continue
                 self.dom[n].discard(v)
+        # each domain again as bits over the layers (kept with ``dom``): what an axle's span
+        # closes is one AND
+        self.dm = {n: sum(1 << v for v in d) for n, d in self.dom.items()}
         self.lex: list[tuple[str, str]] | None = None   # (a, b): layer(a) <= layer(b)
         self.lexed: frozenset[str] = frozenset()
 
@@ -1521,6 +1533,7 @@ class _Search:
 
     def cut(self, n: str, v: int, why: frozenset[str]) -> None:
         self.dom[n].discard(v)
+        self.dm[n] &= ~(1 << v)
         self.gone[n][v] = why
         self.trail.append(("cut", n, v))
 
@@ -1532,23 +1545,27 @@ class _Search:
         if len(trail) <= mark:
             return
         dom, gone, banned, pending = self.dom, self.gone, self.banned, self.pending
-        while len(trail) > mark:
-            e = trail.pop()
+        block, bmask, dm = self.block, self.bmask, self.dm
+        pop = trail.pop
+        for _ in range(len(trail) - mark):
+            e = pop()
             kind = e[0]
             if kind == "cut":
-                if (e[1], e[2]) not in banned:
+                if not banned or (e[1], e[2]) not in banned:
                     dom[e[1]].add(e[2])
+                    dm[e[1]] |= 1 << e[2]
                     del gone[e[1]][e[2]]
             elif kind == "shape":
-                self.by_layer[e[1]].pop()
+                k = e[1]
+                self.by_layer[k].pop()
+                for i in reversed(e[2]):
+                    lst = block[(k, i)]
+                    lst.pop()
+                    if not lst:
+                        bmask[k] &= ~(1 << i)
             elif kind == "pending":
-                pending[e[1]] += 1
-            elif kind == "block":
-                lst = self.block[e[1]]
-                lst.pop()
-                if not lst:
-                    k, i = e[1]
-                    self.bmask[k] &= ~(1 << i)
+                for i in e[1]:
+                    pending[i] += 1
             else:
                 del self.layers[e[1]]
 
@@ -1566,28 +1583,36 @@ class _Search:
                 self.prob._tally(p, q)
                 return deps | qd
         self.by_layer.setdefault(k, []).append((p, deps))
-        self.trail.append(("shape", k))
         pieces, ruled = self.effects(p)
-        for i in pieces:
-            self.block.setdefault((k, i), []).append(deps)
-            self.bmask[k] = self.bmask.get(k, 0) | 1 << i
-            self.trail.append(("block", (k, i)))
+        self.trail.append(("shape", k, pieces))      # (its blocks undone with it)
+        if pieces:
+            block, bmask = self.block, self.bmask
+            m = bmask.get(k, 0)
+            for i in pieces:
+                block.setdefault((k, i), []).append(deps)
+                m |= 1 << i
+            bmask[k] = m
             self.dirty = True
-        for n, v in ruled:
-            if n not in self.layers and v in self.dom[n]:
-                self.cut(n, v, deps)
-                if (c := self.wiped(n)) is not None:
-                    return c
+        if ruled:
+            layers, dom = self.layers, self.dom
+            for n, v in ruled:
+                if n not in layers and v in dom[n]:
+                    self.cut(n, v, deps)
+                    if not dom[n]:
+                        return frozenset().union(*self.gone[n].values())
         return None
 
     def view(self, partial: bool) -> RouteView:
         """What the router sees now; ``partial``: the layers still open to each unplaced
         link too (the router then answers for the layering as a relaxation, and words a
         dead end of its own rules once per what they see, not per node)."""
-        open_ = None
+        open_ = bits = None
         if partial:
-            open_ = {n: self.dom[n] for n in self.links if n not in self.layers}
-        return RouteView(Layout(self.layers, self.top, self.pitch), self.bmask, open_, self.bound)
+            layers, dom, dm = self.layers, self.dom, self.dm
+            open_ = {n: dom[n] for n in self.links if n not in layers}
+            bits = {n: dm[n] for n in open_}
+        return RouteView(Layout(self.layers, self.top, self.pitch), self.bmask, open_, self.bound,
+                         bits)
 
     def explain(self, res: RouteConflict) -> frozenset[str]:
         """The links behind a router's dead end: the ones it names, else everything in the
@@ -1597,11 +1622,18 @@ class _Search:
         self.prob._tally_why(self.router.group, self.describe(res))
         if res.links:
             return res.links
-        out: set[str] = {n for n, k in self.layers.items() if res.lo <= k <= res.hi}
-        for (k, _), deps in self.block.items():
-            if res.lo <= k <= res.hi:
-                for d in deps:
-                    out |= d
+        lo, hi = res.lo, res.hi
+        out: set[str] = {n for n, k in self.layers.items() if lo <= k <= hi}
+        block = self.block
+        for k, m in self.bmask.items():         # (the pieces blocked now: bit i set)
+            if m and lo <= k <= hi:
+                i = 0
+                while m:
+                    if m & 1:
+                        for d in block[(k, i)]:
+                            out |= d
+                    m >>= 1
+                    i += 1
         return frozenset(out)
 
     def describe(self, res: RouteConflict) -> str:
@@ -1627,11 +1659,13 @@ class _Search:
                     return frozenset(x for x, _ in ng)
                 self.watch.setdefault(other, []).append(ng)
         self.dirty = n in self.riders
-        for c in self.by_early[n]:
-            i = -id(c)
-            self.pending[i] -= 1
-            self.trail.append(("pending", i))
-            if self.pending[i] or not self.pending[id(c)] - 1:   # (or the claim is due too)
+        pending = self.pending
+        keys = self.pend_keys[n]
+        for i in keys:
+            pending[i] -= 1
+        self.trail.append(("pending", keys))
+        for i, j, c in self.early_of[n]:
+            if pending[i] or not pending[j]:   # (or the claim is due too)
                 continue
             out, why = self.claim(c, early=True)
             if out is None:
@@ -1640,11 +1674,8 @@ class _Search:
             for p in out:
                 if (conf := self.add(p, c.early_deps)) is not None:
                     return conf | {n}
-        for c in self.by_dep[n]:
-            i = id(c)
-            self.pending[i] -= 1
-            self.trail.append(("pending", i))
-            if self.pending[i]:
+        for i, c in self.dep_of[n]:
+            if pending[i]:
                 continue
             out, why = self.claim(c)
             if out is None:
@@ -1672,6 +1703,7 @@ class _Search:
                 return self.explain(res) | {n}
             # a layer none of whose states on a route a link's own shapes leave is closed to it
             layers, dom, gone, trail, get = self.layers, self.dom, self.gone, self.trail, res.get
+            dm = self.dm
             why = None
             for x in self.links:
                 if x in layers:
@@ -1683,10 +1715,13 @@ class _Search:
                     if why is None:
                         why = frozenset(layers)
                     g = gone[x]
+                    m = dm[x]
                     for w in bad:
                         d.discard(w)
+                        m &= ~(1 << w)
                         g[w] = why
                         trail.append(("cut", x, w))
+                    dm[x] = m
                 if not d:
                     return frozenset().union(*gone[x].values()) | {n}
         return None
@@ -1697,7 +1732,7 @@ class _Search:
         A pillar also runs from them to a frame plate: such links can't be on both sides.
         (A domain these layers are already gone from is skipped: most are, an axle closes the
         same layers again at every node; an empty one still answers its conflict.)"""
-        layers, dom, close = self.layers, self.dom, self.close
+        layers, dm, close, top = self.layers, self.dm, self.close, self.top
         for members, links, anchored in self.prob.spans.get(n, ()):
             placed = [m for m in members if m in layers]
             if not placed:
@@ -1706,54 +1741,62 @@ class _Search:
             lo, hi = min(ks), max(ks)
             why = frozenset(placed)
             below = above = None
-            inside = range(lo + 1, hi)
+            inside = ((1 << hi) - 1) & ~((2 << lo) - 1)        # layers lo + 1 .. hi - 1
             for x in links:
                 w = layers.get(x)
                 if w is None:
-                    d = dom[x]
-                    if (not d or not d.isdisjoint(inside)) and (
-                            c := close(x, inside, why)) is not None:
+                    d = dm[x]
+                    if (not d or d & inside) and (c := close(x, inside, why)) is not None:
                         return c
                     continue
                 if lo < w < hi:
                     return why | {x}
                 if hi < w:
                     above = x
-                    side = range(w, self.top)
+                    side = ((1 << top) - 1) & ~((1 << w) - 1)   # layers w .. top - 1
                 else:
                     below = x
-                    side = range(1, w + 1)
+                    side = ((2 << w) - 1) & ~1                  # layers 1 .. w
                 for m in members:
                     if m not in layers:
-                        d = dom[m]
-                        if (not d or not d.isdisjoint(side)) and (
+                        d = dm[m]
+                        if (not d or d & side) and (
                                 c := close(m, side, why | {x})) is not None:
                             return c
             if anchored and (below or above):
                 if below and above:
                     return why | {below, above}
                 # the pillar must reach the plate on the other side
-                other = range(hi + 1, self.top) if below else range(1, lo)
+                other = (((1 << top) - 1) & ~((2 << hi) - 1) if below     # hi + 1 .. top - 1
+                         else ((1 << lo) - 1) & ~1)                       # 1 .. lo - 1
                 for x in links:
                     if x not in layers:
-                        d = dom[x]
-                        if (not d or not d.isdisjoint(other)) and (c := close(
+                        d = dm[x]
+                        if (not d or d & other) and (c := close(
                                 x, other, why | {below or above})) is not None:
                             return c
         return None
 
-    def close(self, x: str, ks: range, why: frozenset[str]) -> frozenset[str] | None:
-        """Take layers ``ks`` from unplaced ``x``'s domain; its conflict if none are left.
-        (Most calls take nothing: an axle closes the same layers again at every node.)"""
-        dom = self.dom[x]
-        hit = dom.intersection(ks)
+    def close(self, x: str, ks: range | int, why: frozenset[str]) -> frozenset[str] | None:
+        """Take layers ``ks`` (a range, or bits) from unplaced ``x``'s domain; its conflict if
+        none are left. (Most calls take nothing: an axle closes the same layers again at
+        every node.)"""
+        if isinstance(ks, range):
+            ks = sum(1 << k for k in ks if k >= 0)
+        m = self.dm[x]
+        hit = m & ks
         if hit:
-            dom -= hit
-            gone, trail = self.gone[x], self.trail
-            for u in hit:
+            m &= ~hit
+            self.dm[x] = m
+            dom, gone, trail = self.dom[x], self.gone[x], self.trail
+            while hit:
+                low = hit & -hit
+                u = low.bit_length() - 1
+                hit ^= low
+                dom.discard(u)
                 gone[u] = why
                 trail.append(("cut", x, u))
-        return None if dom else frozenset().union(*self.gone[x].values())
+        return None if m else frozenset().union(*self.gone[x].values())
 
     def values(self, n: str) -> list[int]:
         """Layers next to the links it shares an axle with first; a leg at a time: where the
@@ -1808,6 +1851,7 @@ class _Search:
             (x,) = out
             self.banned.add((x, self.layers[x]))
             self.dom[x].discard(self.layers[x])
+            self.dm[x] &= ~(1 << self.layers[x])
             self.gone[x][self.layers[x]] = frozenset()
         elif 1 < len(out) <= self.NOGOOD_MAX:
             # watched by its latest pair: the one undone first on the way back
@@ -2175,10 +2219,40 @@ def _gap_sizes(shapes: Iterable[Placed], spec: StackSpec, top: int,
     return out
 
 
-def _make_all(claims: Iterable[Claim], layout: Layout) -> list[Placed]:
+MEMO_MAKES = 200_000     # claim makes a problem's plans remember before the memo is dropped
+
+
+def _make_all(claims: Iterable[Claim], layout: Layout, memo: dict | None = None
+              ) -> list[Placed]:
+    """Every claim made in ``layout`` (:class:`PlanReject` naming the first that can't be).
+    ``memo``: what each claim made before, by what it reads of a layout (its deps' layers,
+    or every link's for a final claim, the stack size, the z and the choices), shared by
+    the plans of one problem (whose claims it is only given for: they outlive it, so
+    their ids are theirs), as the search's leaves re-make mostly the same claims."""
     out: list[Placed] = []
+    if memo is not None:
+        if len(memo) >= MEMO_MAKES:
+            memo.clear()
+        zs = memo.setdefault("z", {})
+        lay = layout.layers
+        z = (layout.top, layout.pitch, layout.final, tuple(sorted(layout.gaps.items())),
+             tuple(sorted(layout.thick.items())), tuple(sorted(layout.choices.items())))
+        z = zs.setdefault(z, len(zs))           # the z, as a small int
+        every = tuple(sorted(lay.items()))
+        deps = memo.setdefault("deps", {})
     for c in claims:
-        got, why = made(c, layout)
+        if memo is None:
+            got, why = made(c, layout)
+        else:
+            i = id(c)
+            order = deps.get(i)
+            if order is None:
+                order = deps[i] = tuple(sorted(c.deps))
+            key = (i, z, every if c.final else tuple([lay.get(d) for d in order]))
+            hit = memo.get(key)
+            if hit is None:
+                hit = memo[key] = made(c, layout)
+            got, why = hit
         if got is None:
             e = PlanReject(why)
             e.claim = c
@@ -2340,7 +2414,8 @@ def heads_claims(claims: Iterable[Claim], heads: str, keep: frozenset[str] = fro
 def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
              layers: Mapping[str, int], top: int,
              choices: Mapping[str, object] | None = None,
-             sink_all_but: frozenset[str] | None = None) -> StackPlan:
+             sink_all_but: frozenset[str] | None = None, memo: dict | None = None
+             ) -> StackPlan:
     """The plan of a layering: which heads sink into a layer and which keep a clearance
     gap (:func:`_sinkable`), each gap's stock thickness and each layer's (the plates'
     sheets), and every claim made again at the z those give, until they settle (a
@@ -2353,7 +2428,7 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
     choices = dict(choices or {})
     layers = dict(layers)
     nominal = Layout(layers, top, spec.pitch, choices)
-    shapes = _make_all(claims, nominal)
+    shapes = _make_all(claims, nominal, memo)
     sunk = _sinkable(shapes, nominal, topo.geometry, spec.margin)
     if sink_all_but is not None:
         sunk |= {sunk_key(p) for p in shapes
@@ -2385,7 +2460,7 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
         gaps, thick = new_gaps, new_thick
         layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick), final=True)
         try:
-            shapes = _make_all(claims, layout)
+            shapes = _make_all(claims, layout, memo)
         except PlanReject as e:
             if not gaps:
                 raise
@@ -2394,7 +2469,7 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
             gaps = _thicker_gaps(e, spec, layers, top, choices, gaps, thick, bridged)
             layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick),
                             final=True)
-            shapes = _make_all(claims, layout)
+            shapes = _make_all(claims, layout, memo)
     else:
         raise PlanReject("the clearance gaps and the claims made at their z don't settle")
     placed = settle(shapes, sunk, layout)

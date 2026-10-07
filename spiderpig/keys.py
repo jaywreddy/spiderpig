@@ -232,6 +232,11 @@ class _Module:
     getattr_hook: bool = False
     strings: set[str] = field(default_factory=set)
     effect_refs: set[tuple[str, str]] = field(default_factory=set)
+    # (module, name, the top-level symbol holding it): a store into another module's (or
+    # its own) namespace anywhere in this module's code: ``mod.X = ...``,
+    # ``setattr(mod, "X", ...)``, ``vars(mod)[...] = ...``, ``globals()[...] = ...``;
+    # name "*" when it is computed
+    patches: list[tuple[str, str, str]] = field(default_factory=list)
 
     @property
     def package(self) -> str:
@@ -353,7 +358,67 @@ def _index(name: str, path: Path, is_pkg: bool, excluded: bool,
                 touch(n)        # ``mod.X = ...`` touches mod.X, ``REG[k] = ...`` REG
             elif isinstance(n, ast.AugAssign):
                 touch(n.target)
+    for stmt in tree.body:
+        holder = (stmt.name if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                                 ast.ClassDef))
+                  else None)
+        for target, attr in _patch_sites(mod, stmt):
+            if holder is None:
+                mod.effect_refs.add((target, attr))
+            mod.patches.append((target, attr, holder or ""))
     return mod
+
+
+def _patch_sites(mod: _Module, stmt: ast.AST) -> list[tuple[str, str]]:
+    """Where ``stmt`` stores into a module's namespace (module docstring of :class:`_Module`
+    ``patches``): (the module, by the import alias it is reached through, or ``mod``'s
+    own for ``globals()``; the name, or ``"*"``)."""
+    local = dict(mod.imports)
+    for n in ast.walk(stmt):
+        if isinstance(n, (ast.Import, ast.ImportFrom)):
+            local.update(_import_aliases(mod, n))
+
+    def module(expr: ast.expr) -> str | None:
+        if isinstance(expr, ast.Name) and expr.id in local:
+            src, attr = local[expr.id]
+            return src if attr is None else f"{src}.{attr}"
+        if isinstance(expr, ast.Attribute):
+            base = module(expr.value)
+            return None if base is None else f"{base}.{expr.attr}"
+        return None
+
+    def namespace(expr: ast.expr) -> str | None:
+        """``vars(mod)``, ``mod.__dict__``, ``globals()``: the module whose namespace."""
+        if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Name):
+            if expr.func.id == "globals" and not expr.args:
+                return mod.name
+            if expr.func.id == "vars" and expr.args:
+                return module(expr.args[0])
+        if isinstance(expr, ast.Attribute) and expr.attr == "__dict__":
+            return module(expr.value)
+        return None
+
+    def const(expr: ast.expr | None) -> str:
+        return expr.value if isinstance(expr, ast.Constant) and isinstance(
+            expr.value, str) else "*"
+
+    out = []
+    for n in ast.walk(stmt):
+        if isinstance(n, (ast.Attribute, ast.Subscript)) and isinstance(
+                getattr(n, "ctx", None), (ast.Store, ast.Del)):
+            if isinstance(n, ast.Attribute) and (m := module(n.value)) is not None:
+                out.append((m, n.attr))
+            elif isinstance(n, ast.Subscript) and (m := namespace(n.value)) is not None:
+                out.append((m, const(n.slice)))
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+              and n.func.id in ("setattr", "delattr") and n.args):
+            if (m := module(n.args[0])) is not None:
+                out.append((m, const(n.args[1] if len(n.args) > 1 else None)))
+        elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+              and n.func.attr in ("update", "setdefault", "pop", "__setitem__")
+              and (m := namespace(n.func.value)) is not None):
+            out.append((m, "*"))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +601,23 @@ class _Walk:
             more = [m.name for m in self.g.modules.values()
                     if m.name not in self.loaded and not m.excluded
                     and m.effect_refs & touched]
-            if not more:
+            # code anywhere (a front-end too) that patches a reached module's namespace
+            # at run time is reached: whatever runs it changes what the closure computes
+            touched_mods = {m for m, _ in touched}
+            patched = False
+            for m in self.g.modules.values():
+                for target, attr, holder in m.patches:
+                    hit = ((target, attr) in touched if attr != "*"
+                           else target in touched_mods)
+                    if hit and holder and (m.name, holder) not in self.reached:
+                        self.current = ("<patches the closure>", target, attr)
+                        self.reach_symbol(m.name, holder)
+                        cls = m.classes.get(holder)
+                        for b in cls.body if cls is not None else ():   # (the patch's method)
+                            for name in Graph._member_names(b):
+                                self.reach_member(m.name, f"{holder}.{name}")
+                        patched = True
+            if not more and not patched:
                 break
             for name in sorted(more):
                 self.current = ("<registers into the closure>", name)
@@ -913,13 +994,15 @@ def _test_files() -> list[Path]:
     return sorted((REPO / "tests").rglob("*.py")) if (REPO / "tests").is_dir() else []
 
 
-def function_key(path: str | Path, name: str | None, label: str = "gen") -> str:
-    """``<label>-<hash>`` of what the top-level function ``name`` of the file ``path`` (a
-    test module: a recorded fixture's generator) reaches: its helpers in ``tests/`` and the
-    package code they call (``name`` None: the whole module, e.g. for a lambda). Cached
-    per process and on disk by the package's and ``tests/``'s stats."""
+def function_key(path: str | Path, name: str | tuple[str, ...] | None,
+                 label: str = "gen") -> str:
+    """``<label>-<hash>`` of what the top-level function ``name`` (or names) of the file
+    ``path`` (a test module: a recorded fixture's generator) reaches: its helpers in
+    ``tests/`` and the package code they call (``name`` None: the whole module, e.g. for a
+    lambda). Cached per process and on disk by the package's and ``tests/``'s stats."""
     path = Path(path).resolve()
-    roots = (str(path), name or "")
+    names = (name,) if isinstance(name, str) else tuple(name or ())
+    roots = (str(path), *names)
     memo = (label, roots)
     if memo in _KEYS:
         return _KEYS[memo]
@@ -930,8 +1013,8 @@ def function_key(path: str | Path, name: str | None, label: str = "gen") -> str:
             _TEST_GRAPH[:] = [Graph(extra=[*_test_files(), path])]
         g = _TEST_GRAPH[0]
         mod = next(m for m in g.modules.values() if m.path == path)
-        if name and name in mod.symbols:
-            c = g.closure([f"{mod.name}:{name}"])
+        if names and all(n in mod.symbols for n in names):
+            c = g.closure([f"{mod.name}:{n}" for n in names])
         else:
             c = g.closure([mod.name] + [f"{mod.name}:{s}" for s in mod.symbols])
         h = hashlib.sha256()
