@@ -58,3 +58,37 @@ def test_the_robot_shares_the_sides_design(design):
     tmpl, d = design("single")
     assert design_side(tmpl, BuildConfig(linkage="klann", module="single", robot=True)) is d
     assert not d.config.robot
+
+
+@pytest.mark.slow           # (two fabrications and every export: ~15 s)
+def test_a_static_frame_plate_is_made_once_and_never_changed(tmp_path):
+    """The frame plates don't move: a fabrication at another crank angle takes the part an
+    earlier one made (``plates._FRAME_MEMO``), one part in both mechanisms, and nothing a
+    build, a check or an export does to a mechanism changes it in place."""
+    from spiderpig.construction import plates
+    from spiderpig.hardware.bom import bom_from_mechanism, group_made
+    from spiderpig.layout import save_parts, save_sheets, sheet_lines
+    from spiderpig.manufacture import check
+    from tests import cache
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    cache.seed_plan(cfg)
+    a = cache.cached_side(cfg, 1.0, fresh=True)
+    b = cache.cached_side(cfg, 4.38, fresh=True)
+    memo = [part for part, _ in plates._FRAME_MEMO.values()]
+    shared = {x.name: x.part for x in a.bodies if any(x.part is p for p in memo)}
+    assert len(shared) == 2
+    assert "frame_outer" in shared
+    for n, part in shared.items():
+        assert b.body(n).part is part
+    before = {n: (p.wrapped, p.volume, p.bounding_box().min.Z) for n, p in shared.items()}
+    a.export_stl(tmp_path / "a.stl")
+    a.export_step(tmp_path / "a.step")
+    save_sheets(a, tmp_path / "sheet", default=cfg.sheet)
+    save_parts(group_made(a.bodies, "laser"), tmp_path / "parts", cfg.sheet)
+    sheet_lines(a, cfg.sheet)
+    check(a, cfg.sheet)
+    bom_from_mechanism(a)
+    for n, p in shared.items():
+        assert (p.wrapped, p.volume, p.bounding_box().min.Z) == before[n]
+        assert b.body(n).part is p

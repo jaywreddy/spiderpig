@@ -229,6 +229,13 @@ def foot_sock(foot, other, r: float, z0: float, z1: float):
     return sock, notches
 
 
+# a frame plate made from exactly these inputs before (the plates don't move: every crank
+# angle of a check or a build makes the same one); the key is every input of the plate,
+# the value the part and the OCCT shape it had (``part.wrapped``: an in-place move or
+# edit replaces it)
+_FRAME_MEMO: dict = {}
+
+
 class FramePlates(Group):
     """The inner (servo) and outer frame plates: arms from O out to every pillar."""
 
@@ -252,6 +259,17 @@ class FramePlates(Group):
         for key, layer, name in ((FRAME_INNER, build.top, frame),
                                  (FRAME_OUTER, 0, "frame_outer")):
             z0, z1 = build.z(layer)
+            memo = (tuple(arms), tuple(tris), z0, z1, p.frame_radius, web,
+                    tuple(done.pads.get(key, [])), tuple(done.cuts.get(key, [])))
+            hit = _FRAME_MEMO.get(memo)
+            if hit is not None:         # the same plate at another crank angle: static
+                part, shape = hit
+                # one part in every mechanism that made it: never changed in place (the
+                # house rule), which would move it in all of them
+                assert part.wrapped is shape, f"{name}: a shared frame plate was changed"
+                out.bodies.append(hardware(name, part, frame, fab="laser",
+                                           color="#eb6834", sheet=build.ctx.sheet("frame")))
+                continue
             part = plate(arms, z0, z1, discs=[(o, p.frame_radius)])
             for tri in tris:        # the window an arm pair and its chord close: a lightening
                 part = window(part, tri, p.frame_radius, z0, z1)    # pocket, corners rounded
@@ -265,6 +283,9 @@ class FramePlates(Group):
             if extra:
                 part = union([part, *extra])
             part = cut_holes(part, cuts, z0, z1)
+            if len(_FRAME_MEMO) > 32:
+                _FRAME_MEMO.clear()
+            _FRAME_MEMO[memo] = (part, part.wrapped)
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
                                        sheet=build.ctx.sheet("frame")))
         return out
