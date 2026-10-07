@@ -62,6 +62,7 @@ MODULE_OF_FILE: dict[str, str] = {
     # the measuring stick (W0): the build profiler, the doc check
     "test_build_profile.py": "api",
     "test_doc_check.py": "api",
+    "test_scorecard.py": "api",
     # sim and bake (P6)
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",

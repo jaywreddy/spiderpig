@@ -6,29 +6,34 @@ away (``mise run scorecard``).
     python -m tests.scorecard --gate --full --audit   # the opt-in, heavy sections too
     python -m tests.scorecard --compare A.json B.json # the deltas between two scorecards
 
-Sections (``--only`` names them; the default runs the first four, ~6 min):
+Sections (``--only`` names them; the default runs the first four: ~7.5 min at load 15 on the
+20-core box, the roadmap's 6 min to be judged on a quiet one):
 
 - ``build``: ``spiderpig build --profile`` of the Strider double (the default design) into a
   temporary folder and store, twice: an empty store (the plan solved), then the same store
-  (the plan reused). Each run's stages (``spiderpig.build.STAGES``), its own wall time and
-  the process's wall and CPU measured from here. ``--runs N`` repeats the pair; the numbers
-  are the medians.
-- ``tiers``: each module tier (``python -m tests.tiers <module>``), wall and CPU, its tests.
+  (the plan reused). Each run's stages (``spiderpig.tools.build_profile.STAGES``), its own
+  wall time and the process's wall and CPU measured from here. The pair runs ``--runs`` times
+  (3); the numbers are the medians.
+- ``tiers``: each module tier (``python -m tests.tiers <module>``), wall and CPU, its tests,
+  its xdist workers.
 - ``quick``: the quick tier (``-m 'not slow and not e2e' -n 4``) with ``coverage.py`` over
   ``spiderpig/`` (pytest-cov, combined across the xdist workers; ``COVERAGE_CORE=sysmon``
   keeps the overhead small), its tests and its 10 slowest. ``--no-coverage`` times it bare.
 - ``static``: pyright's error count (``[tool.pyright]``, basic; also without the stub noise of
   the compiled OCP and mujoco), ruff's ``RUF`` findings (``--extend-select RUF``), each
   module over 800 lines (``spiderpig/**/*.py``, ``viewer/src/**/*.ts``), the product's lines,
-  CLAUDE.md's lines and words, the doc check's misses, whether CI exists. Run beside the
-  tiers (its own timing is not a metric; ``--serial`` runs it alone).
+  CLAUDE.md's lines and words, the doc check's misses, whether CI exists. Run alone
+  (``--parallel-static``: beside the tiers, whose times its ~90 CPU-s then inflate).
 - ``gate`` (``--gate``): ``mise run gate -- snapshot`` of the six designs, wall and CPU.
-- ``full`` (``--full``): the full suite (``-m 'not e2e'``, ``--full-workers``, 6), and with
+- ``full`` (``--full``): the full suite (``-m 'not e2e'``, ``--full-workers``, 6 on the
+  shared box: the roadmap's 12 would load it past measuring; recorded as ``workers``), and with
   ``--cold`` again on an empty test cache (the first run after an engine edit).
 - ``audit`` (``--audit``): ``spiderpig audit --modules double`` on an empty store, then warm.
 
 Every section records the load average before and after it (``loadavg``): the roadmap's
 timings are medians of 3 at a load under 4, and a number taken above that is noise.
+``--compare`` prints changed or non-zero exit codes first and warns when the two scorecards
+used other xdist workers or build runs for a metric, or ran at loads over 2x apart.
 CPU is each process's own ``wait4`` rusage, its waited-for children (the xdist workers)
 included.
 """
@@ -123,7 +128,7 @@ def _median(values: list[float]) -> float | None:
 
 def section_build(work: Path, runs: int) -> dict:
     """``spiderpig build --profile`` of the default design: empty store, then warm."""
-    from spiderpig.build import STAGES
+    from spiderpig.tools.build_profile import STAGES
 
     env = {"SPIDERPIG_OFFLINE": "1"}
     samples: dict[str, list[dict]] = {"cold": [], "warm": []}
@@ -156,6 +161,7 @@ def section_build(work: Path, runs: int) -> dict:
 def section_tiers(work: Path) -> dict:
     """Each module's fast tier, with its default workers."""
     from tests._modules import MODULES
+    from tests.tiers import TIER_WORKERS
 
     out = {}
     for module in MODULES:
@@ -164,7 +170,8 @@ def section_tiers(work: Path) -> dict:
                 log=work / f"tier_{module}.log")
         counts = _junit(junit)
         counts.pop("slowest", None)
-        out[module] = {**r, **counts}
+        workers = int(os.environ.get("SPIDERPIG_TIER_WORKERS", TIER_WORKERS.get(module, 4)))
+        out[module] = {**r, "workers": workers, **counts}
     out["total_wall_s"] = round(sum(v["wall_s"] for v in out.values()), 1)
     return out
 
@@ -359,28 +366,78 @@ def flatten(doc, prefix: str = "") -> dict[str, float]:
 
 
 SKIP_IN_TABLE = ("samples.", "slowest.", "by_rule.", "ruf_by_code.", "loadavg.",
-                 "per_design_s.", "coverage_lines.", ".rc", "meta.")
+                 "per_design_s.", "coverage_lines.", "meta.")
+LOAD_RATIO = 2.0
+"""``--compare`` warns when the two scorecards' mean load differs by more than this."""
+
+
+def _is_rc(key: str) -> bool:
+    return "rc" in key.split(".")
 
 
 def compare(a: dict, b: dict) -> list[tuple[str, float | None, float | None]]:
+    """Every metric that differs (exit codes included), by its dotted path."""
     fa, fb = flatten(a), flatten(b)
     keys = sorted(set(fa) | set(fb))
     return [(k, fa.get(k), fb.get(k)) for k in keys
             if fa.get(k) != fb.get(k) and not any(s in f".{k}" for s in SKIP_IN_TABLE)]
 
 
+def rc_changes(a: dict, b: dict) -> list[tuple[str, float | None, float | None]]:
+    """Every exit code that changed, or that is non-zero in either scorecard."""
+    fa, fb = flatten(a), flatten(b)
+    return [(k, fa.get(k), fb.get(k)) for k in sorted(set(fa) | set(fb))
+            if _is_rc(k) and (fa.get(k) != fb.get(k) or fa.get(k) or fb.get(k))]
+
+
+def mean_load(card: dict) -> float | None:
+    """The mean 1-minute load over every reading the scorecard took."""
+    loads = []
+    for v in card.get("loadavg", {}).values():
+        if isinstance(v, list) and v:
+            loads.append(v[0])
+        elif isinstance(v, dict):
+            loads += [v[k][0] for k in ("before", "after") if v.get(k)]
+    return round(sum(loads) / len(loads), 2) if loads else None
+
+
+def comparability(a: dict, b: dict) -> list[str]:
+    """Why two scorecards' timings aren't comparable: different xdist workers or build runs
+    for a metric, a load more than :data:`LOAD_RATIO` apart, another host."""
+    out = []
+    fa, fb = flatten(a), flatten(b)
+    for k in sorted(set(fa) & set(fb)):
+        if k.split(".")[-1] in ("workers", "runs") and fa[k] != fb[k]:
+            out.append(f"{k}: {fa[k]:g} vs {fb[k]:g} (timings not comparable)")
+    la, lb = mean_load(a), mean_load(b)
+    if la and lb and max(la, lb) / max(min(la, lb), 0.01) > LOAD_RATIO:
+        out.append(f"mean load {la} vs {lb}: more than {LOAD_RATIO:g}x apart "
+                   "(timings not comparable)")
+    ha, hb = a.get("meta", {}).get("host"), b.get("meta", {}).get("host")
+    if ha and hb and ha != hb:
+        out.append(f"host {ha} vs {hb}")
+    return out
+
+
 def _fmt(v) -> str:
     return "-" if v is None else f"{v:g}" if abs(v) >= 0.01 or v == 0 else f"{v:.2e}"
 
 
-def print_compare(a: dict, b: dict) -> None:
-    rows = compare(a, b)
+def compare_report(a: dict, b: dict) -> str:
+    """The ``--compare`` text: warnings, exit codes, then every metric's delta."""
+    lines = [f"WARNING: {w}" for w in comparability(a, b)]
+    rcs = rc_changes(a, b)
+    if rcs:
+        lines.append("EXIT CODES (changed, or non-zero):")
+        lines += [f"  !! {k}: {_fmt(va)} -> {_fmt(vb)}" for k, va, vb in rcs]
+    rows = [r for r in compare(a, b) if not _is_rc(r[0])]
     width = max([len(k) for k, *_ in rows] + [10])
-    print(f"{'metric':{width}}  {'A':>12}  {'B':>12}  {'delta':>12}  {'%':>7}")
+    lines.append(f"{'metric':{width}}  {'A':>12}  {'B':>12}  {'delta':>12}  {'%':>7}")
     for k, va, vb in rows:
         d = None if va is None or vb is None else vb - va
         pct = "" if d is None or not va else f"{100 * d / va:+.1f}"
-        print(f"{k:{width}}  {_fmt(va):>12}  {_fmt(vb):>12}  {_fmt(d):>12}  {pct:>7}")
+        lines.append(f"{k:{width}}  {_fmt(va):>12}  {_fmt(vb):>12}  {_fmt(d):>12}  {pct:>7}")
+    return "\n".join(lines)
 
 
 def print_table(card: dict) -> None:
@@ -441,17 +498,19 @@ def main(argv: list[str] | None = None) -> int:
                    help="with --full: the full suite on an empty test cache too")
     p.add_argument("--full-workers", type=int, default=6)
     p.add_argument("--audit", action="store_true", help="also time the double's audit")
-    p.add_argument("--runs", type=int, default=1, help="build runs (the medians are reported)")
+    p.add_argument("--runs", type=int, default=3,
+                   help="build runs, each an empty store then warm (the medians; default 3)")
     p.add_argument("--no-coverage", action="store_true", help="the quick tier without coverage")
-    p.add_argument("--serial", action="store_true",
-                   help="run the static checks alone, not beside the module tiers")
+    p.add_argument("--parallel-static", action="store_true",
+                   help="run the static checks beside the module tiers (faster; their CPU "
+                        "inflates the tiers' times)")
     p.add_argument("--keep", action="store_true", help="keep the work folder (logs, junit)")
     p.add_argument("--compare", nargs=2, type=Path, metavar=("A", "B"),
                    help="print the deltas between two scorecards and exit")
     args = p.parse_args(argv)
     if args.compare:
         a, b = (json.loads(f.read_text()) for f in args.compare)
-        print_compare(a, b)
+        print(compare_report(a, b))
         return 0
 
     sections = (args.only.split(",") if args.only else
@@ -472,7 +531,7 @@ def main(argv: list[str] | None = None) -> int:
             if name == "static" and static_thread is not None:
                 static_thread.join()
                 continue
-            if name == "tiers" and "static" in sections and not args.serial:
+            if name == "tiers" and "static" in sections and args.parallel_static:
                 import threading
 
                 def static():
