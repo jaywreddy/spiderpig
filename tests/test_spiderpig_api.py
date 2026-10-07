@@ -389,8 +389,12 @@ def test_parts_expose_live_solids_and_recheck_passes():
     assert d.parts[plate].fab == "laser"
     assert d.parts["centre_plate0"].group == "chassis"
     assert d.parts["centre_plate0"].side is None
-    # nothing edited: solids and clashes only, no mutation (on the tiny design: a robot's
-    # clash check is the quad twin's, below)
+
+
+def test_recheck_of_an_unedited_build_checks_solids_and_clashes_only():
+    """Nothing edited: solids and clashes only, no mutation (on the tiny design: a robot's
+    clash check is the quad twin's, below). (Split from the test above: each measures and
+    checks its own build, ~3 s.)"""
     h = api.resolve(_api.HOECKEN, store=None)
     assert _api.built(h).ok
     link = h.parts["b1"]
@@ -827,6 +831,7 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     one = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                        "legs": {"module": "single", "sides": 1},
                        "budget": {"cost_usd": {"max": 200}}}, store=None)
+    _api.seed(one.config)               # verify plans it: from the test cache, re-made
     total, priced, unpriced = cost_floor(one)                              # entry 4
     from spiderpig import servos
     from spiderpig.hardware.catalog import get as item
@@ -852,6 +857,7 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     assert rep.ok
     robot = api.resolve({**KLANN_QUAD, "materials": {"servo": "xl330_m288"},
                          "budget": {"cost_usd": {"max": 100}}}, store=None)
+    _api.seed(robot.config)             # (a 13-layer plan, 3.4 CPU-s to search)
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
     # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)

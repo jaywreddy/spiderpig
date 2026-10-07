@@ -28,9 +28,21 @@ def _fail(cfg) -> ClearanceError:
     return e.value
 
 
+def _seeded(*configs) -> None:
+    """The plans a recommendation re-runs, seeded from the test cache (re-made and verified,
+    not searched again: ~6 CPU-s each); solved and recorded the first time."""
+    from tests import cache
+
+    for cfg in configs:
+        if not cache.seed_plan(cfg):
+            cache.cached_design(cfg)
+
+
 def test_the_heel_is_told_the_scale_that_clears_it():
     """At the drawing's 7 mm unit the heel link passes the crankpin's post 6.8 mm off, under
-    the 10 mm it needs: x1.47 clears it, rounded up to a 10.5 mm unit, and checked."""
+    the 10 mm it needs: x1.47 clears it, rounded up to a 10.5 mm unit, and checked (its
+    plan seeded from the test cache)."""
+    _seeded(_heel(10.5))
     e = _fail(_heel(7.0))
     (rec,) = e.recommendations
     assert rec.changes == (("unit", 7.0, 10.5),)
@@ -44,16 +56,6 @@ def test_the_heel_is_told_the_scale_that_clears_it():
     # no thinner parts do: the 6 mm crankpin leaves b1 a wall round it
     assert any(n.startswith("no part sizes at this scale clear it within the constructions' "
                             "limits (the least: ") for n in e.notes)
-
-
-def _seeded(*configs) -> None:
-    """The plans a recommendation re-runs, seeded from the test cache (re-made and verified,
-    not searched again: ~6 CPU-s each); solved and recorded the first time."""
-    from tests import cache
-
-    for cfg in configs:
-        if not cache.seed_plan(cfg):
-            cache.cached_design(cfg)
 
 
 def test_thinner_parts_are_checked_against_the_constructions():
@@ -94,7 +96,9 @@ def test_the_hex_crank_post_sends_the_heel_up_a_scale():
     """With the hex crank (``bolt``, the walkers' default; the heel's own is ``bolt_round``)
     the heel at its own 10.5 mm unit passes J1 at 10.2 mm of the 11.2 its 8.5 mm sleeve, a
     4.25 mm post, needs; thinner parts can't help (the crank sizes its post from the hex
-    standoff, recommend.gaps_of), so the one recommendation is the scale, checked."""
+    standoff, recommend.gaps_of), so the one recommendation is the scale, checked (its plan
+    seeded from the test cache)."""
+    _seeded(_heel(12.0, crank="bolt"))
     e = _fail(_heel(10.5, crank="bolt"))
     assert "it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs" in str(e)
     (rec,) = e.recommendations

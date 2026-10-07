@@ -78,16 +78,22 @@ def test_the_deck_clears_every_moving_part_over_the_cycle(built):
 
 
 def test_no_deck_part_clashes_at_the_built_angle(built):
+    """Every deck part against every other part whose box it meets (each pair once: two
+    deck parts were intersected both ways, and every box measured per pair, 6-8 s)."""
     _, mech = built
     allowed = {frozenset(p) for p in mech.meta["fastened"]}
     parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
+    boxes = {n: p.bounding_box() for n, p in parts.items()}
     names = [b.name for b in _deck(mech)]
+    seen: set[frozenset] = set()
     for a in names:
-        ba = parts[a].bounding_box()
+        ba = boxes[a]
         for b, pb in parts.items():
-            if b == a or frozenset((a, b)) in allowed:
+            pair = frozenset((a, b))
+            if b == a or pair in allowed or pair in seen:
                 continue
-            bb = pb.bounding_box()
+            seen.add(pair)
+            bb = boxes[b]
             if (ba.min.X > bb.max.X or bb.min.X > ba.max.X or ba.min.Y > bb.max.Y
                     or bb.min.Y > ba.max.Y or ba.min.Z > bb.max.Z or bb.min.Z > ba.max.Z):
                 continue

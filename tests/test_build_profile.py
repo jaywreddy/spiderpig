@@ -135,6 +135,26 @@ def test_the_measuring_tools_are_outside_the_engine_hash(tmp_path, monkeypatch):
     a copy of the package, so the test fails if a tool module is ever hashed (W0 review: a
     measuring tool must not re-key the stores, the test cache or CI's cache). The scorecard
     and the doc check live in ``tests/``, outside the package."""
+    root = _package_copy(tmp_path)
+    base = _engine_version_of(root, monkeypatch)
+    for tool in TOOLS:                          # every tool changed at once: one more hash
+        path = root / tool
+        assert path.exists(), tool
+        path.write_text(path.read_text() + "\n\ndef _a_change():\n    return 1\n")
+    assert _engine_version_of(root, monkeypatch) == base
+
+
+def test_the_engine_hash_sees_the_same_change_to_an_engine_module(tmp_path, monkeypatch):
+    """The control of the test above (split from it: two hashes each, ~2 s): the change it
+    makes to the tools, made to ``stack.py``, re-keys the engine."""
+    root = _package_copy(tmp_path)
+    base = _engine_version_of(root, monkeypatch)
+    (root / "stack.py").write_text((root / "stack.py").read_text()
+                                   + "\n\ndef _a_change():\n    return 1\n")
+    assert _engine_version_of(root, monkeypatch) != base     # the check can see a change
+
+
+def _package_copy(tmp_path):
     import shutil
 
     from spiderpig import design
@@ -142,15 +162,7 @@ def test_the_measuring_tools_are_outside_the_engine_hash(tmp_path, monkeypatch):
     root = tmp_path / "spiderpig"
     shutil.copytree(design.ROOT, root, ignore=shutil.ignore_patterns(
         "__pycache__", "viewer", "*.pyc"))
-    base = _engine_version_of(root, monkeypatch)
-    for tool in TOOLS:                          # every tool changed at once: one more hash
-        path = root / tool
-        assert path.exists(), tool
-        path.write_text(path.read_text() + "\n\ndef _a_change():\n    return 1\n")
-    assert _engine_version_of(root, monkeypatch) == base
-    (root / "stack.py").write_text((root / "stack.py").read_text()
-                                   + "\n\ndef _a_change():\n    return 1\n")
-    assert _engine_version_of(root, monkeypatch) != base     # the check can see a change
+    return root
 
 
 def test_every_stage_is_timed_and_each_wrapped_call_is_the_builds(monkeypatch, tmp_path):

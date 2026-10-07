@@ -14,15 +14,40 @@ MODULES = ("single", "double", "decker", "quad")
 OTHERS = [s for s in servos.available() if s != servos.DEFAULT]
 
 
-@pytest.mark.parametrize("t", quick([0.0, 2.2, 4.38], [2.2]))
-@pytest.mark.parametrize("module", quick(MODULES, ["single"]))
+@pytest.mark.parametrize("t", quick([0.0, 2.2, 4.38], []))
+@pytest.mark.parametrize("module", MODULES)
 def test_every_part_stays_inside_its_claim(design, module, t):
+    """Every group of every module at three angles (the full tier; the quick tier checks
+    the single at 2.2 group by group, below)."""
     tmpl, d = design(module)
     assert check_side(d, tmpl.freeze_at(t)) == []
 
 
-@pytest.mark.parametrize("servo", OTHERS)
-@pytest.mark.parametrize("module", quick(MODULES, ["single"]))
+GROUP_SETS = {
+    "drive and crank": lambda n: n in ("drive", "crank"),
+    "axles and links": lambda n: n.startswith(("pillar:", "pin:")) or n == "links",
+    "frame plates": lambda n: n == "frame",
+}
+
+
+@pytest.mark.parametrize("part", list(GROUP_SETS))
+def test_the_single_stays_inside_its_claims_group_by_group(design, part):
+    """The quick tier's contract check: the Klann single at 2.2 (the whole check above,
+    ~8 s), its groups in three sets, each realizing only what it needs
+    (``check_side``'s ``groups``): every group in one set, 3-5 s each."""
+    tmpl, d = design("single")
+    names = [g.name for g in d.groups]
+    assert all(sum(sel(n) for sel in GROUP_SETS.values()) == 1 for n in names), names
+    groups = [n for n in names if GROUP_SETS[part](n)]
+    assert groups
+    assert check_side(d, tmpl.freeze_at(2.2), groups=groups) == []
+
+
+# the full tier only: the quick tier couples each servo's drive and crank
+# (test_crank.py::test_every_servo_couples_the_crank_inside_the_claims, 3 s each), and
+# checks every group on the default servo (above); the whole side per servo is ~8 s
+@pytest.mark.parametrize("servo", quick(OTHERS, []))
+@pytest.mark.parametrize("module", MODULES)
 def test_every_servo_couples_inside_the_claims(design, module, servo, monkeypatch):
     if (module, servo) == ("quad", "xl330_m288"):
         # the demo Klann quad on the XL330 with the hex-standoff crank (2026-10-04): its hub
