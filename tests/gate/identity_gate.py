@@ -51,6 +51,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -381,6 +382,7 @@ def run_one(name: str, out: Path) -> None:
         "mesh": built["mesh"], "seconds": round(time.time() - t0, 1),
     }
     (out / f"{name}.json").write_text(json.dumps(doc, indent=1, default=str))
+    shutil.rmtree(work, ignore_errors=True)     # (its store and build: ~60 MB a design)
 
 
 # ---------------------------------------------------------------------------
