@@ -761,8 +761,10 @@ def test_api_walk_parameters(client):
 def test_api_walk_flags_a_design_that_would_tip(client, request, plans):
     """A design whose stability margin dips under ``MIN_MARGIN_MM`` is valid (it previews)
     but not stable, and says why; the default design (Strider's double) and the Klann quad
-    are both. ``live``: the foot z from the planner (the Jansen quad's search runs ~120 s
-    to no plan, and its feet are guessed)."""
+    are both. The four-bar quad tips on its planned feet (a 0.1 mm margin); ``recorded``:
+    the Jansen quad too, on its guessed feet (it has no layer plan, its search runs out:
+    ``test_planner_bounds.py::test_the_jansen_quad_has_no_plan_in_fourteen_layers``).
+    ``live``: every foot z from the planner (each plan seeded from the test cache)."""
     from spiderpig.walk import MIN_MARGIN_MM
 
     if plans == "live":
@@ -778,12 +780,14 @@ def test_api_walk_flags_a_design_that_would_tip(client, request, plans):
     assert w["stable"]
     assert w["warning"] is None
     assert w["metrics"]["min_margin_mm"] >= MIN_MARGIN_MM
-    w = client.get("/api/walk", params={"linkage": "jansen", "module": "quad"}).json()
-    assert w["valid"]
-    assert w["walks"]
-    assert not w["stable"]
-    assert "tip" in w["warning"]
-    assert w["metrics"]["min_margin_mm"] < MIN_MARGIN_MM
+    tippers = [("fourbar", "quad")] + ([("jansen", "quad")] if plans == "recorded" else [])
+    for key, module in tippers:
+        w = client.get("/api/walk", params={"linkage": key, "module": module}).json()
+        assert w["valid"], key
+        assert w["walks"], key
+        assert not w["stable"], key
+        assert "tip" in w["warning"], key
+        assert w["metrics"]["min_margin_mm"] < MIN_MARGIN_MM, key
 
 
 def test_api_walk_flags_a_design_that_does_not_walk(client):

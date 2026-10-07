@@ -4,6 +4,7 @@ recommendations share one more deadline (:mod:`recommend`)."""
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import replace
 
@@ -57,6 +58,25 @@ def test_nothing_found_within_the_node_budget_raises_with_the_tally():
             in msg)
     assert ("sizes: 3-7 layers ruled out (0-2 nodes each, 0 s in all); 8 layers left open at "
             "their budget (3 nodes, 0 s in all); 9-61 layers not tried") in msg
+
+
+def test_the_jansen_quad_has_no_plan_in_fourteen_layers():
+    """The Jansen quad has no layer plan: its search runs out (the product's 60 CPU-s
+    deadline; with the clock out, its 60000 search steps in ~170 CPU-s, sizes 16-61 left
+    open), so the walking model guesses its feet and the sim has no robot. What is proven,
+    and fast: every stack of 3-14 layers is ruled out within its first budget, whatever the
+    clock (node budgets only), the crank's route the blocker."""
+    cfg = BuildConfig(linkage="jansen", module="quad", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
+    problem.spec = replace(problem.spec, max_top=13, max_seconds=math.inf)
+    with pytest.raises(PlanError) as e:
+        problem.solve()
+    assert not e.value.expired
+    msg = str(e.value)
+    assert msg.startswith("jansen_quad: no layer plan found with up to 14 layers")
+    assert "sizes: 3-14 layers ruled out" in msg
+    assert "left open" not in msg
+    assert "crank route: no crank route passes" in msg
 
 
 def test_nothing_found_before_the_deadline_raises_with_the_tally():

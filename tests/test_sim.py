@@ -40,7 +40,7 @@ from spiderpig.sim.run import (  # noqa: E402
     simulate,
     walk_metrics,
 )
-from spiderpig.stack import body_class, is_link  # noqa: E402
+from spiderpig.stack import PlanError, body_class, is_link  # noqa: E402
 from tests import _sim, cache  # noqa: E402
 from tests.tiers import quick  # noqa: E402
 
@@ -522,9 +522,14 @@ def test_strider_walks_on_its_feet_alone():
 
 
 UNSTABLE = "the quasi-static margin is under 15 mm: this design tips (a design decision)"
+NO_PLAN = ("the Jansen quad has no layer plan (no robot to simulate): its search ends at the "
+           "planner's budget, 60 CPU-s, with none found; not run (the 60 s bought nothing): "
+           "test_planner_bounds.py::test_the_jansen_quad_has_no_plan_in_fourteen_layers "
+           "proves what it can fast")
 WALKERS = [      # each on its default constructions
     ("klann", "quad"), ("strider", "quad"),
-    pytest.param("jansen", "quad", marks=pytest.mark.xfail(reason=UNSTABLE, strict=False)),
+    pytest.param("jansen", "quad", marks=pytest.mark.xfail(raises=PlanError, run=False,
+                                                           reason=NO_PLAN)),
     pytest.param("trotbot_heel", "quad", marks=pytest.mark.xfail(reason=UNSTABLE, strict=False)),
 ]
 
