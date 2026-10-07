@@ -160,22 +160,22 @@ def test_strider_matches_its_plan_drawing():
 
 
 # TrotBot's heel link (the heel and toe variants) passes one plan unit from the crankpin:
-# the family's 10.5 mm unit clears the bolt crank's 6 mm shank (the default) and the printed
-# crank's 6 mm post, but the keyed crank's 8.5 mm post needs a 12 mm unit
-KEYED_UNIT = {"trotbot_heel": 12.0, "trotbot_toe": 12.0}
+# the family's 10.5 mm unit clears the round standoff crankpin's 6 mm (their default,
+# config.LINKAGE_CRANKS), but the hex crankpin's 8.5 mm sleeve needs a 12 mm unit
+HEX_UNIT = {"trotbot_heel": 12.0, "trotbot_toe": 12.0}
 
 
 @pytest.mark.planner            # the planner's tier; TrotBot's heel and toe (5-10 s) are slow
-@pytest.mark.parametrize("key", quick(WALKERS, [k for k in WALKERS if k not in KEYED_UNIT]))
+@pytest.mark.parametrize("key", quick(WALKERS, [k for k in WALKERS if k not in HEX_UNIT]))
 def test_one_side_plans(key):         # mechanisms: tests/test_mechanisms.py
     """A single-module side lays out with the default constructions (TrotBot's heel link
-    at its family's 10.5 mm unit: the bolt crank's shank clears it; with the keyed crank's
-    post it stops at the static stage and is sent to 12)."""
+    at its family's 10.5 mm unit: the round standoff crankpin clears it; with the hex
+    crankpin's sleeve it stops at the static stage and is sent to 12)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
-    if key in KEYED_UNIT:
-        keyed = BuildConfig(linkage=key, module="single", robot=False, crank="keyed",
-                            pillar="printed")
+    if key in HEX_UNIT:
+        assert cfg.crank == "bolt_round"
+        hexed = BuildConfig(linkage=key, module="single", robot=False, crank="bolt")
         with pytest.raises(ClearanceError, match="what would clear it:\n  unit 10.5 -> 12"):
-            design_side(template_for(keyed), keyed)
+            design_side(template_for(hexed), hexed)
     design = design_side(template_for(cfg), cfg)
     assert design.plan.top >= 2

@@ -561,11 +561,10 @@ def _register_tools(server: MCPServer, state: State) -> None:
         that can't be built at these parameters, the static stage's, else the planner's),
         each with the spec patch that applies it (hand it to ``derive``), and the failure's
         ``notes`` on what can't help or wasn't checked; empty when the design plans. The
-        engine recommends only what it re-ran and saw pass: the sheet thickness the printed
-        crank's joints need (``materials.thickness_mm``), a scale of the linkage or thinner
+        engine recommends only what it re-ran and saw pass: the sheet thickness a
+        construction needs (``materials.thickness_mm``), a scale of the linkage or thinner
         parts for a link-to-axle gap, the linkage's default scale for a plan that ran into
-        the stack's own room, printed pillars for a stack a bolt pillar's stock screw
-        can't span. When every stage passes, ``stage`` is ``target``: a missed stroke,
+        the stack's own room. When every stage passes, ``stage`` is ``target``: a missed stroke,
         straightness or lift target is met by a scale of the linkage (measured again and
         planned), and a missed stack that is proven the thinnest, or a clearance, gets a
         note naming the levers left. ``verified`` says what was re-run: for a decker or

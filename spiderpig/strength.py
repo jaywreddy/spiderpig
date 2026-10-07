@@ -8,19 +8,10 @@ whether the joints hold, per joint:
   and the plates a pillar is glued into) at the design's walking and jam loads;
 * **the crank**: the twist each crankpin joint of the built-up crankshaft carries (the
   drive torque times :func:`sim.run.crank_joint_factor`, chord / crank radius) against
-  what holds it, element by element, the weakest deciding. Every hex in a plastic socket
-  is one bearing model (:func:`construction.crank.hex_bearing_nm`: the flats' loaded
-  halves fully plastic at :data:`HEX_BEARING_MPA`, ``0.75 p a^2 L`` over the hex engaged,
-  less any lead-in or corner relief). A **keyed** crank: the brass key's torsion (its
-  inscribed tube) and the key's hex in the web's socket and in the post's cavity, each at
-  its least engagement (the key floats between them) plus the clamp's friction
-  (:data:`CLAMP_FRICTION_NM`) beside it. (Before 2026-10-03 the keyed crank was rated by
-  the printed post shell alone, 1.8 N·m, which the key's sockets don't reach.) A
-  **bolt** crank (:class:`construction.crank.BoltCrank`): the head's hex pocket and the
-  nut's in the acrylic stacks, the M6 thread's torsion, the nut's lock on its thread (the
-  nylock's prevailing torque and the threadlocker's breakaway) and the weakest
-  solvent-welded plate interface the twist crosses. The **printed** crank: the clamp's
-  friction, the low end.
+  what holds it, element by element, the weakest deciding
+  (:meth:`construction.crank.BoltCrank.capacity`: the hex standoff in its plates' pockets,
+  one bearing model, :func:`construction.crank.hex_bearing_nm`, and the standoff's torsion;
+  the round standoff's friction clamp).
 
 The loads (:func:`design_loads`): the design's own from MuJoCo (:mod:`sim.loads`: a
 walking percentile and a jam at the servo's torque limit, per joint and link, cached per
@@ -64,74 +55,30 @@ GENERIC_PIN_LOADS = (119.0, 155.0)
 
 
 def bolt_crank(key: str) -> bool:
-    """Is crank ``key`` a :class:`construction.crank.BoltCrank` (``bolt``, ``bolt_round``,
-    ``bolt_hub_screw``, ``bolt_unretained``, ...)?"""
+    """Is crank ``key`` a :class:`construction.crank.BoltCrank` (``bolt``, ``bolt_round``)?"""
     from spiderpig.construction import CRANKS
     from spiderpig.construction.crank import BoltCrank
 
     return isinstance(CRANKS.get(key), BoltCrank)
 
 
-CLAMP_FRICTION_NM = 0.17     # the printed crank's clamp friction, the low end (crank.py)
-BRASS_YIELD_MPA = 250.0      # CuZn39Pb3 (a brass standoff), 0.2 % proof, half hard
-KEY_BORE_MM = 3.0            # the standoff's M3 thread, taken at its major diameter
-HEX_BEARING_MPA = 50.0       # printed PLA (in plane) or cast acrylic crushed by a hex's flats
-#                              (compressive yield, the low end; UNVERIFIED for a given print
-#                              or sheet)
-
-
-def hex_torsion_nm(af: float, yield_mpa: float, bore: float = KEY_BORE_MM) -> float:
-    """Torsional yield (N·m) of a hex standoff, as the tube inscribed in its flats."""
-    zp = math.pi * (af ** 4 - bore ** 4) / (16 * af)
-    return yield_mpa / math.sqrt(3) * zp / 1e3
-
-
 def crank_capacity(meta: dict, config: BuildConfig) -> dict[str, float] | None:
     """What one crankpin joint of ``config``'s crank holds, per element (N·m), from the
-    built crank's notes (``meta``: ``crank_key`` / ``crank_bolt``), else the construction's
-    nominal (no build needed: the sim's metrics); ``None`` for a crank this doesn't model."""
+    built crank's notes (``meta``: ``crank_bolt``), else the construction's nominal (no
+    build needed: the sim's metrics); ``None`` for a crank this doesn't model."""
     from spiderpig.construction import CRANKS
-    from spiderpig.construction.crank import hex_bearing_nm
 
     construction = CRANKS.get(config.crank)
     if construction is None:
         return None
-    if bolt_crank(config.crank):
-        construction = construction.for_sheet(config.crank_sheet)
-        bolt = meta.get("crank_bolt")
-        if bolt and bolt.get("chains"):
-            caps: dict[str, float] = {}
-            for ch in bolt["chains"] + bolt.get("journals", []):
-                for k, v in ch["capacity_nm"].items():
-                    caps[k] = min(caps.get(k, math.inf), v)
-            wb = bolt.get("weakest_bond")
-            if wb:
-                caps[f"solvent bond, plates {wb['layers'][0]}/{wb['layers'][1]} "
-                     f"({wb['area_mm2']:g} mm² at {bolt['bond_mpa']:g} MPa)"] = wb["capacity_nm"]
-            return caps
-        return construction.capacity()
-    if config.crank in ("keyed", "keyed_float"):
-        key = meta.get("crank_key") or {}
-        af0, length = construction.key_dims()
-        af = float(key.get("key_af_mm", af0))
-        ch = float(key.get("chamfer_mm", construction.pocket_chamfer))
-        sock, cav = key.get("socket_engaged_mm"), key.get("cavity_engaged_mm")
-        if sock is None or cav is None:        # not built: the tightest joint's, nominal
-            joint = construction.tightest_joint(config.pitch)
-            sock = None if joint is None else round(length - joint.cavity, 3)
-            cav = None if joint is None else round(length - joint.socket, 3)
-        caps = {f"brass key {af:g} mm AF, torsion": round(hex_torsion_nm(af, BRASS_YIELD_MPA),
-                                                          3)}
-        for where, eng in (("web socket", sock), ("post cavity", cav)):
-            if eng is not None:
-                caps[f"key in its {where}, {eng:g} mm, + clamp friction"] = round(
-                    hex_bearing_nm(af, eng - ch, HEX_BEARING_MPA) + CLAMP_FRICTION_NM, 3)
+    bolt = meta.get("crank_bolt")
+    if bolt and bolt.get("chains"):
+        caps: dict[str, float] = {}
+        for ch in bolt["chains"] + bolt.get("journals", []):
+            for k, v in ch["capacity_nm"].items():
+                caps[k] = min(caps.get(k, math.inf), v)
         return caps
-    if config.crank == "printed":
-        return {"clamp friction": CLAMP_FRICTION_NM}
-    return None
-
-
+    return construction.for_sheet(config.crank_sheet).capacity()
 def family_loads(linkage: str) -> tuple[float, float] | None:
     """The fallback walking and jam loads of ``linkage``'s family (a key's own entry
     first), else None."""
@@ -244,22 +191,9 @@ def joint_strength(name: str, note: dict, loads: dict) -> dict:
            "links": [e["link"] for e in note["links"]], "case": bending_case(note),
            "span_mm": note["span_mm"], "section": note["section"]["name"],
            "basis": jl["basis"]}
-    splices = note.get("splices") or []
     for tag in ("walk", "jam"):
         f = jl[f"{tag}_n"]
         s = stresses(note, f, jl[f"{tag}_patterns"]) if f > 0 else None
-        if s and splices and s["moment_nmm"] > 0:
-            # a spliced pillar's joints: the moment that opens a splice against the moment at
-            # the splice (its plate's mid-plane), the worst splice
-            from spiderpig.construction.wobble import layer_mid, moment_at_per_newton
-
-            sf = min(x["capacity_nmm"] / max(f * moment_at_per_newton(
-                note, layer_mid(note, x["layer"]), jl[f"{tag}_patterns"]), 1e-9)
-                for x in splices)
-            sf = round(sf, 2)
-            s = dict(s, splice_safety=sf)
-            if s["safety"] is None or sf < s["safety"]:
-                s.update(safety=sf, governs="splice")
         row[tag] = dict(s, load_n=round(f, 2)) if s else None
     return row
 
@@ -305,11 +239,9 @@ def rider_hole(config: BuildConfig) -> float:
     from spiderpig.construction import CRANKS
 
     crank = CRANKS.get(config.crank)
-    if hasattr(crank, "for_sheet"):
-        crank = crank.for_sheet(config.crank_sheet)
-    rider = getattr(crank, "rider_d", None)
-    d = rider(config.params) if callable(rider) else config.params.crankpin_d
-    return config.params.hole(d)
+    if crank is None:
+        return config.params.hole(config.params.crankpin_d)
+    return config.params.hole(crank.for_sheet(config.crank_sheet).rider_d(config.params))
 
 
 def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
@@ -403,21 +335,15 @@ def level(row: dict) -> str | None:
 
 
 def _alt_sections(kind: str, note: dict) -> list[tuple[str, Section]]:
-    from spiderpig.construction.pivots.bolt import MINOR_D
+    """The other sections a pivot could have (each with the option that builds it): the
+    Chicago screw's barrel for a pin, the goBILDA standoff for a pillar (the one-piece
+    steel shaft's alternative)."""
     from spiderpig.construction.pivots.chicago import ChicagoShaft, chicago_section
-    from spiderpig.construction.pivots.ptfe import ptfe_section
+    from spiderpig.construction.pivots.standoff import StandoffAxle
 
-    out = [("--pin chicago" if kind == "pin" else None, chicago_section(ChicagoShaft())),
-           (f"--{kind} rod", Section.rod(3.0)),
-           (f"--{kind} bolt", Section.rod(MINOR_D, 450.0, name="M3 A2-70 core")),
-           ("--pin ptfe" if kind == "pin" else None, ptfe_section())]
-    if kind == "pillar":
-        from spiderpig.construction.pivots.standoff import StandoffAxle
-
-        out.append(("--pillar printed", Section.rod(note["section"]["bearing_d"], 50.0,
-                                                    name="printed PETG axle")))
-        out.append(("--pillar standoff", StandoffAxle().section()))
-    return [(k, s) for k, s in out if k is not None and s.name != note["section"]["name"]]
+    out = [("--pin chicago", chicago_section(ChicagoShaft())) if kind == "pin" else
+           ("--pillar standoff", StandoffAxle().section())]
+    return [(k, s) for k, s in out if s.name != note["section"]["name"]]
 
 
 def materials_sheet(key: str):
@@ -438,23 +364,6 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
                    f"keep the servo's torque limit under {lim:.2f} N·m")
-        from spiderpig.construction import AXLES
-
-        if (row["construction"] in ("printed", "keyed", "keyed_float")
-                and all(getattr(AXLES.get(k), "gaps", True) for k in (config.pin,
-                                                                         config.pillar))):
-            # (the bolt crank plans its heads in clearance gaps, which some pins and pillars
-            # aren't built for, ``gaps`` False: bolt, bearing, bushing; no fix for those)
-            from dataclasses import replace as _replace
-
-            bolt = _replace(config, crank="bolt")
-            caps = crank_capacity({}, bolt) or {}
-            held = min(caps.values()) if caps else None
-            kind = ("single aluminium plates on steel hex-standoff crankpins"
-                    if materials_sheet(bolt.crank_sheet).metal else
-                    "laser-cut plate stacks keyed on M6 hex-bolt crankpins")
-            out.append(f"--crank bolt ({kind}"
-                       + (f": holds {held:.2f} N·m a joint)" if held else ")"))
         if bolt_crank(row["construction"]) and "pocket" in row["weakest"] and "hex" in row[
                 "weakest"]:
             now = materials_sheet(config.crank_sheet)
@@ -463,9 +372,6 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
                 out.append(f"a thicker crank sheet (--crank-sheet al6061_3p2mm: "
                            f"{thick.thickness:g} mm of hex pocket against "
                            f"{now.thickness:g} mm now)")
-        if bolt_crank(row["construction"]) and "nut lock" in row["weakest"]:
-            out.append("a stronger threadlocker under the nut (Loctite 2701/270: about 2x the "
-                       "breakaway of 243), or a primer on the plated thread")
         if bolt_crank(row["construction"]) and "clamped" in row["weakest"]:
             out.append("medium threadlocker on the crankpin screws and the screws tightened to "
                        "2 N·m (the friction clamp is the joint): measure the slip torque on "
@@ -523,16 +429,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         j, w = sfs(n)
         out.append(f"anchor the pillar in both frame plates (a beam, not a cantilever): "
                    f"{fmt(j, w)}")
-    sec = note["section"]
     jam_sf = _sf(row, "jam")
-    if kind == "pillar" and "printed" in sec["name"] and jam_sf:
-        d = sec["bearing_d"] * (JAM_WARN / jam_sf) ** (1 / 3) if jam_sf < JAM_WARN else None
-        if d is not None:
-            d = math.ceil(d * 4) / 4
-            j, w = sfs(dict(note, section=Section.rod(d, sec["yield_mpa"], name=sec["name"])
-                            .as_dict()))
-            out.append(f"a thicker printed pillar (Params.axle_d {sec['bearing_d']:g} -> {d:g} "
-                       f"mm; the links' holes and the plates' arms grow with it): {fmt(j, w)}")
     limit = loads.get("torque_limit_nm")
     if jam_sf is not None and jam_sf < JAM_WARN and limit:
         out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "

@@ -69,8 +69,14 @@ it names one (Strider's `double`), else a walker's `quad`, and the robot; a
 mechanism's `single` and one side), so a CLI never needs `--module single
 --side-only` for a mechanism. The project's default design is `linkage.DEFAULT`
 (Strider) in its default module: `BuildConfig()` is the Strider double, built `--pin chicago
---pillar standoff --crank bolt` (since 2026-10-03; before, `--pillar printed --crank keyed`):
+--pillar standoff --crank bolt` (since 2026-10-03):
 14 layers / 66.5 mm a side (2026-10-05; the layer counts quoted below are each change's own).
+**Since 2026-10-07 (W2, the user's decision D1) the only constructions are the cranks `bolt`
+and `bolt_round`, the `chicago` pin and the one-piece `standoff` pillar**: every other key
+this file mentions (the printed, keyed and acrylic two-plate cranks, the crank variants, the
+rod / bolt / PTFE / bearing / bushing / printed pins and pillars, the spliced standoffs) was
+removed, and a config, spec or stored design naming one fails with its replacement
+(`config.REMOVED_CONSTRUCTIONS`, a `bad_parameter` failure); so does an acrylic crank sheet.
 The **bolt crank** (`construction/crank.py` `BoltCrank`). On an aluminium crank sheet (the
 default 0.100 in 6061-T6) it resolves to **single plates** (`BoltCrank.for_sheet` / `resolve(ctx)`, since
 2026-10-04, `_WebPlates`): every web one aluminium plate; every crankpin (since the merge of
@@ -101,10 +107,8 @@ gives up after `stack.GIVE_UP` such layerings with no plan, ~3 s, instead of its
 deadline). At a leaf the planner routes again round the gaps the plan has where the
 crankpin's run washers met another group's (`JointRules.gap_washer`, `_Search._washer_blocks`,
 `CrankRouter.washer_bit`: bits only the leaf sets, never the search). Its joint
-is a friction clamp, rated in `_web_capacity` (UNVERIFIED coefficients). On an acrylic crank
-sheet (stored designs before 2026-10-04) it is the two-plate stack crank: M6 bolts, head and
-nylock in hex pockets, cemented stacks (`_BoltPlates`, the `two_layer_*`, `tip`,
-`low_count`, `share_stack` rules). Mechanisms default to it too (`config.DEFAULT_CRANKS`,
+is a friction clamp, rated in `BoltCrank.capacity` (UNVERIFIED coefficients). Mechanisms
+default to it too (`config.DEFAULT_CRANKS`,
 2026-10-04): a short crank's top screw head over the hub plate sits in a pocket of the
 printed horn spacer (`DriveGroup.realize`). The construction a design gets is data
 (`config.default_crank`: `LINKAGE_CRANKS` per linkage, else `DEFAULT_CRANKS` per kind). The
@@ -157,8 +161,8 @@ hub's and webs' rims 1 t (`BoltCrank.web_edge_t`: the cut rules' error level; th
 a hex pocket is a warning on 0.100 in); a crankpin within a head's reach of the horn's rim makes the horn
 spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`) or, wholly under it,
 is capped by it (`hub_capped`). **Since the assembly audit of 2026-10-04 the chain that ends
-in the hub plate is always capped** (`BoltCrank.hub_screw` False: no screw over the hub
-plate, the hub plate held by the horn screws; `--crank bolt_hub_screw` keeps the screw):
+in the hub plate is always capped** (`BoltCrank.hub_capped`: no screw over the hub
+plate, the hub plate held by the horn screws):
 no order drove that screw with the horn screws coming up through the hub plate from below,
 so the hub plate, horn, servo and inner plate go on as one unit
 (`construction.robot.ASSEMBLY`, the whole robot's order, which the pivots' and the crank's
@@ -176,8 +180,7 @@ its lower web, so the sleeve, caught between the plates, carries the standoff; t
 body stops toward the outer plate on a printed **thrust sleeve** round the stub
 (`stub_thrust`, 8.5 mm, its end 0.1 mm over the outer plate: claimed in the stub's layers
 and gaps, `stub_thrust_r`) and toward the hub on the capped sleeve, and the capped hex is
-rated in the hub's depth less that 0.1 (2.44 mm). `--crank bolt_unretained` keeps the
-build before (both slide, no stop). (An M3 retainer under the outer plate, which that audit
+rated in the hub's depth less that 0.1 (2.44 mm). (An M3 retainer under the outer plate, which that audit
 proposed, stops the stub moving *in*, which the capped sleeve already does, not out.)
 
 **Clearance gaps, layer thicknesses, per-part sheets** (2026-10-04, `stack.finalize`,
@@ -225,12 +228,8 @@ other is **one piece**, never spliced (r5, 2026-10-05, `splice_build="shaft"`,
 (0.1 mm steps), tapped M3, an M3 button head and DIN 9021 washer each end
 (`crank_catalog.pillar_shaft`; the Strider double's four are 62.4 mm, the quad's 128.1):
 at the plan's own z the hand-tight splices opened at jam SF 1.43 (double) and 0.51 (quad).
-Spliced columns stay selectable: `--pillar standoff_hand` (goBILDA segments, an M4 stud
-through a splice plate of steel shims, the upper segment turned on by hand to `splice_nm`
-0.4 N·m, 0.57 N·m to open, threadlocker 243 on the stud), `standoff_bench` (the column
-spliced on the bench at 1.0 N·m, UNVERIFIED; its splices must lie under the pillar's
-lowest link, a planner rule) and `standoff_m3` (uxcell M3 segments; jam SF 1.62 on the
-Strider). A column up to 2 mm short of its gap takes steel take-up shims under the face
+(The spliced columns were removed on 2026-10-07; a short column the splices couldn't fill
+stays refused, `StandoffAxle._spliceable`, so the plans didn't move.) A column up to 2 mm short of its gap takes steel take-up shims under the face
 over it (1.0 / 0.5 mm steps, `SHIM_STEP`; on M3 within `COLUMN_TOL` 0.25 of the gap; in
 the clearance gap there, its gap ring trimmed, else in the spacer layer; `shims_mm` in the
 note). Strength: a beam per bay between its supports
@@ -240,9 +239,7 @@ screw pins between the links, from the pivot review of 2026-10-03 (Harfington / 
 20, 22, 23, 25, 28 ... 80; one **printed head spacer** per end takes up the barrel's fixed
 length, no PTFE washer or DIN 988 shims; the lowest link bonded with epoxy):
 `construction/pivots/chicago.py` has the table, why and how to assemble (a planner rule
-since: a pin's links must fit a stock barrel, `ChicagoShaft.column`); `--pin rod`,
-`--pin ptfe`, `--pin printed` (the zero-hardware snap pin) stay selectable, as do
-`--crank keyed` / `keyed_float` / `printed` and `--pillar printed`; the audit reports each
+since: a pin's links must fit a stock barrel, `ChicagoShaft.column`); the audit reports each
 link's tilt, `construction/wobble.py`, and every joint's strength (`docs/audit/STRENGTH.md`);
 Klann stays registered as the wobbly demo (`--linkage klann`: its quad);
 `audit` and `report` take mechanisms too. A bake is cached as
@@ -466,11 +463,11 @@ hatchling; `uv sync` installs it editable, `spiderpig` is its console script).
 | `spiderpig/linkage/` | the symbolic side, one package re-exporting everything. `engine.py`: compass-and-ruler helpers (`crank`, `circle_x_circle`, `extend`, `offset`), `Linkage` (a straight-line program over exact `params`, compiled once per linkage), the registry (`get` / `available(kind)`), `LegSolution` (mirror = reflect x at crank angle π − t), `scale_params`. `checks.py`: the stage checks (`check_steps`: every loop's margin and transmission angle; `check_output`: a mechanism's output against its promises). `assembly.py`: the generic leg template (bodies `coupler`, `b<k>` links, `conn`, `torso`; connections from shared joint names), composition (`combine_connectors`, `fuse_*`), `build_module_template(module, phases, params, linkage)` and `feet_of`. A walker has `feet`; a mechanism an `Output` (`output_check()`, promises enforced as `OutputError`) and maybe a second input (`inputs`, `crank_at`). |
 | `spiderpig/linkages/` | one module per linkage family (Klann, Strider, Jansen, ...); each registers its `Linkage` (and variants). Auto-imported; Strider first (the default, `linkage.DEFAULT`; a linkage's `default_module` names the module it builds when none is asked for). `mechanisms.py`: building blocks (straight lines, lifts, xy, rockers), one side only; `tests/test_mechanisms.py`. |
 | `spiderpig/explain.py` | prints each pipeline stage's verdict for a design (program checks, static facts, plan with its crank route and proof, or the stage's error and what would clear it) |
-| `spiderpig/recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), thinner `Params` parts within every construction's `dims()`, the default scale after a scale-down, printed pillars for a plan a bolt pillar's stock screw bounds; and, for a design that plans but misses a target that scales with the linkage (a mechanism's stroke or straightness, a walker's lift), `target_scale`: the least practical scale that meets it, measured again and planned (`api.advise`) |
+| `spiderpig/recommend.py` | what would clear a static or plan failure, checked by re-running the stage: the least practical scale of the linkage (`linkage.scale_params`), thinner `Params` parts within every construction's `dims()`, the default scale after a scale-down; and, for a design that plans but misses a target that scales with the linkage (a mechanism's stroke or straightness, a walker's lift), `target_scale`: the least practical scale that meets it, measured again and planned (`api.advise`) |
 | `spiderpig/mechanism.py` | `Body` / `Joint` / `Pose` / `Mechanism`; `MechanismTemplate` / `SampledPoses` for batched sampling (numpy 4x4s). All joints sit at z = 0: kinematics is planar. `Body.fab` / `bom_key` / `rigid_with`. |
 | `spiderpig/stack.py` | the layer planner. Knows only **claims** (`Claim` -> `Placed` discs/pills per layer, relative to link layers; an `early` part checked as soon as a group's own links are placed), a `Router` (a group whose shape it chooses per layering: the crank), a `Topology` (links, axles as named points, points fixed to the crank) and sampled `Geometry` (distances are lower bounds that cover motion between samples). `StackProblem.solve()` (see "The planner" below); `verify_plan()` re-checks exhaustively on fresh sampling. |
-| `spiderpig/construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins: the claims, `AxleDims`, the `printed` snap axle), `crank.py` (routes, claims, the crankshafts: `BoltCrank`, the default for walkers and mechanisms: on the aluminium crank sheet single web plates on steel hex-standoff crankpins (`_WebPlates`; `bolt_round` the round friction clamp), on acrylic two-plate web stacks keyed on M6 hex-bolt crankpins (`_BoltPlates`); the printed ones kept to compare: `KeyedCrank` keys every printed post to the web above with a brass hex standoff (pressed in, `key_fit`; `keyed_float` slides) and clamps each chain through a two-layer top web; `PrintedCrank` is the friction-only one; `hex_bearing_nm`, the one hex-in-socket bearing model), `route.py` (the crank's router: static facts, detours, the exact route per layering; `JointRules.two_layer_top` ends a keyed chain one layer higher; the bolt crank's `two_layer_bottom`, `tip`, `low_count`, `share_stack`, `inner_webs`, `bottom_layers`), `underside.py` (the body's underside: the envelope, ground clearance), `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides, the frame ties' holes, the assembly order `ASSEMBLY`), `chassis.py` (the servo frames in the plate plane, centre plates, rear screws, the frame ties' M3 standoff chains), `deck.py` (the electronics deck: a laser-cut plate on two printed rails spigoted into the inner plates, over the servos between the frames, nothing moving in its z band; ESP32 servo driver, 2S LiPo in a strapped cradle screwed to the deck, IP2326 charger, HX-2S-JH20 BMS, toggle switch; catalog in `hardware/electronics.py`, items with a `mass_g`; `deck_clearance` proves it clear over the cycle and `deck_path` that it lowers in past the pillars' heads; the sim's `payload_g` is 0 now), `contract.py` (parts inside claims), `envelope.py` (solids of claims). Registries in `__init__.py`. |
-| `spiderpig/construction/pivots/` | metal-shaft pivots (`--pin` / `--pillar` keys; its docstring holds the hardware research): `standoff` (**the default pillar**: a goBILDA 1501 round 6 mm M4 standoff where one stock length fills the column, else one MISUMI NETRF6 steel standoff made to its length, M3 ends (`one_piece`), never spliced; printed rings in every layer, a button head through each frame plate (no glue); `standoff_hand` / `standoff_bench` / `standoff_m3` splice at a ring layer past 60 mm; a cantilever where a link's sweep stops it short of one plate; the `column` hook refuses a column no stock segments fill; `standoff.py`), `chicago` (**the default pin**: an M3 Chicago screw's 4 mm barrel through the stack, printed rings, a printed head spacer per end taking up the barrel's fixed length, lowest link bonded to the barrel; pins only; `chicago.py`, whose docstring holds the pivot review's table), `chicago_bushing` (the same with igus GFM-0405-03 in the other links, printed sleeves), `rod` (3 mm rod, printed spacer rings, Starlock clips, glued into the frame plates; `rod.py`; the default before the Chicago screw: 19 / 17 layers on the Strider double / demo Klann quad with the keyed crank (17 / 13 with `--crank printed`; a layer each for the chassis screws' heads under the inner plate since 2026-10-04) in seconds, the least play of the plain pivots, assembled bottom up; the BOM lists its cut lengths), `bolt` (M3 SHCS axle, rings, washer + nylock; a pillar clamps both plates, the nut end claims 2-3 layers, and a pin's head is unreachable once its lowest link is on, so it is not the default; `bolt.py`), `bearing` (MF63ZZ flanged bearing glued in each link, rod, printed sleeves; `insert.py`), `bushing` (igus GFM-0304-03 pressed in each link, same; `insert.py`), `ptfe` (the rod with a 3 x 4 mm PTFE tube liner pressed in each link; its limit the liner's 10 MPa bearing pressure; `ptfe.py`). Their claims fill every layer (`AxleDims.fill`: a rod can't neck, so `neck` is the narrowest ring or sleeve), flanges need a free face (`AxleDims.flange`, `flange_sides`), retainers come from the construction's `ends` hook. Catalog additions in `hardware/fastener_catalog.py`. |
+| `spiderpig/construction/` | the rationalization: one **group** per functional part (`base.py` is the contract). `axle.py` (pillars + link pins: the claims, `AxleDims`), `crank.py` (routes, claims, the crankshaft: `BoltCrank`, single aluminium web plates on steel hex-standoff crankpins, `_WebPlates`; `bolt_round` the round friction clamp; `hex_bearing_nm`, the one hex-in-socket bearing model), `route.py` (the crank's router: static facts, detours, the exact route per layering; `JointRules` from `BoltCrank.joint_rules`), `underside.py` (the body's underside: the envelope, ground clearance), `plates.py` (laser links + frame plates), `robot.py` (two mirrored sides, the frame ties' holes, the assembly order `ASSEMBLY`), `chassis.py` (the servo frames in the plate plane, centre plates, rear screws, the frame ties' M3 standoff chains), `deck.py` (the electronics deck: a laser-cut plate on two printed rails spigoted into the inner plates, over the servos between the frames, nothing moving in its z band; ESP32 servo driver, 2S LiPo in a strapped cradle screwed to the deck, IP2326 charger, HX-2S-JH20 BMS, toggle switch; catalog in `hardware/electronics.py`, items with a `mass_g`; `deck_clearance` proves it clear over the cycle and `deck_path` that it lowers in past the pillars' heads; the sim's `payload_g` is 0 now), `contract.py` (parts inside claims), `envelope.py` (solids of claims). Registries in `__init__.py`. |
+| `spiderpig/construction/pivots/` | metal-shaft pivots (`--pin` / `--pillar` keys): `standoff` (**the pillar**: a goBILDA 1501 round 6 mm M4 standoff where one stock length fills the column, else one MISUMI NETRF6 steel standoff made to its length, M3 ends (`one_piece`), never spliced; printed rings in every layer, a button head through each frame plate (no glue); a cantilever where a link's sweep stops it short of one plate; the `column` hook refuses a column no stock part fills; `standoff.py`), `chicago` (**the pin**: an M3 Chicago screw's 4 mm barrel through the stack, printed rings, a printed head spacer per end taking up the barrel's fixed length, lowest link bonded to the barrel; `chicago.py`, whose docstring holds the pivot review's table). The others were removed on 2026-10-07 (`config.REMOVED_CONSTRUCTIONS`). Their claims fill every layer (a shaft can't neck, so `neck` is the narrowest ring), retainers come from the construction's `ends` hook. Catalog additions in `hardware/fastener_catalog.py`. |
 | `spiderpig/servos/` | `ServoSpec` data (continuous-rotation servos only), the drive group (`mount.py`: servo on the inner frame plate, `DriveInterface` for the crank), models and CAD cache. |
 | `spiderpig/hardware/` | purchasable-item catalog (`catalog.py`, data in `parts.py`, `fastener_catalog.py`, `crank_catalog.py`, `sheet_catalog.py`, `electronics.py` and `servos/catalog.py`; the sheet helpers), where to buy (`sources.py`: each bought item's first offer a direct product page), the screw families (`fasteners.py`: heads, stock lengths, keys, solids), materials and exact mass properties (`mass.py`: the one density table, `material_of`, `part_props`), the BOM (`bom.py`; shims per thickness, `shims.py`) and the shopping list (`order.py`: `ORDER.md`). |
 | `spiderpig/config.py` | `BuildConfig`: what to build and how, validated on construction (the linkage's module, one phase per leg, the linkage's proportions; defaults dropped so a design has one config and one `key`), the shared CLI arguments and the server's query parsing. |
@@ -582,12 +579,11 @@ crank route in it:
    branch and bound on the route's cost.
 3. **The route** for a complete layering (`CrankRouter.route`): exact, a
    shortest path over layers and **chains** (runs along one point whose webs
-   meet: one screw). Buildable only: a stock screw per chain
-   (`JointRules.spans`, from `PrintedCrank.post_joint`, end-play faces
-   included), one chain per point, pockets of consecutive chains (and the
-   last one and the horn screws) apart, a chain ending set back in the hub's
-   lowest layer only if the horn screws still fit the shortened hub
-   (`JointRules.hub_play`). Cost, in order: added features (run
+   meet: one standoff). Buildable only: a stock standoff per chain
+   (`JointRules.spans`, from `BoltCrank.joint_rules`), one chain per point,
+   chains sharing a plate or joined by a journal standoff, the last ending in
+   the hub plate (`j_last`), pockets of consecutive chains (and the last one
+   and the horn screws) apart. Cost, in order: added features (run
    layers no rider needs, detour runs), detour sweep, a dropped bearing
    (`StackSpec.drop_bearing`, off by default), then fewer runs.
 4. **Verification**: `problem.plan(layers, top, choices)` and `verify_plan`;
@@ -599,10 +595,7 @@ then back down the skipped sizes; for a multi-leg module, a second
 strategy: a leg at a time at the single module's layers, `hint`; when no
 size found one, the sizes left open get the full budget, thinnest first),
 then the thinner sizes it didn't rule out with the full budget (the next
-thinner first), then a cheaper route. A group may bound the sizes searched
-(`Group.max_top(ctx)`: a bolt pillar's longest stock screw clamps at most
-15 layers of 3 mm); `side_problem` caps `StackSpec.max_top` and the
-`PlanError` names the bound (`StackProblem.notes`). Budgets (`StackSpec.quick_nodes`, `max_nodes`,
+thinner first), then a cheaper route. Sizes go up to `StackSpec.max_top`. Budgets (`StackSpec.quick_nodes`, `max_nodes`,
 `max_total_nodes`) and the wall-clock deadline (`StackSpec.max_seconds`,
 60 s: a node's cost grows with the stack size) bound all of it, never
 validity: a plan found is returned with `optimal=False` and a `proof`

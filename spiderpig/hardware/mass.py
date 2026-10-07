@@ -29,7 +29,6 @@ DENSITY = {
     "brass": 8.5,         # heat-set inserts (CuZn39Pb3 free-cutting brass: 8.47)
     "aluminium": 2.70,    # 6061-T6 (ASM handbook)
     "plastic": 1.41,      # acetal, a plastic horn
-    "bushing": 1.4,       # igus iglide
     "ptfe": 2.2,          # PTFE washers and tube liners
     "nylon": 1.14,        # PA66 standoffs, screws and nuts
 }
@@ -128,12 +127,11 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
         alu = "alumin" in servo.horn.name.lower()
         return ("aluminium", DENSITY["aluminium"], None) if alu else ("plastic", DENSITY["plastic"],
                                                                      None)
-    material = item_material(body.bom_key)        # what the item says it is, first (a
-    if material in DENSITY:                        # PTFE liner is a "bushing" too)
+    material = item_material(body.bom_key)        # what the item says it is, first
+    if material in DENSITY:
         return material, DENSITY[material], None
-    if category in ("insert", "bushing"):
-        return ("brass", DENSITY["brass"], None) if category == "insert" else (
-            "bushing", DENSITY["bushing"], None)
+    if category == "insert":
+        return "brass", DENSITY["brass"], None
     return "steel", DENSITY["steel"], None
 
 

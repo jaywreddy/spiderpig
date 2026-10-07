@@ -310,17 +310,18 @@ def test_mount_screws_clear_the_crank_and_are_claimed(design, side, key):
 
 
 def test_the_verifier_sees_the_screw_heads(design):
-    """Negative control: a screw head moved onto the crank hub is a violation."""
+    """Negative control: a screw head moved onto the servo horn is a violation (with the
+    keyed crank, removed 2026-10-07, it met the crank hub there)."""
     from spiderpig.stack import Geometry, verify_plan
 
-    single, d = design("single", crank="keyed", pillar="printed")   # its hub under the plate
+    single, d = design("single")
     plan = d.plan
     assert verify_plan(plan, single) == []              # the fixed points carry over
     pts = dict(plan.topo.geometry.points)
     name = next(n for n in pts if n.startswith("servo.screw"))
     pts[name] = pts["O"][0] + np.array([12.0, 0.0])     # just outside the horn hole
     broken = replace(plan, topo=replace(plan.topo, geometry=Geometry(pts)))
-    assert any("servo screw head" in v and "crank hub" in v for v in verify_plan(broken))
+    assert any("servo screw head" in v and "servo horn" in v for v in verify_plan(broken))
 
 
 def test_no_models_are_checked_in():

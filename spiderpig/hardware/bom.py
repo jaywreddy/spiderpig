@@ -12,10 +12,8 @@ Everything is derived from the mechanism :func:`fabricate.fabricate` returns:
   item's density, as a fraction of a spool);
 * ``mech.bom_extras`` adds purchases that aren't modelled as bodies
   (glue, threadlocker, a shim stack's other rings, sheet stock); a line whose ``where`` ends
-  in ``cut X
-  mm`` (the metal pivots' rod, :class:`construction.pivots.common.RodShaft`)
-  also goes on the **cut list** (:func:`cut_list`): identical lengths
-  grouped, the total, so the buyer knows how many rods to cut them from.
+  in ``cut X mm`` (stock cut to length) also goes on the **cut list** (:func:`cut_list`):
+  identical lengths grouped, the total, so the buyer knows how many to cut them from.
 
 Made parts that are the same shape are one row with a quantity
 (:func:`group_made`): a laser-cut plate and its mirror image are the same cut
@@ -35,11 +33,8 @@ unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as DIN 433 wa
 
 What the constructions don't say but the parts do (:func:`fitting_lines`): each horn
 screw's shims as the stack under its head (e.g. ``1 mm``, from the shim body's height),
-threadlocker 222 on the horn screws where they thread into a metal horn (metal to metal
-only: none in a plastic horn), and threadlocker 243 (or 263) on each splice's stud of a
-spliced pillar (``--pillar standoff_hand``: the splice hand-tightened at 0.4 N·m, a dab of
-threadlocker on the stud, metal to metal, kept off the acrylic; the default one-piece
-pillars have none).
+and threadlocker 222 on the horn screws where they thread into a metal horn (metal to metal
+only: none in a plastic horn).
 """
 
 from __future__ import annotations
@@ -618,9 +613,7 @@ def _split_by(g: MadeGroup, fil_of: dict, by_name: dict) -> list[MadeGroup]:
 
 _HORN_SHIMS = re.compile(r"crank_horn_shims(\d+)$")
 _HORN_SCREW = re.compile(r"crank_horn_screw(\d+)$")
-_SPLICE_STUD = re.compile(r"pillar_(.+)_stud(\d+)$")
 HORN_LOCK = "threadlocker_222"      # low strength: an M2 / M3 horn screw comes out again
-SPLICE_LOCK = "threadlocker_243"    # medium (or 263): the hand-tight splice's retention
 LOCK_PER_THREAD = 0.01              # of a 10 ml bottle, a drop per thread
 
 
@@ -649,7 +642,7 @@ SHIM_AS: dict[str, tuple[str, int]] = {
 """A thickness bought as stock washers instead: a DIN 433 M3 washer (3.2 x 6 x 0.5, +-0.05)
 is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
 2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
-family. Clamped shims only (a horn screw's head, a pillar splice or end, a frame tie): the
+family. Clamped shims only (a horn screw's head, a pillar's end, a frame tie): the
 unclamped ones are printed (construction.pivots.common.gap_washers, the Chicago pins' head
 spacers)."""
 
@@ -790,18 +783,13 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
       (its height is the stack, :func:`shim_breakdown`; the crank lists the stack's other
       rings itself), and a note lists every screw's;
     * threadlocker 222 on each horn screw when the horn is metal (aluminium: the STS3215's
-      stock horn), a drop each; none in a plastic horn (metal to metal only);
-    * threadlocker 243 on each pillar splice's stud (``pillar_<joint>_stud<k>``), a dab
-      each, metal to metal, kept off the acrylic (the user's decision of 2026-10-05; 263
-      holds as well), unless the pillar construction already listed them (its
-      ``splice_lock_key`` line in ``mech.bom_extras``); the note is written either way.
+      stock horn), a drop each; none in a plastic horn (metal to metal only).
     """
     lines: list[BomLine] = []
     notes: list[str] = []
     replaced: set[str] = set()
     stacks: dict[str, list[str]] = {}
     horn_screws: list[str] = []
-    studs: list[str] = []
     for b in mech.bodies:
         if b.fab != "purchased" or not b.bom_key:
             continue
@@ -825,8 +813,6 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
                 f"{_side(b.name)}{m.group(1)}")
         elif _HORN_SCREW.search(b.name):
             horn_screws.append(b.name)
-        elif _SPLICE_STUD.search(b.name):
-            studs.append(b.name)
     if stacks:
         notes.append("Horn screw shims (under each head): " + "; ".join(
             f"screws {', '.join(s)}: {k}" for k, s in stacks.items()) + ".")
@@ -837,12 +823,6 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
                                  f"{n}: into the metal horn (a drop, metal to metal)"))
         notes.append(f"Horn screws: a drop of low-strength threadlocker (Loctite 222) each "
                      f"({len(horn_screws)}), steel into the metal horn; none in a plastic horn.")
-    # the pillar construction lists its splice studs' threadlocker itself
-    # (StandoffAxle.splice_lock_key, a line per pillar in bom_extras): don't count them twice
-    listed = any("splice stud" in (x.where or "") for x in getattr(mech, "bom_extras", ()))
-    for n in ([] if listed else studs):
-        lines.append(BomLine(SPLICE_LOCK, LOCK_PER_THREAD,
-                             f"{n}: splice stud (243 or 263; metal to metal, off the acrylic)"))
     gaps = {name: n.get("bond_gap_mm", 0.0)
             for name, n in ((mech.meta or {}).get("chicago") or {}).items() if n.get("bond_gap_mm")}
     if gaps:
@@ -850,10 +830,6 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
                      "thinner than a print): " + ", ".join(
                          f"{k} {v:g} mm" for k, v in sorted(gaps.items()))
                      + "; set the gap with a feeler gauge while the epoxy cures.")
-    if studs:
-        notes.append(f"Pillar splices ({len(studs)}): a dab of medium threadlocker "
-                     "(Loctite 243, or 263) on each splice stud for retention, metal to "
-                     "metal only: keep it off the acrylic.")
     return lines, notes, replaced
 
 

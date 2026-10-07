@@ -93,11 +93,7 @@ ASSEMBLY: tuple[str, ...] = (
     "standoff, M4; its button head and washer from outside, threadlocker, to 0.8 N·m while "
     "the column is bare to hold); the links, Chicago pins and printed rings in the plan's "
     "layer order (each pin's screw from its cap side once its bonded barrel and host link "
-    "are on), any take-up shims on a column's top last. (A spliced pillar, --pillar "
-    "standoff_hand: at each splice's layer a dab of medium threadlocker on the stud, the "
-    "stud into the lower segment, its shims, the upper segment turned on by hand to "
-    "0.4 N·m; standoff_bench: each spliced column built on the bench first at 1.0 N·m and "
-    "stood on the plate before its links.)",
+    "are on), any take-up shims on a column's top last.",
     "2. The crank with it, bottom up: the stub standoff screwed to the lowest web (button "
     "head from above), the stub's printed thrust sleeve slid over it up to the web, and "
     "the stub through the outer plate's journal hole (the sleeve's end then 0.1 mm over "
@@ -105,7 +101,7 @@ ASSEMBLY: tuple[str, ...] = (
     "chain above it first (its screw and wide washer from below, threadlocker, while the "
     "web is loose), then goes onto the hex of the chain below with that chain's riders "
     "and sleeve already on, and that chain's screw goes in from above. The chain that "
-    "ends in the hub plate has no screw over it (BoltCrank.hub_screw off): the hub plate "
+    "ends in the hub plate has no screw over it (BoltCrank.hub_capped): the hub plate "
     "caps it, and its printed sleeve is a light press on the hex, pushed down onto its "
     "lower web with that end's washer drawn up against the web, so the sleeve, caught "
     "between the two plates, carries the standoff (BoltCrank.capped_press).",

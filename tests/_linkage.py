@@ -9,12 +9,12 @@ instead (:func:`use_recorded_foot_z` puts them in ``walk._default_plan_z``'s pla
 config that isn't recorded is planned live, as before. :func:`foot_z_doc` is the
 generator, ``test_walk.py::test_foot_z_fixture_is_current`` the currency test (slow).
 
-**The walk reference** (``tests/fixtures/linkage/walk_reference.json``): the Klann quad the
-viewer's reference numbers were taken on (``--crank printed``, the materials before
-2026-10-04), its feet and centre of mass as ``/api/walk`` sends them, the Python model's
-straight-walk metrics, and :data:`QUAD_REFERENCE`, the numbers both models must give
-(``test_walk.py::test_quad_reference`` and ``viewer/src/drive/model.test.ts`` read the same
-file).
+**The walk reference** (``tests/fixtures/linkage/walk_reference.json``): the demo Klann quad
+on the default constructions (the reference was the ``--crank printed`` quad on the
+materials before 2026-10-04 until that crank was removed, 2026-10-07), its feet and centre
+of mass as ``/api/walk`` sends them, the Python model's straight-walk metrics, and
+:data:`QUAD_REFERENCE`, the numbers both models must give (``test_walk.py::
+test_quad_reference`` and ``viewer/src/drive/model.test.ts`` read the same file).
 """
 
 from __future__ import annotations
@@ -27,9 +27,6 @@ import pytest
 from spiderpig import walk
 from spiderpig.config import BuildConfig
 
-OLD = {"frame_sheet": "acrylic_3mm", "link_sheets": (), "heads": "sink"}
-"""The materials and full-layer heads the walk reference numbers were taken with."""
-
 
 def _klann(module: str, **kw) -> BuildConfig:
     return BuildConfig(linkage="klann", module=module, **kw)
@@ -37,9 +34,8 @@ def _klann(module: str, **kw) -> BuildConfig:
 
 FOOT_Z_CONFIGS: tuple[BuildConfig, ...] = (
     # test_walk: the default designs its walkers and /api/walk use
-    *(_klann(m) for m in ("single", "double", "decker", "quad")),
-    _klann("quad", crank="printed", pillar="printed", **OLD),       # the walk reference
-    _klann("quad", crank="keyed", pillar="printed", **OLD),
+    *(_klann(m) for m in ("single", "double", "decker", "quad")),   # the quad: the walk
+    #                                                                   reference's
     BuildConfig(linkage="jansen", module="double"),
     BuildConfig(linkage="jansen", module="quad"),                    # no plan: the guess
     BuildConfig(linkage="strider", module="single"),
@@ -114,16 +110,19 @@ def use_live_foot_z(monkeypatch) -> None:
 # The walk reference
 # ---------------------------------------------------------------------------
 
-REFERENCE_CONFIG = _klann("quad", crank="printed", pillar="printed", **OLD)
-"""The Klann quad on ``--crank printed``: 12 layers, the feet at z -62 / -50 mm."""
+REFERENCE_CONFIG = _klann("quad")
+"""The demo Klann quad, the default design (the bolt crank, standoff pillars, Chicago pins):
+13 layers, the feet at z -95.8 / -49.2 / -56.0 mm. (The reference was the ``--crank
+printed`` quad until 2026-10-07: 12 layers, the feet at -62 / -50 mm, a 50.0 mm least
+margin; the same stride, bob and pitch within their tolerances.)"""
 
 QUAD_REFERENCE = {
-    "foot_z": [-62.0, -62.0, -50.0, -50.0],
+    "foot_z": [-95.8415, -95.8415, -49.1915, -55.966499999999996],
     "contacts_135": [True, False, False, True] * 2,     # legs 0 and 3, both sides, at 135 deg
     "pitch_deg_max_abs": [8.4, 0.1],                     # [value, abs tolerance]
     "bob_mm": [24.0, 0.5],
     "stride_mm": [102.0, 1.0],
-    "min_margin_mm": [50.0, 0.5],
+    "min_margin_mm": [52.6, 0.5],
     "direction": "+x",
     "tipping_fraction": 0.0,
     "degenerate_fraction": 0.0,

@@ -645,9 +645,9 @@ def test_the_glb_bake_and_the_model_name_the_same_nodes(linkage, module):
     model's ``nodes`` map, and nothing else is (both from the cache: the bake and the model
     of the cached fabrication, which are a fresh one's, ``test_bake_gltf.py`` and
     ``test_sim.py``'s ``test_recorded_mjcf_current``)."""
-    # the Strider quad keyed: with the bolt crank it doesn't plan within the default budget
-    old = {"crank": "keyed", "pillar": "printed"} if linkage == "strider" else {}
-    cfg = BuildConfig(linkage=linkage, module=module, **old)
+    # (the Strider quad on its default hex crank: 25 layers since 2026-10-05; it was keyed
+    # here while the bolt crank's didn't plan within the default budget)
+    cfg = BuildConfig(linkage=linkage, module=module)
     path, _ = _sim.baked(cfg, n_frames=4)
     _, meta = _sim.seed(cfg)
     assert _glb_node_names(path) == set(meta["nodes"])

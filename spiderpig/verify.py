@@ -38,7 +38,6 @@ from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.design import Design
 from spiderpig.failure import Failure
 from spiderpig.hardware.bom import bom_from_mechanism
-from spiderpig.hardware.catalog import adhesive
 from spiderpig.hardware.catalog import get as catalog_item
 from spiderpig.layout import sheet_lines
 from spiderpig.spec import Target, TargetField, effective_hard, target_field
@@ -541,12 +540,7 @@ def stack_floor_note(design: Design, pr) -> str:
             note += (f"; a thinner stack needs fewer legs a side, and no module of "
                      f"{cfg.linkage} with fewer walks ({', '.join(fewer)} stand still in the "
                      f"walk model)")
-    from spiderpig import construction
-
-    crank = construction.crank(cfg.crank)
-    least = crank.least_pitch(1.0) if hasattr(crank, "least_pitch") else None
-    return note + ("; the sheet sets the layer pitch" + (
-        f" (the {cfg.crank} crank's joints need at least {least:g} mm)" if least else ""))
+    return note + "; the sheet sets the layer pitch"
 
 
 def _cost_item(r) -> str:
@@ -608,65 +602,39 @@ def cost_row(design: Design, bom) -> Row | None:
     return row
 
 
-GLUED_PILLARS = ("printed", "rod", "bearing", "bushing")  # anchored in the plates with CA glue
-# threadlocker on its end screws (M4; M3 for standoff_m3)
-LOCKED_PILLARS = ("standoff", "standoff_hand", "standoff_bench", "standoff_m3")
-SPLICED_PILLARS = ("standoff_hand", "standoff_bench", "standoff_m3")   # 243 on the splices
-GLUED_PINS = ("bearing",)          # an insert glued into each link (a bushing is pressed in)
-EPOXY_PINS = ("chicago", "chicago_bushing")                 # the barrel bonded in its lowest link
-LOCKED_PINS = ("chicago", "chicago_bushing")                # threadlocker on each screw
-FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws, the pivots' hardware, rod and "
-                    "clips are counted after a build (verify standard)")
+LOCKED_PILLARS = ("standoff",)     # threadlocker on its end screws
+EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link
+LOCKED_PINS = ("chicago",)         # threadlocker on each screw
+FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardware are "
+                    "counted after a build (verify standard)")
 
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog before
-    any build: the servos (one per side), a spool of filament (the crank is printed), one
-    blank of each sheet the parts are cut from, and what the constructions buy whatever the
-    parts' sizes: a
-    bottle of CA glue when a pillar is anchored in the plates or an insert glued into its
-    links (the robot's chassis and battery cradle are screwed since 2026-10-05), and the
-    printed crank's crankpin nuts (a pack) and, keyed, its hex standoffs (a pack), the bolt
-    crank's nylocks (a pack) and its plates' cement, and a bottle of each threadlocker a
-    crank's screws, a Chicago screw pin or a standoff pillar's screws take. ``(total, priced
+    any build: the servos (one per side), a spool of filament (the printed parts), one
+    blank of each sheet the parts are cut from (the crank's plates' among them), and what
+    the constructions buy whatever the parts' sizes: the Chicago pins' epoxy, and a bottle
+    of each threadlocker the crank's screws, a Chicago screw pin or a standoff pillar's
+    screws take. ``(total, priced
     lines, unpriced names)``: a lower bound on the BOM's total; :data:`FLOOR_LEAVES_OUT`
     says what a build adds."""
     from spiderpig import construction
-    from spiderpig.construction.crank import NUT_KEY
 
     cfg = design.config
     sides = 2 if cfg.robot else 1
     from spiderpig.materials import link_sheets
 
-    crank_plates = getattr(construction.crank(cfg.crank), "plates", False)
-    sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values()]
-                           + ([cfg.crank_sheet] if crank_plates else []))
+    sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values(),
+                            cfg.crank_sheet])
     lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     # (not the deck's heat-set inserts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
-    if cfg.pillar in GLUED_PILLARS or cfg.pin in GLUED_PINS:
-        lines.append(("ca_glue", 1))
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))
-    crank = construction.crank(cfg.crank)
-    if hasattr(crank, "for_sheet"):
-        crank = crank.for_sheet(cfg.crank_sheet)
-    if hasattr(crank, "post_joint"):
-        lines.append((NUT_KEY, 1))
-    if getattr(crank, "nut_key", None) and not getattr(crank, "single", False):
-        # the two-plate bolt crank's nylocks
-        lines.append((crank.nut_key, 1))
-    if hasattr(crank, "standoff_key"):
-        lines.append((crank.standoff_key, 1))
-    if getattr(crank, "cement_per_plate", 0) and not any(k == adhesive(cfg.crank_sheet)
-                                                         for k, _ in lines):
-        lines.append((adhesive(cfg.crank_sheet), 1))   # the bolt crank's bonded plate stacks
-    locks = {getattr(crank, "lock_key", None)}
+    locks = {construction.crank(cfg.crank).lock_key}
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
-    if cfg.pillar in SPLICED_PILLARS:
-        locks.add("threadlocker_243")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
     from spiderpig.hardware.bom import ON_HAND
 

@@ -377,40 +377,6 @@ def moment_per_newton(note: dict, patterns=None) -> tuple[float, float]:
     return m_best, v_best
 
 
-def moment_at_per_newton(note: dict, z: float, patterns=None) -> float:
-    """The worst bending moment (N·mm) per newton of the largest link force at height ``z``
-    (mm from layer 0's bottom face) along a pillar held at both ends (a beam, or a beam per
-    bay), over ``patterns`` as :func:`moment_per_newton`; for another case, the largest
-    anywhere (:func:`moment_per_newton`)."""
-    links, zs, support = _layout(note)
-    if support[0] not in ("simple", "bays"):
-        return moment_per_newton(note, patterns)[0]
-    faces = (support[1], support[2]) if support[0] == "simple" else support[1]
-    bay = next(((a, b) for a, b in itertools.pairwise(faces) if a <= z <= b), None)
-    if bay is None:
-        return 0.0
-    za, zb = bay
-    if patterns is None:
-        patterns = unit_patterns(note)
-    idx = {m: i for i, m in enumerate(links)}
-    inside = (zs > za) & (zs < zb)
-    best = 0.0
-    for pat in patterns:
-        f = np.zeros((len(links), 2))
-        for m, v in pat.items():
-            if m in idx:
-                f[idx[m]] += v
-        peak = float(np.hypot(f[:, 0], f[:, 1]).max()) if len(f) else 0.0
-        if peak <= 1e-12 or not inside.any():
-            continue
-        fz, zz = f[inside] / peak, zs[inside]
-        rb = -(fz * (zz - za)[:, None]).sum(axis=0) / max(zb - za, 1e-9)
-        ra = -fz.sum(axis=0) - rb
-        m = ra * (z - za) + (fz * np.maximum(z - zz, 0.0)[:, None]).sum(axis=0)
-        best = max(best, float(np.hypot(*m)))
-    return best
-
-
 def stresses(note: dict, load_n: float, patterns=None) -> dict:
     """Bending, shear and bearing stress (MPa) of a joint whose most loaded link puts
     ``load_n`` on it, and the safety factor on the shaft's yield.

@@ -133,12 +133,9 @@ plan of one side and writes
 Useful flags: `--module {single,double,decker,quad}` (legs per side; default: the
 linkage's, `config.default_module`), `--side-only`, `--servo` (continuous-rotation servos
 only; default `sts3215`), `--pillar` / `--pin` / `--crank` (constructions; the default is
-`--pin chicago --pillar standoff --crank bolt`, below; the others stay selectable:
-`--pillar standoff_hand` / `standoff_bench` / `standoff_m3` (spliced columns), `--pillar
-printed`, `--pin rod` / `ptfe` / `printed`, `--crank bolt_round` (TrotBot's heel and
-toe default to it), `--crank keyed` / `keyed_float` / `printed` (the printed cranks, the
-default before 2026-10-03); `docs/audit/STRENGTH.md` has why the defaults changed and what
-they cost), `--sheet`,
+`--pin chicago --pillar standoff --crank bolt`, below; the one other is `--crank
+bolt_round`, TrotBot's heel and toe's; the other constructions were removed on 2026-10-07
+and naming one fails with its replacement, `config.REMOVED_CONSTRUCTIONS`), `--sheet`,
 `--thickness` (measure your sheet: acrylic varies by up to 8 %), `--kerf`,
 `--no-dxf`. A mechanism (`--linkage hoecken`, `parallelogram_lift`, ...) needs
 no `--module` or `--side-only`: it is its one module and one side, for `build`,
@@ -191,22 +188,14 @@ functional group at a time (see `spiderpig/construction/base.py`):
   column one stock length fills is a goBILDA 1501 aluminium standoff (M4; in 3 mm
   layers 12, 18, 24, 27, 30, 36, 42, 48, 54 or 60 mm); any other is one MISUMI NETRF6
   steel standoff made to its length (0.1 mm steps, M3 ends): never spliced (the Strider
-  double's four pillars are NETRF6-62.4). `--pillar standoff_hand` / `standoff_bench`
-  keep the goBILDA column spliced past 60 mm (hand-tight in the stack / built on the
-  bench), `--pillar standoff_m3` the same on uxcell's M3 standoffs (on the Strider its
-  splices hold a jam at SF 1.62 only: a warning), and `--pillar printed` is the printed
-  stepped axle with shoulders beside each link and thin necks where other links pass;
+  double's four pillars are NETRF6-62.4);
 - **pins** — the pivots between links: an M3 Chicago screw (a 4 mm barrel through
   the stack, a screw driven into it from above until it bottoms), printed spacer rings,
   one printed head spacer per end taking up the barrel's fixed length, the lowest link
   bonded to the barrel with epoxy (`--pin chicago`, the default: the axial play set by
   the barrel length to 0.05-0.15 mm, a stronger shaft than the rod, nothing to cut, and
   it comes apart; barrels in 1 mm steps from 4 to 16 mm, then 18-80, at most 23 mm on the
-  Strider; the audit reports every link's tilt). `--pin rod` (3 mm rod cut to length,
-  Starlock clips) was the default before it; `--pin printed` is the zero-hardware
-  printed snap pin, on the Strider with its J7 snap lip relieved to 0.13 mm; `bolt`,
-  `bearing`, `bushing`, `chicago_bushing`, `ptfe` are the other options,
-  `spiderpig/construction/pivots/`);
+  Strider; the audit reports every link's tilt; `spiderpig/construction/pivots/`);
 - **links and frame plates** — laser-cut, holes cut for everything above.
 
 Each group first *claims* the space it needs, per 3 mm layer and relative

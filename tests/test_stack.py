@@ -29,7 +29,6 @@ from spiderpig.stack import (
     verify_plan,
 )
 from tests import cache
-from tests.tiers import quick
 
 
 @pytest.fixture(params=["single", "double", "decker", "quad"])
@@ -115,16 +114,6 @@ def test_every_pillar_is_held_by_a_frame_plate(planned):
         anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
         assert anchors, (ax.name, labels)
         assert set(anchors) <= {0, plan.top}, (ax.name, labels)
-
-
-@pytest.mark.parametrize("module", quick(["single", "quad"], ["single"]))
-def test_every_printed_pillar_is_held_by_both_frame_plates(design, module):
-    """A printed pillar necks down past the links, so it reaches both plates."""
-    plan = design(module, pillar="printed", crank="keyed")[1].plan
-    for ax in plan.topo.axes_of("frame"):
-        labels = {p.label for p in plan.shapes(f"pillar:{ax.name}")}
-        anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
-        assert sorted(anchors) == [0, plan.top], (ax.name, labels)
 
 
 def test_crank_crosses_a_b1_layer_only_along_its_crankpin(planned):
@@ -343,13 +332,9 @@ PLANS: dict[str, dict] = {
     "hoecken": {"linkage": "hoecken", "module": "single"},
     "hoecken_pantograph": {"linkage": "hoecken_pantograph", "module": "single"},
     "dwell_rocker": {"linkage": "dwell_rocker", "module": "single"},
-    "klann-single-keyed": {"module": "single", "crank": "keyed", "pillar": "printed"},
-    "klann-quad-keyed": {"module": "quad", "crank": "keyed", "pillar": "printed"},
-    "klann-single-printed-pivots": {"module": "single", "pin": "printed", "pillar": "printed"},
-    "klann-quad-printed-pivots": {"module": "quad", "pin": "printed", "pillar": "printed"},
 }
 """The designs whose plans ``tests/fixtures/planner/plans/<name>.json`` record: the order
-designs, the mechanisms, and the constructions other modules' tests pin."""
+designs and the mechanisms."""
 
 
 def _plan_cfg(name: str) -> BuildConfig:
@@ -426,3 +411,49 @@ def test_a_seeded_plan_is_the_solved_plan(name):
     # design_side solves instead
     bad = {**doc, "layers": dict.fromkeys(doc["layers"], 2)}
     assert fabricate._reuse(again, cache._Seed(bad)) is None
+
+
+
+def test_a_shape_in_a_frame_plates_layer_is_a_blocker_the_failure_parses():
+    """A shape the search found in a frame plate's layer is tallied against the plate, and
+    the blocker line :func:`failure.parse_blocker` reads back."""
+    from spiderpig.failure import parse_blocker
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg)
+    p = stack.Placed(0, stack.Disc("O", 3.0), "probe", "a probe shape")
+    problem._tally(p, None)
+    problem._tally(p, None)
+    (line,) = [b for b in problem.blockers() if "probe" in b]
+    assert line == "      2 x a probe shape vs a frame plate: it would sit in a frame plate's layer"
+    assert parse_blocker(line) == {"count": 2, "a": "a probe shape", "b": "a frame plate",
+                                   "why": "it would sit in a frame plate's layer",
+                                   "text": line.strip()}
+
+
+def test_a_claim_that_cant_be_built_at_the_plans_z_rejects_a_plan_with_no_gaps():
+    """``finalize``: a claim that refuses the plan's own z with no clearance gap to thicken
+    rejects the layering (``PlanReject``) as it is."""
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg)
+
+    def make(L):
+        if L.final:
+            raise stack.PlanReject("no stock part fits at this z")
+        return []
+
+    claims = [stack.Claim("probe", frozenset(), make)]
+    with pytest.raises(stack.PlanReject, match="no stock part fits at this z"):
+        stack.finalize(problem.topo, claims, problem.spec, {}, 4)
+
+
+
+def test_the_gaps_a_claim_reads_are_a_mapping_of_the_layouts():
+    gaps = stack._ReadGaps({3: 2.4, 5: 4.0})
+    assert len(gaps) == 2
+    assert sorted(gaps) == [3, 5]
+    assert 3 in gaps
+    assert gaps.read == {}
+    assert gaps[5] == 4.0
+    assert gaps.get(7, 0.0) == 0.0
+    assert gaps.read == {5: 4.0}

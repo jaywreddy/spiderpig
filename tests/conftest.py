@@ -128,8 +128,8 @@ def _offline(tmp_path_factory):
 def design():
     """``design(module, servo=DEFAULT, linkage="klann", **build) -> (side template,
     SideDesign)``, built the default way (Chicago screw pins, standoff pillars, the bolt
-    crank) unless ``build`` names a construction (``pin="printed"``: the printed snap pins'
-    tests; ``crank="keyed", pillar="printed"``: the defaults before 2026-10-03).
+    crank) unless ``build`` names a construction (``crank="bolt_round"``: the round standoff
+    crankpins, the only other one since 2026-10-07).
     :func:`tests.cache.cached_design`: the plan seeded from the cache."""
 
     def get(module: str = "single", servo: str = servos.DEFAULT, linkage: str = "klann",

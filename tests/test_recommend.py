@@ -12,12 +12,14 @@ from spiderpig.recommend import Gap, scale
 from spiderpig.stack import ClearanceError
 
 
-def _heel(unit: float, crank: str = "printed", **params) -> BuildConfig:
-    """The heel with the printed crank, whose 3 mm post radius these numbers are (the keyed
-    crank's 8.5 mm post asks more of b7, and sizes the post itself: test_the_keyed_crank_
-    post_sends_the_heel_up_a_scale)."""
-    return BuildConfig(linkage="trotbot_heel", module="single", robot=False, crank=crank,
-                       pillar="printed", proportions=(("unit", unit),), params=Params(**params))
+def _heel(unit: float, crank: str = "", **params) -> BuildConfig:
+    """The heel on its own crank (``bolt_round``, config.LINKAGE_CRANKS: the round 6 mm
+    standoff), whose 3 mm post radius these numbers are (the hex crank's 8.5 mm sleeve asks
+    more of b7, and sizes the post itself: test_the_hex_crank_post_sends_the_heel_up_a_
+    scale)."""
+    kw = {"crank": crank} if crank else {}
+    return BuildConfig(linkage="trotbot_heel", module="single", robot=False,
+                       proportions=(("unit", unit),), params=Params(**params), **kw)
 
 
 def _fail(cfg) -> ClearanceError:
@@ -35,27 +37,31 @@ def test_the_heel_is_told_the_scale_that_clears_it():
     assert rec.why.startswith("scale trotbot_heel x1.50 (the least that clears it is x1.47; "
                               "b7 past crankpin J1 is 6.8 mm, needs 10.0)")
     assert rec.effects.startswith("crank 28.0 -> 42.0 mm; about 1.5x the crank torque")
-    # 13 layers (37.064 mm) on the 0.080 in frame plates of 2026-10-04 (12 on 0.125 in)
+    # 13 layers (47.564 mm on the round standoff crank and standoff pillars; 37.064 mm on
+    # the printed crank and pillars, removed 2026-10-07)
     assert rec.verified.startswith("checked: the static stage passes, and it plans in 13 ")
     assert "what would clear it:\n  unit 7 -> 10.5: scale trotbot_heel x1.50" in str(e)
-    # no thinner parts do: the crankpin takes an M3 screw, and b1 a wall round it
+    # no thinner parts do: the 6 mm crankpin leaves b1 a wall round it
     assert any(n.startswith("no part sizes at this scale clear it within the constructions' "
                             "limits (the least: ") for n in e.notes)
 
 
 def test_thinner_parts_are_checked_against_the_constructions():
-    """At a 9 mm unit b7 passes 8.7 mm off: thinner links and crankpin clear it, and a
-    thinner link gets a thinner axle (min_wall round its hole)."""
-    e = _fail(_heel(9.0))
+    """At a 10 mm unit b7 passes 9.7 mm off, under the 10.0 its post needs: a 5.5 mm link
+    radius clears it (9.5 + the 0.05 slack), and the round crankpin keeps 1.5 mm of b1 round
+    its 6 mm hole there, so it is checked and offered after the scale. (At 9 mm, 8.7 off, the
+    least that would clear it, a 4.5 mm link, leaves b1 too thin: the scale only.)"""
+    e = _fail(_heel(10.0))
     thin = next(r for r in e.recommendations if r.why == "thinner parts at this scale")
-    assert thin.changes == (("link_radius", 6.0, 4.5), ("crankpin_d", 6.0, 5.5),
-                            ("axle_d", 6.0, 5.5))
+    assert thin.changes == (("link_radius", 6.0, 5.5),)
     assert thin.verified.startswith("checked: the static stage passes")
-    assert e.recommendations[0].changes == (("unit", 9.0, 10.5),)
+    assert e.recommendations[0].changes == (("unit", 10.0, 10.5),)
+    e = _fail(_heel(9.0))
+    assert [r.changes for r in e.recommendations] == [(("unit", 9.0, 10.5),)]
 
 
 @pytest.mark.parametrize(("unit", "params", "dist", "need"), [
-    (8.0, {"link_radius": 4.5, "axle_d": 4.0, "crankpin_d": 5.0}, 7.8, 8.0),
+    (8.0, {"link_radius": 5.0}, 7.8, 9.0),           # 3 post radius + 5 + 1 margin
     (10.0, {}, 9.7, 10.0),
 ])
 def test_the_heel_just_misses_below_its_scale(unit, params, dist, need):
@@ -67,16 +73,17 @@ def test_the_heel_just_misses_below_its_scale(unit, params, dist, need):
         static_stage(tmpl, problem)
 
 
-def test_the_keyed_crank_post_sends_the_heel_up_a_scale():
-    """With the keyed crank (the default) the heel at its own 10.5 mm unit passes J1 at 10.2
-    mm of the 11.2 a 4.25 mm post needs; thinner parts can't help (the keyed crank sizes
-    its post from the key), so the one recommendation is the scale, checked."""
-    e = _fail(_heel(10.5, crank="keyed"))
+def test_the_hex_crank_post_sends_the_heel_up_a_scale():
+    """With the hex crank (``bolt``, the walkers' default; the heel's own is ``bolt_round``)
+    the heel at its own 10.5 mm unit passes J1 at 10.2 mm of the 11.2 its 8.5 mm sleeve, a
+    4.25 mm post, needs; thinner parts can't help (the crank sizes its post from the hex
+    standoff, recommend.gaps_of), so the one recommendation is the scale, checked."""
+    e = _fail(_heel(10.5, crank="bolt"))
     assert "it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs" in str(e)
     (rec,) = e.recommendations
     assert rec.changes == (("unit", 10.5, 12.0),)
-    # 15 layers (43.064 mm) on the 0.080 in frame plates (14, 42.35 mm, on 0.125 in)
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 15 layers")
+    # 10 layers (46.964 mm; the keyed crank's, removed 2026-10-07: 15 layers, 43.064 mm)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 10 layers")
 
 
 def test_gap_arithmetic():
@@ -91,7 +98,7 @@ def test_explain_prints_what_would_clear_it():
     out = explain.explain("trotbot_heel", params={"unit": 7.0})
     assert "STOP: trotbot_heel: b7 sweeps right across the crank at O" in out
     assert "what would clear it:" in out
-    assert "unit 7 -> 10.5" in out    # the bolt crank's 6 mm shank (default; keyed: -> 12)
+    assert "unit 7 -> 10.5" in out    # the round standoff's 6 mm crankpin (hex: -> 12)
 
 
 def test_a_missed_stroke_is_met_by_the_least_practical_scale_checked():
@@ -123,3 +130,41 @@ def test_a_missed_stroke_is_met_by_the_least_practical_scale_checked():
     assert rec is None
     assert note == ("no one scale of unit meets stroke_mm, straightness_mm together (one "
                     "needs x1.2, another at most x1.09)")
+
+
+
+def test_a_scale_that_doesnt_plan_is_stepped_up(monkeypatch):
+    """``scale``: a gap already clear still starts a step up from the linkage's own scale;
+    a scale whose plan fails (``_verify`` takes the planner's ``ValueError`` as not
+    verified) is not offered, and the next step up, which plans, is."""
+    from spiderpig import fabricate, linkage
+    from spiderpig.recommend import _step
+
+    cfg = BuildConfig(linkage="dwell_rocker", robot=False)
+    lk = linkage.get(cfg.linkage)
+    name = linkage.scale_params(lk)[0]
+    now = float(lk.params[name])
+    first, second = now + _step(now), now + 2 * _step(now)
+    real, tried = fabricate.design_side, []
+
+    def design_side(tmpl, config, *args, **kw):
+        unit = dict(config.proportions)[name]
+        tried.append(unit)
+        if unit == first:
+            raise fabricate.PlanError("no plan (a stub)", [], [])
+        return real(tmpl, config, *args, **kw)
+
+    monkeypatch.setattr(fabricate, "design_side", design_side)
+    clear = Gap("b2 past pillar A", 20.0, (("link_radius", 1.0),), 1.0)
+    rec = scale(cfg, [clear], plan=True)
+    assert tried == [first, second]
+    assert rec.changes == ((name, now, second),)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in")
+
+
+def test_no_thinner_part_clears_a_gap_too_far_off():
+    from spiderpig.recommend import thinner
+
+    cfg = BuildConfig(linkage="dwell_rocker", robot=False)
+    far = Gap("b2 past pillar A", 1.0, (("link_radius", 1.0),), 50.0)
+    assert thinner(cfg, [far]) == "no part sizes at this scale clear it"

@@ -52,19 +52,17 @@ def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) ->
     and the static clearances behind a plan's failure (an axle's neck)."""
     out = []
     for f in failures:
-        if params is not None and f.post > 0.5 * params.crankpin_d + 1e-9:
-            # a post sized by the crank itself (the keyed crank's 8.5 mm, round its key): a
-            # thinner crankpin doesn't shrink it, so it is part of the margin
-            out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-                           (("link_radius", 1.0),), f.margin + f.post))
-        else:
-            out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-                           (("crankpin_d", 0.5), ("link_radius", 1.0)), f.margin))
+        # the post is the crank's own (its standoff or sleeve, BoltCrank.rider_d): no Params
+        # field shrinks it, so it is part of the margin
+        out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
+                       (("link_radius", 1.0),), f.margin + f.post))
     for c in clearances:
         if c.keepout.span and c.dist > 0:
+            # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
+            # barrel's ring round its bore): a thinner link narrows the gap's need, no Params
+            # field narrows the ring
             out.append(Gap(f"{c.link} past {c.keepout.owner}", c.dist,
-                           (("neck_d", 0.5), ("link_radius", 1.0)),
-                           c.need - c.keepout.r - params.link_radius))
+                           (("link_radius", 1.0),), c.need - params.link_radius))
     return out
 
 
@@ -182,9 +180,6 @@ def thinner(config, gaps: list[Gap], plan: bool = False,
             cands.append((loss, q))
     why = None                  # why the least change that clears the gaps can't be built
     for i, (_, q) in enumerate(sorted(cands, key=lambda c: c[0])[:8]):
-        # a thinner link keeps min_wall round its axles' holes: thin the axle with it
-        axle = min(p.axle_d, math.floor(4 * (q.link_radius - q.min_wall) - 2 * q.running_fit) / 2)
-        q = replace(q, axle_d=max(axle, 2.0), neck_d=min(q.neck_d, max(axle, 2.0)))
         trial = replace(config, params=q)
         try:
             verified = _verify(trial, plan, deadline)
@@ -192,8 +187,7 @@ def thinner(config, gaps: list[Gap], plan: bool = False,
             raise _OutOfTime("thinner parts" + (f" beyond the {i} sizes checked" if i else "")
                              ) from None
         if verified is not None:
-            changes = tuple((f, getattr(p, f), getattr(q, f))
-                            for f in ("link_radius", "crankpin_d", "axle_d", "neck_d")
+            changes = tuple((f, getattr(p, f), getattr(q, f)) for f in fields
                             if getattr(q, f) != getattr(p, f))
             return Recommendation(changes, why="thinner parts at this scale", verified=verified)
         why = why or _check(trial) or "it still doesn't plan"
@@ -324,31 +318,6 @@ def target_scale(config, misses, measure, deadline: Deadline | None = None,
     return None, f"no practical {name} near x{s:.3g} ({now * s:.3g}) meets {metrics}"
 
 
-def printed_pillars(config, deadline: Deadline | None = None) -> Recommendation | None:
-    """A plan that failed with pillars on a purchased shaft (``bolt``: the longest stock
-    screw bounds the stack; ``rod`` / ``bearing`` / ``bushing`` / ``standoff``: loose rings
-    fill every layer): the same design with printed pillars, verified. ``None`` when the pillars are
-    printed already, or printed pillars don't plan either."""
-    if config.pillar == "printed":
-        return None
-    trial = replace(config, pillar="printed")
-    verified = _verify(trial, True, deadline)          # _OutOfTime crosses to the caller
-    if verified is None:
-        return None
-    return Recommendation(
-        (("pillar", config.pillar, "printed"),),
-        why=(("standoff pillars fill every layer they cross with a ring (a standoff can't "
-              "neck down past a link that sweeps close) and come in stock segments spliced only "
-              "at a free layer"
-              if config.pillar == "standoff" else
-              f"{config.pillar} pillars clamp both frame plates on a stock shaft, which bounds "
-              "the stack and fills every layer they cross")
-             + "; printed pillars neck down between their links and are glued into the plates "
-               "at any height"),
-        effects=f"the pins stay {config.pin}; the frame pivots are printed, not {config.pillar}",
-        verified=verified)
-
-
 CONFIG_LEVERS = {"thickness_mm": "thickness", "sheet": "sheet", "servo": "servo",
                  "pillar": "pillar", "pin": "pin", "crank": "crank"}
 """A construction's change (``ConstructionError.changes``) by its ``BuildConfig`` field:
@@ -429,11 +398,6 @@ def _recommend(config, gaps: list[Gap], plan: bool,
                 recs.append(r)
         except _OutOfTime:
             unchecked.append("the linkage's default scale")
-        try:
-            if (r := printed_pillars(config, deadline)) is not None:
-                recs.append(r)
-        except _OutOfTime:
-            unchecked.append("printed pillars")
         if not recs:
             lk = linkage.get(config.linkage)
             names = linkage.scale_params(lk)
@@ -445,8 +409,7 @@ def _recommend(config, gaps: list[Gap], plan: bool,
                 "(the crank's route, pin heads against the frame plates)"
                 + ("; the linkage's default scale doesn't plan either"
                    if scaled_down and not unchecked else
-                   "; levers left: a bigger scale of the linkage, another module, "
-                   "another pillar or pin construction"))
+                   "; levers left: a bigger scale of the linkage, another module"))
         if unchecked:
             notes.append(f"not checked, the {deadline.seconds:g} s for checking what would "
                          f"clear it ran out: {' and '.join(unchecked)}")

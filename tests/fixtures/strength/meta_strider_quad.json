@@ -962,7 +962,6 @@
     ],
     "shims_mm": {},
     "span_mm": 104.9,
-    "splices": [],
     "supports": [
      0,
      23
@@ -1138,7 +1137,6 @@
     ],
     "shims_mm": {},
     "span_mm": 93.1,
-    "splices": [],
     "supports": [
      0,
      23
@@ -2597,6 +2595,6 @@
    }
   }
  },
- "engine_version": "0.1.0+094f801c3c66",
+ "engine_version": "0.1.0+f91f368e27b7",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_quad]"
 }

@@ -2,10 +2,14 @@
 
 Registries map a config key to a construction:
 
-* ``AXLES``: pillars and link pins (:mod:`construction.axle`, the printed one; the
-  metal-shaft ones, the default ``standoff`` pillar and ``chicago`` pin among them, in
-  :mod:`construction.pivots`)
-* ``CRANKS``: the crankshaft (:mod:`construction.crank`)
+* ``AXLES``: pillars and link pins (:mod:`construction.pivots`: the ``standoff`` pillar
+  and the ``chicago`` pin)
+* ``CRANKS``: the crankshaft (:mod:`construction.crank`: ``bolt``, and ``bolt_round`` for
+  TrotBot's heel and toe)
+
+The keys removed on 2026-10-07 (the printed, rod, bolt, insert and spliced pivots; the
+printed, keyed and acrylic cranks) are :data:`config.REMOVED_CONSTRUCTIONS`, each with its
+replacement.
 
 Add a construction by implementing ``dims`` (validation + the radii its
 claims use) and ``realize`` (parts inside those claims), then registering
@@ -19,35 +23,18 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from spiderpig.construction.axle import AxleGroup as AxleGroup
-from spiderpig.construction.axle import PrintedAxle
 from spiderpig.construction.base import ConstructionError, Context, Group
-from spiderpig.construction.crank import (
-    BOLT_HUB_SCREW,
-    BOLT_ROUND,
-    BOLT_UNRETAINED,
-    KEYED_FLOAT,
-    BoltCrank,
-    KeyedCrank,
-    PrintedCrank,
-)
+from spiderpig.construction.crank import BOLT_ROUND, BoltCrank
 from spiderpig.construction.crank import CrankGroup as CrankGroup
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
 from spiderpig.servos.mount import DriveGroup
 
-AXLES = {c.key: c for c in (PrintedAxle(), *PIVOTS)}
-# ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on an aluminium
-# crank sheet; ``bolt_round``
-# the same with the friction-clamped round standoff (2026-10-04, kept to compare);
-# ``bolt_hub_screw`` the hex crank with a screw over the hub plate (before the assembly
-# audit of 2026-10-04: no assembly order drives it); ``bolt_unretained`` the hex crank
-# without the capped chain's pressed sleeve and the stub's thrust sleeve (before that audit).
-# The printed cranks, kept to compare: ``keyed`` (printed segments keyed by pressed brass hex
-# standoffs, the chain screws threadlocked; the default before 2026-10-03), ``keyed_float``
-# the same with sliding keys and dry screws (6.25 deg of play per interface), ``printed``
-# held by clamp friction alone
-CRANKS = {c.key: c for c in (KeyedCrank(), KEYED_FLOAT, PrintedCrank(), BoltCrank(),
-                             BOLT_ROUND, BOLT_HUB_SCREW, BOLT_UNRETAINED)}
+AXLES = {c.key: c for c in PIVOTS}
+# ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on single aluminium
+# web plates; ``bolt_round`` the same with the friction-clamped round standoff (TrotBot's heel
+# and toe, config.LINKAGE_CRANKS)
+CRANKS = {c.key: c for c in (BoltCrank(), BOLT_ROUND)}
 
 
 def _pick(registry: dict, key: str, what: str):
@@ -58,11 +45,11 @@ def _pick(registry: dict, key: str, what: str):
     raise ConstructionError(f"no {what} construction {key!r}; have {have}") from None
 
 
-def axle(key: str) -> PrintedAxle:
+def axle(key: str):
     return _pick(AXLES, key, "axle")
 
 
-def crank(key: str) -> PrintedCrank:
+def crank(key: str) -> BoltCrank:
     return _pick(CRANKS, key, "crank")
 
 
@@ -73,8 +60,7 @@ def _drive_groups(ctx: Context, config) -> list[Group]:
 def _crank_groups(ctx: Context, config) -> list[Group]:
     if ctx.topo.center is None:
         return []
-    c = crank(config.crank)
-    return [CrankGroup(c.resolve(ctx) if hasattr(c, "resolve") else c)]
+    return [CrankGroup(crank(config.crank).resolve(ctx))]
 
 
 def _axle_groups(ctx: Context, config) -> list[Group]:

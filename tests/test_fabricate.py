@@ -38,8 +38,8 @@ def test_every_body_says_how_it_is_made(side):
     for b in mech.bodies:
         if b.part is not None:
             assert b.fab in ("laser", "printed", "purchased"), b.name
-            if b.fab == "purchased" and b.name != "servo_horn" and not b.name.endswith("_rod"):
-                assert b.bom_key, b.name       # a pin's rod is a cut of stock: a BomLine extra
+            if b.fab == "purchased" and b.name != "servo_horn":
+                assert b.bom_key, b.name       # (the rod pins' cut rods, removed, had none)
 
 
 def test_robot_is_two_mirrored_sides(robot):

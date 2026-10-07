@@ -110,8 +110,6 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     rep["strength"] = strength.check(notes, mech.meta, config, loads)
     if mech.meta.get("chicago"):
         rep["chicago"] = mech.meta["chicago"]
-    if mech.meta.get("crank_key"):
-        rep["crank_key"] = mech.meta["crank_key"]
     if mech.meta.get("crank_bolt"):
         rep["crank_bolt"] = mech.meta["crank_bolt"]
     rep["chassis"] = {k: v for k, v in mech.meta.items()
@@ -392,13 +390,7 @@ def markdown(report: dict) -> str:
             lines.append("Chicago screws (per side): " + ", ".join(
                 f"{n} x {L:g} mm" for L, n in sorted(lens.items())) + "; play " + ", ".join(
                 sorted({f"{v['play_mm']:g}" for v in rep["chicago"].values()})) + " mm.")
-        if k := rep.get("crank_key"):
-            lines.append(
-                f"Crank keys (per side): {k['keys']} x {k['key_af_mm']:g} mm AF, {k['fit']} "
-                f"fit in {k['pocket_af_mm']:g} mm pockets: play {k['play_deg']:g} deg per "
-                f"interface ({k['play_deg_if_0p05_big']:g} if a pocket prints 0.05 mm over); "
-                + ("chain screws threadlocked." if k["threadlocker"] else "chain screws dry."))
-        if (k := rep.get("crank_bolt")) and k.get("webs") == "single":
+        if k := rep.get("crank_bolt"):
             pins = ", ".join(f"{c['at']} {c['standoff'].rsplit('_', 1)[1]} mm"
                              + (f" + {c['shims_mm']:g} mm shims" if c.get("shims_mm") else "")
                              for c in k["chains"] + k.get("journals", []))
@@ -406,20 +398,6 @@ def markdown(report: dict) -> str:
                 f"Crank (per side): {k['plates']} single aluminium plates; crankpins and "
                 f"journals {k.get('crankpin', 'round standoffs clamped by M4 screws')}: "
                 f"{pins}.")
-        elif k := rep.get("crank_bolt"):
-            bolts = ", ".join(
-                f"{c['at']} {c['bolt'].rsplit('_', 1)[1]} mm"
-                + (f" cut to {c['cut_to_mm']:g}" if c.get("cut_to_mm") else "")
-                + f" ({c['bare_layers']} bare layer{'s' * (c['bare_layers'] != 1)} under its "
-                  "riders)" for c in k["chains"])
-            wb = k.get("weakest_bond")
-            lines.append(
-                f"Crank bolts (per side): M6 x {bolts}; {k['plates']} acrylic plates in "
-                f"{len(k['segments'])} cemented stacks, hex pockets {k['pocket_af_mm']:g} mm "
-                f"AF: play {k['play_deg']:g} deg per joint ({k['play_deg_worst']:g} on a "
-                "minimum-size head)"
-                + (f"; weakest bond plates {wb['layers'][0]}/{wb['layers'][1]} "
-                   f"{wb['capacity_nm']:g} N·m" if wb else "") + ".")
         if rep["snap"]["relieved"]:
             lines.append("Snap lips relieved (engage mm): " + ", ".join(
                 f"{k} {v:.2f}" for k, v in rep["snap"]["relieved"].items()) + ".")
