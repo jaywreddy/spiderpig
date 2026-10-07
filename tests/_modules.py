@@ -59,6 +59,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_spiderpig_mcp.py": "api",
     "test_review_fixes.py": "api",
     "test_export.py": "api",
+    "test_removed_constructions.py": "api",
     # sim and bake (P6)
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",

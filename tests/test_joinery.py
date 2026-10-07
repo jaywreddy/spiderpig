@@ -1,6 +1,6 @@
 """Stage 2 of the joinery plan (2026-10-04): single aluminium crank webs on standoff
 crankpins, the thinnest sheet per part, glue-free frame ties and deck rails, printed
-spacer sleeves, shim splices, TPU foot socks, the frame chords, the link-plate strength
+spacer sleeves, take-up shims, TPU foot socks, the frame chords, the link-plate strength
 check and the cut rules' error / warning levels."""
 
 from __future__ import annotations
@@ -33,14 +33,18 @@ def test_mechanisms_default_to_the_bolt_crank():
     assert DEFAULT_CRANKS == {"walker": "bolt", "mechanism": "bolt"}
 
 
-def test_an_aluminium_crank_sheet_resolves_to_single_webs():
+def test_an_aluminium_crank_sheet_sets_the_webs_thickness_and_yield():
+    """The single web plates take the crank sheet's thickness and yield; a non-metal crank
+    sheet is refused (the acrylic two-plate crank was removed, W2)."""
+    from spiderpig.construction.base import ConstructionError
     from spiderpig.construction.crank import BoltCrank
+    from spiderpig.materials import sheet
 
     c = BoltCrank().for_sheet("al5052_1p6mm")
-    assert c.single
-    assert not c.two_layer_top
-    assert not c.two_layer_bottom
-    assert not BoltCrank().for_sheet("acrylic_3mm").single
+    assert c.web_t == sheet("al5052_1p6mm").thickness
+    assert c.web_yield == sheet("al5052_1p6mm").yield_mpa
+    with pytest.raises(ConstructionError, match="metal crank sheet"):
+        BoltCrank().for_sheet("acrylic_3mm")
 
 
 def test_a_crankpin_standoff_is_stock_and_its_shims_fill_the_rest():
@@ -78,16 +82,18 @@ def test_edge_distance_under_one_thickness_in_metal_is_an_error(tmp_path):
     assert not [i for i in far if i["rule"] == "edge"]
 
 
-def test_a_splice_is_steel_shims_rated_at_a_hand_tight_clamp():
-    from spiderpig.construction.pivots.standoff import StandoffAxle
+def test_a_columns_take_up_shims_stack_to_the_step():
+    """A standoff pillar's take-up under the face over it: whole 1 mm shims, then
+    ``SHIM_STEP`` ones, thickest first, rounded to the step."""
+    from spiderpig.construction.pivots.standoff import SHIM_STEP, StandoffAxle
 
     a = StandoffAxle()
-    assert sum(a.splice_shims(3.0)) == pytest.approx(3.0)
-    f = a.splice_nm / (0.2 * 0.004)
-    ro, ri = a.od / 2, a.stud_hole / 2
-    assert a.splice_capacity_nmm() == pytest.approx(f * (ro * ro + ri * ri) / (4 * ro))
-    assert "UNVERIFIED" in a.splice_basis()
-    assert a.splice_nm == 0.4                    # hand tight, bottom up (2026-10-05)
+    assert SHIM_STEP == 0.5
+    assert a.shims(3.0) == [1.0, 1.0, 1.0]
+    assert a.shims(1.5) == [1.0, 0.5]
+    assert a.shims(0.6) == [0.5]                 # rounded to the step
+    assert a.shims(0.2) == []
+    assert sum(a.shims(1.75)) == pytest.approx(2.0)
 
 
 def test_frame_chords_join_neighbouring_pillars():

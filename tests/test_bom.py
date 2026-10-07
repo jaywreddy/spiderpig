@@ -196,12 +196,10 @@ def test_the_catalog_prices_the_pivot_hardware_and_says_where_from(monkeypatch):
     monkeypatch.setattr(catalog, "CATALOG", {})       # the real data, freshly registered
     importlib.reload(parts)
     importlib.reload(fastener_catalog)
-    priced = {"m3_shcs_6": 3.83, "m3_shcs_12": 5.18, "m3_shcs_45": 12.25, "m3_bhcs_6": 3.97,
-              "m3_bhcs_10": 4.30, "m3_nut": 2.39, "m3_nylock": 4.22, "m3_washer": 1.45,
-              "bearing_mf63zz": 17.67, "bushing_gfm0304_03": 5.3, "ca_glue": 13.99,
-              "wood_glue": 5.49, "plywood_3mm": 3.10,
-              "rod_3mm_100": 5.49, "starlock_3mm": 19.99,     # the rod pin's hardware
-              "bushing_gfm0405_03": 23.0}
+    # (the rod, bolt, bearing and bushing pivots' hardware went with them on 2026-10-07)
+    priced = {"m3_shcs_6": 3.83, "m3_shcs_12": 5.18, "m3_bhcs_6": 3.97,
+              "m3_bhcs_10": 4.30, "m3_nut": 2.39, "m3_washer": 1.45, "ca_glue": 13.99,
+              "wood_glue": 5.49, "plywood_3mm": 3.10}
     # (the Chicago screws' per-length prices are the sourcing's, hardware.sources, which this
     # reload of the item modules leaves out)
     for key, price in priced.items():                                         # entry 9
@@ -210,12 +208,9 @@ def test_the_catalog_prices_the_pivot_hardware_and_says_where_from(monkeypatch):
         # a fetched page is verified; a price a search quoted says so, with the date
         assert offer.verified or re.search(r"2026-\d\d-\d\d", offer.note), key
         assert offer.url.startswith("https://"), key
-    for key in ("m2_self_tap_6", "m3_shcs_18", "m3_shcs_50"):
+    for key in ("m2_self_tap_6", "m3_shcs_18"):
         assert catalog.get(key).offer.price_usd is None, key           # no page priced them
     assert catalog.get("plywood_3mm").offer.pack_qty == 1              # sold per sheet
-    # a Strider's 48 clips come out of one kit (60 x 3 mm), 24 pins of 15-21 mm of 5 rods
-    assert catalog.get("starlock_3mm").offer.pack_qty == 60
-    assert catalog.get("rod_3mm_100").offer.pack_qty == 5
 
 
 
@@ -229,8 +224,8 @@ def _tolerances(shape) -> list[float]:
 
 def test_the_rod_pins_get_a_cut_list():
     """Identical lengths grouped longest first, the total, the stock they come from: what
-    the ``cut X mm`` notes of the rod pins (``RodShaft.realize``) ask for, so the buyer
-    knows how many rods to cut them from."""
+    ``cut X mm`` BOM notes ask for (the removed rod pins' were the only ones; a stand-in rod
+    item is registered here), so the buyer knows how many rods to cut them from."""
     register(Item("rod_3mm_100", "3 mm rod, 100 mm", "dowel",
                   (Offer("Amazon", "https://example.com/rod", pack_qty=5, price_usd=5.0),),
                   dims={"d": 3.0, "length": 100.0}),

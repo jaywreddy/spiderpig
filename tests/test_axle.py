@@ -1,272 +1,144 @@
-"""Tests for the printed stepped axle (:mod:`construction.axle`, :mod:`construction.printed`).
+"""Tests for the generic axle claims (:class:`construction.axle.AxleGroup`).
 
-Every pillar and pin is printed in segments that snap together: do they go
-together, thread every link and hold? (Inside their claims and clash-free:
-``test_contract.py``.) The pins are asked for explicitly (``pin="printed"``):
-the default pin is the Chicago screw (:mod:`construction.pivots.chicago`).
+Whatever the construction (the Chicago screw pin, the standoff pillar), an axle claims its
+seat in each of its links' layers, a shoulder beside each link, a spacer in every other
+layer of its retained stack, its anchors in the frame plates it reaches and its retainers
+beyond each end; its early claim (once its own links have layers) is a lower bound of all
+that. (Inside their claims and clash-free: ``test_contract.py``; each construction's own
+parts: ``test_standoff.py``, ``test_wobble.py``. The printed stepped axle these tests were
+written on was removed on 2026-10-07.)
 """
 
 from __future__ import annotations
 
-import itertools
-import math
-from dataclasses import replace
-
 import pytest
-from build123d import Box, Location
 
-from spiderpig.construction import ConstructionError
-from spiderpig.construction.axle import AxleGroup, PrintedAxle
-from spiderpig.construction.base import Build, Realized
-from spiderpig.construction.printed import Snap, plan_segments, segment_solid
-from spiderpig.shapes import disc
+from spiderpig.construction.axle import STOP_OVERLAP, AxleGroup
 from tests.tiers import quick
 
 T = 1.0
 
 
-def _vol(a, b) -> float:
-    inter = a & b
-    return 0.0 if inter is None else sum(s.volume for s in inter.solids())
-
-
-def _above(part, z: float):
-    """The part of ``part`` above ``z``."""
-    return part & Box(1e3, 1e3, 1e3).moved(Location((0.0, 0.0, z + 500.0)))
+def _label(p) -> str:
+    return p.label.rsplit(" ", 1)[1]
 
 
 @pytest.fixture(params=quick(["single", "double", "decker", "quad"], ["single", "double"]))
-def axles(request, design, side):
-    """``(design, build, fabricated side, its axle groups)`` per module at ``T`` (the decker
-    and the quad, the same constructions on more axles, in the slow tier)."""
-    tmpl, d = design(request.param, pin="printed", pillar="printed")
-    build = Build(d.ctx, d.plan, tmpl.freeze_at(T))
-    groups = [g for g in d.groups if isinstance(g, AxleGroup)]
-    return d, build, side(request.param, T, pin="printed", pillar="printed"), groups
+def axles(request, design):
+    """``(design, its axle groups)`` per Klann module, the default constructions (the
+    decker and the quad, the same rules on more axles, in the slow tier)."""
+    _, d = design(request.param)
+    return d, [g for g in d.groups if isinstance(g, AxleGroup)]
 
 
-def _segments(fab, group):
-    base = group.name.replace(":", "_")
-    bodies = sorted((b for b in fab.bodies if b.name.startswith(base + "_seg")),
-                    key=lambda b: int(b.name.rsplit("seg", 1)[1]))
-    assert [b.name for b in bodies] == [f"{base}_seg{i}" for i in range(len(bodies))]
-    return bodies
-
-
-# -- segments -------------------------------------------------------------------
-
-
-def test_every_segment_is_one_valid_printed_solid(axles):
-    design, build, fab, groups = axles
-    frame = design.plan.topo.frame_bodies[0]
+def test_the_default_axles_are_chicago_pins_and_standoff_pillars(axles):
+    _, groups = axles
+    assert groups
     for g in groups:
-        segs = _segments(fab, g)
-        assert len(segs) >= 2, g.name        # at least one joint: every axle carries a link
-        lowest = min(g.axis.members, key=lambda m: (build.layers[m], m))
-        for b in segs:
-            assert len(b.part.solids()) == 1, b.name
-            assert b.part.is_valid, b.name
-            assert b.fab == "printed", b.name
-            assert b.rigid_with == (frame if g.pillar else lowest), b.name
+        assert g.construction.key == ("standoff" if g.pillar else "chicago"), g.name
 
 
-def test_segments_touch_but_never_overlap(axles):
-    *_, fab, groups = axles
-    for g in groups:
-        segs = [b.part for b in _segments(fab, g)]
-        for a, b in itertools.combinations(segs, 2):
-            assert _vol(a, b) < 1e-3, g.name
-        for lower, upper in itertools.pairwise(segs):
-            assert lower.distance_to(upper) < 1e-6, g.name
-
-
-def test_every_link_is_threaded_by_exactly_one_bearing(axles):
-    design, build, fab, groups = axles
-    p = design.ctx.params
-    for g in groups:
-        segs = _segments(fab, g)
-        planned = g.construction.segments(g, build)
-        xy = build.xy(g.axis.name)
-        for m in g.axis.members:
-            hole = disc(xy, p.hole(p.axle_d) / 2, *build.z(build.layers[m]))
-            threads = [i for i, b in enumerate(segs) if _vol(hole, b.part) > 1e-3]
-            assert len(threads) == 1, (g.name, m, threads)
-            assert m in planned[threads[0]].links
-            # the bearing fills the hole but for the running fit and (at most) the slot
-            r, w = p.axle_d / 2, g.construction.slot_width
-            bearing = _vol(hole, segs[threads[0]].part)
-            assert bearing > (math.pi * r**2 - 2 * r * w) * design.ctx.pitch, (g.name, m)
-
-
-def test_snap_pegs_fit_their_sockets_and_hold(axles):
-    """Every joint's peg (the axle's snap, or that joint's own relieved one: the planner
-    eases a lip whose prongs would strain past the limit) fits its socket with the print
-    clearance, catches, and strains within the construction's limit."""
-    design, build, fab, groups = axles
-    for g in groups:
-        snap = g.construction.snap(design.ctx)
-        c = snap.clearance
-        assert c == pytest.approx(design.ctx.params.print_fit / 2)
-        planned = g.construction.segments(g, build)
-        parts = [b.part for b in _segments(fab, g)]
-        for i, (lower, upper) in enumerate(itertools.pairwise(parts)):
-            joint = planned[i].peg_snap or snap
-            assert planned[i].strain_pct <= 100 * g.construction.max_strain + 1e-9, g.name
-            assert joint.engage >= g.construction.snap_engage_min - 1e-9
-            split, tip = upper.bounding_box().min.Z, lower.bounding_box().max.Z
-            assert tip == pytest.approx(split + joint.height)
-            peg = _above(lower, split + 1e-3)
-            assert peg.distance_to(upper) == pytest.approx(c, abs=1e-3), g.name
-            # the barb catches the ledge once pulled more than the clearance apart
-            assert _vol(lower, upper.moved(Location((0.0, 0.0, c - 0.02)))) < 1e-3, g.name
-            assert _vol(lower, upper.moved(Location((0.0, 0.0, c + 0.05)))) > 1e-3, g.name
-            # and the prongs can close far enough to push it on
-            assert joint.deflection() < joint.slot / 2
-            assert joint.barb > joint.throat > joint.shank
-
-
-def test_axle_ends(axles):
-    design, build, fab, groups = axles
+def test_every_link_sits_on_its_axle(axles):
+    design, groups = axles
     plan = design.plan
     for g in groups:
-        segs = _segments(fab, g)
-        labels = {s.layer: s.label.rsplit(" ", 1)[1] for s in build.shapes(g.name)}
-        bottom, top = segs[0].part.bounding_box().min.Z, segs[-1].part.bounding_box().max.Z
-        assert bottom == pytest.approx(plan.z(min(labels))[0])
-        assert top == pytest.approx(plan.z(max(labels))[1])
-        if g.pillar and labels[plan.top] == "anchor":
-            # flush with the inner plate's top face: the servo stands there
-            assert top == pytest.approx(plan.z(plan.top)[1])
-        if g.pillar and labels[0] == "anchor":
-            assert labels[-1] == "head"          # held under the outer plate too
+        d = g.dims(design.ctx)
+        seats = {p.layer: p for p in plan.shapes(g.name) if _label(p) == "axle"}
+        assert set(seats) == {plan.layers[m] for m in g.axis.members}, g.name
+        for p in seats.values():
+            assert p.seat
+            assert not p.gap
+            assert p.shape.r == pytest.approx(d.axle)
 
 
-def test_holes_and_glue(axles):
-    design, build, _, groups = axles
-    p = design.ctx.params
+def test_a_shoulder_beside_each_link_and_a_spacer_elsewhere(axles):
+    """Every layer of the retained stack between its ends is the axle's: a link's, a
+    shoulder right beside a link (wide enough to overlap its hole), else a loose spacer,
+    each at most ``spacer`` and at least the ``neck``."""
+    design, groups = axles
+    plan, p = design.plan, design.ctx.params
     for g in groups:
-        got = g.realize(build, Realized())
-        anchors = [s.layer for s in build.shapes(g.name) if s.label.endswith("anchor")]
-        plates = {0: "frame:outer", build.top: "frame:inner"}
-        assert set(got.cuts) == set(g.axis.members) | {plates[k] for k in anchors}
-        for k in anchors:
-            assert [c.d for c in got.cuts[plates[k]]] == [pytest.approx(p.hole(p.axle_d, "glue"))]
-        for m in g.axis.members:
-            assert [c.d for c in got.cuts[m]] == [pytest.approx(p.hole(p.axle_d))]
-        if anchors:
-            assert {e.key for e in got.extras} == {"ca_glue"}
-        else:
-            assert got.extras == []
-
-
-def test_snap_prongs_are_not_overstrained(axles):
-    design, build, _, groups = axles
-    for g in groups:
-        snap = g.construction.snap(design.ctx)
-        for seg in g.construction.segments(g, build):
-            if seg.peg is None:
+        d = g.dims(design.ctx)
+        stop = p.hole(2 * d.axle) / 2 + STOP_OVERLAP
+        shapes = [s for s in plan.shapes(g.name) if not s.gap]
+        links = {plan.layers[m] for m in g.axis.members}
+        anchors = {s.layer for s in shapes if _label(s) == "anchor"}
+        k0 = 0 if 0 in anchors else min(links)
+        k1 = plan.top if plan.top in anchors else max(links)
+        for k in range(k0 + 1, k1):
+            if k in links:
                 continue
-            strain = seg.strain(snap)
-            assert 0 < strain < 0.065, (g.name, seg.index, strain)
-            if not g.pillar and len(seg.links) == 2:         # a pin through two links
-                assert strain < 0.025, (g.name, seg.index, strain)
+            (s,) = [s for s in shapes if s.layer == k]
+            want = "shoulder" if {k - 1, k + 1} & links else "spacer"
+            assert _label(s) == want, (g.name, k, s.label)
+            assert d.neck - 1e-9 <= s.shape.r <= d.spacer + 1e-9, (g.name, k)
+            if want == "shoulder":
+                assert s.shape.r >= stop - 1e-9, (g.name, k)
 
 
-def _is_flat_bottom(part) -> bool:
-    z0 = part.bounding_box().min.Z
-    return any(abs(f.center().Z - z0) < 1e-6 and abs(abs(f.normal_at().Z) - 1) < 1e-6
-               and f.area > 10.0 for f in part.faces())
-
-
-def test_segments_stand_on_a_flat_bottom(axles):
-    *_, fab, groups = axles
+def test_pillars_are_anchored_and_pins_retained_at_both_ends(axles):
+    """A pillar is anchored in a frame plate it reaches (both where it can: a beam; else a
+    cantilever, its free end retained over its last link); a pin has a head below its
+    lowest link and a cap above its highest, each in the clearance gap beside its link or
+    in the layer beyond."""
+    design, groups = axles
+    plan = design.plan
+    beams = 0
     for g in groups:
-        for b in _segments(fab, g):
-            assert _is_flat_bottom(b.part), b.name
+        shapes = plan.shapes(g.name)
+        links = sorted(plan.layers[m] for m in g.axis.members)
+        lo, hi = links[0], links[-1]
+        if g.pillar:
+            anchors = sorted(s.layer for s in shapes if _label(s) == "anchor")
+            assert anchors in ([0], [plan.top], [0, plan.top]), (g.name, anchors)
+            assert all(s.seat for s in shapes if _label(s) == "anchor")
+            beams += anchors == [0, plan.top]
+            heads = sorted(s.layer for s in shapes if _label(s) == "head" and not s.gap)
+            # a screw head outside each plate it is anchored in, or over its free end
+            want = [-1 if 0 in anchors else lo - 1, plan.top + 1 if plan.top in anchors
+                    else hi + 1]
+            assert heads == want, (g.name, heads, want)
+        else:
+            assert not [s for s in shapes if _label(s) == "anchor"], g.name
+            (head,) = [s for s in shapes if _label(s) == "head"]
+            (cap,) = [s for s in shapes if _label(s) == "cap"]
+            assert head.layer == lo - 1, g.name          # in the gap under lo, or sunk
+            assert head.toward == -1 if head.gap else True
+            assert cap.layer == (hi if cap.gap else hi + 1), g.name
+            assert cap.toward == +1 if cap.gap else True
+    assert beams                    # the Klann's frame pivots reach both plates
 
 
-# -- planning in isolation --------------------------------------------------------
-
-PITCH = 3.0
-
-
-def _z(k: int) -> tuple[float, float]:
-    return k * PITCH, (k + 1) * PITCH
-
-
-def _snap() -> Snap:
-    return Snap(barb=3.0, engage=0.25, clearance=0.15, shank_h=1.0, land_h=0.4, flats=1.5,
-                slot=1.2)
-
-
-def _plan(column, links):
-    return plan_segments(column, _z, links, axle=3.0, snap=_snap(), play=0.1, bridge=0.8,
-                         base=2.0, slot_max=12.0)
+def test_washers_only_in_the_plans_gaps_inside_the_retained_stack(axles):
+    design, groups = axles
+    plan = design.plan
+    for g in groups:
+        washers = [s for s in plan.shapes(g.name) if _label(s) == "washer"]
+        links = sorted(plan.layers[m] for m in g.axis.members)
+        for w in washers:
+            assert w.gap
+            assert plan.gaps.get(w.layer, 0.0) > 0, (g.name, w.layer)
+            if not g.pillar:
+                assert links[0] <= w.layer < links[-1], (g.name, w.layer)
 
 
-def test_a_link_under_the_inner_plate_needs_no_split():
-    """The plate retains the link; the bearing carries on through it as the anchor."""
-    column = {-1: ("head", 4.25), 0: ("anchor", 3.0), 1: ("neck", 3.0), 2: ("shoulder", 4.25),
-              3: ("axle", 3.0), 4: ("shoulder", 4.25), 5: ("axle", 3.0), 6: ("anchor", 3.0)}
-    segs = _plan(column, {3: ("lo",), 5: ("hi",)})
-    assert [s.links for s in segs] == [("lo",), ("hi",)]
-    assert segs[0].peg == segs[1].socket == pytest.approx(4 * PITCH + 0.1)
-    assert segs[1].peg is None
-    assert segs[1].z1 == pytest.approx(7 * PITCH)
-    assert [s.anchors for s in segs] == [(0,), (6,)]
-    assert segs[0].slot_root == pytest.approx(PITCH)       # never into the glued anchor
-    for s in segs:
-        part = segment_solid(s, _snap(), (10.0, -5.0))
-        assert part.is_valid
-        assert len(part.solids()) == 1
-
-
-def test_pin_splits_above_each_run_of_links():
-    column = {1: ("head", 4.25), 2: ("axle", 3.0), 3: ("axle", 3.0), 4: ("shoulder", 4.25),
-              5: ("neck", 2.5), 6: ("shoulder", 4.25), 7: ("axle", 3.0), 8: ("cap", 4.25)}
-    segs = _plan(column, {2: ("a",), 3: ("b",), 7: ("c",)})
-    assert [s.links for s in segs] == [("a", "b"), ("c",), ()]
-    assert [s.peg for s in segs] == [pytest.approx(12.1), pytest.approx(24.1), None]
-    # a stiff base under each slot: 2 mm of the head, the whole layer holding a socket
-    assert [s.slot_root for s in segs] == [pytest.approx(5.0), pytest.approx(15.0), None]
-    # ... and never through a neck too thin to split
-    thin = _plan({**column, 5: ("neck", 1.3)}, {2: ("a",), 3: ("b",), 7: ("c",)})
-    assert thin[1].slot_root == pytest.approx(18.0)
-    # the shoulders stop short of the links they hold
-    shoulders = [p for s in segs for p in s.pieces if p.role == "shoulder"]
-    assert [(p.z0, p.z1) for p in shoulders] == [pytest.approx((12.1, 15.0)),
-                                                 pytest.approx((18.0, 20.9))]
-
-
-def test_snap_that_cannot_fit_is_refused(design):
-    ctx = design("single", pin="printed", pillar="printed")[1].ctx
-    with pytest.raises(ConstructionError):
-        PrintedAxle(slot_width=4.5).dims(ctx, False)          # prongs too thin
-    with pytest.raises(ConstructionError):
-        PrintedAxle(slot_width=0.5).dims(ctx, False)          # prongs can't close enough
-    with pytest.raises(ConstructionError):
-        PrintedAxle().dims(replace(ctx, pitch=2.0), True)     # socket taller than a shoulder
-    PrintedAxle().dims(ctx, True)
-
-
-def test_a_prong_over_the_strain_target_is_relieved_to_it():
-    """The planner aims a prong at ``strain_target`` (3.5 %) under the 4 % limit: one at
-    3.95 % with its slot as deep as it goes has its lip relieved until it is under the
-    target; an unreachable target leaves a prong under the limit as it was."""
-    column = {0: ("head", 4.0), 1: ("axle", 3.0), 2: ("shoulder", 4.0), 3: ("axle", 3.0),
-              4: ("cap", 4.0)}
-    links = {1: ("a",), 3: ("b",)}
-    kw = dict(axle=3.0, snap=_snap(), play=0.1, bridge=0.8, base=2.0, slot_max=12.0)
-    plain = plan_segments(column, _z, links, max_strain=1.0, **kw)
-    worst = max(s.strain_pct for s in plain if s.strain_pct is not None)
-    limit = (worst + 0.5) / 100
-    target = (worst - 0.3) / 100
-    aimed = plan_segments(column, _z, links, max_strain=limit, strain_target=target,
-                          min_engage=0.05, **kw)
-    got = max(s.strain_pct for s in aimed if s.strain_pct is not None)
-    assert got <= 100 * target + 1e-9
-    assert any(s.peg_snap is not None and s.peg_snap.engage < _snap().engage for s in aimed)
-    # the lip may not go below 0.25: the target is out of reach and the prong stays put
-    kept = plan_segments(column, _z, links, max_strain=limit, strain_target=target,
-                         min_engage=_snap().engage, **kw)
-    assert [s.strain_pct for s in kept] == [s.strain_pct for s in plain]
+def test_the_early_claim_is_a_lower_bound(axles):
+    """What the search places once an axle's own links have layers never claims more than
+    the axle finally does: each early shape is covered by the final claim's in its layer (a
+    retainer the search puts in the clearance gap beside a link may finally sink into the
+    layer beyond the gap: a gap ``k`` is over layer ``k``)."""
+    design, groups = axles
+    plan = design.plan
+    for g in groups:
+        (claim,) = g.claims(design.ctx)
+        assert claim.early_deps == frozenset(g.axis.members)
+        final = plan.shapes(g.name)
+        for e in claim.early(plan.layout):
+            if e.gap:
+                sunk = e.layer + (1 if e.toward > 0 else 0)
+                cover = [s for s in final if (s.gap and s.layer == e.layer)
+                         or (not s.gap and s.layer == sunk)]
+            else:
+                cover = [s for s in final if not s.gap and s.layer == e.layer]
+            r = max((s.shape.r for s in cover), default=0.0)
+            assert r >= e.shape.r - 1e-9, (g.name, e.layer, e.label)

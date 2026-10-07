@@ -270,15 +270,13 @@ def test_explain_takes_the_build_options(capsys):
     assert ("STOP: an M4 button head and washer (3 mm) don't fit a 2 mm layer outside the "
             "plate") in out
     assert "materials.thickness_mm 2 -> 3" in out
-    # bearing pivots assume full layers, which the default single-plate crank's gaps
-    # don't give (it says so and names --crank keyed): the keyed crank here
-    assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "bearing",
-                         "--pillar", "bearing", "--servo", "xl330_m288",
-                         "--crank", "keyed"]) == 0
+    # every construction option taken (the round standoff crank, not the default hex)
+    assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "chicago",
+                         "--pillar", "standoff", "--crank", "bolt_round"]) == 0
     out = capsys.readouterr().out
     assert "ground clearance:" in out
     assert "3. plan" in out
-    assert "bearing" in out or "sleeve" in out
+    assert "web M" in out                       # the single-plate crank's web
 
 
 # ---------------------------------------------------------------------------
@@ -293,11 +291,11 @@ def test_view_takes_the_build_options_and_resolves_them_into_the_store(store, ca
     from spiderpig import view
 
     ns = argparse.Namespace(linkage="klann", module="single", phases=None, proportion=None,
-                            servo=None, pillar=None, pin="bolt", crank=None, sheet=None,
+                            servo=None, pillar=None, pin=None, crank="bolt_round", sheet=None,
                             thickness=None, side_only=False)
     d = view.resolve_args(ns, store)                                          # entry 10
     assert d is not None
-    assert d.config.pin == "bolt"
+    assert d.config.crank == "bolt_round"
     assert d.config.module == "single"
     assert d.config.robot
     assert api.load(d.id, store).config == d.config
@@ -376,8 +374,7 @@ def test_the_clis_default_a_mechanism_to_its_one_module_and_one_side(store, caps
 def test_audit_takes_a_mechanism(tmp_path, capsys):
     from spiderpig.tools import audit
 
-    # the bolt crank: a mechanism's default (keyed) crank fails the jam check since its key's
-    # printed sockets are rated (SF 0.64 at the 0.85 N·m limit), which fails the audit
+    # the bolt crank, the mechanisms' default since 2026-10-04, named as an option
     assert audit.main(["--linkage", "parallelogram_lift", "--crank", "bolt", "--ts-contract", "0",
                        "--ts-clash", "1", "--out", str(tmp_path)]) == 0    # entry 10
     out = capsys.readouterr().out

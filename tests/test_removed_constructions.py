@@ -1,0 +1,152 @@
+"""The constructions removed on 2026-10-07 (W2, the user's decision D1) fail clearly: a
+config, a spec or a stored design naming one says what replaces it, and the API and the
+MCP return it as a ``Failure`` (``spec`` / ``bad_parameter``), never a traceback."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+
+import pytest
+from mcp import Client
+
+from spiderpig import api, construction
+from spiderpig.config import (
+    CRANK_SHEET,
+    REMOVED_CONSTRUCTIONS,
+    BuildConfig,
+    ParamError,
+    removed_construction,
+)
+from spiderpig.design import design_id
+from spiderpig.failure import Failure
+from spiderpig.mcp import make_server
+from spiderpig.spec import SpecErrors
+from spiderpig.store import Store
+
+KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago"}, "pillar": {"standoff"}}
+
+REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table]
+
+
+def test_the_registries_are_the_kept_constructions():
+    """D1: the cranks ``bolt`` and ``bolt_round``, the ``chicago`` pin, the one-piece
+    ``standoff`` pillar; no removed key is registered, every replacement is."""
+    assert set(construction.CRANKS) == KEPT["crank"]
+    assert set(construction.AXLES) == KEPT["pin"] | KEPT["pillar"]
+    for field, table in REMOVED_CONSTRUCTIONS.items():
+        registry = construction.CRANKS if field == "crank" else construction.AXLES
+        assert not set(table) & set(registry), field
+        for key, (replacement, when, what) in table.items():
+            assert replacement in KEPT[field], (field, key)
+            assert when == "2026-10-07"
+            assert what
+
+
+@pytest.mark.parametrize(("field", "key"), REMOVED)
+def test_a_config_naming_a_removed_construction_names_its_replacement(field, key):
+    replacement = REMOVED_CONSTRUCTIONS[field][key][0]
+    with pytest.raises(ParamError) as e:
+        BuildConfig(**{field: key})
+    msg = str(e.value)
+    assert msg == removed_construction(field, key)
+    assert f"{field} {key!r}" in msg
+    assert "removed on 2026-10-07" in msg
+    assert f"use {field}={replacement!r}" in msg
+
+
+def test_the_kept_constructions_still_build_a_config():
+    for field, keys in KEPT.items():
+        for key in keys:
+            assert removed_construction(field, key) is None
+            assert getattr(BuildConfig(**{field: key}), field) == key
+    assert BuildConfig(linkage="trotbot_heel").crank == "bolt_round"     # its own
+
+
+def test_an_acrylic_crank_sheet_names_an_aluminium_one():
+    """The acrylic two-plate crank went with D1: the bolt crank's plates are aluminium."""
+    with pytest.raises(ParamError, match=f"crank_sheet 'acrylic_3mm' is not metal.*{CRANK_SHEET}"):
+        BuildConfig(crank_sheet="acrylic_3mm")
+    from spiderpig.construction.base import ConstructionError
+    from spiderpig.construction.crank import BoltCrank
+
+    with pytest.raises(ConstructionError, match="need a metal crank sheet"):
+        BoltCrank().for_sheet("acrylic_3mm")
+
+
+def test_a_spec_naming_a_removed_construction_is_invalid_with_the_replacement():
+    spec = {"kind": "mechanism", "linkage": {"key": "hoecken_pantograph"},
+            "constructions": {"crank": "keyed", "pillar": "printed", "pin": "rod"},
+            "materials": {"crank_sheet": "acrylic_3mm"}}
+    with pytest.raises(SpecErrors) as e:
+        api.resolve(spec, store=None)
+    errors = {err.path: err for err in e.value.errors}
+    assert errors["constructions.crank"].nearest == "bolt"
+    assert errors["constructions.pillar"].nearest == "standoff"
+    assert errors["constructions.pin"].nearest == "chicago"
+    assert errors["materials.crank_sheet"].nearest == CRANK_SHEET
+    assert "removed on 2026-10-07" in errors["constructions.crank"].message
+    failure = Failure.from_exception(e.value)
+    assert (failure.stage, failure.code) == ("spec", "invalid_spec")
+    assert "use crank='bolt'" in failure.message
+
+
+def _store_with_a_keyed_design(root, in_spec: bool) -> tuple[Store, str]:
+    """A store holding a design recorded with ``crank="keyed"`` (as a store written before
+    2026-10-07 holds one): a hoecken_pantograph side resolved now, its resolved spec naming
+    the keyed crank (and its spec too, ``in_spec``: a spec that named it; else it was the
+    linkage's default then), re-recorded under the id they hash to."""
+    store = Store(root)
+    design = api.resolve(api.spec_of(BuildConfig(linkage="hoecken_pantograph", robot=False)),
+                         store)
+    rec = store.read_design(design.id)
+    spec = store.read_spec(design.id)
+    rec["resolved"]["constructions"]["crank"] = "keyed"
+    if in_spec:
+        spec.setdefault("constructions", {})["crank"] = "keyed"
+    else:
+        (spec.get("constructions") or {}).pop("crank", None)
+    old = design_id(rec["resolved"], rec["engine_version"])
+    rec["id"] = old
+    d = store.dir(old)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "resolved.json").write_text(json.dumps(rec))
+    (d / "spec.json").write_text(json.dumps(spec))
+    store.remove(design.id)
+    return store, old
+
+
+@pytest.mark.parametrize("in_spec", [True, False], ids=["spec", "resolved"])
+def test_a_stored_keyed_design_loads_as_a_failure_naming_bolt(tmp_path, in_spec):
+    store, old = _store_with_a_keyed_design(tmp_path / "store", in_spec)
+    with pytest.raises(ParamError) as e:
+        api.load(old, store)
+    failure = Failure.from_exception(e.value)
+    assert (failure.stage, failure.code) == ("spec", "bad_parameter")
+    assert "crank 'keyed'" in failure.message
+    assert "use crank='bolt'" in failure.message
+    assert "2026-10-07" in failure.message
+
+
+@pytest.mark.parametrize("in_spec", [True, False], ids=["spec", "resolved"])
+def test_the_mcp_answers_a_stored_keyed_design_with_the_failure(tmp_path, in_spec):
+    """Through the MCP's tools (the SDK's in-memory client): the tool is misused (``isError``)
+    with the ``Failure`` document, not a traceback."""
+    store, old = _store_with_a_keyed_design(tmp_path / "store", in_spec)
+    server = make_server(store.root)
+
+    async def call():
+        async with Client(server) as client:
+            return await client.call_tool("check", {"design": old})
+
+    try:
+        result = asyncio.run(call())
+    finally:
+        server.spiderpig.jobs.shutdown()
+    assert result.is_error
+    doc = result.structured_content
+    assert doc["ok"] is False
+    (failure,) = doc["failures"]
+    assert (failure["stage"], failure["code"]) == ("spec", "bad_parameter")
+    assert "use crank='bolt'" in failure["message"]
+    assert "Traceback" not in json.dumps(doc)

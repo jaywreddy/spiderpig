@@ -280,16 +280,14 @@ def test_drive_torque_within_servo_limits(built, walk):
         assert d["speed"] == pytest.approx(WALK * walk.speed_max, rel=0.05)
 
 
-# The dynamics these tests measured (the phase lock, the held offsets, the steering) are the
-# Klann quad's with the keyed crank and printed pillars (16 layers): pinned, so the numbers
-# keep their stack. The default (the bolt crank, standoffs: 31 layers) walks in
-# test_each_walker_walks_forward_upright.
-OLD = {"crank": "keyed", "pillar": "printed"}
+# The dynamics these tests measure (the phase lock, the held offsets, the steering) are the
+# default Klann quad's (the hex crank, standoff pillars, Chicago pins: 13 layers). Until
+# 2026-10-07 they were pinned to the keyed crank and printed pillars (16 layers), removed.
 
 
 @pytest.fixture(scope="module")
 def quad():
-    cfg = BuildConfig(linkage="klann", module="quad", **OLD)
+    cfg = BuildConfig(linkage="klann", module="quad")
     _, meta = _sim.seed(cfg)
     return cfg, _vmax(meta)
 
@@ -508,7 +506,7 @@ def test_too_little_crank_armature_is_refused():
 def test_strider_walks_on_its_feet_alone():
     """Strider's ``b4`` / ``b8`` end on the foot joints: their capsules must not touch the
     floor beside the feet (``body_contact`` 0), and the walk reads as the model's."""
-    cfg = BuildConfig(linkage="strider", module="quad", **OLD)   # the bolt crank's doesn't plan
+    cfg = BuildConfig(linkage="strider", module="quad")     # the hex crank's 25 layers
     _, meta = _sim.seed(cfg)
     for info in meta["feet"].values():
         assert len(info["links"]) >= 2
@@ -524,7 +522,7 @@ def test_strider_walks_on_its_feet_alone():
 
 
 UNSTABLE = "the quasi-static margin is under 15 mm: this design tips (a design decision)"
-WALKERS = [      # the Strider quad keyed (with the bolt crank it doesn't plan in the budget)
+WALKERS = [      # each on its default constructions
     ("klann", "quad"), ("strider", "quad"),
     pytest.param("jansen", "quad", marks=pytest.mark.xfail(reason=UNSTABLE, strict=False)),
     pytest.param("trotbot_heel", "quad", marks=pytest.mark.xfail(reason=UNSTABLE, strict=False)),
@@ -538,7 +536,7 @@ def test_each_walker_walks_forward_upright(key, module):
     quasi-static model says (the sign of its stride, in the drive's forward sense)."""
     from spiderpig import walk
 
-    cfg = BuildConfig(linkage=key, module=module, **(OLD if key == "strider" else {}))
+    cfg = BuildConfig(linkage=key, module=module)
     _, meta = _sim.seed(cfg)
     vmax = _vmax(meta)
     r = simulate(cfg, [(0.0, 0.0, 0.0), (SETTLE, vmax, vmax)], SETTLE + 4.0)
@@ -572,7 +570,7 @@ def test_mujoco_and_the_quasi_static_model_are_compared(quad):
     assert "fell" not in c["flags"]
     assert sum(m["feet_down_hist"]) == pytest.approx(1.0)
     assert m["airborne"] < 0.1
-    strider = BuildConfig(linkage="strider", module="quad", **OLD)
+    strider = BuildConfig(linkage="strider", module="quad")
     _, meta = _sim.seed(strider)
     _, ms = _run(strider, _vmax(meta), _vmax(meta), seconds=3.0)
     cs = compare_with_walk(ms, strider)
@@ -623,13 +621,13 @@ def test_the_steering_check_follows_its_runs(quad):
         assert not t["fell"]
         assert t["max_tilt"] < STEER_TILT
         assert t["side_phase_max"] < s["step_deg"] + 5.0
-    # the Klann quad with the keyed crank (measured; the fixture's): no unbounded differential, a
-    # 90 deg excursion. (With ``--crank printed``'s 12-layer stack it was 45: the keyed
-    # crank's 16 layers set the feet 12 mm further out, the stability margin 50 -> 57 mm,
-    # test_walk.py::test_quad_reference.)
-    assert cfg.crank == "keyed"
+    # the default Klann quad (the hex crank, 13 layers; measured 2026-10-07 on the suite's
+    # parametric servo): no unbounded differential (the 0.4 one tilts it 20.3 deg), a 45 deg
+    # excursion (15.7 deg; 90 tilts it 20.5, just past STEER_TILT). The keyed crank's 16
+    # layers, removed, granted 90; ``--crank printed``'s 12, removed too, 45.
+    assert cfg.crank == "bolt"
     assert s["turn"] == 0.0
-    assert s["step_deg"] == 90.0
+    assert s["step_deg"] == 45.0
 
 
 # ---------------------------------------------------------------------------

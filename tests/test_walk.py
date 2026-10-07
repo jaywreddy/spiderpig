@@ -46,10 +46,6 @@ def _square(y=-100.0, hx=50.0, hz=40.0):
     return np.array([[-hx, y, -hz], [-hx, y, hz], [hx, y, -hz], [hx, y, hz]])
 
 
-OLD = _linkage.OLD
-"""The materials and full-layer heads the reference numbers were taken with."""
-
-
 def _cfg(module: str, phases_deg=None, proportions=None, **kw) -> BuildConfig:
     """A Klann robot's config from the phases in degrees and a proportions dict."""
     phases = None if phases_deg is None else tuple(math.radians(p) for p in phases_deg)
@@ -315,16 +311,15 @@ def test_quad_support_follows_the_contract(quad):
 @pytest.mark.parametrize("com", ["nominal", "pivots"])
 def test_quad_reference(com):
     """The viewer's numbers for the Klann quad (centre of mass: the frame pivots' centroid
-    there; the nominal mass model here gives the same), on the stack they were taken at:
-    ``--crank printed``, whose 12 layers put the feet at z -62 / -50 mm. The keyed crank
-    plans 16 layers, the feet at -74 to -53 mm, which widens the margin to 57.4 mm; the bolt
-    crank (the default since 2026-10-03) with its single aluminium webs and heads in gaps
-    (2026-10-04) 14 layers, 77.2 mm on 0.080 in frame plates: 55.9 mm, with the hex-standoff
-    crankpins on 0.100 in 6061 webs 76.8 mm: 52.4 mm (its two-plate
-    stacks' 31 layers gave 70.5; checked at the end). The numbers are
-    ``walk_reference.json``'s, which the viewer's model test reads too."""
+    there; the nominal mass model here gives the same), on the default design's stack: the
+    bolt crank's single aluminium webs on hex standoffs, heads in clearance gaps, standoff
+    pillars and Chicago pins, 13 layers, the feet at z -95.8 / -49.2 / -56.0 mm, a 52.6 mm
+    least margin. (The reference was the removed ``--crank printed`` quad's until
+    2026-10-07: its 12 layers put the feet at -62 / -50 mm, a 50.0 mm margin; the keyed
+    crank's 16 layers 57.4 mm.) The numbers are ``walk_reference.json``'s, which the
+    viewer's model test reads too."""
     ref = _linkage.walk_reference()["reference"]
-    quad = walk.walker(_cfg("quad", crank="printed", pillar="printed", **OLD))
+    quad = walk.walker(_cfg("quad"))
     assert quad.config == _linkage.REFERENCE_CONFIG
     assert walk.foot_z_nominal(quad.config) == ref["foot_z"]
     if com == "pivots":
@@ -350,15 +345,6 @@ def test_quad_reference(com):
     assert m["degenerate_fraction"] == ref["degenerate_fraction"]
     assert m["roll_deg"] == pytest.approx(ref["roll_deg"], abs=1e-9)    # left/right symmetric
     assert m["speed_mm_s"] == pytest.approx(m["stride_mm"] * ref["rpm_max"] / 60.0)
-    if com == "nominal":        # the default (bolt crank, standoffs) stack is wider still
-        keyed = walk.straight_walk_metrics(walk.walker(_cfg("quad", crank="keyed",
-                                                             pillar="printed", **OLD)))
-        assert keyed["min_margin_mm"] == pytest.approx(57.4, abs=0.5)
-        bolt = walk.straight_walk_metrics(walk.walker(_cfg("quad")))
-        # the hex-standoff crankpins (2026-10-04): 52.4 mm (the round standoff's 55.9);
-        # 49.9 with the hub chain capped (2.5 mm less stack, no screw over the hub plate);
-        # 52.8 with the Chicago screws as bought (their taller heads widen the stack)
-        assert bolt["min_margin_mm"] == pytest.approx(52.8, abs=0.5)
 
 
 def test_walk_reference_is_the_models():

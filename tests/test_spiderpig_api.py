@@ -18,15 +18,12 @@ from spiderpig.hardware.bom import ON_HAND
 from spiderpig.spec import TARGET_FIELDS, Spec, SpecErrors, Target, spec_schema, validate
 from tests import _api, cache
 
-# The numbers below are the keyed crank's and the printed pillars' (the defaults before the
-# bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
-# height, parts and cost stay what these tests check
-OLD = {"constructions": {"crank": "keyed", "pillar": "printed"}}
+# The numbers below are the default constructions' (the hex crank, ``bolt_round`` on
+# TrotBot's heel, the standoff pillars and Chicago pins; the keyed crank and the printed
+# pillars these tests pinned until 2026-10-07 are removed)
 KLANN_QUAD = {"kind": "walker", "linkage": {"key": "klann"}}      # the default quad
-# the plans the heel at the drawing's 7 mm unit is advised to (its static failure's checked
-# scale): the keyed crank's at unit 12, the default constructions' at the default unit
-HEEL_12_KEYED = BuildConfig(linkage="trotbot_heel", module="single",
-                            proportions=(("unit", 12.0),), crank="keyed", pillar="printed")
+# the plan the heel at the drawing's 7 mm unit is advised to (its static failure's checked
+# scale): the default constructions' at the default unit, 10.5
 HEEL_DEFAULT = BuildConfig(linkage="trotbot_heel", module="single")
 
 
@@ -57,12 +54,12 @@ def test_unknown_fields_are_rejected_with_paths_and_nearest_keys():
 def test_out_of_vocabulary_keys_name_the_allowed_values():
     errs = _errors({"kind": "walker", "linkage": {"key": "klan"},
                     "materials": {"servo": "sg90", "sheet": "acrylic"},
-                    "constructions": {"pin": "bearings"}, "outputs": ["step", "pdf"]})
+                    "constructions": {"pin": "chicgo"}, "outputs": ["step", "pdf"]})
     assert errs["linkage.key"][0].nearest == "klann"
     assert "klann" in errs["linkage.key"][0].allowed
     assert errs["materials.servo"][0].allowed == ("sts3215", "xl330_m288", "xl430_w250")
     assert errs["materials.sheet"][0].nearest == "acrylic_3mm"
-    assert errs["constructions.pin"][0].nearest == "bearing"
+    assert errs["constructions.pin"][0].nearest == "chicago"
     assert errs["outputs[1]"][0].allowed == ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
 
 
@@ -251,27 +248,28 @@ def test_verify_quick_passes_with_tiers(quad):
 
 
 def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score():
-    _api.seed(BuildConfig(linkage="klann", module="quad", crank="keyed", pillar="printed"))
-    hard = api.resolve({**KLANN_QUAD, **OLD, "size": {"stack_mm": {"max": 30}},
+    _api.seed(BuildConfig(linkage="klann", module="quad"))      # the default quad's plan
+    hard = api.resolve({**KLANN_QUAD, "size": {"stack_mm": {"max": 60}},
                         "motion": {"stride_mm": {"min": 90}}})
     rep = api.verify(hard, "quick")
     assert not rep.ok
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert row.hard
-    # 17 layers: the keyed crank's top webs (0.080 in frame plates; 3.175 mm ones: 16, 49.05)
-    assert row.value == pytest.approx(49.764)
-    assert row.target == "<= 30"
+    # the default quad's 13 layers, 72.989 mm (test_check_plan_walk_on_the_default_quad)
+    assert row.value == pytest.approx(72.989)
+    assert row.target == "<= 60"
     assert rep.score == 1.0                        # the stride, the only soft target, is met
-    soft = api.resolve({**KLANN_QUAD, **OLD, "size": {"stack_mm": {"max": 30, "hard": False}},
+    soft = api.resolve({**KLANN_QUAD, "size": {"stack_mm": {"max": 60, "hard": False}},
                         "motion": {"stride_mm": {"min": 90}}})
     rep = api.verify(soft, "quick")
     assert rep.ok
     row = next(r for r in rep.rows if r.requirement == "size.stack_mm")
     assert not row.passed
     assert not row.hard
-    assert row.score == pytest.approx(0.3412)      # 49.764 mm against 30: 1 - 19.764 / 30
-    assert rep.score == pytest.approx(0.6706)      # the mean of stride 1.0 and stack 0.3412
+    # (a max of 60, not 30: 72.989 against 30 is more than 100 % over, a score of 0)
+    assert row.score == pytest.approx(0.7835, abs=1e-4)   # 72.989 against 60: 1 - 12.989 / 60
+    assert rep.score == pytest.approx(0.8918, abs=1e-4)   # the mean of stride 1.0 and 0.7835
     assert hard.id != soft.id
 
 
@@ -281,10 +279,10 @@ def test_a_hard_size_miss_fails_and_the_same_target_soft_only_lowers_the_score()
 
 
 def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_plans():
-    _api.seed(HEEL_12_KEYED)                  # the patch's plan from the test cache
+    _api.seed(HEEL_DEFAULT)                   # the patch's plan from the test cache
     heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
                                                       "params": {"unit": 7}},
-                        "legs": {"module": "single"}, **OLD})      # the keyed crank's post
+                        "legs": {"module": "single"}})     # bolt_round: the round 6 mm post
     cr = api.check(heel)
     assert not cr.ok
     (f,) = cr.failures
@@ -292,23 +290,23 @@ def test_the_heel_at_the_drawings_unit_fails_the_static_stage_with_a_patch_that_
     assert f.culprits[0]["body"] == "b7"
     assert f.culprits[0]["point"] == "J1"
     assert f.numbers["dist_mm"] == pytest.approx(6.8, abs=0.05)
-    assert f.numbers["need_mm"] == 11.25          # the keyed crank's 8.5 mm post: 4.25 + 6 + 1
+    assert f.numbers["need_mm"] == 10.0     # the round standoff's 6 mm post: 3 + 6 + 1 margin
     (rec,) = f.recommendations
-    assert rec.patch == {"linkage": {"params": {"unit": 12.0}}}
-    assert rec.changes == [{"name": "unit", "before": 7.0, "after": 12.0}]
-    # 15 layers on the 0.080 in frame plates of 2026-10-04 (14 on 0.125 in)
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 15 ")
+    assert rec.patch == {"linkage": {"params": {"unit": 10.5}}}     # the heel's default unit
+    assert rec.changes == [{"name": "unit", "before": 7.0, "after": 10.5}]
+    # 13 layers, 47.564 mm (the keyed crank's at unit 12, removed: 15)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 13 ")
     assert api.recommend(heel) == [rec]
     assert api.plan(heel).failures == cr.failures
     rep = api.verify(heel, "quick")
     assert not rep.ok
     assert rep.failures[0].code == "link_no_layer"
     fixed = api.resolve(apply_patch(heel.spec.to_dict(), rec.patch))
-    assert fixed.resolved["linkage"]["params"]["unit"] == 12.0
+    assert fixed.resolved["linkage"]["params"]["unit"] == 10.5
     assert fixed.id != heel.id
     pr = api.plan(fixed)
     assert pr.ok
-    assert pr.n_layers == 15
+    assert pr.n_layers == 13
 
 
 def test_a_broken_loop_is_a_program_failure_with_its_numbers():
@@ -554,7 +552,7 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
-                "legs": {"module": "single", "sides": 1}, **OLD}
+                "legs": {"module": "single", "sides": 1}}
 
 
 def test_a_walkers_card_says_which_modules_walk_and_how_each_parameter_moves_the_foot():
@@ -690,18 +688,13 @@ def test_recommend_offers_the_default_scale_when_a_scaled_down_plan_ran_out_of_r
     monkeypatch.setattr(rec, "_DONE", {})
     small = BuildConfig(linkage="jansen", module="quad", proportions=(("unit", 1.1),))
     recs, notes = rec.recommend(small, plan=True)                     # entry 9
-    r, printed = recs           # the scale first; printed pillars (the standoffs' rings fill)
-    assert printed.changes == (("pillar", "standoff", "printed"),)
+    (r,) = recs                 # the scale (printed pillars, the other lever, are removed)
     assert r.changes == (("unit", 1.1, 1.6),)
     assert r.verified == checked
     assert "default scale" in r.why
     assert notes == []
     recs, notes = rec.recommend(BuildConfig(linkage="jansen", module="quad"), plan=True)
-    assert [r.changes for r in recs] == [(("pillar", "standoff", "printed"),)]   # no scale
-    assert notes == []                        # a lever left: printed pillars
-    recs, notes = rec.recommend(BuildConfig(linkage="jansen", module="quad", pillar="printed"),
-                                plan=True)
-    assert recs == []
+    assert recs == []                         # at its default scale: no lever left
     assert "stack's own room" in notes[0]
     assert "levers left" in notes[0]
     assert rec.recommend(small) == ([], [])          # a static failure without gaps: nothing
@@ -711,11 +704,12 @@ def test_capture_warnings_collects_the_constructions_warnings_once():
     import logging
 
     with api.capture_warnings() as seen:
-        logging.getLogger("spiderpig.construction.printed").warning("pin seg0: strains 6 %")
-        logging.getLogger("spiderpig.construction.printed").warning("pin seg0: strains 6 %")
-        logging.getLogger("spiderpig.construction.printed").info("not a warning")
+        lg = logging.getLogger("spiderpig.construction.pivots.standoff")
+        lg.warning("pillar:A: a 0.5 mm take-up shim")
+        lg.warning("pillar:A: a 0.5 mm take-up shim")
+        lg.info("not a warning")
         logging.getLogger("spiderpig.other").warning("not collected")
-    assert seen == ["pin seg0: strains 6 %"]                            # entry 18
+    assert seen == ["pillar:A: a 0.5 mm take-up shim"]                  # entry 18
 
 
 # ---------------------------------------------------------------------------
@@ -724,10 +718,10 @@ def test_capture_warnings_collects_the_constructions_warnings_once():
 
 
 THIN = {"kind": "walker", "linkage": {"key": "klann"}, "legs": {"module": "single", "sides": 1},
-        "materials": {"thickness_mm": 2}, **OLD}
+        "materials": {"thickness_mm": 2}}
 
 
-def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_patch():
+def test_a_thin_sheet_warns_and_the_pillar_names_the_least_pitch_with_a_checked_patch():
     thin = api.resolve(THIN, store=None)                                   # entry 2
     (warning,) = [w for w in thin.warnings if w.startswith("materials.")]
     assert warning.startswith("materials.thickness_mm 2 is 33% under acrylic_3mm's nominal 3 mm")
@@ -735,17 +729,19 @@ def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_p
     assert not cr.ok
     (f,) = cr.failures
     assert (f.stage, f.code) == ("construction", "unbuildable")
-    assert f.message.startswith("no M3 screw, nut and 4 mm hex key fit a keyed crankpin joint "
-                                "in 2 mm layers: ")
-    assert "the least layer pitch that fits is 3 mm" in f.message
+    # the standoff pillar's end screw (pivots/standoff.py dims): its button head and washer
+    # sit in the layer outside the frame plate (the keyed crank's joints said so until
+    # 2026-10-07)
+    assert f.message.startswith("an M4 button head and washer (3 mm) don't fit a 2 mm layer "
+                                "outside the plate")
     assert "materials.thickness_mm 2 -> 3, or a thicker sheet" in f.message    # 3 is nominal
     assert f.numbers == {"pitch_mm": 2, "least_pitch_mm": 3.0}
     (rec,) = f.recommendations
     assert rec.patch == {"materials": {"thickness_mm": 3.0}}
     assert rec.changes == [{"name": "thickness_mm", "before": 2, "after": 3.0}]
-    assert rec.why.startswith("the keyed crank's crankpin joints need layers of at least 3 mm")
-    # 8 layers (22.239 mm) on the 0.080 in frame plates of 2026-10-04 (7 on 0.125 in)
-    assert rec.verified.startswith("checked: the static stage passes, and it plans in 8 layers")
+    assert rec.why.startswith("a standoff pillar's end screw needs layers of at least 3 mm")
+    # the default Klann single's 10 layers, 37.639 mm (test_the_recommendation_says_...)
+    assert rec.verified.startswith("checked: the static stage passes, and it plans in 10 layers")
     assert api.recommend(thin) == [rec]
     assert api.plan(thin).failures == cr.failures
     rep = api.verify(thin, "quick")
@@ -757,7 +753,7 @@ def test_a_thin_sheet_warns_and_the_crank_names_the_least_pitch_with_a_checked_p
     fixed = api.derive(thin, rec.patch, store=None)
     assert [w for w in fixed.warnings if w.startswith("materials.")] == []
     assert api.check(fixed).ok
-    assert api.plan(fixed).n_layers == 8
+    assert api.plan(fixed).n_layers == 10
     near = api.resolve({**THIN, "materials": {"thickness_mm": 3.2}}, store=None)
     assert [w for w in near.warnings if w.startswith("materials.")] == []
 
@@ -772,15 +768,6 @@ def test_a_thickness_at_the_nominal_or_as_an_int_is_the_same_design():
                                   store=None).id
     assert thin.resolved["materials"]["thickness_mm"] == 2.0
     assert thin.config.pitch == 2.0
-
-
-def test_the_least_pitch_of_the_printed_crank():
-    from spiderpig.construction.crank import PrintedCrank
-
-    crank = PrintedCrank()
-    assert crank.least_pitch(2.0) == 2.9
-    assert crank.least_pitch(3.0) == 3.0
-    assert crank.least_pitch(2.0, limit=2.5) is None
 
 
 def test_the_module_error_says_legs_per_side():
@@ -839,22 +826,22 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
 
     one = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                        "legs": {"module": "single", "sides": 1},
-                       "budget": {"cost_usd": {"max": 200}}, **OLD}, store=None)
+                       "budget": {"cost_usd": {"max": 200}}}, store=None)
     total, priced, unpriced = cost_floor(one)                              # entry 4
     from spiderpig import servos
     from spiderpig.hardware.catalog import get as item
 
     servo = item(servos.get("sts3215").bom_key).offer.price_usd
-    glue = 13.99                 # round 4: a bottle of CA for the anchors
     # a blank of each aluminium sheet: the frame (0.080 in, 2026-10-04), a Klann's feet
-    al, al6061 = 18.0, 32.0
+    # (0.125 in 6061) and the hex crank's webs (0.100 in 6061); no CA (the printed pillars'
+    # anchors, $13.99, and the keyed crank's unpriced nut and brass key went on 2026-10-07)
+    al, al6061, crank = 18.0, 32.0, 21.0
     # the sourcing of 2026-10-05 (hardware.sources): PLA $29.99, the Chicago barrels' J-B Weld
-    # $7.99, Loctite 222 $21.05 priced; McMaster's nut shows its price only on its page
+    # $7.99, Loctite 222 $21.05 priced
     # (the PLA and the Loctite are on hand since round 4, bom.ON_HAND: not in the floor)
     epoxy = 7.99
-    assert total == pytest.approx(servo + 10.99 + al + al6061 + glue + epoxy, abs=0.01)
-    assert unpriced == ["M3 hex nut (ISO 4032)",
-                        "M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F"]
+    assert total == pytest.approx(servo + 10.99 + al + al6061 + crank + epoxy, abs=0.01)
+    assert unpriced == []
     assert priced[0].startswith("Feetech STS3215")
     rep = api.verify(one, "quick")
     rows = {r.requirement: r for r in rep.rows}
@@ -863,13 +850,13 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     assert "counted after a build (verify standard)" in rows["budget.cost_floor_usd"].detail
     assert rep.unverified == ["budget.cost_usd"]
     assert rep.ok
-    robot = api.resolve({**KLANN_QUAD, **OLD, "materials": {"servo": "xl330_m288"},
+    robot = api.resolve({**KLANN_QUAD, "materials": {"servo": "xl330_m288"},
                          "budget": {"cost_usd": {"max": 100}}}, store=None)
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
     # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)
     assert total == pytest.approx(2 * xl330 + 10.99 + al + al6061       # (no deck inserts)
-                                  + glue + epoxy, abs=0.01)
+                                  + crank + epoxy, abs=0.01)
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
@@ -958,14 +945,12 @@ def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
     base = {"kind": "walker", "linkage": {"key": "strider", "params": {"unit": 6.3}},
             "legs": {"module": "double"}, "materials": {"servo": "xl330_m288"},
             "budget": {"cost_usd": {"max": 120}}}
-    a = api.resolve({**base, "constructions": {"pin": "bearing", "pillar": "bearing"}},
-                    store=tmp_path)
-    b = api.resolve({**base, "constructions": {"pin": "bushing", "pillar": "bushing"}},
-                    store=tmp_path)
+    a = api.resolve(base, store=tmp_path)
+    b = api.resolve({**base, "constructions": {"crank": "bolt_round"}}, store=tmp_path)
     cards = {c["id"]: c for c in api.list_designs(store=tmp_path)}         # entry 9
-    assert cards[a.id]["constructions"] == {"pillar": "bearing", "pin": "bearing",
+    assert cards[a.id]["constructions"] == {"pillar": "standoff", "pin": "chicago",
                                             "crank": "bolt", "heads": "best"}
-    assert cards[b.id]["constructions"]["pin"] == "bushing"
+    assert cards[b.id]["constructions"]["crank"] == "bolt_round"
     for c in (cards[a.id], cards[b.id]):
         assert c["servo"] == "xl330_m288"
         assert c["sheet"] == "acrylic_3mm"
@@ -1061,48 +1046,21 @@ def test_a_target_the_output_lacks_is_refused_and_a_mechanism_names_no_lowest_pa
     assert cr.lowest_body_part == ""
 
 
-def test_bolt_pillars_bound_the_stack_and_a_failed_plan_says_so_and_offers_printed_ones():
-    from spiderpig.construction.pivots.bolt import BoltAxle
-    from spiderpig.fabricate import side_problem, template_for
-
-    assert BoltAxle().max_stack(3.0) == pytest.approx(45.0)                   # entry 7
-    # (the keyed crank: bolt pivots assume full layers, which the default single-plate
-    # crank's clearance gaps don't give, fabricate.side_problem says so)
-    cfg = BuildConfig(linkage="klann", module="single", pillar="bolt", crank="keyed",
-                      robot=False)
-    _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
-    assert problem.spec.max_top == 14
-    assert problem.notes == ["pillar:A: the longest stock M3 screw (50 mm) clamps at most 15 "
-                             "layers of 3 mm (45 mm), so no taller stack was searched"]
-    printed = BuildConfig(linkage="klann", module="single", robot=False)
-    assert side_problem(template_for(printed), printed, hint=False)[2].spec.max_top == 60
-    d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
-                     "constructions": {"pillar": "bolt", "crank": "keyed"}})
-    pr = api.plan(d)
-    assert not pr.ok
-    (f,) = pr.failures
-    assert "with up to 15 layers (the most a group allows)" in f.message
-    assert any("clamps at most 15 layers" in n for n in f.notes)
-    rec = next(r for r in f.recommendations
-               if r.patch == {"constructions": {"pillar": "printed"}})
-    # 17 layers on the 0.080 in frame plates of 2026-10-04 (16 on 0.125 in)
-    assert "plans (quad module, the design's own) in 17 layers" in rec.verified
-
-
 def test_a_proven_stack_miss_names_the_floor_and_advise_notes_it():
-    _api.seed(BuildConfig(linkage="klann", module="quad", crank="keyed", pillar="printed"))
+    _api.seed(BuildConfig(linkage="klann", module="quad"))      # the default quad's plan
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
-                     "size": {"stack_mm": {"max": 30}}, **OLD})
+                     "size": {"stack_mm": {"max": 30}}})
     row = next(r for r in api.verify(d, "quick").rows if r.requirement == "size.stack_mm")
     assert not row.passed                            # entry 11
     assert row.tier == "proven"
-    assert row.detail.startswith("49.764 mm is proven the thinnest for klann's quad module "
-                                 "on 3 mm layers (17 layers")       # 0.080 in frame plates
+    # the default quad's 13 layers, 72.989 mm, proven (test_check_plan_walk_on_the_default_quad)
+    assert row.detail.startswith("72.989 mm is proven the thinnest for klann's quad module "
+                                 "on 3 mm layers (13 layers")
     assert "no module of klann with fewer walks" in row.detail
     adv = api.advise(d)
     assert adv.stage == "target"
     assert adv.recommendations == []
-    assert adv.notes[0].startswith("size.stack_mm 49.764 vs <= 30: 49.764 mm is proven the "
+    assert adv.notes[0].startswith("size.stack_mm 72.989 vs <= 30: 72.989 mm is proven the "
                                    "thinnest")
 
 
@@ -1161,19 +1119,19 @@ def test_the_measured_mass_row_of_the_quad_lists_its_groups_heaviest_first(quad,
 def test_captured_warnings_stay_off_the_terminal(caplog):
     import logging
 
-    lg = logging.getLogger("spiderpig.construction.printed")
+    lg = logging.getLogger("spiderpig.construction.pivots.chicago")
     with api.capture_warnings() as seen:
-        lg.warning("pin:X seg0: its snap prongs strain")
-    assert seen == ["pin:X seg0: its snap prongs strain"]
+        lg.warning("pin:X: its barrel is long")
+    assert seen == ["pin:X: its barrel is long"]
     assert caplog.records == []                              # entry 14
     assert lg.propagate
 
 
 def test_spec_of_a_config_round_trips():
-    cfg = BuildConfig(linkage="klann", module="single", pin="bolt", thickness=2.9,
+    cfg = BuildConfig(linkage="klann", module="single", crank="bolt_round", thickness=2.9,
                       servo="xl330_m288")
     doc = api.spec_of(cfg)                                                    # entry 10
-    assert doc["constructions"]["pin"] == "bolt"
+    assert doc["constructions"]["crank"] == "bolt_round"
     assert doc["materials"]["thickness_mm"] == 2.9
     assert doc["legs"] == {"module": "single", "sides": 2}
     assert api.resolve(doc).config == cfg
@@ -1216,19 +1174,16 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # the frame blank in 5052, the crank's in 6061 (the hex crankpins' pockets)
     assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 1
     assert sum(line.startswith("6061 aluminium sheet") for line in priced) == 1
-    lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}, **OLD},
+    lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}},
                        store=None)
-    # + its Al frame; the sourcing of 2026-10-05 priced its epoxy and threadlocker, and the
-    # servo and PLA went up (hardware.sources)
-    assert verify_module.cost_floor(lift)[0] == pytest.approx(72.96)   # (PLA, 222 on hand)
-    bolted = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"},
-                          "constructions": {"pillar": "bolt", "pin": "bolt", "crank": "keyed"}},
-                         store=None)
-    # unglued, and no Chicago barrels to bond (the epoxy)
-    assert verify_module.cost_floor(bolted)[0] == pytest.approx(72.96 - 13.99 - 7.99)
+    # the servo $21.99, acrylic $10.99, its Al frame $18, the hex crank's 0.100 in 6061 $21
+    # and the Chicago barrels' epoxy $7.99 (PLA, 222 on hand); the keyed crank and printed
+    # pillars it was pinned to until 2026-10-07: 72.96, CA for the anchors, no crank blank
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(21.99 + 10.99 + 18.0 + 21.0
+                                                              + 7.99)
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
-    assert row.value == pytest.approx(72.96)
+    assert row.value == pytest.approx(79.97)
     assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
     assert "the sheets' count, the crank's screws" in row.detail
 
@@ -1397,7 +1352,7 @@ def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_term
 
     d = api.resolve({"kind": "walker", "linkage": {"key": "strider"},
                      "legs": {"module": "single", "sides": 1},
-                     "constructions": {"pin": "printed"}}, store=None)     # not the rod default
+                     }, store=None)
     with caplog.at_level(logging.WARNING):
         cr = api.check(d)
         rep = api.verify(d, "standard")                                     # entry 12
@@ -1405,10 +1360,7 @@ def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_term
     assert isinstance(cr.warnings, list)
     assert rep.ok
     br = d.reports["build"]
-    # the planner relieves a snap lip it would once have warned about (the audit's snap
-    # column reports it), so a printed pin builds without a warning either way
     assert isinstance(br.warnings, list)
-    assert not any("snap prongs" in w for w in br.warnings)
     assert [r for r in caplog.records if r.name.startswith("spiderpig.construction")] == []
 
 

@@ -29,7 +29,6 @@ from spiderpig.stack import (
     verify_plan,
 )
 from tests import cache
-from tests.tiers import quick
 
 
 @pytest.fixture(params=["single", "double", "decker", "quad"])
@@ -115,16 +114,6 @@ def test_every_pillar_is_held_by_a_frame_plate(planned):
         anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
         assert anchors, (ax.name, labels)
         assert set(anchors) <= {0, plan.top}, (ax.name, labels)
-
-
-@pytest.mark.parametrize("module", quick(["single", "quad"], ["single"]))
-def test_every_printed_pillar_is_held_by_both_frame_plates(design, module):
-    """A printed pillar necks down past the links, so it reaches both plates."""
-    plan = design(module, pillar="printed", crank="keyed")[1].plan
-    for ax in plan.topo.axes_of("frame"):
-        labels = {p.label for p in plan.shapes(f"pillar:{ax.name}")}
-        anchors = [p.layer for p in plan.shapes(f"pillar:{ax.name}") if p.label.endswith("anchor")]
-        assert sorted(anchors) == [0, plan.top], (ax.name, labels)
 
 
 def test_crank_crosses_a_b1_layer_only_along_its_crankpin(planned):
@@ -343,13 +332,9 @@ PLANS: dict[str, dict] = {
     "hoecken": {"linkage": "hoecken", "module": "single"},
     "hoecken_pantograph": {"linkage": "hoecken_pantograph", "module": "single"},
     "dwell_rocker": {"linkage": "dwell_rocker", "module": "single"},
-    "klann-single-keyed": {"module": "single", "crank": "keyed", "pillar": "printed"},
-    "klann-quad-keyed": {"module": "quad", "crank": "keyed", "pillar": "printed"},
-    "klann-single-printed-pivots": {"module": "single", "pin": "printed", "pillar": "printed"},
-    "klann-quad-printed-pivots": {"module": "quad", "pin": "printed", "pillar": "printed"},
 }
 """The designs whose plans ``tests/fixtures/planner/plans/<name>.json`` record: the order
-designs, the mechanisms, and the constructions other modules' tests pin."""
+designs and the mechanisms."""
 
 
 def _plan_cfg(name: str) -> BuildConfig:

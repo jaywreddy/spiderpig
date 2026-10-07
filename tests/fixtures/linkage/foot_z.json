@@ -48,24 +48,6 @@
     -55.966499999999996
    ]
   },
-  "klann_quad_robot_57f15451521b": {
-   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='acrylic_3mm', crank_sheet='al6061_2p5mm', heads='sink', link_sheets=(), servo='sts3215', pillar='printed', pin='chicago', crank='keyed', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, glue_fit=0.15, print_fit=0.3, axle_d=6.0, spacer_d=8.5, neck_d=4.0, head_d=8.5, crankpin_d=6.0, web_radius=6.0, journal_d=12.0, stub_d=8.0, hub_thickness=5.0, servo_screw_web_t=1.0))",
-   "z": [
-    -74.0,
-    -71.0,
-    -62.0,
-    -53.0
-   ]
-  },
-  "klann_quad_robot_c1cb6042a7d1": {
-   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='acrylic_3mm', crank_sheet='al6061_2p5mm', heads='sink', link_sheets=(), servo='sts3215', pillar='printed', pin='chicago', crank='printed', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, glue_fit=0.15, print_fit=0.3, axle_d=6.0, spacer_d=8.5, neck_d=4.0, head_d=8.5, crankpin_d=6.0, web_radius=6.0, journal_d=12.0, stub_d=8.0, hub_thickness=5.0, servo_screw_web_t=1.0))",
-   "z": [
-    -62.0,
-    -62.0,
-    -50.0,
-    -50.0
-   ]
-  },
   "klann_quad_robot_cc79ff9152c9": {
    "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='xl330_m288', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, glue_fit=0.15, print_fit=0.3, axle_d=6.0, spacer_d=8.5, neck_d=4.0, head_d=8.5, crankpin_d=6.0, web_radius=6.0, journal_d=12.0, stub_d=8.0, hub_thickness=5.0, servo_screw_web_t=1.0))",
    "z": [
@@ -98,6 +80,6 @@
    ]
   }
  },
- "engine_version": "0.1.0+094f801c3c66",
+ "engine_version": "0.1.0+f91f368e27b7",
  "generator": "tests/test_walk.py::test_foot_z_fixture_is_current"
 }
