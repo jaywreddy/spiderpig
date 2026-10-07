@@ -36,16 +36,40 @@ another engine version is re-verified on fresh sampling and adopted
 without its optimality proof, or re-solved when the check fails; the
 other stages are recomputed under the new engine. Files are written
 atomically, so several users may share one folder.
+
+Concurrency, two kinds of write:
+
+- **Single files** (``spec.json``, ``resolved.json``, a stage report, the log) are written
+  atomically (a temp file renamed into place) and take **no lock**: a reader sees the old
+  file or the new one, two writers of one report write the same thing, and nothing waits.
+  They never create a removed design's folder again (:meth:`Store.write_report` skips a
+  design that is gone).
+- **The multi-file operations** (a build's manifest and STEP parts, an export's files, and
+  removing a design) hold the design's lock (:meth:`Store.lock`: an ``fcntl.flock`` on
+  ``designs/<id>/.lock``, re-entrant in the thread that holds it, keyed by the file's real
+  path). ``api.build`` and ``api.export`` take it, :meth:`Store.write_build` and
+  :meth:`Store.remove` too, and ``mcp.jobs.run_op`` holds it across its operation and the
+  reads of what it wrote. :meth:`Store.gc` skips a design whose lock is held (in use).
+  :meth:`Store.remove` renames the folder away before deleting it, so a waiter wakes to a
+  design that is gone (:class:`DesignRemoved`) and never re-creates its folder.
+
+The order: a thread never waits on a design's lock while holding a lock of its own over
+other designs (the MCP server's ``_ENGINE``): the MCP runs only single-file writes under
+``_ENGINE``; the builds and exports run in its worker processes.
 """
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
+import logging
 import os
 import re
 import shutil
 import tempfile
-from collections.abc import Iterable, Mapping
+import threading
+from collections.abc import Iterable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -53,18 +77,25 @@ import numpy as np
 
 from spiderpig.design import Design, design_id, jsonable, now_iso, spec_hash
 
+log = logging.getLogger("spiderpig.store")
+
 STORE_ENV = "SPIDERPIG_STORE"
 DEFAULT_ROOT = ".spiderpig"
 STAGES = ("check", "plan", "walk", "build", "recheck", "verify", "export")
 META_KEYS = ("stage", "design", "engine_version", "written_at")
 PROJECT = "project"          # the ``store`` argument's default: the project store
 
-_ID = re.compile(r"^[0-9a-f]{16}$")
+TRASH = ".removed-"     # designs/.removed-<id>-<random>/: a removal in progress (or crashed)
+_ID = re.compile(r"[0-9a-f]{16}")   # matched whole (fullmatch: no trailing newline)
 _UNSAFE = re.compile(r"[^\w.\-]")
 
 
 class StoreError(ValueError):
     """A design folder that doesn't hold what its id says."""
+
+
+class DesignRemoved(StoreError):
+    """The design was removed (``gc``) while this waited for its lock."""
 
 
 def _parse_time(s: str | None) -> datetime | None:
@@ -77,9 +108,11 @@ def _parse_time(s: str | None) -> datetime | None:
     return t if t.tzinfo is not None else t.replace(tzinfo=UTC)
 
 
-def _write_json(path: Path, doc) -> Path:
-    """Write ``doc`` as JSON atomically (a temp file in the same folder, then a rename)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _write_json(path: Path, doc, parents: bool = True) -> Path:
+    """Write ``doc`` as JSON atomically (a temp file in the same folder, then a rename);
+    ``parents=False``: the folder must exist (``FileNotFoundError`` otherwise)."""
+    if parents:
+        path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
     try:
         with os.fdopen(fd, "w") as f:
@@ -97,6 +130,56 @@ def _read_json(path: Path):
             return json.load(f)
     except (OSError, ValueError):
         return None
+
+
+class _HeldLock:
+    """One design lock file as this process holds it: a thread lock (``flock`` is per
+    open file, so threads of one process don't exclude each other through it), the depth
+    of re-entry by its owning thread and the open file while held."""
+
+    def __init__(self) -> None:
+        self.thread = threading.RLock()
+        self.depth = 0
+        self.fd: int | None = None
+
+
+_LOCKS: dict[str, _HeldLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _held(path: Path) -> _HeldLock:
+    # the real path: one store spelled through a symlink is one lock (else a nested lock
+    # by the other spelling would wait on the flock this thread holds)
+    key = os.path.realpath(path)
+    with _LOCKS_GUARD:
+        return _LOCKS.setdefault(key, _HeldLock())
+
+
+def _flock(path: Path, blocking: bool) -> int | None:
+    """An open ``path`` holding an exclusive ``flock`` (``None``: busy, non-blocking).
+    ``path``'s folder (the design's) must exist: a design removed before or while this
+    waited raises :class:`DesignRemoved` (a lock on its unlinked file excludes no one, and
+    its folder is not made again)."""
+    while True:
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        except FileNotFoundError:
+            raise DesignRemoved(f"{path.parent.name}: the design was removed") from None
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        except BlockingIOError:
+            os.close(fd)
+            return None
+        except BaseException:
+            os.close(fd)
+            raise
+        try:
+            same = os.stat(path).st_ino == os.fstat(fd).st_ino
+        except FileNotFoundError:
+            same = False
+        if same:
+            return fd
+        os.close(fd)        # removed while this waited: open it again (then it's gone)
 
 
 def report_doc(rep) -> dict:
@@ -141,7 +224,7 @@ class Store:
         return self.root / "designs"
 
     def dir(self, id: str) -> Path:
-        if not _ID.match(id):
+        if not isinstance(id, str) or not _ID.fullmatch(id):
             raise ValueError(f"not a design id: {id!r}")
         return self.designs / id
 
@@ -154,12 +237,48 @@ class Store:
             return []
         out = []
         for p in self.designs.iterdir():
-            if _ID.match(p.name) and (p / "resolved.json").is_file():
+            if _ID.fullmatch(p.name) and (p / "resolved.json").is_file():
                 out.append(p.name)
         return sorted(out, key=lambda i: (self.read_design(i) or {}).get("created_at", ""))
 
     def exports_dir(self, id: str) -> Path:
         return self.dir(id) / "exports"
+
+    # -- the design's lock -----------------------------------------------------------
+
+    def lock_path(self, id: str) -> Path:
+        return self.dir(id) / ".lock"
+
+    @contextlib.contextmanager
+    def lock(self, id: str, blocking: bool = True) -> Iterator[bool]:
+        """Hold design ``id``'s lock (``designs/<id>/.lock``, an exclusive ``flock``)
+        while the block runs: other processes and other threads wait; the thread holding
+        it may take it again. Yields ``True``; with ``blocking=False`` yields ``False``
+        at once instead of waiting when someone else holds it (the block must then not
+        touch the design). The design's folder must exist: :class:`DesignRemoved` when it
+        doesn't, or was removed while this waited."""
+        path = self.lock_path(id)
+        held = _held(path)
+        if not held.thread.acquire(blocking=blocking):
+            yield False
+            return
+        try:
+            if held.depth == 0:
+                fd = _flock(path, blocking)
+                if fd is None:
+                    yield False
+                    return
+                held.fd = fd
+            held.depth += 1
+            try:
+                yield True
+            finally:
+                held.depth -= 1
+                if held.depth == 0 and held.fd is not None:
+                    os.close(held.fd)       # releases the flock
+                    held.fd = None
+        finally:
+            held.thread.release()
 
     # -- the design record ---------------------------------------------------------
 
@@ -170,6 +289,8 @@ class Store:
         if (d / "resolved.json").is_file():
             return False
         cfg = design.config
+        # single files, atomic, no lock (module docstring): resolved.json, written last,
+        # is what makes the design recorded
         _write_json(d / "spec.json", design.spec.to_dict())
         _write_json(d / "resolved.json", {
             "id": design.id, "engine_version": design.engine_version,
@@ -215,12 +336,26 @@ class Store:
         verify: also ``verify.<level>.json``, so a quick verify after a standard one doesn't
         cost the standard one again)."""
         if stage == "build":
-            return self.write_build(design, rep)
+            try:
+                return self.write_build(design, rep)
+            except DesignRemoved:
+                log.warning("build not written: design %s is no longer in %s", design.id,
+                            self.root)
+                return self.report_path(design.id, stage)
         doc = {"stage": stage, "design": design.id, "engine_version": design.engine_version,
                "written_at": now_iso(), **report_doc(rep)}
-        if stage == "verify" and doc.get("level"):
-            _write_json(self.report_path(design.id, stage, str(doc["level"])), doc)
-        return _write_json(self.report_path(design.id, stage), doc)
+        path = self.report_path(design.id, stage)
+        # one file, atomic: no lock (it must never wait on a build's: module docstring);
+        # a design removed meanwhile is not made again
+        try:
+            if stage == "verify" and doc.get("level"):
+                _write_json(self.report_path(design.id, stage, str(doc["level"])), doc,
+                            parents=False)
+            return _write_json(path, doc, parents=False)
+        except FileNotFoundError:
+            log.warning("%s: not written: design %s is no longer in %s", path.name,
+                        design.id, self.root)
+            return path
 
     def stages(self, id: str) -> dict[str, dict]:
         """The stage files present: ``{stage: {ok, engine_version, written_at, ...}}``."""
@@ -243,13 +378,41 @@ class Store:
         """The build's manifest and one STEP per distinct part (``build/parts/``). A
         right-side part that is its left twin's exact mirror (the robot mirrors one side
         about z = 0) references the twin instead of a file of its own. The parts written
-        are what the engine built, at the report's ``t``."""
+        are what the engine built, at the report's ``t``. Under the design's lock: a
+        second build of the design waits instead of deleting these files mid-write."""
+        with self.lock(design.id):
+            return self._write_build(design, rep)
+
+    def _write_build(self, design: Design, rep) -> Path:
+        """Into a new folder beside ``build/`` (manifest last), then swapped in by two
+        renames: a crash at any point leaves the previous build whole, or no build, never
+        a manifest naming files that aren't its own (and the file hashes in the manifest
+        let :meth:`load_mechanism` notice if they were)."""
+        top = self.dir(design.id)
+        for stale in top.glob(".build-*"):          # what an earlier crash left (locked)
+            shutil.rmtree(stale, ignore_errors=True)
+        d = Path(tempfile.mkdtemp(prefix=".build-new-", dir=top))
+        try:
+            self._write_build_into(d, design, rep)
+            final = top / "build"
+            if final.exists():
+                old = Path(tempfile.mkdtemp(prefix=".build-old-", dir=top))
+                os.rename(final, old / "build")
+                os.rename(d, final)
+                shutil.rmtree(old, ignore_errors=True)
+            else:
+                os.rename(d, final)
+        except BaseException:
+            shutil.rmtree(d, ignore_errors=True)
+            raise
+        return final / "manifest.json"
+
+    def _write_build_into(self, d: Path, design: Design, rep) -> Path:
+        import hashlib
+
         from build123d import export_step
 
-        d = self.dir(design.id) / "build"
         parts_dir = d / "parts"
-        if parts_dir.exists():
-            shutil.rmtree(parts_dir)
         entries = []
         mech = design.mech if rep.ok else None
         if mech is not None:
@@ -266,6 +429,7 @@ class Store:
                     export_step(part.built, str(tmp))
                     os.replace(tmp, parts_dir / fn)
                     entry["file"] = f"parts/{fn}"
+                    entry["sha256"] = hashlib.sha256((parts_dir / fn).read_bytes()).hexdigest()
                 entries.append(entry)
         doc = {"stage": "build", "design": design.id, "engine_version": design.engine_version,
                "written_at": now_iso(), **report_doc(rep), "parts": entries}
@@ -280,7 +444,10 @@ class Store:
         """The fabricated :class:`mechanism.Mechanism` the manifest describes: every part's
         solid from its STEP file (a referenced part from its twin's, mirrored), at its pose,
         with the meta the checks read (the mid-plane, the fastened pairs) and the BOM's
-        extras. Raises when a file is missing."""
+        extras. Raises when a file is missing (``FileNotFoundError``) or isn't the one the
+        manifest names (``ValueError``: its hash differs)."""
+        import hashlib
+
         from build123d import Plane, import_step
 
         from spiderpig.hardware.bom import BomLine
@@ -294,6 +461,10 @@ class Store:
                 path = d / e["file"]
                 if not path.is_file():
                     raise FileNotFoundError(f"{path} is missing")
+                if e.get("sha256") and \
+                        hashlib.sha256(path.read_bytes()).hexdigest() != e["sha256"]:
+                    raise ValueError(f"{path} is not the file its manifest names (its hash "
+                                     "differs)")
                 solids[e["name"]] = import_step(str(path))
         for e in entries:
             if e.get("same_as"):
@@ -312,9 +483,13 @@ class Store:
 
     def log(self, id: str, entry: Mapping) -> None:
         d = self.dir(id)
-        d.mkdir(parents=True, exist_ok=True)
-        with open(d / "log.jsonl", "a") as f:
-            f.write(json.dumps(jsonable(entry), allow_nan=False) + "\n")
+        if not d.is_dir():          # removed (gc): don't make its folder again
+            return
+        try:
+            with open(d / "log.jsonl", "a") as f:
+                f.write(json.dumps(jsonable(entry), allow_nan=False) + "\n")
+        except FileNotFoundError:
+            return
 
     def read_log(self, id: str) -> list[dict]:
         path = self.dir(id) / "log.jsonl"
@@ -390,22 +565,39 @@ class Store:
                 out.append((i, doc))
         return sorted(out, key=lambda p: p[1].get("written_at", ""), reverse=True)
 
-    def remove(self, id: str) -> None:
+    def remove(self, id: str, blocking: bool = True) -> bool:
+        """Remove design ``id``'s folder under its lock (waiting for a writer to finish;
+        ``blocking=False``: leave a design in use alone). Whether it was removed."""
         d = self.dir(id)
-        if d.is_dir():
-            shutil.rmtree(d)
+        if not d.is_dir():
+            return False
+        try:
+            with self.lock(id, blocking=blocking) as got:
+                if not got:
+                    return False
+                # renamed away first: whoever waits on the lock wakes to a design that is
+                # gone (DesignRemoved), never to a half-deleted folder; into a folder of its
+                # own (a unique name: a crash leaves one, gc sweeps it)
+                trash = Path(tempfile.mkdtemp(prefix=f"{TRASH}{id}-", dir=self.designs))
+                os.rename(d, trash / id)
+                shutil.rmtree(trash, ignore_errors=True)
+        except DesignRemoved:
+            return False
+        return True
 
     def gc(self, keep: Iterable[str] | None = None,
            older_than: datetime | timedelta | float | None = None) -> list[str]:
         """Remove designs: those not in ``keep``, and/or those last operated on before
         ``older_than`` (an instant, an age as a ``timedelta`` or seconds). Both given, a
-        design is removed only when it is not kept *and* too old. Returns the ids
+        design is removed only when it is not kept *and* too old. A design in use (its
+        lock held: a build or export writing it) is left for a later gc. Returns the ids
         removed; nothing outside ``designs/<id>`` is touched."""
         if keep is None and older_than is None:
             raise ValueError("gc(keep=[ids]) and/or gc(older_than=age) says what to remove")
         kept = None if keep is None else set(keep)
         cutoff = _cutoff(older_than)
         removed = []
+        self.sweep()
         for i in self.ids():
             if kept is not None and i in kept:
                 continue
@@ -413,9 +605,24 @@ class Store:
                 last = self.last_activity(i)
                 if last is not None and last >= cutoff:
                     continue
-            self.remove(i)
-            removed.append(i)
+            try:
+                if self.remove(i, blocking=False):
+                    removed.append(i)
+            except OSError as e:            # one design's trouble doesn't stop the rest
+                log.warning("gc: %s not removed: %s", i, e)
         return removed
+
+    def sweep(self) -> list[str]:
+        """Delete what interrupted removals left (``designs/.removed-*``, folders a crash
+        between the rename and the delete left behind). Returns their names."""
+        if not self.designs.is_dir():
+            return []
+        out = []
+        for p in self.designs.iterdir():
+            if p.name.startswith(TRASH) and p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+                out.append(p.name)
+        return out
 
 
 def _cutoff(older_than) -> datetime | None:
@@ -505,5 +712,6 @@ def _num(v) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-__all__ = ["DEFAULT_ROOT", "PROJECT", "STAGES", "STORE_ENV", "Store", "StoreError", "diff_json",
+__all__ = ["DEFAULT_ROOT", "PROJECT", "STAGES", "STORE_ENV", "DesignRemoved", "Store",
+           "StoreError", "diff_json",
            "is_mirror", "mirror_twin", "now_iso", "report_doc"]

@@ -142,7 +142,7 @@ def client(store, _recorded_foot_z):
     from spiderpig.server import app as server_app
 
     server_app.configure(store=store, prebake_default=False)
-    yield TestClient(server_app.app)
+    yield TestClient(server_app.app, base_url="http://localhost")   # an allowed Host
     server_app.configure(store=None, prebake_default=True)
 
 

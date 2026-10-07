@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import socket
 import subprocess
 import sys
@@ -100,6 +101,9 @@ def run_server(store, host: str, port: int, *, log_level: str = "warning") -> No
     from spiderpig.server import app as server_app
 
     server_app.configure(store=store, prebake_default=False)
+    server_app.allow_host(host)         # the name its URL is printed under (HostGuard)
+    # not a dev server: no Vite page's port is trusted (an MCP's child inherits its env)
+    os.environ.pop(server_app.DEV_ORIGIN_PORT_ENV, None)
     uvicorn.run(server_app.app, host=host, port=port, log_level=log_level)
 
 
@@ -153,7 +157,8 @@ def start_background(store, host: str = DEFAULT_HOST, port: int | None = None,
     port = port or free_port(host)
     cmd = [sys.executable, "-m", "spiderpig.view", "--serve-only", "--store", root,
            "--host", host, "--port", str(port), "--log-level", "warning"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL)
+    env = {k: v for k, v in os.environ.items() if k != "SPIDERPIG_DEV_ORIGIN_PORT"}
+    proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, env=env)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if proc.poll() is not None:

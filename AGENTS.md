@@ -102,4 +102,6 @@ that's intentional, it forces e2e to test what users actually see.
 
 For a quick visual smoke check, `mise run view` and open the URL its banner prints
 (ports come from a hash of the worktree's path; `VITE_PORT` / `API_PORT` pin them,
-`VITE_ALLOWED_HOSTS` lets Vite answer other host names, e.g. behind `tailscale serve`).
+`VITE_ALLOWED_HOSTS` lets Vite and the API server answer other host names, e.g. behind
+`tailscale serve`; the server refuses any other `Host` with a 400, and a WebSocket from a
+foreign `Origin`).

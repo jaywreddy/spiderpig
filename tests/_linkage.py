@@ -155,3 +155,34 @@ def walk_reference_doc() -> dict:
 def walk_reference() -> dict:
     """The walk reference's data (``walk_reference.json``)."""
     return _consume("walk_reference", walk_reference_doc)
+
+
+STRIDER_REFERENCE_CONFIG = BuildConfig()
+"""The project's default design, the Strider double (its default constructions and
+materials): the second design the viewer's model is held to the Python one on."""
+
+
+def strider_walk_reference_doc() -> dict:
+    """The generator of ``walk_reference_strider.json``: the default Strider double's feet
+    and centre of mass as ``/api/walk`` sends them (at its planned foot z) and the Python
+    model's straight-walk metrics of them (``viewer/src/drive/model.test.ts`` checks the
+    viewer's model gives the same)."""
+    cfg = STRIDER_REFERENCE_CONFIG
+    model = walk.walker(cfg, feet_z=_live(cfg))
+    servo = walk.servo_info(cfg.servo)
+    metrics = walk.straight_walk_metrics(model, rpm_max=servo["rpm_max"])
+    return {
+        "config": repr(cfg),
+        "walk": walk.jsonable({
+            "theta_samples": model.n,
+            "feet": [f.as_json(digits=6) for f in model.feet],
+            "com": [float(c) for c in model.com],
+            "servo": {"key": servo["key"], "rpm_max": servo["rpm_max"]},
+        }),
+        "metrics": walk.jsonable(metrics),
+    }
+
+
+def strider_walk_reference() -> dict:
+    """The Strider double's walk reference (``walk_reference_strider.json``)."""
+    return _consume("walk_reference_strider", strider_walk_reference_doc)
