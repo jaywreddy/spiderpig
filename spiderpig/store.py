@@ -27,6 +27,11 @@ Layout of ``designs/<id>/``:
 ``log.jsonl``            one line per operation: op, engine version, seconds, ok, cached
 =======================  ============================================================
 
+Beside ``designs/``, ``fab/`` is the fabrication cache (:mod:`spiderpig.fabcache`:
+``fab/<fab key>-<env tag>/<entry>/``, a fabricated mechanism per design, plan and crank
+angle), which ``spiderpig build`` and :func:`spiderpig.api.build` read; :meth:`Store.gc`
+removes other code versions' folders.
+
 Validity: a stage file is used as is when its ``engine_version`` is the
 running engine's (:func:`spiderpig.design.engine_version`), except a plan,
 which is always re-made through :meth:`stack.StackProblem.plan` and
@@ -591,13 +596,23 @@ class Store:
         ``older_than`` (an instant, an age as a ``timedelta`` or seconds). Both given, a
         design is removed only when it is not kept *and* too old. A design in use (its
         lock held: a build or export writing it) is left for a later gc. Returns the ids
-        removed; nothing outside ``designs/<id>`` is touched."""
+        removed. The fabrication cache (``fab/``, :mod:`spiderpig.fabcache`) loses every
+        other code version's folder, and with ``older_than`` the entries not used since
+        (:func:`spiderpig.fabcache.gc`, logged)."""
         if keep is None and older_than is None:
             raise ValueError("gc(keep=[ids]) and/or gc(older_than=age) says what to remove")
         kept = None if keep is None else set(keep)
         cutoff = _cutoff(older_than)
         removed = []
         self.sweep()
+        from spiderpig import fabcache
+
+        try:
+            age = None if cutoff is None else (datetime.now(UTC) - cutoff).total_seconds()
+            for path in fabcache.gc(self, older_than=age):
+                log.info("gc: removed %s", path)
+        except OSError as e:
+            log.warning("gc: the fabrication cache not cleaned: %s", e)
         for i in self.ids():
             if kept is not None and i in kept:
                 continue
