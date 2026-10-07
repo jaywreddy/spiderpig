@@ -12,10 +12,12 @@ import numpy as np
 import pytest
 
 from spiderpig import api
+from spiderpig.config import BuildConfig
 from spiderpig.design import jsonable
 from spiderpig.failure import apply_patch, merge_patch
 from spiderpig.stack import verify_plan
 from spiderpig.store import STORE_ENV, Store, StoreError, diff_json
+from tests import _api
 
 # the Klann quad stacks 48 mm (16 layers with the keyed crank's two-layer top webs)
 # The numbers below are the keyed crank's and the printed pillars' (the defaults before the
@@ -28,6 +30,9 @@ KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
                 "legs": {"module": "single", "sides": 1}, **OLD}
 HEEL = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
         "legs": {"module": "single"}, **OLD}
+# the plan the heel's checked patch (unit 12) has
+HEEL_12 = BuildConfig(linkage="trotbot_heel", module="single", crank="keyed", pillar="printed",
+                      proportions=(("unit", 12.0),))
 
 
 def _doc(rep) -> dict:
@@ -46,10 +51,11 @@ def _stored(store: Store, id: str, stage: str) -> dict:
     return doc
 
 
-def _count(monkeypatch, module, name):
-    """Replace ``module.name`` with a counting wrapper; returns the call list."""
+def _count(monkeypatch, module, name, instead=None):
+    """Replace ``module.name`` with a counting wrapper (calling ``instead`` when given,
+    else the original); returns the call list."""
     calls: list[tuple] = []
-    original = getattr(module, name)
+    original = getattr(module, name) if instead is None else instead
 
     def wrapper(*args, **kwargs):
         calls.append(args)
@@ -187,6 +193,7 @@ def test_a_reloaded_plan_is_verified_and_identical(tmp_path, design):
 
 
 def test_a_failing_check_and_plan_are_cached_as_failures(tmp_path):
+    _api.seed(HEEL_12)                 # what its recommendation checks, cached
     store = Store(tmp_path)
     heel = api.resolve(HEEL, store)
     cr, pr = api.check(heel), api.plan(heel)
@@ -293,7 +300,10 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
 
     solved = _count(monkeypatch, api, "design_side")
     verified = _count(monkeypatch, api, "verify_plan")
-    fabricated = _count(monkeypatch, api, "fabricate_side")
+    # every fabrication counted; its parts the test cache's (the same design at t = 1)
+    fabricated = _count(monkeypatch, api, "fabricate_side",
+                        instead=lambda d, mech, ties=(): _api.own(
+                            side("single", 1.0, crank="keyed", pillar="printed")))
     back = api.load(d.id, store)
     assert back.engine_version == "0.0.0+fake"
     assert any("recorded under engine " + real in w for w in back.warnings)
@@ -379,6 +389,7 @@ def test_gc_removes_what_it_should_and_nothing_else(tmp_path):
 
 
 def test_compare_and_derive(tmp_path):
+    _api.seed(HEEL_12)                 # the patch's plan, cached
     store = Store(tmp_path)
     heel = api.resolve(HEEL, store)
     (rec,) = api.recommend(heel)
@@ -474,3 +485,29 @@ def test_verify_levels_do_not_evict_each_other(tmp_path):
     store.report_path(d.id, "verify", "quick").unlink()
     fresh = api.load(d.id, store)
     assert api._cached(fresh, "verify", VerifyReport, level="quick").level == "quick"
+
+
+def test_the_engine_version_is_read_back_from_its_digest_cache_only_while_it_holds(
+        tmp_path, monkeypatch):
+    """``engine_version`` keeps its digest on disk under a signature of the sources it
+    hashes: a later process reads the very string it computed, and an entry whose
+    signature isn't this tree's is computed afresh (and rewritten)."""
+    from spiderpig import design
+
+    code_digest = design._code_digest
+    monkeypatch.setenv(design.DIGEST_CACHE_ENV, str(tmp_path))
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    computed = design.engine_version()                     # parsed, then written
+    (entry,) = tmp_path.glob("*.json")
+    assert json.loads(entry.read_text())["version"] == computed
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    monkeypatch.setattr(design, "_code_digest", lambda src: pytest.fail("parsed again"))
+    assert design.engine_version() == computed             # read back
+    doc = json.loads(entry.read_text())
+    entry.write_text(json.dumps({"signature": doc["signature"][::-1], "version": "0.0.0+x"}))
+    monkeypatch.setattr(design, "_ENGINE_VERSION", [])
+    monkeypatch.setattr(design, "_code_digest", code_digest)
+    assert design.engine_version() == computed             # not this tree's: computed again
+    assert json.loads(entry.read_text())["version"] == computed
+    monkeypatch.setenv(design.DIGEST_CACHE_ENV, "off")
+    assert design._digest_cache([], "", "") is None
