@@ -108,6 +108,16 @@ def test_a_bad_entry_is_rebuilt_and_a_failed_write_never_fails(on, caplog, monke
     assert not list((on.root / "fab" / "fab-test-key").glob("*.tmp"))
 
 
+def test_a_store_it_cant_write_fabricates(on, tmp_path, caplog):
+    blocked = tmp_path / "a_file"
+    blocked.write_text("")                  # the store's folder is a file: no fab/ in it
+    build = _Counter()
+    with caplog.at_level(logging.WARNING, logger="spiderpig.fabcache"):
+        assert fabcache.fabricated(blocked, None, None, None, 1.0, build).name == "m"
+    assert build.calls == 1
+    assert "can't lock" in caplog.text
+
+
 def test_gc_removes_other_keys_and_leftovers(on):
     build = _Counter()
     fabcache.fabricated(on, None, None, None, 1.0, build)

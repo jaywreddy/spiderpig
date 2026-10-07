@@ -10,31 +10,38 @@ constant only the deck's parts read, the BOM, the DXF writer) leaves them warm:
 - :func:`fab_key`: that plus :func:`spiderpig.fabricate.fabricate` (every group's
   ``realize``, the robot, the chassis, the servos, the shapes) and the fabrication
   cache's own format (:mod:`spiderpig.fabcache`);
-- :func:`callable_key`: what a function reaches (a recorded fixture's generator).
+- :func:`function_key` / :func:`callable_key`: what a function reaches (a recorded
+  fixture's generator, ``tests/cache.py``);
+- :func:`engine_digest`: every engine source (``spiderpig build``'s up-to-date check).
 
 **How the closure is found** (statically, from the sources' ASTs; nothing is imported):
 the reached *symbols* (a module's top-level function, class or assignment; a class's
 method) from the roots, following
 
 - every name a reached definition loads, resolved through its module's imports (and
-  the imports inside the definition itself: a lazy import counts);
+  the imports inside the definition itself: a lazy import counts); annotations aren't
+  followed (never evaluated: ``from __future__ import annotations``, and nothing reads
+  type hints), but they are part of the hashed code;
 - ``obj.attr`` on an object of unknown type: **every** method and class attribute named
-  ``attr`` in the package, and every module-level symbol named ``attr`` of a module that
-  is ever handled as a value (passed, stored, imported by a computed name); on a name
-  bound to a module, that module's symbol (or submodule) ``attr``;
+  ``attr`` in the engine, and every module-level symbol named ``attr`` of a module that
+  is handled as a value in reached code (passed, stored, imported by a computed name); on
+  a name bound to a module, that module's symbol (or submodule) ``attr``; dunders aside
+  (a reached class brings its own);
 - keyword argument names and the string constants given to ``getattr`` / ``hasattr`` /
   ``setattr`` as attributes; a ``getattr`` by a computed name: every identifier-like
-  string constant of the definition;
-- a reached method reaches its class (bases, decorators, class attributes and every
-  dunder method); a reached class reaches its dunders;
-- a module is *loaded* when anything of it is reached, when a loaded module or a reached
-  definition imports it, or it is a parent package of one; loading runs its import-time
-  effects, which are always reached: every top-level statement that isn't a definition
-  or a plain constant (a call into the package, a registry filled, a loop, an ``if``, a
-  decorator other than the standard pure ones, a ``__getattr__``); a package that
-  imports its submodules by listing them (``pkgutil.iter_modules``, the linkages)
-  loads every one of them, so a new linkage file is a new key; a computed
-  ``importlib.import_module`` loads every module its module names in a string.
+  string constant of its module;
+- a reached class reaches its bases, decorators, class attributes, nested classes and
+  every dunder method; its other methods are reached by name;
+- a module is *loaded* when a loaded module or reached code imports it, it is a parent
+  package of one, a package auto-imports it (``pkgutil.iter_modules``: the linkages, so
+  a new linkage file is a new key), a computed ``importlib.import_module`` in reached
+  code names it, or its import-time code calls or changes a reached symbol (registers
+  into a reached registry, patches a reached module). Loading reaches its import-time
+  effects: every top-level statement that isn't a definition, an import or a plain
+  constant (a call into the package, a registry filled, a loop, an ``if``, a decorator
+  other than the standard pure ones). A method matched by name alone in a module
+  nothing loads is hashed, but loads nothing (its instances' module was imported by
+  whatever made them); the module's ``if __name__ == "__main__":`` never runs.
 
 Docstrings are stripped and line numbers aren't hashed: a docs-only edit (or moving code)
 keeps every key. Hashed beside the reached definitions: the names of the loaded modules
@@ -115,6 +122,7 @@ PURE_CALLS = frozenset({
 })
 """Callees (by their last name) whose call in a top-level assignment can't register
 anything in the package; any other call there (into the package) makes it an effect."""
+
 
 def _is_dunder(name: str) -> bool:
     return name.startswith("__") and name.endswith("__")

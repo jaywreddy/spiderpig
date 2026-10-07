@@ -192,7 +192,12 @@ def fabricated(store, tmpl, config, design, t: float, build: Callable[[], object
     except Exception as e:      # noqa: BLE001 - a key we can't compute: no cache
         log.warning("fabrication cache: no key (%s): fabricating", e)
         return build()
-    with locked(entry):
+    with contextlib.ExitStack() as held:
+        try:
+            held.enter_context(locked(entry))
+        except OSError as e:        # (a read-only store: no cache, never a failure)
+            log.warning("%s: can't lock (%s): fabricating", entry, e)
+            return build()
         if entry.is_dir():
             try:
                 mech = load_mechanism(entry)

@@ -60,9 +60,9 @@ class Options(argparse.Namespace):
 
 def preparse(argv: list[str]) -> Options | None:
     """``--out``, ``--store`` and ``--force`` read without the engine (spelled in full,
-    ``--x VALUE`` or ``--x=VALUE``), the other options as given; ``None`` when the check
-    doesn't apply (``--list``, ``--help``, an abbreviation of one of those three: argparse
-    reads it)."""
+    ``--x VALUE`` or ``--x=VALUE``), the other options as given but the profiler's
+    (``--profile``, ``--profile-json FILE``); ``None`` when the check doesn't apply
+    (``--list``, ``--help``, an abbreviation of one of those three: argparse reads it)."""
     opts = Options(out=Path("build"), store=None, force=False, argv=[])
     i = 0
     while i < len(argv):
@@ -72,6 +72,10 @@ def preparse(argv: list[str]) -> Options | None:
             return None
         if a == "--force":
             opts.force = True
+        elif a == "--profile":
+            pass                    # (the stage timings: no output depends on them)
+        elif name == "--profile-json":
+            i += 0 if eq else 1
         elif name in ("--out", "--store"):
             if not eq:
                 if i + 1 >= len(argv):

@@ -28,6 +28,9 @@ def test_preparse(tmp_path, monkeypatch):
     o = uptodate.preparse(["--linkage", "klann", "--out", "a", "--store=s", "--force"])
     assert (o.out, o.store, o.force, o.argv) == (Path("a"), Path("s").resolve(), True,
                                                  ["--linkage", "klann"])
+    o = uptodate.preparse(["--profile", "--profile-json", "p.json", "--profile-json=q",
+                           "--out=b"])
+    assert o.argv == []                     # (the profiler's options shape no output)
     o = uptodate.preparse(["--out=b"])
     assert o.out == Path("b")
     assert o.store == Path(".spiderpig").resolve()
