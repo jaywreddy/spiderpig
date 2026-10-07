@@ -608,12 +608,12 @@ def _linkage(key: str) -> linkage.Linkage:
 # ``<store>/cache/<source version>/<name>.json``: a document computed from the code alone,
 # kept per :func:`spiderpig.design.source_version`, so any edit of the checkout starts it
 # afresh; path components never start with a dot (no ``..``).
-_CACHE_NAME = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*$")
+_CACHE_NAME = re.compile(r"[A-Za-z0-9_+-][A-Za-z0-9_.+-]*(/[A-Za-z0-9_+-][A-Za-z0-9_.+-]*)*")
 
 
 def _cache_path(st: Store, name: str) -> Path:
     version = source_version()
-    if not _CACHE_NAME.match(name) or not _CACHE_NAME.match(version):
+    if not _CACHE_NAME.fullmatch(name) or not _CACHE_NAME.fullmatch(version):
         raise ValueError(f"not a cache name: {name!r} / {version!r}")
     return st.root / "cache" / version / f"{name}.json"
 

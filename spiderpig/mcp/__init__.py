@@ -32,11 +32,13 @@ TypedDicts of :mod:`spiderpig.mcp.outputs`, published as each tool's output sche
 from __future__ import annotations
 
 import argparse
+import atexit
 import functools
 import json
 import logging
+import signal
 import threading
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from functools import partial
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -104,6 +106,8 @@ class State:
     store: Store
     jobs: Jobs
     viewer: Any = None      # a spiderpig.view.ViewServer: the child serving this store
+    _viewer_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _atexit: bool = field(default=False, repr=False)
 
     @property
     def root(self) -> str:
@@ -112,22 +116,31 @@ class State:
     def view_server(self):
         """The viewer's server over this store: a ``spiderpig view --serve-only`` child
         process on a free port (:func:`spiderpig.view.start_background`), started on
-        first use and reused while it lives."""
+        first use and reused while it lives. Two ``view`` calls at once start one child
+        (a lock); the child is stopped when this process exits (``atexit``; ``main``
+        turns SIGTERM into an exit)."""
         from spiderpig import view as view_module
 
-        if self.viewer is None or not self.viewer.alive():
-            if view_module.viewer_built() is None:
-                raise Misuse(Failure("view", "viewer_not_built", (
-                    "the package has no built viewer (spiderpig/viewer/dist): from a "
-                    "checkout run `mise run viewer-build`; a release wheel ships it"),
-                    notes=["SPIDERPIG_VIEWER_DIST=<dir> points at another build"]))
-            self.viewer = view_module.start_background(self.store)
-        return self.viewer
+        with self._viewer_lock:
+            if self.viewer is None or not self.viewer.alive():
+                if view_module.viewer_built() is None:
+                    raise Misuse(Failure("view", "viewer_not_built", (
+                        "the package has no built viewer (spiderpig/viewer/dist): from a "
+                        "checkout run `mise run viewer-build`; a release wheel ships it"),
+                        notes=["SPIDERPIG_VIEWER_DIST=<dir> points at another build"]))
+                if self.viewer is not None:         # died: don't leave its process behind
+                    self.viewer.stop()
+                self.viewer = view_module.start_background(self.store)
+                if not self._atexit:
+                    atexit.register(self.stop_viewer)
+                    self._atexit = True
+            return self.viewer
 
     def stop_viewer(self) -> None:
-        if self.viewer is not None:
-            self.viewer.stop()
-            self.viewer = None
+        with self._viewer_lock:
+            viewer, self.viewer = self.viewer, None
+        if viewer is not None:
+            viewer.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +252,14 @@ async def _long(state: State, op: str, design: str, args: dict, wait_seconds: fl
 def _job(state: State, job: str):
     j = state.jobs.get(job)
     if j is None:
+        gone = state.jobs.evicted(job)
+        if gone is not None:
+            raise Misuse(Failure("job", "job_evicted", (
+                f"job {job!r} ({gone['op']} of {gone['design']}) finished {gone['state']} "
+                f"at {gone['finished_at']} and its record was evicted (the server keeps the "
+                "newest finished jobs for an hour)"), notes=[
+                f"the report it wrote is in the store: get_design(design="
+                f"{gone['design']!r}, stage={gone['op']!r})"]))
         raise Misuse(Failure("job", "no_such_job", f"no job {job!r} in this server", notes=[
             "jobs live as long as the server process; the report a finished job wrote is "
             "in the store (get_design)"]))
@@ -880,6 +901,10 @@ def _register_prompts(server: MCPServer) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _exit_on_sigterm(signum, _frame) -> None:
+    raise SystemExit(128 + signum)
+
+
 def main(argv: list[str] | None = None) -> int:
     """``spiderpig mcp [--store PATH] [--workers N]``: serve over stdio."""
     ap = argparse.ArgumentParser(prog="spiderpig mcp",
@@ -893,6 +918,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="the server's logging (stderr)")
     args = ap.parse_args(argv)
     server = make_server(args.store, workers=args.workers, log_level=args.log_level)
+    # SIGTERM (a client closing the server) exits through the finally below, which stops
+    # the viewer's child process; without it the child outlives the server
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
     try:
         server.run("stdio")
     finally:

@@ -75,7 +75,8 @@ def test_resolve_records_the_design_and_load_gives_it_back(tmp_path):
     d = api.resolve(KLANN_QUAD, store)
     assert d.store == store
     folder = store.dir(d.id)
-    assert {p.name for p in folder.iterdir()} == {"spec.json", "resolved.json"}
+    assert {p.name for p in folder.iterdir()} == {"spec.json", "resolved.json",
+                                                  ".lock"}    # the design's lock (Store.lock)
     rec = json.loads((folder / "resolved.json").read_text())
     assert rec["id"] == d.id
     assert rec["engine_version"] == d.engine_version
