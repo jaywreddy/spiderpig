@@ -68,7 +68,9 @@ re-bakes on change, broadcasts over `/ws`) and Vite (HMR for the TypeScript view
 proxies `/api` and `/ws` to FastAPI) on ports derived from the worktree's path (Vite in
 5500-5999, the API in 8500-8999), so parallel worktrees don't collide; `VITE_PORT` /
 `API_PORT` pin them, and `VITE_ALLOWED_HOSTS` (comma-separated, e.g. `.ts.net` behind
-`tailscale serve`) lets Vite answer other host names.
+`tailscale serve`) lets Vite and the API server answer other host names (the server answers
+only loopback names, IP addresses and those, and refuses a WebSocket from another page's
+`Origin`: `spiderpig/server/app.py` `HostGuard`).
 Edit a `.ts` file → instant HMR. Edit a `.py` kinematics file → re-bake →
 viewer hot-swaps the GLB without a full page reload.
 

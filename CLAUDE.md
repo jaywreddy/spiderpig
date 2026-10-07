@@ -367,7 +367,7 @@ and bookmark the URL printed in the banner. Override via env vars in
 [env]
 VITE_PORT = "5173"   # pin the main checkout to the canonical port
 API_PORT  = "8000"
-VITE_ALLOWED_HOSTS = ".ts.net"   # extra Host names Vite answers (behind `tailscale serve`)
+VITE_ALLOWED_HOSTS = ".ts.net"   # extra Host names Vite and the API answer (`tailscale serve`)
 ```
 
 For single-port runs (e2e tests, prod-like), build first with

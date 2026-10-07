@@ -34,9 +34,16 @@ from spiderpig.sim.run import STEER_TILT, body_motions  # noqa: E402
 from tests import _sim  # noqa: E402
 from tests.tiers import quick  # noqa: E402
 
+
+def _client() -> TestClient:
+    """The app's test client on an allowed Host (TestClient's own is ``testserver``; a
+    WebSocket's URL names its host itself: ``ws://localhost/...``)."""
+    return TestClient(app, base_url="http://localhost")
+
+
 # The design these sessions step: the Klann quad (the sim's calibrated reference), named,
 # since the server's default is the Strider double.
-KLANN_QUAD_WS = "/ws/sim?linkage=klann&module=quad"
+KLANN_QUAD_WS = "ws://localhost/ws/sim?linkage=klann&module=quad"   # an allowed Host
 KLANN_QUAD = BuildConfig(linkage="klann", module="quad")
 
 
@@ -269,7 +276,7 @@ def test_the_drives_hold_the_servo_speed_torque_line(live):
 
 
 def test_ws_sim_says_hello_then_streams_frames():
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         hello = _hello(ws)
         assert hello["header"] == HEADER
         assert hello["steering"]["spin"] in (0.0, 0.5)   # the server fills the check in
@@ -287,7 +294,7 @@ def test_ws_sim_says_hello_then_streams_frames():
 
 
 def test_ws_sim_reports_a_bad_design():
-    with TestClient(app) as client, client.websocket_connect("/ws/sim?linkage=nope") as ws:
+    with _client() as client, client.websocket_connect("ws://localhost/ws/sim?linkage=nope") as ws:
         assert "error" in ws.receive_json()
 
 
@@ -325,7 +332,7 @@ def sessions(monkeypatch):
 
 
 def test_ws_sim_answers_a_bad_command_and_keeps_streaming(sessions):
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         _hello(ws)
         for bad in ('{"cmd": [1, 2, 3]}', '{"cmd": ["a", "b"]}', '{"cmd": [NaN, 1e308]}',
                     "hello?", "[1, 2]"):
@@ -345,7 +352,7 @@ def test_ws_sim_answers_a_bad_command_and_keeps_streaming(sessions):
 def test_ws_sim_resets_on_request_while_streaming():
     """``{"reset": true}`` hammered between frames: the clock goes back to zero each time and
     every frame stays finite (the reset is applied by the stepping thread, not under it)."""
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         _hello(ws)
         ws.send_json({"cmd": [1.0, 1.0]})
         resets, ts = 0, []
@@ -371,7 +378,7 @@ def test_ws_sim_reports_a_physics_failure_and_closes(monkeypatch):
             raise mujoco.FatalError("Nan, Inf or huge value in QACC")
 
     monkeypatch.setattr(live_mod, "LiveSim", Broken)
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         _hello(ws)
         msg = _drain_to_json(ws)
         assert "QACC" in msg.get("error", ""), msg
@@ -387,7 +394,7 @@ def test_ws_sim_streams_at_the_promised_cadence():
     :data:`MAX_CATCH_UP`. On an idle machine besides: at least 55 frames a second and the
     sim clock within 2 % of the wall clock over 3 s (a wall-clock promise: not asserted
     when the machine is loaded, where the session runs in slow motion by design)."""
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         _hello(ws)
         ws.send_json({"cmd": [1.0, 1.0]})
         first = np.frombuffer(ws.receive_bytes(), dtype="<f4")
@@ -409,7 +416,7 @@ def test_ws_sim_streams_at_the_promised_cadence():
 
 
 def test_two_sessions_stream_at_once():
-    with TestClient(app) as client, \
+    with _client() as client, \
             client.websocket_connect(KLANN_QUAD_WS) as a, \
             client.websocket_connect(KLANN_QUAD_WS) as b:
         _hello(a)
@@ -440,7 +447,7 @@ def test_a_client_leaving_during_the_build_logs_no_traceback(monkeypatch, caplog
     monkeypatch.setattr(mjcf, "cached_model", lambda *a: None)
     server._SIM_BUILDS.clear()
     caplog.set_level(logging.INFO)
-    with TestClient(app) as client:
+    with _client() as client:
         with client.websocket_connect(KLANN_QUAD_WS + "&phases=0,180,90,271") as ws:
             assert ws.receive_json()["status"] == "building"
             assert started.wait(5)
@@ -483,7 +490,7 @@ def test_a_command_and_a_reset_during_the_build_still_yield_the_hello(monkeypatc
     xml, meta = quad_mjcf
     started, release = threading.Event(), threading.Event()
     _slow_builder(monkeypatch, started, release, lambda: (xml, dict(meta)))
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         assert ws.receive_json()["status"] == "building"
         assert started.wait(5)
         ws.send_json({"cmd": [1.0, 1.0]})
@@ -513,7 +520,7 @@ def test_a_source_change_during_the_build_serves_no_stale_model(monkeypatch, qua
     real_cached = mjcf.cached_model
     _slow_builder(monkeypatch, started, release, lambda: (xml, {**meta, "marker": marker[0]}))
     gen0 = server._SIM_GENERATION
-    with TestClient(app) as client:
+    with _client() as client:
         with client.websocket_connect(KLANN_QUAD_WS) as ws:
             assert ws.receive_json()["status"] == "building"
             assert started.wait(5)
@@ -541,7 +548,7 @@ def test_a_source_change_during_the_build_serves_no_stale_model(monkeypatch, qua
 
 
 def test_a_source_change_while_streaming_says_stale_and_closes():
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         _hello(ws)
         _frame(ws)
         server._SIM_GENERATION += 1
@@ -553,7 +560,7 @@ def test_a_source_change_while_streaming_says_stale_and_closes():
 
 def test_a_busy_server_refuses_the_next_session(monkeypatch):
     monkeypatch.setattr(server, "SIM_MAX_SESSIONS", 1)
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as a:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as a:
         _hello(a)
         with client.websocket_connect(KLANN_QUAD_WS) as b:
             msg = b.receive_json()
@@ -572,7 +579,7 @@ def _forgotten_after_a_build(cfg):
     from spiderpig.sim import mjcf
 
     server._SIM_BUILDS.clear()
-    with TestClient(app) as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
+    with _client() as client, client.websocket_connect(KLANN_QUAD_WS) as ws:
         hello = _hello(ws)
         assert mjcf.cached_model(cfg) is not None
         assert server._SIM_BUILDS == {}

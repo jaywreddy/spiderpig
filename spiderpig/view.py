@@ -100,6 +100,7 @@ def run_server(store, host: str, port: int, *, log_level: str = "warning") -> No
     from spiderpig.server import app as server_app
 
     server_app.configure(store=store, prebake_default=False)
+    server_app.allow_host(host)         # the name its URL is printed under (HostGuard)
     uvicorn.run(server_app.app, host=host, port=port, log_level=log_level)
 
 
