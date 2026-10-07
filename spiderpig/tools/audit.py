@@ -68,7 +68,6 @@ from spiderpig.construction.deck import deck_clearance
 from spiderpig.fabricate import fabricate, template_for
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.layout import sheet_lines
-from spiderpig.rounding import rounded
 from spiderpig.stack import verify_plan
 
 
@@ -264,7 +263,7 @@ def wobble_check(notes: dict, loads: tuple[float, float] | None = None) -> dict:
         wj, we = max(links, key=lambda je: je[1]["tilt_deg"])
         row = {"joints": len(joints), "links": len(links),
                "worst_deg": we["tilt_deg"], "worst_at": f"{wj} {we['link']}",
-               "mean_deg": rounded(sum(e["tilt_deg"] for _, e in links) / len(links), 3),
+               "mean_deg": round(sum(e["tilt_deg"] for _, e in links) / len(links), 3),
                "worst_free_deg": max(e["free_deg"] for _, e in links),
                "play_mm": max(v["play_mm"] for v in joints.values()),
                "play_basis": next(iter(joints.values()))["play_basis"],

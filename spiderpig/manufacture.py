@@ -52,7 +52,6 @@ from spiderpig.layout import (
     sheet_key,
 )
 from spiderpig.materials import sheet
-from spiderpig.rounding import fixed, rounded
 
 TOL = 1e-3
 EDGE_ERROR_T = 1.0      # hole-to-edge under this many thicknesses in metal: an error
@@ -83,7 +82,7 @@ def _pocket_web(outer, holes, pockets) -> tuple[float, str] | None:
         z = pw.bounding_box().center().Z
         take(pw.distance_to(outer), "the part's edge")
         for (cx, cy), r in holes:
-            take(pw.distance_to(Vector(cx, cy, z)) - r, f"a {fixed(2 * r, 1)} mm hole")
+            take(pw.distance_to(Vector(cx, cy, z)) - r, f"a {2 * r:.1f} mm hole")
         for qw in pockets[i + 1:]:
             take(pw.distance_to(qw), "another cut-out")
     return worst
@@ -97,11 +96,10 @@ def dxf_issue(body, fid: dict) -> dict | None:
     if dev <= DXF_DEVIATION and rel <= DXF_AREA_REL:
         return None
     return {"rule": "dxf", "part": body.name, "level": "error",
-            "value": rounded(dev, 4), "limit": DXF_DEVIATION,
-            "detail": f"the DXF contours are {fixed(dev, 3)} mm off the solid's section, "
-                      "their area "
-                      f"{fixed(fid['dxf_area_mm2'], 2)} mm^2 against {fixed(fid['area_mm2'], 2)} "
-                      f"({fixed(100 * rel, 2)} %)",
+            "value": round(dev, 4), "limit": DXF_DEVIATION,
+            "detail": f"the DXF contours are {dev:.3f} mm off the solid's section, their area "
+                      f"{fid['dxf_area_mm2']:.2f} mm^2 against {fid['area_mm2']:.2f} "
+                      f"({100 * rel:.2f} %)",
             "why": "the cut file is what the service cuts: a contour off the model cuts a "
                    "part the checks never saw",
             "fix": "emit the contour's lines and arcs exactly (layout.wire_vertices), or "
@@ -132,10 +130,9 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
     lo, hi = sorted(sh.min_part)
     if w < lo - TOL or h < hi - TOL:
         out.append({"rule": "min_part", "part": body.name, "level": "warning",
-                    "value": [rounded(w, 2), rounded(h, 2)],
+                    "value": [round(w, 2), round(h, 2)],
                     "limit": [lo, hi],
-                    "detail": f"{fixed(w, 1)} x {fixed(h, 1)} mm, under {sh.service}'s "
-                              f"{lo:g} x {hi:g} mm",
+                    "detail": f"{w:.1f} x {h:.1f} mm, under {sh.service}'s {lo:g} x {hi:g} mm",
                     "why": f"{sh.service} may reject or lose a part under its smallest "
                            f"({lo:g} x {hi:g} mm in {sh.material})",
                     "fix": "print it, or grow it (or merge it with a neighbour) past the "
@@ -151,9 +148,9 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
             pockets.append(wire)
     worst_hole = min(holes, key=lambda c: c[1], default=None)
     if worst_hole is not None and 2 * worst_hole[1] < sh.min_hole - TOL:
-        out.append({"rule": "min_hole", "part": body.name, "value": rounded(2 * worst_hole[1], 2),
+        out.append({"rule": "min_hole", "part": body.name, "value": round(2 * worst_hole[1], 2),
                     "limit": sh.min_hole, "level": "error" if sh.metal else "warning",
-                    "detail": f"a {fixed(2 * worst_hole[1], 2)} mm hole, under {sh.service}'s "
+                    "detail": f"a {2 * worst_hole[1]:.2f} mm hole, under {sh.service}'s "
                               f"{sh.min_hole:g} mm in {sh.thickness:g} mm {sh.material}",
                     "why": (f"{sh.service} doesn't cut a hole smaller than "
                             + ("the sheet's thickness: an error, the part comes back "
@@ -179,10 +176,10 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
                    "or burns through, an error" if hard else
                    f"under {sh.service}'s {sh.edge_t:g} x the thickness, a warning" if sh.metal
                    else f"under {sh.service}'s {need:g} mm minimum feature, a warning")
-            out.append({"rule": "edge", "part": body.name, "value": rounded(worst[0], 2),
-                        "limit": rounded(need, 2), "level": "error" if hard else "warning",
-                        "detail": f"{fixed(worst[0], 2)} mm from a {fixed(worst[1], 1)} mm "
-                                  f"hole to an edge or hole, under {sh.service}'s {need:.2f} mm",
+            out.append({"rule": "edge", "part": body.name, "value": round(worst[0], 2),
+                        "limit": round(need, 2), "level": "error" if hard else "warning",
+                        "detail": f"{worst[0]:.2f} mm from a {worst[1]:.1f} mm hole to an edge "
+                                  f"or hole, under {sh.service}'s {need:.2f} mm",
                         "why": f"{why} ({sh.thickness:g} mm {sh.material})",
                         "fix": "move the hole in, widen the plate round it, or a thinner "
                                "sheet (the limit scales with the thickness)"})
@@ -197,9 +194,9 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
                    if hard else
                    f"under {sh.service}'s {sh.edge_t:g} x the thickness, a warning" if sh.metal
                    else f"under {sh.service}'s {need:g} mm minimum feature, a warning")
-            out.append({"rule": "web", "part": body.name, "value": rounded(d, 2),
-                        "limit": rounded(need, 2), "level": "error" if hard else "warning",
-                        "detail": f"{fixed(d, 2)} mm of web between a cut-out and {what}, under "
+            out.append({"rule": "web", "part": body.name, "value": round(d, 2),
+                        "limit": round(need, 2), "level": "error" if hard else "warning",
+                        "detail": f"{d:.2f} mm of web between a cut-out and {what}, under "
                                   f"{sh.service}'s {need:.2f} mm",
                         "why": f"{why} ({sh.thickness:g} mm {sh.material})",
                         "fix": "merge the cut-outs into one cut, move or shrink one, or widen "
@@ -214,10 +211,10 @@ def part_issues(body, key: str, sketch=None) -> list[dict]:
             tight = min(arcs, default=0.0)
             if tight < sh.corner_r - TOL:
                 out.append({"rule": "corner", "part": body.name, "level": "warning",
-                            "value": rounded(tight, 2),
+                            "value": round(tight, 2),
                             "limit": sh.corner_r,
                             "detail": (f"a pocket of {len(straight)} straight edges with "
-                                       + (f"{fixed(tight, 2)} mm corner reliefs" if arcs else
+                                       + (f"{tight:.2f} mm corner reliefs" if arcs else
                                           "sharp corners")
                                        + f": {sh.service} cuts inside corners {sh.corner_r:g} "
                                        f"mm round in {sh.material}"),
@@ -254,7 +251,7 @@ def check(mech, default: str, dxf: bool = True) -> dict:
         found = part_issues(b, key, sketch)
         if dxf:
             fid = fidelity(sketch)
-            fids[b.name] = {k: (rounded(v, 5) if isinstance(v, float) else v)
+            fids[b.name] = {k: (round(v, 5) if isinstance(v, float) else v)
                             for k, v in fid.items()}
             if (bad := dxf_issue(b, fid)) is not None:
                 found.append(bad)
