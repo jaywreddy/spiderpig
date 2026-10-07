@@ -202,3 +202,56 @@ def test_the_no_fabricate_guard_refuses_a_fabrication():
         fabricate.fabricate(None)
     with pytest.raises(AssertionError, match="no_fabricate"):
         fabricate_side(None, None)
+
+
+# -- the opt-in search strategies (StackSpec.symmetry, StackSpec.workers) --------------------
+
+
+def _two_legs(**spec) -> StackProblem:
+    """Two legs half a turn apart: each a bar turning 10 mm round O with a 30 mm tail and a
+    second bar across it; leg 1's paths are leg 0's run half a cycle later."""
+    pts = {"O": (0.0, 0.0)}
+    links = {}
+    for leg, phase in ((0, 0.0), (1, 180.0)):
+        p = _ctx.turning(10.0, phase)
+        pts[f"p{leg}"], pts[f"q{leg}"] = p, p + np.array([30.0, 0.0])
+        pts[f"r{leg}"], pts[f"s{leg}"] = p + np.array([15.0, -12.0]), p + np.array([15.0, 12.0])
+        links[f"a_leg{leg}"] = ((f"p{leg}", f"q{leg}"),)
+        links[f"b_leg{leg}"] = ((f"r{leg}", f"s{leg}"),)
+    topo = _ctx.topology(pts, links, axles=())
+    return StackProblem(topo, [_ctx.link_claim(n, 3.0, topo) for n in links], StackSpec(**spec))
+
+
+def test_the_leg_swap_is_found_as_a_symmetry():
+    from spiderpig.stack_symmetry import symmetries
+
+    syms = symmetries(_two_legs())
+    assert syms
+    g, sig = syms[0]
+    assert g == {"a_leg0": "a_leg1", "a_leg1": "a_leg0", "b_leg0": "b_leg1", "b_leg1": "b_leg0"}
+    assert (sig["p0"], sig["O"]) == ("p1", "O")
+
+
+def test_no_symmetry_where_the_legs_differ():
+    from spiderpig.stack_symmetry import symmetries
+
+    p = _two_legs()
+    p.topo.links["b_leg1"] = (("r1", "q1"),)          # leg 1's second bar is another bar
+    assert symmetries(p) == []
+
+
+def test_searching_one_of_each_mirror_pair_finds_the_serial_plan():
+    """``symmetry``: the same thinnest stack and route cost as the plain search."""
+    plain = _two_legs().solve()
+    sym = _two_legs(symmetry=True).solve()
+    assert (sym.top, sym.cost, sym.optimal) == (plain.top, plain.cost, plain.optimal)
+    assert verify_plan(sym) == []
+
+
+def test_the_sizes_searched_in_worker_processes_give_the_serial_answer():
+    """``workers``: every size's search forked into a worker, the coordinator's answer the
+    serial one, its proof included."""
+    plain = _two_legs().solve()
+    pooled = _two_legs(workers=2).solve()
+    assert (pooled.top, pooled.layers, pooled.cost, pooled.optimal, pooled.proof) == (
+        plain.top, plain.layers, plain.cost, plain.optimal, plain.proof)

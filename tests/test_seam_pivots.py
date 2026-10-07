@@ -170,7 +170,7 @@ def test_the_one_piece_shaft_is_m3_steel_with_its_own_screws_and_shims():
 
 def test_a_column_one_stock_standoff_fills_stays_gobilda():
     """Faces 0 and 5 in 3 mm layers: a 12 mm column, the 12 mm goBILDA standoff."""
-    assert PILLAR.column_axle({3}, 5, 3.0) is PILLAR
+    assert PILLAR.column_axle({3}, 5, 3.0) == PILLAR      # (remembered: an equal axle)
 
 
 def test_a_column_no_stock_length_fills_but_a_splice_would_becomes_one_shaft():
@@ -204,7 +204,7 @@ def test_the_column_is_measured_at_the_plans_z():
     by 1.5, 14 long by 0.5 is in max_long: 14)."""
     L = _ctx.layout(top=5, gaps={2: 1.5})
     zs = PILLAR.column_axle({3}, 5, 3.0, 0, L, air=lambda a, b: 0.0)
-    assert zs is PILLAR
+    assert zs == PILLAR
     assert PILLAR.segment(13.5) == 14.0
 
 

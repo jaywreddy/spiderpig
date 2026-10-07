@@ -69,6 +69,25 @@ test with two module markers, stops the run with the list. Adding a test file = 
 `slow` (> ~5 s, or a robot/side fabricated outside the cache) and `e2e` are unchanged;
 `tiers.quick(values, keep)` still keeps one cheap case of a heavy parametrized test in the
 fast tiers. `fixture_regen` marks a recorded fixture's currency test (always with `slow`).
+A test not marked `slow` that takes over 5 s (setup + call + teardown;
+`SPIDERPIG_SLOW_WARN_S`) is listed at the end of the run, a warning only (load slows
+everything): make it fast through a seam or the cache, keep a cheap case quick, or mark it
+`slow` with a reason in the commit.
+
+**Seam tests** (`tests/test_seam_*.py`, W4a): a construction's or the planner's rule on
+inputs the test states, built with `tests/_ctx.py` (`topology()`, `context()`, `layout()`,
+`link_claim()`, `disc_claim()`: a few links, an axle, a crank point in a few lines), each
+in milliseconds. They are marked `no_fabricate`: the conftest swaps
+`spiderpig.fabricate.fabricate` / `fabricate_side`'s code for a refusal while one runs, so a
+fabrication fails the test whatever name it was imported under. `tests/brute.py` also takes
+a hand-built problem with no router (the first layering that plans), for small
+`StackProblem`s.
+
+**The walking model's foot z**: a session fixture seeds each default design's plan (and its
+leg hint's single module) from the test cache before `walk._default_plan_z`, so a walker
+re-makes and verifies the plan instead of searching (`tests._linkage.seed_default_plan`);
+the `foot_z` fixture is generated under `tests._linkage.node_budget` (no clock, 4000 search
+steps), so it doesn't depend on the machine's load.
 
 ## The fabrication cache (`tests/cache.py`)
 
