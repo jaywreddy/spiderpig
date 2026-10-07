@@ -73,6 +73,7 @@ markers = [
     "e2e: end-to-end Playwright tests (opt-in; run with `pytest -m e2e`)",
     "slow: the bakes, the CLI build, the MuJoCo runs and the gait tuner (`-m 'not slow'` to skip)",
     "fixture_regen: a recorded fixture's currency test (also slow; `mise run test-fixtures` runs them with --regen)",
+    "no_fabricate: a seam test: fails if spiderpig.fabricate.fabricate or fabricate_side runs (tests/conftest.py)",
     # one module marker per test (tests/_modules.py gives each file's default; docs/agentlib/TESTING.md)
     "linkage: linkages, kinematics, the walk model (`mise run test-linkage`)",
     "planner: the layer planner, the crank router, recommendations (`mise run test-planner`)",
