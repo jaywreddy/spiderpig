@@ -346,7 +346,10 @@ writes neither `ORDER.md` nor `laser/parts/`.
 planner's CPU budget, 60; left out of `engine_version`'s hash, so it doesn't re-key stored
 designs), `SPIDERPIG_WORKERS=0` (no worker processes), `SPIDERPIG_VIEWER_DIST`,
 `SPIDERPIG_OFFLINE=1` / `SPIDERPIG_SERVO_CAD=0` / `SPIDERPIG_CAD_CACHE` (servo CAD
-downloads), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks,
+downloads), `SPIDERPIG_FAB_CACHE=off` (no fabrication cache: `spiderpig/fabcache.py`,
+`<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model;
+`spiderpig build` into a current `--out` does nothing, `spiderpig/uptodate.py`, `--force`
+builds), `SPIDERPIG_REMOTE` / `SPIDERPIG_REMOTE_WORKERS` (the `remote*` tasks,
 AGENTS.md), `SPIDERPIG_DIGEST_CACHE` (where `engine_version()` keeps its digest, keyed by
 the sources' stats: `off` recomputes it, ~1.3 s), `SPIDERPIG_TEST_CACHE` (the tests'
 fabrication cache, `~/.cache/spiderpig/test-cache/`; `off` builds afresh) and
