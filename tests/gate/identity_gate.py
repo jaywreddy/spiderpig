@@ -189,14 +189,18 @@ def free_cores() -> int:
     return max(1, min(mine, round(total - os.getloadavg()[0])))
 
 
-def plan_cores(n_designs: int, jobs: int | None, split: str | None) -> tuple[int, str]:
+def plan_cores(n_designs: int, jobs: int | None, split: str | None,
+               free: int | None = None) -> tuple[int, str]:
     """``(jobs, split)``: the designs at once and each one's workers (:data:`SPLIT`), those
-    not given from the free cores: the whole split while a design gets 4 cores, the build's
-    worker alone with 2-3, none with 1; then as many designs at once as their processes
+    not given from the free cores. A design's share of them (all of them, or with ``-j``
+    given, the free cores over ``jobs``: an explicit ``-j`` caps the processes at about the
+    free cores) picks the split: the whole one from 4 cores, the build's worker alone from
+    2, none under 2; then, ``jobs`` not given, as many designs at once as their processes
     have cores (at least 1)."""
-    free = free_cores()
+    free = free_cores() if free is None else free
     if split is None:
-        split = SPLIT if free >= 4 else "build" if free >= 2 else ""
+        share = free // jobs if jobs else free
+        split = SPLIT if share >= 4 else "build" if share >= 2 else ""
     if jobs is None:
         per = 1 + len([t for t in split.split("|") if t])
         jobs = min(n_designs, max(1, free // per))
