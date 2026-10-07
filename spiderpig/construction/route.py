@@ -48,8 +48,6 @@ import numpy as np
 
 from spiderpig.construction.base import Context
 from spiderpig.construction.crank import (
-    NUT_AF,
-    POST_SCREWS,
     CrankDims,
     CrankRoute,
     Run,
@@ -153,38 +151,11 @@ class JointRules:
 
 
 def joint_rules(construction, ctx: Context, dims: CrankDims) -> JointRules | None:
-    """The joint rules of a printed crank (``None`` for a construction without them); a
-    construction with its own ``joint_rules`` (the bolt crank) says them itself."""
+    """The joint rules a crank construction asks of its route (its own ``joint_rules``;
+    ``None`` for a construction without them)."""
     if hasattr(construction, "joint_rules"):
         return construction.joint_rules(ctx, dims)
-    if not hasattr(construction, "post_joint"):
-        return None
-    p, play = ctx.pitch, construction.axial_play
-    two = getattr(construction, "two_layer_top", False)
-    if two:
-        # size n counts the lowest web, the layers between and both layers of the top web;
-        # the first post's cavity is bounded as a one-layer first run bounds it
-        spans = {n: sum(1 << (16 * a + 4 * b + 2 * c + d)
-                        for a in (0, 1) for b in (0, 1) for c in (0, 1) for d in (0, 1)
-                        if construction.post_joint(a * play, p - b * play, (n - 2) * p + c * play,
-                                                   n * p - d * play, first_post_top=2 * p)
-                        is not None)
-                 for n in range(3, 64)}
-    else:
-        spans = {n: sum(1 << (16 * a + 4 * b + 2 * c + d)
-                        for a in (0, 1) for b in (0, 1) for c in (0, 1) for d in (0, 1)
-                        if construction.post_joint(a * play, p - b * play, (n - 1) * p + c * play,
-                                                   n * p - d * play) is not None)
-                 for n in range(3, 64)}
-    nut = (NUT_AF + construction.nut_fit) / math.sqrt(3)
-    if two:          # the key sockets' lead-in step is the widest pocket in a web's underside
-        nut = max(nut, (construction.pocket_af() + 2 * construction.pocket_chamfer)
-                  / math.sqrt(3))
-    return JointRules(spans,
-                      head=max(sk.head_d for sk in POST_SCREWS) / 2 + construction.screw_fit / 2,
-                      nut=nut, post=dims.post, horn=horn_pockets(ctx),
-                      hub_play=construction.hub_joint(ctx, dims.hub_thickness, play) is not None,
-                      two_layer_top=two)
+    return None
 
 
 def horn_pockets(ctx: Context) -> tuple[tuple[tuple[float, float], float], ...]:

@@ -761,6 +761,38 @@ class PrintedCrank:
         hub_bottom = Layout({}, top, pitch).layers_between(face - hub_thickness, face).start
         return self.horn_joint(drive, ctx.servo, face - hub_bottom * pitch - set_back)
 
+    def joint_rules(self, ctx: Context, dims: CrankDims):
+        """The router's rules (:class:`construction.route.JointRules`), compiled from
+        :meth:`post_joint`: every span a stock screw fits, for each set of faces set back by
+        the riders' end play; the pockets; whether the hub keeps its horn screws set back."""
+        from spiderpig.construction.route import JointRules, horn_pockets
+
+        p, play = ctx.pitch, self.axial_play
+        two = getattr(self, "two_layer_top", False)
+        if two:
+            # size n counts the lowest web, the layers between and both layers of the top web;
+            # the first post's cavity is bounded as a one-layer first run bounds it
+            spans = {n: sum(1 << (16 * a + 4 * b + 2 * c + d)
+                            for a in (0, 1) for b in (0, 1) for c in (0, 1) for d in (0, 1)
+                            if self.post_joint(a * play, p - b * play, (n - 2) * p + c * play,
+                                               n * p - d * play, first_post_top=2 * p)
+                            is not None)
+                     for n in range(3, 64)}
+        else:
+            spans = {n: sum(1 << (16 * a + 4 * b + 2 * c + d)
+                            for a in (0, 1) for b in (0, 1) for c in (0, 1) for d in (0, 1)
+                            if self.post_joint(a * play, p - b * play, (n - 1) * p + c * play,
+                                               n * p - d * play) is not None)
+                     for n in range(3, 64)}
+        nut = (NUT_AF + self.nut_fit) / math.sqrt(3)
+        if two:          # the key sockets' lead-in step is the widest pocket in a web's underside
+            nut = max(nut, (self.pocket_af() + 2 * self.pocket_chamfer) / math.sqrt(3))
+        return JointRules(spans,
+                          head=max(sk.head_d for sk in POST_SCREWS) / 2 + self.screw_fit / 2,
+                          nut=nut, post=dims.post, horn=horn_pockets(ctx),
+                          hub_play=self.hub_joint(ctx, dims.hub_thickness, play) is not None,
+                          two_layer_top=two)
+
     # -- parts ----------------------------------------------------------------------
 
     def realize(self, group: CrankGroup, build: Build) -> Realized:
@@ -2946,7 +2978,7 @@ class _BoltPlates:
         return out
 
 
-class _WebPlates(_BoltPlates):
+class _WebPlates:
     """The single-plate bolt crank of one side (:meth:`BoltCrank.for_sheet`): every crank
     layer one aluminium plate (on its layer's floor; the hub plate at its layer's top,
     against the horn spacer), every crankpin and journal a round standoff clamped between
@@ -2954,10 +2986,76 @@ class _WebPlates(_BoltPlates):
     screws up through the hub plate."""
 
     def __init__(self, c: BoltCrank, group: CrankGroup, build: Build):
-        super().__init__(c, group, build)
+        self.c, self.build = c, build
+        ctx = build.ctx
+        self.p = ctx.params
+        self.d = group.dims(ctx)
+        topo = build.plan.topo
+        self.host = topo.crank_bodies[0]
+        self.drive: DriveInterface = ctx.interfaces["drive"]
+        self.pins = topo.axes_of("crankpin")
+        self.route = route_of(build.plan.layout, self.pins)
+        self.chains = chains_of(sorted(self.route.runs, key=lambda r: (r.lo, r.at)))
+        self.plates: dict[int, list] = {}
+        self.washers: list = []                 # crankpin washers in a gap
+        for pl in build.shapes(GROUP):
+            if pl.gap:
+                if pl.label.endswith(" washer"):
+                    self.washers.append(pl)
+                continue
+            if pl.label in ("crank body", "crank hub") or pl.label.startswith("web "):
+                self.plates.setdefault(pl.layer, []).append(pl)
+        self.sheet = ctx.sheet("crank")
+        self.t = ctx.sheet_t("crank")
+        self.cuts: dict[int, list] = {k: [] for k in self.plates}
+        self.out = Realized()
+        self.notes: list[dict] = []
         hub = [pl.layer for pl in build.shapes(GROUP) if pl.label == "crank hub"]
         self.hub_layer = max(hub) if hub else None
-        self.t = self.sheet_t
+
+    def xy(self, point: str) -> tuple:
+        return tuple(self.build.xy(point))
+
+    def buy(self, name: str, part, key: str, color: str = STEEL) -> None:
+        self.out.bodies.append(hardware(name, part, self.host, fab="purchased", bom_key=key,
+                                        color=color))
+
+    def gap_parts(self, out: Realized) -> None:
+        """What fills a clearance gap a crankpin's run crosses between its riders: a printed
+        ring on the hex pin's sleeve, a stack of washers on the round standoff (none where a
+        horn screw's head is in that gap: the rider turns on air)."""
+        from spiderpig.materials import washer_stack
+
+        b = self.build
+        horn = [pl for pl in b.shapes(GROUP) if pl.label == "horn screw head" and pl.gap]
+        for pl in self.washers:
+            g = b.plan.gaps.get(pl.layer, 0.0)
+            if g <= 0:
+                continue
+            if any(h.layer == pl.layer and math.dist(self.xy(h.shape.at), self.xy(pl.shape.at))
+                   < h.shape.r + pl.shape.r for h in horn):
+                continue        # a horn screw's head is there: the rider turns on air
+            z0, _ = b.plan.gap_z(pl.layer)
+            if self.c.hex:
+                # a printed ring on the riders' sleeve (no stock washer fits its 8.5 mm)
+                xy = self.xy(pl.shape.at)
+                ring = (disc(xy, pl.shape.r - 0.05, z0 + 0.05, z0 + g - 0.05)
+                        - disc(xy, (self.c.sleeve_od + self.p.print_fit) / 2, z0 - 1,
+                               z0 + g + 1))
+                out.bodies.append(hardware(f"crank_ring_{pl.shape.at}_{pl.layer}", ring,
+                                           self.host, fab="printed", color=SEGMENT_COLOR))
+                continue
+            items, _ = washer_stack(self.c.bolt_d, g)
+            if not items:
+                continue
+            t = sum(x[1] for x in items)
+            xy = self.xy(pl.shape.at)
+            od = 2 * pl.shape.r
+            part = disc(xy, od / 2, z0, z0 + t) - disc(xy, self.c.bore / 2, z0 - 1, z0 + t + 1)
+            tag = f"{pl.shape.at}_{pl.layer}"
+            self.buy(f"crank_washers_{tag}", part, items[0][0], "#f2f2f2")
+            for key, tt in items[1:]:     # each shim by its thickness (the BOM orders them so)
+                out.extras.append(BomLine(key, 1, f"crankpin {tag}: {tt:g} mm in the gap"))
 
     def pz(self, k: int) -> tuple[float, float]:
         return self.c.plate_z(self.build.plan.layout, k, self.t, self.hub_layer)
