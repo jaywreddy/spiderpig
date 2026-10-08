@@ -52,7 +52,7 @@ from spiderpig.config import (
     config_from_args,
     torque_limit_note,
 )
-from spiderpig.fabricate import design_side, fabricate, template_for
+from spiderpig.fabricate import design_side, fabricate, split_parts, template_for
 from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filaments
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
@@ -260,6 +260,11 @@ def main(argv=None) -> int:
     read = uptodate.inputs(opts, config) if opts is not None and key is not None else None
     with fabcache.serving(store):       # the store's fabrication when it holds this one
         mech = fabricate(tmpl, config, 1.0)
+    split = split_parts(mech)
+    if split:           # no cut file or BOM of a part in pieces
+        print("error: parts in pieces: " + ", ".join(f"{name} ({n} solids)" for name, n in split),
+              file=sys.stderr)
+        return 2
     if config.robot:
         m = mech.meta
         print(f"chassis: {m['centre_plates']} centre plates; rear screws "

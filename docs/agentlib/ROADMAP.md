@@ -100,7 +100,8 @@ The follow-ups after PR #28, each its own branch:
     SCOPE.md moved to `docs/history/`, this status table;
   - pyright's possible bugs: the booleans' build123d ShapeList (`shapes.difference` /
     `intersection`: a part its holes split is a `Compound` that `bad_solids` reports, not
-    a list the next boolean fails on; no design reaches it) and `chassis._port_slots`'
+    a list the next boolean fails on, and `spiderpig build` stops on it,
+    `fabricate.split_parts`; no design reaches it) and `chassis._port_slots`'
     possibly-`None` ports (unreachable: the XL servos have no `bus_ports`); pyright 28 -> 21;
   - a nightly workflow (`.github/workflows/nightly.yml`): the slow tests, the browser tests,
     the identity gate compared with itself; watch its first runs (the browser tests'

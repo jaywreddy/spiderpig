@@ -321,3 +321,19 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
 
     store = store if store is not None else fabcache.current()
     return fabcache.fabricated(store, tmpl, config, design, t, build)
+
+
+MADE = ("laser", "printed")
+"""The fabrications the design makes itself: each part one solid (a purchased model may be
+several)."""
+
+
+def split_parts(mech: Mechanism) -> list[tuple[str, int]]:
+    """``(part, solids)`` of every laser-cut or printed part that isn't exactly one solid
+    (a plate its holes cut in two: :func:`shapes.difference` keeps the pieces as one
+    ``Compound``). A count only, no validity check (that is
+    :func:`construction.contract.bad_solids`, the audit's and verify's): cheap enough for
+    every build."""
+    return [(b.name, n) for b in mech.bodies
+            if b.part is not None and getattr(b, "fab", None) in MADE
+            and (n := len(b.part.solids())) != 1]
