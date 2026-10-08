@@ -20,19 +20,17 @@ from spiderpig.mcp import make_server
 from spiderpig.store import Store
 from tests import _api, cache
 
-# The numbers below are the keyed crank's and the printed pillars' (the defaults before the
-# bolt crank and the standoff pillars of 2026-10-03): the specs pin them, so a design's
-# height, parts and cost stay what these tests check
-OLD = {"constructions": {"crank": "keyed", "pillar": "printed"}}
+# The numbers below are the default constructions' (the hex crank, ``bolt_round`` on
+# TrotBot's heel, the standoff pillars and Chicago pins; the keyed crank and the printed
+# pillars these tests pinned until 2026-10-07 are removed)
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
-                "legs": {"module": "single", "sides": 1}, **OLD}
+                "legs": {"module": "single", "sides": 1}}
 HEEL = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
-        "legs": {"module": "single"}, **OLD}
-KLANN_SINGLE_CFG = BuildConfig(linkage="klann", module="single", robot=False, crank="keyed",
-                               pillar="printed")          # KLANN_SINGLE's config
-# the plan the heel's checked patch (unit 12) has
-HEEL_12 = BuildConfig(linkage="trotbot_heel", module="single", crank="keyed", pillar="printed",
-                      proportions=(("unit", 12.0),))
+        "legs": {"module": "single"}}
+KLANN_SINGLE_CFG = BuildConfig(linkage="klann", module="single",
+                               robot=False)               # KLANN_SINGLE's config
+# the plan the heel's checked patch (its default unit, 10.5) has
+HEEL_DEFAULT = BuildConfig(linkage="trotbot_heel", module="single")
 TOOLS = {"list_linkages", "describe", "catalog", "resolve", "check", "plan", "explain",
          "recommend", "walk", "build", "verify", "export", "compare", "derive", "get_design",
          "list_designs", "gc", "get_job", "wait_job", "view"}
@@ -100,7 +98,7 @@ def fresh(tmp_path):
 def single(server, design) -> str:
     """The Klann single's id, planned (the session's plan: the stage resources and the
     reports read it whatever ran before, under xdist too)."""
-    design("single", crank="keyed", pillar="printed")
+    design("single")
     got = call(server, "resolve", spec=KLANN_SINGLE)["design"]
     call(server, "plan", design=got)
     return got
@@ -202,19 +200,14 @@ def test_cards(server):
     assert sheet["sheet_mm"] == [300.0, 300.0]
     assert sheet["price_usd"] == 10.99
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
-    assert set(axles) == {"printed", "rod", "bolt", "bearing", "bushing", "chicago",
-                          "chicago_bushing", "ptfe", "standoff", "standoff_hand",
-                          "standoff_bench", "standoff_m3"}
+    assert set(axles) == {"chicago", "standoff"}          # (the rest removed on 2026-10-07)
     assert axles["standoff"]["roles"] == ["pillar"]
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
-    assert axles["bolt"]["hardware"]["nut_key"]["key"] == "m3_nylock"
-    assert axles["printed"]["roles"] == ["pillar", "pin"]
-    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_hub_screw",
-                                                                  "bolt_round",
-                                                                  "bolt_unretained", "keyed",
-                                                                  "keyed_float", "printed"]
-    keyed = next(c for c in cat["constructions"]["cranks"] if c["key"] == "keyed")
-    assert keyed["hardware"]["standoff_key"]["key"] == "m3_hex_standoff_ff_4"
+    assert axles["standoff"]["hardware"]["washer_key"]["key"] == "m4_washer"
+    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round"]
+    bolt = next(c for c in cat["constructions"]["cranks"] if c["key"] == "bolt")
+    assert bolt["roles"] == ["crank"]
+    assert bolt["hardware"]["lock_key"]["key"] == "threadlocker_243"
     assert set(call(server, "catalog", category="sheets")) == {"ok", "failures", "sheets"}
 
 
@@ -233,9 +226,10 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     _no_solids(cr)
     pr = call(server, "plan", design=single)
     assert pr["ok"]
-    assert pr["n_layers"] == 8       # 0.080 in frame plates (2026-10-04; 7 on 0.125 in)
-    assert pr["layers"]["b1"] == 2
-    assert pr["route"]["runs"] == [{"at": "M", "lo": 2, "hi": 2}]
+    # the default constructions' 10 layers, 37.639 mm (the keyed crank's, removed: 8)
+    assert pr["n_layers"] == 10
+    assert pr["layers"]["b1"] == 6
+    assert pr["route"]["runs"] == [{"at": "M", "lo": 6, "hi": 6}]
     assert pr["optimal"] is True
     assert "inner frame plate" in pr["table"]
     _no_solids(pr)
@@ -252,8 +246,9 @@ def test_check_plan_walk_and_verify_quick_return_json_reports(server, single):
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["program.loops_close"]["tier"] == "proven"
     assert rows["program.loops_close"]["pass"] is True
-    # 0.080 in frame plates, the 6061 foot link's 3.175 mm layer (2026-10-04)
-    assert rows["size.stack_mm"]["value"] == pytest.approx(22.239)
+    # 10 layers: 0.080 in frame plates, the 6061 foot link's 3.175 mm layer, the hex crank's
+    # clearance gaps (the keyed crank's 8 layers, removed: 22.239)
+    assert rows["size.stack_mm"]["value"] == pytest.approx(37.639)
     assert rows["motion.speed_mm_s"]["tier"] == "estimated"
     _no_solids(vr)
     recs = call(server, "recommend", design=single)
@@ -293,7 +288,7 @@ def test_misuse_is_an_error_result_carrying_a_failure(server):
 
 def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_plans(fresh):
     server = fresh                # its own store: the derived design must be new to it
-    _api.seed(HEEL_12)            # the patch's plan from the test cache (the server's
+    _api.seed(HEEL_DEFAULT)       # the patch's plan from the test cache (the server's
     #                               engine calls run in this process)
     heel = call(server, "resolve", spec=HEEL)["design"]
     cr = call(server, "check", design=heel)
@@ -301,9 +296,9 @@ def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_pla
     (f,) = cr["failures"]
     assert (f["stage"], f["code"]) == ("static", "link_no_layer")
     assert f["culprits"][0]["body"] == "b7"
-    assert f["numbers"]["need_mm"] == 11.25    # the keyed crank's 8.5 mm post: 4.25 + 6 + 1
+    assert f["numbers"]["need_mm"] == 10.0     # bolt_round's 6 mm post: 3 + 6 + 1 margin
     (rec,) = f["recommendations"]
-    assert rec["patch"] == {"linkage": {"params": {"unit": 12.0}}}
+    assert rec["patch"] == {"linkage": {"params": {"unit": 10.5}}}     # the default unit
     assert rec["verified"].startswith("checked: the static stage passes")
     recs = call(server, "recommend", design=heel)
     assert recs["stage"] == "static"
@@ -316,10 +311,10 @@ def test_a_stage_failure_is_a_failure_dict_whose_patch_derives_a_design_that_pla
     assert child["design"] != heel
     assert child["derived_from"] == heel
     assert child["patch"] == rec["patch"]
-    assert child["resolved"]["linkage"]["params"]["unit"] == 12.0
+    assert child["resolved"]["linkage"]["params"]["unit"] == 10.5
     pr = call(server, "plan", design=child["design"])
     assert pr["ok"]
-    assert pr["n_layers"] == 15      # 0.080 in frame plates (2026-10-04; 14 on 0.125 in)
+    assert pr["n_layers"] == 13      # the heel's default design (the keyed crank's at 12: 15)
     cmp = call(server, "compare", a=heel, b=child["design"])
     assert cmp["spec_patch"] == rec["patch"]
     assert cmp["derived"] == f"{child['design']} derives from {heel}"
@@ -373,29 +368,29 @@ def _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, stor
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    # Chicago pins, keyed crank; 36 since the 8-layer plan of the 0.080 in frame plates; 33
-    # with the barrels bought in 1 mm steps (fewer shims, 2026-10-05); 30 with the simplified
-    # hardware (a printed head spacer for a pin's washer and shims)
-    assert manifest["n_parts"] == len(manifest["parts"]) == 30
+    # the default constructions' 64 (test_spiderpig_api's test_export_writes_what_the_cli_
+    # writes counts the same build's parts; 63 before W8 D2, the cantilever pillar B's gap
+    # ring); the keyed crank and printed pillars, removed 2026-10-07: 30
+    assert manifest["n_parts"] == len(manifest["parts"]) == 64
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 30                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 64                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
-    assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [2])
+    assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [6])   # the plan's
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 30
+    assert stored["n_parts"] == 64
     assert stored["cut_rules"]["parts"] > 0          # the build's cut-rule review, stored
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 30
+    assert again["n_parts"] == 64
     assert again["cut_rules"] == stored["cut_rules"]   # reloaded from the store: checked again
     assert "result" not in again["job"]
 
@@ -414,7 +409,7 @@ def test_export_as_a_job_writes_the_files(server, single, tmp_path):
     assert {"klann.step", "bom.csv", "bom.md", "bom.json", "manifest.json"} <= names
     assert all(Path(f).is_file() for f in rep["files"])
     assert rep["manifest"]["design"] == single
-    assert rep["manifest"]["plan"]["layers"] == 8    # 0.080 in frame plates (7 on 0.125 in)
+    assert rep["manifest"]["plan"]["layers"] == 10   # the default Klann single's
     bad = run(_call(server, "export", design=single, formats=["pdf"]))   # the input schema
     assert bad.is_error
     assert "pdf" in bad.content[0].text
@@ -459,7 +454,7 @@ def test_resources_and_prompts_read(server, single):
     assert reads["spiderpig://schema/spec"].mime_type == "application/json"
     assert json.loads(reads["spiderpig://linkages/klann"].text)["key"] == "klann"
     assert json.loads(reads["spiderpig://catalog/servos"].text)["servos"][0]["key"] == "sts3215"
-    assert json.loads(reads[f"spiderpig://designs/{single}/plan"].text)["n_layers"] == 8
+    assert json.loads(reads[f"spiderpig://designs/{single}/plan"].text)["n_layers"] == 10
     assert json.loads(reads[f"spiderpig://designs/{single}/summary"].text)["id"] == single
     assert missing is not None
     assert "unknown stage" in missing
@@ -483,7 +478,7 @@ def test_gc_refuses_bare_and_removes_what_it_is_told(fresh, tmp_path):
 
 
 def test_a_cold_resolve_to_verify_quick_round_trip_is_fast(fresh, design):
-    design("single", crank="keyed", pillar="printed")
+    design("single")
     t0 = time.time()
     d = call(fresh, "resolve", spec=KLANN_SINGLE)["design"]
     vr = call(fresh, "verify", design=d, level="quick")
@@ -508,10 +503,10 @@ def test_view_returns_the_viewers_url_and_reuses_its_server(server, single):
     assert out["url"] == f"{out['server']}/?design={single}"
     assert out["mode"] == "side"
     assert out["design"] == single
-    with urllib.request.urlopen(f"{out['server']}/api/design/{single}") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{out['server']}/api/design/{single}") as r:
         card = json.load(r)
     assert (card["design"], card["module"], card["sides"]) == (single, "single", 1)
-    with urllib.request.urlopen(f"{out['server']}/") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{out['server']}/") as r:
         assert b'id="stage"' in r.read()
     again = call(server, "view", design=single)
     assert again["server"] == out["server"]          # reused, not a second process
@@ -528,7 +523,7 @@ def test_view_misuse_is_a_failure_envelope(server):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 1 (docs/agentlib/TESTDRIVE.md): the guide, the card, the notes
+# Test drive, round 1 (docs/history/TESTDRIVE.md): the guide, the card, the notes
 # ---------------------------------------------------------------------------
 
 
@@ -572,14 +567,14 @@ def test_recommend_carries_the_failures_notes_and_a_plan_its_warnings(fresh):
     assert recs["stage"] == "static"
     assert isinstance(recs["notes"], list)
     assert len(recs["recommendations"]) == 1
-    child = call(fresh, "derive", design=heel, patch={"linkage": {"params": {"unit": 12.0}}})
+    child = call(fresh, "derive", design=heel, patch={"linkage": {"params": {"unit": 10.5}}})
     pr = call(fresh, "plan", design=child["design"])
     assert pr["ok"]
     assert isinstance(pr["warnings"], list)
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the thin sheet's patch, the cards
+# Test drive, round 2 (docs/history/TESTDRIVE.md): the thin sheet's patch, the cards
 # ---------------------------------------------------------------------------
 
 
@@ -590,13 +585,13 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     cr = call(fresh, "check", design=thin["design"])
     assert not cr["ok"]
     assert cr["failures"][0]["stage"] == "construction"
-    assert cr["failures"][0]["numbers"]["least_pitch_mm"] == 3.0       # the keyed crank
+    assert cr["failures"][0]["numbers"]["least_pitch_mm"] == 3.0    # the standoff's end screw
     recs = call(fresh, "recommend", design=thin["design"])
     assert recs["stage"] == "construction"
     (rec,) = recs["recommendations"]
     assert rec["patch"] == {"materials": {"thickness_mm": 3.0}}
-    # 8 layers on the 0.080 in frame plates of 2026-10-04 (7 on 0.125 in)
-    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 8 ")
+    # the default Klann single's 10 layers
+    assert rec["verified"].startswith("checked: the static stage passes, and it plans in 10 ")
     vr = call(fresh, "verify", design=thin["design"], level="quick")
     rows = {r["requirement"]: r for r in vr["rows"]}
     assert rows["drive.one_servo"]["pass"]
@@ -610,7 +605,7 @@ def test_a_thin_sheet_warns_at_resolve_and_recommend_hands_out_the_thickness(fre
     thin_card = next(c for c in call(fresh, "list_designs")["designs"]
                      if c["id"] == thin["design"])
     assert thin_card["thickness_mm"] == 2.0                                # entry 9
-    assert card["constructions"] == {"pillar": "printed", "pin": "chicago", "crank": "keyed",
+    assert card["constructions"] == {"pillar": "standoff", "pin": "chicago", "crank": "bolt",
                                      "heads": "best"}
     assert card["servo"] == "sts3215"
 
@@ -623,13 +618,13 @@ def test_the_guide_explains_the_budgets_lower_bound_and_the_layer_pitch(server):
     guide = run(go())
     assert "can refute a `max` but not confirm it" in guide                # entries 3, 4
     assert "`budget.cost_floor_usd`" in guide
-    assert ("layers of at least 2.6 mm with the bolt crank, 3 mm keyed (2.9 mm with"
+    assert ("fails at `check` (stage `construction`) with the thickness that works"
             in " ".join(guide.split()))                                    # entry 2
     assert "there is no three-leg module" in guide                         # entry 1
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): signed coordinates, a missed target,
+# Test drive, round 3 (docs/history/TESTDRIVE.md): signed coordinates, a missed target,
 # the export's warnings, the guide
 # ---------------------------------------------------------------------------
 
@@ -671,11 +666,12 @@ def test_recommend_meets_a_missed_stroke_by_a_checked_scale(fresh):
 
 def test_a_stack_that_is_proven_the_floor_is_explained_by_recommend(fresh):
     r = call(fresh, "resolve", spec={"kind": "walker", "linkage": {"key": "klann"},
-                                     "size": {"stack_mm": {"max": 30}}, **OLD})
+                                     "size": {"stack_mm": {"max": 30}}})
     recs = call(fresh, "recommend", design=r["design"])                       # entry 11
     assert recs["stage"] == "target"
     assert recs["recommendations"] == []
-    assert recs["notes"][0].startswith("size.stack_mm 49.764 vs <= 30: 49.764 mm is proven "
+    # the default quad's 13 layers, 72.989 mm, proven
+    assert recs["notes"][0].startswith("size.stack_mm 72.989 vs <= 30: 72.989 mm is proven "
                                        "the thinnest for klann's quad module")
 
 
@@ -694,11 +690,10 @@ def test_export_carries_its_warnings_and_the_guide_the_round_3_vocabulary(fresh)
     assert "`target`" in guide                     # entry 2
     assert "scale with `unit`" in guide
     assert "spiderpig view --linkage" in guide                                # entry 10
-    assert "the longest stock M3" in guide or "stock screw" in guide          # entry 7
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the stage under ``report``, the check's
+# Test drive, round 4 (docs/history/TESTDRIVE.md): the stage under ``report``, the check's
 # warnings, the floor's glue, the guide
 # ---------------------------------------------------------------------------
 
@@ -715,17 +710,20 @@ def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(ser
     assert got["report"]["ground_clearance_mm"] == cr["ground_clearance_mm"]
     v = call(server, "verify", design=single, level="quick")
     floor = next(r for r in v["rows"] if r["requirement"] == "budget.cost_floor_usd")
-    assert "Medium CA (cyanoacrylate) glue" in floor["detail"]               # entry 1
-    assert "M3 hex nut" in floor["detail"]
+    # the glue it buys whatever the sizes: the Chicago barrels' epoxy (the printed pillars'
+    # CA and the keyed crank's nuts went with them on 2026-10-07); the hex crank's blank
+    assert "Two-part slow-cure structural epoxy" in floor["detail"]          # entry 1
+    assert "6061 aluminium sheet 0.100 in" in floor["detail"]
     assert floor["detail"].endswith("(verify standard)")
     guide = render_guide()
-    assert "a bottle of CA glue" in guide
+    assert "`budget.cost_floor_usd` prices what the design buys whatever its parts" in \
+        " ".join(guide.split())
     assert "`sim.speed_mm_s`" in guide                                        # entry 7
     assert "20 mm" in guide                                                   # entry 14
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): a two-input mechanism over MCP, and
+# Test drive, round 5 (docs/history/TESTDRIVE.md): a two-input mechanism over MCP, and
 # ``view`` on a design the page could not bake
 # ---------------------------------------------------------------------------
 

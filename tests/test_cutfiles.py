@@ -1,7 +1,7 @@
 """Cut files and the BOM's fitting lines: exact DXF contours read back against the solid,
 the kerf per sheet and service, the DXF sets per service, the filament per printed part,
-the horn screws' shim stacks and threadlocker, the splice studs' threadlocker, and the cut
-rules measured to pockets and windows. Synthetic parts: no plan, quick."""
+the horn screws' shim stacks and threadlocker, and the cut rules measured to pockets and
+windows. Synthetic parts: no plan, quick."""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ from spiderpig import manufacture
 from spiderpig.hardware.bom import (
     PRESS_FILAMENT,
     TPU_FILAMENT,
-    BomLine,
     bom_from_mechanism,
     fitting_lines,
     part_filament,
@@ -212,9 +211,6 @@ def _fitted_mech(servo: str = "sts3215") -> Mechanism:
         Body("L.crank_horn_shims0", part=shim, fab="purchased", bom_key="shim_din988_3x6"),
         *[Body(f"L.crank_horn_screw{i}", part=disc((0, 0), 1.5, 0, 8), fab="purchased",
                bom_key="m3_bhcs_8") for i in range(4)],
-        Body("L.pillar_J2_leg0_stud3", part=disc((0, 0), 2, 0, 8), fab="purchased",
-             bom_key="m3_bhcs_8"),
-        Body("tie_stud0", part=disc((0, 0), 2, 0, 8), fab="purchased", bom_key="m3_bhcs_8"),
     ])
 
 
@@ -271,21 +267,33 @@ def test_horn_screws_get_their_shim_stack_and_threadlocker():
     assert any(x.key == "threadlocker_222" for x in lines)
 
 
-def test_splice_studs_get_medium_threadlocker():
-    lines, notes, _ = fitting_lines(_fitted_mech())
-    studs = [x for x in lines if x.key == "threadlocker_243"]
-    assert [x.where.split(":")[0] for x in studs] == ["L.pillar_J2_leg0_stud3"]  # not the ties'
-    assert "243 or 263" in studs[0].where
-    assert "off the acrylic" in studs[0].where
-    assert any("splice stud" in n for n in notes)
+def test_a_remembered_section_follows_its_part_and_is_never_shared():
+    """``layout.section_of`` remembers a part's section, but a part moved in place since is
+    sectioned again (the memo keeps a copy of the wrapper, not the live one), and no caller
+    gets the wrapper another holds."""
+    from types import SimpleNamespace
+
+    from build123d import Box, Pos
+
+    from spiderpig.layout import section_of
+
+    body = SimpleNamespace(name="probe", part=Box(10, 10, 2))
+    assert pytest.approx(-5) == section_of(body).bounding_box().min.X
+    body.part.move(Pos(50, 0, 0))
+    assert pytest.approx(45) == section_of(body).bounding_box().min.X
+    got = section_of(body)
+    got.move(Pos(0, 100, 0))
+    assert pytest.approx(-5) == section_of(body).bounding_box().min.Y
 
 
-def test_splice_stud_threadlocker_is_not_counted_twice():
-    """The pillar construction lists its splice studs' 243 itself (``splice_lock_key``, in
-    ``bom_extras``); the fitting lines then add only the note (merge of r4, 2026-10-05)."""
-    mech = _fitted_mech()
-    mech.bom_extras.append(BomLine("threadlocker_243", 0.01,
-                                   "pillar_J2_leg0 splice studs (metal to metal only)"))
-    lines, notes, _ = fitting_lines(mech)
-    assert not any(x.key == "threadlocker_243" for x in lines)
-    assert any("splice stud" in n for n in notes)
+def test_a_shared_wrapper_moves_alone():
+    from build123d import Box, Pos
+
+    from spiderpig.shapes import share
+
+    a = Box(4, 4, 4)
+    b = share(a)
+    assert b.wrapped.IsPartner(a.wrapped)
+    b.move(Pos(0, 0, 10))
+    assert pytest.approx(-2) == a.bounding_box().min.Z
+    assert pytest.approx(8) == b.bounding_box().min.Z

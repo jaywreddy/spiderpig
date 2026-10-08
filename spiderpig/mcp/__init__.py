@@ -32,16 +32,20 @@ TypedDicts of :mod:`spiderpig.mcp.outputs`, published as each tool's output sche
 from __future__ import annotations
 
 import argparse
+import atexit
 import functools
 import json
 import logging
+import os
+import signal
 import threading
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 import anyio
+import anyio.to_thread
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ResourceNotFoundError
 from mcp.server.mcpserver.resources import FunctionResource
@@ -104,6 +108,8 @@ class State:
     store: Store
     jobs: Jobs
     viewer: Any = None      # a spiderpig.view.ViewServer: the child serving this store
+    _viewer_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _atexit: bool = field(default=False, repr=False)
 
     @property
     def root(self) -> str:
@@ -112,22 +118,31 @@ class State:
     def view_server(self):
         """The viewer's server over this store: a ``spiderpig view --serve-only`` child
         process on a free port (:func:`spiderpig.view.start_background`), started on
-        first use and reused while it lives."""
+        first use and reused while it lives. Two ``view`` calls at once start one child
+        (a lock); the child is stopped when this process exits (``atexit``; ``main``
+        turns SIGTERM into an exit)."""
         from spiderpig import view as view_module
 
-        if self.viewer is None or not self.viewer.alive():
-            if view_module.viewer_built() is None:
-                raise Misuse(Failure("view", "viewer_not_built", (
-                    "the package has no built viewer (spiderpig/viewer/dist): from a "
-                    "checkout run `mise run viewer-build`; a release wheel ships it"),
-                    notes=["SPIDERPIG_VIEWER_DIST=<dir> points at another build"]))
-            self.viewer = view_module.start_background(self.store)
-        return self.viewer
+        with self._viewer_lock:
+            if self.viewer is None or not self.viewer.alive():
+                if view_module.viewer_built() is None:
+                    raise Misuse(Failure("view", "viewer_not_built", (
+                        "the package has no built viewer (spiderpig/viewer/dist): from a "
+                        "checkout run `mise run viewer-build`; a release wheel ships it"),
+                        notes=["SPIDERPIG_VIEWER_DIST=<dir> points at another build"]))
+                if self.viewer is not None:         # died: don't leave its process behind
+                    self.viewer.stop()
+                self.viewer = view_module.start_background(self.store)
+                if not self._atexit:
+                    atexit.register(self.stop_viewer)
+                    self._atexit = True
+            return self.viewer
 
     def stop_viewer(self) -> None:
-        if self.viewer is not None:
-            self.viewer.stop()
-            self.viewer = None
+        with self._viewer_lock:
+            viewer, self.viewer = self.viewer, None
+        if viewer is not None:
+            viewer.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +184,12 @@ def _error(failure: Failure) -> CallToolResult:
     doc = {"ok": False, "failures": [failure.to_dict()]}
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(doc, indent=1))],
                           structured_content=doc, is_error=True)
+
+
+def _shaped[T](doc: dict, shape: type[T]) -> T:
+    """``doc`` as its tool's output type ``shape`` (an :mod:`.outputs` TypedDict): typing
+    only, the dict is returned as is."""
+    return cast(T, doc)  # the docs carry outputs.py's fields (the MCP tests check them)
 
 
 def _report(design: Design, rep) -> dict:
@@ -239,6 +260,14 @@ async def _long(state: State, op: str, design: str, args: dict, wait_seconds: fl
 def _job(state: State, job: str):
     j = state.jobs.get(job)
     if j is None:
+        gone = state.jobs.evicted(job)
+        if gone is not None:
+            raise Misuse(Failure("job", "job_evicted", (
+                f"job {job!r} ({gone['op']} of {gone['design']}) finished {gone['state']} "
+                f"at {gone['finished_at']} and its record was evicted (the server keeps the "
+                "newest finished jobs for an hour)"), notes=[
+                f"the report it wrote is in the store: get_design(design="
+                f"{gone['design']!r}, stage={gone['op']!r})"]))
         raise Misuse(Failure("job", "no_such_job", f"no job {job!r} in this server", notes=[
             "jobs live as long as the server process; the report a finished job wrote is "
             "in the store (get_design)"]))
@@ -410,14 +439,12 @@ def _fit_defaults() -> str:
 def _materials_table() -> str:
     cards = catalog_cards("all")
     lines = ["| kind | key | what | price (USD) | numbers |", "|---|---|---|---|---|"]
-    for s in cards["servos"]:
-        lines.append(f"| servo | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} | "
-                     f"{s['rpm_max']:g} rpm no load, {s['torque_kgcm'] or '?'} kg.cm, "
-                     f"{s['mass_g']:g} g |")
-    for s in cards["sheets"]:
-        lines.append(f"| sheet | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} per "
-                     f"{s['pack_qty'] or '?'} | {s['thickness_mm']:g} mm, usable "
-                     f"{s['sheet_mm'][0]:g} x {s['sheet_mm'][1]:g} mm |")
+    lines.extend(f"| servo | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} | "
+                 f"{s['rpm_max']:g} rpm no load, {s['torque_kgcm'] or '?'} kg.cm, "
+                 f"{s['mass_g']:g} g |" for s in cards["servos"])
+    lines.extend(f"| sheet | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} per "
+                 f"{s['pack_qty'] or '?'} | {s['thickness_mm']:g} mm, usable "
+                 f"{s['sheet_mm'][0]:g} x {s['sheet_mm'][1]:g} mm |" for s in cards["sheets"])
     for c in cards["constructions"]["axles"]:
         hw = ", ".join(h["key"] for h in c["hardware"].values()) or "printed"
         lines.append(f"| pillar / pin | `{c['key']}` | {c['label']} | - | {hw} |")
@@ -447,14 +474,23 @@ def render_guide(state: State | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+class SpiderpigServer(MCPServer):
+    """The MCP server with the :class:`State` it serves (``spiderpig``)."""
+
+    spiderpig: State
+
+
 def make_server(store: Store | str | Path | None = None, workers: int = 2,
-                log_level: str = "WARNING") -> MCPServer:
+                log_level: LogLevel = "WARNING") -> SpiderpigServer:
     """The MCP server over ``store`` (the project store by default: ``$SPIDERPIG_STORE``,
     else ``./.spiderpig``) with ``workers`` processes for the long operations. The
     :class:`State` hangs on the server as ``spiderpig``."""
     st = Store.default() if store is None else Store.of(store)
     state = State(st, Jobs(str(st.root.resolve()), workers))
-    server = MCPServer(SERVER_NAME, title="spiderpig", version=engine_version(),
+    server = SpiderpigServer(SERVER_NAME, title="spiderpig", version=engine_version(),
                        description="a compiler from a Spec to verified walking-linkage geometry",
                        instructions=INSTRUCTIONS, log_level=log_level)
     server.spiderpig = state
@@ -482,7 +518,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
                 return _error(e.failure)
             except SpecErrors as e:
                 return _spec_errors_out(e)
-            except Exception as e:  # noqa: BLE001 - a programming error still crosses as data
+            except Exception as e:  # a programming error still crosses as data
                 log.exception("%s failed", fn.__name__)
                 return _error(Failure.from_exception(e, stage="engine"))
 
@@ -515,7 +551,8 @@ def _register_tools(server: MCPServer, state: State) -> None:
         rotation; rpm, torque, mass, price), sheet stock (thickness, usable size, price
         per pack) and constructions (axles for pillars and pins, cranks: label, hardware,
         knobs). The keys are what ``materials`` and ``constructions`` of a Spec take."""
-        return {"ok": True, "failures": [], **(await _run(catalog_cards, category))}
+        return _shaped({"ok": True, "failures": [], **(await _run(catalog_cards, category))},
+                       o.CatalogOut)
 
     @tool
     async def resolve(spec: SpecArg) -> o.DesignOut:
@@ -523,7 +560,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         its id (what every other tool takes), the resolved spec with every inferred value,
         warnings. A spec that doesn't validate returns ``ok: false`` with ``errors``: each
         path, message, allowed values and the nearest key."""
-        return _design_out(await _run(api.resolve, spec, state.store))
+        return _shaped(_design_out(await _run(api.resolve, spec, state.store)), o.DesignOut)
 
     @tool
     async def check(design: DesignArg) -> o.CheckOut:
@@ -532,7 +569,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         the crank's route points (else ``static``, with checked recommendations), the
         ground clearance. No parts are built."""
         d = await _run(_load, state, design)
-        return _report(d, await _run(api.check, d))
+        return _shaped(_report(d, await _run(api.check, d)), o.CheckOut)
 
     @tool
     async def plan(design: DesignArg) -> o.PlanOut:
@@ -545,7 +582,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         the Klann quad plans in under a second, a big or scaled-down design can take a
         minute, and a design that fails takes the deadline plus the checks."""
         d = await _run(_load, state, design)
-        return _report(d, await _run(api.plan, d))
+        return _shaped(_report(d, await _run(api.plan, d)), o.PlanOut)
 
     @tool
     async def explain(design: DesignArg) -> o.ExplainOut:
@@ -561,11 +598,10 @@ def _register_tools(server: MCPServer, state: State) -> None:
         that can't be built at these parameters, the static stage's, else the planner's),
         each with the spec patch that applies it (hand it to ``derive``), and the failure's
         ``notes`` on what can't help or wasn't checked; empty when the design plans. The
-        engine recommends only what it re-ran and saw pass: the sheet thickness the printed
-        crank's joints need (``materials.thickness_mm``), a scale of the linkage or thinner
+        engine recommends only what it re-ran and saw pass: the sheet thickness a
+        construction needs (``materials.thickness_mm``), a scale of the linkage or thinner
         parts for a link-to-axle gap, the linkage's default scale for a plan that ran into
-        the stack's own room, printed pillars for a stack a bolt pillar's stock screw
-        can't span. When every stage passes, ``stage`` is ``target``: a missed stroke,
+        the stack's own room. When every stage passes, ``stage`` is ``target``: a missed stroke,
         straightness or lift target is met by a scale of the linkage (measured again and
         planned), and a missed stack that is proven the thinnest, or a clearance, gets a
         note naming the levers left. ``verified`` says what was re-run: for a decker or
@@ -591,7 +627,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
             api.plan(d)          # feet at their planned layers; a plan failure is walk's own
             return api.walk(d)
 
-        return _report(d, await _run(run))
+        return _shaped(_report(d, await _run(run)), o.WalkOut)
 
     @tool
     async def build(design: DesignArg, t: Annotated[float, Field(
@@ -603,7 +639,8 @@ def _register_tools(server: MCPServer, state: State) -> None:
         with each part's group, side, fabrication, material, mass, layers and the path of
         its STEP file in the store; the total mass, the envelope, the counts. A long
         operation: a job when it outlasts ``wait_seconds`` (``wait_job`` / ``get_job``)."""
-        return await _long(state, "build", design, {"t": float(t)}, wait_seconds)
+        return _shaped(await _long(state, "build", design, {"t": float(t)}, wait_seconds),
+                       o.BuildOut)
 
     @tool
     async def verify(design: DesignArg, level: LEVELS = "quick",
@@ -618,8 +655,9 @@ def _register_tools(server: MCPServer, state: State) -> None:
         false on any hard miss or stage failure; ``score`` is the soft targets' mean."""
         if level == "quick":
             d = await _run(_load, state, design)
-            return _report(d, await _run(api.verify, d, "quick"))
-        return await _long(state, "verify", design, {"level": level}, wait_seconds)
+            return _shaped(_report(d, await _run(api.verify, d, "quick")), o.VerifyOut)
+        return _shaped(await _long(state, "verify", design, {"level": level}, wait_seconds),
+                       o.VerifyOut)
 
     @tool(mutates=True)
     async def export(design: DesignArg, formats: Annotated[list[FORMATS] | None, Field(
@@ -637,7 +675,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         the manifest. A long operation (a job when it outlasts ``wait_seconds``). An
         unknown format is refused by the input schema before the tool runs."""
         args = {"formats": list(formats) if formats else None, "out_dir": out_dir}
-        return await _long(state, "export", design, args, wait_seconds)
+        return _shaped(await _long(state, "export", design, args, wait_seconds), o.ExportOut)
 
     @tool
     async def get_job(job: Annotated[str, Field(
@@ -649,7 +687,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         files) flat beside ``job`` (``state: done``, ``seconds``); if it failed, ``ok:
         false`` with the failure. Records live as long as the server; the store keeps the
         report (``get_design``)."""
-        return _job_result(_job(state, job))
+        return _shaped(_job_result(_job(state, job)), o.JobResult)
 
     @tool
     async def wait_job(job: Annotated[str, Field(
@@ -661,7 +699,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         own result flat beside ``job`` once done, else the running record."""
         j = _job(state, job)
         await anyio.to_thread.run_sync(state.jobs.wait, j, float(seconds))
-        return _job_result(j)
+        return _shaped(_job_result(j), o.JobResult)
 
     @tool
     async def compare(a: DesignArg, b: DesignArg) -> o.CompareOut:
@@ -674,7 +712,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
             raise Misuse(Failure("store", "no_such_design", str(e).strip("'\""))) from None
         except ValueError as e:
             raise Misuse(Failure("store", "bad_design_id", str(e))) from None
-        return {"ok": True, "failures": [], **jsonable(doc)}
+        return _shaped({"ok": True, "failures": [], **jsonable(doc)}, o.CompareOut)
 
     @tool
     async def derive(design: DesignArg, patch: PatchArg) -> o.DesignOut:
@@ -682,7 +720,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         your own change) as a new design that records its parent and the patch; the same
         result as ``resolve``. An empty patch is the same design."""
         d = await _run(_load, state, design)
-        return _design_out(await _run(api.derive, d, patch, state.store))
+        return _shaped(_design_out(await _run(api.derive, d, patch, state.store)), o.DesignOut)
 
     @tool
     async def get_design(design: DesignArg, stage: Literal[
@@ -880,6 +918,24 @@ def _register_prompts(server: MCPServer) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _on_sigterm(state: State):
+    """SIGTERM's handler: stop the viewer's child and the job pool, then exit at once. Not
+    ``SystemExit``: the interpreter would then wait for the AnyIO thread blocked reading
+    stdin, which a client that sent SIGTERM may never close."""
+    def handler(signum, _frame) -> None:
+        # no locks here: the interrupted thread (the event loop) may hold any of them
+        try:
+            viewer = state.viewer
+            proc = getattr(viewer, "proc", None)
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+            state.jobs.kill()
+        finally:
+            os._exit(128 + signum)
+
+    return handler
+
+
 def main(argv: list[str] | None = None) -> int:
     """``spiderpig mcp [--store PATH] [--workers N]``: serve over stdio."""
     ap = argparse.ArgumentParser(prog="spiderpig mcp",
@@ -893,6 +949,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="the server's logging (stderr)")
     args = ap.parse_args(argv)
     server = make_server(args.store, workers=args.workers, log_level=args.log_level)
+    # SIGTERM (a client closing the server) stops the viewer's child process and exits;
+    # without it the child outlives the server
+    signal.signal(signal.SIGTERM, _on_sigterm(server.spiderpig))
     try:
         server.run("stdio")
     finally:

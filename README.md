@@ -29,7 +29,7 @@ From a checkout (`uv sync` installs the `spiderpig` package editable, with the
 dev tools; the viewer is built once, into the package):
 
 ```bash
-mise install            # pin Python 3.12 + uv + node 20
+mise install            # pin Python 3.12 + uv + node 22
 uv sync                 # .venv: spiderpig (editable) + dev tools (fetches OCP/OCCT; slow the first time)
 mise run viewer-build   # the viewer -> spiderpig/viewer/dist (node; again after a viewer/ change)
 uv run spiderpig --help
@@ -55,20 +55,23 @@ and nothing of `viewer/` (sources, `node_modules`) or `tests/`.
 
 ```bash
 mise run view           # FastAPI + Vite with HMR — open the URL the banner prints
-mise run build          # STEP/STL/DXF/BOM → build/
+mise run build          # STEP/STL/DXF/BOM → build/ (skipped when build/ is current; -- --force)
 mise run bake           # <store>/bakes/*.glb (the project store, .spiderpig/)
-mise run test-quick     # pytest's quick tier (-m "not slow", xdist); `mise run test`: all
-mise run audit          # do the parts physically fit? (clashes, solids, plan, DXF)
-mise run lint           # ruff check
+mise run test-planner   # one module's fast tier (seconds); test-quick: all of them
+mise run audit          # do the parts fit and hold? (clashes, solids, plan, DXF, strength)
+mise run lint           # ruff check, then the import layers (lint-imports)
 mise run clean          # rm build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/
 ```
 
-`mise run view` starts FastAPI (bakes `.glb` on first request, watches `*.py` and
+`mise run view` first runs `npm install` in `viewer/` (the `viewer-install` task: it needs
+the network the first time, and again when `viewer/package.json` changes), then starts FastAPI (bakes `.glb` on first request, watches `*.py` and
 re-bakes on change, broadcasts over `/ws`) and Vite (HMR for the TypeScript viewer;
 proxies `/api` and `/ws` to FastAPI) on ports derived from the worktree's path (Vite in
 5500-5999, the API in 8500-8999), so parallel worktrees don't collide; `VITE_PORT` /
 `API_PORT` pin them, and `VITE_ALLOWED_HOSTS` (comma-separated, e.g. `.ts.net` behind
-`tailscale serve`) lets Vite answer other host names.
+`tailscale serve`) lets Vite and the API server answer other host names (the server answers
+only loopback names, IP addresses and those, and refuses a WebSocket from another page's
+origin: `spiderpig/server/app.py` `HostGuard`).
 Edit a `.ts` file → instant HMR. Edit a `.py` kinematics file → re-bake →
 viewer hot-swaps the GLB without a full page reload.
 
@@ -99,7 +102,9 @@ validated `spiderpig.config.BuildConfig`; `spiderpig explain` and `spiderpig
 audit` take the build options below (`--servo`, `--pin`, `--pillar`, `--sheet`,
 `--thickness`) too, since the static facts and the plan depend on them. `spiderpig build` prints the layer
 plan of one side and writes
-(stem: the linkage, `--name` to change it):
+(stem: the linkage, `--name` to change it; into an `--out` already current for the same
+design and engine it does nothing and says so, `spiderpig/uptodate.py`; `--force` builds;
+fabrications are cached in the store, `spiderpig/fabcache.py`):
 
 - `build/strider.step` / `strider.stl` — the whole robot (both sides, servos,
   frame); the STEP is colour-tagged.
@@ -133,12 +138,9 @@ plan of one side and writes
 Useful flags: `--module {single,double,decker,quad}` (legs per side; default: the
 linkage's, `config.default_module`), `--side-only`, `--servo` (continuous-rotation servos
 only; default `sts3215`), `--pillar` / `--pin` / `--crank` (constructions; the default is
-`--pin chicago --pillar standoff --crank bolt`, below; the others stay selectable:
-`--pillar standoff_hand` / `standoff_bench` / `standoff_m3` (spliced columns), `--pillar
-printed`, `--pin rod` / `ptfe` / `printed`, `--crank bolt_round` (TrotBot's heel and
-toe default to it), `--crank keyed` / `keyed_float` / `printed` (the printed cranks, the
-default before 2026-10-03); `docs/audit/STRENGTH.md` has why the defaults changed and what
-they cost), `--sheet`,
+`--pin chicago --pillar standoff --crank bolt`, below; the one other is `--crank
+bolt_round`, TrotBot's heel and toe's; the other constructions were removed on 2026-10-07
+and naming one fails with its replacement, `config.REMOVED_CONSTRUCTIONS`), `--sheet`,
 `--thickness` (measure your sheet: acrylic varies by up to 8 %), `--kerf`,
 `--no-dxf`. A mechanism (`--linkage hoecken`, `parallelogram_lift`, ...) needs
 no `--module` or `--side-only`: it is its one module and one side, for `build`,
@@ -181,36 +183,27 @@ functional group at a time (see `spiderpig/construction/base.py`):
   in hex pockets of the webs, an M3 button head and wide washer into each end, the riders
   turning on a printed sleeve over the hex, a round M3 standoff as the journal stub; the
   chain that ends in the hub plate is capped by it (the hub plate, horn, servo and inner
-  plate go on as one unit). The Strider double plans 14 layers / 66.5 mm a side, the
-  Strider quad 24. `--crank bolt_round` puts round standoffs, clamped by friction, in
-  place of the hex (TrotBot's heel and toe, where the hex's sleeve doesn't clear b7); on
-  an acrylic crank sheet `bolt` is the older two-plate stack crank on M6 hex bolts;
+  plate go on as one unit). Each default design's layers and height are in
+  [docs/agentlib/DESIGNS.md](docs/agentlib/DESIGNS.md). `--crank bolt_round` puts round
+  standoffs, clamped by friction, in place of the hex (TrotBot's heel and toe, where the
+  hex's sleeve doesn't clear b7); an acrylic crank sheet is refused;
 - **pillars** — the frame pivots (`--pillar standoff`, the default): a 6 mm round standoff
   column from the outer plate to the inner, a button head and washer through each plate
   (no glue), the links turning on the standoff, a printed ring in every other layer. A
   column one stock length fills is a goBILDA 1501 aluminium standoff (M4; in 3 mm
   layers 12, 18, 24, 27, 30, 36, 42, 48, 54 or 60 mm); any other is one MISUMI NETRF6
-  steel standoff made to its length (0.1 mm steps, M3 ends): never spliced (the Strider
-  double's four pillars are NETRF6-62.4). `--pillar standoff_hand` / `standoff_bench`
-  keep the goBILDA column spliced past 60 mm (hand-tight in the stack / built on the
-  bench), `--pillar standoff_m3` the same on uxcell's M3 standoffs (on the Strider its
-  splices hold a jam at SF 1.62 only: a warning), and `--pillar printed` is the printed
-  stepped axle with shoulders beside each link and thin necks where other links pass;
+  steel standoff made to its length (0.1 mm steps, M3 ends): never spliced;
 - **pins** — the pivots between links: an M3 Chicago screw (a 4 mm barrel through
   the stack, a screw driven into it from above until it bottoms), printed spacer rings,
   one printed head spacer per end taking up the barrel's fixed length, the lowest link
   bonded to the barrel with epoxy (`--pin chicago`, the default: the axial play set by
   the barrel length to 0.05-0.15 mm, a stronger shaft than the rod, nothing to cut, and
   it comes apart; barrels in 1 mm steps from 4 to 16 mm, then 18-80, at most 23 mm on the
-  Strider; the audit reports every link's tilt). `--pin rod` (3 mm rod cut to length,
-  Starlock clips) was the default before it; `--pin printed` is the zero-hardware
-  printed snap pin, on the Strider with its J7 snap lip relieved to 0.13 mm; `bolt`,
-  `bearing`, `bushing`, `chicago_bushing`, `ptfe` are the other options,
-  `spiderpig/construction/pivots/`);
+  Strider; the audit reports every link's tilt; `spiderpig/construction/pivots/`);
 - **links and frame plates** — laser-cut, holes cut for everything above.
 
 Each group first *claims* the space it needs, per 3 mm layer and relative
-to the link layers; the planner (`spiderpig/stack.py`) finds link layers where no
+to the link layers; the planner (`spiderpig/stack/`) finds link layers where no
 two groups' claims ever meet over the whole crank cycle. Then each group
 builds its parts inside its claims, which a contract test checks. So the
 parts can't collide, and a construction that can't fit is an error, never
@@ -226,17 +219,21 @@ charger, protection board, switch) sits between the inner plates over the servos
 ## Test
 
 ```bash
-mise run test-quick     # the quick tier: -m "not slow", xdist -n 4 (minutes)
-uv run pytest           # everything, serial (40-50 min; AGENTS.md: run it remotely)
+mise run test-planner   # a module tier: linkage, planner, construction, hardware, strength,
+                        # api, sim, server (seconds each on the fabrication cache)
+mise run test-quick     # every module's fast tier: -m 'not slow and not e2e', xdist -n 4
+mise run test-viewer    # the viewer's typecheck and vitest
+mise run remote-test    # the full suite on the remote runner (AGENTS.md)
+mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # did a product edit move a part?
 ```
 
-Unit tests cover the symbolic core (reference foot values, rigidity,
-phase as a time shift), assemblies, the layer planner (including an
-independent full-cycle re-check), the construction contract (every part
-inside its claims, for every module), clashes, the printed axles and
-crank, the robot frame, the BOM, the glTF bake (animated meshes match the
-fabricated parts) and STEP / STL / DXF emission. `-m e2e` runs the
-Playwright viewer tests. `mise run audit` checks every module end to end.
+[docs/agentlib/TESTING.md](docs/agentlib/TESTING.md) has the tiers, markers, the caches, the
+recorded fixtures and the identity gate. Unit tests cover the symbolic core (reference foot
+values, rigidity, phase as a time shift), the layer planner (an independent brute force and
+a full-cycle re-check), each construction through small seams (`tests/test_seam_*.py`, no
+fabrication), the construction contract (every part inside its claims, for every module),
+clashes, the robot frame, the BOM, the glTF bake and STEP / STL / DXF emission. `-m e2e`
+runs the Playwright viewer tests. `mise run audit` checks a design end to end.
 
 ## Layout
 
@@ -251,23 +248,28 @@ spiderpig/                   # the checkout
 │   ├── linkage/             # the symbolic engine (engine.py), stage checks (checks.py), leg module templates (assembly.py)
 │   ├── linkages/            # one module per linkage family (Klann, Strider, Jansen, ...)
 │   ├── mechanism.py         # Pose, Joint, Body, Mechanism, MechanismTemplate
-│   ├── stack.py             # layer planner over claims (full-cycle clearance)
+│   ├── stack/               # the layer planner over claims: geometry, topology, plan, search, plan_z, verify
 │   ├── config.py            # BuildConfig (what to build and how, validated); the shared CLI / query arguments
 │   ├── fabricate.py         # design a side, fabricate the robot
-│   ├── construction/        # the groups: axle, crank, plates, robot, chassis; contract check
+│   ├── fabcache.py, keys.py, uptodate.py   # the fabrication cache, its keys, the build skip
+│   ├── construction/        # the groups: axle, crank/ (the bolt crank), pivots/ (standoff, chicago),
+│   │                        # route, plates, robot, chassis, deck; the contract check
 │   ├── servos/              # servo data (spec, catalog), drive group, models, CAD cache
-│   ├── hardware/            # catalog, sources (product pages), screw families, masses, BOM, ORDER.md
+│   ├── hardware/            # catalog, sources (product pages), the screw table, masses, BOM, ORDER.md
+│   ├── materials.py, manufacture.py   # sheets per part; the cutting services' rules
+│   ├── strength.py          # joint and link safety factors at the sim's loads
 │   ├── walk.py              # quasi-static walking model (/api/walk, the viewer's drive mode)
 │   ├── sim/                 # MuJoCo model of the fabricated robot and its runner
-│   ├── shapes.py            # build123d part primitives
+│   ├── shapes.py, rounding.py, mesh.py   # part primitives; tie-stable numbers; meshing
 │   ├── layout.py            # 2D section + rectpack + ezdxf: packed sheets and per-part DXFs
-│   ├── tools/               # audit.py (`mise run audit`), tune.py, sim_walk.py, report.py, dev.py, kill_dev.py
+│   ├── tools/               # audit.py (`mise run audit`), tune.py, sim_walk.py, report.py, dev.py, remote.py
 │   ├── server/              # the viewer's FastAPI app + watchfiles live-reload
 │   ├── viewer/dist/         # the built viewer (gitignored; `mise run viewer-build`; ships in the wheel)
-│   ├── spec.py, api.py, …   # the agent-facing API and store (docs/agentlib/API.md)
+│   ├── spec.py, api/, store.py, …   # the agent-facing API and store (docs/agentlib/API.md)
 │   └── mcp/                 # the MCP server over it
-├── viewer/                  # Vite + TypeScript three.js client sources (never ship)
-└── tests/                   # unit tests; tests/e2e/ for Playwright
+├── viewer/                  # Vite + TypeScript three.js client sources (never ship); src/drive/
+├── docs/                    # ARCHITECTURE.md; agentlib/ (API, TESTING, ROADMAP, DESIGNS, DECISIONS); history/
+└── tests/                   # unit tests (module tiers, seams), tests/e2e/ for Playwright, gate/, doc_check.py
 ```
 
 ## Customising the linkage

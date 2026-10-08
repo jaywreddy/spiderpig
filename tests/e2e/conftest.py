@@ -13,11 +13,15 @@ from __future__ import annotations
 import pytest
 
 GPU_ARGS = ["--use-angle=gl-egl", "--enable-gpu", "--ignore-gpu-blocklist"]
+# Chromium can hang at start-up waiting on the desktop keyring (gnome-keyring / kwallet)
+# on a machine with a session bus: keep its password store in-process. Playwright passes
+# these today; stated here so an upgrade or another launcher can't bring the hang back.
+KEYRING_ARGS = ["--password-store=basic", "--use-mock-keychain"]
 
 
 @pytest.fixture(scope="session")
 def browser_type_launch_args(browser_type_launch_args):
-    args = [*browser_type_launch_args.get("args", []), *GPU_ARGS]
+    args = [*browser_type_launch_args.get("args", []), *GPU_ARGS, *KEYRING_ARGS]
     return {**browser_type_launch_args, "args": args}
 
 

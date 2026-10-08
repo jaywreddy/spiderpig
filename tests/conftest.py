@@ -105,6 +105,77 @@ def pytest_collection_modifyitems(config, items):
             + "".join(f"  {d}: more than one\n" for d in double[:20]))
 
 
+SLOW_WARN_S = float(os.environ.get("SPIDERPIG_SLOW_WARN_S", "5"))
+"""A test not marked ``slow`` that takes longer than this (setup, call and teardown) is
+listed at the end of the run (a warning, never a failure: a loaded machine slows
+everything; docs/agentlib/TESTING.md, Markers)."""
+
+_SLOW_UNMARKED: dict[str, float] = {}
+
+
+def pytest_runtest_logreport(report):
+    """Sum each non-``slow`` test's phases (on the controller under xdist too: the workers'
+    reports come here)."""
+    if "slow" in report.keywords:
+        return
+    _SLOW_UNMARKED[report.nodeid] = _SLOW_UNMARKED.get(report.nodeid, 0.0) + report.duration
+
+
+def pytest_terminal_summary(terminalreporter):
+    over = sorted(((s, n) for n, s in _SLOW_UNMARKED.items() if s > SLOW_WARN_S), reverse=True)
+    if not over:
+        return
+    tr = terminalreporter
+    tr.section(f"tests not marked slow over {SLOW_WARN_S:g} s (warning only)", yellow=True)
+    for s, n in over:
+        tr.line(f"{s:6.1f} s  {n}")
+    tr.line("warning only, never a failure, even for a repeat offender (on a shared, loaded "
+            "machine every test slows down); make each fast through a seam or the cache, keep "
+            "one cheap case quick (tests/tiers.py quick()), or mark it slow with a reason "
+            "(docs/agentlib/TESTING.md, Markers)")
+
+
+@pytest.fixture
+def fresh_plan_memo(monkeypatch):
+    """Empty ``fabricate``'s process memo (``_DESIGNS``, ``_LAYOUTS``) for one test: a test
+    that asserts what the planner's search does (its proof, its fallback, its time) must
+    search, not re-make a plan another test in this worker seeded or solved
+    (``tests.cache``, the walk's seeded default plans)."""
+    from spiderpig import fabricate
+
+    monkeypatch.setattr(fabricate, "_DESIGNS", {})
+    monkeypatch.setattr(fabricate, "_LAYOUTS", {})
+
+
+def _refused_fabricate(*args, **kwargs):
+    raise AssertionError("fabricate() was called in a no_fabricate test")
+
+
+def _refused_fabricate_side(*args, **kwargs):
+    raise AssertionError("fabricate_side() was called in a no_fabricate test")
+
+
+@pytest.fixture(autouse=True)
+def _no_fabricate_guard(request):
+    """A test marked ``no_fabricate`` (the seam tests, ``tests/test_seam_*.py``) fails if
+    ``spiderpig.fabricate.fabricate`` or ``fabricate_side`` runs: their code is swapped for
+    a refusal while it runs, so every reference to them (a module's ``from ... import``
+    too) is caught; ``fabricated`` counts the refusals."""
+    if request.node.get_closest_marker("no_fabricate") is None:
+        yield
+        return
+    from spiderpig import fabricate as fab
+
+    swapped = {f: f.__code__ for f in (fab.fabricate, fab.fabricate_side)}
+    fab.fabricate.__code__ = _refused_fabricate.__code__
+    fab.fabricate_side.__code__ = _refused_fabricate_side.__code__
+    try:
+        yield
+    finally:
+        for f, code in swapped.items():
+            f.__code__ = code
+
+
 def clear_model_caches() -> None:
     for f in (model.cad_servo, model._servo_part, cadlib._load_cached):
         f.cache_clear()
@@ -119,17 +190,53 @@ def _offline(tmp_path_factory):
         mp.setenv(cadlib.OFFLINE_ENV, "1")
         mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
         mp.setenv("SPIDERPIG_STORE", str(tmp_path_factory.mktemp("store")))
+        # the product's fabrication cache off: a test fabricates or uses tests/cache.py
+        # (a `fresh=True` build must be fresh; tests that test the product cache set it)
+        mp.setenv("SPIDERPIG_FAB_CACHE", "off")
         clear_model_caches()
         yield
         clear_model_caches()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seeded_default_plan_z():
+    """``walk._default_plan_z`` (the walking model's foot z: the linkage's default design,
+    planned) seeds that design's plan from the cache first (:func:`tests.cache.seed_plan`),
+    so ``design_side`` re-makes and verifies it (seconds) instead of searching again: a
+    walker built from a cached robot (``tests._sim.seed``) never planned in this process,
+    and a search that runs out of its budget (the TrotBot heel quad: 100-140 CPU-s) answers
+    with the guessed z, not the plan's. The z is the planner's either way (a seeded plan is
+    re-made and verified, :func:`spiderpig.fabricate._reuse`); the recorded fixture's
+    readers (``tests._linkage.recorded_foot_z_ctx``) and its currency test are untouched."""
+    import functools
+
+    from spiderpig import walk
+    from tests._linkage import seed_default_plan
+
+    real = walk._default_plan_z
+
+    @functools.cache
+    def seeded(config):
+        seed_default_plan(config)           # and the leg hint's single module
+        return real(config)
+
+    def clear():
+        seeded.cache_clear()
+        real.cache_clear()
+
+    seeded.cache_clear = clear          # what the server's watcher calls
+    seeded.__wrapped__ = real.__wrapped__
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(walk, "_default_plan_z", seeded)
+        yield
 
 
 @pytest.fixture(scope="session")
 def design():
     """``design(module, servo=DEFAULT, linkage="klann", **build) -> (side template,
     SideDesign)``, built the default way (Chicago screw pins, standoff pillars, the bolt
-    crank) unless ``build`` names a construction (``pin="printed"``: the printed snap pins'
-    tests; ``crank="keyed", pillar="printed"``: the defaults before 2026-10-03).
+    crank) unless ``build`` names a construction (``crank="bolt_round"``: the round standoff
+    crankpins, the only other one since 2026-10-07).
     :func:`tests.cache.cached_design`: the plan seeded from the cache."""
 
     def get(module: str = "single", servo: str = servos.DEFAULT, linkage: str = "klann",
@@ -186,7 +293,7 @@ def viewer_server() -> Iterator[str]:
             f"(or use `mise run test`, which builds it for you). Looked at {dist}"
         )
     port = _free_port()
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         [
             sys.executable, "-m", "uvicorn", "spiderpig.server.app:app",
             "--host", "127.0.0.1", "--port", str(port),

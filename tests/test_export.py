@@ -125,7 +125,8 @@ def test_side_only_without_dxf(tmp_path):
 def test_list(capsys):
     assert cli.main(["--list"]) == 0
     out = capsys.readouterr().out
-    for word in ("sts3215", "printed", "acrylic_3mm", "jansen", "strider"):
+    for word in ("sts3215", "chicago", "standoff", "bolt_round", "acrylic_3mm", "jansen",
+                 "strider"):
         assert word in out
 
 

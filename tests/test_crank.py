@@ -1,10 +1,12 @@
-"""Tests for the printed crankshafts (:mod:`construction.crank`): the keyed one (the default)
-and the friction-only one, with every servo.
+"""Tests for the crank group (:mod:`construction.crank`) on the bolt crank: single aluminium
+web plates on hex standoff crankpins (``bolt``, the default) or round ones (``bolt_round``),
+with every servo; the crank's routes (hand-made plans of what the planner may choose).
 
 The Klann single sides they look at come from the fabrication cache (:mod:`tests.cache`);
 a test of the crank alone realizes the crank group alone (:func:`tests._construction.
 realize_groups`), and the contract's fast cases check the crank and the drive
-(``check_side(groups=)``), the whole side in the slow tier."""
+(``check_side(groups=)``), the whole side in the slow tier (every servo's whole side:
+``tests/test_contract.py``)."""
 
 from __future__ import annotations
 
@@ -13,24 +15,18 @@ import math
 import numpy as np
 import pytest
 
-from spiderpig import linkage, servos
+from spiderpig import servos
 from spiderpig.config import BuildConfig
 from spiderpig.construction import CRANKS as CRANK_REGISTRY
-from spiderpig.construction.base import FRAME_OUTER, Build, ConstructionError
+from spiderpig.construction.base import FRAME_OUTER, Build
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.construction.crank import (
-    BHCS,
-    NUT_H,
-    STANDOFF_KEY,
     CrankRoute,
-    KeyedCrank,
-    PrintedCrank,
     Run,
     chains_of,
     default_route,
     hex_play,
     route_of,
-    standoff_dims,
 )
 from spiderpig.fabricate import (
     SideDesign,
@@ -48,12 +44,7 @@ from tests import cache
 from tests._construction import overlapping_pairs, realize_groups
 from tests.tiers import quick
 
-TEMPLATES = {         # the Klann's: the default linkage is the Strider, whose crank differs
-    "single": lambda: linkage.build_module_template("single", linkage="klann"),
-    "double": lambda: linkage.build_module_template("double", linkage="klann"),
-    "decker": lambda: linkage.build_module_template("decker", linkage="klann"),
-    "quad": lambda: linkage.build_module_template("quad", linkage="klann"),
-}
+MODES = ("single", "double", "decker", "quad")   # the Klann's (the Strider's crank differs)
 SERVOS = servos.available()
 OTHERS = [s for s in SERVOS if s != servos.DEFAULT]
 
@@ -71,20 +62,19 @@ def _offline(tmp_path_factory):
             f.cache_clear()
 
 
-CRANKS = ["keyed", "printed"]
+CRANKS = ["bolt", "bolt_round"]
 
 
-def _cfg(mode="single", servo=servos.DEFAULT, crank="keyed") -> BuildConfig:
-    return BuildConfig(linkage="klann", module=mode, robot=False, pillar="printed",
-                       servo=servo, crank=crank)
+def _cfg(mode="single", servo=servos.DEFAULT, crank="bolt") -> BuildConfig:
+    return BuildConfig(linkage="klann", module=mode, robot=False, servo=servo, crank=crank)
 
 
-def _design(mode="single", servo=servos.DEFAULT, crank="keyed"):
+def _design(mode="single", servo=servos.DEFAULT, crank="bolt"):
     """``(template, design)`` of the Klann ``mode`` side (the plan seeded from the cache)."""
     return cache.cached_design(_cfg(mode, servo, crank))
 
 
-def _side(t=1.0, servo=servos.DEFAULT, crank="keyed", mode="single"):
+def _side(t=1.0, servo=servos.DEFAULT, crank="bolt", mode="single"):
     """``(design, the fabricated side at t)`` of the Klann ``mode`` side, from the cache."""
     cfg = _cfg(mode, servo, crank)
     return _design(mode, servo, crank)[1], cache.cached_side(cfg, t)
@@ -107,12 +97,29 @@ def _volume(shape) -> float:
     return 0.0 if shape is None else sum(s.volume for s in shape.solids())
 
 
+def _runs(design) -> tuple[Run, ...]:
+    return route_of(design.plan.layout, design.plan.topo.axes_of("crankpin")).runs
+
+
+def _hub_layer(plan) -> int:
+    """The hub plate's layer (the top crank plate, the horn screws through it)."""
+    return max(p.layer for p in plan.shapes("crank") if p.label == "crank hub")
+
+
+def _bbox(mech, name):
+    return mech.body(name).part.bounding_box()
+
+
+def _part(mech, name: str):
+    return next(b.part for b in mech.bodies if b.name == name)
+
+
 # -- the contract ---------------------------------------------------------------------
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("crank", CRANKS)
-@pytest.mark.parametrize("mode", sorted(TEMPLATES))
+@pytest.mark.parametrize("mode", MODES)
 @pytest.mark.parametrize("t", [0.0, 2.2, 4.38])
 def test_crank_stays_inside_its_claims(mode, t, crank):
     """The whole side (the fast tier checks the crank and the drive alone, below)."""
@@ -126,15 +133,6 @@ def test_the_crank_alone_stays_inside_its_claims(crank):
     assert check_side(design, tmpl.freeze_at(2.2), groups=("drive", "crank")) == []
 
 
-@pytest.mark.slow
-@pytest.mark.parametrize("mode", sorted(TEMPLATES))
-@pytest.mark.parametrize("servo", OTHERS)
-def test_every_servo_couples_inside_the_claims(servo, mode):
-    """The whole side (the fast tier checks the crank and the drive alone, below)."""
-    tmpl, design = _design(mode, servo)
-    assert check_side(design, tmpl.freeze_at(2.2)) == []
-
-
 @pytest.mark.parametrize("servo", OTHERS)
 def test_every_servo_couples_the_crank_inside_the_claims(servo):
     tmpl, design = _design(servo=servo)
@@ -146,16 +144,30 @@ def test_every_servo_couples_the_crank_inside_the_claims(servo):
 
 @pytest.mark.parametrize("crank", CRANKS)
 @pytest.mark.parametrize("mode", quick(["single", "double", "quad"], ["single"]))
-def test_every_segment_is_one_valid_solid(mode, crank):
+def test_every_crank_part_is_one_valid_solid(mode, crank):
+    """One aluminium plate per crank layer, one standoff per chain (and per journal between
+    chains), each part one valid solid turning with the crank body; the bought ones with a
+    BOM key, the plates on the laser sheets."""
     design, mech = _side(1.0, crank=crank, mode=mode)
-    segs = [b for b in mech.bodies if b.name.startswith("crank_seg")]
-    assert len(segs) == len(_runs(design)) + 1
+    note = mech.meta["crank_bolt"]
+    plates = [b for b in mech.bodies if b.name.startswith("crank_plate")]
+    assert len(plates) == note["plates"]
+    assert {int(b.name.removeprefix("crank_plate")) for b in plates} == {
+        p.layer for p in design.plan.shapes("crank", gaps=False)
+        if p.label in ("crank body", "crank hub") or p.label.startswith("web ")}
+    chains = chains_of(_runs(design))
+    assert len(note["chains"]) == len(chains)
+    pins = [b for b in mech.bodies if b.name.startswith("crank_pin_")
+            and b.name.removeprefix("crank_pin_") in
+            {n["at"] for n in note["chains"] + note["journals"]}]
+    assert len(pins) == len(chains) + len(note["journals"])
     for b in mech.bodies:
         if b.name.startswith("crank"):
             assert len(b.part.solids()) == 1, b.name
             assert b.part.is_valid, b.name
             assert b.rigid_with == design.plan.topo.crank_bodies[0]
-            assert b.fab == ("printed" if b.name.startswith("crank_seg") else "purchased")
+            assert b.fab in ("laser", "printed", "purchased"), b.name
+            assert (b.fab == "laser") == b.name.startswith("crank_plate"), b.name
             if b.fab == "purchased":
                 assert b.bom_key, b.name
 
@@ -163,11 +175,12 @@ def test_every_segment_is_one_valid_solid(mode, crank):
 @pytest.mark.parametrize("servo", quick(SERVOS, [servos.DEFAULT]))
 @pytest.mark.parametrize("t", quick([1.0, 4.38], [4.38]))
 def test_single_side_parts_do_not_intersect(servo, t):
-    """Every body, screws, nuts and keys included."""
+    """Every body, screws, standoffs and sleeves included."""
     _, mech = _side(t, servo)
-    assert any(b.name.startswith("servo_screw") for b in mech.bodies)
-    assert any(b.name.startswith("crank_nut") for b in mech.bodies)
-    assert any(b.name.startswith("crank_key") for b in mech.bodies)
+    names = {b.name for b in mech.bodies}
+    for prefix in ("servo_screw", "crank_pin_screw", "crank_pin_sleeve", "crank_plate",
+                   "crank_stub", "crank_horn_screw"):
+        assert any(n.startswith(prefix) for n in names), prefix
     assert _clashes(mech) == []
 
 
@@ -207,20 +220,16 @@ def test_horn_screws_land_in_the_horn_holes(servo):
         assert _volume(b.part & horn) < 1e-3
         assert b.bom_key.startswith("m" + pat.thread[1:].replace(".", "p") + "_")
     assert used == set(range(pat.count))
-    # the hub bolts on at the coupling face and never rises above it
-    top = mech.body(f"crank_seg{len(_runs(design))}").part.bounding_box()
+    # the hub plate bolts on at the coupling face and never rises above it
+    top = _bbox(mech, f"crank_plate{_hub_layer(design.plan)}")
     assert pytest.approx(plate_top - iface.horn_face_depth) == top.max.Z
-
-
-def _runs(design) -> tuple[Run, ...]:
-    return route_of(design.plan.layout, design.plan.topo.axes_of("crankpin")).runs
 
 
 @pytest.mark.parametrize("servo", SERVOS)
 def test_the_hub_turns_clear_of_the_inner_plate(servo):
     tmpl = _design(servo=servo)[0]
     design, mech = _side(1.0, servo)
-    hub = mech.body(f"crank_seg{len(_runs(design))}").part
+    hub = _part(mech, f"crank_plate{_hub_layer(design.plan)}")
     plate_bottom = design.plan.z(design.plan.top)[0]
     margin = design.ctx.params.margin
     r = design.ctx.interfaces["drive"].horn_radius
@@ -242,290 +251,96 @@ def test_default_route_merges_adjacent_riders_of_one_pin():
     assert route.runs == (Run("M", 2, 2), Run("M", 5, 5), Run("N", 3, 3))
 
 
+def test_chains_of_joins_runs_along_one_point():
+    """A chain: runs along one point whose webs meet, in one layer or two adjacent ones (a
+    run ending in layer 3 has its web in 4: one starting in 5 or 6 joins it); a run along
+    another point, or one a layer further on, starts a new one."""
+    a, b = Run("M", 2, 3), Run("M", 5, 6)
+    assert chains_of((a, b)) == [[a, b]]
+    assert chains_of((a, Run("M", 6, 6))) == [[a, Run("M", 6, 6)]]
+    assert chains_of((a, Run("M", 7, 7))) == [[a], [Run("M", 7, 7)]]
+    assert chains_of((a, Run("N", 5, 6))) == [[a], [Run("N", 5, 6)]]
+
+
 @pytest.mark.parametrize("crank", CRANKS)
 @pytest.mark.parametrize("mode", quick(["single", "double", "quad"], ["single"]))
-def test_crankpins_are_screwed_through(mode, crank):
+def test_crankpins_are_standoffs_screwed_into_their_webs(mode, crank):
+    """Every chain's standoff passes through its two web plates (the hex in their pockets,
+    at most ``recess_max`` short of their outer faces; the round one clamped between them),
+    a button head up into its lower end from under the lower web, one down into its upper
+    end unless the hub plate caps it (the hex's hub chain); the riders turn on its sleeve
+    (the hex's) between the plates."""
     design, mech = _side(1.0, crank=crank, mode=mode)
-    gaps = _runs(design)
-    construction = {"keyed": KeyedCrank(), "printed": PrintedCrank()}[crank]
-    top = 2 if crank == "keyed" else 1                 # the keyed chain's top web: two layers
-    for g in gaps:
-        screw = mech.body(f"crank_screw_{g.at}")
-        nut = mech.body(f"crank_nut_{g.at}")
-        assert nut.bom_key == "m3_nut"
-        assert screw.bom_key.startswith("m3_bhcs_")      # an ISO 4762 head won't fit 3 mm webs
-        sb, nb = screw.part.bounding_box(), nut.part.bounding_box()
-        # head under the lower web, tip in the nut, both inside the webs either side
-        assert design.plan.z(g.lo - 1)[0] - 1e-6 <= sb.min.Z
-        assert design.plan.z(g.hi + top)[1] + 1e-6 >= sb.max.Z
-        assert design.plan.z(g.hi + top)[1] + 1e-6 >= nb.max.Z
-        assert construction.min_nut_engage - 1e-6 <= sb.max.Z - nb.min.Z
-        # the post carries b1 with end play
-        post_len = (g.hi - g.lo + 1) * design.ctx.pitch + construction.axial_play
-        assert post_len > (g.hi - g.lo + 1) * design.ctx.pitch
-    if mode == "double":                               # both legs on one post: one joint
-        assert len(gaps) == 1
-        assert gaps[0].hi == gaps[0].lo + 1
-        if crank == "printed":
-            assert mech.body(f"crank_screw_{gaps[0].at}").bom_key == BHCS["3"].key(10)
+    c = CRANK_REGISTRY[crank].resolve(design.ctx)
+    hub = _hub_layer(design.plan)
+    by_at = {n["at"]: n for n in mech.meta["crank_bolt"]["chains"]}
+    chains = chains_of(sorted(_runs(design), key=lambda r: (r.lo, r.at)))
+    for ch in chains:
+        at = ch[0].at
+        tag = at if sum(x[0].at == at for x in chains) == 1 else f"{at}_{ch[0].lo}"
+        note = by_at[tag]
+        lo = _bbox(mech, f"crank_plate{ch[0].lo - 1}")
+        hi = _bbox(mech, f"crank_plate{ch[-1].hi + 1}")
+        pin = _bbox(mech, f"crank_pin_{tag}")
+        screw_lo = _bbox(mech, f"crank_pin_screw_lo_{tag}")
+        assert screw_lo.min.Z < lo.min.Z                  # its head under the lower web
+        assert pin.min.Z - 1e-6 <= screw_lo.max.Z <= pin.max.Z + 1e-6
+        if c.hex:
+            assert lo.min.Z + c.recess_max + 1e-6 >= pin.min.Z
+            assert hi.max.Z - c.recess_max - 1e-6 <= pin.max.Z
+            sleeve = _bbox(mech, f"crank_pin_sleeve_{tag}")
+            assert lo.max.Z - 1e-6 <= sleeve.min.Z
+            assert sleeve.max.Z <= hi.min.Z + 1e-6
+            for r in ch:                                   # its riders' layers on the sleeve
+                for k in range(r.lo, r.hi + 1):
+                    z0, z1 = design.plan.z(k)
+                    if any(design.plan.layers[m] == k for m in design.plan.topo.riders):
+                        assert z0 + 1e-6 >= sleeve.min.Z
+                        assert z1 <= sleeve.max.Z + 1e-6
+        else:                                              # clamped between the webs
+            assert lo.max.Z - 1e-6 <= pin.min.Z
+            assert pin.max.Z <= hi.min.Z + 1e-6
+        capped = ch[-1].hi + 1 == hub and c.hub_capped(design.ctx, at)
+        assert note.get("capped", False) == capped      # (the round one's note has none)
+        names = {b.name for b in mech.bodies}
+        assert (f"crank_pin_screw_hi_{tag}" in names) == (not capped)
+        if not capped:
+            assert _bbox(mech, f"crank_pin_screw_hi_{tag}").max.Z > hi.max.Z
+    if mode == "double":                               # both legs on one standoff: one joint
+        assert len(chains) == 1
+        riders = {design.plan.layers[m] for m in design.plan.topo.riders}
+        assert len(riders) == 2
+        assert riders <= set(range(chains[0][0].lo, chains[0][-1].hi + 1))
 
 
-def test_b1_has_end_play():
-    tmpl = _design()[0]
-    design, mech = _side(1.0)
-    frozen = tmpl.freeze_at(1.0)
-    (g,) = _runs(design)
-    b1_bottom = design.plan.z(g.lo)[0]
-    play = PrintedCrank().axial_play
-    post = next(g for g in design.groups if g.name == "crank").dims(design.ctx).post
-    xy = tuple(Build(design.ctx, design.plan, frozen).xy(g.at))
-    lower = mech.body("crank_seg0").part
-    slab = disc(xy, 100, b1_bottom - play + 1e-3, b1_bottom) - disc(xy, post + 0.2,
-                                                                     b1_bottom - 1, b1_bottom + 1)
-    assert _volume(lower & slab) < 1e-6                # nothing but the post near b1
-
-
-def test_post_joint_lengths():
-    crank = PrintedCrank()
-    one = crank.post_joint(3.0, 5.85, 9.0, 12.0)       # one b1 between 3 mm webs
-    assert one.screw is BHCS["3"]
-    assert one.length == 6
-    assert one.engagement >= crank.min_nut_engage
-    two = crank.post_joint(3.0, 5.85, 12.0, 15.0)      # two b1s on one post
-    assert two.length == 10
-    assert two.engagement == pytest.approx(NUT_H)
-    thick = crank.post_joint(4.5, 8.85, 13.5, 18.0)    # 4.5 mm sheet: a socket head fits
-    assert thick.screw.kind == "shcs"
-
-
-@pytest.mark.parametrize("crank", CRANKS)
-def test_too_thin_sheet_is_refused(crank):
-    with pytest.raises(ConstructionError, match="crankpin joint"):
-        design_side(TEMPLATES["single"](), BuildConfig(linkage="klann", module="single",
-                                                       robot=False, thickness=2.0, crank=crank,
-                                                       pillar="printed"))
-
-
-# -- the keyed crank ------------------------------------------------------------------------
-
-KEYED = [("strider", "double"), ("klann", "quad")]
-_KEYED: dict[tuple, tuple] = {}
-
-
-def _keyed(linkage_key: str, module: str, t: float = 1.0):
-    """(template, design, the side at ``t``) of a keyed design (the default before the bolt
-    crank, with its printed pillars), once per session."""
-    if (linkage_key, module) not in _KEYED:
-        cfg = BuildConfig(linkage=linkage_key, module=module, robot=False, crank="keyed",
-                          pillar="printed")
-        tmpl = template_for(cfg)
-        _KEYED[(linkage_key, module)] = tmpl, design_side(tmpl, cfg)
-    tmpl, design = _KEYED[(linkage_key, module)]
-    return tmpl, design, fabricate_side(design, tmpl.freeze_at(t))
-
-
-def _segments(design) -> list[range]:
-    """The layers of each printed segment, in ``crank_seg<i>`` order (the layers between runs)."""
-    in_run = {k for r in _runs(design) for k in range(r.lo, r.hi + 1)}
-    out: list[list[int]] = []
-    for k in range(design.plan.top):
-        if k in in_run:
-            continue
-        if out and out[-1][1] == k - 1:
-            out[-1][1] = k
-        else:
-            out.append([k, k])
-    return [range(a, b + 1) for a, b in out]
-
-
-def _bbox(mech, name):
-    return mech.body(name).part.bounding_box()
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize(("linkage_key", "module"), KEYED)
-def test_every_keyed_post_has_a_key_and_every_chain_its_clamp(linkage_key, module):
-    """One brass key per run, bottomed in its post's cavity with its float left under the
-    socket's ceiling, at least 1.5 mm of hex either side; 1 mm of floor between the socket
-    and the nut in the two-layer top web, 0.8 mm between the head and the first cavity."""
-    tmpl, design, mech = _keyed(linkage_key, module)
-    crank = KeyedCrank()
-    af, length = standoff_dims(STANDOFF_KEY)
-    z, segs = design.plan.z, _segments(design)
-    seg_of = {k: i for i, r in enumerate(segs) for k in r}
-    runs = _runs(design)
-    keys = [b for b in mech.bodies if b.name.startswith("crank_key")]
-    assert len(keys) == len(runs)
-    assert {b.bom_key for b in keys} == {STANDOFF_KEY} == {crank.standoff_key}
-    for c in chains_of(runs):
-        at = c[0].at
-        head_top = _bbox(mech, f"crank_screw_{at}").min.Z + BHCS["3"].head_h
-        nb = _bbox(mech, f"crank_nut_{at}")
-        for r in c:
-            kb = _bbox(mech, f"crank_key_{at}_{r.lo}")
-            assert pytest.approx(length) == kb.max.Z - kb.min.Z
-            post_top = _bbox(mech, f"crank_seg{seg_of[r.hi + 1]}").min.Z   # the web's underside
-            cavity, in_socket = post_top - kb.min.Z, kb.max.Z - post_top
-            assert cavity >= crank.min_socket - 1e-6
-            assert in_socket >= crank.min_socket - 1e-6
-            assert length - cavity >= crank.min_socket - 1e-6
-            if r is c[0]:
-                assert kb.min.Z - head_top >= crank.min_web_floor - 1e-6
-            if r is c[-1]:                            # socket ceiling: the key top + its float
-                assert nb.min.Z - (kb.max.Z + crank.key_float) >= crank.min_key_floor - 1e-6
-                assert z(c[-1].hi + 1)[0] <= nb.min.Z
-                assert z(c[-1].hi + 2)[1] + 1e-6 >= nb.max.Z
-    bom = {}
-    for b in mech.bodies:
-        if b.name.startswith("crank") and b.fab == "purchased":
-            bom[b.bom_key] = bom.get(b.bom_key, 0) + 1
-    if linkage_key == "strider":
-        assert bom == {STANDOFF_KEY: 4, "m3_bhcs_16": 2, "m3_nut": 2, "m3_shcs_6": 4}
-    assert {r.key: r.qty for r in bom_from_mechanism(mech).purchased}[STANDOFF_KEY] == len(runs)
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize(("linkage_key", "module"), KEYED)
-def test_the_clamp_loop_spans_each_chain(linkage_key, module):
-    """The nut bears in the chain's highest segment and the head in its lowest, so every
-    rider interface between them is clamped (a standoff used as the nut would clamp only
-    the segment its post is in)."""
-    tmpl, design, mech = _keyed(linkage_key, module)
-    segs = _segments(design)
-    seg_of = {k: i for i, r in enumerate(segs) for k in r}
-    for c in chains_of(_runs(design)):
-        at = c[0].at
-        lo = _bbox(mech, f"crank_seg{seg_of[c[0].lo - 1]}")
-        hi = _bbox(mech, f"crank_seg{seg_of[c[-1].hi + 1]}")
-        head_top = _bbox(mech, f"crank_screw_{at}").min.Z + BHCS["3"].head_h
-        nut_bottom = _bbox(mech, f"crank_nut_{at}").min.Z
-        assert lo.min.Z <= head_top <= lo.max.Z
-        assert hi.min.Z <= nut_bottom <= hi.max.Z
-        assert seg_of[c[-1].hi + 1] == seg_of[c[-1].hi + 2]  # the two-layer web is one segment
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize(("linkage_key", "module"), KEYED)
-@pytest.mark.parametrize("t", [0.0, math.pi / 2, math.pi, 3 * math.pi / 2])
-def test_keyed_sides_are_clash_free_round_the_cycle(linkage_key, module, t):
-    tmpl, design, mech = _keyed(linkage_key, module, t)
-    assert bad_solids(mech) == []
-    assert clashes(mech) == []
-    assert check_side(design, tmpl.freeze_at(t)) == []
-
-
-@pytest.mark.slow
-def test_the_default_designs_pay_two_layers_for_the_keyed_crank():
-    """19 layers (57 mm) on the Strider double, 17 (51 mm) on the Klann quad, proven, each
-    chain's top web two layers thick with the crank on its axis in the second. (One more
-    than before the 0.080 in frame plates: the horn's face under the inner plate drops the
-    hub a layer.)"""
-    for (lk, module), (layers, mm) in zip(KEYED, ((19, 57.0), (17, 51.0)), strict=True):
-        tmpl, design, _ = _keyed(lk, module)
-        plan = design.plan
-        assert (plan.top + 1, plan.optimal) == (layers, True)
-        # the 3 mm layers, and what the aluminium plates and any gaps add (2026-10-04)
-        assert plan.height == pytest.approx(mm + sum(plan.t(k) - 3.0 for k in range(layers))
-                                            + sum(plan.gaps.values()))
-        run_layers = {k for r in _runs(design) for k in range(r.lo, r.hi + 1)}
-        for c in chains_of(_runs(design)):
-            k = c[-1].hi + 2
-            assert k not in run_layers
-            labels = {p.label for p in plan.shapes("crank") if p.layer == k}
-            assert f"web {c[0].at}" in labels
-            assert labels & {"crank body", "crank hub"}
-
-
-def test_keyed_post_joint_numbers():
-    """The tightest keyed joint at 3 mm layers: socket 2.4, cavity 2.4 (a 4 mm key with 0.8
-    of float), 1.0 of floor under the nut, 1.8 over the head, 2.4 mm of thread."""
-    crank = KeyedCrank()
-    j = crank.post_joint(0.0, 2.85, 6.0, 11.85, first_post_top=6.0)
-    assert (j.screw, j.length) == (BHCS["3"], 10)
-    assert (j.socket, j.cavity) == pytest.approx((2.4, 2.4))
-    assert j.cavity + j.socket - standoff_dims()[1] == pytest.approx(crank.key_float)
-    assert (j.key_floor, j.head_floor, j.engagement) == pytest.approx((1.0, 1.8, NUT_H))
-    assert crank.least_pitch(2.0) == 3.0
-    # a one-layer top web holds no socket under a nut
-    assert crank.post_joint(0.0, 2.85, 6.0, 8.85) is None
-
-
-@pytest.mark.slow
-def test_a_five_mm_key_is_refused_for_the_floor_between_two_runs():
-    """A 5 mm key's cavity (3.4 mm) overflows a one-layer post into the web below it, 0.05 mm
-    over the socket of the run below: KeyedCrank.dims says so; the 4 mm key leaves 1.2."""
-    tmpl, design, _ = _keyed("strider", "double")
-    with pytest.raises(ConstructionError, match=r"5 mm hex key leaves 0\.05 mm of web"):
-        KeyedCrank(standoff_key="m3_hex_standoff_ff_5").dims(design.ctx)
-    assert KeyedCrank().dims(design.ctx).post == pytest.approx(4.25)   # 8.5 mm over 6.0
-
-
-def test_hex_play_of_a_key_in_its_pockets():
-    """A 5.0 AF key turns until its corners meet the pockets' flats: 3.13 deg in a 5.15
-    pocket, twice that between a post and its web (two pockets); a 5.65 pocket (cut for a
-    5.5 kit) 18.1 deg; none when the pocket is no wider than the key."""
+def test_hex_play_of_a_standoff_in_its_pockets():
+    """A hex turns until its corners meet the pocket's flats: a 5.0 AF one 3.13 deg in a
+    5.15 pocket, 18.1 deg in a 5.65 one, none when the pocket is no wider than the hex; the
+    crank's note gives the hex standoff's in its 0.1 mm over pockets, twice (two pockets)."""
     assert hex_play(5.0, 5.15) == pytest.approx(3.13, abs=0.01)
     assert hex_play(5.0, 5.65) == pytest.approx(18.13, abs=0.01)
     assert hex_play(5.0, 5.0) == hex_play(5.0, 4.9) == 0.0
-    pressed, floating = KeyedCrank(), CRANK_REGISTRY["keyed_float"]
-    assert (pressed.key_fit, floating.key_fit) == ("press", "float")
-    assert pressed.pocket_af() == pytest.approx(standoff_dims()[0])
-    assert floating.pocket_af() == pytest.approx(standoff_dims()[0] + 0.15)
-    assert pressed.key_play() == 0.0
-    assert pressed.key_play(0.05) == pytest.approx(2.02, abs=0.01)
-    assert floating.key_play() == pytest.approx(6.25, abs=0.01)
-    assert KeyedCrank(key_af=5.5).pocket_af() == pytest.approx(5.5)   # a measured kit
-    with pytest.raises(ConstructionError, match="key_fit"):
-        KeyedCrank(key_fit="glued").pocket_af()
-
-
-@pytest.mark.slow
-@pytest.mark.parametrize(("linkage_key", "module"), KEYED)
-def test_pressed_keys_fill_their_pockets_and_the_screws_are_threadlocked(linkage_key, module):
-    """The default keyed crank cuts its hex pockets to the key (no play, the meta says so)
-    and buys a drop of threadlocker per chain screw; the sliding-fit one neither."""
-    tmpl, design, mech = _keyed(linkage_key, module)
-    note = mech.meta["crank_key"]
-    chains = chains_of(_runs(design))
-    assert note["fit"] == "press"
-    assert note["play_deg"] == 0.0
-    assert note["threadlocker"]
-    assert note["pocket_af_mm"] == pytest.approx(note["key_af_mm"])
-    assert note["keys"] == len(_runs(design))
-    locks = [e for e in mech.bom_extras if e.key == "threadlocker_222"
-             and e.where.startswith("crank screw")]
-    assert len(locks) == len(chains)
-    assert sum(e.qty for e in locks) == pytest.approx(0.01 * len(chains))
-    assert CRANK_REGISTRY["keyed_float"].lock_key is None
+    design, mech = _side(1.0)
+    c = CRANK_REGISTRY["bolt"].resolve(design.ctx)
+    note = mech.meta["crank_bolt"]
+    assert note["pocket_af_mm"] == pytest.approx(c.hex_af + c.hex_fit)
+    assert note["play_deg"] == pytest.approx(2 * hex_play(c.hex_af, c.hex_pocket_af()), abs=0.01)
+    assert 0 < note["play_deg"] < 2 * hex_play(5.0, 5.15)
 
 
 # -- crank routes: hand-made plans of what the planner may choose ---------------------------
 
-# the printed crank's joints: its one-layer webs are what these layouts leave room for
-KLANN = BuildConfig(linkage="klann", robot=False, module="single", crank="printed",
-                    pillar="printed")
-TROTBOT = BuildConfig(robot=False, module="single", linkage="trotbot", crank="printed",
-                      pillar="printed")
-TROT_LAYERS = {"b4": 2, "b3": 3, "b5": 4, "b2": 5, "b1": 6, "b6": 7}
-ROUTES = {  # config, link layers, top, route, detour point, screw length per joint
-    # b1's run goes on over an empty layer above it (below it)
-    "past b1": (KLANN, {"b1": 2, "b3": 4, "b4": 4, "b2": 5}, 7,
-                CrankRoute((Run("M", 2, 3),)), None, {"M": 10}),
-    "under b1": (KLANN, {"b1": 3, "b3": 4, "b4": 4, "b2": 5}, 7,
-                 CrankRoute((Run("M", 2, 3),)), None, {"M": 10}),
-    # a detour opposite the crankpin in an empty layer; its lower web shares layer 3 with
-    # the upper web of b1's run
-    "detour": (KLANN, {"b1": 2, "b3": 3, "b4": 3, "b2": 5}, 7,
-               CrankRoute((Run("M", 2, 2), Run("X", 4, 4))), ("X", 14.0, 180.0),
-               {"M": 6, "X": 6}),
-    "no bearing": (KLANN, {"b1": 2, "b3": 3, "b4": 3, "b2": 4}, 6,
-                   CrankRoute((Run("M", 2, 2),), bearing=False), None, {"M": 6}),
-    # TrotBot's B8 (b6) sweeps across O: it sits in the crankpin's run beside the post (with
-    # pin J8's head and cap, which would sweep across a web), b4 at the run's foot
-    "trotbot": (TROTBOT, TROT_LAYERS, 12, CrankRoute((Run("J1", 2, 8),)), None, {"J1": 25}),
-    # ... or b4 on a run of its own, its upper web on the next run's lower web: one screw
-    "trotbot chain": (TROTBOT, TROT_LAYERS, 12,
-                      CrankRoute((Run("J1", 2, 2), Run("J1", 5, 8))), None, {"J1": 25}),
+KLANN = BuildConfig(linkage="klann", robot=False, module="single")
+ROUTES = {  # link layers, top, route, detour point (name, r, degrees)
+    # b1's run goes on over an empty layer above it (below it): its sleeve through that layer
+    "past b1": ({"b1": 6, "b2": 4, "b3": 5, "b4": 5}, 10, CrankRoute((Run("M", 6, 7),)), None),
+    "under b1": ({"b1": 6, "b2": 4, "b3": 3, "b4": 3}, 9, CrankRoute((Run("M", 5, 6),)), None),
+    # a detour opposite the crankpin in an empty layer, on a standoff of its own capped by
+    # the hub plate, a journal standoff on O between the two chains
+    "detour": ({"b1": 2, "b2": 4, "b3": 3, "b4": 3}, 9,
+               CrankRoute((Run("M", 2, 2), Run("X", 6, 6))), ("X", 14.0, 180.0)),
+    "no bearing": ({"b1": 6, "b2": 4, "b3": 5, "b4": 5}, 9,
+                   CrankRoute((Run("M", 6, 6),), bearing=False), None),
 }
 _ROUTED: dict[str, tuple] = {}
 
@@ -544,14 +359,10 @@ def _routed(config, layers, top, route, point=None):
 def _route_case(name: str):
     """(template, design, the side fabricated at t = 4.38) for a case of :data:`ROUTES`."""
     if name not in _ROUTED:
-        config, layers, top, route, point, _ = ROUTES[name]
-        tmpl, design = _routed(config, layers, top, route, point)
+        layers, top, route, point = ROUTES[name]
+        tmpl, design = _routed(KLANN, layers, top, route, point)
         _ROUTED[name] = tmpl, design, fabricate_side(design, tmpl.freeze_at(4.38))
     return _ROUTED[name]
-
-
-def _part(mech, name: str):
-    return next(b.part for b in mech.bodies if b.name == name)
 
 
 _CRANK_ONLY: dict[str, tuple] = {}
@@ -564,8 +375,8 @@ def _route_crank(name: str):
         if name in _ROUTED:
             tmpl, design, _ = _ROUTED[name]
         else:
-            config, layers, top, route, point, _ = ROUTES[name]
-            tmpl, design = _routed(config, layers, top, route, point)
+            layers, top, route, point = ROUTES[name]
+            tmpl, design = _routed(KLANN, layers, top, route, point)
         _CRANK_ONLY[name] = tmpl, design, realize_groups(design, 4.38, ["crank"],
                                                          tmpl.freeze_at(4.38))
     return _CRANK_ONLY[name]
@@ -577,41 +388,54 @@ def test_every_route_builds_inside_its_claims(case):
     tmpl, design, mech = _route_case(case)
     assert check_side(design, tmpl.freeze_at(2.2)) == []
     assert clashes(mech) == []
+    assert bad_solids(mech) == []
     crank = [b for b in mech.bodies if b.name.startswith("crank")]
     for b in crank:
         assert len(b.part.solids()) == 1, b.name
         assert b.part.is_valid, b.name
-    runs, lengths = ROUTES[case][3].runs, ROUTES[case][-1]
-    assert len([b for b in crank if b.name.startswith("crank_seg")]) == len(runs) + 1
-    # one joint per point (a chain of runs along one point shares its screw)
-    screws = {b.name: b.bom_key for b in crank if b.name.startswith("crank_screw")}
-    assert screws == {f"crank_screw_{at}": f"m3_bhcs_{n}" for at, n in lengths.items()}
-    nuts = {b.name: b.bom_key for b in crank if b.name.startswith("crank_nut")}
-    assert nuts == {f"crank_nut_{at}": "m3_nut" for at in lengths}
+    runs = ROUTES[case][2].runs
+    # one standoff per chain (a chain of runs along one point shares it), one journal
+    # standoff between two chains a layer or more apart
+    note = mech.meta["crank_bolt"]
+    assert sorted(n["at"] for n in note["chains"]) == sorted({r.at for r in runs})
+    assert len(note["journals"]) == (1 if case == "detour" else 0)
     bought = {r.key for r in bom_from_mechanism(mech).purchased}
-    assert {*screws.values(), *nuts.values()} <= bought
+    keys = {b.bom_key for b in crank if b.fab == "purchased"}
+    # (the horn screws' DIN 988 shims are bought per thickness: hardware.bom.split_shims)
+    assert {k for k in keys if not k.startswith("shim_")} <= bought
+    assert {n["standoff"] for n in note["chains"] + note["journals"]} <= keys
 
 
-@pytest.mark.parametrize(("case", "rider", "bare"), [("past b1", 2, 3), ("under b1", 3, 2)])
-def test_a_run_past_its_rider_is_bare_with_end_play_at_the_rider_only(case, rider, bare):
-    tmpl, design, mech = _route_crank(case)
-    z, play = design.plan.z, PrintedCrank().axial_play
-    xy = tuple(Build(design.ctx, design.plan, tmpl.freeze_at(4.38)).xy("M"))
-    lower, upper = _part(mech, "crank_seg0"), _part(mech, "crank_seg1")
-    # the post runs bare through the layer b1 isn't in
-    post = disc(xy, 3.01, *z(bare))
-    assert _volume(lower & (disc(xy, 100, *z(bare)) - post)) < 1e-6
-    assert _volume(lower & post) > 0.9 * math.pi * (3**2 - 1.7**2) * design.ctx.pitch
-    # end play on b1's side only: the web above the run is set back if b1 is under it,
-    # the web below if b1 is over it
-    assert pytest.approx(z(4)[0] + (play if rider == 3 else 0)) == upper.bounding_box().min.Z
-    under = disc(xy, 100, z(2)[0] - play + 1e-3, z(2)[0] - 1e-3) - disc(xy, 3.01, 0, 100)
-    assert (_volume(lower & under) > 1.0) == (rider == 3)
+@pytest.mark.parametrize(("case", "rider", "bare"), [("past b1", 6, 7), ("under b1", 6, 5)])
+def test_a_run_past_its_rider_carries_the_sleeve_through_the_bare_layer(case, rider, bare):
+    """No plate in a run's layer: the standoff and its sleeve go on through the layer the
+    rider isn't in, the sleeve between the two webs, the rider's layer on it."""
+    _tmpl, design, got = _route_crank(case)
+    z = design.plan.z
+    names = {b.name for b in got.bodies}
+    assert f"crank_plate{bare}" not in names
+    assert f"crank_plate{rider}" not in names
+    run = ROUTES[case][2].runs[0]
+    lo, hi = (_part(got, f"crank_plate{k}").bounding_box()
+              for k in (run.lo - 1, run.hi + 1))
+    sleeve = _part(got, "crank_pin_sleeve_M").bounding_box()
+    pin = _part(got, "crank_pin_M").bounding_box()
+    assert lo.max.Z - 1e-6 <= sleeve.min.Z
+    assert sleeve.max.Z <= hi.min.Z + 1e-6
+    for k in (rider, bare):
+        assert z(k)[0] + 1e-6 >= sleeve.min.Z
+        assert z(k)[1] <= sleeve.max.Z + 1e-6
+        assert z(k)[0] >= pin.min.Z
+        assert z(k)[1] <= pin.max.Z
+    # the sleeve fills the webs' gap but for the riders' end play (none: pressed, capped)
+    c = CRANK_REGISTRY["bolt"].resolve(design.ctx)
+    length = sleeve.max.Z - sleeve.min.Z
+    assert hi.min.Z - lo.max.Z - c.sleeve_play - 1e-3 <= length
 
 
 def test_a_crank_point_turns_with_the_crank():
-    config, layers, top, route, point, _ = ROUTES["detour"]
-    tmpl, design = _routed(config, layers, top, route, point)
+    layers, top, route, point = ROUTES["detour"]
+    tmpl, design = _routed(KLANN, layers, top, route, point)
     for t in (0.0, 1.0, 4.38):
         build = Build(design.ctx, design.plan, tmpl.freeze_at(t))
         x, m = build.xy("X") - build.xy("O"), build.xy("M") - build.xy("O")
@@ -620,29 +444,26 @@ def test_a_crank_point_turns_with_the_crank():
 
 
 def test_without_the_bearing_the_crank_ends_at_its_lowest_web():
-    tmpl, design, got = _route_crank("no bearing")
-    bottom = _part(got, "crank_seg0").bounding_box().min.Z
-    assert pytest.approx(design.plan.z(1)[0]) == bottom   # the web's face, no journal stub
+    _tmpl, design, got = _route_crank("no bearing")
+    names = {b.name for b in got.bodies}
+    assert not any(n.startswith("crank_stub") for n in names)   # no journal stub
+    run = ROUTES["no bearing"][2].runs[0]
+    bottom = min(b.part.bounding_box().min.Z for b in got.bodies
+                 if b.name.startswith("crank_plate"))
+    assert pytest.approx(design.plan.z(run.lo - 1)[0]) == bottom   # the web on its floor
     assert FRAME_OUTER not in got.cuts                 # no journal hole in the outer plate
 
 
-def test_a_joint_no_stock_screw_fits_is_reported():
-    """TrotBot's shortest run (b4, J8's head, b1, b6, J8's cap): webs 21 mm apart. The plan's
-    z checks it (the crank's ``check_route``), so the layering doesn't even make a plan; the
-    construction would say so too."""
+def test_a_lowest_web_no_stock_stub_reaches_is_reported():
+    """The stub standoff from the lowest web down into the outer frame plate comes in stock
+    lengths (M3 round, 6-30 mm): a web in layer 11 is out of its reach. The plan's z checks
+    it (the crank's ``check_route``), so the layering doesn't even make a plan."""
     from spiderpig.stack import PlanReject
 
-    layers = {"b4": 2, "b2": 3, "b1": 4, "b5": 4, "b6": 5, "b3": 5}
-    with pytest.raises(PlanReject, match=r"no stock screw fits the crankpin joint at J1"):
-        _routed(TROTBOT, layers, 9, CrankRoute((Run("J1", 2, 6),)))
-
-
-def test_pockets_that_meet_are_reported():
-    """A detour 4 mm from the crankpin: X's head pocket would cut M's nut out of layer 3."""
-    config, layers, top, route, _, _ = ROUTES["detour"]
-    tmpl, design = _routed(config, layers, top, route, ("X", 22.0, 8.0))
-    with pytest.raises(ConstructionError, match="pockets for M and X"):
-        fabricate_side(design, tmpl.freeze_at(1.0))
+    with pytest.raises(PlanReject, match=r"no stock stub standoff reaches the outer frame plate "
+                                         r"from the lowest web \(layer 11\)"):
+        _routed(KLANN, {"b1": 12, "b2": 10, "b3": 11, "b4": 11}, 15,
+                CrankRoute((Run("M", 12, 12),)))
 
 
 # -- the Strider decker and quad on the hex crank (the debug of 2026-10-05) -----------------
@@ -695,6 +516,7 @@ def test_the_upper_end_of_a_hex_pin_uses_the_air_over_its_plate():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("module", ["decker", "quad"])
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_the_strider_decker_and_quad_plan_on_the_hex_crank(module):
     """The Strider's decker and quad default to the hex-standoff crank (they were on the
     round friction crank, whose hub chain screw no assembly order drives): each plans, every
@@ -723,3 +545,36 @@ def test_the_strider_decker_and_quad_plan_on_the_hex_crank(module):
         if ch[-1].hi + 1 == hub:
             assert capped
             assert not j.screw_hi
+
+
+
+def test_a_screw_key_reads_back_as_its_kind_and_length():
+    from spiderpig.hardware.fasteners import SCREWS
+    from spiderpig.hardware.fasteners import parse as screw_from_key
+
+    for key, kind in (("m3_shcs_10", SCREWS["shcs", "3"]), ("m3_bhcs_8", SCREWS["bhcs", "3"])):
+        sk, length = screw_from_key(key)
+        assert (sk, length) == (kind, float(key.rsplit("_", 1)[1]))
+        assert sk.key(length) == key
+    assert screw_from_key("m3_nut") is None
+    assert screw_from_key("m5_shcs_10") is None        # no M5 kind modelled
+
+
+def test_the_hub_sits_right_under_the_inner_plate_when_the_horn_needs_no_layer():
+    """The XL430's horn face is 3.175 mm under the inner plate's top face, which is the
+    0.125 in plate's own bottom face: the horn takes no layer of the stack
+    (``horn_layers`` 0), its layers are the plate's and the hub's is the one under it."""
+    from spiderpig.construction.crank import hub_layers
+    from spiderpig.fabricate import side_problem, template_for
+    from spiderpig.stack import Layout
+
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False, frame_sheet="al5052_3p2mm",
+                      servo="xl430_w250")
+    ctx, groups, _ = side_problem(template_for(cfg), cfg)
+    drive = ctx.interfaces["drive"]
+    assert drive.horn_layers == 0
+    assert drive.horn_face_depth == pytest.approx(drive.plate_t)
+    hub_t = next(g for g in groups if g.name == "crank").dims(ctx).hub_thickness
+    horn, hub = hub_layers(Layout({}, 8, ctx.pitch), drive, hub_t)
+    assert horn.start == 8          # from the inner plate up into the servo
+    assert hub == range(7, 8)

@@ -21,6 +21,13 @@ dependencies = [
     "pygltflib>=1.16",
     "mujoco>=3.14.0",
     "mcp>=2.2",
+    # imported directly (spiderpig/mcp/, spiderpig/server/app.py), not only through
+    # fastapi / mcp: floors at what uv.lock resolves
+    "pydantic>=2.13",
+    "anyio>=4.13",
+    "starlette>=1.0",
+    # OCP (OCC's bindings) is imported directly too, but comes with build123d as
+    # cadquery-ocp, whose version build123d pins: left implicit
 ]
 
 [project.scripts]
@@ -34,6 +41,9 @@ dev = [
     "pytest-playwright>=0.6",
     "httpx>=0.28.1",
     "pytest-xdist>=3.8.0",
+    "coverage>=7.16.2",
+    "pytest-cov>=7.1.0",
+    "import-linter>=2.15",
 ]
 
 [tool.uv]
@@ -63,6 +73,20 @@ extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PT", "NPY"]
+# W6 (docs/agentlib/ROADMAP.md): ruff's own rules, comprehensions, performance, returns, blind
+# excepts and pylint's errors
+extend-select = ["RUF", "C4", "PERF", "PIE", "RET", "BLE", "PLE"]
+# the math and units the strings and docstrings write on purpose: ×, the en dash of a range,
+# the minus sign
+allowed-confusables = ["×", "–", "−"]
+
+[tool.ruff.lint.per-file-ignores]
+# the split packages re-export every name of the module they were (W5); __all__ keeps the
+# old public list
+"spiderpig/api/__init__.py" = ["F401"]
+# the architecture page's generator (a one-off script, rewritten with the docs in W7): two
+# style findings of W6's rules left to that rewrite
+"docs/architecture/build_page.py" = ["RUF005", "RUF059"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -71,6 +95,7 @@ markers = [
     "e2e: end-to-end Playwright tests (opt-in; run with `pytest -m e2e`)",
     "slow: the bakes, the CLI build, the MuJoCo runs and the gait tuner (`-m 'not slow'` to skip)",
     "fixture_regen: a recorded fixture's currency test (also slow; `mise run test-fixtures` runs them with --regen)",
+    "no_fabricate: a seam test: fails if spiderpig.fabricate.fabricate or fabricate_side runs (tests/conftest.py)",
     # one module marker per test (tests/_modules.py gives each file's default; docs/agentlib/TESTING.md)
     "linkage: linkages, kinematics, the walk model (`mise run test-linkage`)",
     "planner: the layer planner, the crank router, recommendations (`mise run test-planner`)",
@@ -81,3 +106,68 @@ markers = [
     "sim: MuJoCo and the glTF bake (`mise run test-sim`)",
     "server: the viewer's server and `spiderpig view` (`mise run test-server`)",
 ]
+
+# pyright (viewer/node_modules/.bin/pyright, a pinned viewer devDependency; `mise run
+# pyright`): basic mode, measured by the scorecard (tests/scorecard.py) and ratcheted in CI
+# (`mise run pyright-check`, tests/pyright_baseline.py: the error count only goes down). The
+# compiled extensions without stubs (OCP, mujoco) get typings/: their names are Any, which
+# silences their noise without turning a rule off anywhere else.
+[tool.pyright]
+include = ["spiderpig"]
+exclude = ["**/node_modules", "**/__pycache__", "spiderpig/viewer/dist", "build", ".spiderpig"]
+stubPath = "typings"
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+reportMissingModuleSource = false
+# basic mode leaves it off; a name a branch may not have bound is a bug waiting (W6)
+reportPossiblyUnboundVariable = "error"
+
+# coverage.py over the package (the scorecard's quick-tier coverage: pytest-cov, which
+# combines the xdist workers' data)
+[tool.coverage.run]
+source = ["spiderpig"]
+omit = ["spiderpig/viewer/*"]
+# measure the Python subprocesses too (spiderpig.workers' jobs, the CLI runs): pytest-cov 7
+# no longer does; coverage.py's own patch, their data combined with the run's
+patch = ["subprocess"]
+
+[tool.coverage.report]
+skip_empty = true
+
+# The engine's layers (docs/agentlib/ROADMAP.md, W5): a layer imports only those under it.
+# `uv run lint-imports` (`mise run lint`, CI); each exception names its reason.
+[tool.importlinter]
+root_package = "spiderpig"
+
+[[tool.importlinter.contracts]]
+name = "layers"
+type = "layers"
+# The front-ends may start one another (the MCP's `view` tool runs the viewer's server:
+# `:`, not independent). The strength check rates the joints at the sim's loads, so it
+# sits over the sim.
+layers = [
+    "spiderpig.mcp : spiderpig.server : spiderpig.cli",
+    "spiderpig.api",
+    "spiderpig.bake | spiderpig.build | spiderpig.strength",
+    "spiderpig.sim",
+    "spiderpig.fabricate",
+    "spiderpig.construction",
+    "spiderpig.stack",
+    "spiderpig.linkage",
+]
+# The written exceptions (lazy imports, each in one function):
+ignore_imports = [
+    # `spiderpig bake` / `spiderpig build`'s main() and its up-to-date check plan through the
+    # store (api.plan_config), as every command does; the modules' library functions don't
+    "spiderpig.bake -> spiderpig.api",
+    "spiderpig.build -> spiderpig.api",
+    "spiderpig.uptodate -> spiderpig.api",
+]
+
+[[tool.importlinter.contracts]]
+name = "hardware and materials sit beside construction"
+type = "forbidden"
+source_modules = ["spiderpig.hardware", "spiderpig.materials"]
+forbidden_modules = ["spiderpig.construction"]

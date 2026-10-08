@@ -30,7 +30,14 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import CRANK_SHEET, DEFAULT_CRANKS, BuildConfig
+from spiderpig.config import (
+    CRANK_SHEET,
+    DEFAULT_CRANKS,
+    REMOVED_PARAMS,
+    BuildConfig,
+    removed_construction,
+    removed_param,
+)
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
 from spiderpig.hardware.catalog import CATALOG
@@ -280,8 +287,7 @@ class MaterialsSpec:
 
 @dataclass(frozen=True)
 class ConstructionsSpec:
-    """Constructions of the frame pivots, the link pins (:data:`construction.AXLES`) and
-    the crank (:data:`construction.CRANKS`)."""
+    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``)."""
 
     pillar: str | None = None
     pin: str | None = None
@@ -476,20 +482,16 @@ def nearest(key: str, options: Iterable[str]) -> str | None:
     return close[0] if close else None
 
 
-def sheet_keys() -> list[str]:
+def sheet_keys(metal: bool = False) -> list[str]:
     _load_catalog()
-    return sorted(k for k, it in CATALOG.items() if it.category == "sheet")
+    return sorted(k for k, it in CATALOG.items()
+                  if it.category == "sheet" and (it.dims.get("metal") or not metal))
 
 
 def module_keys() -> list[str]:
     """Every leg module any linkage offers (the union; :func:`validate` checks the exact
     ones)."""
-    out: list[str] = []
-    for key in linkage.available():
-        for m in linkage.get(key).leg_modules:
-            if m not in out:
-                out.append(m)
-    return out
+    return list(dict.fromkeys(m for k in linkage.available() for m in linkage.get(k).leg_modules))
 
 
 class _Validator:
@@ -575,7 +577,8 @@ class _Validator:
         if tol is not None and value is None:
             self.err(f"{path}.tol", "tol goes with value")
 
-    def targets(self, v, section: str, kind: str | None, lk=None) -> None:
+    def targets(self, v, section: str, kind: str | None,
+                lk: linkage.Linkage | None = None) -> None:
         table = TARGET_FIELDS[section]
         allowed = [n for n, f in table.items() if kind is None or kind in f.kinds]
         if not isinstance(v, Mapping):
@@ -591,6 +594,8 @@ class _Validator:
             if name in allowed:
                 if (has is not None and section == "motion" and name in OUTPUT_TARGETS
                         and name not in has):
+                    assert lk is not None  # has is set only for a linkage
+                    assert lk.output is not None  # with an output
                     others = [n for n in allowed if n not in OUTPUT_TARGETS]
                     its = (f"its metrics: {', '.join(has)}" if has else
                            f"an {lk.output.motion} output is measured by its extent alone "
@@ -619,8 +624,7 @@ class _Validator:
 
 def _kind(v) -> str:
     return {dict: "an object", list: "a list", str: "a string", bool: "a boolean",
-            int: "a number", float: "a number", type(None): "null"}.get(type(v),
-                                                                         type(v).__name__)
+            int: "a number", float: "a number", type(None): "null"}.get(type(v), type(v).__name__)
 
 
 def validate(data: Mapping) -> list[SpecError]:
@@ -628,8 +632,10 @@ def validate(data: Mapping) -> list[SpecError]:
     v = _Validator()
     if not isinstance(data, Mapping):
         return [SpecError("", f"a spec is an object, got {_kind(data)}")]
-    top = v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
-                           "constructions", "fit", "budget", "outputs"))
+    # (obj returns a mapping as it is: top is data, its unknown fields reported)
+    v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
+                     "constructions", "fit", "budget", "outputs"))
+    top = data
     version = top.get("version", SPEC_VERSION)
     if str(version) != SPEC_VERSION:
         v.err("version", f"unknown spec version {version!r}; this engine reads version "
@@ -737,19 +743,29 @@ def validate(data: Mapping) -> list[SpecError]:
         elif ls is not None:
             for k, s in ls.items():
                 v.string(s, f"materials.link_sheets.{k}", sheet_keys())
-        v.string(m.get("sheet"), "materials.sheet", sheet_keys())
-        v.string(m.get("frame_sheet"), "materials.frame_sheet", sheet_keys())
-        v.string(m.get("crank_sheet"), "materials.crank_sheet", sheet_keys())
+        for what in ("sheet", "frame_sheet", "crank_sheet"):
+            v.string(m.get(what), f"materials.{what}", sheet_keys())
+        if (cs := m.get("crank_sheet")) in sheet_keys() and cs not in sheet_keys(metal=True):
+            v.err("materials.crank_sheet", f"{cs!r} is not metal: the crank's plates are aluminium "
+                  "(the acrylic crank was removed on 2026-10-07)", sheet_keys(True), CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
     c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
     if c is not None:
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
-        v.string(c.get("pillar"), "constructions.pillar", sorted(construction.AXLES))
-        v.string(c.get("pin"), "constructions.pin", sorted(construction.AXLES))
-        v.string(c.get("crank"), "constructions.crank", sorted(construction.CRANKS))
-    f = v.obj(top.get("fit"), "fit", (*FIT_FIELDS, "kerf_mm", "sheet_size_mm"))
+        for what in ("pillar", "pin", "crank"):
+            reg = sorted(construction.CRANKS if what == "crank" else construction.AXLES)
+            if gone := removed_construction(what, c.get(what)):   # names the replacement
+                v.err(f"constructions.{what}", gone[0], reg, gone[1])
+            else:
+                v.string(c.get(what), f"constructions.{what}", reg)
+    f = v.obj(top.get("fit"), "fit", (*FIT_FIELDS, *REMOVED_PARAMS, "kerf_mm", "sheet_size_mm"))
     if f is not None:
+        for name in REMOVED_PARAMS:
+            if name in f:
+                why = removed_param(name)
+                assert why is not None  # name is a removed param, given no value
+                v.err(f"fit.{name}", why, FIT_FIELDS)
         for name in FIT_FIELDS:      # (servo_screw_web_t 0: no front screw left out)
             if name in FIT_NONNEG:
                 v.number(f.get(name), f"fit.{name}", nonneg=True)
@@ -834,7 +850,7 @@ def spec_schema() -> dict:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://spiderpig/schema/spec-v1.json",
         "title": "spiderpig Spec v1",
-        "description": __doc__.split("\n\n")[0],
+        "description": (__doc__ or "").split("\n\n")[0],
         "type": "object", "additionalProperties": False,
         "required": ["kind", "linkage"],
         "properties": {
@@ -877,7 +893,7 @@ def spec_schema() -> dict:
                     "servo": {"enum": servos.available(), "default": servos.DEFAULT},
                     "frame_sheet": {"enum": sheet_keys(), "default": BuildConfig.frame_sheet,
                                     "description": "the frame and centre plates' sheet"},
-                    "crank_sheet": {"enum": sheet_keys(), "default": CRANK_SHEET,
+                    "crank_sheet": {"enum": sheet_keys(metal=True), "default": CRANK_SHEET,
                                     "description": "the crank's plates' sheet"},
                     "link_sheets": {"type": "object",
                                     "additionalProperties": {"enum": sheet_keys()},

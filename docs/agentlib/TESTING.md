@@ -15,13 +15,54 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 | `mise run test-quick` | `-m "not slow and not e2e" -n 4` (every module's fast tier) | before handing back |
 | full: `mise run remote-test`, or locally `pytest -p no:warnings -m 'not e2e' -n 12 --dist worksteal` | everything but the browser tests | before a merge |
 | `mise run test-fixtures` | the currency tests (`-m fixture_regen`) with `--regen` | after an intended engine change |
-| `mise run test-viewer` | `npm run typecheck` (P1 adds vitest) | viewer edits |
+| `mise run test-viewer` | `npm run typecheck && npm test` (vitest) | viewer edits |
 | `mise run gate -- snapshot DIR` / `compare DIR` | the identity gate (below) | before / after a product change |
+| `mise run gate -- doc DIR` | `docs/agentlib/DESIGNS.md` from a snapshot | with each new baseline |
+| `mise run scorecard` | every ROADMAP number (below) | before and after a workstream |
+| `mise run doc-check -- --strict` | the docs' backticked names against the code | doc edits (CI blocks) |
 
 `<module>` is one of `linkage`, `planner`, `construction`, `hardware`, `strength`, `api`,
 `sim`, `server`. Pytest args go after `--` (`mise run test-planner -- -k route -x`);
 `SPIDERPIG_TIER_WORKERS` changes `-n`. A module with no fast test yet passes and says so
 (`tests/tiers.py`'s runner turns pytest's "no tests" into success).
+
+## The scorecard, CI, the doc check
+
+`mise run scorecard` (`tests/scorecard.py`) writes `build/scorecard.json` and prints a table:
+`spiderpig build --profile` of the Strider double (an empty store, then the same store: the
+stages, wall and CPU), each module tier's and the quick tier's wall, CPU and tests (the
+quick tier under coverage.py, `COVERAGE_CORE=sysmon`, pytest-cov combining the workers; its
+10 slowest tests), pyright's errors (`[tool.pyright]`, basic; OCP and mujoco typed Any by
+`typings/`), ruff's `RUF` findings, every module over 800 lines, CLAUDE.md's lines, the doc
+check's misses and the load average around each section. `--gate`, `--full` (`--cold`: on
+an empty test cache) and `--audit` add the heavy ones; the build runs 3 times (`--runs`),
+medians reported; the static checks run alone (`--parallel-static`: beside the tiers);
+`--compare A.json B.json` prints changed or non-zero exit codes first, warns when the two
+used other xdist workers or ran at loads over 2x apart, then every delta. CPU is each process's `wait4` rusage (its xdist
+workers included). The baseline is `docs/agentlib/scorecard-baseline.json`.
+
+CI (`.github/workflows/ci.yml`: pushes to master and every PR, read-only token, a newer
+run of a ref cancels the older): ruff (W6's extended rules), pyright's ratchet (`mise run pyright-check`:
+the count against `tests/pyright-baseline.json`, which only goes down; `-- --update` lowers it),
+`uv lock --check`, the viewer's typecheck + vitest,
+the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages installed with
+`SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
+cache restored and saved with `actions/cache`, keyed by the engine version, `python -m
+spiderpig.tools.engine_version`, plus `uv.lock` and `tests/cache.py`: no restore-keys, so a
+new engine starts empty), `lint-imports`, and the doc check with `--strict` (blocking
+since W7). `.pre-commit-config.yaml` runs ruff and
+`uv lock --check` (opt-in: `uvx pre-commit install`).
+
+`mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
+task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
+AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md
+statically against the package's AST (identifiers and key-like strings; docstrings,
+comments and prose strings name nothing; no engine import); `-v` lists every check,
+`--strict` fails on a miss (CI runs it so, and `tests/test_doc_check.py` checks the default
+docs have none). `tests/doc_check_allow.txt` holds what is legitimately not code (output file
+names, protocol fields, the roadmap's records of removed names), never drift. The dated
+records under `docs/history/` are never checked (the check skips that folder): each is headed by its
+date and status, and names the code as it was.
 
 ## Markers
 
@@ -35,6 +76,27 @@ test with two module markers, stops the run with the list. Adding a test file = 
 `slow` (> ~5 s, or a robot/side fabricated outside the cache) and `e2e` are unchanged;
 `tiers.quick(values, keep)` still keeps one cheap case of a heavy parametrized test in the
 fast tiers. `fixture_regen` marks a recorded fixture's currency test (always with `slow`).
+A test not marked `slow` that takes over 5 s (setup + call + teardown;
+`SPIDERPIG_SLOW_WARN_S`) is listed at the end of the run, a warning only. The roadmap
+asked for a failure when a test is over the budget twice in a row; it stays warn-only by
+decision (W4a review): on the shared, loaded box every test slows down, and a timing
+failure would be noise. Make it fast through a seam or the cache, keep a cheap case quick, or mark it
+`slow` with a reason in the commit.
+
+**Seam tests** (`tests/test_seam_*.py`, W4a): a construction's or the planner's rule on
+inputs the test states, built with `tests/_ctx.py` (`topology()`, `context()`, `layout()`,
+`link_claim()`, `disc_claim()`: a few links, an axle, a crank point in a few lines), each
+in milliseconds. They are marked `no_fabricate`: the conftest swaps
+`spiderpig.fabricate.fabricate` / `fabricate_side`'s code for a refusal while one runs, so a
+fabrication fails the test whatever name it was imported under. `tests/brute.py` also takes
+a hand-built problem with no router (the first layering that plans), for small
+`StackProblem`s.
+
+**The walking model's foot z**: a session fixture seeds each default design's plan (and its
+leg hint's single module) from the test cache before `walk._default_plan_z`, so a walker
+re-makes and verifies the plan instead of searching (`tests._linkage.seed_default_plan`);
+the `foot_z` fixture is generated under `tests._linkage.node_budget` (no clock, 4000 search
+steps), so it doesn't depend on the machine's load.
 
 ## The fabrication cache (`tests/cache.py`)
 
@@ -70,11 +132,19 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   took) instead of searching. A re-made plan whose gaps, thicknesses or heads differ from
   the record is thrown away and solved again (logged). A seeded design carries the
   recorded `optimal` / `proof` / `cost`.
-- **Keying**: `CACHE_DIR` is `design.engine_version()` (every engine source minus
-  docstrings, the planner's defaults) plus a hash of this cache's `FORMAT`, the Python,
-  build123d, OCP and numpy versions. An engine edit is a new folder: the first run after
-  it builds each entry once (per machine, not per worker), nothing is invalidated in
-  place. Entries: `mech/<cfg.key>_<side|robot>_t<t>/` and `stores/<cfg.key>_t<t>/`.
+- **Keying** (W3b, incremental): each layer is keyed by the code it can reach
+  (`spiderpig/keys.py`: the closure of its roots through the import graph, symbol by
+  symbol, lazy imports and the linkage registry's auto-import included, docstrings
+  stripped; `python -m spiderpig.keys --why MODULE:NAME` says how a symbol is reached),
+  plus a hash of this cache's `FORMAT`, the Python, build123d, OCP and numpy versions:
+  plans in `plans/<keys.plan_key()>-<tag>/<cfg.key>.json`, fabrications in
+  `fab/<fabcache.folder_name()>-<tag>/<cfg.key>_<side|robot>_t<t>/` (the plan's code plus
+  every `realize`, the robot, the format), prebuilt stores still in
+  the engine version's folder (`stores/<cfg.key>_t<t>/`: a store's ids name the engine). An
+  edit is a new folder only for the layers that reach it: a deck colour keeps every plan,
+  a planner edit re-plans; nothing is invalidated in place. `tests/test_keys.py` checks
+  both directions on real edits. The fabrication format, its locks and atomic writes are
+  the product's (`spiderpig/fabcache.py`, below).
 - **Where, and why there**: a user cache directory, not the checkout. The key already
   names the engine, so worktrees with the same engine sources (every worktree branched
   from one master commit, until it edits `spiderpig/`) share entries, and worktrees with
@@ -108,6 +178,19 @@ byte for byte between any two builds (timestamps, GUIDs): compare entities.
 
 **Load vs build** and sizes: see Timings at the end.
 
+## The product's fabrication cache (`spiderpig/fabcache.py`)
+
+`spiderpig build` and `api.build` of a stored design serve `fabricate()` from
+`<store>/fab/<fab key>-<env tag>/<cfg.key>_<side|robot>_t<t>_<hash>/` (the hash: the
+template and config, the crank angle, the plan itself, the servo model in play) and
+write it there after a cold fabrication (one `flock` per entry, atomic rename). The test
+suite turns it off (`SPIDERPIG_FAB_CACHE=off`, the `_offline` session fixture): tests use
+`tests/cache.py`, and `fresh=True` builds stay fresh. `Store.gc` removes other keys'
+folders. Fidelity (`tests/test_fabcache.py`, slow): on the gate's six designs a loaded
+fabrication equals a fresh one on the gate's part table, the BOM and every DXF entity.
+`spiderpig build` into a folder that already holds that very build does nothing
+(`spiderpig/uptodate.py`; `--force` builds).
+
 ## Recorded fixtures (`tests/fixtures/<module>/<name>.json`)
 
 A recorded fixture is a small JSON document a fast test takes as **input**, so the test
@@ -134,6 +217,11 @@ def test_foot_z_current():
   `cache.StaleFixture` (`UserWarning`) is raised as a warning, never a skip, and the
   session header counts the stale files (visible under `-p no:warnings` too). The full
   suite's currency test is what catches a real change.
+- **Currency key** (W3b): a fixture written since carries `source` (its generator's file
+  and function) and `source_key` (`keys.function_key`: the code the generator reaches);
+  it is stale only when that code changed (`cache.is_stale`), so an engine edit elsewhere
+  no longer flags it. A fixture without them compares engine versions, as before (the
+  next `mise run test-fixtures` stamps them).
 - `--regen` (or `SPIDERPIG_REGEN=1`): `recorded` and `assert_current` rewrite the file
   from `make()`; `mise run test-fixtures` runs every currency test that way. Review the
   diff; commit it. `generator` is the test's node id.
@@ -160,7 +248,12 @@ mise run gate -- snapshot /tmp/gate/before      # on the base (master)
 mise run gate -- compare /tmp/gate/before       # on the branch: snapshots again, diffs
 mise run gate -- diff A B                       # two snapshots
 mise run gate -- compare DIR --designs klann_quad -j 1
+mise run gate -- doc DIR                        # docs/agentlib/DESIGNS.md from a snapshot
 ```
+
+`doc` writes `docs/agentlib/DESIGNS.md`, the one source of the designs' numbers (layers,
+height, constructions, sheets, part counts, the gate's audit verdict, BOM cost): run it on
+each new baseline and commit the result; `--out -` prints it.
 
 Designs (`DESIGNS` at the top): the Strider double (`BuildConfig()`), the Strider quad and
 the `klann_lego` quad (the user's three order designs), the demo `klann` quad,
@@ -175,6 +268,13 @@ entities, a hash of every STL. Servos parametric, a fresh store, `PYTHONHASHSEED
 `SPIDERPIG_PLAN_SECONDS=3600` (node budgets alone bound the planner: the Strider quad's
 search ends on its node budget at ~54 CPU-s, too near the 60 s default to be stable).
 
+Each design's contract angles and its `t=1` half (that fabrication's clashes, solids and
+parts, and the build of it) run in worker processes of their own (`GATE_SPLIT`, default
+`contract:0,1.6|contract:3.2,4.8|build`; empty: one process), each taking the plan from the
+design's store; unless given, `-j` and the split follow the free cores (`plan_cores`: the
+cores less the load average). OCCT runs two threads per process, as the baseline did
+(`GATE_OCCT_THREADS`; one thread moves a cut-rule number). The STEP file, never read, isn't written.
+
 Verdicts per design, and the exit status: **identical** (0); **geometry identical, order
 differs** (1: a DXF's entities in another order or a closed outline from another start
 vertex, bodies reordered, a text file's lines reordered, a part's faces/edges counted
@@ -182,11 +282,13 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline of master** (`d53fbf1`, engine `0.1.0+1b5e76d06b99`):
-`~/.cache/spiderpig/gate/master-d53fbf1/` on the development box (`/root/.cache/...`),
+**Baseline** (W8, `2a130c8`, engine `0.1.0+e91ed4bc0da8`):
+`~/.cache/spiderpig/gate/w8-2a130c8/` on the development box (`/root/.cache/...`),
 one `<design>.json` per design, their logs and `snapshot.json` (commit, branch, time).
-Compare against it from any worktree whose `spiderpig/` should be master's:
-`mise run gate -- compare ~/.cache/spiderpig/gate/master-d53fbf1`.
+Compare against it from any worktree whose `spiderpig/` should match W8's output:
+`mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8`. It differs from the
+previous baselines `master-1eba876` / `master-d53fbf1` (kept) by W8's approved output
+changes, each listed in `W8-gate-diffs.md`.
 
 ## Rules for a module package
 

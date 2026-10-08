@@ -12,10 +12,9 @@ crank rider b1 (:func:`default_link_sheets`). A layer is as thick as the thickes
 their own z.
 
 A **clearance gap** (:attr:`stack.Placed.gap`) is one of the thin sheets' thicknesses
-(:func:`gap_options`): a plate stack it splits (a crank stack) gets a filler plate cut
-from that sheet (:func:`filler_sheet`), and an axle that crosses it a printed ring to that
-thickness (:func:`construction.pivots.common.gap_washers`; the round and M6 crankpins a
-stack of washers and shims, :func:`washer_stack`).
+(:func:`gap_options`): an axle that crosses it carries a printed ring to that thickness
+(:func:`construction.pivots.common.gap_washers`; the round crankpin a stack of washers and
+shims, :func:`washer_stack`).
 """
 
 from __future__ import annotations
@@ -23,6 +22,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from functools import cache
+from typing import cast
 
 from spiderpig.hardware.catalog import get
 
@@ -66,6 +66,11 @@ class Sheet:
         return f"{what} {self.thickness:g} mm ({self.service})"
 
 
+def _pair(values) -> tuple[float, float]:
+    """A catalog item's ``(x, y)`` dimension as floats."""
+    return cast("tuple[float, float]", tuple(float(v) for v in values))  # the catalog's pairs
+
+
 @cache
 def sheet(key: str) -> Sheet:
     """The sheet ``key`` (a catalog ``sheet`` item; rules a plain item lacks: none)."""
@@ -81,9 +86,9 @@ def sheet(key: str) -> Sheet:
         yield_mpa=float(d.get("yield_mpa", 50.0)), service=str(d.get("service", "")),
         min_hole=float(d.get("min_hole", 0.0)), edge_t=float(d.get("edge_t", 0.0)),
         edge_mm=float(d.get("edge_mm", 0.0)),
-        min_part=tuple(float(v) for v in d.get("min_part", (0.0, 0.0))),
+        min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
-        sheet_mm=tuple(float(v) for v in d.get("sheet_mm", (300.0, 300.0))))
+        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))))
 
 
 LINK_SHEETS: dict[str, dict[str, str]] = {
@@ -123,7 +128,8 @@ def sheet_of(config, role: str, link: str | None = None) -> str:
     if role == "link" and link is not None:
         from spiderpig.stack import body_class
 
-        return link_sheets(config).get(body_class(link), config.sheet)
+        default: str = config.sheet
+        return link_sheets(config).get(body_class(link), default)
     return config.sheet
 
 
@@ -138,16 +144,6 @@ def thickness(config, key: str) -> float:
 def gap_options() -> tuple[float, ...]:
     """The thicknesses a clearance gap may have: the thin sheets', thinnest first."""
     return tuple(sorted({sheet(k).thickness for k in THIN_SHEETS}))
-
-
-def filler_sheet(material: str, t: float) -> str:
-    """The thin sheet a ``t`` mm filler plate is cut from: of ``material`` when one is
-    that thick, else any (acrylic first)."""
-    near = [k for k in THIN_SHEETS if abs(sheet(k).thickness - t) < 1e-6]
-    if not near:
-        raise ValueError(f"no {t:g} mm thin sheet")
-    same = [k for k in near if sheet(k).material == material]
-    return (same or near)[0]
 
 
 WASHERS: dict[float, tuple[str, str]] = {
@@ -182,11 +178,10 @@ def washer_stack(shaft_d: float, t: float) -> tuple[list[tuple[str, float]], flo
     if left >= pt - 1e-6:
         out.append((ptfe, pt))
         left = round(left - pt, 3)
-    for s in sorted((float(v) for v in get(shim).dims["t"]), reverse=True):
-        k = int(math.floor(left / s + 1e-6))
-        out += [(shim, s)] * k
-        left = round(left - k * s, 3)
-    return out, max(left, 0.0)
+    from spiderpig.hardware.bom import stack
+
+    shims, left = stack(left, get(shim).dims["t"])
+    return out + [(shim, s) for s in shims], left
 
 
 # -- the thinnest sheet each part may be cut from ----------------------------------------
@@ -261,8 +256,9 @@ ROLES = {
 
 def aluminium_sheets(alloy: str = "5052") -> list[str]:
     """Every stock sheet of ``alloy`` in the catalog, thinnest first."""
-    from spiderpig.hardware.catalog import CATALOG
+    from spiderpig.hardware.catalog import CATALOG, _load
 
+    _load()
     keys = [k for k, it in CATALOG.items() if it.category == "sheet"
             and it.dims.get("alloy") and str(it.dims["alloy"]).startswith(alloy)]
     return sorted(keys, key=lambda k: (sheet(k).thickness, str(get(k).dims.get("alloy"))))

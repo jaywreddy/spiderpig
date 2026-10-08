@@ -53,13 +53,42 @@ _WORLD_BOXES_JS = """(times) => {
 }"""
 
 
+# The same meshes' box in the walker node's own frame (the model's: the linkage in xy, the
+# layer stack along z), at clip time 0.
+_MODEL_BOX_JS = """() => {
+    const v = window.__viewer, w = v.walker;
+    v.seek(0);
+    w.updateMatrixWorld(true);
+    const inv = w.matrixWorld.clone().invert();
+    const box = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+    w.traverse((o) => {
+        if (!o.isMesh) return;
+        const pos = o.geometry.attributes.position;
+        const e = inv.clone().multiply(o.matrixWorld).elements;
+        for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+            const p = [
+                e[0] * x + e[4] * y + e[8] * z + e[12],
+                e[1] * x + e[5] * y + e[9] * z + e[13],
+                e[2] * x + e[6] * y + e[10] * z + e[14],
+            ];
+            for (let k = 0; k < 3; k++) {
+                box.min[k] = Math.min(box.min[k], p[k]);
+                box.max[k] = Math.max(box.max[k], p[k]);
+            }
+        }
+    });
+    return box;
+}"""
+
+
 def _wait_ready(page: Page, timeout_ms: int = BAKE_TIMEOUT_MS) -> None:
     page.wait_for_function("() => window.__viewer && window.__viewer.ready", timeout=timeout_ms)
 
 
 def test_modes_endpoint(viewer_server: str) -> None:
     """The robot is the default; the side-only ids old URLs use are still served."""
-    with urllib.request.urlopen(f"{viewer_server}/api/modes") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{viewer_server}/api/modes") as r:
         body = json.load(r)
     assert body["default"] == "robot"
     assert body["modes"][0] == "robot"
@@ -104,9 +133,9 @@ def test_renders_pixels(page: Page, viewer_server: str) -> None:
 
 
 def test_robot_stands_on_its_feet(page: Page, viewer_server: str) -> None:
-    """World Z is up: over the gait the lowest foot touches z = 0, the robot is
-    taller than it is wide along its (horizontal) layer stack, and the camera
-    frames all of it."""
+    """World Z is up: over the gait the lowest foot touches z = 0, the model's axes land
+    where they should (its linkage plane upright, xy -> world xz; its layer stack, model
+    z, horizontal along world y), and the camera frames all of it."""
     page.goto(viewer_server)
     _wait_ready(page)
 
@@ -121,12 +150,14 @@ def test_robot_stands_on_its_feet(page: Page, viewer_server: str) -> None:
     assert min(lows) == pytest.approx(0.0, abs=0.05), f"feet are not on the ground: {min(lows)}"
     assert max(lows) < 20.0, f"no foot near the ground mid-gait: {max(lows)}"
 
+    model = page.evaluate(_MODEL_BOX_JS)
+    m = [hi - lo for lo, hi in zip(model["min"], model["max"], strict=True)]
     boxes = page.evaluate(_WORLD_BOXES_JS, [0.0, 0.25, 0.5, 0.75])
     for b in boxes:
-        size = [hi - lo for lo, hi in zip(b["min"], b["max"], strict=True)]
         assert b["min"][2] > -0.05, f"something sinks below the ground: {b}"
-        assert size[2] > size[1], f"stack axis should be horizontal, extents {size}"
-        assert size[0] > size[1], f"legs should spread along X, extents {size}"
+    size = [hi - lo for lo, hi in zip(boxes[0]["min"], boxes[0]["max"], strict=True)]
+    # world (x, y, z) extents are the model's (x, z, y): the stack horizontal, y up
+    assert size == pytest.approx([m[0], m[2], m[1]], abs=1e-3), (size, m)
 
     # Every corner of the robot's box (at t = 0, as framed on load) projects
     # inside the viewport: normalized device coordinates within [-1, 1].

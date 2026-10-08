@@ -21,7 +21,7 @@
     ],
     "qty": 4,
     "size_mm": "17 x 44 x 3.0 mm",
-    "volume_cm3": 1.3737047946495795
+    "volume_cm3": 1.3737047946495786
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -40,7 +40,7 @@
     ],
     "qty": 8,
     "size_mm": "142 x 21 x 3.0 mm",
-    "volume_cm3": 5.019082328703815
+    "volume_cm3": 5.019082328703811
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -55,7 +55,7 @@
     ],
     "qty": 4,
     "size_mm": "126 x 81 x 3.0 mm",
-    "volume_cm3": 5.021049751103123
+    "volume_cm3": 5.0210497511031225
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -70,7 +70,7 @@
     ],
     "qty": 4,
     "size_mm": "65 x 78 x 3.0 mm",
-    "volume_cm3": 3.2885891761733674
+    "volume_cm3": 3.288589176173367
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -85,7 +85,7 @@
     ],
     "qty": 4,
     "size_mm": "34 x 94 x 3.0 mm",
-    "volume_cm3": 3.2876054649737108
+    "volume_cm3": 3.28760546497371
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -117,7 +117,7 @@
     ],
     "qty": 2,
     "size_mm": "54 x 61 x 3.0 mm",
-    "volume_cm3": 2.597149176173367
+    "volume_cm3": 2.5971491761733687
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -140,7 +140,7 @@
     ],
     "qty": 12,
     "size_mm": "43 x 21 x 3.0 mm",
-    "volume_cm3": 1.3727210834499237
+    "volume_cm3": 1.3727210834499233
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -155,7 +155,7 @@
     ],
     "qty": 4,
     "size_mm": "140 x 42 x 3.0 mm",
-    "volume_cm3": 5.02006603990347
+    "volume_cm3": 5.020066039903467
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -168,7 +168,7 @@
     ],
     "qty": 2,
     "size_mm": "47 x 89 x 3.0 mm",
-    "volume_cm3": 3.2885891761733674
+    "volume_cm3": 3.288589176173366
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -185,7 +185,7 @@
     ],
     "qty": 6,
     "size_mm": "27 x 95 x 3.0 mm",
-    "volume_cm3": 3.2895728873730223
+    "volume_cm3": 3.2895728873730263
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -215,7 +215,7 @@
     ],
     "qty": 2,
     "size_mm": "29 x 37 x 2.5 mm",
-    "volume_cm3": 1.2152329394704557
+    "volume_cm3": 1.215232939470453
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -228,7 +228,7 @@
     ],
     "qty": 2,
     "size_mm": "37 x 29 x 2.5 mm",
-    "volume_cm3": 1.2152329394704575
+    "volume_cm3": 1.2152329394704577
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -254,7 +254,7 @@
     ],
     "qty": 2,
     "size_mm": "43 x 35 x 2.5 mm",
-    "volume_cm3": 2.027396373500727
+    "volume_cm3": 2.027396373500734
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -269,7 +269,7 @@
     ],
     "qty": 4,
     "size_mm": "43 x 59 x 2.5 mm",
-    "volume_cm3": 2.1926249394704502
+    "volume_cm3": 2.1926249394704596
    },
    {
     "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
@@ -282,7 +282,7 @@
     ],
     "qty": 2,
     "size_mm": "157 x 66 x 2.0 mm",
-    "volume_cm3": 8.64874075325442
+    "volume_cm3": 8.648740753254435
    },
    {
     "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
@@ -295,7 +295,7 @@
     ],
     "qty": 2,
     "size_mm": "157 x 100 x 2.0 mm",
-    "volume_cm3": 10.533370057650972
+    "volume_cm3": 10.53337005765094
    },
    {
     "material": "5052 aluminium sheet 0.090 in (2.286 mm), laser cut",
@@ -365,7 +365,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_hi_J1_leg0",
     "names": [
      "L.crank_pin_collar_hi_J1_leg0",
@@ -378,7 +378,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_hi_J1_leg1",
     "names": [
      "L.crank_pin_collar_hi_J1_leg1",
@@ -391,7 +391,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_hi_J1_leg2",
     "names": [
      "L.crank_pin_collar_hi_J1_leg2",
@@ -404,7 +404,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_hi_journal10",
     "names": [
      "L.crank_pin_collar_hi_journal10",
@@ -417,7 +417,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_lo_J1_leg0",
     "names": [
      "L.crank_pin_collar_lo_J1_leg0",
@@ -430,7 +430,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_lo_J1_leg1",
     "names": [
      "L.crank_pin_collar_lo_J1_leg1",
@@ -443,7 +443,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_lo_J1_leg3",
     "names": [
      "L.crank_pin_collar_lo_J1_leg3",
@@ -456,7 +456,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_collar_lo_journal10",
     "names": [
      "L.crank_pin_collar_lo_journal10",
@@ -469,7 +469,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_sleeve_J1_leg0",
     "names": [
      "L.crank_pin_sleeve_J1_leg0",
@@ -482,7 +482,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_sleeve_J1_leg1",
     "names": [
      "L.crank_pin_sleeve_J1_leg1",
@@ -495,7 +495,7 @@
    {
     "material": "PLA filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_sleeve_J1_leg2",
     "names": [
      "L.crank_pin_sleeve_J1_leg2",
@@ -508,7 +508,7 @@
    {
     "material": "PETG filament",
     "method": "printed",
-    "mirrored": 1,
+    "mirrored": 0,
     "name": "L.crank_pin_sleeve_J1_leg3",
     "names": [
      "L.crank_pin_sleeve_J1_leg3",
@@ -2540,6 +2540,11 @@
   ],
   "title": ""
  },
- "engine_version": "0.1.0+094f801c3c66",
- "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]"
+ "engine_version": "0.1.0+113a8d976b75",
+ "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
+ "source": {
+  "file": "tests/_strength.py",
+  "name": null
+ },
+ "source_key": "gen-b08f727510259c8f"
 }

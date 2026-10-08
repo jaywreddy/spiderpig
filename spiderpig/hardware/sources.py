@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from spiderpig.hardware.catalog import CATALOG, Offer
+from spiderpig.hardware.catalog import CATALOG, Item, Offer
 
 _MCM = "McMaster-Carr"
 _MCM_NOTE = ("part number from McMaster's spec table (reli-tool.com mirror) or listing; "
@@ -119,8 +119,7 @@ _MCM_M4_SET = {8: ("92605A113", 25), 10: ("92605A115", 50), 12: ("92605A117", 50
 # partially threaded (about 18 mm of thread)
 _MCM_M3_SHCS = {6: "91290A111", 8: "91290A113", 10: "91290A115", 12: "91290A117",
                 14: "91290A119", 16: "91290A120", 18: "91290A121", 20: "91290A123",
-                25: "91290A125", 30: "91290A130", 35: "91290A135", 40: "91290A136",
-                45: "91290A079", 50: "91290A137"}
+                25: "91290A125", 30: "91290A130", 35: "91290A135", 40: "91290A136"}
 # uxcell's black anodised 6 mm OD round M3 F-F aluminium standoffs, threaded through, 6 per
 # pack (Harfington's product data, fetched 2026-10-05): length -> (handle, SKU, USD per pack).
 # No threaded 6 mm OD x 5 mm exists (crank_catalog drops it).
@@ -358,13 +357,20 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
 }
 
 
+def sourced(item: Item) -> Item:
+    """``item`` with its sourced offers (:data:`SOURCES`) first, its own after (minus any
+    with the same URL); the item itself when none is sourced."""
+    offers = SOURCES.get(item.key)
+    if offers is None:
+        return item
+    urls = {o.url for o in offers}
+    return replace(item, offers=offers + tuple(o for o in item.offers if o.url not in urls))
+
+
 def apply() -> None:
-    """Put each sourced offer first on its item (the item's own offers follow, minus any
-    with the same URL)."""
-    for key, offers in SOURCES.items():
+    """Put each sourced offer first on its item (at load; an item a catalog factory makes
+    later is sourced as it is made, :func:`sourced`)."""
+    for key in SOURCES:
         item = CATALOG.get(key)
-        if item is None:
-            continue
-        urls = {o.url for o in offers}
-        CATALOG[key] = replace(item, offers=offers + tuple(o for o in item.offers
-                                                           if o.url not in urls))
+        if item is not None:
+            CATALOG[key] = sourced(item)

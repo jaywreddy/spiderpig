@@ -90,6 +90,31 @@ def test_view_help_is_instant():
     assert {"--store", "--port", "--open", "--serve-only"} <= set(out.split())
 
 
+def test_view_parses_the_build_options_without_the_engine():
+    """``spiderpig view``'s build options (:func:`view.add_lazy_build_args`, no registry read)
+    are ``spiderpig build``'s, option for option, and parsing them imports no engine module."""
+    import argparse
+
+    from spiderpig.config import add_build_args, add_design_args
+
+    def options(add) -> dict[str, str]:
+        ap = argparse.ArgumentParser()
+        for fn in add:
+            fn(ap)
+        return {o: a.dest for a in ap._actions for o in a.option_strings if o != "-h"
+                and o != "--help"}
+
+    assert options([view.add_lazy_build_args]) == options([add_design_args, add_build_args])
+    code = ("import sys, argparse\nfrom spiderpig import view\n"
+            "ap = argparse.ArgumentParser()\nview.add_lazy_build_args(ap)\n"
+            "ap.parse_args(['--linkage', 'klann', '--pin', 'chicago'])\n"
+            "print(sorted(m for m in sys.modules if m.startswith('spiderpig')))\n")
+    loaded = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                            check=True).stdout
+    assert "spiderpig.config" not in loaded
+    assert "spiderpig.construction" not in loaded
+
+
 def test_viewer_dist_resolves_inside_the_package():
     from spiderpig.server.app import PACKAGE_ROOT, VIEWER_DIST
 
@@ -142,7 +167,7 @@ def client(store, _recorded_foot_z):
     from spiderpig.server import app as server_app
 
     server_app.configure(store=store, prebake_default=False)
-    yield TestClient(server_app.app)
+    yield TestClient(server_app.app, base_url="http://localhost")   # an allowed Host
     server_app.configure(store=None, prebake_default=True)
 
 
@@ -241,13 +266,13 @@ def test_view_serves_a_design_on_a_free_port(store, single):
     try:
         assert srv.alive()
         assert srv.url(single.id) == f"http://127.0.0.1:{srv.port}/?design={single.id}"
-        with urllib.request.urlopen(f"{srv.base}/") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{srv.base}/") as r:
             html = r.read().decode()
         assert 'id="stage"' in html
         assert "<script" in html
-        with urllib.request.urlopen(f"{srv.base}/api/design/{single.id}") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{srv.base}/api/design/{single.id}") as r:
             assert json.load(r)["mode"] == "side"
-        with urllib.request.urlopen(f"{srv.base}/api/glb/side?design={single.id}") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{srv.base}/api/glb/side?design={single.id}") as r:
             assert r.read(4) == b"glTF"
             assert r.headers["x-spiderpig-glb"] == "export"
     finally:
@@ -256,7 +281,7 @@ def test_view_serves_a_design_on_a_free_port(store, single):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the CLI's explain takes the build options
+# Test drive, round 2 (docs/history/TESTDRIVE.md): the CLI's explain takes the build options
 # ---------------------------------------------------------------------------
 
 
@@ -270,19 +295,17 @@ def test_explain_takes_the_build_options(capsys):
     assert ("STOP: an M4 button head and washer (3 mm) don't fit a 2 mm layer outside the "
             "plate") in out
     assert "materials.thickness_mm 2 -> 3" in out
-    # bearing pivots assume full layers, which the default single-plate crank's gaps
-    # don't give (it says so and names --crank keyed): the keyed crank here
-    assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "bearing",
-                         "--pillar", "bearing", "--servo", "xl330_m288",
-                         "--crank", "keyed"]) == 0
+    # every construction option taken (the round standoff crank, not the default hex)
+    assert explain.main(["--linkage", "klann", "--module", "single", "--pin", "chicago",
+                         "--pillar", "standoff", "--crank", "bolt_round"]) == 0
     out = capsys.readouterr().out
     assert "ground clearance:" in out
     assert "3. plan" in out
-    assert "bearing" in out or "sleeve" in out
+    assert "web M" in out                       # the single-plate crank's web
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): a CLI build can be viewed by its
+# Test drive, round 3 (docs/history/TESTDRIVE.md): a CLI build can be viewed by its
 # options, and the CLIs warn about a thickness far from the nominal
 # ---------------------------------------------------------------------------
 
@@ -293,11 +316,11 @@ def test_view_takes_the_build_options_and_resolves_them_into_the_store(store, ca
     from spiderpig import view
 
     ns = argparse.Namespace(linkage="klann", module="single", phases=None, proportion=None,
-                            servo=None, pillar=None, pin="bolt", crank=None, sheet=None,
+                            servo=None, pillar=None, pin=None, crank="bolt_round", sheet=None,
                             thickness=None, side_only=False)
     d = view.resolve_args(ns, store)                                          # entry 10
     assert d is not None
-    assert d.config.pin == "bolt"
+    assert d.config.crank == "bolt_round"
     assert d.config.module == "single"
     assert d.config.robot
     assert api.load(d.id, store).config == d.config
@@ -325,7 +348,7 @@ def test_the_clis_warn_about_a_thickness_far_from_the_nominal(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the CLIs take a mechanism as it is
+# Test drive, round 4 (docs/history/TESTDRIVE.md): the CLIs take a mechanism as it is
 # (its one module, one side), audit and report cover it, the output names its axes
 # ---------------------------------------------------------------------------
 
@@ -376,8 +399,7 @@ def test_the_clis_default_a_mechanism_to_its_one_module_and_one_side(store, caps
 def test_audit_takes_a_mechanism(tmp_path, capsys):
     from spiderpig.tools import audit
 
-    # the bolt crank: a mechanism's default (keyed) crank fails the jam check since its key's
-    # printed sockets are rated (SF 0.64 at the 0.85 N·m limit), which fails the audit
+    # the bolt crank, the mechanisms' default since 2026-10-04, named as an option
     assert audit.main(["--linkage", "parallelogram_lift", "--crank", "bolt", "--ts-contract", "0",
                        "--ts-clash", "1", "--out", str(tmp_path)]) == 0    # entry 10
     out = capsys.readouterr().out
@@ -391,7 +413,7 @@ def test_audit_takes_a_mechanism(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): ``spiderpig export`` on the command
+# Test drive, round 5 (docs/history/TESTDRIVE.md): ``spiderpig export`` on the command
 # line, ``spiderpig sim`` on a stored design or an MJCF, ``report`` over every linkage
 # ---------------------------------------------------------------------------
 

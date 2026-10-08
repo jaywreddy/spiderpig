@@ -85,11 +85,9 @@ from spiderpig.config import (
     BuildConfig,
     default_module,
     design_from_query,
-    parse_phases,
-    parse_proportion,
 )
 from spiderpig.server.watcher import WatchBroadcaster, is_ignored_dir, is_source
-from spiderpig.store import Store, StoreError
+from spiderpig.store import Store
 
 log = logging.getLogger("server")
 if not logging.root.handlers:       # under uvicorn, which configures only its own loggers
@@ -140,55 +138,38 @@ def _design(design_id: str):
     a malformed id or a corrupt record, 404 for one the store doesn't hold."""
     try:
         return api.load(design_id, store())
-    except ValueError as e:                     # "not a design id: ..."
-        raise HTTPException(status_code=422, detail=str(e)) from None
-    except StoreError as e:
+    except ValueError as e:     # "not a design id: ...", or a corrupt record (StoreError)
         raise HTTPException(status_code=422, detail=str(e)) from None
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no design {design_id!r} in "
                             f"{store().root.resolve()}") from None
 
 
-def _config_from_query(query, **fixed) -> BuildConfig:
-    """The config a query asks for (:func:`spiderpig.config.design_from_query`) or, with
-    ``design=<id>``, the stored design's config with the query's ``module``, ``phases``
-    and ``p.NAME`` applied on top: its servo, sheet, thickness, constructions and fit,
-    which no query string expresses, stay. Another ``linkage`` starts from that
-    linkage's defaults (its own parameters and phases) and keeps the materials and
-    constructions. ``fixed`` (``robot``, a mode's ``module``) wins over both."""
+def _query_design(query, **fixed):
+    """``(config, design)`` a query asks for: :func:`spiderpig.config.design_from_query`,
+    on top of the stored design ``design=<id>`` names (its servo, sheets, constructions
+    and fit stay; ``design`` is its handle, loaded once), else ``(config, None)``.
+    ``fixed`` (``robot``, a mode's ``module``) wins over both."""
     design_id = query.get("design")
-    if not design_id:
-        return design_from_query(query, **fixed)
-    base = _design(design_id).config
-    materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
-                 "frame_sheet": base.frame_sheet, "crank_sheet": base.crank_sheet,
-                 "pillar": base.pillar, "pin": base.pin, "crank": base.crank,
-                 "heads": base.heads, "params": base.params}
-    # (link_sheets name a linkage's own links: kept only with its linkage, below)
-    if (query.get("linkage") or base.linkage) != base.linkage:
-        return design_from_query(query, **materials, **fixed)
-    items = query.multi_items() if hasattr(query, "multi_items") else query.items()
-    props = dict(base.proportions)
-    props.update(parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p."))
-    module = fixed.get("module") or query.get("module") or base.module
-    if query.get("phases"):
-        phases = parse_phases(query["phases"])
-    else:
-        phases = base.phases if module == base.module else None     # the module's own
-    return replace(base, module=module, phases=phases, proportions=tuple(sorted(props.items())),
-                   **{k: v for k, v in fixed.items() if k != "module"})
+    d = _design(design_id) if design_id else None
+    return design_from_query(query, base=d.config if d else None, **fixed), d
 
 
-def _design_glb(design_id: str | None, config: BuildConfig) -> tuple[Path, str]:
+def _config_from_query(query, **fixed) -> BuildConfig:
+    """The config alone (:func:`_query_design`)."""
+    return _query_design(query, **fixed)[0]
+
+
+def _design_glb(d, config: BuildConfig, gone=None) -> tuple[Path, str]:
     """A design's own glb from its store's export when it is there and fresh
-    (``api.export(design, ["glb"])``), else a bake (:func:`_ensure_baked`); which one
-    is the response's ``X-Spiderpig-Glb`` header."""
-    if design_id:
-        d = _design(design_id)
+    (``api.export(design, ["glb"])``; ``d`` the stored design's handle, or ``None``), else
+    a bake (:func:`_ensure_baked`); which one is the response's ``X-Spiderpig-Glb``
+    header."""
+    if d is not None:
         path = d.store.exports_dir(d.id) / f"{config.linkage}.glb"
         if d.config == config and _is_fresh(path):
             return path, "export"
-    return _ensure_baked(config), "bake"
+    return _ensure_baked(config, gone=gone), "bake"
 
 _NO_CACHE = {"Cache-Control": "no-store"}
 _DEFAULT_MODE = "robot"
@@ -217,7 +198,8 @@ MODES: dict[str, Mode] = {
 
 # One bake at a time: requests run in a threadpool and the bake isn't reentrant.
 _BAKE_LOCK = threading.Lock()
-# Designs that failed to build: glb path -> (sources mtime, reason).
+# Designs that failed to build: glb path -> (sources mtime, reason), oldest first (at most
+# CACHE_SIZE: :func:`_prune`).
 _FAILED: dict[Path, tuple[float, str]] = {}
 # Every design this server has baked, by its file (the watcher re-bakes the defaults).
 _BAKED: dict[Path, BuildConfig] = {}
@@ -289,7 +271,8 @@ def _bake(config: BuildConfig) -> Path:
 
 def _prune(keep: int = CACHE_SIZE) -> None:
     """Drop all but the ``keep`` newest non-default bakes (a file this server didn't bake
-    counts as one)."""
+    counts as one), and all but the ``keep`` newest remembered failures (those older than
+    the sources first: they no longer answer). Called under :data:`_BAKE_LOCK`."""
     def is_default(p: Path) -> bool:
         config = _BAKED.get(p)
         return config is not None and config.is_default
@@ -299,9 +282,39 @@ def _prune(keep: int = CACHE_SIZE) -> None:
     for old in files[keep:]:
         old.unlink(missing_ok=True)
         _BAKED.pop(old, None)
+    if _FAILED:
+        mtime = _sources_mtime()
+        for path in [p for p, (at, _) in _FAILED.items() if at < mtime]:
+            del _FAILED[path]
+        while len(_FAILED) > keep:
+            del _FAILED[next(iter(_FAILED))]       # the oldest (insertion order)
+        for path in [p for p, c in _BAKED.items() if p not in _FAILED and not p.exists()
+                     and not c.is_default]:
+            del _BAKED[path]                       # a failed design's entry: no file
 
 
-def _ensure_baked(config: BuildConfig) -> Path:
+class ClientGone(Exception):
+    """The client that asked for a bake disconnected while it waited for its turn."""
+
+
+BAKE_POLL_S = 0.25      # how often a request queued for the bake lock checks its client
+
+
+def _acquire_bake_lock(gone=None) -> None:
+    """Take :data:`_BAKE_LOCK`; with ``gone`` (a callable: has the client disconnected?),
+    give up with :class:`ClientGone` when it says so while the request waits its turn."""
+    if gone is None:
+        _BAKE_LOCK.acquire()
+        return
+    while not _BAKE_LOCK.acquire(timeout=BAKE_POLL_S):
+        if gone():
+            raise ClientGone
+    if gone():                  # left while the previous bake ran: don't bake for no one
+        _BAKE_LOCK.release()
+        raise ClientGone
+
+
+def _ensure_baked(config: BuildConfig, gone=None) -> Path:
     """The design's ``.glb``, baked first when missing or older than the sources.
 
     422 when the linkage can't be assembled (checked first, from the
@@ -310,6 +323,13 @@ def _ensure_baked(config: BuildConfig) -> Path:
     sources change, except one whose planner budget ran out
     (:class:`spiderpig.api.PlanTimeout`: a loaded machine, not the design; the
     422 says so and the next request plans again).
+
+    Bakes run one at a time (:data:`_BAKE_LOCK`). ``gone`` (a callable: has the client
+    disconnected?) lets a request queued behind another bake give up when its client has
+    left (:class:`ClientGone`), so a viewer that asked for one design after another bakes
+    only the last; a bake already running finishes (OCCT can't be interrupted cleanly) and
+    its file serves the next request. Two requests for one design are one bake: the second
+    finds the first's file fresh.
     """
     if config.robot:
         try:
@@ -317,7 +337,8 @@ def _ensure_baked(config: BuildConfig) -> Path:
         except walk.LinkageError as e:
             raise HTTPException(status_code=422, detail=f"invalid linkage: {e}") from None
     path = _glb_path(config)
-    with _BAKE_LOCK:
+    _acquire_bake_lock(gone)
+    try:
         _BAKED[path] = config
         if _is_fresh(path):
             return path
@@ -334,26 +355,60 @@ def _ensure_baked(config: BuildConfig) -> Path:
                 "ask again)")) from None
         except ValueError as e:
             reason = f"can't build this design: {e}"
-            _FAILED[path] = (mtime, reason)
+            _FAILED.pop(path, None)
+            _FAILED[path] = (mtime, reason)             # the newest last
+            _prune()
             raise HTTPException(status_code=422, detail=reason) from None
         if not config.is_default:
             _prune()
+    finally:
+        _BAKE_LOCK.release()
     return path
 
 
-def _rebake_all() -> None:
-    """Called by the watcher. Re-bakes every default design this server has baked; other
-    designs are baked again when next requested (they're stale by then). The MuJoCo
-    models are forgotten too (:func:`spiderpig.sim.mjcf.clear_caches`) and every live
-    session is told it is stale (it closes; the viewer reconnects to a fresh model)."""
+# The event loop serving the app (set at startup): the live sessions' state
+# (:data:`_SIM_BUILDS`, :data:`_SIM_GENERATION`) belongs to it, so a thread changes it
+# through ``call_soon_threadsafe`` (:func:`_on_loop`).
+_LOOP: asyncio.AbstractEventLoop | None = None
+
+
+def _on_loop(fn) -> None:
+    """Run ``fn`` on the app's event loop: now when called on it (or with no loop
+    running), else scheduled there from this thread."""
+    loop = _LOOP
+    if loop is None or loop.is_closed() or not loop.is_running():
+        fn()
+        return
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+    if running is loop:
+        fn()
+    else:
+        loop.call_soon_threadsafe(fn)
+
+
+def _outdate_sims() -> None:
+    """Forget the live models being built and move the generation on (every live session
+    started before closes as stale). On the event loop only."""
     global _SIM_GENERATION
+    _SIM_BUILDS.clear()
+    _SIM_GENERATION += 1
+
+
+def _rebake_all() -> None:
+    """Called by the watcher (in a worker thread). Re-bakes every default design this
+    server has baked; other designs are baked again when next requested (they're stale by
+    then). The MuJoCo models are forgotten too (:func:`spiderpig.sim.mjcf.clear_caches`)
+    and every live session is told it is stale (it closes; the viewer reconnects to a fresh
+    model): that state is the event loop's, so it changes there (:func:`_on_loop`)."""
     with _BAKE_LOCK:
         from spiderpig.sim import mjcf
 
         mjcf.clear_caches()
         _walk_json.cache_clear()
-        _SIM_BUILDS.clear()
-        _SIM_GENERATION += 1
+        _on_loop(_outdate_sims)
         for path, config in list(_BAKED.items()):
             if config.is_default and path.exists():
                 _bake(config)
@@ -364,6 +419,8 @@ broadcaster = WatchBroadcaster(PACKAGE_ROOT, rebake=_rebake_all)
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    global _LOOP
+    _LOOP = asyncio.get_running_loop()
     _data_dir().mkdir(parents=True, exist_ok=True)
     if _PREBAKE_DEFAULT:
         _ensure_baked(BuildConfig())
@@ -372,9 +429,177 @@ async def _lifespan(_app: FastAPI):
         yield
     finally:
         await broadcaster.stop()
+        _LOOP = None
+
+
+# ---------------------------------------------------------------------------
+# Who may talk to the server: the Host header (DNS rebinding) and a WebSocket's Origin
+# ---------------------------------------------------------------------------
+
+ALLOWED_HOSTS_ENV = "VITE_ALLOWED_HOSTS"
+LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def _hostname(netloc: str) -> str:
+    """The host of a ``Host`` header or an origin's netloc, lower case, without its port
+    (``[::1]:8000`` -> ``::1``)."""
+    netloc = netloc.strip().lower()
+    if netloc.startswith("["):                      # an IPv6 literal, maybe with a port
+        return netloc[1:netloc.find("]")] if "]" in netloc else netloc[1:]
+    if netloc.count(":") == 1:
+        return netloc.partition(":")[0]
+    return netloc                                   # a bare IPv6 address, or no port
+
+
+_SERVED_AS: list[str] = []     # names the server was started under (allow_host)
+
+
+def allow_host(name: str) -> None:
+    """Answer ``name`` too: the host ``spiderpig view --host NAME`` binds and prints."""
+    name = _hostname(name)
+    if name and name not in _SERVED_AS:
+        _SERVED_AS.append(name)
+
+
+def allowed_hosts() -> list[str]:
+    """The host names this server answers: the loopback names, the one it was started
+    under (:func:`allow_host`) and every ``$VITE_ALLOWED_HOSTS`` entry (comma-separated, as
+    Vite reads it; a leading ``.`` allows the domain and its subdomains, ``.ts.net``
+    behind ``tailscale serve``)."""
+    extra = [h.strip().lower() for h in os.environ.get(ALLOWED_HOSTS_ENV, "").split(",")]
+    return [*LOOPBACK_HOSTS, *_SERVED_AS, *(h for h in extra if h)]
+
+
+def _is_ip(host: str) -> bool:
+    import ipaddress
+
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
+def _named(host: str, allowed: list[str]) -> bool:
+    """Is ``host`` one of ``allowed`` (``.example.com``: it or a subdomain;
+    ``localhost`` covers ``*.localhost``)?"""
+    for pattern in allowed:
+        if pattern.startswith("."):
+            if host == pattern[1:] or host.endswith(pattern):
+                return True
+        elif host == pattern or (pattern == "localhost" and host.endswith(".localhost")):
+            return True
+    return False
+
+
+def host_allowed(host_header: str) -> bool:
+    """May a request with this ``Host`` be served? A loopback or allowed name
+    (:func:`allowed_hosts`), or any IP address: a DNS-rebinding page reaches the server
+    under its own domain name, never under an address (Vite's rule too)."""
+    host = _hostname(host_header)
+    return bool(host) and (_is_ip(host) or _named(host, allowed_hosts()))
+
+
+DEV_ORIGIN_PORT_ENV = "SPIDERPIG_DEV_ORIGIN_PORT"
+"""The Vite dev server's port (``spiderpig.tools.dev`` sets it for the API process): a
+loopback page on that port is the viewer, whatever ``Host`` its WebSocket arrives with."""
+
+
+def _port(netloc: str, scheme: str = "") -> str:
+    """A netloc's port, the scheme's default when it names none (``""``: no scheme, no
+    port)."""
+    netloc = netloc.strip().lower()
+    tail = netloc.rsplit("]", 1)[-1] if netloc.startswith("[") else netloc
+    if tail.count(":") == 1:
+        return tail.rpartition(":")[2]
+    return {"http": "80", "https": "443"}.get(scheme, "")
+
+
+def _loopback(host: str) -> bool:
+    return host in LOOPBACK_HOSTS or host.endswith(".localhost")
+
+
+def origin_allowed(origin: str | None, host_header: str, scheme: str = "ws") -> bool:
+    """May a WebSocket from this ``Origin`` connect? Browsers don't apply CORS to
+    WebSockets, so without this any page could drive ``/ws/sim``. Allowed:
+
+    - no Origin (not a browser);
+    - the page's own host *and port*: the ``Host`` it connects to (``spiderpig view``, or
+      Vite's ``/ws`` proxy, which passes Host on). A Host naming no port matches the
+      default port of the Origin's scheme (``https://box.ts.net`` through a
+      TLS-terminating ``tailscale serve``, which speaks ``ws`` to us);
+    - the Vite dev page: an Origin on ``$SPIDERPIG_DEV_ORIGIN_PORT`` (set by
+      ``spiderpig.tools.dev`` for the API it starts, and stripped by ``spiderpig view``),
+      on a loopback or a ``$VITE_ALLOWED_HOSTS`` name;
+    - a ``$VITE_ALLOWED_HOSTS`` name (not a loopback one) on the request's own port.
+
+    A page on any other port is refused, a loopback one above all (any local dev
+    server's). ``scheme`` (the request's) is kept for callers; the ports compared are
+    the Origin's and the Host's."""
+    if origin is None:
+        return True
+    from urllib.parse import urlsplit
+
+    try:
+        parts = urlsplit(origin.strip())
+    except ValueError:
+        return False
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        return False                                # "null" (a sandbox, a file), garbage
+    host, port = _hostname(parts.netloc), _port(parts.netloc, parts.scheme)
+    want = _port(host_header) or _port("", parts.scheme)
+    if host == _hostname(host_header) and port == want:
+        return True
+    extra = [h for h in (x.strip().lower() for x in
+                         os.environ.get(ALLOWED_HOSTS_ENV, "").split(",")) if h]
+    named = _named(host, extra)
+    dev = os.environ.get(DEV_ORIGIN_PORT_ENV, "").strip()
+    if dev and port == dev and (_loopback(host) or named):
+        return True
+    return named and not _loopback(host) and port == want
+
+
+class HostGuard:
+    """ASGI middleware: a request whose ``Host`` isn't allowed gets a 400 (an HTTP one) or
+    a refused handshake (a WebSocket, 403), and so does a WebSocket whose ``Origin`` is a
+    foreign page's (:func:`host_allowed`, :func:`origin_allowed`).
+
+    Starlette's ``TrustedHostMiddleware`` does the first, but reads ``[::1]:8000`` as host
+    ``[`` and answers a WebSocket with an HTTP response; this one parses IPv6 and closes
+    the handshake, and reads the allowed hosts per request (``$VITE_ALLOWED_HOSTS``)."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        kind = scope["type"]
+        if kind not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode("latin-1").lower(): v.decode("latin-1")
+                   for k, v in scope.get("headers", [])}
+        host = headers.get("host", "")
+        ok = host_allowed(host)
+        why = f"Host {host!r} is not allowed (add it to ${ALLOWED_HOSTS_ENV})"
+        if ok and kind == "websocket" and not origin_allowed(
+                headers.get("origin"), host, scope.get("scheme", "ws")):
+            ok, why = False, f"Origin {headers.get('origin')!r} is not allowed"
+        if ok:
+            await self.app(scope, receive, send)
+            return
+        log.warning("refused %s %s: %s", kind, scope.get("path"), why)
+        if kind == "http":
+            from starlette.responses import PlainTextResponse
+
+            await PlainTextResponse(f"Invalid host header: {why}", status_code=400)(
+                scope, receive, send)
+        else:
+            await receive()                         # websocket.connect
+            await send({"type": "websocket.close", "code": 1008})
 
 
 app = FastAPI(lifespan=_lifespan, title="spiderpig viewer")
+app.add_middleware(HostGuard)
 
 
 def linkage_info(lk: linkage.Linkage) -> dict:
@@ -462,13 +687,31 @@ def get_glb(mode_id: str, request: Request) -> Response:
         raise HTTPException(status_code=422, detail=f"mode {mode_id!r} is one side of its "
                             f"module; module {asked!r} applies to robot or side only")
     try:
-        config = _config_from_query(request.query_params, robot=mode.robot,
-                                    **({"module": mode.module} if mode.module else {}))
+        config, d = _query_design(request.query_params, robot=mode.robot,
+                                  **({"module": mode.module} if mode.module else {}))
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from None
-    path, source = _design_glb(request.query_params.get("design"), config)
+    try:
+        path, source = _design_glb(d, config, gone=_disconnected(request))
+    except ClientGone:
+        log.info("glb: the client left before its bake of %s started: skipped", config.key)
+        return Response(status_code=499)            # nobody reads it (nginx's "client closed")
     return FileResponse(path, media_type="model/gltf-binary",
                         headers={**_NO_CACHE, "X-Spiderpig-Glb": source})
+
+
+def _disconnected(request: Request):
+    """A callable for a sync handler's thread: has ``request``'s client disconnected?
+    (``Request.is_disconnected`` run on the event loop; ``False`` when it can't tell.)"""
+    import anyio.from_thread
+
+    def gone() -> bool:
+        try:
+            return bool(anyio.from_thread.run(request.is_disconnected))
+        except RuntimeError:        # not in an anyio worker thread (a direct call)
+            return False
+
+    return gone
 
 
 @app.websocket("/ws")
@@ -615,7 +858,7 @@ async def ws_sim(websocket: WebSocket) -> None:
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1008)
             return
-        except Exception as e:   # noqa: BLE001 - any failure is the client's to show
+        except Exception as e:   # any failure is the client's to show
             log.exception("sim: no model")
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1011)
@@ -629,7 +872,7 @@ async def ws_sim(websocket: WebSocket) -> None:
             await _stream(websocket, sim, generation)
         except (WebSocketDisconnect, RuntimeError):
             raise
-        except Exception as e:  # noqa: BLE001 - the physics failed: this session ends, told why
+        except Exception as e:  # the physics failed: this session ends, told why
             log.exception("sim: session failed")
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1011)

@@ -52,8 +52,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from typing import overload
 
-from build123d import Location, Plane
+from build123d import BoundBox, Location, Plane
 
 from spiderpig.construction.base import (
     FRAME_INNER,
@@ -93,11 +94,7 @@ ASSEMBLY: tuple[str, ...] = (
     "standoff, M4; its button head and washer from outside, threadlocker, to 0.8 N·m while "
     "the column is bare to hold); the links, Chicago pins and printed rings in the plan's "
     "layer order (each pin's screw from its cap side once its bonded barrel and host link "
-    "are on), any take-up shims on a column's top last. (A spliced pillar, --pillar "
-    "standoff_hand: at each splice's layer a dab of medium threadlocker on the stud, the "
-    "stud into the lower segment, its shims, the upper segment turned on by hand to "
-    "0.4 N·m; standoff_bench: each spliced column built on the bench first at 1.0 N·m and "
-    "stood on the plate before its links.)",
+    "are on), any take-up shims on a column's top last.",
     "2. The crank with it, bottom up: the stub standoff screwed to the lowest web (button "
     "head from above), the stub's printed thrust sleeve slid over it up to the web, and "
     "the stub through the outer plate's journal hole (the sleeve's end then 0.1 mm over "
@@ -105,7 +102,7 @@ ASSEMBLY: tuple[str, ...] = (
     "chain above it first (its screw and wide washer from below, threadlocker, while the "
     "web is loose), then goes onto the hex of the chain below with that chain's riders "
     "and sleeve already on, and that chain's screw goes in from above. The chain that "
-    "ends in the hub plate has no screw over it (BoltCrank.hub_screw off): the hub plate "
+    "ends in the hub plate has no screw over it (BoltCrank.hub_capped): the hub plate "
     "caps it, and its printed sleeve is a light press on the hex, pushed down onto its "
     "lower web with that end's washer drawn up against the web, so the sleeve, caught "
     "between the two plates, carries the standoff (BoltCrank.capped_press).",
@@ -147,6 +144,10 @@ bolt crank, the frame ties): what the pivots' (``construction.pivots.standoff``)
 crank's (``construction.crank``) docstrings and the frame ties' defer to."""
 
 
+@overload
+def prefixed(name: str, side: str) -> str: ...
+@overload
+def prefixed(name: None, side: str) -> None: ...
 def prefixed(name: str | None, side: str) -> str | None:
     return None if name is None else f"{side}.{name}"
 
@@ -240,7 +241,7 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     z_in = abs(design.plan.z(design.plan.top)[1] - z_mid)
-    boxes: dict[int, object] = {}       # each part's box, measured once (twice asked below)
+    boxes: dict[int, BoundBox] = {}       # each part's box, measured once (twice asked below)
 
     def box_of(part):
         if id(part) not in boxes:
@@ -286,12 +287,11 @@ def assemble_robot(side: Mechanism, design) -> Mechanism:
     connections = []
     for s in SIDES:
         mirror = s == "R"
-        for b in side.bodies:
-            bodies.append(Body(
-                name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
-                color=b.color, pose=b.pose, outline=b.outline,
-                rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
-            ))
+        bodies.extend(Body(
+            name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
+            color=b.color, pose=b.pose, outline=b.outline,
+            rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
+        ) for b in side.bodies)
         connections += [((i, prefixed(pb, s), pj), (k, prefixed(cb, s), cj))
                         for (i, pb, pj), (k, cb, cj) in side.connections]
     host = {s: prefixed(design.plan.topo.frame_bodies[0], s) for s in SIDES}

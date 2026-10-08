@@ -82,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
         ssh(f"mkdir -p {rdir} && exec flock {rdir}.lock sh -c 'echo locked; cat >/dev/null'"),
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     print(f"[remote] {HOST}:{rdir} (waiting for the worktree lock)", file=sys.stderr, flush=True)
+    assert lock.stdout is not None  # opened with PIPE
+    assert lock.stdin is not None  # (likewise)
     if lock.stdout.readline().strip() != "locked":
         print("[remote] could not take the remote lock", file=sys.stderr)
         return 255

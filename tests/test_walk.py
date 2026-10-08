@@ -46,10 +46,6 @@ def _square(y=-100.0, hx=50.0, hz=40.0):
     return np.array([[-hx, y, -hz], [-hx, y, hz], [hx, y, -hz], [hx, y, hz]])
 
 
-OLD = _linkage.OLD
-"""The materials and full-layer heads the reference numbers were taken with."""
-
-
 def _cfg(module: str, phases_deg=None, proportions=None, **kw) -> BuildConfig:
     """A Klann robot's config from the phases in degrees and a proportions dict."""
     phases = None if phases_deg is None else tuple(math.radians(p) for p in phases_deg)
@@ -91,6 +87,41 @@ def test_walk_reference_fixture_is_current():
     from tests import cache
 
     cache.assert_current("linkage", "walk_reference", _linkage.walk_reference_doc)
+
+
+@pytest.mark.slow
+@pytest.mark.fixture_regen
+def test_strider_walk_reference_fixture_is_current():
+    """The Strider double's walk reference (the viewer's model test reads it) is the
+    engine's."""
+    from tests import cache
+
+    cache.assert_current("linkage", "walk_reference_strider",
+                         _linkage.strider_walk_reference_doc)
+
+
+def test_strider_walk_reference_is_the_models():
+    """The Strider double's recorded feet and centre of mass give its recorded metrics in
+    the Python model (the viewer's model test checks its own against the same), and are
+    the default design's own."""
+    doc = _linkage.strider_walk_reference()
+    w = doc["walk"]
+    feet = [walk.Foot(f["body"], f["side"], f["leg"], f["z"], np.asarray(f["xy"], dtype=float))
+            for f in w["feet"]]
+    model = walk.Walker(feet=feet, com=w["com"], mass_g=float("nan"),
+                        config=_linkage.STRIDER_REFERENCE_CONFIG)
+    m = walk.straight_walk_metrics(model, rpm_max=w["servo"]["rpm_max"])
+    for key, want in doc["metrics"].items():
+        if key == "direction":
+            assert m[key] == want
+        else:
+            np.testing.assert_allclose(m[key], want, rtol=1e-6, atol=1e-6, err_msg=key)
+    double = walk.walker(_linkage.STRIDER_REFERENCE_CONFIG)    # the recorded foot z
+    assert [f.body for f in double.feet] == [f["body"] for f in w["feet"]]
+    for f, rec in zip(double.feet, w["feet"], strict=True):
+        assert f.z == pytest.approx(rec["z"], abs=1e-6)
+        np.testing.assert_allclose(f.xy, rec["xy"], atol=1e-6)
+    assert doc["metrics"]["walks"]
 
 
 @pytest.fixture(scope="module")
@@ -193,7 +224,7 @@ def test_support_is_vectorized():
 
 def test_rigid_motion_has_no_slip():
     """Feet planted while the body translates and turns: recovered exactly, slip 0."""
-    feet = _square() + [[3, 0, 1], [-2, 0, 5], [7, 0, -3], [1, 0, 2]]
+    feet = _square() + np.array([[3, 0, 1], [-2, 0, 5], [7, 0, -3], [1, 0, 2]])   # offsets
     for V, w in (((25.0, 0.0), 0.0), ((3.0, -2.0), 0.5)):
         rates = np.zeros_like(feet)
         rates[:, 0] = -(V[0] + w * feet[:, 2])
@@ -315,16 +346,15 @@ def test_quad_support_follows_the_contract(quad):
 @pytest.mark.parametrize("com", ["nominal", "pivots"])
 def test_quad_reference(com):
     """The viewer's numbers for the Klann quad (centre of mass: the frame pivots' centroid
-    there; the nominal mass model here gives the same), on the stack they were taken at:
-    ``--crank printed``, whose 12 layers put the feet at z -62 / -50 mm. The keyed crank
-    plans 16 layers, the feet at -74 to -53 mm, which widens the margin to 57.4 mm; the bolt
-    crank (the default since 2026-10-03) with its single aluminium webs and heads in gaps
-    (2026-10-04) 14 layers, 77.2 mm on 0.080 in frame plates: 55.9 mm, with the hex-standoff
-    crankpins on 0.100 in 6061 webs 76.8 mm: 52.4 mm (its two-plate
-    stacks' 31 layers gave 70.5; checked at the end). The numbers are
-    ``walk_reference.json``'s, which the viewer's model test reads too."""
+    there; the nominal mass model here gives the same), on the default design's stack: the
+    bolt crank's single aluminium webs on hex standoffs, heads in clearance gaps, standoff
+    pillars and Chicago pins, 13 layers, the feet at z -95.8 / -49.2 / -56.0 mm, a 52.6 mm
+    least margin. (The reference was the removed ``--crank printed`` quad's until
+    2026-10-07: its 12 layers put the feet at -62 / -50 mm, a 50.0 mm margin; the keyed
+    crank's 16 layers 57.4 mm.) The numbers are ``walk_reference.json``'s, which the
+    viewer's model test reads too."""
     ref = _linkage.walk_reference()["reference"]
-    quad = walk.walker(_cfg("quad", crank="printed", pillar="printed", **OLD))
+    quad = walk.walker(_cfg("quad"))
     assert quad.config == _linkage.REFERENCE_CONFIG
     assert walk.foot_z_nominal(quad.config) == ref["foot_z"]
     if com == "pivots":
@@ -350,15 +380,6 @@ def test_quad_reference(com):
     assert m["degenerate_fraction"] == ref["degenerate_fraction"]
     assert m["roll_deg"] == pytest.approx(ref["roll_deg"], abs=1e-9)    # left/right symmetric
     assert m["speed_mm_s"] == pytest.approx(m["stride_mm"] * ref["rpm_max"] / 60.0)
-    if com == "nominal":        # the default (bolt crank, standoffs) stack is wider still
-        keyed = walk.straight_walk_metrics(walk.walker(_cfg("quad", crank="keyed",
-                                                             pillar="printed", **OLD)))
-        assert keyed["min_margin_mm"] == pytest.approx(57.4, abs=0.5)
-        bolt = walk.straight_walk_metrics(walk.walker(_cfg("quad")))
-        # the hex-standoff crankpins (2026-10-04): 52.4 mm (the round standoff's 55.9);
-        # 49.9 with the hub chain capped (2.5 mm less stack, no screw over the hub plate);
-        # 52.8 with the Chicago screws as bought (their taller heads widen the stack)
-        assert bolt["min_margin_mm"] == pytest.approx(52.8, abs=0.5)
 
 
 def test_walk_reference_is_the_models():
@@ -489,9 +510,9 @@ def test_normalized_parameters():
     assert _cfg("quad").is_default
     assert _cfg("quad").key == "klann_quad_robot"
     assert _cfg("quad", robot=False).key == "klann_quad_side"
-    for bad in (dict(module="octo"), dict(phases_deg=[0, 90]), dict(proportions={"XX": 1}),
-                dict(proportions={"OB": -1}), dict(proportions={"DF": float("nan")}),
-                dict(servo="none"), dict(linkage="hoecken")):            # a mechanism: no feet
+    for bad in ({"module": "octo"}, {"phases_deg": [0, 90]}, {"proportions": {"XX": 1}},
+                {"proportions": {"OB": -1}}, {"proportions": {"DF": float("nan")}},
+                {"servo": "none"}, {"linkage": "hoecken"}):            # a mechanism: no feet
         with pytest.raises(ParamError):
             _cfg(**{"module": "quad", **bad})
     assert parse_phases("0, 90") == (0.0, math.pi / 2)
@@ -521,8 +542,8 @@ def test_parameters_are_the_linkages():
         "proportions": {k: (14.0 if k == "m" else float(v))
                         for k, v in linkage.get("jansen").params.items()}}
     assert _cfg("quad", proportions={"angA": -30.0}).proportions == (("angA", -30.0),)
-    for bad in (dict(linkage="octopus"), dict(proportions={"DF": 2.0}),     # Klann's, not Jansen's
-                dict(proportions={"m": 0.0}), dict(proportions={"m": float("inf")})):
+    for bad in ({"linkage": "octopus"}, {"proportions": {"DF": 2.0}},     # Klann's, not Jansen's
+                {"proportions": {"m": 0.0}}, {"proportions": {"m": float("inf")}}):
         with pytest.raises(ParamError):
             _cfg(**{"module": "double", "linkage": "jansen", **bad})
     # the default design's phases, whichever way they were given, are None
@@ -686,7 +707,7 @@ class _AsgiClient:
         scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
                  "method": "GET", "scheme": "http", "path": path, "raw_path": path.encode(),
                  "query_string": query.encode(), "root_path": "",
-                 "headers": [(b"host", b"testserver")], "client": ("testclient", 50000),
+                 "headers": [(b"host", b"localhost")], "client": ("testclient", 50000),
                  "server": ("testserver", 80)}
         sent = False
         messages = []
@@ -697,6 +718,7 @@ class _AsgiClient:
                 sent = True
                 return {"type": "http.request", "body": b"", "more_body": False}
             await asyncio.sleep(3600)
+            return {"type": "http.disconnect"}      # never: the response is in by then
 
         async def send(message):
             messages.append(message)
@@ -722,7 +744,7 @@ def client(server_app):
         from fastapi.testclient import TestClient
     except ImportError:
         return _AsgiClient(server_app.app)
-    return TestClient(server_app.app)         # not entered: no lifespan (no default bake)
+    return TestClient(server_app.app, base_url="http://localhost")   # no lifespan: no bake
 
 
 def test_api_walk_quad(client, server_app):
@@ -775,8 +797,10 @@ def test_api_walk_parameters(client):
 def test_api_walk_flags_a_design_that_would_tip(client, request, plans):
     """A design whose stability margin dips under ``MIN_MARGIN_MM`` is valid (it previews)
     but not stable, and says why; the default design (Strider's double) and the Klann quad
-    are both. ``live``: the foot z from the planner (the Jansen quad's search runs ~120 s
-    to no plan, and its feet are guessed)."""
+    are both. The four-bar quad tips on its planned feet (a 0.1 mm margin); ``recorded``:
+    the Jansen quad too, on its guessed feet (it has no layer plan, its search runs out:
+    ``test_planner_bounds.py::test_the_jansen_quad_has_no_plan_in_fourteen_layers``).
+    ``live``: every foot z from the planner (each plan seeded from the test cache)."""
     from spiderpig.walk import MIN_MARGIN_MM
 
     if plans == "live":
@@ -792,12 +816,14 @@ def test_api_walk_flags_a_design_that_would_tip(client, request, plans):
     assert w["stable"]
     assert w["warning"] is None
     assert w["metrics"]["min_margin_mm"] >= MIN_MARGIN_MM
-    w = client.get("/api/walk", params={"linkage": "jansen", "module": "quad"}).json()
-    assert w["valid"]
-    assert w["walks"]
-    assert not w["stable"]
-    assert "tip" in w["warning"]
-    assert w["metrics"]["min_margin_mm"] < MIN_MARGIN_MM
+    tippers = [("fourbar", "quad")] + ([("jansen", "quad")] if plans == "recorded" else [])
+    for key, module in tippers:
+        w = client.get("/api/walk", params={"linkage": key, "module": module}).json()
+        assert w["valid"], key
+        assert w["walks"], key
+        assert not w["stable"], key
+        assert "tip" in w["warning"], key
+        assert w["metrics"]["min_margin_mm"] < MIN_MARGIN_MM, key
 
 
 def test_api_walk_flags_a_design_that_does_not_walk(client):
@@ -840,7 +866,7 @@ def test_api_linkages(client):
     assert body["default"] == "strider"
     by_key = {lk["key"]: lk for lk in body["linkages"]}
     assert list(by_key) == linkage.available()
-    assert list(by_key)[0] == "strider"
+    assert next(iter(by_key)) == "strider"
     assert by_key["strider"]["default_module"] == "double"
     assert by_key["hoecken"]["default_module"] == "single"
     klann = by_key["klann"]

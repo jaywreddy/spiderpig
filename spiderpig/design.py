@@ -32,12 +32,18 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from spiderpig.config import BuildConfig
 from spiderpig.spec import Spec
 from spiderpig.stack import StackSpec
+
+if TYPE_CHECKING:
+    from spiderpig.fabricate import SideDesign
+    from spiderpig.mechanism import Mechanism, MechanismTemplate
+    from spiderpig.store import Store
 
 ROOT = Path(__file__).resolve().parent      # the spiderpig package
 
@@ -223,7 +229,7 @@ def jsonable(obj):
         return float(obj) if math.isfinite(obj) else None
     if isinstance(obj, np.ndarray):
         return jsonable(obj.tolist())
-    if is_dataclass(obj) and not isinstance(obj, type):
+    if not isinstance(obj, type) and is_dataclass(obj):
         return {f.name: jsonable(getattr(obj, f.name)) for f in fields(obj)
                 if f.name not in SKIP_FIELDS}
     if isinstance(obj, Mapping):
@@ -341,11 +347,11 @@ class Design:
     reports: dict[str, object] = field(default_factory=dict)
     log: list[dict] = field(default_factory=list)
     parts: dict[str, Part] = field(default_factory=dict)
-    template: object = field(default=None, repr=False)     # the side's MechanismTemplate
-    side: object = field(default=None, repr=False)         # fabricate.SideDesign
-    mech: object = field(default=None, repr=False)         # the fabricated Mechanism
+    template: MechanismTemplate | None = field(default=None, repr=False)
+    side: SideDesign | None = field(default=None, repr=False)
+    mech: Mechanism | None = field(default=None, repr=False)          # the fabricated one
     build_t: float | None = None                           # crank angle the parts are at
-    store: object = field(default=None, repr=False)        # spiderpig.store.Store, or None
+    store: Store | None = field(default=None, repr=False)
     derived_from: str | None = None                        # the design this one's spec patches
     patch: dict | None = None                              # the merge patch from it
     created_at: str = field(default_factory=now_iso)

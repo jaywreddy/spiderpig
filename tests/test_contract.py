@@ -14,15 +14,22 @@ MODULES = ("single", "double", "decker", "quad")
 OTHERS = [s for s in servos.available() if s != servos.DEFAULT]
 
 
-@pytest.mark.parametrize("t", quick([0.0, 2.2, 4.38], [2.2]))
-@pytest.mark.parametrize("module", quick(MODULES, ["single"]))
+@pytest.mark.parametrize("t", quick([0.0, 2.2, 4.38], []))
+@pytest.mark.parametrize("module", MODULES)
 def test_every_part_stays_inside_its_claim(design, module, t):
+    """Every group of every module at three angles: the full tier only (the single at 2.2,
+    the cheapest case, is ~8 s). The quick tier's whole-side contract check is the Hoecken's
+    (test_mechanisms.py::test_one_side_stays_inside_its_claims[hoecken-2.2], ~4.4 s: its
+    drive, crank, pillars, pins, links and frame plates through the same check_side)."""
     tmpl, d = design(module)
     assert check_side(d, tmpl.freeze_at(t)) == []
 
 
-@pytest.mark.parametrize("servo", OTHERS)
-@pytest.mark.parametrize("module", quick(MODULES, ["single"]))
+# the full tier only: the quick tier couples each servo's drive and crank
+# (test_crank.py::test_every_servo_couples_the_crank_inside_the_claims, 3 s each), and
+# checks every group on the default servo (above); the whole side per servo is ~8 s
+@pytest.mark.parametrize("servo", quick(OTHERS, []))
+@pytest.mark.parametrize("module", MODULES)
 def test_every_servo_couples_inside_the_claims(design, module, servo, monkeypatch):
     if (module, servo) == ("quad", "xl330_m288"):
         # the demo Klann quad on the XL330 with the hex-standoff crank (2026-10-04): its hub
@@ -31,7 +38,7 @@ def test_every_servo_couples_inside_the_claims(design, module, servo, monkeypatc
         # plan only after ~6 CPU minutes, past the 60 s default (the STS3215 plans in 3 s)
         from spiderpig import stack
 
-        monkeypatch.setattr(stack, "MAX_SECONDS", 900.0)
+        monkeypatch.setattr(stack.plan, "MAX_SECONDS", 900.0)
     tmpl, d = design(module, servo)
     assert check_side(d, tmpl.freeze_at(2.2)) == []
 

@@ -91,6 +91,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cache
 from itertools import combinations
+from typing import overload
 
 import numpy as np
 
@@ -348,27 +349,6 @@ def anchor_of(body, by_name: Mapping) -> str | None:
     return None
 
 
-def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
-    """``(motion, owner)`` for :func:`cycle_com`: each anchor's planar motion from ``mech``'s
-    pose to ``tmpl`` sampled at ``ts``, and each body's anchor."""
-    by_name = {b.name: b for b in mech.bodies}
-    owner = {b.name: anchor_of(b, by_name) for b in mech.bodies}
-    sampled = tmpl.sample(np.asarray(ts, dtype=float))
-    motion = {}
-    for name in {a for a in owner.values() if a}:
-        body = by_name[name]
-        ref = {j.name: np.asarray((body.pose @ j.pose).matrix[:3, 3], dtype=float)
-               for j in body.joints}
-        cur = sampled.joint_world.get(name, {})
-        names = [j for j in ref if j in cur]
-        if not names:
-            continue
-        p0 = np.broadcast_to(np.stack([ref[j] for j in names]), (len(ts), len(names), 3))
-        p1 = np.stack([cur[j] for j in names], axis=1)
-        motion[name] = planar_fit(p0, p1)
-    return motion, owner
-
-
 # Nominal mass model (no parts), see :func:`nominal_mass`. Everything of a side but its
 # link plates and servo is lumped on the crank axis O (its measured centre of mass is
 # within a few mm of it): the laser-cut plates (the frame plates, by fixed pivot; the bolt
@@ -388,7 +368,6 @@ _FRAME_BASE_G, _FRAME_PER_PIVOT_G = 16.2, 2.85    # the frame plates (per 3 mm a
 _CENTRE_PLATES_G = 11.05             # half the centre plates (the robot's chassis)
 _CHASSIS_REST_G = 17.65              # half the ties and rear screws: aluminium, steel
 _DRIVE_EXTRA_G = 3.6                 # the servo's screws and horn
-_CRANK_BASE_G, _CRANK_PER_PIN_G = 6.3, 3.5        # a printed crankshaft, per crankpin
 _CRANK_PLATES_BASE_G, _CRANK_PLATES_PER_PIN_G = 3.78, 5.07   # the bolt crank's plates
 _CRANK_HW_BASE_G, _CRANK_HW_PER_PIN_G = 9.6, 8.28             # ... its bolts, nuts, stub
 _PILLAR_PER_PIVOT_G = 12.0           # a standoff pillar (segments, rings, screws, washers)
@@ -496,14 +475,9 @@ def nominal_mass_breakdown(config: BuildConfig, legs: Sequence[Leg], robot: bool
         config, config.frame_sheet)
     # crankpins at distinct positions (a mirrored pair shares one; a decker's are 90° apart)
     crankpins = {tuple(np.round(leg.joints[p][0], 3)) for leg in legs for p in lk.crank[1:]}
-    from spiderpig import construction
-
-    if getattr(construction.crank(config.crank), "plates", False):     # the bolt crank
-        plates += (_CRANK_PLATES_BASE_G + _CRANK_PLATES_PER_PIN_G * len(crankpins)) \
-            * _sheet_scale(config, config.crank_sheet)
-        crank = _CRANK_HW_BASE_G + _CRANK_HW_PER_PIN_G * len(crankpins)
-    else:
-        crank = _CRANK_BASE_G + _CRANK_PER_PIN_G * len(crankpins)
+    plates += (_CRANK_PLATES_BASE_G + _CRANK_PLATES_PER_PIN_G * len(crankpins)) \
+        * _sheet_scale(config, config.crank_sheet)
+    crank = _CRANK_HW_BASE_G + _CRANK_HW_PER_PIN_G * len(crankpins)
     printed = (_DRIVE_EXTRA_G + crank
                + (_PILLAR_PER_PIVOT_G + _PILLAR_PER_PIVOT_LEG_G * len(legs)) * len(pivots)
                + _PIN_PER_JOINT_G * _pin_joints(lk) * len(legs))
@@ -590,12 +564,12 @@ class Walker:
         dxy = self._dxy[f, i0] * (1 - frac) + self._dxy[f, i1] * frac
         z = np.broadcast_to(self._z, theta.shape)
         p = np.concatenate([xy, z[..., None]], axis=-1)
-        pd = np.concatenate([dxy, np.zeros(theta.shape + (1,))], axis=-1)
+        pd = np.concatenate([dxy, np.zeros((*theta.shape, 1))], axis=-1)
         return p, pd
 
 
 def walker(config: BuildConfig | None = None, *, feet_z: Sequence[float] | None = None,
-           com: Sequence[float] | None = None, mass_g: float | None = None,
+           com: Sequence[float] | np.ndarray | None = None, mass_g: float | None = None,
            legs: Sequence[Leg] | None = None, n: int = N_THETA) -> Walker:
     """The walking model of the robot ``config`` describes (no parts are built).
 
@@ -673,7 +647,7 @@ def _triangle_distance(q, a, b, c, n) -> np.ndarray:
     return np.where(inside, 0.0, dist)
 
 
-def support(feet: np.ndarray, com: Sequence[float]) -> Support:
+def support(feet: np.ndarray, com: Sequence[float] | np.ndarray) -> Support:
     """The support state for feet positions ``(..., F, 3)`` (body frame) and centre of mass.
 
     See the module docstring; vectorized over the leading axes.
@@ -897,7 +871,7 @@ def straight_walk_metrics(model: Walker, *, rpm_max: float | None = None,
     slip = trace.slip[:n]
     stride = float(trace.x[n])
     if rpm_max is None:
-        rpm_max = servo_info(model.config.servo)["rpm_max"]
+        rpm_max = float(servo_info(model.config.servo)["rpm_max"])     # (a float already)
     P, _ = model.feet_at(ts, ts)
     slip_rad = float(np.sqrt(np.mean(slip ** 2)) / omega)
     return {
@@ -968,6 +942,10 @@ def _round(a, digits: int = 4):
     return np.round(np.asarray(a, dtype=float), digits).tolist()
 
 
+@overload
+def jsonable(obj: Mapping) -> dict: ...
+@overload
+def jsonable(obj: object) -> object: ...
 def jsonable(obj):
     """``obj`` with numpy scalars/arrays as Python ones and non-finite floats as ``None``.
 

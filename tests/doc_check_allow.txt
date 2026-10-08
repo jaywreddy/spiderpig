@@ -1,0 +1,72 @@
+# The doc check's allow-list (tests/doc_check.py): backticked spans that are legitimately
+# not code. One per line: `token` (anywhere) or `doc-path: token` (in that doc only).
+# Drift is NOT allowed here: a name the code lost is fixed in the doc (W7), not listed.
+
+# names that aren't code
+README.md: digifab
+docs/ARCHITECTURE.md: monospace
+# files the build writes as f"{name}.stl" / f"{name}_sheet_parts.csv", the store's stage files
+strider.stl
+klann.stl
+strider_sheet_parts.csv
+export.json
+verify.json
+docs/agentlib/API.md: FILE.json
+# the MCP protocol's names (the SDK's ToolAnnotations fields, read_only_hint, ...; a
+# result's isError)
+readOnlyHint
+isError
+idempotentHint
+# `envelope_x/_y/_z_mm` shorthand
+_y_mm
+_z_mm
+
+# docs/agentlib/ROADMAP.md: what the workstreams will add or name (not code yet)
+docs/agentlib/ROADMAP.md: TrustedHostMiddleware
+docs/agentlib/ROADMAP.md: Origin
+docs/agentlib/ROADMAP.md: finalize.py
+docs/agentlib/ROADMAP.md: m2_self_tap_4
+# ruff's rule families and pyright's rule names
+docs/agentlib/ROADMAP.md: C4
+docs/agentlib/ROADMAP.md: PIE
+docs/agentlib/ROADMAP.md: RET
+docs/agentlib/ROADMAP.md: BLE
+docs/agentlib/ROADMAP.md: PLE
+docs/agentlib/ROADMAP.md: PERF
+docs/agentlib/ROADMAP.md: noqa
+docs/agentlib/ROADMAP.md: reportOptionalMemberAccess
+# the doc check's own placeholders
+docs/agentlib/ROADMAP.md: Class.attr
+docs/agentlib/ROADMAP.md: mise run X
+docs/agentlib/ROADMAP.md: --flag
+
+# SCOPE.md: a store file the proposal names (designs/<id>/walk.json, written at run time)
+docs/agentlib/SCOPE.md: walk.json
+
+# docs/agentlib/ROADMAP.md: the names W2 and W5 removed, kept in their workstreams' scope as
+# the record of what each took out (the code lost them on purpose: not drift)
+docs/agentlib/ROADMAP.md: KeyedCrank
+docs/agentlib/ROADMAP.md: PrintedCrank
+docs/agentlib/ROADMAP.md: _Stack
+docs/agentlib/ROADMAP.md: HornJoint
+docs/agentlib/ROADMAP.md: KeyedJoint
+docs/agentlib/ROADMAP.md: PostJoint
+docs/agentlib/ROADMAP.md: _BoltPlates
+docs/agentlib/ROADMAP.md: low_count
+docs/agentlib/ROADMAP.md: share_stack
+docs/agentlib/ROADMAP.md: construction/printed.py
+docs/agentlib/ROADMAP.md: PrintedAxle
+docs/agentlib/ROADMAP.md: recommend.printed_pillars
+docs/agentlib/ROADMAP.md: _pitch_error
+docs/agentlib/ROADMAP.md: post_joint
+docs/agentlib/ROADMAP.md: POST_SCREWS
+docs/agentlib/ROADMAP.md: construction/crank.py
+docs/agentlib/ROADMAP.md: ScrewKind
+docs/agentlib/ROADMAP.md: SHCS
+docs/agentlib/ROADMAP.md: BHCS
+docs/agentlib/ROADMAP.md: SELF_TAP
+docs/agentlib/ROADMAP.md: screw_body
+docs/agentlib/ROADMAP.md: StandoffAxle.splice_shims
+docs/agentlib/ROADMAP.md: BoltCrank.top_segment
+docs/agentlib/ROADMAP.md: walk.body_motion
+docs/agentlib/ROADMAP.md: CrankRouter._webs

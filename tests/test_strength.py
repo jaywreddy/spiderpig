@@ -5,6 +5,7 @@ findings (warnings and errors with fixes) and where they surface (audit, verify)
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -13,7 +14,6 @@ import pytest
 from spiderpig import strength
 from spiderpig.config import BuildConfig
 from spiderpig.construction.pivots.chicago import ChicagoShaft, chicago_section
-from spiderpig.construction.pivots.ptfe import PTFE_LIMIT_MPA, ptfe_section
 from spiderpig.construction.wobble import (
     Section,
     beam,
@@ -84,12 +84,16 @@ def test_measured_patterns_give_the_measured_moment():
     assert s["moment_nmm"] == pytest.approx(20.0 * 12.0 / 2)
 
 
-def test_a_ptfe_liner_is_limited_by_its_bearing_pressure():
-    n = note({"a": 0, "b": 1}, section=ptfe_section())
+def test_a_liner_is_limited_by_its_bearing_pressure():
+    """A section with a liner's bearing limit (``Section.bearing_limit_mpa``: the PTFE
+    liner's 10 MPa, the removed ``ptfe`` pin's) is rated on it where the shaft holds more."""
+    liner = replace(Section.rod(3.0, name="3 mm rod in a PTFE liner"), bearing_limit_mpa=10.0)
+    assert liner.as_dict()["bearing_limit_mpa"] == 10.0
+    n = note({"a": 0, "b": 1}, section=liner)
     s = stresses(n, 45.0)
     assert s["bearing_mpa"] == pytest.approx(45.0 / 9.0, abs=0.05)
     assert s["governs"] == "liner bearing"
-    assert s["safety"] == pytest.approx(PTFE_LIMIT_MPA / (45.0 / 9.0), abs=0.01)
+    assert s["safety"] == pytest.approx(10.0 / (45.0 / 9.0), abs=0.01)
     # the same load on the Chicago barrel: the shaft governs, and holds it
     c = stresses(note({"a": 0, "b": 1}, section=chicago_section(ChicagoShaft())), 45.0)
     assert c["governs"] == "shaft"
@@ -156,12 +160,11 @@ def test_a_joint_takes_its_own_sim_loads():
 # -- findings ---------------------------------------------------------------------------
 
 
-def _check(notes, jam, walk=1.0, crank="keyed"):
+def _check(notes, jam, walk=1.0, crank="bolt"):
     cfg = BuildConfig(crank=crank)
     loads = strength.uniform_loads(walk, jam, "override", "test")
     loads["torque_limit_nm"] = 0.85
-    meta = {"crank_key": {"key_af_mm": 5.0}} if crank.startswith("keyed") else {}
-    return strength.check(notes, meta, cfg, loads)
+    return strength.check(notes, {}, cfg, loads)
 
 
 def test_warnings_and_errors_name_the_joint_sf_load_and_a_fix():
@@ -194,26 +197,16 @@ def test_warnings_and_errors_name_the_joint_sf_load_and_a_fix():
 
 
 def test_the_crank_twist_against_each_element_of_the_joint():
-    """Every crank is rated element by element with one hex-bearing model; the keyed crank's
-    key in its 1.6 mm printed sockets (0.55 N·m) is far under the jam twist, the bolt
-    crank's weakest element (its webs' clamp on the standoff crankpin) holds it with a
-    warning's margin; the old
-    1.8 N·m post-shell figure is gone."""
-    from spiderpig.construction.crank import hex_bearing_nm
-
-    keyed = _check({}, 0.0)
-    crank = next(r for r in keyed["rows"] if r["kind"] == "crank")
-    assert crank["factor"] == pytest.approx(2.0, abs=0.05)          # Strider: pins 180° apart
-    assert not any("post shell" in k for k in crank["capacity_nm"])
-    assert crank["weakest"].startswith("key in its")
-    cap = hex_bearing_nm(5.0, 1.6 - 0.4) + strength.CLAMP_FRICTION_NM
-    assert min(crank["capacity_nm"].values()) == pytest.approx(cap, abs=1e-3)
-    assert crank["jam"]["safety"] == pytest.approx(cap / (crank["factor"] * 0.85), abs=0.01)
-    f = next(f for f in keyed["findings"] if f["kind"] == "crank")
-    assert f["level"] == "error"
-    assert any("--crank bolt" in x for x in f["fixes"])
+    """Every crank is rated element by element: the hex crank's weakest element (the hex in
+    its pocket) holds the jam twist at SF 2, the round standoff's (its webs' clamp on the
+    crankpin) with a warning's margin; the old 1.8 N·m post-shell figure is gone. (The
+    keyed and printed cranks' rows went with them on 2026-10-07.)"""
     bolt = _check({}, 0.0, crank="bolt")
     br = next(r for r in bolt["rows"] if r["kind"] == "crank")
+    assert br["factor"] == pytest.approx(2.0, abs=0.05)             # Strider: pins 180° apart
+    assert not any("post shell" in k for k in br["capacity_nm"])
+    cap = min(br["capacity_nm"].values())
+    assert br["jam"]["safety"] == pytest.approx(cap / (br["factor"] * 0.85), abs=0.01)
     # the single aluminium webs' hex standoff crankpin (the default since 2026-10-04): the
     # hex in its 0.100 in 6061 pocket holds the jam twist at SF 2 (no finding)
     assert br["weakest"].startswith("hex 5.5 AF in its plate's pocket")
@@ -227,10 +220,6 @@ def test_the_crank_twist_against_each_element_of_the_joint():
     bf = next(f for f in rnd["findings"] if f["kind"] == "crank")
     assert bf["level"] == "warning"
     assert "torque limit" in bf["fixes"][0]
-    printed = _check({}, 0.0, crank="printed")
-    pf = next(f for f in printed["findings"] if f["kind"] == "crank")
-    assert pf["level"] == "error"
-    assert "--crank bolt" in " ".join(pf["fixes"])
 
 
 def test_errors_fail_the_audit_and_warnings_dont():
@@ -251,8 +240,7 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
     from spiderpig import verify
 
     notes = {"pin:J4_leg0": note({"b3_leg0": 2, "b4_leg0": 6})}
-    design = SimpleNamespace(mech=SimpleNamespace(meta={"wobble": notes, "crank_key":
-                                                        {"key_af_mm": 5.0}}),
+    design = SimpleNamespace(mech=SimpleNamespace(meta={"wobble": notes}),
                              config=BuildConfig(), store=None, kind="walker")
 
     def loads(config, store=None, override=None, sim=True):
@@ -286,7 +274,7 @@ def test_verify_fails_an_overloaded_joint(monkeypatch):
     assert rows[0].tier == "estimated"
 
 
-# -- the sim's loads and the PTFE pin, built ---------------------------------------------
+# -- the sim's loads -----------------------------------------------------------------------
 
 
 @pytest.mark.slow
@@ -329,42 +317,6 @@ def test_the_default_designs_own_loads(tmp_path):
     assert sim_loads.cache_path(cfg, tmp_path).exists()
     again = sim_loads.design_loads(cfg, tmp_path, cached_only=True)
     assert again == doc
-
-
-_PTFE = BuildConfig(linkage="klann", module="single", robot=False, pin="ptfe")
-
-
-@pytest.mark.slow
-def test_the_ptfe_pin_plans_and_keeps_its_contract():
-    """The PTFE-lined pin's side: the plan re-checked and every part inside its group's
-    claims (:func:`test_the_ptfe_pin_builds_and_lists_its_liners`: its parts)."""
-    from spiderpig.construction.contract import check_side
-    from spiderpig.stack import verify_plan
-    from tests import cache
-
-    tmpl, design = cache.cached_design(_PTFE)
-    assert verify_plan(design.plan, tmpl) == []
-    assert check_side(design, tmpl.freeze_at(1.0)) == []
-
-
-def test_the_ptfe_pin_builds_and_lists_its_liners():
-    """The PTFE-lined pin built (the fabrication cache's side): a liner in every link of
-    every pin, the tube bought and cut to length, the liner's bearing limit in its notes."""
-    from spiderpig.construction.axle import AxleGroup
-    from spiderpig.hardware.bom import bom_from_mechanism
-    from tests import cache
-
-    _, design = cache.cached_design(_PTFE)
-    fab = cache.cached_side(_PTFE, 1.0)
-    pins = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
-    liners = [b for b in fab.bodies if b.name.endswith("_liner")]
-    assert len(liners) == sum(len(g.axis.members) for g in pins)
-    bom = bom_from_mechanism(fab, group=False)
-    assert "ptfe_tube_3x4_1m" in {r.key for r in bom.purchased}
-    assert any(c["key"] == "ptfe_tube_3x4_1m" for c in bom.as_dict()["cuts"])
-    for g in pins:
-        n = fab.meta["wobble"][g.name]
-        assert n["section"]["bearing_limit_mpa"] == PTFE_LIMIT_MPA
 
 
 @pytest.mark.slow

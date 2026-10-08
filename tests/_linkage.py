@@ -3,22 +3,26 @@
 **Foot z** (``tests/fixtures/linkage/foot_z.json``). The walking model needs each foot's
 lateral z, which comes from the layer plan of the linkage's *default* design
 (:func:`spiderpig.walk.foot_z_nominal` -> ``walk._default_plan_z`` -> ``design_side``):
-planning is the planner's business and takes from 0.3 s (Klann single) to 122 s (the
-Jansen quad's search, which ends without a plan). The fast tests read the recorded z
-instead (:func:`use_recorded_foot_z` puts them in ``walk._default_plan_z``'s place); a
-config that isn't recorded is planned live, as before. :func:`foot_z_doc` is the
-generator, ``test_walk.py::test_foot_z_fixture_is_current`` the currency test (slow).
+planning is the planner's business and takes from 0.3 s (Klann single) to 60 s (the
+Jansen quad's search, which ends at the CPU deadline without a plan). The fast tests read
+the recorded z instead (:func:`recorded_foot_z_ctx` puts them in ``walk._default_plan_z``'s
+place); a config that isn't recorded is planned live, as before. :func:`foot_z_doc` is the
+generator, ``test_walk.py::test_foot_z_fixture_is_current`` the currency test (slow); both
+search under :func:`node_budget` (no clock, :data:`FOOT_Z_NODES` search steps), so what
+they record doesn't depend on the machine's load.
 
-**The walk reference** (``tests/fixtures/linkage/walk_reference.json``): the Klann quad the
-viewer's reference numbers were taken on (``--crank printed``, the materials before
-2026-10-04), its feet and centre of mass as ``/api/walk`` sends them, the Python model's
-straight-walk metrics, and :data:`QUAD_REFERENCE`, the numbers both models must give
-(``test_walk.py::test_quad_reference`` and ``viewer/src/drive/model.test.ts`` read the same
-file).
+**The walk reference** (``tests/fixtures/linkage/walk_reference.json``): the demo Klann quad
+on the default constructions (the reference was the ``--crank printed`` quad on the
+materials before 2026-10-04 until that crank was removed, 2026-10-07), its feet and centre
+of mass as ``/api/walk`` sends them, the Python model's straight-walk metrics, and
+:data:`QUAD_REFERENCE`, the numbers both models must give (``test_walk.py::
+test_quad_reference`` and ``viewer/src/drive/model.test.ts`` read the same file).
 """
 
 from __future__ import annotations
 
+import functools
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -27,9 +31,6 @@ import pytest
 from spiderpig import walk
 from spiderpig.config import BuildConfig
 
-OLD = {"frame_sheet": "acrylic_3mm", "link_sheets": (), "heads": "sink"}
-"""The materials and full-layer heads the walk reference numbers were taken with."""
-
 
 def _klann(module: str, **kw) -> BuildConfig:
     return BuildConfig(linkage="klann", module=module, **kw)
@@ -37,11 +38,11 @@ def _klann(module: str, **kw) -> BuildConfig:
 
 FOOT_Z_CONFIGS: tuple[BuildConfig, ...] = (
     # test_walk: the default designs its walkers and /api/walk use
-    *(_klann(m) for m in ("single", "double", "decker", "quad")),
-    _klann("quad", crank="printed", pillar="printed", **OLD),       # the walk reference
-    _klann("quad", crank="keyed", pillar="printed", **OLD),
+    *(_klann(m) for m in ("single", "double", "decker", "quad")),   # the quad: the walk
+    #                                                                   reference's
     BuildConfig(linkage="jansen", module="double"),
     BuildConfig(linkage="jansen", module="quad"),                    # no plan: the guess
+    BuildConfig(linkage="fourbar", module="quad"),                   # plans, and tips
     BuildConfig(linkage="strider", module="single"),
     BuildConfig(),                                                   # the Strider double
     # test_view: the stored XL330 Klann quad, and the tune panel's edits on top of it
@@ -56,6 +57,27 @@ the module's phases and the linkage's proportions, the robot, any servo and mate
 _REAL_DEFAULT_PLAN_Z = walk._default_plan_z
 
 
+FOOT_Z_NODES = 4000
+"""The search steps the foot z generator's searches may take in all (``StackSpec.
+max_total_nodes``; the default is 60000 within a 60 CPU-s deadline). Every recorded
+config that plans takes at most 1521 (the Klann double, 2026-10-07: the same z as with the
+default budgets); the Jansen quad's search finds no plan at 4000 steps (6 CPU-s), nor at
+60000 with the clock out (167 CPU-s), nor in the product's 60 s."""
+
+
+@contextmanager
+def node_budget(nodes: int = FOOT_Z_NODES) -> Iterator[None]:
+    """Every side's search bounded by ``nodes`` search steps alone (the CPU deadline taken
+    out): deterministic, whatever the load."""
+    from spiderpig import fabricate, stack
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(stack.plan, "MAX_SECONDS", math.inf)
+        mp.setattr(fabricate, "StackSpec",
+                   functools.partial(stack.StackSpec, max_total_nodes=nodes))
+        yield
+
+
 def _live(config: BuildConfig):
     """What ``walk._default_plan_z`` answers from the planner (uncached)."""
     return _REAL_DEFAULT_PLAN_Z.__wrapped__(config)
@@ -63,11 +85,23 @@ def _live(config: BuildConfig):
 
 def foot_z_doc() -> dict:
     """The generator of ``foot_z.json``: ``{config.key: {"config": repr, "z": [...] | None}}``
-    (``None``: no layer plan, so the walking model guesses)."""
+    (``None``: no layer plan, so the walking model guesses), each searched under
+    :func:`node_budget`."""
+    from spiderpig import fabricate
+
     out = {}
-    for cfg in FOOT_Z_CONFIGS:
-        z = _live(cfg)
-        out[cfg.key] = {"config": repr(cfg), "z": None if z is None else list(z)}
+    memo = dict(fabricate._DESIGNS), dict(fabricate._LAYOUTS)
+    try:
+        with node_budget():
+            for cfg in FOOT_Z_CONFIGS:
+                fabricate._DESIGNS.clear()      # searched here, not answered from the memo
+                fabricate._LAYOUTS.clear()      # or a seed (this process's other tests'
+                z = _live(cfg)                  # are put back after)
+                out[cfg.key] = {"config": repr(cfg), "z": None if z is None else list(z)}
+    finally:
+        for d, kept in zip((fabricate._DESIGNS, fabricate._LAYOUTS), memo, strict=True):
+            d.clear()
+            d.update(kept)
     return out
 
 
@@ -105,25 +139,56 @@ def recorded_foot_z_ctx() -> Iterator[dict]:
         yield table
 
 
+def seed_default_plan(config: BuildConfig) -> None:
+    """Seed ``config``'s plan, and the single module's its search would plan first for the
+    leg hint (``fabricate._leg_hint``), from the test cache (:func:`tests.cache.seed_plan`):
+    ``design_side`` then re-makes and verifies them instead of searching."""
+    from tests import cache
+
+    cache.seed_plan(config)
+    hint = cache._hint_config(config)
+    if hint is not None:
+        cache.seed_plan(hint)
+
+
+@functools.cache
+def _seeded_live(config: BuildConfig):
+    """The planner's answer, its plan seeded from the test cache first
+    (:func:`seed_default_plan`)."""
+    seed_default_plan(config)
+    return _REAL_DEFAULT_PLAN_Z.__wrapped__(config)
+
+
+def _clear_live() -> None:
+    _seeded_live.cache_clear()
+    _REAL_DEFAULT_PLAN_Z.cache_clear()
+
+
 def use_live_foot_z(monkeypatch) -> None:
-    """Undo :func:`recorded_foot_z_ctx` for one test (the planner answers again)."""
-    monkeypatch.setattr(walk, "_default_plan_z", _REAL_DEFAULT_PLAN_Z)
+    """Undo :func:`recorded_foot_z_ctx` for one test: the planner answers again (each
+    default design's plan seeded from the test cache, re-made and verified)."""
+    live = functools.wraps(_REAL_DEFAULT_PLAN_Z)(lambda config: _seeded_live(config))
+    live.cache_clear = _clear_live              # what the server's watcher calls
+    monkeypatch.setattr(walk, "_default_plan_z", live)
 
 
 # ---------------------------------------------------------------------------
 # The walk reference
 # ---------------------------------------------------------------------------
 
-REFERENCE_CONFIG = _klann("quad", crank="printed", pillar="printed", **OLD)
-"""The Klann quad on ``--crank printed``: 12 layers, the feet at z -62 / -50 mm."""
+REFERENCE_CONFIG = _klann("quad")
+"""The demo Klann quad, the default design (the bolt crank, standoff pillars, Chicago pins):
+13 layers, the feet at z -95.8 / -49.2 / -56.0 mm. (The reference was the ``--crank
+printed`` quad until 2026-10-07: 12 layers, the feet at -62 / -50 mm, a 50.0 mm least
+margin; the same stride, bob and pitch within their tolerances.)"""
 
 QUAD_REFERENCE = {
-    "foot_z": [-62.0, -62.0, -50.0, -50.0],
+    "foot_z": [-95.8415, -95.8415, -49.1915, -55.966499999999996],
     "contacts_135": [True, False, False, True] * 2,     # legs 0 and 3, both sides, at 135 deg
     "pitch_deg_max_abs": [8.4, 0.1],                     # [value, abs tolerance]
     "bob_mm": [24.0, 0.5],
     "stride_mm": [102.0, 1.0],
-    "min_margin_mm": [50.0, 0.5],
+    "min_margin_mm": [52.6, 0.5],
     "direction": "+x",
     "tipping_fraction": 0.0,
     "degenerate_fraction": 0.0,
@@ -156,3 +221,34 @@ def walk_reference_doc() -> dict:
 def walk_reference() -> dict:
     """The walk reference's data (``walk_reference.json``)."""
     return _consume("walk_reference", walk_reference_doc)
+
+
+STRIDER_REFERENCE_CONFIG = BuildConfig()
+"""The project's default design, the Strider double (its default constructions and
+materials): the second design the viewer's model is held to the Python one on."""
+
+
+def strider_walk_reference_doc() -> dict:
+    """The generator of ``walk_reference_strider.json``: the default Strider double's feet
+    and centre of mass as ``/api/walk`` sends them (at its planned foot z) and the Python
+    model's straight-walk metrics of them (``viewer/src/drive/model.test.ts`` checks the
+    viewer's model gives the same)."""
+    cfg = STRIDER_REFERENCE_CONFIG
+    model = walk.walker(cfg, feet_z=_live(cfg))
+    servo = walk.servo_info(cfg.servo)
+    metrics = walk.straight_walk_metrics(model, rpm_max=servo["rpm_max"])
+    return {
+        "config": repr(cfg),
+        "walk": walk.jsonable({
+            "theta_samples": model.n,
+            "feet": [f.as_json(digits=6) for f in model.feet],
+            "com": [float(c) for c in model.com],
+            "servo": {"key": servo["key"], "rpm_max": servo["rpm_max"]},
+        }),
+        "metrics": walk.jsonable(metrics),
+    }
+
+
+def strider_walk_reference() -> dict:
+    """The Strider double's walk reference (``walk_reference_strider.json``)."""
+    return _consume("walk_reference_strider", strider_walk_reference_doc)

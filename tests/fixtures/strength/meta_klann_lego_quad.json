@@ -682,7 +682,6 @@
     ],
     "shims_mm": {},
     "span_mm": 29.225,
-    "splices": [],
     "supports": [
      0,
      12
@@ -792,7 +791,6 @@
     ],
     "shims_mm": {},
     "span_mm": 30.125,
-    "splices": [],
     "supports": [
      0,
      12
@@ -902,7 +900,6 @@
     ],
     "shims_mm": {},
     "span_mm": 28.825,
-    "splices": [],
     "supports": [
      0,
      12
@@ -1012,7 +1009,6 @@
     ],
     "shims_mm": {},
     "span_mm": 29.225,
-    "splices": [],
     "supports": [
      0,
      12
@@ -1671,6 +1667,11 @@
    }
   }
  },
- "engine_version": "0.1.0+094f801c3c66",
- "generator": "tests/test_strength.py::test_the_order_designs_meta_current[klann_lego_quad]"
+ "engine_version": "0.1.0+113a8d976b75",
+ "generator": "tests/test_strength.py::test_the_order_designs_meta_current[klann_lego_quad]",
+ "source": {
+  "file": "tests/_strength.py",
+  "name": null
+ },
+ "source_key": "gen-b08f727510259c8f"
 }

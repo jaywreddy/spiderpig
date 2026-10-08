@@ -84,7 +84,10 @@ class WatchBroadcaster:
         for ws in list(self._clients):
             try:
                 await ws.send_json(msg)
-            except Exception:
+            # a socket that can't take a message is dropped, whatever the transport raised
+            # (WebSocketDisconnect, RuntimeError after a close, an OSError): one bad client
+            # mustn't stop the broadcast to the others
+            except Exception:  # noqa: BLE001
                 stale.append(ws)
         for ws in stale:
             self._clients.discard(ws)
@@ -107,7 +110,9 @@ class WatchBroadcaster:
             await self._broadcast({"type": "rebaking", "files": paths})
             try:
                 await asyncio.to_thread(self._rebake)
-            except Exception as e:
+            # the engine's failures aren't one class: whatever the bake raised goes to the
+            # viewer as an error, and the watcher keeps watching for the fix
+            except Exception as e:  # noqa: BLE001
                 log.error("bake failed: %s", e)
                 await self._broadcast({"type": "error", "msg": str(e)})
                 return

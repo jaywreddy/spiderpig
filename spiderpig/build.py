@@ -44,7 +44,7 @@ import sys
 import warnings
 from pathlib import Path
 
-from spiderpig import construction, linkage, servos
+from spiderpig import construction, linkage, servos, uptodate
 from spiderpig.config import (
     ParamError,
     add_build_args,
@@ -57,6 +57,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filam
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
+from spiderpig.uptodate import GENERATED  # api.export's clear_generated reads it here
 
 
 def _parse_args(argv) -> argparse.Namespace:
@@ -79,7 +80,11 @@ def _parse_args(argv) -> argparse.Namespace:
                    help="list modules, servos, constructions and sheet stock")
     p.add_argument("--store", metavar="PATH",
                    help="the design store the options resolve into, whose plan is reused "
+                        "and whose fabrication cache serves the parts "
                         "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
+    p.add_argument("--force", action="store_true",
+                   help="build even when --out already holds this build's outputs, "
+                        "unchanged (else it says so and does nothing)")
     args = p.parse_args(argv)
     try:            # robot=None: the linkage's kind decides (a mechanism is one side)
         args.config = config_from_args(args, robot=False if args.side_only else None)
@@ -149,8 +154,11 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         by_name = {g.ref.name: g.ref for g in groups}
         groups = [part for g in groups for part in _split_by(g, filaments, by_name)]
     for g in groups:
-        fil = (filaments or {}).get(g.ref.name)
-        stem = _file_stem(g.ref.name, taken)
+        # the row's own filament: a split row's ref may be a body of the other filament
+        fil = (filaments or {}).get(g.names[0] if g.names else g.ref.name)
+        # named after its own parts (a split row's ref may be the other filament's body)
+        own = g.ref.name if g.ref.name in g.names or not g.names else g.names[0]
+        stem = _file_stem(own, taken)
         part = _on_plate(g.ref.part)
         export_stl(part, str(out_dir / f"{stem}.stl"))
         same = g.qty - len(g.mirrored)
@@ -177,11 +185,6 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
     return rows
 
 
-GENERATED = (".dxf", ".stl", ".csv")
-"""What a build or an export writes under ``laser/`` and ``print/`` (the DXFs, the STLs,
-their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``)."""
-
-
 def clear_generated(folder: Path) -> None:
     """Delete the files a build writes (:data:`GENERATED`) under ``folder`` and the
     folders that leaves empty; anything else there (a user's notes) stays."""
@@ -198,6 +201,11 @@ def clear_generated(folder: Path) -> None:
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    checked = uptodate.take(argv)   # the CLI's answer, else checked now (before any read)
+    if checked.skip:                # --out holds this very build already (said so)
+        return 0
+    opts, key = checked.opts, checked.key
     args = _parse_args(argv)
     if args.list:
         _list_options()
@@ -205,6 +213,8 @@ def main(argv=None) -> int:
     config = args.config
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
+    if opts is not None:
+        uptodate.forget(opts)       # (a build that stops short is never current)
     for owned in ("laser", "print"):     # no cut or print files left from an earlier build
         clear_generated(out / owned)
     # an export's manifest no longer describes the folder (api.export reuses one by it):
@@ -231,11 +241,12 @@ def main(argv=None) -> int:
     # the plan through the store (api.plan_config), as explain and audit do: the stored
     # design's when it holds one (re-made and verified), else solved once and recorded;
     # design_side then answers from what plan_config remembered
-    from spiderpig import api
+    from spiderpig import api, fabcache
     from spiderpig.store import Store
 
+    store = Store.of(args.store) if args.store else Store.default()
     try:
-        api.plan_config(config, Store.of(args.store) if args.store else Store.default())
+        api.plan_config(config, store)
     except ValueError as e:
         print(f"error: no layer plan: {e}", file=sys.stderr)
         return 2
@@ -244,7 +255,10 @@ def main(argv=None) -> int:
     print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
           f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
-    mech = fabricate(tmpl, config, 1.0)
+    # (key is set exactly when opts is: uptodate.check_once)
+    read = uptodate.inputs(opts, config) if opts is not None and key is not None else None
+    with fabcache.serving(store):       # the store's fabrication when it holds this one
+        mech = fabricate(tmpl, config, 1.0)
     if config.robot:
         m = mech.meta
         print(f"chassis: {m['centre_plates']} centre plates; rear screws "
@@ -311,6 +325,9 @@ def main(argv=None) -> int:
                                                  build_dir=str(out)))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     _write_manifest(out, config, args)
+    if opts is not None and key is not None and read is not None:   # (all set, or none)
+        # what makes the same build again a no-op (the store keeps it)
+        uptodate.record(opts, key, read)
     return 0
 
 

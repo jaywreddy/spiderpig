@@ -84,14 +84,21 @@ export function teardown(scene: THREE.Scene, prev: LoadedScene | null): void {
   disposeRoot(prev.root);  // the foot path lives under the walker node
 }
 
-/** Load ``/api/glb/<mode>?<query>`` (design parameters); rejects with the server's error detail. */
-export async function loadGlb(scene: THREE.Scene, mode: Mode, query = ''): Promise<LoadedScene> {
-  const res = await fetch(`/api/glb/${encodeURIComponent(mode)}${query ? `?${query}` : ''}`);
+/** Load ``/api/glb/<mode>?<query>`` (design parameters); rejects with the server's error detail.
+ * ``signal`` aborts it (the fetch, and the scene is left untouched): rejects with an
+ * ``AbortError`` then. */
+export async function loadGlb(
+  scene: THREE.Scene, mode: Mode, query = '', signal?: AbortSignal,
+): Promise<LoadedScene> {
+  const res = await fetch(`/api/glb/${encodeURIComponent(mode)}${query ? `?${query}` : ''}`, { signal });
   if (!res.ok) {
     const detail = ((await res.json().catch(() => ({}))) as { detail?: unknown }).detail;
     throw new Error(typeof detail === 'string' ? detail : `${res.status} ${JSON.stringify(detail ?? res.statusText)}`);
   }
-  const gltf: GLTF = await loader.parseAsync(await res.arrayBuffer(), '');
+  const buffer = await res.arrayBuffer();
+  signal?.throwIfAborted();
+  const gltf: GLTF = await loader.parseAsync(buffer, '');
+  signal?.throwIfAborted();
   const root = gltf.scene;
 
   // Flat shading reads plate edges crisply; translucent acrylic keeps writing
@@ -102,6 +109,10 @@ export async function loadGlb(scene: THREE.Scene, mode: Mode, query = ''): Promi
     if (mesh.isMesh && mesh.material) {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.flatShading = true;
+      // The studio environment as the material's own map: since three r163 a material
+      // lit by ``scene.environment`` alone takes ``scene.environmentIntensity`` and
+      // ignores its ``envMapIntensity``, which washed out the robot (every part at 1).
+      mat.envMap = scene.environment;
       mat.envMapIntensity = ENV_INTENSITY[mat.name] ?? 0.35;
       mat.needsUpdate = true;
     }

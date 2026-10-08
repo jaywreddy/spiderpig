@@ -12,10 +12,8 @@ Everything is derived from the mechanism :func:`fabricate.fabricate` returns:
   item's density, as a fraction of a spool);
 * ``mech.bom_extras`` adds purchases that aren't modelled as bodies
   (glue, threadlocker, a shim stack's other rings, sheet stock); a line whose ``where`` ends
-  in ``cut X
-  mm`` (the metal pivots' rod, :class:`construction.pivots.common.RodShaft`)
-  also goes on the **cut list** (:func:`cut_list`): identical lengths
-  grouped, the total, so the buyer knows how many rods to cut them from.
+  in ``cut X mm`` (stock cut to length) also goes on the **cut list** (:func:`cut_list`):
+  identical lengths grouped, the total, so the buyer knows how many to cut them from.
 
 Made parts that are the same shape are one row with a quantity
 (:func:`group_made`): a laser-cut plate and its mirror image are the same cut
@@ -35,11 +33,8 @@ unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as DIN 433 wa
 
 What the constructions don't say but the parts do (:func:`fitting_lines`): each horn
 screw's shims as the stack under its head (e.g. ``1 mm``, from the shim body's height),
-threadlocker 222 on the horn screws where they thread into a metal horn (metal to metal
-only: none in a plastic horn), and threadlocker 243 (or 263) on each splice's stud of a
-spliced pillar (``--pillar standoff_hand``: the splice hand-tightened at 0.4 N·m, a dab of
-threadlocker on the stud, metal to metal, kept off the acrylic; the default one-piece
-pillars have none).
+and threadlocker 222 on the horn screws where they thread into a metal horn (metal to metal
+only: none in a plastic horn).
 """
 
 from __future__ import annotations
@@ -51,12 +46,18 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 from spiderpig.hardware.catalog import get, sheet_name
 from spiderpig.hardware.mass import filament_density, surface_props, volume_props
 from spiderpig.hardware.mass import volume as part_volume
+
+if TYPE_CHECKING:
+    from build123d import Shape
+
+    from spiderpig.mechanism import Body
 
 
 @dataclass(frozen=True)
@@ -392,18 +393,26 @@ def _shared_volume(a, b) -> float:
 def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?
 
-    Each matching of the frames (a sign per axis, proper rotations only) is tried in
-    turn; the motion must take ``a``'s surface centroid onto ``b``'s before the proof,
-    one boolean: the volume ``a`` moved and ``b`` don't share is less than ``tol``.
+    A pure translation first when the world-frame inertia tensors agree (a part with two
+    equal moments, a ring, has no definite principal frame: a mirror-symmetric twin was
+    otherwise found only as a mirror image), then each matching of the frames (a sign per
+    axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid
+    onto ``b``'s before the proof, one boolean: the volume ``a`` moved and ``b`` don't share
+    is less than ``tol``.
     """
     from build123d import Location, Plane
 
     from spiderpig.shapes import moved as _moved
 
-    ca, ea, _ = sa.frame
-    cb, eb, _ = sb.frame
-    for signs in _SIGNS:
-        r = eb @ np.diag(signs) @ ea.T
+    ca, ea, ma = sa.frame
+    cb, eb, mb = sb.frame
+    # A translation first, when the inertia tensors agree in world axes (a part placed
+    # without turning it, the common case): its boolean meets exactly coincident faces,
+    # ~5-10x faster than one at the principal frames' rotation, which for a part with two
+    # equal moments (a ring, a disc) turns it about its axis by an arbitrary angle.
+    ia, ib = ea @ np.diag(ma) @ ea.T, eb @ np.diag(mb) @ eb.T
+    eye = (np.eye(3),) if np.abs(ia - ib).max() <= 1e-6 * max(np.abs(ib).max(), 1.0) else ()
+    for r in (*eye, *(eb @ np.diag(signs) @ ea.T for signs in _SIGNS)):
         if np.linalg.det(r) < 0:
             continue
         t = cb - r @ ca
@@ -451,7 +460,7 @@ class MadeGroup:
     """Made parts of one shape: ``ref`` is the body whose part is the pattern."""
 
     method: str
-    ref: object                                  # mechanism.Body
+    ref: Body                                    # its part is the pattern
     names: list[str]
     mirrored: list[str] = field(default_factory=list)
 
@@ -500,7 +509,8 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
     def mirror_of(g: MadeGroup) -> Callable[[], tuple]:
         def get() -> tuple:
             if id(g) not in mirrors:
-                m = g.ref.part.mirror(Plane.XY)
+                part = cast("Shape", g.ref.part)  # a made group's bodies all have a part
+                m = part.mirror(Plane.XY)
                 mirrors[id(g)] = (m, _sig(m))
             return mirrors[id(g)]
         return get
@@ -618,27 +628,40 @@ def _split_by(g: MadeGroup, fil_of: dict, by_name: dict) -> list[MadeGroup]:
 
 _HORN_SHIMS = re.compile(r"crank_horn_shims(\d+)$")
 _HORN_SCREW = re.compile(r"crank_horn_screw(\d+)$")
-_SPLICE_STUD = re.compile(r"pillar_(.+)_stud(\d+)$")
 HORN_LOCK = "threadlocker_222"      # low strength: an M2 / M3 horn screw comes out again
-SPLICE_LOCK = "threadlocker_243"    # medium (or 263): the hand-tight splice's retention
 LOCK_PER_THREAD = 0.01              # of a 10 ml bottle, a drop per thread
 
 
-def shim_breakdown(total: float, sizes) -> list[float]:
-    """DIN 988 shims making up ``total`` mm (0.1 mm steps), thickest first (the crank's
-    ``shim_stack``, on the item's sizes)."""
+def stack(total: float, steps, round_to: float | None = None) -> tuple[list[float], float]:
+    """The one greedy shim loop: thicknesses from ``steps`` (any order) making up ``total``
+    mm, thickest first, and what is left under the thinnest (never negative); with
+    ``round_to``, ``total`` rounded to that step first. Every construction's shims and
+    washers stack through it (the crank's horn shims and clamp take-up, the frame ties, a
+    pillar's end shims, :func:`materials.washer_stack`, a Chicago pin's head spacer)."""
+    if round_to:
+        total = round(total / round_to) * round_to
     left, out = round(total, 3), []
-    for s in sorted((float(v) for v in sizes), reverse=True):
+    for s in sorted((float(v) for v in steps), reverse=True):
         while left >= s - 1e-6:
             out.append(s)
             left = round(left - s, 3)
-    return out
+    return out, max(left, 0.0)
+
+
+def shim_breakdown(total: float, sizes) -> list[float]:
+    """DIN 988 shims making up ``total`` mm (0.1 mm steps), thickest first (:func:`stack`
+    on the item's sizes)."""
+    return stack(total, sizes)[0]
 
 
 SHIM_FAMILIES = ("shim_din988_3x6", "shim_din988_4x8", "shim_din988_6x12")
 _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
 _STACK_SHIMS = re.compile(r"\bshims ([\d.]+(?: \+ [\d.]+)*) mm")
 
+
+SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
+#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
+#                         shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
 
 SHIM_AS: dict[str, tuple[str, int]] = {
     "shim_din988_3x6_t1": ("m3_washer_433", 2),
@@ -649,7 +672,7 @@ SHIM_AS: dict[str, tuple[str, int]] = {
 """A thickness bought as stock washers instead: a DIN 433 M3 washer (3.2 x 6 x 0.5, +-0.05)
 is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
 2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
-family. Clamped shims only (a horn screw's head, a pillar splice or end, a frame tie): the
+family. Clamped shims only (a horn screw's head, a pillar's end, a frame tie): the
 unclamped ones are printed (construction.pivots.common.gap_washers, the Chicago pins' head
 spacers)."""
 
@@ -695,8 +718,8 @@ def split_shims(lines: list[BomLine], by_name: dict,
         for line in fl:
             body = by_name.get(line.where)
             name = line.where or ""
-            told = (stacks or {}).get(name) or (stacks or {}).get(
-                name[2:] if name[:2] in ("L.", "R.") else None)
+            told = (stacks or {}).get(name) or (
+                (stacks or {}).get(name[2:]) if name[:2] in ("L.", "R.") else None)
             if body is not None and told:
                 # the construction said what it stacked (``Realized.notes["shim_stacks"]``)
                 stack = [float(t) for t in told]
@@ -741,10 +764,8 @@ def split_shims(lines: list[BomLine], by_name: dict,
 def stack_steps(family: str) -> tuple[float, ...]:
     """The thicknesses the constructions stack a family's shims from: for the M3 and M4
     families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
-    :data:`construction.pivots.standoff.SHIM_STEP`), else its catalog ``t``."""
+    :data:`SHIM_STEP`), else its catalog ``t``."""
     if family in ("shim_din988_3x6", "shim_din988_4x8"):
-        from spiderpig.construction.pivots.standoff import SHIM_STEP
-
         return (1.0, SHIM_STEP)
     return tuple(get(family).dims.get("t") or ())
 
@@ -790,18 +811,13 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
       (its height is the stack, :func:`shim_breakdown`; the crank lists the stack's other
       rings itself), and a note lists every screw's;
     * threadlocker 222 on each horn screw when the horn is metal (aluminium: the STS3215's
-      stock horn), a drop each; none in a plastic horn (metal to metal only);
-    * threadlocker 243 on each pillar splice's stud (``pillar_<joint>_stud<k>``), a dab
-      each, metal to metal, kept off the acrylic (the user's decision of 2026-10-05; 263
-      holds as well), unless the pillar construction already listed them (its
-      ``splice_lock_key`` line in ``mech.bom_extras``); the note is written either way.
+      stock horn), a drop each; none in a plastic horn (metal to metal only).
     """
     lines: list[BomLine] = []
     notes: list[str] = []
     replaced: set[str] = set()
     stacks: dict[str, list[str]] = {}
     horn_screws: list[str] = []
-    studs: list[str] = []
     for b in mech.bodies:
         if b.fab != "purchased" or not b.bom_key:
             continue
@@ -825,24 +841,16 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
                 f"{_side(b.name)}{m.group(1)}")
         elif _HORN_SCREW.search(b.name):
             horn_screws.append(b.name)
-        elif _SPLICE_STUD.search(b.name):
-            studs.append(b.name)
     if stacks:
         notes.append("Horn screw shims (under each head): " + "; ".join(
             f"screws {', '.join(s)}: {k}" for k, s in stacks.items()) + ".")
     metal = _metal_horn(mech.meta)
     if horn_screws and metal:
-        for n in horn_screws:
-            lines.append(BomLine(HORN_LOCK, LOCK_PER_THREAD,
-                                 f"{n}: into the metal horn (a drop, metal to metal)"))
+        lines.extend(BomLine(HORN_LOCK, LOCK_PER_THREAD,
+                             f"{n}: into the metal horn (a drop, metal to metal)")
+                     for n in horn_screws)
         notes.append(f"Horn screws: a drop of low-strength threadlocker (Loctite 222) each "
                      f"({len(horn_screws)}), steel into the metal horn; none in a plastic horn.")
-    # the pillar construction lists its splice studs' threadlocker itself
-    # (StandoffAxle.splice_lock_key, a line per pillar in bom_extras): don't count them twice
-    listed = any("splice stud" in (x.where or "") for x in getattr(mech, "bom_extras", ()))
-    for n in ([] if listed else studs):
-        lines.append(BomLine(SPLICE_LOCK, LOCK_PER_THREAD,
-                             f"{n}: splice stud (243 or 263; metal to metal, off the acrylic)"))
     gaps = {name: n.get("bond_gap_mm", 0.0)
             for name, n in ((mech.meta or {}).get("chicago") or {}).items() if n.get("bond_gap_mm")}
     if gaps:
@@ -850,10 +858,6 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
                      "thinner than a print): " + ", ".join(
                          f"{k} {v:g} mm" for k, v in sorted(gaps.items()))
                      + "; set the gap with a feeler gauge while the epoxy cures.")
-    if studs:
-        notes.append(f"Pillar splices ({len(studs)}): a dab of medium threadlocker "
-                     "(Loctite 243, or 263) on each splice stud for retention, metal to "
-                     "metal only: keep it off the acrylic.")
     return lines, notes, replaced
 
 
@@ -878,9 +882,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     filament = filament or mech.meta.get("filament")
     fil_name = _filament_name(filament) if filament else "PLA/PETG"
     fitted, fit_notes, replaced = fitting_lines(mech)
-    for body in mech.bodies:
-        if body.fab == "purchased" and body.bom_key and body.name not in replaced:
-            lines.append(BomLine(body.bom_key, 1, body.name))
+    lines.extend(BomLine(body.bom_key, 1, body.name) for body in mech.bodies
+                 if body.fab == "purchased" and body.bom_key and body.name not in replaced)
     lines += fitted
     notes += fit_notes
     by_name = {b.name: b for b in mech.bodies}
@@ -900,7 +903,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             fil = fil_of.get(g.ref.name, filament) if method == "printed" else None
             made.append(MadeRow(
                 name=g.ref.name, method=method,
-                material=(sheet_name(g.ref.sheet) if getattr(g.ref, "sheet", None) else sheet)
+                material=(sheet_name(g.ref.sheet) if g.ref.sheet else sheet)
                 if method == "laser" else (_filament_name(fil) if fil else fil_name),
                 size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),

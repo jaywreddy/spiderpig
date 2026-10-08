@@ -62,6 +62,8 @@ class StepCheck:
             return (f"joint {self.point} can't be placed at any crank angle: "
                     f"its bars from {a} and {b} never meet")
         r1, r2 = self.radii
+        assert self.margin_mm is not None  # check_steps sets it with the radii
+        assert self.angle_deg is not None  # check_steps sets it with the radii
         where = f"bars {a}-{self.point} {r1:.1f} mm and {b}-{self.point} {r2:.1f} mm"
         at = f"{self.worst_deg:.0f}°" + ("" if self.worst_t2_deg is None
                                          else f", t2 {self.worst_t2_deg:.0f}°")
@@ -152,9 +154,12 @@ def _why_invalid(name: str, expr, lk: Linkage, values: tuple[float, ...]) -> str
         for node in sp.preorder_traversal(coord):
             if isinstance(node, sp.Pow) and node.exp == sp.Rational(1, 2):
                 arg = node.base
-                subs = {s: by_name[s.name] for s in arg.free_symbols if s.name in by_name}
+                # free_symbols holds Symbols only; sympy types the set as Basic
+                subs: dict[sp.Basic | complex, sp.Basic | complex] = {
+                    s: by_name[s.name] for s in arg.free_symbols
+                    if isinstance(s, sp.Symbol) and s.name in by_name}
                 try:
-                    val = float(arg.subs(subs))
+                    val = float(arg.subs(subs))  # pyright: ignore[reportArgumentType]  # subs: Basic
                 except (TypeError, ValueError):
                     continue
                 if val < 0:
@@ -202,6 +207,7 @@ class OutputCheck:
         if self.stroke_mm is not None:
             out.append(f"stroke {self.stroke_mm:.2f} mm")
         if self.straightness_mm is not None:
+            assert o.straight is not None  # straightness is measured only when promised
             lo, hi, _ = o.straight
             out.append(f"straight to {self.straightness_mm:.3g} mm over crank {lo:g}°..{hi:g}°, "
                        f"on the line for {self.on_line:.1%} of the turn")
@@ -210,6 +216,7 @@ class OutputCheck:
         if self.swing_deg is not None:
             out.append(f"swings {self.swing_deg:.2f}° about {o.frame[0]}")
         if self.dwell_deg is not None:
+            assert o.dwell is not None  # the dwell is measured only when promised
             out.append(f"stands still (±{o.dwell[0]:g}°) for {self.dwell_deg:.1f}° of the turn")
         if self.broken:
             out.append(f"BROKEN: {self.broken}")
@@ -238,6 +245,7 @@ def _dwell(psi: np.ndarray, tol: float) -> int:
 def check_output(key: str, values: tuple[float, ...], n: int = 720) -> OutputCheck:
     lk = get(key)
     o = lk.output
+    assert o is not None  # Linkage.output_check calls this for mechanisms only
     ins = _inputs(lk, n)
     deg = np.degrees(ins[0])
     pts = LegSolution(1, 0.0, values, key).evaluate(*ins)

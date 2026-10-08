@@ -21,6 +21,7 @@ they move with). ``mech.bom_extras`` lists unmodelled purchases.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, cast
 
 from spiderpig import construction, linkage, servos
 from spiderpig.config import BuildConfig
@@ -42,6 +43,10 @@ from spiderpig.stack import (
     topology_from_template,
     verify_plan,
 )
+
+if TYPE_CHECKING:
+    from spiderpig.construction.route import CrankFacts, CrankRouter
+    from spiderpig.construction.underside import Underside
 
 
 def template_for(config: BuildConfig):
@@ -67,7 +72,7 @@ class SideDesign:
     plan: StackPlan
     clearances: list[Clearance] = field(default_factory=list)
     ground_clearance_mm: float | None = None
-    facts: object = None        # the crank router's static facts (construction.route.CrankFacts)
+    facts: CrankFacts | None = None     # the crank router's static facts
 
     @property
     def drive(self) -> DriveGroup:
@@ -101,44 +106,20 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
             ctx.interfaces[g.name] = iface
     claims = [c for g in groups for c in g.claims(ctx)]
     heads = config.heads
-    if heads == "best" and any(getattr(getattr(g, "construction", None), "single", False)
-                               for g in groups):
-        # single-plate crank webs keep their screws' heads in clearance gaps (a sunk head
-        # would stand in a rider's layer): no plan with every head sunk exists; in gaps,
+    if heads == "best" and any(isinstance(g, construction.CrankGroup) for g in groups):
+        # the crank's single-plate webs keep their screws' heads in clearance gaps (a sunk
+        # head would stand in a rider's layer): no plan with every head sunk exists; in gaps,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
-        stuck = sorted({g.construction.key for g in groups
-                        if not getattr(getattr(g, "construction", None), "gaps", True)})
-        if stuck:
-            raise construction.ConstructionError(
-                f"the single-plate crank plans its screw heads in clearance gaps, and "
-                f"--pin/--pillar {', '.join(stuck)} isn't built for gaps (its retainers assume "
-                "full layers): use --crank keyed, or the chicago / standoff / rod pivots",
-                changes=[("crank", ctx.config.crank, "keyed")])
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
                      **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
-    # a group that can't be built above some stack size (a bolt pillar's stock screw)
-    # bounds the search: the sizes above it are never tried, and the failure says why
-    bounds = [b for g in groups if (b := g.max_top(ctx)) is not None]
-    notes = []
-    if bounds:
-        top, why = min(bounds, key=lambda b: b[0])
-        if top < spec.max_top:
-            spec = replace(spec, max_top=max(top, spec.min_top))
-            notes.append(why)
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
     ctx.interfaces["underside"] = envelope = underside(ctx, crank and crank.reach(ctx))
     router = crank and crank.router(ctx, envelope, spec.margin, spec.drop_bearing)
-    # the crank's joint rules rule the thinner sizes out at once (the bolt crank's chains)
-    least = router and hasattr(router, "min_top") and router.min_top(spec.min_top, spec.max_top)
-    if least:
-        spec = replace(spec, min_top=least[0])
     problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
-                           hint=_leg_hint(config, deadline) if hint else None, notes=notes)
-    if least:
-        problem.floor = least[1]
+                           hint=_leg_hint(config, deadline) if hint else None)
     return ctx, groups, problem
 
 
@@ -174,7 +155,8 @@ def ground_clearance(tmpl, ctx: Context) -> float | None:
         return None
     pts = ctx.topo.geometry.points
     low = min(float(pts[ctx.topo.point_of[f]][:, 1].min()) for f in feet)
-    return ctx.interfaces["underside"].clearance(low)
+    envelope = cast("Underside", ctx.interfaces["underside"])  # side_problem sets it so
+    return envelope.clearance(low)
 
 
 _DESIGNS: dict[tuple, SideDesign] = {}
@@ -196,15 +178,24 @@ def remember(tmpl, design: SideDesign) -> None:
     stays."""
     key = _key(tmpl, design.config)
     _DESIGNS.setdefault(key, design)
-    _LAYOUTS.setdefault(key[:4] + (replace(design.config, robot=False),), design.plan)
+    _LAYOUTS.setdefault((*key[:4], replace(design.config, robot=False)), design.plan)
+
+
+def router_facts(problem: StackProblem) -> CrankFacts | None:
+    """The static facts of ``problem``'s crank router (``None``: no router)."""
+    if problem.router is None:
+        return None
+    router = cast("CrankRouter", problem.router)  # side_problem's router is the crank's
+    return router.facts
 
 
 def static_stage(tmpl, problem: StackProblem, config: BuildConfig | None = None) -> None:
     """The planner's static stage: a link no crank route can let through stops here (with
     ``config``: and what would clear it, checked; :mod:`recommend`)."""
-    if problem.router is None or not problem.router.facts.failures:
+    facts = router_facts(problem)
+    if facts is None or not facts.failures:
         return
-    failures = problem.router.facts.failures
+    failures = facts.failures
     err = ClearanceError(f"{tmpl.name}: " + "\n  ".join(f.describe() for f in failures))
     if config is not None:
         from spiderpig.recommend import recommend
@@ -247,7 +238,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     static_stage(tmpl, problem, config if advise else None)
     # The robot's side has the same layout as the side on its own; reuse
     # a solved layout when every claim still clears (checked, not assumed).
-    layout_key = key[:4] + (replace(config, robot=False),)
+    layout_key = (*key[:4], replace(config, robot=False))
     plan = _reuse(problem, _LAYOUTS.get(layout_key))
     if plan is None:
         try:
@@ -267,7 +258,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
             _LAYOUTS[layout_key] = plan
     design = SideDesign(config, ctx, groups, plan, list(problem.clearances),
                         ground_clearance(tmpl, ctx),
-                        problem.router.facts if problem.router is not None else None)
+                        router_facts(problem))
     if deadline is None:
         _DESIGNS[key] = design
     return design
@@ -310,10 +301,23 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
     )
 
 
-def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0) -> Mechanism:
-    """The fabricated walker at crank angle ``t`` (one side unless ``config.robot``)."""
+def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
+              store=None) -> Mechanism:
+    """The fabricated walker at crank angle ``t`` (one side unless ``config.robot``).
+
+    ``store`` (else the one :func:`spiderpig.fabcache.serving` names, else none): served
+    from that store's fabrication cache when it holds this design, plan and ``t``, else
+    fabricated and kept there (:mod:`spiderpig.fabcache`). Either way the mechanism is
+    the caller's own."""
+    from spiderpig import fabcache
+
     config = config or BuildConfig()
     design = design_side(tmpl, config)
-    ties = [FrameTies(design.drive)] if config.robot else []
-    side = fabricate_side(design, tmpl.freeze_at(t), ties)
-    return assemble_robot(side, design) if config.robot else side
+
+    def build() -> Mechanism:
+        ties = [FrameTies(design.drive)] if config.robot else []
+        side = fabricate_side(design, tmpl.freeze_at(t), ties)
+        return assemble_robot(side, design) if config.robot else side
+
+    store = store if store is not None else fabcache.current()
+    return fabcache.fabricated(store, tmpl, config, design, t, build)

@@ -6,5 +6,8 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // every file and test by name: vitest 4+'s default reporter lists only failing files
+    // outside a TTY, and tests/test_viewer_parity.py looks for ``model.test.ts`` in the output
+    reporters: ['tree'],
   },
 });

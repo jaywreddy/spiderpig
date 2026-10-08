@@ -2656,6 +2656,11 @@
   "walk_torque_peak_nm": 0.1346,
   "walks": true
  },
- "engine_version": "0.1.0+094f801c3c66",
- "generator": "tests/test_strength.py::test_the_order_designs_pin_loads_current[klann_lego_quad]"
+ "engine_version": "0.1.0+113a8d976b75",
+ "generator": "tests/test_strength.py::test_the_order_designs_pin_loads_current[klann_lego_quad]",
+ "source": {
+  "file": "tests/_strength.py",
+  "name": null
+ },
+ "source_key": "gen-b08f727510259c8f"
 }

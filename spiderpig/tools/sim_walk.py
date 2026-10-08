@@ -56,9 +56,9 @@ def parse_speed(text: str, vmax: float) -> float:
 
 
 def _args(argv) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0],
+    p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0],
                                 formatter_class=argparse.RawDescriptionHelpFormatter,
-                                epilog=__doc__.split("\n", 1)[1])
+                                epilog=(__doc__ or "").partition("\n")[2])
     p.add_argument("design", nargs="?", metavar="DESIGN",
                    help="a stored design's id (16 hex digits, from resolve) in place of the "
                         "build options; its exported MJCF is run when the store has one")
@@ -98,8 +98,12 @@ def _args(argv) -> argparse.Namespace:
             p.error(str(e))
         args.config = design.config
         if args.mjcf is None:        # the design's exported MJCF, when the store has one
+            assert design.store is not None  # api.load gives the design its store
             rep = design.reports.get("export") or design.store.read_report(design.id, "export")
-            files = (rep.files if hasattr(rep, "files") else (rep or {}).get("files")) or []
+            if rep is None or isinstance(rep, dict):    # the stored report's JSON, or none
+                files = (rep or {}).get("files") or []
+            else:                                       # the export's report (api.ExportReport)
+                files = getattr(rep, "files", None) or []
             xml = next((Path(f) for f in files if str(f).endswith(".xml")), None)
             if xml is not None and xml.is_file() and xml.with_suffix(".json").is_file():
                 args.mjcf = xml

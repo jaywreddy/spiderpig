@@ -34,7 +34,8 @@ import contextlib
 import multiprocessing
 import time
 import traceback
-from multiprocessing.connection import wait
+from multiprocessing.connection import Connection, wait
+from typing import cast
 
 from spiderpig import stack
 
@@ -55,7 +56,9 @@ class Remote:
         self.stale = False      # its worker ran further than the runs applied (a run cut short)
 
     def run(self, budget: int, legs: bool = False, deadline=None) -> bool:
-        self.prob.pool.apply(self, budget, legs)
+        pool = self.prob.pool
+        assert pool is not None  # a Remote is made only while its problem has a pool
+        pool.apply(self, budget, legs)
         return self.done
 
 
@@ -105,6 +108,7 @@ def _worker(prob: stack.StackProblem, top: int, conn, search=None) -> None:
             finally:
                 if s.best is not before:
                     b = s.best
+                    assert b is not None  # a leaf only ever replaces the best with a plan
                     found.append((s.nodes, dict(b.layers), dict(b.choices), b.cost))
 
         s.leaf = recorded_leaf
@@ -124,7 +128,7 @@ def _worker(prob: stack.StackProblem, top: int, conn, search=None) -> None:
                    "unbuilt": unbuilt[:], "found": found[:]}
             tally.clear(), fresh.clear(), unbuilt.clear(), found.clear()
             conn.send((top, idx, out))
-    except BaseException:                       # the coordinator raises it
+    except BaseException:  # noqa: BLE001 - the coordinator raises it (the traceback, below)
         with contextlib.suppress(Exception):
             conn.send((top, -1, traceback.format_exc()))
     finally:
@@ -138,7 +142,8 @@ class Pool:
         self.prob, self.n = prob, n
         self.ctx = multiprocessing.get_context("fork")
         self.procs: dict[int, tuple] = {}            # top -> (process, connection)
-        self.issued: dict[int, list[tuple[str, int, bool]]] = {}  # top -> (kind, budget, ahead)
+        # top -> (kind, budget, ahead, first)
+        self.issued: dict[int, list[tuple[str, int, bool, bool]]] = {}
         self.phases: dict[int, set[str]] = {}       # top -> the phases speculated
         self.answers: dict[tuple[int, int], dict | None] = {}
         self.pending: dict[int, int] = {}            # top -> commands not answered yet
@@ -207,7 +212,7 @@ class Pool:
     def _pump(self) -> None:
         """Receive what any worker answers (blocking until one does)."""
         conns = {c: t for t, (_, c) in self.procs.items() if self.pending.get(t)}
-        for c in wait(list(conns)):
+        for c in cast("list[Connection]", wait(list(conns))):  # wait returns what it was given
             top, idx, out = c.recv()
             if idx < 0:
                 raise RuntimeError(f"stack size {top + 1} failed in its worker:\n{out}")
@@ -305,6 +310,7 @@ class Pool:
         while (top, last) not in self.answers:
             self._pump()
         out = self.answers.pop((top, last))
+        assert out is not None  # only a "legs_if" run answers None; this one is "run" / "legs"
         for i in range(last):
             self.answers.pop((top, i), None)
         s.pos = last + 1

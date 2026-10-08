@@ -7,12 +7,11 @@ import math
 
 import pytest
 
-from spiderpig import construction
 from spiderpig.config import BuildConfig
 from spiderpig.construction import ConstructionError
 from spiderpig.construction.axle import AxleGroup
 from spiderpig.construction.contract import check_side
-from spiderpig.construction.pivots.chicago import CHICAGO_BUSHING, ChicagoAxle, ChicagoShaft
+from spiderpig.construction.pivots.chicago import ChicagoAxle, ChicagoShaft
 from spiderpig.construction.wobble import (
     Section,
     free_tilt_deg,
@@ -92,16 +91,13 @@ def test_chicago_catalog_and_refusals():
         assert item.dims["head_d"] == 8.5          # Harfington's drawing (sources.py)
         assert item.offers
         assert all(o.url.startswith("https://") for o in item.offers)
-    for key in ("ptfe_washer_4x8x0p5", "shim_din988_4x8", "threadlocker_222",
-                "bushing_gfm0405_03"):
+    for key in ("ptfe_washer_4x8x0p5", "shim_din988_4x8", "threadlocker_222"):
         assert get(key).offers
-    assert get("bushing_gfm0405_03").dims["flange_d"] == 9.5
     cfg = BuildConfig(linkage="klann", module="single", robot=False, pin="chicago")
     ctx = cache.cached_design(cfg)[1].ctx
-    for c in (ChicagoAxle(), CHICAGO_BUSHING):
-        c.dims(ctx, False)
-        with pytest.raises(ConstructionError, match="link pin only"):
-            c.dims(ctx, True)
+    ChicagoAxle().dims(ctx, False)
+    with pytest.raises(ConstructionError, match="link pin only"):
+        ChicagoAxle().dims(ctx, True)
     with pytest.raises(ConstructionError, match="no stock Chicago screw"):
         ChicagoShaft().fit(90.0, 3.0)        # past the longest (80 mm)
 
@@ -110,15 +106,17 @@ def test_chicago_catalog_and_refusals():
 
 
 def _chicago_config(pin: str) -> BuildConfig:
-    return BuildConfig(linkage="klann", module="single", robot=False, pin=pin,
-                       crank="keyed", pillar="printed")     # the layout these tilts were read on
+    """The Klann single, its default constructions (Chicago pins, standoff pillars, the hex
+    bolt crank; the tilts below were first read on the keyed crank and printed pillars,
+    removed on 2026-10-07)."""
+    return BuildConfig(linkage="klann", module="single", robot=False, pin=pin)
 
 
-@pytest.fixture(scope="module", params=["chicago", "chicago_bushing"])
+@pytest.fixture(scope="module", params=["chicago"])
 def chicago_side(request):
     """The Klann single side with Chicago pins, from the fabrication cache
     (:mod:`tests.cache`: its plan and parts built once per engine version). Read it, never
-    change it."""
+    change it. (The bushed variant, ``chicago_bushing``, was removed on 2026-10-07.)"""
     cfg = _chicago_config(request.param)
     tmpl, design = cache.cached_design(cfg)
     return request.param, tmpl, design, cache.cached_side(cfg, T)
@@ -172,7 +170,7 @@ def test_chicago_pins_plan_and_stay_in_their_claims(chicago_side):
     """The fast half of :func:`test_chicago_pins_plan_build_and_stay_in_their_claims`: the
     plan re-checked, every Chicago pin's parts inside its claims at two crank angles, and
     none of them meeting another part."""
-    key, tmpl, design, fab = chicago_side
+    _key, tmpl, design, fab = chicago_side
     assert verify_plan(design.plan, tmpl) == []
     pins = _pin_groups(design)
     assert pins
@@ -189,7 +187,7 @@ def test_chicago_pins_plan_build_and_stay_in_their_claims(chicago_side):
     """The whole side's contract (every group) at two crank angles and every pair of its
     parts clash-checked (:func:`test_chicago_pins_plan_and_stay_in_their_claims` checks the
     pins' part of it in the fast tier)."""
-    key, tmpl, design, fab = chicago_side
+    _key, tmpl, design, fab = chicago_side
     assert verify_plan(design.plan, tmpl) == []
     assert check_side(design, tmpl.freeze_at(T)) == []
     assert check_side(design, tmpl.freeze_at(4.38)) == []
@@ -198,27 +196,24 @@ def test_chicago_pins_plan_build_and_stay_in_their_claims(chicago_side):
 
 
 def test_chicago_hardware_and_bom(chicago_side):
-    key, _, design, fab = chicago_side
+    _key, _, design, fab = chicago_side
     pins = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
     rows = {r.key: r for r in bom_from_mechanism(fab, group=False).purchased}
     screws = sum(r.qty for k, r in rows.items() if k.startswith("chicago_m3_"))
     assert screws == len(pins)
     assert {v["item"] for v in fab.meta["chicago"].values()} <= set(rows)
     assert "ptfe_washer_4x8x0p5" not in rows     # printed head spacers (2026-10-05)
-    if key != "chicago":
-        links = sum(len(g.axis.members) for g in pins)
-        assert rows["bushing_gfm0405_03"].qty == links - len(pins)    # the host is bonded
     assert "threadlocker_222" in rows
     for g in pins:
         note = fab.meta["chicago"][g.name]
-        # the barrel length's play, plus an upper gap too thin to print (the bushed pins)
+        # the barrel length's play, plus an upper gap too thin to print
         play = note["play_mm"] - note["unprinted_hi_mm"]
         assert 0.05 - 1e-9 <= play < 0.15 + 1e-9
         assert note["length_mm"] >= note["stack_mm"]
 
 
 def test_wobble_notes_for_every_axle(chicago_side):
-    key, _, design, fab = chicago_side
+    _key, _, design, fab = chicago_side
     axles = [g for g in design.groups if isinstance(g, AxleGroup)]
     notes = fab.meta["wobble"]
     assert set(notes) == {g.name for g in axles}
@@ -234,23 +229,30 @@ def test_wobble_notes_for_every_axle(chicago_side):
         assert e["tilt_deg"] == 0.0                    # bonded to the barrel
     rep = wobble_check(notes, (119.0, 155.0))
     assert rep["pin"]["joints"] == len(host)
-    # 1.52 with printed head spacers (+-0.1 mm taken as play), under 1.0 with the DIN 988
-    # shims they replaced (2026-10-05)
-    assert rep["pin"]["worst_deg"] < 1.6
+    # the worst pin link tilts on its column's play (the barrel's, at most min_play plus a
+    # 0.1 mm shim step, and the printed head spacers' +-0.1 mm, PRINT_TOL) between the
+    # washers' 4 mm faces in its clearance gaps: 1.62 deg on 0.225 mm (1.52 on the keyed
+    # crank's layout, under 1.0 with the DIN 988 shims the printed spacers replaced)
+    from spiderpig.construction.pivots.common import PRINT_TOL
+    from spiderpig.materials import washer_od
+
+    face = washer_od(4.0) / 2
+    pitch = design.ctx.pitch
+    assert rep["pin"]["worst_deg"] == pytest.approx(
+        supported_tilt_deg(pitch, rep["pin"]["play_mm"], face), abs=0.01)
+    assert rep["pin"]["worst_deg"] <= supported_tilt_deg(pitch, 0.15 + PRINT_TOL, face)
     assert 1 < rep["pin"]["jam"]["safety"] < rep["pin"]["walk"]["safety"]
-    if key == "chicago_bushing":
-        assert rep["pin"]["worst_free_deg"] < 2.0
 
 
 def test_every_construction_reports_wobble():
-    """The printed pillars and every pin construction leave a wobble note."""
-    for key in ("printed", "rod", "bolt", "bearing", "bushing"):
-        assert key in construction.AXLES
-    cfg = BuildConfig(linkage="klann", module="single", robot=False, pin="rod")
-    fab = cache.cached_side(cfg, T)
+    """The standoff pillars and the Chicago pins both leave a wobble note."""
+    fab = cache.cached_side(_chicago_config("chicago"), T)
     rep = wobble_check(fab.meta["wobble"])
+    # a link's 4.2 mm hole on the 4 mm barrel, 3 mm thick: atan(0.2 / 3)
     assert rep["pin"]["worst_free_deg"] == pytest.approx(3.81, abs=0.01)
-    assert rep["pillar"]["worst_free_deg"] > rep["pin"]["worst_free_deg"]   # printed: 0.35 fit
+    # the standoff's 0.35 mm running fit
+    assert rep["pillar"]["worst_free_deg"] == pytest.approx(free_tilt_deg(0.35, 3.0), abs=0.01)
+    assert rep["pillar"]["worst_free_deg"] > rep["pin"]["worst_free_deg"]
     assert rep["loads_n"] is None
     assert "walk" not in rep["pin"]
 

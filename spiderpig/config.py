@@ -23,7 +23,7 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from spiderpig import construction, linkage, servos
 from spiderpig.construction.base import Params
@@ -47,40 +47,23 @@ friction-clamped standoff it replaced is ``bolt_round``. Which construction a de
 data here, not code."""
 
 LINKAGE_CRANKS: dict[str, str] = {
-    # Empty since the hex-standoff crank merged (2026-10-04): hoecken_pantograph and
-    # dwell_rocker, which kept the keyed crank (jam SF 0.64) because the round crankpin's top
-    # screw head over the hub plate needed 2.5 mm of the 1.83 mm horn spacer, plan with it
-    # (9 layers each): DriveGroup.spacer adds a layer for that head (BoltCrank.hub_head_need)
-    # or the spacer caps a pin wholly under it (hub_capped).
+    # hoecken_pantograph and dwell_rocker plan with the hex crank since it merged
+    # (2026-10-04; 9 layers each): the hub plate caps a crankpin under the horn spacer
+    # (BoltCrank.hub_capped).
     #
-    # TrotBot's heel and toe: b7 sweeps across the crank at O and passes crankpin J1 at 10.2
-    # mm; the hex crankpin's 8.5 mm printed sleeve needs 11.2 mm there (static stage stops).
-    # The round 6 mm standoff of bolt_round clears it and plans (14 layers, single module;
-    # its friction clamp rates jam SF 3.57 at factor 1, UNVERIFIED coefficients). The
-    # alternative, the hex crank at unit 12 (x1.14), changes the linkage's size.
+    # TrotBot's heel and toe: b7 passes crankpin J1 at 10.2 mm; the hex crankpin's 8.5 mm
+    # sleeve needs 11.2 (the static stage stops). The round 6 mm standoff clears it and plans
+    # (its friction clamp: jam SF 3.57, UNVERIFIED); the hex crank at unit 12 rescales it.
     "trotbot_heel": "bolt_round",
     "trotbot_toe": "bolt_round",
-    # klann_lego is on the hex crank since r4 (2026-10-05): its 6061 b1's 8.8 mm hex-sleeve
-    # bore left 2.02 mm to the link's *edge* (not to pin C, 56 mm off), because
-    # plates.rider_bosses read the unresolved BoltCrank (the round 6 mm pin) and grew the
-    # end for a 6.3 mm bore; resolved, the end grows to 7.7 mm round the 8.8 mm bore (3.27
-    # mm of web, over 1 x t) and every module plans and has an assembly order.
 }
 """Per linkage: the crank it gets when it names none, where :data:`DEFAULT_CRANKS`'
 doesn't plan (each with why)."""
 
 
 MODULE_CRANKS: dict[tuple[str, str], str] = {
-    # Empty since the debug of 2026-10-05: the Strider's decker and quad were here on
-    # bolt_round ("no hex plan in 600 CPU s", put down to the 8.5 mm sleeve's post). The
-    # post wasn't it: the round crank's own layerings route with the hex crank; what failed
-    # was the plan's z, where no stock hex standoff fit the long crankpins (the stock series
-    # steps 5 mm past 25 mm: spans of 25.7-27.6 mm, 28.8 capped in the hub plate, have
-    # none), and every crankpin gap was 4 mm (what stood past a plate went to the lower end
-    # first), which pushed the Chicago pins off their stock barrels. BoltCrank.hex_gap_fit
-    # (the gaps along a chain opened to the next stock length, printed rings in them) and
-    # fit_hex's split (the upper end uses the air over its plate) fixed both: the decker
-    # plans in 17 layers (~8 CPU s to the first plan), the quad in 25 (~30 s).
+    # empty since BoltCrank.hex_gap_fit (2026-10-05) put the Strider decker and quad on the
+    # hex crank (git log has the debug)
 }
 """Per (linkage, module): the crank it gets when it names none, ahead of
 :data:`LINKAGE_CRANKS` (each with why)."""
@@ -96,12 +79,79 @@ LINKAGE_CRANK_SHEETS: dict[str, str] = {
     # the hub plate 2.16 mm from the horn's screw holes (r 7 mm), under 1 x the 2.54 mm
     # sheet (a cut-rule error). On 0.080 in 6061 (2.03 mm) that web is over 1 x t (a
     # warning) and the hex holds the drive's torque at SF 3.89 (factor 1, a mechanism). The
-    # round standoff plans but screws over the hub plate (no assembly order); the keyed
-    # crank's key holds SF 0.64. The 0.100 in sheet stays selectable (--crank-sheet).
+    # round standoff plans but screws over the hub plate (no assembly order). The 0.100 in
+    # sheet stays selectable (--crank-sheet).
     "hoecken_pantograph": "al6061_2mm",
 }
 """Per linkage: the crank sheet it gets when the config names none, where :data:`CRANK_SHEET`
 breaks a rule (each with why)."""
+
+
+REMOVED = "2026-10-07"
+_PIVOTS_GONE = {            # a removed pin or pillar key -> what it was
+    "printed": "the printed snap-together axle",
+    "rod": "the 3 mm rod with push-on clips",
+    "bolt": "the M3 socket-head screw and nylock",
+    "bearing": "the MF63ZZ flanged bearings on a 3 mm rod",
+    "bushing": "the igus GFM-0304 bushings on a 3 mm rod",
+    "ptfe": "the PTFE-lined 3 mm rod",
+    "chicago_bushing": "the Chicago screw in igus GFM-0405 bushings",
+    "standoff_hand": "the standoff column spliced in the stack by hand",
+    "standoff_bench": "the standoff column spliced on the bench",
+    "standoff_m3": "the spliced column of uxcell M3 standoffs",
+}
+REMOVED_CONSTRUCTIONS: dict[str, dict[str, tuple[str, str, str]]] = {
+    "crank": {
+        "printed": ("bolt", REMOVED, "the printed crankshaft held by clamp friction alone"),
+        "keyed": ("bolt", REMOVED, "the printed crankshaft keyed by brass hex standoffs"),
+        "keyed_float": ("bolt", REMOVED, "the keyed printed crankshaft with sliding keys"),
+        "bolt_hub_screw": ("bolt", REMOVED, "the hex crank screwed over its hub plate"),
+        "bolt_unretained": ("bolt", REMOVED, "the hex crank without its thrust sleeves"),
+    },
+    "pin": {k: ("chicago", REMOVED, w) for k, w in _PIVOTS_GONE.items() if "standoff" not in k},
+    "pillar": {k: ("standoff", REMOVED, w) for k, w in _PIVOTS_GONE.items()
+               if k not in ("ptfe", "chicago_bushing")},          # (those two: pins only)
+}
+"""Construction keys removed from :mod:`construction` (D1, W2), per :class:`BuildConfig`
+field: ``key -> (replacement, date removed, what it was)``; a config, spec, stored design or
+CLI option naming one fails with its replacement (:func:`removed_construction`)."""
+
+
+REMOVED_PARAMS: dict[str, tuple[str, float, str]] = {
+    "glue_fit": (REMOVED, 0.15, "a part glued into a laser-cut hole"),
+    "neck_d": (REMOVED, 4.0, "the printed axle's neck where a link passes"),
+    "head_d": (REMOVED, 8.5, "the printed axle's head outside the plates"),
+    "journal_d": (REMOVED, 12.0, "the printed crank's body on O"),
+    "stub_d": (REMOVED, 8.0, "the printed crank's journal stub"),
+    "hub_thickness": (REMOVED, 5.0, "the printed crank's hub under the horn"),
+}
+"""Fields of :class:`construction.base.Params` (a spec's ``fit``) removed because nothing read
+them once the printed axle and crank were gone (W5): ``name -> (date removed, its last
+default, what it sized)``. A spec naming one is invalid with that message
+(:func:`removed_param`); a stored design's resolved record, which writes every field in,
+loads when it holds the old default and fails with the message otherwise."""
+
+
+def removed_param(name: str, value=None) -> str | None:
+    """Why ``fit.<name>`` can't be given any more, or ``None`` (not removed; or, with
+    ``value``, the removed field's last default, which built the same parts)."""
+    gone = REMOVED_PARAMS.get(name)
+    if gone is None or (value is not None and value == gone[1]):
+        return None
+    when, default, what = gone
+    return (f"fit.{name} ({what}) was removed on {when}: no construction reads it since the "
+            f"printed axle and crank went; drop it (it built as {default:g}; "
+            "config.REMOVED_PARAMS)")
+
+
+def removed_construction(field: str, key) -> tuple[str, str] | None:
+    """(why ``field`` can't be ``key`` any more, its replacement), or ``None``."""
+    gone = REMOVED_CONSTRUCTIONS.get(field, {}).get(key) if isinstance(key, str) else None
+    if gone is None:
+        return None
+    replacement, when, what = gone
+    return (f"{field} {key!r} ({what}) was removed on {when}; use {field}={replacement!r} "
+            "(config.REMOVED_CONSTRUCTIONS)"), replacement
 
 
 def default_crank_sheet(lk: linkage.Linkage) -> str:
@@ -191,21 +241,17 @@ class BuildConfig:
     servo: str = servos.DEFAULT
     pillar: str = "standoff"          # frame pivots: a 6 mm round standoff column, a stock
     #                                   goBILDA one or else one steel standoff made to length,
-    #                                   never spliced (construction.pivots.standoff;
-    #                                   "standoff_hand" / "_bench" / "_m3": spliced; "printed":
-    #                                   the printed stepped pillar, the default before 2026-10-03)
+    #                                   never spliced (construction.pivots.standoff)
     pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
     #                                   printed rings and head spacers (construction.pivots.
-    #                                   chicago; "rod": 3 mm rod and push-on clips; "printed":
-    #                                   snap pins)
+    #                                   chicago)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates
     #                                   on the crank sheet, hex-standoff crankpins in hex
     #                                   pockets; "bolt_round": the round friction-clamped
-    #                                   standoff; "keyed", printed segments
-    #                                   keyed by brass hex standoffs, the default before
-    #                                   2026-10-03; "printed": clamp friction only)
+    #                                   standoff). The keys removed on 2026-10-07:
+    #                                   REMOVED_CONSTRUCTIONS
     params: Params = field(default_factory=Params)
 
     def __post_init__(self) -> None:
@@ -223,6 +269,9 @@ class BuildConfig:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
+        for what in ("crank", "pin", "pillar"):
+            if (gone := removed_construction(what, getattr(self, what))) is not None:
+                raise ParamError(gone[0])
         if self.module not in lk.leg_modules:
             raise ParamError(f"unknown module {self.module!r}; have {list(lk.leg_modules)}")
         if self.servo not in servos.available():
@@ -241,6 +290,11 @@ class BuildConfig:
                     raise KeyError(key)
             except KeyError:
                 raise ParamError(f"{what} {key!r} is not a sheet in the catalog") from None
+        from spiderpig.materials import sheet
+
+        if not sheet(self.crank_sheet).metal:
+            raise ParamError(f"crank_sheet {self.crank_sheet!r} is not metal (the acrylic crank "
+                             f"was removed on {REMOVED}): an aluminium sheet, e.g. {CRANK_SHEET!r}")
 
     def _link_sheets(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...] | None:
         """Link class -> sheet, validated; ``None`` when it is the linkage's own."""
@@ -449,18 +503,24 @@ def add_build_args(p) -> None:
     """The build options: ``--servo``, the constructions, the sheet."""
     d = BuildConfig()
     axles, cranks = sorted(construction.AXLES), sorted(construction.CRANKS)
+    import argparse
+
+    def kept(field: str):       # a removed key's error names its replacement (argparse: exit 2)
+        def check(text: str) -> str:
+            if gone := removed_construction(field, text):
+                raise argparse.ArgumentTypeError(gone[0])
+            return text
+        return check
     p.add_argument("--servo", default=d.servo, choices=servos.available(),
                    help=f"servo model (default {d.servo})")
-    p.add_argument("--pillar", default=d.pillar, choices=axles,
+    p.add_argument("--pillar", default=d.pillar, choices=axles, type=kept("pillar"),
                    help=f"construction of the frame pivots (default {d.pillar})")
-    p.add_argument("--pin", default=d.pin, choices=axles,
+    p.add_argument("--pin", default=d.pin, choices=axles, type=kept("pin"),
                    help=f"construction of the pivots between links (default {d.pin})")
-    p.add_argument("--crank", default=None, choices=cranks,
+    p.add_argument("--crank", default=None, choices=cranks, type=kept("crank"),
                    help="crank construction (default: "
                         + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())
                         + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
-                        + "; " + ", ".join(f"{v} for the {k[0]} {k[1]}"
-                                           for k, v in MODULE_CRANKS.items())
                         + ")")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
@@ -515,15 +575,61 @@ def config_from_args(args, **fixed) -> BuildConfig:
     return BuildConfig(**fields)
 
 
-def design_from_query(query: Mapping, **fixed) -> BuildConfig:
+def query_proportions(query: Mapping) -> list[tuple[str, float]]:
+    """The ``p.<NAME>=<value>`` items of a query string, in order (a multi-dict's every
+    item)."""
+    multi = getattr(query, "multi_items", None)       # (starlette's QueryParams)
+    items = multi() if multi is not None else query.items()
+    return [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
+
+
+def own_constructions(base: BuildConfig) -> dict[str, str]:
+    """``crank`` and ``crank_sheet`` as ``base`` *chose* them: each one its linkage and
+    module would get anyway (:func:`default_crank`, :func:`default_crank_sheet`, filled in
+    by the config) is ``""``, so a design moved to another linkage or module gets that
+    one's own default instead of carrying the old one's (TrotBot heel's ``bolt_round``,
+    the Hoecken pantograph's 0.080 in crank sheet)."""
+    lk = linkage.get(base.linkage)
+    return {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
+            "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
+                            else base.crank_sheet)}
+
+
+def design_from_query(query: Mapping, base: BuildConfig | None = None,
+                      **fixed) -> BuildConfig:
     """The config a query string asks for: ``linkage``, ``module`` (default: the linkage's,
     :func:`default_module`), ``phases`` (degrees, comma-separated) and ``p.<NAME>=<value>``;
-    other keys are ignored."""
-    items = query.multi_items() if hasattr(query, "multi_items") else query.items()
-    proportions = [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
-    key = query.get("linkage") or linkage.DEFAULT
-    kw = {"linkage": key,
-          "module": query.get("module") or default_module(key),
-          "phases": parse_phases(query["phases"]) if query.get("phases") else None,
-          "proportions": tuple(proportions)}
-    return BuildConfig(**{**kw, **fixed})
+    other keys are ignored. ``fixed`` (``robot``, a mode's ``module``) wins.
+
+    With ``base`` (a stored design's config), the query applies on top of it: its servo,
+    sheets, thickness, heads, constructions and fit, which no query string expresses,
+    stay; ``module``, ``phases`` and ``p.NAME`` change. Another ``linkage`` starts from
+    that linkage's defaults (its own parameters, phases and link sheets) and keeps the
+    materials and constructions; a crank or crank sheet that was only the old linkage's
+    (or module's) default is not kept (:func:`own_constructions`)."""
+    proportions = query_proportions(query)
+    if base is None:
+        key = query.get("linkage") or linkage.DEFAULT
+        kw = {"linkage": key,
+              "module": query.get("module") or default_module(key),
+              "phases": parse_phases(query["phases"]) if query.get("phases") else None,
+              "proportions": tuple(proportions)}
+        return BuildConfig(**{**kw, **fixed})
+    own = own_constructions(base)
+    if (query.get("linkage") or base.linkage) != base.linkage:
+        # (link_sheets name a linkage's own links: kept only with its linkage)
+        materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
+                     "frame_sheet": base.frame_sheet, "pillar": base.pillar, "pin": base.pin,
+                     "heads": base.heads, "params": base.params, **own}
+        return design_from_query(query, **{**materials, **fixed})
+    props = dict(base.proportions)
+    props.update(proportions)
+    module = fixed.get("module") or query.get("module") or base.module
+    if query.get("phases"):
+        phases = parse_phases(query["phases"])
+    else:
+        phases = base.phases if module == base.module else None     # the module's own
+    rest = {k: v for k, v in fixed.items() if k != "module"}
+    rest.setdefault("crank", base.crank if module == base.module else own["crank"])
+    return replace(base, module=module, phases=phases,
+                   proportions=tuple(sorted(props.items())), **rest)

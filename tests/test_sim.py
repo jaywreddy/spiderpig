@@ -40,7 +40,7 @@ from spiderpig.sim.run import (  # noqa: E402
     simulate,
     walk_metrics,
 )
-from spiderpig.stack import body_class, is_link  # noqa: E402
+from spiderpig.stack import PlanError, body_class, is_link  # noqa: E402
 from tests import _sim, cache  # noqa: E402
 from tests.tiers import quick  # noqa: E402
 
@@ -280,16 +280,14 @@ def test_drive_torque_within_servo_limits(built, walk):
         assert d["speed"] == pytest.approx(WALK * walk.speed_max, rel=0.05)
 
 
-# The dynamics these tests measured (the phase lock, the held offsets, the steering) are the
-# Klann quad's with the keyed crank and printed pillars (16 layers): pinned, so the numbers
-# keep their stack. The default (the bolt crank, standoffs: 31 layers) walks in
-# test_each_walker_walks_forward_upright.
-OLD = {"crank": "keyed", "pillar": "printed"}
+# The dynamics these tests measure (the phase lock, the held offsets, the steering) are the
+# default Klann quad's (the hex crank, standoff pillars, Chicago pins: 13 layers). Until
+# 2026-10-07 they were pinned to the keyed crank and printed pillars (16 layers), removed.
 
 
 @pytest.fixture(scope="module")
 def quad():
-    cfg = BuildConfig(linkage="klann", module="quad", **OLD)
+    cfg = BuildConfig(linkage="klann", module="quad")
     _, meta = _sim.seed(cfg)
     return cfg, _vmax(meta)
 
@@ -318,8 +316,14 @@ def test_full_speed_torque_stays_on_the_motor_line(quad):
         assert 0.0 < d["at_envelope"] <= 1.0
         assert 0.0 <= d["speed_droop"] < 0.1
         assert d["peak"] < 0.5 * d["limit"]
+
+
+def test_without_the_motor_line_the_drives_overshoot_it(quad):
+    """The same run with the line off (``motor=False``) goes well past it: what the clamp
+    takes away. (Split from the run with it on: one 3.3 s simulation each.)"""
+    cfg, vmax = quad
     free = simulate(cfg, [(0.0, 0.0, 0.0), (SETTLE, vmax, vmax)], SETTLE + 3.0, motor=False)
-    assert _over_line(free) > 0.3 * r.torque_max       # what the clamp takes away
+    assert _over_line(free) > 0.3 * free.torque_max
 
 
 def _run(cfg, left, right, seconds=3.0):
@@ -350,7 +354,7 @@ def test_quad_walks_forward_and_back(quad):
     assert abs(m["heading_drift"]) < 5.0
     # plausible: below the kinematics' no-slip stride, above half of it
     assert 0.5 * kin["stride"] < m["stride"] < kin["stride"], (m["stride"], kin["stride"])
-    back_r, back = _run(cfg, -w, -w)
+    _back_r, back = _run(cfg, -w, -w)
     assert not back["fell"]
     assert back["speed"] < 0
     assert abs(back["speed"]) == pytest.approx(m["speed"], rel=0.25)
@@ -508,7 +512,7 @@ def test_too_little_crank_armature_is_refused():
 def test_strider_walks_on_its_feet_alone():
     """Strider's ``b4`` / ``b8`` end on the foot joints: their capsules must not touch the
     floor beside the feet (``body_contact`` 0), and the walk reads as the model's."""
-    cfg = BuildConfig(linkage="strider", module="quad", **OLD)   # the bolt crank's doesn't plan
+    cfg = BuildConfig(linkage="strider", module="quad")     # the hex crank's 25 layers
     _, meta = _sim.seed(cfg)
     for info in meta["feet"].values():
         assert len(info["links"]) >= 2
@@ -524,9 +528,14 @@ def test_strider_walks_on_its_feet_alone():
 
 
 UNSTABLE = "the quasi-static margin is under 15 mm: this design tips (a design decision)"
-WALKERS = [      # the Strider quad keyed (with the bolt crank it doesn't plan in the budget)
+NO_PLAN = ("the Jansen quad has no layer plan (no robot to simulate): its search ends at the "
+           "planner's budget, 60 CPU-s, with none found; not run (the 60 s bought nothing): "
+           "test_planner_bounds.py::test_the_jansen_quad_has_no_plan_in_fourteen_layers "
+           "proves what it can fast")
+WALKERS = [      # each on its default constructions
     ("klann", "quad"), ("strider", "quad"),
-    pytest.param("jansen", "quad", marks=pytest.mark.xfail(reason=UNSTABLE, strict=False)),
+    pytest.param("jansen", "quad", marks=pytest.mark.xfail(raises=PlanError, run=False,
+                                                           reason=NO_PLAN)),
     pytest.param("trotbot_heel", "quad", marks=pytest.mark.xfail(reason=UNSTABLE, strict=False)),
 ]
 
@@ -538,7 +547,7 @@ def test_each_walker_walks_forward_upright(key, module):
     quasi-static model says (the sign of its stride, in the drive's forward sense)."""
     from spiderpig import walk
 
-    cfg = BuildConfig(linkage=key, module=module, **(OLD if key == "strider" else {}))
+    cfg = BuildConfig(linkage=key, module=module)
     _, meta = _sim.seed(cfg)
     vmax = _vmax(meta)
     r = simulate(cfg, [(0.0, 0.0, 0.0), (SETTLE, vmax, vmax)], SETTLE + 4.0)
@@ -572,7 +581,7 @@ def test_mujoco_and_the_quasi_static_model_are_compared(quad):
     assert "fell" not in c["flags"]
     assert sum(m["feet_down_hist"]) == pytest.approx(1.0)
     assert m["airborne"] < 0.1
-    strider = BuildConfig(linkage="strider", module="quad", **OLD)
+    strider = BuildConfig(linkage="strider", module="quad")
     _, meta = _sim.seed(strider)
     _, ms = _run(strider, _vmax(meta), _vmax(meta), seconds=3.0)
     cs = compare_with_walk(ms, strider)
@@ -591,6 +600,12 @@ def test_a_spin_has_no_full_speed_scaling(quad):
     c = compare_with_walk(m, cfg)
     assert math.isnan(c["mujoco"]["speed_mm_s"])
     assert "speeds_disagree" not in c["flags"]
+
+
+def test_drives_together_turn_as_many_revolutions_as_they_count(quad):
+    """The straight twin of the spin: drives together, ``revolutions_abs`` is the signed
+    count. (Split from the spin: one 2.3 s simulation each.)"""
+    cfg, vmax = quad
     _, m = _run(cfg, 0.4 * vmax, 0.4 * vmax, seconds=2.0)
     assert not m["drives_oppose"]
     assert m["revolutions_abs"] == pytest.approx(m["revolutions"])
@@ -600,10 +615,12 @@ def test_the_steering_check_follows_its_runs(quad):
     """``steering_check`` runs a 0.4 differential while walking and a half-speed turn in
     place and grants each only when the robot neither fell nor tilted past
     ``STEER_TILT`` (the hello's ``steering``: what the viewer may send by default)."""
-    from spiderpig.sim.run import STEER_SECONDS, STEER_TILT, steering_check
+    from spiderpig.sim.run import STEER_SECONDS, STEER_TILT
 
     cfg, _ = quad
-    s = steering_check(cfg)
+    # steering_check of the cached model, itself cached per engine version (MuJoCo is
+    # deterministic; ~8-13 s of stepping the first time): tests._sim.steering_of
+    s = _sim.steering_of(cfg)
     assert s["seconds"] == STEER_SECONDS
     for name, expect in (("walk_turn", 0.4), ("spin", 0.5)):
         t = s["tests"][name]
@@ -622,18 +639,97 @@ def test_the_steering_check_follows_its_runs(quad):
         t = s["tests"][f"step_{s['step_deg']:.0f}"]
         assert not t["fell"]
         assert t["max_tilt"] < STEER_TILT
-        assert t["side_phase_max"] < s["step_deg"] + 5.0
-    # the Klann quad with the keyed crank (measured; the fixture's): no unbounded differential, a
-    # 90 deg excursion. (With ``--crank printed``'s 12-layer stack it was 45: the keyed
-    # crank's 16 layers set the feet 12 mm further out, the stability margin 50 -> 57 mm,
-    # test_walk.py::test_quad_reference.)
-    assert cfg.crank == "keyed"
+        # the PI lock overshoots its bound by up to ~7 %: 41.6 at 45 deg, 96.2 at 90 (the
+        # same 96.2 in every cached result before W8 too)
+        assert t["side_phase_max"] < 1.1 * s["step_deg"]
+    # the default Klann quad (the hex crank, 13 layers; measured 2026-10-07): no unbounded
+    # differential (the 0.4 one tilts it ~20.6 deg) and a 45 or 90 deg excursion. The 90 deg
+    # grant is on the edge of STEER_TILT: on the suite's parametric servo 19.75 deg (90;
+    # 20.5 before W8's D2 added ~1.5 g of printed gap rings), on the manufacturer's CAD
+    # servo 20.27, with servo_mismatch 0.031 20.61, with payload_g 1.5 20.03 (all 45). The
+    # keyed crank's 16 layers, removed, granted 90; ``--crank printed``'s 12, removed too, 45.
+    assert cfg.crank == "bolt"
     assert s["turn"] == 0.0
-    assert s["step_deg"] == 90.0
+    assert s["step_deg"] in (45.0, 90.0)
+
+
+def _fake_steering_runs(monkeypatch, outcome):
+    """``steering_check`` with MuJoCo stepped by nobody: each run's metrics are
+    ``outcome(cmd, max_offset)`` (``cmd`` the drive command after the rest, ``max_offset``
+    the phase lock's bound: inf for the three runs, the excursion for a step)."""
+    from spiderpig.sim import run as simrun
+
+    runs = []
+
+    def simulate(config, controls, seconds, *, lock=None, **kw):
+        runs.append((tuple(controls[1][1:]), lock.max_offset, seconds))
+        return runs[-1]
+
+    def walk_metrics(res, skip=0.0):
+        (left, right), max_offset, _ = res
+        m = {"fell": False, "fell_at_s": None, "fell_axis": None, "max_tilt": 5.0,
+             "yaw_rate": 0.0, "side_support_low": 0.0, "side_phase_max": 1.0,
+             "speed": 150.0, "walks": True, "body_contact": 0.0, "stride": 80.0}
+        return {**m, **outcome((left / 2.0, right / 2.0), max_offset)}
+
+    monkeypatch.setattr(simrun, "simulate", simulate)
+    monkeypatch.setattr(simrun, "walk_metrics", walk_metrics)
+    meta = {"actuators": {"L": {"ctrlrange": [-2.0, 2.0]}}}
+    return runs, lambda: simrun.steering_check(BuildConfig(linkage="klann", module="quad"),
+                                               xml="<mujoco/>", meta=meta)
+
+
+def test_the_steering_check_grants_what_neither_fell_nor_tilted(monkeypatch):
+    """Every run upright: the 0.4 differential, the 0.5 spin and the first excursion
+    (90 deg: no 45 run after it) granted; the runs are the three tests at full and half
+    speed, 4.5 s each, then the step."""
+    from spiderpig.sim.run import STEER_SECONDS
+
+    runs, check = _fake_steering_runs(monkeypatch, lambda cmd, off: {})
+    s = check()
+    assert (s["turn"], s["spin"], s["step_deg"]) == (0.4, 0.5, 90.0)
+    assert set(s["tests"]) == {"forward", "walk_turn", "spin", "step_90"}
+    assert [r[0] for r in runs[:3]] == [(2.0, 2.0), (2.0, 1.2), (1.0, -1.0)]
+    assert all(r[2] == 0.5 + STEER_SECONDS for r in runs[:3])
+    assert runs[3][1] == pytest.approx(math.radians(90.0))
+    assert s["forward"] == {"fell": False, "fell_at_s": None, "max_tilt": 5.0,
+                            "side_support_low": 0.0, "speed": 150.0, "walks": True,
+                            "body_contact": 0.0, "stride": 80.0}
+
+
+def test_the_steering_check_refuses_a_tilt_past_its_limit_and_a_fall(monkeypatch):
+    """The Klann quad's pattern: the differential tilts it 20.3 deg (past ``STEER_TILT``
+    20: refused), the spin falls (refused), the 90 deg excursion tilts 20.5 and the 45 deg
+    one 15.7: granted 45."""
+    import math as m_
+
+    def outcome(cmd, off):
+        if off == m_.radians(90.0):
+            return {"max_tilt": 20.5}
+        if off == m_.radians(45.0):
+            return {"max_tilt": 15.7}
+        if cmd == (1.0, 0.6):
+            return {"max_tilt": 20.3}
+        if cmd == (0.5, -0.5):
+            return {"fell": True, "fell_at_s": 1.2, "fell_axis": "rolling"}
+        return {}
+
+    _, check = _fake_steering_runs(monkeypatch, outcome)
+    s = check()
+    assert (s["turn"], s["spin"], s["step_deg"]) == (0.0, 0.0, 45.0)
+    assert s["tests"]["spin"]["fell_axis"] == "rolling"
+    assert set(s["tests"]) == {"forward", "walk_turn", "spin", "step_90", "step_45"}
+
+
+def test_no_safe_excursion_grants_no_step(monkeypatch):
+    _, check = _fake_steering_runs(
+        monkeypatch, lambda cmd, off: {"fell": True} if math.isfinite(off) else {})
+    s = check()
+    assert (s["turn"], s["spin"], s["step_deg"]) == (0.4, 0.5, 0.0)
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): the kinematic stride's sign, when and
+# Test drive, round 5 (docs/history/TESTDRIVE.md): the kinematic stride's sign, when and
 # how a fall is reported, an exported MJCF runs as is
 # ---------------------------------------------------------------------------
 

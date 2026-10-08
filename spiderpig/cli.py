@@ -2,6 +2,7 @@
 ``python -m spiderpig.cli`` from a checkout).
 
     spiderpig build --module single --out build/single   # STEP/STL/DXF/BOM
+    spiderpig build --profile --profile-json p.json      # ... with its stage timings
     spiderpig bake --linkage jansen --module double        # the viewer's .glb
     spiderpig audit --linkage strider                      # does it go together?
     spiderpig explain --linkage trotbot_heel               # each stage's verdict
@@ -58,7 +59,19 @@ def main(argv: list[str] | None = None) -> int:
     if command not in COMMANDS:
         print(f"unknown command {command!r}\n\n{usage()}", file=sys.stderr)
         return 2
-    module = importlib.import_module(COMMANDS[command][0])
+    target = COMMANDS[command][0]
+    if command == "build":
+        from spiderpig import uptodate
+
+        if uptodate.check_once(rest).skip:  # --out holds this very build: before the engine
+            return 0
+        if any(a in ("--profile", "-h", "--help") or a.startswith("--profile-json")
+               for a in rest):
+            target = "spiderpig.tools.build_profile"    # the stage timings (and their --help)
+    from spiderpig.workers import occt_threads
+
+    occt_threads()          # $SPIDERPIG_OCCT_THREADS, when set (the commands' own defaults else)
+    module = importlib.import_module(target)
     sys.argv[0] = f"spiderpig {command}"       # argparse's prog
     return int(module.main(rest) or 0)
 

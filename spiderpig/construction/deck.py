@@ -87,7 +87,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
-from build123d import Axis, Box, Cylinder, Pos, scale
+from build123d import Axis, Box, Cylinder, Part, Pos, scale
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
@@ -105,6 +105,7 @@ from spiderpig.hardware.catalog import get, pick_length
 from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
+from spiderpig.rounding import rounded
 from spiderpig.shapes import union
 from spiderpig.stack import body_class
 
@@ -559,7 +560,8 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     # the deck plate, notched where it passes the pillars' inner heads on its way down
     plate = _box(lay.x_c - HALF_LEN, lay.x_c + HALF_LEN, yd, yt, -hw, hw)
     notches = path_notches(lay, obstacles)
-    cuts = [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1) for x, z in lay.screws()]
+    cuts: list[Part] = [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1)
+                        for x, z in lay.screws()]
     board = lay.board()
     cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
     ties = [((x + s * (WIRE_SLOT[0] / 2 + 3.0), z), CABLE_TIE_SLOT)
@@ -719,13 +721,13 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
         a, b = blocked[0]
         raise ConstructionError(f"the deck can't be lowered onto its rails: {a} meets "
                                 f"{b} on the way down")
-    info = {"fitted": True, "x_c": round(lay.x_c, 2), "deck_y": round(yd, 2),
-            "rail_y": round(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, round(2 * hw, 2)],
+    info = {"fitted": True, "x_c": rounded(lay.x_c, 2), "deck_y": rounded(yd, 2),
+            "rail_y": rounded(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, rounded(2 * hw, 2)],
             "screw": key, "spigot_x": place.spigot_x, "insert_z": lay.insert_z,
-            "notches": [[round(v, 2) for v in n] for n in notches],
-            "charger_setback_mm": round(lay.x_c + HALF_LEN - cx1, 2),
-            "charger_z_mm": [round(cz0, 2), round(cz1, 2)], "charger_pad_mm": round(pad, 2),
-            "top_y": round(max(b.part.bounding_box().max.Y for b in bodies), 2)}
+            "notches": [[rounded(v, 2) for v in n] for n in notches],
+            "charger_setback_mm": rounded(lay.x_c + HALF_LEN - cx1, 2),
+            "charger_z_mm": [rounded(cz0, 2), rounded(cz1, 2)], "charger_pad_mm": rounded(pad, 2),
+            "top_y": rounded(max(b.part.bounding_box().max.Y for b in bodies), 2)}
     return bodies, extras, info, fastened
 
 
@@ -798,7 +800,7 @@ def deck_path(mech, clash_mm3: float = 0.01) -> list[tuple[str, str, float]]:
             inter = sweep & part
             vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
             if vol > clash_mm3:
-                out.append((b.name, name, round(vol, 3)))
+                out.append((b.name, name, rounded(vol, 3)))
     return out
 
 
@@ -851,6 +853,6 @@ def deck_clearance(mech) -> dict:
             else:
                 overlapping.append((b.name, name))
     blocked = deck_path(mech)
-    return {"fitted": True, "z_gap_mm": round(z_gap, 3), "nearest": nearest,
-            "sweep_gap_mm": round(sweep_gap, 3), "overlapping": overlapping,
+    return {"fitted": True, "z_gap_mm": rounded(z_gap, 3), "nearest": nearest,
+            "sweep_gap_mm": rounded(sweep_gap, 3), "overlapping": overlapping,
             "blocked": blocked, "ok": not overlapping and not blocked}

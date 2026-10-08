@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import math
 from functools import lru_cache
+from typing import cast
 
 import numpy as np
 from build123d import Box, Cylinder, Location
@@ -48,9 +49,9 @@ from spiderpig.construction.base import (
     hardware,
 )
 from spiderpig.hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
-from spiderpig.servos.model import cut_each, horn_part, servo_part
+from spiderpig.servos.model import cad_state, cut_each, horn_part, servo_part
 from spiderpig.servos.spec import MountHole, ServoSpec
-from spiderpig.shapes import Cut, Rect, disc, moved
+from spiderpig.shapes import Cut, Rect, Shape3D, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
 
 MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
@@ -104,10 +105,12 @@ def _key(xy, u, z) -> tuple:
 
 
 @lru_cache(maxsize=64)
-def _placed_servo(spec: ServoSpec, key: tuple):
-    """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``)."""
+def _placed_servo(spec: ServoSpec, key: tuple, state: tuple = ()):
+    """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``).
+    ``state``: the model in play (:func:`servos.model.cad_state`), so a switch or a
+    download mid-process isn't served the earlier one."""
     ox, oy, ux, uy, plate_top = key
-    part = moved(servo_part(spec), to_location(servo_to_world((ox, oy), (ux, uy),
+    part = moved(servo_part(spec, state=state), to_location(servo_to_world((ox, oy), (ux, uy),
                                                              plate_top + spec.mount_face_z)))
     bb = part.bounding_box()
     if plate_top - bb.min.Z > 1e-6:
@@ -136,23 +139,20 @@ class DriveGroup(Group):
         against the plate otherwise).
         """
         plate = ctx.sheet_t("frame")            # the inner frame plate
-        t = plate - self.spec.horn_face_depth
-        if self._face_on_layer(ctx):
-            # a crank of laser plates (the bolt crank) needs the face on a layer boundary:
-            # the plate's bottom face, or a layer's under it (the horn's layers hold no
-            # plate of the crank's: the default sheet's thickness)
-            layer = ctx.pitch
-            n = max(0, math.ceil((self.spec.horn_face_depth - plate) / layer - 1e-9))
-            t = plate + n * layer - self.spec.horn_face_depth
-            if 1e-6 < t < MIN_SPACER:
-                t += layer
-            # a crankpin's screw head over the hub plate stands in a pocket of the spacer
-            # (a short crank: the Hoecken pantograph's): the spacer at least that thick
-            need = self._hub_head_need(ctx)
-            while need > 0 and t < need - 1e-6:
-                t += layer
-            return 0.0 if t <= 1e-6 else t
-        return 0.0 if t <= 1e-6 else max(t, MIN_SPACER)
+        # the crank's laser plates need the face on a layer boundary: the plate's bottom
+        # face, or a layer's under it (the horn's layers hold no plate of the crank's: the
+        # default sheet's thickness)
+        layer = ctx.pitch
+        n = max(0, math.ceil((self.spec.horn_face_depth - plate) / layer - 1e-9))
+        t = plate + n * layer - self.spec.horn_face_depth
+        if 1e-6 < t < MIN_SPACER:
+            t += layer
+        # a crankpin's screw head over the hub plate stands in a pocket of the spacer (a
+        # short crank: the Hoecken pantograph's): the spacer at least that thick
+        need = self._hub_head_need(ctx)
+        while need > 0 and t < need - 1e-6:
+            t += layer
+        return 0.0 if t <= 1e-6 else t
 
     def _hub_head_need(self, ctx: Context) -> float:
         """What the side's crank needs of the horn spacer over its hub plate (0: nothing):
@@ -167,18 +167,7 @@ class DriveGroup(Group):
             return 0.0
         crank = crank.resolve(ctx)
         h = self.spec.horn
-        return crank.hub_head_need(ctx, h.diameter / 2, h.center_screw_head_d)
-
-    @staticmethod
-    def _face_on_layer(ctx: Context) -> bool:
-        """Whether the side's crank construction needs the horn's face on a layer boundary
-        (its hub is whole laser-cut plates)."""
-        key = getattr(ctx.config, "crank", None)
-        if key is None:
-            return False
-        from spiderpig.construction import CRANKS
-
-        return bool(getattr(CRANKS.get(key), "face_on_layer", False))
+        return crank.hub_head_need(ctx, h.diameter / 2)
 
     def pattern_angle(self, ctx: Context) -> float:
         """Horn-hole angle (from the first crankpin) farthest from every crankpin.
@@ -238,8 +227,7 @@ class DriveGroup(Group):
             center_head_h=max(0.0, h.center_screw_head_h - t),
             pattern_angle=self.pattern_angle(ctx),
             plate_t=ctx.sheet_t("frame"),
-            horn_layers=(round((s.horn_face_depth + t - ctx.sheet_t("frame")) / ctx.pitch)
-                         if self._face_on_layer(ctx) else 0),
+            horn_layers=round((s.horn_face_depth + t - ctx.sheet_t("frame")) / ctx.pitch),
             spacer_t=t,
         )
 
@@ -249,8 +237,8 @@ class DriveGroup(Group):
         """Front mounting holes used: ``(point name, hole, screw family, length)``.
 
         A hole is used when its screw head, under the plate, clears the widest
-        crank hub (the horn, or the horn screws' counterbores plus a wall, as
-        :class:`construction.crank.PrintedCrank` builds it) by the margin.
+        crank hub (the horn, or the horn screws' counterbores plus a wall) by the
+        margin.
         """
         iface = self.interface(ctx)
         p = ctx.params
@@ -425,7 +413,7 @@ class DriveGroup(Group):
 
         crank_host = next(iter(build.plan.topo.crank_bodies), None)
         frame_host = build.plan.topo.frame_bodies[0]
-        body = _placed_servo(s, _key(o, u, plate_top))
+        body = _placed_servo(s, _key(o, u, plate_top), cad_state(s))
         out.bodies.append(hardware("servo", body, frame_host, fab="purchased",
                                    bom_key=s.bom_key, color=SERVO_COLOR))
         for i, (_, mh, sk, length) in enumerate(self.front_screws(ctx)):
@@ -465,11 +453,12 @@ class DriveGroup(Group):
                 if (hub is not None and sh.label.startswith("crankpin screw")
                         and sh.toward > 0
                         and sh.layer == (hub if sh.gap else hub + 1)):    # in its gap, or sunk
-                    xy = tuple(build.xy(sh.shape.at))
-                    if math.dist(xy, tuple(o)) - sh.shape.r < s.horn.diameter / 2:
-                        holes.append(disc(xy, sh.shape.r, face - t - 1, face + 1))
+                    head = cast("Disc", sh.shape)  # a crankpin screw head's shape is a Disc
+                    xy = tuple(build.xy(head.at))
+                    if math.dist(xy, tuple(o)) - head.r < s.horn.diameter / 2:
+                        holes.append(disc(xy, head.r, face - t - 1, face + 1))
             for hole in holes:
-                spacer = spacer - hole
+                spacer = cast("Shape3D", spacer - hole)  # a hole leaves the spacer whole
             out.bodies.append(hardware("servo_horn_spacer", spacer, crank_host or frame_host,
                                        fab="printed", color=SPACER_COLOR))
         return out

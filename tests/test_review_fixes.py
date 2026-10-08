@@ -86,8 +86,8 @@ def test_the_rail_screw_reaches_through_its_nut_on_any_frame_plate():
 
 @pytest.mark.hardware
 @pytest.mark.slow
-@pytest.mark.parametrize("kw", [dict(linkage="trotbot_heel", module="single"),
-                                dict(linkage="strider", module="double", crank="bolt_round")])
+@pytest.mark.parametrize("kw", [{"linkage": "trotbot_heel", "module": "single"},
+                                {"linkage": "strider", "module": "double", "crank": "bolt_round"}])
 def test_a_round_crankpins_shims_are_its_take_up_and_ordered_exactly(kw):
     from spiderpig.config import BuildConfig
     from spiderpig.hardware.bom import SHIM_AS, bom_from_mechanism, shim_key
@@ -150,13 +150,12 @@ def test_a_stored_plan_that_ran_out_of_time_is_searched_again(tmp_path):
     from spiderpig.store import Store
 
     # what its static failure's recommendation checks (unit 12), from the test cache
-    _api.seed(BuildConfig(linkage="trotbot_heel", module="single", crank="keyed",
-                          pillar="printed", proportions=(("unit", 12.0),)))
+    _api.seed(BuildConfig(linkage="trotbot_heel", module="single",
+                          proportions=(("unit", 12.0),)))
     store = Store(tmp_path)
     heel = api.resolve({"kind": "walker", "linkage": {"key": "trotbot_heel",
                                                       "params": {"unit": 7}},
-                        "legs": {"module": "single"},
-                        "constructions": {"crank": "keyed", "pillar": "printed"}}, store)
+                        "legs": {"module": "single"}}, store)
     assert not api.plan(heel).ok
     path = store.report_path(heel.id, "plan")
     doc = json.loads(path.read_text())
@@ -272,7 +271,7 @@ def test_every_bolt_crank_is_rated():
     from spiderpig.strength import crank_capacity
 
     keys = [k for k, c in CRANKS.items() if isinstance(c, BoltCrank)]
-    assert {"bolt", "bolt_round", "bolt_hub_screw", "bolt_unretained"} <= set(keys)
+    assert set(keys) == {"bolt", "bolt_round"}         # every crank left (2026-10-07)
     for k in keys:
         assert crank_capacity({}, BuildConfig(crank=k)), k
 
@@ -285,7 +284,7 @@ def test_purchased_parts_are_massed_in_their_own_material():
     assert item_material("m3_round_standoff_ff_6") == "aluminium"
     assert item_material("hex_standoff_m3_5") is None                  # steel
     assert item_material("pillar_shaft_6_m3_62.4") is None             # steel
-    assert item_material("m3_nylock") is None                          # a steel nut
+    assert item_material("m3_nut") is None                             # a steel nut
     assert item_material("ptfe_washer_6x12x0p5") == "ptfe"
 
 
@@ -347,14 +346,16 @@ def test_the_kerf_notes_follow_the_files():
 
 
 @pytest.mark.hardware
-def test_a_ptfe_liner_is_massed_as_ptfe():
+def test_a_ptfe_part_is_massed_as_ptfe():
+    """(On the PTFE tube liner of the removed ``ptfe`` pin before 2026-10-07; the PTFE
+    washer the Chicago screw's catalog item keeps is the PTFE part left.)"""
     from types import SimpleNamespace
 
     from spiderpig import servos
     from spiderpig.hardware.mass import DENSITY, material_of
 
-    body = SimpleNamespace(name="pin_J3_liner", fab="purchased", bom_key="ptfe_tube_3x4_1m",
-                           sheet=None)
+    body = SimpleNamespace(name="pin_J3_washer", fab="purchased",
+                           bom_key="ptfe_washer_4x8x0p5", sheet=None)
     assert material_of(body, "acrylic_3mm", None, servos.get("sts3215"))[:2] == (
         "ptfe", DENSITY["ptfe"])
 
@@ -643,10 +644,9 @@ def test_every_crank_states_the_bore_its_riders_are_cut_to():
     from spiderpig import strength
     from spiderpig.config import BuildConfig
 
-    assert strength.rider_hole(BuildConfig(crank="keyed")) == pytest.approx(8.85)
-    assert strength.rider_hole(BuildConfig(crank="keyed_float")) == pytest.approx(8.85)
-    assert strength.rider_hole(BuildConfig(crank="printed")) == pytest.approx(6.35)
     assert strength.rider_hole(BuildConfig()) == pytest.approx(8.85)          # the hex pin
+    # the round standoff's 6 mm, the riders turning on it at the running fit (0.35)
+    assert strength.rider_hole(BuildConfig(crank="bolt_round")) == pytest.approx(6.35)
 
 
 def test_a_range_target_is_scored_against_the_bound_it_misses():
@@ -679,9 +679,9 @@ def test_a_construction_change_is_patched_under_constructions():
     from spiderpig.failure import Recommendation
     from spiderpig.stack import Recommendation as EngineRec
 
-    rec = EngineRec((("crank", "bolt", "keyed"),), why="w")
+    rec = EngineRec((("crank", "bolt", "bolt_round"),), why="w")
     got = Recommendation.from_engine(rec, linkage.get("strider"))    # (its ``crank`` param)
-    assert got.patch == {"constructions": {"crank": "keyed"}}
+    assert got.patch == {"constructions": {"crank": "bolt_round"}}
 
 
 def test_a_value_target_under_the_scale_is_met_from_the_band():
@@ -700,36 +700,36 @@ def test_a_value_target_under_the_scale_is_met_from_the_band():
 
 
 @pytest.mark.hardware
-def test_rod_stock_bounds_a_rod_pillar_and_is_bought_in_whole_pieces():
-    from spiderpig.construction import AXLES
+def test_stock_cut_to_length_is_bought_in_whole_pieces():
+    """(The rod pivots' stock bound, ``max_stack``, went with them on 2026-10-07.)"""
     from spiderpig.hardware.bom import CutList
 
-    for key in ("rod", "ptfe", "bearing", "bushing"):
-        assert AXLES[key].max_stack(3.0) == pytest.approx(100.0), key
-    assert getattr(AXLES["chicago"], "max_stack", None) is None
     # three 60 mm pieces don't come out of two 100 mm rods (1.8 rods by length)
     assert CutList("rod_3mm_100", "rod", ((60.0, 3),), 100.0).stock_pieces() == 3
     assert CutList("rod_3mm_100", "rod", ((40.0, 4),), 100.0).stock_pieces() == 2
 
 
-def test_the_cost_floor_glues_only_what_is_glued():
-    from spiderpig.verify import GLUED_PINS
-
-    assert "bushing" not in GLUED_PINS                 # pressed in (insert.BUSHING)
-    assert "bearing" in GLUED_PINS
-
-
 @pytest.mark.strength
-def test_the_crank_advice_names_the_crank_it_would_build():
+def test_the_crank_advice_names_what_would_hold_it():
+    """A weak hex crank: the torque limit that holds it and a thicker crank sheet (deeper
+    pockets) where one is stocked; a weak round-standoff clamp: the clamp's screws. (Before
+    2026-10-07 it named the hex crank for the keyed one.)"""
     from spiderpig import strength
     from spiderpig.config import BuildConfig
 
-    row = {"kind": "crank", "factor": 1.0, "capacity_nm": {"x": 0.5}, "weakest": "x",
-           "construction": "keyed", "jam": {"torque_nm": 0.85, "safety": 0.5}}
-    got = strength.fixes(row, None, {}, BuildConfig(crank="keyed"))
-    assert any("hex-standoff crankpins" in f for f in got)
-    assert not any("--crank bolt" in f
-                   for f in strength.fixes(row, None, {}, BuildConfig(crank="keyed", pin="bolt")))
+    row = {"kind": "crank", "factor": 1.0, "capacity_nm": {"hex": 0.5},
+           "weakest": "hex 5.5 AF in its plate's pocket", "construction": "bolt",
+           "jam": {"torque_nm": 0.85, "safety": 0.5}}
+    got = strength.fixes(row, None, {}, BuildConfig())
+    assert got[0].startswith("set the servo's torque limit to 0.25 N·m")   # 0.5 / (SF 2 x 1)
+    assert any("--crank-sheet al6061_3p2mm" in f for f in got)
+    thick = strength.fixes(row, None, {}, BuildConfig(crank_sheet="al6061_3p2mm"))
+    assert not any("--crank-sheet" in f for f in thick)                   # already the thickest
+    clamp = dict(row, construction="bolt_round", capacity_nm={"clamp": 0.5},
+                 weakest="web clamped on the standoff")
+    got = strength.fixes(clamp, None, {}, BuildConfig(crank="bolt_round"))
+    assert any("threadlocker on the crankpin screws" in f for f in got)
+    assert not any("--crank-sheet" in f for f in got)
 
 
 @pytest.mark.slow       # a store's STEP round trip and a recheck: 4-8 s, its parts cached
@@ -739,7 +739,7 @@ def test_an_export_after_an_accepted_edit_is_written_afresh(tmp_path, monkeypatc
 
     from spiderpig import api
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
     assert api.build(d).ok
     first = api.export(d, ["dxf"], tmp_path)
@@ -800,18 +800,6 @@ def test_a_foot_at_a_links_corner_gets_no_sock():
     assert foot_links(topo, lk) == [("b4", "G", "D")]
 
 
-@pytest.mark.strength
-def test_the_crank_advice_skips_pivots_that_cant_plan_in_gaps():
-    from spiderpig import strength
-    from spiderpig.config import BuildConfig
-
-    row = {"kind": "crank", "factor": 1.0, "capacity_nm": {"x": 0.5}, "weakest": "x",
-           "construction": "keyed", "jam": {"torque_nm": 0.85, "safety": 0.5}}
-    for pin in ("bearing", "bushing", "bolt"):
-        got = strength.fixes(row, None, {}, BuildConfig(crank="keyed", pin=pin))
-        assert not any("--crank bolt" in f for f in got), pin
-
-
 def test_a_hard_target_only_estimated_is_unverified_and_unscored():
     from spiderpig import api
     from spiderpig.config import BuildConfig
@@ -836,7 +824,7 @@ def test_an_edited_handles_export_stays_off_the_store(tmp_path, monkeypatch):
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.build(d).ok
@@ -863,7 +851,7 @@ def test_a_rejected_edit_leaves_the_built_parts_in_the_mechanism(tmp_path, monke
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.build(d).ok
@@ -883,7 +871,7 @@ def test_verify_keeps_an_edited_handles_crank_angle_and_edits(monkeypatch):
 
     from spiderpig import api
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
     assert api.build(d, 0.5).ok
     name = next(n for n, p in d.parts.items() if p.group == "links")
@@ -910,14 +898,14 @@ def test_an_accepted_edit_is_graded_and_forgotten_as_itself(tmp_path, monkeypatc
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.build(d).ok
     plate = d.parts["crank_plate2"]
     bb = plate.solid.bounding_box()
     c = np.array([bb.center().X, bb.center().Y])
-    hole = Cylinder(0.25, 50).moved(plate.locate(c + [0.0, 0.0]))
+    hole = Cylinder(0.25, 50).moved(plate.locate(c))
     plate.solid = plate.solid - hole                     # a 0.5 mm hole: under the minimum
     assert api.recheck(d).ok
     assert not d.reports["build"].cut_rules["ok"]       # graded as edited, not as built
@@ -960,7 +948,7 @@ def test_the_gap_fallback_says_what_it_tried():
     assert _thicker_gaps(err, StackSpec(), {}, 10, {}, {3: 1.0}, {}, set())[3] == \
         pytest.approx(2.0)
     with pytest.raises(PlanReject, match="least thickenings of one or two gaps"):
-        _thicker_gaps(err, StackSpec(), {}, 10, {}, {k: 1.0 for k in range(1, 7)}, {}, set())
+        _thicker_gaps(err, StackSpec(), {}, 10, {}, dict.fromkeys(range(1, 7), 1.0), {}, set())
 
 
 @pytest.mark.slow       # a store's STEP round trip and a recheck: 4-8 s, its parts cached
@@ -973,7 +961,7 @@ def test_an_edited_export_into_a_folder_is_never_reused(tmp_path, monkeypatch):
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store, out = Store(tmp_path / "s"), tmp_path / "out"
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.export(d, ["bom"], out).ok
@@ -993,7 +981,7 @@ def test_an_edited_export_into_a_folder_is_never_reused(tmp_path, monkeypatch):
 def test_a_build_at_another_angle_forgets_the_other_angles_export(tmp_path, monkeypatch):
     from spiderpig import api
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
     assert api.build(d, 1.0).ok
     first = api.export(d, ["bom"], tmp_path)

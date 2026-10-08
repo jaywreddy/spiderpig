@@ -314,13 +314,13 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
     two thicknesses off every hole it shares a plate with (:func:`tie_neighbours`; the
     design review's warning level); where none is, the unmoved place (the audit warns)."""
     spec, p, d = ctx.servo, ctx.params, tie_dims(ctx)
-    x0, x1, y0, y1 = _footprint(spec)
+    x0, x1, _y0, y1 = _footprint(spec)
     c = max(d.column, d.head_r, TIE_PLACE_R)
     yt = y1 + p.margin + c
     xs = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
     near = tie_neighbours(ctx)
     r = d.hole_d / 2
-    n = int(round(TIE_SHIFT_MAX / TIE_SHIFT_STEP))
+    n = round(TIE_SHIFT_MAX / TIE_SHIFT_STEP)
     # the bus plugs' slot through the centre plates (:func:`_port_slots`): a tie beside it
     # moves out across the servo until its hole is two thicknesses off the slot's side
     slot = spec.bus_ports.slot() if spec.bus_ports is not None else None
@@ -612,11 +612,11 @@ TIE_TOL = 0.1              # a chain within this of its span after the shims (th
 
 def _chain(D: float) -> tuple[list[float], float] | None:
     """Stock uxcell 6 mm round M3 standoff lengths (joined by M3 set screws) and the shim
-    stack (a multiple of :data:`construction.pivots.standoff.SHIM_STEP`, bought as DIN 433
+    stack (a multiple of :data:`hardware.bom.SHIM_STEP`, bought as DIN 433
     washers) that fill ``D`` mm within :data:`TIE_TOL`: ``(segments, shims mm)``, the fewest
     segments, then the thinnest stack; the stack up to 2 mm, else 3 mm (the XL330's 23 mm:
     no M3 pair fills it), ``None`` when none does."""
-    from spiderpig.construction.pivots.standoff import SHIM_STEP
+    from spiderpig.hardware.bom import SHIM_STEP
     from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS
 
     lengths = sorted(M3_ROUND_STANDOFF_LENGTHS)

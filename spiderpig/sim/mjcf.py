@@ -202,6 +202,7 @@ import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, field, replace
 from functools import lru_cache
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from scipy.spatial import ConvexHull
@@ -213,6 +214,12 @@ from spiderpig.hardware.mass import material_of, part_props
 from spiderpig.linkage import feet_of
 from spiderpig.linkage import get as get_linkage
 from spiderpig.stack import body_class, is_crank, is_frame, is_link
+
+if TYPE_CHECKING:
+    import mujoco
+
+    from spiderpig.mechanism import Mechanism
+    from spiderpig.servos.spec import ServoSpec
 
 T_REF = 0.0                     # crank angle the model's qpos0 is at (the glb's frame 0)
 MIN_CRANK_ARMATURE = 5e-4       # kg·m²; see SimParams.crank_armature
@@ -314,7 +321,7 @@ class RobotModel:
     link_radius: float                  # mm
     crank_sign: int
     meta: dict                          # the fabricated robot's meta
-    servo: object                       # servos.spec.ServoSpec
+    servo: ServoSpec
 
 
 def _kind(name: str) -> str:
@@ -391,9 +398,10 @@ CACHE_SIZE = 8      # designs kept per cache (a design's model is ~37 MB of RSS)
 
 # config -> fabricated robot; config -> (robot, its parts' props). Newest last, the
 # oldest dropped past CACHE_SIZE.
-_FABRICATED: OrderedDict[BuildConfig, object] = OrderedDict()
-_PROPS: OrderedDict[BuildConfig, tuple[object, dict]] = OrderedDict()
-_MODELS: OrderedDict[tuple[BuildConfig, SimParams], tuple] = OrderedDict()  # compiled
+_FABRICATED: OrderedDict[BuildConfig, Mechanism] = OrderedDict()
+_PROPS: OrderedDict[BuildConfig, tuple[Mechanism, dict]] = OrderedDict()
+_MODELS: OrderedDict[tuple[BuildConfig, SimParams],
+                     tuple[mujoco.MjModel, dict]] = OrderedDict()  # compiled
 _BUILD_LOCKS: dict[BuildConfig, threading.Lock] = {}    # single-flight builds per config
 _LOCKS_LOCK = threading.Lock()
 
@@ -422,7 +430,7 @@ def clear_caches() -> None:
     _build_mjcf.cache_clear()
 
 
-def fabricated(config: BuildConfig):
+def fabricated(config: BuildConfig) -> Mechanism:
     """The fabricated robot (both sides) at ``t_ref`` (cached per config; one fabricated
     elsewhere at that angle comes in through :func:`set_fabricated`)."""
     config = replace(config, robot=True)
@@ -431,7 +439,7 @@ def fabricated(config: BuildConfig):
     return _FABRICATED[config]
 
 
-def set_fabricated(config: BuildConfig, robot, props: dict | None = None) -> None:
+def set_fabricated(config: BuildConfig, robot: Mechanism, props: dict | None = None) -> None:
     """Adopt ``robot``, the robot of ``config`` fabricated at :data:`T_REF` (both sides), as
     what :func:`fabricated` returns for it: an export that bakes the glb from the same
     fabrication doesn't fabricate twice. ``props``: its parts' mass properties already
@@ -499,7 +507,8 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
         for mi, ci, ii in parts:
             d = ci - c
             inertia += ii + mi * (d @ d * np.eye(3) - np.outer(d, d))
-        mb.mass, mb.com, mb.inertia = m, c, inertia
+        mb.mass, mb.inertia = m, inertia
+        mb.com = c  # a sum of 3-vectors over m  # pyright: ignore[reportAttributeAccessIssue]
 
     # the tree grown from the base over the template's connections (see the module doc)
     adj: dict[str, list[tuple[int, str, str, np.ndarray]]] = {n: [] for n in bodies}
@@ -568,7 +577,7 @@ def robot_model(config: BuildConfig, printed_fill: float = 1.0,
     foot_links: dict[str, list[str]] = {}
     # per side, the joint names at the feet (Klann: F_leg0, ...): every link's capsule
     # stops short of them, whichever link ends there
-    foot_points: dict[str, set[str]] = {}
+    foot_points: dict[str | None, set[str]] = {}
     for body, joint in feet_of(robot):
         tag = "" if n_feet == 1 else f"_{joint}"
         foot = re.sub(r"^([LR])\.b\d+", rf"\g<1>.foot{tag}", body)
@@ -752,6 +761,7 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
             ET.SubElement(el, "freejoint", name="base")
             ET.SubElement(el, "site", name="base", pos="0 0 0")
         else:
+            assert mb.parent is not None  # robot_model hangs every body but the base
             parent = rm.bodies[mb.parent]
             el = ET.SubElement(elems[mb.parent], "body", name=name,
                                pos=_v((mb.origin - parent.origin) * MM))
@@ -795,7 +805,8 @@ def _build_mjcf(config: BuildConfig, params: SimParams) -> tuple[str, dict]:
                       solref=_v(params.eq_solref), solimp=_v(params.eq_solimp))
 
     actuator = ET.SubElement(root, "actuator")
-    sides = sorted({mb.side for mb in rm.bodies.values() if mb.kind == "crank"})
+    crank_sides = {mb.side for mb in rm.bodies.values() if mb.kind == "crank"}
+    sides = sorted(cast("set[str]", crank_sides))  # crank bodies are L.conn / R.conn: sided
     for s in sides:
         ET.SubElement(actuator, "velocity", name=f"{s}.drive", joint=f"{s}.crank", kv=_f(kv),
                       ctrlrange=_v((-vmax, vmax)), forcerange=_v((-tau, tau)))
@@ -830,7 +841,7 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
         "format": "spiderpig-mjcf/1",
         "config": {"linkage": cfg.linkage, "module": cfg.module, "servo": cfg.servo,
                    "sheet": cfg.sheet,
-                   "phases": list(rm.config.phases) if cfg.phases else None,
+                   "phases": list(cfg.phases) if cfg.phases else None,
                    "proportions": dict(cfg.proportions)},
         "units": {"model": "SI (m, kg, s, rad)", "design": "mm"},
         "frames": {
@@ -883,7 +894,8 @@ def _metadata(rm: RobotModel, params: SimParams, height: float, pitch: float, ro
     }
 
 
-def load_model(config: BuildConfig | None = None, params: SimParams | None = None):
+def load_model(config: BuildConfig | None = None,
+               params: SimParams | None = None) -> tuple[mujoco.MjModel, dict]:
     """``(mujoco.MjModel, metadata)`` for ``config``, compiled once per config and params
     (the newest :data:`CACHE_SIZE` kept). The model is shared: copy it before changing it
     (:func:`motor_line` does, per session)."""
@@ -896,7 +908,8 @@ def load_model(config: BuildConfig | None = None, params: SimParams | None = Non
     return _MODELS[key]
 
 
-def cached_model(config: BuildConfig | None = None, params: SimParams | None = None):
+def cached_model(config: BuildConfig | None = None,
+                 params: SimParams | None = None) -> tuple[mujoco.MjModel, dict] | None:
     """:func:`load_model`'s answer when it is already compiled, else ``None`` (nothing is
     built)."""
     key = (config or BuildConfig(), params or SimParams())
@@ -906,7 +919,8 @@ def cached_model(config: BuildConfig | None = None, params: SimParams | None = N
     return None
 
 
-def adopt_mjcf(config: BuildConfig, params: SimParams, xml: str, meta: dict):
+def adopt_mjcf(config: BuildConfig, params: SimParams, xml: str,
+               meta: dict) -> tuple[mujoco.MjModel, dict]:
     """Compile ``xml`` (``meta`` beside it: :func:`build_mjcf`'s, built in another process)
     as :func:`load_model`'s answer for ``config`` and ``params``; the ``(model, meta)``."""
     import mujoco

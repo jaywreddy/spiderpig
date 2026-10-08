@@ -149,6 +149,7 @@ def claims_commute(prob: stack.StackProblem, g: dict[str, str], sig: dict[str, s
                         break
                     if out1 is None:
                         continue
+                    assert out2 is not None  # None together with out1 (checked above)
                     a = sorted((p.slot, _shape(p.shape, sig), p.seat) for p in out1)
                     b = sorted((p.slot, _shape(p.shape), p.seat) for p in out2)
                     if a != b:

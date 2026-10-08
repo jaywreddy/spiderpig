@@ -68,6 +68,7 @@ from spiderpig.construction.deck import deck_clearance
 from spiderpig.fabricate import fabricate, template_for
 from spiderpig.hardware.bom import bom_from_mechanism
 from spiderpig.layout import sheet_lines
+from spiderpig.rounding import rounded
 from spiderpig.stack import verify_plan
 
 
@@ -102,6 +103,7 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
         mech = fabricate(tmpl, config, t)
         rep["clash"][f"t={t:g}"] = clashes(mech)
         rep["solids"][f"t={t:g}"] = bad_solids(mech)
+    assert mech is not None  # ts_clash names at least one t (a split of a non-empty argument)
     rep["parts"] = sum(1 for b in mech.bodies if b.part is not None)
     rep["snap"] = _snap_check(mech.meta.get("snap_strain") or {})
     loads = strength.design_loads(config, store, override=pin_loads, sim=sim)
@@ -110,8 +112,6 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     rep["strength"] = strength.check(notes, mech.meta, config, loads)
     if mech.meta.get("chicago"):
         rep["chicago"] = mech.meta["chicago"]
-    if mech.meta.get("crank_key"):
-        rep["crank_key"] = mech.meta["crank_key"]
     if mech.meta.get("crank_bolt"):
         rep["crank_bolt"] = mech.meta["crank_bolt"]
     rep["chassis"] = {k: v for k, v in mech.meta.items()
@@ -211,7 +211,7 @@ def cut_lines(m: dict) -> list[str]:
                      "sheet: " + ", ".join(f"{k} {v:g} mm" for k, v in
                                           (m.get("kerf") or {}).items()) + ".")
     if not m["issues"]:
-        return lines + ["", "Every part passes."]
+        return [*lines, "", "Every part passes."]
     lines += ["", "| level | rule | part | sheet | what | why | fix |",
               "|---|---|---|---|---|---|---|"]
     for i in sorted(m["issues"], key=lambda i: i.get("level") != "error"):
@@ -265,7 +265,7 @@ def wobble_check(notes: dict, loads: tuple[float, float] | None = None) -> dict:
         wj, we = max(links, key=lambda je: je[1]["tilt_deg"])
         row = {"joints": len(joints), "links": len(links),
                "worst_deg": we["tilt_deg"], "worst_at": f"{wj} {we['link']}",
-               "mean_deg": round(sum(e["tilt_deg"] for _, e in links) / len(links), 3),
+               "mean_deg": rounded(sum(e["tilt_deg"] for _, e in links) / len(links), 3),
                "worst_free_deg": max(e["free_deg"] for _, e in links),
                "play_mm": max(v["play_mm"] for v in joints.values()),
                "play_basis": next(iter(joints.values()))["play_basis"],
@@ -382,9 +382,9 @@ def markdown(report: dict) -> str:
                     f"{row['max_span_mm']:g} mm.")
             lines.append(line)
         if rep.get("strength"):
-            lines += [""] + strength_lines(rep["strength"]) + [""]
+            lines += ["", *strength_lines(rep["strength"]), ""]
         if rep.get("manufacture"):
-            lines += cut_lines(rep["manufacture"]) + [""]
+            lines += [*cut_lines(rep["manufacture"]), ""]
         if rep.get("chicago"):
             lens: dict = {}
             for v in rep["chicago"].values():
@@ -392,13 +392,7 @@ def markdown(report: dict) -> str:
             lines.append("Chicago screws (per side): " + ", ".join(
                 f"{n} x {L:g} mm" for L, n in sorted(lens.items())) + "; play " + ", ".join(
                 sorted({f"{v['play_mm']:g}" for v in rep["chicago"].values()})) + " mm.")
-        if k := rep.get("crank_key"):
-            lines.append(
-                f"Crank keys (per side): {k['keys']} x {k['key_af_mm']:g} mm AF, {k['fit']} "
-                f"fit in {k['pocket_af_mm']:g} mm pockets: play {k['play_deg']:g} deg per "
-                f"interface ({k['play_deg_if_0p05_big']:g} if a pocket prints 0.05 mm over); "
-                + ("chain screws threadlocked." if k["threadlocker"] else "chain screws dry."))
-        if (k := rep.get("crank_bolt")) and k.get("webs") == "single":
+        if k := rep.get("crank_bolt"):
             pins = ", ".join(f"{c['at']} {c['standoff'].rsplit('_', 1)[1]} mm"
                              + (f" + {c['shims_mm']:g} mm shims" if c.get("shims_mm") else "")
                              for c in k["chains"] + k.get("journals", []))
@@ -406,20 +400,6 @@ def markdown(report: dict) -> str:
                 f"Crank (per side): {k['plates']} single aluminium plates; crankpins and "
                 f"journals {k.get('crankpin', 'round standoffs clamped by M4 screws')}: "
                 f"{pins}.")
-        elif k := rep.get("crank_bolt"):
-            bolts = ", ".join(
-                f"{c['at']} {c['bolt'].rsplit('_', 1)[1]} mm"
-                + (f" cut to {c['cut_to_mm']:g}" if c.get("cut_to_mm") else "")
-                + f" ({c['bare_layers']} bare layer{'s' * (c['bare_layers'] != 1)} under its "
-                  "riders)" for c in k["chains"])
-            wb = k.get("weakest_bond")
-            lines.append(
-                f"Crank bolts (per side): M6 x {bolts}; {k['plates']} acrylic plates in "
-                f"{len(k['segments'])} cemented stacks, hex pockets {k['pocket_af_mm']:g} mm "
-                f"AF: play {k['play_deg']:g} deg per joint ({k['play_deg_worst']:g} on a "
-                "minimum-size head)"
-                + (f"; weakest bond plates {wb['layers'][0]}/{wb['layers'][1]} "
-                   f"{wb['capacity_nm']:g} N·m" if wb else "") + ".")
         if rep["snap"]["relieved"]:
             lines.append("Snap lips relieved (engage mm): " + ", ".join(
                 f"{k} {v:.2f}" for k, v in rep["snap"]["relieved"].items()) + ".")
@@ -438,7 +418,7 @@ def markdown(report: dict) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     add_design_args(ap)         # --linkage, --module, --phases, --proportion (as build's)
     ap.add_argument("--modules", default=None,
                     help="comma-separated leg modules (default: --module, else all of the "

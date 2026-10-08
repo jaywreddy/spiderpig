@@ -1,7 +1,7 @@
 [tools]
 python = "3.12"
 uv     = "latest"
-node   = "20"
+node   = "22"
 
 [env]
 UV_PROJECT_ENVIRONMENT = ".venv"
@@ -15,8 +15,10 @@ run         = "uv run python -m spiderpig.tools.dev"
 description = "Install npm deps for viewer/"
 dir         = "{{config_root}}/viewer"
 run         = "npm install"
-sources     = ["viewer/package.json", "viewer/package-lock.json"]
-outputs     = ["viewer/node_modules/.package-lock.json"]
+# sources and outputs resolve against `dir` (viewer/), not the config root: with the
+# `viewer/` prefix neither existed, so the task ran every time; npm writes the hidden lockfile
+sources     = ["package.json", "package-lock.json"]
+outputs     = ["node_modules/.package-lock.json"]
 
 [tasks.viewer-dev]
 description = "Vite dev server only"
@@ -107,7 +109,7 @@ description = "Regenerate the recorded fixtures (tests/fixtures/): their currenc
 run         = "uv run python -m tests.tiers fixtures"
 
 [tasks.gate]
-description = "Identity gate: snapshot DIR before a product change, compare DIR after (tests/gate/identity_gate.py)"
+description = "Identity gate: snapshot DIR before a product change, compare DIR after; doc DIR writes docs/agentlib/DESIGNS.md (tests/gate/identity_gate.py)"
 run         = "uv run python tests/gate/identity_gate.py"
 
 [tasks.remote]
@@ -115,7 +117,8 @@ description = "Run a command on $SPIDERPIG_REMOTE (default root@ao-server) in a 
 run         = "uv run python -m spiderpig.tools.remote --"
 
 [tasks."remote-test"]
-description = "The full suite on $SPIDERPIG_REMOTE with xdist (pass pytest args after --); junit + log in build/remote/<run>/"
+description = "The full suite on $SPIDERPIG_REMOTE with xdist (pass pytest args after --); junit + log in build/remote/<run>/. The viewer's tests (typecheck, vitest: the walk-model parity) run here first: the remote has no node_modules, where tests/test_viewer_parity.py skips"
+depends     = ["test-viewer"]
 run         = "uv run python -m spiderpig.tools.remote --test --"
 
 [tasks."remote-audit"]
@@ -131,8 +134,8 @@ description = "Download the servo manufacturers' CAD models into the cache (sha2
 run = "uv run python -m spiderpig.servos.cad"
 
 [tasks.lint]
-description = "ruff check"
-run         = "uv run ruff check ."
+description = "ruff check, then the layers' import contracts (lint-imports: pyproject.toml [tool.importlinter])"
+run         = ["uv run ruff check .", "uv run lint-imports"]
 
 [tasks.release]
 description = "Build the viewer, then the sdist + wheel into dist/ (the wheel carries spiderpig/viewer/dist; a build without it fails)"
@@ -154,3 +157,26 @@ run         = "uv run python -m spiderpig.tools.kill_dev"
 [tasks.clean]
 description = "Remove build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/"
 run         = "uv run python -c \"import shutil, pathlib; [shutil.rmtree(p, ignore_errors=True) for p in [pathlib.Path('build'), pathlib.Path('dist'), pathlib.Path('.spiderpig/bakes'), pathlib.Path('spiderpig/viewer/dist'), pathlib.Path('viewer/node_modules')]]\""
+
+[tasks.scorecard]
+description = "Every roadmap number in one JSON: build stages, tier times, quick-tier coverage, pyright, ruff RUF, module sizes -> build/scorecard.json (--gate/--full/--audit opt-in; --compare A B)"
+depends     = ["viewer-install"]
+run         = "uv run python -m tests.scorecard"
+
+[tasks.doc-check]
+description = "Resolve every backticked name, path, task, flag and env var in the docs against the code (report-only; -- --strict fails on a miss)"
+run         = "uv run python -m tests.doc_check"
+
+[tasks.pyright]
+description = "pyright, basic mode ([tool.pyright]; the viewer's pinned devDependency)"
+depends     = ["viewer-install"]
+run         = "viewer/node_modules/.bin/pyright"
+
+[tasks."pyright-check"]
+description = "pyright's ratchet (CI): its error count against tests/pyright-baseline.json, which may only go down (-- --update lowers it)"
+depends     = ["viewer-install"]
+run         = "uv run python -m tests.pyright_baseline"
+
+[tasks."engine-version"]
+description = "Print the engine version (the stores' and the test cache's key)"
+run         = "uv run python -m spiderpig.tools.engine_version"

@@ -6,11 +6,21 @@ collide, which no route can change), builds every claim for each, and tries
 every crank route: sets of runs (a run point and a layer range, webs in the
 layers either side, ``1..`` below the hub) that put each rider in a run of
 its own crankpin. A layering and route count when no two shapes of different
-groups come too close in a layer (the planner's own distances) and nothing but
-seats sits in a frame plate's layer, and the printed crank can build the route
-(:func:`buildable`, its joints as ``realize`` makes them). Cost: the planner's objective, in order:
-added crank features (run layers no rider of their point is in, detour runs),
+groups come too close in one slot (a layer, or the clearance gap over it: the
+planner's own distances), nothing but seats sits in a frame plate's layer, the bolt
+crank can build the route (:func:`buildable`: its standoffs and plates as
+:class:`construction.crank.BoltCrank` fits and ``_WebPlates`` makes them), and the plan
+of the layering builds at its own z and verifies (:meth:`stack.StackProblem.plan`,
+:func:`stack.verify_plan`: the stage after the search). Cost: the planner's objective,
+in order: added crank features (run layers no rider of their point is in, detour runs),
 the detours' sweep, a dropped bearing.
+
+The heads are the planner's ``heads="gap"`` search's: every claim as its construction
+makes it (a fastener's head in the clearance gap beside its link), so a test compares
+the brute force with a design configured ``heads="gap"``. The crank's run washers in a
+gap are left to the plan's check (the planner routes again round the gaps a plan has
+where they meet another group's: :meth:`stack._Search.leaf`), as are the crank's posts
+and webs against the other groups' clearance shapes.
 """
 
 from __future__ import annotations
@@ -21,9 +31,8 @@ from collections.abc import Iterator
 
 import numpy as np
 
-from spiderpig import construction
-from spiderpig.construction.crank import NUT_AF, POST_SCREWS, CrankRoute, Run
-from spiderpig.stack import Layout, Placed, StackProblem, made
+from spiderpig.construction.crank import CrankRoute, Run
+from spiderpig.stack import Layout, Placed, PlanReject, StackProblem, made, verify_plan
 
 
 def routes(points: list[str], lo: int, hi: int, need: dict[int, str],
@@ -64,61 +73,58 @@ def cost(route: CrankRoute, layers: dict[str, int], riders: dict[str, str],
     return extra, sum(detours[r.at] for r in route.runs if r.at in detours), int(not route.bearing)
 
 
+def crank_of(ctx):
+    """The side's crank construction, for its sheet (as :mod:`construction` resolves it)."""
+    from spiderpig import construction
+
+    return construction.crank(ctx.config.crank).resolve(ctx)
+
+
 def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, ctx,
               h0: int) -> bool:
-    """The printed crank's joints, as :meth:`construction.crank.PrintedCrank.realize` makes
-    them: runs along one point whose webs meet are one chain (one point, one chain), its
-    screw must fit between its outer webs' faces (end play set back where a rider turns
-    against them), a web set back in the hub's lowest layer (``h0``) must leave the hub its
-    horn screws, and pockets in one segment (consecutive chains, the last chain and the
-    horn screws) must not meet."""
-    crank, drive = construction.crank(ctx.config.crank), ctx.interfaces["drive"]
-    geo, pitch, play = problem.topo.geometry, problem.spec.pitch, crank.axial_play
-    riders: dict[str, set[int]] = {}
-    for n, pin in problem.topo.riders.items():
-        riders.setdefault(pin, set()).add(layers[n])
-    runs = sorted(route.runs, key=lambda r: (r.lo, r.at))
-    below, above = set(), set()
-    for r in runs:
-        ridden = riders.get(r.at, set()) & set(range(r.lo, r.hi + 1))
-        if r.lo in ridden:
-            below.add(r.lo - 1)
-        if r.hi in ridden and len(ridden) <= r.hi - r.lo:
-            above.add(r.hi + 1)
-    chains: list[list] = []
-    for r in runs:
-        if chains and chains[-1][-1].at == r.at and r.lo - chains[-1][-1].hi <= 3:
-            chains[-1].append(r)
-        else:
-            chains.append([r])
-    if len({c[0].at for c in chains}) < len(chains):
-        return False
-    two = getattr(crank, "two_layer_top", False)     # the keyed crank's two-layer top web
-
-    def face(k: int, top: bool) -> float:
-        return k * pitch + play * (k in above) if top else (k + 1) * pitch - play * (k in below)
-
-    for c in chains:
-        lo, hi = c[0].lo - 1, c[-1].hi + 1
-        faces = [face(lo, True), face(lo, False), face(hi, True),
-                 face(hi + 1 if two else hi, False)]
-        if two:
-            if hi + 1 in {k for r in runs for k in range(r.lo, r.hi + 1)} or hi + 1 > h0:
-                return False
-            faces.append(face(c[0].hi + 1, True))       # the first post's top
-        if crank.post_joint(*faces) is None:
+    """The bolt crank's single plates and standoffs, as :class:`construction.crank.BoltCrank`
+    fits them and ``_WebPlates`` builds them: every run along its own point between two
+    plates (a standoff can't take a plate turning on it between two runs, so one run per
+    point), each run's span one a stock standoff fits; the runs one above the other, each
+    next run's lowest plate the run below's top plate or over it with a journal standoff
+    on O between the two plates (one a stock length fits); the last run's top plate the
+    hub plate (the hub's lowest layer, ``h0``: the horn screws come up through it); the
+    first run's lowest plate in a layer the stub standoff reaches the outer frame plate
+    from (with the bearing), with no rider under it (the stub runs through those layers);
+    and two consecutive runs' (and the last run's and the horn's) screw heads apart."""
+    crank = crank_of(ctx)
+    pitch, t = ctx.pitch, ctx.sheet_t("crank")
+    runs = sorted(route.runs, key=lambda r: r.lo)
+    if len({r.at for r in runs}) < len(runs):
+        return False                        # a point carries one run
+    if runs[-1].hi + 1 != h0:
+        return False                        # the last run ends in the hub plate
+    ridden_layers = {layers[n] for n in problem.topo.riders}
+    if route.bearing:
+        a = runs[0].lo - 1
+        if a not in crank.stub_layers_web(ctx.sheet_t("frame"), pitch, t):
             return False
-    if h0 in above and crank.hub_joint(ctx, problem.router.dims.hub_thickness, play) is None:
-        return False
+        if any(k in ridden_layers for k in range(1, a)):
+            return False                    # the stub passes those layers
+    for r in runs:
+        if not crank._web_span_ok(r.hi - r.lo + 1, 0, pitch, t):
+            return False
+    for a, b in itertools.pairwise(runs):
+        e, f = a.hi + 1, b.lo - 1
+        if f < e:
+            return False
+        if f > e and not crank._web_span_ok(f - e - 1, 0, pitch, t):
+            return False                    # the journal standoff between the two plates
+        if any(k in ridden_layers for k in range(e + 1, f)):
+            return False                    # the journal on O passes a rider's layer
+    geo = problem.topo.geometry
     xy = {p: geo.points[p][0] for p in {r.at for r in runs}}
-    head = max(sk.head_d for sk in POST_SCREWS) / 2 + crank.screw_fit / 2
-    nut = (NUT_AF + crank.nut_fit) / math.sqrt(3)
-    if two:
-        nut = max(nut, (crank.pocket_af() + 2 * crank.pocket_chamfer) / math.sqrt(3))
-    post = problem.router.dims.post
-    for x, y in itertools.pairwise(chains):
-        if math.dist(xy[x[0].at], xy[y[0].at]) < nut + max(head, post):
+    head = crank.head_r()
+    post = crank.rider_d() / 2
+    for x, y in itertools.pairwise(runs):
+        if x.at != y.at and math.dist(xy[x.at], xy[y.at]) < head + max(head, post):
             return False
+    drive = ctx.interfaces["drive"]
     o, pin = geo.points["O"][0], geo.points[problem.topo.axes_of("crankpin")[0].name][0]
     theta = math.atan2(pin[1] - o[1], pin[0] - o[0]) + drive.pattern_angle
     horn = [(o + drive.screw_pcd / 2 * np.array([math.cos(a), math.sin(a)]), drive.screw_head_d / 2)
@@ -126,20 +132,27 @@ def buildable(route: CrankRoute, layers: dict[str, int], problem: StackProblem, 
                       for k in range(drive.screw_count))]
     if drive.center_head_d > 0:
         horn.append((o, (drive.center_head_d + ctx.params.print_fit) / 2))
-    return all(math.dist(xy[chains[-1][0].at], h) >= nut + r for h, r in horn)
+    return all(math.dist(xy[runs[-1].at], h) >= head + r for h, r in horn)
+
+
+def _crank_washer(p: Placed, group: str) -> bool:
+    return p.group == group and p.gap and p.label.endswith(" washer")
 
 
 def solve(problem: StackProblem, top: int, ctx,
           only=None) -> tuple[tuple, dict[str, int], CrankRoute] | None:
     """The cheapest layering and route in ``top + 1`` layers (``ctx``: the side's context, for
     the crank's construction and the drive), or ``None``. ``only(layers, h0)``: the routes
-    to try instead of every route (e.g. one run per crankpin over the whole stack)."""
+    to try instead of every route (e.g. one run per crankpin over the whole stack).
+    A problem with no router (a hand-made one, no crank): the first layering, in the order
+    links are enumerated, whose plan builds at its own z and verifies, as ``((), layers,
+    None)``; ``ctx`` unused."""
     geo, m, pitch = problem.topo.geometry, problem.spec.margin, problem.spec.pitch
     router = problem.router
     links = list(problem.links)
     riders = problem.topo.riders
-    h0 = router.hub_bottom(top)
-    detours = {d.name: d.sweep for d in router.facts.detours}
+    h0 = router.hub_bottom(top) if router is not None else top
+    detours = {d.name: d.sweep for d in router.facts.detours} if router is not None else {}
     points = [a.name for a in problem.topo.axes_of("crankpin")] + list(detours)
     fixed = [c for c in problem.claims if c.choice is None]
     routed = [c for c in problem.claims if c.choice is not None]
@@ -147,13 +160,16 @@ def solve(problem: StackProblem, top: int, ctx,
     dists: dict[tuple, float] = {}
 
     def clear(a: Placed, b: Placed) -> bool:
-        if a.seat or b.seat or a.layer != b.layer or a.group == b.group:
+        if a.seat or b.seat or a.slot != b.slot or a.group == b.group:
             return True
         key = (a.shape.core, b.shape.core)
         d = dists.get(key)
         if d is None:
             d = dists[key] = geo.dist(*key)
         return d >= a.shape.r + b.shape.r + m
+
+    def in_plate(p: Placed) -> bool:
+        return not p.seat and not p.gap and p.layer in (0, top)
 
     def own(n: str, k: int) -> list[Placed]:
         return [p for c in fixed if c.deps == {n}
@@ -180,8 +196,8 @@ def solve(problem: StackProblem, top: int, ctx,
         need_ = set(links) if c.final else set(c.deps)
         ready[max((links.index(d) + 1 for d in need_), default=0)].append(c)
 
-    def place(cs, layers, by_layer) -> list[Placed] | None:
-        """The shapes of claims ``cs`` when they build and clear ``by_layer`` and each
+    def place(cs, layers, by_slot) -> list[Placed] | None:
+        """The shapes of claims ``cs`` when they build and clear ``by_slot`` and each
         other (nothing but seats in a frame plate's layer), else ``None``."""
         new: list[Placed] = []
         for c in cs:
@@ -189,30 +205,30 @@ def solve(problem: StackProblem, top: int, ctx,
             if out is None:
                 return None
             new += out
-        if any(not p.seat and p.layer in (0, top) for p in new):
+        if any(in_plate(p) for p in new):
             return None
         if not all(clear(a, b) for a, b in itertools.combinations(new, 2)):
             return None
-        if not all(clear(a, b) for a in new for b in by_layer.get(a.layer, ())):
+        if not all(clear(a, b) for a in new for b in by_slot.get(a.slot, ())):
             return None
         return new
 
-    def layerings(i: int, layers: dict[str, int], by_layer: dict[int, list[Placed]]
-                  ) -> Iterator[tuple[dict[str, int], dict[int, list[Placed]]]]:
+    def layerings(i: int, layers: dict[str, int], by_slot: dict[float, list[Placed]]
+                  ) -> Iterator[tuple[dict[str, int], dict[float, list[Placed]]]]:
         """Every layering whose fixed claims build and clear each other (skipping first
-        links whose own shapes collide in a shared layer), with its shapes by layer."""
+        links whose own shapes collide in a shared layer), with its shapes by slot."""
         if i == len(links):
-            yield dict(layers), by_layer
+            yield dict(layers), by_slot
             return
         n = links[i]
         for k in range(1, top):
-            if all(layers[m] != k or apart[(m, n, k)] for m in links[:i]):
+            if all(layers[mm] != k or apart[(mm, n, k)] for mm in links[:i]):
                 layers[n] = k
-                new = place(ready[i + 1], layers, by_layer)
+                new = place(ready[i + 1], layers, by_slot)
                 if new is not None:
-                    grown = {j: list(ps) for j, ps in by_layer.items()}
+                    grown = {j: list(ps) for j, ps in by_slot.items()}
                     for p in new:
-                        grown.setdefault(p.layer, []).append(p)
+                        grown.setdefault(p.slot, []).append(p)
                     yield from layerings(i + 1, layers, grown)
                 del layers[n]
 
@@ -221,19 +237,28 @@ def solve(problem: StackProblem, top: int, ctx,
     first = place(ready[0], {}, {})
     if first is None:
         return None
-    start: dict[int, list[Placed]] = {}
+    start: dict[float, list[Placed]] = {}
     for p in first:
-        start.setdefault(p.layer, []).append(p)
-    for layers, by_layer in layerings(0, {}, start):
+        start.setdefault(p.slot, []).append(p)
+    if router is None:
+        for layers, _ in layerings(0, {}, start):
+            try:
+                plan = problem.plan(layers, top, {})
+            except PlanReject:
+                continue
+            if not verify_plan(plan):
+                return (), dict(layers), None
+        return None
+    group = router.group
+    for layers, by_slot in layerings(0, {}, start):
         need = {k: riders[n] for n, k in layers.items() if n in riders}
         keep = (True, False) if problem.spec.drop_bearing else (True,)
         for route in (only(layers, h0) if only else routes(points, 2, h0 - 1, need, keep)):
             c = cost(route, layers, riders, detours)
             if best is not None and c >= best[0]:
                 continue
-            # (the printed crank's joints first: they rule out most routes, and cost a
-            # quarter of making the crank)
-            # (``buildable`` reads the layering only at the riders' layers)
+            # (the crank's joints first: they rule out most routes, and cost a fraction of
+            # making the crank; ``buildable`` reads the layering only at the riders' layers)
             jkey = (route, *(layers[n] for n in riders))
             ok = joints.get(jkey)
             if ok is None:
@@ -242,13 +267,21 @@ def solve(problem: StackProblem, top: int, ctx,
                 continue
             crank: list[Placed] = []
             for claim in routed:
-                out, _ = made(claim, Layout(layers, top, pitch, {router.group: route}))
+                out, _ = made(claim, Layout(layers, top, pitch, {group: route}))
                 if out is None:
                     break
                 crank += out
             else:
-                if any(not p.seat and p.layer in (0, top) for p in crank):
+                if any(in_plate(p) for p in crank):
                     continue
-                if all(clear(a, b) for a in crank for b in by_layer.get(a.layer, ())):
-                    best = (c, dict(layers), route)
+                if not all(clear(a, b) for a in crank if not _crank_washer(a, group)
+                           for b in by_slot.get(a.slot, ())):
+                    continue
+                try:
+                    plan = problem.plan(layers, top, {group: route})
+                except PlanReject:
+                    continue
+                if verify_plan(plan):
+                    continue
+                best = (c, dict(layers), route)
     return best

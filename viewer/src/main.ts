@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import './style.css';
 import { createStage, frameView } from './scene';
 import { loadGlb, teardown, type LoadedScene } from './loader';
+import { latestLoader } from './loads';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
@@ -10,7 +11,7 @@ import type { Mode, View, ViewerHandle } from './types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const stage = createStage(canvas);
-const clock = new THREE.Clock();
+const clock = new THREE.Timer();   // THREE.Clock is deprecated since r183
 
 // Deep links: ?mode=robot&view=side&t=0.3 (t in clip seconds; pauses there);
 // &linkage=jansen and the tune panel's design parameters (drive/index.ts);
@@ -96,14 +97,19 @@ function seek(t: number): void {
   invalidate();
 }
 
-async function loadMode(mode: Mode, query = ''): Promise<void> {
-  currentMode = mode;
-  currentQuery = query;
-  ui.setModeValue(mode);
-  ui.setStatus(`loading ${mode}…`);
-  ui.setModeDisabled(true);
-  try {
-    const next = await loadGlb(stage.scene, mode, query);
+// One GLB load at a time (loads.ts ``latestLoader``): a newer one aborts the one before (its
+// fetch: the server then skips a bake still queued for it) and only the latest lands on screen.
+const loadMode = latestLoader<LoadedScene, Mode>({
+  begin(mode, query) {
+    currentMode = mode;
+    currentQuery = query;
+    ui.setModeValue(mode);
+    ui.setStatus(`loading ${mode}…`);
+    ui.setModeDisabled(true);
+  },
+  fetch: (mode, query, signal) => loadGlb(stage.scene, mode, query, signal),
+  discard: (next) => teardown(stage.scene, next),
+  async show(next, mode, query) {
     teardown(stage.scene, loaded);
     const reframe = mode !== loadedMode;  // a live reload keeps the user's camera
     loaded = next;
@@ -123,13 +129,12 @@ async function loadMode(mode: Mode, query = ''): Promise<void> {
     ui.setReadout(formatTime(0));
     await drive.onLoad(next, query);
     invalidate();
-  } finally {
-    ui.setModeDisabled(false);
-  }
-}
+  },
+  end() { ui.setModeDisabled(false); },
+});
 
 function tick(): void {
-  const dt = clock.getDelta();
+  const dt = clock.update().getDelta();
   if (drive.active) {
     drive.frame(dt);   // drive mode renders continuously
     dirty = true;
@@ -215,7 +220,7 @@ async function init(): Promise<void> {
   const t = Number(params.get('t'));
   if (params.has('t') && Number.isFinite(t)) seek(t);
   await drive.init().catch((err: unknown) => ui.setStatus(`drive: ${(err as Error).message}`));
-  clock.start();
+  clock.reset();
   requestAnimationFrame(tick);
   viewerHandle.ready = true;
 }

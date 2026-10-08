@@ -30,6 +30,23 @@ SIM_JS = """() => {
 }"""
 
 
+def _linkages(server: str) -> dict:
+    """``/api/linkages``: the default linkage and each one's default module (what a URL
+    that names neither loads), from the server rather than written in here."""
+    with urllib.request.urlopen(f"{server}/api/linkages") as r:
+        doc = json.load(r)
+    return {"default": doc["default"],
+            "modules": {lk["key"]: lk["default_module"] for lk in doc["linkages"]}}
+
+
+def _names(query: str, linkage: str, server: str) -> bool:
+    """Does a design query (``glbQuery``, the page's search) name ``linkage``? The default
+    linkage is left out of a query (``baseQuery``): a query naming no linkage is it."""
+    if f"linkage={linkage}" in query:
+        return True
+    return "linkage=" not in query and linkage == _linkages(server)["default"]
+
+
 def _open(page: Page, server: str, query: str, driving: bool = True) -> None:
     page.goto(f"{server}/?{query}")
     page.wait_for_function("() => window.__viewer && window.__viewer.ready",
@@ -101,11 +118,15 @@ def test_drive_forward_moves_along_heading(page: Page, viewer_server: str) -> No
 
 
 def test_tank_opposite_inputs_turn(page: Page, viewer_server: str) -> None:
-    """Left track forward, right track back: the robot turns right (clockwise from above)."""
+    """Left track forward, right track back: the robot turns right (clockwise from above).
+    The robot's left track drives crank side L when its design walks toward +x
+    (``forward`` +1, the Klann), else side R (the default Strider walks toward -x: its
+    cranks' forward direction is +, its robot-left side R)."""
     _open(page, viewer_server, "drive=1")
     a = page.evaluate(SIM_JS)
     b = _hold(page, ["w", "ArrowDown"], 3000)
-    assert b["omega"][0] > 0 > b["omega"][1], b["omega"]
+    left, right = b["omega"] if a["forward"] > 0 else b["omega"][::-1]
+    assert left > 0 > right, (a["forward"], b["omega"])
     assert b["yaw"] - a["yaw"] < -math.radians(5), f"yaw {a['yaw']} -> {b['yaw']}"
 
 
@@ -178,7 +199,7 @@ def test_tune_panel_stick_preview(page: Page, viewer_server: str) -> None:
     slider re-queries it (debounced) and updates the metrics; the same model drives it."""
     requests: list[str] = []
     page.on("request", lambda r: requests.append(r.url) if "/api/walk" in r.url else None)
-    _open(page, viewer_server, "tune=1&p.OB=1.15")
+    _open(page, viewer_server, "tune=1&linkage=klann&p.OB=1.15")    # OB, DF: Klann's
     page.wait_for_function("() => window.__viewer.drive.lastWalk !== null", timeout=60_000)
     s = page.evaluate(SIM_JS)
     assert s["active"]
@@ -238,7 +259,7 @@ LOADED_JS = "window.__viewer.walker.parent.userData.linkage"
 
 
 def _catalogue(server: str) -> dict:
-    with urllib.request.urlopen(f"{server}/api/linkages") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{server}/api/linkages") as r:
         return {lk["key"]: lk for lk in json.load(r)["linkages"]}
 
 
@@ -276,6 +297,33 @@ def test_linkage_dropdown_switches_the_design(page: Page, viewer_server: str) ->
     feet = _js(page, "window.__viewer.walker.userData.drive.feet.map((f) => f.body)")
     assert feet == ["L.b6_leg0", "L.b6_leg1", "R.b6_leg0", "R.b6_leg1"]
     assert _js(page, "window.__viewer.drive.sim.state.feet.length") == 4
+
+
+def test_a_linkage_in_the_url_gets_its_own_default_module(page: Page,
+                                                          viewer_server: str) -> None:
+    """``?linkage=klann`` names no module: the page loads the Klann's default module (its
+    quad), not the default linkage's (the Strider's double, which it used to take)."""
+    want = _linkages(viewer_server)["modules"]["klann"]
+    assert want != _linkages(viewer_server)["modules"][_linkages(viewer_server)["default"]]
+    _open(page, viewer_server, "tune=1&linkage=klann")
+    page.wait_for_function("() => window.__viewer.drive.lastWalk !== null", timeout=60_000)
+    assert _js(page, "window.__viewer.walker.parent.userData.module") == want
+    assert _js(page, "window.__viewer.drive.design.module") == want
+    assert _js(page, "window.__viewer.drive.lastWalk.module") == want
+
+
+def test_drive_never_swaps_in_the_default_design(page: Page, viewer_server: str) -> None:
+    """The page's design can't be built (a module Klann doesn't have: 422): drive mode must
+    not load the server's default design in its place (it used to: ``glbQuery`` was empty,
+    so ``setDrive`` asked for ``/api/glb/robot`` with no query and drove a Strider)."""
+    glb: list[str] = []
+    page.on("request", lambda r: glb.append(r.url) if "/api/glb/" in r.url else None)
+    _open(page, viewer_server, "drive=1&linkage=klann&module=hex", driving=False)
+    page.wait_for_timeout(1000)
+    assert glb, "no glb requested"
+    assert all("linkage=klann" in u for u in glb), glb
+    assert _js(page, "window.__viewer.walker") is None
+    assert not _js(page, "window.__viewer.drive.physicsOn")
 
 
 def test_two_feet_per_leg(page: Page, viewer_server: str) -> None:
@@ -342,11 +390,11 @@ def test_physics_simulates_the_linkage_on_screen(page: Page, viewer_server: str)
     page.on("pageerror", lambda e: errors.append(str(e)))
     a = _open_physics(page, viewer_server, "drive=1&linkage=strider&physics=1")
     assert a["design"]["linkage"] == "strider"
-    assert a["design"]["module"] == "quad"
-    assert "linkage=strider" in a["glbQuery"]
+    assert a["design"]["module"] == _linkages(viewer_server)["modules"]["strider"]
+    assert _names(a["glbQuery"], "strider", viewer_server)
     assert a["bound"] == a["nodes"] > 100
     assert "physics=1" in a["search"]
-    assert "linkage=strider" in a["search"]
+    assert _names(a["search"], "strider", viewer_server)
     assert "strider" in a["status"]
     page.mouse.click(400, 400)
     page.keyboard.down("KeyW")
@@ -420,7 +468,12 @@ def test_drive_off_under_physics_hands_the_clip_back(page: Page, viewer_server: 
     assert "physics=1" not in s["search"]
     quat = _js(page, "window.__viewer.walker.quaternion.toArray()")
     assert quat == pytest.approx(STAND, abs=1e-6)
-    assert _js(page, "window.__viewer.walker.position.z") > 100     # the baked standing pose
+    baked = page.context.new_page()           # the same design, never driven: its pose
+    _open(baked, viewer_server, "", driving=False)
+    stand = _js(baked, "window.__viewer.walker.position.toArray()")
+    baked.close()
+    assert _js(page, "window.__viewer.walker.position.toArray()") == pytest.approx(stand,
+                                                                                  abs=1e-6)
     # the clip owns the nodes again: scheduled on the mixer, paused at t = 0 (every drive-off)
     assert _js(page, "window.__viewer.action.isScheduled()")
     assert _js(page, "window.__viewer.action.time") == 0
@@ -450,7 +503,8 @@ def test_switching_linkage_during_the_model_build(page: Page, viewer_server: str
     page.wait_for_timeout(500)
     s = page.evaluate(PHYS_JS)
     assert s["design"]["linkage"] == "strider"
-    assert "linkage=strider" in s["glbQuery"]
+    assert _names(s["glbQuery"], "strider", viewer_server)
+    assert "klann" not in s["glbQuery"]
     assert s["bound"] == s["nodes"] > 100
     assert "strider" in s["status"]
     page.mouse.click(400, 400)
@@ -494,13 +548,14 @@ def test_physics_toggle_settles_on_the_last_request(page: Page, viewer_server: s
 
 
 def test_the_physics_gate_is_mujocos_verdict_not_the_margin(page: Page, viewer_server: str) -> None:
-    """Jansen's quad has a 4 mm quasi-static stability margin, which used to refuse it
-    unseen. Now the server's straight run decides (the hello's ``forward``): with the
-    manufacturer's servo CAD the quad walks at 36 deg of tilt and connects, the margin a
-    warning in the status; with the parametric servo of the test suite (offline CAD cache)
-    it rolls over at 4 s and is refused for that, the status naming MuJoCo's run and never
-    the margin. Either way the walking model's margin is not the gate."""
-    page.goto(f"{viewer_server}/?drive=1&linkage=jansen&physics=1")
+    """Jansen's double has a negative quasi-static stability margin (-15 mm), which used to
+    refuse a design unseen. Now the server's straight run decides (the hello's ``forward``):
+    it connects (the margin a warning in the status) or is refused for falling over, the
+    status naming MuJoCo's run and never the margin. Either way the walking model's margin
+    is not the gate. (The Jansen quad, 3 mm, which this was written for, has no layer plan
+    in the planner's budget: no glb, no physics. Until the default module fix the URL's
+    ``linkage=jansen`` loaded the double anyway.)"""
+    page.goto(f"{viewer_server}/?drive=1&linkage=jansen&module=double&physics=1")
     page.wait_for_function(
         "() => window.__viewer?.ready && ((window.__viewer.drive.physicsOn"
         " && window.__viewer.drive.physics.frame)"
@@ -526,14 +581,15 @@ def test_the_physics_gate_is_mujocos_verdict_not_the_margin(page: Page, viewer_s
 
 
 def test_the_steering_row_says_what_the_server_proved(page: Page, viewer_server: str) -> None:
-    """The Klann quad cannot skid-steer (it rolls over at |L−R| 0.4) but walks a 45 deg
-    excursion that the server's phase lock bounds: the HUD's steering row and the turn
+    """The Klann quad cannot skid-steer (it rolls over at |L−R| 0.4) but walks a 45 or 90 deg
+    excursion (a grant on the edge of its tilt limit: 90 on the parametric servo since W8)
+    that the server's phase lock bounds: the HUD's steering row and the turn
     slider's name say so, the authority defaults to the excursion's differential, and
     the steering key does send a differential (the server bounds the offset)."""
-    _open_physics(page, viewer_server, "drive=1&physics=1")
+    _open_physics(page, viewer_server, "drive=1&linkage=klann&physics=1")    # its quad
     steer = _js(page, "window.__viewer.drive.physics.steering")
     assert steer["turn"] == 0.0
-    assert steer["step_deg"] == 45.0
+    assert steer["step_deg"] in (45.0, 90.0)
     s = page.evaluate(PHYS_JS)
     assert "excursion" in s["hud"]["steering"]
     assert _js(page, "window.__viewer.drive.opts.turn") == pytest.approx(0.4)
@@ -601,14 +657,16 @@ def test_the_url_follows_a_linkage_switch_with_physics_off(page: Page, viewer_se
     _open(page, viewer_server, "drive=1")
     _js(page, "window.__viewer.drive.setPreview(true)")
     page.wait_for_function("() => window.__viewer.drive.lastWalk !== null", timeout=60_000)
-    page.evaluate(SET_JS, ["linkage", "strider"])
-    page.wait_for_function(f"() => {LOADED_JS} === 'strider' && !window.__viewer.drive.preview",
+    other = "klann"                     # not the default (Strider): the URL must name it
+    assert _linkages(viewer_server)["default"] != other
+    page.evaluate(SET_JS, ["linkage", other])
+    page.wait_for_function(f"() => {LOADED_JS} === '{other}' && !window.__viewer.drive.preview",
                            timeout=BAKE_TIMEOUT_MS)
     page.wait_for_timeout(300)
     s = page.evaluate(PHYS_JS)
     assert not s["on"]
-    assert "linkage=strider" in s["glbQuery"]
-    assert "linkage=strider" in s["search"]
+    assert f"linkage={other}" in s["glbQuery"]
+    assert f"linkage={other}" in s["search"]
     assert "drive=1" in s["search"]
 
 
@@ -634,17 +692,19 @@ def test_switching_linkage_with_physics_on_reconnects(page: Page, viewer_server:
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     _open_physics(page, viewer_server, "drive=1&physics=1")
-    page.evaluate(SET_JS, ["linkage", "strider"])
+    other = "klann"                     # not the default (Strider): a real switch
+    assert _linkages(viewer_server)["default"] != other
+    page.evaluate(SET_JS, ["linkage", other])
     page.wait_for_function(
-        f"() => {LOADED_JS} === 'strider' && window.__viewer.drive.physicsOn "
-        "&& window.__viewer.drive.physics.design?.linkage === 'strider' "
+        f"() => {LOADED_JS} === '{other}' && window.__viewer.drive.physicsOn "
+        f"&& window.__viewer.drive.physics.design?.linkage === '{other}' "
         "&& window.__viewer.drive.physics.frame",
         timeout=BAKE_TIMEOUT_MS)
     page.wait_for_timeout(500)
     s = page.evaluate(PHYS_JS)
-    assert s["design"]["linkage"] == "strider"
+    assert s["design"]["linkage"] == other
     assert s["bound"] == s["nodes"]
-    assert "linkage=strider" in s["glbQuery"]
-    assert "linkage=strider" in s["search"]
+    assert f"linkage={other}" in s["glbQuery"]
+    assert f"linkage={other}" in s["search"]
     assert "physics=1" in s["search"]
     assert errors == []

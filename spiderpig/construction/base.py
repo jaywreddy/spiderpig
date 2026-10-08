@@ -42,16 +42,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from spiderpig.hardware.bom import BomLine
 from spiderpig.mechanism import Body
-from spiderpig.shapes import Cut
-from spiderpig.stack import Claim, Keepout, Layout, Placed, StackPlan, Topology
+from spiderpig.shapes import Cut, Rect
+from spiderpig.stack import Claim, Keepout, Placed, StackPlan, Topology
 
 if TYPE_CHECKING:
+    from spiderpig.config import BuildConfig
     from spiderpig.mechanism import Mechanism
     from spiderpig.servos.spec import ServoSpec
 
@@ -91,20 +92,14 @@ class Params:
     min_wall: float = 1.5          # thinnest ring (or link) wall around a hole
     # fits (diametral clearances)
     running_fit: float = 0.35      # a part that turns in a laser-cut hole
-    glue_fit: float = 0.15         # a part glued into a laser-cut hole
     print_fit: float = 0.3         # two printed parts that slide together
-    # printed axles (pillars and link pins)
+    # axles (the printed axle's, removed on 2026-10-07; what nothing read since went on
+    # 2026-10-07 too: config.REMOVED_PARAMS)
     axle_d: float = 6.0            # the diameter plates turn on
     spacer_d: float = 8.5          # shoulder beside a link (built-in spacer)
-    neck_d: float = 4.0            # thinnest an axle may neck down where a link passes
-    head_d: float = 8.5            # head / cap outside the plates it retains
-    # printed crank
-    crankpin_d: float = 6.0        # post b1 turns on (at least: the keyed crank's hex cavity
-    #                                needs its 8.5 mm post, KeyedCrank.post_d)
+    # the crank (the printed crank's, removed on 2026-10-07; the bolt crank's are its own)
+    crankpin_d: float = 6.0        # post b1 turns on
     web_radius: float = 6.0        # half-width of a crank web (O to crankpin)
-    journal_d: float = 12.0        # crank body on the axis O
-    stub_d: float = 8.0            # journal stub turning in the outer frame plate
-    hub_thickness: float = 5.0     # coupling disc under the servo horn
     # the servo on the inner frame plate
     servo_screw_web_t: float = 1.0  # a front screw is left out when its hole would leave
     #                                less web than this many of the inner plate's thicknesses
@@ -112,9 +107,9 @@ class Params:
     #                                level; the assembly audit of 2026-10-04: the STS3215's
     #                                near front holes leave 1.01 mm in 0.080 in); 0 keeps all
 
-    def hole(self, d: float, fit: str = "running") -> float:
-        """Finished hole diameter for a part of diameter ``d``."""
-        return d + {"running": self.running_fit, "glue": self.glue_fit}[fit]
+    def hole(self, d: float) -> float:
+        """Finished hole diameter for a part of diameter ``d`` turning in it."""
+        return d + self.running_fit
 
 
 @dataclass(frozen=True)
@@ -152,11 +147,9 @@ class Context:
     params: Params
     pitch: float
     servo: ServoSpec
-    config: object                              # fabricate.BuildConfig
-    interfaces: dict[str, object] = field(default_factory=dict)
-
-    def layout(self, layers, top: int) -> Layout:
-        return Layout(layers, top, self.pitch)
+    config: BuildConfig
+    # each group's own interface type (DriveInterface, CrankInterface, ...): readers annotate it
+    interfaces: dict[str, Any] = field(default_factory=dict)
 
     def sheet(self, role: str, link: str | None = None) -> str | None:
         """The sheet a part of ``role`` is cut from (:func:`materials.sheet_of`: "frame",
@@ -239,18 +232,19 @@ class Realized:
     """A group's contribution to the fabricated side."""
 
     bodies: list[Body] = field(default_factory=list)
-    cuts: dict[str, list[Cut]] = field(default_factory=dict)       # plate -> holes
+    cuts: dict[str, list[Cut | Rect]] = field(default_factory=dict)   # plate -> holes
     # frame plate -> pills to add to its outline
-    pads: dict[str, list[tuple[XY, XY, float]]] = field(default_factory=dict)
+    pads: dict[str, list[tuple[tuple[float, ...], tuple[float, ...], float]]] = field(
+        default_factory=dict)
     extras: list[BomLine] = field(default_factory=list)
     # what a construction wants the mechanism's meta to say (key -> dict merged per key):
-    # the printed axles' snap strains ("snap_strain")
+    # the crank's ("crank_bolt"), the pivots' tilt ("wobble")
     notes: dict[str, dict] = field(default_factory=dict)
 
-    def cut(self, plate: str, cut: Cut) -> None:
+    def cut(self, plate: str, cut: Cut | Rect) -> None:
         self.cuts.setdefault(plate, []).append(cut)
 
-    def pad(self, plate: str, p: XY, q: XY, r: float) -> None:
+    def pad(self, plate: str, p: XY | np.ndarray, q: XY | np.ndarray, r: float) -> None:
         self.pads.setdefault(plate, []).append((tuple(p), tuple(q), r))
 
     def merge(self, other: Realized) -> None:
@@ -282,13 +276,6 @@ class Group:
 
     def interface(self, ctx: Context) -> object | None:
         """What later groups may read as ``ctx.interfaces[name]`` (``None``: nothing)."""
-        return None
-
-    def max_top(self, ctx: Context) -> tuple[int, str] | None:
-        """The tallest stack the group can be built in, whatever the layout: ``(top, why)``
-        with ``top`` the highest inner-plate layer index it allows, or ``None`` for no
-        bound. The planner searches no size above it and names ``why`` when no plan is
-        found (a bolt pillar: the longest stock screw clamps only so many layers)."""
         return None
 
     def claims(self, ctx: Context) -> list[Claim]:

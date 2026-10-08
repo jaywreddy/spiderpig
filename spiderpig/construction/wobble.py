@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -108,7 +109,8 @@ def link_entry(link: str, *, clearance: float, length: float, thickness: float, 
             "tilt_deg": round(min(free, sup), 3)}
 
 
-def column_wobble(build, group, col, *, clearance, length, play: float, play_basis: str,
+def column_wobble(build, group, col, *, clearance: float | Callable[[str], float],
+                  length: float | Callable[[str], float], play: float, play_basis: str,
                   section: Section, link_radius: float | None = None,
                   bearing_len: float | None = None) -> dict:
     """The wobble note of one axle at its solved plan.
@@ -297,7 +299,7 @@ def beam(zs: np.ndarray, forces: np.ndarray, support: tuple) -> tuple[float, flo
         for i in range(len(z)):
             if i:
                 m = m + v * (z[i] - z[i - 1])
-            m_best = max(m_best, float(np.hypot(*m)))
+            m_best = max(m_best, float(np.hypot(m[0], m[1])))
             v = v + f[i]
             m = m + c
             m_best = max(m_best, float(np.hypot(*m)))
@@ -351,7 +353,7 @@ def unit_patterns(note: dict) -> list[dict[str, tuple[float, float]]]:
                             links[k]: (-0.5, 0.0)})
     else:
         out += [{m: (1.0, 0.0)} for m in links]
-        out.append({m: (1.0, 0.0) for m in links})
+        out.append(dict.fromkeys(links, (1.0, 0.0)))
     return out or [{}]
 
 
@@ -375,40 +377,6 @@ def moment_per_newton(note: dict, patterns=None) -> tuple[float, float]:
         m, v = beam(zs, f / peak, support)
         m_best, v_best = max(m_best, m), max(v_best, v)
     return m_best, v_best
-
-
-def moment_at_per_newton(note: dict, z: float, patterns=None) -> float:
-    """The worst bending moment (N·mm) per newton of the largest link force at height ``z``
-    (mm from layer 0's bottom face) along a pillar held at both ends (a beam, or a beam per
-    bay), over ``patterns`` as :func:`moment_per_newton`; for another case, the largest
-    anywhere (:func:`moment_per_newton`)."""
-    links, zs, support = _layout(note)
-    if support[0] not in ("simple", "bays"):
-        return moment_per_newton(note, patterns)[0]
-    faces = (support[1], support[2]) if support[0] == "simple" else support[1]
-    bay = next(((a, b) for a, b in itertools.pairwise(faces) if a <= z <= b), None)
-    if bay is None:
-        return 0.0
-    za, zb = bay
-    if patterns is None:
-        patterns = unit_patterns(note)
-    idx = {m: i for i, m in enumerate(links)}
-    inside = (zs > za) & (zs < zb)
-    best = 0.0
-    for pat in patterns:
-        f = np.zeros((len(links), 2))
-        for m, v in pat.items():
-            if m in idx:
-                f[idx[m]] += v
-        peak = float(np.hypot(f[:, 0], f[:, 1]).max()) if len(f) else 0.0
-        if peak <= 1e-12 or not inside.any():
-            continue
-        fz, zz = f[inside] / peak, zs[inside]
-        rb = -(fz * (zz - za)[:, None]).sum(axis=0) / max(zb - za, 1e-9)
-        ra = -fz.sum(axis=0) - rb
-        m = ra * (z - za) + (fz * np.maximum(z - zz, 0.0)[:, None]).sum(axis=0)
-        best = max(best, float(np.hypot(*m)))
-    return best
 
 
 def stresses(note: dict, load_n: float, patterns=None) -> dict:

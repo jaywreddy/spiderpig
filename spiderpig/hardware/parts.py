@@ -21,11 +21,7 @@ fetcher (Woodcraft, Woodpeckers Crafts) are ``verified=True`` with the price see
 Bolt Depot, TME and Amazon refuse a fetch, so their prices are what a web search's
 result quoted from that page on that day, ``verified=False`` and said so in the note.
 Nothing is priced from memory; an item no page priced stays unpriced (the M2 tapping
-kit, M3 x 18 and x 50 SHCS).
-
-Prices added 2026-10-03 (the rod pin, the default link pivot that day; the Chicago screw
-since): the 3 mm rod and the Starlock kit, both from Amazon pages a search quoted
-(``SEARCHED_1003``).
+kit, M3 x 18 SHCS).
 """
 
 from __future__ import annotations
@@ -35,7 +31,6 @@ from spiderpig.hardware.fasteners import CLEARANCE, SCREWS, SHCS_LENGTHS, shcs
 
 SEARCHED = ("price as a web search quoted it from this page on 2026-09-30 (the page "
             "refuses a fetch)")
-SEARCHED_1003 = SEARCHED.replace("2026-09-30", "2026-10-03")
 
 # ---------------------------------------------------------------------------
 # Socket head cap screws (ISO 4762 / DIN 912)
@@ -193,47 +188,6 @@ register(
 )
 
 # ---------------------------------------------------------------------------
-# Hex standoffs: the keyed crank's keys (construction/crank.py reads ``af`` and ``length``)
-# ---------------------------------------------------------------------------
-
-# Across flats is not a given for M3 brass standoffs: most kits and the UK/EU catalogues
-# are 5.0 mm A/F, the Harwin/Wurth style is 5.5. The pockets are cut to the catalog's
-# ``af`` (or KeyedCrank.key_af), a press fit, so a part of the other size does not fit (5.5
-# in a 5.0 pocket) or turns 18 deg in each pocket (5.0 in a 5.5 one): measure a kit first.
-# The 4 mm length is the keyed crank's default: a 5 mm key's cavity overflows a 3 mm post
-# into the web below it, leaving 0.05 mm of floor over the socket of the run below
-# (KeyedCrank.dims refuses it at a 3 mm pitch).
-register(
-    Item("m3_hex_standoff_ff_4", "M3 x 4 mm brass hex standoff, female-female, 5.0 mm A/F",
-         "standoff",
-         (Offer("3fparts", "https://3fparts.com/shop/m3-4mm-female-to-female-hex-spacer-standoff-"
-                "3f3320-brass-nickel-plated", "3F3320",
-                note="nickel-plated brass, listed as 5 mm hexagon A/F in a web search's result "
-                "on 2026-10-03; the page refuses a fetch, so A/F and price are unverified"),
-          Offer("Tayda Electronics", "https://www.taydaelectronics.com/brass-standoff-spacer-"
-                "screw-hex-female-m3x4mm-golden.html",
-                note="M3 x 4 mm female hex brass standoff; the page refuses a fetch: A/F not "
-                "confirmed"),
-          Offer("Amazon", "https://www.amazon.com/s?k=M3+4mm+female+female+brass+hex+standoff",
-                note="search; most M3 kits are 5.0 mm A/F, measure one")),
-         dims={"af": 5.0, "length": 4.0, "thread": "M3", "d": 3.0},
-         notes="A key pressed into a crank post and the web above it: it carries the "
-               "twist about the post, the chain's screw and nut the clamp. Measure the A/F; "
-               "the hex pockets are printed to it (KeyedCrank.key_af), a light press."),
-    Item("m3_hex_standoff_ff_5", "M3 x 5 mm brass hex standoff, female-female, 5.0 mm A/F",
-         "standoff",
-         (Offer("Vital Parts", "https://www.vital-parts.co.uk/m3-x-5mm-hexagonal-femalefemale-"
-                "standoff-5mm-flats---nickel-plated-brass-37096-p.asp", "HFF-M3-5-S5-NPB",
-                verified=True, note="nickel-plated brass, 5.0 mm across flats (fetched "
-                "2026-10-03); GBP 0.48 each, not priced here"),
-          Offer("Amazon", "https://www.amazon.com/dp/B015A3LL86", "B015A3LL86", pack_qty=25,
-                note="uxcell M3 x 5 mm female brass hex standoff, 25 pcs; A/F not stated")),
-         dims={"af": 5.0, "length": 5.0, "thread": "M3", "d": 3.0},
-         notes="The common length; as a crank key it needs a 4.5 mm layer pitch or less "
-               "key float (KeyedCrank(standoff_key=...) says why)."),
-)
-
-# ---------------------------------------------------------------------------
 # Sheet stock (one "sheet" = a nominal 12 x 12 in blank; layout packs onto sheet_mm)
 # ---------------------------------------------------------------------------
 
@@ -329,43 +283,8 @@ register(
                "(TPU 95A, typical; not on the listing). Print slow, direct drive."),
 )
 
-# Pivot hardware the metal-shaft constructions use (construction/pivots).
+# Washers the pivots and the crank use (construction/pivots, construction/crank).
 register(
-    Item("bearing_mf63zz", "MF63ZZ flanged ball bearing 3 x 6 x 2.5", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B00GGQ62PO", "B00GGQ62PO", pack_qty=10,
-                price_usd=17.67, note=f"10-pack MF63-ZZ (99MF63-ZZ-X10); {SEARCHED}"),
-          Offer("Amazon", "https://www.amazon.com/dp/B08H27NJ5N", "B08H27NJ5N", pack_qty=10,
-                verified=True, note="uxcell 10-pack"),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/57155K538/", "57155K538")),
-         dims={"id": 3.0, "od": 6.0, "w": 2.5, "flange_d": 7.2, "flange_t": 0.6}),
-    Item("bearing_f683zz", "F683ZZ flanged ball bearing 3 x 7 x 3", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B08CKJ3NMW", "B08CKJ3NMW", pack_qty=10,
-                verified=True, note="uxcell 10-pack"),),
-         dims={"id": 3.0, "od": 7.0, "w": 3.0, "flange_d": 8.1, "flange_t": 0.8}),
-    Item("bearing_f623zz", "F623ZZ flanged ball bearing 3 x 10 x 4", "bearing",
-         (Offer("Amazon", "https://www.amazon.com/dp/B07Z3CHXT5", "B07Z3CHXT5", pack_qty=10,
-                verified=True, note="uxcell 10-pack"),),
-         dims={"id": 3.0, "od": 10.0, "w": 4.0, "flange_d": 11.5, "flange_t": 1.0}),
-    Item("bushing_gfm0304_03", "igus iglide G flange bushing 3 x 4.5 x 3 (GFM-0304-03)",
-         "bushing",
-         (Offer("TME", "https://www.tme.com/us/en-us/details/gfm-0304-03/plain-bearings/igus/",
-                "GFM-0304-03", pack_qty=10, price_usd=5.3,
-                note=f"$0.53 each at 10 or more; {SEARCHED}"),
-          Offer("igus", "https://www.igus.com/iglide-ibh/flange-bearings/product-details/"
-                "iglidur-g-m?artnr=GFM-0304-03", "GFM-0304-03", verified=True),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/2705T111/", "2705T111")),
-         dims={"id": 3.0, "od": 4.5, "l": 3.0, "flange_d": 7.5, "flange_t": 0.75}),
-    Item("m3_nylock", "M3 nylon-insert lock nut (DIN 985)", "nut",
-         (Offer("Bolt Depot", "https://boltdepot.com/Product-Details?product=4792", "4792",
-                pack_qty=100, price_usd=4.22,
-                note=f"stainless 18-8 (A-2), DIN 985; {SEARCHED}"),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/93625A100/", "93625A100", pack_qty=100,
-                note="18-8 stainless; seen on the McMaster M3 locknut listing"),
-          Offer("Aspen Fasteners", "https://www.aspenfasteners.com/m3-0-5-din-985-metric-hex-"
-                "nylon-insert-stop-lock-nuts-a2-stainless-steel/", "ME223", pack_qty=250,
-                price_usd=36.55, verified=True, note="A2 stainless, bag of 250"),
-          Offer("Amazon", "https://www.amazon.com/dp/B07KSPTYNZ", "B07KSPTYNZ", pack_qty=100)),
-         dims={"af": 5.5, "h": 4.0, "d": 3.0}),
     Item("m3_washer_433", "M3 small flat washer (DIN 433, 3.2 x 6 x 0.5)", "washer",
          (Offer("Accu", "https://accu-components.com/us/metric-flat-washers/404896-HRDW-M3-A2",
                 "HRDW-M3-A2", pack_qty=100, price_usd=5.00, verified=True,
@@ -391,30 +310,9 @@ register(
                 "7090-metric-standard-flat-washers-a2-stainless-steel/", pack_qty=6300,
                 price_usd=272.85, verified=True, note="bulk only")),
          dims={"id": 3.2, "od": 7.0, "t": 0.5}),
-    # The rod pin's hardware (construction.pivots.rod, --pin rod): a Strider double cuts
-    # 24 pins of 9.6-15.6 mm (266 mm of rod), a Klann quad 24 x 9.6 mm; a clip per pin end.
-    Item("rod_3mm_100", "3 mm stainless rod, 100 mm", "dowel",
-         (Offer("Amazon", "https://www.amazon.com/dp/B082ZP313B", "B082ZP313B", pack_qty=5,
-                price_usd=5.49, verified=True,
-                note=f"uxcell 304 stainless 5-pack; {SEARCHED_1003}"),),
-         dims={"d": 3.0, "length": 100.0}),
-    Item("starlock_3mm", "Push-on lock washer for a 3 mm shaft", "clip",
-         (Offer("MCMASKE", "https://mcmaske.com/products/mcmaske-300pcs-metric-m3-m4-m5-m6-m8-"
-                "m10-m12-stainless-steel-internal-tooth-starlock-washers-assortment-kit",
-                "300pcs-metric", pack_qty=60, price_usd=19.99, verified=True,
-                note="300-pc 304 stainless Starlock kit M3-M12, the maker's store: $19.99 "
-                     "on sale from $24.99, fetched 2026-10-03; 60 x 3 mm per the Amazon "
-                     "listing (the store states only the total)"),
-          Offer("Amazon", "https://www.amazon.com/dp/B0B219S4FW", "B0B219S4FW", pack_qty=60,
-                verified=True, note="the same MCMASKE kit (60 x 3 mm)"),
-          Offer("Amazon", "https://www.amazon.com/dp/B076D3FZM4", "B076D3FZM4", pack_qty=40,
-                price_usd=12.99, verified=True,
-                note="Glarks 280-pc 65Mn steel Starlock kit M3-M12, 7 sizes (40 x 3 mm taken "
-                     f"as an even split: the page lists no per-size count); {SEARCHED_1003}")),
-         dims={"shaft_d": 3.0, "od": 9.7, "h": 1.3}),
 )
 
-# Items the metal-shaft pivot constructions need (long bolts, clips), and the bolt crank's
-# and the standoff pillar's hardware (construction.crank.BoltCrank,
-# construction.pivots.standoff); registered on import (they append to the catalog).
+# The pivots' hardware (the Chicago screws), the bolt crank's and the standoff pillar's
+# (construction.crank.BoltCrank, construction.pivots.standoff); registered on import (they
+# append to the catalog; the NETRF6 pillar shafts are made on demand, register_factory).
 from spiderpig.hardware import crank_catalog, fastener_catalog, sheet_catalog  # noqa: E402, F401

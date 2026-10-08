@@ -43,6 +43,11 @@
   },
   "top": 11
  },
- "engine_version": "0.1.0+094f801c3c66",
- "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-decker]"
+ "engine_version": "0.1.0+113a8d976b75",
+ "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann-decker]",
+ "source": {
+  "file": "tests/test_stack.py",
+  "name": null
+ },
+ "source_key": "gen-1dd72c46eda7f3c3"
 }

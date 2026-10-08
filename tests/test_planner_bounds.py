@@ -4,6 +4,7 @@ recommendations share one more deadline (:mod:`recommend`)."""
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import replace
 
@@ -15,11 +16,14 @@ from spiderpig.fabricate import design_side, side_problem, template_for
 from spiderpig.recommend import recommend
 from spiderpig.stack import PlanError, StackSpec, verify_plan
 
+# every test here asserts what the search does: none re-makes a memoised or seeded plan
+pytestmark = pytest.mark.usefixtures("fresh_plan_memo")
+
 
 def _problem(key: str, module: str, **spec):
-    # the printed crank: these budgets were measured with it, and the keyed crank's 8.5 mm
-    # post stops TrotBot's heel before the planner (tests/test_route.py)
-    cfg = BuildConfig(linkage=key, module=module, robot=False, crank="printed")
+    # the default constructions (the bolt crank; TrotBot's heel and toe on its round
+    # standoff, config.LINKAGE_CRANKS)
+    cfg = BuildConfig(linkage=key, module=module, robot=False)
     tmpl = template_for(cfg)
     _, _, problem = side_problem(tmpl, cfg)
     problem.spec = replace(problem.spec, **spec)
@@ -27,15 +31,15 @@ def _problem(key: str, module: str, **spec):
 
 
 def test_a_plan_cut_short_by_its_budget_is_valid_and_unproven():
-    """TrotBot's heel plans within 40 nodes with its heads sunk into layers (the gap search
-    runs only when that finds none: the user's rule of 2026-10-04, ``StackSpec.heads``
-    "best"); with 1 node left for the proof, the plan comes back valid, unproven, and the
-    proof says what the budget left open."""
-    tmpl, problem = _problem("trotbot_heel", "single", quick_nodes=40, max_nodes=2)
+    """The Klann single plans within 40 nodes with the heads in gaps (the single-plate
+    crank's ``StackSpec.heads`` "gap_sink": the pivots' heads sunk only when that finds
+    none); with 2 nodes for the proof, the plan comes back valid, unproven, and the proof
+    says what the budget left open."""
+    tmpl, problem = _problem("klann", "single", quick_nodes=40, max_nodes=2)
+    assert problem.spec.heads == "gap_sink"
     plan = problem.solve()
-    assert plan.heads == "sink"
-    assert "against" not in plan.proof                      # no gap search
-    assert "with the heads" not in plan.proof
+    assert plan.heads == "gap"
+    assert "heads sink: not searched" in plan.proof          # no fallback search
     assert not plan.optimal
     assert "not ruled out (the search stopped at its budget" in plan.proof
     assert verify_plan(plan, tmpl) == []
@@ -47,13 +51,35 @@ def test_nothing_found_within_the_node_budget_raises_with_the_tally():
         problem.solve()
     msg = str(e.value)
     # 7 layers are ruled out at once since the standoff pillars (no stock standoff fills
-    # pillar A's 9 mm column: goBILDA's shortest is 12 mm)
+    # pillar A's 9 mm column: goBILDA's shortest is 12 mm, nor a one-piece shaft); the
+    # bolt crank's search: 3 steps over 3-7 layers, 3 more in 8 (6 in all, one past the
+    # budget of 5)
     assert msg.startswith("klann_double: no layer plan found with up to 8 layers after 6 search "
                           "steps in 0 CPU s; the 5 search-step budget ran out; what blocked it")
     assert e.value.blockers
-    assert "no stock standoffs (12-60 mm)" in msg
-    assert ("sizes: 3-7 layers ruled out (0-1 nodes each, 0 s in all); 8 layers left open at "
-            "their budget (4 nodes, 0 s in all); 9-61 layers not tried") in msg
+    assert ("no stock standoff (12-60 mm) nor a shaft made to length fills its 9 mm column"
+            in msg)
+    assert ("sizes: 3-7 layers ruled out (0-2 nodes each, 0 s in all); 8 layers left open at "
+            "their budget (3 nodes, 0 s in all); 9-61 layers not tried") in msg
+
+
+def test_the_jansen_quad_has_no_plan_in_fourteen_layers():
+    """The Jansen quad has no layer plan: its search runs out (the product's 60 CPU-s
+    deadline; with the clock out, its 60000 search steps in ~170 CPU-s, sizes 16-61 left
+    open), so the walking model guesses its feet and the sim has no robot. What is proven,
+    and fast: every stack of 3-14 layers is ruled out within its first budget, whatever the
+    clock (node budgets only), the crank's route the blocker."""
+    cfg = BuildConfig(linkage="jansen", module="quad", robot=False)
+    _, _, problem = side_problem(template_for(cfg), cfg, hint=False)
+    problem.spec = replace(problem.spec, max_top=13, max_seconds=math.inf)
+    with pytest.raises(PlanError) as e:
+        problem.solve()
+    assert not e.value.expired
+    msg = str(e.value)
+    assert msg.startswith("jansen_quad: no layer plan found with up to 14 layers")
+    assert "sizes: 3-14 layers ruled out" in msg
+    assert "left open" not in msg
+    assert "crank route: no crank route passes" in msg
 
 
 def test_nothing_found_before_the_deadline_raises_with_the_tally():
@@ -68,7 +94,7 @@ def test_nothing_found_before_the_deadline_raises_with_the_tally():
 def test_the_recommendation_checks_share_one_deadline():
     """The heel at its drawing's 7 mm unit stops the static stage; with no time to check
     what would clear it, nothing is recommended and the note says what wasn't checked."""
-    cfg = BuildConfig(linkage="trotbot_heel", module="single", robot=False, crank="printed",
+    cfg = BuildConfig(linkage="trotbot_heel", module="single", robot=False,
                       proportions=(("unit", 7.0),))
     tmpl = template_for(cfg)
     _, _, problem = side_problem(tmpl, cfg)
@@ -96,8 +122,8 @@ def test_the_trotbot_modules_return_inside_the_deadlines(key, module, expect, mo
     gaps, then the checks of what would clear it, each up to its deadline, took 4 minutes
     a case at 60 s for the same verdict.)"""
     if expect == "either":
-        monkeypatch.setattr(stack, "MAX_SECONDS", 15.0)
-    cfg = BuildConfig(linkage=key, module=module, robot=False, crank="printed")
+        monkeypatch.setattr(stack.plan, "MAX_SECONDS", 15.0)
+    cfg = BuildConfig(linkage=key, module=module, robot=False)
     t0 = time.monotonic()
     try:
         outcome = design_side(template_for(cfg), cfg)
