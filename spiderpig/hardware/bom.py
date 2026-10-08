@@ -177,6 +177,24 @@ ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222
 and not in any total (:attr:`Bom.cost_usd`, verify's cost floor)."""
 
 
+def cut_by(key: str) -> str:
+    """The cutting service that supplies sheet ``key`` with its parts (the sheet item's
+    ``service``; ``""``: none, or not a sheet). Such a row is an upload (ORDER.md's "Cut"
+    section, priced by the service's quote), not a purchase: it is in no purchase total, so
+    a stock seller's sheet price (Inventables' acrylic, before 2026-10-08) never counts."""
+    try:
+        item = get(key)
+    except KeyError:
+        return ""
+    return str(item.dims.get("service") or "") if item.category == "sheet" else ""
+
+
+def bought(key: str) -> bool:
+    """Whether a row of ``key`` is ordered and totalled: not on hand (:data:`ON_HAND`) and
+    not a sheet a service cuts (:func:`cut_by`)."""
+    return key not in ON_HAND and not cut_by(key)
+
+
 @dataclass
 class Bom:
     purchased: list[PurchaseRow]
@@ -190,12 +208,13 @@ class Bom:
 
     @property
     def cost_usd(self) -> float:
-        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, left out)."""
-        return sum(r.cost_usd or 0.0 for r in self.purchased if r.key not in ON_HAND)
+        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, and the sheets
+        a service cuts, :func:`cut_by`, left out: ORDER.md's carts add up to it)."""
+        return sum(r.cost_usd or 0.0 for r in self.purchased if bought(r.key))
 
     @property
     def unpriced(self) -> list[PurchaseRow]:
-        return [r for r in self.purchased if r.cost_usd is None and r.key not in ON_HAND]
+        return [r for r in self.purchased if r.cost_usd is None and bought(r.key)]
 
     # -- writers ----------------------------------------------------------
 
@@ -215,11 +234,13 @@ class Bom:
                         "est_cost_usd", "url", "link_verified", "used_at"])
             for r in self.purchased:
                 packs = 0 if r.same_pack_as else r.packs
-                cost = "" if r.cost_usd is None or r.key in ON_HAND else f"{r.cost_usd:.2f}"
+                cost = "" if r.cost_usd is None or not bought(r.key) else f"{r.cost_usd:.2f}"
                 where = "; ".join(r.where)
                 if r.same_pack_as:
                     where = f"(in the same pack as {r.same_pack_as}) {where}"
-                w.writerow(["on hand" if r.key in ON_HAND else "buy", r.name, _num(r.qty),
+                section = ("on hand" if r.key in ON_HAND else
+                           f"cut by {cut_by(r.key)}" if cut_by(r.key) else "buy")
+                w.writerow([section, r.name, _num(r.qty),
                             packs, r.pack_qty, r.vendor, r.sku,
                             cost, r.url, "yes" if r.verified else "no", where])
             for m in self.made:
@@ -246,11 +267,13 @@ class Bom:
                 packs, cost = f"with {r.same_pack_as}", "–"
             elif r.key in ON_HAND:
                 cost = f"on hand ({cost})" if cost else "on hand"
+            elif cut_by(r.key):
+                cost = f"cut by {cut_by(r.key)}"
             where = ", ".join(sorted(set(r.where)))[:120]
             lines.append(f"| {_num(r.qty)} | {r.name} | {link} | {packs} | {cost} | {where} |")
         lines += ["", f"Estimated purchase total: **${self.cost_usd:.2f}** "
-                  "(pack prices at the listed vendor; excludes shipping and the shop "
-                  "supplies on hand)."]
+                  "(pack prices at the listed vendor; excludes shipping, the shop "
+                  "supplies on hand and the cut parts, which their service quotes)."]
         if self.unpriced:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
@@ -291,9 +314,9 @@ class Bom:
         return {
             "title": self.title,
             # a shop supply on hand (ON_HAND) costs this build nothing: listed, its pack
-            # price kept, ``on_hand`` set
-            "purchased": [dict(r.__dict__, on_hand=r.key in ON_HAND,
-                               cost_usd=0.0 if r.key in ON_HAND else r.cost_usd)
+            # price kept, ``on_hand`` set; a sheet a service cuts is its upload (``cut_by``)
+            "purchased": [dict(r.__dict__, on_hand=r.key in ON_HAND, cut_by=cut_by(r.key),
+                               cost_usd=r.cost_usd if bought(r.key) else 0.0)
                           for r in self.purchased],
             "made": [m.__dict__ for m in self.made],
             "cost_usd": self.cost_usd,

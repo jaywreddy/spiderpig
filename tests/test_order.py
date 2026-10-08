@@ -79,6 +79,26 @@ def test_the_bom_total_leaves_out_the_shop_supplies_on_hand():
     assert [r.key for r in bom.unpriced] == []
 
 
+def test_the_bom_total_leaves_out_a_sheet_a_service_cuts():
+    """A sheet a service cuts (its item's ``service``) is that service's upload: ORDER.md
+    buys none, so neither bom.md nor bom.json totals it (the 3 mm acrylic's Inventables
+    sheet was in the BOM's total but no cart, 2026-10-08); a sheet no service cuts is
+    bought and totalled."""
+    from spiderpig.hardware.bom import cut_by
+
+    acrylic = _row("acrylic_3mm", "3 mm acrylic", "Inventables", 1, pack_qty=2, price=10.99)
+    al = _row("al5052_2mm", "5052 sheet", "SendCutSend", 1, price=18.0)
+    ply = _row("plywood_3mm", "3 mm plywood", "Woodpeckers", 2, price=3.1)
+    bom = Bom(purchased=[_row("m3_nut", "M3 nut", "Bolt Depot", 6, price=2.39), acrylic, al,
+                         ply], made=[])
+    assert cut_by("acrylic_3mm") and cut_by("al5052_2mm") and not cut_by("plywood_3mm")
+    assert bom.cost_usd == pytest.approx(2.39 + 3.1)
+    assert bom.as_dict()["cost_usd"] == pytest.approx(2.39 + 3.1)
+    assert "Estimated purchase total: **$5.49**" in bom.markdown()
+    md = order_markdown(bom, [], [])
+    assert "Purchases: **$5.49**" in md
+
+
 # -- the user's three order designs: their BOM (recorded) and its order list ---------------
 
 

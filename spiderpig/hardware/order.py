@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from spiderpig.hardware.bom import ON_HAND  # shop supplies: listed, not ordered or totalled
+from spiderpig.hardware.bom import ON_HAND, bought  # on hand / a service's sheet: no cart
 from spiderpig.hardware.catalog import get
 
 SERVICE_ORDER_URL = {
@@ -84,7 +84,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
         if r.same_pack_as:
             shared[r.same_pack_as].append(r)
             continue
-        if r.key in services or r.key in ON_HAND:
+        if r.key in services or not bought(r.key):     # (the BOM's total leaves out the same)
             continue
         carts[r.vendor or "(no vendor)"].append(r)
     on_hand = [r for r in bom.purchased if r.key in ON_HAND]
