@@ -172,9 +172,12 @@ def cut_list(lines: list[BomLine]) -> list[CutList]:
 
 
 ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222",
-           "threadlocker_243")
-"""Shop supplies taken as on hand (the user's, 2026-10-05): listed, not ordered (ORDER.md)
-and not in any total (:attr:`Bom.cost_usd`, verify's cost floor)."""
+           "threadlocker_243", "m2_self_tap_6")
+"""Shop supplies taken as on hand (the user's, 2026-10-05), and the M2 x 6 self-tappers
+that come in every STS3215's box (Seeed's ST3215-C001 part list: 2 horns and 18 screws a
+servo; Waveshare's package photo shows the pointed self-tappers; BOM study 2026-10-08):
+listed, not ordered (ORDER.md) and not in any total (:attr:`Bom.cost_usd`, verify's cost
+floor)."""
 
 
 def cut_by(key: str) -> str:

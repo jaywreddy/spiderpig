@@ -127,7 +127,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                  "same part" if estimated else "")
               + "), before shipping and the cut parts.", ""]
     if on_hand:
-        lines += ["## From the shop (on hand, not ordered)", ""] + [
+        lines += ["## From the shop and the servo boxes (on hand, not ordered)", ""] + [
             f"* {r.name}: {r.where[0] if len(r.where) == 1 else f'{len(r.where)} uses'}"
             for r in on_hand] + [""]
 
