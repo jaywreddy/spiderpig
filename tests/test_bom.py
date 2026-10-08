@@ -282,6 +282,29 @@ def test_a_moved_copy_needs_no_boolean_and_anything_else_gets_one(monkeypatch):
     assert [congruent(a, b) for a, b in cases] == [r for r, _ in got]
 
 
+def test_the_boolean_free_proof_never_takes_a_mirror_for_the_same_part(monkeypatch):
+    """With the boolean taken away (it finds nothing shared), the B-rep comparison alone
+    decides: a chiral part's moved copy is "same", its mirror image, turned and moved, is
+    "mirror" and never "same" (every motion tried is proper), and a part a hair different
+    is neither."""
+    from spiderpig.hardware import bom as bom_mod
+
+    monkeypatch.setattr(bom_mod, "_shared_volume", lambda a, b: 0.0)
+    part = _chiral()
+
+    def turn(p):
+        return p.rotate(Axis.Z, 70).rotate(Axis.X, 23).moved(Pos(40, -3, 9))
+
+    assert congruent(part, turn(part)) == "same"
+    mirror = turn(part.mirror(Plane.YZ))
+    assert congruent(part, mirror) == "mirror"
+    assert not bom_mod._coincide(bom_mod._boundary(part), bom_mod._boundary(
+        part.mirror(Plane.YZ)))
+    hair = Box(10, 2, 2.0005).moved(Pos(5, 0, 0)) + Box(2, 6, 2).moved(Pos(0, 3, 0)) \
+        + Box(2, 2, 4).moved(Pos(0, 0, 2))
+    assert congruent(part, hair, rel=1e-3) is None
+
+
 def test_grouping_leaves_the_parts_as_they_were():
     """The proof of a fit is a boolean that leaves its arguments alone (non-destructive):
     a part's tolerances are what its construction left however often it was compared, so
