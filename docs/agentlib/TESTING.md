@@ -309,14 +309,15 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the BOM decisions, `bbf7001`, engine `0.1.0+ec6c36e00edd`):
-`~/.cache/spiderpig/gate/bom-bbf7001/` on the development box (`/root/.cache/...`),
-one `<design>.json` per design, their logs and `snapshot.json` (commit, branch, time).
-Compare against it from any worktree whose `spiderpig/` should match that output:
-`mise run gate -- compare ~/.cache/spiderpig/gate/bom-bbf7001`. It differs from W8's baseline
-`w8-2a130c8` (kept, as are `master-1eba876` / `master-d53fbf1`) by the user's BOM
-decisions of 2026-10-08, each change's diff listed in `BOM-gate-diffs.md`; W8's own from
-its predecessors in `W8-gate-diffs.md`.
+**Baseline** (the BOM decisions after their review and the assembly guide's merge,
+`5989d50`, engine `0.1.0+5e83445fcfc8`): `~/.cache/spiderpig/gate/bom2-5989d50/` on the
+development box (`/root/.cache/...`), one `<design>.json` per design, their logs and
+`snapshot.json` (commit, branch, time). Compare against it from any worktree whose
+`spiderpig/` should match that output: `mise run gate -- compare
+~/.cache/spiderpig/gate/bom2-5989d50`. It differs from W8's baseline `w8-2a130c8` (kept, as
+are `bom-bbf7001`, `master-1eba876` / `master-d53fbf1`) by the user's BOM decisions of
+2026-10-08 and the guide's labels, each change's diff listed in `BOM-gate-diffs.md`; W8's
+own from its predecessors in `W8-gate-diffs.md`.
 
 ## Rules for a module package
 

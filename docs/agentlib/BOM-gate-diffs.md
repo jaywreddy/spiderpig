@@ -5,8 +5,9 @@ decisions") did to the gate's six designs. Each change was its own commit; after
 the gate compared the tree with the W8 baseline `~/.cache/spiderpig/gate/w8-2a130c8/` (the
 base, `t3code/next` at c4c01d0, was **identical** to it on all six designs), and each
 section below is that snapshot diffed against the previous change's (`gate diff`). The
-union of the sections is the diff from `w8-2a130c8` to the new baseline
-`~/.cache/spiderpig/gate/bom-bbf7001/` (TESTING.md; identical to the B4 snapshot).
+union of the sections is the diff from `w8-2a130c8` to the first BOM baseline
+`~/.cache/spiderpig/gate/bom-bbf7001/` (identical to the B4 snapshot); the last section
+takes it to the current one, `~/.cache/spiderpig/gate/bom2-5989d50/` (TESTING.md).
 
 Unless a section says otherwise, every plan, every part (volume, area, centre of mass,
 box), every DXF and the audit's contract, clashes, solids, strength and wobble are
@@ -109,3 +110,34 @@ M3 x 8, the deck's way down (`deck_path`) and its clearances are unchanged.
 A last commit cut the rails' pockets with the boolean operators the rail's other cuts use
 (pyright's ratchet): the same solid (volume 4644.28 mm^3, one solid); the final snapshot
 (the new baseline) was taken after it.
+
+## R1. Review round 1 and the merge of `t3code/next` (bom-bbf7001 -> bom2-5989d50)
+
+The merge brought speed round 2 (no output change) and the assembly guide (its labels:
+`print/` STLs and per-part DXFs named by label, e.g. `HS19.9-1.8_horn_spacer.stl`,
+`DK136x71_deck_plate_x1.dxf`; `parts.csv`, `order.csv` and the sheets' CSV gain a `label`
+column). Review round 1 changed:
+
+- **Every design, BOM**: a sheet a service cuts is a cutting line per service and sheet,
+  the material included (`bom.json` `cutting`, `cutting_usd`, `purchases_usd`; the made
+  rows' `sheet`); `cost_usd` is the purchases and the cutting; the epoxy at J-B Weld
+  (USD 7.99, first) for the unpriced Amazon offer; ORDER.md's cutting line, total and the
+  HV LiPo warnings (battery and charger lines, "Before you order").
+- **The four deck designs, parts**: the deck nuts 0.15 mm lower (`L/R.deck_rail_deck_nut*`
+  y), their pockets' top at the 1.6 mm roof (`L/R.deck_rail` centre of mass), the rail
+  print; the robot STL.
+- No plan, contract, clash, strength or cut-rule change.
+
+| design | BOM / ORDER.md total, bom-bbf7001 | bom2-5989d50: purchases + cutting = total |
+|---|---:|---|
+| strider_double | $216.26 | $224.25 + $117.93 = $342.18 |
+| strider_quad | $235.70 | $419.89 total |
+| klann_lego_quad | $188.04 | $409.13 total |
+| klann_quad | $281.05 | $506.21 total |
+| hoecken_pantograph | $66.00 | $98.59 total |
+| dwell_rocker | $49.60 | $84.83 total |
+
+**Against `w8-2a130c8`** (the union): the Strider double and quad change in plan, parts,
+strength, Chicago lengths, prints, DXFs and BOM (B1-B4, R1); the Klann quads and the two
+mechanisms in parts (B2, B3b, B4, R1 on the deck designs), DXFs (B3, the labels), prints
+(the labels) and BOM; no design's contract, clashes or cut-rule errors change.

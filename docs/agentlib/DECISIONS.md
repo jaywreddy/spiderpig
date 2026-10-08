@@ -368,5 +368,5 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   to 6 and 28, one upload for every cut part, no soldering iron; the Strider's pin jam
   safety factor rises with the shorter barrels' spans (the numbers: DESIGNS.md).
 - **Where:** each change's gate diff in [BOM-gate-diffs.md](BOM-gate-diffs.md); the gate
-  baseline is `bom-bbf7001`. Also fixed: the crank router raised IndexError when no screw
+  baseline is `bom2-5989d50` (after the review and the merge; `bom-bbf7001` before). Also fixed: the crank router raised IndexError when no screw
   length fits any crank joint (`route._ranges`); it is now a planner blocker.
