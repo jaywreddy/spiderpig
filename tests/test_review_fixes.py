@@ -36,12 +36,12 @@ def _ring(name: str, t: float) -> Body:
 
 @pytest.mark.hardware
 def test_a_shim_height_the_steps_cant_make_is_not_dropped():
-    ok = _ring("L.tie_shims0", 1.5)                # 1.0 + 0.5: two DIN 433 lines worth
+    ok = _ring("L.tie_shims0", 1.5)                # 1.0 + 0.5: two DIN 125 lines worth
     lines, notes = split_shims([BomLine("shim_din988_3x6", 1, ok.name),
                                 BomLine("shim_din988_3x6", 1, "frame tie 0, L")],
                                {ok.name: ok})
     assert not notes
-    assert sum(x.qty for x in lines if x.key == "m3_washer_433") == 3   # 2 for 1 mm, 1 for 0.5
+    assert sum(x.qty for x in lines if x.key == "m3_washer") == 3   # 2 for 1 mm, 1 for 0.5
     thin = _ring("L.tie_shims1", 0.1)              # finer than 1.0/0.5: the family's 0.1
     lines, notes = split_shims([BomLine("shim_din988_3x6", 1, thin.name)], {thin.name: thin})
     assert not notes
@@ -292,7 +292,8 @@ def test_purchased_parts_are_massed_in_their_own_material():
 def test_a_horn_screws_shims_say_what_is_bought():
     from spiderpig.hardware.bom import shim_as_bought
 
-    assert "DIN 433" in shim_as_bought("shim_din988_3x6", 1.0)
+    assert "DIN 125" in shim_as_bought("shim_din988_3x6", 1.0)
+    assert "DIN 433" in shim_as_bought("shim_din988_4x8", 1.0)
     assert shim_as_bought("shim_din988_3x6", 0.2) == "a 0.2 mm DIN 988 shim"
 
 

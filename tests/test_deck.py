@@ -176,11 +176,13 @@ def test_the_bom_lists_the_deck(built):
                                      "m25_nylon_screw_5"))   # distributor parts, not a kit
     screw = mech.meta["deck"]["screw"]
     assert sum("deck_screw" in w for w in rows[screw].where) == 4
-    assert sum("deck_insert" in w for w in rows["m3_heat_set_insert"].where) == 4
+    assert sum("deck_rail_deck_nut" in w for w in rows["m3_nut"].where) == 4  # captive
+    assert "m3_heat_set_insert" not in rows                        # (since 2026-10-08)
     for key in (*ELECTRONICS, "resistor_100k", "resistor_33k"):
         assert rows[key].url.startswith("https://")
-        # the generic IP2326 module's listing shows no price to a fetch (hardware.sources)
-        assert rows[key].pack_price_usd or key == "ip2326_charger"
+        # the protection board's Amazon listing showed no price to the study's scripted
+        # session (hardware.sources, 2026-10-08)
+        assert rows[key].pack_price_usd or key == "bms_hx_2s_jh20"
 
 
 def test_the_deck_plate_is_on_the_dxf_sheets(strider):
@@ -272,28 +274,28 @@ def test_deck_path_sees_a_part_in_the_way_and_a_notch_clears_it():
     # the deck's own screws go in after it, the rails are on the plates first
     assert not deck_mod.lowered("deck_screw0")
     assert not deck_mod.lowered("L.deck_rail")
-    assert not deck_mod.lowered("R.deck_insert1")
+    assert not deck_mod.lowered("R.deck_rail_deck_nut1")
     assert deck_mod.lowered("deck_cradle_screw0")
     assert deck_mod.lowered("deck_board")
 
 
 def test_a_screw_hole_a_notch_crowds_moves_into_the_bay(strider):
-    """:func:`deck.insert_z`: ``klann_lego``'s B pillars' inner heads stand at the inserts'
-    x, so their path notches came 0.30 mm from the deck screws' holes (under Ponoko's 1 mm);
-    the inserts then sit 1.5 mm further into the bay. The Strider's corner notches leave
-    them centred in the rails."""
+    """:func:`deck.nut_z`: ``klann_lego``'s B pillars' inner heads stand at the deck screws'
+    x, so their path notches came 0.30 mm from the deck screws' holes (under the sheet's
+    least web); the screws and their captive nuts then sit 1.5 mm further into the bay. The
+    Strider's corner notches leave them centred in the rails."""
     lay = deck_mod.DeckLayout(x_c=0.0, rail_y0=13.7, deck_y=21.7, pitch=3.0, z_in=-36.57,
                               z_leg=-38.6, spigot_x=12.0)
     near = [(19.7, 28.3, -36.57, -33.07)]                  # klann_lego's, round a head
-    assert deck_mod.insert_z(lay, near, 1.0) == 7.0
-    assert deck_mod.insert_z(lay, [], 1.0) == deck_mod.RAIL_T / 2
+    assert deck_mod.nut_z(lay, near, 1.0) == 7.0
+    assert deck_mod.nut_z(lay, [], 1.0) == deck_mod.RAIL_T / 2
     far = [(55.0, 69.0, -36.57, -33.07)]                   # a corner's
-    assert deck_mod.insert_z(lay, far, 1.0) == deck_mod.RAIL_T / 2
+    assert deck_mod.nut_z(lay, far, 1.0) == deck_mod.RAIL_T / 2
     r = deck_mod.CLEARANCE["3"] / 2
-    moved = deck_mod.replace(lay, insert_z=7.0)
+    moved = deck_mod.replace(lay, nut_z=7.0)
     assert min(deck_mod._rect_dist(p, *near[0]) for p in moved.screws()) - r >= 1.0
     _, mech = strider
-    assert mech.meta["deck"]["insert_z"] == deck_mod.RAIL_T / 2
+    assert mech.meta["deck"]["nut_z"] == deck_mod.RAIL_T / 2
 
 
 def test_the_battery_cradle_is_screwed_to_the_deck(strider):
@@ -331,3 +333,25 @@ def test_no_deck_carries_its_mass_as_a_payload():
     assert payload_g(SimpleNamespace(meta={"deck": {"fitted": True}}), p) == 0.0
     assert payload_g(SimpleNamespace(meta={"deck": {"fitted": False}}), p) == DECK_FALLBACK_G
     assert math.isclose(payload_g(SimpleNamespace(meta={}), p), DECK_FALLBACK_G)
+
+
+def test_the_deck_nuts_roof_is_nut_roof_thick():
+    """The rail's plastic over a deck nut's pocket is :data:`deck.NUT_ROOF` (1.6 mm; it was
+    1.45, the pocket's fit taken from it, until the BOM review of 2026-10-08), the pocket
+    holds the nut with its fit, and the rail is one printable solid."""
+    from build123d import Box, Pos
+
+    lay = deck_mod.DeckLayout(x_c=0.0, rail_y0=13.68, deck_y=21.68, pitch=3.0, z_in=-36.57,
+                              z_leg=-38.6, spigot_x=12.0)
+    rail = deck_mod._rail(lay, "L")
+    assert len(rail.solids()) == 1
+    (x, z), dn = lay.screws()[0], deck_mod.deck_nut(lay)
+    # a 0.4 mm column through the pocket, beside the screw's bore (r 1.7) inside the hex
+    probe = Box(0.4, 20.0, 0.4).move(Pos(x + 2.2, lay.deck_y - 10.0, z))
+    pieces = sorted((rail & probe).solids(), key=lambda s: s.bounding_box().max.Y)
+    roof = pieces[-1].bounding_box()
+    top, bottom = roof.max.Y, roof.min.Y
+    assert top == pytest.approx(lay.deck_y, abs=1e-6)
+    assert top - bottom == pytest.approx(deck_mod.NUT_ROOF, abs=1e-6)
+    assert bottom - dn["y1"] == pytest.approx(deck_mod.NUT_FIT, abs=1e-6)
+    assert dn["screw_l"] >= lay.pitch + deck_mod.NUT_ROOF + deck_mod.NUT_FIT + dn["h"]

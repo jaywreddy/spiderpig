@@ -281,8 +281,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 ### 2026-10-05: the deck lowers in past the pillars' heads; no CA
 
 - **What:** the battery cradle is screwed to the deck; `deck.path_notches` notches the plate
-  round every static part in its way, `deck.insert_z` moves the rails' inserts into the bay
-  where a notch would leave a deck screw too little web, and `deck.deck_path` proves the way.
+  round every static part in its way, `deck.nut_z` (then the inserts' place) moves the deck
+  screws into the bay where a notch would leave one too little web, and `deck.deck_path`
+  proves the way.
 - **Where:** `spiderpig/construction/deck.py`.
 
 ### 2026-10-05: ordering outputs, shop supplies on hand (user)
@@ -375,3 +376,40 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `ChicagoAxle.assembly`, `StandoffAxle.assembly`, `LinkPlates.assembly`,
   `FramePlates.assembly`, `DriveGroup.assembly`, `chassis.assembly`, `deck.assembly`),
   `spiderpig/labels.py`, `spiderpig/guide/`.
+
+### 2026-10-08: the BOM decisions (user; the BOM study)
+
+- **What (sourcing):** the study's sources (`hardware/sources.py`: Bolt Depot for the M3
+  hardware, sold singly; DigiKey for the Wurth parts; one Amazon cart); a sheet a service
+  cuts is no purchase (`bom.cut_by`, `bom.bought`: the 3 mm acrylic's Inventables sheet was
+  in the total and no cart) but a cutting line per service and sheet, the material
+  included (`bom.CutRow`, `bom.cut_estimate`: an area estimate calibrated to SendCutSend's
+  live quotes of 2026-10-08, USD 117.14 for the Strider double's 47 parts, the estimate
+  117.93), in the BOM's total, ORDER.md's total (shipping apart) and verify's cost floor
+  (one part's least cut per sheet); the epoxy's priced offer (J-B Weld) first; the servos'
+  M2 x 6 self-tappers on hand (`bom.ON_HAND`: every STS3215 box has 18 screws, Seeed's
+  part list and Waveshare's photo).
+- **What (design):** the Strider's pins planned on 7, 10, 16 and 22 mm barrels
+  (`chicago.BARRELS`, per linkage and crank: a global list leaves both Klann quads, and the
+  Strider's `bolt_round` crank, without a plan; the
+  step rule of `ChicagoShaft.check` stays on the catalog's steps) and built on 10 and 16
+  only; one Tattu 2S 450 mAh LiPo for the Ovonic 4-pack (the cradle drawn from its 62.5 x
+  16.2 x 14.7 mm, its outer end in place, `deck.BATTERY_X1`); the clamped M3 shims bought as
+  Bolt Depot's DIN 125 washers, modelled and claimed at their 7 mm (`bom.shim_od`), and its
+  cup-point set screws (no Accu cart); SendCutSend cuts the 3 mm acrylic too, on its
+  0.118 in rules (sendcutsend.com/materials/acrylic, 2026-10-08: hole .047 in, bridge
+  .053 in, part .187 x .375 in; `hardware.parts.SCS_RULES_ACRYLIC`), kerf 0, Ponoko
+  selectable (`acrylic_3mm_ponoko`), the deck plate's cable-tie web 1.5 mm
+  (`deck.CABLE_TIE_WEB`, over the 1.35 mm bridge); captive M3 nuts in the deck rails for
+  the heat-set inserts (`deck.deck_nut`, under a 1.6 mm roof, `deck.NUT_ROOF`).
+- **HV LiPo (review, 2026-10-08):** the Tattu is an HV pack: charge it as 2S to 8.4 V only,
+  never the IP2326 board's 3S / 12.6 V jumper setting (the board stops at 8.3-8.5 V on 2S,
+  safe for the HV pack) nor an 8.7 V HV charger, the servos being 7.4 V parts. ORDER.md's
+  battery and charger lines and the guide's wiring step say so
+  (`hardware.electronics.HV_WARNING`).
+- **Why:** a short, cheap order: the Strider double's ORDER.md from 16 carts and 36 lines
+  to 6 and 28, one upload for every cut part, no soldering iron; the Strider's pin jam
+  safety factor rises with the shorter barrels' spans (the numbers: DESIGNS.md).
+- **Where:** each change's gate diff in [BOM-gate-diffs.md](BOM-gate-diffs.md); the gate
+  baseline is `bom2-5989d50` (after the review and the merge; `bom-bbf7001` before). Also fixed: the crank router raised IndexError when no screw
+  length fits any crank joint (`route._ranges`); it is now a planner blocker.

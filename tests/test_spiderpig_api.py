@@ -524,10 +524,10 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
     assert rep.ok
     names = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
     # a set per service and sheet, each part on its thinnest (2026-10-04): the links in
-    # acrylic (Ponoko), the
+    # acrylic (SendCutSend since 2026-10-08), the
     # frame plates 0.080 in 5052, the crank's webs 0.100 in 6061 (the hex crankpins'
     # pockets), the foot link 6061
-    assert {"klann.step", "laser/klann_sheet_Ponoko_acrylic_3mm_0.dxf",
+    assert {"klann.step", "laser/klann_sheet_SendCutSend_acrylic_3mm_0.dxf",
             "laser/klann_sheet_SendCutSend_al5052_2mm_0.dxf",
             "laser/klann_sheet_SendCutSend_al6061_2p5mm_0.dxf",
             "laser/klann_sheet_SendCutSend_al6061_3p2mm_0.dxf", "laser/klann_sheet_parts.csv",
@@ -841,14 +841,18 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     # a blank of each aluminium sheet: the frame (0.080 in, 2026-10-04), a Klann's feet
     # (0.125 in 6061) and the hex crank's webs (0.100 in 6061); no CA (the printed pillars'
     # anchors, $13.99, and the keyed crank's unpriced nut and brass key went on 2026-10-07)
-    al, al6061, crank = 18.0, 32.0, 21.0
+    # (al 18.0, al6061 32.0, crank 21.0 until 2026-10-08)
     # the sourcing of 2026-10-05 (hardware.sources): PLA $29.99, the Chicago barrels' J-B Weld
     # $7.99, Loctite 222 $21.05 priced
     # (the PLA and the Loctite are on hand since round 4, bom.ON_HAND: not in the floor)
-    epoxy = 7.99
-    assert total == pytest.approx(servo + 10.99 + al + al6061 + crank + epoxy, abs=0.01)
+    # Since 2026-10-08 a sheet SendCutSend cuts is its cutting line, the material included
+    # (bom.cut_estimate): the floor counts one part on each, its least charge (acrylic
+    # $1.33, aluminium $2.20); the epoxy $7.99 at J-B Weld
+    cut = 1.33 + 3 * 2.20
+    assert total == pytest.approx(servo + 7.99 + cut, abs=0.01)
     assert unpriced == []
     assert priced[0].startswith("Feetech STS3215")
+    assert sum("SendCutSend cutting" in line for line in priced) == 4
     rep = api.verify(one, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert rows["budget.cost_floor_usd"].value == total
@@ -857,13 +861,16 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     assert rep.unverified == ["budget.cost_usd"]
     assert rep.ok
     robot = api.resolve({**KLANN_QUAD, "materials": {"servo": "xl330_m288"},
-                         "budget": {"cost_usd": {"max": 100}}}, store=None)
+                         "budget": {"cost_usd": {"max": 60}}}, store=None)
     _api.seed(robot.config)             # (a 13-layer plan, 3.4 CPU-s to search)
     total, priced, _ = cost_floor(robot)
     xl330 = item(servos.get("xl330_m288").bom_key).offer.price_usd
-    # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84)
-    assert total == pytest.approx(2 * xl330 + 10.99 + al + al6061       # (no deck inserts)
-                                  + crank + epoxy, abs=0.01)
+    # (no acrylic cement since the glue-free joinery of 2026-10-04: it was $12.84.) Since
+    # 2026-10-08 the floor counts a cut part on each SendCutSend sheet, not a blank's
+    # estimate ($10.99-32 each): 2 servos, the epoxy and 4 sheets' least cut, $70.90, so a
+    # ceiling of 60 (not 100) is what it refutes
+    assert total == pytest.approx(2 * xl330 + 7.99 + 1.33 + 3 * 2.20, abs=0.01)
+    assert total > 60
     rep = api.verify(robot, "quick")
     rows = {r.requirement: r for r in rep.rows}
     assert "budget.cost_floor_usd" not in rows
@@ -1174,23 +1181,27 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # $29.99, the inserts $10.90, the epoxy and both threadlockers
     # (the PLA and both threadlockers on hand since round 4, bom.ON_HAND: not in the floor)
     # (not the deck's inserts since round 10: a robot whose deck doesn't fit buys none)
-    assert total == pytest.approx(43.98 + 3.10 + 18.0 + 21.0 + 7.99)
+    # (2026-10-08: the servos $20.00 at Seeed; a SendCutSend sheet is its cutting line, one
+    # part's least charge in the floor ($2.20 in aluminium), the plywood a $3.10 blank)
+    assert total == pytest.approx(40.0 + 3.10 + 7.99 + 2 * 2.20)
     assert unpriced == []
     assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
     # the frame blank in 5052, the crank's in 6061 (the hex crankpins' pockets)
-    assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 1
-    assert sum(line.startswith("6061 aluminium sheet") for line in priced) == 1
+    assert sum(line.startswith("5052 aluminium sheet") for line in priced) == 0
+    assert sum(line.startswith("6061 aluminium sheet") for line in priced) == 0
     lift = api.resolve({"kind": "mechanism", "linkage": {"key": "parallelogram_lift"}},
                        store=None)
     # the servo $21.99, acrylic $10.99, its Al frame $18, the hex crank's 0.100 in 6061 $21
     # and the Chicago barrels' epoxy $7.99 (PLA, 222 on hand); the keyed crank and printed
     # pillars it was pinned to until 2026-10-07: 72.96, CA for the anchors, no crank blank
-    assert verify_module.cost_floor(lift)[0] == pytest.approx(21.99 + 10.99 + 18.0 + 21.0
-                                                              + 7.99)
+    # (2026-10-08: the servo $20.00, the epoxy $7.99, one part's cut on each SendCutSend
+    # sheet: acrylic $1.33, the 5052 frame and the 6061 crank $2.20 each)
+    lift_floor = 20.0 + 7.99 + 1.33 + 2 * 2.20
+    assert verify_module.cost_floor(lift)[0] == pytest.approx(lift_floor)
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")
-    assert row.value == pytest.approx(79.97)
+    assert row.value == pytest.approx(lift_floor)
     assert row.detail.endswith(verify_module.FLOOR_LEAVES_OUT)
     assert "the sheets' count, the crank's screws" in row.detail
 
@@ -1203,9 +1214,14 @@ def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
     bom = json.loads((tmp_path / "bom.json").read_text())
     sheet = next(r for r in bom["purchased"] if r["key"] == "acrylic_3mm")
     assert sheet["qty"] >= 1
-    assert sheet["cost_usd"] == pytest.approx(10.99)
+    assert sheet["cut_by"] == "SendCutSend"          # its upload: in no total
+    assert sheet["cost_usd"] == 0.0
     assert bom["cost_usd"] == pytest.approx(sum(r["cost_usd"] or 0 for r in bom["purchased"]
-                                                if r["key"] not in ON_HAND))   # (on hand)
+                                                if r["key"] not in ON_HAND)    # (on hand)
+                                            + bom["cutting_usd"])
+    acrylic = next(c for c in bom["cutting"] if c["sheet"] == "acrylic_3mm")
+    assert acrylic["service"] == "SendCutSend"
+    assert acrylic["usd"] >= 1.33 * acrylic["parts"]
 
 
 @pytest.mark.slow
@@ -1621,13 +1637,13 @@ def test_an_unpriced_item_is_named_not_counted_in_the_cost_floor(monkeypatch):
     from spiderpig.hardware.catalog import CATALOG
 
     d = api.resolve(STRIDER_DOUBLE_PLY, store=None)
-    total, _, _ = verify_module.cost_floor(d)
-    epoxy = CATALOG["epoxy_2part"]
-    price = epoxy.offer.buy(1)[1]
-    unpriced = dataclasses.replace(epoxy, offers=tuple(
-        dataclasses.replace(o, price_usd=None) for o in epoxy.offers))
-    monkeypatch.setitem(CATALOG, "epoxy_2part", unpriced)
+    total, _, before = verify_module.cost_floor(d)
+    servo = CATALOG["servo_sts3215"]
+    price = servo.offer.buy(2)[1]
+    unpriced = dataclasses.replace(servo, offers=tuple(
+        dataclasses.replace(o, price_usd=None) for o in servo.offers))
+    monkeypatch.setitem(CATALOG, "servo_sts3215", unpriced)
     total2, priced2, names = verify_module.cost_floor(d)
-    assert names == [epoxy.name]
-    assert not any(epoxy.name in p for p in priced2)
+    assert names == [servo.name, *before]
+    assert not any(servo.name in p for p in priced2)
     assert total2 == pytest.approx(total - price)

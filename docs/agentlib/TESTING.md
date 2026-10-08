@@ -309,16 +309,17 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the STS3215 bus sockets merged with the assembly guide, `92d11e4`,
-2026-10-08): `~/.cache/spiderpig/gate/bus2-92d11e4/` on the development box
-(`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
+**Baseline** (the integration branch: the STS3215 bus sockets, the BOM decisions and the
+assembly guide, `SHA`, 2026-10-08): `~/.cache/spiderpig/gate/next-SHA/` on the development
+box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
 (commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
-match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/bus2-92d11e4`. It
-differs from the previous baseline `w8-2a130c8` (W8, `2a130c8`, engine
-`0.1.0+e91ed4bc0da8`; kept, as are `master-1eba876` / `master-d53fbf1` and the bus branch's
-own `bus-39502f7`, before the guide's merge) by the bus-socket change's approved output
-changes and the guide's self-describing file labels, each listed in `BUS-gate-diffs.md`;
-`w8-2a130c8` differs from those older ones by W8's, in `W8-gate-diffs.md`.
+match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/next-SHA`. It differs
+from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
+own `bus-39502f7`, `bus2-92d11e4`, `bom-bbf7001`, `bom2-5989d50` and `master-1eba876` /
+`master-d53fbf1`) by the bus-socket change, the user's BOM decisions of 2026-10-08 and the
+guide's labels: every diff with its source in `NEXT-gate-diffs.md` (which links
+`BUS-gate-diffs.md` and `BOM-gate-diffs.md`); W8's own from its predecessors in
+`W8-gate-diffs.md`.
 
 ## Rules for a module package
 

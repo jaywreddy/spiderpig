@@ -262,3 +262,23 @@ def test_the_router_explains_a_dead_end_in_layer_one():
     res = router.check(RouteView(Layout({rider: 1}, 9, pitch), {}))
     assert isinstance(res, RouteConflict)
     assert "layer 1, with no room for the web below" in res.why
+
+
+def test_no_stock_screw_for_any_crank_joint_is_unbuildable_with_a_reason():
+    """When no screw length fits a crank joint at any span (the BOM study, 2026-10-08:
+    M3 x 6 taken out of the button heads' lengths), the router's reason says so: the
+    planner takes it as a blocker. It raised IndexError (``_ranges([])``) and crashed the
+    plan."""
+    from types import SimpleNamespace
+
+    from spiderpig.construction.route import CrankRouter, _ranges
+
+    router = SimpleNamespace(spans={2: 0, 3: 0, 5: 0}, after=[[False]], last=[False],
+                             _relax=0, n=1, _cheapest=lambda view: (0, (), 0))
+    why = CrankRouter._unbuildable(router, None)     # type: ignore[arg-type]
+    assert "no stock screw fits a crank joint at any span" in why
+    assert router.spans == {2: 0, 3: 0, 5: 0}                            # restored
+    assert router._relax == 0
+    router.spans = {2: 0, 3: 1, 4: 1, 5: 1, 7: 1}
+    assert "3-5 or 7 layers apart" in CrankRouter._unbuildable(router, None)  # type: ignore[arg-type]
+    assert _ranges([]) == "no"

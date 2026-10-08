@@ -185,7 +185,8 @@ def test_sheets_per_part():
     with pytest.raises(ParamError):
         BuildConfig(linkage="klann_lego", link_sheets=(("b9", "acrylic_3mm"),))
     assert materials.sheet("al5052_3p2mm").min_edge == pytest.approx(6.35)
-    assert materials.sheet("acrylic_3mm").min_edge == 1.0
+    assert materials.sheet("acrylic_3mm").min_edge == pytest.approx(0.053 * 25.4, abs=1e-3)
+    assert materials.sheet("acrylic_3mm_ponoko").min_edge == 1.0
     assert materials.gap_options()[0] == 1.0
 
 

@@ -25,7 +25,7 @@ plate, recessed in the plates beyond it.
 **Frame ties** (2026-10-04, no glue, no insert, no tapped plate): four columns between the
 two inner frame plates, beside the servo's long sides, each a chain of uxcell 6 mm round M3
 standoffs per side, from the inner plate's servo-side face to the centre plates (stock
-lengths, 1 mm steel shims at the plate, bought as DIN 433 washers). An M3 button head comes
+lengths, 1 mm steel shims at the plate, bought as stock 0.5 mm washers). An M3 button head comes
 up through each inner plate from the leg side into the chain (its head in the clearance gap
 under the plate, which the drive group claims, so the planner keeps the legs clear of it),
 and an M3 set screw through the centre plates joins the two chains and clamps the centre

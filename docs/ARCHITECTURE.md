@@ -371,7 +371,7 @@ Every part is made in one of three ways, and the code tags each part with it (`f
   and rings, the horn spacer, the deck's rails and battery cradle, the feet's TPU socks,
   on a 3D printer;
 - **purchased**: servos, electronics, screws, nuts, washers and shims, Chicago screws,
-  round and hex standoffs, heat-set inserts, epoxy.
+  round and hex standoffs, epoxy.
 
 The pins are M3 Chicago screws, the pillars 6 mm round standoff columns and the crank
 laser-cut on steel hex standoffs (section 6.2). These are the only constructions since
@@ -382,8 +382,8 @@ names each one's replacement).
 The motors are **continuous-rotation servos**: geared motors with built-in speed control,
 which turn fully at a commanded speed rather than holding an angle as a hobby servo does.
 The screws are metric: **M3** means 3 mm in diameter, and screws come in a fixed set of
-**stock lengths**. A **heat-set insert** is a brass thread pressed into plastic with a hot
-iron.
+**stock lengths**. A **captive nut** is a stock nut held in a pocket printed into a part,
+slid in through a slot, so a screw can thread into plastic without a heat-set insert.
 
 ### 2.6 The tools and formats underneath
 
@@ -399,7 +399,8 @@ iron.
   **glTF** is a 3D scene format for the web, with animation; `.glb` is its one-file binary
   form. **MJCF** is the XML model format of **MuJoCo**, a rigid-body physics simulator.
 - A laser burns away a thin strip as it cuts, the **kerf** (the sheet's service's: 0.2 mm
-  at Ponoko; SendCutSend compensates for its own), so where the service doesn't, outlines
+  at Ponoko; SendCutSend, which cuts the default sheets, compensates for its own), so where
+  the service doesn't, outlines
   are moved out by half of it and holes in by half of it. A 3D printer of the
   kind assumed here (FDM) lays down plastic layer by layer; an overhang needs printed
   support under it, and **infill** is how solid the inside of a part is.
@@ -1151,7 +1152,7 @@ sleeve. The stub is an M3 round standoff screwed up into the lowest web, turning
 6.6 mm hole of the outer plate (the bottom bearing).
 
 The horn screws take shims under the head where a stock length is too long
-(`horn_fit_web`: whole 1 mm ones, bought as DIN 433 pairs, where the horn keeps enough
+(`horn_fit_web`: whole 1 mm ones, bought as DIN 125 pairs, where the horn keeps enough
 thread, else 0.1 mm DIN 988 steps). The horn holes keep the service's minimum hole and
 2 x t edge distance, the hub's and webs' rims 1 x t (`BoltCrank.web_edge_t`, the cut rules'
 error level). A crankpin within a screw head's reach of the horn's rim makes the printed
@@ -1215,12 +1216,13 @@ into one cut (`chassis._merge_close`), and a head recess that close opens into t
 
 **The electronics deck** (`construction/deck.py`). A laser-cut plate between the inner
 plates over the servos, on two printed rails screwed to the inner plates (M3 from the leg
-side into nut traps in the rails), carrying the ESP32 servo driver, a 2S LiPo in a printed
+side into nut traps in the rails) and the deck screwed down into captive nuts the rails hold
+(`deck.deck_nut`), carrying the ESP32 servo driver, a 2S LiPo in a printed
 cradle screwed to the deck and strapped, the charger, the protection board and a toggle
 switch (the catalog in `hardware/electronics.py`, each item with its mass). Nothing moves in
 its z band, and `deck_clearance` proves it over the whole cycle. The deck lowers straight
 down past the pillars' inner screw heads: `deck.path_notches` notches the plate round every
-static part in its way, `deck.insert_z` moves the rails' inserts into the bay where a notch
+static part in its way, `deck.nut_z` moves the deck screws and their nuts into the bay where a notch
 would leave a deck screw hole too little web, and `deck.deck_path` checks the way on the
 parts' geometry (`deck_clearance`'s `blocked`, an audit problem).
 
@@ -1337,7 +1339,8 @@ exact (an arc is a vertex's bulge), any other curve flattened within 0.02 mm (`C
 check).
 
 **Cut rules** (`spiderpig/manufacture.py`): every laser-cut part is reviewed against its
-sheet's service (SendCutSend for aluminium, Ponoko for acrylic): the minimum hole, the edge
+sheet's service (SendCutSend for the aluminium and the 3 mm acrylic, Ponoko for the thin
+acrylic and `acrylic_3mm_ponoko`): the minimum hole, the edge
 distance from a hole to an edge or another hole, the web round every non-circular cut-out
 (`web`: to the edge, a hole or another cut-out), the minimum part and the inside-corner
 radius, and that the DXF matches the solid. In metal a hole closer than 1 x the thickness
@@ -1358,8 +1361,12 @@ part and its mirror image are the same cut (flip the sheet); a printed part and 
 image are different prints unless one is a translate of the other. A line per sheet for
 the plates, a line per filament for the prints (`hardware.bom.part_filament`). Shims are
 ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the clamped 1.0 and
-0.5 mm ones bought as DIN 433 washers (`bom.SHIM_AS`). Purchases are rounded up to whole
-packs of the preferred offer. The total leaves out rows with no price, and the BOM says so;
+0.5 mm ones bought as stock washers (`bom.SHIM_AS`: DIN 125 for M3, modelled at their 7 mm,
+`bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
+offer. A sheet a service cuts is no purchase (`bom.cut_by`) but a cutting line per service
+and sheet, the material included (`bom.CutRow`: an area estimate, `bom.cut_estimate`,
+calibrated to SendCutSend's quotes); the total is the purchases and the cutting. It leaves
+out rows with no price, and the BOM says so;
 for the running example at the snapshot the unpriced rows were 8 M2 self-tapping screws and
 4 M3 × 18 mm screws, and the made parts came to 39 laser-cut parts in 8 shapes, 90 printed
 parts in 16 shapes, and about 95 g of plastic.
@@ -1464,23 +1471,23 @@ below, generated from the default robot's steps (`python -m spiderpig.guide.pros
 checked current by `tests/test_guide.py`):
 
 <!-- assembly-order: generated from the default robot by `python -m spiderpig.guide.prose --write`; don't edit by hand -->
-1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its printed head spacer under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. The printed rings and spacers drawn, onto their pillars, pins and crankpins. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its printed top spacer under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker).
+1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. The printed rings and spacers drawn, onto their pillars, pins and crankpins. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its printed head spacer under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its printed top spacer under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker).
 
-2. **Left side: inner-plate unit.** On the bench, loose (the right side's is put together on the robot). Lay the inner frame plate down, servo side up. Stand the servo on the inner plate, its spline over the horn hole. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn. The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; the heat-set inserts pressed into the rail. The frame ties' standoff chains on the inner plate, shims at the plate. Their M3 button heads up through the plate from the leg side (threadlocker).
+2. **Left side: inner-plate unit.** On the bench, loose (the right side's is put together on the robot). Lay the inner frame plate down, servo side up. Stand the servo on the inner plate, its spline over the horn hole. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn. The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; then the deck's two M3 nuts slid into their hex pockets through the slots in the rail's bay face (captive: the deck's screws thread into them). The frame ties' standoff chains on the inner plate, shims at the plate. Their M3 button heads up through the plate from the leg side (threadlocker).
 
 3. **Left side: unit onto the leg stack.** The unit onto its leg stack: the hub plate's hex pocket over the hub chain's standoff (turn the crank to line it up), the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
 4. **Centre plates.** The M3 set-screw studs into the left chains' ends (threadlocker). The left servo's own centre plates (0, 1) on its rear face over the studs, its two rear screws through them. Its bus plug (one branch of the Y cable) pushed straight down through the plates' window into the socket on the servo's +y side; its wires bent toward +x and laid along its own channel. The middle centre plates (2, 3) over the studs and the left servo's wires, its channel round them. The right servo's own centre plates (5, 4) screwed to the right servo the same way, its plug (the Y cable's other branch) seated through their window into its own +y socket, on the robot's other side, its wires along its own channel; then that servo and its plates onto the studs, rear faces together, no wire pinched.
 
-5. **Right side: inner plate, on the robot.** Not on the bench: the chains must turn onto the studs before the inner plate holds them. Turn the right tie chains onto the studs from the inner plate's side (they turn freely: no inner plate yet), shims on their ends. The right inner plate onto the servo's front and onto the chains. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The chains' M3 button heads from the leg side (threadlocker). The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; the heat-set inserts pressed into the rail. The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn.
+5. **Right side: inner plate, on the robot.** Not on the bench: the chains must turn onto the studs before the inner plate holds them. Turn the right tie chains onto the studs from the inner plate's side (they turn freely: no inner plate yet), shims on their ends. The right inner plate onto the servo's front and onto the chains. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The chains' M3 button heads from the leg side (threadlocker). The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; then the deck's two M3 nuts slid into their hex pockets through the slots in the rail's bay face (captive: the deck's screws thread into them). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn.
 
 6. **Right side: leg stack.** Build the right leg stack as the left one: the mirror image.
 
 7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
-8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires from its channel's end at the centre plates' +x edge up through the deck's wire slot over it, and the Y cable's trunk to the board (connector first), before the deck goes in.
+8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires from its channel's end at the centre plates' +x edge up through the deck's wire slot over it, and the Y cable's trunk to the board (connector first), before the deck goes in.
 
-9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' inserts.
+9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' captive nuts.
 <!-- assembly-order: end -->
 
 ## 8. Seeing and judging a design
@@ -2341,6 +2348,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | [agentlib/TESTING.md](agentlib/TESTING.md) | the test tiers, the fabrication cache, the fixtures, the identity gate | current |
 | [agentlib/DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's seven decisions, and the hardware decisions with their dates and numbers | current |
 | [agentlib/W8-gate-diffs.md](agentlib/W8-gate-diffs.md) | what each of W8's approved output changes did to the gate's designs | record (2026-10-07) |
+| [agentlib/BOM-gate-diffs.md](agentlib/BOM-gate-diffs.md) | what each of the BOM decisions did to the gate's designs | record (2026-10-08) |
 | [history/SCOPE.md](history/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
 | [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
 | [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |

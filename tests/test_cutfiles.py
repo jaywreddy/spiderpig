@@ -117,7 +117,7 @@ def test_the_cut_rules_report_a_dxf_off_the_solid():
     assert m["dxf"]["plate"]["deviation_mm"] < manufacture.DXF_DEVIATION
     assert m["dxf_worst_mm"] == m["dxf"]["plate"]["deviation_mm"]
     assert "dxf" not in m["by_rule"]
-    assert manufacture.summary(m)["kerf"] == {"acrylic_3mm": 0.2}
+    assert manufacture.summary(m)["kerf"] == {"acrylic_3mm": 0.0}   # SendCutSend's
 
 
 # ---------------------------------------------------------------------------
@@ -128,11 +128,13 @@ def test_the_cut_rules_report_a_dxf_off_the_solid():
 def test_kerf_per_sheet_and_service():
     assert sheet_kerf("al5052_2mm") == 0.0               # SendCutSend compensates itself
     assert sheet_kerf("al6061_2p5mm") == 0.0
-    assert sheet_kerf("acrylic_3mm") == pytest.approx(0.2)   # Ponoko: the laser follows
+    assert sheet_kerf("acrylic_3mm") == 0.0              # SendCutSend's too (2026-10-08)
+    assert sheet_kerf("acrylic_3mm_ponoko") == pytest.approx(0.2)   # Ponoko: the laser follows
     assert sheet_kerf("acrylic_1p5mm") == pytest.approx(0.2)
     assert sheet_kerf("plywood_3mm") == DEFAULT_KERF     # no service named
     assert sheet_service("al5052_2mm") == "SendCutSend"
-    assert sheet_service("acrylic_3mm") == "Ponoko"
+    assert sheet_service("acrylic_3mm") == "SendCutSend"
+    assert sheet_service("acrylic_3mm_ponoko") == "Ponoko"
 
 
 def _radii(path) -> list[float]:
@@ -141,11 +143,11 @@ def _radii(path) -> list[float]:
 
 
 def test_dxf_sets_split_per_service_each_with_its_kerf(tmp_path):
-    mech = Mechanism(name="m", bodies=[_body("a", sheet="acrylic_3mm"),
+    mech = Mechanism(name="m", bodies=[_body("a", sheet="acrylic_3mm_ponoko"),
                                        _body("b", sheet="al5052_2mm", t=2.032)])
-    files = save_sheets(mech, tmp_path / "s", default="acrylic_3mm")
+    files = save_sheets(mech, tmp_path / "s", default="acrylic_3mm_ponoko")
     names = sorted(f.name for f in files)
-    assert names == ["s_Ponoko_acrylic_3mm_0.dxf", "s_SendCutSend_al5052_2mm_0.dxf"]
+    assert names == ["s_Ponoko_acrylic_3mm_ponoko_0.dxf", "s_SendCutSend_al5052_2mm_0.dxf"]
     ponoko, scs = sorted(files)
     assert _radii(scs) == pytest.approx([2.0])            # drawn at size
     assert _radii(ponoko) == pytest.approx([1.9])         # the hole shrunk by half the kerf
@@ -254,11 +256,11 @@ def test_horn_screws_get_their_shim_stack_and_threadlocker():
     assert sum(x.qty for x in lines if x.key == "threadlocker_222") == pytest.approx(0.04)
     assert any("0.5 + 0.2 mm" in n for n in notes)
     bom = bom_from_mechanism(_fitted_mech(), group=False)
-    # the BOM orders the stack per thickness (split_shims): the 0.5 mm ring bought as a DIN 433
+    # the BOM orders the stack per thickness (split_shims): the 0.5 mm ring bought as a DIN 125
     # washer (bom.SHIM_AS), the 0.2 mm one a DIN 988 shim
     rows = {r.key: r for r in bom.purchased
-            if r.key.startswith("shim_din988_3x6") or r.key == "m3_washer_433"}
-    assert set(rows) == {"m3_washer_433", "shim_din988_3x6_t0p2"}
+            if r.key.startswith("shim_din988_3x6") or r.key == "m3_washer"}
+    assert set(rows) == {"m3_washer", "shim_din988_3x6_t0p2"}
     assert all(r.qty == 1 and "0.5 + 0.2" in r.where[0] for r in rows.values())
     # a plastic horn (the XL330's, self-tapping): no threadlocker into it
     lines, _, _ = fitting_lines(_fitted_mech("xl330_m288"))

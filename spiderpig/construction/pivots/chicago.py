@@ -8,9 +8,12 @@ the pin's whole stack, so every link on the pin bears on the 4 mm barrel; the
 screw's head bottoms on the barrel's end, so the head-to-head distance is the
 barrel length whatever the screw is tightened to, and the links turn between the
 heads. Barrels come in fixed lengths (the catalog's ``CHICAGO_LENGTHS``: 1 mm steps
-from 4 to 16 mm, then 18, 20, 22, 23, 25, 28 and on to 80; on the Strider at most 23 mm,
-:data:`MAX_BARREL`) against a stack of 3 mm layers, so the construction picks the
-shortest barrel that clears the stack plus the top spacer's 0.5 mm plus ``min_play`` and
+from 4 to 16 mm, then 18, 20, 22, 23, 25, 28 and on to 80; a linkage may stock fewer on a
+crank, :data:`BARRELS`: the Strider on its bolt crank 7, 10, 16 and 22 mm, and it plans on
+10 and 16 only; on the
+Strider at most 23 mm, :data:`MAX_BARREL`) against a stack of 3 mm layers, so the
+construction picks the shortest stocked barrel that clears the stack plus the top
+spacer's 0.5 mm plus ``min_play`` and
 takes up the rest with **one printed head spacer per end** (unclamped: the screw bottoms
 on the barrel, so a spacer only sets the column's axial play): above the top link up to
 what that end slot holds, the rest under the barrel's head. What is left is the column's
@@ -174,6 +177,8 @@ class ChicagoShaft:
     max_length: float | None = None  # the longest barrel a pin may take (None: the longest
     #                                  stock): a planner rule, a long barrel being a long span;
     #                                  per linkage, MAX_BARREL (ChicagoAxle.resolve)
+    lengths: tuple[float, ...] = CHICAGO_LENGTHS   # the barrels stocked (per linkage,
+    #                                  BARRELS: ChicagoAxle.resolve), shortest first
     model_gap: float = 0.01
     glue_fit: float = 0.15          # the lowest link's hole over the barrel (bonded)
     glue_per_pin: float = 0.005
@@ -208,6 +213,10 @@ class ChicagoShaft:
         if top > ctx.pitch + EPS:
             raise ConstructionError(f"a {it['screw_head_h']:g} mm Chicago screw head, its washer "
                                     f"and play don't fit a {ctx.pitch:g} mm layer")
+        # the catalog's steps, not this design's stock (``lengths``, BARRELS): a stock with
+        # wider steps (the Strider's 6 mm, 10 to 16) is checked where a stack meets it, at
+        # the plan's z (column) and as built (fit), so the planner keeps the stacks it fits
+        # (the BOM study's relaxed rule, 2026-10-08)
         steps = [b - a for a, b in itertools.pairwise(CHICAGO_LENGTHS)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
@@ -228,20 +237,21 @@ class ChicagoShaft:
             if air is not None:         # its own parts' stack: the barrel closes the air
                 stack -= air(min(links), max(links))
         need = stack + self.washer_t + self.min_play
-        if need > max(CHICAGO_LENGTHS) + EPS:
+        if need > max(self.lengths) + EPS:
             raise Unbuildable(f"no stock Chicago screw spans its {stack:g} mm stack (longest "
-                              f"{max(CHICAGO_LENGTHS):g} mm)")
+                              f"{max(self.lengths):g} mm)")
         if self.max_length is not None and need > self.max_length + EPS:
             raise Unbuildable(f"its {stack:g} mm stack needs a barrel over the "
                               f"{self.max_length:g} mm a pin may take (its bending)")
         if layout is None or not layout.final:
             return      # (the shims' rule at the plan's own z only: the stack only grows
             #             there, so a search-time estimate could rule out what fits)
-        length = next(L for L in CHICAGO_LENGTHS if need - EPS <= L)
+        length = next(L for L in self.lengths if need - EPS <= L)
         it = self.item()
         room = 2 * pitch - float(it["head_h"]) - float(it["screw_head_h"]) - self.washer_t
         if length - need > max(room, 0.0) + max(self.shim_steps) + EPS:
-            # the longer barrels come in 5 mm steps: more shims than its end slots hold
+            # the longer barrels come in 5 mm steps (a linkage's stock in wider ones): more
+            # shims than its end slots hold
             raise Unbuildable(f"no stock Chicago screw fits its {stack:g} mm stack: a "
                               f"{length:g} mm barrel leaves {length - need:.1f} mm of shims")
 
@@ -270,10 +280,10 @@ class ChicagoShaft:
         """(shims under the barrel's head, under the screw's, the barrel length, the play)."""
         it = self.item()
         need = stack + self.washer_t + self.min_play
-        length = next((L for L in CHICAGO_LENGTHS if need - EPS <= L), None)
+        length = next((L for L in self.lengths if need - EPS <= L), None)
         if length is None:
             raise ConstructionError(f"no stock Chicago screw spans a {stack:.1f} mm stack "
-                                    f"(longest {max(CHICAGO_LENGTHS):g} mm)")
+                                    f"(longest {max(self.lengths):g} mm)")
         step = min(self.shim_steps)
         excess = length - need
         shims = math.floor(excess / step + 1e-6) * step
@@ -398,6 +408,20 @@ def chicago_section(shaft: ChicagoShaft) -> Section:
     return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
 
 
+BARRELS: dict[tuple[str, str], tuple[float, ...]] = {
+    ("strider", "bolt"): (7.0, 10.0, 16.0, 22.0),
+}
+"""The barrel lengths a linkage's pins are planned from on a crank, ``(linkage, crank) ->
+lengths`` (:meth:`ChicagoAxle.resolve`; the rest: every catalog length,
+``CHICAGO_LENGTHS``): fewer lengths, fewer SKUs. The Strider on its bolt crank (the user's
+decision of 2026-10-08, from the BOM study): 7, 10, 16 and 22 mm, on which every module
+plans with the 10 and 16 mm barrels only (the double 14 layers, proven; the quad 24; the
+single 10; the decker 16) where they bought 7-8 lengths; 10 and 16 alone find no plan (J7
+of the second leg spans 18 mm at the search's z), nor do 10, 16, 22. Per linkage and
+crank: on the Klann quads the same list finds no plan in 60 s (their 9 mm pins and crank
+routes need the catalog's 1 mm steps), nor on the Strider's ``bolt_round`` crank (7, 10,
+16, 22; with 23; with 9: its routes put J7 on the lengths between)."""
+
 MAX_BARREL: dict[str, float] = {"strider": 23.0}
 """The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
 a long barrel is a long span, and a pin bends as its span. The Strider (2026-10-05): the quad's
@@ -429,11 +453,16 @@ class ChicagoAxle:
 
     def resolve(self, ctx: Context) -> ChicagoAxle:
         """This construction for the design ``ctx`` builds: its linkage's longest barrel
-        (:data:`MAX_BARREL`)."""
-        cap = MAX_BARREL.get(getattr(ctx.config, "linkage", ""))
-        if cap is None or self.shaft.max_length is not None:
-            return self
-        return replace(self, shaft=replace(self.shaft, max_length=cap))
+        (:data:`MAX_BARREL`) and the barrels it stocks on its crank (:data:`BARRELS`)."""
+        linkage = getattr(ctx.config, "linkage", "")
+        shaft = self.shaft
+        cap = MAX_BARREL.get(linkage)
+        if cap is not None and shaft.max_length is None:
+            shaft = replace(shaft, max_length=cap)
+        stock = BARRELS.get((linkage, getattr(ctx.config, "crank", "")))
+        if stock is not None and shaft.lengths == CHICAGO_LENGTHS:
+            shaft = replace(shaft, lengths=tuple(sorted(float(L) for L in stock)))
+        return self if shaft is self.shaft else replace(self, shaft=shaft)
 
     def end_heights(self, d: AxleDims, L, k0: int, k1: int, air: float = 0.0
                     ) -> tuple[float, float]:

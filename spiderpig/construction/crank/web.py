@@ -287,9 +287,10 @@ class WebFitMixin:
 
     def horn_head_r(self, ctx: Context, shim: float | None = None) -> float:
         """A horn screw head's clearance shape under the hub: the head, or with ``shim`` mm
-        of DIN 988 shims under it (6 mm OD) the wider of them; ``None``: whether the plan's
+        of shims under it (the widest the stack is bought as, :func:`hardware.bom.shim_od`:
+        7 mm, its 1 mm as DIN 125 washers) the wider of them; ``None``: whether the plan's
         nominal z needs shims."""
-        from spiderpig.hardware.catalog import get
+        from spiderpig.hardware.bom import shim_od
 
         if shim is None:
             drive: DriveInterface = ctx.interfaces["drive"]
@@ -297,7 +298,7 @@ class WebFitMixin:
             shim = got[3] if got is not None else 0.0
         d = self.horn_kind(ctx).head_d
         if shim > 0:
-            d = max(d, float(get(SHIM_KEY).dims["od"]))
+            d = max(d, shim_od(SHIM_KEY))
         return d / 2 + 0.3
 
     def horn_kind(self, ctx: Context) -> Screw:

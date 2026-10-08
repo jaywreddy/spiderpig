@@ -16,7 +16,13 @@ import pytest
 
 from spiderpig.config import BuildConfig
 from spiderpig.construction.base import ConstructionError
-from spiderpig.construction.pivots.chicago import MAX_BARREL, ChicagoAxle, ChicagoShaft, Fit
+from spiderpig.construction.pivots.chicago import (
+    BARRELS,
+    MAX_BARREL,
+    ChicagoAxle,
+    ChicagoShaft,
+    Fit,
+)
 from spiderpig.construction.pivots.standoff import COLUMN_TOL, SHIM_STEP, StandoffAxle
 from spiderpig.hardware.fastener_catalog import CHICAGO_LENGTHS
 from spiderpig.stack import Unbuildable
@@ -67,10 +73,31 @@ def test_the_longest_barrel_a_linkage_allows_is_a_planner_rule():
 
 def test_the_strider_resolves_its_cap_and_the_klann_keeps_the_long_barrels():
     axle = ChicagoAxle()
-    assert axle.resolve(_ctx.context()).shaft.max_length == 23.0            # the Strider
+    strider = axle.resolve(_ctx.context()).shaft
+    assert strider.max_length == 23.0                                       # the Strider
+    assert strider.lengths == BARRELS["strider", "bolt"] == (7.0, 10.0, 16.0, 22.0)  # stock
+    rnd = _ctx.context(config=BuildConfig(crank="bolt_round"))
+    assert axle.resolve(rnd).shaft.lengths == CHICAGO_LENGTHS      # (its routes need them)
     klann = _ctx.context(config=BuildConfig(linkage="klann", module="single", robot=False))
     assert axle.resolve(klann) is axle
+    assert axle.resolve(klann).shaft.lengths == CHICAGO_LENGTHS          # every catalog length
     assert axle.hole() == pytest.approx(4.2)                     # the barrel's running fit
+
+
+def test_a_linkages_barrel_stock_is_what_its_pins_take():
+    """The Strider's barrels (:data:`BARRELS`): a 9 mm stack takes the 10 mm barrel, an 11
+    mm one the 16 mm, a 23 mm one none; the step rule of :meth:`ChicagoShaft.check` stays
+    on the catalog's steps (the 6 mm from 10 to 16 is checked where a stack meets it, at
+    the plan's z and as built), so the Strider's stock passes it."""
+    ctx = _ctx.context()
+    shaft = ChicagoAxle().resolve(ctx).shaft
+    shaft.check(ctx, False)                                  # (relaxed: no step error)
+    assert shaft.fit(9.0 - 0.55, 3.0).length == 10.0
+    assert shaft.fit(10.0, 3.0, slot_hi=6.0, slot_lo=6.0).length == 16.0
+    with pytest.raises(ConstructionError, match="longest 22 mm"):
+        shaft.fit(23.0, 3.0)
+    with pytest.raises(Unbuildable, match="longest 22 mm"):
+        shaft.column(False, [1, 8], 12, (True, True), 3.0)      # 24 mm of stack
 
 
 def test_the_shims_rule_waits_for_the_plans_z():

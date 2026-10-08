@@ -173,41 +173,63 @@ register(
           Offer("Amazon", "https://www.amazon.com/dp/B0DNM4HK5Q", "B0DNM4HK5Q", pack_qty=140,
                 note="in the 631-pc M3 kit")),
          dims={"af": 5.5, "h": 2.4, "d": 3.0}),
-    Item("m3_heat_set_insert", "M3 x 5.7 brass heat-set insert (for printed parts)", "insert",
-         (Offer("3DJake", "https://www.3djake.com/cnc-kitchen/threaded-inserts-m3-standard",
-                "CNC Kitchen M3 standard", pack_qty=100, price_usd=11.37, verified=True),
-          Offer("CNC Kitchen", "https://cnckitchen.store/products/heat-set-insert-m3-x-5-7-100-"
-                "pieces", pack_qty=100, verified=True, note="EUR 9.40"),
-          Offer("ruthex", "https://www.ruthex.de/en/products/ruthex-gewindeeinsatz-m3-100-stuck-"
-                "rx-m3x5-7-messing-gewindebuchsen", "RX-M3x5.7", pack_qty=100, verified=True),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/94180A331/", "94180A331",
-                note="tapered insert, 3.8 mm installed length: a different size")),
-         dims={"od": 4.6, "length": 5.7, "hole_d": 4.0, "min_wall": 1.6, "d": 3.0},
-         notes="Hole 4.0 mm, at least 1.6 mm of plastic around it (CNC Kitchen). "
-               "Press in with a soldering iron; not for laser-cut sheet."),
 )
 
 # ---------------------------------------------------------------------------
 # Sheet stock (one "sheet" = a nominal 12 x 12 in blank; layout packs onto sheet_mm)
 # ---------------------------------------------------------------------------
 
+SCS_RULES_ACRYLIC = {"service": "SendCutSend", "min_hole": round(0.047 * 25.4, 3),
+                     "min_part": (round(0.187 * 25.4, 3), round(0.375 * 25.4, 3)),
+                     "edge_t": 0.0, "edge_mm": round(0.053 * 25.4, 3), "corner_r": 0.1,
+                     "metal": False, "kerf_mm": 0.0}
+"""SendCutSend's cut rules for its 0.118 in (3.00 mm) cast acrylic, its material page's spec
+table for that thickness (https://sendcutsend.com/materials/acrylic/, rendered 2026-10-08):
+min hole .047 in (1.19 mm), min bridge .053 in (1.35 mm, ``edge_mm``: the least web, over
+its .035 in hole-to-edge minimum), min part .187 x .375 in (4.75 x 9.53 mm), cut tolerance
++/- .009 in, thickness +.018 / -.030 in (2.24-3.46 mm: measure the sheet, ``--thickness``);
+it compensates the kerf itself (``kerf_mm`` 0, the files nominal size). The page's FAQ also
+suggests 1.5 x the thickness between a hole and an edge, a guideline against cracking, not
+a limit (``edge_t`` 0: the links' 4.2 mm pin holes keep less than 4.5 mm). Its acrylic
+thicknesses: .063, .118, .177, .214, .375, .500 in. :mod:`manufacture` checks every part
+against these."""
+
+PONOKO_RULES_ACRYLIC_3MM = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6.0, 6.0),
+                            "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1, "metal": False,
+                            "kerf_mm": 0.2}
+
+_ACRYLIC_3MM = {"thickness": 3.0, "sheet_mm": (300.0, 300.0), "material": "acrylic",
+                "density": 1.19, "yield_mpa": 50.0}
+
 register(
     Item("acrylic_3mm", "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in", "sheet",
-         (Offer("Inventables", "https://www.inventables.com/products/clear-acrylic-sheet-cast",
-                "12 x 24 in 1/8 in cast", pack_qty=2, price_usd=10.99, verified=True,
-                note="one 12 x 24 in sheet = two 12 x 12 in; thickness +/-8 %"),
-          Offer("Amazon", "https://www.amazon.com/dp/B0DTSG32FM", "B0DTSG32FM", pack_qty=13,
-                note="13 coloured 12 x 12 in cast sheets"),
+         (Offer("SendCutSend", "https://sendcutsend.com/materials/acrylic/", verified=True,
+                note="cuts it from its own 0.118 in cast acrylic (the user's decision of "
+                     "2026-10-08: one service for the acrylic and the aluminium; all 33 "
+                     "acrylic parts of the Strider double quoted USD 49.44, free shipping "
+                     "over USD 39)"),
           Offer("Ponoko", "https://www.ponoko.com/materials/clear-acrylic", verified=True,
-                note="laser-cutting service; kerf 0.2 mm"),
-          Offer("SendCutSend", "https://sendcutsend.com/materials/acrylic/", verified=True,
-                note="laser-cutting service, 0.118 in acrylic")),
-         dims={"thickness": 3.0, "sheet_mm": (300.0, 300.0), "material": "acrylic",
-               "density": 1.19, "yield_mpa": 50.0, "service": "Ponoko", "min_hole": 1.0,
-               "min_part": (6.0, 6.0), "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1,
-               "metal": False, "kerf_mm": 0.2},
-         notes="Nominal 3 mm; real sheets vary by up to about 8 %. "
+                note="laser-cutting service; kerf 0.2 mm (--sheet acrylic_3mm_ponoko)"),
+          Offer("Inventables", "https://www.inventables.com/products/clear-acrylic-sheet-cast",
+                "12 x 24 in 1/8 in cast", pack_qty=2, price_usd=10.99, verified=True,
+                note="one 12 x 24 in sheet = two 12 x 12 in; thickness +/-8 %; for your own "
+                     "laser"),
+          Offer("Amazon", "https://www.amazon.com/dp/B0DTSG32FM", "B0DTSG32FM", pack_qty=13,
+                note="13 coloured 12 x 12 in cast sheets")),
+         dims={**_ACRYLIC_3MM, **SCS_RULES_ACRYLIC,
+               # the cutting, material included (hardware.bom.cut_estimate: SendCutSend's
+               # live quotes of 2026-10-08, a small part 1.33 at 4 off, the deck plate 6.88)
+               "cut_usd_cm2": 0.074, "cut_min_usd": 1.33},
+         notes="Nominal 3 mm; SendCutSend's arrives 2.24-3.46 mm (+.018 / -.030 in). "
                "Measure yours and pass --thickness."),
+    Item("acrylic_3mm_ponoko", "3 mm (1/8 in) cast acrylic sheet, cut by Ponoko", "sheet",
+         (Offer("Ponoko", "https://www.ponoko.com/materials/clear-acrylic", verified=True,
+                note="laser-cutting service; kerf 0.2 mm (the files compensate it); 3 mm "
+                     "arrives 2.49-3.51 mm"),),
+         dims={**_ACRYLIC_3MM, **PONOKO_RULES_ACRYLIC_3MM},
+         notes="The default acrylic until 2026-10-08, kept selectable (--sheet "
+               "acrylic_3mm_ponoko): Ponoko's rules (min part and hole, 1 mm feature) and "
+               "its 0.2 mm kerf, which the DXFs compensate."),
     Item("plywood_3mm", "3 mm (1/8 in) Baltic birch plywood, 12 x 12 in", "sheet",
          (Offer("Woodpeckers Crafts", "https://woodpeckerscrafts.com/products/baltic-birch-"
                 "plywood-1-8-x-12-x-12", pack_qty=1, price_usd=3.10, verified=True,
