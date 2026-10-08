@@ -14,9 +14,11 @@ import numpy as np
 from spiderpig.construction.base import (
     FRAME_INNER,
     FRAME_OUTER,
+    RIDES_HOST,
     Build,
     Context,
     Group,
+    Motion,
     Realized,
     hardware,
 )
@@ -203,6 +205,11 @@ class LinkPlates(Group):
                                        sheet=ctx.sheet("link", name)))
         return out
 
+    def motion(self, got: Realized) -> Motion:
+        """A link, its boss and its sock are drawn from its own joints, and every hole the
+        others ask of it is round at one of them: each rides its link."""
+        return RIDES_HOST
+
 
 def foot_sock(foot, other, r: float, z0: float, z1: float):
     """A printed TPU 95A sock on a foot link's toe (the joinery plan): a 1.5 mm wall round
@@ -284,3 +291,8 @@ class FramePlates(Group):
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
                                        sheet=build.ctx.sheet("frame")))
         return out
+
+    def motion(self, got: Realized) -> Motion:
+        """The plates don't move: O, the pillars and what the others ask of them (the
+        servo's holes and pad, the pillars', the journal's) stand with the frame."""
+        return RIDES_HOST

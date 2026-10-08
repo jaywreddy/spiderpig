@@ -270,7 +270,7 @@ search ends on its node budget at ~54 CPU-s, too near the 60 s default to be sta
 
 Each design's contract angles and its `t=1` half (that fabrication's clashes, solids and
 parts, and the build of it) run in worker processes of their own (`GATE_SPLIT`, default
-`contract:0,1.6|contract:3.2,4.8|build`; empty: one process), each taking the plan from the
+`contract:0,1.6,3.2,4.8|build`; empty: one process), each taking the plan from the
 design's store; unless given, `-j` and the split follow the free cores (`plan_cores`: the
 cores less the load average). OCCT runs two threads per process, as the baseline did
 (`GATE_OCCT_THREADS`; one thread moves a cut-rule number). The STEP file, never read, isn't written.

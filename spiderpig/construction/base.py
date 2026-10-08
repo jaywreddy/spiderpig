@@ -258,11 +258,26 @@ class Realized:
             self.notes.setdefault(k, {}).update(v)
 
 
+@dataclass(frozen=True)
+class Motion:
+    """How a group's parts, realized at one crank angle, sit at another (:meth:`Group.motion`).
+
+    ``point`` ``None`` (:data:`RIDES_HOST`): every part is its body's host's motion applied to
+    it (``rigid_with``, else the body itself: a link, the crank, the frame); a point's name:
+    every part is translated with that point, its orientation fixed in the world (an axle's
+    parts round its axis)."""
+
+    point: str | None = None
+
+
+RIDES_HOST = Motion()
+
+
 class Group:
     """A functional part of a side, built by one construction (the contract above).
 
-    A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`
-    and :meth:`interface` are optional. ``cuts``: the group cuts what the
+    A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`,
+    :meth:`interface` and :meth:`motion` are optional. ``cuts``: the group cuts what the
     others asked for (holes, pads), so it realizes after them.
     """
 
@@ -285,6 +300,16 @@ class Group:
         """The group's parts for the solved plan; ``done`` is what the groups before it
         built (a plate cuts the holes and adds the pads they asked for)."""
         raise NotImplementedError
+
+    def motion(self, got: Realized) -> Motion | None:
+        """How ``got`` (what :meth:`realize` built at one crank angle) sits at any other: the
+        parts realized there are these moved by the :class:`Motion`, and the holes and pads
+        it asks of a plate are that plate's motion applied to these.
+        :func:`construction.contract.check_sides` checks such a group once and carries the
+        verdict to the other angles; ``None`` (the default: a group whose parts change shape
+        with the angle, or that nobody has shown not to) is realized and checked again at
+        every angle. ``tests/test_contract.py`` holds every group that says so to it."""
+        return None
 
 
 def hardware(name: str, part, host: str, *, fab: str, bom_key: str | None = None,

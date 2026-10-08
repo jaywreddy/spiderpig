@@ -1231,7 +1231,13 @@ The planner promises that claims never meet. The **contract**
 (`construction/contract.py`) checks the other half: that each part a group builds lies
 inside that group's own claims. `check_side` realizes every group at a crank angle and
 measures any volume outside its claims (tolerance 0.001 mm³). Frame plates must stay in
-their layer; the drive is checked below the inner plate's top face. Two companion checks
+their layer; the drive is checked below the inner plate's top face. `check_sides` gives
+the same verdicts at several angles, realizing the side once: a group whose parts only
+move with the angle (`Group.motion`: a link, the crank and the horn turn with their
+bodies, an axle's parts translate with its point, the frame stands) and that holds with
+the claims moving with it, to half the tolerance, holds at every angle; any other group
+(a hex journal drawn at the world's angle, a part near its limit) is realized and
+checked again at each. Two companion checks
 use OCCT directly: `clashes` intersects every pair of parts, and `bad_solids` requires
 each made part to be one valid solid.
 

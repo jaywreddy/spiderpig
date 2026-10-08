@@ -24,7 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from spiderpig.construction.base import Build, Context, Group, Realized
+from spiderpig.construction.base import Build, Context, Group, Motion, Realized
 from spiderpig.stack import Axis, Claim, Disc, Keepout, Layout, Placed, Unbuildable
 
 STOP_OVERLAP = 0.8   # how far a spacer must overlap a link's hole to hold it (radial, mm)
@@ -252,3 +252,9 @@ class AxleGroup(Group):
 
     def realize(self, build: Build, done: Realized) -> Realized:
         return self.construction.realize(self, build)
+
+    def motion(self, got: Realized) -> Motion:
+        """Every part round the axis, built at its point in the world's orientation (the
+        pivots read nothing else that turns: :func:`construction.pivots.common.xy_of`): it
+        translates with the axis point, as do the holes it asks of the plates."""
+        return Motion(self.axis.name)
