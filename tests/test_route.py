@@ -273,8 +273,9 @@ def test_no_stock_screw_for_any_crank_joint_is_unbuildable_with_a_reason():
     router = SimpleNamespace(spans={2: 0, 3: 0, 5: 0}, after=[[False]], last=[False],
                              _relax=0, n=1, _cheapest=lambda view: (0, (), 0))
     why = CrankRouter._unbuildable(router, None)     # type: ignore[arg-type]
-    assert "no stock screw" in why and "any" in why
-    assert router.spans == {2: 0, 3: 0, 5: 0} and router._relax == 0    # restored
+    assert "no stock screw fits a crank joint at any span" in why
+    assert router.spans == {2: 0, 3: 0, 5: 0}                            # restored
+    assert router._relax == 0
     router.spans = {2: 0, 3: 1, 4: 1, 5: 1, 7: 1}
     assert "3-5 or 7 layers apart" in CrankRouter._unbuildable(router, None)  # type: ignore[arg-type]
     assert _ranges([]) == "no"

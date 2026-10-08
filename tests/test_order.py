@@ -91,7 +91,9 @@ def test_the_bom_total_leaves_out_a_sheet_a_service_cuts():
     ply = _row("plywood_3mm", "3 mm plywood", "Woodpeckers", 2, price=3.1)
     bom = Bom(purchased=[_row("m3_nut", "M3 nut", "Bolt Depot", 6, price=2.39), acrylic, al,
                          ply], made=[])
-    assert cut_by("acrylic_3mm") and cut_by("al5052_2mm") and not cut_by("plywood_3mm")
+    assert cut_by("acrylic_3mm")
+    assert cut_by("al5052_2mm") == "SendCutSend"
+    assert not cut_by("plywood_3mm")
     assert bom.cost_usd == pytest.approx(2.39 + 3.1)
     assert bom.as_dict()["cost_usd"] == pytest.approx(2.39 + 3.1)
     assert "Estimated purchase total: **$5.49**" in bom.markdown()
