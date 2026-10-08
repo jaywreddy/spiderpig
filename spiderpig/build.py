@@ -37,6 +37,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import math
 import os
@@ -216,11 +217,14 @@ GROUPED = ("laser", "printed")
 
 
 class _ExportJob:
-    """The export worker (:func:`_exports_job`) and the file that tells it where the
-    fabrication is (:meth:`go`, once)."""
+    """The export worker (:func:`_exports_job`), the file that tells it where the
+    fabrication is (:meth:`go`, once), and the folder it writes its cut files into
+    (``staging``, in ``--out``): moved into ``--out`` once the build takes them
+    (:meth:`adopt`), removed when it fails first (:meth:`abandon`), so a failed build
+    leaves no cut file behind."""
 
-    def __init__(self, future, folder: Path):
-        self.future, self.folder, self.sent = future, folder, False
+    def __init__(self, future, folder: Path, staging: Path):
+        self.future, self.folder, self.staging, self.sent = future, folder, staging, False
         future.add_done_callback(lambda _: shutil.rmtree(folder, ignore_errors=True))
 
     def go(self, entry: Path | None) -> None:
@@ -231,6 +235,22 @@ class _ExportJob:
         tmp = self.folder / "go.tmp"
         tmp.write_text("" if entry is None else str(entry))
         os.replace(tmp, self.folder / "go")         # (whole, or not there)
+
+    def adopt(self, out: Path) -> None:
+        """Move what the worker wrote into ``out`` (the same tree under it)."""
+        for f in sorted(p for p in self.staging.rglob("*") if p.is_file()):
+            dest = out / f.relative_to(self.staging)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(f, dest)
+        shutil.rmtree(self.staging, ignore_errors=True)
+
+    def abandon(self) -> None:
+        """The build stops without the worker's files: it is told there is nothing to
+        load (if it wasn't told yet), waited for, and what it wrote removed."""
+        self.go(None)
+        with contextlib.suppress(Exception):
+            self.future.result()
+        shutil.rmtree(self.staging, ignore_errors=True)
 
 
 def _start_exports(store, out: Path, args, config) -> _ExportJob | None:
@@ -246,10 +266,11 @@ def _start_exports(store, out: Path, args, config) -> _ExportJob | None:
     if not (workers.enabled() and fabcache.enabled()):
         return None
     folder = Path(tempfile.mkdtemp(prefix="spiderpig-build-"))
+    staging = Path(tempfile.mkdtemp(prefix=".spiderpig-exports-", dir=out))
     size = tuple(args.sheet_size) if args.sheet_size else None
-    future = workers.submit(_exports_job, str(folder / "go"), os.getpid(), str(out),
+    future = workers.submit(_exports_job, str(folder / "go"), os.getpid(), str(staging),
                             args.name, config.sheet, args.kerf, size, not args.no_dxf)
-    return _ExportJob(future, folder)
+    return _ExportJob(future, folder, staging)
 
 
 def _published(store, tmpl, config, design) -> Path | None:
@@ -405,36 +426,45 @@ def main(argv=None) -> int:
     # fabrication the cache keeps (started now: its imports overlap the fabrication)
     job, entry = _start_exports(store, out, args, config), None
     try:
-        with fabcache.serving(store):   # the store's fabrication when it holds this one
-            mech = fabricate(tmpl, config, 1.0)
-        split = split_parts(mech)
-        if job is not None and not split:
-            entry = _published(store, tmpl, config, design)
-    finally:
+        try:
+            with fabcache.serving(store):   # the store's fabrication when it holds this one
+                mech = fabricate(tmpl, config, 1.0)
+            split = split_parts(mech)
+            if job is not None and not split:
+                entry = _published(store, tmpl, config, design)
+        finally:
+            if job is not None:
+                job.go(entry)               # (None: the worker returns at once, unused)
+        if entry is None and job is not None:
+            job.abandon()
+            job = None
+        if split:           # no cut file or BOM of a part in pieces
+            print("error: parts in pieces: " + ", ".join(f"{name} ({n} solids)"
+                                                         for name, n in split),
+                  file=sys.stderr)
+            return 2
+        if config.robot:
+            m = mech.meta
+            print(f"chassis: {m['centre_plates']} centre plates; rear screws "
+                  f"{m.get('rear_screws_per_servo', 0)} x {m.get('rear_screw')} per servo; "
+                  f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
+
+        step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
+        with warnings.catch_warnings():
+            # build123d's "Unknown Compound type, color not set" on a purchased model's
+            # compound: the colours are ours to set, the file is complete
+            warnings.filterwarnings("ignore", message="Unknown Compound type")
+            mech.export_step(step_path)
+        mech.export_stl(stl_path)
+        print(f"wrote {step_path} and {stl_path}")
+
+        done = _exports_result(job) if job is not None else None
+    except BaseException:
         if job is not None:
-            job.go(entry)               # (None: the worker returns at once, unused)
-    if entry is None:
-        job = None
-    if split:           # no cut file or BOM of a part in pieces
-        print("error: parts in pieces: " + ", ".join(f"{name} ({n} solids)" for name, n in split),
-              file=sys.stderr)
-        return 2
-    if config.robot:
-        m = mech.meta
-        print(f"chassis: {m['centre_plates']} centre plates; rear screws "
-              f"{m.get('rear_screws_per_servo', 0)} x {m.get('rear_screw')} per servo; "
-              f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
-
-    step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
-    with warnings.catch_warnings():
-        # build123d's "Unknown Compound type, color not set" on a purchased model's
-        # compound: the colours are ours to set, the file is complete
-        warnings.filterwarnings("ignore", message="Unknown Compound type")
-        mech.export_step(step_path)
-    mech.export_stl(stl_path)
-    print(f"wrote {step_path} and {stl_path}")
-
-    done = _exports_result(job) if job is not None else None
+            job.abandon()                   # a failed build leaves none of its cut files
+        raise
+    if job is not None:
+        job.adopt(out)                      # (the build reports on them below)
     if done is None:
         groups = {method: group_made(mech.bodies, method) for method in GROUPED}
     else:

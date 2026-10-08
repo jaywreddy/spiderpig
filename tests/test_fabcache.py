@@ -256,6 +256,36 @@ def test_a_loaded_fabrication_equals_a_fresh_one(name, tmp_path, monkeypatch):
 
 
 @pytest.mark.slow
+def test_a_build_that_fails_leaves_none_of_the_workers_cut_files(tmp_path, monkeypatch):
+    """The STEP export fails after the export worker has written its DXFs: they were
+    written into a folder of their own (``_ExportJob.staging``), never moved into
+    ``--out``, and removed with it."""
+    from spiderpig import build
+    from spiderpig.mechanism import Mechanism
+
+    monkeypatch.setenv(fabcache.ENV, "on")
+    monkeypatch.delenv("SPIDERPIG_WORKERS", raising=False)
+    jobs = []
+    real = build._start_exports
+    monkeypatch.setattr(build, "_start_exports",
+                        lambda *a: jobs.append(real(*a)) or jobs[-1])
+
+    def fail(self, path):
+        jobs[0].future.result()             # the worker done: its DXFs written
+        assert any(jobs[0].staging.rglob("*.dxf"))
+        raise RuntimeError("the STEP writer failed")
+
+    monkeypatch.setattr(Mechanism, "export_step", fail)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError, match="STEP writer"):
+        build.main(["--linkage", "hoecken_pantograph", "--store", str(tmp_path / "store"),
+                    "--force", "--out", str(out)])
+    assert jobs[0] is not None
+    assert not list(out.rglob("*.dxf"))
+    assert not list(out.glob(".spiderpig-exports-*"))
+
+
+@pytest.mark.slow
 def test_the_builds_export_worker_writes_what_the_build_would(tmp_path, monkeypatch,
                                                               capsys):
     """``spiderpig build`` groups the parts and writes the DXFs in a worker, from the
