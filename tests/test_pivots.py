@@ -259,13 +259,10 @@ def test_nothing_on_a_pin_or_a_two_plate_pillar_can_slide(side):
     assert any(n.startswith("pillar:") for n in seen)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "engine bug found by W2's re-pointing (in 93dfe31 too; the removed pivots' designs hid "
-    "it): a cantilever standoff pillar leaves the clearance gap over its last link empty "
-    "(AxleGroup.claims puts washers in range(k0, k1) only): Klann single pillar B's b2 "
-    "slides 4.0 mm. Fixing it changes the kept designs' parts: a user decision"))
 def test_nothing_on_a_cantilever_pillar_can_slide(side):
-    """A standoff pillar a link's sweep stops short of one frame plate."""
+    """A standoff pillar a link's sweep stops short of one frame plate: the clearance gap
+    between its last link and the free end's screw head is claimed and filled with a
+    printed gap ring (W8 D2; before, Klann single pillar B's b2 slid 4.0 mm)."""
     assert _assert_nothing_slides(side, lambda g, col: g.pillar and len(col.anchors) == 1)
 
 
