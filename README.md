@@ -55,22 +55,23 @@ and nothing of `viewer/` (sources, `node_modules`) or `tests/`.
 
 ```bash
 mise run view           # FastAPI + Vite with HMR — open the URL the banner prints
-mise run build          # STEP/STL/DXF/BOM → build/
+mise run build          # STEP/STL/DXF/BOM → build/ (skipped when build/ is current; -- --force)
 mise run bake           # <store>/bakes/*.glb (the project store, .spiderpig/)
-mise run test-quick     # pytest's quick tier (-m "not slow", xdist); `mise run test`: all
-mise run audit          # do the parts physically fit? (clashes, solids, plan, DXF)
-mise run lint           # ruff check
+mise run test-planner   # one module's fast tier (seconds); test-quick: all of them
+mise run audit          # do the parts fit and hold? (clashes, solids, plan, DXF, strength)
+mise run lint           # ruff check, then the import layers (lint-imports)
 mise run clean          # rm build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/
 ```
 
-`mise run view` starts FastAPI (bakes `.glb` on first request, watches `*.py` and
+`mise run view` first runs `npm install` in `viewer/` (the `viewer-install` task: it needs
+the network the first time, and again when `viewer/package.json` changes), then starts FastAPI (bakes `.glb` on first request, watches `*.py` and
 re-bakes on change, broadcasts over `/ws`) and Vite (HMR for the TypeScript viewer;
 proxies `/api` and `/ws` to FastAPI) on ports derived from the worktree's path (Vite in
 5500-5999, the API in 8500-8999), so parallel worktrees don't collide; `VITE_PORT` /
 `API_PORT` pin them, and `VITE_ALLOWED_HOSTS` (comma-separated, e.g. `.ts.net` behind
 `tailscale serve`) lets Vite and the API server answer other host names (the server answers
 only loopback names, IP addresses and those, and refuses a WebSocket from another page's
-`Origin`: `spiderpig/server/app.py` `HostGuard`).
+origin: `spiderpig/server/app.py` `HostGuard`).
 Edit a `.ts` file → instant HMR. Edit a `.py` kinematics file → re-bake →
 viewer hot-swaps the GLB without a full page reload.
 
@@ -101,7 +102,9 @@ validated `spiderpig.config.BuildConfig`; `spiderpig explain` and `spiderpig
 audit` take the build options below (`--servo`, `--pin`, `--pillar`, `--sheet`,
 `--thickness`) too, since the static facts and the plan depend on them. `spiderpig build` prints the layer
 plan of one side and writes
-(stem: the linkage, `--name` to change it):
+(stem: the linkage, `--name` to change it; into an `--out` already current for the same
+design and engine it does nothing and says so, `spiderpig/uptodate.py`; `--force` builds;
+fabrications are cached in the store, `spiderpig/fabcache.py`):
 
 - `build/strider.step` / `strider.stl` — the whole robot (both sides, servos,
   frame); the STEP is colour-tagged.
@@ -180,17 +183,16 @@ functional group at a time (see `spiderpig/construction/base.py`):
   in hex pockets of the webs, an M3 button head and wide washer into each end, the riders
   turning on a printed sleeve over the hex, a round M3 standoff as the journal stub; the
   chain that ends in the hub plate is capped by it (the hub plate, horn, servo and inner
-  plate go on as one unit). The Strider double plans 14 layers / 66.5 mm a side, the
-  Strider quad 24. `--crank bolt_round` puts round standoffs, clamped by friction, in
-  place of the hex (TrotBot's heel and toe, where the hex's sleeve doesn't clear b7); on
-  an acrylic crank sheet `bolt` is the older two-plate stack crank on M6 hex bolts;
+  plate go on as one unit). Each default design's layers and height are in
+  [docs/agentlib/DESIGNS.md](docs/agentlib/DESIGNS.md). `--crank bolt_round` puts round
+  standoffs, clamped by friction, in place of the hex (TrotBot's heel and toe, where the
+  hex's sleeve doesn't clear b7); an acrylic crank sheet is refused;
 - **pillars** — the frame pivots (`--pillar standoff`, the default): a 6 mm round standoff
   column from the outer plate to the inner, a button head and washer through each plate
   (no glue), the links turning on the standoff, a printed ring in every other layer. A
   column one stock length fills is a goBILDA 1501 aluminium standoff (M4; in 3 mm
   layers 12, 18, 24, 27, 30, 36, 42, 48, 54 or 60 mm); any other is one MISUMI NETRF6
-  steel standoff made to its length (0.1 mm steps, M3 ends): never spliced (the Strider
-  double's four pillars are NETRF6-62.4);
+  steel standoff made to its length (0.1 mm steps, M3 ends): never spliced;
 - **pins** — the pivots between links: an M3 Chicago screw (a 4 mm barrel through
   the stack, a screw driven into it from above until it bottoms), printed spacer rings,
   one printed head spacer per end taking up the barrel's fixed length, the lowest link
@@ -217,17 +219,21 @@ charger, protection board, switch) sits between the inner plates over the servos
 ## Test
 
 ```bash
-mise run test-quick     # the quick tier: -m "not slow", xdist -n 4 (minutes)
-uv run pytest           # everything, serial (40-50 min; AGENTS.md: run it remotely)
+mise run test-planner   # a module tier: linkage, planner, construction, hardware, strength,
+                        # api, sim, server (seconds each on the fabrication cache)
+mise run test-quick     # every module's fast tier: -m 'not slow and not e2e', xdist -n 4
+mise run test-viewer    # the viewer's typecheck and vitest
+mise run remote-test    # the full suite on the remote runner (AGENTS.md)
+mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # did a product edit move a part?
 ```
 
-Unit tests cover the symbolic core (reference foot values, rigidity,
-phase as a time shift), assemblies, the layer planner (including an
-independent full-cycle re-check), the construction contract (every part
-inside its claims, for every module), clashes, the printed axles and
-crank, the robot frame, the BOM, the glTF bake (animated meshes match the
-fabricated parts) and STEP / STL / DXF emission. `-m e2e` runs the
-Playwright viewer tests. `mise run audit` checks every module end to end.
+[docs/agentlib/TESTING.md](docs/agentlib/TESTING.md) has the tiers, markers, the caches, the
+recorded fixtures and the identity gate. Unit tests cover the symbolic core (reference foot
+values, rigidity, phase as a time shift), the layer planner (an independent brute force and
+a full-cycle re-check), each construction through small seams (`tests/test_seam_*.py`, no
+fabrication), the construction contract (every part inside its claims, for every module),
+clashes, the robot frame, the BOM, the glTF bake and STEP / STL / DXF emission. `-m e2e`
+runs the Playwright viewer tests. `mise run audit` checks a design end to end.
 
 ## Layout
 
@@ -242,23 +248,28 @@ spiderpig/                   # the checkout
 │   ├── linkage/             # the symbolic engine (engine.py), stage checks (checks.py), leg module templates (assembly.py)
 │   ├── linkages/            # one module per linkage family (Klann, Strider, Jansen, ...)
 │   ├── mechanism.py         # Pose, Joint, Body, Mechanism, MechanismTemplate
-│   ├── stack.py             # layer planner over claims (full-cycle clearance)
+│   ├── stack/               # the layer planner over claims: geometry, topology, plan, search, plan_z, verify
 │   ├── config.py            # BuildConfig (what to build and how, validated); the shared CLI / query arguments
 │   ├── fabricate.py         # design a side, fabricate the robot
-│   ├── construction/        # the groups: axle, crank, plates, robot, chassis; contract check
+│   ├── fabcache.py, keys.py, uptodate.py   # the fabrication cache, its keys, the build skip
+│   ├── construction/        # the groups: axle, crank/ (the bolt crank), pivots/ (standoff, chicago),
+│   │                        # route, plates, robot, chassis, deck; the contract check
 │   ├── servos/              # servo data (spec, catalog), drive group, models, CAD cache
-│   ├── hardware/            # catalog, sources (product pages), screw families, masses, BOM, ORDER.md
+│   ├── hardware/            # catalog, sources (product pages), the screw table, masses, BOM, ORDER.md
+│   ├── materials.py, manufacture.py   # sheets per part; the cutting services' rules
+│   ├── strength.py          # joint and link safety factors at the sim's loads
 │   ├── walk.py              # quasi-static walking model (/api/walk, the viewer's drive mode)
 │   ├── sim/                 # MuJoCo model of the fabricated robot and its runner
-│   ├── shapes.py            # build123d part primitives
+│   ├── shapes.py, rounding.py, mesh.py   # part primitives; tie-stable numbers; meshing
 │   ├── layout.py            # 2D section + rectpack + ezdxf: packed sheets and per-part DXFs
-│   ├── tools/               # audit.py (`mise run audit`), tune.py, sim_walk.py, report.py, dev.py, kill_dev.py
+│   ├── tools/               # audit.py (`mise run audit`), tune.py, sim_walk.py, report.py, dev.py, remote.py
 │   ├── server/              # the viewer's FastAPI app + watchfiles live-reload
 │   ├── viewer/dist/         # the built viewer (gitignored; `mise run viewer-build`; ships in the wheel)
-│   ├── spec.py, api.py, …   # the agent-facing API and store (docs/agentlib/API.md)
+│   ├── spec.py, api/, store.py, …   # the agent-facing API and store (docs/agentlib/API.md)
 │   └── mcp/                 # the MCP server over it
-├── viewer/                  # Vite + TypeScript three.js client sources (never ship)
-└── tests/                   # unit tests; tests/e2e/ for Playwright
+├── viewer/                  # Vite + TypeScript three.js client sources (never ship); src/drive/
+├── docs/                    # ARCHITECTURE.md; agentlib/ (API, TESTING, ROADMAP, DESIGNS, DECISIONS); history/
+└── tests/                   # unit tests (module tiers, seams), tests/e2e/ for Playwright, gate/, doc_check.py
 ```
 
 ## Customising the linkage

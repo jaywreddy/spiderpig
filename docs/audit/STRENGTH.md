@@ -2,7 +2,10 @@
 
 (A dated record. Since 2026-10-07 only the `bolt` / `bolt_round` cranks, the `chicago` pin
 and the `standoff` pillar exist: the printed, keyed, rod, PTFE and spliced options below
-were removed, `config.REMOVED_CONSTRUCTIONS`.)
+were removed, `config.REMOVED_CONSTRUCTIONS`. Every layer count, stack height and safety
+factor below is its sweep's own, as of the date in its heading: the current designs' numbers
+are in [DESIGNS.md](../agentlib/DESIGNS.md), generated from the identity gate's snapshot, and a
+current strength verdict is `mise run audit`'s.)
 
 What `spiderpig audit` (step 9, `spiderpig/strength.py`) says about whether the pins,
 the pillars and the crank's joints hold, at each design's own loads.
