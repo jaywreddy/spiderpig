@@ -32,7 +32,7 @@ from spiderpig.construction.crank.base import (
 from spiderpig.construction.crank.hex import HexJoint
 from spiderpig.construction.crank.web import SHIM_KEY, WebJoint, shim_stack
 from spiderpig.construction.envelope import shape_solid
-from spiderpig.hardware.bom import BomLine
+from spiderpig.hardware.bom import BomLine, shim_od
 from spiderpig.hardware.fasteners import SCREWS, parse, screw_solid
 from spiderpig.shapes import Cut, disc, union
 
@@ -396,8 +396,10 @@ class _WebPlates:
                 self.layer_cut(k, xy, c.horn_hole(b.ctx) / 2)
             self.buy(f"crank_horn_screw{i}", screw_solid(xy, sk, bearing, L), sk.key(L))
             if shims:
-                # DIN 988 shims under the head: a stock length too long for the hub plate
-                ring = disc(xy, 2.95, bearing, face) - disc(xy, 1.55, bearing - 1, face + 1)
+                # shims under the head: a stock length too long for the hub plate (at the
+                # widest they are bought as, bom.shim_od: the DIN 125 washers' 7 mm)
+                ring = (disc(xy, shim_od(SHIM_KEY) / 2 - 0.05, bearing, face)
+                        - disc(xy, 1.55, bearing - 1, face + 1))
                 self.buy(f"crank_horn_shims{i}", ring, SHIM_KEY, "#9a9a9a")
                 if len(shims) > 1:
                     self.out.extras.append(BomLine(SHIM_KEY, len(shims) - 1,

@@ -166,11 +166,20 @@ _BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-08: key -> (p
     #               below 100, USD per 100); sold singly, no minimum order
     "m3_bhcs_6": ("7218", 0.06, 3.97), "m3_bhcs_8": ("7219", 0.06, 4.10),
     "m3_nut": ("4773", 0.07, 2.39), "m3_washer_9021": ("7319", 0.05, 3.23),
+    "m3_washer": ("4513", 0.05, 1.45),       # DIN 125, 3.2 x 7 x 0.5 (the clamped shims)
+    # cup-point set screws, 18-8 (Bolt Depot has no flat point), page rendered 2026-10-08
+    "m3_set_screw_6": ("8707", 0.09, 5.96), "m3_set_screw_8": ("8708", 0.09, 6.24),
+    "m3_set_screw_10": ("8709", 0.10, 6.77), "m3_set_screw_12": ("8710", 0.12, 7.97),
+    "m3_set_screw_16": ("8711", 0.13, 8.84),
 }
 """The default robot's M3 button heads, nuts and wide washers: Bolt Depot sells them singly
 (BOM study 2026-10-08, evidence/fasteners/prices.json), so it is their first offer, ahead of
 McMaster's 100-packs (price behind a login). The 3 x 9 mm fender washer (7319, 0.7-0.9 mm)
-is the DIN 9021 size modelled."""
+is the DIN 9021 size modelled; the DIN 125 washer (4513, 3.2 x 7 x 0.45-0.55) is what the
+clamped M3 shims are bought as (:data:`hardware.bom.SHIM_AS`, since 2026-10-08: Accu's
+DIN 433, 6 mm OD, was the one Accu line left); the M3 set screws are cup point (ISO 4029:
+the frame ties' studs thread into a standoff at each end, their point bearing on nothing),
+the user's decision of 2026-10-08, which leaves no Accu cart."""
 
 
 def _bolt_depot(key: str) -> tuple[Offer, ...]:
@@ -201,18 +210,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                                    + (" (partially threaded)" if L >= 25 else "")
                                    + f"; {_MCM_NOTE}; pack size not confirmed"),)
        for L, pn in _MCM_M3_SHCS.items()},
-    "m3_set_screw_12": (Offer("Accu", "https://accu-components.com/us/flat-point-set-screws/"
-                              "4517-SSF-M3-12-A2", "SSF-M3-12-A2", price_usd=0.57, verified=True,
-                              note="A2 stainless ISO 4026 flat point M3 x 12; USD 0.57 each at "
-                                   "4 (page rendered 2026-10-05)"),
-                        Offer(_MCM, "https://www.mcmaster.com/92605A106/", "92605A106",
-                              verified=True, note="18-8 flat-tip M3 x 12 (McMaster's page "
-                                                  "title, rendered 2026-10-05)")),
-    "m3_set_screw_16": (Offer("Accu", "https://accu-components.com/us/flat-point-set-screws/"
-                              "4518-SSF-M3-16-A2", "SSF-M3-16-A2", price_usd=0.66, verified=True,
-                              note="A2 stainless ISO 4026 flat point M3 x 16; USD 0.66 each at "
-                                   "4 (page rendered 2026-10-05). McMaster's 92605A108 (the "
-                                   "mirror's M3 x 16) did not render: not listed"),),
+    **{f"m3_set_screw_{L}": _bolt_depot(f"m3_set_screw_{L}") for L in (6, 8, 10, 12, 16)},
+    "m3_washer": _bolt_depot("m3_washer"),
     "m3_round_standoff_ff_12": (Offer("Amazon", "https://www.amazon.com/dp/B0DBQMYT5T",
                                       "B0DBQMYT5T", pack_qty=6, price_usd=7.49, verified=True,
                                       note="PATIKIL (uxcell's sister brand) 6 mm OD round "
@@ -367,14 +366,20 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               price_usd=15.99, verified=True,
               note="65 x 30 mm, 2.75 mm holes at 58 x 23 (measured on Waveshare's STEP)"),),
     "lipo_2s_450": (
-        Offer("Amazon", "https://www.amazon.com/dp/B0D3F6BRB9", "B0D3F6BRB9", pack_qty=4,
-              price_usd=32.99, note="the same Ovonic 80C long 4-pack (search-result price "
-                                    "2026-10-08), on the Amazon cart"),
+        Offer("Amazon", "https://www.amazon.com/dp/B0GS66YB4M", "B0GS66YB4M", price_usd=9.29,
+              verified=True,
+              note="TATTU 450mAh 2S1P 95C 7.6V HV, XT30, long pack, 1 pc (search-results "
+                   "price 2026-10-08, the BOM study): one for the one robot, on the Amazon "
+                   "cart; 62.5 x 16.2 x 14.7 mm, 29 g (BuddyRC's page)"),
+        Offer("GetFPV", "https://www.getfpv.com/tattu-450mah-7-6v-hv-95c-2s-lipo-battery-long-"
+              "size-xt-30.html", price_usd=12.49, verified=True,
+              note="the same Tattu, in stock 2026-10-08 (search page)"),
         Offer("Ovonic (maker's store)", "https://us.ovonicshop.com/products/4-x-ovonic-7-4v-80c-"
               "450mah-2s-lipo-battery-long-size-with-xt30-plug-for-fpv-freestyle-racing-drones-"
               "tiny-whoop-drones-quadcopter", "O-80C-450-2S1P-L-XT30-4P", pack_qty=4,
-              price_usd=30.74, verified=True, note="61.9 x 16.3 x 13.4 mm, 28 g: the cradle's "
-                                                     "size; four per pack"),),
+              price_usd=30.74, verified=True,
+              note="the Ovonic 80C long, 61.9 x 16.3 x 13.4 mm, four per pack: fits the "
+                   "cradle too (spares)"),),
     "ip2326_charger": (
         Offer("Amazon", "https://www.amazon.com/dp/B0HJNB79HJ", "B0HJNB79HJ", pack_qty=2,
               price_usd=14.99, note="IP2326 2S/3S USB-C boost charge module, 2 pcs (search-"

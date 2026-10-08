@@ -53,7 +53,7 @@ Construction
   points up out of its open top; the board's USB-C faces an inner plate (above). The
   divider (100k / 33k, battery + to an ADC pin) is
   wired in the harness: BOM only.
-* Length: 136 mm is the board (65) and the battery's cradle (65.7) end to end. It sits
+* Length: 136 mm is the board (65) and the battery's cradle (66.3) end to end. It sits
   inside the Strider's inner plates (x +-78.5) but overhangs the Klann quad's (+-61.9)
   by 6 mm at each end, where nothing moves (every leg is outboard of the plates).
 * UNVERIFIED: the charger's and the protection board's sizes and masses (the board's
@@ -139,7 +139,8 @@ def rail_screw_length(t_plate: float) -> float:
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
-BATTERY_X1 = -4.0        # the cradle's inner end (inside), from x_c
+BATTERY_X1 = -3.4        # the cradle's inner end (inside), from x_c: its outer end at
+#                          x_c - 68.1 (as with the 61.9 mm Ovonic at -4.0; the Tattu is 62.5)
 BATTERY_FIT = 0.3        # cradle clearance round the battery (each way)
 CRADLE_WALL, CRADLE_H, CRADLE_GAP = 1.6, 5.0, 10.0
 STRAP_SLOT = (12.0, 3.0)  # along x, across (z)

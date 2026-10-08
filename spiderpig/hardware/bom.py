@@ -28,8 +28,9 @@ bought once.
 **Shims** are ordered per thickness (:func:`split_shims`, the items of
 :mod:`hardware.shims`): a stack's rings from its height, thickest first. Every shim in
 the robot is clamped (under a horn screw's head, at a pillar's end, in a frame tie; the
-unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as DIN 433 washers
-(:data:`SHIM_AS`: two make 1 mm), the thinner steps as DIN 988 shims.
+unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as 0.5 mm washers
+(:data:`SHIM_AS`: two make 1 mm; DIN 125 for M3, DIN 433 for M4), the thinner steps as
+DIN 988 shims.
 
 What the constructions don't say but the parts do (:func:`fitting_lines`): each horn
 screw's shims as the stack under its head (e.g. ``1 mm``, from the shim body's height),
@@ -685,22 +686,33 @@ _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
 _STACK_SHIMS = re.compile(r"\bshims ([\d.]+(?: \+ [\d.]+)*) mm")
 
 
-SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
-#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
-#                         shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
+SHIM_STEP = 0.5         # the thin step stacked under a column's end: one 0.5 mm washer
+#                         (M3 DIN 125 3.2 x 7 x 0.5, M4 DIN 433 4.3 x 8 x 0.5: $0.05-0.06
+#                         where a DIN 988 shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
 
 SHIM_AS: dict[str, tuple[str, int]] = {
-    "shim_din988_3x6_t1": ("m3_washer_433", 2),
-    "shim_din988_3x6_t0p5": ("m3_washer_433", 1),
+    "shim_din988_3x6_t1": ("m3_washer", 2),
+    "shim_din988_3x6_t0p5": ("m3_washer", 1),
     "shim_din988_4x8_t1": ("m4_washer_433", 2),
     "shim_din988_4x8_t0p5": ("m4_washer_433", 1),
 }
-"""A thickness bought as stock washers instead: a DIN 433 M3 washer (3.2 x 6 x 0.5, +-0.05)
-is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
-2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
-family. Clamped shims only (a horn screw's head, a pillar's end, a frame tie): the
-unclamped ones are printed (construction.pivots.common.gap_washers, the Chicago pins' head
-spacers)."""
+"""A thickness bought as stock washers instead: a DIN 125 M3 washer (3.2 x 7 x 0.5, Bolt
+Depot 4513, $0.05 each, 2026-10-08) is 0.5 mm of the ring for $0.05 where a DIN 988 shim
+sold singly is $5-13; two make the 1 mm shim; the M4 DIN 433 one (4.3 x 8 x 0.5) the same
+for the 4 x 8 family. The M3 washer is 1 mm wider than the 3 x 6 shim it stands for (Accu's
+DIN 433, 6 mm, was its own cart until 2026-10-08): the constructions model and claim a
+clamped stack at :func:`shim_od`. Clamped shims only (a horn screw's head, a pillar's end,
+a frame tie): the unclamped ones are printed (construction.pivots.common.gap_washers, the
+Chicago pins' head spacers)."""
+
+
+def shim_od(family: str) -> float:
+    """The widest ring a clamped stack of ``family`` holds: its DIN 988 shims, or the washers
+    some thicknesses are bought as (:data:`SHIM_AS`: the M3 family's DIN 125, 7 mm)."""
+    ods = [float(get(family).dims["od"])]
+    ods += [float(get(w).dims["od"]) for k, (w, _) in SHIM_AS.items()
+            if k.startswith(family + "_t")]
+    return max(ods)
 
 
 def shim_key(family: str, t: float) -> str:
@@ -709,7 +721,7 @@ def shim_key(family: str, t: float) -> str:
 
 
 def shim_as_bought(family: str, t: float) -> str:
-    """One shim of a stack as the BOM orders it: ``two DIN 433 washers`` for a 1 mm M3
+    """One shim of a stack as the BOM orders it: ``two DIN 125 washers`` for a 1 mm M3
     shim (:data:`SHIM_AS`), else ``a 0.2 mm DIN 988 shim``."""
     key = shim_key(family, t)
     if key in SHIM_AS:
@@ -789,7 +801,7 @@ def split_shims(lines: list[BomLine], by_name: dict,
 
 def stack_steps(family: str) -> tuple[float, ...]:
     """The thicknesses the constructions stack a family's shims from: for the M3 and M4
-    families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
+    families the 1.0 mm shim and the thin step (0.5 mm: a stock washer,
     :data:`SHIM_STEP`), else its catalog ``t``."""
     if family in ("shim_din988_3x6", "shim_din988_4x8"):
         return (1.0, SHIM_STEP)

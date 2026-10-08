@@ -225,7 +225,7 @@ class TieDims:
     screw_d: float
 
 
-TIE_SHIM_KEY = "shim_din988_3x6"   # a tie's clamped 1 mm shims (bought as DIN 433 pairs)
+TIE_SHIM_KEY = "shim_din988_3x6"   # a tie's clamped 1 mm shims (bought as DIN 125 pairs)
 TIE_PLACE_R = 3.8                  # the ties keep the places the M4 ties had (their
 #                                    M4 head's radius; the ties are M3 since 2026-10-05)
 
@@ -615,7 +615,7 @@ TIE_TOL = 0.1              # a chain within this of its span after the shims (th
 
 def _chain(D: float) -> tuple[list[float], float] | None:
     """Stock uxcell 6 mm round M3 standoff lengths (joined by M3 set screws) and the shim
-    stack (a multiple of :data:`hardware.bom.SHIM_STEP`, bought as DIN 433
+    stack (a multiple of :data:`hardware.bom.SHIM_STEP`, bought as 0.5 mm
     washers) that fill ``D`` mm within :data:`TIE_TOL`: ``(segments, shims mm)``, the fewest
     segments, then the thinnest stack; the stack up to 2 mm, else 3 mm (the XL330's 23 mm:
     no M3 pair fills it), ``None`` when none does."""
@@ -654,6 +654,7 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
     inner plate's servo-side face to the centre plates, shims at the plate, an M3 button
     head through the inner plate from the leg side, and an M3 set screw through the centre
     plates into both chains, which clamps them (no glue, no tapped plate, no insert)."""
+    from spiderpig.hardware.bom import shim_od as bom_shim_od
     from spiderpig.hardware.crank_catalog import (
         M3_SET_LENGTHS,
         m3_round_standoff,
@@ -664,7 +665,7 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
     bhcs = SCREWS["bhcs", "3"]
     thread_max, engage_min = 6.0, 3.0
     shim_key = TIE_SHIM_KEY
-    shim_od, shim_id = 6.0, 3.1
+    shim_od, shim_id = bom_shim_od(shim_key), 3.1   # the DIN 125 washers' 7 mm
     r_screw = 1.45
 
     bodies: list[Body] = []
