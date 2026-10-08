@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -108,7 +109,8 @@ def link_entry(link: str, *, clearance: float, length: float, thickness: float, 
             "tilt_deg": round(min(free, sup), 3)}
 
 
-def column_wobble(build, group, col, *, clearance, length, play: float, play_basis: str,
+def column_wobble(build, group, col, *, clearance: float | Callable[[str], float],
+                  length: float | Callable[[str], float], play: float, play_basis: str,
                   section: Section, link_radius: float | None = None,
                   bearing_len: float | None = None) -> dict:
     """The wobble note of one axle at its solved plan.
@@ -297,7 +299,7 @@ def beam(zs: np.ndarray, forces: np.ndarray, support: tuple) -> tuple[float, flo
         for i in range(len(z)):
             if i:
                 m = m + v * (z[i] - z[i - 1])
-            m_best = max(m_best, float(np.hypot(*m)))
+            m_best = max(m_best, float(np.hypot(m[0], m[1])))
             v = v + f[i]
             m = m + c
             m_best = max(m_best, float(np.hypot(*m)))
@@ -351,7 +353,7 @@ def unit_patterns(note: dict) -> list[dict[str, tuple[float, float]]]:
                             links[k]: (-0.5, 0.0)})
     else:
         out += [{m: (1.0, 0.0)} for m in links]
-        out.append({m: (1.0, 0.0) for m in links})
+        out.append(dict.fromkeys(links, (1.0, 0.0)))
     return out or [{}]
 
 

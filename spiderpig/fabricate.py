@@ -21,6 +21,7 @@ they move with). ``mech.bom_extras`` lists unmodelled purchases.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, cast
 
 from spiderpig import construction, linkage, servos
 from spiderpig.config import BuildConfig
@@ -42,6 +43,10 @@ from spiderpig.stack import (
     topology_from_template,
     verify_plan,
 )
+
+if TYPE_CHECKING:
+    from spiderpig.construction.route import CrankFacts, CrankRouter
+    from spiderpig.construction.underside import Underside
 
 
 def template_for(config: BuildConfig):
@@ -67,7 +72,7 @@ class SideDesign:
     plan: StackPlan
     clearances: list[Clearance] = field(default_factory=list)
     ground_clearance_mm: float | None = None
-    facts: object = None        # the crank router's static facts (construction.route.CrankFacts)
+    facts: CrankFacts | None = None     # the crank router's static facts
 
     @property
     def drive(self) -> DriveGroup:
@@ -150,7 +155,8 @@ def ground_clearance(tmpl, ctx: Context) -> float | None:
         return None
     pts = ctx.topo.geometry.points
     low = min(float(pts[ctx.topo.point_of[f]][:, 1].min()) for f in feet)
-    return ctx.interfaces["underside"].clearance(low)
+    envelope = cast("Underside", ctx.interfaces["underside"])  # side_problem sets it so
+    return envelope.clearance(low)
 
 
 _DESIGNS: dict[tuple, SideDesign] = {}
@@ -172,15 +178,24 @@ def remember(tmpl, design: SideDesign) -> None:
     stays."""
     key = _key(tmpl, design.config)
     _DESIGNS.setdefault(key, design)
-    _LAYOUTS.setdefault(key[:4] + (replace(design.config, robot=False),), design.plan)
+    _LAYOUTS.setdefault((*key[:4], replace(design.config, robot=False)), design.plan)
+
+
+def router_facts(problem: StackProblem) -> CrankFacts | None:
+    """The static facts of ``problem``'s crank router (``None``: no router)."""
+    if problem.router is None:
+        return None
+    router = cast("CrankRouter", problem.router)  # side_problem's router is the crank's
+    return router.facts
 
 
 def static_stage(tmpl, problem: StackProblem, config: BuildConfig | None = None) -> None:
     """The planner's static stage: a link no crank route can let through stops here (with
     ``config``: and what would clear it, checked; :mod:`recommend`)."""
-    if problem.router is None or not problem.router.facts.failures:
+    facts = router_facts(problem)
+    if facts is None or not facts.failures:
         return
-    failures = problem.router.facts.failures
+    failures = facts.failures
     err = ClearanceError(f"{tmpl.name}: " + "\n  ".join(f.describe() for f in failures))
     if config is not None:
         from spiderpig.recommend import recommend
@@ -223,7 +238,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     static_stage(tmpl, problem, config if advise else None)
     # The robot's side has the same layout as the side on its own; reuse
     # a solved layout when every claim still clears (checked, not assumed).
-    layout_key = key[:4] + (replace(config, robot=False),)
+    layout_key = (*key[:4], replace(config, robot=False))
     plan = _reuse(problem, _LAYOUTS.get(layout_key))
     if plan is None:
         try:
@@ -243,7 +258,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
             _LAYOUTS[layout_key] = plan
     design = SideDesign(config, ctx, groups, plan, list(problem.clearances),
                         ground_clearance(tmpl, ctx),
-                        problem.router.facts if problem.router is not None else None)
+                        router_facts(problem))
     if deadline is None:
         _DESIGNS[key] = design
     return design

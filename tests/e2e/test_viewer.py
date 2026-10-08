@@ -88,7 +88,7 @@ def _wait_ready(page: Page, timeout_ms: int = BAKE_TIMEOUT_MS) -> None:
 
 def test_modes_endpoint(viewer_server: str) -> None:
     """The robot is the default; the side-only ids old URLs use are still served."""
-    with urllib.request.urlopen(f"{viewer_server}/api/modes") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{viewer_server}/api/modes") as r:
         body = json.load(r)
     assert body["default"] == "robot"
     assert body["modes"][0] == "robot"

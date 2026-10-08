@@ -19,12 +19,14 @@ from __future__ import annotations
 import logging
 import math
 from functools import lru_cache
+from typing import cast
 
 from build123d import Box, Compound, Cylinder, Location, Part
 
 from spiderpig.hardware.fasteners import parse
 from spiderpig.servos import cad as cadlib
 from spiderpig.servos.spec import CadRef, HolePattern, ServoSpec
+from spiderpig.shapes import Shape3D
 
 log = logging.getLogger("spiderpig.servos")
 
@@ -96,7 +98,7 @@ def center_boss_on_servo(spec: ServoSpec) -> bool:
 
 
 @lru_cache(maxsize=32)
-def horn_part(spec: ServoSpec) -> Part:
+def horn_part(spec: ServoSpec) -> Shape3D:
     """The stock output horn (servo frame): flange, hub, screw holes, centre screw head."""
     h = spec.horn
     z1 = spec.horn_bottom
@@ -119,13 +121,13 @@ def horn_part(spec: ServoSpec) -> Part:
         holes.append(_cyl(h.center_hole_d / 2, lo - 1, z1 + 0.01))
     if spec.spline_od > 0 and spec.spline_top > 0:
         holes.append(_cyl((spec.spline_od + SPLINE_FIT) / 2, lo - 1, spec.spline_top + 0.1))
-    return _one(horn - _fuse(holes))
+    return cast("Shape3D", _one(horn - _fuse(holes)))  # holes leave the horn one piece
 
 
 # -- parametric servo -------------------------------------------------------------
 
 
-def _recess_cutter(spec: ServoSpec, rec, z0: float, z1: float) -> Part:
+def _recess_cutter(spec: ServoSpec, rec, z0: float, z1: float) -> Shape3D:
     L, W, _ = spec.body
     near = spec.axis_offset - L / 2
     parts = [_cyl(rec.r, z0, z1)]
@@ -135,9 +137,9 @@ def _recess_cutter(spec: ServoSpec, rec, z0: float, z1: float) -> Part:
 
 
 @lru_cache(maxsize=32)
-def parametric_servo(spec: ServoSpec) -> Part:
+def parametric_servo(spec: ServoSpec) -> Shape3D:
     """A servo from its spec alone (servo frame, one solid, no output horn)."""
-    L, W, H = spec.body
+    L, W, _H = spec.body
     zf = spec.mount_face_z
     zr = spec.rear_z
     x0, x1 = spec.axis_offset - L / 2, spec.axis_offset + L / 2
@@ -175,6 +177,7 @@ def parametric_servo(spec: ServoSpec) -> Part:
         base = zf - spec.front_recess.depth if spec.front_recess is not None else zf
         adds.append(_cyl(spec.spline_od / 2, base - 0.01, spec.spline_top))
     if center_boss_on_servo(spec):
+        assert h.center_boss is not None  # center_boss_on_servo: it has one
         d, height = h.center_boss                 # e.g. a centre ring on the output
         adds.append(_cyl(d / 2, spec.seat_height - 0.5, spec.horn_bottom + height))
     idl = spec.idler
@@ -291,7 +294,9 @@ def cad_servo(spec: ServoSpec, state: tuple | None = None):
                 keep = strip_indices(shape, ref)
                 cadlib.write_prepared(path, {"solids": n, "keep": keep})
             return strip_horn(shape, ref, keep)
-        except Exception as e:
+        # OCCT's boolean and query errors aren't one class: a model whose horn can't be
+        # stripped is skipped for the next one (or the parametric servo), never fails a build
+        except Exception as e:  # noqa: BLE001
             log.warning("%s: couldn't strip the horn from %s: %s", spec.key, ref.filename, e)
     return None
 

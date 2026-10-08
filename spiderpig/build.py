@@ -57,7 +57,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filam
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
-from spiderpig.uptodate import GENERATED  # noqa: F401 - (api.export's clear_generated reads it)
+from spiderpig.uptodate import GENERATED  # api.export's clear_generated reads it here
 
 
 def _parse_args(argv) -> argparse.Namespace:
@@ -255,7 +255,8 @@ def main(argv=None) -> int:
     print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
           f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
-    read = uptodate.inputs(opts, config) if key is not None else None   # what it reads
+    # (key is set exactly when opts is: uptodate.check_once)
+    read = uptodate.inputs(opts, config) if opts is not None and key is not None else None
     with fabcache.serving(store):       # the store's fabrication when it holds this one
         mech = fabricate(tmpl, config, 1.0)
     if config.robot:
@@ -324,7 +325,8 @@ def main(argv=None) -> int:
                                                  build_dir=str(out)))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     _write_manifest(out, config, args)
-    if key is not None:     # what makes the same build again a no-op (the store keeps it)
+    if opts is not None and key is not None and read is not None:   # (all set, or none)
+        # what makes the same build again a no-op (the store keeps it)
         uptodate.record(opts, key, read)
     return 0
 

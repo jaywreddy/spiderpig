@@ -86,8 +86,8 @@ def test_the_rail_screw_reaches_through_its_nut_on_any_frame_plate():
 
 @pytest.mark.hardware
 @pytest.mark.slow
-@pytest.mark.parametrize("kw", [dict(linkage="trotbot_heel", module="single"),
-                                dict(linkage="strider", module="double", crank="bolt_round")])
+@pytest.mark.parametrize("kw", [{"linkage": "trotbot_heel", "module": "single"},
+                                {"linkage": "strider", "module": "double", "crank": "bolt_round"}])
 def test_a_round_crankpins_shims_are_its_take_up_and_ordered_exactly(kw):
     from spiderpig.config import BuildConfig
     from spiderpig.hardware.bom import SHIM_AS, bom_from_mechanism, shim_key
@@ -905,7 +905,7 @@ def test_an_accepted_edit_is_graded_and_forgotten_as_itself(tmp_path, monkeypatc
     plate = d.parts["crank_plate2"]
     bb = plate.solid.bounding_box()
     c = np.array([bb.center().X, bb.center().Y])
-    hole = Cylinder(0.25, 50).moved(plate.locate(c + [0.0, 0.0]))
+    hole = Cylinder(0.25, 50).moved(plate.locate(c))
     plate.solid = plate.solid - hole                     # a 0.5 mm hole: under the minimum
     assert api.recheck(d).ok
     assert not d.reports["build"].cut_rules["ok"]       # graded as edited, not as built
@@ -948,7 +948,7 @@ def test_the_gap_fallback_says_what_it_tried():
     assert _thicker_gaps(err, StackSpec(), {}, 10, {}, {3: 1.0}, {}, set())[3] == \
         pytest.approx(2.0)
     with pytest.raises(PlanReject, match="least thickenings of one or two gaps"):
-        _thicker_gaps(err, StackSpec(), {}, 10, {}, {k: 1.0 for k in range(1, 7)}, {}, set())
+        _thicker_gaps(err, StackSpec(), {}, 10, {}, dict.fromkeys(range(1, 7), 1.0), {}, set())
 
 
 @pytest.mark.slow       # a store's STEP round trip and a recheck: 4-8 s, its parts cached

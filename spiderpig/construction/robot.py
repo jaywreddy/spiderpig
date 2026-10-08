@@ -52,8 +52,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from typing import overload
 
-from build123d import Location, Plane
+from build123d import BoundBox, Location, Plane
 
 from spiderpig.construction.base import (
     FRAME_INNER,
@@ -143,6 +144,10 @@ bolt crank, the frame ties): what the pivots' (``construction.pivots.standoff``)
 crank's (``construction.crank``) docstrings and the frame ties' defer to."""
 
 
+@overload
+def prefixed(name: str, side: str) -> str: ...
+@overload
+def prefixed(name: None, side: str) -> None: ...
 def prefixed(name: str | None, side: str) -> str | None:
     return None if name is None else f"{side}.{name}"
 
@@ -236,7 +241,7 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     z_in = abs(design.plan.z(design.plan.top)[1] - z_mid)
-    boxes: dict[int, object] = {}       # each part's box, measured once (twice asked below)
+    boxes: dict[int, BoundBox] = {}       # each part's box, measured once (twice asked below)
 
     def box_of(part):
         if id(part) not in boxes:
@@ -282,12 +287,11 @@ def assemble_robot(side: Mechanism, design) -> Mechanism:
     connections = []
     for s in SIDES:
         mirror = s == "R"
-        for b in side.bodies:
-            bodies.append(Body(
-                name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
-                color=b.color, pose=b.pose, outline=b.outline,
-                rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
-            ))
+        bodies.extend(Body(
+            name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
+            color=b.color, pose=b.pose, outline=b.outline,
+            rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
+        ) for b in side.bodies)
         connections += [((i, prefixed(pb, s), pj), (k, prefixed(cb, s), cj))
                         for (i, pb, pj), (k, cb, cj) in side.connections]
     host = {s: prefixed(design.plan.topo.frame_bodies[0], s) for s in SIDES}

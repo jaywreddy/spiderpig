@@ -176,7 +176,7 @@ def test_one_side_plans(key):         # mechanisms: tests/test_mechanisms.py
     if key in HEX_UNIT:
         assert cfg.crank == "bolt_round"
         hexed = BuildConfig(linkage=key, module="single", robot=False, crank="bolt")
-        with pytest.raises(ClearanceError, match="what would clear it:\n  unit 10.5 -> 12"):
+        with pytest.raises(ClearanceError, match=r"what would clear it:\n  unit 10\.5 -> 12"):
             design_side(template_for(hexed), hexed)
     design = design_side(template_for(cfg), cfg)
     assert design.plan.top >= 2

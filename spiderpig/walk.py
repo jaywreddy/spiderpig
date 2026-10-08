@@ -91,6 +91,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from functools import cache
 from itertools import combinations
+from typing import overload
 
 import numpy as np
 
@@ -563,12 +564,12 @@ class Walker:
         dxy = self._dxy[f, i0] * (1 - frac) + self._dxy[f, i1] * frac
         z = np.broadcast_to(self._z, theta.shape)
         p = np.concatenate([xy, z[..., None]], axis=-1)
-        pd = np.concatenate([dxy, np.zeros(theta.shape + (1,))], axis=-1)
+        pd = np.concatenate([dxy, np.zeros((*theta.shape, 1))], axis=-1)
         return p, pd
 
 
 def walker(config: BuildConfig | None = None, *, feet_z: Sequence[float] | None = None,
-           com: Sequence[float] | None = None, mass_g: float | None = None,
+           com: Sequence[float] | np.ndarray | None = None, mass_g: float | None = None,
            legs: Sequence[Leg] | None = None, n: int = N_THETA) -> Walker:
     """The walking model of the robot ``config`` describes (no parts are built).
 
@@ -646,7 +647,7 @@ def _triangle_distance(q, a, b, c, n) -> np.ndarray:
     return np.where(inside, 0.0, dist)
 
 
-def support(feet: np.ndarray, com: Sequence[float]) -> Support:
+def support(feet: np.ndarray, com: Sequence[float] | np.ndarray) -> Support:
     """The support state for feet positions ``(..., F, 3)`` (body frame) and centre of mass.
 
     See the module docstring; vectorized over the leading axes.
@@ -870,7 +871,7 @@ def straight_walk_metrics(model: Walker, *, rpm_max: float | None = None,
     slip = trace.slip[:n]
     stride = float(trace.x[n])
     if rpm_max is None:
-        rpm_max = servo_info(model.config.servo)["rpm_max"]
+        rpm_max = float(servo_info(model.config.servo)["rpm_max"])     # (a float already)
     P, _ = model.feet_at(ts, ts)
     slip_rad = float(np.sqrt(np.mean(slip ** 2)) / omega)
     return {
@@ -941,6 +942,10 @@ def _round(a, digits: int = 4):
     return np.round(np.asarray(a, dtype=float), digits).tolist()
 
 
+@overload
+def jsonable(obj: Mapping) -> dict: ...
+@overload
+def jsonable(obj: object) -> object: ...
 def jsonable(obj):
     """``obj`` with numpy scalars/arrays as Python ones and non-finite floats as ``None``.
 

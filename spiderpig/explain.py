@@ -61,6 +61,7 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
     from spiderpig.fabricate import (
         design_side,
         ground_clearance,
+        router_facts,
         side_problem,
         static_stage,
         template_for,
@@ -84,7 +85,7 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
             # the static facts need no leg hint (the single module's plan): hint=False
             ctx, _, problem = side_problem(tmpl, config, hint=False)
             clearances = problem.clearances
-            facts = problem.router.facts if problem.router is not None else None
+            facts = router_facts(problem)
     except ValueError as e:     # AssemblyError / OutputError; ConstructionError (e.g. the drive)
         return "\n".join([*lines, "", f"STOP: {e}"])
     lines += ["", f"2. static facts ({len(clearances)} clearances)"]
@@ -96,8 +97,10 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
                          f"running along {', '.join(f.hosts[link]) or 'no crank point'}")
         lines += [f"  detour {d.name}: {d.r:g} mm from O, {d.angle:g}° from the first crankpin, "
                   f"sweeping {d.sweep:g} mm" for d in f.detours]
-        lines.append(f"  body's underside: lowest at {f.envelope.lowest:.1f} mm (O at 0); what "
-                     f"the planner adds to the crank may sweep {f.allow:.1f} mm about O")
+        if f.envelope is not None:      # (crank facts made without an underside have none)
+            lines.append(f"  body's underside: lowest at {f.envelope.lowest:.1f} mm (O at 0); "
+                         f"what the planner adds to the crank may sweep {f.allow:.1f} mm "
+                         "about O")
     gc = side.ground_clearance_mm if side is not None else ground_clearance(tmpl, ctx)
     if gc is not None:
         lines.append(f"  ground clearance: {gc:.1f} mm")
@@ -125,7 +128,7 @@ def explain_config(config, side=None, plan_failure: str | None = None) -> str:
 def main(argv=None) -> int:
     from spiderpig.config import ParamError, add_build_args, add_design_args, config_from_args
 
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     add_design_args(ap)
     add_build_args(ap)
     ap.add_argument("--store", metavar="PATH",

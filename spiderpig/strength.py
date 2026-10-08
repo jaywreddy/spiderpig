@@ -195,7 +195,7 @@ def crank_strength(meta: dict, config: BuildConfig, loads: dict) -> dict | None:
         factor = crank_joint_factor(config)
     limit = loads.get("torque_limit_nm")
     walk_t = loads.get("walk_torque_nm")
-    weakest = min(caps, key=caps.get)
+    weakest = min(caps, key=caps.__getitem__)
     cap = caps[weakest]
     row = {"joint": "crank", "kind": "crank", "factor": round(factor, 3), "capacity_nm": caps,
            "weakest": weakest, "construction": config.crank}
@@ -247,7 +247,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         return []
     lk = lk_mod.get(config.linkage)
     pts = lk.solve(params=dict(config.proportions) or None).joints_at(0.0)
-    feet = {link: point for link, point in lk.feet}
+    feet = dict(lk.feet)
     sheets = link_sheets(config)
     w = 2 * config.params.link_radius
     crank_pins = set(lk.crank[1:])
@@ -372,6 +372,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
             out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
                        f"{limit:g}) for jam SF {JAM_WARN:g}")
         return out or ["a wider link (Params.link_radius) or a stronger sheet"]
+    assert note is not None  # a pin's or pillar's row is made from its note (joint_strength)
     jl = joint_loads(row["joint"], note, loads)
 
     def sfs(n: dict) -> tuple[float | None, float | None]:

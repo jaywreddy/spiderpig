@@ -127,9 +127,9 @@ def test_constructions_refuse_what_they_cannot_build(side):
         chicago.dims(thin, False)                        # no link left around the hole
     with pytest.raises(ConstructionError, match="leaves less than"):
         standoff.dims(thin, True)
-    with pytest.raises(ConstructionError, match="don't fit a 1.5 mm layer"):
+    with pytest.raises(ConstructionError, match=r"don't fit a 1\.5 mm layer"):
         chicago.dims(replace(ctx, pitch=1.5), False)     # a head doesn't fit a layer
-    with pytest.raises(ConstructionError, match="don't fit a 1.5 mm layer"):
+    with pytest.raises(ConstructionError, match=r"don't fit a 1\.5 mm layer"):
         standoff.dims(replace(ctx, pitch=1.5), True)
     with pytest.raises(ConstructionError, match="spacer ring"):
         chicago.dims(replace(ctx, params=Params(spacer_d=5.0)), False)
@@ -267,7 +267,7 @@ def test_nothing_on_a_cantilever_pillar_can_slide(side):
 
 
 def test_spacers_and_retainers_are_what_the_key_says(side):
-    _, design, build, fab, axles = side
+    _, _design, build, fab, axles = side
     for g in axles:
         bodies = {b.name.split("_", 2)[2]: b for b in _group_bodies(fab, g)}
         col = Column.of(build, g)
@@ -294,7 +294,7 @@ def test_spacers_and_retainers_are_what_the_key_says(side):
 
 
 def test_bom_counts_per_construction(side):
-    _, design, build, fab, axles = side
+    _, _design, _build, fab, axles = side
     bom = bom_from_mechanism(fab, group=False)
     rows = {r.key: r for r in bom.purchased}
     for r in bom.purchased:

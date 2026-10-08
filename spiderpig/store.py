@@ -77,10 +77,14 @@ import threading
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING, TypeGuard, overload
 
 import numpy as np
 
 from spiderpig.design import Design, design_id, jsonable, now_iso, spec_hash
+
+if TYPE_CHECKING:
+    from build123d import Shape
 
 log = logging.getLogger("spiderpig.store")
 
@@ -189,7 +193,11 @@ def _flock(path: Path, blocking: bool) -> int | None:
 
 def report_doc(rep) -> dict:
     """A report's JSON form: its own ``to_dict`` when it has one, else the dataclass."""
-    return rep.to_dict() if hasattr(rep, "to_dict") else jsonable(rep)
+    if hasattr(rep, "to_dict"):
+        return rep.to_dict()
+    doc = jsonable(rep)
+    assert isinstance(doc, dict)  # a report is a dataclass, which jsonable makes an object
+    return doc
 
 
 class Store:
@@ -212,8 +220,16 @@ class Store:
         """The project store: ``$SPIDERPIG_STORE``, else ``./.spiderpig``."""
         return cls(os.environ.get(STORE_ENV) or DEFAULT_ROOT)
 
+    @overload
     @classmethod
-    def of(cls, store) -> Store | None:
+    def of(cls, store: None) -> None: ...
+
+    @overload
+    @classmethod
+    def of(cls, store: Store | str | Path) -> Store: ...
+
+    @classmethod
+    def of(cls, store: Store | str | Path | None) -> Store | None:
         """The store an API argument names: :data:`PROJECT` (the default) is the project
         store, ``None`` no store, a path a store there, a :class:`Store` itself."""
         if store is None or isinstance(store, Store):
@@ -240,10 +256,8 @@ class Store:
         """Every design recorded here (a folder with a ``resolved.json``), oldest first."""
         if not self.designs.is_dir():
             return []
-        out = []
-        for p in self.designs.iterdir():
-            if _ID.fullmatch(p.name) and (p / "resolved.json").is_file():
-                out.append(p.name)
+        out = [p.name for p in self.designs.iterdir()
+               if _ID.fullmatch(p.name) and (p / "resolved.json").is_file()]
         return sorted(out, key=lambda i: (self.read_design(i) or {}).get("created_at", ""))
 
     def exports_dir(self, id: str) -> Path:
@@ -459,7 +473,7 @@ class Store:
         from spiderpig.mechanism import Body, Mechanism, Pose
 
         d = self.dir(id) / "build"
-        solids: dict[str, object] = {}
+        solids: dict[str, Shape] = {}
         entries = list(manifest.get("parts", []))
         for e in entries:
             if e.get("file"):
@@ -723,7 +737,7 @@ def _list_key(a: list, b: list) -> str | None:
     return None
 
 
-def _num(v) -> bool:
+def _num(v) -> TypeGuard[int | float]:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 

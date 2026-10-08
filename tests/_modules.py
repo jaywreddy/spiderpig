@@ -74,6 +74,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_build_profile.py": "api",
     "test_doc_check.py": "api",
     "test_scorecard.py": "api",
+    "test_pyright_baseline.py": "api",
     "test_seam_tools.py": "api",
     # the caches (W3b): incremental keys, the fabrication cache, the build's up-to-date check
     "test_keys.py": "api",

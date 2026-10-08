@@ -34,6 +34,27 @@ jobs:
       # the engine's layers (pyproject.toml [tool.importlinter]; reads the sources, imports none)
       - run: uv run --locked --only-dev lint-imports
 
+  # pyright's ratchet (tests/pyright_baseline.py): the error count may only go down. pyright is
+  # the viewer's pinned devDependency; the venv gives it the package's imports
+  pyright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - run: npm ci
+        working-directory: viewer
+      - run: uv run --locked python -m tests.pyright_baseline
+
   lock:
     runs-on: ubuntu-latest
     timeout-minutes: 10

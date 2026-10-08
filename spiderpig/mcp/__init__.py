@@ -42,9 +42,10 @@ import threading
 from dataclasses import dataclass, field, fields
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 import anyio
+import anyio.to_thread
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ResourceNotFoundError
 from mcp.server.mcpserver.resources import FunctionResource
@@ -183,6 +184,12 @@ def _error(failure: Failure) -> CallToolResult:
     doc = {"ok": False, "failures": [failure.to_dict()]}
     return CallToolResult(content=[TextContent(type="text", text=json.dumps(doc, indent=1))],
                           structured_content=doc, is_error=True)
+
+
+def _shaped[T](doc: dict, shape: type[T]) -> T:
+    """``doc`` as its tool's output type ``shape`` (an :mod:`.outputs` TypedDict): typing
+    only, the dict is returned as is."""
+    return cast(T, doc)  # the docs carry outputs.py's fields (the MCP tests check them)
 
 
 def _report(design: Design, rep) -> dict:
@@ -432,14 +439,12 @@ def _fit_defaults() -> str:
 def _materials_table() -> str:
     cards = catalog_cards("all")
     lines = ["| kind | key | what | price (USD) | numbers |", "|---|---|---|---|---|"]
-    for s in cards["servos"]:
-        lines.append(f"| servo | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} | "
-                     f"{s['rpm_max']:g} rpm no load, {s['torque_kgcm'] or '?'} kg.cm, "
-                     f"{s['mass_g']:g} g |")
-    for s in cards["sheets"]:
-        lines.append(f"| sheet | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} per "
-                     f"{s['pack_qty'] or '?'} | {s['thickness_mm']:g} mm, usable "
-                     f"{s['sheet_mm'][0]:g} x {s['sheet_mm'][1]:g} mm |")
+    lines.extend(f"| servo | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} | "
+                 f"{s['rpm_max']:g} rpm no load, {s['torque_kgcm'] or '?'} kg.cm, "
+                 f"{s['mass_g']:g} g |" for s in cards["servos"])
+    lines.extend(f"| sheet | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} per "
+                 f"{s['pack_qty'] or '?'} | {s['thickness_mm']:g} mm, usable "
+                 f"{s['sheet_mm'][0]:g} x {s['sheet_mm'][1]:g} mm |" for s in cards["sheets"])
     for c in cards["constructions"]["axles"]:
         hw = ", ".join(h["key"] for h in c["hardware"].values()) or "printed"
         lines.append(f"| pillar / pin | `{c['key']}` | {c['label']} | - | {hw} |")
@@ -469,14 +474,23 @@ def render_guide(state: State | None = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+class SpiderpigServer(MCPServer):
+    """The MCP server with the :class:`State` it serves (``spiderpig``)."""
+
+    spiderpig: State
+
+
 def make_server(store: Store | str | Path | None = None, workers: int = 2,
-                log_level: str = "WARNING") -> MCPServer:
+                log_level: LogLevel = "WARNING") -> SpiderpigServer:
     """The MCP server over ``store`` (the project store by default: ``$SPIDERPIG_STORE``,
     else ``./.spiderpig``) with ``workers`` processes for the long operations. The
     :class:`State` hangs on the server as ``spiderpig``."""
     st = Store.default() if store is None else Store.of(store)
     state = State(st, Jobs(str(st.root.resolve()), workers))
-    server = MCPServer(SERVER_NAME, title="spiderpig", version=engine_version(),
+    server = SpiderpigServer(SERVER_NAME, title="spiderpig", version=engine_version(),
                        description="a compiler from a Spec to verified walking-linkage geometry",
                        instructions=INSTRUCTIONS, log_level=log_level)
     server.spiderpig = state
@@ -504,7 +518,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
                 return _error(e.failure)
             except SpecErrors as e:
                 return _spec_errors_out(e)
-            except Exception as e:  # noqa: BLE001 - a programming error still crosses as data
+            except Exception as e:  # a programming error still crosses as data
                 log.exception("%s failed", fn.__name__)
                 return _error(Failure.from_exception(e, stage="engine"))
 
@@ -537,7 +551,8 @@ def _register_tools(server: MCPServer, state: State) -> None:
         rotation; rpm, torque, mass, price), sheet stock (thickness, usable size, price
         per pack) and constructions (axles for pillars and pins, cranks: label, hardware,
         knobs). The keys are what ``materials`` and ``constructions`` of a Spec take."""
-        return {"ok": True, "failures": [], **(await _run(catalog_cards, category))}
+        return _shaped({"ok": True, "failures": [], **(await _run(catalog_cards, category))},
+                       o.CatalogOut)
 
     @tool
     async def resolve(spec: SpecArg) -> o.DesignOut:
@@ -545,7 +560,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         its id (what every other tool takes), the resolved spec with every inferred value,
         warnings. A spec that doesn't validate returns ``ok: false`` with ``errors``: each
         path, message, allowed values and the nearest key."""
-        return _design_out(await _run(api.resolve, spec, state.store))
+        return _shaped(_design_out(await _run(api.resolve, spec, state.store)), o.DesignOut)
 
     @tool
     async def check(design: DesignArg) -> o.CheckOut:
@@ -554,7 +569,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         the crank's route points (else ``static``, with checked recommendations), the
         ground clearance. No parts are built."""
         d = await _run(_load, state, design)
-        return _report(d, await _run(api.check, d))
+        return _shaped(_report(d, await _run(api.check, d)), o.CheckOut)
 
     @tool
     async def plan(design: DesignArg) -> o.PlanOut:
@@ -567,7 +582,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         the Klann quad plans in under a second, a big or scaled-down design can take a
         minute, and a design that fails takes the deadline plus the checks."""
         d = await _run(_load, state, design)
-        return _report(d, await _run(api.plan, d))
+        return _shaped(_report(d, await _run(api.plan, d)), o.PlanOut)
 
     @tool
     async def explain(design: DesignArg) -> o.ExplainOut:
@@ -612,7 +627,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
             api.plan(d)          # feet at their planned layers; a plan failure is walk's own
             return api.walk(d)
 
-        return _report(d, await _run(run))
+        return _shaped(_report(d, await _run(run)), o.WalkOut)
 
     @tool
     async def build(design: DesignArg, t: Annotated[float, Field(
@@ -624,7 +639,8 @@ def _register_tools(server: MCPServer, state: State) -> None:
         with each part's group, side, fabrication, material, mass, layers and the path of
         its STEP file in the store; the total mass, the envelope, the counts. A long
         operation: a job when it outlasts ``wait_seconds`` (``wait_job`` / ``get_job``)."""
-        return await _long(state, "build", design, {"t": float(t)}, wait_seconds)
+        return _shaped(await _long(state, "build", design, {"t": float(t)}, wait_seconds),
+                       o.BuildOut)
 
     @tool
     async def verify(design: DesignArg, level: LEVELS = "quick",
@@ -639,8 +655,9 @@ def _register_tools(server: MCPServer, state: State) -> None:
         false on any hard miss or stage failure; ``score`` is the soft targets' mean."""
         if level == "quick":
             d = await _run(_load, state, design)
-            return _report(d, await _run(api.verify, d, "quick"))
-        return await _long(state, "verify", design, {"level": level}, wait_seconds)
+            return _shaped(_report(d, await _run(api.verify, d, "quick")), o.VerifyOut)
+        return _shaped(await _long(state, "verify", design, {"level": level}, wait_seconds),
+                       o.VerifyOut)
 
     @tool(mutates=True)
     async def export(design: DesignArg, formats: Annotated[list[FORMATS] | None, Field(
@@ -658,7 +675,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         the manifest. A long operation (a job when it outlasts ``wait_seconds``). An
         unknown format is refused by the input schema before the tool runs."""
         args = {"formats": list(formats) if formats else None, "out_dir": out_dir}
-        return await _long(state, "export", design, args, wait_seconds)
+        return _shaped(await _long(state, "export", design, args, wait_seconds), o.ExportOut)
 
     @tool
     async def get_job(job: Annotated[str, Field(
@@ -670,7 +687,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         files) flat beside ``job`` (``state: done``, ``seconds``); if it failed, ``ok:
         false`` with the failure. Records live as long as the server; the store keeps the
         report (``get_design``)."""
-        return _job_result(_job(state, job))
+        return _shaped(_job_result(_job(state, job)), o.JobResult)
 
     @tool
     async def wait_job(job: Annotated[str, Field(
@@ -682,7 +699,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         own result flat beside ``job`` once done, else the running record."""
         j = _job(state, job)
         await anyio.to_thread.run_sync(state.jobs.wait, j, float(seconds))
-        return _job_result(j)
+        return _shaped(_job_result(j), o.JobResult)
 
     @tool
     async def compare(a: DesignArg, b: DesignArg) -> o.CompareOut:
@@ -695,7 +712,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
             raise Misuse(Failure("store", "no_such_design", str(e).strip("'\""))) from None
         except ValueError as e:
             raise Misuse(Failure("store", "bad_design_id", str(e))) from None
-        return {"ok": True, "failures": [], **jsonable(doc)}
+        return _shaped({"ok": True, "failures": [], **jsonable(doc)}, o.CompareOut)
 
     @tool
     async def derive(design: DesignArg, patch: PatchArg) -> o.DesignOut:
@@ -703,7 +720,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
         your own change) as a new design that records its parent and the patch; the same
         result as ``resolve``. An empty patch is the same design."""
         d = await _run(_load, state, design)
-        return _design_out(await _run(api.derive, d, patch, state.store))
+        return _shaped(_design_out(await _run(api.derive, d, patch, state.store)), o.DesignOut)
 
     @tool
     async def get_design(design: DesignArg, stage: Literal[

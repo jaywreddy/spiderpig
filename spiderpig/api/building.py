@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 import time
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -17,6 +18,7 @@ from spiderpig.api.store_ops import (
     _drop_stored,
     _finish,
     _forget,
+    _report,
     _stored,
     _template,
     capture_warnings,
@@ -39,6 +41,9 @@ from spiderpig.fabricate import (
 from spiderpig.failure import Failure
 from spiderpig.hardware.mass import material_of, part_props
 
+if TYPE_CHECKING:
+    from spiderpig.mechanism import Mechanism
+
 
 def build(design: Design, t: float = 1.0, force: bool = False) -> BuildReport:
     """Fabricate every part at crank angle ``t`` (:func:`fabricate.fabricate`: the robot,
@@ -51,10 +56,10 @@ def build(design: Design, t: float = 1.0, force: bool = False) -> BuildReport:
 
 
 def _build(design: Design, t: float, force: bool) -> BuildReport:
-    if not force and "build" in design.reports and design.build_t == t and (
-            design.mech is not None or not (design.reports["build"].ok
-                                            or ran_out(design.reports["build"]))):
-        return design.reports["build"]
+    held = _report(design, "build", BuildReport)
+    if not force and held is not None and design.build_t == t and (
+            design.mech is not None or not (held.ok or ran_out(held))):
+        return held
     t0 = time.time()
     if not force:
         rep = _reload_build(design, t, t0)
@@ -73,7 +78,7 @@ def _build(design: Design, t: float, force: bool) -> BuildReport:
     return attach_build(design, mech, t, t0, warnings=warned)
 
 
-def fabricate_at(design: Design, t: float):
+def fabricate_at(design: Design, t: float) -> Mechanism:
     """The design fabricated at crank angle ``t`` from its own side (what
     :func:`fabricate.fabricate` does, without planning again): one side, or the robot
     with its frame ties and chassis. From the store's fabrication cache when it holds it
@@ -106,6 +111,7 @@ def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:
         return _commit(design, "build", rep, cached=True)
     if not plan(design).ok:
         return None
+    assert design.store is not None     # _stored found the build in it
     try:
         mech = design.store.load_mechanism(design.id, doc)
     except (OSError, KeyError, ValueError) as e:
@@ -138,6 +144,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
     if not pr.ok:
         return _finish(design, "build", BuildReport(failures=list(pr.failures), t=t), t0)
     cfg, side = design.config, design.side
+    assert side is not None     # a plan that passed left its side on the handle
     old_t = design.build_t
     design.mech, design.build_t = mech, t
     z_mid = mech.meta.get("mid_plane")
@@ -189,7 +196,7 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
     rep = BuildReport(
         t=t, n_parts=len(parts), counts=counts,
         mass_g=round(sum(p.mass_g for p in parts.values()), 2),
-        envelope_mm=tuple(float(v) for v in (hi - lo)) if parts else None,
+        envelope_mm=_xyz(hi - lo) if parts else None,
         meta=jsonable({k: v for k, v in mech.meta.items() if k != "fastened"}),
         parts=[p.to_dict() for p in parts.values()],
         warnings=list(warnings or []),
@@ -207,7 +214,13 @@ def _envelope(mech) -> tuple[float, float, float] | None:
         bb = b.placed_part().bounding_box()
         lo = np.minimum(lo, [bb.min.X, bb.min.Y, bb.min.Z])
         hi = np.maximum(hi, [bb.max.X, bb.max.Y, bb.max.Z])
-    return tuple(float(v) for v in (hi - lo)) if np.isfinite(lo).all() else None
+    return _xyz(hi - lo) if np.isfinite(lo).all() else None
+
+
+def _xyz(v) -> tuple[float, float, float]:
+    """A 3-vector as a tuple of floats."""
+    x, y, z = (float(c) for c in v)
+    return x, y, z
 
 
 def cut_rules_of(mech, default_sheet: str) -> dict:
@@ -224,7 +237,7 @@ def cut_rules(design: Design) -> dict | None:
     """The cut-rule summary of the design's build (:attr:`BuildReport.cut_rules`), from the
     build held in memory or stored by the running engine; ``None`` when it hasn't been
     built (the design card's ``cut_rules``: it never fabricates)."""
-    rep = design.reports.get("build")
+    rep = _report(design, "build", BuildReport)
     if rep is not None:
         cr = rep.cut_rules if rep.ok else None
     else:
@@ -329,7 +342,7 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
     if not rep.failures and rep.edited:
         for n in rep.edited:
             design.parts[n].built = design.parts[n].solid
-        br = design.reports.get("build")
+        br = _report(design, "build", BuildReport)
         if br is not None:      # the handle's build now describes the edited parts
             br.mass_g = round(sum(p.mass_g for p in design.parts.values()), 2)
             br.parts = [p.to_dict() for p in design.parts.values()]
@@ -352,7 +365,10 @@ def recheck(design: Design, all_parts: bool = False) -> RecheckReport:
 def _recheck_parts(design: Design, rep: RecheckReport, all_parts: bool) -> None:
     """:func:`recheck`'s checks over the mechanism as it now is: no-op edits, solids,
     clashes, each edited part inside its group's claims; the failures on ``rep``."""
-    mech, side = design.mech, design.side
+    mech, side, t = design.mech, design.side, design.build_t
+    assert mech is not None     # recheck refuses a design not built
+    assert side is not None     # built, so planned
+    assert t is not None        # set with the mechanism (attach_build)
     for n in rep.edited:      # an edit that missed its part (a cut placed in the wrong frame)
         part = design.parts[n]
         built = float(part_props(part.built).volume)
@@ -364,7 +380,7 @@ def _recheck_parts(design: Design, rep: RecheckReport, all_parts: bool) -> None:
     rep.bad_solids = bad_solids(mech)
     rep.clashes = clashes(mech)
     z_mid = mech.meta.get("mid_plane")
-    build_ = Build(side.ctx, side.plan, _template(design).freeze_at(design.build_t))
+    build_ = Build(side.ctx, side.plan, _template(design).freeze_at(t))
     for name in (list(design.parts) if all_parts else rep.edited):
         part = design.parts[name]
         group = part.group

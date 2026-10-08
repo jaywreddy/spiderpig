@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import Field, dataclass, field, fields
+from typing import TYPE_CHECKING, Any, ClassVar, Self
 
 from spiderpig.failure import Failure, Recommendation
 
@@ -16,8 +17,11 @@ class Report:
     """A stage report: a dataclass whose JSON form (:func:`spiderpig.design.jsonable`) a
     store writes and :meth:`from_dict` reads back (unknown keys ignored)."""
 
+    if TYPE_CHECKING:       # every subclass is a dataclass
+        __dataclass_fields__: ClassVar[dict[str, Field[Any]]]
+
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: dict) -> Self:
         kw = {}
         for f in fields(cls):
             if f.name not in d:

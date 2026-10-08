@@ -26,6 +26,7 @@ import itertools
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Literal
 
 import numpy as np
 
@@ -54,7 +55,8 @@ PHASE_NOTE = ("the sides are phase-locked: the Klann quad stands only while its 
 
 def _control_fn(controls: Controls | None, vmax: float) -> Callable[[float], np.ndarray]:
     if controls is None:
-        controls = (vmax, vmax)
+        full = np.asarray((vmax, vmax), dtype=float)       # both drives at full speed
+        return lambda t: full
     if callable(controls):
         return lambda t: np.asarray(controls(t), dtype=float)
     items = list(controls)
@@ -209,7 +211,7 @@ def simulate(
     model_xml: str | None = None,
     model_meta: dict | None = None,
     motor: bool = True,
-    lock: PhaseLock | bool | None = None,
+    lock: PhaseLock | Literal[False] | None = None,
     observe: Callable[[object, object], None] | None = None,
 ) -> SimResult:
     """Run the robot for ``seconds`` under ``controls`` (default: both drives full forward).
@@ -261,7 +263,7 @@ def simulate(
         lock = None
     dt = model.opt.timestep
 
-    n_steps = int(round(seconds / dt))
+    n_steps = round(seconds / dt)
     n = (n_steps + record_every - 1) // record_every
     s, nf = len(drives), len(feet)
     out = {
@@ -448,7 +450,7 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
     from spiderpig.construction.crank.capacity import crank_capacity
 
     caps = (crank_capacity({}, r.config) if r.config is not None else None) or {}
-    weakest = min(caps, key=caps.get, default=None)
+    weakest = min(caps, key=caps.__getitem__, default=None)
     slip = r.foot_slip[m][r.foot_contact[m]]
     down = r.foot_contact[m]
     n_down = down.sum(axis=1)
@@ -750,7 +752,7 @@ def kinematic_qpos(config: BuildConfig | None, t: float, params: SimParams | Non
         if mb["kind"] == "crank":
             return float(t) - T_REF
         kin = mb["kinematic"][0].split(".", 1)[1]   # "L.b1_leg0" -> "b1_leg0" (side template)
-        j = [b for b in tmpl.bodies if b.name == kin][0].joints
+        j = next(b for b in tmpl.bodies if b.name == kin).joints
         d = jw[kin][j[1].name] - jw[kin][j[0].name]
         a = np.arctan2(d[:, 1], d[:, 0])
         return float(a[1] - a[0])

@@ -4,13 +4,14 @@
 full suite catch a drift between ``drive/model.ts`` and ``spiderpig/walk.py``, not only
 ``mise run test-viewer``.
 
-It needs Node and the viewer's packages (``mise run viewer-install``); without them it
-skips and says why, unless ``SPIDERPIG_REQUIRE_VIEWER_TESTS=1`` (CI), where that is a
-failure.
+It needs Node and the viewer's packages (``mise run viewer-install``); without them, or with
+``node_modules`` behind ``package-lock.json`` (a pull that moved vitest), it skips and says
+why, unless ``SPIDERPIG_REQUIRE_VIEWER_TESTS=1`` (CI), where that is a failure.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -36,9 +37,33 @@ def _node() -> str | None:
     return (got.stdout.strip() or None) if got.returncode == 0 else None
 
 
+def _stale() -> str | None:
+    """The viewer's direct packages whose installed version isn't the lock's (an old vitest
+    after a pull: its run fails on the new config in ways that don't say why)."""
+    try:
+        lock = json.loads((VIEWER / "package-lock.json").read_text())["packages"]
+    except (OSError, ValueError, KeyError):
+        return None
+    root = lock.get("", {})
+    off = []
+    for name in sorted({**root.get("dependencies", {}), **root.get("devDependencies", {})}):
+        want = lock.get(f"node_modules/{name}", {}).get("version")
+        try:
+            have = json.loads((VIEWER / "node_modules" / name / "package.json").read_text())
+        except (OSError, ValueError):
+            have = {}
+        if want is not None and have.get("version") != want:
+            off.append(f"{name} {have.get('version', 'missing')} (the lock: {want})")
+    return ", ".join(off) or None
+
+
 def _missing() -> str | None:
     if not VITEST.is_file():
         return f"{VITEST.relative_to(VIEWER.parent)} is missing: run `mise run viewer-install`"
+    stale = _stale()
+    if stale is not None:
+        return (f"viewer/node_modules is stale against package-lock.json ({stale}): "
+                "run `mise run viewer-install`")
     if _node() is None:
         return "no `node` on PATH (mise.toml pins Node 22: `mise install`)"
     return None

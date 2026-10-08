@@ -12,6 +12,7 @@ the e2e tests.
 
 from __future__ import annotations
 
+import itertools
 import logging
 import math
 import os
@@ -365,7 +366,7 @@ def test_ws_sim_resets_on_request_while_streaming():
                 resets += 1
         assert resets == 30
         assert max(ts) < 0.5                        # never got far from zero
-        assert sum(b < a for a, b in zip(ts, ts[1:], strict=False)) >= 10   # resets landed
+        assert sum(b < a for a, b in itertools.pairwise(ts)) >= 10   # resets landed
 
 
 def test_ws_sim_reports_a_physics_failure_and_closes(monkeypatch):

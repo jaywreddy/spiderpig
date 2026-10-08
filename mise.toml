@@ -15,8 +15,10 @@ run         = "uv run python -m spiderpig.tools.dev"
 description = "Install npm deps for viewer/"
 dir         = "{{config_root}}/viewer"
 run         = "npm install"
-sources     = ["viewer/package.json", "viewer/package-lock.json"]
-outputs     = ["viewer/node_modules/.package-lock.json"]
+# sources and outputs resolve against `dir` (viewer/), not the config root: with the
+# `viewer/` prefix neither existed, so the task ran every time; npm writes the hidden lockfile
+sources     = ["package.json", "package-lock.json"]
+outputs     = ["node_modules/.package-lock.json"]
 
 [tasks.viewer-dev]
 description = "Vite dev server only"
@@ -169,6 +171,11 @@ run         = "uv run python -m tests.doc_check"
 description = "pyright, basic mode ([tool.pyright]; the viewer's pinned devDependency)"
 depends     = ["viewer-install"]
 run         = "viewer/node_modules/.bin/pyright"
+
+[tasks."pyright-check"]
+description = "pyright's ratchet (CI): its error count against tests/pyright-baseline.json, which may only go down (-- --update lowers it)"
+depends     = ["viewer-install"]
+run         = "uv run python -m tests.pyright_baseline"
 
 [tasks."engine-version"]
 description = "Print the engine version (the stores' and the test cache's key)"

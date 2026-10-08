@@ -148,7 +148,7 @@ def test_the_default_robot_has_no_glue_in_its_structure(default_robot):
     """Frame ties are standoff chains and screws, the deck rails are screwed, the centre
     plates are clamped, the battery cradle is screwed to the deck (2026-10-05): the only
     adhesive left is the Chicago barrels' epoxy."""
-    cfg, mech = default_robot
+    _cfg, mech = default_robot
     glue = [x for x in mech.bom_extras if x.key in ("ca_glue", "acrylic_cement",
                                                      "epoxy_2part")]
     assert {x.key for x in glue} == {"epoxy_2part"}

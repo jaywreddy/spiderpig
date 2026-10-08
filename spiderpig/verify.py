@@ -32,8 +32,10 @@ from __future__ import annotations
 import importlib.util
 import time
 from dataclasses import dataclass, field, replace
+from typing import cast, overload
 
 from spiderpig import api, servos
+from spiderpig.api import building as api_building
 from spiderpig.construction.contract import bad_solids, check_side, clashes
 from spiderpig.design import Design
 from spiderpig.failure import Failure
@@ -125,6 +127,14 @@ class VerifyReport:
 # ---------------------------------------------------------------------------
 
 
+@overload
+def target_row(design: Design, f: TargetField, value: float, source: str,
+               tier: str | None = None, detail: str = "", hard: bool | None = None,
+               estimate: bool = False) -> Row: ...
+@overload
+def target_row(design: Design, f: TargetField, value: float | None, source: str,
+               tier: str | None = None, detail: str = "", hard: bool | None = None,
+               estimate: bool = False) -> Row | None: ...
 def target_row(design: Design, f: TargetField, value: float | None, source: str,
                tier: str | None = None, detail: str = "", hard: bool | None = None,
                estimate: bool = False) -> Row | None:
@@ -318,10 +328,14 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                         False, "; ".join(br.warnings[:4])))
     _push(rows, target_row(design, target_field("size", "mass_g"), br.mass_g, "build",
                            detail=mass_by_group(br)))
+    assert br.envelope_mm is not None  # a build that passed measured its envelope
     for axis, v in zip("xyz", br.envelope_mm, strict=True):
         _push(rows, target_row(design, target_field("size", f"envelope_{axis}_mm"), v, "build",
                                detail=f"at t = {br.t:g}"))
     side, tmpl, mech = design.side, design.template, design.mech
+    assert side is not None  # the build passed: the handle holds its side,
+    assert tmpl is not None  # its template
+    assert mech is not None  # and its fabricated mechanism
     bad = verify_plan(side.plan, tmpl)
     rows.append(Row("plan.verified", "verify_plan", len(bad), "0", not bad, "proven", True,
                     "; ".join(bad[:3]) or "re-checked on 2880 fresh samples"))
@@ -336,7 +350,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                             not problems, "proven", True, "; ".join(problems[:3])))
             _fail(rep, problems, "contract", "part_outside_claim")
         for t in CLASH_TS[level]:
-            m = mech if t == design.build_t else api.building.fabricate_at(design, t)
+            m = mech if t == design.build_t else api_building.fabricate_at(design, t)
             cl, solids = clashes(m), bad_solids(m)
             rows.append(Row(f"clash@t={t:g}", "clashes", len(cl), "0", not cl, "measured",
                             True, "; ".join(f"{c['a']} x {c['b']} {c['mm3']} mm^3"
@@ -347,7 +361,8 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
             _fail(rep, [s["part"] for s in solids], "clash", "bad_solid")
 
     # -- layout, bom -------------------------------------------------------------
-    size = tuple(design.spec.fit.sheet_size_mm) if design.spec.fit.sheet_size_mm else None
+    fit_size = design.spec.fit.sheet_size_mm      # (validated: [width, height])
+    size = (fit_size[0], fit_size[1]) if fit_size else None
     extras = list(mech.bom_extras)
     try:
         lines = sheet_lines(mech, cfg.sheet, size)
@@ -418,6 +433,7 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     from spiderpig import strength
 
     mech = design.mech
+    assert mech is not None  # run after the build stage passed
     try:
         loads = strength.design_loads(design.config, design.store,
                                       sim=True if level == "full" else "cached")
@@ -468,7 +484,10 @@ def _contract_job(root: str, id: str, t: float) -> list[str]:
     with api.capture_warnings():
         if not api.plan(design).ok:
             raise RuntimeError(f"{id}: the stored plan no longer holds")
-        return check_side(design.side, design.template.freeze_at(t))
+        side, tmpl = design.side, design.template
+        assert side is not None  # the plan held: the handle has its side
+        assert tmpl is not None  # and template
+        return check_side(side, tmpl.freeze_at(t))
 
 
 def _mass_estimate(design: Design, wr) -> Row | None:
@@ -647,6 +666,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
             unpriced.append(item.name)
             continue
         packs, cost = offer.buy(qty)
+        assert cost is not None  # the offer has a price (checked above)
         total += cost
         priced.append(f"{item.name}{f' x {qty}' if qty != 1 else ''} ${cost:.2f}"
                       + (f" (a pack of {offer.pack_qty})" if offer.pack_qty > qty else "")
@@ -695,6 +715,7 @@ def _envelope_estimate(design: Design) -> list[Row]:
     from spiderpig.construction.robot import mid_plane
 
     side, cfg = design.side, design.config
+    assert side is not None  # called once the plan passed (pr.ok)
     plan = side.plan
     pts = plan.topo.geometry.points
     xy = np.concatenate([np.asarray(v, dtype=float) for v in pts.values()])
@@ -737,7 +758,9 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
     stride = target_row(design, target_field("motion", "stride_mm"), m["stride"], "sim",
                         "measured", "forward travel per crank revolution in the sim",
                         hard=False)
-    rows = [
+    assert speed is not None  # the sim measures it: a value always makes a row
+    assert stride is not None  # (likewise)
+    return [
         replace(speed, requirement="sim.speed_mm_s"),
         replace(stride, requirement="sim.stride_mm"),
         Row("sim.stays_up", "sim", not m["fell"], None, not m["fell"], "measured", True,
@@ -746,7 +769,6 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
             not m["saturates"], "measured", False,
             f"peak {m['torque_peak']:.3f} N·m of {m['torque_limit']:g} stall", unit="N·m"),
     ]
-    return rows
 
 
 def fall_detail(m: dict, design: Design | None = None) -> str:
@@ -761,7 +783,8 @@ def fall_detail(m: dict, design: Design | None = None) -> str:
     if at is not None:
         out += (f"; fell over {axis + ' ' if axis else ''}at {at:.1f} s into the "
                 f"{SIM_SECONDS:g} s run (the drives run from the start)")
-    wr = design.reports.get("walk") if design is not None else None
+    walk_rep = design.reports.get("walk") if design is not None else None
+    wr = cast("api.WalkReport | None", walk_rep)  # a stage's report is its class (api._commit)
     tip = (wr.metrics or {}).get("tipping_fraction") if wr is not None and wr.ok else None
     if tip is not None:
         out += (f"; the quasi-static model's tipping fraction is {tip:.2f}"
@@ -783,6 +806,8 @@ def _done(design: Design, rep: VerifyReport, t0: float) -> VerifyReport:
     if soft:
         w = sum(r.weight for r in soft)
         # (every soft target weighted 0: none counts, nothing is missed by weight)
-        rep.score = round(sum(r.score * r.weight for r in soft) / w, 4) if w > 0 else 1.0
+        # (soft holds only scored rows: the filter is that, for the checker)
+        scored = sum(r.score * r.weight for r in soft if r.score is not None)
+        rep.score = round(scored / w, 4) if w > 0 else 1.0
     rep.seconds = round(time.time() - t0, 3)
     return api._commit(design, "verify", rep, op=f"verify:{rep.level}")

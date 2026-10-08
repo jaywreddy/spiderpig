@@ -42,16 +42,17 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from spiderpig.hardware.bom import BomLine
 from spiderpig.mechanism import Body
-from spiderpig.shapes import Cut
+from spiderpig.shapes import Cut, Rect
 from spiderpig.stack import Claim, Keepout, Placed, StackPlan, Topology
 
 if TYPE_CHECKING:
+    from spiderpig.config import BuildConfig
     from spiderpig.mechanism import Mechanism
     from spiderpig.servos.spec import ServoSpec
 
@@ -146,8 +147,9 @@ class Context:
     params: Params
     pitch: float
     servo: ServoSpec
-    config: object                              # fabricate.BuildConfig
-    interfaces: dict[str, object] = field(default_factory=dict)
+    config: BuildConfig
+    # each group's own interface type (DriveInterface, CrankInterface, ...): readers annotate it
+    interfaces: dict[str, Any] = field(default_factory=dict)
 
     def sheet(self, role: str, link: str | None = None) -> str | None:
         """The sheet a part of ``role`` is cut from (:func:`materials.sheet_of`: "frame",
@@ -230,18 +232,19 @@ class Realized:
     """A group's contribution to the fabricated side."""
 
     bodies: list[Body] = field(default_factory=list)
-    cuts: dict[str, list[Cut]] = field(default_factory=dict)       # plate -> holes
+    cuts: dict[str, list[Cut | Rect]] = field(default_factory=dict)   # plate -> holes
     # frame plate -> pills to add to its outline
-    pads: dict[str, list[tuple[XY, XY, float]]] = field(default_factory=dict)
+    pads: dict[str, list[tuple[tuple[float, ...], tuple[float, ...], float]]] = field(
+        default_factory=dict)
     extras: list[BomLine] = field(default_factory=list)
     # what a construction wants the mechanism's meta to say (key -> dict merged per key):
     # the crank's ("crank_bolt"), the pivots' tilt ("wobble")
     notes: dict[str, dict] = field(default_factory=dict)
 
-    def cut(self, plate: str, cut: Cut) -> None:
+    def cut(self, plate: str, cut: Cut | Rect) -> None:
         self.cuts.setdefault(plate, []).append(cut)
 
-    def pad(self, plate: str, p: XY, q: XY, r: float) -> None:
+    def pad(self, plate: str, p: XY | np.ndarray, q: XY | np.ndarray, r: float) -> None:
         self.pads.setdefault(plate, []).append((tuple(p), tuple(q), r))
 
     def merge(self, other: Realized) -> None:

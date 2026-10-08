@@ -410,7 +410,7 @@ def test_every_route_builds_inside_its_claims(case):
 def test_a_run_past_its_rider_carries_the_sleeve_through_the_bare_layer(case, rider, bare):
     """No plate in a run's layer: the standoff and its sleeve go on through the layer the
     rider isn't in, the sleeve between the two webs, the rider's layer on it."""
-    tmpl, design, got = _route_crank(case)
+    _tmpl, design, got = _route_crank(case)
     z = design.plan.z
     names = {b.name for b in got.bodies}
     assert f"crank_plate{bare}" not in names
@@ -444,7 +444,7 @@ def test_a_crank_point_turns_with_the_crank():
 
 
 def test_without_the_bearing_the_crank_ends_at_its_lowest_web():
-    tmpl, design, got = _route_crank("no bearing")
+    _tmpl, design, got = _route_crank("no bearing")
     names = {b.name for b in got.bodies}
     assert not any(n.startswith("crank_stub") for n in names)   # no journal stub
     run = ROUTES["no bearing"][2].runs[0]

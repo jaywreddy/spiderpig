@@ -151,6 +151,8 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
     # -- dimensions and rules -----------------------------------------------------------
 
     def dims(self, ctx: Context) -> CrankDims:
+        from spiderpig.materials import sheet
+
         p: Params = ctx.params
         drive: DriveInterface = ctx.interfaces["drive"]
         t = ctx.sheet_t("crank")
@@ -158,8 +160,6 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
         hub = max(drive.horn_radius, drive.screw_pcd / 2 + drive.screw_head_d / 2 + p.min_wall)
         sh = ctx.sheet("crank")
         if sh is not None:
-            from spiderpig.materials import sheet
-
             # the horn screws' holes at the service's edge distance from the hub's rim
             hub = max(hub, drive.screw_pcd / 2 + self.horn_hole(ctx) / 2 + sheet(sh).min_edge)
         if self.hex:

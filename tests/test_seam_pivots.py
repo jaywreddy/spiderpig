@@ -116,8 +116,8 @@ def test_shims_go_under_the_barrels_head_when_the_screws_slot_is_full():
 def test_more_shims_than_both_end_slots_hold_is_refused():
     """40 mm: the 43 mm barrel leaves 2.4 mm, 1.0 under the screw's head and 1.4 under the
     barrel's, whose slot holds 1.1."""
-    with pytest.raises(ConstructionError, match="a 43 mm barrel over a 40.0 mm stack leaves "
-                       "2.4 mm of shims"):
+    with pytest.raises(ConstructionError, match=r"a 43 mm barrel over a 40\.0 mm stack leaves "
+                       r"2\.4 mm of shims"):
         PIN.fit(40.0, 3.0)
 
 
@@ -134,9 +134,9 @@ def test_the_pin_needs_its_head_and_its_shims_in_two_end_layers():
     A Chicago screw is never a pillar."""
     PIN.check(_ctx.context(pitch=2.9), False)
     with pytest.raises(ConstructionError, match="a 2 mm step between barrel lengths needs "
-                       "more shims than two 2.8 mm end layers hold"):
+                       r"more shims than two 2\.8 mm end layers hold"):
         PIN.check(_ctx.context(pitch=2.8), False)
-    with pytest.raises(ConstructionError, match="don't fit a 1.9 mm layer"):
+    with pytest.raises(ConstructionError, match=r"don't fit a 1\.9 mm layer"):
         PIN.check(_ctx.context(pitch=1.9), False)
     with pytest.raises(ConstructionError, match="link pin only"):
         PIN.check(_ctx.context(), True)

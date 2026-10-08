@@ -7,6 +7,7 @@ import heapq
 import itertools
 import math
 from collections.abc import Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,8 @@ class PlanReject(ValueError):
     clearance gap or a thicker plate moved can't be built, or a head needs a gap no stock
     sheet is thick enough for. The search takes it as a dead end."""
 
+    claim: Claim | None = None      # the claim that couldn't be made (:func:`_make_all`)
+
 
 EPS_Z = 1e-6
 SunkKey = tuple
@@ -47,7 +50,7 @@ def bridges(shapes: Iterable[Placed], gaps: Mapping[int, float] | None = None) -
     both sides of it is in the gap too, at the narrower of the two (a crank stack, a
     hub, a post); a group that put shapes of its own at that core in the gap (an axle's
     washers) is left as it said. Only the gaps in ``gaps`` (all, when ``None``)."""
-    cores: dict[tuple, dict[int, float]] = {}
+    cores: dict[tuple, dict[int, tuple[float, float]]] = {}     # layer -> (r, sheet)
     own = set()
     for p in shapes:
         if p.gap:
@@ -138,7 +141,7 @@ def _thicknesses(layers: Mapping[str, int], shapes: Iterable[Placed], spec: Stac
     return {k: v for k, v in t.items() if abs(v - spec.pitch) > EPS_Z}
 
 
-def _gap_options(k: int, h: float, spec: StackSpec, bridged: set[int]) -> list[float]:
+def _gap_options(k: int, h: float, spec: StackSpec, bridged: AbstractSet[int]) -> list[float]:
     """The thicknesses gap ``k`` may have for heads ``h`` tall, thinnest first: a thin
     sheet's where plates go on through it (``bridged``), else any :data:`GAP_STEP` up to
     :data:`GAP_MORE` over the need."""
@@ -152,7 +155,7 @@ def _gap_options(k: int, h: float, spec: StackSpec, bridged: set[int]) -> list[f
 
 
 def _gap_sizes(shapes: Iterable[Placed], spec: StackSpec, top: int,
-               bridged: set[int] = frozenset()) -> dict[int, float]:
+               bridged: AbstractSet[int] = frozenset()) -> dict[int, float]:
     """Each clearance gap the heads in it need: the thinnest it may be over the tallest
     (:func:`_gap_options`; :class:`PlanReject` when none is tall enough)."""
     need: dict[int, float] = {}
@@ -185,35 +188,43 @@ def _make_all(claims: Iterable[Claim], layout: Layout, memo: dict | None = None
     the plans of one problem (whose claims it is only given for: they outlive it, so
     their ids are theirs), as the search's leaves re-make mostly the same claims."""
     out: list[Placed] = []
-    if memo is not None:
-        if len(memo) >= MEMO_MAKES:
-            memo.clear()
-        zs = memo.setdefault("z", {})
-        lay = layout.layers
-        z = (layout.top, layout.pitch, layout.final, tuple(sorted(layout.gaps.items())),
-             tuple(sorted(layout.thick.items())), tuple(sorted(layout.choices.items())))
-        z = zs.setdefault(z, len(zs))           # the z, as a small int
-        every = tuple(sorted(lay.items()))
-        deps = memo.setdefault("deps", {})
-    for c in claims:
-        if memo is None:
+    if memo is None:
+        for c in claims:
             got, why = made(c, layout)
-        else:
-            i = id(c)
-            order = deps.get(i)
-            if order is None:
-                order = deps[i] = tuple(sorted(c.deps))
-            key = (i, z, every if c.final else tuple([lay.get(d) for d in order]))
-            hit = memo.get(key)
-            if hit is None:
-                hit = memo[key] = made(c, layout)
-            got, why = hit
+            if got is None:
+                raise _rejected(c, why)
+            out.extend(got)
+        return out
+    if len(memo) >= MEMO_MAKES:
+        memo.clear()
+    zs = memo.setdefault("z", {})
+    lay = layout.layers
+    z = (layout.top, layout.pitch, layout.final, tuple(sorted(layout.gaps.items())),
+         tuple(sorted(layout.thick.items())), tuple(sorted(layout.choices.items())))
+    z = zs.setdefault(z, len(zs))           # the z, as a small int
+    every = tuple(sorted(lay.items()))
+    deps = memo.setdefault("deps", {})
+    for c in claims:
+        i = id(c)
+        order = deps.get(i)
+        if order is None:
+            order = deps[i] = tuple(sorted(c.deps))
+        key = (i, z, every if c.final else tuple([lay.get(d) for d in order]))
+        hit = memo.get(key)
+        if hit is None:
+            hit = memo[key] = made(c, layout)
+        got, why = hit
         if got is None:
-            e = PlanReject(why)
-            e.claim = c
-            raise e
+            raise _rejected(c, why)
         out.extend(got)
     return out
+
+
+def _rejected(c: Claim, why: str) -> PlanReject:
+    """The :class:`PlanReject` naming the claim that couldn't be made."""
+    e = PlanReject(why)
+    e.claim = c
+    return e
 
 
 def plate_bridged(shapes: Iterable[Placed]) -> set[int]:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 from build123d import Axis, Box, Location
@@ -95,7 +96,8 @@ def default_route(layout: Layout, pins) -> CrankRoute:
 def route_of(layout: Layout, pins) -> CrankRoute:
     """The route the planner chose (``layout.choices["crank"]``), else :func:`default_route`."""
     chosen = layout.choices.get(GROUP)
-    return chosen if chosen is not None else default_route(layout, pins)
+    # the crank's choice is its router's CrankRoute (Route.choice)
+    return cast("CrankRoute", chosen) if chosen is not None else default_route(layout, pins)
 
 
 def chains_of(runs) -> list[list[Run]]:
@@ -249,7 +251,7 @@ class CrankGroup(Group):
                     out += [Placed(k, Disc("O", tr), GROUP, "stub thrust sleeve")
                             for k in range(1, lo)]
                     out += [Placed(k, Disc("O", tr), GROUP, "stub thrust sleeve",
-                                   gap=True) for k in range(0, lo)]
+                                   gap=True) for k in range(lo)]
             if L.final:
                 c.check_route(L, route, ridden, {p.layer for p in out if p.sheet > 0},
                               drive=drive)

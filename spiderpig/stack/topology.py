@@ -321,7 +321,7 @@ def _sample_topology(tmpl, samples: int) -> Topology:
             raise ValueError(f"two axles named {axis.name!r}")
         axes.append(axis)
         points[axis.name] = xy[nodes[0]]
-        point_of.update({n: axis.name for n in nodes})
+        point_of.update(dict.fromkeys(nodes, axis.name))
     links = {
         b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
         for b in tmpl.bodies if is_link(b.name)
@@ -373,7 +373,7 @@ class RouteView:
     each unplaced link (``None`` once every link has one) and the cost a route must beat."""
 
     layout: Layout
-    blocked: Mapping[int, int]
+    blocked: Mapping[float, int]        # by slot (a layer; a gap's ``layer + 0.5``)
     open: Mapping[str, set[int]] | None = None
     bound: int | None = None
     open_bits: Mapping[str, int] | None = None     # ``open`` as bits over the layers
@@ -393,6 +393,16 @@ class Router(Protocol):
 
     group: str
     pieces: tuple[Shape, ...]
+    # the crank's router's (the search reads them with getattr defaults): the pieces it may
+    # put in a clearance gap, its posts' points, and its first washer bit (-1: none)
+    @property
+    def gap_pieces(self) -> tuple[Shape, ...]: ...
+
+    @property
+    def points(self) -> list[str]: ...
+
+    @property
+    def washer_bit(self) -> int: ...
 
     def check(self, view: RouteView) -> RouteConflict | Mapping[int, int]: ...
 

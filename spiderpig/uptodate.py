@@ -343,6 +343,7 @@ def check_once(argv: list[str]) -> Checked:
     key = build_key(opts) if opts is not None else None
     why = None if opts is None or opts.force else check(opts, key)
     if why is not None:
+        assert opts is not None  # check() ran, so there were options to check
         print(f"{opts.out} is up to date ({why}): nothing to do (--force rebuilds)")
     ans = Checked(skip=why is not None, opts=opts, key=key)
     if not ans.skip:

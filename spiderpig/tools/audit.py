@@ -103,6 +103,7 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
         mech = fabricate(tmpl, config, t)
         rep["clash"][f"t={t:g}"] = clashes(mech)
         rep["solids"][f"t={t:g}"] = bad_solids(mech)
+    assert mech is not None  # ts_clash names at least one t (a split of a non-empty argument)
     rep["parts"] = sum(1 for b in mech.bodies if b.part is not None)
     rep["snap"] = _snap_check(mech.meta.get("snap_strain") or {})
     loads = strength.design_loads(config, store, override=pin_loads, sim=sim)
@@ -210,7 +211,7 @@ def cut_lines(m: dict) -> list[str]:
                      "sheet: " + ", ".join(f"{k} {v:g} mm" for k, v in
                                           (m.get("kerf") or {}).items()) + ".")
     if not m["issues"]:
-        return lines + ["", "Every part passes."]
+        return [*lines, "", "Every part passes."]
     lines += ["", "| level | rule | part | sheet | what | why | fix |",
               "|---|---|---|---|---|---|---|"]
     for i in sorted(m["issues"], key=lambda i: i.get("level") != "error"):
@@ -381,9 +382,9 @@ def markdown(report: dict) -> str:
                     f"{row['max_span_mm']:g} mm.")
             lines.append(line)
         if rep.get("strength"):
-            lines += [""] + strength_lines(rep["strength"]) + [""]
+            lines += ["", *strength_lines(rep["strength"]), ""]
         if rep.get("manufacture"):
-            lines += cut_lines(rep["manufacture"]) + [""]
+            lines += [*cut_lines(rep["manufacture"]), ""]
         if rep.get("chicago"):
             lens: dict = {}
             for v in rep["chicago"].values():
@@ -417,7 +418,7 @@ def markdown(report: dict) -> str:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     add_design_args(ap)         # --linkage, --module, --phases, --proportion (as build's)
     ap.add_argument("--modules", default=None,
                     help="comma-separated leg modules (default: --module, else all of the "

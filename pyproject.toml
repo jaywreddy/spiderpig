@@ -73,11 +73,20 @@ extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PT", "NPY"]
+# W6 (docs/agentlib/ROADMAP.md): ruff's own rules, comprehensions, performance, returns, blind
+# excepts and pylint's errors
+extend-select = ["RUF", "C4", "PERF", "PIE", "RET", "BLE", "PLE"]
+# the math and units the strings and docstrings write on purpose: ×, the en dash of a range,
+# the minus sign
+allowed-confusables = ["×", "–", "−"]
 
 [tool.ruff.lint.per-file-ignores]
 # the split packages re-export every name of the module they were (W5); __all__ keeps the
 # old public list
 "spiderpig/api/__init__.py" = ["F401"]
+# the architecture page's generator (a one-off script, rewritten with the docs in W7): two
+# style findings of W6's rules left to that rewrite
+"docs/architecture/build_page.py" = ["RUF005", "RUF059"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -99,16 +108,21 @@ markers = [
 ]
 
 # pyright (viewer/node_modules/.bin/pyright, a pinned viewer devDependency; `mise run
-# pyright`): basic mode, measured by the scorecard (tests/scorecard.py). The compiled
-# extensions without stubs (OCP, mujoco) report no missing-source noise; W6 tightens this.
+# pyright`): basic mode, measured by the scorecard (tests/scorecard.py) and ratcheted in CI
+# (`mise run pyright-check`, tests/pyright_baseline.py: the error count only goes down). The
+# compiled extensions without stubs (OCP, mujoco) get typings/: their names are Any, which
+# silences their noise without turning a rule off anywhere else.
 [tool.pyright]
 include = ["spiderpig"]
 exclude = ["**/node_modules", "**/__pycache__", "spiderpig/viewer/dist", "build", ".spiderpig"]
+stubPath = "typings"
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportMissingModuleSource = false
+# basic mode leaves it off; a name a branch may not have bound is a bug waiting (W6)
+reportPossiblyUnboundVariable = "error"
 
 # coverage.py over the package (the scorecard's quick-tier coverage: pytest-cov, which
 # combines the xdist workers' data)

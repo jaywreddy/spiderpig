@@ -15,8 +15,12 @@ import re
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from build123d import Shape
 
 # -- body names (the template's: :mod:`linkage.assembly`; the planner reads them) ----------
 
@@ -121,13 +125,14 @@ class Body:
                 return j
         raise KeyError(f"Body {self.name!r} has no joint {name!r}")
 
-    def placed_part(self):
+    def placed_part(self) -> Shape | None:
         if self.part is None:
             return None
         # build123d's moved, without the copy it discards
         from spiderpig.shapes import moved
 
-        return moved(self.part, self.pose.to_location())
+        placed = moved(self.part, self.pose.to_location())
+        return cast("Shape", placed)  # a body's part is a build123d shape (``part`` above)
 
 
 # ((parent_index, parent_body, parent_joint), (child_index, child_body, child_joint))
@@ -197,8 +202,7 @@ JointPoseFn = Callable[[np.ndarray], np.ndarray]
 
 def _identity_pose_batch(n: int) -> np.ndarray:
     """Return ``(n, 4, 4)`` identity SE(3) tensor."""
-    out = np.broadcast_to(np.eye(4), (n, 4, 4)).copy()
-    return out
+    return np.broadcast_to(np.eye(4), (n, 4, 4)).copy()
 
 
 def _invert_se3_batch(m: np.ndarray) -> np.ndarray:

@@ -116,8 +116,8 @@ def test_the_ports_and_the_switch_are_reachable(strider):
     for port in ("deck_board", "deck_charger"):
         p = by[port]
         for name, bb in by.items():
-            if name == port or abs(bb.min.Z) > face and abs(bb.max.Z) > face \
-                    and bb.min.Z * bb.max.Z > 0:
+            if name == port or (abs(bb.min.Z) > face and abs(bb.max.Z) > face \
+                    and bb.min.Z * bb.max.Z > 0):
                 continue                           # outboard of the inner plates
             in_front = bb.min.X >= p.max.X - 1e-6
             shares = not (bb.min.Y > p.max.Y or bb.max.Y < p.min.Y

@@ -454,7 +454,7 @@ def test_remote_main_needs_a_command(monkeypatch, tmp_path, capsys):
 
 
 def test_remote_main_lock_refused(monkeypatch, tmp_path, capsys):
-    rc, lock, _, ran = _remote(monkeypatch, tmp_path, ["true"], first_line="")
+    rc, _lock, _, ran = _remote(monkeypatch, tmp_path, ["true"], first_line="")
     assert rc == 255
     assert ran == []
     assert "could not take the remote lock" in capsys.readouterr().err
@@ -665,7 +665,7 @@ def test_parse_speed():
     assert sim_walk.parse_speed("80%", 10.0) == pytest.approx(8.0)
     assert sim_walk.parse_speed("0.5", 10.0) == pytest.approx(5.0)
     assert sim_walk.parse_speed("-1", 10.0) == pytest.approx(-10.0)    # the bound itself
-    with pytest.raises(argparse.ArgumentTypeError, match="'1.5': plain numbers are fractions"):
+    with pytest.raises(argparse.ArgumentTypeError, match=r"'1\.5': plain numbers are fractions"):
         sim_walk.parse_speed("1.5", 10.0)
     with pytest.raises(ValueError, match="could not convert string to float: 'fast'"):
         sim_walk.parse_speed("fast", 10.0)
@@ -774,7 +774,7 @@ def test_sim_main_text_with_sweep_and_xml(monkeypatch, tmp_path, capsys):
                           "--contact-sweep", "--xml", str(xml)]) == 0
     assert xml.read_text() == "<mujoco/>"
     assert json.loads(xml.with_suffix(".json").read_text()) == {"a": 1}
-    (_, controls, seconds, params, kw), *sweep = calls
+    (_, controls, seconds, _params, kw), *sweep = calls
     assert controls[0] == (0.0, 0.0, 0.0)
     assert controls[1][0] == 0.5
     assert controls[1][2] == pytest.approx(20 * sim_walk.RPM)

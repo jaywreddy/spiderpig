@@ -65,7 +65,7 @@ class Column:
         links: dict[int, tuple[str, ...]] = {}
         for m in group.axis.members:
             k = build.layers[m]
-            links[k] = links.get(k, ()) + (m,)
+            links[k] = (*links.get(k, ()), m)
         return cls(roles, links, gaps)
 
     @property

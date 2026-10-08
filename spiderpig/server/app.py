@@ -87,7 +87,7 @@ from spiderpig.config import (
     design_from_query,
 )
 from spiderpig.server.watcher import WatchBroadcaster, is_ignored_dir, is_source
-from spiderpig.store import Store, StoreError
+from spiderpig.store import Store
 
 log = logging.getLogger("server")
 if not logging.root.handlers:       # under uvicorn, which configures only its own loggers
@@ -138,9 +138,7 @@ def _design(design_id: str):
     a malformed id or a corrupt record, 404 for one the store doesn't hold."""
     try:
         return api.load(design_id, store())
-    except ValueError as e:                     # "not a design id: ..."
-        raise HTTPException(status_code=422, detail=str(e)) from None
-    except StoreError as e:
+    except ValueError as e:     # "not a design id: ...", or a corrupt record (StoreError)
         raise HTTPException(status_code=422, detail=str(e)) from None
     except KeyError:
         raise HTTPException(status_code=404, detail=f"no design {design_id!r} in "
@@ -860,7 +858,7 @@ async def ws_sim(websocket: WebSocket) -> None:
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1008)
             return
-        except Exception as e:   # noqa: BLE001 - any failure is the client's to show
+        except Exception as e:   # any failure is the client's to show
             log.exception("sim: no model")
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1011)
@@ -874,7 +872,7 @@ async def ws_sim(websocket: WebSocket) -> None:
             await _stream(websocket, sim, generation)
         except (WebSocketDisconnect, RuntimeError):
             raise
-        except Exception as e:  # noqa: BLE001 - the physics failed: this session ends, told why
+        except Exception as e:  # the physics failed: this session ends, told why
             log.exception("sim: session failed")
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1011)

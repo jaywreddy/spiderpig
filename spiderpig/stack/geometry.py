@@ -71,7 +71,7 @@ class Geometry:
         self._dist: dict[tuple, float] = {}
         self._shared: dict[tuple, float] | None = None
         self._shared_names: frozenset[str] = frozenset()
-        if same:
+        if same and shared is not None:     # (same is empty without a shared one)
             if shared._shared is None:
                 self._shared, self._shared_names = shared._dist, frozenset(same)
             else:

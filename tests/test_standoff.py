@@ -145,7 +145,7 @@ def test_the_section_against_printed():
 
 @pytest.mark.slow
 def test_the_klann_single_builds_clean_with_standoff_pillars(design, side):
-    tmpl, d = design("single", pillar="standoff")
+    _tmpl, d = design("single", pillar="standoff")
     mech = side("single", pillar="standoff")
     assert check_side(d, mech) == []
     assert clashes(mech) == []

@@ -162,8 +162,9 @@ def output_sensitivity(lk: linkage.Linkage) -> dict:
     stroke, the straightness band, the path's extent, and the rotation, swing or dwell it
     measures), so a designer knows a stroke that scales with ``unit`` from one that
     depends on a proportion. ``null`` where the loops no longer close."""
-    base = _output_numbers(lk, {})
-    keys = [k for k in OUTPUT_SENSITIVITY_KEYS if base.get(k) is not None]
+    at_defaults = _output_numbers(lk, {})
+    base = {k: v for k in OUTPUT_SENSITIVITY_KEYS if (v := at_defaults.get(k)) is not None}
+    keys = list(base)
     out = {}
     for name, default in lk.params.items():
         angle = name in lk.angles
@@ -175,11 +176,12 @@ def output_sensitivity(lk: linkage.Linkage) -> dict:
         except (ValueError, linkage.AssemblyError):
             out[name] = None
             continue
-        if not all(got.get(k) is not None and math.isfinite(got[k]) for k in keys):
+        now = {k: v for k in keys if (v := got.get(k)) is not None and math.isfinite(v)}
+        if len(now) != len(keys):
             out[name] = None
             continue
         out[name] = {"step": f"+{SENSITIVITY_DEG:g}°" if angle else f"+{SENSITIVITY_STEP:.0%}",
-                     **{k: (round(100.0 * (got[k] - base[k]) / base[k], 1) if base[k] else None)
+                     **{k: (round(100.0 * (now[k] - base[k]) / base[k], 1) if base[k] else None)
                         for k in keys}}
     return out
 

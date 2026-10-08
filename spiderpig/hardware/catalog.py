@@ -45,13 +45,14 @@ class Offer:
         where a price break makes that cheaper (five of a part at 10.86 cost less than
         four at 14.97)."""
         need = max(1, math.ceil(qty / max(self.pack_qty, 1) - 1e-9))
-        if self.price_usd is None:
+        price = self.price_usd
+        if price is None:
             return need, None
         if not self.tiers:
-            return need, need * self.price_usd
+            return need, need * price
 
         def cost(n: int) -> float:
-            return n * max((t for t in self.tiers if t[0] <= n), default=(1, self.price_usd))[1]
+            return n * max((t for t in self.tiers if t[0] <= n), default=(1, price))[1]
 
         n = min([need] + [m for m, _ in self.tiers if m > need], key=lambda n: (cost(n), n))
         return n, round(cost(n), 2)

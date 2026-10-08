@@ -145,7 +145,9 @@ def _child(job, out: str) -> None:
     stats = (time.perf_counter() - t0, r.ru_utime + r.ru_stime, t_import)
     try:
         data = pickle.dumps((*result, stats))
-    except Exception as e:          # an unpicklable result or exception
+    # an unpicklable result or exception: pickling raises whatever a __reduce__ does, and
+    # the caller must get an answer either way
+    except Exception as e:  # noqa: BLE001
         data = pickle.dumps((False, RuntimeError(f"{module}.{name}: {result[1]!r} ({e})"),
                              stats))
     Path(out).write_bytes(data)

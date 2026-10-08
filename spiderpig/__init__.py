@@ -44,7 +44,7 @@ _EXPORTS: dict[str, str] = {
     **dict.fromkeys(("LEVELS", "Row", "VerifyReport"), "spiderpig.verify"),
 }
 
-__all__ = sorted(_EXPORTS)
+__all__ = sorted(_EXPORTS)  # noqa: PLE0605 - the lazy exports (__getattr__ resolves them)
 
 
 def __getattr__(name: str):

@@ -30,6 +30,23 @@ def hex_bearing_nm(af: float, engaged: float, p: float = 50.0, relief: float = 0
 class CapacityMixin:
     """The joints' ratings of :class:`BoltCrank`."""
 
+    if TYPE_CHECKING:       # what it reads of :class:`BoltCrank` (its fields and methods)
+        hex: bool
+        hex_af: float
+        hex_corner_loss: float
+        hex_yield: float
+        head_mu: float
+        lock_key: str | None
+        pin_hole: float
+        pin_min_engage: float
+        pin_mu: float
+        pin_od: float
+        pin_preload_n: float
+        web_t: float
+        web_yield: float
+
+        def pin_screw(self) -> tuple[float, float]: ...
+
     def capacity(self, joint: WebJoint | HexJoint | None = None) -> dict[str, float]:
         """What one crankpin of single aluminium webs holds (N·m), per web (the weaker
         counts; both are alike). The hex pin: :meth:`hex_capacity`. The round one: the

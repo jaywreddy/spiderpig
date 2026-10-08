@@ -102,7 +102,8 @@ def _ref(tmp_path, data: bytes, **kw) -> CadRef:
     src = tmp_path / "src" / "part.step"
     src.parent.mkdir(parents=True, exist_ok=True)
     src.write_bytes(data)
-    base = dict(url=src.as_uri(), sha256=hashlib.sha256(data).hexdigest(), filename="part.step")
+    base = {"url": src.as_uri(), "sha256": hashlib.sha256(data).hexdigest(),
+            "filename": "part.step"}
     base.update(kw)
     return CadRef(**base)
 

@@ -133,10 +133,9 @@ def rider_bosses(ctx: Context) -> dict[str, tuple[str, float]]:
     from spiderpig.materials import sheet
 
     crank = construction.CRANKS.get(getattr(ctx.config, "crank", ""), None)
-    if hasattr(crank, "resolve"):     # the crank this sheet makes it (the hex pin's sleeve:
+    if crank is not None:             # the crank this sheet makes it (the hex pin's sleeve:
         crank = crank.resolve(ctx)    # unresolved, a BoltCrank reads the round 6 mm pin)
-    rider = getattr(crank, "rider_d", None)
-    d = rider(ctx.params) if callable(rider) else ctx.params.crankpin_d
+    d = crank.rider_d(ctx.params) if crank is not None else ctx.params.crankpin_d
     hole = ctx.params.hole(d)
     out = {}
     for link, at in ctx.topo.riders.items():

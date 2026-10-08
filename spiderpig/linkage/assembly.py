@@ -4,6 +4,7 @@ one crankshaft, one frame) and the feet of a template or a fabricated robot.
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping, Sequence
 
 from spiderpig.linkage.engine import DEFAULT, LegList, LegSolution, Linkage, Module, get
@@ -46,7 +47,7 @@ def leg_connections(lk: Linkage) -> list[tuple[str, str, str]]:
     out: list[tuple[str, str, str]] = []
     for j in dict.fromkeys(j for _, js in order for j in js):
         on = [b for b, js in order if j in js]
-        out += [(a, b, j) for a, b in zip(on, on[1:], strict=False)]
+        out += [(a, b, j) for a, b in itertools.pairwise(on)]
     out.append(("conn", "coupler", "O"))
     return out
 

@@ -128,7 +128,8 @@ def fetch(ref: CadRef, *, allow_download: bool | None = None,
             return None
         _write_atomic(path, data)
         return path
-    except Exception as e:  # never fail the build over a model
+    # a download, zip or disk error: never fail the build over a model
+    except Exception as e:  # noqa: BLE001
         log.warning("servo model %s unavailable: %s", ref.filename, e)
         return None
 
@@ -204,7 +205,9 @@ def load(ref: CadRef, *, allow_download: bool | None = None):
         return None
     try:
         return _load_cached(str(path), ref.format, ref)
-    except Exception as e:
+    # OCCT's import errors aren't one class (Standard_Failure and kin through pybind11): a
+    # model that doesn't load is left out, never fails the build
+    except Exception as e:  # noqa: BLE001
         log.warning("servo model %s didn't load: %s", path, e)
         return None
 

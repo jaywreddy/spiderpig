@@ -162,7 +162,7 @@ class PartProps:
 
 
 class _Measured:
-    __slots__ = ("ref", "shape", "vol", "surf", "volume")
+    __slots__ = ("ref", "shape", "surf", "vol", "volume")
 
     def __init__(self, ref, shape) -> None:
         self.ref, self.shape = ref, shape

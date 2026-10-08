@@ -28,9 +28,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING
 
 from spiderpig import linkage
 from spiderpig.stack import Clearance, Deadline, Recommendation, StackSpec
+
+if TYPE_CHECKING:
+    from spiderpig.construction.base import Params
 
 
 @dataclass(frozen=True)
@@ -47,22 +51,22 @@ class Gap:
         return self.margin + sum(c * getattr(params, f) for f, c in self.terms)
 
 
-def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) -> list[Gap]:
+def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (),
+            params: Params | None = None) -> list[Gap]:
     """The gaps behind the static stage's failures (:class:`construction.route.NoCrankPoint`)
     and the static clearances behind a plan's failure (an axle's neck)."""
-    out = []
-    for f in failures:
-        # the post is the crank's own (its standoff or sleeve, BoltCrank.rider_d): no Params
-        # field shrinks it, so it is part of the margin
-        out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-                       (("link_radius", 1.0),), f.margin + f.post))
-    for c in clearances:
-        if c.keepout.span and c.dist > 0:
-            # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
-            # barrel's ring round its bore): a thinner link narrows the gap's need, no Params
-            # field narrows the ring
-            out.append(Gap(f"{c.link} past {c.keepout.owner}", c.dist,
-                           (("link_radius", 1.0),), c.need - params.link_radius))
+    # the post is the crank's own (its standoff or sleeve, BoltCrank.rider_d): no Params
+    # field shrinks it, so it is part of the margin
+    out = [Gap(f"{f.link} past crankpin {f.pin}", f.dist, (("link_radius", 1.0),),
+               f.margin + f.post) for f in failures]
+    # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
+    # barrel's ring round its bore): a thinner link narrows the gap's need, no Params
+    # field narrows the ring
+    if clearances:
+        assert params is not None  # recommend(), the one caller, passes the config's
+        out.extend(Gap(f"{c.link} past {c.keepout.owner}", c.dist, (("link_radius", 1.0),),
+                       c.need - params.link_radius)
+                   for c in clearances if c.keepout.span and c.dist > 0)
     return out
 
 
@@ -169,7 +173,7 @@ def thinner(config, gaps: list[Gap], plan: bool = False,
 
     def options(f: str) -> list[float]:
         now = getattr(p, f)
-        return [round(now - 0.5 * i, 3) for i in range(0, 13) if now - 0.5 * i >= 2.0]
+        return [round(now - 0.5 * i, 3) for i in range(13) if now - 0.5 * i >= 2.0]
 
     cands = []
     for values in _product([options(f) for f in fields]):
@@ -335,7 +339,7 @@ def construction_fix(config, exc, seconds: float | None = None
     (``exc.changes``: a config field such as ``thickness_mm``, or a ``Params`` field),
     checked by re-running the static stage and the plan with it (the design's own module,
     within one planner deadline); and notes on what wasn't checked or didn't build."""
-    changes = tuple(getattr(exc, "changes", ()) or ())
+    changes: tuple[tuple[str, object, object], ...] = tuple(getattr(exc, "changes", ()) or ())
     if not changes:
         return [], []
     deadline = Deadline(StackSpec().max_seconds if seconds is None else seconds)

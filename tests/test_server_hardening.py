@@ -9,6 +9,7 @@ import asyncio
 import socket
 import threading
 import time
+from typing import ClassVar
 
 import pytest
 from fastapi.testclient import TestClient
@@ -253,7 +254,7 @@ def test_a_client_gone_by_the_time_the_lock_is_free_gets_no_bake(stored, monkeyp
 
 def test_the_watchers_rebake_changes_the_sessions_state_on_the_loop(monkeypatch):
     class Builds(dict):
-        cleared_on: list[int] = []
+        cleared_on: ClassVar[list[int]] = []
 
         def clear(self) -> None:
             self.cleared_on.append(threading.get_ident())
@@ -329,7 +330,7 @@ def test_a_queued_bake_whose_client_left_is_skipped(tmp_path, monkeypatch):
         # a client that stays gets its bake
         import urllib.request
 
-        with urllib.request.urlopen(  # noqa: S310
+        with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/api/glb/side?linkage=hoecken") as r:
             assert r.read() == b"glb"
         assert len(baked) == 1

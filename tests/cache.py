@@ -77,7 +77,7 @@ from pathlib import Path
 from typing import Any
 
 from spiderpig import fabcache
-from spiderpig.fabcache import dump_mechanism, load_mechanism  # noqa: F401 - (the format)
+from spiderpig.fabcache import dump_mechanism, load_mechanism  # (the format)
 
 log = logging.getLogger("spiderpig.tests.cache")
 

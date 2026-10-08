@@ -33,7 +33,7 @@ SIM_JS = """() => {
 def _linkages(server: str) -> dict:
     """``/api/linkages``: the default linkage and each one's default module (what a URL
     that names neither loads), from the server rather than written in here."""
-    with urllib.request.urlopen(f"{server}/api/linkages") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{server}/api/linkages") as r:
         doc = json.load(r)
     return {"default": doc["default"],
             "modules": {lk["key"]: lk["default_module"] for lk in doc["linkages"]}}
@@ -259,7 +259,7 @@ LOADED_JS = "window.__viewer.walker.parent.userData.linkage"
 
 
 def _catalogue(server: str) -> dict:
-    with urllib.request.urlopen(f"{server}/api/linkages") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{server}/api/linkages") as r:
         return {lk["key"]: lk for lk in json.load(r)["linkages"]}
 
 
