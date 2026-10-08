@@ -110,7 +110,9 @@ jobs:
 
   # the identity gate (tests/gate/identity_gate.py) as a determinism check: no baseline
   # here, so two snapshots of this tree, each from a fresh store, must be identical
-  # (compare exits 0; 1 is "order differs", 2 "DIFFERENT")
+  # (compare exits 0; 1 is "order differs", 2 "DIFFERENT"); the second checks the contract
+  # exactly at every angle (GATE_EXACT_CONTRACT: check_side, not the audit's check_sides),
+  # so the fast and the exact contract are compared on the gate's designs every night
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -123,7 +125,9 @@ jobs:
       - run: uv sync --locked
       - name: snapshot
         run: uv run --locked python tests/gate/identity_gate.py snapshot "$RUNNER_TEMP/gate-a" -j 2
-      - name: snapshot again and compare
+      - name: snapshot again (the contract exactly) and compare
+        env:
+          GATE_EXACT_CONTRACT: "1"
         run: uv run --locked python tests/gate/identity_gate.py compare "$RUNNER_TEMP/gate-a" -j 2 --out "$RUNNER_TEMP/gate-b"
       - if: failure()
         uses: actions/upload-artifact@v4

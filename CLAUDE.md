@@ -88,7 +88,8 @@ robot; a mechanism's `single`, one side).
 - `SPIDERPIG_VIEWER_DIST`: the built viewer the server mounts.
 - `SPIDERPIG_DEV_ORIGIN_PORT`: set by `mise run view` for the API (the Vite port whose
   loopback pages may open its WebSockets).
-- `SPIDERPIG_DIGEST_CACHE`: where `engine_version()` keeps its digest (`off` recomputes).
+- `SPIDERPIG_DIGEST_CACHE`: where `engine_version()` and `spiderpig/keys.py` keep their
+  digests and each source's index (`off` recomputes).
 - Tests: `SPIDERPIG_TEST_CACHE` (`~/.cache/spiderpig/test-cache/`; `off` builds afresh),
   `SPIDERPIG_TEST_CACHE_DAYS`, `SPIDERPIG_TIER_WORKERS` (a tier's `-n`),
   `SPIDERPIG_TEST_OCCT_THREADS`, `SPIDERPIG_SLOW_WARN_S`, `SPIDERPIG_REGEN`,

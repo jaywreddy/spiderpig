@@ -8,7 +8,6 @@ import asyncio
 import json
 
 import pytest
-from mcp import Client
 
 from spiderpig import api, construction
 from spiderpig.config import (
@@ -21,7 +20,6 @@ from spiderpig.config import (
 )
 from spiderpig.design import design_id
 from spiderpig.failure import Failure
-from spiderpig.mcp import make_server
 from spiderpig.spec import SpecErrors
 from spiderpig.store import Store
 
@@ -164,6 +162,10 @@ def test_a_stored_keyed_design_loads_as_a_failure_naming_bolt(tmp_path, in_spec)
 def test_the_mcp_answers_a_stored_keyed_design_with_the_failure(tmp_path, in_spec):
     """Through the MCP's tools (the SDK's in-memory client): the tool is misused (``isError``)
     with the ``Failure`` document, not a traceback."""
+    from mcp import Client  # (here: the SDK costs every xdist worker ~2 s to import)
+
+    from spiderpig.mcp import make_server
+
     store, old = _store_with_a_keyed_design(tmp_path / "store", in_spec)
     server = make_server(store.root)
 

@@ -174,9 +174,10 @@ def _dxf_entities(path: Path) -> list:
     return out
 
 
-SPLIT = "contract:0,1.6|contract:3.2,4.8|build"
+SPLIT = "contract:0,1.6,3.2,4.8|build"
 """The work beside the audit's own process, one process per ``|`` (``GATE_SPLIT``; empty:
-everything in one process): ``contract:T,...`` the contract at those angles, ``build`` the
+everything in one process): ``contract:T,...`` the contract at those angles (the side
+realized once for them all: :func:`construction.contract.check_sides`), ``build`` the
 ``t=1`` fabrication with its clashes, solids and parts, and the build of it. Each worker
 takes the plan from the design's store (re-made and verified), where the audit's process
 recorded it first. Unset, :func:`plan_cores` picks it from the cores free."""
@@ -195,13 +196,13 @@ def plan_cores(n_designs: int, jobs: int | None, split: str | None,
     """``(jobs, split)``: the designs at once and each one's workers (:data:`SPLIT`), those
     not given from the free cores. A design's share of them (all of them, or with ``-j``
     given, the free cores over ``jobs``: an explicit ``-j`` caps the processes at about the
-    free cores) picks the split: the whole one from 4 cores, the build's worker alone from
+    free cores) picks the split: the whole one from 3 cores, the build's worker alone from
     2, none under 2; then, ``jobs`` not given, as many designs at once as their processes
     have cores (at least 1)."""
     free = free_cores() if free is None else free
     if split is None:
         share = free // jobs if jobs else free
-        split = SPLIT if share >= 4 else "build" if share >= 2 else ""
+        split = SPLIT if share >= 3 else "build" if share >= 2 else ""
     if jobs is None:
         per = 1 + len([t for t in split.split("|") if t])
         jobs = min(n_designs, max(1, free // per))
@@ -277,14 +278,24 @@ def _plan(config, work: Path):
     return api.plan_config(config, Store.of(work / "store"))
 
 
+def _contracts(design, tmpl, ts) -> list[list[str]]:
+    """The contract at each of ``ts``: :func:`check_sides` (the audit's), or with
+    ``GATE_EXACT_CONTRACT=1`` :func:`check_side` realizing the side at every angle (the
+    nightly workflow snapshots once each way and compares: the two must agree)."""
+    from spiderpig.construction.contract import check_side, check_sides
+
+    if os.environ.get("GATE_EXACT_CONTRACT") == "1":
+        return [check_side(design, tmpl.freeze_at(t)) for t in ts]
+    return check_sides(design, tmpl, ts)
+
+
 def _contract_task(name: str, work: Path, ts) -> dict:
-    from spiderpig.construction.contract import check_side
     from spiderpig.fabricate import template_for
 
     _, config = _setup(name, work)
     design = _plan(config, work)
     tmpl = template_for(config)
-    return {f"t={t:g}": check_side(design, tmpl.freeze_at(t)) for t in ts}
+    return dict(zip((f"t={t:g}" for t in ts), _contracts(design, tmpl, ts), strict=True))
 
 
 def run_task(name: str, work: Path, task: str, result: Path) -> None:
@@ -341,7 +352,7 @@ def run_one(name: str, out: Path) -> None:
     build_remote = "build" in procs
     captured: dict[float, object] = {}
     fabricate = audit_mod.fabricate
-    check_side, clashes, bad_solids = audit_mod.check_side, audit_mod.clashes, audit_mod.bad_solids
+    clashes, bad_solids = audit_mod.clashes, audit_mod.bad_solids
     remote_t1 = object()            # the t=1 fabrication, made in the build worker
 
     def capture(tmpl, cfg, t=1.0):
@@ -351,16 +362,13 @@ def run_one(name: str, out: Path) -> None:
         captured.setdefault(float(t), mech)
         return mech
 
-    contract_ts = iter(TS_CONTRACT)
-
-    def contract(design, mech):
-        t = next(contract_ts)
-        if t in contract_tasks:
-            return result(contract_tasks[t])[f"t={t:g}"]
-        return check_side(design, mech)
+    def contract(design, tmpl, ts):
+        here = [t for t in ts if t not in contract_tasks]
+        mine = dict(zip(here, _contracts(design, tmpl, here), strict=True))
+        return [mine[t] if t in mine else result(contract_tasks[t])[f"t={t:g}"] for t in ts]
 
     audit_mod.fabricate = capture
-    audit_mod.check_side = contract
+    audit_mod.check_sides = contract
     audit_mod.clashes = lambda m, *a, **k: (result("build")["clash"] if m is remote_t1
                                             else clashes(m, *a, **k))
     audit_mod.bad_solids = lambda m: (result("build")["solids"] if m is remote_t1

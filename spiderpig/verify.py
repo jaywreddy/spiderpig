@@ -36,7 +36,7 @@ from typing import cast, overload
 
 from spiderpig import api, servos
 from spiderpig.api import building as api_building
-from spiderpig.construction.contract import bad_solids, check_side, clashes
+from spiderpig.construction.contract import bad_solids, check_sides, clashes
 from spiderpig.design import Design
 from spiderpig.failure import Failure
 from spiderpig.hardware.bom import bom_from_mechanism
@@ -312,8 +312,8 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
         return _done(design, rep, t0)
 
     # -- build, contract, clash ---------------------------------------------------
-    # the contract's crank angles are each a fabrication of the side from the plan alone:
-    # workers check them (the design loaded from the store) while this process builds
+    # the contract's crank angles are a realization of the side from the plan alone: a
+    # worker checks them (the design loaded from the store) while this process builds
     contract = _start_contracts(design, CONTRACT_TS[level])
     # at the handle's own crank angle when it has a build (another would build afresh and
     # drop its accepted edits)
@@ -343,9 +343,10 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     # the parts are realized again at every other crank angle: what the constructions
     # warn about then is the build's (already on build.warnings), not a terminal's
     with api.capture_warnings():
-        for i, t in enumerate(CONTRACT_TS[level]):
-            problems = (contract[i].result() if contract is not None
-                        else check_side(side, tmpl.freeze_at(t)))
+        ts = CONTRACT_TS[level]
+        verdicts = (contract.result() if contract is not None
+                    else check_sides(side, tmpl, ts))
+        for t, problems in zip(ts, verdicts, strict=True):
             rows.append(Row(f"contract@t={t:g}", "check_side", len(problems), "0",
                             not problems, "proven", True, "; ".join(problems[:3])))
             _fail(rep, problems, "contract", "part_outside_claim")
@@ -466,20 +467,21 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
     return rows
 
 
-def _start_contracts(design: Design, ts) -> list | None:
-    """:func:`check_side` at each of ``ts`` in a worker process of its own
-    (:mod:`spiderpig.workers`), the design loaded from its store with its plan re-made:
-    futures of the problems, in order. ``None`` (checked here, one after the other)
-    without a store, or with workers off (``SPIDERPIG_WORKERS=0``)."""
+def _start_contracts(design: Design, ts):
+    """:func:`check_sides` at ``ts`` in a worker process (:mod:`spiderpig.workers`), the
+    design loaded from its store with its plan re-made: a future of the problems per angle,
+    in order (the side realized once: :func:`check_sides`). ``None`` (checked here) without
+    a store, or with workers off (``SPIDERPIG_WORKERS=0``)."""
     from spiderpig import workers
 
     if not ts or design.store is None or not workers.enabled():
         return None
-    return [workers.submit(_contract_job, str(design.store.root), design.id, t) for t in ts]
+    return workers.submit(_contract_job, str(design.store.root), design.id, tuple(ts))
 
 
-def _contract_job(root: str, id: str, t: float) -> list[str]:
-    """In a worker: the contract of the stored design's side at crank angle ``t``."""
+def _contract_job(root: str, id: str, ts: tuple[float, ...]) -> list[list[str]]:
+    """In a worker: the contract of the stored design's side at each crank angle of
+    ``ts``."""
     design = api.load(id, root)
     with api.capture_warnings():
         if not api.plan(design).ok:
@@ -487,7 +489,7 @@ def _contract_job(root: str, id: str, t: float) -> list[str]:
         side, tmpl = design.side, design.template
         assert side is not None  # the plan held: the handle has its side
         assert tmpl is not None  # and template
-        return check_side(side, tmpl.freeze_at(t))
+        return check_sides(side, tmpl, ts)
 
 
 def _mass_estimate(design: Design, wr) -> Row | None:

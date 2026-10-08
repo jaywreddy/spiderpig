@@ -1019,8 +1019,8 @@ def _fake_audit(monkeypatch, *, dxf_error=None, bom_error=None, deck=None):
         freeze_at=lambda t: t))
     monkeypatch.setattr(api, "plan_config", lambda config, store: SimpleNamespace(plan=plan))
     monkeypatch.setattr(audit, "verify_plan", lambda p, tmpl: ["J3 meets b4"])
-    monkeypatch.setattr(audit, "check_side",
-                        lambda design, t: ["b1 outside"] if t == 0 else [])
+    monkeypatch.setattr(audit, "check_sides", lambda design, tmpl, ts: [
+        ["b1 outside"] if t == 0 else [] for t in ts])
 
     def fabricate(tmpl, config, t):
         calls["fabricate"].append(t)

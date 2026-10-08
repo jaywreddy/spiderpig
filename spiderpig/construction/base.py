@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from spiderpig.fit import Params as Params
 from spiderpig.hardware.bom import BomLine
 from spiderpig.mechanism import Body
 from spiderpig.shapes import Cut, Rect
@@ -79,37 +80,6 @@ class ConstructionError(ValueError):
         self.lever = lever
         self.numbers = dict(numbers or {})
         self.notes = list(notes)
-
-
-@dataclass(frozen=True)
-class Params:
-    """Dimensions every construction shares (mm). Defaults suit FDM + 3 mm sheet."""
-
-    margin: float = 1.0            # clearance between parts that move relative to each other
-    # laser-cut plates
-    link_radius: float = 6.0       # half-width of a leg link (pill radius)
-    frame_radius: float = 7.0      # half-width of a frame plate arm
-    min_wall: float = 1.5          # thinnest ring (or link) wall around a hole
-    # fits (diametral clearances)
-    running_fit: float = 0.35      # a part that turns in a laser-cut hole
-    print_fit: float = 0.3         # two printed parts that slide together
-    # axles (the printed axle's, removed on 2026-10-07; what nothing read since went on
-    # 2026-10-07 too: config.REMOVED_PARAMS)
-    axle_d: float = 6.0            # the diameter plates turn on
-    spacer_d: float = 8.5          # shoulder beside a link (built-in spacer)
-    # the crank (the printed crank's, removed on 2026-10-07; the bolt crank's are its own)
-    crankpin_d: float = 6.0        # post b1 turns on
-    web_radius: float = 6.0        # half-width of a crank web (O to crankpin)
-    # the servo on the inner frame plate
-    servo_screw_web_t: float = 1.0  # a front screw is left out when its hole would leave
-    #                                less web than this many of the inner plate's thicknesses
-    #                                to the horn's hole or a relief (the cut rules' error
-    #                                level; the assembly audit of 2026-10-04: the STS3215's
-    #                                near front holes leave 1.01 mm in 0.080 in); 0 keeps all
-
-    def hole(self, d: float) -> float:
-        """Finished hole diameter for a part of diameter ``d`` turning in it."""
-        return d + self.running_fit
 
 
 @dataclass(frozen=True)
@@ -258,11 +228,26 @@ class Realized:
             self.notes.setdefault(k, {}).update(v)
 
 
+@dataclass(frozen=True)
+class Motion:
+    """How a group's parts, realized at one crank angle, sit at another (:meth:`Group.motion`).
+
+    ``point`` ``None`` (:data:`RIDES_HOST`): every part is its body's host's motion applied to
+    it (``rigid_with``, else the body itself: a link, the crank, the frame); a point's name:
+    every part is translated with that point, its orientation fixed in the world (an axle's
+    parts round its axis)."""
+
+    point: str | None = None
+
+
+RIDES_HOST = Motion()
+
+
 class Group:
     """A functional part of a side, built by one construction (the contract above).
 
-    A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`
-    and :meth:`interface` are optional. ``cuts``: the group cuts what the
+    A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`,
+    :meth:`interface` and :meth:`motion` are optional. ``cuts``: the group cuts what the
     others asked for (holes, pads), so it realizes after them.
     """
 
@@ -291,6 +276,16 @@ class Group:
         ``view`` (a ``SideView``: the side's bodies, their z, the plan's layers). ``[]``:
         its parts go on with the layer they sit in, with a generic sentence."""
         return []
+
+    def motion(self, got: Realized) -> Motion | None:
+        """How ``got`` (what :meth:`realize` built at one crank angle) sits at any other: the
+        parts realized there are these moved by the :class:`Motion`, and the holes and pads
+        it asks of a plate are that plate's motion applied to these.
+        :func:`construction.contract.check_sides` checks such a group once and carries the
+        verdict to the other angles; ``None`` (the default: a group whose parts change shape
+        with the angle, or that nobody has shown not to) is realized and checked again at
+        every angle. ``tests/test_contract.py`` holds every group that says so to it."""
+        return None
 
 
 def hardware(name: str, part, host: str, *, fab: str, bom_key: str | None = None,
