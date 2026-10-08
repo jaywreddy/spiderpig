@@ -30,7 +30,14 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import CRANK_SHEET, DEFAULT_CRANKS, BuildConfig, removed_construction
+from spiderpig.config import (
+    CRANK_SHEET,
+    DEFAULT_CRANKS,
+    REMOVED_PARAMS,
+    BuildConfig,
+    removed_construction,
+    removed_param,
+)
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
 from spiderpig.hardware.catalog import CATALOG
@@ -747,8 +754,11 @@ def validate(data: Mapping) -> list[SpecError]:
                 v.err(f"constructions.{what}", gone[0], reg, gone[1])
             else:
                 v.string(c.get(what), f"constructions.{what}", reg)
-    f = v.obj(top.get("fit"), "fit", (*FIT_FIELDS, "kerf_mm", "sheet_size_mm"))
+    f = v.obj(top.get("fit"), "fit", (*FIT_FIELDS, *REMOVED_PARAMS, "kerf_mm", "sheet_size_mm"))
     if f is not None:
+        for name in REMOVED_PARAMS:
+            if name in f:
+                v.err(f"fit.{name}", removed_param(name), FIT_FIELDS)
         for name in FIT_FIELDS:      # (servo_screw_web_t 0: no front screw left out)
             if name in FIT_NONNEG:
                 v.number(f.get(name), f"fit.{name}", nonneg=True)

@@ -117,6 +117,33 @@ field: ``key -> (replacement, date removed, what it was)``; a config, spec, stor
 CLI option naming one fails with its replacement (:func:`removed_construction`)."""
 
 
+REMOVED_PARAMS: dict[str, tuple[str, float, str]] = {
+    "glue_fit": (REMOVED, 0.15, "a part glued into a laser-cut hole"),
+    "neck_d": (REMOVED, 4.0, "the printed axle's neck where a link passes"),
+    "head_d": (REMOVED, 8.5, "the printed axle's head outside the plates"),
+    "journal_d": (REMOVED, 12.0, "the printed crank's body on O"),
+    "stub_d": (REMOVED, 8.0, "the printed crank's journal stub"),
+    "hub_thickness": (REMOVED, 5.0, "the printed crank's hub under the horn"),
+}
+"""Fields of :class:`construction.base.Params` (a spec's ``fit``) removed because nothing read
+them once the printed axle and crank were gone (W5): ``name -> (date removed, its last
+default, what it sized)``. A spec naming one is invalid with that message
+(:func:`removed_param`); a stored design's resolved record, which writes every field in,
+loads when it holds the old default and fails with the message otherwise."""
+
+
+def removed_param(name: str, value=None) -> str | None:
+    """Why ``fit.<name>`` can't be given any more, or ``None`` (not removed; or, with
+    ``value``, the removed field's last default, which built the same parts)."""
+    gone = REMOVED_PARAMS.get(name)
+    if gone is None or (value is not None and value == gone[1]):
+        return None
+    when, default, what = gone
+    return (f"fit.{name} ({what}) was removed on {when}: no construction reads it since the "
+            f"printed axle and crank went; drop it (it built as {default:g}; "
+            "config.REMOVED_PARAMS)")
+
+
 def removed_construction(field: str, key) -> tuple[str, str] | None:
     """(why ``field`` can't be ``key`` any more, its replacement), or ``None``."""
     gone = REMOVED_CONSTRUCTIONS.get(field, {}).get(key) if isinstance(key, str) else None

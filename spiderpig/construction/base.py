@@ -91,20 +91,14 @@ class Params:
     min_wall: float = 1.5          # thinnest ring (or link) wall around a hole
     # fits (diametral clearances)
     running_fit: float = 0.35      # a part that turns in a laser-cut hole
-    glue_fit: float = 0.15         # a part glued into a laser-cut hole
     print_fit: float = 0.3         # two printed parts that slide together
-    # printed axles (pillars and link pins; the printed axle was removed on 2026-10-07, these
-    # stay in every stored design's Params)
+    # axles (the printed axle's, removed on 2026-10-07; what nothing read since went on
+    # 2026-10-07 too: config.REMOVED_PARAMS)
     axle_d: float = 6.0            # the diameter plates turn on
     spacer_d: float = 8.5          # shoulder beside a link (built-in spacer)
-    neck_d: float = 4.0            # thinnest an axle may neck down where a link passes
-    head_d: float = 8.5            # head / cap outside the plates it retains
     # the crank (the printed crank's, removed on 2026-10-07; the bolt crank's are its own)
     crankpin_d: float = 6.0        # post b1 turns on
     web_radius: float = 6.0        # half-width of a crank web (O to crankpin)
-    journal_d: float = 12.0        # crank body on the axis O
-    stub_d: float = 8.0            # journal stub turning in the outer frame plate
-    hub_thickness: float = 5.0     # coupling disc under the servo horn
     # the servo on the inner frame plate
     servo_screw_web_t: float = 1.0  # a front screw is left out when its hole would leave
     #                                less web than this many of the inner plate's thicknesses
@@ -112,9 +106,9 @@ class Params:
     #                                level; the assembly audit of 2026-10-04: the STS3215's
     #                                near front holes leave 1.01 mm in 0.080 in); 0 keeps all
 
-    def hole(self, d: float, fit: str = "running") -> float:
-        """Finished hole diameter for a part of diameter ``d``."""
-        return d + {"running": self.running_fit, "glue": self.glue_fit}[fit]
+    def hole(self, d: float) -> float:
+        """Finished hole diameter for a part of diameter ``d`` turning in it."""
+        return d + self.running_fit
 
 
 @dataclass(frozen=True)

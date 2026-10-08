@@ -914,7 +914,7 @@ class BoltCrank:
                 return self.thrust_od / 2
         return 0.0
 
-    def hub_head_need(self, ctx: Context, horn_radius: float, center_d: float) -> float:
+    def hub_head_need(self, ctx: Context, horn_radius: float) -> float:
         """How thick the printed horn spacer must be for a crankpin\'s screw head over the hub
         plate (it stands in a pocket of the spacer, under the horn): a round standoff\'s
         crankpin within a head\'s reach of the horn\'s rim (a hex one is capped by the hub
@@ -1158,14 +1158,6 @@ class BoltCrank:
                 topo.add_crank_point(name, drive.screw_pcd / 2, a)
             out.append(name)
         return out
-
-    @staticmethod
-    def top_segment(plates: set[int], hub: int) -> int:
-        """The lowest layer of the crank plates stacked under (and with) the hub's."""
-        k = hub
-        while k - 1 in plates:
-            k -= 1
-        return k
 
     def horn_spacer(self, L: Layout, drive: DriveInterface, hub: int) -> float:
         """The printed horn spacer at the plan's z: over the hub plate up to the horn's face."""

@@ -1537,9 +1537,6 @@ class _Search:
         self.gone[n][v] = why
         self.trail.append(("cut", n, v))
 
-    def wiped(self, n: str) -> frozenset[str] | None:
-        return frozenset().union(*self.gone[n].values()) if not self.dom[n] else None
-
     def undo(self, mark: int) -> None:
         trail = self.trail
         if len(trail) <= mark:

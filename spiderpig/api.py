@@ -46,7 +46,13 @@ import numpy as np
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError, default_robot, torque_limit_note
+from spiderpig.config import (
+    BuildConfig,
+    ParamError,
+    default_robot,
+    removed_param,
+    torque_limit_note,
+)
 from spiderpig.construction.base import Build, ConstructionError, Params
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.crank import CrankRoute, Run
@@ -399,6 +405,9 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
     in, so a default that moved since never changes a stored design)."""
     lk = linkage.get(resolved["linkage"]["key"])
     legs, mat, cons, fit = (resolved[k] for k in ("legs", "materials", "constructions", "fit"))
+    for name, value in fit.items():     # a removed Params field: only at its last default
+        if (gone := removed_param(name, value)) is not None:
+            raise ParamError(gone)
     return BuildConfig(
         linkage=lk.key, module=legs["module"], robot=legs["sides"] == 2,
         phases=tuple(math.radians(p) for p in legs["phases_deg"]),

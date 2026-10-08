@@ -166,7 +166,7 @@ class DriveGroup(Group):
             return 0.0
         crank = crank.resolve(ctx)
         h = self.spec.horn
-        return crank.hub_head_need(ctx, h.diameter / 2, h.center_screw_head_d)
+        return crank.hub_head_need(ctx, h.diameter / 2)
 
     def pattern_angle(self, ctx: Context) -> float:
         """Horn-hole angle (from the first crankpin) farthest from every crankpin.

@@ -32,8 +32,6 @@ Kept for the comparisons, and the round crankpin's washers:
 * ``threadlocker_243``: medium strength, on the crankpins' screws.
 * ``ptfe_washer_6x12x0p5``: the thrust washer the round crankpin's runs carry through a
   clearance gap (:func:`materials.washer_stack`).
-* ``arl_m3_<L>``: Hirosugi ARL-xxBE round M3 standoffs, registered from the M3 hardware
-  comparison of 2026-10-05; no construction uses them (MISUMI US doesn't sell them).
 """
 
 from __future__ import annotations
@@ -302,46 +300,9 @@ register(
 )
 
 
-# -- M3 standoffs and set screws (the M3 hardware comparison, 2026-10-05) -----------------
+# -- M3 set screws (the M3 hardware comparison, 2026-10-05) ------------------------------
 #
-# ``arl_m3_<L>`` is registered but used by no construction: the frame ties and standoff_m3
-# take uxcell's round M3 standoffs (m3_round_standoff_ff_<L>, above), which are sold in the
-# US; Hirosugi's aren't through MISUMI US.
-#
-# ``arl_m3_<L>``: Hirosugi-Keiki ARL-3<L>BE, lead-free free-cutting aluminium (KS26), black
-# anodised, round 6 mm OD, M3 female both ends, L +/-0.1 (the maker's page and drawing
-# M_AR-30.gif fetched 2026-10-05: http://hirosugi.jp/products/A/ARL-BE.html). Tapped through
-# up to 15 mm, from 16 mm a 6 mm thread each end. Lengths 4-12.5 mm in 0.5 mm steps
-# (no 10.5 / 11.5), 13-30 mm in 1 mm steps, 35-60 mm in 5 mm steps; USD 0.61-1.40 each
-# (MOQ 50 direct; MISUMI resells Hirosugi in small quantities, as it does the PTFE washers).
 # ``m3_set_screw_<L>``: ISO 4026 M3 flat point set screws (the frame ties' studs).
-
-ARL_M3_PRICES: dict[float, float] = {
-    4: 0.61, 4.5: 0.61, 5: 0.61, 5.5: 0.61, 6: 0.61, 6.5: 0.62, 7: 0.62, 7.5: 0.62, 8: 0.63,
-    8.5: 0.63, 9: 0.64, 9.5: 0.66, 10: 0.66, 11: 0.67, 12: 0.68, 12.5: 0.68, 13: 0.68,
-    14: 0.70, 15: 0.70, 16: 0.71, 16.5: 0.72, 17: 0.72, 17.5: 0.72, 18: 0.73, 19: 0.77,
-    20: 0.78, 21: 0.79, 22: 0.79, 23: 0.80, 24: 0.82, 25: 0.96, 26: 0.96, 27: 0.97, 28: 0.98,
-    29: 0.99, 30: 1.01, 35: 1.06, 40: 1.10, 45: 1.29, 50: 1.34, 55: 1.40, 60: 1.40}
-ARL_M3_LENGTHS: tuple[float, ...] = tuple(float(L) for L in ARL_M3_PRICES)
-
-
-def arl_m3(length: float) -> str:
-    return f"arl_m3_{length:g}"
-
-
-for _L, _p in ARL_M3_PRICES.items():
-    register(Item(
-        arl_m3(_L), f"M3 x {_L:g} mm round aluminium standoff, 6 mm OD, female-female "
-        f"(Hirosugi ARL-3{_L:g}BE)", "standoff",
-        (Offer("Hirosugi-Keiki (MISUMI)", "https://hirosugi.jp/products/A/ARL-BE.html",
-               f"ARL-3{_L:g}BE", price_usd=_p, verified=True,
-               note=f"USD {_p:.2f} each on the maker's table (fetched 2026-10-05; MOQ 50 "
-                    "direct, MISUMI resells)"),),
-        dims={"d": 3.0, "od": 6.0, "length": float(_L),
-              "thread_depth": float(_L) if _L <= 15 else 6.0, "id": 2.5, "yield_mpa": 240.0},
-        notes="KS26 lead-free free-cutting aluminium, black anodised, L +/-0.1. The strength "
-              "check takes a 6 x 2.5 tube (the M3 tap drill) at 240 MPa (UNVERIFIED for KS26).",
-    ))
 
 M3_SET_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 16)
 
