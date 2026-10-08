@@ -1,7 +1,50 @@
 {
  "data": {
-  "cost_usd": 188.04,
+  "cost_usd": 409.13,
   "cuts": [],
+  "cutting": [
+   {
+    "area_cm2": 179.9,
+    "name": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
+    "parts": 17,
+    "service": "SendCutSend",
+    "sheet": "acrylic_3mm",
+    "usd": 28.11
+   },
+   {
+    "area_cm2": 231.6,
+    "name": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
+    "parts": 4,
+    "service": "SendCutSend",
+    "sheet": "al5052_2mm",
+    "usd": 46.32
+   },
+   {
+    "area_cm2": 65.1,
+    "name": "5052 aluminium sheet 0.090 in (2.286 mm), laser cut",
+    "parts": 4,
+    "service": "SendCutSend",
+    "sheet": "al5052_2p3mm",
+    "usd": 13.03
+   },
+   {
+    "area_cm2": 42.9,
+    "name": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
+    "parts": 8,
+    "service": "SendCutSend",
+    "sheet": "al6061_2p5mm",
+    "usd": 19.35
+   },
+   {
+    "area_cm2": 265.7,
+    "name": "6061 aluminium sheet 0.125 in (3.175 mm), laser cut",
+    "parts": 16,
+    "service": "SendCutSend",
+    "sheet": "al6061_3p2mm",
+    "usd": 106.29
+   }
+  ],
+  "cutting_usd": 213.1,
   "filaments": {
    "PETG filament": 1.1,
    "PLA filament": 51.8,
@@ -24,6 +67,7 @@
      "R.b1_leg3"
     ],
     "qty": 8,
+    "sheet": "al6061_3p2mm",
     "size_mm": "117 x 26 x 3.2 mm",
     "volume_cm3": 4.189932270806681
    },
@@ -43,6 +87,7 @@
      "R.b2_leg3"
     ],
     "qty": 8,
+    "sheet": "acrylic_3mm",
     "size_mm": "57 x 28 x 3.0 mm",
     "volume_cm3": 1.9317047946495796
    },
@@ -62,6 +107,7 @@
      "R.b3_leg3"
     ],
     "qty": 8,
+    "sheet": "acrylic_3mm",
     "size_mm": "25 x 41 x 3.0 mm",
     "volume_cm3": 1.3557047946495788
    },
@@ -81,6 +127,7 @@
      "R.b4_leg3"
     ],
     "qty": 8,
+    "sheet": "al6061_3p2mm",
     "size_mm": "69 x 156 x 3.2 mm",
     "volume_cm3": 6.356339769249541
    },
@@ -94,6 +141,7 @@
      "R.crank_plate10"
     ],
     "qty": 2,
+    "sheet": "al6061_2p5mm",
     "size_mm": "34 x 41 x 2.5 mm",
     "volume_cm3": 1.952212373500721
    },
@@ -107,6 +155,7 @@
      "R.crank_plate2"
     ],
     "qty": 2,
+    "sheet": "al6061_2p5mm",
     "size_mm": "28 x 35 x 2.5 mm",
     "volume_cm3": 1.2165499841147192
    },
@@ -122,6 +171,7 @@
      "R.crank_plate7"
     ],
     "qty": 4,
+    "sheet": "al6061_2p5mm",
     "size_mm": "28 x 35 x 2.5 mm",
     "volume_cm3": 1.140048939470452
    },
@@ -135,6 +185,7 @@
      "R.frame_outer"
     ],
     "qty": 2,
+    "sheet": "al5052_2mm",
     "size_mm": "126 x 86 x 2.0 mm",
     "volume_cm3": 11.131567571544066
    },
@@ -148,6 +199,7 @@
      "R.torso"
     ],
     "qty": 2,
+    "sheet": "al5052_2mm",
     "size_mm": "126 x 104 x 2.0 mm",
     "volume_cm3": 12.397282032335957
    },
@@ -161,6 +213,7 @@
      "centre_plate3"
     ],
     "qty": 2,
+    "sheet": "al5052_2p3mm",
     "size_mm": "47 x 48 x 2.3 mm",
     "volume_cm3": 3.749551497057943
    },
@@ -174,6 +227,7 @@
      "centre_plate2"
     ],
     "qty": 2,
+    "sheet": "al5052_2p3mm",
     "size_mm": "47 x 48 x 2.3 mm",
     "volume_cm3": 3.6959640595409367
    },
@@ -186,6 +240,7 @@
      "deck_plate"
     ],
     "qty": 1,
+    "sheet": "acrylic_3mm",
     "size_mm": "136 x 3 x 71.1 mm",
     "volume_cm3": 27.677474750299552
    },
@@ -205,6 +260,7 @@
      "R.b4_leg3_sock"
     ],
     "qty": 8,
+    "sheet": "",
     "size_mm": "15 x 11 x 3.2 mm",
     "volume_cm3": 0.13458071149902892
    },
@@ -218,6 +274,7 @@
      "R.crank_pin_collar_hi_M_leg0"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "9 x 9 x 0.8 mm",
     "volume_cm3": 0.027785766909098838
    },
@@ -231,6 +288,7 @@
      "R.crank_pin_collar_hi_journal5"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "9 x 9 x 0.5 mm",
     "volume_cm3": 0.015216015212125572
    },
@@ -244,6 +302,7 @@
      "R.crank_pin_collar_lo_M_leg2"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "9 x 9 x 0.9 mm",
     "volume_cm3": 0.028778115727280805
    },
@@ -257,6 +316,7 @@
      "R.crank_pin_sleeve_M_leg0"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "8 x 8 x 13.5 mm",
     "volume_cm3": 0.37234677790828824
    },
@@ -270,6 +330,7 @@
      "R.crank_pin_sleeve_M_leg2"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "8 x 8 x 13.8 mm",
     "volume_cm3": 0.4202909598773825
    },
@@ -283,6 +344,7 @@
      "R.crank_ring_M_leg0_4"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "12 x 12 x 3.9 mm",
     "volume_cm3": 0.19655610056633577
    },
@@ -296,6 +358,7 @@
      "R.crank_ring_M_leg2_9"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "12 x 12 x 2.9 mm",
     "volume_cm3": 0.14615710042112176
    },
@@ -309,6 +372,7 @@
      "R.crank_stub_thrust"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "8 x 8 x 8.9 mm",
     "volume_cm3": 0.22759582138196632
    },
@@ -322,8 +386,9 @@
      "R.deck_rail"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "60 x 8 x 11.0 mm",
-    "volume_cm3": 4.691262357000422
+    "volume_cm3": 4.691262357000427
    },
    {
     "material": "PLA filament",
@@ -349,6 +414,7 @@
      "R.pillar_B_leg1_gap2_spacer"
     ],
     "qty": 16,
+    "sheet": "",
     "size_mm": "12 x 12 x 2.7 mm",
     "volume_cm3": 0.2211971825447672
    },
@@ -376,6 +442,7 @@
      "R.pillar_B_leg1_gap5_spacer"
     ],
     "qty": 16,
+    "sheet": "",
     "size_mm": "12 x 12 x 3.3 mm",
     "volume_cm3": 0.2703521119991597
    },
@@ -395,6 +462,7 @@
      "R.pillar_B_leg1_gap4_spacer"
     ],
     "qty": 8,
+    "sheet": "",
     "size_mm": "12 x 12 x 4.0 mm",
     "volume_cm3": 0.3276995296959513
    },
@@ -414,6 +482,7 @@
      "R.pillar_B_leg1_gap6_spacer"
     ],
     "qty": 8,
+    "sheet": "",
     "size_mm": "12 x 12 x 3.7 mm",
     "volume_cm3": 0.3031220649687551
    },
@@ -433,6 +502,7 @@
      "R.pillar_B_leg1_gap7_spacer"
     ],
     "qty": 8,
+    "sheet": "",
     "size_mm": "12 x 12 x 3.6 mm",
     "volume_cm3": 0.2949295767263563
    },
@@ -452,6 +522,7 @@
      "R.pillar_B_leg1_gap9_spacer"
     ],
     "qty": 8,
+    "sheet": "",
     "size_mm": "12 x 12 x 3.0 mm",
     "volume_cm3": 0.2457746472719635
    },
@@ -503,6 +574,7 @@
      "R.pillar_B_leg1_ring11"
     ],
     "qty": 40,
+    "sheet": "",
     "size_mm": "9 x 9 x 3.0 mm",
     "volume_cm3": 0.11097676048805942
    },
@@ -546,6 +618,7 @@
      "R.pillar_B_leg1_ring9"
     ],
     "qty": 32,
+    "sheet": "",
     "size_mm": "9 x 9 x 3.2 mm",
     "volume_cm3": 0.11745040484986286
    },
@@ -563,6 +636,7 @@
      "R.pin_E_leg1_gap2_spacer"
     ],
     "qty": 6,
+    "sheet": "",
     "size_mm": "8 x 8 x 2.7 mm",
     "volume_cm3": 0.09650737012378832
    },
@@ -582,6 +656,7 @@
      "R.pin_E_leg2_spacer_hi"
     ],
     "qty": 8,
+    "sheet": "",
     "size_mm": "8 x 8 x 1.0 mm",
     "volume_cm3": 0.036411058855105705
    },
@@ -597,6 +672,7 @@
      "R.pin_C_leg3_spacer_hi"
     ],
     "qty": 4,
+    "sheet": "",
     "size_mm": "8 x 8 x 0.7 mm",
     "volume_cm3": 0.025487741198573995
    },
@@ -614,6 +690,7 @@
      "R.pin_E_leg3_gap7_spacer"
     ],
     "qty": 6,
+    "sheet": "",
     "size_mm": "8 x 8 x 3.6 mm",
     "volume_cm3": 0.12867649349838436
    },
@@ -629,6 +706,7 @@
      "R.pin_E_leg3_spacer_hi"
     ],
     "qty": 4,
+    "sheet": "",
     "size_mm": "8 x 8 x 1.1 mm",
     "volume_cm3": 0.0400521647406163
    },
@@ -644,6 +722,7 @@
      "R.pin_E_leg0_spacer_hi"
     ],
     "qty": 4,
+    "sheet": "",
     "size_mm": "8 x 8 x 0.9 mm",
     "volume_cm3": 0.032769952969595
    },
@@ -659,6 +738,7 @@
      "R.pin_D_leg3_spacer_hi"
     ],
     "qty": 4,
+    "sheet": "",
     "size_mm": "8 x 8 x 0.6 mm",
     "volume_cm3": 0.021846635313063557
    },
@@ -672,6 +752,7 @@
      "R.pin_E_leg0_gap1_spacer"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "8 x 8 x 3.3 mm",
     "volume_cm3": 0.11795345237351898
    },
@@ -685,6 +766,7 @@
      "R.pin_E_leg0_spacer_lo"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "8 x 8 x 0.5 mm",
     "volume_cm3": 0.01820552942755285
    },
@@ -698,6 +780,7 @@
      "R.pin_E_leg2_gap6_spacer"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "8 x 8 x 3.7 mm",
     "volume_cm3": 0.13225084054000624
    },
@@ -711,6 +794,7 @@
      "R.servo_horn_spacer"
     ],
     "qty": 2,
+    "sheet": "",
     "size_mm": "20 x 20 x 1.8 mm",
     "volume_cm3": 0.4490253404114294
    },
@@ -723,6 +807,7 @@
      "deck_cradle"
     ],
     "qty": 1,
+    "sheet": "",
     "size_mm": "66 x 5 x 33.2 mm",
     "volume_cm3": 1.377052208937452
    }
@@ -732,7 +817,7 @@
    "Horn screws: a drop of low-strength threadlocker (Loctite 222) each (8), steel into the metal horn; none in a plastic horn.",
    "Printed parts need about 54 g of filament at 100 % infill (52 g of PLA filament (1.24 g/cm3); 1 g of PETG filament (1.27 g/cm3); 1 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
   ],
-  "printed_g": 54.18925727181282,
+  "printed_g": 54.18925727181283,
   "purchased": [
    {
     "alternatives": [
@@ -1589,24 +1674,24 @@
    },
    {
     "alternatives": [
-     "https://www.jbweld.com/product/j-b-weld-twin-tube",
+     "https://www.amazon.com/dp/B0006O1ICE",
      "https://www.amazon.com/s?k=two+part+slow+cure+epoxy"
     ],
     "category": "adhesive",
-    "cost_usd": null,
+    "cost_usd": 7.99,
     "cut_by": "",
     "key": "epoxy_2part",
     "name": "Two-part slow-cure structural epoxy (e.g. J-B Weld Original or Loctite EA E-30CL), 2 x 25 ml",
     "on_hand": false,
-    "pack_price_usd": null,
+    "pack_price_usd": 7.99,
     "pack_qty": 1,
     "packs": 1,
     "qty": 0.12,
     "same_pack_as": "",
-    "sku": "B0006O1ICE",
-    "url": "https://www.amazon.com/dp/B0006O1ICE",
-    "vendor": "Amazon",
-    "verified": false,
+    "sku": "8265S",
+    "url": "https://www.jbweld.com/product/j-b-weld-twin-tube",
+    "vendor": "J-B Weld",
+    "verified": true,
     "where": [
      "pin:C_leg0: barrel into b3_leg0 (slow epoxy: CA crazes acrylic)",
      "pin:C_leg1: barrel into b3_leg1 (slow epoxy: CA crazes acrylic)",
@@ -1872,13 +1957,14 @@
     ]
    }
   ],
+  "purchases_usd": 196.03,
   "title": ""
  },
- "engine_version": "0.1.0+3a21f2c47a50",
+ "engine_version": "0.1.0+5e83445fcfc8",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[klann_lego_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-f7fadd419f4b72fe"
+ "source_key": "gen-8bf14dc1c3c67856"
 }
