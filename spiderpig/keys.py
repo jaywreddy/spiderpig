@@ -317,6 +317,10 @@ def _index(name: str, path: Path, is_pkg: bool, excluded: bool,
             if any(_callee_name(c) not in PURE_CALLS for c in calls):
                 mod.effects.append(stmt)        # a call into the package: may register
             continue
+        if (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)
+                and _callee_name(stmt.value) == "forward_writes"):
+            continue    # a split package sets its own module class (spiderpig.reexport):
+            #             no registration; the writes it forwards: Graph.written
         # anything else runs at import with effects we don't model: always reached; the
         # names it binds (a try/except import, an if-defined function) are its symbols
         mod.effects.append(stmt)

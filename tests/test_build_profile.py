@@ -146,11 +146,11 @@ def test_the_measuring_tools_are_outside_the_engine_hash(tmp_path, monkeypatch):
 
 def test_the_engine_hash_sees_the_same_change_to_an_engine_module(tmp_path, monkeypatch):
     """The control of the test above (split from it: two hashes each, ~2 s): the change it
-    makes to the tools, made to ``stack.py``, re-keys the engine."""
+    makes to the tools, made to ``stack/search.py``, re-keys the engine."""
     root = _package_copy(tmp_path)
     base = _engine_version_of(root, monkeypatch)
-    (root / "stack.py").write_text((root / "stack.py").read_text()
-                                   + "\n\ndef _a_change():\n    return 1\n")
+    (root / "stack" / "search.py").write_text((root / "stack" / "search.py").read_text()
+                                                + "\n\ndef _a_change():\n    return 1\n")
     assert _engine_version_of(root, monkeypatch) != base     # the check can see a change
 
 

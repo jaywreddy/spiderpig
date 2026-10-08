@@ -73,6 +73,11 @@ extend-exclude = [".claude"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PT", "NPY"]
 
+[tool.ruff.lint.per-file-ignores]
+# the split packages re-export every name of the module they were (W5); __all__ keeps the
+# old public list
+"spiderpig/api/__init__.py" = ["F401"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q -m 'not e2e'"
