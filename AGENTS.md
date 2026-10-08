@@ -17,7 +17,7 @@ mise run test-<module>  # a module tier, seconds: linkage, planner, construction
                         # strength, api, sim, server; test-viewer for the TypeScript
 mise run test-quick     # the quick tier (-m 'not slow and not e2e', xdist); full: remote-test
 mise run test           # pytest, every test, serial (auto-builds spiderpig/viewer/dist for e2e)
-mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # product edits: did a part move?
+mise run gate -- compare ~/.cache/spiderpig/gate/bom-bbf7001   # product edits: did a part move?
 mise run scorecard      # every ROADMAP number -> build/scorecard.json (~10 min)
 mise run lint           # ruff, then lint-imports (the engine's layers)
 mise run pyright        # types, basic mode

@@ -24,7 +24,7 @@ mise run test-viewer    # the viewer's tsc + vitest
 mise run test-quick # the quick tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: they warn stale)
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
-mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # parts/plans/BOM/DXF identity
+mise run gate -- compare ~/.cache/spiderpig/gate/bom-bbf7001   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
 mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
@@ -67,10 +67,13 @@ robot; a mechanism's `single`, one side).
 - Sheets: links, rings and deck acrylic 3 mm (`BuildConfig.sheet`); frame 0.080 in 5052
   (`frame_sheet`); crank 0.100 in 6061-T6 (`crank_sheet`, `materials.thinnest_sheet`);
   centre plates by `chassis.centre_sheet`; aluminium links per `materials.LINK_SHEETS`.
+- Sheets go to SendCutSend (the acrylic too since 2026-10-08, `--sheet acrylic_3mm_ponoko`
+  for Ponoko); the BOM's total is what ORDER.md buys (`bom.cut_by`: no service's sheet).
 - Per-linkage overrides are data in `spiderpig/config.py`: `LINKAGE_CRANKS` (TrotBot's heel
   and toe on `bolt_round`), `MODULE_CRANKS` (empty), `LINKAGE_CRANK_SHEETS`
   (`hoecken_pantograph` on 0.080 in 6061), `LINKAGE_TORQUE_LIMITS`; Klann variants' quads at
-  `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them.
+  `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. The
+  Chicago barrels a linkage stocks: `chicago.BARRELS` (the Strider's), beside `MAX_BARREL`.
 - Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
 - Numbers (layers, height, parts, cost, audit verdict): `docs/agentlib/DESIGNS.md`.
 
@@ -245,7 +248,7 @@ both sides.
 - Don't put Z into joint poses. Z is the stack plan's job.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
-  `w8-2a130c8`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
+  `bom-bbf7001`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run
   audit` green, and regenerate `docs/agentlib/DESIGNS.md` with a new baseline.
 - Docs: no layer counts or heights outside DESIGNS.md; a dated decision goes to
   DECISIONS.md, not here; `mise run doc-check -- --strict` must pass.

@@ -371,7 +371,7 @@ Every part is made in one of three ways, and the code tags each part with it (`f
   and rings, the horn spacer, the deck's rails and battery cradle, the feet's TPU socks,
   on a 3D printer;
 - **purchased**: servos, electronics, screws, nuts, washers and shims, Chicago screws,
-  round and hex standoffs, heat-set inserts, epoxy.
+  round and hex standoffs, epoxy.
 
 The pins are M3 Chicago screws, the pillars 6 mm round standoff columns and the crank
 laser-cut on steel hex standoffs (section 6.2). These are the only constructions since
@@ -382,8 +382,8 @@ names each one's replacement).
 The motors are **continuous-rotation servos**: geared motors with built-in speed control,
 which turn fully at a commanded speed rather than holding an angle as a hobby servo does.
 The screws are metric: **M3** means 3 mm in diameter, and screws come in a fixed set of
-**stock lengths**. A **heat-set insert** is a brass thread pressed into plastic with a hot
-iron.
+**stock lengths**. A **captive nut** is a stock nut held in a pocket printed into a part,
+slid in through a slot, so a screw can thread into plastic without a heat-set insert.
 
 ### 2.6 The tools and formats underneath
 
@@ -399,7 +399,8 @@ iron.
   **glTF** is a 3D scene format for the web, with animation; `.glb` is its one-file binary
   form. **MJCF** is the XML model format of **MuJoCo**, a rigid-body physics simulator.
 - A laser burns away a thin strip as it cuts, the **kerf** (the sheet's service's: 0.2 mm
-  at Ponoko; SendCutSend compensates for its own), so where the service doesn't, outlines
+  at Ponoko; SendCutSend, which cuts the default sheets, compensates for its own), so where
+  the service doesn't, outlines
   are moved out by half of it and holes in by half of it. A 3D printer of the
   kind assumed here (FDM) lays down plastic layer by layer; an overhang needs printed
   support under it, and **infill** is how solid the inside of a part is.
@@ -1151,7 +1152,7 @@ sleeve. The stub is an M3 round standoff screwed up into the lowest web, turning
 6.6 mm hole of the outer plate (the bottom bearing).
 
 The horn screws take shims under the head where a stock length is too long
-(`horn_fit_web`: whole 1 mm ones, bought as DIN 433 pairs, where the horn keeps enough
+(`horn_fit_web`: whole 1 mm ones, bought as DIN 125 pairs, where the horn keeps enough
 thread, else 0.1 mm DIN 988 steps). The horn holes keep the service's minimum hole and
 2 x t edge distance, the hub's and webs' rims 1 x t (`BoltCrank.web_edge_t`, the cut rules'
 error level). A crankpin within a screw head's reach of the horn's rim makes the printed
@@ -1210,12 +1211,13 @@ into one cut (`chassis._merge_close`), and a head recess that close opens into t
 
 **The electronics deck** (`construction/deck.py`). A laser-cut plate between the inner
 plates over the servos, on two printed rails screwed to the inner plates (M3 from the leg
-side into nut traps in the rails), carrying the ESP32 servo driver, a 2S LiPo in a printed
+side into nut traps in the rails) and the deck screwed down into captive nuts the rails hold
+(`deck.deck_nut`), carrying the ESP32 servo driver, a 2S LiPo in a printed
 cradle screwed to the deck and strapped, the charger, the protection board and a toggle
 switch (the catalog in `hardware/electronics.py`, each item with its mass). Nothing moves in
 its z band, and `deck_clearance` proves it over the whole cycle. The deck lowers straight
 down past the pillars' inner screw heads: `deck.path_notches` notches the plate round every
-static part in its way, `deck.insert_z` moves the rails' inserts into the bay where a notch
+static part in its way, `deck.nut_z` moves the deck screws and their nuts into the bay where a notch
 would leave a deck screw hole too little web, and `deck.deck_path` checks the way on the
 parts' geometry (`deck_clearance`'s `blocked`, an audit problem).
 
@@ -1324,7 +1326,8 @@ exact (an arc is a vertex's bulge), any other curve flattened within 0.02 mm (`C
 check).
 
 **Cut rules** (`spiderpig/manufacture.py`): every laser-cut part is reviewed against its
-sheet's service (SendCutSend for aluminium, Ponoko for acrylic): the minimum hole, the edge
+sheet's service (SendCutSend for the aluminium and the 3 mm acrylic, Ponoko for the thin
+acrylic and `acrylic_3mm_ponoko`): the minimum hole, the edge
 distance from a hole to an edge or another hole, the web round every non-circular cut-out
 (`web`: to the edge, a hole or another cut-out), the minimum part and the inside-corner
 radius, and that the DXF matches the solid. In metal a hole closer than 1 x the thickness
@@ -1345,8 +1348,10 @@ part and its mirror image are the same cut (flip the sheet); a printed part and 
 image are different prints unless one is a translate of the other. A line per sheet for
 the plates, a line per filament for the prints (`hardware.bom.part_filament`). Shims are
 ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the clamped 1.0 and
-0.5 mm ones bought as DIN 433 washers (`bom.SHIM_AS`). Purchases are rounded up to whole
-packs of the preferred offer. The total leaves out rows with no price, and the BOM says so;
+0.5 mm ones bought as stock washers (`bom.SHIM_AS`: DIN 125 for M3, modelled at their 7 mm,
+`bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
+offer. The total leaves out rows with no price, and the BOM says so, and the sheets a
+service cuts (`bom.cut_by`: its upload, not a purchase);
 for the running example at the snapshot the unpriced rows were 8 M2 self-tapping screws and
 4 M3 × 18 mm screws, and the made parts came to 39 laser-cut parts in 8 shapes, 90 printed
 parts in 16 shapes, and about 95 g of plastic.
@@ -2296,6 +2301,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | [agentlib/TESTING.md](agentlib/TESTING.md) | the test tiers, the fabrication cache, the fixtures, the identity gate | current |
 | [agentlib/DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's seven decisions, and the hardware decisions with their dates and numbers | current |
 | [agentlib/W8-gate-diffs.md](agentlib/W8-gate-diffs.md) | what each of W8's approved output changes did to the gate's designs | record (2026-10-07) |
+| [agentlib/BOM-gate-diffs.md](agentlib/BOM-gate-diffs.md) | what each of the BOM decisions did to the gate's designs | record (2026-10-08) |
 | [history/SCOPE.md](history/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
 | [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
 | [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |
