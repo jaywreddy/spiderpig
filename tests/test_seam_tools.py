@@ -983,6 +983,23 @@ def test_export_prints_split_row_names_its_own_filament(tmp_path):
     assert got["R.sock"] == "PETG filament"
 
 
+def test_export_prints_split_row_names_its_stl_after_its_own_part(tmp_path):
+    """The PLA row (L.sock, the group's ref) comes first and takes ``sock.stl``; the TPU
+    row's STL is named after its own R.sock, not after the other filament's ref."""
+    from build123d import Box
+
+    from spiderpig.hardware.bom import MadeGroup
+
+    sock = SimpleNamespace(name="L.sock", part=Box(2, 2, 2))
+    rows = build.export_prints([MadeGroup("printed", sock, ["L.sock", "R.sock"])],
+                               tmp_path / "print",
+                               filaments={"L.sock": "pla_filament",
+                                          "R.sock": "tpu95a_filament"})
+    assert {r["parts"]: r["file"] for r in rows} == {"L.sock": "sock.stl",
+                                                     "R.sock": "R_sock.stl"}
+    assert (tmp_path / "print" / "R_sock.stl").is_file()
+
+
 def test_export_prints_empty(tmp_path):
     assert build.export_prints([], tmp_path / "p") == []
     assert (tmp_path / "p" / "parts.csv").read_text().strip() == "file"
