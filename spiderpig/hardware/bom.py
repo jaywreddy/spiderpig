@@ -390,8 +390,9 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     A pure translation first when the world-frame inertia tensors agree (a part with two
     equal moments, a ring, has no definite principal frame: a mirror-symmetric twin was
     otherwise found only as a mirror image), then each matching of the frames (a sign per
-    axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid onto ``b``'s before the proof,
-    one boolean: the volume ``a`` moved and ``b`` don't share is less than ``tol``.
+    axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid
+    onto ``b``'s before the proof, one boolean: the volume ``a`` moved and ``b`` don't share
+    is less than ``tol``.
     """
     from build123d import Location, Plane
 
