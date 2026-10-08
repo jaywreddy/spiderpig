@@ -109,7 +109,7 @@ def test_the_plan_closure_holds_the_planner_and_not_the_outputs(base):
     g0, _ = base
     c = g0.closure(keys.PLAN_ROOTS)
     reached = {m for m, _ in c.symbols}
-    for module in ("spiderpig.stack", "spiderpig.construction.crank",
+    for module in ("spiderpig.stack", "spiderpig.construction.crank.bolt",
                    "spiderpig.construction.route", "spiderpig.linkage.engine",
                    "spiderpig.linkages.strider", "spiderpig.materials", "spiderpig.config",
                    "spiderpig.servos.mount", "spiderpig.hardware.catalog"):
