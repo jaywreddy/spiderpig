@@ -181,22 +181,31 @@ class AxleGroup(Group):
             heights = getattr(self.construction, "end_heights", None)
             if heights is not None:                 # what the retainers need at this z
                 h_lo, h_hi = heights(d, L, k0, k1, air=air(k0, k1))
+            w0, w1 = k0, k1         # the clearance gaps its column crosses: range(w0, w1)
             for i, (label, r) in enumerate(below):
                 if i == 0 and h_lo > 0 and k0 >= 1:     # in the clearance gap under k0
                     out.append(Placed(k0 - 1, Disc(ax, r), g, f"{g} {label}", gap=True,
                                       height=h_lo, toward=-1))
                 else:
                     out.append(Placed(k0 - 1 - i, Disc(ax, r), g, f"{g} {label}"))
+                    if i == 0 and k0 >= 1:  # an end retainer in the layer beyond its stack
+                        w0 = k0 - 1
             for i, (label, r) in enumerate(above):
                 if i == 0 and h_hi > 0 and k1 <= L.top - 1:   # in the gap over k1
                     out.append(Placed(k1, Disc(ax, r), g, f"{g} {label}", gap=True,
                                       height=h_hi, toward=+1))
                 else:
                     out.append(Placed(k1 + 1 + i, Disc(ax, r), g, f"{g} {label}"))
+                    if i == 0 and k1 <= L.top - 1:
+                        w1 = k1 + 1
             # the washers it carries through every clearance gap of its column (only a gap
-            # the plan has is built; the planner keeps other groups' heads off them)
+            # the plan has is built; the planner keeps other groups' heads off them),
+            # including, at any end whose first retainer takes the layer beyond the retained
+            # stack rather than its clearance gap (today only a standoff pillar's free end,
+            # a cantilever's), the gap between that end layer and the retainer: filled, so
+            # the end's link can't slide
             wr = d.washer or d.spacer
-            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(k0, k1)]
+            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(w0, w1)]
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
             for k in range(k0 + 1, k1):
                 if k in mset:

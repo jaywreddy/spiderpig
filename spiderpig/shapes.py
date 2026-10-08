@@ -13,7 +13,20 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
-from build123d import Align, Axis, Box, Compound, Cylinder, Part, Pos
+from build123d import (
+    Align,
+    Axis,
+    Box,
+    Compound,
+    Cylinder,
+    Edge,
+    Face,
+    Part,
+    Pos,
+    Solid,
+    Vector,
+    Wire,
+)
 
 XY = Sequence[float]
 
@@ -84,19 +97,26 @@ def disc(xy: XY, radius: float, z0: float, z1: float) -> Part:
 
 
 def pill(p: XY, q: XY, radius: float, z0: float, z1: float) -> Part:
-    """Stadium between two points (segment ⊕ disc), extruded ``z0..z1``."""
+    """Stadium between two points (segment ⊕ disc), extruded ``z0..z1``: one prism of two
+    lines and two arcs (no boolean)."""
     p = np.asarray(p, dtype=float)[:2]
     q = np.asarray(q, dtype=float)[:2]
-    shape = disc(p, radius, z0, z1)
-    length = float(np.hypot(*(q - p)))
-    if length > 1e-9:
-        theta = math.degrees(math.atan2(q[1] - p[1], q[0] - p[0]))
-        mid = (p + q) / 2
-        bar = Box(length, 2 * radius, z1 - z0).rotate(Axis.Z, theta)
-        shape = shape + bar.move(Pos(float(mid[0]), float(mid[1]), (z0 + z1) / 2)) + disc(
-            q, radius, z0, z1
-        )
-    return shape
+    d = q - p
+    length = float(np.hypot(*d))
+    if length <= 1e-9:
+        return disc(p, radius, z0, z1)
+    u = d / length
+    n = np.array([-u[1], u[0]])
+    r = radius
+
+    def v(xy):
+        return Vector(float(xy[0]), float(xy[1]), z0)
+
+    wire = Wire([Edge.make_line(v(p - r * n), v(q - r * n)),
+                 Edge.make_three_point_arc(v(q - r * n), v(q + r * u), v(q + r * n)),
+                 Edge.make_line(v(q + r * n), v(p + r * n)),
+                 Edge.make_three_point_arc(v(p + r * n), v(p - r * u), v(p - r * n))])
+    return Solid.extrude(Face(wire), Vector(0, 0, z1 - z0))
 
 
 def union(parts: Iterable[Part]) -> Part:

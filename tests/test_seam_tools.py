@@ -967,15 +967,6 @@ def test_export_prints_writes_stls_and_parts_csv(tmp_path):
         placed.min.Z, placed.min.X + placed.max.X, placed.min.Y + placed.max.Y)
 
 
-class WrongFilament(AssertionError):
-    """The known export_prints bug's symptom: R.sock's row named by L.sock's filament."""
-
-
-@pytest.mark.xfail(strict=True, raises=WrongFilament, reason=(
-    "export_prints labels a filament-split row by its ref body's filament: "
-    "hardware.bom._split_by keeps the group's ref (L.sock, TPU) for the R.sock part when "
-    "R.sock is no group's ref, and export_prints looks the filament up by g.ref.name, so "
-    "the PETG part's row says TPU 95A and is weighed at TPU's density"))
 def test_export_prints_split_row_names_its_own_filament(tmp_path):
     from build123d import Box
 
@@ -989,9 +980,24 @@ def test_export_prints_split_row_names_its_own_filament(tmp_path):
     got = {r["parts"]: r["filament"] for r in rows}
     assert set(got) == {"L.sock", "R.sock"}
     assert got["L.sock"] == "TPU 95A flexible filament"
-    if got["R.sock"] == "TPU 95A flexible filament":
-        raise WrongFilament(f"R.sock's row says {got['R.sock']!r}")
     assert got["R.sock"] == "PETG filament"
+
+
+def test_export_prints_split_row_names_its_stl_after_its_own_part(tmp_path):
+    """The PLA row (L.sock, the group's ref) comes first and takes ``sock.stl``; the TPU
+    row's STL is named after its own R.sock, not after the other filament's ref."""
+    from build123d import Box
+
+    from spiderpig.hardware.bom import MadeGroup
+
+    sock = SimpleNamespace(name="L.sock", part=Box(2, 2, 2))
+    rows = build.export_prints([MadeGroup("printed", sock, ["L.sock", "R.sock"])],
+                               tmp_path / "print",
+                               filaments={"L.sock": "pla_filament",
+                                          "R.sock": "tpu95a_filament"})
+    assert {r["parts"]: r["file"] for r in rows} == {"L.sock": "sock.stl",
+                                                     "R.sock": "R_sock.stl"}
+    assert (tmp_path / "print" / "R_sock.stl").is_file()
 
 
 def test_export_prints_empty(tmp_path):

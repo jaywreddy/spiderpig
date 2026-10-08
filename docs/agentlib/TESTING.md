@@ -270,11 +270,13 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline of master** (`d53fbf1`, engine `0.1.0+1b5e76d06b99`):
-`~/.cache/spiderpig/gate/master-d53fbf1/` on the development box (`/root/.cache/...`),
+**Baseline** (W8, `2a130c8`, engine `0.1.0+e91ed4bc0da8`):
+`~/.cache/spiderpig/gate/w8-2a130c8/` on the development box (`/root/.cache/...`),
 one `<design>.json` per design, their logs and `snapshot.json` (commit, branch, time).
-Compare against it from any worktree whose `spiderpig/` should be master's:
-`mise run gate -- compare ~/.cache/spiderpig/gate/master-d53fbf1`.
+Compare against it from any worktree whose `spiderpig/` should match W8's output:
+`mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8`. It differs from the
+previous baselines `master-1eba876` / `master-d53fbf1` (kept) by W8's approved output
+changes, each listed in `W8-gate-diffs.md`.
 
 ## Rules for a module package
 

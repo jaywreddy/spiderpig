@@ -516,10 +516,14 @@ with a re-taken gate baseline.
 | bugs | `materials.aluminium_sheets` loads the catalog; `build.export_prints` labels split filament rows by their own filament (found by W4a) | fix | PETG/TPU print rows |
 
 **Criteria.**
-- [ ] Every gate diff is one of the expected ones above; nothing else moves.
-- [ ] `mise run audit` is green on the six gate designs.
-- [ ] The new baseline is snapshotted and named in TESTING.md.
-- [ ] The full suite is green.
+- [x] Every gate diff is one of the expected ones above; nothing else moves
+  (`W8-gate-diffs.md`; D4's packing reshuffle reaches all four robot designs, not only the
+  demo Klann quad).
+- [ ] `mise run audit` is green on the six gate designs. Five are green. The demo `klann`
+  quad still fails with the jam-SF strength errors it had before W8: 5 without the sim,
+  7 with it (the wobbly demo), and W8 adds none.
+- [x] The new baseline is snapshotted and named in TESTING.md (`w8-2a130c8`).
+- [x] The full suite is green.
 
 ## Later (not in this plan)
 

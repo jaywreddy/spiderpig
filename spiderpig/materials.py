@@ -250,8 +250,9 @@ ROLES = {
 
 def aluminium_sheets(alloy: str = "5052") -> list[str]:
     """Every stock sheet of ``alloy`` in the catalog, thinnest first."""
-    from spiderpig.hardware.catalog import CATALOG
+    from spiderpig.hardware.catalog import CATALOG, _load
 
+    _load()
     keys = [k for k, it in CATALOG.items() if it.category == "sheet"
             and it.dims.get("alloy") and str(it.dims["alloy"]).startswith(alloy)]
     return sorted(keys, key=lambda k: (sheet(k).thickness, str(get(k).dims.get("alloy"))))
