@@ -6,7 +6,9 @@ a button head and a washer (3.0 mm together, one layer outside the plate; the in
 stands in the space between the robot's inner plates, clear of the chassis, and the deck
 lowers past it), tightened to at most ``tighten_nm``. Both ends fixed in the plates: a
 beam. A pillar a link's sweep stops short of one plate is a cantilever from the other, its
-free end over its last link closed by the same screw and washer in the next layer. The
+free end over its last link closed by the same screw and washer in the next layer (a
+clearance gap between that link and that layer is claimed and takes a printed gap ring, as
+every gap of the column does, so the link can't slide: W8, 2026-10-07). The
 links turn on the standoff's 6 mm OD (a running fit, ``Params.running_fit``); every other
 layer between the plates holds a printed spacer **ring** (an 8.5 mm laser-cut ring is
 under both services' smallest part), so every link has a face on both sides. Where an
