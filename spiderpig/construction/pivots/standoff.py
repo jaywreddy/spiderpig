@@ -371,13 +371,9 @@ class StandoffAxle:
         """The shims that stack to an end's take-up ``t``, thickest first: whole 1 mm shims
         and :data:`SHIM_STEP` (bought as DIN 433 washers, :data:`hardware.bom.SHIM_AS`), the
         thickness rounded to the step."""
-        t = round(t / SHIM_STEP) * SHIM_STEP
-        out, left = [], round(t, 3)
-        for s in (1.0, SHIM_STEP):
-            k = int(left / s + 1e-6)
-            out += [s] * k
-            left = round(left - k * s, 3)
-        return out
+        from spiderpig.hardware.bom import stack
+
+        return stack(t, (1.0, SHIM_STEP), round_to=SHIM_STEP)[0]
 
     # -- parts ----------------------------------------------------------------------------
 

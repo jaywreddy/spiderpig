@@ -104,6 +104,12 @@ def test_a_shim_stack_breaks_down_thickest_first():
     assert bom.shim_breakdown(0.05, (0.1,)) == []
 
 
+def test_the_one_shim_loop_returns_what_it_leaves_and_rounds_to_a_step():
+    assert bom.stack(2.35, (1.0, 0.5)) == ([1.0, 1.0], 0.35)
+    assert bom.stack(1.3, (1.0, 0.5), round_to=0.5) == ([1.0, 0.5], 0.0)    # 1.3 -> 1.5
+    assert bom.stack(-0.2, (0.1,)) == ([], 0.0)                             # never negative
+
+
 def test_the_m3_and_m4_families_stack_in_whole_mm_and_half_steps():
     """The constructions stack the clamped M3 / M4 shims from 1.0 and 0.5 mm (DIN 433
     washers, a pair to the millimetre); the 6 x 12 family from its catalog thicknesses."""

@@ -314,15 +314,10 @@ HORN_TIP_CLEAR = 0.3             # a horn screw's tip under the inner plate's to
 
 def shim_stack(t: float) -> list[float]:
     """DIN 988 3 x 6 shims making up ``t`` mm (0.1 mm steps), thickest first."""
+    from spiderpig.hardware.bom import stack
     from spiderpig.hardware.catalog import get
 
-    sizes = sorted((float(v) for v in get(SHIM_KEY).dims["t"]), reverse=True)
-    left, out = round(t, 3), []
-    for s in sizes:
-        while left >= s - 1e-6:
-            out.append(s)
-            left = round(left - s, 3)
-    return out
+    return stack(t, get(SHIM_KEY).dims["t"])[0]
 
 
 def hex_bearing_nm(af: float, engaged: float, p: float = 50.0, relief: float = 0.0) -> float:
