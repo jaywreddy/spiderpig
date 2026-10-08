@@ -639,14 +639,16 @@ def test_the_steering_check_follows_its_runs(quad):
         t = s["tests"][f"step_{s['step_deg']:.0f}"]
         assert not t["fell"]
         assert t["max_tilt"] < STEER_TILT
-        assert t["side_phase_max"] < s["step_deg"] + 5.0
+        # the lock's overshoot past the bound: 41.6 at 45 deg; 96.2 at 90 (W8 D2)
+        assert t["side_phase_max"] < s["step_deg"] + 7.0
     # the default Klann quad (the hex crank, 13 layers; measured 2026-10-07 on the suite's
-    # parametric servo): no unbounded differential (the 0.4 one tilts it 20.3 deg), a 45 deg
-    # excursion (15.7 deg; 90 tilts it 20.5, just past STEER_TILT). The keyed crank's 16
+    # parametric servo): no unbounded differential (the 0.4 one tilts it 20.6 deg), a 90 deg
+    # excursion (19.75 deg of tilt, just under STEER_TILT). Before W8's D2 (the cantilever
+    # pillars' gap rings) 90 tilted it 20.5 and it got 45 (15.7 deg). The keyed crank's 16
     # layers, removed, granted 90; ``--crank printed``'s 12, removed too, 45.
     assert cfg.crank == "bolt"
     assert s["turn"] == 0.0
-    assert s["step_deg"] == 45.0
+    assert s["step_deg"] == 90.0
 
 
 def _fake_steering_runs(monkeypatch, outcome):
