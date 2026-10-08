@@ -1341,15 +1341,18 @@ name = "spiderpig"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "anyio" },
     { name = "build123d" },
     { name = "ezdxf" },
     { name = "fastapi" },
     { name = "mcp" },
     { name = "mujoco" },
     { name = "numpy" },
+    { name = "pydantic" },
     { name = "pygltflib" },
     { name = "rectpack" },
     { name = "scipy" },
+    { name = "starlette" },
     { name = "sympy" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "watchfiles" },
@@ -1369,15 +1372,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anyio", specifier = ">=4.13" },
     { name = "build123d", specifier = ">=0.10,<0.12" },
     { name = "ezdxf", specifier = ">=1.4" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "mcp", specifier = ">=2.2" },
     { name = "mujoco", specifier = ">=3.14.0" },
     { name = "numpy", specifier = ">=2.2" },
+    { name = "pydantic", specifier = ">=2.13" },
     { name = "pygltflib", specifier = ">=1.16" },
     { name = "rectpack", specifier = ">=0.2" },
     { name = "scipy", specifier = ">=1.15" },
+    { name = "starlette", specifier = ">=1.0" },
     { name = "sympy", specifier = ">=1.14" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
     { name = "watchfiles", specifier = ">=1.0" },

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { RoomEnvironment } from './room-environment';
 import type { Insets } from './layout';
 import type { View } from './types';
 
@@ -57,7 +57,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const scene = new THREE.Scene();
   // Soft studio reflections: acrylic and metal read as such instead of flat.
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   pmrem.dispose();
 
   const aspect = window.innerWidth / window.innerHeight;
