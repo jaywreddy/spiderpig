@@ -4,8 +4,9 @@ timings, logged on the ``spiderpig.build`` logger (``spiderpig/tools/profiler.py
 :mod:`spiderpig.cli` sends ``build`` here when ``--profile`` or ``--profile-json`` is given;
 everything else goes to :func:`spiderpig.build.main` unchanged. The stages are timed by
 wrapping, for the length of the run, the functions the build calls (its module's names,
-``api.plan_config``, ``Mechanism.export_step`` / ``export_stl``, ``Bom.write``,
-``order_markdown``), so :mod:`spiderpig.build` itself, which is in the engine's hash
+``stages.planning.plan_config``, ``stages.resolve.config_warnings``,
+``Mechanism.export_step`` / ``export_stl``, ``Bom.write``, ``order_markdown``), so
+:mod:`spiderpig.build` itself, which is in the engine's hash
 (:func:`spiderpig.design.engine_version`), carries no profiling code: measuring a build never
 re-keys a store, the test cache or CI's cache. A call made inside another stage counts in the
 outer one (no time counted twice).
@@ -15,7 +16,12 @@ Stages (:data:`STAGES`): ``import`` the process's age once the build's modules a
 ``plan`` the layer plan through the store, ``fabricate`` the robot, ``step`` / ``stl`` its two
 files, ``group`` the laser and printed parts grouped (mass properties), ``prints`` the print
 STLs, ``dxf_sheets`` / ``dxf_parts`` the packed sheets and the per-part DXFs, ``bom`` the BOM
-and its files, ``order`` ``ORDER.md`` and ``manifest.json``. ``build_total`` is the wall time
+and its files, ``order`` ``ORDER.md`` and ``manifest.json``. With the build's export worker
+(:func:`spiderpig.build._start_exports`: workers and the fabrication cache on) ``group`` is
+the wait for that worker, which groups and writes both kinds of DXF beside the ``step`` and
+``stl`` stages (so ``dxf_sheets`` and ``dxf_parts`` are absent), and its own steps are
+logged as ``worker.load``, ``worker.group``, ``worker.dxf_sheets`` and ``worker.dxf_parts``
+(outside :data:`STAGES`: they overlap the build's). ``build_total`` is the wall time
 since the process started; ``unaccounted_pct`` what no stage holds (prints, the plan's
 description). The interpreter's exit after the summary (~1 s) is outside it.
 """
@@ -39,22 +45,24 @@ logger = logging.getLogger("spiderpig.build")
 
 def _targets():
     """(object, attribute, stage) of every call the build's stages are made of."""
-    from spiderpig import api
     from spiderpig import build as build_mod
     from spiderpig.hardware import bom as bom_mod
     from spiderpig.hardware import order as order_mod
     from spiderpig.mechanism import Mechanism
+    from spiderpig.stages import planning, resolve
 
+    # (the build imports plan_config and config_warnings from the stages when it runs)
     return [
         (build_mod, "clear_generated", "template"),
-        (api, "config_warnings", "template"),
+        (resolve, "config_warnings", "template"),
         (build_mod, "template_for", "template"),
-        (api, "plan_config", "plan"),
+        (planning, "plan_config", "plan"),
         (build_mod, "design_side", "plan"),
         (build_mod, "fabricate", "fabricate"),
         (Mechanism, "export_step", "step"),
         (Mechanism, "export_stl", "stl"),
         (build_mod, "group_made", "group"),
+        (build_mod, "_exports_result", "group"),
         (build_mod, "export_prints", "prints"),
         (build_mod, "printed_filaments", "prints"),
         (build_mod, "save_sheets", "dxf_sheets"),
@@ -80,9 +88,13 @@ def instrumented(prof: Profiler):
             active.append(stage)
             try:
                 with prof.timed(stage):
-                    return fn(*a, **kw)
+                    result = fn(*a, **kw)
             finally:
                 active.pop()
+            if fn.__name__ == "_exports_result" and result is not None:
+                for step, seconds in result["timings"].items():   # the worker's own steps
+                    prof.add(f"worker.{step}", seconds)
+            return result
         return timed
 
     with ExitStack() as undo:

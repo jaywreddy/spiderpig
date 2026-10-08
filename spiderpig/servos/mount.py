@@ -40,11 +40,13 @@ from OCP.gp import gp_Trsf
 from spiderpig import linkage
 from spiderpig.construction.base import (
     FRAME_INNER,
+    RIDES_HOST,
     Build,
     ConstructionError,
     Context,
     DriveInterface,
     Group,
+    Motion,
     Realized,
     hardware,
 )
@@ -377,6 +379,35 @@ class DriveGroup(Group):
         pins = build.plan.topo.axes_of("crankpin")
         base = build.angle("O", pins[0].name) if pins else 0.0
         return base + iface.pattern_angle
+
+    def assembly(self, view) -> list:
+        """How the drive goes on (:mod:`construction.assembly`): the servo on the inner
+        plate, its front screws from the leg side, the horn on the spline (the rear idler
+        horn stays in the box) with its printed spacer."""
+        from spiderpig.construction.assembly import UNIT, Op, whole
+
+        screws = view.named(r"servo_screw\d+")
+        horn = view.named(r"servo_horn(_spacer)?")
+        ops = []
+        if "servo" in view.z:
+            ops.append(Op(UNIT, (1, 0), whole("servo"), "", "Stand the servo on the inner "
+                          "plate, its spline over the horn hole.", "servo"))
+        if screws:
+            ops.append(Op(UNIT, (1, 1), whole(*screws), "",
+                          f"Its {len(screws)} front screws from the leg side, heads under the "
+                          "plate, in the far holes (the near ones would leave the plate too "
+                          "little web to the horn's hole).", "servo_screws"))
+        if horn:
+            ops.append(Op(UNIT, (2, 0), whole(*horn), "Horn and hub plate",
+                          "The horn on the spline with its centre screw (the rear idler horn "
+                          "stays in the box), its printed spacer on it.", "horn"))
+        return ops
+
+    def motion(self, got: Realized) -> Motion:
+        """The servo, its screws and every hole and pad it asks of the inner plate stand
+        with the frame (O and the pillars place them); the horn and its spacer turn with the
+        crank about O (:meth:`horn_angle`; the spacer's pockets at crank points)."""
+        return RIDES_HOST
 
     def realize(self, build: Build, done: Realized) -> Realized:
         """The servo, its horn (and spacer), mounting screws, the plate's holes and pad.

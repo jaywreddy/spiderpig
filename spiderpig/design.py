@@ -22,7 +22,6 @@ passes on it.
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import importlib.metadata
 import json
@@ -37,6 +36,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from spiderpig.config import BuildConfig
+from spiderpig.keys import code_of, code_text
 from spiderpig.spec import Spec
 from spiderpig.stack import StackSpec
 
@@ -60,23 +60,16 @@ def package_version() -> str:
         return "0.0.0"
 
 
-ENGINE_EXCLUDE = ("server", "mcp", "tools", "cli.py", "view.py", "__main__.py")
+ENGINE_EXCLUDE = ("server", "mcp", "tools", "guide", "cli.py", "view.py", "__main__.py")
 """Package sources that never change a design's result (the viewer's server, the MCP layer,
-the command lines): left out of :func:`engine_version`."""
+the assembly guide, the command lines): left out of :func:`engine_version`."""
 _ENGINE_VERSION: list[str] = []
 
 
 def _code_digest(source: str | bytes) -> bytes:
-    """A source's code without its docstrings (a docs-only edit keeps the engine version)."""
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        body = getattr(node, "body", None)
-        if (isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-                and body and isinstance(body[0], ast.Expr)
-                and isinstance(body[0].value, ast.Constant)
-                and isinstance(body[0].value.value, str)):
-            node.body = body[1:] or [ast.Pass()]
-    return ast.dump(tree).encode()
+    """A source's code without its docstrings (a docs-only edit keeps the engine version):
+    :func:`spiderpig.keys.code_of`."""
+    return code_of(source).encode()
 
 
 def engine_version() -> str:
@@ -102,7 +95,7 @@ def engine_version() -> str:
         h = hashlib.sha256()
         for p in files:
             h.update(str(p.relative_to(ROOT)).encode())
-            h.update(_code_digest(p.read_bytes()))
+            h.update(code_text(p).encode())     # (_code_digest, kept per file's bytes)
         h.update(spec.encode())
         _ENGINE_VERSION.append(f"{version}+{h.hexdigest()[:12]}")
         if cached is not None:

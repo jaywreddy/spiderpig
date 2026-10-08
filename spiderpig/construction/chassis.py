@@ -589,7 +589,7 @@ def _port_slots(spec, frames, half: float):
     plug, to the plates' +x edge, through the plates from the plug's top to the reserve
     (the two servos' plugs, and so their channels, sit on opposite sides). The rear face is
     on the plates, so the plug goes in through the window before the stack closes
-    (``robot.ASSEMBLY`` step 5) and its wires lie in the channel."""
+    (the centre stack's step, :func:`assembly`) and its wires lie in the channel."""
     ports = spec.bus_ports
     if ports is None:                   # a servo with no bus sockets modelled (the XLs)
         return []
@@ -1026,3 +1026,74 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
     # (no adhesive: the ties' studs clamp the stack, and the rear screws hold each servo's
     # own plates)
     return bodies
+
+
+def assembly(view) -> list:
+    """How the chassis goes on (:mod:`construction.assembly`): on each side's inner plate
+    its frame ties' standoff chains (shims at the plate) and the M3 button heads up through
+    the plate into them; then between the sides the set-screw studs, each servo's own
+    centre plates (the meta's ``rear_own_plates`` from its rear face) over them with its
+    rear screws and its bus plug seated through their window (the top-entry sockets: the
+    plug can't go in once the stack is closed), the middle plates over the wires, and the
+    right servo's own plates the same way. ``view``: a ``RobotView``."""
+    from spiderpig.construction.assembly import CHASSIS, SIDES, UNIT, Op, whole
+
+    ops = []
+    for s in SIDES:
+        chains = view.named(rf"{s}\.tie_(standoff|shims)\w*")
+        if chains:
+            ops.append(Op(UNIT, (4, 0), whole(*chains), "Frame-tie chains",
+                          "The frame ties' standoff chains on the inner plate, shims at the "
+                          "plate.", "ties", side=s))
+        screws = view.named(rf"{s}\.tie_screw\d+")
+        if screws:
+            ops.append(Op(UNIT, (4, 1), whole(*screws), "",
+                          "Their M3 button heads up through the plate from the leg side "
+                          "(threadlocker).", "tie_screws", side=s))
+    studs = view.named(r"tie_stud\d+")
+    if studs:
+        ops.append(Op(CHASSIS, (0,), whole(*studs), "Studs",
+                      "The M3 set-screw studs into the chains' ends (threadlocker).",
+                      "studs"))
+    plates = sorted(view.named(r"centre_plate\d+"), key=lambda p: sum(view.z[p]))
+    own = int(view.meta.get("rear_own_plates") or len(plates) // 2)
+    own = max(0, min(own, len(plates) // 2))
+    groups = {"L": plates[:own], "R": plates[len(plates) - own:][::-1]}
+    middle = plates[own:len(plates) - own]
+    ports = (view.meta.get("bus_ports"), view.meta.get("bus_sockets_used"))
+    face = ports == ("face", "own")
+
+    def nums(names):
+        return ", ".join(p.removeprefix("centre_plate") for p in names)
+
+    for s in SIDES:
+        rear = view.named(rf"{s}\.rear_screw\d+")
+        mine = groups[s]
+        if not (mine or rear):
+            continue
+        n_screws = len(rear)
+        screw = f"its {'two rear screws' if n_screws > 1 else 'rear screw'}"
+        if s == "L":
+            text = (f"The left servo's own centre plates ({nums(mine)}) on its rear face over "
+                    f"the studs, {screw} through them.")
+            if face:
+                text += (" Its bus plug (one branch of the Y cable) pushed straight down "
+                         "through the plates' window into the socket on the servo's +y "
+                         "side; its wires bent toward +x and laid along its own channel.")
+        else:
+            text = (f"The right servo's own centre plates ({nums(mine)}) screwed to the right "
+                    "servo the same way" + (
+                        ", its plug (the Y cable's other branch) seated through their "
+                        "window into its own +y socket, on the robot's other side, its wires "
+                        "along its own channel" if face else "")
+                    + "; then that servo and its plates onto the studs, rear faces "
+                    "together" + (", no wire pinched." if face else "."))
+        ops.append(Op(CHASSIS, (1 if s == "L" else 3,), whole(*mine, *rear),
+                      f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
+                      f"plates_{s}"))
+    if middle:
+        ops.append(Op(CHASSIS, (2,), whole(*middle), "Middle centre plates",
+                      f"The middle centre plates ({nums(middle)}) over the studs"
+                      + (" and the left servo's wires, its channel round them." if face
+                         else "."), "plates_mid"))
+    return ops

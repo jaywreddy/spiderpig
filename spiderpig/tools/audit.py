@@ -63,7 +63,7 @@ from spiderpig.config import (
     add_design_args,
     config_from_args,
 )
-from spiderpig.construction.contract import bad_solids, check_side, clashes
+from spiderpig.construction.contract import bad_solids, check_sides, clashes
 from spiderpig.construction.deck import deck_clearance
 from spiderpig.fabricate import fabricate, template_for
 from spiderpig.hardware.bom import bom_from_mechanism
@@ -96,7 +96,8 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     rep: dict = {"layers": design.plan.top + 1, "stack_mm": design.plan.height,
                  "plan": design.plan.describe()}
     rep["plan_violations"] = verify_plan(design.plan, tmpl)
-    rep["contract"] = {f"t={t:g}": check_side(design, tmpl.freeze_at(t)) for t in ts_contract}
+    rep["contract"] = dict(zip((f"t={t:g}" for t in ts_contract),
+                               check_sides(design, tmpl, ts_contract), strict=True))
     rep["clash"], rep["solids"] = {}, {}
     mech = None
     for t in ts_clash:

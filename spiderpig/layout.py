@@ -564,6 +564,7 @@ def save_sheets(
     margin: float = _MARGIN,
     kerf: float | None = None,
     default: str | None = None,
+    labels: dict[str, str] | None = None,
 ) -> list[Path]:
     """Pack the mechanism's laser-cut parts onto sheets, one set per service and sheet
     (material and thickness: one order per service), and write DXFs.
@@ -574,7 +575,8 @@ def save_sheets(
     can't be placed. ``kerf``: ``None`` compensates each sheet for its own service's kerf
     (:func:`sheet_kerf`), a number for that kerf on every sheet. ``default``: the sheet of
     a body that names none (the build's ``config.sheet``; ``mech.meta["sheet"]`` when not
-    given).
+    given). ``labels``: each part's label (:func:`spiderpig.labels.laser_labels`), a
+    ``label`` column in the parts list.
     """
     prefix = Path(prefix)
     prefix.parent.mkdir(parents=True, exist_ok=True)
@@ -591,8 +593,12 @@ def save_sheets(
     if rows:
         with open(f"{prefix}_parts.csv", "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["service", "material", "kerf_mm", "sheet", "part", "x_mm", "y_mm",
-                        "width_mm", "height_mm"])
+            head = ["service", "material", "kerf_mm", "sheet", "part", "x_mm", "y_mm",
+                    "width_mm", "height_mm"]
+            if labels is not None:
+                head.append("label")
+                rows = [(*r, labels.get(r[4], "")) for r in rows]
+            w.writerow(head)
             w.writerows(rows)
     return written
 
@@ -624,15 +630,26 @@ def _part_slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]+", "-", name).strip("-") or "part"
 
 
+def outline_size(body, default: str, margin: float = _MARGIN) -> tuple[float, float]:
+    """A laser-cut body's outline as its per-part DXF has it, long side first (mm): the
+    part labels' size (:mod:`spiderpig.labels`)."""
+    from spiderpig.hardware.catalog import sheet_size as blank
+
+    x0, y0, x1, y1 = _bbox_2d(_profile(body, blank(sheet_key(body, default)), margin))
+    w, h = x1 - x0, y1 - y0
+    return (max(w, h), min(w, h))
+
+
 def save_parts(groups, out_dir, default: str, kerf: float | None = None,
-               margin: float = _MARGIN) -> list[dict]:
+               margin: float = _MARGIN, labels: dict[str, str] | None = None) -> list[dict]:
     """One DXF per different laser-cut part (``groups``: :func:`hardware.bom.group_made`'s
     laser groups; a part and its mirror image are one cut, flipped), for a service that
     quotes and nests per part: ``<out_dir>/<service>_<sheet>/<part>_x<qty>.dxf``, the part
     at the origin on layer ``CUT`` in mm, kerf-compensated as :func:`save_sheets` does
     (``kerf``: ``None`` for each sheet's service's). Writes ``<out_dir>/order.csv`` (a row
     per file: service, sheet, material, thickness, quantity, size, the parts it makes) and
-    returns those rows."""
+    returns those rows. ``labels``: each part's label (:func:`spiderpig.labels.laser_labels`):
+    the file is ``<label>_<part>_x<qty>.dxf`` and the row says it."""
     from spiderpig.hardware.catalog import sheet_name, sheet_thickness
     from spiderpig.hardware.catalog import sheet_size as blank
 
@@ -655,13 +672,15 @@ def save_parts(groups, out_dir, default: str, kerf: float | None = None,
             _emit(msp, wire, (-x0, -y0), k / 2 if wire is outer else -k / 2)
         folder = out_dir / f"{_slug(service)}_{key}"
         folder.mkdir(parents=True, exist_ok=True)
-        path = folder / f"{_part_slug(g.ref.name)}_x{g.qty}.dxf"
+        label = (labels or {}).get(g.ref.name, "")
+        stem = f"{_part_slug(g.ref.name)}_x{g.qty}.dxf"
+        path = folder / (f"{label}_{stem}" if label else stem)
         doc.saveas(str(path))
         rows.append({"service": service or "any", "sheet": key, "material": sheet_name(key),
                      "thickness_mm": round(sheet_thickness(key), 3), "kerf_mm": k,
                      "file": str(path.relative_to(out_dir)), "qty": g.qty,
                      "size_mm": f"{x1 - x0:.1f} x {y1 - y0:.1f}",
-                     "parts": " ".join(g.names)})
+                     "parts": " ".join(g.names), **({"label": label} if labels else {})})
     if rows:
         out_dir.mkdir(parents=True, exist_ok=True)
         with open(out_dir / "order.csv", "w", newline="") as f:

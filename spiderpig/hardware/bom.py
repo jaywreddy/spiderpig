@@ -390,6 +390,115 @@ def _shared_volume(a, b) -> float:
     return float(props.Mass())
 
 
+_COINCIDE = 1e-9
+"""mm: how far one part's boundary geometry may lie from the other's for :func:`_coincide`
+(a part's exact copy, moved: ~1e-14)."""
+_GRID = 1e-6     # mm: the faces and edges are paired in the order of their numbers on this grid
+
+
+def _canon(d) -> tuple[float, float, float]:
+    """A direction up to its sign: the first component that isn't ~0 made positive."""
+    v = (d.X(), d.Y(), d.Z())
+    for c in v:
+        if abs(c) > 1e-12:
+            return v if c > 0 else (-v[0], -v[1], -v[2])
+    return v
+
+
+def _edge_numbers(e) -> list[float] | None:
+    """An edge as numbers that fix it as a point set: a line by its two ends; a circular
+    arc by its centre, axis (up to sign), radius, ends and the point halfway along (which
+    of the two arcs between those ends); ``None`` for any other curve."""
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
+    from OCP.GeomAbs import GeomAbs_Circle, GeomAbs_Line
+
+    c = BRepAdaptor_Curve(e)
+    u0, u1 = c.FirstParameter(), c.LastParameter()
+    ends = sorted((p.X(), p.Y(), p.Z()) for p in (c.Value(u0), c.Value(u1)))
+    kind = c.GetType()
+    if kind == GeomAbs_Line:
+        return [0.0, *ends[0], *ends[1]]
+    if kind == GeomAbs_Circle:
+        circ = c.Circle()
+        o, m = circ.Location(), c.Value(0.5 * (u0 + u1))
+        return [1.0, o.X(), o.Y(), o.Z(), *_canon(circ.Axis().Direction()), circ.Radius(),
+                *ends[0], *ends[1], m.X(), m.Y(), m.Z()]
+    return None
+
+
+def _face_numbers(f) -> list[float] | None:
+    """A face as numbers that fix it as a point set: its surface (a plane by its normal up
+    to sign and offset, a cylinder by its axis line and radius) and every edge bounding it
+    (:func:`_edge_numbers`, in a fixed order); ``None`` for any other surface or edge."""
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+    from OCP.TopAbs import TopAbs_EDGE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+
+    s = BRepAdaptor_Surface(f)
+    kind = s.GetType()
+    if kind == GeomAbs_Plane:
+        pl = s.Plane()
+        n, p = _canon(pl.Axis().Direction()), pl.Location()
+        head = [0.0, *n, n[0] * p.X() + n[1] * p.Y() + n[2] * p.Z()]
+    elif kind == GeomAbs_Cylinder:
+        cy = s.Cylinder()
+        d, p = _canon(cy.Axis().Direction()), cy.Axis().Location()
+        along = d[0] * p.X() + d[1] * p.Y() + d[2] * p.Z()
+        head = [1.0, *d, p.X() - along * d[0], p.Y() - along * d[1], p.Z() - along * d[2],
+                cy.Radius()]
+    else:
+        return None
+    edges = []
+    ex = TopExp_Explorer(f, TopAbs_EDGE)
+    while ex.More():
+        e = _edge_numbers(TopoDS.Edge_s(ex.Current()))
+        if e is None:
+            return None
+        edges.append(e)
+        ex.Next()
+    edges.sort(key=lambda v: (len(v), [round(x / _GRID) for x in v]))
+    return head + [float(len(edges))] + [x for e in edges for x in [float(len(e)), *e]]
+
+
+def _boundary(part) -> list[list[float]] | None:
+    """Every face of ``part`` as :func:`_face_numbers`, in a fixed order (``None``: a face
+    or an edge of a kind not read). Read only: the part is left as it is."""
+    out = []
+    for face in part.faces():
+        f = _face_numbers(face.wrapped)
+        if f is None:
+            return None
+        out.append(f)
+    out.sort(key=lambda v: (len(v), [round(x / _GRID) for x in v]))
+    return out
+
+
+def _coincide(a: list[list[float]] | None, b: list[list[float]] | None) -> bool:
+    """Are two parts' :func:`_boundary` the same, face for face, every number within
+    :data:`_COINCIDE`? Then the parts are one solid, and this is a proof, not a sample:
+
+    - a face is the piece of its surface its edges bound, and the numbers fix both: the
+      plane or the cylinder (its axis line and radius), and each edge as a point set (a
+      line's ends; an arc's circle, ends and middle, which of the two arcs it is), so on a
+      plane the loops bound one region and on a cylinder the arcs pick the side;
+    - so two parts whose faces pair up so have the same boundary, and a closed solid is
+      the region its boundary encloses: they are the same solid, within 1e-9 mm (the
+      volume they don't share is under 1e-9 mm times their area).
+
+    Faces and edges are paired in the order of their numbers rounded to :data:`_GRID`:
+    numbers that round apart, a surface or curve of another kind, a different count, only
+    make this ``False``, and the caller runs the boolean."""
+    if a is None or b is None or len(a) != len(b):
+        return False
+    for fa, fb in zip(a, b, strict=True):
+        if len(fa) != len(fb) or max((abs(x - y) for x, y in zip(fa, fb, strict=True)),
+                                     default=0.0) > _COINCIDE:
+            return False
+    return True
+
+
 def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?
 
@@ -398,7 +507,13 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     otherwise found only as a mirror image), then each matching of the frames (a sign per
     axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid
     onto ``b``'s before the proof, one boolean: the volume ``a`` moved and ``b`` don't share
-    is less than ``tol``.
+    is less than ``tol``. Unless ``a`` moved and ``b`` are one solid (:func:`_coincide`:
+    face for face the same planes and cylinders bounded by the same edges, within 1e-9 mm,
+    so that volume is under 1e-9 mm times their area, far below ``tol``): the copy of a
+    part, moved, which most twins are, needs no boolean (its answer would be the same:
+    yes). Either way the motion is a proper one (``det r = +1``): ``a`` moved is ``a``'s
+    own handedness, so a chiral part and its mirror image are never "same" here (they meet
+    only through :func:`congruent`'s mirrored candidate, as "mirror").
     """
     from build123d import Location, Plane
 
@@ -412,6 +527,7 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     # equal moments (a ring, a disc) turns it about its axis by an arbitrary angle.
     ia, ib = ea @ np.diag(ma) @ ea.T, eb @ np.diag(mb) @ eb.T
     eye = (np.eye(3),) if np.abs(ia - ib).max() <= 1e-6 * max(np.abs(ib).max(), 1.0) else ()
+    on_b: list | None | bool = False        # b's boundary, once a motion is tried
     for r in (*eye, *(eb @ np.diag(signs) @ ea.T for signs in _SIGNS)):
         if np.linalg.det(r) < 0:
             continue
@@ -419,6 +535,10 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
         if np.abs(r @ sa.surf + t - sb.surf).max() > _CENTROID_TOL:
             continue
         moved = _moved(a, Location(Plane(tuple(t), tuple(r[:, 0]), tuple(r[:, 2]))))
+        if _COINCIDE * (sa.area + sb.area) < 0.01 * tol:
+            on_b = _boundary(b) if on_b is False else on_b
+            if on_b is not None and _coincide(_boundary(moved), on_b):
+                return True
         if sa.volume + sb.volume - 2.0 * _shared_volume(moved, b) < tol:
             return True
     return False
@@ -864,6 +984,31 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
 # ---------------------------------------------------------------------------
 # The BOM
 # ---------------------------------------------------------------------------
+
+
+def bought_lines(mech) -> list[BomLine]:
+    """What :func:`bom_from_mechanism` buys, line by line, before it groups them: each
+    purchased body's item, the fitting's lines, the extras, the shim stacks as what is
+    bought (:func:`split_shims`: DIN 433 washers). No filament, no sheets (the build adds
+    those). A line whose ``where`` starts with a body's name is that body's
+    (:func:`line_body`): the assembly guide lists it where the body goes on."""
+    fitted, _, replaced = fitting_lines(mech)
+    lines = [BomLine(b.bom_key, 1, b.name) for b in mech.bodies
+             if b.fab == "purchased" and b.bom_key and b.name not in replaced]
+    lines += fitted
+    lines += list(mech.bom_extras)
+    by_name = {b.name: b for b in mech.bodies}
+    lines, _ = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
+    return lines
+
+
+def line_body(line: BomLine, names) -> str | None:
+    """The body a line is for, when its ``where`` starts with one of ``names``."""
+    m = re.match(r"[A-Za-z0-9_.]+", line.where or "")
+    if m is None:
+        return None
+    w = m.group(0).rstrip(".:")
+    return w if w in names else None
 
 
 def bom_from_mechanism(mech, title: str = "", filament: str | None = None,

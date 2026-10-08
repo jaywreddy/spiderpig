@@ -10,10 +10,12 @@ import numpy as np
 from build123d import Axis, Box, Location
 
 from spiderpig.construction.base import (
+    RIDES_HOST,
     Build,
     Context,
     DriveInterface,
     Group,
+    Motion,
     Realized,
 )
 from spiderpig.servos.mount import MIN_SPACER
@@ -264,6 +266,22 @@ class CrankGroup(Group):
         if build.plan.topo.center is None:
             return Realized()
         return self.construction.realize(self, build)
+
+    def assembly(self, view) -> list:
+        """The construction's ``assembly(view)`` when it has one."""
+        hook = getattr(self.construction, "assembly", None)
+        return [] if hook is None else hook(view)
+
+    def motion(self, got: Realized) -> Motion | None:
+        """Every part turns with the crank about O (the webs, the crankpins' hex pockets and
+        standoffs at the crank's angle, the horn screws at the horn's), and every hole it
+        asks of a link is round at a crankpin; but a hex journal on O is drawn at the
+        world's angle 0 whatever the crank's, its pockets in the webs too: such a crank
+        changes shape with the angle (``None``)."""
+        note = got.notes.get("crank_bolt", {})
+        if note.get("journals") and getattr(self.construction, "hex", True):
+            return None
+        return RIDES_HOST
 
 
 def _hex(xy, af: float, z0: float, z1: float, angle: float):
