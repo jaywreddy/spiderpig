@@ -386,6 +386,7 @@ def _envelope(frame, x0, x1, y0, y1, z0, z1):
     return ch._rounded_rect(frame, x0, x1, y0, y1, 0.05, z0, z1)
 
 
+@pytest.mark.slow       # ~20 s of OCCT booleans: two envelopes against every plate and screw
 def test_the_bus_plugs_and_wires_meet_no_centre_plate_and_no_screw(design, robot):
     """The review of 2026-10-08: each servo's plug, and its wires swept from the plug's top
     along their channel past the plates' +x edge, at the research's upper height (6.5 mm

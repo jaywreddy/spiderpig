@@ -1139,7 +1139,8 @@ def test_audit_main_writes_the_report_and_fails_on_problems(monkeypatch, tmp_pat
     assert "== single" in text
     assert "  plan: x" in text
     assert "  warning: w" in text
-    assert ("joint SF jam / walk: pin 1.2 / 9.5, pillar -, crank 2.06, link plate - "
+    assert ("joint SF jam / walk: pin 1.2 / 9.5, pillar -, crank 2.06, link plate -, "
+            "centre plates - "
             "(override loads)") in text
     assert "OK (12.5 s)" in text
     assert "FAIL (12.5 s)" in text

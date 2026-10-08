@@ -388,11 +388,13 @@ def _sheet_scale(config: BuildConfig, key: str) -> float:
 # the servo's highest corner plus 0.99 mm (the centre plates round the ties, 2 thicknesses
 # of aluminium to the edge: 2.36 mm in the 0.090 in plates before 2026-10-08): measured on
 # the Strider double (116.6 g since the rails are screwed on, 2026-10-04; 113 g with glued
-# spigots), centre 13.05 mm over the chassis top (re-measured 2026-10-08, with the charger
-# on its pad strips; 13.45 before). (+2.5 g: the cradle screwed down; -1.4 g: the
-# simplified hardware's button-head deck screws and 8 mm-stud board standoffs, 2026-10-05)
-_DECK_PLATE_G, _DECK_REST_G = 33.3, 84.4
-_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.05, 0.99
+# spigots), centre 13.45 mm over the chassis top. (+2.5 g: the cradle screwed down; -1.4 g:
+# the simplified hardware's button-head deck screws and 8 mm-stud board standoffs,
+# 2026-10-05.) Re-measured 2026-10-08 (the 0.063 in centre plates): the Strider double
+# 117.8 g, 13.23 mm over the chassis top; the Klann quad, whose charger sits on its two
+# printed pad strips, 118.8 g, 13.03 mm: the nominal is their middle
+_DECK_PLATE_G, _DECK_REST_G = 33.3, 84.9
+_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.15, 0.99
 
 
 def _pin_joints(lk) -> int:

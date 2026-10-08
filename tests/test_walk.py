@@ -348,8 +348,8 @@ def test_quad_reference(com):
     """The viewer's numbers for the Klann quad (centre of mass: the frame pivots' centroid
     there; the nominal mass model here gives the same), on the default design's stack: the
     bolt crank's single aluminium webs on hex standoffs, heads in clearance gaps, standoff
-    pillars and Chicago pins, 13 layers, the feet at z -95.3 / -48.6 / -55.4 mm, a 52.0 mm
-    least margin (the 0.063 in centre plates of 2026-10-08: 0.57 mm nearer the mid-plane).
+    pillars and Chicago pins, 13 layers, the feet at z -96.1 / -49.4 / -56.2 mm, a 52.8 mm
+    least margin (the 0.063 in x 6 centre plates of 2026-10-08: 0.23 mm farther out).
     (The reference was the removed ``--crank printed`` quad's until 2026-10-07: its 12
     layers put the feet at -62 / -50 mm, a 50.0 mm margin; the keyed crank's 16 layers
     57.4 mm.) The numbers are ``walk_reference.json``'s, which the
