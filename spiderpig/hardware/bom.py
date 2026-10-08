@@ -104,6 +104,56 @@ class MadeRow:
     qty: int = 1
     names: list[str] = field(default_factory=list)
     mirrored: int = 0    # of qty, how many are mirror images (printed parts: "print mirrored")
+    sheet: str = ""      # a laser part's sheet item (its key)
+
+
+@dataclass
+class CutRow:
+    """One service's cutting of the parts on one of its sheets (the material included):
+    ``usd`` its estimate (:func:`cut_estimate`; ``None``: no rates for that sheet)."""
+
+    service: str
+    sheet: str
+    name: str
+    parts: int
+    area_cm2: float
+    usd: float | None
+
+
+CUT_SOURCE = ("an area estimate calibrated to SendCutSend's live quotes of 2026-10-08 (the "
+              "Strider double's 47 parts, USD 117.14 in all, free US shipping over USD 39: "
+              "bom-study/evidence/sheet/prices.json); upload the files for the real quote")
+"""Where :func:`cut_estimate`'s rates come from (what the BOM and ORDER.md say of it)."""
+
+
+def cut_estimate(key: str, parts: list[tuple[float, int]]) -> float | None:
+    """What a service charges to cut ``parts`` (``(area cm^2, qty)`` each) from sheet ``key``,
+    the material included: each part ``max(cut_min_usd, cut_usd_cm2 x area)`` (the sheet
+    item's rates); ``None`` without them. Calibrated on SendCutSend's per-file live quotes of
+    2026-10-08 (:data:`CUT_SOURCE`): in 3 mm acrylic a small part is USD 1.26-1.40 whatever
+    its size (1.33 at 4 off), the 93 cm^2 deck plate 6.88; in 5052 0.080-0.090 in the
+    plates come to about 0.20 per cm^2, in 6061 0.100 in 0.40, a small one at least 2.20.
+    On the Strider double: acrylic 49.45 (quoted 49.44), aluminium 68.48 (67.70)."""
+    d = get(key).dims
+    rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
+    if rate is None or least is None:
+        return None
+    return round(sum(q * max(float(least), float(rate) * a) for a, q in parts), 2)
+
+
+def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
+    """A :class:`CutRow` per service and sheet the laser-cut ``made`` rows are cut from."""
+    by: dict[str, list[MadeRow]] = {}
+    for m in made:
+        if m.method == "laser" and m.sheet and cut_by(m.sheet):
+            by.setdefault(m.sheet, []).append(m)
+    out = []
+    for key, rows in by.items():
+        t_cm = float(get(key).dims.get("thickness", 3.0)) / 10.0
+        parts = [(m.volume_cm3 / t_cm, m.qty) for m in rows]
+        out.append(CutRow(cut_by(key), key, get(key).name, sum(m.qty for m in rows),
+                          round(sum(a * q for a, q in parts), 1), cut_estimate(key, parts)))
+    return sorted(out, key=lambda c: (c.service, c.sheet))
 
 
 SAW_KERF = 1.0     # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
@@ -183,9 +233,10 @@ floor)."""
 
 def cut_by(key: str) -> str:
     """The cutting service that supplies sheet ``key`` with its parts (the sheet item's
-    ``service``; ``""``: none, or not a sheet). Such a row is an upload (ORDER.md's "Cut"
-    section, priced by the service's quote), not a purchase: it is in no purchase total, so
-    a stock seller's sheet price (Inventables' acrylic, before 2026-10-08) never counts."""
+    ``service``; ``""``: none, or not a sheet). Such a sheet's row is not bought: the
+    service supplies the material with the cut, priced by the BOM's cutting line
+    (:class:`CutRow`, :func:`cut_estimate`), so a stock seller's raw sheet price
+    (Inventables' acrylic, before 2026-10-08) never counts."""
     try:
         item = get(key)
     except KeyError:
@@ -194,8 +245,9 @@ def cut_by(key: str) -> str:
 
 
 def bought(key: str) -> bool:
-    """Whether a row of ``key`` is ordered and totalled: not on hand (:data:`ON_HAND`) and
-    not a sheet a service cuts (:func:`cut_by`)."""
+    """Whether a row of ``key`` is ordered and totalled as a purchase: not on hand
+    (:data:`ON_HAND`) and not the raw sheet of a service that supplies it (:func:`cut_by`:
+    its cutting line holds the material)."""
     return key not in ON_HAND and not cut_by(key)
 
 
@@ -209,12 +261,25 @@ class Bom:
     filament: str = "PLA"
     cuts: list[CutList] = field(default_factory=list)   # stock cut to length (the rod pins)
     filaments: dict[str, float] = field(default_factory=dict)   # grams per filament (name)
+    cutting: list[CutRow] = field(default_factory=list)   # per service and sheet
+
+    @property
+    def purchases_usd(self) -> float:
+        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, and the raw
+        sheets a service supplies, :func:`cut_by`, left out: ORDER.md's carts add up to
+        it)."""
+        return sum(r.cost_usd or 0.0 for r in self.purchased if bought(r.key))
+
+    @property
+    def cutting_usd(self) -> float:
+        """The cut parts, material included, at their services' estimates (:class:`CutRow`;
+        an unpriced one adds nothing)."""
+        return round(sum(c.usd or 0.0 for c in self.cutting), 2)
 
     @property
     def cost_usd(self) -> float:
-        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, and the sheets
-        a service cuts, :func:`cut_by`, left out: ORDER.md's carts add up to it)."""
-        return sum(r.cost_usd or 0.0 for r in self.purchased if bought(r.key))
+        """The build's estimated cost: the purchases and the cutting (shipping apart)."""
+        return self.purchases_usd + self.cutting_usd
 
     @property
     def unpriced(self) -> list[PurchaseRow]:
@@ -251,6 +316,10 @@ class Bom:
                 note = f"{m.mirrored} mirrored" if m.mirrored else ""
                 w.writerow([m.method, m.name, m.qty, "", "", "", m.material, "", "", note,
                             f"{m.size_mm}; {', '.join(m.names or [m.name])}"])
+            for c in self.cutting:
+                w.writerow([f"cut by {c.service}", c.name, c.parts, "", "", c.service, c.sheet,
+                            "" if c.usd is None else f"{c.usd:.2f}", "", "",
+                            f"{c.area_cm2:g} cm^2 of parts; {CUT_SOURCE}"])
             for c in self.cuts:
                 for L, q in c.pieces:
                     w.writerow(["cut", c.name, q, "", "", "", "", "", "", f"{L:.1f} mm",
@@ -272,12 +341,19 @@ class Bom:
             elif r.key in ON_HAND:
                 cost = f"on hand ({cost})" if cost else "on hand"
             elif cut_by(r.key):
-                cost = f"cut by {cut_by(r.key)}"
+                cost = f"with the cutting ({cut_by(r.key)})"
             where = ", ".join(sorted(set(r.where)))[:120]
             lines.append(f"| {_num(r.qty)} | {r.name} | {link} | {packs} | {cost} | {where} |")
-        lines += ["", f"Estimated purchase total: **${self.cost_usd:.2f}** "
-                  "(pack prices at the listed vendor; excludes shipping, the shop "
-                  "supplies on hand and the cut parts, which their service quotes)."]
+        if self.cutting:
+            lines += ["", "## Cut by a service (the material included)", "",
+                      "| service | sheet | parts | area cm² | est. cost |",
+                      "|---|---|---:|---:|---:|"]
+            lines += [f"| {c.service} | {c.name} | {c.parts} | {c.area_cm2:g} | "
+                      f"{'' if c.usd is None else f'${c.usd:.2f}'} |" for c in self.cutting]
+            lines += ["", f"The cutting is {CUT_SOURCE}."]
+        lines += ["", f"Estimated total: **${self.cost_usd:.2f}**: purchases "
+                  f"${self.purchases_usd:.2f} (pack prices at the listed vendor) and cutting "
+                  f"${self.cutting_usd:.2f}; excludes shipping and the shop supplies on hand."]
         if self.unpriced:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
@@ -323,6 +399,9 @@ class Bom:
                                cost_usd=r.cost_usd if bought(r.key) else 0.0)
                           for r in self.purchased],
             "made": [m.__dict__ for m in self.made],
+            "cutting": [dict(c.__dict__) for c in self.cutting],
+            "purchases_usd": round(self.purchases_usd, 2),
+            "cutting_usd": self.cutting_usd,
             "cost_usd": self.cost_usd,
             "printed_g": self.printed_g,
             "filaments": {n: round(g, 1) for n, g in self.filaments.items()},
@@ -1027,7 +1106,7 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
 def bought_lines(mech) -> list[BomLine]:
     """What :func:`bom_from_mechanism` buys, line by line, before it groups them: each
     purchased body's item, the fitting's lines, the extras, the shim stacks as what is
-    bought (:func:`split_shims`: DIN 433 washers). No filament, no sheets (the build adds
+    bought (:func:`split_shims`: stock washers). No filament, no sheets (the build adds
     those). A line whose ``where`` starts with a body's name is that body's
     (:func:`line_body`): the assembly guide lists it where the body goes on."""
     fitted, _, replaced = fitting_lines(mech)
@@ -1090,6 +1169,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                 if method == "laser" else (_filament_name(fil) if fil else fil_name),
                 size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
+                sheet=(g.ref.sheet or str(mech.meta.get("sheet") or "")) if method == "laser"
+                else "",
             ))
             if method == "printed":
                 grams[fil] = grams.get(fil, 0.0) + (made[-1].volume_cm3 * g.qty
@@ -1160,4 +1241,5 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                printed_g=total if filament else None,
                filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines),
                filaments={(_filament_name(f) if f else fil_name): g
-                          for f, g in grams.items() if g > 0})
+                          for f, g in grams.items() if g > 0},
+               cutting=cutting_rows(made))

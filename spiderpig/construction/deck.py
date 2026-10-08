@@ -107,6 +107,7 @@ from spiderpig.construction.chassis import (
 )
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get, pick_length
+from spiderpig.hardware.electronics import HV_WARNING
 from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
@@ -128,12 +129,6 @@ NUT_ZS = (RAIL_T / 2, 7.0)       # the deck nuts' distance from the inner plate'
 #                          where a path notch would leave the deck screw's hole too little web
 NUT_ROOF = 1.6           # the rail's plastic over a deck nut (the screw pulls it up into it)
 NUT_FIT = 0.15           # a nut pocket's clearance round the nut (each side; and its slot)
-HV_WARNING = ("The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 "
-              "charger board to 2S (8.4 V; it stops at 8.3-8.5 V, safe for the HV pack), "
-              "never its 3S / 12.6 V jumper setting, and never an HV (8.7 V) charger: the "
-              "servos are 7.4 V parts.")
-"""The deck's battery warning (the Tattu HV pack, 2026-10-08): the guide's wiring step and
-ORDER.md (:mod:`hardware.order`, the battery's and the charger's lines) carry it."""
 SPIGOT_XS = (12.0, 16.0, 8.0, 20.0)      # rail screw offsets tried, nearest-first preference
 RAIL_SCREW = screw("bhcs", "3")          # up through the inner plate from the leg side
 RAIL_HOLE = 3.4          # its hole in the inner plate (ISO 273 medium; over the 5052's 3.175)

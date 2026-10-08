@@ -216,7 +216,10 @@ register(
                      "laser"),
           Offer("Amazon", "https://www.amazon.com/dp/B0DTSG32FM", "B0DTSG32FM", pack_qty=13,
                 note="13 coloured 12 x 12 in cast sheets")),
-         dims={**_ACRYLIC_3MM, **SCS_RULES_ACRYLIC},
+         dims={**_ACRYLIC_3MM, **SCS_RULES_ACRYLIC,
+               # the cutting, material included (hardware.bom.cut_estimate: SendCutSend's
+               # live quotes of 2026-10-08, a small part 1.33 at 4 off, the deck plate 6.88)
+               "cut_usd_cm2": 0.074, "cut_min_usd": 1.33},
          notes="Nominal 3 mm; SendCutSend's arrives 2.24-3.46 mm (+.018 / -.030 in). "
                "Measure yours and pass --thickness."),
     Item("acrylic_3mm_ponoko", "3 mm (1/8 in) cast acrylic sheet, cut by Ponoko", "sheet",

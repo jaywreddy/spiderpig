@@ -38,6 +38,15 @@ from spiderpig.hardware.catalog import Item, Offer, register
 
 SEARCHED = "price as a web search quoted it from this page on 2026-10-03 (not fetched)"
 
+HV_SHORT = "HV LiPo: charge as 2S, 8.4 V; never the 3S / 12.6 V jumper setting"
+HV_WARNING = ("The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 "
+              "charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its "
+              "3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos "
+              "are 7.4 V parts.")
+"""The battery warning (the Tattu HV pack, 2026-10-08): ORDER.md's battery and charger
+lines (:data:`hardware.order.LINE_WARNINGS`) and the guide's wiring step
+(:func:`construction.deck.assembly`) carry it."""
+
 register(
     Item("esp32_servo_driver", "Waveshare Servo Driver with ESP32 (serial bus servo driver)",
          "electronics",

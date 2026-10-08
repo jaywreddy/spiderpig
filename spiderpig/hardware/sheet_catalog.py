@@ -81,7 +81,10 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) 
         dims={"thickness": t, "material": "aluminium", "alloy": f"{alloy}-{temper}",
               "density": 2.68 if alloy == "5052" else 2.70,
               "yield_mpa": 193.0 if alloy == "5052" else 276.0,
-              "min_hole": t, "sheet_mm": (300.0, 300.0), **SCS_RULES_AL},
+              "min_hole": t, "sheet_mm": (300.0, 300.0), **SCS_RULES_AL,
+              # the cutting, material included (hardware.bom.cut_estimate, calibrated on
+              # SendCutSend's live quotes of 2026-10-08): per cm^2 of part, least per part
+              "cut_usd_cm2": 0.20 if alloy == "5052" else 0.40, "cut_min_usd": 2.20},
         notes=f"{alloy}-{temper}: yield {193 if alloy == '5052' else 276} MPa (ASM); "
               "minimum hole = thickness, 2 t hole-to-edge, min part 6.35 x 9.5 mm "
               "(SendCutSend).",

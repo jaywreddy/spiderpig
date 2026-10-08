@@ -96,7 +96,7 @@ def test_the_bom_total_leaves_out_a_sheet_a_service_cuts():
     assert not cut_by("plywood_3mm")
     assert bom.cost_usd == pytest.approx(2.39 + 3.1)
     assert bom.as_dict()["cost_usd"] == pytest.approx(2.39 + 3.1)
-    assert "Estimated purchase total: **$5.49**" in bom.markdown()
+    assert "Estimated total: **$5.49**" in bom.markdown()
     md = order_markdown(bom, [], [])
     assert "Purchases: **$5.49**" in md
 
@@ -108,13 +108,14 @@ def _bom_of(doc: dict) -> Bom:
     """A :class:`Bom` again from its ``as_dict()`` (the recorded BOM)."""
     from dataclasses import fields
 
-    from spiderpig.hardware.bom import MadeRow
+    from spiderpig.hardware.bom import CutRow, MadeRow
 
     names = {f.name for f in fields(PurchaseRow)}
     return Bom(purchased=[PurchaseRow(**{k: v for k, v in r.items() if k in names})
                           for r in doc["purchased"]],
                made=[MadeRow(**m) for m in doc["made"]], title=doc["title"], notes=doc["notes"],
-               printed_g=doc["printed_g"])
+               printed_g=doc["printed_g"],
+               cutting=[CutRow(**c) for c in doc.get("cutting", [])])
 
 
 def _purchases(doc: dict) -> dict[str, dict]:
@@ -174,8 +175,36 @@ def test_the_order_designs_order_list(name):
     packs = [(r.vendor, r.sku) for r in bought if r.sku]
     assert len(packs) == len(set(packs))        # one product bought once
     total = sum(r.cost_usd or 0.0 for r in bought)
-    assert total == pytest.approx(bom.cost_usd, abs=1e-6)
+    assert total == pytest.approx(bom.purchases_usd, abs=1e-6)
     assert f"Purchases: **${total:.2f}**" in md
+    # the cutting, the material included, and the grand total (shipping apart)
+    assert bom.cutting
+    assert bom.cost_usd == pytest.approx(total + bom.cutting_usd, abs=1e-6)
+    assert f"**Total ≈${total + bom.cutting_usd:.2f}**, before shipping" in md
+    # the HV LiPo's charging warning on its line and the charger's, and before ordering
+    for key in ("lipo_2s_450", "ip2326_charger"):
+        r = next(r for r in bom.purchased if r.key == key)
+        assert f"| {r.name} — **HV LiPo: charge as 2S, 8.4 V; never the 3S / 12.6 V" in buy
+    assert "never its 3S / 12.6 V jumper setting" in md.split("## Before you order")[1]
+
+
+def test_cutting_is_an_area_estimate_calibrated_to_sendcutsends_quote():
+    """bom.cut_estimate: SendCutSend's live quotes of 2026-10-08 for the Strider double's 47
+    parts came to USD 117.14 (acrylic 49.44, aluminium 67.70); the estimate on those parts'
+    areas is within 1 % of it, the least part 1.33 in acrylic, 2.20 in aluminium."""
+    from spiderpig.hardware.bom import cut_estimate
+
+    acrylic = cut_estimate("acrylic_3mm", [(4.58, 8), (16.7, 4), (11.0, 4), (8.66, 4),
+                                           (16.7, 4), (11.0, 4), (8.65, 4), (93.1, 1)])
+    al = (cut_estimate("al5052_2mm", [(51.8, 2), (42.6, 2)])
+          + cut_estimate("al5052_2p3mm", [(16.4, 2), (16.2, 2)])
+          + cut_estimate("al6061_2p5mm", [(7.98, 2), (5.09, 2), (8.63, 2)]))
+    assert acrylic == pytest.approx(49.44, rel=0.01)
+    assert al == pytest.approx(67.70, rel=0.02)
+    assert acrylic + al == pytest.approx(117.14, rel=0.01)
+    assert cut_estimate("acrylic_3mm", [(0.0, 1)]) == 1.33
+    assert cut_estimate("al6061_2p5mm", [(0.0, 1)]) == 2.20
+    assert cut_estimate("acrylic_3mm_ponoko", [(10.0, 1)]) is None      # no rates there
 
 
 @pytest.mark.slow

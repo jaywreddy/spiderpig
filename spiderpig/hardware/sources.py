@@ -332,12 +332,14 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               "10272563", "2275-1329837-ND", note="part number from a search result"),
     ),
     "epoxy_2part": (
-        Offer("Amazon", "https://www.amazon.com/dp/B0006O1ICE", "B0006O1ICE",
-              note="J-B Weld 8265S Original twin tube on Amazon (ASIN not re-checked "
-                   "2026-10-08): on the Amazon cart instead of its own"),
         Offer("J-B Weld", "https://www.jbweld.com/product/j-b-weld-twin-tube", "8265S",
               price_usd=7.99, verified=True,
-              note="J-B Weld Original, 2 x 1 oz, slow cure (dark grey)"),),
+              note="J-B Weld Original, 2 x 1 oz, slow cure (dark grey); USD 7.99 at the "
+                   "maker's store (the priced offer first since the BOM review of "
+                   "2026-10-08: the Amazon listing's price wasn't seen)"),
+        Offer("Amazon", "https://www.amazon.com/dp/B0006O1ICE", "B0006O1ICE",
+              note="the same J-B Weld 8265S on Amazon (price not seen 2026-10-08): add it "
+                   "to the Amazon cart instead if it is listed near USD 8"),),
     "pla_filament": (
         Offer("Prusa Research", "https://www.prusa3d.com/product/prusament-pla-jet-black-1kg-"
               "nfc/", "Prusament PLA Jet Black 1kg", price_usd=29.99, verified=True),),

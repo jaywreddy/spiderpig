@@ -1524,8 +1524,10 @@ def test_cost_floor_prices_what_every_build_buys(monkeypatch):
     names = " ".join(priced + unpriced)
     for key in ON_HAND:
         assert get(key).name not in names
-    for key in (cfg.sheet, cfg.frame_sheet, cfg.crank_sheet):        # cut by a service
-        assert get(key).name not in names
+    for key in (cfg.sheet, cfg.frame_sheet, cfg.crank_sheet):  # cut by a service: its least
+        assert any(line.startswith(f"SendCutSend cutting, {get(key).name}: one part at least")
+                   for line in priced)                          # cut, not a blank
+        assert not any(line.startswith(get(key).name) for line in priced)
     side_total, side_priced, _ = vf.cost_floor(SimpleNamespace(config=replace(
         cfg, robot=False, module="single")))
     assert side_priced[0].startswith(f"{servo} $")

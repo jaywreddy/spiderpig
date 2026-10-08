@@ -627,15 +627,16 @@ LOCKED_PILLARS = ("standoff",)     # threadlocker on its end screws
 EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link
 LOCKED_PINS = ("chicago",)         # threadlocker on each screw
 FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardware are "
-                    "counted after a build (verify standard); the cut parts are quoted by "
-                    "their service's upload")
+                    "counted after a build (verify standard), and the cut parts beyond one "
+                    "per sheet")
 
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog before
     any build: the servos (one per side), a spool of filament (the printed parts), one
-    blank of each sheet the parts are cut from that no service cuts (a service's sheet is
-    its upload, in no purchase total: :func:`hardware.bom.cut_by`), and what
+    blank of each sheet the parts are cut from that no service cuts, the cutting of at
+    least one part on each sheet a service cuts (its least charge, the material included:
+    :func:`hardware.bom.cut_estimate`), and what
     the constructions buy whatever the parts' sizes: the Chicago pins' epoxy, and a bottle
     of each threadlocker the crank's screws, a Chicago screw pin or a standoff pillar's
     screws take. ``(total, priced
@@ -676,6 +677,16 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
                       + (f" (a pack of {offer.pack_qty})" if offer.pack_qty > qty else "")
                       + (f" (buying {packs}: the price break)"
                          if offer.tiers and packs * offer.pack_qty > qty else ""))
+    from spiderpig.hardware.bom import cut_by, cut_estimate
+
+    for key in (k for k in sheets if cut_by(k)):     # at least one part cut on each
+        least = cut_estimate(key, [(0.0, 1)])
+        name = f"{cut_by(key)} cutting, {catalog_item(key).name}"
+        if least is None:
+            unpriced.append(name)
+            continue
+        total += least
+        priced.append(f"{name}: one part at least ${least:.2f}")
     return round(total, 2), priced, unpriced
 
 

@@ -69,7 +69,8 @@ robot; a mechanism's `single`, one side).
   (`frame_sheet`); crank 0.100 in 6061-T6 (`crank_sheet`, `materials.thinnest_sheet`);
   centre plates by `chassis.centre_sheet`; aluminium links per `materials.LINK_SHEETS`.
 - Sheets go to SendCutSend (the acrylic too since 2026-10-08, `--sheet acrylic_3mm_ponoko`
-  for Ponoko); the BOM's total is what ORDER.md buys (`bom.cut_by`: no service's sheet).
+  for Ponoko); a service's sheet is a cutting line (`bom.CutRow`, `bom.cut_estimate`), in
+  the BOM's and ORDER.md's totals.
 - Per-linkage overrides are data in `spiderpig/config.py`: `LINKAGE_CRANKS` (TrotBot's heel
   and toe on `bolt_round`), `MODULE_CRANKS` (empty), `LINKAGE_CRANK_SHEETS`
   (`hoecken_pantograph` on 0.080 in 6061), `LINKAGE_TORQUE_LIMITS`; Klann variants' quads at

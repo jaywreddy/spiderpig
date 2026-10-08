@@ -337,11 +337,15 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 ### 2026-10-08: the BOM decisions (user; the BOM study)
 
 - **What (sourcing):** the study's sources (`hardware/sources.py`: Bolt Depot for the M3
-  hardware, sold singly; DigiKey for the Wurth parts; one Amazon cart); the BOM's total is
-  what ORDER.md buys, the sheets a service cuts left out (`bom.cut_by`, `bom.bought`; the
-  3 mm acrylic's Inventables sheet was in the total and no cart), and so is verify's cost
-  floor; the servos' M2 x 6 self-tappers on hand (`bom.ON_HAND`: every STS3215 box has 18
-  screws, Seeed's part list and Waveshare's photo).
+  hardware, sold singly; DigiKey for the Wurth parts; one Amazon cart); a sheet a service
+  cuts is no purchase (`bom.cut_by`, `bom.bought`: the 3 mm acrylic's Inventables sheet was
+  in the total and no cart) but a cutting line per service and sheet, the material
+  included (`bom.CutRow`, `bom.cut_estimate`: an area estimate calibrated to SendCutSend's
+  live quotes of 2026-10-08, USD 117.14 for the Strider double's 47 parts, the estimate
+  117.93), in the BOM's total, ORDER.md's total (shipping apart) and verify's cost floor
+  (one part's least cut per sheet); the epoxy's priced offer (J-B Weld) first; the servos'
+  M2 x 6 self-tappers on hand (`bom.ON_HAND`: every STS3215 box has 18 screws, Seeed's
+  part list and Waveshare's photo).
 - **What (design):** the Strider's pins planned on 7, 10, 16 and 22 mm barrels
   (`chicago.BARRELS`, per linkage and crank: a global list leaves both Klann quads, and the
   Strider's `bolt_round` crank, without a plan; the
@@ -354,7 +358,12 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   .053 in, part .187 x .375 in; `hardware.parts.SCS_RULES_ACRYLIC`), kerf 0, Ponoko
   selectable (`acrylic_3mm_ponoko`), the deck plate's cable-tie web 1.5 mm
   (`deck.CABLE_TIE_WEB`, over the 1.35 mm bridge); captive M3 nuts in the deck rails for
-  the heat-set inserts (`deck.deck_nut`, `deck.NUT_ROOF`).
+  the heat-set inserts (`deck.deck_nut`, under a 1.6 mm roof, `deck.NUT_ROOF`).
+- **HV LiPo (review, 2026-10-08):** the Tattu is an HV pack: charge it as 2S to 8.4 V only,
+  never the IP2326 board's 3S / 12.6 V jumper setting (the board stops at 8.3-8.5 V on 2S,
+  safe for the HV pack) nor an 8.7 V HV charger, the servos being 7.4 V parts. ORDER.md's
+  battery and charger lines and the guide's wiring step say so
+  (`hardware.electronics.HV_WARNING`).
 - **Why:** a short, cheap order: the Strider double's ORDER.md from 16 carts and 36 lines
   to 6 and 28, one upload for every cut part, no soldering iron; the Strider's pin jam
   safety factor rises with the shorter barrels' spans (the numbers: DESIGNS.md).

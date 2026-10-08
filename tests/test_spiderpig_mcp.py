@@ -727,8 +727,8 @@ def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(ser
     # CA and the keyed crank's nuts went with them on 2026-10-07); the hex crank's blank is
     # SendCutSend's upload since 2026-10-08, in no total (bom.cut_by)
     assert "Two-part slow-cure structural epoxy" in floor["detail"]          # entry 1
-    assert "6061 aluminium sheet 0.100 in" not in floor["detail"]
-    assert floor["detail"].endswith("quoted by their service's upload")
+    assert "SendCutSend cutting, 6061 aluminium sheet 0.100 in" in floor["detail"]
+    assert floor["detail"].endswith("and the cut parts beyond one per sheet")
     guide = render_guide()
     assert "`budget.cost_floor_usd` prices what the design buys whatever its parts" in \
         " ".join(guide.split())
