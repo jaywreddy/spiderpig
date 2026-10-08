@@ -301,10 +301,14 @@ def test_the_sts3215_bus_window_and_channel():
     window, channel = ports.slot()
     assert window == pytest.approx((11.6, 16.5, -0.4, 10.5))
     wx0, wx1, wy0, wy1 = window
-    assert 11.2 <= wx0 and wx1 <= 16.9 and wy1 <= 10.5             # the research's window
+    assert wx0 >= 11.2                                              # the research's window
+    assert wx1 <= 16.9
+    assert wy1 <= 10.5
     cx = (ports.x0 + ports.x1) / 2                                  # the plug, centred
-    assert wx0 <= cx - ports.plug_t / 2 - 0.5 + 1e-9 and cx + ports.plug_t / 2 + 0.5 <= wx1 + 1e-9
-    assert wy0 <= 0.1 and 10.0 <= wy1                               # the +y socket's plug
+    assert wx0 <= cx - ports.plug_t / 2 - 0.5 + 1e-9
+    assert wx1 >= cx + ports.plug_t / 2 + 0.5 - 1e-9
+    assert wy0 <= 0.1                                               # the +y socket's plug
+    assert wy1 >= 10.0
     assert channel == pytest.approx((cx, math.inf, -4.5, 4.5))
     assert ports.height == pytest.approx(6.0)
     assert not ports.opposed
@@ -381,7 +385,8 @@ def test_the_robot_buys_one_bus_y_cable(robot):
             if line.key == BUS_Y_CABLE] == [(BUS_Y_CABLE, 1)]
     assert mech.meta["bus_sockets_used"] == "own"
     item = get(BUS_Y_CABLE)
-    assert item.offer is not None and item.offer.price_usd is None
+    assert item.offer is not None
+    assert item.offer.price_usd is None
     assert "search" in item.offer.note
 
 
