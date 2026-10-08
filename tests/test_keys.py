@@ -74,18 +74,18 @@ EDITS = [
     ("a new linkage file (the registry auto-imports it)", "spiderpig.linkages.zz_new",
      None, "X = 1\n", True, True),
     ("a module that patches the planner when imported", "spiderpig.zz_patch",
-     None, "from spiderpig import stack\nstack.GIVE_UP = 5\n", True, True),
+     None, "from spiderpig.stack import plan_z\nplan_z.GIVE_UP = 5\n", True, True),
     ("a function elsewhere that setattr()s the planner", "spiderpig.zz_rt", None,
-     "from spiderpig import stack\n\n\ndef go():\n    setattr(stack, 'GIVE_UP', 5)\n",
+     "from spiderpig.stack import plan_z\n\n\ndef go():\n    setattr(plan_z, 'GIVE_UP', 5)\n",
      True, True),
     ("a function elsewhere that writes vars() of the planner", "spiderpig.zz_vars", None,
-     "import spiderpig.stack as st\n\n\ndef go():\n    vars(st)['GIVE_UP'] = 5\n",
+     "import spiderpig.stack.plan_z as st\n\n\ndef go():\n    vars(st)['GIVE_UP'] = 5\n",
      True, True),
     ("a method elsewhere that patches the planner", "spiderpig.zz_cls", None,
-     "class P:\n    def go(self):\n        from spiderpig import stack\n"
-     "        stack.GIVE_UP = 5\n", True, True),
+     "class P:\n    def go(self):\n        from spiderpig.stack import plan_z\n"
+     "        plan_z.GIVE_UP = 5\n", True, True),
     ("setattr() on the planner when imported", "spiderpig.zz_imp", None,
-     "from spiderpig import stack\nsetattr(stack, 'GIVE_UP', 5)\n", True, True),
+     "from spiderpig.stack import plan_z\nsetattr(plan_z, 'GIVE_UP', 5)\n", True, True),
     ("a function elsewhere that patches a deck colour", "spiderpig.zz_deck", None,
      "from spiderpig.construction import deck\n\n\ndef go():\n"
      "    deck.DECK_COLOR = 'x'\n", False, True),
@@ -181,11 +181,6 @@ PATCH_ALLOWED = {
     ("spiderpig/tools/build_profile.py", "instrumented"):
         "the profiler wraps the build's calls in timers for the run, puts them back after; "
         "the results are the calls' own",
-    ("spiderpig/reexport.py", "ForwardingPackage"):
-        "a split package forwards a write to its re-exported name to the submodule binding "
-        "it (the keys follow it: Graph.written); the package writes nothing itself",
-    ("spiderpig/reexport.py", "forward_writes"):
-        "sets a split package's own module class (stack, api, construction.crank)",
 }
 """Every store into another object's namespace by name in the package, reviewed: none
 patches an engine module in a way that changes what it computes."""

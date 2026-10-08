@@ -144,9 +144,9 @@ def test_reports_round_trip_and_the_second_run_hits_the_cache(tmp_path, design, 
     assert [e["op"] for e in store.read_log(d.id)] == ["check", "plan", "walk", "verify:quick"]
 
     # a fresh handle: everything comes from the store, the engine's stages aren't run
-    solved = _count(monkeypatch, api, "design_side")
-    problems = _count(monkeypatch, api, "side_problem")
-    verified = _count(monkeypatch, api, "verify_plan")
+    solved = _count(monkeypatch, api.planning, "design_side")
+    problems = _count(monkeypatch, api.planning, "side_problem")
+    verified = _count(monkeypatch, api.planning, "verify_plan")
     payloads = _count(monkeypatch, api.walk_model, "api_payload")
     back = api.load(d.id, store)
     for stage, rep in reps.items():
@@ -231,7 +231,7 @@ def test_parts_reload_from_step_and_recheck_passes(tmp_path, design, robot, monk
     assert manifest["fastened"]
     assert "epoxy_2part" in {b["key"] for b in manifest["bom_extras"]}   # the barrels' (no CA)
 
-    fabricated = _count(monkeypatch, api, "fabricate_side")
+    fabricated = _count(monkeypatch, api.building, "fabricate_side")
     back = api.load(d.id, store)
     br = api.build(back)
     assert br.ok
@@ -293,12 +293,12 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
     pr = api.plan(d)
     api.attach_build(d, side("single", 1.0), 1.0)
     real = d.engine_version
-    monkeypatch.setattr(api, "engine_version", lambda: "0.0.0+fake")
+    monkeypatch.setattr(api.store_ops, "engine_version", lambda: "0.0.0+fake")
 
-    solved = _count(monkeypatch, api, "design_side")
-    verified = _count(monkeypatch, api, "verify_plan")
+    solved = _count(monkeypatch, api.planning, "design_side")
+    verified = _count(monkeypatch, api.planning, "verify_plan")
     # every fabrication counted; its parts the test cache's (the same design at t = 1)
-    fabricated = _count(monkeypatch, api, "fabricate_side",
+    fabricated = _count(monkeypatch, api.building, "fabricate_side",
                         instead=lambda d, mech, ties=(): _api.own(
                             side("single", 1.0)))
     back = api.load(d.id, store)
@@ -345,7 +345,7 @@ def test_a_stored_plan_that_no_longer_holds_is_solved_again(tmp_path, design, mo
     doc = json.loads(path.read_text())
     doc["layers"] = {k: 0 for k in doc["layers"]}           # every link in the frame plate
     path.write_text(json.dumps(doc))
-    solved = _count(monkeypatch, api, "design_side")
+    solved = _count(monkeypatch, api.planning, "design_side")
     back = api.load(d.id, store)
     got = api.plan(back)
     assert got.ok

@@ -416,7 +416,7 @@ def test_attach_build_takes_the_parts_props_it_is_handed_and_adds_what_it_measur
     first = api.attach_build(api.resolve(_api.HOECKEN, store=None), _api.own(mech), 1.0,
                              props=props)
     assert set(props) == {b.name for b in mech.bodies if b.part is not None}
-    monkeypatch.setattr(api, "part_props", lambda part: pytest.fail("measured again"))
+    monkeypatch.setattr(api.building, "part_props", lambda part: pytest.fail("measured again"))
     d = api.resolve(_api.HOECKEN, store=None)
     again = api.attach_build(d, _api.own(mech), 1.0, props=props)
     from spiderpig.design import jsonable
@@ -459,7 +459,7 @@ def test_parts_expose_live_solids_and_recheck_passes_on_the_quad(quad, robot):
 
 @pytest.mark.slow
 def test_an_edited_solid_that_leaves_its_claim_or_clashes_is_caught(monkeypatch):
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                      "legs": {"module": "single", "sides": 1}})
     assert api.build(d).ok
@@ -516,7 +516,7 @@ def test_verify_standard_passes_on_the_default_quad(quad, robot):
 
 @pytest.mark.slow
 def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "walker", "linkage": {"key": "klann"},
                      "legs": {"module": "single", "sides": 1},
                      "outputs": ["step", "dxf", "bom"]})
@@ -919,7 +919,7 @@ def test_a_parts_mass_and_volume_follow_its_edited_solid():
 @pytest.mark.slow
 def test_a_reloaded_build_carries_the_links_joints_and_outlines_and_takes_the_example_edit(
         tmp_path, monkeypatch):
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     from build123d import Cylinder, Location
 
     spec = {"kind": "walker", "linkage": {"key": "klann"},
@@ -970,7 +970,7 @@ def test_list_designs_cards_say_what_a_design_is_made_of(tmp_path):
 def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
     import logging
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     api.attach_build(quad, robot("quad", 1.0), 1.0)
 
     def fake_bake(path, cfg, profile=False, **kw):         # fabricated=, side=
@@ -1211,7 +1211,7 @@ def test_a_bom_exported_without_a_dxf_still_buys_the_sheets(tmp_path):
 @pytest.mark.slow
 def test_a_robot_part_locates_a_cut_by_the_sides_coordinates_and_recheck_notes_a_miss(
         design, monkeypatch):
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     from build123d import Cylinder
 
     design("single")                                # the side's plan is the session's
@@ -1600,7 +1600,7 @@ def test_a_plan_the_planner_doesnt_find_is_the_plan_reports_failure(monkeypatch)
     test: a design another test planned would be answered from them.)"""
     from spiderpig import fabricate, stack
 
-    monkeypatch.setattr(stack, "MAX_SECONDS", 0.0)
+    monkeypatch.setattr(stack.plan, "MAX_SECONDS", 0.0)
     monkeypatch.setattr(fabricate, "_DESIGNS", {})
     monkeypatch.setattr(fabricate, "_LAYOUTS", {})
     design = api.resolve(api.spec_of(BuildConfig(linkage="dwell_rocker", robot=False)),

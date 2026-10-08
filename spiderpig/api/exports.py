@@ -11,7 +11,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
-from spiderpig.api.building import build, fabricate_at
+from spiderpig.api import building  # (build, fabricate_at: through the module, where a patch goes)
 from spiderpig.api.planning import plan
 from spiderpig.api.reports import ExportReport
 from spiderpig.api.store_ops import (
@@ -102,7 +102,7 @@ def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
         # the glb and the MJCF need the plan, not the build: their worker starts first
         job = _start_robot_job(design, formats, before_build=True)
         try:
-            br = build(design)
+            br = building.build(design)
         except BaseException:
             _drop_robot_job(job)
             raise
@@ -365,7 +365,7 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
         # again by each from the config (which, in a fresh process, planned again first)
         from spiderpig.bake import T_REF
 
-        robot = fabricate_at(design, T_REF)
+        robot = building.fabricate_at(design, T_REF)
     if "glb" in formats:
         from spiderpig.bake import bake_gltf
 

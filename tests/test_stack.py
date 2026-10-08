@@ -501,7 +501,7 @@ def test_a_remembered_claim_make_equals_a_fresh_one(name, monkeypatch):
             raise e
         return got[0]
 
-    monkeypatch.setattr(stack, "_make_all", checked)
+    monkeypatch.setattr(stack.plan_z, "_make_all", checked)
     problem.solve()
     entries = sum(len(m) - 2 for m in memos.values())   # (less their "z" and "deps")
     assert calls["memo"] > 1

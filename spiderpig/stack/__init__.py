@@ -44,13 +44,12 @@ shapes, claims, :class:`Layout`), :mod:`.topology` (:class:`Topology`, static cl
 :class:`PlanError`, the :class:`Router` protocol), :mod:`.plan` (:class:`StackSpec`,
 :class:`StackPlan`), :mod:`.search` (:class:`StackProblem`), :mod:`.plan_z` (the plan's z,
 :func:`finalize`; not ``finalize.py``, which the function's re-export would shadow) and
-:mod:`.verify` (:func:`verify_plan`). Every name keeps its old import path here, and a
-write to one (a test's ``monkeypatch.setattr(stack, "MAX_SECONDS", ...)``) reaches the
-submodule that reads it (:mod:`spiderpig.reexport`).
+:mod:`.verify` (:func:`verify_plan`). Every name keeps its old import path here, for
+reading; a patch goes on the submodule that reads the name (``stack.plan.MAX_SECONDS``,
+``stack.plan_z._make_all``).
 """
 
 from spiderpig.mechanism import body_class, is_crank, is_frame, is_link
-from spiderpig.reexport import forward_writes
 from spiderpig.stack.geometry import (
     _BETWEEN,
     Claim,
@@ -210,5 +209,3 @@ __all__ = [
     "_Search",
     "StackProblem",
 ]
-
-forward_writes(__name__)

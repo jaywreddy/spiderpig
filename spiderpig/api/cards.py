@@ -10,7 +10,8 @@ from pathlib import Path
 import numpy as np
 
 from spiderpig import linkage
-from spiderpig.api.walking import WALKS_MM, module_stride
+from spiderpig.api import walking  # (module_stride: through the module, where a patch goes)
+from spiderpig.api.walking import WALKS_MM
 from spiderpig.design import (
     jsonable,
     source_version,
@@ -129,7 +130,7 @@ def _card(lk: linkage.Linkage) -> dict:
         card["foot_path"] = foot_path(lk, {})
         card["sensitivity"] = sensitivity(lk)
         for m, doc in card["modules"].items():
-            s = module_stride(key, m)
+            s = walking.module_stride(key, m)
             doc["stride_mm"] = s
             doc["walks"] = s is not None and s >= WALKS_MM
     else:

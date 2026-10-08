@@ -34,10 +34,10 @@ The package (a pure move of the former ``api.py``, W5): :mod:`.reports`, :mod:`.
 (check, plan, explain, recommend, advise), :mod:`.walking`, :mod:`.building` (build,
 recheck) and :mod:`.exports` (verify, export); not ``plan.py`` / ``build.py`` /
 ``export.py``, which the functions' re-exports would shadow. Every name keeps its old
-import path here, and a write to one (a test's ``monkeypatch.setattr(api, "fabricate_at",
-...)``) reaches the submodules that read it (:mod:`spiderpig.reexport`); every engine name the
-module imported is imported here too (its users reach and patch them as ``api.X``:
-``api.design_side``, ``api.engine_version``, ``api.PROJECT``).
+import path here, as does every engine name the module imported (``api.PROJECT``,
+``api.walk_model``), for reading; a patch goes on the submodule that reads the name
+(``api.building.fabricate_at``, which ``exports`` and :mod:`spiderpig.verify` call through
+the module; ``api.planning.design_side``).
 """
 
 from spiderpig import linkage, servos
@@ -207,7 +207,6 @@ from spiderpig.hardware.catalog import sheet_name, sheet_size, sheet_thickness
 from spiderpig.hardware.mass import filament_density, material_of, part_props
 from spiderpig.layout import save_sheets, sheet_lines
 from spiderpig.materials import link_sheets
-from spiderpig.reexport import forward_writes
 from spiderpig.spec import (
     ALLOWANCE,
     FIT_FIELDS,
@@ -229,5 +228,3 @@ __all__ = [
     "export", "fabricate_at", "foot_path", "gc", "list_designs", "list_linkages", "load",
     "plan", "recheck", "recommend", "resolve", "verify", "walk",
 ]
-
-forward_writes(__name__)

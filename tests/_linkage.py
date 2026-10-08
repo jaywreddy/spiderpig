@@ -72,7 +72,7 @@ def node_budget(nodes: int = FOOT_Z_NODES) -> Iterator[None]:
     from spiderpig import fabricate, stack
 
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(stack, "MAX_SECONDS", math.inf)
+        mp.setattr(stack.plan, "MAX_SECONDS", math.inf)
         mp.setattr(fabricate, "StackSpec",
                    functools.partial(stack.StackSpec, max_total_nodes=nodes))
         yield
