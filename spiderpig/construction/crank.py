@@ -28,7 +28,6 @@ from __future__ import annotations
 import functools
 import itertools
 import math
-import re
 from dataclasses import dataclass, replace
 
 import numpy as np
@@ -47,7 +46,7 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.envelope import shape_solid
 from spiderpig.hardware.bom import BomLine
-from spiderpig.hardware.parts import SHCS_LENGTHS, shcs
+from spiderpig.hardware.fasteners import SCREWS, SIZES, Screw, parse, screw_solid
 from spiderpig.servos.mount import MIN_SPACER
 from spiderpig.shapes import Cut, disc, moved, union
 from spiderpig.stack import Claim, Disc, Keepout, Layout, Pill, Placed, Unbuildable
@@ -57,49 +56,6 @@ SEGMENT_COLOR = "#6a4fc7"
 STEEL = "#4a4a4a"
 EPS = 1e-9
 
-
-# ---------------------------------------------------------------------------
-# Fasteners (mm)
-# ---------------------------------------------------------------------------
-
-SIZES = {"M2": "2", "M2.5": "2p5", "M3": "3"}
-NOMINAL = {"2": 2.0, "2p5": 2.5, "3": 3.0}
-
-
-@dataclass(frozen=True)
-class ScrewKind:
-    """A screw type: head size, stock lengths, and its catalog key per length."""
-
-    kind: str                   # "shcs" | "bhcs" | "self_tap"
-    size: str                   # "2", "2p5", "3"
-    head_d: float
-    head_h: float
-    lengths: tuple[float, ...]
-
-    @property
-    def d(self) -> float:
-        return NOMINAL[self.size]
-
-    @property
-    def shank_d(self) -> float:
-        """Modelled shank: about the thread's major diameter (ISO 965 6g: M3 2.874-2.98)."""
-        return 0.97 * self.d
-
-    def key(self, length: float) -> str:
-        if self.kind == "shcs":
-            return shcs(self.size, length)
-        return f"m{self.size}_{self.kind}_{length:g}"
-
-
-# ISO 4762 heads (docs research: joinery.json, m3_shcs / m2_m2p5_shcs)
-SHCS = {size: ScrewKind("shcs", size, hd, hh, SHCS_LENGTHS[size])
-        for size, hd, hh in (("2", 3.8, 2.0), ("2p5", 4.5, 2.5), ("3", 5.5, 3.0))}
-# ISO 7380-1 button head M3: dk 5.7, k 1.65 (from the standard's table; not in the
-# project's research data). Preferred lengths.
-BHCS = {"3": ScrewKind("bhcs", "3", 5.7, 1.65, (6, 8, 10, 12, 16, 20, 25, 30))}
-# M2 pan-head tapping screws for pilot holes (PA2.0 / "PHS M2 TAP"): head about
-# 4.0 x 1.6 (ISO 7049 ST2.2; UNVERIFIED for the servo makers' screws).
-SELF_TAP = {"2": ScrewKind("self_tap", "2", 4.0, 1.6, (6, 8, 10, 12))}
 
 PRESS_DRAWN = 0.02      # a pressed printed bore drawn this much over its steel (no clash)
 
@@ -112,27 +68,6 @@ def hex_play(af: float, pocket_af: float) -> float:
         return 0.0
     r = af / math.sqrt(3)
     return 30.0 - math.degrees(math.acos(min(1.0, pocket_af / 2 / r)))
-
-
-_SCREW_KEY = re.compile(r"^m(\d+(?:p\d+)?)_(shcs|bhcs|self_tap)_(\d+(?:\.\d+)?)$")
-
-
-def screw_from_key(key: str | None) -> tuple[ScrewKind, float] | None:
-    """``"m2_self_tap_6"`` -> (the M2 tapping screw kind, 6.0); ``None`` if not modelled."""
-    m = _SCREW_KEY.match(key or "")
-    if m is None:
-        return None
-    size, kind, length = m.groups()
-    sk = {"shcs": SHCS, "bhcs": BHCS, "self_tap": SELF_TAP}[kind].get(size)
-    return None if sk is None else (sk, float(length))
-
-
-def screw_body(xy, sk: ScrewKind, bearing_z: float, length: float, up: bool = True):
-    """A screw whose head bears at ``bearing_z``, shank pointing up (or down)."""
-    s = 1.0 if up else -1.0
-    head = disc(xy, sk.head_d / 2, *sorted((bearing_z - s * sk.head_h, bearing_z)))
-    shank = disc(xy, sk.shank_d / 2, *sorted((bearing_z, bearing_z + s * length)))
-    return union([head, shank])
 
 
 # ---------------------------------------------------------------------------
@@ -688,7 +623,7 @@ class BoltCrank:
             if not -below - EPS <= z0 <= plate - self.stub_seat + EPS:
                 continue
             depth = float(get(m3_round_standoff(S)).dims["thread_depth"])
-            for L in BHCS["3"].lengths:
+            for L in SCREWS["bhcs", "3"].lengths:
                 e = L - upper
                 if self.stub_screw_engage - EPS <= e <= depth + EPS:
                     return m3_round_standoff(S), S, z0, L
@@ -764,7 +699,7 @@ class BoltCrank:
     @staticmethod
     def hex_screw() -> tuple[float, float]:
         """(head diameter, head height) of the hex pins' M3 button heads (ISO 7380)."""
-        return BHCS["3"].head_d, BHCS["3"].head_h
+        return SCREWS["bhcs", "3"].head_d, SCREWS["bhcs", "3"].head_h
 
     @staticmethod
     def hex_washer() -> tuple[float, float, float]:
@@ -814,7 +749,7 @@ class BoltCrank:
         cap = min(self.hex_engage_max, (length - self.hex_tip_gap) / 2)
         best = None
         for k in (0, 1, 2):
-            for L in BHCS["3"].lengths:
+            for L in SCREWS["bhcs", "3"].lengths:
                 e = L - wt - k * et
                 if (self.hex_min_engage - EPS <= e <= cap + EPS
                         and (best is None or e > best[2] + EPS)):
@@ -900,7 +835,7 @@ class BoltCrank:
         # standing past: the plates captured between the washers and the sleeve, which is
         # short of them by its play; recessed: the washers clamp the plates on the sleeve
         sl = inner - (self.sleeve_play if out_lo >= -EPS else 0.0)
-        key = BHCS["3"].key(L)
+        key = SCREWS["bhcs", "3"].key(L)
         return HexJoint(
             self.hex_key(S), S, round(span, 3), round(out_lo, 3), round(out_hi, 3),
             collar(out_lo), collar(out_hi), key, e, k,
@@ -1124,13 +1059,13 @@ class BoltCrank:
     horn_shim_max: float = 2.0       # DIN 988 shims under a horn screw's head, at most (mm)
 
     def horn_joint_web(self, ctx: Context, seg: float, spacer: float
-                       ) -> tuple[ScrewKind, float, float] | None:
+                       ) -> tuple[Screw, float, float] | None:
         """:meth:`horn_fit_web` without its shims: (kind, length, thread in the horn)."""
         got = self.horn_fit_web(ctx, seg, spacer)
         return None if got is None else got[:3]
 
     def horn_fit_web(self, ctx: Context, seg: float, spacer: float
-                     ) -> tuple[ScrewKind, float, float, float] | None:
+                     ) -> tuple[Screw, float, float, float] | None:
         """The horn screws up through the crank's top plates (``seg`` mm: the hub and what
         is under it, their heads under the lowest) and the horn spacer (``spacer``) into
         the horn: (kind, length, thread in the horn, DIN 988 shims under the head). Most
@@ -1138,7 +1073,6 @@ class BoltCrank:
         horn whose thread window is short, the XL430's 1.5-2.0 mm, against a thin hub
         plate) takes 0.1 mm steps of shims under its head (up to ``horn_shim_max``, in the
         gap under the hub where its head hangs)."""
-        from spiderpig.hardware.fasteners import SCREWS
         from spiderpig.stack import GAP_MAX
 
         spec = ctx.servo
@@ -1207,10 +1141,8 @@ class BoltCrank:
             d = max(d, float(get(SHIM_KEY).dims["od"]))
         return d / 2 + 0.3
 
-    def horn_kind(self, ctx: Context) -> ScrewKind:
+    def horn_kind(self, ctx: Context) -> Screw:
         """The horn screws' kind (its head is what hangs under the crank's top plates)."""
-        from spiderpig.hardware.fasteners import SCREWS
-
         pat = ctx.servo.horn.pattern
         size = SIZES.get(pat.thread)
         order = ("self_tap",) if pat.tapping else ("bhcs", "shcs")
@@ -1346,7 +1278,7 @@ class BoltCrank:
         if route.bearing:
             # the stub standoff's screw from above the lowest web: its head in the air over
             # that plate, the rest in the gap there
-            sk = BHCS["3"]
+            sk = SCREWS["bhcs", "3"]
             air = L.t(a) - t
             h = sk.head_h + clear - air
             out.append(Placed(a, Disc("O", sk.head_d / 2 + 0.3), GROUP, "stub screw head",
@@ -1634,9 +1566,9 @@ class _WebPlates:
                 if k > 1:
                     self.out.extras.append(BomLine("m3_washer", k - 1, f"crankpin {tag}"))
                 bearing += s_ * k * et
-            sk, length = screw_from_key(key)
+            sk, length = parse(key)
             self.buy(f"crank_pin_screw_{side}_{tag}",
-                     screw_body(xy, sk, bearing, length, up=side == "lo"), key)
+                     screw_solid(xy, sk, bearing, length, up=side == "lo"), key)
         press = capped
         if j.sleeve > 0:
             z0 = self.pz(w0)[1] + (self.pz(w1)[0] - self.pz(w0)[1] - j.sleeve) / 2
@@ -1702,9 +1634,9 @@ class _WebPlates:
         od = c.stub_od()
         st = disc(o, od / 2 - 0.01, z0, top) - disc(o, 1.5, z0 - 1, top + 1)   # M3 thread
         self.buy("crank_stub", st, key, "#c0c0c0")
-        sk = BHCS["3"]
+        sk = SCREWS["bhcs", "3"]
         bearing = self.pz(k)[1]          # the head on the lowest web, from above
-        self.buy("crank_stub_screw", screw_body(o, sk, bearing, L, up=False), sk.key(L))
+        self.buy("crank_stub_screw", screw_solid(o, sk, bearing, L, up=False), sk.key(L))
         self.layer_cut(k, o, 3.4 / 2)
         self.out.cut(FRAME_OUTER, Cut(o, od + 0.6))      # +/-0.3 mm: the journal's clearance
         if c.hex and any(n.get("capped") for n in self.notes):
@@ -1742,7 +1674,7 @@ class _WebPlates:
             xy = tuple(o + drive.screw_pcd / 2 * np.array([math.cos(a), math.sin(a)]))
             for k in range(seg, top + 1):
                 self.layer_cut(k, xy, c.horn_hole(b.ctx) / 2)
-            self.buy(f"crank_horn_screw{i}", screw_body(xy, sk, bearing, L), sk.key(L))
+            self.buy(f"crank_horn_screw{i}", screw_solid(xy, sk, bearing, L), sk.key(L))
             if shims:
                 # DIN 988 shims under the head: a stock length too long for the hub plate
                 ring = disc(xy, 2.95, bearing, face) - disc(xy, 1.55, bearing - 1, face + 1)

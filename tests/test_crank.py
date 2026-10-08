@@ -549,9 +549,10 @@ def test_the_strider_decker_and_quad_plan_on_the_hex_crank(module):
 
 
 def test_a_screw_key_reads_back_as_its_kind_and_length():
-    from spiderpig.construction.crank import BHCS, SHCS, screw_from_key
+    from spiderpig.hardware.fasteners import SCREWS
+    from spiderpig.hardware.fasteners import parse as screw_from_key
 
-    for key, kind in (("m3_shcs_10", SHCS["3"]), ("m3_bhcs_8", BHCS["3"])):
+    for key, kind in (("m3_shcs_10", SCREWS["shcs", "3"]), ("m3_bhcs_8", SCREWS["bhcs", "3"])):
         sk, length = screw_from_key(key)
         assert (sk, length) == (kind, float(key.rsplit("_", 1)[1]))
         assert sk.key(length) == key

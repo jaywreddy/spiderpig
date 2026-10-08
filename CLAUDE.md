@@ -683,5 +683,5 @@ Physical rules the claims encode:
   output, the junit XML and the remote `build/` land in `build/remote/<run>/`. Tests
   must stay xdist-safe: write under `tmp_path`, free ports only.
 - One density table, one OCCT mass query: `spiderpig/hardware/mass.py`. One
-  screw table: `spiderpig/hardware/fasteners.py` (`spiderpig/construction/crank.py` still carries its
-  own until its rewrite lands).
+  screw table: `spiderpig/hardware/fasteners.py` (every construction's heads, lengths, keys
+  and solids).
