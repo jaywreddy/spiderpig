@@ -382,10 +382,9 @@ def _rail(lay: DeckLayout, side: str):
     bore_y0 = lay.deck_top - dn["screw_l"] - 1.0
     for s in (-1, 1):
         x = lay.x_c + s * NUT_X
-        part = difference(part, _cyl_y(x, zc, CLEARANCE["3"] / 2, bore_y0, y1 + 1),
-                          _hex_y(x, zc, af, ny0, ny1),
-                          _box(x - af / 2, x + af / 2, ny0, ny1,
-                               *sorted((zc, sign * (z_far + 1)))))
+        part = (part - _cyl_y(x, zc, CLEARANCE["3"] / 2, bore_y0, y1 + 1)
+                - _hex_y(x, zc, af, ny0, ny1)
+                - _box(x - af / 2, x + af / 2, ny0, ny1, *sorted((zc, sign * (z_far + 1)))))
     reach = af / math.sqrt(3) + 1.0              # the pocket's corner, and a wall
     if NUT_X - lay.spigot_x < reach + RAIL_NUT_AF / 2 + 0.15:
         raise ConstructionError(f"a deck nut's pocket at x_c +- {NUT_X:g} mm would meet a rail "
