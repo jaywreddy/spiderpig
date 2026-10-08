@@ -76,8 +76,8 @@ def test_rear_screws_sit_on_the_servo_pilots(design, robot):
     engage = mech.meta["rear_engagement_mm"]
     assert 3.0 <= engage <= 5.0
     screws = [b for b in mech.bodies if ".rear_screw" in b.name]
-    # one per servo since the bus plugs' slot (2026-10-04) took the far holes
-    assert len(screws) == 2 * mech.meta["rear_screws_per_servo"] >= 2
+    # both per servo since 2026-10-08 (one 2026-10-04..08, the far one lost to the pad)
+    assert len(screws) == 2 * mech.meta["rear_screws_per_servo"] == 4
     world = {"L": set(), "R": set()}
     for b in screws:
         side = b.name[0]
@@ -275,41 +275,114 @@ def test_the_robot_buys_no_ca_glue(robot):
     assert not [r for r in bom.purchased if r.key == "ca_glue"]
 
 
-def test_the_bus_plugs_have_a_way_in():
-    """The assembly audit of 2026-10-04: the STS3215's bus sockets are in the connector
-    housing on its rear face, screwed flat to the centre plates; each servo's plates the
-    plugs stand in carry an open slot from the housing to the far edge, and no rear screw
-    is left within two plate thicknesses of it (each servo keeps its near rear hole)."""
+def _sts_frames():
     from dataclasses import replace as _replace
 
-    from spiderpig.config import BuildConfig
+    left = ServoFrame((0.0, 0.0), (1.0, 0.0))
+    return (left, _replace(left, hand=-1))
+
+
+def test_the_sts3215_bus_window_and_channel():
+    """The research of 2026-10-08: the STS3215's bus sockets are top-entry headers in a
+    trench in the rear face (x 11.55..16.55, |y| <= 10.1); a plug, 3.9 along x and 9.9
+    across, stands 3.5 beyond the face and its wires 2.5 more, turned toward +x. Each servo
+    uses the socket on its own +y side (the user's decision of 2026-10-08): the plates get a
+    window round that plug, inside the research's x 11.2..16.9, |y| <= 10.5, and a channel
+    |y| <= 4.5 from it to the far edge, through the plates within 6 mm of each rear face;
+    the stack holds one plug, not two."""
     from spiderpig.construction import chassis as ch
     from spiderpig.materials import sheet
 
-    spec = servos.get(BuildConfig().servo)
+    spec = servos.get("sts3215")
     ports = spec.bus_ports
     assert ports is not None
-    assert ports.opening == "end"
-    x0, x1, y0, y1 = ports.slot()
-    assert x1 == math.inf
-    assert x0 <= ports.x0
-    assert y1 - y0 >= ports.count * ports.plug_w
-    t = sheet("al5052_2p3mm").thickness
+    assert (ports.opening, ports.used, ports.exit) == ("face", "own", "+x")
+    assert (ports.x0, ports.x1, ports.y0, ports.y1) == (11.55, 16.55, -10.1, 10.1)
+    window, channel = ports.slot()
+    assert window == pytest.approx((11.6, 16.5, -0.4, 10.5))
+    wx0, wx1, wy0, wy1 = window
+    assert 11.2 <= wx0 and wx1 <= 16.9 and wy1 <= 10.5             # the research's window
+    cx = (ports.x0 + ports.x1) / 2                                  # the plug, centred
+    assert wx0 <= cx - ports.plug_t / 2 - 0.5 + 1e-9 and cx + ports.plug_t / 2 + 0.5 <= wx1 + 1e-9
+    assert wy0 <= 0.1 and 10.0 <= wy1                               # the +y socket's plug
+    assert channel == pytest.approx((cx, math.inf, -4.5, 4.5))
+    assert ports.height == pytest.approx(6.0)
+    assert not ports.opposed
+    # one plug and its wires over the other servo's raised pad (1.9), not two plugs
+    assert ch.centre_stack(spec, 1.0) == pytest.approx(6.0 + 1.9)
+    assert ch.centre_stack(spec, 1.0) < 2 * ports.height + 1.0
+    t = sheet("al5052_1p6mm").thickness
     n = centre_plates(spec, t, 1.0)
-    assert n * t >= 2 * ports.plug_h + 1.0          # the two servos' plugs clear each other
-    left = ServoFrame((0.0, 0.0), (1.0, 0.0))
-    frames = (left, _replace(left, hand=-1))
     half = n * t / 2
-    slots = ch._port_slots(spec, frames, half)
-    # the left plugs pass the left servo's plates (0, 1), the right ones the right's (2, 3)
-    assert [z for _, _, z in slots] == [pytest.approx((-half, -half + ports.plug_h)),
-                                        pytest.approx((half - ports.plug_h, half))]
-    rs = ch.rear_screws(spec, n, t, 2)
-    kept = ch._clear_holes(rs, frames, ch._relief_volumes(spec, frames, half), half, t, slots)
-    assert [(h.x, h.y) for h in kept] == [(8.3, 10.25)]
-    # with no plug access (kept to compare) the far hole is usable again
-    pocket = _replace(spec, bus_ports=_replace(ports, opening="pocket"))
-    assert ch._port_slots(pocket, frames, half) == []
+    slots = ch._port_slots(spec, _sts_frames(), half)
+    assert [s[1] for s in slots] == [pytest.approx(window), pytest.approx(channel)] * 2
+    assert all(isinstance(s[1], ch.PortCut) for s in slots)
+    assert [z for _, _, z in slots] == [pytest.approx((-half, -half + 6.0))] * 2 + [
+        pytest.approx((half - 6.0, half))] * 2
+    # the two servos' windows sit on opposite sides (the right servo's +y is the left's -y)
+    left, right = _sts_frames()
+    lw = [left.local(right.xy(x, y))[1] for x in window[:2] for y in window[2:]]
+    assert max(lw) <= 0.4 + 1e-9
+
+
+def test_the_sts3215_keeps_both_rear_screws():
+    """The user's decision of 2026-10-08: both rear screws per servo. The near hole (8.3,
+    10.25) keeps 1 x t of web to the window (``chassis.BUS_WEB_T``), its head recess opening
+    into it; the far one (32.75, 10.25) keeps 1.62 mm to the raised pad's relief (its
+    measured outline grown 0.2 mm, the pocket's 1 mm corners): over 0.063 in, under 0.080 in,
+    so the centre plates are 0.063 in (thinner than the frame's 0.080 in only because they
+    seat more screws: ``chassis.centre_sheet``)."""
+    from spiderpig.construction import chassis as ch
+    from spiderpig.materials import sheet
+
+    spec = servos.get("sts3215")
+    frames = _sts_frames()
+    assert ch._centre_sheet(spec, "al5052_2mm", 1.0) == "al5052_1p6mm"
+    kept = {}
+    for key in ("al5052_1p6mm", "al5052_2mm", "al5052_2p3mm"):
+        t = sheet(key).thickness
+        n = centre_plates(spec, t, 1.0)
+        half = n * t / 2
+        rel = ch._relief_volumes(spec, frames, half)
+        slots = ch._port_slots(spec, frames, half)
+        rs = ch.rear_screws(spec, n, t, 1)
+        kept[key] = [(h.x, h.y) for h in ch._clear_holes(rs, frames, rel, half, t, slots,
+                                                        sheet(key).min_hole)]
+    assert kept == {"al5052_1p6mm": [(8.3, 10.25), (32.75, 10.25)],
+                    "al5052_2mm": [(8.3, 10.25)], "al5052_2p3mm": []}
+    pad = next(r for r in spec.rear_reliefs if r.label == "raised pad")
+    assert (pad.x1, pad.y1, pad.grow) == (29.7, 9.2, 0.2)
+    rect = next(r for _, r, _ in ch._relief_volumes(spec, frames, 4.0) if r[1] > 29)
+    assert ch._cut_distance((32.75, 10.25), rect) - 1.2 == pytest.approx(1.617, abs=1e-3)
+    window = ch.PortCut(spec.bus_ports.slot()[0])
+    assert ch._cut_distance((8.3, 10.25), window) - 1.2 == pytest.approx(2.165, abs=1e-3)
+
+
+@pytest.mark.parametrize("model", ["xl430_w250", "xl330_m288"])
+def test_the_bus_change_leaves_the_xl_servos_alone(model):
+    """The XL servos have no bus ports modelled: their centre sheet and stack are what they
+    were before 2026-10-08."""
+    from spiderpig.construction import chassis as ch
+    from spiderpig.materials import sheet
+
+    spec = servos.get(model)
+    want = {"xl430_w250": ("al5052_2p3mm", 4), "xl330_m288": ("al5052_2p5mm", 3)}[model]
+    key = ch._centre_sheet(spec, "al5052_2mm", 1.0)
+    assert (key, centre_plates(spec, sheet(key).thickness, 1.0)) == want
+
+
+def test_the_robot_buys_one_bus_y_cable(robot):
+    """One socket per servo (2026-10-08): one Y cable from the driver board feeds both
+    servos; no ready-made one was found, so the line is unpriced with a search note."""
+    from spiderpig.construction.chassis import BUS_Y_CABLE
+
+    mech = robot("single", 1.0)
+    assert [(line.key, line.qty) for line in mech.bom_extras
+            if line.key == BUS_Y_CABLE] == [(BUS_Y_CABLE, 1)]
+    assert mech.meta["bus_sockets_used"] == "own"
+    item = get(BUS_Y_CABLE)
+    assert item.offer is not None and item.offer.price_usd is None
+    assert "search" in item.offer.note
 
 
 @pytest.mark.parametrize("model", ["xl430_w250", "xl330_m288"])

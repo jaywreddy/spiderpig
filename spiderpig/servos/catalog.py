@@ -94,25 +94,38 @@ STS3215 = register_servo(ServoSpec(
     # face around the shaft at -29.0 [FT][WS3]; outline assumed as the front (UNVERIFIED)
     rear_recess=Recess(r=11.7, x_end=7.0, depth=1.5),
     rear_reliefs=(
-        # connector bump: [WS3 measured] x 17.4..29.7, |y| <= 9.2, to z = -32.4;
-        # [SO] x 17.3..29.9, |y| <= 9.2
-        Relief(17.2, 30.0, -9.3, 9.3, 1.9, label="connector housing"),
+        # raised pad with a label recess (not the connector housing: the bus sockets are in
+        # a trench in front of it, bus_ports): [WS3 measured] x 17.4..29.7, |y| <= 9.2, to
+        # z = -32.4, its far corners rounded (~0.2 mm; 3.28 mm from the far rear hole's
+        # centre at the face, drafted inward above it); [SO] x 17.3..29.9, |y| <= 9.2,
+        # square. The [WS3] outline, grown 0.2 mm (Relief.grow), for the far rear screw's
+        # web (the user's decision of 2026-10-08)
+        Relief(17.2, 29.7, -9.2, 9.2, 1.9, label="raised pad", grow=0.2),
         # the idler boss (6 mm, tip at z = -33.1 [FT]) alone: the rear horn (19.95 mm, outer
         # face -32.55 [WS3]) is left in the box (Idler.fitted, the assembly audit of
         # 2026-10-04): its 21 mm relief left the near rear screw 1.1-1.5 mm of web in the
         # 0.090 in centre plates, under 1 x t, and nothing on this robot uses the idler
         Relief(-3.0, 3.0, -3.0, 3.0, 2.6, solid=False, round=True,
                label="idler boss (the rear horn left off)"),
-        # [SO] only: six 2 x 2 mm pins at x = 13..15 reaching z = -33.8 (not in [WS3])
-        Relief(12.9, 15.2, -8.8, 8.8, 3.3, solid=False, label="pins in the SO-ARM100 model"),
+        # (the [SO] model's six 2 x 2 mm "pins" at x = 13..15 are the bus headers' pins:
+        # bus_ports covers them)
     ),
-    # The two bus sockets (5264 3P, [WS wiki]) in the connector housing. UNVERIFIED: which
-    # way they open (both STEP models draw the housing solid); "end" is the SO-ARM100's
-    # wiring, the plugs in along -x from the housing's far end. Plug: Molex 50-37-5033
-    # (5264, 3 circuits) 9.9 wide, 3.9 thick, 8 long [Molex via distributors]. Measure a
-    # servo and a plug before the centre plates are cut (assembly audit, 2026-10-04).
-    bus_ports=BusPorts(17.2, 30.0, -9.3, 9.3, opening="end", count=2, plug_w=9.9,
-                       plug_h=3.9, plug_len=8.0, label="bus sockets (5264 3P)"),
+    # The two bus sockets: vertical (top-entry) Molex 5267-type headers (9.9 x 4.9, 2.5
+    # pitch) side by side across y, sunk in a trench in the rear face (the research of
+    # 2026-10-08, four sources: [FT] p.6 rear view draws the "5264/2.54 3P" sockets in plan;
+    # Waveshare's photos look into them; an SO-101 build photo shows the wires leaving
+    # perpendicular to the rear face; [SO] cavity x 11.55..16.55, |y| <= 10.1 with the
+    # headers' pins, [WS3] x 11.65..16.25). The plugs go in along +z, perpendicular to the
+    # centre plates. Plug: Molex 50-37-5033 (5264, 3 circuits) 9.9 x 3.9 x 8.0 [Molex via
+    # distributors]; about 3-3.5 of it stands beyond the rear face (a clone header drawing)
+    # and its wires, turned toward +x, about 2.5 more. One socket per servo, on its own +y
+    # side, fed by a Y cable (the user's decision of 2026-10-08), so the two servos' plugs
+    # don't oppose. One hand measurement remains: the plug-plus-wire height (a plug seated,
+    # its wires laid flat toward +x: their top above the rear face, expected 5.5-6.5).
+    bus_ports=BusPorts(11.55, 16.55, -10.1, 10.1, opening="face", count=2, plug_w=9.9,
+                       plug_t=3.9, plug_h=3.5, plug_len=8.0, cable=2.5, exit="+x",
+                       channel_w=9.0, used="own",
+                       label="bus sockets (5267-type, top entry)"),
     continuous=True,                # [C001] "Limit angle: no limit", mode 1 = closed-loop speed
     idler=Idler(
         boss_d=6.0, boss_h=4.1, base_z=-29.0,    # [FT] rear boss 6 x 4.1 on the -29.0 face

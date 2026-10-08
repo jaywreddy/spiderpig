@@ -125,6 +125,26 @@ register(
                "gap; the 1.14 mm tape lowers them about 0.84 mm more)."),
 )
 
+# The servos' bus: one socket per servo (the user's decision of 2026-10-08,
+# construction.chassis.BUS_Y_CABLE). No ready-made Y cable for the 5264 3-pin bus was found
+# on 2026-10-08 (searched "SCS/STS servo Y cable", "5264 3-pin Y splitter", Feetech and
+# Waveshare): the line is unpriced, with Waveshare's straight cables to make one from.
+register(
+    Item("bus_y_cable_5264", "Servo bus Y cable, Molex 5264 3-pin (1 to 2), short",
+         "electronics",
+         (Offer("search", "https://www.google.com/search?q=5264+3+pin+Y+splitter+cable+"
+                "servo", note="no product page found 2026-10-08: search 'SCS STS servo Y "
+                "cable' / '5264 3-pin Y splitter'; unpriced"),
+          Offer("Waveshare", "https://www.waveshare.com/sr-cable-5264-3pin.htm?sku=34171",
+                "34171", pack_qty=6, verified=True,
+                note="SR-Cable-5264-3PIN-300mm-6PCS, $1.99 per 6 (2026-10-08): straight "
+                     "5264 cables to splice a Y from (or use two if the driver board has "
+                     "two bus ports)")),
+         notes="Feeds both STS3215s from the driver board, each plugged into the socket on "
+               "its own +y side: the two plugs sit on opposite sides of the centre plates "
+               "and never oppose (construction.chassis._port_slots)."),
+)
+
 # The board's M2.5 nylon hardware. Each piece is sourced singly first (hardware.sources: the
 # Essentra screw and nut at DigiKey, the Wurth standoff at Mouser); this kit, their shared
 # alternative (vendor + SKU shared), would be one pack for all three.
