@@ -27,6 +27,21 @@ RELIEF_GROW = 0.5        # a relief cut-out is this much bigger than the bump, p
 RELIEF_CORNER = 1.0      # its inside corners' radius (SendCutSend cuts 0.8 mm in aluminium)
 RELIEF_ROUND = RELIEF_CORNER * (1 - math.sqrt(0.5)) + 0.05   # a pocket grown round its
 #                          rectangle so the rounded corners still hold it (each side)
+BUS_WEB_T = 1.0
+"""The web, in plate thicknesses, that a centre plate keeps between the bus plugs' window or
+channel (:func:`_port_slots`) and a rear screw's hole or head recess: the cut rules' error
+level (:data:`manufacture.EDGE_ERROR_T`), not the service's 2 x t (a warning). The user's
+decision of 2026-10-08, to keep both rear screws per servo beside a window that must be
+where the sockets are: a shank hole keeps at least this to the window in every plate both
+pass, and a head recess closer than this opens into the window (:func:`_recess_bridges`:
+the recess only clears the head, which bears on the plate under it). Elsewhere the plates
+keep 2 x t (:func:`tie_locals`, :func:`recess_wall`)."""
+BUS_CABLE = "servo_bus_cable_5264"  # each servo's own (boxed) cable to a board port
+BUS_WIRE_MARGIN = 1.0
+"""The room the centre plates keep past a bus plug's wires (mm): the plug-plus-wire height
+(``BusPorts.height``, 6.0 on the STS3215) is a clone drawing's and a bent wire's estimate,
+unmeasured (the research's 5.5-6.5), so the window and channel are cut, and the stack is
+sized, 1 mm past it (the same margin as the bumps': review of 2026-10-08)."""
 MODEL_GAP = 0.01         # radial gap between modelled parts that touch in reality (mm)
 EPS_CH = 1e-6
 CHASSIS_COLOR = "#eb6834"
@@ -36,10 +51,14 @@ BRASS = "#c9a227"
 
 
 def centre_sheet(ctx: Context) -> str | None:
-    """The centre plates' sheet: the thinnest aluminium of the frame's alloy that seats the
-    most rear screws (the plates' count and thickness set where the screws' heads sit
-    against the two servos' rear bumps; 0.080 in leaves one hole per servo on the STS3215,
-    0.125 in two); the frame's sheet when nothing is better (or no chassis)."""
+    """The centre plates' sheet: the thinnest stack of the frame's alloy that seats the most
+    rear screws (the plates' count and thickness set where the screws' heads sit against
+    the two servos' rear bumps, and the web a shank hole keeps to a relief or a bus plug's
+    cut is one plate thickness: :func:`_clear_holes`), at least the frame's thickness; a
+    thinner sheet only where it seats more rear screws than every sheet at least as thick
+    (the user's decision of 2026-10-08, both rear screws per servo: on the STS3215 the far
+    hole keeps 1.62 mm of web to the raised pad's relief, under 0.080 in but over 0.063
+    in); the frame's sheet when nothing is better (or no chassis)."""
     key = ctx.sheet("frame")
     try:
         return _centre_sheet(ctx.servo, key, ctx.params.margin)
@@ -57,11 +76,9 @@ def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
     alloy = str(get(frame_key).dims.get("alloy", "5052"))[:4]
     left = ServoFrame((0.0, 0.0), (1.0, 0.0))
     frames = (left, replace(left, hand=-1))
-    best = None
+    best = thin = None
     for key in aluminium_sheets(alloy):
         t = sheet(key).thickness
-        if t < sheet(frame_key).thickness - 1e-9:
-            continue
         n = centre_plates(spec, t, margin)
         half = n * t / 2
         reliefs = _relief_volumes(spec, frames, half)
@@ -78,8 +95,16 @@ def _centre_sheet(spec, frame_key: str | None, margin: float) -> str | None:
         # the most screws, then the thinnest stack (the bus plugs can need a fifth thin
         # plate where four of the next sheet do), then the thinnest sheet
         rank = (-most, round(n * t, 3))
-        if best is None or rank < best[0]:
+        if t < sheet(frame_key).thickness - 1e-9:
+            # (the thickest of them: the fewest plates)
+            if thin is None or (-most, -t) < (thin[0][0], -sheet(thin[1]).thickness):
+                thin = (rank, key)
+        elif best is None or rank < best[0]:
             best = (rank, key)
+    # a sheet thinner than the frame's only where it seats more rear screws than every one
+    # at least as thick
+    if thin is not None and (best is None or thin[0][0] < best[0][0]):
+        best = thin
     return frame_key if best is None or best[0][0] == 0 else best[1]
 
 
@@ -93,14 +118,47 @@ def centre_t(ctx: Context) -> float:
     return thickness(ctx.config, key)
 
 
-def centre_plates(spec, pitch: float, margin: float) -> int:
-    """Centre plates needed so the two servos' rear bumps, and the bus plugs in their
-    sockets (``ServoSpec.bus_ports``: the two servos' plugs sit at the same place, from
-    either side), clear each other."""
+def bus_reserve(spec) -> float:
+    """How far beyond each servo's rear face the centre plates keep room for its bus plug
+    and wires (``BusPorts.height`` and :data:`BUS_WIRE_MARGIN`; 0 without ports)."""
+    ports = spec.bus_ports
+    if ports is None or ports.height <= 0:
+        return 0.0
+    return ports.height + (BUS_WIRE_MARGIN if ports.opening == "face" else 0.0)
+
+
+def centre_stack(spec, margin: float) -> float:
+    """The least height of the centre stack (mm): the two servos' rear bumps facing each
+    other and ``margin``; the bus plugs (``ServoSpec.bus_ports``) with their wires and
+    ``margin``, once for each servo when they oppose (``BusPorts.opposed``), else once (one
+    socket per servo on opposite sides, the user's decision of 2026-10-08); and a plug's
+    room (:func:`bus_reserve`) under the other servo's bumps over its window and channel
+    (that servo's frame is mirrored in y). A ``Relief.model_only`` bump (the SO-ARM100
+    model's header pins: the real headers are sunk, the research of 2026-10-08) doesn't
+    count there: nothing real stands over the plug, though the plates clear it so the
+    drawn models fit."""
     proud = max((r.height for r in spec.rear_reliefs), default=0.0)
-    if spec.bus_ports is not None:
-        proud = max(proud, spec.bus_ports.height)
-    return max(1, math.ceil((2 * proud + margin) / pitch - 1e-9))
+    need = 2 * proud + margin
+    ports = spec.bus_ports
+    if ports is not None and ports.height > 0:
+        need = max(need, (2 if ports.opposed else 1) * ports.height + margin)
+        if not ports.opposed and ports.opening == "face":
+            path = ports.slot()
+            cross = max((r.height for r in spec.rear_reliefs if not r.model_only
+                         and any(_rects_meet(p, (r.x0, r.x1, -r.y1, -r.y0)) for p in path)),
+                        default=0.0)
+            need = max(need, bus_reserve(spec) + cross)
+    return need
+
+
+def centre_plates(spec, pitch: float, margin: float) -> int:
+    """Centre plates needed for :func:`centre_stack`."""
+    return max(1, math.ceil(centre_stack(spec, margin) / pitch - 1e-9))
+
+
+def _rects_meet(a, b) -> bool:
+    """Whether two rectangles ``(x0, x1, y0, y1)`` overlap (more than touch)."""
+    return _overlaps((a[0], a[1]), (b[0], b[1])) and _overlaps((a[2], a[3]), (b[2], b[3]))
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +217,12 @@ class RoundRelief(tuple):
         return (self[1] - self[0]) / 2
 
 
+class PortCut(tuple):
+    """A bus plugs' cut ``(x0, x1, y0, y1)`` (servo frame, :func:`_port_slots`): already
+    ``BusPorts.clear`` round the plug, more than a :data:`RELIEF_CORNER` corner takes from
+    a rectangle, so it is cut as it is (a relief is grown by :data:`RELIEF_ROUND` first)."""
+
+
 def _rect_distance(p: tuple[float, float], x0, x1, y0, y1) -> float:
     """Distance from a point to an axis-aligned rectangle (0 inside)."""
     dx = max(x0 - p[0], 0.0, p[0] - x1)
@@ -175,29 +239,90 @@ def _relief_distance(p: tuple[float, float], rect) -> float:
     return _rect_distance(p, *rect)
 
 
+def _cut_distance(p: tuple[float, float], rect) -> float:
+    """Distance from a point to a cut-out as the plates cut it (:func:`_centre_plate_parts`):
+    a :class:`RoundRelief`'s circle; a :class:`PortCut` as it is, a relief's rectangle grown
+    by :data:`RELIEF_ROUND`, each with :data:`RELIEF_CORNER` corners (0 inside)."""
+    if isinstance(rect, RoundRelief):
+        return _relief_distance(p, rect)
+    g = 0.0 if isinstance(rect, PortCut) else RELIEF_ROUND
+    r = RELIEF_CORNER
+    x0, x1, y0, y1 = rect[0] - g + r, rect[1] + g - r, rect[2] - g + r, rect[3] + g - r
+    return max(0.0, _rect_distance(p, x0, x1, y0, y1) - r)
+
+
+def _in_frame(frame: ServoFrame, rf: ServoFrame, rect):
+    """A cut-out of ``rf``'s servo frame in ``frame``'s (the two share their origin and x
+    axis; a mirrored frame flips y), its kind kept."""
+    if rf.hand == frame.hand:
+        return rect
+    return type(rect)((rect[0], rect[1], -rect[3], -rect[2]))
+
+
 def _merge_close(rects: list[tuple], web: float) -> list[tuple]:
-    """A plate's rectangular cut-outs (``(frame, (x0, x1, y0, y1))``, servo frame) with every
-    two of one frame that face each other across less than ``web`` (the service's edge
-    distance: a thinner web distorts, under a kerf it doesn't come back at all) merged into
-    their bounding rectangle: one cut (the assembly audit of 2026-10-04: the STS3215's
-    "pins" relief stood 0.31 mm off the bus plugs' slot). Round reliefs stay apart."""
+    """A plate's rectangular cut-outs (``(frame, (x0, x1, y0, y1))``: the servo whose cut it
+    is, the rectangle in one servo frame for all) with every two of one servo (a plug's cut:
+    of any) that face each other across less than ``web`` (the service's edge
+    distance: a thinner web distorts, under a kerf it doesn't come back at all) made one
+    cut (the assembly audit of 2026-10-04: the STS3215's "pins" relief stood 0.31 mm off the
+    bus plugs' slot): two reliefs merge into their bounding rectangle; a :class:`PortCut`
+    reaches 1 mm into the other instead (their union: a bounding rectangle would take
+    the plate round the screws beside them). Round reliefs stay apart."""
     out = list(rects)
     merged = True
     while merged:
         merged = False
         for i, j in itertools.combinations(range(len(out)), 2):
             (fa, a), (fb, b) = out[i], out[j]
-            if fa is not fb or isinstance(a, RoundRelief) or isinstance(b, RoundRelief):
+            if isinstance(a, RoundRelief) or isinstance(b, RoundRelief):
+                continue
+            port = isinstance(a, PortCut) or isinstance(b, PortCut)
+            if fa is not fb and not port:     # (a plug's cut: in the left frame, any servo's)
                 continue
             gx = max(a[0] - b[1], b[0] - a[1])
             gy = max(a[2] - b[3], b[2] - a[3])
-            # facing across a gap in one direction, overlapping in the other
-            if (gx < web and gy < 0) or (gy < web and gx < 0):
+            if port:
+                # facing across a gap (overlapping: one cut already)
+                if not ((0 <= gx < web and gy < 0) or (0 <= gy < web and gx < 0)):
+                    continue
+                along_x = gx >= 0
+                # the plug's cut that grows least reaches into the other (by geometry, not
+                # list order: the two servos' mirrored plates come out congruent)
+                options = [(_growth(p, q, along_x), p, q, k) for k, p, q in
+                           ((i, a, b), (j, b, a)) if isinstance(p, PortCut)]
+                _, p, q, k = min(options, key=lambda o: (o[0], tuple(o[1])))
+                out[k] = (out[k][0], PortCut(_reach_into(p, q, along_x=along_x)))
+            else:
+                # facing across a gap in one direction, overlapping in the other
+                if not ((gx < web and gy < 0) or (gy < web and gx < 0)):
+                    continue
                 box_ = (min(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), max(a[3], b[3]))
                 out = [r for k, r in enumerate(out) if k not in (i, j)] + [(fa, box_)]
-                merged = True
-                break
+            merged = True
+            break
     return out
+
+
+def _reach_into(p, q, along_x: bool, depth: float = 1.0) -> tuple[float, ...]:
+    """Rectangle ``p`` stretched ``depth`` into rectangle ``q``, which it faces across a gap
+    along x (``along_x``) or y."""
+    c = list(p)
+    lo, hi = (0, 1) if along_x else (2, 3)
+    if q[hi] <= c[lo]:
+        c[lo] = q[hi] - depth
+    else:
+        c[hi] = q[lo] + depth
+    return tuple(c)
+
+
+def _growth(p, q, along_x: bool) -> float:
+    """The area rectangle ``p`` gains reaching into ``q`` (:func:`_reach_into`); infinite
+    for an open cut stretched across its open length."""
+    r = _reach_into(p, q, along_x)
+    lo, hi = (0, 1) if along_x else (2, 3)
+    grown = sum(abs(r[k] - p[k]) for k in (lo, hi) if r[k] != p[k])    # (one side moves)
+    across = (p[3] - p[2]) if along_x else (p[1] - p[0])
+    return math.inf if math.isinf(across) else grown * across
 
 
 def _footprint(spec) -> tuple[float, float, float, float]:
@@ -321,9 +446,11 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
     near = tie_neighbours(ctx)
     r = d.hole_d / 2
     n = round(TIE_SHIFT_MAX / TIE_SHIFT_STEP)
-    # the bus plugs' slot through the centre plates (:func:`_port_slots`): a tie beside it
-    # moves out across the servo until its hole is two thicknesses off the slot's side
-    slot = spec.bus_ports.slot() if spec.bus_ports is not None else None
+    # the bus plugs' cuts through the centre plates (:func:`_port_slots`): a tie beside one
+    # moves out across the servo until its hole is two thicknesses off the cut's side (both
+    # servos' cuts: the right one's mirrored)
+    slots = spec.bus_ports.slot() if spec.bus_ports is not None else ()
+    slots = tuple(slots) + tuple((s[0], s[1], -s[3], -s[2]) for s in slots)
     slot_web = _min_edge(centre_sheet(ctx))
     out = []
     for x in xs:
@@ -334,10 +461,10 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
             best = next((x + dx for dx in steps
                          if all(math.hypot(x + dx - hx, y - hy) >= r + hr + web + 0.05
                                 for hx, hy, hr, web in near)), x)
-            if (slot is not None
-                    and slot[0] - RELIEF_ROUND - r - slot_web < best < slot[1] + r + slot_web):
-                side = (slot[3] if y > 0 else -slot[2]) + RELIEF_ROUND
-                y = math.copysign(max(abs(y), side + r + slot_web + 0.05), y)
+            for slot in slots:
+                if slot[0] - RELIEF_ROUND - r - slot_web < best < slot[1] + r + slot_web:
+                    side = (slot[3] if y > 0 else -slot[2]) + RELIEF_ROUND
+                    y = math.copysign(max(abs(y), side + r + slot_web + 0.05), y)
             out.append((best, y))
     return out
 
@@ -427,11 +554,12 @@ def rear_screws(spec, n: int, pitch: float, own: int | None = None) -> RearScrew
 
 def _clear_holes(rs: RearScrews, frames, reliefs, half: float, pitch: float,
                  slots=(), min_hole: float = 0.0) -> tuple:
-    """The holes whose heads (on either servo) stay out of every rear bump's space, whose
-    head recesses stay two plate thicknesses (the cut rules' warning level) off the bus
-    plugs' slots (:func:`_port_slots`), which run through every plate there, and whose
-    shank holes, as cut (at least ``min_hole``, the service's), keep one plate thickness
-    of web (the cut rules' error level) to the reliefs in the plates they pass."""
+    """The holes whose heads (on either servo) stay out of every rear bump's space, and
+    whose shank holes, as cut (at least ``min_hole``, the service's), keep one plate
+    thickness of web (the cut rules' error level) to the reliefs' cut-outs and the bus
+    plugs' cuts (:func:`_port_slots`; :data:`BUS_WEB_T`) in the plates they pass, each
+    measured to the cut-out as cut, its corners rounded (:func:`_cut_distance`). A head
+    recess near a plug's cut opens into it (:func:`_recess_bridges`)."""
     head_r = rs.head_d / 2 + HEAD_CLEARANCE
     seat = -half + rs.own * pitch                     # the left heads bear here
     heads = ((frames[0], (seat, seat + rs.head_h)), (frames[1], (-seat - rs.head_h, -seat)))
@@ -443,45 +571,48 @@ def _clear_holes(rs: RearScrews, frames, reliefs, half: float, pitch: float,
                      and _relief_distance(rf.local(f.xy(h.x, h.y)), rect) < head_r)
                 for f, hz in heads for rf, rect, zr in reliefs)
                 and all(not (_overlaps(sz, zr)
-                             and _relief_distance(rf.local(f.xy(h.x, h.y)), rect)
-                             < hole_r + RELIEF_ROUND + pitch)
+                             and _cut_distance(rf.local(f.xy(h.x, h.y)), rect)
+                             < hole_r + pitch - 1e-6)
                         for f, sz in shanks for rf, rect, zr in reliefs)
-                and all(_rect_distance(rf.local(f.xy(h.x, h.y)), *rect)
-                        >= head_r + 2 * pitch + RELIEF_ROUND
-                        for f, _ in heads for rf, rect, _ in slots)):
+                and all(not (_overlaps(sz, zr)
+                             and _cut_distance(rf.local(f.xy(h.x, h.y)), rect)
+                             < hole_r + BUS_WEB_T * pitch - 1e-6)
+                        for f, sz in shanks for rf, rect, zr in slots)):
             keep.append(h)
     return tuple(keep)
 
 
 def _relief_volumes(spec, frames, half: float):
-    """Every rear bump as (frame, rect in its servo frame, z range)."""
+    """Every rear bump as (frame, rect in its servo frame, z range), each grown by its
+    ``Relief.grow`` (default :data:`RELIEF_GROW`)."""
     out = []
     for frame, face, sign in ((frames[0], -half, 1.0), (frames[1], half, -1.0)):
         for r in spec.rear_reliefs:
             z = sorted((face, face + sign * r.height))
-            rect = (r.x0 - RELIEF_GROW, r.x1 + RELIEF_GROW, r.y0 - RELIEF_GROW, r.y1 + RELIEF_GROW)
+            g = RELIEF_GROW if r.grow is None else r.grow
+            rect = (r.x0 - g, r.x1 + g, r.y0 - g, r.y1 + g)
             out.append((frame, RoundRelief(rect) if r.round else rect, tuple(z)))
     return out
 
 
 def _port_slots(spec, frames, half: float):
-    """The bus plugs' way to their sockets (``ServoSpec.bus_ports``) as (frame, rect in its
-    servo frame, z range), like :func:`_relief_volumes`: per servo an open slot from its
-    socket bump to the centre plates' far edge through every plate the plugs stand in
-    (from its rear face out to the plug's thickness). The rear face is on the plates, so
-    a closed relief the size of the bump leaves no way in for a plug (assembly audit,
-    2026-10-04); which way the sockets open is UNVERIFIED (:data:`servos.catalog`)."""
+    """The bus plugs' cuts (``ServoSpec.bus_ports``, ``BusPorts.cuts``) as (frame,
+    :class:`PortCut` in its servo frame, z range), like :func:`_relief_volumes`. For the
+    STS3215's top-entry sockets (the research and the user's decision of 2026-10-08): per
+    servo a closed window round the plug in its own +y socket, through every plate within
+    :func:`bus_reserve` of its rear face, and its own channel for the wires, centred on the
+    plug, to the plates' +x edge, through the plates from the plug's top to the reserve
+    (the two servos' plugs, and so their channels, sit on opposite sides). The rear face is
+    on the plates, so the plug goes in through the window before the stack closes
+    (the centre stack's step, :func:`assembly`) and its wires lie in the channel."""
     ports = spec.bus_ports
     if ports is None:                   # a servo with no bus sockets modelled (the XLs)
         return []
-    rect = ports.slot()
-    if rect is None:                    # "pocket": no way in to cut
-        return []
-    height = ports.height
     out = []
     for frame, face, sign in ((frames[0], -half, 1.0), (frames[1], half, -1.0)):
-        z = sorted((face, face + sign * height))
-        out.append((frame, rect, tuple(z)))
+        for rect, z0, z1 in ports.cuts(bus_reserve(spec)):     # "pocket": none
+            z = tuple(sorted((face + sign * z0, face + sign * z1)))
+            out.append((frame, PortCut(rect), z))
     return out
 
 
@@ -495,14 +626,15 @@ def _recess_bridges(xy, r: float, rects, web: float, z0: float, z1: float) -> li
             continue
         lx, ly = rf.local(xy)
         rx0, rx1, ry0, ry1 = rect
-        if _rect_distance((lx, ly), rx0, rx1, ry0, ry1) - r >= web:
+        gap = _rect_distance((lx, ly), rx0, rx1, ry0, ry1) - r
+        if gap >= web or gap < 0:       # (overlapping: one cut already)
             continue
         if ry0 <= ly <= ry1 or not (rx0 <= lx <= rx1):
             # beside it along x (or diagonal: along x first)
             bx0, bx1 = (lx, rx0 + 1.0) if lx < rx0 else (rx1 - 1.0, lx)
             out.append(_rounded_rect(rf, bx0, bx1, ly - r, ly + r, min(RELIEF_CORNER, r),
                                      z0 - 1.0, z1 + 1.0))
-            if not ry0 <= ly <= ry1:
+            if not ry0 - r < ly < ry1 + r:   # (a band that meets the relief already: no more)
                 by0, by1 = (ly, ry0 + 1.0) if ly < ry0 else (ry1 - 1.0, ly)
                 xin = min(max(lx, rx0 + r), rx1 - r)
                 out.append(_rounded_rect(rf, xin - r, xin + r, by0, by1,
@@ -561,10 +693,22 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
     extras: list[BomLine] = []
     bodies += _tie_parts(ctx, plan, tie_xy, z_mid, half, host, info, fastened, extras)
     info["centre_plate_sheet"] = centre_sheet(ctx)
-    bodies += _centre_plate_parts(ctx, left, reliefs + slots, rs, screws, tie_xy, n, half,
-                                  pitch, host, extras)
-    if spec.bus_ports is not None:
-        info["bus_ports"] = spec.bus_ports.opening
+    plates = _centre_plate_parts(ctx, left, reliefs + slots, rs, screws, tie_xy, n, half,
+                                 pitch, host, extras)
+    bodies += plates
+    if rs is not None:
+        info["centre_plate_section"] = _section_geometry(
+            spec, left, frames, reliefs, slots, rs, tie_xy, plates, half, pitch,
+            sheet_spec(centre_key).min_hole if centre_key else 0.0)
+    ports = spec.bus_ports
+    if ports is not None:
+        info["bus_ports"] = ports.opening
+        info["bus_sockets_used"] = ports.used
+        if ports.opening != "pocket" and ports.used == "own":
+            # one socket per servo, each servo's own cable to one of the board's two
+            # bus ports (in the servo's box: on hand)
+            extras.append(BomLine(BUS_CABLE, 2, "bus cables: each servo's own socket to "
+                                  "one of the driver board's two bus ports"))
     info["fastened"] = fastened
     return bodies, extras, info
 
@@ -577,6 +721,9 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
     screws: list[tuple[str, tuple[float, float], tuple, tuple, object]] = []
     # the own plates that leave the most holes whose heads clear the other servo's bumps
     # (thinner aluminium centre plates: more of them, so the heads' z is a choice)
+    # the most holes; then, for a stock screw (MountHole.stock: the M2 x 6 in the STS3215's
+    # bag, one SKU front and rear, the review of 2026-10-08), that length; then the fewest
+    # own plates
     best = None
     for own in range(1, max(2, n)):
         try:
@@ -586,9 +733,13 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
         if cand is None:
             continue
         usable = _clear_holes(cand, frames, reliefs, half, pitch, slots, min_hole)
-        if usable and (best is None or len(usable) > len(best.holes)):
-            best = replace(cand, holes=usable)
-    rs = best
+        if not usable:
+            continue
+        h0 = cand.holes[0]
+        rank = (-len(usable), h0.stock and cand.key != h0.screw)
+        if best is None or rank < best[0]:
+            best = (rank, replace(cand, holes=usable))
+    rs = best[1] if best is not None else None
     if rs is not None:
         for i, h in enumerate(rs.holes):
             for s, frame, sign in (("L", frames[0], 1.0), ("R", frames[1], -1.0)):
@@ -603,10 +754,67 @@ def _rear_screw_parts(spec, frames, reliefs, n: int, half: float, pitch: float, 
                 fastened.append((name, f"{s}.servo"))
                 screws.append((s, xy, head, (sign * -half, seat), h))
         info.update(rear_screw=rs.key, rear_screws_per_servo=len(rs.holes),
-                    rear_engagement_mm=rs.engage)
+                    rear_engagement_mm=rs.engage, rear_own_plates=rs.own)
     else:
         info.update(rear_screw=None, rear_screws_per_servo=0)
     return rs, screws, bodies
+
+
+def _section_geometry(spec, left: ServoFrame, frames, reliefs, slots, rs, tie_xy, plates,
+                      half: float, pitch: float, min_hole: float) -> dict:
+    """What :func:`strength.centre_plate_row` reads (the left servo's; the right one's is its
+    mirror): its own plates (``rs.own``, which its rear screws clamp), the screws' spacing,
+    diameter and least web (shank hole to a cut-out in those plates, as cut), the ties'
+    distances from their centroid, and the net section of the own plates across the bus
+    window and across the pad (each plate cut there: the strips left, in the plate's plane,
+    across the servo's long side)."""
+    hole_r = max(max(h.d for h in rs.holes), min_hole) / 2
+    own_z = (-half, -half + rs.own * pitch)
+    cuts = [(rf, rect) for rf, rect, zr in reliefs + slots if _overlaps(own_z, zr)]
+    webs = [min((_cut_distance(rf.local(frames[0].xy(h.x, h.y)), rect) for rf, rect in cuts),
+                default=math.inf) - hole_r for h in rs.holes]
+    xs = [h.x for h in rs.holes]
+    ties = [left.local(xy) for xy in tie_xy]
+    tc = (sum(x for x, _ in ties) / len(ties), sum(y for _, y in ties) / len(ties)) if ties \
+        else (0.0, 0.0)
+    ports = spec.bus_ports
+    window = ports.window() if ports is not None and ports.opening == "face" else None
+    pad = max((r for r in spec.rear_reliefs if not r.round and r.solid),
+              key=lambda r: r.height, default=None)
+    at = {}
+    if window is not None:
+        at["window"] = (window[0] + window[1]) / 2
+    if pad is not None:
+        at["pad"] = (pad.x0 + pad.x1) / 2
+    own = [b for b in plates if _overlaps(own_z, (b.part.bounding_box().min.Z,
+                                                  b.part.bounding_box().max.Z))]
+    sections = {name: _strips(own, left, x) for name, x in at.items()}
+    return {"own": rs.own, "t": pitch, "screws": len(rs.holes), "screw_d": rs.d,
+            "spacing": round(max(xs) - min(xs), 3) if len(xs) > 1 else 0.0,
+            "least_web": round(min(webs), 3),
+            "ties": [round(math.dist(p, tc), 3) for p in ties], "tie_d": 3.0,
+            "sections": sections}
+
+
+def _strips(plates, left: ServoFrame, x: float) -> list[tuple[float, float, float]]:
+    """``(y0, y1, t)`` of the material each plate of ``plates`` has on the line ``x`` of the
+    left servo's frame (a 0.01 mm slab through them)."""
+    from spiderpig.shapes import box
+
+    out = []
+    v = left.v
+    for b in plates:
+        bb = b.part.bounding_box()
+        slab = box(left.xy(x, 0.0), (0.01, 400.0, bb.max.Z - bb.min.Z + 2), bb.min.Z - 1,
+                   left.angle)
+        for sol in (b.part & slab).solids():
+            ys = [float(np.dot(np.array([p.X, p.Y]) - np.asarray(left.o), v))
+                  for p in (vt.center() for vt in sol.vertices())]
+            if ys:
+                sb = sol.bounding_box()
+                out.append((round(min(ys), 3), round(max(ys), 3),
+                            round(sb.max.Z - sb.min.Z, 4)))
+    return sorted(out)
 
 
 TIE_TAKE_UP = (2.0, 3.0)   # the most a tie's shims take up: 2 mm, else (no chain fits) 3 mm
@@ -744,8 +952,9 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
 def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: int,
                         half: float, pitch: float, host, extras) -> list[Body]:
     """The centre plates: the servo footprint grown round every screw recess and tie,
-    relieved where a rear bump reaches a plate and slotted to the far edge where the bus
-    plugs pass (``reliefs`` holds both), with the screws' holes and seats."""
+    relieved where a rear bump reaches a plate, cut where the bus plugs stand and their
+    wires run out (a window and a channel to the far edge: ``reliefs`` holds both), with
+    the screws' holes and seats."""
     p = ctx.params
     bodies: list[Body] = []
     x0, x1, y0, y1 = _footprint(ctx.servo)
@@ -775,22 +984,26 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
         cuts: list = []
         pockets = []
         here = [(rf, rect) for rf, rect, zr in reliefs if _overlaps((z0, z1), zr)]
-        # reliefs closer than the service's web: one cut (the pins relief into the slot)
+        # each rectangle in the left servo's frame (the right one's mirrored; its own frame
+        # kept beside it), so a plug's cut meets the other servo's cuts too
+        here = [(rf, rect if isinstance(rect, RoundRelief) else _in_frame(left, rf, rect))
+                for rf, rect in here]
+        # reliefs closer than the service's web: one cut (the window into the pad's relief)
         here = _merge_close(here, web + 2 * RELIEF_ROUND)
         for rf, rect in here:
             if isinstance(rect, RoundRelief):
                 pockets.append(disc(rf.xy(*rect.centre), rect.r, z0 - 1.0, z1 + 1.0))
                 continue
-            # its corners rounded past the service's inside radius, grown so the rounded
-            # pocket still holds the bump's rectangle
+            # its corners rounded past the service's inside radius, a relief grown so the
+            # rounded pocket still holds the bump's rectangle (a plug's cut is cut as it is)
             rx0, rx1, ry0, ry1 = rect
             rx1 = min(rx1, max(xs) + 10.0)           # an open slot: past the far edge
-            g = RELIEF_ROUND
+            g = 0.0 if isinstance(rect, PortCut) else RELIEF_ROUND
             # in the plate's own frame (the frames share their origin and x axis; the
             # right servo's is mirrored in y): a pocket closer than one plate thickness
             # to the outline (the cut rules' error level) opens through it instead
             lx = (rx0 - g, rx1 + g)
-            ly = tuple(sorted(left.local(rf.xy(0.0, y))[1] for y in (ry0 - g, ry1 + g)))
+            ly = (ry0 - g, ry1 + g)                  # (in the left frame already)
             lx0 = min(xs) - 10.0 if lx[0] - min(xs) < pitch + 1e-6 else lx[0]
             lx1 = max(xs) + 10.0 if max(xs) - lx[1] < pitch + 1e-6 else lx[1]
             ly0 = min(ys) - 10.0 if ly[0] - min(ys) < pitch + 1e-6 else ly[0]
@@ -802,10 +1015,17 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
                 cuts.append(Cut(xy, max(h.d, min_hole)))
             if _overlaps((z0, z1), head):
                 cuts.append(Cut(xy, rs.head_d + 2 * HEAD_CLEARANCE))
-                # a head recess within the web of a relief opens into it: one cut (the
-                # recess only clears the head, which bears on the plate under it)
-                pockets += _recess_bridges(xy, rs.head_d / 2 + HEAD_CLEARANCE, here,
-                                           web + RELIEF_ROUND, z0, z1)
+                # a head recess within the web of a relief (a plug's cut: within
+                # BUS_WEB_T x t) opens into it: one cut (the recess only clears the head,
+                # which bears on the plate under it)
+                r_head = rs.head_d / 2 + HEAD_CLEARANCE
+                rects = [(left, rect) for _, rect in here]      # (in the left frame)
+                pockets += _recess_bridges(
+                    xy, r_head, [c for c in rects if not isinstance(c[1], PortCut)],
+                    web + RELIEF_ROUND, z0, z1)
+                pockets += _recess_bridges(
+                    xy, r_head, [c for c in rects if isinstance(c[1], PortCut)],
+                    BUS_WEB_T * pitch, z0, z1)
         cuts += [Cut(xy, tie_d) for xy in tie_xy]
         part = _rounded_rect(left, min(xs), max(xs), min(ys), max(ys), corner, z0, z1)
         part = cut_holes(part, cuts, z0, z1)
@@ -829,7 +1049,10 @@ def assembly(view) -> list:
     """How the chassis goes on (:mod:`construction.assembly`): on each side's inner plate
     its frame ties' standoff chains (shims at the plate) and the M3 button heads up through
     the plate into them; then between the sides the set-screw studs, each servo's own
-    centre plates over them with its rear screw. ``view``: a ``RobotView``."""
+    centre plates (the meta's ``rear_own_plates`` from its rear face) over them with its
+    rear screws and its bus plug seated through their window (the top-entry sockets: the
+    plug can't go in once the stack is closed), the middle plates over the wires, and the
+    right servo's own plates the same way. ``view``: a ``RobotView``."""
     from spiderpig.construction.assembly import CHASSIS, SIDES, UNIT, Op, whole
 
     ops = []
@@ -849,20 +1072,47 @@ def assembly(view) -> list:
         ops.append(Op(CHASSIS, (0,), whole(*studs), "Studs",
                       "The M3 set-screw studs into the chains' ends (threadlocker).",
                       "studs"))
-    plates = view.named(r"centre_plate\d+")
-    for s, own in (("L", [p for p in plates if sum(view.z[p]) < 0]),
-                   ("R", [p for p in plates if sum(view.z[p]) >= 0])):
+    plates = sorted(view.named(r"centre_plate\d+"), key=lambda p: sum(view.z[p]))
+    own = int(view.meta.get("rear_own_plates") or len(plates) // 2)
+    own = max(0, min(own, len(plates) // 2))
+    groups = {"L": plates[:own], "R": plates[len(plates) - own:][::-1]}
+    middle = plates[own:len(plates) - own]
+    ports = (view.meta.get("bus_ports"), view.meta.get("bus_sockets_used"))
+    face = ports == ("face", "own")
+
+    def nums(names):
+        return ", ".join(p.removeprefix("centre_plate") for p in names)
+
+    for s in SIDES:
         rear = view.named(rf"{s}\.rear_screw\d+")
-        if own or rear:
-            # (from the servo's rear face out: the right side's run the other way)
-            nums = ", ".join(p.removeprefix("centre_plate")
-                             for p in (own if s == "L" else own[::-1]))
-            text = (f"The left servo's own centre plates ({nums}) on its rear face over the "
-                    "studs, its rear screw through them." if s == "L" else
-                    f"The right servo's own centre plates ({nums}) screwed to the right servo "
-                    "the same way, then that servo and its plates onto the studs, rear faces "
-                    "together.")
-            ops.append(Op(CHASSIS, (1 if s == "L" else 2,), whole(*own, *rear),
-                          f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
-                          f"plates_{s}"))
+        mine = groups[s]
+        if not (mine or rear):
+            continue
+        n_screws = len(rear)
+        screw = f"its {'two rear screws' if n_screws > 1 else 'rear screw'}"
+        if s == "L":
+            text = (f"The left servo's own centre plates ({nums(mine)}) on its rear face over "
+                    f"the studs, {screw} through them.")
+            if face:
+                text += (" Its bus cable's plug (the cable from its box) pushed straight down "
+                         "through the plates' window into the socket on the servo's +y "
+                         "side; its wires bent toward +x and laid along its own channel.")
+        else:
+            text = (f"The right servo's own centre plates ({nums(mine)}) screwed to the right "
+                    "servo the same way" + (
+                        ", its own cable's plug seated through their "
+                        "window into its own +y socket, on the robot's other side, its wires "
+                        "along its own channel" if face else "")
+                    + "; then that servo and its plates onto the studs, rear faces "
+                    "together" + (", no wire pinched." if face else "."))
+        ops.append(Op(CHASSIS, (1 if s == "L" else 3,), whole(*mine, *rear),
+                      f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
+                      f"plates_{s}",
+                      # each side's own bus cable, its plug seated here (chassis' line)
+                      extras=(BUS_CABLE,) if face else ()))
+    if middle:
+        ops.append(Op(CHASSIS, (2,), whole(*middle), "Middle centre plates",
+                      f"The middle centre plates ({nums(middle)}) over the studs"
+                      + (" and the left servo's wires, its channel round them." if face
+                         else "."), "plates_mid"))
     return ops

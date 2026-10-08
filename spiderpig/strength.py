@@ -300,6 +300,73 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     return rows
 
 
+# -- the centre plates ------------------------------------------------------------------
+
+SHEAR_FRACTION = 0.577     # a ductile metal's shear yield over its tensile (von Mises)
+
+
+def _bending(strips: list, moment_nmm: float) -> float | None:
+    """The in-plane bending stress (MPa) of a section made of ``strips`` ``(y0, y1, t)``
+    (mm) under ``moment_nmm`` (N·mm), about the strips' common centroid."""
+    area = sum((b - a) * t for a, b, t in strips)
+    if area <= 0:
+        return None
+    yc = sum((a + b) / 2 * (b - a) * t for a, b, t in strips) / area
+    inertia = sum(t * (b - a) ** 3 / 12 + (b - a) * t * ((a + b) / 2 - yc) ** 2
+                  for a, b, t in strips)
+    c = max(max(abs(a - yc), abs(b - yc)) for a, b, t in strips)
+    return moment_nmm * c / inertia
+
+
+def centre_plate_row(meta: dict, config: BuildConfig, loads: dict) -> dict | None:
+    """The centre plates under one servo's reaction (the review of 2026-10-08: the 0.063 in
+    plates, cut by the bus window and channel): the servo's drive torque (walking; the
+    firmware limit, jammed) goes through its two rear screws into its own plates (a couple:
+    torque / spacing per screw) and out through the frame ties' studs (bearing: the tie
+    farthest from the ties' centroid takes torque x r / sum r^2), which also clamp the stack.
+    Each case's stresses, against the sheet's yield (shear at :data:`SHEAR_FRACTION`): the
+    screws' bearing and tear-out across their least web (to a cut-out, as cut), the studs'
+    bearing, and the own plates' net section in in-plane bending at the bus window and at the
+    pad (the whole torque as the moment: conservative). ``None`` without a chassis."""
+    g = meta.get("centre_plate_section")
+    if not g:
+        return None
+    from spiderpig.materials import sheet
+
+    sh = sheet(meta["centre_plate_sheet"])
+    t_own = g["own"] * g["t"]
+    row = {"joint": "centre_plates", "kind": "chassis", "sheet": sh.key,
+           "thickness_mm": g["t"], "own_plates": g["own"], "allowable_mpa": sh.yield_mpa,
+           "least_web_mm": g["least_web"]}
+    limit = loads.get("torque_limit_nm")
+    if limit is None:
+        from spiderpig.servos import get as servo
+
+        limit = servo(config.servo).torque_limit_nm
+    for tag, torque in (("walk", loads.get("walk_torque_nm")), ("jam", limit)):
+        if not torque:
+            row[tag] = None
+            continue
+        tq = torque * 1000.0                                          # N·mm
+        f = tq / g["spacing"] if g["screws"] > 1 and g["spacing"] > 0 else tq / 10.0
+        ties = g["ties"]
+        f_tie = tq * max(ties) / sum(r * r for r in ties) if ties else 0.0
+        stress = {
+            "screw bearing": f / (g["screw_d"] * t_own),
+            "screw tear-out": f / (2 * max(g["least_web"], 1e-6) * t_own) / SHEAR_FRACTION,
+            "tie bearing": f_tie / (g["tie_d"] * t_own),
+        }
+        for name, strips in g["sections"].items():
+            sig = _bending(strips, tq)
+            if sig is not None:
+                stress[f"net section at the {name}"] = sig
+        worst = max(stress, key=stress.__getitem__)
+        row[tag] = {"torque_nm": round(torque, 4), "load_n": round(f, 2),
+                    "stress_mpa": {k: round(v, 2) for k, v in stress.items()},
+                    "governs": worst, "safety": round(sh.yield_mpa / stress[worst], 2)}
+    return row
+
+
 # -- findings and fixes -----------------------------------------------------------------
 
 
@@ -361,6 +428,9 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
                        "2 N·m (the friction clamp is the joint): measure the slip torque on "
                        "the test build")
         return out
+    if row["kind"] == "chassis":
+        return ["a thicker centre sheet, or more own plates per servo (more rear-screw "
+                "grip), or a lower servo torque limit"]
     if row["kind"] == "link":
         need = row.get("needs")
         if need:
@@ -435,7 +505,11 @@ def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) ->
             continue
         note = notes.get(row["joint"])
         jam, walk = row.get("jam"), row.get("walk")
-        what = (f"{row['joint']}" + (f" ({row['sheet']}, {row['thickness_mm']:g} mm, "
+        what = (f"{row['joint']}" + (f" ({row['sheet']}, {row['own_plates']} x "
+                                     f"{row['thickness_mm']:g} mm own plates; "
+                                     f"{(jam or walk or {}).get('governs')})"
+                                     if row["kind"] == "chassis" else
+                                     f" ({row['sheet']}, {row['thickness_mm']:g} mm, "
                                      f"{row['allowable_mpa']:g} MPa allowable; pins "
                                      f"{', '.join(row['pins'])})"
                                      if row["kind"] == "link" else
@@ -473,8 +547,11 @@ def check(notes: dict, meta: dict, config: BuildConfig, loads: dict) -> dict:
     if crank is not None:
         rows.append(crank)
     rows += link_rows(config, loads)
+    plates = centre_plate_row(meta, config, loads)
+    if plates is not None:
+        rows.append(plates)
     worst: dict[str, dict] = {}
-    for kind in ("pin", "pillar", "crank", "link"):
+    for kind in ("pin", "pillar", "crank", "link", "chassis"):
         ks = [r for r in rows if r["kind"] == kind]
         for tag in ("walk", "jam"):
             have = [r for r in ks if r.get(tag)]

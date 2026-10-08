@@ -401,12 +401,19 @@ def assembly_order(mech, design) -> list[str] | None:
 def step_counts(steps, types: list[PartType], mech) -> list[dict[str, float]]:
     """Each step's parts list, ``label -> qty``: a made body counts once for its type, a
     bought body for what the BOM buys for it (its shim stack's washers), and a step that
-    names a key in its ``extras`` takes the BOM's lines of that key that are no body's.
-    Over all steps every type's quantity is its BOM quantity (``tests/test_guide.py``)."""
+    names a key in its ``extras`` takes the BOM's lines of that key that are no body's
+    (several steps naming one key share them out evenly: each servo's bus cable in its own
+    side's step). Over all steps every type's quantity is its BOM quantity
+    (``tests/test_guide.py``)."""
     per, loose = bought_by_body(mech)
     of = by_body(types)
     of_key = {t.key: t for t in types if t.kind == "purchased" and t.key}
     left = dict(loose)
+    naming: dict[str, int] = {}
+    for st in steps:
+        for key in dict.fromkeys(st.extras):
+            naming[key] = naming.get(key, 0) + 1
+    share = {k: left[k] / n for k, n in naming.items() if left.get(k)}
     out: list[dict[str, float]] = []
     for st in steps:
         counts: dict[str, float] = {}
@@ -417,10 +424,14 @@ def step_counts(steps, types: list[PartType], mech) -> list[dict[str, float]]:
                     counts[lab] = counts.get(lab, 0.0) + qty
             elif n in of:
                 counts[of[n].label] = counts.get(of[n].label, 0.0) + 1
-        for key in st.extras:
+        for key in dict.fromkeys(st.extras):
             if left.get(key):
                 lab = of_key[key].label
-                counts[lab] = counts.get(lab, 0.0) + left.pop(key)
+                naming[key] -= 1
+                take = left.pop(key) if naming[key] == 0 else min(left[key], share[key])
+                if key in left:
+                    left[key] -= take
+                counts[lab] = counts.get(lab, 0.0) + take
         out.append(counts)
     return out
 

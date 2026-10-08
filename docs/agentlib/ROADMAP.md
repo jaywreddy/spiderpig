@@ -87,9 +87,11 @@ The follow-ups after PR #28, each its own branch:
 
 - **Assembly guide**: a PDF pipeline from the design (the assembly order, each step's
   parts and fasteners, drawn from the build), a prototype first.
-- **STS3215 bus plugs**: which way the plugs go into the rear connector housing
-  (`ServoSpec.bus_ports` is UNVERIFIED, and it sets the centre plates' slot and so the one
-  rear screw per servo, "Later" below): measure a servo and a plug, or find the drawing.
+- **STS3215 bus plugs**: done 2026-10-08 (top-entry sockets in the rear face, one per
+  servo, each on its own boxed cable to one of the driver board's two bus ports, both rear
+  screws kept: DECISIONS.md). Hand measurements remain: the plug-plus-wire height above the
+  rear face (`ServoSpec.bus_ports`, expected 5.5-6.5) and whether the boxed cable reaches
+  the board.
 - **BOM consolidation**: a study of the BOM: fewer fastener sizes and SKUs, less pack
   waste, cheaper sources.
 - **Speed round 2**: the contract check, the BOM's congruence grouping, the build's
@@ -620,10 +622,9 @@ items (one shim helper, NETRF6 lengths on demand, unmarked slow tests) were done
   web round a cut-out, a centre plate's hole-to-edge distance: DESIGNS.md lists them).
   Warnings, not errors (every web is over 1 x t), but each is a thin web to look at on the
   first cut (`mise run audit`, the "cut rules" table).
-- **One rear screw per servo.** The bus plugs' slot through the centre plates takes each
-  servo's far rear holes (`chassis._port_slots`), so each servo holds the centre plates by
-  one rear screw; the frame ties carry the rest. The plug's direction is UNVERIFIED
-  (`ServoSpec.bus_ports`): measure a servo and a plug before cutting.
+- **Bus plug height.** The centre stack holds one plug and its wires turned toward +x
+  (`BusPorts.height`, from a clone drawing): seat a plug in a servo, lay its wires
+  flat and measure their top above the rear face before cutting.
 - **Unpriced McMaster-Carr lines.** McMaster shows prices only behind a login, so its lines
   are unpriced in the BOM; `ORDER.md` estimates them from a priced alternative
   (`hardware/order.py`). Price them from an account, or add priced alternatives in

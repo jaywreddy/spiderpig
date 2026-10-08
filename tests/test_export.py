@@ -52,7 +52,9 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
         rows = list(csv.DictReader(f))
     assert rows
     for r in rows:
-        assert (single_out / "print" / r["file"]).stat().st_size > 1000
+        # a binary STL of a solid: at least a box's 12 triangles (the deck charger's pad
+        # strips, since 2026-10-08, are plain boxes)
+        assert (single_out / "print" / r["file"]).stat().st_size >= 84 + 50 * 12
         if int(r["mirrored"]):
             assert "mirrored" in r["print"]
             assert (single_out / "print" / r["file"].replace(".stl", "_mirrored.stl")).exists()
@@ -70,10 +72,13 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
     assert any("horn_spacer" in f for f in files)
     by_file = {r["file"]: int(r["qty"]) for r in rows}
     # left and right side parts are one row each: every part is printed twice or more,
-    # but the electronics deck's battery cradle, one per robot on the centre line
+    # but the electronics deck's battery cradle and, where the bay needs them, the
+    # charger's two pad strips: one each per robot on the centre line
     cradle = next(f for f in by_file if f.endswith("_battery_cradle.stl"))
+    once = {cradle} | {f for f in by_file if "charger_pad" in f}
     assert by_file[cradle] == 1
-    assert all(q >= 2 for f, q in by_file.items() if f != cradle)
+    assert all(by_file[f] == 1 for f in once)
+    assert all(q >= 2 for f, q in by_file.items() if f not in once)
 
 
 @slow

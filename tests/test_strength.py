@@ -404,14 +404,16 @@ def test_the_order_designs_joints_hold_their_own_loads(name, monkeypatch):
     assert "WARNING" not in loads["note"]
     rows = {r["joint"]: r for r in st["rows"]}
     notes = meta["wobble"]
-    assert {j for j in rows if not j.startswith(("crank", "link:"))} == set(notes)
+    assert {j for j in rows
+            if not j.startswith(("crank", "link:", "centre_plates"))} == set(notes)
     for joint, note in notes.items():
         r = rows[joint]
         assert r["basis"] == "sim", joint                 # its own sim joint's loads
         assert r["links"] == [e["link"] for e in note["links"]]
         assert r["jam"]["load_n"] >= r["walk"]["load_n"] > 0, joint
         assert r["jam"]["safety"] <= r["walk"]["safety"], joint
-    assert {r["kind"] for r in st["rows"]} == {"pin", "pillar", "crank", "link"}
+    assert {r["kind"] for r in st["rows"]} == {"pin", "pillar", "crank", "link", "chassis"}
+    assert rows["centre_plates"]["jam"]["safety"] > strength.JAM_WARN
     crank = rows["crank"]
     assert crank["construction"] == cfg.crank
     assert isinstance(BoltCrank().for_sheet(cfg.crank_sheet), BoltCrank)

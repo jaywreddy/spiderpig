@@ -2,7 +2,7 @@
  "data": {
   "config": "BuildConfig(linkage='klann', module='quad', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
   "metrics": {
-   "bob_mm": 23.70776640395738,
+   "bob_mm": 23.707766403957365,
    "degenerate_fraction": 0.0,
    "direction": "+x",
    "drift_mm": 0.0,
@@ -18,7 +18,7 @@
    ],
    "foot_bob_mm": 15.797668636118388,
    "mean_contacts": 4.022222222222222,
-   "min_margin_mm": 52.587143460051195,
+   "min_margin_mm": 52.81501683867799,
    "pitch_deg": [
     -8.436210048144233,
     8.436210048144032
@@ -56,10 +56,10 @@
    "degenerate_fraction": 0.0,
    "direction": "+x",
    "foot_z": [
-    -95.8415,
-    -95.8415,
-    -49.1915,
-    -55.966499999999996
+    -96.06949999999999,
+    -96.06949999999999,
+    -49.41949999999999,
+    -56.19449999999999
    ],
    "min_margin_mm": [
     52.6,
@@ -82,8 +82,8 @@
   },
   "walk": {
    "com": [
-    -0.48425651853334295,
-    4.996063578329626,
+    -0.48533011092460304,
+    4.822880919073079,
     0.0
    ],
    "feet": [
@@ -1533,7 +1533,7 @@
        -72.779192
       ]
      ],
-     "z": -95.8415
+     "z": -96.0695
     },
     {
      "body": "L.b4_leg1",
@@ -2981,7 +2981,7 @@
        -73.279464
       ]
      ],
-     "z": -95.8415
+     "z": -96.0695
     },
     {
      "body": "L.b4_leg2",
@@ -4429,7 +4429,7 @@
        -101.052195
       ]
      ],
-     "z": -49.1915
+     "z": -49.4195
     },
     {
      "body": "L.b4_leg3",
@@ -5877,7 +5877,7 @@
        -18.506195
       ]
      ],
-     "z": -55.9665
+     "z": -56.1945
     },
     {
      "body": "R.b4_leg0",
@@ -7325,7 +7325,7 @@
        -72.779192
       ]
      ],
-     "z": 95.8415
+     "z": 96.0695
     },
     {
      "body": "R.b4_leg1",
@@ -8773,7 +8773,7 @@
        -73.279464
       ]
      ],
-     "z": 95.8415
+     "z": 96.0695
     },
     {
      "body": "R.b4_leg2",
@@ -10221,7 +10221,7 @@
        -101.052195
       ]
      ],
-     "z": 49.1915
+     "z": 49.4195
     },
     {
      "body": "R.b4_leg3",
@@ -11669,7 +11669,7 @@
        -18.506195
       ]
      ],
-     "z": 55.9665
+     "z": 56.1945
     }
    ],
    "servo": {
@@ -11679,11 +11679,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+5e83445fcfc8",
+ "engine_version": "0.1.0+b266aedf3f13",
  "generator": "tests/test_walk.py::test_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "walk_reference_doc"
  },
- "source_key": "gen-8bf14dc1c3c67856"
+ "source_key": "gen-547faf0b98f8d8dd"
 }

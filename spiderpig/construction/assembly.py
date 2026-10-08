@@ -152,7 +152,7 @@ ROBOT_ORDER: tuple[Stage, ...] = (
                 "chain's standoff (turn the crank to line it up), the pillars' tops into "
                 "the inner plate."),
     Stage(CHASSIS, None, "Centre plates", where="robot",
-          tags=(("studs",), ("plates_L",), ("R.unit.servo", "plates_R")),
+          tags=(("studs",), ("plates_L",), ("plates_mid",), ("R.unit.servo", "plates_R")),
           text=(("studs", "The M3 set-screw studs into the left chains' ends "
                           "(threadlocker)."),
                 ("servo", ""))),
@@ -196,9 +196,10 @@ SIDE_ORDER: tuple[Stage, ...] = (
 """A side on its own (a mechanism)."""
 
 WIRING_TEXT = (
-    "Each servo's bus plug into its socket, the cable along the centre plates' slot from "
-    "their far edge and up to the board through the deck's wire slot (connector first), "
-    "before the deck goes in.",
+    "The bus plugs are already in (the centre plates' steps: the top-entry sockets take a "
+    "plug only through the plates' window): each servo's wires from its channel's end at "
+    "the centre plates' +x edge up through the deck's wire slot over it to its own one of "
+    "the board's two bus servo ports (connector first), before the deck goes in.",
 )
 
 

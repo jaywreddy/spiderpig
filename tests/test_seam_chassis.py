@@ -26,13 +26,13 @@ def _clear(xy, near, r):
 
 def test_the_sts3215s_ties_sit_beside_its_long_sides_near_its_ends():
     """Its body -10.11..35.11 x +-12.36 in the servo frame: each tie 3.8 mm in from an end
-    and 1 + 3.8 mm off a side (17.16); the rear pair moved 3.75 mm in along the side (from
+    and 1 + 3.8 mm off a side (17.16); the rear pair moved 1 mm in along the side (from
     31.31), the first place two thicknesses of the plates off the servo's rear screw holes
-    and recesses."""
+    and recesses (the 0.063 in centre plates since 2026-10-08: 3.75 mm in 0.090 in)."""
     ctx = _ctx.context(servo="sts3215")
     assert chassis._footprint(ctx.servo) == (-10.11, 35.11, -12.36, 12.36)
     got = chassis.tie_locals(ctx)
-    assert got == [(-6.31, 17.16), (-6.31, -17.16), (27.56, 17.16), (27.56, -17.16)]
+    assert got == [(-6.31, 17.16), (-6.31, -17.16), (30.31, 17.16), (30.31, -17.16)]
 
 
 @pytest.mark.parametrize("servo", ["sts3215", "xl330_m288", "xl430_w250"])
@@ -84,16 +84,16 @@ def test_a_tie_no_shift_clears_stays_unmoved_for_the_audit_to_warn(monkeypatch):
 def test_the_neighbours_are_the_front_holes_and_both_servos_rear_ones():
     """The STS3215: its four front screw holes in the inner plate (0.080 in: a 2 x 2.032 mm
     web), and its two rear holes' head recesses mirrored for the other servo in the centre
-    plates (0.090 in: 2 x 2.286)."""
+    plates (0.063 in since 2026-10-08: 2 x 1.6)."""
     ctx = _ctx.context(servo="sts3215")
     near = chassis.tie_neighbours(ctx)
     assert len(near) == 8
     assert {round(w, 3) for *_, w in near[:4]} == {4.064}
-    assert {round(w, 3) for *_, w in near[4:]} == {4.572}
+    assert {round(w, 3) for *_, w in near[4:]} == {3.2}
     assert sorted(y for _, y, _, _ in near[4:]) == [-10.25, -10.25, 10.25, 10.25]
 
 
-@pytest.mark.parametrize(("servo", "sheet"), [("sts3215", "al5052_2p3mm"),
+@pytest.mark.parametrize(("servo", "sheet"), [("sts3215", "al5052_1p6mm"),
                                               ("xl330_m288", "al5052_2p5mm")])
 def test_the_centre_plates_take_the_thinnest_sheet_that_seats_the_most_rear_screws(servo,
                                                                                     sheet):

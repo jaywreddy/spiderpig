@@ -1,8 +1,70 @@
 {
  "data": {
-  "bus_ports": "end",
-  "centre_plate_sheet": "al5052_2p3mm",
-  "centre_plates": 4,
+  "bus_ports": "face",
+  "bus_sockets_used": "own",
+  "centre_plate_section": {
+   "least_web": 1.617,
+   "own": 2,
+   "screw_d": 2.0,
+   "screws": 2,
+   "sections": {
+    "pad": [
+     [
+      -22.16,
+      -9.743,
+      1.6
+     ],
+     [
+      -22.16,
+      -9.743,
+      1.6
+     ],
+     [
+      9.743,
+      22.16,
+      1.6
+     ],
+     [
+      9.743,
+      22.16,
+      1.6
+     ]
+    ],
+    "window": [
+     [
+      -22.16,
+      -10.5,
+      1.6
+     ],
+     [
+      -22.16,
+      -9.743,
+      1.6
+     ],
+     [
+      10.5,
+      22.16,
+      1.6
+     ],
+     [
+      10.5,
+      22.16,
+      1.6
+     ]
+    ]
+   },
+   "spacing": 24.45,
+   "t": 1.6,
+   "tie_d": 3.0,
+   "ties": [
+    25.094,
+    25.094,
+    25.094,
+    25.094
+   ]
+  },
+  "centre_plate_sheet": "al5052_1p6mm",
+  "centre_plates": 6,
   "chicago": {
    "pin:J10_leg0": {
     "bond_gap_mm": 0.0,
@@ -520,47 +582,47 @@
    "charger_pad_mm": 0.0,
    "charger_setback_mm": 0.0,
    "charger_z_mm": [
-    -34.57,
-    -14.57
+    -34.8,
+    -14.8
    ],
-   "chassis_top_y": 12.68,
-   "deck_y": 21.68,
+   "chassis_top_y": 11.31,
+   "deck_y": 20.31,
    "fitted": true,
    "notches": [
     [
      -69.0,
      -66.5,
-     -36.57,
-     -35.27
+     -36.8,
+     -35.5
     ],
     [
      66.5,
      69.0,
-     -36.57,
-     -35.27
+     -36.8,
+     -35.5
     ],
     [
      -69.0,
      -66.5,
-     35.27,
-     36.57
+     35.5,
+     36.8
     ],
     [
      66.5,
      69.0,
-     35.27,
-     36.57
+     35.5,
+     36.8
     ]
    ],
    "nut_z": 5.5,
    "plate_mm": [
     136.0,
-    71.14
+    71.6
    ],
-   "rail_y": 13.68,
+   "rail_y": 12.31,
    "screw": "m3_bhcs_8",
    "spigot_x": 12.0,
-   "top_y": 43.57,
+   "top_y": 42.2,
    "x_c": 0.0
   },
   "fastened": [
@@ -570,6 +632,14 @@
    ],
    [
     "R.rear_screw0",
+    "R.servo"
+   ],
+   [
+    "L.rear_screw1",
+    "L.servo"
+   ],
+   [
+    "R.rear_screw1",
     "R.servo"
    ],
    [
@@ -754,7 +824,7 @@
   "filament": "pla_filament",
   "layers": 24,
   "linkage": "strider",
-  "mid_plane": 169.73600000000002,
+  "mid_plane": 169.96400000000003,
   "module": "quad",
   "phases": [
    0.0,
@@ -777,9 +847,10 @@
    13.0,
    10.0
   ],
-  "rear_engagement_mm": 3.714,
+  "rear_engagement_mm": 2.8,
+  "rear_own_plates": 2,
   "rear_screw": "m2_self_tap_6",
-  "rear_screws_per_servo": 1,
+  "rear_screws_per_servo": 2,
   "robot": true,
   "servo": "sts3215",
   "sheet": "acrylic_3mm",
@@ -792,7 +863,7 @@
    30
   ],
   "tie_stud": "m3_set_screw_16",
-  "tie_stud_engagement_mm": 3.43,
+  "tie_stud_engagement_mm": 3.2,
   "ties": 4,
   "wobble": {
    "pillar:J2_leg0": {
@@ -2563,11 +2634,11 @@
    }
   }
  },
- "engine_version": "0.1.0+5e83445fcfc8",
+ "engine_version": "0.1.0+b266aedf3f13",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-8bf14dc1c3c67856"
+ "source_key": "gen-547faf0b98f8d8dd"
 }

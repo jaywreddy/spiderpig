@@ -330,6 +330,13 @@ def strength_lines(st: dict) -> list[str]:
                 + f" | {w.get('load_n', '-')} | {w.get('safety', '-')} "
                 f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
             continue
+        if r["kind"] == "chassis":
+            lines.append(
+                f"| {r['joint']} | rear screws, ties | {(j or w).get('governs', '-')} | - "
+                f"| {r['sheet']} {r['own_plates']} x {r['thickness_mm']:g} mm own "
+                f"| {w.get('load_n', '-')} | {w.get('safety', '-')} "
+                f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
+            continue
         lines.append(f"| {r['joint']} | {', '.join(r['links'])} | {r['case']} "
                      f"| {r['span_mm']:g} | {r['section']} | {w.get('load_n', '-')} "
                      f"| {w.get('safety', '-')} | {j.get('load_n', '-')} "
@@ -479,7 +486,8 @@ def main(argv=None) -> int:
                 print(f"  {kind} tilt {_wobble_cell(rep['wobble'], kind)}")
         print(f"  joint SF jam / walk: pin {sf_cell(rep, 'pin')}, pillar "
               f"{sf_cell(rep, 'pillar')}, crank {sf_cell(rep, 'crank')}, link plate "
-              f"{sf_cell(rep, 'link')} ({rep['strength']['loads'].get('source')} loads)")
+              f"{sf_cell(rep, 'link')}, centre plates {sf_cell(rep, 'chassis')} "
+              f"({rep['strength']['loads'].get('source')} loads)")
         print(f"  {rep['parts']} parts, {rep['dxf_sheets']} DXF sheet(s), "
               f"{rep['bom'].get('items', 0)} BOM items: "
               f"{'OK' if not rep['problems'] else 'FAIL'} ({rep['seconds']} s)", flush=True)

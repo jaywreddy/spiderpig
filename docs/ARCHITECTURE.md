@@ -1199,10 +1199,16 @@ them (no adhesive). The ties move along the servo until their holes are 2 x t of
 servo's screw holes and recesses (`chassis.tie_locals`, `tie_neighbours`, which the
 underside reads too); the centre plates' outline keeps 2 x t round each rear screw recess
 (`chassis.recess_wall`), and their bump reliefs have 1 mm corners (`RELIEF_CORNER`). The
-servo's bus sockets are in its rear connector housing, so `ServoSpec.bus_ports` gives the
-centre plates an open slot from the housing to their far edge (`chassis._port_slots`;
-`opening="pocket"`, a closed pocket with no access, is kept to compare; the
-rear holes within 2 x t of it are dropped, so each servo keeps one rear screw). The
+servo's bus sockets are top-entry headers sunk in its rear face (the research of
+2026-10-08), so `ServoSpec.bus_ports` (`opening="face"`) gives the centre plates a closed
+window round each servo's plug, in the socket on its own +y side (`used="own"`: the two
+plugs never oppose, each on its own cable to one of the driver board's two bus ports), and
+an open channel for its wires to their far
+edge (`chassis._port_slots`; `"end"` and `"pocket"` are kept to compare). A shank hole
+keeps 1 x t to them (`chassis.BUS_WEB_T`, the user's relaxation of 2026-10-08) and a head
+recess closer opens into the window, so each servo keeps both rear screws; the far one's
+web to the raised pad's relief (its measured outline, `Relief.grow`) sets the centre sheet
+below the frame's where that seats more screws (`chassis.centre_sheet`). The
 STS3215's rear idler horn stays in its box (`Idler.fitted`; `servos.model.unfit_idler` cuts
 it from the CAD model), and the plates clear its 6 mm boss with a round relief
 (`Relief.round`, `chassis.RoundRelief`). Reliefs closer than the service's web are merged
@@ -1472,7 +1478,7 @@ checked current by `tests/test_guide.py`):
 
 3. **Left side: unit onto the leg stack.** The unit onto its leg stack: the hub plate's hex pocket over the hub chain's standoff (turn the crank to line it up), the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
-4. **Centre plates.** The M3 set-screw studs into the left chains' ends (threadlocker). The left servo's own centre plates (0, 1) on its rear face over the studs, its rear screw through them. The right servo's own centre plates (3, 2) screwed to the right servo the same way, then that servo and its plates onto the studs, rear faces together.
+4. **Centre plates.** The M3 set-screw studs into the left chains' ends (threadlocker). The left servo's own centre plates (0, 1) on its rear face over the studs, its two rear screws through them. Its bus cable's plug (the cable from its box) pushed straight down through the plates' window into the socket on the servo's +y side; its wires bent toward +x and laid along its own channel. The middle centre plates (2, 3) over the studs and the left servo's wires, its channel round them. The right servo's own centre plates (5, 4) screwed to the right servo the same way, its own cable's plug seated through their window into its own +y socket, on the robot's other side, its wires along its own channel; then that servo and its plates onto the studs, rear faces together, no wire pinched.
 
 5. **Right side: inner plate, on the robot.** Not on the bench: the chains must turn onto the studs before the inner plate holds them. Turn the right tie chains onto the studs from the inner plate's side (they turn freely: no inner plate yet), shims on their ends. The right inner plate onto the servo's front and onto the chains. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The chains' M3 button heads from the leg side (threadlocker). The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; then the deck's two M3 nuts slid into their hex pockets through the slots in the rail's bay face (captive: the deck's screws thread into them). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn.
 
@@ -1480,7 +1486,7 @@ checked current by `tests/test_guide.py`):
 
 7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
-8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. Each servo's bus plug into its socket, the cable along the centre plates' slot from their far edge and up to the board through the deck's wire slot (connector first), before the deck goes in.
+8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires from its channel's end at the centre plates' +x edge up through the deck's wire slot over it to its own one of the board's two bus servo ports (connector first), before the deck goes in.
 
 9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' captive nuts.
 <!-- assembly-order: end -->

@@ -140,6 +140,27 @@ register(
                "gap; the 1.14 mm tape lowers them about 0.84 mm more)."),
 )
 
+# The servos' bus: one socket per servo (the user's decision of 2026-10-08,
+# construction.chassis.BUS_CABLE). No ready-made 5264 3-pin Y splitter was found (Amazon,
+# DigiKey, Seeed, Feetech and Waveshare searched, 2026-10-08), and none is needed: the
+# driver board has two bus servo ports (Waveshare's docs, "Onboard Resources": "(2) Bus Servo
+# Control interfaces", two 3-pin headers in its photo), and every STS3215 comes with its bus
+# cable (Seeed's ST3215-C001 part list: "JST Wire x1"). Each servo's own cable goes to one
+# port: on hand (hardware.bom.ON_HAND), no cart; Waveshare's 5264 cables are the spares.
+register(
+    Item("servo_bus_cable_5264", "Servo bus cable, 5264 3-pin (in the STS3215's box)",
+         "electronics",
+         (Offer("Waveshare", "https://www.waveshare.com/sr-cable-5264-3pin.htm?sku=34171",
+                "34171", pack_qty=6, price_usd=1.99, verified=True,
+                note="SR-Cable-5264-3PIN-300mm-6PCS, $1.99 per 6 (2026-10-08): spares only, "
+                     "each servo's box has its cable"),),
+         notes="One per servo, from the socket on its own +y side (construction.chassis."
+               "_port_slots) to one of the driver board's two bus servo ports: the two plugs "
+               "sit on opposite sides of the centre plates and never oppose. The cable's "
+               "length in the box is unpublished: measure that it reaches the board (300 mm "
+               "spares otherwise)."),
+)
+
 # The board's M2.5 nylon hardware. Each piece is sourced singly first (hardware.sources: the
 # Essentra screw and nut at DigiKey, the Wurth standoff at Mouser); this kit, their shared
 # alternative (vendor + SKU shared), would be one pack for all three.

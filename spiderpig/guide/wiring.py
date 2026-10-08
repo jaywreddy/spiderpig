@@ -34,7 +34,7 @@ LINKS = (("battery", "protection"), ("charger", "protection"), ("protection", "s
 EDGE_OF = (  # which link a cable serves, by its key or name
     (r"xt30|xt60|battery", ("battery", "protection")),
     (r"dc_plug|5521|barrel", ("switch", "board")),
-    (r"y_cable|bus|servo|3.?pin|extension", ("board", "servo")),
+    (r"bus_cable|y_cable|bus|servo|3.?pin|extension", ("board", "servo")),
 )
 
 

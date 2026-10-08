@@ -36,12 +36,22 @@ generated from them (:mod:`spiderpig.guide.prose`).
 Not both sides' chains on their inner plates first: the
 studs then can't be threaded, neither chain turning and the stud's socket buried.)
 
-**Bus cables** (the assembly audit of 2026-10-04): both servos' sockets are in the
-connector housing on the rear face, which is screwed flat to the centre plates, so the
-plates carry an open slot from the housing to their far edge where the plugs pass
-(:func:`chassis._port_slots`, ``ServoSpec.bus_ports``); it takes each servo's far rear
-holes, so each servo has one rear screw. Which way the sockets open is UNVERIFIED:
-measure a servo and a plug before the plates are cut.
+**Bus cables** (the research and the user's decision of 2026-10-08): the STS3215's two
+bus sockets are top-entry headers sunk in its rear face, which is screwed flat to the
+centre plates, so the plugs go in perpendicular to the plates. Each servo uses one socket,
+the one on its own ``+y`` side, its own cable to one of the driver board's two bus ports:
+the two servos'
+plugs sit on opposite sides of the robot and never oppose, so the stack holds one plug and
+its wires (and :data:`chassis.BUS_WIRE_MARGIN`). The plates carry a closed window round
+each plug and, per servo, its own channel for its wires to their far edge, centred on its
+plug (:func:`chassis._port_slots`, ``ServoSpec.bus_ports``), through the plates its plug
+and wires pass. The plug goes in through the window before the stack closes (the centre
+stack's step, :func:`chassis.assembly`). Both rear screws per servo are kept, the stock
+M2 x 6: a shank hole keeps one plate thickness to the window (:data:`chassis.BUS_WEB_T`),
+the near head's recess opens into it. (The far rear hole was never dropped by the plugs'
+cut: the raised pad's relief left it too little web; the pad's measured outline and a
+thinner centre sheet keep it: :func:`chassis.centre_sheet`.) One hand measurement remains:
+the plug-plus-wire height.
 
 :class:`FrameTies` is the side-level part of the ties: the spigot holes and
 pads it adds to the inner frame plate (no claims: nothing it adds is below

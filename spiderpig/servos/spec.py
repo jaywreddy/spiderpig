@@ -109,7 +109,9 @@ class MountHole:
 
     ``x, y`` in the servo frame; ``d`` the finished hole diameter;
     ``screw`` catalog key. Optional: ``depth`` how deep the hole goes into
-    the servo from its face (``None``: not published).
+    the servo from its face (``None``: not published); ``stock``: ``screw`` comes in the
+    servo's bag, so a rear screw keeps that length wherever it engages (one SKU:
+    :func:`construction.chassis._rear_screw_parts`).
     """
 
     x: float
@@ -117,6 +119,7 @@ class MountHole:
     d: float
     screw: str | None = None
     depth: float | None = None
+    stock: bool = False
 
 
 @dataclass(frozen=True)
@@ -158,6 +161,11 @@ class Relief:
     only one CAD model shows). ``label`` says what it is. ``round``: the
     feature is a disc (an idler boss): the plates' cut-out is the circle in the
     rectangle, not the rectangle (whose corners would reach 41 % further).
+    ``grow``: the cut-out's clearance round the rectangle, per side (``None``: the
+    chassis' default, :data:`construction.chassis.RELIEF_GROW`); a relief measured on
+    both models takes less. ``model_only``: what only a CAD model draws (the real servo
+    lacks it): the plates clear it so the drawn models fit, but nothing real (a bus plug's
+    wires: :func:`construction.chassis.centre_stack`) has to.
     """
 
     x0: float
@@ -168,48 +176,125 @@ class Relief:
     solid: bool = True
     label: str = ""
     round: bool = False
+    grow: float | None = None
+    model_only: bool = False
+
+
+BUS_OPENINGS = ("face", "end", "pocket")
+BUS_USES = ("own", "both")
 
 
 @dataclass(frozen=True)
 class BusPorts:
-    """The bus sockets in a rear bump and the plugs that go into them (servo frame, mm).
+    """The bus sockets on the rear face and the plugs that go into them (servo frame, mm).
 
-    ``x0..x1`` by ``y0..y1``: the bump that holds the sockets. ``opening``: which way the
-    plugs go in, which sets the centre plates' access cut (:mod:`construction.chassis`):
-    ``"end"``: along ``-x`` from the bump's ``+x`` end, toward the case's far end, side by
-    side across ``y`` (the centre plates get an open slot from the bump to their ``+x``
-    edge); ``"pocket"``: nothing past the bump's own relief (the plugs can't go in with the
-    rear face on the plates: kept only to compare). ``count`` plugs ``plug_w`` wide (across
-    the slot), ``plug_h`` thick beyond the rear face and ``plug_len`` long (insertion),
-    ``clear`` round each in the cut."""
+    ``x0..x1`` by ``y0..y1``: where the sockets are (``count`` of them side by side across
+    ``y``, each ``(y1 - y0) / count`` wide). ``opening``: which way the plugs go in, which
+    sets the centre plates' cut (:func:`construction.chassis._port_slots`):
+
+    * ``"face"``: vertical (top-entry) headers sunk in the rear face, the plugs in along the
+      servo's ``+z`` (toward the case: perpendicular to the plates), ``plug_h`` of each
+      standing beyond the rear face, its wires leaving along ``-z`` and turned toward
+      ``exit`` within ``cable`` more (``wire_w``: the wires' span across ``y`` where they
+      leave the plug, centred on it). The plates get a closed **window** round each used
+      plug (``plug_t`` along ``x`` by ``plug_w`` along ``y``, ``clear`` round it) and an
+      open **channel** ``channel_w`` wide, centred on the used plug (``"both"``: on
+      ``y = 0``), from the window to the plates' ``exit`` edge (:meth:`cuts`).
+    * ``"end"``: along ``-x`` from the sockets' ``+x`` end, side by side across ``y`` (an
+      open slot from them to the plates' ``+x`` edge; the STS3215's model until
+      2026-10-08, kept to compare).
+    * ``"pocket"``: nothing past the reliefs (no plug can go in with the rear face on the
+      plates: kept to compare).
+
+    ``used``: which sockets carry a plug. ``"own"``: one per servo, the one on its own
+    ``+y`` side (the two servos face each other mirrored, so their used sockets sit on
+    opposite sides of the robot and their plugs never oppose; each servo's own cable goes to
+    one of the driver board's two bus ports, the
+    user's decision of 2026-10-08); ``"both"``: every socket (the plugs of the two servos
+    then oppose at the same place). ``plug_len`` is the plug's length along its
+    insertion."""
 
     x0: float
     x1: float
     y0: float
     y1: float
-    opening: str = "end"
+    opening: str = "face"
     count: int = 2
     plug_w: float = 9.9
-    plug_h: float = 3.9
+    plug_t: float = 3.9
+    plug_h: float = 3.5
     plug_len: float = 8.0
+    cable: float = 2.5
+    exit: str = "+x"
+    channel_w: float = 9.0
+    wire_w: float = 6.3
+    used: str = "own"
     clear: float = 0.5
     label: str = ""
 
+    def __post_init__(self) -> None:
+        if self.opening not in BUS_OPENINGS:
+            raise ValueError(f"bus ports opening {self.opening!r}: one of {BUS_OPENINGS}")
+        if self.used not in BUS_USES:
+            raise ValueError(f"bus ports used {self.used!r}: one of {BUS_USES}")
+        if self.exit != "+x":
+            raise ValueError(f"bus ports exit {self.exit!r}: only '+x' is modelled")
+
     @property
     def height(self) -> float:
-        """How far the plugs stand beyond the rear face (0 for ``"pocket"``: no plug)."""
-        return self.plug_h if self.opening != "pocket" else 0.0
-
-    def slot(self) -> tuple[float, float, float, float] | None:
-        """The plugs' way in and out as a rectangle in the servo frame, ``clear`` round
-        them, running from the bump to ``x = inf`` (``"end"``); ``None`` for ``"pocket"``."""
+        """How far a plug and its wires stand beyond the rear face: ``plug_h + cable`` for
+        ``"face"`` (the wires turned toward ``exit`` above the plug), ``plug_h`` for
+        ``"end"``, 0 for ``"pocket"`` (no plug)."""
         if self.opening == "pocket":
-            return None
-        if self.opening != "end":
-            raise ValueError(f"bus ports opening {self.opening!r}: 'end' or 'pocket'")
+            return 0.0
+        return self.plug_h + self.cable if self.opening == "face" else self.plug_h
+
+    @property
+    def opposed(self) -> bool:
+        """Whether the two servos' plugs stand at the same place from either side (the
+        centre stack then holds two of :attr:`height`, else one)."""
+        return self.opening != "pocket" and self.used == "both"
+
+    def window(self) -> tuple[float, float, float, float]:
+        """``"face"``: the closed cut round the used plugs (servo frame), ``clear`` round
+        each plug, which is centred on its socket."""
+        cx = (self.x0 + self.x1) / 2
+        pitch = (self.y1 - self.y0) / self.count
+        centres = [self.y0 + (k + 0.5) * pitch for k in range(self.count)]
+        if self.used == "own":
+            centres = [max(centres)]           # the socket on the servo's own +y side
+        hx, hy = self.plug_t / 2 + self.clear, self.plug_w / 2 + self.clear
+        return (cx - hx, cx + hx, min(centres) - hy, max(centres) + hy)
+
+    @property
+    def plug_y(self) -> float:
+        """The used plug's centre across ``y`` (``"both"``: the sockets' middle)."""
+        w = self.window()
+        return (w[2] + w[3]) / 2
+
+    def cuts(self, reserve: float) -> tuple[tuple[tuple[float, float, float, float],
+                                                  float, float], ...]:
+        """The plugs' way in and their wires' way out: ``(rect, z0, z1)`` each, the rectangle
+        in the servo frame and the heights beyond the rear face it is cut through.
+        ``"face"``: the :meth:`window` from the face to ``reserve`` (the plug and its wires,
+        with the chassis' margin), and the channel, ``channel_w`` wide round the used plug,
+        from the window's centre to ``x = inf``, from the plug's top (where the wires leave
+        it) to ``reserve``; ``"end"``: one slot from the sockets to ``x = inf`` through the
+        plug's thickness; ``()`` for ``"pocket"``."""
+        if self.opening == "pocket":
+            return ()
+        if self.opening == "face":
+            w = self.window()
+            cy, half = self.plug_y, self.channel_w / 2
+            return ((w, 0.0, reserve),
+                    (((w[0] + w[1]) / 2, math.inf, cy - half, cy + half), self.plug_h, reserve))
         cy = (self.y0 + self.y1) / 2
         w = max(self.y1 - self.y0, self.count * self.plug_w) / 2 + self.clear
-        return (self.x0 - self.clear, math.inf, cy - w, cy + w)
+        return (((self.x0 - self.clear, math.inf, cy - w, cy + w), 0.0, self.plug_h),)
+
+    def slot(self) -> tuple[tuple[float, float, float, float], ...]:
+        """The rectangles of :meth:`cuts` (servo frame)."""
+        return tuple(rect for rect, _, _ in self.cuts(self.height))
 
 
 @dataclass(frozen=True)
