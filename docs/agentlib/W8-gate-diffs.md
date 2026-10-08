@@ -97,7 +97,25 @@ The audit has no new problem and no new clash. `check_side` stays `[]`, and the 
 passes.
 
 Outside the gate, D2 also changes two things. The Klann single (the tests' design) builds 64
-parts, up from 63, because of pillar B's new gap ring. The demo Klann quad's MuJoCo steering
-check now grants a 90 deg excursion: at 90 deg it tilts 19.75 deg on the suite's parametric
-servo, where it tilted 20.5 before, and the lock overshoots that 90 deg bound to 96.2 deg
-(`tests/test_sim.py`).
+parts, up from 63, because of pillar B's new gap ring. The demo Klann quad's MuJoCo
+steering check (`steering_check`) also moves. Its 90 deg excursion sits on the edge of
+`STEER_TILT` (20 deg), and D2 adds about 1.5 g of printed rings; the MJCF is rigid, so
+nothing gets stiffer. On the suite's parametric servo the 90 deg run now tilts 19.75 deg,
+where it tilted 20.5 before, so it is granted 90 instead of 45. On the manufacturer's CAD
+servo it tilts 20.27, with `servo_mismatch` 0.031 20.61 and with `payload_g` 1.5 20.03, so
+all three are still granted 45. The lock's overshoot is not new: every cached result before
+W8 already had `side_phase_max` 96.2 deg at the 90 deg step. The tests (`tests/test_sim.py`,
+`tests/e2e/test_drive.py`) therefore accept a grant of 45 or 90 and bound the overshoot at
+1.1 x the grant.
+
+## The recorded fixtures (`mise run test-fixtures`, commit 13fa762)
+
+Commit 13fa762's message calls every data change a last-digit float from D4. That is
+wrong for one fixture; the correct breakdown is:
+
+| fixture | change | why |
+|---|---|---|
+| `hardware/bom_strider_double.json`, `bom_strider_quad.json`, `bom_klann_lego_quad.json` | `mirrored` 1 -> 0 on the groups listed under D5; `volume_cm3` last digits | D5; D4 |
+| `sim/mjcf_klann_single.json` | new `L/R.pillar_B_gap4_spacer` bodies (fixed to `base`), printed mass 22.77 -> 23.58 g, total 509.57 -> 510.39 g, the XML and its hash; other masses' last digits | D2 (the Klann single's cantilever pillar B); D4 |
+| `sim/mjcf_strider_single.json` | masses' last digits, the XML and its hash | D4 |
+| the planner plans, `linkage/*`, `strength/*` | the stamp only (`engine_version`, `source`, `source_key`) | the engine hash |
