@@ -79,3 +79,15 @@ the torso's tie holes (7 / 16 DXF entities), the plan identical (no proof change
 Only the servo (cause 1): its volume 34877.84 -> 34862.49 mm³, area 7078.86 -> 7076.96 mm²,
 its centre of mass by under 0.01 mm, at both angles, and the design's STL mesh. No chassis
 (a one-sided mechanism): plan, BOM, DXFs identical.
+
+## Beyond the gate
+
+- The walk model's nominal deck (`spiderpig/walk.py`): the chassis' top 0.99 mm over the
+  servo (was 2.36), the deck's centre 13.05 mm over it (was 13.45). The Klann quad walk
+  reference (`tests/_linkage.py` `QUAD_REFERENCE`, which the viewer's model test reads too):
+  the feet 0.572 mm nearer the mid-plane, the least margin 52.6 -> 52.0 mm.
+- The demo Klann's ground clearance 72.23 -> 72.89 mm: the centre plates' outline (2 x t
+  round the ties and recesses) shrank, so the crank's sweep is now its lowest part.
+- The STS3215 audit (`mise run audit`, with the sim) on the Strider double: OK, cut-rule
+  errors 0. The CAD servo's header pins met `centre_plate0`/`4` (12.6 mm³) until the SO
+  model's pin relief was kept (b8c9548).
