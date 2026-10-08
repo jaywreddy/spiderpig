@@ -15,7 +15,7 @@ the constructions of the time (a printed crank, rod pins); they are marked as su
 they appear. The default designs' current layer counts, heights, parts and costs live in
 one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md). An illustrated version, with renders
 from the viewer and drawings computed from the code, is
-[docs/architecture/index.html](architecture/index.html): open it in a browser.
+[docs/architecture/index.html](architecture/index.html), generated from this text as of 2026-10-05 and out of date since (its builder, `build_page.py`, needs its figure anchors updated to regenerate it).
 
 **In short.**
 
