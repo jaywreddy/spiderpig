@@ -83,8 +83,9 @@ def build_guide(config, store, out: Path, *, jobs: int = 4, max_steps: int | Non
     """Write ``out/ASSEMBLY.pdf`` and ``out/ASSEMBLY.md`` for ``config`` (planned through
     ``store``, a :class:`spiderpig.store.Store` or None). ``design`` / ``mech``: its side
     design and fabrication when the caller has them (nothing is cached then)."""
-    from spiderpig import api, fabcache, keys
+    from spiderpig import fabcache, keys
     from spiderpig.fabricate import design_side, fabricate, template_for
+    from spiderpig.stages.planning import plan_config
 
     t0 = time.perf_counter()
     times: dict[str, float] = {}
@@ -100,7 +101,7 @@ def build_guide(config, store, out: Path, *, jobs: int = 4, max_steps: int | Non
     given = mech is not None
     if design is None:
         if store is not None:
-            api.plan_config(config, store)
+            plan_config(config, store)
         design = design_side(tmpl, config)
     root = (fabcache.root_of(store) if store is not None and fabcache.enabled() and not given
             else None)

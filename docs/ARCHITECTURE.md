@@ -13,9 +13,7 @@ against commit `97bec2d` (2026-10-01), and the running example's measured number
 timings, part counts, sizes, the walk and the sim) are still that snapshot's, taken with
 the constructions of the time (a printed crank, rod pins); they are marked as such where
 they appear. The default designs' current layer counts, heights, parts and costs live in
-one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md). An illustrated version, with renders
-from the viewer and drawings computed from the code, is
-[docs/architecture/index.html](architecture/index.html), generated from this text as of 2026-10-05 and out of date since (its builder, `build_page.py`, needs its figure anchors updated to regenerate it).
+one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md).
 
 **In short.**
 
@@ -1909,9 +1907,10 @@ sources or `node_modules` in it.
 
 **Continuous integration** (`.github/workflows/ci.yml`, on pushes to master and every pull
 request): ruff and the import layers, the lock, the viewer's typecheck and vitest, the
-quick tier on a cached fabrication cache, and the doc check, blocking. The full suite, the
-audits and the identity gate run on request (`mise run remote-test`, `remote-audit`,
-`gate`), not in CI.
+quick tier on a cached fabrication cache, and the doc check, blocking. Nightly
+(`.github/workflows/nightly.yml`): the slow tests, the browser tests and the identity gate
+compared with itself (a determinism check: CI holds no baseline). The audits and the gate
+against a baseline run on request (`mise run remote-audit`, `gate`).
 
 **Gaps.** The planner's opt-in speed-ups and the workers' failure paths have few tests of
 their own.
@@ -2268,7 +2267,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `walk.py` | 1,047 | the quasi-static walking model | `test_walk.py`, `test_viewer_parity.py` |
 | `server/` | 1,125 | FastAPI app, live reload, `/ws/sim` | `test_walk.py`, `test_view.py`, `test_server_hardening.py`, browser tests |
 | `spec.py` | 920 | Spec v1, targets, validation, schema | `test_spiderpig_api.py` |
-| `api/` | 2,587 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `api/` | 1,954 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `stages/` | 791 | resolve, the stage records, check, plan and `plan_config`, under bake and build (the API re-exports them) | `test_spiderpig_api.py`, `test_spiderpig_store.py` |
 | `design.py` | 386 | the handle, ids, the engine version, `Part` | `test_spiderpig_api.py` |
 | `failure.py` | 274 | failures and patches | `test_spiderpig_api.py` |
 | `verify.py` | 788 | verify levels and rows | `test_spiderpig_api.py` |
@@ -2298,7 +2298,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | [agentlib/TESTING.md](agentlib/TESTING.md) | the test tiers, the fabrication cache, the fixtures, the identity gate | current |
 | [agentlib/DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's seven decisions, and the hardware decisions with their dates and numbers | current |
 | [agentlib/W8-gate-diffs.md](agentlib/W8-gate-diffs.md) | what each of W8's approved output changes did to the gate's designs | record (2026-10-07) |
-| [agentlib/SCOPE.md](agentlib/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
+| [history/SCOPE.md](history/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
 | [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
 | [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |
 | [history/AUDIT.md](history/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |

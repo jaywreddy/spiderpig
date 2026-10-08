@@ -85,9 +85,6 @@ allowed-confusables = ["×", "–", "−"]
 # the split packages re-export every name of the module they were (W5); __all__ keeps the
 # old public list
 "spiderpig/api/__init__.py" = ["F401"]
-# the architecture page's generator (a one-off script, rewritten with the docs in W7): two
-# style findings of W6's rules left to that rewrite
-"docs/architecture/build_page.py" = ["RUF005", "RUF059"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -138,7 +135,7 @@ patch = ["subprocess"]
 skip_empty = true
 
 # The engine's layers (docs/agentlib/ROADMAP.md, W5): a layer imports only those under it.
-# `uv run lint-imports` (`mise run lint`, CI); each exception names its reason.
+# `uv run lint-imports` (`mise run lint`, CI), with no exceptions.
 [tool.importlinter]
 root_package = "spiderpig"
 
@@ -152,22 +149,14 @@ layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
     "spiderpig.api",
     "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.guide",
-    "spiderpig.sim",
+    "spiderpig.sim | spiderpig.stages",
     "spiderpig.fabricate",
     "spiderpig.construction",
     "spiderpig.stack",
     "spiderpig.linkage",
 ]
-# The written exceptions (lazy imports, each in one function):
-ignore_imports = [
-    # `spiderpig bake` / `spiderpig build`'s main() and its up-to-date check plan through the
-    # store (api.plan_config), as every command does; the modules' library functions don't
-    "spiderpig.bake -> spiderpig.api",
-    "spiderpig.build -> spiderpig.api",
-    "spiderpig.uptodate -> spiderpig.api",
-    # `spiderpig guide`'s main() too (the prototype, docs/agentlib/GUIDE.md)
-    "spiderpig.guide.make -> spiderpig.api",
-]
+# No written exceptions: `spiderpig bake` / `build` and the build's up-to-date check plan
+# through the store from `spiderpig.stages` (resolve, plan_config), which the API re-exports.
 
 [[tool.importlinter.contracts]]
 name = "hardware and materials sit beside construction"

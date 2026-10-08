@@ -40,9 +40,6 @@ docs/agentlib/ROADMAP.md: Class.attr
 docs/agentlib/ROADMAP.md: mise run X
 docs/agentlib/ROADMAP.md: --flag
 
-# SCOPE.md: a store file the proposal names (designs/<id>/walk.json, written at run time)
-docs/agentlib/SCOPE.md: walk.json
-
 # docs/agentlib/ROADMAP.md: the names W2 and W5 removed, kept in their workstreams' scope as
 # the record of what each took out (the code lost them on purpose: not drift)
 docs/agentlib/ROADMAP.md: KeyedCrank

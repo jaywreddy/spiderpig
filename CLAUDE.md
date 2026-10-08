@@ -158,8 +158,9 @@ bracket with `prof.timed("label")`, `prof.bump(...)`, `prof.set_metric(...)`.
 ## Repository map
 
 Everything Python is the `spiderpig` package (`pyproject.toml`, hatchling; `uv sync`
-installs it editable). Engine layers, enforced by `lint-imports`: linkage → stack →
-construction → fabricate → (bake | build | strength | sim) → api → (mcp | server | cli).
+installs it editable). Engine layers, enforced by `lint-imports` (no exceptions): linkage
+→ stack → construction → fabricate → (sim | stages) → (bake | build | strength) → api →
+(mcp | server | cli).
 
 | path | role |
 |---|---|
@@ -187,6 +188,7 @@ construction → fabricate → (bake | build | strength | sim) → api → (mcp 
 | `spiderpig/guide/`, `labels.py` | the assembly guide (`docs/agentlib/GUIDE.md`); the P/C/H part labels the print files share |
 | `spiderpig/explain.py`, `recommend.py` | stage verdicts; fixes checked by re-running the stage |
 | `spiderpig/spec.py`, `api/`, `failure.py`, `verify.py`, `design.py`, `store.py` | the agent surface (`docs/agentlib/API.md`) |
+| `spiderpig/stages/` | under bake/build and the API (which re-exports them): `resolve.py` (`resolve`, `spec_of`), `records.py`, `reports.py`, `planning.py` (`check`, `plan`, `plan_config`) |
 | `spiderpig/mcp/` | the MCP server over the API (`jobs.py`, `outputs.py`, `guide.md`) |
 | `spiderpig/server/app.py`, `view.py` | the viewer's FastAPI app; `spiderpig view` |
 | `spiderpig/cli.py`, `tools/` | the console script; audit, tune, sim, export, report, dev, remote |

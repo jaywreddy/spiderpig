@@ -1,9 +1,6 @@
 # spiderpig as a compiler for linkage machines that agents drive — scope
 
-> **Status: historical.** The agent surface's original proposal (2026-09-30). What was built is
-> documented in [API.md](API.md); the decisions it raised are in [DECISIONS.md](DECISIONS.md).
-> Names below that were renamed since point at what was built; names in plain text are the
-> proposal's and were never built.
+> **History** (2026-09-30; historical: the agent surface's original proposal, the v1 harness plan against `ac60cfa`. What was built is documented in [API.md](../agentlib/API.md); the decisions it raised are in [DECISIONS.md](../agentlib/DECISIONS.md). Names in it may be the proposal's and never built.)
 
 Repo `/home/user/spiderpig` at `ac60cfa` (branch claude/great-carson-6nw2bz), read-only study. Assumes the code audit's plan lands (validating `BuildConfig`, `spiderpig` CLI, `linkage/` split into engine/checks/assembly, one design cache, `Group` protocol + registry) and that the planner rewrite in worktree `agent-ad3e24b76a3850113` merges (route search over whole stackups, `stack.Recommendation`, `fabricate.ground_clearance`, `StackPlan.optimal/proof/cost`, `ClearanceError(PlanError)`). Where this scope overlaps either, it says so.
 
