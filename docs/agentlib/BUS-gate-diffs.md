@@ -6,8 +6,10 @@ baseline `~/.cache/spiderpig/gate/w8-2a130c8/`. The base branch (`quickfix`, 8de
 identical to that baseline on all six designs. The bus branch's own baseline was
 `~/.cache/spiderpig/gate/bus-39502f7/`; merged with `t3code/next` (speed round 2 and the
 assembly guide) the baseline is `~/.cache/spiderpig/gate/bus2-92d11e4/` (TESTING.md), which
-differs from `bus-39502f7` only by the guide's labels (below). The XL330 and XL430 aren't in the gate;
-their centre sheet, stack and rear screws are unchanged (`tests/test_robot.py`).
+differs from `bus-39502f7` only by the guide's labels (below). Merged with the BOM
+decisions the baseline is `next-ba41c10`: [NEXT-gate-diffs.md](NEXT-gate-diffs.md)
+attributes every diff. The XL330 and XL430 aren't in the gate; their centre sheet, stack and
+rear screws are unchanged (`tests/test_robot.py`).
 
 Where the part count changes the gate lists only the new names; the per-part comparison
 below is of the parts both snapshots hold (the gate's own `deep_diff`, the same tolerance).
