@@ -336,7 +336,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
                             not problems, "proven", True, "; ".join(problems[:3])))
             _fail(rep, problems, "contract", "part_outside_claim")
         for t in CLASH_TS[level]:
-            m = mech if t == design.build_t else api.fabricate_at(design, t)
+            m = mech if t == design.build_t else api.building.fabricate_at(design, t)
             cl, solids = clashes(m), bad_solids(m)
             rows.append(Row(f"clash@t={t:g}", "clashes", len(cl), "0", not cl, "measured",
                             True, "; ".join(f"{c['a']} x {c['b']} {c['mm3']} mm^3"

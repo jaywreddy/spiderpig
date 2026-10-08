@@ -665,7 +665,8 @@ def test_builds_and_exports_run_under_the_designs_lock(tmp_path, monkeypatch, op
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     ran = threading.Event()
-    monkeypatch.setattr(api, f"_{op}", lambda *_a, **_k: ran.set())
+    module = {"build": api.building, "export": api.exports}[op]
+    monkeypatch.setattr(module, f"_{op}", lambda *_a, **_k: ran.set())
     holder = _hold_lock(tmp_path, d.id)
     try:
         t = threading.Thread(target=getattr(api, op), args=(d,), daemon=True)

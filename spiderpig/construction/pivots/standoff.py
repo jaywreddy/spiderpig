@@ -90,15 +90,12 @@ from spiderpig.construction.pivots.common import (
     xy_of,
 )
 from spiderpig.construction.wobble import Section, column_wobble
-from spiderpig.hardware.bom import BomLine
+from spiderpig.hardware.bom import SHIM_STEP, BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.shapes import Cut, disc, ring, union
 from spiderpig.stack import Unbuildable
 
 ALU = "#c8ccd0"
-SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
-#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
-#                         shim is $5-13 sold singly, 2026-10-05: hardware.bom.SHIM_AS)
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
 
 
@@ -371,13 +368,9 @@ class StandoffAxle:
         """The shims that stack to an end's take-up ``t``, thickest first: whole 1 mm shims
         and :data:`SHIM_STEP` (bought as DIN 433 washers, :data:`hardware.bom.SHIM_AS`), the
         thickness rounded to the step."""
-        t = round(t / SHIM_STEP) * SHIM_STEP
-        out, left = [], round(t, 3)
-        for s in (1.0, SHIM_STEP):
-            k = int(left / s + 1e-6)
-            out += [s] * k
-            left = round(left - k * s, 3)
-        return out
+        from spiderpig.hardware.bom import stack
+
+        return stack(t, (1.0, SHIM_STEP), round_to=SHIM_STEP)[0]
 
     # -- parts ----------------------------------------------------------------------------
 

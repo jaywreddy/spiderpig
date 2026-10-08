@@ -52,11 +52,11 @@ EDITS = [
      "STRAP_W = 10.0", "STRAP_W = 11.0", False, True),
     ("deck rail screw head (a claim under the inner plate)", "spiderpig.construction.deck",
      "RAIL_SCREW_R = 5.7 / 2 + 0.3", "RAIL_SCREW_R = 5.7 / 2 + 0.4", True, True),
-    ("planner constant", "spiderpig.stack", "GIVE_UP = 200", "GIVE_UP = 201", True, True),
-    ("planner docstring only", "spiderpig.stack",
+    ("planner constant", "spiderpig.stack.plan_z", "GIVE_UP = 200", "GIVE_UP = 201", True, True),
+    ("planner docstring only", "spiderpig.stack.plan_z",
      "(``gap_sink``) The first gap search gives up",
      "(``gap_sink``) The first gap search stops", False, False),
-    ("a comment", "spiderpig.stack", "GIVE_UP = 200", "GIVE_UP = 200  # a comment",
+    ("a comment", "spiderpig.stack.plan_z", "GIVE_UP = 200", "GIVE_UP = 200  # a comment",
      False, False),
     ("materials, read through a lazy import", "spiderpig.materials",
      '"al5052_2mm", "al5052_2p3mm", "al5052_2p5mm")',
@@ -74,18 +74,18 @@ EDITS = [
     ("a new linkage file (the registry auto-imports it)", "spiderpig.linkages.zz_new",
      None, "X = 1\n", True, True),
     ("a module that patches the planner when imported", "spiderpig.zz_patch",
-     None, "from spiderpig import stack\nstack.GIVE_UP = 5\n", True, True),
+     None, "from spiderpig.stack import plan_z\nplan_z.GIVE_UP = 5\n", True, True),
     ("a function elsewhere that setattr()s the planner", "spiderpig.zz_rt", None,
-     "from spiderpig import stack\n\n\ndef go():\n    setattr(stack, 'GIVE_UP', 5)\n",
+     "from spiderpig.stack import plan_z\n\n\ndef go():\n    setattr(plan_z, 'GIVE_UP', 5)\n",
      True, True),
     ("a function elsewhere that writes vars() of the planner", "spiderpig.zz_vars", None,
-     "import spiderpig.stack as st\n\n\ndef go():\n    vars(st)['GIVE_UP'] = 5\n",
+     "import spiderpig.stack.plan_z as st\n\n\ndef go():\n    vars(st)['GIVE_UP'] = 5\n",
      True, True),
     ("a method elsewhere that patches the planner", "spiderpig.zz_cls", None,
-     "class P:\n    def go(self):\n        from spiderpig import stack\n"
-     "        stack.GIVE_UP = 5\n", True, True),
+     "class P:\n    def go(self):\n        from spiderpig.stack import plan_z\n"
+     "        plan_z.GIVE_UP = 5\n", True, True),
     ("setattr() on the planner when imported", "spiderpig.zz_imp", None,
-     "from spiderpig import stack\nsetattr(stack, 'GIVE_UP', 5)\n", True, True),
+     "from spiderpig.stack import plan_z\nsetattr(plan_z, 'GIVE_UP', 5)\n", True, True),
     ("a function elsewhere that patches a deck colour", "spiderpig.zz_deck", None,
      "from spiderpig.construction import deck\n\n\ndef go():\n"
      "    deck.DECK_COLOR = 'x'\n", False, True),
@@ -109,7 +109,7 @@ def test_the_plan_closure_holds_the_planner_and_not_the_outputs(base):
     g0, _ = base
     c = g0.closure(keys.PLAN_ROOTS)
     reached = {m for m, _ in c.symbols}
-    for module in ("spiderpig.stack", "spiderpig.construction.crank",
+    for module in ("spiderpig.stack.search", "spiderpig.construction.crank.bolt",
                    "spiderpig.construction.route", "spiderpig.linkage.engine",
                    "spiderpig.linkages.strider", "spiderpig.materials", "spiderpig.config",
                    "spiderpig.servos.mount", "spiderpig.hardware.catalog"):

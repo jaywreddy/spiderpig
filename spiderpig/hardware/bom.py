@@ -625,21 +625,36 @@ HORN_LOCK = "threadlocker_222"      # low strength: an M2 / M3 horn screw comes 
 LOCK_PER_THREAD = 0.01              # of a 10 ml bottle, a drop per thread
 
 
-def shim_breakdown(total: float, sizes) -> list[float]:
-    """DIN 988 shims making up ``total`` mm (0.1 mm steps), thickest first (the crank's
-    ``shim_stack``, on the item's sizes)."""
+def stack(total: float, steps, round_to: float | None = None) -> tuple[list[float], float]:
+    """The one greedy shim loop: thicknesses from ``steps`` (any order) making up ``total``
+    mm, thickest first, and what is left under the thinnest (never negative); with
+    ``round_to``, ``total`` rounded to that step first. Every construction's shims and
+    washers stack through it (the crank's horn shims and clamp take-up, the frame ties, a
+    pillar's end shims, :func:`materials.washer_stack`, a Chicago pin's head spacer)."""
+    if round_to:
+        total = round(total / round_to) * round_to
     left, out = round(total, 3), []
-    for s in sorted((float(v) for v in sizes), reverse=True):
+    for s in sorted((float(v) for v in steps), reverse=True):
         while left >= s - 1e-6:
             out.append(s)
             left = round(left - s, 3)
-    return out
+    return out, max(left, 0.0)
+
+
+def shim_breakdown(total: float, sizes) -> list[float]:
+    """DIN 988 shims making up ``total`` mm (0.1 mm steps), thickest first (:func:`stack`
+    on the item's sizes)."""
+    return stack(total, sizes)[0]
 
 
 SHIM_FAMILIES = ("shim_din988_3x6", "shim_din988_4x8", "shim_din988_6x12")
 _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
 _STACK_SHIMS = re.compile(r"\bshims ([\d.]+(?: \+ [\d.]+)*) mm")
 
+
+SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
+#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
+#                         shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
 
 SHIM_AS: dict[str, tuple[str, int]] = {
     "shim_din988_3x6_t1": ("m3_washer_433", 2),
@@ -742,10 +757,8 @@ def split_shims(lines: list[BomLine], by_name: dict,
 def stack_steps(family: str) -> tuple[float, ...]:
     """The thicknesses the constructions stack a family's shims from: for the M3 and M4
     families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
-    :data:`construction.pivots.standoff.SHIM_STEP`), else its catalog ``t``."""
+    :data:`SHIM_STEP`), else its catalog ``t``."""
     if family in ("shim_din988_3x6", "shim_din988_4x8"):
-        from spiderpig.construction.pivots.standoff import SHIM_STEP
-
         return (1.0, SHIM_STEP)
     return tuple(get(family).dims.get("t") or ())
 

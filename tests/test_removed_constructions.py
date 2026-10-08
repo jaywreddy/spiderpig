@@ -14,6 +14,7 @@ from spiderpig import api, construction
 from spiderpig.config import (
     CRANK_SHEET,
     REMOVED_CONSTRUCTIONS,
+    REMOVED_PARAMS,
     BuildConfig,
     ParamError,
     removed_construction,
@@ -121,6 +122,30 @@ def _store_with_a_keyed_design(root, in_spec: bool) -> tuple[Store, str]:
     (d / "spec.json").write_text(json.dumps(spec))
     store.remove(design.id)
     return store, old
+
+
+def test_a_spec_or_stored_design_naming_a_removed_fit_field_says_it_was_removed(tmp_path):
+    """The Params fields nothing read (W5, :data:`config.REMOVED_PARAMS`): a spec giving one
+    is invalid at its path with the removal; a stored design's resolved record (every field
+    written in) loads at the field's last default and fails with the message off it."""
+    for name in REMOVED_PARAMS:
+        with pytest.raises(SpecErrors) as e:
+            api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken_pantograph"},
+                         "fit": {name: 1.0}}, store=None)
+        (err,) = e.value.errors
+        assert err.path == f"fit.{name}"
+        assert "was removed on 2026-10-07" in err.message
+        assert Failure.from_exception(e.value).code == "invalid_spec"
+    store = Store(tmp_path / "store")
+    design = api.resolve(api.spec_of(BuildConfig(linkage="hoecken_pantograph", robot=False)),
+                         store)
+    rec = store.read_design(design.id)
+    for name, (_, default, _) in REMOVED_PARAMS.items():
+        rec["resolved"]["fit"][name] = default      # as a store written before W5 holds it
+    assert api._config_from_resolved(rec["resolved"]) == design.config
+    rec["resolved"]["fit"]["neck_d"] = 3.0
+    with pytest.raises(ParamError, match=r"fit\.neck_d .* was removed on 2026-10-07"):
+        api._config_from_resolved(rec["resolved"])
 
 
 @pytest.mark.parametrize("in_spec", [True, False], ids=["spec", "resolved"])

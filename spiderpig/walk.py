@@ -348,27 +348,6 @@ def anchor_of(body, by_name: Mapping) -> str | None:
     return None
 
 
-def body_motion(mech, tmpl, ts: np.ndarray) -> tuple[dict, dict]:
-    """``(motion, owner)`` for :func:`cycle_com`: each anchor's planar motion from ``mech``'s
-    pose to ``tmpl`` sampled at ``ts``, and each body's anchor."""
-    by_name = {b.name: b for b in mech.bodies}
-    owner = {b.name: anchor_of(b, by_name) for b in mech.bodies}
-    sampled = tmpl.sample(np.asarray(ts, dtype=float))
-    motion = {}
-    for name in {a for a in owner.values() if a}:
-        body = by_name[name]
-        ref = {j.name: np.asarray((body.pose @ j.pose).matrix[:3, 3], dtype=float)
-               for j in body.joints}
-        cur = sampled.joint_world.get(name, {})
-        names = [j for j in ref if j in cur]
-        if not names:
-            continue
-        p0 = np.broadcast_to(np.stack([ref[j] for j in names]), (len(ts), len(names), 3))
-        p1 = np.stack([cur[j] for j in names], axis=1)
-        motion[name] = planar_fit(p0, p1)
-    return motion, owner
-
-
 # Nominal mass model (no parts), see :func:`nominal_mass`. Everything of a side but its
 # link plates and servo is lumped on the crank axis O (its measured centre of mass is
 # within a few mm of it): the laser-cut plates (the frame plates, by fixed pivot; the bolt

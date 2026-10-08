@@ -90,6 +90,31 @@ def test_view_help_is_instant():
     assert {"--store", "--port", "--open", "--serve-only"} <= set(out.split())
 
 
+def test_view_parses_the_build_options_without_the_engine():
+    """``spiderpig view``'s build options (:func:`view.add_lazy_build_args`, no registry read)
+    are ``spiderpig build``'s, option for option, and parsing them imports no engine module."""
+    import argparse
+
+    from spiderpig.config import add_build_args, add_design_args
+
+    def options(add) -> dict[str, str]:
+        ap = argparse.ArgumentParser()
+        for fn in add:
+            fn(ap)
+        return {o: a.dest for a in ap._actions for o in a.option_strings if o != "-h"
+                and o != "--help"}
+
+    assert options([view.add_lazy_build_args]) == options([add_design_args, add_build_args])
+    code = ("import sys, argparse\nfrom spiderpig import view\n"
+            "ap = argparse.ArgumentParser()\nview.add_lazy_build_args(ap)\n"
+            "ap.parse_args(['--linkage', 'klann', '--pin', 'chicago'])\n"
+            "print(sorted(m for m in sys.modules if m.startswith('spiderpig')))\n")
+    loaded = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                            check=True).stdout
+    assert "spiderpig.config" not in loaded
+    assert "spiderpig.construction" not in loaded
+
+
 def test_viewer_dist_resolves_inside_the_package():
     from spiderpig.server.app import PACKAGE_ROOT, VIEWER_DIST
 

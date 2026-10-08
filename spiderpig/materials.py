@@ -171,11 +171,10 @@ def washer_stack(shaft_d: float, t: float) -> tuple[list[tuple[str, float]], flo
     if left >= pt - 1e-6:
         out.append((ptfe, pt))
         left = round(left - pt, 3)
-    for s in sorted((float(v) for v in get(shim).dims["t"]), reverse=True):
-        k = int(math.floor(left / s + 1e-6))
-        out += [(shim, s)] * k
-        left = round(left - k * s, 3)
-    return out, max(left, 0.0)
+    from spiderpig.hardware.bom import stack
+
+    shims, left = stack(left, get(shim).dims["t"])
+    return out + [(shim, s) for s in shims], left
 
 
 # -- the thinnest sheet each part may be cut from ----------------------------------------

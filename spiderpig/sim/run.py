@@ -377,7 +377,7 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
       carries at the torque peak: ``joint_moment_factor``, chord / crank radius from
       :func:`crank_joint_factor`, times it), ``crank_capacity_nm`` (what the weakest
       element of a crankpin joint of the design's crank holds, nominal:
-      :func:`spiderpig.strength.crank_capacity`; ``crank_weakest`` names it),
+      :func:`construction.crank.capacity.crank_capacity`; ``crank_weakest`` names it),
       ``torque_limit_recommended`` (N·m, the servo's firmware limit that keeps a jam
       under it, :func:`config.torque_limit_nm`) and
       ``joint_moment_at_limit`` (the joint's moment in a jam at that limit);
@@ -445,7 +445,7 @@ def walk_metrics(result: SimResult, skip: float = 0.5) -> dict:
         }
     factor = crank_joint_factor(r.config) if r.config is not None else 1.0
     limit = torque_limit_nm(r.config) if r.config is not None else None
-    from spiderpig.strength import crank_capacity
+    from spiderpig.construction.crank.capacity import crank_capacity
 
     caps = (crank_capacity({}, r.config) if r.config is not None else None) or {}
     weakest = min(caps, key=caps.get, default=None)

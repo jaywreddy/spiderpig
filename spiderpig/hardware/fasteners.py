@@ -71,10 +71,6 @@ def bhcs(size: str, length: float) -> str:
     return SCREWS["bhcs", size].key(length)
 
 
-def self_tap(size: str, length: float) -> str:
-    return SCREWS["self_tap", size].key(length)
-
-
 _KEY = re.compile(r"^m(\d+(?:p\d+)?)_(shcs|bhcs|self_tap)_(\d+(?:\.\d+)?)$")
 
 

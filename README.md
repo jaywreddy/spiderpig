@@ -201,7 +201,7 @@ functional group at a time (see `spiderpig/construction/base.py`):
 - **links and frame plates** — laser-cut, holes cut for everything above.
 
 Each group first *claims* the space it needs, per 3 mm layer and relative
-to the link layers; the planner (`spiderpig/stack.py`) finds link layers where no
+to the link layers; the planner (`spiderpig/stack/`) finds link layers where no
 two groups' claims ever meet over the whole crank cycle. Then each group
 builds its parts inside its claims, which a contract test checks. So the
 parts can't collide, and a construction that can't fit is an error, never

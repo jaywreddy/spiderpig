@@ -612,11 +612,11 @@ TIE_TOL = 0.1              # a chain within this of its span after the shims (th
 
 def _chain(D: float) -> tuple[list[float], float] | None:
     """Stock uxcell 6 mm round M3 standoff lengths (joined by M3 set screws) and the shim
-    stack (a multiple of :data:`construction.pivots.standoff.SHIM_STEP`, bought as DIN 433
+    stack (a multiple of :data:`hardware.bom.SHIM_STEP`, bought as DIN 433
     washers) that fill ``D`` mm within :data:`TIE_TOL`: ``(segments, shims mm)``, the fewest
     segments, then the thinnest stack; the stack up to 2 mm, else 3 mm (the XL330's 23 mm:
     no M3 pair fills it), ``None`` when none does."""
-    from spiderpig.construction.pivots.standoff import SHIM_STEP
+    from spiderpig.hardware.bom import SHIM_STEP
     from spiderpig.hardware.crank_catalog import M3_ROUND_STANDOFF_LENGTHS
 
     lengths = sorted(M3_ROUND_STANDOFF_LENGTHS)

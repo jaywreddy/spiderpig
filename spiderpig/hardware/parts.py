@@ -314,5 +314,5 @@ register(
 
 # The pivots' hardware (the Chicago screws), the bolt crank's and the standoff pillar's
 # (construction.crank.BoltCrank, construction.pivots.standoff); registered on import (they
-# append to the catalog).
+# append to the catalog; the NETRF6 pillar shafts are made on demand, register_factory).
 from spiderpig.hardware import crank_catalog, fastener_catalog, sheet_catalog  # noqa: E402, F401

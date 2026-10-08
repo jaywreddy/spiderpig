@@ -132,8 +132,8 @@ description = "Download the servo manufacturers' CAD models into the cache (sha2
 run = "uv run python -m spiderpig.servos.cad"
 
 [tasks.lint]
-description = "ruff check"
-run         = "uv run ruff check ."
+description = "ruff check, then the layers' import contracts (lint-imports: pyproject.toml [tool.importlinter])"
+run         = ["uv run ruff check .", "uv run lint-imports"]
 
 [tasks.release]
 description = "Build the viewer, then the sdist + wheel into dist/ (the wheel carries spiderpig/viewer/dist; a build without it fails)"

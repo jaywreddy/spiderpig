@@ -2540,11 +2540,11 @@
   ],
   "title": ""
  },
- "engine_version": "0.1.0+4ff348fd2c45",
+ "engine_version": "0.1.0+6174b96958c6",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-7e56dc54e60df7d9"
+ "source_key": "gen-b2365722235e47f4"
 }

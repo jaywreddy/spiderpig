@@ -122,7 +122,7 @@ def test_the_trotbot_modules_return_inside_the_deadlines(key, module, expect, mo
     gaps, then the checks of what would clear it, each up to its deadline, took 4 minutes
     a case at 60 s for the same verdict.)"""
     if expect == "either":
-        monkeypatch.setattr(stack, "MAX_SECONDS", 15.0)
+        monkeypatch.setattr(stack.plan, "MAX_SECONDS", 15.0)
     cfg = BuildConfig(linkage=key, module=module, robot=False)
     t0 = time.monotonic()
     try:

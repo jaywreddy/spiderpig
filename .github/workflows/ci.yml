@@ -31,6 +31,8 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv run --locked --only-dev ruff check .
+      # the engine's layers (pyproject.toml [tool.importlinter]; reads the sources, imports none)
+      - run: uv run --locked --only-dev lint-imports
 
   lock:
     runs-on: ubuntu-latest

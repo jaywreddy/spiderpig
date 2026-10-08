@@ -51,7 +51,7 @@ def test_plan_stage_names_what_blocked_it(monkeypatch):
     so the search is bounded by its node budgets alone and gets as far on a loaded machine
     as on an idle one (~110 s). On the default constructions (the bolt crank, standoff
     pillars, Chicago screw pins)."""
-    monkeypatch.setattr(stack, "MAX_SECONDS", math.inf)
+    monkeypatch.setattr(stack.plan, "MAX_SECONDS", math.inf)
     cfg = BuildConfig(linkage="jansen", module="decker", robot=False, proportions=(("unit", 1.5),))
     assert (cfg.crank, cfg.pillar, cfg.pin) == ("bolt", "standoff", "chicago")
     assert math.isinf(stack.StackSpec().max_seconds)
@@ -95,7 +95,7 @@ def test_the_plan_stages_recommendations_clear_the_clearance(monkeypatch):
 
     from spiderpig.recommend import recommend
 
-    monkeypatch.setattr(stack, "MAX_SECONDS", math.inf)
+    monkeypatch.setattr(stack.plan, "MAX_SECONDS", math.inf)
     cfg = BuildConfig(linkage="jansen", module="single", robot=False, proportions=(("unit", 1.5),))
     ctx, groups, problem = side_problem(template_for(cfg), cfg)
     involved = tuple(c for c in problem.clearances if c.keepout.owner == "pillar:A")

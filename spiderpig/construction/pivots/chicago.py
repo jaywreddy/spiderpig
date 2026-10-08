@@ -321,11 +321,9 @@ class ChicagoShaft:
 
     def shim_count(self, total: float) -> int:
         """Shim rings for ``total`` mm, thickest first."""
-        n, left = 0, round(total, 3)
-        for t in sorted(self.shim_steps, reverse=True):
-            k = int(math.floor(left / t + 1e-6))
-            n, left = n + k, round(left - k * t, 3)
-        return n
+        from spiderpig.hardware.bom import stack
+
+        return len(stack(total, self.shim_steps)[0])
 
     def host_hole(self) -> float:
         return self.d + self.glue_fit

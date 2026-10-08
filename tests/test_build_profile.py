@@ -77,9 +77,10 @@ def test_process_age_is_the_time_since_start():
 @pytest.mark.slow
 def test_build_profile_has_every_stage_and_adds_up(tmp_path):
     """``spiderpig build --profile`` of the default design (the Strider double, the roadmap's
-    W0 criterion) in its own process: every stage key, their sum within 5 % of the wall time
-    measured from outside (which also holds the interpreter's exit, ~1 s, after the profile
-    is logged), the outputs written."""
+    W0 criterion) in its own process: every stage key, their sum within 5 % of the build's
+    own wall time (``wall_s``), and no more than 5 % + 2 s under the wall measured from
+    outside (which also holds the interpreter's start and exit, a fixed ~1 s: a share that
+    grows as builds get faster), the outputs written."""
     from spiderpig.tools.build_profile import STAGES
 
     prof = tmp_path / "profile.json"
@@ -98,7 +99,7 @@ def test_build_profile_has_every_stage_and_adds_up(tmp_path):
     assert set(STAGES) <= set(doc["stages"])
     summed = sum(doc["stages"][k] for k in STAGES)
     assert abs(summed - doc["wall_s"]) <= 0.05 * doc["wall_s"]
-    assert abs(summed - outside) <= 0.05 * outside, (summed, outside)
+    assert 0 <= outside - summed <= 0.05 * outside + 2.0, (summed, outside)
     assert (tmp_path / "out" / "ORDER.md").exists()
 
 
@@ -146,11 +147,11 @@ def test_the_measuring_tools_are_outside_the_engine_hash(tmp_path, monkeypatch):
 
 def test_the_engine_hash_sees_the_same_change_to_an_engine_module(tmp_path, monkeypatch):
     """The control of the test above (split from it: two hashes each, ~2 s): the change it
-    makes to the tools, made to ``stack.py``, re-keys the engine."""
+    makes to the tools, made to ``stack/search.py``, re-keys the engine."""
     root = _package_copy(tmp_path)
     base = _engine_version_of(root, monkeypatch)
-    (root / "stack.py").write_text((root / "stack.py").read_text()
-                                   + "\n\ndef _a_change():\n    return 1\n")
+    (root / "stack" / "search.py").write_text((root / "stack" / "search.py").read_text()
+                                                + "\n\ndef _a_change():\n    return 1\n")
     assert _engine_version_of(root, monkeypatch) != base     # the check can see a change
 
 

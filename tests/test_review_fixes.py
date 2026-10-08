@@ -739,7 +739,7 @@ def test_an_export_after_an_accepted_edit_is_written_afresh(tmp_path, monkeypatc
 
     from spiderpig import api
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
     assert api.build(d).ok
     first = api.export(d, ["dxf"], tmp_path)
@@ -824,7 +824,7 @@ def test_an_edited_handles_export_stays_off_the_store(tmp_path, monkeypatch):
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.build(d).ok
@@ -851,7 +851,7 @@ def test_a_rejected_edit_leaves_the_built_parts_in_the_mechanism(tmp_path, monke
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.build(d).ok
@@ -871,7 +871,7 @@ def test_verify_keeps_an_edited_handles_crank_angle_and_edits(monkeypatch):
 
     from spiderpig import api
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
     assert api.build(d, 0.5).ok
     name = next(n for n, p in d.parts.items() if p.group == "links")
@@ -898,7 +898,7 @@ def test_an_accepted_edit_is_graded_and_forgotten_as_itself(tmp_path, monkeypatc
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store = Store(tmp_path)
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.build(d).ok
@@ -961,7 +961,7 @@ def test_an_edited_export_into_a_folder_is_never_reused(tmp_path, monkeypatch):
     from spiderpig import api
     from spiderpig.store import Store
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     store, out = Store(tmp_path / "s"), tmp_path / "out"
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, store)
     assert api.export(d, ["bom"], out).ok
@@ -981,7 +981,7 @@ def test_an_edited_export_into_a_folder_is_never_reused(tmp_path, monkeypatch):
 def test_a_build_at_another_angle_forgets_the_other_angles_export(tmp_path, monkeypatch):
     from spiderpig import api
 
-    monkeypatch.setattr(api, "fabricate_at", _api.fabricate_from_cache)   # cached parts
+    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)   # cached parts
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"}}, None)
     assert api.build(d, 1.0).ok
     first = api.export(d, ["bom"], tmp_path)

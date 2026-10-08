@@ -38,7 +38,7 @@ def test_every_servo_couples_inside_the_claims(design, module, servo, monkeypatc
         # plan only after ~6 CPU minutes, past the 60 s default (the STS3215 plans in 3 s)
         from spiderpig import stack
 
-        monkeypatch.setattr(stack, "MAX_SECONDS", 900.0)
+        monkeypatch.setattr(stack.plan, "MAX_SECONDS", 900.0)
     tmpl, d = design(module, servo)
     assert check_side(d, tmpl.freeze_at(2.2)) == []
 

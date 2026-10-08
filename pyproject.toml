@@ -43,6 +43,7 @@ dev = [
     "pytest-xdist>=3.8.0",
     "coverage>=7.16.2",
     "pytest-cov>=7.1.0",
+    "import-linter>=2.15",
 ]
 
 [tool.uv]
@@ -72,6 +73,11 @@ extend-exclude = [".claude"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "PT", "NPY"]
+
+[tool.ruff.lint.per-file-ignores]
+# the split packages re-export every name of the module they were (W5); __all__ keeps the
+# old public list
+"spiderpig/api/__init__.py" = ["F401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -115,3 +121,39 @@ patch = ["subprocess"]
 
 [tool.coverage.report]
 skip_empty = true
+
+# The engine's layers (docs/agentlib/ROADMAP.md, W5): a layer imports only those under it.
+# `uv run lint-imports` (`mise run lint`, CI); each exception names its reason.
+[tool.importlinter]
+root_package = "spiderpig"
+
+[[tool.importlinter.contracts]]
+name = "layers"
+type = "layers"
+# The front-ends may start one another (the MCP's `view` tool runs the viewer's server:
+# `:`, not independent). The strength check rates the joints at the sim's loads, so it
+# sits over the sim.
+layers = [
+    "spiderpig.mcp : spiderpig.server : spiderpig.cli",
+    "spiderpig.api",
+    "spiderpig.bake | spiderpig.build | spiderpig.strength",
+    "spiderpig.sim",
+    "spiderpig.fabricate",
+    "spiderpig.construction",
+    "spiderpig.stack",
+    "spiderpig.linkage",
+]
+# The written exceptions (lazy imports, each in one function):
+ignore_imports = [
+    # `spiderpig bake` / `spiderpig build`'s main() and its up-to-date check plan through the
+    # store (api.plan_config), as every command does; the modules' library functions don't
+    "spiderpig.bake -> spiderpig.api",
+    "spiderpig.build -> spiderpig.api",
+    "spiderpig.uptodate -> spiderpig.api",
+]
+
+[[tool.importlinter.contracts]]
+name = "hardware and materials sit beside construction"
+type = "forbidden"
+source_modules = ["spiderpig.hardware", "spiderpig.materials"]
+forbidden_modules = ["spiderpig.construction"]
