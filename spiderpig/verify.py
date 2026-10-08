@@ -627,13 +627,16 @@ LOCKED_PILLARS = ("standoff",)     # threadlocker on its end screws
 EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link
 LOCKED_PINS = ("chicago",)         # threadlocker on each screw
 FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardware are "
-                    "counted after a build (verify standard)")
+                    "counted after a build (verify standard), and the cut parts beyond one "
+                    "per sheet")
 
 
 def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     """What the design buys whatever its parts turn out to be, priced from the catalog before
     any build: the servos (one per side), a spool of filament (the printed parts), one
-    blank of each sheet the parts are cut from (the crank's plates' among them), and what
+    blank of each sheet the parts are cut from that no service cuts, the cutting of at
+    least one part on each sheet a service cuts (its least charge, the material included:
+    :func:`hardware.bom.cut_estimate`), and what
     the constructions buy whatever the parts' sizes: the Chicago pins' epoxy, and a bottle
     of each threadlocker the crank's screws, a Chicago screw pin or a standoff pillar's
     screws take. ``(total, priced
@@ -649,7 +652,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
                             cfg.crank_sheet])
     lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
-    # (not the deck's heat-set inserts: a robot whose deck doesn't fit buys none, and a
+    # (not the deck's captive nuts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))
@@ -657,9 +660,9 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
-    from spiderpig.hardware.bom import ON_HAND
+    from spiderpig.hardware.bom import bought
 
-    lines = [(k, q) for k, q in lines if k not in ON_HAND]    # the shop's supplies
+    lines = [(k, q) for k, q in lines if bought(k)]    # not the shop's, nor a service's sheet
     total, priced, unpriced = 0.0, [], []
     for key, qty in lines:
         item = catalog_item(key)
@@ -674,6 +677,16 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
                       + (f" (a pack of {offer.pack_qty})" if offer.pack_qty > qty else "")
                       + (f" (buying {packs}: the price break)"
                          if offer.tiers and packs * offer.pack_qty > qty else ""))
+    from spiderpig.hardware.bom import cut_by, cut_estimate
+
+    for key in (k for k in sheets if cut_by(k)):     # at least one part cut on each
+        least = cut_estimate(key, [(0.0, 1)])
+        name = f"{cut_by(key)} cutting, {catalog_item(key).name}"
+        if least is None:
+            unpriced.append(name)
+            continue
+        total += least
+        priced.append(f"{name}: one part at least ${least:.2f}")
     return round(total, 2), priced, unpriced
 
 

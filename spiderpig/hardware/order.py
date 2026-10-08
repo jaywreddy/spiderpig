@@ -10,15 +10,22 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from spiderpig.hardware.bom import ON_HAND  # shop supplies: listed, not ordered or totalled
+from spiderpig.hardware.bom import CUT_SOURCE, ON_HAND, bought
 from spiderpig.hardware.catalog import get
+from spiderpig.hardware.electronics import HV_SHORT, HV_WARNING
+
+LINE_WARNINGS = {"lipo_2s_450": HV_SHORT, "ip2326_charger": HV_SHORT}
+"""What a cart line says beside its item (and :data:`LINE_NOTES` under "Before you order")."""
+LINE_NOTES = {"lipo_2s_450": HV_WARNING}
 
 SERVICE_ORDER_URL = {
     "SendCutSend": "https://app.sendcutsend.com/customer#/quote",
     "Ponoko": "https://www.ponoko.com/designs",
 }
 SERVICE_NOTES = {
-    "SendCutSend": "one part per file, units mm at upload, quantity per file as below",
+    "SendCutSend": "one part per file, units mm at upload, quantity per file as below; its "
+                   "3 mm acrylic arrives 2.24-3.46 mm thick: measure it and rebuild with "
+                   "--thickness if it is off by more than a few percent",
     "Ponoko": "one part per file, mm, the blue CUT layer mapped to cut; 3 mm sheet arrives "
               "2.49-3.51 mm thick: measure it and rebuild with --thickness if it is off "
               "by more than a few percent",
@@ -84,7 +91,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
         if r.same_pack_as:
             shared[r.same_pack_as].append(r)
             continue
-        if r.key in services or r.key in ON_HAND:
+        if r.key in services or not bought(r.key):     # (the BOM's total leaves out the same)
             continue
         carts[r.vendor or "(no vendor)"].append(r)
     on_hand = [r for r in bom.purchased if r.key in ON_HAND]
@@ -112,6 +119,8 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             need = f"{r.qty:g}" if r.qty >= 1 else f"{r.qty:.3g} of one"
             also = "".join(f"; also {o.name}: need {o.qty:g}" for o in shared.get(r.name, ()))
             name = r.name + (f" (the same pack{also})" if also else "")
+            if r.key in LINE_WARNINGS:
+                name += f" — **{LINE_WARNINGS[r.key]}**"
             est = _money(r.cost_usd)
             if r.cost_usd is None:
                 unpriced += 1
@@ -126,8 +135,16 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
               + (f"; ≈{_money(estimated)} more estimated from another vendor's price for the "
                  "same part" if estimated else "")
               + "), before shipping and the cut parts.", ""]
+    cut = {c.service: 0.0 for c in getattr(bom, "cutting", ())}
+    for c in getattr(bom, "cutting", ()):
+        cut[c.service] += c.usd or 0.0
+    if cut:
+        lines += [f"Cutting (the material included): **≈{_money(sum(cut.values()))}** ("
+                  + ", ".join(f"{s} ≈{_money(v)}" for s, v in cut.items())
+                  + f"; {CUT_SOURCE}). **Total ≈{_money(total + sum(cut.values()))}**, "
+                  "before shipping.", ""]
     if on_hand:
-        lines += ["## From the shop (on hand, not ordered)", ""] + [
+        lines += ["## From the shop and the servo boxes (on hand, not ordered)", ""] + [
             f"* {r.name}: {r.where[0] if len(r.where) == 1 else f'{len(r.where)} uses'}"
             for r in on_hand] + [""]
 
@@ -145,6 +162,9 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             note = "; ".join(x for x in (SERVICE_NOTES.get(service),
                                          kerf_note(service, kerfs)) if x)
             lines += [note + ".", ""]
+            if service in cut:
+                lines += [f"Estimate: ≈{_money(cut[service])} for these parts ({CUT_SOURCE}).",
+                          ""]
             lines += ["| qty | file | material | thickness | size mm | makes |",
                       "|---:|---|---|---:|---|---|"]
             for r in rows:
@@ -165,6 +185,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
         lines.append("")
 
     notes = [n for r in bom.purchased for n in _item_notes(r.key)]
+    notes += [LINE_NOTES[r.key] for r in bom.purchased if r.key in LINE_NOTES]
     if notes or bom.notes:
         lines += ["## Before you order", ""] + [f"* {n}" for n in dict.fromkeys(notes)] \
             + [f"* {n}" for n in bom.notes] + [""]

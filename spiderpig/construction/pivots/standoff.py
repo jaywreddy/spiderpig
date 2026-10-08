@@ -50,7 +50,7 @@ under a spacer layer: steel shims sit between its end and the face over it, so t
 stays one contiguous stack (in the clearance gap under the face when there is one, its
 gap ring trimmed to make room; else in the spacer layer, whose ring they shorten), and the
 end screw is chosen for the plate plus the shims. They come in whole 1 mm and
-:data:`SHIM_STEP` (0.5 mm) steps, bought as DIN 433 washers (:data:`hardware.bom.SHIM_AS`:
+:data:`SHIM_STEP` (0.5 mm) steps, bought as stock 0.5 mm washers (:data:`hardware.bom.SHIM_AS`:
 two make 1 mm).
 
 Assembly, bottom up (:meth:`StandoffAxle.assembly`; :data:`construction.assembly.ROBOT_ORDER`
@@ -119,7 +119,7 @@ class StandoffAxle:
     min_segment: float = 12.0        # thread for the end screws in each end
     min_engage: float = 4.0          # M4 thread in a standoff's end
     tighten_nm: float = 0.8          # the end screws
-    shim_key: str = "shim_din988_4x8"   # the end shims (bought as DIN 433 washers)
+    shim_key: str = "shim_din988_4x8"   # the end shims (bought as stock 0.5 mm washers)
     set_play: float = 0.1            # axial play of the column (plates touch; assumed)
     washer_key: str = "m4_washer"
     lock_key: str | None = "threadlocker_222"
@@ -294,9 +294,9 @@ class StandoffAxle:
     def segment(self, gap: float, shims: bool = False) -> float | None:
         """The stock length for a ``gap`` mm between two faces (``max_short`` under it to
         ``max_long`` over, the nearest; with ``shims``, up to ``max_shims`` under it, steel
-        shims (DIN 433 washers) taking the rest up at its upper end), ``None`` when none is."""
+        shims (stock 0.5 mm washers) taking the rest up at its upper end), ``None`` when none is."""
         if self.size == "M3":
-            # (the shaft: its lengths, end shims in SHIM_STEP steps only (DIN 433 washers,
+            # (the shaft: its lengths, end shims in SHIM_STEP steps only (stock 0.5 mm washers,
             # two to a 1 mm shim), the column within COLUMN_TOL of its gap; goBILDA M4 keeps
             # its rule below, its take-up rounded to the step in shims(): at most half a step
             # over, inside max_long)
@@ -363,11 +363,15 @@ class StandoffAxle:
                             name=f"6 mm Al standoff (6061, as a 6 x {self.id_:g} tube)")
 
     def shim_od(self) -> float:
-        return float(get(self.shim_key).dims["od"])
+        """The end shims' ring: the widest they are bought as (:func:`hardware.bom.shim_od`:
+        an M3 stack's DIN 125 washers, 7 mm)."""
+        from spiderpig.hardware.bom import shim_od
+
+        return shim_od(self.shim_key)
 
     def shims(self, t: float) -> list[float]:
         """The shims that stack to an end's take-up ``t``, thickest first: whole 1 mm shims
-        and :data:`SHIM_STEP` (bought as DIN 433 washers, :data:`hardware.bom.SHIM_AS`), the
+        and :data:`SHIM_STEP` (bought as stock 0.5 mm washers, :data:`hardware.bom.SHIM_AS`), the
         thickness rounded to the step."""
         from spiderpig.hardware.bom import stack
 

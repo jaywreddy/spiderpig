@@ -8,9 +8,10 @@ an ADC pin for the battery voltage. ``dims`` holds what the deck is drawn from (
 modelled box) instead of volume x density.
 
 Where to buy: each item's first offer is the direct product page of the sourcing round of
-2026-10-05 (:mod:`hardware.sources`): the Waveshare store, the Ovonic maker's store
-(LiPo 4-pack), diymore (protection board), DigiKey (the E-Switch toggle, the resistors,
-the right-angle DC plug, the Essentra M2.5 nylon screw and nut), Mouser (the Wurth M2.5
+2026-10-05 and the BOM study of 2026-10-08 (:mod:`hardware.sources`): the Waveshare store,
+Amazon (one Tattu LiPo, since 2026-10-08: the robot carries one), diymore (protection
+board), DigiKey (the E-Switch toggle, the resistors, the right-angle DC plug, the
+Essentra M2.5 nylon screw and nut), Mouser (the Wurth M2.5
 nylon standoff), Rotor Riot (one XT30 pigtail: the battery has its own XT30), GetFPV (a
 Lumenier 10 x 180 mm strap, 3-pack), Ellsworth (3M VHB 5952 tape, 1.14 mm); the IP2326
 module only from a marketplace. The offers registered here follow it as alternatives.
@@ -20,7 +21,9 @@ page itself was fetched, corrected 2026-10-05): the Waveshare wiki and product p
 30 mm, 21 g, 2.75 mm holes on 58 x 23 mm, 5.5 x 2.1 mm DC jack 6-12 V, USB-C, $15.99);
 Waveshare's STEP model (``Servo_Driver_with_ESP32_STEP.zip``) puts the DC jack, 7.3 mm
 tall, on one short end and the USB-C on a long edge, the headers 5.7 mm tall. The LiPo
-is the Ovonic 2S 450 mAh 80C "long" (61.9 x 16.3 x 13.4 mm, 28 g, XT30). The IP2326
+is the Tattu 2S 450 mAh 95C HV "long pack" (62.5 x 16.2 x 14.7 mm, 29 g, XT30; BuddyRC's
+product page, fetched 2026-10-08; until then the Ovonic 80C long, 61.9 x 16.3 x 13.4 mm,
+bought as a 4-pack for a robot that carries one). The IP2326
 module's listings say 30-32 x 18-20 x 5 mm (the 5 mm may exclude the USB-C receptacle;
 mass unlisted, a bare module of this size is 2-4 g); the HX-2S-JH20 is 46.7 x 23 x 3.15
 mm, rated 10 A by most listings (20 A peak), mass unlisted. The toggle is an E-Switch
@@ -34,6 +37,15 @@ from __future__ import annotations
 from spiderpig.hardware.catalog import Item, Offer, register
 
 SEARCHED = "price as a web search quoted it from this page on 2026-10-03 (not fetched)"
+
+HV_SHORT = "HV LiPo: charge as 2S, 8.4 V; never the 3S / 12.6 V jumper setting"
+HV_WARNING = ("The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 "
+              "charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its "
+              "3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos "
+              "are 7.4 V parts.")
+"""The battery warning (the Tattu HV pack, 2026-10-08): ORDER.md's battery and charger
+lines (:data:`hardware.order.LINE_WARNINGS`) and the guide's wiring step
+(:func:`construction.deck.assembly`) carry it."""
 
 register(
     Item("esp32_servo_driver", "Waveshare Servo Driver with ESP32 (serial bus servo driver)",
@@ -51,16 +63,19 @@ register(
                "headers 5.7 mm tall across the board; the USB-C on a long edge 47-57 mm from "
                "the jack end (not the other short end); the ESP32 module under the board, "
                "2.3 mm down. M2.5 screws."),
-    Item("lipo_2s_450", "2S 7.4 V 450 mAh LiPo, XT30 (Ovonic 80C long size)", "electronics",
-         (Offer("Amazon", "https://www.amazon.com/OVONIC-Battery-Package-Including-Batteries/"
-                "dp/B0D3F6BRB9", "B0D3F6BRB9", pack_qty=4, price_usd=29.69,
-                note=f"4-pack, 61.9 x 16.3 x 13.4 mm, 28 g; {SEARCHED} (with a 10 % coupon)"),
-          Offer("Ampow", "https://www.ampow.com/products/ovonic-70c-7-4v-450mah-2s1p-xt30-"
-                "4pcs-lipo-battery", note="Ovonic 70C 61 x 16.5 x 13.4 mm, 30.6 g: fits the "
-                "same cradle")),
-         dims={"length": 61.9, "width": 16.3, "height": 13.4, "mass_g": 28.0},
-         notes="The cradle is drawn for 61.9 x 16.3 mm plus 0.3 mm; the 100C pack (62 x 17 x "
-               "14 mm, 31 g) needs the cradle's clearance raised. Leads exit the inner end."),
+    Item("lipo_2s_450", "2S 7.6 V HV 450 mAh LiPo, XT30 (Tattu 95C long pack)", "electronics",
+         (Offer("BuddyRC", "https://www.buddyrc.com/products/tattu-450mah-2s-95c-7-6v-high-"
+                "voltage-lipo-battery-pack-with-xt30-plug-long-pack", verified=True,
+                note="62.5 x 16.2 x 14.7 mm, 29 g (+-5), XT30U-F (page fetched 2026-10-08)"),
+          Offer("RaceDayQuads", "https://www.racedayquads.com/products/tattu-7-6v-2s-450mah-"
+                "95c-lihv-micro-battery-long-type-xt30", note="the same pack (search result "
+                "2026-10-08)")),
+         dims={"length": 62.5, "width": 16.2, "height": 14.7, "mass_g": 29.0},
+         notes="One per robot. The cradle is drawn for 62.5 x 16.2 mm plus 0.3 mm (its outer "
+               "end where the 61.9 mm Ovonic's was: deck.BATTERY_X1); an Ovonic 80C long "
+               "(61.9 x 16.3 x 13.4) fits it too. HV cells (4.35 V full) charged to 8.4 V "
+               "only: the IP2326 set to 2S does that; never charge it on an HV setting, the "
+               "servos are 7.4 V parts. Leads exit the inner end."),
     Item("ip2326_charger", "IP2326 2S USB-C charger module (5 V in, 8.4 V / 1.5 A out)",
          "electronics",
          (Offer("AliExpress", "https://www.aliexpress.us/item/3256808840546226.html",

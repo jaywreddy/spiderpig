@@ -315,7 +315,10 @@ def test_full_speed_torque_stays_on_the_motor_line(quad):
     for d in m["torque"].values():
         assert 0.0 < d["at_envelope"] <= 1.0
         assert 0.0 <= d["speed_droop"] < 0.1
-        assert d["peak"] < 0.5 * d["limit"]
+        # the peak is a chaotic contact transient, not a trend: sub-gram changes move it
+        # (with the deck's captive nuts in place of its brass inserts, 2026-10-08: 0.53 of
+        # the limit here, 0.480 in a standalone run of the same commit; it was 0.48)
+        assert d["peak"] < 0.6 * d["limit"]
 
 
 def test_without_the_motor_line_the_drives_overshoot_it(quad):

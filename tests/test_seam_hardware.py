@@ -125,13 +125,17 @@ def test_each_shim_thickness_is_its_own_catalog_item():
     assert get("shim_din988_4x8_t0p5").dims["t"] == 0.5
 
 
-def test_clamped_shims_are_bought_as_din433_washers():
-    """A 1 mm M3 shim is two DIN 433 washers ($0.05 each, not a $5-13 shim); a 0.2 mm one
-    stays a DIN 988 shim."""
-    assert bom.SHIM_AS["shim_din988_3x6_t1"] == ("m3_washer_433", 2)
+def test_clamped_shims_are_bought_as_stock_washers():
+    """A 1 mm M3 shim is two DIN 125 washers ($0.05 each at Bolt Depot, not a $5-13 shim),
+    an M4 one DIN 433; a 0.2 mm one stays a DIN 988 shim. The M3 stack is modelled and
+    claimed at the washers' 7 mm (bom.shim_od), the M4 one at its 8 mm."""
+    assert bom.SHIM_AS["shim_din988_3x6_t1"] == ("m3_washer", 2)
     assert bom.SHIM_AS["shim_din988_4x8_t0p5"] == ("m4_washer_433", 1)
-    assert bom.shim_as_bought("shim_din988_3x6", 1.0) == f"2 x {get('m3_washer_433').name}"
+    assert bom.shim_as_bought("shim_din988_3x6", 1.0) == f"2 x {get('m3_washer').name}"
     assert bom.shim_as_bought("shim_din988_3x6", 0.2) == "a 0.2 mm DIN 988 shim"
+    assert bom.shim_od("shim_din988_3x6") == 7.0
+    assert bom.shim_od("shim_din988_4x8") == 8.0
+    assert bom.shim_od("shim_din988_6x12") == 12.0
 
 
 # -- the cut rules on hand-made plates ------------------------------------------------------------

@@ -1,18 +1,24 @@
 """Can the services cut it? Every laser-cut part against its sheet's rules.
 
-The plates go to SendCutSend (aluminium) and Ponoko (acrylic), whose cut rules each sheet
-item carries (:mod:`hardware.sheet_catalog`, read through :func:`materials.sheet`):
+The plates go to SendCutSend (the aluminium, and the 3 mm acrylic since 2026-10-08) and
+Ponoko (the thin acrylic; the 3 mm as ``acrylic_3mm_ponoko``), whose cut rules each sheet
+item carries (:mod:`hardware.sheet_catalog`, :data:`hardware.parts.SCS_RULES_ACRYLIC`,
+read through :func:`materials.sheet`). SendCutSend's acrylic rules are its material page's
+spec table for 0.118 in (https://sendcutsend.com/materials/acrylic/, rendered
+2026-10-08): min hole .047 in (1.19 mm), min bridge .053 in (1.35 mm, the edge rule
+below), min part .187 x .375 in (4.75 x 9.53 mm), kerf compensated by the service;
 
 * **holes**: a round hole at least ``min_hole`` across (SendCutSend in metal: the sheet's
-  thickness; Ponoko: 1 mm);
+  thickness, in acrylic 1.19 mm; Ponoko: 1 mm);
 * **edge distance**: from a hole to the part's edge or to another hole at least
-  :attr:`materials.Sheet.min_edge` (SendCutSend: 2 x the thickness in aluminium; Ponoko:
-  its 1 mm minimum feature);
+  :attr:`materials.Sheet.min_edge` (SendCutSend: 2 x the thickness in aluminium, its
+  1.35 mm minimum bridge in acrylic; Ponoko: its 1 mm minimum feature);
 * **webs round a cut-out** (``web``): the same distances and levels from every
   non-circular cut-out (a pocket, a relief, a slot inside the outline) to the part's edge,
   a hole or another cut-out (since the assembly audit of 2026-10-04: a relief beside a
   hole or another relief was never measured);
-* **part size**: at least ``min_part`` (SendCutSend aluminium 6.35 x 9.5 mm, Ponoko 6 mm);
+* **part size**: at least ``min_part`` (SendCutSend aluminium 6.35 x 9.5 mm, acrylic
+  4.75 x 9.53 mm; Ponoko 6 mm);
 * **inside corners**: a pocket's corners come out ``corner_r`` round (SendCutSend in
   aluminium: 0.8 mm), so a pocket that must take a square corner (a hex pocket for a nut or
   a bolt head) needs corner reliefs at least that round: a pocket of straight edges only,

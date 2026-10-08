@@ -2,7 +2,7 @@
  "data": {
   "config": "BuildConfig(linkage='strider', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
   "metrics": {
-   "bob_mm": 5.338459711228239,
+   "bob_mm": 5.338459711228246,
    "degenerate_fraction": 0.0,
    "direction": "-x",
    "drift_mm": 0.0,
@@ -18,7 +18,7 @@
    ],
    "foot_bob_mm": 1.5396552878797678,
    "mean_contacts": 4.022222222222222,
-   "min_margin_mm": 28.462043649068768,
+   "min_margin_mm": 28.45371143083649,
    "pitch_deg": [
     -3.987151261232546,
     3.987151261232681
@@ -40,8 +40,8 @@
   },
   "walk": {
    "com": [
-    -0.667662931785911,
-    2.235393309714151,
+    -0.6733241844488986,
+    2.2756306986554367,
     0.0
    ],
    "feet": [
@@ -1491,7 +1491,7 @@
        -63.33956
       ]
      ],
-     "z": -90.504
+     "z": -76.804
     },
     {
      "body": "L.b7_leg0",
@@ -2939,7 +2939,7 @@
        -35.463223
       ]
      ],
-     "z": -90.504
+     "z": -88.504
     },
     {
      "body": "L.b3_leg1",
@@ -5835,7 +5835,7 @@
        -63.276511
       ]
      ],
-     "z": -62.804
+     "z": -63.304
     },
     {
      "body": "R.b3_leg0",
@@ -7283,7 +7283,7 @@
        -63.33956
       ]
      ],
-     "z": 90.504
+     "z": 76.804
     },
     {
      "body": "R.b7_leg0",
@@ -8731,7 +8731,7 @@
        -35.463223
       ]
      ],
-     "z": 90.504
+     "z": 88.504
     },
     {
      "body": "R.b3_leg1",
@@ -11627,7 +11627,7 @@
        -63.276511
       ]
      ],
-     "z": 62.804
+     "z": 63.304
     }
    ],
    "servo": {
@@ -11637,11 +11637,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+cd94e2222b2a",
+ "engine_version": "0.1.0+5e83445fcfc8",
  "generator": "tests/test_walk.py::test_strider_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "strider_walk_reference_doc"
  },
- "source_key": "gen-f8cb2ee8c9d5dd2e"
+ "source_key": "gen-8bf14dc1c3c67856"
 }

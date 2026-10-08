@@ -16,7 +16,7 @@ What the default robot uses:
   goBILDA length fills, in one piece (:data:`PILLAR_SHAFT_LENGTHS`).
 * ``m3_round_standoff_ff_<L>``: uxcell 6 mm OD round aluminium M3 female-female standoffs
   (:data:`M3_ROUND_STANDOFF_LENGTHS`): the crank's journal stub, the frame ties' chains and
-  ``m3_set_screw_<L>`` (ISO 4026) joins the ties' chains.
+  ``m3_set_screw_<L>`` (ISO 4029 cup point, since 2026-10-08) joins the ties' chains.
 * ``gobilda_1501_<L>``: goBILDA 1501 series M4 x 0.7 round aluminium standoffs, 6 mm OD: a
   pillar column one stock length fills, and the round crankpin; only the lengths
   goBILDA sells (:data:`GOBILDA_LENGTHS`, their M4 standoff listing fetched 2026-10-04 with
@@ -323,7 +323,9 @@ register(
 
 # -- M3 set screws (the M3 hardware comparison, 2026-10-05) ------------------------------
 #
-# ``m3_set_screw_<L>``: ISO 4026 M3 flat point set screws (the frame ties' studs).
+# ``m3_set_screw_<L>``: ISO 4029 M3 cup point set screws (the frame ties' studs and joints:
+# threaded into a standoff at each end, the point bears on nothing, so the point is any;
+# cup point since 2026-10-08, Bolt Depot's, which has no flat point).
 
 M3_SET_LENGTHS: tuple[float, ...] = (6, 8, 10, 12, 16)
 
@@ -334,9 +336,9 @@ def m3_set_screw(length: float) -> str:
 
 for _L in M3_SET_LENGTHS:
     register(Item(
-        m3_set_screw(_L), f"M3 x {_L:g} mm set screw (ISO 4026, flat point)", "fastener",
+        m3_set_screw(_L), f"M3 x {_L:g} mm set screw (ISO 4029, cup point)", "fastener",
         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/set-screws/",
-               pack_qty=50, note="M3 x 0.5 flat point, 18-8; part number not confirmed"),),
+               pack_qty=50, note="M3 x 0.5 cup point, 18-8; part number not confirmed"),),
         dims={"d": 3.0, "length": float(_L)},
         notes="A frame tie's stud.",
     ))
