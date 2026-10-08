@@ -149,8 +149,10 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   the keys-index folder beside them, keyed by the source's bytes (`keys._load_index`,
   `keys.code_text`): seconds, not the ~10 CPU-s of parsing everything; and one process
   computes a key while the others that want it (the xdist workers start together) wait
-  under its lock and read it (`keys._kept`). Before, every worker's first test paid it
-  all at once: 15-25 s in the suite for a test that takes 1-2 s alone. The fabrication
+  under its lock and read it (`keys._kept`); under xdist the controller starts
+  `tests.cache.warm_keys` beside the workers, so the keys are made while they collect.
+  Before, every worker's first test paid them all at once: 15-25 s in the suite for a
+  test that takes 1-2 s alone. The fabrication
   format, its locks and atomic writes are the product's (`spiderpig/fabcache.py`, below).
 - **Where, and why there**: a user cache directory, not the checkout. The key already
   names the engine, so worktrees with the same engine sources (every worktree branched

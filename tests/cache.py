@@ -384,16 +384,21 @@ def _entry(kind: str, cfg, t: float) -> Path:
     """``FAB_DIR/<cfg.key>_<kind>_t<t>_<hash>``: the hash of the side's plan record (what
     its plan is re-made from) and of the code this module's fabrication path reaches
     (:func:`spiderpig.keys.function_key`: :func:`cached_side`, :func:`cached_robot`)."""
-    from spiderpig.keys import function_key
-
     try:
         plan = _plan_path(replace(cfg, robot=False)).read_bytes()
     except OSError:
         plan = b"no plan record"
-    h = hashlib.sha256(plan + function_key(
-        Path(__file__), ("cached_side", "cached_robot", "_mechanism", "cached_design"),
-        "testcache").encode()).hexdigest()[:12]
+    h = hashlib.sha256(plan + _fabrication_key().encode()).hexdigest()[:12]
     return fab_dir() / _slug(f"{cfg.key}_{kind}_t{float(t)!r}_{h}")
+
+
+def _fabrication_key() -> str:
+    """The key of the code this module's fabrication path reaches."""
+    from spiderpig.keys import function_key
+
+    return function_key(Path(__file__),
+                        ("cached_side", "cached_robot", "_mechanism", "cached_design"),
+                        "testcache")
 
 
 def cached_side(cfg, t: float = 1.0, *, fresh: bool = False):
@@ -622,3 +627,33 @@ def stale_fixtures() -> list[Path]:
         except (ValueError, AttributeError):
             out.append(p)
     return out
+
+
+# ---------------------------------------------------------------------------
+# the keys, ahead of the workers
+# ---------------------------------------------------------------------------
+
+
+def warm_keys() -> None:
+    """Every key a test process asks for first (the plan's, the fabrication's, this
+    module's, each recorded fixture's generator's: :mod:`spiderpig.keys`), computed or
+    read. The conftest starts it in a process of its own beside the xdist workers, so
+    after an edit the keys are made while the workers import and collect, once (the
+    workers wait for a key being made, under its lock), not by each worker's first
+    test. Imports no engine."""
+    from spiderpig import keys
+
+    keys.plan_key()
+    keys.fab_key()
+    _fabrication_key()
+    for path in sorted(FIXTURES.rglob("*.json")):
+        try:
+            src = json.loads(path.read_text()).get("source")
+            if isinstance(src, dict):
+                _source_key(src)
+        except (OSError, ValueError, KeyError, SyntaxError, StopIteration):
+            continue        # (is_stale says so when a test reads it)
+
+
+if __name__ == "__main__":
+    warm_keys()
