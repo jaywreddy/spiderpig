@@ -19,7 +19,7 @@ def index():
     "api.plan_config(config, store)", "tests.cache.cached_design", "os.replace",
     "mise run test-quick", "mise run gate", "spiderpig build", "--profile", "--no-profile",
     "--regen", "SPIDERPIG_STORE", "$SPIDERPIG_STORE", "SPIDERPIG_WORKERS=0",
-    "spiderpig/stack.py", "tests/cache.py", "construction/crank/bolt.py", "docs/agentlib/",
+    "spiderpig/stack/search.py", "tests/cache.py", "construction/crank/bolt.py", "docs/agentlib/",
     "tests/fixtures/<module>/<name>.json", "design_side", "BuildConfig()", "gap_sink",
     "/api/glb/{mode}",
 ])

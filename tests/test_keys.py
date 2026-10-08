@@ -52,11 +52,11 @@ EDITS = [
      "STRAP_W = 10.0", "STRAP_W = 11.0", False, True),
     ("deck rail screw head (a claim under the inner plate)", "spiderpig.construction.deck",
      "RAIL_SCREW_R = 5.7 / 2 + 0.3", "RAIL_SCREW_R = 5.7 / 2 + 0.4", True, True),
-    ("planner constant", "spiderpig.stack", "GIVE_UP = 200", "GIVE_UP = 201", True, True),
-    ("planner docstring only", "spiderpig.stack",
+    ("planner constant", "spiderpig.stack.plan_z", "GIVE_UP = 200", "GIVE_UP = 201", True, True),
+    ("planner docstring only", "spiderpig.stack.plan_z",
      "(``gap_sink``) The first gap search gives up",
      "(``gap_sink``) The first gap search stops", False, False),
-    ("a comment", "spiderpig.stack", "GIVE_UP = 200", "GIVE_UP = 200  # a comment",
+    ("a comment", "spiderpig.stack.plan_z", "GIVE_UP = 200", "GIVE_UP = 200  # a comment",
      False, False),
     ("materials, read through a lazy import", "spiderpig.materials",
      '"al5052_2mm", "al5052_2p3mm", "al5052_2p5mm")',
@@ -109,7 +109,7 @@ def test_the_plan_closure_holds_the_planner_and_not_the_outputs(base):
     g0, _ = base
     c = g0.closure(keys.PLAN_ROOTS)
     reached = {m for m, _ in c.symbols}
-    for module in ("spiderpig.stack", "spiderpig.construction.crank.bolt",
+    for module in ("spiderpig.stack.search", "spiderpig.construction.crank.bolt",
                    "spiderpig.construction.route", "spiderpig.linkage.engine",
                    "spiderpig.linkages.strider", "spiderpig.materials", "spiderpig.config",
                    "spiderpig.servos.mount", "spiderpig.hardware.catalog"):
@@ -181,6 +181,11 @@ PATCH_ALLOWED = {
     ("spiderpig/tools/build_profile.py", "instrumented"):
         "the profiler wraps the build's calls in timers for the run, puts them back after; "
         "the results are the calls' own",
+    ("spiderpig/reexport.py", "ForwardingPackage"):
+        "a split package forwards a write to its re-exported name to the submodule binding "
+        "it (the keys follow it: Graph.written); the package writes nothing itself",
+    ("spiderpig/reexport.py", "forward_writes"):
+        "sets a split package's own module class (stack, api, construction.crank)",
 }
 """Every store into another object's namespace by name in the package, reviewed: none
 patches an engine module in a way that changes what it computes."""

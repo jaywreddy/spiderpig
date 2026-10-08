@@ -498,6 +498,21 @@ class Graph:
                     for n in self._member_names(b):
                         self.members.setdefault(n, []).append((m.name, f"{qual}.{n}"))
 
+    def written(self, mod: str, name: str) -> list[tuple[str, str]]:
+        """What a write to ``mod``'s ``name`` changes: that binding, and where ``mod`` is a
+        package re-exporting ``name`` from its own submodules, theirs too (the package
+        forwards the write: :mod:`spiderpig.reexport`)."""
+        out, seen = [(mod, name)], {(mod, name)}
+        m = self.modules.get(mod)
+        while m is not None and m.is_pkg and name in m.imports:
+            src, attr = m.imports[name]
+            if attr is None or not src.startswith(mod + ".") or (src, attr) in seen:
+                break
+            out.append((src, attr))
+            seen.add((src, attr))
+            m, name = self.modules.get(src), attr
+        return out
+
     @staticmethod
     def _member_names(stmt: ast.stmt) -> list[str]:
         if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
@@ -600,15 +615,16 @@ class _Walk:
             touched = {(m, k.split("#")[0]) for m, k in self.reached if m in self.loaded}
             more = [m.name for m in self.g.modules.values()
                     if m.name not in self.loaded and not m.excluded
-                    and m.effect_refs & touched]
+                    and any(w in touched for ref in m.effect_refs
+                            for w in self.g.written(*ref))]
             # code anywhere (a front-end too) that patches a reached module's namespace
             # at run time is reached: whatever runs it changes what the closure computes
             touched_mods = {m for m, _ in touched}
             patched = False
             for m in self.g.modules.values():
                 for target, attr, holder in m.patches:
-                    hit = ((target, attr) in touched if attr != "*"
-                           else target in touched_mods)
+                    hit = (any(w in touched for w in self.g.written(target, attr))
+                           if attr != "*" else target in touched_mods)
                     if hit and holder and (m.name, holder) not in self.reached:
                         self.current = ("<patches the closure>", target, attr)
                         self.reach_symbol(m.name, holder)

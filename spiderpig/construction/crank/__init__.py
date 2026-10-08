@@ -25,7 +25,8 @@ M6-bolt crank and the hex crank's variants were removed on 2026-10-07
 The package (a pure move of the former ``construction/crank.py``, W5): :mod:`.base` the
 routes, claims and :class:`CrankGroup`; :mod:`.bolt` :class:`BoltCrank` (its fits in
 :mod:`.hex`, :mod:`.web` and :mod:`.capacity`, mixed in); :mod:`.plates` its parts
-(:class:`_WebPlates`). Every name keeps its old import path here.
+(:class:`_WebPlates`). Every name keeps its old import path here, and a write to one
+reaches the submodule that reads it (:mod:`spiderpig.reexport`).
 """
 
 from spiderpig.construction.crank.base import (
@@ -58,6 +59,7 @@ from spiderpig.construction.crank.web import (
     _pin_lengths,
     shim_stack,
 )
+from spiderpig.reexport import forward_writes
 
 __all__ = [
     "BOLT_COLOR", "BOLT_ROUND", "EPS", "GROUP", "HORN_TIP_CLEAR", "PRESS_DRAWN",
@@ -66,3 +68,5 @@ __all__ = [
     "_WebPlates", "_fit_hex", "_hex", "_hex_gap_fit", "_pin_lengths", "chains_of",
     "default_route", "hex_bearing_nm", "hex_play", "hub_layers", "route_of", "shim_stack",
 ]
+
+forward_writes(__name__)
