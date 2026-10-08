@@ -1,7 +1,7 @@
 # spiderpig as a compiler: the Python API (harness v1, steps 1-4)
 
 An agent writes a **Spec** and uses the engine as a compiler to verified geometry.
-Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api.py`
+Everything lives in the `spiderpig/` package: `spec.py` (the vocabulary), `api/`
 (the operations), `failure.py` (every engine exception as data), `verify.py` (the
 harness), `design.py` (the handle), `store.py` (the per-project store, below), `mcp/`
 (the MCP server over all of it), `cli.py` (the `spiderpig` command) and `view.py`
@@ -61,9 +61,8 @@ miss lowers its score. Defaults (`TARGET_FIELDS`), overridden per target with `h
 | `motion.transmission_angle_deg` | both | deg | soft | check | measured | the least transmission angle over every loop closure, folded about 90° (140° is as poor as 40°; under about 40° a joint binds); the per-closure ranges are on the card's `closures` |
 
 One plain number lives under `budget` beside the targets: **`budget.allowance_usd`**, what
-to allow, in all, for the items the catalog doesn't price (the 3 mm rod, the push-on
-clips, the M2 tapping screws, M3 x 16 / x 18 / x 50: three of those packs are on every
-walker). Without it an unpriced item is left out of the total, which is then a lower
+to allow, in all, for the items the catalog doesn't price (the M2 tapping screws, M3 x 16 / x 18 / x 50 and
+the like: some are on every walker). Without it an unpriced item is left out of the total, which is then a lower
 bound that can refute a `max` but never confirm it, so a hard budget on a walker never
 verifies; with it the cost row reads "$108.76 priced + $15.00 allowed for the 3 unpriced
 items" and verifies against the target.
@@ -264,9 +263,9 @@ be thinner: fewer legs a side (and whether those modules walk), or the sheet's p
 The catalog prices most of the pivot hardware since round 3 (M3 screws, nuts, nylocks,
 washers, the MF63ZZ bearing, the igus bushing, the glues, the plywood: Bolt Depot,
 TME, Woodcraft and Woodpeckers pages, each offer's `note` naming the source and the
-date when a search quoted it); the 3 mm rod, the starlock clips, the M2 tapping
-screws and M3 x 18 / x 50 stay unpriced, so a `rod` or `bearing` design's cost is still
-a lower bound.
+date when a search quoted it); the M2 tapping screws and M3 x 18 / x 50 stay unpriced,
+so a design's cost is still a lower bound (the bearing, bushing and rod pivots were
+removed on 2026-10-07: `config.REMOVED_CONSTRUCTIONS`).
 
 ## Worked example: spec to STEP
 
@@ -403,7 +402,7 @@ Prompts: `design_walker(goal)` (resolve → check → plan → verify → export
 derive / compare loop on one metric).
 
 `tests/test_spiderpig_mcp.py` drives the server through the SDK's in-memory client
-(`mcp.Client(server)`, no subprocess). A cold `resolve → verify("quick")` on the Klann
+(the `mcp` SDK's Client over the server `spiderpig.mcp.make_server` returns, no subprocess). A cold `resolve → verify("quick")` on the Klann
 single takes ~0.7 s through the client once the engine is imported (~3 s of imports
 before that); `build` of the single as a job ~10 s including the worker's start.
 
