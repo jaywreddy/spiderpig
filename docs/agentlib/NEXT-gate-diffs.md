@@ -2,8 +2,8 @@
 
 The combined record of what the integration branch (the STS3215 bus window, the BOM
 decisions and the assembly guide, merged in `bus-window`) does to the gate's six designs
-against W8's baseline `~/.cache/spiderpig/gate/w8-2a130c8/`. The new baseline is
-`~/.cache/spiderpig/gate/next-ba41c10/` (TESTING.md). Every diff has one of three sources,
+against W8's baseline `~/.cache/spiderpig/gate/w8-2a130c8/`. The baseline is
+`~/.cache/spiderpig/gate/next-ba68611/` (TESTING.md). Every diff has one of three sources,
 each with its own record:
 
 - **bus**: the bus window ([BUS-gate-diffs.md](BUS-gate-diffs.md): its causes 1-8);
@@ -47,7 +47,7 @@ M2 x 6, 2.8 mm engagement); each side 0.228 mm farther from the mid-plane (every
 z); the rear frame ties 2.75 mm along the servo and the torso's tie holes; the chassis' top
 1.372 mm lower, so the deck lower and 0.46 mm wider; the servo's measured pad (the parametric
 servo's volume, every design); the audit's `chassis` rows, the centre plates' strength row
-(`worst/chassis`), the one-rear-screw warning gone; the BOM's Y cable line (unpriced).
+(`worst/chassis`), the one-rear-screw warning gone; the BOM's bus-cable line (below).
 
 **BOM A** (sourcing): every purchased row's vendor, SKU, pack and price, `cut_by`,
 `on_hand` (the M2 x 6 the servo bags carry), the carts, the BOM total = ORDER.md's.
@@ -65,8 +65,8 @@ totals, the made rows' `sheet`, ORDER.md's HV warnings, the deck nuts 0.15 mm lo
 
 ## Combined (both branches changed the same number)
 
-- **The robots' BOM and part totals**: purchases are the BOM branch's exactly (the Y cable
-  is unpriced, the extra M2 x 6 are on hand), the cutting is the BOM branch's plus the
+- **The robots' BOM and part totals**: purchases are the BOM branch's exactly (the bus
+  cables and the extra M2 x 6 are on hand), the cutting is the BOM branch's plus the
   bus's centre plates (6 x 0.063 in at SendCutSend, not 4 x 0.090 in):
 
   | design | w8 total | bom2 total | next: purchases + cutting = total |
@@ -76,7 +76,7 @@ totals, the made rows' `sheet`, ORDER.md's HV warnings, the deck nuts 0.15 mm lo
   | klann_lego_quad | $339.61 | $409.13 | $196.03 + $220.09 = $416.12 |
   | klann_quad | $399.30 | $506.21 | $289.04 + $224.08 = $513.12 |
 
-  The item, unpriced and unverified-link counts likewise (bom2's plus the Y cable).
+  The item count likewise (bom2's plus the on-hand bus-cable line).
 - **Part counts**: bom2's plus the bus's four (`L/R.rear_screw1`, `centre_plate4/5`):
   strider_double 375 -> 379, strider_quad 627 -> 631, klann_lego_quad 441 -> 445,
   klann_quad 517 -> 521 (w8: 387, 655, 441, 517).
@@ -100,3 +100,16 @@ there. `pin:C_leg3`'s jammed load in MuJoCo goes 259.6 -> 318.7 N with the robot
 geometry: each side 0.228 mm farther out and the heavier chassis. Its jam SF drops
 1.07 -> 0.87, and `link:b1`'s 0.49 -> 0.40. The demo design's other six strength problems
 are unchanged.
+
+
+## The bus cable (`next-ba41c10` -> `next-ba68611`)
+
+The first combined baseline, `next-ba41c10`, carried an unpriced "Servo bus Y cable" line
+that took a cart of its own. No ready-made 5264 3-pin Y splitter was found, and none is
+needed. The driver board has two bus servo ports: Waveshare's docs list "Bus Servo Control
+interfaces", and its photo shows two 3-pin headers. Every STS3215's box holds its cable
+(Seeed's C001 part list: "JST Wire x1"). So each servo's own cable goes to one board port:
+`servo_bus_cable_5264`, x2, on hand. The gate against `next-ba41c10` changes only in the four
+robots' BOM and ORDER text: the row (`bom.json`, `bom.csv`, `bom.md`); the `search` cart
+gone from ORDER.md (the Strider double has 7 carts again); one fewer unpriced line and
+unverified link in the audit's BOM summary. Totals, parts, plans and DXFs are identical.
