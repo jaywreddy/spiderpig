@@ -4980,11 +4980,11 @@
   "walk_torque_peak_nm": 0.0424,
   "walks": true
  },
- "engine_version": "0.1.0+15df219866ed",
+ "engine_version": "0.1.0+0a9eccdc7b74",
  "generator": "tests/test_strength.py::test_the_order_designs_pin_loads_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-e6b25809e5918cbd"
+ "source_key": "gen-052b86647fdab1ab"
 }

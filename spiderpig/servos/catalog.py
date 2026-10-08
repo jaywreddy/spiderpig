@@ -129,7 +129,8 @@ STS3215 = register_servo(ServoSpec(
     # centre plates. Plug: Molex 50-37-5033 (5264, 3 circuits) 9.9 x 3.9 x 8.0 [Molex via
     # distributors]; about 3-3.5 of it stands beyond the rear face (a clone header drawing)
     # and its wires, turned toward +x, about 2.5 more. One socket per servo, on its own +y
-    # side, fed by a Y cable (the user's decision of 2026-10-08), so the two servos' plugs
+    # side, its own cable to one of the driver board's two bus ports (the user's decision
+    # of 2026-10-08, the board's ports found the same day), so the two servos' plugs
     # don't oppose. The wires leave the plug's top at its 2.5 mm pitch: 6.3 across with a
     # 1.3 mm wire (wire_w); each servo's channel is centred on its own plug. One hand
     # measurement remains: the plug-plus-wire height (a plug seated, its wires laid flat

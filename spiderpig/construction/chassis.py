@@ -36,7 +36,7 @@ where the sockets are: a shank hole keeps at least this to the window in every p
 pass, and a head recess closer than this opens into the window (:func:`_recess_bridges`:
 the recess only clears the head, which bears on the plate under it). Elsewhere the plates
 keep 2 x t (:func:`tie_locals`, :func:`recess_wall`)."""
-BUS_Y_CABLE = "bus_y_cable_5264"   # one servo bus to both servos' own sockets
+BUS_CABLE = "servo_bus_cable_5264"  # each servo's own (boxed) cable to a board port
 BUS_WIRE_MARGIN = 1.0
 """The room the centre plates keep past a bus plug's wires (mm): the plug-plus-wire height
 (``BusPorts.height``, 6.0 on the STS3215) is a clone drawing's and a bent wire's estimate,
@@ -690,9 +690,10 @@ def chassis(side: Mechanism, design, z_mid: float, host: dict[str, str],
         info["bus_ports"] = ports.opening
         info["bus_sockets_used"] = ports.used
         if ports.opening != "pocket" and ports.used == "own":
-            # one socket per servo: one Y cable from the driver board feeds both
-            extras.append(BomLine(BUS_Y_CABLE, 1, "bus Y cable: the driver board to each "
-                                  "servo's own socket (one per servo)"))
+            # one socket per servo, each servo's own cable to one of the board's two
+            # bus ports (in the servo's box: on hand)
+            extras.append(BomLine(BUS_CABLE, 2, "bus cables: each servo's own socket to "
+                                  "one of the driver board's two bus ports"))
     info["fastened"] = fastened
     return bodies, extras, info
 
@@ -1078,13 +1079,13 @@ def assembly(view) -> list:
             text = (f"The left servo's own centre plates ({nums(mine)}) on its rear face over "
                     f"the studs, {screw} through them.")
             if face:
-                text += (" Its bus plug (one branch of the Y cable) pushed straight down "
+                text += (" Its bus cable's plug (the cable from its box) pushed straight down "
                          "through the plates' window into the socket on the servo's +y "
                          "side; its wires bent toward +x and laid along its own channel.")
         else:
             text = (f"The right servo's own centre plates ({nums(mine)}) screwed to the right "
                     "servo the same way" + (
-                        ", its plug (the Y cable's other branch) seated through their "
+                        ", its own cable's plug seated through their "
                         "window into its own +y socket, on the robot's other side, its wires "
                         "along its own channel" if face else "")
                     + "; then that servo and its plates onto the studs, rear faces "
@@ -1092,8 +1093,8 @@ def assembly(view) -> list:
         ops.append(Op(CHASSIS, (1 if s == "L" else 3,), whole(*mine, *rear),
                       f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
                       f"plates_{s}",
-                      # the Y cable, its first plug seated here (chassis' BOM line)
-                      extras=(BUS_Y_CABLE,) if face and s == "L" else ()))
+                      # the bus cables, their plugs seated here (chassis' BOM line)
+                      extras=(BUS_CABLE,) if face and s == "L" else ()))
     if middle:
         ops.append(Op(CHASSIS, (2,), whole(*middle), "Middle centre plates",
                       f"The middle centre plates ({nums(middle)}) over the studs"

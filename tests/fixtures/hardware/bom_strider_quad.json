@@ -2230,26 +2230,24 @@
     ]
    },
    {
-    "alternatives": [
-     "https://www.waveshare.com/sr-cable-5264-3pin.htm?sku=34171"
-    ],
+    "alternatives": [],
     "category": "electronics",
-    "cost_usd": null,
+    "cost_usd": 0.0,
     "cut_by": "",
-    "key": "bus_y_cable_5264",
-    "name": "Servo bus Y cable, Molex 5264 3-pin (1 to 2), short",
-    "on_hand": false,
-    "pack_price_usd": null,
-    "pack_qty": 1,
+    "key": "servo_bus_cable_5264",
+    "name": "Servo bus cable, 5264 3-pin (in the STS3215's box)",
+    "on_hand": true,
+    "pack_price_usd": 1.99,
+    "pack_qty": 6,
     "packs": 1,
-    "qty": 1.0,
+    "qty": 2.0,
     "same_pack_as": "",
-    "sku": "",
-    "url": "https://www.google.com/search?q=5264+3+pin+Y+splitter+cable+servo",
-    "vendor": "search",
-    "verified": false,
+    "sku": "34171",
+    "url": "https://www.waveshare.com/sr-cable-5264-3pin.htm?sku=34171",
+    "vendor": "Waveshare",
+    "verified": true,
     "where": [
-     "bus Y cable: the driver board to each servo's own socket (one per servo)"
+     "bus cables: each servo's own socket to one of the driver board's two bus ports"
     ]
    },
    {
@@ -2304,11 +2302,11 @@
   "purchases_usd": 243.69,
   "title": ""
  },
- "engine_version": "0.1.0+15df219866ed",
+ "engine_version": "0.1.0+0a9eccdc7b74",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-e6b25809e5918cbd"
+ "source_key": "gen-052b86647fdab1ab"
 }

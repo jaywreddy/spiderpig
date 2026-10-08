@@ -198,8 +198,8 @@ SIDE_ORDER: tuple[Stage, ...] = (
 WIRING_TEXT = (
     "The bus plugs are already in (the centre plates' steps: the top-entry sockets take a "
     "plug only through the plates' window): each servo's wires from its channel's end at "
-    "the centre plates' +x edge up through the deck's wire slot over it, and the Y cable's "
-    "trunk to the board (connector first), before the deck goes in.",
+    "the centre plates' +x edge up through the deck's wire slot over it to its own one of "
+    "the board's two bus servo ports (connector first), before the deck goes in.",
 )
 
 

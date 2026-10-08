@@ -318,9 +318,12 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   the rear face, vertical 5267-type headers, the plugs in along the servo's +z:
   `ServoSpec.bus_ports` is `opening="face"` (no longer UNVERIFIED; one hand measurement
   remains, the plug-plus-wire height above the rear face). Each servo's plug goes in the
-  socket on its own +y side (`BusPorts.used="own"`), fed by one Y cable (`bus_y_cable_5264`,
-  unpriced: no product found), so the two plugs never oppose and the centre stack holds one
-  plug and its wires (`chassis.centre_stack`). The centre plates get a closed window round
+  socket on its own +y side (`BusPorts.used="own"`), so the two plugs never oppose and the
+  centre stack holds one plug and its wires (`chassis.centre_stack`). First fed by a Y cable
+  (no product found); then, the same day, each servo's own boxed cable to one of the driver
+  board's two bus ports (`servo_bus_cable_5264`, on hand: Waveshare's docs list "Bus Servo
+  Control interfaces", two headers; Seeed's part list puts a "JST Wire" in each servo's
+  box), so no Y cable and no extra cart. The centre plates get a closed window round
   each plug and an open channel |y| <= 4.5 toward +x for its wires (`chassis._port_slots`,
   `PortCut`). Both rear screws per servo are kept: a shank keeps 1 x t to the window, not
   2 x t (`chassis.BUS_WEB_T`), the near head's recess opens into it (`_recess_bridges`), and

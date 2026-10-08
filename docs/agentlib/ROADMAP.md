@@ -88,8 +88,10 @@ The follow-ups after PR #28, each its own branch:
 - **Assembly guide**: a PDF pipeline from the design (the assembly order, each step's
   parts and fasteners, drawn from the build), a prototype first.
 - **STS3215 bus plugs**: done 2026-10-08 (top-entry sockets in the rear face, one per
-  servo on a Y cable, both rear screws kept: DECISIONS.md). One hand measurement remains:
-  the plug-plus-wire height above the rear face (`ServoSpec.bus_ports`, expected 5.5-6.5).
+  servo, each on its own boxed cable to one of the driver board's two bus ports, both rear
+  screws kept: DECISIONS.md). Hand measurements remain: the plug-plus-wire height above the
+  rear face (`ServoSpec.bus_ports`, expected 5.5-6.5) and whether the boxed cable reaches
+  the board.
 - **BOM consolidation**: a study of the BOM: fewer fastener sizes and SKUs, less pack
   waste, cheaper sources.
 - **Speed round 2**: the contract check, the BOM's congruence grouping, the build's

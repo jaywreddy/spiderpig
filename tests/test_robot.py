@@ -460,19 +460,21 @@ def test_the_bus_change_leaves_the_xl_servos_alone(model):
     assert (key, centre_plates(spec, sheet(key).thickness, 1.0)) == want
 
 
-def test_the_robot_buys_one_bus_y_cable(robot):
-    """One socket per servo (2026-10-08): one Y cable from the driver board feeds both
-    servos; no ready-made one was found, so the line is unpriced with a search note."""
-    from spiderpig.construction.chassis import BUS_Y_CABLE
+def test_each_servo_has_its_own_bus_cable_on_hand(robot):
+    """One socket per servo (2026-10-08): each servo's own cable (in its box) to one of the
+    driver board's two bus ports, no Y cable: two on-hand lines, in no cart or total."""
+    from spiderpig.construction.chassis import BUS_CABLE
+    from spiderpig.hardware.bom import ON_HAND, bought
 
     mech = robot("single", 1.0)
     assert [(line.key, line.qty) for line in mech.bom_extras
-            if line.key == BUS_Y_CABLE] == [(BUS_Y_CABLE, 1)]
+            if line.key == BUS_CABLE] == [(BUS_CABLE, 2)]
     assert mech.meta["bus_sockets_used"] == "own"
-    item = get(BUS_Y_CABLE)
+    assert BUS_CABLE in ON_HAND
+    assert not bought(BUS_CABLE)
+    item = get(BUS_CABLE)
     assert item.offer is not None
-    assert item.offer.price_usd is None
-    assert "search" in item.offer.note
+    assert item.offer.price_usd is not None       # the spares are priced
 
 
 @pytest.mark.parametrize("model", ["xl430_w250", "xl330_m288"])

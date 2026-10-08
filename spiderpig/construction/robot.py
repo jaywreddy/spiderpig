@@ -39,7 +39,8 @@ studs then can't be threaded, neither chain turning and the stud's socket buried
 **Bus cables** (the research and the user's decision of 2026-10-08): the STS3215's two
 bus sockets are top-entry headers sunk in its rear face, which is screwed flat to the
 centre plates, so the plugs go in perpendicular to the plates. Each servo uses one socket,
-the one on its own ``+y`` side, fed by a Y cable from the driver board: the two servos'
+the one on its own ``+y`` side, its own cable to one of the driver board's two bus ports:
+the two servos'
 plugs sit on opposite sides of the robot and never oppose, so the stack holds one plug and
 its wires (and :data:`chassis.BUS_WIRE_MARGIN`). The plates carry a closed window round
 each plug and, per servo, its own channel for its wires to their far edge, centred on its

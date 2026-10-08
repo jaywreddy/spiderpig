@@ -208,7 +208,8 @@ class BusPorts:
 
     ``used``: which sockets carry a plug. ``"own"``: one per servo, the one on its own
     ``+y`` side (the two servos face each other mirrored, so their used sockets sit on
-    opposite sides of the robot and their plugs never oppose; a Y cable feeds both, the
+    opposite sides of the robot and their plugs never oppose; each servo's own cable goes to
+    one of the driver board's two bus ports, the
     user's decision of 2026-10-08); ``"both"``: every socket (the plugs of the two servos
     then oppose at the same place). ``plug_len`` is the plug's length along its
     insertion."""
