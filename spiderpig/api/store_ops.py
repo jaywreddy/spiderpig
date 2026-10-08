@@ -1,6 +1,6 @@
-"""A design's handle and its store: :func:`resolve`, :func:`load`, :func:`derive`,
-:func:`compare`, :func:`list_designs`, :func:`gc`, and the stage records every
-operation reads and writes."""
+"""A design's handle and its store: :func:`load`, :func:`derive`, :func:`compare`,
+:func:`list_designs`, :func:`gc`, and the build's and the export's store bookkeeping
+(:func:`design_lock`; resolve and the stage records are :mod:`spiderpig.stages`')."""
 
 
 from __future__ import annotations
@@ -8,7 +8,6 @@ from __future__ import annotations
 import math
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from spiderpig import linkage
 from spiderpig.config import (
@@ -29,10 +28,6 @@ from spiderpig.spec import (
 from spiderpig.stages.records import EDITED_STAGES
 from spiderpig.stages.resolve import resolve
 from spiderpig.store import PROJECT, Store, diff_json, report_doc
-
-if TYPE_CHECKING:
-    pass
-
 
 # ---------------------------------------------------------------------------
 # resolve
