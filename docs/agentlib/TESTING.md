@@ -53,6 +53,14 @@ new engine starts empty), `lint-imports`, and the doc check with `--strict` (blo
 since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
+Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`):
+the slow tests (`-m "slow and not e2e" -n 4`, with node and
+`SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the browser tests (`mise run viewer-build`, Playwright's
+Chromium, `-m e2e`; `SPIDERPIG_SHOTS` screenshots kept as an artifact) and the identity
+gate as a determinism check: CI has no baseline, so it snapshots the tree twice, each in a
+fresh store, and `compare` must say identical. Each job keeps the fabrication cache under
+its own key, starting from the quick job's entries for the same engine.
+
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
 task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
 AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md and ROADMAP.md

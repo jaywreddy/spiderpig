@@ -61,7 +61,7 @@ PR, not committed. The pyright, ruff and CLAUDE.md rows are as merged (`155c8ab`
 | quick-tier coverage of `spiderpig/` | 79.2 % | 85.7 % | W4: + 5 points, met |
 | module tiers, wall | 12-61 s | 16-71 s (load 12-20) | W4: ≤ 20 s, not met under load |
 | largest module | 3315 lines (`crank.py`) | 1145 (`keys.py`) | W5: ≤ 1200, met |
-| pyright errors (without stub noise) | 733 (619) | 28, ratcheted in CI | W6b: ≤ 150, met |
+| pyright errors (without stub noise) | 733 (619) | 28, ratcheted in CI (21 since, "Next") | W6b: ≤ 150, met |
 | ruff `RUF` findings | 117 | 0 (with `C4`, `PERF`, `PIE`, `RET`, `BLE`, `PLE`) | W6b: 0 with the extended set, met |
 | CLAUDE.md lines | 679 | 261 | W7: ≤ 300, met |
 | doc check misses | 48 | 0 (`--strict` in CI) | W7: 0, met |
@@ -80,6 +80,36 @@ own check of the docs mid-edit (`test_doc_check.py`), green once W7's edits land
   itself and had no SSH server on 2026-10-08; the full suite ran locally instead.
 - The demo `klann` quad's audit still fails on jam SF (W8, unchanged; the wobbly demo).
 - The open product items under "Later", below.
+
+## Next (started 2026-10-08)
+
+The follow-ups after PR #28, each its own branch:
+
+- **Assembly guide**: a PDF pipeline from the design (the assembly order, each step's
+  parts and fasteners, drawn from the build), a prototype first.
+- **STS3215 bus plugs**: which way the plugs go into the rear connector housing
+  (`ServoSpec.bus_ports` is UNVERIFIED, and it sets the centre plates' slot and so the one
+  rear screw per servo, "Later" below): measure a servo and a plug, or find the drawing.
+- **BOM consolidation**: a study of the BOM: fewer fastener sizes and SKUs, less pack
+  waste, cheaper sources.
+- **Speed round 2**: the contract check, the BOM's congruence grouping, the build's
+  exports, the tests' start-up and `spiderpig/keys.py` (W3's and W4's targets, still not
+  shown).
+- **The quickfix round** (this list's own branch, 2026-10-08):
+  - the stale material out: the generated architecture page and its broken generator,
+    SCOPE.md moved to `docs/history/`, this status table;
+  - pyright's possible bugs: the booleans' build123d ShapeList (`shapes.difference` /
+    `intersection`: a part its holes split is a `Compound` that `bad_solids` reports, not
+    a list the next boolean fails on; no design reaches it) and `chassis._port_slots`'
+    possibly-`None` ports (unreachable: the XL servos have no `bus_ports`); pyright 28 -> 21;
+  - a nightly workflow (`.github/workflows/nightly.yml`): the slow tests, the browser tests,
+    the identity gate compared with itself; watch its first runs (the browser tests'
+    timed drive on a runner with no GPU, the gate's two snapshots on 4 cores);
+  - `lint-imports` with no exceptions: resolve, the stage records, check and plan moved
+    under bake/build into `spiderpig/stages/`.
+- **pyright's last 21**: JSON-typed returns in `spiderpig/mcp/` and `api/` and attribute
+  reads on `object`-typed parts (`build.py`, `bake.py`, `deck.py`, `store.py`): typing work,
+  none a known bug.
 
 ## Invariants (every workstream, every round)
 
