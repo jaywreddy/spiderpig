@@ -310,13 +310,14 @@ user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers 
 within 1e-9 relative / 1e-6 mm.
 
 **Baseline** (the integration branch: the STS3215 bus sockets, the BOM decisions and the
-assembly guide, `ba68611`, 2026-10-08): `~/.cache/spiderpig/gate/next-ba68611/` on the development
+assembly guide, `320384d`, 2026-10-08): `~/.cache/spiderpig/gate/next-320384d/` on the development
 box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
 (commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
-match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/next-ba68611`. It differs
+match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/next-320384d`. It differs
 from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
 own `bus-39502f7`, `bus2-92d11e4`, `bom-bbf7001`, `bom2-5989d50`, the first
-combined `next-ba41c10` (before the Y cable gave way to the boxed cables) and `master-1eba876` /
+combined `next-ba41c10` and `next-ba68611` (before the boxed cables and the
+congruent centre plates) and `master-1eba876` /
 `master-d53fbf1`) by the bus-socket change, the user's BOM decisions of 2026-10-08 and the
 guide's labels: every diff with its source in `NEXT-gate-diffs.md` (which links
 `BUS-gate-diffs.md` and `BOM-gate-diffs.md`); W8's own from its predecessors in

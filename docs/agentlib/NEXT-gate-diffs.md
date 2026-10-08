@@ -3,7 +3,7 @@
 The combined record of what the integration branch (the STS3215 bus window, the BOM
 decisions and the assembly guide, merged in `bus-window`) does to the gate's six designs
 against W8's baseline `~/.cache/spiderpig/gate/w8-2a130c8/`. The baseline is
-`~/.cache/spiderpig/gate/next-ba68611/` (TESTING.md). Every diff has one of three sources,
+`~/.cache/spiderpig/gate/next-320384d/` (TESTING.md). Every diff has one of three sources,
 each with its own record:
 
 - **bus**: the bus window ([BUS-gate-diffs.md](BUS-gate-diffs.md): its causes 1-8);
@@ -23,10 +23,10 @@ or the two branches' changes to the same number added together.
 
 | design | differences | bus | BOM | both, the same (labels) | both, combined | BOM rows and files matched by key |
 |---|--:|--:|--:|--:|--:|--:|
-| strider_double | 334 | 71 | 164 | 88 | 10 | 1 |
-| strider_quad | 457 | 73 | 264 | 109 | 10 | 1 |
-| klann_lego_quad | 615 | 82 | 14 | 86 | 6 | 427 |
-| klann_quad | 655 | 75 | 18 | 117 | 7 | 438 |
+| strider_double | 333 | 69 | 164 | 90 | 8 | 2 |
+| strider_quad | 456 | 71 | 264 | 111 | 8 | 2 |
+| klann_lego_quad | 618 | 80 | 14 | 88 | 4 | 432 |
+| klann_quad | 658 | 73 | 18 | 119 | 5 | 443 |
 | hoecken_pantograph | 154 | 11 | 95 | 48 | 0 | 0 |
 | dwell_rocker | 218 | 0 | 115 | 49 | 54 | 0 |
 
@@ -35,7 +35,10 @@ labels, the BOM schema both carry). "BOM rows and files matched by key" are the
 `bom.json` purchased and made rows that moved in the list when the bus window's Y-cable
 row was inserted (the gate compares lists by position). Matched by key, field by field,
 every such field is the BOM branch's value or the bus window's. The exceptions are the
-centre plates' `sheet` and the deck plate's DXF, listed under "Combined". dwell_rocker's
+centre plates' `sheet` and the deck plate's DXF, listed under "Combined". Two are the bus
+window's own later changes, made after its branch baseline `bus2-92d11e4` (both sections
+below): the boxed bus cables (`servo_bus_cable_5264` for the Y cable) and the congruent
+centre plates (the made row `centre_plate1` now names `centre_plate4`, its twin). dwell_rocker's
 and hoecken_pantograph's "combined" lines are the gate's per-part lines, which group the
 servo's pad change (bus) and the horn shims' 7 mm rings (B2) under one path.
 
@@ -116,3 +119,20 @@ interfaces", and its photo shows two 3-pin headers. Every STS3215's box holds it
 robots' BOM and ORDER text: the row (`bom.json`, `bom.csv`, `bom.md`); the `search` cart
 gone from ORDER.md (the Strider double has 7 carts again); one fewer unpriced line and
 unverified link in the audit's BOM summary. Totals, parts, plans and DXFs are identical.
+
+
+## The congruent centre plates (`next-ba68611` -> `next-320384d`)
+
+The final review found centre plates 1 and 4, and 2 and 3, were not mirror twins.
+`chassis._merge_close` stretched whichever plug cut came first in its list. In plate 4 that
+was the left channel, widened to y -0.6 along its length. The cut that grows least now
+reaches into the other, so plate k and plate n-1-k are one part, turned a half turn about the
+servo's axis (`tests/test_robot.py`). Against `next-ba68611`, on the four robots, only the
+centre plates change:
+- plates 2, 3 and 4: volume, area, faces;
+- the made rows, 45 -> 44 on the Strider double (`centre_plate1` x2 now names
+  `centre_plate4`);
+- their DXFs: `CP57.5x54_centre_plate1_x2`, where there were `x1` plus `CP59x55.5_centre_plate4_x1`;
+- the cutting estimate, +$0.02 (the Strider double: $349.03 -> $349.05).
+
+Plans, other parts, cut-rule issues and strength are identical.

@@ -651,8 +651,11 @@ def test_the_steering_check_follows_its_runs(quad):
     # 20.5 before W8's D2 added ~1.5 g of printed gap rings), on the manufacturer's CAD
     # servo 20.27, with servo_mismatch 0.031 20.61, with payload_g 1.5 20.03 (all 45). The
     # keyed crank's 16 layers, removed, granted 90; ``--crank printed``'s 12, removed too, 45.
+    # The 0.4 differential is on the edge too: since the congruent 0.063 in x 6 centre plates
+    # (2026-10-08, a few tenths of a gram moved) it tilts the quad 19.94 deg, just under
+    # STEER_TILT: granted (the loop above holds the grant to its run either way).
     assert cfg.crank == "bolt"
-    assert s["turn"] == 0.0
+    assert s["turn"] == 0.4
     assert s["step_deg"] in (45.0, 90.0)
 
 

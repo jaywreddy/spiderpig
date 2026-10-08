@@ -7,7 +7,7 @@ identical to that baseline on all six designs. The bus branch's own baseline was
 `~/.cache/spiderpig/gate/bus-39502f7/`; merged with `t3code/next` (speed round 2 and the
 assembly guide) the baseline is `~/.cache/spiderpig/gate/bus2-92d11e4/` (TESTING.md), which
 differs from `bus-39502f7` only by the guide's labels (below). Merged with the BOM
-decisions the baseline is `next-ba68611`: [NEXT-gate-diffs.md](NEXT-gate-diffs.md)
+decisions the baseline is `next-320384d`: [NEXT-gate-diffs.md](NEXT-gate-diffs.md)
 attributes every diff. The XL330 and XL430 aren't in the gate; their centre sheet, stack and
 rear screws are unchanged (`tests/test_robot.py`).
 
