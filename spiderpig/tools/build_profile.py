@@ -44,12 +44,13 @@ def _targets():
     from spiderpig.hardware import bom as bom_mod
     from spiderpig.hardware import order as order_mod
     from spiderpig.mechanism import Mechanism
+    from spiderpig.stages import planning
 
     return [
         (build_mod, "clear_generated", "template"),
         (api, "config_warnings", "template"),
         (build_mod, "template_for", "template"),
-        (api, "plan_config", "plan"),
+        (planning, "plan_config", "plan"),     # (build reads it from stages.planning)
         (build_mod, "design_side", "plan"),
         (build_mod, "fabricate", "fabricate"),
         (Mechanism, "export_step", "step"),
