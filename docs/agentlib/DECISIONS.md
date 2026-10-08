@@ -309,3 +309,31 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `shapes.pill` as one extruded stadium, mirror-identical prints grouped as "same"
   (`bom._proper_fit`). Each change's gate diff is in [W8-gate-diffs.md](W8-gate-diffs.md);
   the gate baseline is `w8-2a130c8`.
+
+### 2026-10-08: STS3215 bus sockets top-entry, one per servo, both rear screws (user)
+
+- **What:** the research of 2026-10-08 (four sources: Feetech's rear view, Waveshare's photos,
+  an SO-101 build photo, both STEP models) puts the STS3215's two bus sockets in a trench in
+  the rear face, vertical 5267-type headers, the plugs in along the servo's +z:
+  `ServoSpec.bus_ports` is `opening="face"` (no longer UNVERIFIED; one hand measurement
+  remains, the plug-plus-wire height above the rear face). Each servo's plug goes in the
+  socket on its own +y side (`BusPorts.used="own"`), fed by one Y cable (`bus_y_cable_5264`,
+  unpriced: no product found), so the two plugs never oppose and the centre stack holds one
+  plug and its wires (`chassis.centre_stack`). The centre plates get a closed window round
+  each plug and an open channel |y| <= 4.5 toward +x for its wires (`chassis._port_slots`,
+  `PortCut`). Both rear screws per servo are kept: a shank keeps 1 x t to the window, not
+  2 x t (`chassis.BUS_WEB_T`), the near head's recess opens into it (`_recess_bridges`), and
+  the raised pad (relabelled from "connector housing") takes its measured outline grown
+  0.2 mm (`Relief.grow`). The far hole's web to the pad's relief is then 1.62 mm: 1 x t in
+  0.063 in, not in 0.080 in, so `chassis.centre_sheet` takes a sheet thinner than the frame's
+  where it seats more rear screws (0.063 in 5052; under the old slot decision 4's 0.090 in
+  kept one screw per servo). The SO model's "pins" relief is dropped (they are the headers' pins).
+- **Why:** the old "end" slot was wrong (the plugs go in perpendicular to the plates), and two
+  opposed plugs would need twice the stack; the far rear hole was lost to the pad's relief,
+  not to the slot.
+- **Warnings left** (errors 0): each end plate's far rear hole 1.62 mm from the pad's relief
+  (merged with the window and channel, open to the edge), each head plate's rear tie hole
+  2.91 mm from the far head recess bridged into the pad's relief; both over 1 x t, under 2 x t.
+- **Where:** `spiderpig/servos/spec.py`, `spiderpig/servos/catalog.py`,
+  `spiderpig/construction/chassis.py`, `spiderpig/hardware/electronics.py`; the gate diffs in
+  [BUS-gate-diffs.md](BUS-gate-diffs.md).

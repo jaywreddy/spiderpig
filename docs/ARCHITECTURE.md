@@ -1198,10 +1198,15 @@ them (no adhesive). The ties move along the servo until their holes are 2 x t of
 servo's screw holes and recesses (`chassis.tie_locals`, `tie_neighbours`, which the
 underside reads too); the centre plates' outline keeps 2 x t round each rear screw recess
 (`chassis.recess_wall`), and their bump reliefs have 1 mm corners (`RELIEF_CORNER`). The
-servo's bus sockets are in its rear connector housing, so `ServoSpec.bus_ports` gives the
-centre plates an open slot from the housing to their far edge (`chassis._port_slots`;
-`opening="pocket"`, a closed pocket with no access, is kept to compare; the
-rear holes within 2 x t of it are dropped, so each servo keeps one rear screw). The
+servo's bus sockets are top-entry headers sunk in its rear face (the research of
+2026-10-08), so `ServoSpec.bus_ports` (`opening="face"`) gives the centre plates a closed
+window round each servo's plug, in the socket on its own +y side (`used="own"`: the two
+plugs never oppose, a Y cable feeds both), and an open channel for its wires to their far
+edge (`chassis._port_slots`; `"end"` and `"pocket"` are kept to compare). A shank hole
+keeps 1 x t to them (`chassis.BUS_WEB_T`, the user's relaxation of 2026-10-08) and a head
+recess closer opens into the window, so each servo keeps both rear screws; the far one's
+web to the raised pad's relief (its measured outline, `Relief.grow`) sets the centre sheet
+below the frame's where that seats more screws (`chassis.centre_sheet`). The
 STS3215's rear idler horn stays in its box (`Idler.fitted`; `servos.model.unfit_idler` cuts
 it from the CAD model), and the plates clear its 6 mm boss with a round relief
 (`Relief.round`, `chassis.RoundRelief`). Reliefs closer than the service's web are merged

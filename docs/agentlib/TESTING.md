@@ -290,13 +290,15 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (W8, `2a130c8`, engine `0.1.0+e91ed4bc0da8`):
-`~/.cache/spiderpig/gate/w8-2a130c8/` on the development box (`/root/.cache/...`),
+**Baseline** (the STS3215 bus sockets, `90919f7`, 2026-10-08):
+`~/.cache/spiderpig/gate/bus-90919f7/` on the development box (`/root/.cache/...`),
 one `<design>.json` per design, their logs and `snapshot.json` (commit, branch, time).
-Compare against it from any worktree whose `spiderpig/` should match W8's output:
-`mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8`. It differs from the
-previous baselines `master-1eba876` / `master-d53fbf1` (kept) by W8's approved output
-changes, each listed in `W8-gate-diffs.md`.
+Compare against it from any worktree whose `spiderpig/` should match its output:
+`mise run gate -- compare ~/.cache/spiderpig/gate/bus-90919f7`. It differs from the
+previous baseline `w8-2a130c8` (W8, `2a130c8`, engine `0.1.0+e91ed4bc0da8`; kept, as are
+`master-1eba876` / `master-d53fbf1`) by the bus-socket change's approved output changes,
+each listed in `BUS-gate-diffs.md`; `w8-2a130c8` differs from those older ones by W8's,
+in `W8-gate-diffs.md`.
 
 ## Rules for a module package
 

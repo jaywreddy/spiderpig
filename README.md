@@ -224,7 +224,7 @@ mise run test-planner   # a module tier: linkage, planner, construction, hardwar
 mise run test-quick     # every module's fast tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-viewer    # the viewer's typecheck and vitest
 mise run remote-test    # the full suite on the remote runner (AGENTS.md)
-mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # did a product edit move a part?
+mise run gate -- compare ~/.cache/spiderpig/gate/bus-90919f7   # did a product edit move a part?
 ```
 
 [docs/agentlib/TESTING.md](docs/agentlib/TESTING.md) has the tiers, markers, the caches, the
