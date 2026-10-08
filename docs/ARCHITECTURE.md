@@ -2264,7 +2264,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `walk.py` | 1,047 | the quasi-static walking model | `test_walk.py`, `test_viewer_parity.py` |
 | `server/` | 1,125 | FastAPI app, live reload, `/ws/sim` | `test_walk.py`, `test_view.py`, `test_server_hardening.py`, browser tests |
 | `spec.py` | 920 | Spec v1, targets, validation, schema | `test_spiderpig_api.py` |
-| `api/` | 2,587 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `api/` | 1,954 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `stages/` | 791 | resolve, the stage records, check, plan and `plan_config`, under bake and build (the API re-exports them) | `test_spiderpig_api.py`, `test_spiderpig_store.py` |
 | `design.py` | 386 | the handle, ids, the engine version, `Part` | `test_spiderpig_api.py` |
 | `failure.py` | 274 | failures and patches | `test_spiderpig_api.py` |
 | `verify.py` | 788 | verify levels and rows | `test_spiderpig_api.py` |

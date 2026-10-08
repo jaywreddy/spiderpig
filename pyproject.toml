@@ -134,7 +134,7 @@ patch = ["subprocess"]
 skip_empty = true
 
 # The engine's layers (docs/agentlib/ROADMAP.md, W5): a layer imports only those under it.
-# `uv run lint-imports` (`mise run lint`, CI); each exception names its reason.
+# `uv run lint-imports` (`mise run lint`, CI), with no exceptions.
 [tool.importlinter]
 root_package = "spiderpig"
 
@@ -148,20 +148,14 @@ layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
     "spiderpig.api",
     "spiderpig.bake | spiderpig.build | spiderpig.strength",
-    "spiderpig.sim",
+    "spiderpig.sim | spiderpig.stages",
     "spiderpig.fabricate",
     "spiderpig.construction",
     "spiderpig.stack",
     "spiderpig.linkage",
 ]
-# The written exceptions (lazy imports, each in one function):
-ignore_imports = [
-    # `spiderpig bake` / `spiderpig build`'s main() and its up-to-date check plan through the
-    # store (api.plan_config), as every command does; the modules' library functions don't
-    "spiderpig.bake -> spiderpig.api",
-    "spiderpig.build -> spiderpig.api",
-    "spiderpig.uptodate -> spiderpig.api",
-]
+# No written exceptions: `spiderpig bake` / `build` and the build's up-to-date check plan
+# through the store from `spiderpig.stages` (resolve, plan_config), which the API re-exports.
 
 [[tool.importlinter.contracts]]
 name = "hardware and materials sit beside construction"

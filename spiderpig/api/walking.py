@@ -9,7 +9,6 @@ import time
 from spiderpig import linkage
 from spiderpig import walk as walk_model
 from spiderpig.api.reports import WalkReport
-from spiderpig.api.store_ops import _cached, _finish
 from spiderpig.config import (
     BuildConfig,
     ParamError,
@@ -18,6 +17,7 @@ from spiderpig.design import (
     Design,
 )
 from spiderpig.failure import Failure
+from spiderpig.stages.records import _cached, _finish
 
 # ---------------------------------------------------------------------------
 # walk

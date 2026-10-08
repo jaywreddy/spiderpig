@@ -16,6 +16,7 @@ from spiderpig.config import BuildConfig
 from spiderpig.design import jsonable
 from spiderpig.failure import apply_patch, merge_patch
 from spiderpig.stack import verify_plan
+from spiderpig.stages import planning as stages_planning
 from spiderpig.store import STORE_ENV, Store, StoreError, diff_json
 from tests import _api
 
@@ -144,9 +145,9 @@ def test_reports_round_trip_and_the_second_run_hits_the_cache(tmp_path, design, 
     assert [e["op"] for e in store.read_log(d.id)] == ["check", "plan", "walk", "verify:quick"]
 
     # a fresh handle: everything comes from the store, the engine's stages aren't run
-    solved = _count(monkeypatch, api.planning, "design_side")
-    problems = _count(monkeypatch, api.planning, "side_problem")
-    verified = _count(monkeypatch, api.planning, "verify_plan")
+    solved = _count(monkeypatch, stages_planning, "design_side")
+    problems = _count(monkeypatch, stages_planning, "side_problem")
+    verified = _count(monkeypatch, stages_planning, "verify_plan")
     payloads = _count(monkeypatch, api.walk_model, "api_payload")
     back = api.load(d.id, store)
     for stage, rep in reps.items():
@@ -295,8 +296,8 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
     real = d.engine_version
     monkeypatch.setattr(api.store_ops, "engine_version", lambda: "0.0.0+fake")
 
-    solved = _count(monkeypatch, api.planning, "design_side")
-    verified = _count(monkeypatch, api.planning, "verify_plan")
+    solved = _count(monkeypatch, stages_planning, "design_side")
+    verified = _count(monkeypatch, stages_planning, "verify_plan")
     # every fabrication counted; its parts the test cache's (the same design at t = 1)
     fabricated = _count(monkeypatch, api.building, "fabricate_side",
                         instead=lambda d, mech, ties=(): _api.own(
@@ -345,7 +346,7 @@ def test_a_stored_plan_that_no_longer_holds_is_solved_again(tmp_path, design, mo
     doc = json.loads(path.read_text())
     doc["layers"] = dict.fromkeys(doc["layers"], 0)           # every link in the frame plate
     path.write_text(json.dumps(doc))
-    solved = _count(monkeypatch, api.planning, "design_side")
+    solved = _count(monkeypatch, stages_planning, "design_side")
     back = api.load(d.id, store)
     got = api.plan(back)
     assert got.ok

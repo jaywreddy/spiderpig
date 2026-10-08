@@ -914,15 +914,15 @@ def main(argv=None) -> int:
     )
     # build123d logs every builder-less primitive at INFO; keep the profile readable.
     logging.getLogger("build123d").setLevel(max(logging.WARNING, logging.root.level))
-    # the plan through the store (api.plan_config), as build, explain and audit do: the
+    # the plan through the store (stages.plan_config), as build, explain and audit do: the
     # stored design's when it holds one (re-made and verified), else solved once and
     # recorded; the bake's fabricate then answers from what plan_config remembered
-    from spiderpig import api
+    from spiderpig.stages.planning import plan_config
     from spiderpig.store import Store
 
     store = Store.of(args.store) if args.store else Store.default()
     try:
-        api.plan_config(args.config, store)
+        plan_config(args.config, store)
     except ValueError as e:
         logger.error("no layer plan: %s", e)
         return 2
