@@ -244,3 +244,57 @@ def test_the_netrf6_lengths_are_made_on_demand_not_at_import():
         assert CATALOG.get(bad) is None
         with pytest.raises(KeyError):
             get(bad)
+
+
+def test_iterating_the_catalog_while_lengths_are_made_never_breaks():
+    """A loop over the catalog (``spec.sheet_keys``, the MCP's cards) that makes a NETRF6
+    length, in its own thread or another, walks a snapshot: no "dictionary changed size
+    during iteration"."""
+    import threading
+
+    from spiderpig.hardware.catalog import CATALOG
+    from spiderpig.spec import sheet_keys
+
+    get("m3_washer")                                # (the catalog loaded)
+    errors: list[BaseException] = []
+
+    def iterate(first: int):
+        try:
+            for n in range(first, first + 40):
+                sheet_keys()
+                for _key in CATALOG:                 # the same loop makes an item too
+                    CATALOG.get(f"pillar_shaft_6_m3_{n / 10:g}")
+                list(CATALOG.items())
+        except BaseException as e:                  # any error fails the test, below
+            errors.append(e)
+
+    def make(first: int):
+        try:
+            for n in range(first, first + 300):
+                CATALOG.get(f"pillar_shaft_6_m3_{n / 10:g}")
+        except BaseException as e:
+            errors.append(e)
+
+    threads = [threading.Thread(target=f, args=(n,)) for f, n in
+               ((iterate, 2000), (iterate, 2100), (make, 2200), (make, 2600))]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+
+
+def test_a_length_made_on_demand_takes_its_sourced_offer_first(monkeypatch):
+    from spiderpig.hardware import sources
+    from spiderpig.hardware.catalog import CATALOG, Offer
+
+    key = "pillar_shaft_6_m3_77.7"
+    dict.pop(CATALOG, key, None)
+    page = Offer("MISUMI", "https://example.com/netrf6-77.7", "NETRF6-77.7", verified=True)
+    monkeypatch.setitem(sources.SOURCES, key, (page,))
+    try:
+        item = get(key)
+        assert item.offer == page
+        assert len(item.offers) == 2                 # the item's own offer after it
+    finally:
+        dict.pop(CATALOG, key, None)

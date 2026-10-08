@@ -18,6 +18,7 @@ listed, flagged in the BOM.
 from __future__ import annotations
 
 import math
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -73,21 +74,30 @@ class Item:
 
 
 _FACTORIES: list[tuple[str, Callable[[str], Item | None]]] = []
+_LOCK = threading.RLock()     # the catalog's writes, and the snapshots it is iterated by
 
 
 class _Catalog(dict):
     """The registered items by key, plus the families made on demand: a key no item has
     yet goes to the factory of its prefix (:func:`register_factory`), which registers it
-    (``CATALOG[key]``, ``CATALOG.get(key)``, ``key in CATALOG``, :func:`get`). Iterating
-    lists what is registered so far."""
+    (``CATALOG[key]``, ``CATALOG.get(key)``, ``key in CATALOG``, :func:`get`), its sourced
+    offers first (:func:`hardware.sources.sourced`). Iterating it (``for``, ``items()``,
+    ``keys()``, ``values()``) walks a snapshot of what is registered so far, so a lookup
+    that makes an item, in this thread or another, never changes a dict being iterated."""
 
     def _make(self, key) -> Item | None:
         if not isinstance(key, str):
             return None
-        _load()
+        _load()                 # (outside the lock: loading imports, which register)
         for prefix, make in _FACTORIES:
             if key.startswith(prefix) and (item := make(key)) is not None:
-                register(item)
+                from spiderpig.hardware.sources import sourced
+
+                item = sourced(item)
+                with _LOCK:
+                    if dict.__contains__(self, key):    # another thread made it first
+                        return dict.__getitem__(self, key)
+                    register(item)
                 return item
         return None
 
@@ -106,15 +116,36 @@ class _Catalog(dict):
     def __contains__(self, key) -> bool:
         return dict.__contains__(self, key) or self._make(key) is not None
 
+    def __setitem__(self, key, value) -> None:
+        with _LOCK:
+            dict.__setitem__(self, key, value)
+
+    def _snapshot(self) -> list[tuple[str, Item]]:
+        with _LOCK:
+            return list(dict.items(self))
+
+    def __iter__(self):
+        return iter([k for k, _ in self._snapshot()])
+
+    def keys(self):
+        return [k for k, _ in self._snapshot()]
+
+    def values(self):
+        return [v for _, v in self._snapshot()]
+
+    def items(self):
+        return self._snapshot()
+
 
 CATALOG: dict[str, Item] = _Catalog()
 
 
 def register(*items: Item) -> None:
-    for it in items:
-        if dict.__contains__(CATALOG, it.key) and dict.__getitem__(CATALOG, it.key) != it:
-            raise ValueError(f"catalog key {it.key!r} registered twice with different data")
-        CATALOG[it.key] = it
+    with _LOCK:
+        for it in items:
+            if dict.__contains__(CATALOG, it.key) and dict.__getitem__(CATALOG, it.key) != it:
+                raise ValueError(f"catalog key {it.key!r} registered twice with different data")
+            CATALOG[it.key] = it
 
 
 def register_factory(prefix: str, make: Callable[[str], Item | None]) -> None:

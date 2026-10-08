@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from spiderpig.hardware.catalog import CATALOG, Offer
+from spiderpig.hardware.catalog import CATALOG, Item, Offer
 
 _MCM = "McMaster-Carr"
 _MCM_NOTE = ("part number from McMaster's spec table (reli-tool.com mirror) or listing; "
@@ -357,13 +357,20 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
 }
 
 
+def sourced(item: Item) -> Item:
+    """``item`` with its sourced offers (:data:`SOURCES`) first, its own after (minus any
+    with the same URL); the item itself when none is sourced."""
+    offers = SOURCES.get(item.key)
+    if offers is None:
+        return item
+    urls = {o.url for o in offers}
+    return replace(item, offers=offers + tuple(o for o in item.offers if o.url not in urls))
+
+
 def apply() -> None:
-    """Put each sourced offer first on its item (the item's own offers follow, minus any
-    with the same URL)."""
-    for key, offers in SOURCES.items():
+    """Put each sourced offer first on its item (at load; an item a catalog factory makes
+    later is sourced as it is made, :func:`sourced`)."""
+    for key in SOURCES:
         item = CATALOG.get(key)
-        if item is None:
-            continue
-        urls = {o.url for o in offers}
-        CATALOG[key] = replace(item, offers=offers + tuple(o for o in item.offers
-                                                           if o.url not in urls))
+        if item is not None:
+            CATALOG[key] = sourced(item)

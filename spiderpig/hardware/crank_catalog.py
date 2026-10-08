@@ -141,8 +141,7 @@ PILLAR_SHAFT_SEEN: tuple[float, ...] = (62.0, 62.4, 127.5, 128.0, 128.1)
 def pillar_shaft(length: float) -> str:
     """The catalog key of the NETRF6 standoff ``length`` mm long (registered on first use)."""
     key = f"pillar_shaft_6_m3_{length:g}"
-    if not dict.__contains__(CATALOG, key) and (item := _pillar_shaft_of(key)) is not None:
-        register(item)
+    CATALOG.get(key)            # (made through the catalog's factory: sourced, locked)
     return key
 
 
