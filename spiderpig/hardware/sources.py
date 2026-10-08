@@ -271,14 +271,6 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
     "m4_washer": (Offer(_MCM, "https://www.mcmaster.com/93475A230/", "93475A230", pack_qty=100,
                         verified=True, note="18-8 stainless M4 washer, 4.3 x 9.0 (McMaster's "
                                             "page title, rendered 2026-10-05)"),),
-    "m3_heat_set_insert": (Offer("Amazon", "https://www.amazon.com/dp/B0DQL4ZSCP", "B0DQL4ZSCP",
-                                 pack_qty=100, price_usd=4.49, verified=True,
-                                 note="M3 x 5.7 x 4.6 brass heat-set inserts, 100; page rendered "
-                                      "2026-10-08 (the Amazon cart the electronics fill)"),
-                           Offer("CNC Kitchen (US store)", "https://cnckitchenus.store/"
-                                 "products/heat-set-insert-m3-x-5-7-100-pieces", "TC-M3x5.7",
-                                 pack_qty=100, price_usd=10.90, verified=True,
-                                 note="4.6 OD x 5.7 long, for a 4.0 mm hole"),),
     "m2_self_tap_6": (
         Offer("Accu", "https://accu-components.com/us/torx-pan-head-thread-forming-screws/"
               "993377-SHPRC-M2-6-CS-BZP", "SHPRC-M2-6-CS-BZP", pack_qty=1, price_usd=0.46,

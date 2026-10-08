@@ -647,7 +647,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
                             cfg.crank_sheet])
     lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
-    # (not the deck's heat-set inserts: a robot whose deck doesn't fit buys none, and a
+    # (not the deck's captive nuts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))

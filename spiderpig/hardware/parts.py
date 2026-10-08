@@ -173,18 +173,6 @@ register(
           Offer("Amazon", "https://www.amazon.com/dp/B0DNM4HK5Q", "B0DNM4HK5Q", pack_qty=140,
                 note="in the 631-pc M3 kit")),
          dims={"af": 5.5, "h": 2.4, "d": 3.0}),
-    Item("m3_heat_set_insert", "M3 x 5.7 brass heat-set insert (for printed parts)", "insert",
-         (Offer("3DJake", "https://www.3djake.com/cnc-kitchen/threaded-inserts-m3-standard",
-                "CNC Kitchen M3 standard", pack_qty=100, price_usd=11.37, verified=True),
-          Offer("CNC Kitchen", "https://cnckitchen.store/products/heat-set-insert-m3-x-5-7-100-"
-                "pieces", pack_qty=100, verified=True, note="EUR 9.40"),
-          Offer("ruthex", "https://www.ruthex.de/en/products/ruthex-gewindeeinsatz-m3-100-stuck-"
-                "rx-m3x5-7-messing-gewindebuchsen", "RX-M3x5.7", pack_qty=100, verified=True),
-          Offer("McMaster-Carr", "https://www.mcmaster.com/94180A331/", "94180A331",
-                note="tapered insert, 3.8 mm installed length: a different size")),
-         dims={"od": 4.6, "length": 5.7, "hole_d": 4.0, "min_wall": 1.6, "d": 3.0},
-         notes="Hole 4.0 mm, at least 1.6 mm of plastic around it (CNC Kitchen). "
-               "Press in with a soldering iron; not for laser-cut sheet."),
 )
 
 # ---------------------------------------------------------------------------

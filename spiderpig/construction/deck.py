@@ -19,12 +19,17 @@ Construction
   bar on the inner plate's servo-side face, screwed to it (no glue since 2026-10-04) by two
   M3 button heads up through the plate from the leg side into M3 nuts dropped into traps
   in the rail (their heads in the clearance gap under the plate, the drive group's claim;
-  :class:`robot.FrameTies` cuts the holes: :func:`rail_screw_points`). Two M3 heat-set inserts
-  per rail, vertical, take the deck's screws. The rails sit 1 mm above the chassis' top.
+  :class:`robot.FrameTies` cuts the holes: :func:`rail_screw_points`). Two captive M3 nuts
+  per rail take the deck's screws (since 2026-10-08, the user's decision: no heat-set
+  inserts, no soldering iron): each in a hex pocket under a :data:`NUT_ROOF` mm roof of the
+  rail's top face, pushed in sideways through a slot from the rail's bay face (the face
+  toward the other rail) before the deck goes on; the screw comes down through the deck
+  and the roof into it, and the nut pulls up against the roof. The rails sit 1 mm above the
+  chassis' top.
 * **Deck plate** (laser-cut, the build's sheet): 136 x 71 mm, 1 mm from each inner
   plate, centred over the servos, screwed to the rails with four M3 button heads into the
-  inserts (centred in the rails, or moved 1.5 mm into the bay where a path notch would
-  leave a screw hole under the sheet's least web: :func:`insert_z`). Cut-outs: the screws'
+  captive nuts (centred in the rails, or moved 1.5 mm into the bay where a path notch would
+  leave a screw hole under the sheet's least web: :func:`nut_z`). Cut-outs: the screws'
   clearance holes, the board's four M2.5 holes, two strap slots beside the battery, a
   6.5 mm hole for the switch's 1/4-40 bushing and two 12 x 6 mm
   wire slots, one each side of the board over a servo: each takes that servo's bus
@@ -72,7 +77,8 @@ Construction
   else; an audit problem).
 
 Assembly (the last step of :data:`construction.robot.ASSEMBLY`): screw the rails to the
-inner plates with the sides (before the legs), fit the electronics to the deck (the cradle
+inner plates with the sides (before the legs), push each rail's two deck nuts into their
+slots from the bay face, fit the electronics to the deck (the cradle
 screwed on, wires tied down through the cable-tie slots beside each wire slot), join the
 sides, lower the deck between the plates onto the rails and screw it down.
 
@@ -91,7 +97,6 @@ from build123d import Axis, Box, Cylinder, Part, Pos, scale
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
-    BRASS,
     MODEL_GAP,
     STEEL,
     seat_keepouts,
@@ -114,14 +119,15 @@ DECK_GAP = 1.0           # deck plate edge to an inner plate's face (mm): frame 
 FLOOR_MARGIN = 1.0       # a rail's underside above the chassis' top
 HALF_LEN = 68.0          # the deck plate's half length along x (mm)
 RAIL_HALF = 30.0         # a rail's half length
-RAIL_T = 11.0            # a rail's thickness (z): 3.5 mm insert walls, and the deck's
-#                          screw holes 3.3 mm from the plate's edge
-RAIL_H = 8.0             # a rail's height (y): the insert's 5.7 mm and a 1.3 mm floor
-INSERT_X = 24.0          # the rails' inserts at x_c +- this
-INSERT_ZS = (RAIL_T / 2, 7.0)    # the inserts' distance from the inner plate's face, tried
-#                          in turn: centred in the rail, else 1.5 mm further into the bay
-#                          (2.0 mm of wall to the rail's bay face, over the insert's 1.6),
+RAIL_T = 11.0            # a rail's thickness (z): the deck screws' holes 3.3 mm from the
+#                          deck plate's edge
+RAIL_H = 8.0             # a rail's height (y): the deck nut's roof, pocket and a floor
+NUT_X = 24.0             # the rails' deck nuts (and the deck's screws) at x_c +- this
+NUT_ZS = (RAIL_T / 2, 7.0)       # the deck nuts' distance from the inner plate's face, tried
+#                          in turn: centred in the rail, else 1.5 mm further into the bay,
 #                          where a path notch would leave the deck screw's hole too little web
+NUT_ROOF = 1.6           # the rail's plastic over a deck nut (the screw pulls it up into it)
+NUT_FIT = 0.15           # a nut pocket's clearance round the nut (each side; and its slot)
 SPIGOT_XS = (12.0, 16.0, 8.0, 20.0)      # rail screw offsets tried, nearest-first preference
 RAIL_SCREW = screw("bhcs", "3")          # up through the inner plate from the leg side
 RAIL_HOLE = 3.4          # its hole in the inner plate (ISO 273 medium; over the 5052's 3.175)
@@ -280,7 +286,7 @@ class DeckLayout:
     z_in: float          # the left inner plate's servo-side face (negative)
     z_leg: float         # the left inner plate's leg-side face
     spigot_x: float
-    insert_z: float = RAIL_T / 2    # the inserts' (and deck screws') distance from z_in
+    nut_z: float = RAIL_T / 2       # the deck nuts' (and deck screws') distance from z_in
 
     @property
     def deck_top(self) -> float:
@@ -318,8 +324,8 @@ class DeckLayout:
         return [(self.x_c, s * WIRE_SLOT_Z) for s in (-1, 1)]
 
     def screws(self) -> list[tuple[float, float]]:
-        zc = self.z_in + self.insert_z
-        return [(self.x_c + s * INSERT_X, side * -zc) for side in (-1, 1) for s in (-1, 1)]
+        zc = self.z_in + self.nut_z
+        return [(self.x_c + s * NUT_X, side * -zc) for side in (-1, 1) for s in (-1, 1)]
 
     def switch(self) -> tuple[float, float]:
         return self.x_c + SWITCH_X, SWITCH_Z
@@ -338,20 +344,52 @@ def layout(design, z_mid: float, place: DeckPlace) -> DeckLayout:
                       z_in=z_top, z_leg=z_top - plan.t(plan.top), spigot_x=place.spigot_x)
 
 
+def _hex_y(x: float, z: float, af: float, y0: float, y1: float):
+    """A hexagonal prism along y, ``af`` across flats, its flats facing +-x (its corners
+    toward +-z)."""
+    slab = Box(af, y1 - y0, 2 * af)
+    return (slab & slab.rotate(Axis.Y, 60) & slab.rotate(Axis.Y, 120)).move(
+        Pos(x, (y0 + y1) / 2, z))
+
+
+def deck_nut(lay: DeckLayout) -> dict:
+    """A deck screw's captive nut in its rail: the nut (``af``, ``h``), its y span (``y0``,
+    ``y1``: :data:`NUT_ROOF` under the rail's top face) and the deck screw's length (through
+    the deck plate and the roof, the nut's whole thread and 0.3 mm past it)."""
+    nut = get("m3_nut").dims
+    af, h = float(nut.get("af", RAIL_NUT_AF)), float(nut.get("h", RAIL_NUT_H))
+    y1 = lay.deck_y - NUT_ROOF
+    length = pick_length(lay.pitch + NUT_ROOF + h + 0.3, DECK_SCREW.lengths)
+    return {"af": af, "h": h, "y0": y1 - h, "y1": y1, "screw_l": length}
+
+
 def _rail(lay: DeckLayout, side: str):
-    """A side's rail, its deck inserts' pockets and its two screws' bores and nut traps cut
-    (world coordinates): the nut drops into its trap from the rail's top face before the
-    deck goes on; the screw comes up through the inner plate from the leg side."""
-    ins = get("m3_heat_set_insert").dims
+    """A side's rail, its deck nuts' pockets and slots and its two rail screws' bores and
+    nut traps cut (world coordinates): a rail screw's nut drops into its trap from the
+    rail's top face, a deck nut slides into its hex pocket from the rail's bay face, both
+    before the deck goes on; the rail screw comes up through the inner plate from the leg
+    side, the deck screw down through the deck. :class:`ConstructionError` where a deck
+    nut's pocket would meet a rail screw's trap (less than ``min_wall`` between)."""
     sign = 1.0 if side == "L" else -1.0           # the right rail is the left one mirrored
     z_face, z_far = lay.z_in, lay.z_in + RAIL_T
     zs = sorted((sign * z_face, sign * z_far))
     y0, y1 = lay.rail_y0, lay.deck_y
     part = _box(lay.x_c - RAIL_HALF, lay.x_c + RAIL_HALF, y0, y1, *zs)
-    pocket = max(ins["length"], 5.0) + 1.0
-    zc = sign * (lay.z_in + lay.insert_z)
+    dn = deck_nut(lay)
+    af = dn["af"] + 2 * NUT_FIT
+    ny0, ny1 = dn["y0"] - NUT_FIT, dn["y1"] + NUT_FIT
+    zc = sign * (lay.z_in + lay.nut_z)
+    bore_y0 = lay.deck_top - dn["screw_l"] - 1.0
     for s in (-1, 1):
-        part = part - _cyl_y(lay.x_c + s * INSERT_X, zc, ins["hole_d"] / 2, y1 - pocket, y1 + 1)
+        x = lay.x_c + s * NUT_X
+        part = difference(part, _cyl_y(x, zc, CLEARANCE["3"] / 2, bore_y0, y1 + 1),
+                          _hex_y(x, zc, af, ny0, ny1),
+                          _box(x - af / 2, x + af / 2, ny0, ny1,
+                               *sorted((zc, sign * (z_far + 1)))))
+    reach = af / math.sqrt(3) + 1.0              # the pocket's corner, and a wall
+    if NUT_X - lay.spigot_x < reach + RAIL_NUT_AF / 2 + 0.15:
+        raise ConstructionError(f"a deck nut's pocket at x_c +- {NUT_X:g} mm would meet a rail "
+                                f"screw's nut trap at x_c +- {lay.spigot_x:g} mm")
     ym = (y0 + y1) / 2
     for s in (-1, 1):
         x = lay.x_c + s * lay.spigot_x
@@ -368,25 +406,25 @@ Box6 = tuple[float, float, float, float, float, float]     # x0, x1, y0, y1, z0,
 
 def lowered(name: str) -> bool:
     """A body that goes in with the deck, lowered onto the rails as one unit (the plate and
-    everything fitted to it on the bench); the rails, their screws, nuts and inserts are on
-    the inner plates already, the deck's four screws go in after."""
+    everything fitted to it on the bench); the rails, their screws and nuts (the deck's
+    captive ones too) are on the inner plates already, the deck's four screws go in
+    after."""
     if "deck" not in name:
         return False
-    return not ("deck_rail" in name or "deck_insert" in name
-                or re.fullmatch(r"deck_screw\d+", name) is not None)
+    return not ("deck_rail" in name or re.fullmatch(r"deck_screw\d+", name) is not None)
 
 
-def insert_z(lay: DeckLayout, notches: Sequence[tuple[float, ...]], web: float) -> float:
-    """The first of :data:`INSERT_ZS` whose deck screw holes keep ``web`` (the deck sheet's
+def nut_z(lay: DeckLayout, notches: Sequence[tuple[float, ...]], web: float) -> float:
+    """The first of :data:`NUT_ZS` whose deck screw holes keep ``web`` (the deck sheet's
     least hole-to-edge distance) to every path notch (:func:`path_notches`); the centred
-    one when none does. ``klann_lego``'s B pillars' inner heads stand at the inserts' x:
-    their notches came 0.30 mm from the screw holes (2026-10-05)."""
+    one when none does. ``klann_lego``'s B pillars' inner heads stand at the deck screws'
+    x: their notches came 0.30 mm from the screw holes (2026-10-05)."""
     r = CLEARANCE["3"] / 2
-    for zi in INSERT_ZS:
-        pts = replace(lay, insert_z=zi).screws()
+    for zi in NUT_ZS:
+        pts = replace(lay, nut_z=zi).screws()
         if all(_rect_dist(p, *n) - r >= web - EPS_D for p in pts for n in notches):
             return zi
-    return INSERT_ZS[0]
+    return NUT_ZS[0]
 
 
 def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
@@ -511,23 +549,22 @@ def _charger_place(lay: DeckLayout, ch: dict, yu: float, obstacles: Sequence[Box
 def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                obstacles: Sequence[Box6] = ()
                ) -> tuple[list[Body], list[BomLine], dict, list[tuple[str, str]]]:
-    """The rails, inserts, screws, deck plate and electronics (world coordinates): bodies,
+    """The rails, their nuts, screws, deck plate and electronics (world coordinates): bodies,
     the purchases they don't model, what ``mech.meta["deck"]`` says, and the fastened
     pairs. ``obstacles``: the boxes of the static parts between the inner plates (the
     chassis', the pillars' inner heads), which the deck must lower past: the plate is
     notched round them (:func:`path_notches`) and the charger steps back from the front
     edge; another lowered part in one's way is a :class:`ConstructionError`."""
     lay = layout(design, z_mid, place)
-    lay = replace(lay, insert_z=insert_z(lay, path_notches(lay, obstacles),
-                                         sheet(design.config.sheet).min_edge))
-    ins = get("m3_heat_set_insert").dims
+    lay = replace(lay, nut_z=nut_z(lay, path_notches(lay, obstacles),
+                                   sheet(design.config.sheet).min_edge))
     bodies: list[Body] = []
     fastened: list[tuple[str, str]] = []
     extras: list[BomLine] = []
     yd, yt, hw = lay.deck_y, lay.deck_top, lay.half_w
 
     # rails, screwed to the inner plates (no glue: the deck and its rails come off), and
-    # their inserts
+    # the deck's captive nuts in them
     for s in ("L", "R"):
         sign = 1.0 if s == "L" else -1.0
         bodies.append(Body(name=f"{s}.deck_rail", part=_rail(lay, s), rigid_with=host[s],
@@ -549,22 +586,23 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                        Body(name=f"{s}.deck_rail_nut{i}", part=nut, rigid_with=host[s],
                             fab="purchased", bom_key="m3_nut", color=STEEL)]
             fastened.append((f"{s}.deck_rail_screw{i}", f"{s}.deck_rail_nut{i}"))
-    length = pick_length(lay.pitch + min(5.0, ins["length"]), DECK_SCREW.lengths)
+    dn = deck_nut(lay)
+    length = dn["screw_l"]
     key = DECK_SCREW.key(length)
-    per_side = {"L": 0, "R": 0}         # each side's inserts numbered from 0: the right
-    for i, (x, z) in enumerate(lay.screws()):     # side's are the left's mirrored, by name
+    per_side = {"L": 0, "R": 0}         # each side's nuts numbered from 0: the right side's
+    for i, (x, z) in enumerate(lay.screws()):     # are the left's mirrored, by name
         s = "L" if z < 0 else "R"
         k = per_side[s]
         per_side[s] += 1
-        insert = (_cyl_y(x, z, ins["hole_d"] / 2 - MODEL_GAP, yd - ins["length"], yd)
-                  - _cyl_y(x, z, DECK_SCREW.d / 2, yd - ins["length"] - 1, yd + 1))
+        nut = (_cyl_y(x, z, dn["af"] / 2, dn["y0"], dn["y1"])
+               - _cyl_y(x, z, 1.5, dn["y0"] - 1, dn["y1"] + 1))
         scr = union([_cyl_y(x, z, DECK_SCREW.head_d / 2, yt, yt + DECK_SCREW.head_h),
                      _cyl_y(x, z, DECK_SCREW.d / 2 - 0.05, yt - length, yt)])
-        bodies += [Body(name=f"{s}.deck_insert{k}", part=insert, rigid_with=host[s],
-                        fab="purchased", bom_key="m3_heat_set_insert", color=BRASS),
+        bodies += [Body(name=f"{s}.deck_rail_deck_nut{k}", part=nut, rigid_with=host[s],
+                        fab="purchased", bom_key="m3_nut", color=STEEL),
                    Body(name=f"deck_screw{i}", part=scr, rigid_with=host["L"],
                         fab="purchased", bom_key=key, color=STEEL)]
-        fastened.append((f"deck_screw{i}", f"{s}.deck_insert{k}"))
+        fastened.append((f"deck_screw{i}", f"{s}.deck_rail_deck_nut{k}"))
 
     # the deck plate, notched where it passes the pillars' inner heads on its way down
     plate = _box(lay.x_c - HALF_LEN, lay.x_c + HALF_LEN, yd, yt, -hw, hw)
@@ -732,7 +770,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                                 f"{b} on the way down")
     info = {"fitted": True, "x_c": rounded(lay.x_c, 2), "deck_y": rounded(yd, 2),
             "rail_y": rounded(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, rounded(2 * hw, 2)],
-            "screw": key, "spigot_x": place.spigot_x, "insert_z": lay.insert_z,
+            "screw": key, "spigot_x": place.spigot_x, "nut_z": lay.nut_z,
             "notches": [[rounded(v, 2) for v in n] for n in notches],
             "charger_setback_mm": rounded(lay.x_c + HALF_LEN - cx1, 2),
             "charger_z_mm": [rounded(cz0, 2), rounded(cz1, 2)], "charger_pad_mm": rounded(pad, 2),

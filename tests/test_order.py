@@ -34,7 +34,7 @@ def test_an_unpriced_line_is_estimated_from_a_priced_alternative():
 def test_order_markdown_carts_uploads_and_shop_supplies():
     bom = Bom(purchased=[
         _row("m3_nut", "M3 hex nut", "McMaster-Carr", 6, pack_qty=100),
-        _row("m3_heat_set_insert", "M3 insert", "CNC Kitchen", 4, pack_qty=100, price=10.9),
+        _row("m3_washer", "M3 washer", "CNC Kitchen", 4, pack_qty=100, price=10.9),
         _row("pla_filament", "PLA filament", "Prusa", 0.03, price=29.99),
         _row("al5052_2mm", "5052 sheet", "SendCutSend", 1, price=18.0),
     ], made=[])

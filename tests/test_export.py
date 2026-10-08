@@ -102,7 +102,7 @@ def test_bom_lists_purchases_sheets_and_filament(single_out):
     assert keys["servo_sts3215"]["qty"] == 2
     assert keys["acrylic_3mm"]["qty"] >= 1            # laser sheets
     assert 0 < keys["pla_filament"]["qty"] < 1        # a fraction of a spool
-    assert keys["m3_heat_set_insert"]["qty"] == 4      # the deck's (the ties are standoffs)
+    assert "m3_heat_set_insert" not in keys            # the deck's nuts are captive
     assert any(k.startswith("gobilda_1501_") for k in keys)
     assert any(k.startswith("m2_self_tap_") for k in keys)
     assert bom["cost_usd"] > 0
@@ -118,7 +118,7 @@ def test_side_only_without_dxf(tmp_path):
     bom = json.loads((tmp_path / "bom.json").read_text())
     keys = {r["key"] for r in bom["purchased"]}
     assert "servo_sts3215" in keys
-    assert "m3_heat_set_insert" not in keys
+    assert "esp32_servo_driver" not in keys            # (no deck on a side)
     assert not (tmp_path / "laser").exists()
 
 

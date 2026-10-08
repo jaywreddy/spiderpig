@@ -137,7 +137,7 @@ ASSEMBLY: tuple[str, ...] = (
     "screwed down: two M3 button heads through its ears, nuts under the deck), lowered "
     "straight down between the inner plates past the pillars' inner heads (its notches, "
     "deck.path_notches; deck.deck_path checks the way) onto the rails, and its four "
-    "screws into the rails' inserts.",
+    "screws into the rails' captive nuts.",
 )
 """The robot's assembly order (the default walker: chicago pins, standoff pillars, the hex
 bolt crank, the frame ties): what the pivots' (``construction.pivots.standoff``) and the

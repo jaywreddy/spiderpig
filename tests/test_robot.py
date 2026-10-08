@@ -217,7 +217,7 @@ def test_ties_keep_clear_of_the_servo(design, robot):
 # ---------------------------------------------------------------------------
 
 REQUIRED = (
-    "m3_nut", "m3_heat_set_insert", "m2_self_tap_6", "acrylic_cement", "wood_glue", "ca_glue",
+    "m3_nut", "m2_self_tap_6", "acrylic_cement", "wood_glue", "ca_glue",
     "pla_filament", "petg_filament", "acrylic_3mm", "plywood_3mm", "servo_sts3215",
 )
 
@@ -246,7 +246,6 @@ def test_catalog_data_the_code_reads():
     assert get("acrylic_3mm").dims["thickness"] == 3.0
     assert get("plywood_3mm").dims["thickness"] == 3.0
     assert get("pla_filament").dims["density"] == 1.24
-    assert get("m3_heat_set_insert").dims["hole_d"] == 4.0
     for sk in fasteners.SCREWS.values():
         item = get(sk.key(sk.lengths[0]))
         assert (item.dims["d"], item.dims["head_d"], item.dims["head_h"]) == (
