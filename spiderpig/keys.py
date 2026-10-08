@@ -68,13 +68,15 @@ source's bytes (:func:`_load_index`): only the edited files are parsed again.
 from __future__ import annotations
 
 import ast
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import pickle
 import sys
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1068,17 +1070,16 @@ def source_key(roots: Iterable[str], label: str = "src") -> str:
     memo = (label, roots)
     if memo in _KEYS:
         return _KEYS[memo]
-    entry = _disk_entry(roots, label)
-    known = entry.read() if entry is not None else None
-    if known is None:
+
+    def compute() -> str:
         c = closure(roots)
         h = hashlib.sha256()
         h.update(c.digest().encode())
         h.update("\n".join(_versions(c.external)).encode())
         h.update(f"{sys.version_info[:2]}|{_package_version()}|{_self_digest()}".encode())
-        known = f"{label}-{h.hexdigest()[:16]}"
-        if entry is not None:
-            entry.write(known)
+        return f"{label}-{h.hexdigest()[:16]}"
+
+    known = _kept(_disk_entry(roots, label), compute)
     _KEYS[memo] = known
     return known
 
@@ -1102,9 +1103,8 @@ def engine_digest() -> str:
     memo = ("engine", ())
     if memo in _KEYS:
         return _KEYS[memo]
-    entry = _disk_entry((), "engine")
-    known = entry.read() if entry is not None else None
-    if known is None:
+
+    def compute() -> str:
         excluded = _engine_exclude()
         h = hashlib.sha256()
         for p in sorted(ROOT.rglob("*.py")):
@@ -1113,9 +1113,9 @@ def engine_digest() -> str:
                 continue
             h.update(str(rel).encode() + b"\0" + code_text(p).encode() + b"\0")
         h.update(f"{sys.version_info[:2]}|{_package_version()}".encode())
-        known = f"engine-{h.hexdigest()[:16]}"
-        if entry is not None:
-            entry.write(known)
+        return f"engine-{h.hexdigest()[:16]}"
+
+    known = _kept(_disk_entry((), "engine"), compute)
     _KEYS[memo] = known
     return known
 
@@ -1139,9 +1139,8 @@ def function_key(path: str | Path, name: str | tuple[str, ...] | None,
     memo = (label, roots)
     if memo in _KEYS:
         return _KEYS[memo]
-    entry = _disk_entry(roots, label, extra=[*_test_files(), path])
-    known = entry.read() if entry is not None else None
-    if known is None:
+
+    def compute() -> str:
         if not _TEST_GRAPH or path not in {m.path for m in _TEST_GRAPH[0].modules.values()}:
             _TEST_GRAPH[:] = [Graph(extra=[*_test_files(), path],
                                     base=_GRAPH[0] if _GRAPH else None)]
@@ -1155,9 +1154,9 @@ def function_key(path: str | Path, name: str | tuple[str, ...] | None,
         h.update(c.digest().encode())
         h.update("\n".join(_versions(c.external)).encode())
         h.update(f"{sys.version_info[:2]}|{_package_version()}|{_self_digest()}".encode())
-        known = f"{label}-{h.hexdigest()[:16]}"
-        if entry is not None:
-            entry.write(known)
+        return f"{label}-{h.hexdigest()[:16]}"
+
+    known = _kept(_disk_entry(roots, label, extra=[*_test_files(), path]), compute)
     _KEYS[memo] = known
     return known
 
@@ -1206,6 +1205,30 @@ class _Entry:
             os.replace(tmp, self.path)
         except OSError:
             pass
+
+
+def _kept(entry: _Entry | None, compute: Callable[[], str]) -> str:
+    """The key ``entry`` holds, else ``compute()``'s, written there. One process computes
+    it while the others that want it wait for it under a lock beside the entry, then read
+    it: the xdist workers start together, after an edit each would compute every key."""
+    if entry is None:
+        return compute()
+    known = entry.read()
+    if known is not None:
+        return known
+    try:
+        entry.path.parent.mkdir(parents=True, exist_ok=True)
+        lock = open(entry.path.with_suffix(".lock"), "a")     # noqa: SIM115 - held below
+    except OSError:
+        lock = None                     # (a read-only cache: each process computes its own)
+    with lock if lock is not None else contextlib.nullcontext():
+        if lock is not None:
+            fcntl.flock(lock, fcntl.LOCK_EX)    # (released when the file closes)
+            known = entry.read()
+        if known is None:
+            known = compute()
+            entry.write(known)
+    return known
 
 
 def _disk_entry(roots: tuple[str, ...], label: str, extra: Iterable[Path] = ()

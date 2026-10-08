@@ -136,6 +136,60 @@ def test_keys_are_cached_on_disk_by_the_sources_stats(tmp_path, monkeypatch):
     assert keys.plan_key() == first
 
 
+def test_a_sources_index_and_code_are_read_back_by_its_bytes(tmp_path, monkeypatch):
+    """``keys-index/``: a source indexed (and dumped) once is read back, the same, by
+    another process; other bytes (an edit) are indexed afresh."""
+    import ast
+
+    monkeypatch.setenv("SPIDERPIG_DIGEST_CACHE", str(tmp_path))
+    name, path = "spiderpig.stack.plan_z", PKG / "stack" / "plan_z.py"
+    first = keys._load_index(name, path, False, False)
+    code = keys.code_text(path)
+    assert len(list((tmp_path / "keys-index").iterdir())) == 2
+    real = keys._index
+    monkeypatch.setattr(keys, "_index", lambda *a: pytest.fail("indexed again"))
+    monkeypatch.setattr(keys, "code_of", lambda src: pytest.fail("dumped again"))
+    again = keys._load_index(name, path, False, False)
+    assert again is not first
+    assert again.path == path
+    assert {k: [ast.dump(n) for n in v] for k, v in again.symbols.items()} == {
+        k: [ast.dump(n) for n in v] for k, v in first.symbols.items()}
+    assert (again.imports, again.effect_refs, again.strings) == (
+        first.imports, first.effect_refs, first.strings)
+    assert keys.code_text(path) == code
+    edited = tmp_path / "plan_z.py"
+    edited.write_text(path.read_text().replace("GIVE_UP = 200", "GIVE_UP = 201"))
+    with pytest.raises(pytest.fail.Exception, match="indexed again"):
+        keys._load_index(name, edited, False, False)
+    monkeypatch.setattr(keys, "_index", real)
+    assert keys._load_index(name, edited, False, False).path == edited
+
+
+def test_a_key_is_computed_once_while_another_process_computes_it(tmp_path):
+    """The xdist workers start together: one computes a key under its lock, the others
+    wait for it and read what it wrote."""
+    import fcntl
+    import threading
+    import time
+
+    entry = keys._Entry(tmp_path / "keys-x.json", "sig")
+    other = open(entry.path.with_suffix(".lock"), "a")     # noqa: SIM115 - closed below
+    fcntl.flock(other, fcntl.LOCK_EX)                       # another process computes it
+    got, computed = [], []
+    waiter = threading.Thread(target=lambda: got.append(
+        keys._kept(entry, lambda: computed.append(1) or "k-mine")))
+    waiter.start()
+    time.sleep(0.3)
+    assert not got                                          # waits for it
+    entry.write("k-theirs")
+    other.close()
+    waiter.join(10)
+    assert got == ["k-theirs"]
+    assert not computed
+    assert keys._kept(keys._Entry(tmp_path / "keys-y.json", "sig"), lambda: "k-y") == "k-y"
+    assert keys._kept(None, lambda: "k-off") == "k-off"
+
+
 def test_keys_import_nothing_of_the_engine():
     """``spiderpig build``'s up-to-date check computes the engine digest before importing
     the engine: the key module is stdlib only."""
