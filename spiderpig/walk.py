@@ -390,7 +390,8 @@ def _sheet_scale(config: BuildConfig, key: str) -> float:
 # screwed on, 2026-10-04; 113 g with glued spigots), centre 13.45 mm over the chassis top.
 # (+2.5 g: the cradle screwed down; -1.4 g: the simplified hardware's button-head deck
 # screws and 8 mm-stud board standoffs, 2026-10-05; +1.2 g: the Tattu LiPo's 29 g and the
-# rails' captive steel nuts for brass inserts, 2026-10-08: 118.5 g built, 119.5 on the Klann)
+# rails' captive steel nuts in place of the brass inserts, 2026-10-08: 118.5 g built, 119.5
+# on the Klann)
 _DECK_PLATE_G, _DECK_REST_G = 33.3, 85.6
 _DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 2.36
 

@@ -333,3 +333,25 @@ def test_no_deck_carries_its_mass_as_a_payload():
     assert payload_g(SimpleNamespace(meta={"deck": {"fitted": True}}), p) == 0.0
     assert payload_g(SimpleNamespace(meta={"deck": {"fitted": False}}), p) == DECK_FALLBACK_G
     assert math.isclose(payload_g(SimpleNamespace(meta={}), p), DECK_FALLBACK_G)
+
+
+def test_the_deck_nuts_roof_is_nut_roof_thick():
+    """The rail's plastic over a deck nut's pocket is :data:`deck.NUT_ROOF` (1.6 mm; it was
+    1.45, the pocket's fit taken from it, until the BOM review of 2026-10-08), the pocket
+    holds the nut with its fit, and the rail is one printable solid."""
+    from build123d import Box, Pos
+
+    lay = deck_mod.DeckLayout(x_c=0.0, rail_y0=13.68, deck_y=21.68, pitch=3.0, z_in=-36.57,
+                              z_leg=-38.6, spigot_x=12.0)
+    rail = deck_mod._rail(lay, "L")
+    assert len(rail.solids()) == 1
+    (x, z), dn = lay.screws()[0], deck_mod.deck_nut(lay)
+    # a 0.4 mm column through the pocket, beside the screw's bore (r 1.7) inside the hex
+    probe = Box(0.4, 20.0, 0.4).move(Pos(x + 2.2, lay.deck_y - 10.0, z))
+    pieces = sorted((rail & probe).solids(), key=lambda s: s.bounding_box().max.Y)
+    roof = pieces[-1].bounding_box()
+    top, bottom = roof.max.Y, roof.min.Y
+    assert top == pytest.approx(lay.deck_y, abs=1e-6)
+    assert top - bottom == pytest.approx(deck_mod.NUT_ROOF, abs=1e-6)
+    assert bottom - dn["y1"] == pytest.approx(deck_mod.NUT_FIT, abs=1e-6)
+    assert dn["screw_l"] >= lay.pitch + deck_mod.NUT_ROOF + deck_mod.NUT_FIT + dn["h"]

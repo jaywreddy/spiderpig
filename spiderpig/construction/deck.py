@@ -360,12 +360,13 @@ def _hex_y(x: float, z: float, af: float, y0: float, y1: float):
 
 def deck_nut(lay: DeckLayout) -> dict:
     """A deck screw's captive nut in its rail: the nut (``af``, ``h``), its y span (``y0``,
-    ``y1``: :data:`NUT_ROOF` under the rail's top face) and the deck screw's length (through
-    the deck plate and the roof, the nut's whole thread and 0.3 mm past it)."""
+    ``y1``: its pocket's :data:`NUT_FIT` under the pocket's top, which is :data:`NUT_ROOF`
+    under the rail's top face) and the deck screw's length (through the deck plate, the
+    roof and the fit, the nut's whole thread and 0.3 mm past it)."""
     nut = get("m3_nut").dims
     af, h = float(nut.get("af", RAIL_NUT_AF)), float(nut.get("h", RAIL_NUT_H))
-    y1 = lay.deck_y - NUT_ROOF
-    length = pick_length(lay.pitch + NUT_ROOF + h + 0.3, DECK_SCREW.lengths)
+    y1 = lay.deck_y - NUT_ROOF - NUT_FIT
+    length = pick_length(lay.pitch + NUT_ROOF + NUT_FIT + h + 0.3, DECK_SCREW.lengths)
     return {"af": af, "h": h, "y0": y1 - h, "y1": y1, "screw_l": length}
 
 
