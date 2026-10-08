@@ -95,3 +95,9 @@ had.
 
 The audit has no new problem and no new clash. `check_side` stays `[]`, and the contract
 passes.
+
+Outside the gate, D2 also changes two things. The Klann single (the tests' design) builds 64
+parts, up from 63, because of pillar B's new gap ring. The demo Klann quad's MuJoCo steering
+check now grants a 90 deg excursion: at 90 deg it tilts 19.75 deg on the suite's parametric
+servo, where it tilted 20.5 before, and the lock overshoots that 90 deg bound to 96.2 deg
+(`tests/test_sim.py`).
