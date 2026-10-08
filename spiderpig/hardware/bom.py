@@ -390,6 +390,54 @@ def _shared_volume(a, b) -> float:
     return float(props.Mass())
 
 
+_COINCIDE = 1e-9
+"""mm: how far a sample of one part's boundary may lie from its counterpart on the other's
+for :func:`_coincide` (a part's exact copy, moved: ~1e-14)."""
+_GRID = 1e-6     # mm: the samples are paired in the order of their coordinates on this grid
+
+
+def _boundary_samples(part) -> dict[int, np.ndarray]:
+    """Points of ``part``'s boundary in world coordinates, by kind: every vertex (``-1``);
+    every edge's points at a quarter, half and three quarters of its parameter range (by
+    its curve's type: three points fix a line or a circle with its ends); every face's
+    point at the middle of its parameter box, on its surface (``100`` + the surface's
+    type). Read only: the part is left as it is."""
+    from OCP.BRep import BRep_Tool
+    from OCP.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
+
+    out: dict[int, list] = {-1: [BRep_Tool.Pnt_s(v.wrapped) for v in part.vertices()]}
+    for e in part.edges():                  # (each shared one once, as the vertices)
+        if BRep_Tool.Degenerated_s(e.wrapped):
+            continue                        # (a point: its vertex)
+        c = BRepAdaptor_Curve(e.wrapped)
+        u0, u1 = c.FirstParameter(), c.LastParameter()
+        out.setdefault(int(c.GetType()), []).extend(
+            c.Value(u0 + f * (u1 - u0)) for f in (0.25, 0.5, 0.75))
+    for face in part.faces():
+        s = BRepAdaptor_Surface(face.wrapped)
+        out.setdefault(100 + int(s.GetType()), []).append(
+            s.Value(0.5 * (s.FirstUParameter() + s.LastUParameter()),
+                    0.5 * (s.FirstVParameter() + s.LastVParameter())))
+    return {k: np.array([(p.X(), p.Y(), p.Z()) for p in pts]).reshape(-1, 3)
+            for k, pts in out.items()}
+
+
+def _coincide(a: dict[int, np.ndarray], b: dict[int, np.ndarray]) -> bool:
+    """Do two parts' :func:`_boundary_samples` pair up, kind by kind, each within
+    :data:`_COINCIDE`? The same vertices, the same edges and the same faces where they are:
+    one solid. Paired in the order of their coordinates on a coarser grid (points that
+    round apart only fail the test: the parts go to the boolean)."""
+    if a.keys() != b.keys() or any(len(a[k]) != len(b[k]) for k in a):
+        return False
+    for k, pa in a.items():
+        pb = b[k]
+        ia = np.lexsort(np.round(pa / _GRID).T[::-1])
+        ib = np.lexsort(np.round(pb / _GRID).T[::-1])
+        if np.abs(pa[ia] - pb[ib]).max(initial=0.0) > _COINCIDE:
+            return False
+    return True
+
+
 def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?
 
@@ -398,7 +446,10 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     otherwise found only as a mirror image), then each matching of the frames (a sign per
     axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid
     onto ``b``'s before the proof, one boolean: the volume ``a`` moved and ``b`` don't share
-    is less than ``tol``.
+    is less than ``tol``. Unless ``a`` moved and ``b`` are one solid (:func:`_coincide`:
+    every vertex, edge and face where the other's is, within 1e-9 mm, so that volume is
+    under 1e-9 mm times their area, far below ``tol``): the copy of a part, moved, which
+    most twins are, needs no boolean (its answer would be the same: yes).
     """
     from build123d import Location, Plane
 
@@ -412,6 +463,7 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     # equal moments (a ring, a disc) turns it about its axis by an arbitrary angle.
     ia, ib = ea @ np.diag(ma) @ ea.T, eb @ np.diag(mb) @ eb.T
     eye = (np.eye(3),) if np.abs(ia - ib).max() <= 1e-6 * max(np.abs(ib).max(), 1.0) else ()
+    on_b = None                             # b's boundary samples, once a motion is tried
     for r in (*eye, *(eb @ np.diag(signs) @ ea.T for signs in _SIGNS)):
         if np.linalg.det(r) < 0:
             continue
@@ -419,6 +471,10 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
         if np.abs(r @ sa.surf + t - sb.surf).max() > _CENTROID_TOL:
             continue
         moved = _moved(a, Location(Plane(tuple(t), tuple(r[:, 0]), tuple(r[:, 2]))))
+        if _COINCIDE * (sa.area + sb.area) < 0.01 * tol:
+            on_b = _boundary_samples(b) if on_b is None else on_b
+            if _coincide(_boundary_samples(moved), on_b):
+                return True
         if sa.volume + sb.volume - 2.0 * _shared_volume(moved, b) < tol:
             return True
     return False

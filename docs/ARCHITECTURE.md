@@ -1425,6 +1425,9 @@ below 5e-4 the model is ill-posed and refused.
   re-imports the caller's main script. Parallel work therefore runs as a function of the
   package in a fresh `python -c` process, with arguments and results passed as files.
   Exports and `verify` use workers; `SPIDERPIG_WORKERS=0` keeps everything in one process.
+  `spiderpig build` starts one before it fabricates: it loads the fabrication from the
+  store's cache once that holds it, groups the parts and writes the DXFs while the build
+  writes the robot's STEP and STL (`build._start_exports`; with the cache off, in-process).
 
 ### 7.5 Limits of the outputs
 
