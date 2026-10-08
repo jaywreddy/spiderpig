@@ -46,7 +46,9 @@ from spiderpig.servos.spec import (
 _STS_SCREW = "m2_self_tap_6"      # 8 x PA2.0 self-tapping [FT]; hole depth not published
 _STS_FRONT = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW)
                    for x in (8.3, 29.0) for y in (10.25, -10.25))       # [WS2] 18.41 / 20.7 / 20.5
-_STS_REAR = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW)
+# the M2 x 6 case screws come in every STS3215's bag (hardware.sources): the rear screws
+# keep that length (MountHole.stock; the review of 2026-10-08, one SKU)
+_STS_REAR = tuple(MountHole(x, y, 2.4, screw=_STS_SCREW, stock=True)
                   for x in (8.3, 32.75) for y in (10.25, -10.25))       # [WS2] 24.45 x 20.5
 
 STS3215 = register_servo(ServoSpec(
@@ -109,10 +111,13 @@ STS3215 = register_servo(ServoSpec(
                label="idler boss (the rear horn left off)"),
         # [SO] only: six 2 x 2 mm "pins" at x = 13..15, |y| <= 8.8, reaching z = -33.8 (not
         # in [WS3]): the bus headers, drawn standing 3.3 proud where the real ones are sunk
-        # in the trench (the research of 2026-10-08). The window (bus_ports) clears the used
-        # socket's; this clears the other socket's, which the model the audit draws (the
-        # CAD, [SO] first) otherwise puts into the first centre plate
-        Relief(12.9, 15.2, -8.8, 8.8, 3.3, solid=False,
+        # in the trench (the research of 2026-10-08: Waveshare's straight-on photo looks
+        # into both sockets, its side view shows nothing standing past the rear face, [WS3]
+        # draws a cavity). The window (bus_ports) clears the used socket's; this clears the
+        # other socket's, which the model the audit draws (the CAD, [SO] first) otherwise
+        # puts into the first centre plate. model_only: the other servo's plug and wires may
+        # pass where these are drawn (chassis.centre_stack)
+        Relief(12.9, 15.2, -8.8, 8.8, 3.3, solid=False, model_only=True,
                label="header pins in the SO-ARM100 model"),
     ),
     # The two bus sockets: vertical (top-entry) Molex 5267-type headers (9.9 x 4.9, 2.5
@@ -125,11 +130,14 @@ STS3215 = register_servo(ServoSpec(
     # distributors]; about 3-3.5 of it stands beyond the rear face (a clone header drawing)
     # and its wires, turned toward +x, about 2.5 more. One socket per servo, on its own +y
     # side, fed by a Y cable (the user's decision of 2026-10-08), so the two servos' plugs
-    # don't oppose. One hand measurement remains: the plug-plus-wire height (a plug seated,
-    # its wires laid flat toward +x: their top above the rear face, expected 5.5-6.5).
+    # don't oppose. The wires leave the plug's top at its 2.5 mm pitch: 6.3 across with a
+    # 1.3 mm wire (wire_w); each servo's channel is centred on its own plug. One hand
+    # measurement remains: the plug-plus-wire height (a plug seated, its wires laid flat
+    # toward +x: their top above the rear face, expected 5.5-6.5; the chassis reserves
+    # 1 mm over the 6.0 taken here, chassis.BUS_WIRE_MARGIN).
     bus_ports=BusPorts(11.55, 16.55, -10.1, 10.1, opening="face", count=2, plug_w=9.9,
                        plug_t=3.9, plug_h=3.5, plug_len=8.0, cable=2.5, exit="+x",
-                       channel_w=9.0, used="own",
+                       channel_w=9.0, wire_w=6.3, used="own",
                        label="bus sockets (5267-type, top entry)"),
     continuous=True,                # [C001] "Limit angle: no limit", mode 1 = closed-loop speed
     idler=Idler(

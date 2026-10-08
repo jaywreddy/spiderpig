@@ -74,7 +74,8 @@ def test_rear_screws_sit_on_the_servo_pilots(design, robot):
     n = centre_plates(spec, t, d.ctx.params.margin)
     half = n * t / 2
     engage = mech.meta["rear_engagement_mm"]
-    assert 3.0 <= engage <= 5.0
+    # the stock M2 x 6 through two own 0.063 in plates: 2.8 mm (since 2026-10-08)
+    assert 2.0 <= engage <= 5.0
     screws = [b for b in mech.bodies if ".rear_screw" in b.name]
     # both per servo since 2026-10-08 (one 2026-10-04..08, the far one lost to the pad)
     assert len(screws) == 2 * mech.meta["rear_screws_per_servo"] == 4
@@ -309,24 +310,36 @@ def test_the_sts3215_bus_window_and_channel():
     assert wx1 >= cx + ports.plug_t / 2 + 0.5 - 1e-9
     assert wy0 <= 0.1                                               # the +y socket's plug
     assert wy1 >= 10.0
-    assert channel == pytest.approx((cx, math.inf, -4.5, 4.5))
+    # each servo's own channel, centred on its plug (review of 2026-10-08), 9 wide: the
+    # wires (6.3 across where they leave the plug) inside it
+    assert ports.plug_y == pytest.approx(5.05)
+    assert channel == pytest.approx((cx, math.inf, 0.55, 9.55))
+    assert channel[2] <= ports.plug_y - ports.wire_w / 2 - 0.5
+    assert channel[3] >= ports.plug_y + ports.wire_w / 2 + 0.5
     assert ports.height == pytest.approx(6.0)
     assert not ports.opposed
-    # one plug and its wires over the other servo's raised pad (1.9), not two plugs
-    assert ch.centre_stack(spec, 1.0) == pytest.approx(6.0 + 1.9)
+    # one plug and its wires, 1 mm of margin (BUS_WIRE_MARGIN), under the other servo's
+    # raised pad (1.9): not two plugs; the SO model's header pins (model_only) don't count
+    assert ch.bus_reserve(spec) == pytest.approx(7.0)
+    assert ch.centre_stack(spec, 1.0) == pytest.approx(7.0 + 1.9)
     assert ch.centre_stack(spec, 1.0) < 2 * ports.height + 1.0
     t = sheet("al5052_1p6mm").thickness
     n = centre_plates(spec, t, 1.0)
+    assert (n, round(n * t, 2)) == (6, 9.6)
     half = n * t / 2
     slots = ch._port_slots(spec, _sts_frames(), half)
     assert [s[1] for s in slots] == [pytest.approx(window), pytest.approx(channel)] * 2
     assert all(isinstance(s[1], ch.PortCut) for s in slots)
-    assert [z for _, _, z in slots] == [pytest.approx((-half, -half + 6.0))] * 2 + [
-        pytest.approx((half - 6.0, half))] * 2
-    # the two servos' windows sit on opposite sides (the right servo's +y is the left's -y)
+    # the window from each rear face to the reserve, the channel from the plug's top
+    assert [z for _, _, z in slots] == [
+        pytest.approx((-half, -half + 7.0)), pytest.approx((-half + 3.5, -half + 7.0)),
+        pytest.approx((half - 7.0, half)), pytest.approx((half - 7.0, half - 3.5))]
+    # the two servos' windows and channels sit on opposite sides (the right servo's +y is
+    # the left's -y)
     left, right = _sts_frames()
-    lw = [left.local(right.xy(x, y))[1] for x in window[:2] for y in window[2:]]
-    assert max(lw) <= 0.4 + 1e-9
+    for rect, most in ((window, 0.4), (channel, -0.55)):
+        lw = [left.local(right.xy(x, y))[1] for x in (rect[0], 50.0) for y in rect[2:]]
+        assert max(lw) <= most + 1e-9
 
 
 def test_the_sts3215_keeps_both_rear_screws():
@@ -349,9 +362,14 @@ def test_the_sts3215_keeps_both_rear_screws():
         half = n * t / 2
         rel = ch._relief_volumes(spec, frames, half)
         slots = ch._port_slots(spec, frames, half)
-        rs = ch.rear_screws(spec, n, t, 1)
+        rs = ch.rear_screws(spec, n, t, 2 if key == "al5052_1p6mm" else 1)
         kept[key] = [(h.x, h.y) for h in ch._clear_holes(rs, frames, rel, half, t, slots,
                                                         sheet(key).min_hole)]
+        if key == "al5052_1p6mm":
+            # two own plates: the M2 x 6 the servo ships with (MountHole.stock), 2.8 mm into
+            # the pilot (one plate: an M2 x 5, another SKU; 4.4 with an M2 x 6, past the
+            # unknown pilot's modelled depth)
+            assert (rs.key, rs.engage) == ("m2_self_tap_6", pytest.approx(2.8))
     assert kept == {"al5052_1p6mm": [(8.3, 10.25), (32.75, 10.25)],
                     "al5052_2mm": [(8.3, 10.25)], "al5052_2p3mm": []}
     pad = next(r for r in spec.rear_reliefs if r.label == "raised pad")
@@ -360,6 +378,73 @@ def test_the_sts3215_keeps_both_rear_screws():
     assert ch._cut_distance((32.75, 10.25), rect) - 1.2 == pytest.approx(1.617, abs=1e-3)
     window = ch.PortCut(spec.bus_ports.slot()[0])
     assert ch._cut_distance((8.3, 10.25), window) - 1.2 == pytest.approx(2.165, abs=1e-3)
+
+
+def _envelope(frame, x0, x1, y0, y1, z0, z1):
+    from spiderpig.construction import chassis as ch
+
+    return ch._rounded_rect(frame, x0, x1, y0, y1, 0.05, z0, z1)
+
+
+def test_the_bus_plugs_and_wires_meet_no_centre_plate_and_no_screw(design, robot):
+    """The review of 2026-10-08: each servo's plug, and its wires swept from the plug's top
+    along their channel past the plates' +x edge, at the research's upper height (6.5 mm
+    over the rear face: 0.5 more than the 6.0 taken), meet no centre plate and no rear
+    screw; the other servo's real bumps (its raised pad) stand clear of the wires too."""
+    from spiderpig.construction import chassis as ch
+
+    tmpl, d = design("single")
+    mech = robot("single", TS[0])
+    spec = d.ctx.servo
+    ports = spec.bus_ports
+    frames = _frames(d, tmpl.freeze_at(TS[0]))
+    n, t = mech.meta["centre_plates"], centre_t(d.ctx)
+    half = n * t / 2
+    top = ports.height + 0.5                       # the research's upper estimate
+    cx, cy = (ports.x0 + ports.x1) / 2, ports.plug_y
+    plates = [b for b in mech.bodies if b.name.startswith("centre_plate")]
+    screws = [b for b in mech.bodies if ".rear_screw" in b.name]
+    assert len(plates) == n
+    for side, face, sign in (("L", -half, 1.0), ("R", half, -1.0)):
+        f = frames[side]
+        plug = _envelope(f, cx - ports.plug_t / 2, cx + ports.plug_t / 2,
+                         cy - ports.plug_w / 2, cy + ports.plug_w / 2,
+                         *sorted((face, face + sign * ports.plug_h)))
+        wires = _envelope(f, cx - ports.plug_t / 2, 120.0,
+                          cy - ports.wire_w / 2, cy + ports.wire_w / 2,
+                          *sorted((face + sign * ports.plug_h, face + sign * top)))
+        for env, what in ((plug, "plug"), (wires, "wires")):
+            for b in plates + screws:
+                met = env & b.part
+                vol = 0.0 if met is None else sum(x.volume for x in met.solids())
+                assert vol < 1e-6, (side, what, b.name, vol)
+    # the other servo's pad (mirrored in y) over the wires' run: below them, not in them
+    pad = next(r for r in spec.rear_reliefs if r.label == "raised pad")
+    assert -half + top <= half - pad.height
+    assert ch.centre_stack(spec, d.ctx.params.margin) <= n * t
+
+
+def test_the_centre_plates_hold_the_jammed_servo(robot):
+    """The review of 2026-10-08: the 0.063 in centre plates, cut by the bus window and
+    channel, at the servo's jam torque (``strength.centre_plate_row``): the screws' tear-out
+    across their least web (1.62 mm, the far hole to the pad's relief) governs, far over the
+    jam warning (2)."""
+    from spiderpig import strength
+    from spiderpig.config import BuildConfig
+
+    mech = robot("single", TS[0])
+    row = strength.centre_plate_row(mech.meta, BuildConfig(linkage="klann", module="single"),
+                                    {"torque_limit_nm": 0.85, "walk_torque_nm": 0.18})
+    assert row is not None
+    assert (row["sheet"], row["own_plates"]) == ("al5052_1p6mm", 2)
+    assert row["least_web_mm"] == pytest.approx(1.617, abs=1e-3)
+    jam = row["jam"]
+    assert jam["governs"] == "screw tear-out"
+    assert jam["load_n"] == pytest.approx(850 / 24.45, rel=1e-3)        # the couple
+    assert jam["safety"] > 2 * strength.JAM_WARN
+    assert set(jam["stress_mpa"]) >= {"net section at the window", "net section at the pad",
+                                      "tie bearing", "screw bearing"}
+    assert strength.level(row) is None
 
 
 @pytest.mark.parametrize("model", ["xl430_w250", "xl330_m288"])

@@ -38,14 +38,16 @@ bus sockets are top-entry headers sunk in its rear face, which is screwed flat t
 centre plates, so the plugs go in perpendicular to the plates. Each servo uses one socket,
 the one on its own ``+y`` side, fed by a Y cable from the driver board: the two servos'
 plugs sit on opposite sides of the robot and never oppose, so the stack holds one plug and
-its wires. The plates carry a closed window round each plug and an open channel for its
-wires to their far edge (:func:`chassis._port_slots`, ``ServoSpec.bus_ports``), through
-the plates within a plug's height of its servo. Both rear screws per servo are kept: a
-shank hole keeps one plate thickness to the window (:data:`chassis.BUS_WEB_T`), the near
-head's recess opens into it. (The far rear hole was never dropped by the plugs' cut: the
-raised pad's relief left it too little web; the pad's measured outline and a thinner
-centre sheet keep it: :func:`chassis.centre_sheet`.) One hand measurement remains: the
-plug-plus-wire height.
+its wires (and :data:`chassis.BUS_WIRE_MARGIN`). The plates carry a closed window round
+each plug and, per servo, its own channel for its wires to their far edge, centred on its
+plug (:func:`chassis._port_slots`, ``ServoSpec.bus_ports``), through the plates its plug
+and wires pass. The plug goes in through the window before the stack closes
+(:data:`ASSEMBLY` step 5). Both rear screws per servo are kept, the stock M2 x 6: a shank
+hole keeps one plate thickness to the window (:data:`chassis.BUS_WEB_T`), the near head's
+recess opens into it. (The far rear hole was never dropped by the plugs' cut: the raised
+pad's relief left it too little web; the pad's measured outline and a thinner centre sheet
+keep it: :func:`chassis.centre_sheet`.) One hand measurement remains: the plug-plus-wire
+height.
 
 :class:`FrameTies` is the side-level part of the ties: the spigot holes and
 pads it adds to the inner frame plate (no claims: nothing it adds is below
@@ -127,9 +129,17 @@ ASSEMBLY: tuple[str, ...] = (
     "hub chain's standoff (turn the crank to line it up) and the pillars' tops into the "
     "inner plate; each pillar's inner screw from the servo bay (a ball-end key).",
     "5. The M3 set-screw studs into the left chains' ends (threadlocker); the left "
-    "servo's own centre plates (0, 1) on its rear face over the studs, its rear screw "
-    "through them; the right servo's own plates (3, 2) screwed to the right servo the "
-    "same way, then that servo and its plates onto the studs, rear faces together.",
+    "servo's own centre plates (0, 1 of 6 on the default: the meta's rear_own_plates of "
+    "its centre_plates) on its rear face over the studs, its two rear screws (the M2 x 6 "
+    "from the servo's bag) through them; its bus plug (one branch of the Y cable) pushed "
+    "straight down through the plates' window into the socket on the servo's +y side, the "
+    "wires bent toward +x and laid along its own channel; then the middle plates (2, 3) "
+    "over the studs and the wires, the channel round them. The right servo's own plates "
+    "(5, 4) screwed to the right servo the same way, its plug (the Y cable's other "
+    "branch) seated through their window into its own +y socket, which is on the robot's "
+    "other side, its wires along its own channel; then that servo and its plates onto the "
+    "studs, rear faces together, no wire pinched (each channel is cut through the plates "
+    "its wires pass, open to the plates' +x edge).",
     "6. Right side: its tie chains turned onto the studs from the inner plate's side (they "
     "turn freely: no inner plate yet), shims on their ends; the right inner plate onto "
     "the servo's front (its front screws from the leg side) and onto the chains (their "
@@ -138,9 +148,10 @@ ASSEMBLY: tuple[str, ...] = (
     "7. The body turned over onto the right side's leg stack (built as in 1 and 2): the "
     "hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner "
     "plate, their inner screws from the servo bay.",
-    "8. Bus cables: each plug into its servo's socket along the centre plates' slot from "
-    "their far edge, the cable up to the board through the deck's wire slot (connector "
-    "first); then the deck, its electronics fitted on the bench (the battery cradle "
+    "8. Bus cables (the plugs seated in step 5): each servo's wires from its channel's end "
+    "at the centre plates' +x edge up through the deck's wire slot over it, the Y cable's "
+    "trunk to the board (connector first); then the deck, its electronics fitted on the "
+    "bench (the battery cradle "
     "screwed down: two M3 button heads through its ears, nuts under the deck), lowered "
     "straight down between the inner plates past the pillars' inner heads (its notches, "
     "deck.path_notches; deck.deck_path checks the way) onto the rails, and its four "

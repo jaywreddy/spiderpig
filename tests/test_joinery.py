@@ -173,8 +173,8 @@ def test_the_body_plates_keep_two_thicknesses_round_every_hole(default_robot):
     2026-10-04), the warnings inherent in the STS3215 stay at least 1 x t: the inner
     plate's far front screw holes 2.05 mm from the raised panel's relief, and in the centre
     plates (0.063 in since 2026-10-08, both rear screws kept) the far rear holes 1.62 mm from
-    the raised pad's relief (merged with the bus window and channel, open to the edge) and
-    the rear ties 2.91 mm from the far head recess bridged into it."""
+    the raised pad's relief (an edge where it merges with the other servo's channel, open to
+    the plates' edge; a web where not)."""
     from spiderpig.manufacture import check
     from spiderpig.materials import sheet
 
@@ -186,7 +186,7 @@ def test_the_body_plates_keep_two_thicknesses_round_every_hole(default_robot):
     assert all(i["level"] == "warning" for i in body)
     assert all(i["value"] >= sheet(i["sheet"]).thickness - 1e-6 for i in body)
     assert {(i["part"].split(".")[-1].rstrip("0123456789"), i["rule"]) for i in body} <= {
-        ("torso", "web"), ("centre_plate", "edge")}
+        ("torso", "web"), ("centre_plate", "edge"), ("centre_plate", "web")}
     assert not [i for i in body if i["part"].endswith("frame_outer")]
     assert mech.meta["centre_plate_sheet"] == "al5052_1p6mm"      # 2026-10-08: 0.063 in
 

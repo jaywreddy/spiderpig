@@ -333,9 +333,22 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Why:** the old "end" slot was wrong (the plugs go in perpendicular to the plates), and two
   opposed plugs would need twice the stack; the far rear hole was lost to the pad's relief,
   not to the slot.
-- **Warnings left** (errors 0): each end plate's far rear hole 1.62 mm from the pad's relief
-  (merged with the window and channel, open to the edge), each head plate's rear tie hole
-  2.91 mm from the far head recess bridged into the pad's relief; both over 1 x t, under 2 x t.
+- **Review of 2026-10-08:** each servo's channel is its own, centred on its plug and cut
+  only through the plates its wires pass; the plug and wires keep 1 mm of margin
+  (`chassis.BUS_WIRE_MARGIN`), so the stack holds the plug, its wires, the margin and the
+  other servo's pad: 0.063 in, more plates (DESIGNS.md). The rear screws are the stock
+  M2 x 6 the servo ships with (`MountHole.stock`; one SKU, priced at Accu), through two own
+  plates. The plug is seated through the window before the stack closes (`robot.ASSEMBLY`
+  step 5). The SO model's header pins are `Relief.model_only`: cleared by the plates, not by
+  the stack's plug room. `strength.centre_plate_row` checks the plates at the jam torque.
+- **Verify on the first article:** the plug-plus-wire height above the rear face (6.0 taken,
+  6.5 the research's upper estimate, 7.0 reserved); the far rear hole's web to the pad's
+  relief, 1.617 mm against the 1.6 mm (1 x t) error level, 0.017 mm of margin; the pad
+  cut-out clears the WS3 model's pad corner by only about 0.34 mm (0.2 grown, plus the
+  rounding).
+- **Warnings left** (errors 0): each end and second plate's far rear hole 1.62 mm from the
+  pad's relief (an edge where it merges with the other servo's channel); over 1 x t, under
+  2 x t.
 - **Where:** `spiderpig/servos/spec.py`, `spiderpig/servos/catalog.py`,
   `spiderpig/construction/chassis.py`, `spiderpig/hardware/electronics.py`; the gate diffs in
   [BUS-gate-diffs.md](BUS-gate-diffs.md).

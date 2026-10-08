@@ -478,7 +478,8 @@ def main(argv=None) -> int:
                 print(f"  {kind} tilt {_wobble_cell(rep['wobble'], kind)}")
         print(f"  joint SF jam / walk: pin {sf_cell(rep, 'pin')}, pillar "
               f"{sf_cell(rep, 'pillar')}, crank {sf_cell(rep, 'crank')}, link plate "
-              f"{sf_cell(rep, 'link')} ({rep['strength']['loads'].get('source')} loads)")
+              f"{sf_cell(rep, 'link')}, centre plates {sf_cell(rep, 'chassis')} "
+              f"({rep['strength']['loads'].get('source')} loads)")
         print(f"  {rep['parts']} parts, {rep['dxf_sheets']} DXF sheet(s), "
               f"{rep['bom'].get('items', 0)} BOM items: "
               f"{'OK' if not rep['problems'] else 'FAIL'} ({rep['seconds']} s)", flush=True)
