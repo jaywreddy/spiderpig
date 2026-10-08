@@ -711,10 +711,11 @@ def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(ser
     v = call(server, "verify", design=single, level="quick")
     floor = next(r for r in v["rows"] if r["requirement"] == "budget.cost_floor_usd")
     # the glue it buys whatever the sizes: the Chicago barrels' epoxy (the printed pillars'
-    # CA and the keyed crank's nuts went with them on 2026-10-07); the hex crank's blank
+    # CA and the keyed crank's nuts went with them on 2026-10-07); the hex crank's blank is
+    # SendCutSend's upload since 2026-10-08, in no total (bom.cut_by)
     assert "Two-part slow-cure structural epoxy" in floor["detail"]          # entry 1
-    assert "6061 aluminium sheet 0.100 in" in floor["detail"]
-    assert floor["detail"].endswith("(verify standard)")
+    assert "6061 aluminium sheet 0.100 in" not in floor["detail"]
+    assert floor["detail"].endswith("quoted by their service's upload")
     guide = render_guide()
     assert "`budget.cost_floor_usd` prices what the design buys whatever its parts" in \
         " ".join(guide.split())

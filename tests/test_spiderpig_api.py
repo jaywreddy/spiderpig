@@ -524,10 +524,10 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
     assert rep.ok
     names = {str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*") if p.is_file()}
     # a set per service and sheet, each part on its thinnest (2026-10-04): the links in
-    # acrylic (Ponoko), the
+    # acrylic (SendCutSend since 2026-10-08), the
     # frame plates 0.080 in 5052, the crank's webs 0.100 in 6061 (the hex crankpins'
     # pockets), the foot link 6061
-    assert {"klann.step", "laser/klann_sheet_Ponoko_acrylic_3mm_0.dxf",
+    assert {"klann.step", "laser/klann_sheet_SendCutSend_acrylic_3mm_0.dxf",
             "laser/klann_sheet_SendCutSend_al5052_2mm_0.dxf",
             "laser/klann_sheet_SendCutSend_al6061_2p5mm_0.dxf",
             "laser/klann_sheet_SendCutSend_al6061_3p2mm_0.dxf", "laser/klann_sheet_parts.csv",
