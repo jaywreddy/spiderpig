@@ -49,6 +49,7 @@ write to one (a test's ``monkeypatch.setattr(stack, "MAX_SECONDS", ...)``) reach
 submodule that reads it (:mod:`spiderpig.reexport`).
 """
 
+from spiderpig.mechanism import body_class, is_crank, is_frame, is_link
 from spiderpig.reexport import forward_writes
 from spiderpig.stack.geometry import (
     _BETWEEN,
@@ -125,11 +126,7 @@ from spiderpig.stack.topology import (
     _axis_name,
     _copy_of,
     _sample_topology,
-    body_class,
     group_axes,
-    is_crank,
-    is_frame,
-    is_link,
     static_clearances,
     topology_from_template,
 )

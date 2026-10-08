@@ -11,6 +11,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from spiderpig.mechanism import body_class
 from spiderpig.stack.geometry import Disc, Layout, log, made
 from spiderpig.stack.plan import Deadline, StackSpec
 from spiderpig.stack.plan_z import (
@@ -22,7 +23,7 @@ from spiderpig.stack.plan_z import (
     heads_claims,
     settle,
 )
-from spiderpig.stack.topology import PlanError, RouteConflict, RouteView, body_class
+from spiderpig.stack.topology import PlanError, RouteConflict, RouteView
 from spiderpig.stack.verify import verify_plan
 
 if TYPE_CHECKING:

@@ -7,8 +7,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 
 from spiderpig.linkage.engine import DEFAULT, LegList, LegSolution, Linkage, Module, get
-from spiderpig.mechanism import BodyTemplate, JointTemplate, MechanismTemplate, translation_pose_at
-from spiderpig.stack import body_class
+from spiderpig.mechanism import (
+    BodyTemplate,
+    JointTemplate,
+    MechanismTemplate,
+    body_class,
+    translation_pose_at,
+)
 
 # ---------------------------------------------------------------------------
 # One leg as a kinematic template

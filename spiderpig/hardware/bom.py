@@ -652,6 +652,10 @@ _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
 _STACK_SHIMS = re.compile(r"\bshims ([\d.]+(?: \+ [\d.]+)*) mm")
 
 
+SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
+#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
+#                         shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
+
 SHIM_AS: dict[str, tuple[str, int]] = {
     "shim_din988_3x6_t1": ("m3_washer_433", 2),
     "shim_din988_3x6_t0p5": ("m3_washer_433", 1),
@@ -753,10 +757,8 @@ def split_shims(lines: list[BomLine], by_name: dict,
 def stack_steps(family: str) -> tuple[float, ...]:
     """The thicknesses the constructions stack a family's shims from: for the M3 and M4
     families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
-    :data:`construction.pivots.standoff.SHIM_STEP`), else its catalog ``t``."""
+    :data:`SHIM_STEP`), else its catalog ``t``."""
     if family in ("shim_din988_3x6", "shim_din988_4x8"):
-        from spiderpig.construction.pivots.standoff import SHIM_STEP
-
         return (1.0, SHIM_STEP)
     return tuple(get(family).dims.get("t") or ())
 

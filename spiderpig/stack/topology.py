@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 
 import numpy as np
 
+from spiderpig.mechanism import is_crank, is_frame, is_link
 from spiderpig.stack.geometry import Geometry
 
 if TYPE_CHECKING:
@@ -143,24 +144,6 @@ class ClearanceError(PlanError):
 # ---------------------------------------------------------------------------
 
 AxisKind = Literal["pin", "frame", "crankpin", "center"]
-
-
-def body_class(name: str) -> str:
-    """``"b1_leg3"`` -> ``"b1"``, ``"R.b1_leg3"`` -> ``"b1"``; ``"conn_upper"`` stays."""
-    return re.sub(r"_leg\d+$", "", re.sub(r"^[LR]\.", "", name))
-
-
-def is_link(name: str) -> bool:
-    """A leg link: every linkage names its links ``b<k>`` (see :mod:`linkage`)."""
-    return re.fullmatch(r"b\d+", body_class(name)) is not None
-
-
-def is_crank(name: str) -> bool:
-    return body_class(name).startswith("conn")
-
-
-def is_frame(name: str) -> bool:
-    return body_class(name) == "torso"
 
 
 @dataclass(frozen=True)
