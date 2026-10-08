@@ -1229,7 +1229,13 @@ The planner promises that claims never meet. The **contract**
 (`construction/contract.py`) checks the other half: that each part a group builds lies
 inside that group's own claims. `check_side` realizes every group at a crank angle and
 measures any volume outside its claims (tolerance 0.001 mm³). Frame plates must stay in
-their layer; the drive is checked below the inner plate's top face. Two companion checks
+their layer; the drive is checked below the inner plate's top face. `check_sides` gives
+the same verdicts at several angles, realizing the side once: a group whose parts only
+move with the angle (`Group.motion`: a link, the crank and the horn turn with their
+bodies, an axle's parts translate with its point, the frame stands) and that holds with
+the claims moving with it, to half the tolerance, holds at every angle; any other group
+(a hex journal drawn at the world's angle, a part near its limit) is realized and
+checked again at each. Two companion checks
 use OCCT directly: `clashes` intersects every pair of parts, and `bad_solids` requires
 each made part to be one valid solid.
 
@@ -1417,6 +1423,9 @@ below 5e-4 the model is ill-posed and refused.
   re-imports the caller's main script. Parallel work therefore runs as a function of the
   package in a fresh `python -c` process, with arguments and results passed as files.
   Exports and `verify` use workers; `SPIDERPIG_WORKERS=0` keeps everything in one process.
+  `spiderpig build` starts one before it fabricates: it loads the fabrication from the
+  store's cache once that holds it, groups the parts and writes the DXFs while the build
+  writes the robot's STEP and STL (`build._start_exports`; with the cache off, in-process).
 
 ### 7.5 Limits of the outputs
 
@@ -2236,7 +2245,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `config.py` | 634 | `BuildConfig`, the default and removed constructions, shared CLI options, query parsing | `test_removed_constructions.py`, indirect |
 | `stack/` | 2,725 | the planner: `geometry.py` (shapes, claims, `Layout`), `topology.py` (`Topology`, static clearances, `PlanError`, the `Router` protocol), `plan.py` (`StackSpec`, `StackPlan`, `Deadline`), `search.py` (`StackProblem`, `_Search`), `plan_z.py` (`finalize`, the plan's z), `verify.py` (`verify_plan`) | `test_stack.py`, `test_planner_bounds.py`, `test_route.py` with `brute.py`, `test_seam_stack.py` |
 | `stack_pool.py`, `stack_symmetry.py` | 342, 171 | the opt-in parallel and symmetry search (`spiderpig/stack_symmetry.py`: one of each mirrored leg pair) | few |
-| `construction/base.py` | 292 | the `Group` contract, `Params`, `Context`, `Build` | indirect |
+| `construction/base.py` | 265 | the `Group` contract, `Context`, `Build`; re-exports `Params` | indirect |
+| `fit.py` | 41 | `Params`, the dimensions every construction shares (a spec's `fit`; apart, so `config` imports no CAD) | `test_recommend.py`, indirect |
 | `construction/__init__.py` | 88 | construction registries, `GROUP_FACTORIES` | `test_pivots.py` |
 | `construction/axle.py` | 254 | pillars and pins: the claims, `AxleDims` | `test_axle.py`, `test_stack.py` |
 | `construction/pivots/` | 1,227 | `standoff.py`, `chicago.py`, `common.py` | `test_pivots.py`, `test_standoff.py`, `test_seam_pivots.py` |

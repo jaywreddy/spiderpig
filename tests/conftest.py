@@ -43,7 +43,6 @@ import pytest
 from spiderpig import servos
 from spiderpig.config import BuildConfig
 from spiderpig.servos import cad as cadlib
-from spiderpig.servos import model
 from tests import cache
 from tests._modules import MODULE_OF_FILE, MODULES
 
@@ -64,6 +63,28 @@ def pytest_configure(config):
         cache.ENABLED = False
     if not hasattr(config, "workerinput") and cache.ENABLED and cache.enabled():
         cache.prune()       # the controller only: engine folders nobody used for 14 days
+    if not hasattr(config, "workerinput") and config.getoption("numprocesses", None):
+        _warm_keys(config)
+
+
+def _warm_keys(config) -> None:
+    """Under xdist, the controller starts :func:`tests.cache.warm_keys` in a process of its
+    own while the workers start and collect: after an edit the keys are made once, beside
+    the collection, instead of by every worker's first test at once (15-25 s each)."""
+    from spiderpig import keys
+
+    if keys._cache_base() is None:
+        return                      # (no key is kept: each process computes its own)
+    proc = subprocess.Popen([sys.executable, "-m", "tests.cache"], cwd=_REPO_ROOT,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL)
+
+    def stop() -> None:
+        if proc.poll() is None:     # (a key it was making: its lock goes with it)
+            proc.kill()
+        proc.wait()
+
+    config.add_cleanup(stop)
 
 
 def pytest_report_header(config):
@@ -177,8 +198,12 @@ def _no_fabricate_guard(request):
 
 
 def clear_model_caches() -> None:
-    for f in (model.cad_servo, model._servo_part, cadlib._load_cached):
-        f.cache_clear()
+    cadlib._load_cached.cache_clear()
+    # (not imported: nothing cached, and importing it would load build123d for nothing)
+    model = sys.modules.get("spiderpig.servos.model")
+    if model is not None:
+        for f in (model.cad_servo, model._servo_part):
+            f.cache_clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

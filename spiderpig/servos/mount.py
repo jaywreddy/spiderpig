@@ -40,11 +40,13 @@ from OCP.gp import gp_Trsf
 from spiderpig import linkage
 from spiderpig.construction.base import (
     FRAME_INNER,
+    RIDES_HOST,
     Build,
     ConstructionError,
     Context,
     DriveInterface,
     Group,
+    Motion,
     Realized,
     hardware,
 )
@@ -377,6 +379,12 @@ class DriveGroup(Group):
         pins = build.plan.topo.axes_of("crankpin")
         base = build.angle("O", pins[0].name) if pins else 0.0
         return base + iface.pattern_angle
+
+    def motion(self, got: Realized) -> Motion:
+        """The servo, its screws and every hole and pad it asks of the inner plate stand
+        with the frame (O and the pillars place them); the horn and its spacer turn with the
+        crank about O (:meth:`horn_angle`; the spacer's pockets at crank points)."""
+        return RIDES_HOST
 
     def realize(self, build: Build, done: Realized) -> Realized:
         """The servo, its horn (and spacer), mounting screws, the plate's holes and pad.

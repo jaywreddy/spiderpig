@@ -37,10 +37,14 @@ Usage
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import math
+import os
 import re
+import shutil
 import sys
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -53,7 +57,12 @@ from spiderpig.config import (
     torque_limit_note,
 )
 from spiderpig.fabricate import design_side, fabricate, split_parts, template_for
-from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filaments
+from spiderpig.hardware.bom import (
+    MadeGroup,
+    bom_from_mechanism,
+    group_made,
+    printed_filaments,
+)
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
@@ -200,6 +209,161 @@ def clear_generated(folder: Path) -> None:
         folder.rmdir()
 
 
+# ---------------------------------------------------------------------------
+# the export worker: the grouping and the cut files beside the STEP and STL
+# ---------------------------------------------------------------------------
+
+GROUPED = ("laser", "printed")
+
+
+class _ExportJob:
+    """The export worker (:func:`_exports_job`), the file that tells it where the
+    fabrication is (:meth:`go`, once), and the folder it writes its cut files into
+    (``staging``, in ``--out``): moved into ``--out`` once the build takes them
+    (:meth:`adopt`), removed when it fails first (:meth:`abandon`), so a failed build
+    leaves no cut file behind."""
+
+    def __init__(self, future, folder: Path, staging: Path):
+        self.future, self.folder, self.staging, self.sent = future, folder, staging, False
+        future.add_done_callback(lambda _: shutil.rmtree(folder, ignore_errors=True))
+
+    def go(self, entry: Path | None) -> None:
+        """The fabrication cache's entry to load (``None``: none, the worker returns)."""
+        if self.sent:
+            return
+        self.sent = True
+        tmp = self.folder / "go.tmp"
+        tmp.write_text("" if entry is None else str(entry))
+        os.replace(tmp, self.folder / "go")         # (whole, or not there)
+
+    def adopt(self, out: Path) -> None:
+        """Move what the worker wrote into ``out`` (the same tree under it)."""
+        for f in sorted(p for p in self.staging.rglob("*") if p.is_file()):
+            dest = out / f.relative_to(self.staging)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(f, dest)
+        shutil.rmtree(self.staging, ignore_errors=True)
+
+    def abandon(self) -> None:
+        """The build stops without the worker's files: it is told there is nothing to
+        load (if it wasn't told yet), waited for, and what it wrote removed."""
+        self.go(None)
+        with contextlib.suppress(Exception):
+            self.future.result()
+        shutil.rmtree(self.staging, ignore_errors=True)
+
+
+def _start_exports(store, out: Path, args, config) -> _ExportJob | None:
+    """Start the export worker before the fabrication, or ``None`` (everything in this
+    process) with workers or the fabrication cache off.
+
+    The STEP and STL of the whole robot are this process's: their texts follow the parts'
+    locations to the last bit, which a part reloaded from the cache doesn't keep (``-0.``
+    for ``0.``: :mod:`spiderpig.fabcache`), while the grouping (whose decisions are the
+    boolean's), the sheets and the per-part DXFs come out the same from either."""
+    from spiderpig import fabcache, workers
+
+    if not (workers.enabled() and fabcache.enabled()):
+        return None
+    folder = Path(tempfile.mkdtemp(prefix="spiderpig-build-"))
+    staging = Path(tempfile.mkdtemp(prefix=".spiderpig-exports-", dir=out))
+    size = tuple(args.sheet_size) if args.sheet_size else None
+    future = workers.submit(_exports_job, str(folder / "go"), os.getpid(), str(staging),
+                            args.name, config.sheet, args.kerf, size, not args.no_dxf)
+    return _ExportJob(future, folder, staging)
+
+
+def _published(store, tmpl, config, design) -> Path | None:
+    """The cache's entry of the fabrication just served, ``None`` when there is none (the
+    cache couldn't write it, or the fabrication didn't go through it)."""
+    from spiderpig import fabcache
+
+    try:
+        entry = fabcache.entry_path(store, tmpl, config, design, 1.0)
+    except Exception:       # noqa: BLE001 - no key: the export runs here
+        return None
+    return entry if entry is not None and entry.is_dir() else None
+
+
+def _exports_result(job: _ExportJob) -> dict | None:
+    """The worker's groups and cut files (``None``: it couldn't load the fabrication)."""
+    return job.future.result()
+
+
+def _outcome(result: tuple):
+    """A step's value from the worker, or its exception raised here."""
+    ok, value = result
+    if not ok:
+        raise value
+    return value
+
+
+def _attempt(fn) -> tuple:
+    try:
+        return True, fn()
+    except Exception as e:      # noqa: BLE001 - raised again in the build (_outcome)
+        return False, e
+
+
+def _await_go(go: Path, parent: int) -> str | None:
+    """The entry the build names in ``go`` (``None``: none, or the build is gone)."""
+    import time
+
+    while not go.is_file():
+        if os.getppid() != parent:
+            return None
+        time.sleep(0.02)
+    return go.read_text() or None
+
+
+def _exports_job(go: str, parent: int, out: str, name: str, sheet: str,
+                 kerf: float | None, size: tuple[float, float] | None,
+                 dxf: bool) -> dict | None:
+    """In a worker: :func:`group_made` of the fabrication the cache holds at the entry
+    ``go`` names, and with ``dxf`` the sheets (:func:`save_sheets`, :func:`sheet_lines`)
+    and the per-part DXFs (:func:`save_parts`) written into ``out`` as :func:`main` would;
+    each step's value or exception (:func:`_outcome`), the groups by name, and each step's
+    seconds (``timings``: ``spiderpig build --profile`` logs them as ``worker.*``).
+    ``None`` when there is no entry or it can't be read (the build does it all)."""
+    import logging
+    import time
+
+    from spiderpig import fabcache
+
+    entry = _await_go(Path(go), parent)
+    if entry is None:
+        return None
+    t0 = time.perf_counter()
+    try:
+        mech = fabcache.load_mechanism(Path(entry))
+    except Exception as e:      # noqa: BLE001 - the build groups and cuts itself
+        logging.getLogger("spiderpig.build").warning("%s: unreadable (%s)", entry, e)
+        return None
+    timings = {"load": time.perf_counter() - t0}
+    t0 = time.perf_counter()
+    groups = {m: group_made(mech.bodies, m) for m in GROUPED}
+    timings["group"] = time.perf_counter() - t0
+    res: dict = {"groups": {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in gs]
+                            for m, gs in groups.items()}, "timings": timings}
+    if not dxf:
+        return res
+    t0 = time.perf_counter()
+    laser = Path(out) / "laser"
+    res["sheets"] = _attempt(lambda: [str(p) for p in save_sheets(
+        mech, laser / f"{name}_sheet", sheet_size=size, kerf=kerf, default=sheet)])
+    if not res["sheets"][0]:
+        return res
+    res["lines"] = _attempt(lambda: sheet_lines(mech, sheet, size))
+    timings["dxf_sheets"] = time.perf_counter() - t0
+    if not res["lines"][0]:
+        return res
+    t0 = time.perf_counter()
+    res["order"] = _attempt(lambda: save_parts(groups["laser"], laser / "parts", sheet,
+                                               kerf=kerf))
+    timings["dxf_parts"] = time.perf_counter() - t0
+    return res
+
+
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     checked = uptodate.take(argv)   # the CLI's answer, else checked now (before any read)
@@ -258,29 +422,55 @@ def main(argv=None) -> int:
     print(plan.describe())
     # (key is set exactly when opts is: uptodate.check_once)
     read = uptodate.inputs(opts, config) if opts is not None and key is not None else None
-    with fabcache.serving(store):       # the store's fabrication when it holds this one
-        mech = fabricate(tmpl, config, 1.0)
-    split = split_parts(mech)
-    if split:           # no cut file or BOM of a part in pieces
-        print("error: parts in pieces: " + ", ".join(f"{name} ({n} solids)" for name, n in split),
-              file=sys.stderr)
-        return 2
-    if config.robot:
-        m = mech.meta
-        print(f"chassis: {m['centre_plates']} centre plates; rear screws "
-              f"{m.get('rear_screws_per_servo', 0)} x {m.get('rear_screw')} per servo; "
-              f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
+    # the grouping and the cut files in a worker beside the STEP and STL, from the
+    # fabrication the cache keeps (started now: its imports overlap the fabrication)
+    job, entry = _start_exports(store, out, args, config), None
+    try:
+        try:
+            with fabcache.serving(store):   # the store's fabrication when it holds this one
+                mech = fabricate(tmpl, config, 1.0)
+            split = split_parts(mech)
+            if job is not None and not split:
+                entry = _published(store, tmpl, config, design)
+        finally:
+            if job is not None:
+                job.go(entry)               # (None: the worker returns at once, unused)
+        if entry is None and job is not None:
+            job.abandon()
+            job = None
+        if split:           # no cut file or BOM of a part in pieces
+            print("error: parts in pieces: " + ", ".join(f"{name} ({n} solids)"
+                                                         for name, n in split),
+                  file=sys.stderr)
+            return 2
+        if config.robot:
+            m = mech.meta
+            print(f"chassis: {m['centre_plates']} centre plates; rear screws "
+                  f"{m.get('rear_screws_per_servo', 0)} x {m.get('rear_screw')} per servo; "
+                  f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
 
-    step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
-    with warnings.catch_warnings():
-        # build123d's "Unknown Compound type, color not set" on a purchased model's
-        # compound: the colours are ours to set, the file is complete
-        warnings.filterwarnings("ignore", message="Unknown Compound type")
-        mech.export_step(step_path)
-    mech.export_stl(stl_path)
-    print(f"wrote {step_path} and {stl_path}")
+        step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
+        with warnings.catch_warnings():
+            # build123d's "Unknown Compound type, color not set" on a purchased model's
+            # compound: the colours are ours to set, the file is complete
+            warnings.filterwarnings("ignore", message="Unknown Compound type")
+            mech.export_step(step_path)
+        mech.export_stl(stl_path)
+        print(f"wrote {step_path} and {stl_path}")
 
-    groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
+        done = _exports_result(job) if job is not None else None
+    except BaseException:
+        if job is not None:
+            job.abandon()                   # a failed build leaves none of its cut files
+        raise
+    if job is not None:
+        job.adopt(out)                      # (the build reports on them below)
+    if done is None:
+        groups = {method: group_made(mech.bodies, method) for method in GROUPED}
+    else:
+        by_name = {b.name: b for b in mech.bodies}
+        groups = {m: [MadeGroup(m, by_name[ref], names, mirrored)
+                      for ref, names, mirrored in gs] for m, gs in done["groups"].items()}
     filament = mech.meta.get("filament", "pla_filament")
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
                          filaments=printed_filaments(mech, filament))
@@ -293,20 +483,23 @@ def main(argv=None) -> int:
     if not args.no_dxf:
         size = tuple(args.sheet_size) if args.sheet_size else None
         try:
-            sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
-                                 kerf=args.kerf, default=config.sheet)
+            sheets = (save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
+                                  kerf=args.kerf, default=config.sheet)
+                      if done is None else _outcome(done["sheets"]))
         except ValueError as e:
             print(f"error: the cut files can't be laid out: {e}", file=sys.stderr)
             return 1
         n_laser = sum(g.qty for g in groups["laser"])
         print(f"wrote {len(sheets)} DXF sheet(s) with {n_laser} laser-cut parts "
               f"({len(groups['laser'])} different) to {out / 'laser'}, one set per sheet:")
-        for line in sheet_lines(mech, config.sheet, size):
+        for line in (sheet_lines(mech, config.sheet, size) if done is None
+                     else _outcome(done["lines"])):
             print(f"  {line.qty} x {line.key}")
             mech.bom_extras.append(line)
         try:
-            order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
-                               kerf=args.kerf)
+            order = (save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
+                                kerf=args.kerf)
+                     if done is None else _outcome(done["order"]))
         except ValueError as e:
             print(f"error: the per-part cut files can't be written: {e}", file=sys.stderr)
             return 1
