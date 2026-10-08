@@ -198,7 +198,7 @@ def test_cards(server):
     sheet = next(s for s in cat["sheets"] if s["key"] == "acrylic_3mm")
     assert sheet["thickness_mm"] == 3.0
     assert sheet["sheet_mm"] == [300.0, 300.0]
-    assert sheet["price_usd"] == 10.99
+    assert sheet["price_usd"] is None        # SendCutSend's upload quotes it (2026-10-08)
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
     assert set(axles) == {"chicago", "standoff"}          # (the rest removed on 2026-10-07)
     assert axles["standoff"]["roles"] == ["pillar"]
