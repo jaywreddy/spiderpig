@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from spiderpig.construction.crank.hex import HexJoint
 
 if TYPE_CHECKING:
+    from spiderpig.config import BuildConfig
     from spiderpig.construction.crank.web import WebJoint
 
 
@@ -79,3 +80,22 @@ class CapacityMixin:
                 bearing, 3),
             f"hex standoff torsion ({self.hex_yield:g} MPa)": round(torsion, 3),
         }
+
+
+def crank_capacity(meta: dict, config: BuildConfig) -> dict[str, float] | None:
+    """What one crankpin joint of ``config``'s crank holds, per element (N·m), from the
+    built crank's notes (``meta``: ``crank_bolt``), else the construction's nominal (no
+    build needed: the sim's metrics); ``None`` for a crank this doesn't model."""
+    from spiderpig.construction import CRANKS
+
+    construction = CRANKS.get(config.crank)
+    if construction is None:
+        return None
+    bolt = meta.get("crank_bolt")
+    if bolt and bolt.get("chains"):
+        caps: dict[str, float] = {}
+        for ch in bolt["chains"] + bolt.get("journals", []):
+            for k, v in ch["capacity_nm"].items():
+                caps[k] = min(caps.get(k, math.inf), v)
+        return caps
+    return construction.for_sheet(config.crank_sheet).capacity()

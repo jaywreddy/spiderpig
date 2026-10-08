@@ -150,8 +150,6 @@ ignore_imports = [
     "spiderpig.bake -> spiderpig.api",
     "spiderpig.build -> spiderpig.api",
     "spiderpig.uptodate -> spiderpig.api",
-    # the sim's walk metrics report the crank's weakest joint (strength.crank_capacity)
-    "spiderpig.sim.run -> spiderpig.strength",
 ]
 
 [[tool.importlinter.contracts]]

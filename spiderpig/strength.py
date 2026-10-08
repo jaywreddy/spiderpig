@@ -35,6 +35,7 @@ import math
 import re
 
 from spiderpig.config import BuildConfig
+from spiderpig.construction.crank.capacity import crank_capacity  # (its home since W5)
 from spiderpig.construction.wobble import Section, bending_case, stresses
 
 JAM_ERROR = 1.0
@@ -62,23 +63,6 @@ def bolt_crank(key: str) -> bool:
     return isinstance(CRANKS.get(key), BoltCrank)
 
 
-def crank_capacity(meta: dict, config: BuildConfig) -> dict[str, float] | None:
-    """What one crankpin joint of ``config``'s crank holds, per element (N·m), from the
-    built crank's notes (``meta``: ``crank_bolt``), else the construction's nominal (no
-    build needed: the sim's metrics); ``None`` for a crank this doesn't model."""
-    from spiderpig.construction import CRANKS
-
-    construction = CRANKS.get(config.crank)
-    if construction is None:
-        return None
-    bolt = meta.get("crank_bolt")
-    if bolt and bolt.get("chains"):
-        caps: dict[str, float] = {}
-        for ch in bolt["chains"] + bolt.get("journals", []):
-            for k, v in ch["capacity_nm"].items():
-                caps[k] = min(caps.get(k, math.inf), v)
-        return caps
-    return construction.for_sheet(config.crank_sheet).capacity()
 def family_loads(linkage: str) -> tuple[float, float] | None:
     """The fallback walking and jam loads of ``linkage``'s family (a key's own entry
     first), else None."""
