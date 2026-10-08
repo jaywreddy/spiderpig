@@ -47,7 +47,7 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
 
     Assembly: bottom up with the legs, the hub chain capped by the hub plate, which comes
     on with the horn, the servo and the inner plate as one unit
-    (:data:`construction.robot.ASSEMBLY`, steps 2 to 4). Axially (the assembly audit of
+    (:meth:`assembly`, :data:`construction.assembly.ROBOT_ORDER`). Axially (the assembly audit of
     2026-10-04): the capped standoff is carried by its sleeve, a light press on the hex
     caught between its two plates (``capped_press``), and the crank body (stub, webs,
     standoffs) stops toward the outer plate on the stub's printed thrust sleeve and toward
@@ -441,6 +441,68 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
 
     def realize(self, group: CrankGroup, build: Build) -> Realized:
         return _WebPlates(self, group, build).make()
+
+    def assembly(self, view) -> list:
+        """How the crank goes on (:mod:`construction.assembly`), bottom up with the legs:
+        each web but the hub plate is a bench unit, the standoff that stands on it screwed
+        on first (its screw, wide washer and collar from below, while the web is loose)
+        and, the lowest web, the journal stub with its screw and thrust sleeve; the unit
+        goes on at its web's layer, over the chain below with that chain's riders and
+        sleeve already on, and that chain's top screw goes in from above. The hub plate
+        caps its chain (:meth:`hub_capped`) and goes on with the servo horn (the
+        inner-plate unit), its horn screws from below."""
+        import re
+
+        from spiderpig.construction.assembly import STACK, UNIT, Op, whole
+
+        webs = view.named(r"crank_plate\d+")
+        if not webs:
+            return []
+        hub, rest = webs[-1], webs[:-1]
+        posts = view.named(r"crank_pin_(?!collar_|washers?_|screw_|sleeve_|stud_|shims_)\w+")
+        ops, taken = [], set()
+        fix = ("its button head and wide washer from below, threadlocker, the printed collar "
+               "between them" if self.hex else "its M4 button head from below")
+        for i, web in enumerate(rest):
+            w0, w1 = view.z[web]
+            unit = [web]
+            for post in posts:
+                if post not in taken and w0 - 1.5 <= view.z[post][0] <= w1 + 0.5:
+                    tag = re.escape(post.removeprefix("crank_pin_"))
+                    unit += [post, *view.named(rf"crank_pin_(collar|washers?|screw)_lo_{tag}")]
+                    taken.add(post)
+            text = (f"Screw the {'hex' if self.hex else 'round'} standoff that stands on this "
+                    f"web to it while the web is loose: {fix}.")
+            if i == 0 and (stub := view.named(r"crank_stub\w*")):
+                unit += stub
+                text = ("Screw the stub standoff to the lowest web (its button head from "
+                        "above) and slide its printed thrust sleeve over it, up to the web. "
+                        + text)
+            taken.update(unit)
+            ops.append(Op(STACK, (view.slot(w0),), whole(*unit),
+                          f"Crank web {web.removeprefix('crank_plate')}", text, "crank",
+                          sub=True))
+        horn = [hub, *view.named(r"crank_horn_\w+")]
+        taken.update(horn)
+        ops.append(Op(UNIT, (2, 1), whole(*horn), "Horn and hub plate",
+                      "The hub plate on the horn: the horn screws up through it from below, "
+                      "with their shims.", "horn"))
+        # a chain's top screw, washer and collar: with the web they sit on
+        tops: dict[int, list[str]] = {}
+        for n in view.named(r"crank_pin_(collar|washers?|screw)_hi_\w+"):
+            tag = re.sub(r"^crank_pin_(collar|washers?|screw)_hi_", "", n)
+            seat = view.named(rf"crank_pin_(collar|washers?)_hi_{re.escape(tag)}")
+            anchor = min((view.z[m][0] for m in seat), default=view.z[n][1] - 2.0)
+            web = min(webs, key=lambda w: abs(view.z[w][1] - anchor))
+            tops.setdefault(view.slot(view.z[web][0]), []).append(n)
+        for k, names in sorted(tops.items()):
+            ops.append(Op(STACK, (k, 2, 1), whole(*names), "",
+                          "Each chain's top screw from above, through its wide washer and "
+                          "collar (threadlocker).", "layer"))
+        ops += [Op(STACK, (view.slot(view.z[n][0]), 0), whole(n), "",
+                   "Each crankpin's printed sleeve over its standoff, before its riders.",
+                   "layer") for n in view.named(r"crank_pin_sleeve_\w+")]
+        return ops
 
 
 BOLT_ROUND = BoltCrank(

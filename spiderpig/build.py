@@ -136,8 +136,13 @@ def _on_plate(part):
 
 
 def export_prints(groups, out_dir: Path, density: float = 1.24,
-                  filaments: dict[str, str | None] | None = None) -> list[dict]:
+                  filaments: dict[str, str | None] | None = None,
+                  stems: dict[str, str] | None = None) -> list[dict]:
     """One STL per different printed part (and its mirror image where needed).
+
+    ``stems``: each printed body's file stem (:func:`spiderpig.labels.print_stems`: the
+    part label first, ``P13_top_spacer_0.7mm``, as the assembly guide's bag labels say);
+    without it a file is named after its first part.
 
     ``filaments``: each printed body's filament (catalog key, by name:
     :func:`hardware.bom.printed_filaments`): a group whose parts take two filaments is
@@ -158,7 +163,8 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         fil = (filaments or {}).get(g.names[0] if g.names else g.ref.name)
         # named after its own parts (a split row's ref may be the other filament's body)
         own = g.ref.name if g.ref.name in g.names or not g.names else g.names[0]
-        stem = _file_stem(own, taken)
+        plain = [n for n in g.names if n not in g.mirrored] or [own]
+        stem = (stems or {}).get(plain[0]) or _file_stem(own, taken)
         part = _on_plate(g.ref.part)
         export_stl(part, str(out_dir / f"{stem}.stl"))
         same = g.qty - len(g.mirrored)
@@ -276,8 +282,11 @@ def main(argv=None) -> int:
 
     groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
     filament = mech.meta.get("filament", "pla_filament")
+    from spiderpig.labels import assembly_order, part_types, print_stems
+
+    types = part_types(mech, assembly_order(mech, design), groups, filament)
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
-                         filaments=printed_filaments(mech, filament))
+                         filaments=printed_filaments(mech, filament), stems=print_stems(types))
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:

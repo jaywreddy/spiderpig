@@ -1,265 +1,222 @@
-# The assembly guide: a feasibility study and a prototype (2026-10-08)
+# The assembly guide
 
-**Goal.** Every design gets an `ASSEMBLY.pdf`, produced by a build pipeline with no agent
-in the loop. It has numbered steps; each step has a stylised picture (the parts added in
-that step highlighted, the earlier assembly greyed, offsets and arrows), a list of the
-parts it uses with quantities and identifiers, and text.
+`spiderpig guide` (`mise run guide`) writes `ASSEMBLY.pdf` and `ASSEMBLY.md` for any design,
+deterministically and with no agent in the loop. The guide has:
 
-**Verdict: feasible.** The prototype on branch `guide-feasibility` (`spiderpig guide`,
-`spiderpig/guide/`) writes a 48-page guide for the default Strider double robot: a cover,
-four parts pages and 43 steps. It runs end to end in about 100 s cold. Two runs produce
-byte-identical output. It adds no new dependency. To open it:
-`~/.cache/spiderpig/guide-prototype/ASSEMBLY.pdf`.
+- a cover;
+- the parts, each type with its label, quantity and thumbnail;
+- the print batches;
+- printable bag labels;
+- one page per numbered step. Each step page has a shaded toon picture, the parts the step
+  adds in orange (bought ones in blue) over the earlier assembly in grey, the stack's parts
+  lifted with an arrow, label bubbles, the parts list with quantities, and the sentences.
 
-Recommended stack:
+`spiderpig build` is unchanged except for one thing: its print STLs are named by the same
+labels. The decisions behind it are dated in [DECISIONS.md](DECISIONS.md) (2026-10-08). The
+feasibility study is at the end of this file.
 
-- **Pictures:** a numpy software renderer (option b): flat toon shading and ink outlines,
-  run in `workers.submit` processes.
-- **Layout:** reportlab. It is the one new dependency and is about 5x faster than
-  matplotlib, which the prototype uses.
-- **Steps:** a step model generated from the layer plan. Each construction declares a small
-  assembly hook for the parts the plan can't order on its own.
+## 1. The assembly order, structured
 
-## 1. The step model
+`spiderpig/construction/assembly.py` holds the model.
 
-### What the design already says
+**Who says what.** Each group of a side declares how its own parts go on, through its
+`assembly` hook (`construction.base.Group.assembly`, default `[]`). A hook returns `Op`
+records. Each `Op` gives:
 
-| source | what it gives the guide |
+- a few bodies, or a `Piece` of one (the pieces of a body together cover it);
+- the stage they go on in (`STACK`, `UNIT` or `JOIN`);
+- a sort key (the layer, for the stack);
+- a tag that the robot's order can move;
+- a sentence;
+- whether the bodies are built on the bench first (`sub`: drawn alone, then put on in the
+  next step).
+
+Each hook reads a `SideView`: the side's bodies by bare name, their z in side coordinates,
+host, fab, catalog key, the plan's layers and `slot`. `slot` gives the layer a part goes on
+with: the gap under a layer belongs to that layer.
+
+| hook | declares |
 |---|---|
-| `construction.robot.ASSEMBLY` (prose) | The robot-level order: each side's leg stack, the crank, the inner-plate unit, the unit onto the stack, the centre plates and studs, the right side, the deck and the cables. It also carries the know-how: threadlocker, 0.8 N·m, "from the cap side", which side is built on the robot. |
-| `StackPlan` (`plan.z(k)`, `plan.describe()`) | Each layer's z interval and contents, the same for both sides. A body's bottom face gives its layer: the gap under a layer goes with that layer. |
-| body names and `rigid_with` | Each pillar (*pillar_J2_leg0_ring5*, *_gap3_spacer*, *_standoff0*, *_screw0*/*_screw13*), each Chicago pin (*pin_J4_leg0_**, host link through `rigid_with`), each crank chain (*crank_plate<k>* webs, *crank_pin_J1_leg0* hex with its *_lo*/*_hi* screw, washer and collar, sleeve, rider rings), the frame ties (*tie_**), the centre plates, the deck (*deck_**). |
-| `fab`, `bom_key`, `bom.group_made` | Part types: printed and laser shape groups, bought items by catalog key. These give the identifiers and quantities. |
-| `mech.meta` | Chassis facts: centre plates, rear screws, ties, deck fitted. |
+| `BoltCrank.assembly` | Each web except the hub plate is a bench unit: the standoff that stands on it, screwed on from below. The lowest web also takes the stub and its thrust sleeve. A chain's top screw goes with the web it sits on. The sleeves go on before their riders. The hub plate goes in the unit, with the horn. |
+| `ChicagoAxle.assembly` | Each pin is one body in two pieces. The barrel is bonded into its host link and goes on with it. The screw goes in from the cap side once the links above are on. |
+| `StandoffAxle.assembly` | The column (standoff, outside button head and washer) goes on the bare outer plate. The inner screw goes in at the join. The take-up shims go on the column's top. |
+| `LinkPlates.assembly`, `FramePlates.assembly` | Each link goes in its layer, a foot link's TPU sock first. The outer plate goes first, the inner plate first in its unit. |
+| `DriveGroup.assembly` | The servo, its front screws, and the horn with its spacer. |
+| `chassis.assembly`, `deck.assembly` (robot level, a `RobotView`) | The tie chains and their screws, the studs, each servo's own centre plates with its rear screw, the deck rails, the deck's electronics on the bench, and the deck onto the rails. |
 
-### Data structures (`spiderpig/guide/model.py`)
+**The robot's order.** `ROBOT_ORDER` is data (a side on its own uses `SIDE_ORDER`). It lists
+the stages, which tags make each step, the sentences a stage puts in place of a hook's, and
+the ops it moves:
 
-```python
-@dataclass(frozen=True)
-class Op:                 # what a construction says about putting its parts on
-    stage: tuple          # robot-level phase: ("side", "L", 1), ("unit", "L", 0), ...
-    key: tuple            # order within the stage, e.g. (layer, 0) for a bench unit
-    bodies: tuple[str, ...]
-    title: str
-    text: str = ""
-    sub: bool = False     # a sub-assembly: built on the bench, drawn alone, placed next step
+1. The left leg stack, bottom up, on the bench.
+2. The left inner-plate unit, on the bench.
+3. The left unit onto its stack.
+4. The centre plates and studs. The right servo comes here (`"R.unit.servo"`).
+5. The right inner plate, on the robot: its chains go onto the studs before the plate.
+6. The right leg stack.
+7. The body turned over onto the right leg stack.
+8. The wiring.
+9. The deck.
 
-@dataclass
-class Step:
-    number: int; title: str
-    adds: list[str]       # bodies added here: every body of the robot exactly once
-    context: list[str]    # what the picture shows already in place (greyed)
-    places: list[str]     # a sub-assembly put on here (light highlight)
-    text: list[str]; view: str; callouts: list[Callout]; sub: bool; explode: float
+`prose()` renders the order as numbered paragraphs, for the docs. The per-design steps are
+`assembly_steps(mech, design)`.
 
-@dataclass
-class Callout:
-    label: str; qty: int; name: str; ref: str    # P07 x 2 "printed ring 9.3 x 9.3 x 3.0 mm"
-```
+**Defaults and checks.**
 
-`steps(rows, layers, mid)` collects the `Op`s of each side and of the robot, checks that no
-body appears twice, sorts the ops by a stage order, and assigns each step its context:
+- A construction without a hook still gets steps. Each of its bodies joins the step of
+  the layer it sits in, with a generic sentence; a robot-level body goes in a last step.
+- `assembly_steps` raises if any body is added twice or never, or if a stage takes no op.
+- The hooks and this module stay out of the fabrication's code key (`spiderpig.keys`). An
+  edited sentence keeps every cache warm. `tests/test_guide.py` checks this. Name a new
+  function or field so that it doesn't match an attribute the engine reads: `steps` did,
+  and pulled the module in.
 
-- a bench step shows its own side's stack so far;
-- a unit step shows the unit so far;
-- a robot step shows everything placed so far;
-- a sub-assembly is drawn on its own.
+## 2. Part labels (`spiderpig/labels.py`)
 
-### What is generated, and what is templated
+`part_types` gives each type one label:
 
-**Generated from the data, with no per-design work:**
+- **P**: printed. A `group_made` shape group, split by filament as the print files are. A
+  mirror image is a separate print, labelled with an M suffix (P07M).
+- **C**: laser-cut.
+- **H**: bought, one per catalog key.
 
-- Each side's leg stack, bottom up, one step per layer. Each body not claimed by a rule
-  joins the step of the layer its bottom face sits in.
-- Chicago pins go in with their host link.
-- The crank's web units: each web except the hub plate, with the hex standoff that stands
-  on it and that hex's lower screw, washer and collar. The lowest web also takes the
-  journal stub.
-- The part types, quantities and labels.
-- The camera: bench views are fixed per side; unit and robot steps pick, among 2-3
-  cameras, the one where the added parts show the most pixels (`make.choose_view`).
-- The exploded offset along the stack axis, and the arrow.
-- The coverage check: every body exactly once.
+Each kind is numbered in the order the steps first need it (`assembly_order`). The same
+design always gets the same labels.
 
-**Templated by hand, once per construction:**
+**No part changes.** `spiderpig build` and `api.export` name each print STL by its label:
+`<label>_<what>_<height>mm.stl`, e.g. *P13_top_spacer_0.7mm.stl*, with `_mirrored` added
+for a mirror image (`print_stems`). The guide's prints table, parts pages and bag labels
+say the same. The bag labels are a grid to print at 100 % and cut out, one per P and H
+type, each with its label, quantity, name, size and thumbnail. To use them, print each
+batch and bag it with its label.
 
-- The sentences: torques, threadlocker, which screw goes in from which side.
-- The sub-assembly boundaries: the crank web unit, the inner-plate unit, the deck
-  electronics.
-- The ordering exceptions:
-  - the hub plate goes with the servo, not with its layer;
-  - the pillars' top screws go in at the join;
-  - the right side's tie chains go onto the studs before its inner plate (`ASSEMBLY` step 6).
-- The robot-level stage order.
+## 3. Pictures (`spiderpig/guide/render.py`)
 
-In the prototype these live in one rule table over body names (`model.side_ops`,
-`model.robot_ops`). The maintainable form gives each group an assembly hook:
+The renderer is numpy plus Pillow, with no GPU and no display:
 
-```python
-class Group:                                   # construction.base.Group
-    def assembly(self, build: Build, done: Realized) -> list[Op]:
-        return []      # default: the group's bodies fall to the per-layer rule, generic text
-```
+- an orthographic projection;
+- a scanline z-buffer, resolved by an integer `maximum.at`, so the output is
+  byte-identical on every run;
+- flat banded (toon) shading;
+- ink lines found in image space, where the part, the depth or the normal jumps;
+- 2x supersampling.
 
-- `BoltCrank` would return the web units and the hub plate's placement.
-- `standoff` would return the column step and the top screws at the join.
-- `chicago` would return the pin with its host.
-- The drive group would return the servo, the horn and the hub plate.
-- The chassis, the deck and the ties would return their own steps.
+**Cameras.**
 
-`construction.robot.ASSEMBLY` would become structured: a list of stages, each with a title
-template filled from the design (`{n_centre_plates}`, `{tie_screw}`). The prose would then
-be generated from the same data. A new construction that has no hook still gives a
-complete guide, through the per-layer rule with generic text. The coverage test keeps it
-honest.
+- A side's stack steps keep the stack's axis up the page.
+- A sub-assembly, a unit or a robot step picks, among 2-3 cameras, the one where its new
+  parts show the most pixels (`choose`).
+- A piece of a body (a Chicago pin's barrel) is drawn from its triangles inside the
+  piece's z interval.
 
-### Gaps the prototype leaves
+**Label bubbles.** `render` reports where each new part shows. Once the labels are known,
+`bubbles` puts one bubble per type on a leader. Each bubble takes the free spot, at three
+distances round the part, that overlaps no other bubble and covers the least drawing.
 
-- The right side is built in the left side's order: its unit on the bench, then
-  "unit onto the leg stack". `ASSEMBLY` builds the right unit on the robot, and the body is
-  turned over onto the right stack. That needs the stage template.
-- A Chicago pin is one body (barrel and screw), so the guide can't say "barrel now, screw
-  once the link above is on".
-- Label bubbles aren't placed by a solver, so they can overlap in busy steps.
-- The parts box shows at most 12 types.
-- The bus cables are text only.
+**Wiring.** The wiring step's picture is a block diagram (`guide/wiring.py`), drawn
+generically:
 
-## 2. Rendering, headless and deterministic
+- Each bought electronics or servo body is a box.
+- The links follow the power and the bus: battery, protection board, switch, board, servos,
+  with the charger into the protection board.
+- Each cable the BOM buys goes on the link its key names (an XT30 pigtail, a DC plug, a bus
+  or Y cable). A cable it can't place is listed under the diagram.
 
-All measurements: 2026-10-08, 20-core shared box under load 3-6, no GPU, the default design.
+**Workers.** The step pictures, the thumbnails and the cover are drawn in
+`workers.submit` processes (`render_jobs`, `--jobs`, default 4). A worker imports numpy
+and Pillow, not the engine, and reads the meshes from one `.npz`. The main process groups
+the parts for the labels meanwhile.
 
-| option | look | time per image | same bytes on rerun | dependencies |
+## 4. The PDF (`spiderpig/guide/pdf.py`)
+
+The layout is reportlab: `pdf.write(path, doc)`, where `doc` is a `guide.doc.Doc`, plain
+data plus PNG paths. It is A4 landscape, in Helvetica (not embedded). Each image is one
+shared XObject however many pages use it. `rl_config.invariant` makes the bytes identical
+on every run.
+
+The pages, in order:
+
+- the cover;
+- the parts, 24 to a page;
+- the prints, 26 rows to a page, with a total;
+- the bag labels, 24 to a page;
+- one page per step.
+
+`ASSEMBLY.md` beside the PDF has the same steps as text.
+
+## 5. Pipeline and cache
+
+The guide is cached beside the design's fabrication, in
+`<store>/fab/<fab key>-<env>/guide-<entry>/`:
+
+- every picture under a hash of what it draws plus the renderer's code key
+  (`keys.source_key` of `render_jobs`);
+- the meshes (`meshes.npz`);
+- the finished guide, under the code key of `build_guide`. That key reaches every
+  construction's `assembly` hook by name, and `spiderpig.labels`.
+
+So an unchanged design is a copy, and a changed sentence redraws nothing. When the cache is
+off (`SPIDERPIG_FAB_CACHE=off`), there is no store, or a caller passes its own `design` and
+`mech` (the tests' seam), nothing is kept. `guide` is in `design.ENGINE_EXCLUDE` and in the
+import-linter layers beside `bake` and `build`.
+
+**Measured** on the default Strider double robot, 2026-10-08, on the shared 20-core box at
+load 17-18:
+
+| run | time |
+|---|---|
+| cold, fabrication cached | 62-77 s |
+| warm, unchanged design | 0.8 s in the guide, 5.5 s wall with imports |
+
+Where the cold time went:
+
+| stage | time |
+|---|---|
+| fabricate, from the cache | 0.2-12 s |
+| meshes | 5 s |
+| labels' grouping | 9-10 s, overlapping the drawing |
+| pictures | 24-28 s on 4 workers |
+| PDF | 8-9 s |
+
+The first run also computes the code keys once, about 10 s. At normal load (3-6) the
+pictures took 39 s for 43 steps on 4 workers before the move to workers per picture, and
+the PDF 4-5 s. The 40 s cold target holds only on an unloaded box. Re-measure before quoting.
+
+**Tests** (`tests/test_guide.py`, sim tier).
+
+Quick (`no_fabricate`):
+
+- the renderer's bytes, highlight and marks;
+- bubbles never overlap;
+- a gap goes with the layer above it;
+- the robot's order and its prose;
+- labels and print stems on a toy mechanism.
+
+Slow:
+
+- on the default robot: every body is added exactly once (pieces cover their body), the
+  stacks go bottom up and mirrored, the stage order holds, the right servo goes in with the
+  chassis, a pin's barrel comes before its screw, and the hub plate is in the unit;
+- the labels are unique and stable, in first-use order, and name the prints;
+- `klann_lego` quad and `hoecken_pantograph` (one side): the same structure check;
+- the PDF's page count;
+- the hooks stay out of the fabrication key.
+
+## 6. Feasibility study (2026-10-08, kept for its measurements)
+
+| option | look | time per image | same bytes | dependencies |
 |---|---|---|---|---|
-| **(b) numpy z-buffer** (`guide/render.py`) | flat banded tones, ink silhouettes and creases from the id, depth and normal buffers, colour highlight, 2x supersampling | 1.4-1.7 s for the sample step (12k triangles, 1200x900); 2.3-2.7 s for a whole side (121k triangles, 1400x1050). The 43 steps take 39 s on 4 workers | yes: PNGs and PDF identical across runs and processes (the z-buffer is an integer `maximum.at`) | none new (numpy, Pillow) |
-| (a) OCCT hidden lines (build123d *project_to_viewport* + *ExportSVG*) | exact vector line art, like a technical drawing or IKEA; no fills, so a highlight is only a stroke colour | 0.13 s for the sample step, 2.2 s for a whole side (+0.4 s to write the SVG) | yes | none new |
-| (c) three.js in Playwright Chromium | the viewer's look; 1-pixel crease lines; noisy on the fine horn mesh | 5.7-6.5 s cold (launch, 10.8 MB glb, outlines), then 0.40-0.43 s per step, almost all of it *toDataURL* | yes on this machine (SwiftShader; any flag set); a GPU machine needs `--use-angle=swiftshader` | Playwright and a Chromium download at runtime (Playwright is dev-only today), three bundled into the viewer's dist, a bake of the glb (the t = 0 pose) |
-| VTK 9.3.1 (already installed through cadquery-ocp) | none | fails: its window needs an X server, and the PyPI wheel has no EGL or OSMesa | n/a | n/a |
-| matplotlib mplot3d, pyrender/trimesh | not tried. mplot3d sorts whole polygons with no z-buffer, which is wrong for interleaved stacks and slow at 100k polygons. pyrender is not in the lock and needs OSMesa or EGL system libraries | | | |
-| (d) Blender | not tried: a 300+ MB dependency. Freestyle would draw beautiful lines | | | |
+| **numpy z-buffer** (chosen) | flat banded tones, ink outlines, colour highlight | 1.4-2.7 s at 1200x900, 2x supersampled | yes | none |
+| OCCT hidden lines (build123d *project_to_viewport*) | exact vector line art, no fills | 0.13 s for a small step, 2.2 s for a whole side | yes | none |
+| three.js in Playwright Chromium (SwiftShader) | the viewer's look, 1-pixel edges | 6 s cold, then 0.4 s | yes, with `--use-angle=swiftshader` on a GPU machine | a browser at runtime |
+| VTK 9.3.1 (from cadquery-ocp) | none | fails: it needs an X server; no EGL or OSMesa in the wheel | n/a | n/a |
+| matplotlib mplot3d, pyrender, Blender | not tried: no z-buffer, system GL libraries, or 300+ MB | | | |
 
-Samples (`docs/agentlib/guide-samples/`). Each step sample is the same step, layer 1's
-links onto their pillars:
+For the PDF:
 
-- `numpy-sample-step.png`: (b)
-- `threejs-sample-step.png`: (c), in the t = 0 pose
-- `hlr-sample-step.svg`: (a)
-- `hlr-whole-left-side.png`: (a), the whole left side
-- `numpy-step09-layer6.png` and `numpy-step03-crank-web.png`: full-pipeline step pictures
-  with exploded parts, arrows, label bubbles and the earlier sub-assembly in light orange
-- `pdf-page-cover.png`, `pdf-page-parts.png`, `pdf-page-step09.png`, `pdf-page-step17.png`:
-  pages of the prototype PDF
+- **reportlab** (chosen): 4-5 s for about 55 pages at normal load, with identical bytes.
+- matplotlib's PdfPages: 22-28 s, because it re-encodes every thumbnail on every page.
+- Chromium's `page.pdf`: fast, but its dates differ between runs and it needs the browser.
 
-**Why (b).**
-
-- It is the only option that shows a coloured highlight over a grey context. That is the
-  core of instruction pictures.
-- It needs nothing new, is deterministic by construction and runs in plain processes.
-- At 1-3 s per picture it parallelises in `workers.submit` (a worker imports numpy and
-  Pillow, not the engine), and pictures can be cached.
-
-(a) is the right tool for an IKEA-style line-only edition, or for a hybrid: (b)'s fills
-under (a)'s exact vector edges, at +0.1-2 s per step. (c) is the fastest per frame, but it
-puts a browser in the build.
-
-## 3. The PDF
-
-| route | measured | same bytes on rerun | cost |
-|---|---|---|---|
-| matplotlib `PdfPages` (the prototype, `guide/pdf.py`) | 22-28 s for 48 pages: about 0.5 s a page, mostly PNG re-encoding, since every thumbnail is embedded again on every page | yes (`CreationDate` None, TrueType fonts) | none new (matplotlib is installed through cadquery-ocp -> vtk; declare it directly) |
-| **reportlab** | 4.8-5.8 s for the same 43 step images, one shared thumbnail XObject per type | yes (*rl_config.invariant*) | one small package (`uv run --with reportlab` pulled 3 packages) |
-| Chromium `page.pdf` from HTML/CSS | 0.07-0.1 s a page on an open page | no: 4 bytes of creation date differ (strippable) | the browser at runtime, as in (c) |
-| weasyprint, typst | not tried: system Pango libraries, or a separate binary | | |
-
-Recommendation: reportlab. It has real text layout, flowing tables and image reuse, it is
-deterministic, and it costs one dependency. Keep matplotlib only if no dependency at all is
-allowed.
-
-## 4. Part identification (a proposal: the decision is yours)
-
-The prototype labels each type **P** (printed), **C** (laser-cut) or **H** (bought), numbered
-in the order the steps first need it. The default robot comes to 84 types: P01-P36, C01-C16
-and H01-H32 or so. The hard case is the 8 mm spacers of 0.7 to 4.0 mm, which look alike.
-
-Options that leave the parts unchanged (the identity gate stays the same):
-
-1. **A 1:1 page.** The PDF knows its scale. A page prints each printed type at actual size,
-   side and top view, so a part laid on the page is identified by its outline and its
-   thickness against a printed bar. This is cheap and the most robust.
-2. **Bags or trays by type.** The print STLs are already one file per type. Name the files
-   by label (*P07_ring_9.3x3.0.stl*): this changes output names, not geometry. The guide
-   adds a sheet of cut-out bag labels with label, quantity and thickness. A tray map is one
-   label grid per print plate.
-3. **Colour per type family.** Spacers in one filament, rings in another, sleeves in a
-   third. No geometry change, but more filament swaps.
-
-Options that change the parts (the gate's diffs, then a new baseline):
-
-4. **Rim notches.** 1-5 small V notches on a spacer's rim encode its thickness index. They
-   fit even an 8 mm ring.
-5. **Debossed text** (build123d *Text*) on parts with room: rings and sleeves of 12 mm or
-   more, the deck rail, the cradle. It doesn't fit the 8 mm spacers (a 2.4 mm annulus, and
-   FDM needs about 2.5 mm characters).
-
-Suggested: 1 and 2 now; 4 if mix-ups still happen.
-
-## 5. Pipeline integration
-
-- **Where.** `spiderpig guide` as a separate command today (`--steps N`, `--jobs N`,
-  `--out`). Once the hooks exist, `spiderpig build` would write `ASSEMBLY.pdf` beside
-  `ORDER.md`, with a *--no-guide* flag. It would reuse the build's fabrication and
-  `group_made` groups, saving about 15 s, and the up-to-date check would cover the guide's
-  code.
-- **Engine version.** `guide` is in `design.ENGINE_EXCLUDE`, so editing the guide doesn't
-  invalidate stores or test caches. Without that, the prototype's first run re-made the
-  fabrication.
-- **Time budget.** The prototype measured, cold, 101 s in total:
-
-  | stage | time |
-  |---|---|
-  | fabricate (cache) | 9 s |
-  | tessellate | 4 s |
-  | labels | 6 s |
-  | cameras | 3 s |
-  | 43 steps on 4 workers | 39 s |
-  | 84 thumbnails, serial | 10 s |
-  | cover | 4 s |
-  | PDF | 22-28 s |
-
-  Planned changes:
-  - put the thumbnails in the workers;
-  - use reportlab (about 5 s);
-  - mesh once per congruence group, as the bake does (`2_mesh_share`);
-  - cache the PNGs in the fabrication cache, keyed by the fabrication entry, a hash of the
-    step's spec and the renderer's code digest.
-
-  Target: under 40 s cold, about 5 s when the parts haven't changed.
-- **Tests** (`tests/test_guide.py`, sim tier):
-  - the renderer draws the highlight and ink and its bytes are stable (quick, `no_fabricate`);
-  - a gap goes with the layer above it (quick);
-  - every part of the default robot is added exactly once, the steps are numbered
-    1..N and each step has text (slow);
-  - each side is built bottom up, and each sub-assembly is placed in the next step (slow).
-
-  To add: the same structure test on a Klann and a TrotBot robot; a PDF smoke test with
-  `--steps 2` that counts pages.
-
-## 6. Effort
-
-| work | estimate |
-|---|---|
-| renderer production: workers, PNG cache, shared meshes, label placement | 1 day |
-| assembly hooks on the groups, the structured `ASSEMBLY`, the right side's order, split Chicago barrel and screw | 2-3 days |
-| reportlab layout, 1:1 page, bag-label sheet, cable page | 1-1.5 days |
-| `spiderpig build` integration, *--no-guide*, up-to-date key, docs, other linkages' tests | 1-2 days |
-| **total** | **5-8 days** |
-
-## 7. Open decisions
-
-1. The look: shaded toon (b), line art (a), or the hybrid of (b)'s fills under (a)'s edges.
-2. reportlab (one dependency) or matplotlib (none).
-3. Whether the guide goes in `spiderpig build` by default (+30-40 s cold) or stays
-   `spiderpig guide`.
-4. Part identification: no geometry change (1:1 page, bags, colours), or rim notches or
-   deboss (a gate diff and a new baseline).
-5. Turning `ASSEMBLY`'s prose into the structured template the guide and the docstrings
-   both read: one source of truth.
+Samples are in `docs/agentlib/guide-samples/`: the final guide's pages (`pdf-page-*.png`)
+and the study's renders of one step (`numpy-`, `threejs-`, `hlr-`).

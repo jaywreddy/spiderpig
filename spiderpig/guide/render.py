@@ -1,20 +1,24 @@
-"""A small deterministic software renderer for the assembly guide's step pictures.
+"""The assembly guide's pictures: a small deterministic software renderer.
 
-Flat-shaded triangles in an orthographic view, resolved in a z-buffer written with numpy
-alone, then ink lines found in image space (where the part, the depth or the face normal
-jumps), the whole thing drawn ``SS`` times larger and box-filtered down (anti-aliasing).
-No GPU, no display, no new dependency (numpy and Pillow are in the lock already), and the
-same bytes on every run on one machine: every reduction is an integer ``maximum.at``.
+Flat, banded (toon) shading of the triangles in an orthographic view, resolved in a
+z-buffer written with numpy alone, ink lines found in image space (where the part, the
+depth or the face normal jumps), all drawn ``SS`` times larger and box-filtered down
+(anti-aliasing). No GPU, no display, nothing beyond numpy and Pillow, and the same bytes
+on every run on one machine: every reduction is an integer ``maximum.at``.
 
 A picture is a list of :class:`Item` (a body's triangles in robot coordinates, its style)
-and a :class:`View` (the direction the eye looks from, the up vector, what to frame).
+and a :class:`View`; :func:`render` gives the image and, for each marked item, where its
+visible pixels are (:class:`Mark`), so the label bubbles are drawn afterwards
+(:func:`bubbles`), clear of each other, once the labels are known. :func:`render_jobs` is
+a worker's share of a guide (:func:`spiderpig.workers.submit`: it imports this module,
+numpy and Pillow, not the engine).
 """
 
 from __future__ import annotations
 
 import itertools
+import math
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -23,13 +27,30 @@ SS = 2                      # supersampling factor
 BG = (255, 255, 255)
 INK = (24, 24, 28)
 CONTEXT_FILL = (226, 226, 230)
-CONTEXT_INK = (150, 150, 158)
 HIGHLIGHT = (245, 140, 40)
+PLACED = (250, 196, 140)    # a sub-assembly put on in this step: a lighter highlight
+BOUGHT_FILL = (105, 165, 225)   # a bought part the step adds: blue, the made ones orange
+
+VIEWS = {
+    # the camera of each kind of step: the bench views keep a side's stack upright (its
+    # z axis up the page), the robot's look from its left front
+    "bench_L": {"eye": (0.75, 0.55, 0.85), "up": (0, 0, 1), "light": (0.3, 0.5, 1.0)},
+    "bench_L-": {"eye": (0.75, 0.55, -0.85), "up": (0, 0, -1), "light": (0.3, 0.5, -1.0)},
+    "bench_R": {"eye": (0.75, 0.55, -0.85), "up": (0, 0, -1), "light": (0.3, 0.5, -1.0)},
+    "bench_R-": {"eye": (0.75, 0.55, 0.85), "up": (0, 0, 1), "light": (0.3, 0.5, 1.0)},
+    "bench_": {"eye": (0.75, 0.55, 0.85), "up": (0, 0, 1), "light": (0.3, 0.5, 1.0)},
+    "bench_-": {"eye": (0.75, 0.55, -0.85), "up": (0, 0, -1), "light": (0.3, 0.5, -1.0)},
+    "robot": {"eye": (1.0, 0.8, -1.2), "up": (0, 1, 0), "light": (0.4, 1.0, -0.6)},
+    "robot-": {"eye": (1.0, 0.8, 1.2), "up": (0, 1, 0), "light": (0.4, 1.0, 0.6)},
+    "robot^": {"eye": (0.7, 1.4, -0.5), "up": (0, 1, 0), "light": (0.4, 1.0, -0.6)},
+    "part": {"eye": (0.6, 0.8, 1.0), "up": (0, 1, 0), "light": (0.3, 1.0, 0.8)},
+}
 
 
 @dataclass
 class Item:
-    """One body's triangles (``pos`` (n, 3) float, ``tri`` (m, 3) int) and its style."""
+    """One body's triangles (``pos`` (n, 3) float, ``tri`` (m, 3) int) and its style;
+    ``mark``: say where it shows (:class:`Mark`)."""
 
     name: str
     pos: np.ndarray
@@ -37,7 +58,7 @@ class Item:
     fill: tuple[int, int, int] = CONTEXT_FILL
     ink: tuple[int, int, int] = INK
     offset: tuple[float, float, float] = (0.0, 0.0, 0.0)    # an exploded part's shift
-    label: str | None = None
+    mark: bool = False
 
 
 @dataclass
@@ -47,8 +68,17 @@ class View:
     size: tuple[int, int] = (1200, 900)
     margin: float = 0.06
     light: tuple[float, float, float] = (0.4, 1.0, -0.6)
-    frame: list[str] | None = None     # the items to frame (None: every item)
     arrows: list[tuple[np.ndarray, np.ndarray]] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Mark:
+    """Where a marked item shows in the picture: the centre of its visible pixels, and
+    how many (picture pixels)."""
+
+    x: float
+    y: float
+    n: int
 
 
 def _basis(view: View) -> np.ndarray:
@@ -173,17 +203,16 @@ def _dilate(m, r):
     return out
 
 
-def render(items: list[Item], view: View, ss: int = SS) -> Image.Image:
-    """The picture of ``items`` from ``view`` (an RGB image of ``view.size``)."""
+def render(items: list[Item], view: View, ss: int = SS
+           ) -> tuple[Image.Image, dict[str, Mark]]:
+    """The picture of ``items`` from ``view`` (an RGB image of ``view.size``), and where
+    each marked item shows."""
     basis = _basis(view)
     W, H = view.size[0] * ss, view.size[1] * ss
     pos = [(it.pos + np.asarray(it.offset)) @ basis.T for it in items]
-    frame = [p for it, p in zip(items, pos, strict=True)
-             if view.frame is None or it.name in view.frame] or pos
-    allp = np.concatenate(frame)
+    allp = np.concatenate(pos)
     lo, hi = allp[:, :2].min(0), allp[:, :2].max(0)
-    # the arrows' ends are framed too
-    for a, b in view.arrows:
+    for a, b in view.arrows:            # the arrows' ends are framed too
         for q in (a, b):
             s = basis @ np.asarray(q, float)
             lo, hi = np.minimum(lo, s[:2]), np.maximum(hi, s[:2])
@@ -196,14 +225,12 @@ def render(items: list[Item], view: View, ss: int = SS) -> Image.Image:
         y = H / 2 - (p[..., 1] - centre[1]) * scale
         return x, y
 
-    verts, tris, owner_of_tri = [], [], []
-    base = 0
+    tris, owner_of_tri, base = [], [], 0
     for i, (it, p) in enumerate(zip(items, pos, strict=True)):
-        verts.append(p)
         tris.append(it.tri.reshape(-1, 3).astype(np.int64) + base)
         owner_of_tri.append(np.full(len(tris[-1]), i, np.int64))
         base += len(p)
-    v = np.concatenate(verts)
+    v = np.concatenate(pos)
     t = np.concatenate(tris)
     owner_of_tri = np.concatenate(owner_of_tri)
     px, py = to_px(v)
@@ -249,21 +276,22 @@ def render(items: list[Item], view: View, ss: int = SS) -> Image.Image:
                                   for x, y in (to_px(basis @ np.asarray(q, float))
                                                for q in (a, b))]
             _arrow(d, (ax, ay), (bx, by), color=(90, 90, 100))
-    labels = [(it, p) for it, p in zip(items, pos, strict=True) if it.label]
-    if labels:
-        # a bubble per label, up and to the right of its part on a short leader
-        d = ImageDraw.Draw(out)
-        font = _font(20)
-        r = 19
-        for it, p in labels:
-            x, y = (float(q) / ss for q in to_px(p.mean(0)))
-            bx, by = x + 34, y - 34
-            d.line((x, y, bx, by), fill=INK, width=2)
-            d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=INK)
-            d.ellipse((bx - r, by - r, bx + r, by + r), fill=(255, 255, 255), outline=INK,
-                      width=2)
-            d.text((bx, by), str(it.label), fill=INK, font=font, anchor="mm")
-    return out
+    marks: dict[str, Mark] = {}
+    marked = [i for i, it in enumerate(items) if it.mark]
+    if marked:
+        rows, cols = np.nonzero(o2 >= 0)
+        who = o2[rows, cols]
+        for i in marked:
+            sel = who == i
+            n = int(sel.sum())
+            if n:
+                # the visible pixel nearest the centre of them all: on the part itself
+                ry, rx = rows[sel], cols[sel]
+                cy, cx = ry.mean(), rx.mean()
+                k = int(np.argmin((ry - cy) ** 2 + (rx - cx) ** 2))
+                marks[items[i].name] = Mark(round(float(rx[k]) / ss, 1),
+                                            round(float(ry[k]) / ss, 1), n // (ss * ss))
+    return out, marks
 
 
 def _arrow(d: ImageDraw.ImageDraw, a, b, color=INK):
@@ -282,47 +310,135 @@ def _arrow(d: ImageDraw.ImageDraw, a, b, color=INK):
     d.polygon([(bx, by), (hx - uy * 8, hy + ux * 8), (hx + uy * 8, hy - ux * 8)], fill=color)
 
 
-def _font(size: int):
-    for name in ("DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+def font(size: int, bold: bool = True):
+    """DejaVu Sans (Pillow's own font when it isn't installed: still deterministic)."""
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    for path in (name, f"/usr/share/fonts/truetype/dejavu/{name}"):
         try:
-            return ImageFont.truetype(name, size)
+            return ImageFont.truetype(path, size)
         except OSError:
             continue
     return ImageFont.load_default(size)
 
 
-def visible(items: list[Item], view: View, names: set[str], size=(240, 180)) -> int:
-    """How many pixels of a small render the items named ``names`` show (a camera
-    chooser's score: the parts a step adds should be seen)."""
-    basis = _basis(view)
-    W, H = size
-    pos = [(it.pos + np.asarray(it.offset)) @ basis.T for it in items]
-    allp = np.concatenate(pos)
-    lo, hi = allp[:, :2].min(0), allp[:, :2].max(0)
-    scale = float(min(np.array([W, H]) * 0.9 / np.maximum(hi - lo, 1e-6)))
-    c = (lo + hi) / 2
-    tris, owner, base = [], [], 0
-    for i, (it, p) in enumerate(zip(items, pos, strict=True)):
-        tris.append(it.tri.reshape(-1, 3).astype(np.int64) + base)
-        owner.append(np.full(len(tris[-1]), i, np.int64))
-        base += len(p)
-    v = np.concatenate(pos)
-    key = _raster((v[:, 0] - c[0]) * scale + W / 2, H / 2 - (v[:, 1] - c[1]) * scale,
-                  v[:, 2], np.concatenate(tris), W, H)
-    hit = key >= 0
-    who = np.concatenate(owner)[(key[hit] & 0xFFFFFFFF)]
-    wanted = np.array([it.name in names for it in items])
-    return int(wanted[who].sum())
+# ---------------------------------------------------------------------------
+# label bubbles
+# ---------------------------------------------------------------------------
+
+R_BUBBLE = 21
 
 
-def render_batch(mesh: dict, jobs: list[tuple], folder: str) -> list[str]:
-    """Draw ``jobs`` (``(number, spec)``) into ``folder``: a worker's share
-    (:func:`workers.submit`; it imports numpy and Pillow, not the engine)."""
+def bubbles(img: Image.Image, marks: list[tuple[str, Mark]]
+            ) -> tuple[Image.Image, dict[str, tuple[float, float]]]:
+    """``img`` with a bubble per ``(label, mark)`` on a short leader to its part, and where
+    each went: each put where it overlaps no other bubble and covers least of the drawing
+    (tried round the part at three distances), the biggest parts' first; one that finds no
+    room is left out. A copy; deterministic."""
+    out = img.copy()
+    d = ImageDraw.Draw(out)
+    w, h = out.size
+    ink = np.asarray(img.convert("L")) < 245          # what a bubble shouldn't hide
+    taken: list[tuple[float, float]] = []
+    placed: dict[str, tuple[float, float]] = {}
+    anchors = [(m.x, m.y) for _, m in marks]
+    f = font(17)
+    r = R_BUBBLE
+    for label, m in sorted(marks, key=lambda lm: (-lm[1].n, lm[0])):
+        best = None
+        for dist, ang in itertools.product((48, 80, 120), range(-45, 315, 30)):
+            bx = m.x + dist * math.cos(math.radians(ang))
+            by = m.y - dist * math.sin(math.radians(ang))
+            if not (r + 2 <= bx <= w - r - 2 and r + 2 <= by <= h - r - 2):
+                continue
+            if any((bx - x) ** 2 + (by - y) ** 2 < (2 * r + 6) ** 2 for x, y in taken):
+                continue
+            if any((bx - x) ** 2 + (by - y) ** 2 < (r + 4) ** 2 for x, y in anchors):
+                continue
+            x0, x1 = int(bx - r), int(bx + r)
+            y0, y1 = int(by - r), int(by + r)
+            cover = float(ink[y0:y1, x0:x1].mean())
+            score = cover + dist / 400.0
+            if best is None or score < best[0] - 1e-9:
+                best = (score, bx, by)
+        if best is None:
+            continue
+        _, bx, by = best
+        taken.append((bx, by))
+        placed[label] = (round(bx, 1), round(by, 1))
+        d.line((m.x, m.y, bx, by), fill=INK, width=2)
+        d.ellipse((m.x - 3, m.y - 3, m.x + 3, m.y + 3), fill=INK)
+        d.ellipse((bx - r, by - r, bx + r, by + r), fill=(255, 255, 255), outline=INK,
+                  width=2)
+        d.text((bx, by), label, fill=INK, font=f, anchor="mm")
+    return out, placed
+
+
+# ---------------------------------------------------------------------------
+# a worker's share
+# ---------------------------------------------------------------------------
+
+
+def _clipped(pos: np.ndarray, tri: np.ndarray, z: tuple[float, float] | None):
+    """The triangles of a body whose centre's z is in ``z`` (a piece of it)."""
+    if z is None:
+        return pos, tri
+    t = tri.reshape(-1, 3)
+    cz = pos[t, 2].mean(1)
+    return pos, t[(cz >= z[0]) & (cz <= z[1])]
+
+
+def items_of(mesh, rows: list) -> list[Item]:
+    """Items from rows ``(piece id, fill, offset, mark, clip)`` over ``mesh`` (body name ->
+    ``(pos, tri)``)."""
     out = []
-    for number, (rows, view) in jobs:
-        items = [Item(n, *mesh[n], fill=fill, offset=off, label=lab)
-                 for n, fill, off, lab in rows]
-        path = Path(folder) / f"step_{number:03d}.png"
-        render(items, view).save(path, compress_level=6)
-        out.append(str(path))
+    for pid, fill, off, mark, clip in rows:
+        pos, tri = mesh[pid.split("#", 1)[0]]
+        pos, tri = _clipped(pos, tri, None if clip is None else tuple(clip))
+        out.append(Item(pid, pos, tri, fill=tuple(fill), offset=tuple(off), mark=mark))
+    return out
+
+
+def choose(items: list[Item], options: list[str], want: set[str]) -> str:
+    """The camera among ``options`` (:data:`VIEWS`) that shows most of ``want`` (first on
+    a tie): a small render of each."""
+    if len(options) == 1:
+        return options[0]
+    scores = []
+    for o in options:
+        small = [Item(it.name, it.pos, it.tri, offset=it.offset, mark=it.name in want)
+                 for it in items]
+        _, marks = render(small, View(**VIEWS[o], size=(200, 150), margin=0.05), ss=1)
+        scores.append(sum(m.n for m in marks.values()))
+    return options[scores.index(max(scores))]
+
+
+def render_jobs(mesh_path: str, jobs: list[dict]) -> list[dict]:
+    """Draw ``jobs`` (each: ``out`` its PNG, ``rows`` its items as :func:`items_of`
+    takes, ``views`` the cameras to choose among, ``size``, ``explode`` the lift along
+    the camera's up of the marked items with an arrow, ``margin``): what each chose and
+    where its marked items show."""
+    data = np.load(mesh_path)
+    names = sorted({k.rsplit("|", 1)[0] for k in data.files})
+    mesh = {n: (data[n + "|p"], data[n + "|i"]) for n in names}
+    out = []
+    for job in jobs:
+        items = items_of(mesh, job["rows"])
+        want = {it.name for it in items if it.mark}
+        cam = choose(items, job["views"], want)
+        v = VIEWS[cam]
+        arrows = []
+        lift = float(job.get("explode") or 0.0)
+        if lift and any(not it.mark for it in items) and want:
+            up = np.asarray(v["up"], float)
+            for it in items:
+                if it.mark:
+                    it.offset = tuple(np.asarray(it.offset) + up * lift)
+            moved = np.concatenate([it.pos for it in items if it.mark])
+            c = moved.mean(0)
+            arrows = [(c + up * lift * 0.9, c + up * 1.0)]
+        img, marks = render(items, View(**v, size=tuple(job["size"]),
+                                         margin=job.get("margin", 0.06), arrows=arrows))
+        img.save(job["out"], compress_level=6)
+        out.append({"out": job["out"], "view": cam,
+                    "marks": {k: [m.x, m.y, m.n] for k, m in marks.items()}})
     return out

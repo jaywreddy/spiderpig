@@ -286,6 +286,12 @@ class Group:
         built (a plate cuts the holes and adds the pads they asked for)."""
         raise NotImplementedError
 
+    def assembly(self, view) -> list:
+        """How the group's parts go on (:mod:`construction.assembly`): ``Op`` records over
+        ``view`` (a ``SideView``: the side's bodies, their z, the plan's layers). ``[]``:
+        its parts go on with the layer they sit in, with a generic sentence."""
+        return []
+
 
 def hardware(name: str, part, host: str, *, fab: str, bom_key: str | None = None,
              color: str | None = None, sheet: str | None = None) -> Body:

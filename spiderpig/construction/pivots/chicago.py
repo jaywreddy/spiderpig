@@ -455,6 +455,42 @@ class ChicagoAxle:
                         head=max(head_d, w_od) / 2, neck=ring_min,
                         end_h=self.shaft.base_heights(), washer=washer_od(self.shaft.d) / 2)
 
+    def assembly(self, group: AxleGroup, view) -> list:
+        """How a pin goes on (:mod:`construction.assembly`): the barrel bonded into its
+        host (the lowest link) and on with it, its head spacer under it; the screw from the
+        cap side once the links above are on, its head spacer under its head. The pin is
+        one body (barrel and screw, one purchase): its two pieces split at the screw's
+        head."""
+        import re
+
+        from spiderpig.construction.assembly import STACK, Op, Piece, whole
+        from spiderpig.construction.pivots.common import stem_of
+
+        stem = stem_of(group)
+        pin = f"{stem}_screw"
+        if pin not in view.z:
+            return []
+        z0, z1 = view.z[pin]
+        key = view.keys.get(pin)
+        head = float(get(key).dims.get("screw_head_h", 1.4)) if key else 1.4
+        cut = z1 - head - 0.05
+        host = view.hosts.get(pin)
+        k_lo = view.slot(view.z[host][0]) if host in view.z else view.slot(z0)
+        lo = (Piece(pin, "barrel", (z0, cut)),
+              *whole(*view.named(rf"{re.escape(stem)}_spacer_lo")))
+        hi = (Piece(pin, "screw", (cut, z1)),
+              *whole(*view.named(rf"{re.escape(stem)}_spacer_hi")))
+        return [
+            Op(STACK, (k_lo, 0, 1), lo, "",
+               "Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
+               "head under the link and its printed head spacer under that; set the gap "
+               "with a feeler gauge as it cures.", "layer"),
+            Op(STACK, (view.slot(cut), 2), hi, "",
+               "Each Chicago screw into its barrel from the cap side once the links above "
+               "are on (threadlocker), its printed spacer under the head.", "layer",
+               count=False),
+        ]
+
     def realize(self, group: AxleGroup, build: Build) -> Realized:
         out = Realized()
         col = Column.of(build, group)

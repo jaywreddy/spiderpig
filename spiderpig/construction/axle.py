@@ -252,3 +252,8 @@ class AxleGroup(Group):
 
     def realize(self, build: Build, done: Realized) -> Realized:
         return self.construction.realize(self, build)
+
+    def assembly(self, view) -> list:
+        """The construction's ``assembly(group, view)`` when it has one."""
+        hook = getattr(self.construction, "assembly", None)
+        return [] if hook is None else hook(self, view)

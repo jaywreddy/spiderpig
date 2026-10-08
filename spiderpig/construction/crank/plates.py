@@ -321,7 +321,7 @@ class _WebPlates:
         """Why this crank can't be put together, or ``None``: a chain that ends in the hub
         plate with a screw over it (the round standoff's clamp, ``bolt_round``).
         The horn screws come up through the hub plate from below, so the hub plate, the horn,
-        the servo and the inner plate go on as one unit (:data:`construction.robot.ASSEMBLY`)
+        the servo and the inner plate go on as one unit (:data:`construction.assembly.ROBOT_ORDER`)
         once the stack under the hub plate is closed, which buries that screw's head under
         the horn spacer; and built the other way round (the hub plate screwed to the chain
         first), the horn screws' heads are inside the closed stack. The assembly audit of
@@ -333,7 +333,7 @@ class _WebPlates:
                         f"{self.hub_layer}) with a screw over it ({n['screws'][-1]}), and the "
                         "horn screws come up through the hub plate from below: no order "
                         "drives both (the hub plate, horn, servo and inner plate go on as one "
-                        "unit once the stack under it is closed; construction.robot.ASSEMBLY)"
+                        "unit once the stack under it is closed; construction.assembly.ROBOT_ORDER)"
                         "; a crank that caps that chain (the hex crank, --crank bolt) has an "
                         "order, the round standoff's friction clamp needs both screws")
         return None

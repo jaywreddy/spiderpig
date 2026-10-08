@@ -30,7 +30,8 @@ up through each inner plate from the leg side into the chain (its head in the cl
 under the plate, which the drive group claims, so the planner keeps the legs clear of it),
 and an M3 set screw through the centre plates joins the two chains and clamps the centre
 plates between them.
-(Assembly: :data:`ASSEMBLY`. Not both sides' chains on their inner plates first: the
+(Assembly: :data:`construction.assembly.ROBOT_ORDER`, which ``spiderpig guide`` draws.
+Not both sides' chains on their inner plates first: the
 studs then can't be threaded, neither chain turning and the stud's socket buried.)
 
 **Bus cables** (the assembly audit of 2026-10-04): both servos' sockets are in the
@@ -85,63 +86,6 @@ from spiderpig.shapes import Cut, moved
 from spiderpig.stack import body_class
 
 SIDES = ("L", "R")
-
-ASSEMBLY: tuple[str, ...] = (
-    # (the assembly audit of 2026-10-04: the order every fastener of the default walker
-    # can be driven in; the pivots' and the crank's docstrings defer to it)
-    "1. Each side's leg stack, bottom up on its outer frame plate: per pillar its standoff "
-    "column on the plate (one piece: the steel shaft made to length, M3, or a stock goBILDA "
-    "standoff, M4; its button head and washer from outside, threadlocker, to 0.8 N·m while "
-    "the column is bare to hold); the links, Chicago pins and printed rings in the plan's "
-    "layer order (each pin's screw from its cap side once its bonded barrel and host link "
-    "are on), any take-up shims on a column's top last.",
-    "2. The crank with it, bottom up: the stub standoff screwed to the lowest web (button "
-    "head from above), the stub's printed thrust sleeve slid over it up to the web, and "
-    "the stub through the outer plate's journal hole (the sleeve's end then 0.1 mm over "
-    "the plate: the crank body's stop toward it); each web takes the hex standoff of the "
-    "chain above it first (its screw and wide washer from below, threadlocker, while the "
-    "web is loose), then goes onto the hex of the chain below with that chain's riders "
-    "and sleeve already on, and that chain's screw goes in from above. The chain that "
-    "ends in the hub plate has no screw over it (BoltCrank.hub_capped): the hub plate "
-    "caps it, and its printed sleeve is a light press on the hex, pushed down onto its "
-    "lower web with that end's washer drawn up against the web, so the sleeve, caught "
-    "between the two plates, carries the standoff (BoltCrank.capped_press).",
-    "3. The left side's inner-plate unit, loose on the bench (the right side's is put "
-    "together on the robot, step 6: its tie chains go onto the studs before its inner "
-    "plate): the servo on the inner plate "
-    "(its two far front screws from the leg side, heads under the plate: the near holes "
-    "would leave the plate 1 mm of web to the horn's hole, Params.servo_screw_web_t; the "
-    "rear idler horn stays in the box), the horn on the spline "
-    "and its centre screw, the hub plate on the horn (the horn screws up through it from "
-    "below, with their shims), the deck rail (its two screws from the leg side), and the "
-    "frame ties' M3 standoff chains (shims at the plate, the M3 button head up through "
-    "the plate from the leg side, threadlocker).",
-    "4. Left side: the unit onto its leg stack, the hub plate's hex pocket over the "
-    "hub chain's standoff (turn the crank to line it up) and the pillars' tops into the "
-    "inner plate; each pillar's inner screw from the servo bay (a ball-end key).",
-    "5. The M3 set-screw studs into the left chains' ends (threadlocker); the left "
-    "servo's own centre plates (0, 1) on its rear face over the studs, its rear screw "
-    "through them; the right servo's own plates (3, 2) screwed to the right servo the "
-    "same way, then that servo and its plates onto the studs, rear faces together.",
-    "6. Right side: its tie chains turned onto the studs from the inner plate's side (they "
-    "turn freely: no inner plate yet), shims on their ends; the right inner plate onto "
-    "the servo's front (its front screws from the leg side) and onto the chains (their "
-    "M3 button heads from the leg side); the deck rail; the horn, its centre screw and the "
-    "hub plate with the horn screws from below.",
-    "7. The body turned over onto the right side's leg stack (built as in 1 and 2): the "
-    "hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner "
-    "plate, their inner screws from the servo bay.",
-    "8. Bus cables: each plug into its servo's socket along the centre plates' slot from "
-    "their far edge, the cable up to the board through the deck's wire slot (connector "
-    "first); then the deck, its electronics fitted on the bench (the battery cradle "
-    "screwed down: two M3 button heads through its ears, nuts under the deck), lowered "
-    "straight down between the inner plates past the pillars' inner heads (its notches, "
-    "deck.path_notches; deck.deck_path checks the way) onto the rails, and its four "
-    "screws into the rails' inserts.",
-)
-"""The robot's assembly order (the default walker: chicago pins, standoff pillars, the hex
-bolt crank, the frame ties): what the pivots' (``construction.pivots.standoff``) and the
-crank's (``construction.crank``) docstrings and the frame ties' defer to."""
 
 
 @overload

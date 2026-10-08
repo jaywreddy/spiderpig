@@ -16,6 +16,7 @@ Tasks live in `mise.toml` (AGENTS.md: use them, not raw `uv` / `npm`):
 ```bash
 mise run view       # FastAPI + Vite (HMR); URL printed in startup banner (npm install: network)
 mise run bake       # bake <store>/bakes/<design>.glb (the project store, .spiderpig/)
+mise run guide      # ASSEMBLY.pdf + ASSEMBLY.md -> build/ (cached: an unchanged design ~5 s)
 mise run build      # STEP/STL/DXF/BOM -> build/ (-- --profile: stage timings; a current
                     # --out is skipped, -- --force rebuilds)
 mise run test-<module>  # one module's fast tier, seconds: linkage, planner, construction,
@@ -44,7 +45,7 @@ mise run kill-port -- --port 5173   # force-stop whoever is on a port (orphan re
 mise run clean
 ```
 
-`build`, `bake`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp` and `view` are
+`build`, `bake`, `guide`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp` and `view` are
 the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig <command>
 --help`; from a checkout `uv run python -m spiderpig.cli <command>`, or `mise run <command>
 -- <options>`; `spiderpig mcp --store PATH` for an agent). E.g. `spiderpig bake --module
@@ -167,7 +168,7 @@ construction → fabricate → (bake | build | strength | sim) → api → (mcp 
 | `spiderpig/mechanism.py` | `Body` / `Joint` / `Mechanism`; `MechanismTemplate` for batched sampling. Planar: z = 0 |
 | `spiderpig/stack/` | the layer planner: `geometry.py`, `topology.py`, `plan.py` (`StackSpec`, `StackPlan`), `search.py` (`StackProblem`), `plan_z.py` (`finalize`), `verify.py` |
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
-| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`), `plates.py`, `chassis.py`, `deck.py`, `robot.py` (`ASSEMBLY`), `underside.py`, `wobble.py`, `contract.py`, `envelope.py` |
+| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`), `plates.py`, `chassis.py`, `deck.py`, `robot.py`, `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py` |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`) |
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
@@ -183,6 +184,7 @@ construction → fabricate → (bake | build | strength | sim) → api → (mcp 
 | `spiderpig/walk.py` | quasi-static walk model (`viewer/src/drive/model.ts` is its twin) |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py`, `run.py`, `live.py` (`/ws/sim`), `loads.py` |
 | `spiderpig/bake.py`, `build.py` | the `.glb` bake; STEP/STL/DXF/BOM/ORDER.md |
+| `spiderpig/guide/`, `labels.py` | the assembly guide (`docs/agentlib/GUIDE.md`); the P/C/H part labels the print files share |
 | `spiderpig/explain.py`, `recommend.py` | stage verdicts; fixes checked by re-running the stage |
 | `spiderpig/spec.py`, `api/`, `failure.py`, `verify.py`, `design.py`, `store.py` | the agent surface (`docs/agentlib/API.md`) |
 | `spiderpig/mcp/` | the MCP server over the API (`jobs.py`, `outputs.py`, `guide.md`) |
@@ -241,6 +243,8 @@ both sides.
 - Don't add `print` statements to the bake path — use the `bake_gltf` logger. Keep the
   profiler's stage keys stable (scripts parse them).
 - Don't put Z into joint poses. Z is the stack plan's job.
+- How a part goes on is its construction's `assembly` hook (`construction/assembly.py`);
+  a new construction adds one or gets generic steps. The hooks stay out of the fab key.
 - A group builds only inside its own claims; keep `check_side` at `[]`.
 - A change that alters parts: run the identity gate before and after (baseline
   `w8-2a130c8`, `docs/agentlib/TESTING.md`), list each intended diff, leave `mise run

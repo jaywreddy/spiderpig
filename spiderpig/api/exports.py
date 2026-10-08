@@ -188,10 +188,15 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         with _timed("print"):
             build_cli.clear_generated(out / "print")     # no STLs of another design
             from spiderpig.hardware.bom import printed_filaments
+            from spiderpig.labels import assembly_order, part_types, print_stems
 
+            # the part labels name the files, as spiderpig build's and the guide's
+            order = assembly_order(mech, design.side) if design.side is not None else None
+            types = part_types(mech, order, groups, filament)
             build_cli.export_prints(groups["printed"], out / "print",
                                     density=filament_density(filament),
-                                    filaments=printed_filaments(mech, filament))
+                                    filaments=printed_filaments(mech, filament),
+                                    stems=print_stems(types))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None

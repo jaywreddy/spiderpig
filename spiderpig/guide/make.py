@@ -1,112 +1,91 @@
-"""``spiderpig guide``: the assembly guide's PDF for a design (prototype).
+"""``spiderpig guide``: the assembly guide, ``ASSEMBLY.pdf`` (and ``ASSEMBLY.md``), for a
+design.
 
-Plans through the store, fabricates (the fabrication cache), meshes every body once
-(:func:`mesh.tessellate_many`), derives the steps (:mod:`guide.model`) and the part labels
-(:mod:`guide.labels`), draws each step (:mod:`guide.render`) and lays out the PDF
-(:mod:`guide.pdf`). ``--steps N`` stops after N steps (a quick look).
+The steps are :func:`construction.assembly.assembly_steps` (the constructions' hooks and the
+robot's order), the part labels :func:`spiderpig.labels.part_types` (the names of
+``spiderpig build``'s print files), the pictures :mod:`guide.render` in
+:func:`spiderpig.workers.submit` processes (``--jobs``), the wiring :mod:`guide.wiring`,
+the layout :mod:`guide.pdf`.
+
+**Cached** beside the design's fabrication (:mod:`spiderpig.fabcache`, ``<store>/fab/<fab
+key>/guide-<entry>/``): every picture under a hash of what it draws and the renderer's
+code key (:func:`spiderpig.keys.source_key` of :func:`guide.render.render_jobs`), the
+meshes, and the finished guide under the code key of the whole guide
+(:func:`build_guide`'s, which reaches every construction's ``assembly`` hook): an
+unchanged design is a copy, a changed sentence redraws nothing. ``SPIDERPIG_FAB_CACHE=off``
+or no store: nothing is kept.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
+import os
+import shutil
+import tempfile
 import time
+from contextlib import ExitStack
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
-from spiderpig.guide.model import Step, layers_of, side_of, steps
-from spiderpig.guide.render import (
-    CONTEXT_FILL,
-    HIGHLIGHT,
-    Item,
-    View,
-    render,
-    render_batch,
-    visible,
-)
+log = logging.getLogger("spiderpig.guide")
 
-log = logging.getLogger("guide")
-
-PLACED = (250, 196, 140)        # a sub-assembly put on in this step: a lighter highlight
-VIEWS = {
-    "bench_L": {"eye": (0.75, 0.55, 0.85), "up": (0, 0, 1), "light": (0.3, 0.5, 1.0)},
-    "unit_L": {"eye": (0.75, 0.55, 0.85), "up": (0, 0, 1), "light": (0.3, 0.5, 1.0)},
-    "bench_R": {"eye": (0.75, 0.55, -0.85), "up": (0, 0, -1), "light": (0.3, 0.5, -1.0)},
-    "unit_R": {"eye": (0.75, 0.55, -0.85), "up": (0, 0, -1), "light": (0.3, 0.5, -1.0)},
-    "robot": {"eye": (1.0, 0.8, -1.2), "up": (0, 1, 0), "light": (0.4, 1.0, -0.6)},
-    "unit_L-": {"eye": (0.75, 0.55, -0.85), "up": (0, 0, -1), "light": (0.3, 0.5, -1.0)},
-    "unit_R-": {"eye": (0.75, 0.55, 0.85), "up": (0, 0, 1), "light": (0.3, 0.5, 1.0)},
-    "robot-": {"eye": (1.0, 0.8, 1.2), "up": (0, 1, 0), "light": (0.4, 1.0, 0.6)},
-    "robot^": {"eye": (0.7, 1.4, -0.5), "up": (0, 1, 0), "light": (0.4, 1.0, -0.6)},
-    "part": {"eye": (0.6, 0.8, 1.0), "up": (0, 1, 0), "light": (0.3, 1.0, 0.8)},
-}
+PICTURE = (1200, 900)
+THUMB = (300, 300)
+COVER = (1600, 1200)
+EXPLODE = 20.0          # mm the parts a stack step adds are drawn lifted
+GUIDE_ROOTS = ("spiderpig.guide.make:build_guide",)
+RENDER_ROOTS = ("spiderpig.guide.render:render_jobs",)
 
 
-# the cameras a step may choose from (the bench views stay put: a side reads the same way
-# from its first layer to its last)
-CHOICES = {"unit_L": ["unit_L", "unit_L-"], "unit_R": ["unit_R", "unit_R-"],
-           "robot": ["robot", "robot-", "robot^"]}
+@dataclass
+class GuideReport:
+    pdf: Path
+    pages: int = 0
+    steps: int = 0
+    cached: bool = False
+    drawn: int = 0              # pictures drawn now (the rest from the cache)
+    seconds: dict[str, float] = field(default_factory=dict)
 
 
-def choose_view(st: Step, mesh: dict) -> str:
-    """The candidate camera that shows most of what the step adds (first on a tie)."""
-    options = CHOICES.get(st.view, [st.view])
-    if len(options) == 1:
-        return st.view
-    items = [Item(n, *mesh[n]) for n in st.context + st.places + st.adds]
-    want = set(st.adds) | set(st.places)
-    scores = [visible(items, View(**VIEWS[o]), want) for o in options]
-    return options[scores.index(max(scores))]
+def _views(step) -> list[str]:
+    """The cameras a step may choose among (``render.VIEWS``)."""
+    side = step.side or ""
+    if step.where == "robot":
+        return ["robot", "robot-", "robot^"]
+    if step.stage == "stack" and not step.sub:
+        return [f"bench_{side}"]          # a side's stack reads the same way throughout
+    return [f"bench_{side}", f"bench_{side}-"]
 
 
-def step_items(st: Step, mesh: dict, by_body: dict) -> tuple[list[Item], View]:
-    v = VIEWS[choose_view(st, mesh)]
-    up = np.asarray(v["up"], float)
-    lift = tuple(up * st.explode)  # the adds drawn lifted
-    items = [Item(n, *mesh[n]) for n in st.context]
-    items += [Item(n, *mesh[n], fill=PLACED) for n in st.places]
-    labelled: set[str] = set()
-    for n in st.adds:
-        t = by_body.get(n)
-        lab = None
-        if t is not None and t.label not in labelled:
-            labelled.add(t.label)
-            lab = t.label
-        items.append(Item(n, *mesh[n], fill=HIGHLIGHT, offset=lift if st.context else
-                          (0, 0, 0), label=lab))
-    arrows = []
-    if st.explode and st.context and st.adds:
-        c = np.concatenate([mesh[n][0] for n in st.adds]).mean(0)
-        arrows = [(c + up * st.explode * 0.9, c + up * 1.0)]
-    return items, View(eye=v["eye"], up=v["up"], light=v["light"], size=(1400, 1050),
-                       arrows=arrows)
+def _fill(kind: str | None) -> tuple[int, int, int]:
+    from spiderpig.guide.render import BOUGHT_FILL, HIGHLIGHT
+
+    return BOUGHT_FILL if kind == "purchased" else HIGHLIGHT
 
 
-def _spec(items: list[Item], view: View) -> tuple:
-    """A picture without its meshes (they cross to a worker once, by name)."""
-    return ([(it.name, it.fill, it.offset, it.label) for it in items], view)
+def _hash(obj) -> str:
+    return hashlib.sha256(json.dumps(obj, sort_keys=True).encode()).hexdigest()[:20]
 
 
-def main(argv=None) -> int:
-    from spiderpig import api, fabcache
-    from spiderpig.config import add_build_args, add_design_args, config_from_args
+def _atomic(path: Path, data: bytes) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def build_guide(config, store, out: Path, *, jobs: int = 4, max_steps: int | None = None,
+                force: bool = False, design=None, mech=None) -> GuideReport:
+    """Write ``out/ASSEMBLY.pdf`` and ``out/ASSEMBLY.md`` for ``config`` (planned through
+    ``store``, a :class:`spiderpig.store.Store` or None). ``design`` / ``mech``: its side
+    design and fabrication when the caller has them (nothing is cached then)."""
+    from spiderpig import api, fabcache, keys
     from spiderpig.fabricate import design_side, fabricate, template_for
-    from spiderpig.guide import labels, pdf
-    from spiderpig.mesh import tessellate_many
-    from spiderpig.store import Store
 
-    p = argparse.ArgumentParser(description=__doc__)
-    add_design_args(p)
-    add_build_args(p)
-    p.add_argument("--out", type=Path, default=Path("build"))
-    p.add_argument("--store", type=Path, default=None)
-    p.add_argument("--steps", type=int, default=None, help="only the first N steps")
-    p.add_argument("--jobs", type=int, default=4, help="render worker processes")
-    args = p.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logging.getLogger("fontTools").setLevel(logging.WARNING)
-    config = config_from_args(args)
     t0 = time.perf_counter()
     times: dict[str, float] = {}
 
@@ -116,79 +95,266 @@ def main(argv=None) -> int:
         log.info("%-14s %6.2f s", key, now - since)
         return now
 
-    store = Store.of(args.store) if args.store else Store.default()
+    out.mkdir(parents=True, exist_ok=True)
     tmpl = template_for(config)
-    api.plan_config(config, store)
-    design = design_side(tmpl, config)
-    with fabcache.serving(store):
-        mech = fabricate(tmpl, config, 1.0)
-    t = lap("fabricate", t0)
+    given = mech is not None
+    if design is None:
+        if store is not None:
+            api.plan_config(config, store)
+        design = design_side(tmpl, config)
+    root = (fabcache.root_of(store) if store is not None and fabcache.enabled() and not given
+            else None)
+    with ExitStack() as stack:
+        if root is None:
+            cache = Path(stack.enter_context(tempfile.TemporaryDirectory(prefix="guide-")))
+        else:
+            cache = (root / fabcache.folder_name()
+                     / f"guide-{fabcache.entry_name(tmpl, config, design, 1.0)}")
+            cache.mkdir(parents=True, exist_ok=True)
+            os.utime(cache)                                     # (last used: gc by age)
+        done = cache / (f"pdf-{keys.source_key(GUIDE_ROOTS, 'guide')}"
+                        + (f"-first{max_steps}" if max_steps else ""))
+        t = lap("key", t0)
+        if (done / "ASSEMBLY.pdf").is_file() and not force:
+            for name in ("ASSEMBLY.pdf", "ASSEMBLY.md"):
+                shutil.copyfile(done / name, out / name)
+            meta = json.loads((done / "guide.json").read_text())
+            lap("total", t0)
+            return GuideReport(out / "ASSEMBLY.pdf", meta["pages"], meta["steps"], True, 0,
+                               times)
+        if mech is None:
+            with fabcache.serving(store):
+                mech = fabricate(tmpl, config, 1.0)
+        t = lap("fabricate", t)
+        report = _make(config, design, mech, cache, done, out, jobs, max_steps, force, times,
+                       t)
+    lap("total", t0)
+    return report
+
+
+def _meshes(mech, cache: Path) -> Path:
+    """Every body's placed triangles in one ``.npz`` (made once per fabrication)."""
+    from spiderpig.mesh import tessellate_many
+
+    path = cache / "meshes.npz"
+    if path.is_file():
+        return path
     bodies = [b for b in mech.bodies if b.part is not None]
     meshes = tessellate_many([b.placed_part() for b in bodies], tolerance=0.1, angular=0.2)
-    mesh = {b.name: (m[0].astype(np.float64), m[1]) for b, m in
-            zip(bodies, meshes, strict=True)}
-    t = lap("tessellate", t)
-    rows = [{"name": b.name, "z": [float(mesh[b.name][0][:, 2].min()),
-                                 float(mesh[b.name][0][:, 2].max())],
-                 "rigid_with": b.rigid_with} for b in bodies]
-    layers = layers_of(design.plan)
-    all_steps = steps(rows, layers, mech.meta["mid_plane"])
-    by_body, types = labels.part_types(mech, all_steps)
+    arrays = {}
+    for b, (pos, idx, _) in zip(bodies, meshes, strict=True):
+        arrays[b.name + "|p"] = np.asarray(pos, np.float64)
+        arrays[b.name + "|i"] = np.asarray(idx, np.int64)
+    tmp = cache / f".meshes.{os.getpid()}.npz"
+    np.savez(tmp, **arrays)
+    os.replace(tmp, path)
+    return path
+
+
+def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
+          max_steps: int | None, force: bool, times: dict, t: float) -> GuideReport:
+    from spiderpig import keys, workers
+    from spiderpig.construction.assembly import assembly_steps, body_of
+    from spiderpig.guide import pdf
+    from spiderpig.guide.doc import Callout, Doc, PartEntry, PrintBatch, StepEntry
+    from spiderpig.guide.render import CONTEXT_FILL, PLACED, Mark, bubbles, render_jobs
+    from spiderpig.guide.wiring import draw, wiring_of
+    from spiderpig.hardware.bom import _filament_name
+    from spiderpig.hardware.mass import filament_density
+    from spiderpig.labels import by_body, part_types
+
+    def lap(key: str, since: float) -> float:
+        now = time.perf_counter()
+        times[key] = round(now - since, 2)
+        log.info("%-14s %6.2f s", key, now - since)
+        return now
+
+    all_steps = assembly_steps(mech, design)
+    chosen = all_steps[:max_steps] if max_steps else all_steps
+    mesh_path = _meshes(mech, cache)
+    t = lap("meshes", t)
+    fab_of = {b.name: b.fab for b in mech.bodies}
+    rkey = keys.source_key(RENDER_ROOTS, "render")
+    img = cache / "img"
+    img.mkdir(exist_ok=True)
+    jobs_all: list[dict] = []
+
+    def job(rows: list, views: list[str], size, explode: float = 0.0,
+            margin: float = 0.06) -> str:
+        spec = {"rows": rows, "views": views, "size": list(size), "explode": explode,
+                "margin": margin}
+        h = f"{rkey}-{_hash(spec)}"
+        spec["out"] = str(img / f"{h}.png")
+        if force or not (img / f"{h}.json").is_file():
+            jobs_all.append(spec)
+        return h
+
+    pictures: dict[int, str] = {}
+    for st in chosen:
+        if not st.adds:
+            continue
+        clip = {k: list(v) for k, v in st.clip.items()}
+        rows = [(p, CONTEXT_FILL, (0, 0, 0), False, clip.get(p)) for p in st.context]
+        rows += [(p, PLACED, (0, 0, 0), False, clip.get(p)) for p in st.places]
+        rows += [(p, _fill(fab_of.get(body_of(p))), (0, 0, 0), True, clip.get(p))
+                 for p in st.adds]
+        lift = EXPLODE if st.stage == "stack" and not st.sub and st.context else 0.0
+        pictures[st.number] = job(rows, _views(st), PICTURE, lift)
+    bodies = [b for b in mech.bodies if b.part is not None]
+    cover = job([(b.name, _fill(b.fab) if b.fab != "laser" else CONTEXT_FILL, (0, 0, 0),
+                  False, None) for b in bodies], ["robot"], COVER)
+    # the labels: the thumbnails need their reference bodies, so they're drawn after
+    # (in the same pool); meanwhile the grouping runs here
+    order: dict[str, None] = {}
     for st in all_steps:
-        st.callouts = labels.callouts(by_body, st.adds)
-    t = lap("steps+labels", t)
-    chosen = all_steps[:args.steps] if args.steps else all_steps
-    from PIL import Image
+        for p in st.adds:
+            order.setdefault(body_of(p), None)
+    pool = [workers.submit(render_jobs, str(mesh_path), b) for b in _batches(jobs_all, jobs)]
+    n_drawn = len(jobs_all)
+    jobs_all.clear()
+    filament = mech.meta.get("filament", "pla_filament")
+    types = part_types(mech, list(order), filament=filament)
+    t = lap("labels", t)
+    thumbs = {ty.label: job([(ty.ref, _fill(ty.kind), (0, 0, 0), False, None)], ["part"],
+                            THUMB, margin=0.08) for ty in types}
+    pool += [workers.submit(render_jobs, str(mesh_path), b) for b in _batches(jobs_all, jobs)]
+    n_drawn += len(jobs_all)
+    for f in pool:
+        for r in f.result():
+            Path(r["out"]).with_suffix(".json").write_text(json.dumps(r))
+    t = lap("render", t)
+    # the label bubbles, the wiring diagram, the document
+    of = by_body(types)
+    work = Path(tempfile.mkdtemp(prefix=".work-", dir=cache))
+    entries: list[StepEntry] = []
+    for st in chosen:
+        path = work / f"step_{st.number:03d}.png"
+        if st.number in pictures:
+            h = pictures[st.number]
+            meta = json.loads((img / f"{h}.json").read_text())
+            best: dict[str, Mark] = {}
+            for pid, (x, y, n) in meta["marks"].items():
+                ty = of.get(body_of(pid))
+                if ty is not None and (ty.label not in best or n > best[ty.label].n):
+                    best[ty.label] = Mark(x, y, n)
+            from PIL import Image
 
-    from spiderpig import workers
+            with Image.open(img / f"{h}.png") as im:
+                bubbles(im.convert("RGB"), sorted(best.items()))[0].save(path,
+                                                                          compress_level=6)
+        else:   # the wiring step
+            nodes, links, left = wiring_of(mech, {n: t_.label for n, t_ in of.items()})
+            draw(nodes, links, left, path, PICTURE)
+        counts: dict[str, int] = {}
+        for n in st.counted:
+            if n in of:
+                counts[of[n].label] = counts.get(of[n].label, 0) + 1
+        typ = {ty.label: ty for ty in types}
+        callouts = [Callout(lab, q, typ[lab].name, img / f"{thumbs[lab]}.png")
+                    for lab, q in sorted(counts.items(), key=lambda kv: ("PCH".index(
+                        kv[0][0]), kv[0]))]
+        entries.append(StepEntry(st.number, st.title, st.stage_title, st.text, path,
+                                 callouts, st.sub))
+    by_name = {b.name: b for b in mech.bodies}
+    prints = [PrintBatch(ty.label, ty.file or "", ty.qty,
+                         _filament_name(ty.filament) if ty.filament else "",
+                         round(by_name[ty.ref].part.volume / 1000                 # type: ignore[union-attr]
+                               * filament_density(ty.filament), 1))
+              for ty in types if ty.kind == "printed"]
+    parts = [PartEntry(ty.label, ty.kind, ty.name, ty.qty, img / f"{thumbs[ty.label]}.png",
+                       ty.file, ty.detail)
+             for ty in sorted(types, key=lambda t: ("PCH".index(t.label[0]), t.label))]
+    title = (f"{config.linkage} {config.module} {'robot' if config.robot else 'side'}")
+    doc = Doc("Assembly guide",
+              [title, f"{config.servo} servo, {config.pin} pins, {config.pillar} pillars, "
+                      f"{config.crank} crank",
+               f"{len(all_steps)} steps, {len(types)} part types, "
+               f"{sum(ty.qty for ty in types)} parts"
+               + (f" (the first {len(chosen)} steps)" if max_steps else "")],
+              img / f"{cover}.png", parts, prints, entries,
+              f"spiderpig guide: {title}. Generated; the labels match the print files.")
+    pages = pdf.write(work / "ASSEMBLY.pdf", doc)
+    (work / "ASSEMBLY.md").write_text(markdown(title, all_steps[:len(chosen)], types))
+    (work / "guide.json").write_text(json.dumps({"pages": pages, "steps": len(chosen)}))
+    t = lap("pdf", t)
+    for name in ("ASSEMBLY.pdf", "ASSEMBLY.md"):
+        shutil.copyfile(work / name, out / name)
+    if done.exists():
+        shutil.rmtree(done, ignore_errors=True)
+    try:
+        os.rename(work, done)
+    except OSError:     # another run published it first
+        shutil.rmtree(work, ignore_errors=True)
+    return GuideReport(out / "ASSEMBLY.pdf", pages, len(chosen), False, n_drawn, times)
 
-    specs = [(st.number, _spec(*step_items(st, mesh, by_body))) for st in chosen]
-    t = lap("cameras", t)
-    folder = args.out / "guide"
-    folder.mkdir(parents=True, exist_ok=True)
-    batches = [specs[i::args.jobs] for i in range(args.jobs) if specs[i::args.jobs]]
-    futures = [workers.submit(render_batch, mesh, b, str(folder)) for b in batches]
-    for f in futures:
-        f.result()
-    images = {st.number: Image.open(folder / f"step_{st.number:03d}.png").convert("RGB")
-              for st in chosen}
-    t = lap("render steps", t)
-    thumbs = {}
-    for ty in types:
-        v = VIEWS["part"]
-        pos, tri = mesh[ty.ref]
-        fill = HIGHLIGHT if ty.kind != "purchased" else CONTEXT_FILL
-        thumbs[ty.label] = render([Item(ty.ref, pos - pos.mean(0), tri, fill=fill)],
-                                  View(eye=v["eye"], up=v["up"], light=v["light"],
-                                       size=(300, 300), margin=0.08))
-    t = lap("thumbnails", t)
-    cover = render([Item(n, *mesh[n], fill=_cover_fill(b)) for n, b in
-                    ((b.name, b) for b in bodies)],
-                   View(**VIEWS["robot"], size=(1600, 1200)))
-    t = lap("cover", t)
-    args.out.mkdir(parents=True, exist_ok=True)
-    out = args.out / "ASSEMBLY.pdf"
-    m = mech.meta
-    n_pages = pdf.write(
-        out, title="Assembly guide",
-        subtitle=[f"{config.linkage} {config.module} robot, {config.servo} servos",
-                  f"{config.pin} pins, {config.pillar} pillars, {config.crank} crank",
-                  f"{len(all_steps)} steps, {len(types)} part types, "
-                  f"{sum(ty.qty for ty in types)} parts"
-                  + ("" if args.steps is None else f" (first {len(chosen)} steps drawn)"),
-                  f"{m.get('layers', '?')} layers per side"],
-        cover=cover, types=types, thumbs=thumbs, steps=chosen, images=images,
-        footer=f"spiderpig {config.linkage} {config.module}; generated, do not edit")
-    lap("pdf", t)
-    lap("total", t0)
-    print(f"wrote {out}: {n_pages} pages, {len(chosen)} steps; timings {times}")
+
+def _batches(jobs_all: list[dict], n: int) -> list[list[dict]]:
+    """``jobs_all`` dealt to ``n`` workers, the biggest first (by rows)."""
+    order = sorted(jobs_all, key=lambda j: -len(j["rows"]))
+    out: list[list[dict]] = [[] for _ in range(max(1, n))]
+    load = [0] * len(out)
+    for j in order:
+        k = load.index(min(load))
+        out[k].append(j)
+        load[k] += len(j["rows"]) + 20
+    return [b for b in out if b]
+
+
+def markdown(title: str, steps, types) -> str:
+    """The steps as text (``ASSEMBLY.md``): each step's title, sentences and parts."""
+    from spiderpig.labels import by_body
+
+    of = by_body(types)
+    lines = [f"# Assembly: {title}", "",
+             "Generated by `spiderpig guide` from the constructions' assembly hooks and "
+             "the robot's order; the pictures are in ASSEMBLY.pdf.", ""]
+    stage = None
+    for st in steps:
+        if st.stage_title != stage:
+            stage = st.stage_title
+            lines += [f"## {stage}", ""]
+        lines.append(f"**{st.number}. {st.title}**" + (" (bench sub-assembly)" if st.sub
+                                                        else ""))
+        lines += [f"- {t}" for t in st.text]
+        counts: dict[str, int] = {}
+        for n in st.counted:
+            if n in of:
+                counts[of[n].label] = counts.get(of[n].label, 0) + 1
+        if counts:
+            lines.append("- Parts: " + ", ".join(f"{lab} x {q}" for lab, q in
+                                                 sorted(counts.items())))
+        lines.append("")
+    lines += ["## Parts", "", "| label | qty | part | print file |", "|---|---|---|---|"]
+    lines += [f"| {t.label} | {t.qty} | {t.name} | {t.file or ''} |" for t in types]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None) -> int:
+    from spiderpig.config import add_build_args, add_design_args, config_from_args
+    from spiderpig.store import Store
+
+    p = argparse.ArgumentParser(prog="spiderpig guide", description=(
+        "The assembly guide: ASSEMBLY.pdf (numbered steps with pictures, the parts with "
+        "their labels, print batches, bag labels) and ASSEMBLY.md, into --out."))
+    add_design_args(p)
+    add_build_args(p)
+    p.add_argument("--out", type=Path, default=Path("build"), help="the folder (build)")
+    p.add_argument("--store", type=Path, default=None,
+                   help="the design store (default: $SPIDERPIG_STORE or ./.spiderpig)")
+    p.add_argument("--jobs", type=int, default=4, help="picture worker processes (4)")
+    p.add_argument("--steps", type=int, default=None, help="only the first N steps")
+    p.add_argument("--force", action="store_true", help="draw everything again")
+    args = p.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    logging.getLogger("fontTools").setLevel(logging.WARNING)
+    config = config_from_args(args)
+    store = Store.of(args.store) if args.store else Store.default()
+    rep = build_guide(config, store, args.out, jobs=args.jobs, max_steps=args.steps,
+                      force=args.force)
+    how = "from the cache" if rep.cached else f"{rep.drawn} pictures drawn"
+    print(f"wrote {rep.pdf} and ASSEMBLY.md: {rep.pages} pages, {rep.steps} steps ({how}, "
+          f"{rep.seconds.get('total', 0):.1f} s)")
     return 0
-
-
-def _cover_fill(b) -> tuple[int, int, int]:
-    if side_of(b.name) is None and b.name.startswith("deck"):
-        return (140, 170, 210)
-    return {"laser": (205, 205, 212), "printed": HIGHLIGHT}.get(b.fab or "", (120, 120, 128))
 
 
 if __name__ == "__main__":

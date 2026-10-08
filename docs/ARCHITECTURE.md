@@ -1143,8 +1143,8 @@ through it from below (their heads in the gap under it).
 
 The chain that ends in the hub plate is **capped**: it has no screw over the hub plate
 (`hub_capped`), so the hub plate, horn, servo and inner plate go on as one unit
-(`construction.robot.ASSEMBLY`, the whole robot's assembly order, which the pivots' and the
-crank's docstrings defer to). Its printed sleeve is a light press on the hex
+(`construction.assembly.ROBOT_ORDER`, the whole robot's assembly order, with the
+constructions' `assembly` hooks; `spiderpig guide` draws it). Its printed sleeve is a light press on the hex
 (`BoltCrank.capped_press`, 0.1 mm), so the sleeve, caught between its plates, carries the
 standoff. The crank body stops toward the outer plate on a printed thrust sleeve round the
 stub (`stub_thrust` in the crank's note, 8.5 mm, its end 0.1 mm over the outer plate,
@@ -2246,7 +2246,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `construction/underside.py`, `envelope.py` | 170, 69 | the body's underside; solids of claims | `test_route.py`, the contract |
 | `construction/plates.py` | 287 | links, frame plates, rider bosses, feet's socks | `test_contract.py`, `test_joinery.py` |
 | `construction/contract.py` | 157 | `check_side`, `clashes`, `bad_solids` | `test_contract.py` |
-| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties, `ASSEMBLY`; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
+| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
 | `construction/wobble.py` | 405 | link tilt and the columns' beams at the plan's z | `test_wobble.py` |
 | `fabricate.py` | 308 | `side_problem`, `design_side`, `fabricate` | `test_fabricate.py`, and most via `conftest.py` |
 | `fabcache.py`, `keys.py`, `uptodate.py` | 424, 1,145, 368 | the fabrication cache, incremental cache keys, the build check | `test_fabcache.py`, `test_keys.py`, `test_uptodate.py` |

@@ -71,7 +71,8 @@ Construction
   the parts' geometry (``blocked``: each lowered part swept straight up against everything
   else; an audit problem).
 
-Assembly (the last step of :data:`construction.robot.ASSEMBLY`): screw the rails to the
+Assembly (:func:`assembly`; the last stage of :data:`construction.assembly.ROBOT_ORDER`):
+screw the rails to the
 inner plates with the sides (before the legs), fit the electronics to the deck (the cradle
 screwed on, wires tied down through the cable-tie slots beside each wire slot), join the
 sides, lower the deck between the plates onto the rails and screw it down.
@@ -856,3 +857,35 @@ def deck_clearance(mech) -> dict:
     return {"fitted": True, "z_gap_mm": rounded(z_gap, 3), "nearest": nearest,
             "sweep_gap_mm": rounded(sweep_gap, 3), "overlapping": overlapping,
             "blocked": blocked, "ok": not overlapping and not blocked}
+
+
+def assembly(view) -> list:
+    """How the deck goes on (:mod:`construction.assembly`): each rail on its inner plate
+    with the side (its screws from the leg side, nuts in the rail, the heat-set inserts in
+    it); the electronics fitted to the deck on the bench; the deck lowered straight down
+    between the inner plates onto the rails and screwed down. ``view``: a ``RobotView``."""
+    from spiderpig.construction.assembly import DECK, SIDES, UNIT, Op, whole
+
+    ops = []
+    for s in SIDES:
+        rail = view.named(rf"{s}\.deck_(rail\w*|insert\d+)")
+        if rail:
+            ops.append(Op(UNIT, (3,), whole(*rail), "Deck rail",
+                          "The deck rail on the inner plate: its two screws from the leg "
+                          "side, nuts in the rail; the heat-set inserts pressed into the "
+                          "rail.", "rail", side=s))
+    kit = view.named(r"deck_(?!screw\d)\w+")
+    if kit:
+        ops.append(Op(DECK, (0,), whole(*kit), "Deck electronics, on the bench",
+                      "The board on its nylon standoffs; the battery cradle screwed down "
+                      "(two M3 button heads through its ears, nuts under the deck), the "
+                      "battery strapped in; the charger and the protection board under the "
+                      "deck on foam tape; the switch; wires tied down through the cable-tie "
+                      "slots.", "electronics", sub=True))
+    screws = view.named(r"deck_screw\d+")
+    if screws:
+        ops.append(Op(DECK, (1,), whole(*screws), "Deck onto the rails",
+                      "Lower the deck, electronics on, straight down between the inner "
+                      "plates past the pillars' inner heads onto the rails; its "
+                      f"{len(screws)} screws into the rails' inserts.", "deck"))
+    return ops

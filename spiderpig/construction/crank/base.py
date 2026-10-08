@@ -265,6 +265,11 @@ class CrankGroup(Group):
             return Realized()
         return self.construction.realize(self, build)
 
+    def assembly(self, view) -> list:
+        """The construction's ``assembly(view)`` when it has one."""
+        hook = getattr(self.construction, "assembly", None)
+        return [] if hook is None else hook(view)
+
 
 def _hex(xy, af: float, z0: float, z1: float, angle: float):
     """A hexagonal prism, ``af`` across flats, one pair of flats facing ``angle``."""

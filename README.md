@@ -214,7 +214,8 @@ aluminium centre plates, tied into one frame by four chains of 6 mm round M3 sta
 (an M3 button head up through each inner plate, an M3 set screw through the centre
 plates joining each pair; no glue). An electronics deck (ESP32 servo driver, 2S LiPo,
 charger, protection board, switch) sits between the inner plates over the servos.
-`construction/robot.py`'s `ASSEMBLY` is the order every fastener can be driven in.
+`construction/assembly.py`'s `ROBOT_ORDER` and each construction's `assembly` hook are
+the order every fastener can be driven in; `spiderpig guide` draws it as `ASSEMBLY.pdf`.
 
 ## Test
 
