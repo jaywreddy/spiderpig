@@ -92,3 +92,11 @@ totals, the made rows' `sheet`, ORDER.md's HV warnings, the deck nuts 0.15 mm lo
 As in both branches: OK on five designs; klann_quad's gate audit (no-sim family loads)
 fails on the same five Chicago pins it failed on in `w8-2a130c8` (jam SF 0.30-0.43 at the
 fallback 155 N; unchanged by either branch).
+
+With the sim (`mise run audit`, not the gate's): the Strider double and the klann_lego quad
+pass with 0 cut-rule errors. The Klann quad fails on strength, as it did on `t3code/next`
+before the bus merge, and its cut rules have 0 errors. The bus window adds one finding
+there. `pin:C_leg3`'s jammed load in MuJoCo goes 259.6 -> 318.7 N with the robot's
+geometry: each side 0.228 mm farther out and the heavier chassis. Its jam SF drops
+1.07 -> 0.87, and `link:b1`'s 0.49 -> 0.40. The demo design's other six strength problems
+are unchanged.
