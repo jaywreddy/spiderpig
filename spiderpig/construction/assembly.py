@@ -486,7 +486,12 @@ def _title(st: Stage, gops: list[Op], layer: int | None) -> str:
             return f"Layer {layer}"
         if layer is not None and layer >= 0:
             return f"Layer {layer}: {named[0].lower() + named[1:]}"
-    return named or {WIRING: "Bus cables"}.get(st.stage, st.title)
+    if named:
+        return named
+    if st.stage == WIRING:
+        return "Bus cables"
+    short = st.title.split(": ", 1)[-1]
+    return short[0].upper() + short[1:]
 
 
 def prose(order: tuple[Stage, ...] = ROBOT_ORDER) -> list[str]:

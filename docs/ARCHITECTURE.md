@@ -1303,7 +1303,7 @@ holds its outputs, from the same sources and options, does nothing
 |---|---|---|
 | `klann.step` | the whole robot, one named, coloured product per part | 11.4 MB, 173 solids |
 | `klann.stl` | the whole robot as one binary mesh | 21.8 MB, 436,932 triangles |
-| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
+| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, named by its part label (`spiderpig.labels`, as the assembly guide's bag labels: P13_top_spacer_0.7mm.stl), with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
 | `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock (`layout.save_sheets`) | 2 sheets of 300 × 300 mm |
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
@@ -1312,6 +1312,8 @@ holds its outputs, from the same sources and options, does nothing
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
 from `spiderpig build`.
+
+**The assembly guide** (`spiderpig guide`, [GUIDE.md](agentlib/GUIDE.md)): `ASSEMBLY.pdf` and `ASSEMBLY.md` from the same fabrication, the steps from the constructions' `assembly` hooks and `construction.assembly.ROBOT_ORDER`, the part labels from `spiderpig.labels`, cached beside the fabrication.
 
 **DXF sheets** (`spiderpig/layout.py`): each laser part is cut through its mid-thickness,
 turned so its long axis runs along x, and offset by half its sheet's kerf where the

@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import re
 
 import ezdxf
 import pytest
@@ -58,8 +59,10 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
     files = {r["file"] for r in rows}
     # the frame ties are bought standoffs and screws since 2026-10-04 (no printed halves);
     # the feet's TPU socks print
-    assert not any(f.startswith("tie_") for f in files)
-    assert any(f.endswith("_sock.stl") for f in files)
+    assert not any("tie_" in f for f in files)
+    assert any("_foot_sock_" in f for f in files)
+    # each named by its part label first (spiderpig.labels: the guide's bag labels)
+    assert all(re.match(r"P\d\d_[a-z_]+_\d+\.\dmm\.stl$", f) for f in files)
     # the pillars are bought standoffs and the crank laser-cut plates now: what prints is the
     # chassis's and the drive's (its horn spacer: the bolt crank's hub plates need the horn's
     # face on a layer boundary)
@@ -68,8 +71,9 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
     by_file = {r["file"]: int(r["qty"]) for r in rows}
     # left and right side parts are one row each: every part is printed twice or more,
     # but the electronics deck's battery cradle, one per robot on the centre line
-    assert by_file["deck_cradle.stl"] == 1
-    assert all(q >= 2 for f, q in by_file.items() if f != "deck_cradle.stl")
+    cradle = next(f for f in by_file if "_battery_cradle_" in f)
+    assert by_file[cradle] == 1
+    assert all(q >= 2 for f, q in by_file.items() if f != cradle)
 
 
 @slow

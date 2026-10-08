@@ -161,26 +161,27 @@ off (`SPIDERPIG_FAB_CACHE=off`), there is no store, or a caller passes its own `
 import-linter layers beside `bake` and `build`.
 
 **Measured** on the default Strider double robot, 2026-10-08, on the shared 20-core box at
-load 17-18:
+load 11-18 (others' jobs):
 
 | run | time |
 |---|---|
-| cold, fabrication cached | 62-77 s |
-| warm, unchanged design | 0.8 s in the guide, 5.5 s wall with imports |
+| cold, no picture cached | 56 s, of which a fabrication 10 s (the fab key had just moved) |
+| a guide edit, pictures cached | 24 s |
+| warm, unchanged design | 0.6 s in the guide, 4.2 s wall with imports |
 
 Where the cold time went:
 
 | stage | time |
 |---|---|
-| fabricate, from the cache | 0.2-12 s |
-| meshes | 5 s |
-| labels' grouping | 9-10 s, overlapping the drawing |
-| pictures | 24-28 s on 4 workers |
-| PDF | 8-9 s |
+| fabricate | 0.2 s from the cache, 10 s afresh |
+| meshes | 4.5 s |
+| labels' grouping | 6.7 s, overlapping the drawing |
+| pictures (129: 46 steps, 82 thumbnails, the cover) | 20 s more on 4 workers |
+| PDF | 7 s |
 
-The first run also computes the code keys once, about 10 s. At normal load (3-6) the
-pictures took 39 s for 43 steps on 4 workers before the move to workers per picture, and
-the PDF 4-5 s. The 40 s cold target holds only on an unloaded box. Re-measure before quoting.
+The first run in a checkout also computes the code keys, about 10 s. A full-robot picture
+takes 2.7 s of one core, plus 1.2 s to choose its camera. The 40 s cold target, fabrication
+aside, holds at normal load (3-6), not at 15. Re-measure before quoting.
 
 **Tests** (`tests/test_guide.py`, sim tier).
 

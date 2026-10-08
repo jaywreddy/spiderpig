@@ -135,16 +135,22 @@ def draw(nodes: list[Node], links: list[tuple], left: list[str], path: Path,
             y = 60 + (k + 1) * usable / (len(idx) + 1) - bh / 2
             at[i] = (x, y)
     small, big = font(15, bold=False), font(18)
+    legend: dict[tuple[str, ...], int] = {}        # each set of cables: its number
     for i, j, cs in links:
         (x0, y0), (x1, y1) = at[i], at[j]
         a = (x0 + bw, y0 + bh / 2) if x1 > x0 else (x0 + bw / 2, y0 + bh)
         b = (x1, y1 + bh / 2) if x1 > x0 else (x1 + bw / 2, y1)
         d.line((*a, *b), fill=INK, width=4)
-        if cs:
+        if cs:      # a numbered tag on the link; the cables listed under the diagram
+            k = legend.setdefault(tuple(cs), len(legend) + 1)
             mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-            text = "\n".join(c if len(c) <= 24 else c[:23] + "." for c in cs)
-            d.multiline_text((mx, my - 8), text, fill=(150, 80, 0), font=small,
-                             anchor="md", align="center")
+            d.ellipse((mx - 13, my - 13, mx + 13, my + 13), fill=(255, 255, 255),
+                      outline=(150, 80, 0), width=3)
+            d.text((mx, my), str(k), fill=(150, 80, 0), font=big, anchor="mm")
+    y = h - 40 - 24 * (len(legend) + (1 if left else 0))
+    for cs, k in legend.items():
+        d.text((60, y), f"{k}: " + "; ".join(cs), fill=(150, 80, 0), font=small)
+        y += 24
     for i, n in enumerate(nodes):
         x, y = at[i]
         fill = (253, 226, 196) if n.role in ("servo", "board") else (232, 236, 244)
@@ -162,5 +168,5 @@ def draw(nodes: list[Node], links: list[tuple], left: list[str], path: Path,
         d.multiline_text((x + bw / 2, y + 66), "\n".join(lines[:3]), fill=INK, font=small,
                          anchor="mm", align="center")
     if left:
-        d.text((60, h - 70), "Also: " + "; ".join(left), fill=INK, font=small)
+        d.text((60, y), "Also: " + "; ".join(left), fill=INK, font=small)
     img.save(path, compress_level=6)
