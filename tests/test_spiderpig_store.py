@@ -492,19 +492,19 @@ def test_the_engine_version_is_read_back_from_its_digest_cache_only_while_it_hol
     signature isn't this tree's is computed afresh (and rewritten)."""
     from spiderpig import design
 
-    code_digest = design._code_digest
+    code_text = design.code_text
     monkeypatch.setenv(design.DIGEST_CACHE_ENV, str(tmp_path))
     monkeypatch.setattr(design, "_ENGINE_VERSION", [])
     computed = design.engine_version()                     # parsed, then written
     (entry,) = tmp_path.glob("*.json")
     assert json.loads(entry.read_text())["version"] == computed
     monkeypatch.setattr(design, "_ENGINE_VERSION", [])
-    monkeypatch.setattr(design, "_code_digest", lambda src: pytest.fail("parsed again"))
+    monkeypatch.setattr(design, "code_text", lambda path: pytest.fail("parsed again"))
     assert design.engine_version() == computed             # read back
     doc = json.loads(entry.read_text())
     entry.write_text(json.dumps({"signature": doc["signature"][::-1], "version": "0.0.0+x"}))
     monkeypatch.setattr(design, "_ENGINE_VERSION", [])
-    monkeypatch.setattr(design, "_code_digest", code_digest)
+    monkeypatch.setattr(design, "code_text", code_text)
     assert design.engine_version() == computed             # not this tree's: computed again
     assert json.loads(entry.read_text())["version"] == computed
     monkeypatch.setenv(design.DIGEST_CACHE_ENV, "off")

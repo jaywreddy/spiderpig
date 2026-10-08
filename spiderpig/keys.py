@@ -59,7 +59,10 @@ Data files: the engine reads none (the servo CAD downloads are pinned by hash).
 
 The answer is kept on disk (``$SPIDERPIG_DIGEST_CACHE``, like
 :func:`spiderpig.design.engine_version`'s) under a signature of every source's stats and
-the roots, so a process on unchanged sources reads it in milliseconds.
+the roots, so a process on unchanged sources reads it in milliseconds. After an edit the
+closures are walked again, but each source's index (and its stripped code, for
+:func:`engine_digest`) is read back from ``keys-index/`` beside it, keyed by the
+source's bytes (:func:`_load_index`): only the edited files are parsed again.
 """
 
 from __future__ import annotations
@@ -68,8 +71,10 @@ import ast
 import hashlib
 import json
 import os
+import pickle
 import sys
-from collections.abc import Iterable
+import time
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -201,6 +206,9 @@ def _noop(stmt: ast.stmt) -> bool:
                                           and isinstance(stmt.value, ast.Constant))
 
 
+_UNWALKED = frozenset({"annotation", "returns", "type_comment"})
+
+
 def _walk(node: ast.AST):
     """``ast.walk`` without annotations (never evaluated: ``from __future__ import
     annotations``, and nothing in the package reads type hints)."""
@@ -208,9 +216,10 @@ def _walk(node: ast.AST):
     while todo:
         n = todo.pop()
         yield n
-        for name, value in ast.iter_fields(n):
-            if name in ("annotation", "returns") or (name == "type_comment"):
+        for name in n._fields:          # (``ast.iter_fields``, inlined: the hot loop)
+            if name in _UNWALKED:
                 continue
+            value = getattr(n, name, None)
             if isinstance(value, ast.AST):
                 todo.append(value)
             elif isinstance(value, list):
@@ -423,6 +432,111 @@ def _patch_sites(mod: _Module, stmt: ast.AST) -> list[tuple[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# each source's index, kept on disk by its bytes
+# ---------------------------------------------------------------------------
+
+
+INDEX_DAYS = 30
+"""An entry of ``keys-index/`` nobody wrote for this many days is removed (when a run
+writes a new one): a source unchanged since is indexed again once."""
+
+
+def _cache_base() -> Path | None:
+    """``$SPIDERPIG_DIGEST_CACHE``, else ``$XDG_CACHE_HOME/spiderpig/engine-version``
+    (``~/.cache/...``); ``None`` when off."""
+    env = os.environ.get("SPIDERPIG_DIGEST_CACHE", "").strip()
+    if env.lower() in ("off", "0", "false", "no"):
+        return None
+    if env:
+        return Path(env).expanduser()
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "spiderpig" \
+        / "engine-version"
+
+
+def _index_entry(kind: str, data: bytes, *parts: str) -> Path | None:
+    """Where a result of ``kind`` computed from a source's bytes ``data`` is kept: named by
+    the hash of the bytes, ``parts`` (the module's name ...), the Python that parses them
+    and these rules' own code; ``None`` when the cache is off."""
+    base = _cache_base()
+    if base is None:
+        return None
+    h = hashlib.sha256("\0".join((kind, sys.version, _self_digest(), *parts)).encode()
+                       + b"\0" + data)
+    return base / "keys-index" / f"{h.hexdigest()[:40]}.{kind}"
+
+
+def _write_entry(path: Path, blob: bytes) -> None:
+    import tempfile
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".keys-")
+        with os.fdopen(fd, "wb") as f:
+            f.write(blob)
+        os.replace(tmp, path)
+    except OSError:
+        return                  # a read-only cache: computed again next time, no harm
+    if not _PRUNED:
+        _PRUNED.append(path.parent)
+        cutoff = time.time() - INDEX_DAYS * 86400
+        try:
+            for e in os.scandir(path.parent):
+                if e.stat().st_mtime < cutoff:
+                    os.unlink(e.path)
+        except OSError:
+            pass
+
+
+_PRUNED: list[Path] = []
+
+
+def _load_index(name: str, path: Path, is_pkg: bool, excluded: bool) -> _Module:
+    """:func:`_index` of the file ``path``, read back from ``keys-index/`` when its bytes
+    (and name, and these rules) were indexed before: an edit re-indexes the edited files
+    only. The entry is a pickle this module wrote; a missing, short or foreign one is
+    indexed again (and rewritten)."""
+    data = path.read_bytes()
+    entry = _index_entry("index", data, name, str(is_pkg))
+    if entry is not None:
+        try:
+            mod = pickle.loads(entry.read_bytes())
+        except Exception:       # noqa: BLE001 - absent or unreadable: indexed afresh
+            mod = None
+        if isinstance(mod, _Module) and mod.name == name and mod.is_pkg == is_pkg:
+            mod.path, mod.excluded = path, excluded
+            return mod
+    mod = _index(name, path, is_pkg, excluded, data)
+    if entry is not None:
+        _write_entry(entry, pickle.dumps(mod, protocol=pickle.HIGHEST_PROTOCOL))
+    return mod
+
+
+def code_of(source: str | bytes) -> str:
+    """A source's code without its docstrings, as ``ast.dump`` writes it: a docs-only edit
+    (or a moved line) keeps it."""
+    tree = ast.parse(source)
+    _strip_docstrings(tree)
+    return ast.dump(tree)
+
+
+def code_text(path: Path) -> str:
+    """:func:`code_of` the file ``path`` (what :func:`engine_digest` and
+    :func:`spiderpig.design.engine_version` hash), read back from ``keys-index/`` when
+    these bytes were dumped before."""
+    data = Path(path).read_bytes()
+    entry = _index_entry("code", data)
+    if entry is not None:
+        try:
+            return entry.read_bytes().decode()
+        except (OSError, UnicodeDecodeError):
+            pass
+    text = code_of(data)
+    if entry is not None:
+        _write_entry(entry, text.encode())
+    return text
+
+
+# ---------------------------------------------------------------------------
 # the package
 # ---------------------------------------------------------------------------
 
@@ -486,8 +600,14 @@ class Graph:
             ex = parts[0] == PACKAGE and (rel0 in excluded or f"{rel0}.py" in excluded)
             if base is not None and name in base.modules and name not in sources:
                 self.modules[name] = base.modules[name]     # (indexes are read-only)
+            elif name in sources:
+                self.modules[name] = _index(name, path, is_pkg, ex, sources[name])
             else:
-                self.modules[name] = _index(name, path, is_pkg, ex, sources.get(name))
+                self.modules[name] = _load_index(name, path, is_pkg, ex)
+        # each reached node's code, dumped once per graph (the plan's and the fabrication's
+        # closures share most of it); a class's shell is made once, so its id holds
+        self._dumps: dict[int, str] = {}
+        self._shells: dict[tuple[str, str], ast.ClassDef] = {}
         # every method / class attribute by name (engine modules only: the excluded
         # front-ends are never reached from the engine but through an explicit import)
         self.members: dict[str, list[tuple[str, str]]] = {}
@@ -506,6 +626,13 @@ class Graph:
         out = []
         for t in _targets(stmt):
             out += _names_of(t) or []
+        return out
+
+    def dump(self, node: ast.AST) -> str:
+        """``ast.dump(node)`` of a node of this graph's modules (or a class shell), once."""
+        out = self._dumps.get(id(node))
+        if out is None:
+            out = self._dumps[id(node)] = ast.dump(node)
         return out
 
     def _module_value(self, m: _Module, name: str, local: dict) -> str | None:
@@ -624,7 +751,7 @@ class _Walk:
                 self.current = ("<registers into the closure>", name)
                 self.load(name)
         return Closure(set(self.loaded),
-                       {k: ast.dump(v) for k, v in self.reached.items()},
+                       {k: self.g.dump(v) for k, v in self.reached.items()},
                        set(self.external), dict(self.why))
 
     # -- modules -------------------------------------------------------------------
@@ -693,12 +820,14 @@ class _Walk:
             return
         # the shell: bases, decorators, class attributes, nested classes and the dunders;
         # the other methods are reached by name
-        shell = ast.ClassDef(
-            name=cls.name, bases=cls.bases, keywords=cls.keywords,
-            decorator_list=cls.decorator_list, type_params=getattr(cls, "type_params", []),
-            body=[b for b in cls.body
-                  if not isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef))
-                  or _is_dunder(b.name)] or [ast.Pass()])
+        shell = self.g._shells.get((mod, qual))
+        if shell is None:
+            shell = self.g._shells[(mod, qual)] = ast.ClassDef(
+                name=cls.name, bases=cls.bases, keywords=cls.keywords,
+                decorator_list=cls.decorator_list, type_params=getattr(cls, "type_params", []),
+                body=[b for b in cls.body
+                      if not isinstance(b, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      or _is_dunder(b.name)] or [ast.Pass()])
         self.reach(mod, qual, shell)
 
     def reach_member(self, mod: str, qual: str) -> None:
@@ -775,7 +904,8 @@ class _Walk:
         local: dict[str, tuple[str, str | None]] = {}
         strings: list[str] = []
         dynamic = False
-        for n in _walk(node):
+        nodes = list(_walk(node))
+        for n in nodes:
             if isinstance(n, (ast.Import, ast.ImportFrom)):
                 local.update(_import_aliases(m, n))
                 self.imports(m, n)
@@ -789,17 +919,14 @@ class _Walk:
                                 self.resolve(src, sym)      # (everything it binds)
             elif isinstance(n, ast.Constant) and isinstance(n.value, str):
                 strings.append(n.value)
-        parents: dict[int, ast.AST] = {}
-        for p in _walk(node):
-            for c in ast.iter_child_nodes(p):
-                parents[id(c)] = p
-        for n in _walk(node):
+        # the names that are an attribute's object (``mod`` of ``mod.x``)
+        owners = {id(n.value) for n in nodes
+                  if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)}
+        for n in nodes:
             if isinstance(n, ast.Name):
                 self.name(m, n.id, local)
                 target = self.g._module_value(m, n.id, local)
-                parent = parents.get(id(n))
-                if target is not None and not (isinstance(parent, ast.Attribute)
-                                               and parent.value is n):
+                if target is not None and id(n) not in owners:
                     self.escape(target)     # a module passed, stored or returned
             elif isinstance(n, ast.Attribute):
                 base = self.module_of(m, n.value, local)
@@ -883,7 +1010,9 @@ def _versions(external: Iterable[str]) -> list[str]:
     (stdlib modules are the Python version's)."""
     from importlib import metadata
 
-    dists = metadata.packages_distributions()
+    if not _DISTS:
+        _DISTS.append(metadata.packages_distributions())
+    dists = _DISTS[0]
     out = set()
     for top in external:
         if top in sys.stdlib_module_names:
@@ -898,6 +1027,8 @@ def _versions(external: Iterable[str]) -> list[str]:
 
 _GRAPH: list[Graph] = []
 _KEYS: dict[tuple, str] = {}
+_DISTS: list[Mapping[str, list[str]]] = []
+_SELF: list[str] = []
 
 
 def graph() -> Graph:
@@ -921,9 +1052,12 @@ def _package_version() -> str:
 
 
 def _self_digest() -> str:
-    tree = ast.parse((ROOT / "keys.py").read_bytes())
-    _strip_docstrings(tree)
-    return hashlib.sha256(ast.dump(tree).encode()).hexdigest()[:16]
+    """These rules' own code (once per process)."""
+    if not _SELF:
+        tree = ast.parse((ROOT / "keys.py").read_bytes())
+        _strip_docstrings(tree)
+        _SELF.append(hashlib.sha256(ast.dump(tree).encode()).hexdigest()[:16])
+    return _SELF[0]
 
 
 def source_key(roots: Iterable[str], label: str = "src") -> str:
@@ -977,9 +1111,7 @@ def engine_digest() -> str:
             rel = p.relative_to(ROOT)
             if rel.parts[0] in excluded:
                 continue
-            tree = ast.parse(p.read_bytes())
-            _strip_docstrings(tree)
-            h.update(str(rel).encode() + b"\0" + ast.dump(tree).encode() + b"\0")
+            h.update(str(rel).encode() + b"\0" + code_text(p).encode() + b"\0")
         h.update(f"{sys.version_info[:2]}|{_package_version()}".encode())
         known = f"engine-{h.hexdigest()[:16]}"
         if entry is not None:
@@ -1011,7 +1143,8 @@ def function_key(path: str | Path, name: str | tuple[str, ...] | None,
     known = entry.read() if entry is not None else None
     if known is None:
         if not _TEST_GRAPH or path not in {m.path for m in _TEST_GRAPH[0].modules.values()}:
-            _TEST_GRAPH[:] = [Graph(extra=[*_test_files(), path])]
+            _TEST_GRAPH[:] = [Graph(extra=[*_test_files(), path],
+                                    base=_GRAPH[0] if _GRAPH else None)]
         g = _TEST_GRAPH[0]
         mod = next(m for m in g.modules.values() if m.path == path)
         if names and all(n in mod.symbols for n in names):
@@ -1081,14 +1214,9 @@ def _disk_entry(roots: tuple[str, ...], label: str, extra: Iterable[Path] = ()
     package's sources' and ``extra``'s paths, sizes, times and inodes, the roots, the
     Python, and the installed distributions: the site-packages folders' times change
     with any install), so any of those changing computes afresh."""
-    env = os.environ.get("SPIDERPIG_DIGEST_CACHE", "").strip()
-    if env.lower() in ("off", "0", "false", "no"):
+    base = _cache_base()
+    if base is None:
         return None
-    if env:
-        base = Path(env).expanduser()
-    else:
-        base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "spiderpig" \
-            / "engine-version"
     h = hashlib.sha256()
     for part in (str(ROOT), sys.version, label, *roots):
         h.update(part.encode() + b"\0")

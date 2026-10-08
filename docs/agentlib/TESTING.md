@@ -143,8 +143,12 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   the engine version's folder (`stores/<cfg.key>_t<t>/`: a store's ids name the engine). An
   edit is a new folder only for the layers that reach it: a deck colour keeps every plan,
   a planner edit re-plans; nothing is invalidated in place. `tests/test_keys.py` checks
-  both directions on real edits. The fabrication format, its locks and atomic writes are
-  the product's (`spiderpig/fabcache.py`, below).
+  both directions on real edits. The keys themselves are kept under
+  `SPIDERPIG_DIGEST_CACHE` by the sources' stats; after an edit each process walks the
+  closures again, but reads every unedited source's index and stripped code back from
+  the keys-index folder beside them, keyed by the source's bytes (`keys._load_index`,
+  `keys.code_text`): seconds, not the ~10 CPU-s of parsing everything. The fabrication
+  format, its locks and atomic writes are the product's (`spiderpig/fabcache.py`, below).
 - **Where, and why there**: a user cache directory, not the checkout. The key already
   names the engine, so worktrees with the same engine sources (every worktree branched
   from one master commit, until it edits `spiderpig/`) share entries, and worktrees with
