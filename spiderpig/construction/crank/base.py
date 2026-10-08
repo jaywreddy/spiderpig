@@ -267,6 +267,11 @@ class CrankGroup(Group):
             return Realized()
         return self.construction.realize(self, build)
 
+    def assembly(self, view) -> list:
+        """The construction's ``assembly(view)`` when it has one."""
+        hook = getattr(self.construction, "assembly", None)
+        return [] if hook is None else hook(view)
+
     def motion(self, got: Realized) -> Motion | None:
         """Every part turns with the crank about O (the webs, the crankpins' hex pockets and
         standoffs at the crank's angle, the horn screws at the horn's), and every hole it

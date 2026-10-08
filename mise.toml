@@ -39,6 +39,10 @@ run         = "uv run python -m spiderpig.cli bake"
 description = "Robot (default: the Strider double; pass -- --linkage klann, --module single etc.): STEP/STL, print STLs, DXF sheets, BOM -> build/"
 run         = "uv run python -m spiderpig.cli build"
 
+[tasks.guide]
+description = "The assembly guide: ASSEMBLY.pdf (steps with pictures, parts, prints, bag labels) and ASSEMBLY.md -> build/ (pass -- the build options, --jobs N, --steps N)"
+run         = "uv run python -m spiderpig.cli guide"
+
 [tasks.explain]
 description = "What each pipeline stage says about a design (pass -- --linkage K --module M)"
 run         = "uv run python -m spiderpig.cli explain"

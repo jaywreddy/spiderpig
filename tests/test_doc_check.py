@@ -15,7 +15,7 @@ def index():
 
 @pytest.mark.parametrize("token", [
     "stack.StackProblem.solve", "spiderpig.config.BuildConfig", "config.default_module",
-    "construction.robot.ASSEMBLY", "BoltCrank.for_sheet", "pivots.standoff",
+    "construction.assembly.ROBOT_ORDER", "BoltCrank.for_sheet", "pivots.standoff",
     "api.plan_config(config, store)", "tests.cache.cached_design", "os.replace",
     "mise run test-quick", "mise run gate", "spiderpig build", "--profile", "--no-profile",
     "--regen", "SPIDERPIG_STORE", "$SPIDERPIG_STORE", "SPIDERPIG_WORKERS=0",

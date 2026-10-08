@@ -168,8 +168,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 - **What:** the chain that ends in the hub plate has no screw over the hub plate
   (`BoltCrank.hub_capped`); the hub plate is held by the horn screws, and the hub plate,
-  horn, servo and inner plate go on as one unit (`construction.robot.ASSEMBLY`, the whole
-  robot's order). The removed `--crank bolt_hub_screw` kept the screw.
+  horn, servo and inner plate go on as one unit (the whole robot's order, since 2026-10-08
+  `construction.assembly.ROBOT_ORDER`). The removed `--crank bolt_hub_screw` kept the screw.
 - **Why:** no assembly order drove that screw with the horn screws coming up through the
   hub plate from below.
 - **Open (user):** the round standoff (`bolt_round`) still screws over the hub plate (its
@@ -309,3 +309,26 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `shapes.pill` as one extruded stadium, mirror-identical prints grouped as "same"
   (`bom._proper_fit`). Each change's gate diff is in [W8-gate-diffs.md](W8-gate-diffs.md);
   the gate baseline is `w8-2a130c8`.
+
+### 2026-10-08: the assembly guide, generated (user)
+
+- **What:** `spiderpig guide` (`mise run guide`) writes `ASSEMBLY.pdf` and `ASSEMBLY.md`
+  for any design, with no agent in the loop. The pictures are shaded toon renders from a
+  numpy z-buffer renderer in worker processes. The layout is reportlab, a new dependency.
+  The robot's assembly order is now structured data: each construction's `assembly` hook,
+  plus `construction.assembly.ROBOT_ORDER`. It replaces the prose `construction.robot`
+  kept until now. Parts are identified by labels that say what they are: a family and its
+  sizes (*SP8-0.7*, a spacer 8 mm across and 0.7 mm high), a laser part's outline
+  (*LK75x27*), a bought part's catalog key (*M3-BH-8*). Numbering by first use was
+  rejected in review: a reorder renumbered every label. `spiderpig build`'s print STLs
+  and cut files are named by label (*SP8-0.7_top_spacer.stl*), and the guide prints the
+  bag labels. No part changes.
+- **Why:** the user asked for a build-pipeline guide with stylised pictures, and for no
+  edits to the parts: identifying parts by labels and bags needs no embossing, so the
+  identity gate stays put. Of the renderers tried, OCCT hidden lines can't fill a
+  highlight, three.js needs a browser at runtime, and VTK needs an X server
+  ([GUIDE.md](GUIDE.md)).
+- **Where:** `spiderpig/construction/assembly.py`, the hooks (`BoltCrank.assembly`,
+  `ChicagoAxle.assembly`, `StandoffAxle.assembly`, `LinkPlates.assembly`,
+  `FramePlates.assembly`, `DriveGroup.assembly`, `chassis.assembly`, `deck.assembly`),
+  `spiderpig/labels.py`, `spiderpig/guide/`.

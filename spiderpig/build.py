@@ -145,8 +145,13 @@ def _on_plate(part):
 
 
 def export_prints(groups, out_dir: Path, density: float = 1.24,
-                  filaments: dict[str, str | None] | None = None) -> list[dict]:
+                  filaments: dict[str, str | None] | None = None,
+                  stems: dict[str, str] | None = None) -> list[dict]:
     """One STL per different printed part (and its mirror image where needed).
+
+    ``stems``: each printed body's file stem (:func:`spiderpig.labels.print_stems`: the
+    part label first, ``P13_top_spacer_0.7mm``, as the assembly guide's bag labels say);
+    without it a file is named after its first part.
 
     ``filaments``: each printed body's filament (catalog key, by name:
     :func:`hardware.bom.printed_filaments`): a group whose parts take two filaments is
@@ -167,7 +172,8 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         fil = (filaments or {}).get(g.names[0] if g.names else g.ref.name)
         # named after its own parts (a split row's ref may be the other filament's body)
         own = g.ref.name if g.ref.name in g.names or not g.names else g.names[0]
-        stem = _file_stem(own, taken)
+        plain = [n for n in g.names if n not in g.mirrored] or [own]
+        stem = (stems or {}).get(plain[0]) or _file_stem(own, taken)
         part = _on_plate(g.ref.part)
         export_stl(part, str(out_dir / f"{stem}.stl"))
         same = g.qty - len(g.mirrored)
@@ -348,9 +354,17 @@ def _exports_job(go: str, parent: int, out: str, name: str, sheet: str,
     if not dxf:
         return res
     t0 = time.perf_counter()
+    from spiderpig.labels import laser_labels, part_types
+
+    # the part labels name the cut files, as the build's own (they don't depend on the
+    # step order: spiderpig.labels)
+    labels = laser_labels(part_types(mech, None, groups, mech.meta.get("filament")))
+    timings["labels"] = time.perf_counter() - t0
+    t0 = time.perf_counter()
     laser = Path(out) / "laser"
     res["sheets"] = _attempt(lambda: [str(p) for p in save_sheets(
-        mech, laser / f"{name}_sheet", sheet_size=size, kerf=kerf, default=sheet)])
+        mech, laser / f"{name}_sheet", sheet_size=size, kerf=kerf, default=sheet,
+        labels=labels)])
     if not res["sheets"][0]:
         return res
     res["lines"] = _attempt(lambda: sheet_lines(mech, sheet, size))
@@ -359,7 +373,7 @@ def _exports_job(go: str, parent: int, out: str, name: str, sheet: str,
         return res
     t0 = time.perf_counter()
     res["order"] = _attempt(lambda: save_parts(groups["laser"], laser / "parts", sheet,
-                                               kerf=kerf))
+                                               kerf=kerf, labels=labels))
     timings["dxf_parts"] = time.perf_counter() - t0
     return res
 
@@ -472,8 +486,11 @@ def main(argv=None) -> int:
         groups = {m: [MadeGroup(m, by_name[ref], names, mirrored)
                       for ref, names, mirrored in gs] for m, gs in done["groups"].items()}
     filament = mech.meta.get("filament", "pla_filament")
+    from spiderpig.labels import assembly_order, laser_labels, part_types, print_stems
+
+    types = part_types(mech, assembly_order(mech, design), groups, filament)
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
-                         filaments=printed_filaments(mech, filament))
+                         filaments=printed_filaments(mech, filament), stems=print_stems(types))
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
@@ -484,7 +501,8 @@ def main(argv=None) -> int:
         size = tuple(args.sheet_size) if args.sheet_size else None
         try:
             sheets = (save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
-                                  kerf=args.kerf, default=config.sheet)
+                                  kerf=args.kerf, default=config.sheet,
+                                  labels=laser_labels(types))
                       if done is None else _outcome(done["sheets"]))
         except ValueError as e:
             print(f"error: the cut files can't be laid out: {e}", file=sys.stderr)
@@ -498,7 +516,7 @@ def main(argv=None) -> int:
             mech.bom_extras.append(line)
         try:
             order = (save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
-                                kerf=args.kerf)
+                                kerf=args.kerf, labels=laser_labels(types))
                      if done is None else _outcome(done["order"]))
         except ValueError as e:
             print(f"error: the per-part cut files can't be written: {e}", file=sys.stderr)
