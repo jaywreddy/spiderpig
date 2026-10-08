@@ -39,6 +39,7 @@ and what stops the pipeline when a link has no crank point at all.
 
 from __future__ import annotations
 
+import enum
 import math
 from dataclasses import dataclass, field
 from itertools import repeat
@@ -62,7 +63,11 @@ SWEEP = 10**4                    # per 0.01 mm a detour reaches below O
 BEARING = 10**3
 RUN = 1                          # a tie-break within one layering: not part of Route.cost
 INF = math.inf
-_MISS = object()                 # a memo miss (a memo may hold None)
+class _Miss(enum.Enum):
+    MISS = 0
+
+
+_MISS = _Miss.MISS               # a memo miss (a memo may hold None)
 
 
 def _first(pair: tuple):
@@ -772,7 +777,8 @@ class CrankRouter:
                 _, used, last, pend = state
                 jn = -1                     # layers on O since the last chain's web
                 if pend[0] < 0:
-                    ok0, under, jn = True, 0, pend[1]
+                    # no pending chain: ``fit`` (read only while one is pending) is unused
+                    ok0, under, jn, fit = True, 0, pend[1], 0
                     pend = None
                 else:
                     size, a, first, under = pend

@@ -373,7 +373,7 @@ class RouteView:
     each unplaced link (``None`` once every link has one) and the cost a route must beat."""
 
     layout: Layout
-    blocked: Mapping[int, int]
+    blocked: Mapping[float, int]        # by slot (a layer; a gap's ``layer + 0.5``)
     open: Mapping[str, set[int]] | None = None
     bound: int | None = None
     open_bits: Mapping[str, int] | None = None     # ``open`` as bits over the layers
@@ -393,6 +393,11 @@ class Router(Protocol):
 
     group: str
     pieces: tuple[Shape, ...]
+    # the crank's router's (the search reads them with getattr defaults): the pieces it may
+    # put in a clearance gap, its posts' points, and its first washer bit (-1: none)
+    gap_pieces: tuple[Shape, ...]
+    points: list[str]
+    washer_bit: int
 
     def check(self, view: RouteView) -> RouteConflict | Mapping[int, int]: ...
 

@@ -66,6 +66,38 @@ class WebJoint:
 class WebFitMixin:
     """The webs', stub's and horn screws' fit, for :class:`BoltCrank`."""
 
+    if TYPE_CHECKING:       # what it reads of :class:`BoltCrank` (its fields and methods)
+        hex: bool
+        head_clear: float
+        horn_shim_max: float
+        pin_min_engage: float
+        pin_od: float
+        sleeve_od: float
+
+        @staticmethod
+        def plate_z(L: Layout, k: int, t: float, hub: int | None = None
+                    ) -> tuple[float, float]: ...
+
+        def stub_z(self, top: float, plate: float, upper: float
+                   ) -> tuple[str, float, float, float] | None: ...
+
+        # (HexFitMixin's)
+        @staticmethod
+        def hex_screw() -> tuple[float, float]: ...
+
+        @staticmethod
+        def hex_washer() -> tuple[float, float, float]: ...
+
+        def air_over(self, L: Layout, k: int, t: float, hub: int | None = None) -> float: ...
+
+        def fit_hex(self, span: float, t_lo: float, t_hi: float, sleeve: bool = True,
+                    out_hi_max: float | None = None, capped: bool = False,
+                    air_hi: float = 0.0) -> HexJoint | None: ...
+
+        def hex_gap_fit(self, span: float, slots: list[tuple[int, float]], t_lo: float,
+                        t_hi: float, sleeve: bool = True, out_hi_max: float | None = None,
+                        capped: bool = False, air_hi: float = 0.0) -> HexJoint | None: ...
+
     def pin_screw(self) -> tuple[float, float]:
         """(head diameter, head height) of the crankpins' M4 button heads."""
         from spiderpig.hardware.catalog import get
@@ -204,7 +236,7 @@ class WebFitMixin:
 
         spec = ctx.servo
         pat = spec.horn.pattern
-        size = SIZES.get(pat.thread)
+        size = SIZES.get(pat.thread, "")        # (no size: no screw of the kinds below)
         order = ("self_tap",) if pat.tapping else ("bhcs", "shcs")
         kinds = [SCREWS[(k, size)] for k in order if (k, size) in SCREWS]
         reach = pat.reach if pat.reach is not None else spec.horn.thickness
@@ -271,7 +303,7 @@ class WebFitMixin:
     def horn_kind(self, ctx: Context) -> Screw:
         """The horn screws' kind (its head is what hangs under the crank's top plates)."""
         pat = ctx.servo.horn.pattern
-        size = SIZES.get(pat.thread)
+        size = SIZES.get(pat.thread, "")        # (no size: no screw of the kinds below)
         order = ("self_tap",) if pat.tapping else ("bhcs", "shcs")
         kinds = [SCREWS[(k, size)] for k in order if (k, size) in SCREWS]
         if not kinds:

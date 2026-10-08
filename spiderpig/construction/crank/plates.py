@@ -29,7 +29,8 @@ from spiderpig.construction.crank.base import (
     hex_play,
     route_of,
 )
-from spiderpig.construction.crank.web import SHIM_KEY, shim_stack
+from spiderpig.construction.crank.hex import HexJoint
+from spiderpig.construction.crank.web import SHIM_KEY, WebJoint, shim_stack
 from spiderpig.construction.envelope import shape_solid
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import SCREWS, parse, screw_solid
@@ -93,7 +94,9 @@ class _WebPlates:
             g = b.plan.gaps.get(pl.layer, 0.0)
             if g <= 0:
                 continue
-            if any(h.layer == pl.layer and math.dist(self.xy(h.shape.at), self.xy(pl.shape.at))
+            # (horn screw heads and crankpin washers are discs)
+            if any(h.layer == pl.layer and math.dist(self.xy(h.shape.at),  # pyright: ignore[reportAttributeAccessIssue]
+                                                     self.xy(pl.shape.at))  # pyright: ignore[reportAttributeAccessIssue]
                    < h.shape.r + pl.shape.r for h in horn):
                 continue        # a horn screw's head is there: the rider turns on air
             z0, _ = b.plan.gap_z(pl.layer)
@@ -173,6 +176,7 @@ class _WebPlates:
         self.layer_cut(w1 + 1, xy, c.head_r())
         from spiderpig.hardware.crank_catalog import gobilda_1501, m4_set_screw
 
+        assert isinstance(j, WebJoint)     # a round crank's chain fit (chain_fit_web)
         z0 = z_hi - j.length
         za = z0
         for i, seg in enumerate(j.segments or (j.length,)):
@@ -246,6 +250,7 @@ class _WebPlates:
         # a crank plate under or over the chain at the pin (the stub plate, a hub plate)
         self.layer_cut(w0 - 1, xy, c.head_r())
         self.layer_cut(w1 + 1, xy, c.head_r())
+        assert isinstance(j, HexJoint)     # a hex crank's chain fit (chain_fit_web)
         e0, e1 = z_lo - j.out_lo, z_hi + j.out_hi            # the standoff's ends
         st = _hex(xy, c.hex_af, e0, e1, ang) - disc(xy, 1.5, e0 - 1, e1 + 1)   # M3, through
         self.buy(f"crank_pin_{tag}", st, j.standoff, "#b9b9b9")
@@ -279,7 +284,9 @@ class _WebPlates:
                 if k > 1:
                     self.out.extras.append(BomLine("m3_washer", k - 1, f"crankpin {tag}"))
                 bearing += s_ * k * et
-            sk, length = parse(key)
+            got = parse(key)
+            assert got is not None          # the fit's keys are modelled screws (fit_hex)
+            sk, length = got
             self.buy(f"crank_pin_screw_{side}_{tag}",
                      screw_solid(xy, sk, bearing, length, up=side == "lo"), key)
         press = capped

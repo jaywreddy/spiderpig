@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from spiderpig.stack.geometry import Claim, Placed, Shape
     from spiderpig.stack.plan import StackPlan
     from spiderpig.stack.topology import Clearance, Router, Topology
+    from spiderpig.stack_pool import Remote
 
 
 class _Budget(Exception):
@@ -129,10 +130,11 @@ class StackProblem:
         geo, m = self.topo.geometry, self.spec.margin
         out = []
         for key, count in sorted(self.blocked.items(), key=lambda kv: -kv[1])[:n]:
-            if self._blocked_by[key] is None:           # a claim that couldn't be built
+            pair = self._blocked_by[key]
+            if pair is None:                            # a claim that couldn't be built
                 out.append(f"{count:7d} x {key[1]}")
                 continue
-            p, q = self._blocked_by[key]
+            p, q = pair
             if q is None:
                 why = "it would sit in a frame plate's layer"
             else:
@@ -248,7 +250,7 @@ class StackProblem:
                            f"{best.heads} first; it may be thinner)")
         return best
 
-    def _new(self, top: int):
+    def _new(self, top: int) -> _Search | Remote:
         """A stack size to search: here, or in a worker already searching it
         (:mod:`stack_pool`)."""
         if self.pool is None or not self.pool.has(top):
@@ -262,7 +264,7 @@ class StackProblem:
         if self.pool is not None:
             self.pool.expect(ahead)
 
-    def _solve(self, tried: dict) -> StackPlan:
+    def _solve(self, tried: dict[int, _Search | Remote]) -> StackPlan:
         spec = self.spec
         found = self._first(tried)
         if found is None and not self.exhausted:
@@ -305,6 +307,7 @@ class StackProblem:
         if spec.prove:
             self._run(found, spec.max_nodes)      # a cheaper route, if not ruled out yet
         plan = found.best
+        assert plan is not None     # found has a plan (_first, the loop above); runs keep it
         below = [tried[t] for t in range(spec.min_top, plan.top) if t in tried]
         open_ = [t + 1 for t in range(spec.min_top, plan.top)
                  if t not in tried or not tried[t].done]
@@ -321,14 +324,14 @@ class StackProblem:
             proof = (f"no plan in {plan.top} layers or fewer "
                      f"({sum(t.nodes for t in below)} nodes)")
         forced = [(t.top + 1, why, n) for t in below for why, n in t.unbuilt.items()]
-        if forced:
+        if forced and self.router is not None:      # (only a router's rules force it)
             top, why, n = forced[-1]
             proof += (f"; the {self.router.group}'s own rules forced it taller: in {top} "
                       f"layers the search met {n} layouts that fit everything else but {why}")
         plan.proof = f"{proof}; {here}"
         return plan
 
-    def _quick(self, tried: dict[int, _Search], top: int) -> _Search:
+    def _quick(self, tried: dict[int, _Search | Remote], top: int) -> _Search | Remote:
         """A short search of one stack size (and one a leg at a time, with a hint)."""
         s = tried[top] = self._new(top)
         s.first_only = self.spec.quick_first
@@ -338,7 +341,7 @@ class StackProblem:
         s.first_only = False
         return s
 
-    def _first(self, tried: dict[int, _Search]) -> _Search | None:
+    def _first(self, tried: dict[int, _Search | Remote]) -> _Search | Remote | None:
         """The thinnest stack size a quick search finds a plan in, or None.
 
         Every size in turn while they are ruled out; once one exhausts its
@@ -404,7 +407,7 @@ class StackProblem:
             return f"the {self.spec.max_total_nodes} search-step budget ran out"
         return ""
 
-    def sizes(self, tried: Mapping[int, _Search]) -> str:
+    def sizes(self, tried: Mapping[int, _Search | Remote]) -> str:
         """How far each stack size got: ruled out, left open at its budget (with nodes and
         seconds), or not tried."""
         runs: list[tuple[str, list[int]]] = []
@@ -430,7 +433,7 @@ class StackProblem:
             out.append(f"{layers} {state} ({span} nodes{each}, {secs:.0f} s in all)")
         return "sizes: " + "; ".join(out)
 
-    def _run(self, s: _Search, budget: int, legs: bool = False) -> None:
+    def _run(self, s: _Search | Remote, budget: int, legs: bool = False) -> None:
         budget = min(budget, self.spec.max_total_nodes - self.spent)
         if s.done or budget <= 0 or self.deadline.expired:
             return
@@ -524,15 +527,16 @@ class _Search:
                                    + [id(c) for c in self.by_dep[n]]) for n in self.links}
         self.early_of = {n: [(-id(c), id(c), c) for c in self.by_early[n]] for n in self.links}
         self.dep_of = {n: [(id(c), c) for c in self.by_dep[n]] for n in self.links}
-        self.by_layer: dict[int, list[tuple[Placed, frozenset[str]]]] = {}
-        self.block: dict[tuple[int, int], list[frozenset[str]]] = {}
-        self.bmask: dict[int, int] = {}             # layer -> bit i: router piece i blocked
+        # keyed by slot: a layer, or a clearance gap's ``layer + 0.5``
+        self.by_layer: dict[float, list[tuple[Placed, frozenset[str]]]] = {}
+        self.block: dict[tuple[float, int], list[frozenset[str]]] = {}
+        self.bmask: dict[float, int] = {}           # slot -> bit i: router piece i blocked
         self.dom = {n: set(range(1, top)) for n in self.links}
         self.gone: dict[str, dict[int, frozenset[str]]] = {n: {} for n in self.links}
         # what a link brings on its own in each layer (its claims that depend on it alone),
         # by the layer each shape lands in: forward checking against every placed shape;
         # and the router states it allows there
-        self.touch: dict[str, dict[int, list[tuple[int, Placed]]]] = {n: {} for n in self.links}
+        self.touch: dict[str, dict[float, list[tuple[int, Placed]]]] = {n: {} for n in self.links}
         self.allow: dict[str, dict[int, int]] = {n: {} for n in self.links}
         for n in self.links:
             solo = [(c, c.make) for c in self.claims if self.deps[id(c)] == {n}]
@@ -688,12 +692,12 @@ class _Search:
         return RouteView(Layout(self.layers, self.top, self.pitch), self.bmask, open_, self.bound,
                          bits)
 
-    def explain(self, res: RouteConflict) -> frozenset[str]:
-        """The links behind a router's dead end: the ones it names, else everything in the
-        layers it spans."""
+    def explain(self, res: RouteConflict, group: str) -> frozenset[str]:
+        """The links behind a router's dead end (the router's ``group``): the ones it names,
+        else everything in the layers it spans."""
         if res.bound:
             return frozenset(self.layers)
-        self.prob._tally_why(self.router.group, self.describe(res))
+        self.prob._tally_why(group, self.describe(res))
         if res.links:
             return res.links
         lo, hi = res.lo, res.hi
@@ -760,7 +764,8 @@ class _Search:
                     return conf | {n}
         if (c := self.spans(n)) is not None:
             return c | {n}
-        for a, b in self.lex if n in self.lexed else ():   # (lexed: empty without lex)
+        # (lexed: empty without lex)
+        for a, b in self.lex if n in self.lexed else ():  # pyright: ignore[reportOptionalIterable]
             if n not in (a, b):            # layer(a) <= layer(b): one layering of each orbit
                 continue
             other, ks = (b, range(1, v)) if n == a else (a, range(v + 1, self.top))
@@ -774,7 +779,7 @@ class _Search:
             if isinstance(res, RouteConflict):
                 if res.rules:
                     self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
-                return self.explain(res) | {n}
+                return self.explain(res, self.router.group) | {n}
             # a layer none of whose states on a route a link's own shapes leave is closed to it
             layers, dom, gone, trail, get = self.layers, self.dom, self.gone, self.trail, res.get
             dm = self.dm
@@ -837,7 +842,8 @@ class _Search:
                         if (not d or d & side) and (
                                 c := close(m, side, why | {x})) is not None:
                             return c
-            if anchored and (below or above):
+            end = below or above
+            if anchored and end:
                 if below and above:
                     return why | {below, above}
                 # the pillar must reach the plate on the other side
@@ -847,7 +853,7 @@ class _Search:
                     if x not in layers:
                         d = dm[x]
                         if (not d or d & other) and (c := close(
-                                x, other, why | {below or above})) is not None:
+                                x, other, why | {end})) is not None:
                             return c
         return None
 
@@ -945,7 +951,8 @@ class _Search:
         fails the layering as before."""
         choices, cost = {}, 0
         extra: dict[float, int] = {}
-        for attempt in range(self.LEAF_REROUTES + 1):
+        attempt = 0
+        while True:         # at most LEAF_REROUTES + 1 plans; every pass binds ``plan``
             if self.router is not None:
                 view = self.view(partial=False)
                 if extra:
@@ -969,7 +976,7 @@ class _Search:
                         return frozenset(self.layers)
                     if res.rules:
                         self.unbuilt[res.why] = self.unbuilt.get(res.why, 0) + 1
-                    return self.explain(res)
+                    return self.explain(res, self.router.group)
                 choices, cost = {self.router.group: res.choice}, res.cost
             try:
                 plan = self.prob.plan(self.layers, self.top, choices)
@@ -983,6 +990,7 @@ class _Search:
                 break
             for slot, bits in more.items():
                 extra[slot] = extra.get(slot, 0) | bits
+            attempt += 1
         bad = verify_plan(plan)
         if bad:
             self.prob._tally_why("the plan at its z", bad[0])
@@ -1002,13 +1010,13 @@ class _Search:
         sampling), beyond those in ``have``."""
         router = self.router
         wb = getattr(router, "washer_bit", -1) if router is not None else -1
-        if wb < 0 or not plan.layout.gaps:
+        if router is None or wb < 0 or not plan.layout.gaps:
             return {}
         made_: list[Placed] = []
         for c in plan.claims:
-            out, _ = made(c, plan.layout)
-            if out is not None:
-                made_.extend(out)
+            got, _ = made(c, plan.layout)
+            if got is not None:
+                made_.extend(got)
         shapes = [p for p in settle(made_, plan.sunk, plan.layout) if p.gap and not p.seat]
         index = {pt: j for j, pt in enumerate(router.points)}
         mine = [(p, index[p.shape.at]) for p in shapes

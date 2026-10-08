@@ -57,6 +57,25 @@ class HexJoint:
 class HexFitMixin:
     """The hex crankpin's fit, for :class:`BoltCrank`."""
 
+    if TYPE_CHECKING:       # what it reads of :class:`BoltCrank` (its fields and methods)
+        hex: bool
+        hex_af: float
+        hex_fit: float
+        hex_engage_max: float
+        hex_min_engage: float
+        hex_tip_gap: float
+        collar_min: float
+        dogbone_r: float
+        head_clear: float
+        protrude_max: float
+        recess_max: float
+        sleeve_play: float
+        thrust_play: float
+
+        @staticmethod
+        def plate_z(L: Layout, k: int, t: float, hub: int | None = None
+                    ) -> tuple[float, float]: ...
+
     def hex_lengths(self) -> tuple[float, ...]:
         from spiderpig.hardware.crank_catalog import HEX_M3_LENGTHS
 

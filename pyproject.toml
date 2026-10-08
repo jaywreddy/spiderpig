@@ -108,16 +108,21 @@ markers = [
 ]
 
 # pyright (viewer/node_modules/.bin/pyright, a pinned viewer devDependency; `mise run
-# pyright`): basic mode, measured by the scorecard (tests/scorecard.py). The compiled
-# extensions without stubs (OCP, mujoco) report no missing-source noise; W6 tightens this.
+# pyright`): basic mode, measured by the scorecard (tests/scorecard.py) and ratcheted in CI
+# (`mise run pyright-check`, tests/pyright_baseline.py: the error count only goes down). The
+# compiled extensions without stubs (OCP, mujoco) get typings/: their names are Any, which
+# silences their noise without turning a rule off anywhere else.
 [tool.pyright]
 include = ["spiderpig"]
 exclude = ["**/node_modules", "**/__pycache__", "spiderpig/viewer/dist", "build", ".spiderpig"]
+stubPath = "typings"
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 reportMissingModuleSource = false
+# basic mode leaves it off; a name a branch may not have bound is a bug waiting (W6)
+reportPossiblyUnboundVariable = "error"
 
 # coverage.py over the package (the scorecard's quick-tier coverage: pytest-cov, which
 # combines the xdist workers' data)
