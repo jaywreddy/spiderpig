@@ -84,5 +84,6 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",
     "test_bake_gltf.py": "sim",
+    "test_guide.py": "sim",
 }
 """Test file (relative to ``tests/``) -> its default module."""

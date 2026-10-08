@@ -150,7 +150,7 @@ type = "layers"
 layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
     "spiderpig.api",
-    "spiderpig.bake | spiderpig.build | spiderpig.strength",
+    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.guide",
     "spiderpig.sim",
     "spiderpig.fabricate",
     "spiderpig.construction",
@@ -164,6 +164,8 @@ ignore_imports = [
     "spiderpig.bake -> spiderpig.api",
     "spiderpig.build -> spiderpig.api",
     "spiderpig.uptodate -> spiderpig.api",
+    # `spiderpig guide`'s main() too (the prototype, docs/agentlib/GUIDE.md)
+    "spiderpig.guide.make -> spiderpig.api",
 ]
 
 [[tool.importlinter.contracts]]

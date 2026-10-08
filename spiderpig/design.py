@@ -60,9 +60,9 @@ def package_version() -> str:
         return "0.0.0"
 
 
-ENGINE_EXCLUDE = ("server", "mcp", "tools", "cli.py", "view.py", "__main__.py")
+ENGINE_EXCLUDE = ("server", "mcp", "tools", "guide", "cli.py", "view.py", "__main__.py")
 """Package sources that never change a design's result (the viewer's server, the MCP layer,
-the command lines): left out of :func:`engine_version`."""
+the assembly guide, the command lines): left out of :func:`engine_version`."""
 _ENGINE_VERSION: list[str] = []
 
 
