@@ -67,36 +67,36 @@
   "centre_plates": 6,
   "chicago": {
    "pin:J10_leg0": {
-    "bond_gap_mm": 0.2,
-    "item": "chicago_m3_16",
-    "length_mm": 16.0,
+    "bond_gap_mm": 0.0,
+    "item": "chicago_m3_10",
+    "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 0.9,
-    "spacer_lo_mm": 0.2,
-    "stack_mm": 14.8,
+    "spacer_hi_mm": 1.2,
+    "spacer_lo_mm": 0.0,
+    "stack_mm": 8.7,
     "unprinted_hi_mm": 0.0
    },
    "pin:J10_leg1": {
     "bond_gap_mm": 0.0,
-    "item": "chicago_m3_9",
-    "length_mm": 9.0,
+    "item": "chicago_m3_10",
+    "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 0.7,
-    "spacer_lo_mm": 0.0,
+    "spacer_hi_mm": 1.2,
+    "spacer_lo_mm": 0.5,
     "stack_mm": 8.2,
     "unprinted_hi_mm": 0.0
    },
    "pin:J11_leg0": {
     "bond_gap_mm": 0.0,
-    "item": "chicago_m3_7",
-    "length_mm": 7.0,
+    "item": "chicago_m3_10",
+    "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
     "spacer_hi_mm": 0.9,
     "spacer_lo_mm": 0.0,
-    "stack_mm": 6.0,
+    "stack_mm": 9.0,
     "unprinted_hi_mm": 0.0
    },
    "pin:J11_leg1": {
@@ -105,42 +105,42 @@
     "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 1.4,
+    "spacer_hi_mm": 0.9,
     "spacer_lo_mm": 0.0,
-    "stack_mm": 8.5,
+    "stack_mm": 9.0,
     "unprinted_hi_mm": 0.0
    },
    "pin:J3_leg0": {
+    "bond_gap_mm": 0.0,
+    "item": "chicago_m3_16",
+    "length_mm": 16.0,
+    "play_mm": 0.1,
+    "printed": true,
+    "spacer_hi_mm": 1.2,
+    "spacer_lo_mm": 0.0,
+    "stack_mm": 14.7,
+    "unprinted_hi_mm": 0.0
+   },
+   "pin:J3_leg1": {
     "bond_gap_mm": 0.2,
     "item": "chicago_m3_16",
     "length_mm": 16.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 0.9,
+    "spacer_hi_mm": 1.5,
     "spacer_lo_mm": 0.2,
-    "stack_mm": 14.8,
-    "unprinted_hi_mm": 0.0
-   },
-   "pin:J3_leg1": {
-    "bond_gap_mm": 0.0,
-    "item": "chicago_m3_15",
-    "length_mm": 15.0,
-    "play_mm": 0.1,
-    "printed": true,
-    "spacer_hi_mm": 1.2,
-    "spacer_lo_mm": 0.0,
-    "stack_mm": 13.7,
+    "stack_mm": 14.2,
     "unprinted_hi_mm": 0.0
    },
    "pin:J4_leg0": {
     "bond_gap_mm": 0.0,
-    "item": "chicago_m3_18",
-    "length_mm": 18.0,
+    "item": "chicago_m3_10",
+    "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 0.7,
+    "spacer_hi_mm": 0.9,
     "spacer_lo_mm": 0.0,
-    "stack_mm": 17.2,
+    "stack_mm": 9.0,
     "unprinted_hi_mm": 0.0
    },
    "pin:J4_leg1": {
@@ -149,31 +149,31 @@
     "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 1.4,
+    "spacer_hi_mm": 0.9,
     "spacer_lo_mm": 0.0,
-    "stack_mm": 8.5,
+    "stack_mm": 9.0,
     "unprinted_hi_mm": 0.0
    },
    "pin:J7_leg0": {
     "bond_gap_mm": 0.0,
-    "item": "chicago_m3_22",
-    "length_mm": 22.0,
+    "item": "chicago_m3_16",
+    "length_mm": 16.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 1.4,
+    "spacer_hi_mm": 1.2,
     "spacer_lo_mm": 0.0,
-    "stack_mm": 20.5,
+    "stack_mm": 14.7,
     "unprinted_hi_mm": 0.0
    },
    "pin:J7_leg1": {
     "bond_gap_mm": 0.2,
-    "item": "chicago_m3_22",
-    "length_mm": 22.0,
+    "item": "chicago_m3_16",
+    "length_mm": 16.0,
     "play_mm": 0.1,
     "printed": true,
     "spacer_hi_mm": 1.5,
     "spacer_lo_mm": 0.2,
-    "stack_mm": 20.2,
+    "stack_mm": 14.2,
     "unprinted_hi_mm": 0.0
    },
    "pin:J8_leg0": {
@@ -182,19 +182,19 @@
     "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 0.6,
+    "spacer_hi_mm": 1.2,
     "spacer_lo_mm": 0.0,
-    "stack_mm": 9.3,
+    "stack_mm": 8.7,
     "unprinted_hi_mm": 0.0
    },
    "pin:J8_leg1": {
     "bond_gap_mm": 0.0,
-    "item": "chicago_m3_9",
-    "length_mm": 9.0,
+    "item": "chicago_m3_10",
+    "length_mm": 10.0,
     "play_mm": 0.1,
     "printed": true,
-    "spacer_hi_mm": 0.7,
-    "spacer_lo_mm": 0.0,
+    "spacer_hi_mm": 1.2,
+    "spacer_lo_mm": 0.5,
     "stack_mm": 8.2,
     "unprinted_hi_mm": 0.0
    }
@@ -211,8 +211,8 @@
      },
      "capped": false,
      "collars_mm": [
-      0.4,
-      0.86
+      1.16,
+      1.2
      ],
      "engage_mm": [
       5.2,
@@ -226,10 +226,10 @@
       1,
       6
      ],
-     "length_mm": 25.0,
+     "length_mm": 30.0,
      "out_mm": [
-      0.4,
-      0.86
+      1.16,
+      1.2
      ],
      "run_layers": 3,
      "screws": [
@@ -237,12 +237,12 @@
       "m3_bhcs_6"
      ],
      "segments_mm": [
-      25.0
+      30.0
      ],
-     "sleeve_mm": 18.46,
+     "sleeve_mm": 22.36,
      "sleeve_press_mm": 0.0,
-     "span_mm": 23.74,
-     "standoff": "hex_standoff_m3_25",
+     "span_mm": 27.64,
+     "standoff": "hex_standoff_m3_30",
      "washers": [
       0,
       0
@@ -256,7 +256,7 @@
      },
      "capped": true,
      "collars_mm": [
-      0.8,
+      0.0,
       0.0
      ],
      "engage_mm": [
@@ -273,7 +273,7 @@
      ],
      "length_mm": 30.0,
      "out_mm": [
-      0.8,
+      0.3,
       0.0
      ],
      "run_layers": 4,
@@ -283,9 +283,9 @@
      "segments_mm": [
       30.0
      ],
-     "sleeve_mm": 23.92,
+     "sleeve_mm": 24.42,
      "sleeve_press_mm": 0.1,
-     "span_mm": 29.2,
+     "span_mm": 29.7,
      "standoff": "hex_standoff_m3_30",
      "washers": [
       0,
@@ -302,7 +302,7 @@
    "segments": [],
    "sheet_mm": 2.54,
    "stub_thrust": {
-    "length_mm": 8.9,
+    "length_mm": 6.9,
     "od_mm": 8.5,
     "play_mm": 0.1
    },
@@ -320,7 +320,6 @@
    "chassis_top_y": 11.31,
    "deck_y": 20.31,
    "fitted": true,
-   "insert_z": 5.5,
    "notches": [
     [
      -69.0,
@@ -347,6 +346,7 @@
      36.8
     ]
    ],
+   "nut_z": 5.5,
    "plate_mm": [
     136.0,
     71.6
@@ -456,19 +456,19 @@
    ],
    [
     "deck_screw0",
-    "L.deck_insert0"
+    "L.deck_rail_deck_nut0"
    ],
    [
     "deck_screw1",
-    "L.deck_insert1"
+    "L.deck_rail_deck_nut1"
    ],
    [
     "deck_screw2",
-    "R.deck_insert0"
+    "R.deck_rail_deck_nut0"
    ],
    [
     "deck_screw3",
-    "R.deck_insert1"
+    "R.deck_rail_deck_nut1"
    ],
    [
     "deck_board_screw0",
@@ -536,7 +536,7 @@
   "filament": "pla_filament",
   "layers": 14,
   "linkage": "strider",
-  "mid_plane": 103.264,
+  "mid_plane": 105.66399999999999,
   "module": "double",
   "phases": [
    0.0,
@@ -565,7 +565,7 @@
   "servo": "sts3215",
   "sheet": "acrylic_3mm",
   "sheet_name": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
-  "stack_mm": 66.464,
+  "stack_mm": 68.86399999999999,
   "tie_engagement_mm": 3.97,
   "tie_screw": "m3_bhcs_8",
   "tie_shims_mm": 2.0,
@@ -588,60 +588,60 @@
       2.032
      ],
      "1": [
-      4.732,
-      7.732
+      2.032,
+      5.032
      ],
      "10": [
-      52.432,
-      55.432
+      54.832,
+      57.832
      ],
      "11": [
-      58.432,
-      61.432
+      60.832,
+      63.832
      ],
      "12": [
-      61.432,
-      64.432
+      63.832,
+      66.832
      ],
      "13": [
-      64.432,
-      66.464
+      66.832,
+      68.864
      ],
      "2": [
-      11.032,
-      14.032
+      9.032,
+      12.032
      ],
      "3": [
-      16.532,
-      19.532
+      15.432,
+      18.432
      ],
      "4": [
-      22.232,
-      25.232
+      21.132,
+      24.132
      ],
      "5": [
-      25.232,
-      28.232
+      27.132,
+      30.132
      ],
      "6": [
-      32.232,
-      35.232
+      34.132,
+      37.132
      ],
      "7": [
-      38.732,
-      41.732
+      40.632,
+      43.632
      ],
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ],
      "9": [
-      49.432,
-      52.432
+      51.832,
+      54.832
      ]
     },
     "layers": {
-     "b1_leg0": 1,
+     "b1_leg0": 4,
      "b1_leg1": 8
     },
     "links": [
@@ -677,10 +677,10 @@
      "z_bend_mm3": 20.567
     },
     "segments_mm": [
-     62.4
+     64.8
     ],
     "shims_mm": {},
-    "span_mm": 39.2,
+    "span_mm": 24.7,
     "supports": [
      0,
      13
@@ -701,61 +701,61 @@
       2.032
      ],
      "1": [
-      4.732,
-      7.732
+      2.032,
+      5.032
      ],
      "10": [
-      52.432,
-      55.432
+      54.832,
+      57.832
      ],
      "11": [
-      58.432,
-      61.432
+      60.832,
+      63.832
      ],
      "12": [
-      61.432,
-      64.432
+      63.832,
+      66.832
      ],
      "13": [
-      64.432,
-      66.464
+      66.832,
+      68.864
      ],
      "2": [
-      11.032,
-      14.032
+      9.032,
+      12.032
      ],
      "3": [
-      16.532,
-      19.532
+      15.432,
+      18.432
      ],
      "4": [
-      22.232,
-      25.232
+      21.132,
+      24.132
      ],
      "5": [
-      25.232,
-      28.232
+      27.132,
+      30.132
      ],
      "6": [
-      32.232,
-      35.232
+      34.132,
+      37.132
      ],
      "7": [
-      38.732,
-      41.732
+      40.632,
+      43.632
      ],
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ],
      "9": [
-      49.432,
-      52.432
+      51.832,
+      54.832
      ]
     },
     "layers": {
-     "b5_leg0": 1,
-     "b5_leg1": 6
+     "b5_leg0": 4,
+     "b5_leg1": 8
     },
     "links": [
      {
@@ -790,10 +790,10 @@
      "z_bend_mm3": 20.567
     },
     "segments_mm": [
-     62.4
+     64.8
     ],
     "shims_mm": {},
-    "span_mm": 27.5,
+    "span_mm": 24.7,
     "supports": [
      0,
      13
@@ -806,22 +806,18 @@
     "anchors": [],
     "bearing_len_mm": 3.0,
     "layer_z": {
-     "1": [
-      4.732,
-      7.732
-     ],
-     "2": [
-      11.032,
-      14.032
-     ],
      "3": [
-      16.532,
-      19.532
+      15.432,
+      18.432
+     ],
+     "4": [
+      21.132,
+      24.132
      ]
     },
     "layers": {
      "b2_leg0": 3,
-     "b8_leg0": 1
+     "b8_leg0": 4
     },
     "links": [
      {
@@ -829,7 +825,7 @@
       "clearance_mm": 0.0,
       "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b8_leg0",
+      "link": "b2_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 0.0
@@ -839,14 +835,14 @@
       "clearance_mm": 0.2,
       "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b2_leg0",
+      "link": "b8_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 1.439
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (16 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (10 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -855,7 +851,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 11.8,
+    "span_mm": 5.7,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -865,12 +861,12 @@
     "bearing_len_mm": 3.0,
     "layer_z": {
      "7": [
-      38.732,
-      41.732
+      40.632,
+      43.632
      ],
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ]
     },
     "layers": {
@@ -900,7 +896,7 @@
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (9 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (10 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -919,42 +915,42 @@
     "bearing_len_mm": 3.0,
     "layer_z": {
      "4": [
-      22.232,
-      25.232
+      21.132,
+      24.132
      ],
      "5": [
-      25.232,
-      28.232
+      27.132,
+      30.132
      ]
     },
     "layers": {
-     "b4_leg0": 5,
-     "b6_leg0": 4
+     "b4_leg0": 4,
+     "b6_leg0": 5
     },
     "links": [
      {
       "bearing_mm": 3.0,
       "clearance_mm": 0.0,
-      "face_r_mm": 4.25,
+      "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b6_leg0",
+      "link": "b4_leg0",
       "play_mm": 0.2,
-      "supported_deg": 1.354,
+      "supported_deg": 1.439,
       "tilt_deg": 0.0
      },
      {
       "bearing_mm": 3.0,
       "clearance_mm": 0.2,
-      "face_r_mm": 4.25,
+      "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b4_leg0",
+      "link": "b6_leg0",
       "play_mm": 0.2,
-      "supported_deg": 1.354,
-      "tilt_deg": 1.354
+      "supported_deg": 1.439,
+      "tilt_deg": 1.439
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (7 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (10 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -963,9 +959,9 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 3.0,
+    "span_mm": 6.0,
     "top": 13,
-    "worst_deg": 1.354,
+    "worst_deg": 1.439,
     "worst_free_deg": 3.814
    },
    "pin:J11_leg1": {
@@ -973,12 +969,12 @@
     "bearing_len_mm": 3.0,
     "layer_z": {
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ],
      "9": [
-      49.432,
-      52.432
+      51.832,
+      54.832
      ]
     },
     "layers": {
@@ -1017,7 +1013,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 5.5,
+    "span_mm": 6.0,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1026,23 +1022,23 @@
     "anchors": [],
     "bearing_len_mm": 3.0,
     "layer_z": {
-     "1": [
-      4.732,
-      7.732
-     ],
-     "2": [
-      11.032,
-      14.032
-     ],
      "3": [
-      16.532,
-      19.532
+      15.432,
+      18.432
+     ],
+     "4": [
+      21.132,
+      24.132
+     ],
+     "5": [
+      27.132,
+      30.132
      ]
     },
     "layers": {
-     "b1_leg0": 1,
+     "b1_leg0": 4,
      "b2_leg0": 3,
-     "b3_leg0": 2
+     "b3_leg0": 5
     },
     "links": [
      {
@@ -1050,7 +1046,7 @@
       "clearance_mm": 0.0,
       "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b1_leg0",
+      "link": "b2_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 0.0
@@ -1060,7 +1056,7 @@
       "clearance_mm": 0.2,
       "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b3_leg0",
+      "link": "b1_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 1.439
@@ -1070,7 +1066,7 @@
       "clearance_mm": 0.2,
       "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b2_leg0",
+      "link": "b3_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 1.439
@@ -1086,7 +1082,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 11.8,
+    "span_mm": 11.7,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1096,16 +1092,16 @@
     "bearing_len_mm": 3.0,
     "layer_z": {
      "7": [
-      38.732,
-      41.732
+      40.632,
+      43.632
      ],
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ],
      "9": [
-      49.432,
-      52.432
+      51.832,
+      54.832
      ]
     },
     "layers": {
@@ -1146,7 +1142,7 @@
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (15 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (16 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -1155,7 +1151,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 10.7,
+    "span_mm": 11.2,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1164,26 +1160,18 @@
     "anchors": [],
     "bearing_len_mm": 3.0,
     "layer_z": {
-     "2": [
-      11.032,
-      14.032
-     ],
-     "3": [
-      16.532,
-      19.532
-     ],
      "4": [
-      22.232,
-      25.232
+      21.132,
+      24.132
      ],
      "5": [
-      25.232,
-      28.232
+      27.132,
+      30.132
      ]
     },
     "layers": {
-     "b3_leg0": 2,
-     "b4_leg0": 5
+     "b3_leg0": 5,
+     "b4_leg0": 4
     },
     "links": [
      {
@@ -1191,7 +1179,7 @@
       "clearance_mm": 0.0,
       "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b3_leg0",
+      "link": "b4_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 0.0
@@ -1199,16 +1187,16 @@
      {
       "bearing_mm": 3.0,
       "clearance_mm": 0.2,
-      "face_r_mm": 4.25,
+      "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b4_leg0",
+      "link": "b3_leg0",
       "play_mm": 0.2,
-      "supported_deg": 1.354,
-      "tilt_deg": 1.354
+      "supported_deg": 1.439,
+      "tilt_deg": 1.439
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (18 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (10 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -1217,9 +1205,9 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 14.2,
+    "span_mm": 6.0,
     "top": 13,
-    "worst_deg": 1.354,
+    "worst_deg": 1.439,
     "worst_free_deg": 3.814
    },
    "pin:J4_leg1": {
@@ -1227,12 +1215,12 @@
     "bearing_len_mm": 3.0,
     "layer_z": {
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ],
      "9": [
-      49.432,
-      52.432
+      51.832,
+      54.832
      ]
     },
     "layers": {
@@ -1271,7 +1259,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 5.5,
+    "span_mm": 6.0,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1280,27 +1268,23 @@
     "anchors": [],
     "bearing_len_mm": 3.0,
     "layer_z": {
-     "1": [
-      4.732,
-      7.732
-     ],
-     "2": [
-      11.032,
-      14.032
-     ],
      "3": [
-      16.532,
-      19.532
+      15.432,
+      18.432
      ],
      "4": [
-      22.232,
-      25.232
+      21.132,
+      24.132
+     ],
+     "5": [
+      27.132,
+      30.132
      ]
     },
     "layers": {
-     "b5_leg0": 1,
-     "b6_leg0": 4,
-     "b7_leg0": 2
+     "b5_leg0": 4,
+     "b6_leg0": 5,
+     "b7_leg0": 3
     },
     "links": [
      {
@@ -1308,7 +1292,7 @@
       "clearance_mm": 0.0,
       "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b5_leg0",
+      "link": "b7_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 0.0
@@ -1318,7 +1302,7 @@
       "clearance_mm": 0.2,
       "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b7_leg0",
+      "link": "b5_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 1.439
@@ -1335,7 +1319,7 @@
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (22 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (16 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -1344,7 +1328,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 17.5,
+    "span_mm": 11.7,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1353,25 +1337,21 @@
     "anchors": [],
     "bearing_len_mm": 3.0,
     "layer_z": {
-     "6": [
-      32.232,
-      35.232
-     ],
      "7": [
-      38.732,
-      41.732
+      40.632,
+      43.632
      ],
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ],
      "9": [
-      49.432,
-      52.432
+      51.832,
+      54.832
      ]
     },
     "layers": {
-     "b5_leg1": 6,
+     "b5_leg1": 8,
      "b6_leg1": 9,
      "b7_leg1": 7
     },
@@ -1381,7 +1361,7 @@
       "clearance_mm": 0.0,
       "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b5_leg1",
+      "link": "b7_leg1",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 0.0
@@ -1391,7 +1371,7 @@
       "clearance_mm": 0.2,
       "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b7_leg1",
+      "link": "b5_leg1",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 1.439
@@ -1408,7 +1388,7 @@
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (22 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (16 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -1417,7 +1397,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 17.2,
+    "span_mm": 11.2,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1426,18 +1406,18 @@
     "anchors": [],
     "bearing_len_mm": 3.0,
     "layer_z": {
-     "1": [
-      4.732,
-      7.732
+     "3": [
+      15.432,
+      18.432
      ],
-     "2": [
-      11.032,
-      14.032
+     "4": [
+      21.132,
+      24.132
      ]
     },
     "layers": {
-     "b7_leg0": 2,
-     "b8_leg0": 1
+     "b7_leg0": 3,
+     "b8_leg0": 4
     },
     "links": [
      {
@@ -1445,7 +1425,7 @@
       "clearance_mm": 0.0,
       "face_r_mm": 4.0,
       "free_deg": 0.0,
-      "link": "b8_leg0",
+      "link": "b7_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 0.0
@@ -1455,7 +1435,7 @@
       "clearance_mm": 0.2,
       "face_r_mm": 4.0,
       "free_deg": 3.814,
-      "link": "b7_leg0",
+      "link": "b8_leg0",
       "play_mm": 0.2,
       "supported_deg": 1.439,
       "tilt_deg": 1.439
@@ -1471,7 +1451,7 @@
      "yield_mpa": 215.0,
      "z_bend_mm3": 4.295
     },
-    "span_mm": 6.3,
+    "span_mm": 5.7,
     "top": 13,
     "worst_deg": 1.439,
     "worst_free_deg": 3.814
@@ -1481,12 +1461,12 @@
     "bearing_len_mm": 3.0,
     "layer_z": {
      "7": [
-      38.732,
-      41.732
+      40.632,
+      43.632
      ],
      "8": [
-      43.932,
-      46.932
+      45.832,
+      48.832
      ]
     },
     "layers": {
@@ -1516,7 +1496,7 @@
      }
     ],
     "pitch_mm": 3.0,
-    "play_basis": "barrel length less stack, washer and shims (9 mm barrel)",
+    "play_basis": "barrel length less stack, washer and shims (10 mm barrel)",
     "play_mm": 0.2,
     "section": {
      "a_shear_mm2": 5.498,
@@ -1532,11 +1512,11 @@
    }
   }
  },
- "engine_version": "0.1.0+2c2520600a93",
+ "engine_version": "0.1.0+15df219866ed",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-ad6c9acedb0f9bdf"
+ "source_key": "gen-e6b25809e5918cbd"
 }

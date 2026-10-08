@@ -75,25 +75,25 @@
   "strider_double_robot": {
    "config": "BuildConfig(linkage='strider', module='double', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -90.732,
-    -90.732,
-    -52.331999999999994,
-    -63.032
+    -77.03199999999998,
+    -88.73199999999999,
+    -52.33199999999999,
+    -63.53199999999999
    ]
   },
   "strider_single_robot": {
    "config": "BuildConfig(linkage='strider', module='single', robot=True, phases=None, proportions=(), sheet='acrylic_3mm', thickness=None, frame_sheet='al5052_2mm', crank_sheet='al6061_2p5mm', heads='best', link_sheets=None, servo='sts3215', pillar='standoff', pin='chicago', crank='bolt', params=Params(margin=1.0, link_radius=6.0, frame_radius=7.0, min_wall=1.5, running_fit=0.35, print_fit=0.3, axle_d=6.0, spacer_d=8.5, crankpin_d=6.0, web_radius=6.0, servo_screw_web_t=1.0))",
    "z": [
-    -69.13199999999999,
-    -69.13199999999999
+    -52.331999999999994,
+    -63.532
    ]
   }
  },
- "engine_version": "0.1.0+2c2520600a93",
+ "engine_version": "0.1.0+15df219866ed",
  "generator": "tests/test_walk.py::test_foot_z_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "foot_z_doc"
  },
- "source_key": "gen-ad6c9acedb0f9bdf"
+ "source_key": "gen-e6b25809e5918cbd"
 }
