@@ -546,7 +546,8 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
     # crank's gap rules of 2026-10-05 (another 10-layer layering: fewer pivot washers/shims);
     # 65 with the Chicago screws as bought (1 mm barrel steps: fewer shims)
     # 63: no printed lower spacer thinner than a print (bonded gaps, 2026-10-05)
-    assert len(manifest["parts"]) == 63
+    # 64: the cantilever pillar B's gap ring over its last link (W8 D2, 2026-10-07)
+    assert len(manifest["parts"]) == 64
     with pytest.raises(ValueError, match="unknown formats"):
         api.export(d, ["pdf"], tmp_path)
 

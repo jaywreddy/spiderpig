@@ -368,29 +368,29 @@ def _the_build_job_returns_a_manifest_of_files_in_the_store(server, single, stor
     assert manifest["ok"]
     assert manifest["design"] == single
     assert manifest["t"] == 1.0
-    # the default constructions' 63 (test_spiderpig_api's test_export_writes_what_the_cli_
-    # writes counts the same build's parts); the keyed crank and printed pillars, removed
-    # 2026-10-07: 30
-    assert manifest["n_parts"] == len(manifest["parts"]) == 63
+    # the default constructions' 64 (test_spiderpig_api's test_export_writes_what_the_cli_
+    # writes counts the same build's parts; 63 before W8 D2, the cantilever pillar B's gap
+    # ring); the keyed crank and printed pillars, removed 2026-10-07: 30
+    assert manifest["n_parts"] == len(manifest["parts"]) == 64
     assert manifest["mass_g"] > 0
     assert len(manifest["envelope_mm"]) == 3
     assert manifest["dir"] == str(store.dir(single) / "build")
     files = [p for p in manifest["parts"] if p["path"]]
-    assert manifest["files"] == len(files) == 63                     # one side: no mirrors
+    assert manifest["files"] == len(files) == 64                     # one side: no mirrors
     assert all(Path(p["path"]).is_file() and p["path"].endswith(".step") for p in files)
     b1 = next(p for p in manifest["parts"] if p["name"] == "b1")
     assert (b1["group"], b1["fab"], b1["layers"]) == ("links", "laser", [6])   # the plan's
     _no_solids(manifest)
     assert call(server, "get_job", job=job["job"])["job"]["state"] == "done"
     stored = call(server, "get_design", design=single, stage="build")["report"]
-    assert stored["n_parts"] == 63
+    assert stored["n_parts"] == 64
     assert stored["cut_rules"]["parts"] > 0          # the build's cut-rule review, stored
     assert stored["parts"][0]["path"] == manifest["parts"][0]["path"]
     # the same build again: served from the store's STEP files within the grace period
     again = call(server, "build", design=single, wait_seconds=120)
     assert again["ok"]
     assert again["job"]["state"] == "done"
-    assert again["n_parts"] == 63
+    assert again["n_parts"] == 64
     assert again["cut_rules"] == stored["cut_rules"]   # reloaded from the store: checked again
     assert "result" not in again["job"]
 
