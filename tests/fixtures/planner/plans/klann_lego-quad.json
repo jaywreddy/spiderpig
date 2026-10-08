@@ -57,11 +57,11 @@
   },
   "top": 12
  },
- "engine_version": "0.1.0+e91ed4bc0da8",
+ "engine_version": "0.1.0+4ff348fd2c45",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[klann_lego-quad]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-ed443ed4790c989c"
+ "source_key": "gen-faed6f4a862e391d"
 }
