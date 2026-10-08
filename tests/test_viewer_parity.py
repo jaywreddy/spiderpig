@@ -40,7 +40,7 @@ def _missing() -> str | None:
     if not VITEST.is_file():
         return f"{VITEST.relative_to(VIEWER.parent)} is missing: run `mise run viewer-install`"
     if _node() is None:
-        return "no `node` on PATH (mise.toml pins Node 20: `mise install`)"
+        return "no `node` on PATH (mise.toml pins Node 22: `mise install`)"
     return None
 
 
