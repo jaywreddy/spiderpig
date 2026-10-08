@@ -387,18 +387,25 @@ def _shared_volume(a, b) -> float:
 def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?
 
-    Each matching of the frames (a sign per axis, proper rotations only) is tried in
-    turn; the motion must take ``a``'s surface centroid onto ``b``'s before the proof,
+    A pure translation first when the world-frame inertia tensors agree (a part with two
+    equal moments, a ring, has no definite principal frame: a mirror-symmetric twin was
+    otherwise found only as a mirror image), then each matching of the frames (a sign per
+    axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid onto ``b``'s before the proof,
     one boolean: the volume ``a`` moved and ``b`` don't share is less than ``tol``.
     """
     from build123d import Location, Plane
 
     from spiderpig.shapes import moved as _moved
 
-    ca, ea, _ = sa.frame
-    cb, eb, _ = sb.frame
-    for signs in _SIGNS:
-        r = eb @ np.diag(signs) @ ea.T
+    ca, ea, ma = sa.frame
+    cb, eb, mb = sb.frame
+    # A translation first, when the inertia tensors agree in world axes (a part placed
+    # without turning it, the common case): its boolean meets exactly coincident faces,
+    # ~5-10x faster than one at the principal frames' rotation, which for a part with two
+    # equal moments (a ring, a disc) turns it about its axis by an arbitrary angle.
+    ia, ib = ea @ np.diag(ma) @ ea.T, eb @ np.diag(mb) @ eb.T
+    eye = (np.eye(3),) if np.abs(ia - ib).max() <= 1e-6 * max(np.abs(ib).max(), 1.0) else ()
+    for r in (*eye, *(eb @ np.diag(signs) @ ea.T for signs in _SIGNS)):
         if np.linalg.det(r) < 0:
             continue
         t = cb - r @ ca
