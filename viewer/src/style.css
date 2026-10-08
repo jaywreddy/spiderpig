@@ -149,7 +149,7 @@ body:not(.driving) #pad button:not(.held) { opacity: 0.75; }   /* a press starts
 body.driving #play, body.driving #slider, body.driving #readout { visibility: hidden; }
 
 /* Phones and tablets (layout.ts ``COMPACT``): a one-line status, the two panels' title bars
-   side by side under it (collapsed at first, drive/index.ts; one open at a time, full width,
+   side by side under it (collapsed at first, drive/tune.ts; one open at a time, full width,
    stopping short of the dock), the pad big enough for a thumb, centred above the play bar. */
 @media (max-width: 700px), (pointer: coarse) {
   #status {
