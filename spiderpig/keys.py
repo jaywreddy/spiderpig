@@ -580,6 +580,10 @@ def _module_files(extra: Iterable[Path] = ()) -> dict[str, tuple[Path, bool]]:
     return out
 
 
+_Summary = tuple[list[ast.Import | ast.ImportFrom], list[str], set[int],
+                 list[ast.Name | ast.Attribute | ast.keyword | ast.Call]]
+
+
 class Graph:
     """The package's modules, indexed once; :meth:`closure` from roots. ``extra``: files
     outside the package to index too (a test module). ``sources``: module name ->
@@ -606,9 +610,13 @@ class Graph:
                 self.modules[name] = _index(name, path, is_pkg, ex, sources[name])
             else:
                 self.modules[name] = _load_index(name, path, is_pkg, ex)
-        # each reached node's code, dumped once per graph (the plan's and the fabrication's
-        # closures share most of it); a class's shell is made once, so its id holds
-        self._dumps: dict[int, str] = {}
+        # each reached node's code dumped, and its tree summarized, once (the closures
+        # share most nodes; so does a graph made from ``base``): by the node's id, the
+        # node kept beside it so that the id is never another's; a class's shell is made
+        # once per graph (its module may be another graph's edit)
+        self._dumps: dict[int, tuple[ast.AST, str]] = base._dumps if base else {}
+        self._summaries: dict[int, tuple[ast.AST, _Summary]] = (
+            base._summaries if base else {})
         self._shells: dict[tuple[str, str], ast.ClassDef] = {}
         # every method / class attribute by name (engine modules only: the excluded
         # front-ends are never reached from the engine but through an explicit import)
@@ -630,11 +638,31 @@ class Graph:
             out += _names_of(t) or []
         return out
 
+    def summary(self, node: ast.AST) -> _Summary:
+        """What :meth:`_Walk.visit` reads of a node's tree (walked once per graph, as the
+        closures share most nodes), each in the walk's order: its imports, its string
+        constants, the ids of the names that are an attribute's object (``mod`` of
+        ``mod.x``), and its names, attributes, keywords and calls."""
+        kept = self._summaries.get(id(node))
+        if kept is not None:
+            return kept[1]
+        nodes = list(_walk(node))
+        out: _Summary = (
+            [n for n in nodes if isinstance(n, (ast.Import, ast.ImportFrom))],
+            [n.value for n in nodes if isinstance(n, ast.Constant) and isinstance(n.value, str)],
+            {id(n.value) for n in nodes
+             if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)},
+            [n for n in nodes if isinstance(n, (ast.Name, ast.Attribute, ast.keyword, ast.Call))])
+        self._summaries[id(node)] = (node, out)
+        return out
+
     def dump(self, node: ast.AST) -> str:
-        """``ast.dump(node)`` of a node of this graph's modules (or a class shell), once."""
-        out = self._dumps.get(id(node))
-        if out is None:
-            out = self._dumps[id(node)] = ast.dump(node)
+        """``ast.dump(node)``, once."""
+        kept = self._dumps.get(id(node))
+        if kept is not None:
+            return kept[1]
+        out = ast.dump(node)
+        self._dumps[id(node)] = (node, out)
         return out
 
     def _module_value(self, m: _Module, name: str, local: dict) -> str | None:
@@ -904,27 +932,20 @@ class _Walk:
 
     def visit(self, m: _Module, node: ast.AST) -> None:
         local: dict[str, tuple[str, str | None]] = {}
-        strings: list[str] = []
         dynamic = False
-        nodes = list(_walk(node))
-        for n in nodes:
-            if isinstance(n, (ast.Import, ast.ImportFrom)):
-                local.update(_import_aliases(m, n))
-                self.imports(m, n)
-                if isinstance(n, ast.ImportFrom):
-                    src = _absolute(m, n)
-                    for a in n.names:
-                        if a.name != "*" and src in self.g.modules:
-                            self.resolve(src, a.name)
-                        elif a.name == "*" and src in self.g.modules:
-                            for sym in self.g.modules[src].symbols:
-                                self.resolve(src, sym)      # (everything it binds)
-            elif isinstance(n, ast.Constant) and isinstance(n.value, str):
-                strings.append(n.value)
-        # the names that are an attribute's object (``mod`` of ``mod.x``)
-        owners = {id(n.value) for n in nodes
-                  if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name)}
-        for n in nodes:
+        imports, strings, owners, refs = self.g.summary(node)
+        for n in imports:
+            local.update(_import_aliases(m, n))
+            self.imports(m, n)
+            if isinstance(n, ast.ImportFrom):
+                src = _absolute(m, n)
+                for a in n.names:
+                    if a.name != "*" and src in self.g.modules:
+                        self.resolve(src, a.name)
+                    elif a.name == "*" and src in self.g.modules:
+                        for sym in self.g.modules[src].symbols:
+                            self.resolve(src, sym)      # (everything it binds)
+        for n in refs:
             if isinstance(n, ast.Name):
                 self.name(m, n.id, local)
                 target = self.g._module_value(m, n.id, local)
