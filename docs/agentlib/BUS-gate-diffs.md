@@ -3,8 +3,10 @@
 What the bus-socket change (the user's decisions of 2026-10-08 and the review round that
 followed, DECISIONS.md) did to the gate's six designs, all on the STS3215, compared with the
 baseline `~/.cache/spiderpig/gate/w8-2a130c8/`. The base branch (`quickfix`, 8de9de6) was
-identical to that baseline on all six designs. The new baseline is
-`~/.cache/spiderpig/gate/bus-39502f7/` (TESTING.md). The XL330 and XL430 aren't in the gate;
+identical to that baseline on all six designs. The bus branch's own baseline was
+`~/.cache/spiderpig/gate/bus-39502f7/`; merged with `t3code/next` (speed round 2 and the
+assembly guide) the baseline is `~/.cache/spiderpig/gate/bus2-92d11e4/` (TESTING.md), which
+differs from `bus-39502f7` only by the guide's labels (below). The XL330 and XL430 aren't in the gate;
 their centre sheet, stack and rear screws are unchanged (`tests/test_robot.py`).
 
 Where the part count changes the gate lists only the new names; the per-part comparison
@@ -83,10 +85,21 @@ Only the servo (cause 1): its volume 34877.84 -> 34862.49 mm³, area 7078.86 -> 
 its centre of mass by under 0.01 mm, at both angles, and the design's STL mesh. No chassis
 (a one-sided mechanism): plan, BOM, DXFs identical.
 
-## Assembly changes (to port into `chassis.assembly` on `guide-feasibility`)
+## The guide's labels (the merge of `t3code/next`)
 
-`construction/robot.py` `ASSEMBLY` steps 5 and 8 (the default: 6 centre plates, 2 own
-plates per servo, the meta's `centre_plates` and `rear_own_plates`):
+Against `bus-39502f7`, the merged tree differs only in file names and label columns, on
+every design: each DXF and print STL named by its label (`LK44.5x12b_L-b1_leg0_x6.dxf`,
+`CP50x45_centre_plate0_x2.dxf`, `HS19.9-1.8_horn_spacer.stl`, ...), a `label` column in
+`laser/parts/order.csv` and the sheets' `*_parts.csv`, the new names in `ORDER.md` and
+`print/parts.csv`. Plans, parts, audits and BOM numbers are identical.
+
+## Assembly changes (now in `chassis.assembly` and `construction.assembly`)
+
+Ported into the structured order at the merge: `chassis.assembly`'s centre-plates ops (the
+own plates from the meta's `rear_own_plates`, a middle-plates op tagged `plates_mid` in
+`ROBOT_ORDER`) and `construction.assembly.WIRING_TEXT`; `docs/ARCHITECTURE.md`'s generated
+order. Before the merge they were `construction/robot.py` `ASSEMBLY` steps 5 and 8 (the
+default: 6 centre plates, 2 own plates per servo):
 
 - **Step 5**: the studs into the left chains' ends; the left servo's own plates (0, 1) on its
   rear face over the studs, its two rear screws (the stock M2 x 6) through them; **its bus
