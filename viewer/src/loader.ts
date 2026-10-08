@@ -109,6 +109,10 @@ export async function loadGlb(
     if (mesh.isMesh && mesh.material) {
       const mat = mesh.material as THREE.MeshStandardMaterial;
       mat.flatShading = true;
+      // The studio environment as the material's own map: since three r163 a material
+      // lit by ``scene.environment`` alone takes ``scene.environmentIntensity`` and
+      // ignores its ``envMapIntensity``, which washed out the robot (every part at 1).
+      mat.envMap = scene.environment;
       mat.envMapIntensity = ENV_INTENSITY[mat.name] ?? 0.35;
       mat.needsUpdate = true;
     }

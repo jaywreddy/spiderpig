@@ -29,7 +29,7 @@ From a checkout (`uv sync` installs the `spiderpig` package editable, with the
 dev tools; the viewer is built once, into the package):
 
 ```bash
-mise install            # pin Python 3.12 + uv + node 20
+mise install            # pin Python 3.12 + uv + node 22
 uv sync                 # .venv: spiderpig (editable) + dev tools (fetches OCP/OCCT; slow the first time)
 mise run viewer-build   # the viewer -> spiderpig/viewer/dist (node; again after a viewer/ change)
 uv run spiderpig --help

@@ -11,7 +11,7 @@ import type { Mode, View, ViewerHandle } from './types';
 
 const canvas = document.getElementById('stage') as HTMLCanvasElement;
 const stage = createStage(canvas);
-const clock = new THREE.Clock();
+const clock = new THREE.Timer();   // THREE.Clock is deprecated since r183
 
 // Deep links: ?mode=robot&view=side&t=0.3 (t in clip seconds; pauses there);
 // &linkage=jansen and the tune panel's design parameters (drive/index.ts);
@@ -134,7 +134,7 @@ const loadMode = latestLoader<LoadedScene, Mode>({
 });
 
 function tick(): void {
-  const dt = clock.getDelta();
+  const dt = clock.update().getDelta();
   if (drive.active) {
     drive.frame(dt);   // drive mode renders continuously
     dirty = true;
@@ -220,7 +220,7 @@ async function init(): Promise<void> {
   const t = Number(params.get('t'));
   if (params.has('t') && Number.isFinite(t)) seek(t);
   await drive.init().catch((err: unknown) => ui.setStatus(`drive: ${(err as Error).message}`));
-  clock.start();
+  clock.reset();
   requestAnimationFrame(tick);
   viewerHandle.ready = true;
 }
