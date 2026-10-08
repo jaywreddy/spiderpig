@@ -1728,11 +1728,11 @@
   ],
   "title": ""
  },
- "engine_version": "0.1.0+f09d86273dfa",
+ "engine_version": "0.1.0+ec6c36e00edd",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-04a902db26f36b70"
+ "source_key": "gen-ed39e1e3e8270c60"
 }
