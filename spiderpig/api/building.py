@@ -11,21 +11,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from spiderpig import servos
-from spiderpig.api.planning import plan
 from spiderpig.api.reports import BuildReport, RecheckReport
-from spiderpig.api.store_ops import (
-    _commit,
-    _drop_stored,
-    _finish,
-    _forget,
-    _report,
-    _stored,
-    _template,
-    capture_warnings,
-    design_lock,
-    log,
-    ran_out,
-)
+from spiderpig.api.store_ops import _drop_stored, _forget, design_lock
 from spiderpig.construction.base import Build, ConstructionError
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.envelope import claimed_solid
@@ -40,6 +27,17 @@ from spiderpig.fabricate import (
 )
 from spiderpig.failure import Failure
 from spiderpig.hardware.mass import material_of, part_props
+from spiderpig.stages.planning import plan
+from spiderpig.stages.records import (
+    _commit,
+    _finish,
+    _report,
+    _stored,
+    _template,
+    capture_warnings,
+    log,
+    ran_out,
+)
 
 if TYPE_CHECKING:
     from spiderpig.mechanism import Mechanism

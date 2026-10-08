@@ -19,6 +19,7 @@ from spiderpig.design import (
 from spiderpig.spec import (
     nearest,
 )
+from spiderpig.stages.planning import _output_dict, _step_dict, foot_path
 from spiderpig.store import PROJECT, Store, _read_json, _write_json
 
 # ---------------------------------------------------------------------------
@@ -186,27 +187,6 @@ def output_sensitivity(lk: linkage.Linkage) -> dict:
     return out
 
 
-def foot_path(lk: linkage.Linkage, params: dict, n: int = 720) -> dict:
-    """One foot's path over a revolution (leg 0's first foot, its defaults unless
-    ``params``): ``lift_mm`` (vertical travel), the stance stride and fraction within 2 mm
-    of the lowest point, the crank radius, the leg's height and width."""
-    ts = 2.0 * math.pi * np.arange(n) / n
-    pts = lk.solve(params=params or None).evaluate(ts)
-    f = pts[lk.feet[0][1]]
-    y0 = float(f[:, 1].min())
-    stance = f[:, 1] <= y0 + 2.0
-    top = max(float(pts[j][:, 1].max()) for j in lk.points)
-    xs = np.concatenate([pts[j][:, 0] for j in lk.points])
-    return {
-        "lift_mm": float(np.ptp(f[:, 1])),
-        "stance_stride_mm": float(np.ptp(f[stance, 0])) if stance.any() else 0.0,
-        "stance_fraction": float(stance.mean()),
-        "crank_radius_mm": float(np.linalg.norm(pts[lk.crank[1]][0])),
-        "height_mm": top - y0,
-        "width_mm": float(np.ptp(xs)),
-    }
-
-
 SENSITIVITY_STEP = 0.10     # a length parameter is moved by +10 %
 SENSITIVITY_DEG = 5.0       # an angle by +5°
 
@@ -238,16 +218,3 @@ def sensitivity(lk: linkage.Linkage) -> dict:
     return out
 
 
-def _step_dict(s) -> dict:
-    return {"point": s.point, "kind": s.kind, "refs": list(s.refs), "radii_mm": s.radii,
-            "margin_mm": s.margin_mm, "worst_deg": s.worst_deg, "fails_deg": s.fails_deg,
-            "transmission_deg": s.angle_deg, "fail_fraction": s.fail_fraction,
-            "toggles": s.toggles, "invalid": s.invalid, "text": s.describe()}
-
-
-def _output_dict(c) -> dict:
-    return {"name": c.output.name, "motion": c.output.motion, "point": c.output.point,
-            "extent_mm": list(c.extent_mm), "stroke_mm": c.stroke_mm,
-            "straightness_mm": c.straightness_mm, "on_line_fraction": c.on_line,
-            "rotation_deg": c.rotation_deg, "swing_deg": c.swing_deg, "dwell_deg": c.dwell_deg,
-            "broken": c.broken, "text": c.describe()}

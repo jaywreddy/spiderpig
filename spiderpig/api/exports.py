@@ -12,19 +12,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from spiderpig.api import building  # (build, fabricate_at: through the module, where a patch goes)
-from spiderpig.api.planning import plan
 from spiderpig.api.reports import BuildReport, ExportReport, PlanReport
-from spiderpig.api.store_ops import (
-    WARNING_LOGGERS,
-    _cached,
-    _finish,
-    _manifest,
-    _report,
-    capture_warnings,
-    design_lock,
-    load,
-    log,
-)
+from spiderpig.api.store_ops import _manifest, design_lock, load
 from spiderpig.config import (
     torque_limit_note,
 )
@@ -37,6 +26,15 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import save_sheets, sheet_lines
+from spiderpig.stages.planning import plan
+from spiderpig.stages.records import (
+    WARNING_LOGGERS,
+    _cached,
+    _finish,
+    _report,
+    capture_warnings,
+    log,
+)
 
 # ---------------------------------------------------------------------------
 # verify, export

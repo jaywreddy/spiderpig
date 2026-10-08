@@ -7,7 +7,7 @@ numbers are in [DESIGNS.md](DESIGNS.md) (generated), how each part works in
 [ARCHITECTURE.md](../ARCHITECTURE.md) §5-7 and the module docstrings. Workstream decisions
 of the cleanup (D1-D5) are in [ROADMAP.md](ROADMAP.md).
 
-## Agentic harness spec (SCOPE.md section 6)
+## Agentic harness spec ([SCOPE.md](../history/SCOPE.md) section 6)
 
 1. Spec breadth: NARROW. v1 Spec has only fields the engine can verify today; unknown fields
    and wildcards are rejected with a message. compile(spec) is a compiler (seconds); search is
