@@ -1,6 +1,6 @@
 # The cheap checks on pushes to master and every PR (docs/agentlib/ROADMAP.md, W0): ruff,
 # the lock, the viewer's typecheck + vitest, the quick tier on the fabrication cache, and the doc
-# check (report-only until W7). The full suite stays on `mise run remote-test`.
+# check (blocking, --strict, since W7). The full suite stays on `mise run remote-test`.
 name: CI
 
 on:
@@ -113,5 +113,6 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
-      # report-only (exit 0) until W7 makes it blocking with --strict
-      - run: uv run --locked python -m tests.doc_check
+      # blocking since W7: a backticked name, path, task, flag or env var in the docs that
+      # the code doesn't have fails the run (tests/doc_check_allow.txt for what isn't code)
+      - run: uv run --locked python -m tests.doc_check --strict

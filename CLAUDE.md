@@ -47,7 +47,8 @@ mise run clean
 `build`, `bake`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp` and `view` are
 the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig <command>
 --help`; from a checkout `uv run python -m spiderpig.cli <command>`, or `mise run <command>
--- <options>`). E.g. `spiderpig bake --module single --side`, `spiderpig bake --linkage
+-- <options>`; `spiderpig mcp --store PATH` for an agent). E.g. `spiderpig bake --module
+single --side`, `spiderpig bake --linkage
 jansen --module double`. What every tool builds is a `spiderpig.config.BuildConfig`, which
 validates itself; the build options are shared (`config.add_design_args` /
 `add_build_args` / `config_from_args`), the server takes `linkage=`, `module=`, `phases=`,
@@ -116,14 +117,19 @@ VITE_ALLOWED_HOSTS = ".ts.net"   # extra Host names Vite and the API answer (`ta
 The server refuses any other Host header with a 400 and a WebSocket from a foreign origin
 (`spiderpig/server/app.py`). For single-port runs (e2e, prod-like) `mise run viewer-build`
 first: its `outDir` is `spiderpig/viewer/dist` (package data, what a wheel ships; without
-it `/` answers 503 and the API still works). `spiderpig view <design>` serves that app with
-no Node on the machine (`docs/agentlib/API.md`, "View").
+it `/` answers 503 and the API still works). `spiderpig view <design> [--store] [--port]
+[--open]` serves that app with no Node on the machine (`docs/agentlib/API.md`, "View"; the
+build options instead of an id go through `view.resolve_args`). Routes:
+`/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand into the store's
+`bakes/` (`strider_double_robot.glb`; a design with no plan, e.g. TrotBot's heel at
+`p.unit=7`, answers 422), `/api/walk`, `/api/linkages`, `/api/modes`, `/api/design/{id}`,
+and `/ws/sim?linkage=&module=` (the design live in MuJoCo, `spiderpig/sim/live.py`).
 
 ## Baking the glTF — performance profiler
 
 `spiderpig/bake.py` has a stage profiler, **on by default** (`--profile / --no-profile`;
-`--log-level DEBUG` for per-class chatter), printing a summary through the `bake_gltf`
-logger. Stage keys: `1_reference_build` (template at `t=0`, the side design and plan,
+`--log-level LEVEL`, `DEBUG` for per-class chatter), printing a summary through
+`logging.getLogger("bake_gltf")` (a function-level profile: `python -m cProfile`). Stage keys: `1_reference_build` (template at `t=0`, the side design and plan,
 every part fabricated), `2_mesh_share` (one mesh per congruence group, mass properties as
 they are measured), `2_tessellate_total` + `2_tessellate.<kind>` (`mesh.mesh_part` per
 shape, then `mesh.read_meshes` reads them all), `3_gltf_pack_geometry`,
@@ -131,9 +137,10 @@ shape, then `mesh.read_meshes` reads them all), `3_gltf_pack_geometry`,
 propagation over the whole `ts` array, `4.3_trs_batch`: planar rigid fit per body;
 hardware copies its host's motion, `Body.rigid_with`), `5_gltf_nodes_channels`,
 `6_foot_path_extra`, `6b_drive_extra` (the drive data on the root node `walker`),
-`7_serialize`, and `bake_total`. Metrics: `n_frames`, `n_legs`, `n_bodies`, `tris.*`,
-`blob_bytes`, `gltf_bytes`, `animation_channels`, `accessors`, `n_meshes`, `peak_rss_mb`;
-counters `body_extract.calls`, `mesh_shared`.
+`7_serialize` (`pygltflib.GLTF2.save_binary`), and `bake_total`. Metrics: `n_frames`,
+`n_legs`, `n_bodies`, `verts.*` / `tris.*`, `blob_bytes`, `gltf_bytes`,
+`animation_channels`, `accessors`, `n_meshes`, `peak_rss_mb`; counters
+`body_extract.calls`, `body_extract.static`, `mesh_shared`.
 
 **Where the time goes** (measured 2026-10-08 at 8bfc039, `spiderpig bake --profile` of the
 default Strider double robot, 3 runs, 20-core box at load ~4-6): `bake_total` 18.3-20.8 s;
@@ -141,7 +148,8 @@ default Strider double robot, 3 runs, 20-core box at load ~4-6): `bake_total` 18
 the frame loop (`4_*`) under 1 %. 391 bodies share 246 meshes. Re-measure before quoting.
 
 The straight-line program of each linkage (`spiderpig/linkage/engine.py`) is compiled once
-per process; a leg's phase is a time shift. Don't reintroduce per-leg or per-frame solves.
+per process; a leg's phase is a time shift (before `19e020e` the symbolic solve ran per leg
+per frame). Don't reintroduce per-leg or per-frame solves.
 The profiler class is `_Profiler` in `spiderpig/bake.py`; `spiderpig/tools/profiler.py` is
 its generalised copy behind `spiderpig build --profile` (`build_profile.STAGES`). Add a
 bracket with `prof.timed("label")`, `prof.bump(...)`, `prof.set_metric(...)`.

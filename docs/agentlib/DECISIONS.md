@@ -289,7 +289,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 - **What:** `spiderpig build` writes one DXF per different part (`layout.save_parts`,
   `order.csv`) and `ORDER.md` (`hardware/order.py`); shop supplies (filament, threadlocker)
-  are taken as on hand (`order.ON_HAND`): listed, not ordered. `--kerf` overrides every
+  are taken as on hand (`bom.ON_HAND`): listed, not ordered. `--kerf` overrides every
   sheet's kerf.
 - **Why:** SendCutSend and Ponoko take one part per file; the user keeps filament and
   threadlocker.
