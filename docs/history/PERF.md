@@ -1,5 +1,7 @@
 # Where the time went, and what was stupid — 2026-10-01
 
+> **History** (2026-10-01; historical: the fixes it measured have landed. Its timings predate W3's fabrication cache and W8's one-prism pill; `mise run scorecard` has the current ones.)
+
 A follow-up to [TIMING.md](TIMING.md): every slow step of the known path profiled, what it
 does, the stupid thing (or "nothing stupid"), the fix where the result stays identical, the
 saving measured after it, and the risk. A change that would alter an output, a plan or a

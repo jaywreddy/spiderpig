@@ -553,7 +553,7 @@ def test_export_writes_what_the_cli_writes(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 1 (docs/agentlib/TESTDRIVE.md): what the reports must say
+# Test drive, round 1 (docs/history/TESTDRIVE.md): what the reports must say
 # ---------------------------------------------------------------------------
 
 KLANN_SINGLE = {"kind": "walker", "linkage": {"key": "klann"},
@@ -718,7 +718,7 @@ def test_capture_warnings_collects_the_constructions_warnings_once():
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the thin sheet, the budget, the handles
+# Test drive, round 2 (docs/history/TESTDRIVE.md): the thin sheet, the budget, the handles
 # ---------------------------------------------------------------------------
 
 
@@ -987,7 +987,7 @@ def test_export_reports_the_bakes_warnings(quad, robot, tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): signed coordinates, a missed target's
+# Test drive, round 3 (docs/history/TESTDRIVE.md): signed coordinates, a missed target's
 # scale, the bolt pillars' bound, the stack's floor, the mass estimate, the CLI's designs
 # ---------------------------------------------------------------------------
 
@@ -1150,7 +1150,7 @@ def test_spec_of_a_config_round_trips():
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the cost floor, the glue, the BOM's
+# Test drive, round 4 (docs/history/TESTDRIVE.md): the cost floor, the glue, the BOM's
 # sheets, a robot part's frame, the sim's rows and mesher, the walks flag, the warnings
 # ---------------------------------------------------------------------------
 
@@ -1372,7 +1372,7 @@ def test_the_static_stage_and_the_standard_verify_keep_the_warnings_off_the_term
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): the budget's allowance for unpriced
+# Test drive, round 5 (docs/history/TESTDRIVE.md): the budget's allowance for unpriced
 # items, the transmission angle as a target, a point off the number line, the two-input
 # mechanism's words, the spec messages per kind, a one-sided envelope, the fall's detail
 # ---------------------------------------------------------------------------

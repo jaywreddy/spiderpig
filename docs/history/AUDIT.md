@@ -1,12 +1,14 @@
 # Spiderpig audit — 2026-09-29
 
+> **History** (2026-09-29; historical: the audit of the Klann-only code. Every finding is fixed or moved to `docs/agentlib/ROADMAP.md` (Later); `mise run audit` is documented in `spiderpig/tools/audit.py`.)
+
 Scope: performance, elegance of the symbolic core, and whether the
 fabrication build (STEP / STL / DXF + joinery) produces parts that actually
 go together. Audited at `6ef75ea` (master == `claude/great-carson-6nw2bz`).
 
 ## Status after the rework (same day)
 
-Every finding below is fixed, or has moved to [future_work.md](../../future_work.md).
+Every finding below is fixed, or has moved to [ROADMAP.md](../agentlib/ROADMAP.md)'s "Later" section (future_work.md, folded in by W7).
 `mise run audit` now passes in every mode (single, double, decker, quad): no
 part intersects any other at five crank angles, every part is one valid
 solid, the stack plan re-checks clean over 1440 crank samples, and every

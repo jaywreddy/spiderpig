@@ -1636,7 +1636,7 @@ per-solid volumes on exports (STEP files can't be compared byte for byte).
 **Test drives.** In five rounds an outside agent drove the public surface towards a goal
 ("a four-legged walker in a box under $100", "a straight-line mechanism over MCP"),
 logging every friction point, and the findings were fixed between rounds
-([TESTDRIVE.md](agentlib/TESTDRIVE.md)). Round 1 took 55 minutes with three dead ends. By
+([TESTDRIVE.md](history/TESTDRIVE.md)). Round 1 took 55 minutes with three dead ends. By
 round 5 the earlier rounds' failing paths ran clean, and two problems remained open: the
 viewer showing a mechanism inside a walker's controls, and the disagreement between MuJoCo
 and the walking model.
@@ -1679,8 +1679,8 @@ node: 0.5–5 ms of pure-Python set and dictionary work (41 % in the crank route
 program, 39 % in forward checking), times a few stack sizes. (These figures are from the
 project docs.) The search is narrow, trying 2–4 layers per node.
 
-**What was fixed** (project docs). Three performance reports ([PERF.md](agentlib/PERF.md),
-[PERF_EXPORT.md](agentlib/PERF_EXPORT.md), [PERF_PLANNER.md](agentlib/PERF_PLANNER.md))
+**What was fixed** (project docs). Three performance reports ([PERF.md](history/PERF.md),
+[PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md))
 found mostly redundant work: the robot fabricated three times per export, a plan re-solved
 by four of five command-line calls, boolean proofs repeated for mirror twins, meshes read
 point by point from Python, build123d meshing every STL twice. The seven-format export
@@ -2000,9 +2000,9 @@ Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
 | [viewer/README.md](../viewer/README.md) | how the viewer is fed and drawn | current, with the drift in Appendix D |
 | [agentlib/API.md](agentlib/API.md) | the agent surface's reference | current, with the drift in Appendix D |
 | [agentlib/SCOPE.md](agentlib/SCOPE.md), [DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's proposal; the seven decisions | historical design; current decisions |
-| [agentlib/TESTDRIVE.md](agentlib/TESTDRIVE.md) | the five test-drive rounds | current record |
-| [agentlib/TIMING.md](agentlib/TIMING.md), [PERF.md](agentlib/PERF.md), [PERF_EXPORT.md](agentlib/PERF_EXPORT.md), [PERF_PLANNER.md](agentlib/PERF_PLANNER.md) | the timing study and the three performance reports | current record |
-| [audit/AUDIT.md](audit/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |
+| [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
+| [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |
+| [history/AUDIT.md](history/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |
 | [audit/STRENGTH.md](audit/STRENGTH.md) | joint strength at each design's own loads: the model, every walker x module, the PTFE liner pin | current (2026-10-03) |
 
 **History.**

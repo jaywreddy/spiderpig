@@ -59,6 +59,12 @@ def test_the_known_drift_is_found(tmp_path, index):
     assert misses == set(tokens)
 
 
+def test_history_is_not_checked(index):
+    """The dated records under ``docs/history/`` keep the names of their day (W7)."""
+    assert doc_check.check(["docs/history/AUDIT.md"], index, allow=set(), every=True) == []
+    assert not any(d.startswith(doc_check.HISTORY) for d in doc_check.DEFAULT_DOCS)
+
+
 def test_the_default_docs_have_no_miss(index):
     """``mise run doc-check -- --strict`` (CI's blocking step, W7)."""
     misses = doc_check.check(list(doc_check.DEFAULT_DOCS), index)

@@ -190,7 +190,7 @@ What is cached, and when it is stale:
   it is recomputed and rewritten (a `load`ed design says so in `warnings`). `verify.json`
   holds the latest level and `verify.<level>.json` one per level, so a `quick` after a
   `standard` doesn't cost the standard one again (it did: 45 s on the second pass of
-  TIMING.md). `export.json` answers the same formats into the same folder while every
+  docs/history/TIMING.md). `export.json` answers the same formats into the same folder while every
   file is still there.
 - A **plan** is never trusted blindly: `plan(design)` re-makes the stored layout through
   `stack.StackProblem.plan(layers, top, choices)` (the route rebuilt as

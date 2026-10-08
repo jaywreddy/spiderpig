@@ -729,7 +729,7 @@ def test_no_safe_excursion_grants_no_step(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): the kinematic stride's sign, when and
+# Test drive, round 5 (docs/history/TESTDRIVE.md): the kinematic stride's sign, when and
 # how a fall is reported, an exported MJCF runs as is
 # ---------------------------------------------------------------------------
 

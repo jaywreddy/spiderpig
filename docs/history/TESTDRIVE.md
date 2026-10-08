@@ -1,5 +1,7 @@
 # Test drives: an outside agent against the public surface
 
+> **History** (2026-09-30; historical: the five test-drive rounds against the public surface. Every entry is fixed or listed as open; the tests cite it by round.)
+
 Each round: a fresh agent with only `README.md`, `docs/agentlib/API.md` and what
 the MCP server says (tools, `spiderpig://guide`, cards, catalog) tries a goal end
 to end, logs every point of friction, then switches hats and fixes what it found.

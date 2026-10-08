@@ -1,5 +1,7 @@
 # The layer planner: the shape of its search, and what would make it fast — 2026-10-01
 
+> **History** (2026-10-01; historical: the planner's search measured. The opt-in `StackSpec` flags it introduced still exist; the planner moved to `spiderpig/stack/` (W5).)
+
 The question (the user's words): *"For the planning, that's insane. It's a DFS on not that
 many nodes, so we shouldn't have bad fan-out. Are we pruning the search effectively (e.g.
 once we're beyond the global min number of layers so far, we don't need to keep exploring
