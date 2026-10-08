@@ -154,7 +154,8 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         by_name = {g.ref.name: g.ref for g in groups}
         groups = [part for g in groups for part in _split_by(g, filaments, by_name)]
     for g in groups:
-        fil = (filaments or {}).get(g.ref.name)
+        # the row's own filament: a split row's ref may be a body of the other filament
+        fil = (filaments or {}).get(g.names[0] if g.names else g.ref.name)
         stem = _file_stem(g.ref.name, taken)
         part = _on_plate(g.ref.part)
         export_stl(part, str(out_dir / f"{stem}.stl"))

@@ -967,15 +967,6 @@ def test_export_prints_writes_stls_and_parts_csv(tmp_path):
         placed.min.Z, placed.min.X + placed.max.X, placed.min.Y + placed.max.Y)
 
 
-class WrongFilament(AssertionError):
-    """The known export_prints bug's symptom: R.sock's row named by L.sock's filament."""
-
-
-@pytest.mark.xfail(strict=True, raises=WrongFilament, reason=(
-    "export_prints labels a filament-split row by its ref body's filament: "
-    "hardware.bom._split_by keeps the group's ref (L.sock, TPU) for the R.sock part when "
-    "R.sock is no group's ref, and export_prints looks the filament up by g.ref.name, so "
-    "the PETG part's row says TPU 95A and is weighed at TPU's density"))
 def test_export_prints_split_row_names_its_own_filament(tmp_path):
     from build123d import Box
 
@@ -989,8 +980,6 @@ def test_export_prints_split_row_names_its_own_filament(tmp_path):
     got = {r["parts"]: r["filament"] for r in rows}
     assert set(got) == {"L.sock", "R.sock"}
     assert got["L.sock"] == "TPU 95A flexible filament"
-    if got["R.sock"] == "TPU 95A flexible filament":
-        raise WrongFilament(f"R.sock's row says {got['R.sock']!r}")
     assert got["R.sock"] == "PETG filament"
 
 
