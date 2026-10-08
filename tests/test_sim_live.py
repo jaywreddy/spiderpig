@@ -196,7 +196,10 @@ def test_resets_and_commands_from_another_thread_while_stepping(live):
     th = threading.Thread(target=hammer, daemon=True)
     th.start()
     t0, bad = time.perf_counter(), 0
-    while time.perf_counter() - t0 < 1.5:
+    # step until the hammer has got in more than 10 times: it races the stepping for the
+    # lock, so how many fit in a fixed time depends on the machine's load; the 30 s cap
+    # is only reached by a lock that starves the hammer
+    while time.perf_counter() - t0 < 1.5 or (n_reset[0] <= 10 and time.perf_counter() - t0 < 30):
         live.advance(1 / 60)
         f = _unpack(live)
         bad += not np.isfinite(f).all()
