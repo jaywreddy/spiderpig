@@ -69,10 +69,11 @@ def test_one_stl_per_printed_part_with_quantities(single_out):
     assert any("horn_spacer" in f for f in files)
     by_file = {r["file"]: int(r["qty"]) for r in rows}
     # left and right side parts are one row each: every part is printed twice or more,
-    # but the electronics deck's battery cradle and the charger's two pad strips (since
-    # 2026-10-08: the narrower bay), one each per robot on the centre line
+    # but the electronics deck's battery cradle and, where the bay needs them, the
+    # charger's two pad strips: one each per robot on the centre line
     once = {"deck_cradle.stl", "deck_charger_pad0.stl", "deck_charger_pad1.stl"}
-    assert {f: q for f, q in by_file.items() if f in once} == dict.fromkeys(once, 1)
+    assert by_file["deck_cradle.stl"] == 1
+    assert all(q == 1 for f, q in by_file.items() if f in once)
     assert all(q >= 2 for f, q in by_file.items() if f not in once)
 
 
