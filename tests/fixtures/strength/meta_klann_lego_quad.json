@@ -1738,11 +1738,11 @@
    }
   }
  },
- "engine_version": "0.1.0+0a9eccdc7b74",
+ "engine_version": "0.1.0+b266aedf3f13",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[klann_lego_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-052b86647fdab1ab"
+ "source_key": "gen-547faf0b98f8d8dd"
 }

@@ -1,6 +1,6 @@
 {
  "data": {
-  "cost_usd": 426.74,
+  "cost_usd": 426.76,
   "cuts": [],
   "cutting": [
    {
@@ -17,7 +17,7 @@
     "parts": 6,
     "service": "SendCutSend",
     "sheet": "al5052_1p6mm",
-    "usd": 19.87
+    "usd": 19.89
    },
    {
     "area_cm2": 188.6,
@@ -36,7 +36,7 @@
     "usd": 33.4
    }
   ],
-  "cutting_usd": 183.05,
+  "cutting_usd": 183.07,
   "filaments": {
    "PETG filament": 1.9,
    "PLA filament": 70.9,
@@ -311,9 +311,10 @@
     "mirrored": 0,
     "name": "centre_plate1",
     "names": [
-     "centre_plate1"
+     "centre_plate1",
+     "centre_plate4"
     ],
-    "qty": 1,
+    "qty": 2,
     "sheet": "al5052_1p6mm",
     "size_mm": "44 x 50 x 1.6 mm",
     "volume_cm3": 2.645040691850594
@@ -330,20 +331,7 @@
     "qty": 2,
     "sheet": "al5052_1p6mm",
     "size_mm": "44 x 50 x 1.6 mm",
-    "volume_cm3": 2.536275942121424
-   },
-   {
-    "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
-    "method": "laser",
-    "mirrored": 0,
-    "name": "centre_plate4",
-    "names": [
-     "centre_plate4"
-    ],
-    "qty": 1,
-    "sheet": "al5052_1p6mm",
-    "size_mm": "44 x 50 x 1.6 mm",
-    "volume_cm3": 2.6302460052650263
+    "volume_cm3": 2.5362759337873078
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -2302,11 +2290,11 @@
   "purchases_usd": 243.69,
   "title": ""
  },
- "engine_version": "0.1.0+0a9eccdc7b74",
+ "engine_version": "0.1.0+b266aedf3f13",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-052b86647fdab1ab"
+ "source_key": "gen-547faf0b98f8d8dd"
 }
