@@ -129,6 +129,9 @@ RAIL_SCREW_R = 5.7 / 2 + 0.3             # its head's clearance shape under the 
 RAIL_NUT_AF, RAIL_NUT_H = 5.5, 2.4       # an M3 hex nut in a trap in the rail
 NUT_DEPTH = 3.0          # the trap's floor over the rail's plate face
 CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm cable tie
+CABLE_TIE_WEB = 1.5      # the deck plate between a wire slot and a cable tie's slot: over
+#                          SendCutSend's 1.35 mm least bridge in acrylic (it was 1.0 mm,
+#                          Ponoko's 1 mm feature, until 2026-10-08)
 RAIL_SCREW_L = 8.0       # the rail's bore past its plate face (the screw's tip stays in it)
 
 
@@ -166,6 +169,11 @@ RAIL_COLOR = "#2a7ab0"
 PCB_COLOR = "#1f6b3a"
 BATTERY_COLOR = "#3b3f46"
 NYLON = "#e8e4d8"
+
+
+def _tie_dx() -> float:
+    """A cable tie's slot's centre from its wire slot's (along x)."""
+    return WIRE_SLOT[0] / 2 + CABLE_TIE_WEB + CABLE_TIE_SLOT[0] / 2
 
 
 def _box(x0, x1, y0, y1, z0, z1):
@@ -565,7 +573,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                         for x, z in lay.screws()]
     board = lay.board()
     cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
-    ties = [((x + s * (WIRE_SLOT[0] / 2 + 3.0), z), CABLE_TIE_SLOT)
+    ties = [((x + s * _tie_dx(), z), CABLE_TIE_SLOT)
             for x, z in lay.wire_slots() for s in (-1, 1)]
     for (x, z), (a, b) in ([(c, STRAP_SLOT) for c in lay.strap_slots()]
                            + [(c, WIRE_SLOT) for c in lay.wire_slots()] + ties):
@@ -688,7 +696,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
               for x, z in lay.strap_slots()[:1]]
     # the wire slots and the cable ties beside them: each tie runs under the deck from one
     # of its slots to the other, round the wires over the wire slot
-    tie_dx = WIRE_SLOT[0] / 2 + 3.0 + CABLE_TIE_SLOT[0] / 2
+    tie_dx = _tie_dx() + CABLE_TIE_SLOT[0] / 2
     under += [(x - tie_dx, x + tie_dx, z - max(WIRE_SLOT[1], CABLE_TIE_SLOT[1]) / 2,
                z + max(WIRE_SLOT[1], CABLE_TIE_SLOT[1]) / 2) for x, z in lay.wire_slots()]
     b_x, b_z, bx1, bz = _bms_place(bms, bx1, room, lay.x_c - HALF_LEN, under,
