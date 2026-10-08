@@ -21,6 +21,13 @@ dependencies = [
     "pygltflib>=1.16",
     "mujoco>=3.14.0",
     "mcp>=2.2",
+    # imported directly (spiderpig/mcp/, spiderpig/server/app.py), not only through
+    # fastapi / mcp: floors at what uv.lock resolves
+    "pydantic>=2.13",
+    "anyio>=4.13",
+    "starlette>=1.0",
+    # OCP (OCC's bindings) is imported directly too, but comes with build123d as
+    # cadquery-ocp, whose version build123d pins: left implicit
 ]
 
 [project.scripts]
