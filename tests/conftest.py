@@ -43,7 +43,6 @@ import pytest
 from spiderpig import servos
 from spiderpig.config import BuildConfig
 from spiderpig.servos import cad as cadlib
-from spiderpig.servos import model
 from tests import cache
 from tests._modules import MODULE_OF_FILE, MODULES
 
@@ -177,8 +176,12 @@ def _no_fabricate_guard(request):
 
 
 def clear_model_caches() -> None:
-    for f in (model.cad_servo, model._servo_part, cadlib._load_cached):
-        f.cache_clear()
+    cadlib._load_cached.cache_clear()
+    # (not imported: nothing cached, and importing it would load build123d for nothing)
+    model = sys.modules.get("spiderpig.servos.model")
+    if model is not None:
+        for f in (model.cad_servo, model._servo_part):
+            f.cache_clear()
 
 
 @pytest.fixture(scope="session", autouse=True)

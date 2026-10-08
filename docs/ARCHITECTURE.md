@@ -2237,7 +2237,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `config.py` | 634 | `BuildConfig`, the default and removed constructions, shared CLI options, query parsing | `test_removed_constructions.py`, indirect |
 | `stack/` | 2,725 | the planner: `geometry.py` (shapes, claims, `Layout`), `topology.py` (`Topology`, static clearances, `PlanError`, the `Router` protocol), `plan.py` (`StackSpec`, `StackPlan`, `Deadline`), `search.py` (`StackProblem`, `_Search`), `plan_z.py` (`finalize`, the plan's z), `verify.py` (`verify_plan`) | `test_stack.py`, `test_planner_bounds.py`, `test_route.py` with `brute.py`, `test_seam_stack.py` |
 | `stack_pool.py`, `stack_symmetry.py` | 342, 171 | the opt-in parallel and symmetry search (`spiderpig/stack_symmetry.py`: one of each mirrored leg pair) | few |
-| `construction/base.py` | 292 | the `Group` contract, `Params`, `Context`, `Build` | indirect |
+| `construction/base.py` | 265 | the `Group` contract, `Context`, `Build`; re-exports `Params` | indirect |
+| `fit.py` | 41 | `Params`, the dimensions every construction shares (a spec's `fit`; apart, so `config` imports no CAD) | `test_recommend.py`, indirect |
 | `construction/__init__.py` | 88 | construction registries, `GROUP_FACTORIES` | `test_pivots.py` |
 | `construction/axle.py` | 254 | pillars and pins: the claims, `AxleDims` | `test_axle.py`, `test_stack.py` |
 | `construction/pivots/` | 1,227 | `standoff.py`, `chicago.py`, `common.py` | `test_pivots.py`, `test_standoff.py`, `test_seam_pivots.py` |

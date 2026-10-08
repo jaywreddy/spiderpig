@@ -61,7 +61,7 @@ EDITS = [
     ("materials, read through a lazy import", "spiderpig.materials",
      '"al5052_2mm", "al5052_2p3mm", "al5052_2p5mm")',
      '"al5052_2mm", "al5052_2p3mm")', True, True),
-    ("a Params default", "spiderpig.construction.base",
+    ("a Params default", "spiderpig.fit",
      "link_radius: float = 6.0", "link_radius: float = 6.5", True, True),
     ("a servo's dimensions", "spiderpig.servos.catalog",
      "body=(45.22, 24.72, 32.0)", "body=(45.22, 24.72, 32.5)", True, True),
