@@ -1,10 +1,10 @@
 {
  "data": {
-  "cost_usd": 301.46,
+  "cost_usd": 300.54,
   "cuts": [],
   "filaments": {
    "PETG filament": 1.8,
-   "PLA filament": 74.9,
+   "PLA filament": 76.1,
    "TPU 95A flexible filament": 2.5
   },
   "made": [
@@ -40,7 +40,7 @@
     ],
     "qty": 8,
     "size_mm": "142 x 21 x 3.0 mm",
-    "volume_cm3": 5.019082328703811
+    "volume_cm3": 5.019082328703812
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -70,7 +70,7 @@
     ],
     "qty": 4,
     "size_mm": "65 x 78 x 3.0 mm",
-    "volume_cm3": 3.288589176173367
+    "volume_cm3": 3.2885891761733665
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -185,7 +185,7 @@
     ],
     "qty": 6,
     "size_mm": "27 x 95 x 3.0 mm",
-    "volume_cm3": 3.2895728873730263
+    "volume_cm3": 3.2895728873730254
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -254,7 +254,7 @@
     ],
     "qty": 2,
     "size_mm": "43 x 35 x 2.5 mm",
-    "volume_cm3": 2.027396373500734
+    "volume_cm3": 2.0273963735007334
    },
    {
     "material": "6061 aluminium sheet 0.100 in (2.54 mm), laser cut",
@@ -282,7 +282,7 @@
     ],
     "qty": 2,
     "size_mm": "157 x 66 x 2.0 mm",
-    "volume_cm3": 8.648740753254435
+    "volume_cm3": 8.648740753254433
    },
    {
     "material": "5052 aluminium sheet 0.080 in (2.032 mm), laser cut",
@@ -295,33 +295,45 @@
     ],
     "qty": 2,
     "size_mm": "157 x 100 x 2.0 mm",
-    "volume_cm3": 10.53337005765094
+    "volume_cm3": 10.515317206073385
    },
    {
-    "material": "5052 aluminium sheet 0.090 in (2.286 mm), laser cut",
+    "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
     "name": "centre_plate0",
     "names": [
      "centre_plate0",
-     "centre_plate3"
+     "centre_plate4"
     ],
     "qty": 2,
-    "size_mm": "47 x 48 x 2.3 mm",
-    "volume_cm3": 3.749551497057943
+    "size_mm": "44 x 50 x 1.6 mm",
+    "volume_cm3": 2.6579273545173656
    },
    {
-    "material": "5052 aluminium sheet 0.090 in (2.286 mm), laser cut",
+    "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
     "method": "laser",
     "mirrored": 0,
     "name": "centre_plate1",
     "names": [
      "centre_plate1",
-     "centre_plate2"
+     "centre_plate3"
     ],
     "qty": 2,
-    "size_mm": "47 x 48 x 2.3 mm",
-    "volume_cm3": 3.6959640595409367
+    "size_mm": "44 x 50 x 1.6 mm",
+    "volume_cm3": 2.578703291402386
+   },
+   {
+    "material": "5052 aluminium sheet 0.063 in (1.6 mm), laser cut",
+    "method": "laser",
+    "mirrored": 0,
+    "name": "centre_plate2",
+    "names": [
+     "centre_plate2"
+    ],
+    "qty": 1,
+    "size_mm": "44 x 50 x 1.6 mm",
+    "volume_cm3": 2.9512625784029813
    },
    {
     "material": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
@@ -332,8 +344,8 @@
      "deck_plate"
     ],
     "qty": 1,
-    "size_mm": "136 x 3 x 71.1 mm",
-    "volume_cm3": 27.93511475029955
+    "size_mm": "136 x 3 x 70.0 mm",
+    "volume_cm3": 27.46836275029956
    },
    {
     "material": "TPU 95A flexible filament",
@@ -360,7 +372,7 @@
     ],
     "qty": 16,
     "size_mm": "15 x 14 x 3.0 mm",
-    "volume_cm3": 0.1271628770069581
+    "volume_cm3": 0.12716287700695808
    },
    {
     "material": "PLA filament",
@@ -425,7 +437,7 @@
     ],
     "qty": 2,
     "size_mm": "9 x 9 x 0.4 mm",
-    "volume_cm3": 0.013231317575761405
+    "volume_cm3": 0.013231317575761401
    },
    {
     "material": "PLA filament",
@@ -516,7 +528,7 @@
     ],
     "qty": 2,
     "size_mm": "8 x 8 x 23.9 mm",
-    "volume_cm3": 0.7261364940604549
+    "volume_cm3": 0.7261364940604547
    },
    {
     "material": "PLA filament",
@@ -574,7 +586,7 @@
     ],
     "qty": 2,
     "size_mm": "12 x 12 x 3.8 mm",
-    "volume_cm3": 0.19151620055181492
+    "volume_cm3": 0.19151620055181487
    },
    {
     "material": "PLA filament",
@@ -615,7 +627,7 @@
     ],
     "qty": 2,
     "size_mm": "12 x 12 x 2.1 mm",
-    "volume_cm3": 0.10583790030495042
+    "volume_cm3": 0.10583790030495045
    },
    {
     "material": "PLA filament",
@@ -641,7 +653,7 @@
     ],
     "qty": 2,
     "size_mm": "8 x 8 x 8.9 mm",
-    "volume_cm3": 0.22759582138196632
+    "volume_cm3": 0.22759582138196627
    },
    {
     "material": "PLA filament",
@@ -654,7 +666,7 @@
     ],
     "qty": 2,
     "size_mm": "60 x 8 x 11.0 mm",
-    "volume_cm3": 4.786735084417516
+    "volume_cm3": 4.786735084417518
    },
    {
     "material": "PLA filament",
@@ -696,7 +708,7 @@
     ],
     "qty": 8,
     "size_mm": "12 x 12 x 3.5 mm",
-    "volume_cm3": 0.2867370884839573
+    "volume_cm3": 0.2867370884839574
    },
    {
     "material": "PLA filament",
@@ -711,7 +723,7 @@
     ],
     "qty": 4,
     "size_mm": "12 x 12 x 3.9 mm",
-    "volume_cm3": 0.31950704145355285
+    "volume_cm3": 0.3195070414535528
    },
    {
     "material": "PLA filament",
@@ -829,7 +841,7 @@
     ],
     "qty": 4,
     "size_mm": "12 x 12 x 3.1 mm",
-    "volume_cm3": 0.25396713551436245
+    "volume_cm3": 0.2539671355143625
    },
    {
     "material": "PLA filament",
@@ -912,7 +924,7 @@
     ],
     "qty": 72,
     "size_mm": "9 x 9 x 3.0 mm",
-    "volume_cm3": 0.11097676048805949
+    "volume_cm3": 0.11097676048805946
    },
    {
     "material": "PLA filament",
@@ -987,7 +999,7 @@
     ],
     "qty": 16,
     "size_mm": "8 x 8 x 3.0 mm",
-    "volume_cm3": 0.12867178110940394
+    "volume_cm3": 0.12867178110940392
    },
    {
     "material": "PLA filament",
@@ -1008,7 +1020,7 @@
     ],
     "qty": 10,
     "size_mm": "8 x 8 x 0.9 mm",
-    "volume_cm3": 0.032769952969595145
+    "volume_cm3": 0.03276995296959515
    },
    {
     "material": "PLA filament",
@@ -1067,7 +1079,7 @@
     ],
     "qty": 8,
     "size_mm": "8 x 8 x 3.9 mm",
-    "volume_cm3": 0.1393995346232499
+    "volume_cm3": 0.13939953462324986
    },
    {
     "material": "PLA filament",
@@ -1092,7 +1104,7 @@
     ],
     "qty": 14,
     "size_mm": "8 x 8 x 0.7 mm",
-    "volume_cm3": 0.02548774119857409
+    "volume_cm3": 0.025487741198574092
    },
    {
     "material": "PLA filament",
@@ -1111,7 +1123,7 @@
     ],
     "qty": 8,
     "size_mm": "8 x 8 x 2.2 mm",
-    "volume_cm3": 0.07863563491567939
+    "volume_cm3": 0.0786356349156794
    },
    {
     "material": "PLA filament",
@@ -1177,7 +1189,7 @@
     ],
     "qty": 4,
     "size_mm": "8 x 8 x 1.1 mm",
-    "volume_cm3": 0.04005216474061642
+    "volume_cm3": 0.04005216474061641
    },
    {
     "material": "PLA filament",
@@ -1260,6 +1272,30 @@
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
+    "name": "deck_charger_pad0",
+    "names": [
+     "deck_charger_pad0"
+    ],
+    "qty": 1,
+    "size_mm": "30 x 5 x 3.0 mm",
+    "volume_cm3": 0.477
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
+    "name": "deck_charger_pad1",
+    "names": [
+     "deck_charger_pad1"
+    ],
+    "qty": 1,
+    "size_mm": "30 x 5 x 3.0 mm",
+    "volume_cm3": 0.4742967590774778
+   },
+   {
+    "material": "PLA filament",
+    "method": "printed",
+    "mirrored": 0,
     "name": "deck_cradle",
     "names": [
      "deck_cradle"
@@ -1273,9 +1309,9 @@
    "Horn screw shims (under each head): screws L.0, L.1, L.2, L.3, R.0, R.1, R.2, R.3: 1 mm (2 x M3 small flat washer (DIN 433, 3.2 x 6 x 0.5)).",
    "Horn screws: a drop of low-strength threadlocker (Loctite 222) each (8), steel into the metal horn; none in a plastic horn.",
    "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J10_leg0 0.2 mm, pin:J10_leg2 0.3 mm, pin:J3_leg0 0.2 mm, pin:J4_leg2 0.3 mm, pin:J8_leg2 0.3 mm; set the gap with a feeler gauge while the epoxy cures.",
-   "Printed parts need about 79 g of filament at 100 % infill (75 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 2 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
+   "Printed parts need about 80 g of filament at 100 % infill (76 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 2 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
   ],
-  "printed_g": 79.25898719278905,
+  "printed_g": 80.43859517404513,
   "purchased": [
    {
     "alternatives": [
@@ -1304,19 +1340,45 @@
    },
    {
     "alternatives": [
+     "https://www.mcmaster.com/products/pan-head-thread-forming-screws",
+     "https://www.amazon.com/dp/B07N79RKTH"
+    ],
+    "category": "fastener",
+    "cost_usd": null,
+    "key": "m2_self_tap_5",
+    "name": "M2 x 5 mm pan-head self-tapping screw (for plastic)",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 4.0,
+    "same_pack_as": "",
+    "sku": "B0GV338JJK",
+    "url": "https://www.amazon.com/dp/B0GV338JJK",
+    "vendor": "Amazon",
+    "verified": true,
+    "where": [
+     "L.rear_screw0",
+     "R.rear_screw0",
+     "L.rear_screw1",
+     "R.rear_screw1"
+    ]
+   },
+   {
+    "alternatives": [
      "https://www.amazon.com/dp/B0GV338JJK",
      "https://www.mcmaster.com/products/pan-head-thread-forming-screws",
      "https://www.amazon.com/dp/B07N79RKTH"
     ],
     "category": "fastener",
-    "cost_usd": 2.7600000000000002,
+    "cost_usd": 1.84,
     "key": "m2_self_tap_6",
     "name": "M2 x 6 mm pan-head self-tapping screw (for plastic)",
     "on_hand": false,
     "pack_price_usd": 0.46,
     "pack_qty": 1,
-    "packs": 6,
-    "qty": 6.0,
+    "packs": 4,
+    "qty": 4.0,
     "same_pack_as": "",
     "sku": "SHPRC-M2-6-CS-BZP",
     "url": "https://accu-components.com/us/torx-pan-head-thread-forming-screws/993377-SHPRC-M2-6-CS-BZP",
@@ -1326,9 +1388,7 @@
      "L.servo_screw0",
      "L.servo_screw1",
      "R.servo_screw0",
-     "R.servo_screw1",
-     "L.rear_screw0",
-     "R.rear_screw0"
+     "R.servo_screw1"
     ]
    },
    {
@@ -2079,14 +2139,14 @@
     "pack_price_usd": 29.99,
     "pack_qty": 1,
     "packs": 1,
-    "qty": 0.075,
+    "qty": 0.076,
     "same_pack_as": "",
     "sku": "Prusament PLA Jet Black 1kg",
     "url": "https://www.prusa3d.com/product/prusament-pla-jet-black-1kg-nfc/",
     "vendor": "Prusa Research",
     "verified": true,
     "where": [
-     "printed parts: 75 g at 100 % infill"
+     "printed parts: 76 g at 100 % infill"
     ]
    },
    {
@@ -2495,6 +2555,28 @@
    },
    {
     "alternatives": [
+     "https://www.waveshare.com/sr-cable-5264-3pin.htm?sku=34171"
+    ],
+    "category": "electronics",
+    "cost_usd": null,
+    "key": "bus_y_cable_5264",
+    "name": "Servo bus Y cable, Molex 5264 3-pin (1 to 2), short",
+    "on_hand": false,
+    "pack_price_usd": null,
+    "pack_qty": 1,
+    "packs": 1,
+    "qty": 1.0,
+    "same_pack_as": "",
+    "sku": "",
+    "url": "https://www.google.com/search?q=5264+3+pin+Y+splitter+cable+servo",
+    "vendor": "search",
+    "verified": false,
+    "where": [
+     "bus Y cable: the driver board to each servo's own socket (one per servo)"
+    ]
+   },
+   {
+    "alternatives": [
      "https://www.waveshare.com/wiki/Servo_Driver_with_ESP32"
     ],
     "category": "electronics",
@@ -2540,11 +2622,11 @@
   ],
   "title": ""
  },
- "engine_version": "0.1.0+113a8d976b75",
+ "engine_version": "0.1.0+7d2cd9218848",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-b08f727510259c8f"
+ "source_key": "gen-5d60094a9105a20b"
 }
