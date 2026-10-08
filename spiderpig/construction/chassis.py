@@ -1090,7 +1090,9 @@ def assembly(view) -> list:
                     "together" + (", no wire pinched." if face else "."))
         ops.append(Op(CHASSIS, (1 if s == "L" else 3,), whole(*mine, *rear),
                       f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
-                      f"plates_{s}"))
+                      f"plates_{s}",
+                      # the Y cable, its first plug seated here (chassis' BOM line)
+                      extras=(BUS_Y_CABLE,) if face and s == "L" else ()))
     if middle:
         ops.append(Op(CHASSIS, (2,), whole(*middle), "Middle centre plates",
                       f"The middle centre plates ({nums(middle)}) over the studs"
