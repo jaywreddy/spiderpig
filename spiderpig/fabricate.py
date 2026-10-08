@@ -47,6 +47,7 @@ from spiderpig.stack import (
 if TYPE_CHECKING:
     from spiderpig.construction.route import CrankFacts, CrankRouter
     from spiderpig.construction.underside import Underside
+    from spiderpig.shapes import Shape3D
 
 
 def template_for(config: BuildConfig):
@@ -336,4 +337,4 @@ def split_parts(mech: Mechanism) -> list[tuple[str, int]]:
     every build."""
     return [(b.name, n) for b in mech.bodies
             if b.part is not None and getattr(b, "fab", None) in MADE
-            and (n := len(b.part.solids())) != 1]
+            and (n := len(cast("Shape3D", b.part).solids())) != 1]
