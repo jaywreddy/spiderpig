@@ -201,9 +201,49 @@ def resolve_args(args, store):
     return api.resolve(api.spec_of(config), store)
 
 
-def main(argv: list[str] | None = None) -> int:
-    from spiderpig.config import add_build_args, add_design_args
+def add_lazy_build_args(ap: argparse.ArgumentParser) -> None:
+    """``spiderpig build``'s design and build options (:func:`config.add_design_args`,
+    :func:`config.add_build_args`) with no choices or defaults read from the registries, so
+    ``spiderpig view --help`` and the parsing import none of the engine; the values are
+    checked after parsing (:func:`convert_build_args`, the config's own validation)."""
+    see = " (the choices and defaults: spiderpig build --help)"
+    ap.add_argument("--linkage", help="the linkage" + see)
+    ap.add_argument("--module", help="legs per side: single, double, decker, quad (the "
+                                     "linkage's modules)")
+    ap.add_argument("--phases", metavar="DEG,...",
+                    help="crank phase of every leg of a side, in degrees")
+    ap.add_argument("--proportion", action="append", default=None, metavar="NAME=VALUE",
+                    help="override one of the linkage's parameters (repeatable)")
+    ap.add_argument("--servo", help="servo model" + see)
+    ap.add_argument("--pillar", help="construction of the frame pivots" + see)
+    ap.add_argument("--pin", help="construction of the pivots between links" + see)
+    ap.add_argument("--crank", help="crank construction" + see)
+    ap.add_argument("--sheet", help="sheet stock catalog item")
+    ap.add_argument("--thickness", type=float, default=None,
+                    help="measured sheet thickness in mm (default: the sheet's nominal)")
+    ap.add_argument("--frame-sheet", dest="frame_sheet",
+                    help="sheet of the frame and centre plates")
+    ap.add_argument("--crank-sheet", dest="crank_sheet", help="sheet of the crank's plates")
+    ap.add_argument("--heads", choices=("best", "sink", "gap"),
+                    help="fasteners' heads: sunk into a layer, in thin clearance gaps, or best")
+    ap.add_argument("--link-sheet", dest="link_sheet", action="append", default=None,
+                    metavar="LINK=SHEET",
+                    help="cut a link class from another sheet, e.g. b4=al6061_3p2mm (repeatable)")
 
+
+def convert_build_args(args) -> None:
+    """``--phases`` and ``--proportion`` as :func:`config.add_design_args` converts them
+    (:class:`config.ParamError` when they don't parse); the rest the config validates."""
+    from spiderpig.config import parse_phases, parse_proportion
+
+    if isinstance(args.phases, str):
+        args.phases = parse_phases(args.phases)
+    if args.proportion:
+        args.proportion = [parse_proportion(p) if isinstance(p, str) else p
+                           for p in args.proportion]
+
+
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="spiderpig view",
         description="serve the viewer for a stored design, or for the design the build "
@@ -213,8 +253,7 @@ def main(argv: list[str] | None = None) -> int:
                          "list_designs or api.list_designs() list the store's. Or give the "
                          "build options below (as for spiderpig build), and the design is "
                          "resolved into the store first")
-    add_design_args(ap)
-    add_build_args(ap)
+    add_lazy_build_args(ap)
     ap.add_argument("--side-only", action="store_true",
                     help="with the build options: one side (no second side, no chassis)")
     ap.set_defaults(linkage=None, module=None, servo=None, pillar=None, pin=None, crank=None,
@@ -233,6 +272,13 @@ def main(argv: list[str] | None = None) -> int:
                     choices=("critical", "error", "warning", "info", "debug"),
                     help="uvicorn's logging")
     args = ap.parse_args(argv)
+    if isinstance(args.phases, str) or args.proportion:
+        from spiderpig.config import ParamError
+
+        try:
+            convert_build_args(args)
+        except ParamError as e:
+            ap.error(str(e))
     from spiderpig.store import Store
 
     store = Store.of(args.store) if args.store else Store.default()
