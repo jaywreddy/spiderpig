@@ -83,7 +83,8 @@ def _subprocess_coverage(tmp_path, rcfile) -> float:
     cwd = os.getcwd()
     os.chdir(root)                          # (paths relative to the repo, as the scorecard's)
     try:
-        data.json_report(outfile=str(report))
+        # the one file read below (every other file of the source parsed for nothing: 4 s)
+        data.json_report(outfile=str(report), include=["spiderpig/tools/profiler.py"])
     except coverage.exceptions.NoDataError:    # nothing of spiderpig/ measured at all
         return 0.0
     finally:

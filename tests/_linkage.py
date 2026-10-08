@@ -3,11 +3,13 @@
 **Foot z** (``tests/fixtures/linkage/foot_z.json``). The walking model needs each foot's
 lateral z, which comes from the layer plan of the linkage's *default* design
 (:func:`spiderpig.walk.foot_z_nominal` -> ``walk._default_plan_z`` -> ``design_side``):
-planning is the planner's business and takes from 0.3 s (Klann single) to 122 s (the
-Jansen quad's search, which ends without a plan). The fast tests read the recorded z
-instead (:func:`use_recorded_foot_z` puts them in ``walk._default_plan_z``'s place); a
-config that isn't recorded is planned live, as before. :func:`foot_z_doc` is the
-generator, ``test_walk.py::test_foot_z_fixture_is_current`` the currency test (slow).
+planning is the planner's business and takes from 0.3 s (Klann single) to 60 s (the
+Jansen quad's search, which ends at the CPU deadline without a plan). The fast tests read
+the recorded z instead (:func:`recorded_foot_z_ctx` puts them in ``walk._default_plan_z``'s
+place); a config that isn't recorded is planned live, as before. :func:`foot_z_doc` is the
+generator, ``test_walk.py::test_foot_z_fixture_is_current`` the currency test (slow); both
+search under :func:`node_budget` (no clock, :data:`FOOT_Z_NODES` search steps), so what
+they record doesn't depend on the machine's load.
 
 **The walk reference** (``tests/fixtures/linkage/walk_reference.json``): the demo Klann quad
 on the default constructions (the reference was the ``--crank printed`` quad on the
@@ -19,6 +21,8 @@ test_quad_reference`` and ``viewer/src/drive/model.test.ts`` read the same file)
 
 from __future__ import annotations
 
+import functools
+import math
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -38,6 +42,7 @@ FOOT_Z_CONFIGS: tuple[BuildConfig, ...] = (
     #                                                                   reference's
     BuildConfig(linkage="jansen", module="double"),
     BuildConfig(linkage="jansen", module="quad"),                    # no plan: the guess
+    BuildConfig(linkage="fourbar", module="quad"),                   # plans, and tips
     BuildConfig(linkage="strider", module="single"),
     BuildConfig(),                                                   # the Strider double
     # test_view: the stored XL330 Klann quad, and the tune panel's edits on top of it
@@ -52,6 +57,27 @@ the module's phases and the linkage's proportions, the robot, any servo and mate
 _REAL_DEFAULT_PLAN_Z = walk._default_plan_z
 
 
+FOOT_Z_NODES = 4000
+"""The search steps the foot z generator's searches may take in all (``StackSpec.
+max_total_nodes``; the default is 60000 within a 60 CPU-s deadline). Every recorded
+config that plans takes at most 1521 (the Klann double, 2026-10-07: the same z as with the
+default budgets); the Jansen quad's search finds no plan at 4000 steps (6 CPU-s), nor at
+60000 with the clock out (167 CPU-s), nor in the product's 60 s."""
+
+
+@contextmanager
+def node_budget(nodes: int = FOOT_Z_NODES) -> Iterator[None]:
+    """Every side's search bounded by ``nodes`` search steps alone (the CPU deadline taken
+    out): deterministic, whatever the load."""
+    from spiderpig import fabricate, stack
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(stack, "MAX_SECONDS", math.inf)
+        mp.setattr(fabricate, "StackSpec",
+                   functools.partial(stack.StackSpec, max_total_nodes=nodes))
+        yield
+
+
 def _live(config: BuildConfig):
     """What ``walk._default_plan_z`` answers from the planner (uncached)."""
     return _REAL_DEFAULT_PLAN_Z.__wrapped__(config)
@@ -59,11 +85,23 @@ def _live(config: BuildConfig):
 
 def foot_z_doc() -> dict:
     """The generator of ``foot_z.json``: ``{config.key: {"config": repr, "z": [...] | None}}``
-    (``None``: no layer plan, so the walking model guesses)."""
+    (``None``: no layer plan, so the walking model guesses), each searched under
+    :func:`node_budget`."""
+    from spiderpig import fabricate
+
     out = {}
-    for cfg in FOOT_Z_CONFIGS:
-        z = _live(cfg)
-        out[cfg.key] = {"config": repr(cfg), "z": None if z is None else list(z)}
+    memo = dict(fabricate._DESIGNS), dict(fabricate._LAYOUTS)
+    try:
+        with node_budget():
+            for cfg in FOOT_Z_CONFIGS:
+                fabricate._DESIGNS.clear()      # searched here, not answered from the memo
+                fabricate._LAYOUTS.clear()      # or a seed (this process's other tests'
+                z = _live(cfg)                  # are put back after)
+                out[cfg.key] = {"config": repr(cfg), "z": None if z is None else list(z)}
+    finally:
+        for d, kept in zip((fabricate._DESIGNS, fabricate._LAYOUTS), memo, strict=True):
+            d.clear()
+            d.update(kept)
     return out
 
 
@@ -101,9 +139,37 @@ def recorded_foot_z_ctx() -> Iterator[dict]:
         yield table
 
 
+def seed_default_plan(config: BuildConfig) -> None:
+    """Seed ``config``'s plan, and the single module's its search would plan first for the
+    leg hint (``fabricate._leg_hint``), from the test cache (:func:`tests.cache.seed_plan`):
+    ``design_side`` then re-makes and verifies them instead of searching."""
+    from tests import cache
+
+    cache.seed_plan(config)
+    hint = cache._hint_config(config)
+    if hint is not None:
+        cache.seed_plan(hint)
+
+
+@functools.cache
+def _seeded_live(config: BuildConfig):
+    """The planner's answer, its plan seeded from the test cache first
+    (:func:`seed_default_plan`)."""
+    seed_default_plan(config)
+    return _REAL_DEFAULT_PLAN_Z.__wrapped__(config)
+
+
+def _clear_live() -> None:
+    _seeded_live.cache_clear()
+    _REAL_DEFAULT_PLAN_Z.cache_clear()
+
+
 def use_live_foot_z(monkeypatch) -> None:
-    """Undo :func:`recorded_foot_z_ctx` for one test (the planner answers again)."""
-    monkeypatch.setattr(walk, "_default_plan_z", _REAL_DEFAULT_PLAN_Z)
+    """Undo :func:`recorded_foot_z_ctx` for one test: the planner answers again (each
+    default design's plan seeded from the test cache, re-made and verified)."""
+    live = functools.wraps(_REAL_DEFAULT_PLAN_Z)(lambda config: _seeded_live(config))
+    live.cache_clear = _clear_live              # what the server's watcher calls
+    monkeypatch.setattr(walk, "_default_plan_z", live)
 
 
 # ---------------------------------------------------------------------------

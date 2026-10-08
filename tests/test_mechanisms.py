@@ -105,6 +105,7 @@ def test_two_inputs_are_checked_over_their_torus():
 
 @pytest.mark.planner
 @pytest.mark.parametrize("key", MECHANISMS)
+@pytest.mark.usefixtures("fresh_plan_memo")
 def test_one_side_plans_or_the_pipeline_says_why(key):
     """One side lays out, or a stage says why (its parts: the test below)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
@@ -126,15 +127,16 @@ def test_one_side_plans_or_the_pipeline_says_why(key):
 
 
 @pytest.mark.construction
-@pytest.mark.parametrize("key", quick([k for k in MECHANISMS if k not in EXPECTED], ["hoecken"]))
-def test_one_side_stays_inside_its_claims(key):
+@pytest.mark.parametrize(("key", "t"), quick(
+    [(k, t) for k in MECHANISMS if k not in EXPECTED for t in (0.0, 2.2)], [("hoecken", 2.2)]))
+def test_one_side_stays_inside_its_claims(key, t):
     """Every part of each one-input mechanism's side stays inside its claims (at two crank
-    angles; the plan is the test above's, cached by the engine)."""
+    angles, each its own case: ~4.5 s each on the Hoecken; the plan is the test above's,
+    cached by the engine)."""
     cfg = BuildConfig(linkage=key, module="single", robot=False)
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
-    for t in (0.0, 2.2):
-        assert check_side(design, tmpl.freeze_at(t)) == []
+    assert check_side(design, tmpl.freeze_at(t)) == []
 
 
 def test_walking_takes_walkers_only():

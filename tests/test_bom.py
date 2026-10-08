@@ -296,7 +296,10 @@ def test_a_parts_integrals_are_measured_once_and_shared():
     part.move(Pos(5, 0, 0))                                             # in place: again
     moved = mass.part_props(part)
     assert moved.com[0] == fresh(part)[2] != first.com[0]
-    n = len(mass._MEASURED)
+    key = id(part)
+    assert key in mass._MEASURED
     del part
     gc.collect()
-    assert len(mass._MEASURED) == n - 1
+    # its own entry gone (the dict's size isn't the measure: the collection also drops the
+    # entries of other tests' dead parts in this worker, flaky in the full suite, W4a)
+    assert key not in mass._MEASURED

@@ -28,9 +28,21 @@ def _fail(cfg) -> ClearanceError:
     return e.value
 
 
+def _seeded(*configs) -> None:
+    """The plans a recommendation re-runs, seeded from the test cache (re-made and verified,
+    not searched again: ~6 CPU-s each); solved and recorded the first time."""
+    from tests import cache
+
+    for cfg in configs:
+        if not cache.seed_plan(cfg):
+            cache.cached_design(cfg)
+
+
 def test_the_heel_is_told_the_scale_that_clears_it():
     """At the drawing's 7 mm unit the heel link passes the crankpin's post 6.8 mm off, under
-    the 10 mm it needs: x1.47 clears it, rounded up to a 10.5 mm unit, and checked."""
+    the 10 mm it needs: x1.47 clears it, rounded up to a 10.5 mm unit, and checked (its
+    plan seeded from the test cache)."""
+    _seeded(_heel(10.5))
     e = _fail(_heel(7.0))
     (rec,) = e.recommendations
     assert rec.changes == (("unit", 7.0, 10.5),)
@@ -49,13 +61,20 @@ def test_the_heel_is_told_the_scale_that_clears_it():
 def test_thinner_parts_are_checked_against_the_constructions():
     """At a 10 mm unit b7 passes 9.7 mm off, under the 10.0 its post needs: a 5.5 mm link
     radius clears it (9.5 + the 0.05 slack), and the round crankpin keeps 1.5 mm of b1 round
-    its 6 mm hole there, so it is checked and offered after the scale. (At 9 mm, 8.7 off, the
-    least that would clear it, a 4.5 mm link, leaves b1 too thin: the scale only.)"""
+    its 6 mm hole there, so it is checked and offered after the scale. The checks' plans are
+    seeded: re-made and verified, as a stored design's are."""
+    _seeded(_heel(10.5), _heel(10.0, link_radius=5.5))
     e = _fail(_heel(10.0))
     thin = next(r for r in e.recommendations if r.why == "thinner parts at this scale")
     assert thin.changes == (("link_radius", 6.0, 5.5),)
     assert thin.verified.startswith("checked: the static stage passes")
     assert e.recommendations[0].changes == (("unit", 10.0, 10.5),)
+
+
+def test_thinner_parts_that_leave_a_link_too_thin_are_not_offered():
+    """At 9 mm, 8.7 off, the least that would clear it, a 4.5 mm link, leaves b1 too thin:
+    the scale only. (Split from the 10 mm case: each runs its own static checks, ~2 s.)"""
+    _seeded(_heel(10.5))
     e = _fail(_heel(9.0))
     assert [r.changes for r in e.recommendations] == [(("unit", 9.0, 10.5),)]
 
@@ -77,7 +96,9 @@ def test_the_hex_crank_post_sends_the_heel_up_a_scale():
     """With the hex crank (``bolt``, the walkers' default; the heel's own is ``bolt_round``)
     the heel at its own 10.5 mm unit passes J1 at 10.2 mm of the 11.2 its 8.5 mm sleeve, a
     4.25 mm post, needs; thinner parts can't help (the crank sizes its post from the hex
-    standoff, recommend.gaps_of), so the one recommendation is the scale, checked."""
+    standoff, recommend.gaps_of), so the one recommendation is the scale, checked (its plan
+    seeded from the test cache)."""
+    _seeded(_heel(12.0, crank="bolt"))
     e = _fail(_heel(10.5, crank="bolt"))
     assert "it passes crankpin J1 at 10.2 mm, under the 11.2 mm a post there needs" in str(e)
     (rec,) = e.recommendations
