@@ -188,7 +188,7 @@ class AxleGroup(Group):
                                       height=h_lo, toward=-1))
                 else:
                     out.append(Placed(k0 - 1 - i, Disc(ax, r), g, f"{g} {label}"))
-                    if i == 0 and k0 >= 1:  # a free end's retainer a layer beyond its link
+                    if i == 0 and k0 >= 1:  # an end retainer in the layer beyond its stack
                         w0 = k0 - 1
             for i, (label, r) in enumerate(above):
                 if i == 0 and h_hi > 0 and k1 <= L.top - 1:   # in the gap over k1
@@ -200,8 +200,10 @@ class AxleGroup(Group):
                         w1 = k1 + 1
             # the washers it carries through every clearance gap of its column (only a gap
             # the plan has is built; the planner keeps other groups' heads off them),
-            # including the gap between a free end's last link and its retainer in the
-            # layer beyond (a cantilever pillar's): filled, so that link can't slide
+            # including, at any end whose first retainer takes the layer beyond the retained
+            # stack rather than its clearance gap (today only a standoff pillar's free end,
+            # a cantilever's), the gap between that end layer and the retainer: filled, so
+            # the end's link can't slide
             wr = d.washer or d.spacer
             out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(w0, w1)]
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
