@@ -329,6 +329,13 @@ def strength_lines(st: dict) -> list[str]:
                 + f" | {w.get('load_n', '-')} | {w.get('safety', '-')} "
                 f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
             continue
+        if r["kind"] == "chassis":
+            lines.append(
+                f"| {r['joint']} | rear screws, ties | {(j or w).get('governs', '-')} | - "
+                f"| {r['sheet']} {r['own_plates']} x {r['thickness_mm']:g} mm own "
+                f"| {w.get('load_n', '-')} | {w.get('safety', '-')} "
+                f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
+            continue
         lines.append(f"| {r['joint']} | {', '.join(r['links'])} | {r['case']} "
                      f"| {r['span_mm']:g} | {r['section']} | {w.get('load_n', '-')} "
                      f"| {w.get('safety', '-')} | {j.get('load_n', '-')} "
