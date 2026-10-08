@@ -18,7 +18,7 @@
    ],
    "foot_bob_mm": 15.797668636118388,
    "mean_contacts": 4.022222222222222,
-   "min_margin_mm": 52.01519714247628,
+   "min_margin_mm": 52.015093447018096,
    "pitch_deg": [
     -8.43621004814423,
     8.436210048144032
@@ -56,13 +56,13 @@
    "degenerate_fraction": 0.0,
    "direction": "+x",
    "foot_z": [
-    -95.8415,
-    -95.8415,
-    -49.1915,
-    -55.966499999999996
+    -95.2695,
+    -95.2695,
+    -48.619499999999995,
+    -55.394499999999994
    ],
    "min_margin_mm": [
-    52.6,
+    52.0,
     0.5
    ],
    "pitch_deg_max_abs": [
@@ -83,7 +83,7 @@
   "walk": {
    "com": [
     -0.4799555821459433,
-    4.97046656876451,
+    4.758086223664931,
     0.0
    ],
    "feet": [
@@ -11679,11 +11679,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+7d2cd9218848",
+ "engine_version": "0.1.0+c2afdc65a8ee",
  "generator": "tests/test_walk.py::test_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "walk_reference_doc"
  },
- "source_key": "gen-5d60094a9105a20b"
+ "source_key": "gen-19b1a78e20849072"
 }

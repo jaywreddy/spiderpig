@@ -85,9 +85,12 @@ def test_ground_clearance_is_the_body_above_the_feet():
     ctx = design.ctx
     pts = ctx.topo.geometry.points
     feet = min(float(pts[ctx.topo.point_of[f]][:, 1].min()) for f in linkage.feet_of(tmpl))
-    body = underside(ctx, None).lowest     # without the crank circle: the servo is lower still
+    body = underside(ctx, None).lowest     # without the crank circle
     assert design.ground_clearance_mm == pytest.approx(ctx.interfaces["underside"].lowest - feet)
-    assert design.ground_clearance_mm == pytest.approx(body - feet)
+    # the crank's sweep is the lowest since the 0.063 in centre plates (2026-10-08: their
+    # outline 2 x t round the ties and recesses shrank; it was the centre plates, 72.23 mm)
+    assert ctx.interfaces["underside"].lowest_part == "the crank's sweep"
+    assert design.ground_clearance_mm < body - feet
     assert 60 < design.ground_clearance_mm < 75
     assert ground_clearance(tmpl, ctx) == design.ground_clearance_mm
 
