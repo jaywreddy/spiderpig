@@ -237,8 +237,10 @@ def test_the_netrf6_lengths_are_made_on_demand_not_at_import():
 
     item = get("pillar_shaft_6_m3_101.3")
     assert (item.dims["length"], item.offer.sku) == (101.3, "NETRF6-101.3")
-    assert pillar_shaft(101.3) == item.key and CATALOG[item.key] is item
+    assert pillar_shaft(101.3) == item.key
+    assert CATALOG[item.key] is item
     for bad in ("pillar_shaft_6_m3_101.35", "pillar_shaft_6_m3_7.9", "pillar_shaft_6_m3_x"):
-        assert bad not in CATALOG and CATALOG.get(bad) is None
+        assert bad not in CATALOG
+        assert CATALOG.get(bad) is None
         with pytest.raises(KeyError):
             get(bad)
