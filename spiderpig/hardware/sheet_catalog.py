@@ -4,8 +4,10 @@ clearance gap (:mod:`spiderpig.materials` reads them).
 Two materials, from two services (the user's direction of 2026-10-04): **cast acrylic** by
 default, **aluminium** (5052-H32, or 6061-T6 where the stress needs it) only where acrylic
 can't take the load: the frame plates, the crank's plates and the Klann variants' foot
-links. Delrin is out. The plates go to SendCutSend (aluminium; acrylic too) or Ponoko
-(acrylic: no order minimum, the thin sheets).
+links. Delrin is out. The plates go to SendCutSend: the aluminium, and the 3 mm acrylic
+since 2026-10-08 (the user's decision: one service, its rules in
+:data:`hardware.parts.SCS_RULES_ACRYLIC`); Ponoko cuts the thin acrylic and, selected,
+the 3 mm (``acrylic_3mm_ponoko``).
 
 Each sheet item's ``dims`` carry what the build and the audit read: ``thickness`` (mm, the
 nominal), ``material`` (a :data:`hardware.mass.DENSITY` key), ``density`` (g/cm^3),
@@ -23,7 +25,9 @@ Fetched 2026-10-04:
   .375 in; max 30 x 44 in. 6061-T6: the same rules (its page lists .125 in for laser).
 * SendCutSend acrylic (sendcutsend.com/materials/acrylic): .063, .118 (3.0 mm) in and up;
   min part .187 x .375 in; "at least 1.5x the material thickness between a hole and the
-  nearest edge"; cutting tolerance +/- .009 in.
+  nearest edge"; cutting tolerance +/- .009 in. Its .118 in spec table (rendered
+  2026-10-08): min hole .047 in, min bridge .053 in, min hole to edge .035 in
+  (:data:`hardware.parts.SCS_RULES_ACRYLIC`).
 * Ponoko clear acrylic (ponoko.com/materials/clear-acrylic): 1.0, 1.5, 2.0, 3.0 mm and up;
   min part 6.0 mm; min hole / feature 1.0 mm; kerf 0.2 mm ("Kerf width: 0.20mm", one
   figure for every thickness, page re-read 2026-10-04); Ponoko's laser follows the line

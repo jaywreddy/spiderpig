@@ -18,7 +18,9 @@ SERVICE_ORDER_URL = {
     "Ponoko": "https://www.ponoko.com/designs",
 }
 SERVICE_NOTES = {
-    "SendCutSend": "one part per file, units mm at upload, quantity per file as below",
+    "SendCutSend": "one part per file, units mm at upload, quantity per file as below; its "
+                   "3 mm acrylic arrives 2.24-3.46 mm thick: measure it and rebuild with "
+                   "--thickness if it is off by more than a few percent",
     "Ponoko": "one part per file, mm, the blue CUT layer mapped to cut; 3 mm sheet arrives "
               "2.49-3.51 mm thick: measure it and rebuild with --thickness if it is off "
               "by more than a few percent",
