@@ -179,6 +179,18 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     if "print" in formats or "bom" in formats:
         with _timed("grouping" if grouping is None else "grouping (waiting for its worker)"):
             groups = _groups(mech, grouping)
+    types: list = []
+
+    def labelled() -> list:
+        """The part labels (spiderpig.labels): they name the print and cut files, as
+        spiderpig build's and the guide's do. Made once."""
+        if not types:
+            from spiderpig.labels import assembly_order, part_types
+
+            order = assembly_order(mech, design.side) if design.side is not None else None
+            types.extend(part_types(mech, order, groups, filament))
+        return types
+
     if "print" in formats:
         from spiderpig import build as build_cli
 
@@ -186,10 +198,12 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         with _timed("print"):
             build_cli.clear_generated(out / "print")     # no STLs of another design
             from spiderpig.hardware.bom import printed_filaments
+            from spiderpig.labels import print_stems
 
             build_cli.export_prints(groups["printed"], out / "print",
                                     density=filament_density(filament),
-                                    filaments=printed_filaments(mech, filament))
+                                    filaments=printed_filaments(mech, filament),
+                                    stems=print_stems(labelled()))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
@@ -207,8 +221,11 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                     for f in (out / "laser").glob(f"{name}_sheet*"):
                         if f.suffix in (".dxf", ".csv"):
                             f.unlink()
+                from spiderpig.labels import laser_labels
+
                 sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
-                                     kerf=kerf, default=cfg.sheet)
+                                     kerf=kerf, default=cfg.sheet,
+                                     labels=laser_labels(labelled()))
             files += [*sheets, out / "laser" / f"{name}_sheet_parts.csv"]
             extras += sheet_lines(mech, cfg.sheet, size)
         except ValueError as e:

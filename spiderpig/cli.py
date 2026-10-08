@@ -28,6 +28,7 @@ import sys
 COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "build": ("spiderpig.build", "build the robot: STEP/STL, print STLs, DXF sheets, BOM"),
     "bake": ("spiderpig.bake", "bake the animated .glb for the viewer"),
+    "guide": ("spiderpig.guide.make", "the assembly guide: ASSEMBLY.pdf and ASSEMBLY.md"),
     "audit": ("spiderpig.tools.audit", "fabrication audit: plan, contract, clashes, DXF, BOM"),
     "explain": ("spiderpig.explain", "what each pipeline stage says about a design"),
     "tune": ("spiderpig.tools.tune",

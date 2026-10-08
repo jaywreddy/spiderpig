@@ -144,7 +144,7 @@ def test_identical_and_mirrored_parts_are_grouped():
 
 @pytest.mark.parametrize("chiral", [True, False])
 def test_a_robots_mirrored_twins_group_as_compared(chiral):
-    """A right-side part mirroring its left twin joins the twin's group without a boolean,
+    """A right-side part mirroring its left twin joins the twin's group without a comparison,
     counted as :func:`congruent` would count it: mirrored iff the reference is chiral and
     the twin isn't itself the reference's mirror image."""
     from spiderpig.hardware import bom as bom_mod
@@ -156,23 +156,23 @@ def test_a_robots_mirrored_twins_group_as_compared(chiral):
     right = {"R." + n[2:]: p.mirror(Plane.XY) for n, p in left.items()}
     named = [*left.items(), *right.items()]
     calls = []
-    real = bom_mod._shared_volume
+    real = bom_mod._proper_fit
 
-    def counted(a, b):
+    def counted(*args):
         calls.append(1)
-        return real(a, b)
+        return real(*args)
 
     for method in ("printed", "laser"):
         twins = [Body(n, part=p, fab=method) for n, p in named]
         plain = [Body(n.replace("R.", "Q."), part=p, fab=method) for n, p in named]
         calls.clear()
-        bom_mod._shared_volume = counted
+        bom_mod._proper_fit = counted
         try:
             (g,) = group_made(twins, method)
             with_twins = len(calls)
             (h,) = group_made(plain, method)
         finally:
-            bom_mod._shared_volume = real
+            bom_mod._proper_fit = real
         assert g.names == [n.replace("Q.", "R.") for n in h.names]
         assert g.mirrored == [n.replace("Q.", "R.") for n in h.mirrored]
         assert with_twins < len(calls) - 2          # the right side compared nothing
@@ -248,6 +248,61 @@ def test_the_rod_pins_get_a_cut_list():
                                       "count": 3, "total_mm": 57.0}]
     assert bom.purchased[0].packs == 1                   # one rod (57 mm): one 5-pack
     assert bom.purchased[0].qty == 1                     # whole pieces, packed
+
+
+def test_a_moved_copy_needs_no_boolean_and_anything_else_gets_one(monkeypatch):
+    """:func:`congruent` takes a part's moved copy for the same part without a boolean, its
+    boundary where the copy's is (``bom._coincide``); a part a hair different, or the same
+    part only up to its own symmetry, goes to the boolean; the answers are those of the
+    boolean alone."""
+    from spiderpig.hardware import bom as bom_mod
+
+    part = _chiral()
+    copy = part.rotate(Axis.Z, 70).rotate(Axis.X, 23).moved(Pos(40, -3, 9))
+    nudged = Box(10, 4, 2) - Cylinder(1, 2).moved(Pos(2, 0, 0))
+    hair = Box(10, 4, 2) - Cylinder(1, 2).moved(Pos(2.0005, 0, 0))
+    plate = Box(10, 4, 2) - Cylinder(1, 2)          # turned half a turn: the same plate
+    calls = []
+    real = bom_mod._shared_volume
+    monkeypatch.setattr(bom_mod, "_shared_volume",
+                        lambda a, b: calls.append(1) or real(a, b))
+    cases = [(part, copy), (part, part.mirror(Plane.XY).moved(Pos(5, 5, 5))),
+             (nudged, hair), (plate, plate.rotate(Axis.Z, 180))]
+    got = []
+    for a, b in cases:
+        calls.clear()
+        got.append((congruent(a, b), len(calls)))
+    assert got[0] == ("same", 0)
+    assert got[1][0] == "mirror"
+    assert got[2][0] == "same"                        # within the boolean's tolerance
+    assert got[2][1] >= 1
+    assert got[3][0] == "same"
+    assert got[3][1] >= 1                             # its seams elsewhere: a boolean
+    monkeypatch.setattr(bom_mod, "_coincide", lambda a, b: False)
+    assert [congruent(a, b) for a, b in cases] == [r for r, _ in got]
+
+
+def test_the_boolean_free_proof_never_takes_a_mirror_for_the_same_part(monkeypatch):
+    """With the boolean taken away (it finds nothing shared), the B-rep comparison alone
+    decides: a chiral part's moved copy is "same", its mirror image, turned and moved, is
+    "mirror" and never "same" (every motion tried is proper), and a part a hair different
+    is neither."""
+    from spiderpig.hardware import bom as bom_mod
+
+    monkeypatch.setattr(bom_mod, "_shared_volume", lambda a, b: 0.0)
+    part = _chiral()
+
+    def turn(p):
+        return p.rotate(Axis.Z, 70).rotate(Axis.X, 23).moved(Pos(40, -3, 9))
+
+    assert congruent(part, turn(part)) == "same"
+    mirror = turn(part.mirror(Plane.YZ))
+    assert congruent(part, mirror) == "mirror"
+    assert not bom_mod._coincide(bom_mod._boundary(part), bom_mod._boundary(
+        part.mirror(Plane.YZ)))
+    hair = Box(10, 2, 2.0005).moved(Pos(5, 0, 0)) + Box(2, 6, 2).moved(Pos(0, 3, 0)) \
+        + Box(2, 2, 4).moved(Pos(0, 0, 2))
+    assert congruent(part, hair, rel=1e-3) is None
 
 
 def test_grouping_leaves_the_parts_as_they_were():

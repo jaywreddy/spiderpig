@@ -12,11 +12,9 @@ import time
 from pathlib import Path
 
 import pytest
-from mcp import Client
 
 from spiderpig import api
 from spiderpig.config import BuildConfig
-from spiderpig.mcp import make_server
 from spiderpig.store import Store
 from tests import _api, cache
 
@@ -38,6 +36,21 @@ MUTATING = {"export", "gc", "view"}
 DIST = Path(__file__).resolve().parents[1] / "spiderpig" / "viewer" / "dist"
 needs_dist = pytest.mark.skipif(not (DIST / "index.html").is_file(),
                                 reason="spiderpig/viewer/dist isn't built (mise run viewer-build)")
+
+
+def Client(server):
+    """The SDK's in-memory client of ``server`` (imported here, not at the top: the SDK costs
+    every xdist worker that collects this file ~2 s, and most run none of its tests)."""
+    from mcp import Client as _Client
+
+    return _Client(server)
+
+
+def make_server(*args, **kwargs):
+    """:func:`spiderpig.mcp.make_server` (imported when a test makes one, as :func:`Client`)."""
+    from spiderpig.mcp import make_server as _make_server
+
+    return _make_server(*args, **kwargs)
 
 
 def run(coro):

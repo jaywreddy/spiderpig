@@ -1142,8 +1142,8 @@ through it from below (their heads in the gap under it).
 
 The chain that ends in the hub plate is **capped**: it has no screw over the hub plate
 (`hub_capped`), so the hub plate, horn, servo and inner plate go on as one unit
-(`construction.robot.ASSEMBLY`, the whole robot's assembly order, which the pivots' and the
-crank's docstrings defer to). Its printed sleeve is a light press on the hex
+(`construction.assembly.ROBOT_ORDER`, the whole robot's assembly order, with the
+constructions' `assembly` hooks; `spiderpig guide` draws it). Its printed sleeve is a light press on the hex
 (`BoltCrank.capped_press`, 0.1 mm), so the sleeve, caught between its plates, carries the
 standoff. The crank body stops toward the outer plate on a printed thrust sleeve round the
 stub (`stub_thrust` in the crank's note, 8.5 mm, its end 0.1 mm over the outer plate,
@@ -1231,7 +1231,13 @@ The planner promises that claims never meet. The **contract**
 (`construction/contract.py`) checks the other half: that each part a group builds lies
 inside that group's own claims. `check_side` realizes every group at a crank angle and
 measures any volume outside its claims (tolerance 0.001 mm³). Frame plates must stay in
-their layer; the drive is checked below the inner plate's top face. Two companion checks
+their layer; the drive is checked below the inner plate's top face. `check_sides` gives
+the same verdicts at several angles, realizing the side once: a group whose parts only
+move with the angle (`Group.motion`: a link, the crank and the horn turn with their
+bodies, an axle's parts translate with its point, the frame stands) and that holds with
+the claims moving with it, to half the tolerance, holds at every angle; any other group
+(a hex journal drawn at the world's angle, a part near its limit) is realized and
+checked again at each. Two companion checks
 use OCCT directly: `clashes` intersects every pair of parts, and `bad_solids` requires
 each made part to be one valid solid.
 
@@ -1303,7 +1309,7 @@ holds its outputs, from the same sources and options, does nothing
 |---|---|---|
 | `klann.step` | the whole robot, one named, coloured product per part | 11.4 MB, 173 solids |
 | `klann.stl` | the whole robot as one binary mesh | 21.8 MB, 436,932 triangles |
-| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
+| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, named by its part label (`spiderpig.labels`, as the assembly guide's bag labels: SP8-0.7_top_spacer.stl), with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
 | `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock (`layout.save_sheets`) | 2 sheets of 300 × 300 mm |
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
@@ -1312,6 +1318,8 @@ holds its outputs, from the same sources and options, does nothing
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
 from `spiderpig build`.
+
+**The assembly guide** (`spiderpig guide`, [GUIDE.md](agentlib/GUIDE.md)): `ASSEMBLY.pdf` and `ASSEMBLY.md` from the same fabrication, the steps from the constructions' `assembly` hooks and `construction.assembly.ROBOT_ORDER`, the part labels from `spiderpig.labels`, cached beside the fabrication.
 
 **DXF sheets** (`spiderpig/layout.py`): each laser part is cut through its mid-thickness,
 turned so its long axis runs along x, and offset by half its sheet's kerf where the
@@ -1422,6 +1430,9 @@ below 5e-4 the model is ill-posed and refused.
   re-imports the caller's main script. Parallel work therefore runs as a function of the
   package in a fresh `python -c` process, with arguments and results passed as files.
   Exports and `verify` use workers; `SPIDERPIG_WORKERS=0` keeps everything in one process.
+  `spiderpig build` starts one before it fabricates: it loads the fabrication from the
+  store's cache once that holds it, groups the parts and writes the DXFs while the build
+  writes the robot's STEP and STL (`build._start_exports`; with the cache off, in-process).
 
 ### 7.5 Limits of the outputs
 
@@ -1443,6 +1454,34 @@ below 5e-4 the model is ill-posed and refused.
   of the running example are 24 separate meshes.
 
 The files describe a robot that should work. The next section is about whether it walks.
+
+### 7.6 The assembly order
+
+The order every fastener can be driven in is data: the robot's stages
+(`construction.assembly.ROBOT_ORDER`) and each construction's `assembly` hook, which say
+how its own parts go on. `spiderpig guide` draws it per design ([GUIDE.md](agentlib/GUIDE.md));
+below, generated from the default robot's steps (`python -m spiderpig.guide.prose --write`,
+checked current by `tests/test_guide.py`):
+
+<!-- assembly-order: generated from the default robot by `python -m spiderpig.guide.prose --write`; don't edit by hand -->
+1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its printed head spacer under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. The printed rings and spacers drawn, onto their pillars, pins and crankpins. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its printed top spacer under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker).
+
+2. **Left side: inner-plate unit.** On the bench, loose (the right side's is put together on the robot). Lay the inner frame plate down, servo side up. Stand the servo on the inner plate, its spline over the horn hole. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn. The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; the heat-set inserts pressed into the rail. The frame ties' standoff chains on the inner plate, shims at the plate. Their M3 button heads up through the plate from the leg side (threadlocker).
+
+3. **Left side: unit onto the leg stack.** The unit onto its leg stack: the hub plate's hex pocket over the hub chain's standoff (turn the crank to line it up), the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
+
+4. **Centre plates.** The M3 set-screw studs into the left chains' ends (threadlocker). The left servo's own centre plates (0, 1) on its rear face over the studs, its rear screw through them. The right servo's own centre plates (3, 2) screwed to the right servo the same way, then that servo and its plates onto the studs, rear faces together.
+
+5. **Right side: inner plate, on the robot.** Not on the bench: the chains must turn onto the studs before the inner plate holds them. Turn the right tie chains onto the studs from the inner plate's side (they turn freely: no inner plate yet), shims on their ends. The right inner plate onto the servo's front and onto the chains. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The chains' M3 button heads from the leg side (threadlocker). The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; the heat-set inserts pressed into the rail. The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn.
+
+6. **Right side: leg stack.** Build the right leg stack as the left one: the mirror image.
+
+7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
+
+8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). Each servo's bus plug into its socket, the cable along the centre plates' slot from their far edge and up to the board through the deck's wire slot (connector first), before the deck goes in.
+
+9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' inserts.
+<!-- assembly-order: end -->
 
 ## 8. Seeing and judging a design
 
@@ -2241,7 +2280,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `config.py` | 634 | `BuildConfig`, the default and removed constructions, shared CLI options, query parsing | `test_removed_constructions.py`, indirect |
 | `stack/` | 2,725 | the planner: `geometry.py` (shapes, claims, `Layout`), `topology.py` (`Topology`, static clearances, `PlanError`, the `Router` protocol), `plan.py` (`StackSpec`, `StackPlan`, `Deadline`), `search.py` (`StackProblem`, `_Search`), `plan_z.py` (`finalize`, the plan's z), `verify.py` (`verify_plan`) | `test_stack.py`, `test_planner_bounds.py`, `test_route.py` with `brute.py`, `test_seam_stack.py` |
 | `stack_pool.py`, `stack_symmetry.py` | 342, 171 | the opt-in parallel and symmetry search (`spiderpig/stack_symmetry.py`: one of each mirrored leg pair) | few |
-| `construction/base.py` | 292 | the `Group` contract, `Params`, `Context`, `Build` | indirect |
+| `construction/base.py` | 265 | the `Group` contract, `Context`, `Build`; re-exports `Params` | indirect |
+| `fit.py` | 41 | `Params`, the dimensions every construction shares (a spec's `fit`; apart, so `config` imports no CAD) | `test_recommend.py`, indirect |
 | `construction/__init__.py` | 88 | construction registries, `GROUP_FACTORIES` | `test_pivots.py` |
 | `construction/axle.py` | 254 | pillars and pins: the claims, `AxleDims` | `test_axle.py`, `test_stack.py` |
 | `construction/pivots/` | 1,227 | `standoff.py`, `chicago.py`, `common.py` | `test_pivots.py`, `test_standoff.py`, `test_seam_pivots.py` |
@@ -2250,7 +2290,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `construction/underside.py`, `envelope.py` | 170, 69 | the body's underside; solids of claims | `test_route.py`, the contract |
 | `construction/plates.py` | 287 | links, frame plates, rider bosses, feet's socks | `test_contract.py`, `test_joinery.py` |
 | `construction/contract.py` | 157 | `check_side`, `clashes`, `bad_solids` | `test_contract.py` |
-| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties, `ASSEMBLY`; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
+| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
 | `construction/wobble.py` | 405 | link tilt and the columns' beams at the plan's z | `test_wobble.py` |
 | `fabricate.py` | 308 | `side_problem`, `design_side`, `fabricate` | `test_fabricate.py`, and most via `conftest.py` |
 | `fabcache.py`, `keys.py`, `uptodate.py` | 424, 1,145, 368 | the fabrication cache, incremental cache keys, the build check | `test_fabcache.py`, `test_keys.py`, `test_uptodate.py` |

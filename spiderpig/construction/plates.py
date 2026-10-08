@@ -15,9 +15,11 @@ import numpy as np
 from spiderpig.construction.base import (
     FRAME_INNER,
     FRAME_OUTER,
+    RIDES_HOST,
     Build,
     Context,
     Group,
+    Motion,
     Realized,
     hardware,
 )
@@ -191,6 +193,24 @@ class LinkPlates(Group):
 
         return [Claim(n, frozenset((n,)), make(n, segs)) for n, segs in ctx.topo.links.items()]
 
+    def assembly(self, view) -> list:
+        """Each link with the layer it sits in (:mod:`construction.assembly`), a foot
+        link's TPU sock on it first."""
+        from spiderpig.construction.assembly import STACK, Op, whole
+
+        ops = []
+        for link in getattr(getattr(view.ctx, "topo", None), "links", {}):
+            if link not in view.z:
+                continue
+            k = view.slot(view.z[link][0])
+            ops.append(Op(STACK, (k, 1), whole(link), "",
+                          "Place the layer's links on their pillars and pins.", "layer"))
+            if f"{link}_sock" in view.z:
+                ops.append(Op(STACK, (k, 1), whole(f"{link}_sock"), "",
+                              "Each foot link takes its TPU sock, slid on, before it goes on.",
+                              "layer"))
+        return ops
+
     def realize(self, build: Build, done: Realized) -> Realized:
         out = Realized()
         r = build.ctx.params.link_radius
@@ -217,6 +237,11 @@ class LinkPlates(Group):
             out.bodies.append(hardware(name, part, name, fab="laser",
                                        sheet=ctx.sheet("link", name)))
         return out
+
+    def motion(self, got: Realized) -> Motion:
+        """A link, its boss and its sock are drawn from its own joints, and every hole the
+        others ask of it is round at one of them: each rides its link."""
+        return RIDES_HOST
 
 
 def foot_sock(foot, other, r: float, z0: float, z1: float):
@@ -259,6 +284,23 @@ class FramePlates(Group):
     def claims(self, ctx: Context) -> list[Claim]:
         return []   # layers 0 and top are reserved for these plates by the planner
 
+    def assembly(self, view) -> list:
+        """The outer plate first, bare, leg side up; the inner plate the first part of its
+        unit, servo side up (:mod:`construction.assembly`)."""
+        from spiderpig.construction.assembly import STACK, UNIT, Op, whole
+
+        topo = getattr(view.ctx, "topo", None)
+        inner = topo.frame_bodies[0] if topo is not None and topo.frame_bodies else None
+        ops = []
+        if "frame_outer" in view.z:
+            ops.append(Op(STACK, (-1, 0), whole("frame_outer"),
+                          "Outer frame plate and pillar columns",
+                          "Lay the outer frame plate down, leg side up.", "plate"))
+        if inner is not None and inner in view.z:
+            ops.append(Op(UNIT, (0,), whole(inner), "Inner plate and servo",
+                          "Lay the inner frame plate down, servo side up.", "plate"))
+        return ops
+
     def realize(self, build: Build, done: Realized) -> Realized:
         out = Realized()
         p = build.ctx.params
@@ -299,3 +341,8 @@ class FramePlates(Group):
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
                                        sheet=build.ctx.sheet("frame")))
         return out
+
+    def motion(self, got: Realized) -> Motion:
+        """The plates don't move: O, the pillars and what the others ask of them (the
+        servo's holes and pad, the pillars', the journal's) stand with the frame."""
+        return RIDES_HOST

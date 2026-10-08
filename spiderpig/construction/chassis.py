@@ -823,3 +823,46 @@ def _centre_plate_parts(ctx, left: ServoFrame, reliefs, rs, screws, tie_xy, n: i
     # (no adhesive: the ties' studs clamp the stack, and the rear screws hold each servo's
     # own plates)
     return bodies
+
+
+def assembly(view) -> list:
+    """How the chassis goes on (:mod:`construction.assembly`): on each side's inner plate
+    its frame ties' standoff chains (shims at the plate) and the M3 button heads up through
+    the plate into them; then between the sides the set-screw studs, each servo's own
+    centre plates over them with its rear screw. ``view``: a ``RobotView``."""
+    from spiderpig.construction.assembly import CHASSIS, SIDES, UNIT, Op, whole
+
+    ops = []
+    for s in SIDES:
+        chains = view.named(rf"{s}\.tie_(standoff|shims)\w*")
+        if chains:
+            ops.append(Op(UNIT, (4, 0), whole(*chains), "Frame-tie chains",
+                          "The frame ties' standoff chains on the inner plate, shims at the "
+                          "plate.", "ties", side=s))
+        screws = view.named(rf"{s}\.tie_screw\d+")
+        if screws:
+            ops.append(Op(UNIT, (4, 1), whole(*screws), "",
+                          "Their M3 button heads up through the plate from the leg side "
+                          "(threadlocker).", "tie_screws", side=s))
+    studs = view.named(r"tie_stud\d+")
+    if studs:
+        ops.append(Op(CHASSIS, (0,), whole(*studs), "Studs",
+                      "The M3 set-screw studs into the chains' ends (threadlocker).",
+                      "studs"))
+    plates = view.named(r"centre_plate\d+")
+    for s, own in (("L", [p for p in plates if sum(view.z[p]) < 0]),
+                   ("R", [p for p in plates if sum(view.z[p]) >= 0])):
+        rear = view.named(rf"{s}\.rear_screw\d+")
+        if own or rear:
+            # (from the servo's rear face out: the right side's run the other way)
+            nums = ", ".join(p.removeprefix("centre_plate")
+                             for p in (own if s == "L" else own[::-1]))
+            text = (f"The left servo's own centre plates ({nums}) on its rear face over the "
+                    "studs, its rear screw through them." if s == "L" else
+                    f"The right servo's own centre plates ({nums}) screwed to the right servo "
+                    "the same way, then that servo and its plates onto the studs, rear faces "
+                    "together.")
+            ops.append(Op(CHASSIS, (1 if s == "L" else 2,), whole(*own, *rear),
+                          f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
+                          f"plates_{s}"))
+    return ops

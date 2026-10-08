@@ -145,7 +145,7 @@ Failure {stage, code, message, culprits: [{body?, group?, joint?, point?, ...}],
 | static | link_no_layer | `ClearanceError` (`NoCrankPoint` per culprit: dist, need, post, detour) + recommendations |
 | plan | no_plan, no_plan_in_budget, no_plan_in_time | `PlanError` (blockers parsed, recommendations); `no_plan_in_time`: the CPU deadline ran out, not kept as a verdict |
 | fabricate | unbuildable | `ConstructionError` while building |
-| contract / clash | part_outside_claim / parts_clash, bad_solid | `check_side`, `clashes`, `bad_solids` |
+| contract / clash | part_outside_claim / parts_clash, bad_solid | `check_sides`, `clashes`, `bad_solids` |
 | layout / bom | part_exceeds_sheet / unknown_catalog_key | `layout.pack`, the BOM |
 | walk / sim | linkage_invalid / sim_failed | `walk.api_payload`, MuJoCo |
 

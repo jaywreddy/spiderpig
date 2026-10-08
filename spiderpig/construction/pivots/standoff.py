@@ -53,7 +53,8 @@ end screw is chosen for the plate plus the shims. They come in whole 1 mm and
 :data:`SHIM_STEP` (0.5 mm) steps, bought as stock 0.5 mm washers (:data:`hardware.bom.SHIM_AS`:
 two make 1 mm).
 
-Assembly, bottom up (:data:`construction.robot.ASSEMBLY` has the whole robot's order): the
+Assembly, bottom up (:meth:`StandoffAxle.assembly`; :data:`construction.assembly.ROBOT_ORDER`
+has the whole robot's order): the
 outer plate down; per pillar, its column onto the plate's hole with the button head and
 washer from outside (threadlocker, to ``tighten_nm`` while the column is still bare to
 hold), then the links and printed rings in layer order (the plan says which); the inner
@@ -406,6 +407,39 @@ class StandoffAxle:
                     fill[k] = min(room, over)
                     over -= fill[k]
         return fill
+
+    def assembly(self, group: AxleGroup, view) -> list:
+        """How a pillar goes on (:mod:`construction.assembly`): its column (the standoff,
+        the button head and washer from outside) on the bare outer plate first; its rings,
+        spacers and shims with the layers they sit in; its inner screw and washer from the
+        servo bay once the inner plate is on (the join)."""
+        import re
+
+        from spiderpig.construction.assembly import JOIN, STACK, Op, whole
+        from spiderpig.construction.pivots.common import stem_of
+
+        stem = re.escape(stem_of(group))
+        bottom, top = view.layers[0][0], view.layers[view.top][1]
+        column = view.named(rf"{stem}_standoff\d+")
+        ends = view.named(rf"{stem}_(screw|washer)\d+")
+        column += [n for n in ends if view.z[n][0] < bottom - 1e-3]
+        inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
+        ops = []
+        if column:
+            ops.append(Op(STACK, (-1, 1), whole(*column), "",
+                          "Screw each pillar's standoff column (one piece) to the outer plate: "
+                          "its button head and washer from outside, threadlocker, to "
+                          f"{self.tighten_nm:g} N·m while the column is bare to hold.",
+                          "columns"))
+        if inner:
+            ops.append(Op(JOIN, (1,), whole(*inner), "",
+                          "Each pillar's inner screw and washer from the servo bay (a "
+                          f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m.",
+                          "pillar_screws"))
+        ops.extend(Op(STACK, (view.slot(view.z[n][0]), 3), whole(n), "",
+                      "The take-up shims on their column's top.", "layer")
+                   for n in view.named(rf"{stem}_shims\d+"))
+        return ops
 
     def realize(self, group: AxleGroup, build: Build) -> Realized:
         col = Column.of(build, group)

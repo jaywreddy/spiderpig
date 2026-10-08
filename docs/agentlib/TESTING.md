@@ -151,8 +151,17 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   the engine version's folder (`stores/<cfg.key>_t<t>/`: a store's ids name the engine). An
   edit is a new folder only for the layers that reach it: a deck colour keeps every plan,
   a planner edit re-plans; nothing is invalidated in place. `tests/test_keys.py` checks
-  both directions on real edits. The fabrication format, its locks and atomic writes are
-  the product's (`spiderpig/fabcache.py`, below).
+  both directions on real edits. The keys themselves are kept under
+  `SPIDERPIG_DIGEST_CACHE` by the sources' stats; after an edit each process walks the
+  closures again, but reads every unedited source's index and stripped code back from
+  the keys-index folder beside them, keyed by the source's bytes (`keys._load_index`,
+  `keys.code_text`): seconds, not the ~10 CPU-s of parsing everything; and one process
+  computes a key while the others that want it (the xdist workers start together) wait
+  under its lock and read it (`keys._kept`); under xdist the controller starts
+  `tests.cache.warm_keys` beside the workers, so the keys are made while they collect.
+  Before, every worker's first test paid them all at once: 15-25 s in the suite for a
+  test that takes 1-2 s alone. The fabrication
+  format, its locks and atomic writes are the product's (`spiderpig/fabcache.py`, below).
 - **Where, and why there**: a user cache directory, not the checkout. The key already
   names the engine, so worktrees with the same engine sources (every worktree branched
   from one master commit, until it edits `spiderpig/`) share entries, and worktrees with
@@ -278,10 +287,20 @@ search ends on its node budget at ~54 CPU-s, too near the 60 s default to be sta
 
 Each design's contract angles and its `t=1` half (that fabrication's clashes, solids and
 parts, and the build of it) run in worker processes of their own (`GATE_SPLIT`, default
-`contract:0,1.6|contract:3.2,4.8|build`; empty: one process), each taking the plan from the
+`contract:0,1.6,3.2,4.8|build`; empty: one process), each taking the plan from the
 design's store; unless given, `-j` and the split follow the free cores (`plan_cores`: the
 cores less the load average). OCCT runs two threads per process, as the baseline did
 (`GATE_OCCT_THREADS`; one thread moves a cut-rule number). The STEP file, never read, isn't written.
+
+**The contract, fast and exact.** The audit (and so the gate) checks the contract with
+`check_sides`: the side realized at the first angle, every group that declares how it
+moves (`Group.motion`) carried to the others, and the declarations checked once more at a
+guard angle no caller asks for (`GUARD_TURN`; a mismatch is a `DeclaredMotionWarning` and
+that group is checked exactly at every angle). Its limit: a part, or a
+`ConstructionError`, that a construction makes at one of the other checked angles alone,
+and at neither the first nor the guard's, isn't seen. `GATE_EXACT_CONTRACT=1` checks with
+`check_side` at every angle instead; the nightly workflow snapshots once each way and
+compares, so the two are held equal on the gate's designs every night.
 
 Verdicts per design, and the exit status: **identical** (0); **geometry identical, order
 differs** (1: a DXF's entities in another order or a closed outline from another start
