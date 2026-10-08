@@ -107,7 +107,7 @@ description = "Regenerate the recorded fixtures (tests/fixtures/): their currenc
 run         = "uv run python -m tests.tiers fixtures"
 
 [tasks.gate]
-description = "Identity gate: snapshot DIR before a product change, compare DIR after (tests/gate/identity_gate.py)"
+description = "Identity gate: snapshot DIR before a product change, compare DIR after; doc DIR writes docs/agentlib/DESIGNS.md (tests/gate/identity_gate.py)"
 run         = "uv run python tests/gate/identity_gate.py"
 
 [tasks.remote]
