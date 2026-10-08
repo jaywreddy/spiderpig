@@ -48,7 +48,7 @@ from spiderpig.construction.base import (
     hardware,
 )
 from spiderpig.hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
-from spiderpig.servos.model import cut_each, horn_part, servo_part
+from spiderpig.servos.model import cad_state, cut_each, horn_part, servo_part
 from spiderpig.servos.spec import MountHole, ServoSpec
 from spiderpig.shapes import Cut, Rect, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
@@ -104,10 +104,12 @@ def _key(xy, u, z) -> tuple:
 
 
 @lru_cache(maxsize=64)
-def _placed_servo(spec: ServoSpec, key: tuple):
-    """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``)."""
+def _placed_servo(spec: ServoSpec, key: tuple, state: tuple = ()):
+    """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``).
+    ``state``: the model in play (:func:`servos.model.cad_state`), so a switch or a
+    download mid-process isn't served the earlier one."""
     ox, oy, ux, uy, plate_top = key
-    part = moved(servo_part(spec), to_location(servo_to_world((ox, oy), (ux, uy),
+    part = moved(servo_part(spec, state=state), to_location(servo_to_world((ox, oy), (ux, uy),
                                                              plate_top + spec.mount_face_z)))
     bb = part.bounding_box()
     if plate_top - bb.min.Z > 1e-6:
@@ -410,7 +412,7 @@ class DriveGroup(Group):
 
         crank_host = next(iter(build.plan.topo.crank_bodies), None)
         frame_host = build.plan.topo.frame_bodies[0]
-        body = _placed_servo(s, _key(o, u, plate_top))
+        body = _placed_servo(s, _key(o, u, plate_top), cad_state(s))
         out.bodies.append(hardware("servo", body, frame_host, fab="purchased",
                                    bom_key=s.bom_key, color=SERVO_COLOR))
         for i, (_, mh, sk, length) in enumerate(self.front_screws(ctx)):

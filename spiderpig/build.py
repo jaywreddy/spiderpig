@@ -44,7 +44,7 @@ import sys
 import warnings
 from pathlib import Path
 
-from spiderpig import construction, linkage, servos
+from spiderpig import construction, linkage, servos, uptodate
 from spiderpig.config import (
     ParamError,
     add_build_args,
@@ -57,6 +57,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filam
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
+from spiderpig.uptodate import GENERATED  # noqa: F401 - (api.export's clear_generated reads it)
 
 
 def _parse_args(argv) -> argparse.Namespace:
@@ -79,7 +80,11 @@ def _parse_args(argv) -> argparse.Namespace:
                    help="list modules, servos, constructions and sheet stock")
     p.add_argument("--store", metavar="PATH",
                    help="the design store the options resolve into, whose plan is reused "
+                        "and whose fabrication cache serves the parts "
                         "(default: $SPIDERPIG_STORE, else ./.spiderpig)")
+    p.add_argument("--force", action="store_true",
+                   help="build even when --out already holds this build's outputs, "
+                        "unchanged (else it says so and does nothing)")
     args = p.parse_args(argv)
     try:            # robot=None: the linkage's kind decides (a mechanism is one side)
         args.config = config_from_args(args, robot=False if args.side_only else None)
@@ -177,11 +182,6 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
     return rows
 
 
-GENERATED = (".dxf", ".stl", ".csv")
-"""What a build or an export writes under ``laser/`` and ``print/`` (the DXFs, the STLs,
-their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``)."""
-
-
 def clear_generated(folder: Path) -> None:
     """Delete the files a build writes (:data:`GENERATED`) under ``folder`` and the
     folders that leaves empty; anything else there (a user's notes) stays."""
@@ -198,6 +198,11 @@ def clear_generated(folder: Path) -> None:
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    checked = uptodate.take(argv)   # the CLI's answer, else checked now (before any read)
+    if checked.skip:                # --out holds this very build already (said so)
+        return 0
+    opts, key = checked.opts, checked.key
     args = _parse_args(argv)
     if args.list:
         _list_options()
@@ -205,6 +210,8 @@ def main(argv=None) -> int:
     config = args.config
     out: Path = args.out
     out.mkdir(parents=True, exist_ok=True)
+    if opts is not None:
+        uptodate.forget(opts)       # (a build that stops short is never current)
     for owned in ("laser", "print"):     # no cut or print files left from an earlier build
         clear_generated(out / owned)
     # an export's manifest no longer describes the folder (api.export reuses one by it):
@@ -231,11 +238,12 @@ def main(argv=None) -> int:
     # the plan through the store (api.plan_config), as explain and audit do: the stored
     # design's when it holds one (re-made and verified), else solved once and recorded;
     # design_side then answers from what plan_config remembered
-    from spiderpig import api
+    from spiderpig import api, fabcache
     from spiderpig.store import Store
 
+    store = Store.of(args.store) if args.store else Store.default()
     try:
-        api.plan_config(config, Store.of(args.store) if args.store else Store.default())
+        api.plan_config(config, store)
     except ValueError as e:
         print(f"error: no layer plan: {e}", file=sys.stderr)
         return 2
@@ -244,7 +252,9 @@ def main(argv=None) -> int:
     print(f"{config.module}: layer plan of one side, {plan.top + 1} layers of "
           f"{config.pitch:g} mm ({plan.height:.1f} mm):")
     print(plan.describe())
-    mech = fabricate(tmpl, config, 1.0)
+    read = uptodate.inputs(opts, config) if key is not None else None   # what it reads
+    with fabcache.serving(store):       # the store's fabrication when it holds this one
+        mech = fabricate(tmpl, config, 1.0)
     if config.robot:
         m = mech.meta
         print(f"chassis: {m['centre_plates']} centre plates; rear screws "
@@ -311,6 +321,8 @@ def main(argv=None) -> int:
                                                  build_dir=str(out)))
     print(f"wrote {out / 'ORDER.md'}: the shopping list (a cart per vendor, uploads, prints)")
     _write_manifest(out, config, args)
+    if key is not None:     # what makes the same build again a no-op (the store keeps it)
+        uptodate.record(opts, key, read)
     return 0
 
 

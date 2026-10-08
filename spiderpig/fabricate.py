@@ -286,10 +286,23 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
     )
 
 
-def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0) -> Mechanism:
-    """The fabricated walker at crank angle ``t`` (one side unless ``config.robot``)."""
+def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
+              store=None) -> Mechanism:
+    """The fabricated walker at crank angle ``t`` (one side unless ``config.robot``).
+
+    ``store`` (else the one :func:`spiderpig.fabcache.serving` names, else none): served
+    from that store's fabrication cache when it holds this design, plan and ``t``, else
+    fabricated and kept there (:mod:`spiderpig.fabcache`). Either way the mechanism is
+    the caller's own."""
+    from spiderpig import fabcache
+
     config = config or BuildConfig()
     design = design_side(tmpl, config)
-    ties = [FrameTies(design.drive)] if config.robot else []
-    side = fabricate_side(design, tmpl.freeze_at(t), ties)
-    return assemble_robot(side, design) if config.robot else side
+
+    def build() -> Mechanism:
+        ties = [FrameTies(design.drive)] if config.robot else []
+        side = fabricate_side(design, tmpl.freeze_at(t), ties)
+        return assemble_robot(side, design) if config.robot else side
+
+    store = store if store is not None else fabcache.current()
+    return fabcache.fabricated(store, tmpl, config, design, t, build)

@@ -1536,13 +1536,20 @@ def _build(design: Design, t: float, force: bool) -> BuildReport:
 def fabricate_at(design: Design, t: float):
     """The design fabricated at crank angle ``t`` from its own side (what
     :func:`fabricate.fabricate` does, without planning again): one side, or the robot
-    with its frame ties and chassis."""
+    with its frame ties and chassis. From the store's fabrication cache when it holds it
+    (:mod:`spiderpig.fabcache`)."""
+    from spiderpig import fabcache
+
     tmpl, cfg, d = _template(design), design.config, design.side
     if d is None:
         raise ValueError("plan(design) first")
-    ties = [FrameTies(d.drive)] if cfg.robot else []
-    side = fabricate_side(d, tmpl.freeze_at(t), ties)
-    return assemble_robot(side, d) if cfg.robot else side
+
+    def make():
+        ties = [FrameTies(d.drive)] if cfg.robot else []
+        side = fabricate_side(d, tmpl.freeze_at(t), ties)
+        return assemble_robot(side, d) if cfg.robot else side
+
+    return fabcache.fabricated(design.store, tmpl, cfg, d, t, make)
 
 
 def _reload_build(design: Design, t: float, t0: float) -> BuildReport | None:

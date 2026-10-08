@@ -60,9 +60,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"unknown command {command!r}\n\n{usage()}", file=sys.stderr)
         return 2
     target = COMMANDS[command][0]
-    if command == "build" and any(a in ("--profile", "-h", "--help")
-                                  or a.startswith("--profile-json") for a in rest):
-        target = "spiderpig.tools.build_profile"    # the stage timings (and their --help)
+    if command == "build":
+        from spiderpig import uptodate
+
+        if uptodate.check_once(rest).skip:  # --out holds this very build: before the engine
+            return 0
+        if any(a in ("--profile", "-h", "--help") or a.startswith("--profile-json")
+               for a in rest):
+            target = "spiderpig.tools.build_profile"    # the stage timings (and their --help)
     from spiderpig.workers import occt_threads
 
     occt_threads()          # $SPIDERPIG_OCCT_THREADS, when set (the commands' own defaults else)

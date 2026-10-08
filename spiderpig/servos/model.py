@@ -224,8 +224,39 @@ def strip_horn(shape, ref: CadRef, keep: list[int] | None = None):
 
 
 def _strip_key(ref: CadRef) -> str:
-    """What the strip's indices depend on besides the file: its placement and the boxes."""
-    return repr((tuple(ref.transform), ref.scale, ref.strip, BBOX_TOL))
+    """What the strip's indices depend on besides the file: its placement, the boxes, and
+    the code that derives them (:func:`spiderpig.keys.source_key` of :func:`strip_indices`:
+    an edit of it derives the record again instead of reading an old one)."""
+    from spiderpig.keys import source_key
+
+    return repr((tuple(ref.transform), ref.scale, ref.strip, BBOX_TOL,
+                 source_key(("spiderpig.servos.model:strip_indices",), "strip")))
+
+
+def cad_state(spec: ServoSpec) -> tuple:
+    """What decides the model :func:`servo_part` draws: ``()`` when manufacturer models
+    are off (``SPIDERPIG_SERVO_CAD=0``) or the servo has none; else per pinned model its
+    hash, its download's size and modification time (``None``: not downloaded) and the
+    content hash of its derived strip record (``None``: none yet). The caches of the
+    servo's shape are keyed by it, so a switch or a download mid-process is seen."""
+    import hashlib
+
+    if not cadlib.cad_enabled() or not spec.cads:
+        return ()
+    out = []
+    for ref in spec.cads:
+        try:
+            st = cadlib.cached_path(ref).stat()
+            have = (st.st_size, st.st_mtime_ns)
+        except OSError:
+            have = None
+        try:
+            rec = hashlib.sha256(cadlib.prepared_path(ref, _strip_key(ref)).read_bytes()
+                                 ).hexdigest()[:16]
+        except OSError:
+            rec = None
+        out.append((ref.sha256, have, rec))
+    return tuple(out)
 
 
 def _cached_indices(doc: dict | None, n: int) -> list[int] | None:
@@ -239,8 +270,9 @@ def _cached_indices(doc: dict | None, n: int) -> list[int] | None:
 
 
 @lru_cache(maxsize=32)
-def cad_servo(spec: ServoSpec):
+def cad_servo(spec: ServoSpec, state: tuple | None = None):
     """The manufacturer's model without its output horn (servo frame), or ``None``.
+    ``state``: :func:`cad_state`, a key of the cache only.
 
     Which solids the strip drops is decided by a bounding box of every solid of the
     imported model (seconds for a detailed one); the answer is recorded beside the
@@ -293,17 +325,20 @@ def unfit_idler(spec: ServoSpec, part):
 
 
 @lru_cache(maxsize=32)
-def _servo_part(spec: ServoSpec, use_cad: bool):
-    part = cad_servo(spec) if use_cad else None
+def _servo_part(spec: ServoSpec, state: tuple):
+    part = cad_servo(spec, state) if state else None
     if part is not None:
         part = unfit_idler(spec, part)
     return drill_mounts(spec, part if part is not None else parametric_servo(spec))
 
 
-def servo_part(spec: ServoSpec, *, cad: bool = True):
+def servo_part(spec: ServoSpec, *, cad: bool = True, state: tuple | None = None):
     """The servo without its output horn, in the servo frame, mounting holes drilled.
 
     The manufacturer's model when ``cad`` (and ``SPIDERPIG_SERVO_CAD`` isn't
-    ``0``) and one can be had, else :func:`parametric_servo`.
+    ``0``) and one can be had, else :func:`parametric_servo`. ``state``:
+    :func:`cad_state` when the caller has it.
     """
-    return _servo_part(spec, bool(cad and cadlib.cad_enabled()))
+    if not cad:
+        return _servo_part(spec, ())
+    return _servo_part(spec, cad_state(spec) if state is None else state)

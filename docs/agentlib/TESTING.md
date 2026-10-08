@@ -125,11 +125,19 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   took) instead of searching. A re-made plan whose gaps, thicknesses or heads differ from
   the record is thrown away and solved again (logged). A seeded design carries the
   recorded `optimal` / `proof` / `cost`.
-- **Keying**: `CACHE_DIR` is `design.engine_version()` (every engine source minus
-  docstrings, the planner's defaults) plus a hash of this cache's `FORMAT`, the Python,
-  build123d, OCP and numpy versions. An engine edit is a new folder: the first run after
-  it builds each entry once (per machine, not per worker), nothing is invalidated in
-  place. Entries: `mech/<cfg.key>_<side|robot>_t<t>/` and `stores/<cfg.key>_t<t>/`.
+- **Keying** (W3b, incremental): each layer is keyed by the code it can reach
+  (`spiderpig/keys.py`: the closure of its roots through the import graph, symbol by
+  symbol, lazy imports and the linkage registry's auto-import included, docstrings
+  stripped; `python -m spiderpig.keys --why MODULE:NAME` says how a symbol is reached),
+  plus a hash of this cache's `FORMAT`, the Python, build123d, OCP and numpy versions:
+  plans in `plans/<keys.plan_key()>-<tag>/<cfg.key>.json`, fabrications in
+  `fab/<fabcache.folder_name()>-<tag>/<cfg.key>_<side|robot>_t<t>/` (the plan's code plus
+  every `realize`, the robot, the format), prebuilt stores still in
+  the engine version's folder (`stores/<cfg.key>_t<t>/`: a store's ids name the engine). An
+  edit is a new folder only for the layers that reach it: a deck colour keeps every plan,
+  a planner edit re-plans; nothing is invalidated in place. `tests/test_keys.py` checks
+  both directions on real edits. The fabrication format, its locks and atomic writes are
+  the product's (`spiderpig/fabcache.py`, below).
 - **Where, and why there**: a user cache directory, not the checkout. The key already
   names the engine, so worktrees with the same engine sources (every worktree branched
   from one master commit, until it edits `spiderpig/`) share entries, and worktrees with
@@ -163,6 +171,19 @@ byte for byte between any two builds (timestamps, GUIDs): compare entities.
 
 **Load vs build** and sizes: see Timings at the end.
 
+## The product's fabrication cache (`spiderpig/fabcache.py`)
+
+`spiderpig build` and `api.build` of a stored design serve `fabricate()` from
+`<store>/fab/<fab key>-<env tag>/<cfg.key>_<side|robot>_t<t>_<hash>/` (the hash: the
+template and config, the crank angle, the plan itself, the servo model in play) and
+write it there after a cold fabrication (one `flock` per entry, atomic rename). The test
+suite turns it off (`SPIDERPIG_FAB_CACHE=off`, the `_offline` session fixture): tests use
+`tests/cache.py`, and `fresh=True` builds stay fresh. `Store.gc` removes other keys'
+folders. Fidelity (`tests/test_fabcache.py`, slow): on the gate's six designs a loaded
+fabrication equals a fresh one on the gate's part table, the BOM and every DXF entity.
+`spiderpig build` into a folder that already holds that very build does nothing
+(`spiderpig/uptodate.py`; `--force` builds).
+
 ## Recorded fixtures (`tests/fixtures/<module>/<name>.json`)
 
 A recorded fixture is a small JSON document a fast test takes as **input**, so the test
@@ -189,6 +210,11 @@ def test_foot_z_current():
   `cache.StaleFixture` (`UserWarning`) is raised as a warning, never a skip, and the
   session header counts the stale files (visible under `-p no:warnings` too). The full
   suite's currency test is what catches a real change.
+- **Currency key** (W3b): a fixture written since carries `source` (its generator's file
+  and function) and `source_key` (`keys.function_key`: the code the generator reaches);
+  it is stale only when that code changed (`cache.is_stale`), so an engine edit elsewhere
+  no longer flags it. A fixture without them compares engine versions, as before (the
+  next `mise run test-fixtures` stamps them).
 - `--regen` (or `SPIDERPIG_REGEN=1`): `recorded` and `assert_current` rewrite the file
   from `make()`; `mise run test-fixtures` runs every currency test that way. Review the
   diff; commit it. `generator` is the test's node id.
