@@ -166,7 +166,7 @@ Manifest {
 }
 ```
 
-`assembly` order is derivable from the plan and the crank/axle docstrings (outer plate → pillars and pins bottom-up → crank segments with riders threaded on → inner plate → servo → chassis); today it exists as prose in `construction/crank.py`.
+`assembly` order is derivable from the plan and the crank/axle docstrings (outer plate → pillars and pins bottom-up → crank segments with riders threaded on → inner plate → servo → chassis); today it exists as prose in `construction/crank/bolt.py`.
 
 ### 3.6 MCP tools, resources, prompts
 
@@ -201,7 +201,7 @@ Resources: `spiderpig://guide` (how to design with spiderpig: the passes, what e
 | 1 | **Stage results as data** (§3.2): `Blocker` objects from `_blocked_by`; `ClearanceError` carries `[Clearance]`; `AssemblyError`/`OutputError` carry their check; `ConstructionError(group, what, value, need)`; `verify_plan`/`check_side`/`clashes`/`pack` return rows with `.describe()`; `Failure.from_exception()` at the boundary | `stack.py`, `linkage/checks.py`, `construction/base.py`, `contract.py`, `servos/mount.py`, `layout.py`, `hardware/bom.py`, `scripts/audit_fab.py` | M | planner rewrite (extend its `Recommendation`/`PlanError`); audit's error-consistency item |
 | 2 | **Spec + resolver + validator**: nearest-value messages, conflict detection (stride × rpm vs speed; legs vs modules; second input vs drive), inferred defaults recorded | new `spiderpig/spec.py`, `resolve.py` | M | audit #2 (validating `BuildConfig` is the inner half; the four parsers go) |
 | 3 | **Design store + serialisation**: `StackPlan.to_json/from_json` (route as data), design reconstruction via `problem.plan()`; replace `_DESIGNS`/`_LAYOUTS` and the server caches with the store | new `spiderpig/design.py`; `fabricate.py`, `server/app.py` | M | rewrite (`choices`, `optimal`, `proof`); audit #8 |
-| 4 | **`api.py` façade + CLI subcommands + MCP server** (`mcp` SDK, FastMCP); a process pool for jobs — OCCT work can't share the event loop's thread, and today's `_BAKE_LOCK` serialises everything | new `spiderpig/api.py`, `cli.py`, `mcp_server.py`; `server/app.py` | M | audit's `cli.py` |
+| 4 | **`api.py` façade + CLI subcommands + MCP server** (`mcp` SDK, FastMCP); a process pool for jobs — OCCT work can't share the event loop's thread, and today's `_BAKE_LOCK` serialises everything | new `spiderpig/api/`, `cli.py`, `mcp_server.py`; `server/app.py` | M | audit's `cli.py` |
 | 5 | **`verify` + conformance suite**: fold `audit_fab.py`, `verify_plan`, `check_side`, walk/sim targets into one report with tiers; golden designs from the linkage report | new `spiderpig/verify.py`, `conformance/` | M | 1, 3 |
 | 6 | **Manifest + assembly order + report.md** | `hardware/mass.py` (audit #3), `hardware/bom.py`, new `report.py` | S–M | audit #3 |
 | 7 | **BOM grouping cost** (61 s): invariant-only `congruent` behind a flag | `hardware/bom.py` | S | audit's bom item; export drops from ~90 s to ~30 s |
