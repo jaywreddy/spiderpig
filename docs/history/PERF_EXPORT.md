@@ -1,5 +1,7 @@
 # The exporters: libraries, exporters, parallelism — measured, 2026-10-01
 
+> **History** (2026-10-01; historical: the export study. Its parallel exports and grouping work have since landed (W3); `mise run scorecard` has the current numbers.)
+
 A follow-up to [PERF.md](PERF.md), whose fabrication-side numbers are this study's base:
 "Go look at the exporters. Are we using open source libraries effectively? Are there
 efficient exporters that can be used? Or dumb parallelism?" Every exporter and heavy step

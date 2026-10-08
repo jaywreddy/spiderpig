@@ -1,5 +1,7 @@
 # Where the time goes: a timing study of the agent surface — 2026-10-01
 
+> **History** (2026-10-01; historical: a timing study of the agent surface before the planner, export and W3 build speedups. Its numbers are out of date; current ones come from `mise run scorecard`.)
+
 One goal, driven three ways on the known path, every step timed: agent time versus
 tool wall versus the engine's compute, cold versus warm. Numbers only; nothing fixed.
 

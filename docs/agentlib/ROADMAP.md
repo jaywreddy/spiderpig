@@ -1,4 +1,4 @@
-# Roadmap: modular, testable, fast (2026-10-07)
+# Roadmap: modular, testable, fast (2026-10-07; status 2026-10-08)
 
 The cleanup plan from the repo audit of 2026-10-07. Eight workstreams (W0-W7), each
 with a goal, its scope, **acceptance criteria that a command can check**, and the angles
@@ -27,6 +27,61 @@ round finds nothing (the loop, below). The scorecard (W0) measures every number 
 | ruff `--extend-select RUF,...` | 160 findings | audit |
 | CI | none | |
 | CLAUDE.md | 673 lines / 9.3k words | |
+
+## Status (2026-10-08)
+
+| workstream | state | merged |
+|---|---|---|
+| W0 measuring stick, CI, doc check | done | `1c533e4` |
+| W1 server / MCP / store / viewer correctness | done | `65df0a8` |
+| W2 prune the legacy constructions (D1) | done | `39f6c21` |
+| W3a output-identical speed wins, parallel gate | done | `9b87918` |
+| W3b fabrication cache, build skip, incremental keys | done | `f11da3f` |
+| W4a seam unit tests, `no_fabricate`, seeded plans | done | `7d56d1b` |
+| W5 packages, one screw table, one shim loop, layers | done | `8bfc039` |
+| W6a viewer dependencies, Node 22, declared Python deps | done | `c6939bc` |
+| W6b pyright baseline, extended ruff, rationales for the broad excepts | in progress | |
+| W7 docs that stay true | this branch (`w7-docs`) | |
+| W8 approved output changes (D2-D5), gate baseline `w8-2a130c8` | done | `07f7e9a` |
+
+**Measured outcomes.** `mise run scorecard` on 2026-10-08 at `8bfc039` (W5 merged; the W7
+docs in progress), against the baseline `docs/agentlib/scorecard-baseline.json` (2026-10-07,
+`41997b4`). Both on the 20-core development box shared with other agents' jobs: the
+baseline ran at load 15-30, this one at 6 (build) rising to 20 (tiers, quick tier), so the
+tier and quick-tier wall times compare only roughly. The full scorecard is kept with the W7
+PR, not committed.
+
+| metric | baseline | 2026-10-08 | target |
+|---|---:|---:|---|
+| `spiderpig build`, empty store: wall / CPU | 38.5 s / 112 CPU-s | 29.3 s / 88 CPU-s | W3: ≤ 12 s, not met |
+| `spiderpig build` again, same design | 37.9 s | 0.08 s (the build skip) | W3: ≤ 4 s, met |
+| `fabricate` / `group` stages (cold) | 13.2 / 7.6 s | 10.4 / 4.7 s | W3: ≤ 6 / ≤ 1 s, not met |
+| quick tier, `-n 4`: wall / CPU / tests | 145 s / 483 CPU-s / 1330 | 155 s / 524 CPU-s / 1705 | W4: ≤ 60 s, not met (375 more tests, load 20) |
+| quick-tier coverage of `spiderpig/` | 79.2 % | 85.7 % | W4: + 5 points, met |
+| module tiers, wall | 12-61 s | 16-71 s (load 12-20) | W4: ≤ 20 s, not met under load |
+| largest module | 3315 lines (`crank.py`) | 1145 (`keys.py`) | W5: ≤ 1200, met |
+| pyright errors (without stub noise) | 733 (619) | 732 (609) | W6b: ≤ 150 |
+| ruff `RUF` findings | 117 | 116 | W6b: 0 with the extended set |
+| CLAUDE.md lines | 679 | 253 | W7: ≤ 300, met |
+| doc check misses | 48 | 0 (`--strict` in CI) | W7: 0, met |
+| identity gate, six designs | ~5 min | 225 s (the `w8-2a130c8` snapshot) | W3: ≤ 2 min, not met |
+
+The W3 and W4 wall-time targets were set on an idle machine; none was re-measured idle
+(the box was never under load 4, invariant 4), so "not met" above means "not shown".
+The one failing test of that run (counted in the api tier and the quick tier) was this
+branch's own check of the docs mid-edit (`test_doc_check.py`), green once W7's edits landed.
+
+**What's left.**
+- W6b (in progress): pyright to ≤ 150 with a CI baseline, the extended ruff set, the
+  rationales for the broad excepts; the stale code comments the docs audit found
+  (`assembly.py`'s notes of the old Project/main.py and similar) are W6b's, not W7's.
+- Re-measure W3's and W4's wall-time targets on an idle machine; if still missed, the
+  next steps are W3 items 3-4 (each distinct part built once; exports as workers) and W4
+  item 4 (one shared warm-up for the quick tier).
+- The remote runner (`mise run remote-test`): `root@ao-server` is the development box
+  itself and had no SSH server on 2026-10-08; the full suite ran locally instead.
+- The demo `klann` quad's audit still fails on jam SF (W8, unchanged; the wobbly demo).
+- The open product items under "Later", below.
 
 ## Invariants (every workstream, every round)
 
@@ -366,9 +421,9 @@ dependency direction between layers.
        `web.py` (web and horn fit) and `capacity.py`
      - `plates.py`: `_WebPlates`
    - `stack/`: `geometry.py`, `topology.py`, `search.py`
-     (`StackProblem`, `_Search`), `verify.py`, `finalize.py` (the plan's z)
-   - `api/`: `reports`, `store_ops`, `cards`, `plan` (plan, advise), `build`
-     (build, recheck), `export`
+     (`StackProblem`, `_Search`), `verify.py`, `plan_z.py` (the plan's z; named so it doesn't shadow `finalize`)
+   - `api/`: `reports`, `store_ops`, `cards`, `planning` (plan, advise), `building`
+     (build, recheck), `exports`, `walking`
    - `server/app.py`: `config.design_from_query(query, base=None)` replaces
      `_config_from_query`'s duplicate `p.NAME` parsing
    - `viewer/src/drive/index.ts` (899 lines): `tune.ts`, `physics.ts` wiring, `hud.ts`
@@ -480,14 +535,14 @@ viewer's rendering (e2e screenshots).
     generated page rebuilt
   - SCOPE.md's dead names
 - **Historical docs** (TIMING, PERF*, TESTDRIVE, AUDIT) move to `docs/history/` with a
-  one-line header each; `future_work.md` is folded into this roadmap's "Later" section.
+  one-line header each; future_work.md is folded into this roadmap's "Later" section.
 - **README:** say `mise run view` installs npm packages (network); the Test section
   points to the module tiers and the remote runner.
 
 **Criteria.**
-- [ ] `wc -l CLAUDE.md` ≤ 300.
-- [ ] `mise run doc-check` passes and is blocking in CI.
-- [ ] `grep -rn "66.5\|66.1\|75.3\|64.3" CLAUDE.md README.md docs/audit` finds nothing
+- [x] `wc -l CLAUDE.md` ≤ 300.
+- [x] `mise run doc-check` passes and is blocking in CI.
+- [x] `grep -rn "66.5\|66.1\|75.3\|64.3" CLAUDE.md README.md docs/audit` finds nothing
       outside DESIGNS.md (generated) and dated history.
 - [ ] A fresh agent given only CLAUDE.md answers 10 questions about the defaults, the run
       commands and where things live, all correctly. The red-team reviewer writes the
@@ -527,11 +582,49 @@ with a re-taken gate baseline.
 
 ## Later (not in this plan)
 
-From `future_work.md`. These are product work, not cleanup:
-- **Before the first build**: the cut-rule warnings on the default robot, the one rear
-  screw per servo, McMaster prices, and measuring the UNVERIFIED numbers.
-- **Planner**: proofs on the quads (CP-SAT over the static tables, clique bounds over
-  blocks).
-- **Model**: rigid local link frames, which would let the bake drop its fit and make
-  W3's "build each distinct part once" exact.
-- **Firmware.**
+Product work, not cleanup. future_work.md (2026-10-05) was folded in here by W7; its code
+items (one shim helper, NETRF6 lengths on demand, unmarked slow tests) were done by W5 and W4.
+
+**Before the first build**
+- **Cut-rule warnings on the default robot.** SendCutSend's 2 x t rules
+  (`spiderpig/manufacture.py`) still warn on the Strider double's aluminium (a torso plate's
+  web round a cut-out, a centre plate's hole-to-edge distance: DESIGNS.md lists them).
+  Warnings, not errors (every web is over 1 x t), but each is a thin web to look at on the
+  first cut (`mise run audit`, the "cut rules" table).
+- **One rear screw per servo.** The bus plugs' slot through the centre plates takes each
+  servo's far rear holes (`chassis._port_slots`), so each servo holds the centre plates by
+  one rear screw; the frame ties carry the rest. The plug's direction is UNVERIFIED
+  (`ServoSpec.bus_ports`): measure a servo and a plug before cutting.
+- **Unpriced McMaster-Carr lines.** McMaster shows prices only behind a login, so its lines
+  are unpriced in the BOM; `ORDER.md` estimates them from a priced alternative
+  (`hardware/order.py`). Price them from an account, or add priced alternatives in
+  `hardware/sources.py`.
+- **UNVERIFIED numbers** the code flags (grep UNVERIFIED): the round crankpin's friction
+  coefficients, the charger's and protection board's sizes, the 6 mm M3 standoffs' alloy
+  and length tolerance. Measure them on the first parts.
+- **`bolt_round` designs have no assembly order** (TrotBot's heel and toe: an `assembly:`
+  audit error; DECISIONS.md, 2026-10-04): a hex plan, a hub joint fastened from the horn
+  side, or leaving them out of the first build (the user's call).
+
+**Planner and model**
+- **Proofs on the quads.** Quads whose legs must sit in separate blocks (Strider, 6-bar,
+  TrotBot) can leave thinner sizes "not ruled out" within the budget (`StackPlan.proof`).
+  Stronger lower bounds (legs that can't share layers, as a clique over blocks) or CP-SAT
+  over the static tables would close them. A secondary objective (shortest axles, fewest
+  shoulders) isn't modelled.
+- **Rigid link frames.** Parts are modelled in world coordinates at the build angle, so the
+  bake recovers each body's motion by a planar rigid fit of its joints. A local frame per
+  link and a closed-form pose `(x, y, θ)(t)` would drop the fit and make every leg's link
+  literally the same part (and W3's "build each distinct part once" exact).
+- **Stacking** (mechanisms on mechanisms; not built). A stage would mount on its parent's
+  output body (`Output.frame`: origin joint, x-axis joint). The engine would need: the
+  child's fixed pivots placed as `offset(J1, J2, along, across)` on that body instead of
+  `xy`; its point names prefixed per stage so the programs concatenate into one; its input
+  added to `inputs` (its crank turns relative to the parent body, so its angle is its input
+  plus that body's rotation); one drive per input; and the planner's clearances between
+  bodies in relative motion across stages (the child's frame is a moving body, not the
+  frame plates).
+
+**Firmware.** The servo driver's gait and steering code (the PI phase lock the sim models,
+`sim/run.py`; a design's torque limit, `config.LINKAGE_TORQUE_LIMITS`) is outside this
+repository.

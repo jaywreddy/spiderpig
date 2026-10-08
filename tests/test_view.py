@@ -281,7 +281,7 @@ def test_view_serves_a_design_on_a_free_port(store, single):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the CLI's explain takes the build options
+# Test drive, round 2 (docs/history/TESTDRIVE.md): the CLI's explain takes the build options
 # ---------------------------------------------------------------------------
 
 
@@ -305,7 +305,7 @@ def test_explain_takes_the_build_options(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): a CLI build can be viewed by its
+# Test drive, round 3 (docs/history/TESTDRIVE.md): a CLI build can be viewed by its
 # options, and the CLIs warn about a thickness far from the nominal
 # ---------------------------------------------------------------------------
 
@@ -348,7 +348,7 @@ def test_the_clis_warn_about_a_thickness_far_from_the_nominal(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the CLIs take a mechanism as it is
+# Test drive, round 4 (docs/history/TESTDRIVE.md): the CLIs take a mechanism as it is
 # (its one module, one side), audit and report cover it, the output names its axes
 # ---------------------------------------------------------------------------
 
@@ -413,7 +413,7 @@ def test_audit_takes_a_mechanism(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): ``spiderpig export`` on the command
+# Test drive, round 5 (docs/history/TESTDRIVE.md): ``spiderpig export`` on the command
 # line, ``spiderpig sim`` on a stored design or an MJCF, ``report`` over every linkage
 # ---------------------------------------------------------------------------
 

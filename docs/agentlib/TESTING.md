@@ -15,10 +15,11 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 | `mise run test-quick` | `-m "not slow and not e2e" -n 4` (every module's fast tier) | before handing back |
 | full: `mise run remote-test`, or locally `pytest -p no:warnings -m 'not e2e' -n 12 --dist worksteal` | everything but the browser tests | before a merge |
 | `mise run test-fixtures` | the currency tests (`-m fixture_regen`) with `--regen` | after an intended engine change |
-| `mise run test-viewer` | `npm run typecheck` (P1 adds vitest) | viewer edits |
+| `mise run test-viewer` | `npm run typecheck && npm test` (vitest) | viewer edits |
 | `mise run gate -- snapshot DIR` / `compare DIR` | the identity gate (below) | before / after a product change |
+| `mise run gate -- doc DIR` | `docs/agentlib/DESIGNS.md` from a snapshot | with each new baseline |
 | `mise run scorecard` | every ROADMAP number (below) | before and after a workstream |
-| `mise run doc-check` | the docs' backticked names against the code | doc edits |
+| `mise run doc-check -- --strict` | the docs' backticked names against the code | doc edits (CI blocks) |
 
 `<module>` is one of `linkage`, `planner`, `construction`, `hardware`, `strength`, `api`,
 `sim`, `server`. Pytest args go after `--` (`mise run test-planner -- -k route -x`);
@@ -46,7 +47,8 @@ the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages in
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
 cache restored and saved with `actions/cache`, keyed by the engine version, `python -m
 spiderpig.tools.engine_version`, plus `uv.lock` and `tests/cache.py`: no restore-keys, so a
-new engine starts empty), and the doc check, report-only until W7. `.pre-commit-config.yaml` runs ruff and
+new engine starts empty), `lint-imports`, and the doc check with `--strict` (blocking
+since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
@@ -54,8 +56,11 @@ task, `spiderpig` command, command-line flag and environment variable in CLAUDE.
 AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md
 statically against the package's AST (identifiers and key-like strings; docstrings,
 comments and prose strings name nothing; no engine import); `-v` lists every check,
-`--strict` fails on a miss. `tests/doc_check_allow.txt` holds what is legitimately not code
-(output file names, protocol fields, the roadmap's planned names), never drift.
+`--strict` fails on a miss (CI runs it so, and `tests/test_doc_check.py` checks the default
+docs have none). `tests/doc_check_allow.txt` holds what is legitimately not code (output file
+names, protocol fields, the roadmap's records of removed names), never drift. The dated
+records under `docs/history/` are never checked (the check skips that folder): each is headed by its
+date and status, and names the code as it was.
 
 ## Markers
 
@@ -241,7 +246,12 @@ mise run gate -- snapshot /tmp/gate/before      # on the base (master)
 mise run gate -- compare /tmp/gate/before       # on the branch: snapshots again, diffs
 mise run gate -- diff A B                       # two snapshots
 mise run gate -- compare DIR --designs klann_quad -j 1
+mise run gate -- doc DIR                        # docs/agentlib/DESIGNS.md from a snapshot
 ```
+
+`doc` writes `docs/agentlib/DESIGNS.md`, the one source of the designs' numbers (layers,
+height, constructions, sheets, part counts, the gate's audit verdict, BOM cost): run it on
+each new baseline and commit the result; `--out -` prints it.
 
 Designs (`DESIGNS` at the top): the Strider double (`BuildConfig()`), the Strider quad and
 the `klann_lego` quad (the user's three order designs), the demo `klann` quad,

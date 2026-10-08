@@ -523,7 +523,7 @@ def test_view_misuse_is_a_failure_envelope(server):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 1 (docs/agentlib/TESTDRIVE.md): the guide, the card, the notes
+# Test drive, round 1 (docs/history/TESTDRIVE.md): the guide, the card, the notes
 # ---------------------------------------------------------------------------
 
 
@@ -574,7 +574,7 @@ def test_recommend_carries_the_failures_notes_and_a_plan_its_warnings(fresh):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 2 (docs/agentlib/TESTDRIVE.md): the thin sheet's patch, the cards
+# Test drive, round 2 (docs/history/TESTDRIVE.md): the thin sheet's patch, the cards
 # ---------------------------------------------------------------------------
 
 
@@ -624,7 +624,7 @@ def test_the_guide_explains_the_budgets_lower_bound_and_the_layer_pitch(server):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): signed coordinates, a missed target,
+# Test drive, round 3 (docs/history/TESTDRIVE.md): signed coordinates, a missed target,
 # the export's warnings, the guide
 # ---------------------------------------------------------------------------
 
@@ -693,7 +693,7 @@ def test_export_carries_its_warnings_and_the_guide_the_round_3_vocabulary(fresh)
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): the stage under ``report``, the check's
+# Test drive, round 4 (docs/history/TESTDRIVE.md): the stage under ``report``, the check's
 # warnings, the floor's glue, the guide
 # ---------------------------------------------------------------------------
 
@@ -723,7 +723,7 @@ def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(ser
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 5 (docs/agentlib/TESTDRIVE.md): a two-input mechanism over MCP, and
+# Test drive, round 5 (docs/history/TESTDRIVE.md): a two-input mechanism over MCP, and
 # ``view`` on a design the page could not bake
 # ---------------------------------------------------------------------------
 

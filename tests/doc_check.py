@@ -29,7 +29,8 @@ included):
 
 Anything else (expressions, prose in backticks) is counted as unchecked. The allow-list
 (``tests/doc_check_allow.txt``) holds spans that are legitimately not code: one per line,
-``token`` or ``doc-path: token``; ``#`` comments.
+``token`` or ``doc-path: token``; ``#`` comments. The dated records under ``docs/history/``
+name the code as it was then and are never checked (:data:`HISTORY`), even when named.
 """
 
 from __future__ import annotations
@@ -50,6 +51,8 @@ DEFAULT_DOCS = ("CLAUDE.md", "AGENTS.md", "README.md", "docs/ARCHITECTURE.md",
                 "docs/agentlib/API.md", "docs/agentlib/TESTING.md", "docs/agentlib/ROADMAP.md",
                 "docs/agentlib/SCOPE.md")
 ALLOW_FILE = ROOT / "tests" / "doc_check_allow.txt"
+HISTORY = ("docs/history/",)
+"""The dated records (each headed by its date and status): the code they name is gone."""
 CODE_DIRS = ("spiderpig", "tests")
 SELF = ("tests/doc_check.py", "tests/test_doc_check.py")
 """Left out of the index: the check and its test name made-up names on purpose."""
@@ -626,6 +629,8 @@ def check(docs, index: Index | None = None, allow=None, *, every: bool = False
     for doc in docs:
         path = ROOT / doc if not Path(doc).is_absolute() else Path(doc)
         rel = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+        if rel.startswith(HISTORY):
+            continue
         text = path.read_text()
         items = list(_spans(text))
         spans = {t for _, t in items}

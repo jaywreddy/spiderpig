@@ -183,7 +183,7 @@ def test_a_robots_mirrored_twins_group_as_compared(chiral):
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 3 (docs/agentlib/TESTDRIVE.md): the pivot hardware is priced, and each
+# Test drive, round 3 (docs/history/TESTDRIVE.md): the pivot hardware is priced, and each
 # price says where it came from
 # ---------------------------------------------------------------------------
 

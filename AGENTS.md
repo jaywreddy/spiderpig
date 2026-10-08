@@ -12,13 +12,23 @@ chains consistent.
 ```bash
 mise run view           # FastAPI + Vite (HMR) on per-worktree ports — open the banner's URL
 mise run bake           # bake <store>/bakes/*.glb (the project store, .spiderpig/)
-mise run build          # STEP/STL/DXF -> build/
-mise run test-quick     # the quick tier (-m 'not slow', xdist); full suite: mise run remote-test
+mise run build          # STEP/STL/DXF -> build/ (a current build/ is skipped; -- --force)
+mise run test-<module>  # a module tier, seconds: linkage, planner, construction, hardware,
+                        # strength, api, sim, server; test-viewer for the TypeScript
+mise run test-quick     # the quick tier (-m 'not slow and not e2e', xdist); full: remote-test
 mise run test           # pytest, every test, serial (auto-builds spiderpig/viewer/dist for e2e)
-mise run lint           # ruff
+mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # product edits: did a part move?
+mise run scorecard      # every ROADMAP number -> build/scorecard.json (~10 min)
+mise run lint           # ruff, then lint-imports (the engine's layers)
+mise run pyright        # types, basic mode
+mise run doc-check -- --strict   # the docs' backticked names resolve (CI blocks on a miss)
 mise run clean          # rm build/, dist/, .spiderpig/bakes/, spiderpig/viewer/dist/, viewer/node_modules/
 mise tasks              # list everything available
 ```
+
+**Temporary files.** pytest, OCCT, the gate and the scorecard write under `$TMPDIR`
+(default `/tmp`). On a box where `/tmp` is a small tmpfs, export TMPDIR to a roomy disk
+first (e.g. `~/.cache/spiderpig/tmp`), and remove what you created.
 
 `viewer-install`, `viewer-dev`, `viewer-build` exist as sub-tasks but are
 auto-pulled by `view` / `test` via `depends`. Don't call them by hand
@@ -26,11 +36,14 @@ unless you're debugging the build itself.
 
 ## Running tests, audits and sims: quick here, heavy remotely
 
-The full suite (~1000 tests: OCCT solids, plans, MuJoCo, bakes) takes ~45 min serially;
-don't run it on a laptop. Two tiers:
+The full suite (~1150 tests: OCCT solids, plans, MuJoCo, bakes) takes about two CPU-hours;
+don't run it serially on a laptop. Iterate with a module tier
+(`docs/agentlib/TESTING.md`: seconds each on the fabrication cache and the recorded
+fixtures), then:
 
 ```bash
-mise run test-quick                      # local iteration: -m 'not slow', -n 4 (~3.5 min)
+mise run test-planner -- -k route -x     # one module's fast tier, narrowed
+mise run test-quick                      # every module's fast tier: -m 'not slow and not e2e', -n 4
 mise run test-quick -- tests/test_stack.py -k route   # narrowed further
 mise run remote-test                     # every test on the remote, -n 12 (~6 min)
 mise run remote-test -- -m slow -k sim   # any pytest args
@@ -49,6 +62,17 @@ output, and copy the log, the junit XML and the remote `build/` (audit reports,
 exports) back to `build/remote/<run>/`. The exit status is the remote command's. The
 remote keeps its own store (`.spiderpig/` in that folder), so plans and bakes stay
 warm between runs of a worktree. `SPIDERPIG_REMOTE_WORKERS` changes `-n`.
+
+**The remote may be unavailable.** On 2026-10-08 the default `root@ao-server` was the
+development box itself (its hostname) and refused SSH connections; check with
+`ssh root@ao-server true` first, or point `SPIDERPIG_REMOTE` elsewhere. Without it, run the full suite
+locally on a many-core box: `uv run pytest -p no:warnings -m 'not e2e' -n 12 --dist
+worksteal` (TESTING.md has its time), and the audits with `mise run audit`.
+
+**Product edits** (anything that can move a part, a plan, the BOM or a cut file) also run
+the identity gate before and after (`mise run gate -- compare <baseline>`, TESTING.md):
+"identical", or each difference listed and accepted, and a new baseline with
+`docs/agentlib/DESIGNS.md` regenerated (`mise run gate -- doc <snapshot>`).
 
 Compare a run's failures with the junit XML in `build/remote/<run>/`, not with a local
 run: a few tests hold the planner to a CPU-seconds deadline and a busier machine (more
@@ -103,5 +127,5 @@ that's intentional, it forces e2e to test what users actually see.
 For a quick visual smoke check, `mise run view` and open the URL its banner prints
 (ports come from a hash of the worktree's path; `VITE_PORT` / `API_PORT` pin them,
 `VITE_ALLOWED_HOSTS` lets Vite and the API server answer other host names, e.g. behind
-`tailscale serve`; the server refuses any other `Host` with a 400, and a WebSocket from a
-foreign `Origin`).
+`tailscale serve`; the server refuses any other Host header with a 400, and a WebSocket
+from a foreign origin).

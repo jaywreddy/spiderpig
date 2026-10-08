@@ -257,7 +257,7 @@ def test_catalog_data_the_code_reads():
 
 
 # ---------------------------------------------------------------------------
-# Test drive, round 4 (docs/agentlib/TESTDRIVE.md): a robot's tie spigots take a few drops
+# Test drive, round 4 (docs/history/TESTDRIVE.md): a robot's tie spigots take a few drops
 # of CA glue each, not a bottle, so a robot buys one bottle
 # ---------------------------------------------------------------------------
 

@@ -7,11 +7,15 @@ model. Its central idea is to share out space between the parts before any part 
 so that no two of them can collide as the crank turns. This report explains how the code
 does that, what it can and cannot do, and where it could mislead you.
 
-It describes the code at commit `97bec2d` (2026-10-01); the hardware it builds (sections
-2.4, 2.5, 6.2 and 7.1, the defaults in 9.7) was brought up to date on 2026-10-05, while
-the running example's numbers are still the snapshot's. An illustrated version, with renders
+It describes the code at commit `8bfc039` (2026-10-08, the merge of W5's package splits),
+brought up to date by the documentation pass of 2026-10-08 (W7). It was first written
+against commit `97bec2d` (2026-10-01), and the running example's measured numbers (stage
+timings, part counts, sizes, the walk and the sim) are still that snapshot's, taken with
+the constructions of the time (a printed crank, rod pins); they are marked as such where
+they appear. The default designs' current layer counts, heights, parts and costs live in
+one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md). An illustrated version, with renders
 from the viewer and drawings computed from the code, is
-[docs/architecture/index.html](architecture/index.html): open it in a browser.
+[docs/architecture/index.html](architecture/index.html), generated from this text as of 2026-10-05 and out of date since (its builder, `build_page.py`, needs its figure anchors updated to regenerate it).
 
 **In short.**
 
@@ -40,14 +44,17 @@ assess the project: how quality is kept, where the time goes, and what it can't 
 might get wrong. Section 13 says where to start. The appendices are for looking things
 up.
 
-**The running example.** One design runs through the whole report: the default, a robot
-built on the Klann linkage with four legs on each side. It is what `spiderpig build` makes
-with no options. When the default can't show a point (it never fails to plan, for
-example), another design stands in, and the text names it.
+**The running example.** One design runs through the whole report: a robot built on the
+Klann linkage with four legs on each side (`spiderpig build --linkage klann`, the demo
+Klann quad). It was the project's default when the report was first written; the default
+is now the Strider `double` (`linkage.DEFAULT`), which is what `spiderpig build` makes with
+no options. When the example can't show a point (it never fails to plan, for example),
+another design stands in, and the text names it.
 
-**The numbers** were measured at `97bec2d` unless marked "(project docs)", meaning they
-come from the repository's own reports. Timings are indicative; Appendix C says how they
-were taken.
+**The numbers** were measured at `97bec2d` (2026-10-01) unless marked "(project docs)",
+meaning they come from the repository's own reports, or dated otherwise. Timings are
+indicative; Appendix C says how they were taken. For today's figures of the default
+designs see [DESIGNS.md](agentlib/DESIGNS.md).
 
 **Contents.**
 [1. What spiderpig is](#1-what-spiderpig-is) ·
@@ -111,19 +118,20 @@ at the result:
 - **an MCP server** that offers the same operations to AI agents speaking the Model
   Context Protocol.
 
-It does not write firmware or a gait controller for the servos. It does no strength
-analysis of the parts. It does not invent mechanisms: every linkage is a program in its
-catalog, and every part follows fixed construction rules.
+It does not write firmware or a gait controller for the servos. Its strength analysis is
+of the joints and link plates only, at the design's own simulated loads (section 6.2); it
+does no finite-element analysis of the parts. It does not invent mechanisms: every
+linkage is a program in its catalog, and every part follows fixed construction rules.
 
-In numbers:
+In numbers (2026-10-08):
 
 | measure | value |
 |---|---|
-| Python package `spiderpig/` | 25,607 lines in 85 Python files |
-| tests | 9,122 lines; 901 tests |
-| browser viewer (TypeScript) | 1,538 lines |
+| Python package `spiderpig/` | 40,462 lines in 123 Python files |
+| tests | 27,009 lines; about 2,000 tests |
+| browser viewer (TypeScript) | 3,018 lines |
 | linkages in the catalog | 28: 17 walkers and 11 mechanisms |
-| history | 232 commits: 2015 coursework, rebuilt almost entirely in September 2026 (Appendix C) |
+| history | 483 commits: 2015 coursework, rebuilt almost entirely from September 2026 (Appendix C) |
 
 Following a design through the code needs a few mechanical ideas and a few tools. Section
 2 gives them.
@@ -213,12 +221,13 @@ within 13 mm of it; section 2.4 explains why that matters.
 The linkage catalog holds 17 walkers in six families:
 
 - **Klann** (Joe Klann's US patent 6,260,862): six bars and two fixed pivots, as in Figure
-  1. It lifts its foot high. It is the project's default; the catalog also has four
-  variants transcribed from published drawings.
+  1. It lifts its foot high. It stays registered as the wobbly demo (`--linkage klann`);
+  the catalog also has four variants transcribed from published drawings.
 - **Jansen** (Theo Jansen's Strandbeest): eight bars and one fixed pivot. Its stance is
   long, flat and smooth, and it lifts its foot little.
 - **Strider** (Wade and Ben Vagle, diywalkers.com): one "leg" is a coupled,
-  mirror-symmetric pair with two feet.
+  mirror-symmetric pair with two feet. It is the project's default (`linkage.DEFAULT`),
+  built as its `double` module.
 - **TrotBot** (also from diywalkers.com): eight bars, plus versions with a heel (ten
   bars, two feet) and a retractable toe (twelve bars, three feet).
 - **Four-bar**: the simplest walker, from diywalkers.com, including the legs of a LEGO
@@ -276,7 +285,8 @@ lives in one layer, and two links whose outlines come close at any point of the 
 be in different layers. The bottom layer (index 0) is the **outer frame plate** and the
 top layer is the **inner frame plate**, which carries the servo. Nothing else may sit in
 either, except parts seated in their holes: the ends of axles, the crank's stub, the
-servo's horn.
+servo's horn. (That is the planner's model. In the built stack a layer is as thick as its
+thickest plate, and thin clearance gaps between layers hold screw heads; section 5.7.)
 
 Joints become axles that run across layers. An axle that joins links to the frame is a
 **pillar**, anchored in the frame plates; one that joins links only to links is a **pin**.
@@ -309,12 +319,12 @@ body.
 
 Choosing a layer for every link and a route for the crankshaft, so that nothing ever
 collides and the stack is as thin as possible, is the **layer planning** problem. It is
-the heart of this codebase (section 5). Here is the plan spiderpig finds for a single
-Klann leg, 7 layers and 21 mm. (The running example's 12 layers are too many to read
-here.)
+the heart of this codebase (section 5). Here is the plan spiderpig found for a single
+Klann leg at the 2026-10-01 snapshot, with the printed crank of the time: 7 layers and
+21 mm. (The running example's 12 layers are too many to read here.)
 
 **Figure 2.** One Klann leg's layers, from 6 (top) down to 0, and the crank's route
-through them.
+through them (the 2026-10-01 snapshot's printed crank).
 
 ```
           what each layer holds
@@ -345,14 +355,13 @@ The crank rider `b1` sits alone in layer 2, threaded on the post at M. The crank
 with a web in layer 1, crosses layer 2 along the post, and returns to O with a web in
 layer
 3. Links `b3` and `b4` share layer 3 with that web, and `b2` shares layer 4 with the hub,
-because none of them ever comes near O. One screw runs up through the post, from its head
-in the lower web to a nut in the upper web, and holds the two halves of the crank
-together. (This is the `printed` crank's picture; the `keyed` crank, section 6.2, adds a
-brass hex standoff as a key between the post and the web above it and makes the upper web
-two layers thick, so this leg takes 8 layers. The default since 2026-10-03, the `bolt`
-crank, is laser-cut aluminium: each web one plate, the crankpin a stock steel hex standoff
-whose ends sit in hex pockets of the two webs, retained by a screw into each end, the
-rider turning on a printed sleeve over the hex; section 6.2.)
+because none of them ever comes near O. In this printed crank one screw ran up through the
+post and held the two halves together. The route is the same with today's crank, the
+laser-cut `bolt` crank (section 6.2): each web is one aluminium plate, the post a stock
+steel hex standoff whose ends sit in hex pockets of the two webs, retained by a screw into
+each end, and the rider turns on a printed sleeve over the hex. Its screw heads stand in
+thin clearance gaps beside the webs (section 5.7). The printed crank, and the keyed one
+that followed it, were removed on 2026-10-07.
 
 ### 2.5 How parts are made
 
@@ -361,21 +370,22 @@ Every part is made in one of three ways, and the code tags each part with it (`f
 - **laser**: links (acrylic, a few in aluminium), the aluminium frame plates, crank
   plates and the chassis's centre plates, the electronics deck, cut from sheet;
 - **printed**: every pivot's spacer rings and head spacers, the crank's sleeves, collars
-  and rings, the horn spacer, the deck's rails and battery cradle, the feet's TPU socks
-  (and, with the printed constructions, axles and crankshaft segments), on a 3D printer;
+  and rings, the horn spacer, the deck's rails and battery cradle, the feet's TPU socks,
+  on a 3D printer;
 - **purchased**: servos, electronics, screws, nuts, washers and shims, Chicago screws,
-  round and hex standoffs, heat-set inserts, glue.
+  round and hex standoffs, heat-set inserts, epoxy.
 
-By default the pins are M3 Chicago screws, the pillars 6 mm round standoff columns and
-the crank laser-cut on steel hex standoffs (section 6.2); printed axles and a printed
-crank, and other metal pivots (steel rod, M3 bolt, ball bearing, plastic bushing, a PTFE
-liner), stay selectable.
+The pins are M3 Chicago screws, the pillars 6 mm round standoff columns and the crank
+laser-cut on steel hex standoffs (section 6.2). These are the only constructions since
+2026-10-07: the printed axles and cranks, and the other metal pivots (steel rod, M3 bolt,
+ball bearing, plastic bushing, PTFE liner), were removed (`config.REMOVED_CONSTRUCTIONS`
+names each one's replacement).
 
 The motors are **continuous-rotation servos**: geared motors with built-in speed control,
 which turn fully at a commanded speed rather than holding an angle as a hobby servo does.
 The screws are metric: **M3** means 3 mm in diameter, and screws come in a fixed set of
 **stock lengths**. A **heat-set insert** is a brass thread pressed into plastic with a hot
-iron; a **nylock** nut has a nylon ring that keeps it from loosening.
+iron.
 
 ### 2.6 The tools and formats underneath
 
@@ -434,7 +444,7 @@ knowledge. The six stages are the **pipeline**, and the code that runs them is t
 | 1 | symbolic | a compass-and-ruler program over exact parameters | `linkage/`, `linkages/` |
 | 2 | compiled | numpy functions of the crank angle, built once | `linkage/engine.py` |
 | 3 | template | one side's bodies, joints and connections, every joint a function of `t` | `linkage/assembly.py`, `mechanism.py` |
-| 4 | rationalized | groups (one per functional part: the drive, the crank, each axle, the links, the frame), the space each claims in every layer, the layer plan, the crank route | `construction/`, `stack.py`, `fabricate.py` |
+| 4 | rationalized | groups (one per functional part: the drive, the crank, each axle, the links, the frame), the space each claims in every layer, the layer plan, the crank route | `construction/`, `stack/`, `fabricate.py` |
 | 5 | fabricated | every part as a solid at one crank angle, tagged laser, printed or purchased | `construction/`, `fabricate.py` |
 | 6 | serialized | STEP, STL, DXF, BOM, glb, MJCF | `build.py`, `layout.py`, `hardware/bom.py`, `bake.py`, `sim/` |
 
@@ -448,9 +458,9 @@ Here is the running example at each stage:
 | 1 symbolic | 8 steps placing joints O, A, B, M, C, D, E, F; 11 parameters |
 | 2 compiled | about 1.8 s once per process, mostly first-use imports; the compile itself about 0.1 s |
 | 3 template | each side: 4 legs, 16 links, 20 bodies |
-| 4 rationalized | 31 layers (93 mm) per side with the bolt crank in its first, acrylic M6 form and spliced standoff pillars (the defaults of 2026-10-03, since removed); 16 (48 mm) with the keyed crank and printed pillars before them |
-| 5 fabricated | 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins rods, rings and clips then) |
-| 6 serialized | STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $150.35 (a lower bound, section 7.5; $124.87 with printed pins), glb 9.5 MB |
+| 4 rationalized | at the snapshot, 12 layers (36 mm) per side with the printed crank; today's figure is in [DESIGNS.md](agentlib/DESIGNS.md) (`klann_quad`) |
+| 5 fabricated | at the snapshot, 197 parts: 39 laser-cut, 42 printed, 116 purchased (the pins rods, rings and clips then) |
+| 6 serialized | at the snapshot, STEP 11.4 MB, 17 print STLs, 2 DXF sheets, a BOM of at least $124.87 (a lower bound, section 7.5), glb 9.5 MB |
 
 **One record says what to build.** Every stage takes a `BuildConfig`
 (`spiderpig/config.py`), which holds:
@@ -462,11 +472,14 @@ Here is the running example at each stage:
 - the pillar, pin and crank constructions: the pins M3 Chicago screws, `chicago`, the
   pillars round standoff columns, `standoff`, and the crank the laser-cut `bolt` crank
   (`bolt_round` on TrotBot's heel and toe), the only ones since 2026-10-07;
+- the sheets: the links' (`sheet`), the frame plates' (`frame_sheet`), the crank's
+  (`crank_sheet`) and any per-link sheet (section 5.7);
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
   margin and so on).
 
-It checks the linkage, module, servo, phases and parameters when made (not the sheet, its
-thickness or the constructions, which fail later if wrong), and drops values equal to
+It checks the linkage, module, servo, phases, parameters, sheets (the crank's must be
+aluminium) and constructions when made (a removed construction or `Params` field fails with its replacement:
+`config.REMOVED_CONSTRUCTIONS`, `config.REMOVED_PARAMS`), and drops values equal to
 their defaults, so one design has one config however it was asked for. Its `key`
 (`strider_double_robot`, plus a hash for anything non-default) names every cache.
 
@@ -481,7 +494,7 @@ the outline is:
 ```
    Spec (JSON) --resolve--> Design (content-addressed id)
                                  |
-        check · plan · walk · build · recheck · verify · export     spiderpig/api.py
+        check · plan · walk · build · recheck · verify · export     spiderpig/api/
                                  |
         Store: ./.spiderpig/designs/<id>/   (every stage's report, the parts)   store.py
 
@@ -498,14 +511,14 @@ the outline is:
 | `spiderpig/linkages/` | the linkage catalog: one file per family | 4 |
 | `spiderpig/mechanism.py` | bodies, joints, poses; the template and the concrete mechanism | 4 |
 | `spiderpig/config.py` | `BuildConfig` and the shared command-line options | 3 |
-| `spiderpig/stack.py` | the layer planner | 5 |
+| `spiderpig/stack/` | the layer planner | 5 |
 | `spiderpig/construction/` | the groups and their constructions: claims, then parts | 5, 6 |
 | `spiderpig/fabricate.py` | orchestration: plan a side, fabricate a side or a robot | 5, 6 |
 | `spiderpig/recommend.py`, `explain.py` | checked fixes for failures; each stage's verdict in prose | 5 |
-| `spiderpig/servos/`, `hardware/` | servo data and models; the parts catalog, fasteners, mass, BOM | 6, 7 |
-| `spiderpig/build.py`, `layout.py`, `bake.py`, `sim/`, `mesh.py`, `workers.py` | outputs | 7 |
+| `spiderpig/servos/`, `hardware/`, `materials.py`, `manufacture.py`, `strength.py` | servo data and models; the parts catalog, fasteners, mass, BOM, ordering; sheets, cut rules, joint strength | 6, 7 |
+| `spiderpig/build.py`, `layout.py`, `bake.py`, `sim/`, `mesh.py`, `workers.py`, `fabcache.py`, `keys.py`, `uptodate.py` | outputs, and the caches that keep them from being recomputed | 7 |
 | `spiderpig/walk.py`, `server/`, `viewer/` | the walking model, the web server, the browser viewer | 8 |
-| `spiderpig/spec.py`, `api.py`, `design.py`, `failure.py`, `verify.py`, `store.py` | the agent surface | 9 |
+| `spiderpig/spec.py`, `api/`, `design.py`, `failure.py`, `verify.py`, `store.py` | the agent surface | 9 |
 | `spiderpig/mcp/`, `cli.py`, `tools/`, `view.py` | the MCP server and the command line | 9 |
 
 Sections 4 to 7 follow the running example through these stages, starting with the
@@ -539,7 +552,7 @@ def program(p):
     ]
 ```
 
-The helpers (`spiderpig/linkage/engine.py:19-80`) are the compass and ruler: `xy`,
+The helpers (`spiderpig/linkage/engine.py:22-80`) are the compass and ruler: `xy`,
 `rotate`, `crank`, `P` (a joint placed earlier, such as `P("M")`), `circle_x_circle` (two
 circles crossing, with its branch), `extend` (a point along a ray), `offset` (a point
 rigid with a bar), and `crank_at` for a second input. Parameters are exact numbers (sympy
@@ -586,7 +599,7 @@ Before building anything, the template stage checks the motion
   at the worst angle) and the range of the transmission angle, and flags a joint within
   15° of toggle. For Klann: "C: bars A-C 54.5 mm and M-C 68.6 mm close with 21.24 mm to
   spare (worst at 336°), transmission angle 31°..86°". A loop that fails raises
-  `AssemblyError` naming the joint, by how much it fails and over which crank angles. A
+  (`Linkage.assert_assembles`) `AssemblyError` naming the joint, by how much it fails and over which crank angles. A
   fixed pivot whose coordinates are undefined (a negative number under a square root) is
   refused with that root named.
 - For a mechanism, `check_output` measures the output against its promises: it fits a line
@@ -600,7 +613,7 @@ could slip between samples.
 ### 4.4 The template: one side as bodies and joints
 
 `build_module_template(module, phases, proportions, linkage)`
-(`spiderpig/linkage/assembly.py:217`) runs those checks, then builds one side as a
+(`spiderpig/linkage/assembly.py:222`) runs those checks, then builds one side as a
 `MechanismTemplate` (`spiderpig/mechanism.py`):
 
 - each leg contributes its links `b<k>`, its crank `conn` and its frame `torso`, every
@@ -613,12 +626,13 @@ could slip between samples.
 The running example's side therefore has 20 bodies: 16 links, two crank bodies (`conn` and
 `conn_upper`, each shared by a mirrored pair of legs), one frame and the shaft coupler.
 Once built, the crank construction joins the two crank bodies and the coupler into one
-printed crankshaft (Figure 3 in section 5.3).
+crankshaft (Figure 3 in section 5.3).
 
 Every joint's position is a function of `t` at z = 0. Height is deliberately absent: the
 project's house rules (in [CLAUDE.md](../CLAUDE.md), summarised in section 13) forbid
 putting z into joint poses, because z is the layer planner's decision.
-`MechanismTemplate.sample(ts)` evaluates every joint over a batch of angles in one pass;
+`MechanismTemplate.sample(ts)` evaluates every joint over a batch of angles in one pass
+(a `SampledPoses`; a leg's phase runs it at `ts + phase`, a mirrored leg reflected);
 `freeze_at(t)` produces the concrete `Mechanism` at one angle that fabrication works on,
 so sampling and fabrication can't disagree about where a joint is.
 
@@ -634,7 +648,7 @@ walking model) recovers it by fitting a planar rigid motion to the link's joints
 | Klann variants | `klann_patent`, `klann_lego`, `klann_long_legs`, `klann_high_step` | `unit` = 8 mm |
 | Jansen | `jansen` | `unit` = 1.6 mm, not the drawing's 1.5: at 1.5 a link passes 8.7 mm from a pillar, under the 9 mm its neck needs |
 | Strider | `strider` | `unit` = 6.5 mm, so the foot links clear the crank; its own modules |
-| TrotBot | `trotbot`, `trotbot_heel`, `trotbot_toe` | `unit` = 10.5 mm, the drawing's 7 mm scaled 1.5×, so the heel clears the printed crank's post and the bolt crank's 6 mm shank (the default); the keyed crank's 8.5 mm post needs `unit` = 12 for `trotbot_heel` / `trotbot_toe` (`recommend` says so, checked) |
+| TrotBot | `trotbot`, `trotbot_heel`, `trotbot_toe` | `unit` = 10.5 mm, the drawing's 7 mm scaled 1.5×, so the heel's `b7` clears a 6 mm crankpin; the heel and toe take the `bolt_round` crank (`config.LINKAGE_CRANKS`), whose round 6 mm standoff it clears, where the default hex crankpin's 8.5 mm sleeve doesn't |
 | four-bar | `fourbar`, `fourbar_spot_micro`, `fourbar_spot_micro_v2` | `unit` = 0.6–0.8 mm |
 | six-bar | `sixbar`, `sixbar_v1`, `sixbar_v2`, `sixbar_v3` | `unit` = 0.6 or 1.0 mm |
 
@@ -679,7 +693,7 @@ largest and most original part of the code.
 
 ### 5.1 Groups and claims
 
-The planner (`spiderpig/stack.py`) doesn't know how anything is built. The side is divided
+The planner (`spiderpig/stack/`) doesn't know how anything is built. The side is divided
 into **groups**, one per functional part: the drive (the servo), the crank, one per
 pillar, one per pin, the links, the frame plates. For one Klann leg the groups are
 `drive`, `crank`, `pillar:A`, `pillar:B`, `pin:C`, `pin:D`, `pin:E`, `links` and `frame`,
@@ -705,9 +719,9 @@ links, but two links in one layer are still checked against each other.
 Why claims rather than parts? Because the search needs cheap geometry. A distance between
 two discs or capsules is a few arithmetic operations; a boolean between two CAD solids
 takes milliseconds to seconds. Claims also keep the planner independent of how things are
-built: a printed axle and a steel bolt are different **constructions** of the same group,
-which differ only in the radii their claims use. Swapping one for the other touches no
-planner code. And a claim can refuse a layout outright, raising `Unbuildable` with a
+built: the Chicago screw and the steel rod it replaced were different **constructions**
+of the same group (a pin), which differed only in the radii and shapes their claims use.
+Swapping one for the other touched no planner code. And a claim can refuse a layout outright, raising `Unbuildable` with a
 reason the user will see.
 
 How close do two moving shapes come? The planner samples every named point at 1,440 crank
@@ -728,24 +742,29 @@ Some conclusions need no search, and the planner draws them first:
   neck over its whole span, the crank's journal on O. A link that comes closer to an
   axle's neck than the neck allows can never share the axle's layers. These **static
   clearances** become constraints (the running example has 28 of them per side).
-- **Crank facts** (`spiderpig/construction/route.py`). A link "needs O free" when its
-  outline comes within 13 mm of O: the journal's 6 mm radius, the link's 6 mm and the 1 mm
-  margin. For each such link, the planner records which crankpins it always stays at least
-  10 mm from (the 3 mm post radius, the 6 mm link radius and the margin); the link may
-  share a layer with those crankpins' posts. (A rider is carried on its own crankpin, so
-  its layer is simply a run along that post; the 10 mm rule is for the other links.) A
+- **Crank facts** (`spiderpig/construction/route.py`, `crank_facts`). A link "needs O
+  free" when its outline comes within the journal's radius, the link's 6 mm and the 1 mm
+  margin of O (10.5 mm with the default hex crank's 3.5 mm journal). For each such link,
+  the planner records which crankpins it always stays at least the post radius, the link
+  radius and the margin from (11.25 mm for the hex crankpin's 8.5 mm sleeve, 10 mm for
+  `bolt_round`'s 6 mm standoff); the link may share a layer with those crankpins' posts.
+  (A rider is carried on its own crankpin, so its layer is simply a run along that post;
+  the rule is for the other links.) A
   link that clears no crankpin gets a search for a detour point: rings from 1 to 150 mm
   around O, every 2.5°.
 - **The envelope** (`spiderpig/construction/underside.py`). A detour sweeps a full circle
   about O as the crank turns, so that circle must stay above the underside of the robot's
   body (its frame plates, the crank's own sweep, the servo and the patch of plate under
   it, and the robot's centre plates). Otherwise the robot would hang lower. The code calls
-  this underside profile the envelope.
+  this underside profile the envelope; `SideDesign.ground_clearance_mm` is the body's
+  lowest point above the lowest foot point.
 
 A link that no crankpin and no detour inside the envelope can clear makes the design
-impossible as drawn, and the stage stops with a `ClearanceError` that gives the distances.
+impossible as drawn, and the stage (`fabricate.static_stage`) stops with a `ClearanceError`
+that gives the distances (`spiderpig explain --linkage K --module M` prints every stage's
+verdict).
 TrotBot's heel at the drawing's 7 mm unit is the standard example: link `b7` passes
-crankpin J1 at 6.8 mm, under the 10 mm a post there needs. Section 9.3 shows the fix.
+crankpin J1 at 6.8 mm, under the 10 mm its `bolt_round` post there needs. Section 9.3 shows the fix.
 
 ### 5.3 The crank router
 
@@ -761,8 +780,8 @@ screw. TrotBot's single leg needs two runs along its crankpin J1, over layers 2�
 layer 8; their webs in layers 6 and 7 are neighbours, so one screw spans the whole chain,
 from the web in layer 1 to the web in layer 9.
 
-**Figure 3.** The running example's crankshaft: four runs, one per leg, each its own
-chain.
+**Figure 3.** The running example's crankshaft at the 2026-10-01 snapshot (the printed
+crank): four runs, one per leg, each its own chain.
 
 ```
 layer 11  inner frame plate (the servo above it)
@@ -780,8 +799,9 @@ layer  0  outer frame plate, the crank's stub in its hole
 ```
 
 Each crankpin has one run, so each run is a chain of its own with its own screw, though
-neighbouring runs share their web layers. The crank prints as five segments, split at the
-runs: layers 0–1, 3, 5, 7 and 9–10. Legs 0 and 1 are a mirrored pair half a turn apart, so
+neighbouring runs share their web layers. The printed crank of the snapshot came out as
+five segments, split at the runs: layers 0–1, 3, 5, 7 and 9–10; the `bolt` crank builds
+the same route as a plate per web and a hex standoff per run (section 6.2). Legs 0 and 1 are a mirrored pair half a turn apart, so
 M0 and M1 sit on opposite sides of O, as do M2 and M3; each pair's crank body of section
 4.4 is a bar through O with a crankpin at each end.
 
@@ -789,13 +809,27 @@ M0 and M1 sit on opposite sides of O, as do M2 and M3; each pair's crank body of
 programming over layers and chains. Only buildable routes count, and buildability comes
 from the bolt crank's own rules (`JointRules`, `BoltCrank.joint_rules`):
 
-- each chain is one run between two plates, and needs a stock standoff that fits it
-  (`spans`); two chains share a plate or a journal standoff on O joins them (`j_spans`),
-  and the last ends in the hub plate;
-- the screw heads beyond a chain's plates need their clearance gaps (`gap_head`);
-- the screw pockets of neighbouring chains must not meet;
+- each chain is one run between two plates (no plate between two runs of one point: it
+  would turn loose on the standoff), and needs a stock standoff that fits it
+  (`JointRules.spans`);
+  two chains share a plate or a journal standoff on O joins them (`j_spans`), and the
+  last ends in the hub plate; the first chain's lowest web may sit only where
+  the stub's stock standoff reaches (`bottom_layers`);
+- the screw heads beyond a chain's plates need their clearance gaps (`gap_head`), and so
+  do the horn screws' heads in the gap under the hub (`horn_heads`);
+- the screw pockets of neighbouring chains, and of the last chain and the horn screws,
+  must not meet;
+- the washers a run carries through every clearance gap along it must clear what else is
+  in that gap (`JointRules.gap_washer`). The search doesn't block these: at a leaf, the planner sets
+  the bits of the gaps its plan has where the run's washers met another group's
+  (`CrankRouter.washer_bit`, `_Search._washer_blocks`) and routes again;
 - a rider can't sit in layer 1 (there would be no layer below it for its web) or in the
   hub's layers under the servo.
+
+The router also offers the search its **gap pieces** (`gap_pieces`): one per clearance
+gap slot (keyed `layer + 0.5`), blocked when another group's heads or washers stand in
+that gap. They keep a route off gaps a screw head can't use, which is what makes the bolt
+crank's plans fast.
 
 Routes are ranked first by added features (run layers that no rider needs, detours), then
 by how far a detour sweeps, then by whether the bottom bearing was dropped (an option, off
@@ -840,25 +874,40 @@ raises an error.
 2. **Jump ahead.** Once a size runs out of its short budget without an answer, the search
    moves up in doubling steps (one size, then two, then four) until a size has a plan,
    then goes back to the sizes it skipped.
-3. **Try harder if nothing planned.** The sizes left open get the full budget (20,000
-   nodes), thinnest first.
+3. **Try harder if nothing planned.** The sizes the short searches left open get the
+   full budget (`max_nodes`, 20,000 nodes), thinnest first.
 4. **Prove.** Every thinner size not yet ruled out is searched again with half the full
-   budget, and the plan's own size gets the full budget once more to look for a cheaper
-   crank route.
+   budget (`max_nodes // 2`, `spiderpig/stack/search.py:299-301`), and the plan's own
+   size gets the full budget once more to look for a cheaper crank route.
 
 A multi-leg module first plans its `single` module and uses that plan as a hint for which
 layers to try first, and for a second strategy that places one leg at a time. The search
-itself is capped at 60,000 nodes in all and a **60 s wall-clock deadline**; the plan used
-as a hint, and any recommendation checks after a failure, get their own.
+itself is capped at 60,000 nodes in all and a **60 CPU-second deadline** (`stack.Deadline`,
+the thread's CPU time, so a loaded machine doesn't change how far a search gets;
+`SPIDERPIG_PLAN_SECONDS` sets it); the plan used as a hint shares it, and any
+recommendation checks after a failure get one more.
+
+**Where the heads go.** Every fastener head beside a link either sinks into the layer
+beside it or stands in a thin clearance gap (section 5.7). `StackSpec.heads` picks:
+`"sink"`, `"gap"`, or `"best"` (the default: sunk, and in gaps only when that finds no
+plan). A design on the single-plate crank plans `heads="gap_sink"` the other way round
+(`StackProblem.solve_heads`, `stack.HEADS_ORDER`): in gaps first, since a sunk crank head
+would stand in a rider's layer; and only when that search gives up (after `stack.GIVE_UP`
+layerings that fail on the crank's washers in the plan's gaps) with the pivots' heads sunk
+and the crank's and the drive's (`stack.GAP_GROUPS`) still in their gaps
+(`heads_claims(keep=...)`, `finalize(sink_all_but=...)`). TrotBot's heel and toe plan
+only that way.
 
 **The answer** is a `StackPlan`: each link's layer, the stack size, the crank route, the
 cost, whether the plan is **optimal** (no thinner stack and no cheaper route, both
 searched to the end), and a **proof** saying how that was established. For the running
-example: 16 layers, 48 mm, optimal, with the proof "no plan in 15 layers or fewer (240
-nodes); the crank's own rules forced it taller: in 15 layers the search met 239 layouts
-that fit everything else but no crank route passes; 16 layers searched to the end for the
-cheapest crank route (17 nodes)" (with `--crank printed`: 12 layers, 36 mm, "no plan in 11
-layers or fewer (48 nodes); 12 layers searched to the end ... (18 nodes)"). A plan
+example with the keyed crank of 2026-10-03 (since removed): 16 layers, 48 mm, optimal,
+with the proof "no plan in 15 layers or fewer (240 nodes); the crank's own rules forced it
+taller: in 15 layers the search met 239 layouts that fit everything else but no crank
+route passes; 16 layers searched to the end for the cheapest crank route (17 nodes)"
+(with the snapshot's printed crank: 12 layers, 36 mm, "no plan in 11 layers or fewer (48
+nodes); 12 layers searched to the end ... (18 nodes)"). Today's plans and whether each is
+proven are in [DESIGNS.md](agentlib/DESIGNS.md). A plan
 that ran out of budget or time is still valid, because it was verified, but its proof
 names the sizes left open.
 
@@ -866,10 +915,10 @@ names the sizes left open.
 
 A `PlanError` lists what blocked the search, with distances, the static clearances
 involved, and the fate of each size: ruled out, left open when its budget ran out, or
-never tried. For the Jansen linkage scaled down to a 1.5 mm unit, in the `decker` module,
-the search runs out of its 60,000 nodes. The error names the static clearance behind it,
+never tried. At the 2026-10-01 snapshot (printed pillars), for the Jansen linkage scaled
+down to a 1.5 mm unit, in the `decker` module, the search ran out of its 60,000 nodes. The error named the static clearance behind it,
 "b2_leg0 passes pillar:A_leg0 at 8.7 mm, under the 9.0 mm" a neck needs (section 4.5),
-and offers two checked fixes: a unit of 1.6, or a link radius of 5.5 mm.
+and offered two checked fixes: a unit of 1.6, or a link radius of 5.5 mm.
 
 Both kinds of failure, `ClearanceError` and `PlanError`, carry **recommendations** made by
 `spiderpig/recommend.py`. A recommendation is offered only after the failed stage has been
@@ -887,21 +936,24 @@ and anything left unchecked appears as a note, never as a recommendation. `spide
 explain` prints each stage's verdict, the plan's layer table, and any failure with what
 would clear it.
 
-### 5.6 What plans today
+### 5.6 What planned at the snapshot
 
-For this report all 79 combinations of linkage and module were planned with default
-constructions, twice: once one at a time, and once three at a time on a busy machine.
+This section is history: the sweep of 2026-10-01, with the constructions of the time
+(the printed crank). The default designs' plans today are in
+[DESIGNS.md](agentlib/DESIGNS.md); the strength sweep of every walker and module with the
+current constructions is [docs/audit/STRENGTH.md](audit/STRENGTH.md). For the first
+version of this report all 79 combinations of linkage and module were planned with the
+default constructions of 2026-10-01, twice: once one at a time, and once three at a time
+on a busy machine.
 
 | outcome | cases |
 |---|---|
 | planned and proven thinnest | 67–68, most in seconds (the TrotBot deckers take up to 26 s) |
-| planned, unproven because the deadline or node budget ran out | 6–8: the six-bar and Strider quads, the TrotBot quads when they plan, the TrotBot decker under load |
+| planned, unproven (`optimal=False`) because the deadline or node budget ran out | 6–8: the six-bar and Strider quads, the TrotBot quads when they plan, the TrotBot decker under load |
 | no plan | 2–5: the TrotBot heel and toe `double` always; the three TrotBot quads when the machine was busy |
 | stopped at the drive stage | 1: `five_bar` |
 
-Layers per side with the `printed` crank (unproven results marked *; the default `keyed`
-crank's two-layer top webs add layers: the Klann quad 16, the Strider double 18, and its
-8.5 mm post stops TrotBot's heel at its default scale, section 6.2):
+Layers per side with the `printed` crank of the snapshot (unproven results marked *):
 
 | linkage | `single` | `double` | `decker` | `quad` |
 |---|---|---|---|---|
@@ -912,17 +964,54 @@ crank's two-layer top webs add layers: the Klann quad 16, the Strider double 18,
 | Strider | 10 | 16 | 16 | 28* |
 | TrotBot | 12 | 12 | 20 | about 36*, or no plan |
 
-Every mechanism plans in 6–10 layers in under 2 s. Three results need explaining:
+Every mechanism planned in 6–10 layers in under 2 s. Two results need explaining:
 
-- **The TrotBot heel and toe `double` can't be built.** A `double` puts both legs on one
-  crankpin, so one chain of the crank must span both riders, and no layering of these
-  links lets a stock screw fit that chain. A test pins this outcome.
-- **The deadline makes large quads machine-dependent.** On the busy machine the TrotBot
+- **The TrotBot heel and toe `double` couldn't be built.** A `double` puts both legs on
+  one crankpin, so one chain of the crank must span both riders, and no layering of these
+  links let a stock screw fit that chain.
+- **The deadline made large quads machine-dependent.** On the busy machine the TrotBot
   quad failed; run alone, it planned in 36 layers, unproven, after 61 s. The six-bar quad
-  came out at 25 layers on the busy machine and 24 without load. A plan found is always
-  valid; what varies is how thin it is, and whether one is found at all (section 12.2).
+  came out at 25 layers on the busy machine and 24 without load. The deadline has since
+  become CPU time (section 5.4), which removes the load's effect but not the machine's
+  speed. A plan found is always valid; what varies is how thin it is, and whether one is
+  found at all (section 12.2).
 
 The planner also has four opt-in speed-ups, all off by default (section 11).
+
+### 5.7 The plan's z: clearance gaps, layer thicknesses and sheets
+
+The search works on a nominal stack, every layer one `pitch` (the default sheet's
+thickness) and nothing between layers. The plan a layering becomes has real heights
+(`stack.finalize`, in `spiderpig/stack/plan_z.py`; the same function re-makes a stored
+plan, deterministically).
+
+**Clearance gaps.** A fastener's head or nut beside a link (a Chicago screw's head, the
+servo's screws, the crank's screw heads) is a *clearance shape* (`Placed.gap`, with the
+`height` it needs and the layer it is `toward`). It either sinks into the layer beside its
+link, where nothing there is in its way, or stands in a thin gap over or under the link's
+layer. An axle crossing a gap claims its washers there. `finalize` decides which heads can
+sink, gives every other head a gap sized to the tallest it holds (a gap a plate stack runs
+through is a thin sheet's thickness, `materials.gap_options`; any other is a printed ring
+in 0.1 mm steps up to 4 mm), makes each layer as thick as its thickest plate (`Placed.sheet`,
+`StackSpec.link_t`, `frame_t`), and makes every claim again at that z (`Layout.final`), so
+the crank's standoffs, the stub, the Chicago barrels and the pillar columns are checked at
+the heights they will be built at. Where a stock part fits only with a gap a little
+thicker, the gap is thickened (`_thicker_gaps`). A layering that doesn't build at its own
+z raises `PlanReject`, and the search takes it as a dead end. The plan records its z:
+`StackPlan.gaps`, `thick` and `heads`; a `Layout` answers `z`, `gap_z` and `slot_z`.
+
+**Sheets.** A design has several: `BuildConfig.sheet` (3 mm acrylic: the links, rings and
+deck), `frame_sheet` (0.080 in 5052, the frame and centre plates) and `crank_sheet` (0.100
+in 6061-T6, `config.CRANK_SHEET`, or the linkage's own from `config.LINKAGE_CRANK_SHEETS`),
+and `link_sheets`, links cut from another sheet (a Klann variant's foot links in 6061,
+`klann_lego`'s crank rider `b1`: `materials.LINK_SHEETS`). The aluminium defaults are each
+role's thinnest stock sheet that passes (`materials.thinnest_sheet(role)` over
+`materials.ROLES`: the out-of-plane bending at a pin's clamped end under the 155 N jam load
+at a safety factor of 2, the crank's hex pockets under the jam twist, and the role's
+smallest hole against the service's minimum hole). The centre plates take the thinnest
+stack that seats the most rear screws (`chassis.centre_sheet`). `Body.sheet` carries a
+part's sheet to the mass, the BOM (a line per sheet), the DXFs (a set per service and sheet)
+and the cut rules (section 7.1).
 
 A plan says where every part may go. The next stage builds the parts.
 
@@ -934,7 +1023,7 @@ checks that each one stayed there. It is also where bought parts, servos and mas
 
 ### 6.1 How a side is built
 
-`fabricate(template, config, t=1.0)` (`spiderpig/fabricate.py:279`) first gets the side's
+`fabricate(template, config, t=1.0)` (`spiderpig/fabricate.py:289`) first gets the side's
 `SideDesign` (its groups, claims and plan) from `design_side`, which caches it per
 template and config. It then calls `fabricate_side`, which asks each group to **realize**
 its parts at crank angle `t`, inside its own claims:
@@ -952,85 +1041,189 @@ once: both sides use the same plan.
 
 ### 6.2 What each group builds
 
-- **Links and frame plates** (`construction/plates.py`): a link is a pill of the link
-  radius (6 mm) along each outline segment, minus its holes. Each frame plate is a disc on
-  O with arms to every pillar, plus pads, minus cut-outs.
-- **Pivots** (`construction/pivots/`): the `standoff` pillar and the `chicago` pin, the
-  only two since 2026-10-07 (the printed stepped axle and the rod, bolt, bearing,
-  bushing and PTFE pivots were removed: `config.REMOVED_CONSTRUCTIONS`). Every pivot's
-  spacer rings, and the rings it carries through a clearance gap, are printed: an
-  unclamped spacer only sets play. A metal shaft can't neck, so every layer it crosses
-  holds a spacer as wide as its narrowest ring. The hardware research behind these
-  choices is in `construction/pivots/chicago.py`'s docstring.
-  **The default pillar is the standoff** (`--pillar standoff`, `pivots/standoff.py`, since
-  2026-10-03): a 6 mm round standoff column from plate to plate, a button head and washer
-  through each plate (no glue; the inner heads stand 3 mm into the electronics bay, which
-  the deck plate is notched round), the links turning on the standoff, a printed ring in
-  every other layer. A column one stock goBILDA 1501 length fills is that aluminium M4
-  standoff; any other (longer than 60 mm, or a length goBILDA lacks) is one MISUMI NETRF6
-  steel standoff made to its length in 0.1 mm steps, tapped M3 (since 2026-10-05: at the
-  plan's own z the splices it replaced opened at jam SF 1.43 on the Strider double and
-  0.51 on the quad). A column no stock part fills is unbuildable to the planner (the
-  axle's `column` hook). Its strength is a beam per bay between supports, the plates; the
-  6 x 3.3 mm 6061 tube holds 4.4 times the printed 6 mm pillar's moment. A link sweeping
-  close to a pillar stops it short of one plate (a ring can't neck): then it is a
-  cantilever. (The spliced columns, `standoff_hand` / `_bench` / `_m3`, were removed on
-  2026-10-07.)
-  **The default pin is the Chicago screw** (`--pin chicago`), from the pivot review of 2026-10-03 (`pivots/chicago.py` has its table): a
-  4 mm barrel through the stack plans the same stacks as the rod, its axial play is set by
-  the barrel length and a printed head spacer per end (0.05-0.15 mm; a PTFE washer and
-  DIN 988 shims until 2026-10-05) instead of by feel; barrels come in 1 mm steps from 4 to
-  16 mm, then 18-80 mm, at most 23 mm on the Strider (a planner rule: a long barrel is a
-  long span); its lowest link is bonded
-  to the barrel, its bending stress is 0.6 times the rod's, which tells where a pin spans
-  more than a layer (the demo Klann, `--linkage klann`, quad at 0,0,180,180 puts pin E
-  across 9 mm: jam SF 0.80 against the rod's 0.53 at the design's own loads, both
-  failing at 245 N; on `klann_lego` quad at 0,0,180,180, the second test design, every
-  pin spans 3 mm and it is 2.62 against 2.02, 13 layers each, $206.09 against $227.58),
-  and it comes apart. The
-  audit's strength check (`spiderpig/strength.py`, `docs/audit/STRENGTH.md`) takes each
-  design's own MuJoCo pin loads (walking p99, jammed at the servo's torque limit), bends a
-  two-link pin by `F s / 2` (a pillar as a cantilever or a beam between the plates) and
-  fails a joint under jam SF 1, warns under 2 jammed or 3 walking.
-  The audit reports each link's tilt out of plane (`construction/wobble.py`): free (bore
-  clearance over bearing length, 3.8 deg for a 0.2 mm fit in 3 mm sheet) and held by the
-  faces beside it (0.72 deg worst, 0.39 mean on the Strider double).
-- **The bolt crank** (`construction/crank.py`, `BoltCrank`; `--crank bolt`, the walkers'
-  default since 2026-10-03, the mechanisms' since 2026-10-04): laser-cut instead of
-  printed. **Its current form** (an aluminium crank sheet, 0.100 in 6061-T6, the default
-  since 2026-10-04): every web is one plate; every crankpin and journal is a stock M3 x
-  5.5 AF steel hex standoff whose ends sit in hex pockets of its two webs (dog-bone corner
-  reliefs), an M3 button head and a DIN 9021 washer screwed into each end to retain them,
-  a printed collar taking up what a stock length stands past a plate; the riders turn on
-  a printed 8.5 mm sleeve over the hex, printed rings fill the clearance gaps along a run;
-  a round M3 standoff is the journal stub, a printed thrust sleeve round it the crank's
-  stop toward the outer plate; the chain that ends in the hub plate has no screw over it
-  (the hub plate caps it, held by the horn screws, so the hub plate, horn, servo and inner
-  plate go on as one unit: `construction.robot.ASSEMBLY`). It is rated by the hex's
-  bearing in the aluminium pocket (`hex_bearing_nm`, jam SF about 2.5 on the Strider).
-  TrotBot's heel and toe take `bolt_round` (round standoffs clamped between the webs by
-  friction: the hex's sleeve doesn't clear b7 there). The Strider double plans 14 layers
-  / 66.5 mm a side, the quad 24. (Its first form, two acrylic plates a web on M6 hex
-  bolts, went on 2026-10-07 with the hex crank's `bolt_hub_screw` / `bolt_unretained`
-  variants: an acrylic crank sheet is refused.)
-- **The printed and keyed cranks** (segments printed between runs, screwed or keyed
-  through each crankpin; the defaults until 2026-10-03) were removed on 2026-10-07 (W2):
-  `config.REMOVED_CONSTRUCTIONS`; git history and `docs/audit/STRENGTH.md` keep their
-  numbers.
-- **The drive** (`servos/mount.py`): the servo sits on top of the inner plate, output face
-  down, its axis on O, its body pointing away from the pillars. Its horn is turned on the
-  toothed output shaft so the horn screws fall between the crank's webs, and the mounting
-  screws whose heads would hit the crank hub are left out. A linkage with a second input
-  stops here with `ConstructionError`: there is one servo per side, so a second input has
-  no drive.
-- **The robot's chassis** (`construction/robot.py`, `chassis.py`): the two servos back to
-  back between laser-cut aluminium centre plates; four chains of 6 mm round M3 standoffs
-  (the **frame ties**, an M3 button head up through each inner plate, an M3 set screw
-  through the centre plates joining each pair and clamping them, no glue) joining the two
-  inner plates; rear screws into the servos' pilot holes; and the electronics deck between
-  the inner plates over the servos (`construction/deck.py`). The chassis sits outside both sides' stacks, so the planner never
-  sees it; it is checked for collisions only by intersecting solids at sampled crank
-  angles.
+Every group has one construction now: the `bolt` crank (`bolt_round` on TrotBot's heel and
+toe), the `standoff` pillar and the `chicago` pin. The printed and keyed cranks, the
+acrylic two-plate M6-bolt crank and the hex crank's variants, the printed snap axle, the
+rod, bolt, bearing, bushing and PTFE-lined pivots and the spliced standoff pillars were
+removed on 2026-10-07: a config, spec or stored design naming one fails with its
+replacement (`config.REMOVED_CONSTRUCTIONS`, and `config.REMOVED_PARAMS` for their
+`Params`); [DECISIONS.md](agentlib/DECISIONS.md) keeps why. Which crank a design gets is
+data: `config.default_crank` reads `config.MODULE_CRANKS` (per linkage and module), then
+`config.LINKAGE_CRANKS` (per linkage), then `config.DEFAULT_CRANKS` (per kind).
+
+**Links and frame plates** (`construction/plates.py`). A link is a pill of the link radius
+(6 mm) along each outline segment, minus its holes, cut from its sheet (section 5.7). An
+aluminium link riding a crankpin grows a boss round its bore to 1 x its thickness of web
+where its width leaves less (`plates.rider_bosses`, `RIDER_BOSS_T`), sized on the crank
+resolved for the crank sheet, and claimed, so the planner sees it. Each frame plate is a
+disc on O with arms to every pillar, plus pads, minus cut-outs; every round hole in a
+frame plate gets a boss of 2 x its thickness (`plates.boss_web`), and pillars next to each
+other about O are joined by a chord (`plates.chords`, which the underside reads too). Each
+foot link carries a printed TPU 95A sock round its toe, in its own layer, snapped into two
+notches (`foot_sock`); the BOM prints it in TPU (`hardware.bom.part_filament`: a filament
+line per filament, PETG for a printed part pressed on metal, such as the capped crankpin's
+sleeve), and the sim's floor friction is set for it (`SimParams.friction`, 0.65).
+
+**The standoff pillar** (`construction/pivots/standoff.py`, `StandoffAxle`). A 6 mm round
+standoff column runs from the outer frame plate's inner face to the inner plate's, a
+button head and washer through each plate from outside (no glue; the inner heads stand in
+the bay between the robot's inner plates, which the deck is notched round). The links turn
+on the standoff (a running fit), and a printed spacer ring fills every other layer, so
+every link has a face on both sides; where an aluminium link made a layer thicker, the
+rings grow to take up the air (`ring_fill`), and every gap the column crosses takes a
+printed gap ring. A column one stock goBILDA 1501 length fills is that aluminium M4
+standoff; any other is **one piece** (`StandoffAxle.one_piece`): a MISUMI NETRF6 round 1018
+steel standoff made to its length in 0.1 mm steps, tapped M3 both ends, an M3 button head
+and DIN 9021 washer each end (`crank_catalog.pillar_shaft` writes its catalog key). It is
+never spliced. A short column no stock length fills is refused unless goBILDA standoffs
+spliced at link-free layers would have filled it (`StandoffAxle._spliceable`, the rule the
+removed spliced pillar left behind, kept so the plans stay where they were); the axle's
+`column` hook is how the planner learns that a column can't be built. A column up to 2 mm
+short of its gap takes steel take-up shims under the face over it, in whole 1 mm and
+`SHIM_STEP` (0.5 mm) steps (on M3 within `COLUMN_TOL`, 0.25 mm, of the gap), in the
+clearance gap there with its gap ring trimmed, else in the spacer layer; the note's
+`shims_mm` lists them. A link sweeping close to a pillar stops it short of one plate (a
+ring can't neck): it is then a cantilever from the other plate, its free end closed by the
+same screw and washer, and the clearance gap there takes a gap ring so the link can't
+slide.
+
+**The Chicago screw pin** (`construction/pivots/chicago.py`, whose docstring holds the pivot
+review's table and the assembly steps). An M3 Chicago screw's 4 mm barrel runs the pin's
+whole stack; the screw's head bottoms on the barrel's end, so the head-to-head distance is
+the barrel length however tight the screw is, and the links turn between the heads.
+Barrels come in fixed lengths (`fastener_catalog.CHICAGO_LENGTHS`: 1 mm steps from 4 to
+16 mm, then 18, 20, 22, 23, 25, 28 and on to 80 mm); the construction picks the shortest
+that clears the stack and takes up the rest with one printed head spacer per end, which
+sets the column's axial play (0.05-0.15 mm) by the barrel length rather than by feel. That
+a pin's links fit a stock barrel is a planner rule (`ChicagoShaft.column`), and on the
+Strider barrels are capped at 23 mm (`chicago.MAX_BARREL`, applied in
+`ChicagoAxle.resolve`), since a long barrel is a long, weak span. The lowest link is bonded
+to the barrel with epoxy, so the barrel is held by holding that link while the screw is
+driven from above. Every pivot's rings are printed (an unclamped spacer only sets play);
+a metal shaft can't neck, so every layer it crosses holds a spacer as wide as its
+narrowest ring.
+
+**Strength.** The audit's strength check (also `verify` standard's `strength.joints` row
+and `explain --strength`; `spiderpig/strength.py`,
+[docs/audit/STRENGTH.md](audit/STRENGTH.md)) takes each design's own MuJoCo pin loads
+(walking 99th percentile, and jammed at the servo's torque limit, which
+`config.LINKAGE_TORQUE_LIMITS` lowers per linkage), bends a two-link pin by `F s / 2`,
+rates a pillar as a beam per bay between its supports (the plates' faces) or as a
+cantilever, and fails a joint under jam SF 1, warns under 2 jammed or 3 walking. Every beam
+is at the plan's own z (`wobble.column_wobble`'s `layer_z`, `wobble.layer_mid`): each link
+at its layer's mid-plane, a pillar's supports at the plates' faces, clearance gaps and
+thicker plates included. Every link plate is rated too (`strength.link_rows`: net section
+at the most loaded hole, plus bending for a link of three or more pins), naming the
+aluminium sheet a link would need. The audit also reports each link's tilt out of plane
+(`construction/wobble.py`): free (bore clearance over bearing length) and held by the faces
+beside it; a link beside a clearance gap bears on what the column holds there (an end's
+head or printed spacer, a gap ring).
+
+**The bolt crank** (`construction/crank/`: `BoltCrank` in `bolt.py`, its fits in `hex.py`
+and `web.py`, its ratings in `capacity.py`, its parts in `plates.py`'s `_WebPlates`). It is
+laser-cut from the crank sheet (0.100 in 6061-T6 by default; `BoltCrank.for_sheet` and
+`resolve(ctx)` read the sheet's thickness and yield, and a non-metal sheet is refused).
+Every web is one aluminium plate, on its layer's floor, the hub plate at its layer's top
+(`BoltCrank.plate_z`). With the default `pin="hex"`, every crankpin and journal is a stock
+M3 x 5.5 mm across-flats steel hex standoff (`crank_catalog.HEX_M3_LENGTHS`) whose ends sit
+in hex pockets of its two webs (`BoltCrank.hex_cut`: 0.1 mm over the across-flats, with a
+dog-bone relief of the service's 0.8 mm inside radius through each corner, so the flats
+stay whole); an M3 button head and a DIN 9021 washer screwed into each end retain the
+plates. Where the stock length stands past a plate (at most `protrude_max`, 1.2 mm, per
+end, each end's stack inside a 4 mm gap), a printed hex-bore collar takes it up, or both
+ends sit up to `recess_max` (0.3 mm) inside their pockets (`fit_hex`, which splits what
+stands past the plates so the taller gap need is least, the upper end using the air over
+its plate, `air_over`). Where no stock length fits a chain at the plan's z, `hex_gap_fit`
+opens the gaps along it (the one over its lowest web first, each to at most 4 mm, printed
+rings on the sleeve filling them) to the next stock length. The riders turn on a printed
+8.5 mm sleeve over the hex (`rider_d` sizes their holes), and printed rings fill the gaps
+along a run. Two chains share a web, or a journal standoff on O joins them; the last
+chain's top web is the hub plate, held to the horn by the horn screws, which come up
+through it from below (their heads in the gap under it).
+
+The chain that ends in the hub plate is **capped**: it has no screw over the hub plate
+(`hub_capped`), so the hub plate, horn, servo and inner plate go on as one unit
+(`construction.robot.ASSEMBLY`, the whole robot's assembly order, which the pivots' and the
+crank's docstrings defer to). Its printed sleeve is a light press on the hex
+(`BoltCrank.capped_press`, 0.1 mm), so the sleeve, caught between its plates, carries the
+standoff. The crank body stops toward the outer plate on a printed thrust sleeve round the
+stub (`stub_thrust` in the crank's note, 8.5 mm, its end 0.1 mm over the outer plate,
+claimed in the stub's layers and gaps: `stub_thrust_r`) and toward the hub on the capped
+sleeve. The stub is an M3 round standoff screwed up into the lowest web, turning in a
+6.6 mm hole of the outer plate (the bottom bearing).
+
+The horn screws take shims under the head where a stock length is too long
+(`horn_fit_web`: whole 1 mm ones, bought as DIN 433 pairs, where the horn keeps enough
+thread, else 0.1 mm DIN 988 steps). The horn holes keep the service's minimum hole and
+2 x t edge distance, the hub's and webs' rims 1 x t (`BoltCrank.web_edge_t`, the cut rules'
+error level). A crankpin within a screw head's reach of the horn's rim makes the printed
+horn spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`). The crank is
+rated by the hex's bearing in the plate's own pocket depth at the weaker of the plate's and
+the 300 MPa steel's yield (`hex_bearing_nm`, `hex_capacity`); the capped hex is rated in
+the hub's depth less the press's 0.1 mm.
+
+With `pin="round"` (`--crank bolt_round`: TrotBot's heel and toe through
+`config.LINKAGE_CRANKS`, whose `b7` clears a 6 mm crankpin but not the hex's 8.5 mm sleeve),
+every crankpin is a goBILDA 1501 round 6 mm standoff clamped between its two webs by an M4
+button head into each end (heads in the clearance gaps beyond the webs, DIN 988 shims and a
+spacer gap taking up the standoff's length past the layers: `fit_web`), and the riders turn
+on the standoff. It is a friction clamp, rated in `BoltCrank.capacity` with unverified
+coefficients. Its clamp needs a screw over the hub plate as well, so a `bolt_round` chain
+that ends in the hub plate has no assembly order (`_WebPlates.assembly_issue`, the crank
+note's `assembly`, an `assembly:` audit error).
+
+The router's rules for the crank (`BoltCrank.joint_rules`, `JointRules`) are in section
+5.3; the crank's plans use `heads="gap_sink"` (section 5.4).
+
+**The drive** (`servos/mount.py`, `DriveGroup`). The servo sits on top of the inner plate,
+output face down, its axis on O, its body pointing away from the pillars. Its horn is
+turned on the toothed output shaft so the horn screws fall between the crank's webs, and a
+printed horn spacer sits between the horn and the hub plate. A linkage with a second input
+stops here with `ConstructionError`: there is one servo per side, so a second input has no
+drive. Every screw that comes up through the inner plate from the leg side (the servo's
+front screws, the frame ties', the deck rails') is the drive group's claim, its head in the
+gap under the plate (`DriveGroup.claims`, `chassis_screws`; the tie and rail positions are
+known before a plan: `chassis.tie_points_ctx`, `deck.rail_screw_points`). A front screw
+hole with less than `Params.servo_screw_web_t` (1.0) x t of web to the horn's hole or a
+relief is left out (`DriveGroup.screw_web`; the front reliefs are cut at the model's
+rectangle, `mount.RELIEF_CUT_GROW`); the servo uses all four front screws when the crank's
+hub sits a layer under the horn (`horn_layers`); `servo_screw_web_t=0` keeps all four.
+
+**The robot's chassis** (`construction/robot.py`, `chassis.py`). The two servos sit back to
+back, their rear faces screwed into a stack of centre plates cut from the frame's
+aluminium, the thinnest stack that seats the most rear screws (`chassis.centre_sheet`).
+Four **frame ties** join the two inner plates beside the servos: per tie and side a chain
+of 6 mm round M3 standoffs from the inner plate to the centre plates (stock lengths, 1 mm
+shims), an M3 button head up through the inner plate from the leg side, and an M3 set
+screw through the centre plates joining the two chains and clamping the plates between
+them (no adhesive). The ties move along the servo until their holes are 2 x t off the
+servo's screw holes and recesses (`chassis.tie_locals`, `tie_neighbours`, which the
+underside reads too); the centre plates' outline keeps 2 x t round each rear screw recess
+(`chassis.recess_wall`), and their bump reliefs have 1 mm corners (`RELIEF_CORNER`). The
+servo's bus sockets are in its rear connector housing, so `ServoSpec.bus_ports` gives the
+centre plates an open slot from the housing to their far edge (`chassis._port_slots`;
+`opening="pocket"`, a closed pocket with no access, is kept to compare; the
+rear holes within 2 x t of it are dropped, so each servo keeps one rear screw). The
+STS3215's rear idler horn stays in its box (`Idler.fitted`; `servos.model.unfit_idler` cuts
+it from the CAD model), and the plates clear its 6 mm boss with a round relief
+(`Relief.round`, `chassis.RoundRelief`). Reliefs closer than the service's web are merged
+into one cut (`chassis._merge_close`), and a head recess that close opens into the relief
+(`_recess_bridges`).
+
+**The electronics deck** (`construction/deck.py`). A laser-cut plate between the inner
+plates over the servos, on two printed rails screwed to the inner plates (M3 from the leg
+side into nut traps in the rails), carrying the ESP32 servo driver, a 2S LiPo in a printed
+cradle screwed to the deck and strapped, the charger, the protection board and a toggle
+switch (the catalog in `hardware/electronics.py`, each item with its mass). Nothing moves in
+its z band, and `deck_clearance` proves it over the whole cycle. The deck lowers straight
+down past the pillars' inner screw heads: `deck.path_notches` notches the plate round every
+static part in its way, `deck.insert_z` moves the rails' inserts into the bay where a notch
+would leave a deck screw hole too little web, and `deck.deck_path` checks the way on the
+parts' geometry (`deck_clearance`'s `blocked`, an audit problem).
+
+The chassis and the deck sit outside both sides' stacks, so the planner never sees them;
+they are checked for collisions by intersecting solids at sampled crank angles (and the
+deck's z band over the whole cycle).
 
 ### 6.3 The contract, and how far the guarantee goes
 
@@ -1059,12 +1252,12 @@ few angles is strong evidence, but it is not a proof, and the chassis has nothin
 
 ### 6.4 Bought parts, servos and mass
 
-- **The parts catalog** (`hardware/catalog.py`, `parts.py`): 67 items with 162 offers. Of
-  the offers, 48 are verified (the vendor's page was fetched and showed the product) and
-  32 carry a price; the rule is "nothing is priced from memory". Every screw comes from
-  one table in `hardware/fasteners.py`, except the crank's, which still has its own (the
-  two now disagree on the stock lengths of the M2 self-tapping screws that hold the
-  servos).
+- **The parts catalog** (`hardware/catalog.py`, data in `parts.py`, `fastener_catalog.py`,
+  `crank_catalog.py`, `sheet_catalog.py`, `electronics.py`): at the snapshot, 67 items with
+  162 offers, 48 of them verified (the vendor's page was fetched and showed the product)
+  and 32 priced; the rule is "nothing is priced from memory". Every bought item's first
+  offer is a direct product page (`hardware/sources.py`). Every screw family comes from
+  one table, `hardware/fasteners.py`.
 - **Mass** (`hardware/mass.py`): one density table, printed parts at 100 % infill (an
   upper bound), servos at their datasheet weight, and exact volumes and inertias from
   OCCT. The animated model, the walking model and the MuJoCo model share these numbers.
@@ -1079,13 +1272,13 @@ few angles is strong evidence, but it is not a proof, and the chassis has nothin
 
 ### 6.5 Limits of fabrication
 
-- No strength analysis: no stresses or deflections under walking loads. A pillar that one
-  link blocks from reaching both plates is anchored in one plate only, with no check of
-  the overhang.
-- One crank construction (printed), and only continuous-rotation servos, one per side.
-- The chassis, frame ties and centre plates are outside the planner's guarantee.
-- A `rod` pillar is costed as a fraction of a 100 mm stock rod, and nothing refuses a
-  stack taller than that rod (no design was found that reaches it).
+- Strength is checked for the joints and link plates only (section 6.2), as beams at the
+  simulated loads, with unverified friction coefficients for the `bolt_round` clamp; the
+  frame and centre plates are dimensioned by the cut rules and the sheet roles, not by
+  loads.
+- One crank construction (the `bolt` crank, round or hex crankpins), and only
+  continuous-rotation servos, one per side.
+- The chassis, frame ties, centre plates and deck are outside the planner's guarantee.
 
 With every part built, the last stage writes them out.
 
@@ -1100,17 +1293,21 @@ or counts.
 ### 7.1 Files for making it: `spiderpig build`
 
 `spiderpig/build.py` plans the side (through the store, section 9.5), fabricates the robot
-and writes:
+(served from the fabrication cache, `spiderpig/fabcache.py`, when the parts' code and the
+design are unchanged) and writes the files below. A build into a folder that already
+holds its outputs, from the same sources and options, does nothing
+(`spiderpig/uptodate.py`; `--force` builds anyway). The running example's column is the
+2026-10-01 snapshot's.
 
-| file | contents | running example |
+| file | contents | running example (snapshot) |
 |---|---|---|
 | `klann.step` | the whole robot, one named, coloured product per part | 11.4 MB, 173 solids |
 | `klann.stl` | the whole robot as one binary mesh | 21.8 MB, 436,932 triangles |
-| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part (a mirrored copy where the right side needs one), with quantities and grams | 16 parts and 1 mirrored |
-| `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock | 2 sheets of 300 × 300 mm |
-| `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts one DXF per distinct part (blue `CUT` layer, R2007) with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (since 2026-10-05) | not in the snapshot |
-| `bom.csv`, `bom.md`, `bom.json` | the bill of materials (shims one line per thickness) | 11 purchase rows, at least $124.87 |
-| `ORDER.md` | the shopping list (`hardware/order.py`): a cart per vendor, each line a direct product page (`hardware/sources.py`), the uploads per cutting service, the prints per filament, shop supplies (filament, threadlocker) taken as on hand, unpriced lines estimated from a priced alternative (since 2026-10-05) | not in the snapshot |
+| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
+| `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock (`layout.save_sheets`) | 2 sheets of 300 × 300 mm |
+| `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
+| `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
+| `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
@@ -1118,25 +1315,51 @@ from `spiderpig build`.
 
 **DXF sheets** (`spiderpig/layout.py`): each laser part is cut through its mid-thickness,
 turned so its long axis runs along x, and offset by half its sheet's kerf where the
-service doesn't compensate for it (Ponoko's 0.2 mm in acrylic: outer contours grow by
-0.1 mm, holes shrink by as much; SendCutSend compensates itself, so its files are nominal;
-`--kerf` overrides every sheet). The parts' bounding rectangles are packed with
-`rectpack`, and any part that doesn't fit raises an error rather than vanishing. Round
-holes are written as exact circles; every other contour is one closed `LWPOLYLINE` whose
-lines and arcs are exact (an arc is a vertex's bulge), any other curve flattened within
-0.02 mm (`CHORD_TOL`). `layout.fidelity` reads the contours back against the solid (the
-cut-rule review's `dxf` check).
+service doesn't compensate for it (`layout.sheet_kerf`: the sheet item's `kerf_mm`, 0.2 mm
+at Ponoko, so outer contours grow by 0.1 mm and holes shrink by as much; 0 at SendCutSend,
+which compensates itself, so its files are nominal; `--kerf`, or a spec's `fit.kerf_mm`,
+overrides every sheet). The parts' bounding rectangles are packed with `rectpack`, and any
+part that doesn't fit raises an error rather than vanishing. Round holes are written as
+exact circles; every other contour is one closed `LWPOLYLINE` whose lines and arcs are
+exact (an arc is a vertex's bulge), any other curve flattened within 0.02 mm (`CHORD_TOL`).
+`layout.fidelity` reads the contours back against the solid (the cut-rule review's `dxf`
+check).
+
+**Cut rules** (`spiderpig/manufacture.py`): every laser-cut part is reviewed against its
+sheet's service (SendCutSend for aluminium, Ponoko for acrylic): the minimum hole, the edge
+distance from a hole to an edge or another hole, the web round every non-circular cut-out
+(`web`: to the edge, a hole or another cut-out), the minimum part and the inside-corner
+radius, and that the DXF matches the solid. In metal a hole closer than 1 x the thickness
+to an edge or hole, or under the service's minimum hole, is an **error** (the audit fails);
+under 2 x it is a warning. Every issue carries its `why` and a `fix`. `manufacture.messages`
+turns them into the audit's problems and warnings (a "cut rules" column and a per-part table
+in `audit.md`, `manufacture` in `audit.json`) and `verify` standard's `manufacture.cut_rules`
+row (errors: the `manufacture` / `cut_rule` failure) with a soft `manufacture.warnings`;
+`manufacture.summary` is the build report's `cut_rules` (`api.BuildReport`, the MCP build's
+too) and the design card's (`/api/design/{id}`, `api.cut_rules`: read from the stored build,
+never fabricating).
 
 **The BOM** (`hardware/bom.py`): every purchased body is one unit of its catalog key.
 Laser-cut and printed parts are grouped by shape. Two parts join a group only if their
 volume, area and principal moments agree and a boolean intersection proves that they
 coincide; a right-side part that mirrors its left twin joins without the boolean. A laser
 part and its mirror image are the same cut (flip the sheet); a printed part and its mirror
-image are different prints. Purchases are rounded up to whole packs of the preferred
-offer. The total leaves out rows with no price, and the BOM says so; for the running
-example the unpriced rows are 8 M2 self-tapping screws and 4 M3 × 18 mm screws. The made
-parts come to 39 laser-cut parts in 8 shapes, 90 printed parts in 16 shapes, and about
-95 g of plastic.
+image are different prints unless one is a translate of the other. A line per sheet for
+the plates, a line per filament for the prints (`hardware.bom.part_filament`). Shims are
+ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the clamped 1.0 and
+0.5 mm ones bought as DIN 433 washers (`bom.SHIM_AS`). Purchases are rounded up to whole
+packs of the preferred offer. The total leaves out rows with no price, and the BOM says so;
+for the running example at the snapshot the unpriced rows were 8 M2 self-tapping screws and
+4 M3 × 18 mm screws, and the made parts came to 39 laser-cut parts in 8 shapes, 90 printed
+parts in 16 shapes, and about 95 g of plastic.
+
+**The shopping list** (`ORDER.md`, `hardware/order.py`): a cart per vendor, each line the
+item's first offer, a direct product page (`hardware/sources.py`, checked in a browser
+where the offer is `verified`; McMaster-Carr's prices need a login); the uploads per
+cutting service; the prints per filament. Shop supplies (filament, threadlocker) are taken
+as on hand (`bom.ON_HAND`): listed, not ordered or totalled. An unpriced line is estimated
+from its first priced alternative and totalled apart. A design's servo torque limit
+(`config.LINKAGE_TORQUE_LIMITS`) appears as a servo-firmware note.
 
 ### 7.2 The animated model: `spiderpig bake`
 
@@ -1144,7 +1367,7 @@ parts come to 39 laser-cut parts in 8 shapes, 90 printed parts in 16 shapes, and
 the browser viewer. A built-in profiler times its stages, and their names are kept stable
 on purpose, because scripts parse them:
 
-| stage | does | running example |
+| stage | does | running example (snapshot) |
 |---|---|---|
 | `1_reference_build` | fabricate the robot at t = 0 | 16.1 s (56 %) |
 | `2_mesh_share` | let a body reuse another's mesh: candidates by body name, confirmed by exact mass properties | 1.7 s |
@@ -1155,7 +1378,7 @@ on purpose, because scripts parse them:
 | `6_foot_path_extra`, `6b_drive_extra` | the foot path, and the data the viewer's drive mode needs | under 1 s |
 | `7_serialize` | write the file | under 1 s |
 
-The running example's glb is 9.5 MB: 179 bodies, 173 of which carry a part, drawn with 139
+At the snapshot the running example's glb was 9.5 MB: 179 bodies, 173 of which carry a part, drawn with 139
 meshes, baked in 28.6 s (36 s on the command line, imports included). Bakes are cached in
 the store as `bakes/<config key>.glb`. The drive data written into the file (every foot's
 path, the centre of mass, the mass, the servo's speed) let the viewer drive the robot
@@ -1175,7 +1398,7 @@ and stall torque, and every step narrows its torque to a DC motor's speed-torque
 (`motor_line`: the loop alone would deliver the stall torque at the no-load speed, which no
 servo does; the clamp cut the running example's peak from 1.26 to 0.43 N·m and costs 2 %
 of speed). The model also maps every node of the glb to its MuJoCo body, which is how the
-viewer's physics drive (8.4) poses the baked meshes. The running example has 35 bodies, 16
+viewer's physics drive (8.4) poses the baked meshes. At the snapshot the running example had 35 bodies, 16
 loop constraints (joints C and E of each of the 8 legs) and a mass of 460.6 g: sheet 227 g,
 servos 110 g, printed parts 95 g, and 29 g of screws, horns and inserts. The crank's
 reflected rotor inertia (`crank_armature`) is an unverified estimate; the speed is
@@ -1186,8 +1409,10 @@ below 5e-4 the model is ill-posed and refused.
 
 - **Meshing** (`spiderpig/mesh.py`): OCCT's mesher on each part. The triangles are read
   back through OCCT's own glTF writer, about eight times faster than walking them from
-  Python (project docs). Faces the mesher leaves untriangulated (three in the XL330's
-  model) are skipped and counted rather than crashing the bake.
+  Python (project docs). The bake meshes each shared part (`mesh_part`) and reads them all
+  back at once (`read_meshes`); the MJCF's hulls use `tessellate` / `tessellate_many`.
+  Faces the mesher leaves untriangulated (three in the XL330's model) are skipped and
+  counted rather than crashing the bake.
 - **Worker processes** (`spiderpig/workers.py`): OCCT's Python binding holds Python's
   global interpreter lock, so threads don't speed up CAD work. Forking a process after
   OCCT has started its thread pool deadlocks, and `multiprocessing`'s spawn mode
@@ -1219,7 +1444,9 @@ The files describe a robot that should work. The next section is about whether i
 ## 8. Seeing and judging a design
 
 A design that builds may still walk badly. Three models estimate how it walks: a
-quasi-static model (8.1), the MuJoCo simulator (8.2) and a simple kinematic gait (8.3). A
+quasi-static model (8.1), the MuJoCo simulator (8.2) and a simple kinematic gait (8.3).
+The running example's figures in this section are the 2026-10-01 snapshot's, with the
+constructions and masses of the time. A
 server and a viewer show it (8.4), and three command-line tools check, tune and compare
 designs (8.5).
 
@@ -1260,8 +1487,8 @@ shuffle forward isn't modelled.
 ### 8.2 MuJoCo
 
 `spiderpig sim`, and `verify` at level `full`, run the MJCF of section 7.3 in the MuJoCo
-simulator, with gravity, friction (coefficient 0.5) and soft contacts. For the running
-example, with both servos at 80 % of their no-load speed (a loaded servo can't reach the
+simulator, with gravity, friction (coefficient 0.65 since the TPU feet; 0.5 at the
+snapshot) and soft contacts. For the running example at the snapshot, with both servos at 80 % of their no-load speed (a loaded servo can't reach the
 full no-load speed), 4.5 simulated seconds take
 4.2 s of wall-clock time. The robot walks at 134 mm/s, 193 mm per crank turn, with 24 mm
 of bob and 8.6° of peak tilt. It doesn't fall; its peak torque is 0.59 N·m, 31 % of the
@@ -1292,8 +1519,9 @@ Three assumptions sit behind those figures, and the model now states them
   peak; the Klann quad's walking peak is of the order of 100 N, the jammed load 155 N),
   with the base's peak vertical acceleration (7.5 g at full speed) and the airborne
   fraction per revolution (2 %); the passive pins carry a Coulomb friction estimate
-  (`pin_frictionloss`, 1.5 mN·m) and the frame a 100 g payload for the battery and board
-  the BOM doesn't list (`payload_g`; 561 g in all).
+  (`pin_frictionloss`, 1.5 mN·m); at the snapshot the frame carried a 100 g payload for a
+  battery and board the BOM didn't list (`payload_g`; 561 g in all), which is 0 now that
+  the deck's electronics are parts with their catalogued masses.
 - **The contact softness is unvalidated**, as before; the support and impact figures
   follow it, and the torque peak is a range (0.33–0.60 N·m over the servo's loop
   stiffness, 0.16–0.89 N·m over its rotor inertia) that `compare_with_walk` notes.
@@ -1437,8 +1665,11 @@ vocabularies.
 `api.resolve(spec)` validates the spec, writes every default into it explicitly, builds
 the `BuildConfig`, and hashes the resolved spec with the **engine version** into a
 16-hex-digit **design id**. The same spec on the same engine always gets the same id, and
-so the same folder in the store. The engine version is the package version plus a hash of
-`spiderpig/linkages/*.py` and the planner's default settings.
+so the same folder in the store. The engine version (`design.engine_version`) is the
+package version plus a hash of every package source but the front-ends (the server, the
+MCP layer and the command lines, `design.ENGINE_EXCLUDE`), docstrings stripped, and the
+planner's default settings less its time budget. The fabrication cache is keyed more
+finely, by the code its computation can reach (`spiderpig/keys.py`, section 11).
 
 Each operation is a function of the design handle that maps onto one engine pass and
 returns a report; the stage operations also cache it on the handle and in the store:
@@ -1478,7 +1709,8 @@ r = api.check(d)        # ok=False, static/link_no_layer: "b7 ... passes crankpi
                         # 6.8 mm, under the 10.0 mm a post there needs"
 fix = r.failures[0].recommendations[0]
                         # unit 7 -> 10.5, "checked: the static stage passes, and it plans
-                        # in 12 layers (36 mm)"; fix.patch == {"linkage": {"params": {"unit": 10.5}}}
+                        # in 13 layers (47.564 mm)" (2026-10-08);
+                        # fix.patch == {"linkage": {"params": {"unit": 10.5}}}
 d = api.derive(d, fix.patch)
 api.plan(d)
 print(api.verify(d, "standard").describe())
@@ -1527,9 +1759,13 @@ designs/<id>/spec.json            the spec as given
              log.jsonl            every operation, its time, cached or not
 cache/<source version>/           the linkage catalog's cards, per code version
 bakes/<config key>.glb            the viewer's and `spiderpig bake`'s cache
+fab/<fab key>-<env tag>/...       fabricated mechanisms (spiderpig/fabcache.py)
+builds/<hash of --out>.json       what a `spiderpig build` into a folder wrote (uptodate.py)
+pin_loads/<config key>.json       each design's MuJoCo pin loads, for the strength check
 ```
 
-A stage file is served again only if its engine version matches. A stored **plan** is
+A stage file is served again only if its engine version matches, and since the engine
+version hashes every engine source, any engine edit retires every stored stage. A stored **plan** is
 never trusted: it is re-made from its layers and route and verified on every load, which
 takes about 0.5 s in a fresh process and about 25 ms in a running server (project docs).
 The cards' cache is keyed by the *source version*, a hash of all the package's code,
@@ -1576,7 +1812,7 @@ The command line predates the agent surface. `spiderpig <command>` dispatches to
 The commands that take a design share options: `--linkage` (Strider by default), `--module`
 (by default the linkage's own: its `default_module` when it names one, Strider's `double`,
 else `quad`, and the robot for a walker; `single` and one side for a mechanism;
-`explain` alone defaults to `single`), `--phases` in degrees,
+`explain` reads one side), `--phases` in degrees,
 `--proportion NAME=VALUE`, `--servo`, `--pillar`, `--pin`, `--crank` (by default
 `standoff`, `chicago`, `bolt`; TrotBot's heel and toe `bolt_round`), `--sheet` and
 `--thickness`. Given build options, `build`, `bake`, `explain`, `audit`, `export` and
@@ -1603,16 +1839,23 @@ The rest of the report steps back from the pipeline to assess the project as a w
 This section describes how the project checks itself: its tests, the checks that guarded
 the performance work, outside test drives, the tooling, and what is missing.
 
-**Tests.** `pytest` collects 901 tests:
+**Tests.** `pytest` collects about 2,000 tests (2026-10-08), run in tiers
+([TESTING.md](agentlib/TESTING.md) has the commands and times):
 
-| run | tests | how | time, when the planner speed-ups were merged (the same code) |
-|---|---|---|---|
-| default | 880, of which 73 are marked `slow` | `uv run pytest` | 28 min: 873 passed, 7 skipped |
-| without the slow ones | 807 | `-m 'not slow and not e2e'` | not measured |
-| browser | 21, marked `e2e` | `-m e2e`, with Playwright's Chromium | 5 min: 21 passed |
+| run | how |
+|---|---|
+| one module's fast tier, seconds to a minute | `mise run test-<module>` (`linkage`, `planner`, `construction`, `hardware`, `strength`, `api`, `sim`, `server`; `test-viewer` for tsc and vitest) |
+| the quick tier, everything not marked `slow` or `e2e` | `mise run test-quick` (`-m 'not slow and not e2e'`, xdist) |
+| the full suite | `mise run remote-test` (xdist on a remote machine), or locally `uv run pytest -n 12` |
+| browser tests, marked `e2e` | `-m e2e`, with Playwright's Chromium |
 
-The slow tests bake, build and export from the command line, run MuJoCo and the tuner, and
-exercise the planner's deadline. Three things make the suite more than a set of examples:
+A command-line `-m` replaces the default `-m 'not e2e'`, so `-m 'not slow'` alone would also
+run the browser tests. The slow tests bake, build and export from the command line, run
+MuJoCo and the tuner, and exercise the planner's deadline. The tiers are fast because the
+suite's fabrications are cached on disk (`tests/cache.py`, keyed like the store's
+fabrication cache) and a few results are recorded fixtures (`tests/fixtures/`,
+`mise run test-fixtures` rewrites them). Several things make the suite more than a set of
+examples:
 
 - **Session factories** in `tests/conftest.py` build each design, side and robot once per
   session; tests read them and must never change them.
@@ -1623,6 +1866,19 @@ exercise the planner's deadline. Three things make the suite more than a set of 
   checked for all 28 linkages; that the feet are the lowest points and that the `single`
   module plans, for every walker; that every mechanism plans; the contract and clash
   checks run for every Klann module and every servo.
+- **Seam tests** (`tests/test_seam_*.py`): each pins one boundary between layers (the
+  planner, the crank, the pivots, the chassis, the hardware, the reports, the tools) on a
+  hand-made context (`tests/_ctx.py`), without fabricating anything (the `no_fabricate`
+  fixture fails a test that does).
+- **The identity gate** (`tests/gate/identity_gate.py`, `mise run gate`): every product
+  edit is compared, part by part, against a recorded baseline of the default designs'
+  parts, plans, BOM and DXFs; its snapshot also generates
+  [DESIGNS.md](agentlib/DESIGNS.md) (`mise run gate -- doc`).
+  The scorecard (`tests/scorecard.py`, `mise run scorecard`) gathers every ROADMAP number
+  into one file to compare against a baseline.
+- **The doc check** (`tests/doc_check.py`, `mise run doc-check`): every backticked name,
+  path, task, flag and environment variable in the docs must exist in the code
+  (`tests/doc_check_allow.txt` lists what isn't code).
 
 The suite forces the servos offline, so it always uses the parametric servo models, never
 the downloaded ones that users get by default.
@@ -1636,28 +1892,54 @@ per-solid volumes on exports (STEP files can't be compared byte for byte).
 **Test drives.** In five rounds an outside agent drove the public surface towards a goal
 ("a four-legged walker in a box under $100", "a straight-line mechanism over MCP"),
 logging every friction point, and the findings were fixed between rounds
-([TESTDRIVE.md](agentlib/TESTDRIVE.md)). Round 1 took 55 minutes with three dead ends. By
+([TESTDRIVE.md](history/TESTDRIVE.md)). Round 1 took 55 minutes with three dead ends. By
 round 5 the earlier rounds' failing paths ran clean, and two problems remained open: the
 viewer showing a mechanism inside a walker's controls, and the disagreement between MuJoCo
 and the walking model.
 
-**Tooling.** `uv` manages the Python environment (`uv.lock`, 116 packages, Python 3.12
-only); `mise` runs the tasks (`mise run test`, `lint`, `audit`, `view`, `release`); `ruff`
-lints. A session-start hook in `.claude/` installs everything when the repository opens in
+**Tooling.** `uv` manages the Python environment (`uv.lock`, Python 3.12 only); `mise`
+runs the tasks (`mise run test`, `lint`, `audit`, `view`, `release`); `ruff` lints, and
+import-linter enforces the engine's import layers (`pyproject.toml`'s
+`[tool.importlinter]`). A session-start hook in `.claude/` installs everything when the repository opens in
 Claude Code on the web, where `mise` isn't available. `mise run release` builds the viewer
 and then a wheel; a build hook refuses a wheel without the built viewer, or with viewer
 sources or `node_modules` in it.
 
-**Gaps.** There is no continuous integration: nothing runs the tests on a push. There is
-no suite of golden designs whose outputs are pinned. The planner's opt-in speed-ups and
-the workers' failure paths have no tests of their own.
+**Continuous integration** (`.github/workflows/ci.yml`, on pushes to master and every pull
+request): ruff and the import layers, the lock, the viewer's typecheck and vitest, the
+quick tier on a cached fabrication cache, and the doc check, blocking. The full suite, the
+audits and the identity gate run on request (`mise run remote-test`, `remote-audit`,
+`gate`), not in CI.
+
+**Gaps.** The planner's opt-in speed-ups and the workers' failure paths have few tests of
+their own.
 
 ## 11. Performance
 
-This section shows where the time goes for the running example, what the performance work
-of 2026-10-01 fixed, and what it chose to leave.
+This section shows where the time went for the running example at the 2026-10-01
+snapshot, what the performance work of that day fixed, what it chose to leave, and the
+caches added since.
 
-**Where the time goes now:**
+**Not recomputing** (W3, 2026-10-07). Three caches keep unchanged work from being done
+again, each keyed so that it can't go stale:
+
+- the **fabrication cache** (`spiderpig/fabcache.py`, `<store>/fab/`): a fabricated
+  mechanism on disk (one BRep compound of its distinct parts and a pickle of the rest),
+  keyed by the code fabrication can reach (`keys.fab_key`), the library versions and the
+  design; `spiderpig build` and `api.build` of a design in a store read it, and the test
+  suite keeps its own (`tests/cache.py`);
+- **incremental keys** (`spiderpig/keys.py`): the hash of exactly the definitions a
+  computation reaches, found statically from the sources' syntax trees, so an edit
+  elsewhere (a deck constant, the BOM, the DXF writer) leaves the plan and fabrication
+  caches warm (`plan_key`, `fab_key`; `engine_digest` for the build check);
+- the **build check** (`spiderpig/uptodate.py`): a `spiderpig build` into a folder that
+  already holds the same build's outputs answers in well under a second, before the
+  engine is imported (`--force` builds anyway).
+
+`SPIDERPIG_OCCT_THREADS` sets OCCT's thread pool per process (`workers.ENV_OCCT`), so that
+parallel workers (the identity gate's, xdist's) don't each take every core.
+
+**Where the time went at the snapshot:**
 
 | step | time |
 |---|---|
@@ -1679,8 +1961,8 @@ node: 0.5–5 ms of pure-Python set and dictionary work (41 % in the crank route
 program, 39 % in forward checking), times a few stack sizes. (These figures are from the
 project docs.) The search is narrow, trying 2–4 layers per node.
 
-**What was fixed** (project docs). Three performance reports ([PERF.md](agentlib/PERF.md),
-[PERF_EXPORT.md](agentlib/PERF_EXPORT.md), [PERF_PLANNER.md](agentlib/PERF_PLANNER.md))
+**What was fixed** (project docs). Three performance reports ([PERF.md](history/PERF.md),
+[PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md))
 found mostly redundant work: the robot fabricated three times per export, a plan re-solved
 by four of five command-line calls, boolean proofs repeated for mirror twins, meshes read
 point by point from Python, build123d meshing every STL twice. The seven-format export
@@ -1700,7 +1982,7 @@ stored plan in a server from 0.3 s to 25 ms.
   Strider; a six-bar quad then comes out 26 layers instead of 24. Making this the default
   would change what `plan` returns, so it was left as a decision.
 
-A fifth flag, `drop_bearing`, is a design option rather than a speed-up: it lets the
+A fifth flag, `drop_bearing` (`StackSpec.drop_bearing`), is a design option rather than a speed-up: it lets the
 router drop the crank's bottom bearing as a last resort. None of these flags can be set
 from `BuildConfig`, the command line or the API: `side_problem` always builds a default
 `StackSpec`, so they are reachable only from Python. No test in the suite turns them on.
@@ -1733,7 +2015,8 @@ rather than a wrong answer.
 - Four named leg modules: no six-legged robot, no custom lists of legs.
 - The robot is two identical mirrored sides; a robot with different sides can't be
   expressed.
-- One crank construction (printed), which needs sheet at least 2.9 mm thick.
+- One crank construction, the laser-cut `bolt` crank (hex or round standoff crankpins), on
+  an aluminium crank sheet; one pillar (`standoff`) and one pin (`chicago`).
 - No stacking of mechanisms (a stage mounted on another's output);
   [CLAUDE.md](../CLAUDE.md) sketches what it would take.
 - No search or tuning over designs in the API or MCP: the agent is the optimiser.
@@ -1748,31 +2031,31 @@ rather than a wrong answer.
    walking model calls it stable (section 8.3). The repository holds no measurement of a
    built robot to settle either question, yet stride and speed are what a user optimises
    for.
-2. **Planning results depend on the machine.** The planner's 60 s wall-clock deadline
-   means a large quad can come out thicker, unproven, or with no plan at all, depending on
-   the machine's speed and load (section 5.6). The design id doesn't capture this. A
-   failure found under load is cached in the store under the design's id and served again
-   without re-searching until the engine version changes.
-3. **Stored results can go stale silently.** The engine version hashes only the linkage
-   definitions and the planner's defaults (section 9.2). A change to a construction, the
-   walking model, `verify`, the bake or the prices leaves every stored report, built STEP
-   part and export in place, and the store serves them as current. Layer plans stay
-   safe, because they are re-verified on every load, but stored parts built by older
-   construction code, and stored numbers, can be stale. The workaround is
-   `force=True`, `gc`, or a fresh store.
+2. **Planning results depend on the machine.** The planner's 60 s deadline is CPU time,
+   so a loaded machine no longer changes a result, but a slower one can still leave a
+   large quad thicker, unproven, or with no plan at all (section 5.6). The design id
+   doesn't capture this. A search that ran out of time (`no_plan_in_time`) is not
+   remembered as a failure by the server or the store.
+3. **Stored results were able to go stale silently** (fixed). At the snapshot the engine
+   version hashed only the linkage definitions and the planner's defaults, so a change to
+   a construction left stored parts in place as current. It now hashes every engine
+   source (section 9.2), and the fabrication cache is keyed by the code it reaches
+   (section 11), so an engine edit retires the stored stages; layer plans are still
+   re-verified on every load.
 4. **Part of the geometric guarantee rests on samples.** The planner's distances are sound
    lower bounds over the whole turn. The contract, the OCCT clash checks and everything
    about the chassis are checked at one to four crank angles, and the motion checks at
    720 (section 6.3). `verify` labels the sampled contract and loop rows `proven`. The
    `symmetry` flag, if turned on, rests on a sampled check too.
-5. **Nothing checks strength.** Parts are dimensioned by rules (minimum walls, thread
-   engagement, snap strain), never by loads. Pillars anchored in one plate are not checked
-   as cantilevers.
+5. **Strength rests on a beam model and unmeasured loads.** The joints and link plates are
+   rated at the simulated pin loads (section 6.2), whose contact softness is unvalidated
+   (section 8.2); the `bolt_round` clamp's friction coefficients are estimates; the frame
+   and centre plates are dimensioned by the sheet roles and cut rules, not by loads.
 6. **Costs are lower bounds** (section 7.5). A user comparing designs by cost compares
    partial sums.
-7. **Laser-cut outlines lose up to 0.47 mm** on the rounded ends of long links (section
-   7.5). Around a pin hole for the default 6 mm axle (6.35 mm with its running fit), that
-   thins the 2.8 mm wall to about 2.35 mm at worst.
+7. **The kerf is the service's figure, not a measured one** (section 7.5): cut a test
+   coupon before trusting the fits. (At the snapshot the DXF also lost up to 0.47 mm on
+   long links' rounded ends; lines and arcs are now written exactly.)
 8. **Failure codes come partly from parsing text** (the codes are in section 9.3). The
    drive failure, the node-budget failure and plan blockers are recognised by matching
    message text, so rewording a message can change a code. A plan that ran out of its 60 s
@@ -1785,25 +2068,18 @@ rather than a wrong answer.
    (`fabricate._DESIGNS`, `recommend._DONE`, the MuJoCo builders), which matters for a
    long-running server. In the MCP server, one slow plan blocks every other short tool for
    a minute or more (up to about three for a large quad that fails).
-10. **Testing is slow and manual.** There is no continuous integration, the default run
-    takes 28 minutes, browser tests run only on request, and the opt-in planner speed-ups
-    have no tests (section 10).
-11. **The documents have drifted** in over 40 places (Appendix D). The most misleading:
-    - the README and AGENTS.md gave fixed ports that the code no longer uses (fixed
-      2026-10-05);
-    - `future_work.md` said only printed constructions exist (rewritten 2026-10-05);
-    - CLAUDE.md's bake numbers (91 bodies, 6.6 s) are far below today's (179 bodies,
-      28.6 s);
-    - three places say the planner's proof gives each thinner size the full budget, where
-      the code gives half.
+10. **The full suite runs on request.** CI runs the quick tier, the lint, the viewer's
+    tests and the doc check; the full suite, the browser tests, the audits and the
+    identity gate run only when someone runs them (section 10).
+11. **The documents drift.** The doc check (section 10) now catches a backticked name the
+    code lost, but not a number or a claim that changed; Appendix D lists what is still
+    known to disagree.
 12. **Rough edges in the tools:**
     - the viewer shows a mechanism inside the walker's drive and tune controls;
     - the development server's npm dependencies carry five advisories; none ships in the
       viewer bundle, but one lets any web page query a running development server;
     - `bake` spells `--side` where every other command spells `--side-only`;
-    - `spiderpig explain` defaults to the `single` module where the others default to
-      `quad`;
-    - each subcommand's `--help` takes 4–8 s, because it imports the engine to list its
+    - some subcommands' `--help` (`build`'s, about 3 s) import the engine to list their
       choices.
 
 ## 13. Where to start
@@ -1815,9 +2091,10 @@ Everything you need for a first afternoon with the code.
 
 ```bash
 uv run spiderpig explain --linkage klann --module quad   # every stage's verdict, the layer table
-uv run spiderpig build                                   # the running example into build/
+uv run spiderpig build --linkage klann                   # the running example into build/
 uv run spiderpig view --linkage klann --open             # the viewer for it, in your browser
-uv run pytest -m 'not slow and not e2e'                  # the fast tests
+mise run test-planner                                    # one module's fast tests (seconds)
+uv run pytest -m 'not slow and not e2e'                  # the quick tier
 ```
 
 **Read, in this order.**
@@ -1830,12 +2107,14 @@ uv run pytest -m 'not slow and not e2e'                  # the fast tests
 4. [spiderpig/fabricate.py](../spiderpig/fabricate.py): `side_problem`, `design_side` and
    `fabricate`, which tie the stages together.
 5. [spiderpig/construction/base.py](../spiderpig/construction/base.py): the group
-   contract; then `axle.py` and `crank.py`, two groups in full.
-6. [spiderpig/stack.py](../spiderpig/stack.py): `StackProblem.solve`, then `_Search`.
+   contract; then `axle.py` and `construction/crank/` (`base.py`, then `bolt.py`), two
+   groups in full.
+6. [spiderpig/stack/search.py](../spiderpig/stack/search.py): `StackProblem.solve`, then
+   `_Search`; [plan_z.py](../spiderpig/stack/plan_z.py) for the plan's z.
 7. [spiderpig/construction/route.py](../spiderpig/construction/route.py): the crank
    router.
 8. For the agent surface, [docs/agentlib/API.md](agentlib/API.md) with
-   [spiderpig/api.py](../spiderpig/api.py).
+   [spiderpig/api/](../spiderpig/api/__init__.py).
 
 **Common changes.**
 
@@ -1844,9 +2123,11 @@ uv run pytest -m 'not slow and not e2e'                  # the fast tests
   `tests/test_linkage.py` pick it up and check that it assembles, stays rigid and plans.
 - *Add a construction* for an existing group: implement `dims(ctx)` (validate, and return
   the radii its claims use) and `realize(group, build)` (parts inside those claims),
-  register it in `spiderpig/construction/__init__.py`, and run `tests/test_contract.py`.
+  register it in `spiderpig/construction/__init__.py`, and run `tests/test_contract.py`
+  and the identity gate (`mise run gate`).
 - *Add a kind of group:* subclass `construction.base.Group` (`claims`, `realize`, and
-  `keepouts` and `interface` if it has any), and append its factory to
+  `keepouts` and `interface` if it has any; `cuts = True` if it cuts what the others asked
+  for), and append its factory to
   `construction.GROUP_FACTORIES` in dependency order. It must raise with a reason and
   declare its keep-outs, so failures stay explained.
 - *Add a leg module:* a `linkage.Module` in `linkage.MODULES`, or in a linkage's own
@@ -1872,13 +2153,14 @@ surface's manual. The appendices below are for looking things up.
 | axis | the code's name for coincident joints of several bodies: one physical axle |
 | bob | how far the robot's body rises and falls each crank turn |
 | bottom bearing | the crank's journal stub turning in a hole in the outer frame plate |
+| clearance gap | a thin gap between two layers that holds screw heads and washers (section 5.7) |
 | body | a rigid body: in a template, in the fabricated robot (one per part, plus a few with none), or in the MuJoCo model |
 | branch | which of two circle crossings a step takes |
 | `BuildConfig` | the validated record of what to build; its `key` names caches |
 | cap | an axle's upper end |
-| chain | runs of the crankshaft along one point whose webs meet; one screw holds it (keyed: and a hex standoff keys each of its posts to the web above) |
+| chain | a run of the crankshaft along one point between two plates; one standoff spans it, a screw into each end |
 | claim | the space a group will occupy in each layer, as discs and pills around moving points |
-| construction | how a group is built (`printed`, `rod`, `bolt`, `bearing`, `bushing`); sets its claims' radii |
+| construction | how a group is built (`bolt` or `bolt_round` for the crank, `standoff` for a pillar, `chicago` for a pin); sets its claims' radii |
 | contract | the check that every part lies inside its own group's claims |
 | coupler | a link attached to neither frame nor motor; in the code, the body `coupler` is a shaft coupler at O |
 | crank, crankpin | the driven bar turning about O; its moving end |
@@ -1911,7 +2193,7 @@ surface's manual. The appendices below are for looking things up.
 | phase | a leg's offset in crank angle |
 | pillar | an axle anchored in the frame plates |
 | pin | an axle joining links only |
-| pitch (code) | the layer thickness, equal to the sheet's thickness |
+| pitch (code) | the nominal layer thickness, the default sheet's; a plan's layer may be thicker (section 5.7) |
 | `plan.cost` | the crank route's rank as one number: 10⁹ per added feature |
 | post | the crankpin as a part, through a rider's layer |
 | proof | the planner's text saying how a plan was shown optimal, or which sizes were left open |
@@ -1940,52 +2222,63 @@ surface's manual. The appendices below are for looking things up.
 
 ## Appendix B. File index
 
-Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
+Paths are under `spiderpig/` except `viewer/src/` and `tests/`. Line counts are at
+`8bfc039` plus the W7 pass (2026-10-08). W5 split the old stack.py, construction/crank.py
+and api.py into the packages below, each a pure move that keeps every name's old import
+path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import layers.
 
 | file | lines | role | tests |
 |---|---|---|---|
-| `linkage/engine.py` | 497 | program helpers, `Linkage`, registry, `LegSolution`, `scale_params` | `test_linkage.py` |
+| `linkage/engine.py` | 508 | program helpers, `Linkage`, registry, `LegSolution`, `scale_params` | `test_linkage.py` |
 | `linkage/checks.py` | 276 | `check_steps`, `check_output` | `test_stage_checks.py`, `test_mechanisms.py` |
-| `linkage/assembly.py` | 267 | leg templates, module composition, `feet_of` | `test_multi_linkage.py` |
-| `linkages/*.py` | 1,199 | the 28 linkages | `test_linkage.py`, `test_linkages_klann.py`, `test_linkages_diywalkers.py`, `test_mechanisms.py` |
-| `mechanism.py` | 403 | `Pose`, `Body`, `Mechanism`, `MechanismTemplate` | `test_transforms.py`, and most others indirectly |
-| `config.py` | 298 | `BuildConfig`, shared CLI options, query parsing | indirect |
-| `stack.py` | 1,670 | the planner: geometry, topology, claims, search, plan, `verify_plan` | `test_stack.py`, `test_planner_bounds.py`, `test_route.py` with `brute.py` |
-| `stack_pool.py`, `stack_symmetry.py` | 342, 171 | the opt-in parallel and symmetry search | none |
-| `construction/base.py` | 270 | the `Group` contract, `Params`, `Context`, `Build` | indirect |
-| `construction/__init__.py` | 76 | construction registries, `GROUP_FACTORIES` | `test_pivots.py` |
-| `construction/axle.py`, `printed.py` | 405, 424 | pillars and pins; printed snap segments | `test_axle.py`, `test_stack.py` |
-| `construction/pivots/` | 808 | rod, bolt, bearing, bushing | `test_pivots.py` |
-| `construction/crank.py` | 695 | the crank's claims; the printed crankshaft | `test_crank.py` |
-| `construction/route.py` | 826 | crank facts, joint rules, the crank router | `test_route.py` |
-| `construction/underside.py`, `envelope.py` | 161, 30 | the body's underside; solids of claims | `test_route.py`, the contract |
-| `construction/plates.py` | 72 | links and frame plates | `test_contract.py` |
-| `construction/contract.py` | 130 | `check_side`, `clashes`, `bad_solids` | `test_contract.py` |
-| `construction/robot.py`, `chassis.py` | 156, 415 | two sides, frame ties, centre plates | `test_robot.py`, `test_fabricate.py` |
-| `fabricate.py` | 285 | `side_problem`, `design_side`, `fabricate` | `test_fabricate.py`, and most via `conftest.py` |
-| `recommend.py` | 432 | checked recommendations | `test_recommend.py`, `test_stage_checks.py` |
-| `explain.py` | 151 | each stage's verdict in prose | `test_recommend.py` |
-| `servos/` | 1,517 | servo data, CAD download, models, the drive group | `test_servos.py` |
-| `hardware/` | 1,246 | parts catalog, fasteners, mass, BOM | `test_bom.py`, `test_robot.py` |
-| `shapes.py` | 154 | build123d primitives | indirect |
+| `linkage/assembly.py` | 272 | leg templates, module composition (`combine_connectors`, `fuse_*`), `feet_of` | `test_multi_linkage.py` |
+| `linkages/*.py` | 1,213 | the 28 linkages | `test_linkage.py`, `test_linkages_klann.py`, `test_linkages_diywalkers.py`, `test_mechanisms.py` |
+| `mechanism.py` | 425 | `Pose`, `Body`, `Mechanism`, `MechanismTemplate` | `test_transforms.py`, and most others indirectly |
+| `config.py` | 634 | `BuildConfig`, the default and removed constructions, shared CLI options, query parsing | `test_removed_constructions.py`, indirect |
+| `stack/` | 2,725 | the planner: `geometry.py` (shapes, claims, `Layout`), `topology.py` (`Topology`, static clearances, `PlanError`, the `Router` protocol), `plan.py` (`StackSpec`, `StackPlan`, `Deadline`), `search.py` (`StackProblem`, `_Search`), `plan_z.py` (`finalize`, the plan's z), `verify.py` (`verify_plan`) | `test_stack.py`, `test_planner_bounds.py`, `test_route.py` with `brute.py`, `test_seam_stack.py` |
+| `stack_pool.py`, `stack_symmetry.py` | 342, 171 | the opt-in parallel and symmetry search (`spiderpig/stack_symmetry.py`: one of each mirrored leg pair) | few |
+| `construction/base.py` | 292 | the `Group` contract, `Params`, `Context`, `Build` | indirect |
+| `construction/__init__.py` | 88 | construction registries, `GROUP_FACTORIES` | `test_pivots.py` |
+| `construction/axle.py` | 254 | pillars and pins: the claims, `AxleDims` | `test_axle.py`, `test_stack.py` |
+| `construction/pivots/` | 1,227 | `standoff.py`, `chicago.py`, `common.py` | `test_pivots.py`, `test_standoff.py`, `test_seam_pivots.py` |
+| `construction/crank/` | 1,918 | `base.py` (routes, claims, `CrankGroup`), `bolt.py` (`BoltCrank`), `hex.py` and `web.py` (its crankpin fits), `capacity.py` (its ratings, `hex_bearing_nm`), `plates.py` (`_WebPlates`, its parts) | `test_crank.py`, `test_bolt_crank.py`, `test_seam_crank.py` |
+| `construction/route.py` | 863 | crank facts, joint rules, the crank router | `test_route.py` |
+| `construction/underside.py`, `envelope.py` | 170, 69 | the body's underside; solids of claims | `test_route.py`, the contract |
+| `construction/plates.py` | 287 | links, frame plates, rider bosses, feet's socks | `test_contract.py`, `test_joinery.py` |
+| `construction/contract.py` | 157 | `check_side`, `clashes`, `bad_solids` | `test_contract.py` |
+| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties, `ASSEMBLY`; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
+| `construction/wobble.py` | 405 | link tilt and the columns' beams at the plan's z | `test_wobble.py` |
+| `fabricate.py` | 308 | `side_problem`, `design_side`, `fabricate` | `test_fabricate.py`, and most via `conftest.py` |
+| `fabcache.py`, `keys.py`, `uptodate.py` | 424, 1,145, 368 | the fabrication cache, incremental cache keys, the build check | `test_fabcache.py`, `test_keys.py`, `test_uptodate.py` |
+| `rounding.py` | 30 | tie-stable rounding of measured numbers for reports | `test_rounding.py` |
+| `recommend.py` | 434 | checked recommendations | `test_recommend.py`, `test_stage_checks.py` |
+| `explain.py` | 180 | each stage's verdict in prose | `test_recommend.py` |
+| `materials.py`, `manufacture.py`, `strength.py` | 285, 318, 485 | sheets and their roles; the cut rules; joint and link strength | `test_joinery.py`, `test_cutfiles.py`, `test_strength.py` |
+| `servos/` | 1,784 | servo data (`servos/catalog.py`), CAD download, models, the drive group | `test_servos.py` |
+| `hardware/` | 3,153 | parts catalog (`hardware/fastener_catalog.py`, `crank_catalog.py`, `sheet_catalog.py`, `electronics.py`), sources, fasteners, shims, mass, BOM (`bom.csv/md/json`), `ORDER.md` | `test_bom.py`, `test_order.py`, `test_robot.py`, `test_seam_hardware.py` |
+| `shapes.py` | 189 | build123d primitives | indirect |
 | `mesh.py` | 229 | meshing and STL | `test_spiderpig_api.py` |
-| `layout.py` | 197 | DXF sheets | `test_export.py` |
-| `build.py` | 241 | `spiderpig build` | `test_export.py` |
-| `bake.py` | 925 | the glb and its profiler | `test_bake_gltf.py` |
-| `sim/` | 1,153 | MJCF, simulation, metrics | `test_sim.py` |
-| `workers.py` | 122 | `python -c` worker processes | indirect |
-| `walk.py` | 957 | the quasi-static walking model | `test_walk.py` |
-| `server/` | 548 | FastAPI app, live reload | `test_walk.py`, `test_view.py`, browser tests |
-| `spec.py` | 855 | Spec v1, targets, validation, schema | `test_spiderpig_api.py` |
-| `api.py` | 1,975 | the operations | `test_spiderpig_api.py` |
-| `design.py` | 275 | the handle, ids, `Part` | `test_spiderpig_api.py` |
-| `failure.py` | 256 | failures and patches | `test_spiderpig_api.py` |
-| `verify.py` | 680 | verify levels and rows | `test_spiderpig_api.py` |
-| `store.py` | 509 | the store | `test_spiderpig_store.py` |
-| `mcp/` | 1,396 | the MCP server, jobs, output schemas | `test_spiderpig_mcp.py` |
-| `cli.py`, `view.py` | 67, 281 | the console script; `spiderpig view` | `test_view.py` |
-| `tools/` | 1,395 | audit, tune, sim, export, report, development servers | `test_view.py`, `test_walk.py`, `test_sim.py` |
-| `viewer/src/` | 1,538 | the three.js viewer, drive and tune | `tests/e2e/` |
+| `layout.py` | 661 | DXF sheets and per-part DXFs | `test_export.py`, `test_cutfiles.py` |
+| `build.py` | 358 | `spiderpig build` | `test_export.py`, `test_build_profile.py` |
+| `bake.py` | 930 | the glb and its profiler | `test_bake_gltf.py` |
+| `sim/` | 2,526 | MJCF, simulation, metrics, pin loads, the live session | `test_sim.py`, `test_sim_live.py` |
+| `workers.py` | 151 | `python -c` worker processes, OCCT's thread pool | indirect |
+| `walk.py` | 1,047 | the quasi-static walking model | `test_walk.py`, `test_viewer_parity.py` |
+| `server/` | 1,125 | FastAPI app, live reload, `/ws/sim` | `test_walk.py`, `test_view.py`, `test_server_hardening.py`, browser tests |
+| `spec.py` | 920 | Spec v1, targets, validation, schema | `test_spiderpig_api.py` |
+| `api/` | 2,587 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `design.py` | 386 | the handle, ids, the engine version, `Part` | `test_spiderpig_api.py` |
+| `failure.py` | 274 | failures and patches | `test_spiderpig_api.py` |
+| `verify.py` | 788 | verify levels and rows | `test_spiderpig_api.py` |
+| `store.py` | 732 | the store | `test_spiderpig_store.py`, `test_store_concurrency.py` |
+| `mcp/` | 1,555 | the MCP server, jobs, output schemas | `test_spiderpig_mcp.py` |
+| `cli.py`, `view.py` | 80, 335 | the console script (`mise run <command> -- <options>` passes options through); `spiderpig/view.py`: `spiderpig view <design> [--store] [--port] [--open]`, or `spiderpig view --linkage ... --pin bolt` (the build options, resolved into the store) | `test_view.py` |
+| `tools/` | 2,224 | `spiderpig/tools/*.py`: audit, tune (`spiderpig/tools/tune.py`), sim (`spiderpig/tools/sim_walk.py`), export, report, the build profiler (`spiderpig/tools/build_profile.py`), development servers | `test_view.py`, `test_walk.py`, `test_sim.py`, `test_seam_tools.py` |
+| `viewer/src/` | 3,018 | the three.js viewer; the drive model in `drive/` | `tests/e2e/`, vitest |
+| `tests/_ctx.py` | 118 | hand-made planner and construction contexts for the seam tests | `tests/test_seam_*.py` |
+| `tests/cache.py`, `tests/tiers.py` | 624, 88 | the suite's fabrication cache; a heavy check's cheap quick-tier case | the tiers |
+| `tests/gate/identity_gate.py` | 792 | the identity gate; generates `docs/agentlib/DESIGNS.md` | `mise run gate` |
+| `tests/doc_check.py`, `tests/scorecard.py` | 672, 584 | the doc check; the scorecard | `test_doc_check.py`, `test_scorecard.py` |
 
 ## Appendix C. Documents, history and method
 
@@ -1993,17 +2286,21 @@ Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
 
 | document | what it is | status |
 |---|---|---|
-| [CLAUDE.md](../CLAUDE.md) | the terse map for agents: tasks, profiler, repository map, pipeline contract, planner, house rules | current, with the drift in Appendix D |
-| [README.md](../README.md) | install, quick start, outputs, how the robot is built | mostly current; title and ports out of date |
-| [AGENTS.md](../AGENTS.md) | "use mise for everything" | partly stale |
-| [future_work.md](../future_work.md) | open items | rewritten 2026-10-05 |
+| [CLAUDE.md](../CLAUDE.md) | the terse map for agents: tasks, profiler, repository map, pipeline contract, planner, house rules | current |
+| [README.md](../README.md) | install, quick start, outputs, how the robot is built | current |
+| [AGENTS.md](../AGENTS.md) | how to run things and tests, for agents | current |
 | [viewer/README.md](../viewer/README.md) | how the viewer is fed and drawn | current, with the drift in Appendix D |
 | [agentlib/API.md](agentlib/API.md) | the agent surface's reference | current, with the drift in Appendix D |
-| [agentlib/SCOPE.md](agentlib/SCOPE.md), [DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's proposal; the seven decisions | historical design; current decisions |
-| [agentlib/TESTDRIVE.md](agentlib/TESTDRIVE.md) | the five test-drive rounds | current record |
-| [agentlib/TIMING.md](agentlib/TIMING.md), [PERF.md](agentlib/PERF.md), [PERF_EXPORT.md](agentlib/PERF_EXPORT.md), [PERF_PLANNER.md](agentlib/PERF_PLANNER.md) | the timing study and the three performance reports | current record |
-| [audit/AUDIT.md](audit/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |
-| [audit/STRENGTH.md](audit/STRENGTH.md) | joint strength at each design's own loads: the model, every walker x module, the PTFE liner pin | current (2026-10-03) |
+| [agentlib/DESIGNS.md](agentlib/DESIGNS.md) | the default designs' layers, heights, parts, audits and costs: the one place those numbers live | generated (`mise run gate -- doc`), with each gate baseline |
+| [agentlib/ROADMAP.md](agentlib/ROADMAP.md) | the workstreams and their measures; its "Later" section holds the open items | current |
+| [agentlib/TESTING.md](agentlib/TESTING.md) | the test tiers, the fabrication cache, the fixtures, the identity gate | current |
+| [agentlib/DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's seven decisions, and the hardware decisions with their dates and numbers | current |
+| [agentlib/W8-gate-diffs.md](agentlib/W8-gate-diffs.md) | what each of W8's approved output changes did to the gate's designs | record (2026-10-07) |
+| [agentlib/SCOPE.md](agentlib/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
+| [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
+| [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |
+| [history/AUDIT.md](history/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |
+| [audit/STRENGTH.md](audit/STRENGTH.md) | joint strength at each design's own loads: the model, every walker x module | current |
 
 **History.**
 
@@ -2021,8 +2318,15 @@ Paths are under `spiderpig/` except `viewer/src/`. Line counts are at `97bec2d`.
   test drives.
 - *2026-10-01.* A timing study and three performance passes removed most of the redundant
   work.
-
-Of the 232 commits, 191 were written by Claude.
+- *2026-10-03 to 2026-10-05.* The hardware for a first build: Chicago screw pins, standoff
+  pillars, the laser-cut aluminium crank on hex standoffs, clearance gaps and per-part
+  sheets, the cut rules, the strength check, the glue-free chassis, the deck, the ordering
+  outputs ([DECISIONS.md](agentlib/DECISIONS.md) has each decision).
+- *2026-10-07 to 2026-10-08.* The cleanup workstreams (W0 to W8,
+  [ROADMAP.md](agentlib/ROADMAP.md)): CI, the scorecard and the doc check; the legacy
+  constructions removed; server and store fixes; the caches; the test tiers and seam
+  tests; the package splits; the approved output changes and a new gate baseline; this
+  documentation pass.
 
 **How this report was made.** Four reviewers each read one area of the code end to end and
 ran it: the domain and the symbolic engine; the layer planner and the constructions;
@@ -2030,40 +2334,16 @@ parts, outputs, the viewer and the simulator; and the agent surface, tooling, te
 history. Their numbers were measured at `97bec2d` on a shared four-core Linux machine,
 often with other work running, so timings are indicative; section 5.6 shows where load
 changed a result. The draft was then reviewed three times: by a newcomer reading it cold,
-against the code for accuracy, and for its prose.
+against the code for accuracy, and for its prose. The hardware sections were brought up to
+date on 2026-10-05, and the whole report checked against `8bfc039` on 2026-10-08.
 
 ## Appendix D. Where the documents and the code disagree
 
-Each item was checked against the code at `97bec2d`. The most misleading come first in
-each group. The documentation pass of 2026-10-05 fixed the first group's rows (README,
-AGENTS.md, future_work.md, which now lists open items) and the `vite.config.ts` row; the
-rest stand as found.
-
-### README.md, AGENTS.md and future_work.md
-
-| document says | the code |
-|---|---|
-| `mise run view` serves FastAPI on :8000 and Vite on :5173 (README, AGENTS.md) | ports come from a hash of the checkout path (Vite 5500–5999, API 8500–8999) unless `VITE_PORT` or `API_PORT` is set |
-| "Only printed constructions exist so far" (future_work.md), with links to `stack.py` and others at the root | rod, bolt, bearing and bushing pivots exist; the files are under `spiderpig/` |
-| title "Klann walking-linkage generator" (README) | 28 linkages |
-| `klann.step` and `klann.stl` are colour-tagged (README) | only the STEP carries colours |
-| the `cli.py` commands, without `export` and `view` (README) | ten commands |
-| example `import linkage` (AGENTS.md) | `spiderpig.linkage` |
-| `tools/dev.py` is "the only existing helper script" (AGENTS.md) | `tools/` holds seven files: five commands and two helpers for the development servers |
-
-### CLAUDE.md
-
-| CLAUDE.md says | the code |
-|---|---|
-| the planner's proof gives each thinner size the full budget (also PERF.md and the `StackProblem.solve` docstring) | half of it, `max_nodes // 2` (`stack.py:967-977`); PERF_PLANNER.md has it right |
-| "Known hot stage": the robot quad has 91 bodies and 33 meshes and bakes in about 6.6 s; 70 % fabrication, 20 % meshing | 179 bodies, 139 meshes, 28.6 s; 56 % and 34 % |
-| `verify_plan()` re-checks on fresh sampling | only when given the template; the search's own check and same-engine reloads reuse the solver's samples |
-| `symmetry`: one of each mirrored leg pair | any re-timing symmetry of a module with two or more legs, applied to the first link placed |
-| the bake's `_tessellate` and the MJCF's hulls use `mesh.tessellate` | the bake calls `mesh_part` and `read_meshes`; `_tessellate` is used only by tests |
-| `mise run <command> -- <options>` runs the subcommands | there is no `export` task, and `mise run view` is the development server, not `spiderpig view` |
-| one screw table; the crank's own until its rewrite (also `crank.py`) | the crank's M2 self-tapping lengths (6–12 mm) now differ from `fasteners.py` (4–12 mm) |
-| `-m 'not slow'` skips the slow tests | a command-line `-m` replaces the default `-m 'not e2e'`, so it also runs the 21 browser tests; use `-m 'not slow and not e2e'` |
-| the repository map's construction files | omits `construction/printed.py` and `pivots/common.py` |
+First checked against the code at `97bec2d`; the documentation passes of 2026-10-05 and
+2026-10-08 (W7) fixed the README, AGENTS.md, CLAUDE.md and this report's rows (the ports,
+the removed future_work.md, the planner's budget, the meshing calls, the test-marker
+wording, the AUDIT.md pointer). The doc check (section 10) now fails CI on a backticked
+name the code lost. What remains:
 
 ### docs/agentlib and the MCP guide
 
@@ -2072,38 +2352,34 @@ rest stand as found.
 | offline servo CAD marks a design `estimated` (DECISIONS.md #7) | not implemented; the fallback only logs a warning |
 | the failure-code table (API.md, and the `failure.py` docstring) | lacks `program/point_undefined`, `plan/plan_verification_failed`, `store/corrupt_record`, `job/cancelled`, `job/worker_died` |
 | read-only hints on every MCP tool but `export` and `gc` (API.md) | `view` is marked as changing state too |
-| `verify standard` takes 30–45 s, and the BOM's grouping dominates an export (API.md) | 32–37 s, and the grouping no longer dominates |
 | `advise`, `spec_of` and `plan_config` are operations (API.md) | none is in `api.__all__` |
-| a worked example with ids, costs and body counts; optional extras `[viewer]`, `[sim]`, `[mcp]` (SCOPE.md) | the example's numbers are invented illustrations; those dependencies are mandatory |
-| prices are unverified; Strider's `double` is "a coupled pair at 0° and 180°", the catalog's four-legged walker (the MCP guide, `mcp/guide.md`) | 48 offers are verified; the Strider `double` is two coupled pairs, four feet a side |
+| a worked example with ids, costs and body counts; optional extras `[viewer]`, `[sim]`, `[mcp]` (SCOPE.md, a historical proposal) | the example's numbers are invented illustrations; those dependencies are mandatory |
 
 ### Docstrings and comments
 
+These are left to W6b, the workstream that owns code comments.
+
 | where | says | the code |
 |---|---|---|
-| `sim/__init__.py`, `sim/mjcf.py` | the same MJCF runs in the browser | no browser MuJoCo exists |
-| `sim/mjcf.py` | refers to `fabricate.BuildConfig` and `viewer.bake_gltf` | `config.BuildConfig`, `spiderpig.bake` |
+| `stack/search.py`, `StackProblem.solve` | proves the thinner sizes "with the full effort" | half of it, `max_nodes // 2` (`stack/search.py:299-301`) |
+| `construction/route.py` | its docstring names a j_last rule | `JointRules` has no such field |
+| `sim/mjcf.py` | refers to fabricate.BuildConfig and viewer.bake_gltf | `config.BuildConfig`, `spiderpig.bake` |
+| `cli.py` | `--help` is instant | `spiderpig --help` and `spiderpig view --help` are; `build --help` imports the engine (about 3 s) |
+| `servos/cad.py` | `python -m servos.cad` | `python -m spiderpig.servos.cad` |
 | `mesh.py`, `sim/mjcf.py` | tessellation tolerance in mm | a relative deflection |
-| `cli.py` | `--help` is instant | only `spiderpig --help`; each subcommand's imports the engine (4–8 s) |
-| `config.py` | `BuildConfig` validates itself | sheet, constructions and thickness aren't validated there |
 | `hardware/bom.py` | `MadeRow.size_mm` is a laser part's footprint | the world bounding box at the build angle |
 | `servos/mount.py` | "one servo per machine" | one per side |
-| `servos/cad.py` | `python -m servos.cad` | `python -m spiderpig.servos.cad` |
-| `server/watcher.py` | watches the repository root | watches the package |
-| `mechanism.py` | `base_pose` lets legs sit at their own `z_base` | nothing sets it; z is the planner's |
-| `linkage/assembly.py` | cites `Project/main.py` | the 2016 file isn't in the repository |
+| `server/watcher.py` | watches the repository root | watches the root it is given |
+| `mechanism.py` | `base_pose` lets legs sit at their own z_base | nothing sets it; z is the planner's |
+| `linkage/assembly.py` | cites the 2016 code's main script | that file isn't in the repository |
 | `linkages/mechanisms.py` | numbers checked by "the research (its verify.py)" | not in the repository; the numbers survive in `tests/test_mechanisms.py` |
 | `linkages/trotbot.py` | the heel version compiles in about 11 s instead of 4 minutes | every program compiles in about 0.1 s |
 | `viewer/src/drive/model.ts` | cites SPEC.md | no such file has ever existed; `walk.py`'s docstring is the specification |
 | `viewer/README.md` | the modes table | lists `side` twice |
-| `viewer/vite.config.ts` | `scripts/dev.py` | `spiderpig/tools/dev.py` |
 
 ### Tests
 
 | test | says | the code |
 |---|---|---|
-| `test_view.py` | `test_view_help_is_instant` | times nothing; the command takes 7.5 s |
-| `test_route.py:155` | `walk._NOMINAL_LAYERS` depends on these | deleted in `7fae6c4` |
 | `test_linkages_diywalkers.py` | linkages that can't be laid out are defined but not registered | all are registered, and all plan |
-| `test_multi_linkage.py` | the mirror reflects only A, B and the branch | every point is reflected at π − t |
 | `test_walk.py` | Klann's foot heights come "from its table" | every linkage's default design is planned |

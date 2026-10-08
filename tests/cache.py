@@ -47,7 +47,7 @@ every double exact, locations and shared sub-shapes kept, triangulations include
 ``None``, each part's class and attributes beside it (a ``Cylinder`` comes back a
 ``Cylinder`` with its radius). Pickling build123d shapes directly doesn't read back.
 A BREP round trip keeps every boolean, volume and box; a test that compares meshes, STL or
-DXF text against a fresh build should still use ``fresh=True`` (``docs/agentlib/PERF.md``
+DXF text against a fresh build should still use ``fresh=True`` (``docs/history/PERF.md``
 saw a BREP round trip change a later mesh once).
 
 **Recorded fixtures** are stamped with the key of the code their generator reaches

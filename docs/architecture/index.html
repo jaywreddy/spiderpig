@@ -339,6 +339,7 @@ and stored results can go stale without warning (section 12).</li>
       </details>
     </nav>
     <main class="doc">
+      <p><strong>Out of date (2026-10-08).</strong> This page was generated from ARCHITECTURE.md as it stood on 2026-10-05, before the cleanup of 2026-10-07/08 (only the <code>bolt</code> / <code>bolt_round</code> cranks, the <code>chicago</code> pin and the <code>standoff</code> pillar remain; the planner, crank and API are packages). Its descriptions of the printed crank and the other pivots, and its figures, are historical. Read <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/ARCHITECTURE.md">docs/ARCHITECTURE.md</a> for the current text and <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/DESIGNS.md">docs/agentlib/DESIGNS.md</a> for the current numbers. Regenerating it needs <code>build_page.py</code>'s figure anchors updated to the rewritten text.</p>
       <h2 id="about-this-report">About this report</h2>
 <p><strong>Who it is for.</strong> An engineer who reads Python, has never opened this repository and has
 never designed a walking machine. After reading it you should be able to explain what the
@@ -2212,7 +2213,7 @@ per-solid volumes on exports (STEP files can't be compared byte for byte).</p>
 <p><strong>Test drives.</strong> In five rounds an outside agent drove the public surface towards a goal
 (&quot;a four-legged walker in a box under $100&quot;, &quot;a straight-line mechanism over MCP&quot;),
 logging every friction point, and the findings were fixed between rounds
-(<a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/TESTDRIVE.md" target="_blank" rel="noopener">TESTDRIVE.md</a>). Round 1 took 55 minutes with three dead ends. By
+(<a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/TESTDRIVE.md" target="_blank" rel="noopener">TESTDRIVE.md</a>). Round 1 took 55 minutes with three dead ends. By
 round 5 the earlier rounds' failing paths ran clean, and two problems remained open: the
 viewer showing a mechanism inside a walker's controls, and the disagreement between MuJoCo
 and the walking model.</p>
@@ -2291,8 +2292,8 @@ of 2026-10-01 fixed, and what it chose to leave.</p>
 node: 0.5–5 ms of pure-Python set and dictionary work (41 % in the crank route's dynamic
 program, 39 % in forward checking), times a few stack sizes. (These figures are from the
 project docs.) The search is narrow, trying 2–4 layers per node.</p>
-<p><strong>What was fixed</strong> (project docs). Three performance reports (<a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/PERF.md" target="_blank" rel="noopener">PERF.md</a>,
-<a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/PERF_EXPORT.md" target="_blank" rel="noopener">PERF_EXPORT.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/PERF_PLANNER.md" target="_blank" rel="noopener">PERF_PLANNER.md</a>)
+<p><strong>What was fixed</strong> (project docs). Three performance reports (<a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/PERF.md" target="_blank" rel="noopener">PERF.md</a>,
+<a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/PERF_EXPORT.md" target="_blank" rel="noopener">PERF_EXPORT.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/PERF_PLANNER.md" target="_blank" rel="noopener">PERF_PLANNER.md</a>)
 found mostly redundant work: the robot fabricated three times per export, a plan re-solved
 by four of five command-line calls, boolean proofs repeated for mirror twins, meshes read
 point by point from Python, build123d meshing every STL twice. The seven-format export
@@ -3078,7 +3079,7 @@ surface's manual. The appendices below are for looking things up.</p>
 <td>partly stale</td>
 </tr>
 <tr>
-<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/future_work.md" target="_blank" rel="noopener">future_work.md</a></td>
+<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/ROADMAP.md" target="_blank" rel="noopener">future_work.md</a></td>
 <td>follow-ups after the 2026-09-29 rework</td>
 <td>stale</td>
 </tr>
@@ -3098,17 +3099,17 @@ surface's manual. The appendices below are for looking things up.</p>
 <td>historical design; current decisions</td>
 </tr>
 <tr>
-<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/TESTDRIVE.md" target="_blank" rel="noopener">agentlib/TESTDRIVE.md</a></td>
+<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/TESTDRIVE.md" target="_blank" rel="noopener">agentlib/TESTDRIVE.md</a></td>
 <td>the five test-drive rounds</td>
 <td>current record</td>
 </tr>
 <tr>
-<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/TIMING.md" target="_blank" rel="noopener">agentlib/TIMING.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/PERF.md" target="_blank" rel="noopener">PERF.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/PERF_EXPORT.md" target="_blank" rel="noopener">PERF_EXPORT.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/agentlib/PERF_PLANNER.md" target="_blank" rel="noopener">PERF_PLANNER.md</a></td>
+<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/TIMING.md" target="_blank" rel="noopener">agentlib/TIMING.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/PERF.md" target="_blank" rel="noopener">PERF.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/PERF_EXPORT.md" target="_blank" rel="noopener">PERF_EXPORT.md</a>, <a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/PERF_PLANNER.md" target="_blank" rel="noopener">PERF_PLANNER.md</a></td>
 <td>the timing study and the three performance reports</td>
 <td>current record</td>
 </tr>
 <tr>
-<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/audit/AUDIT.md" target="_blank" rel="noopener">audit/AUDIT.md</a></td>
+<td><a href="https://github.com/jaywreddy/spiderpig/blob/HEAD/docs/history/AUDIT.md" target="_blank" rel="noopener">audit/AUDIT.md</a></td>
 <td>the 2026-09-29 audit of the Klann-only code</td>
 <td>historical</td>
 </tr>
