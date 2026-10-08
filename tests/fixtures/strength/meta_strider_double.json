@@ -2,8 +2,69 @@
  "data": {
   "bus_ports": "face",
   "bus_sockets_used": "own",
+  "centre_plate_section": {
+   "least_web": 1.617,
+   "own": 2,
+   "screw_d": 2.0,
+   "screws": 2,
+   "sections": {
+    "pad": [
+     [
+      -22.16,
+      -9.743,
+      1.6
+     ],
+     [
+      -22.16,
+      -9.743,
+      1.6
+     ],
+     [
+      9.743,
+      22.16,
+      1.6
+     ],
+     [
+      9.743,
+      22.16,
+      1.6
+     ]
+    ],
+    "window": [
+     [
+      -22.16,
+      -10.5,
+      1.6
+     ],
+     [
+      -22.16,
+      -9.743,
+      1.6
+     ],
+     [
+      10.5,
+      22.16,
+      1.6
+     ],
+     [
+      10.5,
+      22.16,
+      1.6
+     ]
+    ]
+   },
+   "spacing": 24.45,
+   "t": 1.6,
+   "tie_d": 3.0,
+   "ties": [
+    25.094,
+    25.094,
+    25.094,
+    25.094
+   ]
+  },
   "centre_plate_sheet": "al5052_1p6mm",
-  "centre_plates": 5,
+  "centre_plates": 6,
   "chicago": {
    "pin:J10_leg0": {
     "bond_gap_mm": 0.2,
@@ -250,11 +311,11 @@
    "webs": "single"
   },
   "deck": {
-   "charger_pad_mm": 5.3,
+   "charger_pad_mm": 0.0,
    "charger_setback_mm": 0.0,
    "charger_z_mm": [
-    -34.0,
-    -14.0
+    -34.8,
+    -14.8
    ],
    "chassis_top_y": 11.31,
    "deck_y": 20.31,
@@ -264,31 +325,31 @@
     [
      -69.0,
      -66.5,
-     -36.0,
-     -34.7
+     -36.8,
+     -35.5
     ],
     [
      66.5,
      69.0,
-     -36.0,
-     -34.7
+     -36.8,
+     -35.5
     ],
     [
      -69.0,
      -66.5,
-     34.7,
-     36.0
+     35.5,
+     36.8
     ],
     [
      66.5,
      69.0,
-     34.7,
-     36.0
+     35.5,
+     36.8
     ]
    ],
    "plate_mm": [
     136.0,
-    70.0
+    71.6
    ],
    "rail_y": 12.31,
    "screw": "m3_bhcs_8",
@@ -475,7 +536,7 @@
   "filament": "pla_filament",
   "layers": 14,
   "linkage": "strider",
-  "mid_plane": 102.464,
+  "mid_plane": 103.264,
   "module": "double",
   "phases": [
    0.0,
@@ -496,8 +557,9 @@
    13.0,
    10.0
   ],
-  "rear_engagement_mm": 3.4,
-  "rear_screw": "m2_self_tap_5",
+  "rear_engagement_mm": 2.8,
+  "rear_own_plates": 2,
+  "rear_screw": "m2_self_tap_6",
   "rear_screws_per_servo": 2,
   "robot": true,
   "servo": "sts3215",
@@ -511,7 +573,7 @@
    30
   ],
   "tie_stud": "m3_set_screw_16",
-  "tie_stud_engagement_mm": 4.0,
+  "tie_stud_engagement_mm": 3.2,
   "ties": 4,
   "wobble": {
    "pillar:J2_leg0": {
@@ -1470,11 +1532,11 @@
    }
   }
  },
- "engine_version": "0.1.0+c2afdc65a8ee",
+ "engine_version": "0.1.0+d91e2952742a",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-19b1a78e20849072"
+ "source_key": "gen-0de409de7154e47f"
 }
