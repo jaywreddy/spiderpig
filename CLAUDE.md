@@ -360,9 +360,9 @@ skips, without Node),
 `SPIDERPIG_OCCT_THREADS` (OCCT's
 thread pool per process, `workers.occt_threads`, read by every command and worker; unset,
 OCCT's own pool, every core: `build` needs it, its STL meshing takes 4 s threaded, 22 s on
-one; one thread would save the audit ~15-30 % CPU, but OCCT's numbers depend on it: the demo
-Klann quad's audit reports a hole 3.92 mm from an edge on one thread, 3.93 on a pool; the
-test workers use one, the identity gate two, as its baseline), and `VITE_PORT` / `API_PORT` and
+one; one thread would save the audit ~15-30 % CPU; OCCT's last digits depend on it (a
+hole 3.925 mm from an edge read 3.92 or 3.93), which the reports' tie-stable rounding
+absorbs, `spiderpig.rounding`; the test workers use one, the identity gate two), and `VITE_PORT` / `API_PORT` and
 `VITE_ALLOWED_HOSTS` (below). Nothing in
 the environment changes a design's parts: the hardware is plain code, and a design's id
 holds everything that shapes it.

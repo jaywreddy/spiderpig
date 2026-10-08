@@ -23,6 +23,7 @@ from build123d import Box, Location
 
 from spiderpig.construction.base import Build, Realized
 from spiderpig.construction.envelope import claimed_solid
+from spiderpig.rounding import rounded
 
 TOL = 0.02        # mm the envelope is grown by (float noise)
 MAX_OUTSIDE = 1e-3  # mm^3 a part may poke outside its envelope
@@ -133,7 +134,7 @@ def clashes(mech, names=None) -> list[dict]:
         inter = parts[a] & parts[b]
         vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
         if vol > CLASH_MM3:
-            out.append({"a": a, "b": b, "mm3": round(vol, 3)})
+            out.append({"a": a, "b": b, "mm3": rounded(vol, 3)})
     return out
 
 

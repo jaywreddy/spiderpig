@@ -57,6 +57,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_order.py": "hardware",
     "test_cutfiles.py": "hardware",
     "test_seam_hardware.py": "hardware",
+    "test_rounding.py": "hardware",
     # strength / wobble / loads (P4)
     "test_strength.py": "strength",
     "test_wobble.py": "strength",
