@@ -4,7 +4,7 @@ The record of what the bus-socket change (the user's decisions of 2026-10-08, DE
 did to the gate's six designs, all on the STS3215, compared with the baseline
 `~/.cache/spiderpig/gate/w8-2a130c8/`. The base branch (`quickfix`, 8de9de6) was identical to
 that baseline on all six designs before the change. The new baseline is
-`~/.cache/spiderpig/gate/bus-90919f7/` (TESTING.md). The XL330 and XL430 aren't in the gate;
+`~/.cache/spiderpig/gate/bus-b8c9548/` (TESTING.md). The XL330 and XL430 aren't in the gate;
 their centre sheet and stack are unchanged (`tests/test_robot.py`).
 
 Where the part count changes the gate lists only the new names; the per-part comparison
@@ -16,7 +16,8 @@ below is of the parts both snapshots hold (the gate's own `deep_diff`, the same 
    measured `Relief(17.2, 29.7, ±9.2, grow=0.2)`, so the parametric servo is smaller there.
 2. **The centre plates**: 0.090 in x 4 became 0.063 in x 5 (`chassis.centre_sheet`: only
    0.063 in seats both rear screws), each with the bus window and channel
-   (`chassis._port_slots`) instead of the old "end" slot; the SO model's pins relief is gone.
+   (`chassis._port_slots`) instead of the old "end" slot (the SO model's header-pin relief
+   kept, for the other socket: commit b8c9548, after the audit met it in the CAD servo).
 3. **Both rear screws per servo**: `L/R.rear_screw1` added; the screws are M2 x 5 (were
    M2 x 6: one own plate of 0.063 in, 3.4 mm engagement, was 3.714).
 4. **The stack is 1.144 mm thinner**, so each side moves 0.572 mm toward the mid-plane: every
@@ -48,7 +49,7 @@ below is of the parts both snapshots hold (the gate's own `deep_diff`, the same 
 | `audit/sheets`, `manufacture/sheets`, `kerf` | al5052_2p3mm | al5052_1p6mm |
 | `audit/deck/*` | | cause 6 (`charger_pad_mm` 0 -> 5.3, `charger_z_mm` -34.57/-14.57 -> -34.0/-14.0, the notches' z ±0.57) |
 | `audit/manufacture/by_rule/edge` | 2 | 4 (below) |
-| `audit/manufacture/dxf` | centre_plate0..3 (0.090 in) | centre_plate0..4 (0.063 in, new contours); L/R.torso area 5183.75 -> 5174.86 mm², DXF deviation 0.0 -> 0.00198 mm (within 0.0102); deck_plate area 9311.70 -> 9156.12 mm² |
+| `audit/manufacture/dxf` | centre_plate0..3 (0.090 in), 1640.22 / 1616.78 / 1616.78 / 1640.22 mm² | centre_plate0..4 (0.063 in, new contours), 1661.20 / 1611.69 / 1844.54 / 1611.69 / 1661.20 mm²; L/R.torso area 5183.75 -> 5174.86 mm², DXF deviation 0.0 -> 0.00198 mm (within 0.0102); deck_plate area 9311.70 -> 9156.12 mm² |
 | `audit/warnings` | 3 (incl. "only 1 rear screw(s) per servo") | 2 (that one gone) |
 | `audit/bom` | $347.65, 45 items, 10 unpriced, 9 unverified links | $346.73, 47 items, 12 unpriced, 10 unverified (strider_quad: $369.45 -> $368.53, 47 -> 49) |
 | `audit/parts` | 387 | 392 (+ L/R.rear_screw1, centre_plate4, deck_charger_pad0/1); strider_quad 655 -> 660 |
