@@ -1,4 +1,6 @@
-"""Where to buy every item the default robot's BOM lists: the sourcing round of 2026-10-05.
+"""Where to buy every item the default robot's BOM lists: the sourcing round of 2026-10-05,
+consolidated by the BOM study of 2026-10-08 (fewer carts: Bolt Depot for the M3 hardware,
+DigiKey for the distributor parts, one Amazon cart for the electronics and shop sundries).
 
 The default build (``spiderpig build``: the Strider double, Chicago pins, standoff pillars,
 the bolt crank, the electronics deck) was sourced item by item for a **direct product page**
@@ -133,6 +135,14 @@ _HARF_ROUND = {6: ("p-1633422", "a24061600ux0019", 7.11), 8: ("p-1633423", "a240
                30: ("p-1633431", "a24061600ux0028", 9.31)}
 
 
+def _harf_round(length: int) -> tuple[Offer, ...]:
+    handle, sku, usd = _HARF_ROUND[length]
+    return (Offer("Harfington (uxcell)", f"https://www.harfington.com/products/{handle}", sku,
+                  pack_qty=6, price_usd=usd, verified=True,
+                  note=f"black anodised aluminium round 6 mm OD x {length} mm, M3 threaded "
+                       "through"),)
+
+
 def _chicago_offers(length: int) -> tuple[Offer, ...]:
     """The plain M3 Chicago screw of this barrel length where Harfington has it, else (and as
     the alternative) the black zinc-plated one."""
@@ -152,29 +162,34 @@ def _chicago_offers(length: int) -> tuple[Offer, ...]:
     return tuple(out)
 
 
-_BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-05: key -> (product, USD/100)
-    "m3_bhcs_6": ("7218", 3.97), "m3_bhcs_8": ("7219", 4.10), "m3_nut": ("4773", 2.39),
+_BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-08: key -> (product, USD each
+    #               below 100, USD per 100); sold singly, no minimum order
+    "m3_bhcs_6": ("7218", 0.06, 3.97), "m3_bhcs_8": ("7219", 0.06, 4.10),
+    "m3_nut": ("4773", 0.07, 2.39), "m3_washer_9021": ("7319", 0.05, 3.23),
 }
-"""Priced alternatives to McMaster (whose prices need a login): ORDER.md estimates an
-unpriced line from them (:func:`hardware.order.estimate`)."""
+"""The default robot's M3 button heads, nuts and wide washers: Bolt Depot sells them singly
+(BOM study 2026-10-08, evidence/fasteners/prices.json), so it is their first offer, ahead of
+McMaster's 100-packs (price behind a login). The 3 x 9 mm fender washer (7319, 0.7-0.9 mm)
+is the DIN 9021 size modelled."""
 
 
 def _bolt_depot(key: str) -> tuple[Offer, ...]:
     if key not in _BOLT_DEPOT:
         return ()
-    product, usd = _BOLT_DEPOT[key]
+    product, each, per_100 = _BOLT_DEPOT[key]
     return (Offer("Bolt Depot", f"https://boltdepot.com/Product-Details?product={product}",
-                  product, pack_qty=100, price_usd=usd, verified=True,
-                  note="18-8 stainless (A-2); page rendered 2026-10-05"),)
+                  product, pack_qty=1, price_usd=each, tiers=((1, each), (100, per_100 / 100)),
+                  verified=True, note="18-8 stainless (A-2), sold singly; page rendered "
+                                      "2026-10-08"),)
 
 
 SOURCES: dict[str, tuple[Offer, ...]] = {
-    **{f"m{d}_bhcs_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
+    **{f"m{d}_bhcs_{L}": (*_bolt_depot(f"m{d}_bhcs_{L}"),
+                          Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
                                 verified=True,
                                 note=f"18-8 stainless ISO 7380 M{d} x {L}; seen with its "
                                      "length and pack on McMaster's own listing (price "
-                                     "shown only on the product page)"),
-                          *_bolt_depot(f"m{d}_bhcs_{L}"))
+                                     "shown only on the product page)"))
        for d, by_l in _MCM_BHCS.items() for L, (pn, n) in by_l.items()},
     **{f"m4_set_screw_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=n,
                                    verified=True,
@@ -198,35 +213,70 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                               note="A2 stainless ISO 4026 flat point M3 x 16; USD 0.66 each at "
                                    "4 (page rendered 2026-10-05). McMaster's 92605A108 (the "
                                    "mirror's M3 x 16) did not render: not listed"),),
+    "m3_round_standoff_ff_12": (Offer("Amazon", "https://www.amazon.com/dp/B0DBQMYT5T",
+                                      "B0DBQMYT5T", pack_qty=6, price_usd=7.49, verified=True,
+                                      note="PATIKIL (uxcell's sister brand) 6 mm OD round "
+                                           "aluminium M3 F-F, 12 mm, 6 pcs (page rendered "
+                                           "2026-10-08); uxcell's own Amazon listings of this "
+                                           "name are 5 mm OD: not those"),
+                                *_harf_round(12)),
+    "m3_round_standoff_ff_30": (Offer("Amazon", "https://www.amazon.com/dp/B0DBR3XG5L",
+                                      "B0DBR3XG5L", pack_qty=12, price_usd=11.39, verified=True,
+                                      note="PATIKIL 6 mm OD round aluminium M3 F-F, 30 mm, "
+                                           "titled 12 pcs but a bullet says 6: check the count "
+                                           "in the cart "
+                                           "(the 6-pack B0DBR494FY is USD 8.89); 5 mm OD "
+                                           "listings are not this part"),
+                                *_harf_round(30)),
     **{f"m3_round_standoff_ff_{L}": (Offer(
         "Harfington (uxcell)", f"https://www.harfington.com/products/{handle}", sku, pack_qty=6,
         price_usd=usd, verified=True,
         note=f"black anodised aluminium round 6 mm OD x {L} mm, M3 threaded through; OD "
              "tolerance not stated: check one in the 6.6 mm (+-0.3) hole"),)
-       for L, (handle, sku, usd) in _HARF_ROUND.items()},
+       for L, (handle, sku, usd) in _HARF_ROUND.items() if L not in (12, 30)},
+    **{f"hex_standoff_m3_{L}": (Offer(
+        "DigiKey", f"https://www.digikey.com/en/products/detail/w%C3%BCrth-elektronik/{pn}/{dk}",
+        pn, price_usd=usd,
+        note=f"Wurth WA-SSTII {pn}, M3 x {L} hex 5.5 AF F-F, zinc-plated steel: the Mouser part "
+             "on DigiKey, so one distributor cart carries it with the electronics (price from "
+             "a 2026-10-08 search snippet; DigiKey refused a scripted fetch)"),)
+       for L, (pn, dk, usd) in {25: ("970250321", "6174833", 0.58),
+                                30: ("970300321", "6174847", 0.54)}.items()},
     # -- servo -------------------------------------------------------------------------
     "servo_sts3215": (
         Offer("Seeed Studio", "https://www.seeedstudio.com/STS3215-19kg-cm-7-4V-Serial-Servo-"
-              "p-6338.html", "108090023", price_usd=21.99, verified=True,
-              note="in stock 2026-10-05; the box has the aluminium disc horn, the idler horn, "
+              "p-6338.html", "108090023", price_usd=20.00, verified=True,
+              note="USD 20.00, in stock at Seeed's US warehouse 2026-10-08 (free US shipping "
+                   "per the site banner); the box has the aluminium disc horn, the idler horn, "
                    "case screws and the M3 horn screw (Waveshare's package photo; Feetech's "
                    "own datasheet says no accessories: buy where the horn kit is shown)"),
         Offer("Waveshare", "https://www.waveshare.com/st3215-servo.htm?sku=33014", "33014",
               price_usd=16.99, verified=True, note="the 7.4 V ST3215, in stock"),
     ),
     # -- screws, nuts, washers, inserts ------------------------------------------------
-    "m3_nut": (Offer(_MCM, "https://www.mcmaster.com/91828A211/", "91828A211", pack_qty=100,
+    "m3_nut": (*_bolt_depot("m3_nut"),
+               Offer(_MCM, "https://www.mcmaster.com/91828A211/", "91828A211", pack_qty=100,
                      verified=True, note="18-8 stainless M3 hex nut (McMaster's page title, "
-                                         "rendered 2026-10-05; price behind its login)"),
-               *_bolt_depot("m3_nut")),
-    "m3_washer_9021": (Offer(_MCM, "https://www.mcmaster.com/91116A120/", "91116A120",
+                                         "rendered 2026-10-05; price behind its login)")),
+    "m3_washer_433": (Offer("Accu", "https://accu-components.com/us/metric-flat-washers/404896-"
+                            "HRDW-M3-A2", "HRDW-M3-A2", pack_qty=1, price_usd=0.24,
+                            tiers=((1, 0.24), (12, 0.15), (24, 0.10), (50, 0.07), (100, 0.05)),
+                            verified=True,
+                            note="A2 DIN 433 3.2 x 6 x 0.5, sold singly with quantity breaks "
+                                 "(USD each from 1, 12, 24, 50, 100; page rendered 2026-10-08)"),),
+    "m3_washer_9021": (*_bolt_depot("m3_washer_9021"),
+                       Offer(_MCM, "https://www.mcmaster.com/91116A120/", "91116A120",
                              pack_qty=100, verified=True,
                              note="18-8 stainless oversized M3 washer, 3.2 x 9.0 x 0.7-0.9 "
                                   "(McMaster's page title, rendered 2026-10-05)"),),
     "m4_washer": (Offer(_MCM, "https://www.mcmaster.com/93475A230/", "93475A230", pack_qty=100,
                         verified=True, note="18-8 stainless M4 washer, 4.3 x 9.0 (McMaster's "
                                             "page title, rendered 2026-10-05)"),),
-    "m3_heat_set_insert": (Offer("CNC Kitchen (US store)", "https://cnckitchenus.store/"
+    "m3_heat_set_insert": (Offer("Amazon", "https://www.amazon.com/dp/B0DQL4ZSCP", "B0DQL4ZSCP",
+                                 pack_qty=100, price_usd=4.49, verified=True,
+                                 note="M3 x 5.7 x 4.6 brass heat-set inserts, 100; page rendered "
+                                      "2026-10-08 (the Amazon cart the electronics fill)"),
+                           Offer("CNC Kitchen (US store)", "https://cnckitchenus.store/"
                                  "products/heat-set-insert-m3-x-5-7-100-pieces", "TC-M3x5.7",
                                  pack_qty=100, price_usd=10.90, verified=True,
                                  note="4.6 OD x 5.7 long, for a 4.0 mm hole"),),
@@ -248,6 +298,10 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               "04M025045HN/9677099", "04M025045HN", pack_qty=1,
               note="Essentra nylon 6/6 M2.5 hex nut, 5.0 AF x 2.0"),),
     "m25_nylon_standoff_mf_6": (
+        Offer("DigiKey", "https://www.digikey.com/en/products/detail/w%C3%BCrth-elektronik/"
+              "971060155/9488746", "971060155",
+              note="the same Wurth part on DigiKey (listed, price not seen 2026-10-08): the "
+                   "distributor cart the screw and nut are on"),
         Offer("Mouser", "https://www.mouser.com/ProductDetail/Wurth-Elektronik/971060155",
               "971060155", pack_qty=1, verified=True,
               note="Wurth WA-SPAIE nylon M2.5 hex 5 AF, 6 mm body, male-female, 8 mm stud "
@@ -287,6 +341,9 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               "10272563", "2275-1329837-ND", note="part number from a search result"),
     ),
     "epoxy_2part": (
+        Offer("Amazon", "https://www.amazon.com/dp/B0006O1ICE", "B0006O1ICE",
+              note="J-B Weld 8265S Original twin tube on Amazon (ASIN not re-checked "
+                   "2026-10-08): on the Amazon cart instead of its own"),
         Offer("J-B Weld", "https://www.jbweld.com/product/j-b-weld-twin-tube", "8265S",
               price_usd=7.99, verified=True,
               note="J-B Weld Original, 2 x 1 oz, slow cure (dark grey)"),),
@@ -302,22 +359,37 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               note="PolyFlex TPU95, black, 1.75 mm, 0.75 kg"),),
     # -- electronics -------------------------------------------------------------------
     "esp32_servo_driver": (
+        Offer("Amazon", "https://www.amazon.com/dp/B09SZ41RJW", "B09SZ41RJW", price_usd=24.99,
+              note="Waveshare's own board on Amazon (search-result price 2026-10-08): USD 9 over "
+                   "Waveshare's store, which ships from China at USD 12.40 (air mail, 12-28 "
+                   "days) for this one board"),
         Offer("Waveshare", "https://www.waveshare.com/servo-driver-with-esp32.htm", "21593",
               price_usd=15.99, verified=True,
               note="65 x 30 mm, 2.75 mm holes at 58 x 23 (measured on Waveshare's STEP)"),),
     "lipo_2s_450": (
+        Offer("Amazon", "https://www.amazon.com/dp/B0D3F6BRB9", "B0D3F6BRB9", pack_qty=4,
+              price_usd=32.99, note="the same Ovonic 80C long 4-pack (search-result price "
+                                    "2026-10-08), on the Amazon cart"),
         Offer("Ovonic (maker's store)", "https://us.ovonicshop.com/products/4-x-ovonic-7-4v-80c-"
               "450mah-2s-lipo-battery-long-size-with-xt30-plug-for-fpv-freestyle-racing-drones-"
               "tiny-whoop-drones-quadcopter", "O-80C-450-2S1P-L-XT30-4P", pack_qty=4,
               price_usd=30.74, verified=True, note="61.9 x 16.3 x 13.4 mm, 28 g: the cradle's "
                                                      "size; four per pack"),),
     "ip2326_charger": (
+        Offer("Amazon", "https://www.amazon.com/dp/B0HJNB79HJ", "B0HJNB79HJ", pack_qty=2,
+              price_usd=14.99, note="IP2326 2S/3S USB-C boost charge module, 2 pcs (search-"
+                                    "result price 2026-10-08): set it to 2S (8.4 V); measure "
+                                    "yours against the deck's 30 x 20 x 5 box"),
         Offer("Amazon", "https://www.amazon.com/dp/B0GTNBCCQM", "B0GTNBCCQM", verified=True,
               note="generic IP2326 2S USB-C module (no distributor stocks one; the page, rendered "
                    "2026-10-05, is 'IP2326 5V Boost Charging Module 8.4/12.6V ... (2S 8.4V)', no "
                    "price shown to a scripted browser); sizes run 30-40 x "
                    "20 x 5-6.9 mm: measure yours against the deck's 30 x 20 x 5 box"),),
     "bms_hx_2s_jh20": (
+        Offer("Amazon", "https://www.amazon.com/HX-2S-JH20-Protection-Balanced-Function-"
+              "Overcharged/dp/B0DTPHVHLL", "B0DTPHVHLL",
+              note="HX-2S-JH20, 46.7 x 23 x 3.15 mm, on the Amazon cart (price not seen "
+                   "2026-10-08: Amazon throttled the scripted session)"),
         Offer("diymore (brand store)", "https://www.diymore.cc/products/2s-10a-8-4v-7-4v-18650-"
               "lithium-protection-board-bms-pcm-pcb-li-ion-lipo-2-cell-pack-with-balance-"
               "function-charger-protect-module", "012759", price_usd=4.99, verified=True,
@@ -337,6 +409,9 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/1686",
               "33KQBK-ND", price_usd=0.10, note="Yageo CFR-25JB-52-33K"),),
     "xt30_pigtail_pair": (
+        Offer("Amazon", "https://www.amazon.com/dp/B0F44KMCWT", "B0F44KMCWT", pack_qty=2,
+              price_usd=7.99, note="Amass XT30 16 AWG pigtails, a male + female pair "
+                                   "(search-result price 2026-10-08): one is used"),
         Offer("Rotor Riot", "https://rotorriot.com/products/xt30-pigtail", "RR1630",
               price_usd=1.49, verified=True,
               note="XT30 pigtail, 16 AWG, ~10 cm: one is enough (the battery has its own XT30)"),),
@@ -346,10 +421,20 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               note="Tensility CA-2189, right-angle 5.5 x 2.1 mm plug, 24 AWG pigtail: the deck "
                    "turns the board so its jack faces forward, out of the bay"),),
     "lipo_strap_10mm": (
+        Offer("Amazon", "https://www.amazon.com/dp/B0BYJFLVCP", "B0BYJFLVCP", price_usd=12.69,
+              note="Furitek nylon strap 10 x 120 mm (search-result price 2026-10-08; pack "
+                   "count not seen): the deck takes ~77 mm, its slots 10 mm"),
+        Offer("RaceDayQuads", "https://www.racedayquads.com/products/lumenier-indestructible-"
+              "kevlar-lipo-strap-10x180mm-3", pack_qty=3, price_usd=8.49, verified=True,
+              note="the same Lumenier 3-pack (2026-10-08); RDQ ships USD 6.49 without a "
+                   "battery, free over 199"),
         Offer("GetFPV", "https://www.getfpv.com/lumenier-indestructible-kevlar-lipo-strap-"
               "10x180mm-3pcs.html", "8872", pack_qty=3, price_usd=8.49, verified=True,
               note="Lumenier 10 x 180 mm Kevlar strap, 3 per pack"),),
     "foam_tape": (
+        Offer("Amazon", "https://www.amazon.com/dp/B0CRDS3HHB", "B0CRDS3HHB", price_usd=7.99,
+              note="3M 1600T PE foam tape 1 mm, 0.39 in x 18 ft (search-result price "
+                   "2026-10-08): any 1 mm foam tape (catalog note)"),
         Offer("Ellsworth Adhesives", "https://www.ellsworth.com/products/by-manufacturer/3m/"
               "tapes/double-coated/structural-vhb/3m-vhb-tape-5952-gray-0.5-in-x-5-yd-roll/",
               "3M VHB 5952 1/2 in x 5 yd", verified=True,
