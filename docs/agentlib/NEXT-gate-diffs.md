@@ -96,10 +96,13 @@ fallback 155 N; unchanged by either branch).
 With the sim (`mise run audit`, not the gate's): the Strider double and the klann_lego quad
 pass with 0 cut-rule errors. The Klann quad fails on strength, as it did on `t3code/next`
 before the bus merge, and its cut rules have 0 errors. The bus window adds one finding
-there. `pin:C_leg3`'s jammed load in MuJoCo goes 259.6 -> 318.7 N with the robot's
-geometry: each side 0.228 mm farther out and the heavier chassis. Its jam SF drops
-1.07 -> 0.87, and `link:b1`'s 0.49 -> 0.40. The demo design's other six strength problems
-are unchanged.
+there. `pin:C_leg3`'s rated jam load goes 259.6 -> 318.7 N. That is not the jam itself:
+the jam-only load is unchanged (117.1 N). `sim.loads.simulate_loads` takes as the jam load
+the greater of the jam and the walking single-step peak. The walking peak went 259.6 ->
+318.7 N, a dynamic contact spike, while its p99 barely moved (67.7 -> 69.6 N). So the SF
+drop, 1.07 -> 0.87 (and `link:b1`'s 0.49 -> 0.40), comes from one sampled contact peak,
+not from the chassis' geometry. The demo design's other six strength problems are
+unchanged.
 
 
 ## The bus cable (`next-ba41c10` -> `next-ba68611`)

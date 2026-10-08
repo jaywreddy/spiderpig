@@ -324,7 +324,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   board's two bus ports (`servo_bus_cable_5264`, on hand: Waveshare's docs list "Bus Servo
   Control interfaces", two headers; Seeed's part list puts a "JST Wire" in each servo's
   box), so no Y cable and no extra cart. The centre plates get a closed window round
-  each plug and an open channel |y| <= 4.5 toward +x for its wires (`chassis._port_slots`,
+  each plug and an open channel toward +x for its wires (`chassis._port_slots`,
   `PortCut`). Both rear screws per servo are kept: a shank keeps 1 x t to the window, not
   2 x t (`chassis.BUS_WEB_T`), the near head's recess opens into it (`_recess_bridges`), and
   the raised pad (relabelled from "connector housing") takes its measured outline grown
@@ -349,7 +349,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   6.5 the research's upper estimate, 7.0 reserved); the far rear hole's web to the pad's
   relief, 1.617 mm against the 1.6 mm (1 x t) error level, 0.017 mm of margin; the pad
   cut-out clears the WS3 model's pad corner by only about 0.34 mm (0.2 grown, plus the
-  rounding).
+  rounding); the bus wires' diameter (1.3 mm taken, `BusPorts.wire_w`): the far rear screw's
+  head clears the wires by about 0.05 mm in y, so a 1.4 mm wire (0.15 mm more toward +y)
+  touches `L/R.rear_screw1`; and whether the boxed bus cable reaches the board.
 - **Warnings left** (errors 0): each end and second plate's far rear hole 1.62 mm from the
   pad's relief (an edge where it merges with the other servo's channel); over 1 x t, under
   2 x t.

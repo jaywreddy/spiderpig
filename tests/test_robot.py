@@ -287,9 +287,9 @@ def test_the_sts3215_bus_window_and_channel():
     trench in the rear face (x 11.55..16.55, |y| <= 10.1); a plug, 3.9 along x and 9.9
     across, stands 3.5 beyond the face and its wires 2.5 more, turned toward +x. Each servo
     uses the socket on its own +y side (the user's decision of 2026-10-08): the plates get a
-    window round that plug, inside the research's x 11.2..16.9, |y| <= 10.5, and a channel
-    |y| <= 4.5 from it to the far edge, through the plates within 6 mm of each rear face;
-    the stack holds one plug, not two."""
+    window round that plug, inside the research's x 11.2..16.9, |y| <= 10.5, and its own
+    channel, centred on its plug (y 0.55..9.55), from it to the far edge; the stack holds
+    one plug, not two."""
     from spiderpig.construction import chassis as ch
     from spiderpig.materials import sheet
 
@@ -390,7 +390,11 @@ def test_the_bus_plugs_and_wires_meet_no_centre_plate_and_no_screw(design, robot
     """The review of 2026-10-08: each servo's plug, and its wires swept from the plug's top
     along their channel past the plates' +x edge, at the research's upper height (6.5 mm
     over the rear face: 0.5 more than the 6.0 taken), meet no centre plate and no rear
-    screw; the other servo's real bumps (its raised pad) stand clear of the wires too."""
+    screw; the other servo's real bumps (its raised pad) stand clear of the wires too. Not
+    vacuous: the same envelopes moved off their cuts meet the plates by tens of mm^3 (the
+    wires 3 mm toward +y, or 3 mm toward -y a plate lower where no channel is cut; the plug
+    1 mm toward -x). (The far rear screw's head clears the wires by ~0.05 mm in y with the
+    1.3 mm wire taken: DECISIONS.md, verify on the first article.)"""
     from spiderpig.construction import chassis as ch
 
     tmpl, d = design("single")
@@ -415,13 +419,52 @@ def test_the_bus_plugs_and_wires_meet_no_centre_plate_and_no_screw(design, robot
                           *sorted((face + sign * ports.plug_h, face + sign * top)))
         for env, what in ((plug, "plug"), (wires, "wires")):
             for b in plates + screws:
-                met = env & b.part
-                vol = 0.0 if met is None else sum(x.volume for x in met.solids())
-                assert vol < 1e-6, (side, what, b.name, vol)
+                assert _met(env, b.part) < 1e-6, (side, what, b.name)
+        if side == "L":                     # the negative checks, on one side
+            off = {"wires +y 3": _envelope(f, cx - ports.plug_t / 2, 120.0,
+                                           cy + 3 - ports.wire_w / 2, cy + 3 + ports.wire_w / 2,
+                                           face + ports.plug_h, face + top),
+                   "wires -y 3, a plate lower": _envelope(
+                       f, cx - ports.plug_t / 2, 120.0, cy - 3 - ports.wire_w / 2,
+                       cy - 3 + ports.wire_w / 2, face + ports.plug_h - t, face + top - t),
+                   "plug -x 1": _envelope(f, cx - 1 - ports.plug_t / 2,
+                                          cx - 1 + ports.plug_t / 2, cy - ports.plug_w / 2,
+                                          cy + ports.plug_w / 2, face, face + ports.plug_h)}
+            for what, env in off.items():
+                assert sum(_met(env, b.part) for b in plates) > 10.0, what
     # the other servo's pad (mirrored in y) over the wires' run: below them, not in them
     pad = next(r for r in spec.rear_reliefs if r.label == "raised pad")
     assert -half + top <= half - pad.height
     assert ch.centre_stack(spec, d.ctx.params.margin) <= n * t
+
+
+def _met(a, b) -> float:
+    """The volume two shapes share (0 when they don't meet)."""
+    met = a & b
+    return 0.0 if met is None else sum(x.volume for x in met.solids())
+
+
+@pytest.mark.slow       # ~10 s of OCCT booleans
+def test_the_centre_plates_are_mirror_twins(design, robot):
+    """The review of 2026-10-08: centre plate k and plate n-1-k are one part, the second
+    turned a half turn about the servo's x axis (the two servos are mirror images through
+    the stack), however the cuts are listed (``chassis._merge_close`` stretches the cut that
+    grows least, not the first)."""
+    from build123d import Axis, Pos
+
+    tmpl, d = design("single")
+    mech = robot("single", TS[0])
+    f = _frames(d, tmpl.freeze_at(TS[0]))["L"]
+    plates = {b.name: b.part for b in mech.bodies if b.name.startswith("centre_plate")}
+    n = len(plates)
+    axis = Axis((f.o[0], f.o[1], 0), (f.u[0], f.u[1], 0))
+    for k in range(n // 2):
+        a, b = plates[f"centre_plate{k}"], plates[f"centre_plate{n - 1 - k}"]
+        turned = b.rotate(axis, 180)
+        turned = turned.moved(Pos(0, 0, a.bounding_box().min.Z - turned.bounding_box().min.Z))
+        assert a.volume == pytest.approx(b.volume, rel=1e-9)
+        assert sum(x.volume for x in (a - turned).solids()) < 1e-6, k
+        assert sum(x.volume for x in (turned - a).solids()) < 1e-6, k
 
 
 def test_the_centre_plates_hold_the_jammed_servo(robot):

@@ -285,8 +285,13 @@ def _merge_close(rects: list[tuple], web: float) -> list[tuple]:
                 # facing across a gap (overlapping: one cut already)
                 if not ((0 <= gx < web and gy < 0) or (0 <= gy < web and gx < 0)):
                     continue
-                k, p, q = (i, a, b) if isinstance(a, PortCut) else (j, b, a)
-                out[k] = (out[k][0], PortCut(_reach_into(p, q, along_x=gx >= 0)))
+                along_x = gx >= 0
+                # the plug's cut that grows least reaches into the other (by geometry, not
+                # list order: the two servos' mirrored plates come out congruent)
+                options = [(_growth(p, q, along_x), p, q, k) for k, p, q in
+                           ((i, a, b), (j, b, a)) if isinstance(p, PortCut)]
+                _, p, q, k = min(options, key=lambda o: (o[0], tuple(o[1])))
+                out[k] = (out[k][0], PortCut(_reach_into(p, q, along_x=along_x)))
             else:
                 # facing across a gap in one direction, overlapping in the other
                 if not ((gx < web and gy < 0) or (gy < web and gx < 0)):
@@ -308,6 +313,16 @@ def _reach_into(p, q, along_x: bool, depth: float = 1.0) -> tuple[float, ...]:
     else:
         c[hi] = q[lo] + depth
     return tuple(c)
+
+
+def _growth(p, q, along_x: bool) -> float:
+    """The area rectangle ``p`` gains reaching into ``q`` (:func:`_reach_into`); infinite
+    for an open cut stretched across its open length."""
+    r = _reach_into(p, q, along_x)
+    lo, hi = (0, 1) if along_x else (2, 3)
+    grown = sum(abs(r[k] - p[k]) for k in (lo, hi) if r[k] != p[k])    # (one side moves)
+    across = (p[3] - p[2]) if along_x else (p[1] - p[0])
+    return math.inf if math.isinf(across) else grown * across
 
 
 def _footprint(spec) -> tuple[float, float, float, float]:
@@ -1093,8 +1108,8 @@ def assembly(view) -> list:
         ops.append(Op(CHASSIS, (1 if s == "L" else 3,), whole(*mine, *rear),
                       f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
                       f"plates_{s}",
-                      # the bus cables, their plugs seated here (chassis' BOM line)
-                      extras=(BUS_CABLE,) if face and s == "L" else ()))
+                      # each side's own bus cable, its plug seated here (chassis' line)
+                      extras=(BUS_CABLE,) if face else ()))
     if middle:
         ops.append(Op(CHASSIS, (2,), whole(*middle), "Middle centre plates",
                       f"The middle centre plates ({nums(middle)}) over the studs"
