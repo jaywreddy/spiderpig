@@ -30,6 +30,8 @@ round finds nothing (the loop, below). The scorecard (W0) measures every number 
 
 ## Status (2026-10-08)
 
+Every workstream is merged; the whole plan landed on `master` as PR #28 (`155c8ab`).
+
 | workstream | state | merged |
 |---|---|---|
 | W0 measuring stick, CI, doc check | done | `1c533e4` |
@@ -40,16 +42,15 @@ round finds nothing (the loop, below). The scorecard (W0) measures every number 
 | W4a seam unit tests, `no_fabricate`, seeded plans | done | `7d56d1b` |
 | W5 packages, one screw table, one shim loop, layers | done | `8bfc039` |
 | W6a viewer dependencies, Node 22, declared Python deps | done | `c6939bc` |
-| W6b pyright baseline, extended ruff, rationales for the broad excepts | in progress | |
-| W7 docs that stay true | this branch (`w7-docs`) | |
+| W6b pyright baseline, extended ruff, rationales for the broad excepts | done | `b4d03c5` |
+| W7 docs that stay true | done | `c75641b` |
 | W8 approved output changes (D2-D5), gate baseline `w8-2a130c8` | done | `07f7e9a` |
 
-**Measured outcomes.** `mise run scorecard` on 2026-10-08 at `8bfc039` (W5 merged; the W7
-docs in progress), against the baseline `docs/agentlib/scorecard-baseline.json` (2026-10-07,
-`41997b4`). Both on the 20-core development box shared with other agents' jobs: the
+**Measured outcomes.** `mise run scorecard` on 2026-10-08 at `8bfc039` (W5 merged),
+against the baseline `docs/agentlib/scorecard-baseline.json` (2026-10-07, `41997b4`). Both on the 20-core development box shared with other agents' jobs: the
 baseline ran at load 15-30, this one at 6 (build) rising to 20 (tiers, quick tier), so the
 tier and quick-tier wall times compare only roughly. The full scorecard is kept with the W7
-PR, not committed.
+PR, not committed. The pyright, ruff and CLAUDE.md rows are as merged (`155c8ab`).
 
 | metric | baseline | 2026-10-08 | target |
 |---|---:|---:|---|
@@ -60,21 +61,18 @@ PR, not committed.
 | quick-tier coverage of `spiderpig/` | 79.2 % | 85.7 % | W4: + 5 points, met |
 | module tiers, wall | 12-61 s | 16-71 s (load 12-20) | W4: ≤ 20 s, not met under load |
 | largest module | 3315 lines (`crank.py`) | 1145 (`keys.py`) | W5: ≤ 1200, met |
-| pyright errors (without stub noise) | 733 (619) | 732 (609) | W6b: ≤ 150 |
-| ruff `RUF` findings | 117 | 116 | W6b: 0 with the extended set |
-| CLAUDE.md lines | 679 | 253 | W7: ≤ 300, met |
+| pyright errors (without stub noise) | 733 (619) | 28, ratcheted in CI (21 since, "Next") | W6b: ≤ 150, met |
+| ruff `RUF` findings | 117 | 0 (with `C4`, `PERF`, `PIE`, `RET`, `BLE`, `PLE`) | W6b: 0 with the extended set, met |
+| CLAUDE.md lines | 679 | 261 | W7: ≤ 300, met |
 | doc check misses | 48 | 0 (`--strict` in CI) | W7: 0, met |
 | identity gate, six designs | ~5 min | 225 s (the `w8-2a130c8` snapshot) | W3: ≤ 2 min, not met |
 
 The W3 and W4 wall-time targets were set on an idle machine; none was re-measured idle
 (the box was never under load 4, invariant 4), so "not met" above means "not shown".
-The one failing test of that run (counted in the api tier and the quick tier) was this
-branch's own check of the docs mid-edit (`test_doc_check.py`), green once W7's edits landed.
+The one failing test of that run (counted in the api tier and the quick tier) was W7's
+own check of the docs mid-edit (`test_doc_check.py`), green once W7's edits landed.
 
 **What's left.**
-- W6b (in progress): pyright to ≤ 150 with a CI baseline, the extended ruff set, the
-  rationales for the broad excepts; the stale code comments the docs audit found
-  (`assembly.py`'s notes of the old Project/main.py and similar) are W6b's, not W7's.
 - Re-measure W3's and W4's wall-time targets on an idle machine; if still missed, the
   next steps are W3 items 3-4 (each distinct part built once; exports as workers) and W4
   item 4 (one shared warm-up for the quick tier).
@@ -82,6 +80,37 @@ branch's own check of the docs mid-edit (`test_doc_check.py`), green once W7's e
   itself and had no SSH server on 2026-10-08; the full suite ran locally instead.
 - The demo `klann` quad's audit still fails on jam SF (W8, unchanged; the wobbly demo).
 - The open product items under "Later", below.
+
+## Next (started 2026-10-08)
+
+The follow-ups after PR #28, each its own branch:
+
+- **Assembly guide**: a PDF pipeline from the design (the assembly order, each step's
+  parts and fasteners, drawn from the build), a prototype first.
+- **STS3215 bus plugs**: which way the plugs go into the rear connector housing
+  (`ServoSpec.bus_ports` is UNVERIFIED, and it sets the centre plates' slot and so the one
+  rear screw per servo, "Later" below): measure a servo and a plug, or find the drawing.
+- **BOM consolidation**: a study of the BOM: fewer fastener sizes and SKUs, less pack
+  waste, cheaper sources.
+- **Speed round 2**: the contract check, the BOM's congruence grouping, the build's
+  exports, the tests' start-up and `spiderpig/keys.py` (W3's and W4's targets, still not
+  shown).
+- **The quickfix round** (this list's own branch, 2026-10-08):
+  - the stale material out: the generated architecture page and its broken generator,
+    SCOPE.md moved to `docs/history/`, this status table;
+  - pyright's possible bugs: the booleans' build123d ShapeList (`shapes.difference` /
+    `intersection`: a part its holes split is a `Compound` that `bad_solids` reports, not
+    a list the next boolean fails on, and `spiderpig build` stops on it,
+    `fabricate.split_parts`; no design reaches it) and `chassis._port_slots`'
+    possibly-`None` ports (unreachable: the XL servos have no `bus_ports`); pyright 28 -> 21;
+  - a nightly workflow (`.github/workflows/nightly.yml`): the slow tests, the browser tests,
+    the identity gate compared with itself; watch its first runs (the browser tests'
+    timed drive on a runner with no GPU, the gate's two snapshots on 4 cores);
+  - `lint-imports` with no exceptions: resolve, the stage records, check and plan moved
+    under bake/build into `spiderpig/stages/`.
+- **pyright's last 21**: JSON-typed returns in `spiderpig/mcp/` and `api/` and attribute
+  reads on `object`-typed parts (`build.py`, `bake.py`, `deck.py`, `store.py`): typing work,
+  none a known bug.
 
 ## Invariants (every workstream, every round)
 
@@ -531,8 +560,8 @@ viewer's rendering (e2e screenshots).
   - CLAUDE.md:30 → not AUDIT.md
   - AGENTS.md gets the module tiers and the gate
   - the `BuildConfig` sheets sentence
-  - `ARCHITECTURE.md`'s commit stamp, its Appendix C items, and `docs/architecture`'s
-    generated page rebuilt
+  - `ARCHITECTURE.md`'s commit stamp, its Appendix C items, and the generated
+    architecture page rebuilt (deleted instead on 2026-10-08: its generator was broken)
   - SCOPE.md's dead names
 - **Historical docs** (TIMING, PERF*, TESTDRIVE, AUDIT) move to `docs/history/` with a
   one-line header each; future_work.md is folded into this roadmap's "Later" section.

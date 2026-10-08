@@ -311,3 +311,18 @@ def test_the_bus_plugs_have_a_way_in():
     pocket = _replace(spec, bus_ports=_replace(ports, opening="pocket"))
     assert ch._port_slots(pocket, frames, half) == []
 
+
+@pytest.mark.parametrize("model", ["xl430_w250", "xl330_m288"])
+def test_a_servo_without_bus_ports_has_no_plug_slots(model):
+    """``chassis._port_slots`` reads the plugs' height only for a servo whose
+    ``ServoSpec.bus_ports`` are modelled: the XL servos have none, and get no slot (pyright's
+    possibly-``None`` ``ports.height``, 2026-10-08: unreachable, ``rect`` is ``None`` then)."""
+    from dataclasses import replace as _replace
+
+    from spiderpig.construction import chassis as ch
+
+    spec = servos.get(model)
+    assert spec.bus_ports is None
+    left = ServoFrame((0.0, 0.0), (1.0, 0.0))
+    assert ch._port_slots(spec, (left, _replace(left, hand=-1)), 3.0) == []
+

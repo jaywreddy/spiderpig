@@ -106,7 +106,7 @@ from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
 from spiderpig.rounding import rounded
-from spiderpig.shapes import union
+from spiderpig.shapes import difference, union
 from spiderpig.stack import body_class
 
 DECK_SCREW = screw("bhcs", "3")
@@ -618,10 +618,10 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                        color=BATTERY_COLOR))
     ix0, ix1, ihw = bat["inner"]
     w = CRADLE_WALL
-    rim = (_box(ix0 - w, ix1 + w, yt, yt + CRADLE_H, -ihw - w, ihw + w)
-           - _box(ix0, ix1, yt - 1, yt + CRADLE_H + 1, -ihw, ihw)
-           - _box(ix1 - 1, ix1 + w + 1, yt - 1, yt + CRADLE_H + 1, -CRADLE_GAP / 2,
-                  CRADLE_GAP / 2))
+    rim = difference(_box(ix0 - w, ix1 + w, yt, yt + CRADLE_H, -ihw - w, ihw + w),
+                     _box(ix0, ix1, yt - 1, yt + CRADLE_H + 1, -ihw, ihw),
+                     _box(ix1 - 1, ix1 + w + 1, yt - 1, yt + CRADLE_H + 1, -CRADLE_GAP / 2,
+                          CRADLE_GAP / 2))
     # its two ears, screwed to the deck (no glue: the user's decision of 2026-10-05): an M3
     # button head from above through each ear and the deck, an M3 nut under the deck
     nut_d = get("m3_nut").dims
@@ -633,7 +633,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
         za, zb = sorted((side * (ihw + w / 2), ez))
         ear = union([_box(ex - EAR_R, ex + EAR_R, yt, ye, za, zb),
                      _cyl_y(ex, ez, EAR_R, yt, ye)])
-        rim = union([rim, ear]) - _cyl_y(ex, ez, CLEARANCE["3"] / 2, yt - 1, ye + 1)
+        rim = difference(union([rim, ear]), _cyl_y(ex, ez, CLEARANCE["3"] / 2, yt - 1, ye + 1))
         scr = union([_cyl_y(ex, ez, CRADLE_SCREW.head_d / 2, ye, ye + CRADLE_SCREW.head_h),
                      _cyl_y(ex, ez, CRADLE_SCREW.d / 2 - 0.05, ye - ear_len, ye)])
         nut = (_cyl_y(ex, ez, nut_af / 2, yd - nut_h, yd)

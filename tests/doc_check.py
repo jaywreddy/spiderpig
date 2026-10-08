@@ -48,8 +48,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DOCS = ("CLAUDE.md", "AGENTS.md", "README.md", "docs/ARCHITECTURE.md",
-                "docs/agentlib/API.md", "docs/agentlib/TESTING.md", "docs/agentlib/ROADMAP.md",
-                "docs/agentlib/SCOPE.md")
+                "docs/agentlib/API.md", "docs/agentlib/TESTING.md", "docs/agentlib/ROADMAP.md")
 ALLOW_FILE = ROOT / "tests" / "doc_check_allow.txt"
 HISTORY = ("docs/history/",)
 """The dated records (each headed by its date and status): the code they name is gone."""

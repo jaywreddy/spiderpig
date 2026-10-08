@@ -911,7 +911,7 @@ def test_build_main_clears_old_outputs_then_stops_on_assembly(monkeypatch, tmp_p
 
 
 def test_build_main_no_plan(monkeypatch, tmp_path, capsys):
-    from spiderpig import api
+    from spiderpig.stages import planning
 
     monkeypatch.setattr(build, "template_for", lambda config: object())
 
@@ -919,13 +919,39 @@ def test_build_main_no_plan(monkeypatch, tmp_path, capsys):
         assert store.root == tmp_path / "store"
         raise ValueError("40 layers ruled out")
 
-    monkeypatch.setattr(api, "plan_config", no_plan)
+    monkeypatch.setattr(planning, "plan_config", no_plan)   # (build reads it there)
     rc = build.main(["--out", str(tmp_path / "o"), "--store", str(tmp_path / "store"),
                      "--phases", "0,170"])
     assert rc == 2
     cap = capsys.readouterr()
     assert "error: no layer plan: 40 layers ruled out" in cap.err
     assert "design: strider linkage, leg phases 0,170 deg" in cap.out
+
+
+def test_build_main_stops_on_a_part_in_pieces(monkeypatch, tmp_path, capsys):
+    """A laser-cut part its holes cut in two (``shapes.difference`` keeps the pieces as one
+    Compound): the build names it and writes no STEP, cut file or BOM (2026-10-08)."""
+    from spiderpig import fabricate as fabricate_mod
+    from spiderpig.mechanism import Body, Mechanism
+    from spiderpig.shapes import Rect, cut_holes, disc, plate
+    from spiderpig.stages import planning
+
+    split = cut_holes(plate([((0.0, 0.0), (40.0, 0.0), 5.0)], 0.0, 3.0),
+                      [Rect((20.0, 0.0), (4.0, 20.0))], 0.0, 3.0)
+    mech = Mechanism(name="side", bodies=[Body(name="b1", part=split, fab="laser"),
+                             Body(name="pin", part=disc((0, 0), 1, 0, 3), fab="printed")])
+    assert fabricate_mod.split_parts(mech) == [("b1", 2)]
+    monkeypatch.setattr(build, "template_for", lambda config: object())
+    monkeypatch.setattr(planning, "plan_config", lambda config, store: None)
+    plan = SimpleNamespace(top=1, height=6.0, describe=lambda: "")
+    monkeypatch.setattr(build, "design_side", lambda tmpl, config: SimpleNamespace(plan=plan))
+    monkeypatch.setattr(build, "fabricate", lambda tmpl, config, t: mech)
+    out = tmp_path / "o"
+    rc = build.main(["--out", str(out), "--store", str(tmp_path / "store")])
+    assert rc == 2
+    assert "error: parts in pieces: b1 (2 solids)" in capsys.readouterr().err
+    assert not list(out.glob("*.step"))
+    assert not (out / "bom.csv").exists()
 
 
 def test_export_prints_writes_stls_and_parts_csv(tmp_path):

@@ -8,6 +8,7 @@ pads other groups need (the servo footprint, chassis tabs).
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 
@@ -22,7 +23,20 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
-from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, pill, plate, share, union
+from spiderpig.shapes import (
+    Cut,
+    Rect,
+    Shape3D,
+    box,
+    cut_holes,
+    difference,
+    disc,
+    intersection,
+    pill,
+    plate,
+    share,
+    union,
+)
 from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, body_class
 
 SOCK_T = 1.5            # a TPU foot sock's wall round the toe (mm)
@@ -90,13 +104,14 @@ def window(part, tri, r: float, z0: float, z1: float):
         return filled
     if not getattr(inner, "area", 0) or inner.area < 4 * CORNER_R ** 2:
         return filled
-    return filled - _prism(inner, z0, z1)
+    return difference(filled, _prism(inner, z0, z1))
 
 
-def _prism(face, z0: float, z1: float):
+def _prism(face, z0: float, z1: float) -> Shape3D:
     from build123d import Pos, extrude
 
-    return Pos(0, 0, z0) * extrude(face, z1 - z0)
+    # a Part moved is a Part (build123d types ``Location * Shape`` as a bare Shape)
+    return cast("Shape3D", Pos(0, 0, z0) * extrude(face, z1 - z0))
 
 
 def foot_links(topo, lk) -> list[tuple[str, str, str]]:
@@ -222,14 +237,14 @@ def foot_sock(foot, other, r: float, z0: float, z1: float):
     d = d / max(float(np.linalg.norm(d)), 1e-9)
     n = np.array([-d[1], d[0]])
     ang = math.atan2(d[1], d[0])
-    ring = disc(tuple(f), r + SOCK_T, z0, z1) - disc(tuple(f), r, z0 - 1, z1 + 1)
+    ring = difference(disc(tuple(f), r + SOCK_T, z0, z1), disc(tuple(f), r, z0 - 1, z1 + 1))
     half = box(tuple(f + d * (r + SOCK_T) / 2), (r + SOCK_T + 0.01, 2 * (r + SOCK_T) + 1,
                                                 z1 - z0), z0, ang)
     legs = [box(tuple(f - d * (NOTCH_BACK + 0.5) / 2 + s * n * (r + SOCK_T / 2)),
                 (NOTCH_BACK + 0.5 + 0.02, SOCK_T, z1 - z0), z0, ang) for s in (-1, 1)]
     lugs = [box(tuple(f - d * NOTCH_BACK + s * n * (r - NOTCH[1] / 2 + 0.05)),
                 (NOTCH[0] - 0.2, NOTCH[1], z1 - z0), z0, ang) for s in (-1, 1)]
-    sock = union([ring & half, *legs, *lugs])
+    sock = union([intersection(ring, half), *legs, *lugs])
     notches = [Rect(tuple(f - d * NOTCH_BACK + s * n * (r - NOTCH[1] / 2 + 0.05)),
                     (NOTCH[0], NOTCH[1] + 0.1), ang) for s in (-1, 1)]
     return sock, notches

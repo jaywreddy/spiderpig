@@ -55,7 +55,7 @@ from spiderpig.config import (
     config_from_args,
     torque_limit_note,
 )
-from spiderpig.fabricate import design_side, fabricate, template_for
+from spiderpig.fabricate import design_side, fabricate, split_parts, template_for
 from spiderpig.hardware.bom import (
     MadeGroup,
     bom_from_mechanism,
@@ -365,7 +365,7 @@ def main(argv=None) -> int:
     # shopping list and BOM (a build that stops short leaves none of them behind)
     for owned in ("manifest.json", "ORDER.md", "bom.csv", "bom.md", "bom.json"):
         (out / owned).unlink(missing_ok=True)
-    from spiderpig.api import config_warnings
+    from spiderpig.stages.resolve import config_warnings
 
     for w in config_warnings(config):       # what the API's resolve would warn about
         print(f"warning: {w}", file=sys.stderr)
@@ -381,15 +381,16 @@ def main(argv=None) -> int:
                    f"{dict(config.proportions) or 'its defaults'}")
     if custom or config.linkage != linkage.DEFAULT:
         print(f"design: {design_note}")
-    # the plan through the store (api.plan_config), as explain and audit do: the stored
+    # the plan through the store (stages.plan_config), as explain and audit do: the stored
     # design's when it holds one (re-made and verified), else solved once and recorded;
     # design_side then answers from what plan_config remembered
-    from spiderpig import api, fabcache
+    from spiderpig import fabcache
+    from spiderpig.stages.planning import plan_config
     from spiderpig.store import Store
 
     store = Store.of(args.store) if args.store else Store.default()
     try:
-        api.plan_config(config, store)
+        plan_config(config, store)
     except ValueError as e:
         print(f"error: no layer plan: {e}", file=sys.stderr)
         return 2
@@ -406,13 +407,18 @@ def main(argv=None) -> int:
     try:
         with fabcache.serving(store):   # the store's fabrication when it holds this one
             mech = fabricate(tmpl, config, 1.0)
-        if job is not None:
+        split = split_parts(mech)
+        if job is not None and not split:
             entry = _published(store, tmpl, config, design)
     finally:
         if job is not None:
             job.go(entry)               # (None: the worker returns at once, unused)
     if entry is None:
         job = None
+    if split:           # no cut file or BOM of a part in pieces
+        print("error: parts in pieces: " + ", ".join(f"{name} ({n} solids)" for name, n in split),
+              file=sys.stderr)
+        return 2
     if config.robot:
         m = mech.meta
         print(f"chassis: {m['centre_plates']} centre plates; rear screws "
@@ -495,23 +501,23 @@ def main(argv=None) -> int:
 
 
 def _write_manifest(out: Path, config, args=None) -> None:
-    """``manifest.json`` naming the design built here (its id as :func:`api.resolve` gives
+    """``manifest.json`` naming the design built here (its id as :func:`stages.resolve` gives
     it: with ``--kerf``, which shapes the cut files, as the Spec's ``fit.kerf_mm``), so an
     ``api.export`` of the same design into this folder keeps its cut and print files and
     ORDER.md, and one of another design clears them. It lists no ``formats``: an export
     never takes a build's files for its own earlier ones (:func:`api.export`'s reuse)."""
     import json
 
-    from spiderpig import api
+    from spiderpig.stages.resolve import resolve, spec_of
 
-    spec = api.spec_of(config)
+    spec = spec_of(config)
     kerf = getattr(args, "kerf", None)
     size = getattr(args, "sheet_size", None)
     if kerf is not None:
         spec.setdefault("fit", {})["kerf_mm"] = kerf
     if size:
         spec.setdefault("fit", {})["sheet_size_mm"] = list(size)
-    design = api.resolve(spec, store=None)
+    design = resolve(spec, store=None)
     (out / "manifest.json").write_text(json.dumps(
         {"design": design.id, "engine_version": design.engine_version,
          "written_by": "spiderpig build", "kerf_mm": kerf,

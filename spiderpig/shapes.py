@@ -11,7 +11,6 @@ import copy
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import cast
 
 import numpy as np
 from build123d import (
@@ -124,9 +123,36 @@ def union(parts: Iterable[Shape3D]) -> Shape3D:
     """Fuse parts in one boolean (``a + b`` on two disjoint Solids returns a list)."""
     parts = [p for p in parts if p is not None]
     out = parts[0].fuse(*parts[1:]) if len(parts) > 1 else parts[0]
+    return _unwrap(_one(out))
+
+
+def _one(out) -> Shape3D:
+    """A boolean's result as one shape. build123d returns a ``ShapeList`` (a plain list,
+    with no ``fuse``, ``is_valid`` or ``&``) when an operation whose operands are all
+    ``Solid`` leaves several pieces (an operand that is a ``Compound``, as every
+    primitive here but :func:`pill` is, gives a ``Compound``): the pieces become one
+    ``Compound``, so a split part reaches :func:`construction.contract.bad_solids` as a
+    part of several solids rather than as a list the next boolean fails on."""
     if isinstance(out, list):
-        out = Compound(children=list(out))
-    return _unwrap(out)
+        return Compound(children=list(out))
+    return out
+
+
+def difference(part: Shape3D, *tools: Shape3D) -> Shape3D:
+    """``part - tool`` for each tool in turn (one boolean each, as the operator chain
+    ``part - a - b`` does), every step one shape (:func:`_one`)."""
+    out = part
+    for tool in tools:
+        out = _one(out - tool)
+    return out
+
+
+def intersection(a: Shape3D, b: Shape3D) -> Shape3D:
+    """``a & b`` as one shape (:func:`_one`); an empty intersection is an error."""
+    out = a & b
+    if out is None:
+        raise ValueError("the shapes don't meet")
+    return _one(out)
 
 
 def _unwrap(shape):
@@ -149,8 +175,7 @@ def _cutter(cut: Cut | Rect, z0: float, z1: float) -> Shape3D:
     slab = Box(2 * r, 4 * r, z1 - z0 + 2).rotate(Axis.Z, math.degrees(cut.angle))
     cx = cut.xy[0] + ux * (keep + r)
     cy = cut.xy[1] + uy * (keep + r)
-    # a circle less a slab beyond its chord is one piece, never a list of them
-    return cast("Shape3D", body - slab.move(Pos(cx, cy, (z0 + z1) / 2)))  # one piece
+    return difference(body, slab.move(Pos(cx, cy, (z0 + z1) / 2)))
 
 
 def cut_holes(part: Shape3D, cuts: Iterable[Cut | Rect], z0: float, z1: float) -> Shape3D:
@@ -158,8 +183,8 @@ def cut_holes(part: Shape3D, cuts: Iterable[Cut | Rect], z0: float, z1: float) -
     cutters = [_cutter(c, z0 - 1.0, z1 + 1.0) for c in cuts]
     if not cutters:
         return part
-    # build123d types a cut as maybe a list of pieces; holes inside a part leave it whole
-    return cast("Shape3D", _unwrap(part - union(cutters)))  # holes never split a part
+    # holes that split a part leave it a Compound of its pieces (bad_solids reports it)
+    return _unwrap(difference(part, union(cutters)))
 
 
 def plate(
