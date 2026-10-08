@@ -1532,11 +1532,11 @@
    }
   }
  },
- "engine_version": "0.1.0+d91e2952742a",
+ "engine_version": "0.1.0+2c2520600a93",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-0de409de7154e47f"
+ "source_key": "gen-ad6c9acedb0f9bdf"
 }

@@ -52,11 +52,11 @@
   },
   "top": 13
  },
- "engine_version": "0.1.0+d91e2952742a",
+ "engine_version": "0.1.0+2c2520600a93",
  "generator": "tests/test_stack.py::test_the_recorded_plans_are_current[strider-double]",
  "source": {
   "file": "tests/test_stack.py",
   "name": null
  },
- "source_key": "gen-720af8c5bdf713e3"
+ "source_key": "gen-8f2308763ac09bd5"
 }
