@@ -14,9 +14,12 @@ outer one (no time counted twice).
 Stages (:data:`STAGES`): ``import`` the process's age once the build's modules are imported
 (the interpreter and every import), ``template`` the options' checks and the template,
 ``plan`` the layer plan through the store, ``fabricate`` the robot, ``step`` / ``stl`` its two
-files, ``group`` the laser and printed parts grouped (mass properties), ``prints`` the print
+files, ``group`` the laser and printed parts grouped (mass properties), ``labels`` the
+parts' labels and the assembly order they follow (:mod:`spiderpig.labels`: the print STLs' and
+DXFs' names; ~1.5 s, uncounted until 2026-10-08), ``prints`` the print
 STLs, ``dxf_sheets`` / ``dxf_parts`` the packed sheets and the per-part DXFs, ``bom`` the BOM
-and its files, ``order`` ``ORDER.md`` and ``manifest.json``. With the build's export worker
+and its files, ``order`` ``ORDER.md``, ``manifest.json`` and the up-to-date record
+(:func:`spiderpig.uptodate.record`). With the build's export worker
 (:func:`spiderpig.build._start_exports`: workers and the fabrication cache on) ``group`` is
 the wait for that worker, which groups and writes both kinds of DXF beside the ``step`` and
 ``stl`` stages (so ``dxf_sheets`` and ``dxf_parts`` are absent), and its own steps are
@@ -38,14 +41,16 @@ from pathlib import Path
 
 from spiderpig.tools.profiler import Profiler, process_age
 
-STAGES = ("import", "template", "plan", "fabricate", "step", "stl", "group", "prints",
-          "dxf_sheets", "dxf_parts", "bom", "order")
+STAGES = ("import", "template", "plan", "fabricate", "step", "stl", "group", "labels",
+          "prints", "dxf_sheets", "dxf_parts", "bom", "order")
 logger = logging.getLogger("spiderpig.build")
 
 
 def _targets():
     """(object, attribute, stage) of every call the build's stages are made of."""
     from spiderpig import build as build_mod
+    from spiderpig import labels as labels_mod
+    from spiderpig import uptodate
     from spiderpig.hardware import bom as bom_mod
     from spiderpig.hardware import order as order_mod
     from spiderpig.mechanism import Mechanism
@@ -63,6 +68,8 @@ def _targets():
         (Mechanism, "export_stl", "stl"),
         (build_mod, "group_made", "group"),
         (build_mod, "_exports_result", "group"),
+        (labels_mod, "assembly_order", "labels"),       # (imported by the build when it runs)
+        (labels_mod, "part_types", "labels"),
         (build_mod, "export_prints", "prints"),
         (build_mod, "printed_filaments", "prints"),
         (build_mod, "save_sheets", "dxf_sheets"),
@@ -72,6 +79,8 @@ def _targets():
         (bom_mod.Bom, "write", "bom"),
         (order_mod, "order_markdown", "order"),
         (build_mod, "_write_manifest", "order"),
+        (uptodate, "inputs", "order"),
+        (uptodate, "record", "order"),
     ]
 
 
@@ -110,7 +119,7 @@ def _options() -> argparse.ArgumentParser:
     g = p.add_argument_group(
         "profile (spiderpig/tools/build_profile.py)",
         "the build's stage timings (import, template, plan, fabricate, step, stl, group, "
-        "prints, dxf_sheets, dxf_parts, bom, order) on the spiderpig.build logger")
+        "labels, prints, dxf_sheets, dxf_parts, bom, order) on the spiderpig.build logger")
     g.add_argument("--profile", action="store_true", help="log each stage's wall-clock time")
     g.add_argument("--profile-json", type=Path, default=None, metavar="FILE",
                    help="also write the profile to FILE as JSON (implies --profile)")
