@@ -581,17 +581,21 @@ def test_the_physics_gate_is_mujocos_verdict_not_the_margin(page: Page, viewer_s
 
 
 def test_the_steering_row_says_what_the_server_proved(page: Page, viewer_server: str) -> None:
-    """The Klann quad cannot skid-steer (it rolls over at |L−R| 0.4) but walks a 45 or 90 deg
-    excursion (a grant on the edge of its tilt limit: 90 on the parametric servo since W8)
+    """The Klann quad's skid-steer grant sits on its tilt limit (|L−R| 0.4 tilts it ~19.9-20.6
+    deg against 20, so it may or may not be granted), and it walks a 45 or 90 deg
+    excursion (also on the edge: 90 on the parametric servo since W8)
     that the server's phase lock bounds: the HUD's steering row and the turn
     slider's name say so, the authority defaults to the excursion's differential, and
     the steering key does send a differential (the server bounds the offset)."""
     _open_physics(page, viewer_server, "drive=1&linkage=klann&physics=1")    # its quad
     steer = _js(page, "window.__viewer.drive.physics.steering")
-    assert steer["turn"] == 0.0
+    assert steer["turn"] in (0.0, 0.4)        # on the tilt bound: either grant (test_sim)
     assert steer["step_deg"] in (45.0, 90.0)
     s = page.evaluate(PHYS_JS)
-    assert "excursion" in s["hud"]["steering"]
+    if steer["turn"]:       # the differential granted: the HUD states it
+        assert "|L−R| ≤ 0.4" in s["hud"]["steering"]
+    else:                   # refused: the HUD offers the bounded excursion instead
+        assert "excursion" in s["hud"]["steering"]
     assert _js(page, "window.__viewer.drive.opts.turn") == pytest.approx(0.4)
     cmd = _js(page, "window.__viewer.drive.physicsCommand(1, 0)")
     assert cmd[0] - cmd[1] == pytest.approx(0.4)

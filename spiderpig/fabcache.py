@@ -187,6 +187,14 @@ def root_of(store) -> Path | None:
     return None if st is None else st.root / FOLDER
 
 
+def entry_path(store, tmpl, config, design, t: float) -> Path | None:
+    """The folder :func:`fabricated` keeps this fabrication in (``None``: ``store`` is
+    ``None`` or the cache is off); raises when the key can't be computed. Whether it is
+    there yet is the caller's to check (a published entry is whole)."""
+    root = root_of(store) if store is not None and enabled() else None
+    return None if root is None else root / folder_name() / entry_name(tmpl, config, design, t)
+
+
 # ---------------------------------------------------------------------------
 # serving
 # ---------------------------------------------------------------------------
@@ -195,15 +203,15 @@ def root_of(store) -> Path | None:
 def fabricated[M](store, tmpl, config, design, t: float, build: Callable[[], M]) -> M:
     """``build()``'s mechanism, from ``store``'s cache when there (else built, then kept).
     ``store`` ``None`` or the cache off: ``build()``."""
-    root = root_of(store) if store is not None and enabled() else None
-    if root is None:
+    if store is None or not enabled() or root_of(store) is None:
         return build()
     t0 = time.perf_counter()
     try:
-        entry = root / folder_name() / entry_name(tmpl, config, design, t)
+        entry = entry_path(store, tmpl, config, design, t)
     except Exception as e:      # noqa: BLE001 - a key we can't compute: no cache
         log.warning("fabrication cache: no key (%s): fabricating", e)
         return build()
+    assert entry is not None
     with contextlib.ExitStack() as held:
         try:
             held.enter_context(locked(entry))

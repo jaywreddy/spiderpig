@@ -8,19 +8,35 @@ pads other groups need (the servo footprint, chassis tabs).
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 
 from spiderpig.construction.base import (
     FRAME_INNER,
     FRAME_OUTER,
+    RIDES_HOST,
     Build,
     Context,
     Group,
+    Motion,
     Realized,
     hardware,
 )
-from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, pill, plate, share, union
+from spiderpig.shapes import (
+    Cut,
+    Rect,
+    Shape3D,
+    box,
+    cut_holes,
+    difference,
+    disc,
+    intersection,
+    pill,
+    plate,
+    share,
+    union,
+)
 from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, body_class
 
 SOCK_T = 1.5            # a TPU foot sock's wall round the toe (mm)
@@ -88,13 +104,14 @@ def window(part, tri, r: float, z0: float, z1: float):
         return filled
     if not getattr(inner, "area", 0) or inner.area < 4 * CORNER_R ** 2:
         return filled
-    return filled - _prism(inner, z0, z1)
+    return difference(filled, _prism(inner, z0, z1))
 
 
-def _prism(face, z0: float, z1: float):
+def _prism(face, z0: float, z1: float) -> Shape3D:
     from build123d import Pos, extrude
 
-    return Pos(0, 0, z0) * extrude(face, z1 - z0)
+    # a Part moved is a Part (build123d types ``Location * Shape`` as a bare Shape)
+    return cast("Shape3D", Pos(0, 0, z0) * extrude(face, z1 - z0))
 
 
 def foot_links(topo, lk) -> list[tuple[str, str, str]]:
@@ -176,6 +193,24 @@ class LinkPlates(Group):
 
         return [Claim(n, frozenset((n,)), make(n, segs)) for n, segs in ctx.topo.links.items()]
 
+    def assembly(self, view) -> list:
+        """Each link with the layer it sits in (:mod:`construction.assembly`), a foot
+        link's TPU sock on it first."""
+        from spiderpig.construction.assembly import STACK, Op, whole
+
+        ops = []
+        for link in getattr(getattr(view.ctx, "topo", None), "links", {}):
+            if link not in view.z:
+                continue
+            k = view.slot(view.z[link][0])
+            ops.append(Op(STACK, (k, 1), whole(link), "",
+                          "Place the layer's links on their pillars and pins.", "layer"))
+            if f"{link}_sock" in view.z:
+                ops.append(Op(STACK, (k, 1), whole(f"{link}_sock"), "",
+                              "Each foot link takes its TPU sock, slid on, before it goes on.",
+                              "layer"))
+        return ops
+
     def realize(self, build: Build, done: Realized) -> Realized:
         out = Realized()
         r = build.ctx.params.link_radius
@@ -203,6 +238,11 @@ class LinkPlates(Group):
                                        sheet=ctx.sheet("link", name)))
         return out
 
+    def motion(self, got: Realized) -> Motion:
+        """A link, its boss and its sock are drawn from its own joints, and every hole the
+        others ask of it is round at one of them: each rides its link."""
+        return RIDES_HOST
+
 
 def foot_sock(foot, other, r: float, z0: float, z1: float):
     """A printed TPU 95A sock on a foot link's toe (the joinery plan): a 1.5 mm wall round
@@ -215,14 +255,14 @@ def foot_sock(foot, other, r: float, z0: float, z1: float):
     d = d / max(float(np.linalg.norm(d)), 1e-9)
     n = np.array([-d[1], d[0]])
     ang = math.atan2(d[1], d[0])
-    ring = disc(tuple(f), r + SOCK_T, z0, z1) - disc(tuple(f), r, z0 - 1, z1 + 1)
+    ring = difference(disc(tuple(f), r + SOCK_T, z0, z1), disc(tuple(f), r, z0 - 1, z1 + 1))
     half = box(tuple(f + d * (r + SOCK_T) / 2), (r + SOCK_T + 0.01, 2 * (r + SOCK_T) + 1,
                                                 z1 - z0), z0, ang)
     legs = [box(tuple(f - d * (NOTCH_BACK + 0.5) / 2 + s * n * (r + SOCK_T / 2)),
                 (NOTCH_BACK + 0.5 + 0.02, SOCK_T, z1 - z0), z0, ang) for s in (-1, 1)]
     lugs = [box(tuple(f - d * NOTCH_BACK + s * n * (r - NOTCH[1] / 2 + 0.05)),
                 (NOTCH[0] - 0.2, NOTCH[1], z1 - z0), z0, ang) for s in (-1, 1)]
-    sock = union([ring & half, *legs, *lugs])
+    sock = union([intersection(ring, half), *legs, *lugs])
     notches = [Rect(tuple(f - d * NOTCH_BACK + s * n * (r - NOTCH[1] / 2 + 0.05)),
                     (NOTCH[0], NOTCH[1] + 0.1), ang) for s in (-1, 1)]
     return sock, notches
@@ -243,6 +283,23 @@ class FramePlates(Group):
 
     def claims(self, ctx: Context) -> list[Claim]:
         return []   # layers 0 and top are reserved for these plates by the planner
+
+    def assembly(self, view) -> list:
+        """The outer plate first, bare, leg side up; the inner plate the first part of its
+        unit, servo side up (:mod:`construction.assembly`)."""
+        from spiderpig.construction.assembly import STACK, UNIT, Op, whole
+
+        topo = getattr(view.ctx, "topo", None)
+        inner = topo.frame_bodies[0] if topo is not None and topo.frame_bodies else None
+        ops = []
+        if "frame_outer" in view.z:
+            ops.append(Op(STACK, (-1, 0), whole("frame_outer"),
+                          "Outer frame plate and pillar columns",
+                          "Lay the outer frame plate down, leg side up.", "plate"))
+        if inner is not None and inner in view.z:
+            ops.append(Op(UNIT, (0,), whole(inner), "Inner plate and servo",
+                          "Lay the inner frame plate down, servo side up.", "plate"))
+        return ops
 
     def realize(self, build: Build, done: Realized) -> Realized:
         out = Realized()
@@ -284,3 +341,8 @@ class FramePlates(Group):
             out.bodies.append(hardware(name, part, frame, fab="laser", color="#eb6834",
                                        sheet=build.ctx.sheet("frame")))
         return out
+
+    def motion(self, got: Realized) -> Motion:
+        """The plates don't move: O, the pillars and what the others ask of them (the
+        servo's holes and pad, the pillars', the journal's) stand with the frame."""
+        return RIDES_HOST

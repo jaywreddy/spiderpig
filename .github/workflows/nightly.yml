@@ -1,0 +1,139 @@
+# What ci.yml leaves out, nightly on master (and on request): the slow tests, the browser
+# tests against the built viewer, and the identity gate as a determinism check. CI has no
+# gate baseline (it is a snapshot on a developer's disk, docs/agentlib/TESTING.md), so the
+# gate job snapshots the tree twice, each in a fresh store, and compares them: a design
+# that builds differently from one run to the next fails it.
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 6 * * *"        # 06:17 UTC, off the hour's rush
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  SPIDERPIG_OFFLINE: "1"          # never download a servo's CAD model: parametric servos
+  UV_PYTHON: "3.12"
+  FORCE_COLOR: "1"
+
+jobs:
+  slow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      # the walk-model parity test runs the viewer's vitest: with node and its packages
+      # here, SPIDERPIG_REQUIRE_VIEWER_TESTS=1 makes a skip a failure (as the quick job)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - run: npm ci
+        working-directory: viewer
+      # the fabrication cache (tests/cache.py), as the quick job keeps it: folders named by
+      # the engine and library versions, so nothing restored for another engine is read.
+      # Its own key (the quick job's is immutable once saved); it starts from the quick
+      # job's entries for the same engine when it has none of its own
+      - id: engine
+        run: echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          restore-keys: |
+            test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      - name: slow tests
+        env:
+          SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
+        run: uv run --locked pytest -p no:warnings -m "slow and not e2e" -n 4 --dist worksteal --durations 25
+      - if: always() && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+      SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      # mise.toml's tools (python, uv, node 22) and its tasks: `mise run viewer-build`
+      # writes spiderpig/viewer/dist, which the e2e server mounts (tests/conftest.py)
+      - uses: jdx/mise-action@v2
+        with:
+          cache: true
+      - run: uv sync --locked
+      - run: mise run viewer-build
+      # Playwright's Chromium and the system libraries it needs (apt: the runner's sudo)
+      - run: uv run --locked playwright install --with-deps chromium
+      - id: engine
+        run: echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          restore-keys: |
+            test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      # one browser at a time: each test bakes its mode on first request into one store
+      - name: browser tests
+        env:
+          SPIDERPIG_SHOTS: ${{ runner.temp }}/shots
+        run: uv run --locked pytest -p no:warnings -m e2e tests/e2e --browser chromium
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+      - if: always() && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-e2e-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+
+  # the identity gate (tests/gate/identity_gate.py) as a determinism check: no baseline
+  # here, so two snapshots of this tree, each from a fresh store, must be identical
+  # (compare exits 0; 1 is "order differs", 2 "DIFFERENT"); the second checks the contract
+  # exactly at every angle (GATE_EXACT_CONTRACT: check_side, not the audit's check_sides),
+  # so the fast and the exact contract are compared on the gate's designs every night
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      - name: snapshot
+        run: uv run --locked python tests/gate/identity_gate.py snapshot "$RUNNER_TEMP/gate-a" -j 2
+      - name: snapshot again (the contract exactly) and compare
+        env:
+          GATE_EXACT_CONTRACT: "1"
+        run: uv run --locked python tests/gate/identity_gate.py compare "$RUNNER_TEMP/gate-a" -j 2 --out "$RUNNER_TEMP/gate-b"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-snapshots
+          path: |
+            ${{ runner.temp }}/gate-a
+            ${{ runner.temp }}/gate-b
+          if-no-files-found: ignore

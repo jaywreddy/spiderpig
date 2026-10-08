@@ -385,13 +385,17 @@ def _sheet_scale(config: BuildConfig, key: str) -> float:
 # The electronics deck (construction.deck), robot only: its fabricated mass on 3 mm acrylic
 # (plate 33 g of it, at the sheet's density; the rest the electronics, rails and hardware)
 # and its centre of mass from the servo body's centre (x) and the chassis' top, which is
-# the servo's highest corner plus 2.36 mm (the centre plates round the ties, 2 thicknesses
-# of aluminium to the edge): measured on the Strider double (116.6 g since the rails are
-# screwed on, 2026-10-04; 113 g with glued spigots), centre 13.45 mm over the chassis top.
-# (+2.5 g: the cradle screwed down; -1.4 g: the simplified hardware's button-head deck
-# screws and 8 mm-stud board standoffs, 2026-10-05)
-_DECK_PLATE_G, _DECK_REST_G = 33.3, 84.4
-_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.45, 2.36
+# the servo's highest corner plus 0.99 mm (the centre plates round the ties, 2 thicknesses
+# of aluminium to the edge: 2.36 mm in the 0.090 in plates before 2026-10-08): measured on
+# the Strider double (116.6 g since the rails are screwed on, 2026-10-04; 113 g with glued
+# spigots), centre 13.45 mm over the chassis top. (+2.5 g: the cradle screwed down; -1.4 g:
+# the simplified hardware's button-head deck screws and 8 mm-stud board standoffs,
+# 2026-10-05; +1.2 g: the Tattu LiPo's 29 g and the rails' captive steel nuts in place of
+# the brass inserts, 2026-10-08.) Re-measured with the 0.063 in centre plates (2026-10-08):
+# the Strider double 118.7 g, 13.44 mm over the chassis top; the Klann quad, whose charger
+# sits on its two printed pad strips, 119.7 g, 13.24 mm: the nominal is their middle
+_DECK_PLATE_G, _DECK_REST_G = 33.3, 85.9
+_DECK_COM_DX, _DECK_COM_DY, _DECK_FLOOR_DY = -4.0, 13.34, 0.99
 
 
 def _pin_joints(lk) -> int:

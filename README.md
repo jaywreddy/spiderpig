@@ -214,7 +214,8 @@ aluminium centre plates, tied into one frame by four chains of 6 mm round M3 sta
 (an M3 button head up through each inner plate, an M3 set screw through the centre
 plates joining each pair; no glue). An electronics deck (ESP32 servo driver, 2S LiPo,
 charger, protection board, switch) sits between the inner plates over the servos.
-`construction/robot.py`'s `ASSEMBLY` is the order every fastener can be driven in.
+`construction/assembly.py`'s `ROBOT_ORDER` and each construction's `assembly` hook are
+the order every fastener can be driven in; `spiderpig guide` draws it as `ASSEMBLY.pdf`.
 
 ## Test
 
@@ -224,7 +225,7 @@ mise run test-planner   # a module tier: linkage, planner, construction, hardwar
 mise run test-quick     # every module's fast tier: -m 'not slow and not e2e', xdist -n 4
 mise run test-viewer    # the viewer's typecheck and vitest
 mise run remote-test    # the full suite on the remote runner (AGENTS.md)
-mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # did a product edit move a part?
+mise run gate -- compare ~/.cache/spiderpig/gate/next-320384d   # did a product edit move a part?
 ```
 
 [docs/agentlib/TESTING.md](docs/agentlib/TESTING.md) has the tiers, markers, the caches, the

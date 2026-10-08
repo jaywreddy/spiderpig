@@ -241,11 +241,11 @@ def inputs(opts: Options, config) -> dict:
     (after the plan, before fabricating): the stored plan, the servo model's files."""
     from dataclasses import replace
 
-    from spiderpig import api
     from spiderpig.config import default_robot
+    from spiderpig.stages.resolve import resolve, spec_of
 
-    plan_id = api.resolve(api.spec_of(replace(config, robot=default_robot(config.linkage))),
-                          store=None).id
+    plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
+                      store=None).id
     return {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
             "cad_env": cad_env(), "servo_files": servo_files(config)}
 

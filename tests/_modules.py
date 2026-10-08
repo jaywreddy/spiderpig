@@ -49,6 +49,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_klann_lego_cranks.py": "construction",
     "test_fabricate.py": "construction",
     "test_contract.py": "construction",
+    "test_shapes.py": "construction",
     "test_seam_crank.py": "construction",
     "test_seam_pivots.py": "construction",
     "test_seam_chassis.py": "construction",
@@ -84,5 +85,6 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_sim.py": "sim",
     "test_sim_live.py": "sim",
     "test_bake_gltf.py": "sim",
+    "test_guide.py": "sim",
 }
 """Test file (relative to ``tests/``) -> its default module."""

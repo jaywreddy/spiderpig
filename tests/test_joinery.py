@@ -170,10 +170,11 @@ def test_the_body_plates_keep_two_thicknesses_round_every_hole(default_robot):
     holes, the outline two thicknesses round each recess, the bump reliefs' corners
     rounded past SendCutSend's 0.8 mm) have no error; nothing anywhere is an error. Since
     the checker measures the webs round non-circular cut-outs too (the assembly audit of
-    2026-10-04), two warnings are inherent in the STS3215 and stay at least 1 x t: the
-    inner plate's far front screw holes 2.05 mm from the raised panel's relief, and the
-    centre plates' rear screw holes 2.6 mm from the bus plugs' slot (into which the
-    SO-ARM100 model's pins relief is merged)."""
+    2026-10-04), the warnings inherent in the STS3215 stay at least 1 x t: the inner
+    plate's far front screw holes 2.05 mm from the raised panel's relief, and in the centre
+    plates (0.063 in since 2026-10-08, both rear screws kept) the far rear holes 1.62 mm from
+    the raised pad's relief (an edge where it merges with the other servo's channel, open to
+    the plates' edge; a web where not)."""
     from spiderpig.manufacture import check
     from spiderpig.materials import sheet
 
@@ -185,9 +186,9 @@ def test_the_body_plates_keep_two_thicknesses_round_every_hole(default_robot):
     assert all(i["level"] == "warning" for i in body)
     assert all(i["value"] >= sheet(i["sheet"]).thickness - 1e-6 for i in body)
     assert {(i["part"].split(".")[-1].rstrip("0123456789"), i["rule"]) for i in body} <= {
-        ("torso", "web"), ("centre_plate", "edge")}
+        ("torso", "web"), ("centre_plate", "edge"), ("centre_plate", "web")}
     assert not [i for i in body if i["part"].endswith("frame_outer")]
-    assert mech.meta["centre_plate_sheet"] == "al5052_2p3mm"      # decision 4: 0.090 in
+    assert mech.meta["centre_plate_sheet"] == "al5052_1p6mm"      # 2026-10-08: 0.063 in
 
 
 def test_a_frame_plate_boss_is_two_thicknesses():
@@ -198,15 +199,16 @@ def test_a_frame_plate_boss_is_two_thicknesses():
     assert boss_web(None) == 0.0
 
 
-def test_the_centre_plates_are_0p090_in():
-    """The user's decision of 2026-10-04 (4): 0.090 in 5052 centre plates on the default
-    servo, the thinnest that seats the most rear screws."""
+def test_the_centre_plates_are_0p063_in():
+    """The user's decision of 2026-10-04 (4), the thinnest stack that seats the most rear
+    screws, was 0.090 in on the default servo; since 2026-10-08 (both rear screws per servo,
+    the bus window) only 0.063 in seats both, so the centre plates go under the frame's
+    0.080 in (a thinner sheet only for more screws)."""
     from spiderpig.construction.chassis import _centre_sheet
     from spiderpig.servos import get
 
     cfg = BuildConfig()
-    assert _centre_sheet(get(cfg.servo), cfg.frame_sheet, cfg.params.margin) == "al5052_2p3mm"
-
+    assert _centre_sheet(get(cfg.servo), cfg.frame_sheet, cfg.params.margin) == "al5052_1p6mm"
 
 
 def test_frame_plates_of_the_default_sheet_are_their_own_centre_plates():

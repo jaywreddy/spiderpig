@@ -340,7 +340,9 @@ def _no_point(ctx, dims, link, margin, rad, clear, allow, reach) -> NoCrankPoint
 
 
 def _ranges(ns: list[int]) -> str:
-    """``[3, 4, 5, 6, 9, 11]`` -> ``"3-6, 9 or 11"``."""
+    """``[3, 4, 5, 6, 9, 11]`` -> ``"3-6, 9 or 11"``; ``[]`` -> ``"no"``."""
+    if not ns:
+        return "no"
     parts: list[list[int]] = []
     for n in ns:
         if parts and parts[-1][1] == n - 1:
@@ -846,6 +848,10 @@ class CrankRouter:
             self.spans, self._relax = None, 1
             if isinstance(self._cheapest(view), tuple):
                 sizes = sorted(k for k, m in saved[0].items() if m)
+                if not sizes:       # (no length fits any joint: the stock was cut short)
+                    return ("its crank routes need a joint, and no stock screw fits a crank "
+                            "joint at any span (no chain's webs any number of layers apart "
+                            "take one)")
                 return ("its crank routes need a joint no stock screw fits (a chain's webs "
                         f"{_ranges(sizes)} layers apart, both counted, take one)")
             self.after = [[True] * self.n for _ in range(self.n)]

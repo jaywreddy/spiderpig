@@ -63,7 +63,7 @@ from spiderpig.config import (
     add_design_args,
     config_from_args,
 )
-from spiderpig.construction.contract import bad_solids, check_side, clashes
+from spiderpig.construction.contract import bad_solids, check_sides, clashes
 from spiderpig.construction.deck import deck_clearance
 from spiderpig.fabricate import fabricate, template_for
 from spiderpig.hardware.bom import bom_from_mechanism
@@ -96,7 +96,8 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     rep: dict = {"layers": design.plan.top + 1, "stack_mm": design.plan.height,
                  "plan": design.plan.describe()}
     rep["plan_violations"] = verify_plan(design.plan, tmpl)
-    rep["contract"] = {f"t={t:g}": check_side(design, tmpl.freeze_at(t)) for t in ts_contract}
+    rep["contract"] = dict(zip((f"t={t:g}" for t in ts_contract),
+                               check_sides(design, tmpl, ts_contract), strict=True))
     rep["clash"], rep["solids"] = {}, {}
     mech = None
     for t in ts_clash:
@@ -329,6 +330,13 @@ def strength_lines(st: dict) -> list[str]:
                 + f" | {w.get('load_n', '-')} | {w.get('safety', '-')} "
                 f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
             continue
+        if r["kind"] == "chassis":
+            lines.append(
+                f"| {r['joint']} | rear screws, ties | {(j or w).get('governs', '-')} | - "
+                f"| {r['sheet']} {r['own_plates']} x {r['thickness_mm']:g} mm own "
+                f"| {w.get('load_n', '-')} | {w.get('safety', '-')} "
+                f"| {j.get('load_n', '-')} | {j.get('safety', '-')} |")
+            continue
         lines.append(f"| {r['joint']} | {', '.join(r['links'])} | {r['case']} "
                      f"| {r['span_mm']:g} | {r['section']} | {w.get('load_n', '-')} "
                      f"| {w.get('safety', '-')} | {j.get('load_n', '-')} "
@@ -478,7 +486,8 @@ def main(argv=None) -> int:
                 print(f"  {kind} tilt {_wobble_cell(rep['wobble'], kind)}")
         print(f"  joint SF jam / walk: pin {sf_cell(rep, 'pin')}, pillar "
               f"{sf_cell(rep, 'pillar')}, crank {sf_cell(rep, 'crank')}, link plate "
-              f"{sf_cell(rep, 'link')} ({rep['strength']['loads'].get('source')} loads)")
+              f"{sf_cell(rep, 'link')}, centre plates {sf_cell(rep, 'chassis')} "
+              f"({rep['strength']['loads'].get('source')} loads)")
         print(f"  {rep['parts']} parts, {rep['dxf_sheets']} DXF sheet(s), "
               f"{rep['bom'].get('items', 0)} BOM items: "
               f"{'OK' if not rep['problems'] else 'FAIL'} ({rep['seconds']} s)", flush=True)

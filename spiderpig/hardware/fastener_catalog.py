@@ -67,7 +67,7 @@ register(
                 note="ring shims for 4 mm shafts")),
          dims={"id": 4.0, "od": 8.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
          notes="The 4 x 8 family's steps: a pillar's clamped shims (bought per thickness, "
-               "the 1.0 and 0.5 mm as DIN 433 washers: bom.SHIM_AS); a Chicago screw's "
+               "the 1.0 and 0.5 mm as stock 0.5 mm washers: bom.SHIM_AS); a Chicago screw's "
                "take-up uses its steps for a printed spacer."),
     Item("threadlocker_222", "Low-strength threadlocker (Loctite 222 or equivalent), 10 ml",
          "adhesive",

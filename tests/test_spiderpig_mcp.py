@@ -12,11 +12,9 @@ import time
 from pathlib import Path
 
 import pytest
-from mcp import Client
 
 from spiderpig import api
 from spiderpig.config import BuildConfig
-from spiderpig.mcp import make_server
 from spiderpig.store import Store
 from tests import _api, cache
 
@@ -38,6 +36,21 @@ MUTATING = {"export", "gc", "view"}
 DIST = Path(__file__).resolve().parents[1] / "spiderpig" / "viewer" / "dist"
 needs_dist = pytest.mark.skipif(not (DIST / "index.html").is_file(),
                                 reason="spiderpig/viewer/dist isn't built (mise run viewer-build)")
+
+
+def Client(server):
+    """The SDK's in-memory client of ``server`` (imported here, not at the top: the SDK costs
+    every xdist worker that collects this file ~2 s, and most run none of its tests)."""
+    from mcp import Client as _Client
+
+    return _Client(server)
+
+
+def make_server(*args, **kwargs):
+    """:func:`spiderpig.mcp.make_server` (imported when a test makes one, as :func:`Client`)."""
+    from spiderpig.mcp import make_server as _make_server
+
+    return _make_server(*args, **kwargs)
 
 
 def run(coro):
@@ -198,7 +211,7 @@ def test_cards(server):
     sheet = next(s for s in cat["sheets"] if s["key"] == "acrylic_3mm")
     assert sheet["thickness_mm"] == 3.0
     assert sheet["sheet_mm"] == [300.0, 300.0]
-    assert sheet["price_usd"] == 10.99
+    assert sheet["price_usd"] is None        # SendCutSend's upload quotes it (2026-10-08)
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
     assert set(axles) == {"chicago", "standoff"}          # (the rest removed on 2026-10-07)
     assert axles["standoff"]["roles"] == ["pillar"]
@@ -711,10 +724,11 @@ def test_get_design_answers_under_report_and_the_quick_floor_counts_the_glue(ser
     v = call(server, "verify", design=single, level="quick")
     floor = next(r for r in v["rows"] if r["requirement"] == "budget.cost_floor_usd")
     # the glue it buys whatever the sizes: the Chicago barrels' epoxy (the printed pillars'
-    # CA and the keyed crank's nuts went with them on 2026-10-07); the hex crank's blank
+    # CA and the keyed crank's nuts went with them on 2026-10-07); the hex crank's blank is
+    # SendCutSend's upload since 2026-10-08, in no total (bom.cut_by)
     assert "Two-part slow-cure structural epoxy" in floor["detail"]          # entry 1
-    assert "6061 aluminium sheet 0.100 in" in floor["detail"]
-    assert floor["detail"].endswith("(verify standard)")
+    assert "SendCutSend cutting, 6061 aluminium sheet 0.100 in" in floor["detail"]
+    assert floor["detail"].endswith("and the cut parts beyond one per sheet")
     guide = render_guide()
     assert "`budget.cost_floor_usd` prices what the design buys whatever its parts" in \
         " ".join(guide.split())

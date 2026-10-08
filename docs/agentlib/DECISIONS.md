@@ -7,7 +7,7 @@ numbers are in [DESIGNS.md](DESIGNS.md) (generated), how each part works in
 [ARCHITECTURE.md](../ARCHITECTURE.md) §5-7 and the module docstrings. Workstream decisions
 of the cleanup (D1-D5) are in [ROADMAP.md](ROADMAP.md).
 
-## Agentic harness spec (SCOPE.md section 6)
+## Agentic harness spec ([SCOPE.md](../history/SCOPE.md) section 6)
 
 1. Spec breadth: NARROW. v1 Spec has only fields the engine can verify today; unknown fields
    and wildcards are rejected with a message. compile(spec) is a compiler (seconds); search is
@@ -168,8 +168,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 - **What:** the chain that ends in the hub plate has no screw over the hub plate
   (`BoltCrank.hub_capped`); the hub plate is held by the horn screws, and the hub plate,
-  horn, servo and inner plate go on as one unit (`construction.robot.ASSEMBLY`, the whole
-  robot's order). The removed `--crank bolt_hub_screw` kept the screw.
+  horn, servo and inner plate go on as one unit (the whole robot's order, since 2026-10-08
+  `construction.assembly.ROBOT_ORDER`). The removed `--crank bolt_hub_screw` kept the screw.
 - **Why:** no assembly order drove that screw with the horn screws coming up through the
   hub plate from below.
 - **Open (user):** the round standoff (`bolt_round`) still screws over the hub plate (its
@@ -281,8 +281,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 ### 2026-10-05: the deck lowers in past the pillars' heads; no CA
 
 - **What:** the battery cradle is screwed to the deck; `deck.path_notches` notches the plate
-  round every static part in its way, `deck.insert_z` moves the rails' inserts into the bay
-  where a notch would leave a deck screw too little web, and `deck.deck_path` proves the way.
+  round every static part in its way, `deck.nut_z` (then the inserts' place) moves the deck
+  screws into the bay where a notch would leave one too little web, and `deck.deck_path`
+  proves the way.
 - **Where:** `spiderpig/construction/deck.py`.
 
 ### 2026-10-05: ordering outputs, shop supplies on hand (user)
@@ -309,3 +310,111 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `shapes.pill` as one extruded stadium, mirror-identical prints grouped as "same"
   (`bom._proper_fit`). Each change's gate diff is in [W8-gate-diffs.md](W8-gate-diffs.md);
   the gate baseline is `w8-2a130c8`.
+
+### 2026-10-08: STS3215 bus sockets top-entry, one per servo, both rear screws (user)
+
+- **What:** the research of 2026-10-08 (four sources: Feetech's rear view, Waveshare's photos,
+  an SO-101 build photo, both STEP models) puts the STS3215's two bus sockets in a trench in
+  the rear face, vertical 5267-type headers, the plugs in along the servo's +z:
+  `ServoSpec.bus_ports` is `opening="face"` (no longer UNVERIFIED; one hand measurement
+  remains, the plug-plus-wire height above the rear face). Each servo's plug goes in the
+  socket on its own +y side (`BusPorts.used="own"`), so the two plugs never oppose and the
+  centre stack holds one plug and its wires (`chassis.centre_stack`). First fed by a Y cable
+  (no product found); then, the same day, each servo's own boxed cable to one of the driver
+  board's two bus ports (`servo_bus_cable_5264`, on hand: Waveshare's docs list "Bus Servo
+  Control interfaces", two headers; Seeed's part list puts a "JST Wire" in each servo's
+  box), so no Y cable and no extra cart. The centre plates get a closed window round
+  each plug and an open channel toward +x for its wires (`chassis._port_slots`,
+  `PortCut`). Both rear screws per servo are kept: a shank keeps 1 x t to the window, not
+  2 x t (`chassis.BUS_WEB_T`), the near head's recess opens into it (`_recess_bridges`), and
+  the raised pad (relabelled from "connector housing") takes its measured outline grown
+  0.2 mm (`Relief.grow`). The far hole's web to the pad's relief is then 1.62 mm: 1 x t in
+  0.063 in, not in 0.080 in, so `chassis.centre_sheet` takes a sheet thinner than the frame's
+  where it seats more rear screws (0.063 in 5052; under the old slot decision 4's 0.090 in
+  kept one screw per servo). The SO model's "pins" relief stays, relabelled (they are the
+  headers, drawn standing proud where the real ones are sunk: the audit draws that model, and
+  the one-socket window doesn't cover the other socket's), not dropped as first decided.
+- **Why:** the old "end" slot was wrong (the plugs go in perpendicular to the plates), and two
+  opposed plugs would need twice the stack; the far rear hole was lost to the pad's relief,
+  not to the slot.
+- **Review of 2026-10-08:** each servo's channel is its own, centred on its plug and cut
+  only through the plates its wires pass; the plug and wires keep 1 mm of margin
+  (`chassis.BUS_WIRE_MARGIN`), so the stack holds the plug, its wires, the margin and the
+  other servo's pad: 0.063 in, more plates (DESIGNS.md). The rear screws are the stock
+  M2 x 6 the servo ships with (`MountHole.stock`; one SKU, priced at Accu), through two own
+  plates. The plug is seated through the window before the stack closes (the centre
+  stack's step, `chassis.assembly`). The SO model's header pins are `Relief.model_only`: cleared by the plates, not by
+  the stack's plug room. `strength.centre_plate_row` checks the plates at the jam torque.
+- **Verify on the first article:** the plug-plus-wire height above the rear face (6.0 taken,
+  6.5 the research's upper estimate, 7.0 reserved); the far rear hole's web to the pad's
+  relief, 1.617 mm against the 1.6 mm (1 x t) error level, 0.017 mm of margin; the pad
+  cut-out clears the WS3 model's pad corner by only about 0.34 mm (0.2 grown, plus the
+  rounding); the bus wires' diameter (1.3 mm taken, `BusPorts.wire_w`): the far rear screw's
+  head clears the wires by about 0.05 mm in y, so a 1.4 mm wire (0.15 mm more toward +y)
+  touches `L/R.rear_screw1`; and whether the boxed bus cable reaches the board.
+- **Warnings left** (errors 0): each end and second plate's far rear hole 1.62 mm from the
+  pad's relief (an edge where it merges with the other servo's channel); over 1 x t, under
+  2 x t.
+- **Where:** `spiderpig/servos/spec.py`, `spiderpig/servos/catalog.py`,
+  `spiderpig/construction/chassis.py`, `spiderpig/hardware/electronics.py`; the gate diffs in
+  [BUS-gate-diffs.md](BUS-gate-diffs.md).
+
+### 2026-10-08: the assembly guide, generated (user)
+
+- **What:** `spiderpig guide` (`mise run guide`) writes `ASSEMBLY.pdf` and `ASSEMBLY.md`
+  for any design, with no agent in the loop. The pictures are shaded toon renders from a
+  numpy z-buffer renderer in worker processes. The layout is reportlab, a new dependency.
+  The robot's assembly order is now structured data: each construction's `assembly` hook,
+  plus `construction.assembly.ROBOT_ORDER`. It replaces the prose `construction.robot`
+  kept until now. Parts are identified by labels that say what they are: a family and its
+  sizes (*SP8-0.7*, a spacer 8 mm across and 0.7 mm high), a laser part's outline
+  (*LK75x27*), a bought part's catalog key (*M3-BH-8*). Numbering by first use was
+  rejected in review: a reorder renumbered every label. `spiderpig build`'s print STLs
+  and cut files are named by label (*SP8-0.7_top_spacer.stl*), and the guide prints the
+  bag labels. No part changes.
+- **Why:** the user asked for a build-pipeline guide with stylised pictures, and for no
+  edits to the parts: identifying parts by labels and bags needs no embossing, so the
+  identity gate stays put. Of the renderers tried, OCCT hidden lines can't fill a
+  highlight, three.js needs a browser at runtime, and VTK needs an X server
+  ([GUIDE.md](GUIDE.md)).
+- **Where:** `spiderpig/construction/assembly.py`, the hooks (`BoltCrank.assembly`,
+  `ChicagoAxle.assembly`, `StandoffAxle.assembly`, `LinkPlates.assembly`,
+  `FramePlates.assembly`, `DriveGroup.assembly`, `chassis.assembly`, `deck.assembly`),
+  `spiderpig/labels.py`, `spiderpig/guide/`.
+
+### 2026-10-08: the BOM decisions (user; the BOM study)
+
+- **What (sourcing):** the study's sources (`hardware/sources.py`: Bolt Depot for the M3
+  hardware, sold singly; DigiKey for the Wurth parts; one Amazon cart); a sheet a service
+  cuts is no purchase (`bom.cut_by`, `bom.bought`: the 3 mm acrylic's Inventables sheet was
+  in the total and no cart) but a cutting line per service and sheet, the material
+  included (`bom.CutRow`, `bom.cut_estimate`: an area estimate calibrated to SendCutSend's
+  live quotes of 2026-10-08, USD 117.14 for the Strider double's 47 parts, the estimate
+  117.93), in the BOM's total, ORDER.md's total (shipping apart) and verify's cost floor
+  (one part's least cut per sheet); the epoxy's priced offer (J-B Weld) first; the servos'
+  M2 x 6 self-tappers on hand (`bom.ON_HAND`: every STS3215 box has 18 screws, Seeed's
+  part list and Waveshare's photo).
+- **What (design):** the Strider's pins planned on 7, 10, 16 and 22 mm barrels
+  (`chicago.BARRELS`, per linkage and crank: a global list leaves both Klann quads, and the
+  Strider's `bolt_round` crank, without a plan; the
+  step rule of `ChicagoShaft.check` stays on the catalog's steps) and built on 10 and 16
+  only; one Tattu 2S 450 mAh LiPo for the Ovonic 4-pack (the cradle drawn from its 62.5 x
+  16.2 x 14.7 mm, its outer end in place, `deck.BATTERY_X1`); the clamped M3 shims bought as
+  Bolt Depot's DIN 125 washers, modelled and claimed at their 7 mm (`bom.shim_od`), and its
+  cup-point set screws (no Accu cart); SendCutSend cuts the 3 mm acrylic too, on its
+  0.118 in rules (sendcutsend.com/materials/acrylic, 2026-10-08: hole .047 in, bridge
+  .053 in, part .187 x .375 in; `hardware.parts.SCS_RULES_ACRYLIC`), kerf 0, Ponoko
+  selectable (`acrylic_3mm_ponoko`), the deck plate's cable-tie web 1.5 mm
+  (`deck.CABLE_TIE_WEB`, over the 1.35 mm bridge); captive M3 nuts in the deck rails for
+  the heat-set inserts (`deck.deck_nut`, under a 1.6 mm roof, `deck.NUT_ROOF`).
+- **HV LiPo (review, 2026-10-08):** the Tattu is an HV pack: charge it as 2S to 8.4 V only,
+  never the IP2326 board's 3S / 12.6 V jumper setting (the board stops at 8.3-8.5 V on 2S,
+  safe for the HV pack) nor an 8.7 V HV charger, the servos being 7.4 V parts. ORDER.md's
+  battery and charger lines and the guide's wiring step say so
+  (`hardware.electronics.HV_WARNING`).
+- **Why:** a short, cheap order: the Strider double's ORDER.md from 16 carts and 36 lines
+  to 6 and 28, one upload for every cut part, no soldering iron; the Strider's pin jam
+  safety factor rises with the shorter barrels' spans (the numbers: DESIGNS.md).
+- **Where:** each change's gate diff in [BOM-gate-diffs.md](BOM-gate-diffs.md); the gate
+  baseline is `bom2-5989d50` (after the review and the merge; `bom-bbf7001` before). Also fixed: the crank router raised IndexError when no screw
+  length fits any crank joint (`route._ranges`); it is now a planner blocker.

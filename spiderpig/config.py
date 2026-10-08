@@ -25,8 +25,8 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
-from spiderpig import construction, linkage, servos
-from spiderpig.construction.base import Params
+from spiderpig import linkage, servos
+from spiderpig.fit import Params
 from spiderpig.hardware.catalog import sheet_thickness
 
 
@@ -501,9 +501,12 @@ def add_design_args(p) -> None:
 
 def add_build_args(p) -> None:
     """The build options: ``--servo``, the constructions, the sheet."""
+    import argparse
+
+    from spiderpig import construction  # (the registries: not at import, CAD-heavy)
+
     d = BuildConfig()
     axles, cranks = sorted(construction.AXLES), sorted(construction.CRANKS)
-    import argparse
 
     def kept(field: str):       # a removed key's error names its replacement (argparse: exit 2)
         def check(text: str) -> str:

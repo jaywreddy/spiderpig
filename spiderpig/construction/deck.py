@@ -19,12 +19,17 @@ Construction
   bar on the inner plate's servo-side face, screwed to it (no glue since 2026-10-04) by two
   M3 button heads up through the plate from the leg side into M3 nuts dropped into traps
   in the rail (their heads in the clearance gap under the plate, the drive group's claim;
-  :class:`robot.FrameTies` cuts the holes: :func:`rail_screw_points`). Two M3 heat-set inserts
-  per rail, vertical, take the deck's screws. The rails sit 1 mm above the chassis' top.
+  :class:`robot.FrameTies` cuts the holes: :func:`rail_screw_points`). Two captive M3 nuts
+  per rail take the deck's screws (since 2026-10-08, the user's decision: no heat-set
+  inserts, no soldering iron): each in a hex pocket under a :data:`NUT_ROOF` mm roof of the
+  rail's top face, pushed in sideways through a slot from the rail's bay face (the face
+  toward the other rail) before the deck goes on; the screw comes down through the deck
+  and the roof into it, and the nut pulls up against the roof. The rails sit 1 mm above the
+  chassis' top.
 * **Deck plate** (laser-cut, the build's sheet): 136 x 71 mm, 1 mm from each inner
   plate, centred over the servos, screwed to the rails with four M3 button heads into the
-  inserts (centred in the rails, or moved 1.5 mm into the bay where a path notch would
-  leave a screw hole under the sheet's least web: :func:`insert_z`). Cut-outs: the screws'
+  captive nuts (centred in the rails, or moved 1.5 mm into the bay where a path notch would
+  leave a screw hole under the sheet's least web: :func:`nut_z`). Cut-outs: the screws'
   clearance holes, the board's four M2.5 holes, two strap slots beside the battery, a
   6.5 mm hole for the switch's 1/4-40 bushing and two 12 x 6 mm
   wire slots, one each side of the board over a servo: each takes that servo's bus
@@ -53,7 +58,7 @@ Construction
   points up out of its open top; the board's USB-C faces an inner plate (above). The
   divider (100k / 33k, battery + to an ADC pin) is
   wired in the harness: BOM only.
-* Length: 136 mm is the board (65) and the battery's cradle (65.7) end to end. It sits
+* Length: 136 mm is the board (65) and the battery's cradle (66.3) end to end. It sits
   inside the Strider's inner plates (x +-78.5) but overhangs the Klann quad's (+-61.9)
   by 6 mm at each end, where nothing moves (every leg is outboard of the plates).
 * UNVERIFIED: the charger's and the protection board's sizes and masses (the board's
@@ -71,8 +76,9 @@ Construction
   the parts' geometry (``blocked``: each lowered part swept straight up against everything
   else; an audit problem).
 
-Assembly (the last step of :data:`construction.robot.ASSEMBLY`): screw the rails to the
-inner plates with the sides (before the legs), fit the electronics to the deck (the cradle
+Assembly (:func:`assembly`; the last stage of :data:`construction.assembly.ROBOT_ORDER`):
+screw the rails to the inner plates with the sides (before the legs), push each rail's two
+deck nuts into their slots from the bay face, fit the electronics to the deck (the cradle
 screwed on, wires tied down through the cable-tie slots beside each wire slot), join the
 sides, lower the deck between the plates onto the rails and screw it down.
 
@@ -91,7 +97,6 @@ from build123d import Axis, Box, Cylinder, Part, Pos, scale
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
-    BRASS,
     MODEL_GAP,
     STEEL,
     seat_keepouts,
@@ -102,11 +107,12 @@ from spiderpig.construction.chassis import (
 )
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get, pick_length
+from spiderpig.hardware.electronics import HV_WARNING
 from spiderpig.hardware.fasteners import CLEARANCE, screw
 from spiderpig.materials import sheet
 from spiderpig.mechanism import Body
 from spiderpig.rounding import rounded
-from spiderpig.shapes import union
+from spiderpig.shapes import difference, union
 from spiderpig.stack import body_class
 
 DECK_SCREW = screw("bhcs", "3")
@@ -114,14 +120,15 @@ DECK_GAP = 1.0           # deck plate edge to an inner plate's face (mm): frame 
 FLOOR_MARGIN = 1.0       # a rail's underside above the chassis' top
 HALF_LEN = 68.0          # the deck plate's half length along x (mm)
 RAIL_HALF = 30.0         # a rail's half length
-RAIL_T = 11.0            # a rail's thickness (z): 3.5 mm insert walls, and the deck's
-#                          screw holes 3.3 mm from the plate's edge
-RAIL_H = 8.0             # a rail's height (y): the insert's 5.7 mm and a 1.3 mm floor
-INSERT_X = 24.0          # the rails' inserts at x_c +- this
-INSERT_ZS = (RAIL_T / 2, 7.0)    # the inserts' distance from the inner plate's face, tried
-#                          in turn: centred in the rail, else 1.5 mm further into the bay
-#                          (2.0 mm of wall to the rail's bay face, over the insert's 1.6),
+RAIL_T = 11.0            # a rail's thickness (z): the deck screws' holes 3.3 mm from the
+#                          deck plate's edge
+RAIL_H = 8.0             # a rail's height (y): the deck nut's roof, pocket and a floor
+NUT_X = 24.0             # the rails' deck nuts (and the deck's screws) at x_c +- this
+NUT_ZS = (RAIL_T / 2, 7.0)       # the deck nuts' distance from the inner plate's face, tried
+#                          in turn: centred in the rail, else 1.5 mm further into the bay,
 #                          where a path notch would leave the deck screw's hole too little web
+NUT_ROOF = 1.6           # the rail's plastic over a deck nut (the screw pulls it up into it)
+NUT_FIT = 0.15           # a nut pocket's clearance round the nut (each side; and its slot)
 SPIGOT_XS = (12.0, 16.0, 8.0, 20.0)      # rail screw offsets tried, nearest-first preference
 RAIL_SCREW = screw("bhcs", "3")          # up through the inner plate from the leg side
 RAIL_HOLE = 3.4          # its hole in the inner plate (ISO 273 medium; over the 5052's 3.175)
@@ -129,6 +136,9 @@ RAIL_SCREW_R = 5.7 / 2 + 0.3             # its head's clearance shape under the 
 RAIL_NUT_AF, RAIL_NUT_H = 5.5, 2.4       # an M3 hex nut in a trap in the rail
 NUT_DEPTH = 3.0          # the trap's floor over the rail's plate face
 CABLE_TIE_SLOT = (4.0, 2.0)              # beside each wire slot, for a 2.5 mm cable tie
+CABLE_TIE_WEB = 1.5      # the deck plate between a wire slot and a cable tie's slot: over
+#                          SendCutSend's 1.35 mm least bridge in acrylic (it was 1.0 mm,
+#                          Ponoko's 1 mm feature, until 2026-10-08)
 RAIL_SCREW_L = 8.0       # the rail's bore past its plate face (the screw's tip stays in it)
 
 
@@ -139,7 +149,8 @@ def rail_screw_length(t_plate: float) -> float:
 STANDOFF_AF = 5.0
 BOARD_X0 = 1.0           # the board's inner end, from x_c
 JACK_PROUD = 0.9         # the board's DC jack past its front end (Waveshare's STEP model)
-BATTERY_X1 = -4.0        # the cradle's inner end (inside), from x_c
+BATTERY_X1 = -3.4        # the cradle's inner end (inside), from x_c: its outer end at
+#                          x_c - 68.1 (as with the 61.9 mm Ovonic at -4.0; the Tattu is 62.5)
 BATTERY_FIT = 0.3        # cradle clearance round the battery (each way)
 CRADLE_WALL, CRADLE_H, CRADLE_GAP = 1.6, 5.0, 10.0
 STRAP_SLOT = (12.0, 3.0)  # along x, across (z)
@@ -165,6 +176,11 @@ RAIL_COLOR = "#2a7ab0"
 PCB_COLOR = "#1f6b3a"
 BATTERY_COLOR = "#3b3f46"
 NYLON = "#e8e4d8"
+
+
+def _tie_dx() -> float:
+    """A cable tie's slot's centre from its wire slot's (along x)."""
+    return WIRE_SLOT[0] / 2 + CABLE_TIE_WEB + CABLE_TIE_SLOT[0] / 2
 
 
 def _box(x0, x1, y0, y1, z0, z1):
@@ -271,7 +287,7 @@ class DeckLayout:
     z_in: float          # the left inner plate's servo-side face (negative)
     z_leg: float         # the left inner plate's leg-side face
     spigot_x: float
-    insert_z: float = RAIL_T / 2    # the inserts' (and deck screws') distance from z_in
+    nut_z: float = RAIL_T / 2       # the deck nuts' (and deck screws') distance from z_in
 
     @property
     def deck_top(self) -> float:
@@ -309,8 +325,8 @@ class DeckLayout:
         return [(self.x_c, s * WIRE_SLOT_Z) for s in (-1, 1)]
 
     def screws(self) -> list[tuple[float, float]]:
-        zc = self.z_in + self.insert_z
-        return [(self.x_c + s * INSERT_X, side * -zc) for side in (-1, 1) for s in (-1, 1)]
+        zc = self.z_in + self.nut_z
+        return [(self.x_c + s * NUT_X, side * -zc) for side in (-1, 1) for s in (-1, 1)]
 
     def switch(self) -> tuple[float, float]:
         return self.x_c + SWITCH_X, SWITCH_Z
@@ -329,20 +345,52 @@ def layout(design, z_mid: float, place: DeckPlace) -> DeckLayout:
                       z_in=z_top, z_leg=z_top - plan.t(plan.top), spigot_x=place.spigot_x)
 
 
+def _hex_y(x: float, z: float, af: float, y0: float, y1: float):
+    """A hexagonal prism along y, ``af`` across flats, its flats facing +-x (its corners
+    toward +-z)."""
+    slab = Box(af, y1 - y0, 2 * af)
+    return (slab & slab.rotate(Axis.Y, 60) & slab.rotate(Axis.Y, 120)).move(
+        Pos(x, (y0 + y1) / 2, z))
+
+
+def deck_nut(lay: DeckLayout) -> dict:
+    """A deck screw's captive nut in its rail: the nut (``af``, ``h``), its y span (``y0``,
+    ``y1``: its pocket's :data:`NUT_FIT` under the pocket's top, which is :data:`NUT_ROOF`
+    under the rail's top face) and the deck screw's length (through the deck plate, the
+    roof and the fit, the nut's whole thread and 0.3 mm past it)."""
+    nut = get("m3_nut").dims
+    af, h = float(nut.get("af", RAIL_NUT_AF)), float(nut.get("h", RAIL_NUT_H))
+    y1 = lay.deck_y - NUT_ROOF - NUT_FIT
+    length = pick_length(lay.pitch + NUT_ROOF + NUT_FIT + h + 0.3, DECK_SCREW.lengths)
+    return {"af": af, "h": h, "y0": y1 - h, "y1": y1, "screw_l": length}
+
+
 def _rail(lay: DeckLayout, side: str):
-    """A side's rail, its deck inserts' pockets and its two screws' bores and nut traps cut
-    (world coordinates): the nut drops into its trap from the rail's top face before the
-    deck goes on; the screw comes up through the inner plate from the leg side."""
-    ins = get("m3_heat_set_insert").dims
+    """A side's rail, its deck nuts' pockets and slots and its two rail screws' bores and
+    nut traps cut (world coordinates): a rail screw's nut drops into its trap from the
+    rail's top face, a deck nut slides into its hex pocket from the rail's bay face, both
+    before the deck goes on; the rail screw comes up through the inner plate from the leg
+    side, the deck screw down through the deck. :class:`ConstructionError` where a deck
+    nut's pocket would meet a rail screw's trap (less than ``min_wall`` between)."""
     sign = 1.0 if side == "L" else -1.0           # the right rail is the left one mirrored
     z_face, z_far = lay.z_in, lay.z_in + RAIL_T
     zs = sorted((sign * z_face, sign * z_far))
     y0, y1 = lay.rail_y0, lay.deck_y
     part = _box(lay.x_c - RAIL_HALF, lay.x_c + RAIL_HALF, y0, y1, *zs)
-    pocket = max(ins["length"], 5.0) + 1.0
-    zc = sign * (lay.z_in + lay.insert_z)
+    dn = deck_nut(lay)
+    af = dn["af"] + 2 * NUT_FIT
+    ny0, ny1 = dn["y0"] - NUT_FIT, dn["y1"] + NUT_FIT
+    zc = sign * (lay.z_in + lay.nut_z)
+    bore_y0 = lay.deck_top - dn["screw_l"] - 1.0
     for s in (-1, 1):
-        part = part - _cyl_y(lay.x_c + s * INSERT_X, zc, ins["hole_d"] / 2, y1 - pocket, y1 + 1)
+        x = lay.x_c + s * NUT_X
+        part = (part - _cyl_y(x, zc, CLEARANCE["3"] / 2, bore_y0, y1 + 1)
+                - _hex_y(x, zc, af, ny0, ny1)
+                - _box(x - af / 2, x + af / 2, ny0, ny1, *sorted((zc, sign * (z_far + 1)))))
+    reach = af / math.sqrt(3) + 1.0              # the pocket's corner, and a wall
+    if NUT_X - lay.spigot_x < reach + RAIL_NUT_AF / 2 + 0.15:
+        raise ConstructionError(f"a deck nut's pocket at x_c +- {NUT_X:g} mm would meet a rail "
+                                f"screw's nut trap at x_c +- {lay.spigot_x:g} mm")
     ym = (y0 + y1) / 2
     for s in (-1, 1):
         x = lay.x_c + s * lay.spigot_x
@@ -359,25 +407,25 @@ Box6 = tuple[float, float, float, float, float, float]     # x0, x1, y0, y1, z0,
 
 def lowered(name: str) -> bool:
     """A body that goes in with the deck, lowered onto the rails as one unit (the plate and
-    everything fitted to it on the bench); the rails, their screws, nuts and inserts are on
-    the inner plates already, the deck's four screws go in after."""
+    everything fitted to it on the bench); the rails, their screws and nuts (the deck's
+    captive ones too) are on the inner plates already, the deck's four screws go in
+    after."""
     if "deck" not in name:
         return False
-    return not ("deck_rail" in name or "deck_insert" in name
-                or re.fullmatch(r"deck_screw\d+", name) is not None)
+    return not ("deck_rail" in name or re.fullmatch(r"deck_screw\d+", name) is not None)
 
 
-def insert_z(lay: DeckLayout, notches: Sequence[tuple[float, ...]], web: float) -> float:
-    """The first of :data:`INSERT_ZS` whose deck screw holes keep ``web`` (the deck sheet's
+def nut_z(lay: DeckLayout, notches: Sequence[tuple[float, ...]], web: float) -> float:
+    """The first of :data:`NUT_ZS` whose deck screw holes keep ``web`` (the deck sheet's
     least hole-to-edge distance) to every path notch (:func:`path_notches`); the centred
-    one when none does. ``klann_lego``'s B pillars' inner heads stand at the inserts' x:
-    their notches came 0.30 mm from the screw holes (2026-10-05)."""
+    one when none does. ``klann_lego``'s B pillars' inner heads stand at the deck screws'
+    x: their notches came 0.30 mm from the screw holes (2026-10-05)."""
     r = CLEARANCE["3"] / 2
-    for zi in INSERT_ZS:
-        pts = replace(lay, insert_z=zi).screws()
+    for zi in NUT_ZS:
+        pts = replace(lay, nut_z=zi).screws()
         if all(_rect_dist(p, *n) - r >= web - EPS_D for p in pts for n in notches):
             return zi
-    return INSERT_ZS[0]
+    return NUT_ZS[0]
 
 
 def _overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
@@ -502,23 +550,22 @@ def _charger_place(lay: DeckLayout, ch: dict, yu: float, obstacles: Sequence[Box
 def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                obstacles: Sequence[Box6] = ()
                ) -> tuple[list[Body], list[BomLine], dict, list[tuple[str, str]]]:
-    """The rails, inserts, screws, deck plate and electronics (world coordinates): bodies,
+    """The rails, their nuts, screws, deck plate and electronics (world coordinates): bodies,
     the purchases they don't model, what ``mech.meta["deck"]`` says, and the fastened
     pairs. ``obstacles``: the boxes of the static parts between the inner plates (the
     chassis', the pillars' inner heads), which the deck must lower past: the plate is
     notched round them (:func:`path_notches`) and the charger steps back from the front
     edge; another lowered part in one's way is a :class:`ConstructionError`."""
     lay = layout(design, z_mid, place)
-    lay = replace(lay, insert_z=insert_z(lay, path_notches(lay, obstacles),
-                                         sheet(design.config.sheet).min_edge))
-    ins = get("m3_heat_set_insert").dims
+    lay = replace(lay, nut_z=nut_z(lay, path_notches(lay, obstacles),
+                                   sheet(design.config.sheet).min_edge))
     bodies: list[Body] = []
     fastened: list[tuple[str, str]] = []
     extras: list[BomLine] = []
     yd, yt, hw = lay.deck_y, lay.deck_top, lay.half_w
 
     # rails, screwed to the inner plates (no glue: the deck and its rails come off), and
-    # their inserts
+    # the deck's captive nuts in them
     for s in ("L", "R"):
         sign = 1.0 if s == "L" else -1.0
         bodies.append(Body(name=f"{s}.deck_rail", part=_rail(lay, s), rigid_with=host[s],
@@ -540,22 +587,23 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                        Body(name=f"{s}.deck_rail_nut{i}", part=nut, rigid_with=host[s],
                             fab="purchased", bom_key="m3_nut", color=STEEL)]
             fastened.append((f"{s}.deck_rail_screw{i}", f"{s}.deck_rail_nut{i}"))
-    length = pick_length(lay.pitch + min(5.0, ins["length"]), DECK_SCREW.lengths)
+    dn = deck_nut(lay)
+    length = dn["screw_l"]
     key = DECK_SCREW.key(length)
-    per_side = {"L": 0, "R": 0}         # each side's inserts numbered from 0: the right
-    for i, (x, z) in enumerate(lay.screws()):     # side's are the left's mirrored, by name
+    per_side = {"L": 0, "R": 0}         # each side's nuts numbered from 0: the right side's
+    for i, (x, z) in enumerate(lay.screws()):     # are the left's mirrored, by name
         s = "L" if z < 0 else "R"
         k = per_side[s]
         per_side[s] += 1
-        insert = (_cyl_y(x, z, ins["hole_d"] / 2 - MODEL_GAP, yd - ins["length"], yd)
-                  - _cyl_y(x, z, DECK_SCREW.d / 2, yd - ins["length"] - 1, yd + 1))
+        nut = (_cyl_y(x, z, dn["af"] / 2, dn["y0"], dn["y1"])
+               - _cyl_y(x, z, 1.5, dn["y0"] - 1, dn["y1"] + 1))
         scr = union([_cyl_y(x, z, DECK_SCREW.head_d / 2, yt, yt + DECK_SCREW.head_h),
                      _cyl_y(x, z, DECK_SCREW.d / 2 - 0.05, yt - length, yt)])
-        bodies += [Body(name=f"{s}.deck_insert{k}", part=insert, rigid_with=host[s],
-                        fab="purchased", bom_key="m3_heat_set_insert", color=BRASS),
+        bodies += [Body(name=f"{s}.deck_rail_deck_nut{k}", part=nut, rigid_with=host[s],
+                        fab="purchased", bom_key="m3_nut", color=STEEL),
                    Body(name=f"deck_screw{i}", part=scr, rigid_with=host["L"],
                         fab="purchased", bom_key=key, color=STEEL)]
-        fastened.append((f"deck_screw{i}", f"{s}.deck_insert{k}"))
+        fastened.append((f"deck_screw{i}", f"{s}.deck_rail_deck_nut{k}"))
 
     # the deck plate, notched where it passes the pillars' inner heads on its way down
     plate = _box(lay.x_c - HALF_LEN, lay.x_c + HALF_LEN, yd, yt, -hw, hw)
@@ -564,7 +612,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                         for x, z in lay.screws()]
     board = lay.board()
     cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
-    ties = [((x + s * (WIRE_SLOT[0] / 2 + 3.0), z), CABLE_TIE_SLOT)
+    ties = [((x + s * _tie_dx(), z), CABLE_TIE_SLOT)
             for x, z in lay.wire_slots() for s in (-1, 1)]
     for (x, z), (a, b) in ([(c, STRAP_SLOT) for c in lay.strap_slots()]
                            + [(c, WIRE_SLOT) for c in lay.wire_slots()] + ties):
@@ -618,10 +666,10 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                        color=BATTERY_COLOR))
     ix0, ix1, ihw = bat["inner"]
     w = CRADLE_WALL
-    rim = (_box(ix0 - w, ix1 + w, yt, yt + CRADLE_H, -ihw - w, ihw + w)
-           - _box(ix0, ix1, yt - 1, yt + CRADLE_H + 1, -ihw, ihw)
-           - _box(ix1 - 1, ix1 + w + 1, yt - 1, yt + CRADLE_H + 1, -CRADLE_GAP / 2,
-                  CRADLE_GAP / 2))
+    rim = difference(_box(ix0 - w, ix1 + w, yt, yt + CRADLE_H, -ihw - w, ihw + w),
+                     _box(ix0, ix1, yt - 1, yt + CRADLE_H + 1, -ihw, ihw),
+                     _box(ix1 - 1, ix1 + w + 1, yt - 1, yt + CRADLE_H + 1, -CRADLE_GAP / 2,
+                          CRADLE_GAP / 2))
     # its two ears, screwed to the deck (no glue: the user's decision of 2026-10-05): an M3
     # button head from above through each ear and the deck, an M3 nut under the deck
     nut_d = get("m3_nut").dims
@@ -633,7 +681,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
         za, zb = sorted((side * (ihw + w / 2), ez))
         ear = union([_box(ex - EAR_R, ex + EAR_R, yt, ye, za, zb),
                      _cyl_y(ex, ez, EAR_R, yt, ye)])
-        rim = union([rim, ear]) - _cyl_y(ex, ez, CLEARANCE["3"] / 2, yt - 1, ye + 1)
+        rim = difference(union([rim, ear]), _cyl_y(ex, ez, CLEARANCE["3"] / 2, yt - 1, ye + 1))
         scr = union([_cyl_y(ex, ez, CRADLE_SCREW.head_d / 2, ye, ye + CRADLE_SCREW.head_h),
                      _cyl_y(ex, ez, CRADLE_SCREW.d / 2 - 0.05, ye - ear_len, ye)])
         nut = (_cyl_y(ex, ez, nut_af / 2, yd - nut_h, yd)
@@ -687,7 +735,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
               for x, z in lay.strap_slots()[:1]]
     # the wire slots and the cable ties beside them: each tie runs under the deck from one
     # of its slots to the other, round the wires over the wire slot
-    tie_dx = WIRE_SLOT[0] / 2 + 3.0 + CABLE_TIE_SLOT[0] / 2
+    tie_dx = _tie_dx() + CABLE_TIE_SLOT[0] / 2
     under += [(x - tie_dx, x + tie_dx, z - max(WIRE_SLOT[1], CABLE_TIE_SLOT[1]) / 2,
                z + max(WIRE_SLOT[1], CABLE_TIE_SLOT[1]) / 2) for x, z in lay.wire_slots()]
     b_x, b_z, bx1, bz = _bms_place(bms, bx1, room, lay.x_c - HALF_LEN, under,
@@ -723,7 +771,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                                 f"{b} on the way down")
     info = {"fitted": True, "x_c": rounded(lay.x_c, 2), "deck_y": rounded(yd, 2),
             "rail_y": rounded(lay.rail_y0, 2), "plate_mm": [2 * HALF_LEN, rounded(2 * hw, 2)],
-            "screw": key, "spigot_x": place.spigot_x, "insert_z": lay.insert_z,
+            "screw": key, "spigot_x": place.spigot_x, "nut_z": lay.nut_z,
             "notches": [[rounded(v, 2) for v in n] for n in notches],
             "charger_setback_mm": rounded(lay.x_c + HALF_LEN - cx1, 2),
             "charger_z_mm": [rounded(cz0, 2), rounded(cz1, 2)], "charger_pad_mm": rounded(pad, 2),
@@ -856,3 +904,49 @@ def deck_clearance(mech) -> dict:
     return {"fitted": True, "z_gap_mm": rounded(z_gap, 3), "nearest": nearest,
             "sweep_gap_mm": rounded(sweep_gap, 3), "overlapping": overlapping,
             "blocked": blocked, "ok": not overlapping and not blocked}
+
+
+DECK_EXTRAS = ("lipo_strap_10mm", "foam_tape")
+HARNESS = ("resistor_100k", "resistor_33k", "xt30_pigtail_pair", "dc_plug_5521_pigtail")
+"""The deck's bought lines that are no body's (:func:`deck_parts`), by the step they're for."""
+
+
+def assembly(view) -> list:
+    """How the deck goes on (:mod:`construction.assembly`): each rail on its inner plate
+    with the side (its screws from the leg side, nuts in the rail, the deck's captive nuts
+    slid into it); the electronics fitted to the deck on the bench; the deck lowered straight down
+    between the inner plates onto the rails and screwed down. ``view``: a ``RobotView``."""
+    from spiderpig.construction.assembly import DECK, SIDES, UNIT, WIRING, Op, whole
+
+    ops = []
+    for s in SIDES:
+        rail = view.named(rf"{s}\.deck_rail\w*")
+        if rail:
+            ops.append(Op(UNIT, (3,), whole(*rail), "Deck rail",
+                          "The deck rail on the inner plate: its two screws from the leg "
+                          "side, nuts in the rail; then the deck's two M3 nuts slid into "
+                          "their hex pockets through the slots in the rail's bay face "
+                          "(captive: the deck's screws thread into them).", "rail", side=s))
+    kit = view.named(r"deck_(?!screw\d)\w+")
+    if kit:
+        ops.append(Op(DECK, (0,), whole(*kit), "Deck electronics, on the bench",
+                      "The board on its nylon standoffs; the battery cradle screwed down "
+                      "(two M3 button heads through its ears, nuts under the deck), the "
+                      "battery strapped in; the charger and the protection board under the "
+                      "deck on foam tape; the switch; wires tied down through the cable-tie "
+                      "slots.", "electronics", sub=True, extras=DECK_EXTRAS))
+    if kit:     # the harness (deck_parts' lines): wired before the deck goes in
+        ops.append(Op(WIRING, (0,), (), "Bus cables and harness",
+                      "The harness: the XT30 pigtail from the battery's lead to the protection "
+                      "board, the DC plug pigtail from the switch to the board's DC jack, and "
+                      "the battery divider (the 100k resistor from the switched battery to an "
+                      "ESP32 ADC pin, the 33k from that pin to ground). " + HV_WARNING,
+                      "wiring",
+                      extras=HARNESS))
+    screws = view.named(r"deck_screw\d+")
+    if screws:
+        ops.append(Op(DECK, (1,), whole(*screws), "Deck onto the rails",
+                      "Lower the deck, electronics on, straight down between the inner "
+                      "plates, its notches past the pillars' inner heads, onto the rails; its "
+                      f"{len(screws)} screws into the rails' captive nuts.", "deck"))
+    return ops

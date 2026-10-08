@@ -28,8 +28,9 @@ bought once.
 **Shims** are ordered per thickness (:func:`split_shims`, the items of
 :mod:`hardware.shims`): a stack's rings from its height, thickest first. Every shim in
 the robot is clamped (under a horn screw's head, at a pillar's end, in a frame tie; the
-unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as DIN 433 washers
-(:data:`SHIM_AS`: two make 1 mm), the thinner steps as DIN 988 shims.
+unclamped spacers are printed); the 1.0 and 0.5 mm ones are bought as 0.5 mm washers
+(:data:`SHIM_AS`: two make 1 mm; DIN 125 for M3, DIN 433 for M4), the thinner steps as
+DIN 988 shims.
 
 What the constructions don't say but the parts do (:func:`fitting_lines`): each horn
 screw's shims as the stack under its head (e.g. ``1 mm``, from the shim body's height),
@@ -103,6 +104,56 @@ class MadeRow:
     qty: int = 1
     names: list[str] = field(default_factory=list)
     mirrored: int = 0    # of qty, how many are mirror images (printed parts: "print mirrored")
+    sheet: str = ""      # a laser part's sheet item (its key)
+
+
+@dataclass
+class CutRow:
+    """One service's cutting of the parts on one of its sheets (the material included):
+    ``usd`` its estimate (:func:`cut_estimate`; ``None``: no rates for that sheet)."""
+
+    service: str
+    sheet: str
+    name: str
+    parts: int
+    area_cm2: float
+    usd: float | None
+
+
+CUT_SOURCE = ("an area estimate calibrated to SendCutSend's live quotes of 2026-10-08 (the "
+              "Strider double's 47 parts, USD 117.14 in all, free US shipping over USD 39: "
+              "bom-study/evidence/sheet/prices.json); upload the files for the real quote")
+"""Where :func:`cut_estimate`'s rates come from (what the BOM and ORDER.md say of it)."""
+
+
+def cut_estimate(key: str, parts: list[tuple[float, int]]) -> float | None:
+    """What a service charges to cut ``parts`` (``(area cm^2, qty)`` each) from sheet ``key``,
+    the material included: each part ``max(cut_min_usd, cut_usd_cm2 x area)`` (the sheet
+    item's rates); ``None`` without them. Calibrated on SendCutSend's per-file live quotes of
+    2026-10-08 (:data:`CUT_SOURCE`): in 3 mm acrylic a small part is USD 1.26-1.40 whatever
+    its size (1.33 at 4 off), the 93 cm^2 deck plate 6.88; in 5052 0.080-0.090 in the
+    plates come to about 0.20 per cm^2, in 6061 0.100 in 0.40, a small one at least 2.20.
+    On the Strider double: acrylic 49.45 (quoted 49.44), aluminium 68.48 (67.70)."""
+    d = get(key).dims
+    rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
+    if rate is None or least is None:
+        return None
+    return round(sum(q * max(float(least), float(rate) * a) for a, q in parts), 2)
+
+
+def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
+    """A :class:`CutRow` per service and sheet the laser-cut ``made`` rows are cut from."""
+    by: dict[str, list[MadeRow]] = {}
+    for m in made:
+        if m.method == "laser" and m.sheet and cut_by(m.sheet):
+            by.setdefault(m.sheet, []).append(m)
+    out = []
+    for key, rows in by.items():
+        t_cm = float(get(key).dims.get("thickness", 3.0)) / 10.0
+        parts = [(m.volume_cm3 / t_cm, m.qty) for m in rows]
+        out.append(CutRow(cut_by(key), key, get(key).name, sum(m.qty for m in rows),
+                          round(sum(a * q for a, q in parts), 1), cut_estimate(key, parts)))
+    return sorted(out, key=lambda c: (c.service, c.sheet))
 
 
 SAW_KERF = 1.0     # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)
@@ -172,9 +223,33 @@ def cut_list(lines: list[BomLine]) -> list[CutList]:
 
 
 ON_HAND = ("pla_filament", "petg_filament", "tpu95a_filament", "threadlocker_222",
-           "threadlocker_243")
-"""Shop supplies taken as on hand (the user's, 2026-10-05): listed, not ordered (ORDER.md)
-and not in any total (:attr:`Bom.cost_usd`, verify's cost floor)."""
+           "threadlocker_243", "m2_self_tap_6", "servo_bus_cable_5264")
+"""Shop supplies taken as on hand (the user's, 2026-10-05), and the M2 x 6 self-tappers
+and the bus cable that come in every STS3215's box (Seeed's ST3215-C001 part list: 2 horns,
+18 screws and a "JST Wire" a servo; Waveshare's package photo shows the pointed
+self-tappers; BOM study 2026-10-08):
+listed, not ordered (ORDER.md) and not in any total (:attr:`Bom.cost_usd`, verify's cost
+floor)."""
+
+
+def cut_by(key: str) -> str:
+    """The cutting service that supplies sheet ``key`` with its parts (the sheet item's
+    ``service``; ``""``: none, or not a sheet). Such a sheet's row is not bought: the
+    service supplies the material with the cut, priced by the BOM's cutting line
+    (:class:`CutRow`, :func:`cut_estimate`), so a stock seller's raw sheet price
+    (Inventables' acrylic, before 2026-10-08) never counts."""
+    try:
+        item = get(key)
+    except KeyError:
+        return ""
+    return str(item.dims.get("service") or "") if item.category == "sheet" else ""
+
+
+def bought(key: str) -> bool:
+    """Whether a row of ``key`` is ordered and totalled as a purchase: not on hand
+    (:data:`ON_HAND`) and not the raw sheet of a service that supplies it (:func:`cut_by`:
+    its cutting line holds the material)."""
+    return key not in ON_HAND and not cut_by(key)
 
 
 @dataclass
@@ -187,15 +262,29 @@ class Bom:
     filament: str = "PLA"
     cuts: list[CutList] = field(default_factory=list)   # stock cut to length (the rod pins)
     filaments: dict[str, float] = field(default_factory=dict)   # grams per filament (name)
+    cutting: list[CutRow] = field(default_factory=list)   # per service and sheet
+
+    @property
+    def purchases_usd(self) -> float:
+        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, and the raw
+        sheets a service supplies, :func:`cut_by`, left out: ORDER.md's carts add up to
+        it)."""
+        return sum(r.cost_usd or 0.0 for r in self.purchased if bought(r.key))
+
+    @property
+    def cutting_usd(self) -> float:
+        """The cut parts, material included, at their services' estimates (:class:`CutRow`;
+        an unpriced one adds nothing)."""
+        return round(sum(c.usd or 0.0 for c in self.cutting), 2)
 
     @property
     def cost_usd(self) -> float:
-        """What the purchases cost (the shop supplies on hand, :data:`ON_HAND`, left out)."""
-        return sum(r.cost_usd or 0.0 for r in self.purchased if r.key not in ON_HAND)
+        """The build's estimated cost: the purchases and the cutting (shipping apart)."""
+        return self.purchases_usd + self.cutting_usd
 
     @property
     def unpriced(self) -> list[PurchaseRow]:
-        return [r for r in self.purchased if r.cost_usd is None and r.key not in ON_HAND]
+        return [r for r in self.purchased if r.cost_usd is None and bought(r.key)]
 
     # -- writers ----------------------------------------------------------
 
@@ -215,17 +304,23 @@ class Bom:
                         "est_cost_usd", "url", "link_verified", "used_at"])
             for r in self.purchased:
                 packs = 0 if r.same_pack_as else r.packs
-                cost = "" if r.cost_usd is None or r.key in ON_HAND else f"{r.cost_usd:.2f}"
+                cost = "" if r.cost_usd is None or not bought(r.key) else f"{r.cost_usd:.2f}"
                 where = "; ".join(r.where)
                 if r.same_pack_as:
                     where = f"(in the same pack as {r.same_pack_as}) {where}"
-                w.writerow(["on hand" if r.key in ON_HAND else "buy", r.name, _num(r.qty),
+                section = ("on hand" if r.key in ON_HAND else
+                           f"cut by {cut_by(r.key)}" if cut_by(r.key) else "buy")
+                w.writerow([section, r.name, _num(r.qty),
                             packs, r.pack_qty, r.vendor, r.sku,
                             cost, r.url, "yes" if r.verified else "no", where])
             for m in self.made:
                 note = f"{m.mirrored} mirrored" if m.mirrored else ""
                 w.writerow([m.method, m.name, m.qty, "", "", "", m.material, "", "", note,
                             f"{m.size_mm}; {', '.join(m.names or [m.name])}"])
+            for c in self.cutting:
+                w.writerow([f"cut by {c.service}", c.name, c.parts, "", "", c.service, c.sheet,
+                            "" if c.usd is None else f"{c.usd:.2f}", "", "",
+                            f"{c.area_cm2:g} cm^2 of parts; {CUT_SOURCE}"])
             for c in self.cuts:
                 for L, q in c.pieces:
                     w.writerow(["cut", c.name, q, "", "", "", "", "", "", f"{L:.1f} mm",
@@ -246,11 +341,20 @@ class Bom:
                 packs, cost = f"with {r.same_pack_as}", "–"
             elif r.key in ON_HAND:
                 cost = f"on hand ({cost})" if cost else "on hand"
+            elif cut_by(r.key):
+                cost = f"with the cutting ({cut_by(r.key)})"
             where = ", ".join(sorted(set(r.where)))[:120]
             lines.append(f"| {_num(r.qty)} | {r.name} | {link} | {packs} | {cost} | {where} |")
-        lines += ["", f"Estimated purchase total: **${self.cost_usd:.2f}** "
-                  "(pack prices at the listed vendor; excludes shipping and the shop "
-                  "supplies on hand)."]
+        if self.cutting:
+            lines += ["", "## Cut by a service (the material included)", "",
+                      "| service | sheet | parts | area cm² | est. cost |",
+                      "|---|---|---:|---:|---:|"]
+            lines += [f"| {c.service} | {c.name} | {c.parts} | {c.area_cm2:g} | "
+                      f"{'' if c.usd is None else f'${c.usd:.2f}'} |" for c in self.cutting]
+            lines += ["", f"The cutting is {CUT_SOURCE}."]
+        lines += ["", f"Estimated total: **${self.cost_usd:.2f}**: purchases "
+                  f"${self.purchases_usd:.2f} (pack prices at the listed vendor) and cutting "
+                  f"${self.cutting_usd:.2f}; excludes shipping and the shop supplies on hand."]
         if self.unpriced:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
@@ -291,11 +395,14 @@ class Bom:
         return {
             "title": self.title,
             # a shop supply on hand (ON_HAND) costs this build nothing: listed, its pack
-            # price kept, ``on_hand`` set
-            "purchased": [dict(r.__dict__, on_hand=r.key in ON_HAND,
-                               cost_usd=0.0 if r.key in ON_HAND else r.cost_usd)
+            # price kept, ``on_hand`` set; a sheet a service cuts is its upload (``cut_by``)
+            "purchased": [dict(r.__dict__, on_hand=r.key in ON_HAND, cut_by=cut_by(r.key),
+                               cost_usd=r.cost_usd if bought(r.key) else 0.0)
                           for r in self.purchased],
             "made": [m.__dict__ for m in self.made],
+            "cutting": [dict(c.__dict__) for c in self.cutting],
+            "purchases_usd": round(self.purchases_usd, 2),
+            "cutting_usd": self.cutting_usd,
             "cost_usd": self.cost_usd,
             "printed_g": self.printed_g,
             "filaments": {n: round(g, 1) for n, g in self.filaments.items()},
@@ -390,6 +497,115 @@ def _shared_volume(a, b) -> float:
     return float(props.Mass())
 
 
+_COINCIDE = 1e-9
+"""mm: how far one part's boundary geometry may lie from the other's for :func:`_coincide`
+(a part's exact copy, moved: ~1e-14)."""
+_GRID = 1e-6     # mm: the faces and edges are paired in the order of their numbers on this grid
+
+
+def _canon(d) -> tuple[float, float, float]:
+    """A direction up to its sign: the first component that isn't ~0 made positive."""
+    v = (d.X(), d.Y(), d.Z())
+    for c in v:
+        if abs(c) > 1e-12:
+            return v if c > 0 else (-v[0], -v[1], -v[2])
+    return v
+
+
+def _edge_numbers(e) -> list[float] | None:
+    """An edge as numbers that fix it as a point set: a line by its two ends; a circular
+    arc by its centre, axis (up to sign), radius, ends and the point halfway along (which
+    of the two arcs between those ends); ``None`` for any other curve."""
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
+    from OCP.GeomAbs import GeomAbs_Circle, GeomAbs_Line
+
+    c = BRepAdaptor_Curve(e)
+    u0, u1 = c.FirstParameter(), c.LastParameter()
+    ends = sorted((p.X(), p.Y(), p.Z()) for p in (c.Value(u0), c.Value(u1)))
+    kind = c.GetType()
+    if kind == GeomAbs_Line:
+        return [0.0, *ends[0], *ends[1]]
+    if kind == GeomAbs_Circle:
+        circ = c.Circle()
+        o, m = circ.Location(), c.Value(0.5 * (u0 + u1))
+        return [1.0, o.X(), o.Y(), o.Z(), *_canon(circ.Axis().Direction()), circ.Radius(),
+                *ends[0], *ends[1], m.X(), m.Y(), m.Z()]
+    return None
+
+
+def _face_numbers(f) -> list[float] | None:
+    """A face as numbers that fix it as a point set: its surface (a plane by its normal up
+    to sign and offset, a cylinder by its axis line and radius) and every edge bounding it
+    (:func:`_edge_numbers`, in a fixed order); ``None`` for any other surface or edge."""
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+    from OCP.TopAbs import TopAbs_EDGE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.TopoDS import TopoDS
+
+    s = BRepAdaptor_Surface(f)
+    kind = s.GetType()
+    if kind == GeomAbs_Plane:
+        pl = s.Plane()
+        n, p = _canon(pl.Axis().Direction()), pl.Location()
+        head = [0.0, *n, n[0] * p.X() + n[1] * p.Y() + n[2] * p.Z()]
+    elif kind == GeomAbs_Cylinder:
+        cy = s.Cylinder()
+        d, p = _canon(cy.Axis().Direction()), cy.Axis().Location()
+        along = d[0] * p.X() + d[1] * p.Y() + d[2] * p.Z()
+        head = [1.0, *d, p.X() - along * d[0], p.Y() - along * d[1], p.Z() - along * d[2],
+                cy.Radius()]
+    else:
+        return None
+    edges = []
+    ex = TopExp_Explorer(f, TopAbs_EDGE)
+    while ex.More():
+        e = _edge_numbers(TopoDS.Edge_s(ex.Current()))
+        if e is None:
+            return None
+        edges.append(e)
+        ex.Next()
+    edges.sort(key=lambda v: (len(v), [round(x / _GRID) for x in v]))
+    return head + [float(len(edges))] + [x for e in edges for x in [float(len(e)), *e]]
+
+
+def _boundary(part) -> list[list[float]] | None:
+    """Every face of ``part`` as :func:`_face_numbers`, in a fixed order (``None``: a face
+    or an edge of a kind not read). Read only: the part is left as it is."""
+    out = []
+    for face in part.faces():
+        f = _face_numbers(face.wrapped)
+        if f is None:
+            return None
+        out.append(f)
+    out.sort(key=lambda v: (len(v), [round(x / _GRID) for x in v]))
+    return out
+
+
+def _coincide(a: list[list[float]] | None, b: list[list[float]] | None) -> bool:
+    """Are two parts' :func:`_boundary` the same, face for face, every number within
+    :data:`_COINCIDE`? Then the parts are one solid, and this is a proof, not a sample:
+
+    - a face is the piece of its surface its edges bound, and the numbers fix both: the
+      plane or the cylinder (its axis line and radius), and each edge as a point set (a
+      line's ends; an arc's circle, ends and middle, which of the two arcs it is), so on a
+      plane the loops bound one region and on a cylinder the arcs pick the side;
+    - so two parts whose faces pair up so have the same boundary, and a closed solid is
+      the region its boundary encloses: they are the same solid, within 1e-9 mm (the
+      volume they don't share is under 1e-9 mm times their area).
+
+    Faces and edges are paired in the order of their numbers rounded to :data:`_GRID`:
+    numbers that round apart, a surface or curve of another kind, a different count, only
+    make this ``False``, and the caller runs the boolean."""
+    if a is None or b is None or len(a) != len(b):
+        return False
+    for fa, fb in zip(a, b, strict=True):
+        if len(fa) != len(fb) or max((abs(x - y) for x, y in zip(fa, fb, strict=True)),
+                                     default=0.0) > _COINCIDE:
+            return False
+    return True
+
+
 def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     """Is ``b`` the image of ``a`` under a rotation + translation (principal frames matched)?
 
@@ -398,7 +614,13 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     otherwise found only as a mirror image), then each matching of the frames (a sign per
     axis, proper rotations only) in turn; the motion must take ``a``'s surface centroid
     onto ``b``'s before the proof, one boolean: the volume ``a`` moved and ``b`` don't share
-    is less than ``tol``.
+    is less than ``tol``. Unless ``a`` moved and ``b`` are one solid (:func:`_coincide`:
+    face for face the same planes and cylinders bounded by the same edges, within 1e-9 mm,
+    so that volume is under 1e-9 mm times their area, far below ``tol``): the copy of a
+    part, moved, which most twins are, needs no boolean (its answer would be the same:
+    yes). Either way the motion is a proper one (``det r = +1``): ``a`` moved is ``a``'s
+    own handedness, so a chiral part and its mirror image are never "same" here (they meet
+    only through :func:`congruent`'s mirrored candidate, as "mirror").
     """
     from build123d import Location, Plane
 
@@ -412,6 +634,7 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
     # equal moments (a ring, a disc) turns it about its axis by an arbitrary angle.
     ia, ib = ea @ np.diag(ma) @ ea.T, eb @ np.diag(mb) @ eb.T
     eye = (np.eye(3),) if np.abs(ia - ib).max() <= 1e-6 * max(np.abs(ib).max(), 1.0) else ()
+    on_b: list | None | bool = False        # b's boundary, once a motion is tried
     for r in (*eye, *(eb @ np.diag(signs) @ ea.T for signs in _SIGNS)):
         if np.linalg.det(r) < 0:
             continue
@@ -419,6 +642,10 @@ def _proper_fit(a, sa: _Sig, b, sb: _Sig, tol: float) -> bool:
         if np.abs(r @ sa.surf + t - sb.surf).max() > _CENTROID_TOL:
             continue
         moved = _moved(a, Location(Plane(tuple(t), tuple(r[:, 0]), tuple(r[:, 2]))))
+        if _COINCIDE * (sa.area + sb.area) < 0.01 * tol:
+            on_b = _boundary(b) if on_b is False else on_b
+            if on_b is not None and _coincide(_boundary(moved), on_b):
+                return True
         if sa.volume + sb.volume - 2.0 * _shared_volume(moved, b) < tol:
             return True
     return False
@@ -659,22 +886,33 @@ _GAP_SHIM = re.compile(r"(\d+(?:\.\d+)?) mm in the gap")
 _STACK_SHIMS = re.compile(r"\bshims ([\d.]+(?: \+ [\d.]+)*) mm")
 
 
-SHIM_STEP = 0.5         # the thin step stacked under a column's end: one DIN 433 washer
-#                         (M3 3.2 x 6 x 0.5, M4 4.3 x 8 x 0.5: $0.05-0.06 where a DIN 988
-#                         shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
+SHIM_STEP = 0.5         # the thin step stacked under a column's end: one 0.5 mm washer
+#                         (M3 DIN 125 3.2 x 7 x 0.5, M4 DIN 433 4.3 x 8 x 0.5: $0.05-0.06
+#                         where a DIN 988 shim is $5-13 sold singly, 2026-10-05: SHIM_AS)
 
 SHIM_AS: dict[str, tuple[str, int]] = {
-    "shim_din988_3x6_t1": ("m3_washer_433", 2),
-    "shim_din988_3x6_t0p5": ("m3_washer_433", 1),
+    "shim_din988_3x6_t1": ("m3_washer", 2),
+    "shim_din988_3x6_t0p5": ("m3_washer", 1),
     "shim_din988_4x8_t1": ("m4_washer_433", 2),
     "shim_din988_4x8_t0p5": ("m4_washer_433", 1),
 }
-"""A thickness bought as stock washers instead: a DIN 433 M3 washer (3.2 x 6 x 0.5, +-0.05)
-is 0.5 mm of the same ring for $0.05 where a DIN 988 shim sold singly is $5-13 (Accu,
-2026-10-05); two make the 1 mm shim; the M4 one (4.3 x 8 x 0.5) the same for the 4 x 8
-family. Clamped shims only (a horn screw's head, a pillar's end, a frame tie): the
-unclamped ones are printed (construction.pivots.common.gap_washers, the Chicago pins' head
-spacers)."""
+"""A thickness bought as stock washers instead: a DIN 125 M3 washer (3.2 x 7 x 0.5, Bolt
+Depot 4513, $0.05 each, 2026-10-08) is 0.5 mm of the ring for $0.05 where a DIN 988 shim
+sold singly is $5-13; two make the 1 mm shim; the M4 DIN 433 one (4.3 x 8 x 0.5) the same
+for the 4 x 8 family. The M3 washer is 1 mm wider than the 3 x 6 shim it stands for (Accu's
+DIN 433, 6 mm, was its own cart until 2026-10-08): the constructions model and claim a
+clamped stack at :func:`shim_od`. Clamped shims only (a horn screw's head, a pillar's end,
+a frame tie): the unclamped ones are printed (construction.pivots.common.gap_washers, the
+Chicago pins' head spacers)."""
+
+
+def shim_od(family: str) -> float:
+    """The widest ring a clamped stack of ``family`` holds: its DIN 988 shims, or the washers
+    some thicknesses are bought as (:data:`SHIM_AS`: the M3 family's DIN 125, 7 mm)."""
+    ods = [float(get(family).dims["od"])]
+    ods += [float(get(w).dims["od"]) for k, (w, _) in SHIM_AS.items()
+            if k.startswith(family + "_t")]
+    return max(ods)
 
 
 def shim_key(family: str, t: float) -> str:
@@ -683,7 +921,7 @@ def shim_key(family: str, t: float) -> str:
 
 
 def shim_as_bought(family: str, t: float) -> str:
-    """One shim of a stack as the BOM orders it: ``two DIN 433 washers`` for a 1 mm M3
+    """One shim of a stack as the BOM orders it: ``two DIN 125 washers`` for a 1 mm M3
     shim (:data:`SHIM_AS`), else ``a 0.2 mm DIN 988 shim``."""
     key = shim_key(family, t)
     if key in SHIM_AS:
@@ -763,7 +1001,7 @@ def split_shims(lines: list[BomLine], by_name: dict,
 
 def stack_steps(family: str) -> tuple[float, ...]:
     """The thicknesses the constructions stack a family's shims from: for the M3 and M4
-    families the 1.0 mm shim and the thin step (0.5 mm: a DIN 433 washer,
+    families the 1.0 mm shim and the thin step (0.5 mm: a stock washer,
     :data:`SHIM_STEP`), else its catalog ``t``."""
     if family in ("shim_din988_3x6", "shim_din988_4x8"):
         return (1.0, SHIM_STEP)
@@ -866,6 +1104,31 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
 # ---------------------------------------------------------------------------
 
 
+def bought_lines(mech) -> list[BomLine]:
+    """What :func:`bom_from_mechanism` buys, line by line, before it groups them: each
+    purchased body's item, the fitting's lines, the extras, the shim stacks as what is
+    bought (:func:`split_shims`: stock washers). No filament, no sheets (the build adds
+    those). A line whose ``where`` starts with a body's name is that body's
+    (:func:`line_body`): the assembly guide lists it where the body goes on."""
+    fitted, _, replaced = fitting_lines(mech)
+    lines = [BomLine(b.bom_key, 1, b.name) for b in mech.bodies
+             if b.fab == "purchased" and b.bom_key and b.name not in replaced]
+    lines += fitted
+    lines += list(mech.bom_extras)
+    by_name = {b.name: b for b in mech.bodies}
+    lines, _ = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
+    return lines
+
+
+def line_body(line: BomLine, names) -> str | None:
+    """The body a line is for, when its ``where`` starts with one of ``names``."""
+    m = re.match(r"[A-Za-z0-9_.]+", line.where or "")
+    if m is None:
+        return None
+    w = m.group(0).rstrip(".:")
+    return w if w in names else None
+
+
 def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                        group: bool = True,
                        groups: dict[str, list[MadeGroup]] | None = None) -> Bom:
@@ -907,6 +1170,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                 if method == "laser" else (_filament_name(fil) if fil else fil_name),
                 size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
+                sheet=(g.ref.sheet or str(mech.meta.get("sheet") or "")) if method == "laser"
+                else "",
             ))
             if method == "printed":
                 grams[fil] = grams.get(fil, 0.0) + (made[-1].volume_cm3 * g.qty
@@ -977,4 +1242,5 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                printed_g=total if filament else None,
                filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines),
                filaments={(_filament_name(f) if f else fil_name): g
-                          for f, g in grams.items() if g > 0})
+                          for f, g in grams.items() if g > 0},
+               cutting=cutting_rows(made))

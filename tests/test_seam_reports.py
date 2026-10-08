@@ -1019,8 +1019,8 @@ def _fake_audit(monkeypatch, *, dxf_error=None, bom_error=None, deck=None):
         freeze_at=lambda t: t))
     monkeypatch.setattr(api, "plan_config", lambda config, store: SimpleNamespace(plan=plan))
     monkeypatch.setattr(audit, "verify_plan", lambda p, tmpl: ["J3 meets b4"])
-    monkeypatch.setattr(audit, "check_side",
-                        lambda design, t: ["b1 outside"] if t == 0 else [])
+    monkeypatch.setattr(audit, "check_sides", lambda design, tmpl, ts: [
+        ["b1 outside"] if t == 0 else [] for t in ts])
 
     def fabricate(tmpl, config, t):
         calls["fabricate"].append(t)
@@ -1139,7 +1139,8 @@ def test_audit_main_writes_the_report_and_fails_on_problems(monkeypatch, tmp_pat
     assert "== single" in text
     assert "  plan: x" in text
     assert "  warning: w" in text
-    assert ("joint SF jam / walk: pin 1.2 / 9.5, pillar -, crank 2.06, link plate - "
+    assert ("joint SF jam / walk: pin 1.2 / 9.5, pillar -, crank 2.06, link plate -, "
+            "centre plates - "
             "(override loads)") in text
     assert "OK (12.5 s)" in text
     assert "FAIL (12.5 s)" in text
@@ -1509,8 +1510,9 @@ def test_stack_floor_note_names_the_modules_with_fewer_legs_that_walk(monkeypatc
 
 
 def test_cost_floor_prices_what_every_build_buys(monkeypatch):
-    """The servos (one per side), a blank of each sheet, the Chicago pins' epoxy and the
-    threadlocker the standoff pillars take, less the shop's supplies on hand."""
+    """The servos (one per side), a blank of each sheet no service cuts, the Chicago pins'
+    epoxy and the threadlocker the standoff pillars take, less the shop's supplies on hand
+    (the default design's sheets are all cut by SendCutSend: its uploads, in no total)."""
     from spiderpig.hardware.bom import ON_HAND
     from spiderpig.hardware.catalog import get
 
@@ -1518,27 +1520,32 @@ def test_cost_floor_prices_what_every_build_buys(monkeypatch):
     total, priced, unpriced = vf.cost_floor(SimpleNamespace(config=cfg))
     servo = get(vf.servos.get(cfg.servo).bom_key).name
     assert priced[0].startswith(f"{servo} x 2 $")
-    assert any(line.startswith(get("epoxy_2part").name) for line in priced)
+    # (the epoxy's first offer, on the Amazon cart, has no price: named, not counted)
+    assert any(line.startswith(get("epoxy_2part").name) for line in priced + unpriced)
     names = " ".join(priced + unpriced)
     for key in ON_HAND:
         assert get(key).name not in names
+    for key in (cfg.sheet, cfg.frame_sheet, cfg.crank_sheet):  # cut by a service: its least
+        assert any(line.startswith(f"SendCutSend cutting, {get(key).name}: one part at least")
+                   for line in priced)                          # cut, not a blank
+        assert not any(line.startswith(get(key).name) for line in priced)
     side_total, side_priced, _ = vf.cost_floor(SimpleNamespace(config=replace(
         cfg, robot=False, module="single")))
     assert side_priced[0].startswith(f"{servo} $")
     assert 0 < side_total < total
     assert total == pytest.approx(round(total, 2))
     real = vf.catalog_item
-    epoxy = real("epoxy_2part")
+    key = vf.servos.get(cfg.servo).bom_key
+    item = real(key)
 
-    def no_price(key):
-        return SimpleNamespace(name=epoxy.name, offer=None) if key == "epoxy_2part" \
-            else real(key)
+    def no_price(k):
+        return SimpleNamespace(name=item.name, offer=None) if k == key else real(k)
 
     monkeypatch.setattr(vf, "catalog_item", no_price)
     less, priced2, unpriced2 = vf.cost_floor(SimpleNamespace(config=cfg))
-    assert unpriced2 == [*unpriced, epoxy.name]
+    assert unpriced2 == [item.name, *unpriced]
     assert less < total
-    assert not any(line.startswith(epoxy.name) for line in priced2)
+    assert not any(line.startswith(item.name) for line in priced2)
 
 
 def test_envelope_estimate_is_the_sweep_plus_the_plates(monkeypatch):

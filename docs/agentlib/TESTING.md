@@ -53,9 +53,17 @@ new engine starts empty), `lint-imports`, and the doc check with `--strict` (blo
 since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
 
+Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`):
+the slow tests (`-m "slow and not e2e" -n 4`, with node and
+`SPIDERPIG_REQUIRE_VIEWER_TESTS=1`), the browser tests (`mise run viewer-build`, Playwright's
+Chromium, `-m e2e`; `SPIDERPIG_SHOTS` screenshots kept as an artifact) and the identity
+gate as a determinism check: CI has no baseline, so it snapshots the tree twice, each in a
+fresh store, and `compare` must say identical. Each job keeps the fabrication cache under
+its own key, starting from the quick job's entries for the same engine.
+
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
 task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
-AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md
+AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md and ROADMAP.md
 statically against the package's AST (identifiers and key-like strings; docstrings,
 comments and prose strings name nothing; no engine import); `-v` lists every check,
 `--strict` fails on a miss (CI runs it so, and `tests/test_doc_check.py` checks the default
@@ -143,8 +151,17 @@ cache.assert_current(module, name, make) -> data             # that fixture's cu
   the engine version's folder (`stores/<cfg.key>_t<t>/`: a store's ids name the engine). An
   edit is a new folder only for the layers that reach it: a deck colour keeps every plan,
   a planner edit re-plans; nothing is invalidated in place. `tests/test_keys.py` checks
-  both directions on real edits. The fabrication format, its locks and atomic writes are
-  the product's (`spiderpig/fabcache.py`, below).
+  both directions on real edits. The keys themselves are kept under
+  `SPIDERPIG_DIGEST_CACHE` by the sources' stats; after an edit each process walks the
+  closures again, but reads every unedited source's index and stripped code back from
+  the keys-index folder beside them, keyed by the source's bytes (`keys._load_index`,
+  `keys.code_text`): seconds, not the ~10 CPU-s of parsing everything; and one process
+  computes a key while the others that want it (the xdist workers start together) wait
+  under its lock and read it (`keys._kept`); under xdist the controller starts
+  `tests.cache.warm_keys` beside the workers, so the keys are made while they collect.
+  Before, every worker's first test paid them all at once: 15-25 s in the suite for a
+  test that takes 1-2 s alone. The fabrication
+  format, its locks and atomic writes are the product's (`spiderpig/fabcache.py`, below).
 - **Where, and why there**: a user cache directory, not the checkout. The key already
   names the engine, so worktrees with the same engine sources (every worktree branched
   from one master commit, until it edits `spiderpig/`) share entries, and worktrees with
@@ -270,10 +287,20 @@ search ends on its node budget at ~54 CPU-s, too near the 60 s default to be sta
 
 Each design's contract angles and its `t=1` half (that fabrication's clashes, solids and
 parts, and the build of it) run in worker processes of their own (`GATE_SPLIT`, default
-`contract:0,1.6|contract:3.2,4.8|build`; empty: one process), each taking the plan from the
+`contract:0,1.6,3.2,4.8|build`; empty: one process), each taking the plan from the
 design's store; unless given, `-j` and the split follow the free cores (`plan_cores`: the
 cores less the load average). OCCT runs two threads per process, as the baseline did
 (`GATE_OCCT_THREADS`; one thread moves a cut-rule number). The STEP file, never read, isn't written.
+
+**The contract, fast and exact.** The audit (and so the gate) checks the contract with
+`check_sides`: the side realized at the first angle, every group that declares how it
+moves (`Group.motion`) carried to the others, and the declarations checked once more at a
+guard angle no caller asks for (`GUARD_TURN`; a mismatch is a `DeclaredMotionWarning` and
+that group is checked exactly at every angle). Its limit: a part, or a
+`ConstructionError`, that a construction makes at one of the other checked angles alone,
+and at neither the first nor the guard's, isn't seen. `GATE_EXACT_CONTRACT=1` checks with
+`check_side` at every angle instead; the nightly workflow snapshots once each way and
+compares, so the two are held equal on the gate's designs every night.
 
 Verdicts per design, and the exit status: **identical** (0); **geometry identical, order
 differs** (1: a DXF's entities in another order or a closed outline from another start
@@ -282,13 +309,19 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (W8, `2a130c8`, engine `0.1.0+e91ed4bc0da8`):
-`~/.cache/spiderpig/gate/w8-2a130c8/` on the development box (`/root/.cache/...`),
-one `<design>.json` per design, their logs and `snapshot.json` (commit, branch, time).
-Compare against it from any worktree whose `spiderpig/` should match W8's output:
-`mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8`. It differs from the
-previous baselines `master-1eba876` / `master-d53fbf1` (kept) by W8's approved output
-changes, each listed in `W8-gate-diffs.md`.
+**Baseline** (the integration branch: the STS3215 bus sockets, the BOM decisions and the
+assembly guide, `320384d`, 2026-10-08): `~/.cache/spiderpig/gate/next-320384d/` on the development
+box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
+(commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
+match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/next-320384d`. It differs
+from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
+own `bus-39502f7`, `bus2-92d11e4`, `bom-bbf7001`, `bom2-5989d50`, the first
+combined `next-ba41c10` and `next-ba68611` (before the boxed cables and the
+congruent centre plates) and `master-1eba876` /
+`master-d53fbf1`) by the bus-socket change, the user's BOM decisions of 2026-10-08 and the
+guide's labels: every diff with its source in `NEXT-gate-diffs.md` (which links
+`BUS-gate-diffs.md` and `BOM-gate-diffs.md`); W8's own from its predecessors in
+`W8-gate-diffs.md`.
 
 ## Rules for a module package
 

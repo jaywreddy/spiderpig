@@ -13,9 +13,7 @@ against commit `97bec2d` (2026-10-01), and the running example's measured number
 timings, part counts, sizes, the walk and the sim) are still that snapshot's, taken with
 the constructions of the time (a printed crank, rod pins); they are marked as such where
 they appear. The default designs' current layer counts, heights, parts and costs live in
-one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md). An illustrated version, with renders
-from the viewer and drawings computed from the code, is
-[docs/architecture/index.html](architecture/index.html), generated from this text as of 2026-10-05 and out of date since (its builder, `build_page.py`, needs its figure anchors updated to regenerate it).
+one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md).
 
 **In short.**
 
@@ -373,7 +371,7 @@ Every part is made in one of three ways, and the code tags each part with it (`f
   and rings, the horn spacer, the deck's rails and battery cradle, the feet's TPU socks,
   on a 3D printer;
 - **purchased**: servos, electronics, screws, nuts, washers and shims, Chicago screws,
-  round and hex standoffs, heat-set inserts, epoxy.
+  round and hex standoffs, epoxy.
 
 The pins are M3 Chicago screws, the pillars 6 mm round standoff columns and the crank
 laser-cut on steel hex standoffs (section 6.2). These are the only constructions since
@@ -384,8 +382,8 @@ names each one's replacement).
 The motors are **continuous-rotation servos**: geared motors with built-in speed control,
 which turn fully at a commanded speed rather than holding an angle as a hobby servo does.
 The screws are metric: **M3** means 3 mm in diameter, and screws come in a fixed set of
-**stock lengths**. A **heat-set insert** is a brass thread pressed into plastic with a hot
-iron.
+**stock lengths**. A **captive nut** is a stock nut held in a pocket printed into a part,
+slid in through a slot, so a screw can thread into plastic without a heat-set insert.
 
 ### 2.6 The tools and formats underneath
 
@@ -401,7 +399,8 @@ iron.
   **glTF** is a 3D scene format for the web, with animation; `.glb` is its one-file binary
   form. **MJCF** is the XML model format of **MuJoCo**, a rigid-body physics simulator.
 - A laser burns away a thin strip as it cuts, the **kerf** (the sheet's service's: 0.2 mm
-  at Ponoko; SendCutSend compensates for its own), so where the service doesn't, outlines
+  at Ponoko; SendCutSend, which cuts the default sheets, compensates for its own), so where
+  the service doesn't, outlines
   are moved out by half of it and holes in by half of it. A 3D printer of the
   kind assumed here (FDM) lays down plastic layer by layer; an overhang needs printed
   support under it, and **infill** is how solid the inside of a part is.
@@ -1143,8 +1142,8 @@ through it from below (their heads in the gap under it).
 
 The chain that ends in the hub plate is **capped**: it has no screw over the hub plate
 (`hub_capped`), so the hub plate, horn, servo and inner plate go on as one unit
-(`construction.robot.ASSEMBLY`, the whole robot's assembly order, which the pivots' and the
-crank's docstrings defer to). Its printed sleeve is a light press on the hex
+(`construction.assembly.ROBOT_ORDER`, the whole robot's assembly order, with the
+constructions' `assembly` hooks; `spiderpig guide` draws it). Its printed sleeve is a light press on the hex
 (`BoltCrank.capped_press`, 0.1 mm), so the sleeve, caught between its plates, carries the
 standoff. The crank body stops toward the outer plate on a printed thrust sleeve round the
 stub (`stub_thrust` in the crank's note, 8.5 mm, its end 0.1 mm over the outer plate,
@@ -1153,7 +1152,7 @@ sleeve. The stub is an M3 round standoff screwed up into the lowest web, turning
 6.6 mm hole of the outer plate (the bottom bearing).
 
 The horn screws take shims under the head where a stock length is too long
-(`horn_fit_web`: whole 1 mm ones, bought as DIN 433 pairs, where the horn keeps enough
+(`horn_fit_web`: whole 1 mm ones, bought as DIN 125 pairs, where the horn keeps enough
 thread, else 0.1 mm DIN 988 steps). The horn holes keep the service's minimum hole and
 2 x t edge distance, the hub's and webs' rims 1 x t (`BoltCrank.web_edge_t`, the cut rules'
 error level). A crankpin within a screw head's reach of the horn's rim makes the printed
@@ -1200,10 +1199,16 @@ them (no adhesive). The ties move along the servo until their holes are 2 x t of
 servo's screw holes and recesses (`chassis.tie_locals`, `tie_neighbours`, which the
 underside reads too); the centre plates' outline keeps 2 x t round each rear screw recess
 (`chassis.recess_wall`), and their bump reliefs have 1 mm corners (`RELIEF_CORNER`). The
-servo's bus sockets are in its rear connector housing, so `ServoSpec.bus_ports` gives the
-centre plates an open slot from the housing to their far edge (`chassis._port_slots`;
-`opening="pocket"`, a closed pocket with no access, is kept to compare; the
-rear holes within 2 x t of it are dropped, so each servo keeps one rear screw). The
+servo's bus sockets are top-entry headers sunk in its rear face (the research of
+2026-10-08), so `ServoSpec.bus_ports` (`opening="face"`) gives the centre plates a closed
+window round each servo's plug, in the socket on its own +y side (`used="own"`: the two
+plugs never oppose, each on its own cable to one of the driver board's two bus ports), and
+an open channel for its wires to their far
+edge (`chassis._port_slots`; `"end"` and `"pocket"` are kept to compare). A shank hole
+keeps 1 x t to them (`chassis.BUS_WEB_T`, the user's relaxation of 2026-10-08) and a head
+recess closer opens into the window, so each servo keeps both rear screws; the far one's
+web to the raised pad's relief (its measured outline, `Relief.grow`) sets the centre sheet
+below the frame's where that seats more screws (`chassis.centre_sheet`). The
 STS3215's rear idler horn stays in its box (`Idler.fitted`; `servos.model.unfit_idler` cuts
 it from the CAD model), and the plates clear its 6 mm boss with a round relief
 (`Relief.round`, `chassis.RoundRelief`). Reliefs closer than the service's web are merged
@@ -1212,12 +1217,13 @@ into one cut (`chassis._merge_close`), and a head recess that close opens into t
 
 **The electronics deck** (`construction/deck.py`). A laser-cut plate between the inner
 plates over the servos, on two printed rails screwed to the inner plates (M3 from the leg
-side into nut traps in the rails), carrying the ESP32 servo driver, a 2S LiPo in a printed
+side into nut traps in the rails) and the deck screwed down into captive nuts the rails hold
+(`deck.deck_nut`), carrying the ESP32 servo driver, a 2S LiPo in a printed
 cradle screwed to the deck and strapped, the charger, the protection board and a toggle
 switch (the catalog in `hardware/electronics.py`, each item with its mass). Nothing moves in
 its z band, and `deck_clearance` proves it over the whole cycle. The deck lowers straight
 down past the pillars' inner screw heads: `deck.path_notches` notches the plate round every
-static part in its way, `deck.insert_z` moves the rails' inserts into the bay where a notch
+static part in its way, `deck.nut_z` moves the deck screws and their nuts into the bay where a notch
 would leave a deck screw hole too little web, and `deck.deck_path` checks the way on the
 parts' geometry (`deck_clearance`'s `blocked`, an audit problem).
 
@@ -1231,7 +1237,13 @@ The planner promises that claims never meet. The **contract**
 (`construction/contract.py`) checks the other half: that each part a group builds lies
 inside that group's own claims. `check_side` realizes every group at a crank angle and
 measures any volume outside its claims (tolerance 0.001 mm³). Frame plates must stay in
-their layer; the drive is checked below the inner plate's top face. Two companion checks
+their layer; the drive is checked below the inner plate's top face. `check_sides` gives
+the same verdicts at several angles, realizing the side once: a group whose parts only
+move with the angle (`Group.motion`: a link, the crank and the horn turn with their
+bodies, an axle's parts translate with its point, the frame stands) and that holds with
+the claims moving with it, to half the tolerance, holds at every angle; any other group
+(a hex journal drawn at the world's angle, a part near its limit) is realized and
+checked again at each. Two companion checks
 use OCCT directly: `clashes` intersects every pair of parts, and `bad_solids` requires
 each made part to be one valid solid.
 
@@ -1303,7 +1315,7 @@ holds its outputs, from the same sources and options, does nothing
 |---|---|---|
 | `klann.step` | the whole robot, one named, coloured product per part | 11.4 MB, 173 solids |
 | `klann.stl` | the whole robot as one binary mesh | 21.8 MB, 436,932 triangles |
-| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
+| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, named by its part label (`spiderpig.labels`, as the assembly guide's bag labels: SP8-0.7_top_spacer.stl), with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
 | `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock (`layout.save_sheets`) | 2 sheets of 300 × 300 mm |
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
@@ -1312,6 +1324,8 @@ holds its outputs, from the same sources and options, does nothing
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
 from `spiderpig build`.
+
+**The assembly guide** (`spiderpig guide`, [GUIDE.md](agentlib/GUIDE.md)): `ASSEMBLY.pdf` and `ASSEMBLY.md` from the same fabrication, the steps from the constructions' `assembly` hooks and `construction.assembly.ROBOT_ORDER`, the part labels from `spiderpig.labels`, cached beside the fabrication.
 
 **DXF sheets** (`spiderpig/layout.py`): each laser part is cut through its mid-thickness,
 turned so its long axis runs along x, and offset by half its sheet's kerf where the
@@ -1326,7 +1340,8 @@ exact (an arc is a vertex's bulge), any other curve flattened within 0.02 mm (`C
 check).
 
 **Cut rules** (`spiderpig/manufacture.py`): every laser-cut part is reviewed against its
-sheet's service (SendCutSend for aluminium, Ponoko for acrylic): the minimum hole, the edge
+sheet's service (SendCutSend for the aluminium and the 3 mm acrylic, Ponoko for the thin
+acrylic and `acrylic_3mm_ponoko`): the minimum hole, the edge
 distance from a hole to an edge or another hole, the web round every non-circular cut-out
 (`web`: to the edge, a hole or another cut-out), the minimum part and the inside-corner
 radius, and that the DXF matches the solid. In metal a hole closer than 1 x the thickness
@@ -1347,8 +1362,12 @@ part and its mirror image are the same cut (flip the sheet); a printed part and 
 image are different prints unless one is a translate of the other. A line per sheet for
 the plates, a line per filament for the prints (`hardware.bom.part_filament`). Shims are
 ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the clamped 1.0 and
-0.5 mm ones bought as DIN 433 washers (`bom.SHIM_AS`). Purchases are rounded up to whole
-packs of the preferred offer. The total leaves out rows with no price, and the BOM says so;
+0.5 mm ones bought as stock washers (`bom.SHIM_AS`: DIN 125 for M3, modelled at their 7 mm,
+`bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
+offer. A sheet a service cuts is no purchase (`bom.cut_by`) but a cutting line per service
+and sheet, the material included (`bom.CutRow`: an area estimate, `bom.cut_estimate`,
+calibrated to SendCutSend's quotes); the total is the purchases and the cutting. It leaves
+out rows with no price, and the BOM says so;
 for the running example at the snapshot the unpriced rows were 8 M2 self-tapping screws and
 4 M3 × 18 mm screws, and the made parts came to 39 laser-cut parts in 8 shapes, 90 printed
 parts in 16 shapes, and about 95 g of plastic.
@@ -1419,6 +1438,9 @@ below 5e-4 the model is ill-posed and refused.
   re-imports the caller's main script. Parallel work therefore runs as a function of the
   package in a fresh `python -c` process, with arguments and results passed as files.
   Exports and `verify` use workers; `SPIDERPIG_WORKERS=0` keeps everything in one process.
+  `spiderpig build` starts one before it fabricates: it loads the fabrication from the
+  store's cache once that holds it, groups the parts and writes the DXFs while the build
+  writes the robot's STEP and STL (`build._start_exports`; with the cache off, in-process).
 
 ### 7.5 Limits of the outputs
 
@@ -1440,6 +1462,34 @@ below 5e-4 the model is ill-posed and refused.
   of the running example are 24 separate meshes.
 
 The files describe a robot that should work. The next section is about whether it walks.
+
+### 7.6 The assembly order
+
+The order every fastener can be driven in is data: the robot's stages
+(`construction.assembly.ROBOT_ORDER`) and each construction's `assembly` hook, which say
+how its own parts go on. `spiderpig guide` draws it per design ([GUIDE.md](agentlib/GUIDE.md));
+below, generated from the default robot's steps (`python -m spiderpig.guide.prose --write`,
+checked current by `tests/test_guide.py`):
+
+<!-- assembly-order: generated from the default robot by `python -m spiderpig.guide.prose --write`; don't edit by hand -->
+1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. The printed rings and spacers drawn, onto their pillars, pins and crankpins. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its printed head spacer under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its printed top spacer under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker).
+
+2. **Left side: inner-plate unit.** On the bench, loose (the right side's is put together on the robot). Lay the inner frame plate down, servo side up. Stand the servo on the inner plate, its spline over the horn hole. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn. The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; then the deck's two M3 nuts slid into their hex pockets through the slots in the rail's bay face (captive: the deck's screws thread into them). The frame ties' standoff chains on the inner plate, shims at the plate. Their M3 button heads up through the plate from the leg side (threadlocker).
+
+3. **Left side: unit onto the leg stack.** The unit onto its leg stack: the hub plate's hex pocket over the hub chain's standoff (turn the crank to line it up), the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
+
+4. **Centre plates.** The M3 set-screw studs into the left chains' ends (threadlocker). The left servo's own centre plates (0, 1) on its rear face over the studs, its two rear screws through them. Its bus cable's plug (the cable from its box) pushed straight down through the plates' window into the socket on the servo's +y side; its wires bent toward +x and laid along its own channel. The middle centre plates (2, 3) over the studs and the left servo's wires, its channel round them. The right servo's own centre plates (5, 4) screwed to the right servo the same way, its own cable's plug seated through their window into its own +y socket, on the robot's other side, its wires along its own channel; then that servo and its plates onto the studs, rear faces together, no wire pinched.
+
+5. **Right side: inner plate, on the robot.** Not on the bench: the chains must turn onto the studs before the inner plate holds them. Turn the right tie chains onto the studs from the inner plate's side (they turn freely: no inner plate yet), shims on their ends. The right inner plate onto the servo's front and onto the chains. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The chains' M3 button heads from the leg side (threadlocker). The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; then the deck's two M3 nuts slid into their hex pockets through the slots in the rail's bay face (captive: the deck's screws thread into them). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn.
+
+6. **Right side: leg stack.** Build the right leg stack as the left one: the mirror image.
+
+7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
+
+8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). The battery is an HV LiPo: charge it as 2S, 8.4 V, only. Set the IP2326 charger board to 2S (it stops at 8.3-8.5 V, safe for the HV pack), never its 3S / 12.6 V jumper setting, and never use an HV (8.7 V) charger: the servos are 7.4 V parts. The bus plugs are already in (the centre plates' steps: the top-entry sockets take a plug only through the plates' window): each servo's wires from its channel's end at the centre plates' +x edge up through the deck's wire slot over it to its own one of the board's two bus servo ports (connector first), before the deck goes in.
+
+9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' captive nuts.
+<!-- assembly-order: end -->
 
 ## 8. Seeing and judging a design
 
@@ -1907,9 +1957,10 @@ sources or `node_modules` in it.
 
 **Continuous integration** (`.github/workflows/ci.yml`, on pushes to master and every pull
 request): ruff and the import layers, the lock, the viewer's typecheck and vitest, the
-quick tier on a cached fabrication cache, and the doc check, blocking. The full suite, the
-audits and the identity gate run on request (`mise run remote-test`, `remote-audit`,
-`gate`), not in CI.
+quick tier on a cached fabrication cache, and the doc check, blocking. Nightly
+(`.github/workflows/nightly.yml`): the slow tests, the browser tests and the identity gate
+compared with itself (a determinism check: CI holds no baseline). The audits and the gate
+against a baseline run on request (`mise run remote-audit`, `gate`).
 
 **Gaps.** The planner's opt-in speed-ups and the workers' failure paths have few tests of
 their own.
@@ -2237,7 +2288,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `config.py` | 634 | `BuildConfig`, the default and removed constructions, shared CLI options, query parsing | `test_removed_constructions.py`, indirect |
 | `stack/` | 2,725 | the planner: `geometry.py` (shapes, claims, `Layout`), `topology.py` (`Topology`, static clearances, `PlanError`, the `Router` protocol), `plan.py` (`StackSpec`, `StackPlan`, `Deadline`), `search.py` (`StackProblem`, `_Search`), `plan_z.py` (`finalize`, the plan's z), `verify.py` (`verify_plan`) | `test_stack.py`, `test_planner_bounds.py`, `test_route.py` with `brute.py`, `test_seam_stack.py` |
 | `stack_pool.py`, `stack_symmetry.py` | 342, 171 | the opt-in parallel and symmetry search (`spiderpig/stack_symmetry.py`: one of each mirrored leg pair) | few |
-| `construction/base.py` | 292 | the `Group` contract, `Params`, `Context`, `Build` | indirect |
+| `construction/base.py` | 265 | the `Group` contract, `Context`, `Build`; re-exports `Params` | indirect |
+| `fit.py` | 41 | `Params`, the dimensions every construction shares (a spec's `fit`; apart, so `config` imports no CAD) | `test_recommend.py`, indirect |
 | `construction/__init__.py` | 88 | construction registries, `GROUP_FACTORIES` | `test_pivots.py` |
 | `construction/axle.py` | 254 | pillars and pins: the claims, `AxleDims` | `test_axle.py`, `test_stack.py` |
 | `construction/pivots/` | 1,227 | `standoff.py`, `chicago.py`, `common.py` | `test_pivots.py`, `test_standoff.py`, `test_seam_pivots.py` |
@@ -2246,7 +2298,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `construction/underside.py`, `envelope.py` | 170, 69 | the body's underside; solids of claims | `test_route.py`, the contract |
 | `construction/plates.py` | 287 | links, frame plates, rider bosses, feet's socks | `test_contract.py`, `test_joinery.py` |
 | `construction/contract.py` | 157 | `check_side`, `clashes`, `bad_solids` | `test_contract.py` |
-| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties, `ASSEMBLY`; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
+| `construction/robot.py`, `chassis.py`, `deck.py` | 305, 821, 857 | two sides, frame ties; centre plates; the electronics deck | `test_robot.py`, `test_fabricate.py`, `test_deck.py`, `test_seam_chassis.py` |
 | `construction/wobble.py` | 405 | link tilt and the columns' beams at the plan's z | `test_wobble.py` |
 | `fabricate.py` | 308 | `side_problem`, `design_side`, `fabricate` | `test_fabricate.py`, and most via `conftest.py` |
 | `fabcache.py`, `keys.py`, `uptodate.py` | 424, 1,145, 368 | the fabrication cache, incremental cache keys, the build check | `test_fabcache.py`, `test_keys.py`, `test_uptodate.py` |
@@ -2266,7 +2318,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | `walk.py` | 1,047 | the quasi-static walking model | `test_walk.py`, `test_viewer_parity.py` |
 | `server/` | 1,125 | FastAPI app, live reload, `/ws/sim` | `test_walk.py`, `test_view.py`, `test_server_hardening.py`, browser tests |
 | `spec.py` | 920 | Spec v1, targets, validation, schema | `test_spiderpig_api.py` |
-| `api/` | 2,587 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `api/` | 1,954 | the operations: `reports.py`, `store_ops.py`, `cards.py`, `planning.py`, `walking.py`, `building.py`, `exports.py` | `test_spiderpig_api.py`, `test_seam_reports.py` |
+| `stages/` | 791 | resolve, the stage records, check, plan and `plan_config`, under bake and build (the API re-exports them) | `test_spiderpig_api.py`, `test_spiderpig_store.py` |
 | `design.py` | 386 | the handle, ids, the engine version, `Part` | `test_spiderpig_api.py` |
 | `failure.py` | 274 | failures and patches | `test_spiderpig_api.py` |
 | `verify.py` | 788 | verify levels and rows | `test_spiderpig_api.py` |
@@ -2296,7 +2349,8 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | [agentlib/TESTING.md](agentlib/TESTING.md) | the test tiers, the fabrication cache, the fixtures, the identity gate | current |
 | [agentlib/DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's seven decisions, and the hardware decisions with their dates and numbers | current |
 | [agentlib/W8-gate-diffs.md](agentlib/W8-gate-diffs.md) | what each of W8's approved output changes did to the gate's designs | record (2026-10-07) |
-| [agentlib/SCOPE.md](agentlib/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
+| [agentlib/BOM-gate-diffs.md](agentlib/BOM-gate-diffs.md) | what each of the BOM decisions did to the gate's designs | record (2026-10-08) |
+| [history/SCOPE.md](history/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
 | [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
 | [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |
 | [history/AUDIT.md](history/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |
