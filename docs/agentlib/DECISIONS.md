@@ -327,7 +327,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   0.2 mm (`Relief.grow`). The far hole's web to the pad's relief is then 1.62 mm: 1 x t in
   0.063 in, not in 0.080 in, so `chassis.centre_sheet` takes a sheet thinner than the frame's
   where it seats more rear screws (0.063 in 5052; under the old slot decision 4's 0.090 in
-  kept one screw per servo). The SO model's "pins" relief is dropped (they are the headers' pins).
+  kept one screw per servo). The SO model's "pins" relief stays, relabelled (they are the
+  headers, drawn standing proud where the real ones are sunk: the audit draws that model, and
+  the one-socket window doesn't cover the other socket's), not dropped as first decided.
 - **Why:** the old "end" slot was wrong (the plugs go in perpendicular to the plates), and two
   opposed plugs would need twice the stack; the far rear hole was lost to the pad's relief,
   not to the slot.

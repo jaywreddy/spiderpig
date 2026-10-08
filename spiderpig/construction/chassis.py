@@ -124,9 +124,11 @@ def centre_stack(spec, margin: float) -> float:
     if ports is not None and ports.height > 0:
         need = max(need, (2 if ports.opposed else 1) * ports.height + margin)
         if not ports.opposed:
-            channel = ports.slot()[-1]
+            # past the window (where the wires are turned) they lie along the channel
+            window, channel = ports.slot()[0], ports.slot()[-1]
+            run = (max(channel[0], window[1]), *channel[1:])
             cross = max((r.height for r in spec.rear_reliefs
-                         if _rects_meet(channel, (r.x0, r.x1, r.y0, r.y1))), default=0.0)
+                         if _rects_meet(run, (r.x0, r.x1, r.y0, r.y1))), default=0.0)
             need = max(need, ports.height + cross)
     return need
 

@@ -107,8 +107,13 @@ STS3215 = register_servo(ServoSpec(
         # 0.090 in centre plates, under 1 x t, and nothing on this robot uses the idler
         Relief(-3.0, 3.0, -3.0, 3.0, 2.6, solid=False, round=True,
                label="idler boss (the rear horn left off)"),
-        # (the [SO] model's six 2 x 2 mm "pins" at x = 13..15 are the bus headers' pins:
-        # bus_ports covers them)
+        # [SO] only: six 2 x 2 mm "pins" at x = 13..15, |y| <= 8.8, reaching z = -33.8 (not
+        # in [WS3]): the bus headers, drawn standing 3.3 proud where the real ones are sunk
+        # in the trench (the research of 2026-10-08). The window (bus_ports) clears the used
+        # socket's; this clears the other socket's, which the model the audit draws (the
+        # CAD, [SO] first) otherwise puts into the first centre plate
+        Relief(12.9, 15.2, -8.8, 8.8, 3.3, solid=False,
+               label="header pins in the SO-ARM100 model"),
     ),
     # The two bus sockets: vertical (top-entry) Molex 5267-type headers (9.9 x 4.9, 2.5
     # pitch) side by side across y, sunk in a trench in the rear face (the research of
