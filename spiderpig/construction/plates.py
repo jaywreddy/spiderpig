@@ -200,12 +200,13 @@ class LinkPlates(Group):
         for link in getattr(getattr(view.ctx, "topo", None), "links", {}):
             if link not in view.z:
                 continue
-            sock = [n for n in (f"{link}_sock",) if n in view.z]
-            text = "Place the layer's links on their pillars and pins."
-            if sock:
-                text += " Slide each foot link's TPU sock on first."
-            ops.append(Op(STACK, (view.slot(view.z[link][0]), 1), whole(link, *sock), "",
-                          text, "layer"))
+            k = view.slot(view.z[link][0])
+            ops.append(Op(STACK, (k, 1), whole(link), "",
+                          "Place the layer's links on their pillars and pins.", "layer"))
+            if f"{link}_sock" in view.z:
+                ops.append(Op(STACK, (k, 1), whole(f"{link}_sock"), "",
+                              "Each foot link takes its TPU sock, slid on, before it goes on.",
+                              "layer"))
         return ops
 
     def realize(self, build: Build, done: Realized) -> Realized:

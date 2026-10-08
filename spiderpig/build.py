@@ -288,7 +288,7 @@ def main(argv=None) -> int:
 
     groups = {method: group_made(mech.bodies, method) for method in ("laser", "printed")}
     filament = mech.meta.get("filament", "pla_filament")
-    from spiderpig.labels import assembly_order, part_types, print_stems
+    from spiderpig.labels import assembly_order, laser_labels, part_types, print_stems
 
     types = part_types(mech, assembly_order(mech, design), groups, filament)
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
@@ -303,7 +303,8 @@ def main(argv=None) -> int:
         size = tuple(args.sheet_size) if args.sheet_size else None
         try:
             sheets = save_sheets(mech, out / "laser" / f"{args.name}_sheet", sheet_size=size,
-                                 kerf=args.kerf, default=config.sheet)
+                                 kerf=args.kerf, default=config.sheet,
+                                 labels=laser_labels(types))
         except ValueError as e:
             print(f"error: the cut files can't be laid out: {e}", file=sys.stderr)
             return 1
@@ -315,7 +316,7 @@ def main(argv=None) -> int:
             mech.bom_extras.append(line)
         try:
             order = save_parts(groups["laser"], out / "laser" / "parts", config.sheet,
-                               kerf=args.kerf)
+                               kerf=args.kerf, labels=laser_labels(types))
         except ValueError as e:
             print(f"error: the per-part cut files can't be written: {e}", file=sys.stderr)
             return 1

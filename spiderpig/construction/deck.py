@@ -886,6 +886,6 @@ def assembly(view) -> list:
     if screws:
         ops.append(Op(DECK, (1,), whole(*screws), "Deck onto the rails",
                       "Lower the deck, electronics on, straight down between the inner "
-                      "plates past the pillars' inner heads onto the rails; its "
+                      "plates, its notches past the pillars' inner heads, onto the rails; its "
                       f"{len(screws)} screws into the rails' inserts.", "deck"))
     return ops

@@ -1301,7 +1301,7 @@ holds its outputs, from the same sources and options, does nothing
 |---|---|---|
 | `klann.step` | the whole robot, one named, coloured product per part | 11.4 MB, 173 solids |
 | `klann.stl` | the whole robot as one binary mesh | 21.8 MB, 436,932 triangles |
-| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, named by its part label (`spiderpig.labels`, as the assembly guide's bag labels: P13_top_spacer_0.7mm.stl), with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
+| `print/*.stl`, `print/parts.csv` | one STL per distinct printed part, named by its part label (`spiderpig.labels`, as the assembly guide's bag labels: SP8-0.7_top_spacer.stl), with quantities, grams and filament; a `_mirrored.stl` only where a part is its twin's mirror image (`bom._proper_fit` tries a pure translation first, so a mirror-symmetric ring counts as the same part) | 16 parts and 1 mirrored |
 | `laser/<name>_sheet_<service>_<sheet>_<i>.dxf`, `laser/<name>_sheet_parts.csv` | the laser-cut parts packed onto sheets, one set per cutting service and sheet stock (`layout.save_sheets`) | 2 sheets of 300 × 300 mm |
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
@@ -1440,6 +1440,34 @@ below 5e-4 the model is ill-posed and refused.
   of the running example are 24 separate meshes.
 
 The files describe a robot that should work. The next section is about whether it walks.
+
+### 7.6 The assembly order
+
+The order every fastener can be driven in is data: the robot's stages
+(`construction.assembly.ROBOT_ORDER`) and each construction's `assembly` hook, which say
+how its own parts go on. `spiderpig guide` draws it per design ([GUIDE.md](agentlib/GUIDE.md));
+below, generated from the default robot's steps (`python -m spiderpig.guide.prose --write`,
+checked current by `tests/test_guide.py`):
+
+<!-- assembly-order: generated from the default robot by `python -m spiderpig.guide.prose --write`; don't edit by hand -->
+1. **Left side: leg stack.** Each side's leg stack is built bottom up on its outer frame plate, in the plan's layer order. Lay the outer frame plate down, leg side up. Screw each pillar's standoff column (one piece) to the outer plate: its button head and washer from outside, threadlocker, to 0.8 N·m while the column is bare to hold. Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its head under the link and its printed head spacer under that; set the gap with a feeler gauge as it cures. Place the layer's links on their pillars and pins. The printed rings and spacers drawn, onto their pillars, pins and crankpins. Crank web 2, on the bench: screw the stub standoff to the lowest web (its button head from above) and slide its printed thrust sleeve over it, up to the web. Screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. Each crankpin's printed sleeve over its standoff, before its riders. The stub through the outer plate's journal hole: its thrust sleeve's end then sits just over the plate, the crank body's stop toward it. Each foot link takes its TPU sock, slid on, before it goes on. Each Chicago screw into its barrel from the cap side once the links above are on (threadlocker), its printed top spacer under the head. Crank web 6, on the bench: screw the hex standoff that stands on this web to it while the web is loose: its button head and wide washer from below, threadlocker, the printed collar between them. The capped chain's sleeve is a light press on its hex: push it down onto its lower web, that end's washer drawn up against the web (the hub plate caps this chain: no screw over it). The web onto the standoff of the chain below, that chain's riders and sleeve already on. Each chain's top screw from above, through its wide washer and collar (threadlocker).
+
+2. **Left side: inner-plate unit.** On the bench, loose (the right side's is put together on the robot). Lay the inner frame plate down, servo side up. Stand the servo on the inner plate, its spline over the horn hole. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn. The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; the heat-set inserts pressed into the rail. The frame ties' standoff chains on the inner plate, shims at the plate. Their M3 button heads up through the plate from the leg side (threadlocker).
+
+3. **Left side: unit onto the leg stack.** The unit onto its leg stack: the hub plate's hex pocket over the hub chain's standoff (turn the crank to line it up), the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
+
+4. **Centre plates.** The M3 set-screw studs into the left chains' ends (threadlocker). The left servo's own centre plates (0, 1) on its rear face over the studs, its rear screw through them. The right servo's own centre plates (3, 2) screwed to the right servo the same way, then that servo and its plates onto the studs, rear faces together.
+
+5. **Right side: inner plate, on the robot.** Not on the bench: the chains must turn onto the studs before the inner plate holds them. Turn the right tie chains onto the studs from the inner plate's side (they turn freely: no inner plate yet), shims on their ends. The right inner plate onto the servo's front and onto the chains. Its 2 front screws from the leg side, heads under the plate, in the far holes (the near ones would leave the plate too little web to the horn's hole). The chains' M3 button heads from the leg side (threadlocker). The deck rail on the inner plate: its two screws from the leg side, nuts in the rail; the heat-set inserts pressed into the rail. The horn on the spline with its centre screw (the rear idler horn stays in the box), its printed spacer on it. The hub plate on the horn, its hex pocket away from the servo: the horn screws, their shims under the heads, from the plate's leg side (away from the servo) through it into the horn.
+
+6. **Right side: leg stack.** Build the right leg stack as the left one: the mirror image.
+
+7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
+
+8. **Wiring.** Each servo's bus plug into its socket, the cable along the centre plates' slot from their far edge and up to the board through the deck's wire slot (connector first), before the deck goes in.
+
+9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' inserts.
+<!-- assembly-order: end -->
 
 ## 8. Seeing and judging a design
 

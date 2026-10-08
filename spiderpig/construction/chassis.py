@@ -853,8 +853,15 @@ def assembly(view) -> list:
                    ("R", [p for p in plates if sum(view.z[p]) >= 0])):
         rear = view.named(rf"{s}\.rear_screw\d+")
         if own or rear:
+            # (from the servo's rear face out: the right side's run the other way)
+            nums = ", ".join(p.removeprefix("centre_plate")
+                             for p in (own if s == "L" else own[::-1]))
+            text = (f"The left servo's own centre plates ({nums}) on its rear face over the "
+                    "studs, its rear screw through them." if s == "L" else
+                    f"The right servo's own centre plates ({nums}) screwed to the right servo "
+                    "the same way, then that servo and its plates onto the studs, rear faces "
+                    "together.")
             ops.append(Op(CHASSIS, (1 if s == "L" else 2,), whole(*own, *rear),
-                          f"{'Left' if s == 'L' else 'Right'} servo's centre plates",
-                          "The servo's own centre plates on its rear face over the studs, "
-                          "its rear screw through them.", f"plates_{s}"))
+                          f"{'Left' if s == 'L' else 'Right'} servo's centre plates", text,
+                          f"plates_{s}"))
     return ops

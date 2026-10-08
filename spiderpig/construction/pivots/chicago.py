@@ -478,17 +478,19 @@ class ChicagoAxle:
         k_lo = view.slot(view.z[host][0]) if host in view.z else view.slot(z0)
         lo = (Piece(pin, "barrel", (z0, cut)),
               *whole(*view.named(rf"{re.escape(stem)}_spacer_lo")))
-        hi = (Piece(pin, "screw", (cut, z1)),
-              *whole(*view.named(rf"{re.escape(stem)}_spacer_hi")))
+        top = whole(*view.named(rf"{re.escape(stem)}_spacer_hi"))
+        k_hi = view.slot(cut)
         return [
             Op(STACK, (k_lo, 0, 1), lo, "",
                "Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
                "head under the link and its printed head spacer under that; set the gap "
                "with a feeler gauge as it cures.", "layer"),
-            Op(STACK, (view.slot(cut), 2), hi, "",
+            # the screw is the barrel's (counted with it); its head spacer is a part of its own
+            Op(STACK, (k_hi, 2), (Piece(pin, "screw", (cut, z1)),), "",
                "Each Chicago screw into its barrel from the cap side once the links above "
-               "are on (threadlocker), its printed spacer under the head.", "layer",
+               "are on (threadlocker), its printed top spacer under the head.", "layer",
                count=False),
+            Op(STACK, (k_hi, 2), top, "", "", "layer"),
         ]
 
     def realize(self, group: AxleGroup, build: Build) -> Realized:

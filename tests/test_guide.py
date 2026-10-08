@@ -1,5 +1,5 @@
 """The assembly guide (``spiderpig guide``, docs/agentlib/GUIDE.md): the structured
-assembly order and its hooks, the part labels, the renderer, the PDF."""
+assembly order and its hooks, the part labels, the renderer, the PDF, the docs' copy."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import hashlib
 import io
 import math
 import re
+from collections import Counter
 
 import numpy as np
 import pytest
@@ -18,7 +19,6 @@ from spiderpig.construction.assembly import (
     SideView,
     assembly_steps,
     body_of,
-    prose,
 )
 from spiderpig.guide.render import HIGHLIGHT, Item, Mark, View, bubbles, render
 
@@ -61,20 +61,28 @@ def test_render_draws_the_highlight_marks_it_and_is_byte_stable():
 
 
 @pytest.mark.no_fabricate
-def test_label_bubbles_never_overlap():
+def test_label_tags_never_overlap_and_fit_their_labels():
     from PIL import Image
 
-    img = Image.new("RGB", (400, 300), (255, 255, 255))
-    marks = [(f"P{i:02d}", Mark(200 + (i % 3) * 4, 150 + (i // 3) * 4, 100 - i))
-             for i in range(8)]                    # eight parts in one small spot
-    _, placed = bubbles(img, marks)
+    img = Image.new("RGB", (500, 360), (255, 255, 255))
+    labels = ["SP8-0.7", "RG9.3-3.0", "SL8.5x23.9-PETG", "M3-BH-8", "CHI-M3-16", "LK75x27",
+              "HORN-STS3215", "CW37x29"]
+    marks = [(lab, Mark(250 + (i % 3) * 4, 180 + (i // 3) * 4, 100 - i))
+             for i, lab in enumerate(labels)]      # eight parts in one small spot
+    out, placed = bubbles(img, marks)
     assert len(placed) >= 6
-    pts = list(placed.values())
-    for i, (x, y) in enumerate(pts):
-        assert 20 <= x <= 380
-        assert 20 <= y <= 280
-        for u, v in pts[i + 1:]:
-            assert math.hypot(x - u, y - v) >= 42          # two radii apart, and some
+    boxes = list(placed.values())
+    for i, (x0, y0, x1, y1) in enumerate(boxes):
+        assert 0 <= x0 < x1 <= 500
+        assert 0 <= y0 < y1 <= 360
+        for u0, v0, u1, v1 in boxes[i + 1:]:
+            assert x1 <= u0 or u1 <= x0 or y1 <= v0 or v1 <= y0     # disjoint
+    wide = placed.get("SL8.5x23.9-PETG")
+    if wide is not None:
+        assert wide[2] - wide[0] > placed.get("SP8-0.7", (0, 0, 60, 0))[2] - placed.get(
+            "SP8-0.7", (0, 0, 0, 0))[0]
+    assert hashlib.sha256(_png(out)).digest() == hashlib.sha256(
+        _png(bubbles(img, marks)[0])).digest()
 
 
 @pytest.mark.no_fabricate
@@ -89,7 +97,7 @@ def test_a_gap_goes_with_the_layer_above_it():
 
 
 @pytest.mark.no_fabricate
-def test_the_robot_order_is_structured_and_reads_as_prose():
+def test_the_robot_order_is_structured():
     stages = [(s.stage, s.side) for s in ROBOT_ORDER]
     assert stages.index(("stack", "L")) < stages.index(("unit", "L")) < stages.index(
         ("join", "L")) < stages.index(("chassis", None)) < stages.index(("unit", "R"))
@@ -100,41 +108,44 @@ def test_the_robot_order_is_structured_and_reads_as_prose():
     assert right.tags[0] == ("ties",)
     chassis = next(s for s in ROBOT_ORDER if s.stage == "chassis")
     assert any("R.unit.servo" in t for t in chassis.tags)   # the right servo moves here
-    text = prose()
-    assert len(text) == len([s for s in ROBOT_ORDER if s.stage != "other"])
-    assert all(re.match(r"\d+\. ", t) for t in text)
-    assert len(prose(SIDE_ORDER)) == 3
+    assert [s.stage for s in SIDE_ORDER][:3] == ["stack", "unit", "join"]
 
 
-@pytest.mark.no_fabricate
-def test_labels_number_by_first_use_and_name_the_print_files():
+def _toy():
     from build123d import Box, Location
 
-    from spiderpig.labels import part_types, print_stems
     from spiderpig.mechanism import Body, Mechanism
 
     def body(name, part, fab, key=None):
         return Body(name, part=part, fab=fab, bom_key=key)
 
-    ring = Box(8, 8, 0.7)
-    mech = Mechanism("m", [
-        body("L.pin_J3_leg0_spacer_hi", ring, "printed"),
-        body("R.pin_J3_leg0_spacer_hi", ring.moved(Location((20, 0, 0))), "printed"),
-        body("L.pillar_J2_leg0_ring4", Box(9, 9, 3), "printed"),
-        body("L.b1_leg0", Box(40, 12, 3), "laser"),
+    top = Box(8, 8, 0.7)
+    return Mechanism("m", [
+        body("L.pin_J3_leg0_spacer_hi", top, "printed"),
+        body("R.pin_J3_leg0_spacer_hi", top.moved(Location((20, 0, 0))), "printed"),
+        body("L.pillar_J2_leg0_ring4", Box(9.3, 9.3, 3), "printed"),
+        body("L.pillar_J6_leg0_ring4", Box(9.3, 9.3, 3.04), "printed"),  # rounds the same
         body("L.servo_screw0", Box(2, 2, 6), "purchased", "m3_bhcs_8"),
     ], [], meta={"filament": "pla_filament"})
-    order = ["L.servo_screw0", "L.pillar_J2_leg0_ring4", "L.b1_leg0",
-             "L.pin_J3_leg0_spacer_hi", "R.pin_J3_leg0_spacer_hi"]
-    a, b = part_types(mech, order), part_types(mech, order)
-    assert [(t.label, t.qty, t.file) for t in a] == [(t.label, t.qty, t.file) for t in b]
+
+
+@pytest.mark.no_fabricate
+def test_labels_say_what_the_part_is_whatever_the_order():
+    from spiderpig.labels import bought_label, part_types, print_stems
+
+    mech = _toy()
+    names = [b.name for b in mech.bodies]
+    a, b = part_types(mech, names), part_types(mech, names[::-1])
+    assert {t.label: sorted(t.names) for t in a} == {t.label: sorted(t.names) for t in b}
     got = {t.label: t for t in a}
-    assert set(got) == {"H01", "P01", "C01", "P02"}
-    assert got["P01"].file == "P01_ring_3.0mm.stl"
-    assert got["P02"].file == "P02_top_spacer_0.7mm.stl"
-    assert got["P02"].qty == 2
-    stems = print_stems(a)
-    assert stems["R.pin_J3_leg0_spacer_hi"] == "P02_top_spacer_0.7mm"
+    # two rings 3.0 and 3.04 mm high: one label, told apart by their geometry (volume)
+    assert set(got) == {"SP8-0.7", "RG9.3-3.0a", "RG9.3-3.0b", "M3-BH-8"}
+    assert got["RG9.3-3.0a"].names == ["L.pillar_J2_leg0_ring4"]
+    assert got["SP8-0.7"].qty == 2
+    assert got["SP8-0.7"].file == "SP8-0.7_top_spacer.stl"
+    assert print_stems(a)["R.pin_J3_leg0_spacer_hi"] == "SP8-0.7_top_spacer"
+    assert bought_label("m25_nylon_standoff_mf_6") == "M25-NY-SO-MF-6"
+    assert bought_label("m3_heat_set_insert") == "M3-INS"
 
 
 # ---------------------------------------------------------------------------
@@ -143,8 +154,8 @@ def test_labels_number_by_first_use_and_name_the_print_files():
 
 
 def _check(mech, st):
-    """Every body exactly once (whole, or in pieces that cover it), numbered 1..N,
-    each step with text, nothing added and shown at once."""
+    """Every body exactly once (whole, or in pieces that cover it), numbered 1..N, each
+    step with text and no sentence twice, nothing added and shown at once."""
     whole, pieces = [], {}
     for s in st:
         assert not set(s.context) & set(s.adds)
@@ -158,11 +169,29 @@ def _check(mech, st):
     assert all(len(v) == len(set(v)) >= 2 for v in pieces.values())
     assert set(whole) | set(pieces) == {b.name for b in mech.bodies if b.part is not None}
     assert [s.number for s in st] == list(range(1, len(st) + 1))
-    assert all(s.text for s in st)
     for s in st:
+        assert s.text
+        assert len(s.text) == len(set(s.text)), (s.number, s.text)
+        for t in s.text:                # nor one that another of the step repeats
+            assert not [u for u in s.text if u != t and u.startswith(t.rstrip("."))], s.text
         if s.sub:                                    # drawn alone, put on in the next step
             assert not s.context
             assert set(s.adds) <= set(st[s.number].places)
+
+
+def _quantities(mech, design):
+    """Each label's quantity in the steps' parts lists against its type's (the BOM's and
+    the parts table's): every part is listed, once."""
+    from spiderpig.labels import assembly_order, by_body, part_types
+
+    st = assembly_steps(mech, design)
+    types = part_types(mech, assembly_order(mech, design))
+    of = by_body(types)
+    listed = Counter(of[n].label for s in st for n in s.counted if n in of)
+    assert listed == Counter({t.label: t.qty for t in types})
+    counted = [n for s in st for n in s.counted]
+    assert len(counted) == len(set(counted))
+    return st, types
 
 
 @pytest.fixture(scope="module")
@@ -200,32 +229,44 @@ def test_the_default_robot_is_built_in_the_robots_order(default_robot):
     hub = max((b.name for b in mech.bodies if re.fullmatch(r"L\.crank_plate\d+", b.name)),
               key=lambda n: int(n.rsplit("plate", 1)[1]))
     assert next(x for x in st if hub in x.adds).stage == "unit"
+    # what the old prose said and the hooks must keep saying
+    text = " ".join(t for x in st for t in x.text)
+    for said in ("journal hole", "light press", "capped", "far holes", "rear idler horn",
+                 "feeler gauge", "ball-end key", "turn freely", "notches"):
+        assert said in text, said
 
 
 @pytest.mark.slow
-def test_the_default_robots_labels_are_unique_stable_and_name_its_prints(default_robot):
+def test_the_default_robots_labels(default_robot):
+    """Unique, independent of the step order, every part listed in the steps as often as
+    it is bought or made, every bought label named from the catalog, each laser part
+    measured as its cut file is."""
+    from spiderpig.hardware import catalog
     from spiderpig.labels import assembly_order, part_types
 
     mech, design = default_robot
-    order = assembly_order(mech, design)
-    a = part_types(mech, order)
-    labels = [t.label for t in a]
+    _, types = _quantities(mech, design)
+    labels = [t.label for t in types]
     assert len(labels) == len(set(labels))
-    assert all(re.fullmatch(r"[PCH]\d\d M?".replace(" ", ""), x) for x in labels)
-    names = [n for t in a for n in t.names]
+    order = assembly_order(mech, design)
+    assert order is not None
+    again = part_types(mech, order[::-1])
+    assert {t.label: sorted(t.names) for t in again} == {t.label: sorted(t.names)
+                                                          for t in types}
+    names = [n for t in types for n in t.names]
     assert len(names) == len(set(names))
-    assert set(names) == {b.name for b in mech.bodies if b.part is not None
-                          and b.fab in ("printed", "laser", "purchased")}
-    assert [(t.label, t.file) for t in part_types(mech, order)] == [(t.label, t.file) for t in a]
-    files = [t.file for t in a if t.kind == "printed"]
-    assert all(f and f.startswith(t) for f, t in zip(files, (t.label for t in a
-                                                              if t.kind == "printed"),
-                                                      strict=True))
-    # numbered in the order the steps first need them
-    first = {t.label: min(order.index(n) for n in t.names) for t in a}
-    for kind in "PCH":
-        mine = sorted(x for x in first if x.startswith(kind) and not x.endswith("M"))
-        assert [first[x] for x in mine] == sorted(first[x] for x in mine)
+    for t in types:
+        if t.kind == "purchased":
+            assert t.name not in (t.key, re.sub(r"^[LR]\.", "", t.ref)), t.label
+            if t.key:
+                assert t.name == catalog.get(t.key).name
+        if t.kind == "printed":
+            assert t.file
+            assert t.file.startswith(t.label + "_")
+    deck = next(t for t in types if t.ref.endswith("deck_plate"))
+    assert re.fullmatch(r"DK1\d\dx[67]\d", deck.label)      # its outline, not its thickness
+    w, h = map(float, re.findall(r"([\d.]+) x ([\d.]+) mm", deck.name)[0])
+    assert w > h > 20
 
 
 @pytest.mark.slow
@@ -234,7 +275,8 @@ def test_klann_lego_quad_robot_steps():
 
     cfg = BuildConfig(linkage="klann_lego", module="quad")
     mech = cache.cached_robot(cfg, 1.0)
-    st = assembly_steps(mech, cache.cached_design(cfg)[1])
+    design = cache.cached_design(cfg)[1]
+    st, _ = _quantities(mech, design)
     _check(mech, st)
     assert {x.stage for x in st} >= {"stack", "unit", "join", "chassis", "wiring", "deck"}
 
@@ -245,11 +287,21 @@ def test_a_mechanism_on_its_own_is_one_side():
 
     cfg = BuildConfig(linkage="hoecken_pantograph", module="single", robot=False)
     mech = cache.cached_side(cfg, 1.0)
-    st = assembly_steps(mech, cache.cached_design(cfg)[1])
+    design = cache.cached_design(cfg)[1]
+    st, _ = _quantities(mech, design)
     _check(mech, st)
-    assert [x.stage for x in st if x.stage != "stack"]
     assert {x.side for x in st} == {None}
     assert {x.stage for x in st} <= {"stack", "unit", "join", "other"}
+
+
+@pytest.mark.slow
+def test_the_docs_quote_the_current_order(default_robot):
+    """docs/ARCHITECTURE.md's assembly order is what the hooks and the robot's order say
+    now (``python -m spiderpig.guide.prose --write`` after an edit)."""
+    from spiderpig.guide.prose import DOC, current, section
+
+    mech, design = default_robot
+    assert current(DOC.read_text()) == section(mech, design)
 
 
 @pytest.mark.slow

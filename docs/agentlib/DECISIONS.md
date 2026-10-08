@@ -317,10 +317,12 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   numpy z-buffer renderer in worker processes. The layout is reportlab, a new dependency.
   The robot's assembly order is now structured data: each construction's `assembly` hook,
   plus `construction.assembly.ROBOT_ORDER`. It replaces the prose `construction.robot`
-  kept until now. Parts are identified by label: P printed, C laser-cut, H bought, each
-  numbered in the order the steps first need it. `spiderpig build`'s print STLs are named
-  by label (*P13_top_spacer_0.7mm.stl*), and the guide prints the bag labels. No part
-  changes.
+  kept until now. Parts are identified by labels that say what they are: a family and its
+  sizes (*SP8-0.7*, a spacer 8 mm across and 0.7 mm high), a laser part's outline
+  (*LK75x27*), a bought part's catalog key (*M3-BH-8*). Numbering by first use was
+  rejected in review: a reorder renumbered every label. `spiderpig build`'s print STLs
+  and cut files are named by label (*SP8-0.7_top_spacer.stl*), and the guide prints the
+  bag labels. No part changes.
 - **Why:** the user asked for a build-pipeline guide with stylised pictures, and for no
   edits to the parts: identifying parts by labels and bags needs no embossing, so the
   identity gate stays put. Of the renderers tried, OCCT hidden lines can't fill a

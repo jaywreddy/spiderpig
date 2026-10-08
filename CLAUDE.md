@@ -185,7 +185,7 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | `spiderpig/walk.py` | quasi-static walk model (`viewer/src/drive/model.ts` is its twin) |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py`, `run.py`, `live.py` (`/ws/sim`), `loads.py` |
 | `spiderpig/bake.py`, `build.py` | the `.glb` bake; STEP/STL/DXF/BOM/ORDER.md |
-| `spiderpig/guide/`, `labels.py` | the assembly guide (`docs/agentlib/GUIDE.md`); the P/C/H part labels the print files share |
+| `spiderpig/guide/`, `labels.py` | the assembly guide (`docs/agentlib/GUIDE.md`); the part labels (SP8-0.7, LK75x27, M3-BH-8) the print and cut files share |
 | `spiderpig/explain.py`, `recommend.py` | stage verdicts; fixes checked by re-running the stage |
 | `spiderpig/spec.py`, `api/`, `failure.py`, `verify.py`, `design.py`, `store.py` | the agent surface (`docs/agentlib/API.md`) |
 | `spiderpig/stages/` | under bake/build and the API (which re-exports them): `resolve.py` (`resolve`, `spec_of`), `records.py`, `reports.py`, `planning.py` (`check`, `plan`, `plan_config`) |

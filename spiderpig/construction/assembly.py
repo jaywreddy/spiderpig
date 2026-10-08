@@ -153,12 +153,7 @@ ROBOT_ORDER: tuple[Stage, ...] = (
           tags=(("studs",), ("plates_L",), ("R.unit.servo", "plates_R")),
           text=(("studs", "The M3 set-screw studs into the left chains' ends "
                           "(threadlocker)."),
-                ("servo", ""),
-                ("plates_L", "The left servo's own centre plates on its rear face over the "
-                             "studs, its rear screw through them."),
-                ("plates_R", "The right servo's own plates screwed to the right servo the "
-                             "same way, then that servo and its plates onto the studs, rear "
-                             "faces together."))),
+                ("servo", ""))),
     Stage(UNIT, "R", "Right side: inner plate, on the robot", where="robot",
           tags=(("ties",), ("plate", "servo_screws", "tie_screws"), ("rail",), ("horn",)),
           text=(("ties", "Turn the right tie chains onto the studs from the inner plate's "
@@ -494,13 +489,31 @@ def _title(st: Stage, gops: list[Op], layer: int | None) -> str:
     return short[0].upper() + short[1:]
 
 
-def prose(order: tuple[Stage, ...] = ROBOT_ORDER) -> list[str]:
-    """The order as numbered paragraphs: each stage's title, its intro and its sentences
-    (what the docs quote; the guide has the per-design steps)."""
-    out = []
-    for i, st in enumerate(o for o in order if o.stage != OTHER):
-        parts = [st.intro] + [t for _, t in st.text]
-        if st.stage == WIRING:
-            parts += list(WIRING_TEXT)
-        out.append(f"{i + 1}. {st.title}. " + " ".join(p for p in parts if p))
+def prose(steps: list[Step]) -> list[str]:
+    """The order as numbered paragraphs, one per stage, from a design's steps: the stage's
+    title, then every sentence its steps say, once, in order, a bench sub-assembly's
+    marked as such (what the docs quote: ``python -m spiderpig.guide.prose``)."""
+    out: list[str] = []
+    seen_stage: list[str] = []
+    paras: dict[str, list[str]] = {}
+    stacked: set[str] = set()       # the second side's stack says only what's new
+    for st in steps:
+        if st.stage_title not in paras:
+            seen_stage.append(st.stage_title)
+            paras[st.stage_title] = []
+        para = paras[st.stage_title]
+        for t in st.text:
+            if t.startswith("Put on the sub-assembly from step"):
+                continue
+            if st.stage == STACK and t in stacked and t not in para:
+                continue
+            if st.stage == STACK:
+                stacked.add(t)
+            if st.sub:      # a bench sub-assembly says which
+                where = st.title if "bench" in st.title else f"{st.title}, on the bench"
+                t = f"{where}: {t[0].lower()}{t[1:]}"
+            if t not in para:
+                para.append(t)
+    for i, title in enumerate(seen_stage):
+        out.append(f"{i + 1}. **{title}.** " + " ".join(paras[title]))
     return out

@@ -482,11 +482,19 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
             ops.append(Op(STACK, (view.slot(w0),), whole(*unit),
                           f"Crank web {web.removeprefix('crank_plate')}", text, "crank",
                           sub=True))
+            # where the unit goes on (a sentence of the layer's step)
+            put = ("The stub through the outer plate's journal hole: its thrust sleeve's end "
+                   "then sits just over the plate, the crank body's stop toward it."
+                   if i == 0 and any(n.startswith("crank_stub") for n in unit) else
+                   "The web onto the standoff of the chain below, that chain's riders and "
+                   "sleeve already on.")
+            ops.append(Op(STACK, (view.slot(w0), 0, 0), (), "", put, "layer"))
         horn = [hub, *view.named(r"crank_horn_\w+")]
         taken.update(horn)
         ops.append(Op(UNIT, (2, 1), whole(*horn), "Horn and hub plate",
-                      "The hub plate on the horn: the horn screws up through it from below, "
-                      "with their shims.", "horn"))
+                      "The hub plate on the horn, its hex pocket away from the servo: the horn "
+                      "screws, their shims under the heads, from the plate's leg side (away "
+                      "from the servo) through it into the horn.", "horn"))
         # a chain's top screw, washer and collar: with the web they sit on
         tops: dict[int, list[str]] = {}
         for n in view.named(r"crank_pin_(collar|washers?|screw)_hi_\w+"):
@@ -499,9 +507,17 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
             ops.append(Op(STACK, (k, 2, 1), whole(*names), "",
                           "Each chain's top screw from above, through its wide washer and "
                           "collar (threadlocker).", "layer"))
-        ops += [Op(STACK, (view.slot(view.z[n][0]), 0), whole(n), "",
-                   "Each crankpin's printed sleeve over its standoff, before its riders.",
-                   "layer") for n in view.named(r"crank_pin_sleeve_\w+")]
+        # the chain the hub plate caps has no screw over it (hub_capped): its sleeve, a light
+        # press on the hex, carries the standoff (capped_press)
+        tags = [p.removeprefix("crank_pin_") for p in posts]
+        capped = {t for t in tags if not view.named(rf"crank_pin_screw_hi_{re.escape(t)}")}
+        for n in view.named(r"crank_pin_sleeve_\w+"):
+            text = "Each crankpin's printed sleeve over its standoff, before its riders."
+            if self.hex and n.removeprefix("crank_pin_sleeve_") in capped:
+                text = ("The capped chain's sleeve is a light press on its hex: push it down "
+                        "onto its lower web, that end's washer drawn up against the web (the "
+                        "hub plate caps this chain: no screw over it).")
+            ops.append(Op(STACK, (view.slot(view.z[n][0]), 0), whole(n), "", text, "layer"))
         return ops
 
 

@@ -58,7 +58,7 @@ the ops it moves:
 8. The wiring.
 9. The deck.
 
-`prose()` renders the order as numbered paragraphs, for the docs. The per-design steps are
+`prose(steps)` renders a design's steps as numbered paragraphs, one per stage, every sentence once. `docs/ARCHITECTURE.md` §7.6 is that text for the default robot, written by `python -m spiderpig.guide.prose --write`; a test fails while it is stale. The per-design steps are
 `assembly_steps(mech, design)`.
 
 **Defaults and checks.**
@@ -73,22 +73,48 @@ the ops it moves:
 
 ## 2. Part labels (`spiderpig/labels.py`)
 
-`part_types` gives each type one label:
+`part_types` gives each type one label, and the label says what the part is. Reordering
+the steps, editing a hook or adding a part can't change what a label means, and two
+near-identical parts can't swap labels (review round 1: numbering by first use did both).
 
-- **P**: printed. A `group_made` shape group, split by filament as the print files are. A
-  mirror image is a separate print, labelled with an M suffix (P07M).
-- **C**: laser-cut.
-- **H**: bought, one per catalog key.
+- **Printed** (a `group_made` shape group, split by filament as the print files are): a
+  family code and its sizes. *SP8-0.7* is a spacer 8 mm across and 0.7 mm high. The other
+  round families are RG (ring), RR (crank rider ring), CL (collar), HS (horn spacer) and
+  FS (foot sock). SL (sleeve) and TS (thrust sleeve) give across x long, *SL8.5x23.9*. DR
+  (deck rail) and BC (battery cradle) give their box.
+  - A filament other than the design's adds its name, *-PETG*.
+  - A mirror image adds *M*.
+- **Laser-cut**: a role code and the outline as its per-part DXF measures it
+  (`layout.outline_size`), not the bounding box: *LK75x27*. The codes are LK (link), FR
+  (frame plate), CW (crank web), CP (centre plate) and DK (deck plate).
+- **Bought**: the catalog key, shortened by `bought_label`, *M3-BH-8* or *CHI-M3-16*. The
+  servo's own horn, which has no catalog item, is *HORN-<servo>*.
 
-Each kind is numbered in the order the steps first need it (`assembly_order`). The same
-design always gets the same labels.
+Two types whose labels still agree get a, b, ... in order of volume, then area: geometry,
+never order. Their names then say what differs: the area of plate, or the volume. The
+types are listed by kind, then in the order the steps first need them (`assembly_order`).
+The labels don't depend on that order (tested).
 
-**No part changes.** `spiderpig build` and `api.export` name each print STL by its label:
-`<label>_<what>_<height>mm.stl`, e.g. *P13_top_spacer_0.7mm.stl*, with `_mirrored` added
-for a mirror image (`print_stems`). The guide's prints table, parts pages and bag labels
-say the same. The bag labels are a grid to print at 100 % and cut out, one per P and H
-type, each with its label, quantity, name, size and thumbnail. To use them, print each
-batch and bag it with its label.
+**No part changes.** The labels name the files:
+
+- `spiderpig build` and `api.export` print STLs: *<label>_<what>.stl*, e.g.
+  *SP8-0.7_top_spacer.stl*, with `_mirrored` added for a mirror image (`print_stems`);
+- the per-part DXFs: *<label>_<part>_x<qty>.dxf*;
+- the sheets' `parts.csv` and `order.csv`, which also get a `label` column
+  (`laser_labels`).
+
+The guide's prints table, parts pages and bag labels say the same. The bag labels are a
+grid to print at 100 % and cut out, one per printed and bought type, each with its label,
+quantity, name, size and thumbnail. To use them, print each batch and bag it with its
+label.
+
+**Tests.** Each label's quantities summed over the steps' parts lists equal its type's
+quantity (the BOM's), checked on the default robot, `klann_lego` quad and
+`hoecken_pantograph`. Every bought label is named from the catalog.
+
+**Open note.** The deck rail's heat-set inserts are becoming captive nuts in the BOM, on
+another branch. When that lands, the deck hook's rail sentence ("the heat-set inserts
+pressed into the rail") and its `deck_insert` pattern need the new part.
 
 ## 3. Pictures (`spiderpig/guide/render.py`)
 
@@ -109,9 +135,12 @@ The renderer is numpy plus Pillow, with no GPU and no display:
 - A piece of a body (a Chicago pin's barrel) is drawn from its triangles inside the
   piece's z interval.
 
-**Label bubbles.** `render` reports where each new part shows. Once the labels are known,
-`bubbles` puts one bubble per type on a leader. Each bubble takes the free spot, at three
-distances round the part, that overlaps no other bubble and covers the least drawing.
+**Label tags.** `render` reports where each new part shows. Once the labels are known,
+`bubbles` puts one tag per type on a leader: a rounded box as wide as its label. Each tag
+takes the free spot, at three distances round the part, that overlaps no other tag nor
+another part's anchor and covers the least drawing. The font is Noto Sans, subset to Latin
+and shipped in `spiderpig/guide/fonts/` (SIL OFL 1.1, `OFL.txt` beside it), so the
+pictures are the same on any machine.
 
 **Wiring.** The wiring step's picture is a block diagram (`guide/wiring.py`), drawn
 generically:
@@ -188,18 +217,24 @@ aside, holds at normal load (3-6), not at 15. Re-measure before quoting.
 Quick (`no_fabricate`):
 
 - the renderer's bytes, highlight and marks;
-- bubbles never overlap;
+- label tags never overlap, and fit their labels;
 - a gap goes with the layer above it;
-- the robot's order and its prose;
+- the robot's order;
 - labels and print stems on a toy mechanism.
 
 Slow:
 
 - on the default robot: every body is added exactly once (pieces cover their body), the
   stacks go bottom up and mirrored, the stage order holds, the right servo goes in with the
-  chassis, a pin's barrel comes before its screw, and the hub plate is in the unit;
-- the labels are unique and stable, in first-use order, and name the prints;
-- `klann_lego` quad and `hoecken_pantograph` (one side): the same structure check;
+  chassis, a pin's barrel comes before its screw, the hub plate is in the unit, no step
+  says a sentence twice, and what the old prose said is still said (journal hole, light
+  press, far holes, ...);
+- the labels: unique, unchanged by a reversed step order, every part in the steps' parts
+  lists as often as the BOM has it, bought ones named from the catalog, laser ones by
+  their outline;
+- `klann_lego` quad and `hoecken_pantograph` (one side): the same structure and quantity
+  checks;
+- docs/ARCHITECTURE.md's assembly order is current;
 - the PDF's page count;
 - the hooks stay out of the fabrication key.
 

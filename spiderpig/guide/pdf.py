@@ -141,7 +141,11 @@ def _cover(doc: Doc, images: _Images) -> Page:
     return draw
 
 
-_KIND = {"printed": "P", "laser": "C", "purchased": "H"}
+def _size_for(text: str, size: float, width: float, least: float = 7.0) -> float:
+    """The font size, at most ``size``, at which ``text`` fits ``width`` (Helvetica Bold)."""
+    while size > least and stringWidth(_safe(text), BOLD, size) > width:
+        size -= 0.5
+    return size
 
 
 def _parts(doc: Doc, images: _Images) -> list[Page]:
@@ -159,16 +163,19 @@ def _parts(doc: Doc, images: _Images) -> list[Page]:
         c.roundRect(x, y, cw, ch, 5, stroke=1, fill=1)
         pad = 6.0
         images.draw(c, p.thumb, x + pad, y + 36, cw - 2 * pad, ch - 36 - pad)
-        _text(c, x + pad, y + 24, p.label, BOLD, 11)
-        _text(c, x + cw - pad, y + 24, f"× {p.qty}", BOLD, 11, ACCENT, align="right")
+        qty = f"× {p.qty}"
+        room = cw - 2 * pad - stringWidth(_safe(qty), BOLD, 11) - 4
+        _text(c, x + pad, y + 24, p.label, BOLD, _size_for(p.label, 11, room))
+        _text(c, x + cw - pad, y + 24, qty, BOLD, 11, ACCENT, align="right")
         for i, line in enumerate(_wrap(p.name, REG, 6.8, cw - 2 * pad, 2)):
             _text(c, x + pad, y + 14 - i * 8, line, REG, 6.8, GREY)
 
     def page(chunk: list[PartEntry], n: int) -> Page:
         def draw(c: Canvas) -> None:
             _header(c, "Parts" + (" (continued)" if n else ""),
-                    "P printed, C laser-cut, H bought. "
-                    "Labels are numbered in the order the steps need them.")
+                    "A label says what the part is: printed SP spacer, RG ring, CL collar, "
+                    "SL sleeve, with sizes; laser-cut LK link, CW crank web with its outline; "
+                    "bought, its catalog key.")
             for i, p in enumerate(chunk):
                 r, k = divmod(i, cols)
                 card(c, p, M + k * (cw + gap), top - (r + 1) * ch - r * gap)
@@ -247,9 +254,11 @@ def _labels(doc: Doc, images: _Images) -> list[Page]:
         th = ch - 2 * pad
         images.draw(c, p.thumb, x + cw - pad - th, y + pad, th, th)
         tw = cw - 3 * pad - th
-        _text(c, x + pad, y + ch - pad - 24, p.label, BOLD, 28)
-        lw = stringWidth(_safe(p.label), BOLD, 28)
-        _text(c, x + pad + lw + 6, y + ch - pad - 24, f"× {p.qty}", BOLD, 14, ACCENT)
+        qty = f"× {p.qty}"
+        size = _size_for(p.label, 28, tw - stringWidth(_safe(qty), BOLD, 14) - 6)
+        _text(c, x + pad, y + ch - pad - 24, p.label, BOLD, size)
+        lw = stringWidth(_safe(p.label), BOLD, size)
+        _text(c, x + pad + lw + 6, y + ch - pad - 24, qty, BOLD, 14, ACCENT)
         ly = y + ch - pad - 37
         for line in _wrap(p.name, REG, 7.5, tw, 2):
             _text(c, x + pad, ly, line, REG, 7.5)

@@ -30,7 +30,9 @@ up through each inner plate from the leg side into the chain (its head in the cl
 under the plate, which the drive group claims, so the planner keeps the legs clear of it),
 and an M3 set screw through the centre plates joins the two chains and clamps the centre
 plates between them.
-(Assembly: :data:`construction.assembly.ROBOT_ORDER`, which ``spiderpig guide`` draws.
+(Assembly: :data:`construction.assembly.ROBOT_ORDER` and the constructions' ``assembly``
+hooks, which ``spiderpig guide`` draws and ``docs/ARCHITECTURE.md`` section 7.6 quotes,
+generated from them (:mod:`spiderpig.guide.prose`).
 Not both sides' chains on their inner plates first: the
 studs then can't be threaded, neither chain turning and the stud's socket buried.)
 

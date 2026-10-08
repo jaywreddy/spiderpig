@@ -423,8 +423,8 @@ class StandoffAxle:
         ops = []
         if column:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
-                          "Screw each pillar's standoff column to the outer plate: its button "
-                          "head and washer from outside, threadlocker, to "
+                          "Screw each pillar's standoff column (one piece) to the outer plate: "
+                          "its button head and washer from outside, threadlocker, to "
                           f"{self.tighten_nm:g} N·m while the column is bare to hold.",
                           "columns"))
         if inner:

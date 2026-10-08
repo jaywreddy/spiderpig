@@ -1,34 +1,53 @@
-"""Part labels: one identifier per part type, shared by ``spiderpig build``'s print files
-and the assembly guide (``spiderpig guide``).
+"""Part labels: one identifier per part type, shared by ``spiderpig build``'s print and cut
+files and the assembly guide (``spiderpig guide``).
 
-``P`` a printed type (a shape group of :func:`hardware.bom.group_made`, split by filament
-as the print files are; a printed part's mirror image is another print, ``P07M``), ``C`` a
-laser-cut type (a cut: a mirror image is the same cut, the sheet flipped), ``H`` a bought
-item (its catalog key). Each kind is numbered in the order the assembly first needs it
-(:func:`construction.assembly.assembly_steps`), so the guide's parts pages read in that order; a
-design whose steps can't be made (no plan) numbers in body order. The same design always
-gets the same labels.
+A label says what the part is, so no reordering of the steps, no edit of a hook and no new
+part can change what a label means, and two near-identical parts can't swap labels:
 
-A printed type's print file is ``<label>_<what>_<height>mm.stl`` (``P13_top_spacer_0.7mm``:
-the part's height as printed, on its face), its mirror image's the same with
-``_mirrored``: the bag label and the print batch say the same thing.
+- **printed** (a shape group of :func:`hardware.bom.group_made`, split by filament as the
+  print files are): a family code and its defining sizes, ``SP8-0.7`` (a spacer 8 mm
+  across, 0.7 mm high), ``RG9.3-3.0`` (a ring), ``RR11.9-2.6`` (a crank rider ring),
+  ``CL8.9-0.4`` (a collar), ``SL8.5x23.9`` (a sleeve, across x long), ``TS8.5x8.9`` (a
+  thrust sleeve), ``HS19.9-1.8`` (the horn spacer), ``FS14.9-3.0`` (a foot sock), ``DR``
+  and ``BC`` (the deck rail, the battery cradle) by their sizes; another filament than the
+  design's adds it (``-PETG``), a mirror image ``M``;
+- **laser-cut**: ``LK`` a link, ``FR`` a frame plate, ``CW`` a crank web, ``CP`` a centre
+  plate, ``DK`` the deck plate, ``LC`` another, with its outline as the per-part DXF
+  measures it (``LK75x27``);
+- **bought**: the catalog key, shortened (``M3-BH-8``, ``CHI-M3-16``); the servo's own horn
+  ``HORN-<servo>``.
+
+Two types whose labels still agree are told apart by their geometry (volume, then area):
+``a``, ``b``, ... Each type's file: ``<label>_<what>.stl`` for a print
+(``SP8-0.7_top_spacer.stl``), ``<label>_<part>_x<qty>.dxf`` for a cut. ``part_types``'
+order (the guide's parts pages) is the order the steps first need each type; the labels
+don't depend on it.
 """
 
 from __future__ import annotations
 
 import re
-from collections import Counter
 from dataclasses import dataclass, field
 
-PREFIX = {"printed": "P", "laser": "C", "purchased": "H"}
+KINDS = ("printed", "laser", "purchased")
 
-_WHAT = (           # (pattern in a printed body's bare name, what it is), first match wins
-    (r"horn_spacer", "horn spacer"), (r"spacer_hi", "top spacer"),
-    (r"spacer_lo", "head spacer"), (r"crank_ring", "rider ring"), (r"_ring\d", "ring"),
-    (r"spacer", "spacer"), (r"_sock", "foot sock"), (r"thrust", "thrust sleeve"),
-    (r"sleeve", "sleeve"), (r"collar", "collar"), (r"deck_rail", "deck rail"),
-    (r"cradle", "battery cradle"),
+_WHAT = (           # (pattern in a printed body's bare name, what it is, family), first wins
+    (r"horn_spacer", "horn spacer", "HS"), (r"spacer_hi", "top spacer", "SP"),
+    (r"spacer_lo", "head spacer", "SP"), (r"crank_ring", "rider ring", "RR"),
+    (r"_ring\d", "ring", "RG"), (r"spacer", "spacer", "SP"), (r"_sock", "foot sock", "FS"),
+    (r"thrust", "thrust sleeve", "TS"), (r"sleeve", "sleeve", "SL"),
+    (r"collar", "collar", "CL"), (r"deck_rail", "deck rail", "DR"),
+    (r"cradle", "battery cradle", "BC"),
 )
+_ROUND = {"HS", "SP", "RR", "RG", "CL", "FS"}      # across - high
+_LONG = {"SL", "TS"}                               # across x long
+_LASER = ((r"b\d+(_leg\d+)?$", "LK", "link"), (r"(frame_outer|torso)$", "FR", "frame plate"),
+          (r"crank_plate\d+$", "CW", "crank web"), (r"centre_plate\d+$", "CP", "centre plate"),
+          (r"deck_plate$", "DK", "deck plate"))
+_PHRASES = (("heat_set_insert", "ins"), ("self_tap", "st"), ("set_screw", "set"),
+            ("pillar_shaft", "shaft"), ("servo_driver", "drv"), ("shim_din988", "shim"))
+_TOKENS = {"bhcs": "bh", "washer": "w", "chicago": "chi", "nut": "n", "standoff": "so",
+           "round": "r", "hex": "hx", "nylon": "ny", "screw": "s"}
 
 
 @dataclass
@@ -50,10 +69,19 @@ class PartType:
         return len(self.names)
 
 
-def what(name: str) -> str:
-    """A printed body's kind, from its name: "top spacer", "ring", "foot sock"."""
-    n = re.sub(r"^[LR]\.", "", name)
-    return next((w for pat, w in _WHAT if re.search(pat, n)), "part")
+def _bare(name: str) -> str:
+    return re.sub(r"^[LR]\.", "", name)
+
+
+def what(name: str) -> tuple[str, str]:
+    """A printed body's kind and family code, from its name: ("top spacer", "SP")."""
+    n = _bare(name)
+    return next(((w, f) for pat, w, f in _WHAT if re.search(pat, n)), ("part", "PT"))
+
+
+def _n(v: float) -> str:
+    """A size in a label: 0.1 mm, no trailing ``.0`` on an across (``8``, ``9.3``)."""
+    return f"{round(v, 1):g}"
 
 
 def _size(part) -> tuple[float, float, float]:
@@ -65,13 +93,33 @@ def _slug(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9.]+", "_", text).strip("_")
 
 
+def bought_label(key: str) -> str:
+    """A catalog key, shortened: ``m3_bhcs_8`` -> ``M3-BH-8``."""
+    s = key
+    for a, b in _PHRASES:
+        s = s.replace(a, b)
+    return "-".join(_TOKENS.get(t, t) for t in s.split("_")).upper()
+
+
+def _printed_label(fam: str, x: float, y: float, z: float) -> str:
+    across = max(x, y)
+    if fam in _ROUND:
+        return f"{fam}{_n(across)}-{z:.1f}"
+    if fam in _LONG:
+        return f"{fam}{_n(across)}x{z:.1f}"
+    dims = sorted((x, y, z), reverse=True)
+    return f"{fam}{dims[0]:.0f}x{dims[1]:.0f}x{dims[2]:.0f}"
+
+
 def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
                filament: str | None = None) -> list[PartType]:
-    """Every part type of ``mech``, labelled, in label order. ``order``: the body names in
-    the order the assembly adds them (else the mechanism's order); ``groups``: the made
-    groups by method (``"printed"``, ``"laser"``) when the caller has them."""
+    """Every part type of ``mech``, labelled, in the order ``order`` (the body names as the
+    assembly adds them; else the mechanism's) first needs each, the kinds in turn.
+    ``groups``: the made groups by method (``"printed"``, ``"laser"``) when the caller has
+    them."""
     from spiderpig.hardware import catalog
     from spiderpig.hardware.bom import _filament_name, _split_by, group_made, printed_filaments
+    from spiderpig.layout import outline_size
 
     groups = dict(groups or {})
     for method in ("printed", "laser"):
@@ -86,62 +134,112 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
             plain = [n for n in g.names if n not in g.mirrored]
             ref = g.ref if g.ref.name in plain else by_name[plain[0]]
             x, y, z = _size(ref.part)
-            kind = what(ref.name)
+            kind, fam = what(ref.name)
             fil = fil_of.get(plain[0])
+            label = _printed_label(fam, x, y, z)
             name = f"printed {kind}, {max(x, y):.1f} mm across, {z:.1f} mm high"
             if fil and fil != filament:
+                short = _filament_name(fil).split()[0].upper()
+                label += f"-{short}"
                 name += f", {_filament_name(fil)}"
-            t = PartType("", "printed", name, ref.name, plain, filament=fil,
+            t = PartType(label, "printed", name, ref.name, plain, filament=fil,
                          detail=f"{z:.1f} mm high, {max(x, y):.1f} mm across",
-                         extra={"what": kind, "z": z})
+                         extra={"what": kind, "geo": _geo(ref.part)})
             found.append(t)
             if g.mirrored:
-                found.append(PartType("", "printed", name + ", mirror image",
+                found.append(PartType(label + "M", "printed", name + ", mirror image",
                                       g.mirrored[0], list(g.mirrored), filament=fil,
                                       detail=t.detail + ", MIRRORED", mirrored=True,
-                                      extra={"what": kind, "z": z, "twin": t}))
+                                      extra={"what": kind, "geo": t.extra["geo"],
+                                             "twin": t}))
+    default_sheet = mech.meta.get("sheet") or "acrylic_3mm"
     for g in groups["laser"]:
-        x, y, z = _size(g.ref.part)
-        sheet = g.ref.sheet or mech.meta.get("sheet") or ""
-        found.append(PartType("", "laser", f"laser-cut, {max(x, y):.1f} x {min(x, y):.1f} mm, "
-                              f"{z:.2f} mm {catalog.sheet_name(sheet) if sheet else ''}"
-                              .rstrip(), g.ref.name, list(g.names),
-                              detail=f"{max(x, y):.0f} x {min(x, y):.0f} mm"))
+        ref = g.ref
+        sheet = ref.sheet or default_sheet
+        w, h = outline_size(ref, default_sheet)
+        t_mm = catalog.sheet_thickness(sheet)
+        fam, role = next(((f, r) for pat, f, r in _LASER if re.match(pat, _bare(ref.name))),
+                         ("LC", "laser-cut part"))
+        found.append(PartType(f"{fam}{w:.0f}x{h:.0f}", "laser",
+                              f"{role}, laser-cut, {w:.1f} x {h:.1f} mm, "
+                              f"{catalog.sheet_name(sheet).split(',')[0]}", ref.name,
+                              list(g.names), detail=f"{w:.0f} x {h:.0f} x {t_mm:g} mm",
+                              extra={"geo": _geo(ref.part), "role": role,
+                                     "plate_mm2": float(ref.part.volume) / t_mm}))
     bought: dict[str, PartType] = {}
     for b in mech.bodies:
         if b.fab != "purchased" or b.part is None:
             continue
-        key = b.bom_key or re.sub(r"^[LR]\.", "", b.name)
+        key = b.bom_key or _bare(b.name)
         if key not in bought:
-            try:
-                name = catalog.get(key).name
-            except KeyError:
-                name = key
-            bought[key] = PartType("", "purchased", name, b.name, [], key=key)
+            label, name = _bought(b, key, mech)
+            bought[key] = PartType(label, "purchased", name, b.name, [], key=b.bom_key)
         bought[key].names.append(b.name)
     found += list(bought.values())
-    # numbered by first use
-    rank = {n: i for i, n in enumerate(order or [b.name for b in mech.bodies])}
-    big = len(rank)
-
-    def first(t: PartType) -> tuple:
-        return (min((rank.get(n, big) for n in t.names), default=big), t.ref)
-
-    count: Counter = Counter()
-    out: list[PartType] = []
-    for t in sorted((t for t in found if not t.mirrored), key=first):
-        count[t.kind] += 1
-        t.label = f"{PREFIX[t.kind]}{count[t.kind]:02d}"
-        out.append(t)
-        if t.kind == "printed":
-            t.file = f"{t.label}_{_slug(t.extra['what'])}_{t.extra['z']:.1f}mm.stl"
+    _disambiguate(found)
+    for t in found:
+        if t.kind == "printed" and not t.mirrored:
+            t.file = f"{t.label}_{_slug(t.extra['what'])}.stl"
     for t in found:
         if t.mirrored:
-            twin = t.extra["twin"]
-            t.label = twin.label + "M"
-            t.file = twin.file.removesuffix(".stl") + "_mirrored.stl"
-            out.insert(out.index(twin) + 1, t)
-    return out
+            t.file = t.extra["twin"].file.removesuffix(".stl") + "_mirrored.stl"
+    rank = {n: i for i, n in enumerate(order or [b.name for b in mech.bodies])}
+    big = len(rank)
+    return sorted(found, key=lambda t: (KINDS.index(t.kind),
+                                        min((rank.get(n, big) for n in t.names), default=big),
+                                        t.label))
+
+
+def _geo(part) -> tuple[float, float]:
+    """What tells two parts of one label apart: volume, then area (0.001 mm)."""
+    return (round(float(part.volume), 3), round(float(part.area), 3))
+
+
+def _bought(body, key: str, mech) -> tuple[str, str]:
+    """A bought body's label and name: its catalog item's, or (a stock part with none,
+    the servo's horn) the servo's."""
+    from spiderpig.hardware import catalog
+
+    if body.bom_key:
+        try:
+            return bought_label(key), catalog.get(key).name
+        except KeyError:
+            pass
+    if "servo_horn" in key:
+        from spiderpig import servos
+
+        servo = str(mech.meta.get("servo", ""))
+        try:
+            horn = servos.get(servo).horn.name
+        except (KeyError, ValueError, AttributeError):
+            horn = "servo horn"
+        return f"HORN-{servo.upper()}", f"{horn} (in the servo's box)"
+    return bought_label(key), key          # (no catalog item: tests/test_guide.py says so)
+
+
+def _disambiguate(found: list[PartType]) -> None:
+    """Labels that agree: ``a``, ``b``, ... by geometry (volume, then area), the mirror
+    images following their twins."""
+    clash: dict[str, list[PartType]] = {}
+    for t in found:
+        if not t.mirrored:
+            clash.setdefault(t.label, []).append(t)
+    for same in clash.values():
+        if len(same) < 2:
+            continue
+        for i, t in enumerate(sorted(same, key=lambda t: (t.extra.get("geo", (0, 0)),
+                                                          t.key or ""))):
+            t.label += "abcdefghijklmnopqrstuvwxyz"[i]
+            # the name says what tells them apart
+            if t.kind == "laser":
+                t.name += f", {t.extra['plate_mm2']:.0f} mm² of plate"
+                t.detail += f", {t.extra['plate_mm2']:.0f} mm²"
+            elif "geo" in t.extra:
+                t.name += f", {t.extra['geo'][0]:.1f} mm³"
+                t.detail += f", {t.extra['geo'][0]:.1f} mm³"
+    for t in found:
+        if t.mirrored:
+            t.label = t.extra["twin"].label + "M"
 
 
 def print_stems(types: list[PartType]) -> dict[str, str]:
@@ -149,6 +247,11 @@ def print_stems(types: list[PartType]) -> dict[str, str]:
     image's is its twin's file, the ``_mirrored`` one written beside it)."""
     return {n: t.file.removesuffix(".stl") for t in types
             if t.kind == "printed" and t.file and not t.mirrored for n in t.names}
+
+
+def laser_labels(types: list[PartType]) -> dict[str, str]:
+    """Each laser-cut body's label (the cut files' names, the sheets' parts list)."""
+    return {n: t.label for t in types if t.kind == "laser" for n in t.names}
 
 
 def by_body(types: list[PartType]) -> dict[str, PartType]:

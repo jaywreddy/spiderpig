@@ -19,6 +19,7 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -310,15 +311,14 @@ def _arrow(d: ImageDraw.ImageDraw, a, b, color=INK):
     d.polygon([(bx, by), (hx - uy * 8, hy + ux * 8), (hx + uy * 8, hy - ux * 8)], fill=color)
 
 
-def font(size: int, bold: bool = True):
-    """DejaVu Sans (Pillow's own font when it isn't installed: still deterministic)."""
-    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
-    for path in (name, f"/usr/share/fonts/truetype/dejavu/{name}"):
-        try:
-            return ImageFont.truetype(path, size)
-        except OSError:
-            continue
-    return ImageFont.load_default(size)
+FONTS = Path(__file__).parent / "fonts"
+
+
+def font(size: float, bold: bool = True):
+    """Noto Sans, subset to Latin and shipped with the package (``fonts/``, SIL OFL 1.1):
+    the same glyphs on every machine."""
+    return ImageFont.truetype(str(FONTS / f"NotoSans-{'Bold' if bold else 'Regular'}.ttf"),
+                              size)
 
 
 # ---------------------------------------------------------------------------
@@ -329,46 +329,51 @@ R_BUBBLE = 21
 
 
 def bubbles(img: Image.Image, marks: list[tuple[str, Mark]]
-            ) -> tuple[Image.Image, dict[str, tuple[float, float]]]:
-    """``img`` with a bubble per ``(label, mark)`` on a short leader to its part, and where
-    each went: each put where it overlaps no other bubble and covers least of the drawing
-    (tried round the part at three distances), the biggest parts' first; one that finds no
-    room is left out. A copy; deterministic."""
+            ) -> tuple[Image.Image, dict[str, tuple[float, float, float, float]]]:
+    """``img`` with a label tag (a rounded box as wide as its label) per ``(label, mark)``
+    on a short leader to its part, and each tag's box: each put where it overlaps no other
+    tag nor another part's anchor and covers least of the drawing (tried round the part at
+    three distances), the biggest parts' first; one that finds no room is left out. A copy;
+    deterministic."""
     out = img.copy()
     d = ImageDraw.Draw(out)
     w, h = out.size
-    ink = np.asarray(img.convert("L")) < 245          # what a bubble shouldn't hide
-    taken: list[tuple[float, float]] = []
-    placed: dict[str, tuple[float, float]] = {}
+    ink = np.asarray(img.convert("L")) < 245          # what a tag shouldn't hide
+    placed: dict[str, tuple[float, float, float, float]] = {}
     anchors = [(m.x, m.y) for _, m in marks]
-    f = font(17)
-    r = R_BUBBLE
+    f = font(16)
+    ry = R_BUBBLE * 0.75
+    gap = 4.0
+
+    def hits(box, other) -> bool:
+        return not (box[2] + gap <= other[0] or other[2] + gap <= box[0]
+                    or box[3] + gap <= other[1] or other[3] + gap <= box[1])
+
     for label, m in sorted(marks, key=lambda lm: (-lm[1].n, lm[0])):
+        rx = max(ry, f.getlength(label) / 2 + 9)
         best = None
         for dist, ang in itertools.product((48, 80, 120), range(-45, 315, 30)):
-            bx = m.x + dist * math.cos(math.radians(ang))
+            bx = m.x + (dist + rx - ry) * math.cos(math.radians(ang))
             by = m.y - dist * math.sin(math.radians(ang))
-            if not (r + 2 <= bx <= w - r - 2 and r + 2 <= by <= h - r - 2):
+            box = (bx - rx, by - ry, bx + rx, by + ry)
+            if box[0] < 2 or box[1] < 2 or box[2] > w - 2 or box[3] > h - 2:
                 continue
-            if any((bx - x) ** 2 + (by - y) ** 2 < (2 * r + 6) ** 2 for x, y in taken):
+            if any(hits(box, o) for o in placed.values()):
                 continue
-            if any((bx - x) ** 2 + (by - y) ** 2 < (r + 4) ** 2 for x, y in anchors):
+            if any(box[0] - 4 <= x <= box[2] + 4 and box[1] - 4 <= y <= box[3] + 4
+                   for x, y in anchors):
                 continue
-            x0, x1 = int(bx - r), int(bx + r)
-            y0, y1 = int(by - r), int(by + r)
-            cover = float(ink[y0:y1, x0:x1].mean())
+            cover = float(ink[int(box[1]):int(box[3]), int(box[0]):int(box[2])].mean())
             score = cover + dist / 400.0
             if best is None or score < best[0] - 1e-9:
-                best = (score, bx, by)
+                best = (score, bx, by, box)
         if best is None:
             continue
-        _, bx, by = best
-        taken.append((bx, by))
-        placed[label] = (round(bx, 1), round(by, 1))
+        _, bx, by, box = best
+        placed[label] = tuple(round(v, 1) for v in box)     # type: ignore[assignment]
         d.line((m.x, m.y, bx, by), fill=INK, width=2)
         d.ellipse((m.x - 3, m.y - 3, m.x + 3, m.y + 3), fill=INK)
-        d.ellipse((bx - r, by - r, bx + r, by + r), fill=(255, 255, 255), outline=INK,
-                  width=2)
+        d.rounded_rectangle(box, radius=ry, fill=(255, 255, 255), outline=INK, width=2)
         d.text((bx, by), label, fill=INK, font=f, anchor="mm")
     return out, placed
 

@@ -127,10 +127,31 @@ def build_guide(config, store, out: Path, *, jobs: int = 4, max_steps: int | Non
             with fabcache.serving(store):
                 mech = fabricate(tmpl, config, 1.0)
         t = lap("fabricate", t)
-        report = _make(config, design, mech, cache, done, out, jobs, max_steps, force, times,
-                       t)
+        try:
+            report = _make(config, design, mech, cache, done, out, jobs, max_steps, force,
+                           times, t)
+        except BaseException:       # no half-made guide left behind
+            for d in cache.glob(f".work-{os.getpid()}-*"):
+                shutil.rmtree(d, ignore_errors=True)
+            raise
+        _prune(cache, done)
     lap("total", t0)
     return report
+
+
+def _prune(cache: Path, done: Path) -> None:
+    """Drop what this code no longer reads: the guides of other code keys, and the
+    pictures of another renderer (their names start with its key)."""
+    from spiderpig import keys
+
+    base = done.name.split("-first")[0]         # (a guide of the first N steps beside it)
+    for d in cache.glob("pdf-*"):
+        if d.name != base and not d.name.startswith(base + "-first"):
+            shutil.rmtree(d, ignore_errors=True)
+    rkey = keys.source_key(RENDER_ROOTS, "render")
+    for f in (cache / "img").glob("*"):
+        if not f.name.startswith(rkey + "-"):
+            f.unlink(missing_ok=True)
 
 
 def _meshes(mech, cache: Path) -> Path:
@@ -226,7 +247,9 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     t = lap("render", t)
     # the label bubbles, the wiring diagram, the document
     of = by_body(types)
-    work = Path(tempfile.mkdtemp(prefix=".work-", dir=cache))
+    typ = {ty.label: ty for ty in types}
+    rank = {ty.label: i for i, ty in enumerate(types)}     # (the kinds, then first use)
+    work = Path(tempfile.mkdtemp(prefix=f".work-{os.getpid()}-", dir=cache))
     entries: list[StepEntry] = []
     for st in chosen:
         path = work / f"step_{st.number:03d}.png"
@@ -250,10 +273,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
         for n in st.counted:
             if n in of:
                 counts[of[n].label] = counts.get(of[n].label, 0) + 1
-        typ = {ty.label: ty for ty in types}
-        callouts = [Callout(lab, q, typ[lab].name, img / f"{thumbs[lab]}.png")
-                    for lab, q in sorted(counts.items(), key=lambda kv: ("PCH".index(
-                        kv[0][0]), kv[0]))]
+        callouts = [Callout(lab, counts[lab], typ[lab].name, img / f"{thumbs[lab]}.png")
+                    for lab in sorted(counts, key=rank.__getitem__)]
         entries.append(StepEntry(st.number, st.title, st.stage_title, st.text, path,
                                  callouts, st.sub))
     by_name = {b.name: b for b in mech.bodies}
@@ -263,8 +284,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
                                * filament_density(ty.filament), 1))
               for ty in types if ty.kind == "printed"]
     parts = [PartEntry(ty.label, ty.kind, ty.name, ty.qty, img / f"{thumbs[ty.label]}.png",
-                       ty.file, ty.detail)
-             for ty in sorted(types, key=lambda t: ("PCH".index(t.label[0]), t.label))]
+                       ty.file, ty.detail) for ty in types]
     title = (f"{config.linkage} {config.module} {'robot' if config.robot else 'side'}")
     doc = Doc("Assembly guide",
               [title, f"{config.servo} servo, {config.pin} pins, {config.pillar} pillars, "

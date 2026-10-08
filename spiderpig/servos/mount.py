@@ -393,7 +393,8 @@ class DriveGroup(Group):
         if screws:
             ops.append(Op(UNIT, (1, 1), whole(*screws), "",
                           f"Its {len(screws)} front screws from the leg side, heads under the "
-                          "plate.", "servo_screws"))
+                          "plate, in the far holes (the near ones would leave the plate too "
+                          "little web to the horn's hole).", "servo_screws"))
         if horn:
             ops.append(Op(UNIT, (2, 0), whole(*horn), "Horn and hub plate",
                           "The horn on the spline with its centre screw (the rear idler horn "
