@@ -85,15 +85,24 @@ near-identical parts can't swap labels (review round 1: numbering by first use d
   - A filament other than the design's adds its name, *-PETG*.
   - A mirror image adds *M*.
 - **Laser-cut**: a role code and the outline as its per-part DXF measures it
-  (`layout.outline_size`), not the bounding box: *LK75x27*. The codes are LK (link), FR
+  (`layout.outline_size`), to the nearest 0.5 mm: *LK96.5x12*. The codes are LK (link), FR
   (frame plate), CW (crank web), CP (centre plate) and DK (deck plate).
-- **Bought**: the catalog key, shortened by `bought_label`, *M3-BH-8* or *CHI-M3-16*. The
-  servo's own horn, which has no catalog item, is *HORN-<servo>*.
+- **Bought**: what the BOM actually buys (`hardware.bom.bought_lines`, the lines
+  `bom_from_mechanism` groups), by catalog key, shortened by `bought_label`: *M3-BH-8*,
+  *CHI-M3-16*, *M2.5-NY-S-5*. A shim stack is bought as DIN 433 washers, so its label is
+  theirs (*M3-W-433*), and its step says "each 1 mm shim stack is 2 x M3-W-433". The
+  servo's own horn, which has no catalog item, is *HORN-<servo>*. A line that belongs to
+  no body (the harness's resistors and pigtails, the battery strap, the foam tape) goes in
+  the step whose op names its key (`Op.extras`: the deck's hook). Shop supplies
+  (threadlocker, epoxy: `labels.consumables`) are no type; the cover lists them.
 
-Two types whose labels still agree get a, b, ... in order of volume, then area: geometry,
-never order. Their names then say what differs: the area of plate, or the volume. The
-types are listed by kind, then in the order the steps first need them (`assembly_order`).
-The labels don't depend on that order (tested).
+Every size goes through the tie-stable `spiderpig.rounding` helpers, so float noise
+(96.49999 against 96.50001) never decides a label. Two types whose labels still agree get
+a, b, ... in order of volume, then area: geometry, never order. Their names then say what
+differs: the coarsest of the hole count, the hole sizes (0.01 mm: a bonded barrel's 4.15
+against a running 4.2), the holes' spread, the outline's length. The types are listed by
+kind, then in the order the steps first need them (`assembly_order`). The labels don't
+depend on that order (tested).
 
 **No part changes.** The labels name the files:
 
@@ -108,9 +117,11 @@ grid to print at 100 % and cut out, one per printed and bought type, each with i
 quantity, name, size and thumbnail. To use them, print each batch and bag it with its
 label.
 
-**Tests.** Each label's quantities summed over the steps' parts lists equal its type's
-quantity (the BOM's), checked on the default robot, `klann_lego` quad and
-`hoecken_pantograph`. Every bought label is named from the catalog.
+**Tests.** Every line `bom_from_mechanism` buys appears in the steps' parts lists
+(`labels.step_counts`) as often as it is bought, unless it is a supply; every made part
+appears once. This is checked on the default robot, `klann_lego` quad and
+`hoecken_pantograph`. Every bought label is named from the catalog, an a/b pair's names
+differ, and the prints table's cells fit their columns (`pdf.print_rows`).
 
 **Open note.** The deck rail's heat-set inserts are becoming captive nuts in the BOM, on
 another branch. When that lands, the deck hook's rail sentence ("the heat-set inserts

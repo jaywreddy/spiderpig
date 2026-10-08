@@ -866,6 +866,31 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
 # ---------------------------------------------------------------------------
 
 
+def bought_lines(mech) -> list[BomLine]:
+    """What :func:`bom_from_mechanism` buys, line by line, before it groups them: each
+    purchased body's item, the fitting's lines, the extras, the shim stacks as what is
+    bought (:func:`split_shims`: DIN 433 washers). No filament, no sheets (the build adds
+    those). A line whose ``where`` starts with a body's name is that body's
+    (:func:`line_body`): the assembly guide lists it where the body goes on."""
+    fitted, _, replaced = fitting_lines(mech)
+    lines = [BomLine(b.bom_key, 1, b.name) for b in mech.bodies
+             if b.fab == "purchased" and b.bom_key and b.name not in replaced]
+    lines += fitted
+    lines += list(mech.bom_extras)
+    by_name = {b.name: b for b in mech.bodies}
+    lines, _ = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
+    return lines
+
+
+def line_body(line: BomLine, names) -> str | None:
+    """The body a line is for, when its ``where`` starts with one of ``names``."""
+    m = re.match(r"[A-Za-z0-9_.]+", line.where or "")
+    if m is None:
+        return None
+    w = m.group(0).rstrip(".:")
+    return w if w in names else None
+
+
 def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                        group: bool = True,
                        groups: dict[str, list[MadeGroup]] | None = None) -> Bom:

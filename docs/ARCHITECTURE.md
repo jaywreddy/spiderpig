@@ -1464,7 +1464,7 @@ checked current by `tests/test_guide.py`):
 
 7. **Right side: body onto the leg stack.** Turn the body over onto the right leg stack: the hub plate's pocket over its hub chain's standoff, the pillars' tops into the inner plate. Each pillar's inner screw and washer from the servo bay (a ball-end key), threadlocker, to 0.8 N·m.
 
-8. **Wiring.** Each servo's bus plug into its socket, the cable along the centre plates' slot from their far edge and up to the board through the deck's wire slot (connector first), before the deck goes in.
+8. **Wiring.** The harness: the XT30 pigtail from the battery's lead to the protection board, the DC plug pigtail from the switch to the board's DC jack, and the battery divider (the 100k resistor from the switched battery to an ESP32 ADC pin, the 33k from that pin to ground). Each servo's bus plug into its socket, the cable along the centre plates' slot from their far edge and up to the board through the deck's wire slot (connector first), before the deck goes in.
 
 9. **Deck.** Deck electronics, on the bench: the board on its nylon standoffs; the battery cradle screwed down (two M3 button heads through its ears, nuts under the deck), the battery strapped in; the charger and the protection board under the deck on foam tape; the switch; wires tied down through the cable-tie slots. Lower the deck, electronics on, straight down between the inner plates, its notches past the pillars' inner heads, onto the rails; its 4 screws into the rails' inserts.
 <!-- assembly-order: end -->

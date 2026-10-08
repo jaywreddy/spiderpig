@@ -292,6 +292,9 @@ def render(items: list[Item], view: View, ss: int = SS
                 k = int(np.argmin((ry - cy) ** 2 + (rx - cx) ** 2))
                 marks[items[i].name] = Mark(round(float(rx[k]) / ss, 1),
                                             round(float(ry[k]) / ss, 1), n // (ss * ss))
+            else:       # nothing of it shows (under another part): where it is, n = 0
+                x, y = (float(q) / ss for q in to_px(pos[i].mean(0)))
+                marks[items[i].name] = Mark(round(x, 1), round(y, 1), 0)
     return out, marks
 
 
@@ -333,7 +336,7 @@ def bubbles(img: Image.Image, marks: list[tuple[str, Mark]]
     """``img`` with a label tag (a rounded box as wide as its label) per ``(label, mark)``
     on a short leader to its part, and each tag's box: each put where it overlaps no other
     tag nor another part's anchor and covers least of the drawing (tried round the part at
-    three distances), the biggest parts' first; one that finds no room is left out. A copy;
+    six distances), the biggest parts' first; one that finds no room is left out. A copy;
     deterministic."""
     out = img.copy()
     d = ImageDraw.Draw(out)
@@ -352,7 +355,8 @@ def bubbles(img: Image.Image, marks: list[tuple[str, Mark]]
     for label, m in sorted(marks, key=lambda lm: (-lm[1].n, lm[0])):
         rx = max(ry, f.getlength(label) / 2 + 9)
         best = None
-        for dist, ang in itertools.product((48, 80, 120), range(-45, 315, 30)):
+        for dist, ang in itertools.product((48, 80, 120, 170, 230, 300),
+                                           range(-45, 315, 30)):
             bx = m.x + (dist + rx - ry) * math.cos(math.radians(ang))
             by = m.y - dist * math.sin(math.radians(ang))
             box = (bx - rx, by - ry, bx + rx, by + ry)

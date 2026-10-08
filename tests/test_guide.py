@@ -86,6 +86,36 @@ def test_label_tags_never_overlap_and_fit_their_labels():
 
 
 @pytest.mark.no_fabricate
+def test_the_prints_table_fits_every_cell():
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+
+    from spiderpig.guide import pdf
+    from spiderpig.guide.doc import Doc, PrintBatch
+
+    long = ["SL8.5x23.9-PETG", "FS14.9-3.0-TPU", "RG9.3-3.0b", "SP8-0.7", "LK142x20aM"]
+    doc = Doc("t", [], None, [], [PrintBatch(lab, f"{lab}_" + "very_long_part_name" * 4
+                                             + ".stl", 40, "TPU 95A flexible filament, 1.75 mm",
+                                             12.345) for lab in long], [], "")
+    cols = pdf.print_columns(doc)
+    for cells, font in pdf.print_rows(doc):
+        for i, (text, (_, _, width, _)) in enumerate(zip(cells, cols, strict=True)):
+            used = pdf.BOLD if i == 0 else font
+            assert stringWidth(pdf._safe(text), used, 9) <= width + 1e-6, (text, width)
+    assert pdf.print_rows(doc)[1][0][0] == "SL8.5x23.9-PETG"       # labels whole
+
+
+@pytest.mark.no_fabricate
+def test_float_noise_never_decides_a_label():
+    from spiderpig.labels import _half, _printed_label
+
+    assert _half(96.49999999999999) == _half(96.50000000000003) == "96.5"
+    assert _half(44.5) == "44.5"
+    assert _half(12.0) == "12"
+    assert _printed_label("SP", 7.999999999999, 8.0, 0.6500000000001) == _printed_label(
+        "SP", 8.0, 8.0, 0.6499999999999)
+
+
+@pytest.mark.no_fabricate
 def test_a_gap_goes_with_the_layer_above_it():
     layers = {-1: (-3.0, 0.0), 0: (0.0, 2.0), 1: (4.7, 7.7), 2: (11.0, 14.0), 3: (14.0, 16)}
     v = SideView("L", {}, {}, {}, {}, layers)
@@ -144,7 +174,7 @@ def test_labels_say_what_the_part_is_whatever_the_order():
     assert got["SP8-0.7"].qty == 2
     assert got["SP8-0.7"].file == "SP8-0.7_top_spacer.stl"
     assert print_stems(a)["R.pin_J3_leg0_spacer_hi"] == "SP8-0.7_top_spacer"
-    assert bought_label("m25_nylon_standoff_mf_6") == "M25-NY-SO-MF-6"
+    assert bought_label("m25_nylon_standoff_mf_6") == "M2.5-NY-SO-MF-6"
     assert bought_label("m3_heat_set_insert") == "M3-INS"
 
 
@@ -180,15 +210,27 @@ def _check(mech, st):
 
 
 def _quantities(mech, design):
-    """Each label's quantity in the steps' parts lists against its type's (the BOM's and
-    the parts table's): every part is listed, once."""
-    from spiderpig.labels import assembly_order, by_body, part_types
+    """The steps' parts lists against what is bought and made: every bought line of the
+    BOM (``bom_from_mechanism``) in some step as often as it is bought, unless it is a
+    shop supply (threadlocker, epoxy, filament: the cover's list); every made part once."""
+    from spiderpig.hardware.bom import bom_from_mechanism
+    from spiderpig.labels import CONSUMABLE, assembly_order, part_types, step_counts
 
     st = assembly_steps(mech, design)
     types = part_types(mech, assembly_order(mech, design))
-    of = by_body(types)
-    listed = Counter(of[n].label for s in st for n in s.counted if n in of)
-    assert listed == Counter({t.label: t.qty for t in types})
+    listed: Counter = Counter()
+    for counts in step_counts(st, types, mech):
+        listed.update(counts)
+    of_key = {t.key: t.label for t in types if t.kind == "purchased" and t.key}
+    for row in bom_from_mechanism(mech, group=False).purchased:
+        if CONSUMABLE.search(row.key):
+            continue
+        assert row.key in of_key, row.key
+        assert listed[of_key[row.key]] == pytest.approx(row.qty), (row.key, row.qty)
+    for t in types:
+        if t.kind != "purchased":
+            assert listed[t.label] == t.qty, t.label
+    assert set(listed) == {t.label for t in types}
     counted = [n for s in st for n in s.counted]
     assert len(counted) == len(set(counted))
     return st, types
@@ -263,8 +305,21 @@ def test_the_default_robots_labels(default_robot):
         if t.kind == "printed":
             assert t.file
             assert t.file.startswith(t.label + "_")
+    # a and b of one size say what tells them apart
+    by_base: dict[str, list] = {}
+    for t in types:
+        if re.search(r"\d[a-z]M?$", t.label):
+            by_base.setdefault(re.sub(r"[a-z]M?$", "", t.label), []).append(t)
+    for same in by_base.values():
+        assert len({t.name for t in same}) == len(same), [t.name for t in same]
+    # no name says a thing twice (the horn's "in the box")
+    for t in types:
+        assert t.name.count("box") <= 1, t.name
+        assert not t.detail or t.detail not in t.name, (t.name, t.detail)
+    # a shim stack is listed as the washers it is bought as
+    assert not [t for t in types if t.key and t.key.startswith("shim_din988")]
     deck = next(t for t in types if t.ref.endswith("deck_plate"))
-    assert re.fullmatch(r"DK1\d\dx[67]\d", deck.label)      # its outline, not its thickness
+    assert re.fullmatch(r"DK1\d\d(\.5)?x[67]\d(\.5)?", deck.label)   # its outline
     w, h = map(float, re.findall(r"([\d.]+) x ([\d.]+) mm", deck.name)[0])
     assert w > h > 20
 

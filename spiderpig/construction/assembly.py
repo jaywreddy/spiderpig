@@ -60,6 +60,8 @@ class Op:
     side: str | None = None      # a side's hook: filled in; the robot's hooks say
     count: bool = True           # its parts count in its step's parts list (a later piece
     #                              of a body counted already: False)
+    extras: tuple[str, ...] = ()  # the BOM's lines of these catalog keys that are no body's
+    #                               (a harness's resistors, a strap): bought for this step
 
 
 def whole(*names: str) -> tuple[Piece, ...]:
@@ -224,6 +226,7 @@ class Step:
     counted: list[str] = field(default_factory=list)   # the bodies its parts list counts
     clip: dict[str, tuple[float, float]] = field(default_factory=dict)
     layer: int | None = None    # a stack step's layer
+    extras: list[str] = field(default_factory=list)    # its ops' ``extras``
 
 
 def body_of(piece_id: str) -> str:
@@ -409,8 +412,8 @@ def _order(ops: list[Op], order: tuple[Stage, ...]) -> list[Step]:
             groups.extend((st, [ops[i] for i in part], None)
                           for part in [[i] for i in subs] + ([rest] if rest else []))
             used.update(chosen)
-        if st.stage == WIRING:
-            groups.append((st, [], None))
+        if st.stage == WIRING and not any(s is st for s, _, _ in groups):
+            groups.append((st, [], None))       # a wiring step even with no hook's say
     leftover = [op for i, op in enumerate(ops) if i not in used]
     if leftover:
         raise ValueError(f"ops no stage takes: {[(o.stage, o.side, o.tag) for o in leftover]}")
@@ -462,7 +465,8 @@ def _numbered(groups) -> list[Step]:
         if places and st.stage == STACK and out:
             texts.insert(0, f"Put on the sub-assembly from step {out[-1].number}.")
         out.append(Step(len(out) + 1, title, st.stage, st.title, st.side or None, adds,
-                        context, places, texts, st.where, sub, count, clip, layer))
+                        context, places, texts, st.where, sub, count, clip, layer,
+                        [k for op in gops for k in op.extras]))
         placed += list(adds)
         stage_of.update(dict.fromkeys(adds, key))
         if sub:

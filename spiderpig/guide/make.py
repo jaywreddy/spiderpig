@@ -183,7 +183,13 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     from spiderpig.guide.wiring import draw, wiring_of
     from spiderpig.hardware.bom import _filament_name
     from spiderpig.hardware.mass import filament_density
-    from spiderpig.labels import by_body, part_types
+    from spiderpig.labels import (
+        consumables,
+        part_types,
+        shim_sentences,
+        step_counts,
+        tag_labels,
+    )
 
     def lap(key: str, since: float) -> float:
         now = time.perf_counter()
@@ -238,7 +244,10 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     types = part_types(mech, list(order), filament=filament)
     t = lap("labels", t)
     thumbs = {ty.label: job([(ty.ref, _fill(ty.kind), (0, 0, 0), False, None)], ["part"],
-                            THUMB, margin=0.08) for ty in types}
+                            THUMB, margin=0.08) for ty in types if ty.ref}
+    for ty in types:                # bought for no body (a resistor): a drawn card instead
+        if not ty.ref:
+            thumbs[ty.label] = _card(img, ty.label, ty.name)
     pool += [workers.submit(render_jobs, str(mesh_path), b) for b in _batches(jobs_all, jobs)]
     n_drawn += len(jobs_all)
     for f in pool:
@@ -246,7 +255,8 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             Path(r["out"]).with_suffix(".json").write_text(json.dumps(r))
     t = lap("render", t)
     # the label bubbles, the wiring diagram, the document
-    of = by_body(types)
+    tags = tag_labels(types, mech)
+    counts_of = step_counts(all_steps, types, mech)
     typ = {ty.label: ty for ty in types}
     rank = {ty.label: i for i, ty in enumerate(types)}     # (the kinds, then first use)
     work = Path(tempfile.mkdtemp(prefix=f".work-{os.getpid()}-", dir=cache))
@@ -258,24 +268,24 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
             meta = json.loads((img / f"{h}.json").read_text())
             best: dict[str, Mark] = {}
             for pid, (x, y, n) in meta["marks"].items():
-                ty = of.get(body_of(pid))
-                if ty is not None and (ty.label not in best or n > best[ty.label].n):
-                    best[ty.label] = Mark(x, y, n)
+                lab = tags.get(body_of(pid))
+                if lab is not None and (lab not in best or n > best[lab].n):
+                    best[lab] = Mark(x, y, n)
+            # a part nothing shows of (under another): its tag says so
+            best = {(lab if m.n else f"{lab} (under)"): m for lab, m in best.items()}
             from PIL import Image
 
             with Image.open(img / f"{h}.png") as im:
                 bubbles(im.convert("RGB"), sorted(best.items()))[0].save(path,
                                                                           compress_level=6)
         else:   # the wiring step
-            nodes, links, left = wiring_of(mech, {n: t_.label for n, t_ in of.items()})
+            nodes, links, left = wiring_of(mech, tags)
             draw(nodes, links, left, path, PICTURE)
-        counts: dict[str, int] = {}
-        for n in st.counted:
-            if n in of:
-                counts[of[n].label] = counts.get(of[n].label, 0) + 1
-        callouts = [Callout(lab, counts[lab], typ[lab].name, img / f"{thumbs[lab]}.png")
+        counts = counts_of[st.number - 1]
+        callouts = [Callout(lab, round(counts[lab]), typ[lab].name, img / f"{thumbs[lab]}.png")
                     for lab in sorted(counts, key=rank.__getitem__)]
-        entries.append(StepEntry(st.number, st.title, st.stage_title, st.text, path,
+        text = st.text + [s for s in shim_sentences(st.counted, mech) if s not in st.text]
+        entries.append(StepEntry(st.number, st.title, st.stage_title, text, path,
                                  callouts, st.sub))
     by_name = {b.name: b for b in mech.bodies}
     prints = [PrintBatch(ty.label, ty.file or "", ty.qty,
@@ -293,9 +303,11 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
                f"{sum(ty.qty for ty in types)} parts"
                + (f" (the first {len(chosen)} steps)" if max_steps else "")],
               img / f"{cover}.png", parts, prints, entries,
-              f"spiderpig guide: {title}. Generated; the labels match the print files.")
+              f"spiderpig guide: {title}. Generated; the labels match the print files.",
+              supplies=[_supply(k) for k in sorted(consumables(mech))])
     pages = pdf.write(work / "ASSEMBLY.pdf", doc)
-    (work / "ASSEMBLY.md").write_text(markdown(title, all_steps[:len(chosen)], types))
+    (work / "ASSEMBLY.md").write_text(markdown(title, all_steps[:len(chosen)], types,
+                                               counts_of, mech))
     (work / "guide.json").write_text(json.dumps({"pages": pages, "steps": len(chosen)}))
     t = lap("pdf", t)
     for name in ("ASSEMBLY.pdf", "ASSEMBLY.md"):
@@ -321,11 +333,41 @@ def _batches(jobs_all: list[dict], n: int) -> list[list[dict]]:
     return [b for b in out if b]
 
 
-def markdown(title: str, steps, types) -> str:
-    """The steps as text (``ASSEMBLY.md``): each step's title, sentences and parts."""
-    from spiderpig.labels import by_body
+def _supply(key: str) -> str:
+    from spiderpig.hardware import catalog
 
-    of = by_body(types)
+    try:
+        return catalog.get(key).name
+    except KeyError:
+        return key
+
+
+def _card(img: Path, label: str, name: str) -> str:
+    """A drawn thumbnail for a part with no model (a resistor, a pigtail): its label and
+    name on a card. Its file's name, as a picture job's (a hash)."""
+    from PIL import Image, ImageDraw
+
+    from spiderpig.guide.render import BOUGHT_FILL, INK, font
+
+    h = "card-" + _hash([label, name])
+    path = img / f"{h}.png"
+    if not path.is_file():
+        im = Image.new("RGB", THUMB, (255, 255, 255))
+        d = ImageDraw.Draw(im)
+        d.rounded_rectangle((30, 70, THUMB[0] - 30, THUMB[1] - 70), 18, fill=BOUGHT_FILL,
+                            outline=INK, width=3)
+        d.text((THUMB[0] / 2, THUMB[1] / 2 - 14), label, fill=INK, font=font(26),
+               anchor="mm")
+        d.text((THUMB[0] / 2, THUMB[1] / 2 + 22), name.split(",")[0][:28], fill=INK,
+               font=font(15, bold=False), anchor="mm")
+        im.save(path, compress_level=6)
+    return h
+
+
+def markdown(title: str, steps, types, counts_of, mech) -> str:
+    """The steps as text (``ASSEMBLY.md``): each step's title, sentences and parts."""
+    from spiderpig.labels import shim_sentences
+
     lines = [f"# Assembly: {title}", "",
              "Generated by `spiderpig guide` from the constructions' assembly hooks and "
              "the robot's order; the pictures are in ASSEMBLY.pdf.", ""]
@@ -336,13 +378,10 @@ def markdown(title: str, steps, types) -> str:
             lines += [f"## {stage}", ""]
         lines.append(f"**{st.number}. {st.title}**" + (" (bench sub-assembly)" if st.sub
                                                         else ""))
-        lines += [f"- {t}" for t in st.text]
-        counts: dict[str, int] = {}
-        for n in st.counted:
-            if n in of:
-                counts[of[n].label] = counts.get(of[n].label, 0) + 1
+        lines += [f"- {t}" for t in st.text + shim_sentences(st.counted, mech)]
+        counts = counts_of[st.number - 1]
         if counts:
-            lines.append("- Parts: " + ", ".join(f"{lab} x {q}" for lab, q in
+            lines.append("- Parts: " + ", ".join(f"{lab} x {round(q)}" for lab, q in
                                                  sorted(counts.items())))
         lines.append("")
     lines += ["## Parts", "", "| label | qty | part | print file |", "|---|---|---|---|"]

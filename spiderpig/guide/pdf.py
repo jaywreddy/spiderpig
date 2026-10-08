@@ -19,7 +19,7 @@ from reportlab.lib.utils import ImageReader, simpleSplit
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
-from spiderpig.guide.doc import Doc, PartEntry, PrintBatch, StepEntry
+from spiderpig.guide.doc import Doc, PartEntry, StepEntry
 
 W, H = landscape(A4)
 M = 30.0                          # page margin
@@ -137,6 +137,14 @@ def _cover(doc: Doc, images: _Images) -> Page:
                 _text(c, M, y, line, REG, 13, GREY)
                 y -= 18
             y -= 4
+        if doc.supplies:        # what no step counts: the shop's supplies
+            y -= 10
+            _text(c, M, y, "Also needed (supplies)", BOLD, 11)
+            y -= 16
+            for s in doc.supplies:
+                for line in _wrap(f"• {s}", REG, 9.5, col - M):
+                    _text(c, M, y, line, REG, 9.5, GREY)
+                    y -= 12.5
         images.draw(c, doc.cover, col + 10, FOOT + 10, W - M - col - 10, H - 2 * M - FOOT)
     return draw
 
@@ -184,56 +192,81 @@ def _parts(doc: Doc, images: _Images) -> list[Page]:
     return [page(chunk, n) for n, chunk in enumerate(chunks)]
 
 
+def print_columns(doc: Doc) -> list[tuple[str, float, float, bool]]:
+    """The prints table's columns, ``(title, left x, width, right-aligned)``: the label
+    column as wide as the longest label, the file name taking what is left."""
+    x0, x1 = M + 6, W - M - 6
+    gap = 10.0
+    lab = max(stringWidth(_safe(t), BOLD, 9) for t in
+              ["Label", "Total", *(b.label for b in doc.prints)]) + 2
+    qty, fil, grams = 30.0, 120.0, 46.0
+    file_w = x1 - x0 - lab - qty - fil - 2 * grams - 5 * gap
+    cols, x = [], x0
+    for title, w, right in (("Label", lab, False), ("Print file", file_w, False),
+                            ("Qty", qty, True), ("Filament", fil, False),
+                            ("g each", grams, True), ("g total", grams, True)):
+        cols.append((title, x, w, right))
+        x += w + gap
+    return cols
+
+
+def print_rows(doc: Doc) -> list[tuple[list[str], str]]:
+    """The prints table's rows as drawn, ``(cells, font)``: the header, a row per batch,
+    the total; every cell fitted to its column (:func:`print_columns`)."""
+    widths = [w for _, _, w, _ in print_columns(doc)]
+
+    def fit(cells: list[str], font: str, first: str = BOLD) -> list[str]:
+        return [_fit(c, first if i == 0 else font, 9, w)
+                for i, (c, w) in enumerate(zip(cells, widths, strict=True))]
+
+    rows = [(fit([t for t, _, _, _ in print_columns(doc)], BOLD), BOLD)]
+    rows += [(fit([b.label, b.file, str(b.qty), b.filament, f"{b.grams_each:.1f}",
+                   f"{b.qty * b.grams_each:.1f}"], REG), REG) for b in doc.prints]
+    total_g = sum(b.qty * b.grams_each for b in doc.prints)
+    rows.append((fit(["Total", f"{len(doc.prints)} print files",
+                      str(sum(b.qty for b in doc.prints)), "", "", f"{total_g:.0f} g"], BOLD),
+                 BOLD))
+    return rows
+
+
 def _prints(doc: Doc) -> list[Page]:
     if not doc.prints:
         return []
     rh = 16.0
     top = H - M - 62
     per = int((top - FOOT - 2 * rh) // rh)          # leaves room for the total row
-    chunks = [doc.prints[i:i + per] for i in range(0, len(doc.prints), per)]
-    # column: (title, x of its left or right edge, right-aligned)
+    cols = print_columns(doc)
+    rows = print_rows(doc)
+    head, body, total = rows[0], rows[1:-1], rows[-1]
+    chunks = [body[i:i + per] for i in range(0, len(body), per)]
     x0, x1 = M, W - M
-    cols = [("Label", x0 + 6, False), ("Print file", x0 + 70, False),
-            ("Qty", x0 + 470, True), ("Filament", x0 + 500, False),
-            ("g each", x1 - 90, True), ("g total", x1 - 6, True)]
-    file_w = 470 - 70 - 30
-    fil_w = x1 - 90 - 50 - (x0 + 500)
-    total_g = sum(b.qty * b.grams_each for b in doc.prints)
-    total_n = sum(b.qty for b in doc.prints)
 
-    def row(c: Canvas, y: float, cells: list[str], font: str) -> None:
-        for i, ((_, x, right), cell) in enumerate(zip(cols, cells, strict=True)):
-            _text(c, x, y + 4.5, cell, BOLD if i == 0 else font, 9,
-                  align="right" if right else "left")
+    def row(c: Canvas, y: float, cells: list[str], font: str, colour=INK) -> None:
+        for i, ((_, x, w, right), cell) in enumerate(zip(cols, cells, strict=True)):
+            _text(c, x + w if right else x, y + 4.5, cell, BOLD if i == 0 else font, 9,
+                  colour, align="right" if right else "left")
 
-    def cells(b: PrintBatch) -> list[str]:
-        return [b.label, _fit(b.file, REG, 9, file_w), str(b.qty),
-                _fit(b.filament, REG, 9, fil_w), f"{b.grams_each:.1f}",
-                f"{b.qty * b.grams_each:.1f}"]
-
-    def page(chunk: list[PrintBatch], n: int, last: bool) -> Page:
+    def page(chunk: list, n: int, last: bool) -> Page:
         def draw(c: Canvas) -> None:
             _header(c, "Prints" + (" (continued)" if n else ""),
                     "One print file per label: print each batch, then bag it with its label "
                     "(next pages).")
             y = top - rh
-            for title, x, right in cols:
-                _text(c, x, y + 4.5, title, BOLD, 9, GREY, align="right" if right else "left")
+            row(c, y, head[0], BOLD, GREY)
             c.setStrokeColor(INK)
             c.setLineWidth(0.8)
             c.line(x0, y, x1, y)
-            for i, b in enumerate(chunk):
+            for i, (cells, font) in enumerate(chunk):
                 y -= rh
                 if i % 2:
                     c.setFillColor(ZEBRA)
                     c.rect(x0, y, x1 - x0, rh, stroke=0, fill=1)
-                row(c, y, cells(b), REG)
+                row(c, y, cells, font)
             if last:
                 c.setStrokeColor(INK)
                 c.line(x0, y, x1, y)
                 y -= rh
-                row(c, y, ["Total", f"{len(doc.prints)} print files", str(total_n), "", "",
-                           f"{total_g:.0f} g"], BOLD)
+                row(c, y, total[0], BOLD)
         return draw
 
     return [page(ch, n, n == len(chunks) - 1) for n, ch in enumerate(chunks)]
