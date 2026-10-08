@@ -4,8 +4,9 @@ timings, logged on the ``spiderpig.build`` logger (``spiderpig/tools/profiler.py
 :mod:`spiderpig.cli` sends ``build`` here when ``--profile`` or ``--profile-json`` is given;
 everything else goes to :func:`spiderpig.build.main` unchanged. The stages are timed by
 wrapping, for the length of the run, the functions the build calls (its module's names,
-``api.plan_config``, ``Mechanism.export_step`` / ``export_stl``, ``Bom.write``,
-``order_markdown``), so :mod:`spiderpig.build` itself, which is in the engine's hash
+``stages.planning.plan_config``, ``stages.resolve.config_warnings``,
+``Mechanism.export_step`` / ``export_stl``, ``Bom.write``, ``order_markdown``), so
+:mod:`spiderpig.build` itself, which is in the engine's hash
 (:func:`spiderpig.design.engine_version`), carries no profiling code: measuring a build never
 re-keys a store, the test cache or CI's cache. A call made inside another stage counts in the
 outer one (no time counted twice).
@@ -44,17 +45,18 @@ logger = logging.getLogger("spiderpig.build")
 
 def _targets():
     """(object, attribute, stage) of every call the build's stages are made of."""
-    from spiderpig import api
     from spiderpig import build as build_mod
     from spiderpig.hardware import bom as bom_mod
     from spiderpig.hardware import order as order_mod
     from spiderpig.mechanism import Mechanism
+    from spiderpig.stages import planning, resolve
 
+    # (the build imports plan_config and config_warnings from the stages when it runs)
     return [
         (build_mod, "clear_generated", "template"),
-        (api, "config_warnings", "template"),
+        (resolve, "config_warnings", "template"),
         (build_mod, "template_for", "template"),
-        (api, "plan_config", "plan"),
+        (planning, "plan_config", "plan"),
         (build_mod, "design_side", "plan"),
         (build_mod, "fabricate", "fabricate"),
         (Mechanism, "export_step", "step"),
