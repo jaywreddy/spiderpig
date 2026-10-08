@@ -17,6 +17,7 @@ from spiderpig.design import jsonable
 from spiderpig.failure import apply_patch, merge_patch
 from spiderpig.stack import verify_plan
 from spiderpig.stages import planning as stages_planning
+from spiderpig.stages import resolve as stages_resolve
 from spiderpig.store import STORE_ENV, Store, StoreError, diff_json
 from tests import _api
 
@@ -294,7 +295,9 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
     pr = api.plan(d)
     api.attach_build(d, side("single", 1.0), 1.0)
     real = d.engine_version
+    # (load reads it in api.store_ops, resolve in stages.resolve)
     monkeypatch.setattr(api.store_ops, "engine_version", lambda: "0.0.0+fake")
+    monkeypatch.setattr(stages_resolve, "engine_version", lambda: "0.0.0+fake")
 
     solved = _count(monkeypatch, stages_planning, "design_side")
     verified = _count(monkeypatch, stages_planning, "verify_plan")

@@ -911,7 +911,7 @@ def test_build_main_clears_old_outputs_then_stops_on_assembly(monkeypatch, tmp_p
 
 
 def test_build_main_no_plan(monkeypatch, tmp_path, capsys):
-    from spiderpig import api
+    from spiderpig.stages import planning
 
     monkeypatch.setattr(build, "template_for", lambda config: object())
 
@@ -919,7 +919,7 @@ def test_build_main_no_plan(monkeypatch, tmp_path, capsys):
         assert store.root == tmp_path / "store"
         raise ValueError("40 layers ruled out")
 
-    monkeypatch.setattr(api, "plan_config", no_plan)
+    monkeypatch.setattr(planning, "plan_config", no_plan)   # (build reads it there)
     rc = build.main(["--out", str(tmp_path / "o"), "--store", str(tmp_path / "store"),
                      "--phases", "0,170"])
     assert rc == 2
