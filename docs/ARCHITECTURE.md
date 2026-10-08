@@ -13,9 +13,7 @@ against commit `97bec2d` (2026-10-01), and the running example's measured number
 timings, part counts, sizes, the walk and the sim) are still that snapshot's, taken with
 the constructions of the time (a printed crank, rod pins); they are marked as such where
 they appear. The default designs' current layer counts, heights, parts and costs live in
-one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md). An illustrated version, with renders
-from the viewer and drawings computed from the code, is
-[docs/architecture/index.html](architecture/index.html), generated from this text as of 2026-10-05 and out of date since (its builder, `build_page.py`, needs its figure anchors updated to regenerate it).
+one generated file, [docs/agentlib/DESIGNS.md](agentlib/DESIGNS.md).
 
 **In short.**
 
@@ -2296,7 +2294,7 @@ path; `pyproject.toml`'s `[tool.importlinter]` enforces the engine's import laye
 | [agentlib/TESTING.md](agentlib/TESTING.md) | the test tiers, the fabrication cache, the fixtures, the identity gate | current |
 | [agentlib/DECISIONS.md](agentlib/DECISIONS.md) | the agent surface's seven decisions, and the hardware decisions with their dates and numbers | current |
 | [agentlib/W8-gate-diffs.md](agentlib/W8-gate-diffs.md) | what each of W8's approved output changes did to the gate's designs | record (2026-10-07) |
-| [agentlib/SCOPE.md](agentlib/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
+| [history/SCOPE.md](history/SCOPE.md) | the agent surface's proposal | historical (2026-09-30) |
 | [history/TESTDRIVE.md](history/TESTDRIVE.md) | the five test-drive rounds | historical |
 | [history/TIMING.md](history/TIMING.md), [PERF.md](history/PERF.md), [PERF_EXPORT.md](history/PERF_EXPORT.md), [PERF_PLANNER.md](history/PERF_PLANNER.md) | the timing study and the three performance reports | historical (2026-10-01) |
 | [history/AUDIT.md](history/AUDIT.md) | the 2026-09-29 audit of the Klann-only code | historical |

@@ -55,7 +55,7 @@ since W7). `.pre-commit-config.yaml` runs ruff and
 
 `mise run doc-check` (`tests/doc_check.py`) resolves every backticked dotted name, path,
 task, `spiderpig` command, command-line flag and environment variable in CLAUDE.md,
-AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md, ROADMAP.md and SCOPE.md
+AGENTS.md, README.md, ARCHITECTURE.md, API.md, TESTING.md and ROADMAP.md
 statically against the package's AST (identifiers and key-like strings; docstrings,
 comments and prose strings name nothing; no engine import); `-v` lists every check,
 `--strict` fails on a miss (CI runs it so, and `tests/test_doc_check.py` checks the default

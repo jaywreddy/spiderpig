@@ -84,9 +84,6 @@ allowed-confusables = ["×", "–", "−"]
 # the split packages re-export every name of the module they were (W5); __all__ keeps the
 # old public list
 "spiderpig/api/__init__.py" = ["F401"]
-# the architecture page's generator (a one-off script, rewritten with the docs in W7): two
-# style findings of W6's rules left to that rewrite
-"docs/architecture/build_page.py" = ["RUF005", "RUF059"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
