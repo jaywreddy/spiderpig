@@ -1948,11 +1948,11 @@
   ],
   "title": ""
  },
- "engine_version": "0.1.0+847ecb337ec5",
+ "engine_version": "0.1.0+113a8d976b75",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-1c08989d8c2da659"
+ "source_key": "gen-b08f727510259c8f"
 }
