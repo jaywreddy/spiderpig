@@ -194,7 +194,7 @@ load 11-18 (others' jobs):
 
 | run | time |
 |---|---|
-| cold, no picture cached | 56 s, of which a fabrication 10 s (the fab key had just moved) |
+| cold, no picture cached | 42.5 s with the fabrication cached; 56 s with a fresh one (10 s) |
 | a guide edit, pictures cached | 24 s |
 | warm, unchanged design | 0.6 s in the guide, 4.2 s wall with imports |
 
