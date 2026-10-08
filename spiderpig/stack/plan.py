@@ -34,8 +34,9 @@ class StackSpec:
     """Stack dimensions (mm): ``pitch`` = sheet thickness; ``margin`` = clearance.
 
     Search effort, in nodes: ``quick_nodes`` per stack size while looking for
-    the first plan, ``max_nodes`` per size to rule out a thinner one (or find
-    a cheaper route), ``max_total_nodes`` in all; and ``max_seconds`` of
+    the first plan, ``max_nodes`` per size left open while none is found and
+    for a cheaper route, ``max_nodes // 2`` per thinner size the proof pass
+    tries to rule out, ``max_total_nodes`` in all; and ``max_seconds`` of
     wall clock for the whole search, the safety net (a node's cost grows
     with the stack size). A plan found is always valid; only the proof that
     it is the thinnest depends on them: when they run out, a plan found is
