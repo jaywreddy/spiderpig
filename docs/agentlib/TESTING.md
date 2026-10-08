@@ -292,6 +292,16 @@ design's store; unless given, `-j` and the split follow the free cores (`plan_co
 cores less the load average). OCCT runs two threads per process, as the baseline did
 (`GATE_OCCT_THREADS`; one thread moves a cut-rule number). The STEP file, never read, isn't written.
 
+**The contract, fast and exact.** The audit (and so the gate) checks the contract with
+`check_sides`: the side realized at the first angle, every group that declares how it
+moves (`Group.motion`) carried to the others, and the declarations checked once more at a
+guard angle no caller asks for (`GUARD_TURN`; a mismatch is a `DeclaredMotionWarning` and
+that group is checked exactly at every angle). Its limit: a part, or a
+`ConstructionError`, that a construction makes at one of the other checked angles alone,
+and at neither the first nor the guard's, isn't seen. `GATE_EXACT_CONTRACT=1` checks with
+`check_side` at every angle instead; the nightly workflow snapshots once each way and
+compares, so the two are held equal on the gate's designs every night.
+
 Verdicts per design, and the exit status: **identical** (0); **geometry identical, order
 differs** (1: a DXF's entities in another order or a closed outline from another start
 vertex, bodies reordered, a text file's lines reordered, a part's faces/edges counted

@@ -326,16 +326,112 @@ def _holds_everywhere(g, got: Realized, ref: Build, others: list[Build],
     return True
 
 
+GUARD_TURN = (math.sqrt(5.0) - 1.0) / 2.0
+"""The guard's crank angle (:func:`check_sides`): this fraction of a turn past the first
+angle (irrational: never an angle a caller checks, nor a symmetry of the cycle)."""
+
+
+class DeclaredMotionWarning(UserWarning):
+    """A group's :meth:`~construction.base.Group.motion` doesn't hold: its parts realized at
+    the guard angle aren't its first angle's parts moved so (a bug in the group's
+    declaration; :func:`check_sides` checks that group exactly at every angle instead)."""
+
+
+def _mass(part) -> tuple[float, float, np.ndarray, np.ndarray]:
+    """``part``'s volume, area, centre of mass and inertia tensor about it: what a rigid
+    motion carries along (and none of it where a curve's seam happens to sit)."""
+    from OCP.BRepGProp import BRepGProp
+    from OCP.GProp import GProp_GProps
+
+    vol, surf = GProp_GProps(), GProp_GProps()
+    BRepGProp.VolumeProperties_s(part.wrapped, vol)
+    BRepGProp.SurfaceProperties_s(part.wrapped, surf)
+    c, m = vol.CentreOfMass(), vol.MatrixOfInertia()
+    return (vol.Mass(), surf.Mass(), np.array([c.X(), c.Y(), c.Z()]),
+            np.array([[m.Value(i, j) for j in (1, 2, 3)] for i in (1, 2, 3)]))
+
+
+def _moves_as_declared(g, ref_got: Realized, got: Realized, ref: Build, guard: Build) -> str:
+    """Why ``got`` (group ``g`` realized at ``guard``'s angle) isn't ``ref_got`` moved by
+    the group's declared motion ("": it is): the same bodies, each part's volume and area,
+    and its centre of mass and inertia tensor where the motion takes them (1e-5 mm; 1e-6
+    relative). A cheap necessary condition, no boolean (``test_each_group_moves_as_it_says``
+    compares the solids themselves)."""
+    motion = g.motion(ref_got)
+    if motion is None:
+        return "no motion declared"
+    a, b = [x.name for x in ref_got.bodies], [x.name for x in got.bodies]
+    if a != b:
+        return f"bodies {sorted(set(a) ^ set(b)) or 'reordered'}"
+    for pa, pb in zip(ref_got.bodies, got.bodies, strict=True):
+        if (pa.part is None) != (pb.part is None):
+            return f"{pa.name}: a part at one angle only"
+        if pa.part is None:
+            continue
+        move = _motion_of(motion, pa, ref, guard)
+        if move is None:
+            return f"{pa.name}: its host's motion is unknown"
+        (va, aa, ca, ia), (vb, ab, cb, ib) = _mass(pa.part), _mass(pb.part)
+        if abs(va - vb) > 1e-6 * max(abs(va), 1.0):
+            return f"{pa.name}: volume {va:.6g} -> {vb:.6g} mm^3"
+        if abs(aa - ab) > 1e-6 * max(aa, 1.0):
+            return f"{pa.name}: area {aa:.6g} -> {ab:.6g} mm^2"
+        r3 = np.eye(3)
+        r3[:2, :2] = move[0]
+        want_c = r3 @ ca + np.array([*move[1], 0.0])
+        if float(np.abs(want_c - cb).max()) > 1e-5:
+            return f"{pa.name}: its centre of mass isn't where the motion takes it"
+        if float(np.abs(r3 @ ia @ r3.T - ib).max()) > 1e-6 * max(float(np.abs(ib).max()), 1.0):
+            return f"{pa.name}: it isn't turned as the motion turns it"
+    return ""
+
+
+def _guard(order, skipped: set[str], refs: dict, ref: Build, guard: Build) -> set[str]:
+    """The groups of ``skipped`` (checked once, carried to the other angles by their
+    declared motion) whose parts at ``guard``'s angle aren't their parts at ``ref``'s moved
+    so, each warned about (:class:`DeclaredMotionWarning`) for :func:`check_sides` to check
+    exactly. A side that can't be realized there fails the guard for every skipped group."""
+    import warnings
+
+    last = max(i for i, g in enumerate(order) if g.name in skipped)
+    done = Realized()
+    bad: dict[str, str] = {}
+    try:
+        for g in order[:last + 1]:
+            got = g.realize(guard, done)
+            done.merge(got)
+            if g.name in skipped:
+                why = _moves_as_declared(g, refs[g.name], got, ref, guard)
+                if why:
+                    bad[g.name] = why
+    except Exception as e:      # noqa: BLE001 - then checked exactly at every angle
+        bad = dict.fromkeys(skipped, f"unbuildable at the guard angle: {e}")
+    for name, why in sorted(bad.items()):
+        msg = f"{name}: declared motion doesn't hold ({why}); checked at every angle instead"
+        log.error("contract: %s", msg)
+        warnings.warn(DeclaredMotionWarning(msg), stacklevel=3)
+    return set(bad)
+
+
 def check_sides(design, tmpl, ts, groups=None) -> list[list[str]]:
     """:func:`check_side` at each crank angle of ``ts`` (``tmpl`` the side's template), in
-    order: the same verdicts, realizing the side once where it can.
+    order: the same verdicts, realizing the side twice rather than at every angle.
 
     The side is realized and checked at the first angle exactly as :func:`check_side` does.
     A group whose parts merely move with the angle (:meth:`construction.base.Group.motion`)
     and that holds there with the claims that move with it (:func:`_holds_everywhere`) holds
     at every angle; every other group (one that changes shape with the angle, one with a
     violation or near one) is realized again at each other angle, with the groups before
-    it, and checked there exactly."""
+    it, and checked there exactly.
+
+    The declarations are checked at run time: the side is realized once more at a guard
+    angle no caller checks (:data:`GUARD_TURN` of a turn on), and a group whose parts there
+    aren't its first angle's moved as it declares is checked exactly at every angle, with a
+    :class:`DeclaredMotionWarning` (a bug to fix). The limit: a group is realized at the
+    first angle and the guard's only, and trusted to build alike at the others, so a part
+    (or a :class:`~construction.base.ConstructionError`) that a construction makes at one
+    of the other checked angles alone isn't seen here; :func:`check_side` at that angle
+    sees it, and the nightly gate compares the two on its designs."""
     ts = [float(t) for t in ts]
     if not ts:
         return []
@@ -348,15 +444,24 @@ def check_sides(design, tmpl, ts, groups=None) -> list[list[str]]:
     envelope = _Envelopes(ref)
     first: list[str] = []
     again: set[str] = set()
+    refs: dict[str, Realized] = {}
     for g in order:
         got = g.realize(ref, done)
         done.merge(got)
         if g not in checked:
             continue
+        refs[g.name] = got
         measured: list = []
         first += _check_group(ref, g, got, envelope, measured)
         if others and not _holds_everywhere(g, got, ref, others, envelope, measured):
             again.add(g.name)
+    skipped = {g.name for g in checked} - again
+    if others and skipped:
+        t = ts[0] + 2 * math.pi * GUARD_TURN
+        while any(abs(t - u) < 1e-3 for u in ts):
+            t += 2 * math.pi * GUARD_TURN / 7
+        again |= _guard(order, skipped, refs, ref,
+                        Build(design.ctx, design.plan, tmpl.freeze_at(t)))
     if again:
         log.debug("contract: realized again at every angle: %s", ", ".join(sorted(again)))
     out = [first]

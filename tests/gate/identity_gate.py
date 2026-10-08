@@ -278,14 +278,24 @@ def _plan(config, work: Path):
     return api.plan_config(config, Store.of(work / "store"))
 
 
+def _contracts(design, tmpl, ts) -> list[list[str]]:
+    """The contract at each of ``ts``: :func:`check_sides` (the audit's), or with
+    ``GATE_EXACT_CONTRACT=1`` :func:`check_side` realizing the side at every angle (the
+    nightly workflow snapshots once each way and compares: the two must agree)."""
+    from spiderpig.construction.contract import check_side, check_sides
+
+    if os.environ.get("GATE_EXACT_CONTRACT") == "1":
+        return [check_side(design, tmpl.freeze_at(t)) for t in ts]
+    return check_sides(design, tmpl, ts)
+
+
 def _contract_task(name: str, work: Path, ts) -> dict:
-    from spiderpig.construction.contract import check_sides
     from spiderpig.fabricate import template_for
 
     _, config = _setup(name, work)
     design = _plan(config, work)
     tmpl = template_for(config)
-    return dict(zip((f"t={t:g}" for t in ts), check_sides(design, tmpl, ts), strict=True))
+    return dict(zip((f"t={t:g}" for t in ts), _contracts(design, tmpl, ts), strict=True))
 
 
 def run_task(name: str, work: Path, task: str, result: Path) -> None:
@@ -342,8 +352,7 @@ def run_one(name: str, out: Path) -> None:
     build_remote = "build" in procs
     captured: dict[float, object] = {}
     fabricate = audit_mod.fabricate
-    check_sides, clashes, bad_solids = (audit_mod.check_sides, audit_mod.clashes,
-                                        audit_mod.bad_solids)
+    clashes, bad_solids = audit_mod.clashes, audit_mod.bad_solids
     remote_t1 = object()            # the t=1 fabrication, made in the build worker
 
     def capture(tmpl, cfg, t=1.0):
@@ -355,7 +364,7 @@ def run_one(name: str, out: Path) -> None:
 
     def contract(design, tmpl, ts):
         here = [t for t in ts if t not in contract_tasks]
-        mine = dict(zip(here, check_sides(design, tmpl, here), strict=True))
+        mine = dict(zip(here, _contracts(design, tmpl, here), strict=True))
         return [mine[t] if t in mine else result(contract_tasks[t])[f"t={t:g}"] for t in ts]
 
     audit_mod.fabricate = capture

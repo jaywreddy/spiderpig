@@ -97,19 +97,30 @@ def _volume(part) -> float:
     return 0.0 if part is None else sum(s.volume for s in part.solids())
 
 
-@pytest.mark.parametrize(("linkage", "module"), quick(
-    [("klann", m) for m in MODULES] + [("strider", "double"), ("klann_lego", "quad"),
-                                       ("hoecken", "single")], []))
-def test_each_group_moves_as_it_says(design, linkage, module):
+MOVING = [("klann", m, servos.DEFAULT, "") for m in MODULES] + [
+    ("strider", "double", servos.DEFAULT, ""), ("klann_lego", "quad", servos.DEFAULT, ""),
+    ("hoecken", "single", servos.DEFAULT, ""), ("dwell_rocker", "single", servos.DEFAULT, ""),
+    ("trotbot_heel", "single", servos.DEFAULT, ""),          # the bolt_round crank
+    *(("klann", "single", s, "") for s in OTHERS),
+    ("hoecken", "single", servos.DEFAULT, "pin")]           # the quick tier's: its pins
+
+
+@pytest.mark.parametrize(("linkage", "module", "servo", "only"),
+                         quick(MOVING, [("hoecken", "single", servos.DEFAULT, "pin")]))
+def test_each_group_moves_as_it_says(design, linkage, module, servo, only):
     """What :func:`check_sides` takes on trust, shown on the real parts: every group that
     declares a :meth:`~spiderpig.construction.base.Group.motion` builds, at another crank
     angle, exactly its parts at the first moved by it (the same bodies, volume, box, and
-    nothing of either outside the other)."""
-    tmpl, d = design(module, linkage=linkage)
+    nothing of either outside the other). The quick tier: the Hoecken's pins (``only``,
+    ~1 s); the whole sides of every module, both other servos, the round crankpin and two
+    mechanisms in the full tier (~15-60 s each)."""
+    tmpl, d = design(module, servo, linkage=linkage)
     a, b = (Build(d.ctx, d.plan, tmpl.freeze_at(t)) for t in (0.0, 2.2))
     done_a, done_b = Realized(), Realized()
     moving = 0
-    for g in d.groups:
+    groups = d.groups if not only else [g for g in d.groups
+                                        if g.name.startswith(only) and not g.cuts]
+    for g in groups:
         got_a, got_b = g.realize(a, done_a), g.realize(b, done_b)
         done_a.merge(got_a)
         done_b.merge(got_b)
@@ -170,6 +181,66 @@ def test_check_sides_rechecks_a_group_that_changes_with_the_angle(design):
     assert got[0] == []
     assert len(got[1]) == 1
     assert f"{name}_poke" in got[1][0]
+
+
+def _broken(d, pick, *, away=None, motion=None):
+    """A copy of the side ``d`` whose group ``pick`` picks keeps its declared motion but
+    breaks it: with ``away`` (a function of the build: is this not the first angle?) it
+    also builds a cube beside its first body there (a part that comes and goes with the
+    angle); with ``motion`` it declares that one instead of its own."""
+    g0 = next(g for g in d.groups if pick(g))
+    g = copy.copy(g0)
+    if away is not None:
+        def poke(build, done):
+            got = g0.realize(build, done)
+            if away(build):
+                b0 = got.bodies[0]
+                bb = b0.part.bounding_box()
+                part = Box(0.8, 0.8, 0.8).moved(Location((bb.max.X + 2, bb.center().Y,
+                                                          bb.center().Z)))
+                got.bodies.append(hardware("poke", part, b0.rigid_with or b0.name,
+                                           fab="printed"))
+            return got
+        g.realize = poke
+    if motion is not None:
+        g.motion = lambda got: motion
+    return replace(d, groups=[g if x is g0 else x for x in d.groups]), g0.name
+
+
+@pytest.mark.parametrize("which", quick(["links", "crank", "pin:"], ["pin:"]))
+def test_the_guard_catches_a_group_that_breaks_its_declared_motion(design, which):
+    """The reviewer's injection: a group that keeps its declared motion but builds a part
+    outside its claims at every angle but the first. The guard angle sees the part come and
+    go, warns (:class:`contract.DeclaredMotionWarning`) and checks that group exactly at
+    every angle: the verdicts are :func:`check_side`'s (the quick tier: a pin, ~1 s; the
+    links and the crank realize the whole side, ~15 s)."""
+    tmpl, d = design("single", linkage="hoecken")
+    crankpin = d.plan.topo.axes_of("crankpin")[0].name
+    at0 = tuple(Build(d.ctx, d.plan, tmpl.freeze_at(0.0)).xy(crankpin))
+    d, name = _broken(d, lambda g: g.name.startswith(which),
+                      away=lambda build: tuple(build.xy(crankpin)) != at0)
+    ts = (0.0, 1.3, 3.7)
+    with pytest.warns(contract.DeclaredMotionWarning, match=f"{name}: declared motion"):
+        got = check_sides(d, tmpl, ts, groups=[name])
+    assert got == [check_side(d, tmpl.freeze_at(t), groups=[name]) for t in ts]
+    assert got[0] == []
+    assert all(any("poke" in p for p in ps) for ps in got[1:])
+
+
+@pytest.mark.slow       # (the links realize the whole side twice: ~7 s)
+def test_a_wrong_motion_is_checked_at_every_angle(design, caplog):
+    """A group declaring a motion its parts don't make (the links "standing still" with
+    their point O: they turn) is checked exactly at every angle, whichever check catches
+    it: the claims it says move with them don't (:func:`contract._holds_everywhere`), or
+    the guard angle does."""
+    from spiderpig.construction.base import Motion
+
+    tmpl, d = design("single", linkage="hoecken")
+    d, _ = _broken(d, lambda g: g.name == "links", motion=Motion("O"))
+    with caplog.at_level(logging.DEBUG, logger=contract.__name__):
+        got = check_sides(d, tmpl, (0.0, 2.2), groups=["links"])
+    assert got == [check_side(d, tmpl.freeze_at(t), groups=["links"]) for t in (0.0, 2.2)]
+    assert "realized again at every angle: links" in caplog.text
 
 
 @pytest.mark.parametrize(("mm3", "again"), [(0.0006, True), (0.0002, False), (0.5, True)])
