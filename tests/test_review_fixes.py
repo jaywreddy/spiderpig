@@ -292,7 +292,8 @@ def test_purchased_parts_are_massed_in_their_own_material():
 def test_a_horn_screws_shims_say_what_is_bought():
     from spiderpig.hardware.bom import shim_as_bought
 
-    assert "DIN 433" in shim_as_bought("shim_din988_3x6", 1.0)
+    assert "DIN 125" in shim_as_bought("shim_din988_3x6", 1.0)
+    assert "DIN 433" in shim_as_bought("shim_din988_4x8", 1.0)
     assert shim_as_bought("shim_din988_3x6", 0.2) == "a 0.2 mm DIN 988 shim"
 
 
