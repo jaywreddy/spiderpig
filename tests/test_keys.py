@@ -176,6 +176,8 @@ PATCH_ALLOWED = {
     ("spiderpig/__init__.py", "__getattr__"): "caches a lazy export under its own name",
     ("spiderpig/uptodate.py", "preparse"): "sets a field of its own argparse.Namespace",
     ("spiderpig/view.py", "resolve_args"): "sets a field of a SimpleNamespace of options",
+    ("spiderpig/mcp/jobs.py", "_init_worker"):
+        "points the worker's sys.stdout at stderr (the MCP's stdio is the protocol)",
     ("spiderpig/tools/build_profile.py", "instrumented"):
         "the profiler wraps the build's calls in timers for the run, puts them back after; "
         "the results are the calls' own",
@@ -184,34 +186,125 @@ PATCH_ALLOWED = {
 patches an engine module in a way that changes what it computes."""
 
 
-def test_nothing_in_the_package_monkeypatches_the_engine():
-    """``setattr`` / ``delattr``, ``vars(x)[...] =``, ``x.__dict__[...] =``,
-    ``globals()[...] =`` anywhere in ``spiderpig/`` (outside ``tests/``) is a site the
-    keys can't always see through (a patched module computes something else under the same
-    key): each must be in :data:`PATCH_ALLOWED`, with why it is harmless. And no code
-    assigns into an engine module it imported (``stack.GIVE_UP = 5``)."""
+def _patch_sites(path: Path, pkg: Path | None = None) -> set[tuple[str, str, str]]:
+    """``(file, top-level holder, what)`` of every place in ``path`` that could change a
+    module's namespace, read conservatively: ``setattr`` / ``delattr`` /
+    ``__setattr__`` / ``__delattr__`` on anything but ``self`` / ``cls``; any use of
+    ``sys.modules[...]``; a store into ``vars(x)[...]``, ``x.__dict__[...]``,
+    ``globals()[...]``; an attribute stored on ``import_module(...)``, or on a name bound
+    to an imported module (through simple local aliases: ``_m = mod; _m.X = ...``)."""
     import ast
 
-    found, stores = set(), []
-    for path in sorted(PKG.rglob("*.py")):
-        rel = path.relative_to(PKG.parent).as_posix()
-        tree = ast.parse(path.read_bytes())
-        for top in tree.body:
-            holder = getattr(top, "name", "<module>")
-            for n in ast.walk(top):
-                if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-                        and n.func.id in ("setattr", "delattr")):
-                    found.add((rel, holder))
-                elif isinstance(n, ast.Subscript) and isinstance(n.ctx, (ast.Store, ast.Del)):
-                    v = n.value
-                    if ((isinstance(v, ast.Call) and isinstance(v.func, ast.Name)
+    pkg_root = (pkg or PKG).parent
+    rel = path.relative_to(pkg_root).as_posix()
+    tree = ast.parse(path.read_bytes())
+
+    def is_module(dotted: str) -> bool:
+        p = pkg_root / Path(*dotted.split("."))
+        return p.with_suffix(".py").is_file() or (p / "__init__.py").is_file()
+
+    def bound(scope) -> set[str]:
+        """Names bound to a module in ``scope`` (imports, then simple aliases of them)."""
+        names = set()
+        for n in ast.walk(scope):
+            if isinstance(n, ast.Import):
+                names |= {a.asname or a.name.split(".")[0] for a in n.names}
+            elif isinstance(n, ast.ImportFrom) and n.module:
+                names |= {a.asname or a.name for a in n.names
+                          if is_module(f"{n.module}.{a.name}")}
+        grew = True
+        while grew:
+            grew = False
+            for n in ast.walk(scope):
+                if (isinstance(n, ast.Assign) and isinstance(n.value, ast.Name)
+                        and n.value.id in names):
+                    for t in n.targets:
+                        if isinstance(t, ast.Name) and t.id not in names:
+                            names.add(t.id)
+                            grew = True
+        return names
+
+    top_names = bound(tree)
+    out = set()
+    for top in tree.body:
+        holder = getattr(top, "name", "<module>")
+        mods = top_names | bound(top)
+        for n in ast.walk(top):
+            what = None
+            if isinstance(n, ast.Call):
+                f = n.func
+                callee = f.id if isinstance(f, ast.Name) else (
+                    f.attr if isinstance(f, ast.Attribute) else "")
+                if callee in ("setattr", "delattr", "__setattr__", "__delattr__"):
+                    if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name) \
+                            and f.value.id != "object":
+                        target = f.value                    # x.__setattr__(...)
+                    else:
+                        target = n.args[0] if n.args else None
+                    if not (isinstance(target, ast.Name) and target.id in ("self", "cls")):
+                        what = callee
+            elif isinstance(n, ast.Subscript):
+                v = n.value
+                if (isinstance(v, ast.Attribute) and v.attr == "modules"
+                        and isinstance(v.value, ast.Name) and v.value.id == "sys"):
+                    what = "sys.modules"
+                elif isinstance(n.ctx, (ast.Store, ast.Del)) and (
+                        (isinstance(v, ast.Call) and isinstance(v.func, ast.Name)
                          and v.func.id in ("vars", "globals"))
-                            or (isinstance(v, ast.Attribute) and v.attr == "__dict__")):
-                        found.add((rel, holder))
-    for m in keys.Graph().modules.values():
-        for target, attr, holder in m.patches:
-            if target.startswith("spiderpig") and (m.name, target) != ("spiderpig",
-                                                                       "spiderpig"):
-                stores.append((m.name, holder, target, attr))
-    assert found <= set(PATCH_ALLOWED), sorted(found - set(PATCH_ALLOWED))
-    assert stores == [], stores
+                        or (isinstance(v, ast.Attribute) and v.attr == "__dict__")):
+                    what = "namespace store"
+            elif isinstance(n, ast.Attribute) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                v = n.value
+                if isinstance(v, ast.Name) and v.id in mods:
+                    what = f"store on module {v.id}"
+                elif isinstance(v, ast.Call) and (
+                        (isinstance(v.func, ast.Attribute) and v.func.attr == "import_module")
+                        or (isinstance(v.func, ast.Name)
+                            and v.func.id in ("import_module", "__import__"))):
+                    what = "store on import_module()"
+                else:
+                    root = v
+                    while isinstance(root, ast.Attribute):
+                        root = root.value       # spiderpig.construction.plates.X = ...
+                    if isinstance(root, ast.Name) and root.id in mods:
+                        what = f"store on module {root.id}..."
+            if what:
+                out.add((rel, holder, what))
+    return out
+
+
+def test_nothing_in_the_package_monkeypatches_the_engine():
+    """Anything in ``spiderpig/`` (outside ``tests/``) that could change a module's
+    namespace (:func:`_patch_sites`, read conservatively) is a site the keys can't always
+    see through (a patched module computes something else under the same key): each must
+    be in :data:`PATCH_ALLOWED`, with why it is harmless."""
+    found = set()
+    for path in sorted(PKG.rglob("*.py")):
+        found |= _patch_sites(path)
+    unknown = sorted(f for f in found if f[:2] not in PATCH_ALLOWED)
+    assert unknown == [], unknown
+
+
+EVASIONS = [
+    "import sys\nsys.modules['spiderpig.construction.plates'].NOTCH = 1\n",
+    "import importlib\nimportlib.import_module('spiderpig.construction.plates').NOTCH = 1\n",
+    "from spiderpig.construction import plates as _pl\n_m = _pl\n_m.NOTCH = 1\n",
+    "from spiderpig.construction import plates as _pl\n_pl.__setattr__('NOTCH', 1)\n",
+    "from spiderpig.construction import plates as _pl\nsetattr(_pl, 'NOTCH', 1)\n",
+    "import spiderpig.construction.plates\nspiderpig.construction.plates.NOTCH = 1\n",
+    "from spiderpig.construction import plates\n\n\ndef f():\n    vars(plates)['N'] = 1\n",
+    "import spiderpig.stack as st\n\n\nclass P:\n    def go(self):\n"
+    "        object.__setattr__(st, 'GIVE_UP', 5)\n",
+]
+
+
+@pytest.mark.parametrize("source", EVASIONS)
+def test_the_guard_sees_the_evasive_forms(source, tmp_path):
+    """Each evasive form, in a module of a stand-in package (the real one untouched)."""
+    fake = tmp_path / "spiderpig"
+    (fake / "construction").mkdir(parents=True)
+    (fake / "construction" / "__init__.py").write_text("")
+    (fake / "construction" / "plates.py").write_text("NOTCH = 0\n")
+    (fake / "stack.py").write_text("GIVE_UP = 0\n")
+    (fake / "zz_guard_probe.py").write_text(source)
+    assert _patch_sites(fake / "zz_guard_probe.py", fake), source

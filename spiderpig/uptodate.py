@@ -101,16 +101,20 @@ def preparse(argv: list[str]) -> Options | None:
 
 
 def _dists_fingerprint() -> str:
-    """Every installed distribution's name and version, hashed; kept on disk by the
-    site-packages folders' modification times (an install or removal changes them), so
+    """Every installed distribution's name and version, hashed; kept on disk by
+    ``sys.path`` and its folders' modification times (an install or removal changes
+    them), so
     a check reads it in milliseconds instead of listing every distribution (~0.3 s)."""
     import site
     import sys
 
     sites = [d for d in (*site.getsitepackages(), site.getusersitepackages())
              if os.path.isdir(d)]
-    sig = hashlib.sha256(repr((sys.prefix, sys.version, [
-        (d, os.stat(d).st_mtime_ns) for d in sites])).encode()).hexdigest()
+    # and every other folder on sys.path (PYTHONPATH, an editable install's .pth): a
+    # .dist-info there is listed too
+    others = [d for d in sys.path if d and d not in sites and os.path.isdir(d)]
+    sig = hashlib.sha256(repr((sys.prefix, sys.version, list(sys.path), [
+        (d, os.stat(d).st_mtime_ns) for d in (*sites, *others)])).encode()).hexdigest()
     env = os.environ.get("SPIDERPIG_DIGEST_CACHE", "").strip()
     memo = None
     if env.lower() not in ("off", "0", "false", "no"):

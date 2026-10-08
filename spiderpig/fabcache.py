@@ -138,7 +138,15 @@ def servo_state(config) -> tuple:
     if not spec.cads or not cadlib.cad_enabled():
         return ("parametric",)
     present = tuple((ref.sha256, cadlib.fetch(ref) is not None) for ref in spec.cads)
-    return ("cad", present, cad_state(spec))
+    state = cad_state(spec)
+    if any(have for _, have, _ in state) and not any(rec for *_, rec in state):
+        # a fresh model cache: derive the strip record now (the fabrication would),
+        # so the entry is named by it and the next process finds it
+        from spiderpig.servos.model import servo_part
+
+        servo_part(spec, state=state)
+        state = cad_state(spec)
+    return ("cad", present, state)
 
 
 def plan_fingerprint(plan) -> str:

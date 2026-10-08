@@ -223,3 +223,20 @@ def test_a_strip_record_never_derived_is_no_download(tmp_path, monkeypatch):
     rec.parent.mkdir()
     rec.write_text("{}")
     assert uptodate.check(opts) is None
+
+
+def test_a_distribution_on_the_path_is_seen(tmp_path, monkeypatch):
+    """A ``.dist-info`` on ``PYTHONPATH`` (outside site-packages) is a new build key."""
+    import sys
+
+    monkeypatch.setenv("SPIDERPIG_DIGEST_CACHE", str(tmp_path / "memo"))
+    extra = tmp_path / "extra"
+    extra.mkdir()
+    monkeypatch.setattr(sys, "path", [*sys.path, str(extra)])
+    before = uptodate._dists_fingerprint()
+    assert uptodate._dists_fingerprint() == before          # (read from the memo)
+    info = extra / "zz_probe_dist-1.0.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: zz-probe-dist\n"
+                                   "Version: 1.0\n")
+    assert uptodate._dists_fingerprint() != before
