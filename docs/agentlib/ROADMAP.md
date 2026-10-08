@@ -421,9 +421,9 @@ dependency direction between layers.
        `web.py` (web and horn fit) and `capacity.py`
      - `plates.py`: `_WebPlates`
    - `stack/`: `geometry.py`, `topology.py`, `search.py`
-     (`StackProblem`, `_Search`), `verify.py`, `finalize.py` (the plan's z)
-   - `api/`: `reports`, `store_ops`, `cards`, `plan` (plan, advise), `build`
-     (build, recheck), `export`
+     (`StackProblem`, `_Search`), `verify.py`, `plan_z.py` (the plan's z; named so it doesn't shadow `finalize`)
+   - `api/`: `reports`, `store_ops`, `cards`, `planning` (plan, advise), `building`
+     (build, recheck), `exports`, `walking`
    - `server/app.py`: `config.design_from_query(query, base=None)` replaces
      `_config_from_query`'s duplicate `p.NAME` parsing
    - `viewer/src/drive/index.ts` (899 lines): `tune.ts`, `physics.ts` wiring, `hud.ts`

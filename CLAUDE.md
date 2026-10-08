@@ -26,7 +26,7 @@ mise run test-fixtures  # rewrite the recorded fixtures (after an engine edit: t
 mise run test       # pytest, serial (runs viewer-build first; -m e2e for browser tests)
 mise run gate -- compare ~/.cache/spiderpig/gate/w8-2a130c8   # parts/plans/BOM/DXF identity
 mise run gate -- doc ~/.cache/spiderpig/gate/<baseline>        # regenerate DESIGNS.md
-mise run remote-test               # the full suite on the remote runner (may be down: below)
+mise run remote-test               # the full suite on the remote runner (may be down: AGENTS.md)
 mise run remote-audit              # the Strider's modules audited at once there
 mise run remote -- uv run python -m spiderpig.cli sim   # sims/bakes/anything there
 mise run scorecard  # every ROADMAP number -> build/scorecard.json (~10 min; --gate/--full/
