@@ -578,7 +578,8 @@ def config_from_args(args, **fixed) -> BuildConfig:
 def query_proportions(query: Mapping) -> list[tuple[str, float]]:
     """The ``p.<NAME>=<value>`` items of a query string, in order (a multi-dict's every
     item)."""
-    items = query.multi_items() if hasattr(query, "multi_items") else query.items()
+    multi = getattr(query, "multi_items", None)       # (starlette's QueryParams)
+    items = multi() if multi is not None else query.items()
     return [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
 
 

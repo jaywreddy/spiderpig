@@ -175,7 +175,9 @@ class Job:
         if state == "done" and result:
             out["result"] = self.future.result()
         elif state == "failed":
-            out["error"] = self.error().to_dict()
+            err = self.error()
+            assert err is not None      # "failed": the future is done, cancelled or raised
+            out["error"] = err.to_dict()
         return out
 
 

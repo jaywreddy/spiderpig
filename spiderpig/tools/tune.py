@@ -274,12 +274,13 @@ def plan(tuner: Tuner, c: Candidate) -> dict:
         return {"ok": False, "error": str(e)}
     z = walk.foot_z_planned(config, design)
     m = tuner.metrics(c, feet_z=z)
+    assert m is not None  # it planned, so the linkage assembles
     return {"ok": True, "layers": design.plan.top + 1, "foot_z": z,
             "objective": walk.objective(m, tuner.stride_ref), "metrics": m}
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("--linkage", choices=linkage_mod.available("walker"),
                     default=linkage_mod.DEFAULT)
     ap.add_argument("--module", default=None,
@@ -329,6 +330,8 @@ def main(argv=None) -> int:
                   f"{scored.metrics['stride_mm']:.1f} mm/rev, on fewer than three feet "
                   f"{scored.metrics['degenerate_fraction'] * 100:.0f} % of the cycle); MuJoCo "
                   "crawls such a design with its body on the floor")
+    assert default.metrics is not None  # a registered linkage's default assembles,
+    assert best.metrics is not None  # and best scores no worse (no metrics: inf)
     print(f"  {'':22} {'default':>22} {'best':>22}")
     print(f"  {'phases (deg)':22} {_phases_arg(default.candidate.phases):>22} "
           f"{_phases_arg(best.candidate.phases):>22}")
@@ -353,6 +356,7 @@ def main(argv=None) -> int:
             # fall back on the best design with the default proportions
             print(f"  plan: the best design can't be built as is: {p['error']}")
             chosen = tuner.phase_best
+            assert chosen is not None  # tune() sets it (to the default at least)
             p = plan(tuner, chosen.candidate)
             result["phases_only"] = {"phases_deg": list(chosen.candidate.phases),
                                      "objective": chosen.score, "metrics": chosen.metrics,

@@ -7,6 +7,8 @@
 !tests/fixtures/**/*.json
 # the scorecard's committed baseline (tests/scorecard.py)
 !docs/agentlib/scorecard-baseline.json
+# pyright's ratchet (tests/pyright_baseline.py)
+!tests/pyright-baseline.json
 
 *.scad
 *.stl

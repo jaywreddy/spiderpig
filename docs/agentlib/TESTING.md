@@ -31,8 +31,8 @@ the module packages (PLAN P1-P6) build on; `tests/cache.py`, `tests/_modules.py`
 `spiderpig build --profile` of the Strider double (an empty store, then the same store: the
 stages, wall and CPU), each module tier's and the quick tier's wall, CPU and tests (the
 quick tier under coverage.py, `COVERAGE_CORE=sysmon`, pytest-cov combining the workers; its
-10 slowest tests), pyright's errors (`[tool.pyright]`, basic; also without OCP/mujoco stub
-noise), ruff's `RUF` findings, every module over 800 lines, CLAUDE.md's lines, the doc
+10 slowest tests), pyright's errors (`[tool.pyright]`, basic; OCP and mujoco typed Any by
+`typings/`), ruff's `RUF` findings, every module over 800 lines, CLAUDE.md's lines, the doc
 check's misses and the load average around each section. `--gate`, `--full` (`--cold`: on
 an empty test cache) and `--audit` add the heavy ones; the build runs 3 times (`--runs`),
 medians reported; the static checks run alone (`--parallel-static`: beside the tiers);
@@ -41,7 +41,9 @@ used other xdist workers or ran at loads over 2x apart, then every delta. CPU is
 workers included). The baseline is `docs/agentlib/scorecard-baseline.json`.
 
 CI (`.github/workflows/ci.yml`: pushes to master and every PR, read-only token, a newer
-run of a ref cancels the older): ruff, `uv lock --check`, the viewer's typecheck + vitest,
+run of a ref cancels the older): ruff (W6's extended rules), pyright's ratchet (`mise run pyright-check`:
+the count against `tests/pyright-baseline.json`, which only goes down; `-- --update` lowers it),
+`uv lock --check`, the viewer's typecheck + vitest,
 the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages installed with
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
 cache restored and saved with `actions/cache`, keyed by the engine version, `python -m

@@ -160,7 +160,7 @@ class AxleGroup(Group):
             if self.pillar:
                 kd, ku = blocker(1, lo - 1), blocker(hi + 1, L.top - 1)
                 down, up = kd is None, ku is None
-                if not (down or up):
+                if kd is not None and ku is not None:     # neither end reaches a plate
                     raise Unbuildable("can't reach either frame plate: " + crossing(kd)
                                       + " below its links and " + crossing(ku) + " above")
             column = getattr(self.construction, "column", None)

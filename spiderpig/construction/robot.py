@@ -52,8 +52,9 @@ from __future__ import annotations
 
 import math
 from dataclasses import replace
+from typing import overload
 
-from build123d import Location, Plane
+from build123d import BoundBox, Location, Plane
 
 from spiderpig.construction.base import (
     FRAME_INNER,
@@ -143,6 +144,10 @@ bolt crank, the frame ties): what the pivots' (``construction.pivots.standoff``)
 crank's (``construction.crank``) docstrings and the frame ties' defer to."""
 
 
+@overload
+def prefixed(name: str, side: str) -> str: ...
+@overload
+def prefixed(name: None, side: str) -> None: ...
 def prefixed(name: str | None, side: str) -> str | None:
     return None if name is None else f"{side}.{name}"
 
@@ -236,7 +241,7 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     except ConstructionError as e:
         return [], [], {"fitted": False, "why": str(e)}
     z_in = abs(design.plan.z(design.plan.top)[1] - z_mid)
-    boxes: dict[int, object] = {}       # each part's box, measured once (twice asked below)
+    boxes: dict[int, BoundBox] = {}       # each part's box, measured once (twice asked below)
 
     def box_of(part):
         if id(part) not in boxes:

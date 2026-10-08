@@ -430,7 +430,7 @@ class ChicagoAxle:
     def resolve(self, ctx: Context) -> ChicagoAxle:
         """This construction for the design ``ctx`` builds: its linkage's longest barrel
         (:data:`MAX_BARREL`)."""
-        cap = MAX_BARREL.get(getattr(ctx.config, "linkage", None))
+        cap = MAX_BARREL.get(getattr(ctx.config, "linkage", ""))
         if cap is None or self.shaft.max_length is not None:
             return self
         return replace(self, shaft=replace(self.shaft, max_length=cap))

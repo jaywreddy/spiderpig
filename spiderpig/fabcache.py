@@ -192,7 +192,7 @@ def root_of(store) -> Path | None:
 # ---------------------------------------------------------------------------
 
 
-def fabricated(store, tmpl, config, design, t: float, build: Callable[[], object]):
+def fabricated[M](store, tmpl, config, design, t: float, build: Callable[[], M]) -> M:
     """``build()``'s mechanism, from ``store``'s cache when there (else built, then kept).
     ``store`` ``None`` or the cache off: ``build()``."""
     root = root_of(store) if store is not None and enabled() else None

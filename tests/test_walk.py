@@ -224,7 +224,7 @@ def test_support_is_vectorized():
 
 def test_rigid_motion_has_no_slip():
     """Feet planted while the body translates and turns: recovered exactly, slip 0."""
-    feet = [*_square(), [3, 0, 1], [-2, 0, 5], [7, 0, -3], [1, 0, 2]]
+    feet = _square() + np.array([[3, 0, 1], [-2, 0, 5], [7, 0, -3], [1, 0, 2]])   # offsets
     for V, w in (((25.0, 0.0), 0.0), ((3.0, -2.0), 0.5)):
         rates = np.zeros_like(feet)
         rates[:, 0] = -(V[0] + w * feet[:, 2])

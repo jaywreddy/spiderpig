@@ -44,11 +44,16 @@ import math
 import re
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
-import ezdxf
 import numpy as np
 from build123d import Axis, GeomType, Plane, section
+from ezdxf import units as dxf_units
+from ezdxf.filemanagement import new as new_dxf
 from rectpack import newPacker
+
+if TYPE_CHECKING:
+    from rectpack.packer import PackerBBF
 
 _CUT_LAYER = "CUT"
 CUT_COLOR = 5        # blue (ACI 5): Ponoko's convention for a cut line, mapped at upload
@@ -238,6 +243,7 @@ def _profile(body, sheet: tuple[float, float], margin: float):
     """The body's mid-slot section, turned to lie flat (or along the sheet diagonal)."""
     sketch = section_of(body).rotate(Axis.Z, -_long_axis_degrees(body))
     usable = (sheet[0] - 2 * margin, sheet[1] - 2 * margin)
+    x0 = y0 = x1 = y1 = 0.0     # (the loop below runs: the message reads the last turn's)
     for extra in (0.0, 90.0, math.degrees(math.atan2(usable[1], usable[0]))):
         turned = sketch.rotate(Axis.Z, extra) if extra else sketch
         x0, y0, x1, y1 = _bbox_2d(turned)
@@ -426,7 +432,7 @@ def _scratch():
     """An empty modelspace to emit into and read back (one document per thread)."""
     msp = getattr(_SCRATCH, "msp", None)
     if msp is None:
-        msp = _SCRATCH.msp = ezdxf.new(dxfversion="R2010").modelspace()
+        msp = _SCRATCH.msp = new_dxf(dxfversion="R2010").modelspace()
     msp.delete_all_entities()
     return msp
 
@@ -449,7 +455,9 @@ def fidelity(sketch, tol: float = 2e-3) -> dict:
     areas, dev = [], 0.0
     for w, e in zip(wires, ents, strict=True):     # each contour against its own entity
         if e.dxftype() == "CIRCLE":                 # read back as drawn: centre and radius
-            (cx, cy), r = _wire_is_circle(w)
+            circle = _wire_is_circle(w)
+            assert circle is not None  # _emit draws a CIRCLE only for a circle
+            (cx, cy), r = circle
             c, re_ = e.dxf.center, e.dxf.radius
             areas.append(math.pi * re_ ** 2)
             dev = max(dev, math.hypot(c.x - cx, c.y - cy) + abs(re_ - r))
@@ -488,7 +496,7 @@ def pack(mech, sheet_size: tuple[float, float] = _DEFAULT_SHEET, margin: float =
     if not items:
         return []
 
-    packer = newPacker(rotation=True)
+    packer = cast("PackerBBF", newPacker(rotation=True))  # offline, best bin: the defaults
     for rid, it in enumerate(items):
         packer.add_rect(math.ceil(it[2]), math.ceil(it[3]), rid=rid)
     for _ in items:  # plenty of bins; rectpack only uses what it fills
@@ -593,8 +601,8 @@ def _write_sheets(sheets, prefix: Path, kerf: float, key: str, service: str,
                   rows: list) -> list[Path]:
     written: list[Path] = []
     for sheet_idx, placed in enumerate(sheets):
-        doc = ezdxf.new(dxfversion="R2010")
-        doc.units = ezdxf.units.MM
+        doc = new_dxf(dxfversion="R2010")
+        doc.units = dxf_units.MM
         if _CUT_LAYER not in doc.layers:
             doc.layers.add(name=_CUT_LAYER, color=CUT_COLOR)
         msp = doc.modelspace()
@@ -637,8 +645,8 @@ def save_parts(groups, out_dir, default: str, kerf: float | None = None,
         k = sheet_kerf(key) if kerf is None else kerf
         sketch = _profile(g.ref, blank(key), margin)
         x0, y0, x1, y1 = _bbox_2d(sketch)
-        doc = ezdxf.new(dxfversion="R2007")     # Ponoko's most compatible; SendCutSend's too
-        doc.units = ezdxf.units.MM
+        doc = new_dxf(dxfversion="R2007")     # Ponoko's most compatible; SendCutSend's too
+        doc.units = dxf_units.MM
         doc.layers.add(name=_CUT_LAYER, color=CUT_COLOR)
         msp = doc.modelspace()
         wires = list(sketch.wires())

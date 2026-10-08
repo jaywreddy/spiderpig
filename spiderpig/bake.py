@@ -570,7 +570,10 @@ def _reference(config: BuildConfig, prof: _Profiler, fabricated: Mechanism | Non
         mech = fabricated if fabricated is not None else fabricate(template_for(config), config,
                                                                    T_REF)
     by_name = {b.name: b for b in mech.bodies}
-    feet = linkage_mod.feet_of(mech) or [(lk.output.link, lk.output.point)]
+    feet = linkage_mod.feet_of(mech)
+    if not feet:
+        assert lk.output is not None  # no feet: a mechanism, which has an output
+        feet = [(lk.output.link, lk.output.point)]
     prof.set_metric("n_bodies", len(mech.bodies))
     prof.set_metric("n_legs", len(feet) // max(len(lk.feet), 1))
     logger.debug("reference mech: %d bodies", len(mech.bodies))
@@ -757,10 +760,12 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
         link = next((by_name[b] for b, _ in ref.feet if by_name[b].part), None)
         foot_z = link.part.bounding_box().min.Z - 0.5 if link is not None else 0.0
     if config.robot:
+        extras = root.extras
+        assert extras is not None  # _nodes_and_channels (stage 5) set the root's extras
         with prof.timed("6b_drive_extra"):
-            root.extras["drive"] = _drive_extra(config, ref.mech, anim.motion, ref.owner,
-                                                meshes.mass_props, duration_s, side)
-        drive = root.extras["drive"]
+            extras["drive"] = _drive_extra(config, ref.mech, anim.motion, ref.owner,
+                                           meshes.mass_props, duration_s, side)
+        drive = extras["drive"]
         prof.set_metric("drive.mass_g", drive["mass_g"])
         prof.set_metric("drive.stride_mm", drive["metrics"]["stride_mm"])
         logger.debug("drive: com %s, %.1f g, stride %.1f mm/rev", drive["com"],
@@ -877,7 +882,7 @@ def bake_gltf(
 
 
 def _parse_args(argv=None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    p = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     add_design_args(p)
     add_build_args(p)
     p.add_argument("--side", action="store_true", help="bake one side only (default: the robot)")

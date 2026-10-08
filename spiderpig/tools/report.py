@@ -151,7 +151,7 @@ def describe(lk: linkage.Linkage) -> dict:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--out", type=Path, default=Path("build/linkages.json"),
                     help="the JSON written (default build/linkages.json)")
     ap.add_argument("--linkages", nargs="*", default=None, metavar="KEY",

@@ -87,7 +87,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
-from build123d import Axis, Box, Cylinder, Pos, scale
+from build123d import Axis, Box, Cylinder, Part, Pos, scale
 
 from spiderpig.construction.base import Build, ConstructionError, Context
 from spiderpig.construction.chassis import (
@@ -560,7 +560,8 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
     # the deck plate, notched where it passes the pillars' inner heads on its way down
     plate = _box(lay.x_c - HALF_LEN, lay.x_c + HALF_LEN, yd, yt, -hw, hw)
     notches = path_notches(lay, obstacles)
-    cuts = [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1) for x, z in lay.screws()]
+    cuts: list[Part] = [_cyl_y(x, z, CLEARANCE["3"] / 2, yd - 1, yt + 1)
+                        for x, z in lay.screws()]
     board = lay.board()
     cuts += [_cyl_y(x, z, CLEARANCE["2p5"] / 2, yd - 1, yt + 1) for x, z in board["holes"]]
     ties = [((x + s * (WIRE_SLOT[0] / 2 + 3.0), z), CABLE_TIE_SLOT)

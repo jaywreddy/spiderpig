@@ -1,0 +1,10 @@
+{
+  "errors": 28,
+  "by_rule": {
+    "reportReturnType": 10,
+    "reportArgumentType": 9,
+    "reportAttributeAccessIssue": 7,
+    "reportGeneralTypeIssues": 1,
+    "reportOperatorIssue": 1
+  }
+}

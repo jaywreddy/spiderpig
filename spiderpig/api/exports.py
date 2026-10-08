@@ -13,12 +13,13 @@ from pathlib import Path
 
 from spiderpig.api import building  # (build, fabricate_at: through the module, where a patch goes)
 from spiderpig.api.planning import plan
-from spiderpig.api.reports import ExportReport
+from spiderpig.api.reports import BuildReport, ExportReport, PlanReport
 from spiderpig.api.store_ops import (
     WARNING_LOGGERS,
     _cached,
     _finish,
     _manifest,
+    _report,
     capture_warnings,
     design_lock,
     load,
@@ -124,8 +125,12 @@ def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
         files, bom_summary = _export_files(design, formats, out, rep, job)
     rep.warnings = warned
     cfg = design.config
-    pr, br = design.reports["plan"], design.reports["build"]
-    vr = design.reports.get("verify")
+    pr, br = _report(design, "plan", PlanReport), _report(design, "build", BuildReport)
+    assert pr is not None       # the build above planned first
+    assert br is not None       # built above
+    from spiderpig.verify import VerifyReport
+
+    vr = _report(design, "verify", VerifyReport)
     rep.manifest = jsonable({
         "design": design.id, "engine_version": design.engine_version, "t_ref": design.build_t,
         "edited": design.edited,         # an edited handle's parts (not the design's own)
@@ -157,6 +162,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     """Write the formats into ``out`` (see :func:`export`): the files written, and the
     BOM's summary. ``job``: the glb/MJCF worker if it is already running."""
     cfg, mech, spec = design.config, design.mech, design.spec
+    assert mech is not None     # _export built the design first
     name = cfg.linkage
     filament = mech.meta.get("filament", "pla_filament")
     files: list[Path] = []
@@ -178,6 +184,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     if "print" in formats:
         from spiderpig import build as build_cli
 
+        assert groups is not None   # grouped just above for "print"
         with _timed("print"):
             build_cli.clear_generated(out / "print")     # no STLs of another design
             from spiderpig.hardware.bom import printed_filaments
@@ -188,7 +195,10 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
-    size = tuple(spec.fit.sheet_size_mm) if spec.fit.sheet_size_mm else None
+    size: tuple[float, float] | None = None
+    if spec.fit.sheet_size_mm:
+        w, h = spec.fit.sheet_size_mm
+        size = (w, h)
     kerf = spec.fit.kerf_mm               # None: each sheet's service kerf (layout.sheet_kerf)
     if "dxf" in formats:
         try:
@@ -312,7 +322,7 @@ def _start_robot_job(design: Design, formats: list[str], before_build: bool = Fa
     staging = Path(tempfile.mkdtemp(prefix="spiderpig-export-"))
     future = workers.submit(_robot_files_job, str(design.store.root), design.id, fmts,
                             str(staging))
-    future.staging = staging
+    future.staging = staging  # pyright: ignore[reportAttributeAccessIssue]  # _robot_files' folder
     return future
 
 
@@ -378,6 +388,7 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
         from spiderpig.sim.mjcf import build_mjcf, set_fabricated
 
         if cfg.robot:        # a one-sided design's MJCF is still the robot's
+            assert robot is not None    # fabricated above for a walker's mjcf
             set_fabricated(cfg, robot, props)
         xml, meta = build_mjcf(cfg)
         (out / f"{name}.xml").write_text(xml)

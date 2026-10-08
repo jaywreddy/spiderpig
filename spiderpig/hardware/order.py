@@ -60,7 +60,9 @@ def estimate(row) -> tuple[float, str] | None:
         return None
     for o in offers:
         if o.price_usd is not None:
-            return o.buy(row.qty)[1], o.vendor
+            usd = o.buy(row.qty)[1]
+            assert usd is not None  # a priced offer prices whole packs (Offer.buy)
+            return usd, o.vendor
     return None
 
 
@@ -178,6 +180,6 @@ def _item_notes(key: str) -> list[str]:
     note = (offer.note or "") if offer else ""
     cues = ("measure yours", "measure one", "measure it", "check one", "check it", "buy only",
             "don't", "minimum order", "made to order")
-    if any(c in note.lower() for c in cues):
+    if offer is not None and any(c in note.lower() for c in cues):   # (no offer: no note)
         return [f"**{get(key).name}** ({offer.vendor}): {note}."]
     return []

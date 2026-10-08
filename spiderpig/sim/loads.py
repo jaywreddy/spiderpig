@@ -189,7 +189,8 @@ class JointIndex:
         return (out @ rot)[:, :2]                    # world -> base (mech) frame
 
 
-def _summary(index: JointIndex, samples: np.ndarray, percentile: float | None) -> list[dict]:
+def _summary(index: JointIndex | _SideFree, samples: np.ndarray,
+             percentile: float | None) -> list[dict]:
     """Per joint of ``index``: the load (the percentile, else the largest, of its most
     loaded link's force over ``samples`` (S, rows, 2)), the peak and the heaviest patterns."""
     out = []
@@ -291,22 +292,23 @@ def jam_loads(config: BuildConfig, angles: int = JAM_ANGLES, steps: int = JAM_ST
     from spiderpig.sim.mjcf import SimParams, _v, build_mjcf, load_model
     from spiderpig.sim.run import kinematic_qpos
 
-    stiff = {"solref": _v(SimParams.eq_solref), "solimp": _v(SimParams.eq_solimp)}
+    solref, solimp = _v(SimParams.eq_solref), _v(SimParams.eq_solimp)     # stiff
     xml, meta = build_mjcf(config)
     root = ET.fromstring(xml)
     eq = root.find("equality")
     if eq is None:
         eq = ET.SubElement(root, "equality")
-    ET.SubElement(eq, "weld", name="jam.base", body1="base", **stiff)
+    ET.SubElement(eq, "weld", name="jam.base", body1="base", solref=solref, solimp=solimp)
     feet = [f for f in meta["feet"] if f.startswith("L.")]
     base_model, _ = load_model(config)
     world = root.find("worldbody")
+    assert world is not None  # build_mjcf writes the worldbody (the floor and the base)
     for f in feet:
         sid = mujoco.mj_name2id(base_model, mujoco.mjtObj.mjOBJ_SITE, f)
         pos = base_model.site_pos[sid]
         anchor = " ".join(f"{v:.9g}" for v in pos)
         ET.SubElement(eq, "connect", name=f"jam.{f}", body1=meta["feet"][f]["body"],
-                      anchor=anchor, active="false", **stiff)
+                      anchor=anchor, active="false", solref=solref, solimp=solimp)
         if "path" not in modes:
             continue
         # blocked along its path only: pinned to a 1 g slider free across the path
@@ -315,7 +317,8 @@ def jam_loads(config: BuildConfig, angles: int = JAM_ANGLES, steps: int = JAM_ST
         ET.SubElement(sl, "inertial", pos="0 0 0", mass="0.001",
                       diaginertia="1e-9 1e-9 1e-9")
         ET.SubElement(eq, "connect", name=f"jam.{f}.path", body1=meta["feet"][f]["body"],
-                      body2=f"jam.{f}.slider", anchor=anchor, active="false", **stiff)
+                      body2=f"jam.{f}.slider", anchor=anchor, active="false", solref=solref,
+                      solimp=solimp)
     if not JAM_FLOOR:
         # isolate the caught foot: the floor takes no part in the jam (JAM_FLOOR)
         for geom in world.iter("geom"):
@@ -328,6 +331,7 @@ def jam_loads(config: BuildConfig, angles: int = JAM_ANGLES, steps: int = JAM_ST
     left = [j for j, g in enumerate(index.joints) if g["side"] == "L"]
     lrows = [i for i, (j, _) in enumerate(index.rows) if j in set(left)]
     limit = torque_limit_nm(config)
+    assert limit is not None  # build_mjcf above raised for a servo with no stall torque
     vmax = meta["actuators"]["L.drive"]["ctrlrange"][1]
     act = {s: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{s}.drive")
            for s in ("L", "R")}

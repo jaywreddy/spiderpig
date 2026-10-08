@@ -172,6 +172,11 @@ description = "pyright, basic mode ([tool.pyright]; the viewer's pinned devDepen
 depends     = ["viewer-install"]
 run         = "viewer/node_modules/.bin/pyright"
 
+[tasks."pyright-check"]
+description = "pyright's ratchet (CI): its error count against tests/pyright-baseline.json, which may only go down (-- --update lowers it)"
+depends     = ["viewer-install"]
+run         = "uv run python -m tests.pyright_baseline"
+
 [tasks."engine-version"]
 description = "Print the engine version (the stores' and the test cache's key)"
 run         = "uv run python -m spiderpig.tools.engine_version"

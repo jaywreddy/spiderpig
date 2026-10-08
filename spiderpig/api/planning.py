@@ -17,6 +17,7 @@ from spiderpig.api.store_ops import (
     _commit,
     _finish,
     _record,
+    _report,
     _template,
     capture_warnings,
     log,
@@ -39,12 +40,14 @@ from spiderpig.fabricate import (
     design_side,
     ground_clearance,
     remember,
+    router_facts,
     side_problem,
     static_stage,
 )
 from spiderpig.fabricate import template_for as _template_for
 from spiderpig.failure import Failure, Recommendation
 from spiderpig.spec import (
+    Target,
     effective_hard,
 )
 from spiderpig.stack import ClearanceError, PlanError, verify_plan
@@ -116,8 +119,7 @@ def check(design: Design, force: bool = False) -> CheckReport:
     rep.clearances = [{"link": c.link, "keepout": c.keepout.owner, "where": c.keepout.where,
                        "dist_mm": c.dist, "need_mm": c.need, "text": c.describe()}
                       for c in problem.clearances]
-    if problem.router is not None:
-        f = problem.router.facts
+    if (f := router_facts(problem)) is not None:
         rep.crank_facts = {
             "o_free": {k: max(v, 0.0) for k, v in f.o_free.items()},
             "hosts": {k: list(v) for k, v in f.hosts.items()},
@@ -135,7 +137,9 @@ def check(design: Design, force: bool = False) -> CheckReport:
         static_stage(tmpl, problem, cfg)
     except ClearanceError as e:
         fl = Failure.from_exception(e, lk=lk)
-        fails = problem.router.facts.failures
+        facts = router_facts(problem)
+        assert facts is not None    # static_stage raises only on the crank router's facts
+        fails = facts.failures
         fl.culprits = [{"body": f.link, "point": f.pin, "dist_mm": f.dist, "need_mm": f.need,
                         "post_mm": f.post, "link_radius_mm": f.link_r, "margin_mm": f.margin,
                         "detour": f.detour, "allow_mm": f.allow} for f in fails]
@@ -155,7 +159,7 @@ def plan(design: Design, force: bool = False) -> PlanReport:
     spec's on another engine version: ``reused``); one that no longer holds is solved
     again."""
     if not force:
-        rep = design.reports.get("plan")
+        rep = _report(design, "plan", PlanReport)
         if rep is not None and (design.side is not None or (not rep.ok and not timed_out(rep))):
             return rep                  # (a failure for want of CPU time is searched again)
         rep = _reuse_plan(design)
@@ -217,6 +221,7 @@ def _plan_report(d: SideDesign, rep: PlanReport | None = None) -> PlanReport:
     rep = rep or PlanReport()
     p = d.plan
     route = p.choices.get("crank")
+    assert route is None or isinstance(route, CrankRoute)   # the crank router's choice
     rep.layers = dict(p.layers)
     rep.top, rep.n_layers, rep.height_mm, rep.pitch_mm = p.top, p.top + 1, p.height, p.spec.pitch
     rep.route = (None if route is None else
@@ -300,7 +305,7 @@ def _remake_plan(design: Design, doc: dict, same_engine: bool) -> SideDesign | N
         p.proof = (f"re-verified under engine {design.engine_version} (planned under "
                    f"{doc.get('engine_version')}); not proven the thinnest here")
     return SideDesign(cfg, ctx, groups, p, list(problem.clearances), ground_clearance(tmpl, ctx),
-                      problem.router.facts if problem.router is not None else None)
+                      router_facts(problem))
 
 
 def explain(design: Design) -> str:
@@ -353,7 +358,7 @@ def cheap_measures(design: Design) -> dict[str, float]:
     """The metrics a target can be read against from ``check`` and ``plan`` alone: a
     mechanism's output numbers, a walker's lift and ground clearance, the stack."""
     out: dict[str, float] = {}
-    cr, pr = design.reports.get("check"), design.reports.get("plan")
+    cr, pr = _report(design, "check", CheckReport), _report(design, "plan", PlanReport)
     if cr is not None and cr.ok:
         from spiderpig.verify import least_transmission_angle
 
@@ -372,7 +377,7 @@ def cheap_measures(design: Design) -> dict[str, float]:
     return out
 
 
-def missed_targets(design: Design) -> list[tuple[str, float, object]]:
+def missed_targets(design: Design) -> list[tuple[str, float, Target]]:
     """``(path, value, target)`` for every spec target :func:`cheap_measures` can read that
     the design misses."""
     got = cheap_measures(design)

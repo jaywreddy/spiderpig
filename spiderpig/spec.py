@@ -577,7 +577,8 @@ class _Validator:
         if tol is not None and value is None:
             self.err(f"{path}.tol", "tol goes with value")
 
-    def targets(self, v, section: str, kind: str | None, lk=None) -> None:
+    def targets(self, v, section: str, kind: str | None,
+                lk: linkage.Linkage | None = None) -> None:
         table = TARGET_FIELDS[section]
         allowed = [n for n, f in table.items() if kind is None or kind in f.kinds]
         if not isinstance(v, Mapping):
@@ -593,6 +594,8 @@ class _Validator:
             if name in allowed:
                 if (has is not None and section == "motion" and name in OUTPUT_TARGETS
                         and name not in has):
+                    assert lk is not None  # has is set only for a linkage
+                    assert lk.output is not None  # with an output
                     others = [n for n in allowed if n not in OUTPUT_TARGETS]
                     its = (f"its metrics: {', '.join(has)}" if has else
                            f"an {lk.output.motion} output is measured by its extent alone "
@@ -629,8 +632,10 @@ def validate(data: Mapping) -> list[SpecError]:
     v = _Validator()
     if not isinstance(data, Mapping):
         return [SpecError("", f"a spec is an object, got {_kind(data)}")]
-    top = v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
-                           "constructions", "fit", "budget", "outputs"))
+    # (obj returns a mapping as it is: top is data, its unknown fields reported)
+    v.obj(data, "", ("version", "kind", "linkage", "legs", "motion", "size", "materials",
+                     "constructions", "fit", "budget", "outputs"))
+    top = data
     version = top.get("version", SPEC_VERSION)
     if str(version) != SPEC_VERSION:
         v.err("version", f"unknown spec version {version!r}; this engine reads version "
@@ -758,7 +763,9 @@ def validate(data: Mapping) -> list[SpecError]:
     if f is not None:
         for name in REMOVED_PARAMS:
             if name in f:
-                v.err(f"fit.{name}", removed_param(name), FIT_FIELDS)
+                why = removed_param(name)
+                assert why is not None  # name is a removed param, given no value
+                v.err(f"fit.{name}", why, FIT_FIELDS)
         for name in FIT_FIELDS:      # (servo_screw_web_t 0: no front screw left out)
             if name in FIT_NONNEG:
                 v.number(f.get(name), f"fit.{name}", nonneg=True)
@@ -843,7 +850,7 @@ def spec_schema() -> dict:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://spiderpig/schema/spec-v1.json",
         "title": "spiderpig Spec v1",
-        "description": __doc__.split("\n\n")[0],
+        "description": (__doc__ or "").split("\n\n")[0],
         "type": "object", "additionalProperties": False,
         "required": ["kind", "linkage"],
         "properties": {

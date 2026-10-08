@@ -10,6 +10,7 @@ import math
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, Self, cast
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
@@ -41,7 +42,23 @@ from spiderpig.spec import (
 )
 from spiderpig.store import PROJECT, Store, diff_json, report_doc
 
+if TYPE_CHECKING:
+    from spiderpig.failure import Failure
+
 log = logging.getLogger("spiderpig")
+
+
+class StageReport(Protocol):
+    """What every stage's report has (the :class:`Report` dataclasses, a
+    :class:`spiderpig.verify.VerifyReport`)."""
+
+    ok: bool
+    failures: list[Failure]
+    seconds: float
+
+    @classmethod
+    def from_dict(cls, d: dict) -> Self: ...
+
 
 # ---------------------------------------------------------------------------
 # resolve
@@ -389,8 +406,14 @@ def _record(design: Design, op: str, seconds: float, ok: bool, cached: bool = Fa
         design.store.log(design.id, entry)
 
 
-def _commit(design: Design, stage: str, rep, op: str | None = None, write: bool = True,
-            cached: bool = False, seconds: float | None = None):
+def _report[R: StageReport](design: Design, stage: str, cls: type[R]) -> R | None:
+    """The handle's report of ``stage`` (``design.reports.get(stage)``) as its class."""
+    return cast("R | None", design.reports.get(stage))  # _commit: each stage's own class
+
+
+def _commit[R: StageReport](design: Design, stage: str, rep: R, op: str | None = None,
+                            write: bool = True, cached: bool = False,
+                            seconds: float | None = None) -> R:
     """Put a finished report on the handle, log the operation (``seconds``: what this
     call took, else the report's), and write it to the store (``write``; one served from
     the store, ``cached``, is only logged)."""
@@ -405,7 +428,7 @@ def _commit(design: Design, stage: str, rep, op: str | None = None, write: bool 
     return rep
 
 
-def _finish(design: Design, stage: str, rep, t0: float, **kw):
+def _finish[R: StageReport](design: Design, stage: str, rep: R, t0: float, **kw) -> R:
     rep.ok = not rep.failures
     rep.seconds = round(time.time() - t0, 3)
     return _commit(design, stage, rep, **kw)
@@ -424,12 +447,13 @@ def _stored(design: Design, stage: str, current: bool = True, variant: str | Non
     return doc
 
 
-def _cached(design: Design, stage: str, cls, op: str | None = None, **need):
+def _cached[R: StageReport](design: Design, stage: str, cls: type[R], op: str | None = None,
+                            **need) -> R | None:
     """The stage's report from the handle, else from the store when valid for the running
     engine (then put on the handle and logged as cached); ``need`` are field values it
     must match (a verify's ``level``: the store keeps one report per level, so the levels
     don't evict each other)."""
-    rep = design.reports.get(stage)
+    rep = _report(design, stage, cls)
     if (rep is not None and not ran_out(rep)
             and all(getattr(rep, k, None) == v for k, v in need.items())):
         return rep
@@ -531,10 +555,12 @@ def _drop_stored(design: Design, *stages: str) -> None:
     """Delete ``stages``' reports from the store (a verify's per-level copies too)."""
     from spiderpig.verify import LEVELS
 
+    store = design.store
+    assert store is not None    # called only on a design recorded in a store
     for stage in stages:
-        design.store.report_path(design.id, stage).unlink(missing_ok=True)
+        store.report_path(design.id, stage).unlink(missing_ok=True)
         for level in LEVELS if stage == "verify" else ():
-            design.store.report_path(design.id, stage, level).unlink(missing_ok=True)
+            store.report_path(design.id, stage, level).unlink(missing_ok=True)
 
 
 EDITED_STAGES = ("export", "verify")

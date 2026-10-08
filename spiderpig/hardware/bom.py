@@ -46,12 +46,18 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 from spiderpig.hardware.catalog import get, sheet_name
 from spiderpig.hardware.mass import filament_density, surface_props, volume_props
 from spiderpig.hardware.mass import volume as part_volume
+
+if TYPE_CHECKING:
+    from build123d import Shape
+
+    from spiderpig.mechanism import Body
 
 
 @dataclass(frozen=True)
@@ -454,7 +460,7 @@ class MadeGroup:
     """Made parts of one shape: ``ref`` is the body whose part is the pattern."""
 
     method: str
-    ref: object                                  # mechanism.Body
+    ref: Body                                    # its part is the pattern
     names: list[str]
     mirrored: list[str] = field(default_factory=list)
 
@@ -503,7 +509,8 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
     def mirror_of(g: MadeGroup) -> Callable[[], tuple]:
         def get() -> tuple:
             if id(g) not in mirrors:
-                m = g.ref.part.mirror(Plane.XY)
+                part = cast("Shape", g.ref.part)  # a made group's bodies all have a part
+                m = part.mirror(Plane.XY)
                 mirrors[id(g)] = (m, _sig(m))
             return mirrors[id(g)]
         return get
@@ -711,8 +718,8 @@ def split_shims(lines: list[BomLine], by_name: dict,
         for line in fl:
             body = by_name.get(line.where)
             name = line.where or ""
-            told = (stacks or {}).get(name) or (stacks or {}).get(
-                name[2:] if name[:2] in ("L.", "R.") else None)
+            told = (stacks or {}).get(name) or (
+                (stacks or {}).get(name[2:]) if name[:2] in ("L.", "R.") else None)
             if body is not None and told:
                 # the construction said what it stacked (``Realized.notes["shim_stacks"]``)
                 stack = [float(t) for t in told]
@@ -896,7 +903,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             fil = fil_of.get(g.ref.name, filament) if method == "printed" else None
             made.append(MadeRow(
                 name=g.ref.name, method=method,
-                material=(sheet_name(g.ref.sheet) if getattr(g.ref, "sheet", None) else sheet)
+                material=(sheet_name(g.ref.sheet) if g.ref.sheet else sheet)
                 if method == "laser" else (_filament_name(fil) if fil else fil_name),
                 size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),

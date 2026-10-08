@@ -47,12 +47,12 @@ def walk(design: Design, force: bool = False) -> WalkReport:
     if not payload["valid"]:
         rep.failures.append(Failure("walk", "linkage_invalid", payload["error"]))
         return _finish(design, "walk", rep, t0)
-    rep.metrics = payload["metrics"]
+    rep.metrics = metrics = payload["metrics"]
     rep.mass_g = payload["mass_g"]
     from spiderpig import verify as _verify
 
-    rep.rows = _verify.walk_rows(design, rep.metrics)
-    if (note := no_travel_note(cfg, rep.metrics)) is not None:
+    rep.rows = _verify.walk_rows(design, metrics)
+    if (note := no_travel_note(cfg, metrics)) is not None:
         rep.notes.append(note)
         for r in rep.rows:
             if r.requirement in ("motion.stride_mm", "motion.speed_mm_s"):

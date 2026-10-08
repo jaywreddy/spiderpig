@@ -395,9 +395,14 @@ class Router(Protocol):
     pieces: tuple[Shape, ...]
     # the crank's router's (the search reads them with getattr defaults): the pieces it may
     # put in a clearance gap, its posts' points, and its first washer bit (-1: none)
-    gap_pieces: tuple[Shape, ...]
-    points: list[str]
-    washer_bit: int
+    @property
+    def gap_pieces(self) -> tuple[Shape, ...]: ...
+
+    @property
+    def points(self) -> list[str]: ...
+
+    @property
+    def washer_bit(self) -> int: ...
 
     def check(self, view: RouteView) -> RouteConflict | Mapping[int, int]: ...
 

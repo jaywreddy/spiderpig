@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from functools import cache
+from typing import cast
 
 from spiderpig.hardware.catalog import get
 
@@ -65,6 +66,11 @@ class Sheet:
         return f"{what} {self.thickness:g} mm ({self.service})"
 
 
+def _pair(values) -> tuple[float, float]:
+    """A catalog item's ``(x, y)`` dimension as floats."""
+    return cast("tuple[float, float]", tuple(float(v) for v in values))  # the catalog's pairs
+
+
 @cache
 def sheet(key: str) -> Sheet:
     """The sheet ``key`` (a catalog ``sheet`` item; rules a plain item lacks: none)."""
@@ -80,9 +86,9 @@ def sheet(key: str) -> Sheet:
         yield_mpa=float(d.get("yield_mpa", 50.0)), service=str(d.get("service", "")),
         min_hole=float(d.get("min_hole", 0.0)), edge_t=float(d.get("edge_t", 0.0)),
         edge_mm=float(d.get("edge_mm", 0.0)),
-        min_part=tuple(float(v) for v in d.get("min_part", (0.0, 0.0))),
+        min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
-        sheet_mm=tuple(float(v) for v in d.get("sheet_mm", (300.0, 300.0))))
+        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))))
 
 
 LINK_SHEETS: dict[str, dict[str, str]] = {
@@ -122,7 +128,8 @@ def sheet_of(config, role: str, link: str | None = None) -> str:
     if role == "link" and link is not None:
         from spiderpig.stack import body_class
 
-        return link_sheets(config).get(body_class(link), config.sheet)
+        default: str = config.sheet
+        return link_sheets(config).get(body_class(link), default)
     return config.sheet
 
 

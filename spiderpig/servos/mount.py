@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import math
 from functools import lru_cache
+from typing import cast
 
 import numpy as np
 from build123d import Box, Cylinder, Location
@@ -50,7 +51,7 @@ from spiderpig.construction.base import (
 from spiderpig.hardware.fasteners import SIZES, Screw, parse, screw, screw_solid
 from spiderpig.servos.model import cad_state, cut_each, horn_part, servo_part
 from spiderpig.servos.spec import MountHole, ServoSpec
-from spiderpig.shapes import Cut, Rect, disc, moved
+from spiderpig.shapes import Cut, Rect, Shape3D, disc, moved
 from spiderpig.stack import Claim, Disc, Layout, Placed
 
 MIN_SPACER = 1.0          # thinnest printed horn spacer worth making (mm)
@@ -452,11 +453,12 @@ class DriveGroup(Group):
                 if (hub is not None and sh.label.startswith("crankpin screw")
                         and sh.toward > 0
                         and sh.layer == (hub if sh.gap else hub + 1)):    # in its gap, or sunk
-                    xy = tuple(build.xy(sh.shape.at))
-                    if math.dist(xy, tuple(o)) - sh.shape.r < s.horn.diameter / 2:
-                        holes.append(disc(xy, sh.shape.r, face - t - 1, face + 1))
+                    head = cast("Disc", sh.shape)  # a crankpin screw head's shape is a Disc
+                    xy = tuple(build.xy(head.at))
+                    if math.dist(xy, tuple(o)) - head.r < s.horn.diameter / 2:
+                        holes.append(disc(xy, head.r, face - t - 1, face + 1))
             for hole in holes:
-                spacer = spacer - hole
+                spacer = cast("Shape3D", spacer - hole)  # a hole leaves the spacer whole
             out.bodies.append(hardware("servo_horn_spacer", spacer, crank_host or frame_host,
                                        fab="printed", color=SPACER_COLOR))
         return out

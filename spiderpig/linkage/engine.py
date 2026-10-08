@@ -297,8 +297,9 @@ class Linkage:
         head = [sp.Symbol(i, real=True) for i in self.inputs] + list(self.symbols.values())
         fns, before = [], []
         for name, expr in self.steps:
-            fns.append(sp.lambdify([*head, *before], list(expr), modules="numpy", cse=True))
-            before += list(P(name))
+            coords = list(expr)  # pyright: ignore[reportArgumentType]  # sympy: Matrix untyped iter
+            fns.append(sp.lambdify([*head, *before], coords, modules="numpy", cse=True))
+            before += list(P(name))  # pyright: ignore[reportArgumentType]  # same Matrix iter
 
         def run(*args):
             flat: list = []
