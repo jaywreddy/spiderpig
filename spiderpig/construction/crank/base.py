@@ -249,7 +249,7 @@ class CrankGroup(Group):
                     out += [Placed(k, Disc("O", tr), GROUP, "stub thrust sleeve")
                             for k in range(1, lo)]
                     out += [Placed(k, Disc("O", tr), GROUP, "stub thrust sleeve",
-                                   gap=True) for k in range(0, lo)]
+                                   gap=True) for k in range(lo)]
             if L.final:
                 c.check_route(L, route, ridden, {p.layer for p in out if p.sheet > 0},
                               drive=drive)

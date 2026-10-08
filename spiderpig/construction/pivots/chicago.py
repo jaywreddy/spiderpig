@@ -107,6 +107,7 @@ is in its way.
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field, replace
 from typing import ClassVar
@@ -207,7 +208,7 @@ class ChicagoShaft:
         if top > ctx.pitch + EPS:
             raise ConstructionError(f"a {it['screw_head_h']:g} mm Chicago screw head, its washer "
                                     f"and play don't fit a {ctx.pitch:g} mm layer")
-        steps = [b - a for a, b in zip(CHICAGO_LENGTHS, CHICAGO_LENGTHS[1:], strict=False)
+        steps = [b - a for a, b in itertools.pairwise(CHICAGO_LENGTHS)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
         if max(steps, default=0.0) > room + min(self.shim_steps) + EPS:

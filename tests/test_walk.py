@@ -224,7 +224,7 @@ def test_support_is_vectorized():
 
 def test_rigid_motion_has_no_slip():
     """Feet planted while the body translates and turns: recovered exactly, slip 0."""
-    feet = _square() + [[3, 0, 1], [-2, 0, 5], [7, 0, -3], [1, 0, 2]]
+    feet = [*_square(), [3, 0, 1], [-2, 0, 5], [7, 0, -3], [1, 0, 2]]
     for V, w in (((25.0, 0.0), 0.0), ((3.0, -2.0), 0.5)):
         rates = np.zeros_like(feet)
         rates[:, 0] = -(V[0] + w * feet[:, 2])
@@ -510,9 +510,9 @@ def test_normalized_parameters():
     assert _cfg("quad").is_default
     assert _cfg("quad").key == "klann_quad_robot"
     assert _cfg("quad", robot=False).key == "klann_quad_side"
-    for bad in (dict(module="octo"), dict(phases_deg=[0, 90]), dict(proportions={"XX": 1}),
-                dict(proportions={"OB": -1}), dict(proportions={"DF": float("nan")}),
-                dict(servo="none"), dict(linkage="hoecken")):            # a mechanism: no feet
+    for bad in ({"module": "octo"}, {"phases_deg": [0, 90]}, {"proportions": {"XX": 1}},
+                {"proportions": {"OB": -1}}, {"proportions": {"DF": float("nan")}},
+                {"servo": "none"}, {"linkage": "hoecken"}):            # a mechanism: no feet
         with pytest.raises(ParamError):
             _cfg(**{"module": "quad", **bad})
     assert parse_phases("0, 90") == (0.0, math.pi / 2)
@@ -542,8 +542,8 @@ def test_parameters_are_the_linkages():
         "proportions": {k: (14.0 if k == "m" else float(v))
                         for k, v in linkage.get("jansen").params.items()}}
     assert _cfg("quad", proportions={"angA": -30.0}).proportions == (("angA", -30.0),)
-    for bad in (dict(linkage="octopus"), dict(proportions={"DF": 2.0}),     # Klann's, not Jansen's
-                dict(proportions={"m": 0.0}), dict(proportions={"m": float("inf")})):
+    for bad in ({"linkage": "octopus"}, {"proportions": {"DF": 2.0}},     # Klann's, not Jansen's
+                {"proportions": {"m": 0.0}}, {"proportions": {"m": float("inf")}}):
         with pytest.raises(ParamError):
             _cfg(**{"module": "double", "linkage": "jansen", **bad})
     # the default design's phases, whichever way they were given, are None
@@ -718,6 +718,7 @@ class _AsgiClient:
                 sent = True
                 return {"type": "http.request", "body": b"", "more_body": False}
             await asyncio.sleep(3600)
+            return {"type": "http.disconnect"}      # never: the response is in by then
 
         async def send(message):
             messages.append(message)
@@ -865,7 +866,7 @@ def test_api_linkages(client):
     assert body["default"] == "strider"
     by_key = {lk["key"]: lk for lk in body["linkages"]}
     assert list(by_key) == linkage.available()
-    assert list(by_key)[0] == "strider"
+    assert next(iter(by_key)) == "strider"
     assert by_key["strider"]["default_module"] == "double"
     assert by_key["hoecken"]["default_module"] == "single"
     klann = by_key["klann"]

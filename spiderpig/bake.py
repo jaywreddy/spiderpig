@@ -868,7 +868,7 @@ def bake_gltf(
 
     # Peak resident set (linux: ru_maxrss is KB; mac: bytes — treat as linux here).
     try:
-        import resource  # noqa: PLC0415
+        import resource
         prof.set_metric("peak_rss_mb", resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024)
     except ImportError:
         pass

@@ -249,7 +249,7 @@ class _WebPlates:
         e0, e1 = z_lo - j.out_lo, z_hi + j.out_hi            # the standoff's ends
         st = _hex(xy, c.hex_af, e0, e1, ang) - disc(xy, 1.5, e0 - 1, e1 + 1)   # M3, through
         self.buy(f"crank_pin_{tag}", st, j.standoff, "#b9b9b9")
-        hd, hh = c.hex_screw()
+        _hd, _hh = c.hex_screw()
         _, wod, wt = c.hex_washer()
         et = c.extra_washer_t()
         pocket = c.hex_pocket_af() + c.sleeve_fit - c.hex_fit
@@ -341,7 +341,7 @@ class _WebPlates:
         if got is None:
             raise ConstructionError(f"no stock stub standoff reaches the outer frame plate from "
                                     f"the lowest web (layer {k})")
-        key, S, z0, L = got
+        key, _S, z0, L = got
         z0 += b.z(0)[0]
         top = self.pz(k)[0]
         od = c.stub_od()

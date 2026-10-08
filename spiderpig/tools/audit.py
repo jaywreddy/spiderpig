@@ -210,7 +210,7 @@ def cut_lines(m: dict) -> list[str]:
                      "sheet: " + ", ".join(f"{k} {v:g} mm" for k, v in
                                           (m.get("kerf") or {}).items()) + ".")
     if not m["issues"]:
-        return lines + ["", "Every part passes."]
+        return [*lines, "", "Every part passes."]
     lines += ["", "| level | rule | part | sheet | what | why | fix |",
               "|---|---|---|---|---|---|---|"]
     for i in sorted(m["issues"], key=lambda i: i.get("level") != "error"):
@@ -381,9 +381,9 @@ def markdown(report: dict) -> str:
                     f"{row['max_span_mm']:g} mm.")
             lines.append(line)
         if rep.get("strength"):
-            lines += [""] + strength_lines(rep["strength"]) + [""]
+            lines += ["", *strength_lines(rep["strength"]), ""]
         if rep.get("manufacture"):
-            lines += cut_lines(rep["manufacture"]) + [""]
+            lines += [*cut_lines(rep["manufacture"]), ""]
         if rep.get("chicago"):
             lens: dict = {}
             for v in rep["chicago"].values():

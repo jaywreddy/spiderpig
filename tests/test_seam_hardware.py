@@ -265,14 +265,14 @@ def test_iterating_the_catalog_while_lengths_are_made_never_breaks():
                 for _key in CATALOG:                 # the same loop makes an item too
                     CATALOG.get(f"pillar_shaft_6_m3_{n / 10:g}")
                 list(CATALOG.items())
-        except BaseException as e:                  # any error fails the test, below
+        except BaseException as e:  # noqa: BLE001 - any error fails the test, below
             errors.append(e)
 
     def make(first: int):
         try:
             for n in range(first, first + 300):
                 CATALOG.get(f"pillar_shaft_6_m3_{n / 10:g}")
-        except BaseException as e:
+        except BaseException as e:  # noqa: BLE001 - any error fails the test, below
             errors.append(e)
 
     threads = [threading.Thread(target=f, args=(n,)) for f, n in

@@ -839,9 +839,9 @@ def fitting_lines(mech) -> tuple[list[BomLine], list[str], set[str]]:
             f"screws {', '.join(s)}: {k}" for k, s in stacks.items()) + ".")
     metal = _metal_horn(mech.meta)
     if horn_screws and metal:
-        for n in horn_screws:
-            lines.append(BomLine(HORN_LOCK, LOCK_PER_THREAD,
-                                 f"{n}: into the metal horn (a drop, metal to metal)"))
+        lines.extend(BomLine(HORN_LOCK, LOCK_PER_THREAD,
+                             f"{n}: into the metal horn (a drop, metal to metal)")
+                     for n in horn_screws)
         notes.append(f"Horn screws: a drop of low-strength threadlocker (Loctite 222) each "
                      f"({len(horn_screws)}), steel into the metal horn; none in a plastic horn.")
     gaps = {name: n.get("bond_gap_mm", 0.0)
@@ -875,9 +875,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     filament = filament or mech.meta.get("filament")
     fil_name = _filament_name(filament) if filament else "PLA/PETG"
     fitted, fit_notes, replaced = fitting_lines(mech)
-    for body in mech.bodies:
-        if body.fab == "purchased" and body.bom_key and body.name not in replaced:
-            lines.append(BomLine(body.bom_key, 1, body.name))
+    lines.extend(BomLine(body.bom_key, 1, body.name) for body in mech.bodies
+                 if body.fab == "purchased" and body.bom_key and body.name not in replaced)
     lines += fitted
     notes += fit_notes
     by_name = {b.name: b for b in mech.bodies}

@@ -240,10 +240,8 @@ class Store:
         """Every design recorded here (a folder with a ``resolved.json``), oldest first."""
         if not self.designs.is_dir():
             return []
-        out = []
-        for p in self.designs.iterdir():
-            if _ID.fullmatch(p.name) and (p / "resolved.json").is_file():
-                out.append(p.name)
+        out = [p.name for p in self.designs.iterdir()
+               if _ID.fullmatch(p.name) and (p / "resolved.json").is_file()]
         return sorted(out, key=lambda i: (self.read_design(i) or {}).get("created_at", ""))
 
     def exports_dir(self, id: str) -> Path:

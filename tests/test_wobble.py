@@ -170,7 +170,7 @@ def test_chicago_pins_plan_and_stay_in_their_claims(chicago_side):
     """The fast half of :func:`test_chicago_pins_plan_build_and_stay_in_their_claims`: the
     plan re-checked, every Chicago pin's parts inside its claims at two crank angles, and
     none of them meeting another part."""
-    key, tmpl, design, fab = chicago_side
+    _key, tmpl, design, fab = chicago_side
     assert verify_plan(design.plan, tmpl) == []
     pins = _pin_groups(design)
     assert pins
@@ -187,7 +187,7 @@ def test_chicago_pins_plan_build_and_stay_in_their_claims(chicago_side):
     """The whole side's contract (every group) at two crank angles and every pair of its
     parts clash-checked (:func:`test_chicago_pins_plan_and_stay_in_their_claims` checks the
     pins' part of it in the fast tier)."""
-    key, tmpl, design, fab = chicago_side
+    _key, tmpl, design, fab = chicago_side
     assert verify_plan(design.plan, tmpl) == []
     assert check_side(design, tmpl.freeze_at(T)) == []
     assert check_side(design, tmpl.freeze_at(4.38)) == []
@@ -196,7 +196,7 @@ def test_chicago_pins_plan_build_and_stay_in_their_claims(chicago_side):
 
 
 def test_chicago_hardware_and_bom(chicago_side):
-    key, _, design, fab = chicago_side
+    _key, _, design, fab = chicago_side
     pins = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
     rows = {r.key: r for r in bom_from_mechanism(fab, group=False).purchased}
     screws = sum(r.qty for k, r in rows.items() if k.startswith("chicago_m3_"))
@@ -213,7 +213,7 @@ def test_chicago_hardware_and_bom(chicago_side):
 
 
 def test_wobble_notes_for_every_axle(chicago_side):
-    key, _, design, fab = chicago_side
+    _key, _, design, fab = chicago_side
     axles = [g for g in design.groups if isinstance(g, AxleGroup)]
     notes = fab.meta["wobble"]
     assert set(notes) == {g.name for g in axles}

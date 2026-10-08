@@ -152,7 +152,7 @@ def test_the_round_standoffs_capacity_is_its_friction_clamp():
 def test_the_klann_single_builds_clean_with_the_bolt_crank(design, side):
     """The default (hex standoff) crank: clean, every crankpin a stock hex standoff whose
     hex fills its plates' pockets (or all but ``recess_max``), its screws, washers, sleeve."""
-    tmpl, d = design("single", crank="bolt")
+    _tmpl, d = design("single", crank="bolt")
     mech = side("single", crank="bolt")
     assert check_side(d, mech) == []
     assert clashes(mech) == []
@@ -310,7 +310,7 @@ def test_horn_screws_take_shims_where_the_hub_plate_is_thin():
     for seg in (1.6, 2.032, 2.54, 3.175):
         got = c.horn_fit_web(ctx, seg, 3.032)
         assert got is not None, seg
-        sk, length, e, shim = got
+        _sk, length, e, shim = got
         assert 1.5 - 1e-9 <= e <= 2.0 + 1e-9
         assert length == pytest.approx(seg + 3.032 + shim + e)
         assert 0 <= shim <= c.horn_shim_max

@@ -314,13 +314,13 @@ def tie_locals(ctx: Context) -> list[tuple[float, float]]:
     two thicknesses off every hole it shares a plate with (:func:`tie_neighbours`; the
     design review's warning level); where none is, the unmoved place (the audit warns)."""
     spec, p, d = ctx.servo, ctx.params, tie_dims(ctx)
-    x0, x1, y0, y1 = _footprint(spec)
+    x0, x1, _y0, y1 = _footprint(spec)
     c = max(d.column, d.head_r, TIE_PLACE_R)
     yt = y1 + p.margin + c
     xs = (x0 + c, x1 - c) if x1 - x0 > 2 * c else ((x0 + x1) / 2,)
     near = tie_neighbours(ctx)
     r = d.hole_d / 2
-    n = int(round(TIE_SHIFT_MAX / TIE_SHIFT_STEP))
+    n = round(TIE_SHIFT_MAX / TIE_SHIFT_STEP)
     # the bus plugs' slot through the centre plates (:func:`_port_slots`): a tie beside it
     # moves out across the servo until its hole is two thicknesses off the slot's side
     slot = spec.bus_ports.slot() if spec.bus_ports is not None else None

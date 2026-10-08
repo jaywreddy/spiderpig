@@ -737,7 +737,7 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
     stride = target_row(design, target_field("motion", "stride_mm"), m["stride"], "sim",
                         "measured", "forward travel per crank revolution in the sim",
                         hard=False)
-    rows = [
+    return [
         replace(speed, requirement="sim.speed_mm_s"),
         replace(stride, requirement="sim.stride_mm"),
         Row("sim.stays_up", "sim", not m["fell"], None, not m["fell"], "measured", True,
@@ -746,7 +746,6 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
             not m["saturates"], "measured", False,
             f"peak {m['torque_peak']:.3f} N·m of {m['torque_limit']:g} stall", unit="N·m"),
     ]
-    return rows
 
 
 def fall_detail(m: dict, design: Design | None = None) -> str:

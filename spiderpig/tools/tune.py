@@ -270,7 +270,7 @@ def plan(tuner: Tuner, c: Candidate) -> dict:
     config = tuner.config(c)
     try:
         design = design_side(template_for(config), config)
-    except Exception as e:  # the planner or a construction: report, don't crash
+    except Exception as e:  # noqa: BLE001 - the planner or a construction: report, don't crash
         return {"ok": False, "error": str(e)}
     z = walk.foot_z_planned(config, design)
     m = tuner.metrics(c, feet_z=z)

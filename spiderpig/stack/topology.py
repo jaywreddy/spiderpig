@@ -321,7 +321,7 @@ def _sample_topology(tmpl, samples: int) -> Topology:
             raise ValueError(f"two axles named {axis.name!r}")
         axes.append(axis)
         points[axis.name] = xy[nodes[0]]
-        point_of.update({n: axis.name for n in nodes})
+        point_of.update(dict.fromkeys(nodes, axis.name))
     links = {
         b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
         for b in tmpl.bodies if is_link(b.name)

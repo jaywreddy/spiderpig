@@ -197,8 +197,7 @@ JointPoseFn = Callable[[np.ndarray], np.ndarray]
 
 def _identity_pose_batch(n: int) -> np.ndarray:
     """Return ``(n, 4, 4)`` identity SE(3) tensor."""
-    out = np.broadcast_to(np.eye(4), (n, 4, 4)).copy()
-    return out
+    return np.broadcast_to(np.eye(4), (n, 4, 4)).copy()
 
 
 def _invert_se3_batch(m: np.ndarray) -> np.ndarray:

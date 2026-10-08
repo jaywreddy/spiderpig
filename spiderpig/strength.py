@@ -247,7 +247,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         return []
     lk = lk_mod.get(config.linkage)
     pts = lk.solve(params=dict(config.proportions) or None).joints_at(0.0)
-    feet = {link: point for link, point in lk.feet}
+    feet = dict(lk.feet)
     sheets = link_sheets(config)
     w = 2 * config.params.link_radius
     crank_pins = set(lk.crank[1:])

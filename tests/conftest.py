@@ -293,7 +293,7 @@ def viewer_server() -> Iterator[str]:
             f"(or use `mise run test`, which builds it for you). Looked at {dist}"
         )
     port = _free_port()
-    proc = subprocess.Popen(  # noqa: S603
+    proc = subprocess.Popen(
         [
             sys.executable, "-m", "uvicorn", "spiderpig.server.app:app",
             "--host", "127.0.0.1", "--port", str(port),

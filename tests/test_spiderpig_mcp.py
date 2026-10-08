@@ -503,10 +503,10 @@ def test_view_returns_the_viewers_url_and_reuses_its_server(server, single):
     assert out["url"] == f"{out['server']}/?design={single}"
     assert out["mode"] == "side"
     assert out["design"] == single
-    with urllib.request.urlopen(f"{out['server']}/api/design/{single}") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{out['server']}/api/design/{single}") as r:
         card = json.load(r)
     assert (card["design"], card["module"], card["sides"]) == (single, "single", 1)
-    with urllib.request.urlopen(f"{out['server']}/") as r:  # noqa: S310
+    with urllib.request.urlopen(f"{out['server']}/") as r:
         assert b'id="stage"' in r.read()
     again = call(server, "view", design=single)
     assert again["server"] == out["server"]          # reused, not a second process

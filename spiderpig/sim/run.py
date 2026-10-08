@@ -261,7 +261,7 @@ def simulate(
         lock = None
     dt = model.opt.timestep
 
-    n_steps = int(round(seconds / dt))
+    n_steps = round(seconds / dt)
     n = (n_steps + record_every - 1) // record_every
     s, nf = len(drives), len(feet)
     out = {
@@ -750,7 +750,7 @@ def kinematic_qpos(config: BuildConfig | None, t: float, params: SimParams | Non
         if mb["kind"] == "crank":
             return float(t) - T_REF
         kin = mb["kinematic"][0].split(".", 1)[1]   # "L.b1_leg0" -> "b1_leg0" (side template)
-        j = [b for b in tmpl.bodies if b.name == kin][0].joints
+        j = next(b for b in tmpl.bodies if b.name == kin).joints
         d = jw[kin][j[1].name] - jw[kin][j[0].name]
         a = np.arctan2(d[:, 1], d[:, 0])
         return float(a[1] - a[0])

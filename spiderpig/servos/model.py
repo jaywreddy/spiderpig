@@ -137,7 +137,7 @@ def _recess_cutter(spec: ServoSpec, rec, z0: float, z1: float) -> Part:
 @lru_cache(maxsize=32)
 def parametric_servo(spec: ServoSpec) -> Part:
     """A servo from its spec alone (servo frame, one solid, no output horn)."""
-    L, W, H = spec.body
+    L, W, _H = spec.body
     zf = spec.mount_face_z
     zr = spec.rear_z
     x0, x1 = spec.axis_offset - L / 2, spec.axis_offset + L / 2
@@ -291,7 +291,9 @@ def cad_servo(spec: ServoSpec, state: tuple | None = None):
                 keep = strip_indices(shape, ref)
                 cadlib.write_prepared(path, {"solids": n, "keep": keep})
             return strip_horn(shape, ref, keep)
-        except Exception as e:
+        # OCCT's boolean and query errors aren't one class: a model whose horn can't be
+        # stripped is skipped for the next one (or the parametric servo), never fails a build
+        except Exception as e:  # noqa: BLE001
             log.warning("%s: couldn't strip the horn from %s: %s", spec.key, ref.filename, e)
     return None
 

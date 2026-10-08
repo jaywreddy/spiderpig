@@ -351,7 +351,7 @@ def unit_patterns(note: dict) -> list[dict[str, tuple[float, float]]]:
                             links[k]: (-0.5, 0.0)})
     else:
         out += [{m: (1.0, 0.0)} for m in links]
-        out.append({m: (1.0, 0.0) for m in links})
+        out.append(dict.fromkeys(links, (1.0, 0.0)))
     return out or [{}]
 
 

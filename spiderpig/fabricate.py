@@ -172,7 +172,7 @@ def remember(tmpl, design: SideDesign) -> None:
     stays."""
     key = _key(tmpl, design.config)
     _DESIGNS.setdefault(key, design)
-    _LAYOUTS.setdefault(key[:4] + (replace(design.config, robot=False),), design.plan)
+    _LAYOUTS.setdefault((*key[:4], replace(design.config, robot=False)), design.plan)
 
 
 def static_stage(tmpl, problem: StackProblem, config: BuildConfig | None = None) -> None:
@@ -223,7 +223,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     static_stage(tmpl, problem, config if advise else None)
     # The robot's side has the same layout as the side on its own; reuse
     # a solved layout when every claim still clears (checked, not assumed).
-    layout_key = key[:4] + (replace(config, robot=False),)
+    layout_key = (*key[:4], replace(config, robot=False))
     plan = _reuse(problem, _LAYOUTS.get(layout_key))
     if plan is None:
         try:

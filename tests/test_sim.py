@@ -354,7 +354,7 @@ def test_quad_walks_forward_and_back(quad):
     assert abs(m["heading_drift"]) < 5.0
     # plausible: below the kinematics' no-slip stride, above half of it
     assert 0.5 * kin["stride"] < m["stride"] < kin["stride"], (m["stride"], kin["stride"])
-    back_r, back = _run(cfg, -w, -w)
+    _back_r, back = _run(cfg, -w, -w)
     assert not back["fell"]
     assert back["speed"] < 0
     assert abs(back["speed"]) == pytest.approx(m["speed"], rel=0.25)

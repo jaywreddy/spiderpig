@@ -860,7 +860,7 @@ async def ws_sim(websocket: WebSocket) -> None:
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1008)
             return
-        except Exception as e:   # noqa: BLE001 - any failure is the client's to show
+        except Exception as e:   # any failure is the client's to show
             log.exception("sim: no model")
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1011)
@@ -874,7 +874,7 @@ async def ws_sim(websocket: WebSocket) -> None:
             await _stream(websocket, sim, generation)
         except (WebSocketDisconnect, RuntimeError):
             raise
-        except Exception as e:  # noqa: BLE001 - the physics failed: this session ends, told why
+        except Exception as e:  # the physics failed: this session ends, told why
             log.exception("sim: session failed")
             await websocket.send_json({"error": f"{type(e).__name__}: {e}"})
             await websocket.close(code=1011)

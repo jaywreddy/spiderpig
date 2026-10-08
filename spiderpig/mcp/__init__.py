@@ -432,14 +432,12 @@ def _fit_defaults() -> str:
 def _materials_table() -> str:
     cards = catalog_cards("all")
     lines = ["| kind | key | what | price (USD) | numbers |", "|---|---|---|---|---|"]
-    for s in cards["servos"]:
-        lines.append(f"| servo | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} | "
-                     f"{s['rpm_max']:g} rpm no load, {s['torque_kgcm'] or '?'} kg.cm, "
-                     f"{s['mass_g']:g} g |")
-    for s in cards["sheets"]:
-        lines.append(f"| sheet | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} per "
-                     f"{s['pack_qty'] or '?'} | {s['thickness_mm']:g} mm, usable "
-                     f"{s['sheet_mm'][0]:g} x {s['sheet_mm'][1]:g} mm |")
+    lines.extend(f"| servo | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} | "
+                 f"{s['rpm_max']:g} rpm no load, {s['torque_kgcm'] or '?'} kg.cm, "
+                 f"{s['mass_g']:g} g |" for s in cards["servos"])
+    lines.extend(f"| sheet | `{s['key']}` | {s['name']} | {s['price_usd'] or '?'} per "
+                 f"{s['pack_qty'] or '?'} | {s['thickness_mm']:g} mm, usable "
+                 f"{s['sheet_mm'][0]:g} x {s['sheet_mm'][1]:g} mm |" for s in cards["sheets"])
     for c in cards["constructions"]["axles"]:
         hw = ", ".join(h["key"] for h in c["hardware"].values()) or "printed"
         lines.append(f"| pillar / pin | `{c['key']}` | {c['label']} | - | {hw} |")
@@ -504,7 +502,7 @@ def _register_tools(server: MCPServer, state: State) -> None:
                 return _error(e.failure)
             except SpecErrors as e:
                 return _spec_errors_out(e)
-            except Exception as e:  # noqa: BLE001 - a programming error still crosses as data
+            except Exception as e:  # a programming error still crosses as data
                 log.exception("%s failed", fn.__name__)
                 return _error(Failure.from_exception(e, stage="engine"))
 

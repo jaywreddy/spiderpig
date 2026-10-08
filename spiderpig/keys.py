@@ -89,7 +89,8 @@ PLAN_ROOTS = (
 planner, the router, verification, the recommendations a failure carries) and the
 config that names it."""
 
-FAB_ROOTS = PLAN_ROOTS + (
+FAB_ROOTS = (
+    *PLAN_ROOTS,
     "spiderpig.fabricate:fabricate",
     "spiderpig.fabricate:fabricate_side",
     "spiderpig.construction.robot:FrameTies",
@@ -1006,7 +1007,7 @@ def function_key(path: str | Path, name: str | tuple[str, ...] | None,
     memo = (label, roots)
     if memo in _KEYS:
         return _KEYS[memo]
-    entry = _disk_entry(roots, label, extra=_test_files() + [path])
+    entry = _disk_entry(roots, label, extra=[*_test_files(), path])
     known = entry.read() if entry is not None else None
     if known is None:
         if not _TEST_GRAPH or path not in {m.path for m in _TEST_GRAPH[0].modules.values()}:

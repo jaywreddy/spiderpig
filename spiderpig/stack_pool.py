@@ -124,7 +124,7 @@ def _worker(prob: stack.StackProblem, top: int, conn, search=None) -> None:
                    "unbuilt": unbuilt[:], "found": found[:]}
             tally.clear(), fresh.clear(), unbuilt.clear(), found.clear()
             conn.send((top, idx, out))
-    except BaseException:                       # the coordinator raises it
+    except BaseException:  # noqa: BLE001 - the coordinator raises it (the traceback, below)
         with contextlib.suppress(Exception):
             conn.send((top, -1, traceback.format_exc()))
     finally:

@@ -131,7 +131,7 @@ def test_ties_join_the_inner_plates_above_them(design, robot):
     """Each tie: a standoff chain per side from the inner plate's servo-side face to the
     centre plates, an M4 screw up through the inner plate from the leg side (its head in
     the gap under the plate), a stud through the centre plates (2026-10-04: no glue)."""
-    _, d = design("single")
+    _, _d = design("single")
     mech = robot("single", TS[0])
     chains = [b for b in mech.bodies if ".tie_standoff" in b.name]
     assert mech.meta["ties"] == 4

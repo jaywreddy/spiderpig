@@ -282,12 +282,11 @@ def assemble_robot(side: Mechanism, design) -> Mechanism:
     connections = []
     for s in SIDES:
         mirror = s == "R"
-        for b in side.bodies:
-            bodies.append(Body(
-                name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
-                color=b.color, pose=b.pose, outline=b.outline,
-                rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
-            ))
+        bodies.extend(Body(
+            name=prefixed(b.name, s), part=_moved(b.part, -z_mid, mirror), joints=b.joints,
+            color=b.color, pose=b.pose, outline=b.outline,
+            rigid_with=prefixed(b.rigid_with, s), fab=b.fab, bom_key=b.bom_key, sheet=b.sheet,
+        ) for b in side.bodies)
         connections += [((i, prefixed(pb, s), pj), (k, prefixed(cb, s), cj))
                         for (i, pb, pj), (k, cb, cj) in side.connections]
     host = {s: prefixed(design.plan.topo.frame_bodies[0], s) for s in SIDES}

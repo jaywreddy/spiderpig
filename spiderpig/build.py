@@ -57,7 +57,7 @@ from spiderpig.hardware.bom import bom_from_mechanism, group_made, printed_filam
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
-from spiderpig.uptodate import GENERATED  # noqa: F401 - (api.export's clear_generated reads it)
+from spiderpig.uptodate import GENERATED  # api.export's clear_generated reads it here
 
 
 def _parse_args(argv) -> argparse.Namespace:

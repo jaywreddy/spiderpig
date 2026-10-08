@@ -258,8 +258,7 @@ def check(mech, default: str, dxf: bool = True) -> dict:
                             for k, v in fid.items()}
             if (bad := dxf_issue(b, fid)) is not None:
                 found.append(bad)
-        for i in found:
-            issues.append(dict(i, sheet=key))
+        issues.extend(dict(i, sheet=key) for i in found)
     by_rule: dict[str, int] = {}
     errors: dict[str, int] = {}
     for i in issues:

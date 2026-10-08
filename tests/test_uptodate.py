@@ -158,7 +158,7 @@ def test_a_servo_model_that_changed_or_could_be_downloaded_builds(tmp_path, monk
     model.write_text("model")
     st = model.stat()
     missing = tmp_path / "cad" / "other.step"
-    opts, out, _ = _folder(tmp_path)
+    opts, _out, _ = _folder(tmp_path)
     doc = json.loads(uptodate.record_path(opts).read_text())
     doc["servo_files"] = [[str(model), True, st.st_size, st.st_mtime_ns],
                           [str(missing), False, None, None]]

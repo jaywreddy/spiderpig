@@ -563,7 +563,7 @@ class Walker:
         dxy = self._dxy[f, i0] * (1 - frac) + self._dxy[f, i1] * frac
         z = np.broadcast_to(self._z, theta.shape)
         p = np.concatenate([xy, z[..., None]], axis=-1)
-        pd = np.concatenate([dxy, np.zeros(theta.shape + (1,))], axis=-1)
+        pd = np.concatenate([dxy, np.zeros((*theta.shape, 1))], axis=-1)
         return p, pd
 
 

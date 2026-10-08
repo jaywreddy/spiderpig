@@ -39,6 +39,7 @@ solid's section (area and outline deviation); the cut-rule review
 from __future__ import annotations
 
 import csv
+import itertools
 import math
 import re
 import threading
@@ -349,10 +350,11 @@ def _emit(msp, wire, offset_xy, grow: float):
         (cx, cy), r = circle
         return msp.add_circle((cx + ox, cy + oy), r + grow, dxfattribs={"layer": _CUT_LAYER})
     wires = offset_wires(wire, grow) if abs(grow) > 1e-9 else [wire]
-    return [msp.add_lwpolyline(
+    added = [msp.add_lwpolyline(          # every wire goes on the sheet; the first is returned
         [(x + ox, y + oy, b) for x, y, b in wire_vertices(w)], format="xyb",
         close=True, dxfattribs={"layer": _CUT_LAYER},
-    ) for w in wires][0]
+    ) for w in wires]
+    return added[0]
 
 
 # ---------------------------------------------------------------------------
@@ -396,7 +398,7 @@ def _wire_samples(wire, tol: float, step: float = 2.0) -> np.ndarray:
     pts: list[tuple[float, float]] = []
     for c, u0, u1 in _ordered_edges(wire):
         us = _params(c, u0, u1, tol)
-        for a, b in zip(us, us[1:], strict=False):
+        for a, b in itertools.pairwise(us):
             n = max(1, math.ceil(c.Value(a).Distance(c.Value(b)) / step))
             pts += [_xy(c, a + (b - a) * i / n) for i in range(n)]
     return np.array(pts)

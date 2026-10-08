@@ -50,19 +50,16 @@ class Gap:
 def gaps_of(failures=(), clearances: tuple[Clearance, ...] = (), params=None) -> list[Gap]:
     """The gaps behind the static stage's failures (:class:`construction.route.NoCrankPoint`)
     and the static clearances behind a plan's failure (an axle's neck)."""
-    out = []
-    for f in failures:
-        # the post is the crank's own (its standoff or sleeve, BoltCrank.rider_d): no Params
-        # field shrinks it, so it is part of the margin
-        out.append(Gap(f"{f.link} past crankpin {f.pin}", f.dist,
-                       (("link_radius", 1.0),), f.margin + f.post))
-    for c in clearances:
-        if c.keepout.span and c.dist > 0:
-            # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
-            # barrel's ring round its bore): a thinner link narrows the gap's need, no Params
-            # field narrows the ring
-            out.append(Gap(f"{c.link} past {c.keepout.owner}", c.dist,
-                           (("link_radius", 1.0),), c.need - params.link_radius))
+    # the post is the crank's own (its standoff or sleeve, BoltCrank.rider_d): no Params
+    # field shrinks it, so it is part of the margin
+    out = [Gap(f"{f.link} past crankpin {f.pin}", f.dist, (("link_radius", 1.0),),
+               f.margin + f.post) for f in failures]
+    # the axle's narrowest ring is its construction's own (a standoff's or a Chicago
+    # barrel's ring round its bore): a thinner link narrows the gap's need, no Params
+    # field narrows the ring
+    out.extend(Gap(f"{c.link} past {c.keepout.owner}", c.dist, (("link_radius", 1.0),),
+                   c.need - params.link_radius)
+               for c in clearances if c.keepout.span and c.dist > 0)
     return out
 
 
@@ -169,7 +166,7 @@ def thinner(config, gaps: list[Gap], plan: bool = False,
 
     def options(f: str) -> list[float]:
         now = getattr(p, f)
-        return [round(now - 0.5 * i, 3) for i in range(0, 13) if now - 0.5 * i >= 2.0]
+        return [round(now - 0.5 * i, 3) for i in range(13) if now - 0.5 * i >= 2.0]
 
     cands = []
     for values in _product([options(f) for f in fields]):

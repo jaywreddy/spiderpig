@@ -201,7 +201,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                             f.unlink()
                 sheets = save_sheets(mech, out / "laser" / f"{name}_sheet", sheet_size=size,
                                      kerf=kerf, default=cfg.sheet)
-            files += sheets + [out / "laser" / f"{name}_sheet_parts.csv"]
+            files += [*sheets, out / "laser" / f"{name}_sheet_parts.csv"]
             extras += sheet_lines(mech, cfg.sheet, size)
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))

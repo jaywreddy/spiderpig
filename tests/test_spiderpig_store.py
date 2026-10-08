@@ -236,7 +236,7 @@ def test_parts_reload_from_step_and_recheck_passes(tmp_path, design, robot, monk
     br = api.build(back)
     assert br.ok
     assert fabricated == []
-    assert [e for e in back.log if e["op"] == "build"][0]["cached"]
+    assert next(e for e in back.log if e["op"] == "build")["cached"]
     assert back.build_t == 1.0
     assert set(back.parts) == set(d.parts)
     assert br.n_parts == rep.n_parts
@@ -343,7 +343,7 @@ def test_a_stored_plan_that_no_longer_holds_is_solved_again(tmp_path, design, mo
     pr = api.plan(d)
     path = store.report_path(d.id, "plan")
     doc = json.loads(path.read_text())
-    doc["layers"] = {k: 0 for k in doc["layers"]}           # every link in the frame plate
+    doc["layers"] = dict.fromkeys(doc["layers"], 0)           # every link in the frame plate
     path.write_text(json.dumps(doc))
     solved = _count(monkeypatch, api.planning, "design_side")
     back = api.load(d.id, store)

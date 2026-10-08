@@ -223,7 +223,7 @@ class Index:
                     out.add(n.attr)
                 elif isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
                     out.add(n.name)
-                elif isinstance(n, ast.arg) or isinstance(n, ast.keyword) and n.arg:
+                elif isinstance(n, ast.arg) or (isinstance(n, ast.keyword) and n.arg):
                     out.add(n.arg)
                 elif isinstance(n, ast.alias):
                     out.update((n.asname or n.name).split("."))
@@ -280,7 +280,7 @@ class Index:
         ``Design``, ``plan``: ``StackPlan``)."""
         want = var.replace("_", "").lower()
         return [c for name, found in self.classes.items() for c in found
-                if name.lower() == want or name.lower().endswith(want) and len(want) > 3]
+                if name.lower() == want or (name.lower().endswith(want) and len(want) > 3)]
 
     # ---- resolution
 
@@ -629,10 +629,9 @@ def check(docs, index: Index | None = None, allow=None, *, every: bool = False
         text = path.read_text()
         items = list(_spans(text))
         spans = {t for _, t in items}
-        for i, line in enumerate(text.splitlines(), 1):    # `mise run X` in code blocks too
-            for m in MISE_RUN.finditer(line):
-                if f"mise run {m.group(1)}" not in spans:
-                    items.append((i, f"mise run {m.group(1)}"))
+        items.extend((i, f"mise run {m.group(1)}")       # `mise run X` in code blocks too
+                     for i, line in enumerate(text.splitlines(), 1)
+                     for m in MISE_RUN.finditer(line) if f"mise run {m.group(1)}" not in spans)
         for line_no, token in items:
             if token not in seen:
                 seen[token] = check_token(index, token)

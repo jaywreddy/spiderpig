@@ -300,7 +300,7 @@ def test_the_plans_z_is_the_sum_of_its_layers_and_gaps_in_order():
         thick = {k: rng.choice([3.0, 2.032, 2.54, 2.286, 3.175, 1.5])
                  for k in rng.sample(range(-3, top + 3), rng.randint(0, 6))}
         gaps = {k: round(rng.uniform(0.1, 4.0), 1)
-                for k in rng.sample(range(0, top), rng.randint(0, 6))}
+                for k in rng.sample(range(top), rng.randint(0, 6))}
         L = Layout({}, top, 3.0, {}, gaps, thick, final=True)
         ks = list(range(-20, top + 20))
         rng.shuffle(ks)

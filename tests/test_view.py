@@ -266,13 +266,13 @@ def test_view_serves_a_design_on_a_free_port(store, single):
     try:
         assert srv.alive()
         assert srv.url(single.id) == f"http://127.0.0.1:{srv.port}/?design={single.id}"
-        with urllib.request.urlopen(f"{srv.base}/") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{srv.base}/") as r:
             html = r.read().decode()
         assert 'id="stage"' in html
         assert "<script" in html
-        with urllib.request.urlopen(f"{srv.base}/api/design/{single.id}") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{srv.base}/api/design/{single.id}") as r:
             assert json.load(r)["mode"] == "side"
-        with urllib.request.urlopen(f"{srv.base}/api/glb/side?design={single.id}") as r:  # noqa: S310
+        with urllib.request.urlopen(f"{srv.base}/api/glb/side?design={single.id}") as r:
             assert r.read(4) == b"glTF"
             assert r.headers["x-spiderpig-glb"] == "export"
     finally:
