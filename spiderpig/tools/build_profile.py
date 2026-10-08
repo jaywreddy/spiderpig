@@ -15,7 +15,12 @@ Stages (:data:`STAGES`): ``import`` the process's age once the build's modules a
 ``plan`` the layer plan through the store, ``fabricate`` the robot, ``step`` / ``stl`` its two
 files, ``group`` the laser and printed parts grouped (mass properties), ``prints`` the print
 STLs, ``dxf_sheets`` / ``dxf_parts`` the packed sheets and the per-part DXFs, ``bom`` the BOM
-and its files, ``order`` ``ORDER.md`` and ``manifest.json``. ``build_total`` is the wall time
+and its files, ``order`` ``ORDER.md`` and ``manifest.json``. With the build's export worker
+(:func:`spiderpig.build._start_exports`: workers and the fabrication cache on) ``group`` is
+the wait for that worker, which groups and writes both kinds of DXF beside the ``step`` and
+``stl`` stages (so ``dxf_sheets`` and ``dxf_parts`` are absent), and its own steps are
+logged as ``worker.load``, ``worker.group``, ``worker.dxf_sheets`` and ``worker.dxf_parts``
+(outside :data:`STAGES`: they overlap the build's). ``build_total`` is the wall time
 since the process started; ``unaccounted_pct`` what no stage holds (prints, the plan's
 description). The interpreter's exit after the summary (~1 s) is outside it.
 """
@@ -55,6 +60,7 @@ def _targets():
         (Mechanism, "export_step", "step"),
         (Mechanism, "export_stl", "stl"),
         (build_mod, "group_made", "group"),
+        (build_mod, "_exports_result", "group"),
         (build_mod, "export_prints", "prints"),
         (build_mod, "printed_filaments", "prints"),
         (build_mod, "save_sheets", "dxf_sheets"),
@@ -80,9 +86,13 @@ def instrumented(prof: Profiler):
             active.append(stage)
             try:
                 with prof.timed(stage):
-                    return fn(*a, **kw)
+                    result = fn(*a, **kw)
             finally:
                 active.pop()
+            if fn.__name__ == "_exports_result" and result is not None:
+                for step, seconds in result["timings"].items():   # the worker's own steps
+                    prof.add(f"worker.{step}", seconds)
+            return result
         return timed
 
     with ExitStack() as undo:

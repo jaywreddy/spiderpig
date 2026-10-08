@@ -253,3 +253,42 @@ def test_a_loaded_fabrication_equals_a_fresh_one(name, tmp_path, monkeypatch):
     assert bom_from_mechanism(fresh).as_dict() == bom_from_mechanism(loaded).as_dict()
     assert _dxf_docs(fresh, cfg.sheet, tmp_path / "a") == \
         _dxf_docs(loaded, cfg.sheet, tmp_path / "b")
+
+
+@pytest.mark.slow
+def test_the_builds_export_worker_writes_what_the_build_would(tmp_path, monkeypatch,
+                                                              capsys):
+    """``spiderpig build`` groups the parts and writes the DXFs in a worker, from the
+    cache's fabrication, beside its STEP and STL (:func:`spiderpig.build._start_exports`):
+    the same files and output as with workers off (hoecken: seconds). The robot's own STL
+    and STEP aren't compared: a reloaded part's last bits differ (module docstring)."""
+    from spiderpig import build
+
+    gate = _gate()
+    monkeypatch.setenv(fabcache.ENV, "on")
+    monkeypatch.delenv("SPIDERPIG_WORKERS", raising=False)
+    used = []
+    real = build._exports_result
+    monkeypatch.setattr(build, "_exports_result", lambda job: used.append(1) or real(job))
+    argv = ["--linkage", "hoecken_pantograph", "--store", str(tmp_path / "store"), "--force"]
+    said = {}
+    for kind, workers in (("worker", None), ("here", "0")):
+        if workers is not None:
+            monkeypatch.setenv("SPIDERPIG_WORKERS", workers)
+        capsys.readouterr()
+        assert build.main([*argv, "--out", str(tmp_path / kind)]) == 0
+        said[kind] = capsys.readouterr().out.replace(str(tmp_path / kind), "<OUT>")
+    assert used == [1]                          # the worker's, then this process's
+    assert said["worker"] == said["here"]
+    files = {k: sorted(str(f.relative_to(tmp_path / k)) for f in (tmp_path / k).rglob("*")
+                       if f.is_file()) for k in said}
+    assert files["worker"] == files["here"]
+    for rel in files["worker"]:
+        a, b = tmp_path / "worker" / rel, tmp_path / "here" / rel
+        if a.suffix == ".dxf":
+            assert gate._dxf_entities(a) == gate._dxf_entities(b), rel
+        elif a.parent.name == "print":
+            assert a.read_bytes() == b.read_bytes(), rel
+        elif a.suffix not in (".stl", ".step"):
+            assert (a.read_text().replace(str(tmp_path / "worker"), "<OUT>")
+                    == b.read_text().replace(str(tmp_path / "here"), "<OUT>")), rel
