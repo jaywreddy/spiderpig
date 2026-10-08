@@ -18,6 +18,7 @@ listed, flagged in the BOM.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 Category = str  # "fastener" | "nut" | "washer" | "bearing" | "bushing" | "dowel" | "spacer"
@@ -71,14 +72,56 @@ class Item:
         return self.offers[0] if self.offers else None
 
 
-CATALOG: dict[str, Item] = {}
+_FACTORIES: list[tuple[str, Callable[[str], Item | None]]] = []
+
+
+class _Catalog(dict):
+    """The registered items by key, plus the families made on demand: a key no item has
+    yet goes to the factory of its prefix (:func:`register_factory`), which registers it
+    (``CATALOG[key]``, ``CATALOG.get(key)``, ``key in CATALOG``, :func:`get`). Iterating
+    lists what is registered so far."""
+
+    def _make(self, key) -> Item | None:
+        if not isinstance(key, str):
+            return None
+        _load()
+        for prefix, make in _FACTORIES:
+            if key.startswith(prefix) and (item := make(key)) is not None:
+                register(item)
+                return item
+        return None
+
+    def __missing__(self, key):
+        item = self._make(key)
+        if item is None:
+            raise KeyError(key)
+        return item
+
+    def get(self, key, default=None):
+        if dict.__contains__(self, key):
+            return dict.__getitem__(self, key)
+        item = self._make(key)
+        return default if item is None else item
+
+    def __contains__(self, key) -> bool:
+        return dict.__contains__(self, key) or self._make(key) is not None
+
+
+CATALOG: dict[str, Item] = _Catalog()
 
 
 def register(*items: Item) -> None:
     for it in items:
-        if it.key in CATALOG and CATALOG[it.key] != it:
+        if dict.__contains__(CATALOG, it.key) and dict.__getitem__(CATALOG, it.key) != it:
             raise ValueError(f"catalog key {it.key!r} registered twice with different data")
         CATALOG[it.key] = it
+
+
+def register_factory(prefix: str, make: Callable[[str], Item | None]) -> None:
+    """Items keyed ``<prefix>...`` made when first asked for: ``make(key)`` is the item,
+    or ``None`` for a key the family doesn't have (a family too large to register whole,
+    the NETRF6 pillar shafts' 2,921 lengths)."""
+    _FACTORIES.append((prefix, make))
 
 
 def get(key: str) -> Item:

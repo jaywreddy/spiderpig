@@ -218,3 +218,27 @@ def test_the_check_counts_the_rules_and_errors_over_every_laser_part():
     assert not s["ok"]
     assert s["messages"][0].startswith("manufacture: 1 part(s) break the minimum hole rule; "
                                        "worst bad (al6061_2p5mm)")
+
+
+# -- the catalog's on-demand families ----------------------------------------------------------
+
+
+def test_the_netrf6_lengths_are_made_on_demand_not_at_import():
+    """``crank_catalog`` registers at most 200 items at import (the NETRF6 pillar shafts'
+    2,921 lengths are made when first asked for), and an asked-for length is the item."""
+    code = ("from spiderpig.hardware import catalog\n"
+            "from spiderpig.hardware import crank_catalog\n"
+            "print(len(catalog.CATALOG))\n")
+    n = int(subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                           check=True).stdout)
+    assert n <= 200
+    from spiderpig.hardware.catalog import CATALOG
+    from spiderpig.hardware.crank_catalog import pillar_shaft
+
+    item = get("pillar_shaft_6_m3_101.3")
+    assert (item.dims["length"], item.offer.sku) == (101.3, "NETRF6-101.3")
+    assert pillar_shaft(101.3) == item.key and CATALOG[item.key] is item
+    for bad in ("pillar_shaft_6_m3_101.35", "pillar_shaft_6_m3_7.9", "pillar_shaft_6_m3_x"):
+        assert bad not in CATALOG and CATALOG.get(bad) is None
+        with pytest.raises(KeyError):
+            get(bad)

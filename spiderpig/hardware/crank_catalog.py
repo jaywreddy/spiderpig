@@ -36,7 +36,7 @@ Kept for the comparisons, and the round crankpin's washers:
 
 from __future__ import annotations
 
-from spiderpig.hardware.catalog import Item, Offer, register
+from spiderpig.hardware.catalog import CATALOG, Item, Offer, register, register_factory
 
 SEARCHED = "as a 2026-10-03 web search quoted the page (not fetched)"
 FETCHED = "fetched 2026-10-04"
@@ -139,19 +139,23 @@ PILLAR_SHAFT_SEEN: tuple[float, ...] = (62.0, 62.4, 127.5, 128.0, 128.1)
 
 
 def pillar_shaft(length: float) -> str:
-    return f"pillar_shaft_6_m3_{length:g}"
+    """The catalog key of the NETRF6 standoff ``length`` mm long (registered on first use)."""
+    key = f"pillar_shaft_6_m3_{length:g}"
+    if not dict.__contains__(CATALOG, key) and (item := _pillar_shaft_of(key)) is not None:
+        register(item)
+    return key
 
 
-for _L in PILLAR_SHAFT_LENGTHS:
-    _pn = f"NETRF6-{_L:g}"
-    register(Item(
-        pillar_shaft(_L), f"6 mm round steel standoff, {_L:g} mm, tapped M3 both ends "
-        f"(MISUMI {_pn})", "standoff",
+def _pillar_shaft_item(L: float) -> Item:
+    pn = f"NETRF6-{L:g}"
+    return Item(
+        f"pillar_shaft_6_m3_{L:g}", f"6 mm round steel standoff, {L:g} mm, tapped M3 both ends "
+        f"(MISUMI {pn})", "standoff",
         (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
-               + _pn, _pn,
-               price_usd=PILLAR_SHAFT_TIERS[62 if _L < 95 else 128][0][1],
-               tiers=PILLAR_SHAFT_TIERS[62 if _L < 95 else 128],
-               verified=_L in PILLAR_SHAFT_SEEN,
+               + pn, pn,
+               price_usd=PILLAR_SHAFT_TIERS[62 if L < 95 else 128][0][1],
+               tiers=PILLAR_SHAFT_TIERS[62 if L < 95 else 128],
+               verified=L in PILLAR_SHAFT_SEEN,
                note="MISUMI circular standoff, tapped both ends, configurable length: 1018 "
                     "steel, oiled (no plating), 6 mm OD (0/-0.1), M3 x 6 deep each end, length "
                     "+-0.1 mm in 0.1 mm steps (the part number's number). Sold singly: USD "
@@ -159,13 +163,31 @@ for _L in PILLAR_SHAFT_LENGTHS:
                     "14.97 / 10.86 / 5.47, 5.36 at 20-50; 2026-10-05), the discount per "
                     "line: order the quantity the BOM says (4 needed: buy 5, at USD 55.60 "
                     "less than 4 at 61.28; 6-9 needed: buy 10)"),),
-        dims={"d": 3.0, "od": 6.0, "length": _L, "thread_depth": 6.0, "id": PILLAR_SHAFT_ID,
+        dims={"d": 3.0, "od": 6.0, "length": L, "thread_depth": 6.0, "id": PILLAR_SHAFT_ID,
               "yield_mpa": PILLAR_SHAFT_YIELD},
         notes="A standoff pillar's column no single goBILDA length fills (longer than 60 mm, or "
               "a length goBILDA lacks): one piece made to its length, never spliced. The "
               "strength check takes it as a 6 x 2.5 tube (the M3 tap drill, as if tapped "
               "through) of 1018 at 220 MPa. Oiled bare steel: wipe it, and keep it dry.",
-    ))
+    )
+
+
+def _pillar_shaft_of(key: str) -> Item | None:
+    """The item of a ``pillar_shaft_6_m3_<L>`` key: one of :data:`PILLAR_SHAFT_LENGTHS`
+    written as :func:`pillar_shaft` writes it, else ``None``. The 2,921 lengths are made on
+    demand (:func:`catalog.register_factory`), not registered at import."""
+    try:
+        n = round(float(key.removeprefix("pillar_shaft_6_m3_")) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 80 <= n <= 3000 or f"pillar_shaft_6_m3_{L:g}" != key:
+        return None
+    return _pillar_shaft_item(L)
+
+
+register_factory("pillar_shaft_6_m3_", _pillar_shaft_of)
+register(*(_pillar_shaft_item(L) for L in PILLAR_SHAFT_SEEN))   # the lengths priced
 
 M4_BHCS_LENGTHS: tuple[float, ...] = (5, 6, 8, 10, 12, 16)
 M4_SET_LENGTHS: tuple[float, ...] = (8, 10, 12, 16)
