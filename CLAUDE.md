@@ -73,7 +73,8 @@ robot; a mechanism's `single`, one side).
   and toe on `bolt_round`), `MODULE_CRANKS` (empty), `LINKAGE_CRANK_SHEETS`
   (`hoecken_pantograph` on 0.080 in 6061), `LINKAGE_TORQUE_LIMITS`; Klann variants' quads at
   `linkage.KLANN_QUAD`. `config.default_crank` / `default_crank_sheet` read them. The
-  Chicago barrels a linkage stocks: `chicago.BARRELS` (the Strider's), beside `MAX_BARREL`.
+  Chicago barrels a linkage stocks on a crank: `chicago.BARRELS` (the Strider's bolt crank),
+  beside `MAX_BARREL`.
 - Heads: `StackSpec.heads` "best" (sunk first); a single-plate crank plans "gap_sink".
 - Numbers (layers, height, parts, cost, audit verdict): `docs/agentlib/DESIGNS.md`.
 

@@ -75,7 +75,9 @@ def test_the_strider_resolves_its_cap_and_the_klann_keeps_the_long_barrels():
     axle = ChicagoAxle()
     strider = axle.resolve(_ctx.context()).shaft
     assert strider.max_length == 23.0                                       # the Strider
-    assert strider.lengths == BARRELS["strider"] == (7.0, 10.0, 16.0, 22.0)  # its stock
+    assert strider.lengths == BARRELS["strider", "bolt"] == (7.0, 10.0, 16.0, 22.0)  # stock
+    rnd = _ctx.context(config=BuildConfig(crank="bolt_round"))
+    assert axle.resolve(rnd).shaft.lengths == CHICAGO_LENGTHS      # (its routes need them)
     klann = _ctx.context(config=BuildConfig(linkage="klann", module="single", robot=False))
     assert axle.resolve(klann) is axle
     assert axle.resolve(klann).shaft.lengths == CHICAGO_LENGTHS          # every catalog length

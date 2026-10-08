@@ -320,7 +320,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   floor; the servos' M2 x 6 self-tappers on hand (`bom.ON_HAND`: every STS3215 box has 18
   screws, Seeed's part list and Waveshare's photo).
 - **What (design):** the Strider's pins planned on 7, 10, 16 and 22 mm barrels
-  (`chicago.BARRELS`, per linkage: a global list leaves both Klann quads without a plan; the
+  (`chicago.BARRELS`, per linkage and crank: a global list leaves both Klann quads, and the
+  Strider's `bolt_round` crank, without a plan; the
   step rule of `ChicagoShaft.check` stays on the catalog's steps) and built on 10 and 16
   only; one Tattu 2S 450 mAh LiPo for the Ovonic 4-pack (the cradle drawn from its 62.5 x
   16.2 x 14.7 mm, its outer end in place, `deck.BATTERY_X1`); the clamped M3 shims bought as

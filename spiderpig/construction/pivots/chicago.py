@@ -8,8 +8,9 @@ the pin's whole stack, so every link on the pin bears on the 4 mm barrel; the
 screw's head bottoms on the barrel's end, so the head-to-head distance is the
 barrel length whatever the screw is tightened to, and the links turn between the
 heads. Barrels come in fixed lengths (the catalog's ``CHICAGO_LENGTHS``: 1 mm steps
-from 4 to 16 mm, then 18, 20, 22, 23, 25, 28 and on to 80; a linkage may stock fewer,
-:data:`BARRELS`: the Strider 7, 10, 16 and 22 mm, and it plans on 10 and 16 only; on the
+from 4 to 16 mm, then 18, 20, 22, 23, 25, 28 and on to 80; a linkage may stock fewer on a
+crank, :data:`BARRELS`: the Strider on its bolt crank 7, 10, 16 and 22 mm, and it plans on
+10 and 16 only; on the
 Strider at most 23 mm, :data:`MAX_BARREL`) against a stack of 3 mm layers, so the
 construction picks the shortest stocked barrel that clears the stack plus the top
 spacer's 0.5 mm plus ``min_play`` and
@@ -407,15 +408,19 @@ def chicago_section(shaft: ChicagoShaft) -> Section:
     return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
 
 
-BARRELS: dict[str, tuple[float, ...]] = {"strider": (7.0, 10.0, 16.0, 22.0)}
-"""The barrel lengths a linkage's pins are planned from (:meth:`ChicagoAxle.resolve`; the
-rest: every catalog length, ``CHICAGO_LENGTHS``): fewer lengths, fewer SKUs. The Strider
-(the user's decision of 2026-10-08, from the BOM study): 7, 10, 16 and 22 mm, on which the
-double and the quad plan with the 10 and 16 mm barrels only (the double 14 layers,
-proven; the quad 24) where they bought 7-8 lengths; 10 and 16 alone find no plan (J7 of
-the second leg spans 18 mm at the search's z), nor do 10, 16, 22. Per linkage: on the
-Klann quads the same list finds no plan in 60 s (their 9 mm pins and crank routes need
-the catalog's 1 mm steps)."""
+BARRELS: dict[tuple[str, str], tuple[float, ...]] = {
+    ("strider", "bolt"): (7.0, 10.0, 16.0, 22.0),
+}
+"""The barrel lengths a linkage's pins are planned from on a crank, ``(linkage, crank) ->
+lengths`` (:meth:`ChicagoAxle.resolve`; the rest: every catalog length,
+``CHICAGO_LENGTHS``): fewer lengths, fewer SKUs. The Strider on its bolt crank (the user's
+decision of 2026-10-08, from the BOM study): 7, 10, 16 and 22 mm, on which every module
+plans with the 10 and 16 mm barrels only (the double 14 layers, proven; the quad 24; the
+single 10; the decker 16) where they bought 7-8 lengths; 10 and 16 alone find no plan (J7
+of the second leg spans 18 mm at the search's z), nor do 10, 16, 22. Per linkage and
+crank: on the Klann quads the same list finds no plan in 60 s (their 9 mm pins and crank
+routes need the catalog's 1 mm steps), nor on the Strider's ``bolt_round`` crank (7, 10,
+16, 22; with 23; with 9: its routes put J7 on the lengths between)."""
 
 MAX_BARREL: dict[str, float] = {"strider": 23.0}
 """The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
@@ -448,13 +453,13 @@ class ChicagoAxle:
 
     def resolve(self, ctx: Context) -> ChicagoAxle:
         """This construction for the design ``ctx`` builds: its linkage's longest barrel
-        (:data:`MAX_BARREL`) and the barrels it stocks (:data:`BARRELS`)."""
+        (:data:`MAX_BARREL`) and the barrels it stocks on its crank (:data:`BARRELS`)."""
         linkage = getattr(ctx.config, "linkage", "")
         shaft = self.shaft
         cap = MAX_BARREL.get(linkage)
         if cap is not None and shaft.max_length is None:
             shaft = replace(shaft, max_length=cap)
-        stock = BARRELS.get(linkage)
+        stock = BARRELS.get((linkage, getattr(ctx.config, "crank", "")))
         if stock is not None and shaft.lengths == CHICAGO_LENGTHS:
             shaft = replace(shaft, lengths=tuple(sorted(float(L) for L in stock)))
         return self if shaft is self.shaft else replace(self, shaft=shaft)

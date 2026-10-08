@@ -37,6 +37,9 @@ patch's Amazon offers from search results). Nothing else.
 
 ## B1. Chicago barrels per linkage (`chicago.BARRELS`)
 
+(Keyed by linkage and crank in a later commit, the Strider's `bolt_round` crank keeping
+every catalog length: no gate design changes, the final snapshot is identical to B4's.)
+
 **klann_lego_quad, klann_quad, hoecken_pantograph, dwell_rocker: identical.**
 
 **strider_double**: the plan keeps 14 layers (proven optimal) at new z: 66.46 -> 68.86 mm
