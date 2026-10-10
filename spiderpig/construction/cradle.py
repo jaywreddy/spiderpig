@@ -260,17 +260,19 @@ STANDS: dict[str, Stand] = {
         feet=("Ff", "Fm", "Fr"),
         base=(-200.0, 440.0),
     ),
-    # B: the arms' pivots O1, O2 on a ray down and back from the mouth, the crank O behind
-    # them. The inner plate is the bar O1-O2 (the tie rods pass above and in front of it).
+    # B: the arms' pivots O1, O2 hang under the mouth, the crank O behind and low (its
+    # handle behind everything). The outer plate is two triangles on the pivots' bar, O1-O
+    # over O2-O, a front leg from O2, a rear leg from O and a rail. The inner plate is the
+    # bar O1-O2: the tie rods pass behind it (the rear ones never further round than 72°
+    # down, the bar at 83°) and the front ones above it. Nothing crosses the bay: the
+    # decanter stands under the mouth, between the bars.
     "decanter_rcm": Stand(
-        nodes={"Ff": (105.0, _FOOT_Y), "Fr": (490.0, _FOOT_Y), "Bt": (172.4, -144.7)},
-        outer=(("O1", "O2"), ("O2", "O"), ("O1", "Ff"), ("O2", "Ff"), ("O", "Fr"),
+        nodes={"Ff": (-136.7, _FOOT_Y), "Fr": (590.0, _FOOT_Y)},
+        outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"),),
         feet=("Ff", "Fr"),
-        # on the O1-O2 bar, 25 mm from O1: under every part of the cradle's sweep
-        bay_ties=("Bt",),
-        base=(-200.0, 545.0),
+        base=(-186.7, 640.0),
     ),
 }
 
@@ -1048,8 +1050,9 @@ FOOT_BORE = 4.0             # up a foot's stem and bulb: the TPU squeezes into t
 
 # --- the assembly ----------------------------------------------------------------------
 
-STUDIES = {"decanter_rcm": "a design study, not the one to build (docs/agentlib/DECANTER.md)"}
-"""The cradles that are studies (their outputs say so)."""
+STUDIES: dict[str, str] = {}
+"""The cradles that are studies (their outputs say so): none since B was refined to build
+(2026-10-10, ``docs/agentlib/DECANTER.md``)."""
 
 DRIVE_PARTS = ("gearbox", "riser_disc", "crank_", "crankpin", "handle")
 """The hand crank's parts by name (:mod:`construction.handcrank`): the drive side's only."""

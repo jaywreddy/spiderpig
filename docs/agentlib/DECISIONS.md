@@ -587,3 +587,48 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/linkages/decanters.py`, `spiderpig/construction/{cradle,handcrank}.py`,
   `spiderpig/cradle_report.py`, `spiderpig/cradle_pack.py`, `spiderpig/server/app.py`,
   `viewer/src/decant/`. The walker designs are unchanged.
+
+### 2026-10-10: cradle B refined to build (user: "B looks really sick, let's keep refining")
+
+- **What:** B (`decanter_rcm`) goes from a study to a cradle to build, on the new targets
+  shared with A: −50° (rest, an opened full bottle stands in it) to +30°, `LIP_HEIGHT` 460,
+  `BAY` 260. The design is in [DECANTER.md](DECANTER.md), "B, the virtual hinge".
+  - **The geometry** (`decanters.RCM`): the pivots hang under the mouth on a ray 83° down,
+    109 and 328 mm out. The arms are 204 mm, 23.5° ahead of the bottle. Y sits on the copy
+    arm's line through O1. The crank is 480 mm behind and 320 mm under the mouth: crank
+    90.9, rod 410.6, lever 143 at 54.5°.
+  - **The sheets** (`materials.LINK_SHEETS`): the rod 0.250 in 5052, the arms and the bar
+    0.187 in 6061, b5 and b6 0.187 in 5052.
+  - **The stand** (`cradle.STANDS`): an outer truss on O1, O2 and O, two feet, a rail. The
+    inner plate is the bar O1–O2. No bay tie.
+  - **Its standing:** `cradle.STUDIES` is empty, and `cradle_report.VERDICT` says build.
+- **Numbers:** transmission 37.7° at worst. The gearbox's SF is 1.31 (a 15.25 N·m peak),
+  21.7 N at the grip. Jam: pin P 1.38, pillar O2 1.46, every other joint and plate 1.64
+  or more. Walking: 3.9 or more. The rod buckles at 1.8 × its jam force. The stand tips at
+  31.6°, or under a 37.9 N push. The only clashes are the cradle box against the drawn
+  decanter at rest, which comes from the decanter's own size.
+- **Why this layout:**
+  - **The ties never cross the inner bar.** The rear ties ride 292–320 mm out and never
+    come further round than 72° down; the bar lies at 83°.
+  - **The cradle link never sweeps a pivot**, and each pair (b2 with b3, b4 with b5)
+    shares a layer. The planner then finds the old sandwich, every pin across one gap.
+  - **The handle turns behind everything**, the crank being the rearmost moving part.
+  - **The gearbox and the jam pull against each other.** The gearbox's peak comes from a
+    sealed 3 L near level, at the stroke's fastest. Equal strokes need a long rod for the
+    crank. The rod's force at a jam falls with a longer crank. A 90.9 mm crank on a
+    410.6 mm rod balances the two at 1.31 and 1.38. The first targets' 95° swing (to +45°)
+    held the gearbox to SF 1.13, so full tilt became +30°.
+- **Tried and dropped:**
+  - **Pivots in front of the mouth:** the crank lands in front, and the handle turns back
+    through the parallelogram.
+  - **Pivots past every tie** (350 mm out or more): b4 grows past 400 mm, and the walk loads
+    triple.
+  - **A 300 mm rod in 0.187 in:** the jam force stays over 950 N.
+  - **376 mm on a 109 mm crank:** jam 1.44, but gearbox 1.17.
+  - **405 mm on a 67 mm crank:** gearbox 1.33, but jam 1.1.
+  - **The old diagonal ray (−40°)** with the pivots inside the ties: the cradle link can't
+    reach its rear ties without sweeping over a pivot.
+- **Where:** `spiderpig/linkages/decanters.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/materials.py`, `spiderpig/cradle_report.py`, `tests/test_cradle.py`,
+  `tests/test_mechanisms.py`. Only B's own code and data change: the walkers are
+  untouched.
