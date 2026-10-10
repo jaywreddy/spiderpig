@@ -555,3 +555,25 @@ def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
     assert r.status_code == 200
     assert r.json()["n"] == 48
     assert client.get("/api/cradle/strider").status_code == 404
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+def test_the_cradle_packs_flat_in_one_box():
+    """``cradle_pack.flat_pack`` of A (a fabrication at crank angle 0): every module placed
+    in one box no bigger than 660 x 520 x 380 mm outside, each loose adapter on its own,
+    the steps once each, every part but the display ones packed."""
+    from spiderpig.cradle_pack import DISPLAY, flat_pack
+    from spiderpig.fabricate import fabricate, template_for
+
+    cfg = BuildConfig(linkage="decanter_hinge", robot=False)
+    mech = fabricate(template_for(cfg), cfg, 0.0)
+    p = flat_pack(mech, cfg.lk)
+    x, y, z = p["box"]["outside_mm"]
+    assert x <= 660.0, p["box"]
+    assert z <= 520.0, p["box"]
+    assert y <= 380.0, p["box"]
+    packed = {n for m in p["modules"] for n in m["parts"]}
+    assert packed == {b.name for b in mech.bodies if b.part is not None} - set(DISPLAY)
+    assert len(p["steps"]) == len({m["key"] for m in p["modules"]})
+    assert sum(m["key"] == "adapters" for m in p["modules"]) > 1

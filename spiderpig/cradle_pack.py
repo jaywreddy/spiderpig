@@ -65,6 +65,7 @@ MODULES = (
 )
 
 DISPLAY = ("bottle", "decanter", "decanter_riser")     # drawn in the model, never shipped
+LOOSE = ("adapters",)       # modules whose parts travel loose, each packed on its own
 
 
 def module_of(name: str, link: str, over: set[str], inner: set[str]) -> str | None:
@@ -186,11 +187,23 @@ def flat_pack(mech, lk) -> dict:
     floor = base.min.Y - (cr.FOOT_PAD_H - 2.0)          # the table (the feet's tips)
     x0, x1 = base.min.X - CLEAR, base.max.X + CLEAR
     z0, z1 = base.min.Z - CLEAR, base.max.Z + CLEAR
+    # the footprint: the base plate's, grown to the largest piece lying flat (a side panel
+    # longer than the base plate: B's)
+    for k in ("drive", "passive"):
+        if k not in groups:
+            continue
+        flat = _aabbs(_boxes([by[n] for n in groups[k]]), _rot("x", 90)).reshape(-1, 2, 3)
+        lo, hi = flat[:, 0].min(axis=0), flat[:, 1].max(axis=0)
+        grow_x = max(0.0, (hi[0] - lo[0]) + 2 * CLEAR - (x1 - x0)) / 2
+        grow_z = max(0.0, (hi[2] - lo[2]) + 2 * CLEAR - (z1 - z0)) / 2
+        x0, x1, z0, z1 = x0 - grow_x, x1 + grow_x, z0 - grow_z, z1 + grow_z
     placed = np.zeros((0, 2, 3))
     out_mods = []
     order = [m for m in MODULES if m.key in groups]
-    for m in order:
-        names = groups[m.key]
+    # loose pieces (the bottle adapters) go in one by one, each where it fits
+    jobs = [job for m in order for job in ([(m, [n]) for n in sorted(groups[m.key])]
+                                           if m.key in LOOSE else [(m, groups[m.key])])]
+    for m, names in jobs:
         corners = _boxes([by[n] for n in names])
         flat = corners.reshape(-1, 3)
         centre = (flat.min(axis=0) + flat.max(axis=0)) / 2
@@ -213,6 +226,8 @@ def flat_pack(mech, lk) -> dict:
             lo, hi = boxes[:, 0].min(axis=0), boxes[:, 1].max(axis=0)
             if m.key == "base":                               # centred in the footprint
                 cands = [((x0 + x1) / 2 - (lo[0] + hi[0]) / 2, (z0 + z1) / 2 - (lo[2] + hi[2]) / 2)]
+            elif hi[0] - lo[0] > x1 - x0 + 1e-6 or hi[2] - lo[2] > z1 - z0 + 1e-6:
+                continue                                      # (doesn't lie flat in it)
             else:
                 xs = np.arange(x0 - lo[0], x1 - hi[0] + 1e-6, GRID)
                 zs = np.arange(z0 - lo[2], z1 - hi[2] + 1e-6, GRID)
@@ -233,14 +248,15 @@ def flat_pack(mech, lk) -> dict:
         out_mods.append({"key": m.key, "label": m.label, "how": m.how, "parts": sorted(names),
                          "matrix": np.round(mat, 6).tolist()})
     lo, hi = placed[:, 0].min(axis=0), placed[:, 1].max(axis=0)
-    inside = [x1 - x0, float(hi[1] - floor) + CLEAR, z1 - z0]
+    inside = [float(x1 - x0), float(hi[1] - floor) + CLEAR, float(z1 - z0)]
+    x0, z0 = float(x0), float(z0)
     return {
         "modules": out_mods,
         "box": {"inside_mm": [round(v, 1) for v in inside],
                 "outside_mm": [round(v + 2 * WALL, 1) for v in inside],
                 "floor": [round(x0, 2), round(floor, 2), round(z0, 2)],
                 "volume_l": round(math.prod(v + 2 * WALL for v in inside) / 1e6, 1)},
-        "steps": [f"{m.label}: {m.how}" for m in order],
+        "steps": [f"{m.label}: {m.how}" for m in order],     # (once each, loose or not)
         "packed_mm": [round(float(v), 1) for v in hi - lo],
     }
 

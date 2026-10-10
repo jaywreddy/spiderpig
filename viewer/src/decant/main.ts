@@ -251,7 +251,10 @@ function renderPackInfo(d: PackData): void {
   const how = document.createElement('p');
   how.textContent = 'It comes apart where it is already screwed together, in this order:';
   const ol = document.createElement('ol');
+  const seen = new Set<string>();
   for (const m of d.modules) {
+    if (seen.has(m.key)) continue;           // (loose pieces: one module each, one step)
+    seen.add(m.key);
     const li = document.createElement('li');
     const b = document.createElement('strong'); b.textContent = m.label;
     li.append(b, document.createTextNode(`: ${m.how}`));
