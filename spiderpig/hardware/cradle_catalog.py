@@ -1,7 +1,7 @@
 """Catalog data: what a decanting cradle buys beyond the walkers' hardware.
 
 The hand-cranked worm drive (:mod:`construction.handcrank`): the NRV030 gear reducer and its
-output shaft, the riser's screws, the crankpin's shoulder screw and nut, the handle; the
+output shaft, the riser's screws, the handle; the
 cradle's light (:mod:`construction.cradle`); and its standoffs: every pillar, stand column
 and tie rod is a 10 mm steel standoff made to length, MISUMI NETRF10 (M5 both ends,
 ``pillar_shaft_10_m5_<L>``, :func:`netrf10`), with M5 button heads and washers.

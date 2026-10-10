@@ -139,8 +139,7 @@ plate 15.21 (9.84), a 55 cm^2 rod 12.03; 0.125 in 6061 a 25 cm^2 crank plate 7.7
 (5.67 at three). USD 367.50 in all; the fit says 352."""
 CRADLE_QTY_FACTOR = 0.72
 CRADLE_CUT_SOURCE = ("a fit to SendCutSend's live quotes of 2026-10-10 for this cradle's "
-                     "files (USD 367.50 in all, the fit 352: hardware.bom.CRADLE_CUT_FITS); "
-                     "upload the files for the real quote")
+                     "files (USD 359-368 in all); upload the files for the real quote")
 
 
 def cut_estimate(key: str, parts: list[tuple[float, int]],
@@ -152,11 +151,16 @@ def cut_estimate(key: str, parts: list[tuple[float, int]],
     its size (1.33 at 4 off), the 93 cm^2 deck plate 6.88; in 5052 0.080-0.090 in the
     plates come to about 0.20 per cm^2, in 6061 0.100 in 0.40, a small one at least 2.20.
     On the Strider double: acrylic 49.45 (quoted 49.44), aluminium 68.48 (67.70). ``fit``:
-    a decanting cradle's sheet (:data:`CRADLE_CUT_FITS`) instead."""
+    a decanting cradle's sheet (:data:`CRADLE_CUT_FITS`) instead, its quantity discount on
+    a file's count: the parts are merged by area first, so a grouped and an ungrouped BOM
+    (verify's, audit's) come to the same."""
     if fit is not None:
         base, per = fit
+        files: dict[float, int] = {}
+        for a, q in parts:
+            files[round(a, 1)] = files.get(round(a, 1), 0) + q
         return round(sum(q * (base + per * a) * (CRADLE_QTY_FACTOR if q >= 2 else 1.0)
-                         for a, q in parts), 2)
+                         for a, q in files.items()), 2)
     d = get(key).dims
     rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
     if rate is None or least is None:

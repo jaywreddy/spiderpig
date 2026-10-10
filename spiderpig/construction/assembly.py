@@ -128,7 +128,8 @@ class Stage:
     another stage's op; ``()``: by layer for the stack, one step per tag else), ``text`` a
     sentence in place of the hooks' for a tag, ``intro`` the stage's first sentence,
     ``where`` "bench" or "robot" (the picture: the stage alone, or everything so far),
-    ``strict``: only its ``tags`` (else the stage's other ops follow them, a step a tag)."""
+    ``strict``: only its ``tags`` (else the stage's other ops follow them, a step a tag),
+    ``titles`` a step's title by its first op's tag."""
 
     stage: str
     side: str | None
@@ -138,6 +139,7 @@ class Stage:
     intro: str = ""
     where: str = "bench"
     strict: bool = False
+    titles: tuple[tuple[str, str], ...] = ()
 
 
 ROBOT_ORDER: tuple[Stage, ...] = (
@@ -203,13 +205,15 @@ CRADLE_ORDER: tuple[Stage, ...] = (
           intro="On the bench."),
     Stage(JOIN, "L", "Drive side: inner plate onto the stack", where="robot",
           tags=(("pillar_screws", "column_screws"),),
-          intro="The inner plate onto its stack: the pillar's and the columns' tops into "
-                "it. Once their screws are tight the cradle link must still swing freely on "
-                "its pillar (its printed parts stop 0.3 mm short of the steel): if it binds, "
-                "sand the spacer under the inner plate."),
+          intro="The inner plate onto its stack: the tops of the steel standoffs that reach "
+                "it into it. Once their screws are tight the cradle link must still swing "
+                "freely on the steel it rides (its printed parts stop 0.3 mm short of the "
+                "steel): if it binds, sand the spacer under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base plate", where="robot",
           tags=(("base",),), strict=True,
           intro="The drive side stands on the base plate from here on."),
+    Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),), strict=True,
+          intro="On now, to turn the crank for the checks to come."),
     Stage(CRADLE, None, "The cradle box", where="robot",
           tags=(("saddles",), ("light",), ("base_stop",)),
           intro="The tie rods stand across the bay from the drive side's cradle link."),
@@ -226,15 +230,17 @@ CRADLE_ORDER: tuple[Stage, ...] = (
     Stage(JOIN, "R", "Passive side: stack onto the cradle", where="robot",
           tags=(("over_link",), ("R.unit.plate", "R.unit.bay_tie"),
                 ("pillar_screws", "column_screws")),
-          text=(("plate", "The passive side's inner plate over the pillar's and the "
-                          "columns' tops, its bay face to the bay."),),
-          intro="The passive stack slid in along the base plate from outside, onto the "
-                "cradle link (its pins up through the link's bores); then what goes over "
-                "the link, and the inner plate. With its screws tight, turn the crank "
+          titles=(("pillar_screws", "Inner plate's screws"),
+                  ("column_screws", "Inner plate's screws")),
+          text=(("plate", "The passive side's inner plate over the steel standoffs' tops, "
+                          "its bay face to the bay."),),
+          intro="The passive stack set down on the base plate 7-15 mm out from its place "
+                "(inside its carriage bolts) and pushed home, the steel the cradle link "
+                "rides up through the link's bores; then what goes over the link, and the "
+                "inner plate. With its screws tight, turn the crank "
                 "through a whole pour: both cradle links must swing freely."),
     Stage(FINISH, None, "Passive side onto the base plate", where="robot",
           tags=(("base_R",),), strict=True),
-    Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),)),
     Stage(USE, None, "Decanting", where="robot"),
     Stage(OTHER, None, "Remaining parts", where="robot"),
 )
@@ -467,6 +473,8 @@ def _order(ops: list[Op], order: tuple[Stage, ...]) -> list[Step]:
                 group = sorted(slots[sk], key=lambda i: (ops[i].key, i))
                 groups.append((st, [ops[i] for i in group], sk[0]))
                 used.update(slots[sk])
+                if sk[1] == 0 and (sk[0], 1, (), "") not in slots:
+                    groups.append((st, [], sk[0]))   # a sub-assembly onto its own layer
             continue
         specs = list(st.tags)
         tags = {t for spec in specs for t in spec if "." not in t}
@@ -538,7 +546,9 @@ def _numbered(groups) -> list[Step]:
         count = [body_of(_pid(p)) for op in gops if op.count for p in op.pieces
                  if body_of(_pid(p)) not in counted]
         counted.update(count)
-        title = _title(st, gops, layer)
+        title = (dict(st.titles).get(gops[0].tag) if gops else None) or _title(st, gops, layer)
+        if not gops and places and out and st.stage == STACK:
+            title = f"Layer {layer}: {out[-1].title[0].lower()}{out[-1].title[1:]}"
         clip = {_pid(p): p.z for p in pieces if p.portion and p.z is not None}
         if places and st.stage == STACK and out:
             texts.insert(0, f"Put on the sub-assembly from step {out[-1].number}.")

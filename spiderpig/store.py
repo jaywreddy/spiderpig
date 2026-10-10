@@ -83,6 +83,11 @@ import numpy as np
 
 from spiderpig.design import Design, design_id, jsonable, now_iso, spec_hash
 
+if TYPE_CHECKING:
+    from build123d import Shape
+
+log = logging.getLogger("spiderpig.store")
+
 
 def _product_of(key: str | None) -> str | None:
     """The product a linkage builds (a decanting cradle's ``cradle``), or None."""
@@ -93,10 +98,6 @@ def _product_of(key: str | None) -> str | None:
     except KeyError:
         return None
 
-if TYPE_CHECKING:
-    from build123d import Shape
-
-log = logging.getLogger("spiderpig.store")
 
 STORE_ENV = "SPIDERPIG_STORE"
 DEFAULT_ROOT = ".spiderpig"

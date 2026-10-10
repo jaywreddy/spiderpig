@@ -53,7 +53,7 @@ stops there:
 | full mass | 2.4–5.9 kg | glass 0.9–2.9 kg plus the wine |
 | the mouth | stays put over the whole pour, for either bottle | the decanter stands under it (US7708241) |
 | tilt | −25° (rest, neck up) to +55° (neck down) | an opened full 3 L holds from about −20° (the mechanical review); one crank turn is one decant and back |
-| decanter | up to 310 mm tall, slid under the mouth | its lip about 29 mm under a 3 L's at full tilt |
+| decanter | up to 275 mm tall, slid under the mouth | its mouth 75 mm under the bottle's |
 | drive | hand crank, self-locking | holds any angle when let go |
 | light | an LED under the shoulder, riding the cradle | the candle's job |
 | material | aluminium first | the user; the look is decided from the viewer |
@@ -105,15 +105,20 @@ stops there:
       the shaft's keyseat is end-milled, so the key's ends are round (the fabrication
       review).
     - The top plate lies over the shaft's end: an M6 button head through it into the
-      shaft's end tap, to 3 N·m (it clamps the block on the printed sleeve).
+      shaft's end tap, to 3 N·m (it clamps the block on the printed sleeve). It goes in dry:
+      the sleeve settles, so after the first few pours it comes out for threadlocker and
+      goes back to 3 N·m.
     - A NETRF10 through the block at 47 mm (`handcrank.TIE_R`), screwed at both ends, makes
       the plates one rigid block and clamps them, its screw head and wide washer clear of
       the riser screws.
   - **Crankpin:** a NETRF10 standing in the block from its lowest plate (an M5 up through
-    it) through the rod, an M5 and a wide washer on its end over the rod, 0.3 mm of play
-    (a printed spacer under the rod, sanded on the bench, takes the plates' tolerance). The
-    rod rides 1.5 mm over the block's screw heads, its force 8.7 mm off the crankpin's
-    socket. (Before, the arm sat on the key and the rod 21 mm over it: an ISO 7379
+    it) through the rod, an M5 and a wide washer on its end over the rod, 0.2-0.3 mm of
+    play (its length rounds down; a printed spacer under the rod, sanded on the bench,
+    takes the plates' tolerance). The washer keeps the rod 0.26 mm (nominal) under the rear
+    tie's screw head where that head crosses it, 1 to 4 handle turns from rest. The chain's
+    tolerance is about 0.3 mm, so the guide checks it with a sheet of paper: a rub there is
+    a scrape, not a jam. The rod rides 3 mm over the block's screw heads, its force 8.7 mm
+    off the crankpin's socket. (Before, the arm sat on the key and the rod 21 mm over it: an ISO 7379
     crankpin's M8 thread was a cantilever that long, rated at SF 1.0-1.25 once its yield
     and preload were right.)
   - **Hand crank:** a printed offset crank on the gearbox's 9 mm input shaft.
@@ -131,7 +136,8 @@ stops there:
   - Unlike a walker's pins, these aren't glued in (`ChicagoShaft.bonded`). Every link runs
     on the barrel, 0.25 mm of axial play at least.
   - Hold the barrel's head from below with taped pliers while the screw goes in; the head
-    is in the open under the rod. No epoxy goes on the order.
+    is in the open under the rod. No epoxy goes on the order. The screw takes the medium
+    threadlocker (243): the low-strength 222 cures poorly between two stainless parts.
 - **The pillars and columns** are the same 10 mm steel standoffs as the tie rods
   (`StandoffAxle.cradle_shaft`), each made to its plates' gap. An M5 button head goes
   through each plate without a washer, to 4 N·m.
@@ -162,6 +168,10 @@ stops there:
     through the upright and the outer plate, an M6 carriage bolt up through the base plate
     and the foot (its square neck in a square hole, so its nut goes on from above: nothing
     to reach under the plate).
+    - The holes are 7.3 mm square, drawn with SendCutSend's 0.8 mm round inside corners:
+      they clear a sharp 6.48 mm neck's corners by 0.25 mm (`cradle.CARRIAGE_SQUARE`).
+    - All six bolts go in with the base plate. The passive side is set down 7-15 mm out
+      from its place, inside its bolts, and pushed home.
   - A U-notch from its front edge takes the decanter, slid in on the table; the notch's
     round end locates it under the mouth.
   - Four printed TPU feet snap into its corner holes (a cone and a bore up the stem).
@@ -187,7 +197,7 @@ worm at a hand's speed (`cradle_report.ETA_HAND`, 0.5): 36 N·m at the crank
 - It is not counted within 30° of crank round either toggle, where a blocked crank-rocker's
   forces grow without bound. There, only clearance protects: the decanter's lip and
   anything under the cradle.
-- What A holds there: the crankpin SF 2.0, the keyed plates 1.6, the rod's buckling 1.9,
+- What A holds there: the crankpin SF 1.9, the keyed plates 1.6, the rod's buckling 1.9,
   the pillars and plates 2.9 and more, pin E (the M6 Chicago barrel) 1.34. Pin E yields
   first, at about 54 N at the grip: its stainless barrel bends (the worm still holds).
 - The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
@@ -283,10 +293,14 @@ Things to know before cutting and on the bench:
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's last step):
   - 800 mm of headroom: a 3 L's base at full tilt reaches 775 mm over the table.
   - 50 mm behind the base plate: a 3 L reaches 35 mm past its rear edge.
-  - A decanter fits up to 180 mm tall at 260 mm across, 190 mm across up to 200 mm, 90 mm
-    across up to 270 mm (the light's clip at rest), and 56 mm across (its neck) up to
-    310 mm, its mouth 55 mm across or more. It stands under the mouth's centre
-    (`cradle.DECANTER_X`), where the pour lands from about 15 mm in front to 16 mm behind.
+  - A decanter fits up to 180 mm tall at 260 mm across, 185 mm across up to 195 mm, 80 mm
+    across up to 270 mm (the light's clip at rest), and 65 mm across up to 275 mm, no
+    taller, its mouth 60 mm across or more. It stands under the mouth's centre
+    (`cradle.DECANTER_X`); the notch locates only a 244-252 mm base, so another is
+    centred by eye.
+    - These leave about 4 mm of radius to the box at rest. The front saddle and the tie
+      rods under it come down to 280 mm there, so the old 310 mm neck had no margin
+      (review round 4). It goes in at rest without touching, a finger's width to spare.
 - **Keep the base plate clear behind the decanter:** at rest the base stop comes down to
   about 40 mm over it.
 - **Never force the crank.** If it stiffens, something is in the way: the drive holds a

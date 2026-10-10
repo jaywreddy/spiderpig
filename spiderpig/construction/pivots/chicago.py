@@ -591,7 +591,7 @@ CHICAGO_M6 = ChicagoAxle(
            "nothing bonded (pins only): a decanting cradle's"),
     shaft=ChicagoShaft(family="m6", washer_key="ptfe_washer_8x14x0p5",
                        shim_key="shim_din988_8x14", lengths=_m6_lengths(), bonded=False,
-                       min_play=0.25),
+                       min_play=0.25, lock_key="threadlocker_243"),
 )
 """The M6 size (Harfington's 18-8, 8 mm barrel, 13.5 mm heads: :mod:`hardware.cradle_catalog`):
 a decanting cradle's pins (``config.PRODUCT_PINS``), 8 times the M3 barrel's bending section

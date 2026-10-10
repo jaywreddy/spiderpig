@@ -144,7 +144,7 @@ def test_the_worm_holds_and_both_bottles_lie_with_their_mouths_on_the_pivot():
 
 
 @pytest.mark.planner
-@pytest.mark.parametrize("key", CRADLES)
+@pytest.mark.parametrize("key", quick(CRADLES, ["decanter_hinge"]))
 @pytest.mark.usefixtures("fresh_plan_memo")
 def test_a_cradle_side_plans_with_its_link_under_the_inner_plate(key):
     from spiderpig.fabricate import design_side, template_for
@@ -169,6 +169,39 @@ def test_a_thicker_link_sheet_plans_too():
     cfg = BuildConfig(linkage="decanter_hinge", robot=False, sheet="al5052_4p8mm")
     design = design_side(template_for(cfg), cfg)
     assert design.plan.optimal, design.plan.proof
+
+
+@pytest.mark.api
+@pytest.mark.no_fabricate
+def test_a_cradle_never_takes_another_engines_plan(monkeypatch):
+    """A product re-plans rather than take a stored plan of another engine, its own or a
+    same-spec design's (``stages.planning._reuse_plan``): a valid but unproven, thicker
+    stack once built a cradle."""
+    from types import SimpleNamespace
+
+    from spiderpig.stages import planning
+
+    def never(*_a, **_k):
+        raise AssertionError("a product took another engine's plan")
+
+    monkeypatch.setattr(planning, "_remake_plan", never)
+    cfg = BuildConfig(linkage="decanter_hinge", robot=False)
+    for own in (None, {"ok": True, "engine_version": "0.1.0+old"}):
+        store = SimpleNamespace(read_report=lambda _id, _kind, own=own: own, find_plans=never)
+        design = SimpleNamespace(store=store, id="x", engine_version="0.1.0+new", config=cfg)
+        assert planning._reuse_plan(design) is None     # type: ignore[arg-type]
+
+
+@pytest.mark.hardware
+def test_a_cradles_cutting_estimate_is_the_same_grouped_or_not():
+    """The cradle's cutting fit discounts a file cut twice or more (``CRADLE_QTY_FACTOR``):
+    the same whether the BOM groups its parts (build) or not (verify, audit)."""
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS, cut_estimate
+
+    for key, fit in CRADLE_CUT_FITS.items():
+        grouped = cut_estimate(key, [(120.0, 2), (35.5, 3), (60.0, 1)], fit)
+        assert cut_estimate(key, [(120.0, 1), (35.5, 1), (60.0, 1), (120.0, 1), (35.5, 1),
+                                  (35.5, 1)], fit) == grouped
 
 
 def test_a_cradle_warns_when_its_own_default_replaces_a_named_one():
@@ -197,7 +230,8 @@ def test_a_cradle_side_stays_inside_its_claims(key, t):
 @pytest.mark.construction
 def test_a_cradle_pin_runs_in_every_link_and_buys_no_epoxy():
     """The M6 Chicago pins aren't bonded (``CHICAGO_M6``): every link's hole is the running
-    fit, the order has no epoxy, and the guide holds the barrel instead of gluing it."""
+    fit, the order has no epoxy but the medium threadlocker the guide asks for, and the
+    guide holds the barrel instead of gluing it."""
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.base import Build, Realized
     from spiderpig.construction.pivots.chicago import CHICAGO_M6
@@ -214,7 +248,7 @@ def test_a_cradle_pin_runs_in_every_link_and_buys_no_epoxy():
     assert set(got.cuts) == set(pin.axis.members)
     for m in pin.axis.members:
         assert [x.d for x in got.cuts[m]] == [pytest.approx(CHICAGO_M6.hole())]
-    assert {e.key for e in got.extras} == {"threadlocker_222"}
+    assert {e.key for e in got.extras} == {"threadlocker_243"}    # (the guide's: stainless)
 
 
 @pytest.mark.construction
@@ -363,6 +397,16 @@ def test_the_cradle_has_an_assembly_order(key):
     assert passive.side == "R"
     (base,) = [s for s in steps if "base_plate" in s.adds]
     assert base.stage == FINISH
+    # every carriage bolt goes in from under the base plate, the passive side's too
+    bolts = [a for s in steps for a in s.adds if a.startswith("foot_bracket") and
+             a.endswith("_screw1")]
+    assert len(bolts) == len(set(bolts)) > 3
+    assert set(bolts) <= set(base.adds)
+    # the hand crank right after the base plate (to turn the cradle for the checks), all
+    # of it in its step
+    (hand,) = [s for s in steps if "L.handle" in s.adds]
+    assert steps.index(hand) == steps.index(base) + 1
+    assert {b for s in steps for b in s.adds if b.startswith("L.handle")} <= set(hand.adds)
     assert steps[-1].stage == USE
     assert set(steps[-1].adds) == {"bottle", "decanter"}
     assert steps.index(passive) > steps.index(ties)
@@ -406,8 +450,13 @@ def test_verify_rates_a_cradles_joints_at_its_own_loads():
     audit does: A passes, the study B fails on a joint (its jam SF under 1)."""
     from spiderpig import api
 
-    a = api.verify(api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}},
-                               store=None), "standard")
+    d = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}}, store=None)
+    q = api.verify(d, "quick")      # the default level: a catalog floor with no servo in it
+    (floor,) = [r for r in q.rows if r.requirement == "budget.cost_floor_usd"]
+    assert "NRV030" in floor.detail
+    assert "servo" not in floor.detail.lower()
+    assert not [r for r in q.rows if r.requirement == "size.mass_g"]   # a build weighs it
+    a = api.verify(d, "standard")
     assert a.ok, [f.message for f in a.failures]
     (joints,) = [r for r in a.rows if r.requirement == "strength.joints"]
     assert joints.value >= 1.3

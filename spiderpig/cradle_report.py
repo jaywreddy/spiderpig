@@ -516,8 +516,10 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
             "the crank, jam); cradle_report",
             "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
             "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
-            "torque_limit_nm": jam_nm(), "walk_torque_nm": crank_nm,
-            "joint_moment_factor": 1.0}
+            "torque_limit_nm": jam_nm(), "walk_torque_nm": round(crank_nm, 2),
+            "joint_moment_factor": 1.0,
+            "crank_basis": f"statics: the bottle's largest torque over a pour, a {JAM_HAND_N:g} "
+                           "N push at the grip jammed"}
 
 
 def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float) -> dict:

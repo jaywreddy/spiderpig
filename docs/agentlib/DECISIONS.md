@@ -527,3 +527,41 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   guide's text, verify's blind spot).
 - **Where:** as round 2's, with `spiderpig/stages/planning.py`, `spiderpig/verify.py`,
   `spiderpig/hardware/{bom,order,cradle_catalog}.py`. The walker designs are unchanged.
+
+### 2026-10-10: the decanting cradles, review round 4
+
+- **What:** a fourth round of the reviews (fabrication: "ready to order, no BLOCKER, no
+  MAJOR"; code: three MAJORs), and these changes:
+  - **Verify's quick level** (its default, the MCP tool's too) ran on a cradle: its catalog
+    floor buys the gearbox and output shaft, not a servo, and leaves the mass and envelope
+    to a build (the walk model weighs servos and legs).
+  - **One cutting estimate:** the cradle fit's quantity discount is on a file's count, the
+    parts merged by area first, so verify's and audit's ungrouped BOMs come to the build's
+    (they had said USD 670 for A where ORDER.md says USD 583).
+  - **The guide:** every carriage bolt goes in with the base plate; the hand crank right
+    after it (the checks then turn it); the passive side set down 7-15 mm out and pushed
+    home; the sub-assembly placed on its own layer; the end screw dry until the sleeve has
+    settled; the M6 Chicago screws on 243 in the BOM as in the guide.
+  - **Fabrication:** the carriage bolts' 7.3 mm square holes drawn with the 0.8 mm round
+    corners SendCutSend cuts (the 7 mm ones cleared a sharp neck by 0.04 mm); the brackets'
+    neck relief 0.3 mm deeper; the light clip's set-screw boss a rib down to its foot; the
+    crank block's tie 0.85 mm short of the top plate; no M5 screw under 10 mm.
+  - A walker's strength basis text back to its own words ("no sim joint matched").
+  - **The rod and the rear tie's screw head** (the mechanical review): the washer keeps the
+    rod 0.26 mm (nominal) under the head where it crosses, inside the chain's +-0.3 mm. The
+    crankpin's length now rounds down (0.2-0.3 mm of play) and the guide checks the
+    crossing with a sheet of paper; a rub is a scrape, not a jam. Moving the rear ties back
+    past the rod's sweep (x 295) was dropped: the rear saddle would meet the base stop's cup
+    for a magnum.
+  - **The decanter's limits** restated with about 4 mm of radius to the box at rest: up to
+    275 mm tall, 80 mm across up to 270 mm, its mouth 60 mm across or more (the old 310 mm
+    neck had none at the front saddle).
+  - Not done (MINOR, information): a printed skirt over the drive stack's bay face, for a
+    household with children; the slow pinch points have their written limits.
+- **Why:** the code review's MAJORs (the quick tier red, verify quick crashing on a cradle,
+  the overpriced cradle in verify and audit), the fabrication and mechanical reviews'
+  MINORs.
+- **Where:** `spiderpig/verify.py`, `spiderpig/hardware/bom.py`,
+  `spiderpig/construction/{assembly,cradle,handcrank}.py`,
+  `spiderpig/construction/pivots/chicago.py`, `spiderpig/strength.py`. The walker designs
+  and their guides are unchanged.

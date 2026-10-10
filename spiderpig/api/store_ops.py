@@ -85,9 +85,10 @@ def load(id: str, store: Store | str | Path | None = PROJECT) -> Design:
                     derived_from=rec.get("derived_from"), patch=rec.get("patch"),
                     created_at=rec.get("created_at") or "")
     if rec.get("engine_version") != engine:
+        plan = ("a product is re-planned" if config.lk.product else
+                "the stored plan is re-verified before use")
         design.warnings.append(f"recorded under engine {rec.get('engine_version')}, now "
-                               f"{engine}: the stored plan is re-verified before use, the other "
-                               "stages recomputed")
+                               f"{engine}: {plan}, the other stages recomputed")
     design.store = store
     return design
 

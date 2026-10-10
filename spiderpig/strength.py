@@ -85,8 +85,9 @@ def design_loads(config: BuildConfig, store=None, *, override: tuple[float, floa
                  = None, sim: bool | str = True) -> dict:
     """The loads the strength check uses for ``config`` (see the module doc): ``source``
     ``sim`` / ``override`` / ``fallback`` / ``none`` (a mechanism: what it drives sets its
-    loads), a ``note`` saying where they came from, the largest walking and jam joint
-    loads (``walk_n``, ``jam_n``), the sim's ``joints`` and the crank's torques.
+    loads) / ``statics`` (a decanting cradle's, :func:`cradle_report.loads`), a ``note``
+    saying where they came from, the largest walking and jam joint loads (``walk_n``,
+    ``jam_n``), the sim's (or the statics') ``joints`` and the crank's torques.
     ``sim="cached"``: the design's simulated loads only if the store has them."""
     from spiderpig import linkage as lk
     from spiderpig.config import torque_limit_nm
@@ -173,7 +174,8 @@ def joint_loads(name: str, note: dict, loads: dict) -> dict:
                     "basis": loads["source"]}
         return {"walk_n": loads["walk_n"], "jam_n": loads["jam_n"], "walk_patterns": None,
                 "jam_patterns": None,
-                "basis": f"{loads['source']}, the design's largest (no joint matched)"}
+                "basis": f"{loads['source']}, the design's largest (no {loads['source']} "
+                         "joint matched)"}
     return {"walk_n": loads.get("walk_n", 0.0), "jam_n": loads.get("jam_n", 0.0),
             "walk_patterns": None, "jam_patterns": None, "basis": loads.get("source", "")}
 
@@ -216,8 +218,9 @@ def crank_strength(meta: dict, config: BuildConfig, loads: dict) -> dict | None:
         moment = factor * torque
         row[tag] = {"torque_nm": round(torque, 4), "moment_nm": round(moment, 4),
                     "safety": round(cap / moment, 2)}
-    row["basis"] = ("sim walking torque, the firmware torque limit jammed"
-                    if walk_t else "the firmware torque limit jammed (no walking sim)")
+    row["basis"] = loads.get("crank_basis") or (
+        "sim walking torque, the firmware torque limit jammed"
+        if walk_t else "the firmware torque limit jammed (no walking sim)")
     return row
 
 
@@ -477,7 +480,9 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
             out.append(f"{opt} ({sec.name}): {fmt(j, w)}"
                        + ("" if good(j, w) else ", still short"))
     layers = note.get("layers") or {}
-    if kind == "pin" and len(set(layers.values())) > 1:
+    # (a product's plan is searched afresh, its spans the best it found: DECISIONS
+    # 2026-10-10 records no plan with a cradle's pin in adjacent layers)
+    if kind == "pin" and len(set(layers.values())) > 1 and not config.lk.product:
         order = sorted(set(layers.values()))
         tight = {m: order.index(k) for m, k in layers.items()}
         if order[-1] - order[0] > len(order) - 1:

@@ -68,9 +68,9 @@ from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
-LIP_HEIGHT = 350.0      # the bottle's mouth over the table (mm): a decanter up to 310 mm tall
-#                         stands under it, its lip 29 mm or more under a 3 L's at full tilt
-DECANTER_GAP = 40.0     # the decanter's mouth at least this far under the bottle's
+LIP_HEIGHT = 350.0      # the bottle's mouth over the table (mm): a decanter up to 275 mm tall
+#                         stands under it (the front saddle comes down to 280 mm at rest)
+DECANTER_GAP = 75.0     # the decanter's mouth at least this far under the bottle's
 BAY = 160.0             # between the two inner plates' bay faces: a 141 mm bottle and room
 TIE_D = 10.0            # the tie rods and columns: MISUMI NETRF10 (10 mm, M5 x 10 deep each end)
 TIE_THREAD = 10.0
@@ -717,7 +717,7 @@ def _led(front: Saddle) -> tuple[Shape3D, Shape3D, Shape3D, list[Shape3D], list[
     x, head = LED_X, LED_TOP
     up = (90, 0, 0)                          # a cylinder's axis along y
     light = Cylinder(d / 2, length, rotation=up).moved(Location((x, head - length / 2, 0.0)))
-    clip_top, clip_bot = head - CLIP_GAP, head - length + 2.0
+    clip_top, clip_bot = head - CLIP_GAP, head - length     # (the lip under the light's tail)
     tube = Cylinder(d / 2 + 2.5, clip_top - clip_bot + 2.0, rotation=up).moved(
         Location((x, (clip_top + clip_bot - 2.0) / 2, 0.0)))
     tube = tube - Cylinder(d / 2 + 0.2, clip_top - clip_bot + 0.01, rotation=up).moved(
@@ -725,8 +725,9 @@ def _led(front: Saddle) -> tuple[Shape3D, Shape3D, Shape3D, list[Shape3D], list[
     tube = tube - Cylinder(d / 2 - 2.0, 10.0, rotation=up).moved(     # the lip's hole
         Location((x, clip_bot - 2.0, 0.0)))
     boss_y = (clip_top + clip_bot) / 2
-    boss = Box(SET_SCREW + 1.0, 8.0, 8.0).moved(
-        Location((x + d / 2 + (SET_SCREW + 1.0) / 2 - 0.5, boss_y, 0.0)))
+    rib = boss_y + 4.0 - (clip_bot - 2.0)        # the set screw's boss, a rib down to the foot
+    boss = Box(SET_SCREW + 1.0, rib, 8.0).moved(
+        Location((x + d / 2 + (SET_SCREW + 1.0) / 2 - 0.5, boss_y + 4.0 - rib / 2, 0.0)))
     pilot = Cylinder(SET_PILOT / 2, SET_SCREW + 4.0, rotation=(0, 90, 0)).moved(
         Location((x + d / 2 + SET_SCREW / 2, boss_y, 0.0)))
     # the plate: from the saddle's back face to the tube, its lower front cut away at 45°
@@ -876,8 +877,9 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     hole_up = disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1)
     hole_down = Cylinder(CARRIAGE[0] / 2 + 0.4, wall + 2, rotation=(90, 0, 0)).moved(
         Location((fx, y_top + wall / 2, zb)))
-    neck = Cylinder(CARRIAGE_NECK_HOLE / 2, 2 * (CARRIAGE[3] - 3.175), rotation=(90, 0, 0)).moved(
-        Location((fx, y_top, zb)))              # (the bolt's square neck stands this far up)
+    neck = Cylinder(CARRIAGE_NECK_HOLE / 2, 2 * (CARRIAGE[3] - 3.175 + 0.3),
+                    rotation=(90, 0, 0)).moved(
+        Location((fx, y_top, zb)))      # (the bolt's square neck stands this far up, + 0.3)
     bracket = difference(union([up, foot]), hole_up, hole_down, neck)
     # through the upright and the plate, the nut over the plate's inner face
     l_side = _m5_length(wall + t_frame + M5_NUT[1])
@@ -907,8 +909,9 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
 
 CARRIAGE = (6.0, 16.0, 16.55, 4.6, 3.88)   # the base plate's bolts (DIN 603 M6 x 16, Bolt
 #                                            Depot 18219): d, length, head d, neck h, head h
-CARRIAGE_SQUARE = 7.0      # the base plate's square hole for its 6.48 mm neck (SendCutSend
-#                            rounds inside corners 0.8 mm: a 7 mm square clears its corners)
+CARRIAGE_SQUARE = 7.3      # the base plate's square hole for its 6.48 mm neck, drawn with
+CARRIAGE_CORNER = 0.8      # SendCutSend's 0.8 mm round inside corners: they clear a sharp
+#                            neck's corners by 0.25 mm (a 5.88 mm neck still can't turn)
 CARRIAGE_NECK_HOLE = 9.6   # the bracket foot's relief over the neck's 6.48 mm square
 
 
@@ -940,7 +943,11 @@ def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]
     inset = 25.0
     feet = [(x, z) for x in (x0 + inset, x1 - inset) for z in (-BASE_HALF + inset,
                                                                 BASE_HALF - inset)]
-    cuts = [Box(CARRIAGE_SQUARE, t + 2, CARRIAGE_SQUARE).moved(Location((x, y_top - t / 2, z)))
+    s, r = CARRIAGE_SQUARE, CARRIAGE_CORNER
+    cuts = [union([Box(s, t + 2, s - 2 * r), Box(s - 2 * r, t + 2, s),
+                   *(Cylinder(r, t + 2, rotation=up).moved(Location((cx, 0.0, cz)))
+                     for cx in (r - s / 2, s / 2 - r) for cz in (r - s / 2, s / 2 - r))]
+                  ).moved(Location((x, y_top - t / 2, z)))
             for x, z in holes]          # the brackets' carriage bolts' square necks
     cuts += [Cylinder(FOOT_STEM / 2 + 0.25, t + 2, rotation=up).moved(
         Location((x, y_top - t / 2, z))) for x, z in feet]
@@ -1225,12 +1232,12 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
 
 def _decanter(lip) -> Shape3D:
     """A large-format decanter under the mouth (display): a conical neck to a wide body on
-    the table, its mouth 30 mm under the bottle's (a bottle's neck at rest, 10° nose up,
-    hangs 20 mm under its mouth)."""
+    the table, as tall as :data:`USE_LIMITS` allows (its mouth :data:`DECANTER_GAP` under
+    the bottle's, 60 mm across)."""
     top = float(lip[1]) - DECANTER_GAP
     table = float(lip[1]) - LIP_HEIGHT
-    prof = [(0, table), (95, table), (122, table + 20), (118, table + 70), (26, top - 40),
-            (24, top), (0, top)]
+    prof = [(0, table), (95, table), (122, table + 20), (118, table + 70), (32, top - 40),
+            (30, top), (0, top)]
     face = Face(Wire.make_polygon([(x, y, 0.0) for x, y in prof], close=True))
     solid = Solid.revolve(face, 360.0, BAxis.Y)
     return moved(solid, Location((float(lip[0]) - 5.0, 0.0, 0.0)))
@@ -1305,19 +1312,24 @@ def assembly(view) -> list:
     base = [n for n in ("base_plate",) if n in view.z]
     feet = view.named(r"foot_boot_\w+")
     brackets = {s: view.named(rf"foot_bracket_[A-Za-z0-9]+{s}(_\w+)?") for s in SIDES_LR}
+    # every carriage bolt goes in with the base plate (from under it), the passive side's too
+    bolts = [n for n in brackets["R"] if n.endswith("_screw1")]
+    brackets["R"] = [n for n in brackets["R"] if n not in bolts]
     how = ("At each foot a printed bracket outside the outer plate, over its carriage bolt: "
            "an M5 button head through the bracket and the plate, its nut over the plate's "
            "inside (an 8 mm wrench); the carriage bolt's M6 thin nut on the bracket's foot "
-           "(a 10 mm wrench; threadlocker on both).")
+           "(a 10 mm wrench, snug: the foot is printed; threadlocker on both).")
     if base or feet or brackets["L"]:
-        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"]), "Base plate",
+        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"], *bolts), "Base plate",
                       "The TPU feet pushed up into the base plate's corner holes (a twist "
                       "helps them through); the six M6 carriage bolts up through its square "
                       "holes from under (their necks hold them: nothing to reach under the "
                       "plate later). The drive side onto the base plate, its outer plate's "
                       "rail on it, the notch at the front. " + how, "base"))
     if brackets["R"]:
-        ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how, "base_R"))
+        ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how + " Then turn the crank "
+                      "through a whole pour again: both cradle links must still swing freely.",
+                      "base_R"))
     collars = view.named(r"\w+_collar")
     if adapters or collars:
         ops.append(Op(USE, (0,), whole(*adapters, *collars), "Bottle adapters",
@@ -1346,10 +1358,12 @@ USE_LIMITS = (
     "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
     "behind the base plate (a 3 L reaches past its rear edge); keep the base plate clear "
     "behind the decanter (at rest the base stop comes down to 40 mm over it). A decanter fits "
-    "up to 180 mm tall at 260 mm across, 190 mm across up to 200 mm, 90 mm across up to 270 "
-    "mm (the light's clip at rest) and 56 mm across (its neck) up to 310 mm, its mouth 55 mm "
-    "across or more. Never force the handle: if it stiffens, stop and look (the drive holds a "
-    "firm 40 N push at the grip against a blocked cradle, no more; if it stays stiff after "
+    "up to 180 mm tall at 260 mm across, 185 mm across up to 195 mm, 80 mm across up to 270 "
+    "mm (the light's clip at rest) and 65 mm across up to 275 mm, no taller, its mouth 60 mm "
+    "across or more (the pour falls 75 mm into it); it must go in at rest without touching "
+    "the light's clip or the front saddle, a finger's width to spare. Never force the "
+    "handle: if it stiffens, stop and look (the drive holds a firm 40 N push at the grip "
+    "against a blocked cradle, no more; if it stays stiff after "
     "being forced, look for a bent pin between the rod and the cradle link). Keep your "
     "fingers out of the drive side's plates while it turns. Uncork at rest, the base stop "
     "set, holding the neck, a corkscrew's lever lifted straight up; then slide the bottle "

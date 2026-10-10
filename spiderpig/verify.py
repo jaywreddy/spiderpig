@@ -502,6 +502,8 @@ def _mass_estimate(design: Design, wr) -> Row | None:
     from spiderpig import walk as walk_model
 
     cfg = design.config
+    if cfg.lk.product:      # the walk model weighs servos and legs: a build measures a cradle
+        return None
     f = target_field("size", "mass_g")
     try:
         b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.robot)
@@ -641,10 +643,12 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     :func:`hardware.bom.cut_estimate`), and what
     the constructions buy whatever the parts' sizes: the Chicago pins' epoxy, and a bottle
     of each threadlocker the crank's screws, a Chicago screw pin or a standoff pillar's
-    screws take. ``(total, priced
-    lines, unpriced names)``: a lower bound on the BOM's total; :data:`FLOOR_LEAVES_OUT`
-    says what a build adds."""
+    screws take. A decanting cradle (a product) buys its gearbox and output shaft instead
+    of servos, its cutting at its own fit (:data:`hardware.bom.CRADLE_CUT_FITS`).
+    ``(total, priced lines, unpriced names)``: a lower bound on the BOM's total;
+    :data:`FLOOR_LEAVES_OUT` says what a build adds."""
     from spiderpig import construction
+    from spiderpig.hardware.bom import CRADLE_CUT_FITS
 
     cfg = design.config
     sides = 2 if cfg.robot else 1
@@ -652,13 +656,20 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
 
     sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values(),
                             cfg.crank_sheet])
-    lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
+    from spiderpig.construction.handcrank import HandCrankConstruction
+
+    drive = construction.crank(cfg.crank)
+    product = isinstance(drive, HandCrankConstruction)
+    if isinstance(drive, HandCrankConstruction):    # a hand on a worm box, no servo
+        lines = [(drive.gearbox, 1), (drive.output_shaft, 1), ("pla_filament", 1)]
+    else:
+        lines = [(servos.get(cfg.servo).bom_key, sides), ("pla_filament", 1)]
     lines += [(k, 1) for k in sheets]             # one blank of each sheet at least
     # (not the deck's captive nuts: a robot whose deck doesn't fit buys none, and a
     # floor is what every build of the design buys)
     if cfg.pin in EPOXY_PINS:
         lines.append(("epoxy_2part", 1))
-    locks = {construction.crank(cfg.crank).lock_key}
+    locks = {drive.lock_key}
     if cfg.pin in LOCKED_PINS or cfg.pillar in LOCKED_PILLARS:
         locks.add("threadlocker_222")
     lines += [(k, 1) for k in sorted(k for k in locks if k)]
@@ -682,7 +693,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     from spiderpig.hardware.bom import cut_by, cut_estimate
 
     for key in (k for k in sheets if cut_by(k)):     # at least one part cut on each
-        least = cut_estimate(key, [(0.0, 1)])
+        least = cut_estimate(key, [(0.0, 1)], CRADLE_CUT_FITS.get(key) if product else None)
         name = f"{cut_by(key)} cutting, {catalog_item(key).name}"
         if least is None:
             unpriced.append(name)
@@ -732,6 +743,8 @@ def _envelope_estimate(design: Design) -> list[Row]:
     from spiderpig.construction.robot import mid_plane
 
     side, cfg = design.side, design.config
+    if cfg.lk.product:      # its stand and base plate are outside the plan: a build measures it
+        return []
     assert side is not None  # called once the plan passed (pr.ok)
     plan = side.plan
     pts = plan.topo.geometry.points
