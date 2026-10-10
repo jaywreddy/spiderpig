@@ -68,10 +68,19 @@ from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
-LIP_HEIGHT = 350.0      # the bottle's mouth over the table (mm): a decanter up to 275 mm tall
-#                         stands under it (the front saddle comes down to 280 mm at rest)
-DECANTER_GAP = 75.0     # the decanter's mouth at least this far under the bottle's
-BAY = 160.0             # between the two inner plates' bay faces: a 141 mm bottle and room
+LIP_HEIGHT = 460.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
+#                         3 L base stop's end hangs about 430 mm under it
+DECANTER_GAP = 85.0     # the decanter's rim this far under the bottle's mouth, on its riser
+#                         (at rest the front saddle comes down to about 70 mm under it)
+DECANTER_PROFILE = ((0.0, 28.6), (6.3, 38.8), (21.7, 84.2), (30.0, 95.8), (40.7, 102.5),
+                    (47.4, 100.8), (55.4, 91.2), (72.4, 52.4), (79.5, 41.3), (89.5, 32.3),
+                    (108.5, 22.9), (133.5, 18.3), (165.9, 19.0), (189.9, 23.9), (225.0, 37.1))
+"""The decanter drawn (display): a RIEDEL Ultra 2400/14, 750 ml, 225 mm tall, 205 across
+(https://www.riedel.com/en-gb/riedel-ultra-decanter/240000014), its outline (height,
+radius) traced from RIEDEL's drawing (the vessel study of 2026-10-10, ``DECANTER.md``)."""
+RISER_W = 100.0         # the riser under it (display): a lab jack's 100 mm platform
+BAY = 260.0             # between the two inner plates' bay faces: a 141 mm bottle, and a
+#                         decanter up to 240 mm across stands wholly between the side stacks
 TIE_D = 10.0            # the tie rods and columns: MISUMI NETRF10 (10 mm, M5 x 10 deep each end)
 TIE_THREAD = 10.0
 M5 = screw("bhcs", "5")
@@ -79,7 +88,8 @@ TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8
 TIE_HOLE = 5.5          # their clearance holes (ISO 273 medium)
 M5_NUT = (8.0, 4.0)     # ISO 4032 M5 nut: across flats, height
 LINER = 2.0             # the saddles' TPU liners
-SADDLE_CLEAR = 3.0      # a saddle's end to an inner plate's bay face
+SADDLE_HALF = 80.0      # a saddle's half-length across the bay: 160 mm holds a 141 mm bottle
+#                         in its liner and prints on a 250 mm bed; centred on the tie rods
 FRAME_COLOR = "#eb6834"
 SADDLE_COLOR = "#6a4fc7"
 ADAPTER_COLOR = "#8a8a8a"
@@ -201,6 +211,8 @@ class Stand:
     bay_ties: tuple[str, ...] = ()
     member_r: float = 12.0
     base: tuple[float, float] = (-200.0, 440.0)    # the base plate's front and rear edges
+    fillet_r: float = 20.0      # the plates' inside corners rounded this much (their joints
+#                                 read as one shape, not crossed bars)
 
 
 BASE_SHEET = "al5052_3p2mm"     # the base plate, both sides' outer plates bolted onto it
@@ -228,11 +240,14 @@ STANDS: dict[str, Stand] = {
     # the hinge, where nothing of the cradle ever goes; nothing crosses the bay over the
     # mouth (the base plate and the cradle box hold the sides).
     "decanter_hinge": Stand(
-        nodes={"Ff": (-150.0, _FOOT_Y), "Fm": (173.0, _FOOT_Y), "Fr": (380.0, _FOOT_Y),
+        # (2026-10-10, the user's −50° rest: O 300 under the mouth and 65 behind it; the
+        # mouth 460 over the table) the feet: in front of the decanter, under O, at the rear
+        nodes={"Ff": (-150.0, _FOOT_Y), "Fm": (140.0, _FOOT_Y), "Fr": (380.0, _FOOT_Y),
                "C1": (-24.0, 20.0), "C2": (-24.0, -22.0),
-               # on the front leg G-Ff, the inner plate's leg over it down to 200 mm over
-               # the table (a decanter is 120 mm across there: it slides in under it)
-               "D1": (-35.0, -76.3), "D2": (-69.0, -150.4)},
+               # on the front leg G-Ff, the inner plate's leg over it down to 300 mm over
+               # the table (a decanter wider than the bay passes under it)
+               **{n: (-150.0 * f, (_FOOT_Y - 0.0) * f) for n, f in (("D1", 0.175),
+                                                                     ("D2", 0.36))}},
         outer=(("G", "Ff"), ("G", "O"), ("Ff", "O"), ("O", "Fm"), ("O", "Fr"),
                ("Ff", "Fm"), ("Fm", "Fr"), ("G", "C1"), ("G", "C2"), ("C1", "C2"),
                ("C2", "D1")),
@@ -534,19 +549,65 @@ class CradlePlates(FramePlates):
             if not pads:
                 raise ConstructionError(f"the cradle's {key} plate has no members")
             cuts = done.cuts.get(key, [])
-            memo = (tuple(pads), tuple(cuts), z0, z1, web)
-            part = _PLATE_MEMO.get(memo)
-            if part is None:
-                parts = [pill(a, b, r, z0, z1) for a, b, r in pads]
-                parts += [disc(c.xy, c.d / 2 + web, z0, z1) for c in cuts
-                          if isinstance(c, Cut) and web > 0]
-                part = cut_holes(union(parts), cuts, z0, z1)
-                if len(_PLATE_MEMO) > 16:
-                    _PLATE_MEMO.clear()
-                _PLATE_MEMO[memo] = part
+            fillet = stand_of(build.ctx.config.lk).fillet_r
+            keep_out = _tie_paths(build) if key == FRAME_INNER else ()
+            part = plate_part(pads, cuts, z0, z1, web, fillet, keep_out)
             out.bodies.append(hardware(name, part, frame, fab="laser", color=FRAME_COLOR,
                                        sheet=build.ctx.sheet("frame")))
         return out
+
+
+def plate_part(pads, cuts, z0: float, z1: float, web: float, fillet: float = 0.0,
+               keep_out=()) -> Shape3D:
+    """A cradle frame plate: its members (pills), a boss round every round hole, the inside
+    corners rounded ``fillet`` (a closing: the outline grown and shrunk back, so the joints
+    read as one shape), clear of ``keep_out`` (solids: what passes the plate's layer), less
+    the holes. Memoized."""
+    memo = (tuple(pads), tuple(cuts), z0, z1, web, fillet, len(keep_out))
+    part = _PLATE_MEMO.get(memo)
+    if part is not None:
+        return part
+    parts = [pill(a, b, r, z0, z1) for a, b, r in pads]
+    parts += [disc(c.xy, c.d / 2 + web, z0, z1) for c in cuts if isinstance(c, Cut) and web > 0]
+    part = union(parts)
+    if fillet > 0:
+        part = _closed(part, z0, z1, fillet)
+    if keep_out:
+        part = difference(part, union(list(keep_out)))
+    part = cut_holes(part, cuts, z0, z1)
+    if len(_PLATE_MEMO) > 16:
+        _PLATE_MEMO.clear()
+    _PLATE_MEMO[memo] = part
+    return part
+
+
+def _closed(part: Shape3D, z0: float, z1: float, r: float) -> Shape3D:
+    """``part`` (a plate from ``z0`` to ``z1``) with its inside corners rounded ``r``: its top
+    outline grown ``r`` and shrunk back (round joins), extruded back down."""
+    from build123d import Kind, extrude, offset
+
+    tops = [f for f in part.faces() if abs(f.center().Z - z1) < 1e-6
+            and abs(abs(f.normal_at().Z) - 1.0) < 1e-6]
+    if not tops:
+        return part
+    shrunk = offset(offset(tops, r, kind=Kind.ARC), -r, kind=Kind.ARC)
+    faces = shrunk.faces() if hasattr(shrunk, "faces") else [shrunk]
+    return union([extrude(f, amount=-(z1 - z0)) for f in faces])
+
+
+def _tie_paths(build: Build) -> list[Shape3D]:
+    """What the inner plate's layer must stay clear of: each tie rod's path over the turn
+    (its radius and the plan's margin), as solids through the layer."""
+    ties = tie_points(build.plan.topo, build.ctx.config.lk)
+    z0, z1 = build.z(build.top)
+    r = TIE_D / 2 + build.plan.spec.margin
+    out = []
+    for name in ties.values():
+        path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
+        step = max(1, len(path) // 48)
+        pts = [*path[::step], path[0]]
+        out += [pill(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0) for a, b in zip(pts, pts[1:])]
+    return out
 
 
 def _ties_clear_the_inner_plate(build: Build, done: Realized, ties: Mapping[str, str]):
@@ -644,7 +705,7 @@ def _saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     bay, a 90° V cut along the axis (its apex ``s.apex`` under the liner), the tie holes,
     and up from its underside to each tie an M3 set screw in a printed pilot, its cup point
     on the tie (the saddle can't then slide along the ties)."""
-    half = BAY / 2 - SADDLE_CLEAR
+    half = SADDLE_HALF
     x0, x1 = s.x
     block = _block(x0, x1, s.y0, s.top)
     outer = _vee(x0, x1, s.apex)             # the liner's back: the saddle's V
@@ -672,7 +733,7 @@ def _saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
 
 def _block(x0: float, x1: float, y0: float, top: float) -> Shape3D:
     """A saddle's block across the bay (cradle frame), from ``y0`` to ``top``."""
-    half = BAY / 2 - SADDLE_CLEAR
+    half = SADDLE_HALF
     return Box(x1 - x0, top - y0, 2 * half).moved(Location(((x0 + x1) / 2, (y0 + top) / 2, 0.0)))
 
 
@@ -1006,7 +1067,8 @@ def passive_side(side: Mechanism, design) -> Mechanism:
     """The cradle's other side: the drive side's own parts (:func:`assemble_cradle` mirrors
     them) less the hand crank's, the rod and the rod's pin, and the connections to them.
     Its plates keep the drive's holes, so each plate pair is one part, flipped: two of a
-    file at SendCutSend, and spares that fit either side."""
+    file at SendCutSend, and spares that fit either side (the guard over the crank is the
+    gearbox's flange, not the plate: ``construction.handcrank.GUARD_PAST``)."""
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.handcrank import HandCrank
 
@@ -1210,8 +1272,11 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 (float(cf.lip[0]) - PARK_X, float(cf.lip[1]) - LIP_HEIGHT + length / 2, 0.0)))
             extras.append(hardware(f"{size.key}_collar", ring, frame_host, fab="printed",
                                    color=ADAPTER_COLOR))
-    extras.append(hardware("decanter", _decanter(cf.lip), frame_host, fab="display",
+    vessel, riser = _decanter(cf.lip)
+    extras.append(hardware("decanter", vessel, frame_host, fab="display",
                            color=DECANTER_COLOR))
+    extras.append(hardware("decanter_riser", riser, frame_host, fab="display",
+                           color="#3a3f45"))
     fastened += [("bottle", s.name + "_liner") for s in SADDLES]
     fastened += [("led_clip", SADDLES[0].name), ("led", "led_clip"),
                  ("led_set_screw", "led_clip"), ("led_set_screw", "led")]
@@ -1232,17 +1297,21 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                      bom_extras=list(side.bom_extras) + list(passive.bom_extras))
 
 
-def _decanter(lip) -> Shape3D:
-    """A large-format decanter under the mouth (display): a conical neck to a wide body on
-    the table, as tall as :data:`USE_LIMITS` allows (its mouth :data:`DECANTER_GAP` under
-    the bottle's, 60 mm across)."""
-    top = float(lip[1]) - DECANTER_GAP
+def _decanter(lip) -> tuple[Shape3D, Shape3D]:
+    """A standard decanter under the mouth (display, :data:`DECANTER_PROFILE`) on a riser
+    that sets its rim :data:`DECANTER_GAP` under the bottle's mouth: (the decanter, the
+    riser)."""
     table = float(lip[1]) - LIP_HEIGHT
-    prof = [(0, table), (95, table), (122, table + 20), (118, table + 70), (32, top - 40),
-            (30, top), (0, top)]
+    height = DECANTER_PROFILE[-1][0]
+    lift = LIP_HEIGHT - DECANTER_GAP - height
+    base = table + lift
+    prof = [(0.0, base), *((r, base + h) for h, r in DECANTER_PROFILE), (0.0, base + height)]
     face = Face(Wire.make_polygon([(x, y, 0.0) for x, y in prof], close=True))
-    solid = Solid.revolve(face, 360.0, BAxis.Y)
-    return moved(solid, Location((float(lip[0]) - 5.0, 0.0, 0.0)))
+    vessel = moved(Solid.revolve(face, 360.0, BAxis.Y),
+                   Location((float(lip[0]) + DECANTER_X, 0.0, 0.0)))
+    riser = Box(RISER_W, max(lift, 1.0), RISER_W).moved(
+        Location((float(lip[0]) + DECANTER_X, table + max(lift, 1.0) / 2, 0.0)))
+    return vessel, riser
 
 
 def assembly(view) -> list:
@@ -1343,13 +1412,15 @@ def assembly(view) -> list:
                       "against that face. Either way its mouth is on the pivot and its axis "
                       "level. Another bottle: print adapters to its neck and body "
                       "(construction.cradle.adapter).", "adapters"))
-    shown = [n for n in ("bottle", "decanter") if n in view.z]
+    shown = [n for n in ("bottle", "decanter", "decanter_riser") if n in view.z]
     if shown:
         ops.append(Op(USE, (1,), whole(*shown), "Decanting",
                       "Not bought: crank the cradle to rest (neck up), set the base stop for "
                       "the bottle, lay the bottle in the saddles, its shoulder against the "
-                      "front saddle's back face and its label up; stand the decanter in the "
-                      "base plate's notch, under the mouth; switch the light on. Turn the "
+                      "front saddle's back face and its label up; stand the decanter on a riser "
+                      "(a lab jack) in the base plate's notch, under the mouth, and raise it "
+                      "until its rim is a finger's width under the front saddle; switch the "
+                      "light on. Turn the "
                       "handle slowly, either way: the mouth stays where it is while the "
                       "bottle tips (rest to full tilt is 15 turns). Stop when the sediment "
                       "reaches the shoulder over the light; let go and it holds. " + USE_LIMITS,

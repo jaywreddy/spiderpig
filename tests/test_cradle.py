@@ -21,8 +21,9 @@ from spiderpig.linkages.decanters import TIES
 from tests.tiers import quick
 
 CRADLES = ("decanter_hinge", "decanter_rcm")
-REST = {"decanter_hinge": -25.0, "decanter_rcm": -10.0}
-TRANSMISSION = {"decanter_hinge": 40.0, "decanter_rcm": 30.0}   # least, from a toggle
+REST = {"decanter_hinge": -50.0, "decanter_rcm": -10.0}    # (B: its refinement's, merged)
+FULL = {"decanter_hinge": 30.0, "decanter_rcm": 55.0}
+TRANSMISSION = {"decanter_hinge": 45.0, "decanter_rcm": 30.0}   # least, from a toggle
 HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 90.0}         # a side's stack, mm
 
 
@@ -45,7 +46,7 @@ def test_the_mouth_stands_still_while_the_bottle_tips(key):
     assert got.wander_mm < 1e-6
     tilt = _tilt(key, np.linspace(0, 2 * math.pi, 1441))
     assert tilt.min() == pytest.approx(REST[key], abs=0.1)
-    assert tilt.max() == pytest.approx(55.0, abs=0.1)
+    assert tilt.max() == pytest.approx(FULL[key], abs=0.1)
     # every loop closes with room and away from a toggle
     for s in lk.check():
         if s.kind == "closure":
@@ -408,7 +409,7 @@ def test_the_cradle_has_an_assembly_order(key):
     assert steps.index(hand) == steps.index(base) + 1
     assert {b for s in steps for b in s.adds if b.startswith("L.handle")} <= set(hand.adds)
     assert steps[-1].stage == USE
-    assert set(steps[-1].adds) == {"bottle", "decanter"}
+    assert set(steps[-1].adds) == {"bottle", "decanter", "decanter_riser"}
     assert steps.index(passive) > steps.index(ties)
     # the drive side on the base plate before the box; the passive inner plate after the
     # passive stack has met its cradle link; the tie screws after the link
@@ -500,7 +501,7 @@ def test_the_cradle_pages_swing_is_the_linkages(key):
 
     m = motion(BuildConfig(linkage=key, robot=False), 72)
     assert m["rest_deg"] == pytest.approx(REST[key], abs=0.5)
-    assert m["full_deg"] == pytest.approx(55.0, abs=0.5)
+    assert m["full_deg"] == pytest.approx(FULL[key], abs=0.5)
     assert m["turns_to_full"] == pytest.approx(m["ratio"] / 2, abs=1.0)
     assert m["mouth_wander_mm"] < 1e-6
     assert len(m["tilt_deg"]) == len(m["points"][m["mouth"]]) == 72

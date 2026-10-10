@@ -160,3 +160,10 @@ body:not(.side-open) #side { display: none; }
   #diagram { height: 200px; flex: none; }
   #status { left: 56px; }
 }
+
+/* the flat pack's steps */
+#pack-info h3 { font-size: 13px; color: #8a96a3; margin: 16px 0 6px 0; font-weight: 600; }
+#pack-info .pack-size { color: #eef2f6; margin: 0 0 6px 0; }
+#pack-info ol { padding-left: 18px; margin: 6px 0 0 0; display: flex; flex-direction: column; gap: 6px; }
+#pack-info li { line-height: 1.35; color: #b8c2cc; }
+#pack-info strong { color: #eef2f6; font-weight: 600; }

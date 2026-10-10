@@ -141,7 +141,12 @@ TIE_R = 47.0            # the block's tie standoff, this far out along the arm: 
 #                         the gearbox's 65 mm PCD) and its hole the crankpin's
 HEADS_OVER = 3.3 + 1.5  # over the block: the end screw's M6 head (the tie's M5 is lower) and
 #                         1.5 mm under the rod (the stack's tolerance: round 3 review)
-GUARD_PAST = 20.0       # the outer plate is solid this far past the crank's sweep (a guard)
+GUARD_PAST = 12.0       # the gearbox's flange (the riser disc on the outer plate) covers the
+#                         crank's sweep and this much more: no finger goes straight through
+#                         the frame's windows onto the block (the user's 2026-10-10 call, a
+#                         smaller disc and a plain truss; ISO 13857 asks 20 mm for the 7 mm
+#                         layer under the block, and the frame is open beside it anyway: the
+#                         slow crank and the use limit, fingers out of the drive side, protect)
 
 
 GRIP_SOCKET = 3.0               # the grip's standoff stands this deep in the hand crank's arm
@@ -461,21 +466,23 @@ class HandCrank(Group):
         arm_ang = math.atan2(u[1], u[0])
         face = z0 - riser.height - SPIGOT_H          # the gearbox's output face
 
-        # the outer plate: the sleeve's hole, the screws' holes, solid round them and over the
-        # whole crank (a guard: no finger reaches the block or the rod from outside)
+        # the outer plate: the sleeve's hole, the screws' holes, solid round them (the guard
+        # over the crank is the riser's flange, below)
         screws = self.screw_points(build)
         out.cut(FRAME_OUTER, Cut(tuple(o), SLEEVE_D + 2.0))
         for xy in screws:
             out.cut(FRAME_OUTER, Cut(xy, box.face_thread + 0.6))
         pad = box.pcd / 2 + (box.face_thread + 0.6) / 2 + 2 * ctx.sheet_t("frame") + 0.5
         reach = float(np.linalg.norm(mxy - o)) + self.web_r(ctx) + GUARD_PAST
-        out.pad(FRAME_OUTER, tuple(o), tuple(o), max(pad, reach))
+        out.pad(FRAME_OUTER, tuple(o), tuple(o), pad)
 
         # the riser's discs, the gearbox, its screws (outboard: the frame's)
         z = z0
         for i, key in enumerate(reversed(riser.discs)):         # from the plate outward
             t = sheet_of(key).thickness
             r_out = box.pcd / 2 + (box.face_thread + 0.6) / 2 + 2 * t + 0.5
+            if i == 0:          # the flange on the plate: the guard over the crank's sweep
+                r_out = max(r_out, reach)
             part = plate([], z - t, z, [Cut(tuple(o), SLEEVE_D + 2.0),
                                         *[Cut(xy, box.face_thread + 0.6) for xy in screws]],
                          discs=[(tuple(o), r_out)])

@@ -4,7 +4,8 @@ A decanting cradle pours a large-format bottle (a 1.5 L magnum to a 3 L double m
 slowly enough that the sediment stays in the bottle. These two hold the bottle's mouth
 still while it tips, so the decanter can stand under it for the whole pour (the
 prior art and why: ``docs/agentlib/DECANTER.md``). One turn of the crank is one decant:
-the cradle swings from rest (the bottle 10° neck up) to full tilt (55° neck down) and
+the cradle swings from rest (the bottle 50° neck up: an opened full bottle goes in) to
+full tilt (30° neck down: both bottles' shoulders over the mouth, so they drain) and
 back, and the crank-rocker's toggles at both ends are soft stops: cranking on brings
 the bottle back, it can't tip further.
 
@@ -63,7 +64,9 @@ def _two(a, b):
 def decanter_hinge(p):
     """A crank-rocker whose rocker is the cradle, hinged at the bottle's mouth G. The rod
     pin E sits on the bottle's axis, ``rocker`` behind the mouth; ``crank`` and ``rod``
-    are the crank-rocker's for an 80° swing (``tilt_rest`` to ``tilt_full``) from O."""
+    are the crank-rocker's for an 80° swing (−50° to +30°) from O, 310 mm under the mouth
+    and 40 behind it: transmission 47.4°, the crank torque in the gearbox's rating, the
+    jam's rod force no more than the 80° design's of −25° to +55°."""
     return [
         ("O", xy(0, 0)),
         ("G", xy(p["gx"], p["gy"])),
@@ -77,8 +80,8 @@ def decanter_hinge(p):
 register(Linkage(
     key="decanter_hinge", name="Decanting cradle A: hinge at the mouth",
     program=decanter_hinge,
-    params={"crank": R(964, 10), "rod": R(2399, 10), "rocker": R(150), "gx": R(-173),
-            "gy": R(202)},
+    params={"crank": R(7713, 100), "rod": R(29835, 100), "rocker": R(120), "gx": R(-40),
+            "gy": R(310)},
     links={"b1": _two("M", "E"),
            "b2": (("G", "E", *TIES), (("G", "E"), ("G", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "E"),
                                      ("Tf2", "Tr1"), ("E", "Tr1"), ("Tr1", "Tr2")))},

@@ -13,6 +13,7 @@ import { loadGlb, teardown, type LoadedScene } from '../loader';
 import { isAbort } from '../loads';
 import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
+import { createPack, type Pack, type PackData } from './pack';
 import {
   fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
 } from './motion';
@@ -43,6 +44,10 @@ let playing = true;
 let turnsPerSecond = Number(speedSel.value) || 1;
 let dirty = true;
 let ticket = 0;               // the latest design asked for (an older load is dropped)
+let packData: PackData | null = null;   // the flat pack (fetched on first use)
+let pack: Pack | null = null;
+let packS = 0;                // 0 assembled .. 1 packed
+let packTarget = 0;
 let abort: AbortController | null = null;
 
 // -- layout: the side panel, the canvas beside it, the dock under it --------------------
@@ -182,6 +187,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
   abort = new AbortController();
   const signal = abort.signal;
   renderCards(key);
+  resetPack();
   const url = new URL(location.href);
   url.searchParams.set('design', key);
   history.replaceState(null, '', url);
@@ -213,6 +219,80 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
   }
 }
 
+// -- the flat pack ------------------------------------------------------------------------
+
+function resetPack(): void {
+  pack?.dispose();
+  pack = null;
+  packData = null;
+  packS = 0;
+  packTarget = 0;
+  $('pack-toggle').textContent = 'Flat pack';
+  $('pack-info').hidden = true;
+}
+
+function renderPackInfo(d: PackData): void {
+  const info = $('pack-info');
+  const [x, y, z] = d.box.outside_mm.map((v) => Math.round(v)) as [number, number, number];
+  info.replaceChildren();
+  const h = document.createElement('h3'); h.textContent = 'Flat pack';
+  const size = document.createElement('p');
+  size.className = 'pack-size';
+  size.textContent = `One box, ${x} × ${z} × ${y} mm outside (${d.box.volume_l} L).`;
+  const how = document.createElement('p');
+  how.textContent = 'It comes apart where it is already screwed together, in this order:';
+  const ol = document.createElement('ol');
+  for (const m of d.modules) {
+    const li = document.createElement('li');
+    const b = document.createElement('strong'); b.textContent = m.label;
+    li.append(b, document.createTextNode(`: ${m.how}`));
+    ol.appendChild(li);
+  }
+  info.append(h, size, how, ol);
+  info.hidden = false;
+}
+
+async function togglePack(): Promise<void> {
+  if (!motion || !loaded) return;
+  if (packTarget > 0) {           // back to the assembled cradle
+    packTarget = 0;
+    $('pack-toggle').textContent = 'Flat pack';
+    return;
+  }
+  const mine = ticket;
+  if (!packData) {
+    status('working out the flat pack… (the first time takes a minute)');
+    try {
+      packData = await getJson<PackData>(`/api/cradle/${encodeURIComponent(motion.key)}/pack`);
+    } catch (err) {
+      status(`could not pack it: ${(err as Error).message}`);
+      return;
+    }
+    status('');
+    if (mine !== ticket || !loaded) return;
+  }
+  if (!pack) {
+    loaded.action.time = 0;         // the transforms start from the clip's first frame
+    loaded.mixer.update(0);
+    pack = createPack(loaded.walker, packData, ['bottle', 'decanter']);
+  }
+  renderPackInfo(packData);
+  setPlaying(false);
+  packTarget = 1;
+  $('pack-toggle').textContent = 'Assemble';
+}
+
+/** Frame the camera on the box once it's packed. */
+function frameBox(): void {
+  if (!pack) return;
+  const b = pack.bounds();
+  const size = b.getSize(new THREE.Vector3()), centre = b.getCenter(new THREE.Vector3());
+  const proxy = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z));
+  proxy.position.copy(centre);
+  frameView(stage, proxy, view, 1.1);
+  proxy.geometry.dispose();
+}
+
 // -- the controls ------------------------------------------------------------------------
 
 function setPlaying(p: boolean): void {
@@ -221,6 +301,7 @@ function setPlaying(p: boolean): void {
   play.title = p ? 'Pause' : 'Play';
 }
 play.addEventListener('click', () => setPlaying(!playing));
+$('pack-toggle').addEventListener('click', () => { void togglePack(); });
 speedSel.addEventListener('change', () => { turnsPerSecond = Number(speedSel.value) || 1; });
 slider.addEventListener('input', () => {
   if (!motion) return;
@@ -275,15 +356,23 @@ function readouts(m: CradleMotion): void {
 const clock = new THREE.Timer();
 function tick(): void {
   const dt = Math.min(0.1, clock.update().getDelta());
-  if (motion && playing) {
+  if (motion && playing && packS === 0) {
     f = (f + (dt * turnsPerSecond) / motion.ratio) % 1;
     dirty = true;
+  }
+  if (pack && packS !== packTarget) {   // the modules on their way (3 s each way)
+    const was = packS;
+    packS = packTarget > packS ? Math.min(packTarget, packS + dt / 3) : Math.max(packTarget, packS - dt / 3);
+    pack.set(packS);
+    dirty = true;
+    if (packS === 1 && was < 1) frameBox();
+    if (packS === 0 && was > 0) { $('pack-info').hidden = true; reframe(); }
   }
   if (stage.controls.update()) dirty = true;
   if (dirty && motion) {
     diagram?.update(f);
     readouts(motion);
-    if (loaded) {
+    if (loaded && packS === 0) {
       loaded.action.time = f * loaded.clipDuration;
       loaded.mixer.update(0);
     }
