@@ -692,7 +692,9 @@ class HandCrank(Group):
                "the long steel standoff (the crankpin) stood on its small hole, an M5 button "
                "head up through the plate into it (threadlocker), tight; the short one (the "
                "tie) down through the plate's middle hole to its wide washer, an M5 button "
-               "head up through the washer into it (threadlocker), snug. That plate down over "
+               "head up through the washer into it (threadlocker), snug: the washer, not the "
+               "plate, holds the tie, so tape the washer to the plate until the top plate's "
+               "screw is in. That plate down over "
                "the shaft, its keyway over the key, the standoffs up, onto the sleeve (file a "
                "keyway that binds: the key must slide).", "layer"),
             Op(STACK, (ARM_LAYER, 1), whole(*plates, "crank_tie_screw_hi", "crank_end_screw"),

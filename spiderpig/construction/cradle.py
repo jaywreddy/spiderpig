@@ -491,7 +491,9 @@ class CradleTies(Group):
         return [Op(STACK, (k, 0, "ties"), whole(link), "Cradle link and tie rods",
                    "The four tie rods onto the cradle link, an M5 button head "
                    "through the link from its leg side into each (threadlocker); the rods "
-                   "stand up from its bay side.", "cradle_link", sub=True)]
+                   "stand up from its bay side. It goes onto the stack rods up, its bores "
+                   "down over the steel and the pin barrels it rides.", "cradle_link",
+                   sub=True)]
 
     def motion(self, got: Realized) -> Motion:
         return RIDES_HOST
