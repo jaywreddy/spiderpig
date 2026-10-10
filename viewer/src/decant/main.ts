@@ -13,6 +13,7 @@ import { loadGlb, teardown, type LoadedScene } from '../loader';
 import { isAbort } from '../loads';
 import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
+import { createPour } from './pour';
 import {
   fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
 } from './motion';
@@ -44,6 +45,7 @@ let turnsPerSecond = Number(speedSel.value) || 1;
 let dirty = true;
 let ticket = 0;               // the latest design asked for (an older load is dropped)
 let abort: AbortController | null = null;
+const pour = createPour(stage, () => { dirty = true; });   // the look, the wine, the vessel
 
 // -- layout: the side panel, the canvas beside it, the dock under it --------------------
 
@@ -196,6 +198,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     $('tick-full').style.left = `${fullAt}%`;
     f = fractionAtTurns(m, turns ?? 0);
     dirty = true;
+    pour.detach();
     teardown(stage.scene, loaded);
     loaded = null;
     status(`baking ${m.name} in 3D… (the first time takes a minute or two; the diagram works now)`);
@@ -203,6 +206,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     if (mine !== ticket) { teardown(stage.scene, next); return; }
     loaded = next;
     next.action.paused = true;     // posed from ``f`` every frame
+    pour.attach(next, m);
     reframe();
     status('');
     dirty = true;
@@ -286,6 +290,7 @@ function tick(): void {
     if (loaded) {
       loaded.action.time = f * loaded.clipDuration;
       loaded.mixer.update(0);
+      pour.update(f);
     }
   }
   if (dirty) {
