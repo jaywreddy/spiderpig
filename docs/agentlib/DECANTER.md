@@ -293,9 +293,9 @@ Things to know before cutting and on the bench:
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's last step):
   - 800 mm of headroom: a 3 L's base at full tilt reaches 775 mm over the table.
   - 50 mm behind the base plate: a 3 L reaches 35 mm past its rear edge.
-  - A decanter fits up to 180 mm tall at 260 mm across, 185 mm across up to 195 mm, 80 mm
-    across up to 270 mm (the light's clip at rest), and 65 mm across up to 275 mm, no
-    taller, its mouth 60 mm across or more. It stands under the mouth's centre
+  - A decanter fits up to 180 mm tall at 250 mm across (the notch), 185 mm across up to
+    190 mm, 80 mm across up to 270 mm (the light's clip at rest), and 65 mm across up to
+    275 mm, no taller, its mouth 60 mm across or more. It stands under the mouth's centre
     (`cradle.DECANTER_X`); the notch locates only a 244-252 mm base, so another is
     centred by eye.
     - These leave about 4 mm of radius to the box at rest. The front saddle and the tie

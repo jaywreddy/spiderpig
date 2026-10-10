@@ -1328,7 +1328,9 @@ def assembly(view) -> list:
                       "rail on it, the notch at the front. " + how, "base"))
     if brackets["R"]:
         ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how + " Then turn the crank "
-                      "through a whole pour again: both cradle links must still swing freely.",
+                      "through a whole pour again: both cradle links must still swing freely; "
+                      "and the rod's paper check again (the hand crank's step), now that the "
+                      "tie rods are held at both ends.",
                       "base_R"))
     collars = view.named(r"\w+_collar")
     if adapters or collars:
@@ -1358,8 +1360,9 @@ USE_LIMITS = (
     "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
     "behind the base plate (a 3 L reaches past its rear edge); keep the base plate clear "
     "behind the decanter (at rest the base stop comes down to 40 mm over it). A decanter fits "
-    "up to 180 mm tall at 260 mm across, 185 mm across up to 195 mm, 80 mm across up to 270 "
-    "mm (the light's clip at rest) and 65 mm across up to 275 mm, no taller, its mouth 60 mm "
+    "up to 180 mm tall at 250 mm across (the notch), 185 mm across up to 190 mm, 80 mm "
+    "across up to 270 mm (the light's clip at rest) and 65 mm across up to 275 mm, no "
+    "taller, its mouth 60 mm "
     "across or more (the pour falls 75 mm into it); it must go in at rest without touching "
     "the light's clip or the front saddle, a finger's width to spare. Never force the "
     "handle: if it stiffens, stop and look (the drive holds a firm 40 N push at the grip "

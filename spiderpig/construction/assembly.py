@@ -208,7 +208,9 @@ CRADLE_ORDER: tuple[Stage, ...] = (
           intro="The inner plate onto its stack: the tops of the steel standoffs that reach "
                 "it into it. Once their screws are tight the cradle link must still swing "
                 "freely on the steel it rides (its printed parts stop 0.3 mm short of the "
-                "steel): if it binds, sand the spacer under the inner plate."),
+                "steel): turn the gearbox's 9 mm input shaft by hand (the worm can't be "
+                "turned from the link) and feel for a bind; if it binds, sand the spacer "
+                "under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base plate", where="robot",
           tags=(("base",),), strict=True,
           intro="The drive side stands on the base plate from here on."),
@@ -236,7 +238,7 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                           "its bay face to the bay."),),
           intro="The passive stack set down on the base plate 7-15 mm out from its place "
                 "(inside its carriage bolts) and pushed home, the steel the cradle link "
-                "rides up through the link's bores; then what goes over the link, and the "
+                "rides up through the link; then what goes over the link, and the "
                 "inner plate. With its screws tight, turn the crank "
                 "through a whole pour: both cradle links must swing freely."),
     Stage(FINISH, None, "Passive side onto the base plate", where="robot",

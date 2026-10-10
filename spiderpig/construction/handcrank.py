@@ -712,7 +712,7 @@ class HandCrank(Group):
             Op(STACK, (k_rod, 2), whole("crankpin_washer", "crankpin_screw_hi"), "",
                "With the rod on the crankpin: the wide washer and the M5 button head into "
                "the crankpin's top (threadlocker), tight. The rod must turn freely under the "
-               f"washer with a little end play (0.2-{CRANKPIN_PLAY:g} mm): if it binds, sand "
+               "washer with a little end play (about 0.3 mm): if it binds, sand "
                "its printed spacer down (never shim it up: the washer keeps it off the screw "
                "heads over it).", "layer"),
             Op(FINISH, (2,), whole(*view.named(r"handle(_\w+)?")),
@@ -723,12 +723,13 @@ class HandCrank(Group):
                "end (threadlocker): the grip spins on the standoff. The crank's hub onto the "
                "gearbox's input shaft, its keyway over the shaft's 3 mm key (it comes with "
                "the gearbox: else a 3 x 3 x 16 DIN 6885 key), and the M3 set screw down onto "
-               "the key. Then the rod's check: turn the handle to rest (the cradle neck up) "
-               "and on, 1 to 4 turns: the rear tie's screw head under the drive side's "
-               "cradle link passes over the rod, and a sheet of paper must slide between "
-               "them. If it drags, take the crankpin's top screw and washer off, file 0.1 mm "
-               "off the crankpin's top end, sand the rod's spacer to keep its play, and check "
-               "again.", "handle"),
+               "the key. Then the rod's check: from rest (the cradle neck up) turn the handle "
+               "4 turns one way and, if the rear tie's screw head under the drive side's "
+               "cradle link never passed over the rod, back to rest and 4 turns the other "
+               "way. Where the head is over the rod, press the rod up against its washer and "
+               "slide a sheet of paper between them: it must pass. If it drags, take the "
+               "crankpin's top screw and washer off, file 0.1 mm off the crankpin's top end, "
+               "sand the rod's spacer to keep its play, and check again.", "handle"),
         ]
         ops = [replace(op, pieces=tuple(p for p in op.pieces if p.name in view.z))
                for op in ops]               # (a block that needs no spacer has none)

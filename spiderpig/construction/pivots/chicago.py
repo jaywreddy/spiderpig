@@ -544,7 +544,8 @@ class ChicagoAxle:
                      "above are on (medium threadlocker, 243: the low-strength 222 cures "
                      "poorly between two stainless parts), its printed top spacer under the "
                      "head: hold the barrel's head from below (pliers, tape on the jaws) and "
-                     "snug it until it bottoms; the links must turn freely.")
+                     "snug it until it bottoms; the joint must turn without binding (the "
+                     "worm can't be turned from the links: turn the gearbox's input shaft).")
         return [
             Op(STACK, (k_lo, 0, 1), lo, "", on, "layer"),
             # the screw is the barrel's (counted with it); its head spacer is a part of its own
