@@ -75,8 +75,9 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
         raise SpecErrors([SpecError("", str(e))]) from None
     resolved = _resolved(spec, config, module, sides)
     engine = engine_version()
+    warnings = _warnings(lk, config, sides) + _product_warnings(spec, config)
     design = Design(design_id(resolved, engine), spec, resolved, config, engine,
-                    _warnings(lk, config, sides), derived_from=derived_from, patch=patch)
+                    warnings, derived_from=derived_from, patch=patch)
     _attach_store(design, Store.of(store))
     return design
 
@@ -111,6 +112,20 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
                 f"built for {config.thickness:g} mm layers, and a construction that can't be "
                 f"built that thin says so at check (with the thickness that works)")
     return warnings
+
+
+def _product_warnings(spec, config: BuildConfig) -> list[str]:
+    """A product's own defaults replace the walkers' (``config.PRODUCT_*``): a spec that
+    names a walker's default for one of them is told it was replaced (name another to
+    override it)."""
+    if not config.lk.product:
+        return []
+    asked = (("materials.sheet", spec.materials.sheet, config.sheet),
+             ("materials.frame_sheet", spec.materials.frame_sheet, config.frame_sheet),
+             ("constructions.pin", spec.constructions.pin, config.pin))
+    return [f"{path} {given} is the walkers' default: a {config.lk.product} uses {used} "
+            f"(its own; name another to override it)"
+            for path, given, used in asked if given and given != used]
 
 
 THICKNESS_TOLERANCE = 0.12     # a measured thickness this far from the sheet's nominal warns

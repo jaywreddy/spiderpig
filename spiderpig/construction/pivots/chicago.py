@@ -180,6 +180,9 @@ class ChicagoShaft:
     lengths: tuple[float, ...] = CHICAGO_LENGTHS   # the barrels stocked (per linkage,
     #                                  BARRELS: ChicagoAxle.resolve), shortest first
     model_gap: float = 0.01
+    bonded: bool = True             # the lowest link bonded to the barrel (False: every
+    #                                  link runs on it, the barrel's head held to drive the
+    #                                  screw, where it is in reach: a cradle's, CHICAGO_M6)
     glue_fit: float = 0.15          # the lowest link's hole over the barrel (bonded)
     glue_per_pin: float = 0.005
     lock_per_pin: float = 0.01
@@ -345,12 +348,14 @@ class ChicagoShaft:
         return len(stack(total, self.shim_steps)[0])
 
     def host_hole(self) -> float:
+        """The bonded lowest link's hole (:attr:`bonded`; unbonded, it runs like the rest)."""
         return self.d + self.glue_fit
 
     def realize(self, build: Build, group: AxleGroup, col: Column, out: Realized, *,
                 faces: dict[str, float] | None = None) -> Fit:
-        """The Chicago screw, its printed head spacers, and the bonded lowest link's hole. An
-        end in a clearance gap keeps :data:`common.HEAD_CLEARANCE` under the next layer."""
+        """The Chicago screw, its printed head spacers, and the bonded lowest link's hole
+        (:attr:`bonded`). An end in a clearance gap keeps :data:`common.HEAD_CLEARANCE` under
+        the next layer."""
         from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
         faces = faces or {}
@@ -384,24 +389,29 @@ class ChicagoShaft:
         # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
         # the screw bottoms on the barrel, so they only set the column's axial play). A lower
         # one thinner than PRINT_MIN isn't printed: the lowest link is bonded to the barrel,
-        # so that gap is set with a feeler gauge as the epoxy cures (``bond_gap_mm``)
+        # so that gap is set with a feeler gauge as the epoxy cures (``bond_gap_mm``);
+        # unbonded, it is the column's play
         from spiderpig.construction.pivots.common import PRINT_MIN
 
-        bond_gap = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
+        thin = f.shims_lo if EPS < f.shims_lo < PRINT_MIN - EPS else 0.0
+        bond_gap = thin if self.bonded else 0.0
+        if thin and not self.bonded:
+            f = replace(f, play=f.play + thin)
         # the upper spacer holds the washer's thickness at least (0.5 mm), always a print
         hi_t = self.washer_t + f.shims_hi
         for tag, z0, t in (("hi", z, hi_t), ("lo", zb, f.shims_lo)):
-            if t <= EPS or (tag == "lo" and bond_gap):
+            if t <= EPS or (tag == "lo" and thin):
                 continue
             sp = bored(disc(xy, float(get(self.shim_key).dims["od"]) / 2, z0, z0 + t), xy,
                        d + 0.2, z0, z0 + t)
             out.bodies.append(hardware(f"{stem}_spacer_{tag}", sp, host, fab="printed",
                                        color=SLEEVE_COLOR))
-        out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
-                                  f"{group.name}: barrel into {host} (slow epoxy: CA "
-                                  "crazes acrylic)"))
+        if self.bonded:
+            out.extras.append(BomLine("epoxy_2part", self.glue_per_pin,
+                                      f"{group.name}: barrel into {host} (slow epoxy: CA "
+                                      "crazes acrylic)"))
+            out.cut(host, Cut(xy, self.host_hole()))
         out.extras.append(BomLine(self.lock_key, self.lock_per_pin, group.name))
-        out.cut(host, Cut(xy, self.host_hole()))
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
@@ -521,15 +531,23 @@ class ChicagoAxle:
               *whole(*view.named(rf"{re.escape(stem)}_spacer_lo")))
         top = whole(*view.named(rf"{re.escape(stem)}_spacer_hi"))
         k_hi = view.slot(cut)
+        if self.shaft.bonded:
+            on = ("Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
+                  "head under the link and its printed head spacer under that; set the gap "
+                  "with a feeler gauge as it cures.")
+            drive = ("Each Chicago screw into its barrel from the cap side once the links "
+                     "above are on (threadlocker), its printed top spacer under the head.")
+        else:
+            on = ("Each Chicago barrel up through its link, its head under the link (and its "
+                  "printed head spacer under that, where it has one); it runs free, unglued.")
+            drive = ("Each Chicago screw into its barrel from the cap side once the links "
+                     "above are on (threadlocker), its printed top spacer under the head: "
+                     "hold the barrel's head from below (pliers, tape on the jaws) and snug "
+                     "it until it bottoms; the links must turn freely.")
         return [
-            Op(STACK, (k_lo, 0, 1), lo, "",
-               "Bond each Chicago barrel into its link (slow epoxy: CA crazes acrylic), its "
-               "head under the link and its printed head spacer under that; set the gap "
-               "with a feeler gauge as it cures.", "layer"),
+            Op(STACK, (k_lo, 0, 1), lo, "", on, "layer"),
             # the screw is the barrel's (counted with it); its head spacer is a part of its own
-            Op(STACK, (k_hi, 2), (Piece(pin, "screw", (cut, z1)),), "",
-               "Each Chicago screw into its barrel from the cap side once the links above "
-               "are on (threadlocker), its printed top spacer under the head.", "layer",
+            Op(STACK, (k_hi, 2), (Piece(pin, "screw", (cut, z1)),), "", drive, "layer",
                count=False),
             Op(STACK, (k_hi, 2), top, "", "", "layer"),
         ]
@@ -547,12 +565,13 @@ class ChicagoAxle:
                                        host, fab="printed", color=SLEEVE_COLOR))
         f = self.shaft.realize(build, group, col, out)
         gap_washers(build, group, col, out, self.shaft.d, host, stem)
+        bonded = self.shaft.bonded
         for m in group.axis.members:
-            if m != host:
+            if m != host or not bonded:
                 out.cut(m, Cut(xy, self.hole()))
         out.notes["wobble"] = {group.name: column_wobble(
             build, group, col,
-            clearance=lambda m: 0.0 if m == host else self.running_fit,
+            clearance=lambda m: 0.0 if m == host and bonded else self.running_fit,
             length=build.ctx.pitch, play=f.play + _hw_tol(),
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft))}
@@ -568,10 +587,15 @@ def _m6_lengths() -> tuple[float, ...]:
 CHICAGO_M6 = ChicagoAxle(
     key="chicago6",
     label=("M6 Chicago screw (8 mm barrel) through the stack, printed rings and head spacers; "
-           "lowest link bonded (pins only): a decanting cradle's"),
+           "nothing bonded (pins only): a decanting cradle's"),
     shaft=ChicagoShaft(family="m6", washer_key="ptfe_washer_8x14x0p5",
-                       shim_key="shim_din988_8x14", lengths=_m6_lengths()),
+                       shim_key="shim_din988_8x14", lengths=_m6_lengths(), bonded=False,
+                       min_play=0.25),
 )
 """The M6 size (Harfington's 18-8, 8 mm barrel, 13.5 mm heads: :mod:`hardware.cradle_catalog`):
 a decanting cradle's pins (``config.PRODUCT_PINS``), 8 times the M3 barrel's bending section
-for a bottle's loads (:mod:`spiderpig.cradle_report`)."""
+for a bottle's loads (:mod:`spiderpig.cradle_report`). Not bonded: a cradle's pin stands in
+the open, its barrel's head in reach below the rod to hold while the screw goes in, and a
+joint turned a few times a pour needs no glued link (nor the epoxy on the order). Its
+column keeps 0.25 mm of axial play at least (a printed 0.5 mm spacer prints 0.4-0.6 mm: the
+links must turn)."""

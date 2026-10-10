@@ -6,8 +6,9 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
 
 * **The drive side** (``L.``, the side as planned; on your right as you stand behind the
   cradle facing the decanter) carries the hand crank (:mod:`construction.handcrank`).
-* **The passive side** (``R.``) is the same plan mirrored, without the crank, the rod and
-  the rod's pin (:func:`passive_design`): the cradle box drives it.
+* **The passive side** (``R.``) is the drive side's own parts mirrored, without the crank,
+  the rod and the rod's pin (:func:`passive_side`): the cradle box drives it; its plates
+  keep the drive's holes, so each plate pair is one part, flipped.
 * **The cradle box**: four tie rods (10 mm steel standoffs made to length, MISUMI NETRF10)
   between the two cradle links, at the linkage's tie points (``decanters.TIES``), each
   screwed through its cradle link from outside. Two printed saddles ride on them: the
@@ -203,13 +204,16 @@ class Stand:
 
 
 BASE_SHEET = "al5052_3p2mm"     # the base plate, both sides' outer plates bolted onto it
-BASE_HALF = 200.0               # its half-width across the bay: a 400 mm track
+BASE_HALF = 250.0               # its half-width across the bay: a 500 mm track (a 30° tip
+#                                 and a 26 N push at a bottle's top, the worst over the swing)
 FOOT_PAD_H = 8.0                # its printed TPU feet, snapped into its corner holes
+BASE_TOP_CLEAR = FOOT_PAD_H + 3.175 - 2.0   # what may hang under it: all but 2 mm of the feet
 BASE_TOP = -LIP_HEIGHT + FOOT_PAD_H + 3.175     # its top, from the mouth
 NOTCH_R = 126.0                 # the decanter's notch in it: a 244 mm decanter and play,
 #                                 slid in from the front onto the table, the notch's round
 #                                 end locating it under the mouth
-DECANTER_X = -5.0               # the decanter's axis, from the mouth
+DECANTER_X = 0.0                # the decanter's axis, under the mouth (a stream lands -15..+16 mm
+#                                 from it over the pour: 2026-10-10 review round 2)
 _FOOT_Y = BASE_TOP + 12.5       # a foot's centre: its screw's boss (2 t) on the base plate
 BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' height, wall
 """A stand foot is a printed L-bracket outside each outer plate, an M5 button head through
@@ -460,9 +464,12 @@ class CradleTies(Group):
     def realize(self, build: Build, done: Realized) -> Realized:
         lk = build.ctx.config.lk
         out = Realized()
-        link = next(n for n in build.plan.topo.links if body_class(n) == cradle_link(lk))
-        for name in tie_points(build.plan.topo, lk).values():
+        topo = build.plan.topo
+        link = next(n for n in topo.links if body_class(n) == cradle_link(lk))
+        ties = tie_points(topo, lk)
+        for name in ties.values():
             out.cut(link, Cut(tuple(build.xy(name)), TIE_HOLE))
+        _ties_clear_the_inner_plate(build, done, ties)
         return out
 
     def assembly(self, view) -> list:
@@ -536,6 +543,35 @@ class CradlePlates(FramePlates):
             out.bodies.append(hardware(name, part, frame, fab="laser", color=FRAME_COLOR,
                                        sheet=build.ctx.sheet("frame")))
         return out
+
+
+def _ties_clear_the_inner_plate(build: Build, done: Realized, ties: Mapping[str, str]):
+    """Each tie rod passes the inner plate's layer in the plate's open, where the planner
+    checks nothing (a frame plate's layer holds only what sits in its holes): its path over
+    the whole turn must clear the plate's members and the bosses round its holes (as built
+    so far: the stand's and the axles') by the plan's margin, or the rod would run into the
+    plate."""
+    pads = done.pads.get(FRAME_INNER, [])
+    web = boss_web(build.ctx.sheet("frame"))
+    holes = [c for c in done.cuts.get(FRAME_INNER, []) if isinstance(c, Cut)]
+    reach = TIE_D / 2 + build.plan.spec.margin
+    for tie, name in ties.items():
+        path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
+        for a, b, r in pads:
+            a_, b_ = np.asarray(a[:2], float), np.asarray(b[:2], float)
+            ab = b_ - a_
+            u = np.clip(((path - a_) @ ab) / max(float(ab @ ab), 1e-18), 0.0, 1.0)
+            gap = float(np.linalg.norm(path - (a_ + u[:, None] * ab), axis=1).min()) - r
+            if gap < reach:
+                raise ConstructionError(f"tie rod {tie} comes within {gap:.1f} mm of the inner "
+                                        f"plate's member {a[:2]}-{b[:2]} over the turn (it "
+                                        f"needs {reach:.1f})")
+        for c in holes:
+            gap = float(np.linalg.norm(path - np.asarray(c.xy[:2], float), axis=1).min())
+            if gap - c.d / 2 - web < reach:
+                raise ConstructionError(f"tie rod {tie} comes within {gap - c.d / 2 - web:.1f} "
+                                        f"mm of the inner plate's boss at {c.xy[:2]} over the "
+                                        f"turn (it needs {reach:.1f})")
 
 
 # --- parts -----------------------------------------------------------------------------
@@ -666,12 +702,15 @@ def _collar(size: BottleSize, length: float) -> Shape3D:
     return moved(ring - gap, Location((STOP_X + length / 2, 0.0, 0.0)))
 
 
-def _led(front: Saddle) -> tuple[Shape3D, Shape3D, Shape3D]:
+def _led(front: Saddle) -> tuple[Shape3D, Shape3D, Shape3D, list[Shape3D], list[Shape3D]]:
     """The penlight under the shoulder and its clip, in the cradle's frame: the light stands
-    behind the shoulder stop, its head up under the shoulder; the clip, printed with the
-    front saddle (:func:`_saddle` unions it), holds its body below the head (which twists to
+    behind the shoulder stop, its head up under the shoulder; the clip, a part of its own
+    (printed standing, its tube upright), holds its body below the head (which twists to
     switch it on) on a lip at the bottom, an M3 set screw through a boss on its back holding
-    it from turning. (The light, the clip, the set screw.)"""
+    it from turning. A plate behind the saddle carries it, its flange under the saddle's
+    flat underside (behind the front tie's set screw) held by two M5 button heads up into
+    printed pilots. (The light, the clip, the set screw, the clip's screws, the saddle's
+    pilots for them.)"""
     d, length = PENLIGHT
     x, head = LED_X, LED_TOP
     up = (90, 0, 0)                          # a cylinder's axis along y
@@ -688,13 +727,122 @@ def _led(front: Saddle) -> tuple[Shape3D, Shape3D, Shape3D]:
         Location((x + d / 2 + (SET_SCREW + 1.0) / 2 - 0.5, boss_y, 0.0)))
     pilot = Cylinder(SET_PILOT / 2, SET_SCREW + 4.0, rotation=(0, 90, 0)).moved(
         Location((x + d / 2 + SET_SCREW / 2, boss_y, 0.0)))
-    arm = Box(x - front.x[1] - d / 2 - 1.0, 10.0, 12.0).moved(
-        Location(((front.x[1] + x - d / 2 - 1.0) / 2, front.y0 + 5.0 - 0.01, 0.0)))
-    web = Box(4.0, front.y0 + 10.0 - clip_bot, 12.0).moved(
-        Location((x - d / 2 - 2.0, (front.y0 + 10.0 + clip_bot) / 2, 0.0)))
+    # the plate: from the saddle's back face to the tube, its lower front cut away at 45°
+    # (over a decanter's shoulder at rest), its flange forward under the saddle on a 45°
+    # gusset
+    x1, y0, half = front.x[1], front.y0, CLIP_W / 2
+    xs = x - d / 2 - 1.5                     # (short of the light's head)
+    yb = clip_bot - 2.0
+    prof = [(x1, y0), (xs, y0), (xs, yb + CLIP_CUT - (xs - x1)), (x1, yb + CLIP_CUT),
+            (x1, y0 - CLIP_FLANGE - (x1 - CLIP_X0)), (CLIP_X0, y0 - CLIP_FLANGE),
+            (CLIP_X0, y0)]
+    plate = Solid.extrude(Face(Wire.make_polygon([(px, py, -half) for px, py in prof],
+                                                 close=True)), (0, 0, 2 * half))
+    screws, pilots, bores = [], [], []
+    for z in (-CLIP_SCREW_Z, CLIP_SCREW_Z):
+        at = Location((CLIP_SCREW_X, 0.0, z))
+        down = (90, 0, 0)                    # a cylinder along y
+        through = CLIP_FLANGE + CLIP_BITE     # (a stock M5 length: CLIP_SCREW)
+        screws.append(union([
+            Cylinder(M5.head_d / 2, M5.head_h, rotation=down).moved(
+                at * Location((0, y0 - CLIP_FLANGE - M5.head_h / 2, 0))),
+            Cylinder(2.4, through, rotation=down).moved(
+                at * Location((0, y0 - CLIP_FLANGE + through / 2, 0)))]))
+        pilots.append(Cylinder(M5_PILOT / 2, CLIP_BITE + 1.0, rotation=down).moved(
+            at * Location((0, y0 + (CLIP_BITE + 1.0) / 2 - 0.01, 0))))
+        bores.append(Cylinder(TIE_HOLE / 2, CLIP_FLANGE + 2, rotation=down).moved(
+            at * Location((0, y0 - CLIP_FLANGE / 2, 0))))
+        bores.append(Cylinder(M5.head_d / 2 + 0.5, 80.0, rotation=down).moved(  # its head's
+            at * Location((0, y0 - CLIP_FLANGE - 40.0, 0))))                    # way in
     screw = Cylinder(1.25, SET_SCREW, rotation=(0, 90, 0)).moved(
         Location((x + d / 2 + 0.05 + SET_SCREW / 2, boss_y, 0.0)))
-    return light, difference(union([tube, boss, arm, web]), pilot), screw
+    clip = difference(union([tube, boss, plate]), pilot, *bores, light)
+    return light, clip, screw, screws, pilots
+
+
+def _base_stop(rear: Saddle, size: BottleSize) -> tuple[Shape3D, Shape3D, list[Shape3D],
+                                                        Shape3D, list[Shape3D]]:
+    """The bottle's base stop, in the cradle's frame: a printed spine under the bottle from
+    the rear saddle's back face (its flange there, two M5 button heads into the saddle's V
+    walls under the liner), a row of pilots along it, and a printed cup sliding on it, its
+    face a millimetre or two behind the base of the bottle ``size``, an M5 button head
+    through its side into the pilot there. At rest the bottle lies 25° nose up and only the
+    liners' friction held it (a corkscrew's push slid it back): the cup holds it, and it
+    stays in the cradle whatever the drive does. (The spine, the cup, the flange's screws,
+    the cup's screw, the saddle's pilots.)"""
+    x1 = rear.x[1]
+    y_top = -DESIGN.r - SPINE_UNDER                  # the spine's top, under a 3 L's body
+    y_bot = y_top - SPINE_H
+    half = SPINE_W / 2
+    flange = Box(SPINE_FLANGE[0], -DESIGN.r - 2.0 - y_bot, SPINE_FLANGE[1]).moved(
+        Location((x1 + SPINE_FLANGE[0] / 2, (-DESIGN.r - 2.0 + y_bot) / 2, 0.0)))
+    bar = Box(SPINE_END - x1, y_top - y_bot, 2 * half).moved(
+        Location(((x1 + SPINE_END) / 2, (y_top + y_bot) / 2, 0.0)))
+    y_mid = (y_top + y_bot) / 2
+    across = (0, 0, 0)                               # a cylinder's axis along z
+    holes = [Cylinder(M5_PILOT / 2, half + 1.0, rotation=across).moved(
+        Location((x, y_mid, half - (half + 1.0) / 2 + 0.5))) for x in STOP_HOLES]
+    screws, pilots, bores = [], [], []
+    along = (0, 90, 0)                               # a cylinder's axis along x
+    for z in (-SPINE_SCREW_Z, SPINE_SCREW_Z):
+        at = Location((x1, y_mid, z))
+        screws.append(union([
+            Cylinder(M5.head_d / 2, M5.head_h, rotation=along).moved(
+                at * Location((SPINE_FLANGE[0] + M5.head_h / 2, 0, 0))),
+            Cylinder(2.4, SPINE_SCREW, rotation=along).moved(
+                at * Location((SPINE_FLANGE[0] - SPINE_SCREW / 2, 0, 0)))]))
+        bite = SPINE_SCREW - SPINE_FLANGE[0]
+        pilots.append(Cylinder(M5_PILOT / 2, bite + 1.0, rotation=along).moved(
+            at * Location((-(bite + 1.0) / 2 + 0.01, 0, 0))))
+        bores.append(Cylinder(TIE_HOLE / 2, SPINE_FLANGE[0] + 2, rotation=along).moved(
+            at * Location((SPINE_FLANGE[0] / 2, 0, 0))))
+    spine = difference(union([flange, bar]), *holes, *bores)
+    # the cup: a channel round the spine and the stop over it, its face at x_c, its two
+    # holes 5 mm apart so the row's 10 mm pitch sets it in 5 mm steps
+    base = size.length
+    hole, face = next((h, h + d) for h in STOP_HOLES for d in CUP_HOLES if h + d >= base + 1.0)
+    w = CUP_WALL
+    chan = difference(
+        Box(CUP_LEN + CUP_STOP, y_top - y_bot + 0.4 + 2 * w, 2 * (half + 0.2 + w)).moved(
+            Location((face - (CUP_LEN - CUP_STOP) / 2, y_mid, 0.0))),
+        Box(CUP_LEN + CUP_STOP + 2, y_top - y_bot + 0.4, 2 * (half + 0.2)).moved(
+            Location((face - (CUP_LEN - CUP_STOP) / 2, y_mid, 0.0))))
+    stop = Box(CUP_STOP, CUP_TOP - (y_top + 0.2 + w), 2 * CUP_HALF).moved(
+        Location((face + CUP_STOP / 2, (CUP_TOP + y_top + 0.2 + w) / 2, 0.0)))
+    cup_holes = [Cylinder(TIE_HOLE / 2, w + 2, rotation=across).moved(
+        Location((face - d, y_mid, half + 0.2 + w / 2))) for d in CUP_HOLES]
+    cup = difference(union([chan, stop]), *cup_holes)
+    lock = union([Cylinder(M5.head_d / 2, M5.head_h, rotation=across).moved(
+        Location((hole, y_mid, half + 0.2 + w + M5.head_h / 2))),
+        Cylinder(2.4, CUP_SCREW, rotation=across).moved(
+        Location((hole, y_mid, half + 0.2 + w - CUP_SCREW / 2)))])
+    return spine, cup, screws, lock, pilots
+
+
+SPINE_W, SPINE_H = 30.0, 20.0   # the base stop's printed spine: across, deep
+SPINE_UNDER = 8.0               # its top under a 3 L's body (in the saddles' Vs)
+SPINE_END = JEROBOAM.length + 25.0     # it reaches past the longest bottle's base
+SPINE_FLANGE = (6.0, 64.0)      # its flange on the rear saddle's back face: thick, across
+SPINE_SCREW_Z = 22.0            # the flange's screws, into the saddle's V walls under the liner
+SPINE_SCREW = 16.0              # M5 x 16: 10 mm in the saddle
+STOP_HOLES = tuple(float(x) for x in range(340, 481, 10))   # the spine's pilots (cradle x)
+CUP_HOLES = (12.0, 17.0)        # the cup's two holes, this far in front of its face
+CUP_LEN, CUP_STOP, CUP_WALL = 25.0, 6.0, 3.0   # its channel, its stop plate, its walls
+CUP_TOP = -30.0                 # the stop's top (cradle y): over both bottles' lower rims
+CUP_HALF = 30.0                 # its half-width across
+CUP_SCREW = 12.0                # M5 x 12 through its wall into the spine's pilot
+
+
+CLIP_W = 28.0               # the light clip's plate, across the bay
+CLIP_X0 = 77.0              # its flange's front edge (the front tie's set screw at 75: open)
+CLIP_FLANGE = 5.0           # the flange's thickness under the saddle
+CLIP_CUT = 33.0             # the plate's lower front, cut at 45° this far up from the tube's
+#                             foot at the saddle's back face (clear of a decanter at rest)
+CLIP_SCREW_X, CLIP_SCREW_Z = 82.5, 7.5   # its two M5 screws (their pilots 1.2 mm clear of
+#                                          the front tie's bore)
+CLIP_BITE = 7.0             # their thread in the saddle
+CLIP_SCREW = M5.key(CLIP_FLANGE + CLIP_BITE)    # M5 x 12
+M5_PILOT = 4.2              # a printed pilot an M5 cuts its own thread in
 
 
 PENLIGHT = (14.0, 60.5)     # the light: Olight i3E EOS, a AAA keychain light (d, length):
@@ -709,8 +857,9 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     """A foot's printed L-bracket outside an outer plate (world): its upright leg on the
     plate's outer face (``face``; ``sign`` outward along z), its foot leg on the base plate
     (its top ``y_top``); an M5 button head through the upright and the plate into a nut over
-    the plate, one down through the foot and the base plate into a nut under it. (The
-    bracket, its screws and nuts with their catalog keys, the base plate's hole (x, z).)"""
+    the plate, one up from under the base plate through the foot into a nut on it (its head
+    in the feet's clearance, its nut in reach from above). (The bracket, its screws and nuts
+    with their catalog keys, the base plate's hole (x, z).)"""
     length, height, wall = BRACKET
     fx, fy = xy
     zs = sorted((face, face + sign * wall))
@@ -728,16 +877,19 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     nut_z = sorted((inner, inner - sign * M5_NUT[1]))
     side_screw = _screw((fx, fy), face + sign * wall, sign, l_side)
     side_nut = _nut((fx, fy), *nut_z)
-    # down through the foot and the base plate, the nut under it
+    # up from under the base plate through the foot, the nut on the foot
     l_down = _m5_length(wall + 3.175 + M5_NUT[1])
-    head = Cylinder(M5.head_d / 2, M5.head_h, rotation=(90, 0, 0)).moved(
-        Location((fx, y_top + wall + M5.head_h / 2, zb)))
-    shank = Cylinder(M5.shank_d / 2, l_down, rotation=(90, 0, 0)).moved(
-        Location((fx, y_top + wall - l_down / 2, zb)))
     y_under = y_top - 3.175
+    if y_under - M5.head_h < y_top - BASE_TOP_CLEAR:
+        raise ValueError("the base plate's bracket screw heads reach the table")
+    head = Cylinder(M5.head_d / 2, M5.head_h, rotation=(90, 0, 0)).moved(
+        Location((fx, y_under - M5.head_h / 2, zb)))
+    shank = Cylinder(M5.shank_d / 2, l_down, rotation=(90, 0, 0)).moved(
+        Location((fx, y_under + l_down / 2, zb)))
+    y_nut = y_top + wall
     nut = Cylinder(M5_NUT[0] / 2, M5_NUT[1], rotation=(90, 0, 0)).moved(
-        Location((fx, y_under - M5_NUT[1] / 2, zb))) - Cylinder(
-        2.5, M5_NUT[1] + 2, rotation=(90, 0, 0)).moved(Location((fx, y_under - M5_NUT[1] / 2,
+        Location((fx, y_nut + M5_NUT[1] / 2, zb))) - Cylinder(
+        2.5, M5_NUT[1] + 2, rotation=(90, 0, 0)).moved(Location((fx, y_nut + M5_NUT[1] / 2,
                                                                   zb)))
     return bracket, [(side_screw, M5.key(l_side)), (side_nut, "m5_nut"),
                      (union([head, shank]), M5.key(l_down)), (nut, "m5_nut")], (fx, zb)
@@ -783,30 +935,70 @@ FOOT_STEM = 10.0            # a TPU foot's stem through the base plate's corner 
 
 def _tpu_foot(x: float, z: float, y_top: float) -> Shape3D:
     """A printed TPU foot (world): a pad under the base plate's corner, a stem up through
-    its hole and a bulb over it that snaps it in."""
-    up = (90, 0, 0)
+    its hole and a bulb over it that snaps it in: a cone (a 30° lead-in) on a ledge, the
+    stem bored up the middle so it squeezes through the hole."""
+    from build123d import Cone
+
+    up = (-90, 0, 0)                         # a solid's axis along +y
     t = 3.175
     pad = Cylinder(12.0, FOOT_PAD_H, rotation=up).moved(
         Location((x, y_top - t - FOOT_PAD_H / 2, z)))
     stem = Cylinder(FOOT_STEM / 2, t, rotation=up).moved(Location((x, y_top - t / 2, z)))
-    bulb = Cylinder(FOOT_STEM / 2 + 1.25, 2.0, rotation=up).moved(Location((x, y_top + 1.0, z)))
-    return union([pad, stem, bulb])
+    lead = 1.25 / math.tan(math.radians(30.0)) + 0.6        # the cone's height
+    bulb = Cone(FOOT_STEM / 2 + 1.25, FOOT_STEM / 2 - 0.6, lead, rotation=up).moved(
+        Location((x, y_top + lead / 2, z)))
+    bore = Cylinder(FOOT_BORE / 2, t + lead + 2.0, rotation=up).moved(
+        Location((x, y_top + (lead - t) / 2 + 1.0, z)))
+    return difference(union([pad, stem, bulb]), bore)
+
+
+FOOT_BORE = 4.0             # up a foot's stem and bulb: the TPU squeezes into the hole
 
 
 # --- the assembly ----------------------------------------------------------------------
 
-def passive_design(design):
-    """The cradle's other side's design: the side's without the hand crank and the rod's
-    pin (so its plates get no holes for them); :func:`fabricate.fabricate` builds it and
-    :func:`assemble_cradle` leaves its rod out."""
+STUDIES = {"decanter_rcm": "a design study, not the one to build (docs/agentlib/DECANTER.md)"}
+"""The cradles that are studies (their outputs say so)."""
+
+DRIVE_PARTS = ("gearbox", "riser_disc", "crank_", "crankpin", "handle")
+"""The hand crank's parts by name (:mod:`construction.handcrank`): the drive side's only."""
+
+GROUPS = {"drive": ("gearbox", "riser_disc", "handle"), "crank": ("conn",),
+          "box": ("tie_", "front_saddle", "rear_saddle", "led", "jeroboam_collar", "base_stop"),
+          "stand": ("base_plate", "foot_")}
+"""A cradle's parts its sides' plan doesn't name, by name: the gearbox and the hand crank,
+the arm's plates, the cradle box, the stand's base (the records' groups:
+``api.building.group_of``)."""
+
+
+def group_of(name: str) -> str | None:
+    """The :data:`GROUPS` group of a cradle part's (side-less) name, or None."""
+    return next((g for g, stems in GROUPS.items() if name.startswith(stems)), None)
+
+
+def passive_side(side: Mechanism, design) -> Mechanism:
+    """The cradle's other side: the drive side's own parts (:func:`assemble_cradle` mirrors
+    them) less the hand crank's, the rod and the rod's pin, and the connections to them.
+    Its plates keep the drive's holes, so each plate pair is one part, flipped: two of a
+    file at SendCutSend, and spares that fit either side."""
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.handcrank import HandCrank
 
     rider = HandCrank.rider(design.ctx)
-    groups = [g for g in design.groups
-              if not isinstance(g, HandCrank)
-              and not (isinstance(g, AxleGroup) and rider in g.axis.members)]
-    return replace(design, groups=groups)
+    crank = set(design.plan.topo.crank_bodies)
+    pins = tuple(g.name.replace(":", "_") + "_" for g in design.groups
+                 if isinstance(g, AxleGroup) and rider in g.axis.members)
+
+    arm = tuple(f"{c}_plate" for c in crank)     # (the arm's other plates)
+
+    def drive(name: str) -> bool:
+        return (name in crank or name == rider or name.startswith(DRIVE_PARTS + arm)
+                or (bool(pins) and name.startswith(pins)))
+
+    keep = [b for b in side.bodies if not drive(b.name)]
+    names = {b.name for b in keep}
+    return replace(side, bodies=keep, connections=[
+        c for c in side.connections if c[0][1] in names and c[1][1] in names])
 
 
 def _moved(part, dz: float, mirror: bool):
@@ -843,16 +1035,14 @@ def cradle_frame(design, side: Mechanism) -> CradleFrame:
                        ties=dict(TIES))
 
 
-def assemble_cradle(side: Mechanism, passive: Mechanism, design) -> Mechanism:
-    """The whole cradle from its drive side ``side`` and its other side ``passive`` (made
-    with :func:`passive_design`), both at one crank angle (the module's docstring)."""
-    from spiderpig.construction.handcrank import HandCrank
-
+def assemble_cradle(side: Mechanism, design) -> Mechanism:
+    """The whole cradle from its drive side ``side`` at one crank angle: that side, its
+    mirror image less the drive (:func:`passive_side`), the cradle box, the stand's base
+    plate (the module's docstring)."""
     lk = design.config.lk
     cf = cradle_frame(design, side)
     z_mid = cf.z_mid
-    rider = HandCrank.rider(design.ctx)
-    passive = replace(passive, bodies=[b for b in passive.bodies if b.name != rider])
+    passive = passive_side(side, design)
     bodies: list[Body] = []
     connections = []
     for s, mech in (("L", side), ("R", passive)):
@@ -910,13 +1100,16 @@ def assemble_cradle(side: Mechanism, passive: Mechanism, design) -> Mechanism:
                                    fab="purchased", bom_key=M5.key(TIE_SCREW),
                                    color=TIE_COLOR))
     # the saddles, their liners, the light, the bottle: drawn in the cradle's frame
-    light, clip, led_screw = _led(SADDLES[0])
+    light, clip, led_screw, clip_screws, clip_pilots = _led(SADDLES[0])
     shown = MAGNUM                          # the bottle drawn: a magnum on its adapters
+    spine, cup, spine_screws, cup_lock, spine_pilots = _base_stop(SADDLES[1], shown)
     a_f, a_r, _ = adapter(shown)
     for s in SADDLES:
         saddle, liner, screws = _saddle(s, cf.ties)
-        if s is SADDLES[0]:                 # the light's clip printed with the front saddle
-            saddle = union([saddle, clip])
+        if s is SADDLES[0]:                 # the light's clip's screws' pilots
+            saddle = difference(saddle, *clip_pilots)
+        else:                               # the base stop's spine's
+            saddle = difference(saddle, *spine_pilots)
         extras.append(hardware(s.name, _place(saddle, cf.lip, cf.tilt), host, fab="printed",
                                color=SADDLE_COLOR))
         wall = a_f if s is SADDLES[0] else a_r
@@ -941,6 +1134,21 @@ def assemble_cradle(side: Mechanism, passive: Mechanism, design) -> Mechanism:
     extras.append(hardware("led_set_screw", _place(led_screw, cf.lip, cf.tilt), host,
                            fab="purchased", bom_key=f"m3_set_screw_{SET_SCREW:g}",
                            color=TIE_COLOR))
+    extras.append(hardware("led_clip", _place(clip, cf.lip, cf.tilt), host, fab="printed",
+                           color=SADDLE_COLOR))
+    # the base stop: its spine on the rear saddle, its cup set behind the magnum's base
+    extras.append(hardware("base_stop_spine", _place(spine, cf.lip, cf.tilt), host,
+                           fab="printed", color=SADDLE_COLOR))
+    extras.append(hardware("base_stop_cup", _place(cup, cf.lip, cf.tilt), host,
+                           fab="printed", color=SADDLE_COLOR))
+    for i, part in enumerate(spine_screws):
+        extras.append(hardware(f"base_stop_screw{i}", _place(part, cf.lip, cf.tilt), host,
+                               fab="purchased", bom_key=M5.key(SPINE_SCREW), color=TIE_COLOR))
+    extras.append(hardware("base_stop_lock", _place(cup_lock, cf.lip, cf.tilt), host,
+                           fab="purchased", bom_key=M5.key(CUP_SCREW), color=TIE_COLOR))
+    for i, part in enumerate(clip_screws):
+        extras.append(hardware(f"led_clip_screw{i}", _place(part, cf.lip, cf.tilt), host,
+                               fab="purchased", bom_key=CLIP_SCREW, color=TIE_COLOR))
     # the base plate, its TPU feet, and each foot's bracket bolting an outer plate onto it
     y_top = float(cf.lip[1]) + BASE_TOP
     t_frame = plan.t(0)
@@ -979,9 +1187,16 @@ def assemble_cradle(side: Mechanism, passive: Mechanism, design) -> Mechanism:
     extras.append(hardware("decanter", _decanter(cf.lip), frame_host, fab="display",
                            color=DECANTER_COLOR))
     fastened += [("bottle", s.name + "_liner") for s in SADDLES]
-    fastened += [("led", SADDLES[0].name), ("led_set_screw", SADDLES[0].name),
-                 ("led_set_screw", "led")]
+    fastened += [("led_clip", SADDLES[0].name), ("led", "led_clip"),
+                 ("led_set_screw", "led_clip"), ("led_set_screw", "led")]
+    fastened += [(f"led_clip_screw{i}", n) for i in range(len(clip_screws))
+                 for n in ("led_clip", SADDLES[0].name)]
+    fastened += [("base_stop_spine", SADDLES[1].name), ("base_stop_cup", "base_stop_spine"),
+                 ("base_stop_lock", "base_stop_cup"), ("base_stop_lock", "base_stop_spine")]
+    fastened += [(f"base_stop_screw{i}", n) for i in range(len(spine_screws))
+                 for n in ("base_stop_spine", SADDLES[1].name)]
     meta = dict(side.meta, cradle=True, cradle_layer=plan.layers[cradle_link(lk)],
+                print_poses=print_poses([b.name for b in extras + bodies], cf.tilt),
                 cradle_lip=[float(cf.lip[0]), float(cf.lip[1])], cradle_tilt=float(cf.tilt),
                 mid_plane=z_mid, bay_mm=BAY, lip_height_mm=LIP_HEIGHT,
                 tie_mm=tie_len, base_tie_mm=foot_len, bay_tie_mm=bay_len, fastened=fastened,
@@ -1007,10 +1222,11 @@ def _decanter(lip) -> Shape3D:
 def assembly(view) -> list:
     """How the cradle box goes on (:mod:`construction.assembly`, ``CRADLE_ORDER``; ``view``
     a ``RobotView``): the tie rods with the drive side's cradle link (a bench sub-assembly
-    of the drive side's stack), the bay tie with the drive side's inner plate; the saddles
-    slid onto the rods, their set screws, the light; the passive side's inner plate onto
-    the bay tie and its cradle link onto the rods; the base tie, the feet's boots; and the
-    display bottle and decanter, the use."""
+    of the drive side's stack), the bay tie with the drive side's inner plate; the base
+    plate, its feet and the drive side's brackets; the saddles slid onto the rods, their
+    set screws, the light, the base stop; the passive side's cradle link onto the rods and
+    its screws; the passive side's brackets; and the display bottle and decanter, the
+    use."""
     from spiderpig.construction.assembly import CRADLE, FINISH, STACK, UNIT, USE, Op, whole
 
     ops = []
@@ -1021,7 +1237,7 @@ def assembly(view) -> list:
                       "Cradle link and tie rods", "", "cradle_link", sub=True, side="L"))
     right = view.named(r"tie_\w+_screwR")
     if right:
-        ops.append(Op(UNIT, (2,), whole(*right), "",
+        ops.append(Op(UNIT, (99,), whole(*right), "",      # (after the link: its key)
                       "The cradle link's M5 button heads from its outside into the rods' "
                       "ends (threadlocker).", "tie_screws", side="R"))
     for s in SIDES_LR:
@@ -1030,8 +1246,10 @@ def assembly(view) -> list:
         if bay or screws:
             ops.append(Op(UNIT, (1,), whole(*bay, *screws), "",
                           "The bay tie onto the inner plate's bay face, an M5 button head "
-                          "through the plate from its leg side (threadlocker).", "bay_tie",
-                          side=s))
+                          "through the plate from its leg side (threadlocker)." if s == "L"
+                          else "The inner plate onto the bay tie's free end too, its M5 "
+                               "button head from the plate's leg side (threadlocker).",
+                          "bay_tie", side=s))
     saddles = [n for s in SADDLES for n in (s.name, f"{s.name}_liner")
                if n in view.z]
     adapters = [n for s in SADDLES if (n := f"{s.name}_magnum_liner") in view.z]
@@ -1043,24 +1261,45 @@ def assembly(view) -> list:
                       "the hinge, centred across the bay; the M3 set screws up from their "
                       "undersides into the printed pilots, snug on the rods (they cut their "
                       "own thread: no more than snug).", "saddles"))
-    light = [n for n in ("led", "led_set_screw") if n in view.z]
+    stop = [n for n in ("base_stop_spine", "base_stop_screw0", "base_stop_screw1",
+                        "base_stop_cup", "base_stop_lock") if n in view.z]
+    if stop:
+        ops.append(Op(CRADLE, (2,), whole(*stop), "Base stop",
+                      "The base stop's printed spine against the rear saddle's back face, "
+                      "under the V, its flange's two M5 button heads into the saddle's pilots "
+                      "(snug); the cup slid onto the spine from its end, its stop toward the "
+                      "saddle. Set it for the bottle in use: lay the bottle in with its "
+                      "shoulder on the stop (on its collar, for a 3 L), slide the cup up to "
+                      "its base and back to the first hole that lines up (the cup has two, "
+                      "5 mm apart), and the M5 button head through it into the spine. The "
+                      "bottle can't then slide back off the pivot when you uncork it.",
+                      "base_stop"))
+    light = [n for n in ("led_clip", "led_clip_screw0", "led_clip_screw1", "led",
+                         "led_set_screw") if n in view.z]
     if light:
         ops.append(Op(CRADLE, (1,), whole(*light), "Light",
-                      "The penlight down into the clip behind the front saddle, onto its lip, "
-                      "its head up under where the bottle's shoulder lies; the M3 set screw "
-                      "into the clip's boss, snug on the light's body (it holds the light "
-                      "while you twist its head to switch it on).", "light"))
+                      "The light's printed clip up under the front saddle's back end, its "
+                      "flange on the saddle's underside, two M5 button heads up through it "
+                      "into the saddle's pilots (snug: they cut their own thread). The "
+                      "penlight down into the clip, onto its lip, its head up under where the "
+                      "bottle's shoulder lies; the M3 set screw into the clip's boss, snug on "
+                      "the light's body (it holds the light while you twist its head to "
+                      "switch it on).", "light"))
     base = [n for n in ("base_plate",) if n in view.z]
     feet = view.named(r"foot_boot_\w+")
-    brackets = view.named(r"foot_bracket_\w+")
-    if base or feet or brackets:
-        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets), "Base plate",
-                      "The TPU feet snapped up into the base plate's corner holes. The cradle "
-                      "onto the base plate, each outer plate's rail on it, the notch at the "
-                      "front. At each foot a printed bracket outside the outer plate: an M5 "
-                      "button head through it and the plate, its nut over the plate's inside "
-                      "(an 8 mm wrench), and one down through it and the base plate, its nut "
-                      "under it (threadlocker on both).", "base"))
+    brackets = {s: view.named(rf"foot_bracket_[A-Za-z0-9]+{s}(_\w+)?") for s in SIDES_LR}
+    how = ("At each foot a printed bracket outside the outer plate: an M5 button head "
+           "through it and the plate, its nut over the plate's inside (an 8 mm wrench); one "
+           "up from under the base plate through it, its nut on the bracket's foot "
+           "(threadlocker on both).")
+    if base or feet or brackets["L"]:
+        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"]), "Base plate",
+                      "The TPU feet pushed up into the base plate's corner holes (a twist "
+                      "helps them through), the bracket screws' heads up through it from "
+                      "under. The drive side onto the base plate, its outer plate's rail on "
+                      "it, the notch at the front. " + how, "base"))
+    if brackets["R"]:
+        ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how, "base_R"))
     collars = view.named(r"\w+_collar")
     if adapters or collars:
         ops.append(Op(USE, (0,), whole(*adapters, *collars), "Bottle adapters",
@@ -1073,16 +1312,28 @@ def assembly(view) -> list:
     shown = [n for n in ("bottle", "decanter") if n in view.z]
     if shown:
         ops.append(Op(USE, (1,), whole(*shown), "Decanting",
-                      "Not bought: crank the cradle to rest (neck up), lay the bottle in "
-                      "the saddles, its shoulder against the front saddle's back face and "
-                      "its label up; stand the decanter under the mouth; switch the light "
-                      "on. Turn the handle slowly: the mouth stays where it is while the "
-                      "bottle tips. Stop when the sediment reaches the shoulder over the "
-                      "light; let go and it holds.", "use", count=False))
+                      "Not bought: crank the cradle to rest (neck up), set the base stop for "
+                      "the bottle, lay the bottle in the saddles, its shoulder against the "
+                      "front saddle's back face and its label up; stand the decanter in the "
+                      "base plate's notch, under the mouth; switch the light on. Turn the "
+                      "handle slowly, either way: the mouth stays where it is while the "
+                      "bottle tips (rest to full tilt is 15 turns). Stop when the sediment "
+                      "reaches the shoulder over the light; let go and it holds. " + USE_LIMITS,
+                      "use", count=False))
     return ops
 
 
 SIDES_LR = ("L", "R")
+USE_LIMITS = (
+    "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
+    "behind the base plate (a 3 L reaches past its rear edge). A decanter fits up to 180 mm "
+    "tall at 260 mm across, 190 mm across up to 200 mm, 95 mm across up to 270 mm (the "
+    "light's clip at rest) and 56 mm across (its neck) up to 310 mm, its mouth 55 mm across "
+    "or more. Never force the handle: if it stiffens, stop and look (the drive holds a firm "
+    "40 N push at the grip against a blocked cradle, no more). Keep your fingers out of the "
+    "drive side's plates while it turns. Uncork at rest, the base stop set, holding the "
+    "neck, a corkscrew's lever lifted straight up.")
+"""The guide's use limits (the room it needs: ``docs/agentlib/DECANTER.md``)."""
 
 
 def jeroboam_hits(mech) -> list[str]:
@@ -1095,7 +1346,8 @@ def jeroboam_hits(mech) -> list[str]:
     box = part.bounding_box()
     out = []
     for b in mech.bodies:
-        if b.part is None or b.name == "bottle" or b.name.endswith(("_liner", "_collar")):
+        if b.part is None or b.name in ("bottle", "base_stop_cup") or b.name.endswith(
+                ("_liner", "_collar")):         # (the cup is set behind the bottle in use)
             continue
         q = b.placed_part()
         bb = q.bounding_box()
@@ -1105,4 +1357,34 @@ def jeroboam_hits(mech) -> list[str]:
         inter = part & q
         if inter is not None and sum(x.volume for x in inter.solids()) > 1.0:
             out.append(b.name)
+    return out
+
+
+def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
+    """How a cradle's printed parts that don't lie in a layer go on the print bed
+    (:func:`build.print_pose`: turns about the global axes, ``tilt`` the cradle's in the
+    drawn pose, radians): the saddles, the liners and adapters on an end (the V's section on
+    the bed: no overhang), the light's clip on its flange (its tube upright, round), the
+    base stop's spine on its underside and its cup on its channel's end, the collar on an
+    end, the brackets and the feet as they stand, the hand crank on its arm (its tube
+    up)."""
+    t = -math.degrees(tilt)
+    out: dict[str, list[tuple[str, float]]] = {}
+    for n in names:
+        if n in {s.name for s in SADDLES}:
+            out[n] = [("Z", t)]
+        elif n == "base_stop_spine":                # on its underside
+            out[n] = [("Z", t), ("X", 90.0)]
+        elif n == "led_clip":                       # on its flange, the tube up
+            out[n] = [("Z", t), ("X", -90.0)]
+        elif n == "base_stop_cup":                  # on its channel's open end
+            out[n] = [("Z", t), ("Y", 90.0)]
+        elif n.endswith("_liner"):
+            out[n] = [("Z", t), ("Y", -90.0)]
+        elif n.endswith("_collar"):
+            out[n] = [("X", -90.0)]
+        elif n.startswith(("foot_bracket_", "foot_boot_")) and n.count("_") <= 3:
+            out[n] = [("X", 90.0)]
+        elif n in ("L.handle", "L.handle_grip"):
+            out[n] = [("Y", 90.0)]           # (the input shaft along +x: the arm down)
     return out

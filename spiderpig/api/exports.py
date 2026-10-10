@@ -203,7 +203,8 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             build_cli.export_prints(groups["printed"], out / "print",
                                     density=filament_density(filament),
                                     filaments=printed_filaments(mech, filament),
-                                    stems=print_stems(labelled()))
+                                    stems=print_stems(labelled()),
+                                    poses=mech.meta.get("print_poses"))
         files += sorted((out / "print").glob("*"))
     extras = list(mech.bom_extras)
     bom_summary = None
@@ -236,8 +237,9 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         except ValueError as e:
             rep.failures.append(Failure.from_exception(e, stage="layout"))
     if "bom" in formats:
-        title = (f"{cfg.module} {'robot' if cfg.robot else 'side'}, {cfg.servo}, {cfg.pillar} "
-                 f"pillars, {cfg.pin} pins, {cfg.crank} crank, {cfg.sheet}")
+        from spiderpig.build import bom_title
+
+        title = bom_title(cfg)
         try:
             bom = bom_from_mechanism(replace(mech, bom_extras=extras), title=title,
                                      filament=filament, groups=groups)

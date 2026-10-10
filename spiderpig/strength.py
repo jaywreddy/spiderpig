@@ -95,6 +95,11 @@ def design_loads(config: BuildConfig, store=None, *, override: tuple[float, floa
     if override is not None:
         out = uniform_loads(*override, "override", f"--pin-load {override[0]:g},{override[1]:g} "
                             "N on every joint")
+    elif lk.get(config.linkage).product:
+        # a decanting cradle: its bottle's and its gearbox's (no MuJoCo, no servo)
+        from spiderpig.cradle_report import loads as product_loads
+
+        return product_loads(config, store)
     elif lk.get(config.linkage).kind != "walker":
         out = uniform_loads(0.0, 0.0, "none", "a mechanism: its pin loads come from what it "
                             "drives (--pin-load WALK,JAM sets them)")
@@ -412,6 +417,12 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         f = row["factor"]
         cap = min(row["capacity_nm"].values())
         lim = cap / (JAM_WARN * f)
+        if config.lk.product:       # a hand on a gearbox: its rating is the jam case
+            return [f"never force the hand crank against a blocked cradle: the jam case is "
+                    f"the gearbox's rated {row['jam']['torque_nm']:g} N·m "
+                    f"(config.PRODUCT_JAM_NM), and jam SF {JAM_WARN:g} is {lim:.2f} N·m or "
+                    "less" if row.get("jam") else
+                    f"never force the hand crank past {lim:.2f} N·m"]
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
                    f"keep the servo's torque limit under {lim:.2f} N·m")
@@ -439,8 +450,7 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         limit = loads.get("torque_limit_nm")
         jam_sf = _sf(row, "jam")
         if jam_sf is not None and jam_sf < JAM_WARN and limit:
-            out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
-                       f"{limit:g}) for jam SF {JAM_WARN:g}")
+            out.append(_limit_fix(limit, jam_sf, config))
         return out or ["a wider link (Params.link_radius) or a stronger sheet"]
     assert note is not None  # a pin's or pillar's row is made from its note (joint_strength)
     jl = joint_loads(row["joint"], note, loads)
@@ -487,13 +497,24 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
     jam_sf = _sf(row, "jam")
     limit = loads.get("torque_limit_nm")
     if jam_sf is not None and jam_sf < JAM_WARN and limit:
-        out.append(f"a servo torque limit of {limit * jam_sf / JAM_WARN:.2f} N·m (now "
-                   f"{limit:g}: the jam loads scale with it) for jam SF {JAM_WARN:g}")
+        out.append(_limit_fix(limit, jam_sf, config, ": the jam loads scale with it"))
     if not out:
         out.append("no listed pin or pillar construction clears it at this load: a lower "
                    "servo torque limit, or a linkage scaled up (stiffer links, shorter "
                    "relative spans)")
     return out
+
+
+def _limit_fix(limit: float, jam_sf: float, config: BuildConfig, why: str = "") -> str:
+    """The jam torque that brings a row to jam SF :data:`JAM_WARN`: a servo's firmware limit,
+    or for a product (a hand on a gearbox, ``config.PRODUCT_JAM_NM``) how hard not to force
+    it."""
+    to = limit * jam_sf / JAM_WARN
+    if config.lk.product:
+        return (f"never force the hand crank against a blocked cradle: jam SF {JAM_WARN:g} is "
+                f"{to:.2f} N·m or less at the crank (the jam case is the gearbox's rated "
+                f"{limit:g} N·m)")
+    return f"a servo torque limit of {to:.2f} N·m (now {limit:g}{why}) for jam SF {JAM_WARN:g}"
 
 
 def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) -> list[dict]:

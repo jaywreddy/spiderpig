@@ -329,10 +329,9 @@ def product(design: SideDesign, tmpl, t: float, robot: bool) -> Mechanism:
     ties = [FrameTies(design.drive)] if robot else []
     side = fabricate_side(design, tmpl.freeze_at(t), ties)
     if is_cradle(design.config):
-        from spiderpig.construction.cradle import assemble_cradle, passive_design
+        from spiderpig.construction.cradle import assemble_cradle
 
-        passive = fabricate_side(passive_design(design), tmpl.freeze_at(t))
-        return assemble_cradle(side, passive, design)
+        return assemble_cradle(side, design)
     return assemble_robot(side, design) if robot else side
 
 

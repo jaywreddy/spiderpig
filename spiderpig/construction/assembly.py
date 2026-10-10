@@ -127,7 +127,8 @@ class Stage:
     """One stage of the order: ``tags`` the tags of each step (``"R.unit.servo"`` takes
     another stage's op; ``()``: by layer for the stack, one step per tag else), ``text`` a
     sentence in place of the hooks' for a tag, ``intro`` the stage's first sentence,
-    ``where`` "bench" or "robot" (the picture: the stage alone, or everything so far)."""
+    ``where`` "bench" or "robot" (the picture: the stage alone, or everything so far),
+    ``strict``: only its ``tags`` (else the stage's other ops follow them, a step a tag)."""
 
     stage: str
     side: str | None
@@ -136,6 +137,7 @@ class Stage:
     text: tuple[tuple[str, str], ...] = ()
     intro: str = ""
     where: str = "bench"
+    strict: bool = False
 
 
 ROBOT_ORDER: tuple[Stage, ...] = (
@@ -183,53 +185,57 @@ docstrings defer to."""
 
 CRADLE_ORDER: tuple[Stage, ...] = (
     # a decanting cradle (construction.cradle): the drive side bottom up with its tie rods,
-    # the saddles on the rods, then the passive side onto the rods' other ends from outside
+    # bolted to the base plate (it can't stand alone: the gearbox outboard, the rods and
+    # saddles inboard), the box on the rods, then the passive side: its cradle link onto
+    # the rods, its stack slid in from outside, what goes over the link, its inner plate
+    # last (2026-10-10 review round 2: the plate had gone on a bay tie A doesn't have)
     Stage(STACK, "L", "Drive side: stack",
           intro="The drive side (the crank's) is built bottom up on its outer frame plate, "
                 "in the plan's layer order, the gearbox under the plate first: it stands "
-                "the plate up off the bench while the stack goes on."),
+                "the plate up off the bench while the stack goes on. The steel standoffs "
+                "(tie rods, columns, pillars, the crank's) are bare 1018 steel: wipe each "
+                "with light oil before it goes in, and keep the cradle dry."),
     Stage(UNIT, "L", "Drive side: inner plate",
           tags=(("plate", "bay_tie"),),
           text=(("plate", "Lay the drive side's inner plate down, its bay face down."),),
           intro="On the bench."),
     Stage(JOIN, "L", "Drive side: inner plate onto the stack", where="robot",
           tags=(("pillar_screws", "column_screws"),),
-          text=(("pillar_screws", "The pillar's inner screw and washer from the bay side, "
-                                  "threadlocker, snug."),),
-          intro="The inner plate onto its stack, its bay tie pointing away: the pillar's "
-                "and the columns' tops into it."),
+          intro="The inner plate onto its stack: the pillar's and the columns' tops into "
+                "it."),
+    Stage(FINISH, None, "Drive side onto the base plate", where="robot",
+          tags=(("base",),), strict=True,
+          intro="The drive side stands on the base plate from here on."),
     Stage(CRADLE, None, "The cradle box", where="robot",
-          tags=(("saddles",), ("light",)),
-          intro="With the drive side standing on its feet, the tie rods across the bay from "
-                "its cradle link."),
-    Stage(UNIT, "R", "Passive side: inner plate and cradle link, on the cradle",
-          where="robot",
-          tags=(("plate", "bay_tie"), ("R.stack.cradle_link", "tie_screws")),
-          text=(("plate", "The passive side's inner plate onto the bay tie's free end, its "
-                          "M5 button head from the plate's leg side (threadlocker)."),
-                ("bay_tie", ""),
-                ("cradle_link", "The passive side's cradle link onto the tie rods' free "
-                                "ends, beyond its inner plate.")),
-          intro="On the cradle, not on the bench: the passive side's cradle link is held "
-                "by the tie rods, and its inner plate by the bay tie."),
+          tags=(("saddles",), ("light",), ("base_stop",)),
+          intro="The tie rods stand across the bay from the drive side's cradle link."),
+    Stage(UNIT, "R", "Passive side: cradle link, on the cradle", where="robot",
+          tags=(("R.stack.cradle_link", "tie_screws"),), strict=True,
+          text=(("cradle_link", "The passive side's cradle link onto the tie rods' free "
+                                "ends."),),
+          intro="On the cradle, not on the bench: the tie rods hold the passive side's "
+                "cradle link."),
     Stage(STACK, "R", "Passive side: stack",
           intro="The passive side's stack, on the bench, bottom up on its outer plate: the "
                 "drive side's mirror image without the gearbox, the crank and the rod, and "
-                "without its cradle link (on the cradle already)."),
+                "without its cradle link (on the cradle already) and what goes over it."),
     Stage(JOIN, "R", "Passive side: stack onto the cradle", where="robot",
-          tags=(("pillar_screws", "column_screws"),),
-          text=(("pillar_screws", "The pillar's inner screw and washer from the bay side, "
-                                  "threadlocker, snug."),),
-          intro="The passive stack onto the cradle from outside: its pillar up through the "
-                "cradle link's bore, the pillar's and the columns' tops into the inner "
-                "plate. Turn the crank a little to line the cradle link up."),
-    Stage(FINISH, None, "Base plate and handwheel", where="robot",
-          tags=(("base",), ("handle",))),
+          tags=(("over_link",), ("R.unit.plate", "R.unit.bay_tie"),
+                ("pillar_screws", "column_screws")),
+          text=(("plate", "The passive side's inner plate over the pillar's and the "
+                          "columns' tops, its bay face to the bay."),),
+          intro="The passive stack slid in along the base plate from outside, its pillar "
+                "up through the cradle link's bore; then what goes over the link, and the "
+                "inner plate."),
+    Stage(FINISH, None, "Passive side onto the base plate", where="robot",
+          tags=(("base_R",),), strict=True),
+    Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),)),
     Stage(USE, None, "Decanting", where="robot"),
     Stage(OTHER, None, "Remaining parts", where="robot"),
 )
 """A decanting cradle's order (:mod:`construction.cradle`): what the drive's, the stand's
-and the cradle box's hooks defer to."""
+and the cradle box's hooks defer to. The passive side's parts over its cradle link go on
+with the join (``over_link``: :func:`assembly_steps`)."""
 
 SIDE_ORDER: tuple[Stage, ...] = (
     Stage(STACK, "", "Leg stack",
@@ -332,14 +338,8 @@ def side_ops(view: SideView, groups) -> list[Op]:
     ops: list[Op] = []
     for g in groups:
         hook = getattr(g, "assembly", None)
-        if hook is None:
-            continue
-        # a body an earlier group's hook placed stays there (a cradle's link: its ties')
-        taken = _claimed(ops)
-        for op in hook(view):
-            pieces = tuple(p for p in op.pieces if p.portion or p.name not in taken)
-            if pieces:
-                ops.append(op if pieces == op.pieces else replace(op, pieces=pieces))
+        if hook is not None:
+            ops.extend(hook(view))
     claimed = _claimed(ops)
     by_slot: dict[int, list[str]] = defaultdict(list)
     for n in view.z:
@@ -405,6 +405,14 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
         if left:
             ops.append(Op(OTHER, (), whole(*left), "Remaining parts",
                           "The remaining parts, where they are drawn.", tag="other"))
+    if cradle:
+        # the passive side's parts over its cradle link (which goes on the tie rods, on the
+        # cradle) go on once its stack has met the link there
+        k_link = mech.meta.get("cradle_layer")
+        ops = [replace(op, stage=JOIN, tag="over_link")
+               if k_link is not None and op.side == "R" and op.stage == STACK and op.key
+               and isinstance(op.key[0], (int, float)) and op.key[0] > k_link else op
+               for op in ops]
     _check(ops, {r["name"] for r in rows})
     return _order(ops, CRADLE_ORDER if cradle else ROBOT_ORDER if robot else SIDE_ORDER)
 
@@ -457,7 +465,8 @@ def _order(ops: list[Op], order: tuple[Stage, ...]) -> list[Step]:
             continue
         specs = list(st.tags)
         tags = {t for spec in specs for t in spec if "." not in t}
-        extra = sorted({ops[i].tag for i in mine if ops[i].tag not in tags})
+        extra = [] if st.strict else sorted({ops[i].tag for i in mine
+                                             if ops[i].tag not in tags})
         specs += [(t,) for t in extra]
         for spec in specs:
             chosen = []

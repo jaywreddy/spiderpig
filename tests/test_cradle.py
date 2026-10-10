@@ -23,7 +23,7 @@ from tests.tiers import quick
 CRADLES = ("decanter_hinge", "decanter_rcm")
 REST = {"decanter_hinge": -25.0, "decanter_rcm": -10.0}
 TRANSMISSION = {"decanter_hinge": 40.0, "decanter_rcm": 30.0}   # least, from a toggle
-HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 80.0}         # a side's stack, mm
+HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 90.0}         # a side's stack, mm
 
 
 def _tilt(key: str, ts) -> np.ndarray:
@@ -158,6 +158,29 @@ def test_a_cradle_side_plans_with_its_link_under_the_inner_plate(key):
     assert plan.height < HEIGHT[key]     # each side; the bay between them is cradle.BAY
 
 
+@pytest.mark.planner
+@pytest.mark.usefixtures("fresh_plan_memo")
+def test_a_thicker_link_sheet_plans_too():
+    """The hand crank's search estimates the layers over its keyed plates at the pitch (no
+    thinner than the plan's: the search's claims are never stricter than the final
+    layout's), so A in 0.187 in links plans."""
+    from spiderpig.fabricate import design_side, template_for
+
+    cfg = BuildConfig(linkage="decanter_hinge", robot=False, sheet="al5052_4p8mm")
+    design = design_side(template_for(cfg), cfg)
+    assert design.plan.optimal, design.plan.proof
+
+
+def test_a_cradle_warns_when_its_own_default_replaces_a_named_one():
+    """A spec that names a walker's default the cradle replaces is told so."""
+    from spiderpig.stages.resolve import resolve
+
+    d = resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"},
+                 "materials": {"sheet": "acrylic_3mm"}}, store=None)
+    assert d.config.sheet == "al5052_3p2mm"
+    assert any("materials.sheet acrylic_3mm" in w for w in d.warnings)
+
+
 @pytest.mark.construction
 @pytest.mark.parametrize(("key", "t"), quick(
     [(k, t) for k in CRADLES for t in (0.0, 2.2)], [("decanter_hinge", 2.2)]))
@@ -169,6 +192,50 @@ def test_a_cradle_side_stays_inside_its_claims(key, t):
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
     assert check_side(design, tmpl.freeze_at(t)) == []
+
+
+@pytest.mark.construction
+def test_a_cradle_pin_runs_in_every_link_and_buys_no_epoxy():
+    """The M6 Chicago pins aren't bonded (``CHICAGO_M6``): every link's hole is the running
+    fit, the order has no epoxy, and the guide holds the barrel instead of gluing it."""
+    from spiderpig.construction.axle import AxleGroup
+    from spiderpig.construction.base import Build, Realized
+    from spiderpig.construction.pivots.chicago import CHICAGO_M6
+    from spiderpig.fabricate import design_side, template_for
+
+    cfg = BuildConfig(linkage="decanter_hinge", robot=False)
+    tmpl = template_for(cfg)
+    design = design_side(tmpl, cfg)
+    build = Build(design.ctx, design.plan, tmpl.freeze_at(1.0))
+    (pin,) = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
+    assert pin.construction.key == CHICAGO_M6.key
+    assert not pin.construction.shaft.bonded
+    got = pin.realize(build, Realized())
+    assert set(got.cuts) == set(pin.axis.members)
+    for m in pin.axis.members:
+        assert [x.d for x in got.cuts[m]] == [pytest.approx(CHICAGO_M6.hole())]
+    assert {e.key for e in got.extras} == {"threadlocker_222"}
+
+
+@pytest.mark.construction
+def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
+    """The planner checks nothing in the inner plate's layer (a frame plate's), so the ties
+    check their paths over the turn against its members: one across a tie's arc fails."""
+    from spiderpig.construction.base import FRAME_INNER, Build, ConstructionError, Realized
+    from spiderpig.fabricate import design_side, template_for
+
+    cfg = BuildConfig(linkage="decanter_hinge", robot=False)
+    tmpl = template_for(cfg)
+    design = design_side(tmpl, cfg)
+    build = Build(design.ctx, design.plan, tmpl.freeze_at(1.0))
+    ties = cr.tie_points(design.plan.topo, cfg.lk)
+    done = Realized()
+    cr._ties_clear_the_inner_plate(build, done, ties)       # no plate: nothing to meet
+    path = np.asarray(design.plan.topo.geometry.points[ties["Tf1"]], float)
+    a, b = path[0], path[len(path) // 3]
+    done.pad(FRAME_INNER, (*a, 0.0), (*b, 0.0), 5.0)
+    with pytest.raises(ConstructionError, match="tie rod Tf1"):
+        cr._ties_clear_the_inner_plate(build, done, ties)
 
 
 @pytest.mark.slow
@@ -217,10 +284,15 @@ def test_the_cradle_passes_the_cut_rules(key):
 @pytest.mark.slow
 @pytest.mark.strength
 def test_the_cradle_stands_turns_easily_and_holds():
-    """A, the one to build: the mouth still for both bottles, it stands at 15° and more,
-    the hand turns it with under 25 N, the worm holds, the rod, the crankpin and every pin
-    and plate hold a sealed full 3 L bottle 3 x over and the gearbox's rating jammed."""
-    from spiderpig.cradle_report import report
+    """A, the one to build: the mouth still for both bottles, it stands at 15° and more and
+    takes a 25 N push at the bottle's top (the worst over the swing), the hand turns it with
+    under 25 N, the worm holds, the rod, the crankpin and every pin and plate hold a sealed
+    full 3 L bottle 3 x over and a firm 40 N push at the grip on a blocked cradle (the jam:
+    ``cradle_report.jam_nm``, ``config.PRODUCT_JAM_NM``)."""
+    from spiderpig.config import PRODUCT_JAM_NM
+    from spiderpig.cradle_report import JAM_HAND_N, jam_nm, report
+
+    assert PRODUCT_JAM_NM["cradle"] == pytest.approx(jam_nm())
 
     r = report(BuildConfig(linkage="decanter_hinge", robot=False), clash_angles=0)
     assert r["swing"]["mouth_wander_mm"] < 1e-6
@@ -239,11 +311,15 @@ def test_the_cradle_stands_turns_easily_and_holds():
     rows = r["strength"]["rows"]
     walk = [x["walk_sf"] for x in rows if x["walk_sf"] is not None and x["joint"] != "crank"]
     assert min(walk) >= 3.0, [(x["joint"], x["walk_sf"]) for x in rows]
-    # the arm's keyway on the shaft's key: twice the gearbox's rating (its jam row)
+    # the keyed plates on the shaft's key (the crank's row)
     (crank,) = [x for x in rows if x["joint"] == "crank"]
     assert crank["walk_sf"] >= 2.5
+    assert crank["jam_sf"] >= 1.5
+    assert r["drive"]["jam_hand_force_n"] == JAM_HAND_N
+    # every joint holds the jam; pin E, the M6 Chicago screw between the rod and the cradle
+    # link, least (it yields at about 1.3 x the jam's push: 54 N at the grip)
     jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
-    assert min(jam) >= 1.4, [(x["joint"], x["jam_sf"]) for x in rows]
+    assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
 
 
 @pytest.mark.slow
@@ -290,3 +366,58 @@ def test_the_cradle_has_an_assembly_order(key):
     assert steps[-1].stage == USE
     assert set(steps[-1].adds) == {"bottle", "decanter"}
     assert steps.index(passive) > steps.index(ties)
+    # the drive side on the base plate before the box; the passive inner plate after the
+    # passive stack has met its cradle link; the tie screws after the link
+    (saddles,) = [s for s in steps if "front_saddle" in s.adds]
+    assert steps.index(base) < steps.index(saddles)
+    inner = next(s for s in steps if s.side == "R" and any(a.startswith("R.") and
+                                                           a.endswith("torso") for a in s.adds))
+    stack = [s for s in steps if s.side == "R" and s.stage == "stack"]
+    assert stack
+    assert steps.index(inner) > max(steps.index(s) for s in stack)
+    (screws,) = [s for s in steps if any(a.startswith("tie_") and a.endswith("screwR")
+                                         for a in s.adds)]
+    assert steps.index(screws) >= steps.index(passive)
+    text = " ".join(t for s in steps for t in s.text)
+    if not cr.stand_of(cfg.lk).bay_ties:        # (A has none)
+        assert "bay tie" not in text, text
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
+    """``spiderpig build`` of A (slow: the whole machine's STEP): its BOM's title is the
+    cradle's, ORDER.md has no acrylic note, no servo boxes, the TPU parts are the cradle's,
+    and nothing is bought for a Chicago pin's epoxy."""
+    from spiderpig.build import main
+
+    assert main(["--linkage", "decanter_hinge", "--side-only", "--out", str(tmp_path),
+                 "--force"]) == 0
+    order = (tmp_path / "ORDER.md").read_text()
+    assert "decanting cradle" in order.splitlines()[0]
+    for walker in ("acrylic arrives", "servo boxes", "TPU socks", "epoxy"):
+        assert walker not in order, walker
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+def test_every_printed_part_fits_a_print_bed_in_its_pose():
+    """Each printed part in its print pose (``meta["print_poses"]``, :func:`build.print_pose`)
+    fits a 250 x 210 x 210 mm bed, and the parts not lying in a layer have a pose."""
+    from spiderpig.build import print_pose
+    from spiderpig.fabricate import fabricate, template_for
+
+    cfg = BuildConfig(linkage="decanter_hinge", robot=False)
+    mech = fabricate(template_for(cfg), cfg, 1.0)
+    poses = mech.meta["print_poses"]
+    for name in ("front_saddle", "rear_saddle", "front_saddle_liner", "L.handle",
+                 "jeroboam_collar", "foot_boot_0"):
+        assert name in poses, name
+    for b in mech.bodies:
+        if b.fab != "printed" or b.part is None:
+            continue
+        bb = print_pose(b.part, poses.get(b.name)).bounding_box()
+        x, y = sorted((bb.size.X, bb.size.Y))
+        assert y <= 250.0, (b.name, y, x, bb.size.Z)
+        assert x <= 210.0, (b.name, y, x, bb.size.Z)
+        assert bb.size.Z <= 210.0, (b.name, y, x, bb.size.Z)

@@ -257,7 +257,9 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     if prog or any(f.stage == "output" for f in cr.failures):
         return _done(design, rep, t0)
     drive = [f for f in cr.failures if f.stage == "drive"]
-    rows.append(_stage_row("drive.one_servo", "check", drive, cr.drive.get("servo", "")))
+    # (a decanting cradle's drive is a hand on its gearbox: :mod:`construction.handcrank`)
+    driver = "hand crank (no servo)" if cfg.lk.product else cr.drive.get("servo", "")
+    rows.append(_stage_row("drive.one_servo", "check", drive, driver))
     if drive:
         return _done(design, rep, t0)
     built = [f for f in cr.failures if f.stage == "construction"]
@@ -624,8 +626,8 @@ def cost_row(design: Design, bom) -> Row | None:
 
 
 LOCKED_PILLARS = ("standoff",)     # threadlocker on its end screws
-EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link
-LOCKED_PINS = ("chicago",)         # threadlocker on each screw
+EPOXY_PINS = ("chicago",)          # the barrel bonded in its lowest link (not the M6: chicago6)
+LOCKED_PINS = ("chicago", "chicago6")   # threadlocker on each screw
 FLOOR_LEAVES_OUT = ("the sheets' count, the crank's screws and the pivots' hardware are "
                     "counted after a build (verify standard), and the cut parts beyond one "
                     "per sheet")

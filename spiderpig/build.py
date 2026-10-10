@@ -47,6 +47,7 @@ import sys
 import tempfile
 import warnings
 from pathlib import Path
+from typing import cast
 
 from spiderpig import construction, linkage, servos, uptodate
 from spiderpig.config import (
@@ -67,6 +68,7 @@ from spiderpig.hardware.bom import (
 from spiderpig.hardware.catalog import CATALOG, _load
 from spiderpig.hardware.mass import filament_density
 from spiderpig.layout import DEFAULT_KERF, save_parts, save_sheets, sheet_lines
+from spiderpig.shapes import Shape3D
 from spiderpig.uptodate import GENERATED  # api.export's clear_generated reads it here
 
 
@@ -145,14 +147,43 @@ def _on_plate(part):
                                  -bb.min.Z)))
 
 
+def bom_title(config) -> str:
+    """The BOM's and ORDER.md's title for ``config`` (a decanting cradle's says so, and a
+    design study's that it is one: :data:`construction.cradle.STUDIES`)."""
+    if is_cradle(config):
+        from spiderpig.construction.cradle import STUDIES
+
+        study = STUDIES.get(config.linkage)
+        return (f"decanting cradle ({config.lk.name}), hand crank (NRV030 30:1), "
+                f"{config.pillar} pillars, {config.pin} pins, {config.frame_sheet} frame"
+                + (f" -- {study}" if study else ""))
+    return (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
+            f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
+
+
+def print_pose(part, turns):
+    """``part`` turned into its print pose: ``turns``, ``(axis, degrees)`` about the global
+    X, Y or Z in order (a part the design doesn't build lying in its layer: a decanting
+    cradle's, ``mech.meta["print_poses"]``)."""
+    from build123d import Axis
+
+    for axis, deg in turns or ():
+        part = part.rotate({"X": Axis.X, "Y": Axis.Y, "Z": Axis.Z}[axis], float(deg))
+    return part
+
+
 def export_prints(groups, out_dir: Path, density: float = 1.24,
                   filaments: dict[str, str | None] | None = None,
-                  stems: dict[str, str] | None = None) -> list[dict]:
+                  stems: dict[str, str] | None = None,
+                  poses: dict | None = None) -> list[dict]:
     """One STL per different printed part (and its mirror image where needed).
 
     ``stems``: each printed body's file stem (:func:`spiderpig.labels.print_stems`: the
     part label first, ``P13_top_spacer_0.7mm``, as the assembly guide's bag labels say);
     without it a file is named after its first part.
+
+    ``poses``: a body's turns into its print pose (:func:`print_pose`), where it isn't
+    printed as it lies (every walker part is).
 
     ``filaments``: each printed body's filament (catalog key, by name:
     :func:`hardware.bom.printed_filaments`): a group whose parts take two filaments is
@@ -175,17 +206,19 @@ def export_prints(groups, out_dir: Path, density: float = 1.24,
         own = g.ref.name if g.ref.name in g.names or not g.names else g.names[0]
         plain = [n for n in g.names if n not in g.mirrored] or [own]
         stem = (stems or {}).get(plain[0]) or _file_stem(own, taken)
-        part = _on_plate(g.ref.part)
+        turns = (poses or {}).get(g.ref.name)
+        part = _on_plate(print_pose(g.ref.part, turns))
         export_stl(part, str(out_dir / f"{stem}.stl"))
         same = g.qty - len(g.mirrored)
         todo = f"print {same}"
         files = [f"{stem}.stl"]
         if g.mirrored:
-            export_stl(_on_plate(g.ref.part.mirror(Plane.YZ)),
+            export_stl(_on_plate(print_pose(g.ref.part.mirror(Plane.YZ), turns)),
                        str(out_dir / f"{stem}_mirrored.stl"))
             files.append(f"{stem}_mirrored.stl")
             todo += f", and {len(g.mirrored)} mirrored ({stem}_mirrored.stl)"
-        bb = g.ref.part.bounding_box()
+        bb = cast(Shape3D, print_pose(g.ref.part, turns)).bounding_box()   # (no turns: as
+        #                                                                     it lies)
         rows.append({
             "file": files[0], "qty": g.qty, "mirrored": len(g.mirrored), "print": todo,
             "size_mm": f"{bb.size.X:.1f} x {bb.size.Y:.1f} x {bb.size.Z:.1f}",
@@ -491,7 +524,8 @@ def main(argv=None) -> int:
 
     types = part_types(mech, assembly_order(mech, design), groups, filament)
     rows = export_prints(groups["printed"], out / "print", density=filament_density(filament),
-                         filaments=printed_filaments(mech, filament), stems=print_stems(types))
+                         filaments=printed_filaments(mech, filament), stems=print_stems(types),
+                         poses=mech.meta.get("print_poses"))
     n_print = sum(r["qty"] for r in rows)
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
@@ -525,11 +559,7 @@ def main(argv=None) -> int:
         print(f"wrote {len(order)} per-part DXFs ({sum(r['qty'] for r in order)} parts) and "
               f"order.csv to {out / 'laser' / 'parts'}")
 
-    title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
-             f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
-    if is_cradle(config):
-        title = (f"decanting cradle ({config.lk.name}), hand crank (NRV030 30:1), "
-                 f"{config.pillar} pillars, {config.pin} pins, {config.frame_sheet} frame")
+    title = bom_title(config)
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")

@@ -249,10 +249,11 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {CRADLE: 20.0}
+PRODUCT_JAM_NM: dict[str, float] = {CRADLE: 36.0}
 """Per product: the crank torque its joints are rated at in a jam, in place of a servo's
-firmware limit (:func:`torque_limit_nm`): a decanting cradle's gearbox's rating (NRV030
-30:1, 20 N·m; :mod:`spiderpig.cradle_report`'s jam case)."""
+firmware limit (:func:`torque_limit_nm`): a decanting cradle's, a firm 40 N push at its
+60 mm grip through its 30:1 worm at a hand's speed (:func:`spiderpig.cradle_report.jam_nm`,
+which a test holds this to)."""
 
 
 def product_defaults(product: str) -> dict:

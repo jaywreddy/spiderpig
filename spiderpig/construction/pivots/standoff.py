@@ -67,7 +67,7 @@ from __future__ import annotations
 import functools
 import itertools
 from dataclasses import dataclass, replace
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from spiderpig.construction.axle import AxleDims, AxleGroup, End
 from spiderpig.construction.base import (
@@ -94,11 +94,12 @@ from spiderpig.construction.pivots.common import (
 from spiderpig.construction.wobble import Section, column_wobble
 from spiderpig.hardware.bom import SHIM_STEP, BomLine
 from spiderpig.hardware.catalog import get
-from spiderpig.shapes import Cut, disc, ring, union
+from spiderpig.shapes import Cut, Shape3D, disc, ring, union
 from spiderpig.stack import Unbuildable
 
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
+RUN_PLAY = 0.3       # a cradle's column: its links' axial running play on the standoff
 
 
 @dataclass(frozen=True)
@@ -196,7 +197,44 @@ class StandoffAxle:
         return replace(self.one_piece(), stock="shaft10", size="M5", od=10.0, id_=NETRF10_ID,
                        yield_mpa=NETRF10_YIELD, end_hole=5.5, stud_hole=5.3,
                        min_engage=5.0, min_segment=20.0, washer_key=None,
-                       shim_key="m5_washer")
+                       shim_key="m5_washer", tighten_nm=4.0)
+
+    def _running_play(self, build: Build, group: AxleGroup, out: Realized,
+                      length: float) -> float:
+        """A decanting cradle's column (its printed rings fill their layers,
+        :func:`construction.axle.full_rings`): its printed parts and its links stop
+        :data:`RUN_PLAY` short of its standoff, which its screws clamp between the plates,
+        so the links turn on it (the 2026-10-10 review: the parts' nominal 53.075 mm on a
+        53.0 standoff clamped the cradle link). The topmost printed parts are shortened at
+        their tops, none under :data:`common.PRINT_MIN`. Returns the play it adds."""
+        from spiderpig.construction.axle import full_rings
+        from spiderpig.construction.pivots.common import PRINT_MIN
+
+        if not full_rings(build.ctx):
+            return 0.0
+        stem = group.name.replace(":", "_") + "_"
+        printed = []
+        for i, b in enumerate(out.bodies):
+            if b.fab == "printed" and b.name.startswith(stem) and b.part is not None:
+                bb = cast(Shape3D, b.part).bounding_box()
+                printed.append((bb.max.Z, bb.min.Z, i))
+        links = sum(build.ctx.sheet_t("link", m) for m in group.axis.members)
+        stack = links + sum(hi - lo for hi, lo, _ in printed)
+        excess = stack - (length - RUN_PLAY)
+        got = 0.0
+        for hi, lo, i in sorted(printed, reverse=True):     # from the top down
+            cut = min(excess - got, (hi - lo) - PRINT_MIN)
+            if cut <= 1e-6:
+                continue
+            b = out.bodies[i]
+            bb = b.part.bounding_box()
+            r = max(bb.max.X - bb.min.X, bb.max.Y - bb.min.Y)
+            out.bodies[i] = replace(b, part=b.part - disc(xy_of(build, group), r, hi - cut,
+                                                            hi + 1.0))
+            got += cut
+            if got >= excess - 1e-6:
+                break
+        return got
 
     def washer(self) -> tuple[float, float, float]:
         if self.washer_key is None:
@@ -452,16 +490,20 @@ class StandoffAxle:
         column += [n for n in ends if view.z[n][0] < bottom - 1e-3]
         inner = [n for n in ends if n not in column and view.z[n][1] > top + 1e-3]
         ops = []
+        cradle = self.washer_key is None        # (a cradle's: its button head on the plate)
         if column:
             ops.append(Op(STACK, (-1, 1), whole(*column), "",
                           "Screw each pillar's standoff column (one piece) to the outer plate: "
-                          "its button head and washer from outside, threadlocker, to "
-                          f"{self.tighten_nm:g} N·m while the column is bare to hold.",
-                          "columns"))
+                          + ("its button head from outside" if cradle else
+                             "its button head and washer from outside")
+                          + f", threadlocker, to {self.tighten_nm:g} N·m while the column is "
+                          "bare to hold.", "columns"))
         if inner:
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          "Each pillar's inner screw and washer from the servo bay (a "
-                          f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m.",
+                          (f"Each pillar's inner button head from the bay side, threadlocker, "
+                           f"to {self.tighten_nm:g} N·m." if cradle else
+                           "Each pillar's inner screw and washer from the servo bay (a "
+                           f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m."),
                           "pillar_screws"))
         ops.extend(Op(STACK, (view.slot(view.z[n][0]), 3), whole(n), "",
                       "The take-up shims on their column's top.", "layer")
@@ -550,6 +592,7 @@ class StandoffAxle:
         out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                    bom_key=self.segment_key(length), color=ALU))
         long += gap_washers(build, group, col, out, self.od, host, stem, trim=trim)
+        long += self._running_play(build, group, out, length)
         w_od, w_id, w_t = self.washer()
         ends = [(a, -1.0, anchored[0]), (b, 1.0, anchored[1])]
         for k, sign, plate in ends:

@@ -433,7 +433,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - a printed offset hand crank. A crank on the input shaft swept through the crank arm,
     and a handwheel small enough to stay outboard needed 50 N at its grip.
 - **Pins and standoffs:**
-  - M6 Chicago pins (`chicago6`);
+  - M6 Chicago pins (`chicago6`), not bonded (`ChicagoShaft.bonded`): the barrel's head is
+    in reach to hold, so the order drops its epoxy;
   - every pillar, column and tie a MISUMI NETRF10. A 6 mm standoff bent at B's jam; the
     10 mm is 4.6× as strong and cheaper.
   - A cradle's printed rings fill their layers, so every column is bought at its gap.
@@ -461,3 +462,41 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/hardware/cradle_catalog.py` (each offer's page and date),
   `tests/test_cradle.py`. The walker designs are unchanged: identity gate against
   `next-320384d`, identical.
+
+### 2026-10-10: the decanting cradles, review round 2
+
+- **What:** a second round of three adversarial reviews (mechanical and safety, fabrication
+  and BOM, code), and these changes to A ([DECANTER.md](DECANTER.md) has the design):
+  - **The jam case** is a firm 40 N push at the grip through the worm at a hand's speed:
+    36 N·m at the crank (`cradle_report.jam_nm`). The gearbox's 20 N·m was reached at less
+    than the worst turn's own grip force, so it bounded nothing.
+  - **The crank block:** eight 0.125 in 6061 plates from the key up past the shaft's end, a
+    NETRF10 tie through them, the crankpin a NETRF10 socketed in them. The rod's force is
+    5.5 mm off the socket, not 21 mm off a shoulder screw's M8 thread; crankpin SF 3.1 at
+    the new jam, where the old one was 1.0-1.25 at the old (the report had taken the
+    screw's 965 MPa strength as its yield and left out the preload). The block also puts
+    the keyed plates on the key's straight flanks, ends the crankpin's thread over the
+    outer plate, and drops the cap, the printed spacers and the jam nut.
+  - **The base stop** (a printed spine and cup behind the bottle's base): at rest only the
+    liners' friction had held the bottle, and a corkscrew's push slid it.
+  - **The base plate** 500 mm across: the stand's numbers had been read at one crank angle
+    (round 1's "31° and 29 N" were wrong: 23.6° and 18 N at worst over the swing); now
+    31.8° and 29.9 N or more.
+  - **The light's clip** a part of its own under the front saddle: merged, it printed 67 mm
+    in the air.
+  - **The guard:** the outer plate solid over the crank's sweep.
+  - **The hinges' play:** 0.3 mm on the pillar (the printed parts had been 0.075 mm longer
+    than the steel the plates clamp), 0.25 mm on the M6 Chicago pin.
+  - **Pin E stays the M6 Chicago** at SF 1.34 jammed: a 10 mm standoff pin's two M5
+    threads don't fit its 11 mm stack, nor a shoulder screw's thread under the inner plate.
+    Unbonded: the order's epoxy goes.
+  - **The guide:** the drive side on the base plate before the box, the passive inner plate
+    last (A has no bay tie), the use limits (headroom, the decanter's envelope, never force
+    the crank) in its last step.
+- **Why:** the reviews' MAJOR findings, every one: no bound on the hand, the crankpin's
+  rating, the bottle held by friction at rest, the stand's numbers, the prints' poses, the
+  hinges clamped, the guide's bay tie.
+- **Where:** `spiderpig/construction/{cradle,handcrank,assembly}.py`,
+  `spiderpig/construction/pivots/{standoff,chicago}.py`, `spiderpig/cradle_report.py`,
+  `tests/test_cradle.py`. The walker designs are unchanged (identity gate against
+  `next-320384d`).

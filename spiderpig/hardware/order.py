@@ -23,13 +23,18 @@ SERVICE_ORDER_URL = {
     "Ponoko": "https://www.ponoko.com/designs",
 }
 SERVICE_NOTES = {
-    "SendCutSend": "one part per file, units mm at upload, quantity per file as below; its "
-                   "3 mm acrylic arrives 2.24-3.46 mm thick: measure it and rebuild with "
-                   "--thickness if it is off by more than a few percent",
+    "SendCutSend": "one part per file, units mm at upload, quantity per file as below",
     "Ponoko": "one part per file, mm, the blue CUT layer mapped to cut; 3 mm sheet arrives "
               "2.49-3.51 mm thick: measure it and rebuild with --thickness if it is off "
               "by more than a few percent",
 }
+ACRYLIC_NOTES = {
+    "SendCutSend": "its 3 mm acrylic arrives 2.24-3.46 mm thick: measure it and rebuild with "
+                   "--thickness if it is off by more than a few percent",
+}
+"""What a service's note adds where the order has acrylic to cut."""
+SERVO_BOX = ("m2_self_tap_6", "servo_bus_cable_5264")
+"""What comes in the servos' boxes (:data:`hardware.bom.ON_HAND`)."""
 COMPENSATES = {"SendCutSend": True, "Ponoko": False}
 """Whether a service offsets its cut path for the kerf itself (SendCutSend does; Ponoko
 doesn't in acrylic): what the files' own kerf (:func:`layout.sheet_kerf`, ``--kerf``)
@@ -144,7 +149,9 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                   + f"; {CUT_SOURCE}). **Total ≈{_money(total + sum(cut.values()))}**, "
                   "before shipping.", ""]
     if on_hand:
-        lines += ["## From the shop and the servo boxes (on hand, not ordered)", ""] + [
+        boxes = any(r.key in SERVO_BOX for r in on_hand)
+        lines += [f"## From the shop{' and the servo boxes' if boxes else ''} (on hand, not "
+                  "ordered)", ""] + [
             f"* {r.name}: {r.where[0] if len(r.where) == 1 else f'{len(r.where)} uses'}"
             for r in on_hand] + [""]
 
@@ -159,7 +166,9 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                 "your own laser (or any service): the sheet stock is in the carts above")
             lines += [f"### {head}" + (f": [upload and quote]({url})" if url else ""), ""]
             kerfs = {float(r.get("kerf_mm") or 0.0) for r in rows}
+            acrylic = any("acrylic" in str(r.get("sheet", "")) for r in rows)
             note = "; ".join(x for x in (SERVICE_NOTES.get(service),
+                                         ACRYLIC_NOTES.get(service) if acrylic else None,
                                          kerf_note(service, kerfs)) if x)
             lines += [note + ".", ""]
             if service in cut:

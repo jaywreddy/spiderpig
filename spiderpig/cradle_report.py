@@ -9,10 +9,11 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 * **The loads**: a quasi-static planar solve (:func:`statics`) of the side's bodies, the
   cradle box's mass and a **sealed full 3 L bottle** (the worst a cradle carries: nothing
   pours out of it) on the cradle, gravity alone, at every crank angle: the crank's torque,
-  every pin's force. A **jam** case puts the gearbox's rated torque on the crank with the
-  cradle blocked, away from the crank-rocker's toggles (where nothing can bound it): what the
-  hand can push through the worm before the gearbox itself is the weak part. The pins are
-  rated by :mod:`spiderpig.strength` at these loads ("walk" the bottle's, "jam" the jam's).
+  every pin's force. A **jam** case puts a firm push at the grip on a blocked cradle
+  (:data:`JAM_HAND_N`, about twice what the worst turn takes, through the worm at a hand's
+  speed: :func:`jam_nm`), away from the crank-rocker's toggles (where nothing can bound
+  it). The pins are rated by :mod:`spiderpig.strength` at these loads ("walk" the bottle's,
+  "jam" the jam's).
 * **The hand**: the crank torque through the worm (its ratio, its static efficiency: the
   slow end of a hand's speed) at the handle's throw; turns per pour.
 * **The rod**: Euler buckling of the connecting rod at its largest compression.
@@ -31,9 +32,10 @@ import numpy as np
 
 from spiderpig.config import BuildConfig, is_cradle
 from spiderpig.construction import cradle as cr
-from spiderpig.construction.handcrank import CRANKPIN, NRV030, HandCrank
+from spiderpig.construction.handcrank import CRANKPIN_D, HANDLE_R, NRV030, HandCrank, WormBox
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
+from spiderpig.hardware.cradle_catalog import NETRF10_ID, NETRF10_YIELD
 from spiderpig.stack import body_class
 
 G = 9.81
@@ -46,7 +48,16 @@ TOGGLE_DEG = 30.0       # the jam case leaves out crank angles this close to a t
 #                         block's force grows without bound
 E_ALU = 69000.0         # MPa, 5052 / 6061
 WARN_HANDLE_N = 40.0    # a handle force a hand turns steadily for a minute
-CRANKPIN_YIELD = 965.0  # MPa: the shoulder screw's alloy steel (McMaster 92981A, 140 ksi)
+JAM_HAND_N = 40.0       # the jam: a firm push at the grip against a blocked cradle (about twice
+#                         the worst turn's 21 N: a hand that feels it stop and pushes on)
+ETA_HAND = 0.5          # the worm's efficiency at a hand's speed (the catalogue's: 0.39
+#                         static, 0.66 at 1400 rpm; a hand turns it at about 60 rpm)
+
+
+def jam_nm(box: WormBox = NRV030, grip_r: float = HANDLE_R) -> float:
+    """The jam case's crank torque (N·m): :data:`JAM_HAND_N` at the grip (``grip_r`` mm)
+    through the worm at :data:`ETA_HAND` (``config.PRODUCT_JAM_NM`` is this number)."""
+    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * ETA_HAND
 
 
 @dataclass
@@ -257,11 +268,11 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                                "full_kg": size.mass_full_kg})
 
     mech = fabricate(tmpl, config, 1.0, store=store)
-    # the loads: a sealed full 3 L bottle; the jam at the gearbox's rating
+    # the loads: a sealed full 3 L bottle; the jam: a firm push at the grip
     rigid, joints = planar_model(config, mech, 1.0, cr.JEROBOAM)
     torque, forces = statics(config, rigid, joints, ts)
     near = _toggles(config, ts)
-    _, jam_f = statics(config, rigid, joints, ts, jam_nm=NRV030.rated_nm)
+    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm())
     jam_f = np.where(near[:, None], 0.0, jam_f)
     box = NRV030
     peak = float(np.abs(torque).max())
@@ -276,8 +287,8 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "handle_torque_nm": round(handle, 3),
         "handle_force_n": round(handle / (grip_r / 1000.0), 1),
         "grip_radius_mm": grip_r,
-        "jam_hand_force_n": round(box.rated_nm / (box.ratio * box.eta_dynamic)
-                                  / (grip_r / 1000.0), 1),
+        "jam_hand_force_n": JAM_HAND_N,
+        "jam_torque_nm": round(jam_nm(box, grip_r), 2),
         "handle_turns_per_pour": round(box.ratio / 2.0, 1),
         "deg_per_handle_turn_mean": round(float(np.ptp(tilt)) / (box.ratio / 2.0), 2),
         "load_case": f"a sealed full {cr.JEROBOAM.name} ({cr.JEROBOAM.mass_full_kg} kg)",
@@ -285,15 +296,8 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     if out["drive"]["handle_force_n"] > WARN_HANDLE_N:
         out.setdefault("warnings", []).append(
             f"the handle needs {out['drive']['handle_force_n']} N at its grip at worst")
-    # each joint's peak force, per side (SHARE on the cradle's shared pins)
     rider = HandCrank.rider(design.ctx)
-    rows = []
-    for jk, (j, b1, b2) in enumerate(joints):
-        on_drive = j in lk.crank or rider in (b1, b2)
-        share = 1.0 if on_drive else SHARE
-        rows.append({"joint": j, "bodies": [b1, b2], "drive_side_only": on_drive,
-                     "bottle_n": round(float(forces[:, jk].max()) * share, 1),
-                     "jam_n": round(float(jam_f[:, jk].max()) * share, 1)})
+    rows = joint_rows(config, rider, joints, forces, jam_f)
     out["joints"] = rows
     # the rod's buckling at its largest force (compression or not: the bound)
     rod_len = float(np.linalg.norm(pts[lk.crank[1]][0] - pts[
@@ -309,16 +313,17 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                   "euler_n": round(p_cr, 1), "bottle_n": round(f_rod, 1),
                   "jam_n": round(f_rod_jam, 1), "sf_bottle": round(p_cr / max(f_rod, 1e-9), 2),
                   "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2)}
-    # the crankpin: a shoulder screw held in the arm by its thread, the rod's force at the
-    # rod's mid-plane over the arm's top (a cantilever): its thread's root bends
+    # the crankpin: a NETRF10 standing in the crank block, the rod's force at the rod's
+    # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
+    # the block's top, taken as the 10 x 4.2 tube its tapped end may be there, at 1018's
+    # hot-rolled minimum yield
     note = mech.meta.get("hand_crank") or {}
-    arm_top = (note.get("arm_z_mm") or [0.0, 0.0])[1]
     rod_mid = design.plan.z(design.plan.layers[rider])[0] + design.ctx.sheet_t(
         "link", rider) / 2
-    lever = rod_mid - arm_top
-    pitch = {6.0: 1.0, 8.0: 1.25}[CRANKPIN.thread]
-    d3 = CRANKPIN.thread - 1.2269 * pitch        # the thread's minor diameter (ISO 724)
-    cap = math.pi * d3 ** 3 / 32 * CRANKPIN_YIELD / 1000.0       # N·m at yield
+    lever = float(note.get("crankpin_lever_mm", rod_mid - (note.get("arm_z_mm") or
+                                                           [0.0, 0.0])[1]))
+    od, bore = CRANKPIN_D, NETRF10_ID
+    cap = math.pi * (od ** 4 - bore ** 4) / (32 * od) * NETRF10_YIELD / 1000.0  # N·m
     out["crankpin"] = {"lever_mm": round(lever, 2), "capacity_nm": round(cap, 2),
                        "bottle_nm": round(f_rod * lever / 1000.0, 2),
                        "jam_nm": round(f_rod_jam * lever / 1000.0, 2),
@@ -343,16 +348,20 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
     """The whole cradle's centre of mass over the swing, each bottle full and empty, against
     the base plate's feet (their pads' outer edges): its margin (mm) to the nearest tipping
     edge, front, rear and sideways (the gearbox and the hand wheel weigh on the drive side),
-    the tilt it tips at and the push at the bottle's highest point that tips it."""
+    the tilt it tips at and the push at the bottle's highest point that tips it, each the
+    worst over the swing (the box's parts measured as ``mech`` was built, turned with it)."""
     lk = config.lk
     stand = cr.stand_of(lk)
     by = {b.name: b for b in mech.bodies}
     link = cr.cradle_link(lk)
     pts = _world_joints(config, ts)
     o, ax = cr.mouth_frame(lk)
-    lip0 = pts[o][0]
-    d0 = pts[ax][0] - pts[o][0]
-    t0 = math.atan2(d0[1], d0[0])
+    meta = mech.meta or {}
+    if "cradle_lip" in meta:                  # the pose the parts were built in
+        lip0, t0 = np.asarray(meta["cradle_lip"], float), float(meta["cradle_tilt"])
+    else:
+        d0 = pts[ax][0] - pts[o][0]
+        lip0, t0 = pts[o][0], math.atan2(d0[1], d0[0])
     table = float(lip0[1]) - cr.LIP_HEIGHT
     # every part's mass and centre: what stands, what turns with the box (about the mouth)
     still_m, still_c = 0.0, np.zeros(3)
@@ -383,7 +392,7 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
                            y0 + size.length * math.sin(slope) + size.r])
         wine = 3.0 if size is cr.JEROBOAM else 1.5
         for state, mb in (("full", size.mass_full_kg), ("empty", size.mass_full_kg - wine)):
-            worst = (math.inf, "", 0.0, 0.0, 0.0)
+            least: dict[str, tuple] = {}       # tip, push, margin: each its worst (and edge)
             for k in range(len(ts)):
                 lip = pts[o][k]
                 d = pts[ax][k] - pts[o][k]
@@ -402,13 +411,17 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
                 h = cy - table
                 for edge, margin in (("front", cx - x_front), ("rear", x_rear - cx),
                                      ("side", z_edge - abs(cz))):
-                    if margin < worst[0]:
-                        worst = (margin, edge, h, float(top - table), m)
-            margin, edge, h, top_h, m = worst
+                    got = {"tip": math.degrees(math.atan2(margin, h)),
+                           "push": m * G * margin / max(float(top - table), 1.0),
+                           "margin": margin}
+                    for key, v in got.items():
+                        if key not in least or v < least[key][0]:
+                            least[key] = (v, edge)
             rows.append({"bottle": size.name, "state": state, "kg": round(mb, 2),
-                         "margin_mm": round(margin, 1), "edge": edge,
-                         "tip_deg": round(math.degrees(math.atan2(margin, h)), 1),
-                         "push_at_top_n": round(m * G * margin / max(top_h, 1.0), 1)})
+                         "margin_mm": round(least["margin"][0], 1), "edge": least["tip"][1],
+                         "tip_deg": round(least["tip"][0], 1),
+                         "push_at_top_n": round(least["push"][0], 1),
+                         "push_edge": least["push"][1]})
     return {"feet": {"x_mm": [round(x_front, 1), round(x_rear, 1)], "z_mm": round(z_edge, 1)},
             "device_kg": round(still_m + box_m, 3),
             "cases": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows),
@@ -419,7 +432,7 @@ def wheel_sweep(mech) -> list[dict]:
     """What the hand crank's turning would hit: its tube about the input shaft and the disc
     its arm and grip sweep there, against every part but the crank's own and the gearbox it
     rides (the crank is drawn at rest)."""
-    from build123d import Cylinder, Location
+    from build123d import Axis, Cylinder, Location
 
     w = (mech.meta.get("hand_crank") or {}).get("handle")
     if not w:
@@ -430,11 +443,12 @@ def wheel_sweep(mech) -> list[dict]:
     reach, t_arm = float(w["reach_mm"]), float(w["arm_t_mm"])
 
     def cyl(r: float, t0: float, t1: float):
-        mid = end + d * (t0 + t1) / 2
-        return Cylinder(r, t1 - t0, rotation=(0.0, 90.0, a)).moved(
-            Location((float(mid[0]), float(mid[1]), z)))
+        # along +x from the shaft's end, then turned to the shaft's way (as it is built)
+        return Cylinder(r, t1 - t0, rotation=(0.0, 90.0, 0.0)).moved(
+            Location(((t0 + t1) / 2, 0.0, 0.0))).rotate(Axis.Z, a).moved(
+            Location((float(end[0]), float(end[1]), z)))
 
-    sweep = cyl(float(w["hub_r_mm"]), 0.0, reach - t_arm) + cyl(
+    sweep = cyl(float(w["hub_r_mm"]), -float(w.get("hub_len_mm", 0.0)), reach - t_arm) + cyl(
         float(w["r_mm"]), reach - t_arm, reach + float(w["grip_len_mm"]))
     out = []
     box = sweep.bounding_box()
@@ -454,12 +468,38 @@ def wheel_sweep(mech) -> list[dict]:
     return out
 
 
-def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float) -> dict:
-    """The pins and link plates rated by :func:`spiderpig.strength.check` at the cradle's
-    loads: "walk" a sealed full 3 L bottle's, "jam" the gearbox's rated torque on a blocked
-    cradle (per side, as :func:`report` shares them)."""
-    from spiderpig import strength
+def joint_rows(config: BuildConfig, rider: str, joints, forces, jam_f) -> list[dict]:
+    """Each joint's peak force over the turn (N), the bottle's and the jam's, per side
+    (:data:`SHARE` on the pins both sides have)."""
+    lk = config.lk
+    rows = []
+    for jk, (j, b1, b2) in enumerate(joints):
+        on_drive = j in lk.crank or rider in (b1, b2)
+        share = 1.0 if on_drive else SHARE
+        rows.append({"joint": j, "bodies": [b1, b2], "drive_side_only": on_drive,
+                     "bottle_n": round(float(forces[:, jk].max()) * share, 1),
+                     "jam_n": round(float(jam_f[:, jk].max()) * share, 1)})
+    return rows
 
+
+def loads(config: BuildConfig, store=None) -> dict:
+    """The joint loads :mod:`spiderpig.strength` rates a cradle at (what
+    :func:`strength.design_loads` returns for one: the audit's, ``explain``'s and verify's
+    pin and plate rows): a sealed full 3 L bottle's walking, the gearbox's rating jammed."""
+    tmpl = template_for(config)
+    design = design_side(tmpl, config)
+    mech = fabricate(tmpl, config, 1.0, store=store)
+    ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
+    rigid, joints = planar_model(config, mech, 1.0, cr.JEROBOAM)
+    torque, forces = statics(config, rigid, joints, ts)
+    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm())
+    jam_f = np.where(_toggles(config, ts)[:, None], 0.0, jam_f)
+    rows = joint_rows(config, HandCrank.rider(design.ctx), joints, forces, jam_f)
+    return loads_doc(config, rows, float(np.abs(torque).max()))
+
+
+def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
+    """:func:`joint_rows` as :func:`strength.check`'s loads document (source ``sim``)."""
     lk = config.lk
     ground = set(lk.frame)
     joints = []
@@ -469,13 +509,23 @@ def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float)
                        "frame": r["joint"] in ground, "links": bodies,
                        "walk": {"n": r["bottle_n"], "patterns": None},
                        "jam": {"n": r["jam_n"], "patterns": None}})
-    loads = {"source": "sim", "note": "a cradle's: a sealed full 3 L bottle (walk), the "
-             "gearbox's rated torque on a blocked cradle (jam); cradle_report",
-             "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
-             "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
-             "torque_limit_nm": NRV030.rated_nm, "walk_torque_nm": crank_nm,
-             "joint_moment_factor": 1.0}
-    st = strength.check(mech.meta.get("wobble") or {}, mech.meta, config, loads)
+    return {"source": "sim", "note": "a cradle's: a sealed full 3 L bottle (walk), a firm "
+            f"push at the grip on a blocked cradle ({JAM_HAND_N:g} N: {jam_nm():g} N·m at "
+            "the crank, jam); cradle_report",
+            "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
+            "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
+            "torque_limit_nm": jam_nm(), "walk_torque_nm": crank_nm,
+            "joint_moment_factor": 1.0}
+
+
+def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float) -> dict:
+    """The pins and link plates rated by :func:`spiderpig.strength.check` at the cradle's
+    loads: "walk" a sealed full 3 L bottle's, "jam" the gearbox's rated torque on a blocked
+    cradle (per side, as :func:`report` shares them)."""
+    from spiderpig import strength
+
+    st = strength.check(mech.meta.get("wobble") or {}, mech.meta, config,
+                        loads_doc(config, rows, crank_nm))
     keep = ("joint", "kind", "links", "span_mm", "section", "sheet", "thickness_mm")
     return {"rows": [{**{k: r[k] for k in keep if k in r},
                       "walk_sf": (r.get("walk") or {}).get("safety"),

@@ -16,16 +16,6 @@ from __future__ import annotations
 
 from spiderpig.hardware.catalog import CATALOG, Item, Offer, register, register_factory
 
-MCM_SHOULDER_8_M6 = {6: ("92981A196", 4.16), 8: ("92981A198", 2.91),
-                     10: ("92981A200", 2.81), 12: ("92981A201", 2.89),
-                     16: ("92981A202", 2.87), 20: ("92981A203", 2.92),
-                     25: ("92981A204", 3.04)}
-"""McMaster 92981A, ISO 7379 8 mm shoulder, M6 x 11, head 13 x 6, black-oxide alloy steel
-(140 ksi): shoulder length -> (part, USD each), the listing rendered 2026-10-10."""
-MCM_SHOULDER_10_M8 = {16: ("92981A302", 3.15), 20: ("92981A303", 3.50),
-                      25: ("92981A304", 4.06), 30: ("92981A305", 4.11)}
-"""McMaster 92981A, ISO 7379 10 mm shoulder, M8 x 1.25 x 13, head 16 x 7, 5 mm hex,
-black-oxide alloy steel (140 ksi): the crankpin (pages rendered 2026-10-10)."""
 HARF_CHICAGO_M6 = {   # 18-8 plain, p-1806096: barrel length -> (variant id, SKU, sets, USD)
     10: (46703106162937, "a25051500ux1916", 20, 8.69),
     12: (46703105999097, "a25051500ux1917", 20, 8.50),
@@ -148,34 +138,6 @@ register(
            dims={"thread": 6.0, "barrel_d": 8.0, "head_d": 13.5, "head_h": 2.0,
                  "screw_head_h": 1.7, "screw_len": 10.0, "length": float(L)})
       for L, (vid, sku, n, usd) in HARF_CHICAGO_M6.items()),
-    *(Item(f"shoulder_m6x8_{n}", f"Shoulder screw ISO 7379, 8 mm shoulder x {n} mm, M6 thread",
-           "fastener",
-           (Offer("McMaster-Carr", f"https://www.mcmaster.com/{pn}/", pn, price_usd=usd,
-                  verified=usd is not None,
-                  note="black-oxide alloy steel, 140 ksi; sold each; listing rendered "
-                       "2026-10-10" if usd is not None else "the 92981A family (8 mm "
-                       "shoulder, M6) in this length: part number and price not read"),),
-           dims={"d": 8.0, "length": float(n), "thread": "M6", "thread_len": 11.0,
-                 "head_d": 13.0, "head_h": 6.0, "hex": 4.0})
-      for n, (pn, usd) in MCM_SHOULDER_8_M6.items()),
-    *(Item(f"shoulder_m8x10_{n}", f"Shoulder screw ISO 7379, 10 mm shoulder x {n} mm, M8 thread",
-           "fastener",
-           (Offer("McMaster-Carr", f"https://www.mcmaster.com/{pn}/", pn, price_usd=usd,
-                  verified=True, note="black-oxide alloy steel, 140 ksi; sold each; page "
-                  "rendered 2026-10-10"),),
-           dims={"d": 10.0, "length": float(n), "thread": "M8", "thread_len": 13.0,
-                 "head_d": 16.0, "head_h": 7.0, "hex": 5.0})
-      for n, (pn, usd) in MCM_SHOULDER_10_M8.items()),
-    Item("m8_jam_nut", "M8 hex jam nut, 18-8 (13 AF x 4 mm)", "nut",
-         (Offer("Bolt Depot", BD + "13573", "13573", price_usd=0.15,
-                tiers=((1, 0.15), (100, 0.0979)), verified=True,
-                note="13 AF x 3.70-4.00 (ISO 4035's size); " + BD_NOTE),),
-         dims={"af": 13.0, "h": 4.0}),
-    Item("m6_thin_nut", "M6 thin hex nut (DIN 439, 3.2 mm)", "nut",
-         (Offer("Bolt Depot", BD + "13572", "13572", price_usd=0.10,
-                tiers=((1, 0.10), (100, 0.0641)), verified=True,
-                note="18-8 hex jam nut, 10 AF x 3.2; page rendered 2026-10-10"),),
-         dims={"af": 10.0, "h": 3.2}),
     *(Item(f"m6_bhcs_{n}", f"M6 x {n} button head socket screw (ISO 7380)", "fastener",
            (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
                   tiers=((1, each),) + (((100, per100 / 100),) if per100 else ()),
@@ -234,10 +196,10 @@ register(
     Item("penlight_aaa", "AAA LED keychain light, twist switch (Olight i3E EOS), 14 x 60.5 mm",
          "electronics",
          (Offer("Battery Junction", "https://www.batteryjunction.com/products/olight-i3e-eos",
-                "I3E-EOS-19TH-ANNIVERSAR", price_usd=12.99, verified=True,
-                note="Olight i3E EOS, 14 x 60.5 mm, 90 lm, twist head; page fetched "
-                     "2026-10-10 (any 14 mm AAA twist light of about 60 mm fits the clip: buy "
-                     "it locally)"),),
+                "I3E-EOS", price_usd=12.99, verified=True,
+                note="Olight i3E EOS, 14 x 60.5 mm, 90 lm, twist head, any finish; page "
+                     "fetched 2026-10-10 (any 14 mm AAA twist light of about 60 mm fits the "
+                     "clip: buy it locally)"),),
          dims={"d": 14.0, "length": 60.5, "mass_g": 20.0},
          notes="The sommelier's candle: it stands in its clip behind the front saddle under "
                "the shoulder, its head (which twists to switch it on) up. A longer light's "

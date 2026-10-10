@@ -417,9 +417,14 @@ def _num(q: float) -> str:
     return str(int(q)) if float(q).is_integer() else f"{q:g}"
 
 
-def _footprint(part) -> str:
+def _footprint(part, flat: bool = False) -> str:
+    """Its box's size (``flat``, a cut plate: its outline first, its thickness last, as it
+    lies on the sheet: a decanting cradle's base plate stands in xz)."""
     bb = part.bounding_box()
-    return f"{bb.size.X:.0f} x {bb.size.Y:.0f} x {bb.size.Z:.1f} mm"
+    x, y, z = bb.size.X, bb.size.Y, bb.size.Z
+    if flat and min(x, y) < z:
+        x, y, z = sorted((x, y, z), reverse=True)
+    return f"{x:.0f} x {y:.0f} x {z:.1f} mm"
 
 
 # ---------------------------------------------------------------------------
@@ -799,6 +804,13 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
+CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, adapters, collar and feet"}
+CRADLE_PRINT_NOTE = (
+    "Print the saddles, the base stop and the brackets in PLA at 20 % infill with 4 walls (the "
+    "saddles are 154 mm towers: a brim), the hand crank and the light's clip at 40 %, the TPU "
+    "parts at 15-20 %: each STL is posed as it should print. A sparse-infill rear adapter is "
+    "about a third of its 100 % grams.")
+"""A decanting cradle's (:mod:`construction.cradle`)."""
 # a foot's sock; a decanting cradle's liners, its collar, its base plate's feet
 _SOCK = re.compile(r"_sock$|_liner$|_collar$|foot_boot_")
 _SLEEVE = re.compile(r"crank_pin_sleeve_(.+)$")
@@ -1170,7 +1182,9 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                 name=g.ref.name, method=method,
                 material=(sheet_name(g.ref.sheet) if g.ref.sheet else sheet)
                 if method == "laser" else (_filament_name(fil) if fil else fil_name),
-                size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
+                size_mm=_footprint(g.ref.part, flat=method == "laser"
+                                   and bool((mech.meta or {}).get("cradle"))),
+                volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
                 sheet=(g.ref.sheet or str(mech.meta.get("sheet") or "")) if method == "laser"
                 else "",
@@ -1183,14 +1197,17 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         if not fil or g <= 0:
             continue
         spool = float(get(fil).dims.get("spool_g", 1000.0))
+        use = (CRADLE_FILAMENT_USE if (mech.meta or {}).get("cradle") else FILAMENT_USE)
         what = "printed parts" if fil == filament else \
-            ", ".join(sorted({FILAMENT_USE.get(fil, "printed parts")}))
+            ", ".join(sorted({use.get(fil, "printed parts")}))
         lines.append(BomLine(fil, round(g / spool, 3), f"{what}: {g:.0f} g at 100 % infill"))
     if filament and total > 0:
         each = "; ".join(f"{g:.0f} g of {_filament_name(f)} ({filament_density(f)} g/cm3)"
                          for f, g in grams.items() if f and g > 0)
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
+        if (mech.meta or {}).get("cradle"):
+            notes.append(CRADLE_PRINT_NOTE)
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes

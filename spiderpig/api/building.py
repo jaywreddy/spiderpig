@@ -172,7 +172,8 @@ def attach_build(design: Design, mech, t: float, t0: float | None = None, *,
                                                                                   bb.max.Z])
         z_side = side_z(tag, z_mid, (bb.min.Z, bb.max.Z))
         parts[b.name] = Part(
-            name=b.name, solid=b.part, group=group_of(base, side.plan), side=tag, fab=b.fab,
+            name=b.name, solid=b.part, group=group_of(base, side.plan, is_cradle(cfg)),
+            side=tag, fab=b.fab,
             material=material, dims_mm=(bb.size.X, bb.size.Y, bb.size.Z),
             layers=side_layers(side.plan, z_side), density=density, fixed_mass_g=fixed,
             bom_key=b.bom_key, rigid_with=b.rigid_with, pose=b.pose.matrix.tolist(),
@@ -282,11 +283,18 @@ def side_layers(plan, z: tuple[float, float], eps: float = 1e-6) -> tuple[int, .
     return tuple(plan.layout.layers_between(z[0] + eps, z[1] - eps))
 
 
-def group_of(name: str, plan) -> str:
+def group_of(name: str, plan, cradle: bool = False) -> str:
     """The construction group that built a side body, from its name: a link (``links``),
     the plates (``frame``), the servo and its screws (``drive``), the crank's segments and
     screws (``crank``), an axle's segments and caps (``pillar:<axis>`` / ``pin:<axis>``),
-    the robot's chassis (``chassis``)."""
+    the robot's chassis (``chassis``); a decanting cradle's own (``cradle``:
+    :data:`construction.cradle.GROUPS`)."""
+    if cradle:
+        from spiderpig.construction.cradle import group_of as cradle_group
+
+        own = cradle_group(name)
+        if own:
+            return own
     if name in plan.layers:
         return "links"
     if name in plan.topo.frame_bodies or name.startswith("frame"):

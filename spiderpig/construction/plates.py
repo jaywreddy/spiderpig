@@ -195,12 +195,17 @@ class LinkPlates(Group):
 
     def assembly(self, view) -> list:
         """Each link with the layer it sits in (:mod:`construction.assembly`), a foot
-        link's TPU sock on it first."""
+        link's TPU sock on it first; not a decanting cradle's cradle link (its tie rods'
+        hook places it)."""
         from spiderpig.construction.assembly import STACK, Op, whole
+        from spiderpig.stack import body_class
 
+        cfg = getattr(view.ctx, "config", None)
+        lk = getattr(cfg, "lk", None)
+        skip = lk.output.link if lk is not None and lk.product and lk.output else None
         ops = []
         for link in getattr(getattr(view.ctx, "topo", None), "links", {}):
-            if link not in view.z:
+            if link not in view.z or (skip is not None and body_class(link) == skip):
                 continue
             k = view.slot(view.z[link][0])
             ops.append(Op(STACK, (k, 1), whole(link), "",
