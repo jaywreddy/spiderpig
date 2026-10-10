@@ -22,7 +22,7 @@ PITCH = 3.0
 
 
 def test_registered_and_selectable():
-    assert set(CRANKS) == {"bolt", "bolt_round"}
+    assert set(CRANKS) == {"bolt", "bolt_round", "hand"}   # hand: a decanting cradle's
     assert isinstance(CRANKS["bolt"], BoltCrank)
     # the hex standoff crankpin is the default; the friction-clamped round one selectable
     assert CRANKS["bolt"].for_sheet(BuildConfig().crank_sheet).hex

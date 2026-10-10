@@ -69,7 +69,14 @@ PONOKO_RULES_ACRYLIC = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6.0, 
                         "kerf_mm": 0.2}
 
 
-def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) -> Item:
+SCS_MAX_MM = (44.0 * IN, 30.0 * IN)
+"""SendCutSend's largest part (44 x 30 in): a decanting cradle's frame plates and links are
+bigger than the 300 x 300 mm the walkers' sheets are drawn on; SendCutSend prices per part,
+so the sheet a layout draws is only a page."""
+
+
+def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
+        sheet_mm: tuple[float, float] = (300.0, 300.0)) -> Item:
     t = round(inch * IN, 3)
     name = f"{alloy} aluminium sheet {inch:.3f} in ({t:g} mm), laser cut"
     url = SCS_AL if alloy == "5052" else SCS_6061
@@ -81,7 +88,7 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) 
         dims={"thickness": t, "material": "aluminium", "alloy": f"{alloy}-{temper}",
               "density": 2.68 if alloy == "5052" else 2.70,
               "yield_mpa": 193.0 if alloy == "5052" else 276.0,
-              "min_hole": t, "sheet_mm": (300.0, 300.0), **SCS_RULES_AL,
+              "min_hole": t, "sheet_mm": sheet_mm, **SCS_RULES_AL,
               # the cutting, material included (hardware.bom.cut_estimate, calibrated on
               # SendCutSend's live quotes of 2026-10-08): per cm^2 of part, least per part
               "cut_usd_cm2": 0.20 if alloy == "5052" else 0.40, "cut_min_usd": 2.20},
@@ -112,7 +119,15 @@ AL6061_THIN: dict[str, float] = {"al6061_1p6mm": 0.063, "al6061_2mm": 0.080,
 no .090), for the crank's hex-pocket plates (2026-10-04); price an estimate."""
 
 register(
-    _al("al5052_3p2mm", 0.125, price=28.0),
+    # a decanting cradle's frame and links, and its connecting rod (its buckling): parts
+    # up to SendCutSend's largest
+    _al("al5052_3p2mm", 0.125, price=28.0, sheet_mm=SCS_MAX_MM),
+    _al("al5052_4p8mm", 0.187, price=40.0, sheet_mm=SCS_MAX_MM),
+    # its gearbox's riser discs, and its keyed crank arm
+    _al("al5052_6p35mm", 0.250, price=55.0, sheet_mm=SCS_MAX_MM),
+    _al("al6061_6p35mm", 0.250, alloy="6061", price=60.0, sheet_mm=SCS_MAX_MM),
+    # the B cradle's most loaded levers
+    _al("al6061_4p8mm", 0.187, alloy="6061", price=45.0, sheet_mm=SCS_MAX_MM),
     _al("al6061_3p2mm", 0.125, alloy="6061", price=32.0),
     *(_al(k, v, price=18.0) for k, v in AL_THIN.items()),
     *(_al(k, v, alloy="6061", price=21.0) for k, v in AL6061_THIN.items()),

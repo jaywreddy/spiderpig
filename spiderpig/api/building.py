@@ -13,6 +13,7 @@ import numpy as np
 from spiderpig import servos
 from spiderpig.api.reports import BuildReport, RecheckReport
 from spiderpig.api.store_ops import _drop_stored, _forget, design_lock
+from spiderpig.config import is_cradle
 from spiderpig.construction.base import Build, ConstructionError
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.envelope import claimed_solid
@@ -24,6 +25,7 @@ from spiderpig.design import (
 )
 from spiderpig.fabricate import (
     fabricate_side,
+    product,
 )
 from spiderpig.failure import Failure
 from spiderpig.hardware.mass import material_of, part_props
@@ -79,8 +81,8 @@ def _build(design: Design, t: float, force: bool) -> BuildReport:
 def fabricate_at(design: Design, t: float) -> Mechanism:
     """The design fabricated at crank angle ``t`` from its own side (what
     :func:`fabricate.fabricate` does, without planning again): one side, or the robot
-    with its frame ties and chassis. From the store's fabrication cache when it holds it
-    (:mod:`spiderpig.fabcache`)."""
+    with its frame ties and chassis, or a decanting cradle. From the store's fabrication
+    cache when it holds it (:mod:`spiderpig.fabcache`)."""
     from spiderpig import fabcache
 
     tmpl, cfg, d = _template(design), design.config, design.side
@@ -88,6 +90,8 @@ def fabricate_at(design: Design, t: float) -> Mechanism:
         raise ValueError("plan(design) first")
 
     def make():
+        if is_cradle(cfg):                                  # both sides and the cradle box
+            return product(d, tmpl, t, robot=False)
         ties = [FrameTies(d.drive)] if cfg.robot else []
         side = fabricate_side(d, tmpl.freeze_at(t), ties)
         return assemble_robot(side, d) if cfg.robot else side

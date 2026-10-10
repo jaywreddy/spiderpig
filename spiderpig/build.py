@@ -54,6 +54,7 @@ from spiderpig.config import (
     add_build_args,
     add_design_args,
     config_from_args,
+    is_cradle,
     torque_limit_note,
 )
 from spiderpig.fabricate import design_side, fabricate, split_parts, template_for
@@ -526,6 +527,9 @@ def main(argv=None) -> int:
 
     title = (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "
              f"{config.pillar} pillars, {config.pin} pins, {config.crank} crank, {config.sheet}")
+    if is_cradle(config):
+        title = (f"decanting cradle ({config.lk.name}), hand crank (NRV030 30:1), "
+                 f"{config.pillar} pillars, {config.pin} pins, {config.frame_sheet} frame")
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")

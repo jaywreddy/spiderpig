@@ -211,6 +211,7 @@ def _load() -> None:
         return
     _LOADED = True
     from spiderpig.hardware import (
+        cradle_catalog,  # noqa: F401  (a decanting cradle's drive and light)
         electronics,  # noqa: F401  (the deck's electronics)
         parts,  # noqa: F401  (registers fasteners, bearings, sheets, ...)
         shims,  # noqa: F401  (each DIN 988 thickness, after parts)

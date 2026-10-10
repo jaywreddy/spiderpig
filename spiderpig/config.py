@@ -155,8 +155,10 @@ def removed_construction(field: str, key) -> tuple[str, str] | None:
 
 
 def default_crank_sheet(lk: linkage.Linkage) -> str:
-    """The crank sheet ``lk`` gets when the config names none (:data:`LINKAGE_CRANK_SHEETS`,
-    else :data:`CRANK_SHEET`)."""
+    """The crank sheet ``lk`` gets when the config names none (a decanting cradle's: its
+    keyed arm, 0.250 in 6061-T6; :data:`LINKAGE_CRANK_SHEETS`, else :data:`CRANK_SHEET`)."""
+    if lk.product == "cradle":
+        return "al6061_6p35mm"
     return LINKAGE_CRANK_SHEETS.get(lk.key, CRANK_SHEET)
 
 
@@ -203,11 +205,43 @@ def torque_limit_note(config: BuildConfig) -> str | None:
 
 
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
-    """The crank construction ``lk`` (in ``module``) gets when the config names none: its
-    module's (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's
+    """The crank construction ``lk`` (in ``module``) gets when the config names none: a
+    product's (:data:`PRODUCT_CRANKS`: a decanting cradle's hand crank), its module's
+    (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's
     (:data:`DEFAULT_CRANKS`)."""
+    if lk.product in PRODUCT_CRANKS:
+        return PRODUCT_CRANKS[lk.product]
     return MODULE_CRANKS.get((lk.key, module),
                              LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
+
+
+CRADLE = "cradle"
+PRODUCT_CRANKS: dict[str, str] = {CRADLE: "hand"}
+"""Per product (:attr:`linkage.Linkage.product`): the crank it is built with, the only one
+(a decanting cradle: the hand-cranked worm drive, :mod:`construction.handcrank`)."""
+
+FRAME_SHEET = "al5052_2mm"
+PRODUCT_FRAME_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
+"""Per product: the frame plates' sheet when the config names the default
+(:data:`FRAME_SHEET`). A decanting cradle's frame plates are its stand (2026-10-10): 0.125 in
+5052, stiffer than the walkers' 0.080 in under a 6 kg bottle 340 mm up."""
+
+PRODUCT_PARAMS: dict[str, dict[str, float]] = {
+    CRADLE: {"link_radius": 11.0, "frame_radius": 12.0, "spacer_d": 12.5},
+}
+"""Per product: the shared dimensions (:class:`fit.Params`) a design gets when it names
+the defaults. A decanting cradle's links are 22 mm wide (two plate thicknesses of web round
+an M6 Chicago barrel's 8.2 mm hole: SendCutSend's rule) and its frame arms 24 mm; its pins'
+spacer rings 12.5 mm (the M6 barrel's 8 mm and a wall)."""
+
+PRODUCT_PINS: dict[str, str] = {CRADLE: "chicago6"}
+"""Per product: the link pin a design gets when it names the default (``chicago``): a
+decanting cradle's M6 Chicago screws (:data:`construction.pivots.chicago.CHICAGO_M6`)."""
+
+
+def is_cradle(config) -> bool:
+    """Whether ``config`` builds a decanting cradle (:mod:`construction.cradle`)."""
+    return config.lk.product == CRADLE
 
 
 @dataclass(frozen=True)
@@ -223,7 +257,7 @@ class BuildConfig:
     sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
     #                                   the layer pitch (spiderpig.materials)
     thickness: float | None = None    # override the sheet's nominal thickness
-    frame_sheet: str = "al5052_2mm"     # the frame and centre plates (aluminium: acrylic
+    frame_sheet: str = FRAME_SHEET      # the frame and centre plates (aluminium: acrylic
     #                                     can't take their load; the user's call 2026-10-04):
     #                                     0.080 in 5052, the thinnest stock that passes
     #                                     (materials.thinnest_sheet("frame"); tests pin it)
@@ -260,6 +294,7 @@ class BuildConfig:
         except KeyError as e:
             raise ParamError(e.args[0]) from None
         if self.robot and lk.kind != "walker":
+            # a cradle is one side too (robot=False): construction.cradle builds both from it
             raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on, "
                              f"so it builds one side (robot=False; --side-only on the command "
                              f"line) (walkers: {', '.join(linkage.available('walker'))})")
@@ -269,6 +304,19 @@ class BuildConfig:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
+        if lk.product and self.frame_sheet == FRAME_SHEET:
+            object.__setattr__(self, "frame_sheet",
+                               PRODUCT_FRAME_SHEETS.get(lk.product, FRAME_SHEET))
+        if lk.product in PRODUCT_PINS and self.pin == "chicago":
+            object.__setattr__(self, "pin", PRODUCT_PINS[lk.product])
+        if lk.product in PRODUCT_PARAMS and self.params == Params():
+            object.__setattr__(self, "params", Params(**PRODUCT_PARAMS[lk.product]))
+        hand = PRODUCT_CRANKS.get(lk.product)
+        if (self.crank == "hand") != (hand == "hand"):
+            cradles = [k for k in linkage.available() if linkage.get(k).product]
+            raise ParamError(f"crank {self.crank!r}: the hand crank builds a decanting cradle "
+                             f"and a cradle only that ({lk.key} is "
+                             f"{'a cradle' if hand else 'not'}; cradles: {', '.join(cradles)})")
         for what in ("crank", "pin", "pillar"):
             if (gone := removed_construction(what, getattr(self, what))) is not None:
                 raise ParamError(gone[0])

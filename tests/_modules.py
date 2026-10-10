@@ -21,6 +21,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_multi_linkage.py": "linkage",
     "test_transforms.py": "linkage",
     "test_mechanisms.py": "linkage",
+    "test_cradle.py": "construction",
     "test_walk.py": "linkage",
     "test_viewer_parity.py": "linkage",
     # server / view (P1)

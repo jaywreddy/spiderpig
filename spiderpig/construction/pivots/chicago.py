@@ -183,9 +183,15 @@ class ChicagoShaft:
     glue_fit: float = 0.15          # the lowest link's hole over the barrel (bonded)
     glue_per_pin: float = 0.005
     lock_per_pin: float = 0.01
+    family: str = "m3"              # the catalog's size: chicago_<family>_<length> (the M6:
+    #                                  a decanting cradle's, CHICAGO_M6)
 
-    def item(self, length: float = CHICAGO_LENGTHS[0]) -> dict:
-        return get(chicago(length)).dims
+    def key_of(self, length: float) -> str:
+        """The catalog key of this size's barrel ``length`` mm long."""
+        return chicago(length) if self.family == "m3" else f"chicago_{self.family}_{length:g}"
+
+    def item(self, length: float | None = None) -> dict:
+        return get(self.key_of(self.lengths[0] if length is None else length)).dims
 
     @property
     def d(self) -> float:
@@ -216,7 +222,9 @@ class ChicagoShaft:
         # the catalog's steps, not this design's stock (``lengths``, BARRELS): a stock with
         # wider steps (the Strider's 6 mm, 10 to 16) is checked where a stack meets it, at
         # the plan's z (column) and as built (fit), so the planner keeps the stacks it fits
-        # (the BOM study's relaxed rule, 2026-10-08)
+        # (the BOM study's relaxed rule, 2026-10-08); another size is checked that way only
+        if self.family != "m3":
+            return
         steps = [b - a for a, b in itertools.pairwise(CHICAGO_LENGTHS)
                  if b <= 22]      # (longer stacks: fit() says if the shims fit)
         room = (ctx.pitch - top) + (ctx.pitch - float(it["head_h"]))
@@ -371,7 +379,7 @@ class ChicagoShaft:
                        disc(xy, (d - self.model_gap) / 2, zb, zt),
                        disc(xy, head_d / 2, zt, zt + float(it["screw_head_h"]))])
         out.bodies.append(hardware(f"{stem}_screw", screw, host, fab="purchased",
-                                   bom_key=chicago(f.length), color=STEEL))
+                                   bom_key=self.key_of(f.length), color=STEEL))
         z = z_hi
         # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
         # the screw bottoms on the barrel, so they only set the column's axial play). A lower
@@ -397,15 +405,17 @@ class ChicagoShaft:
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-            "play_mm": round(f.play, 3), "item": chicago(f.length), "printed": True,
+            "play_mm": round(f.play, 3), "item": self.key_of(f.length), "printed": True,
             "bond_gap_mm": round(bond_gap, 3), "unprinted_hi_mm": 0.0}
         return f
 
 
 def chicago_section(shaft: ChicagoShaft) -> Section:
-    """The barrel as a 304 tube, 4 mm over the M3 thread's 3 mm major diameter (the screw's
-    core inside it ignored: conservative)."""
-    return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
+    """The barrel as a 304 tube, its OD over its thread's major diameter (4 x 3 for the M3;
+    the screw's core inside it ignored: conservative)."""
+    thread = float(shaft.item().get("thread", 3.0))
+    return Section.tube(shaft.d, thread, 215.0,
+                        name=f"chicago barrel {shaft.d:g} x {thread:g} tube")
 
 
 BARRELS: dict[tuple[str, str], tuple[float, ...]] = {
@@ -422,7 +432,9 @@ crank: on the Klann quads the same list finds no plan in 60 s (their 9 mm pins a
 routes need the catalog's 1 mm steps), nor on the Strider's ``bolt_round`` crank (7, 10,
 16, 22; with 23; with 9: its routes put J7 on the lengths between)."""
 
-MAX_BARREL: dict[str, float] = {"strider": 23.0}
+MAX_BARREL: dict[str, float] = {"strider": 23.0,
+                                 # a decanting cradle's pins carry a bottle: short spans
+                                 "decanter_hinge": 17.0, "decanter_rcm": 20.0}
 """The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
 a long barrel is a long span, and a pin bends as its span. The Strider (2026-10-05): the quad's
 J7 on a 30 mm barrel, its links 26 mm apart at the plan's z, was jam SF 1.8; capped at 23 mm
@@ -545,3 +557,21 @@ class ChicagoAxle:
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft))}
         return out
+
+
+def _m6_lengths() -> tuple[float, ...]:
+    from spiderpig.hardware.cradle_catalog import CHICAGO_M6_LENGTHS
+
+    return CHICAGO_M6_LENGTHS
+
+
+CHICAGO_M6 = ChicagoAxle(
+    key="chicago6",
+    label=("M6 Chicago screw (8 mm barrel) through the stack, printed rings and head spacers; "
+           "lowest link bonded (pins only): a decanting cradle's"),
+    shaft=ChicagoShaft(family="m6", washer_key="ptfe_washer_8x14x0p5",
+                       shim_key="shim_din988_8x14", lengths=_m6_lengths()),
+)
+"""The M6 size (Harfington's 18-8, 8 mm barrel, 13.5 mm heads: :mod:`hardware.cradle_catalog`):
+a decanting cradle's pins (``config.PRODUCT_PINS``), 8 times the M3 barrel's bending section
+for a bottle's loads (:mod:`spiderpig.cradle_report`)."""

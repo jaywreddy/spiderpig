@@ -274,6 +274,10 @@ export function createDrive(host: DriveHost) {
       st.lastPred = null;
       const side = (st.side = sideActions(l.mixer, l.clip, l.walker));
       saved = { p: l.walker.position.clone(), q: l.walker.quaternion.clone() };
+      // a product (a decanting cradle) is turned by hand, not driven: no drive panel or pad
+      const product = Boolean(l.root.userData.product);
+      gui.show(!product);
+      if (pad) pad.style.display = product ? 'none' : '';
       const wantPhysics = ph.on || ph.wanted;
       // The session, live or still building, is the previous glb's: off, through the one off path
       // (a connect in flight rejects with null and setPhysics's loop reconnects for this one).

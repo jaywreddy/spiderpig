@@ -52,6 +52,15 @@ class AxleDims:
 End = tuple[str, float]     # (label, radius) of one layer claimed beyond an axle's end
 
 
+def full_rings(ctx: Context) -> bool:
+    """Whether an axle's printed rings fill their layers: a decanting cradle's (its layers
+    run 3.2 to 6.35 mm, the rod's and the crank arm's thicker; a stock column sized to the
+    rings' stack would pull its plates together), where a walker's ring is the default
+    sheet's thickness and a layer an aluminium plate thickens leaves its column air."""
+    cfg = ctx.config
+    return cfg is not None and bool(cfg.lk.product)
+
+
 def default_ends(d: AxleDims, pillar: bool, anchored: tuple[bool, bool]) -> tuple[
         tuple[End, ...], tuple[End, ...]]:
     """What an axle without an ``ends`` hook claims beyond its retained stack: a head below
@@ -118,6 +127,7 @@ class AxleGroup(Group):
                 room[n] = free
         ends = getattr(self.construction, "ends", None)
         link_t = {m: ctx.sheet_t("link", m) for m in members}
+        full = full_rings(ctx)
 
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
@@ -132,7 +142,7 @@ class AxleGroup(Group):
                 plate elsewhere made thicker): its stack closes it up."""
                 if not L.final:
                     return 0.0
-                return sum(max(0.0, L.t(k) - own.get(k, ctx.pitch))
+                return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
                            for k in range(a, b + 1) if 0 < k < L.top)
             free: dict[int, float] = {}
             who: dict[int, str] = {}

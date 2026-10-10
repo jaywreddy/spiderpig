@@ -72,7 +72,8 @@ def test_a_role_no_stock_sheet_passes_is_an_error():
 
 def test_the_aluminium_sheets_come_thinnest_first():
     keys = materials.aluminium_sheets("6061")
-    assert keys == ["al6061_1p6mm", "al6061_2mm", "al6061_2p5mm", "al6061_3p2mm"]
+    assert keys == ["al6061_1p6mm", "al6061_2mm", "al6061_2p5mm", "al6061_3p2mm",
+                    "al6061_4p8mm", "al6061_6p35mm"]   # the last two a decanting cradle's
     ts = [materials.sheet(k).thickness for k in materials.aluminium_sheets("")]
     assert ts == sorted(ts)
 
@@ -82,7 +83,7 @@ def test_the_thinnest_sheet_doesnt_depend_on_the_catalog_being_loaded_first():
             "print(materials.thinnest_sheet('frame'), len(materials.role_report('frame')))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                          timeout=60)
-    assert out.stdout.split() == ["al5052_2mm", "6"], out.stderr[-500:]
+    assert out.stdout.split() == ["al5052_2mm", "8"], out.stderr[-500:]
 
 
 def test_a_gap_on_a_pin_is_one_ptfe_washer_then_shims_thickest_first():

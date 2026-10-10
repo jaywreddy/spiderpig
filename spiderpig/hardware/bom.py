@@ -799,7 +799,7 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-_SOCK = re.compile(r"_sock$")
+_SOCK = re.compile(r"_sock$|_liner$|foot_boot_")    # a foot's sock; a cradle's liners, boots
 _SLEEVE = re.compile(r"crank_pin_sleeve_(.+)$")
 
 
@@ -820,7 +820,8 @@ def pressed_sleeves(meta: dict) -> set[str]:
 
 def part_filament(body, meta: dict, default: str | None) -> str | None:
     """The filament (catalog key) a printed ``body`` is printed in: TPU 95A for a foot's
-    sock, :data:`PRESS_FILAMENT` for a sleeve pressed on its crankpin, else ``default``."""
+    sock (and a decanting cradle's saddle liners and foot boots), :data:`PRESS_FILAMENT` for
+    a sleeve pressed on its crankpin, else ``default``."""
     if _SOCK.search(body.name):
         return TPU_FILAMENT
     m = _SLEEVE.search(body.name)

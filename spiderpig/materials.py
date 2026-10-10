@@ -97,6 +97,11 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
+    # the B cradle (2026-10-10): every link 0.187 in, as its rod, so no link rides in a layer
+    # a thicker one made taller (a thin link there would slide on its pin); the most loaded
+    # plates, the lever b4 and the rocker b3, in 6061 (cradle_report's jam)
+    "decanter_rcm": {"b2": "al5052_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm",
+                     "b3": "al6061_4p8mm", "b4": "al6061_4p8mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""
@@ -106,8 +111,19 @@ def default_link_sheets(lk) -> dict[str, str]:
     """A linkage's links that aren't cut from the default sheet: a Klann variant's foot
     links (aluminium 6061-T6, the joinery plan of 2026-10-03) and :data:`LINK_SHEETS`."""
     out = {link: FOOT_SHEET for link, _ in lk.feet} if lk.family == "klann" else {}
+    if getattr(lk, "product", "") == "cradle":      # every link aluminium: 6 kg on them
+        out.update(dict.fromkeys(lk.links, CRADLE_LINK_SHEET))
+        rod = [k for k, (js, _) in lk.links.items() if lk.crank[1] in js]
+        out.update(dict.fromkeys(rod, CRADLE_ROD_SHEET))
     out.update(LINK_SHEETS.get(lk.key, {}))
     return out
+
+
+CRADLE_LINK_SHEET = "al5052_3p2mm"
+"""A decanting cradle's links (the user, 2026-10-09: aluminium first): 0.125 in 5052."""
+CRADLE_ROD_SHEET = "al5052_4p8mm"
+"""A decanting cradle's connecting rod (the link on the crankpin): 0.187 in 5052, so it
+doesn't buckle at the gearbox's rated torque (:mod:`spiderpig.cradle_report`, the jam)."""
 
 
 def link_sheets(config) -> dict[str, str]:
@@ -150,6 +166,7 @@ WASHERS: dict[float, tuple[str, str]] = {
     3.0: ("ptfe_washer_3x6x0p5", "shim_din988_3x6"),
     4.0: ("ptfe_washer_4x8x0p5", "shim_din988_4x8"),
     6.0: ("ptfe_washer_6x12x0p5", "shim_din988_6x12"),
+    8.0: ("ptfe_washer_8x14x0p5", "shim_din988_8x14"),     # a cradle's M6 Chicago barrel
 }
 
 

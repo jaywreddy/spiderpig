@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from spiderpig.construction.axle import AxleGroup
+from spiderpig.construction.axle import AxleGroup, full_rings
 from spiderpig.construction.base import Build, Realized, hardware
 from spiderpig.shapes import disc
 
@@ -125,9 +125,10 @@ HEAD_CLEARANCE = 0.25    # a retainer in a clearance gap stays this far off the 
 
 def ring_z(build: Build, k: int) -> tuple[float, float]:
     """A spacer ring's z in layer ``k``: the default sheet's thickness on the layer's
-    floor (a layer an aluminium plate thickens is a little taller than a ring)."""
+    floor (a layer an aluminium plate thickens is a little taller than a ring), or the
+    whole layer (:func:`construction.axle.full_rings`)."""
     z0, z1 = build.z(k)
-    return z0, min(z1, z0 + build.ctx.pitch)
+    return (z0, z1) if full_rings(build.ctx) else (z0, min(z1, z0 + build.ctx.pitch))
 
 
 def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaft_d: float,
@@ -163,9 +164,10 @@ def column_air(build: Build, group: AxleGroup, a: int, b: int) -> float:
     plate made thicker): the axle's stack closes it up (the planner's ``air``,
     :meth:`construction.axle.AxleGroup.claims`)."""
     plan, ctx = build.plan, build.ctx
+    full = full_rings(ctx)
     own: dict[int, float] = {}
     for m in group.axis.members:
         k = plan.layers[m]
         own[k] = max(own.get(k, 0.0), ctx.sheet_t("link", m))
-    return sum(max(0.0, plan.t(k) - own.get(k, ctx.pitch)) for k in range(a, b + 1)
-               if 0 < k < plan.top)
+    return sum(max(0.0, plan.t(k) - own.get(k, plan.t(k) if full else ctx.pitch))
+               for k in range(a, b + 1) if 0 < k < plan.top)

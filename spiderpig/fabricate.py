@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
 from spiderpig import construction, linkage, servos
-from spiderpig.config import BuildConfig
+from spiderpig.config import BuildConfig, is_cradle
 from spiderpig.construction.base import Build, Context, Realized
 from spiderpig.construction.robot import FrameTies, assemble_robot
 from spiderpig.construction.underside import underside
@@ -316,12 +316,24 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
     design = design_side(tmpl, config)
 
     def build() -> Mechanism:
-        ties = [FrameTies(design.drive)] if config.robot else []
-        side = fabricate_side(design, tmpl.freeze_at(t), ties)
-        return assemble_robot(side, design) if config.robot else side
+        return product(design, tmpl, t, robot=config.robot)
 
     store = store if store is not None else fabcache.current()
     return fabcache.fabricated(store, tmpl, config, design, t, build)
+
+
+def product(design: SideDesign, tmpl, t: float, robot: bool) -> Mechanism:
+    """What a planned side ``design`` makes at crank angle ``t``: the side on its own, the
+    robot (``robot``: two sides, the frame ties and the chassis), or a decanting cradle
+    (both sides and the cradle box: :mod:`construction.cradle`)."""
+    ties = [FrameTies(design.drive)] if robot else []
+    side = fabricate_side(design, tmpl.freeze_at(t), ties)
+    if is_cradle(design.config):
+        from spiderpig.construction.cradle import assemble_cradle, passive_design
+
+        passive = fabricate_side(passive_design(design), tmpl.freeze_at(t))
+        return assemble_cradle(side, passive, design)
+    return assemble_robot(side, design) if robot else side
 
 
 MADE = ("laser", "printed")

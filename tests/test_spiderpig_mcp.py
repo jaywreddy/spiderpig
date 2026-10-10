@@ -213,11 +213,14 @@ def test_cards(server):
     assert sheet["sheet_mm"] == [300.0, 300.0]
     assert sheet["price_usd"] is None        # SendCutSend's upload quotes it (2026-10-08)
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
-    assert set(axles) == {"chicago", "standoff"}          # (the rest removed on 2026-10-07)
+    assert set(axles) == {"chicago", "standoff", "chicago6"}  # the rest removed 2026-10-07;
+    #                                                       chicago6 a decanting cradle's
     assert axles["standoff"]["roles"] == ["pillar"]
     assert axles["chicago"]["roles"] == ["pin"]          # a head would leave the frame plates
     assert axles["standoff"]["hardware"]["washer_key"]["key"] == "m4_washer"
-    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round"]
+    assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round", "hand"]
+    hand = next(c for c in cat["constructions"]["cranks"] if c["key"] == "hand")
+    assert hand["hardware"]["gearbox"]["key"] == "nrv030_30"     # a decanting cradle's
     bolt = next(c for c in cat["constructions"]["cranks"] if c["key"] == "bolt")
     assert bolt["roles"] == ["crank"]
     assert bolt["hardware"]["lock_key"]["key"] == "threadlocker_243"

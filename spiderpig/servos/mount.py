@@ -163,9 +163,10 @@ class DriveGroup(Group):
         if key is None or ctx.topo.center is None:
             return 0.0
         from spiderpig.construction import CRANKS
+        from spiderpig.construction.crank import BoltCrank
 
         crank = CRANKS.get(key)
-        if crank is None or not hasattr(crank, "hub_head_need"):
+        if not isinstance(crank, BoltCrank):    # (a hand crank has no servo horn)
             return 0.0
         crank = crank.resolve(ctx)
         h = self.spec.horn
@@ -206,7 +207,7 @@ class DriveGroup(Group):
         inputs = linkage.get(ctx.config.linkage).inputs
         if len(inputs) > 1:
             others = [k for k in linkage.available("mechanism")
-                      if len(linkage.get(k).inputs) == 1]
+                      if len(linkage.get(k).inputs) == 1 and not linkage.get(k).product]
             raise ConstructionError(
                 f"{ctx.topo.name}: the drive turns one input, the crank at O (one servo); "
                 f"{ctx.config.linkage} has {len(inputs)} ({', '.join(inputs)}), and a drive "

@@ -120,8 +120,8 @@ def second_input_note(lk) -> str:
     """What a two-input mechanism gets told, at ``resolve`` and at the ``drive`` stage: v1
     builds one drive, so it can be resolved, checked for its program and its output, and
     drawn, but not planned or built; which one-input mechanisms can."""
-    others = [k for k in linkage.available("mechanism")
-              if len(linkage.get(k).inputs) == 1]
+    others = [k for k in linkage.available("mechanism")       # a product's crank is a hand's
+              if len(linkage.get(k).inputs) == 1 and not linkage.get(k).product]
     return (f"{lk.key} has {len(lk.inputs)} inputs ({', '.join(lk.inputs)}) and v1 builds one "
             f"drive: check reads its program and its output, but plan, build, verify and "
             f"export stop at the drive stage (second_input_no_drive), a limit of v1, not of "
