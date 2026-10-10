@@ -664,7 +664,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - Jam: pin P 1.36, pillar O2 1.42, pillar O1 1.50, links b3 and b4 1.5. Walking 4.1 or
     more.
   - The rod buckles at 2.67 × its jam force. Transmission 36.7°.
-  - The stand tips at 28.9° (the rear edge, a full 3 L), or under a 28.1 N push.
+  - The stand tips at 30.1° (a full 3 L), or under a 26.6 N push.
   - The stack is 1.6 mm thinner (b6).
 - **Why:**
   - With the rod nearly level, the crank sits a rod's length behind the lever, and the

@@ -273,7 +273,7 @@ STANDS: dict[str, Stand] = {
     # a rail. The inner plate is the bar O1-O2: the tie rods pass behind it (the rear ones
     # never further round than 72° down, the bar at 90.5°) and the front ones above it.
     # Nothing crosses the bay: the decanter stands under the mouth, between the bars. The
-    # base plate ends 70 mm behind O: its rear edge is what tips first (a full 3 L at 29°).
+    # base plate ends 70 mm behind O (its rear edge tips a full 3 L no sooner than its sides).
     "decanter_rcm": Stand(
         nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y)},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),

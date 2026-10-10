@@ -364,15 +364,15 @@ grip jammed):
 | jam | pin P 1.36, pillar O2 1.42, pillar O1 1.50, link b3 1.51, link b4 1.53, the crank's keyway 1.64, pin K 1.71, the rest 2.3 or more |
 | walking | every joint 8.6 or more; the crank's keyway 4.1 |
 | rod, crankpin | buckling 2.67 × its jam force; the crankpin 2.08 jammed |
-| stand | tips at 28.9° at worst (the rear edge, a full 3 L), a push of 28.1 N or more at a bottle's top |
+| stand | tips at 30.1° at worst (a full 3 L), a push of 26.6 N or more at a bottle's top |
 
 **The stand** (`cradle.STANDS`):
 - **The outer plate** is two triangles on the pivots' bar: O1–O, O2–O and O1–O2. A front
   leg runs from O2, a rear leg straight down from O, and a rail along the base plate.
 - **The inner plate** is the bar O1–O2 alone, on its two pillars. Nothing crosses the bay.
 - **The base plate** runs from 160 mm in front of the mouth to 436 mm behind it: 596 by
-  500 mm. Its rear edge is what tips first. The first refit's had run 827 mm, to 640 mm
-  behind the mouth, with the crank 480 mm back.
+  500 mm. It tips a full 3 L at 30.1° over its sides; its rear edge holds as much or more.
+  The first refit's had run 827 mm, to 640 mm behind the mouth, with the crank 480 mm back.
 
 **Tried and dropped** (a search over the parameters, each candidate then planned and
 reported; [DECISIONS.md](DECISIONS.md) has the entry):
