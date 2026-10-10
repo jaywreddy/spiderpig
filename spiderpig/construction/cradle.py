@@ -40,6 +40,7 @@ cradle over the swing (:func:`construction.contract.clashes`, by
 
 from __future__ import annotations
 
+import itertools
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -70,8 +71,10 @@ from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
 LIP_HEIGHT = 460.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
 #                         3 L base stop's end hangs about 430 mm under it
-DECANTER_GAP = 85.0     # the decanter's rim this far under the bottle's mouth, on its riser
-#                         (at rest the front saddle comes down to about 70 mm under it)
+DECANTER_RISER = 55.0   # the drawn decanter's riser: the highest that keeps it clear of the
+#                         cradle box over the whole swing (cradle_report.room: at rest, 50°
+#                         neck up, the front saddle, the tie rods and the light hang across
+#                         the axis from 300 mm over the table up)
 DECANTER_PROFILE = ((0.0, 28.6), (6.3, 38.8), (21.7, 84.2), (30.0, 95.8), (40.7, 102.5),
                     (47.4, 100.8), (55.4, 91.2), (72.4, 52.4), (79.5, 41.3), (89.5, 32.3),
                     (108.5, 22.9), (133.5, 18.3), (165.9, 19.0), (189.9, 23.9), (225.0, 37.1))
@@ -591,7 +594,7 @@ def _closed(part: Shape3D, z0: float, z1: float, r: float) -> Shape3D:
     if not tops:
         return part
     shrunk = offset(offset(tops, r, kind=Kind.ARC), -r, kind=Kind.ARC)
-    faces = shrunk.faces() if hasattr(shrunk, "faces") else [shrunk]
+    faces = [f for f in shrunk.faces() if isinstance(f, Face)]
     return union([extrude(f, amount=-(z1 - z0)) for f in faces])
 
 
@@ -606,7 +609,8 @@ def _tie_paths(build: Build) -> list[Shape3D]:
         path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
         step = max(1, len(path) // 48)
         pts = [*path[::step], path[0]]
-        out += [pill(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0) for a, b in zip(pts, pts[1:])]
+        out += [pill(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
+                for a, b in itertools.pairwise(pts)]
     return out
 
 
@@ -1298,12 +1302,11 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
 
 
 def _decanter(lip) -> tuple[Shape3D, Shape3D]:
-    """A standard decanter under the mouth (display, :data:`DECANTER_PROFILE`) on a riser
-    that sets its rim :data:`DECANTER_GAP` under the bottle's mouth: (the decanter, the
-    riser)."""
+    """A standard decanter under the mouth (display, :data:`DECANTER_PROFILE`) on its
+    riser (:data:`DECANTER_RISER`): (the decanter, the riser)."""
     table = float(lip[1]) - LIP_HEIGHT
     height = DECANTER_PROFILE[-1][0]
-    lift = LIP_HEIGHT - DECANTER_GAP - height
+    lift = DECANTER_RISER
     base = table + lift
     prof = [(0.0, base), *((r, base + h) for h, r in DECANTER_PROFILE), (0.0, base + height)]
     face = Face(Wire.make_polygon([(x, y, 0.0) for x, y in prof], close=True))
@@ -1431,21 +1434,21 @@ def assembly(view) -> list:
 SIDES_LR = ("L", "R")
 USE_LIMITS = (
     "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
-    "behind the base plate (a 3 L reaches past its rear edge); keep the base plate clear "
-    "behind the decanter (at rest the base stop comes down to 40 mm over it). A decanter fits "
-    "up to 180 mm tall at 250 mm across (the notch), 185 mm across up to 190 mm, 80 mm "
-    "across up to 270 mm (the light's clip at rest) and 65 mm across up to 275 mm, no "
-    "taller, its mouth 60 mm "
-    "across or more (the pour falls 75 mm into it); it must go in at rest without touching "
-    "the light's clip or the front saddle, a finger's width to spare. Never force the "
+    "behind the base plate (a 3 L reaches its rear edge); keep the base plate clear behind "
+    "the decanter (at rest the base stop comes down to 20 mm over it). A vessel left under "
+    "the mouth for the whole swing stands on a riser with its rim no higher than 285 mm "
+    "over the table: 240 mm across up to 135 mm, 125 mm across above that (at rest the "
+    "cradle box hangs under the mouth). To pour closer, raise it once the cradle is past "
+    "−20° (its rim up to 390 mm, 65 mm across above 330 mm), and lower it again before you "
+    "crank back to rest: the worm would bring the cradle box down onto it. Never force the "
     "handle: if it stiffens, stop and look (the drive holds a firm 40 N push at the grip "
     "against a blocked cradle, no more; if it stays stiff after "
     "being forced, look for a bent pin between the rod and the cradle link). Keep your "
     "fingers out of the drive side's plates while it turns. Uncork at rest, the base stop "
     "set, holding the neck, a corkscrew's lever lifted straight up; then slide the bottle "
-    "forward onto its stop. Keep your hands off the decanter while the handle turns (at rest "
-    "the cradle's front comes down to within a few millimetres of a wide one, and the worm "
-    "holds it there). Lift the cradle by its base plate, never by the hand crank. "
+    "forward onto its stop. Keep your hands off the decanter while the handle turns (near "
+    "rest the cradle box comes down over it, and the worm doesn't stop for a hand). Lift "
+    "the cradle by its base plate, never by the hand crank. "
     "Hand-wash the printed parts (PLA softens at 55 °C).")
 """The guide's use limits (the room it needs: ``docs/agentlib/DECANTER.md``)."""
 

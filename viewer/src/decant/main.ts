@@ -14,6 +14,7 @@ import { isAbort } from '../loads';
 import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
 import { createPack, type Pack, type PackData } from './pack';
+import { createPour } from './pour';
 import {
   fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
 } from './motion';
@@ -49,6 +50,7 @@ let pack: Pack | null = null;
 let packS = 0;                // 0 assembled .. 1 packed
 let packTarget = 0;
 let abort: AbortController | null = null;
+const pour = createPour(stage, () => { dirty = true; });   // the look, the wine, the vessel
 
 // -- layout: the side panel, the canvas beside it, the dock under it --------------------
 
@@ -202,6 +204,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     $('tick-full').style.left = `${fullAt}%`;
     f = fractionAtTurns(m, turns ?? 0);
     dirty = true;
+    pour.detach();
     teardown(stage.scene, loaded);
     loaded = null;
     status(`baking ${m.name} in 3D… (the first time takes a minute or two; the diagram works now)`);
@@ -209,9 +212,15 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     if (mine !== ticket) { teardown(stage.scene, next); return; }
     loaded = next;
     next.action.paused = true;     // posed from ``f`` every frame
+    pour.attach(next, m);
     reframe();
     status('');
     dirty = true;
+    // the room under the mouth (a fabrication: a minute the first time), then the riser
+    void getJson<{ room: [number, number][]; room_pouring: [number, number][] }>(
+      `/api/cradle/${encodeURIComponent(key)}/room`, signal).then((r) => {
+      if (mine === ticket && loaded === next) { pour.setRoom(r.room, r.room_pouring); dirty = true; }
+    }).catch((err: unknown) => { if (!isAbort(err)) console.error(err); });
   } catch (err) {
     if (isAbort(err)) return;
     console.error(err);
@@ -274,10 +283,11 @@ async function togglePack(): Promise<void> {
   if (!pack) {
     loaded.action.time = 0;         // the transforms start from the clip's first frame
     loaded.mixer.update(0);
-    pack = createPack(loaded.walker, packData, ['bottle', 'decanter']);
+    pack = createPack(loaded.walker, packData, ['bottle', 'decanter', 'decanter_riser']);
   }
   renderPackInfo(packData);
   setPlaying(false);
+  pour.setVisible(false);
   packTarget = 1;
   $('pack-toggle').textContent = 'Assemble';
 }
@@ -355,18 +365,20 @@ function readouts(m: CradleMotion): void {
 
 const clock = new THREE.Timer();
 function tick(): void {
-  const dt = Math.min(0.1, clock.update().getDelta());
+  const raw = clock.update().getDelta();
+  const dt = Math.min(0.1, raw);
   if (motion && playing && packS === 0) {
     f = (f + (dt * turnsPerSecond) / motion.ratio) % 1;
     dirty = true;
   }
   if (pack && packS !== packTarget) {   // the modules on their way (3 s each way)
     const was = packS;
-    packS = packTarget > packS ? Math.min(packTarget, packS + dt / 3) : Math.max(packTarget, packS - dt / 3);
+    const step = Math.min(0.5, raw) / 3;     // (real time: a slow GPU still takes 3 s)
+    packS = packTarget > packS ? Math.min(packTarget, packS + step) : Math.max(packTarget, packS - step);
     pack.set(packS);
     dirty = true;
     if (packS === 1 && was < 1) frameBox();
-    if (packS === 0 && was > 0) { $('pack-info').hidden = true; reframe(); }
+    if (packS === 0 && was > 0) { $('pack-info').hidden = true; pour.setVisible(true); reframe(); }
   }
   if (stage.controls.update()) dirty = true;
   if (dirty && motion) {
@@ -375,6 +387,7 @@ function tick(): void {
     if (loaded && packS === 0) {
       loaded.action.time = f * loaded.clipDuration;
       loaded.mixer.update(0);
+      pour.update(f);
     }
   }
   if (dirty) {
@@ -400,6 +413,10 @@ async function init(): Promise<void> {
   const turns = params.has('turns') ? Number(params.get('turns')) : undefined;
   if (turns !== undefined && Number.isFinite(turns)) setPlaying(false);
   await selectDesign(first.key, Number.isFinite(turns) ? turns : undefined);
+  if (params.get('pack') === '1') {         // straight to the packed box (a deep link)
+    await togglePack();
+    if (pack) { packS = 1; pack.set(1); frameBox(); dirty = true; }
+  }
 }
 
 void init();

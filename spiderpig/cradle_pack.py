@@ -176,7 +176,11 @@ def flat_pack(mech, lk) -> dict:
         k = module_of(n, link, over, inner)
         if k is not None:
             groups.setdefault(k, []).append(n)
-    tilt0 = float(mech.meta.get("cradle_tilt", 0.0))    # the cradle box's tilt at angle 0
+    # the cradle box's tilt at crank angle 0 (the pose ``mech`` is in), from the linkage
+    o, ax = cr.mouth_frame(lk)
+    pts = lk.solve(1, 0.0).evaluate(np.array([0.0]))
+    d = np.asarray(pts[ax], float).reshape(-1, 2)[0] - np.asarray(pts[o], float).reshape(-1, 2)[0]
+    tilt0 = math.atan2(float(d[1]), float(d[0]))
     base = by["base_plate"].bounding_box()
     floor = base.min.Y - (cr.FOOT_PAD_H - 2.0)          # the table (the feet's tips)
     x0, x1 = base.min.X - CLEAR, base.max.X + CLEAR
@@ -190,10 +194,10 @@ def flat_pack(mech, lk) -> dict:
         flat = corners.reshape(-1, 3)
         centre = (flat.min(axis=0) + flat.max(axis=0)) / 2
         corners = corners - centre
-        if m.key == "drive":
-            rots = [_rot("x", -90)]                   # its outer plate down, gearbox under it
-        elif m.key == "passive":
-            rots = [_rot("x", 90)]
+        if m.key in ("drive", "passive"):             # flat, either face down, either way round
+            down = _rot("x", -90 if m.key == "drive" else 90)
+            rots = [r @ down for r in (np.eye(3), _rot("x", 180), _rot("y", 180),
+                                       _rot("z", 180))]
         elif m.key == "base":
             rots = [np.eye(3)]
         elif m.key == "cradle":
@@ -206,7 +210,7 @@ def flat_pack(mech, lk) -> dict:
         for rot in rots:
             boxes = _aabbs(corners, rot)
             lo, hi = boxes[:, 0].min(axis=0), boxes[:, 1].max(axis=0)
-            if m.key in ("base", "drive", "passive"):         # centred in the footprint
+            if m.key == "base":                               # centred in the footprint
                 cands = [((x0 + x1) / 2 - (lo[0] + hi[0]) / 2, (z0 + z1) / 2 - (lo[2] + hi[2]) / 2)]
             else:
                 xs = np.arange(x0 - lo[0], x1 - hi[0] + 1e-6, GRID)
@@ -241,13 +245,15 @@ def flat_pack(mech, lk) -> dict:
 
 
 def payload(linkage: str, store: str | None = None) -> dict:
-    """``/api/cradle/{key}/pack``'s body: :func:`flat_pack` of the cradle fabricated at crank
-    angle 0 (the baked clip's first frame; the fabrication cache in ``store`` keeps it), a
-    package function for :func:`spiderpig.workers.submit`."""
+    """``/api/cradle/{key}/pack``'s and ``/room``'s bodies: :func:`flat_pack` and
+    :func:`spiderpig.cradle_report.room` of the cradle fabricated at crank angle 0 (the baked
+    clip's first frame; the fabrication cache in ``store`` keeps it), a package function for
+    :func:`spiderpig.workers.submit`."""
     from spiderpig.config import BuildConfig
+    from spiderpig.cradle_report import room
     from spiderpig.fabricate import fabricate, template_for
     from spiderpig.store import Store
 
     cfg = BuildConfig(linkage=linkage, robot=False)
     mech = fabricate(template_for(cfg), cfg, 0.0, store=Store.of(store) if store else None)
-    return flat_pack(mech, cfg.lk)
+    return {"pack": flat_pack(mech, cfg.lk), "room": room(cfg, mech)}

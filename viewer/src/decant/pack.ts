@@ -60,14 +60,16 @@ export function createPack(walker: THREE.Object3D, data: PackData, hide: string[
       r[2]![0]!, r[2]![1]!, r[2]![2]!, r[2]![3]!,
       0, 0, 0, 1);
     for (const name of m.parts) {
-      const node = walker.getObjectByName(name);
+      // (GLTFLoader sanitizes node names: "L.frame_outer" is "Lframe_outer")
+      const node = walker.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name));
       if (!node) continue;
       node.updateMatrix();
       const at0 = node.matrix.clone();
       tracks.push({ node, from: mover(at0), to: mover(pack.clone().multiply(at0)), module: i });
     }
   });
-  const hidden = hide.map((n) => walker.getObjectByName(n)).filter((o): o is THREE.Object3D => !!o);
+  const hidden = hide.map((n) => walker.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n)))
+    .filter((o): o is THREE.Object3D => !!o);
 
   // the box: its inside from the floor corner, the corrugated wall round it
   const [ix, iy, iz] = data.box.inside_mm as [number, number, number];
@@ -86,6 +88,16 @@ export function createPack(walker: THREE.Object3D, data: PackData, hide: string[
   walker.add(box);
 
   const n = data.modules.length;
+  (window as unknown as { __packDebug: () => object }).__packDebug = () => data.modules.map((m, i) => {
+    const b = new THREE.Box3();
+    walker.updateMatrixWorld(true);
+    const inv = walker.matrixWorld.clone().invert();
+    for (const t of tracks) if (t.module === i) {
+      const bb = new THREE.Box3().setFromObject(t.node).applyMatrix4(inv);
+      b.union(bb);
+    }
+    return { key: m.key, min: b.min.toArray().map(Math.round), max: b.max.toArray().map(Math.round) };
+  });
   const pos = new THREE.Vector3(), quat = new THREE.Quaternion(), scl = new THREE.Vector3();
   return {
     set(s: number): void {

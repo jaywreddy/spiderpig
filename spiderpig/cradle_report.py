@@ -543,8 +543,9 @@ def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float)
 
 VERDICT = {
     "decanter_hinge": ("build", "The one to build: a four-bar crank-rocker whose rocker is the "
-                       "cradle, hinged at the bottle's mouth. Every check passes: the pins "
-                       "hold a forced crank (jam SF 1.34 at worst), the stand tips past 31°."),
+                       "cradle, hinged at the bottle's mouth. From 50° neck up (an opened "
+                       "full bottle goes in) to 30° neck down. Every check passes: the pins "
+                       "hold a forced crank (jam SF 1.33 at worst), the stand tips past 28°."),
     "decanter_rcm": ("study", "A study: an eight-bar double parallelogram turns the cradle "
                      "about a point with nothing there, so nothing stands at the mouth. It "
                      "swings true, but a pin fails the forced-crank case: not for building."),
@@ -608,3 +609,97 @@ def _ties_of() -> dict[str, tuple[float, float]]:
     from spiderpig.linkages.decanters import TIES
 
     return dict(TIES)
+
+
+ROOM_BAND = 5.0         # the room's height steps (mm)
+_MOVING = ("tie_", "front_saddle", "rear_saddle", "led", "base_stop", "bottle")
+
+
+def _surface_points(part, step: float = 5.0) -> np.ndarray:
+    """Points over ``part``'s surface no more than about ``step`` apart (its tessellation's
+    triangles filled in, so a long tie rod's middle counts)."""
+    verts, tris = part.tessellate(0.5, 0.5)
+    v = np.array([[p.X, p.Y, p.Z] for p in verts], float)
+    out = [v]
+    for a, b, c in tris:
+        pa, pb, pc = v[a], v[b], v[c]
+        n = math.ceil(max(np.linalg.norm(pb - pa), np.linalg.norm(pc - pa),
+                          np.linalg.norm(pc - pb)) / step)
+        if n <= 1:
+            continue
+        i, j = np.meshgrid(np.arange(n + 1), np.arange(n + 1))
+        keep = i + j <= n
+        u, w = i[keep] / n, j[keep] / n
+        out.append(pa + np.outer(u, pb - pa) + np.outer(w, pc - pa))
+    return np.concatenate(out)
+
+
+def room(config: BuildConfig, mech, n: int = 72) -> dict:
+    """The room a vessel has under the mouth (``/api/cradle/{key}/room``, the cradle page's
+    fit check): at each height over the table (every :data:`ROOM_BAND` mm up to the mouth),
+    the radius round the decanter's axis that no part of the cradle box, the bottle drawn
+    or a 3 L bottle enters over the whole swing (``room``), and from the pour on (the
+    cradle past -20°, where an opened full bottle starts to pour: ``room_pouring``).
+    ``mech``: the cradle fabricated at crank angle 0. The side stacks stand outside the
+    bay (``construction.cradle.BAY``), so only the bay's parts count."""
+    lip = np.asarray(mech.meta["cradle_lip"], float)
+    axis_x = float(lip[0]) + cr.DECANTER_X
+    table = float(lip[1]) - cr.LIP_HEIGHT
+    ts = np.linspace(0.0, 2.0 * math.pi, n, endpoint=False)
+    pts = _world_joints(config, np.concatenate([[0.0], ts]))
+    o, ax = cr.mouth_frame(config.lk)
+    d = pts[ax] - pts[o]
+    tilt = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
+    moving, fixed = [], []
+    for b in mech.bodies:
+        if b.part is None or b.name.startswith(("L.", "R.")) or b.name.startswith("decanter"):
+            continue
+        p = _surface_points(b.placed_part())
+        (moving if b.name.startswith(_MOVING) or "magnum_liner" in b.name else fixed).append(p)
+    # a 3 L bottle in the saddles too (the magnum is the bottle drawn)
+    y0, slope, x0 = cr.seat(cr.JEROBOAM)
+    c, s = math.cos(slope), math.sin(slope)
+    phi = np.linspace(0.0, 2.0 * math.pi, 36, endpoint=False)
+    big = []
+    for u, r in cr.JEROBOAM.profile():
+        cx = x0 + u * c - r * np.cos(phi) * s
+        cy = y0 + u * s + r * np.cos(phi) * c
+        big.append(np.stack([cx, cy, r * np.sin(phi)], 1))
+    jb = np.concatenate(big)
+    t0 = tilt[0]
+    jb_xy = lip + np.stack([np.cos(t0) * jb[:, 0] - np.sin(t0) * jb[:, 1],
+                            np.sin(t0) * jb[:, 0] + np.cos(t0) * jb[:, 1]], 1)
+    moving.append(np.column_stack([jb_xy, jb[:, 2]]))
+    mv = np.concatenate(moving)
+    fx = np.concatenate(fixed) if fixed else np.zeros((0, 3))
+    bands = np.arange(0.0, cr.LIP_HEIGHT + 1e-6, ROOM_BAND)
+
+    def radii(points: np.ndarray) -> np.ndarray:
+        h = points[:, 1] - table
+        r = np.hypot(points[:, 0] - axis_x, points[:, 2])
+        k = np.floor(h / ROOM_BAND).astype(int)
+        ok = (k >= 0) & (k < len(bands))
+        out = np.full(len(bands), np.inf)
+        np.minimum.at(out, k[ok], r[ok])
+        return out
+
+    whole = radii(fx) if len(fx) else np.full(len(bands), np.inf)
+    pouring = whole.copy()
+    rel = mv[:, :2] - lip
+    for t in tilt[1:]:
+        a = t - t0
+        ca, sa = math.cos(a), math.sin(a)
+        p = np.column_stack([lip[0] + ca * rel[:, 0] - sa * rel[:, 1],
+                             lip[1] + sa * rel[:, 0] + ca * rel[:, 1], mv[:, 2]])
+        rr = radii(p)
+        whole = np.minimum(whole, rr)
+        if math.degrees(t) >= -20.0:
+            pouring = np.minimum(pouring, rr)
+    cap = float(cr.BAY / 2)                 # past the bay: the side stacks
+    return {
+        "room": [[float(h), round(float(min(r, cap)), 1)]
+                 for h, r in zip(bands, whole, strict=True)],
+        "room_pouring": [[float(h), round(float(min(r, cap)), 1)]
+                         for h, r in zip(bands, pouring, strict=True)],
+        "axis_x": axis_x, "mouth_over_table": cr.LIP_HEIGHT,
+    }

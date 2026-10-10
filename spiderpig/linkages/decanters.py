@@ -64,9 +64,10 @@ def _two(a, b):
 def decanter_hinge(p):
     """A crank-rocker whose rocker is the cradle, hinged at the bottle's mouth G. The rod
     pin E sits on the bottle's axis, ``rocker`` behind the mouth; ``crank`` and ``rod``
-    are the crank-rocker's for an 80° swing (−50° to +30°) from O, 310 mm under the mouth
-    and 40 behind it: transmission 47.4°, the crank torque in the gearbox's rating, the
-    jam's rod force no more than the 80° design's of −25° to +55°."""
+    are the crank-rocker's for an 80° swing (−50° to +30°) from O, 285 mm under the mouth
+    and 85 behind it: the crank torque in the gearbox's rating (SF 1.3), the jam's rod force
+    no more than the old −25° to +55° design's, the rod short enough not to buckle under it
+    (SF 1.5), transmission 38°."""
     return [
         ("O", xy(0, 0)),
         ("G", xy(p["gx"], p["gy"])),
@@ -80,8 +81,8 @@ def decanter_hinge(p):
 register(Linkage(
     key="decanter_hinge", name="Decanting cradle A: hinge at the mouth",
     program=decanter_hinge,
-    params={"crank": R(7713, 100), "rod": R(29835, 100), "rocker": R(120), "gx": R(-40),
-            "gy": R(310)},
+    params={"crank": R(8951, 100), "rod": R(26734, 100), "rocker": R(140), "gx": R(-85),
+            "gy": R(285)},
     links={"b1": _two("M", "E"),
            "b2": (("G", "E", *TIES), (("G", "E"), ("G", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "E"),
                                      ("Tf2", "Tr1"), ("E", "Tr1"), ("Tr1", "Tr2")))},

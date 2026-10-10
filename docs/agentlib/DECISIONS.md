@@ -565,3 +565,25 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/construction/{assembly,cradle,handcrank}.py`,
   `spiderpig/construction/pivots/chicago.py`, `spiderpig/strength.py`. The walker designs
   and their guides are unchanged.
+
+### 2026-10-10: the decanting cradles, nearly upright, flat-packed (user)
+
+- **What:** the user asked for photorealistic materials, standard decanters and glasses,
+  better-designed side plates (the big disc), a flat pack, and the bottle resting nearly
+  upright (−50° to −60°, from −25°). A:
+  - re-synthesized for −50° to +30° (`decanters.decanter_hinge`); the mouth at 460 mm, the
+    bay 260 mm wide, the saddles 160 mm long (`cradle.LIP_HEIGHT`, `BAY`, `SADDLE_HALF`);
+  - its plates a filleted truss, the same file on both sides; the guard over the crank the
+    gearbox's flange (the riser's disc), 12 mm past the sweep (`handcrank.GUARD_PAST`);
+  - the vessel on a lab-jack riser, sized by the room under the mouth
+    (`cradle_report.room`), a standard decanter drawn (`cradle.DECANTER_PROFILE`);
+  - a flat pack (`spiderpig/cradle_pack.py`) and the cradle page's photorealistic look,
+    wine, pour and vessels (`viewer/src/decant/`).
+- **Why:** the user's asks. +30°, not +45°: at +20° both bottles drain, and a 95° swing put
+  the gearbox at SF 1.13; the rod's buckling in the jam set its length (267 mm, SF 1.52).
+- **Trade-offs:** the guard is 12 mm past the sweep where ISO 13857 asks 20 for the layer
+  under the block; at rest the cradle box hangs under the mouth, so a vessel left there
+  for the whole swing stands about 175 mm under the mouth (closer only while pouring).
+- **Where:** `spiderpig/linkages/decanters.py`, `spiderpig/construction/{cradle,handcrank}.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/cradle_pack.py`, `spiderpig/server/app.py`,
+  `viewer/src/decant/`. The walker designs are unchanged.

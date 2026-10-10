@@ -7,7 +7,8 @@ angle, driven by a hand crank, not a servo, with an LED.
 Two linkages are built, both from the same parts: the drive, the cradle box, the stand
 and the light.
 - `decanter_hinge` (A), **the one to build**: the cradle swings on a real hinge at the
-  bottle's mouth, from −25° to +55°.
+  bottle's mouth, from −50° (nearly upright: an opened full bottle goes in) to +30° (both
+  bottles drain). The redesign of 2026-10-10 (the user's −50° rest) is under "A, redone".
 - `decanter_rcm` (B), **a design study**: the hinge is virtual, a double parallelogram (a
   remote centre of motion), so no pin sits at the mouth. It rests at −10°, where an opened
   full bottle pours. Why it stops there is under "B, the study".
@@ -56,8 +57,10 @@ stops there:
 | bottle length | 356–470 mm | magnum 356–404, 3 L 380–470 |
 | full mass | 2.4–5.9 kg | glass 0.9–2.9 kg plus the wine |
 | the mouth | stays put over the whole pour, for either bottle | the decanter stands under it (US7708241) |
-| tilt | −25° (rest, neck up) to +55° (neck down) | an opened full 3 L holds from about −20° (the mechanical review); one crank turn is one decant and back |
-| decanter | up to 275 mm tall, slid under the mouth | its mouth 75 mm under the bottle's |
+| tilt | −50° (rest, neck up) to +30° (neck down) | the user, 2026-10-10: start nearly upright. At +20° both bottles' shoulders lie over the mouth's lowest lip, so they drain; one crank turn is one decant and back |
+| the mouth's height | 460 mm over the table | at −50° the 3 L's base stop hangs about 430 mm under it |
+| the bay | 260 mm between the inner plates | a standard decanter (up to 240 mm across) stands wholly between the side stacks |
+| vessel | a standard decanter or glass on a lab-jack riser | the vessel study (204–300 mm tall decanters, 155–240 across); the room under the mouth, below |
 | drive | hand crank, self-locking | holds any angle when let go |
 | light | an LED under the shoulder, riding the cradle | the candle's job |
 | material | aluminium first | the user; the look is decided from the viewer |
@@ -83,11 +86,11 @@ stops there:
   - **The base stop** (`cradle._base_stop`): a printed spine screwed to the rear saddle's
     back face runs under the bottle, and a printed cup on it stops the bottle's base. An M5
     button head through the cup into a pilot of the spine's row sets it, in 5 mm steps.
-    - At rest the bottle lies 25° nose up, and only the liners' friction held it: a
-      corkscrew's push of 6-13 N slid it back off the pivot (the mechanical review).
-    - It is a stop at rest, not a backstop: the spine is printed, and a swing of the loaded
-      box into the base plate from more than about 10° past rest would break it. At rest
-      its rounded end comes down to about 40 mm over the base plate (keep it clear there).
+    - At rest the bottle stands 50° neck up and leans on it: the stop carries the bottle
+      then (at 25° nose up the liners' friction alone had held it, and a corkscrew's push
+      of 6-13 N slid it back off the pivot: the mechanical review).
+    - It is a stop at rest, not a backstop: the spine is printed. At rest its rounded end
+      comes down to about 20 mm over the base plate (keep it clear there).
 - **The bottles** (`cradle.adapter`, `cradle.seat`): both lie with the mouth on the pivot
   and the axis level, so the mouth stays put for either.
   - A magnum lies on two printed TPU adapter liners: 3.5 mm in front, 21 mm at the rear.
@@ -133,8 +136,11 @@ stops there:
       M5 up through the arm into it and an M5 and a wide washer on its end. (An M6 shoulder
       screw's 11 mm thread through the 10 mm arm had caught 1 mm of its nut; the standoff
       also takes McMaster off the order.)
-  - **The guard:** the outer plate is solid over the whole crank's sweep and 20 mm past
-    it (`handcrank.GUARD_PAST`), so no finger reaches the block or the rod from outside.
+  - **The guard:** the gearbox's flange, the riser's disc on the outer plate, covers the
+    crank's sweep and 12 mm more (`handcrank.GUARD_PAST`), so no finger goes straight
+    through the frame's windows onto the block. The user found the old guard, the outer
+    plate solid round the crank, an ugly big disc: the plates are now a plain truss on both
+    sides, and ISO 13857's 20 mm for the 7 mm layer under the block is traded for 12.
 - **The pins** (`chicago6`, `config.PRODUCT_PINS`): M6 Chicago screws with an 8 mm
   barrel.
   - Unlike a walker's pins, these aren't glued in (`ChicagoShaft.bonded`). Every link runs
@@ -160,9 +166,11 @@ stops there:
 - **The stand** (`cradle.STANDS`).
   - **Outer plate:** a truss outside every moving part's layer: from the hinge G down in
     front of the decanter to the front foot and back to the crank O, O's legs down and
-    back, a rail along the base, solid round the crank.
+    back, a rail along the base. Its inside corners are rounded 20 mm (`Stand.fillet_r`:
+    the outline grown and shrunk back, `cradle.plate_part`), so the joints read as one
+    shape. Both sides' outer plates are the same file.
   - **Inner plate:** a block round the hinge, and a leg over the outer plate's front leg
-    down to about 200 mm over the table, tied to the outer plate by four columns.
+    down to about 300 mm over the table, tied to the outer plate by four columns.
     - Each side is then a deep box through its front leg.
   - Nothing crosses the bay over the mouth.
 - **The base plate** (`cradle._base_plate`): 0.125 in 5052, 500 mm across the bay
@@ -176,8 +184,8 @@ stops there:
       they clear a sharp 6.48 mm neck's corners by 0.25 mm (`cradle.CARRIAGE_SQUARE`).
     - All six bolts go in with the base plate. The passive side is set down 7-15 mm out
       from its place, inside its bolts, and pushed home.
-  - A U-notch from its front edge takes the decanter, slid in on the table; the notch's
-    round end locates it under the mouth.
+  - A U-notch from its front edge takes the vessel's riser, slid in on the table; the
+    notch's round end puts it under the mouth.
   - Four printed TPU feet snap into its corner holes (a cone and a bore up the stem).
 - **The light:** a 14 x 60.5 mm AAA keychain light (Olight i3E EOS) stands in a printed
   clip under the front saddle's back end (its flange on the saddle's underside, two M5s),
@@ -185,7 +193,51 @@ stops there:
   shoulder; an M3 set screw holds it while you twist the head to switch it on.
   - A longer light's tail reaches a decanter's shoulder at rest.
 - **Display only** (`fab="display"`: drawn, never bought, cut or printed): the bottle (a
-  1.5 L Bordeaux magnum) and a decanter under the mouth.
+  1.5 L Bordeaux magnum), a RIEDEL Ultra decanter (225 mm, `cradle.DECANTER_PROFILE`) and
+  its riser (`cradle.DECANTER_RISER`, 55 mm: the highest that clears the whole swing).
+
+## A, redone (2026-10-10)
+
+The user asked for a rest nearly upright (−50° to −60°). A's crank-rocker was re-synthesized
+for −50° to +30° (`decanters.decanter_hinge`): the two rocker positions fix the crank and
+the rod for any crank centre O, and a scan over O and the rocker picked the one that meets
+every bar at once.
+- O 285 mm under the mouth and 85 behind it (175 mm over the table), the rocker 140, the
+  crank 89.5, the rod 267.3; the worst transmission angle 38.4°.
+- +30°, not +45°: a 95° swing put the gearbox at SF 1.13 for a sealed full 3 L; 80° keeps
+  it at 1.32.
+- The rod's length is the binding bar: a longer rod buckles in the jam (SF 1.19 at 298 mm,
+  1.52 at 267); the best transmission (47°) wanted the longer one.
+- The mouth rose to 460 mm and the bay widened to 260 mm (`cradle.LIP_HEIGHT`,
+  `cradle.BAY`); the saddles stay 160 mm long (`cradle.SADDLE_HALF`), centred on the rods.
+
+## The vessel under the mouth
+
+At rest, 50° neck up, the cradle box hangs straight under the mouth: the front tie rods, the
+front saddle and the light cross the decanter's axis from 300 mm over the table up.
+`cradle_report.room` measures the room a vessel has round its axis at every height, over
+the whole swing and from the pour on (the cradle past −20°), with a 3 L bottle in the
+saddles too; the cradle page (`/api/cradle/{key}/room`) stands each vessel on the highest
+riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`).
+- For the whole swing: 240 mm across up to 135 mm over the table, 125 mm across above that,
+  its rim no higher than 285 mm. A RIEDEL Ultra stands on a 55-60 mm riser, its rim about
+  175 mm under the mouth.
+- From the pour on: its rim up to about 390 mm over the table (65 mm across above 330), 70
+  mm under the mouth. Raise the jack once the cradle is past −20° and lower it before
+  cranking back to rest: the worm would push the cradle box down onto it.
+
+## Flat pack
+
+The cradle comes apart where it is already fastened (`spiderpig/cradle_pack.py`,
+`flat_pack`): the hand crank (its set screw), the base plate (the six brackets' nuts; the
+carriage bolts stay in it), each inner plate (its five screws from the bay side), pin E's
+Chicago screw, then each side panel slides off its cradle link, leaving the cradle box (both
+links, the tie rods, the saddles, the light) whole; the base stop comes off the rear
+saddle (two screws). The modules stack in one box, about 656 x 516 x 363 mm outside (123 L):
+the base plate under the passive panel, the drive panel over it, the cradle box on top, the
+small pieces round them. The cradle page's Flat pack button flies each module there
+(`/api/cradle/{key}/pack`); taking the cradle box apart too (its eight tie screws) would
+bring the box down to about 250 mm.
 
 ## Loads and checks
 
@@ -201,9 +253,11 @@ worm at a hand's speed (`cradle_report.ETA_HAND`, 0.5): 36 N·m at the crank
 - It is not counted within 30° of crank round either toggle, where a blocked crank-rocker's
   forces grow without bound. There, only clearance protects: the decanter's lip and
   anything under the cradle.
-- What A holds there: the crankpin SF 1.9, the keyed plates 1.6, the rod's buckling 1.9,
-  the pillars and plates 2.9 and more, pin E (the M6 Chicago barrel) 1.34. Pin E yields
-  first, at about 54 N at the grip: its stainless barrel bends (the worm still holds).
+- What A holds there: the crankpin SF 1.9, the keyed plates 1.6, the rod's buckling 1.5,
+  the pillars and plates 2.9 and more, pin E (the M6 Chicago barrel) 1.33. Pin E yields
+  first, at about 53 N at the grip: its stainless barrel bends (the worm still holds).
+- Turning it: 15.1 N·m at the crank at worst (the gearbox's SF 1.32), 21.5 N at the grip.
+  It tips at 28.6° and takes a 27 N push at a bottle's top, the worst over the swing.
 - The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
   lower (a stale plan's put it at 0.82). A product is never served a plan from another
   engine version (`stages.planning._reuse_plan`): it re-plans, proven thinnest.
@@ -295,18 +349,12 @@ Things to know before cutting and on the bench:
   pillar's screws are tight.
 - **Break the laser-cut edges** where hands go: the bay and the frame tops.
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's last step):
-  - 800 mm of headroom: a 3 L's base at full tilt reaches 775 mm over the table.
-  - 50 mm behind the base plate: a 3 L reaches 35 mm past its rear edge.
-  - A decanter fits up to 180 mm tall at 250 mm across (the notch), 185 mm across up to
-    190 mm, 80 mm across up to 270 mm (the light's clip at rest), and 65 mm across up to
-    275 mm, no taller, its mouth 60 mm across or more. It stands under the mouth's centre
-    (`cradle.DECANTER_X`); the notch locates only a 244-252 mm base, so another is
-    centred by eye.
-    - These leave about 4 mm of radius to the box at rest. The front saddle and the tie
-      rods under it come down to 280 mm there, so the old 310 mm neck had no margin
-      (review round 4). It goes in at rest without touching, a finger's width to spare.
+  - 800 mm of headroom: a 3 L's base at full tilt reaches about 760 mm over the table.
+  - 50 mm behind the base plate: a 3 L's base comes to its rear edge at full tilt.
+  - The vessel: as "The vessel under the mouth" above. It stands under the mouth's centre
+    (`cradle.DECANTER_X`) on its riser, which the notch puts there.
 - **Keep the base plate clear behind the decanter:** at rest the base stop comes down to
-  about 40 mm over it.
+  about 20 mm over it.
 - **Never force the crank.** If it stiffens, something is in the way: the drive holds a
   40 N push at the grip, and near either end of travel the cradle's force grows without
   bound. Keep fingers out of the drive side while it turns.

@@ -1,6 +1,6 @@
 """The decanting cradles (``linkages/decanters.py``, ``construction/cradle.py``,
 ``construction/handcrank.py``, ``cradle_report.py``): the bottle's mouth stands still while
-it tips (A from -25°, where an opened full bottle holds, to +55°; the study B from -10°),
+it tips (A from -50°, nearly upright, where an opened full bottle goes in, to +30°),
 both bottles lie with their mouths on the pivot, both sides plan with the hand crank, every
 part stays in its claims, the whole cradle is clash-free over the swing (the hand crank's
 sweep and a 3 L bottle too), it stands, the hand turns it, the pins hold, the cut files
@@ -23,7 +23,7 @@ from tests.tiers import quick
 CRADLES = ("decanter_hinge", "decanter_rcm")
 REST = {"decanter_hinge": -50.0, "decanter_rcm": -10.0}    # (B: its refinement's, merged)
 FULL = {"decanter_hinge": 30.0, "decanter_rcm": 55.0}
-TRANSMISSION = {"decanter_hinge": 45.0, "decanter_rcm": 30.0}   # least, from a toggle
+TRANSMISSION = {"decanter_hinge": 38.0, "decanter_rcm": 30.0}   # least, from a toggle
 HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 90.0}         # a side's stack, mm
 
 

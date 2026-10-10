@@ -43,8 +43,9 @@ Design parameters (the walking model's contract, see ``walk.py``):
     name, notes and standing; one cradle's swing over a crank turn
     (:func:`spiderpig.cradle_report.motion`: the joints' paths, the bottle's tilt, the
     handle's turns, the outlines its diagram draws). An unknown key or a walker: 404.
-``GET /api/cradle/{key}/pack``
-    How it comes apart and stacks in a box (:func:`spiderpig.cradle_pack.flat_pack`).
+``GET /api/cradle/{key}/pack`` and ``/room``
+    How it comes apart and stacks in a box (:func:`spiderpig.cradle_pack.flat_pack`); the
+    room a vessel has under the mouth (:func:`spiderpig.cradle_report.room`).
 ``GET /api/design/{id}``
     The design's card: linkage, module, sides and ``mode`` (``robot`` or ``side``),
     phases, proportions, materials, constructions, and its glb's URL.
@@ -416,7 +417,7 @@ def _rebake_all() -> None:
         mjcf.clear_caches()
         _walk_json.cache_clear()
         _cradle_json.cache_clear()
-        _pack_json.cache_clear()
+        _cradle_extras.cache_clear()
         _on_loop(_outdate_sims)
         for path, config in list(_BAKED.items()):
             if config.is_default and path.exists():
@@ -690,12 +691,21 @@ def get_cradle(key: str, n: int = 360) -> Response:
 
 
 @lru_cache(maxsize=4)
-def _pack_json(key: str) -> bytes:
+def _cradle_extras(key: str) -> dict[str, bytes]:
+    """The cradle's flat pack and room (:func:`spiderpig.cradle_pack.payload`: one
+    fabrication, in a worker), each encoded once."""
     from spiderpig import cradle_pack
 
-    root = str(store().root)
-    payload = workers.submit(cradle_pack.payload, key, root).result()
-    return json.dumps(payload, allow_nan=False, separators=(",", ":")).encode()
+    payload = workers.submit(cradle_pack.payload, key, str(store().root)).result()
+    return {k: json.dumps(v, allow_nan=False, separators=(",", ":")).encode()
+            for k, v in payload.items()}
+
+
+def _cradle_extra(key: str, part: str) -> Response:
+    if key not in _cradle_keys():
+        raise HTTPException(status_code=404, detail=f"no decanting cradle {key!r}; have "
+                                                    f"{_cradle_keys()}")
+    return Response(_cradle_extras(key)[part], media_type="application/json")
 
 
 @app.get("/api/cradle/{key}/pack")
@@ -703,10 +713,14 @@ def get_cradle_pack(key: str) -> Response:
     """How the cradle comes apart and stacks in a box (:func:`spiderpig.cradle_pack.flat_pack`:
     its modules, each one's transform from the assembled pose at crank angle 0 to the box,
     the box's size, the steps). A fabrication: seconds once the store's cache has it."""
-    if key not in _cradle_keys():
-        raise HTTPException(status_code=404, detail=f"no decanting cradle {key!r}; have "
-                                                    f"{_cradle_keys()}")
-    return Response(_pack_json(key), media_type="application/json")
+    return _cradle_extra(key, "pack")
+
+
+@app.get("/api/cradle/{key}/room")
+def get_cradle_room(key: str) -> Response:
+    """The room a vessel has under the mouth, over the whole swing and from the pour on
+    (:func:`spiderpig.cradle_report.room`)."""
+    return _cradle_extra(key, "room")
 
 
 @app.get("/api/design/{design_id}")
