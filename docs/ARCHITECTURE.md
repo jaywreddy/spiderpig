@@ -470,7 +470,8 @@ Here is the running example at each stage:
 - the servo;
 - the pillar, pin and crank constructions: the pins M3 Chicago screws, `chicago`, the
   pillars round standoff columns, `standoff`, and the crank the laser-cut `bolt` crank
-  (`bolt_round` on TrotBot's heel and toe), the only ones since 2026-10-07;
+  (`bolt_round` on TrotBot's heel and toe), the only ones since 2026-10-07 (a decanting
+  cradle's own: the `hand` crank and `chicago6` pins, `docs/agentlib/DECANTER.md`);
 - the sheets: the links' (`sheet`), the frame plates' (`frame_sheet`), the crank's
   (`crank_sheet`) and any per-link sheet (section 5.7);
 - shared dimensions (`Params`: the 6 mm link radius, axle diameters, the 1 mm clearance
@@ -1041,7 +1042,8 @@ once: both sides use the same plan.
 ### 6.2 What each group builds
 
 Every group has one construction now: the `bolt` crank (`bolt_round` on TrotBot's heel and
-toe), the `standoff` pillar and the `chicago` pin. The printed and keyed cranks, the
+toe), the `standoff` pillar and the `chicago` pin (a decanting cradle's own, and only its:
+the `hand` crank, `chicago6` pins, `docs/agentlib/DECANTER.md`). The printed and keyed cranks, the
 acrylic two-plate M6-bolt crank and the hex crank's variants, the printed snap axle, the
 rod, bolt, bearing, bushing and PTFE-lined pivots and the spliced standoff pillars were
 removed on 2026-10-07: a config, spec or stored design naming one fails with its

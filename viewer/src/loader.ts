@@ -36,6 +36,7 @@ const ENV_INTENSITY: Record<string, number> = {
   gearbox: 0.5,
   glass_bottle: 1.0,
   glass_clear: 1.0,
+  led: 0.2,
 };
 
 /** Foot trail in model coordinates (the linkage plane is XY at ``z``). */

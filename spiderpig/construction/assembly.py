@@ -28,10 +28,11 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 STACK, UNIT, JOIN = "stack", "unit", "join"
 CHASSIS, WIRING, DECK, OTHER = "chassis", "wiring", "deck", "other"
+CRADLE, FINISH, USE = "cradle", "finish", "use"     # a decanting cradle's own stages
 SIDES = ("L", "R")
 EPS = 0.05
 
@@ -180,6 +181,56 @@ ROBOT_ORDER: tuple[Stage, ...] = (
 bolt crank, the frame ties): what the pivots', the crank's, the chassis' and the deck's
 docstrings defer to."""
 
+CRADLE_ORDER: tuple[Stage, ...] = (
+    # a decanting cradle (construction.cradle): the drive side bottom up with its tie rods,
+    # the saddles on the rods, then the passive side onto the rods' other ends from outside
+    Stage(STACK, "L", "Drive side: stack",
+          intro="The drive side (the crank's) is built bottom up on its outer frame plate, "
+                "in the plan's layer order, the gearbox under the plate first: it stands "
+                "the plate up off the bench while the stack goes on."),
+    Stage(UNIT, "L", "Drive side: inner plate",
+          tags=(("plate", "bay_tie"),),
+          text=(("plate", "Lay the drive side's inner plate down, its bay face down."),),
+          intro="On the bench."),
+    Stage(JOIN, "L", "Drive side: inner plate onto the stack", where="robot",
+          tags=(("pillar_screws", "column_screws"),),
+          text=(("pillar_screws", "The pillar's inner screw and washer from the bay side, "
+                                  "threadlocker, snug."),),
+          intro="The inner plate onto its stack, its bay tie pointing away: the pillar's "
+                "and the columns' tops into it."),
+    Stage(CRADLE, None, "The cradle box", where="robot",
+          tags=(("saddles",), ("light",)),
+          intro="With the drive side standing on its feet, the tie rods across the bay from "
+                "its cradle link."),
+    Stage(UNIT, "R", "Passive side: inner plate and cradle link, on the cradle",
+          where="robot",
+          tags=(("plate", "bay_tie"), ("R.stack.cradle_link", "tie_screws")),
+          text=(("plate", "The passive side's inner plate onto the bay tie's free end, its "
+                          "M5 button head from the plate's leg side (threadlocker)."),
+                ("bay_tie", ""),
+                ("cradle_link", "The passive side's cradle link onto the tie rods' free "
+                                "ends, beyond its inner plate.")),
+          intro="On the cradle, not on the bench: the passive side's cradle link is held "
+                "by the tie rods, and its inner plate by the bay tie."),
+    Stage(STACK, "R", "Passive side: stack",
+          intro="The passive side's stack, on the bench, bottom up on its outer plate: the "
+                "drive side's mirror image without the gearbox, the crank and the rod, and "
+                "without its cradle link (on the cradle already)."),
+    Stage(JOIN, "R", "Passive side: stack onto the cradle", where="robot",
+          tags=(("pillar_screws", "column_screws"),),
+          text=(("pillar_screws", "The pillar's inner screw and washer from the bay side, "
+                                  "threadlocker, snug."),),
+          intro="The passive stack onto the cradle from outside: its pillar up through the "
+                "cradle link's bore, the pillar's and the columns' tops into the inner "
+                "plate. Turn the crank a little to line the cradle link up."),
+    Stage(FINISH, None, "Base plate and handwheel", where="robot",
+          tags=(("base",), ("handle",))),
+    Stage(USE, None, "Decanting", where="robot"),
+    Stage(OTHER, None, "Remaining parts", where="robot"),
+)
+"""A decanting cradle's order (:mod:`construction.cradle`): what the drive's, the stand's
+and the cradle box's hooks defer to."""
+
 SIDE_ORDER: tuple[Stage, ...] = (
     Stage(STACK, "", "Leg stack",
           intro="The leg stack is built bottom up on the outer frame plate, in the plan's "
@@ -281,8 +332,14 @@ def side_ops(view: SideView, groups) -> list[Op]:
     ops: list[Op] = []
     for g in groups:
         hook = getattr(g, "assembly", None)
-        if hook is not None:
-            ops += hook(view)
+        if hook is None:
+            continue
+        # a body an earlier group's hook placed stays there (a cradle's link: its ties')
+        taken = _claimed(ops)
+        for op in hook(view):
+            pieces = tuple(p for p in op.pieces if p.portion or p.name not in taken)
+            if pieces:
+                ops.append(op if pieces == op.pieces else replace(op, pieces=pieces))
     claimed = _claimed(ops)
     by_slot: dict[int, list[str]] = defaultdict(list)
     for n in view.z:
@@ -307,7 +364,8 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
     from spiderpig.construction import chassis, deck
 
     rows = [r for r in rows_of(mech) if r["z"] is not None]
-    robot = bool(mech.meta.get("robot")) if robot is None else robot
+    cradle = bool(mech.meta.get("cradle"))      # both sides and the cradle box
+    robot = bool(mech.meta.get("robot") or cradle) if robot is None else robot
     mid = float(mech.meta.get("mid_plane", 0.0)) if robot else 0.0
     layers = layers_of(design.plan)
     sides = SIDES if robot else ("",)
@@ -337,13 +395,18 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
                                                              for r in rows},
                        {r["name"]: r["fab"] for r in rows},
                        {r["name"]: r["bom_key"] for r in rows}, dict(mech.meta))
-        ops += chassis.assembly(rv) + deck.assembly(rv)
+        if cradle:
+            from spiderpig.construction import cradle as cradle_mod
+
+            ops += cradle_mod.assembly(rv)
+        else:
+            ops += chassis.assembly(rv) + deck.assembly(rv)
         left = sorted(set(rv.z) - _claimed(ops))
         if left:
             ops.append(Op(OTHER, (), whole(*left), "Remaining parts",
                           "The remaining parts, where they are drawn.", tag="other"))
     _check(ops, {r["name"] for r in rows})
-    return _order(ops, ROBOT_ORDER if robot else SIDE_ORDER)
+    return _order(ops, CRADLE_ORDER if cradle else ROBOT_ORDER if robot else SIDE_ORDER)
 
 
 def _robot_level(name: str) -> bool:

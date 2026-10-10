@@ -31,19 +31,22 @@ import numpy as np
 
 from spiderpig.config import BuildConfig, is_cradle
 from spiderpig.construction import cradle as cr
-from spiderpig.construction.handcrank import HANDLE_R, NRV030, HandCrank
+from spiderpig.construction.handcrank import CRANKPIN, NRV030, HandCrank
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.stack import body_class
 
 G = 9.81
-SHARE = 0.6             # a pin on both sides of the cradle carries this share of the planar
-#                         load (not half: the rod drives one side; the box spreads the rest)
+SHARE = 1.0             # a pin on both sides of the cradle carries this share of the planar
+#                         load: all of it. The rod drives one side, whose pivots carry half
+#                         the weight and the rod's whole force (the other side's, half the
+#                         weight): the planar sum bounds both (the 2026-10-10 review)
 TOGGLE_DEG = 30.0       # the jam case leaves out crank angles this close to a toggle: there
 #                         the cradle moves under 1° per 10° of crank (it is at its end), and a
 #                         block's force grows without bound
 E_ALU = 69000.0         # MPa, 5052 / 6061
 WARN_HANDLE_N = 40.0    # a handle force a hand turns steadily for a minute
+CRANKPIN_YIELD = 965.0  # MPa: the shoulder screw's alloy steel (McMaster 92981A, 140 ksi)
 
 
 @dataclass
@@ -83,9 +86,7 @@ def _host(b, by) -> str:
 
 
 def part_mass_kg(config: BuildConfig, b) -> float:
-    """A part's mass (kg): :mod:`hardware.mass`'s, the gearbox at its catalogued mass."""
-    if b.bom_key == NRV030.key:
-        return NRV030.mass_g / 1000.0
+    """A part's mass (kg): :mod:`hardware.mass`'s (a bought part at its catalogued mass)."""
     _, dens, fixed = mass_mod.material_of(b, config.sheet, "pla_filament", None)
     if fixed is not None:
         return fixed / 1000.0
@@ -242,14 +243,17 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "worst_transmission_deg": round(min(min(s.angle_deg[0], 180 - s.angle_deg[1])
                                             for s in steps), 1),
     }
-    # the bottles in the saddles
+    # the bottles in the saddles, each on its adapters: how far its mouth moves
     out["bottles"] = []
+    swing = math.radians(float(np.ptp(tilt)))
     for size in cr.SIZES:
         y0, slope, x0 = cr.seat(size)
+        r = math.hypot(x0, y0)
         out["bottles"].append({"bottle": size.name, "mouth_off_pivot_mm":
-                               [round(x0, 1), round(y0, 1)],
-                               "mouth_from_pivot_mm": round(math.hypot(x0, y0), 1),
-                               "nose_up_deg": round(-math.degrees(slope), 1),
+                               [round(x0, 2), round(y0, 2)],
+                               "mouth_wander_mm": round(2 * r * math.sin(swing / 2), 2),
+                               "nose_up_deg": round(-math.degrees(slope), 2),
+                               "adapters_mm": [round(v, 1) for v in cr.adapter(size)],
                                "full_kg": size.mass_full_kg})
 
     mech = fabricate(tmpl, config, 1.0, store=store)
@@ -262,13 +266,18 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     box = NRV030
     peak = float(np.abs(torque).max())
     handle = peak / (box.ratio * box.eta_static)
+    hand = (mech.meta.get("hand_crank") or {}).get("handle") or {}
+    grip_r = float(hand.get("grip_r_mm", 60.0))
     out["drive"] = {
         "gearbox": box.key, "ratio": box.ratio, "static_efficiency": box.eta_static,
         "irreversible": box.irreversible(),
         "crank_torque_peak_nm": round(peak, 2), "gearbox_rating_nm": box.rated_nm,
         "gearbox_sf": round(box.rated_nm / max(peak, 1e-9), 2),
         "handle_torque_nm": round(handle, 3),
-        "handle_force_n": round(handle / (HANDLE_R / 1000.0), 1),
+        "handle_force_n": round(handle / (grip_r / 1000.0), 1),
+        "grip_radius_mm": grip_r,
+        "jam_hand_force_n": round(box.rated_nm / (box.ratio * box.eta_dynamic)
+                                  / (grip_r / 1000.0), 1),
         "handle_turns_per_pour": round(box.ratio / 2.0, 1),
         "deg_per_handle_turn_mean": round(float(np.ptp(tilt)) / (box.ratio / 2.0), 2),
         "load_case": f"a sealed full {cr.JEROBOAM.name} ({cr.JEROBOAM.mass_full_kg} kg)",
@@ -300,6 +309,21 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                   "euler_n": round(p_cr, 1), "bottle_n": round(f_rod, 1),
                   "jam_n": round(f_rod_jam, 1), "sf_bottle": round(p_cr / max(f_rod, 1e-9), 2),
                   "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2)}
+    # the crankpin: a shoulder screw held in the arm by its thread, the rod's force at the
+    # rod's mid-plane over the arm's top (a cantilever): its thread's root bends
+    note = mech.meta.get("hand_crank") or {}
+    arm_top = (note.get("arm_z_mm") or [0.0, 0.0])[1]
+    rod_mid = design.plan.z(design.plan.layers[rider])[0] + design.ctx.sheet_t(
+        "link", rider) / 2
+    lever = rod_mid - arm_top
+    pitch = {6.0: 1.0, 8.0: 1.25}[CRANKPIN.thread]
+    d3 = CRANKPIN.thread - 1.2269 * pitch        # the thread's minor diameter (ISO 724)
+    cap = math.pi * d3 ** 3 / 32 * CRANKPIN_YIELD / 1000.0       # N·m at yield
+    out["crankpin"] = {"lever_mm": round(lever, 2), "capacity_nm": round(cap, 2),
+                       "bottle_nm": round(f_rod * lever / 1000.0, 2),
+                       "jam_nm": round(f_rod_jam * lever / 1000.0, 2),
+                       "sf_bottle": round(cap * 1000.0 / max(f_rod * lever, 1e-9), 2),
+                       "sf_jam": round(cap * 1000.0 / max(f_rod_jam * lever, 1e-9), 2)}
     out["stand"] = stability(config, mech, design, ts)
     out["strength"] = strength_check(config, mech, rows, peak)
     if clash_angles:
@@ -310,53 +334,124 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         for t in [*ends, *np.linspace(0.0, 2.0 * math.pi, clash_angles, endpoint=False)]:
             m = fabricate(tmpl, config, float(t), store=store)
             found.extend(dict(c, crank_deg=round(math.degrees(t), 1)) for c in clashes(m))
+            found.extend(dict(c, crank_deg=round(math.degrees(t), 1)) for c in wheel_sweep(m))
         out["clashes"] = found
     return out
 
 
 def stability(config: BuildConfig, mech, design, ts) -> dict:
     """The whole cradle's centre of mass over the swing, each bottle full and empty, against
-    the feet: its x between the feet's (front and rear), as a margin (mm) to the nearer."""
+    the base plate's feet (their pads' outer edges): its margin (mm) to the nearest tipping
+    edge, front, rear and sideways (the gearbox and the hand wheel weigh on the drive side),
+    the tilt it tips at and the push at the bottle's highest point that tips it."""
     lk = config.lk
     stand = cr.stand_of(lk)
-    m_of, mom = masses(config, mech)
+    by = {b.name: b for b in mech.bodies}
     link = cr.cradle_link(lk)
     pts = _world_joints(config, ts)
     o, ax = cr.mouth_frame(lk)
     lip0 = pts[o][0]
     d0 = pts[ax][0] - pts[o][0]
     t0 = math.atan2(d0[1], d0[0])
-    xs = [lip0[0] + stand.nodes[n][0] for n in stand.feet]
-    feet_x = [min(xs), max(xs)]           # the front and rear feet (a middle one: inside)
-    # the cradle box turns about the mouth; the other links barely move the sum (counted
-    # where they stand at the reference angle)
-    cm = m_of.get(link, 0.0)
-    rel0 = (mom[link] / cm - lip0) if cm else np.zeros(2)
-    static_m = sum(v for k, v in m_of.items() if k != link)
-    static_x = sum(v[0] for k, v in mom.items() if k != link)
+    table = float(lip0[1]) - cr.LIP_HEIGHT
+    # every part's mass and centre: what stands, what turns with the box (about the mouth)
+    still_m, still_c = 0.0, np.zeros(3)
+    box_m, box_c = 0.0, np.zeros(3)
+    for b in mech.bodies:
+        if b.part is None or b.fab == "display":
+            continue
+        m = part_mass_kg(config, b)
+        c = np.asarray(mass_mod.part_props(b.placed_part()).com, float)
+        if body_class(_host(b, by)) == link:
+            box_m += m
+            box_c += m * c
+        else:
+            still_m += m
+            still_c += m * c
+    box_rel = (box_c / box_m)[:2] - lip0 if box_m else np.zeros(2)
+    box_z = float(box_c[2] / box_m) if box_m else 0.0
+    inset, pad = 25.0, 12.0                    # the feet (construction.cradle._base_plate)
+    x_front = float(lip0[0]) + stand.base[0] + inset - pad
+    x_rear = float(lip0[0]) + stand.base[1] - inset + pad
+    z_edge = cr.BASE_HALF - inset + pad
     rows = []
     for size in cr.SIZES:
         y0, slope, x0 = cr.seat(size)
         com_cf = np.array([x0 + size.com_from_mouth * math.cos(slope),
                            y0 + size.com_from_mouth * math.sin(slope)])
+        top_cf = np.array([x0 + size.length * math.cos(slope),
+                           y0 + size.length * math.sin(slope) + size.r])
         wine = 3.0 if size is cr.JEROBOAM else 1.5
         for state, mb in (("full", size.mass_full_kg), ("empty", size.mass_full_kg - wine)):
-            worst = math.inf
+            worst = (math.inf, "", 0.0, 0.0, 0.0)
             for k in range(len(ts)):
                 lip = pts[o][k]
                 d = pts[ax][k] - pts[o][k]
                 tl = math.atan2(d[1], d[0])
-                c, s = math.cos(tl - t0), math.sin(tl - t0)
-                box_x = lip[0] + c * rel0[0] - s * rel0[1]
+                c, s_ = math.cos(tl - t0), math.sin(tl - t0)
+                box = lip + np.array([c * box_rel[0] - s_ * box_rel[1],
+                                      s_ * box_rel[0] + c * box_rel[1]])
                 c2, s2 = math.cos(tl), math.sin(tl)
-                bottle_x = lip[0] + c2 * com_cf[0] - s2 * com_cf[1]
-                x = (static_x + cm * box_x + mb * bottle_x) / (static_m + cm + mb)
-                worst = min(worst, x - feet_x[0], feet_x[1] - x)
+                bot = lip + np.array([c2 * com_cf[0] - s2 * com_cf[1],
+                                      s2 * com_cf[0] + c2 * com_cf[1]])
+                top = lip[1] + s2 * top_cf[0] + c2 * top_cf[1]
+                m = still_m + box_m + mb
+                cx = (still_c[0] + box_m * box[0] + mb * bot[0]) / m
+                cy = (still_c[1] + box_m * box[1] + mb * bot[1]) / m
+                cz = (still_c[2] + box_m * box_z) / m        # the bottle on the bay's middle
+                h = cy - table
+                for edge, margin in (("front", cx - x_front), ("rear", x_rear - cx),
+                                     ("side", z_edge - abs(cz))):
+                    if margin < worst[0]:
+                        worst = (margin, edge, h, float(top - table), m)
+            margin, edge, h, top_h, m = worst
             rows.append({"bottle": size.name, "state": state, "kg": round(mb, 2),
-                         "margin_mm": round(float(worst), 1)})
-    return {"feet_x_mm": [round(v, 1) for v in feet_x],
-            "device_kg": round(static_m + cm, 3),
-            "cases": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows)}
+                         "margin_mm": round(margin, 1), "edge": edge,
+                         "tip_deg": round(math.degrees(math.atan2(margin, h)), 1),
+                         "push_at_top_n": round(m * G * margin / max(top_h, 1.0), 1)})
+    return {"feet": {"x_mm": [round(x_front, 1), round(x_rear, 1)], "z_mm": round(z_edge, 1)},
+            "device_kg": round(still_m + box_m, 3),
+            "cases": rows, "worst_margin_mm": min(r["margin_mm"] for r in rows),
+            "worst_tip_deg": min(r["tip_deg"] for r in rows)}
+
+
+def wheel_sweep(mech) -> list[dict]:
+    """What the hand crank's turning would hit: its tube about the input shaft and the disc
+    its arm and grip sweep there, against every part but the crank's own and the gearbox it
+    rides (the crank is drawn at rest)."""
+    from build123d import Cylinder, Location
+
+    w = (mech.meta.get("hand_crank") or {}).get("handle")
+    if not w:
+        return []
+    end, d = np.asarray(w["end_xy"], float), np.asarray(w["dir"], float)
+    z = float(w["axis_z"]) - float(mech.meta.get("mid_plane", 0.0))
+    a = math.degrees(math.atan2(d[1], d[0]))
+    reach, t_arm = float(w["reach_mm"]), float(w["arm_t_mm"])
+
+    def cyl(r: float, t0: float, t1: float):
+        mid = end + d * (t0 + t1) / 2
+        return Cylinder(r, t1 - t0, rotation=(0.0, 90.0, a)).moved(
+            Location((float(mid[0]), float(mid[1]), z)))
+
+    sweep = cyl(float(w["hub_r_mm"]), 0.0, reach - t_arm) + cyl(
+        float(w["r_mm"]), reach - t_arm, reach + float(w["grip_len_mm"]))
+    out = []
+    box = sweep.bounding_box()
+    for b in mech.bodies:
+        if b.part is None or "handle" in b.name or b.name.endswith("gearbox"):
+            continue
+        part = b.placed_part()
+        bb = part.bounding_box()
+        if not all(max(getattr(box.min, c), getattr(bb.min, c)) < min(getattr(box.max, c),
+                                                                       getattr(bb.max, c))
+                   for c in "XYZ"):
+            continue
+        inter = sweep & part
+        v = 0.0 if inter is None else sum(x.volume for x in inter.solids())
+        if v > 1.0:
+            out.append({"a": "hand wheel's sweep", "b": b.name, "mm3": round(v, 1)})
+    return out
 
 
 def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float) -> dict:

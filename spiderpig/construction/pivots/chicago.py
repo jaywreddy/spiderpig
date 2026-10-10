@@ -126,7 +126,7 @@ from spiderpig.construction.pivots.common import (
     column_air,
     gap_washers,
     host_of,
-    ring_z,
+    ring_runs,
     stem_of,
     xy_of,
 )
@@ -434,7 +434,7 @@ routes need the catalog's 1 mm steps), nor on the Strider's ``bolt_round`` crank
 
 MAX_BARREL: dict[str, float] = {"strider": 23.0,
                                  # a decanting cradle's pins carry a bottle: short spans
-                                 "decanter_hinge": 17.0, "decanter_rcm": 20.0}
+                                 "decanter_hinge": 25.0, "decanter_rcm": 20.0}
 """The longest barrel a linkage's pins may take (a planner rule, :meth:`ChicagoAxle.resolve`):
 a long barrel is a long span, and a pin bends as its span. The Strider (2026-10-05): the quad's
 J7 on a 30 mm barrel, its links 26 mm apart at the plan's z, was jam SF 1.8; capped at 23 mm
@@ -539,11 +539,11 @@ class ChicagoAxle:
         col = Column.of(build, group)
         xy, host, stem = xy_of(build, group), host_of(build, group), stem_of(group)
         for k in col.between:
-            role, r = col.roles[k]
-            if role == "neck":
+            if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a barrel can't neck down (layer {k})")
-            z0, z1 = ring_z(build, k)
-            out.bodies.append(hardware(f"{stem}_ring{k}", ring(xy, 2 * r, self.hole(), z0, z1),
+        for ks, r, z0, z1 in ring_runs(build, col):
+            out.bodies.append(hardware(f"{stem}_ring{ks[0]}",
+                                       ring(xy, 2 * r, self.hole(), z0, z1),
                                        host, fab="printed", color=SLEEVE_COLOR))
         f = self.shaft.realize(build, group, col, out)
         gap_washers(build, group, col, out, self.shaft.d, host, stem)

@@ -78,10 +78,10 @@ def _axle_groups(ctx: Context, config) -> list[Group]:
     for kind, key in kinds.items():
         a = axle(key)
         made[kind] = a.resolve(ctx) if hasattr(a, "resolve") else a   # per design (a rule)
-        if kind == "frame" and _cradle(config) and hasattr(made[kind], "one_piece"):
-            # a decanting cradle's pillars carry its bottle: always the steel shaft, never
+        if kind == "frame" and _cradle(config) and hasattr(made[kind], "cradle_shaft"):
+            # a decanting cradle's pillars carry its bottle: always a 10 mm steel shaft, never
             # the aluminium goBILDA standoff (cradle_report's strength rows)
-            made[kind] = made[kind].one_piece()
+            made[kind] = made[kind].cradle_shaft()
     return [AxleGroup(ax, made[ax.kind]) for ax in ctx.topo.axes if ax.kind in kinds]
 
 

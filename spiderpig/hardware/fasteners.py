@@ -15,13 +15,20 @@ from dataclasses import dataclass
 from spiderpig.shapes import disc, union
 
 SIZES = {"M2": "2", "M2.5": "2p5", "M3": "3"}       # thread label -> size in a catalog key
-CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4}         # ISO 273 medium clearance holes (mm)
+CLEARANCE = {"2": 2.4, "2p5": 2.9, "3": 3.4,        # ISO 273 medium clearance holes (mm)
+             "5": 5.5, "6": 6.6}
 SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "2": (4, 5, 6, 8, 10, 12, 16, 20),
     "2p5": (4, 5, 6, 8, 10, 12, 16, 20),
     "3": (6, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40),
 }
-BHCS_LENGTHS: dict[str, tuple[float, ...]] = {"3": (6, 8, 10, 12, 16, 20, 25, 30)}
+BHCS_LENGTHS: dict[str, tuple[float, ...]] = {
+    "3": (6, 8, 10, 12, 16, 20, 25, 30),
+    # a decanting cradle's (hardware.cradle_catalog): its standoffs' M5 ends, its gearbox's
+    # M6 face and the crank arm's end screw
+    "5": (8, 10, 12, 16),
+    "6": (16, 20, 25, 30, 35, 40, 45),
+}
 SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
 
 
@@ -54,6 +61,8 @@ SCREWS: dict[tuple[str, str], Screw] = {(s.kind, s.size): s for s in (
       for size, dk, k in (("2", 3.8, 2.0), ("2p5", 4.5, 2.5), ("3", 5.5, 3.0))),
     # ISO 7380-1 button head: fits a 3 mm layer where a socket head doesn't
     Screw("bhcs", "3", 5.7, 1.65, BHCS_LENGTHS["3"]),
+    Screw("bhcs", "5", 9.5, 2.75, BHCS_LENGTHS["5"]),
+    Screw("bhcs", "6", 10.5, 3.3, BHCS_LENGTHS["6"]),
     # PA2.0 pan-head self-tapping screws for plastic; head within ISO 7049 ST2.2's maximum
     Screw("self_tap", "2", 4.0, 1.6, SELF_TAP_LENGTHS["2"]),
 )}

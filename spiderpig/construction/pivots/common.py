@@ -131,6 +131,29 @@ def ring_z(build: Build, k: int) -> tuple[float, float]:
     return (z0, z1) if full_rings(build.ctx) else (z0, min(z1, z0 + build.ctx.pitch))
 
 
+def ring_runs(build: Build, col, fill: dict[int, float] | None = None
+              ) -> list[tuple[list[int], float, float, float]]:
+    """The printed rings of a column's spacer layers ``col.between``: ``(layers, radius, z0,
+    z1)`` each. One ring per layer; where the rings fill their layers
+    (:func:`construction.axle.full_rings`, a cradle's), one sleeve for each run of touching
+    layers with the same ring (fewer parts, one step to put on). ``fill``: extra height on
+    a layer's ring (:meth:`StandoffAxle.ring_fill`)."""
+    fill = fill or {}
+    out: list[tuple[list[int], float, float, float]] = []
+    merge = full_rings(build.ctx)
+    for k in col.between:
+        _, r = col.roles[k]
+        z0, z1 = ring_z(build, k)
+        z1 += fill.get(k, 0.0)
+        if (merge and out and out[-1][0][-1] == k - 1 and out[-1][1] == r
+                and abs(out[-1][3] - z0) < 1e-6):
+            ks, _, a, _ = out[-1]
+            out[-1] = ([*ks, k], r, a, z1)
+        else:
+            out.append(([k], r, z0, z1))
+    return out
+
+
 def gap_washers(build: Build, group: AxleGroup, col: Column, out: Realized, shaft_d: float,
                 host: str, stem: str, color: str = "#f2f2f2",
                 trim: dict[int, float] | None = None) -> float:

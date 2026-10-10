@@ -300,6 +300,7 @@ go too (`recommend.printed_pillars` with them).
 
 **Criteria.**
 - [ ] `construction.CRANKS` == {`bolt`, `bolt_round`}; `AXLES` == {`standoff`, `chicago`}
+  (plus a decanting cradle's own `hand` and `chicago6`, 2026-10-10: DECANTER.md)
       (D1).
 - [ ] `grep -rn "KeyedCrank\|PrintedCrank\|_BoltPlates\|PrintedAxle\|RodAxle\|keyed_float\|standoff_hand"
       spiderpig tests` finds nothing but the removal table.

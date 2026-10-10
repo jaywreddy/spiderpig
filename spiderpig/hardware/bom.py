@@ -799,7 +799,8 @@ takes a press with less creep and cracking than PLA (``construction.printed`` pr
 snap axles in PETG for the same strain); ``None`` here leaves it in the build's filament."""
 FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
                 PRESS_FILAMENT: "printed parts pressed on metal (the capped crankpin sleeves)"}
-_SOCK = re.compile(r"_sock$|_liner$|foot_boot_")    # a foot's sock; a cradle's liners, boots
+# a foot's sock; a decanting cradle's liners, its collar, its base plate's feet
+_SOCK = re.compile(r"_sock$|_liner$|_collar$|foot_boot_")
 _SLEEVE = re.compile(r"crank_pin_sleeve_(.+)$")
 
 

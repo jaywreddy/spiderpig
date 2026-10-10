@@ -418,3 +418,46 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** each change's gate diff in [BOM-gate-diffs.md](BOM-gate-diffs.md); the gate
   baseline is `bom2-5989d50` (after the review and the merge; `bom-bbf7001` before). Also fixed: the crank router raised IndexError when no screw
   length fits any crank joint (`route._ranges`); it is now a planner blocker.
+
+### 2026-10-10: the decanting cradles (user: "A+B", hand crank, an LED, aluminium first)
+
+- **What:** two hand-cranked cradles on the walker engine, a product (`Linkage.product`,
+  `config.PRODUCT_*`): `decanter_hinge` (A) and `decanter_rcm` (B). The design record is
+  [DECANTER.md](DECANTER.md). Then three adversarial reviews (mechanical, fabrication,
+  code) and a round of fixes.
+- **Drive:**
+  - an NRV030 30:1 worm box: statically irreversible, Phidgets, $48.10;
+  - its stock 14 mm keyed shaft with an arm of two 0.125 in 6061 plates on the key (a
+    5.1 mm keyway is illegal in 0.250 in at SendCutSend);
+  - the crankpin a 10 mm/M8 shoulder screw: an M6's thread yielded at the jam, SF 0.7;
+  - a printed offset hand crank. A crank on the input shaft swept through the crank arm,
+    and a handwheel small enough to stay outboard needed 50 N at its grip.
+- **Pins and standoffs:**
+  - M6 Chicago pins (`chicago6`);
+  - every pillar, column and tie a MISUMI NETRF10. A 6 mm standoff bent at B's jam; the
+    10 mm is 4.6× as strong and cheaper.
+  - A cradle's printed rings fill their layers, so every column is bought at its gap.
+- **Sheets:**
+  - frames 0.187 in, 3.4× as stiff across as 0.125 in (0.250 in can't take M5 holes);
+  - links 0.125 in, the rod 0.187 in, B's links all 0.187 in.
+- **Stand:**
+  - A base plate with the decanter in a notch. A tipped at 10 N on the bottle's top; now
+    31° and 29 N or more.
+  - A's inner plate down its front leg, on four columns.
+  - No bay tie over the mouth: it blocked uncorking and loading.
+- **Swing:** A re-fitted to −25°..+55° (crank 96.4, rod 239.9, rocker 150): an opened full
+  3 L pours at −10°.
+- **Bottles:** both bottles' mouths on the pivot. Magnum adapters and a 3 L collar; the 3 L
+  had sat 20 mm off and wandered 21 mm.
+- **Loads:** every joint rated at the full planar load. `SHARE` 0.6 understated the drive
+  side 1.6-2.1×.
+- **B:** its −25° re-fit failed (a 90 mm lever over its pins, its rear ties through its
+  inner bar), so it stays a −10° study.
+- **Why:** the user's mandate, "a nice thing to order and build", and the reviewers'
+  blockers: the handle's sweep, the spill at rest, the crankpin's thread in the outer
+  plate, the shaft modelled 2.5 mm short, the unbuyable or unfittable printed drive
+  parts, B's illegal holes.
+- **Where:** `spiderpig/construction/{cradle,handcrank}.py`, `spiderpig/cradle_report.py`,
+  `spiderpig/hardware/cradle_catalog.py` (each offer's page and date),
+  `tests/test_cradle.py`. The walker designs are unchanged: identity gate against
+  `next-320384d`, identical.

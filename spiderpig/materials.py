@@ -167,6 +167,7 @@ WASHERS: dict[float, tuple[str, str]] = {
     4.0: ("ptfe_washer_4x8x0p5", "shim_din988_4x8"),
     6.0: ("ptfe_washer_6x12x0p5", "shim_din988_6x12"),
     8.0: ("ptfe_washer_8x14x0p5", "shim_din988_8x14"),     # a cradle's M6 Chicago barrel
+    10.0: ("ptfe_washer_10x16x0p5", "shim_din988_10x16"),  # a cradle's 10 mm pillar
 }
 
 

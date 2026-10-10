@@ -1,10 +1,12 @@
 """Catalog data: what a decanting cradle buys beyond the walkers' hardware.
 
 The hand-cranked worm drive (:mod:`construction.handcrank`): the NRV030 gear reducer and its
-output shaft, the keyed flange coupling the crank arm bolts to, the riser's spacers and
-screws, the crankpin's shoulder screw and nut, the arm's screws; and the cradle's light
-(:mod:`construction.cradle`). The tie rods and columns are the NETRF6 standoffs of
-:mod:`hardware.crank_catalog`, their screws the M3 button heads of :mod:`hardware.parts`.
+output shaft, the riser's screws, the crankpin's shoulder screw and nut, the handle; the
+cradle's light (:mod:`construction.cradle`); and its standoffs: every pillar, stand column
+and tie rod is a 10 mm steel standoff made to length, MISUMI NETRF10 (M5 both ends,
+``pillar_shaft_10_m5_<L>``, :func:`netrf10`), with M5 button heads and washers.
+The sourcing study: ``/root/scratch/decant/sourcing2.md`` on the development box
+(2026-10-10).
 
 House rules as in :mod:`hardware.parts`: nothing priced from memory; ``verified`` only for a
 page that was fetched and showed the product.
@@ -12,17 +14,18 @@ page that was fetched and showed the product.
 
 from __future__ import annotations
 
-from spiderpig.hardware.catalog import Item, Offer, register
-
-SEARCH = "a search page, not a product: pick a listing that matches the dims"
+from spiderpig.hardware.catalog import CATALOG, Item, Offer, register, register_factory
 
 MCM_SHOULDER_8_M6 = {6: ("92981A196", 4.16), 8: ("92981A198", 2.91),
                      10: ("92981A200", 2.81), 12: ("92981A201", 2.89),
-                     16: ("92981A", None), 20: ("92981A", None), 25: ("92981A", None)}
+                     16: ("92981A202", 2.87), 20: ("92981A203", 2.92),
+                     25: ("92981A204", 3.04)}
 """McMaster 92981A, ISO 7379 8 mm shoulder, M6 x 11, head 13 x 6, black-oxide alloy steel
 (140 ksi): shoulder length -> (part, USD each), the listing rendered 2026-10-10."""
-SHOULDER_LENGTHS = tuple(MCM_SHOULDER_8_M6)
-M6_SHCS_BD = {10: ("6416", 0.20, 14.20), 12: ("6417", 0.21, 14.81), 16: ("6418", 0.22, 16.06)}
+MCM_SHOULDER_10_M8 = {16: ("92981A302", 3.15), 20: ("92981A303", 3.50),
+                      25: ("92981A304", 4.06), 30: ("92981A305", 4.11)}
+"""McMaster 92981A, ISO 7379 10 mm shoulder, M8 x 1.25 x 13, head 16 x 7, 5 mm hex,
+black-oxide alloy steel (140 ksi): the crankpin (pages rendered 2026-10-10)."""
 HARF_CHICAGO_M6 = {   # 18-8 plain, p-1806096: barrel length -> (variant id, SKU, sets, USD)
     10: (46703106162937, "a25051500ux1916", 20, 8.69),
     12: (46703105999097, "a25051500ux1917", 20, 8.50),
@@ -44,10 +47,74 @@ CHICAGO_M6_LENGTHS = tuple(float(L) for L in HARF_CHICAGO_M6)
 
 BD = "https://boltdepot.com/Product-Details?product="
 BD_NOTE = "18-8 (A-2); page rendered 2026-10-10 (WebFetch refused); sold singly"
-M6_BHCS_BD = {16: ("6645", 0.20, 13.54), 30: ("6648", 0.35, 23.66), 35: ("6649", 0.38, 25.56),
+M6_BHCS_BD = {16: ("6645", 0.20, 13.54), 20: ("6646", 0.23, None), 25: ("6647", 0.28, None),
+              30: ("6648", 0.35, 23.66), 35: ("6649", 0.38, 25.56),
               40: ("6650", 0.41, 27.44), 45: ("6651", 0.46, 30.62)}
-"""Bolt Depot's 18-8 M6 button heads (the list page rendered 2026-10-10). The 25 mm is on
-the same list (product number not read): ``m6_bhcs_25``."""
+"""Bolt Depot's 18-8 M6 button heads (the list page rendered 2026-10-10; the 20 and 25 mm
+pages 2026-10-10, each price only)."""
+M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.13, 8.60),
+              16: ("6634", 0.14, 9.60)}
+"""Bolt Depot's 18-8 M5 button heads (pages rendered 2026-10-10: head 9.14-9.50 x 2.50-2.75,
+3 mm hex; the pages name no standard, the head is ISO 7380's): the NETRF10 standoffs' ends."""
+
+NETRF10_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(150, 6001))
+"""MISUMI NETRF10's lengths: 15-600 mm in 0.1 mm steps (+-0.1)."""
+NETRF10_ID = 4.2            # the strength check's bore: the M5 tap drill, as if tapped through
+NETRF10_YIELD = 220.0       # MPa: 1018 at its hot-rolled minimum, as NETRF6 (conservative)
+NETRF10_THREAD = 10.0       # its M5 taps' depth (M x 2)
+NETRF10_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
+    (50.0, ((1, 13.46), (5, 9.76), (10, 4.91))),
+    (100.0, ((1, 13.77), (5, 9.98), (10, 5.02))),
+    (150.0, ((1, 14.08),)),
+    (200.4, ((1, 14.38), (5, 10.42), (10, 5.24))),
+    (300.0, ((1, 15.30), (5, 11.08), (10, 5.57))),
+    (600.0, ((1, 15.60),)),
+)
+"""USD each by quantity of one length, per length band (up to the band's length): NETRF10-45,
+-58, -160, -175, -200 and -255 pages rendered 2026-10-10 with their quantity tables; the band
+edges and the 100-150 and 300-600 bands' unit prices from MISUMI's price API (unverified).
+The discount is per part number: five of a length cost less than four."""
+NETRF10_SEEN: tuple[float, ...] = (45.0, 55.5, 58.0, 160.0, 175.0, 200.0, 255.0, 260.0)
+
+
+def netrf10(length: float) -> str:
+    """The catalog key of the NETRF10 standoff ``length`` mm long (made on first use)."""
+    key = f"pillar_shaft_10_m5_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _netrf10_item(L: float) -> Item:
+    pn = f"NETRF10-{L:g}"
+    tiers = next(t for top, t in NETRF10_TIERS if top + 1e-9 >= L)
+    return Item(
+        f"pillar_shaft_10_m5_{L:g}", f"10 mm round steel standoff, {L:g} mm, tapped M5 both "
+        f"ends (MISUMI {pn})", "standoff",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
+               + pn, pn, price_usd=tiers[0][1], tiers=tiers, verified=L in NETRF10_SEEN,
+               note="MISUMI circular standoff, tapped both ends, configurable length: 1018 "
+                    "steel, bare (oil it, keep it dry), 10 mm OD (0/-0.1), M5 x 10 deep each "
+                    "end, length +-0.1 mm in 0.1 mm steps; the discount is per length: "
+                    "order the quantity the BOM says (5 cost less than 4)"),),
+        dims={"d": 5.0, "od": 10.0, "length": L, "thread_depth": NETRF10_THREAD,
+              "id": NETRF10_ID, "yield_mpa": NETRF10_YIELD},
+        notes="A decanting cradle's pillars, stand columns and tie rods: one piece each, made "
+              "to its length. The strength check takes it as a 10 x 4.2 tube of 1018 at "
+              "220 MPa.")
+
+
+def _netrf10_of(key: str) -> Item | None:
+    try:
+        n = round(float(key.removeprefix("pillar_shaft_10_m5_")) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 150 <= n <= 6000 or f"pillar_shaft_10_m5_{L:g}" != key:
+        return None
+    return _netrf10_item(L)
+
+
+register_factory("pillar_shaft_10_m5_", _netrf10_of)
 
 register(
     Item("nrv030_30", "NRV030 worm gear reducer, 30:1, 9 mm input shaft, 14 mm hollow output "
@@ -64,15 +131,6 @@ register(
          notes="Motovario's NRV030 mesh data at 30:1: static efficiency 0.39, under the 0.5 "
                "of static irreversibility: a load on the cradle can't turn the handle. Mass "
                "about 1.2 kg (a search snippet: weigh it)."),
-    Item("nrv030_40", "NRV030 worm gear reducer, 40:1, 9 mm input shaft (NRV030-VS)", "gearbox",
-         (Offer("eBay (foreign trade, Shenzhen)", "https://www.ebay.com/itm/355207733951",
-                "355207733951", price_usd=95.00, verified=True,
-                note="the 9 mm worm shaft out both ends; ratio by message to the seller "
-                     "(no selector); +US$22.00 SpeedPAK, about 3 weeks; no output shaft. "
-                     "Page rendered 2026-10-10."),),
-         dims={"ratio": 40, "mass_g": 1200.0},
-         notes="The finer alternative (20 turns a pour, not 15; static efficiency 0.35), "
-               "not built by default: only marketplaces sell it."),
     Item("nrv030_output_shaft_14", "Single output shaft for NRV030, 14 mm keyed (keys, washers, "
          "snap ring)", "misc",
          (Offer("Phidgets", "https://www.phidgets.com/?prodid=734", "TRM4004_0", price_usd=4.45,
@@ -100,67 +158,89 @@ register(
            dims={"d": 8.0, "length": float(n), "thread": "M6", "thread_len": 11.0,
                  "head_d": 13.0, "head_h": 6.0, "hex": 4.0})
       for n, (pn, usd) in MCM_SHOULDER_8_M6.items()),
+    *(Item(f"shoulder_m8x10_{n}", f"Shoulder screw ISO 7379, 10 mm shoulder x {n} mm, M8 thread",
+           "fastener",
+           (Offer("McMaster-Carr", f"https://www.mcmaster.com/{pn}/", pn, price_usd=usd,
+                  verified=True, note="black-oxide alloy steel, 140 ksi; sold each; page "
+                  "rendered 2026-10-10"),),
+           dims={"d": 10.0, "length": float(n), "thread": "M8", "thread_len": 13.0,
+                 "head_d": 16.0, "head_h": 7.0, "hex": 5.0})
+      for n, (pn, usd) in MCM_SHOULDER_10_M8.items()),
+    Item("m8_jam_nut", "M8 hex jam nut, 18-8 (13 AF x 4 mm)", "nut",
+         (Offer("Bolt Depot", BD + "13573", "13573", price_usd=0.15,
+                tiers=((1, 0.15), (100, 0.0979)), verified=True,
+                note="13 AF x 3.70-4.00 (ISO 4035's size); " + BD_NOTE),),
+         dims={"af": 13.0, "h": 4.0}),
     Item("m6_thin_nut", "M6 thin hex nut (DIN 439, 3.2 mm)", "nut",
          (Offer("Bolt Depot", BD + "13572", "13572", price_usd=0.10,
                 tiers=((1, 0.10), (100, 0.0641)), verified=True,
                 note="18-8 hex jam nut, 10 AF x 3.2; page rendered 2026-10-10"),),
          dims={"af": 10.0, "h": 3.2}),
-    Item("m8_nut", "M8 hex nut (ISO 4032)", "nut",
-         (Offer("Bolt Depot", BD + "4778", "4778", price_usd=0.17,
-                tiers=((1, 0.17), (100, 0.1177)), verified=True,
-                note="18-8; list page rendered 2026-10-10"),),
-         dims={"af": 13.0, "h": 6.8}, notes="af/h nominal ISO 4032, not read off the page."),
-    *(Item(f"m6_shcs_{n}", f"M6 x {n} mm socket head cap screw (ISO 4762)", "fastener",
-           (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
-                  tiers=((1, each), (100, per100 / 100)), note="DIN 912; " + BD_NOTE),),
-           dims={"d": 6.0, "length": float(n), "head_d": 10.0, "head_h": 6.0})
-      for n, (pn, each, per100) in M6_SHCS_BD.items()),
     *(Item(f"m6_bhcs_{n}", f"M6 x {n} button head socket screw (ISO 7380)", "fastener",
            (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
-                  tiers=((1, each), (100, per100 / 100)), note=BD_NOTE),),
+                  tiers=((1, each),) + (((100, per100 / 100),) if per100 else ()),
+                  note=BD_NOTE),),
            dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3})
       for n, (pn, each, per100) in M6_BHCS_BD.items()),
+    *(Item(f"m5_bhcs_{n}", f"M5 x {n} button head socket screw (ISO 7380)", "fastener",
+           (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
+                  tiers=((1, each), (100, per100 / 100)), note=BD_NOTE),),
+           dims={"d": 5.0, "length": float(n), "head_d": 9.5, "head_h": 2.75})
+      for n, (pn, each, per100) in M5_BHCS_BD.items()),
+    Item("m5_nut", "M5 hex nut (DIN 934), 18-8", "nut",
+         (Offer("Bolt Depot", BD + "4775", "4775", price_usd=0.07,
+                tiers=((1, 0.07), (100, 0.0369)), verified=True, note=BD_NOTE),),
+         dims={"af": 8.0, "h": 4.0}),
+    Item("m5_washer", "M5 flat washer (DIN 125, 5.3 x 10 x 1.0)", "washer",
+         (Offer("Bolt Depot", BD + "4515", "4515", price_usd=0.05, verified=True,
+                tiers=((1, 0.05), (100, 0.0234)), note=BD_NOTE),),
+         dims={"id": 5.3, "od": 10.0, "t": 1.0}),
+    Item("m5_washer_wide", "M5 fender washer (5 x 15)", "washer",
+         (Offer("Bolt Depot", BD + "7314", "7314", price_usd=0.10, verified=True,
+                tiers=((1, 0.10), (100, 0.068)),
+                note=BD_NOTE + "; 0.9-1.4 mm thick, ID not stated (no standard named)"),),
+         dims={"id": 5.3, "od": 15.0, "t": 1.2},
+         notes="Under a standoff pillar's end screw outside a frame plate, as the walkers' "
+               "DIN 9021 (the only 18-8 M5 wide washer Bolt Depot lists)."),
     # the M6 Chicago pins' washers' sizes: what their printed head spacers and gap rings are
     # drawn to (materials.WASHERS; they are printed, not bought)
     Item("ptfe_washer_8x14x0p5", "PTFE flat washer 8.2 x 14 x 0.5 mm", "washer",
-         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
-                note="PTFE washers for M8 / an 8 mm barrel; part number not confirmed (the "
-                     "build prints this face as the head spacer)"),),
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/95630A899/", "95630A899",
+                pack_qty=10, price_usd=8.50, verified=True,
+                note="8.05 x 14.3 x 0.7-0.9 mm, the nearest stocked (page rendered "
+                     "2026-10-10); MISUMI TT-0814-05 is 8.1 x 14 x 0.5 in 50s ($16.00). Not "
+                     "bought by the build: it prints this face as the head spacer"),),
          dims={"id": 8.2, "od": 14.0, "t": 0.5}),
     Item("shim_din988_8x14", "DIN 988 shim ring 8 x 14 mm (0.1 / 0.2 / 0.3 / 0.5 / 1.0 mm)",
          "washer",
-         (Offer("Accu", "https://accu-components.com/us/shim-washers/",
-                note="DIN 988 shim rings 8 x 14; part number per thickness not confirmed"),),
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/", "62891-62895",
+                price_usd=1.85, verified=True,
+                note="A2, sold singly, product ids 62891-62895 (0.1 $3.03, 0.2 $2.69, 0.3 "
+                     "$3.02, 0.5 $1.85, 1.0 $1.97 each; pages rendered 2026-10-10). Not "
+                     "bought by the build: its printed rings take these steps"),),
          dims={"id": 8.0, "od": 14.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
          notes="Sizes the printed spacers on an M6 Chicago pin's 8 mm barrel (steps, OD)."),
-    *(Item(f"m6_bhcs_{n}", f"M6 x {n} button head socket screw (ISO 7380)", "fastener",
-           (Offer("Bolt Depot", "https://boltdepot.com/Metric_socket_button_head_Stainless_"
-                  "steel_18-8_(A-2)_6mm_x_1.0mm", note=f"the 18-8 M6 button head list; the "
-                  f"{n} mm row's product number and price not read (16 mm $0.20, 30 mm "
-                  "$0.35)"),),
-           dims={"d": 6.0, "length": float(n), "head_d": 10.5, "head_h": 3.3})
-      for n in (20, 25)),
-    Item("revolving_handle_m8", "Revolving machine handle, M8 stud (Ganter GN 798, 24 mm grip)",
-         "misc",
-         (Offer("JW Winco", "https://jwwinco.com/en-us/products/1.1-Operating-with-handles-and-"
-                "knobs/revolving-handles/GN-798-Technopolymer-Plastic-or-Aluminum-Stepped-"
-                "Cylindrical-Revolving-Handles-with-Steel-Threaded-Spindle", "GN 798-KT-24-M8",
-                price_usd=6.08, verified=True,
-                note="1-99 price; page fetched 2026-10-10. The grip spins: hold its collar "
-                     "(or the stud's end) while tightening the nut behind the arm"),),
-         dims={"thread": "M8", "thread_len": 16.0, "grip_d": 24.0, "grip_len": 74.0,
-               "collar_d": 18.5, "length": 90.0},
-         notes="GN 798 dims from Ganter's table as JW Winco's page gave it; overall length "
-               "inferred: measure on arrival."),
-    Item("penlight_aaa", "AAA LED penlight, twist switch (Maglite Solitaire LED)", "electronics",
-         (Offer("Maglite", "https://maglite.com/products/solitaire-led-flashlight", "SJ3A",
-                price_usd=8.99, verified=True, note="sale price (regular $9.99), page fetched "
-                "2026-10-10; 47 lm; AAA included; shipping extra under $50"),
-          Offer("Battery Junction", "https://www.batteryjunction.com/products/olight-i3e-eos",
+    # the 10 mm pillars' (NETRF10) printed gap rings' sizes: never bought
+    Item("ptfe_washer_10x16x0p5", "PTFE flat washer 10.2 x 16 x 0.5 mm", "washer",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
+                note="not bought by the build: it prints this face as a gap ring"),),
+         dims={"id": 10.2, "od": 16.0, "t": 0.5}),
+    Item("shim_din988_10x16", "DIN 988 shim ring 10 x 16 mm (0.1 / 0.2 / 0.3 / 0.5 / 1.0 mm)",
+         "washer",
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/",
+                note="not bought by the build: its printed rings take these steps"),),
+         dims={"id": 10.0, "od": 16.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
+         notes="Sizes the printed rings on a cradle's 10 mm pillar (steps, OD)."),
+    Item("penlight_aaa", "AAA LED keychain light, twist switch (Olight i3E EOS), 14 x 60.5 mm",
+         "electronics",
+         (Offer("Battery Junction", "https://www.batteryjunction.com/products/olight-i3e-eos",
                 "I3E-EOS-19TH-ANNIVERSAR", price_usd=12.99, verified=True,
-                note="Olight i3E EOS, 14 x 60.5 mm, 90 lm, twist (a shorter clip fits it); "
-                     "page fetched 2026-10-10")),
-         dims={"d": 12.7, "length": 81.0, "mass_g": 25.0},
-         notes="The sommelier's candle: it rides the front saddle under the shoulder, its "
-               "head (which twists to switch it on) up at the shoulder. Mass not on the page."),
+                note="Olight i3E EOS, 14 x 60.5 mm, 90 lm, twist head; page fetched "
+                     "2026-10-10 (any 14 mm AAA twist light of about 60 mm fits the clip: buy "
+                     "it locally)"),),
+         dims={"d": 14.0, "length": 60.5, "mass_g": 20.0},
+         notes="The sommelier's candle: it stands in its clip behind the front saddle under "
+               "the shoulder, its head (which twists to switch it on) up. A longer light's "
+               "tail reaches a decanter's shoulder at rest (the Maglite Solitaire's 81 mm "
+               "did). Mass estimated."),
 )

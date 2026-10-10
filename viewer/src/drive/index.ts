@@ -278,15 +278,17 @@ export function createDrive(host: DriveHost) {
       const product = Boolean(l.root.userData.product);
       gui.show(!product);
       if (pad) pad.style.display = product ? 'none' : '';
-      const wantPhysics = ph.on || ph.wanted;
+      const usable = side.usable && !product;     // a product has no walk to drive
+      const wantPhysics = (ph.on || ph.wanted) && !product;
       // The session, live or still building, is the previous glb's: off, through the one off path
       // (a connect in flight rejects with null and setPhysics's loop reconnects for this one).
       if (ph.on) ph.physicsOff();
-      else if (wantPhysics) physics.close();
-      if (!side.usable && opts.drive) await setDrive(false);
+      else if (ph.wanted) physics.close();
+      if (product) ph.wanted = false;
+      if (!usable && opts.drive) await setDrive(false);
       else if (opts.drive && !preview) await bindGlb();
       else if (preview) l.root.visible = false;
-      if (wantPhysics && side.usable && opts.drive) {
+      if (wantPhysics && usable && opts.drive) {
         ph.wanted = true;
         // Not awaited: the in-flight setPhysics may itself be waiting on this load (physics
         // asked while a mechanism was on screen loads the robot first).

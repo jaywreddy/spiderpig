@@ -77,8 +77,8 @@ def decanter_hinge(p):
 register(Linkage(
     key="decanter_hinge", name="Decanting cradle A: hinge at the mouth",
     program=decanter_hinge,
-    params={"crank": R(806, 10), "rod": R(269), "rocker": R(150), "gx": R(-220),
-            "gy": R(200)},
+    params={"crank": R(964, 10), "rod": R(2399, 10), "rocker": R(150), "gx": R(-173),
+            "gy": R(202)},
     links={"b1": _two("M", "E"),
            "b2": (("G", "E", *TIES), (("G", "E"), ("G", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "E"),
                                      ("Tf2", "Tr1"), ("E", "Tr1"), ("Tr1", "Tr2")))},
@@ -125,16 +125,22 @@ def decanter_rcm(p):
         ("J2", offset(P("O1"), P("J"), p["y_along"], p["y_across"])),
         ("Y", circle_x_circle(P("J2"), p["r1"], P("X"), _xy(p), 1)),
         # the mouth, a point of the cradle: -X0 from X in the arm's frame, X0 = (arm, 0),
-        # Y0 = (y_along, y_across), written in the cradle's frame X -> Y
+        # Y0 = (y_along, y_across), written in the cradle's frame X -> Y; Ax on the bottle's
+        # axis, ``skew`` from the arm's
         ("Lc", _on_cradle(p, 0, 0)),
+        ("Ax", _on_cradle(p, 100, 0)),
         *_ties(lambda cx, cy: _on_cradle(p, cx, cy)),
     ]
 
 
 def _on_cradle(p, cx, cy):
-    """The cradle's point at ``(cx, cy)`` in its own frame (the mouth at the origin, the
-    bottle's axis along x): X is ``(arm, 0)`` there and Y ``(y_along, y_across)``, so it is
-    an offset from X along X -> Y."""
+    """The cradle's point at ``(cx, cy)`` in the bottle's frame (the mouth at the origin, the
+    bottle's axis along x). The arm's frame is that turned by ``skew`` (the arms swing that
+    much ahead of the bottle: their parallelograms stay clear of folding flat on the
+    pivots' ray over an 80° swing); X is ``(arm, 0)`` there and Y ``(y_along, y_across)``,
+    so the point is an offset from X along X -> Y."""
+    k = p["skew"] * sp.pi / 180
+    cx, cy = cx * sp.cos(k) + cy * sp.sin(k), -cx * sp.sin(k) + cy * sp.cos(k)
     s = _xy(p)
     ux, uy = (p["y_along"] - p["arm"]) / s, p["y_across"] / s
     dx, dy = cx - p["arm"], cy
@@ -148,25 +154,30 @@ def _xy(p):
 
 RCM = {"crank": R(645, 10), "rod": R(1735, 10), "lever": R(120), "bell": R(30),
        "arm": R(140), "ray": R(-40), "r1": R(200), "r2": R(330), "lx": R(-450),
-       "ly": R(240), "y_along": R(-50), "y_across": R(-90)}
+       "ly": R(240), "y_along": R(-50), "y_across": R(-90), "skew": R(0)}
+"""B: a design study, not the one to build (2026-10-10: ``docs/agentlib/DECANTER.md``). It
+rests at -10°, where an opened full 3 L bottle pours: an 80° swing from -25° (A's) puts
+its rear tie rods through its inner bar O1-O2 and its jam loads over its pins (a 90 mm
+lever, ``skew`` 35° to keep its parallelograms off their fold; the study's numbers in
+DECISIONS.md)."""
 
 register(Linkage(
     key="decanter_rcm", name="Decanting cradle B: virtual hinge (double parallelogram)",
-    program=decanter_rcm, params=RCM, angles=frozenset({"ray", "bell"}),
+    program=decanter_rcm, params=RCM, angles=frozenset({"ray", "bell", "skew"}),
     links={"b1": _two("M", "P"),
            "b2": (("O2", "P", "K"), (("O2", "P"), ("O2", "K"))),
            "b3": (("O1", "J", "J2"), (("O1", "J"), ("O1", "J2"))),
            "b4": (("X", "J", "K"), (("X", "K"),)),
            "b5": _two("Y", "J2"),
            # (no chord Y-Tr1: 200 mm from the mouth it would sweep across the pivot O1)
-           "b6": (("X", "Y", "Lc", *TIES),
+           "b6": (("X", "Y", "Lc", "Ax", *TIES),
                   (("X", "Y"), ("Y", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "X"), ("X", "Tr1"),
                    ("Tr1", "Tr2")))},
     labels={"b1": "connecting rod", "b2": "rear arm O2-K (driven at P)",
             "b3": "copy arm O1-J-J2", "b4": "translating bar X-J-K",
             "b5": "cradle link Y-J2", "b6": "cradle (turns about the mouth Lc)"},
     frame=("O", "O1", "O2"), crank=("O", "M"),
-    output=Output("body", "b6", "rotation", ("Lc", "X"), still=("Lc", 1e-6)),
+    output=Output("body", "b6", "rotation", ("Lc", "Ax"), still=("Lc", 1e-6)),
     source="https://research.buaa.edu.cn/en/publications/design-of-double-parallelogram-remote-center-of-motion-mechanisms/",
     product="cradle",
     notes="Eight bars; the cradle tips 65° about a point with nothing there.",

@@ -156,9 +156,10 @@ def removed_construction(field: str, key) -> tuple[str, str] | None:
 
 def default_crank_sheet(lk: linkage.Linkage) -> str:
     """The crank sheet ``lk`` gets when the config names none (a decanting cradle's: its
-    keyed arm, 0.250 in 6061-T6; :data:`LINKAGE_CRANK_SHEETS`, else :data:`CRANK_SHEET`)."""
-    if lk.product == "cradle":
-        return "al6061_6p35mm"
+    keyed arm's two 0.125 in 6061-T6 plates; :data:`LINKAGE_CRANK_SHEETS`, else
+    :data:`CRANK_SHEET`)."""
+    if lk.product == CRADLE:
+        return "al6061_3p2mm"
     return LINKAGE_CRANK_SHEETS.get(lk.key, CRANK_SHEET)
 
 
@@ -181,6 +182,8 @@ def torque_limit_nm(config: BuildConfig) -> float | None:
     and the joints' ratings assume: the servo's (``TORQUE_LIMIT_FRACTION`` of stall, at
     most ``JAM_TORQUE_NM``), lowered to the linkage's :data:`LINKAGE_TORQUE_LIMITS` entry;
     ``None`` for a servo with no stall torque."""
+    if config.lk.product in PRODUCT_JAM_NM:     # no servo: the hand through the gearbox
+        return PRODUCT_JAM_NM[config.lk.product]
     limit = servos.get(config.servo).torque_limit_nm
     own = LINKAGE_TORQUE_LIMITS.get(config.linkage)
     if limit is None or own is None:
@@ -194,7 +197,7 @@ def torque_limit_note(config: BuildConfig) -> str | None:
     limit = torque_limit_nm(config)
     spec = servos.get(config.servo)
     stall = spec.stall_torque_nm
-    if limit is None or not stall:
+    if limit is None or not stall or config.lk.product:
         return None
     why = (" (lowered for this linkage: config.LINKAGE_TORQUE_LIMITS)"
            if config.linkage in LINKAGE_TORQUE_LIMITS else "")
@@ -216,15 +219,18 @@ def default_crank(lk: linkage.Linkage, module: str = "") -> str:
 
 
 CRADLE = "cradle"
+SHEET = "acrylic_3mm"
 PRODUCT_CRANKS: dict[str, str] = {CRADLE: "hand"}
 """Per product (:attr:`linkage.Linkage.product`): the crank it is built with, the only one
 (a decanting cradle: the hand-cranked worm drive, :mod:`construction.handcrank`)."""
 
 FRAME_SHEET = "al5052_2mm"
-PRODUCT_FRAME_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
+PRODUCT_FRAME_SHEETS: dict[str, str] = {CRADLE: "al5052_4p8mm"}
 """Per product: the frame plates' sheet when the config names the default
-(:data:`FRAME_SHEET`). A decanting cradle's frame plates are its stand (2026-10-10): 0.125 in
-5052, stiffer than the walkers' 0.080 in under a 6 kg bottle 340 mm up."""
+(:data:`FRAME_SHEET`). A decanting cradle's frame plates are its stand (2026-10-10): 0.187 in
+5052, 3.4 x as stiff across as 0.125 in (the side's sway under the hand and a bumped bottle)
+and still cut with the M5 screws' 5.5 mm holes (SendCutSend: a hole at least the
+thickness; 0.250 in would need 6.35)."""
 
 PRODUCT_PARAMS: dict[str, dict[str, float]] = {
     CRADLE: {"link_radius": 11.0, "frame_radius": 12.0, "spacer_d": 12.5},
@@ -237,6 +243,39 @@ spacer rings 12.5 mm (the M6 barrel's 8 mm and a wall)."""
 PRODUCT_PINS: dict[str, str] = {CRADLE: "chicago6"}
 """Per product: the link pin a design gets when it names the default (``chicago``): a
 decanting cradle's M6 Chicago screws (:data:`construction.pivots.chicago.CHICAGO_M6`)."""
+
+PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
+"""Per product: the default sheet (the layer pitch, the printed rings' and the order's
+material) when the config names the default (:data:`SHEET`): a decanting cradle is all
+aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
+
+PRODUCT_JAM_NM: dict[str, float] = {CRADLE: 20.0}
+"""Per product: the crank torque its joints are rated at in a jam, in place of a servo's
+firmware limit (:func:`torque_limit_nm`): a decanting cradle's gearbox's rating (NRV030
+30:1, 20 N·m; :mod:`spiderpig.cradle_report`'s jam case)."""
+
+
+def product_defaults(product: str) -> dict:
+    """The fields a product sets where the config names the default (the sheets, the pin,
+    the shared dimensions): what :class:`BuildConfig` fills in, and what a design moved to
+    another linkage drops (:func:`own_constructions`)."""
+    out: dict = {}
+    if product in PRODUCT_SHEETS:
+        out["sheet"] = PRODUCT_SHEETS[product]
+    if product in PRODUCT_FRAME_SHEETS:
+        out["frame_sheet"] = PRODUCT_FRAME_SHEETS[product]
+    if product in PRODUCT_PINS:
+        out["pin"] = PRODUCT_PINS[product]
+    return out
+
+
+def merged_params(params: Params, product: str) -> Params:
+    """``params`` with a product's dimensions (:data:`PRODUCT_PARAMS`) in every field it
+    leaves at the default: one fit override keeps the rest of the product's."""
+    mine = PRODUCT_PARAMS.get(product, {})
+    base = Params()
+    return replace(params, **{k: v for k, v in mine.items()
+                              if getattr(params, k) == getattr(base, k)})
 
 
 def is_cradle(config) -> bool:
@@ -254,7 +293,7 @@ class BuildConfig:
     robot: bool = True                # two mirrored sides, servos back to back in one frame
     phases: tuple[float, ...] | None = None          # crank phase per leg (rad); None = module's
     proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
-    sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
+    sheet: str = SHEET                # the default sheet (the links, rings, deck): it sets
     #                                   the layer pitch (spiderpig.materials)
     thickness: float | None = None    # override the sheet's nominal thickness
     frame_sheet: str = FRAME_SHEET      # the frame and centre plates (aluminium: acrylic
@@ -304,13 +343,12 @@ class BuildConfig:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
-        if lk.product and self.frame_sheet == FRAME_SHEET:
-            object.__setattr__(self, "frame_sheet",
-                               PRODUCT_FRAME_SHEETS.get(lk.product, FRAME_SHEET))
-        if lk.product in PRODUCT_PINS and self.pin == "chicago":
-            object.__setattr__(self, "pin", PRODUCT_PINS[lk.product])
-        if lk.product in PRODUCT_PARAMS and self.params == Params():
-            object.__setattr__(self, "params", Params(**PRODUCT_PARAMS[lk.product]))
+        if lk.product:          # a product's defaults where the config names the default's
+            plain = {"sheet": SHEET, "frame_sheet": FRAME_SHEET, "pin": "chicago"}
+            for what, value in product_defaults(lk.product).items():
+                if getattr(self, what) == plain[what]:
+                    object.__setattr__(self, what, value)
+            object.__setattr__(self, "params", merged_params(self.params, lk.product))
         hand = PRODUCT_CRANKS.get(lk.product)
         if (self.crank == "hand") != (hand == "hand"):
             cradles = [k for k in linkage.available() if linkage.get(k).product]
@@ -634,16 +672,26 @@ def query_proportions(query: Mapping) -> list[tuple[str, float]]:
     return [parse_proportion(f"{k[2:]}={v}") for k, v in items if k.startswith("p.")]
 
 
-def own_constructions(base: BuildConfig) -> dict[str, str]:
+def own_constructions(base: BuildConfig) -> dict:
     """``crank`` and ``crank_sheet`` as ``base`` *chose* them: each one its linkage and
     module would get anyway (:func:`default_crank`, :func:`default_crank_sheet`, filled in
     by the config) is ``""``, so a design moved to another linkage or module gets that
     one's own default instead of carrying the old one's (TrotBot heel's ``bolt_round``,
-    the Hoecken pantograph's 0.080 in crank sheet)."""
+    the Hoecken pantograph's 0.080 in crank sheet); a product's (a decanting cradle's)
+    sheets, pin and dimensions, where they are its defaults, the plain ones."""
     lk = linkage.get(base.linkage)
-    return {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
-            "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
-                            else base.crank_sheet)}
+    out: dict = {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
+                 "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
+                                 else base.crank_sheet)}
+    if lk.product:      # a product's own sheets, pin and dimensions: back to the plain ones
+        plain = {"sheet": SHEET, "frame_sheet": FRAME_SHEET, "pin": "chicago"}
+        for what, value in product_defaults(lk.product).items():
+            if getattr(base, what) == value:
+                out[what] = plain[what]
+        mine = PRODUCT_PARAMS.get(lk.product, {})
+        out["params"] = replace(base.params, **{
+            k: getattr(Params(), k) for k, v in mine.items() if getattr(base.params, k) == v})
+    return out
 
 
 def design_from_query(query: Mapping, base: BuildConfig | None = None,

@@ -64,7 +64,9 @@ robot; a mechanism's `single`, one side).
 - Constructions: `--pin chicago --pillar standoff --crank bolt`. The `bolt` crank is single
   aluminium web plates on steel hex-standoff crankpins (`construction/crank/`); `bolt_round`
   is the round friction-clamped standoff. Nothing else exists (`config.REMOVED_CONSTRUCTIONS`,
-  `config.REMOVED_PARAMS`: a removed key fails with its replacement).
+  `config.REMOVED_PARAMS`: a removed key fails with its replacement), but a decanting
+  cradle's own (`hand` crank, `chicago6` pins: products, `Linkage.product`,
+  `config.PRODUCT_*`; the design record `docs/agentlib/DECANTER.md`).
 - Sheets: links, rings and deck acrylic 3 mm (`BuildConfig.sheet`); frame 0.080 in 5052
   (`frame_sheet`); crank 0.100 in 6061-T6 (`crank_sheet`, `materials.thinnest_sheet`);
   centre plates by `chassis.centre_sheet`; aluminium links per `materials.LINK_SHEETS`.
@@ -177,6 +179,7 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
 | `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`), `plates.py`, `chassis.py`, `deck.py`, `robot.py`, `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py` |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
+| `spiderpig/linkages/decanters.py`, `construction/cradle.py`, `construction/handcrank.py`, `cradle_report.py`, `hardware/cradle_catalog.py` | the decanting cradles (a product: `docs/agentlib/DECANTER.md`): the linkages, the cradle box, stand and base plate, the hand-cranked worm drive, the report (swing, loads, stand, strength), the bought parts |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`) |
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
 | `spiderpig/materials.py` | sheets, thinnest sheet per role, gap options |

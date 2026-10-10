@@ -296,9 +296,14 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
     parts = [PartEntry(ty.label, ty.kind, ty.name, ty.qty, img / f"{thumbs[ty.label]}.png",
                        ty.file, ty.detail) for ty in types]
     title = (f"{config.linkage} {config.module} {'robot' if config.robot else 'side'}")
+    drive = (f"{config.servo} servo, {config.pin} pins, {config.pillar} pillars, "
+             f"{config.crank} crank")
+    if config.lk.product:           # a decanting cradle: no servo, both sides
+        title = f"{config.lk.name} (decanting cradle)"
+        drive = (f"hand crank (NRV030 worm, 30:1), {config.pin} pins, {config.pillar} "
+                 "pillars")
     doc = Doc("Assembly guide",
-              [title, f"{config.servo} servo, {config.pin} pins, {config.pillar} pillars, "
-                      f"{config.crank} crank",
+              [title, drive,
                f"{len(all_steps)} steps, {len(types)} part types, "
                f"{sum(ty.qty for ty in types)} parts"
                + (f" (the first {len(chosen)} steps)" if max_steps else "")],
