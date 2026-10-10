@@ -128,9 +128,10 @@ CRANKPIN_D = 10.0       # the crankpin and the block's tie: NETRF10 standoffs (1
 #                         M5 x 10 deep each end, made to length: hardware.cradle_catalog)
 SOCKET_FIT = 0.3        # the block's holes over them (the standoff is 0/-0.1 mm; a laser's hole
 #                         +-0.13: thirteen of them must pass it)
-CRANKPIN_PLAY = 0.6     # the rod's axial play on the crankpin, under its washer (seven plates'
-#                         +-0.11 mm each lie in that loop: a printed spacer under the rod,
-#                         sanded on the bench, sets it)
+CRANKPIN_PLAY = 0.3     # the rod's axial play on the crankpin, under its washer: the washer
+#                         holds it off the tie rods' screw heads under the cradle link (0.4 mm
+#                         over it); seven plates' +-0.11 mm lie in that loop: a printed spacer
+#                         under the rod, sanded on the bench, sets it (the rod only goes down)
 TIE_R = 47.0            # the block's tie standoff, this far out along the arm: its screw head
 #                         and wide washer under the block clear the riser screws' heads (on
 #                         the gearbox's 65 mm PCD) and its hole the crankpin's
@@ -694,8 +695,9 @@ class HandCrank(Group):
             Op(STACK, (k_rod, 2), whole("crankpin_washer", "crankpin_screw_hi"), "",
                "With the rod on the crankpin: the wide washer and the M5 button head into "
                "the crankpin's top (threadlocker), tight. The rod must turn freely under the "
-               "washer with a little end play (about 0.5 mm): if it binds, sand its printed "
-               "spacer down.", "layer"),
+               "washer with a little end play (about 0.3 mm): if it binds, sand its printed "
+               "spacer down (never shim it up: the washer keeps it off the screw heads over "
+               "it).", "layer"),
             Op(FINISH, (2,), whole(*view.named(r"handle(_\w+)?")),
                "Hand crank",
                "The grip's steel standoff into the socket in the printed crank's arm, an M5 "

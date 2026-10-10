@@ -455,6 +455,8 @@ class CradleTies(Group):
                            for j in range(k, L.top))
                 out.append(Placed(L.top, Disc(name, r), self.name, "tie rod", seat=True))
                 # its screw's head under the link: in the gap there, or the layer under it
+                # (the rod under it is held off it by its washer on the crankpin: its play,
+                # handcrank.CRANKPIN_PLAY, is less than the 0.4 mm left)
                 out.append(Placed(k - 1, Disc(name, head), self.name, "tie screw head",
                                   gap=True, height=M5.head_h + 0.25, toward=-1))
             return out
@@ -1351,7 +1353,9 @@ USE_LIMITS = (
     "being forced, look for a bent pin between the rod and the cradle link). Keep your "
     "fingers out of the drive side's plates while it turns. Uncork at rest, the base stop "
     "set, holding the neck, a corkscrew's lever lifted straight up; then slide the bottle "
-    "forward onto its stop. Lift the cradle by its base plate, never by the hand crank. "
+    "forward onto its stop. Keep your hands off the decanter while the handle turns (at rest "
+    "the cradle's front comes down to within a few millimetres of a wide one, and the worm "
+    "holds it there). Lift the cradle by its base plate, never by the hand crank. "
     "Hand-wash the printed parts (PLA softens at 55 °C).")
 """The guide's use limits (the room it needs: ``docs/agentlib/DECANTER.md``)."""
 

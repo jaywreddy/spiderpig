@@ -110,7 +110,7 @@ stops there:
       the plates one rigid block and clamps them, its screw head and wide washer clear of
       the riser screws.
   - **Crankpin:** a NETRF10 standing in the block from its lowest plate (an M5 up through
-    it) through the rod, an M5 and a wide washer on its end over the rod, 0.6 mm of play
+    it) through the rod, an M5 and a wide washer on its end over the rod, 0.3 mm of play
     (a printed spacer under the rod, sanded on the bench, takes the plates' tolerance). The
     rod rides 1.5 mm over the block's screw heads, its force 8.7 mm off the crankpin's
     socket. (Before, the arm sat on the key and the rod 21 mm over it: an ISO 7379

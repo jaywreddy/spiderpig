@@ -512,8 +512,10 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50 quoted; the walkers' per-area rates had said
     USD 1000).
   - **The crank block:** its top recess plate dropped (seven plates), the rod 1.5 mm over the
-    end screw's and the tie's heads (the stack's tolerance had left 0.33 mm), 0.6 mm of play
-    on the crankpin, 10.3 mm sockets; the crankpin's jam SF 2.0.
+    end screw's and the tie's heads (the stack's tolerance had left 0.33 mm), 10.3 mm sockets;
+    the crankpin's jam SF 2.0. Its play stays 0.3 mm: its washer keeps the rod off the tie
+    rods' screw heads under the cradle link, 0.43 mm over it (more room there forced a gap
+    that widened pin E's span past jam SF 1); the rod's spacer is sanded, never shimmed.
   - **The base plate's bolts:** M6 carriage bolts in square holes (Bolt Depot 18219): under
     the assembled cradle nothing can hold a screw's head.
   - **Verify rates a cradle's joints** at its own statics (`strength.PER_JOINT`): B fails it.
