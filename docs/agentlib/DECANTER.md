@@ -52,10 +52,10 @@ stops there:
 
 | what | value | why |
 |---|---|---|
-| bottles | 1.5 L magnum to 3 L (double magnum, jeroboam) | the user, 2026-10-09 |
-| bottle diameter | 99–141 mm | Bordeaux magnum 99, Burgundy ~106, Champagne magnum 114.5, 3 L Bordeaux 120.6–139, Champagne jeroboam 140.8 |
-| bottle length | 356–470 mm | magnum 356–404, 3 L 380–470 |
-| full mass | 2.4–5.9 kg | glass 0.9–2.9 kg plus the wine |
+| bottles | a 750 ml to a 3 L (double magnum, jeroboam) | the user, 2026-10-09 (magnum and 3 L), 2026-10-10 (regular bottles too) |
+| bottle diameter | 74–141 mm | Bordeaux 750 ml 74–77, Bordeaux magnum 99, Burgundy ~106, Champagne magnum 114.5, 3 L Bordeaux 120.6–139, Champagne jeroboam 140.8 |
+| bottle length | 295–470 mm | 750 ml 295–310, magnum 356–404, 3 L 380–470 |
+| full mass | 1.3–5.9 kg | glass 0.5–2.9 kg plus the wine |
 | the mouth | stays put over the whole pour, for either bottle | the decanter stands under it (US7708241) |
 | tilt | −50° (rest, neck up) to +30° (neck down) | the user, 2026-10-10: start nearly upright. At +20° both bottles' shoulders lie over the mouth's lowest lip, so they drain; one crank turn is one decant and back |
 | the mouth's height | 460 mm over the table | at −50° the 3 L's base stop hangs about 430 mm under it |
@@ -95,6 +95,11 @@ stops there:
   and the axis level, so the mouth stays put for either.
   - A magnum lies on two printed TPU adapter liners: 3.5 mm in front, 21 mm at the rear.
     Its shoulder rests on the stop.
+  - A 750 ml (`cradle.STANDARD`, a Bordeaux, 300 x 76.6 mm) lies on its own two: 4 mm in
+    front, ending at its shoulder (its neck is 5 mm shorter than the stop's distance, so the
+    liner's end is its stop), and 32 mm at the rear, closed 1 mm behind its base (it ends
+    inside the rear saddle, where the base stop's cup can't reach). The model draws them
+    lying on the table in front.
   - A 3 L lies in the liners alone, with a printed TPU C-collar, 20 mm long, snapped round
     its neck against the stop.
   - The model draws the magnum on its adapters, and the 3 L's collar lying on the table.

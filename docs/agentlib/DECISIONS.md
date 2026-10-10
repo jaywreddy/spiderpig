@@ -633,3 +633,17 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/materials.py`, `spiderpig/cradle_report.py`, `tests/test_cradle.py`,
   `tests/test_mechanisms.py`. Only B's own code and data change: the walkers are
   untouched.
+
+### 2026-10-10: regular 750 ml bottles too; a minimal gearbox mount (user)
+
+- **What:** the cradles take a 750 ml bottle as well (`cradle.STANDARD`, a Bordeaux, 300 x
+  76.6 mm): its front adapter liner ends at its shoulder, the stop for a neck shorter than
+  `cradle.STOP_X`; its rear one is closed behind its base, which ends inside the rear
+  saddle (`cradle.adapter`, `_adapter`). The gearbox sits on its small riser discs, with
+  no guard flange (the user: "the worm gear attachment is still a big disk").
+- **Kept, the user's answers:** the 3 L and the −50° rest, so the mouth stays near 460 mm
+  (the 3 L's length hangs below the mouth at rest); B, now the main design, is slimmed
+  around them (its footprint and stack), not lowered by dropping a bottle.
+- **Where:** `spiderpig/construction/{cradle,handcrank}.py`, `spiderpig/cradle_report.py`
+  (every bottle's outline for the cradle page), `viewer/src/decant/pour.ts` (a bottle
+  picker), `tests/test_cradle.py`.

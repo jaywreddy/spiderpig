@@ -38,6 +38,16 @@ interface PourMotion extends CradleMotion {
   room?: [number, number][];
   /** the room once the cradle is past -20° (the pour), the same form */
   room_pouring?: [number, number][];
+  /** every bottle size the cradle takes (the 750 ml, the magnum, the 3 L) */
+  bottles?: { key: string; name: string; outline: [number, number][] }[];
+}
+
+/** The label's size line for a bottle's name ("1.5 L Bordeaux magnum": MAGNUM · 1,5 L). */
+function sizeLine(name: string): string {
+  const n = name.toLowerCase();
+  if (n.includes('3 l')) return 'JÉROBOAM · 3 L';
+  if (n.includes('1.5 l') || n.includes('magnum')) return 'MAGNUM · 1,5 L';
+  return '75 cl';
 }
 
 export interface Pour {
@@ -49,6 +59,8 @@ export interface Pour {
   setRoom(room: [number, number][], pouring: [number, number][]): void;
   /** Show or hide the vessel, the wine and the stream (the flat pack hides them). */
   setVisible(v: boolean): void;
+  /** Put another bottle size in the cradle (``motion.bottles``' ``key``). */
+  setBottle(key: string): void;
 }
 
 const ULLAGE_MM = 60;
@@ -107,7 +119,7 @@ function bottleOutside(outline: readonly (readonly [number, number])[]): Profile
 }
 
 /** A paper label round the bottle's upper side (the label up, as a sommelier pours). */
-function labelMesh(radius: number, s0: number, s1: number): THREE.Mesh {
+function labelMesh(radius: number, s0: number, s1: number, size = 'MAGNUM · 1,5 L'): THREE.Mesh {
   const cv = document.createElement('canvas');
   cv.width = 512; cv.height = 512;
   const ctx = cv.getContext('2d')!;
@@ -129,7 +141,7 @@ function labelMesh(radius: number, s0: number, s1: number): THREE.Mesh {
   ctx.font = 'bold 44px Georgia, serif';
   ctx.fillText('2019', 256, 395);
   ctx.font = '22px Georgia, serif';
-  ctx.fillText('MAGNUM · 1,5 L', 256, 445);
+  ctx.fillText(size, 256, 445);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   // a cylinder patch: ±60° about +y (the cradle frame's "up" at rest), s0..s1 along x
@@ -289,12 +301,16 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
   printSel.value = look.printColor;
   const pickRow = el('label', 'pick');
   pickRow.append(el('span', 'k', 'Pour into'), pick);
+  const bottlePick = el('select');
+  bottlePick.title = 'The bottle in the cradle';
+  const bottleRow = el('label', 'pick');
+  bottleRow.append(el('span', 'k', 'Bottle'), bottlePick);
   const printRow = el('label', 'pick');
   printRow.append(el('span', 'k', 'Prints'), printSel);
   const watch = el('button', 'watch', 'Watch the pour');
   watch.title = 'Frame the camera on the mouth and the vessel (from the mouth’s side)';
   printRow.appendChild(watch);
-  panel.append(pickRow, facts, riserRow, gapRow, pourRow, bar, keptRow, printRow);
+  panel.append(bottleRow, pickRow, facts, riserRow, gapRow, pourRow, bar, keptRow, printRow);
   if (look.quality === 'low') panel.append(el('div', 'note', 'simplified glass (software GPU): ?quality=high for refraction'));
   // in the right-hand column under the readouts if the page has one, else floating
   const hud = document.getElementById('hud');
@@ -608,30 +624,17 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     bottle.material = hidden;                    // drawn again below, as glass round the wine
     bottle.castShadow = false;
 
-    // the bottle, the wine
-    const outside = bottleOutside(m.bottle.outline);
-    mouthOuter = outside[0]![1];
-    inside = bottleInside(m.bottle.outline);
-    wineProfile = inset(inside, WINE_INSET);
-    fill = startingFill(inside, nominalVolume(m.bottle.name, 750), ULLAGE_MM);
-    const glass = new THREE.Mesh(glassSolid(outside, inside, 'x', 96, 'end'), look.materials.glassGreen);
-    glass.castShadow = true;
-    glass.renderOrder = 2;
-    glass.name = 'bottle_glass';
-    frame.add(glass);
-    const body = Math.max(...outside.map(([, r]) => r));
-    const sEnd = outside[outside.length - 1]![0];
-    frame.add(labelMesh(body + 0.35, sEnd - 175, sEnd - 45));
-    wineBody = new THREE.Mesh(solid(wineProfile, 'x', 72), wineClipped);
-    wineBody.name = 'wine';
-    wineTop = new THREE.Mesh(new THREE.BufferGeometry(), topMat);
-    wineTop.name = 'wine_surface';
-    frame.add(wineBody, wineTop);
-
-    // what it keeps over the swing, from rest
-    const tilts: number[] = [];
-    for (let k = 0; k < m.n; k++) tilts.push(m.tilt_deg[(m.rest + k) % m.n]!);
-    kept = keptFromRest(inside, tilts, fill);
+    bottlePick.replaceChildren();
+    for (const b of (m as PourMotion).bottles ?? []) {
+      const o = el('option', '', b.name);
+      o.value = b.key;
+      bottlePick.appendChild(o);
+    }
+    bottleRow.hidden = !bottlePick.options.length;
+    const wanted = (m as PourMotion).bottles?.find((b) => b.key === params.get('bottle'));
+    if (wanted) m.bottle = { name: wanted.name, outline: wanted.outline };
+    bottlePick.value = (m as PourMotion).bottles?.find((b) => b.name === m.bottle.name)?.key ?? '';
+    buildBottle(m);
 
     // the vessel: under the mouth (posed at full tilt), on the table
     l.action.time = fractionAtTurns(m, m.turns_to_full) * l.clipDuration;
@@ -682,6 +685,7 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     stand = null; vesselWine = null; stream = null; gapLine = null;
   }
 
+  bottlePick.addEventListener('change', () => setBottle(bottlePick.value));
   pick.addEventListener('change', () => {
     vessel = VESSELS.find((v) => v.key === pick.value) ?? vessel;
     if (!riserByHand) setRiser(defaultRiser());
@@ -704,6 +708,54 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     if (watchPending && frame) { watchPending = false; framePour(); }
   }
 
+  /** The bottle drawn round the wine (``m.bottle``), its wine full, and what it keeps
+   * over the swing; again when the bottle's size changes (:func:`setBottle`). */
+  function buildBottle(m: CradleMotion): void {
+    if (!frame) return;
+    for (const o of [...frame.children]) {
+      frame.remove(o);
+      (o as THREE.Mesh).geometry?.dispose();
+    }
+    const outside = bottleOutside(m.bottle.outline);
+    mouthOuter = outside[0]![1];
+    inside = bottleInside(m.bottle.outline);
+    wineProfile = inset(inside, WINE_INSET);
+    fill = startingFill(inside, nominalVolume(m.bottle.name, 750), ULLAGE_MM);
+    const glass = new THREE.Mesh(glassSolid(outside, inside, 'x', 96, 'end'), look.materials.glassGreen);
+    glass.castShadow = true;
+    glass.renderOrder = 2;
+    glass.name = 'bottle_glass';
+    frame.add(glass);
+    const body = Math.max(...outside.map(([, r]) => r));
+    const sEnd = outside[outside.length - 1]![0];
+    const span = Math.min(130, sEnd * 0.45);
+    frame.add(labelMesh(body + 0.35, sEnd - span - 45, sEnd - 45, sizeLine(m.bottle.name)));
+    wineBody = new THREE.Mesh(solid(wineProfile, 'x', 72), wineClipped);
+    wineBody.name = 'wine';
+    wineTop = new THREE.Mesh(new THREE.BufferGeometry(), topMat);
+    wineTop.name = 'wine_surface';
+    frame.add(wineBody, wineTop);
+    const tilts: number[] = [];
+    for (let k = 0; k < m.n; k++) tilts.push(m.tilt_deg[(m.rest + k) % m.n]!);
+    kept = keptFromRest(inside, tilts, fill);
+    // the magnum's adapter liners only under a magnum
+    const magnum = m.bottle.name.toLowerCase().includes('magnum');
+    for (const n of ['front_saddle_magnum_liner', 'rear_saddle_magnum_liner']) {
+      const o = loaded?.root.getObjectByName(n);
+      if (o) o.visible = magnum;
+    }
+  }
+
+  /** Swap the bottle in the cradle (``key`` one of ``motion.bottles``). */
+  function setBottle(key: string): void {
+    const b = motion?.bottles?.find((x) => x.key === key);
+    if (!motion || !b) return;
+    motion.bottle = { name: b.name, outline: b.outline };
+    buildBottle(motion);
+    pose(lastF);
+    onChange();
+  }
+
   function setRoom(room: [number, number][], pouring: [number, number][]): void {
     if (!motion) return;
     motion.room = room;
@@ -720,5 +772,5 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     onChange();
   }
 
-  return { look, attach, detach, update, setRoom, setVisible };
+  return { look, attach, detach, update, setRoom, setVisible, setBottle };
 }
