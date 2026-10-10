@@ -485,7 +485,8 @@ def joint_rows(config: BuildConfig, rider: str, joints, forces, jam_f) -> list[d
 def loads(config: BuildConfig, store=None) -> dict:
     """The joint loads :mod:`spiderpig.strength` rates a cradle at (what
     :func:`strength.design_loads` returns for one: the audit's, ``explain``'s and verify's
-    pin and plate rows): a sealed full 3 L bottle's walking, the gearbox's rating jammed."""
+    pin and plate rows): a sealed full 3 L bottle's walking, a firm push at the grip
+    jammed (:func:`jam_nm`)."""
     tmpl = template_for(config)
     design = design_side(tmpl, config)
     mech = fabricate(tmpl, config, 1.0, store=store)
@@ -499,7 +500,8 @@ def loads(config: BuildConfig, store=None) -> dict:
 
 
 def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
-    """:func:`joint_rows` as :func:`strength.check`'s loads document (source ``sim``)."""
+    """:func:`joint_rows` as :func:`strength.check`'s loads document (source ``statics``:
+    per joint, as a sim's)."""
     lk = config.lk
     ground = set(lk.frame)
     joints = []
@@ -509,7 +511,7 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
                        "frame": r["joint"] in ground, "links": bodies,
                        "walk": {"n": r["bottle_n"], "patterns": None},
                        "jam": {"n": r["jam_n"], "patterns": None}})
-    return {"source": "sim", "note": "a cradle's: a sealed full 3 L bottle (walk), a firm "
+    return {"source": "statics", "note": "a cradle's: a sealed full 3 L bottle (walk), a firm "
             f"push at the grip on a blocked cradle ({JAM_HAND_N:g} N: {jam_nm():g} N·m at "
             "the crank, jam); cradle_report",
             "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
@@ -520,7 +522,7 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
 
 def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float) -> dict:
     """The pins and link plates rated by :func:`spiderpig.strength.check` at the cradle's
-    loads: "walk" a sealed full 3 L bottle's, "jam" the gearbox's rated torque on a blocked
+    loads: "walk" a sealed full 3 L bottle's, "jam" a firm push at the grip on a blocked
     cradle (per side, as :func:`report` shares them)."""
     from spiderpig import strength
 

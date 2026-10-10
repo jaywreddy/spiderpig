@@ -23,6 +23,7 @@ import type { LoadedScene } from '../loader';
 import { followScale, type Stage } from '../scene';
 import { isCompact } from '../layout';
 import { evaluate, parseDrive, straightWalk, type DriveData, type WalkJson } from './model';
+import { loadMode } from './mode';
 import { Input, Sim, type Sample, type Scheme } from './sim';
 import { PhysicsLink, type Steering } from './physics';
 import { DriveView, bodyMatrix, sideActions } from './view';
@@ -275,11 +276,10 @@ export function createDrive(host: DriveHost) {
       const side = (st.side = sideActions(l.mixer, l.clip, l.walker));
       saved = { p: l.walker.position.clone(), q: l.walker.quaternion.clone() };
       // a product (a decanting cradle) is turned by hand, not driven: no drive panel or pad
-      const product = Boolean(l.root.userData.product);
-      gui.show(!product);
-      if (pad) pad.style.display = product ? 'none' : '';
-      const usable = side.usable && !product;     // a product has no walk to drive
-      const wantPhysics = (ph.on || ph.wanted) && !product;
+      const { product, panel, usable, wantPhysics } = loadMode(
+        l.root.userData, side.usable, ph.on, ph.wanted);
+      gui.show(panel);
+      if (pad) pad.style.display = panel ? '' : 'none';
       // The session, live or still building, is the previous glb's: off, through the one off path
       // (a connect in flight rejects with null and setPhysics's loop reconnects for this one).
       if (ph.on) ph.physicsOff();

@@ -392,7 +392,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     rows += _cut_rule_rows(br.cut_rules or api.cut_rules_of(mech, cfg.sheet), rep)
 
     # -- joint strength -----------------------------------------------------------
-    if design.kind == "walker":
+    if design.kind == "walker" or design.config.lk.product:   # (a cradle: its own statics)
         rows += _strength_rows(design, rep, level)
 
     # -- sim (full) --------------------------------------------------------------
@@ -444,8 +444,8 @@ def _strength_rows(design: Design, rep: VerifyReport, level: str) -> list[Row]:
         return [Row("strength.joints", "strength", None, None, True, "estimated", False,
                     f"no loads: {e}")]
     st = strength.check(mech.meta.get("wobble") or {}, mech.meta, design.config, loads)
-    tier = "measured" if loads.get("source") == "sim" else "estimated"
-    own = loads.get("source") in ("sim", "override")
+    tier = "measured" if loads.get("source") in strength.PER_JOINT else "estimated"
+    own = loads.get("source") in (*strength.PER_JOINT, "override")
     sfs = [r["jam"]["safety"] for r in st["rows"] if r.get("jam")]
     errors = [f for f in st["findings"] if f["level"] == "error"]
     warns = [f for f in st["findings"] if f["level"] == "warning"]

@@ -776,8 +776,11 @@ def _base_stop(rear: Saddle, size: BottleSize) -> tuple[Shape3D, Shape3D, list[S
     half = SPINE_W / 2
     flange = Box(SPINE_FLANGE[0], -DESIGN.r - 2.0 - y_bot, SPINE_FLANGE[1]).moved(
         Location((x1 + SPINE_FLANGE[0] / 2, (-DESIGN.r - 2.0 + y_bot) / 2, 0.0)))
-    bar = Box(SPINE_END - x1, y_top - y_bot, 2 * half).moved(
-        Location(((x1 + SPINE_END) / 2, (y_top + y_bot) / 2, 0.0)))
+    r_end = (y_top - y_bot) / 2                      # its end rounded (it comes down low)
+    bar = union([Box(SPINE_END - r_end - x1, y_top - y_bot, 2 * half).moved(
+        Location(((x1 + SPINE_END - r_end) / 2, (y_top + y_bot) / 2, 0.0))),
+        Cylinder(r_end, 2 * half).moved(Location((SPINE_END - r_end, (y_top + y_bot) / 2,
+                                                  0.0)))])
     y_mid = (y_top + y_bot) / 2
     across = (0, 0, 0)                               # a cylinder's axis along z
     holes = [Cylinder(M5_PILOT / 2, half + 1.0, rotation=across).moved(
@@ -821,11 +824,12 @@ def _base_stop(rear: Saddle, size: BottleSize) -> tuple[Shape3D, Shape3D, list[S
 
 SPINE_W, SPINE_H = 30.0, 20.0   # the base stop's printed spine: across, deep
 SPINE_UNDER = 8.0               # its top under a 3 L's body (in the saddles' Vs)
-SPINE_END = JEROBOAM.length + 25.0     # it reaches past the longest bottle's base
+SPINE_END = JEROBOAM.length + 10.0     # it ends at the longest bottle's cup (at rest it comes
+#                                         down to about 40 mm over the base plate)
 SPINE_FLANGE = (6.0, 64.0)      # its flange on the rear saddle's back face: thick, across
 SPINE_SCREW_Z = 22.0            # the flange's screws, into the saddle's V walls under the liner
 SPINE_SCREW = 16.0              # M5 x 16: 10 mm in the saddle
-STOP_HOLES = tuple(float(x) for x in range(340, 481, 10))   # the spine's pilots (cradle x)
+STOP_HOLES = tuple(float(x) for x in range(340, 471, 10))   # the spine's pilots (cradle x)
 CUP_HOLES = (12.0, 17.0)        # the cup's two holes, this far in front of its face
 CUP_LEN, CUP_STOP, CUP_WALL = 25.0, 6.0, 3.0   # its channel, its stop plate, its walls
 CUP_TOP = -30.0                 # the stop's top (cradle y): over both bottles' lower rims
@@ -868,31 +872,42 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     foot = Box(length, wall, height).moved(Location((fx, y_top + wall / 2, sum(zf) / 2)))
     zb = face + sign * (height - 11.0)               # the foot leg's screw
     hole_up = disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1)
-    hole_down = Cylinder(TIE_HOLE / 2, wall + 2, rotation=(90, 0, 0)).moved(
+    hole_down = Cylinder(CARRIAGE[0] / 2 + 0.4, wall + 2, rotation=(90, 0, 0)).moved(
         Location((fx, y_top + wall / 2, zb)))
-    bracket = difference(union([up, foot]), hole_up, hole_down)
+    neck = Cylinder(CARRIAGE_NECK_HOLE / 2, 2 * (CARRIAGE[3] - 3.175), rotation=(90, 0, 0)).moved(
+        Location((fx, y_top, zb)))              # (the bolt's square neck stands this far up)
+    bracket = difference(union([up, foot]), hole_up, hole_down, neck)
     # through the upright and the plate, the nut over the plate's inner face
     l_side = _m5_length(wall + t_frame + M5_NUT[1])
     inner = face - sign * t_frame
     nut_z = sorted((inner, inner - sign * M5_NUT[1]))
     side_screw = _screw((fx, fy), face + sign * wall, sign, l_side)
     side_nut = _nut((fx, fy), *nut_z)
-    # up from under the base plate through the foot, the nut on the foot
-    l_down = _m5_length(wall + 3.175 + M5_NUT[1])
+    # a carriage bolt up from under the base plate (its square neck in the plate's square
+    # hole: it can't turn), through the foot, its nut on the foot from above
+    d, length, head_d, _, head_h = CARRIAGE
     y_under = y_top - 3.175
-    if y_under - M5.head_h < y_top - BASE_TOP_CLEAR:
-        raise ValueError("the base plate's bracket screw heads reach the table")
-    head = Cylinder(M5.head_d / 2, M5.head_h, rotation=(90, 0, 0)).moved(
-        Location((fx, y_under - M5.head_h / 2, zb)))
-    shank = Cylinder(M5.shank_d / 2, l_down, rotation=(90, 0, 0)).moved(
-        Location((fx, y_under + l_down / 2, zb)))
+    if y_under - head_h < y_top - BASE_TOP_CLEAR:
+        raise ValueError("the base plate's carriage bolts' heads reach the table")
+    if 3.175 + wall + 3.2 > length:
+        raise ValueError("the carriage bolt doesn't reach through the foot and its nut")
+    up = (90, 0, 0)
+    head = Cylinder(head_d / 2, head_h, rotation=up).moved(
+        Location((fx, y_under - head_h / 2, zb)))
+    shank = Cylinder(d / 2 * 0.97, length, rotation=up).moved(
+        Location((fx, y_under + length / 2, zb)))
     y_nut = y_top + wall
-    nut = Cylinder(M5_NUT[0] / 2, M5_NUT[1], rotation=(90, 0, 0)).moved(
-        Location((fx, y_nut + M5_NUT[1] / 2, zb))) - Cylinder(
-        2.5, M5_NUT[1] + 2, rotation=(90, 0, 0)).moved(Location((fx, y_nut + M5_NUT[1] / 2,
-                                                                  zb)))
+    nut = Cylinder(5.0, 3.2, rotation=up).moved(Location((fx, y_nut + 1.6, zb))) - Cylinder(
+        d / 2, 5.2, rotation=up).moved(Location((fx, y_nut + 1.6, zb)))
     return bracket, [(side_screw, M5.key(l_side)), (side_nut, "m5_nut"),
-                     (union([head, shank]), M5.key(l_down)), (nut, "m5_nut")], (fx, zb)
+                     (union([head, shank]), "m6_carriage_16"), (nut, "m6_thin_nut")], (fx, zb)
+
+
+CARRIAGE = (6.0, 16.0, 16.55, 4.6, 3.88)   # the base plate's bolts (DIN 603 M6 x 16, Bolt
+#                                            Depot 18219): d, length, head d, neck h, head h
+CARRIAGE_SQUARE = 7.0      # the base plate's square hole for its 6.48 mm neck (SendCutSend
+#                            rounds inside corners 0.8 mm: a 7 mm square clears its corners)
+CARRIAGE_NECK_HOLE = 9.6   # the bracket foot's relief over the neck's 6.48 mm square
 
 
 def _m5_length(grip: float) -> float:
@@ -923,8 +938,8 @@ def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]
     inset = 25.0
     feet = [(x, z) for x in (x0 + inset, x1 - inset) for z in (-BASE_HALF + inset,
                                                                 BASE_HALF - inset)]
-    cuts = [Cylinder(TIE_HOLE / 2, t + 2, rotation=up).moved(Location((x, y_top - t / 2, z)))
-            for x, z in holes]
+    cuts = [Box(CARRIAGE_SQUARE, t + 2, CARRIAGE_SQUARE).moved(Location((x, y_top - t / 2, z)))
+            for x, z in holes]          # the brackets' carriage bolts' square necks
     cuts += [Cylinder(FOOT_STEM / 2 + 0.25, t + 2, rotation=up).moved(
         Location((x, y_top - t / 2, z))) for x, z in feet]
     return difference(plate, notch, *cuts), feet
@@ -1288,16 +1303,17 @@ def assembly(view) -> list:
     base = [n for n in ("base_plate",) if n in view.z]
     feet = view.named(r"foot_boot_\w+")
     brackets = {s: view.named(rf"foot_bracket_[A-Za-z0-9]+{s}(_\w+)?") for s in SIDES_LR}
-    how = ("At each foot a printed bracket outside the outer plate: an M5 button head "
-           "through it and the plate, its nut over the plate's inside (an 8 mm wrench); one "
-           "up from under the base plate through it, its nut on the bracket's foot "
-           "(threadlocker on both).")
+    how = ("At each foot a printed bracket outside the outer plate, over its carriage bolt: "
+           "an M5 button head through the bracket and the plate, its nut over the plate's "
+           "inside (an 8 mm wrench); the carriage bolt's M6 thin nut on the bracket's foot "
+           "(a 10 mm wrench; threadlocker on both).")
     if base or feet or brackets["L"]:
         ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"]), "Base plate",
                       "The TPU feet pushed up into the base plate's corner holes (a twist "
-                      "helps them through), the bracket screws' heads up through it from "
-                      "under. The drive side onto the base plate, its outer plate's rail on "
-                      "it, the notch at the front. " + how, "base"))
+                      "helps them through); the six M6 carriage bolts up through its square "
+                      "holes from under (their necks hold them: nothing to reach under the "
+                      "plate later). The drive side onto the base plate, its outer plate's "
+                      "rail on it, the notch at the front. " + how, "base"))
     if brackets["R"]:
         ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how, "base_R"))
     collars = view.named(r"\w+_collar")
@@ -1326,13 +1342,17 @@ def assembly(view) -> list:
 SIDES_LR = ("L", "R")
 USE_LIMITS = (
     "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
-    "behind the base plate (a 3 L reaches past its rear edge). A decanter fits up to 180 mm "
-    "tall at 260 mm across, 190 mm across up to 200 mm, 95 mm across up to 270 mm (the "
-    "light's clip at rest) and 56 mm across (its neck) up to 310 mm, its mouth 55 mm across "
-    "or more. Never force the handle: if it stiffens, stop and look (the drive holds a firm "
-    "40 N push at the grip against a blocked cradle, no more). Keep your fingers out of the "
-    "drive side's plates while it turns. Uncork at rest, the base stop set, holding the "
-    "neck, a corkscrew's lever lifted straight up.")
+    "behind the base plate (a 3 L reaches past its rear edge); keep the base plate clear "
+    "behind the decanter (at rest the base stop comes down to 40 mm over it). A decanter fits "
+    "up to 180 mm tall at 260 mm across, 190 mm across up to 200 mm, 90 mm across up to 270 "
+    "mm (the light's clip at rest) and 56 mm across (its neck) up to 310 mm, its mouth 55 mm "
+    "across or more. Never force the handle: if it stiffens, stop and look (the drive holds a "
+    "firm 40 N push at the grip against a blocked cradle, no more; if it stays stiff after "
+    "being forced, look for a bent pin between the rod and the cradle link). Keep your "
+    "fingers out of the drive side's plates while it turns. Uncork at rest, the base stop "
+    "set, holding the neck, a corkscrew's lever lifted straight up; then slide the bottle "
+    "forward onto its stop. Lift the cradle by its base plate, never by the hand crank. "
+    "Hand-wash the printed parts (PLA softens at 55 °C).")
 """The guide's use limits (the room it needs: ``docs/agentlib/DECANTER.md``)."""
 
 
@@ -1364,26 +1384,26 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
     """How a cradle's printed parts that don't lie in a layer go on the print bed
     (:func:`build.print_pose`: turns about the global axes, ``tilt`` the cradle's in the
     drawn pose, radians): the saddles, the liners and adapters on an end (the V's section on
-    the bed: no overhang), the light's clip on its flange (its tube upright, round), the
-    base stop's spine on its underside and its cup on its channel's end, the collar on an
-    end, the brackets and the feet as they stand, the hand crank on its arm (its tube
-    up)."""
+    the bed: no overhang), the light's clip on its tube's foot (upright, round), the base
+    stop's spine on its underside and its cup on its channel's end, the collar on an end,
+    the brackets on their L (its corner in every layer), the feet as they stand, the hand
+    crank on its arm (its tube up)."""
     t = -math.degrees(tilt)
     out: dict[str, list[tuple[str, float]]] = {}
     for n in names:
         if n in {s.name for s in SADDLES}:
             out[n] = [("Z", t)]
-        elif n == "base_stop_spine":                # on its underside
+        elif n in ("base_stop_spine", "led_clip"):  # on its underside; on its tube's foot
             out[n] = [("Z", t), ("X", 90.0)]
-        elif n == "led_clip":                       # on its flange, the tube up
-            out[n] = [("Z", t), ("X", -90.0)]
         elif n == "base_stop_cup":                  # on its channel's open end
             out[n] = [("Z", t), ("Y", 90.0)]
         elif n.endswith("_liner"):
             out[n] = [("Z", t), ("Y", -90.0)]
         elif n.endswith("_collar"):
             out[n] = [("X", -90.0)]
-        elif n.startswith(("foot_bracket_", "foot_boot_")) and n.count("_") <= 3:
+        elif n.startswith("foot_bracket_") and n.count("_") <= 2:   # its L on the bed: the
+            out[n] = [("Y", 90.0)]                                   # corner in every layer
+        elif n.startswith("foot_boot_"):
             out[n] = [("X", 90.0)]
         elif n in ("L.handle", "L.handle_grip"):
             out[n] = [("Y", 90.0)]           # (the input shaft along +x: the arm down)

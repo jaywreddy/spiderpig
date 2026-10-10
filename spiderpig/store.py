@@ -83,6 +83,16 @@ import numpy as np
 
 from spiderpig.design import Design, design_id, jsonable, now_iso, spec_hash
 
+
+def _product_of(key: str | None) -> str | None:
+    """The product a linkage builds (a decanting cradle's ``cradle``), or None."""
+    from spiderpig import linkage
+
+    try:
+        return linkage.get(key).product or None if key else None
+    except KeyError:
+        return None
+
 if TYPE_CHECKING:
     from build123d import Shape
 
@@ -548,11 +558,14 @@ class Store:
         res = rec.get("resolved") or {}
         materials = res.get("materials") or {}
         spec = self.read_spec(id) or {}
+        product = _product_of(rec.get("linkage"))
         return {
             "id": id, "kind": rec.get("kind"), "linkage": rec.get("linkage"),
-            "module": rec.get("module"), "sides": rec.get("sides"),
+            "module": rec.get("module"), "sides": rec.get("sides"), "product": product,
             "params": dict((spec.get("linkage") or {}).get("params") or {}),
-            "servo": materials.get("servo"), "sheet": materials.get("sheet"),
+            # (a product, a decanting cradle, is turned by hand: no servo)
+            "servo": "none (a hand crank)" if product else materials.get("servo"),
+            "sheet": materials.get("sheet"),
             "thickness_mm": materials.get("thickness_mm"),
             "constructions": dict(res.get("constructions") or {}),
             "targets": {s: sorted(res[s]) for s in ("motion", "size", "budget") if res.get(s)},

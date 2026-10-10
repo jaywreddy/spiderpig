@@ -126,14 +126,37 @@ CUT_SOURCE = ("an area estimate calibrated to SendCutSend's live quotes of 2026-
 """Where :func:`cut_estimate`'s rates come from (what the BOM and ORDER.md say of it)."""
 
 
-def cut_estimate(key: str, parts: list[tuple[float, int]]) -> float | None:
+CRADLE_CUT_FITS: dict[str, tuple[float, float]] = {
+    "al5052_3p2mm": (12.57, 0.0323), "al5052_4p8mm": (6.83, 0.1187),
+    "al6061_3p2mm": (6.5, 0.05)}
+"""A decanting cradle's cutting (its parts are big: the walkers' per-area rates priced its
+base plate at USD 488 where SendCutSend quotes 91): per sheet, ``(usd a part, usd per cm^2)``
+at one off, :data:`CRADLE_QTY_FACTOR` of that each from two off. Fitted on SendCutSend's
+live quotes of 2026-10-10 for cradle A's eleven files (the round-3 fabrication review):
+0.125 in 5052 the 2442 cm^2 base plate 91.26, a 142 cm^2 link 21.44 (16.62 at two), a 50
+cm^2 disc 10.08; 0.187 in 5052 the 820 cm^2 frame plates 104.23 (74.69 at two), a 59 cm^2
+plate 15.21 (9.84), a 55 cm^2 rod 12.03; 0.125 in 6061 a 25 cm^2 crank plate 7.79-7.99
+(5.67 at three). USD 367.50 in all; the fit says 352."""
+CRADLE_QTY_FACTOR = 0.72
+CRADLE_CUT_SOURCE = ("a fit to SendCutSend's live quotes of 2026-10-10 for this cradle's "
+                     "files (USD 367.50 in all, the fit 352: hardware.bom.CRADLE_CUT_FITS); "
+                     "upload the files for the real quote")
+
+
+def cut_estimate(key: str, parts: list[tuple[float, int]],
+                 fit: tuple[float, float] | None = None) -> float | None:
     """What a service charges to cut ``parts`` (``(area cm^2, qty)`` each) from sheet ``key``,
     the material included: each part ``max(cut_min_usd, cut_usd_cm2 x area)`` (the sheet
     item's rates); ``None`` without them. Calibrated on SendCutSend's per-file live quotes of
     2026-10-08 (:data:`CUT_SOURCE`): in 3 mm acrylic a small part is USD 1.26-1.40 whatever
     its size (1.33 at 4 off), the 93 cm^2 deck plate 6.88; in 5052 0.080-0.090 in the
     plates come to about 0.20 per cm^2, in 6061 0.100 in 0.40, a small one at least 2.20.
-    On the Strider double: acrylic 49.45 (quoted 49.44), aluminium 68.48 (67.70)."""
+    On the Strider double: acrylic 49.45 (quoted 49.44), aluminium 68.48 (67.70). ``fit``:
+    a decanting cradle's sheet (:data:`CRADLE_CUT_FITS`) instead."""
+    if fit is not None:
+        base, per = fit
+        return round(sum(q * (base + per * a) * (CRADLE_QTY_FACTOR if q >= 2 else 1.0)
+                         for a, q in parts), 2)
     d = get(key).dims
     rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
     if rate is None or least is None:
@@ -141,8 +164,10 @@ def cut_estimate(key: str, parts: list[tuple[float, int]]) -> float | None:
     return round(sum(q * max(float(least), float(rate) * a) for a, q in parts), 2)
 
 
-def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
-    """A :class:`CutRow` per service and sheet the laser-cut ``made`` rows are cut from."""
+def cutting_rows(made: list[MadeRow], fits: dict[str, tuple[float, float]] | None = None
+                 ) -> list[CutRow]:
+    """A :class:`CutRow` per service and sheet the laser-cut ``made`` rows are cut from
+    (``fits``: per sheet, a product's own estimate, :data:`CRADLE_CUT_FITS`)."""
     by: dict[str, list[MadeRow]] = {}
     for m in made:
         if m.method == "laser" and m.sheet and cut_by(m.sheet):
@@ -152,7 +177,8 @@ def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
         t_cm = float(get(key).dims.get("thickness", 3.0)) / 10.0
         parts = [(m.volume_cm3 / t_cm, m.qty) for m in rows]
         out.append(CutRow(cut_by(key), key, get(key).name, sum(m.qty for m in rows),
-                          round(sum(a * q for a, q in parts), 1), cut_estimate(key, parts)))
+                          round(sum(a * q for a, q in parts), 1),
+                          cut_estimate(key, parts, (fits or {}).get(key))))
     return sorted(out, key=lambda c: (c.service, c.sheet))
 
 
@@ -263,6 +289,7 @@ class Bom:
     cuts: list[CutList] = field(default_factory=list)   # stock cut to length (the rod pins)
     filaments: dict[str, float] = field(default_factory=dict)   # grams per filament (name)
     cutting: list[CutRow] = field(default_factory=list)   # per service and sheet
+    cut_source: str = CUT_SOURCE        # where the cutting's estimate comes from
 
     @property
     def purchases_usd(self) -> float:
@@ -320,7 +347,7 @@ class Bom:
             for c in self.cutting:
                 w.writerow([f"cut by {c.service}", c.name, c.parts, "", "", c.service, c.sheet,
                             "" if c.usd is None else f"{c.usd:.2f}", "", "",
-                            f"{c.area_cm2:g} cm^2 of parts; {CUT_SOURCE}"])
+                            f"{c.area_cm2:g} cm^2 of parts; {self.cut_source}"])
             for c in self.cuts:
                 for L, q in c.pieces:
                     w.writerow(["cut", c.name, q, "", "", "", "", "", "", f"{L:.1f} mm",
@@ -351,7 +378,7 @@ class Bom:
                       "|---|---|---:|---:|---:|"]
             lines += [f"| {c.service} | {c.name} | {c.parts} | {c.area_cm2:g} | "
                       f"{'' if c.usd is None else f'${c.usd:.2f}'} |" for c in self.cutting]
-            lines += ["", f"The cutting is {CUT_SOURCE}."]
+            lines += ["", f"The cutting is {self.cut_source}."]
         lines += ["", f"Estimated total: **${self.cost_usd:.2f}**: purchases "
                   f"${self.purchases_usd:.2f} (pack prices at the listed vendor) and cutting "
                   f"${self.cutting_usd:.2f}; excludes shipping and the shop supplies on hand."]
@@ -807,9 +834,10 @@ FILAMENT_USE = {TPU_FILAMENT: "the feet's TPU socks",
 CRADLE_FILAMENT_USE = {TPU_FILAMENT: "the TPU liners, adapters, collar and feet"}
 CRADLE_PRINT_NOTE = (
     "Print the saddles, the base stop and the brackets in PLA at 20 % infill with 4 walls (the "
-    "saddles are 154 mm towers: a brim), the hand crank and the light's clip at 40 %, the TPU "
-    "parts at 15-20 %: each STL is posed as it should print. A sparse-infill rear adapter is "
-    "about a third of its 100 % grams.")
+    "saddles are 154 mm towers and the light's clip stands on its tube's foot: a brim), the "
+    "hand crank and the light's clip at 40 %, the crank's sleeve solid (the crank block clamps "
+    "on it), the TPU parts at 15-20 %: each STL is posed as it should print. A sparse-infill "
+    "rear adapter is about a third of its 100 % grams.")
 """A decanting cradle's (:mod:`construction.cradle`)."""
 # a foot's sock; a decanting cradle's liners, its collar, its base plate's feet
 _SOCK = re.compile(r"_sock$|_liner$|_collar$|foot_boot_")
@@ -1155,6 +1183,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     lines: list[BomLine] = []
     made: list[MadeRow] = []
     notes: list[str] = []
+    cradle = bool((mech.meta or {}).get("cradle"))     # a decanting cradle's own estimates
     sheet = mech.meta.get("sheet_name", "sheet")
     filament = filament or mech.meta.get("filament")
     fil_name = _filament_name(filament) if filament else "PLA/PETG"
@@ -1262,4 +1291,5 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                filament=fil_name.split()[0] if filament else "PLA", cuts=cut_list(lines),
                filaments={(_filament_name(f) if f else fil_name): g
                           for f, g in grams.items() if g > 0},
-               cutting=cutting_rows(made))
+               cutting=cutting_rows(made, CRADLE_CUT_FITS if cradle else None),
+               cut_source=CRADLE_CUT_SOURCE if cradle else CUT_SOURCE)

@@ -114,7 +114,8 @@ register(
                 note="30:1 only. 9 mm input with 3 mm keyway; 14 mm bore with 5 mm keyway; "
                      "20 N·m; 1.8 kN radial; backlash 1/2°; in stock. Drawing: productfiles/"
                      "TRM4400/TRM4400_0/Documentation/TRM4400_0Mechanical.pdf. Ships from "
-                     "Calgary (shipping not checked). Page fetched 2026-10-10."),),
+                     "Calgary, Canada: check the shipping, duties and brokerage at checkout "
+                     "(not in the total); page fetched 2026-10-10"),),
          dims={"ratio": 30, "centre_distance": 30.0, "input_d": 9.0, "input_len": 20.0,
                "input_shoulder": 45.0, "bore": 14.0, "pcd": 65.0, "face_thread": "M6x11",
                "spigot_d": 55.0, "width": 58.0, "mass_g": 1200.0},
@@ -138,6 +139,21 @@ register(
            dims={"thread": 6.0, "barrel_d": 8.0, "head_d": 13.5, "head_h": 2.0,
                  "screw_head_h": 1.7, "screw_len": 10.0, "length": float(L)})
       for L, (vid, sku, n, usd) in HARF_CHICAGO_M6.items()),
+    Item("m6_carriage_16", "M6 x 16 carriage bolt (DIN 603), zinc-plated class 4.6", "fastener",
+         (Offer("Bolt Depot", BD + "18219", "18219", price_usd=0.22, verified=True,
+                tiers=((1, 0.22), (100, 0.1721)),
+                note="zinc-plated class 4.6 steel (Bolt Depot has no M5 and no stainless "
+                     "metric carriage bolt); page rendered 2026-10-10"),),
+         dims={"d": 6.0, "length": 16.0, "head_d": 16.55, "head_h": 3.88, "neck": 6.48,
+               "neck_h": 4.6},
+         notes="A decanting cradle's base-plate bolt: its square neck in the base plate's "
+               "square hole holds it while its nut goes on from above (round 3 review: a "
+               "screw's head under the assembled cradle can't be held)."),
+    Item("m6_thin_nut", "M6 thin hex nut (DIN 439, 3.2 mm)", "nut",
+         (Offer("Bolt Depot", BD + "13572", "13572", price_usd=0.10,
+                tiers=((1, 0.10), (100, 0.0641)), verified=True,
+                note="18-8 hex jam nut, 10 AF x 3.2; page rendered 2026-10-10"),),
+         dims={"af": 10.0, "h": 3.2}),
     *(Item(f"m6_bhcs_{n}", f"M6 x {n} button head socket screw (ISO 7380)", "fastener",
            (Offer("Bolt Depot", BD + pn, pn, price_usd=each, verified=True,
                   tiers=((1, each),) + (((100, per100 / 100),) if per100 else ()),

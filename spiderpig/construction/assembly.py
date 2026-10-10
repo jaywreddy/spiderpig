@@ -194,7 +194,9 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 "in the plan's layer order, the gearbox under the plate first: it stands "
                 "the plate up off the bench while the stack goes on. The steel standoffs "
                 "(tie rods, columns, pillars, the crank's) are bare 1018 steel: wipe each "
-                "with light oil before it goes in, and keep the cradle dry."),
+                "with light oil before it goes in, and keep the cradle dry. Break the "
+                "laser-cut edges where hands go (a file or fine sandpaper): the bay side and "
+                "the frame plates' tops."),
     Stage(UNIT, "L", "Drive side: inner plate",
           tags=(("plate", "bay_tie"),),
           text=(("plate", "Lay the drive side's inner plate down, its bay face down."),),
@@ -202,7 +204,9 @@ CRADLE_ORDER: tuple[Stage, ...] = (
     Stage(JOIN, "L", "Drive side: inner plate onto the stack", where="robot",
           tags=(("pillar_screws", "column_screws"),),
           intro="The inner plate onto its stack: the pillar's and the columns' tops into "
-                "it."),
+                "it. Once their screws are tight the cradle link must still swing freely on "
+                "its pillar (its printed parts stop 0.3 mm short of the steel): if it binds, "
+                "sand the spacer under the inner plate."),
     Stage(FINISH, None, "Drive side onto the base plate", where="robot",
           tags=(("base",),), strict=True,
           intro="The drive side stands on the base plate from here on."),
@@ -224,9 +228,10 @@ CRADLE_ORDER: tuple[Stage, ...] = (
                 ("pillar_screws", "column_screws")),
           text=(("plate", "The passive side's inner plate over the pillar's and the "
                           "columns' tops, its bay face to the bay."),),
-          intro="The passive stack slid in along the base plate from outside, its pillar "
-                "up through the cradle link's bore; then what goes over the link, and the "
-                "inner plate."),
+          intro="The passive stack slid in along the base plate from outside, onto the "
+                "cradle link (its pins up through the link's bores); then what goes over "
+                "the link, and the inner plate. With its screws tight, turn the crank "
+                "through a whole pour: both cradle links must swing freely."),
     Stage(FINISH, None, "Passive side onto the base plate", where="robot",
           tags=(("base_R",),), strict=True),
     Stage(FINISH, None, "Hand crank", where="robot", tags=(("handle",),)),

@@ -656,7 +656,9 @@ def get_design(design_id: str) -> dict:
     return {
         "design": d.id, "kind": d.kind, "linkage": design["linkage"], "module": design["module"],
         "sides": 2 if cfg.robot else 1, "mode": mode, "phases_deg": design["phases_deg"],
-        "params": design["proportions"], "servo": cfg.servo, "sheet": cfg.sheet,
+        "product": cfg.lk.product or None,
+        "params": design["proportions"],
+        "servo": "none (a hand crank)" if cfg.lk.product else cfg.servo, "sheet": cfg.sheet,
         "thickness_mm": cfg.thickness,
         "constructions": {"pillar": cfg.pillar, "pin": cfg.pin, "crank": cfg.crank},
         "engine_version": d.engine_version, "store": str(store().root.resolve()),

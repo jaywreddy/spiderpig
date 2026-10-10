@@ -400,6 +400,24 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 
 
 @pytest.mark.slow
+@pytest.mark.api
+def test_verify_rates_a_cradles_joints_at_its_own_loads():
+    """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
+    audit does: A passes, the study B fails on a joint (its jam SF under 1)."""
+    from spiderpig import api
+
+    a = api.verify(api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}},
+                               store=None), "standard")
+    assert a.ok, [f.message for f in a.failures]
+    (joints,) = [r for r in a.rows if r.requirement == "strength.joints"]
+    assert joints.value >= 1.3
+    b = api.verify(api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_rcm"}},
+                               store=None), "standard")
+    assert not b.ok
+    assert "joint_overload" in {f.code for f in b.failures}
+
+
+@pytest.mark.slow
 @pytest.mark.construction
 def test_every_printed_part_fits_a_print_bed_in_its_pose():
     """Each printed part in its print pose (``meta["print_poses"]``, :func:`build.print_pose`)

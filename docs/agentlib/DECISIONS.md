@@ -500,3 +500,28 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/construction/pivots/{standoff,chicago}.py`, `spiderpig/cradle_report.py`,
   `tests/test_cradle.py`. The walker designs are unchanged (identity gate against
   `next-320384d`).
+
+### 2026-10-10: the decanting cradles, review round 3
+
+- **What:** a third round of the three reviews, and these changes to A:
+  - **A product never reuses another engine's plan** (`stages.planning._reuse_plan`): the
+    order files had been built on a stored plan from an older engine, valid but two layers
+    thicker, on which pin E was at jam SF 0.82 (rated 1.34 on its own plan). A cradle plans
+    in seconds, so it re-plans, proven.
+  - **The cutting estimate** for a cradle is a fit to SendCutSend's live quotes for A's files
+    (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50 quoted; the walkers' per-area rates had said
+    USD 1000).
+  - **The crank block:** its top recess plate dropped (seven plates), the rod 1.5 mm over the
+    end screw's and the tie's heads (the stack's tolerance had left 0.33 mm), 0.6 mm of play
+    on the crankpin, 10.3 mm sockets; the crankpin's jam SF 2.0.
+  - **The base plate's bolts:** M6 carriage bolts in square holes (Bolt Depot 18219): under
+    the assembled cradle nothing can hold a screw's head.
+  - **Verify rates a cradle's joints** at its own statics (`strength.PER_JOINT`): B fails it.
+  - The guide's hand-crank and crank-block steps, the light clip's and brackets' print
+    poses, the base stop's spine (shorter, rounded: at rest it comes down to 40 mm over the
+    base plate), the use limits (90 mm across up to 270 mm; never lift it by the crank).
+  - Tried and dropped: pin E's links in adjacent layers (jam SF 1.9): no plan has them.
+- **Why:** the reviews' BLOCKER (the stale plan's order files) and MAJORs (the estimate, the
+  guide's text, verify's blind spot).
+- **Where:** as round 2's, with `spiderpig/stages/planning.py`, `spiderpig/verify.py`,
+  `spiderpig/hardware/{bom,order,cradle_catalog}.py`. The walker designs are unchanged.

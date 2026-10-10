@@ -81,8 +81,9 @@ stops there:
     button head through the cup into a pilot of the spine's row sets it, in 5 mm steps.
     - At rest the bottle lies 25° nose up, and only the liners' friction held it: a
       corkscrew's push of 6-13 N slid it back off the pivot (the mechanical review).
-    - If the drive ever let go, the cradle would swing back onto the spine's end on the base
-      plate, about 6° past rest, the bottle held in it.
+    - It is a stop at rest, not a backstop: the spine is printed, and a swing of the loaded
+      box into the base plate from more than about 10° past rest would break it. At rest
+      its rounded end comes down to about 40 mm over the base plate (keep it clear there).
 - **The bottles** (`cradle.adapter`, `cradle.seat`): both lie with the mouth on the pivot
   and the axis level, so the mouth stays put for either.
   - A magnum lies on two printed TPU adapter liners: 3.5 mm in front, 21 mm at the rear.
@@ -97,22 +98,24 @@ stops there:
     button heads into its tapped face holes.
   - **Holding:** its static efficiency at 30:1 is 0.39, under the 0.5 that the makers'
     catalogues give for static irreversibility. So the cradle holds any angle when let go.
-  - **The crank block:** eight 0.125 in 6061 plates, each the arm's whole outline, stacked
+  - **The crank block:** seven 0.125 in 6061 plates, each the arm's whole outline, stacked
     on the stock 14 mm keyed output shaft (Phidgets TRM4004_0, modelled with its collar and
     key).
-    - The lowest three are keyed, all on the key's straight flanks: the shaft's keyseat is
-      end-milled, so the key's ends are round (the fabrication review).
-    - The next three are bored round the shaft, and the top two lie over its end: an M6
-      button head through the one under the top plate into the shaft's end tap, its head in
-      the top plate's hole.
+    - Every plate round the shaft is keyed, the lowest three on the key's straight flanks:
+      the shaft's keyseat is end-milled, so the key's ends are round (the fabrication
+      review).
+    - The top plate lies over the shaft's end: an M6 button head through it into the
+      shaft's end tap, to 3 N·m (it clamps the block on the printed sleeve).
     - A NETRF10 through the block at 47 mm (`handcrank.TIE_R`), screwed at both ends, makes
       the plates one rigid block and clamps them, its screw head and wide washer clear of
       the riser screws.
   - **Crankpin:** a NETRF10 standing in the block from its lowest plate (an M5 up through
-    it) through the rod, an M5 and a wide washer on its end over the rod. The rod rides
-    just over the block, so the rod's force is 5.5 mm off the crankpin's socket. (Before,
-    the arm sat on the key and the rod 21 mm over it: an ISO 7379 crankpin's M8 thread was
-    a cantilever that long, rated at SF 1.0-1.25 once its yield and preload were right.)
+    it) through the rod, an M5 and a wide washer on its end over the rod, 0.6 mm of play
+    (a printed spacer under the rod, sanded on the bench, takes the plates' tolerance). The
+    rod rides 1.5 mm over the block's screw heads, its force 8.7 mm off the crankpin's
+    socket. (Before, the arm sat on the key and the rod 21 mm over it: an ISO 7379
+    crankpin's M8 thread was a cantilever that long, rated at SF 1.0-1.25 once its yield
+    and preload were right.)
   - **Hand crank:** a printed offset crank on the gearbox's 9 mm input shaft.
     - Its hub is keyed on the shaft, with an M3 set screw on the key.
     - A 100 mm tube carries the 60 mm arm out to where no moving part of the stack ever
@@ -156,7 +159,9 @@ stops there:
   (`cradle.BASE_HALF`: the stand then takes a 30 N push at a bottle's top over its whole
   swing, where 400 mm took 18 N).
   - Both outer plates' rails bolt onto it with printed L-brackets: an M5 screw and nut
-    through each leg, the down one's head under the plate in the feet's clearance.
+    through the upright and the outer plate, an M6 carriage bolt up through the base plate
+    and the foot (its square neck in a square hole, so its nut goes on from above: nothing
+    to reach under the plate).
   - A U-notch from its front edge takes the decanter, slid in on the table; the notch's
     round end locates it under the mouth.
   - Four printed TPU feet snap into its corner holes (a cone and a bore up the stem).
@@ -182,9 +187,12 @@ worm at a hand's speed (`cradle_report.ETA_HAND`, 0.5): 36 N·m at the crank
 - It is not counted within 30° of crank round either toggle, where a blocked crank-rocker's
   forces grow without bound. There, only clearance protects: the decanter's lip and
   anything under the cradle.
-- What A holds there: the crankpin SF 3.1, the keyed plates 1.6, the rod's buckling 1.9,
+- What A holds there: the crankpin SF 2.0, the keyed plates 1.6, the rod's buckling 1.9,
   the pillars and plates 2.9 and more, pin E (the M6 Chicago barrel) 1.34. Pin E yields
-  at about 54 N at the grip.
+  first, at about 54 N at the grip: its stainless barrel bends (the worm still holds).
+- The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
+  lower (a stale plan's put it at 0.82). A product is never served a plan from another
+  engine version (`stages.planning._reuse_plan`): it re-plans, proven thinnest.
 
 Every joint on both sides is rated at the full planar load (`cradle_report.SHARE` = 1),
 not a share of it. The rod drives one side, whose pivots carry half the weight plus the
@@ -259,9 +267,9 @@ The assembly guide's order is `construction.assembly.CRADLE_ORDER`:
    the base stop set, then decanting.
 
 Things to know before cutting and on the bench:
-- **Get a live SendCutSend quote** (upload the DXFs) before trusting the BOM's cutting
-  figure. It is an area estimate calibrated on the walkers' small parts, and it runs high
-  on large plates such as the frames and the base plate.
+- **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit to
+  the live quotes of 2026-10-10 for A's files (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50
+  then); the walkers' per-area rates had priced the base plate alone at USD 488.
 - **Measure the gearbox** when it arrives: the output face's spigot (2.5 mm is drawn; under
   2 mm, put an M6 washer under each riser screw's head) and where the output shaft's key
   sits.
@@ -275,10 +283,12 @@ Things to know before cutting and on the bench:
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's last step):
   - 800 mm of headroom: a 3 L's base at full tilt reaches 775 mm over the table.
   - 50 mm behind the base plate: a 3 L reaches 35 mm past its rear edge.
-  - A decanter fits up to 180 mm tall at 260 mm across, 190 mm across up to 200 mm, 95 mm
+  - A decanter fits up to 180 mm tall at 260 mm across, 190 mm across up to 200 mm, 90 mm
     across up to 270 mm (the light's clip at rest), and 56 mm across (its neck) up to
     310 mm, its mouth 55 mm across or more. It stands under the mouth's centre
     (`cradle.DECANTER_X`), where the pour lands from about 15 mm in front to 16 mm behind.
+- **Keep the base plate clear behind the decanter:** at rest the base stop comes down to
+  about 40 mm over it.
 - **Never force the crank.** If it stiffens, something is in the way: the drive holds a
   40 N push at the grip, and near either end of travel the cradle's force grows without
   bound. Keep fingers out of the drive side while it turns.

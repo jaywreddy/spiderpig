@@ -152,10 +152,15 @@ def _stem(name: str) -> str:
     return re.sub(r"_leg\d+$", "", name.split(":", 1)[-1])
 
 
+PER_JOINT = ("sim", "statics")
+"""The loads' sources that carry each joint's own load: MuJoCo's (a walker's), a decanting
+cradle's quasi-static planar solve (:func:`spiderpig.cradle_report.loads`)."""
+
+
 def joint_loads(name: str, note: dict, loads: dict) -> dict:
     """``name``'s walking and jam load and patterns: its own sim joint (same name stem,
     most links shared), else the uniform ones (``basis`` says which)."""
-    if loads.get("source") == "sim" and loads.get("joints"):
+    if loads.get("source") in PER_JOINT and loads.get("joints"):
         links = {e["link"] for e in note["links"]}
         pillar = name.startswith("pillar:")
         cands = [j for j in loads["joints"] if j["stem"] == _stem(name) and not j["crank"]
@@ -165,10 +170,10 @@ def joint_loads(name: str, note: dict, loads: dict) -> dict:
             return {"walk_n": best["walk"]["n"], "jam_n": best["jam"]["n"],
                     "walk_patterns": best["walk"]["patterns"] or None,
                     "jam_patterns": best["jam"]["patterns"] or None,
-                    "basis": "sim"}
+                    "basis": loads["source"]}
         return {"walk_n": loads["walk_n"], "jam_n": loads["jam_n"], "walk_patterns": None,
                 "jam_patterns": None,
-                "basis": "sim, the design's largest (no sim joint matched)"}
+                "basis": f"{loads['source']}, the design's largest (no joint matched)"}
     return {"walk_n": loads.get("walk_n", 0.0), "jam_n": loads.get("jam_n", 0.0),
             "walk_patterns": None, "jam_patterns": None, "basis": loads.get("source", "")}
 
@@ -248,7 +253,7 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
 
     joints = loads.get("joints") or []
-    if loads.get("source") != "sim" or not joints:
+    if loads.get("source") not in PER_JOINT or not joints:
         return []
     lk = lk_mod.get(config.linkage)
     pts = lk.solve(params=dict(config.proportions) or None).joints_at(0.0)
@@ -417,12 +422,9 @@ def fixes(row: dict, note: dict | None, loads: dict, config: BuildConfig) -> lis
         f = row["factor"]
         cap = min(row["capacity_nm"].values())
         lim = cap / (JAM_WARN * f)
-        if config.lk.product:       # a hand on a gearbox: its rating is the jam case
-            return [f"never force the hand crank against a blocked cradle: the jam case is "
-                    f"the gearbox's rated {row['jam']['torque_nm']:g} N·m "
-                    f"(config.PRODUCT_JAM_NM), and jam SF {JAM_WARN:g} is {lim:.2f} N·m or "
-                    "less" if row.get("jam") else
-                    f"never force the hand crank past {lim:.2f} N·m"]
+        if config.lk.product:       # a hand on a gearbox: a firm push is the jam case
+            return [_hand_fix(row["jam"]["torque_nm"], lim) if row.get("jam") else
+                    f"never force the hand crank past {lim:.2f} N·m at the crank"]
         out.append(f"set the servo's torque limit to {lim:.2f} N·m or less (jam SF "
                    f"{JAM_WARN:g}; now {row['jam']['torque_nm']:g})" if row.get("jam") else
                    f"keep the servo's torque limit under {lim:.2f} N·m")
@@ -511,10 +513,19 @@ def _limit_fix(limit: float, jam_sf: float, config: BuildConfig, why: str = "") 
     it."""
     to = limit * jam_sf / JAM_WARN
     if config.lk.product:
-        return (f"never force the hand crank against a blocked cradle: jam SF {JAM_WARN:g} is "
-                f"{to:.2f} N·m or less at the crank (the jam case is the gearbox's rated "
-                f"{limit:g} N·m)")
+        return _hand_fix(limit, to)
     return f"a servo torque limit of {to:.2f} N·m (now {limit:g}{why}) for jam SF {JAM_WARN:g}"
+
+
+def _hand_fix(jam_nm: float, to: float) -> str:
+    """A product's fix in the hand's terms: the push at its crank's grip under which the row
+    keeps jam SF :data:`JAM_WARN` (the jam case, ``jam_nm`` at the crank, is
+    :data:`cradle_report.JAM_HAND_N` there)."""
+    from spiderpig.cradle_report import JAM_HAND_N
+
+    return (f"never force the hand crank against a blocked cradle: jam SF {JAM_WARN:g} holds "
+            f"up to about {JAM_HAND_N * to / jam_nm:.0f} N at the grip (the jam case is a firm "
+            f"{JAM_HAND_N:g} N push there: {jam_nm:g} N·m at the crank)")
 
 
 def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) -> list[dict]:

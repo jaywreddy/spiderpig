@@ -567,6 +567,10 @@ def main(argv=None) -> int:
         bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")
+    if is_cradle(config) and not design.plan.optimal:     # (a product plans in seconds)
+        bom.notes.append(f"The layer plan is valid but not proven the thinnest "
+                         f"({design.plan.proof}): its parts may be longer than a fresh plan's; "
+                         "re-plan before ordering (an empty store, or --store elsewhere).")
     paths = bom.write(out)
     print(f"wrote {', '.join(str(p) for p in paths)}: {len(bom.purchased)} items to buy, "
           f"est. ${bom.cost_usd:.2f} ({len(bom.unpriced)} without a listed price)")

@@ -541,9 +541,10 @@ class ChicagoAxle:
             on = ("Each Chicago barrel up through its link, its head under the link (and its "
                   "printed head spacer under that, where it has one); it runs free, unglued.")
             drive = ("Each Chicago screw into its barrel from the cap side once the links "
-                     "above are on (threadlocker), its printed top spacer under the head: "
-                     "hold the barrel's head from below (pliers, tape on the jaws) and snug "
-                     "it until it bottoms; the links must turn freely.")
+                     "above are on (medium threadlocker, 243: the low-strength 222 cures "
+                     "poorly between two stainless parts), its printed top spacer under the "
+                     "head: hold the barrel's head from below (pliers, tape on the jaws) and "
+                     "snug it until it bottoms; the links must turn freely.")
         return [
             Op(STACK, (k_lo, 0, 1), lo, "", on, "layer"),
             # the screw is the barrel's (counted with it); its head spacer is a part of its own

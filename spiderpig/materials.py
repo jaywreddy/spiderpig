@@ -123,7 +123,7 @@ CRADLE_LINK_SHEET = "al5052_3p2mm"
 """A decanting cradle's links (the user, 2026-10-09: aluminium first): 0.125 in 5052."""
 CRADLE_ROD_SHEET = "al5052_4p8mm"
 """A decanting cradle's connecting rod (the link on the crankpin): 0.187 in 5052, so it
-doesn't buckle at the gearbox's rated torque (:mod:`spiderpig.cradle_report`, the jam)."""
+doesn't buckle at the jam case's (:mod:`spiderpig.cradle_report`: a firm push at the grip)."""
 
 
 def link_sheets(config) -> dict[str, str]:

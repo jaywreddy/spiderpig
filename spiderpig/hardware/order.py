@@ -100,6 +100,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
             continue
         carts[r.vendor or "(no vendor)"].append(r)
     on_hand = [r for r in bom.purchased if r.key in ON_HAND]
+    source = getattr(bom, "cut_source", CUT_SOURCE)
     lines = [f"# Order list{': ' + title if title else ''}", "",
              "Everything to buy, cut and print for this build. Each purchase links the "
              "vendor's product page for the exact part (SKU / part number given); quantities "
@@ -146,7 +147,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
     if cut:
         lines += [f"Cutting (the material included): **≈{_money(sum(cut.values()))}** ("
                   + ", ".join(f"{s} ≈{_money(v)}" for s, v in cut.items())
-                  + f"; {CUT_SOURCE}). **Total ≈{_money(total + sum(cut.values()))}**, "
+                  + f"; {source}). **Total ≈{_money(total + sum(cut.values()))}**, "
                   "before shipping.", ""]
     if on_hand:
         boxes = any(r.key in SERVO_BOX for r in on_hand)
@@ -172,7 +173,7 @@ def order_markdown(bom, laser_rows: list[dict], print_rows: list[dict], title: s
                                          kerf_note(service, kerfs)) if x)
             lines += [note + ".", ""]
             if service in cut:
-                lines += [f"Estimate: ≈{_money(cut[service])} for these parts ({CUT_SOURCE}).",
+                lines += [f"Estimate: ≈{_money(cut[service])} for these parts ({source}).",
                           ""]
             lines += ["| qty | file | material | thickness | size mm | makes |",
                       "|---:|---|---|---:|---|---|"]
@@ -209,7 +210,7 @@ def _item_notes(key: str) -> list[str]:
         return []
     note = (offer.note or "") if offer else ""
     cues = ("measure yours", "measure one", "measure it", "check one", "check it", "buy only",
-            "don't", "minimum order", "made to order")
+            "don't", "minimum order", "made to order", "check the shipping")
     if offer is not None and any(c in note.lower() for c in cues):   # (no offer: no note)
         return [f"**{get(key).name}** ({offer.vendor}): {note}."]
     return []

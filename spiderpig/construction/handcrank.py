@@ -126,13 +126,16 @@ NRV030 = WormBox()
 
 CRANKPIN_D = 10.0       # the crankpin and the block's tie: NETRF10 standoffs (10 mm steel round,
 #                         M5 x 10 deep each end, made to length: hardware.cradle_catalog)
-SOCKET_FIT = 0.1        # the block's holes over them (the standoff is 0/-0.1 mm)
-CRANKPIN_PLAY = 0.3     # the rod's axial play on the crankpin, under its washer
+SOCKET_FIT = 0.3        # the block's holes over them (the standoff is 0/-0.1 mm; a laser's hole
+#                         +-0.13: thirteen of them must pass it)
+CRANKPIN_PLAY = 0.6     # the rod's axial play on the crankpin, under its washer (seven plates'
+#                         +-0.11 mm each lie in that loop: a printed spacer under the rod,
+#                         sanded on the bench, sets it)
 TIE_R = 47.0            # the block's tie standoff, this far out along the arm: its screw head
 #                         and wide washer under the block clear the riser screws' heads (on
 #                         the gearbox's 65 mm PCD) and its hole the crankpin's
-END_RECESS = 11.0       # the top plate's hole over the end screw's 10.5 mm head
-HEADS_OVER = 2.75       # over the block: the tie's M5 head (the end screw's sits in its hole)
+HEADS_OVER = 3.3 + 1.5  # over the block: the end screw's M6 head (the tie's M5 is lower) and
+#                         1.5 mm under the rod (the stack's tolerance: round 3 review)
 GUARD_PAST = 20.0       # the outer plate is solid this far past the crank's sweep (a guard)
 
 
@@ -229,9 +232,9 @@ def arm_z(z0: float, t_frame: float, t_arm: float) -> tuple[float, float]:
 
 
 def block_need(riser: Riser, t: float) -> float:
-    """How high the crank block must reach (side z): past the shaft's end with room, a plate
-    (``t`` thick) for the end screw's head to bear on and the top plate round the head."""
-    return riser.shaft_end + 0.5 + 2 * t
+    """How high the crank block must reach (side z): past the shaft's end with room, and a
+    plate (``t`` thick) over it for the end screw's head to bear on."""
+    return riser.shaft_end + 0.5 + t
 
 
 class HandCrank(Group):
@@ -320,9 +323,11 @@ class HandCrank(Group):
 
         def z_of(L: Layout, k: int) -> float:
             """Layer ``k``'s bottom: the plan's own z, or (while searching, every layer the
-            pitch) the drive's thick layers under it and the pitch a layer over them (no
-            thinner than any layer of the plan: the search's claims are never stricter than
-            the final layout's)."""
+            pitch) the drive's thick layers under it and the pitch a layer over them: a lower
+            bound of the plan's z (a thicker link layer or a clearance gap raises it), so
+            the search may claim more than the plan would; the final layout's claims decide
+            (a plan the search proves thinnest is thinnest among the layouts this estimate
+            admits)."""
             if L.final or L.thick or L.gaps:
                 return L.z(k)[0]
             a1 = arm_z(L.z(0)[0], ctx.sheet_t("frame"), KEYED_PLATES * t)[1]
@@ -398,7 +403,9 @@ class HandCrank(Group):
             while hi < L.top and z_of(L, hi) < head_top - 1e-6:
                 out += both(hi, Disc(pin, over), "crankpin washer and screw")
                 hi += 1
-            if z_of(L, hi) < head_top - 1e-6 and hi >= L.top:
+            if L.final and z_of(L, hi) < head_top - 1e-6 and hi >= L.top:
+                # (only at the plan's own z: a clearance gap under the plate may take it, and
+                # the search's estimate has none, so it would be stricter than the plan)
                 raise Unbuildable(f"the crankpin's screw over {rider} reaches the inner plate")
             out.append(Placed(r, Disc(pin, over), GROUP, "crankpin washer and screw",
                               gap=True))
@@ -500,7 +507,7 @@ class HandCrank(Group):
         t = ctx.sheet_t("crank")
         a0, a1, riser, block_top = self.layout_z(ctx, build.plan.layout)
         zs = [a0 + i * t for i in range(round((block_top - a0) / t))]
-        if zs[-1] - t < riser.shaft_end + 0.3:
+        if zs[-1] < riser.shaft_end + 0.3:
             raise ConstructionError("the crank block's end screw has no plate over the "
                                     "shaft's end to bear on")
         throw = float(np.linalg.norm(mxy - o))
@@ -516,20 +523,16 @@ class HandCrank(Group):
             # the crankpin stands on the lowest plate, the tie runs through all but the top
             pins = [Cut(tuple(mxy), through if i == 0 else socket),
                     Cut(tuple(tie), through if i == len(zs) - 1 else socket)]
-            if z_lo < riser.key[1] - 1e-6:          # over the key
-                at_o = [Cut(tuple(o), box.shaft_d + ARM_BORE_FIT), key_slot]
-            elif z_lo < riser.shaft_end - 1e-6:     # round the shaft
-                at_o = [Cut(tuple(o), box.shaft_d + ARM_BORE_FIT)]
-            elif i == len(zs) - 1:                  # round the end screw's head
-                at_o = [Cut(tuple(o), END_RECESS)]
-            else:                                   # under it: the end screw through
+            if z_lo < riser.shaft_end - 1e-6:       # round the shaft: keyed (the key's
+                at_o = [Cut(tuple(o), box.shaft_d + ARM_BORE_FIT), key_slot]   # end in some)
+            else:                                   # over its end: the end screw through
                 at_o = [Cut(tuple(o), M6.d + 0.6)]
             part = plate([(tuple(o), tuple(mxy), self.web_r(ctx))], z_lo, z_lo + t,
                          [*at_o, *pins], discs=[(tuple(o), self.hub_r(ctx))])
             name = crank if i == 0 else f"{crank}_plate{i}"
             out.bodies.append(hardware(name, part, crank, fab="laser", sheet=ctx.sheet("crank"),
                                        color="#9aa3ad"))
-        seat = zs[-1]                       # the end screw's head on the plate under the top
+        seat = block_top                    # the end screw's head on the top plate
         reach = seat - riser.shaft_end
         end_len = next((L for L in M6.lengths
                         if FACE_DEPTH - 2.0 <= L - reach <= 15.0 - 0.5), None)
@@ -648,53 +651,60 @@ class HandCrank(Group):
         ops = [
             Op(STACK, (-1, -1, "gearbox"), whole("gearbox", "crank_shaft", *discs),
                "Gearbox on its riser",
-               "Measure the gearbox first: its output face's raised spigot (2.5 mm drawn: "
-               "under 2 mm, put an M6 washer under each riser screw's head) and where the "
-               "output shaft's key sits. The output shaft into the gearbox's hollow output "
+               "Measure the gearbox first: its output face's raised spigot ring (2.5 mm drawn: "
+               "under 2 mm, the riser screws reach too deep: an M6 washer under each head, "
+               "from a hardware store) and where the output shaft's key sits. The output "
+               "shaft into the gearbox's hollow output "
                f"from the face's side, collar first against the hub, its {k[0]:g} x {k[1]:g} "
                "key in its seat (the snap ring and washer on its far end); the gearbox on its "
                "back, face up, on a block with a hole for the shaft's far end (it stands about "
-               "6 mm proud); the riser discs on the face, the spigot in the first one's "
-               "bore, every disc's holes over the face's tapped holes.", "gearbox", sub=True),
+               "6 mm proud); the riser disc on the face's raised spigot ring, its holes over "
+               "the face's tapped holes.", "gearbox", sub=True),
             Op(STACK, (-1, 2), whole(*screws), "",
                "The outer plate over the discs, its outside down, the shaft up through its "
                f"bore; the {len(screws)} M6 button heads down through the plate and the "
                "discs into the gearbox's face (threadlocker), tight. The gearbox now "
                "stands the plate up off the bench.", "gearbox_screws"),
             Op(STACK, (HEAD_LAYER, 0), whole("crank_sleeve"), "",
-               "The printed sleeve down over the shaft, its slot over the key, onto the "
-               "shaft's collar.", "layer"),
-            Op(STACK, (ARM_LAYER, 0), whole(arm, "crank_tie", "crankpin",
-                                            "crank_tie_screw_lo", "crankpin_screw_lo"),
+               "The printed sleeve (printed solid: the block clamps on it) down over the "
+               "shaft, its slot over the key, onto the shaft's collar.", "layer"),
+            Op(STACK, (ARM_LAYER, 0), whole(arm, "crank_tie", "crank_tie_washer",
+                                            "crank_tie_screw_lo", "crankpin",
+                                            "crankpin_screw_lo"),
                "Crank block",
-               "On the bench: the two steel standoffs (the short one is the tie, the long one "
-               "the crankpin) stood on the crank's lowest plate (the one with two small "
-               "holes), an M5 button head up through the plate into each (threadlocker), "
-               "tight. That plate down over the shaft, its keyway over the key, the "
-               "standoffs up, onto the sleeve (file a keyway that binds: the key must "
-               "slide).", "layer"),
-            Op(STACK, (ARM_LAYER, 1), whole(*plates, "crank_tie_washer", "crank_tie_screw_hi",
-                                            "crank_end_screw"), "",
-               "The other crank plates down over the shaft and both standoffs in order "
-               "(the keyed ones over the key, the one with the big hole on top); the tie's "
-               "wide washer and M5 button head into its top (threadlocker), tight; the M6 "
-               "button head down into the shaft's end tap (threadlocker), tight: the block "
-               "is one part, clamped on the sleeve. Turn the crank a full turn: nothing "
-               "may touch the outer plate.", "layer"),
+               "On the bench, the crank's lowest plate (keyed, one small hole at its end): "
+               "the long steel standoff (the crankpin) stood on its small hole, an M5 button "
+               "head up through the plate into it (threadlocker), tight; the short one (the "
+               "tie) down through the plate's middle hole to its wide washer, an M5 button "
+               "head up through the washer into it (threadlocker), snug. That plate down over "
+               "the shaft, its keyway over the key, the standoffs up, onto the sleeve (file a "
+               "keyway that binds: the key must slide).", "layer"),
+            Op(STACK, (ARM_LAYER, 1), whole(*plates, "crank_tie_screw_hi", "crank_end_screw"),
+               "",
+               "The other crank plates down over the shaft and both standoffs: the keyed ones, "
+               "the one with a 6.6 mm hole at the shaft on top (its small hole over the tie); "
+               "an M5 button head down through the top plate into the tie (threadlocker), "
+               "tight: it clamps the block; the M6 button head down into the shaft's end tap "
+               "(threadlocker), to 3 N·m (it clamps the block on the printed sleeve: retighten "
+               "it after the first few pours). Turn the crank a full turn: nothing may touch "
+               "the outer plate.", "layer"),
             Op(STACK, (ARM_LAYER, 2), whole("crankpin_spacer"), "",
                "The crankpin's printed spacer down over the crankpin onto the block.",
                "layer"),
             Op(STACK, (k_rod, 2), whole("crankpin_washer", "crankpin_screw_hi"), "",
                "With the rod on the crankpin: the wide washer and the M5 button head into "
-               "the crankpin's top (threadlocker), tight; the rod turns under the washer.",
-               "layer"),
-            Op(FINISH, (2,), whole(*view.named(r"handle(_grip|_grip_screw|_nut|_set_screw)?")),
+               "the crankpin's top (threadlocker), tight. The rod must turn freely under the "
+               "washer with a little end play (about 0.5 mm): if it binds, sand its printed "
+               "spacer down.", "layer"),
+            Op(FINISH, (2,), whole(*view.named(r"handle(_\w+)?")),
                "Hand crank",
-               "The thin nut into the hex pocket in the crank's arm, the grip's shoulder "
-               "screw through the printed grip and the arm into it (threadlocker): the grip "
-               "spins on the shoulder. The crank's hub onto the gearbox's input shaft, its "
-               "keyway over the shaft's 3 mm key (it comes with the gearbox: else a 3 x 3 x "
-               "16 DIN 6885 key), and the M3 set screw down onto the key.", "handle"),
+               "The grip's steel standoff into the socket in the printed crank's arm, an M5 "
+               "button head up through the arm's inner face into it (threadlocker); the "
+               "printed grip over the standoff, the wide washer and an M5 button head on its "
+               "end (threadlocker): the grip spins on the standoff. The crank's hub onto the "
+               "gearbox's input shaft, its keyway over the shaft's 3 mm key (it comes with "
+               "the gearbox: else a 3 x 3 x 16 DIN 6885 key), and the M3 set screw down onto "
+               "the key.", "handle"),
         ]
         ops = [replace(op, pieces=tuple(p for p in op.pieces if p.name in view.z))
                for op in ops]               # (a block that needs no spacer has none)
