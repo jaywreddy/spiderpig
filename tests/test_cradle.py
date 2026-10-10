@@ -1,6 +1,6 @@
 """The decanting cradles (``linkages/decanters.py``, ``construction/cradle.py``,
 ``construction/handcrank.py``, ``cradle_report.py``): the bottle's mouth stands still while
-it tips (A from -25°, where an opened full bottle holds, to +55°; the study B from -10°),
+it tips (A from -25°, where an opened full bottle holds, to +55°; B from -50° to +30°),
 both bottles lie with their mouths on the pivot, both sides plan with the hand crank, every
 part stays in its claims, the whole cradle is clash-free over the swing (the hand crank's
 sweep and a 3 L bottle too), it stands, the hand turns it, the pins hold, the cut files
@@ -21,9 +21,10 @@ from spiderpig.linkages.decanters import TIES
 from tests.tiers import quick
 
 CRADLES = ("decanter_hinge", "decanter_rcm")
-REST = {"decanter_hinge": -25.0, "decanter_rcm": -10.0}
-TRANSMISSION = {"decanter_hinge": 40.0, "decanter_rcm": 30.0}   # least, from a toggle
-HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 90.0}         # a side's stack, mm
+REST = {"decanter_hinge": -25.0, "decanter_rcm": -50.0}
+FULL = {"decanter_hinge": 55.0, "decanter_rcm": 30.0}
+TRANSMISSION = {"decanter_hinge": 40.0, "decanter_rcm": 37.0}   # least, from a toggle
+HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 85.0}         # a side's stack, mm
 
 
 def _tilt(key: str, ts) -> np.ndarray:
@@ -45,7 +46,7 @@ def test_the_mouth_stands_still_while_the_bottle_tips(key):
     assert got.wander_mm < 1e-6
     tilt = _tilt(key, np.linspace(0, 2 * math.pi, 1441))
     assert tilt.min() == pytest.approx(REST[key], abs=0.1)
-    assert tilt.max() == pytest.approx(55.0, abs=0.1)
+    assert tilt.max() == pytest.approx(FULL[key], abs=0.1)
     # every loop closes with room and away from a toggle
     for s in lk.check():
         if s.kind == "closure":
@@ -358,16 +359,29 @@ def test_the_cradle_stands_turns_easily_and_holds():
 
 @pytest.mark.slow
 @pytest.mark.strength
-def test_the_study_b_stands_and_holds_a_bottle():
-    """B, a study (``docs/agentlib/DECANTER.md``): it stands, the hand turns it and every
-    joint holds a sealed full 3 L bottle; its jam case is below A's (the record says)."""
+def test_b_stands_turns_easily_and_holds():
+    """B, the virtual hinge (``docs/agentlib/DECANTER.md``): the mouth still for both
+    bottles, it stands at 25° and takes a 25 N push at the bottle's top (the worst over the
+    swing), the hand turns it with under 25 N, the worm holds within its rating, the rod and
+    the crankpin hold the jam, every pin, pillar and plate holds a sealed full 3 L bottle 2 x
+    over and a firm 40 N push at the grip on a blocked cradle 1.3 x over."""
     from spiderpig.cradle_report import report
 
     r = report(BuildConfig(linkage="decanter_rcm", robot=False), clash_angles=0)
-    assert r["stand"]["worst_tip_deg"] >= 15.0
+    assert r["swing"]["mouth_wander_mm"] < 1e-6
+    assert max(b["mouth_wander_mm"] for b in r["bottles"]) < 0.5
+    assert r["stand"]["worst_tip_deg"] >= 25.0
+    assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
+    assert r["drive"]["irreversible"]
+    assert r["drive"]["gearbox_sf"] >= 1.3
     assert r["drive"]["handle_force_n"] < 25.0
-    walk = [x["walk_sf"] for x in r["strength"]["rows"] if x["walk_sf"] is not None]
-    assert min(walk) >= 2.5
+    assert r["rod"]["sf_jam"] >= 1.5
+    assert r["crankpin"]["sf_jam"] >= 1.5
+    rows = r["strength"]["rows"]
+    walk = [x["walk_sf"] for x in rows if x["walk_sf"] is not None]
+    assert min(walk) >= 2.0, [(x["joint"], x["walk_sf"]) for x in rows]
+    jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
+    assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
 
 
 @pytest.mark.slow
@@ -447,7 +461,7 @@ def test_the_cradle_builds_an_order_without_a_walkers_words(tmp_path):
 @pytest.mark.api
 def test_verify_rates_a_cradles_joints_at_its_own_loads():
     """``api.verify`` rates a cradle's joints at its own statics (cradle_report.loads), as an
-    audit does: A passes, the study B fails on a joint (its jam SF under 1)."""
+    audit does: A and B pass, every joint at jam SF 1.3 or more."""
     from spiderpig import api
 
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}}, store=None)
@@ -462,8 +476,9 @@ def test_verify_rates_a_cradles_joints_at_its_own_loads():
     assert joints.value >= 1.3
     b = api.verify(api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_rcm"}},
                                store=None), "standard")
-    assert not b.ok
-    assert "joint_overload" in {f.code for f in b.failures}
+    assert b.ok, [f.message for f in b.failures]
+    (joints,) = [r for r in b.rows if r.requirement == "strength.joints"]
+    assert joints.value >= 1.3
 
 
 @pytest.mark.slow
@@ -500,7 +515,7 @@ def test_the_cradle_pages_swing_is_the_linkages(key):
 
     m = motion(BuildConfig(linkage=key, robot=False), 72)
     assert m["rest_deg"] == pytest.approx(REST[key], abs=0.5)
-    assert m["full_deg"] == pytest.approx(55.0, abs=0.5)
+    assert m["full_deg"] == pytest.approx(FULL[key], abs=0.5)
     assert m["turns_to_full"] == pytest.approx(m["ratio"] / 2, abs=1.0)
     assert m["mouth_wander_mm"] < 1e-6
     assert len(m["tilt_deg"]) == len(m["points"][m["mouth"]]) == 72
@@ -524,7 +539,7 @@ def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
     cards = client.get("/api/cradles").json()["cradles"]
     assert [c["key"] for c in cards] == list(CRADLES)
     assert {c["key"]: c["verdict"] for c in cards} == {"decanter_hinge": "build",
-                                                        "decanter_rcm": "study"}
+                                                        "decanter_rcm": "build"}
     r = client.get("/api/cradle/decanter_hinge?n=48")
     assert r.status_code == 200
     assert r.json()["n"] == 48

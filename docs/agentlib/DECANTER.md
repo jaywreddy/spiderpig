@@ -8,9 +8,9 @@ Two linkages are built, both from the same parts: the drive, the cradle box, the
 and the light.
 - `decanter_hinge` (A), **the one to build**: the cradle swings on a real hinge at the
   bottle's mouth, from −25° to +55°.
-- `decanter_rcm` (B), **a design study**: the hinge is virtual, a double parallelogram (a
-  remote centre of motion), so no pin sits at the mouth. It rests at −10°, where an opened
-  full bottle pours. Why it stops there is under "B, the study".
+- `decanter_rcm` (B), **to build too**: the hinge is virtual, a double parallelogram (a
+  remote centre of motion), so no pin sits at the mouth. It swings from −50° (rest, an
+  opened full bottle stands in it) to +30°. Its design is under "B, the virtual hinge".
 
 The adversarial reviews of 2026-10-10 (mechanical, fabrication, code) shaped what follows.
 Each finding and its fix is in [DECISIONS.md](DECISIONS.md).
@@ -155,7 +155,8 @@ stops there:
     M5 screws' 5.5 mm holes. In 0.250 in, SendCutSend's least hole would be 6.35 mm.
   - The rod: 0.187 in 5052, so it doesn't buckle.
   - The crank block: 0.125 in 6061 (the keyway's 5.1 mm slot is legal in it).
-  - B's links are all 0.187 in; its levers b3 and b4 are 6061.
+  - B's links are 0.187 in, its arms b2 and b3 and its bar b4 in 6061; its 411 mm rod is
+    0.250 in 5052, alone in its layer.
   - Everything is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`.
 - **The stand** (`cradle.STANDS`).
   - **Outer plate:** a truss outside every moving part's layer: from the hinge G down in
@@ -243,18 +244,77 @@ from spiderpig.cradle_report import report; \
 print(json.dumps(report(BuildConfig(linkage='decanter_hinge', robot=False)), indent=1))"
 ```
 
-## B, the study
+## B, the virtual hinge
 
-B's 80° swing from −25° didn't close. The crank-rocker re-fitted for it needs a 90 mm
-lever (the parallelograms kept off their fold by a `skew` of 35° between the arms and the
-bottle). The jam loads then exceed B's pins (X and Y at SF 0.65), and the rear tie rods
-sweep through B's inner bar O1–O2 at rest.
+B (`decanters.RCM`, refined 2026-10-10) swings −50° to +30°: one crank turn is one decant
+and back, the crank-rocker's toggles the soft stops at both ends. It shares the drive, the
+cradle box, the saddles, the base stop, the base plate and the light with A.
 
-So B keeps its validated −10° to +55° swing, with every shared fix: the drive, the
-saddles, the base plate and the NETRF10s. It stands and holds a sealed full bottle with
-every joint at SF 2.6 or more walking. But at the full load share its jam case falls
-under 1 (pillar O1, pin K, lever b4), and it can't hold an opened full bottle at rest.
-Build A.
+**The mechanism.** Two parallelograms keep the cradle turning about the mouth with nothing
+there:
+- **The pivots** O1 and O2 hang under the mouth on a ray 83° down, 109 and 328 mm from it.
+- **The arms** b3 (O1–J) and b2 (O2–K) are 204 mm long. They swing 23.5° ahead of the
+  bottle (`skew`).
+- **The bar** b4 (X–J–K) translates, and the cradle b6 rides it at X.
+- **The cradle link** b5 (Y–J2) holds the cradle's other pin. J2 lies 108 mm past O1 on
+  the copy arm's own line (`y_across` 0).
+- **The drive:** the crank O sits 480 mm behind and 320 mm under the mouth. A 410.6 mm rod
+  runs from its 90.9 mm crank to the lever on b2 (143 mm, 54.5° off the arm).
+
+**Why it looks this way.** The old B rested at −10°. Its −25° re-fit put the rear tie rods
+through the inner bar O1–O2 and overloaded its pins. Each choice below answers one of those
+or a rule of the build:
+- **The ties never cross the inner bar.** The rear ties ride 292–320 mm from the mouth and
+  never come further round than 72° down. The bar lies at 83°, from 97 mm out (the front
+  ties stop at 85 mm).
+- **The cradle link never sweeps a pivot.** Seen from the cradle, the pivots stay
+  between 33° and 113° below the bottle's axis. b6's members cross the pivots' distances
+  from the mouth only above that sector (X is 23.5° over the axis, the rear ties 21° under
+  it) or in front of the mouth (Y). They pass O1 25 mm off at the closest.
+- **Each pair shares a layer.** Y sits on the copy arm's line, so the bars b4 and b5 never
+  meet. The lever on b2 never reaches b3. The planner finds the old sandwich: the rod, then
+  b2 with b3, then b4 with b5, then the cradle link under the inner plate, every pin across
+  one gap.
+- **The handle is behind everything.** It turns behind the crank, and the crank is the
+  machine's rearmost moving part.
+- **The decanter stands in the bay.** The bay is 260 mm, so the decanter stands between
+  the inner bars and never reaches a side's links.
+- **The gearbox and the jam pull against each other.** A sealed full 3 L peaks where the
+  crank-rocker turns the cradle fastest, near level. So the gearbox wants the two strokes
+  alike, which takes a long rod for its crank.
+  - At a jam the rod's force is worst 30° past the folded toggle: about 36 N·m over the
+    crank times sin(30° (rod − crank)/rod). So the pins want a long crank.
+  - 90.9 mm on 410.6 mm balances the two: the gearbox at SF 1.31, pin P at 1.38.
+  - The rod is 0.250 in so that it doesn't buckle at that length: 1.8 × its jam force.
+
+**What it holds** (`cradle_report.report`, a sealed full 3 L walking, a 40 N push at the
+grip jammed):
+
+| check | B |
+|---|---|
+| swing | −50.0° to +30.0°, the mouth still (0 mm), both bottles' mouths on the pivot |
+| transmission | 37.7° at worst (the rod's); the parallelograms 43.5° and 56.5° |
+| gearbox | 15.25 N·m peak: SF 1.31 on its 20 N·m; 21.7 N at the grip |
+| jam | pin P 1.38, pillar O2 1.46, the crank's keyway 1.64, link b3 1.81, pillar O1 1.88, the rest 2 or more |
+| walking | every joint 7.9 or more; the crank's keyway 3.9 |
+| rod, crankpin | buckling 1.82 × its jam force; the crankpin 2.11 jammed |
+| stand | tips at 31.6° at worst, a push of 37.9 N or more at a bottle's top |
+
+**The stand** (`cradle.STANDS`):
+- **The outer plate** is two triangles on the pivots' bar: O1–O, O2–O and O1–O2. A front
+  leg runs from O2, a rear leg from O, and a rail along the base plate.
+- **The inner plate** is the bar O1–O2 alone, on its two pillars. Nothing crosses the bay.
+- **The base plate** runs from 187 mm in front of the mouth to 640 mm behind it.
+
+**Tried and dropped** (a search over the parameters, each candidate then planned and
+reported; [DECISIONS.md](DECISIONS.md) has the entry):
+- **Pivots in front of the mouth**, a forward ray: the crank lands in front, and the
+  handle turns back through the parallelogram.
+- **Pivots past every tie**, 350 mm out or more: the bar b4 grows past 400 mm, and the walk
+  loads triple.
+- **A short rod**, 300 mm or less in 0.187 in: the rod's jam force stays over 950 N,
+  and the gearbox exceeds its SF 1.3. Rod 376 mm on a 109 mm crank: jam 1.44, gearbox
+  1.17. Rod 405 mm on a 67 mm crank: gearbox 1.33, jam 1.1.
 
 ## Building one
 

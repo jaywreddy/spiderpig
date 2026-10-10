@@ -97,7 +97,7 @@ def decanter_rcm(p):
     """A double-parallelogram remote centre of motion about the mouth L.
 
     Two ground pivots O1, O2 lie on a ray from L (``r1``, ``r2`` along ``ray`` degrees).
-    The rear arm b2 (O2-K, with the rod's pin P on its bell crank) and the copy of it b3
+    The driven arm b2 (O2-K, with the rod's pin P on its bell crank) and the copy of it b3
     (O1-J) stay parallel through the bar b4 (X-J-K), which therefore translates; the
     cradle b6 (X-Y) stays parallel to b3 through b5 (Y-J2, parallel to b4). So the cradle
     turns with the arms and its point at -(O2 - L) from K, the mouth, stands still. The
@@ -152,14 +152,20 @@ def _xy(p):
     return sp.sqrt((p["y_along"] - p["arm"]) ** 2 + p["y_across"] ** 2)
 
 
-RCM = {"crank": R(645, 10), "rod": R(1735, 10), "lever": R(120), "bell": R(30),
-       "arm": R(140), "ray": R(-40), "r1": R(200), "r2": R(330), "lx": R(-450),
-       "ly": R(240), "y_along": R(-50), "y_across": R(-90), "skew": R(0)}
-"""B: a design study, not the one to build (2026-10-10: ``docs/agentlib/DECANTER.md``). It
-rests at -10°, where an opened full 3 L bottle pours: an 80° swing from -25° (A's) puts
-its rear tie rods through its inner bar O1-O2 and its jam loads over its pins (a 90 mm
-lever, ``skew`` 35° to keep its parallelograms off their fold; the study's numbers in
-DECISIONS.md)."""
+RCM = {"crank": R(909, 10), "rod": R(4106, 10), "lever": R(143), "bell": R(109, 2),
+       "arm": R(204), "ray": R(-83), "r1": R(109), "r2": R(328), "lx": R(-480),
+       "ly": R(320), "y_along": R(-108), "y_across": R(0), "skew": R(47, 2)}
+"""B (2026-10-10, refined to build: ``docs/agentlib/DECANTER.md``): -50° (rest, an opened
+full bottle stands in it) to +30°, the crank-rocker's toggles at both. The pivots O1, O2
+hang under the mouth on a ray 83° down, 109 and 328 mm from it: the bar O1-O2 lies off
+every tie rod's arc (the front ties' run 68-85 mm from the mouth, the rear's 292-320 and
+never further round than 72° down), and the cradle link reaches its ties without sweeping
+over a pivot. The arms swing 23.5° ahead of the bottle (``skew``): both parallelograms
+stay 37° or more off their fold. Y lies on the copy arm's line through O1 (``y_across``
+0): the bars b4 and b5 never meet, nor the arms b2 and b3, so each pair shares a layer.
+The crank O is behind and under it all, its handle behind every part. A long rod (411 mm,
+0.250 in, against buckling) keeps both strokes alike, so the gearbox's peak and the rod's
+force at a jam are both held: the crank and the rod balance those two."""
 
 register(Linkage(
     key="decanter_rcm", name="Decanting cradle B: virtual hinge (double parallelogram)",
@@ -173,12 +179,12 @@ register(Linkage(
            "b6": (("X", "Y", "Lc", "Ax", *TIES),
                   (("X", "Y"), ("Y", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "X"), ("X", "Tr1"),
                    ("Tr1", "Tr2")))},
-    labels={"b1": "connecting rod", "b2": "rear arm O2-K (driven at P)",
+    labels={"b1": "connecting rod", "b2": "lower arm O2-K (driven at P)",
             "b3": "copy arm O1-J-J2", "b4": "translating bar X-J-K",
             "b5": "cradle link Y-J2", "b6": "cradle (turns about the mouth Lc)"},
     frame=("O", "O1", "O2"), crank=("O", "M"),
     output=Output("body", "b6", "rotation", ("Lc", "Ax"), still=("Lc", 1e-6)),
     source="https://research.buaa.edu.cn/en/publications/design-of-double-parallelogram-remote-center-of-motion-mechanisms/",
     product="cradle",
-    notes="Eight bars; the cradle tips 65° about a point with nothing there.",
+    notes="Eight bars; the cradle tips 80° about a point with nothing there.",
 ))

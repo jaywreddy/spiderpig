@@ -97,11 +97,12 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
-    # the B cradle (2026-10-10): every link 0.187 in, as its rod, so no link rides in a layer
-    # a thicker one made taller (a thin link there would slide on its pin); the most loaded
-    # plates, the lever b4 and the rocker b3, in 6061 (cradle_report's jam)
-    "decanter_rcm": {"b2": "al5052_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm",
-                     "b3": "al6061_4p8mm", "b4": "al6061_4p8mm"},
+    # the B cradle (2026-10-10, refined): every link 0.187 in, so no link rides in a layer a
+    # thicker one made taller (a thin link there would slide on its pin); the arms b2, b3 and
+    # the bar b4 in 6061 (cradle_report's jam); the 411 mm rod 0.250 in, alone in its layer
+    # (Euler: 1.8 x its jam force)
+    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al6061_4p8mm", "b3": "al6061_4p8mm",
+                     "b4": "al6061_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_4p8mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""
