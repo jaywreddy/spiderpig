@@ -133,6 +133,9 @@ build options instead of an id go through `view.resolve_args`). Routes:
 `bakes/` (`strider_double_robot.glb`; a design with no plan, e.g. TrotBot's heel at
 `p.unit=7`, answers 422), `/api/walk`, `/api/linkages`, `/api/modes`, `/api/design/{id}`,
 and `/ws/sim?linkage=&module=` (the design live in MuJoCo, `spiderpig/sim/live.py`).
+`/decant.html` is the decanting cradles' page (`viewer/src/decant/`: a design picker, the 3D
+cradle, its mechanism in SVG), on `/api/cradles` and `/api/cradle/{key}`
+(`cradle_report.motion`).
 
 ## Baking the glTF — performance profiler
 

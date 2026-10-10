@@ -537,3 +537,74 @@ def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float)
                       "walk_n": (r.get("walk") or {}).get("load_n"),
                       "jam_n": (r.get("jam") or {}).get("load_n")} for r in st["rows"]],
             "worst": st["worst"], "findings": st["findings"]}
+
+
+# -- the cradle page's swing (``/api/cradle/{key}``, ``viewer/decant.html``) ------------
+
+VERDICT = {
+    "decanter_hinge": ("build", "The one to build: a four-bar crank-rocker whose rocker is the "
+                       "cradle, hinged at the bottle's mouth. Every check passes: the pins "
+                       "hold a forced crank (jam SF 1.34 at worst), the stand tips past 31°."),
+    "decanter_rcm": ("study", "A study: an eight-bar double parallelogram turns the cradle "
+                     "about a point with nothing there, so nothing stands at the mouth. It "
+                     "swings true, but a pin fails the forced-crank case: not for building."),
+}
+"""Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why."""
+
+
+def motion(config: BuildConfig, n: int = 360) -> dict:
+    """A cradle's swing over one crank turn, sampled as its bake's clip is (``n`` crank angles
+    from 0, the clip's time over its length): every joint's path (mm, the linkage's plane),
+    the bottle's tilt (degrees, neck down positive), the handle's turns from rest (the clip's
+    direction), how far the mouth wanders; the bodies' outlines, and a magnum and the
+    saddles in the cradle's frame (a point ``(x, y)`` there is at ``mouth + R(tilt) (x,
+    y)``), for the cradle page's diagram."""
+    if not is_cradle(config):
+        raise ValueError(f"{config.linkage} is not a decanting cradle")
+    lk = config.lk
+    ts = np.linspace(0.0, 2.0 * math.pi, n, endpoint=False)
+    pts = _world_joints(config, ts)
+    o, ax = cr.mouth_frame(lk)
+    d = pts[ax] - pts[o]
+    tilt = np.degrees(np.unwrap(np.arctan2(d[:, 1], d[:, 0])))
+    tilt -= 360.0 * round(float(tilt.mean()) / 360.0)
+    rest, full = int(np.argmin(tilt)), int(np.argmax(tilt))
+    mouth = cr.mouth_name(lk)
+    lip = pts[mouth]
+    wander = float(np.linalg.norm(lip - lip.mean(axis=0), axis=1).max())
+    ratio = NRV030.ratio
+    turns = ((np.arange(n) - rest) % n) / n * ratio
+    y0, slope, x0 = cr.seat(cr.MAGNUM)
+    c, s = math.cos(slope), math.sin(slope)
+    prof = cr.MAGNUM.profile()
+    outline = ([(x0 + u * c - r * s, y0 + u * s + r * c) for u, r in prof]
+               + [(x0 + u * c + r * s, y0 + u * s - r * c) for u, r in reversed(prof)])
+    kind, why = VERDICT.get(lk.key, ("study", ""))
+
+    def r2(a) -> list:
+        return np.round(np.asarray(a, dtype=float), 2).tolist()
+
+    return {
+        "key": lk.key, "name": lk.name, "notes": lk.notes, "source": lk.source,
+        "verdict": kind, "why": why, "labels": dict(lk.labels),
+        "frame": list(lk.frame), "crank": list(lk.crank), "mouth": mouth, "axis": ax,
+        "output_link": lk.output.link if lk.output else None,
+        "links": {b: {"joints": list(js), "edges": [list(e) for e in edges]}
+                  for b, (js, edges) in lk.links.items()},
+        "points": {k: r2(v) for k, v in pts.items()},
+        "tilt_deg": r2(tilt), "handle_turns": r2(turns),
+        "rest": rest, "full": full, "n": n,
+        "rest_deg": round(float(tilt[rest]), 1), "full_deg": round(float(tilt[full]), 1),
+        "turns_to_full": round(float(turns[full]), 1), "ratio": ratio,
+        "mouth_wander_mm": round(wander, 3),
+        "bottle": {"name": cr.MAGNUM.name, "outline": r2(outline)},
+        "saddles": [{"name": sd.name, "x": list(sd.x), "y": [sd.y0, sd.top]}
+                    for sd in cr.SADDLES],
+        "ties": {k: list(v) for k, v in _ties_of().items()},
+    }
+
+
+def _ties_of() -> dict[str, tuple[float, float]]:
+    from spiderpig.linkages.decanters import TIES
+
+    return dict(TIES)

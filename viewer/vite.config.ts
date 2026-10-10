@@ -25,6 +25,8 @@ export default defineConfig({
     outDir: '../spiderpig/viewer/dist',
     emptyOutDir: true,
     target: 'es2022',
+    // two pages: the viewer, and the decanting cradle page (decant.html)
+    rollupOptions: { input: { main: 'index.html', decant: 'decant.html' } },
   },
   server: {
     port,

@@ -15,6 +15,10 @@ and the light.
 The adversarial reviews of 2026-10-10 (mechanical, fabrication, code) shaped what follows.
 Each finding and its fix is in [DECISIONS.md](DECISIONS.md).
 
+To watch either one pour, run `mise run view` and open `/decant.html` (`viewer/src/decant/`).
+It shows the 3D cradle beside its mechanism in the linkage's plane, with the bottle's tilt and
+the handle's turns from rest.
+
 ## Prior art (the research of 2026-10-09)
 
 **The traditional cradle.** In the antique cradles (late 1800s to early 1900s), a crank

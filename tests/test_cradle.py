@@ -488,3 +488,44 @@ def test_every_printed_part_fits_a_print_bed_in_its_pose():
         assert y <= 250.0, (b.name, y, x, bb.size.Z)
         assert x <= 210.0, (b.name, y, x, bb.size.Z)
         assert bb.size.Z <= 210.0, (b.name, y, x, bb.size.Z)
+
+
+@pytest.mark.linkage
+@pytest.mark.parametrize("key", CRADLES)
+def test_the_cradle_pages_swing_is_the_linkages(key):
+    """The cradle page's swing (``cradle_report.motion``, ``viewer/decant.html``): rest and
+    full tilt where the linkage puts them, half the worm's turns between them, the mouth
+    still, and the cradle's frame as the ties ride it."""
+    from spiderpig.cradle_report import motion
+
+    m = motion(BuildConfig(linkage=key, robot=False), 72)
+    assert m["rest_deg"] == pytest.approx(REST[key], abs=0.5)
+    assert m["full_deg"] == pytest.approx(55.0, abs=0.5)
+    assert m["turns_to_full"] == pytest.approx(m["ratio"] / 2, abs=1.0)
+    assert m["mouth_wander_mm"] < 1e-6
+    assert len(m["tilt_deg"]) == len(m["points"][m["mouth"]]) == 72
+    i = m["full"]
+    a = math.radians(m["tilt_deg"][i])
+    lip = np.asarray(m["points"][m["mouth"]][i])
+    for name, (cx, cy) in m["ties"].items():
+        want = lip + np.array([math.cos(a) * cx - math.sin(a) * cy,
+                               math.sin(a) * cx + math.cos(a) * cy])
+        assert np.abs(np.asarray(m["points"][name][i]) - want).max() < 0.05, name
+
+
+@pytest.mark.server
+def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from spiderpig.server import app as srv
+
+    monkeypatch.delenv("VITE_ALLOWED_HOSTS", raising=False)
+    client = TestClient(srv.app, base_url="http://localhost")
+    cards = client.get("/api/cradles").json()["cradles"]
+    assert [c["key"] for c in cards] == list(CRADLES)
+    assert {c["key"]: c["verdict"] for c in cards} == {"decanter_hinge": "build",
+                                                        "decanter_rcm": "study"}
+    r = client.get("/api/cradle/decanter_hinge?n=48")
+    assert r.status_code == 200
+    assert r.json()["n"] == 48
+    assert client.get("/api/cradle/strider").status_code == 404

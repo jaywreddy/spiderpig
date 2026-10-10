@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Decanting cradle simulator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+</head>
+<body class="decant">
+  <canvas id="stage"></canvas>
+
+  <aside id="side">
+    <header>
+      <h1>Decanting cradles</h1>
+      <p class="intro">Hand-cranked linkages that tip a magnum or a 3&nbsp;L bottle about its
+        mouth, so the pour stays over the decanter. Pick a design and watch it pour.</p>
+    </header>
+    <div id="designs"></div>
+    <section id="about"></section>
+  </aside>
+  <button id="side-toggle" title="Designs">☰</button>
+
+  <div id="status" hidden></div>
+
+  <section id="diagram-panel">
+    <div id="hud">
+      <div class="readout">
+        <span class="label">Bottle tilt</span>
+        <span id="tilt-value" class="big">–</span>
+        <span id="tilt-words" class="small"></span>
+        <div class="bar"><div id="tilt-bar"></div></div>
+      </div>
+      <div class="readout">
+        <span class="label">Handle turns from rest</span>
+        <span id="turns-value" class="big">–</span>
+        <span id="phase" class="small"></span>
+      </div>
+    </div>
+    <header><span id="diagram-title">Mechanism</span><button id="diagram-toggle">hide</button></header>
+    <svg id="diagram" xmlns="http://www.w3.org/2000/svg"></svg>
+  </section>
+
+  <div id="dock">
+    <button id="play" title="Pause">❚❚</button>
+    <select id="speed" title="How fast the handle turns">
+      <option value="1" selected>a turn a second</option>
+      <option value="3">3 turns a second</option>
+      <option value="8">quick look</option>
+    </select>
+    <div class="track">
+      <input id="slider" type="range" min="0" max="30" step="0.01" value="0" title="Handle turns from rest" />
+      <div class="ticks"><span style="left:0">rest</span><span id="tick-full">full tilt</span><span style="left:100%">rest</span></div>
+    </div>
+    <button id="to-rest">Rest</button>
+    <button id="to-full">Full tilt</button>
+    <select id="view" title="Camera">
+      <option value="three-quarter">¾ view</option>
+      <option value="side">side</option>
+      <option value="front">front</option>
+      <option value="top">top</option>
+    </select>
+  </div>
+
+  <script type="module" src="/src/decant/main.ts"></script>
+</body>
+</html>

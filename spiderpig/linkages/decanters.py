@@ -63,7 +63,7 @@ def _two(a, b):
 def decanter_hinge(p):
     """A crank-rocker whose rocker is the cradle, hinged at the bottle's mouth G. The rod
     pin E sits on the bottle's axis, ``rocker`` behind the mouth; ``crank`` and ``rod``
-    are the crank-rocker's for a 65° swing (``tilt_rest`` to ``tilt_full``) from O."""
+    are the crank-rocker's for an 80° swing (``tilt_rest`` to ``tilt_full``) from O."""
     return [
         ("O", xy(0, 0)),
         ("G", xy(p["gx"], p["gy"])),
@@ -86,7 +86,7 @@ register(Linkage(
     frame=("O", "G"), crank=("O", "M"),
     output=Output("body", "b2", "rotation", ("G", "E"), still=("G", 1e-9)),
     source=SOURCE, product="cradle",
-    notes="Four bars; the cradle tips the bottle 65° about its mouth once per turn.",
+    notes="Four bars; the cradle tips the bottle 80° about its mouth once per turn.",
 ))
 
 
