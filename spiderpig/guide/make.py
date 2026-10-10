@@ -219,7 +219,7 @@ def _make(config, design, mech, cache: Path, done: Path, out: Path, jobs: int,
 
     pictures: dict[int, str] = {}
     for st in chosen:
-        if not st.adds:
+        if not st.adds and not st.places:     # (the wiring step: its diagram)
             continue
         clip = {k: list(v) for k, v in st.clip.items()}
         rows = [(p, CONTEXT_FILL, (0, 0, 0), False, clip.get(p)) for p in st.context]
