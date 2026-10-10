@@ -344,6 +344,11 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     return out
 
 
+WINE_KG = {"standard": 0.75, "magnum": 1.5, "jeroboam": 3.0}
+"""The wine in each bottle size full (``construction.cradle.SIZES``), kg: what an empty one
+weighs less."""
+
+
 def stability(config: BuildConfig, mech, design, ts) -> dict:
     """The whole cradle's centre of mass over the swing, each bottle full and empty, against
     the base plate's feet (their pads' outer edges): its margin (mm) to the nearest tipping
@@ -390,7 +395,7 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
                            y0 + size.com_from_mouth * math.sin(slope)])
         top_cf = np.array([x0 + size.length * math.cos(slope),
                            y0 + size.length * math.sin(slope) + size.r])
-        wine = 3.0 if size is cr.JEROBOAM else 1.5
+        wine = WINE_KG[size.key]
         for state, mb in (("full", size.mass_full_kg), ("empty", size.mass_full_kg - wine)):
             least: dict[str, tuple] = {}       # tip, push, margin: each its worst (and edge)
             for k in range(len(ts)):
