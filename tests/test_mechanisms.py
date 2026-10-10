@@ -37,7 +37,7 @@ VERIFY = {
     # the decanting cradles (tests/test_cradle.py has the rest): about a still mouth, A from
     # -25° (an opened full bottle holds), B from -50° to +30°
     "decanter_hinge": {"swing_deg": 79.98, "wander_mm": 0.0},
-    "decanter_rcm": {"swing_deg": 80.04, "wander_mm": 0.0},
+    "decanter_rcm": {"swing_deg": 80.03, "wander_mm": 0.0},
 }
 
 # Mechanisms the pipeline stops, the stage error and what it says.

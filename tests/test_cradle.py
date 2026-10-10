@@ -23,7 +23,7 @@ from tests.tiers import quick
 CRADLES = ("decanter_hinge", "decanter_rcm")
 REST = {"decanter_hinge": -50.0, "decanter_rcm": -50.0}
 FULL = {"decanter_hinge": 30.0, "decanter_rcm": 30.0}
-TRANSMISSION = {"decanter_hinge": 38.0, "decanter_rcm": 37.0}   # least, from a toggle
+TRANSMISSION = {"decanter_hinge": 38.0, "decanter_rcm": 36.0}   # least, from a toggle
 HEIGHT = {"decanter_hinge": 70.0, "decanter_rcm": 85.0}         # a side's stack, mm
 
 

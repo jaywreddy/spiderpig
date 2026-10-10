@@ -260,19 +260,20 @@ STANDS: dict[str, Stand] = {
         feet=("Ff", "Fm", "Fr"),
         base=(-200.0, 440.0),
     ),
-    # B: the arms' pivots O1, O2 hang under the mouth, the crank O behind and low (its
-    # handle behind everything). The outer plate is two triangles on the pivots' bar, O1-O
-    # over O2-O, a front leg from O2, a rear leg from O and a rail. The inner plate is the
-    # bar O1-O2: the tie rods pass behind it (the rear ones never further round than 72°
-    # down, the bar at 83°) and the front ones above it. Nothing crosses the bay: the
-    # decanter stands under the mouth, between the bars.
+    # B: the arms' pivots O1, O2 hang straight under the mouth, the crank O 366 behind it
+    # and low (its handle behind everything). The outer plate is two triangles on the
+    # pivots' bar, O1-O over O2-O, a front leg from O2, a rear leg straight down from O and
+    # a rail. The inner plate is the bar O1-O2: the tie rods pass behind it (the rear ones
+    # never further round than 72° down, the bar at 90.5°) and the front ones above it.
+    # Nothing crosses the bay: the decanter stands under the mouth, between the bars. The
+    # base plate ends 70 mm behind O: its rear edge is what tips first (a full 3 L at 29°).
     "decanter_rcm": Stand(
-        nodes={"Ff": (-136.7, _FOOT_Y), "Fr": (590.0, _FOOT_Y)},
+        nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y)},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"),),
         feet=("Ff", "Fr"),
-        base=(-186.7, 640.0),
+        base=(-160.0, 436.0),
     ),
 }
 

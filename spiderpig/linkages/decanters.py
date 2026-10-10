@@ -156,20 +156,22 @@ def _xy(p):
     return sp.sqrt((p["y_along"] - p["arm"]) ** 2 + p["y_across"] ** 2)
 
 
-RCM = {"crank": R(909, 10), "rod": R(4106, 10), "lever": R(143), "bell": R(109, 2),
-       "arm": R(204), "ray": R(-83), "r1": R(109), "r2": R(328), "lx": R(-480),
-       "ly": R(320), "y_along": R(-108), "y_across": R(0), "skew": R(47, 2)}
+RCM = {"crank": R(935, 10), "rod": R(3362, 10), "lever": R(147), "bell": R(64),
+       "arm": R(174), "ray": R(-181, 2), "r1": R(105), "r2": R(307), "lx": R(-366),
+       "ly": R(322), "y_along": R(-110), "y_across": R(0), "skew": R(8)}
 """B (2026-10-10, refined to build: ``docs/agentlib/DECANTER.md``): -50° (rest, an opened
 full bottle stands in it) to +30°, the crank-rocker's toggles at both. The pivots O1, O2
-hang under the mouth on a ray 83° down, 109 and 328 mm from it: the bar O1-O2 lies off
-every tie rod's arc (the front ties' run 68-85 mm from the mouth, the rear's 292-320 and
-never further round than 72° down), and the cradle link reaches its ties without sweeping
-over a pivot. The arms swing 23.5° ahead of the bottle (``skew``): both parallelograms
-stay 37° or more off their fold. Y lies on the copy arm's line through O1 (``y_across``
-0): the bars b4 and b5 never meet, nor the arms b2 and b3, so each pair shares a layer.
-The crank O is behind and under it all, its handle behind every part. A long rod (411 mm,
-0.250 in, against buckling) keeps both strokes alike, so the gearbox's peak and the rod's
-force at a jam are both held: the crank and the rod balance those two."""
+hang straight under the mouth (a ray 90.5° down), 105 and 307 mm from it: the bar O1-O2
+lies off every tie rod's arc (the front ties run 68-85 mm from the mouth, the rear ones
+292-320 and never further round than 72° down), and the cradle link reaches its ties
+without sweeping over a pivot. The arms swing 8° ahead of the bottle (``skew``): both
+parallelograms stay 48° or more off their fold. Y lies on the copy arm's line through O1
+(``y_across`` 0): the bars b4 and b5 never meet, nor the arms b2 and b3 (26 mm apart at the
+closest), so each pair shares a layer. The crank O is behind and under it all, its handle
+behind every part. The rod (336 mm, 0.250 in) is as short as the gearbox's peak (equal
+strokes want a long rod for the crank) and the rod's force at a jam (a long crank) allow
+with both at SF 1.35 or more: the crank sits 366 mm behind the mouth, where 480 had made
+the stand 827 mm long (2026-10-10, slimmed)."""
 
 register(Linkage(
     key="decanter_rcm", name="Decanting cradle B: virtual hinge (double parallelogram)",

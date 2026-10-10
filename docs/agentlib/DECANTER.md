@@ -160,8 +160,8 @@ stops there:
     M5 screws' 5.5 mm holes. In 0.250 in, SendCutSend's least hole would be 6.35 mm.
   - The rod: 0.187 in 5052, so it doesn't buckle.
   - The crank block: 0.125 in 6061 (the keyway's 5.1 mm slot is legal in it).
-  - B's links are 0.187 in, its arms b2 and b3 and its bar b4 in 6061; its 411 mm rod is
-    0.250 in 5052, alone in its layer.
+  - B's links are 0.187 in, its arms b2 and b3 and its bar b4 in 6061; its 336 mm rod is
+    0.250 in 5052 and its cradle link 0.125 in 5052, each alone in its layer.
   - Everything is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`.
 - **The stand** (`cradle.STANDS`).
   - **Outer plate:** a truss outside every moving part's layer: from the hinge G down in
@@ -305,29 +305,31 @@ cradle box, the saddles, the base stop, the base plate and the light with A.
 
 **The mechanism.** Two parallelograms keep the cradle turning about the mouth with nothing
 there:
-- **The pivots** O1 and O2 hang under the mouth on a ray 83° down, 109 and 328 mm from it.
-- **The arms** b3 (O1–J) and b2 (O2–K) are 204 mm long. They swing 23.5° ahead of the
+- **The pivots** O1 and O2 hang straight under the mouth (a ray 90.5° down), 105 and
+  307 mm from it.
+- **The arms** b3 (O1–J) and b2 (O2–K) are 174 mm long. They swing 8° ahead of the
   bottle (`skew`).
 - **The bar** b4 (X–J–K) translates, and the cradle b6 rides it at X.
-- **The cradle link** b5 (Y–J2) holds the cradle's other pin. J2 lies 108 mm past O1 on
+- **The cradle link** b5 (Y–J2) holds the cradle's other pin. J2 lies 110 mm past O1 on
   the copy arm's own line (`y_across` 0).
-- **The drive:** the crank O sits 480 mm behind and 320 mm under the mouth. A 410.6 mm rod
-  runs from its 90.9 mm crank to the lever on b2 (143 mm, 54.5° off the arm).
+- **The drive:** the crank O sits 366 mm behind and 322 mm under the mouth. A 336.2 mm rod
+  runs from its 93.5 mm crank to the lever on b2 (147 mm, 64° off the arm).
 
 **Why it looks this way.** The old B rested at −10°. Its −25° re-fit put the rear tie rods
 through the inner bar O1–O2 and overloaded its pins. Each choice below answers one of those
 or a rule of the build:
 - **The ties never cross the inner bar.** The rear ties ride 292–320 mm from the mouth and
-  never come further round than 72° down. The bar lies at 83°, from 97 mm out (the front
+  never come further round than 72° down. The bar lies at 90.5°, from 93 mm out (the front
   ties stop at 85 mm).
 - **The cradle link never sweeps a pivot.** Seen from the cradle, the pivots stay
-  between 33° and 113° below the bottle's axis. b6's members cross the pivots' distances
-  from the mouth only above that sector (X is 23.5° over the axis, the rear ties 21° under
-  it) or in front of the mouth (Y). They pass O1 25 mm off at the closest.
+  between 40° and 120° below the bottle's axis. b6's members cross the pivots' distances
+  from the mouth only above that sector (X is 8° over the axis, the rear ties 21° under
+  it) or in front of the mouth (Y). They pass O1 29 mm off at the closest.
 - **Each pair shares a layer.** Y sits on the copy arm's line, so the bars b4 and b5 never
-  meet. The lever on b2 never reaches b3. The planner finds the old sandwich: the rod, then
-  b2 with b3, then b4 with b5, then the cradle link under the inner plate, every pin across
-  one gap.
+  meet. The lever on b2 stays 26 mm off b3. The planner finds the old sandwich: the rod,
+  then b2 with b3, then b4 with b5, then the cradle link under the inner plate, every pin
+  across one gap. (A crank nearer the mouth let the lever cross b3. The plan then put b3
+  between the rod and b2, and pin P's longer span fell to jam SF 1.2.)
 - **The handle is behind everything.** It turns behind the crank, and the crank is the
   machine's rearmost moving part.
 - **The decanter stands in the bay.** The bay is 260 mm, so the decanter stands between
@@ -337,8 +339,14 @@ or a rule of the build:
   alike, which takes a long rod for its crank.
   - At a jam the rod's force is worst 30° past the folded toggle: about 36 N·m over the
     crank times sin(30° (rod − crank)/rod). So the pins want a long crank.
-  - 90.9 mm on 410.6 mm balances the two: the gearbox at SF 1.31, pin P at 1.38.
-  - The rod is 0.250 in so that it doesn't buckle at that length: 1.8 × its jam force.
+  - The crank's distance behind the mouth sets the stand's length: the rod is nearly
+    level, so O sits about a rod's length behind the lever.
+  - 93.5 mm on 336.2 mm is the shortest rod that holds both: the gearbox at SF 1.38, pin
+    P at 1.36. (The 160 mm saddles' lighter box gave the gearbox the room.)
+  - The rod is 0.250 in: at 0.187 in a 300 mm rod buckles at 1.34 × its jam force, and
+    its thinner layer doesn't shorten pin P's span enough to pay for it.
+- **The stack is thin where it can be.** The cradle link b6 is alone under the inner plate
+  at jam SF 6, so it is 0.125 in.
 
 **What it holds** (`cradle_report.report`, a sealed full 3 L walking, a 40 N push at the
 grip jammed):
@@ -346,18 +354,20 @@ grip jammed):
 | check | B |
 |---|---|
 | swing | −50.0° to +30.0°, the mouth still (0 mm), both bottles' mouths on the pivot |
-| transmission | 37.7° at worst (the rod's); the parallelograms 43.5° and 56.5° |
-| gearbox | 15.25 N·m peak: SF 1.31 on its 20 N·m; 21.7 N at the grip |
-| jam | pin P 1.38, pillar O2 1.46, the crank's keyway 1.64, link b3 1.81, pillar O1 1.88, the rest 2 or more |
-| walking | every joint 7.9 or more; the crank's keyway 3.9 |
-| rod, crankpin | buckling 1.82 × its jam force; the crankpin 2.11 jammed |
-| stand | tips at 31.6° at worst, a push of 37.9 N or more at a bottle's top |
+| transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
+| gearbox | 14.46 N·m peak: SF 1.38 on its 20 N·m; 20.6 N at the grip |
+| jam | pin P 1.36, pillar O2 1.42, pillar O1 1.50, link b3 1.51, link b4 1.53, the crank's keyway 1.64, pin K 1.71, the rest 2.3 or more |
+| walking | every joint 8.6 or more; the crank's keyway 4.1 |
+| rod, crankpin | buckling 2.67 × its jam force; the crankpin 2.08 jammed |
+| stand | tips at 28.9° at worst (the rear edge, a full 3 L), a push of 28.1 N or more at a bottle's top |
 
 **The stand** (`cradle.STANDS`):
 - **The outer plate** is two triangles on the pivots' bar: O1–O, O2–O and O1–O2. A front
-  leg runs from O2, a rear leg from O, and a rail along the base plate.
+  leg runs from O2, a rear leg straight down from O, and a rail along the base plate.
 - **The inner plate** is the bar O1–O2 alone, on its two pillars. Nothing crosses the bay.
-- **The base plate** runs from 187 mm in front of the mouth to 640 mm behind it.
+- **The base plate** runs from 160 mm in front of the mouth to 436 mm behind it: 596 by
+  500 mm. Its rear edge is what tips first. The first refit's had run 827 mm, to 640 mm
+  behind the mouth, with the crank 480 mm back.
 
 **Tried and dropped** (a search over the parameters, each candidate then planned and
 reported; [DECISIONS.md](DECISIONS.md) has the entry):
@@ -365,9 +375,13 @@ reported; [DECISIONS.md](DECISIONS.md) has the entry):
   handle turns back through the parallelogram.
 - **Pivots past every tie**, 350 mm out or more: the bar b4 grows past 400 mm, and the walk
   loads triple.
-- **A short rod**, 300 mm or less in 0.187 in: the rod's jam force stays over 950 N,
-  and the gearbox exceeds its SF 1.3. Rod 376 mm on a 109 mm crank: jam 1.44, gearbox
-  1.17. Rod 405 mm on a 67 mm crank: gearbox 1.33, jam 1.1.
+- **A short rod**, 300 mm or less in 0.187 in: it buckles under 1.5 × its jam force, or
+  the rod's jam force tops pin P. Rod 376 mm on a 109 mm crank (the heavier box): jam 1.44,
+  gearbox 1.17. Rod 405 mm on a 67 mm crank: gearbox 1.33, jam 1.1.
+- **The crank in front of the mouth:** the pillar O2 and the lever b2 fall under jam
+  SF 0.8.
+- **A crank 280–320 mm behind the mouth:** the lever crosses b3, the stack's order
+  changes, and pin P (10.3 mm span) and pillar O2 fall to jam SF 1.2–1.3.
 
 ## Building one
 

@@ -633,3 +633,38 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/materials.py`, `spiderpig/cradle_report.py`, `tests/test_cradle.py`,
   `tests/test_mechanisms.py`. Only B's own code and data change: the walkers are
   untouched.
+
+### 2026-10-10: cradle B slimmed (user: B is the main design; slimmer and lower, the 3 L and the −50° rest kept)
+
+- **What:** B's crank moves from 480 mm to 366 mm behind the mouth. The base plate goes
+  from 827 × 500 mm to 596 × 500 mm, and the stack is thinner.
+  - **The geometry** (`decanters.RCM`): the pivots hang straight under the mouth (a ray
+    90.5° down, 105 and 307 mm out). The arms are 174 mm, 8° ahead of the bottle. The crank
+    O is 366 behind and 322 under the mouth: crank 93.5, rod 336.2, lever 147 at 64°.
+  - **The cradle link b6** is 0.125 in 5052 (`materials.LINK_SHEETS`): it is alone under
+    the inner plate, at jam SF 6.
+  - **The stand** (`cradle.STANDS`): the rear leg runs straight down from O, and the base
+    plate spans 160 mm in front of the mouth to 436 mm behind it.
+- **Numbers** (the box's 160 mm saddles, the minimal gearbox mount):
+  - The gearbox's SF is 1.38 (a 14.46 N·m peak), 20.6 N at the grip.
+  - Jam: pin P 1.36, pillar O2 1.42, pillar O1 1.50, links b3 and b4 1.5. Walking 4.1 or
+    more.
+  - The rod buckles at 2.67 × its jam force. Transmission 36.7°.
+  - The stand tips at 28.9° (the rear edge, a full 3 L), or under a 28.1 N push.
+  - The stack is 1.6 mm thinner (b6).
+- **Why:**
+  - With the rod nearly level, the crank sits a rod's length behind the lever, and the
+    stand runs to the crank.
+  - Equal strokes (the gearbox's peak) want a long rod for the crank, and a jam a long
+    crank. The lighter box (160 mm saddles) gave the gearbox room, so the rod could shorten
+    to 336 mm and keep both at SF 1.35 or more.
+  - The lever must stay off b3 so that b2 and b3 share a layer. Nearer cranks (280–320 mm
+    behind) crossed b3: the plan put b3 between the rod and b2, and pin P's longer span
+    fell to jam SF 1.2.
+- **Tried and dropped:**
+  - **A 300 mm rod in 0.187 in:** buckling 1.34.
+  - **The crank in front of the mouth:** pillar O2 at jam SF 0.8.
+  - **b4 and b5 in 0.125 in:** b4 jam SF about 1.3. Not tried in full.
+- **Where:** `spiderpig/linkages/decanters.py`, `spiderpig/construction/cradle.py`,
+  `spiderpig/materials.py`, `spiderpig/cradle_report.py`, `tests/test_cradle.py`,
+  `tests/test_mechanisms.py`. Only B changes.

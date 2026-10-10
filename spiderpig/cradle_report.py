@@ -549,8 +549,8 @@ VERDICT = {
     "decanter_rcm": ("build", "To build too: an eight-bar double parallelogram turns the "
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. Every check "
-                     "passes: the pins hold a forced crank (jam SF 1.38 at worst), the "
-                     "gearbox 1.31 x its rating, the stand tips past 31°."),
+                     "passes: the pins hold a forced crank (jam SF 1.36 at worst), the "
+                     "gearbox 1.38 x its rating, the stand tips past 28°."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why."""
 
