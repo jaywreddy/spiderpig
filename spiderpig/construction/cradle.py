@@ -1074,8 +1074,7 @@ def passive_side(side: Mechanism, design) -> Mechanism:
     """The cradle's other side: the drive side's own parts (:func:`assemble_cradle` mirrors
     them) less the hand crank's, the rod and the rod's pin, and the connections to them.
     Its plates keep the drive's holes, so each plate pair is one part, flipped: two of a
-    file at SendCutSend, and spares that fit either side (the guard over the crank is the
-    gearbox's flange, not the plate: ``construction.handcrank.GUARD_PAST``)."""
+    file at SendCutSend, and spares that fit either side."""
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.handcrank import HandCrank
 

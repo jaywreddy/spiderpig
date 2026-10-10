@@ -136,11 +136,10 @@ stops there:
       M5 up through the arm into it and an M5 and a wide washer on its end. (An M6 shoulder
       screw's 11 mm thread through the 10 mm arm had caught 1 mm of its nut; the standoff
       also takes McMaster off the order.)
-  - **The guard:** the gearbox's flange, the riser's disc on the outer plate, covers the
-    crank's sweep and 12 mm more (`handcrank.GUARD_PAST`), so no finger goes straight
-    through the frame's windows onto the block. The user found the old guard, the outer
-    plate solid round the crank, an ugly big disc: the plates are now a plain truss on both
-    sides, and ISO 13857's 20 mm for the 7 mm layer under the block is traded for 12.
+  - **No guard over the crank** (the user's call, 2026-10-10: the guard, a disc in the
+    outer plate and then the gearbox's flange, read as a big disc either way). The gearbox
+    sits on its small riser discs; the crank turns about 2 rpm behind the outer plate's
+    truss, and the use limit keeps fingers out of the drive side.
 - **The pins** (`chicago6`, `config.PRODUCT_PINS`): M6 Chicago screws with an 8 mm
   barrel.
   - Unlike a walker's pins, these aren't glued in (`ChicagoShaft.bonded`). Every link runs

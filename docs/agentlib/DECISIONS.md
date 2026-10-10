@@ -574,7 +574,8 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - re-synthesized for −50° to +30° (`decanters.decanter_hinge`); the mouth at 460 mm, the
     bay 260 mm wide, the saddles 160 mm long (`cradle.LIP_HEIGHT`, `BAY`, `SADDLE_HALF`);
   - its plates a filleted truss, the same file on both sides; the guard over the crank the
-    gearbox's flange (the riser's disc), 12 mm past the sweep (`handcrank.GUARD_PAST`);
+    gearbox's flange (the riser's disc), 12 mm past the sweep (later the same day dropped
+    at the user's call: a minimal gearbox mount, no guard);
   - the vessel on a lab-jack riser, sized by the room under the mouth
     (`cradle_report.room`), a standard decanter drawn (`cradle.DECANTER_PROFILE`);
   - a flat pack (`spiderpig/cradle_pack.py`) and the cradle page's photorealistic look,
