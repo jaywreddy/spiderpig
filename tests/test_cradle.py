@@ -130,15 +130,26 @@ def test_a_fit_override_keeps_the_rest_of_the_products_and_a_walker_drops_them()
 
 
 @pytest.mark.linkage
-def test_the_worm_holds_and_both_bottles_lie_with_their_mouths_on_the_pivot():
+def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
     assert NRV030.irreversible()
     assert NRV030.ratio == 30
+    assert [z.key for z in cr.SIZES] == ["standard", "magnum", "jeroboam"]
     for size in cr.SIZES:
         assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
-    # the magnum on its adapters, the 3 L in its collar; a magnum straight in the 3 L's
-    # saddles would lie nose up, its mouth off the pivot
+    # the 750 ml and the magnum on their adapters, the 3 L in its collar; a magnum straight
+    # in the 3 L's saddles would lie nose up, its mouth off the pivot
     assert cr.adapter(cr.MAGNUM)[:2] == pytest.approx((3.5, 21.0))
     assert cr.adapter(cr.JEROBOAM) == pytest.approx((0.0, 0.0, 20.0))
+    # the 750 ml: its neck short of the stop, so its front liner ends at its shoulder (the
+    # stop); the rear one closed behind its base, inside the rear saddle
+    front, rear = cr.SADDLES
+    a_f, a_r, collar = cr.adapter(cr.STANDARD)
+    assert collar < 0
+    bb = cr._adapter(front, a_f, cr.STANDARD).bounding_box()
+    assert pytest.approx(cr.STANDARD.neck) == bb.max.X
+    assert cr.STANDARD.length < rear.x[1]
+    shell = cr._adapter(rear, a_r, cr.STANDARD)
+    assert pytest.approx(rear.x[1]) == shell.bounding_box().max.X
     y0, slope, x0 = cr.seat(cr.MAGNUM, adapted=False)
     assert math.degrees(-slope) > 5.0
     assert math.hypot(x0, y0) > 1.0

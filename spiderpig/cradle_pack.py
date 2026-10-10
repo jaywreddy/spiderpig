@@ -83,7 +83,8 @@ def module_of(name: str, link: str, over: set[str], inner: set[str]) -> str | No
         return "hand_crank"
     if stem.startswith("base_stop"):
         return "base_stop"
-    if "magnum_liner" in stem or stem.endswith("_collar"):
+    if (stem.endswith("_liner") and not stem.endswith("saddle_liner")) or stem.endswith(
+            "_collar"):
         return "adapters"
     if stem in ("base_plate",) or stem.startswith("foot_boot") or re.fullmatch(
             r"foot_bracket_\w+_(screw1|nut1)", stem):

@@ -134,15 +134,19 @@ class BottleSize:
         return pts
 
 
+STANDARD = BottleSize("standard", "750 ml Bordeaux", 300.0, 38.3, 15.0, 80.0, 115.0,
+                      1.3, 174.0)
 MAGNUM = BottleSize("magnum", "1.5 L Bordeaux magnum", 356.0, 49.5, 15.5, 85.0, 150.0,
                     2.6, 205.0)
 JEROBOAM = BottleSize("jeroboam", "3 L Champagne jeroboam", 470.0, 70.5, 19.0, 105.0, 190.0,
                       5.9, 265.0)
-SIZES = (MAGNUM, JEROBOAM)
-"""What the cradle is built for (``docs/agentlib/DECANTER.md``, Requirements): a Bordeaux
-magnum (univerre: 356 x 99 mm, 1.04 kg empty) to a Champagne jeroboam (Saverglass: 470 x
-141 mm, 2.9 kg empty); full mass and centre of mass estimated (glass plus 1.5 or 3 kg of
-wine, the centre about 42 % of the length from the base)."""
+SIZES = (STANDARD, MAGNUM, JEROBOAM)
+"""What the cradle is built for (``docs/agentlib/DECANTER.md``, Requirements): a standard
+750 ml Bordeaux (the Bordelaise moulds run about 295-310 x 74-77 mm; its neck to the
+shoulder about 80 mm, shorter than :data:`STOP_X`), a Bordeaux magnum (univerre: 356 x 99
+mm, 1.04 kg empty) to a Champagne jeroboam (Saverglass: 470 x 141 mm, 2.9 kg empty); full
+mass and centre of mass estimated (glass plus 0.75, 1.5 or 3 kg of wine, the centre about
+42 % of the length from the base)."""
 
 
 @dataclass(frozen=True)
@@ -187,8 +191,11 @@ def adapter(size: BottleSize) -> tuple[float, float, float]:
     """What ``size`` needs to lie with its mouth on the pivot and its axis level: (the
     front adapter liner's wall, the rear's: what its neck and body are thinner than the
     3 L's; the collar round its neck between the stop and its shoulder: what its neck is
-    longer than :data:`STOP_X`), mm. The magnum: the two liners; the 3 L: the collar. A
-    builder with another bottle prints these to its own (``docs/agentlib/DECANTER.md``)."""
+    longer than :data:`STOP_X`, or, negative, what it is shorter: its front liner then ends
+    there, its end the shoulder's stop), mm. The 750 ml: the two liners, the front one
+    short, the rear one closed behind its base (:func:`_adapter`); the magnum: the two
+    liners; the 3 L: the collar. A builder with another bottle prints these to its own
+    (``docs/agentlib/DECANTER.md``)."""
     return (DESIGN.r_neck - size.r_neck, DESIGN.r - size.r, size.neck - STOP_X)
 
 
@@ -754,13 +761,23 @@ def _vee(x0: float, x1: float, apex: float) -> Shape3D:
 
 def _adapter(s: Saddle, wall: float, size: BottleSize) -> Shape3D:
     """A thinner bottle's TPU adapter liner on a saddle's liner (cradle frame): a V shell
-    ``wall`` thick, its walls up past where ``size`` touches them."""
+    ``wall`` thick, its walls up past where ``size`` touches them. A neck shorter than
+    :data:`STOP_X`: the front one ends at the shoulder, its end the stop. A bottle shorter
+    than the rear saddle: the rear one closed 1 mm behind its base (it leans there at rest,
+    where the base stop's cup can't reach inside the saddle)."""
     x0, x1 = s.x
+    if s is SADDLES[0] and size.neck < x1:
+        x1 = size.neck
     lo = s.apex + LINER * math.sqrt(2)                   # the liner's face
     r = size.r_neck if s is SADDLES[0] else size.r
     top = -r / math.sqrt(2) + 8.0                        # past its tangent points
-    return difference(cast(Shape3D, _block(x0, x1, s.y0, top) & _vee(x0, x1, lo)),
-                      _vee(x0, x1, lo + wall * math.sqrt(2)))
+    shell = difference(cast(Shape3D, _block(x0, x1, s.y0, top) & _vee(x0, x1, lo)),
+                       _vee(x0, x1, lo + wall * math.sqrt(2)))
+    if s is not SADDLES[0] and size.length + 1.0 < x1:
+        end = cast(Shape3D, _block(size.length + 1.0, x1, s.y0, -0.45 * size.r)
+                   & _vee(size.length + 1.0, x1, lo))
+        shell = union([shell, end])
+    return shell
 
 
 def _collar(size: BottleSize, length: float) -> Shape3D:
@@ -1279,6 +1296,24 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                 (float(cf.lip[0]) - PARK_X, float(cf.lip[1]) - LIP_HEIGHT + length / 2, 0.0)))
             extras.append(hardware(f"{size.key}_collar", ring, frame_host, fab="printed",
                                    color=ADAPTER_COLOR))
+    # the other bottles' adapter liners (the 750 ml's), lying on the table in front of the
+    # 3 L's collar, as they would sit in the saddles (cradle frame, level)
+    table = float(cf.lip[1]) - LIP_HEIGHT
+    ahead = PARK_X + 60.0
+    for size in SIZES:
+        if size is shown:
+            continue
+        a_f, a_r, _ = adapter(size)
+        for s, wall in zip(SADDLES, (a_f, a_r), strict=True):
+            if wall <= 0:
+                continue
+            part = _adapter(s, wall, size)
+            bb = part.bounding_box()
+            part = part.moved(Location((float(cf.lip[0]) - ahead - bb.max.X,
+                                        table - bb.min.Y + 0.5, 0.0)))
+            ahead += bb.size.X + 15.0
+            extras.append(hardware(f"{s.name}_{size.key}_liner", part, frame_host,
+                                   fab="printed", color=ADAPTER_COLOR))
     vessel, riser = _decanter(cf.lip)
     extras.append(hardware("decanter", vessel, frame_host, fab="display",
                            color=DECANTER_COLOR))
@@ -1353,7 +1388,8 @@ def assembly(view) -> list:
                           "bay_tie", side=s))
     saddles = [n for s in SADDLES for n in (s.name, f"{s.name}_liner")
                if n in view.z]
-    adapters = [n for s in SADDLES if (n := f"{s.name}_magnum_liner") in view.z]
+    adapters = [n for s in SADDLES for size in SIZES
+                if (n := f"{s.name}_{size.key}_liner") in view.z]
     sets = view.named(r"\w+_saddle_set_screw_\w+")
     if saddles:
         ops.append(Op(CRADLE, (0,), whole(*saddles, *sets), "Saddles",
@@ -1413,7 +1449,10 @@ def assembly(view) -> list:
     if adapters or collars:
         ops.append(Op(USE, (0,), whole(*adapters, *collars), "Bottle adapters",
                       "A magnum lies on its two TPU adapter liners, laid in the saddles' "
-                      "liners, its shoulder against the front saddle's back face. A 3 L "
+                      "liners, its shoulder against the front saddle's back face. A 750 ml "
+                      "lies on its own two: the front one shorter, its end the shoulder's "
+                      "stop, the rear one closed behind its base (the base stop's cup isn't "
+                      "used: slide it back out of the way). A 3 L "
                       "lies in the liners alone, its TPU collar snapped round its neck "
                       "against that face. Either way its mouth is on the pivot and its axis "
                       "level. Another bottle: print adapters to its neck and body "
@@ -1497,6 +1536,8 @@ def print_poses(names, tilt: float) -> dict[str, list[tuple[str, float]]]:
             out[n] = [("Z", t), ("X", 90.0)]
         elif n == "base_stop_cup":                  # on its channel's open end
             out[n] = [("Z", t), ("Y", 90.0)]
+        elif n.endswith(tuple(f"_{z.key}_liner" for z in SIZES if z is not MAGNUM)):
+            out[n] = [("Y", -90.0)]             # (lying on the table, level)
         elif n.endswith("_liner"):
             out[n] = [("Z", t), ("Y", -90.0)]
         elif n.endswith("_collar"):

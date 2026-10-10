@@ -577,11 +577,14 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
     wander = float(np.linalg.norm(lip - lip.mean(axis=0), axis=1).max())
     ratio = NRV030.ratio
     turns = ((np.arange(n) - rest) % n) / n * ratio
-    y0, slope, x0 = cr.seat(cr.MAGNUM)
-    c, s = math.cos(slope), math.sin(slope)
-    prof = cr.MAGNUM.profile()
-    outline = ([(x0 + u * c - r * s, y0 + u * s + r * c) for u, r in prof]
-               + [(x0 + u * c + r * s, y0 + u * s - r * c) for u, r in reversed(prof)])
+    def outline_of(size: cr.BottleSize) -> list[tuple[float, float]]:
+        y0, slope, x0 = cr.seat(size)
+        c, s = math.cos(slope), math.sin(slope)
+        prof = size.profile()
+        return ([(x0 + u * c - r * s, y0 + u * s + r * c) for u, r in prof]
+                + [(x0 + u * c + r * s, y0 + u * s - r * c) for u, r in reversed(prof)])
+
+    outline = outline_of(cr.MAGNUM)
     kind, why = VERDICT.get(lk.key, ("study", ""))
 
     def r2(a) -> list:
@@ -601,6 +604,8 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
         "turns_to_full": round(float(turns[full]), 1), "ratio": ratio,
         "mouth_wander_mm": round(wander, 3),
         "bottle": {"name": cr.MAGNUM.name, "outline": r2(outline)},
+        "bottles": [{"key": z.key, "name": z.name, "outline": r2(outline_of(z))}
+                    for z in cr.SIZES],
         "saddles": [{"name": sd.name, "x": list(sd.x), "y": [sd.y0, sd.top]}
                     for sd in cr.SADDLES],
         "ties": {k: list(v) for k, v in _ties_of().items()},
