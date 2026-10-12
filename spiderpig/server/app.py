@@ -331,7 +331,7 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
     its file serves the next request. Two requests for one design are one bake: the second
     finds the first's file fresh.
     """
-    if config.robot:
+    if config.mirrored:
         try:
             walk.side_legs(config)
         except walk.LinkageError as e:
@@ -655,7 +655,7 @@ def get_design(design_id: str) -> dict:
     design = cfg.design_json()
     return {
         "design": d.id, "kind": d.kind, "linkage": design["linkage"], "module": design["module"],
-        "sides": 2 if cfg.robot else 1, "mode": mode, "phases_deg": design["phases_deg"],
+        "sides": cfg.sides, "mode": mode, "phases_deg": design["phases_deg"],
         "params": design["proportions"], "servo": cfg.servo, "sheet": cfg.sheet,
         "thickness_mm": cfg.thickness,
         "constructions": {"pillar": cfg.pillar, "pin": cfg.pin, "crank": cfg.crank},

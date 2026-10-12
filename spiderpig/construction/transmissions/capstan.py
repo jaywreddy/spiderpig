@@ -73,8 +73,7 @@ class CapstanDrive(Transmission):
 
     def core(self, ctx: Context, travel_deg: float) -> int:
         """The core's layers: the wraps and their walk along the capstan, and a millimetre."""
-        walk = travel_deg / 360.0 * self.ratio()
-        return max(1, math.ceil(((WRAPS + walk) * CORD_PITCH + 1.0) / ctx.pitch - 1e-9))
+        return max(1, math.ceil(self.core_height(travel_deg) / ctx.pitch - 1e-9))
 
     def layers(self, ctx: Context, travel_deg: float = 360.0) -> int:
         return self.core(ctx, travel_deg) + 2
@@ -149,7 +148,17 @@ class CapstanDrive(Transmission):
         return 2 * a.axle + ctx.params.running_fit
 
     def error_terms(self, ctx: Context, hub: DriveHub) -> ErrorTerms:
-        free = (self.drum_r * math.radians(hub.travel_deg + ANCHOR_MARGIN)
+        return self.terms(hub.travel_deg)
+
+    def core_height(self, travel_deg: float) -> float:
+        """The groove's height (mm): the wraps and their walk over ``travel_deg``, and a
+        millimetre."""
+        return (WRAPS + travel_deg / 360.0 * self.ratio()) * CORD_PITCH + 1.0
+
+    def terms(self, travel_deg: float) -> ErrorTerms:
+        """The terms over ``travel_deg`` of travel (module docstring): the planar drives'
+        and the turntable's (:mod:`construction.rotary`)."""
+        free = (self.drum_r * math.radians(travel_deg + ANCHOR_MARGIN)
                 + (self.drum_r - self.bolt_pcd / 2))                  # the worst strand
         stiff = 2 * (CORD_EA_N / free) * self.drum_r ** 2 / 1000.0     # N·m/rad
         return ErrorTerms(stiffness_nm_per_rad=stiff,

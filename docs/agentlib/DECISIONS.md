@@ -478,3 +478,33 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/construction/transmissions/`, `spiderpig/actuators/`,
   `spiderpig/hardware/motion_catalog.py`, the roles `transmission` and `actuator`.
 
+
+### 2026-10-12: an arm's robot: the turret, its tool, spatial joints, the URDF (phase 4)
+
+- **What:** `BuildConfig.robot` means the whole robot of any kind that makes one
+  (`config.ROBOT_LAYOUTS`): a walker's two mirrored sides (`mirrored_pair`, unchanged), an
+  arm's side on a turntable (`turret`); an arm builds its robot by default (`--side-only`
+  for the side). The turntable is a preset of four parts (role `turntable`:
+  `belt_preload` by default, `mt4` the MT4's plain 608 pair, `capstan_preload`); the tool a
+  role (`tool`: `suction_cup`, `suction_wrist`, or `none`). Spatial joints are data on the
+  mechanism (`kinematics.RobotTree`), which the bake, the URDF and the precision budget
+  read. The URDF keeps a spanning tree of the side's pins, a `mimic` where a pin follows
+  one input; its sidecar maps the rest. M3 socket heads of 45 to 70 mm joined the screw
+  table (the hub's clamping screws).
+- **Why:** the yaw bearing a fixed 8 mm shaft through two skateboard 608s: stock, cheap,
+  McMaster-modelled, and the pair's tilt (its clearance over the spacing: about 0.3 mm at
+  the tool) is the MT4's weakness the preload removes. The belt and capstan reuse the
+  side's transmissions' numbers so a yaw and an elbow are judged alike. The capstan's yaw
+  drum is 40 mm (11.6:1), not larger: the wraps walk along a sleeve on the motor's 24 mm
+  shaft, and a 55 mm drum (15.9:1) would turn only 174 deg. The wrist's NEMA 11 doesn't fit
+  beside the end plate inside the stack, so it hangs under the flange (an 89.5 mm tool,
+  and a turntable that stands lower for it passing over).
+- **Open:** the shoulder stands about 170 mm over the base's floor and the palletizer's
+  input box reaches no lower than about 50 mm under the shoulder, so the work stands on a
+  platform (or the box grows); the frame plates' tipping load on the printed brackets and
+  the wave washer's force (30 N) are unverified; the preloaded pair's moment capacity is
+  an estimate; the spec and the MCP still build an arm's side only (phase 7); the guide
+  puts the turret in one step ("The turret"), its order not yet the hooks'.
+- **Where:** `spiderpig/construction/robot.py` (`LAYOUTS`, `Turret`),
+  `spiderpig/construction/rotary/`, `spiderpig/construction/tools.py`,
+  `spiderpig/kinematics/`, `spiderpig/urdf.py`, `spiderpig/hardware/robot_catalog.py`.

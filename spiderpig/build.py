@@ -392,8 +392,10 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if opts is not None:
         uptodate.forget(opts)       # (a build that stops short is never current)
-    for owned in fabmethods.folders():   # no cut or print files left from an earlier build
-        clear_generated(out / owned)
+    for stale in (out / "urdf").glob("*.joints.json"):
+        stale.unlink()
+    for owned in (*fabmethods.folders(), "urdf"):   # no cut, print or URDF files left
+        clear_generated(out / owned)              # from an earlier build
     # an export's manifest no longer describes the folder (api.export reuses one by it):
     # this build writes its own once it has written everything; nor do an earlier build's
     # shopping list and BOM (a build that stops short leaves none of them behind)
@@ -456,11 +458,19 @@ def main(argv=None) -> int:
                                                          for name, n in split),
                   file=sys.stderr)
             return 2
-        if config.robot:
+        if config.mirrored:
             m = mech.meta
             print(f"chassis: {m['centre_plates']} centre plates; rear screws "
                   f"{m.get('rear_screws_per_servo', 0)} x {m.get('rear_screw')} per servo; "
                   f"{m.get('ties', 0)} frame ties ({m.get('tie_screw')})")
+        elif config.layout == "turret":
+            tu = mech.meta["turret"]
+            print(f"turret: {tu['preset']} ({tu['support']}, {tu['transmission']} "
+                  f"{tu['ratio']:g}:1, {tu['motor']}, {tu['sensor']}), yaw "
+                  f"{tu['range_deg'][0]:g}..{tu['range_deg'][1]:g} deg; the shoulder "
+                  f"{-tu['axis'][1]:.0f} mm over the base's floor")
+            for n in tu["notes"]:
+                print(f"  note: {n}")
 
         step_path, stl_path = out / f"{args.name}.step", out / f"{args.name}.stl"
         with warnings.catch_warnings():
@@ -470,6 +480,11 @@ def main(argv=None) -> int:
             mech.export_step(step_path)
         mech.export_stl(stl_path)
         print(f"wrote {step_path} and {stl_path}")
+        if config.lk.kind == "arm":         # the arm in ROS: its URDF (spiderpig.urdf)
+            from spiderpig import urdf
+
+            files = urdf.write(mech, config, 1.0, out / "urdf", args.name)
+            print(f"wrote {files[0]} ({len(files) - 2} link meshes) and {files[1]}")
 
         done = _exports_result(job) if job is not None else None
     except BaseException:
@@ -528,7 +543,7 @@ def main(argv=None) -> int:
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
-    if config.robot and (note := torque_limit_note(config)):
+    if config.mirrored and (note := torque_limit_note(config)):
         bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")

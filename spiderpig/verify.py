@@ -502,16 +502,16 @@ def _mass_estimate(design: Design, wr) -> Row | None:
     cfg = design.config
     f = target_field("size", "mass_g")
     try:
-        b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.robot)
+        b = walk_model.nominal_mass_breakdown(cfg, walk_model.side_legs(cfg), robot=cfg.mirrored)
     except (ValueError, KeyError):
         if wr.mass_g is None:
             return None
         return target_row(design, f, wr.mass_g, "walk", "estimated",
                           "the walk model's nominal mass" + ESTIMATE_NOTE, estimate=True)
-    n = 2 if cfg.robot else 1
+    n = cfg.sides
     servos_ = f"{n} servo{'s' if n > 1 else ''}"
-    plates = f"frame{' and centre' if cfg.robot else ''} plates"
-    printed = f"printed crank, pillars, pins{' and ties' if cfg.robot else ''}"
+    plates = f"frame{' and centre' if cfg.mirrored else ''} plates"
+    printed = f"printed crank, pillars, pins{' and ties' if cfg.mirrored else ''}"
     detail = (f"estimated before a build: links {b['links']:.0f} g, {servos_} {b['servos']:.0f} g, "
               f"{plates} {b['plates']:.0f} g, {printed} {b['printed']:.0f} g"
               + (f", electronics deck {b['deck']:.0f} g" if b.get("deck") else "")
@@ -645,7 +645,7 @@ def cost_floor(design: Design) -> tuple[float, list[str], list[str]]:
     from spiderpig import construction
 
     cfg = design.config
-    sides = 2 if cfg.robot else 1
+    sides = cfg.sides
     from spiderpig.materials import link_sheets
 
     sheets = dict.fromkeys([cfg.sheet, cfg.frame_sheet, *link_sheets(cfg).values(),
@@ -738,10 +738,10 @@ def _envelope_estimate(design: Design) -> list[Row]:
     x, y = float(np.ptp(xy[:, 0])) + 2 * r, float(np.ptp(xy[:, 1])) + 2 * r
     outside = max(0, -min((p.layer for p in plan.placed), default=0)) * plan.spec.pitch
     z_mid = mid_plane(side) + outside
-    z = 2 * z_mid if cfg.robot else z_mid
+    z = 2 * z_mid if cfg.mirrored else z_mid
     rows = []
     across = (f"the two stacks + the chassis + {outside:g} mm of axle heads outside each "
-              f"outer plate" if cfg.robot else
+              f"outer plate" if cfg.mirrored else
               f"the stack + the servo on the inner plate + {outside:g} mm of axle heads "
               f"outside the outer plate")
     for axis, v in zip("xyz", (x, y, z), strict=True):

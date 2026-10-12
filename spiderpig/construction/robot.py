@@ -236,7 +236,151 @@ def _deck(side: Mechanism, design, z_mid: float, host, bodies) -> tuple[list, li
     return parts, extras, info
 
 
-def assemble_robot(side: Mechanism, design) -> Mechanism:
+def assemble_robot(side: Mechanism, design, config=None) -> Mechanism:
+    """The robot ``config`` (else the design's, as a robot) makes of its fabricated
+    ``side``: its layout's (:data:`LAYOUTS`)."""
+    config = config if config is not None else replace(design.config, robot=True)
+    return layout_of(config).assemble(side, design, config)
+
+
+def robot_groups(design, config=None) -> list:
+    """The side-level groups the robot's layout adds to its side (realized before the
+    plates, which cut what they ask): a walker's frame ties, a turret's feet and tool."""
+    config = config if config is not None else replace(design.config, robot=True)
+    return layout_of(config).side_groups(design, config)
+
+
+def layout_of(config) -> Layout:
+    if not config.layout:
+        raise ValueError(f"{config.linkage}: one side, no robot layout")
+    return LAYOUTS[config.layout]
+
+
+class Layout:
+    """How a robot is made of its planar side: the kinematics it samples
+    (:meth:`template`), the groups it adds to the side (:meth:`side_groups`), and the robot
+    assembled round the fabricated side (:meth:`assemble`)."""
+
+    key = ""
+    label = ""
+
+    def template(self, tmpl: MechanismTemplate) -> MechanismTemplate:
+        raise NotImplementedError
+
+    def side_groups(self, design, config) -> list:
+        raise NotImplementedError
+
+    def assemble(self, side: Mechanism, design, config) -> Mechanism:
+        raise NotImplementedError
+
+
+class MirroredPair(Layout):
+    """A walker's: two mirror-image sides with their servos back to back in one frame
+    (the module docstring)."""
+
+    key = "mirrored_pair"
+    label = "two mirror-image sides, servos back to back, the chassis between them"
+
+    def template(self, tmpl: MechanismTemplate) -> MechanismTemplate:
+        return robot_template(tmpl)
+
+    def side_groups(self, design, config) -> list:
+        return [FrameTies(design.drive)]
+
+    def assemble(self, side: Mechanism, design, config) -> Mechanism:
+        return _assemble_pair(side, design)
+
+
+class Turret(Layout):
+    """An arm's: its side on a turntable about the vertical, its tool on the flange
+    (:mod:`construction.rotary.turret`, :mod:`construction.tools`)."""
+
+    key = "turret"
+    label = "the side standing on a turntable (yaw), its tool on the flange"
+
+    def template(self, tmpl: MechanismTemplate) -> MechanismTemplate:
+        return tmpl
+
+    def plans(self, design, config):
+        """``(turret plan, tool plan or None)`` of ``design`` in the robot's ``config`` (its
+        turntable and tool roles: the side's design doesn't hold them)."""
+        from spiderpig.construction.rotary import PRESETS
+        from spiderpig.construction.rotary.turret import turret_plan
+        from spiderpig.construction.tools import TOOLS, tool_plan
+
+        cfg = config
+        key = cfg.role("tool")
+        tp = (None if not key          # (the role emptied: config.role says "")
+              else tool_plan(design.ctx, design.plan, _pick(TOOLS, key, "tool"),
+                             design.groups))
+        preset = _pick(PRESETS, cfg.role("turntable"), "turntable")
+        return turret_plan(design, preset, tp), tp
+
+    def side_groups(self, design, config) -> list:
+        from spiderpig.construction.rotary.turret import TurretFoot
+        from spiderpig.construction.tools import ToolMount
+
+        turret, tool = self.plans(design, config)
+        return [TurretFoot(turret)] + ([ToolMount(tool)] if tool is not None else [])
+
+    def assemble(self, side: Mechanism, design, config) -> Mechanism:
+        from spiderpig.construction.rotary.turret import turret_parts
+        from spiderpig.kinematics import RobotTree, SpatialJoint
+
+        turret, _ = self.plans(design, config)
+        bodies, turning, extras, info = turret_parts(turret, design.ctx)
+        low = min((pp.bounding_box().min.Y for b in side.bodies
+                   if not b.joints and _static(b, side) and (pp := b.placed_part()) is not None),
+                  default=math.inf)
+        if low < turret.y_t - 1e-6:
+            raise ConstructionError(f"turret: a part of the side reaches y = {low:.2f} mm, "
+                                    f"under the turntable's top at {turret.y_t:.2f}")
+        tool = side.meta.get("tool")
+        joints = [SpatialJoint("q1", (0.0, 1.0, 0.0), (turret.x_a, turret.y_t, turret.z_a),
+                               turret.range_deg, label="the turntable (yaw)")]
+        carried = {b.name: "q1" for b in side.bodies}
+        carried.update(dict.fromkeys(turning, "q1"))
+        if tool and tool.get("wrist"):
+            joints.append(SpatialJoint("q4", (0.0, 1.0, 0.0), tuple(tool["axis"]),
+                                       (-180.0, 180.0), parent="q1", host=tool["body"],
+                                       label="the wrist (roll)"))
+            carried.update(dict.fromkeys(tool["rotating"], "q4"))
+        tree = RobotTree(tuple(joints), carried)
+        fastened = list(side.meta.get("fastened", [])) + info.pop("fastened")
+        meta = dict(side.meta, layout="turret", turret=info, tree=tree.to_meta(),
+                    filament="pla_filament", fastened=fastened)
+        return Mechanism(name=f"{side.name}_turret", bodies=list(side.bodies) + bodies,
+                         connections=list(side.connections), meta=meta,
+                         bom_extras=list(side.bom_extras) + extras)
+
+
+def _static(body: Body, side: Mechanism) -> bool:
+    """A part riding a frame body (the side's own frame: static in the plane)."""
+    from spiderpig.mechanism import is_frame
+
+    by = {b.name: b for b in side.bodies}
+    b: Body | None = body
+    seen = set()
+    while b is not None and b.name not in seen:
+        if is_frame(b.name):
+            return True
+        seen.add(b.name)
+        b = by.get(b.rigid_with) if b.rigid_with else None
+    return False
+
+
+def _pick(registry, key: str, what: str):
+    try:
+        return registry[key]
+    except KeyError:
+        raise ConstructionError(f"unknown {what} {key!r}; have {sorted(registry)}") from None
+
+
+LAYOUTS: dict[str, Layout] = {lay.key: lay for lay in (MirroredPair(), Turret())}
+"""The robot layouts, by :data:`config.ROBOT_LAYOUTS`' keys."""
+
+
+def _assemble_pair(side: Mechanism, design) -> Mechanism:
     """Both sides of the robot and the frame between their servos."""
     z_mid = mid_plane(design)
     bodies: list[Body] = []

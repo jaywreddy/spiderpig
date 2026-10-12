@@ -307,6 +307,9 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
     from spiderpig.construction import chassis, deck
 
     rows = [r for r in rows_of(mech) if r["z"] is not None]
+    turret = set((mech.meta.get("turret") or {}).get("parts", ()))
+    turret_rows, rows = ([r for r in rows if r["name"] in turret],
+                         [r for r in rows if r["name"] not in turret])
     robot = bool(mech.meta.get("robot")) if robot is None else robot
     mid = float(mech.meta.get("mid_plane", 0.0)) if robot else 0.0
     layers = layers_of(design.plan)
@@ -342,7 +345,13 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
         if left:
             ops.append(Op(OTHER, (), whole(*left), "Remaining parts",
                           "The remaining parts, where they are drawn.", tag="other"))
-    _check(ops, {r["name"] for r in rows})
+    if turret_rows:          # an arm's turret (construction.rotary.turret): one step for now
+        ops.append(Op(OTHER, (), whole(*sorted(r["name"] for r in turret_rows)), "The turret",
+                      "The base (its columns, the yaw motor under its top plate, the shaft "
+                      "clamped through the boss), the yaw drive, the hub with its bearings "
+                      "bonded in, the turntable; then the side stood on it, its feet bolted "
+                      "to the brackets: as drawn.", tag="turret"))
+    _check(ops, {r["name"] for r in rows + turret_rows})
     return _order(ops, ROBOT_ORDER if robot else SIDE_ORDER)
 
 

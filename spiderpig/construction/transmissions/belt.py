@@ -175,14 +175,19 @@ class BeltDrive(Transmission):
                                    bom_key=gt2_loop(int(length)), color=BELT_COLOR))
 
     def error_terms(self, ctx: Context, hub: DriveHub) -> ErrorTerms:
-        big, small = float(self.big["pitch_d"]) / 2, float(self.small["pitch_d"]) / 2
         c = math.dist(hub.motor, ctx.topo.geometry.points[hub.axis][0])
+        return self.terms(c, int(hub.detail))
+
+    def terms(self, c: float, length: int) -> ErrorTerms:
+        """The terms of a ``length`` mm loop at centre distance ``c`` (module docstring):
+        the planar drives' and the turntable's (:mod:`construction.rotary`)."""
+        big, small = float(self.big["pitch_d"]) / 2, float(self.small["pitch_d"]) / 2
         span = math.sqrt(max(c * c - (big - small) ** 2, 1e-9))
         k_span = GT2_SPECIFIC_STIFFNESS_N / span                     # N/mm
         stiff = 2 * k_span * big * big / 1000.0                      # N·m/rad
         back = math.degrees(2 * BACKLASH_MM / big)       # both meshes, seen at the joint
         return ErrorTerms(backlash_deg=back, stiffness_nm_per_rad=stiff,
-                          source=f"belt: GT2 {int(hub.detail)} mm loop, "
+                          source=f"belt: GT2 {length} mm loop, "
                                  f"{int(self.small['teeth'])}:{int(self.big['teeth'])}",
                           notes=(f"two {span:.1f} mm spans at {GT2_SPECIFIC_STIFFNESS_N:g} N "
                                  "per unit strain (unverified)",

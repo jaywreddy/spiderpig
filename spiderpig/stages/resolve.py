@@ -87,7 +87,7 @@ def config_warnings(config: BuildConfig, sides: int | None = None) -> list[str]:
     from the sheet's nominal, a servo with no listed speed, one side of a walker): for the
     CLIs, which take the same options."""
     return _warnings(linkage.get(config.linkage), config,
-                     (2 if config.robot else 1) if sides is None else sides)
+                     config.sides if sides is None else sides)
 
 
 def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
@@ -154,7 +154,7 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
     if config.proportions:
         doc["linkage"]["params"] = dict(config.proportions)
     legs: dict = {"module": config.module,
-                  "sides": (2 if config.robot else 1) if sides is None else int(sides)}
+                  "sides": config.sides if sides is None else int(sides)}
     if config.phases is not None:
         legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
     doc["legs"] = legs

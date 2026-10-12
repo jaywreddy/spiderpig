@@ -47,7 +47,10 @@ class Role:
     :class:`config.BuildConfig` field that holds it (``""``: ``BuildConfig.roles``).
     ``default``: the key a design gets when it names none: a literal key, or
     ``"module:function"`` called with the config (``""``: none). ``per``: one key per
-    design, or per drive / joint (:data:`PER`). ``optional``: :data:`NONE` empties it."""
+    design, or per drive / joint (:data:`PER`). ``optional``: :data:`NONE` empties it.
+    ``robot``: a part of the robot round the side, not of the side (an arm's turntable, its
+    tool): the side's design ignores it (:meth:`config.BuildConfig.side_config`), so one
+    plan serves every choice of it."""
 
     name: str
     title: str
@@ -58,6 +61,7 @@ class Role:
     per: str = "design"
     optional: bool = False
     help: str = ""
+    robot: bool = False
 
     def __post_init__(self):
         if self.per not in PER:
@@ -147,3 +151,10 @@ register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSI
 register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
               default="nema17_17hs4401", per="drive",
               help="each input's stepper motor"))
+register(Role("turntable", "turntable", "spiderpig.construction.rotary:PRESETS", ("arm",),
+              default="belt_preload", robot=True,
+              help="the robot's base rotation (yaw): its bearings, transmission, motor and "
+                   "homing sensor, as a preset (construction.rotary.PRESETS)"))
+register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
+              default="suction_cup", optional=True, robot=True,
+              help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))

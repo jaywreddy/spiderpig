@@ -16,7 +16,7 @@ from spiderpig.api.store_ops import _drop_stored, _forget, design_lock
 from spiderpig.construction.base import Build, ConstructionError
 from spiderpig.construction.contract import MAX_OUTSIDE, TOL, _outside, bad_solids, clashes
 from spiderpig.construction.envelope import claimed_solid
-from spiderpig.construction.robot import FrameTies, assemble_robot
+from spiderpig.construction.robot import assemble_robot, robot_groups
 from spiderpig.design import (
     Design,
     Part,
@@ -88,9 +88,9 @@ def fabricate_at(design: Design, t: float) -> Mechanism:
         raise ValueError("plan(design) first")
 
     def make():
-        ties = [FrameTies(d.drive)] if cfg.robot else []
-        side = fabricate_side(d, tmpl.freeze_at(t), ties)
-        return assemble_robot(side, d) if cfg.robot else side
+        extra = robot_groups(d, cfg) if cfg.robot else []
+        side = fabricate_side(d, tmpl.freeze_at(t), extra)
+        return assemble_robot(side, d, cfg) if cfg.robot else side
 
     return fabcache.fabricated(design.store, tmpl, cfg, d, t, make)
 

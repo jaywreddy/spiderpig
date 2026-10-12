@@ -196,7 +196,7 @@ def entry_name(tmpl, config, design, t: float) -> str:
 
     kind = "robot" if config.robot else "side"
     parts = parts_cad_state(config)
-    doc = repr((_key(tmpl, config), bool(config.robot), float(t),
+    doc = repr((_key(tmpl, config), bool(config.robot), config.roles, float(t),
                 plan_fingerprint(design.plan), servo_state(config)) + ((parts,) if parts else ()))
     h = hashlib.sha256(doc.encode()).hexdigest()[:16]
     return slug(f"{config.key}_{kind}_t{float(t)!r}_{h}")

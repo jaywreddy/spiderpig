@@ -149,11 +149,12 @@ layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
     "spiderpig.api",
     "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide",
-    "spiderpig.sim | spiderpig.stages",
+    "spiderpig.sim | spiderpig.stages | spiderpig.urdf",
     "spiderpig.fabricate",
     "spiderpig.construction",
     "spiderpig.stack",
     "spiderpig.linkage",
+    "spiderpig.kinematics",
 ]
 # No written exceptions: `spiderpig bake` / `build` and the build's up-to-date check plan
 # through the store from `spiderpig.stages` (resolve, plan_config), which the API re-exports.

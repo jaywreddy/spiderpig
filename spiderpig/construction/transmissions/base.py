@@ -312,6 +312,41 @@ class DriveGroup(Group):
         c = self.clamp_offset()
         return [tuple(m + s * c * v) for s in (-1, 1)]
 
+    def footprint(self, ctx: Context) -> tuple[bool, list[np.ndarray],
+                                                tuple[np.ndarray, np.ndarray, float] | None]:
+        """What this drive stands outside its frame plate, in the plane: ``(on the outer
+        plate, the motor's square's corners, the slider's stadium (ends and radius) or
+        None)`` (a robot layout keeps its parts clear of them: :mod:`construction.rotary`)."""
+        hub = self.hub(ctx)
+        m = np.asarray(hub.motor, dtype=float)
+        u, v = self._uv(hub)
+        h = self.motor.frame / 2
+        corners = [m + sx * h * u + sy * h * v for sx, sy in ((-1, -1), (1, -1), (1, 1),
+                                                                (-1, 1))]
+        slider = None
+        if self.transmission.tensioned:
+            a = self.motor.frame / 2
+            slider = (m - a * v, m + a * v, self._outside_r() - TENSION)
+        return hub.down, corners, slider
+
+    def lowest(self, ctx: Context) -> tuple[float, float]:
+        """The lowest y of what this drive puts inside the stack (its hub round the pivot,
+        turning in place; the belt or the capstan at the motor) and outside its frame plate
+        (the motor, its slider): a robot layout's floor stays under both."""
+        hub = self.hub(ctx)
+        tr = self.transmission
+        o = np.asarray(ctx.topo.geometry.points[hub.axis][0], dtype=float)
+        m = np.asarray(hub.motor, dtype=float)
+        hull = tr.hull(ctx, hub)
+        r_o = max(tr.hub_r(ctx), hull[0] if hull else 0.0)
+        r_m = max(tr.motor_side_r(ctx), hull[-1] if hull else 0.0)
+        inside = min(o[1] - r_o, m[1] - r_m)
+        _, corners, slider = self.footprint(ctx)
+        outside = min(float(c[1]) for c in corners)
+        if slider is not None:
+            outside = min(outside, min(float(slider[0][1]), float(slider[1][1])) - slider[2])
+        return float(inside), outside
+
     def _bolt_offsets(self, hub: DriveHub | None = None) -> list[float]:
         given = self.transmission.bolt_angles(hub) if hub is not None else None
         if given is not None:
@@ -538,6 +573,18 @@ class DriveGroup(Group):
             out.extras.append(BomLine("m3_nut", self.transmission.bolts,
                                       f"{self.name}: the hub's bolts"))
         self.transmission.realize(build, self, hub, out, layers)
+        # the screws threaded into what they hold (not clashes: contract.clashes)
+        plate_body = frame if plate_key == FRAME_INNER else "frame_outer"
+        pairs = []
+        for b in out.bodies:
+            if "_motor_screw" in b.name:
+                pairs.append((b.name, f"{stem}_motor"))
+            elif "_clamp" in b.name:
+                pairs.append((b.name, plate_body))
+            elif "_bolt" in b.name and not self.transmission.nuts:
+                pairs += [(b.name, n.name) for n in out.bodies if n.name.endswith("_pulley_large")]
+        fastened = out.notes.setdefault("fastened", {})
+        fastened.update({f"{a}|{b}": [a, b] for a, b in pairs})
         out.notes.setdefault("drive", {})[self.name] = {
             "input": self.input, "link": self.link, "transmission": self.transmission.key,
             "motor": mo.key, "ratio": round(hub.ratio, 4), "layers": layers,

@@ -208,7 +208,7 @@ def _design_out(design: Design) -> dict:
     cfg = design.config
     return jsonable({
         "ok": True, "failures": [], "design": design.id, "kind": design.kind,
-        "linkage": cfg.linkage, "module": cfg.module, "sides": 2 if cfg.robot else 1,
+        "linkage": cfg.linkage, "module": cfg.module, "sides": cfg.sides,
         "engine_version": design.engine_version, "resolved": design.resolved,
         "warnings": list(design.warnings), "derived_from": design.derived_from,
         "patch": design.patch, "created_at": design.created_at,

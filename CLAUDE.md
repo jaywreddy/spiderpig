@@ -170,9 +170,9 @@ bracket with `prof.timed("label")`, `prof.bump(...)`, `prof.set_metric(...)`.
 ## Repository map
 
 Everything Python is the `spiderpig` package (`pyproject.toml`, hatchling; `uv sync`
-installs it editable). Engine layers, enforced by `lint-imports` (no exceptions): linkage
-→ stack → construction → fabricate → (sim | stages) → (bake | build | strength) → api →
-(mcp | server | cli).
+installs it editable). Engine layers, enforced by `lint-imports` (no exceptions): kinematics
+→ linkage → stack → construction → fabricate → (sim | stages | urdf) → (bake | build | strength |
+precision | guide) → api → (mcp | server | cli).
 
 | path | role |
 |---|---|
@@ -181,7 +181,7 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | `spiderpig/mechanism.py` | `Body` / `Joint` / `Mechanism`; `MechanismTemplate` for batched sampling. Planar: z = 0 |
 | `spiderpig/stack/` | the layer planner: `geometry.py`, `topology.py`, `plan.py` (`StackSpec`, `StackPlan`), `search.py` (`StackProblem`), `plan_z.py` (`finalize`), `verify.py` |
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
-| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`), `transmissions/` (an arm's drives: `belt.py`, `capstan.py`), `plates.py`, `chassis.py`, `deck.py`, `robot.py`, `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
+| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`), `transmissions/` (an arm's drives: `belt.py`, `capstan.py`), `rotary/` (an arm's turntable: presets, `turret.py`), `tools.py` (an arm's tool), `plates.py`, `chassis.py`, `deck.py`, `robot.py` (`LAYOUTS`: a walker's two sides, an arm's turret), `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
 | `spiderpig/actuators/` | stepper motors for an arm's inputs (`StepperSpec`: holding stiffness, microsteps) |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass and material constants (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`), vendor CAD (`cad.py`) |
@@ -196,7 +196,8 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | `spiderpig/layout.py` | DXF sheets and per-part DXFs, kerf per sheet, `fidelity` |
 | `spiderpig/workers.py` | `submit`: package functions in fresh processes (OCP holds the GIL) |
 | `spiderpig/strength.py` | joint and link safety factors at the sim's loads |
-| `spiderpig/precision.py` | the error budget at the output: pin play through the constraints, levers, tolerances, heat |
+| `spiderpig/precision.py` | the error budget at the output: pin play through the constraints, levers, tolerances, heat, a turret's yaw and tilt |
+| `spiderpig/kinematics/`, `urdf.py` | spatial joints over the side (`RobotTree`: the bake and the URDF read it); an arm's URDF |
 | `spiderpig/walk.py` | quasi-static walk model (`viewer/src/drive/model.ts` is its twin) |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py`, `run.py`, `live.py` (`/ws/sim`), `loads.py` |
 | `spiderpig/bake.py`, `build.py` | the `.glb` bake; STEP/STL/DXF/BOM/ORDER.md |

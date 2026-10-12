@@ -118,7 +118,7 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     rep["chassis"] = {k: v for k, v in mech.meta.items()
                       if k in ("centre_plates", "rear_screw", "rear_screws_per_servo",
                                "rear_engagement_mm", "ties", "tie_screw", "tie_engagement_mm")}
-    if config.robot:          # the electronics deck: clear of every moving part, whole cycle
+    if config.mirrored:       # the electronics deck: clear of every moving part, whole cycle
         rep["deck"] = dict(mech.meta.get("deck") or {"fitted": False},
                            clearance=deck_clearance(mech))
     try:
@@ -168,9 +168,9 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     if sl.get("source") == "sim" and sl.get("jam_stalled", 1.0) < 1.0:
         rep["warnings"].append(f"strength: only {sl['jam_stalled']:.0%} of the jam cases "
                                "stalled: the jam loads are undersampled")
-    if config.robot and not rep["deck"].get("fitted"):
+    if config.mirrored and not rep["deck"].get("fitted"):
         rep["warnings"].append(f"no electronics deck: {rep['deck'].get('why')}")
-    if config.robot and rep["chassis"].get("rear_screws_per_servo", 0) < 2:
+    if config.mirrored and rep["chassis"].get("rear_screws_per_servo", 0) < 2:
         rep["warnings"].append(f"only {rep['chassis'].get('rear_screws_per_servo', 0)} rear "
                                "screw(s) per servo into the centre plates")
     rep["seconds"] = round(time.time() - t0, 1)

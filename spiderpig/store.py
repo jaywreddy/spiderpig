@@ -316,7 +316,7 @@ class Store:
             "spec_hash": spec_hash(design.resolved), "created_at": design.created_at,
             "derived_from": design.derived_from, "patch": design.patch,
             "kind": design.kind, "linkage": cfg.linkage, "module": cfg.module,
-            "sides": 2 if cfg.robot else 1, "warnings": list(design.warnings),
+            "sides": cfg.sides, "warnings": list(design.warnings),
             "resolved": design.resolved,
         })
         return True

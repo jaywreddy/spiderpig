@@ -1356,6 +1356,29 @@ robot is an entry rather than an edit across the stages:
   (pillars) seat a shielded bearing in each link that turns on the axle (`AxleDims.seat`:
   the bore the bearing fills); their play is the bearing's, their models McMaster-Carr's
   through `spiderpig cad` (`spiderpig/tools/cad.py`), else drawn from the catalog.
+- **Robot layouts** (`construction.robot.LAYOUTS`, `config.ROBOT_LAYOUTS`): how a robot
+  is made of its planar side. A walker's `mirrored_pair` is the two-sided chassis robot; an
+  arm's `turret` stands its side on a turntable about the vertical
+  (`construction/rotary/turret.py`): a base of two plates on standoff columns with the yaw
+  motor under it, a fixed 8 mm shaft clamped through a boss, a hub of laser-cut seat
+  plates with two 608s bonded in, the turntable, the frame plates grown a foot onto it and
+  held by printed brackets clear of the drives' motors, and a homing endstop with a
+  half-circle flag. The turntable is one preset of the role `turntable`
+  (`construction.rotary.PRESETS`: a support, a transmission, a motor and a sensor; the
+  plain or wave-washer-preloaded 608 pair, the side's own `belt` and `capstan` numbers on
+  the yaw's geometry). The arm's tool is the role `tool` (`construction/tools.py`): a
+  vacuum cup on a printed holder bolted beside the end plate, or on a NEMA 11 wrist hung
+  under the flange, placed where no link sweeps over the inputs' box. A layout adds its
+  side-level groups before the plates are cut (`robot_groups`: the frame ties, a turret's
+  feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).
+  The robot-level roles (`roles.Role.robot`) are dropped from the side's config
+  (`BuildConfig.side_config`), so one plan serves every turntable and tool.
+- **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
+  as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
+  rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's
+  planar motion. The bake composes them with the planar motions; the URDF writes them; the
+  precision budget adds the turntable as an input (`q1`, through the flange's horizontal
+  reach) and its support's tilt over the tool's distance from the bearings.
 
 ## 7. Outputs: stage 6
 
@@ -1383,6 +1406,7 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
+| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar | arms only |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
@@ -1459,6 +1483,11 @@ on purpose, because scripts parse them:
 | `5_gltf_nodes_channels` | one node and one animation channel per body | 0.7 s |
 | `6_foot_path_extra`, `6b_drive_extra` | the foot path, and the data the viewer's drive mode needs | under 1 s |
 | `7_serialize` | write the file | under 1 s |
+
+An arm's turret (`construction.robot.Turret`) adds spatial joints: a body a joint carries
+is posed by the joint's sweep (its range's middle plus half its range times `sin(depth t)`
+over the tour) composed with its planar motion (`kinematics.RobotTree.body_transform`),
+its rotation then a general quaternion; every other body keeps the planar path.
 
 At the snapshot the running example's glb was 9.5 MB: 179 bodies, 173 of which carry a part, drawn with 139
 meshes, baked in 28.6 s (36 s on the command line, imports included). Bakes are cached in

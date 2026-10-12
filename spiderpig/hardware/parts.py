@@ -342,5 +342,6 @@ from spiderpig.hardware import (  # noqa: E402, F401
     crank_catalog,
     fastener_catalog,
     motion_catalog,
+    robot_catalog,
     sheet_catalog,
 )

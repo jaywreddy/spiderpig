@@ -112,6 +112,18 @@ register(StepperSpec(
     length=48.0, holding_nm=0.59, rated_a=2.0, mass_g=390.0, bom_key="stepper_17hs19",
     source=f"{_SO} 17HS19-2004S1 datasheet: 59 N·cm holding, 2.0 A, 48 mm, 390 g", **NEMA17))
 
+NEMA11 = {"frame": 28.2, "hole_square": 23.0, "hole_thread": "M2.5", "hole_depth": 2.5,
+          "boss_d": 22.0, "boss_h": 1.5, "shaft_d": 5.0, "shaft_len": 20.0,
+          "flat_depth": 0.5, "step_deg": 1.8, "rotor_teeth": 50}
+"""The NEMA 11 frame: 28.2 mm square, M2.5 holes on a 23 mm square, a 22 mm boss, a 5 mm
+shaft (the common StepperOnline drawing; the shaft's length varies by model: measure)."""
+
+register(StepperSpec(
+    key="nema11_11hs20", name="NEMA 11 stepper, 0.12 N·m (StepperOnline 11HS20-0674)",
+    length=51.0, holding_nm=0.12, rated_a=0.67, mass_g=200.0, bom_key="stepper_11hs20",
+    source=f"{_SO} 11HS20-0674 listing: 12 N·cm holding, 0.67 A; 51 mm and 200 g "
+           "UNVERIFIED", **NEMA11))
+
 DEFAULT = "nema17_17hs4401"
 
 

@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, cast
 from spiderpig import construction, fabmethods, linkage, servos
 from spiderpig.config import BuildConfig
 from spiderpig.construction.base import Build, Context, Realized
-from spiderpig.construction.robot import FrameTies, assemble_robot
+from spiderpig.construction.robot import assemble_robot, robot_groups
 from spiderpig.construction.underside import underside
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.mechanism import Mechanism
@@ -140,7 +140,7 @@ def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str
     module at (a hint for the order it tries layers in, nothing more)."""
     if config.module == "single":
         return None
-    one = replace(config, module="single", phases=None, robot=False)
+    one = replace(config.side_config(), module="single", phases=None)
     try:
         return design_side(template_for(one), one, advise=False, deadline=deadline).plan.layers
     except ValueError:
@@ -169,7 +169,7 @@ def _key(tmpl, config: BuildConfig) -> tuple:
     the ``meta`` that made it) and the side's config."""
     meta = tuple(sorted((k, v) for k, v in tmpl.meta.items()))
     return (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections), meta,
-            replace(config, robot=False))
+            config.side_config())
 
 
 def remember(tmpl, design: SideDesign) -> None:
@@ -179,7 +179,7 @@ def remember(tmpl, design: SideDesign) -> None:
     stays."""
     key = _key(tmpl, design.config)
     _DESIGNS.setdefault(key, design)
-    _LAYOUTS.setdefault((*key[:4], replace(design.config, robot=False)), design.plan)
+    _LAYOUTS.setdefault((*key[:4], design.config.side_config()), design.plan)
 
 
 def router_facts(problem: StackProblem) -> CrankFacts | None:
@@ -231,7 +231,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     within a few minutes at worst. ``deadline``: a caller's (the recommendation checks'):
     what is left of it caps every search here, and the design isn't cached.
     """
-    config = replace(config or BuildConfig(), robot=False)
+    config = (config or BuildConfig()).side_config()
     key = _key(tmpl, config)
     if key in _DESIGNS:
         return _DESIGNS[key]
@@ -239,7 +239,7 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
     static_stage(tmpl, problem, config if advise else None)
     # The robot's side has the same layout as the side on its own; reuse
     # a solved layout when every claim still clears (checked, not assumed).
-    layout_key = (*key[:4], replace(config, robot=False))
+    layout_key = (*key[:4], config)
     plan = _reuse(problem, _LAYOUTS.get(layout_key))
     if plan is None:
         try:
@@ -268,7 +268,8 @@ def design_side(tmpl, config: BuildConfig | None = None, advise: bool = True,
 def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mechanism:
     """Build every part of one side for ``mech`` (the side's template frozen at some ``t``).
 
-    ``extra_groups`` (the robot's frame ties) realize after the design's
+    ``extra_groups`` (the robot layout's: :func:`construction.robot.robot_groups`) realize
+    after the design's
     groups and before the plates, which cut what they ask for.
     """
     build = Build(design.ctx, design.plan, mech)
@@ -293,6 +294,8 @@ def fabricate_side(design: SideDesign, mech: Mechanism, extra_groups=()) -> Mech
         layers=design.plan.top + 1, stack_mm=design.plan.height,
         **done.notes,
     )
+    if isinstance(meta.get("fastened"), dict):     # the groups' threaded pairs, by name
+        meta["fastened"] = [tuple(p) for p in meta["fastened"].values()]
     return Mechanism(
         name=mech.name,
         bodies=list(bodies.values()) + extra,
@@ -316,9 +319,9 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
     design = design_side(tmpl, config)
 
     def build() -> Mechanism:
-        ties = [FrameTies(design.drive)] if config.robot else []
-        side = fabricate_side(design, tmpl.freeze_at(t), ties)
-        return assemble_robot(side, design) if config.robot else side
+        extra = robot_groups(design, config) if config.robot else []
+        side = fabricate_side(design, tmpl.freeze_at(t), extra)
+        return assemble_robot(side, design, config) if config.robot else side
 
     store = store if store is not None else fabcache.current()
     return fabcache.fabricated(store, tmpl, config, design, t, build)

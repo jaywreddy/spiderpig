@@ -219,6 +219,12 @@ def default_crank(lk: linkage.Linkage, module: str = "") -> str:
                              LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
 
 
+ROBOT_LAYOUTS: dict[str, str] = {"walker": "mirrored_pair", "arm": "turret"}
+"""The robot each linkage kind makes (:data:`construction.robot.LAYOUTS`): a walker's two
+mirrored sides with the chassis between their servos; an arm's side standing on a turntable
+(2026-10-12). A mechanism makes none: it is one side."""
+
+
 @dataclass(frozen=True)
 class BuildConfig:
     """What to build and how. Construction keys refer to :mod:`construction` registries."""
@@ -226,7 +232,9 @@ class BuildConfig:
     linkage: str = linkage.DEFAULT    # see linkage.available()
     module: str = ""                  # legs per side: one of the linkage's modules ("": its
     #                                   default, config.default_module: Strider's double)
-    robot: bool = True                # two mirrored sides, servos back to back in one frame
+    robot: bool = True                # the whole robot (ROBOT_LAYOUTS: a walker's two
+    #                                   mirrored sides, servos back to back in one frame; an
+    #                                   arm's side on its turntable), else one side
     phases: tuple[float, ...] | None = None          # crank phase per leg (rad); None = module's
     proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
     sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
@@ -272,10 +280,12 @@ class BuildConfig:
             lk = linkage.get(self.linkage)
         except KeyError as e:
             raise ParamError(e.args[0]) from None
-        if self.robot and lk.kind != "walker":
-            raise ParamError(f"{lk.key} is a {lk.kind}, not a walker: it has no feet to walk on, "
-                             f"so it builds one side (robot=False; --side-only on the command "
-                             f"line) (walkers: {', '.join(linkage.available('walker'))})")
+        if self.robot and lk.kind not in ROBOT_LAYOUTS:
+            raise ParamError(f"{lk.key} is a {lk.kind}, not a walker or an arm: no robot is made "
+                             f"of it (a walker's two sides, an arm on its turntable), so it "
+                             f"builds one side (robot=False; --side-only on the command line) "
+                             f"(walkers: {', '.join(linkage.available('walker'))}; arms: "
+                             f"{', '.join(linkage.available('arm'))})")
         if not self.module:
             object.__setattr__(self, "module", default_module(lk.key))
         if not self.crank:
@@ -462,6 +472,32 @@ class BuildConfig:
         """Every parameter of the linkage, overrides applied."""
         return self.lk.values(dict(self.proportions))
 
+    def side_config(self) -> BuildConfig:
+        """The config of the side alone: ``robot`` off, the robot-level roles
+        (:attr:`roles.Role.robot`: the turntable, the tool) dropped, so every robot of one
+        side shares its design and plan."""
+        from spiderpig import roles as rolemod
+
+        roles = tuple((k, v) for k, v in self.roles
+                      if not rolemod.get(rolemod.split(k)[0]).robot)
+        return replace(self, robot=False, roles=roles)
+
+    @property
+    def layout(self) -> str:
+        """The robot's layout (:data:`ROBOT_LAYOUTS`, :data:`construction.robot.LAYOUTS`):
+        ``""`` for one side."""
+        return ROBOT_LAYOUTS[self.lk.kind] if self.robot else ""
+
+    @property
+    def mirrored(self) -> bool:
+        """Two mirror-image sides in one frame (a walker's robot)."""
+        return self.layout == "mirrored_pair"
+
+    @property
+    def sides(self) -> int:
+        """How many planar sides it builds: 2 for a mirrored pair, else 1."""
+        return 2 if self.mirrored else 1
+
     @property
     def is_default(self) -> bool:
         """The linkage's default design (the module's phases, its proportions), built the
@@ -546,10 +582,10 @@ def default_module(key: str) -> str:
 
 
 def default_robot(key: str) -> bool:
-    """Whether a design builds the two-sided robot when nothing says: a walker does, a
-    mechanism is one side (it has no feet to walk on)."""
+    """Whether a design builds the whole robot when nothing says: a walker (its two sides)
+    and an arm (on its turntable) do, a mechanism is one side."""
     try:
-        return linkage.get(key).kind == "walker"
+        return linkage.get(key).kind in ROBOT_LAYOUTS
     except KeyError as e:
         raise ParamError(e.args[0]) from None
 
