@@ -53,11 +53,13 @@ from spiderpig import linkage
 from spiderpig.actuators import sensors
 from spiderpig.config import BuildConfig, add_build_args, add_design_args, config_from_args
 from spiderpig.linkage.constraints import gains, layout, sample_inputs
+from spiderpig.linkage.stiffness import Compliance, Rod, Section, compliance
 
 DEFAULT_TARGET_MM = 0.1     # the placement the report asks each input's resolution for
 DEFAULT_DT_K = 10.0         # the temperature swing the thermal row assumes (K)
 DEFAULT_HOLE_TOL_MM = 0.13  # a laser-cut hole's position tolerance (SendCutSend, about)
 DEFAULT_PAYLOAD_G = 50.0    # the load at the output the sag row assumes (a few glass slides)
+SLIDE_G = 5.0               # one glass microscope slide (75 x 25 x 1 mm soda-lime: 4.7 g)
 G = 9.81
 
 Interface = tuple[str, str]     # (joint, body)
@@ -135,6 +137,7 @@ class Precision:
     tilt_mm: float = 0.0           # a robot's turntable tilting in its bearings' play
     turret_accuracy_mm: float = 0.0   # its drive's eccentricity and its axis out of plumb
     oop: OutOfPlane | None = None  # the tool's tip out of the plane in the links' tilt
+    stiffness: Compliance | None = None   # the links bending (linkage.stiffness): an arm's
 
     @property
     def repeatability_mm(self) -> float:
@@ -173,6 +176,9 @@ class Precision:
                 "payload_g": self.payload_g, "tilt_mm": _num(self.tilt_mm),
                 "turret_accuracy_mm": _num(self.turret_accuracy_mm),
                 "out_of_plane_mm": _num(self.out_of_plane_mm),
+                "payload_sag_mm": (_num(self.stiffness.sag_mm) if self.stiffness else None),
+                "across_mm_per_n": (_num(self.stiffness.across_mm_per_n)
+                                    if self.stiffness else None),
                 "out_of_plane_by_joint": ({j: _rounded(v) for j, v in self.oop.by_joint.items()}
                                           if self.oop is not None else None),
                 "inputs": {k: {f: (_num(v) if isinstance(v, float) else v)
@@ -209,6 +215,15 @@ class Precision:
                            default=0.0)
                 out.append(f"    {j:8} {sum(v.values()):.3f} mm (tilt {v['tilt']:.3f}, float "
                            f"{v['float']:.3f}; links tilt up to {tilt:.3f} deg)")
+        if self.stiffness is not None:
+            c = self.stiffness
+            per_g = c.sag_mm / self.payload_g if self.payload_g else 0.0
+            out.append(f"  the links bending (a frame of their sections at their layers): "
+                       f"{self.payload_g:g} g sags the tool {c.sag_mm:.3f} mm at worst "
+                       f"({per_g * 1000:.1f} um a gram: a {SLIDE_G:g} g slide picked up "
+                       f"moves it {per_g * SLIDE_G:.3f} mm); across the plane "
+                       f"{c.across_mm_per_n:.2f} mm/N (accuracy at a given load; not in the "
+                       "total)")
         if self.tilt_mm:
             out.append(f"  the turntable's tilt in its bearings: {self.tilt_mm:.3f} mm")
         if self.turret_accuracy_mm:
@@ -606,9 +621,40 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
             notes.append("out of the plane: the tool's tip as a point below the output (its "
                          "offset across the stack, which turns tilt into a shift in the plane, "
                          "not counted); the turntable's tilt is its own row")
+    stiff = None
+    if lk.kind == "arm" and oop:
+        stiff = link_compliance(config, design, payload_g,
+                                _tool_drop(robot_cfg, design) if turret else 0.0)
+        notes.append("the links' bending: a 3D frame of each link's section (width "
+                     "2 link_radius, its sheet's thickness and modulus) at its layer, the pins "
+                     "steel rods between layers, the frame plates and turntable rigid "
+                     "(linkage.stiffness); the payload's sag at a given payload calibrates "
+                     "out, a change of payload and a load across the plane do not")
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
                      hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g, tilt,
-                     turret_acc, across)
+                     turret_acc, across, stiff)
+
+
+def link_compliance(config: BuildConfig, design, payload_g: float,
+                    drop: float = 0.0) -> Compliance:
+    """The links' bending at the tool (:mod:`linkage.stiffness`): each link's section (the
+    link sheet's thickness and modulus, ``2 link_radius`` wide; a link cut from another
+    sheet, the first such), at its layer's mid-plane in the side's plan, the pins 4 mm and
+    the pillars 6 mm steel between the layers and the frame plates."""
+    from spiderpig.materials import sheet as sheet_record
+    from spiderpig.materials import sheet_of
+
+    d = _side_design(config, design)
+    pl = d.plan
+    z = {b: (pl.z(k)[0] + pl.z(k)[1]) / 2 for b, k in pl.layers.items()}
+    rec = sheet_record(sheet_of(config, "link"))
+    section = Section(2 * config.params.link_radius, rec.thickness, rec.modulus_gpa * 1000)
+    lay = layout(config.lk)
+    frame = set(lay.joints["torso"])
+    rods = {j: Rod(6.0 if j in frame else 4.0) for j in lay.axles}
+    return compliance(config.lk, config.values, section, payload_n=payload_g / 1000 * G,
+                      drop=drop, z=z, rods=rods,
+                      frame_z=(pl.z(0)[1], pl.z(pl.top)[0]))
 
 
 def _wobble(config: BuildConfig) -> dict:

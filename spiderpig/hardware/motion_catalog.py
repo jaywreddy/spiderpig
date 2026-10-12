@@ -108,8 +108,13 @@ register(Item(
           "D-flat shaft (retaining compound), so the cord wraps a round surface."))
 register(Item(
     "dyneema_1mm", "1 mm braided Dyneema (UHMWPE) cord, per metre", "cord",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=1mm+dyneema+braided+line", "1 mm SK78 "
-               "braid"),),
+    (_unpriced("GigaParts", "https://www.gigaparts.com/", "Mastrant-M 1 mm (100 % DM20 "
+               "core, polyester cover), SKU ZCB13112; out of stock 2026-10-12"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=1mm+dyneema+braided+line", "1 mm SK78 "
+               "braid: creeps (see notes)")),
     dims={"d": CORD_D, "ea_n": CORD_EA_N, "material": "nylon"},
     notes="The capstan's cord: wraps the motor's capstan and is anchored at both ends of the "
-          "drum; nearly no stretch and no creep."))
+          "drum. Buy DM20 (Dyneema's creep-resistant grade): at 300 MPa and 30 C, SK75 "
+          "creeps 0.02 %/day, SK78 0.006, DM20 0.00007 (DSM via riggingdoctor.com); "
+          "SK-grade braid creeps enough to need re-tensioning (arXiv 1806.10632). EA "
+          "unverified."))

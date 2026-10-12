@@ -725,3 +725,27 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   (0.58 with inclinometers). Open: the q2 / q3 endstops and flags are in the budget, the
   BOM and the homing, not yet drawn (their place on the frame plate, the flag's claim on
   the link).
+
+### 2026-10-12: the links' bending in the budget; aluminium links (round 4 of the arm's precision review)
+
+- **Decision:** the budget gains the links' bending (`linkage.stiffness`: a 3D frame of each
+  link's section at its layer, the pins and pillars steel rods between the layers and the
+  frame plates, the joints free only in their turn; checked against the cantilever's
+  formulas and a two-layer twist by hand: `tests/test_stiffness.py`). The recommended arm
+  cuts its links (and its pairs' hubs) from 0.125 in 6061-T6 (`--sheet al6061_3p2mm`)
+  instead of 3 mm acrylic. Parts sources: VXB bearings, Lesjöfors disc springs (DIN 2093's
+  loads checked: the C12.5 is 151 N, not 115), MISUMI SFJW ground pins (4 mm from 20 mm
+  long), DM20 cord for the capstans; the bearings' free models pinned and fetched by
+  `spiderpig cad download`.
+- **Why:** the round's two reviews. The design review: every reference arm has stiff links
+  (the MT4's 5 x 20 mm bars, about 125 times our 3 x 13 mm acrylic in the plane), none a
+  counterbalance spring. The error-model review: the linear gains check against a
+  nonlinear re-solve (0.2 %); gravity seats every pin one way over the whole box, so the
+  pins' play is mostly accuracy (ISO 9283 RP by Monte Carlo 0.05-0.1 mm within a session,
+  0.10-0.15 across power-ups); the links' compliance and creep was the term the budget
+  lacked. With the layers' offsets a load crossing between layers twists the thin links:
+  acrylic sags the tool 5.5 mm under 50 g (a 5 g slide picked up: 0.55 mm), 39 mm/N across
+  the plane; 6061: 0.22 mm (0.022 mm a slide), 1.6 mm/N; the thermal row 0.21 -> 0.07 mm.
+- **Open:** the total still adds the pins' worst play as repeatability (round 5: the
+  ISO 9283 split); the frame plates and the turntable are rigid in the stiffness model;
+  acrylic's creep is not modelled (moot with aluminium).

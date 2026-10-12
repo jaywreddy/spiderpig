@@ -52,17 +52,23 @@ for _L in CHICAGO_LENGTHS:
 DISC_SPRINGS = {
     # key: (OD, ID, material t, free height h0, load at 75 % of h0 - t (N, estimate))
     "disc_spring_din2093_c8": (8.0, 4.2, 0.2, 0.45, 39.0),
-    "disc_spring_din2093_c12p5": (12.5, 6.2, 0.35, 0.8, 115.0),
+    "disc_spring_din2093_c12p5": (12.5, 6.2, 0.35, 0.8, 151.0),
 }
 """DIN 2093 series C disc springs: the preload of a ball pair's column
-(:mod:`construction.pivots.pair`): the C8 on a 4 mm barrel, the C12.5 on a 6 mm standoff,
-compressed by the shims under them to the column's preload. Loads are DIN 2093's nominal
-for the series (estimates: confirm at the vendor's table)."""
+(:mod:`construction.pivots.pair`): the C8 on a 4 mm pin, the C12.5 on a 6 mm shaft,
+compressed by the shims under them to the column's preload. Loads at 75 % of the cone's
+travel (``h0`` is the free height, the cone ``h0 - t``): DIN 2093's table (39 N and 151 N;
+Lesjöfors' stainless C8 36 N), checked 2026-10-12."""
 
 for _k, (_od, _id, _t, _h0, _f) in DISC_SPRINGS.items():
     register(Item(
         _k, f"DIN 2093 series C disc spring {_od:g} x {_id:g} x {_t:g} mm", "spring",
-        (Offer("Amazon", f"https://www.amazon.com/s?k=DIN+2093+disc+spring+{_od:g}x{_id:g}",
+        (Offer("Lesjöfors", "https://shop.lesjofors.com/fi/en-US/all-products/disc-springs-"
+               "washers/", f"DSS {_od:g}X{_id:g}X{_t:g}", pack_qty=1,
+               price_usd=2.6 if _od < 10 else 3.5,
+               note="stainless 1.4310; EUR 5.16 each, 2.35 from 25 (the C8, read 2026-10-12); "
+                    "the C12.5 an estimate"),
+         Offer("Amazon", f"https://www.amazon.com/s?k=DIN+2093+disc+spring+{_od:g}x{_id:g}",
                pack_qty=10, price_usd=8.0, note="search; packs of 10-20, an estimate"),
          Offer("McMaster-Carr", "https://www.mcmaster.com/metric-belleville-springs",
                note=f"metric Belleville (disc) springs {_id:g} mm ID; part number not "
@@ -93,7 +99,10 @@ for _L in GROUND_LENGTHS:
               "screw_head_h": 2.3, "length": float(_L), "tolerance": "g6 (-4/-12 um)"},
         notes="The pin of a preloaded ball pair (construction.pivots.pair): an M2 x 4 socket "
               "head and a 2.2 x 5 washer at each end (head 2.0 + washer 0.3 mm); the "
-              "washer's rim holds the stack, on the inner rings' land."))
+              "washer's rim holds the stack, on the inner rings' land. MISUMI SFJW4 / "
+              "PSFJW4-L-M2-N2 (a 4 mm shaft takes M2 both ends, its 2019 catalogue); its "
+              "standard lengths start at 20 mm: a shorter pin is a special, or cut from a "
+              "20 mm one and tapped. Price only in MISUMI's configurator: $6 an estimate."))
 
 register(Item("m2_washer_din125", "DIN 125 flat washer M2 (2.2 x 5 x 0.3 mm)", "washer",
               (Offer("Amazon", "https://www.amazon.com/s?k=M2+flat+washer+DIN+125",

@@ -52,20 +52,53 @@ the default 3 mm sheet; 608ZZ, the skateboard bearing, a pair under an arm's tur
 (:mod:`construction.rotary`); the open MR84 and MR106 (2 and 2.5 mm), the hub's half of a
 ball pair (:mod:`construction.pivots.pair`)."""
 
-GENERIC_PACK = {"bearing_mr84zz": (10, 9.0), "bearing_mr106zz": (10, 10.0),
-                "bearing_608zz": (10, 9.0), "bearing_mr84": (10, 8.0),
-                "bearing_mr106": (10, 9.0)}
-"""A generic pack's (quantity, USD) per bearing (uxcell and similar on Amazon, ABEC-1 to 3,
-the prices an estimate of 2026-10-12, unverified): what the BOM prices them at."""
+VXB = {
+    # key: (url, SKU, pack, USD): VXB's listings as read on 2026-10-12 (a "sale" and a
+    # "regular" price both shown: the sale one)
+    "bearing_mr84zz": ("https://vxb.com/products/4x8-shielded-4x8x3-mm-miniature-bearing-pack",
+                       "MR84ZZ", 10, 29.99),
+    "bearing_mr84": ("https://vxb.com/products/mr84-open-bearing-4x8x2-miniature", "Kit12299",
+                     1, 7.77),
+    "bearing_mr106zz": ("https://vxb.com/products/6x10-shielded-6x10x3-miniature-bearing-pack-"
+                        "of-10", "MR106ZZ", 10, 29.99),
+    "bearing_mr106": ("https://vxb.com/products/10-pack-6x10x2-5mm-ball-bearing-miniature",
+                      "kit848", 10, 29.99),
+    "bearing_608zz": ("https://vxb.com/products/608zz-bearing-8x22x7-shielded", "608ZZ10", 10,
+                      8.88),
+}
+"""The BOM's offer per bearing: VXB (a bearing house; the open MR106 its 2.5 mm one, not
+the 2 mm listed as "MR106"). Generic no-name packs run several times cheaper (3DJake's
+688ZZ: 10 for $5.68), at the cost of their clearance class."""
+
+FREE_CAD = {
+    # key: (url, sha256, license): a model anyone can download (pinned: a changed file is
+    # not used); the rest only through McMaster's CAD and the user's session
+    "bearing_mr84zz": ("https://raw.githubusercontent.com/tom-ilan/cycloidal_gearbox/main/"
+                       "cad_models/dependencies/Micro_Steel_Deep_Groove_Ball_Bearings_3D_Model/"
+                       "MR84zz-EA010/MR84zz-EA010.stp",
+                       "b07f947bc1d600993db52f77692b68db12a281ad2c6eb477f70e4ce8a7462746",
+                       "no license stated (a public repo): for designing with only"),
+    "bearing_mr106zz": ("https://raw.githubusercontent.com/tom-ilan/cycloidal_gearbox/main/"
+                        "cad_models/dependencies/Micro_Steel_Deep_Groove_Ball_Bearings_3D_Model/"
+                        "MR106-EA017/MR106-EA017.stp",
+                        "21aa6deb3f55ab2097df7e154bf9d0d4fe5ba1fbb62c9d31594ebba194872397",
+                        "no license stated (a public repo): for designing with only"),
+    "bearing_608zz": ("https://raw.githubusercontent.com/FreeCAD/FreeCAD-library/master/"
+                      "Mechanical%20Parts/Bearings/608ZZ_Ball_Bearing.step",
+                      "45246a4cf1bc63c8186ad8de22a74f44a63aecb450294356592c321bf281e3d3",
+                      "CC-BY 3.0 (the FreeCAD library)"),
+}
+"""Free models of the bearings, verified against the catalog's size by
+:func:`hardware.cad.load_axisymmetric` (2026-10-12); ``spiderpig cad download`` fetches
+them."""
 
 
 def _generic(key: str, trade: str) -> tuple[Offer, ...]:
-    if key not in GENERIC_PACK:
+    if key not in VXB:
         return ()
-    n, usd = GENERIC_PACK[key]
-    return (Offer("Amazon", f"https://www.amazon.com/s?k={trade}+bearing", pack_qty=n,
-                  price_usd=usd, note=f"search; a generic pack of {n}, an estimate "
-                                      "(unverified)"),)
+    url, sku, n, usd = VXB[key]
+    return (Offer("VXB", url, sku, pack_qty=n, price_usd=usd,
+                  note=f"{trade}, {n} a pack; read on 2026-10-12"),)
 
 
 FILL = 0.7
@@ -90,6 +123,11 @@ for _key, (_trade, _d, _od, _w, _mcm) in BEARINGS.items():
               + ("both sides metal-shielded (ZZ / 2Z)" if _trade.endswith("ZZ") else "open")
               + f". Radial clearance: ISO 5753-1 CN, {ISO_CN_SMALL[0] * 1000:g}-"
               f"{ISO_CN_SMALL[1] * 1000:g} um."))
+    if _key in FREE_CAD:
+        _url, _sha, _lic = FREE_CAD[_key]
+        register_part_cad(_key, CadRef(url=_url, sha256=_sha, filename=f"{_key}.step",
+                                       license=_lic, source=_url))
+        continue
     register_part_cad(_key, CadRef(url="", sha256="", filename=f"{_key}.step",
                                    license="McMaster-Carr CAD (for designing with the part;"
                                            " never committed)",

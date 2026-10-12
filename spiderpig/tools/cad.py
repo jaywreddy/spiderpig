@@ -171,6 +171,20 @@ def _fetch_one(page, key: str, part_number: str = "") -> Path | None:
         return None
 
 
+def cmd_download(args) -> int:
+    """Every registered part model with a public URL (pinned by its sha256) into the
+    cache: no account needed (McMaster's need ``fetch``)."""
+    from spiderpig.hardware import cad
+
+    refs = {k: r for k, r in _refs().items() if r.url and r.sha256}
+    bad = 0
+    for key, ref in sorted(refs.items()):
+        path = cad.fetch(ref, allow_download=True)
+        print(f"{key}: {'ok ' + str(path) if path else 'FAILED (download or sha256)'}")
+        bad += path is None
+    return 1 if bad else 0
+
+
 def cmd_fetch(args) -> int:
     from playwright.sync_api import sync_playwright
 
@@ -280,13 +294,16 @@ def cmd_api_fetch(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="spiderpig cad",
                                  description="bought parts' vendor models: list, import, "
-                                             "fetch (the CAD cache; never committed)")
+                                             "download, fetch (the CAD cache; never "
+                                             "committed)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list", help="every registered part model and whether it is cached")
     i = sub.add_parser("import", help="put a downloaded model into the cache")
     i.add_argument("key", help="the catalog item (spiderpig cad list)")
     i.add_argument("file", help="the STEP file")
     i.add_argument("--part-number", default="", help="the vendor's part number (recorded)")
+    sub.add_parser("download", help="the models with a public URL (pinned by their sha256: "
+                                    "no account)")
     sub.add_parser("login", help="McMaster-Carr: log in once in a browser window")
     f = sub.add_parser("fetch", help="McMaster-Carr: fetch the missing models with the "
                                      "saved session")
@@ -296,7 +313,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("key")
     a.add_argument("--part-number", required=True)
     args = ap.parse_args(argv)
-    return {"list": cmd_list, "import": cmd_import, "login": cmd_login, "fetch": cmd_fetch,
+    return {"list": cmd_list, "import": cmd_import, "download": cmd_download,
+            "login": cmd_login, "fetch": cmd_fetch,
             "api-fetch": cmd_api_fetch}[args.cmd](args)
 
 
