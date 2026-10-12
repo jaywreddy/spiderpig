@@ -62,6 +62,7 @@ class UrdfJoint:
     linear: bool = True
     effort: float = 0.0                      # N·m (an actuated joint's: holding x ratio)
     velocity: float = 0.0                    # rad/s (NOMINAL_RPM through the ratio)
+    armature: float = 0.0                    # kg m² (its motor's rotor x ratio²)
 
 
 @dataclass
@@ -260,9 +261,9 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
     rated = _ratings(mech)
     for j in head + joints:
         if j.name in rated:
-            j.effort, j.velocity = rated[j.name]
-    top = (max((e for e, _ in rated.values()), default=1.0),
-           max((v for _, v in rated.values()), default=1.0))
+            j.effort, j.velocity, j.armature = rated[j.name]
+    top = (max((e for e, _, _ in rated.values()), default=1.0),
+           max((v for _, v, _ in rated.values()), default=1.0))
     for j in head + joints:
         if j.kind != "fixed" and j.name not in rated:
             j.effort, j.velocity = top
@@ -273,8 +274,9 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
     return UrdfModel(links, head + joints, origins, zero, closures, tables, floor, closure_xyz)
 
 
-def _ratings(mech: Mechanism) -> dict[str, tuple[float, float]]:
-    """``joint -> (effort N·m, velocity rad/s)`` of each motor-driven joint."""
+def _ratings(mech: Mechanism) -> dict[str, tuple[float, float, float]]:
+    """``joint -> (effort N·m, velocity rad/s, armature kg m²)`` of each motor-driven
+    joint (the armature: its rotor's inertia through the reduction, ratio²)."""
     from spiderpig import actuators
 
     out = {}
@@ -282,7 +284,8 @@ def _ratings(mech: Mechanism) -> dict[str, tuple[float, float]]:
     def rate(name: str, motor: str, ratio: float):
         m = actuators.STEPPERS.get(motor)
         if m is not None and ratio > 0:
-            out[name] = (m.holding_nm * ratio, NOMINAL_RPM / 60.0 * 2 * math.pi / ratio)
+            out[name] = (m.holding_nm * ratio, NOMINAL_RPM / 60.0 * 2 * math.pi / ratio,
+                         m.rotor_g_cm2 * 1e-7 * ratio * ratio)
 
     for d in (mech.meta.get("drive") or {}).values():
         rate(d["input"], d["motor"], float(d["ratio"]))
@@ -394,6 +397,8 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
 
 
 KP = 200.0          # the MJCF's position actuators' stiffness (N·m/rad): the motors holding
+DT = 0.0005         # its timestep (s)
+OMEGA_DT = 0.25     # a position servo's natural frequency x the timestep, at most (stable)
 
 
 def mjcf(m: UrdfModel, inert: dict, name: str, meshes: set[str]) -> str:
@@ -403,8 +408,9 @@ def mjcf(m: UrdfModel, inert: dict, name: str, meshes: set[str]) -> str:
     linkage does), a position actuator on each actuated joint (its motor holding), the
     tool's tip a site ``tool0``; the links' meshes visual only (no contacts)."""
     root = ET.Element("mujoco", model=name)
-    ET.SubElement(root, "compiler", angle="radian", meshdir="meshes")
-    ET.SubElement(root, "option", gravity="0 -9.81 0", timestep="0.0005")
+    ET.SubElement(root, "compiler", angle="radian", meshdir="meshes",
+                  inertiafromgeom="false")          # the inertials are the parts' own
+    ET.SubElement(root, "option", gravity="0 -9.81 0", timestep=f"{DT:g}")
     asset = ET.SubElement(root, "asset")
     for link in sorted(meshes):
         ET.SubElement(asset, "mesh", name=link, file=f"{link}.stl", scale="0.001 0.001 0.001")
@@ -424,7 +430,8 @@ def mjcf(m: UrdfModel, inert: dict, name: str, meshes: set[str]) -> str:
             jo = (np.asarray(j.origin) - o) / 1000.0
             ET.SubElement(el, "joint", name=j.name, type="hinge",
                           axis=" ".join(f"{v:g}" for v in j.axis),
-                          pos=" ".join(f"{v:.9g}" for v in jo), damping="0.01")
+                          pos=" ".join(f"{v:.9g}" for v in jo), damping="0.01",
+                          armature=f"{j.armature:.6g}")
         if j.child in inert:
             g, com, ine = inert[j.child]
             ET.SubElement(el, "inertial", pos=" ".join(f"{v:.9g}" for v in (com - o) / 1000.0),
@@ -447,12 +454,17 @@ def mjcf(m: UrdfModel, inert: dict, name: str, meshes: set[str]) -> str:
     for (a, b, jn), xyz in zip(m.closures, m.closure_xyz, strict=True):
         anchor = (np.asarray(xyz) - m.origins.get(a, np.zeros(3))) / 1000.0
         ET.SubElement(eq, "connect", name=f"pin_{jn}_{a}_{b}", body1=a, body2=b,
-                      anchor=" ".join(f"{v:.9g}" for v in anchor))
+                      anchor=" ".join(f"{v:.9g}" for v in anchor), solref="0.002 1")
     act = ET.SubElement(root, "actuator")
     for j in m.joints:
         if j.kind != "fixed" and j.mimic is None and set(j.coef) <= {j.name} and j.effort > 0 \
                 and j.name in {*m.zero, "q1", "q4"}:
-            ET.SubElement(act, "position", name=j.name, joint=j.name, kp=f"{KP:g}",
+            # stiff, but no stiffer than its inertia (the rotor's through the reduction, and
+            # the link's) keeps stable at the timestep
+            inertia = j.armature + (float(np.trace(inert[j.child][2])) / 2
+                                    if j.child in inert else 0.0)
+            kp = min(KP, inertia * (OMEGA_DT / DT) ** 2) if inertia > 0 else KP
+            ET.SubElement(act, "position", name=j.name, joint=j.name, kp=f"{kp:.6g}",
                           ctrlrange=f"{j.limits[0]:.6f} {j.limits[1]:.6f}", ctrllimited="true")
     ET.indent(root)
     return ET.tostring(root, encoding="unicode") + "\n"

@@ -725,6 +725,8 @@ def get_pose(mode_id: str, request: Request) -> Response:
     try:
         config, d = _query_design(rest, robot=mode.robot,
                                   **({"module": mode.module} if mode.module else {}))
+        if config.lk.kind != "arm":        # before any bake
+            raise ValueError(f"{config.linkage} is a {config.lk.kind}: joint poses are an arm's")
         path, _ = _design_glb(d, config, gone=_disconnected(request))
         poses = node_poses(config, path, q)
     except ClientGone:

@@ -13,6 +13,8 @@ describe('arm joint sliders', () => {
     expect(js[0]!.value).toBeCloseTo(77.5);
     expect(js[2]!.label).toBe('yaw');
     expect(jointsOf({ key: 'strider', kind: 'walker' }, undefined)).toEqual([]);
+    const seeded = jointsOf(info, tree, { q2: 40, q3: -45 });   // the bake's first frame
+    expect([seeded[0]!.value, seeded[1]!.value]).toEqual([40, -45]);
   });
 
   it('poses a node: the server pose times its first-frame matrix', () => {

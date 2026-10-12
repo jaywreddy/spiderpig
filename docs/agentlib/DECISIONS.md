@@ -602,8 +602,18 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   include `palletizer_turret`, and a new baseline regenerates `DESIGNS.md`.
 - **Why:** the workstream's last phase: every surface that took a walker takes an arm
   (the user's direction, 2026-10-11).
+- **The phase's review** (integrated): a stored arm loads as the robot it resolved to
+  (`legs.robot`; one stored before it, a side, stays one, `derive` too); the MuJoCo model's
+  joints carry their motors' rotor inertia through the reduction (`armature`) and each
+  position actuator is no stiffer than its inertia holds at the timestep (the wrist's
+  diverged), the loops' `connect`s stiffer; a pose answers in milliseconds (the template
+  and the glb's nodes cached) and a walker is refused before any bake; the sliders start at
+  the clip's first frame (`inputs0`), capture it before anything awaits, and keep one
+  request in flight; `mill` and `mjcf` say why they skip; the gate's `compare` skips the
+  designs its baseline lacks.
 - **Open:** the walkers' MJCF and walk model are a walker's (an arm's MuJoCo model is the
-  URDF's sibling, not `spiderpig sim`'s); the viewer's precision overlay (the error budget
+  URDF's sibling, not `spiderpig sim`'s; the steppers' rotor inertias are typical
+  datasheet figures, unverified); the viewer's precision overlay (the error budget
   over the workspace) is not drawn yet; the joint sliders were checked by their tests (the
   server's poses against the bake's own frames, the viewer's composition in vitest), not in
   a browser here.

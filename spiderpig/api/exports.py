@@ -118,6 +118,11 @@ def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
 
         clear_generated(out / "laser")
         clear_generated(out / "print")
+        for folder in ("urdf", "mill"):      # an arm's: its URDF and joint map, its setup sheet
+            for stale in [*(out / folder).glob("*.json"), *(out / folder).glob("*.md"),
+                          *(out / folder).glob("*.xml")]:
+                stale.unlink()
+            clear_generated(out / folder)
         (out / "ORDER.md").unlink(missing_ok=True)
     with contextlib.ExitStack() as stack:
         warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
@@ -269,14 +274,20 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
 
         with _timed("mill"):
             files += write_outputs(mech, groups["milled"], by_body(labelled()), out / "mill")
+    elif "mill" in formats:
+        logging.getLogger("spiderpig.export").warning(
+            "mill: %s has no milled part (a mill is named by the role mill, and only an arm's "
+            "turntable mills its housings): the format is skipped", cfg.linkage)
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
     if "mjcf" in formats and design.kind != "walker":
         # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
         # mechanism has nothing to walk, so the format is skipped, not an error
         logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
-            "mjcf: %s is a mechanism, with nothing to walk: the MJCF is a walker's robot "
-            "model (verify(\"full\") runs it), so the format is skipped", cfg.linkage)
+            "mjcf: %s is a%s %s, with nothing to walk: the MJCF is a walker's robot model "
+            "(verify(\"full\") runs it), so the format is skipped%s", cfg.linkage,
+            "n" if design.kind == "arm" else "", design.kind,
+            " (an arm's MuJoCo model comes with urdf)" if design.kind == "arm" else "")
     return files, bom_summary
 
 

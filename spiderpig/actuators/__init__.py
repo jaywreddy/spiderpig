@@ -47,6 +47,7 @@ class StepperSpec:
     bom_key: str
     source: str
     microsteps: int = 16         # the driver's setting (TMC2209 and kin: 16 by default)
+    rotor_g_cm2: float = 0.0     # the rotor's inertia (g·cm², the datasheet's; 0: unknown)
     microstep_accuracy: float = 0.05    # a microstep's place, as a fraction of a full step
 
     @property
@@ -106,11 +107,15 @@ flat; 1.8 deg hybrids (50 rotor teeth)."""
 register(StepperSpec(
     key="nema17_17hs4401", name="NEMA 17 stepper, 40 mm, 0.40 N·m (StepperOnline 17HS4401)",
     length=40.0, holding_nm=0.40, rated_a=1.7, mass_g=280.0, bom_key="stepper_17hs4401",
-    source=f"{_SO} 17HS4401 datasheet: 40 N·cm holding, 1.7 A, 40 mm, 280 g", **NEMA17))
+    rotor_g_cm2=54.0,
+    source=f"{_SO} 17HS4401 datasheet: 40 N·cm holding, 1.7 A, 40 mm, 280 g; rotor inertia "
+           "54 g·cm² (typical, UNVERIFIED)", **NEMA17))
 register(StepperSpec(
     key="nema17_17hs19", name="NEMA 17 stepper, 48 mm, 0.59 N·m (StepperOnline 17HS19-2004S1)",
     length=48.0, holding_nm=0.59, rated_a=2.0, mass_g=390.0, bom_key="stepper_17hs19",
-    source=f"{_SO} 17HS19-2004S1 datasheet: 59 N·cm holding, 2.0 A, 48 mm, 390 g", **NEMA17))
+    rotor_g_cm2=82.0,
+    source=f"{_SO} 17HS19-2004S1 datasheet: 59 N·cm holding, 2.0 A, 48 mm, 390 g; rotor "
+           "inertia 82 g·cm² (typical, UNVERIFIED)", **NEMA17))
 
 NEMA11 = {"frame": 28.2, "hole_square": 23.0, "hole_thread": "M2.5", "hole_depth": 2.5,
           "boss_d": 22.0, "boss_h": 1.5, "shaft_d": 5.0, "shaft_len": 20.0,
@@ -121,6 +126,7 @@ shaft (the common StepperOnline drawing; the shaft's length varies by model: mea
 register(StepperSpec(
     key="nema11_11hs20", name="NEMA 11 stepper, 0.12 N·m (StepperOnline 11HS20-0674)",
     length=51.0, holding_nm=0.12, rated_a=0.67, mass_g=200.0, bom_key="stepper_11hs20",
+    rotor_g_cm2=18.0,
     source=f"{_SO} 11HS20-0674 listing: 12 N·cm holding, 0.67 A; 51 mm and 200 g "
            "UNVERIFIED", **NEMA11))
 

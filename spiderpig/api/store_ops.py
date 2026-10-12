@@ -65,7 +65,8 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
         if (gone := removed_param(name, value)) is not None:
             raise ParamError(gone)
     return BuildConfig(
-        linkage=lk.key, module=legs["module"], robot=legs["sides"] == 2,
+        # an arm's robot is its own key (legs.robot); a design stored before it was a side
+        linkage=lk.key, module=legs["module"], robot=bool(legs.get("robot", legs["sides"] == 2)),
         phases=tuple(math.radians(p) for p in legs["phases_deg"]),
         proportions=tuple(sorted(resolved["linkage"]["params"].items())),
         sheet=mat["sheet"], thickness=mat.get("thickness_mm"), servo=mat["servo"],
@@ -142,8 +143,12 @@ def derive(design: Design, patch: dict, store=PROJECT) -> Design:
     says otherwise."""
     if store == PROJECT:
         store = design.store
-    return resolve(apply_patch(design.spec.to_dict(), patch), store,
-                   derived_from=design.id, patch=patch)
+    spec = design.spec.to_dict()
+    legs = design.resolved.get("legs", {})
+    if design.kind == "arm" and "robot" not in spec.get("legs", {}):
+        # what the parent resolved to (a side, for an arm stored before legs.robot)
+        spec.setdefault("legs", {})["robot"] = bool(legs.get("robot", legs.get("sides") == 2))
+    return resolve(apply_patch(spec, patch), store, derived_from=design.id, patch=patch)
 
 
 def compare(a: Design | str, b: Design | str, store: Store | str | Path | None = PROJECT

@@ -28,6 +28,7 @@ let playing = false;
 let currentMode: Mode = 'robot';  // last requested (live reload re-requests it)
 let currentQuery = '';            // its design parameters ('' = default)
 let loadedMode: Mode = '';        // on screen; set only once its GLB has swapped in
+let loadedQuery = '';             // its query
 
 // Render on demand: while playing, while the camera moves, or after a change.
 // A paused viewer then costs nothing (the env-mapped, translucent robot is
@@ -67,7 +68,7 @@ const drive = createDrive({
 const arm = createArmPanel({
   container: document.getElementById('arm-joints')!,
   current: () => (loaded ? {
-    root: loaded.root, mode: loadedMode, query: currentQuery,
+    root: loaded.root, mode: loadedMode, query: loadedQuery,
     pause: () => { playing = false; ui.setPlaying(false); if (loaded) loaded.action.paused = true; },
   } : null),
   invalidate,
@@ -132,6 +133,8 @@ const loadMode = latestLoader<LoadedScene, Mode>({
     ui.setSliderValue(0);
     next.action.time = 0;
     next.mixer.update(0);
+    loadedQuery = query;
+    arm.capture(next.root);       // frame 0, before anything awaits (the mixer may run on)
     if (reframe) frameView(stage, next.root, view);
 
     ui.setStatus(

@@ -24,16 +24,18 @@ interface LinkageInfo {
 
 interface TreeJoint { name: string; range_deg: [number, number]; label?: string }
 
-/** The joints of an arm: its planar inputs (their ranges, starting mid-range) and its
- *  spatial joints (from the glb's ``tree``: starting at 0, the first frame's when it
- *  is mid-range). Empty for anything but an arm. */
-export function jointsOf(info: LinkageInfo | undefined, tree: { joints?: TreeJoint[] } | undefined): Joint[] {
+/** The joints of an arm, each starting where the clip's first frame has it: its planar
+ *  inputs (their ranges; ``inputs0``, the bake's first-frame inputs, else mid-range) and
+ *  its spatial joints (from the glb's ``tree``: mid-range, the bake's first frame). Empty
+ *  for anything but an arm. */
+export function jointsOf(info: LinkageInfo | undefined, tree: { joints?: TreeJoint[] } | undefined,
+  inputs0: Record<string, number> = {}): Joint[] {
   if (!info || info.kind !== 'arm') return [];
   const out: Joint[] = [];
   for (const name of info.inputs ?? []) {
     const r = info.ranges?.[name];
     if (!r) continue;
-    out.push({ name, label: name, lo: r[0], hi: r[1], value: (r[0] + r[1]) / 2 });
+    out.push({ name, label: name, lo: r[0], hi: r[1], value: inputs0[name] ?? (r[0] + r[1]) / 2 });
   }
   for (const j of tree?.joints ?? []) {
     out.push({ name: j.name, label: j.label || j.name, lo: j.range_deg[0], hi: j.range_deg[1],
@@ -68,7 +70,8 @@ export function createArmPanel(deps: ArmPanelDeps) {
   let linkages: LinkageInfo[] | null = null;
   let joints: Joint[] = [];
   let frame0 = new Map<string, THREE.Matrix4>();
-  let pending: AbortController | null = null;
+  let inFlight = false;          // one pose request at a time; the latest sliders after it
+  let again = false;
 
   async function info(key: string): Promise<LinkageInfo | undefined> {
     if (!linkages) {
@@ -79,32 +82,46 @@ export function createArmPanel(deps: ArmPanelDeps) {
   }
 
   async function apply(): Promise<void> {
+    if (inFlight) { again = true; return; }
     const cur = deps.current();
     if (!cur || joints.length === 0) return;
-    pending?.abort();
-    const ctl = new AbortController();
-    pending = ctl;
-    const res = await fetch(`/api/pose/${encodeURIComponent(cur.mode)}?${poseQuery(cur.query, joints)}`,
-      { signal: ctl.signal }).catch(() => null);
-    if (!res || !res.ok) { if (res) deps.status(`pose: ${res.status}`); return; }
-    const poses = (await res.json()) as Record<string, number[]>;
-    cur.pause();
-    cur.root.traverse((obj) => {
-      const pose = poses[obj.name];
-      const m0 = frame0.get(obj.name);
-      if (!pose || !m0) return;
-      posedMatrix(pose, m0).decompose(obj.position, obj.quaternion, obj.scale);
+    inFlight = true;
+    try {
+      const res = await fetch(`/api/pose/${encodeURIComponent(cur.mode)}?${poseQuery(cur.query, joints)}`);
+      if (!res.ok) { deps.status(`pose: ${res.status}`); return; }
+      const poses = (await res.json()) as Record<string, number[]>;
+      if (deps.current()?.root !== cur.root) return;      // another glb since
+      cur.pause();
+      cur.root.traverse((obj) => {
+        const pose = poses[obj.name];
+        const m0 = frame0.get(obj.name);
+        if (!pose || !m0) return;
+        posedMatrix(pose, m0).decompose(obj.position, obj.quaternion, obj.scale);
+      });
+      deps.invalidate();
+    } catch (err) {
+      deps.status(`pose: ${(err as Error).message}`);
+    } finally {
+      inFlight = false;
+      if (again) { again = false; void apply(); }
+    }
+  }
+
+  /** Each node's first-frame matrix, from its position, rotation and scale: call it as the
+   *  glb lands (the mixer at frame 0), before anything awaits. */
+  function capture(root: THREE.Object3D): void {
+    frame0 = new Map();
+    root.traverse((obj) => {
+      if (obj.name) frame0.set(obj.name, new THREE.Matrix4().compose(obj.position, obj.quaternion, obj.scale));
     });
-    deps.invalidate();
   }
 
   async function onLoad(root: THREE.Object3D): Promise<void> {
     deps.container.replaceChildren();
     const key = String(root.userData.linkage ?? '');
-    joints = jointsOf(await info(key), root.userData.tree as { joints?: TreeJoint[] } | undefined);
+    joints = jointsOf(await info(key), root.userData.tree as { joints?: TreeJoint[] } | undefined,
+      (root.userData.inputs0 ?? {}) as Record<string, number>);
     deps.container.hidden = joints.length === 0;
-    frame0 = new Map();
-    root.traverse((obj) => { if (obj.name) frame0.set(obj.name, obj.matrix.clone()); });
     for (const j of joints) {
       const label = document.createElement('label');
       label.textContent = j.label;
@@ -122,5 +139,5 @@ export function createArmPanel(deps: ArmPanelDeps) {
     }
   }
 
-  return { onLoad, get joints() { return joints; } };
+  return { capture, onLoad, get joints() { return joints; } };
 }

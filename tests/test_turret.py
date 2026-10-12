@@ -489,3 +489,36 @@ def test_the_arms_mujoco_model_closes_its_loops(tmp_path):
         mujoco.mj_step(model, data)
     tip = arm.to_base(data.site("tool0").xpos * 1000.0)
     np.testing.assert_allclose(tip, arm.fk(q), atol=0.01)
+
+
+@pytest.mark.no_fabricate
+def test_a_stored_arm_loads_as_the_robot_it_was_resolved_to(tmp_path):
+    from spiderpig.api import derive, load, resolve
+
+    d = resolve({"kind": "arm", "linkage": {"key": "palletizer"}}, tmp_path)
+    back = load(d.id, tmp_path)
+    assert back.config == d.config
+    assert back.config.layout == "turret"
+    side = resolve({"kind": "arm", "linkage": {"key": "palletizer"}, "legs": {"robot": False}},
+                   tmp_path)
+    assert load(side.id, tmp_path).config.robot is False
+    assert derive(side, {"materials": {"thickness_mm": 3.1}}).config.robot is False
+
+
+@pytest.mark.slow
+def test_the_wrists_mujoco_model_stands_under_gravity(tmp_path):
+    import mujoco
+
+    from spiderpig import urdf
+
+    cfg = _robot(roles=(("tool", "suction_wrist"),))
+    files = urdf.write(cache.cached_robot(cfg, 1.0), cfg, 1.0, tmp_path, "arm")
+    model = mujoco.MjModel.from_xml_path(str(files[2]))
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    start = data.site("tool0").xpos.copy()
+    for i in range(6000):                       # 3 s held by its motors, never reset
+        mujoco.mj_step(model, data)
+        assert np.isfinite(data.qacc).all(), i
+    assert data.time == pytest.approx(6000 * model.opt.timestep)
+    assert np.linalg.norm(data.site("tool0").xpos - start) < 0.01    # it sags under 10 mm
