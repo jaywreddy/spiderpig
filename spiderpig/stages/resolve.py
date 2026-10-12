@@ -10,8 +10,7 @@ from pathlib import Path
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError, default_robot
-from spiderpig.construction.base import Params
+from spiderpig.config import BuildConfig, ParamError, default_params, default_robot
 from spiderpig.design import Design, design_id, engine_version
 from spiderpig.hardware.catalog import sheet_size, sheet_thickness
 from spiderpig.materials import link_sheets
@@ -69,10 +68,11 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             crank_sheet=spec.materials.crank_sheet or "",     # the linkage's (config)
             link_sheets=(None if spec.materials.link_sheets is None
                          else tuple(sorted(spec.materials.link_sheets.items()))),
-            pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
+            pillar=spec.constructions.pillar or "", pin=spec.constructions.pin or "",
             crank=spec.constructions.crank or "", heads=spec.constructions.heads or d.heads,
             roles=tuple(sorted((spec.constructions.roles or {}).items())),
-            params=spec.fit.params(),
+            params=default_params(lk, {k: getattr(spec.fit, k) for k in FIT_FIELDS
+                                       if getattr(spec.fit, k) is not None}),
         )
     except ParamError as e:     # the validator should have said it first
         raise SpecErrors([SpecError("", str(e))]) from None
@@ -173,7 +173,7 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
                             "heads": config.heads, **dict(config.roles)}
     if not config.crank:        # an arm has none ("" in a spec would be a wildcard)
         del doc["constructions"]["crank"]
-    default = Params()
+    default = default_params(config.lk)        # the kind's (config.KIND_FIT)
     fit = {k: getattr(config.params, k) for k in FIT_FIELDS
            if getattr(config.params, k) != getattr(default, k)}
     if fit:

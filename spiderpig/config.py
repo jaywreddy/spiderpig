@@ -62,6 +62,54 @@ LINKAGE_CRANKS: dict[str, str] = {
 doesn't plan (each with why)."""
 
 
+DEFAULT_PIVOTS: dict[str, tuple[str, str]] = {
+    "walker": ("chicago", "standoff"),
+    "mechanism": ("chicago", "standoff"),
+    "arm": ("ball", "ball_pillar"),
+}
+"""The ``(pin, pillar)`` a design gets when it names none, per kind (:func:`default_pin`,
+:func:`default_pillar`): a walker's and a mechanism's plain holes (the Chicago screw, the
+standoff column; D1, 2026-10-07); an arm's ball bearings at every pivot (the user's call of
+2026-10-11 for the palletizer: plain holes' play, at the arm's levers, is millimetres at the
+tool; ``spiderpig precision --compare``)."""
+
+KIND_FIT: dict[str, dict[str, float]] = {
+    "arm": {"link_radius": 6.6},
+}
+"""Per kind: the :class:`fit.Params` fields a design gets where :class:`fit.Params`' own
+default doesn't build its :data:`DEFAULT_PIVOTS` (each with why): an arm's links are
+6.6 mm in radius, the ``ball_pillar``'s 10 mm bearing seat plus ``min_wall``
+(``BearingSeat.check``). Applied when the config's ``params`` are the plain defaults
+(:func:`default_params`); a spec's ``fit`` starts from them (``FitSpec.params``)."""
+
+
+def default_pin(lk: linkage.Linkage) -> str:
+    """The pin construction ``lk`` gets when the config names none (:data:`DEFAULT_PIVOTS`)."""
+    return DEFAULT_PIVOTS[lk.kind][0]
+
+
+def default_pillar(lk: linkage.Linkage) -> str:
+    """The pillar construction ``lk`` gets when the config names none
+    (:data:`DEFAULT_PIVOTS`)."""
+    return DEFAULT_PIVOTS[lk.kind][1]
+
+
+def default_params(lk: linkage.Linkage, given: Mapping[str, float] | None = None) -> Params:
+    """:class:`fit.Params` for ``lk``: :data:`KIND_FIT`'s fields for its kind under
+    ``given`` (the fields a config or spec names)."""
+    return Params(**{**KIND_FIT.get(lk.kind, {}), **dict(given or {})})
+
+
+def config_pin(config: BuildConfig) -> str:
+    """:func:`default_pin` of a config's linkage (the pin role's default)."""
+    return default_pin(config.lk)
+
+
+def config_pillar(config: BuildConfig) -> str:
+    """:func:`default_pillar` of a config's linkage (the pillar role's default)."""
+    return default_pillar(config.lk)
+
+
 MODULE_CRANKS: dict[tuple[str, str], str] = {
     # empty since BoltCrank.hex_gap_fit (2026-10-05) put the Strider decker and quad on the
     # hex crank (git log has the debug)
@@ -256,12 +304,15 @@ class BuildConfig:
     #                                   linkage's (materials.default_link_sheets: a Klann
     #                                   variant's foot links in 6061)
     servo: str = servos.DEFAULT
-    pillar: str = "standoff"          # frame pivots: a 6 mm round standoff column, a stock
-    #                                   goBILDA one or else one steel standoff made to length,
-    #                                   never spliced (construction.pivots.standoff)
-    pin: str = "chicago"              # pivots between links: an M3 Chicago screw (4 mm barrel),
-    #                                   printed rings and head spacers (construction.pivots.
-    #                                   chicago)
+    pillar: str = ""                  # frame pivots ("": default_pillar, the kind's,
+    #                                   DEFAULT_PIVOTS: a walker's 6 mm round standoff column,
+    #                                   a stock goBILDA one or else one steel standoff made to
+    #                                   length, never spliced, construction.pivots.standoff;
+    #                                   an arm's ball_pillar, an MR106ZZ in every link on it)
+    pin: str = ""                     # pivots between links ("": default_pin, the kind's: a
+    #                                   walker's M3 Chicago screw (4 mm barrel), printed rings
+    #                                   and head spacers, construction.pivots.chicago; an
+    #                                   arm's ball, an MR84ZZ in every rider on the barrel)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates
@@ -292,6 +343,12 @@ class BuildConfig:
             object.__setattr__(self, "crank", default_crank(lk, self.module))
         if not self.crank_sheet:
             object.__setattr__(self, "crank_sheet", default_crank_sheet(lk))
+        if not self.pin:
+            object.__setattr__(self, "pin", default_pin(lk))
+        if not self.pillar:
+            object.__setattr__(self, "pillar", default_pillar(lk))
+        if self.params == Params() and lk.kind in KIND_FIT:
+            object.__setattr__(self, "params", default_params(lk))
         for what in ("crank", "pin", "pillar"):
             if (gone := removed_construction(what, getattr(self, what))) is not None:
                 raise ParamError(gone[0])
@@ -646,10 +703,12 @@ def add_build_args(p) -> None:
         return check
     p.add_argument("--servo", default=d.servo, choices=servos.available(),
                    help=f"servo model (default {d.servo})")
-    p.add_argument("--pillar", default=d.pillar, choices=axles, type=kept("pillar"),
-                   help=f"construction of the frame pivots (default {d.pillar})")
-    p.add_argument("--pin", default=d.pin, choices=axles, type=kept("pin"),
-                   help=f"construction of the pivots between links (default {d.pin})")
+    pivots = "; ".join(f"a {k}'s {v[0]} / {v[1]}" for k, v in DEFAULT_PIVOTS.items())
+    p.add_argument("--pillar", default=None, choices=axles, type=kept("pillar"),
+                   help=f"construction of the frame pivots (default: the kind's; {pivots})")
+    p.add_argument("--pin", default=None, choices=axles, type=kept("pin"),
+                   help=f"construction of the pivots between links (default: the kind's; "
+                        f"{pivots})")
     p.add_argument("--crank", default=None, choices=cranks, type=kept("crank"),
                    help="crank construction (default: "
                         + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items() if v)
@@ -718,6 +777,8 @@ def config_from_args(args, **fixed) -> BuildConfig:
     if any(named.values()):
         fields["roles"] = tuple((k, v) for k, v in named.items() if v)
     fields["crank"] = getattr(args, "crank", None) or ""        # the kind's default
+    fields["pin"] = getattr(args, "pin", None) or ""            # the kind's default
+    fields["pillar"] = getattr(args, "pillar", None) or ""
     fields["crank_sheet"] = getattr(args, "crank_sheet", None) or ""   # the linkage's
     fields.update(phases=getattr(args, "phases", None),
                   proportions=tuple(getattr(args, "proportion", None) or ()))
@@ -738,15 +799,18 @@ def query_proportions(query: Mapping) -> list[tuple[str, float]]:
 
 
 def own_constructions(base: BuildConfig) -> dict[str, str]:
-    """``crank`` and ``crank_sheet`` as ``base`` *chose* them: each one its linkage and
-    module would get anyway (:func:`default_crank`, :func:`default_crank_sheet`, filled in
-    by the config) is ``""``, so a design moved to another linkage or module gets that
+    """``crank``, ``crank_sheet``, ``pin`` and ``pillar`` as ``base`` *chose* them: each one
+    its linkage and module would get anyway (:func:`default_crank`,
+    :func:`default_crank_sheet`, :func:`default_pin`, :func:`default_pillar`, filled in by
+    the config) is ``""``, so a design moved to another linkage or module gets that
     one's own default instead of carrying the old one's (TrotBot heel's ``bolt_round``,
     the Hoecken pantograph's 0.080 in crank sheet)."""
     lk = linkage.get(base.linkage)
     return {"crank": "" if base.crank == default_crank(lk, base.module) else base.crank,
             "crank_sheet": ("" if base.crank_sheet == default_crank_sheet(lk)
-                            else base.crank_sheet)}
+                            else base.crank_sheet),
+            "pin": "" if base.pin == default_pin(lk) else base.pin,
+            "pillar": "" if base.pillar == default_pillar(lk) else base.pillar}
 
 
 def design_from_query(query: Mapping, base: BuildConfig | None = None,
@@ -776,8 +840,9 @@ def design_from_query(query: Mapping, base: BuildConfig | None = None,
 
         kind = linkage.get(query.get("linkage") or base.linkage).kind
         materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
-                     "frame_sheet": base.frame_sheet, "pillar": base.pillar, "pin": base.pin,
-                     "heads": base.heads, "params": base.params,
+                     "frame_sheet": base.frame_sheet, "heads": base.heads,
+                     "params": (Params() if base.params == default_params(base.lk)
+                                else base.params),
                      "roles": tuple((n, k) for n, k in base.roles if rolemod.applies(n, kind)),
                      **own}
         return design_from_query(query, **{**materials, **fixed})

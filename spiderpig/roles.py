@@ -136,10 +136,10 @@ def applies(name: str, kind: str) -> bool:
 
 
 register(Role("pillar", "frame pivot", "spiderpig.construction:AXLES", ("walker", "mechanism"),
-              field="pillar", default="standoff",
+              field="pillar", default="spiderpig.config:config_pillar",
               help="the axles that join links to the frame plates"))
 register(Role("pin", "pin between links", "spiderpig.construction:AXLES",
-              ("walker", "mechanism"), field="pin", default="chicago",
+              ("walker", "mechanism"), field="pin", default="spiderpig.config:config_pin",
               help="the axles that join links to links"))
 register(Role("crank", "crank", "spiderpig.construction:CRANKS", ("walker", "mechanism"),
               field="crank", default="spiderpig.config:config_crank",

@@ -620,3 +620,21 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/spec.py` (`LegsSpec.robot`), `spiderpig/stages/resolve.py`,
   `spiderpig/api/exports.py`, `spiderpig/urdf.py` (`mjcf`), `spiderpig/pose.py`,
   `spiderpig/server/app.py`, `viewer/src/arm.ts`, `tests/gate/identity_gate.py`.
+
+### 2026-10-12: an arm's pivots default to ball bearings (user)
+
+- **Decision:** an arm's pins and pillars default to `ball` / `ball_pillar` (an MR84ZZ in
+  every rider on the Chicago barrel, an MR106ZZ in every link on the standoff), its links
+  to a 6.6 mm radius (the MR106ZZ seat plus `min_wall`); walkers and mechanisms keep the
+  Chicago screw and the standoff. The defaults are data per kind
+  (`config.DEFAULT_PIVOTS`, `config.KIND_FIT`), read like the crank's
+  (`default_pin`, `default_pillar`, `default_params`); a config, spec or CLI naming a pin,
+  pillar or fit keeps it, and a design moved to another kind gets that kind's.
+- **Why:** the user stepped up to bearings for the palletizer (2026-10-11) and expected
+  them by default; they had been built only as a swappable option, so the arm's budget
+  was quoted on plain holes, whose play the arm's levers (gain ~9 at O and E) make
+  millimetres at the tool.
+- **Open:** the budget carries each joint's radial play only; a joint's tilt (a single
+  3 mm bearing's, ~1.5 deg free; a plain hole's) does not reach the tool
+  (`precision.joint_clearances`). The bore-on-shaft gaps (0.05 / 0.03 mm) are assumed.
+- **Where:** `spiderpig/config.py`, `spiderpig/roles.py`, `spiderpig/stages/resolve.py`.
