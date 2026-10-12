@@ -319,3 +319,17 @@ def test_the_sightings_fit_a_capstans_drifting_gain_too():
     assert got["q2"] == pytest.approx(off, abs=1e-6)
     assert got["q2_gain"] == pytest.approx(gain, abs=1e-6)
     assert got["q3_gain"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_a_move_ends_one_sidedly_past_and_back():
+    a = Axis("q1", 11.6, 1.8, 16, 1)
+    b = Axis("q2", 8.7, 1.8, 16, -1)
+    axes = {"q1": a, "q2": b}
+    before = {"q1": 0.3, "q2": 1.0}
+    end = {"q1": 0.2, "q2": 1.1}               # q1 came in negative, q2 positive
+    g = host.one_sided(axes, before, end)
+    assert len(g) == 2                         # q1 past, then back
+    past = math.degrees(0.2) - host.APPROACH_DEG
+    assert f"MOVE={host.position_deg(a, math.radians(past)):.5f}" in g[0]
+    assert f"MOVE={host.position_deg(a, 0.2):.5f}" in g[1]
+    assert host.one_sided(axes, {"q1": 0.1, "q2": 1.0}, end) == []    # both positive

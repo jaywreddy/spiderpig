@@ -807,3 +807,19 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   motor angles), the base trimmed in front and bolted to one work plate that also holds
   the reference board: then `palletizer_reach` covers a 168 mm square at table height; the
   stack's order as a stiffness objective; the turntable's own stiffness; the hose's drag.
+
+### 2026-10-12: belts back, the moves ended one-sidedly (the user's)
+
+- **Decision:** the recommended arm drives its joints by the stock GT2 belts (5:1, the
+  default transmission and `belt_preload` turntable), not the capstans: the host ends a
+  move one-sidedly (`control.host.one_sided`, `ArmHost.move_to(..., approach=True)`: a
+  joint whose last motion was negative goes `APPROACH_DEG` past and comes back), so every
+  stop takes up a drive's backlash the same way, and the ISO model leaves backlash out of
+  RP (`repeatability.iso_rp(one_sided=True)`), reporting it in `Rp.any_direction_mm`.
+- **Why:** the user: "custom capstan drums are just dumb and should have been cut anyway"
+  (16 aluminium discs, $240 of the $500 of cutting). The MT4 runs belts at every joint and
+  quotes 0.1 mm; the turntable's belt backlash (0.45 mm at the tool), which no gravity
+  holds, was the only reason belts scored 0.31 mm; a one-sided approach costs nothing.
+- **Result:** belts: ISO RP 0.042 mm within a session, 0.048 across power-ups (as the
+  capstans'), 0.31 mm from any direction without the one-sided approach; the BOM $639
+  listed (cutting $305) against $835.

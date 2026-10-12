@@ -14,6 +14,14 @@ the segment's time and the joints stay together); the tip's speed is kept low
 (:data:`MAX_TIP_MM_S`), where a stepper starts and stops without ramps. (Klipper's newer
 ``MANUAL_STEPPER ... GCODE_AXIS`` gives coordinated moves with lookahead, where installed.)
 
+**A one-sided final approach** (:func:`one_sided`, ``move_to(..., approach=True)``): a
+joint whose last motion into the target was negative goes on past it by
+:data:`APPROACH_DEG` and comes back positive, so every stop takes up its drive's backlash
+(a belt's teeth, the turntable's, which no gravity holds) the same way: what the MT4 and
+every belt-driven arm rely on, and what ISO 9283's same-direction cycle measures. Pick and
+place approach the hover pose above the slide one-sidedly and then descend straight down
+(the turntable still: its backlash stays taken up; the arm's joints seated by gravity).
+
 **Homing** (:func:`home_gcode`) runs the turntable onto its flag's edge from the positive
 side (:mod:`.homing`), never farther than the half of its range the beam says home is in,
 slowly, sets that as 0, and reads its driver's phase (``DUMP_TMC STEPPER=q1
@@ -37,6 +45,8 @@ from spiderpig.control.mapping import Axis
 
 MAX_TIP_MM_S = 25.0     # the tip's speed a straight move is held to (constant-speed segments)
 HOME_SPEED = 20.0       # the turntable's search speed (deg/s); the final approach a tenth
+APPROACH_DEG = 0.5      # past the target before a one-sided final approach (joint degrees:
+#                         well over a GT2 5:1 drive's backlash, about 0.1 deg at the joint)
 
 
 def position_deg(axis: Axis, q: float) -> float:
@@ -82,6 +92,21 @@ def line(model: ArmModel, axes: dict[str, Axis], start_q: dict[str, float], b, *
         out += joints_gcode(axes, q, nxt, dist / n / speed_mm_s)
         q = nxt
     return out, q
+
+
+def one_sided(axes: dict[str, Axis], before: dict[str, float], end: dict[str, float],
+              seconds: float = 0.5) -> list[str]:
+    """The G-code that ends a move one-sidedly (module docstring): each joint whose motion
+    from ``before`` (rad: where its last segment started) to ``end`` was negative goes
+    :data:`APPROACH_DEG` past ``end``, then back to it, positive."""
+    past = {}
+    for n, q in end.items():
+        if n in axes and q < before.get(n, q) - 1e-12:
+            past[n] = q - math.radians(APPROACH_DEG)
+    if not past:
+        return []
+    back = {n: end[n] for n in past}           # (only the joints that go past move)
+    return joints_gcode(axes, end, past, seconds) + joints_gcode(axes, past, back, seconds)
 
 
 def home_gcode(axes: dict[str, Axis]) -> list[str]:
@@ -135,8 +160,13 @@ class ArmHost:
     client: Moonraker
     q: dict[str, float]
 
-    def move_to(self, xyz, **kw) -> None:
+    def move_to(self, xyz, *, approach: bool = False, **kw) -> None:
+        """A straight move to ``xyz``; ``approach``: ending one-sidedly (module docstring:
+        the hover pose before a pick or a place)."""
         lines, q = line(self.model, self.axes, self.q, xyz, **kw)
+        if approach:
+            before = _last_start(self.model, self.q, xyz, kw.get("seg_mm", 5.0))
+            lines += one_sided(self.axes, before, q)
         self.client.script(lines)
         self.q = q                 # only once Klipper has taken the move
 
@@ -147,3 +177,12 @@ class ArmHost:
     def home(self) -> None:
         self.client.script(home_gcode(self.axes))
         self.q["q1"] = 0.0
+
+
+def _last_start(model: ArmModel, start_q: dict[str, float], b, seg_mm: float) -> dict[str, float]:
+    """The joints at the start of a straight move's last segment (as :func:`line` cuts
+    it)."""
+    a = model.fk(start_q)
+    b = np.asarray(b, dtype=float)
+    n = max(1, math.ceil(float(np.linalg.norm(b - a)) / seg_mm))
+    return start_q if n == 1 else model.ik(a + (b - a) * (n - 1) / n)

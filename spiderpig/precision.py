@@ -184,6 +184,8 @@ class Precision:
                 "out_of_plane_mm": _num(self.out_of_plane_mm),
                 "iso_rp_session_mm": _num(self.rp.session_mm) if self.rp else None,
                 "iso_rp_powerup_mm": _num(self.rp.powerup_mm) if self.rp else None,
+                "iso_rp_any_direction_mm": (_num(self.rp.any_direction_mm) if self.rp
+                                            else None),
                 "payload_sag_mm": (_num(self.stiffness.sag_mm) if self.stiffness else None),
                 "across_mm_per_n": (_num(self.stiffness.across_mm_per_n)
                                     if self.stiffness else None),
@@ -198,8 +200,10 @@ class Precision:
         out = [f"precision of {self.linkage}'s {self.output} (worst over the box):"]
         if self.rp is not None:
             out.append(f"  repeatability, ISO 9283 (30 cycles to a pose, mean + 3 sigma, worst "
-                       f"of 5 poses; gravity seats the pins): {self.rp.session_mm:.3f} mm "
-                       f"within a session, {self.rp.powerup_mm:.3f} mm across power-ups"
+                       f"of 5 poses; gravity seats the pins; moves ended one-sidedly, as the "
+                       f"host does): {self.rp.session_mm:.3f} mm within a session, "
+                       f"{self.rp.powerup_mm:.3f} mm across power-ups; "
+                       f"{self.rp.any_direction_mm:.3f} mm from any direction without that"
                        + (f" (re-seating at random: {', '.join(self.rp.unseated)})"
                           if self.rp.unseated else ""))
         out.append(f"  repeatability bound (joint play): {self.repeatability_mm:.3f} mm worst "

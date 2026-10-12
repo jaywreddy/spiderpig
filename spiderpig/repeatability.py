@@ -23,7 +23,10 @@ cycles is what this counts (:func:`iso_rp`):
   linearised constraints (:func:`gravity_loads`: the links' masses from their sheet, the
   joints' hardware, the drums, the tool and the payload);
 * **the drives**: backlash counts only where the drive's gravity torque at the pose is
-  under :data:`SEAT_NM` (else it rests against one flank); a friction dead band
+  under :data:`SEAT_NM` (else it rests against one flank), and only for a controller
+  that doesn't end its moves one-sidedly (:func:`control.host.one_sided`: the host
+  does, so RP leaves backlash out; :attr:`Rp.any_direction_mm` counts it, the arm sent
+  to a pose from anywhere without that final approach); a friction dead band
   (:data:`DEAD_DEG` at the joint, uniform, through its lever) only where the gravity torque
   is under the joint's friction (:data:`FRICTION_NM`), and always on the turntable (no
   gravity about a vertical axis);
@@ -136,6 +139,7 @@ class Rp:
     session_mm: float
     powerup_mm: float
     unseated: tuple[str, ...]
+    any_direction_mm: float = 0.0    # within a session, without a one-sided approach
 
 
 def _rp(points: np.ndarray) -> float:
@@ -150,14 +154,15 @@ def iso_rp(lk: linkage.Linkage, values, clearances: dict, loads: GravityLoads,
            step_deg: dict[str, float], snaps: dict[str, bool], oop_mm: float,
            yaw_lever_mm: float = 0.0, seed: int = 0,
            clamped: frozenset = frozenset(), slips: frozenset = frozenset(),
-           nonlin_deg: dict[str, float] | None = None) -> Rp:
+           nonlin_deg: dict[str, float] | None = None, one_sided: bool = True) -> Rp:
     """:class:`Rp` (module docstring): ``clearances`` interface -> diametral play (mm);
     ``backlash_deg`` / ``homing_deg`` / ``step_deg`` (a microstep) per input at its joint
     (``q1`` the turntable's: its error across the plane through ``yaw_lever_mm``); ``snaps``
     whether an input's homing snaps to its driver's phase; ``clamped`` the interfaces whose
     play is a preloaded pair's bore gap (held by friction), ``slips`` those of them whose
     load passes the slip somewhere over the box (the rest re-seat at a power-off drop);
-    ``nonlin_deg`` each input's microstep nonlinearity at its joint."""
+    ``nonlin_deg`` each input's microstep nonlinearity at its joint; ``one_sided``: the
+    controller ends its moves one-sidedly (backlash out of RP, in ``any_direction_mm``)."""
     nonlin_deg = nonlin_deg or {}
     rng = np.random.default_rng(seed)
     lay = layout(lk)
@@ -175,7 +180,7 @@ def iso_rp(lk: linkage.Linkage, values, clearances: dict, loads: GravityLoads,
                          / (2 * h)).reshape(-1, 2)
     driven = {lk.drives[k][0]: k for k in lk.inputs} if lk.kind == "arm" else {}
     unseated: set[str] = set()
-    session, powerup = 0.0, 0.0
+    session, powerup, anywhere = 0.0, 0.0, 0.0
     shape = (TRIALS, CYCLES)
 
     def disc(radius: float) -> np.ndarray:
@@ -201,19 +206,24 @@ def iso_rp(lk: linkage.Linkage, values, clearances: dict, loads: GravityLoads,
                 continue                        # seated by gravity
             unseated.add(f"{iface[0]}/{iface[1]}")
             xy += np.einsum("ij,tcj->tci", g.per[iface][s], disc(c / 2))
+        lash = np.zeros((*shape, 3))            # backlash: only without a one-sided approach
         for name in lk.inputs:
             body = next((b for b, k in driven.items() if k == name), None)
             tau = abs(loads.torque_nm[body][s]) if body is not None else 0.0
             dq = uni(math.radians(DEAD_DEG)) if tau < FRICTION_NM else np.zeros(shape)
             if body is not None and tau < SEAT_NM:
                 unseated.add(f"{name} backlash")
-                dq = dq + uni(math.radians(backlash_deg.get(name, 0.0)) / 2)
+                lash[..., :2] += (uni(math.radians(backlash_deg.get(name, 0.0)) / 2)[..., None]
+                                  * jac[name][s])
             xy += dq[..., None] * jac[name][s]
         z = uni(TILT_HYSTERESIS * oop_mm)
         if "q1" in backlash_deg:                # no gravity about the vertical
-            z = z + (uni(math.radians(DEAD_DEG))
-                     + uni(math.radians(backlash_deg["q1"]) / 2)) * yaw_lever_mm
+            z = z + uni(math.radians(DEAD_DEG)) * yaw_lever_mm
+            lash[..., 2] += uni(math.radians(backlash_deg["q1"]) / 2) * yaw_lever_mm
         pts = np.concatenate([xy, z[..., None]], axis=-1)
+        anywhere = max(anywhere, _rp(pts + lash))
+        if not one_sided:
+            pts = pts + lash
         session = max(session, _rp(pts))
         # across power-ups: each cycle re-homed
         up = pts.copy()
@@ -228,4 +238,4 @@ def iso_rp(lk: linkage.Linkage, values, clearances: dict, loads: GravityLoads,
             elif name in jac:
                 up[..., :2] += dq[..., None] * jac[name][s]
         powerup = max(powerup, _rp(up))
-    return Rp(session, powerup, tuple(sorted(unseated)))
+    return Rp(session, powerup, tuple(sorted(unseated)), anywhere)
