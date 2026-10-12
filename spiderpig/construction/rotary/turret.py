@@ -136,6 +136,9 @@ class TurretPlan:
     sensor_r: float
     notes: tuple[str, ...] = field(default=())
     mill: str = ""                 # the user's mill (milling.MILLS): the hub's housings milled
+    spacing_mm: float = SPACING    # the support's bearings' centres apart
+    keep_r: float = 0.0            # the arm's keep-out round the axis (0: none, the turntable
+    #                                under everything of the side: the classic turret)
 
     def housing(self):
         """The milled bearing housing (two in the hub, the lower one turned over about x:
@@ -181,7 +184,13 @@ class TurretPlan:
 
     @property
     def spacing(self) -> float:
-        return SPACING
+        return self.spacing_mm
+
+    @property
+    def bracket(self) -> dict[str, float]:
+        """The feet's brackets: printed (:data:`BRACKET`) or the base_pair's stock steel
+        angles (:data:`.base_pair.STOCK_BRACKET`)."""
+        return bracket_of(self.preset.support)
 
     def anchor_angles(self) -> list[float]:
         """A capstan drum's two cord anchors (rad, the turret's frame at yaw 0): past the
@@ -214,6 +223,14 @@ class TurretPlan:
 # -- the plan ------------------------------------------------------------------------------
 
 
+def bracket_of(support: str) -> dict[str, float]:
+    if support == "base_pair":
+        from spiderpig.construction.rotary.base_pair import STOCK_BRACKET
+
+        return STOCK_BRACKET
+    return BRACKET
+
+
 def seat_n(t: float, w: float) -> int:
     """How many plates of ``t`` seat a bearing ``w`` wide (it stands back from the outer
     face by what's over)."""
@@ -234,10 +251,13 @@ def _stock_column(need: float) -> tuple[float, ...]:
     raise ConstructionError(f"turret: no stock standoff column reaches {need:.1f} mm")
 
 
-def _lows(design, tool_plan) -> tuple[float, float, list]:
+def _lows(design, tool_plan, keep: tuple[float, float, float] | None = None
+          ) -> tuple[float, float, list]:
     """The lowest y inside the stack (links, pins, the drives' hubs and belts) and outside
     the plates (motors, sliders, pillar heads), and the outside footprints per plate:
-    ``[(plate, kind, data)]``."""
+    ``[(plate, kind, data)]``. ``keep``: ``(x_a, front, back)``: only the links over the
+    keep-out round the axis (``front`` before it, ``back`` behind) count; the rest may pass
+    lower, past the turntable (the tool reaches the table)."""
     from spiderpig import construction
     from spiderpig.construction.transmissions import DriveGroup
 
@@ -250,9 +270,17 @@ def _lows(design, tool_plan) -> tuple[float, float, list]:
     r_link = max(p.link_radius, pin_head) + p.margin
     inside = math.inf
     for segs in ctx.topo.links.values():
-        for n in {q for s in segs for q in s}:
-            y = np.asarray(pts[n], dtype=float).reshape(-1, 2)[:, 1]
-            inside = min(inside, float(y.min()) - lat.get(n, 0.0) - r_link)
+        for a_, b_ in segs:
+            pa = np.asarray(pts[a_], dtype=float).reshape(-1, 2)
+            pb = np.asarray(pts[b_], dtype=float).reshape(-1, 2)
+            for f_ in np.linspace(0.0, 1.0, 9 if keep else 2):
+                q = pa + (pb - pa) * f_
+                if keep is not None:
+                    d_ = q[:, 0] - keep[0]
+                    q = q[(d_ < keep[1] + r_link) & (d_ > -(keep[2] + r_link))]
+                if q.size:
+                    lat_ = max(lat.get(a_, 0.0), lat.get(b_, 0.0))
+                    inside = min(inside, float(q[:, 1].min()) - lat_ - r_link)
     outside = math.inf
     prints: list = []
     for ax in ctx.topo.axes_of("frame"):
@@ -328,7 +356,8 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     travel = hi - lo
     loop = None
     if key == "belt":
-        need = max(BOSS_R + half_diag + 1.0,
+        clear_r = (float(brg["flange_d"]) / 2 if support.key == "base_pair" else BOSS_R)
+        need = max(clear_r + half_diag + 1.0,
                    (float(tr.big["flange_d"]) + float(tr.small["flange_d"])) / 2 + 2.0)
         fits = [(c, L) for L in _loops()
                 if (c := tr.centre_distance(L)) is not None and c >= need
@@ -342,92 +371,113 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
         c = tr.drum_r + tr.capstan_d / 2 + CORD_D
         drive_r = tr.drum_r + FLANGE
     r_base = c + half_diag + BASE_EDGE
-    columns = _stock_column(motor.length + MOTOR_GAP)
-    h: dict[str, float] = {"bottom": 0.0}
-    h["bt_bot"] = t + sum(columns)
-    h["bt_top"] = h["bt_bot"] + t
-    if key == "belt":
-        w = tr.width()
-        hub_l = float(tr.small["hub_l"])
-        h["drive_bot"] = h["bt_top"] + 0.5 + hub_l      # the pulleys' teeth from here
-        h["hub_bot"] = h["drive_bot"] + w
-    else:
-        floor = h["bt_top"] + screw("bhcs", "3").head_h + 0.5   # over the motor's screws
-        core_bot = floor + pitch
-        reach = h["bt_bot"] + motor.shaft_len - 0.5     # the sleeve stops at the shaft's end
-        n_core = math.floor((reach - core_bot) / pitch + 1e-9)
-        from spiderpig.construction.transmissions.capstan import (
-            ANCHOR_MARGIN,
-            CORD_PITCH,
-            WRAPS,
-        )
-        fit = ((n_core * pitch - 1.0) / CORD_PITCH - WRAPS) * 360.0 / tr.ratio()
-        fit = min(fit, 360.0 - 2 * ANCHOR_MARGIN)
-        if fit <= 0:
-            raise ConstructionError("turret: the yaw motor's shaft holds no capstan wraps")
-        if fit < travel - 1e-9:
-            notes.append(f"the capstan's travel is {fit:.0f} deg (the wraps' walk on the "
-                         f"motor's {motor.shaft_len:g} mm shaft), not the preset's "
-                         f"{travel:.0f}")
-            lo, hi = -fit / 2, fit / 2
-            travel = fit
-        h["drive_bot"] = floor
-        h["core_bot"] = core_bot
-        h["n_core"] = float(n_core)
-        h["hub_bot"] = core_bot + n_core * pitch + pitch
-        h["sleeve_top"] = core_bot + n_core * pitch
-        if c - motor.shaft_d / 2 < drive_r + 0.5:      # the shaft past the sleeve, uncut
-            raise ConstructionError("turret: the yaw motor's shaft meets the drum's flange")
-    # the collar under the lower inner ring clears the one clamping the shaft
-    b_top = h["hub_bot"] + recess - 0.5
-    lift = h["bt_top"] + collar_w - (b_top - collar_w)
-    if lift > 1e-9:
+    from spiderpig.construction.rotary import base_pair as bp
+
+    spacing_mm = SPACING
+    keep_r = r_flag = 0.0
+    bk = bracket_of(support.key)
+    if support.key == "base_pair":          # the bearings in the base, the shaft turning
         if key != "belt":
-            raise ConstructionError("turret: the drum leaves the hub's collar no room over "
-                                    "the shaft's")
-        h["hub_bot"] += lift
-        h["drive_bot"] += lift
-    h["shaft_top"] = h["bt_bot"] + motor.shaft_len      # the stock shaft, uncut
-    if key == "belt" and h["hub_bot"] > h["shaft_top"] + 1e-9:
-        raise ConstructionError(f"turret: the yaw motor's {motor.shaft_len:g} mm shaft doesn't "
-                                "reach its pulley's top")
-    h["hub_top"] = h["hub_bot"] + hub_h
-    if h["shaft_top"] > h["hub_top"] - 1.0:
-        raise ConstructionError("turret: the yaw motor's shaft reaches the turntable")
-    h["table"] = h["hub_top"] + t
-    d_top = h["hub_top"] - recess + spring + collar_w
-    tie = screw("shcs", "3")
-    protrude = max(d_top - h["table"], NUT_H + 1.0, tie.head_h)
+            raise ConstructionError("turret: the base_pair support takes the belt")
+        h, columns, spacing_mm, protrude = bp.heights(ctx, support, tr, motor)
+        front, r_flag = bp.keep_radius(ctx, tr, motor, c, faces)
+        h["front"] = front
+        keep_r = front + ctx.params.margin
+        depth_t, half_t = bp.tail(motor, c)
+        r_base = math.hypot(depth_t, half_t)
+        turn = max(abs(v) for v in preset.range_deg)
+        if turn + math.degrees(math.asin(min(1.0, half_t / keep_r))) > 175.0:
+            raise ConstructionError(f"turret: a {turn:.0f} deg yaw swings the arm's low links "
+                                    "over the base's tail")
+    else:
+        columns = _stock_column(motor.length + MOTOR_GAP)
+        h: dict[str, float] = {"bottom": 0.0}
+        h["bt_bot"] = t + sum(columns)
+        h["bt_top"] = h["bt_bot"] + t
+        if key == "belt":
+            w = tr.width()
+            hub_l = float(tr.small["hub_l"])
+            h["drive_bot"] = h["bt_top"] + 0.5 + hub_l      # the pulleys' teeth from here
+            h["hub_bot"] = h["drive_bot"] + w
+        else:
+            floor = h["bt_top"] + screw("bhcs", "3").head_h + 0.5   # over the motor's screws
+            core_bot = floor + pitch
+            reach = h["bt_bot"] + motor.shaft_len - 0.5     # the sleeve stops at the shaft's end
+            n_core = math.floor((reach - core_bot) / pitch + 1e-9)
+            from spiderpig.construction.transmissions.capstan import (
+                ANCHOR_MARGIN,
+                CORD_PITCH,
+                WRAPS,
+            )
+            fit = ((n_core * pitch - 1.0) / CORD_PITCH - WRAPS) * 360.0 / tr.ratio()
+            fit = min(fit, 360.0 - 2 * ANCHOR_MARGIN)
+            if fit <= 0:
+                raise ConstructionError("turret: the yaw motor's shaft holds no capstan wraps")
+            if fit < travel - 1e-9:
+                notes.append(f"the capstan's travel is {fit:.0f} deg (the wraps' walk on the "
+                             f"motor's {motor.shaft_len:g} mm shaft), not the preset's "
+                             f"{travel:.0f}")
+                lo, hi = -fit / 2, fit / 2
+                travel = fit
+            h["drive_bot"] = floor
+            h["core_bot"] = core_bot
+            h["n_core"] = float(n_core)
+            h["hub_bot"] = core_bot + n_core * pitch + pitch
+            h["sleeve_top"] = core_bot + n_core * pitch
+            if c - motor.shaft_d / 2 < drive_r + 0.5:      # the shaft past the sleeve, uncut
+                raise ConstructionError("turret: the yaw motor's shaft meets the drum's flange")
+        # the collar under the lower inner ring clears the one clamping the shaft
+        b_top = h["hub_bot"] + recess - 0.5
+        lift = h["bt_top"] + collar_w - (b_top - collar_w)
+        if lift > 1e-9:
+            if key != "belt":
+                raise ConstructionError("turret: the drum leaves the hub's collar no room over "
+                                        "the shaft's")
+            h["hub_bot"] += lift
+            h["drive_bot"] += lift
+        h["shaft_top"] = h["bt_bot"] + motor.shaft_len      # the stock shaft, uncut
+        if key == "belt" and h["hub_bot"] > h["shaft_top"] + 1e-9:
+            raise ConstructionError(f"turret: the yaw motor's {motor.shaft_len:g} mm shaft doesn't "
+                                    "reach its pulley's top")
+        h["hub_top"] = h["hub_bot"] + hub_h
+        if h["shaft_top"] > h["hub_top"] - 1.0:
+            raise ConstructionError("turret: the yaw motor's shaft reaches the turntable")
+        h["table"] = h["hub_top"] + t
+        d_top = h["hub_top"] - recess + spring + collar_w
+        tie = screw("shcs", "3")
+        protrude = max(d_top - h["table"], NUT_H + 1.0, tie.head_h)
 
     # how high the turntable stands: under the side, by what stands on it
-    inside, outside, prints = _lows(design, tool_plan)
-    head = BRACKET["hole"] + screw("shcs", "3").head_d / 2
+    inside, outside, prints = _lows(design, tool_plan,
+                                    (x_a, keep_r, r_base) if keep_r else None)
+    head = bk["hole"] + screw("shcs", "3").head_d / 2
     y_t = min(inside - max(head, protrude) - 1.0, outside - 1.0)
 
     # the brackets, clear of what stands outside each plate
     brackets: list[tuple[str, float]] = []
     for plate in ("outer", "inner"):
-        xs = [x_a + v for v in np.arange(-(FOOT_L - BRACKET["w"] / 2 - 1),
-                                          FOOT_L - BRACKET["w"] / 2 - 1 + 1e-9, 1.0)]
+        xs = [x_a + v for v in np.arange(-(FOOT_L - bk["w"] / 2 - 1),
+                                          FOOT_L - bk["w"] / 2 - 1 + 1e-9, 1.0)]
         ok = [float(x) for x in xs
-              if _clear((float(x) - BRACKET["w"] / 2 - 1, float(y_t),
-                         float(x) + BRACKET["w"] / 2 + 1, float(y_t) + BRACKET["h"] + 1),
+              if _clear((float(x) - bk["w"] / 2 - 1, float(y_t),
+                         float(x) + bk["w"] / 2 + 1, float(y_t) + bk["h"] + 1),
                         prints, plate)]
-        if len(ok) < 2 or max(ok) - min(ok) < BRACKET["w"] + 8:
+        if len(ok) < 2 or max(ok) - min(ok) < bk["w"] + 8:
             raise ConstructionError(f"turret: no room for two brackets outside the {plate} "
                                     f"frame plate's foot (the motors and sliders there "
                                     f"reach down to it)")
         brackets += [(plate, float(min(ok))), (plate, float(max(ok)))]
     hub_r = TIE_PCD[key] / 2 + SCREW_HOLE / 2 + 2 * t
     head_r = screw("shcs", "3").head_d / 2
-    reach = BRACKET["hole"]
-    depth = reach + BRACKET["hole"] - BRACKET["t"]      # as much leg past the hole as under
+    reach = bk["hole"]
+    depth = (bk["d"] if support.key == "base_pair"
+             else reach + bk["hole"] - bk["t"])      # as much leg past the hole as under
     corners, screws_r = [], []
     for plate, x in brackets:
         z0 = faces[plate]
         sgn = -1.0 if plate == "outer" else 1.0
         corners += [math.hypot(xx - x_a, zz - z_a)
-                    for xx in (x - BRACKET["w"] / 2, x + BRACKET["w"] / 2)
+                    for xx in (x - bk["w"] / 2, x + bk["w"] / 2)
                     for zz in (z0, z0 + sgn * depth)]
         screws_r.append(math.hypot(x - x_a, z0 + sgn * reach - z_a))
     corners += [math.hypot(FOOT_L + FOOT_R, faces[pl] - z_a) for pl in faces]
@@ -438,23 +488,40 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     sensor_r = max(r_table - rw - 2.0, drive_r + FLAG_CLEAR,
                    max(screws_r) + head_r + 1.0 + rw)
     r_table = max(r_table, sensor_r + rw + 2.0)
+    if support.key == "base_pair":          # the M2 flag outside the belt, nut under it
+        sensor_r = max(r_flag, max(screws_r) + head_r + 1.0 + 5.5)
+        r_table = max(max(corners) + 3.0, sensor_r + 4.0)
+        if bp.board_outer(sensor_r) + 1.0 > h["front"] + 1e-6:
+            raise ConstructionError("turret: the endstop's board passes the base's front")
 
     # the tool, wherever the flange passes over the base or the turntable
     if tool_plan is not None:
         from spiderpig.construction.tools import keepout
 
         f = np.asarray(pts[tool_plan.point], dtype=float)
-        over = np.abs(f[:, 0] - x_a) < max(r_base, r_table) + keepout(tool_plan.tool)
+        if keep_r:      # over the turntable in front, the base's tail behind
+            d = f[:, 0] - x_a
+            over = ((d < max(keep_r, r_table) + keepout(tool_plan.tool))
+                    & (d > -(r_base + keepout(tool_plan.tool))))
+        else:
+            over = np.abs(f[:, 0] - x_a) < max(r_base, r_table) + keepout(tool_plan.tool)
         if over.any():
             low = float(f[over, 1].min()) - ctx.topo.geometry.lateral.get(
                 tool_plan.point, 0.0) - tool_plan.tool.drop()
             if low - protrude - 1.0 < y_t:        # (over the collar and nuts it stands)
                 y_t = low - protrude - 1.0
                 notes.append("the turntable stands lower for the tool passing over it")
+    if keep_r and r_table > h["front"] - 1.0 + 1e-6:
+        raise ConstructionError(f"turret: the turntable's {r_table:.1f} mm passes the base's "
+                                f"front of {h['front']:.1f} mm")
     y_ground = y_t - h["table"]
+    if keep_r and tool_plan is not None:    # where the tool reaches the table
+        note, h["reach_lo"], h["reach_hi"] = bp.table_reach(design, tool_plan, x_a, y_ground,
+                                                            keep_r)
+        notes.append(note)
     return TurretPlan(preset, x_a, z_a, y_t, y_ground, h, r_base, r_table, c, loop, travel,
                       (lo, hi), tuple(brackets), reach, faces, columns, hub_r, sensor_r,
-                      tuple(notes), mill)
+                      tuple(notes), mill, spacing_mm, keep_r)
 
 
 def _loops():
@@ -493,7 +560,7 @@ class TurretFoot(Group):
                 out.pad(key, tuple(f), (x, tp.y_t + max(r, FOOT_R)), r)
             for pl, x in tp.brackets:
                 if pl == plate:
-                    out.cut(key, Cut((x, tp.y_t + BRACKET["hole"]), SCREW_HOLE))
+                    out.cut(key, Cut((x, tp.y_t + tp.bracket["hole"]), SCREW_HOLE))
         return out
 
 
@@ -515,6 +582,10 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
                                                         dict]:
     """The turret's bodies (robot coordinates), the names of those that turn with the
     turntable, its purchases not drawn, and what the mechanism's meta says of it."""
+    if tp.preset.support == "base_pair":
+        from spiderpig.construction.rotary.base_pair import parts
+
+        return parts(tp, ctx)
     from spiderpig.construction.pivots.ball import bearing_solid
     from spiderpig.hardware.catalog import get
     from spiderpig.hardware.crank_catalog import m3_round_standoff

@@ -27,7 +27,28 @@ register(Item(
     notes="The turntable's fixed shaft: clamped by collars either side of the base's boss, "
           "the hub's two 608 bearings turn on it. An h6 shaft runs from a 9 um gap to an 8 um "
           "interference in a 608's bore: the upper bearing must slide on it for the wave "
-          "washer to preload the pair (try the bearings on it; polish, or pick another)."))
+          "washer to preload the pair (try the bearings on it; polish, or pick another). In "
+          "the base_pair turret it turns, in the base's two bearings: the lower (floating) one "
+          "must slide on it."))
+register(Item(
+    "shaft_8mm_h6_tapped", "8 mm precision steel shaft, h6, one end tapped M4 x 10, cut to "
+    "length (Misumi PSFJ type, configured)", "shaft",
+    (_unpriced("Misumi", "https://us.misumi-ec.com/vona2/detail/110302634310/",
+               "PSFJ8, length and the M4 tap configured on the page"),),
+    dims={"d": 8.0, "length": 100.0, "tap": "M4", "tap_depth": 10.0,
+          "tolerance": "h6 (0 / -0.009)", "material": "steel"},
+    notes="The base_pair turret's turning shaft: cut to length and tapped at the top by the "
+          "seller (a stock configured part), an M4 screw and washer in its end clamping the "
+          "pulley, the spacer and the turntable down on the over collar (round 7's review: a "
+          "collar pushed down by hand clamps the stack with some 50-100 N, too little to "
+          "hold the arm's moment without rocking in the bore)."))
+register(Item(
+    "m4_spacer_6", "Round aluminium spacer 4.2 x 8 x 6 mm (unthreaded)", "standoff",
+    (Offer("Amazon", "https://www.amazon.com/s?k=M4+aluminum+round+spacer+6mm", pack_qty=20,
+           price_usd=8.0, note="search; an estimate"),),
+    dims={"id": 4.2, "od": 8.0, "length": 6.0, "material": "aluminium"},
+    notes="Under a base_pair turret's bottom plate at its bench screws: the lower bearing "
+          "and the column screws' heads stand under the plate."))
 register(Item(
     "spiral_wrap_6mm", "Spiral cable wrap, 6 mm, per metre", "cable",
     (_unpriced("Amazon", "https://www.amazon.com/s?k=spiral+cable+wrap+6mm", "spiral wrap"),),
@@ -55,7 +76,8 @@ register(Item(
                "washers"),),
     dims={"id": 8.4, "od": 12.0, "t": 0.3, "free_h": 1.2, "work_h": 0.6,
           "load_n": 30.0, "material": "steel"},
-    notes="The preloaded pair's spring, under the top collar on the upper inner ring. Its "
+    notes="The preloaded pair's spring, under the top collar on the upper inner ring (in "
+          "the base_pair turret over the lower inner ring, under the mid collar). Its "
           "load at the working height (30 N) is a typical catalogue figure, UNVERIFIED: "
           "check the listing."))
 register(Item(
@@ -145,3 +167,38 @@ register(Item(
           "their places against the air's humidity, where paper swells tens of um from day "
           "to day; the board's etch places them (its accuracy is the arm's after "
           "calibration; a chrome-on-glass target is finer)."))
+register(Item(
+    "bearing_f608zz", "F608ZZ flanged shielded ball bearing 8 x 22 x 7 mm, flange 25 x 1.5",
+    "bearing",
+    (Offer("AndyMark", "https://www.andymark.com/products/8mm-id-22mm-od-shielded-flanged-"
+           "bearing-f608zz", price_usd=4.40, note="read 2026-10-12"),),
+    dims={"id": 8.0, "od": 22.0, "w": 7.0, "flange_d": 25.0, "flange_t": 1.5,
+          "radial_clearance_mm": [0.003, 0.018], "material": "steel", "mass_g": 13.0},
+    notes="The base_pair turret's bearings (construction.rotary.base_pair): one bonded into "
+          "each base plate, its flange on the plate's top face (it takes the arm's weight), "
+          "the shaft through both as the jig while the epoxy cures. CN clearance of a 608 "
+          "(3-18 um)."))
+M4_HEX_STANDOFF_LENGTHS = (35, 40, 45, 50)
+for _L in M4_HEX_STANDOFF_LENGTHS:
+    register(Item(
+        f"m4_hex_standoff_{_L}", f"M4 x {_L} mm hex standoff, female-female, 7 mm across "
+        "flats, aluminium", "standoff",
+        (Offer("Amazon", "https://www.amazon.com/s?k=M4+hex+standoff+female+female",
+               pack_qty=10, price_usd=9.0, note="search; packs of 10, an estimate"),),
+        dims={"length": float(_L), "af": 7.0, "thread": "M4", "material": "aluminium"},
+        notes="A base_pair turret's column: four of them between its plates carry the arm's "
+              "tipping moment (a 7 mm hex racks about six times less than the M3 rounds)."))
+register(Item(
+    "angle_bracket_20", "Steel L angle bracket 20 x 20 x 16 mm, 3.4 mm holes (corner brace)",
+    "bracket",
+    (Offer("Amazon", "https://www.amazon.com/s?k=20mm+L+corner+brace+bracket+M3",
+           pack_qty=20, price_usd=8.0, note="search; zinc-plated corner braces, an estimate"),),
+    dims={"w": 16.0, "leg": 20.0, "t": 2.0, "hole": 3.4},
+    notes="A frame plate's foot held to the turntable (in place of the printed brackets)."))
+register(Item(
+    "rubber_feet_12mm", "Adhesive rubber bumper feet 12 x 4 mm", "foot",
+    (Offer("Amazon", "https://www.amazon.com/s?k=rubber+bumper+feet+12mm", pack_qty=50,
+           price_usd=6.0, note="search; an estimate"),),
+    dims={"d": 12.0, "h": 4.0},
+    notes="Not used: round 7's review screws the base_pair turret to the bench (on "
+          "rubber a light base rocks under the arm's moment)."))

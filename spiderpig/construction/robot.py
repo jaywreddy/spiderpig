@@ -332,9 +332,13 @@ class Turret(Layout):
 
         turret, _ = self.plans(design, config)
         bodies, turning, extras, info = turret_parts(turret, design.ctx)
-        low = min((pp.bounding_box().min.Y for b in side.bodies
-                   if not b.joints and _static(b, side) and (pp := b.placed_part()) is not None),
-                  default=math.inf)
+        def over(bb) -> bool:      # over the turret (a base_pair's keep-out: only that)
+            return (not turret.keep_r or (turret.x_a + turret.keep_r > bb.min.X
+                                          and turret.x_a - turret.r_base < bb.max.X))
+
+        low = min((bb.min.Y for b in side.bodies
+                   if not b.joints and _static(b, side) and (pp := b.placed_part()) is not None
+                   and over(bb := pp.bounding_box())), default=math.inf)
         if low < turret.y_t - 1e-6:
             raise ConstructionError(f"turret: a part of the side reaches y = {low:.2f} mm, "
                                     f"under the turntable's top at {turret.y_t:.2f}")

@@ -72,7 +72,7 @@ from __future__ import annotations
 import itertools
 import math
 from dataclasses import dataclass, field, replace
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from spiderpig.construction.axle import AxleDims, AxleGroup
 from spiderpig.construction.base import Build, ConstructionError, Context, Realized, hardware
@@ -323,7 +323,7 @@ def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
         elements.append((mid - t / 2, mid + t / 2))
     for b in out.bodies:            # a hub; a pillar's end shims
         if b.part is not None and ("_hub_" in b.name or "_shims" in b.name):
-            bb = b.part.bounding_box()
+            bb = cast(Any, b.part).bounding_box()
             elements.append((bb.min.Z, bb.max.Z))
     if plates:                      # a pillar's column runs to the frame plates it's in
         elements += [build.z(k) for k in Column.of(build, group).anchors]
@@ -333,7 +333,7 @@ def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
     keep = []
     for b in out.bodies:            # the printed rings and gap spacers inside a span go
         if b.fab == "printed" and b.part is not None:
-            bb = b.part.bounding_box()
+            bb = cast(Any, b.part).bounding_box()
             zc = (bb.min.Z + bb.max.Z) / 2
             if any(lo - EPS <= zc <= hi + EPS for lo, hi in spans):
                 host = host or b.rigid_with
@@ -367,7 +367,7 @@ def stock_spacers(out: Realized, build: Build, shim_key: str, land_key: str,
     for i, b in enumerate(out.bodies):
         if b.fab != "printed" or b.part is None:
             continue
-        bb = b.part.bounding_box()
+        bb = cast(Any, b.part).bounding_box()
         h = bb.max.Z - bb.min.Z
         if abs(h - pitch) < 0.05:
             out.bodies[i] = _replace(b, fab="laser", sheet=None)
@@ -485,7 +485,7 @@ class BallPairAxle(BallAxle):
 
     def resolve(self, ctx: Context) -> BallPairAxle:
         """As the Chicago pin's, and the links that seat their pair inside (no hub)."""
-        own = super().resolve(ctx)
+        own = cast(BallPairAxle, super().resolve(ctx))
         assert isinstance(self.seat, PairSeat)
         return replace(own, hubless=_hubless(self.seat, ctx))
     preload: Preload = field(default_factory=lambda: Preload("disc_spring_din2093_c8", 35.0))

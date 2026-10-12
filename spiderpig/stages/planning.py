@@ -17,7 +17,7 @@ from spiderpig import walk as walk_model
 from spiderpig.config import BuildConfig, default_robot
 from spiderpig.construction.base import ConstructionError
 from spiderpig.construction.crank import CrankRoute, Run
-from spiderpig.design import Design, spec_hash
+from spiderpig.design import Design, side_hash, spec_hash
 from spiderpig.fabricate import (
     SideDesign,
     design_side,
@@ -227,8 +227,10 @@ def _plan_report(d: SideDesign, rep: PlanReport | None = None) -> PlanReport:
 def _reuse_plan(design: Design) -> PlanReport | None:
     """A stored plan the design can use, or ``None``: its own (a failing one only from
     the running engine; a valid one re-made and verified, then served as cached), else
-    the newest plan of the same resolved spec under another engine version (verified on
-    fresh sampling, then written as this design's, without the optimality proof)."""
+    the newest plan of the same resolved spec under another engine version, or of the same
+    side under other robot-only roles (:data:`design.SIDE_FREE_ROLES`: another turntable),
+    verified on fresh sampling, then written as this design's, without the optimality
+    proof."""
     store = design.store
     if store is None:
         return None
@@ -250,7 +252,10 @@ def _reuse_plan(design: Design) -> PlanReport | None:
         if same:
             log.warning("%s: the stored plan no longer holds under this engine: re-solving",
                         design.id)
-    for other, doc in store.find_plans(spec_hash(design.resolved), exclude=(design.id,))[:3]:
+    others = store.find_plans(spec_hash(design.resolved), exclude=(design.id,))[:3]
+    tried = {design.id, *(i for i, _ in others)}
+    others += store.find_plans(side_hash(design.resolved), exclude=tried, side=True)[:3]
+    for other, doc in others:
         side = _remake_plan(design, doc, same_engine=False)
         if side is not None:
             design.side = side

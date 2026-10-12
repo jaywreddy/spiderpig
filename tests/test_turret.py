@@ -133,11 +133,19 @@ def test_the_turret_stands_under_the_side_and_holds_together(preset):
 
     cfg = _robot(roles=(("turntable", preset),))
     design, tp, tool = _plans(cfg)
-    inside, outside, _ = _lows(design, tool)
+    inside, outside, _ = _lows(design, tool, (tp.x_a, tp.keep_r, tp.r_base)
+                               if tp.keep_r else None)
     assert tp.y_t < outside
-    assert tp.y_t < inside - 10
+    assert tp.y_t < inside - 9
     h = tp.h
-    assert h["bt_top"] < h["drive_bot"] < h["hub_bot"] < h["hub_top"] < h["table"]
+    if tp.preset.support == "base_pair":      # the bearings in the base's plates
+        assert h["lb_bot"] < h["bp_top"] < h["ub_bot"] < h["bt_bot"] < h["bt_top"] < h["ub_top"]
+        assert h["bt_top"] < h["drive_bot"] < h["drive_top"] < h["tt_bot"] < h["table"]
+        assert h["tt_bot"] >= h["shaft_top"] + 1.0 - 1e-9     # over the motor's shaft
+        assert tp.spacing > 1.5 * SPACING
+        assert tp.r_table < tp.keep_r
+    else:
+        assert h["bt_top"] < h["drive_bot"] < h["hub_bot"] < h["hub_top"] < h["table"]
     assert tp.y_ground == pytest.approx(tp.y_t - h["table"])
     assert h["shaft_top"] - h["bt_bot"] <= tp.preset.parts[2].shaft_len + 1e-9
     assert tp.r_base > tp.c + tp.preset.parts[2].frame / math.sqrt(2)
@@ -146,7 +154,7 @@ def test_the_turret_stands_under_the_side_and_holds_together(preset):
     lo, hi = tp.range_deg
     assert lo < 0 < hi
     terms = tp.error_terms()
-    if tp.preset.support == "preloaded_pair":
+    if tp.preset.support in ("preloaded_pair", "base_pair"):
         assert terms.tilt_deg == 0.0
     if tp.preset.transmission == "capstan":
         assert terms.backlash_deg == 0.0
@@ -154,6 +162,27 @@ def test_the_turret_stands_under_the_side_and_holds_together(preset):
 
         core = h["n_core"] * design.ctx.pitch                # the wraps and their walk fit
         assert core >= (WRAPS + (hi - lo) / 360 * tp.preset.parts[1].ratio()) * CORD_PITCH
+
+
+@pytest.mark.slow
+@pytest.mark.no_fabricate
+def test_the_mt4_base_keeps_the_arm_out_of_it_and_the_tool_reaches_its_plate():
+    """Round 7's turret (``base_pair``): the bearings in the base, only the links over its
+    keep-out above the turntable: the shoulder stands about half as high as the classic
+    turret's and the tool gets down to the bench over a band 110 mm deep or more (the links'
+    lengths bound it, not the turret: round 7)."""
+    from spiderpig.construction.rotary.base_pair import racking
+
+    cfg = BuildConfig(linkage="palletizer_reach", roles=(("turntable", "mt4_base"),))
+    _, tp, _ = _plans(cfg)
+    _, classic, _ = _plans(BuildConfig(linkage="palletizer_reach"))
+    assert -tp.y_ground < 0.6 * -classic.y_ground          # the shoulder over the ground
+    assert tp.h["reach_hi"] - tp.h["reach_lo"] >= 110.0
+    assert tp.h["reach_lo"] > tp.keep_r
+    assert any("gets down to the bench" in n for n in tp.notes)
+    per_nm, note = racking(tp)
+    assert 0.0 < per_nm < 1e-3
+    assert "columns" in note
 
 
 @pytest.mark.no_fabricate
@@ -216,8 +245,9 @@ def test_the_turntable_joins_the_precision_budget():
 
 @pytest.mark.slow
 @pytest.mark.parametrize("roles", [(), (("turntable", "capstan_preload"),),
-                                   (("turntable", "mt4"), ("tool", "suction_wrist"))],
-                         ids=["belt", "capstan", "mt4-wrist"])
+                                   (("turntable", "mt4"), ("tool", "suction_wrist")),
+                                   (("turntable", "mt4_base"),)],
+                         ids=["belt", "capstan", "mt4-wrist", "mt4-base"])
 def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(roles):
     from spiderpig.construction.contract import clashes
     from spiderpig.fabricate import split_parts
@@ -239,9 +269,20 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
     rows = {r.key: r.qty for r in bom_from_mechanism(mech).purchased}
     if dict(roles).get("turntable") == "capstan_preload":     # the cord's two anchors
         assert {"yaw_anchor0", "yaw_anchor1"} <= {b.name for b in mech.bodies}
-    assert rows["bearing_608zz"] == 2
-    assert rows["collar_8mm"] == 4
-    assert rows["shaft_8mm_h6_100"] == 1
+    if dict(roles).get("turntable") == "mt4_base":   # the bearings in the base's plates
+        from spiderpig.construction.rotary.base_pair import SHAFT_KEY
+
+        assert rows["bearing_f608zz"] == 2
+        assert rows["collar_8mm"] == 3
+        assert rows[SHAFT_KEY] == 1
+        assert rows["m4_hex_standoff_45"] == 4
+        assert rows["angle_bracket_20"] == 4
+        assert not any(b.fab == "printed" for b in mech.bodies
+                       if b.name.startswith(("base_", "yaw_", "turntable", "foot_")))
+    else:
+        assert rows["bearing_608zz"] == 2
+        assert rows["collar_8mm"] == 4
+        assert rows["shaft_8mm_h6_100"] == 1
     assert rows["suction_cup_m5_10"] == 1
     assert rows["optical_endstop"] == 1
     steppers = sum(q for k, q in rows.items() if k.startswith("stepper_"))

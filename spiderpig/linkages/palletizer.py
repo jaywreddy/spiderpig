@@ -98,7 +98,7 @@ PALLETIZER = register(Linkage(
 PALLETIZER_REACH = register(replace(
     PALLETIZER, key="palletizer_reach",
     name="Palletizer arm reaching the table (MT4-like: 130 / 150 mm, crank 90, a band)",
-    ranges={"q2": (-10.0, 110.0), "q3": (-110.0, 10.0)}, band=(30.0, 150.0),
+    ranges={"q2": (-10.0, 110.0), "q3": (-90.0, 10.0)}, band=(30.0, 150.0),
     params={**PALLETIZER.params, "crank": R(90),
             "px": R(3064, 100), "py": R(-2571, 100),    # |OP| 40 mm at -40 deg: in front
             "ux": R(3064, 100), "uy": R(2571, 100)},    # the elbow plate's corner at 40 deg
@@ -107,7 +107,10 @@ PALLETIZER_REACH = register(replace(
           "inputs' box widened and held to q2 - q3 within 30..150 deg (every parallelogram "
           "30 deg or more off its dead point), the levelling pivot P and the wrist corner U "
           "moved so: the tip reaches table height over a 168 mm square once the turret keeps "
-          "the arm out of the base instead of under it (not built yet)."))
+          "the arm out of the base instead of under it. Round 7 (the turret's, 2026-10-12) "
+          "built that turret (``base_pair``) and held q3 to -90 deg: the elbow folded further "
+          "with the shoulder low only brought the tool down beside the base (a tenth of the "
+          "box), where a 150 mm shoulder can't let it."))
 """The palletizer that reaches its table (module docstring of the review's round 6)."""
 
 

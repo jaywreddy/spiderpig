@@ -814,6 +814,11 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     notes.append(f"the turntable's drive {ECCENTRICITY_MM:g} mm off centre and its shaft "
                  f"{AXIS_RUNOUT_MM:g} mm out across a collar (estimates): {systematic:.3f} mm "
                  "at the output, once a turn (it calibrates out)")
+    if tp.keep_r:                       # a base_pair: its columns rack under the moment
+        from spiderpig.construction.rotary.base_pair import racking
+
+        per_nm, note = racking(tp)
+        notes.append(f"{note}: {per_nm * far:.3f} mm at the farthest tip per N·m")
     notes.append("the turntable's plates' and brackets' stiffness under the arm's moment is "
                  "not modelled")
     return budget, math.radians(t.tilt_deg) * far, systematic, notes

@@ -131,6 +131,10 @@ register(Item("m2_washer_din125", "DIN 125 flat washer M2 (2.2 x 5 x 0.3 mm)", "
               (Offer("Amazon", "https://www.amazon.com/s?k=M2+flat+washer+DIN+125",
                      pack_qty=100, price_usd=6.0, note="search; an estimate"),),
               dims={"id": 2.2, "od": 5.0, "t": 0.3}))
+register(Item("m2_nut", "M2 hex nut (ISO 4032, 4 mm across flats, 1.6 mm)", "nut",
+              (Offer("Amazon", "https://www.amazon.com/s?k=M2+hex+nut+ISO+4032",
+                     pack_qty=100, price_usd=6.0, note="search; an estimate"),),
+              dims={"af": 4.0, "h": 1.6}))
 
 register(
     Item("ptfe_washer_4x8x0p5", "PTFE flat washer 4.2 x 7 x 0.5 mm", "washer",

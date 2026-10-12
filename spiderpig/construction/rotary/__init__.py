@@ -7,7 +7,9 @@ A rotary joint is four swappable parts, each from its registry:
   (``deep_groove_pair``: the MT4's way; their internal clearance and the shaft's fit tilt
   the axis) or preloaded by a wave washer under the top collar (``preloaded_pair``: the
   two act as an angular-contact pair back to back, no play while the washer's force
-  exceeds what a tipping moment takes off a row);
+  exceeds what a tipping moment takes off a row); or the bearings in the base
+  (``base_pair``, :mod:`.base_pair`): two flanged F608s bonded into the base's two plates
+  about 48 mm apart, the shaft turning in them with the turntable clamped on it;
 * the **transmission** (:data:`construction.transmissions.TRANSMISSIONS`, the same as the
   side's drives'): the GT2 belt (16 to 80 teeth, 5:1) or the cord capstan, here on a
   :data:`YAW_DRUM_R` drum (11.6:1), its travel bounded by the motor's shaft (the wraps'
@@ -67,6 +69,18 @@ class Support:
     bearing: str = "bearing_608zz"
     preload: bool = False
     spring: str = "wave_washer_8mm"
+    row_share: float = 1.0       # the spring's force the more lightly loaded row keeps
+
+    @property
+    def slide_note(self) -> str:
+        which = "lower (floating)" if self.key == "base_pair" else "upper"
+        note = (f"the {which} bearing must slide on the shaft for the washer to load it (an "
+                "h6 shaft may hold it by up to 8 um of interference)")
+        if self.row_share < 1.0:
+            note += ("; the fixed upper row keeps the washer's force less the arm's weight "
+                     f"(about {self.row_share:.0%} of it, estimated): a 60-80 N spring "
+                     "doubles the moment held")
+        return note
 
     def play(self) -> float:
         """The diametral play each bearing leaves the axis: its internal clearance and the
@@ -85,7 +99,7 @@ class Support:
         from spiderpig.hardware.catalog import get
 
         load = float(get(self.spring).dims["load_n"])
-        return PRELOAD_ROW_FACTOR * load * spacing / 1000.0
+        return PRELOAD_ROW_FACTOR * load * self.row_share * spacing / 1000.0
 
     def error_terms(self, spacing: float) -> ErrorTerms:
         c = self.play()
@@ -93,8 +107,7 @@ class Support:
         if self.preload:
             notes += (f"preloaded by a {self.spring}: no play up to about "
                       f"{self.capacity_nm(spacing):.1f} N·m of tipping moment (estimate)",
-                      "the upper bearing must slide on the shaft for the washer to load it "
-                      "(an h6 shaft may hold it by up to 8 um of interference)")
+                      self.slide_note)
         else:
             notes += (f"each bearing's clearance and the shaft's fit, {c * 1000:.0f} um "
                       "diametral: the axis tilts by it over the spacing",)
@@ -106,6 +119,9 @@ SUPPORTS: dict[str, Support] = {s.key: s for s in (
     Support("deep_groove_pair", "a 608ZZ pair on a fixed 8 mm shaft, not preloaded"),
     Support("preloaded_pair", "a 608ZZ pair on a fixed 8 mm shaft, preloaded by a wave washer",
             preload=True),
+    Support("base_pair", "two F608ZZ bonded into the base's plates about 48 mm apart, the "
+            "8 mm shaft turning in them, preloaded by a wave washer (the MT4's way: "
+            ":mod:`.base_pair`)", bearing="bearing_f608zz", preload=True, row_share=0.5),
 )}
 
 
@@ -174,6 +190,10 @@ PRESETS: dict[str, RotaryPreset] = {p.key: p for p in (
     RotaryPreset("capstan_preload", "cord capstan 11.6:1 on a preloaded 608 pair, optical "
                  "homing", "preloaded_pair", "capstan", "nema17_17hs4401", "optical_flag",
                  (-115.0, 115.0)),
+    RotaryPreset("mt4_base", "the MT4's way: GT2 belt 5:1, the shaft turning in a preloaded "
+                 "F608 pair in the base's plates, the driver at 1/64, an M2 screw through a "
+                 "slot switch past the range's end (round 7's turret review)", "base_pair", "belt",
+                 "nema17_17hs4401_x64", "optical_flag", (-120.0, 120.0)),
     RotaryPreset("capstan_precise", "cord capstan 11.6:1 on a preloaded 608 pair, an Omron "
                  "slot sensor, the driver at 1/64", "preloaded_pair", "capstan",
                  "nema17_17hs4401_x64", "ee_sx67", (-115.0, 115.0)),

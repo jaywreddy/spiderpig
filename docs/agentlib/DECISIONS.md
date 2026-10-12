@@ -857,3 +857,46 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   the printed brackets, the turntable's rim as the homing flag, the yaw hub as two flanged
   F608 bearings in cut plates; shoulder screws in place of the ground pins were rejected
   (ISO 7379's 3 mm head and its disc spring don't fit a 3 mm end layer; f9 looser than g6).
+
+### 2026-10-12: the turret in the base, the MT4's way (round 7: the turret's simplification)
+
+- **Why:** the user's "go on to the turret next, same style": stock parts but for cut
+  plates, fewer parts, 0.1 mm kept, the tool reaching the table. The classic turret
+  (`deep_groove_pair` / `preloaded_pair`) turns a hub on a fixed shaft and stands the
+  turntable under every link over the inputs' box: on `palletizer_reach` the shoulder
+  stood 329 mm over the floor, on 20 cut 5052 plates and 7 printed parts.
+- **Chosen (of the variants reviewed: C, with the reviewer's corrections):** the support
+  `base_pair`, preset `mt4_base` (`construction/rotary/base_pair.py`): two F608ZZ retained
+  in the base's two 1/8 in 5052 plates, 48 mm apart (the hub's were 25), on four 45 mm hex
+  M4 standoffs; the 8 mm shaft turns in them (the upper inner ring clamped by two collars,
+  the lower floating under a wave washer), the 80-tooth plate pulley on it, a spacer disc
+  and the turntable clamped down by an M4 in the shaft's tapped end (a configured Misumi
+  shaft; a hand-pressed collar clamps too lightly); the side's feet on stock steel angle
+  brackets; an M2 screw hanging from the turntable through a slot endstop just past the
+  yaw's lower end (one-way homing, the MT4's; the camera fixes the zero); the base screwed
+  to the bench on 6 mm spacers. Only the links over the base's keep-out (its 84 mm front,
+  the tail round the motor) must clear the turntable (`turret._lows`' ``keep``), and
+  `palletizer_reach`'s q3 stops at -90 deg (from -110): past it the folded elbow only
+  brought the tool down beside the base. The yaw's range is +-120 deg (the tail).
+- **Reviewer's corrections taken (round 7's second review):** screwed down, not on
+  rubber feet (a base this light rocks under the arm's moment); the tapped-shaft clamp;
+  the spacer out to the small pulley; the flag 1 mm over the slot's floor, the board's
+  holes slotted; retaining compound in place of epoxy, the columns tightened first;
+  `Support.row_share` (the fixed upper row keeps the washer's force less the arm's weight:
+  2.9 N·m held, not 5.8; a 60-80 N spring would double it); the columns' racking a lower
+  bound (`base_pair.racking`, in `turret_budget`'s notes: accuracy, not repeatability).
+- **Not done:** the bottom plate as the work plate in one piece (about 400 mm, past the
+  300 mm blank; the camera re-references the sheet at every power-up); a stronger spring
+  (none verified in stock).
+- **Engine:** a stored plan is re-made for designs differing only in robot roles that
+  don't shape the side (`design.SIDE_FREE_ROLES`, `design.side_hash`,
+  `store.find_plans(side=True)`): a new turntable no longer re-plans the side, which on
+  `palletizer_reach`'s mixed links runs out of the 60000-step budget.
+- **Result (`palletizer_reach`, the round-3 arm on `mt4_base`):** the shoulder 170 mm over
+  the bench (329); the tool gets down to the bench from 161 to 278 mm out, a 117 mm band:
+  the 130 / 150 mm links bound it, not the turret (any q3 stop gives 115-125 mm; round 6's
+  168 mm square was wrong); ISO RP 0.025 mm in a session, 0.034 across power-ups (with the
+  q3 stop, either turret); the turntable's homing 0.082 mm at the tool (0.099); the BOM
+  $628 listed ($659 on the classic turret: the three base plates in 1/8 in 5052, $129, as
+  stiff as 6061 at half the rate), 18 cut parts (30) and 1 printed (7: the tool's holder
+  left), 220 bought pieces (228).
