@@ -441,10 +441,12 @@ class StandoffAxle:
                           f"{self.tighten_nm:g} N·m while the column is bare to hold.",
                           "columns"))
         if inner:
+            lk = getattr(getattr(view.ctx, "config", None), "lk", None)
+            where = ("from outside the inner plate" if lk is not None and lk.kind == "arm"
+                     else "from the servo bay (a ball-end key)")
             ops.append(Op(JOIN, (1,), whole(*inner), "",
-                          "Each pillar's inner screw and washer from the servo bay (a "
-                          f"ball-end key), threadlocker, to {self.tighten_nm:g} N·m.",
-                          "pillar_screws"))
+                          f"Each pillar's inner screw and washer {where}, threadlocker, to "
+                          f"{self.tighten_nm:g} N·m.", "pillar_screws"))
         ops.extend(Op(STACK, (view.slot(view.z[n][0]), 3), whole(n), "",
                       "The take-up shims on their column's top.", "layer")
                    for n in view.named(rf"{stem}_shims\d+"))

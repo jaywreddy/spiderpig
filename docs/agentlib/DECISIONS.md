@@ -589,3 +589,24 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   would make homing automatic.
 - **Where:** `spiderpig/control/` (`arm.py`, `mapping.py`, `homing.py`, `calibrate.py`,
   `klipper.py`, `host.py`, `cli.py`).
+
+### 2026-10-12: an arm through every surface (phase 7)
+
+- **What:** the spec's `legs.robot` (an arm's only; default the robot) makes the API, the
+  MCP, the store and `spiderpig view` build an arm's turret, as `spiderpig build` does;
+  `api.export` writes `urdf` (the URDF, its meshes, the joint map and a MuJoCo model of the
+  same tree: a hinge per joint, the loops closed by `connect` equalities at their pins, a
+  position actuator per motor) and `mill`; the viewer poses an arm by joint sliders
+  (`/api/pose/{mode}`, `spiderpig.pose`); `/api/linkages` gives an arm's inputs and
+  ranges; the guide's arm steps name drives, not a crank or a servo; the gate's designs
+  include `palletizer_turret`, and a new baseline regenerates `DESIGNS.md`.
+- **Why:** the workstream's last phase: every surface that took a walker takes an arm
+  (the user's direction, 2026-10-11).
+- **Open:** the walkers' MJCF and walk model are a walker's (an arm's MuJoCo model is the
+  URDF's sibling, not `spiderpig sim`'s); the viewer's precision overlay (the error budget
+  over the workspace) is not drawn yet; the joint sliders were checked by their tests (the
+  server's poses against the bake's own frames, the viewer's composition in vitest), not in
+  a browser here.
+- **Where:** `spiderpig/spec.py` (`LegsSpec.robot`), `spiderpig/stages/resolve.py`,
+  `spiderpig/api/exports.py`, `spiderpig/urdf.py` (`mjcf`), `spiderpig/pose.py`,
+  `spiderpig/server/app.py`, `viewer/src/arm.ts`, `tests/gate/identity_gate.py`.

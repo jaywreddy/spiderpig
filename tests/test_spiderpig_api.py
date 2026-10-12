@@ -60,7 +60,8 @@ def test_out_of_vocabulary_keys_name_the_allowed_values():
     assert errs["materials.servo"][0].allowed == ("sts3215", "xl330_m288", "xl430_w250")
     assert errs["materials.sheet"][0].nearest == "acrylic_3mm"
     assert errs["constructions.pin"][0].nearest == "chicago"
-    assert errs["outputs[1]"][0].allowed == ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
+    assert errs["outputs[1]"][0].allowed == ("step", "stl", "print", "dxf", "bom", "glb", "mjcf",
+                                             "urdf", "mill")
 
 
 def test_wildcards_are_rejected():

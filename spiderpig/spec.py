@@ -47,7 +47,7 @@ from spiderpig.layout import DEFAULT_KERF
 
 SPEC_VERSION = "1"
 KINDS = ("walker", "mechanism", "arm")
-OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
+OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf", "mill")
 DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
 FIT_FIELDS = tuple(f.name for f in fields(Params))
@@ -266,11 +266,14 @@ class LinkageSpec:
 class LegsSpec:
     """A named leg module of the linkage (``single``, ``double``, ``decker``, ``quad`` or its
     own), the crank phase of each leg in degrees, and how many sides (2: the robot; 1: one
-    side). ``None`` is inferred: a walker's ``quad`` on 2 sides, a mechanism's ``single``."""
+    side). ``None`` is inferred: a walker's ``quad`` on 2 sides, a mechanism's ``single``.
+    ``robot``: an arm's whole robot (its side on the turntable, its tool) or its side
+    alone; ``None``: the robot (an arm's only: a walker's robot is its two sides)."""
 
     module: str | None = None
     phases_deg: tuple[float, ...] | None = None
     sides: int | None = None
+    robot: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -368,6 +371,7 @@ class Spec:
         if self.linkage.params:
             out["linkage"]["params"] = dict(self.linkage.params)
         legs = _drop_none({"module": self.legs.module, "sides": self.legs.sides,
+                           "robot": self.legs.robot,
                            "phases_deg": (list(self.legs.phases_deg)
                                           if self.legs.phases_deg is not None else None)})
         if legs:
@@ -427,7 +431,8 @@ def _build(data: Mapping) -> Spec:
         legs=LegsSpec(legs.get("module"),
                       None if legs.get("phases_deg") is None
                       else tuple(float(v) for v in legs["phases_deg"]),
-                      None if legs.get("sides") is None else int(legs["sides"])),
+                      None if legs.get("sides") is None else int(legs["sides"]),
+                      None if legs.get("robot") is None else bool(legs["robot"])),
         motion={k: _target(v) for k, v in (data.get("motion") or {}).items()},
         size={k: _target(v) for k, v in (data.get("size") or {}).items()},
         materials=MaterialsSpec(**(data.get("materials") or {})),
@@ -702,7 +707,7 @@ def validate(data: Mapping) -> list[SpecError]:
                         v.number(val, f"linkage.params.{name}", positive=name not in lk.signed)
 
     # legs
-    legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides"))
+    legs = v.obj(top.get("legs"), "legs", ("module", "phases_deg", "sides", "robot"))
     if legs is not None:
         modules = list(lk.leg_modules) if lk is not None else module_keys()
         mod = legs.get("module")
@@ -744,6 +749,12 @@ def validate(data: Mapping) -> list[SpecError]:
         elif sides == 2 and lk is not None and lk.kind != "walker":
             v.err("legs.sides", f"{lk.key} is a {lk.kind}: one side only (it has no feet to "
                                 "walk on)", (1,))
+        robot = legs.get("robot")
+        if robot is not None and not isinstance(robot, bool):
+            v.err("legs.robot", f"must be true or false, got {_kind(robot)}", (True, False))
+        elif robot is not None and lk is not None and lk.kind != "arm":
+            v.err("legs.robot", f"{lk.key} is a {lk.kind}: legs.robot is an arm's (its "
+                                "turntable); a walker's robot is legs.sides = 2", ())
 
     # targets
     for section in SECTIONS:
@@ -912,6 +923,9 @@ def spec_schema() -> dict:
                                                   "module's)"},
                     "sides": {"enum": [1, 2], "description": "2: the robot (default for a "
                                                              "walker); 1: one side"},
+                    "robot": {"type": "boolean", "description": "an arm's whole robot (its "
+                              "side on the turntable, its tool; the default) or its side "
+                              "alone"},
                 },
             },
             "motion": sections["motion"],

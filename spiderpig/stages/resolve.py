@@ -10,7 +10,7 @@ from pathlib import Path
 
 from spiderpig import linkage, servos
 from spiderpig import walk as walk_model
-from spiderpig.config import BuildConfig, ParamError
+from spiderpig.config import BuildConfig, ParamError, default_robot
 from spiderpig.construction.base import Params
 from spiderpig.design import Design, design_id, engine_version
 from spiderpig.hardware.catalog import sheet_size, sheet_thickness
@@ -59,7 +59,9 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
         thickness = None if float(thickness) == sheet_thickness(sheet) else float(thickness)
     try:
         config = BuildConfig(
-            linkage=lk.key, module=module, robot=sides == 2, phases=phases,
+            linkage=lk.key, module=module, phases=phases,
+            robot=(sides == 2 if lk.kind != "arm" else spec.legs.robot
+                   if spec.legs.robot is not None else default_robot(lk.key)),
             proportions=tuple(sorted(spec.linkage.params.items())),
             sheet=sheet, thickness=thickness,
             servo=spec.materials.servo or d.servo,
@@ -155,6 +157,8 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
         doc["linkage"]["params"] = dict(config.proportions)
     legs: dict = {"module": config.module,
                   "sides": config.sides if sides is None else int(sides)}
+    if lk.kind == "arm":
+        legs["robot"] = config.robot
     if config.phases is not None:
         legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
     doc["legs"] = legs
@@ -192,7 +196,8 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
     return {
         "version": spec.version, "kind": spec.kind,
         "linkage": {"key": config.linkage, "params": design["proportions"]},
-        "legs": {"module": module, "phases_deg": design["phases_deg"], "sides": sides},
+        "legs": {"module": module, "phases_deg": design["phases_deg"], "sides": sides,
+                 **({"robot": config.robot} if config.lk.kind == "arm" else {})},
         "motion": targets["motion"], "size": targets["size"], "budget": targets["budget"],
         "materials": {"sheet": config.sheet, "thickness_mm": config.thickness,
                       "pitch_mm": config.pitch, "servo": config.servo,

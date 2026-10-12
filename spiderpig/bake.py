@@ -816,6 +816,8 @@ def _scene(config: BuildConfig, ref: _Reference, meshes: _Meshes, anim: _Animati
     }
     if lk.output:
         scene.extras["output"] = asdict(lk.output)
+    if ref.mech.meta.get("tree"):      # an arm's spatial joints (the viewer's joint sliders)
+        scene.extras["tree"] = ref.mech.meta["tree"]
     return scene
 
 

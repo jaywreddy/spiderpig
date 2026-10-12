@@ -395,3 +395,97 @@ def test_the_urdf_moves_as_the_linkage_does(tmp_path):
                                        to_ros @ [0, 1, 0], atol=1e-9)
     turned = _xml_fk(root, {"q4": 1.0})["tool0"][:3, :3]
     assert not np.allclose(turned, _xml_fk(root, {})["tool0"][:3, :3])
+
+
+@pytest.mark.no_fabricate
+def test_the_pose_endpoint_names_its_joints_in_degrees():
+    from fastapi.testclient import TestClient
+
+    from spiderpig.server import app as srv
+
+    client = TestClient(srv.app, base_url="http://localhost")
+    r = client.get("/api/pose/robot?linkage=palletizer&j.q2=seventy")
+    assert r.status_code == 422
+    assert "degrees" in r.json()["detail"]
+    assert client.get("/api/pose/nope?linkage=palletizer").status_code == 404
+    info = next(x for x in client.get("/api/linkages").json()["linkages"]
+                if x["key"] == "palletizer")
+    assert info["inputs"] == ["q2", "q3"]
+    assert info["ranges"]["q2"] == [40.0, 115.0]
+
+
+@pytest.mark.slow
+def test_posing_the_baked_arm_lands_on_the_bakes_own_frames():
+    """At a frame's inputs and joint angles, each node posed (``spiderpig.pose``) is that
+    frame's: the viewer's sliders show what the bake animates."""
+    import pygltflib
+
+    from spiderpig.bake import T_REF, bake_gltf
+    from spiderpig.pose import node_poses
+
+    cfg = _robot(roles=(("tool", "suction_wrist"),))
+    out = cache.cache_dir() / "turret_pose_test.glb"
+    bake_gltf(out, cfg, n_frames=24, profile=False, fabricated=cache.cached_robot(cfg, T_REF))
+    g = pygltflib.GLTF2().load(str(out))
+    blob = g.binary_blob()
+    names = [n.name for n in g.nodes]
+
+    def matrix(i: int, k: int) -> np.ndarray:
+        vals = {}
+        for path, w in (("translation", 3), ("rotation", 4)):
+            ch = next(c for c in g.animations[0].channels if c.target.node == i
+                      and c.target.path == path)
+            acc = g.accessors[g.animations[0].samplers[ch.sampler].output]
+            bv = g.bufferViews[acc.bufferView]
+            vals[path] = np.frombuffer(blob, np.float32, acc.count * w,
+                                       bv.byteOffset).reshape(-1, w)[k]
+        x, y, z, w_ = vals["rotation"]
+        m = np.eye(4)
+        m[:3, :3] = [[1 - 2 * (y * y + z * z), 2 * (x * y - z * w_), 2 * (x * z + y * w_)],
+                     [2 * (x * y + z * w_), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w_)],
+                     [2 * (x * z - y * w_), 2 * (y * z + x * w_), 1 - 2 * (x * x + y * y)]]
+        m[:3, 3] = vals["translation"]
+        return m
+
+    tree = RobotTree.from_meta(g.scenes[0].extras["tree"])
+    assert tree is not None
+    lk = cfg.lk
+    for k in (5, 13):
+        t = T_REF + 2 * math.pi * k / 24
+        q = {n: math.degrees(float(v[0])) for n, v in zip(lk.inputs, lk.tour(np.array([t])),
+                                                          strict=True)}
+        q.update({n: math.degrees(float(v[0]))
+                  for n, v in tree.sweep(np.array([t - T_REF])).items()})
+        poses = node_poses(cfg, out, q)
+        for name in ("b8", "b4", "turntable", "tool_cup", "base_top", "drive_q2_motor"):
+            i = names.index(name)
+            pose = np.array(poses[name]).reshape(4, 4).T
+            np.testing.assert_allclose(pose @ matrix(i, 0), matrix(i, k), atol=1e-4)
+
+
+@pytest.mark.slow
+def test_the_arms_mujoco_model_closes_its_loops(tmp_path):
+    """MuJoCo's model of the same tree (``urdf.mjcf``): the motors' position actuators set,
+    the loops held by their pins, the tip settles where the kinematics put it."""
+    import mujoco
+
+    from spiderpig import urdf
+    from spiderpig.control.arm import ArmModel
+
+    cfg = _robot()
+    mech = cache.cached_robot(cfg, 1.0)
+    files = urdf.write(mech, cfg, 1.0, tmp_path, "arm")
+    model = mujoco.MjModel.from_xml_path(str(files[2]))
+    data = mujoco.MjData(model)
+    model.opt.gravity[:] = 0.0
+    m = urdf.model(mech, cfg, 1.0)
+    _, design = cache.cached_design(cfg)
+    arm = ArmModel.from_config(cfg, design)
+    q = {"q2": m.zero["q2"] + 0.2, "q3": m.zero["q3"] - 0.15, "q1": 0.5}
+    for n in ("q1", "q2", "q3"):
+        a = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, n)
+        data.ctrl[a] = q[n] - m.zero.get(n, 0.0)
+    for _ in range(20000):
+        mujoco.mj_step(model, data)
+    tip = arm.to_base(data.site("tool0").xpos * 1000.0)
+    np.testing.assert_allclose(tip, arm.fk(q), atol=0.01)

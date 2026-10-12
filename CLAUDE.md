@@ -135,7 +135,8 @@ it `/` answers 503 and the API still works). `spiderpig view <design> [--store] 
 build options instead of an id go through `view.resolve_args`). Routes:
 `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand into the store's
 `bakes/` (`strider_double_robot.glb`; a design with no plan, e.g. TrotBot's heel at
-`p.unit=7`, answers 422), `/api/walk`, `/api/linkages`, `/api/modes`, `/api/design/{id}`,
+`p.unit=7`, answers 422), `/api/pose/{mode}?...&j.q2=` (an arm's baked model posed at joint
+angles, the viewer's joint sliders), `/api/walk`, `/api/linkages`, `/api/modes`, `/api/design/{id}`,
 and `/ws/sim?linkage=&module=` (the design live in MuJoCo, `spiderpig/sim/live.py`).
 
 ## Baking the glTF — performance profiler

@@ -68,7 +68,7 @@ log = logging.getLogger("spiderpig.mcp")
 
 SERVER_NAME = "spiderpig"
 LEVELS = Literal["quick", "standard", "full"]
-FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf"]
+FORMATS = Literal["step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf", "mill"]
 DESIGN_STAGES = ("summary", "spec", "resolved", *STAGES, "log")
 STAGE_TOOL = {"check": "check", "plan": "plan", "walk": "walk", "build": "build",
               "recheck": "recheck (Python API only)", "verify": "verify", "export": "export"}

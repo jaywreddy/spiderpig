@@ -1400,6 +1400,14 @@ robot is an entry rather than an edit across the stages:
   `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
   degrees (its pins left to fill, the motors never disabled when idle); `control.host` plans
   straight moves as synchronised constant-speed joint segments and posts them to Moonraker.
+- **An arm through every surface** (2026-10-12, phase 7): the spec's `legs.robot` (an
+  arm's whole robot by default) makes the API, the MCP and the store build an arm's turret;
+  `api.export` writes `urdf` (with the arm's MuJoCo model: `urdf.mjcf`, the loops closed by
+  `connect` equalities, the motors as position actuators) and `mill`; the viewer poses an
+  arm by joint sliders (`viewer/src/arm.ts`, from `/api/pose/{mode}`: `spiderpig.pose`,
+  each node's matrix from the clip's first frame at the joints given); the guide's arm
+  steps say what an arm has (its drives, no crank or servo). The gate's designs include the
+  palletizer on its turret.
 - **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
   as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
   rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's

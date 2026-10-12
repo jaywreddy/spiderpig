@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 STACK, UNIT, JOIN = "stack", "unit", "join"
 CHASSIS, WIRING, DECK, OTHER = "chassis", "wiring", "deck", "other"
@@ -195,6 +195,13 @@ SIDE_ORDER: tuple[Stage, ...] = (
 )
 """A side on its own (a mechanism)."""
 
+ARM_ORDER: tuple[Stage, ...] = tuple(
+    replace(s, title="Inner plate onto the stack",
+            intro="The inner plate's unit onto the stack: the pillars' tops into it, each "
+                  "drive's hub over its link's pad.") if s.stage == JOIN else s
+    for s in SIDE_ORDER)
+"""An arm's side (its drives in place of a crank and a servo)."""
+
 WIRING_TEXT = (
     "The bus plugs are already in (the centre plates' steps: the top-entry sockets take a "
     "plug only through the plates' window): each servo's wires from its channel's end at "
@@ -353,7 +360,9 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
         ops.append(Op(OTHER, (), whole(*sorted(r["name"] for r in turret_rows)), "The turret",
                       text, tag="turret"))
     _check(ops, {r["name"] for r in rows + turret_rows})
-    return _order(ops, ROBOT_ORDER if robot else SIDE_ORDER)
+    arm = getattr(getattr(design.ctx, "config", None), "lk", None)
+    side_order = ARM_ORDER if arm is not None and arm.kind == "arm" else SIDE_ORDER
+    return _order(ops, ROBOT_ORDER if robot else side_order)
 
 
 def _robot_level(name: str) -> bool:

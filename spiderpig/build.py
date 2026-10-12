@@ -484,7 +484,8 @@ def main(argv=None) -> int:
             from spiderpig import urdf
 
             files = urdf.write(mech, config, 1.0, out / "urdf", args.name)
-            print(f"wrote {files[0]} ({len(files) - 2} link meshes) and {files[1]}")
+            print(f"wrote {files[0]} ({len(files) - 3} link meshes), {files[1]} and "
+                  f"{files[2]} (MuJoCo)")
 
         done = _exports_result(job) if job is not None else None
     except BaseException:

@@ -77,6 +77,7 @@ class UrdfModel:
     closures: list[tuple[str, str, str]]
     tables: dict[str, dict] = field(default_factory=dict)
     floor: np.ndarray = field(default_factory=lambda: np.zeros(3))   # base_link (robot mm)
+    closure_xyz: list[np.ndarray] = field(default_factory=list)      # each closure's pin
 
 
 def _angles(lk: linkage.Linkage, values: tuple[float, ...], inputs) -> dict[str, np.ndarray]:
@@ -168,6 +169,7 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
     origins: dict[str, np.ndarray] = {}
     tables: dict[str, dict] = {}
     closures: list[tuple[str, str, str]] = []
+    closure_xyz: list[np.ndarray] = []
     # Prim from the frame: an actuated pin first, then by how many inputs it follows
     done = {frame}
     heap: list = []
@@ -226,6 +228,7 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
                     grew = True
         if b not in group:
             closures.append((a, b, jn))
+            closure_xyz.append(edges[(a, b)][0])
     # the robot's own joints
     origins[frame] = np.zeros(3) if tree is None else np.asarray(tree.joint("q1").origin)
     head: list[UrdfJoint] = []
@@ -267,7 +270,7 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
     if tree is not None:          # base_link on the base's floor under the yaw axis
         info = mech.meta.get("turret", {})
         floor = np.asarray(info.get("axis", (0.0, 0.0, 0.0)), dtype=float)
-    return UrdfModel(links, head + joints, origins, zero, closures, tables, floor)
+    return UrdfModel(links, head + joints, origins, zero, closures, tables, floor, closure_xyz)
 
 
 def _ratings(mech: Mechanism) -> dict[str, tuple[float, float]]:
@@ -308,6 +311,22 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
     props = {} if props is None else props
     masses = walk.body_masses(mech, config, props)
     by = {b.name: b for b in mech.bodies}
+    inert = {}            # link -> (grams, centre of mass (robot mm), inertia kg m² there)
+    for link, bodies in m.links.items():
+        grams = sum(masses[n][0] for n in bodies if n in masses)
+        if grams <= 0:
+            continue
+        com = sum(masses[n][0] * masses[n][1] for n in bodies if n in masses) / grams
+        inertia = np.zeros((3, 3))
+        for n in bodies:
+            if n not in masses:
+                continue
+            g, c = masses[n]
+            p = props.get(n) or part_props(by[n].part)
+            unit = np.asarray(p.inertia, dtype=float) * (g / abs(p.volume) if p.volume else 0.0)
+            d = np.asarray(c) - com
+            inertia += unit + g * (float(d @ d) * np.eye(3) - np.outer(d, d))
+        inert[link] = (grams, com, inertia * 1e-9)            # g mm² -> kg m²
     root = ET.Element("robot", name=name)
     ET.SubElement(root, "link", name=ROOT)
     files = []
@@ -324,20 +343,8 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
             ET.SubElement(vis, "origin", xyz="0 0 0", rpy="0 0 0")
             geo = ET.SubElement(vis, "geometry")
             ET.SubElement(geo, "mesh", filename=f"meshes/{link}.stl", scale="0.001 0.001 0.001")
-        grams = sum(masses[n][0] for n in bodies if n in masses)
-        if grams > 0:
-            com = sum(masses[n][0] * masses[n][1] for n in bodies if n in masses) / grams
-            inertia = np.zeros((3, 3))
-            for n in bodies:
-                if n not in masses:
-                    continue
-                g, c = masses[n]
-                p = props.get(n) or part_props(by[n].part)
-                unit = np.asarray(p.inertia, dtype=float) * (g / abs(p.volume)
-                                                             if p.volume else 0.0)
-                d = np.asarray(c) - com
-                inertia += unit + g * (float(d @ d) * np.eye(3) - np.outer(d, d))
-            inertia *= 1e-9                                       # g mm² -> kg m²
+        if link in inert:
+            grams, com, inertia = inert[link]
             ine = ET.SubElement(el, "inertial")
             ET.SubElement(ine, "origin", xyz=_m(com - o), rpy="0 0 0")
             ET.SubElement(ine, "mass", value=f"{grams / 1000.0:.6g}")
@@ -381,7 +388,74 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
             "tables": m.tables}
     js = out / f"{name}.joints.json"
     js.write_text(json.dumps(side, indent=1))
-    return [path, js, *files]
+    mj = out / f"{name}.mjcf.xml"
+    mj.write_text(mjcf(m, inert, name, {p.stem for p in files}))
+    return [path, js, mj, *files]
+
+
+KP = 200.0          # the MJCF's position actuators' stiffness (N·m/rad): the motors holding
+
+
+def mjcf(m: UrdfModel, inert: dict, name: str, meshes: set[str]) -> str:
+    """The arm in MuJoCo from the same tree (the robot's coordinates, y up, metres): a body
+    per link nested as the URDF's joints nest them, a hinge each, the loops closed by
+    ``connect`` equalities at their pins (so the passive joints follow the inputs as the
+    linkage does), a position actuator on each actuated joint (its motor holding), the
+    tool's tip a site ``tool0``; the links' meshes visual only (no contacts)."""
+    root = ET.Element("mujoco", model=name)
+    ET.SubElement(root, "compiler", angle="radian", meshdir="meshes")
+    ET.SubElement(root, "option", gravity="0 -9.81 0", timestep="0.0005")
+    asset = ET.SubElement(root, "asset")
+    for link in sorted(meshes):
+        ET.SubElement(asset, "mesh", name=link, file=f"{link}.stl", scale="0.001 0.001 0.001")
+    world = ET.SubElement(root, "worldbody")
+    if FRAME in meshes:
+        ET.SubElement(world, "geom", type="mesh", mesh=FRAME, contype="0", conaffinity="0")
+    children: dict[str, list[UrdfJoint]] = {}
+    for j in m.joints:
+        children.setdefault(j.parent, []).append(j)
+
+    def body(parent_el, j: UrdfJoint):
+        o = m.origins.get(j.child, np.asarray(j.origin))
+        rel = (o - m.origins.get(j.parent, np.zeros(3))) / 1000.0
+        el = ET.SubElement(parent_el, "body", name=j.child,
+                           pos=" ".join(f"{v:.9g}" for v in rel))
+        if j.kind != "fixed":
+            jo = (np.asarray(j.origin) - o) / 1000.0
+            ET.SubElement(el, "joint", name=j.name, type="hinge",
+                          axis=" ".join(f"{v:g}" for v in j.axis),
+                          pos=" ".join(f"{v:.9g}" for v in jo), damping="0.01")
+        if j.child in inert:
+            g, com, ine = inert[j.child]
+            ET.SubElement(el, "inertial", pos=" ".join(f"{v:.9g}" for v in (com - o) / 1000.0),
+                          mass=f"{g / 1000.0:.6g}",
+                          fullinertia=" ".join(f"{v:.6g}" for v in (
+                              ine[0, 0], ine[1, 1], ine[2, 2], ine[0, 1], ine[0, 2], ine[1, 2])))
+        else:
+            ET.SubElement(el, "inertial", pos="0 0 0", mass="1e-4",
+                          diaginertia="1e-9 1e-9 1e-9")
+        if j.child in meshes:
+            ET.SubElement(el, "geom", type="mesh", mesh=j.child, contype="0", conaffinity="0")
+        if j.child == TOOL0:
+            ET.SubElement(el, "site", name=TOOL0, pos="0 0 0", size="0.002")
+        for k in children.get(j.child, []):
+            body(el, k)
+
+    for j in children.get(FRAME, []):
+        body(world, j)
+    eq = ET.SubElement(root, "equality")
+    for (a, b, jn), xyz in zip(m.closures, m.closure_xyz, strict=True):
+        anchor = (np.asarray(xyz) - m.origins.get(a, np.zeros(3))) / 1000.0
+        ET.SubElement(eq, "connect", name=f"pin_{jn}_{a}_{b}", body1=a, body2=b,
+                      anchor=" ".join(f"{v:.9g}" for v in anchor))
+    act = ET.SubElement(root, "actuator")
+    for j in m.joints:
+        if j.kind != "fixed" and j.mimic is None and set(j.coef) <= {j.name} and j.effort > 0 \
+                and j.name in {*m.zero, "q1", "q4"}:
+            ET.SubElement(act, "position", name=j.name, joint=j.name, kp=f"{KP:g}",
+                          ctrlrange=f"{j.limits[0]:.6f} {j.limits[1]:.6f}", ctrllimited="true")
+    ET.indent(root)
+    return ET.tostring(root, encoding="unicode") + "\n"
 
 
 def _pair(a: str, b: str) -> tuple[str, str]:

@@ -56,7 +56,9 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
-    its metadata); and always ``manifest.json``. Builds first if nothing is built; a
+    its metadata), ``urdf`` (an arm's URDF, its meshes and joint map: :mod:`spiderpig.urdf`),
+    ``mill`` (the milled parts' STEPs and setup sheet, with a mill: :mod:`spiderpig.milling`);
+    and always ``manifest.json``. Builds first if nothing is built; a
     sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
     skipped) is on the report (``warnings``) and in the manifest. An export the store
@@ -177,7 +179,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             mech.export_stl(out / f"{name}.stl")
         files.append(out / f"{name}.stl")
     groups = None
-    if "print" in formats or "bom" in formats:
+    if "print" in formats or "bom" in formats or "mill" in formats:
         with _timed("grouping" if grouping is None else "grouping (waiting for its worker)"):
             groups = _groups(mech, grouping)
     types: list = []
@@ -250,6 +252,23 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                            "unpriced": [r.key for r in bom.unpriced]}
         except KeyError as e:
             rep.failures.append(Failure.from_exception(e, stage="bom"))
+    if "urdf" in formats:
+        if design.kind != "arm":
+            logging.getLogger("spiderpig.export").warning(
+                "urdf: %s is a %s: the URDF is an arm's (its inputs drive links over "
+                "ranges), so the format is skipped", cfg.linkage, design.kind)
+        else:
+            from spiderpig import urdf
+
+            with _timed("urdf"):
+                build_t = design.build_t if design.build_t is not None else 1.0
+                files += urdf.write(mech, cfg, build_t, out / "urdf", name)
+    if "mill" in formats and groups is not None and groups.get("milled"):
+        from spiderpig.labels import by_body
+        from spiderpig.milling import write_outputs
+
+        with _timed("mill"):
+            files += write_outputs(mech, groups["milled"], by_body(labelled()), out / "mill")
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
     if "mjcf" in formats and design.kind != "walker":

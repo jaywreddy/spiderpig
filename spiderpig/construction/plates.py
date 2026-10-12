@@ -309,9 +309,13 @@ class FramePlates(Group):
             ops.append(Op(STACK, (-1, 0), whole("frame_outer"),
                           "Outer frame plate and pillar columns",
                           "Lay the outer frame plate down, leg side up.", "plate"))
+        arm = getattr(getattr(view.ctx, "config", None), "lk", None)
+        arm = arm is not None and arm.kind == "arm"
         if inner is not None and inner in view.z:
-            ops.append(Op(UNIT, (0,), whole(inner), "Inner plate and servo",
-                          "Lay the inner frame plate down, servo side up.", "plate"))
+            ops.append(Op(UNIT, (0,), whole(inner),
+                          "Inner plate" if arm else "Inner plate and servo",
+                          "Lay the inner frame plate down, its motor's side up." if arm
+                          else "Lay the inner frame plate down, servo side up.", "plate"))
         return ops
 
     def realize(self, build: Build, done: Realized) -> Realized:

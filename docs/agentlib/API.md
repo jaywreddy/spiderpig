@@ -28,14 +28,15 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them: a length must be > 0; an angle, or a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`: a stride of at least 20 mm a turn; a few mm is a shuffle, and a stride under 1 mm gets `walk`'s "no net travel" note) | the linkage's own default module (Strider: `double`), else `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
-| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism) |
+| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism, arm) |
+| `legs.robot` | an arm's whole robot (`true`: its side on the turntable, its tool) or its side alone (`false`); an arm's only | `true` |
 | `materials.sheet` | a catalog sheet item: `acrylic_3mm`, `plywood_3mm` (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness: **the layer pitch** every construction sizes its parts by (a value more than 12 % off the sheet's nominal is a warning on `resolve`; a `check` at too thin a pitch fails at `construction`; a standoff pillar's end screw names the thickness that works as a checked recommendation) | the sheet's nominal |
 | `materials.servo` | `sts3215`, `xl330_m288`, `xl430_w250` | `sts3215` |
 | `constructions.pillar`, `.pin` | pillar `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced); pin `chicago` (an M3 Chicago screw, printed rings and head spacers). The other pivots were removed on 2026-10-07: naming one is a `bad_parameter` / `invalid_spec` failure naming its replacement (`config.REMOVED_CONSTRUCTIONS`) | pillar `standoff`, pin `chicago` (an M3 Chicago screw, printed rings and head spacers, the lowest link bonded) |
 | `constructions.crank` | `bolt` (laser-cut aluminium, one plate per web, each crankpin a steel M3 hex standoff in hex pockets retained by a screw and wide washer at each end, the riders on a printed sleeve), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe). The printed, keyed and acrylic cranks and the hex crank's variants were removed on 2026-10-07; `materials.crank_sheet` must be aluminium | the linkage's (`config.default_crank`): `bolt`; `bolt_round` for TrotBot's heel and toe |
 | `fit.*` | every `construction.base.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf each sheet's service's (0 SendCutSend, 0.2 Ponoko); the sheet stock's size |
-| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` | `[step, stl, print, dxf, bom]` |
+| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf`, `urdf` (an arm's URDF, its MuJoCo model and joint map), `mill` (the milled parts' STEPs and setup sheet, with a mill) | `[step, stl, print, dxf, bom]` |
 
 Every metric under `motion`, `size` and `budget` is a **Target**
 `{min?, max?, value?, tol?, weight: 1, hard?}` (a bare number is rejected). `value` is
@@ -408,7 +409,7 @@ before that); `build` of the single as a job ~10 s including the worker's start.
 
 ## Export and sim from the command line
 
-`spiderpig export <design> [--formats step stl print dxf bom glb mjcf] [--out DIR]
+`spiderpig export <design> [--formats step stl print dxf bom glb mjcf urdf mill] [--out DIR]
 [--store PATH] [--force]` is `api.export` on the command line: the stored design's files
 (default: the spec's `outputs`) into its `exports/` in the store or `--out`, with
 `manifest.json`, and its `warnings` on stderr; given the build options instead of an id

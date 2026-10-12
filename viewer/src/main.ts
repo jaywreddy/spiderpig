@@ -6,6 +6,7 @@ import { latestLoader } from './loads';
 import { bindControls } from './controls';
 import { connectLiveReload } from './live-reload';
 import { createDrive } from './drive';
+import { createArmPanel } from './arm';
 import { chromeInsets } from './layout';
 import type { Mode, View, ViewerHandle } from './types';
 
@@ -60,6 +61,17 @@ const drive = createDrive({
   status: (text) => ui.setStatus(text),
   seek,
   reframe: () => { if (loaded) frameView(stage, loaded.root, view); invalidate(); },
+});
+
+// An arm's joint sliders (arm.ts): built on each load, hidden for a walker.
+const arm = createArmPanel({
+  container: document.getElementById('arm-joints')!,
+  current: () => (loaded ? {
+    root: loaded.root, mode: loadedMode, query: currentQuery,
+    pause: () => { playing = false; ui.setPlaying(false); if (loaded) loaded.action.paused = true; },
+  } : null),
+  invalidate,
+  status: (text) => ui.setStatus(text),
 });
 
 // The chrome over the canvas (the top bar, the dock): the camera frames the band between,
@@ -128,6 +140,7 @@ const loadMode = latestLoader<LoadedScene, Mode>({
     );
     ui.setReadout(formatTime(0));
     await drive.onLoad(next, query);
+    await arm.onLoad(next.root).catch((err: unknown) => console.error(err));
     invalidate();
   },
   end() { ui.setModeDisabled(false); },

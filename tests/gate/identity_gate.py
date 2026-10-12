@@ -71,6 +71,8 @@ DESIGNS: dict[str, list[str]] = {
     "klann_quad": ["--linkage", "klann", "--module", "quad"],
     "hoecken_pantograph": ["--linkage", "hoecken_pantograph"],
     "dwell_rocker": ["--linkage", "dwell_rocker"],
+    # the robot arm (2026-10-12): the palletizer on its turret, its default parts
+    "palletizer_turret": ["--linkage", "palletizer"],
 }
 """Each design's ``spiderpig build`` options (the linkage's module and kind defaults
 otherwise, as the command line has them)."""
