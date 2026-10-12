@@ -82,7 +82,7 @@ def test_bearings_shrink_the_palletizers_play():
     assert r.accuracy_links_mm > 0
     d = r.as_dict()
     assert d["repeatability_mm"] == pytest.approx(r.repeatability_mm, abs=1e-4)
-    assert any("no transmission" in n for n in r.notes)
+    assert set(r.inputs) == {"q2", "q3"}                         # its drives, budgeted
     assert r.lines()[0].startswith("precision of palletizer's F")
 
 
