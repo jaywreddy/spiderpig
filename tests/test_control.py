@@ -56,6 +56,10 @@ def test_the_inverse_refuses_what_the_arm_cant_reach():
     behind = (-tip[0], -tip[1], tip[2])              # the turntable would turn 180 deg
     with pytest.raises(IKError, match="turntable"):
         model.ik(behind)
+    _, _, side = _model(robot=False)
+    tip = side.fk(_poses(side, 1, 5)[0])
+    with pytest.raises(IKError, match="plane"):          # a side alone can't reach across
+        side.ik((tip[0], tip[1] + 50.0, tip[2]))
 
 
 @pytest.mark.no_fabricate
@@ -71,25 +75,28 @@ def test_each_joint_counts_its_motors_steps_through_its_ratio():
     a = q2
     for q in np.linspace(*a.limits, 7):
         assert a.angle(a.steps(float(q))) == pytest.approx(q, abs=0.5 / a.per_rad)
-    assert a.full_step(37) == 32
-    assert a.full_step(41) == 48
     with pytest.raises(ValueError, match="outside"):
         a.steps(a.limits[1] + 0.1)
     assert a.deg_per_motor_rev == pytest.approx(72.0)
 
 
 @pytest.mark.no_fabricate
-def test_homing_snaps_to_a_full_step_and_a_gauge_sets_the_zero():
+def test_homing_returns_to_the_reference_phase_and_a_gauge_sets_the_zero():
+    # 16 counts a microstep at 16 microsteps; a full step's phase repeats every 256
+    assert homing.phase_move(60, 44, 16) == -1          # a microstep past the reference
+    assert homing.phase_move(28, 44, 16) == 1
+    assert homing.phase_move(300, 44, 16) == 0          # a whole step on: the same phase
+    assert homing.phase_move(60, 44, 16, sign=-1) == 1  # a DIR flipped
+    for trigger in range(1024):          # wherever it triggers, it lands on the phase
+        m = homing.phase_move(trigger, 44, 16)
+        left = (trigger + 16 * m - 44 + 128) % 256 - 128
+        assert abs(left) <= 8
     a = Axis("q2", 5.0, 1.8, 16, -1)
-    move, q = homing.snap(a, 1003)
-    assert (1003 + move) % 16 == 0
-    assert abs(move) <= 8
-    assert q == pytest.approx(a.angle(1003 + move))
     b = homing.set_from_gauge(a, 63.5, steps=1200)
     assert b.angle(1200) == pytest.approx(math.radians(63.5))
-    steps = [s.axis for s in homing.plan({"q1": a, "q2": a, "q3": a})]
-    assert steps[0] == "q1"
-    assert steps[-1] == "q1,q2,q3"
+    steps = homing.plan({"q1": a, "q2": a, "q3": a})
+    assert steps[0].axis == "q1"
+    assert "energise" in steps[-1].action                # the gauge read with motors on
 
 
 @pytest.mark.no_fabricate
@@ -112,6 +119,15 @@ def test_calibration_finds_the_built_arms_lengths_and_zeros():
     assert fit.values[names.index("upper")] == pytest.approx(built[names.index("upper")],
                                                               abs=1e-6)
     assert fit.offsets["q2"] == pytest.approx(off[0], abs=1e-8)
+    # measured in a frame shifted 0.5 mm: the flange's offset fitted too absorbs it
+    shifted = meas + np.array([0.5, -0.3])
+    frame = calibrate.fit("palletizer", model.values, q, shifted,
+                          ("upper", "fore", "fx", "fy"), "F")
+    assert frame.rms_mm < 1e-6
+    from spiderpig.control.mapping import Axis as Ax
+
+    moved = calibrate.apply_offsets(fit, {"q2": Ax("q2", 5.0, 1.8, 16)})
+    assert moved["q2"].angle(0) == pytest.approx(off[0], abs=1e-8)
 
 
 @pytest.mark.no_fabricate
@@ -125,6 +141,15 @@ def test_the_klipper_config_drives_each_joint_in_degrees():
         assert f"[tmc2209 manual_stepper {n}]" in text
     assert "endstop_pin: ^<Q1_ENDSTOP_PIN>" in text
     assert "<MCU_SERIAL>" in text
+    assert "[idle_timeout]" in text
+    idle = text.split("[idle_timeout]")[1].split("\n[")[0]
+    assert not [ln for ln in idle.splitlines() if ln.startswith("  ") and "M84" in ln]
+    # every line a section, a key, an indented G-code line or a comment; no ';' in G-code
+    for ln in text.splitlines():
+        if ln.startswith("  "):
+            assert ";" not in ln, ln
+        elif ln and not ln.startswith(("#", "[")):
+            assert ":" in ln, ln
 
 
 @pytest.mark.no_fabricate
@@ -142,24 +167,30 @@ def test_a_straight_move_is_synchronised_segments_on_the_line():
         assert [s.endswith("SYNC=1") for s in seg] == [False, False, True]
     first = {s.split()[1].split("=")[1]: s for s in segs[0]}
     assert set(first) == {"q1", "q2", "q3"}
-    assert host.mscnt_snap(1008, 16) == 1          # 16 counts a microstep, to 1024
-    assert host.mscnt_snap(272, 16) == -1          # back to 256
+    assert all("ACCEL=0" in s for s in lines)       # constant speed: the joints keep time
     home = host.home_gcode(ax)
     assert any("STOP_ON_ENDSTOP=1" in h for h in home)
-    assert not any("MOVE=360" in h for h in home)       # never past the yaw's range
+    lo, hi = (math.degrees(v) for v in ax["q1"].limits)
+    for h in home:                       # never farther than the half home is in, slowly
+        if "MOVE=" in h:
+            move = abs(float(h.split("MOVE=")[1].split()[0]))
+            assert move <= max(-lo, hi) + 5.0 + 1e-9
+            assert "SPEED=" in h
+    assert "DUMP_TMC STEPPER=q1 REGISTER=MSCNT" in home
 
 
 def test_the_host_talks_to_moonraker(tmp_path):
     import http.server
+    import json
     import threading
-    import urllib.parse
 
     got = []
 
     class H(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
             n = int(self.headers["Content-Length"])
-            got.append((self.path, urllib.parse.parse_qs(self.rfile.read(n).decode())))
+            got.append((self.path, self.headers["Content-Type"],
+                        json.loads(self.rfile.read(n).decode())))
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'{"result": "ok"}')
@@ -175,9 +206,10 @@ def test_the_host_talks_to_moonraker(tmp_path):
         assert client.script(["M400", "SET_PIN PIN=vacuum_pump VALUE=1"]) == {"result": "ok"}
     finally:
         srv.shutdown()
-    path, form = got[0]
+    path, kind, body = got[0]
     assert path == "/printer/gcode/script"
-    assert form["script"] == ["M400\nSET_PIN PIN=vacuum_pump VALUE=1"]
+    assert kind == "application/json"
+    assert body == {"script": "M400\nSET_PIN PIN=vacuum_pump VALUE=1"}
 
 
 @pytest.mark.slow
@@ -194,3 +226,9 @@ def test_the_forward_kinematics_is_where_the_fabricated_cup_is():
     np.testing.assert_allclose(model.fk(dict(q0, q1=0.0)), lip, atol=1e-6)
     u = urdf_model(mech, cfg, 1.0)
     np.testing.assert_allclose(model.to_base(u.origins["tool0"]), lip, atol=1e-6)
+    from spiderpig.urdf import forward
+
+    for q in _poses(model, 4, 2):        # the URDF's own forward, at any yaw
+        pose = forward(u, {n: q[n] for n in model.inputs}, {"q1": q["q1"]})
+        tip = (pose["tool0"] @ np.append(u.origins["tool0"], 1.0))[:3]
+        np.testing.assert_allclose(model.to_base(tip), model.fk(q), atol=1e-6)

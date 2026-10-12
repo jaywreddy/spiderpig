@@ -58,11 +58,6 @@ class Axis:
         """The joint's angle (rad) at the motor's microstep count."""
         return self.zero + self.direction * steps / self.per_rad
 
-    def full_step(self, steps: int) -> int:
-        """The nearest full step's microstep count (a full step's place is exact; a
-        microstep's isn't: :mod:`spiderpig.actuators`)."""
-        return round(steps / self.microsteps) * self.microsteps
-
 
 def axes(config, design=None) -> dict[str, Axis]:
     """Every motor-driven joint of ``config``'s arm: its planar drives (their ratio, motor

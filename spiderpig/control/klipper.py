@@ -49,11 +49,16 @@ def printer_cfg(axes: dict[str, Axis], name: str = "arm") -> str:
             lines += [f"[tmc2209 manual_stepper {n}]", f"uart_pin: <{up}_UART_PIN>",
                       f"run_current: {RUN_CURRENT * motor.rated_a:.2f}",
                       f"hold_current: {HOLD_CURRENT * motor.rated_a:.2f}",
-                      "stealthchop_threshold: 999999", ""]
+                      "stealthchop_threshold: 0  # spreadCycle: holds best under load", ""]
+    limits = ", ".join(f"{n} {math.degrees(a.limits[0]):.1f} to {math.degrees(a.limits[1]):.1f}"
+                       for n, a in axes.items())
     lines += ["[output_pin vacuum_pump]", "pin: <PUMP_PIN>", "",
               "[output_pin vacuum_release]", "pin: <VALVE_PIN>", "",
+              "[idle_timeout]",
+              "# never disable the motors when idle (Klipper's default M84 drops the arm and "
+              "loses its zeros)",
+              "timeout: 3600", "gcode:",
+              "  {action_respond_info(\"idle: the motors stay on\")}", "",
               "[gcode_macro ARM_LIMITS]", "description: the joints' ranges (deg)",
-              "gcode:", "  RESPOND MSG=\"" + "; ".join(
-                  f"{n} {math.degrees(a.limits[0]):.1f}..{math.degrees(a.limits[1]):.1f}"
-                  for n, a in axes.items()) + "\"", ""]
+              "gcode:", f"  {{action_respond_info(\"{limits}\")}}", ""]
     return "\n".join(lines)

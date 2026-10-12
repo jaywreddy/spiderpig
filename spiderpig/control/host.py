@@ -8,11 +8,16 @@ speed, ``SYNC=0`` so they run together, the slowest's ``SYNC=1`` so the next wai
 tip follows the line to within the segments' chord. A joint's position in Klipper is its
 motor's, in joint degrees from step 0 (:class:`.mapping.Axis`: its direction applied).
 
+Each segment moves at constant speed (``ACCEL=0``: Klipper's manual steppers have no
+lookahead, so each move would stop at its end; at constant speed each joint takes exactly
+the segment's time and the joints stay together); the tip's speed is kept low
+(:data:`MAX_TIP_MM_S`), where a stepper starts and stops without ramps. (Klipper's newer
+``MANUAL_STEPPER ... GCODE_AXIS`` gives coordinated moves with lookahead, where installed.)
+
 **Homing** (:func:`home_gcode`) runs the turntable onto its flag's edge from the positive
-side (:mod:`.homing`), sets that as 0, then each joint's motor is snapped to its nearest
-full step by its driver's microstep counter (a TMC2209's ``MSCNT``, 0..1023: a full step
-where one coil carries the full current, every 256: :func:`mscnt_snap`; the counter is read
-with ``DUMP_TMC``).
+side (:mod:`.homing`), never farther than the half of its range the beam says home is in,
+slowly, sets that as 0, and reads its driver's phase (``DUMP_TMC STEPPER=q1
+REGISTER=MSCNT``) for :func:`homing.phase_move`.
 
 :class:`Moonraker` posts G-code to Moonraker's ``/printer/gcode/script`` (the standard
 library only); nothing here talks to hardware until it is called with a URL.
@@ -22,7 +27,6 @@ from __future__ import annotations
 
 import json
 import math
-import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 
@@ -31,7 +35,8 @@ import numpy as np
 from spiderpig.control.arm import ArmModel
 from spiderpig.control.mapping import Axis
 
-MSCNT_STEP = 256        # a TMC2209's microstep counter per full step (1024 per electrical turn)
+MAX_TIP_MM_S = 25.0     # the tip's speed a straight move is held to (constant-speed segments)
+HOME_SPEED = 20.0       # the turntable's search speed (deg/s); the final approach a tenth
 
 
 def position_deg(axis: Axis, q: float) -> float:
@@ -57,14 +62,15 @@ def joints_gcode(axes: dict[str, Axis], start: dict[str, float], end: dict[str, 
         speed = max(d / max(seconds, 1e-6), 1e-3)
         sync = 1 if i == len(moves) - 1 else 0
         out.append(f"MANUAL_STEPPER STEPPER={n} MOVE={position_deg(ax, end[n]):.5f} "
-                   f"SPEED={speed:.5f} SYNC={sync}")
+                   f"SPEED={speed:.5f} ACCEL=0 SYNC={sync}")
     return out
 
 
 def line(model: ArmModel, axes: dict[str, Axis], start_q: dict[str, float], b, *,
-         seg_mm: float = 2.0, speed_mm_s: float = 20.0) -> tuple[list[str], dict[str, float]]:
+         seg_mm: float = 5.0, speed_mm_s: float = 20.0) -> tuple[list[str], dict[str, float]]:
     """The G-code of a straight move of the tip from where ``start_q`` puts it to ``b``
     (base frame, mm), and the joints at its end (module docstring)."""
+    speed_mm_s = min(speed_mm_s, MAX_TIP_MM_S)
     a = model.fk(start_q)
     b = np.asarray(b, dtype=float)
     dist = float(np.linalg.norm(b - a))
@@ -78,36 +84,29 @@ def line(model: ArmModel, axes: dict[str, Axis], start_q: dict[str, float], b, *
     return out, q
 
 
-def mscnt_snap(mscnt: int, microsteps: int) -> int:
-    """The microsteps to move from a driver's counter ``mscnt`` to the nearest full step
-    (one coil at full current: a multiple of :data:`MSCNT_STEP`), positive raising it."""
-    per = MSCNT_STEP / microsteps          # the counter's steps per microstep
-    near = round(mscnt / MSCNT_STEP) * MSCNT_STEP
-    return round((near - mscnt) / per)
-
-
 def home_gcode(axes: dict[str, Axis]) -> list[str]:
     """The turntable's homing (module docstring): onto the flag's edge from the positive
-    side, then 0 there. The planar joints' zeros are the angle gauge's (:mod:`.homing`)."""
+    side, then 0 there, its phase read. The planar joints' zeros are the angle gauge's
+    (:mod:`.homing`)."""
     if "q1" not in axes:
         return []
     ax = axes["q1"]
-    span = math.degrees(ax.limits[1] - ax.limits[0])   # never past the range (the cables)
-    step = 2.0
-    slow = ax.deg_per_motor_rev * 300.0 / 60.0 / 10.0
+    lo, hi = (math.degrees(v) for v in ax.limits)
+    off = hi + 5.0             # home is at 0: blocked, it is under hi away; clear, under -lo
+    on = -lo + 5.0
+    d = ax.direction
+    slow = HOME_SPEED / 10.0
     return [
         "MANUAL_STEPPER STEPPER=q1 ENABLE=1",
         "MANUAL_STEPPER STEPPER=q1 SET_POSITION=0",
-        # blocked: off the flag toward positive; then toward negative onto its edge
-        f"MANUAL_STEPPER STEPPER=q1 MOVE={ax.direction * span:.1f} STOP_ON_ENDSTOP=-1",
+        f"MANUAL_STEPPER STEPPER=q1 MOVE={d * off:.1f} SPEED={HOME_SPEED:g} STOP_ON_ENDSTOP=-1",
         "MANUAL_STEPPER STEPPER=q1 SET_POSITION=0",
-        f"MANUAL_STEPPER STEPPER=q1 MOVE={-ax.direction * span:.1f} STOP_ON_ENDSTOP=1",
+        f"MANUAL_STEPPER STEPPER=q1 MOVE={-d * on:.1f} SPEED={HOME_SPEED:g} STOP_ON_ENDSTOP=1",
         "MANUAL_STEPPER STEPPER=q1 SET_POSITION=0",
-        f"MANUAL_STEPPER STEPPER=q1 MOVE={ax.direction * step:.1f}",
-        f"MANUAL_STEPPER STEPPER=q1 MOVE={-ax.direction * 2 * step:.1f} SPEED={slow:.3f} "
-        "STOP_ON_ENDSTOP=1",
+        f"MANUAL_STEPPER STEPPER=q1 MOVE={d * 2.0:.1f} SPEED={HOME_SPEED:g}",
+        f"MANUAL_STEPPER STEPPER=q1 MOVE={-d * 4.0:.1f} SPEED={slow:g} STOP_ON_ENDSTOP=1",
         "MANUAL_STEPPER STEPPER=q1 SET_POSITION=0",
-        "DUMP_TMC STEPPER='manual_stepper q1' REGISTER=MSCNT",
+        "DUMP_TMC STEPPER=q1 REGISTER=MSCNT",
     ]
 
 
@@ -119,9 +118,10 @@ class Moonraker:
     timeout: float = 60.0
 
     def script(self, lines: list[str]) -> dict:
-        body = urllib.parse.urlencode({"script": "\n".join(lines)}).encode()
+        body = json.dumps({"script": "\n".join(lines)}).encode()
         req = urllib.request.Request(f"{self.url.rstrip('/')}/printer/gcode/script",
-                                     data=body, method="POST")
+                                     data=body, method="POST",
+                                     headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=self.timeout) as r:
             return json.loads(r.read().decode() or "{}")
 
@@ -136,8 +136,9 @@ class ArmHost:
     q: dict[str, float]
 
     def move_to(self, xyz, **kw) -> None:
-        lines, self.q = line(self.model, self.axes, self.q, xyz, **kw)
+        lines, q = line(self.model, self.axes, self.q, xyz, **kw)
         self.client.script(lines)
+        self.q = q                 # only once Klipper has taken the move
 
     def vacuum(self, on: bool) -> None:
         self.client.script([f"SET_PIN PIN=vacuum_pump VALUE={1 if on else 0}",

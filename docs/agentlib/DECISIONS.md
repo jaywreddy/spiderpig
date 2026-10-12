@@ -571,9 +571,21 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   moves in its own degrees. The planar joints carry no switch (no hard stop is designed and
   stall homing would hit the arm's own parallelograms); a gauge on a link reads its input
   directly, and the calibration refines it.
+- **The phase's review** (integrated): the gauge is read with the motors energised (a
+  rotor jumps up to two full steps to its driver's phase when they come on); homing's
+  repeatability comes from a recorded reference phase (the driver's `MSCNT` at the
+  trigger, as Klipper's `endstop_phase`), not a rounded count; the turntable's search never
+  goes farther than the half of its range home is in, slowly; the config never disables the
+  motors when idle, reads the phase as `DUMP_TMC STEPPER=q1`, holds with spreadCycle; the
+  host's segments run at constant speed (`ACCEL=0`: the joints keep time), its joint state
+  changes only once Moonraker takes a move (JSON); calibration says what it can't fix (a
+  parallelogram's rod off its opposite side) and applies its offsets to the axes; a side
+  alone's frame is the URDF's (right-handed) and its IK refuses a target off its plane.
 - **Open:** a board's pins are placeholders (the user's board decides them); each motor's
-  sense is the design's and a jog checks it; the snap reads the driver's `MSCNT` by
-  `DUMP_TMC`, by hand; a hardware repeatability run (a dial indicator) is the user's test of
-  the precision budget; switches on the planar joints would make homing automatic.
+  sense is the design's and a jog checks it (the phase's sign too); the reference phase is
+  recorded by hand; long moves stop and go between segments (Klipper's `GCODE_AXIS`
+  coordinated moves, where installed, would not); a hardware repeatability run (a dial
+  indicator) is the user's test of the precision budget; switches on the planar joints
+  would make homing automatic.
 - **Where:** `spiderpig/control/` (`arm.py`, `mapping.py`, `homing.py`, `calibrate.py`,
   `klipper.py`, `host.py`, `cli.py`).

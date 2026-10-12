@@ -85,8 +85,8 @@ class ArmModel:
     def to_base(self, p) -> np.ndarray:
         """A robot point (x, y, z: the side's) in the base frame."""
         p = np.asarray(p, dtype=float)
-        if self.yaw is None:
-            return np.array([p[0], p[2], p[1]])
+        if self.yaw is None:                   # the URDF's: x, -z, y (right-handed)
+            return np.array([p[0], -p[2], p[1]])
         (xa, yg, za), _ = self.yaw
         return np.array([p[0] - xa, -(p[2] - za), p[1] - yg])
 
@@ -147,6 +147,9 @@ class ArmModel:
             q["q1"] = psi
             target = np.array([reach + xa, z + yg + drop])
         else:
+            if abs(y - -ztool) > TOL_MM * 1e3:   # a side alone: the tip's plane is fixed
+                raise IKError(f"y {y:.3f} is off the side's plane (the tip's y is "
+                              f"{-ztool:.3f})")
             target = np.array([x, z + drop])
         lo = np.array([self.ranges[n][0] for n in self.inputs])
         hi = np.array([self.ranges[n][1] for n in self.inputs])

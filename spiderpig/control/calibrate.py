@@ -1,13 +1,19 @@
 """The link lengths and the joints' zeros fitted to measured poses.
 
-A built arm differs from its drawing: every hole is off by up to the laser's tolerance
-(:mod:`spiderpig.precision`'s accuracy rows), every homing's zero by the gauge's error. Both
-are systematic, so they calibrate out: command the arm to a spread of poses, measure where
-its output point is each time (a dial indicator's touches against known points, a camera, a
-coordinate table), and :func:`fit` finds the linkage's parameters and the inputs' zero
-offsets that best explain them (bounded least squares on the planar output point, the
-parameters within ``span`` of the drawing). The fitted values replace the drawing's in the
-arm's model (:class:`.arm.ArmModel`, ``values``).
+A built arm differs from its drawing: its holes are off by up to the laser's tolerance
+(:mod:`spiderpig.precision`'s accuracy rows), every homing's zero by the gauge's error.
+What the linkage's parameters describe calibrates out: command the arm to a spread of
+poses, measure where its output point is each time (in the side's plane: a dial
+indicator's touches against known points, a camera, a coordinate table), and :func:`fit`
+finds the parameters named and the inputs' zero offsets that best explain them (bounded
+least squares on the planar output point, the parameters within ``span`` of the drawing).
+Fit the measuring frame too where it isn't the design's (the palletizer's flange offset
+``fx``, ``fy`` absorbs a shifted frame). What they don't describe doesn't: a parallelogram
+whose rod or crank differs from its opposite side turns the forearm by a pose-dependent
+angle the program has no parameter for (the rods' lengths are implied), so its residual
+stays. The fitted values replace the drawing's in the arm's model
+(:class:`.arm.ArmModel`, ``values``); the offsets move the joints' zeros
+(:func:`apply_offsets`).
 """
 
 from __future__ import annotations
@@ -22,7 +28,8 @@ from spiderpig import linkage
 @dataclass(frozen=True)
 class Fit:
     """What :func:`fit` found: every parameter's value (the linkage's order), each input's
-    zero offset (rad, added to its commanded angle), and the residuals (mm)."""
+    zero offset (rad: the joint's true angle is its commanded one plus it), and the
+    residuals (mm)."""
 
     values: tuple[float, ...]
     offsets: dict[str, float]
@@ -68,3 +75,12 @@ def fit(lk_key: str, values: tuple[float, ...], q: np.ndarray, measured: np.ndar
     off = {n: float(sol.x[len(idx) + i]) if offsets else 0.0 for i, n in enumerate(lk.inputs)}
     return Fit(tuple(float(v) for v in vals), off, float(np.sqrt((r * r).mean())),
                float(r.max()))
+
+
+def apply_offsets(fit_: Fit, axes: dict) -> dict:
+    """``axes`` (:class:`.mapping.Axis` by joint) with each fitted offset folded into its
+    zero: the true angle is the commanded one plus the offset, so the angle at a count is
+    the zero plus it."""
+    from dataclasses import replace
+
+    return {n: replace(a, zero=a.zero + fit_.offsets.get(n, 0.0)) for n, a in axes.items()}

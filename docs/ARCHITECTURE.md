@@ -1394,11 +1394,12 @@ robot is an entry rather than an edit across the stages:
   angle maps to its motor's microsteps through its transmission's exact ratio and its
   mounting's sense (`control.mapping.Axis`); homing runs the turntable onto its flag's edge
   and takes the planar joints' zeros from an angle gauge on their links (their inputs are
-  the links' angles from horizontal), then snaps each motor to its nearest full step;
+  the links' angles from horizontal, read with the motors holding), and makes the
+  turntable's homing repeat to the step by its driver's recorded phase (`homing.phase_move`);
   `control.calibrate.fit` fits the link lengths and the zeros to measured poses;
   `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
-  degrees (its pins left to fill); `control.host` plans straight moves as synchronised joint
-  segments and posts them to Moonraker.
+  degrees (its pins left to fill, the motors never disabled when idle); `control.host` plans
+  straight moves as synchronised constant-speed joint segments and posts them to Moonraker.
 - **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
   as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
   rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's

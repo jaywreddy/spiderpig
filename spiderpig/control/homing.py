@@ -1,4 +1,4 @@
-"""How each joint finds its zero, and the snap to its motor's nearest full step.
+"""How each joint finds its zero, and the phase that makes homing repeatable to the step.
 
 * **The turntable** (``q1``) by its optical endstop and half-circle flag
   (:mod:`construction.rotary.turret`): the flag's edge is in the beam at yaw 0 and the flag
@@ -7,22 +7,28 @@
   in again slowly from the same side: the edge, from one side only, every time.
 * **The planar inputs** (an arm's ``q2``, ``q3``: the palletizer's upper arm's and
   forearm's angles from horizontal, :mod:`linkages.palletizer`) by an angle gauge: with no
-  switch on them, the arm is set to a pose by hand, a digital angle gauge on each driven
-  link reads its angle, and those readings are the joints' angles there
-  (:func:`set_from_gauge`). A gauge's 0.05-0.1 deg is the zero's error until
-  :mod:`.calibrate` refines it from touched points.
-* **The snap** (:func:`snap`): wherever a joint stops homing, it then moves to its motor's
-  nearest full step and calls that its zero (a full step's place is exact, a microstep's
-  off by up to :attr:`actuators.StepperSpec.microstep_accuracy` of a step), and the
-  joint's angle there is known to the step.
+  switch on them, the motors are energised (a rotor jumps up to two full steps to its
+  driver's phase when they are: the reading must come after), the arm is jogged to a pose
+  with the upper arm under 90 deg (a gauge reads 0..90), the gauge zeroed on the base reads
+  the upper arm (``q2``) and the forearm (``q3``: it keeps that direction), and those
+  readings set the joints' zeros at the motors' counts there (:func:`set_from_gauge`). A
+  gauge's 0.05-0.1 deg is the zero's error until :mod:`.calibrate` refines it.
+* **The phase** (:func:`phase_move`): a switch's trigger wanders by a fraction of a step
+  from homing to homing; the motor's driver counts its microstep phase (a TMC2209's
+  ``MSCNT``, 1024 a turn of four full steps). The first homing records the phase at the
+  trigger (the reference); every later one moves from the trigger to the nearest place with
+  that phase and calls that home, so homing repeats to the step while the trigger wanders
+  under half a step (Klipper's ``endstop_phase`` for its own axes, the same idea).
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from spiderpig.control.mapping import Axis
+
+MSCNT_STEP = 256        # a TMC2209's microstep counter per full step (1024 an electrical turn)
 
 
 @dataclass(frozen=True)
@@ -34,38 +40,40 @@ class HomingStep:
 
 
 def plan(axes: dict[str, Axis]) -> list[HomingStep]:
-    """The homing sequence of ``axes`` (module docstring): the turntable first (it needs
-    the arm clear of nothing), then the gauge on the planar joints, then the snaps."""
+    """The homing sequence of ``axes`` (module docstring)."""
     out: list[HomingStep] = []
     if "q1" in axes:
         out += [HomingStep("q1", "read the endstop: blocked, turn positive until it clears; "
                                  "clear, turn negative until it blocks"),
                 HomingStep("q1", "back off 2 deg, then approach again at a tenth of the speed "
                                  "from the same side until the beam changes"),
+                HomingStep("q1", "read the driver's phase (DUMP_TMC STEPPER=q1 "
+                                 "REGISTER=MSCNT): the first time, record it as the reference; "
+                                 "after, move to the nearest place with the reference phase"),
                 HomingStep("q1", "that is yaw 0")]
     planar = [n for n in axes if n not in ("q1", "q4")]
     if planar:
-        out.append(HomingStep(",".join(planar), "set the arm to a comfortable pose by hand "
-                              "(motors off), put a digital angle gauge on each driven link, "
-                              "enter each reading as that joint's angle"))
+        out.append(HomingStep(",".join(planar), "energise the motors (they hold), jog the arm "
+                              "to a pose with the upper arm under 90 deg; zero a digital "
+                              "angle gauge on the base, read it on the upper arm (q2) and on "
+                              "the forearm (q3); enter each with the motor's count there"))
     if "q4" in axes:
-        out.append(HomingStep("q4", "turn the cup to its mark by hand: that is roll 0"))
-    out.append(HomingStep(",".join(axes), "energise the motors and snap each to its nearest "
-                                          "full step (the zero becomes that step)"))
+        out.append(HomingStep("q4", "jog the cup to its mark: that is roll 0"))
     return out
 
 
-def snap(axis: Axis, steps: int) -> tuple[int, float]:
-    """Where a joint stopped homing (``steps``, the motor's count) to its nearest full step:
-    ``(the move in microsteps, the joint's angle there in rad)``."""
-    target = axis.full_step(steps)
-    return target - steps, axis.angle(target)
+def phase_move(mscnt: int, reference: int, microsteps: int, sign: int = 1) -> int:
+    """The microsteps to move from where the trigger left the motor (its driver's counter
+    ``mscnt``) to the nearest place whose phase is the ``reference``'s (module docstring).
+    ``sign``: +1 when a positive move raises the counter (a jog of one full step shows which:
+    flipping a driver's DIR pin flips it)."""
+    per = MSCNT_STEP / microsteps                # the counter's counts per microstep
+    d = (mscnt - reference + MSCNT_STEP / 2) % MSCNT_STEP - MSCNT_STEP / 2
+    return -sign * round(d / per)
 
 
 def set_from_gauge(axis: Axis, reading_deg: float, steps: int = 0) -> Axis:
     """``axis`` with its zero set so that its motor's count ``steps`` is the joint's angle
     the gauge reads (degrees: the link's angle from horizontal)."""
-    from dataclasses import replace
-
     q = math.radians(reading_deg)
     return replace(axis, zero=q - axis.direction * steps / axis.per_rad)

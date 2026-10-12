@@ -72,6 +72,11 @@ def main(argv: list[str] | None = None) -> int:
         if missing:
             print(f"error: give {', '.join(missing)}", file=sys.stderr)
             return 2
+        for n, (lo, hi) in model.ranges.items():
+            if not lo - 1e-9 <= q[n] <= hi + 1e-9:
+                print(f"error: {n} {math.degrees(q[n]):g} deg is outside "
+                      f"{math.degrees(lo):g}..{math.degrees(hi):g}", file=sys.stderr)
+                return 2
         x, y, z = model.fk(q)
         print(f"tip: {x:.3f} {y:.3f} {z:.3f} mm")
         return 0
