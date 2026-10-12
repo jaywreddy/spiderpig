@@ -86,10 +86,21 @@ class Geometry:
                 self._shared = shared._shared
                 self._shared_names = frozenset(same) & shared._shared_names
 
-    def extend(self, points: Mapping[str, np.ndarray]) -> Geometry:
+    def extend(self, points: Mapping[str, np.ndarray],
+               lateral: Mapping[str, float] | None = None) -> Geometry:
         """A geometry with ``points`` added (or replaced), sharing this one's table for the
-        points it keeps unchanged."""
-        return Geometry({**self.points, **points}, shared=self, lateral=self.lateral)
+        points it keeps unchanged. On a geometry with a ``lateral`` bound (an arm's), a
+        point that moves must come with its own (``lateral``): without it the bound would
+        no longer cover the box."""
+        merged = {**self.lateral, **(lateral or {})}
+        if self.lateral:
+            for k, v in points.items():
+                a = np.asarray(v, dtype=float).reshape(-1, 2)
+                if k not in merged and a.shape[0] > 1 and np.ptp(a, axis=0).max() > 0:
+                    raise ValueError(f"point {k!r} moves on a toured geometry (an arm's) but "
+                                     "comes with no lateral bound: give it one (extend(..., "
+                                     "lateral=)), or the planner's guarantee wouldn't hold")
+        return Geometry({**self.points, **points}, shared=self, lateral=merged)
 
     @cached_property
     def step(self) -> dict[str, float]:

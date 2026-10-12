@@ -441,6 +441,7 @@ class ChicagoAxle:
                   "spacers; lowest link bonded (pins only)")
     running_fit: float = 0.2      # a link's and a ring's hole over the 4 mm barrel
     shaft: ChicagoShaft = field(default_factory=ChicagoShaft)
+    bonded_host: ClassVar[bool] = True     # the lowest link is bonded to the barrel
 
     @property
     def roles(self) -> tuple[str, ...]:

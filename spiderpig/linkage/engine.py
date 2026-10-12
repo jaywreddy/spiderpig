@@ -445,13 +445,27 @@ class Linkage:
         if bad is not None:
             raise AssemblyError(f"{self.key}: {bad.describe()}")
         if self.kind == "arm":
-            from spiderpig.linkage.checks import check_rigid
+            from spiderpig.linkage.checks import check_drives, check_rigid
+            from spiderpig.linkage.constraints import LOCK_COND, check_conditioning
 
-            soft = check_rigid(self.key, self.values(params))
+            values = self.values(params)
+            soft = check_rigid(self.key, values)
             if soft:
                 link, a, b, var = soft[0]
-                raise AssemblyError(f"{self.key}: link {link}'s joints {a} and {b} drift "
+                raise AssemblyError(f"{self.key}: {link}'s joints {a} and {b} drift "
                                     f"{var:.3g} mm apart over the inputs' range: not rigid")
+            slip = check_drives(self.key, values)
+            if slip:
+                name, link, var = slip[0]
+                raise AssemblyError(f"{self.key}: input {name} doesn't turn {link} with it "
+                                    f"(off by up to {var:.3g} deg over its range)")
+            cond, at = check_conditioning(self, values)
+            if not cond <= LOCK_COND:
+                where = ", ".join(f"{k} {v:.0f} deg" for k, v in
+                                  zip(self.inputs, at or (), strict=False))
+                raise AssemblyError(f"{self.key}: the linkage nearly locks at {where}: a "
+                                    f"parallelogram or loop flattens (condition {cond:.3g}, "
+                                    f"limit {LOCK_COND:g}); move a pivot away from the line")
         return steps
 
     def output_check(self, params: Mapping[str, float] | None = None):

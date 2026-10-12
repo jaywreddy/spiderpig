@@ -299,6 +299,11 @@ def check_rigid(key: str, values: tuple[float, ...]) -> tuple[tuple[str, str, st
     with np.errstate(all="ignore"):
         pts = LegSolution(1, 0.0, values, key).at(*_inputs(lk))
     out = []
+    for j in lk.frame:                  # the frame's joints don't move at all
+        var = float(np.nanmax(np.ptp(pts[j], axis=0))) if np.isfinite(pts[j]).any() \
+            else math.inf
+        if not var <= RIGID_TOL:
+            out.append(("torso", j, j, var))
     for link, (joints, _) in lk.links.items():
         for i, a in enumerate(joints):
             for b in joints[i + 1:]:
@@ -306,5 +311,29 @@ def check_rigid(key: str, values: tuple[float, ...]) -> tuple[tuple[str, str, st
                 var = float(np.nanmax(d) - np.nanmin(d)) if np.isfinite(d).any() else math.inf
                 if not var <= RIGID_TOL:
                     out.append((link, a, b, var))
+    return tuple(out)
+
+
+DRIVE_TOL_DEG = 1e-6
+
+
+@cache
+def check_drives(key: str, values: tuple[float, ...]) -> tuple[tuple[str, str, float], ...]:
+    """Each arm input whose link doesn't turn with it one to one (``(input, link, the
+    variation of their difference in deg)``): the drive is what the transmission turns, so
+    it must be the link the input names."""
+    lk = get(key)
+    ins = _inputs(lk)
+    with np.errstate(all="ignore"):
+        pts = LegSolution(1, 0.0, values, key).at(*ins)
+    out = []
+    for i, name in enumerate(lk.inputs):
+        link, about = lk.drives[name]
+        other = next(j for j in lk.links[link][0] if j != about)
+        v = pts[other] - pts[about]
+        diff = np.degrees(np.unwrap(np.arctan2(v[:, 1], v[:, 0]) - ins[i]))
+        var = float(np.nanmax(diff) - np.nanmin(diff)) if np.isfinite(diff).any() else math.inf
+        if not var <= DRIVE_TOL_DEG:
+            out.append((name, link, var))
     return tuple(out)
 

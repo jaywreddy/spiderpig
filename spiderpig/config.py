@@ -273,7 +273,7 @@ class BuildConfig:
         except KeyError as e:
             raise ParamError(e.args[0]) from None
         if self.robot and lk.kind != "walker":
-            raise ParamError(f"{lk.key} is a mechanism, not a walker: it has no feet to walk on, "
+            raise ParamError(f"{lk.key} is a {lk.kind}, not a walker: it has no feet to walk on, "
                              f"so it builds one side (robot=False; --side-only on the command "
                              f"line) (walkers: {', '.join(linkage.available('walker'))})")
         if not self.module:
@@ -290,6 +290,10 @@ class BuildConfig:
         if self.servo not in servos.available():
             raise ParamError(f"unknown servo {self.servo!r}; have {servos.available()}")
         object.__setattr__(self, "phases", self._phases(lk))
+        if lk.kind == "arm" and (self.crank or self.phases is not None):
+            raise ParamError(f"{lk.key} is an arm: its inputs drive links, so it has no crank "
+                             f"and no crank phases (crank {self.crank!r}, phases "
+                             f"{self.phases})")
         object.__setattr__(self, "proportions", self._proportions(lk))
         object.__setattr__(self, "link_sheets", self._link_sheets(lk))
         object.__setattr__(self, "roles", self._roles(lk))

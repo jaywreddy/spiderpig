@@ -535,9 +535,9 @@ def _register_tools(server: MCPServer, state: State) -> None:
         return fn
 
     @tool
-    async def list_linkages(kind: Literal["walker", "mechanism"] | None = None
+    async def list_linkages(kind: Literal["walker", "mechanism", "arm"] | None = None
                             ) -> o.LinkagesOut:
-        """Every registered linkage (``kind`` keeps walkers or mechanisms): key, name,
+        """Every registered linkage (``kind`` keeps walkers, mechanisms or arms): key, name,
         family, kind, its modules with legs per side, its parameters and their defaults,
         feet per leg or the output's motion. ``describe`` gives one linkage's full card."""
         return {"ok": True, "failures": [],

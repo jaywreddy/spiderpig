@@ -95,7 +95,7 @@ def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     if lk.kind == "walker" and sides == 1:
         warnings.append("sides = 1 builds one side (no chassis); the walk metrics still "
                         "model the two-sided robot")
-    if len(lk.inputs) > 1:
+    if len(lk.inputs) > 1 and lk.kind != "arm":    # (an arm's inputs are its drives')
         warnings.append(second_input_note(lk))
     if servos.get(config.servo).speed_rpm is None:
         warnings.append(f"servo {config.servo} lists no speed: speed_mm_s assumes "
@@ -166,7 +166,9 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
         mats["link_sheets"] = dict(config.link_sheets)
     doc["materials"] = mats
     doc["constructions"] = {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
-                            "heads": config.heads}
+                            "heads": config.heads, **dict(config.roles)}
+    if not config.crank:        # an arm has none ("" in a spec would be a wildcard)
+        del doc["constructions"]["crank"]
     default = Params()
     fit = {k: getattr(config.params, k) for k in FIT_FIELDS
            if getattr(config.params, k) != getattr(default, k)}

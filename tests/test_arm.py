@@ -89,7 +89,7 @@ def test_the_lateral_bound_is_a_row_step():
     step = math.radians((PAL.ranges["q3"][1] - PAL.ranges["q3"][0]) / (TOUR_ROWS - 1))
     assert lat["O"] == lat["E"] == 0.0                      # q3 doesn't move the elbow
     assert lat["W"] == pytest.approx(150 * step, rel=1e-3)  # the forearm swings
-    assert lat["C"] == pytest.approx(40 * step, rel=1e-3)
+    assert lat["C"] == pytest.approx(60 * step, rel=1e-3)   # the 60 mm elbow crank
 
 
 def test_the_palletizer_assembles_and_keeps_its_tool_level():
@@ -99,7 +99,7 @@ def test_the_palletizer_assembles_and_keeps_its_tool_level():
     out = PAL.output_check()
     assert out.broken is None
     assert out.rotation_deg < 1e-9                          # the flange never turns
-    assert min(parallelogram_margins().values()) >= MIN_PARALLELOGRAM_DEG
+    assert min(parallelogram_margins().values()) >= MIN_PARALLELOGRAM_DEG - 1e-9
     bad = _arm(key="bent_arm", program=lambda p: [
         ("O", xy(0, 0)), ("F", crank_at(P("O"), p["L"] + 10 * sp.Symbol("q"), "q"))])
     linkage.engine.REGISTRY["bent_arm"] = bad
@@ -159,3 +159,60 @@ def test_an_arm_spec_resolves_checks_and_plans():
 
     errors = validate({"kind": "arm", "linkage": {"key": "palletizer"}, "legs": {"sides": 2}})
     assert [e.path for e in errors] == ["legs.sides"]
+
+
+def test_a_flattening_parallelogram_is_refused():
+    with pytest.raises(AssemblyError, match="nearly locks"):
+        PAL.assert_assembles({"ux": 30.0, "uy": 1.0})       # the wrist parallelogram, flat
+    from spiderpig.config import BuildConfig, ParamError
+
+    with pytest.raises(ParamError, match="no crank"):
+        BuildConfig(linkage="palletizer", robot=False, crank="bolt")
+
+
+def test_the_bound_covers_poses_off_the_tour():
+    """Brute force: two points' sampled-and-bounded distance (the planner's lower bound)
+    never exceeds their true distance anywhere in a dense grid over the box."""
+    from spiderpig.linkage.assembly import build_module_template
+    from spiderpig.stack.topology import topology_from_template
+
+    topo = topology_from_template(build_module_template("single", linkage="palletizer"))
+    geo = topo.geometry
+    dense = PAL.solve().at(*PAL.box(151))
+    names = {a.name: a.joints[0][1] for a in topo.axes}
+    for a, b in (("E", "C"), ("W", "R"), ("V", "C"), ("T", "W")):
+        bound = geo.dist(("pt", a), ("pt", b))
+        true = np.linalg.norm(dense[names[a]] - dense[names[b]], axis=-1).min()
+        assert bound <= true + 1e-9, (a, b, bound, true)
+
+
+@pytest.mark.slow     # (explain plans and fabricates: ~9 s)
+def test_explain_and_the_check_report_take_an_arm():
+    from spiderpig import api
+
+    d = api.resolve({"kind": "arm", "linkage": {"key": "palletizer"}}, store=None)
+    assert not any("second input" in w for w in d.warnings)
+    from spiderpig.explain import main as explain
+
+    assert explain(["--linkage", "palletizer"]) == 0
+
+
+def test_an_arms_toured_geometry_wants_a_lateral_bound_for_a_moving_point():
+    from spiderpig.linkage.assembly import build_module_template
+    from spiderpig.stack.topology import topology_from_template
+
+    geo = topology_from_template(build_module_template("single", linkage="palletizer")).geometry
+    moving = geo.points["W"] + 1.0
+    with pytest.raises(ValueError, match="no lateral bound"):
+        geo.extend({"new": moving})
+    assert geo.extend({"new": moving}, lateral={"new": 1.0}).step["new"] > 1.0
+    assert "fixed" in geo.extend({"fixed": np.array([1.0, 2.0])}).points   # a fixed one: fine
+
+
+@pytest.mark.slow
+def test_spiderpig_build_builds_an_arm(tmp_path):
+    from spiderpig.build import main as build
+
+    assert build(["--linkage", "palletizer", "--side-only", "--out", str(tmp_path / "b"),
+                  "--store", str(tmp_path / "store")]) == 0
+    assert (tmp_path / "b" / "laser").is_dir()

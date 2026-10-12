@@ -22,17 +22,19 @@ The links (``b1`` .. ``b8``), with O the shoulder pivot (the frame), y up:
 
 Proportions are the MT4's where its published model gives them (WLKATA's URDF and STEP,
 github.com/wlkata: upper arm 130 mm, forearm 150 mm, the flange 35 mm forward and 27.4 mm
-under the wrist pivot). The pivots P and U, the elbow crank's radius and the inputs' box
-are chosen so that no parallelogram flattens anywhere in the box (each keeps at least
-:data:`MIN_PARALLELOGRAM_DEG` between its sides; :func:`parallelogram_margins`): the box is
-the rectangle ``q2`` 35..120 deg, ``q3`` -40..10 deg, a little inside the MT4's own joint
-limits (its shoulder -33..+57 deg from vertical; its elbow's limit is relative to the
-shoulder, so its box isn't a rectangle).
+under the wrist pivot). The pivots P and U and the elbow crank's radius are chosen: the
+crank and the levelling arms as long as the side allows (60, 40 and 40 mm), since every
+pin's play on them is magnified by the forearm over their length
+(:mod:`spiderpig.precision`). The inputs' box is a rectangle (the tour's), ``q2``
+40..115 deg and ``q3`` -45..20 deg: the elbow drive's parallelogram keeps its sides at
+least :data:`MIN_PARALLELOGRAM_DEG` apart when ``q2 - q3`` stays in 20..160 deg, and the
+rectangle is the largest inside that band. The MT4's own limit is on that relative angle,
+so its workspace is the band itself: the rectangle gives up the band's corners (the
+forearm pointing well down with the upper arm forward, the reach below the shoulder);
+:func:`parallelogram_margins` says how close each comes.
 """
 
 from __future__ import annotations
-
-import math
 
 import numpy as np
 import sympy as sp
@@ -64,11 +66,11 @@ def palletizer(p):
 PALLETIZER = register(Linkage(
     key="palletizer", name="Palletizer arm (MT4-like: 130 / 150 mm)", program=palletizer,
     inputs=("q2", "q3"), crank=(),
-    ranges={"q2": (35.0, 120.0), "q3": (-40.0, 10.0)},
+    ranges={"q2": (40.0, 115.0), "q3": (-45.0, 20.0)},
     drives={"q2": ("b1", "O"), "q3": ("b2", "O")},
-    params={"upper": R(130), "fore": R(150), "crank": R(40),
-            "px": R(-295, 10), "py": R(52, 10),          # |OP| 30 mm at 170 deg
-            "ux": R(0), "uy": R(30),                      # the elbow plate's third corner
+    params={"upper": R(130), "fore": R(150), "crank": R(60),
+            "px": R(-3939, 100), "py": R(695, 100),       # |OP| 40 mm at 170 deg
+            "ux": R(0), "uy": R(40),                      # the elbow plate's third corner
             "fx": R(35), "fy": R(-274, 10)},              # the flange (MT4)
     links={"b1": (("O", "E"), (("O", "E"),)),
            "b2": (("O", "C"), (("O", "C"),)),
@@ -117,6 +119,3 @@ def reach_mm(values: tuple[float, ...] = ()) -> float:
     return float(pts["F"][:, 0].max())
 
 
-assert all(m >= MIN_PARALLELOGRAM_DEG for m in parallelogram_margins().values()), \
-    parallelogram_margins()
-assert math.isfinite(reach_mm())

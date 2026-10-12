@@ -449,8 +449,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   inputs' box (64 rows), sampled four times as densely as a crank's cycle; the planner's
   bound adds each point's move between rows. The palletizer arm is the first.
 - **Why:** every stage samples one cyclic time (the planner's guarantee, `verify_plan`, the
-  contract, the bake); a tour keeps them all as they are and still covers the workspace,
-  where a second time axis would have meant rewriting each.
+  contract, the bake); a tour keeps them all as they are, and with the rows' bound the
+  planner's and `verify_plan`'s guarantees cover the whole box (the contract and the bake
+  see the poses they sample), where a second time axis would have meant rewriting each.
 - **Where:** `spiderpig/linkage/engine.py` (`Linkage.tour`, `tour_lateral`, `LegSolution.at`),
   `spiderpig/stack/geometry.py`, `spiderpig/stack/topology.py`, `spiderpig/linkages/palletizer.py`,
   `spiderpig/precision.py`.

@@ -37,7 +37,7 @@ mise run lint       # ruff check, then lint-imports (the layers: pyproject.toml 
 mise run pyright    # basic mode ([tool.pyright]); CI holds its error count
 mise run audit      # do the parts fit and hold? (spiderpig/tools/audit.py; 75-120 s)
 mise run explain    # each pipeline stage's verdict on a design
-uv run python -m spiderpig.cli precision --linkage palletizer --compare  # error budget
+mise run precision -- --linkage palletizer --compare   # an output's error budget
 mise run tune       # search crank phases for a smoother walk
 mise run sim        # MuJoCo
 mise run report     # compare every linkage -> build/linkages.json
