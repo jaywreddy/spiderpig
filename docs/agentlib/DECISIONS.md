@@ -845,3 +845,15 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   (~9 Hz); the BOM $684 listed, 68 cut and 7 printed parts (from 41-50 printed).
 - **Open (round 3):** the 20 aluminium frame / base plates ($241), the 7 printed parts,
   the ~240 bought pieces (the shims), the ground pins' M2 ends.
+- **Round 3:** the column's rings were one default-sheet layer tall wherever they stood
+  (`common.ring_z`), so in a layer a 5.4 mm link thickens they left a 2.4 mm gap and the
+  disc spring's preload stopped at it (pins E, R, U, V, both pillars; on O the drive
+  pulleys' 8 mm bores held nothing). The pair pivots' columns are now stock precision
+  collars cut to length, one per gap between neighbouring links, hubs and (a pillar's)
+  frame plates and end shims (`pair.stock_tubes`: 5.5 x 4.1 on the pins, 7 x 6.1 on the
+  pillars, which passes the pulleys' bores), their OD on the bearings' inner rings, so the
+  land shims go. Not done (the turret: it cuts its plates from the frame sheet): the base's
+  bottom plate in acrylic, the frame plates' feet screwed through T-slot nuts in place of
+  the printed brackets, the turntable's rim as the homing flag, the yaw hub as two flanged
+  F608 bearings in cut plates; shoulder screws in place of the ground pins were rejected
+  (ISO 7379's 3 mm head and its disc spring don't fit a 3 mm end layer; f9 looser than g6).

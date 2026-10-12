@@ -104,6 +104,18 @@ for _L in GROUND_LENGTHS:
               "standard lengths start at 20 mm: a shorter pin is a special, or cut from a "
               "20 mm one and tapped. Price only in MISUMI's configurator: $6 an estimate."))
 
+for _k, (_od, _id) in {"collar_5p5x4p1": (5.5, 4.1), "collar_7x6p1": (7.0, 6.1)}.items():
+    register(Item(
+        _k, f"Precision collar (spacer tube) {_od:g} OD x {_id:g} ID, cut to length", "spacer",
+        (Offer("MISUMI", "https://my.misumi-ec.com/vona2/detail/110310886139/", price_usd=4.0,
+               note="precision collar, OD in 0.5 mm and length in 0.1 mm steps; the price an "
+                    "estimate (MISUMI's configurator)"),),
+        dims={"od": _od, "id": _id},
+        notes="A ball pair's column spacer (construction.pivots.pair.stock_tubes): one per "
+              "gap between neighbouring links (or a hub), cut to the faces' distance; its OD "
+              "bears on the bearings' inner rings only (the 7 mm one passes the drive "
+              "pulleys' 8 mm bores on the shoulder's pillar)."))
+
 for _k, (_id, _od) in {"shim_4x6x0p5": (4.0, 6.0), "shim_6x8x0p5": (6.0, 8.0)}.items():
     register(Item(
         _k, f"Stainless shim washer {_id:g} x {_od:g} x 0.5 mm", "washer",

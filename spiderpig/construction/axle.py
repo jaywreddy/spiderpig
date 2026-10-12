@@ -52,6 +52,9 @@ class AxleDims:
     # bore beyond the shaft (a ball bearing bonded in: construction.pivots.ball); a
     # shoulder still only has to overlap the shaft's hole to hold the link
     seat: float = 0.0
+    # the radius it claims inside a drive's hub coaxial with it (0: ``axle``): what runs
+    # through the pulley's bore beside the shaft (a ball pair's spacer tube)
+    nested: float = 0.0
 
 
 End = tuple[str, float]     # (label, radius) of one layer claimed beyond an axle's end
@@ -241,7 +244,8 @@ class AxleGroup(Group):
                 if k in mset:
                     continue
                 if k in nested:
-                    out.append(Placed(k, Disc(ax, d.axle), g, f"{g} nested", seat=True))
+                    out.append(Placed(k, Disc(ax, d.nested or d.axle), g, f"{g} nested",
+                                      seat=True))
                     continue
                 if k in beside:
                     r = min(d.spacer, free.get(k, np.inf))
@@ -271,7 +275,8 @@ class AxleGroup(Group):
                 if k in mset or (self.pillar and k in (0, L.top)):
                     continue
                 if k in nested:
-                    out.append(Placed(k, Disc(ax, d.axle), g, f"{g} nested", seat=True))
+                    out.append(Placed(k, Disc(ax, d.nested or d.axle), g, f"{g} nested",
+                                      seat=True))
                     continue
                 if not self.pillar and k == lo - 1 and h_lo > 0:
                     out.append(Placed(k, Disc(ax, d.head), g, f"{g} head", gap=True,

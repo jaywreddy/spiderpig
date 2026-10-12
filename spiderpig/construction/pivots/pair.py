@@ -69,6 +69,7 @@ rings: the spring's load would bypass the balls.
 
 from __future__ import annotations
 
+import itertools
 import math
 from dataclasses import dataclass, field, replace
 from typing import Any, ClassVar
@@ -299,15 +300,63 @@ def hub_layers(riders: list[int], occupied: set[int], lo: int, hi: int,
     return taken
 
 
+TUBE_MIN = 0.2          # a gap this short between neighbours is left as the column's play
+
+
+def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
+                members, plates: bool = False) -> int:
+    """The column between its links made of stock tubes (precision collars cut to length):
+    one per gap between neighbouring links or hubs, face to face, in place of the rings and
+    gap spacers there (a ring is one default-sheet layer tall: in a layer a thick link
+    thickens it left a gap, and the column's preload stopped at it: the review of
+    2026-10-12). Their OD bears on the bearings' inner rings only. Returns how many."""
+    from spiderpig.hardware.catalog import get as _get
+
+    ctx = build.ctx
+    xy = xy_of(build, group)
+    d = _get(tube_key).dims
+    od, bore = float(d["od"]), float(d["id"])
+    elements = []
+    for m in members:
+        z0, z1 = build.z(build.layers[m])
+        t, mid = ctx.sheet_t("link", m), (z0 + z1) / 2
+        elements.append((mid - t / 2, mid + t / 2))
+    for b in out.bodies:            # a hub; a pillar's end shims
+        if b.part is not None and ("_hub_" in b.name or "_shims" in b.name):
+            bb = b.part.bounding_box()
+            elements.append((bb.min.Z, bb.max.Z))
+    if plates:                      # a pillar's column runs to the frame plates it's in
+        elements += [build.z(k) for k in Column.of(build, group).anchors]
+    elements.sort()
+    spans = [(a[1], b[0]) for a, b in itertools.pairwise(elements) if b[0] - a[1] > TUBE_MIN]
+    host = None
+    keep = []
+    for b in out.bodies:            # the printed rings and gap spacers inside a span go
+        if b.fab == "printed" and b.part is not None:
+            bb = b.part.bounding_box()
+            zc = (bb.min.Z + bb.max.Z) / 2
+            if any(lo - EPS <= zc <= hi + EPS for lo, hi in spans):
+                host = host or b.rigid_with
+                continue
+        keep.append(b)
+    out.bodies[:] = keep
+    stem = stem_of(group)
+    host = host or sorted(members, key=lambda m: build.layers[m])[0]
+    for i, (lo, hi) in enumerate(spans):
+        out.bodies.append(hardware(f"{stem}_tube{i}", ring(xy, od, bore, lo, hi), host,
+                                   fab="purchased", bom_key=tube_key, color=STEEL))
+    out.notes.setdefault("tubes", {})[group.name] = [round(hi - lo, 1) for lo, hi in spans]
+    return len(spans)
+
+
 def stock_spacers(out: Realized, build: Build, shim_key: str, land_key: str,
                   riders: int) -> None:
     """What the column holds between its links made from stock and cut plates only (the
     user's of 2026-10-12: "only stock parts except for the plates"): a printed ring a full
     default-sheet layer tall is cut from that sheet (``laser``: a cut plate); any other
     printed spacer (a head spacer, a gap ring) is a stack of DIN 988 shims (``shim_key``,
-    :func:`hardware.bom.stack`). And a land washer (``land_key``) each side of every rider
-    link: it bears on the bearing's inner ring only, so the column's preload goes through
-    the balls."""
+    :func:`hardware.bom.stack`). And a land washer (``land_key``) each side of ``riders``
+    links (0: the column's tubes are its lands, :func:`stock_tubes`)."""
     from dataclasses import replace as _replace
 
     from spiderpig.hardware.bom import stack
@@ -345,9 +394,13 @@ def _inside_layers(hubless: frozenset[str], layout) -> set[int]:
     return {placed[m] for m in hubless if m in placed}
 
 
-def _dims(seat: PairSeat, d: AxleDims, ctx: Context) -> AxleDims:
-    """Every spacer layer the hub's width (it may take a ring's place)."""
-    return replace(d, spacer=max(d.spacer, seat.hub_r(ctx)))
+def _dims(seat: PairSeat, d: AxleDims, ctx: Context, tube_key: str = "") -> AxleDims:
+    """Every spacer layer the hub's width (it may take a ring's place); in a drive hub's
+    bore, the column's tube (:func:`stock_tubes`)."""
+    from spiderpig.hardware.catalog import get as _get
+
+    nested = float(_get(tube_key).dims["od"]) / 2 if tube_key else 0.0
+    return replace(d, spacer=max(d.spacer, seat.hub_r(ctx)), nested=max(d.nested, nested))
 
 
 def _assembly(seat: PairSeat, preload: Preload, group: AxleGroup, view) -> list:
@@ -474,7 +527,8 @@ class BallPairAxle(BallAxle):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, under the screw's head"))
-        stock_spacers(out, build, "shim_din988_4x8", "shim_4x6x0p5", len(riders))
+        stock_tubes(out, build, group, "collar_5p5x4p1", group.axis.members)
+        stock_spacers(out, build, "shim_din988_4x8", "shim_4x6x0p5", 0)
         return out
 
 
@@ -497,7 +551,7 @@ class BallPairPillar(BallPillar):
 
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         assert isinstance(self.seat, PairSeat)
-        return _dims(self.seat, super().dims(ctx, pillar), ctx)
+        return _dims(self.seat, super().dims(ctx, pillar), ctx, "collar_7x6p1")
 
     def column_axle(self, links, top: int, pitch: float, lo: int = 0, layout=None,
                     air=None):
@@ -540,8 +594,8 @@ class BallPairPillar(BallPillar):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, in the column's end shims"))
-        stock_spacers(out, build, "shim_din988_6x12", "shim_6x8x0p5",
-                      len(group.axis.members))
+        stock_tubes(out, build, group, "collar_7x6p1", group.axis.members, plates=True)
+        stock_spacers(out, build, "shim_din988_6x12", "shim_6x8x0p5", 0)
         return out
 
 
