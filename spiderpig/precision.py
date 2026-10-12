@@ -96,6 +96,9 @@ class InputBudget:
     resolution_mm: float
     sag_mm: float
     source: str = ""
+    accuracy_mm: float = 0.0       # its systematic error (a microstep off its place)
+    capacity_nm: float = 0.0       # what it holds at the joint (holding torque x ratio)
+    load_nm: float = 0.0           # the payload's moment on its lever (an upper bound)
 
 
 @dataclass(frozen=True)
@@ -167,7 +170,9 @@ class Precision:
             if b is not None:
                 out.append(f"      its drive ({b.source}): {b.ratio:.3g}:1, backlash "
                            f"{b.backlash_mm:.3f} mm, a step {b.resolution_mm:.4f} mm, "
-                           f"{self.payload_g:g} g sags it {b.sag_mm:.3f} mm")
+                           f"systematic {b.accuracy_mm:.3f} mm, {self.payload_g:g} g sags it "
+                           f"{b.sag_mm:.3f} mm; holds {b.capacity_nm:.2f} N·m for "
+                           f"{b.load_nm:.3f}")
         out.append(f"  accuracy, every hole off by {self.hole_tol_mm:g} mm: "
                    f"{self.accuracy_links_mm:.3f} mm (calibrates out)")
         out.append(f"  accuracy, {self.dt_k:g} K at {self.cte_um_per_m_k:g} um/m/K over "
@@ -335,6 +340,13 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                      "parallelogram flat, or an input not declared as a drive): the error "
                      "there is unbounded")
     inputs = drive_budgets(config, design, lev, payload_g)
+    for b in inputs.values():
+        if b.capacity_nm < 2 * b.load_nm:
+            notes.append(f"{b.name}'s drive holds {b.capacity_nm:.2f} N·m, under twice the "
+                         f"payload's {b.load_nm:.3f} N·m (the arm's own weight not counted)")
+    if inputs:
+        notes.append("the drives' sag counts the payload only (the links' own weight is "
+                     "constant: it calibrates out at a given pose)")
     if lk.kind == "arm" and not inputs:
         notes.append("no transmission: the inputs' own backlash and resolution are not in "
                      "the budget (their levers say what they must be)")
@@ -363,10 +375,12 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
         sag = (torque / t.stiffness_nm_per_rad * lever
                if math.isfinite(t.stiffness_nm_per_rad) and t.stiffness_nm_per_rad > 0
                else 0.0)
+        ratio = g.hub(design.ctx).ratio
         out[g.input] = InputBudget(
-            g.input, g.hub(design.ctx).ratio, t.backlash_deg, t.resolution_deg,
+            g.input, ratio, t.backlash_deg, t.resolution_deg,
             t.stiffness_nm_per_rad, math.radians(t.backlash_deg) * lever,
-            math.radians(t.resolution_deg) * lever, sag, t.source)
+            math.radians(t.resolution_deg) * lever, sag, t.source,
+            math.radians(t.accuracy_deg) * lever, g.motor.holding_nm * ratio, torque)
     return out
 
 

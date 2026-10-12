@@ -143,7 +143,7 @@ register(Role("crank", "crank", "spiderpig.construction:CRANKS", ("walker", "mec
 register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSIONS",
               ("arm",), default="belt", per="drive",
               help="what turns each input's link from its motor: a GT2 belt (5:1), a cord "
-                   "capstan (about 10:1)"))
+                   "capstan (8.7:1, no backlash)"))
 register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
               default="nema17_17hs4401", per="drive",
               help="each input's stepper motor"))

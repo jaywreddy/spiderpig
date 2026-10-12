@@ -9,7 +9,7 @@ is about the holding torque times the rotor's tooth count (``K = T_hold N_r``, N
 hybrid stepper's torque near equilibrium is ``T_hold sin(N_r theta)``), and it moves in
 full steps of 360 / (4 N_r) degrees, finer in microsteps (``microsteps``: the driver's
 setting; a microstep's place is less exact than a full step's, ±5 % of a full step on a
-typical hybrid motor, which :meth:`StepperSpec.error_terms` counts as resolution). Through
+typical hybrid motor: a systematic error, :meth:`StepperSpec.error_terms`' accuracy). Through
 a reduction ``n`` both improve at the joint: the step by ``n``, the stiffness by ``n²``.
 
 Each motor's numbers are its datasheet's (``source``); its body is drawn from them (the
@@ -59,13 +59,13 @@ class StepperSpec:
         return self.step_deg / self.microsteps
 
     def error_terms(self, ratio: float):
-        """The motor seen at the joint through a reduction ``ratio``: its microstep and its
-        microstep's inexactness (the coarser: the joint's resolution), its holding
-        stiffness times ``ratio²``."""
+        """The motor seen at the joint through a reduction ``ratio``: its microstep (the
+        joint's resolution), its microstep's inexactness (a systematic error: accuracy, the
+        same at the same step), its holding stiffness times ``ratio²``."""
         from spiderpig.construction.joints import ErrorTerms
 
-        res = max(self.microstep_deg, self.microstep_accuracy * self.step_deg) / ratio
-        return ErrorTerms(resolution_deg=res,
+        return ErrorTerms(resolution_deg=self.microstep_deg / ratio,
+                          accuracy_deg=self.microstep_accuracy * self.step_deg / ratio,
                           stiffness_nm_per_rad=self.holding_stiffness_nm_per_rad * ratio ** 2,
                           source=f"{self.key} through {ratio:.3g}:1",
                           notes=(f"{self.microsteps} microsteps of a {self.step_deg:g} deg step "

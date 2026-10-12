@@ -10,8 +10,10 @@ also fetches their models).
 diameter is ``teeth x 2 / pi``, its outside diameter 0.508 mm under it (the belt's pitch
 line is outside the teeth); a 6 mm belt runs on a 7 mm toothed width between flanges. The
 small pulleys have a 16 mm hub 7 mm long with two M3 set screws (one on the shaft's flat);
-the large one is a hubless plate pulley bolted to the link it turns (four M3 on a 30 mm
-circle). Closed-loop belts come in fixed lengths (:data:`GT2_LOOPS`). A loop's spans
+the large one is a hubless plate pulley bolted to the link it turns: its four M3 holes on
+a 30 mm circle are drilled and tapped by hand (a stock 80-tooth plate pulley has a plain
+bore; a hubbed one would need the hub cut off). Closed-loop belts come in fixed lengths
+(:data:`GT2_LOOPS`). A loop's spans
 stretch like springs: :data:`GT2_SPECIFIC_STIFFNESS_N` per unit strain (the glass-fibre
 6 mm belt's, a manufacturer's typical figure, unverified: measure the deflection on the
 build).
@@ -97,6 +99,13 @@ for _L in GT2_LOOPS:
         dims={"length": float(_L), "width": 6.0, "pitch": GT2_PITCH, "teeth": _L // 2,
               "thickness": 1.38, "material": "nylon"}))
 
+register(Item(
+    "tube_al_6x5", "Aluminium tube 6 mm OD x 0.5 mm wall (5 mm ID), per 100 mm", "spacer",
+    (_unpriced("Amazon", "https://www.amazon.com/s?k=6mm+od+5mm+id+aluminum+tube",
+               "6 x 5 mm round tube"),),
+    dims={"od": 6.0, "id": 5.0, "length": 100.0, "material": "aluminium"},
+    notes="The capstan's sleeve: cut to the drum's core height and bonded over the motor's "
+          "D-flat shaft (retaining compound), so the cord wraps a round surface."))
 register(Item(
     "dyneema_1mm", "1 mm braided Dyneema (UHMWPE) cord, per metre", "cord",
     (_unpriced("Amazon", "https://www.amazon.com/s?k=1mm+dyneema+braided+line", "1 mm SK78 "

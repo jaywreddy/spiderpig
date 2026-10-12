@@ -22,18 +22,22 @@ from spiderpig.construction.base import (
 from spiderpig.construction.joints import ErrorTerms
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw, screw_solid
-from spiderpig.shapes import Cut, Rect, box, disc, union
+from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, Unbuildable
 
 STEEL = "#4a4a4a"
 MOTOR_COLOR = "#2b2b2b"
 ALU = "#c9cdd2"
+SLIDER_COLOR = "#d8d8d8"
 MOTOR_ANGLES = (-30.0, -150.0, -60.0, -120.0, -10.0, -170.0, -90.0, 15.0, 165.0)
 """Where a drive tries its motor, in degrees from +x about its pivot, in order: under the
 shoulder first (an arm's base is below it), then round."""
 HEAD_CLEAR = 1.0     # a motor body's clearance to the frame's pillar heads and to another motor
 SCREW_HOLE = 3.4     # an M3 clearance hole (ISO 273 medium)
-TENSION = 2.0        # a belt motor's slots: its travel either way along the belt (mm)
+TAP_HOLE = 2.5       # an M3 tap drill: the frame plate's holes the slider's screws thread into
+TENSION = 2.0        # a tensioned motor's slider travel either way along the belt (mm)
+ENGAGE = 1.2         # the least thread a motor screw takes in the motor, in diameters
+PAD_EDGE = 2.0       # a pad's web round the bolt holes it carries (mm)
 
 
 @dataclass(frozen=True)
@@ -41,8 +45,11 @@ class DriveHub:
     """What a drive publishes (``ctx.interfaces["drive:<input>"]``): the pivot's axis, the
     driven link, how many layers the hub's parts take beside it and on which side
     (``side`` -1: under it, the motor under the outer plate; +1: over it, the motor on the
-    inner plate; the axle only seats inside them), the motor's place and body radius
-    (outside the stack), the reduction, and the transmission's own record (``detail``)."""
+    inner plate; the axle only seats inside them), the motor's place and the radius of
+    what stands outside the plate there, the reduction, the transmission's own record
+    (``detail``), the input's travel and its link's direction at mid travel, and the pad
+    the driven link grows round the pivot for the hub's bolts
+    (:class:`construction.plates.LinkPlates`)."""
 
     group: str
     axis: str
@@ -54,6 +61,9 @@ class DriveHub:
     ratio: float
     detail: Any = None
     side: int = -1
+    travel_deg: float = 360.0
+    mid_dir: float = 0.0         # the link's direction at mid travel (rad)
+    pad_r: float = 0.0
 
     @property
     def down(self) -> bool:
@@ -65,20 +75,24 @@ class DriveHub:
 
 
 class Transmission:
-    """The contract a transmission implements (the drive group does the rest). Its
-    ``realize`` reads the hub's side (``hub.down``) for which way its motor-side parts
-    face (the motor pulley's hub toward the plate).
+    """The contract a transmission implements (the drive group does the rest).
 
-    ``layers(ctx)``: the hub layers its parts take under the link. ``hub_r(ctx)`` /
-    ``motor_side_r(ctx)``: the radii it claims in them at the pivot and at the motor.
-    ``distances(ctx, motor)``: candidate centre distances (pivot to motor shaft), each with
-    its own record, in order of preference. ``ratio(detail)``. ``hull(ctx, place)``: the
-    radii along the line pivot-motor in the hub layers (a belt's spans), or ``None``.
-    ``motor_layer_free(ctx, place)``: whether the motor's screw heads (in the layer over
-    the outer plate) clear the hub's parts (else that layer is the screws' alone).
-    ``realize(build, group, hub, out, layers)``; ``error_terms(ctx, hub)``; ``bolts`` and
-    ``bolt_pcd``: how many screws hold the hub to the link and on what circle; ``nuts``:
-    whether they take nuts under the hub (else they thread into it).
+    ``layers(ctx, travel_deg)``: the hub layers its parts take beside the link (the
+    capstan's grow with the turns its cord walks). ``hub_r(ctx)`` / ``motor_side_r(ctx)``:
+    the radii it claims in them at the pivot and at the motor. ``distances(ctx, motor)``:
+    candidate centre distances (pivot to motor shaft), each with its own record, in order
+    of preference. ``ratio(detail)``. ``hull(ctx, hub)``: the radii along the line
+    pivot-motor in the hub layers (a belt's spans), or ``None``. ``motor_hub(ctx)``: the
+    layers and radius the motor-side part takes past the hub layers, toward the plate.
+    ``bolt_angles(hub)``: the hub's bolts' angles in the link's frame (``None``: evenly
+    spaced). ``check(ctx, hub)``: its own parts' clearances to each other (the planner
+    never checks a group's shapes against each other): :class:`ConstructionError`.
+    ``realize(build, group, hub, out, layers)``; ``error_terms(ctx, hub)``;
+    ``assembly_text(hub)``. ``tensioned``: the motor on a slider plate outside its frame
+    plate, clamped by screws from outside (a belt: tensioned after the stack is built),
+    else bolted straight to the plate from inside. ``bolts`` / ``bolt_pcd``: the screws
+    that hold the hub to the link and their circle; ``nuts``: nuts beyond the hub (else
+    they thread into it).
     """
 
     key: str = ""
@@ -86,8 +100,9 @@ class Transmission:
     bolts: int = 4
     bolt_pcd: float = 30.0
     nuts: bool = False
+    tensioned: bool = False
 
-    def layers(self, ctx: Context) -> int:
+    def layers(self, ctx: Context, travel_deg: float) -> int:
         raise NotImplementedError
 
     def hub_r(self, ctx: Context) -> float:
@@ -103,6 +118,15 @@ class Transmission:
         raise NotImplementedError
 
     def hull(self, ctx: Context, hub: DriveHub) -> list[float] | None:
+        return None
+
+    def motor_hub(self, ctx: Context) -> tuple[int, float]:
+        return 0, 0.0
+
+    def bolt_angles(self, hub: DriveHub) -> list[float] | None:
+        return None
+
+    def check(self, ctx: Context, hub: DriveHub) -> None:
         return None
 
     def realize(self, build: Build, group: DriveGroup, hub: DriveHub, out: Realized,
@@ -141,12 +165,14 @@ def _segs_dist(a: tuple, b: tuple) -> float:
 
 def place_motor(o: np.ndarray, distances: list[tuple[float, Any]], motor,
                 heads: list[tuple[np.ndarray, float]], motors: list[tuple[tuple, float]],
-                angles=MOTOR_ANGLES) -> tuple[np.ndarray, float, float, Any]:
-    """The first (centre distance, angle) whose motor body (its square as a pill:
-    :func:`motor_ends`) clears every disc in ``heads`` (the frame's pillar heads) and every
-    pill in ``motors`` (the other drives' on that plate) by :data:`HEAD_CLEAR`:
-    ``(motor xy, angle, distance, record)``."""
-    r = motor.frame / 2
+                angles=MOTOR_ANGLES, reach: float | None = None
+                ) -> tuple[np.ndarray, float, float, Any]:
+    """The first (centre distance, angle) whose motor body (a pill across the drive, radius
+    ``reach``, else half its side: :func:`motor_ends`) clears every disc in ``heads`` (the
+    frame's pillar heads) and every pill in ``motors`` (the other drives' on that plate) by
+    :data:`HEAD_CLEAR`: ``(motor xy, angle, distance, record)``. The links' sweeps are the
+    planner's: a motor's parts stand in layers it gives them."""
+    r = motor.frame / 2 if reach is None else reach
     for dist, detail in distances:
         for a in angles:
             th = math.radians(a)
@@ -157,6 +183,18 @@ def place_motor(o: np.ndarray, distances: list[tuple[float, Any]], motor,
                 return m, th, dist, detail
     raise ConstructionError("no place round the pivot for the drive's motor: it meets the "
                             "frame's pillar heads or another drive's motor everywhere")
+
+
+def screw_length(sk, grip: float, depth: float) -> float:
+    """A motor screw's stock length through ``grip`` mm of plate into a ``depth`` mm blind
+    hole: at least :data:`ENGAGE` diameters of thread, never bottoming (0.3 mm short)."""
+    lo, hi = grip + ENGAGE * sk.d, grip + depth - 0.3
+    for length in sk.lengths:
+        if lo - 1e-6 <= length <= hi + 1e-6:
+            return float(length)
+    raise ConstructionError(f"no stock M{sk.d:g} screw goes through {grip:g} mm into the "
+                            f"motor's {depth:g} mm holes with {ENGAGE:g} d of thread and "
+                            f"without bottoming (lengths {list(sk.lengths)})")
 
 
 @dataclass
@@ -189,46 +227,107 @@ class DriveGroup(Group):
         j = next(j for j in joints if j != self.about)
         return ctx.topo.point_of[(self.link, j)]
 
+    def _travel(self, ctx: Context) -> tuple[float, float]:
+        """The input's travel (deg) and its link's direction at mid travel (rad)."""
+        lk = ctx.config.lk
+        lo, hi = lk.ranges.get(self.input, (0.0, 360.0))
+        pts = lk.solve(params=dict(zip(lk.params, ctx.config.values, strict=True))).at(
+            *[np.array([math.radians((a + b) / 2)]) for a, b in
+              (lk.ranges[k] for k in lk.inputs)])
+        joints = lk.links[self.link][0]
+        other = next(j for j in joints if j != self.about)
+        d = pts[other][0] - pts[self.about][0]
+        return hi - lo, math.atan2(d[1], d[0])
+
+    def slider_t(self, ctx: Context) -> float:
+        return ctx.sheet_t("frame") if self.transmission.tensioned else 0.0
+
     def interface(self, ctx: Context) -> DriveHub:
+        from spiderpig import construction
+
         pts = ctx.topo.geometry.points
         axis = self._axis(ctx)
+        if axis not in {a.name for a in ctx.topo.axes_of("frame")}:
+            raise ConstructionError(f"{self.name}: {self.link} turns about {axis}, not a frame "
+                                    "pivot: a drive's motor stands on the frame")
         o = np.asarray(pts[axis][0], dtype=float)
         before = [h for h in ctx.interfaces.values() if isinstance(h, DriveHub)]
         side = -1 if sum(h.axis == axis for h in before) % 2 == 0 else 1
-        heads = [(np.asarray(pts[a.name][0], dtype=float), 5.0)
+        head_r = construction.axle(ctx.config.pillar).dims(ctx, True).head
+        heads = [(np.asarray(pts[a.name][0], dtype=float), head_r)
                  for a in ctx.topo.axes_of("frame")]
+        reach = self._outside_r()
         motors = [(motor_ends(np.asarray(h.motor), h.angle, self.motor), h.motor_r)
                   for h in before if h.side == side]
-        r = self.motor.frame / 2
         m, th, _, detail = place_motor(o, self.transmission.distances(ctx, self.motor),
-                                       self.motor, heads, motors)
-        return DriveHub(self.name, axis, self.link, self.transmission.layers(ctx),
-                        (float(m[0]), float(m[1])), r, th, self.transmission.ratio(detail),
-                        detail, side)
+                                       self.motor, heads, motors, reach=reach)
+        travel, mid = self._travel(ctx)
+        sk = screw("bhcs", "3")
+        pad = self.transmission.bolt_pcd / 2 + max(SCREW_HOLE / 2 + PAD_EDGE, sk.head_d / 2)
+        hub = DriveHub(self.name, axis, self.link, self.transmission.layers(ctx, travel),
+                       (float(m[0]), float(m[1])), reach, th,
+                       self.transmission.ratio(detail), detail, side, travel, mid,
+                       max(pad, ctx.params.link_radius))
+        self.transmission.check(ctx, hub)
+        return hub
+
+    def _outside_r(self) -> float:
+        """The radius of what stands outside the plate at the motor (a pill across the
+        drive): the motor's square, or the slider plate's stadium round it (and its
+        travel)."""
+        if self.transmission.tensioned:
+            return self.motor.frame / 2 + TENSION + 2.0
+        return self.motor.frame / 2
 
     def hub(self, ctx: Context) -> DriveHub:
         h = ctx.interfaces.get(self.name)
         return h if isinstance(h, DriveHub) else self.interface(ctx)
 
-    def screw_points(self, hub: DriveHub) -> list[tuple[float, float]]:
-        """The motor's four mounting screws (its square turned square to the belt)."""
-        m = np.asarray(hub.motor)
+    def _uv(self, hub: DriveHub) -> tuple[np.ndarray, np.ndarray]:
         u = np.array([math.cos(hub.angle), math.sin(hub.angle)])
-        v = np.array([-u[1], u[0]])
+        return u, np.array([-u[1], u[0]])
+
+    def screw_points(self, hub: DriveHub) -> list[tuple[float, float]]:
+        """The motor's four mounting screws (its square turned square to the drive)."""
+        m = np.asarray(hub.motor)
+        u, v = self._uv(hub)
         h = self.motor.hole_square / 2
         return [tuple(m + sx * h * u + sy * h * v) for sx in (-1, 1) for sy in (-1, 1)]
 
-    def _bolt_offsets(self) -> list[float]:
+    def window_half(self) -> float:
+        """Half the window in the frame plate a slider's motor screws' heads stand in."""
+        return self.motor.hole_square / 2 + screw("bhcs", "3").head_d / 2 + 1.0
+
+    def clamp_offset(self) -> float:
+        """A slider's clamp screws from the motor's axis, across the drive: their heads
+        clear the motor's body, their tapped holes the window's edge."""
+        head = screw("bhcs", "3").head_d / 2
+        return max(self.window_half() + TAP_HOLE / 2 + PAD_EDGE,
+                   self.motor.frame / 2 + head + 0.5)
+
+    def clamp_points(self, hub: DriveHub) -> list[tuple[float, float]]:
+        """A slider's two clamp screws, either side of the motor across the drive."""
+        m = np.asarray(hub.motor)
+        _, v = self._uv(hub)
+        c = self.clamp_offset()
+        return [tuple(m + s * c * v) for s in (-1, 1)]
+
+    def _bolt_offsets(self, hub: DriveHub | None = None) -> list[float]:
+        given = self.transmission.bolt_angles(hub) if hub is not None else None
+        if given is not None:
+            return list(given)
         n = max(self.transmission.bolts, 1)
         return [math.pi / n + 2 * math.pi * i / n for i in range(n)]
 
-    def bolt_points(self, o: np.ndarray, other: np.ndarray) -> list[np.ndarray]:
+    def bolt_points(self, o: np.ndarray, other: np.ndarray,
+                    hub: DriveHub | None = None) -> list[np.ndarray]:
         """The hub's bolts through the link, ``(T, 2)`` each, turning with it."""
         d = np.atleast_2d(other) - o
         u = d / np.linalg.norm(d, axis=-1, keepdims=True)
         v = np.stack([-u[:, 1], u[:, 0]], axis=-1)
         rb = self.transmission.bolt_pcd / 2
-        return [o + rb * (math.cos(a) * u + math.sin(a) * v) for a in self._bolt_offsets()]
+        return [o + rb * (math.cos(a) * u + math.sin(a) * v)
+                for a in self._bolt_offsets(hub)]
 
     # -- claims --------------------------------------------------------------------
 
@@ -241,13 +340,19 @@ class DriveGroup(Group):
         g = self.name
         mname = f"{g}.motor"
         geo.points[mname] = np.broadcast_to(m, (n, 2))
-        ends = motor_ends(m, hub.angle, self.motor)
-        for tag, e in zip("ab", ends, strict=True):
+        for tag, e in zip("ab", motor_ends(m, hub.angle, self.motor), strict=True):
             geo.points[f"{g}.body_{tag}"] = np.broadcast_to(e, (n, 2))
-        screws = []
-        for i, xy in enumerate(self.screw_points(hub)):
+        tensioned = self.transmission.tensioned
+        inside_pts = self.clamp_points(hub) if tensioned else self.screw_points(hub)
+        inside = []
+        for i, xy in enumerate(inside_pts):
             geo.points[f"{g}.screw{i}"] = np.broadcast_to(np.asarray(xy), (n, 2))
-            screws.append(f"{g}.screw{i}")
+            inside.append(f"{g}.screw{i}")
+        heads = []                        # a slider's motor screws' heads, in the window
+        if tensioned:
+            for i, xy in enumerate(self.screw_points(hub)):
+                geo.points[f"{g}.head{i}"] = np.broadcast_to(np.asarray(xy), (n, 2))
+                heads.append(f"{g}.head{i}")
         hull = self.transmission.hull(ctx, hub)
         hull_pts: list[tuple[str, float]] = []
         if hull:
@@ -263,18 +368,18 @@ class DriveGroup(Group):
         lat = geo.lateral.get(other, 0.0) * rb / reach if reach > 0 else 0.0
         bolts = [ctx.topo.add_link_point(f"{g}.bolt{i}", hub.axis, other,
                                          (rb * math.cos(a), rb * math.sin(a)), lat)
-                 for i, a in enumerate(self._bolt_offsets())]
+                 for i, a in enumerate(self._bolt_offsets(hub))]
         geo = ctx.topo.geometry
+        geo.__dict__.pop("step", None)
         sk = screw("bhcs", "3")
         hub_r, side_r = self.transmission.hub_r(ctx), self.transmission.motor_side_r(ctx)
         shaft_r = self.motor.shaft_d / 2 + 0.5
-        body_layers = math.ceil(self.motor.length / ctx.pitch)
-        min_screw = min(float(np.linalg.norm(np.asarray(p) - o)) for p in
-                        self.screw_points(hub))
-        screws_alone = min_screw < hub_r + sk.head_d / 2 + ctx.params.margin
+        body_layers = math.ceil((self.motor.length + self.slider_t(ctx)) / ctx.pitch)
         nuts = self.transmission.nuts
-        reach_z = self.motor.shaft_len - self.motor.boss_h   # the shaft past the plate's face
         plate_t = ctx.sheet_t("frame")
+        # the shaft from the motor's face: through the slider and the plate into the stack
+        reach_z = self.motor.shaft_len - self.slider_t(ctx) - plate_t
+        n_hub, hub_r_m = self.transmission.motor_hub(ctx)
         s = hub.side
 
         def lay_z(L: Layout, j: int) -> tuple[float, float]:
@@ -285,10 +390,10 @@ class DriveGroup(Group):
             return (z0, z0 + L.pitch)
 
         def plate_face(L: Layout) -> float:
-            """The motor's face: the outer plate's bottom, or the inner plate's top."""
+            """The plate's face toward the stack (the shaft's start inside)."""
             if hub.down:
-                return L.z(0)[0] if L.final else 0.0
-            return L.z(L.top)[1] if L.final else plate_t + (L.top - 1) * L.pitch + plate_t
+                return L.z(0)[1] if L.final else plate_t
+            return L.z(L.top)[0] if L.final else plate_t + (L.top - 1) * L.pitch
 
         def make(L: Layout) -> list[Placed]:
             k = L.layers[self.link]
@@ -296,22 +401,16 @@ class DriveGroup(Group):
             far = hub_layers[-1]                         # the hub's layer nearest the plate
             plate = 0 if hub.down else L.top
             screw_layer = plate - s                      # the layer over (under) the plate
-            free = (far - screw_layer) * -s              # layers between hub and screws
-            if free < (1 if screws_alone else 0):
+            room = (far - plate) * -s - 1        # the layers between the hub and the plate
+            if room < max(1, n_hub):             # (the thrust ring and any bolt heads: one)
                 raise Unbuildable(f"{g}: its hub's {hub.below} layers "
                                   f"{'under' if hub.down else 'over'} {self.link} (layer {k}) "
-                                  "don't fit before the plate"
-                                  + (" and the motor's screw layer" if screws_alone else ""))
-            n_hub = self._motor_hub(ctx)[0]
-            near = hub_layers[0] - s * n_hub             # the shaft's far end: the hub's top
-            if not 0 < near < L.top:
-                raise Unbuildable(f"{g}: its motor pulley's hub has no room past the hub")
-            if L.final:
-                span = (L.z(near)[1] - L.z(0)[1] if hub.down
-                        else L.z(L.top)[0] - L.z(near)[0])
-            else:
-                span = abs(plate - near) * L.pitch
-            if span > reach_z + 1e-6:
+                                  f"leave {room} before the plate; it needs "
+                                  f"{max(1, n_hub)} (the axle's thrust ring, the motor "
+                                  "pulley's hub)")
+            near = hub_layers[0]                         # the shaft's far end: the hub's top
+            end = lay_z(L, near)[1] if hub.down else lay_z(L, near)[0]
+            if abs(end - plate_face(L)) > reach_z + 1e-6:
                 raise Unbuildable(f"{g}: the motor's {self.motor.shaft_len:g} mm shaft doesn't "
                                   f"reach the hub beside {self.link} in layer {k}")
             out: list[Placed] = []
@@ -320,48 +419,61 @@ class DriveGroup(Group):
                 out.append(Placed(j, Disc(mname, side_r), g, f"{g} motor side"))
                 out += [Placed(j, Pill(a, b, max(ra, rb_)), g, f"{g} span")
                         for (a, ra), (b, rb_) in itertools.pairwise(hull_pts)]
-            out += [Placed(j, Disc(mname, shaft_r), g, f"{g} shaft")     # the motor's shaft
-                    for j in range(far + s, plate, s)]
-            n_hub, hub_r_m = self._motor_hub(ctx)        # its pulley's hub, toward the link
-            for i in range(1, n_hub + 1):
-                j = hub_layers[0] - s * i
-                if not 0 < j < L.top:
-                    raise Unbuildable(f"{g}: its motor pulley's hub has no room past the hub")
-                out.append(Placed(j, Disc(mname, hub_r_m), g, f"{g} pulley hub"))
-            # its tip past the hub (a stock shaft is longer than the stack needs): the
-            # layers it pokes into, up to the shaft's end
-            tip = plate_face(L) - s * self.motor.shaft_len
+            for j in range(far + s, plate, s):           # the shaft, in its pulley's hub first
+                r = hub_r_m if (j - far) * s <= n_hub else shaft_r
+                out.append(Placed(j, Disc(mname, max(r, shaft_r)), g, f"{g} shaft"))
+            tip = plate_face(L) + (-s) * reach_z         # an uncut shaft's tip, its layers
             j = hub_layers[0] - s
             while not self.cut_shaft and 0 < j < L.top and (
                     lay_z(L, j)[0] < tip - 1e-6 if hub.down else lay_z(L, j)[1] > tip + 1e-6):
                 out.append(Placed(j, Disc(mname, shaft_r), g, f"{g} shaft tip"))
                 j -= s
-            out += [Placed(plate, Disc(sc, SCREW_HOLE / 2), g, f"{g} screw shank", seat=True)
-                    for sc in screws]
-            out += [Placed(k, Disc(b, SCREW_HOLE / 2), g, f"{g} bolt", seat=True)
-                    for b in bolts]
-            out += [Placed(screw_layer, Disc(sc, sk.head_d / 2), g, f"{g} motor screw")
-                    for sc in screws]
+            if tensioned:   # the clamp screws' tips through the plate; the window's heads
+                out += [Placed(screw_layer, Disc(c, 1.6), g, f"{g} clamp tip")
+                        for c in inside]
+                out += [Placed(plate, Disc(c, SCREW_HOLE / 2), g, f"{g} clamp", seat=True)
+                        for c in inside]
+                out += [Placed(plate, Disc(h, sk.head_d / 2), g, f"{g} screw head", seat=True)
+                        for h in heads]
+            else:
+                out += [Placed(screw_layer, Disc(sc, sk.head_d / 2), g, f"{g} motor screw")
+                        for sc in inside]
+                out += [Placed(plate, Disc(sc, SCREW_HOLE / 2), g, f"{g} screw shank",
+                               seat=True) for sc in inside]
             out.append(Placed(plate, Disc(mname, self.motor.boss_d / 2), g, f"{g} boss",
                               seat=True))
             out += [Placed(plate + s * (1 + i), Pill(f"{g}.body_a", f"{g}.body_b", hub.motor_r),
                            g, f"{g} motor") for i in range(body_layers)]
-            out += [Placed(k - s, Disc(b, sk.head_d / 2), g, f"{g} bolt head") for b in bolts]
-            if nuts:            # the nut, and the bolt's tip past it (a stock length)
-                if not 0 < far + 2 * s < L.top:
-                    raise Unbuildable(f"{g}: the nuts on its hub's bolts and their tips need two "
-                                      f"layers beyond the hub, before the plate")
-                out += [Placed(j, Disc(b, 3.2), g, f"{g} nut") for b in bolts
-                        for j in (far + s, far + 2 * s)]
+            out += [Placed(k, Disc(b, SCREW_HOLE / 2), g, f"{g} bolt", seat=True)
+                    for b in bolts]
+            if nuts:            # heads on the hub's far face; nuts and tips past the link
+                out += [Placed(far + s, Disc(b, sk.head_d / 2), g, f"{g} bolt head")
+                        for b in bolts]
+                past = self._bolt_past(ctx, L.pitch)
+                beyond = [k - s * i for i in range(1, past + 1)]
+                if not all(0 < j < L.top for j in beyond):
+                    raise Unbuildable(f"{g}: the nuts on its hub's bolts and their tips need "
+                                      f"{past} layers past {self.link}")
+                out += [Placed(j, Disc(b, 3.2), g, f"{g} nut") for b in bolts for j in beyond]
+            else:               # heads on the link's far face, threaded into the hub
+                out += [Placed(k - s, Disc(b, sk.head_d / 2), g, f"{g} bolt head")
+                        for b in bolts]
             return out
 
         return [Claim(g, frozenset({self.link}), make)]
 
-    def _motor_hub(self, ctx: Context) -> tuple[int, float]:
-        """The layers the motor's pulley's hub takes past the hub's layers, toward the link
-        (away from the plate: the motor's boss is in the plate), and its radius."""
-        fn = getattr(self.transmission, "motor_hub", None)
-        return fn(ctx) if fn is not None else (0, 0.0)
+    def _bolt_length(self, ctx: Context, link_t: float, hub_t: float) -> float:
+        """The hub's bolts' stock length: through the link and the hub, and a nut beyond
+        it; or 6 mm into the hub's tapped holes."""
+        sk = screw("bhcs", "3")
+        need = link_t + (hub_t + 2.4 if self.transmission.nuts else 6.0)
+        return float(next((L for L in sk.lengths if need - 1e-6 <= L), sk.lengths[-1]))
+
+    def _bolt_past(self, ctx: Context, pitch: float) -> int:
+        """The layers a nutted bolt (its nut, its tip) takes past the hub."""
+        hub_t = self.transmission.layers(ctx, self.hub(ctx).travel_deg) * pitch
+        blen = self._bolt_length(ctx, pitch, hub_t)
+        return max(1, math.ceil((blen - pitch - hub_t) / pitch - 1e-9))
 
     # -- parts ---------------------------------------------------------------------
 
@@ -374,51 +486,52 @@ class DriveGroup(Group):
         frame = build.plan.topo.frame_bodies[0]
         m = np.asarray(hub.motor)
         mo = self.motor
+        plate = 0 if hub.down else build.top
         plate_key = FRAME_OUTER if hub.down else FRAME_INNER
+        p0, p1 = build.z(plate)
+        st = self.slider_t(ctx)
+        outer_face = p0 if hub.down else p1           # the plate's face away from the stack
+        inner_face = p1 if hub.down else p0
+        sgn = -1.0 if hub.down else 1.0               # outward, away from the stack
+        face = outer_face + sgn * st                  # the motor's face
         shaft = self.shaft_length(build, hub, layers)
-        if hub.down:
-            face = build.z(0)[0]                   # the motor's face against the plate
-            body = union([
-                box(tuple(m), (mo.frame, mo.frame, mo.length), face - mo.length, hub.angle),
-                disc(tuple(m), mo.boss_d / 2 - 0.2, face, face + mo.boss_h),
-                disc(tuple(m), mo.shaft_d / 2 - 0.05, face, face + shaft)])
-            inside = build.z(0)[1]                 # the screws' heads on the plate's top
-        else:
-            face = build.z(build.top)[1]
-            body = union([
-                box(tuple(m), (mo.frame, mo.frame, mo.length), face, hub.angle),
-                disc(tuple(m), mo.boss_d / 2 - 0.2, face - mo.boss_h, face),
-                disc(tuple(m), mo.shaft_d / 2 - 0.05, face - shaft, face)])
-            inside = build.z(build.top)[0]
+        body = union([
+            box(tuple(m), (mo.frame, mo.frame, mo.length),
+                face - mo.length if hub.down else face, hub.angle),
+            disc(tuple(m), mo.boss_d / 2 - 0.2, *sorted((face, face - sgn * mo.boss_h))),
+            disc(tuple(m), mo.shaft_d / 2 - 0.05, *sorted((face, face - sgn * shaft)))])
         stem = self.name.replace(":", "_")
         out.bodies.append(hardware(f"{stem}_motor", body, frame, fab="purchased",
                                    bom_key=mo.bom_key, color=MOTOR_COLOR))
         sk = screw("bhcs", "3")
-        length = _screw_length(sk, build.ctx.sheet_t("frame") + mo.hole_depth - 0.5)
-        slot = self.transmission.key == "belt"
-        for i, xy in enumerate(self.screw_points(hub)):
-            out.bodies.append(hardware(f"{stem}_motor_screw{i}", screw_solid(
-                xy, sk, inside, length, up=not hub.down), frame, fab="purchased",
-                bom_key=sk.key(length), color=STEEL))
-            out.cut(plate_key, Rect(xy, (SCREW_HOLE + 2 * TENSION, SCREW_HOLE), hub.angle)
-                    if slot else Cut(xy, SCREW_HOLE))
-        boss = mo.boss_d + 0.4
-        out.cut(plate_key, Rect(tuple(m), (boss + 2 * TENSION, boss), hub.angle)
-                if slot else Cut(tuple(m), boss))
         o = build.xy(hub.axis)
-        out.pad(plate_key, tuple(o), tuple(m), mo.frame / 2 + 2.0)
-        # the hub's bolts, at this pose, through the link (heads on its face away from the
-        # hub), into the hub's tapped holes or through it to nuts
+        if self.transmission.tensioned:
+            self._slider(build, hub, out, frame, plate_key, outer_face, sgn, st, stem)
+        else:
+            length = screw_length(sk, ctx.sheet_t("frame"), mo.hole_depth)
+            for i, xy in enumerate(self.screw_points(hub)):
+                out.bodies.append(hardware(f"{stem}_motor_screw{i}", screw_solid(
+                    xy, sk, inner_face, length, up=not hub.down), frame, fab="purchased",
+                    bom_key=sk.key(length), color=STEEL))
+                out.cut(plate_key, Cut(xy, SCREW_HOLE))
+            out.cut(plate_key, Cut(tuple(m), mo.boss_d + 0.4))
+            out.pad(plate_key, tuple(o), tuple(m), self.motor.hole_square / math.sqrt(2)
+                    + SCREW_HOLE / 2 + PAD_EDGE + 1.0)
+        # the hub's bolts, at this pose, through the link's pad (heads on its face away from
+        # the hub), into the hub's tapped holes or through it to nuts
         other = build.xy(self._other(ctx))
         zl0, zl1 = build.z(k)
-        head_z = zl1 if hub.down else zl0
         hub_t = build.z(layers[-1])[1] - build.z(layers[0])[0]
-        blen = _screw_length(sk, (zl1 - zl0) + (hub_t + 2.0 if self.transmission.nuts
-                                                else 6.0))
-        for i, p in enumerate(self.bolt_points(np.asarray(o), np.asarray(other))):
+        blen = self._bolt_length(ctx, zl1 - zl0, hub_t)
+        if self.transmission.nuts:     # from the hub's far face, through it and the link
+            head_z = build.z(min(layers))[0] if hub.down else build.z(max(layers))[1]
+            up = hub.down
+        else:                          # from the link's far face into the hub
+            head_z, up = (zl1 if hub.down else zl0), not hub.down
+        for i, p in enumerate(self.bolt_points(np.asarray(o), np.asarray(other), hub)):
             xy = tuple(p[0])
             out.bodies.append(hardware(f"{stem}_bolt{i}", screw_solid(
-                xy, sk, head_z, blen, up=not hub.down), self.link, fab="purchased",
+                xy, sk, head_z, blen, up=up), self.link, fab="purchased",
                 bom_key=sk.key(blen), color=STEEL))
             out.cut(self.link, Cut(xy, SCREW_HOLE))
         if self.transmission.nuts:
@@ -430,19 +543,62 @@ class DriveGroup(Group):
             "motor": mo.key, "ratio": round(hub.ratio, 4), "layers": layers,
             "side": "outer" if hub.down else "inner",
             "motor_xy": [round(v, 3) for v in hub.motor],
-            "angle_deg": round(math.degrees(hub.angle), 2)}
+            "angle_deg": round(math.degrees(hub.angle), 2), "shaft_mm": shaft,
+            "tensioned": self.transmission.tensioned}
         return out
 
+    def _slider(self, build: Build, hub: DriveHub, out: Realized, frame: str, plate_key: str,
+                outer_face: float, sgn: float, st: float, stem: str) -> None:
+        """The motor on a slider plate outside its frame plate: the motor's screws through
+        the slider (their heads in a window cut in the frame plate), the slider clamped to
+        the plate by two screws from outside into tapped holes, slotted along the drive
+        (the belt's tension, set any time from outside)."""
+        ctx = build.ctx
+        mo = self.motor
+        sk = screw("bhcs", "3")
+        m = np.asarray(hub.motor)
+        _, v = self._uv(hub)
+        a = mo.frame / 2                                # the stadium's half length across
+        r = self._outside_r() - TENSION
+        z0, z1 = sorted((outer_face, outer_face + sgn * st))
+        holes: list[Cut | Rect] = [Cut(tuple(m), mo.boss_d + 0.4)]
+        holes += [Cut(xy, SCREW_HOLE) for xy in self.screw_points(hub)]
+        holes += [Rect(c, (SCREW_HOLE + 2 * TENSION, SCREW_HOLE), hub.angle)
+                  for c in self.clamp_points(hub)]
+        slider = cut_holes(pill(tuple(m - a * v), tuple(m + a * v), r, z0, z1), holes, z0, z1)
+        out.bodies.append(hardware(f"{stem}_slider", slider, frame, fab="laser",
+                                   color=SLIDER_COLOR, sheet=ctx.sheet("frame")))
+        length = screw_length(sk, st, mo.hole_depth)
+        for i, xy in enumerate(self.screw_points(hub)):  # heads in the plate's window
+            out.bodies.append(hardware(f"{stem}_motor_screw{i}", screw_solid(
+                xy, sk, outer_face, length, up=not hub.down), frame, fab="purchased",
+                bom_key=sk.key(length), color=STEEL))
+        clamp = next(L for L in sk.lengths if st + ctx.sheet_t("frame") - 1e-6 <= L)
+        for i, xy in enumerate(self.clamp_points(hub)):
+            out.bodies.append(hardware(f"{stem}_clamp{i}", screw_solid(
+                xy, sk, outer_face + sgn * st, clamp, up=hub.down), frame, fab="purchased",
+                bom_key=sk.key(clamp), color=STEEL))
+            out.cut(plate_key, Cut(xy, TAP_HOLE))
+        w = 2 * self.window_half()
+        out.cut(plate_key, Rect(tuple(m), (w + 2 * TENSION, w), hub.angle))
+        # the pad, run past the motor so its round end clears the window's far corners by
+        # PAD_EDGE and holds the clamp screws' tapped holes
+        r = self.clamp_offset() + TAP_HOLE / 2 + PAD_EDGE + 1.0
+        half = w / 2 + TENSION                       # the window's half length along u
+        e = max(0.0, half - math.sqrt(max((r - PAD_EDGE) ** 2 - (w / 2) ** 2, 0.0)))
+        u, _ = self._uv(hub)
+        out.pad(plate_key, tuple(build.xy(hub.axis)), tuple(m + (e + 1.0) * u), r)
+
     def shaft_length(self, build: Build, hub: DriveHub, layers: list[int]) -> float:
-        """The motor's shaft from its face: cut to the hub's far face less 0.5 mm
+        """The motor's shaft from its face: cut to the motor pulley's far end less 0.5 mm
         (``cut_shaft``), else the stock length."""
         if not self.cut_shaft:
             return self.motor.shaft_len
-        n_hub, _ = self._motor_hub(build.ctx)
+        st = self.slider_t(build.ctx)
         if hub.down:
-            need = build.z(max(layers) + n_hub)[1] - build.z(0)[0]
+            need = build.z(max(layers))[1] - (build.z(0)[0] - st)
         else:
-            need = build.z(build.top)[1] - build.z(min(layers) - n_hub)[0]
+            need = (build.z(build.top)[1] + st) - build.z(min(layers))[0]
         return min(self.motor.shaft_len, round(need - 0.5, 1))
 
     def error_terms(self, ctx: Context, got: Realized | None = None) -> ErrorTerms:
@@ -451,12 +607,13 @@ class DriveGroup(Group):
         return self.transmission.error_terms(ctx, hub) + self.motor.error_terms(hub.ratio)
 
     def assembly(self, view) -> list:
-        """The motor on its plate (its screws from the leg side, its pulley or capstan on
-        its shaft), the hub's parts with the driven link, the transmission's own step."""
+        """The motor on its plate (on a slider outside it, a tensioned drive's), the hub's
+        parts with the driven link, the transmission's own step."""
         from spiderpig.construction.assembly import STACK, UNIT, Op, whole
 
         stem = self.name.replace(":", "_")
-        motor = [n for n in view.z if n.startswith(f"{stem}_motor")]
+        motor = [n for n in view.z if n.startswith((f"{stem}_motor", f"{stem}_slider",
+                                                    f"{stem}_clamp"))]
         hub_parts = [n for n in view.z if n.startswith(f"{stem}_") and n not in motor]
         if not motor:
             return []
@@ -465,14 +622,19 @@ class DriveGroup(Group):
         cut = ""
         if self.cut_shaft and view.z.get(f"{stem}_motor"):
             z0, z1 = view.z[f"{stem}_motor"]
-            shaft = round((z1 - z0) - self.motor.length, 1)   # the body's span less the box
+            shaft = round((z1 - z0) - self.motor.length, 1)
             if shaft < self.motor.shaft_len - 0.05:
-                cut = (f" Cut its shaft to {shaft:g} mm from the face (from "
+                cut = (f" Cut its shaft to {shaft:g} mm from its face (from "
                        f"{self.motor.shaft_len:g}): it must not pass its pulley's hub; file "
                        "the flat back to the cut.")
-        text = (f"Bolt the {self.motor.name} {where} (its screws from the leg side"
-                + ("; slots: leave them loose to tension the belt" if
-                   self.transmission.key == "belt" else "") + ")." + cut)
+        if self.transmission.tensioned:
+            text = (f"Screw the {self.motor.name} to its slider plate (four screws from the "
+                    f"slider's plain face), then clamp the slider {where} with its two "
+                    "screws from outside into the plate's tapped holes (tap them M3 first), "
+                    "loose: the belt is tensioned from outside once it is on." + cut)
+        else:
+            text = (f"Bolt the {self.motor.name} {where} (its screws from the leg side)."
+                    + cut)
         ops = [Op(STACK, (-1, 1), whole(*sorted(motor)), f"Motor for {self.input}", text,
                   "motor") if hub.down else
                Op(UNIT, (1,), whole(*sorted(motor)), f"Motor for {self.input}", text, "motor")]
@@ -482,7 +644,3 @@ class DriveGroup(Group):
                           f"Drive for {self.input}",
                           self.transmission.assembly_text(hub), "drive"))
         return ops
-
-
-def _screw_length(sk, need: float) -> float:
-    return next((L for L in sk.lengths if need - 1e-6 <= L), sk.lengths[-1])

@@ -35,7 +35,9 @@ class ErrorTerms:
     plane. ``axial_play_mm``: end float along the axis. ``tilt_deg``: how far the joint's
     axis can tilt out of square (a link wobbling on its pin). ``backlash_deg``: lost motion
     about the axis (a gear train's backlash, a servo's deadband). ``resolution_deg``: the
-    smallest step the joint can be commanded by. ``stiffness_nm_per_rad``: torsional
+    smallest step the joint can be commanded by. ``accuracy_deg``: a systematic error about
+    the axis, the same every time (a stepper's microstep off its place): it calibrates out.
+    ``stiffness_nm_per_rad``: torsional
     stiffness about the axis (a belt, a cable, a stepper's holding stiffness, all seen at
     the joint). ``radial_stiffness_n_per_mm``: stiffness across it. ``source``: the
     construction and the basis of the numbers.
@@ -46,6 +48,7 @@ class ErrorTerms:
     tilt_deg: float = 0.0
     backlash_deg: float = 0.0
     resolution_deg: float = 0.0
+    accuracy_deg: float = 0.0
     stiffness_nm_per_rad: float = math.inf
     radial_stiffness_n_per_mm: float = math.inf
     source: str = ""
@@ -67,6 +70,7 @@ class ErrorTerms:
             tilt_deg=self.tilt_deg + other.tilt_deg,
             backlash_deg=self.backlash_deg + other.backlash_deg,
             resolution_deg=max(self.resolution_deg, other.resolution_deg),
+            accuracy_deg=self.accuracy_deg + other.accuracy_deg,
             stiffness_nm_per_rad=series(self.stiffness_nm_per_rad, other.stiffness_nm_per_rad),
             radial_stiffness_n_per_mm=series(self.radial_stiffness_n_per_mm,
                                              other.radial_stiffness_n_per_mm),
@@ -82,7 +86,8 @@ class ErrorTerms:
 
     def as_dict(self) -> dict:
         d = {k: getattr(self, k) for k in ("radial_play_mm", "axial_play_mm", "tilt_deg",
-                                           "backlash_deg", "resolution_deg")}
+                                           "backlash_deg", "resolution_deg",
+                                           "accuracy_deg")}
         for k in ("stiffness_nm_per_rad", "radial_stiffness_n_per_mm"):
             v = getattr(self, k)
             d[k] = None if math.isinf(v) else v

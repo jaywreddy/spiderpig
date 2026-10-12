@@ -460,13 +460,21 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 
 - **What:** every arm input a NEMA 17 stepper and a transmission, swappable per drive:
   `belt` (GT2 16:80, 5:1, the default: the user's "start with the belt") and `capstan`
-  (1 mm Dyneema on the motor's bare shaft and a 30 mm laser-cut drum, 10:1). The drives on
-  one pivot alternate plates; the motors' shafts are cut to their hubs.
+  (1 mm Dyneema on a 6 mm sleeve over the motor's shaft and a 30 mm laser-cut drum, 8.7:1).
+  The drives on one pivot alternate plates; the motors' shafts are cut to their hubs; a
+  belt's motor stands on a slider plate outside its frame plate, clamped from outside, so
+  the belt is tensioned once the stack is built (the motor's own screws are inside the
+  stack, out of reach); every hub bolts to a pad its driven link grows round the pivot.
 - **Why:** two drives on the palletizer's shoulder each take three or four layers beside
   their link, and a stock 24 mm shaft reaches only seven layers from its plate: on one
   plate they can't both fit (one's bolt heads meet the other's pulley). An uncut shaft's
   tip would claim the layers past its pulley (five more on the palletizer). The capstan's
   drum is bounded by the levelling pillar 40 mm from the shoulder.
+- **Open (the phase's review, deferred):** `place_motor` sees the pillar heads and the
+  other motors, not the links' sweeps, and has no fallback past its angle list; the joints'
+  thrust friction is not in the torque budget; no coaxial reduction (planetary,
+  strain-wave) yet; the GT2 belt's working tension is not checked against its rating. The
+  belt's span stiffness and the cord's EA are unverified figures (measure on the build).
 - **Where:** `spiderpig/construction/transmissions/`, `spiderpig/actuators/`,
   `spiderpig/hardware/motion_catalog.py`, the roles `transmission` and `actuator`.
 

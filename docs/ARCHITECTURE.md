@@ -1341,9 +1341,12 @@ robot is an entry rather than an edit across the stages:
 - **Drives for an arm** (`construction/transmissions/`, `spiderpig/actuators/`): each
   input a stepper (role `actuator`) and a transmission (role `transmission`, per drive:
   `transmission@q3=capstan`): a GT2 belt (5:1, `belt`) or a Dyneema cord capstan on the
-  motor's shaft (10:1, no backlash, `capstan`). The hub's parts stand in the layers beside
+  motor's shaft (8.7:1 on a 6 mm sleeve, no backlash, `capstan`); a belt's motor on a
+  slider plate outside its frame plate, tensioned from outside. The hub's parts stand in
+  the layers beside
   the driven link, coaxial with its pivot, whose axle then claims only a seat inside them
-  (`nested`: `DriveHub`); the drives on one pivot alternate plates (the first's motor under
+  (`nested`: `DriveHub`), the link growing a pad round the pivot for the hub's bolts
+  (`plates.hub_pads`); the drives on one pivot alternate plates (the first's motor under
   the outer plate, the next's on the inner) so their hubs and shafts don't meet. Motors
   are placed before planning, clear of the frame's pillar heads; their shafts are cut to
   the hub by default. Their error terms (the belt's or cord's stretch, the teeth's

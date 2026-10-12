@@ -40,9 +40,8 @@ def test_a_stepper_seen_through_a_reduction():
     m = actuators.get("nema17_17hs4401")
     assert m.holding_stiffness_nm_per_rad == pytest.approx(0.40 * 50)
     t = m.error_terms(5.0)
-    # 1/16 of a 1.8 deg step (0.1125) beats the +-5 % a microstep's place is (0.09): the
-    # coarser of the two, through 5:1
-    assert t.resolution_deg == pytest.approx(1.8 / 16 / 5)
+    assert t.resolution_deg == pytest.approx(1.8 / 16 / 5)        # a microstep, through 5:1
+    assert t.accuracy_deg == pytest.approx(0.05 * 1.8 / 5)        # its place: systematic
     assert t.stiffness_nm_per_rad == pytest.approx(20.0 * 25)
     assert actuators.DEFAULT in actuators.available()
     with pytest.raises(KeyError, match="unknown stepper"):
@@ -65,8 +64,8 @@ def test_a_gt2_loop_sits_at_its_centre_distance():
 @pytest.mark.no_fabricate
 def test_a_capstans_ratio_is_its_radii():
     c = CapstanDrive()
-    assert c.ratio(None) == pytest.approx((30 + 0.5) / (2.5 + 0.5))   # the bare 5 mm shaft
-    assert c.distances(None, None) == [(30 + 2.5 + 1.0, None)]
+    assert c.ratio(None) == pytest.approx((30 + 0.5) / (3 + 0.5))     # the 6 mm sleeve
+    assert c.distances(None, None) == [(30 + 3 + 1.0, None)]
 
 
 @pytest.mark.no_fabricate
@@ -117,7 +116,8 @@ def test_the_drives_error_terms_are_the_belts_and_the_motors(belt):
     _, design = belt
     g = next(g for g in design.groups if isinstance(g, DriveGroup))
     t = g.error_terms(design.ctx)
-    assert t.backlash_deg > 0                                # the teeth's clearance
+    big = BeltDrive().big["pitch_d"] / 2
+    assert t.backlash_deg == pytest.approx(math.degrees(2 * 0.02 / big))   # both meshes
     assert t.resolution_deg == pytest.approx(1.8 / 16 / 5)
     assert t.stiffness_nm_per_rad > 0
     assert t.stiffness_nm_per_rad < 0.40 * 50 * 25           # the belt in series: softer
@@ -154,6 +154,7 @@ def test_the_guide_mounts_each_motor_and_its_drive(belt):
     assert "Cut its shaft to" in text
     assert "over its link" in text
     assert "under its link" in text
+    assert "slider" in text                                  # tensioned from outside
 
 
 @pytest.mark.slow
@@ -180,3 +181,78 @@ def test_the_drives_join_the_precision_budget():
     assert belt_r.repeatability_mm == pytest.approx(
         belt_r.plays.worst_mm + sum(b.backlash_mm for b in belt_r.inputs.values()))
     assert not any("no transmission" in n for n in belt_r.notes)
+
+
+THREADED = (("_bolt", "_pulley_large"), ("_motor_screw", "_motor"), ("_clamp", "torso"),
+            ("_clamp", "frame_outer"))
+"""Pairs that meet by design: a screw in the tapped hole it threads into (a stock part's
+model has no threads)."""
+
+
+def _clashes(fab) -> list[tuple[str, str, float]]:
+    from tests._construction import overlapping_pairs
+
+    parts = {b.name: b.placed_part() for b in fab.bodies if b.part is not None}
+    out = []
+    for a, b in overlapping_pairs(parts):
+        if any((x in a and y in b) or (x in b and y in a) for x, y in THREADED):
+            continue
+        inter = parts[a] & parts[b]
+        vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
+        if vol > 1e-3:
+            out.append((a, b, round(vol, 3)))
+    return out
+
+
+def _material_round(part, xy, r_in: float, r_out: float) -> float:
+    """The fraction of a ring round ``xy`` (in ``part``'s z) that ``part`` fills."""
+    from build123d import Cylinder, Pos
+
+    bb = part.bounding_box()
+    ring = (Cylinder(r_out, bb.size.Z).move(Pos(xy[0], xy[1], bb.center().Z))
+            - Cylinder(r_in, bb.size.Z).move(Pos(xy[0], xy[1], bb.center().Z)))
+    got = part & ring
+    return (0.0 if got is None else sum(s.volume for s in got.solids())) / ring.volume
+
+
+@pytest.mark.slow
+def test_the_belt_arms_parts_meet_only_where_they_thread():
+    """What the contract can't see (a group's own parts against each other): the belt,
+    its pulleys, the motor, the slider, the screws; and the link's pad round every hub bolt,
+    the plate round every hole the motor's mount cuts."""
+    fab = cache.cached_side(_arm(), 1.0)
+    assert _clashes(fab) == []
+    bodies = {b.name: b for b in fab.bodies}
+    for b in fab.bodies:
+        if "_bolt" in b.name:
+            c = b.placed_part().bounding_box().center()
+            assert _material_round(bodies[b.rigid_with].placed_part(), (c.X, c.Y), 1.8,
+                                   3.5) == pytest.approx(1.0, abs=0.01), b.name
+        if "_clamp" in b.name:
+            c = b.placed_part().bounding_box().center()
+            plate = "frame_outer" if "q2" in b.name else "torso"
+            assert _material_round(bodies[plate].placed_part(), (c.X, c.Y), 1.3,
+                                   3.0) == pytest.approx(1.0, abs=0.01), b.name
+
+
+@pytest.mark.slow
+def test_the_capstan_arms_parts_meet_only_where_they_thread_and_its_drum_holds():
+    cfg = _arm(roles=(("transmission", "capstan"),))
+    fab = cache.cached_side(cfg, 1.0)
+    assert _clashes(fab) == []
+    # the drum's plates are the same parts whatever the pose (its notches in the link's
+    # frame): their areas match at two angles
+    other = cache.cached_side(cfg, 3.0)
+    area = {b.name: b.part.volume for b in fab.bodies if "_drum" in b.name}
+    assert area == {b.name: pytest.approx(b.part.volume, rel=1e-6)
+                    for b in other.bodies if "_drum" in b.name}
+    # the core holds the wraps and their walk over the input's travel
+    from spiderpig.construction.transmissions.capstan import CORD_PITCH, WRAPS
+
+    _, design = cache.cached_design(cfg)
+    g = next(g for g in design.groups if isinstance(g, DriveGroup))
+    hub = g.hub(design.ctx)
+    core = hub.below - 2
+    walk = hub.travel_deg / 360 * hub.ratio
+    assert core * design.ctx.pitch >= (WRAPS + walk) * CORD_PITCH
+

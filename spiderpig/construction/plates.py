@@ -141,6 +141,13 @@ def foot_links(topo, lk) -> list[tuple[str, str, str]]:
 RIDER_BOSS_T = 1.0      # a metal link keeps this many x its thickness round its crank bore
 
 
+def hub_pads(ctx: Context) -> dict[str, tuple[str, float]]:
+    """Per link a drive turns (an arm's: :class:`construction.transmissions.DriveHub`, its
+    ``pad_r``): the pad it grows round its pivot, wide enough for the hub's bolts."""
+    return {h.link: (h.axis, float(h.pad_r)) for h in ctx.interfaces.values()
+            if getattr(h, "pad_r", 0.0) and getattr(h, "link", None)}
+
+
 def rider_bosses(ctx: Context) -> dict[str, tuple[str, float]]:
     """Per aluminium link riding a crankpin: (the crankpin, the radius of the boss its end
     grows round the bore), where the link's own width leaves less than ``RIDER_BOSS_T`` x
@@ -175,6 +182,7 @@ class LinkPlates(Group):
     def claims(self, ctx: Context) -> list[Claim]:
         r = ctx.params.link_radius
         bosses = rider_bosses(ctx)
+        pads = hub_pads(ctx)
 
         feet = {name: foot for name, foot, _ in foot_links(ctx.topo, ctx.config.lk)} \
             if hasattr(ctx.config, "lk") else {}
@@ -185,6 +193,9 @@ class LinkPlates(Group):
                 if link in bosses:      # its end grown round the crank bore
                     at, rb = bosses[link]
                     out.append(Placed(L.layers[link], Disc(at, rb), link, f"{link} boss"))
+                if link in pads:        # its pad round the pivot for a drive's hub bolts
+                    at, rp = pads[link]
+                    out.append(Placed(L.layers[link], Disc(at, rp), link, f"{link} hub pad"))
                 if link in feet:        # its TPU sock round the toe, in its own layer
                     out.append(Placed(L.layers[link], Disc(feet[link], r + SOCK_REACH), link,
                                       f"{link} sock"))
@@ -216,6 +227,7 @@ class LinkPlates(Group):
         r = build.ctx.params.link_radius
         ctx = build.ctx
         bosses = rider_bosses(ctx)
+        pads = hub_pads(ctx)
         feet = {name: (foot, other) for name, foot, other in
                 (foot_links(build.plan.topo, ctx.config.lk) if hasattr(ctx.config, "lk")
                  else ())}
@@ -231,9 +243,10 @@ class LinkPlates(Group):
                                            color=SOCK_COLOR))
                 out.notes.setdefault("feet", {})[name] = {
                     "sock": "TPU 95A", "wall_mm": SOCK_T, "point": feet[name][0]}
-            boss = bosses.get(name)
+            discs = [(build.xy(t[0]), t[1]) for t in (bosses.get(name), pads.get(name))
+                     if t is not None]
             part = plate([(build.xy(a), build.xy(b), r) for a, b in segs], z0, z1, cuts,
-                         discs=[(build.xy(boss[0]), boss[1])] if boss else ())
+                         discs=discs)
             out.bodies.append(hardware(name, part, name, fab="laser",
                                        sheet=ctx.sheet("link", name)))
         return out
