@@ -44,6 +44,8 @@ def verify_plan(plan: StackPlan, tmpl=None, samples: int = 2880, tol: float = 1e
                                      lateral=topo.geometry.lateral)
         for name, (r, ang) in plan.topo.crank_points.items():
             topo.add_crank_point(name, r, ang)
+        for name, (about, toward, off, lat) in plan.topo.link_points.items():
+            topo.add_link_point(name, about, toward, off, lat)
     geo, sp, layout = topo.geometry, plan.spec, plan.layout
     bad: list[str] = []
     made_: list[Placed] = []

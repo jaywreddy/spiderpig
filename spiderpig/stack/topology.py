@@ -173,6 +173,11 @@ class Topology:
     frame_bodies: tuple[str, ...] = ()
     crank_bodies: tuple[str, ...] = ()
     crank_points: dict[str, tuple[float, float]] = field(default_factory=dict)
+    # points a group fixed to a link (an arm's hub bolts): name -> (the point it turns
+    # about, the point that sets its direction, its (along, across) offset there, its
+    # lateral bound)
+    link_points: dict[str, tuple[str, str, tuple[float, float], float]] = field(
+        default_factory=dict)
 
     def axes_of(self, kind: AxisKind) -> list[Axis]:
         return [a for a in self.axes if a.kind == kind]
@@ -187,6 +192,22 @@ class Topology:
         xy = g["O"] + r * np.stack([np.cos(theta), np.sin(theta)], axis=-1)
         self.geometry = self.geometry.extend({name: xy})
         self.crank_points[name] = (r, angle_deg)
+        return name
+
+    def add_link_point(self, name: str, about: str, toward: str,
+                       offset: tuple[float, float], lateral: float = 0.0) -> str:
+        """A point fixed to a link, ``offset`` (along, across) from the point ``about`` in
+        the direction of ``toward``, added to the geometry with its ``lateral`` bound (an
+        arm's tour) and remembered (a re-sampled topology gets it too: ``verify_plan``)."""
+        g = self.geometry.points
+        o = np.asarray(g[about], dtype=float)
+        d = np.asarray(g[toward], dtype=float) - o
+        u = d / np.linalg.norm(d, axis=-1, keepdims=True)
+        v = np.stack([-u[..., 1], u[..., 0]], axis=-1)
+        xy = o + offset[0] * u + offset[1] * v
+        self.geometry = self.geometry.extend({name: xy}, lateral={name: lateral})
+        self.link_points[name] = (about, toward, (float(offset[0]), float(offset[1])),
+                                  float(lateral))
         return name
 
     @property
@@ -306,7 +327,7 @@ def _copy_of(base: Topology) -> Topology:
     """A topology of ``base``'s links, axes and points with its own geometry (own points,
     sharing the base's distance table for them) and its own crank points."""
     geo = Geometry(dict(base.geometry.points), shared=base.geometry)
-    return replace(base, geometry=geo, crank_points={})
+    return replace(base, geometry=geo, crank_points={}, link_points={})
 
 
 def _sample_topology(tmpl, samples: int) -> Topology:

@@ -181,8 +181,9 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | `spiderpig/mechanism.py` | `Body` / `Joint` / `Mechanism`; `MechanismTemplate` for batched sampling. Planar: z = 0 |
 | `spiderpig/stack/` | the layer planner: `geometry.py`, `topology.py`, `plan.py` (`StackSpec`, `StackPlan`), `search.py` (`StackProblem`), `plan_z.py` (`finalize`), `verify.py` |
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
-| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`), `plates.py`, `chassis.py`, `deck.py`, `robot.py`, `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
+| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`), `transmissions/` (an arm's drives: `belt.py`, `capstan.py`), `plates.py`, `chassis.py`, `deck.py`, `robot.py`, `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
+| `spiderpig/actuators/` | stepper motors for an arm's inputs (`StepperSpec`: holding stiffness, microsteps) |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass and material constants (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`), vendor CAD (`cad.py`) |
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
 | `spiderpig/roles.py`, `fabmethods.py` | the construction roles (`BuildConfig.roles`: every later kind of part) and the fab methods, as registries |

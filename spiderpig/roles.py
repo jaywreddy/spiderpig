@@ -140,3 +140,10 @@ register(Role("pin", "pin between links", "spiderpig.construction:AXLES",
 register(Role("crank", "crank", "spiderpig.construction:CRANKS", ("walker", "mechanism"),
               field="crank", default="spiderpig.config:config_crank",
               help="the crankshaft the drive turns: webs and crankpins"))
+register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSIONS",
+              ("arm",), default="belt", per="drive",
+              help="what turns each input's link from its motor: a GT2 belt (5:1), a cord "
+                   "capstan (about 10:1)"))
+register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
+              default="nema17_17hs4401", per="drive",
+              help="each input's stepper motor"))

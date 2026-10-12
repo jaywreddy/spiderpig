@@ -1338,6 +1338,17 @@ robot is an entry rather than an edit across the stages:
   each body on it an interface; worst case and root sum square); each input's lever says
   the resolution it needs; every hole's tolerance through the same gains, and the link
   sheet's expansion, are the accuracy rows. `--compare` runs the pivot options.
+- **Drives for an arm** (`construction/transmissions/`, `spiderpig/actuators/`): each
+  input a stepper (role `actuator`) and a transmission (role `transmission`, per drive:
+  `transmission@q3=capstan`): a GT2 belt (5:1, `belt`) or a Dyneema cord capstan on the
+  motor's shaft (10:1, no backlash, `capstan`). The hub's parts stand in the layers beside
+  the driven link, coaxial with its pivot, whose axle then claims only a seat inside them
+  (`nested`: `DriveHub`); the drives on one pivot alternate plates (the first's motor under
+  the outer plate, the next's on the inner) so their hubs and shafts don't meet. Motors
+  are placed before planning, clear of the frame's pillar heads; their shafts are cut to
+  the hub by default. Their error terms (the belt's or cord's stretch, the teeth's
+  backlash, the stepper's microstep and holding stiffness through the ratio) join the
+  precision budget per input.
 - **Ball-bearing pivots** (`construction/pivots/ball.py`): `ball` (pins) and `ball_pillar`
   (pillars) seat a shielded bearing in each link that turns on the axle (`AxleDims.seat`:
   the bore the bearing fills); their play is the bearing's, their models McMaster-Carr's

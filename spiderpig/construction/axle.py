@@ -133,10 +133,21 @@ class AxleGroup(Group):
                 room[n] = free
         ends = getattr(self.construction, "ends", None)
         link_t = {m: ctx.sheet_t("link", m) for m in members}
+        # a drive's hub coaxial with this axle (an arm's pulley or drum under the link it
+        # turns: construction.transmissions.DriveHub) takes the layers under that link: the
+        # axle only seats inside its bore there (no spacer ring)
+        hubs = [h for h in ctx.interfaces.values()
+                if getattr(h, "axis", None) == ax and getattr(h, "below", 0)
+                and getattr(h, "link", None) in members]
+
+        def nested_of(L: Layout) -> set[int]:
+            return {L.layers[h.link] + getattr(h, "side", -1) * i for h in hubs
+                    for i in range(1, h.below + 1)}
 
         def make(L: Layout):
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
+            nested = nested_of(L)
             own: dict[int, float] = {}
             for m in members:
                 own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
@@ -180,7 +191,9 @@ class AxleGroup(Group):
                                       + " below its links and " + crossing(ku) + " above")
             column = getattr(self.construction, "column", None)
             if column is not None:          # a construction's own rule over the whole column
-                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air)
+                # (a drive's hub layers round the column take no shims: passed as links')
+                column(self.pillar, sorted(mset | nested), L.top, (down, up), L.pitch,
+                       layout=L, air=air)
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]
@@ -225,6 +238,9 @@ class AxleGroup(Group):
             for k in range(k0 + 1, k1):
                 if k in mset:
                     continue
+                if k in nested:
+                    out.append(Placed(k, Disc(ax, d.axle), g, f"{g} nested", seat=True))
+                    continue
                 if k in beside:
                     r = min(d.spacer, free.get(k, np.inf))
                     if r < stop:                    # nothing could hold the link here
@@ -243,6 +259,7 @@ class AxleGroup(Group):
             their thinnest between them (a pillar's ends may still become anchors)."""
             ms = sorted(L.layers[m] for m in members)
             mset = set(ms)
+            nested = nested_of(L)
             lo, hi = ms[0], ms[-1]
             beside = {k for m in ms for k in (m - 1, m + 1)}
             out = [Placed(k, Disc(ax, d.seat or d.axle), g, f"{g} axle", seat=True)
@@ -250,6 +267,9 @@ class AxleGroup(Group):
             h_lo, h_hi = d.end_h
             for k in range(lo - 1, hi + 2):
                 if k in mset or (self.pillar and k in (0, L.top)):
+                    continue
+                if k in nested:
+                    out.append(Placed(k, Disc(ax, d.axle), g, f"{g} nested", seat=True))
                     continue
                 if not self.pillar and k == lo - 1 and h_lo > 0:
                     out.append(Placed(k, Disc(ax, d.head), g, f"{g} head", gap=True,

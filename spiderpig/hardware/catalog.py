@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 Category = str  # "fastener" | "nut" | "washer" | "bearing" | "bushing" | "dowel" | "spacer"
 #                  | "servo" | "horn" | "sheet" | "adhesive" | "clip" | "electronics" | "misc"
+#                  | "motor" | "pulley" | "belt" | "cord" (an arm's drives)
 
 
 @dataclass(frozen=True)

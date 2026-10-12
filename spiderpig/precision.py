@@ -46,6 +46,8 @@ from spiderpig.linkage.constraints import gains, layout, sample_inputs
 DEFAULT_TARGET_MM = 0.1     # the placement the report asks each input's resolution for
 DEFAULT_DT_K = 10.0         # the temperature swing the thermal row assumes (K)
 DEFAULT_HOLE_TOL_MM = 0.13  # a laser-cut hole's position tolerance (SendCutSend, about)
+DEFAULT_PAYLOAD_G = 50.0    # the load at the output the sag row assumes (a few glass slides)
+G = 9.81
 
 Interface = tuple[str, str]     # (joint, body)
 
@@ -79,6 +81,24 @@ class PlayMap:
 
 
 @dataclass(frozen=True)
+class InputBudget:
+    """One input's drive at the output: its transmission's and motor's terms
+    (:meth:`construction.transmissions.DriveGroup.error_terms`) through the input's lever:
+    backlash (repeatability), resolution, and the sag a payload's moment on the lever
+    makes against the drive's stiffness."""
+
+    name: str
+    ratio: float
+    backlash_deg: float
+    resolution_deg: float
+    stiffness_nm_per_rad: float
+    backlash_mm: float
+    resolution_mm: float
+    sag_mm: float
+    source: str = ""
+
+
+@dataclass(frozen=True)
 class Precision:
     """A design's error budget at its output (module docstring), worst over the box."""
 
@@ -95,11 +115,14 @@ class Precision:
     thermal_mm: float
     dt_k: float
     notes: list[str] = field(default_factory=list)
+    inputs: dict[str, InputBudget] = field(default_factory=dict)
+    payload_g: float = DEFAULT_PAYLOAD_G
 
     @property
     def repeatability_mm(self) -> float:
-        """The joints' lost motion at the output (worst case: every play the same way)."""
-        return self.plays.worst_mm
+        """The joints' lost motion at the output and the drives' backlash through their
+        levers (worst case: every play the same way)."""
+        return self.plays.worst_mm + sum(b.backlash_mm for b in self.inputs.values())
 
     @property
     def accuracy_links_mm(self) -> float:
@@ -121,6 +144,9 @@ class Precision:
                 "accuracy_links_mm": _num(self.accuracy_links_mm),
                 "hole_tol_mm": self.hole_tol_mm, "reach_mm": round(self.reach_mm, 2),
                 "thermal_mm": round(self.thermal_mm, 4), "dt_k": self.dt_k,
+                "payload_g": self.payload_g,
+                "inputs": {k: {f: (_num(v) if isinstance(v, float) else v)
+                               for f, v in b.__dict__.items()} for k, b in self.inputs.items()},
                 "notes": list(self.notes)}
 
     def lines(self) -> list[str]:
@@ -137,6 +163,11 @@ class Precision:
         for k, lev in self.lever_mm_per_rad.items():
             out.append(f"    {k}: {lev:.1f} mm/rad -> {self.need_deg[k]:.4f} deg "
                        f"({self.need_deg[k] * 60:.2f} arcmin)")
+            b = self.inputs.get(k)
+            if b is not None:
+                out.append(f"      its drive ({b.source}): {b.ratio:.3g}:1, backlash "
+                           f"{b.backlash_mm:.3f} mm, a step {b.resolution_mm:.4f} mm, "
+                           f"{self.payload_g:g} g sags it {b.sag_mm:.3f} mm")
         out.append(f"  accuracy, every hole off by {self.hole_tol_mm:g} mm: "
                    f"{self.accuracy_links_mm:.3f} mm (calibrates out)")
         out.append(f"  accuracy, {self.dt_k:g} K at {self.cte_um_per_m_k:g} um/m/K over "
@@ -277,7 +308,7 @@ def joint_clearances(config: BuildConfig, design=None) -> tuple[dict[Interface, 
 
 def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TARGET_MM,
               dt_k: float = DEFAULT_DT_K, hole_tol_mm: float = DEFAULT_HOLE_TOL_MM,
-              n: int = 21) -> Precision:
+              n: int = 21, payload_g: float = DEFAULT_PAYLOAD_G) -> Precision:
     """The error budget of ``config``'s side (module docstring)."""
     from dataclasses import replace
 
@@ -303,11 +334,40 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
         notes.append(f"the joint system is singular at {pm.singular} of the poses sampled (a "
                      "parallelogram flat, or an input not declared as a drive): the error "
                      "there is unbounded")
-    if lk.kind == "arm":
-        notes.append("no transmission yet: the inputs' own backlash and resolution are not "
-                     "in the budget (their levers say what they must be)")
+    inputs = drive_budgets(config, design, lev, payload_g)
+    if lk.kind == "arm" and not inputs:
+        notes.append("no transmission: the inputs' own backlash and resolution are not in "
+                     "the budget (their levers say what they must be)")
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
-                     hole_tol_mm, reach, cte, thermal, dt_k, notes)
+                     hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g)
+
+
+def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
+                  payload_g: float) -> dict[str, InputBudget]:
+    """Each arm input's drive through its lever (:class:`InputBudget`): the design's drive
+    groups' error terms; the sag is a payload's moment on the input's lever over the
+    drive's stiffness, seen at the output (an upper bound: the whole lever horizontal)."""
+    from spiderpig.construction.transmissions import DriveGroup
+
+    if design is None:
+        from spiderpig.fabricate import design_side, template_for
+
+        design = design_side(template_for(config), config)
+    out = {}
+    for g in design.groups:
+        if not isinstance(g, DriveGroup):
+            continue
+        t = g.error_terms(design.ctx)
+        lever = lev.get(g.input, 0.0)                    # mm per radian
+        torque = payload_g / 1000.0 * G * lever / 1000.0     # N·m
+        sag = (torque / t.stiffness_nm_per_rad * lever
+               if math.isfinite(t.stiffness_nm_per_rad) and t.stiffness_nm_per_rad > 0
+               else 0.0)
+        out[g.input] = InputBudget(
+            g.input, g.hub(design.ctx).ratio, t.backlash_deg, t.resolution_deg,
+            t.stiffness_nm_per_rad, math.radians(t.backlash_deg) * lever,
+            math.radians(t.resolution_deg) * lever, sag, t.source)
+    return out
 
 
 def pivot_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
@@ -326,6 +386,23 @@ def pivot_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
              replace(config, pin="ball", pillar="ball_pillar", params=wide))]
 
 
+def compare_options(config: BuildConfig) -> list[tuple[str, BuildConfig]]:
+    """:func:`pivot_options`, and for an arm each with every transmission."""
+    from dataclasses import replace
+
+    from spiderpig import roles as rolemod
+
+    pivots = pivot_options(config)
+    if config.lk.kind != "arm":
+        return pivots
+    out = []
+    for label, cfg in pivots:
+        for t in rolemod.choices("transmission"):
+            roles = tuple(sorted({**dict(cfg.roles), "transmission": t}.items()))
+            out.append((f"{label}, {t}", replace(cfg, roles=roles)))
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="spiderpig precision",
                                  description="the error budget at a design's output: joint "
@@ -337,10 +414,13 @@ def main(argv: list[str] | None = None) -> int:
                          f"{DEFAULT_TARGET_MM:g})")
     ap.add_argument("--dt", type=float, default=DEFAULT_DT_K,
                     help=f"the temperature swing (K; default {DEFAULT_DT_K:g})")
+    ap.add_argument("--payload", type=float, default=DEFAULT_PAYLOAD_G, metavar="G",
+                    help=f"the load at the output for the sag row (g; default "
+                         f"{DEFAULT_PAYLOAD_G:g})")
     ap.add_argument("--json", action="store_true", help="print the report as JSON")
     ap.add_argument("--compare", action="store_true",
-                    help="the same design with each pivot option: plain holes, ball pins, "
-                         "ball pins and pillars")
+                    help="the same design with each pivot option (plain holes, ball pins, "
+                         "ball pins and pillars), and an arm's with each transmission")
     args = ap.parse_args(argv)
     config = config_from_args(args)
     from dataclasses import replace
@@ -348,12 +428,16 @@ def main(argv: list[str] | None = None) -> int:
     if config.robot:
         config = replace(config, robot=False)
     if args.compare:
-        print(f"{'pins / pillars':34} {'worst mm':>9} {'rss mm':>8}")
-        for label, cfg in pivot_options(config):
-            r = precision(cfg, target_mm=args.target, dt_k=args.dt)
-            print(f"{label:34} {r.repeatability_mm:9.3f} {r.plays.rss_mm:8.3f}")
+        print(f"{'pins / pillars / transmission':44} {'repeat mm':>9} {'joints rss':>10} "
+              f"{'step mm':>8} {'sag mm':>7}")
+        for label, cfg in compare_options(config):
+            r = precision(cfg, target_mm=args.target, dt_k=args.dt, payload_g=args.payload)
+            step = max((b.resolution_mm for b in r.inputs.values()), default=0.0)
+            sag = max((b.sag_mm for b in r.inputs.values()), default=0.0)
+            print(f"{label:44} {r.repeatability_mm:9.3f} {r.plays.rss_mm:10.3f} "
+                  f"{step:8.4f} {sag:7.3f}")
         return 0
-    rep = precision(config, target_mm=args.target, dt_k=args.dt)
+    rep = precision(config, target_mm=args.target, dt_k=args.dt, payload_g=args.payload)
     if args.json:
         import json
 

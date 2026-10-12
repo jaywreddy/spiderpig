@@ -163,9 +163,9 @@ class Build:
         """World XY of a topology point at this ``t``.
 
         A point a group added to the geometry (not a joint) is where the
-        geometry says if it's fixed (e.g. a servo mounting screw); if it moves,
-        it's fixed to the crank (:meth:`stack.Topology.add_crank_point`)
-        and has turned with it about O.
+        geometry says if it's fixed (e.g. a servo mounting screw); if it moves, it's
+        fixed to a link (``Topology.link_points``: an arm's hub bolts) or to the crank
+        (:meth:`stack.Topology.add_crank_point`) and has turned with it.
         """
         node = self._node(point)
         if node is not None:
@@ -176,6 +176,12 @@ class Build:
         p = np.asarray(g[point][0], dtype=float)
         if not np.ptp(g[point], axis=0).any():
             return p.copy()
+        fixed = self.plan.topo.link_points.get(point)
+        if fixed is not None:               # fixed to a link: where its two points say
+            about, toward, (along, across), _ = fixed
+            o, q = self.xy(about), self.xy(toward)
+            u = (q - o) / np.linalg.norm(q - o)
+            return o + along * u + across * np.array([-u[1], u[0]])
         pin = self.plan.topo.axes_of("crankpin")[0].name
         v, w = p - g["O"][0], g[pin][0] - g["O"][0]
         turn = self.angle("O", pin) - math.atan2(w[1], w[0])

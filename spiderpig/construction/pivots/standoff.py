@@ -403,7 +403,7 @@ class StandoffAxle:
         for a, b in itertools.pairwise(faces):
             z0, z1 = build.z(a)[1], build.z(b)[0]
             span = z1 - z0 - column_air(build, group, a + 1, b - 1)
-            length = self.segment(span, b - 1 > a and b - 1 not in col.links)
+            length = self.segment(span, _shim_room(col, a, b))
             over = 0.0 if length is None else length - span
             for k in range(a + 1, b):
                 if over <= EPS:
@@ -455,7 +455,8 @@ class StandoffAxle:
         top = build.top
         anchored = (0 in col.anchors, top in col.anchors)
         lo_face, hi_face = self.faces(col.links, top, anchored)
-        axle = self.column_axle(set(col.links), hi_face, build.ctx.pitch, lo_face,
+        hubs = {k for k, (role, _) in col.roles.items() if role == "nested"}  # (as the plan)
+        axle = self.column_axle(set(col.links) | hubs, hi_face, build.ctx.pitch, lo_face,
                                 build.plan.layout, lambda a, b: column_air(build, group, a, b))
         if axle is None:
             raise ConstructionError(f"{group.name}: no stock standoff nor a shaft made to "
@@ -489,7 +490,7 @@ class StandoffAxle:
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
         z0, z1 = build.z(a)[1], build.z(b)[0]
         span = z1 - z0 - column_air(build, group, a + 1, b - 1)
-        length = self.segment(span, b - 1 > a and b - 1 not in col.links)
+        length = self.segment(span, _shim_room(col, a, b))
         if length is None:
             raise ConstructionError(f"{group.name}: no stock standoff fits {span:.2f} mm")
         long += max(0.0, length - span - sum(fill.get(k, 0.0) for k in range(a + 1, b)))
@@ -583,3 +584,12 @@ def _column_axle(axle: StandoffAxle, links: frozenset[int], top: int, pitch: flo
                  lo: int, zs: tuple | None = None) -> StandoffAxle | None:
     """:meth:`StandoffAxle.column_axle`, remembered (the planner asks per layout)."""
     return axle._column_axle(links, top, pitch, lo, zs)
+
+
+def _shim_room(col: Column, a: int, b: int) -> bool:
+    """Whether take-up shims may sit under face ``b`` of a column from face ``a``: where the
+    layer under it is a spacer's (not a link's, nor a drive hub's round the column: an
+    arm's pulley, ``nested``: construction.transmissions)."""
+    return (b - 1 > a and b - 1 not in col.links
+            and col.roles.get(b - 1, ("spacer",))[0] != "nested")
+

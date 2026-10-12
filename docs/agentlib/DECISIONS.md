@@ -456,3 +456,17 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/stack/geometry.py`, `spiderpig/stack/topology.py`, `spiderpig/linkages/palletizer.py`,
   `spiderpig/precision.py`.
 
+### 2026-10-11: an arm's drives: belt first, capstan too (user; phase 3)
+
+- **What:** every arm input a NEMA 17 stepper and a transmission, swappable per drive:
+  `belt` (GT2 16:80, 5:1, the default: the user's "start with the belt") and `capstan`
+  (1 mm Dyneema on the motor's bare shaft and a 30 mm laser-cut drum, 10:1). The drives on
+  one pivot alternate plates; the motors' shafts are cut to their hubs.
+- **Why:** two drives on the palletizer's shoulder each take three or four layers beside
+  their link, and a stock 24 mm shaft reaches only seven layers from its plate: on one
+  plate they can't both fit (one's bolt heads meet the other's pulley). An uncut shaft's
+  tip would claim the layers past its pulley (five more on the palletizer). The capstan's
+  drum is bounded by the levelling pillar 40 mm from the shoulder.
+- **Where:** `spiderpig/construction/transmissions/`, `spiderpig/actuators/`,
+  `spiderpig/hardware/motion_catalog.py`, the roles `transmission` and `actuator`.
+
