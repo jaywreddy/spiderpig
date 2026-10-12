@@ -84,10 +84,11 @@ def iso_inputs(lk: linkage.Linkage) -> tuple[np.ndarray, ...]:
     return lk.inputs_at(*(np.array([f[i % 2] for f in POSES]) for i in range(len(lk.inputs))))
 
 
-def gravity_loads(lk: linkage.Linkage, values, *, link_g_per_mm: float,
+def gravity_loads(lk: linkage.Linkage, values, *, link_g_per_mm: float | dict[str, float],
                   payload_g: float, ins=None) -> GravityLoads:
     """The static gravity solve (module docstring): ``link_g_per_mm`` a link's mass per mm
-    of its length (its sheet's density x thickness x width)."""
+    of its length (its sheet's density x thickness x width; per link, a mapping)."""
+    per = link_g_per_mm
     lay = layout(lk)
     ins = iso_inputs(lk) if ins is None else ins
     with np.errstate(all="ignore"):
@@ -115,7 +116,8 @@ def gravity_loads(lk: linkage.Linkage, values, *, link_g_per_mm: float,
             ps = [np.asarray(pts[j]).reshape(-1, 2)[s] for j in lay.joints[b]]
             for p in ps[1:]:
                 length = float(np.linalg.norm(p - ps[0]))
-                weight(b, link_g_per_mm * length, (p + ps[0]) / 2)
+                g_mm = per.get(b, 0.0) if isinstance(per, dict) else per
+                weight(b, g_mm * length, (p + ps[0]) / 2)
             for p in ps:
                 weight(b, HARDWARE_G, p)
             if b in drums:

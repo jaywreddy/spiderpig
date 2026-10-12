@@ -165,7 +165,8 @@ class _Frame:
 def _pose(lay, at: dict[str, np.ndarray], section, z: dict[str, float],
           rods: dict[str, Rod], frame_z, drives: dict[str, str],
           segments: dict[str, tuple] | None = None,
-          tilt_k: dict[str, float] | None = None) -> tuple[_Frame, int]:
+          tilt_k: dict[str, float] | None = None,
+          sections: dict | None = None) -> tuple[_Frame, int]:
     """The frame of one pose (``at``: each point's xy) and the output's node. ``segments``:
     each body's beams (default: every pair of its points); ``tilt_k``: each joint's
     moment stiffness against a body's tilt on it (N·mm/rad; default rigid)."""
@@ -202,7 +203,8 @@ def _pose(lay, at: dict[str, np.ndarray], section, z: dict[str, float],
             p = np.array([*at[u], z.get(b, 0.0)])
             q = np.array([*at[v], z.get(b, 0.0)])
             if np.linalg.norm(q - p) > 1e-6:
-                fr.add(nodes[(b, u)], nodes[(b, v)], _beam(p, q, section))
+                fr.add(nodes[(b, u)], nodes[(b, v)],
+                       _beam(p, q, (sections or {}).get(b, section)))
     for j, levels in shaft.items():
         rod = rods.get(j, Rod(4.0))
         x, y = at[j]
@@ -227,13 +229,15 @@ def compliance(lk: Linkage, values: tuple[float, ...], section: Section, *,
                payload_n: float, drop: float = 0.0, ins=None,
                z: dict[str, float] | None = None, rods: dict[str, Rod] | None = None,
                frame_z: tuple[float, float] | None = None,
-               tilt_k: dict[str, float] | None = None) -> Compliance:
+               tilt_k: dict[str, float] | None = None,
+               sections: dict[str, Section] | None = None) -> Compliance:
     """:class:`Compliance` of ``lk``'s side (module docstring) at the inputs ``ins`` (radians,
     one array per input; default: the box, 5 a side). With ``z`` (each body's mid-plane
     across the stack, the plan's) the bodies stand at their layers and each pin is its
     shaft (``rods``: per joint, default a 4 mm steel rod) between them, a frame pivot's
     anchored in both frame plates (``frame_z``): the stack's own depth, a space frame;
-    without, every body in one plane (softer across it)."""
+    without, every body in one plane (softer across it). ``sections``: a body's own section
+    where its link is cut from another sheet (default ``section``)."""
     lay = layout(lk)
     if ins is None:
         ins = lk.box(5)
@@ -249,7 +253,7 @@ def compliance(lk: Linkage, values: tuple[float, ...], section: Section, *,
         if not all(np.isfinite(v).all() for v in at.values()):
             continue
         fr, o = _pose(lay, at, section, z or {}, rods or {}, frame_z, drives, segments,
-                      tilt_k)
+                      tilt_k, sections)
         try:
             u = fr.tip(o, np.array([0.0, -payload_n, 0.0]), lever)
             across = float(abs(fr.tip(o, np.array([0.0, 0.0, 1.0]), lever)[2]))

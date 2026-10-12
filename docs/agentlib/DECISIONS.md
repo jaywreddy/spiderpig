@@ -823,3 +823,25 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Result:** belts: ISO RP 0.042 mm within a session, 0.048 across power-ups (as the
   capstans'), 0.31 mm from any direction without the one-sided approach; the BOM $639
   listed (cutting $305) against $835.
+
+### 2026-10-12: stock parts and acrylic plates (the user's simplification, rounds 1-2)
+
+- **Decision:** the user's constraints: only stock parts but the cut plates, the plates
+  mostly acrylic, fewer parts, 0.1 mm kept. No gearboxes on the arm's joints (a cheap
+  planetary's output bearing as the shoulder pivot costs 0.2-0.4 mm: Dobot's 0.2 against
+  the belt-driven MT4's 0.1; on the turntable its 15' is 2.4x the belt's): the stock GT2
+  belts stay. The arm's long links (b1, b4) in 0.125 in 6061, the six short ones in
+  SendCutSend's 5.4 mm cast acrylic (`acrylic_5p4mm`), each seating its bearing pair inside
+  (`PairSeat.in_link`: no hub; the planner's hub rule skips them). The q2 / q3 belt's
+  small pulley's hub stands in the frame plate's window (`BeltDrive.motor_hub`: a layer
+  less in the stack, so the 24 mm shaft reaches past a thick link); the drive's reach is
+  checked at search time against the thick links placed (`nominal`). The pair pivots'
+  printed rings are cut from the default sheet, their spacers stock DIN 988 shim stacks,
+  and an inner-ring land shim (4 x 6 / 6 x 8 x 0.5) each side of every rider
+  (`pair.stock_spacers`). The precision report reads each link's own sheet (its
+  stiffness, weight and expansion).
+- **Result (`palletizer_reach`, mixed links, belts, vision homing):** ISO RP 0.037 mm in a
+  session, 0.061 across power-ups; a slide picked up 0.048 mm; 3.4 mm/N across the plane
+  (~9 Hz); the BOM $684 listed, 68 cut and 7 printed parts (from 41-50 printed).
+- **Open (round 3):** the 20 aluminium frame / base plates ($241), the 7 printed parts,
+  the ~240 bought pieces (the shims), the ground pins' M2 ends.

@@ -104,6 +104,17 @@ for _L in GROUND_LENGTHS:
               "standard lengths start at 20 mm: a shorter pin is a special, or cut from a "
               "20 mm one and tapped. Price only in MISUMI's configurator: $6 an estimate."))
 
+for _k, (_id, _od) in {"shim_4x6x0p5": (4.0, 6.0), "shim_6x8x0p5": (6.0, 8.0)}.items():
+    register(Item(
+        _k, f"Stainless shim washer {_id:g} x {_od:g} x 0.5 mm", "washer",
+        (Offer("Amazon", f"https://www.amazon.com/s?k={_id:g}x{_od:g}x0.5mm+shim+washer",
+               pack_qty=50, price_usd=7.0, note="search; precision shim washers in packs, an "
+                                               "estimate"),),
+        dims={"id": _id, "od": _od, "t": 0.5},
+        notes="A ball pair's inner-ring land (construction.pivots.pair): it bears on the "
+              "bearing's inner ring only, so a wider ring or spacer beside the link doesn't "
+              "carry the column's preload around the balls."))
+
 register(Item("m2_washer_din125", "DIN 125 flat washer M2 (2.2 x 5 x 0.3 mm)", "washer",
               (Offer("Amazon", "https://www.amazon.com/s?k=M2+flat+washer+DIN+125",
                      pack_qty=100, price_usd=6.0, note="search; an estimate"),),

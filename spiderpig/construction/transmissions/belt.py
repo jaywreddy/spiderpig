@@ -97,9 +97,14 @@ class BeltDrive(Transmission):
         return float(self.small["flange_d"]) / 2
 
     def motor_hub(self, ctx: Context) -> tuple[int, float]:
-        """The small pulley's hub: the layers it takes past the teeth, and its radius."""
+        """The small pulley's hub: the layers it takes past the teeth, and its radius. Its
+        last frame-plate thickness stands in the plate's window (the slider's: the motor's
+        screws' heads at the corners of its 31 mm square, clear of the 16 mm hub), so a
+        layer less inside the stack where that saves one (the review of 2026-10-12: the
+        24 mm shaft then reaches past a thick link)."""
         hub_l = float(self.small["hub_l"])
-        return math.ceil(hub_l / ctx.pitch - 1e-9), float(self.small["hub_d"]) / 2
+        inside = max(hub_l - ctx.sheet_t("frame"), 0.0)
+        return math.ceil(inside / ctx.pitch - 1e-9), float(self.small["hub_d"]) / 2
 
     def centre_distance(self, length: float) -> float | None:
         """The centre distance a loop ``length`` long sits at (``None``: too short)."""

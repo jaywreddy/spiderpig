@@ -87,7 +87,7 @@ from spiderpig.construction.pivots.ball import (
     internal_tilt,
 )
 from spiderpig.construction.pivots.chicago import ChicagoShaft, Fit
-from spiderpig.construction.pivots.common import EPS, Column, host_of, stem_of, xy_of
+from spiderpig.construction.pivots.common import EPS, STEEL, Column, host_of, stem_of, xy_of
 from spiderpig.construction.wobble import Section
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
@@ -299,6 +299,41 @@ def hub_layers(riders: list[int], occupied: set[int], lo: int, hi: int,
     return taken
 
 
+def stock_spacers(out: Realized, build: Build, shim_key: str, land_key: str,
+                  riders: int) -> None:
+    """What the column holds between its links made from stock and cut plates only (the
+    user's of 2026-10-12: "only stock parts except for the plates"): a printed ring a full
+    default-sheet layer tall is cut from that sheet (``laser``: a cut plate); any other
+    printed spacer (a head spacer, a gap ring) is a stack of DIN 988 shims (``shim_key``,
+    :func:`hardware.bom.stack`). And a land washer (``land_key``) each side of every rider
+    link: it bears on the bearing's inner ring only, so the column's preload goes through
+    the balls."""
+    from dataclasses import replace as _replace
+
+    from spiderpig.hardware.bom import stack
+    from spiderpig.hardware.catalog import get as _get
+
+    steps = tuple(float(t) for t in _get(shim_key).dims["t"])
+    pitch = build.ctx.pitch
+    for i, b in enumerate(out.bodies):
+        if b.fab != "printed" or b.part is None:
+            continue
+        bb = b.part.bounding_box()
+        h = bb.max.Z - bb.min.Z
+        if abs(h - pitch) < 0.05:
+            out.bodies[i] = _replace(b, fab="laser", sheet=None)
+            continue
+        shims, _ = stack(h, steps)
+        if not shims:
+            continue
+        out.bodies[i] = _replace(b, fab="purchased", bom_key=shim_key, color=STEEL)
+        if len(shims) > 1:
+            out.extras.append(BomLine(shim_key, len(shims) - 1,
+                                      f"{b.name}: {h:.1f} mm of shims"))
+    if riders:
+        out.extras.append(BomLine(land_key, 2 * riders, "the riders' inner-ring lands"))
+
+
 def _hubless(seat: PairSeat, ctx: Context) -> frozenset[str]:
     """The design's links thick enough to seat their pair inside (no hub beside them)."""
     return frozenset(m for m in ctx.topo.links if seat.pair(ctx.sheet_t("link", m)))
@@ -439,6 +474,7 @@ class BallPairAxle(BallAxle):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, under the screw's head"))
+        stock_spacers(out, build, "shim_din988_4x8", "shim_4x6x0p5", len(riders))
         return out
 
 
@@ -504,6 +540,8 @@ class BallPairPillar(BallPillar):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, in the column's end shims"))
+        stock_spacers(out, build, "shim_din988_6x12", "shim_6x8x0p5",
+                      len(group.axis.members))
         return out
 
 

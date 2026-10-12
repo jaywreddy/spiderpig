@@ -603,7 +603,8 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
         pts = linkage.LegSolution(1, 0.0, values, lk.key).at(*sample_inputs(lk, n))
     f = pts[layout(lk).output_point]
     reach = float(np.nanmax(np.linalg.norm(f - pts["O"], axis=-1)))
-    cte = sheet_record(sheet_of(config, "link")).cte_um_per_m_k
+    cte = max(sheet_record(sheet_of(config, "link", b)).cte_um_per_m_k   # the worst link's
+              for b in lk.links)
     thermal = cte * 1e-6 * dt_k * reach
     if pm.singular:
         notes.append(f"the joint system is singular at {pm.singular} of the poses sampled (a "
@@ -677,8 +678,10 @@ def _iso(config: BuildConfig, pm: PlayMap, inputs: dict[str, InputBudget],
     from spiderpig.materials import sheet as sheet_record
     from spiderpig.materials import sheet_of
 
-    rec = sheet_record(sheet_of(config, "link"))
-    per_mm = rec.density * rec.thickness * 2 * config.params.link_radius / 1000   # g / mm
+    per_mm = {}                         # g / mm, each link its own sheet's
+    for b in config.lk.links:
+        rec = sheet_record(sheet_of(config, "link", b))
+        per_mm[b] = rec.density * rec.thickness * 2 * config.params.link_radius / 1000
     loads = gravity_loads(config.lk, config.values, link_g_per_mm=per_mm,
                           payload_g=payload_g)
     deg = {k: math.degrees(b.homing_mm / lev[k]) if lev.get(k) else 0.0
@@ -710,8 +713,12 @@ def link_compliance(config: BuildConfig, design, payload_g: float,
     d = _side_design(config, design)
     pl = d.plan
     z = {b: (pl.z(k)[0] + pl.z(k)[1]) / 2 for b, k in pl.layers.items()}
-    rec = sheet_record(sheet_of(config, "link"))
-    section = Section(2 * config.params.link_radius, rec.thickness, rec.modulus_gpa * 1000)
+    w = 2 * config.params.link_radius
+    sections = {}
+    for b in config.lk.links:           # each link its own sheet's (link_sheets)
+        rec = sheet_record(sheet_of(config, "link", b))
+        sections[b] = Section(w, rec.thickness, rec.modulus_gpa * 1000)
+    section = next(iter(sections.values()))
     lay = layout(config.lk)
     frame = set(lay.joints["torso"])
     rods = {j: Rod(6.0 if j in frame else 4.0) for j in lay.axles}
@@ -719,7 +726,8 @@ def link_compliance(config: BuildConfig, design, payload_g: float,
               if (config.pillar if j in frame else config.pin).startswith("ball_pair")}
     return compliance(config.lk, config.values, section, payload_n=payload_g / 1000 * G,
                       drop=drop, z=z, rods=rods,
-                      frame_z=(pl.z(0)[1], pl.z(pl.top)[0]), tilt_k=tilt_k)
+                      frame_z=(pl.z(0)[1], pl.z(pl.top)[0]), tilt_k=tilt_k,
+                      sections=sections)
 
 
 def _wobble(config: BuildConfig) -> dict:
