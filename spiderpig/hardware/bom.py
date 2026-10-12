@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from build123d import Shape
 
     from spiderpig.mechanism import Body
+    from spiderpig.shapes import Shape3D
 
 
 @dataclass(frozen=True)
@@ -231,6 +232,32 @@ and the bus cable that come in every STS3215's box (Seeed's ST3215-C001 part lis
 self-tappers; BOM study 2026-10-08):
 listed, not ordered (ORDER.md) and not in any total (:attr:`Bom.cost_usd`, verify's cost
 floor)."""
+
+
+def milled_stock(mech) -> tuple[list[BomLine], str]:
+    """The plate the milled parts are cut from (:mod:`spiderpig.milling`: each part's blank,
+    the clamps' margin round it, packed into the plate's pieces with a fifth over) and what
+    the machine time comes to (a note; ``""``: no milled part)."""
+    specs = (mech.meta or {}).get("milled") or {}
+    if not specs:
+        return [], ""
+    from spiderpig.milling import MILLS, MillPart, minutes
+
+    mill = MILLS[mech.meta["mill"]]
+    area: dict[str, float] = {}
+    mins = 0.0
+    for spec in specs.values():
+        part = MillPart.from_dict(spec)
+        bx, by = part.blank(mill)
+        area[part.stock] = area.get(part.stock, 0.0) + bx * by
+        mins += minutes(part, mill)
+    lines = []
+    for key, a in area.items():
+        w, h = (float(v) for v in get(key).dims["sheet_mm"])
+        lines.append(BomLine(key, float(math.ceil(1.2 * a / (w * h))),
+                             f"the milled parts' plate ({a / 100:.0f} cm² of blanks)"))
+    return lines, (f"Milled on your {mill.label}: {len(specs)} part(s), about {mins:.0f} min "
+                   "of machine time (estimates; mill/SETUP.md)")
 
 
 def cut_by(key: str) -> str:
@@ -717,6 +744,25 @@ def _mirrors(sa: _Sig, sb: _Sig, rel: float = 1e-9) -> bool:
             and close(sa.surf * flip, sb.surf, size * 1e3))
 
 
+def _by_invariants(bodies, method: str) -> list[MadeGroup]:
+    """``method`` bodies grouped by what no rigid motion changes: the stock, the volume,
+    the area and the sorted extents of the part's box in its own axes (0.001 mm)."""
+    groups: dict[tuple, MadeGroup] = {}
+    for b in bodies:
+        if b.fab != method or b.part is None:
+            continue
+        part = cast("Shape3D", b.part)
+        bb = part.bounding_box()
+        key = (getattr(b, "sheet", None), round(float(part.volume), 3),
+               round(float(part.area), 3),
+               tuple(sorted(round(float(v), 3) for v in (bb.size.X, bb.size.Y, bb.size.Z))))
+        if key in groups:
+            groups[key].names.append(b.name)
+        else:
+            groups[key] = MadeGroup(method, b, [b.name])
+    return list(groups.values())
+
+
 def group_made(bodies, method: str) -> list[MadeGroup]:
     """Group ``method`` bodies by shape. For laser parts a mirror image is the same cut.
 
@@ -728,6 +774,8 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
     """
     from build123d import Plane
 
+    if method == fabmethods.MILLED:      # one part however it is turned to fit (a housing
+        return _by_invariants(bodies, method)   # upside down): its rigid invariants
     groups: list[MadeGroup] = []
     sigs: dict[int, _Sig] = {}               # id(group) -> the reference's measurements
     mirrors: dict[int, tuple] = {}           # id(group) -> (its mirror image, measurements)
@@ -1168,7 +1216,8 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
             made.append(MadeRow(
                 name=g.ref.name, method=method,
                 material=(sheet_name(g.ref.sheet) if g.ref.sheet else sheet)
-                if method == "laser" else (_filament_name(fil) if fil else fil_name),
+                if fabmethods.stock(method) == "sheet"
+                else (_filament_name(fil) if fil else fil_name),
                 size_mm=_footprint(g.ref.part), volume_cm3=part_volume(g.ref.part) / 1000.0,
                 qty=g.qty, names=list(g.names), mirrored=len(g.mirrored),
                 sheet=(g.ref.sheet or str(mech.meta.get("sheet") or "")) if method == "laser"
@@ -1190,6 +1239,10 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
                          for f, g in grams.items() if f and g > 0)
         notes.append(f"Printed parts need about {total:.0f} g of filament at 100 % infill "
                      f"({each}); less with sparse infill.")
+    stock, mill_note = milled_stock(mech)
+    lines += stock
+    if mill_note:
+        notes.append(mill_note)
     lines.extend(mech.bom_extras)
     lines, shim_notes = split_shims(lines, by_name, (mech.meta or {}).get("shim_stacks"))
     notes += shim_notes

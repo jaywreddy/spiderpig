@@ -121,7 +121,7 @@ def _list_options() -> None:
             print(f"  {key:14} {getattr(c, 'label', '')}")
     print("sheet stock (--sheet):")
     for key, it in sorted(CATALOG.items()):
-        if it.category == "sheet":
+        if it.category == "sheet" and not it.dims.get("milled"):
             print(f"  {key:14} {it.name}")
 
 
@@ -392,8 +392,8 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if opts is not None:
         uptodate.forget(opts)       # (a build that stops short is never current)
-    for stale in (out / "urdf").glob("*.joints.json"):
-        stale.unlink()
+    for stale in [*(out / "urdf").glob("*.joints.json"), out / "mill" / "SETUP.md"]:
+        stale.unlink(missing_ok=True)
     for owned in (*fabmethods.folders(), "urdf"):   # no cut, print or URDF files left
         clear_generated(out / owned)              # from an earlier build
     # an export's manifest no longer describes the folder (api.export reuses one by it):
@@ -509,6 +509,13 @@ def main(argv=None) -> int:
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
         print(f"  {r['file']:28} {r['print']}")
+    if groups.get("milled"):           # the user's mill's parts (spiderpig.milling)
+        from spiderpig.labels import by_body
+        from spiderpig.milling import write_outputs
+
+        files = write_outputs(mech, groups["milled"], by_body(types), out / "mill")
+        print(f"wrote {len(files) - 2} milled-part STEPs, parts.csv and SETUP.md to "
+              f"{out / 'mill'}")
 
     order: list[dict] = []
     if not args.no_dxf:

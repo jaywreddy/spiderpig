@@ -520,3 +520,26 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/construction/robot.py` (`LAYOUTS`, `Turret`),
   `spiderpig/construction/rotary/`, `spiderpig/construction/tools.py`,
   `spiderpig/kinematics/`, `spiderpig/urdf.py`, `spiderpig/hardware/robot_catalog.py`.
+
+### 2026-10-12: milled parts on the user's own mill (phase 5)
+
+- **What:** a fab method `milled` and a robot-level role `mill` (`milling.MILLS`: the
+  Makera Carvera; `none` by default). A milled part is a `milling.MillPart`: its plate
+  stock (`hardware/plate_catalog.py`: 6061-T6 at 1/8, 1/4, 3/8 in, 6 mm acrylic and
+  polycarbonate, bought by the 6 x 6 in piece), its outline and 2.5-D operations from one
+  side; its solid is drawn from them and `milling.check` holds it to the mill's rules. The
+  build writes `mill/` (each part's STEP, `parts.csv`, `SETUP.md`); the BOM buys the plate
+  and notes the machine time; milled parts group by their rigid invariants (a housing fitted
+  upside down is the same part). With a mill the turntable's hub is two milled bearing
+  housings (3/8 in 6061, the seat bored to a slip fit with its shoulder in one piece,
+  retaining compound) in place of the laser-cut seats and shoulders.
+- **Why:** the user mills aluminium on a Carvera (2026-10-11). A bored seat is concentric
+  with its screws and holds a fit a laser-cut stack can't (the phase 4 review's coaxiality
+  concern); the rest of the robot stays laser-cut (a flat plate gains nothing milled). The
+  capstan drum is not milled: its groove is a side cut, not 2.5-D.
+- **Open:** the removal rates and flute lengths are estimates (the machine's own feeds and
+  speeds are the authority); the setup sheet holds no toolpaths (the Carvera's CAM makes
+  them from the STEP); the walkers never mill (the role is an arm's).
+- **Where:** `spiderpig/milling.py`, `spiderpig/fabmethods.py`,
+  `spiderpig/hardware/plate_catalog.py`, `spiderpig/construction/rotary/turret.py`
+  (`TurretPlan.housing`), `spiderpig/hardware/bom.py` (`milled_stock`).

@@ -12,6 +12,8 @@ key             title       made  flat   stock     what
 ``laser``       Laser-cut   yes   yes    sheet     a 2-D profile cut from a sheet (DXF, kerf,
                                                    cut rules: :mod:`manufacture`)
 ``printed``     3D printed  yes   no     filament  FDM printed (STL, filament mass)
+``milled``      Milled      yes   no     sheet     machined from plate on the user's mill
+                                                   (STEP, setup sheet: :mod:`milling`)
 ``purchased``   Purchased   no    no               bought; ``bom_key`` names the catalog item
 ==============  ==========  ====  =====  ========  ==========================================
 
@@ -54,6 +56,8 @@ LASER = register(FabMethod("laser", "Laser-cut", made=True, order=1, flat=True, 
                            folder="laser")).key
 PRINTED = register(FabMethod("printed", "3D printed", made=True, order=0, stock="filament",
                              folder="print")).key
+MILLED = register(FabMethod("milled", "Milled", made=True, order=2, stock="sheet",
+                           folder="mill")).key
 PURCHASED = register(FabMethod("purchased", "Purchased", made=False, order=9)).key
 
 

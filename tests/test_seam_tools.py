@@ -867,7 +867,7 @@ def test_clear_generated(tmp_path):
     build.clear_generated(gone)
     assert not gone.exists()
     build.clear_generated(tmp_path / "missing")              # no folder: nothing to do
-    assert build.GENERATED == (".dxf", ".stl", ".csv", ".urdf")
+    assert build.GENERATED == (".dxf", ".stl", ".csv", ".urdf", ".step")
 
 
 def test_write_manifest(tmp_path):

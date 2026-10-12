@@ -188,7 +188,7 @@ precision | guide) → api → (mcp | server | cli).
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
 | `spiderpig/roles.py`, `fabmethods.py` | the construction roles (`BuildConfig.roles`: every later kind of part) and the fab methods, as registries |
 | `spiderpig/materials.py` | sheets, thinnest sheet per role, gap options |
-| `spiderpig/manufacture.py` | the cut rules (SendCutSend / Ponoko) |
+| `spiderpig/manufacture.py`, `milling.py` | the cut rules (SendCutSend / Ponoko); the user's mill (`MillPart`, the Carvera's rules, setup sheets) |
 | `spiderpig/fabricate.py` | `design_side()`, `fabricate_side()`, `fabricate()` |
 | `spiderpig/fabcache.py`, `keys.py`, `uptodate.py` | the fabrication cache, incremental cache keys, the build skip |
 | `spiderpig/shapes.py`, `rounding.py` | build123d primitives; tie-stable reported numbers |

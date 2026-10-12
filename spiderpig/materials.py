@@ -276,6 +276,7 @@ def aluminium_sheets(alloy: str = "5052") -> list[str]:
 
     _load()
     keys = [k for k, it in CATALOG.items() if it.category == "sheet"
+            and not it.dims.get("milled")         # (a mill's plate: never a laser's sheet)
             and it.dims.get("alloy") and str(it.dims["alloy"]).startswith(alloy)]
     return sorted(keys, key=lambda k: (sheet(k).thickness, str(get(k).dims.get("alloy"))))
 

@@ -47,10 +47,10 @@ from pathlib import Path
 
 from spiderpig import fabmethods
 
-GENERATED = (".dxf", ".stl", ".csv", ".urdf")
+GENERATED = (".dxf", ".stl", ".csv", ".urdf", ".step")
 """What a build or an export writes under ``laser/`` and ``print/`` (the DXFs, the STLs,
-their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``) and an arm's ``urdf/``
-(the URDF and its link meshes)."""
+their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``), an arm's ``urdf/``
+(the URDF and its link meshes) and ``mill/`` (the milled parts' STEPs)."""
 
 TOP_OUTPUTS = ("ORDER.md", "bom.csv", "bom.md", "bom.json")
 CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE",

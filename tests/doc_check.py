@@ -70,7 +70,8 @@ PYTEST_FLAGS = {
 """Options of pytest and its plugins the docs may name (not in this repo's code)."""
 GENERATED = ("build/", "dist/", ".spiderpig", "~", "/tmp", "/root", "$", "http://",
              "https://", "<store>", "<out>", "<run>", "store/", "designs/", "bakes/",
-             "laser/", "print/", "urdf/", "pin_loads/", "mech/", "plans/", "stores/", "fab/",
+             "laser/", "print/", "urdf/", "mill/", "pin_loads/", "mech/", "plans/", "stores/",
+             "fab/",
              "out/", "exports/", "cache/", "viewer/node_modules", "viewer/dist",
              "spiderpig/viewer/dist", "node_modules")
 FILE_EXT = re.compile(r"\.(py|md|toml|json|ts|js|yml|yaml|txt|csv|cfg|html|lock|xml|glb|"

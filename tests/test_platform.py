@@ -20,9 +20,9 @@ pytestmark = pytest.mark.no_fabricate
 
 
 def test_fab_methods_keep_the_output_order():
-    assert fabmethods.made() == ("laser", "printed")
-    assert fabmethods.kinds() == ("printed", "laser", "purchased")
-    assert fabmethods.folders() == ("laser", "print")
+    assert fabmethods.made() == ("laser", "printed", "milled")
+    assert fabmethods.kinds() == ("printed", "laser", "milled", "purchased")
+    assert fabmethods.folders() == ("laser", "print", "mill")
     assert fabmethods.flat("laser")
     assert not fabmethods.flat("printed")
     assert not fabmethods.flat(None)
@@ -33,12 +33,12 @@ def test_fab_methods_keep_the_output_order():
 
 
 def test_a_registered_fab_method_reaches_every_listing(monkeypatch):
-    m = fabmethods.FabMethod("etched", "Etched", made=True, order=2, flat=True,
+    m = fabmethods.FabMethod("etched", "Etched", made=True, order=3, flat=True,
                              stock="sheet", folder="etch")
     monkeypatch.setitem(fabmethods.METHODS, "etched", m)
-    assert fabmethods.made() == ("laser", "printed", "etched")
-    assert fabmethods.kinds() == ("printed", "laser", "etched", "purchased")
-    assert fabmethods.folders() == ("laser", "print", "etch")
+    assert fabmethods.made() == ("laser", "printed", "milled", "etched")
+    assert fabmethods.kinds() == ("printed", "laser", "milled", "etched", "purchased")
+    assert fabmethods.folders() == ("laser", "print", "mill", "etch")
     assert fabmethods.flat("etched")
 
 

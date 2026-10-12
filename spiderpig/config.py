@@ -318,6 +318,9 @@ class BuildConfig:
                     raise KeyError(key)
             except KeyError:
                 raise ParamError(f"{what} {key!r} is not a sheet in the catalog") from None
+            if get(key).dims.get("milled"):
+                raise ParamError(f"{what} {key!r} is a mill's plate (spiderpig.milling), not a "
+                                 "sheet a laser cuts")
         from spiderpig.materials import sheet
 
         if not sheet(self.crank_sheet).metal:

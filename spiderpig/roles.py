@@ -155,6 +155,10 @@ register(Role("turntable", "turntable", "spiderpig.construction.rotary:PRESETS",
               default="belt_preload", robot=True,
               help="the robot's base rotation (yaw): its bearings, transmission, motor and "
                    "homing sensor, as a preset (construction.rotary.PRESETS)"))
+register(Role("mill", "mill", "spiderpig.milling:MILLS", ("arm",), default="none",
+              optional=True, robot=True,
+              help="the user's own mill, if any: the parts that want one (the turntable's "
+                   "bearing housings) are machined from plate on it, else laser-cut"))
 register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
               default="suction_cup", optional=True, robot=True,
               help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))

@@ -91,6 +91,7 @@ BASE_EDGE = 5.0         # the base's plates past the motor's corner
 COL_INSET = 6.0         # the columns in from the base's edge
 SHOULDER_D = 18.5       # the shoulder plates' bore: on a 608's outer ring, clear of its inner
 SEAT_FIT = 0.2          # a seat's bore over the bearing (bonded: :mod:`construction.pivots.ball`)
+HOUSING_STOCK = "plate_6061_9p525"   # a milled housing's plate: 3/8 in 6061, past a 608
 SHAFT_HOLE = 8.1
 COLLAR_HOLE = 20.0      # what turns round a collar: the pulley's bore drilled out, the drum's
 ANCHOR_IN = 6.0         # the capstan's anchor screws in from the drum's rim
@@ -133,6 +134,30 @@ class TurretPlan:
     hub_r: float
     sensor_r: float
     notes: tuple[str, ...] = field(default=())
+    mill: str = ""                 # the user's mill (milling.MILLS): the hub's housings milled
+
+    def housing(self, ctx: Context):
+        """The milled bearing housing (two in the hub, the lower one upside down): its
+        stock, its seat bored to the bearing (a slip fit for retaining compound) from the
+        outer face, the shoulder through, the hub's screws' holes, the outline cut free
+        (:class:`milling.MillPart`); ``None`` without a mill."""
+        if not self.mill:
+            return None
+        from spiderpig.hardware.catalog import get
+        from spiderpig.milling import MillPart, Op
+
+        support = self.preset.parts[0]
+        brg = get(support.bearing).dims
+        pcd = TIE_PCD[self.preset.transmission] / 2
+        ops = [Op("bore", float(brg["od"]), depth=float(brg["w"]), purpose="the bearing's seat",
+                  fit="+0.01/0 (a slip fit: try the bearing)"),
+               Op("bore", SHOULDER_D, purpose="the shoulder's bore (through)")]
+        ops += [Op("bore", SCREW_HOLE, pcd * math.cos(math.radians(45 + 90 * k)),
+                   pcd * math.sin(math.radians(45 + 90 * k)), purpose="the hub's screws")
+                for k in range(4)]
+        ops.append(Op("profile", 2 * self.hub_r, purpose="the outline"))
+        return MillPart("hub_housing", HOUSING_STOCK, float(get(HOUSING_STOCK).dims["thickness"]),
+                        2 * self.hub_r, tuple(ops), role="the turntable's bearing housing")
 
     @property
     def phi_m(self) -> float:
@@ -256,8 +281,9 @@ def _clear(rect: tuple[float, float, float, float], prints: list, plate: str) ->
     return True
 
 
-def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
-    """The turret under ``design``'s side (module docstring)."""
+def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") -> TurretPlan:
+    """The turret under ``design``'s side (module docstring); ``mill``: the user's mill's
+    key (``""``: none), which mills the hub's housings."""
     from spiderpig.construction.transmissions.capstan import CORD_D, FLANGE
 
     ctx: Context = design.ctx
@@ -280,10 +306,16 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
     ns = seat_n(t, w_b)
     recess = ns * t - w_b
     h_sp = SPACING - w_b - 2 * t
+    hub_h = 2 * ns * t + 2 * t + h_sp
+    if mill:                       # two milled housings, each bearing flush with its face
+        th = float(get(HOUSING_STOCK).dims["thickness"])
+        if th < w_b + 1.0:
+            raise ConstructionError(f"turret: {HOUSING_STOCK} leaves the bearing no shoulder")
+        recess, hub_h = 0.0, SPACING + w_b
+        h_sp = hub_h - 2 * th
     if h_sp < 3.0:
         raise ConstructionError(f"turret: bearings {SPACING:g} mm apart leave no spacer")
     spring = float(get(support.spring).dims["work_h"]) if support.preload else 0.5
-    hub_h = 2 * ns * t + 2 * t + h_sp
     notes: list[str] = []
 
     # the drive: where the motor goes, what it leaves the hub's floor
@@ -419,7 +451,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
     y_ground = y_t - h["table"]
     return TurretPlan(preset, x_a, z_a, y_t, y_ground, h, r_base, r_table, c, loop, travel,
                       (lo, hi), tuple(brackets), reach, faces, columns, hub_r, sensor_r,
-                      tuple(notes))
+                      tuple(notes), mill)
 
 
 def _loops():
@@ -596,7 +628,7 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
     brg = get(support.bearing).dims
     w_b, od_b = float(brg["w"]), float(brg["od"])
     ns = seat_n(t, w_b)
-    recess = ns * t - w_b
+    recess = 0.0 if tp.mill else ns * t - w_b      # (a milled seat: flush with its face)
     lower = h["hub_bot"] + recess
     upper = h["hub_top"] - recess - w_b
     spring = float(get(support.spring).dims["work_h"]) if support.preload else 0.5
@@ -620,7 +652,9 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
     for name, z0 in (("yaw_bearing_lower", lower), ("yaw_bearing_upper", upper)):
         add(name, bearing_solid(support.bearing, o, z0), fab="purchased",
             bom_key=support.bearing, color="#d0d0d0")
-        extras.append(BomLine("epoxy_2part", GLUE, f"turret: {name} into its seat"))
+        extras.append(BomLine("retaining_compound_641", 0.05, f"turret: {name} in its milled "
+                              "seat") if tp.mill else
+                      BomLine("epoxy_2part", GLUE, f"turret: {name} into its seat"))
 
     # the hub and the turntable
     pcd = TIE_PCD[key] / 2
@@ -629,29 +663,35 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
     tie_cuts = [Cut(xy, SCREW_HOLE) for xy in ties]
     z = h["hub_bot"]
     seat = od_b + SEAT_FIT
-    for i in range(ns):
-        add(f"hub_seat_lower{i}", cut_holes(disc(o, tp.hub_r, z, z + t), [Cut(o, seat), *tie_cuts],
-                                            z, z + t), turns=True, fab="laser",
-            color=PLATE_COLOR, sheet=frame_sheet)
-        z += t
-    add("hub_shoulder_lower", cut_holes(disc(o, tp.hub_r, z, z + t),
-                                        [Cut(o, SHOULDER_D), *tie_cuts], z, z + t),
-        turns=True, fab="laser", color=PLATE_COLOR, sheet=frame_sheet)
-    z += t
-    h_sp = upper - t - z
-    add("hub_spacer", cut_holes(disc(o, tp.hub_r, z, z + h_sp),
-                                [Cut(o, SHOULDER_D + 2.0), *tie_cuts], z, z + h_sp),
+    housing = tp.housing(ctx)
+    milled: dict[str, dict] = {}
+    if housing is not None:        # two milled housings, the printed spacer between
+        from build123d import Axis, Location
+
+        th = housing.thickness
+        solid = housing.solid()    # its seat bored from its top face
+        lower_h = solid.rotate(Axis.X, 180).moved(Location((0, 0, z + th)))   # seat down
+        upper_h = solid.moved(Location((0, 0, h["hub_top"] - th)))
+        for name, part in (("hub_housing_lower", lower_h), ("hub_housing_upper", upper_h)):
+            add(name, part, turns=True, fab="milled", color=PLATE_COLOR, sheet=housing.stock)
+            milled[name] = housing.as_dict()
+        sp0, sp1 = z + th, h["hub_top"] - th
+    else:                          # laser-cut seats and shoulders, the spacer between
+        stacks = (("hub_seat_lower", z, seat, ns), ("hub_shoulder_lower", z + ns * t,
+                                                    SHOULDER_D, 1),
+                  ("hub_shoulder_upper", upper - t, SHOULDER_D, 1),
+                  ("hub_seat_upper", upper, seat, ns))
+        for stem, z0, bore, n in stacks:
+            for i in range(n):
+                zz = z0 + i * t
+                add(f"{stem}{i}" if n > 1 or "seat" in stem else stem,
+                    cut_holes(disc(o, tp.hub_r, zz, zz + t), [Cut(o, bore), *tie_cuts], zz,
+                              zz + t), turns=True, fab="laser", color=PLATE_COLOR,
+                    sheet=frame_sheet)
+        sp0, sp1 = z + (ns + 1) * t, upper - t
+    add("hub_spacer", cut_holes(disc(o, tp.hub_r, sp0, sp1),
+                                [Cut(o, SHOULDER_D + 2.0), *tie_cuts], sp0, sp1),
         turns=True, fab="printed", color=PRINT_COLOR)
-    z += h_sp
-    add("hub_shoulder_upper", cut_holes(disc(o, tp.hub_r, z, z + t),
-                                        [Cut(o, SHOULDER_D), *tie_cuts], z, z + t),
-        turns=True, fab="laser", color=PLATE_COLOR, sheet=frame_sheet)
-    z += t
-    for i in range(ns):
-        add(f"hub_seat_upper{i}", cut_holes(disc(o, tp.hub_r, z, z + t), [Cut(o, seat), *tie_cuts],
-                                            z, z + t), turns=True, fab="laser",
-            color=PLATE_COLOR, sheet=frame_sheet)
-        z += t
     table_cuts: list[Cut | Rect] = [Cut(o, COLLAR_HOLE), *tie_cuts]
     # the flag's screws: their heads on the turntable between the frame plates' feet
     head_r = sk.head_d / 2
@@ -828,8 +868,10 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
     assembly = [
         "Bolt the boss under the base's top plate, slide the shaft through and clamp it with "
         "the two collars, square to the plate (a square against it as they close).",
-        "Bond the bearings into the hub's seats with the hub's plates stacked on the shaft "
-        "itself (the shaft centres them while the epoxy cures).",
+        ("Press the bearings into the milled housings' seats with retaining compound on "
+         "their outer rings (a slip fit: they go in by hand)." if tp.mill else
+         "Bond the bearings into the hub's seats with the hub's plates stacked on the shaft "
+         "itself (the shaft centres them while the epoxy cures)."),
         f"For the drive: {drive}.",
         "Centre the pulley or drum on the hub with a sleeve on the shaft before the hub's "
         "screws are tightened (its eccentricity is the yaw's once-a-turn error).",
@@ -858,5 +900,6 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
             "centre_mm": round(tp.c, 3), "belt_mm": tp.loop,
             "shaft_mm": round(shaft_l, 1), "motor_shaft_mm": shaft_len,
             "columns": list(tp.columns), "notes": list(tp.notes), "fastened": fastened,
-            "parts": sorted(b.name for b in bodies), "assembly": assembly}
+            "parts": sorted(b.name for b in bodies), "assembly": assembly,
+            "mill": tp.mill, "milled": milled}
     return bodies, turning, extras, info

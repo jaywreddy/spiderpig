@@ -1373,6 +1373,17 @@ robot is an entry rather than an edit across the stages:
   feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).
   The robot-level roles (`roles.Role.robot`) are dropped from the side's config
   (`BuildConfig.side_config`), so one plan serves every turntable and tool.
+- **Milled parts** (`spiderpig/milling.py`, fab method `milled`, role `mill`): a part
+  machined from plate on the user's own mill (`milling.MILLS`: the Makera Carvera) where a
+  laser can't make it. A construction describes it as a `milling.MillPart`: its plate
+  (`hardware/plate_catalog.py`), its outline and its 2.5-D operations from one side (bores
+  at depths, the profile last); its solid is drawn from that description, `milling.check`
+  holds it to the mill's rules (the bed with the clamps' margin, a tool for every bore
+  within its flutes, the webs), and the build writes its STEP and a setup sheet. With a
+  mill the turntable's hub is two milled bearing housings (3/8 in 6061, each seat bored to
+  a slip fit with its shoulder, retaining compound), else the laser-cut stack. The BOM buys
+  the plate by the piece and notes the machine time; the milled rules join the
+  manufacturing check (`manufacture.check`).
 - **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
   as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
   rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's
@@ -1406,6 +1417,7 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
+| `mill/<label>.step`, `mill/parts.csv`, `mill/SETUP.md` | the milled parts (a mill named: role `mill`): each distinct part's STEP in its own frame, and the setup sheet (stock and blank, every operation with its tool, depth and fit, the time) | with a mill only |
 | `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar | arms only |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names

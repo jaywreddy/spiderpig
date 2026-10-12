@@ -45,6 +45,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_ball_pivots.py": "construction",
     "test_transmissions.py": "construction",
     "test_turret.py": "construction",
+    "test_milling.py": "construction",
     "test_crank.py": "construction",
     "test_bolt_crank.py": "construction",
     "test_standoff.py": "construction",

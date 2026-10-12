@@ -502,7 +502,8 @@ def nearest(key: str, options: Iterable[str]) -> str | None:
 def sheet_keys(metal: bool = False) -> list[str]:
     _load_catalog()
     return sorted(k for k, it in CATALOG.items()
-                  if it.category == "sheet" and (it.dims.get("metal") or not metal))
+                  if it.category == "sheet" and not it.dims.get("milled")
+                  and (it.dims.get("metal") or not metal))
 
 
 def module_keys() -> list[str]:

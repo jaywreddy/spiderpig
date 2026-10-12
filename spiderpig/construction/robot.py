@@ -314,7 +314,7 @@ class Turret(Layout):
               else tool_plan(design.ctx, design.plan, _pick(TOOLS, key, "tool"),
                              design.groups))
         preset = _pick(PRESETS, cfg.role("turntable"), "turntable")
-        return turret_plan(design, preset, tp), tp
+        return turret_plan(design, preset, tp, mill=cfg.role("mill")), tp
 
     def side_groups(self, design, config) -> list:
         from spiderpig.construction.rotary.turret import TurretFoot
@@ -347,8 +347,11 @@ class Turret(Layout):
             carried.update(dict.fromkeys(tool["rotating"], "q4"))
         tree = RobotTree(tuple(joints), carried)
         fastened = list(side.meta.get("fastened", [])) + info.pop("fastened")
+        milled = info.pop("milled")
         meta = dict(side.meta, layout="turret", turret=info, tree=tree.to_meta(),
                     filament="pla_filament", fastened=fastened)
+        if milled:                 # the milled parts' specs, by body (spiderpig.milling)
+            meta.update(mill=info["mill"], milled=milled)
         return Mechanism(name=f"{side.name}_turret", bodies=list(side.bodies) + bodies,
                          connections=list(side.connections), meta=meta,
                          bom_extras=list(side.bom_extras) + extras)
