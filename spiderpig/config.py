@@ -23,7 +23,8 @@ from __future__ import annotations
 import hashlib
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
+from functools import cache
 
 from spiderpig import linkage, servos
 from spiderpig.fit import Params
@@ -308,14 +309,16 @@ class BuildConfig:
 
     def _roles(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...]:
         """The roles named, validated: each a role of :mod:`spiderpig.roles` kept in
-        ``roles`` (a role with a field of its own is set there), applying to this linkage's
-        kind; a key equal to the role's default is dropped (one config per design). The
-        keys are checked against the role's registry where it is built
-        (:func:`construction.pick`), as the pins are."""
+        ``roles`` (a role with a field of its own is set there), or a per-slot role's
+        ``"<role>@<slot>"``, applying to this linkage's kind; :data:`roles.NONE` only for an
+        optional role; a plain key equal to the role's default is dropped (one config per
+        design). The keys are checked against the role's registry where it is built, as
+        the pins are (the slots too: they are the design's)."""
         from spiderpig import roles as rolemod
 
         out = {}
-        for name, key in (dict(self.roles) if self.roles else {}).items():
+        for qualified, key in (dict(self.roles) if self.roles else {}).items():
+            name, slot = rolemod.split(str(qualified))
             try:
                 role = rolemod.get(name)
             except KeyError as e:
@@ -323,30 +326,45 @@ class BuildConfig:
             if not role.stored_in_roles:
                 raise ParamError(f"role {name!r} is the config's {role.field!r} field")
             if not rolemod.applies(name, lk.kind):
-                raise ParamError(f"{lk.key} is a {lk.kind}: it has no {role.title} "
-                                 f"(role {name!r} is a {' or '.join(role.kinds)}'s)")
+                raise ParamError(f"{lk.key} is a {lk.kind}: it has no {role.title} role "
+                                 f"({name!r} is a {' or '.join(role.kinds)}'s)")
+            if slot and (role.per == "design" or not slot.isidentifier()):
+                raise ParamError(f"role {name!r} is one per design: no slot {slot!r}"
+                                 if role.per == "design" else
+                                 f"role {qualified!r}: the slot must be an identifier")
             if not isinstance(key, str) or not key:
-                raise ParamError(f"role {name!r} wants a construction key, got {key!r}")
-            out[name] = key
-        defaults = {n: rolemod.default_key(n, self) for n in out}
-        return tuple(sorted((n, k) for n, k in out.items() if k != defaults[n]))
+                raise ParamError(f"role {qualified!r} wants a construction key, got {key!r}")
+            if key == rolemod.NONE and not role.optional:
+                raise ParamError(f"role {name!r} can't be left empty ({rolemod.NONE!r})")
+            out[str(qualified)] = key
+        plain = {q: rolemod.default_key(q, self) for q in out if "@" not in q}
+        return tuple(sorted((q, k) for q, k in out.items() if plain.get(q) != k))
 
-    def role(self, name: str) -> str:
-        """The construction key that fills role ``name`` (``""``: the role is empty)."""
+    def role(self, name: str, slot: str = "") -> str:
+        """The construction key that fills role ``name`` (at ``slot``, for a per-drive or
+        per-joint role: its own key, else the role's); ``""``: the role is empty."""
         from spiderpig import roles as rolemod
 
         role = rolemod.get(name)
         if role.field:
             return str(getattr(self, role.field))
-        return dict(self.roles).get(name) or rolemod.default_key(name, self)
+        named = dict(self.roles)
+        key = (named.get(f"{name}@{slot}") if slot else None) or named.get(name)
+        key = key or rolemod.default_key(name, self)
+        return "" if key == rolemod.NONE else key
 
     def applied_roles(self) -> dict[str, str]:
         """Every :mod:`spiderpig.roles` role kept in ``roles`` that applies to this design,
-        with the key that fills it (the resolved spec writes them all in)."""
+        with the key that fills it (:data:`roles.NONE` for an emptied one), and every
+        per-slot key named: what the resolved spec writes in."""
         from spiderpig import roles as rolemod
 
         kind = self.lk.kind
-        return {r.name: self.role(r.name) for r in rolemod.extra() if kind in r.kinds}
+        named = dict(self.roles)
+        out = {r.name: named.get(r.name) or rolemod.default_key(r.name, self)
+               for r in rolemod.extra() if kind in r.kinds}
+        out.update({q: k for q, k in named.items() if "@" in q})
+        return out
 
     def _link_sheets(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...] | None:
         """Link class -> sheet, validated; ``None`` when it is the linkage's own."""
@@ -449,7 +467,12 @@ class BuildConfig:
         stem = f"{self.linkage}_{self.module}_{'robot' if self.robot else 'side'}"
         if self.is_default:
             return stem
-        return f"{stem}_{hashlib.sha1(repr(self).encode()).hexdigest()[:12]}"
+        # the fields that differ from BuildConfig()'s, so a field added later (at its
+        # default) leaves every key as it was; the defaults are constants: one key per config
+        base = _base_config()
+        diff = tuple((f.name, getattr(self, f.name)) for f in fields(self)
+                     if getattr(self, f.name) != getattr(base, f.name))
+        return f"{stem}_{hashlib.sha1(repr(diff).encode()).hexdigest()[:12]}"
 
     def design_json(self) -> dict:
         """The design parameters as JSON: linkage, module, phases (deg) and all proportions."""
@@ -459,6 +482,12 @@ class BuildConfig:
             "phases_deg": [round(math.degrees(ph), 6) for _, ph in self.legs],
             "proportions": dict(zip(self.lk.params, self.values, strict=True)),
         }
+
+
+@cache
+def _base_config() -> BuildConfig:
+    """``BuildConfig()``, made once (:attr:`BuildConfig.key` compares against it)."""
+    return BuildConfig()
 
 
 # ---------------------------------------------------------------------------
@@ -581,9 +610,13 @@ def add_build_args(p) -> None:
 
     for role in rolemod.extra():          # every later role: --<role> KEY (default: its own)
         p.add_argument(f"--{role.name.replace('_', '-')}", dest=f"role_{role.name}",
-                       default=None, choices=sorted(rolemod.registry(role.name)),
-                       help=f"{role.title}: {role.help} (a {' or '.join(role.kinds)}; "
+                       default=None, choices=rolemod.choices(role.name),
+                       help=f"{role.title}: {role.help} (a {' or '.join(role.kinds)}'s; "
                             "default: the design's own)")
+    p.add_argument("--role", dest="role_slots", action="append", default=None,
+                   metavar="ROLE@SLOT=KEY",
+                   help="one slot's construction for a per-drive or per-joint role, e.g. "
+                        "transmission@q2=capstan (repeatable)")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
                    help="measured sheet thickness in mm (default: the sheet's nominal)")
@@ -628,6 +661,11 @@ def config_from_args(args, **fixed) -> BuildConfig:
     from spiderpig import roles as rolemod
 
     named = {r.name: getattr(args, f"role_{r.name}", None) for r in rolemod.extra()}
+    for item in getattr(args, "role_slots", None) or ():
+        q, sep, key = str(item).partition("=")
+        if not sep or "@" not in q:
+            raise ParamError(f"--role wants ROLE@SLOT=KEY, got {item!r}")
+        named[q.strip()] = key.strip()
     if any(named.values()):
         fields["roles"] = tuple((k, v) for k, v in named.items() if v)
     fields["crank"] = getattr(args, "crank", None) or ""        # the kind's default

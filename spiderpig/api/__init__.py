@@ -80,7 +80,6 @@ from spiderpig.api.cards import (
 )
 from spiderpig.api.exports import (
     EXPORT_LOGGERS,
-    GROUPED,
     _drop_robot_job,
     _export,
     _export_files,

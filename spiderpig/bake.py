@@ -61,8 +61,8 @@ from pathlib import Path
 import numpy as np
 import pygltflib
 
+from spiderpig import fabmethods, walk
 from spiderpig import linkage as linkage_mod
-from spiderpig import walk
 from spiderpig.config import (
     BuildConfig,
     ParamError,
@@ -224,11 +224,12 @@ def _catalog_category(bom_key: str | None) -> str | None:
 def _material_of(body: Body) -> str:
     """Material key for a body: by ``fab``, then by role."""
     cls = body_class(body.name)
-    if body.fab == "laser":
+    made_of = fabmethods.stock(body.fab)
+    if made_of == "sheet":
         return "acrylic" if is_link(body.name) else "acrylic_frame"
-    if body.fab == "printed":
+    if made_of == "filament":
         return "printed"
-    if body.fab == "purchased":
+    if body.fab == fabmethods.PURCHASED:
         category = _catalog_category(body.bom_key)
         if category == "electronics":
             return "electronics"

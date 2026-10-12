@@ -25,6 +25,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from spiderpig.construction.base import Build, Context, Group, Motion, Realized
+from spiderpig.construction.joints import ErrorTerms, from_wobble_note
 from spiderpig.stack import Axis, Claim, Disc, Keepout, Layout, Placed, Unbuildable
 
 STOP_OVERLAP = 0.8   # how far a spacer must overlap a link's hole to hold it (radial, mm)
@@ -76,6 +77,16 @@ class AxleGroup(Group):
 
     def dims(self, ctx: Context) -> AxleDims:
         return self.construction.dims(ctx, self.pillar)
+
+    def error_terms(self, ctx: Context, got: Realized | None = None) -> ErrorTerms | None:
+        """The construction's terms (its ``error_terms``), with this joint's measured end
+        float and tilt when ``got`` holds its wobble note."""
+        make = getattr(self.construction, "error_terms", None)
+        if make is None:
+            return None
+        base = make(ctx)
+        note = ((got.notes.get("wobble") or {}).get(self.name) if got is not None else None)
+        return from_wobble_note(note, base) if note else base
 
     def keepouts(self, ctx: Context) -> list[Keepout]:
         """At its thinnest (the neck) the axle still fills every layer it spans."""

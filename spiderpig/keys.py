@@ -980,8 +980,12 @@ class _Walk:
                         self.load(arg.value)
                     else:               # a computed import: what its module names
                         for s in sorted(m.strings):
+                            mod, sep, attr = s.partition(":")
                             if s in self.g.modules:
                                 self.escape(s)
+                            elif sep and mod in self.g.modules and attr.isidentifier():
+                                self.load(mod)      # "pkg.mod:NAME" (spiderpig.roles' paths)
+                                self.resolve(mod, attr)
                 elif callee in ("globals", "vars", "locals") and not n.args:
                     for s in m.symbols:
                         self.reach_symbol(m.name, s)

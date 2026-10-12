@@ -52,8 +52,8 @@ class Sheet:
     corner_r: float        # an inside corner comes out this round (mm)
     metal: bool
     sheet_mm: tuple[float, float]
-    modulus_gpa: float = 3.2       # Young's modulus (the item's, else the material's)
-    cte_um_per_m_k: float = 70.0   # linear thermal expansion
+    modulus_gpa: float     # Young's modulus, GPa (the item's, else the material's)
+    cte_um_per_m_k: float  # linear thermal expansion, um/m/K (the item's, else the material's)
 
     @property
     def min_edge(self) -> float:
@@ -91,9 +91,20 @@ def sheet(key: str) -> Sheet:
         min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
         sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))),
-        modulus_gpa=float(d.get("modulus_gpa", MODULUS_GPA.get(material, MODULUS_GPA["acrylic"]))),
-        cte_um_per_m_k=float(d.get("cte_um_per_m_k",
-                                   CTE_UM_PER_M_K.get(material, CTE_UM_PER_M_K["acrylic"]))))
+        modulus_gpa=_constant(d, "modulus_gpa", MODULUS_GPA, material, key),
+        cte_um_per_m_k=_constant(d, "cte_um_per_m_k", CTE_UM_PER_M_K, material, key))
+
+
+def _constant(dims: dict, name: str, table: dict, material: str, key: str) -> float:
+    """A sheet's material constant: its item's own, else its material's from the table
+    (:mod:`hardware.mass`); a material the table lacks is an error, never acrylic's."""
+    if name in dims:
+        return float(dims[name])
+    try:
+        return float(table[material])
+    except KeyError:
+        raise KeyError(f"sheet {key!r}: no {name} for material {material!r} (add it to "
+                       f"spiderpig.hardware.mass or to the item's dims)") from None
 
 
 LINK_SHEETS: dict[str, dict[str, str]] = {

@@ -15,8 +15,8 @@ doesn't match is never used (a mismatching download isn't cached). Nothing
 here raises: a model that can't be had gives ``None`` (logged), and callers
 fall back to their parametric model (the servos' :mod:`servos.model`; a bought part's
 catalog dims). A model with no ``url`` (``vendor`` / ``part_number``: a vendor whose
-pages refuse a scripted fetch) comes only from the cache, which its vendor's fetcher or
-:func:`import_file` fills.
+pages refuse a scripted fetch) comes only from the cache, which :func:`import_file`
+fills with a file fetched by other means (a browser).
 
 The servos' models went through here first (:mod:`servos.cad` re-exports this module,
 with its own switch ``SPIDERPIG_SERVO_CAD``).
@@ -25,13 +25,10 @@ with its own switch ``SPIDERPIG_SERVO_CAD``).
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import logging
 import os
 import tempfile
-import urllib.request
-import zipfile
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -49,12 +46,13 @@ class CadRef:
     """A vendor's model of a purchased part, aligned to the part's frame by ``transform``.
 
     ``transform`` is a 4x4 row-major matrix (as a tuple of 16 floats) taking
-    the file's coordinates (after scaling by ``scale`` to mm) into the servo
-    frame. ``sha256`` pins the exact file; a mismatch means "don't use it".
+    the file's coordinates (after scaling by ``scale`` to mm) into the part's
+    frame (a servo's: the servo frame). ``sha256`` pins the exact file; a mismatch means
+    "don't use it".
 
     Optional: ``member`` names the model inside a zip archive (``url`` is
     then the archive, pinned by ``archive_sha256``; ``sha256`` pins the
-    member). ``strip`` lists the servo-frame bounding boxes ``(x0, y0, z0,
+    member). ``strip`` lists the part-frame bounding boxes ``(x0, y0, z0,
     x1, y1, z1)`` of solids to drop (the stock output horn and its screw,
     which :mod:`servos.model` draws separately); ``strip_cut`` a cylinder
     ``(r, z0, z1)`` about the output axis cut away where a model fuses the
@@ -63,8 +61,8 @@ class CadRef:
 
     ``vendor`` and ``part_number`` name where a model comes from when it has no direct
     ``url`` (a vendor whose pages refuse a scripted download, e.g. McMaster-Carr): the
-    cache is then filled by that vendor's fetcher or by hand (``spiderpig cad import``),
-    and the pinned ``sha256`` still decides whether the file is used.
+    cache is then filled by :func:`import_file` with a file fetched by other means, and
+    the pinned ``sha256`` still decides whether the file is used.
     """
 
     url: str
@@ -119,6 +117,8 @@ def cached_path(ref: CadRef) -> Path:
 
 
 def _download(url: str, timeout: float) -> bytes:
+    import urllib.request  # (here: the config imports this module; the network stack later)
+
     req = urllib.request.Request(url, headers={"User-Agent": "spiderpig-cad-fetch/1"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         data = r.read(MAX_BYTES + 1)
@@ -156,6 +156,9 @@ def fetch(ref: CadRef, *, allow_download: bool | None = None,
             return None
         data = _download(ref.url, timeout)
         if ref.member:
+            import io
+            import zipfile
+
             got = hashlib.sha256(data).hexdigest()
             if ref.archive_sha256 and got != ref.archive_sha256.lower():
                 log.warning("%s: archive sha256 mismatch; not using it", ref.url)

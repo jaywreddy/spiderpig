@@ -768,10 +768,22 @@ def validate(data: Mapping) -> list[SpecError]:
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
     extra = {r.name: r for r in rolemod.extra()}
-    c = v.obj(top.get("constructions"), "constructions", (*CONSTRUCTION_FIELDS, *extra))
+    given = top.get("constructions")
+    slots = [q for q in (given if isinstance(given, Mapping) else ())
+             if isinstance(q, str) and "@" in q
+             and getattr(extra.get(rolemod.split(q)[0]), "per", "design") != "design"]
+    c = v.obj(given, "constructions", (*CONSTRUCTION_FIELDS, *extra, *slots))
     if c is not None:
-        for name in extra:
-            v.string(c.get(name), f"constructions.{name}", sorted(rolemod.registry(name)))
+        for q in [*extra, *slots]:
+            name = rolemod.split(q)[0]
+            if c.get(q) is None:
+                continue
+            if lk is not None and not rolemod.applies(name, lk.kind):
+                v.err(f"constructions.{q}", f"{lk.key} is a {lk.kind}: it has no "
+                      f"{extra[name].title} role ({name!r} is a "
+                      f"{' or '.join(extra[name].kinds)}'s)")
+            else:
+                v.string(c.get(q), f"constructions.{q}", rolemod.choices(name))
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
         for what in ("pillar", "pin", "crank"):
             reg = sorted(construction.CRANKS if what == "crank" else construction.AXLES)
@@ -937,7 +949,7 @@ def spec_schema() -> dict:
                                              "clearance gaps, or best: sunk, and in gaps "
                                              "only when no sunk plan exists (the plan's "
                                              "proof says which was searched)"},
-                    **{r.name: {"enum": sorted(rolemod.registry(r.name)),
+                    **{r.name: {"enum": rolemod.choices(r.name),
                                 "description": f"{r.title}: {r.help} (a "
                                                f"{' or '.join(r.kinds)}'s; default: the "
                                                "design's own)"}

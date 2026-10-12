@@ -261,7 +261,6 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     return files, bom_summary
 
 
-GROUPED = fabmethods.MADE
 
 
 @contextmanager
@@ -283,7 +282,7 @@ def _start_group_job(mech):
     if not workers.enabled():
         return None
     made = [(b.name, b.fab, workers.dump_shape(b.part)) for b in mech.bodies
-            if b.fab in GROUPED and b.part is not None]
+            if b.fab in fabmethods.made() and b.part is not None]
     return workers.submit(_group_job, made)
 
 
@@ -295,7 +294,7 @@ def _group_job(made) -> dict[str, list[tuple[str, list[str], list[str]]]]:
 
     bodies = [SimpleNamespace(name=n, fab=fab, part=load_shape(d)) for n, fab, d in made]
     return {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in group_made(bodies, m)]
-            for m in GROUPED}
+            for m in fabmethods.made()}
 
 
 def _groups(mech, job) -> dict:
@@ -303,7 +302,7 @@ def _groups(mech, job) -> dict:
     from spiderpig.hardware.bom import MadeGroup
 
     if job is None:
-        return {m: group_made(mech.bodies, m) for m in GROUPED}
+        return {m: group_made(mech.bodies, m) for m in fabmethods.made()}
     by_name = {b.name: b for b in mech.bodies}
     return {m: [MadeGroup(m, by_name[ref], names, mirrored) for ref, names, mirrored in gs]
             for m, gs in job.result().items()}

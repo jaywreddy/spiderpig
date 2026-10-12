@@ -324,9 +324,8 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
     return fabcache.fabricated(store, tmpl, config, design, t, build)
 
 
-MADE = fabmethods.MADE
-"""The fabrications the design makes itself: each part one solid (a purchased model may be
-several)."""
+# the fabrications the design makes itself (fabmethods.made()): each part one solid (a
+# purchased model may be several)
 
 
 def split_parts(mech: Mechanism) -> list[tuple[str, int]]:
@@ -336,5 +335,5 @@ def split_parts(mech: Mechanism) -> list[tuple[str, int]]:
     :func:`construction.contract.bad_solids`, the audit's and verify's): cheap enough for
     every build."""
     return [(b.name, n) for b in mech.bodies
-            if b.part is not None and getattr(b, "fab", None) in MADE
+            if b.part is not None and getattr(b, "fab", None) in fabmethods.made()
             and (n := len(cast("Shape3D", b.part).solids())) != 1]

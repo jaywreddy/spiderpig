@@ -219,7 +219,6 @@ def clear_generated(folder: Path) -> None:
 # the export worker: the grouping and the cut files beside the STEP and STL
 # ---------------------------------------------------------------------------
 
-GROUPED = fabmethods.MADE
 
 
 class _ExportJob:
@@ -347,7 +346,7 @@ def _exports_job(go: str, parent: int, out: str, name: str, sheet: str,
         return None
     timings = {"load": time.perf_counter() - t0}
     t0 = time.perf_counter()
-    groups = {m: group_made(mech.bodies, m) for m in GROUPED}
+    groups = {m: group_made(mech.bodies, m) for m in fabmethods.made()}
     timings["group"] = time.perf_counter() - t0
     res: dict = {"groups": {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in gs]
                             for m, gs in groups.items()}, "timings": timings}
@@ -480,7 +479,7 @@ def main(argv=None) -> int:
     if job is not None:
         job.adopt(out)                      # (the build reports on them below)
     if done is None:
-        groups = {method: group_made(mech.bodies, method) for method in GROUPED}
+        groups = {method: group_made(mech.bodies, method) for method in fabmethods.made()}
     else:
         by_name = {b.name: b for b in mech.bodies}
         groups = {m: [MadeGroup(m, by_name[ref], names, mirrored)

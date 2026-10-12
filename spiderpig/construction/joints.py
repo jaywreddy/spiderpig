@@ -101,5 +101,18 @@ def plain_hole(clearance_mm: float, axial_play_mm: float, tilt_deg: float = 0.0,
                       notes=(f"{clearance_mm:g} mm diametral clearance in a plain hole",))
 
 
+def from_wobble_note(note: dict, base: ErrorTerms) -> ErrorTerms:
+    """A realized joint's terms: ``base`` (its construction's) with what the build measured
+    in its wobble note (:func:`construction.wobble.column_wobble`): the worst link's
+    clearance as the radial play, the column's end float, the worst link's tilt."""
+    links = note.get("links") or ()
+    clearance = max((float(e["clearance_mm"]) for e in links), default=base.radial_play_mm)
+    basis = str(note.get("play_basis") or "")
+    return replace(base, radial_play_mm=clearance,
+                   axial_play_mm=float(note.get("play_mm", base.axial_play_mm)),
+                   tilt_deg=float(note.get("worst_deg", base.tilt_deg)),
+                   notes=base.notes + ((f"end float: {basis}",) if basis else ()))
+
+
 def with_source(terms: ErrorTerms, source: str) -> ErrorTerms:
     return replace(terms, source=source)

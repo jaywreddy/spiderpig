@@ -34,11 +34,26 @@ from spiderpig.store import PROJECT, Store, diff_json, report_doc
 # ---------------------------------------------------------------------------
 
 
-def _role_names() -> set[str]:
-    """The roles a resolved spec's ``constructions`` may name beside its own keys."""
+def _stored_roles(cons: dict) -> tuple[tuple[str, str], ...]:
+    """The roles a resolved spec's ``constructions`` names beside its own keys; a key that is
+    neither its own nor a known role (or a known per-slot role's ``role@slot``) fails: a
+    stored design is rebuilt as recorded or not at all."""
     from spiderpig import roles as rolemod
 
-    return {r.name for r in rolemod.extra()}
+    out = []
+    for q, key in cons.items():
+        if q in ("pillar", "pin", "crank", "heads"):
+            continue
+        name, slot = rolemod.split(q)
+        try:
+            role = rolemod.get(name)
+        except KeyError:
+            raise ParamError(f"this stored design names a construction role {q!r} the engine "
+                             f"no longer has (roles: {sorted(rolemod.ROLES)})") from None
+        if not role.stored_in_roles or (slot and role.per == "design"):
+            raise ParamError(f"this stored design's constructions.{q} isn't a role's key")
+        out.append((q, key))
+    return tuple(sorted(out))
 
 
 def _config_from_resolved(resolved: dict) -> BuildConfig:
@@ -59,7 +74,7 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
         link_sheets=tuple(sorted((mat.get("link_sheets") or {}).items())),
         pillar=cons["pillar"], pin=cons["pin"], crank=cons["crank"],
         heads=cons.get("heads") or "sink",
-        roles=tuple(sorted((k, v) for k, v in cons.items() if k in _role_names())),
+        roles=_stored_roles(cons),
         params=Params(**{k: fit[k] for k in FIT_FIELDS if k in fit}),
     )
 

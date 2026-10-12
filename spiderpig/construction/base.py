@@ -247,8 +247,8 @@ class Group:
     """A functional part of a side, built by one construction (the contract above).
 
     A group implements :meth:`claims` and :meth:`realize`; :meth:`keepouts`,
-    :meth:`interface` and :meth:`motion` are optional. ``cuts``: the group cuts what the
-    others asked for (holes, pads), so it realizes after them.
+    :meth:`interface`, :meth:`motion` and :meth:`error_terms` are optional. ``cuts``: the
+    group cuts what the others asked for (holes, pads), so it realizes after them.
     """
 
     name: str
@@ -270,6 +270,13 @@ class Group:
         """The group's parts for the solved plan; ``done`` is what the groups before it
         built (a plate cuts the holes and adds the pads they asked for)."""
         raise NotImplementedError
+
+    def error_terms(self, ctx: Context, got: Realized | None = None):
+        """How far the joint this group builds lets it wander
+        (:class:`construction.joints.ErrorTerms`), from what :meth:`realize` built when
+        ``got`` is given (its notes); ``None``: the group is no joint part, or reports
+        nothing (the precision analysis takes it as rigid and says so)."""
+        return
 
     def assembly(self, view) -> list:
         """How the group's parts go on (:mod:`construction.assembly`): ``Op`` records over

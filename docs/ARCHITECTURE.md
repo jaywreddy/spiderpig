@@ -1302,7 +1302,7 @@ robot is an entry rather than an edit across the stages:
 
 - **Fab methods** (`spiderpig/fabmethods.py`): how a body is made (`laser`, `printed`,
   `purchased`). The BOM, the labels, the build's per-method folders and the fabrication
-  cache iterate `fabmethods.MADE` instead of spelling the keys.
+  cache iterate `fabmethods.made()` instead of spelling the keys.
 - **Construction roles** (`spiderpig/roles.py`): the slots of a design a construction fills.
   `pillar`, `pin` and `crank` keep their own `BuildConfig` fields. Every later role is kept in
   `BuildConfig.roles`, applies to the linkage kinds it lists, and flows through the spec's
@@ -1315,9 +1315,9 @@ robot is an entry rather than an edit across the stages:
   systematic error (accuracy, which calibration removes).
 - **Vendor CAD** (`spiderpig/hardware/cad.py`): every bought part's model goes through
   one pinned-hash cache (the servos' too, `servos/cad.py` re-exports it). A model with no
-  direct URL (McMaster-Carr, whose pages refuse a scripted download) comes from its
-  vendor's fetcher or `cad.import_file`; clearances always use the catalog's dimensions,
-  never the model.
+  direct URL (McMaster-Carr, whose pages refuse a scripted download) enters the cache
+  through `cad.import_file`, still checked against its pinned hash; clearances always use
+  the catalog's dimensions, never the model.
 - **Material constants** (`hardware/mass.py`): `MODULUS_GPA` and `CTE_UM_PER_M_K` beside
   the density table; `materials.Sheet` carries both.
 

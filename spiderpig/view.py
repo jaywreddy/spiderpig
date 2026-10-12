@@ -229,6 +229,15 @@ def add_lazy_build_args(ap: argparse.ArgumentParser) -> None:
     ap.add_argument("--link-sheet", dest="link_sheet", action="append", default=None,
                     metavar="LINK=SHEET",
                     help="cut a link class from another sheet, e.g. b4=al6061_3p2mm (repeatable)")
+    from spiderpig import roles as rolemod  # (light: the role names, not their registries)
+
+    for role in rolemod.extra():
+        ap.add_argument(f"--{role.name.replace('_', '-')}", dest=f"role_{role.name}",
+                        default=None, help=f"{role.title}" + see)
+    ap.add_argument("--role", dest="role_slots", action="append", default=None,
+                    metavar="ROLE@SLOT=KEY",
+                    help="one slot's construction for a per-drive or per-joint role "
+                         "(repeatable)")
 
 
 def convert_build_args(args) -> None:

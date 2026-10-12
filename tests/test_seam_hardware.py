@@ -211,7 +211,7 @@ def test_the_check_counts_the_rules_and_errors_over_every_laser_part():
     default), worst first per rule; the summary not ok on an error."""
     bad = _body(_plate(30, 30, 2.54, [(15, 15, 2.0)]), name="bad")
     good = _body(_plate(30, 30, 3.0, [(15, 15, 4.0)]), sheet=None, name="good")
-    printed = Body("ring", _plate(10, 10, 3.0), fab="print")
+    printed = Body("ring", _plate(10, 10, 3.0), fab="printed")
     m = manufacture.check(SimpleNamespace(bodies=[bad, good, printed]), "acrylic_3mm",
                           dxf=False)
     assert m["parts"] == 2

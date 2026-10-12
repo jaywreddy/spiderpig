@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from spiderpig import fabmethods
 from spiderpig.hardware.catalog import get
 from spiderpig.stack import body_class
 
@@ -31,6 +32,8 @@ DENSITY = {
     "plastic": 1.41,      # acetal, a plastic horn
     "ptfe": 2.2,          # PTFE washers and tube liners
     "nylon": 1.14,        # PA66 standoffs, screws and nuts
+    "polycarbonate": 1.20,  # PC (Makrolon: 1.20)
+    "stainless": 8.0,     # 300-series stainless (304: 7.9-8.0)
 }
 SERVO_BOX_DENSITY = 1.5   # g/cm^3 of a servo's body box, when its spec has no weight
 
@@ -143,11 +146,12 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
     """
     cls = body_class(body.name)
     category = _category(body.bom_key)
-    if body.fab == "laser":
+    made_of = fabmethods.stock(body.fab)
+    if made_of == "sheet":
         return "sheet", sheet_density(getattr(body, "sheet", None) or sheet), None
-    if body.fab == "printed":
+    if made_of == "filament":
         return "printed", filament_density(filament), None
-    if body.fab != "purchased":
+    if body.fab != fabmethods.PURCHASED:
         raise ValueError(f"body {body.name!r} has a part but no known fabrication ({body.fab!r})")
     if category == "servo" or cls == "servo":
         return "servo", 0.0, servo_mass_g(servo)
