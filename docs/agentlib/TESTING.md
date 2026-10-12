@@ -309,13 +309,15 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the robot-arm platform, `ab69ece`, 2026-10-12: the walkers as the integration
-branch's `next-320384d` left them, and the palletizer on its turret):
-`~/.cache/spiderpig/gate/platform-ab69ece/` on the development
+**Baseline** (the robot-arm platform, `0b05b24`, 2026-10-12: the walkers as the integration
+branch's `next-320384d` left them, and the palletizer on its turret on ball-bearing
+pivots): `~/.cache/spiderpig/gate/platform-0b05b24/` on the development
 box (`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json`
 (commit, branch, time). Compare against it from any worktree whose `spiderpig/` should
-match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-ab69ece`. It differs
-from `next-320384d` (2026-10-08) by the arm alone, and from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
+match its output: `mise run gate -- compare ~/.cache/spiderpig/gate/platform-0b05b24`. It differs
+from `platform-ab69ece` (kept) by the arm's pivots alone (`ball` / `ball_pillar` on 6.6 mm
+links: 11 bearings, wider links; DECISIONS.md 2026-10-12), from `next-320384d`
+(2026-10-08) by the arm alone, and from W8's baseline `w8-2a130c8` (engine `0.1.0+e91ed4bc0da8`; kept, as are the branches'
 own `bus-39502f7`, `bus2-92d11e4`, `bom-bbf7001`, `bom2-5989d50`, the first
 combined `next-ba41c10` and `next-ba68611` (before the boxed cables and the
 congruent centre plates) and `master-1eba876` /
