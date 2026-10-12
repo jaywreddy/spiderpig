@@ -269,3 +269,15 @@ def test_homing_reads_the_inclinometers_and_skips_a_capstans_phase():
     assert not any("MSCNT" in s.action for s in steps)
     assert any(s.axis == "q2" and "inclinometer" in s.action for s in steps)
     assert any(s.axis == "q3" and "gauge" in s.action for s in steps)
+
+
+def test_an_endstop_homes_a_joint_the_mt4_way():
+    from spiderpig.actuators import sensors
+
+    a = Axis("q2", 5.0, 1.8, 16, -1)
+    steps = homing.plan({"q2": a, "q3": a}, {"q2": "endstop", "q3": "endstop"})
+    assert [s.axis for s in steps].count("q2") == 3          # seek, slow re-approach, zero
+    assert any("slow" in s.action or "tenth" in s.action for s in steps)
+    ends = sensors.get("endstop")
+    assert sensors.get("gauge").repeat_deg > ends.repeat_deg > sensors.get("scl3300").repeat_deg
+    assert ends.bom_key == "optical_endstop"

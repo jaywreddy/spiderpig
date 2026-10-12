@@ -61,7 +61,14 @@ def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None,
                 HomingStep("q1", "that is yaw 0")]
     planar = [n for n in axes if n not in ("q1", "q4")]
     gauged = [n for n in planar if sensors.get(n, "gauge") == "gauge"]
-    sensed = [n for n in planar if n not in gauged]
+    switched = [n for n in planar if sensors.get(n) == "endstop"]
+    sensed = [n for n in planar if n not in gauged and n not in switched]
+    for n in switched:      # one joint at a time, each to its switch (the MT4's, GRBL's)
+        out += [HomingStep(n, "turn toward the end of travel until the flag breaks the beam"),
+                HomingStep(n, "back off 3 deg, then approach again at a tenth of the speed "
+                              "from the same side until the beam breaks"),
+                HomingStep(n, "that is the joint's stored switch angle (its offset, found "
+                              "once by calibration)")]
     if gauged:
         out.append(HomingStep(",".join(gauged), "energise the motors (they hold), jog the arm "
                               "to a pose with the upper arm under 90 deg; zero a digital "

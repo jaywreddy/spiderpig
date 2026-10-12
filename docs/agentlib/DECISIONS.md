@@ -713,3 +713,15 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   at E, O, C and R); a g6 shaft can be 4 um tight in a bore (check each bearing slides);
   Dyneema SK creeps (DM20 or Vectran); the C8 spring's seats; the inclinometer's mounting
   offset and drift are datasheet figures; no SPI driver in Klipper (the host reads it).
+- **Revised the same day (user):** "we shouldn't need closed-loop control": the arms the
+  design copies home each joint to a switch. The MT4's STEP names an optical sensor plate on
+  the base and a J2 detection flag on the upper arm; Thor, PAROL6, the AR4 and the Mirobot
+  home every joint to an optical, micro or inductive switch (fast seek, back off, slow
+  approach); only the Dobot reads its arms' angles (gravity-referenced sensors). The
+  recommended homing is `angle_sensor` `endstop` (a slotted optical endstop on the frame, a
+  flag on the link 40 mm out: 20 um there, 0.065 / 0.075 mm at the tool through q2's and
+  q3's levers; `control.homing.plan` seeks each joint, backs off and comes in slowly); the
+  inclinometer stays an option. Best configuration: 0.62 mm worst case with endstops
+  (0.58 with inclinometers). Open: the q2 / q3 endstops and flags are in the budget, the
+  BOM and the homing, not yet drawn (their place on the frame plate, the flag's claim on
+  the link).
