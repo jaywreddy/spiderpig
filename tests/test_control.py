@@ -333,3 +333,10 @@ def test_a_move_ends_one_sidedly_past_and_back():
     assert f"MOVE={host.position_deg(a, math.radians(past)):.5f}" in g[0]
     assert f"MOVE={host.position_deg(a, 0.2):.5f}" in g[1]
     assert host.one_sided(axes, {"q1": 0.1, "q2": 1.0}, end) == []    # both positive
+
+
+def test_a_geared_axis_goes_past_its_backlash():
+    a = Axis("q2", 20.0, 1.8, 16, 1, backlash_deg=0.8)          # a cheap planetary's
+    g = host.one_sided({"q2": a}, {"q2": 1.0}, {"q2": 0.9})
+    past = math.degrees(0.9) - 1.5 * 0.8
+    assert f"MOVE={host.position_deg(a, math.radians(past)):.5f}" in g[0]

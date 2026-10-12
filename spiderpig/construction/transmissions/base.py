@@ -418,18 +418,32 @@ class DriveGroup(Group):
         n_hub, hub_r_m = self.transmission.motor_hub(ctx)
         s = hub.side
 
+        link_t = {m: ctx.sheet_t("link", m) for m in ctx.topo.links}
+
+        def nominal(L: Layout) -> list[float]:
+            """Each layer's thickness while searching: the pitch, or a thicker link placed
+            in it so far (a lower bound of the plan's: a thick link's layer is as thick as
+            it is, so a shaft that can't reach past it is ruled out here, not at the
+            plan's z, where the search would learn nothing from it)."""
+            out = [L.pitch] * (L.top + 1)
+            for m, k in L.layers.items():
+                if 0 < k < L.top and link_t.get(m, L.pitch) > out[k]:
+                    out[k] = link_t[m]
+            return out
+
         def lay_z(L: Layout, j: int) -> tuple[float, float]:
-            """Layer ``j``'s z (at the plan's z when final, else at the pitch)."""
+            """Layer ``j``'s z (at the plan's z when final, else :func:`nominal`'s)."""
             if L.final:
                 return L.z(j)
-            z0 = plate_t + (j - 1) * L.pitch
-            return (z0, z0 + L.pitch)
+            t = nominal(L)
+            z0 = plate_t + sum(t[1:j])
+            return (z0, z0 + t[j])
 
         def plate_face(L: Layout) -> float:
             """The plate's face toward the stack (the shaft's start inside)."""
             if hub.down:
                 return L.z(0)[1] if L.final else plate_t
-            return L.z(L.top)[0] if L.final else plate_t + (L.top - 1) * L.pitch
+            return L.z(L.top)[0] if L.final else plate_t + sum(nominal(L)[1:L.top])
 
         def make(L: Layout) -> list[Placed]:
             k = L.layers[self.link]

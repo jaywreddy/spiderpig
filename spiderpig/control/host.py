@@ -45,8 +45,10 @@ from spiderpig.control.mapping import Axis
 
 MAX_TIP_MM_S = 25.0     # the tip's speed a straight move is held to (constant-speed segments)
 HOME_SPEED = 20.0       # the turntable's search speed (deg/s); the final approach a tenth
-APPROACH_DEG = 0.5      # past the target before a one-sided final approach (joint degrees:
-#                         well over a GT2 5:1 drive's backlash, about 0.1 deg at the joint)
+APPROACH_DEG = 0.5      # past the target before a one-sided final approach (joint degrees),
+#                         at least: well over a GT2 5:1 drive's backlash (0.1 deg at the joint)
+APPROACH_X = 1.5        # ... and at least this many times the axis's own backlash (a cheap
+#                         planetary's: 25' to 3 deg)
 
 
 def position_deg(axis: Axis, q: float) -> float:
@@ -97,12 +99,14 @@ def line(model: ArmModel, axes: dict[str, Axis], start_q: dict[str, float], b, *
 def one_sided(axes: dict[str, Axis], before: dict[str, float], end: dict[str, float],
               seconds: float = 0.5) -> list[str]:
     """The G-code that ends a move one-sidedly (module docstring): each joint whose motion
-    from ``before`` (rad: where its last segment started) to ``end`` was negative goes
-    :data:`APPROACH_DEG` past ``end``, then back to it, positive."""
+    from ``before`` (rad: where its last segment started) to ``end`` was negative goes past
+    ``end`` (:data:`APPROACH_DEG`, or :data:`APPROACH_X` times its backlash if more), then
+    back to it, positive."""
     past = {}
     for n, q in end.items():
         if n in axes and q < before.get(n, q) - 1e-12:
-            past[n] = q - math.radians(APPROACH_DEG)
+            over = max(APPROACH_DEG, APPROACH_X * axes[n].backlash_deg)
+            past[n] = q - math.radians(over)
     if not past:
         return []
     back = {n: end[n] for n in past}           # (only the joints that go past move)

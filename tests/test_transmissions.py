@@ -178,7 +178,8 @@ def test_the_drives_join_the_precision_budget():
     assert set(belt_r.inputs) == {"q2", "q3"}
     assert belt_r.inputs["q2"].backlash_mm > cap_r.inputs["q2"].backlash_mm == 0.0
     assert cap_r.inputs["q2"].resolution_mm < belt_r.inputs["q2"].resolution_mm
-    planar = belt_r.plays.worst_mm + sum(b.backlash_mm for b in belt_r.inputs.values())
+    planar = belt_r.plays.worst_mm + sum(b.backlash_mm + b.homing_mm
+                                         for b in belt_r.inputs.values())
     assert belt_r.out_of_plane_mm > 0          # the links' tilt, across the plane
     assert belt_r.repeatability_mm == pytest.approx(math.hypot(planar,
                                                                belt_r.out_of_plane_mm))

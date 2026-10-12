@@ -114,6 +114,12 @@ class Preload:
     n: float
 
 
+def _width(key: str) -> float:
+    from spiderpig.construction.pivots.ball import bearing_dims
+
+    return float(bearing_dims(key)["w"])
+
+
 @dataclass(frozen=True)
 class PairSeat(BearingSeat):
     """A bearing seat that pairs each link's bearing: in the link where it is thick enough,
@@ -121,8 +127,20 @@ class PairSeat(BearingSeat):
 
     hub_bearing: str = ""
 
+    def in_link(self, thickness: float) -> tuple[str, str] | None:
+        """The two bearings a link this thick seats inside itself, one flush with each face
+        (the shielded one and the hub's open one, else two open ones), with
+        :data:`PAIR_GAP` between them; ``None``: it's too thin for two."""
+        for a, b in ((self.bearing_key, self.hub_bearing),
+                     (self.hub_bearing, self.hub_bearing)):
+            if not a or not b:
+                continue
+            if thickness + EPS >= _width(a) + _width(b) + PAIR_GAP:
+                return a, b
+        return None
+
     def pair(self, thickness: float) -> bool:
-        return thickness + EPS >= 2 * self.width + PAIR_GAP
+        return self.in_link(thickness) is not None
 
     def hub_r(self, ctx: Context) -> float:
         """The hub's radius: the hub bearing's seat and ``min_wall``."""
@@ -159,12 +177,14 @@ class PairSeat(BearingSeat):
                 raise ConstructionError(f"{group.name}: {m} is {t:g} mm thick, under the "
                                         f"{self.width:g} mm bearing it seats")
             mid = (z0 + z1) / 2
-            zs = ([mid - t / 2, mid + t / 2 - self.width] if self.pair(t)
-                  else [mid - self.width / 2])
-            for i, zb in enumerate(zs):
-                tag = f"{stem}_bearing_{m}" + (f"_{i}" if len(zs) > 1 else "")
-                out.bodies.append(hardware(tag, bearing_solid(self.bearing_key, xy, zb), m,
-                                           fab="purchased", bom_key=self.bearing_key,
+            two = self.in_link(t)
+            seats = ([(two[0], mid - t / 2), (two[1], mid + t / 2 - _width(two[1]))] if two
+                     else [(self.bearing_key, mid - self.width / 2)])
+            zs = [zb for _, zb in seats]
+            for i, (key, zb) in enumerate(seats):
+                tag = f"{stem}_bearing_{m}" + (f"_{i}" if len(seats) > 1 else "")
+                out.bodies.append(hardware(tag, bearing_solid(key, xy, zb), m,
+                                           fab="purchased", bom_key=key,
                                            color=BEARING_COLOR))
             out.cut(m, Cut(xy, self.seat_d()))
             out.extras.append(BomLine("epoxy_2part", GLUE_PER_BEARING * len(zs),
@@ -279,6 +299,17 @@ def hub_layers(riders: list[int], occupied: set[int], lo: int, hi: int,
     return taken
 
 
+def _hubless(seat: PairSeat, ctx: Context) -> frozenset[str]:
+    """The design's links thick enough to seat their pair inside (no hub beside them)."""
+    return frozenset(m for m in ctx.topo.links if seat.pair(ctx.sheet_t("link", m)))
+
+
+def _inside_layers(hubless: frozenset[str], layout) -> set[int]:
+    """The layers of ``hubless`` links placed so far."""
+    placed = getattr(layout, "layers", {}) or {}
+    return {placed[m] for m in hubless if m in placed}
+
+
 def _dims(seat: PairSeat, d: AxleDims, ctx: Context) -> AxleDims:
     """Every spacer layer the hub's width (it may take a ring's place)."""
     return replace(d, spacer=max(d.spacer, seat.hub_r(ctx)))
@@ -362,6 +393,13 @@ class BallPairAxle(BallAxle):
     seat: BearingSeat = field(default_factory=lambda: PairSeat("bearing_mr84zz", GROUND_FIT,
                                                                hub_bearing="bearing_mr84"))
     shaft: ChicagoShaft = field(default_factory=GroundShaft)
+    hubless: frozenset[str] = frozenset()     # the links thick enough for a pair inside
+
+    def resolve(self, ctx: Context) -> BallPairAxle:
+        """As the Chicago pin's, and the links that seat their pair inside (no hub)."""
+        own = super().resolve(ctx)
+        assert isinstance(self.seat, PairSeat)
+        return replace(own, hubless=_hubless(self.seat, ctx))
     preload: Preload = field(default_factory=lambda: Preload("disc_spring_din2093_c8", 35.0))
     cad_keys: ClassVar[tuple[str, ...]] = ("bearing_mr84zz", "bearing_mr84")
 
@@ -377,7 +415,9 @@ class BallPairAxle(BallAxle):
         if pillar or not members:
             return
         ms = sorted(members)
-        hub_layers(ms[1:], set(links), ms[0], ms[-1], room or {}, spacer)
+        inside = _inside_layers(self.hubless, layout)
+        hub_layers([k for k in ms[1:] if k not in inside], set(links), ms[0], ms[-1],
+                   room or {}, spacer)
 
     def error_terms(self, ctx: Context) -> ErrorTerms:
         assert isinstance(self.seat, PairSeat)
@@ -414,6 +454,7 @@ class BallPairPillar(BallPillar):
                   "only; link_radius 6.6 mm)")
     seat: BearingSeat = field(default_factory=lambda: PairSeat("bearing_mr106zz", GROUND_FIT,
                                                                hub_bearing="bearing_mr106"))
+    hubless: frozenset[str] = frozenset()     # the links thick enough for a pair inside
     preload: Preload = field(default_factory=lambda: Preload("disc_spring_din2093_c12p5",
                                                              50.0))
     cad_keys: ClassVar[tuple[str, ...]] = ("bearing_mr106zz", "bearing_mr106")
@@ -431,13 +472,19 @@ class BallPairPillar(BallPillar):
             return own
         return self.one_piece()
 
+    def resolve(self, ctx: Context) -> BallPairPillar:
+        assert isinstance(self.seat, PairSeat)
+        return replace(self, hubless=_hubless(self.seat, ctx))
+
     def column(self, pillar: bool, links, top: int, anchored, pitch: float, layout=None,
                air=None, *, members=None, room=None, spacer=0.0) -> None:
-        """The standoff's rule, and a hub's layer beside every link on it, between the frame
-        plates: :func:`hub_layers`."""
+        """The standoff's rule, and a hub's layer beside every link on it that seats one
+        bearing, between the frame plates: :func:`hub_layers`."""
         super().column(pillar, links, top, anchored, pitch, layout, air)
         if members:
-            hub_layers(sorted(members), set(links), 0, top, room or {}, spacer)
+            inside = _inside_layers(self.hubless, layout)
+            hub_layers([k for k in sorted(members) if k not in inside], set(links), 0, top,
+                       room or {}, spacer)
 
     def error_terms(self, ctx: Context) -> ErrorTerms:
         assert isinstance(self.seat, PairSeat)

@@ -31,6 +31,7 @@ class Axis:
     zero: float = 0.0
     motor: str = ""
     limits: tuple[float, float] = (-math.pi, math.pi)     # the joint's (rad, design angles)
+    backlash_deg: float = 0.0      # its drive's at the joint (a one-sided approach's overshoot)
 
     @property
     def steps_per_rev(self) -> int:
@@ -80,7 +81,8 @@ def axes(config, design=None) -> dict[str, Axis]:
         sense = (1 if hub.down else -1) * (-1 if g.transmission.key == "capstan" else 1)
         lo, hi = lk.ranges[g.input]
         out[g.input] = Axis(g.input, hub.ratio, g.motor.step_deg, g.motor.microsteps, sense,
-                            0.0, g.motor.key, (math.radians(lo), math.radians(hi)))
+                            0.0, g.motor.key, (math.radians(lo), math.radians(hi)),
+                            g.error_terms(design.ctx).backlash_deg)
     if config.layout == "turret":
         from spiderpig.construction.robot import Turret
 
@@ -89,7 +91,7 @@ def axes(config, design=None) -> dict[str, Axis]:
         sense = -1 if tp.preset.transmission == "capstan" else 1
         lo, hi = (math.radians(v) for v in tp.range_deg)
         out["q1"] = Axis("q1", tr.ratio(None), motor.step_deg, motor.microsteps, sense, 0.0,
-                         motor.key, (lo, hi))
+                         motor.key, (lo, hi), tp.error_terms().backlash_deg)
         if tool is not None and tool.tool.wrist:
             m = actuators.get(tool.tool.wrist)
             out["q4"] = Axis("q4", 1.0, m.step_deg, m.microsteps, -1, 0.0, m.key)

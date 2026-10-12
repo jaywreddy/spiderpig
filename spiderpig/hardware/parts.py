@@ -222,6 +222,15 @@ register(
                "cut_usd_cm2": 0.074, "cut_min_usd": 1.33},
          notes="Nominal 3 mm; SendCutSend's arrives 2.24-3.46 mm (+.018 / -.030 in). "
                "Measure yours and pass --thickness."),
+    Item("acrylic_5p4mm", "5.4 mm (0.213 in) cast acrylic sheet, cut by SendCutSend", "sheet",
+         (Offer("SendCutSend", "https://sendcutsend.com/materials/acrylic/",
+                note="one of its cast acrylic thicknesses (1.6, 3.0, 4.5, 5.4, 9.5, 12.7 mm, "
+                     "read 2026-10-12); the price per area an estimate (3 mm's x 1.8)"),),
+         dims={**_ACRYLIC_3MM, "thickness": 5.4, **SCS_RULES_ACRYLIC,
+               "cut_usd_cm2": 0.13, "cut_min_usd": 1.5},
+         notes="An arm's links (2026-10-12): a preloaded pair of bearings fits inside a link "
+               "this thick (an MR84ZZ and an MR84, 5.2 mm; two MR106, 5.2), no hub. Measure "
+               "the sheet: a pair needs its 0.2 mm between them."),
     Item("acrylic_3mm_ponoko", "3 mm (1/8 in) cast acrylic sheet, cut by Ponoko", "sheet",
          (Offer("Ponoko", "https://www.ponoko.com/materials/clear-acrylic", verified=True,
                 note="laser-cutting service; kerf 0.2 mm (the files compensate it); 3 mm "
