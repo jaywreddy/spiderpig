@@ -91,7 +91,10 @@ robot; a mechanism's `single`, one side).
   `<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model).
 - `SPIDERPIG_OCCT_THREADS`: OCCT's pool per process (`workers.occt_threads`; unset: every
   core). Reported numbers are tie-stable across it (`spiderpig.rounding`).
-- `SPIDERPIG_OFFLINE=1` / `SPIDERPIG_SERVO_CAD=0` / `SPIDERPIG_CAD_CACHE`: servo CAD downloads.
+- `SPIDERPIG_OFFLINE=1` / `SPIDERPIG_SERVO_CAD=0` / `SPIDERPIG_CAD_CACHE`: servo CAD downloads;
+  `SPIDERPIG_PART_CAD=0`: bought parts drawn from the catalog, not their vendor models
+  (in the CAD cache's unpinned folder, filled by `spiderpig cad`); `SPIDERPIG_MCMASTER_STATE`: the
+  saved McMaster session (`spiderpig cad login`).
 - `SPIDERPIG_VIEWER_DIST`: the built viewer the server mounts.
 - `SPIDERPIG_DEV_ORIGIN_PORT`: set by `mise run view` for the API (the Vite port whose
   loopback pages may open its WebSockets).

@@ -21,20 +21,32 @@ key             construction
 
 **The seat.** The bearing is bonded into the link's bore (slow two-part epoxy on the outer
 ring only, kept off the shields; acrylic crazes under CA and cracks under a press fit), the
-bore ``seat_fit`` over the bearing's OD: a slip fit the epoxy fills. The bearing is as wide
-as the link is thick (3 mm on 3 mm sheet): a thinner link is refused, a bearing proud of
-its link would ride on the spacer ring beside it. The printed spacer rings between links
-bear on the inner rings and on the link faces, as on the plain pins.
+bore ``seat_fit`` (0.2 mm) over the bearing's OD: more than a laser-cut hole's tolerance
+(about +-0.13 mm at SendCutSend), so the bore is never a press fit, and a gap the epoxy
+fills (centre the bearing on a 4 mm pin while it cures). The bearing is as wide as the link
+is thick (3 mm on 3 mm sheet): a link thinner than it as built (the plan's z: give the
+measured sheet, ``--thickness``) is refused, since a bearing proud of its link would be
+clamped by the rings beside it. The printed spacer rings between links are the plain pins'
+(8.5 mm, a 1.5 mm wall a printer holds): they bear on the inner rings, on the outer rings
+and on the link faces, so thrust and tilt still pass through faces that slide, as on the
+plain pins. A ring that touched the inner ring only (under about 6 mm across for an MR84,
+its pitch diameter) would be a bought shim; the robot arm's precision joints, not these,
+are where that is worth it.
 
 **The shaft fit.** The bore (4 mm, tolerance +0 / -8 um) on the shaft: the Chicago barrel
 is stainless tube, not ground, taken at 4.00 to 3.95 mm (``shaft_fit`` 0.05 mm, the worst
-diametral gap); the goBILDA standoff at 6.00 to 5.97 (0.03). That and the bearing's own
-clearance are the joint's radial play (:meth:`error_terms`), against 0.2 / 0.35 mm plain.
+diametral gap); the goBILDA standoff (and the one-piece steel shaft) at 6.00 to 5.97 (0.03).
+Both are assumptions, unmeasured: a barrel over 4.00 mm doesn't take the bearing (sand it,
+or ream nothing: choose another screw). That and the bearing's own clearance are the
+joint's radial play (:meth:`error_terms`), against 0.2 / 0.35 mm plain.
 
-**Tilt.** A link on one deep-groove bearing tilts as far as the bearing lets its rings
-misalign over its width (its clearance) and the bore rocks on the shaft:
-:func:`construction.wobble.column_wobble` with the bearing's width as the bearing length
-and the shaft fit plus the internal clearance as the clearance.
+**Tilt.** A link on one deep-groove bearing tilts as far as its bore rocks on the shaft
+over the bearing's width (the shaft fit over the width) plus the rings' own free
+misalignment, about ``G_a / d_m`` (the axial play its radial clearance allows,
+``G_a = sqrt(4 (f_i + f_o - 1) D_w G_r)``, over its pitch diameter; :func:`internal_tilt`:
+0.5 deg for an MR84 at CN's worst): :func:`construction.wobble.column_wobble` over the
+bearing's width with the clearance that tilts as far, and the faces either side bounding
+it (the supported tilt) as on the plain pins.
 
 The vendor model (McMaster-Carr's STEP, :mod:`hardware.bearing_catalog`) is drawn when it
 is in the CAD cache and matches the catalog's size; otherwise :func:`bearing_solid`.
@@ -69,6 +81,10 @@ from spiderpig.shapes import Cut, ring
 
 BEARING_COLOR = "#b8bcc2"
 GLUE_PER_BEARING = 0.003        # of the epoxy kit, per bearing bonded (the BOM's share)
+OSCULATION = (0.52, 0.53)       # inner and outer groove radius over the ball's (deep groove,
+#                                 the usual values)
+BALL_FRACTION = 0.3             # a ball's diameter over the bearing's section (OD - bore)/2 x
+#                                 2: the usual proportion, when the catalog gives no ball size
 
 
 def bearing_dims(key: str) -> dict:
@@ -97,6 +113,21 @@ def internal_clearance(key: str) -> float:
     return float(max(bearing_dims(key).get("radial_clearance_mm") or (0.0,)))
 
 
+def internal_tilt(key: str) -> float:
+    """How far bearing ``key``'s rings misalign freely at its worst radial clearance
+    (radians): the axial play that clearance allows over the pitch diameter,
+    ``sqrt(4 (f_i + f_o - 1) D_w G_r) / d_m`` (the ball ``D_w`` the catalog's ``ball_d``, else
+    :data:`BALL_FRACTION` of the section)."""
+    import math
+
+    d = bearing_dims(key)
+    od, bore = float(d["od"]), float(d["id"])
+    ball = float(d.get("ball_d") or BALL_FRACTION * (od - bore))
+    fi, fo = OSCULATION
+    axial = math.sqrt(4.0 * (fi + fo - 1.0) * ball * internal_clearance(key))
+    return axial / ((od + bore) / 2)
+
+
 @dataclass(frozen=True)
 class BearingSeat:
     """What the two ball pivots share: the bearing, its seat in the link and its fit on the
@@ -105,7 +136,7 @@ class BearingSeat:
 
     bearing_key: str
     shaft_fit: float
-    seat_fit: float = 0.05
+    seat_fit: float = 0.2
 
     @property
     def od(self) -> float:
@@ -125,6 +156,14 @@ class BearingSeat:
     def clearance(self) -> float:
         """The joint's diametral play: the bore on the shaft and the balls' clearance."""
         return round(self.shaft_fit + internal_clearance(self.bearing_key), 4)
+
+    def tilt_clearance(self) -> float:
+        """The diametral clearance over the bearing's width that tilts a link as far as the
+        bore rocking on the shaft plus the rings' free misalignment (:func:`internal_tilt`)."""
+        import math
+
+        rock = math.atan2(self.shaft_fit, self.width) + internal_tilt(self.bearing_key)
+        return round(self.width * math.tan(rock), 4)
 
     def check(self, ctx: Context, shaft_d: float, what: str) -> float:
         """The seat radius, or :class:`ConstructionError` when the shaft isn't the bearing's
@@ -166,25 +205,33 @@ class BearingSeat:
 
     def terms(self, base: ErrorTerms, key: str) -> ErrorTerms:
         """``base`` (the shaft's end float) with the bearing's radial play."""
+        import math
+
         return replace(base, radial_play_mm=self.clearance(),
+                       tilt_deg=round(math.degrees(math.atan2(self.tilt_clearance(),
+                                                              self.width)), 3),
                        source=f"{key}: {self.bearing_key} on the shaft",
-                       notes=(f"{self.shaft_fit:g} mm bore-on-shaft gap + "
-                              f"{internal_clearance(self.bearing_key) * 1000:g} um internal "
+                       notes=(f"{self.shaft_fit:g} mm bore-on-shaft gap (assumed, unmeasured) "
+                              f"+ {internal_clearance(self.bearing_key) * 1000:g} um internal "
                               "clearance (ISO 5753-1 CN, worst)",))
 
     def assembly(self, group: AxleGroup, view) -> list:
-        """Bond each bearing into its link before the link goes on its pin."""
+        """On the bench, before each layer: the bearings of that layer's links bonded in
+        (one bench step per layer, whatever pins they ride; the link and its bearing then go
+        on together in the layer's step)."""
         from spiderpig.construction.assembly import STACK, Op, whole
 
         stem = stem_of(group)
-        mine = [n for n in view.z if n.startswith(f"{stem}_bearing_")]
-        if not mine:
-            return []
-        k = min(view.slot(view.z[n][0]) for n in mine)
-        return [Op(STACK, (k, 0, 0), whole(*mine), "",
-                   "Bond a bearing into each link that turns on a ball pin, flush and square "
-                   "(slow epoxy on the outer ring only, none on the shields or the bore); let "
-                   "it cure before the link goes on.", "layer")]
+        by_layer: dict[int, list[str]] = {}
+        for n in view.z:
+            if n.startswith(f"{stem}_bearing_"):
+                by_layer.setdefault(view.slot(view.z[n][0]), []).append(n)
+        return [Op(STACK, (k, 0, 0), whole(*sorted(names)), f"Bearings for layer {k}",
+                   "Bond a bearing into each of these links' bores, flush and square (slow "
+                   "epoxy on the outer ring only, none on the shields or the bore; centre it "
+                   "on a pin while it cures), and let it cure before the link goes on.",
+                   "layer", sub=True)
+                for k, names in sorted(by_layer.items())]
 
 
 @dataclass(frozen=True)
@@ -227,8 +274,8 @@ class BallAxle(ChicagoAxle):
         self.seat.seat_bearings(build, group, out, riders, stem)
         out.notes["wobble"] = {group.name: column_wobble(
             build, group, col,
-            clearance=lambda m: 0.0 if m == host else self.seat.clearance(),
-            length=build.ctx.pitch, play=f.play + _hw_tol(),
+            clearance=lambda m: 0.0 if m == host else self.seat.tilt_clearance(),
+            length=self.seat.width, play=f.play + _hw_tol(),
             play_basis=f"barrel length less stack, washer and shims ({f.length:g} mm barrel)",
             section=chicago_section(self.shaft),
             bearing_len=self.seat.width)}
@@ -270,10 +317,8 @@ class BallPillar(StandoffAxle):
                 and abs(c.xy[1] - xy[1]) < 1e-9)]
         self.seat.seat_bearings(build, group, out, members, stem)
         note = out.notes["wobble"][group.name]
-        clearance = self.seat.clearance()
-        for e in note["links"]:
-            e["clearance_mm"] = round(clearance, 4)
-        out.notes["wobble"][group.name] = _rebuilt(build, group, note, clearance,
+        out.notes["wobble"][group.name] = _rebuilt(build, group, note,
+                                                   self.seat.tilt_clearance(),
                                                    self.seat.width, self.section())
         return out
 
@@ -284,7 +329,7 @@ def _rebuilt(build: Build, group: AxleGroup, note: dict, clearance: float, width
     over its width), keeping the column's measured play, supports and shims."""
     col = Column.of(build, group)
     keep = {k: note[k] for k in ("supports", "segments_mm", "shims_mm") if k in note}
-    out = column_wobble(build, group, col, clearance=clearance, length=build.ctx.pitch,
+    out = column_wobble(build, group, col, clearance=clearance, length=width,
                         play=note["play_mm"], play_basis=note["play_basis"], section=section,
                         bearing_len=width)
     return {**out, **keep}

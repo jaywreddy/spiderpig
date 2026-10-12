@@ -157,7 +157,8 @@ def material_of(body, sheet: str, filament: str | None, servo) -> tuple[str, flo
         return "servo", 0.0, servo_mass_g(servo)
     fixed = _fixed_mass(body.bom_key)
     if fixed is not None:       # a part catalogued by its mass (the deck's electronics)
-        return ("electronics" if category == "electronics" else "nylon"), 0.0, fixed
+        return ({"electronics": "electronics", "bearing": "steel"}.get(str(category), "nylon"),
+                0.0, fixed)
     if category == "horn" or cls.startswith("servo_horn"):
         alu = "alumin" in servo.horn.name.lower()
         return ("aluminium", DENSITY["aluminium"], None) if alu else ("plastic", DENSITY["plastic"],

@@ -52,9 +52,12 @@ every third-party distribution a loaded module imports (numpy, sympy, build123d,
 **Conservative by design**: whatever can't be told apart statically is included. What it
 still cannot see, and why that is safe here: code reached only through ``eval`` /
 ``exec`` (none in the engine), a module object reached through ``sys.modules``, and
-environment variables (none of the engine's change a plan or a part but the servo CAD
-switches, which the fabrication cache keys itself: :func:`spiderpig.fabcache.servo_state`).
-Data files: the engine reads none (the servo CAD downloads are pinned by hash).
+environment variables (none of the engine's change a plan or a part but the CAD
+switches, ``SPIDERPIG_SERVO_CAD`` and ``SPIDERPIG_PART_CAD``, which the fabrication cache
+keys itself: :func:`spiderpig.fabcache.servo_state`, :func:`spiderpig.fabcache.parts_cad_state`).
+Data files: the engine reads only vendor models from the CAD cache (the servos' pinned by
+hash; a bought part's, unpinned, by the hash of the file there:
+:func:`spiderpig.hardware.cad.state`), keyed by the fabrication cache the same way.
 ``tests/test_keys.py`` checks both directions on real modules.
 
 The answer is kept on disk (``$SPIDERPIG_DIGEST_CACHE``, like

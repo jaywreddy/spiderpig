@@ -99,10 +99,13 @@ def _import(key: str, src: Path, part_number: str = "") -> Path:
     if ref is None:
         raise SystemExit(f"no part model registered for {key!r}; have {sorted(_refs())}")
     path = cad.import_file(ref, src)
-    _sidecar(path).write_text(json.dumps({
+    side = _sidecar(path)
+    tmp = side.with_name(f".{side.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps({
         "key": key, "part_number": part_number or ref.part_number,
         "sha256": cad.sha256_file(path), "source": str(src),
         "imported": time.strftime("%Y-%m-%dT%H:%M:%S")}, indent=1))
+    os.replace(tmp, side)
     print(f"{key}: {path} (sha256 {cad.sha256_file(path)}"
           + (f", McMaster {part_number}" if part_number else "") + ")")
     return path
@@ -132,17 +135,20 @@ def cmd_login(_args) -> int:
     return 0
 
 
-def _fetch_one(page, key: str) -> Path | None:
+def _fetch_one(page, key: str, part_number: str = "") -> Path | None:
     url, pn = _listing(key)
+    pn = part_number or pn
     if not pn:
         page.goto(url, wait_until="domcontentloaded")
         page.wait_for_timeout(3000)
         if LOGIN_WALL in page.inner_text("body").lower():
             raise SystemExit("McMaster asks for a login: run `spiderpig cad login` again")
-        found = PART_NUMBER.findall(page.inner_text("body"))
-        if not found:
-            print(f"{key}: no part number on {url}; download the STEP by hand and "
-                  f"`spiderpig cad import {key} FILE --part-number PN`")
+        found = list(dict.fromkeys(PART_NUMBER.findall(page.inner_text("body"))))
+        if len(found) != 1:
+            # several (sealed, stainless, flanged variants beside it) or none: the user picks
+            print(f"{key}: {len(found)} part numbers on {url} ({', '.join(found[:12]) or '-'}):"
+                  f" pick one, `spiderpig cad fetch {key} --part-number PN`, or download the "
+                  f"STEP by hand and `spiderpig cad import {key} FILE --part-number PN`")
             return None
         pn = found[0]
     page.goto(f"https://www.mcmaster.com/{pn}/", wait_until="domcontentloaded")
@@ -154,14 +160,15 @@ def _fetch_one(page, key: str) -> Path | None:
         page.get_by_text("3-D STEP").first.click()
         with page.expect_download(timeout=30000) as dl:
             page.get_by_role("button", name=re.compile("download", re.I)).first.click()
-        tmp = Path(tempfile.mkdtemp(prefix="spiderpig-cad-")) / dl.value.suggested_filename
-        dl.value.save_as(str(tmp))
+        with tempfile.TemporaryDirectory(prefix="spiderpig-cad-") as d:
+            tmp = Path(d) / dl.value.suggested_filename
+            dl.value.save_as(str(tmp))
+            return _import(key, tmp, pn)
     # the page's layout isn't ours: whatever it does, say how to finish by hand
     except Exception as e:  # noqa: BLE001
         print(f"{key}: couldn't download the STEP from https://www.mcmaster.com/{pn}/ ({e}); "
               f"download it by hand and `spiderpig cad import {key} FILE --part-number {pn}`")
         return None
-    return _import(key, tmp, pn)
 
 
 def cmd_fetch(args) -> int:
@@ -175,6 +182,9 @@ def cmd_fetch(args) -> int:
         return 2
     keys = args.keys or [k for k, r in _refs().items()
                          if r.vendor == "mcmaster" and cad.fetch(r, allow_download=False) is None]
+    if args.part_number and len(keys) != 1:
+        print("--part-number names one part: give its key", file=sys.stderr)
+        return 2
     if not keys:
         print("every McMaster part model is in the cache")
         return 0
@@ -183,19 +193,20 @@ def cmd_fetch(args) -> int:
         browser = p.chromium.launch(headless=True)
         page = browser.new_context(storage_state=str(state), accept_downloads=True).new_page()
         for key in keys:
-            missing += _fetch_one(page, key) is None
+            missing += _fetch_one(page, key, args.part_number) is None
         browser.close()
     return 1 if missing else 0
 
 
 def _api_session():
     """An ``ssl`` context with the client certificate, and the bearer token (login)."""
+    import secrets
     import ssl
     import urllib.request
 
     from cryptography.hazmat.primitives.serialization import (
+        BestAvailableEncryption,
         Encoding,
-        NoEncryption,
         PrivateFormat,
         pkcs12,
     )
@@ -206,17 +217,21 @@ def _api_session():
         raise SystemExit("api-fetch needs SPIDERPIG_MCMASTER_CERT (.pfx), _CERT_PASSWORD, "
                          "_USER and _PASSWORD (McMaster's Product Information API: an "
                          "approved customer's; eCommerce@mcmaster.com)")
-    key, cert, _ = pkcs12.load_key_and_certificates(
+    key, cert, chain = pkcs12.load_key_and_certificates(
         Path(str(env["CERT"])).expanduser().read_bytes(), str(env["CERT_PASSWORD"]).encode())
     if key is None or cert is None:
         raise SystemExit("the .pfx holds no key and certificate")
+    once = secrets.token_hex(16)        # the key never touches the disk in the clear
     fd, pem = tempfile.mkstemp(suffix=".pem")       # (mkstemp: created 0600)
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(cert.public_bytes(Encoding.PEM))
-            f.write(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8, NoEncryption()))
+            for c in chain or ():       # the intermediates the .pfx carries
+                f.write(c.public_bytes(Encoding.PEM))
+            f.write(key.private_bytes(Encoding.PEM, PrivateFormat.PKCS8,
+                                      BestAvailableEncryption(once.encode())))
         ctx = ssl.create_default_context()
-        ctx.load_cert_chain(pem)
+        ctx.load_cert_chain(pem, password=once)
     finally:
         os.unlink(pem)
     req = urllib.request.Request(
@@ -248,10 +263,17 @@ def cmd_api_fetch(args) -> int:
     if not step:
         print(f"{pn}: no 3-D STEP link ({sorted(links)})", file=sys.stderr)
         return 1
-    tmp = Path(tempfile.mkdtemp(prefix="spiderpig-cad-")) / Path(step).name
+    from spiderpig.hardware.cad import MAX_BYTES
+
     with call("GET", step) as r:
-        tmp.write_bytes(r.read())
-    _import(args.key, tmp, pn)
+        data = r.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        print(f"{pn}: the STEP is over {MAX_BYTES} bytes", file=sys.stderr)
+        return 1
+    with tempfile.TemporaryDirectory(prefix="spiderpig-cad-") as d:
+        tmp = Path(d) / Path(step).name
+        tmp.write_bytes(data)
+        _import(args.key, tmp, pn)
     return 0
 
 
@@ -269,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
     f = sub.add_parser("fetch", help="McMaster-Carr: fetch the missing models with the "
                                      "saved session")
     f.add_argument("keys", nargs="*", help="catalog items (default: every missing one)")
+    f.add_argument("--part-number", default="", help="the McMaster part number (one key)")
     a = sub.add_parser("api-fetch", help="McMaster-Carr's Product Information API")
     a.add_argument("key")
     a.add_argument("--part-number", required=True)

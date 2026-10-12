@@ -205,7 +205,9 @@ def _import(path: Path, fmt: str):
 
 
 @lru_cache(maxsize=16)
-def _load_cached(path: str, fmt: str, ref: CadRef):
+def _load_cached(path: str, fmt: str, ref: CadRef, digest: str = ""):
+    """The model at ``path``, placed (remembered by its pin, or an unpinned file's own
+    ``digest``: a re-imported file is loaded afresh)."""
     from build123d import Compound
     from OCP.BRepBuilderAPI import BRepBuilderAPI_Transform
 
@@ -252,7 +254,8 @@ def load(ref: CadRef, *, allow_download: bool | None = None):
     if path is None:
         return None
     try:
-        return _load_cached(str(path), ref.format, ref)
+        digest = "" if ref.sha256 else sha256_file(path)
+        return _load_cached(str(path), ref.format, ref, digest)
     # OCCT's import errors aren't one class (Standard_Failure and kin through pybind11): a
     # model that doesn't load is left out, never fails the build
     except Exception as e:  # noqa: BLE001
@@ -315,7 +318,7 @@ def part_cad_enabled() -> bool:
     return os.environ.get(PART_CAD_ENV, "1").strip().lower() not in ("0", "false", "no", "off")
 
 
-def load_axisymmetric(ref: CadRef, od: float, width: float, tol: float = 0.15):
+def load_axisymmetric(ref: CadRef, od: float, width: float, tol: float = 0.02):
     """``ref``'s model of a round part (a bearing, a washer) centred on the origin with its
     axis along z, its faces at ``z = 0`` and ``z = width``; ``None`` unless the file's
     bounding box is the catalog's ``od`` x ``od`` x ``width`` within ``tol`` mm in some

@@ -251,11 +251,50 @@ def inputs(opts: Options, config) -> dict:
                       store=None).id
     out = {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
            "cad_env": cad_env(), "servo_files": servo_files(config)}
-    from spiderpig.fabcache import parts_cad_state
-
-    parts = parts_cad_state(config)
+    parts = part_files(config)
     if parts:           # (a design drawing no bought part's model: the record as it was)
-        out["part_files"] = [list(p) for p in parts]
+        out["part_files"] = parts
+    return out
+
+
+def part_files_unchanged(records) -> bool:
+    """Whether every vendor model :func:`part_files` recorded is as it was: still absent
+    (one imported since changes the parts), or there with its size and modification time."""
+    for path, present, size, mtime in records:
+        p = Path(path)
+        if not present:
+            if p.exists():
+                return False
+            continue
+        try:
+            st = p.stat()
+        except OSError:
+            return False
+        if (st.st_size, st.st_mtime_ns) != (size, mtime):
+            return False
+    return True
+
+
+def part_files(config) -> list[list]:
+    """Each bought part's vendor model the config's constructions draw (their
+    ``cad_keys``; :data:`hardware.cad.PART_CAD`): its cache path, whether it is there, size,
+    modification time (``spiderpig cad import`` or a deletion makes the build stale)."""
+    from spiderpig import construction
+    from spiderpig.hardware import cad
+
+    keys = sorted({k for key in {config.pin, config.pillar}
+                   for k in getattr(construction.AXLES.get(key), "cad_keys", ())})
+    out = []
+    for k in keys:
+        ref = cad.part_cad(k)
+        if ref is None:
+            continue
+        p = cad.cached_path(ref)
+        try:
+            st = p.stat()
+            out.append([str(p), True, st.st_size, st.st_mtime_ns])
+        except OSError:
+            out.append([str(p), False, None, None])
     return out
 
 
@@ -321,6 +360,8 @@ def check(opts: Options, key: str | None = None) -> str | None:
             st = p.stat()
             if (st.st_size, st.st_mtime_ns) != (size, mtime):
                 return None
+        if not part_files_unchanged(cur.get("part_files", [])):
+            return None
         listed = cur["outputs"]
         if {str(f.relative_to(opts.out)) for f in outputs(opts.out)} != set(listed):
             return None

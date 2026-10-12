@@ -71,21 +71,21 @@ def test_dims_seat_the_bearing_and_keep_the_shaft(ball_design):
     ctx = design.ctx
     pin = construction.axle("ball").dims(ctx, False)
     plain = construction.axle("chicago").dims(ctx, False)
-    assert pin.seat == pytest.approx((8.0 + 0.05) / 2)     # the bearing's bonded seat
+    assert pin.seat == pytest.approx((8.0 + 0.2) / 2)      # the bearing's bonded seat
     assert pin.axle == plain.axle                          # the barrel the rings turn on
     assert pin.neck == plain.neck
     pillar = construction.axle("ball_pillar").dims(
         replace(ctx, params=Params(link_radius=6.6)), True)
-    assert pillar.seat == pytest.approx((10.0 + 0.05) / 2)
+    assert pillar.seat == pytest.approx((10.0 + 0.2) / 2)
 
 
 @pytest.mark.no_fabricate
 def test_the_ball_pivots_refuse_what_they_cannot_seat(ball_design):
     _, design = ball_design
     ctx = design.ctx
-    with pytest.raises(ConstructionError, match=r"link_radius 6\.53 would") as e:
+    with pytest.raises(ConstructionError, match=r"link_radius 6\.6 would") as e:
         construction.axle("ball_pillar").dims(ctx, True)  # 6 mm links: no wall round 10 mm
-    assert list(e.value.changes) == [("link_radius", 6.0, 6.53)]
+    assert list(e.value.changes) == [("link_radius", 6.0, 6.6)]
     with pytest.raises(ConstructionError, match=r"wider than the 2\.9 mm links"):
         construction.axle("ball").dims(replace(ctx, pitch=2.9), False)
     with pytest.raises(ConstructionError, match="link pin only"):
@@ -107,6 +107,14 @@ def test_the_error_terms_are_the_bearings(ball_design):
     pillar = construction.axle("ball_pillar").error_terms(ctx)
     assert pillar.radial_play_mm == pytest.approx(0.03 + 0.013)
     assert pillar.source.startswith("ball_pillar")
+    # the tilt: the bore rocking on the barrel over 3 mm, plus the rings' free misalignment
+    import math
+
+    from spiderpig.construction.pivots.ball import internal_tilt
+
+    assert math.degrees(internal_tilt("bearing_mr84zz")) == pytest.approx(0.533, abs=1e-3)
+    assert ball_terms.tilt_deg == pytest.approx(math.degrees(math.atan2(0.05, 3.0)) + 0.533,
+                                                abs=2e-3)
 
 
 # -- the fabricated side ------------------------------------------------------------
@@ -140,7 +148,7 @@ def test_a_riders_bore_is_the_bearings_seat(ball):
         host = _host(build, g)
         for m in g.axis.members:
             ds = [c.d for c in got.cuts[m]]
-            assert ds == [pytest.approx(4.15 if m == host else 8.05)], (g.name, m)
+            assert ds == [pytest.approx(4.15 if m == host else 8.2)], (g.name, m)
 
 
 def test_the_ball_pins_stay_inside_their_claims(ball):
@@ -163,7 +171,8 @@ def test_the_wobble_is_the_bearings(ball):
         note = fab.meta["wobble"][g.name]
         assert note["bearing_len_mm"] == pytest.approx(3.0)
         for e in note["links"]:
-            assert e["clearance_mm"] in (0.0, pytest.approx(0.063))
+            assert e["clearance_mm"] in (0.0, pytest.approx(0.0779))
+            assert e["bearing_mm"] == pytest.approx(3.0)        # over the bearing's width
     chicago = cache.cached_side(_config(), T).meta["wobble"]
     for g in pins:      # a rider never tilts more on its bearing than in a plain hole
         assert fab.meta["wobble"][g.name]["worst_deg"] <= chicago[g.name]["worst_deg"] + 1e-9
@@ -179,7 +188,7 @@ def test_a_ball_pillar_side_builds_and_holds_its_contract():
     n = sum(len(g.axis.members) for g in pillars)
     assert sum(1 for b in fab.bodies if b.bom_key == "bearing_mr106zz") == n
     for g in pillars:
-        assert all(e["clearance_mm"] == pytest.approx(0.043)
+        assert all(e["clearance_mm"] == pytest.approx(0.051)
                    for e in fab.meta["wobble"][g.name]["links"])
 
 
@@ -205,7 +214,6 @@ def test_an_imported_model_is_aligned_and_size_checked(monkeypatch, tmp_path):
 
     monkeypatch.setenv(cad.CACHE_ENV, str(tmp_path / "cache"))
     monkeypatch.delenv(cad.PART_CAD_ENV, raising=False)
-    cad._load_cached.cache_clear()
     ref = cad.part_cad("bearing_mr84zz")
     assert ref is not None
     assert cad.state(ref) == ("parametric", "")
@@ -216,9 +224,9 @@ def test_an_imported_model_is_aligned_and_size_checked(monkeypatch, tmp_path):
     assert (pytest.approx(1.0), pytest.approx(4.0)) == (bb.min.Z, bb.max.Z)
     assert (pytest.approx(10.0), pytest.approx(20.0)) == (bb.center().X, bb.center().Y)
     assert pytest.approx(8.0) == bb.size.X
-    # the wrong part (a 9 mm OD) is never drawn: the catalog's ring instead
+    # the wrong part (a 9 mm OD) is never drawn: the catalog's ring instead (re-imported in
+    # this process: the model memo is keyed by the file's hash, never served stale)
     cad.import_file(ref, _step(tmp_path, 9.0, 4.0, 3.0, "wrong.step"))
-    cad._load_cached.cache_clear()
     assert pytest.approx(8.0) == \
         bearing_solid("bearing_mr84zz", (0, 0), 0.0).bounding_box().size.X
     assert cad.load_axisymmetric(ref, 8.0, 3.0) is None
@@ -270,3 +278,63 @@ def test_spiderpig_cad_imports_and_lists(monkeypatch, tmp_path, capsys):
         cad_cli.main(["import", "bearing_mr84zz", str(bad)])
     monkeypatch.setenv(cad_cli.STATE_ENV, str(tmp_path / "no-session.json"))
     assert cad_cli.main(["fetch"]) == 2          # no McMaster session saved: log in first
+
+
+@pytest.mark.no_fabricate
+def test_a_model_imported_since_makes_the_build_stale(monkeypatch, tmp_path):
+    from spiderpig import uptodate
+    from spiderpig.hardware import cad
+
+    monkeypatch.setenv(cad.CACHE_ENV, str(tmp_path / "cache"))
+    assert uptodate.part_files(_config()) == []              # the default pins draw none
+    before = uptodate.part_files(_config(pin="ball"))
+    assert [r[1] for r in before] == [False]
+    assert uptodate.part_files_unchanged(before)
+    ref = cad.part_cad("bearing_mr84zz")
+    assert ref is not None
+    src = tmp_path / "b.step"
+    src.write_bytes(b"ISO-10303-21; a bearing")
+    cad.import_file(ref, src)
+    assert not uptodate.part_files_unchanged(before)          # imported since: rebuild
+    now = uptodate.part_files(_config(pin="ball"))
+    assert uptodate.part_files_unchanged(now)
+    src.write_bytes(b"ISO-10303-21; another bearing, longer")
+    cad.import_file(ref, src)
+    assert not uptodate.part_files_unchanged(now)             # re-imported: rebuild
+
+
+def test_a_ball_pin_robot_buys_a_bearing_per_rider_per_side_and_guides_them():
+    from spiderpig.construction.assembly import assembly_steps
+
+    cfg = BuildConfig(linkage="klann", module="single", pin="ball")
+    fab = cache.cached_robot(cfg, T)
+    _, design = cache.cached_design(cfg)
+    n = sum(1 for b in fab.bodies if b.bom_key == "bearing_mr84zz")
+    side = sum(1 for b in cache.cached_side(replace(cfg, robot=False), T).bodies
+               if b.bom_key == "bearing_mr84zz")
+    assert n == 2 * side > 0
+    rows = {r.key: r for r in bom_from_mechanism(fab).purchased}
+    assert rows["bearing_mr84zz"].qty == n
+    steps = assembly_steps(fab, design)
+    bench = [s for s in steps if any("_bearing_" in p for p in s.adds)]
+    assert bench
+    for s in bench:                      # each bench step bonds only bearings, before its layer
+        assert all("_bearing_" in p for p in s.adds)
+    # every bearing is added once (assembly._check), each in a step before its link's
+    first: dict[str, int] = {}
+    for s in steps:
+        for p in s.adds:
+            first.setdefault(p.split("#")[0], s.number)
+    for b in fab.bodies:
+        if b.bom_key == "bearing_mr84zz":
+            assert first[b.name] < first[b.rigid_with], b.name
+
+
+def test_a_bearing_weighs_its_catalog_mass():
+    from spiderpig.hardware.mass import material_of
+    from spiderpig.mechanism import Body
+    from spiderpig.servos import get as servo
+
+    b = Body("pin_C_bearing_b1", fab="purchased", bom_key="bearing_mr84zz")
+    assert material_of(b, "acrylic_3mm", None, servo("sts3215")) == ("steel", 0.0, 0.62)
+
