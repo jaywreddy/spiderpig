@@ -148,7 +148,7 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
     groups = dict(groups or {})
     for method in fabmethods.made():
         if method not in groups:
-            groups[method] = group_made(mech.bodies, method)
+            groups[method] = group_made(mech.bodies, method, mech.meta.get("milled"))
     filament = filament or mech.meta.get("filament", "pla_filament")
     fil_of = printed_filaments(mech, filament)
     by_name = {b.name: b for b in mech.bodies}
@@ -196,7 +196,7 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
         d = float(spec.get("outline_d") or max(_size(ref.part)))
         t_mm = float(spec.get("thickness") or min(_size(ref.part)))
         role = spec.get("role") or "milled part"
-        found.append(PartType(f"MH{_half(d)}x{_half(t_mm)}", "milled",
+        found.append(PartType(f"ML{_half(d)}x{_half(t_mm)}", "milled",
                               f"{role}, milled, {_half(d)} mm across, {_half(t_mm)} mm "
                               f"thick, {catalog.sheet_name(ref.sheet).split(',')[0]}",
                               ref.name, list(g.names),

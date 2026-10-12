@@ -283,18 +283,19 @@ def _start_group_job(mech):
         return None
     made = [(b.name, b.fab, workers.dump_shape(b.part)) for b in mech.bodies
             if b.fab in fabmethods.made() and b.part is not None]
-    return workers.submit(_group_job, made)
+    return workers.submit(_group_job, made, mech.meta.get("milled"))
 
 
-def _group_job(made) -> dict[str, list[tuple[str, list[str], list[str]]]]:
-    """In a worker: the groups of ``made`` (name, fab, dumped part) by name."""
+def _group_job(made, specs=None) -> dict[str, list[tuple[str, list[str], list[str]]]]:
+    """In a worker: the groups of ``made`` (name, fab, dumped part) by name (``specs``: the
+    milled parts', :func:`hardware.bom.group_made`)."""
     from types import SimpleNamespace
 
     from spiderpig.workers import load_shape
 
     bodies = [SimpleNamespace(name=n, fab=fab, part=load_shape(d)) for n, fab, d in made]
-    return {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in group_made(bodies, m)]
-            for m in fabmethods.made()}
+    return {m: [(g.ref.name, list(g.names), list(g.mirrored))
+                for g in group_made(bodies, m, specs)] for m in fabmethods.made()}
 
 
 def _groups(mech, job) -> dict:
@@ -302,7 +303,7 @@ def _groups(mech, job) -> dict:
     from spiderpig.hardware.bom import MadeGroup
 
     if job is None:
-        return {m: group_made(mech.bodies, m) for m in fabmethods.made()}
+        return {m: group_made(mech.bodies, m, mech.meta.get("milled")) for m in fabmethods.made()}
     by_name = {b.name: b for b in mech.bodies}
     return {m: [MadeGroup(m, by_name[ref], names, mirrored) for ref, names, mirrored in gs]
             for m, gs in job.result().items()}

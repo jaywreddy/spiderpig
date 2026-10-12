@@ -272,10 +272,14 @@ def check(mech, default: str, dxf: bool = True) -> dict:
         from spiderpig.milling import check as mill_check
 
         mill = MILLS[mech.meta["mill"]]
-        for body, spec in specs.items():
+        seen: set[str] = set()
+        for body, spec in specs.items():     # each distinct part once (its first body)
             part = MillPart.from_dict(spec)
+            key = repr(sorted((k, repr(v)) for k, v in spec.items() if k != "name"))
             sheets.setdefault(part.stock, sheet(part.stock).label)
-            issues.extend(dict(i, part=body) for i in mill_check(part, mill))
+            if key not in seen:
+                seen.add(key)
+                issues.extend(dict(i, part=body) for i in mill_check(part, mill))
     by_rule: dict[str, int] = {}
     errors: dict[str, int] = {}
     for i in issues:

@@ -92,6 +92,7 @@ COL_INSET = 6.0         # the columns in from the base's edge
 SHOULDER_D = 18.5       # the shoulder plates' bore: on a 608's outer ring, clear of its inner
 SEAT_FIT = 0.2          # a seat's bore over the bearing (bonded: :mod:`construction.pivots.ball`)
 HOUSING_STOCK = "plate_6061_9p525"   # a milled housing's plate: 3/8 in 6061, past a 608
+SLIP_FIT = 0.025        # a milled seat over its bearing, the slip fit's middle (mm)
 SHAFT_HOLE = 8.1
 COLLAR_HOLE = 20.0      # what turns round a collar: the pulley's bore drilled out, the drum's
 ANCHOR_IN = 6.0         # the capstan's anchor screws in from the drum's rim
@@ -136,10 +137,11 @@ class TurretPlan:
     notes: tuple[str, ...] = field(default=())
     mill: str = ""                 # the user's mill (milling.MILLS): the hub's housings milled
 
-    def housing(self, ctx: Context):
-        """The milled bearing housing (two in the hub, the lower one upside down): its
-        stock, its seat bored to the bearing (a slip fit for retaining compound) from the
-        outer face, the shoulder through, the hub's screws' holes, the outline cut free
+    def housing(self):
+        """The milled bearing housing (two in the hub, the lower one turned over about x:
+        its holes' pattern is symmetric about it): its stock, its seat pocketed to the
+        bearing from the outer face (drawn at a slip fit's middle for retaining compound),
+        the shoulder through, the hub's screws' holes drilled, the outline cut free
         (:class:`milling.MillPart`); ``None`` without a mill."""
         if not self.mill:
             return None
@@ -149,10 +151,11 @@ class TurretPlan:
         support = self.preset.parts[0]
         brg = get(support.bearing).dims
         pcd = TIE_PCD[self.preset.transmission] / 2
-        ops = [Op("bore", float(brg["od"]), depth=float(brg["w"]), purpose="the bearing's seat",
-                  fit="+0.01/0 (a slip fit: try the bearing)"),
-               Op("bore", SHOULDER_D, purpose="the shoulder's bore (through)")]
-        ops += [Op("bore", SCREW_HOLE, pcd * math.cos(math.radians(45 + 90 * k)),
+        od = float(brg["od"])
+        ops = [Op("pocket", od + SLIP_FIT, depth=float(brg["w"]), purpose="the bearing's seat",
+                  fit=f"{od:g} +0.01/+0.04 (a slip fit: try the bearing)"),
+               Op("pocket", SHOULDER_D, purpose="the shoulder's bore (through)")]
+        ops += [Op("drill", SCREW_HOLE, pcd * math.cos(math.radians(45 + 90 * k)),
                    pcd * math.sin(math.radians(45 + 90 * k)), purpose="the hub's screws")
                 for k in range(4)]
         ops.append(Op("profile", 2 * self.hub_r, purpose="the outline"))
@@ -663,7 +666,7 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
     tie_cuts = [Cut(xy, SCREW_HOLE) for xy in ties]
     z = h["hub_bot"]
     seat = od_b + SEAT_FIT
-    housing = tp.housing(ctx)
+    housing = tp.housing()
     milled: dict[str, dict] = {}
     if housing is not None:        # two milled housings, the printed spacer between
         from build123d import Axis, Location
@@ -869,7 +872,10 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
         "Bolt the boss under the base's top plate, slide the shaft through and clamp it with "
         "the two collars, square to the plate (a square against it as they close).",
         ("Press the bearings into the milled housings' seats with retaining compound on "
-         "their outer rings (a slip fit: they go in by hand)." if tp.mill else
+         "their outer rings (a slip fit: by hand; on aluminium the compound wants its "
+         "primer, Loctite 7649, or a day's cure), then, before it sets, fit the hub on the "
+         "shaft with both bearings and tighten its screws there: the shaft lines the two "
+         "seats up (the screws' holes alone leave them 0.4 mm apart)." if tp.mill else
          "Bond the bearings into the hub's seats with the hub's plates stacked on the shaft "
          "itself (the shaft centres them while the epoxy cures)."),
         f"For the drive: {drive}.",

@@ -19,8 +19,8 @@ STOCK = "plate_6061_9p525"
 
 def _part(**kw) -> MillPart:
     base = {"name": "p", "stock": STOCK, "thickness": 9.525, "outline_d": 40.0,
-            "ops": (Op("bore", 22.0, depth=7.0, purpose="seat"), Op("bore", 18.5),
-                    Op("bore", 3.4, 15.0, 0.0), Op("profile", 40.0))}
+            "ops": (Op("pocket", 22.0, depth=7.0, purpose="seat"), Op("pocket", 18.5),
+                    Op("drill", 3.4, 15.0, 0.0), Op("profile", 40.0))}
     base.update(kw)
     return MillPart(**base)
 
@@ -37,12 +37,12 @@ def test_the_milled_method_and_the_mill_role():
 
 
 @pytest.mark.no_fabricate
-def test_the_carveras_tools_bore_what_fits_them():
+def test_the_carveras_tools_spiral_what_leaves_their_chips_room():
     assert CARVERA.tool_for(22.0, 7.0).d == 3.175
-    assert CARVERA.tool_for(2.5, 2.0).d == 2.0
-    assert CARVERA.tool_for(1.5, 2.0).d == 1.0
-    assert CARVERA.tool_for(0.8, 1.0) is None           # under the smallest tool
-    assert CARVERA.tool_for(1.5, 5.0) is None           # deeper than the 1 mm tool's flutes
+    assert CARVERA.tool_for(3.4, 2.0).d == 2.0           # not the 3.175: no room to spiral
+    assert CARVERA.tool_for(2.0, 2.0).d == 1.0
+    assert CARVERA.tool_for(1.2, 1.0) is None           # under 1.4 x the smallest tool
+    assert CARVERA.tool_for(3.4, 9.0) is None           # deeper than the 2 mm tool's flutes
 
 
 @pytest.mark.no_fabricate
@@ -63,17 +63,49 @@ def test_a_milled_part_is_drawn_from_its_operations():
 
 @pytest.mark.no_fabricate
 def test_the_mills_rules_refuse_what_it_cant_make():
-    rules = {i["rule"] for i in check(_part(thickness=6.35), CARVERA)}
+    shallow = (Op("pocket", 22.0, depth=4.0), Op("profile", 40.0))
+    rules = {i["rule"] for i in check(_part(thickness=6.35, ops=shallow), CARVERA)}
     assert rules == {"mill_stock"}                         # not its plate's thickness
     big = _part(outline_d=300.0, ops=(Op("profile", 300.0),))
     assert {i["rule"] for i in check(big, CARVERA)} == {"mill_bed"}
-    tiny = _part(ops=(Op("bore", 0.5), Op("profile", 40.0)))
+    tiny = _part(ops=(Op("pocket", 3.4), Op("profile", 40.0)))     # through 3/8 in
     assert {i["rule"] for i in check(tiny, CARVERA)} == {"mill_tool"}
-    thin = _part(ops=(Op("bore", 3.4, 18.6, 0.0), Op("bore", 3.4, 14.5, 0.0),
+    thin = _part(ops=(Op("drill", 3.4, 18.6, 0.0), Op("drill", 3.4, 14.5, 0.0),
                       Op("profile", 40.0)))
     walls = [i for i in check(thin, CARVERA) if i["rule"] == "mill_wall"]
     assert len(walls) == 2                                # to the edge, and between the two
     assert all(i["level"] == "error" for i in walls)
+    floor = _part(ops=(Op("pocket", 22.0, depth=9.0), Op("profile", 40.0)))
+    assert {i["rule"] for i in check(floor, CARVERA)} == {"mill_floor"}
+    deep = _part(ops=(Op("pocket", 22.0, depth=11.0), Op("profile", 40.0)))
+    assert "mill_floor" in {i["rule"] for i in check(deep, CARVERA)}
+    loose = _part(ops=(Op("profile", 30.0),))             # not round the outline
+    assert {i["rule"] for i in check(loose, CARVERA)} == {"mill_profile"}
+    # a hole in a pocket's floor is one feature with it, not a web
+    floored = _part(ops=(Op("pocket", 22.0, depth=5.0), Op("drill", 3.4, 6.0, 0.0),
+                         Op("profile", 40.0)))
+    assert check(floored, CARVERA) == []
+
+
+@pytest.mark.no_fabricate
+def test_milled_parts_group_by_what_is_milled():
+    """Equal specs are one part however each is turned; a moved hole or a mirror image (the
+    same volume, area and box) is another."""
+    from types import SimpleNamespace
+
+    from spiderpig.hardware.bom import group_made
+
+    a = _part(ops=(Op("drill", 3.4, 10.0, 3.0), Op("profile", 40.0)))
+    moved = _part(ops=(Op("drill", 3.4, 8.0, 0.0), Op("profile", 40.0)))
+    mirror = _part(ops=(Op("drill", 3.4, 10.0, -3.0), Op("profile", 40.0)))
+    solid = a.solid()
+    bodies = [SimpleNamespace(name=n, fab=fabmethods.MILLED, part=solid, sheet=STOCK)
+              for n in ("a1", "a2", "b", "c")]
+    specs = {"a1": a.as_dict(), "a2": dict(a.as_dict(), name="other"),
+             "b": moved.as_dict(), "c": mirror.as_dict()}
+    groups = group_made(bodies, fabmethods.MILLED, specs)
+    assert sorted(g.names for g in groups) == [["a1", "a2"], ["b"], ["c"]]
+    assert [g.names for g in group_made(bodies[:2], fabmethods.MILLED)] == [["a1"], ["a2"]]
 
 
 @pytest.mark.no_fabricate
@@ -84,13 +116,13 @@ def test_a_mill_mills_the_turntables_housings():
     cfg = BuildConfig(linkage="palletizer", roles=(("mill", "carvera"),))
     _, design = cache.cached_design(cfg)
     tp, _ = Turret().plans(design, cfg)
-    housing = tp.housing(design.ctx)
+    housing = tp.housing()
     assert housing is not None
     assert housing.stock == STOCK
     assert check(housing, CARVERA) == []
     assert tp.h["hub_top"] - tp.h["hub_bot"] == pytest.approx(SPACING + 7.0)   # flush seats
     laser, _ = Turret().plans(design, BuildConfig(linkage="palletizer"))
-    assert laser.housing(design.ctx) is None
+    assert laser.housing() is None
 
 
 @pytest.mark.slow
@@ -106,7 +138,7 @@ def test_the_milled_turret_builds_its_housings_and_their_setup(tmp_path):
     milled = [b for b in mech.bodies if b.fab == fabmethods.MILLED]
     assert sorted(b.name for b in milled) == ["hub_housing_lower", "hub_housing_upper"]
     assert clashes(mech) == []
-    groups = group_made(mech.bodies, fabmethods.MILLED)
+    groups = group_made(mech.bodies, fabmethods.MILLED, mech.meta["milled"])
     assert [g.qty for g in groups] == [2]                  # one part, one turned over
     bom = bom_from_mechanism(mech)
     rows = {r.key: r.qty for r in bom.purchased}
@@ -117,7 +149,7 @@ def test_the_milled_turret_builds_its_housings_and_their_setup(tmp_path):
     assert any("Carvera" in n for n in bom.notes)
     report = cut_check(mech, cfg.sheet, dxf=False)
     assert not [i for i in report["issues"] if i["rule"].startswith("mill_")]
-    types = part_types(mech, groups={m: group_made(mech.bodies, m) for m in fabmethods.made()})
+    types = part_types(mech)
     files = write_outputs(mech, groups, by_body(types), tmp_path / "mill")
-    assert [f.name for f in files] == ["MH45.5x9.5.step", "parts.csv", "SETUP.md"]
+    assert [f.name for f in files] == ["ML45.5x9.5.step", "parts.csv", "SETUP.md"]
     assert "slip fit" in (tmp_path / "mill" / "SETUP.md").read_text()

@@ -60,7 +60,6 @@ if TYPE_CHECKING:
     from build123d import Shape
 
     from spiderpig.mechanism import Body
-    from spiderpig.shapes import Shape3D
 
 
 @dataclass(frozen=True)
@@ -744,18 +743,19 @@ def _mirrors(sa: _Sig, sb: _Sig, rel: float = 1e-9) -> bool:
             and close(sa.surf * flip, sb.surf, size * 1e3))
 
 
-def _by_invariants(bodies, method: str) -> list[MadeGroup]:
-    """``method`` bodies grouped by what no rigid motion changes: the stock, the volume,
-    the area and the sorted extents of the part's box in its own axes (0.001 mm)."""
-    groups: dict[tuple, MadeGroup] = {}
+def _by_spec(bodies, method: str, specs: dict | None) -> list[MadeGroup]:
+    """``method`` bodies grouped by what is made of them: equal milling specs
+    (:class:`milling.MillPart`, ``meta["milled"]``, its name aside) are one part however each
+    is turned to fit (a housing fitted upside down); a body with no spec is a part alone."""
+    import json
+
+    groups: dict[str, MadeGroup] = {}
     for b in bodies:
         if b.fab != method or b.part is None:
             continue
-        part = cast("Shape3D", b.part)
-        bb = part.bounding_box()
-        key = (getattr(b, "sheet", None), round(float(part.volume), 3),
-               round(float(part.area), 3),
-               tuple(sorted(round(float(v), 3) for v in (bb.size.X, bb.size.Y, bb.size.Z))))
+        spec = (specs or {}).get(b.name)
+        key = (json.dumps({k: v for k, v in spec.items() if k != "name"}, sort_keys=True)
+               if spec else f"body:{b.name}")
         if key in groups:
             groups[key].names.append(b.name)
         else:
@@ -763,8 +763,9 @@ def _by_invariants(bodies, method: str) -> list[MadeGroup]:
     return list(groups.values())
 
 
-def group_made(bodies, method: str) -> list[MadeGroup]:
+def group_made(bodies, method: str, specs: dict | None = None) -> list[MadeGroup]:
     """Group ``method`` bodies by shape. For laser parts a mirror image is the same cut.
+    Milled bodies group by their milling ``specs`` (``mech.meta["milled"]``: :func:`_by_spec`).
 
     A robot's right-side part whose measurements mirror its left twin's (the assembly
     mirrors one side, so they always do unless a part was edited) joins the twin's group
@@ -774,8 +775,8 @@ def group_made(bodies, method: str) -> list[MadeGroup]:
     """
     from build123d import Plane
 
-    if method == fabmethods.MILLED:      # one part however it is turned to fit (a housing
-        return _by_invariants(bodies, method)   # upside down): its rigid invariants
+    if method == fabmethods.MILLED:      # what is milled: the spec, however it is turned
+        return _by_spec(bodies, method, specs)
     groups: list[MadeGroup] = []
     sigs: dict[int, _Sig] = {}               # id(group) -> the reference's measurements
     mirrors: dict[int, tuple] = {}           # id(group) -> (its mirror image, measurements)
@@ -1206,7 +1207,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
         if groups is not None and method in groups:
             found = groups[method]
         elif group:
-            found = group_made(bodies, method)
+            found = group_made(bodies, method, (mech.meta or {}).get("milled"))
         else:
             found = [MadeGroup(method, b, [b.name]) for b in bodies]
         if method == "printed":

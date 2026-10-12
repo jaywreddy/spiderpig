@@ -537,9 +537,19 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   with its screws and holds a fit a laser-cut stack can't (the phase 4 review's coaxiality
   concern); the rest of the robot stays laser-cut (a flat plate gains nothing milled). The
   capstan drum is not milled: its groove is a side cut, not 2.5-D.
+- **The phase's review** (integrated): milled parts group by their specs, not their
+  solids' measurements (a moved hole or a mirror image measures the same); a pocket needs
+  1.4 x its tool to spiral (the 3.4 mm screw holes are spotted on the mill and drilled on a
+  press), a blind pocket a floor, the profile the outline; the seat is drawn at a slip fit's
+  middle (+0.01/+0.04, not the bearing's nominal a 1/8 in end mill cuts under); the setup
+  sheet says how to hold the plate, rough and finish, try the bearing before the profile
+  and deburr; the hub's screws are tightened with both bearings on the shaft (their holes
+  alone leave the seats 0.4 mm apart); a mill's plate is refused as any laser sheet.
 - **Open:** the removal rates and flute lengths are estimates (the machine's own feeds and
   speeds are the authority); the setup sheet holds no toolpaths (the Carvera's CAM makes
-  them from the STEP); the walkers never mill (the role is an arm's).
+  them from the STEP); a dowel register between the housings would fix their alignment
+  without the shaft; `spiderpig export` and the MCP write no `mill/` (they build an arm's
+  side only); the walkers never mill (the role is an arm's).
 - **Where:** `spiderpig/milling.py`, `spiderpig/fabmethods.py`,
   `spiderpig/hardware/plate_catalog.py`, `spiderpig/construction/rotary/turret.py`
   (`TurretPlan.housing`), `spiderpig/hardware/bom.py` (`milled_stock`).

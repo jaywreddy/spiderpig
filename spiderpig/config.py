@@ -404,6 +404,9 @@ class BuildConfig:
                 ok = False
             if not ok:
                 raise ParamError(f"link_sheets: {key!r} is not a sheet in the catalog")
+            if get(key).dims.get("milled"):
+                raise ParamError(f"link_sheets: {key!r} is a mill's plate, not a sheet a "
+                                 "laser cuts")
             out[link] = key
         if out == default_link_sheets(lk):
             return None

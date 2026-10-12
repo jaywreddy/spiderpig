@@ -1376,10 +1376,13 @@ robot is an entry rather than an edit across the stages:
 - **Milled parts** (`spiderpig/milling.py`, fab method `milled`, role `mill`): a part
   machined from plate on the user's own mill (`milling.MILLS`: the Makera Carvera) where a
   laser can't make it. A construction describes it as a `milling.MillPart`: its plate
-  (`hardware/plate_catalog.py`), its outline and its 2.5-D operations from one side (bores
-  at depths, the profile last); its solid is drawn from that description, `milling.check`
-  holds it to the mill's rules (the bed with the clamps' margin, a tool for every bore
-  within its flutes, the webs), and the build writes its STEP and a setup sheet. With a
+  (`hardware/plate_catalog.py`), its outline and its 2.5-D operations from one side
+  (spiral pockets, drilled holes, the profile last); its solid is drawn from that
+  description, `milling.check` holds it to the mill's rules (the bed with the clamps'
+  margin, a tool with chip room for every pocket within its flutes, a floor under each
+  blind pocket, the profile round the outline, the webs), and the build writes its STEP and
+  a setup sheet (the work holding, the finishing passes, the time). Milled parts group by
+  their specs (a part fitted upside down is one part; a mirror image is another). With a
   mill the turntable's hub is two milled bearing housings (3/8 in 6061, each seat bored to
   a slip fit with its shoulder, retaining compound), else the laser-cut stack. The BOM buys
   the plate by the piece and notes the machine time; the milled rules join the
