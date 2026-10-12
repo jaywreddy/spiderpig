@@ -116,12 +116,18 @@ class Sensor:
     key: str
     label: str
     bom_key: str
+    repeat_mm: float = SWITCH_REPEAT_MM     # its repeatability at the flag's edge
 
 
 SENSORS: dict[str, Sensor] = {s.key: s for s in (
     Sensor("optical_flag", "a slotted optical endstop on the base, a half-circle flag under "
            "the turntable", "optical_endstop"),
+    Sensor("ee_sx67", "an Omron EE-SX67 slot sensor on the base, an aluminium flag under the "
+           "turntable", "omron_ee_sx670", 0.005),
 )}
+"""The EE-SX67's repeatability: its datasheet's reference graph, 2 um over 20 tries at
+25 C, 20-40 um of drift between 25 C and -25 / 55 C (about 0.7 um/K): 5 um budgeted (round
+5 of the arm's precision review); the TCST2103 board's 20 um is unverified."""
 
 
 @dataclass(frozen=True)
@@ -168,6 +174,9 @@ PRESETS: dict[str, RotaryPreset] = {p.key: p for p in (
     RotaryPreset("capstan_preload", "cord capstan 11.6:1 on a preloaded 608 pair, optical "
                  "homing", "preloaded_pair", "capstan", "nema17_17hs4401", "optical_flag",
                  (-115.0, 115.0)),
+    RotaryPreset("capstan_precise", "cord capstan 11.6:1 on a preloaded 608 pair, an Omron "
+                 "slot sensor, the driver at 1/64", "preloaded_pair", "capstan",
+                 "nema17_17hs4401_x64", "ee_sx67", (-115.0, 115.0)),
 )}
 DEFAULT = "belt_preload"
 """The user's "start with the belt" (2026-10-11), preloaded: the MT4's tilt play gone."""

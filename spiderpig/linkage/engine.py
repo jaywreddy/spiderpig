@@ -213,6 +213,10 @@ class Linkage:
     # crank (``crank=()``): its template's one time walks a closed tour over the inputs' box
     # (:meth:`tour`), so every stage that samples a cycle samples the workspace
     ranges: Mapping[str, tuple[float, float]] = field(default_factory=dict)
+    # an arm's relative limit: (lo, hi) degrees of its first input less its second (the
+    # MT4's elbow stops, a parallelogram kept off its dead points); None: the box is the
+    # ranges' rectangle (:meth:`inputs_at`)
+    band: tuple[float, float] | None = None
     drives: Mapping[str, tuple[str, str]] = field(default_factory=dict)
     angles: frozenset[str] = frozenset()
     labels: Mapping[str, str] = field(default_factory=dict)
@@ -320,16 +324,42 @@ class Linkage:
         on = s >= pos                                               # back along a = 0
         a[on] = 0.0
         b[on] = 1.0 - (s[on] - pos)
-        return self._denorm(names[0], a), self._denorm(names[1], b)
+        return self.inputs_at(a, b)
+
+    def inputs_at(self, *u) -> tuple[np.ndarray, ...]:
+        """The inputs (radians) at fractions ``u`` (0..1, one array each) of the box: each
+        input across its range; with a :attr:`band`, the second across its range and the
+        first across what the band leaves of its range at that second's angle."""
+        if self.band is None or len(self.inputs) != 2:
+            return tuple(self._denorm(n, x) for n, x in zip(self.inputs, u, strict=True))
+        (la, ha), (lb, hb) = (self.ranges[n] for n in self.inputs)
+        b = lb + (hb - lb) * np.clip(np.asarray(u[1], dtype=float), 0.0, 1.0)
+        lo = np.maximum(la, b + self.band[0])
+        hi = np.minimum(ha, b + self.band[1])
+        a = lo + (hi - lo) * np.clip(np.asarray(u[0], dtype=float), 0.0, 1.0)
+        return np.radians(a), np.radians(b)
+
+    def in_band(self, *q) -> bool:
+        """Whether the inputs ``q`` (radians) are inside the ranges and the band."""
+        for n, v in zip(self.inputs, q, strict=True):
+            lo, hi = self.ranges[n]
+            if not math.radians(lo) - 1e-9 <= v <= math.radians(hi) + 1e-9:
+                return False
+        if self.band is None or len(q) != 2:
+            return True
+        d = math.degrees(q[0] - q[1])
+        return self.band[0] - 1e-6 <= d <= self.band[1] + 1e-6
 
     def _denorm(self, name: str, u: np.ndarray) -> np.ndarray:
         lo, hi = self.ranges[name]
         return np.radians(lo + (hi - lo) * np.clip(u, 0.0, 1.0))
 
     def box(self, n: int = 61) -> tuple[np.ndarray, ...]:
-        """An ``n``-per-side grid over an arm's inputs' box (radians, raveled)."""
-        axes = [np.radians(np.linspace(*self.ranges[k], n)) for k in self.inputs]
-        return tuple(a.ravel() for a in np.meshgrid(*axes, indexing="ij"))
+        """An ``n``-per-side grid over an arm's inputs' box (radians, raveled; within its
+        :attr:`band`, if any: :meth:`inputs_at`)."""
+        u = np.linspace(0.0, 1.0, n)
+        grid = np.meshgrid(*([u] * len(self.inputs)), indexing="ij")
+        return self.inputs_at(*(g.ravel() for g in grid))
 
     def tour_lateral(self, values: tuple[float, ...] = ()) -> dict[str, float]:
         """How far each point moves between two neighbouring rows of the tour (mm): what a
@@ -338,15 +368,12 @@ class Linkage:
         if self.kind != "arm" or len(self.inputs) == 1:
             return dict.fromkeys(self.points, 0.0)
         n = 4 * TOUR_ROWS + 1
-        lo_a, hi_a = self.ranges[self.inputs[0]]
-        lo_b, hi_b = self.ranges[self.inputs[1]]
-        a = np.radians(np.linspace(lo_a, hi_a, n))
-        b = np.radians(np.linspace(lo_b, hi_b, 4 * (TOUR_ROWS - 1) + 1))
-        step = np.radians((hi_b - lo_b) / (TOUR_ROWS - 1))
-        A, B = (g.ravel() for g in np.meshgrid(a, b, indexing="ij"))
+        ua = np.linspace(0.0, 1.0, n)
+        ub = np.linspace(0.0, 1.0, 4 * (TOUR_ROWS - 1) + 1)
+        UA, UB = (g.ravel() for g in np.meshgrid(ua, ub, indexing="ij"))
         sol = LegSolution(1, 0.0, values, self.key)
-        p0 = sol.at(A, B)
-        p1 = sol.at(A, np.minimum(B + step, np.radians(hi_b)))
+        p0 = sol.at(*self.inputs_at(UA, UB))
+        p1 = sol.at(*self.inputs_at(UA, np.minimum(UB + 1.0 / (TOUR_ROWS - 1), 1.0)))
         return {k: float(np.linalg.norm(p1[k] - p0[k], axis=-1).max()) for k in self.points}
 
     # -- symbols and program ---------------------------------------------

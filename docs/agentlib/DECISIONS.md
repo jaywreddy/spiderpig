@@ -749,3 +749,61 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Open:** the total still adds the pins' worst play as repeatability (round 5: the
   ISO 9283 split); the frame plates and the turntable are rigid in the stiffness model;
   acrylic's creep is not modelled (moot with aluminium).
+
+### 2026-10-12: ISO 9283 repeatability; vision homing to a reference sheet (round 5 of the arm's precision review)
+
+- **Decision:** the budget reports ISO 9283 pose repeatability by Monte Carlo
+  (`spiderpig.repeatability`: 30 cycles to each of five poses, mean + 3 sigma; gravity
+  seats the pins by a static solve; a preloaded pair's bore gap frozen by its clamp's
+  friction unless its load with the moves' accelerations passes `SLIP_N`; backlash and the
+  friction dead band only where gravity doesn't hold the drive; the pairs' tilt by its
+  hysteresis; across power-ups each cycle re-homed), within a session and across
+  power-ups, beside the worst-case bound. The stiffness model takes each link's outline
+  segments and the pairs' moment stiffness (a Hertz estimate) and reports the sag in and
+  across the plane and the sway's frequency. Homing's fine zero comes from a camera on the
+  tool sighting dots on a reference sheet (`homing_reference` `vision_fiducial`,
+  `control.vision`: a sub-pixel dot centroid, least squares of the zeros over two
+  sightings or more): the switches only coarse (the TCST2103 boards). An Omron EE-SX67
+  homing option (`ee_sx67`, the `capstan_precise` turntable, 1/64 microsteps) stays
+  available.
+- **Why:** the round's reviews: the worst-case sum is no maker's number (ISO RP is), and
+  the remaining across-power-up term was homing (0.23 mm with 20 um switches at 40-62 mm
+  flags). The user: "vision based homing to a fiducial target with a reference sheet, we
+  don't need super accurate switch based homing": a camera's 10 um at the tip beats any
+  switch through a lever, and re-sighting also takes out the links' creep and the frame's
+  heat. Within a session the recommended arm (6061 links) gives 0.097 mm ISO RP.
+- **Open:** the tool can't reach the table (its tip stays 112 mm above it in today's box:
+  round 6); the camera's 10 um is an estimate; the stack order sets the links' stiffness
+  about 2x (not a planner objective yet).
+
+### 2026-10-12: the band and the reaching geometry; the ISO model's audit (round 6 of the arm's precision review)
+
+- **Decision:** a linkage may hold a relative limit, `Linkage.band` (degrees of its first
+  input less its second, as the MT4's elbow stops): `Linkage.inputs_at` maps the box, the
+  tour, its rows' spacing and the ISO poses into it, `in_band` says whether inputs are in
+  it, and the inverse kinematics refuses a pose outside it. A second palletizer,
+  `palletizer_reach`, holds the review's geometry: the elbow crank 90 mm, the inputs' box
+  q2 -10..110 and q3 -110..10 within q2 - q3 30..150, the levelling pivot P 40 mm in front
+  at -40 deg and the wrist corner U at 40 deg: every parallelogram 30 deg or more off its
+  dead point (conditioning 226), the elbow drive's gains 9.1 / 7.3 -> 6.0 / 3.3. The ISO
+  model's audit: a slipped bore gap lands the same way every same-direction cycle (not in
+  RP; a power-off drop re-seats the gaps that never slip); the turntable's backlash and
+  dead band count (no gravity about the vertical); across power-ups the microsteps'
+  nonlinearity unless homing snaps to the driver's phase (with the camera, even a
+  capstan's: a slip is a cycle's jump it sees). The vision reference's camera is the
+  Camera Module 3 Wide (focus from 5 cm), its sheet an FR-4 board of copper dots (paper
+  swells with the air's humidity), and the sightings may fit each joint's gain (a capstan's
+  ratio drifting with its motor's heat).
+- **Why:** the user's goal is slides on a table: the base palletizer's tip never gets
+  under 112 mm over it (the turret puts the turntable under every link point and the
+  q2 / q3 motors hang 74 mm under the shoulder). The MT4 reaches down from a 140 mm
+  shoulder; its URDF's J2 / J3 limits are a rectangle, its relative limit in its stops.
+- **Result (recommended: `ball_pair` pivots, 6061 links, capstans, the preloaded capstan
+  turntable, endstops for the coarse find, `vision_fiducial`):** ISO RP 0.042 mm within a
+  session, 0.048 mm across power-ups (bound 0.44 mm); the links' bending 0.023 mm a slide
+  picked up, 2.3 mm/N across the plane (about 11 Hz).
+- **Open (the next step):** the turret's keep-out: the arm kept out of the base's cylinder
+  instead of the turntable put under it, the q2 / q3 motors behind the shoulder (an arm's
+  motor angles), the base trimmed in front and bolted to one work plate that also holds
+  the reference board: then `palletizer_reach` covers a 168 mm square at table height; the
+  stack's order as a stiffness objective; the turntable's own stiffness; the hose's drag.

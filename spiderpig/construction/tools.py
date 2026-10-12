@@ -279,8 +279,9 @@ class ToolMount(Group):
 
     name = "tool"
 
-    def __init__(self, plan: ToolPlan):
+    def __init__(self, plan: ToolPlan, extras: tuple[tuple[str, float], ...] = ()):
         self.plan = plan
+        self.extras = extras        # what else rides the tool: a homing camera
 
     def claims(self, ctx: Context) -> list:
         return []        # the robot's: checked against the side's links by tool_plan
@@ -374,7 +375,9 @@ class ToolMount(Group):
                        BomLine("barb_m5_4mm", 1, "tool: the vacuum port on the holder"),
                        BomLine("pu_tube_4mm", 1.0, "tool: holder to the valve"),
                        BomLine("vacuum_pump_12v", 1, "tool: on the bench"),
-                       BomLine("solenoid_valve_12v_3way", 1, "tool: releases the cup")]
+                       BomLine("solenoid_valve_12v_3way", 1, "tool: releases the cup"),
+                       *(BomLine(k, q, "tool: the homing reference's camera, looking down")
+                         for k, q in self.extras)]
         out.notes["tool"] = {
             "key": tool.key, "body": tp.body, "point": tp.point, "side": tp.s,
             "drop_mm": round(tool.drop(), 3), "wrist": tool.wrist,

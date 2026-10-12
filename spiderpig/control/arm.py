@@ -162,6 +162,10 @@ class ArmModel:
         sol = least_squares(resid, self._start(target), bounds=(lo, hi), xtol=1e-14,
                             ftol=1e-14, gtol=1e-14)
         err = float(np.linalg.norm(resid(sol.x)))
+        lk = linkage.get(self.linkage)
+        if err <= TOL_MM and not lk.in_band(*sol.x):
+            raise IKError(f"({x:.1f}, {y:.1f}, {z:.1f}) needs the inputs outside the arm's "
+                          f"band {lk.band} (deg)")
         if err > TOL_MM:
             raise IKError(f"({x:.1f}, {y:.1f}, {z:.1f}) is out of reach: the nearest the "
                           f"inputs' box gets is {err:.2f} mm off")

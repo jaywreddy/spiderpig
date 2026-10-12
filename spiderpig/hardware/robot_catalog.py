@@ -112,3 +112,36 @@ register(Item(
     notes="Bonded flat on the link, its x along the link, y in the link's plane: the "
           "link's angle from horizontal is atan2(x, y) of its accelerations "
           "(spiderpig.control.incline). Wired by a 4-wire SPI flex to the host."))
+register(Item(
+    "omron_ee_sx670", "Omron EE-SX670-WR slot-type photomicrosensor, 5 mm slot, pre-wired 1 m",
+    "electronics",
+    (Offer("Digi-Key", "https://www.digikey.com/en/products/result?keywords=EE-SX670-WR",
+           price_usd=34.0, note="EE-SX670-WR 1M; the price from a search summary, unverified"),),
+    dims={"slot_w": 5.0, "aperture_mm": 0.5, "repeat_um": 2.0, "mass_g": 25.0},
+    notes="The precise homing switch (actuators.sensors, construction.rotary): its datasheet's "
+          "reference graph repeats to 2 um over 20 tries at 25 C (5 um budgeted; 20-40 um of "
+          "drift from 25 C to -25 / 55 C). Datasheet: https://www.farnell.com/datasheets/"
+          "2574484.pdf. CAD: Omron's site needs an account (no free model found); a "
+          "laser-cut 6061 flag through its slot (PLA passes infrared and creeps)."))
+register(Item(
+    "camera_rpi_module3_wide", "Raspberry Pi Camera Module 3 Wide (12 MP, autofocus from "
+    "5 cm, 120 deg), CSI cable", "electronics",
+    (Offer("Raspberry Pi", "https://www.raspberrypi.com/products/camera-module-3/",
+           price_usd=35.0, note="the Wide; the list price"),),
+    dims={"board": [25.0, 24.0, 12.4], "pixels": [4608, 2592], "min_focus_mm": 50.0,
+          "mass_g": 4.0},
+    notes="The homing reference's camera (control.vision): on the tool holder about 50 mm "
+          "over the reference board, its lens locked once focused; on the Klipper host's "
+          "(a Raspberry Pi's) CSI port. The standard module focuses only from 10 cm. "
+          "Mechanical drawing and STEP: Raspberry Pi's product information portal "
+          "(pip.raspberrypi.com)."))
+register(Item(
+    "fiducial_pcb", "Reference board: FR-4 1.6 mm, 100 x 100 mm, a grid of copper dots "
+    "(ENIG), screwed to the base plate", "electronics",
+    (Offer("JLCPCB", "https://jlcpcb.com/", price_usd=5.0, pack_qty=5,
+           note="a two-layer board's minimum order (5), an estimate; the dots its copper"),),
+    dims={"size_mm": [100.0, 100.0], "t": 1.6},
+    notes="The homing reference's sheet (control.vision): copper dots etched in FR-4 hold "
+          "their places against the air's humidity, where paper swells tens of um from day "
+          "to day; the board's etch places them (its accuracy is the arm's after "
+          "calibration; a chrome-on-glass target is finer)."))

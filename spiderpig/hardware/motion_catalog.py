@@ -112,7 +112,7 @@ register(Item(
                "core, polyester cover), SKU ZCB13112; out of stock 2026-10-12"),
      _unpriced("Amazon", "https://www.amazon.com/s?k=1mm+dyneema+braided+line", "1 mm SK78 "
                "braid: creeps (see notes)")),
-    dims={"d": CORD_D, "ea_n": CORD_EA_N, "material": "nylon"},
+    dims={"d": CORD_D, "ea_n": CORD_EA_N, "material": "UHMWPE"},
     notes="The capstan's cord: wraps the motor's capstan and is anchored at both ends of the "
           "drum. Buy DM20 (Dyneema's creep-resistant grade): at 300 MPa and 30 C, SK75 "
           "creeps 0.02 %/day, SK78 0.006, DM20 0.00007 (DSM via riggingdoctor.com); "

@@ -156,6 +156,11 @@ register(Role("angle_sensor", "joint angle sensor", "spiderpig.actuators.sensors
               help="how each planar input finds its zero at homing: a digital angle gauge "
                    "by hand, an optical endstop and a flag on the link (the MT4's), or an "
                    "SCL3300 inclinometer on the link (0.05 / 0.03 / 0.02 deg)"))
+register(Role("homing_reference", "homing reference",
+              "spiderpig.actuators.sensors:REFERENCES", ("arm",), default="switches",
+              robot=True,
+              help="what the joints' fine zero comes from: each joint's switch or gauge, or "
+                   "a camera on the tool sighting fiducials on a reference sheet"))
 register(Role("turntable", "turntable", "spiderpig.construction.rotary:PRESETS", ("arm",),
               default="belt_preload", robot=True,
               help="the robot's base rotation (yaw): its bearings, transmission, motor and "

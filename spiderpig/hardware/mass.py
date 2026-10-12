@@ -32,6 +32,7 @@ DENSITY = {
     "plastic": 1.41,      # acetal, a plastic horn
     "ptfe": 2.2,          # PTFE washers and tube liners
     "nylon": 1.14,        # PA66 standoffs, screws and nuts
+    "UHMWPE": 0.97,       # Dyneema fibre (DSM: 0.97-0.98)
     "polycarbonate": 1.20,  # PC (Makrolon: 1.20)
     "stainless": 8.0,     # 300-series stainless (304: 7.9-8.0)
 }
@@ -51,6 +52,7 @@ MODULUS_GPA = {
     "plastic": 2.9,       # acetal (POM: 2.8-3.1)
     "ptfe": 0.5,
     "nylon": 2.8,         # PA66, dry
+    "UHMWPE": 100.0,      # Dyneema fibre along its length (DSM SK75: 109-132; a braid less)
 }
 
 # Linear thermal expansion, micrometre per metre per kelvin (20-100 °C typicals)
@@ -66,6 +68,7 @@ CTE_UM_PER_M_K = {
     "plastic": 110.0,     # acetal
     "ptfe": 120.0,
     "nylon": 80.0,
+    "UHMWPE": -12.0,      # Dyneema fibre along its length: it shortens warming (DSM)
 }
 
 

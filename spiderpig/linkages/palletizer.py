@@ -36,6 +36,8 @@ forearm pointing well down with the upper arm forward, the reach below the shoul
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import sympy as sp
 
@@ -91,6 +93,22 @@ PALLETIZER = register(Linkage(
     notes="Two inputs, both driven from the shoulder; the tool stays level. The robot-level "
           "turntable and wrist add the arm's other two axes.",
 ))
+
+
+PALLETIZER_REACH = register(replace(
+    PALLETIZER, key="palletizer_reach",
+    name="Palletizer arm reaching the table (MT4-like: 130 / 150 mm, crank 90, a band)",
+    ranges={"q2": (-10.0, 110.0), "q3": (-110.0, 10.0)}, band=(30.0, 150.0),
+    params={**PALLETIZER.params, "crank": R(90),
+            "px": R(3064, 100), "py": R(-2571, 100),    # |OP| 40 mm at -40 deg: in front
+            "ux": R(3064, 100), "uy": R(2571, 100)},    # the elbow plate's corner at 40 deg
+    notes="The round-6 geometry of the arm's precision review (2026-10-12): the elbow crank "
+          "90 mm (its parallelogram's gains 9.1 / 7.3 -> 6.0 / 3.3 at O, E / C, R), the "
+          "inputs' box widened and held to q2 - q3 within 30..150 deg (every parallelogram "
+          "30 deg or more off its dead point), the levelling pivot P and the wrist corner U "
+          "moved so: the tip reaches table height over a 168 mm square once the turret keeps "
+          "the arm out of the base instead of under it (not built yet)."))
+"""The palletizer that reaches its table (module docstring of the review's round 6)."""
 
 
 def parallelogram_margins(values: tuple[float, ...] = ()) -> dict[str, float]:

@@ -1,23 +1,29 @@
 """How far a linkage's links bend under a load at its output: a linear 3D frame model
-(2026-10-12, round 4 of the arm's precision review).
+(2026-10-12, rounds 4-5 of the arm's precision review).
 
 The error budget (:mod:`spiderpig.precision`) took the links as rigid. They aren't: a 3 mm
 acrylic link 13 mm wide is about 125 times softer in its plane than the MT4's 5 x 20 mm
 aluminium bar, and every reference arm has stiff metal (or thick printed) links. So each
-body becomes beams between its joints (every pair of them: a plate with three is a
-triangle), of the link's own section (``width`` x ``thickness``, Young's ``modulus_mpa``):
-in-plane bending ``t w^3 / 12``, out-of-plane ``w t^3 / 12``, torsion about
-``w t^3 / 3 (1 - 0.63 t / w)``, axial ``w t``. A pin joins the bodies on it in every
-direction but its turn (stiff springs: a preloaded pair holds its link square on the
-shaft); a frame pivot is fixed; each drive holds its link's turn against the frame. The
-frame (its plates, the turntable) is rigid here, and the layers' offsets across the stack
-are left out (the bodies drawn in one plane).
+body becomes beams along its outline's segments (``Linkage.links``: a plate with three
+joints an L or a T of bars, not a triangle), of the link's own section (``width`` x
+``thickness``, Young's ``modulus_mpa``): in-plane bending ``t w^3 / 12``, out-of-plane
+``w t^3 / 12``, torsion about ``w t^3 / 3 (1 - 0.63 t / w)``, axial ``w t``. Each body
+stands at its layer's mid-plane (``z``: the plan's), each pin is its shaft (a steel rod)
+between its bodies' layers, a frame pivot's anchored in both frame plates: a load that
+crosses between layers twists and bends the thin links on their weak axis, which is most
+of what these plates give (the review: out-of-plane bending of b2, b1, b5, b4 the most).
+A pin joins each body to its shaft in every direction but its turn: rigidly in the plane,
+and against tilt by the joint's moment stiffness (``tilt_k``: a preloaded ball pair's, a
+Hertz estimate). Each drive holds its link's turn. The frame plates and the turntable are
+rigid, the drums bolted to the driven links at O left out (about 10 % softer: the review).
 
 :func:`compliance` gives the output's displacement (and a point ``drop`` below it, the
-tool's tip: its rotation counted) under a force there. The payload's sag at a given pose
-and payload is systematic (it calibrates out for that payload); what changes with the
-payload (a slide picked up), and a load across the plane (the turntable's acceleration),
-moves the tip by that much each time.
+tool's tip: its rotation counted) under a force there, worst over the poses: the
+payload's, in the plane and across it (the payload's weight also pushes the tip across
+the plane, through the layers' offsets), and a force across the plane (the turntable's
+acceleration, a hose's pull). The payload's sag at a given pose and payload repeats (it
+calibrates out for that payload, though it varies with the pose); a change in the payload
+(a slide picked up) and a load across the plane move the tip by that much each time.
 """
 
 from __future__ import annotations
@@ -45,8 +51,8 @@ class Section:
 
     @property
     def props(self) -> tuple[float, float, float, float, float]:
-        """``(E, G, A, I_out, I_in, J)`` without E: area, out-of-plane and in-plane second
-        moments, torsion constant."""
+        """``(A, I_out, I_in, J, 0)``: the area, the out-of-plane and in-plane second
+        moments, the torsion constant."""
         w, t = self.width, self.thickness
         return (w * t, w * t ** 3 / 12, t * w ** 3 / 12,
                 w * t ** 3 / 3 * max(1 - 0.63 * t / w, 0.1), 0.0)
@@ -114,12 +120,14 @@ def _beam(p: np.ndarray, q: np.ndarray, s: Section | Rod) -> np.ndarray:
 
 @dataclass(frozen=True)
 class Compliance:
-    """The tool's worst displacement over the poses sampled: ``sag_mm`` under the payload
-    (its weight, straight down in the plane: y), ``across_mm_per_n`` per newton across the
-    plane (z), at the poses where each is worst."""
+    """The tool's worst displacement over the poses sampled: under the payload (its weight,
+    straight down in the plane: y) in the plane (``sag_mm``) and across it
+    (``sag_across_mm``), and per newton across the plane (``across_mm_per_n``), each at
+    the pose where it is worst."""
 
-    sag_mm: float
-    across_mm_per_n: float
+    sag_mm: float              # the payload's, in the plane (worst over the poses)
+    across_mm_per_n: float     # per newton across the plane
+    sag_across_mm: float = 0.0  # the payload's, across the plane (through the layers)
 
 
 class _Frame:
@@ -155,8 +163,13 @@ class _Frame:
 
 
 def _pose(lay, at: dict[str, np.ndarray], section, z: dict[str, float],
-          rods: dict[str, Rod], frame_z, drives: dict[str, str]) -> tuple[_Frame, int]:
-    """The frame of one pose (``at``: each point's xy) and the output's node."""
+          rods: dict[str, Rod], frame_z, drives: dict[str, str],
+          segments: dict[str, tuple] | None = None,
+          tilt_k: dict[str, float] | None = None) -> tuple[_Frame, int]:
+    """The frame of one pose (``at``: each point's xy) and the output's node. ``segments``:
+    each body's beams (default: every pair of its points); ``tilt_k``: each joint's
+    moment stiffness against a body's tilt on it (N·mm/rad; default rigid)."""
+    tilt_k = tilt_k or {}
     bodies = [b for b in lay.bodies if b != "torso"]
     nodes: dict[tuple[str, str], int] = {}
     for b in bodies:
@@ -181,12 +194,15 @@ def _pose(lay, at: dict[str, np.ndarray], section, z: dict[str, float],
         ps = list(lay.joints[b])
         if b == lay.output_body and lay.output_point not in ps:
             ps.append(lay.output_point)
-        for a in range(len(ps)):
-            for c in range(a + 1, len(ps)):
-                p = np.array([*at[ps[a]], z.get(b, 0.0)])
-                q = np.array([*at[ps[c]], z.get(b, 0.0)])
-                if np.linalg.norm(q - p) > 1e-6:
-                    fr.add(nodes[(b, ps[a])], nodes[(b, ps[c])], _beam(p, q, section))
+        pairs = (segments or {}).get(b) or [(ps[a], ps[c]) for a in range(len(ps))
+                                           for c in range(a + 1, len(ps))]
+        for u, v in pairs:
+            if (b, u) not in nodes or (b, v) not in nodes:
+                continue
+            p = np.array([*at[u], z.get(b, 0.0)])
+            q = np.array([*at[v], z.get(b, 0.0)])
+            if np.linalg.norm(q - p) > 1e-6:
+                fr.add(nodes[(b, u)], nodes[(b, v)], _beam(p, q, section))
     for j, levels in shaft.items():
         rod = rods.get(j, Rod(4.0))
         x, y = at[j]
@@ -194,8 +210,9 @@ def _pose(lay, at: dict[str, np.ndarray], section, z: dict[str, float],
             fr.add(a, b, _beam(np.array([x, y, za]), np.array([x, y, zb]), rod))
         at_z = dict(levels)
         for (b, jj), i in nodes.items():
-            if jj == j:                                           # all but its turn
-                fr.spring(i, at_z[z.get(b, 0.0)], [0, 1, 2, 3, 4], PIN_K)
+            if jj == j:           # all but its turn: the tilt through the joint's moment
+                fr.spring(i, at_z[z.get(b, 0.0)], [0, 1, 2], PIN_K)
+                fr.spring(i, at_z[z.get(b, 0.0)], [3, 4], tilt_k.get(j, PIN_K))
         for zz, i in levels:
             fr.spring(i, None, [5], 1e-6)                         # (its own turn: nothing)
             if j in frame and (frame_z is None or zz in frame_z):
@@ -209,7 +226,8 @@ def _pose(lay, at: dict[str, np.ndarray], section, z: dict[str, float],
 def compliance(lk: Linkage, values: tuple[float, ...], section: Section, *,
                payload_n: float, drop: float = 0.0, ins=None,
                z: dict[str, float] | None = None, rods: dict[str, Rod] | None = None,
-               frame_z: tuple[float, float] | None = None) -> Compliance:
+               frame_z: tuple[float, float] | None = None,
+               tilt_k: dict[str, float] | None = None) -> Compliance:
     """:class:`Compliance` of ``lk``'s side (module docstring) at the inputs ``ins`` (radians,
     one array per input; default: the box, 5 a side). With ``z`` (each body's mid-plane
     across the stack, the plan's) the bodies stand at their layers and each pin is its
@@ -224,16 +242,18 @@ def compliance(lk: Linkage, values: tuple[float, ...], section: Section, *,
     n = next(iter(pts.values())).reshape(-1, 2).shape[0]
     drives = {lk.drives[k][0]: lk.drives[k][1] for k in lk.inputs} if lk.kind == "arm" else {}
     lever = np.array([0.0, -drop, 0.0])
-    worst_sag = worst_across = 0.0
+    segments = {b: segs for b, (_, segs) in lk.links.items()}
+    worst = np.zeros(3)
     for s in range(n):
         at = {k: np.asarray(v).reshape(-1, 2)[s] for k, v in pts.items()}
         if not all(np.isfinite(v).all() for v in at.values()):
             continue
-        fr, o = _pose(lay, at, section, z or {}, rods or {}, frame_z, drives)
+        fr, o = _pose(lay, at, section, z or {}, rods or {}, frame_z, drives, segments,
+                      tilt_k)
         try:
-            sag = float(np.linalg.norm(fr.tip(o, np.array([0.0, -payload_n, 0.0]), lever)))
+            u = fr.tip(o, np.array([0.0, -payload_n, 0.0]), lever)
             across = float(abs(fr.tip(o, np.array([0.0, 0.0, 1.0]), lever)[2]))
         except np.linalg.LinAlgError:
-            return Compliance(math.inf, math.inf)
-        worst_sag, worst_across = max(worst_sag, sag), max(worst_across, across)
-    return Compliance(worst_sag, worst_across)
+            return Compliance(math.inf, math.inf, math.inf)
+        worst = np.maximum(worst, [float(np.hypot(u[0], u[1])), across, abs(float(u[2]))])
+    return Compliance(*(float(v) for v in worst))

@@ -38,6 +38,8 @@ SWITCH_REPEAT_MM = 0.02    # a slotted optical switch's repeatability at its fla
 #                            the turntable's, construction.rotary; a typical figure,
 #                            unverified)
 FLAG_R = 40.0              # the flag's edge from the joint's pivot, on the link (mm)
+PRECISE_REPEAT_MM = 0.005  # an Omron EE-SX67's, budgeted (construction.rotary.SENSORS)
+PRECISE_FLAG_R = 45.0      # a tab on the link over the frame plate (the review's: q2 45, q3 55)
 
 
 @dataclass(frozen=True)
@@ -60,6 +62,12 @@ ANGLE_SENSORS: dict[str, AngleSensor] = {s.key: s for s in (
                 round(math.degrees(SWITCH_REPEAT_MM / FLAG_R), 4), bom_key="optical_endstop",
                 source=f"{SWITCH_REPEAT_MM * 1000:g} um at a flag {FLAG_R:g} mm out "
                        "(unverified); the MT4's way"),
+    AngleSensor("endstop_ee_sx67", "an Omron EE-SX67 slot sensor on the frame, an aluminium "
+                "flag on the link", round(math.degrees(PRECISE_REPEAT_MM / PRECISE_FLAG_R), 4),
+                bom_key="omron_ee_sx670",
+                source=f"{PRECISE_REPEAT_MM * 1000:g} um (its datasheet's 2 um over 20 tries "
+                       f"at 25 C, and drift) at a tab {PRECISE_FLAG_R:g} mm out (q2's on b1; "
+                       "q3's on the crank b2 about 55)"),
     AngleSensor("scl3300", "a Murata SCL3300-D01 inclinometer on each link", 0.02,
                 bom_key="inclinometer_scl3300",
                 source="Murata SCL3300-D01: 0.0055 deg/LSB, 0.001 deg/sqrt(Hz) noise, "
@@ -72,3 +80,31 @@ def get(key: str) -> AngleSensor:
         return ANGLE_SENSORS[key]
     except KeyError:
         raise KeyError(f"unknown angle sensor {key!r}; have {sorted(ANGLE_SENSORS)}") from None
+
+
+@dataclass(frozen=True)
+class Reference:
+    """What the joints' fine zero is taken from (the role ``homing_reference``): ``tool_mm``
+    the tip's place each homing leaves (``None``: each axis's own sensor); ``bom``: what it
+    buys, ``(catalog key, quantity)``."""
+
+    key: str
+    label: str
+    tool_mm: float | None = None
+    bom: tuple[tuple[str, float], ...] = ()
+    source: str = ""
+
+
+REFERENCES: dict[str, Reference] = {r.key: r for r in (
+    Reference("switches", "each joint's own switch or gauge (angle_sensor)"),
+    Reference("vision_fiducial", "a camera on the tool sighting dots on a reference board: "
+              "every zero from the board, the switches only coarse", 0.01,
+              (("camera_rpi_module3_wide", 1.0), ("fiducial_pcb", 1.0)),
+              "a Camera Module 3 Wide about 50 mm over an FR-4 board of copper dots, its "
+              "lens locked; a dot's centroid to a tenth of a pixel; 10 um budgeted: "
+              "control.vision (an estimate)"),
+)}
+"""The user's (2026-10-12): "vision based homing to a fiducial target with a reference
+sheet, we don't need super accurate switch based homing". With ``vision_fiducial`` every
+input's homing is the camera's ``tool_mm`` at the tip (:func:`precision.precision`), and
+the switches only find the joints coarsely (any slot switch: ``endstop``)."""

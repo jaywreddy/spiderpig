@@ -60,11 +60,12 @@ def test_the_bearings_are_in_the_catalog_with_a_vendor_model():
         assert it.dims["radial_clearance_mm"] == [0.002, 0.013]
         mcm = next(o for o in it.offers if "mcmaster.com" in o.url)
         assert mcm.price_usd is None                      # nothing priced from memory there
-        assert it.offers[0].price_usd is not None          # the BOM's: a generic pack,
-        assert "estimate" in it.offers[0].note             # said to be an estimate
+        assert it.offers[0].price_usd is not None          # the BOM's: VXB's, as read
+        assert "read on" in it.offers[0].note
         ref = cad.part_cad(key)
         assert ref is not None
-        assert (ref.vendor, ref.sha256, ref.url) == ("mcmaster", "", "")
+        assert ref.url.startswith("https://")             # a free model, pinned
+        assert len(ref.sha256) == 64
 
 
 @pytest.mark.no_fabricate
@@ -210,7 +211,19 @@ def _step(tmp_path, od: float, bore: float, w: float, name: str):
     return path
 
 
-def test_an_imported_model_is_aligned_and_size_checked(monkeypatch, tmp_path):
+@pytest.fixture
+def mcmaster_mr84(monkeypatch):
+    """The MR84ZZ's model as McMaster's (unpinned: imported by hand), as it was before its
+    free model was pinned (2026-10-12): the import flow these tests hold."""
+    from spiderpig.hardware import cad
+
+    cad.part_cad("bearing_mr84zz")                 # (the catalog loaded)
+    monkeypatch.setitem(cad.PART_CAD, "bearing_mr84zz", cad.CadRef(
+        url="", sha256="", filename="bearing_mr84zz.step", vendor="mcmaster",
+        source="McMaster-Carr, trade no. MR84-2Z"))
+
+
+def test_an_imported_model_is_aligned_and_size_checked(monkeypatch, tmp_path, mcmaster_mr84):
     from spiderpig.construction.pivots.ball import bearing_solid
     from spiderpig.hardware import cad
 
@@ -238,7 +251,7 @@ def test_an_imported_model_is_aligned_and_size_checked(monkeypatch, tmp_path):
 
 
 @pytest.mark.no_fabricate
-def test_the_fab_cache_keys_on_the_models_the_pins_draw(monkeypatch, tmp_path):
+def test_the_fab_cache_keys_on_the_models_the_pins_draw(monkeypatch, tmp_path, mcmaster_mr84):
     from spiderpig.fabcache import parts_cad_state
     from spiderpig.hardware import cad
 
@@ -257,7 +270,7 @@ def test_the_fab_cache_keys_on_the_models_the_pins_draw(monkeypatch, tmp_path):
 
 
 @pytest.mark.no_fabricate
-def test_spiderpig_cad_imports_and_lists(monkeypatch, tmp_path, capsys):
+def test_spiderpig_cad_imports_and_lists(monkeypatch, tmp_path, capsys, mcmaster_mr84):
     from spiderpig.hardware import cad
     from spiderpig.tools import cad as cad_cli
 
@@ -283,7 +296,7 @@ def test_spiderpig_cad_imports_and_lists(monkeypatch, tmp_path, capsys):
 
 
 @pytest.mark.no_fabricate
-def test_a_model_imported_since_makes_the_build_stale(monkeypatch, tmp_path):
+def test_a_model_imported_since_makes_the_build_stale(monkeypatch, tmp_path, mcmaster_mr84):
     from spiderpig import uptodate
     from spiderpig.hardware import cad
 

@@ -54,12 +54,17 @@ from spiderpig.actuators import sensors
 from spiderpig.config import BuildConfig, add_build_args, add_design_args, config_from_args
 from spiderpig.linkage.constraints import gains, layout, sample_inputs
 from spiderpig.linkage.stiffness import Compliance, Rod, Section, compliance
+from spiderpig.repeatability import Rp, gravity_loads, iso_rp
 
 DEFAULT_TARGET_MM = 0.1     # the placement the report asks each input's resolution for
 DEFAULT_DT_K = 10.0         # the temperature swing the thermal row assumes (K)
 DEFAULT_HOLE_TOL_MM = 0.13  # a laser-cut hole's position tolerance (SendCutSend, about)
 DEFAULT_PAYLOAD_G = 50.0    # the load at the output the sag row assumes (a few glass slides)
 SLIDE_G = 5.0               # one glass microscope slide (75 x 25 x 1 mm soda-lime: 4.7 g)
+PAIR_TILT_K_PIN = 180e3     # N·mm/rad: a preloaded MR84 pair's moment stiffness, its balls'
+#                             Hertz contact at ~30 N (the review's, 180-430: the low one)
+PAIR_TILT_K_PILLAR = 800e3  # an MR106 pair's at ~50 N (the review's estimate)
+TIP_MASS_KG = 0.1           # what sways at the tool across the plane (tool, payload, links)
 G = 9.81
 
 Interface = tuple[str, str]     # (joint, body)
@@ -138,6 +143,7 @@ class Precision:
     turret_accuracy_mm: float = 0.0   # its drive's eccentricity and its axis out of plumb
     oop: OutOfPlane | None = None  # the tool's tip out of the plane in the links' tilt
     stiffness: Compliance | None = None   # the links bending (linkage.stiffness): an arm's
+    rp: Rp | None = None           # ISO 9283 pose repeatability (spiderpig.repeatability)
 
     @property
     def repeatability_mm(self) -> float:
@@ -176,6 +182,8 @@ class Precision:
                 "payload_g": self.payload_g, "tilt_mm": _num(self.tilt_mm),
                 "turret_accuracy_mm": _num(self.turret_accuracy_mm),
                 "out_of_plane_mm": _num(self.out_of_plane_mm),
+                "iso_rp_session_mm": _num(self.rp.session_mm) if self.rp else None,
+                "iso_rp_powerup_mm": _num(self.rp.powerup_mm) if self.rp else None,
                 "payload_sag_mm": (_num(self.stiffness.sag_mm) if self.stiffness else None),
                 "across_mm_per_n": (_num(self.stiffness.across_mm_per_n)
                                     if self.stiffness else None),
@@ -187,9 +195,15 @@ class Precision:
 
     def lines(self) -> list[str]:
         pm = self.plays
-        out = [f"precision of {self.linkage}'s {self.output} (worst over the box):",
-               f"  repeatability (joint play): {self.repeatability_mm:.3f} mm worst case, "
-               f"{pm.rss_mm:.3f} mm root sum square; at the worst pose, by joint:"]
+        out = [f"precision of {self.linkage}'s {self.output} (worst over the box):"]
+        if self.rp is not None:
+            out.append(f"  repeatability, ISO 9283 (30 cycles to a pose, mean + 3 sigma, worst "
+                       f"of 5 poses; gravity seats the pins): {self.rp.session_mm:.3f} mm "
+                       f"within a session, {self.rp.powerup_mm:.3f} mm across power-ups"
+                       + (f" (re-seating at random: {', '.join(self.rp.unseated)})"
+                          if self.rp.unseated else ""))
+        out.append(f"  repeatability bound (joint play): {self.repeatability_mm:.3f} mm worst "
+                   f"case, {pm.rss_mm:.3f} mm root sum square; at the worst pose, by joint:")
         for j, mm in sorted(pm.at_worst.items(), key=lambda kv: -kv[1]):
             if mm > 0:
                 cl = max(c for (jj, _), c in pm.clearance_mm.items() if jj == j)
@@ -218,12 +232,16 @@ class Precision:
         if self.stiffness is not None:
             c = self.stiffness
             per_g = c.sag_mm / self.payload_g if self.payload_g else 0.0
+            k = 1000.0 / c.across_mm_per_n if c.across_mm_per_n > 0 else math.inf  # N/m
+            hz = math.sqrt(k / TIP_MASS_KG) / (2 * math.pi)
             out.append(f"  the links bending (a frame of their sections at their layers): "
-                       f"{self.payload_g:g} g sags the tool {c.sag_mm:.3f} mm at worst "
-                       f"({per_g * 1000:.1f} um a gram: a {SLIDE_G:g} g slide picked up "
-                       f"moves it {per_g * SLIDE_G:.3f} mm); across the plane "
-                       f"{c.across_mm_per_n:.2f} mm/N (accuracy at a given load; not in the "
-                       "total)")
+                       f"{self.payload_g:g} g sags the tool {c.sag_mm:.3f} mm in the plane "
+                       f"and {c.sag_across_mm:.3f} across it at worst ({per_g * 1000:.1f} um a "
+                       f"gram: a {SLIDE_G:g} g slide picked up moves it "
+                       f"{per_g * SLIDE_G:.3f} mm); across the plane {c.across_mm_per_n:.2f} "
+                       f"mm/N, swaying at about {hz:.0f} Hz with {TIP_MASS_KG * 1000:g} g at the "
+                       "tip (wait it out before a repeatable stop; accuracy at a given load; "
+                       "not in the totals)")
         if self.tilt_mm:
             out.append(f"  the turntable's tilt in its bearings: {self.tilt_mm:.3f} mm")
         if self.turret_accuracy_mm:
@@ -630,9 +648,50 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
                      "steel rods between layers, the frame plates and turntable rigid "
                      "(linkage.stiffness); the payload's sag at a given payload calibrates "
                      "out, a change of payload and a load across the plane do not")
+    ref = sensors.REFERENCES.get(robot_cfg.role("homing_reference")) if lk.kind == "arm" \
+        else None
+    if ref is not None and ref.tool_mm is not None:    # every zero from the sheet
+        inputs = {k: replace(b, homing_mm=ref.tool_mm) for k, b in inputs.items()}
+        notes.append(f"homing: {ref.label} ({ref.source})")
+    rp = None
+    if lk.kind == "arm" and oop:
+        clamped = frozenset(radial_by_link(config, wobble or {}))
+        rp = _iso(config, pm, inputs, lev, across, payload_g, clamped,
+                  snap_all=ref is not None and ref.tool_mm is not None)
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
                      hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g, tilt,
-                     turret_acc, across, stiff)
+                     turret_acc, across, stiff, rp)
+
+
+def _iso(config: BuildConfig, pm: PlayMap, inputs: dict[str, InputBudget],
+         lev: dict[str, float], across: OutOfPlane | None, payload_g: float,
+         clamped: frozenset = frozenset(), snap_all: bool = False) -> Rp:
+    """:func:`repeatability.iso_rp` of the budget's terms (module docstring there).
+    ``snap_all``: every axis's homing snaps to its driver's phase after the coarse switch
+    (with a camera's sighting, even a capstan's: a cord's slip shows up as a full cycle's
+    jump the camera sees, :mod:`control.homing`)."""
+    from spiderpig.materials import sheet as sheet_record
+    from spiderpig.materials import sheet_of
+
+    rec = sheet_record(sheet_of(config, "link"))
+    per_mm = rec.density * rec.thickness * 2 * config.params.link_radius / 1000   # g / mm
+    loads = gravity_loads(config.lk, config.values, link_g_per_mm=per_mm,
+                          payload_g=payload_g)
+    deg = {k: math.degrees(b.homing_mm / lev[k]) if lev.get(k) else 0.0
+           for k, b in inputs.items()}
+    nonlin = {k: math.degrees(b.accuracy_mm / lev[k]) if lev.get(k) else 0.0
+              for k, b in inputs.items()}
+    from spiderpig.repeatability import ACCEL_FACTOR, SLIP_N
+
+    slips = frozenset(i for i in clamped
+                      if (loads.force_n.get(i) is not None
+                          and float(np.max(loads.force_n[i])) * ACCEL_FACTOR > SLIP_N))
+    return iso_rp(config.lk, config.values, pm.clearance_mm, loads,
+                  {k: b.backlash_deg for k, b in inputs.items()}, deg,
+                  {k: b.resolution_deg for k, b in inputs.items()},
+                  {k: snap_all or "capstan" not in b.source for k, b in inputs.items()},
+                  across.worst_mm if across is not None else 0.0, lev.get("q1", 0.0),
+                  clamped=clamped, slips=slips, nonlin_deg=nonlin)
 
 
 def link_compliance(config: BuildConfig, design, payload_g: float,
@@ -652,9 +711,11 @@ def link_compliance(config: BuildConfig, design, payload_g: float,
     lay = layout(config.lk)
     frame = set(lay.joints["torso"])
     rods = {j: Rod(6.0 if j in frame else 4.0) for j in lay.axles}
+    tilt_k = {j: (PAIR_TILT_K_PILLAR if j in frame else PAIR_TILT_K_PIN) for j in lay.axles
+              if (config.pillar if j in frame else config.pin).startswith("ball_pair")}
     return compliance(config.lk, config.values, section, payload_n=payload_g / 1000 * G,
                       drop=drop, z=z, rods=rods,
-                      frame_z=(pl.z(0)[1], pl.z(pl.top)[0]))
+                      frame_z=(pl.z(0)[1], pl.z(pl.top)[0]), tilt_k=tilt_k)
 
 
 def _wobble(config: BuildConfig) -> dict:
@@ -725,7 +786,9 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     far = float(np.hypot(f[:, 0] - tp.x_a, f[:, 1] - drop - mid).max())
     _, tr, motor, _ = tp.preset.parts
     ratio = tr.ratio(None)
-    homing = SWITCH_REPEAT_MM / tp.sensor_r * lever if tp.preset.sensor != "none" else 0.0
+    sensor = tp.preset.parts[3]
+    switch = sensor.repeat_mm if sensor is not None else SWITCH_REPEAT_MM
+    homing = switch / tp.sensor_r * lever if tp.preset.sensor != "none" else 0.0
     budget = InputBudget("q1", ratio, t.backlash_deg, t.resolution_deg, t.stiffness_nm_per_rad,
                          math.radians(t.backlash_deg) * lever,
                          math.radians(t.resolution_deg) * lever, 0.0, t.source,
@@ -734,7 +797,7 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     collar = float(get("collar_8mm").dims["od"])
     systematic = ECCENTRICITY_MM / tp.drive_r() * lever + AXIS_RUNOUT_MM / collar * far
     notes = [f"the turntable ({tp.preset.key}): {n}" for n in t.notes]
-    notes.append(f"the turntable's homing: {SWITCH_REPEAT_MM * 1000:g} um at the flag's "
+    notes.append(f"the turntable's homing: {switch * 1000:g} um at the flag's "
                  f"{tp.sensor_r:.0f} mm radius, {homing:.3f} mm at the output (unverified)")
     notes.append(f"the turntable's drive {ECCENTRICITY_MM:g} mm off centre and its shaft "
                  f"{AXIS_RUNOUT_MM:g} mm out across a collar (estimates): {systematic:.3f} mm "

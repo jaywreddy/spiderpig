@@ -20,7 +20,7 @@ NEMA frame, the pilot boss, the shaft with its flat), its vendor model through
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -110,6 +110,13 @@ register(StepperSpec(
     rotor_g_cm2=54.0,
     source=f"{_SO} 17HS4401 datasheet: 40 N·cm holding, 1.7 A, 40 mm, 280 g; rotor inertia "
            "54 g·cm² (typical, UNVERIFIED)", **NEMA17))
+register(replace(STEPPERS["nema17_17hs4401"], key="nema17_17hs4401_x64",
+                 name="NEMA 17 stepper 17HS4401, its driver at 1/64 microsteps",
+                 microsteps=64))
+"""The same motor, its driver (a TMC2209) set to 1/64: a homing lands on a whole microstep,
+so a quarter of the 1/16's quantisation (the review's floor: +-24 / 15 / 17 um at the tool
+for q1 / q2 / q3 at 1/16); the step rate four times (the turntable about 37 k steps/s at
+90 deg/s, within a TMC2209's)."""
 register(StepperSpec(
     key="nema17_17hs19", name="NEMA 17 stepper, 48 mm, 0.59 N·m (StepperOnline 17HS19-2004S1)",
     length=48.0, holding_nm=0.59, rated_a=2.0, mass_g=390.0, bom_key="stepper_17hs19",

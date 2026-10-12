@@ -281,3 +281,41 @@ def test_an_endstop_homes_a_joint_the_mt4_way():
     ends = sensors.get("endstop")
     assert sensors.get("gauge").repeat_deg > ends.repeat_deg > sensors.get("scl3300").repeat_deg
     assert ends.bom_key == "optical_endstop"
+
+
+def test_a_camera_finds_a_dot_and_the_sightings_fix_the_zeros():
+    """A synthetic dot found to a hundredth of a pixel; two sightings of a palletizer whose
+    zeros are off by known angles give those angles back."""
+    from spiderpig.control import vision
+
+    ys, xs = np.indices((120, 160))
+    img = 200.0 - 150.0 * (((xs - 81.37) ** 2 + (ys - 57.62) ** 2) < 8.0 ** 2)
+    cx, cy = vision.dot_centroid(img)
+    assert (cx, cy) == (pytest.approx(81.37, abs=0.1), pytest.approx(57.62, abs=0.1))
+    _, _, model = _model(robot=False)
+    true = {"q2": math.radians(0.07), "q3": math.radians(-0.05)}
+    sightings = []
+    for q2, q3 in ((70.0, -20.0), (95.0, 5.0), (55.0, -35.0)):
+        q = {"q2": math.radians(q2), "q3": math.radians(q3)}
+        real = model.fk({k: v + true.get(k, 0.0) for k, v in q.items()})
+        dot = real[:2] + np.array([0.3, -0.2])          # the dot a little off the tip
+        sightings.append(vision.Sighting(q, tuple(dot), (0.3, -0.2)))
+    got = vision.zero_offsets(model, sightings, ("q2", "q3"))
+    assert got["q2"] == pytest.approx(true["q2"], abs=1e-6)
+    assert got["q3"] == pytest.approx(true["q3"], abs=1e-6)
+
+
+def test_the_sightings_fit_a_capstans_drifting_gain_too():
+    from spiderpig.control import vision
+
+    _, _, model = _model(robot=False)
+    off, gain = math.radians(0.05), 3e-4          # the q2 capstan warm: its ratio off
+    sightings = []
+    for q2, q3 in ((45.0, -40.0), (70.0, -20.0), (95.0, 5.0), (110.0, 15.0)):
+        q = {"q2": math.radians(q2), "q3": math.radians(q3)}
+        real = model.fk({"q2": q["q2"] * (1 + gain) + off, "q3": q["q3"]})
+        sightings.append(vision.Sighting(q, tuple(real[:2]), (0.0, 0.0)))
+    got = vision.zero_offsets(model, sightings, ("q2", "q3"), fit_gain=True)
+    assert got["q2"] == pytest.approx(off, abs=1e-6)
+    assert got["q2_gain"] == pytest.approx(gain, abs=1e-6)
+    assert got["q3_gain"] == pytest.approx(0.0, abs=1e-6)

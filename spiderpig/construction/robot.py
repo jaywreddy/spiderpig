@@ -317,11 +317,14 @@ class Turret(Layout):
         return turret_plan(design, preset, tp, mill=cfg.role("mill")), tp
 
     def side_groups(self, design, config) -> list:
+        from spiderpig.actuators.sensors import REFERENCES
         from spiderpig.construction.rotary.turret import TurretFoot
         from spiderpig.construction.tools import ToolMount
 
         turret, tool = self.plans(design, config)
-        return [TurretFoot(turret)] + ([ToolMount(tool)] if tool is not None else [])
+        ref = REFERENCES.get(config.role("homing_reference"))    # its camera rides the tool
+        return [TurretFoot(turret)] + ([ToolMount(tool, ref.bom if ref else ())]
+                                       if tool is not None else [])
 
     def assemble(self, side: Mechanism, design, config) -> Mechanism:
         from spiderpig.construction.rotary.turret import turret_parts
