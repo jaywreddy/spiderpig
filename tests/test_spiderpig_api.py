@@ -1439,7 +1439,7 @@ def test_r5_the_transmission_angle_is_a_target_and_a_row():
     from spiderpig import verify as verify_module
 
     f = TARGET_FIELDS["motion"]["transmission_angle_deg"]                    # entry 2
-    assert f.kinds == ("walker", "mechanism")
+    assert f.kinds == ("walker", "mechanism", "arm")
     assert not f.hard
     assert f.source == "check"
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "rocker_amplifier"},

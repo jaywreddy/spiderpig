@@ -441,3 +441,17 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/roles.py`, `spiderpig/fabmethods.py`, `spiderpig/hardware/cad.py`,
   `spiderpig/construction/joints.py`, `spiderpig/construction/pivots/ball.py`,
   `spiderpig/hardware/bearing_catalog.py`, `spiderpig/tools/cad.py`.
+
+### 2026-10-11: arms: ranged inputs and a tour (the robot-arm workstream, phase 2)
+
+- **What:** a third linkage kind, `arm`: no crank, each input turning a link about a frame
+  pivot over a range. Its template's one time is a closed serpentine tour over the
+  inputs' box (64 rows), sampled four times as densely as a crank's cycle; the planner's
+  bound adds each point's move between rows. The palletizer arm is the first.
+- **Why:** every stage samples one cyclic time (the planner's guarantee, `verify_plan`, the
+  contract, the bake); a tour keeps them all as they are and still covers the workspace,
+  where a second time axis would have meant rewriting each.
+- **Where:** `spiderpig/linkage/engine.py` (`Linkage.tour`, `tour_lateral`, `LegSolution.at`),
+  `spiderpig/stack/geometry.py`, `spiderpig/stack/topology.py`, `spiderpig/linkages/palletizer.py`,
+  `spiderpig/precision.py`.
+

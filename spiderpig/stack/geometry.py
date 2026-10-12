@@ -52,9 +52,17 @@ class Geometry:
     ``(2,)``. :meth:`dist` is a lower bound on the distance between two cores
     over the continuous cycle: the smallest sampled distance minus half the
     most the two can move between samples.
+
+    ``lateral`` (an arm's: :meth:`linkage.Linkage.tour_lateral`): how far each point moves
+    between neighbouring rows of the tour its samples follow; it adds to the point's move
+    between samples, so the bound covers every pose of the inputs' box, not only the
+    tour's (none for a crank's cycle, which is the whole motion).
     """
 
-    def __init__(self, points: Mapping[str, np.ndarray], shared: Geometry | None = None):
+    def __init__(self, points: Mapping[str, np.ndarray], shared: Geometry | None = None,
+                 lateral: Mapping[str, float] | None = None):
+        self.lateral: dict[str, float] = dict(
+            lateral if lateral is not None else (shared.lateral if shared is not None else {}))
         # a geometry made from ``shared`` keeps the distances between the points it takes
         # over unchanged (the very same arrays) in that one's table; what a topology's users
         # add (a servo's screws, a crank's detours) is measured into this one's own
@@ -81,13 +89,15 @@ class Geometry:
     def extend(self, points: Mapping[str, np.ndarray]) -> Geometry:
         """A geometry with ``points`` added (or replaced), sharing this one's table for the
         points it keeps unchanged."""
-        return Geometry({**self.points, **points}, shared=self)
+        return Geometry({**self.points, **points}, shared=self, lateral=self.lateral)
 
     @cached_property
     def step(self) -> dict[str, float]:
-        """Largest move of each point between consecutive samples (the cycle wraps)."""
+        """Largest move of each point between consecutive samples (the cycle wraps), plus
+        its move between the tour's rows (``lateral``) where it has one."""
         return {
             k: float(np.linalg.norm(np.roll(v, -1, axis=0) - v, axis=1).max())
+            + self.lateral.get(k, 0.0)
             for k, v in self.points.items()
         }
 

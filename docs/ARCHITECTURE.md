@@ -1320,6 +1320,20 @@ robot is an entry rather than an edit across the stages:
   the catalog's dimensions, never the model.
 - **Material constants** (`hardware/mass.py`): `MODULUS_GPA` and `CTE_UM_PER_M_K` beside
   the density table; `materials.Sheet` carries both.
+- **Arms** (linkage kind `arm`, `linkage.Linkage.ranges` / `drives`): inputs that turn
+  over ranges and drive links about frame pivots, no crank. The template's one time walks
+  a closed serpentine tour over the inputs' box (`Linkage.tour`), so every stage that
+  samples a crank cycle (the topology, the planner, `verify_plan`, the contract, the bake)
+  samples the workspace; the planner's bound between samples adds each point's move
+  between the tour's rows (`Linkage.tour_lateral`, `Geometry.lateral`), so its guarantee
+  covers every pose in the box. `LegSolution.at` evaluates explicit inputs. The first arm
+  is `linkages/palletizer.py`, an MT4-like palletizer side (130 / 150 mm, two
+  parallelograms keep the tool level, the elbow driven from the shoulder).
+- **Precision** (`spiderpig/precision.py`, `spiderpig precision`): the error budget at a
+  design's output. Pin play goes through the linearised rigid-body constraints of the
+  planar linkage (each pin's gain on the output, worst case and root sum square); each
+  input's lever says the resolution it needs; the link-length sensitivities and the link
+  sheet's expansion are the accuracy rows. `--compare` runs the pivot options.
 - **Ball-bearing pivots** (`construction/pivots/ball.py`): `ball` (pins) and `ball_pillar`
   (pillars) seat a shielded bearing in each link that turns on the axle (`AxleDims.seat`:
   the bore the bearing fills); their play is the bearing's, their models McMaster-Carr's

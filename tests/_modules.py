@@ -21,6 +21,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_multi_linkage.py": "linkage",
     "test_transforms.py": "linkage",
     "test_mechanisms.py": "linkage",
+    "test_arm.py": "linkage",
     "test_walk.py": "linkage",
     "test_viewer_parity.py": "linkage",
     # server / view (P1)
@@ -28,6 +29,7 @@ MODULE_OF_FILE: dict[str, str] = {
     "test_server_hardening.py": "server",
     "e2e/test_drive.py": "server",
     "e2e/test_viewer.py": "server",
+    "test_precision.py": "strength",
     # the planner (P2)
     "test_stack.py": "planner",
     "test_route.py": "planner",

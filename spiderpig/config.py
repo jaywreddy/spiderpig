@@ -39,7 +39,7 @@ def _wrap(a: float) -> float:
     return (a + math.pi) % (2 * math.pi) - math.pi
 
 
-DEFAULT_CRANKS = {"walker": "bolt", "mechanism": "bolt"}
+DEFAULT_CRANKS = {"walker": "bolt", "mechanism": "bolt", "arm": ""}
 """The crank a design gets when it names none, per kind (:func:`default_crank`): the bolt
 crank for both (the crank study of 2026-10-03; mechanisms since 2026-10-04), which is the
 single-plate web crank with hex-standoff crankpins in hex pockets (the user's decision of
@@ -606,7 +606,7 @@ def add_build_args(p) -> None:
                    help=f"construction of the pivots between links (default {d.pin})")
     p.add_argument("--crank", default=None, choices=cranks, type=kept("crank"),
                    help="crank construction (default: "
-                        + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())
+                        + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items() if v)
                         + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
                         + ")")
     from spiderpig import roles as rolemod

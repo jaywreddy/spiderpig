@@ -54,6 +54,10 @@ def crank(key: str) -> BoltCrank:
 
 
 def _drive_groups(ctx: Context, config) -> list[Group]:
+    """The servo on the crank; an arm's inputs drive links, not a crank: their drives are
+    its transmissions' (none yet: the links, pivots and plates plan without them)."""
+    if getattr(config, "linkage", None) and config.lk.kind == "arm":
+        return []
     return [DriveGroup(ctx.servo)]
 
 

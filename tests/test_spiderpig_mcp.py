@@ -160,7 +160,7 @@ def test_the_guide_says_what_is_not_in_v1(server):
     guide = run(go())
     assert "No `tune` and no `search`" in guide
     assert "| `motion.stride_mm` | walker | mm/rev | soft |" in guide
-    assert "| `size.stack_mm` | walker/mechanism | mm | **hard** |" in guide
+    assert "| `size.stack_mm` | walker/mechanism/arm | mm | **hard** |" in guide
     assert "| `klann` | walker |" in guide
     assert "| servo | `sts3215` |" in guide
     assert str(server.spiderpig.store.root.resolve()) in guide

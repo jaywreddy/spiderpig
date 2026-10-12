@@ -148,7 +148,7 @@ type = "layers"
 layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
     "spiderpig.api",
-    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.guide",
+    "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide",
     "spiderpig.sim | spiderpig.stages",
     "spiderpig.fabricate",
     "spiderpig.construction",

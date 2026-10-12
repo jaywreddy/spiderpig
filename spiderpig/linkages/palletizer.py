@@ -1,0 +1,122 @@
+"""The palletizer arm: a desktop four-axis arm's planar side (the shoulder and the elbow).
+
+A palletizer arm (the WLKATA MT4, the Dobot Magician, the industrial palletizing robots)
+keeps its tool level by two parallelograms and drives its elbow from the base, so both
+heavy motors sit on the turntable. Its side view is a planar linkage of two inputs, an arm
+(:attr:`linkage.Linkage.kind` ``"arm"``): no crank, each input turning a link about a
+frame pivot over a range. The base's yaw and the wrist's roll are the robot's other two
+axes, out of this plane (the robot-level turntable and tool).
+
+The links (``b1`` .. ``b8``), with O the shoulder pivot (the frame), y up:
+
+* the **upper arm** ``b1`` O-E, turned by ``q2`` (its angle from +x);
+* the **elbow crank** ``b2`` O-C, turned by ``q3`` about the same pivot, and its **rod**
+  ``b3`` C-R: with the forearm's rear arm E-R they make the parallelogram O-C-R-E, so the
+  **forearm** ``b4`` R-E-W keeps ``q3``'s direction (its angle from +x) whatever ``q2``
+  does: the elbow is driven from the shoulder;
+* the **levelling rod** ``b5`` P-T from the frame pivot P, with the upper arm a second
+  parallelogram O-P-T-E, so the **elbow plate** ``b6`` E-T-U never turns;
+* the **wrist rod** ``b7`` U-V, with the forearm the third parallelogram E-U-V-W, so the
+  **end plate** ``b8`` W-V-F never turns: the tool flange F stays level (the output, a
+  translating platform).
+
+Proportions are the MT4's where its published model gives them (WLKATA's URDF and STEP,
+github.com/wlkata: upper arm 130 mm, forearm 150 mm, the flange 35 mm forward and 27.4 mm
+under the wrist pivot). The pivots P and U, the elbow crank's radius and the inputs' box
+are chosen so that no parallelogram flattens anywhere in the box (each keeps at least
+:data:`MIN_PARALLELOGRAM_DEG` between its sides; :func:`parallelogram_margins`): the box is
+the rectangle ``q2`` 35..120 deg, ``q3`` -40..10 deg, a little inside the MT4's own joint
+limits (its shoulder -33..+57 deg from vertical; its elbow's limit is relative to the
+shoulder, so its box isn't a rectangle).
+"""
+
+from __future__ import annotations
+
+import math
+
+import numpy as np
+import sympy as sp
+
+from spiderpig.linkage import Linkage, Output, P, crank_at, register, xy
+
+R = sp.Rational
+MIN_PARALLELOGRAM_DEG = 20.0
+
+
+def palletizer(p):
+    """The program: the shoulder O, the frame pivot P, the elbow E, the elbow crank's pin C
+    and the forearm's rear pin R (parallel, the same radius), the wrist W, the levelling
+    plates' corners T, U, V (each a fixed vector from its plate's pivot) and the flange F."""
+    return [
+        ("O", xy(0, 0)),
+        ("P", xy(p["px"], p["py"])),
+        ("E", crank_at(P("O"), p["upper"], "q2")),
+        ("C", crank_at(P("O"), p["crank"], "q3", 180)),
+        ("R", crank_at(P("E"), p["crank"], "q3", 180)),
+        ("W", crank_at(P("E"), p["fore"], "q3")),
+        ("T", P("E") + xy(p["px"], p["py"])),
+        ("U", P("E") + xy(p["ux"], p["uy"])),
+        ("V", P("W") + xy(p["ux"], p["uy"])),
+        ("F", P("W") + xy(p["fx"], p["fy"])),
+    ]
+
+
+PALLETIZER = register(Linkage(
+    key="palletizer", name="Palletizer arm (MT4-like: 130 / 150 mm)", program=palletizer,
+    inputs=("q2", "q3"), crank=(),
+    ranges={"q2": (35.0, 120.0), "q3": (-40.0, 10.0)},
+    drives={"q2": ("b1", "O"), "q3": ("b2", "O")},
+    params={"upper": R(130), "fore": R(150), "crank": R(40),
+            "px": R(-295, 10), "py": R(52, 10),          # |OP| 30 mm at 170 deg
+            "ux": R(0), "uy": R(30),                      # the elbow plate's third corner
+            "fx": R(35), "fy": R(-274, 10)},              # the flange (MT4)
+    links={"b1": (("O", "E"), (("O", "E"),)),
+           "b2": (("O", "C"), (("O", "C"),)),
+           "b3": (("C", "R"), (("C", "R"),)),
+           "b4": (("R", "E", "W"), (("R", "E"), ("E", "W"))),
+           "b5": (("P", "T"), (("P", "T"),)),
+           "b6": (("E", "T", "U"), (("E", "T"), ("E", "U"))),
+           "b7": (("U", "V"), (("U", "V"),)),
+           "b8": (("W", "V", "F"), (("W", "V"), ("W", "F")))},
+    labels={"b1": "upper arm (input q2)", "b2": "elbow crank (input q3)",
+            "b3": "elbow rod", "b4": "forearm", "b5": "levelling rod",
+            "b6": "elbow plate (never turns)", "b7": "wrist rod",
+            "b8": "end plate (the tool flange; never turns)"},
+    frame=("O", "P"),
+    output=Output("point", "F", "translation_platform", ("W", "F"), body="b8"),
+    source="https://github.com/wlkata/Wlkata_MT4_ROS2 (link lengths); "
+           "https://github.com/wlkata/MT4-STL",
+    notes="Two inputs, both driven from the shoulder; the tool stays level. The robot-level "
+          "turntable and wrist add the arm's other two axes.",
+))
+
+
+def parallelogram_margins(values: tuple[float, ...] = ()) -> dict[str, float]:
+    """The least angle (deg) between each parallelogram's two sides over the box: the
+    elbow drive O-C-R-E, the levelling O-P-T-E, the wrist E-U-V-W. Near 0 a parallelogram
+    flattens and can flip."""
+    lk = PALLETIZER
+    pts = lk.solve(params=dict(zip(lk.params, values, strict=True)) if values else None
+                   ).at(*lk.box())
+
+    def least(a, b, c) -> float:
+        u, v = pts[b] - pts[a], pts[c] - pts[a]
+        cross = np.abs(u[:, 0] * v[:, 1] - u[:, 1] * v[:, 0])
+        ang = np.degrees(np.arctan2(cross, (u * v).sum(-1)))
+        return float(np.minimum(ang, 180.0 - ang).min())
+
+    return {"elbow drive": least("O", "C", "E"), "levelling": least("O", "P", "E"),
+            "wrist": least("E", "U", "W")}
+
+
+def reach_mm(values: tuple[float, ...] = ()) -> float:
+    """How far forward of the shoulder the flange gets over the box (mm)."""
+    lk = PALLETIZER
+    pts = lk.solve(params=dict(zip(lk.params, values, strict=True)) if values else None
+                   ).at(*lk.box())
+    return float(pts["F"][:, 0].max())
+
+
+assert all(m >= MIN_PARALLELOGRAM_DEG for m in parallelogram_margins().values()), \
+    parallelogram_margins()
+assert math.isfinite(reach_mm())

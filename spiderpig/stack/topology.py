@@ -250,6 +250,25 @@ _SAMPLED: dict[tuple, Topology] = {}     # a module template's topology, sampled
 SAMPLED_MAX = 16                          # templates kept (the newest)
 
 
+ARM_SAMPLES = 4
+"""An arm's topology is sampled this many times as densely (its tour crosses a box,
+:meth:`linkage.Linkage.tour`, where a crank's cycle is one line)."""
+
+
+def _arm_of(tmpl):
+    """The arm linkage a template is of (its ``meta``), else ``None``."""
+    meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    if "linkage" not in meta:
+        return None
+    from spiderpig.linkage import get
+
+    try:
+        lk = get(meta["linkage"])
+    except KeyError:
+        return None
+    return lk if lk.kind == "arm" else None
+
+
 def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     """Classify a template's bodies and joints into links and axles.
 
@@ -265,6 +284,8 @@ def topology_from_template(tmpl, samples: int = 1440) -> Topology:
     read-only :class:`Geometry`, whose distance table then serves them all.
     """
     meta = tmpl.meta if isinstance(getattr(tmpl, "meta", None), dict) else {}
+    if _arm_of(tmpl) is not None:
+        samples *= ARM_SAMPLES
     key = None
     if {"linkage", "module", "phases", "proportions"} <= set(meta):
         key = (tmpl.name, tuple(b.name for b in tmpl.bodies), tuple(tmpl.connections),
@@ -326,9 +347,15 @@ def _sample_topology(tmpl, samples: int) -> Topology:
         b.name: tuple((point_of[(b.name, p)], point_of[(b.name, q)]) for p, q in b.outline)
         for b in tmpl.bodies if is_link(b.name)
     }
+    lateral: dict[str, float] = {}
+    arm = _arm_of(tmpl)
+    if arm is not None:         # each point's move between the tour's rows: its joints' most
+        lk_lat = arm.tour_lateral(tuple(tmpl.meta["proportions"]))
+        for node, name in point_of.items():
+            lateral[name] = max(lateral.get(name, 0.0), lk_lat.get(node[1], 0.0))
     return Topology(
         name=tmpl.name,
-        geometry=Geometry(points),
+        geometry=Geometry(points, lateral=lateral),
         links=links,
         axes=tuple(sorted(axes, key=lambda a: a.name)),
         point_of=point_of,

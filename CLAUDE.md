@@ -37,6 +37,7 @@ mise run lint       # ruff check, then lint-imports (the layers: pyproject.toml 
 mise run pyright    # basic mode ([tool.pyright]); CI holds its error count
 mise run audit      # do the parts fit and hold? (spiderpig/tools/audit.py; 75-120 s)
 mise run explain    # each pipeline stage's verdict on a design
+uv run python -m spiderpig.cli precision --linkage palletizer --compare  # error budget
 mise run tune       # search crank phases for a smoother walk
 mise run sim        # MuJoCo
 mise run report     # compare every linkage -> build/linkages.json
@@ -176,7 +177,7 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | path | role |
 |---|---|
 | `spiderpig/linkage/` | symbolic core: `engine.py` (`Linkage`, compiled once; registry `get`; `LegSolution`), `checks.py`, `assembly.py` (leg template, `build_module_template`) |
-| `spiderpig/linkages/` | one module per linkage family, auto-registered; `mechanisms.py` the one-sided mechanisms |
+| `spiderpig/linkages/` | one module per linkage family, auto-registered; `mechanisms.py` the one-sided mechanisms; `palletizer.py` the first arm (kind `arm`: ranged inputs, no crank, a tour) |
 | `spiderpig/mechanism.py` | `Body` / `Joint` / `Mechanism`; `MechanismTemplate` for batched sampling. Planar: z = 0 |
 | `spiderpig/stack/` | the layer planner: `geometry.py`, `topology.py`, `plan.py` (`StackSpec`, `StackPlan`), `search.py` (`StackProblem`), `plan_z.py` (`finalize`), `verify.py` |
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
@@ -194,6 +195,7 @@ installs it editable). Engine layers, enforced by `lint-imports` (no exceptions)
 | `spiderpig/layout.py` | DXF sheets and per-part DXFs, kerf per sheet, `fidelity` |
 | `spiderpig/workers.py` | `submit`: package functions in fresh processes (OCP holds the GIL) |
 | `spiderpig/strength.py` | joint and link safety factors at the sim's loads |
+| `spiderpig/precision.py` | the error budget at the output: pin play through the constraints, levers, tolerances, heat |
 | `spiderpig/walk.py` | quasi-static walk model (`viewer/src/drive/model.ts` is its twin) |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py`, `run.py`, `live.py` (`/ws/sim`), `loads.py` |
 | `spiderpig/bake.py`, `build.py` | the `.glb` bake; STEP/STL/DXF/BOM/ORDER.md |

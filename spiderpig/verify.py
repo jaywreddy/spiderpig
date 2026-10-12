@@ -245,7 +245,7 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
             _push(rows, target_row(design, target_field("motion", "transmission_angle_deg"),
                                    angle, "check", detail=f"the least over the closures is at "
                                    f"{at}, folded about 90°; the ranges are on the card"))
-    if design.kind == "mechanism" and cr.output is not None:
+    if design.kind != "walker" and cr.output is not None:
         rows.append(Row("output.promises", "check", cr.output["broken"] or "hold", None,
                         not cr.output["broken"], "proven"))
         for name in OUTPUT_METRICS:

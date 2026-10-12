@@ -42,6 +42,8 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
     "view": ("spiderpig.view",
              "serve the viewer for a stored design, no Node needed (prints the URL; --open)"),
+    "precision": ("spiderpig.precision",
+                  "the error budget at a design's output: joint play, levers, tolerances"),
     "cad": ("spiderpig.tools.cad",
             "bought parts' vendor models: list, import, fetch (McMaster-Carr)"),
 }

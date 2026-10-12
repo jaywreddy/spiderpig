@@ -27,11 +27,15 @@ from spiderpig.mechanism import (
 
 
 def leg_bodies(lk: Linkage) -> list[tuple[str, tuple[str, ...], tuple[tuple[str, str], ...], str]]:
-    """``(body, joints, outline, colour)`` in template order: coupler, links, crank, torso."""
+    """``(body, joints, outline, colour)`` in template order: coupler, links, crank, torso
+    (an arm: its links and torso only; its inputs drive links, not a crank)."""
+    links = [(b, js, outline, "green") for b, (js, outline) in lk.links.items()]
+    if not lk.crank:
+        return [*links, ("torso", lk.frame, (), "yellow")]
     crank_outline = tuple(("O", pin) for pin in lk.crank[1:])
     return [
         ("coupler", ("O",), (), "blue"),
-        *((b, js, outline, "green") for b, (js, outline) in lk.links.items()),
+        *links,
         ("conn", lk.crank, crank_outline, "orange"),
         ("torso", lk.frame, (), "yellow"),
     ]
@@ -48,7 +52,8 @@ def leg_connections(lk: Linkage) -> list[tuple[str, str, str]]:
     for j in dict.fromkeys(j for _, js in order for j in js):
         on = [b for b, js in order if j in js]
         out += [(a, b, j) for a, b in itertools.pairwise(on)]
-    out.append(("conn", "coupler", "O"))
+    if lk.crank:
+        out.append(("conn", "coupler", "O"))
     return out
 
 

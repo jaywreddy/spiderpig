@@ -46,7 +46,7 @@ from spiderpig.hardware.catalog import _load as _load_catalog
 from spiderpig.layout import DEFAULT_KERF
 
 SPEC_VERSION = "1"
-KINDS = ("walker", "mechanism")
+KINDS = ("walker", "mechanism", "arm")
 OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf")
 DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
@@ -155,8 +155,8 @@ def _fields(*rows: tuple) -> dict[str, TargetField]:
     return {r[0]: TargetField(*r) for r in rows}
 
 
-BOTH = ("walker", "mechanism")
-WALKER, MECHANISM = ("walker",), ("mechanism",)
+BOTH = ("walker", "mechanism", "arm")       # (every kind)
+WALKER, MECHANISM = ("walker",), ("mechanism", "arm")   # (what has feet; what has an output)
 
 TARGET_FIELDS: dict[str, dict[str, TargetField]] = {
     "motion": _fields(
@@ -659,7 +659,7 @@ def validate(data: Mapping) -> list[SpecError]:
                          f"{SPEC_VERSION!r}", (SPEC_VERSION,))
     kind = None
     if "kind" not in top:
-        v.err("kind", "required: walker or mechanism", KINDS)
+        v.err("kind", "required: walker, mechanism or arm", KINDS)
     else:
         kind = v.string(top["kind"], "kind", KINDS)
 
@@ -707,8 +707,8 @@ def validate(data: Mapping) -> list[SpecError]:
         mod = legs.get("module")
         if (isinstance(mod, str) and mod not in modules and lk is not None
                 and mod.strip().lower() not in WILDCARDS):
-            if lk.kind == "mechanism":      # one side, no legs: the walker's words don't apply
-                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a mechanism: its one "
+            if lk.kind != "walker":         # one side, no legs: the walker's words don't apply
+                v.err("legs.module", f"unknown value {mod!r}; {lk.key} is a {lk.kind}: its one "
                                      f"module is {', '.join(modules)} (one side, no legs; the leg "
                                      f"modules double, decker and quad are a walker's)",
                       modules, nearest(mod, modules))
@@ -740,8 +740,8 @@ def validate(data: Mapping) -> list[SpecError]:
         sides = v.number(legs.get("sides"), "legs.sides", integer=True)
         if sides is not None and int(sides) not in (1, 2):
             v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g}", (1, 2))
-        elif sides == 2 and lk is not None and lk.kind == "mechanism":
-            v.err("legs.sides", f"{lk.key} is a mechanism: one side only (it has no feet to "
+        elif sides == 2 and lk is not None and lk.kind != "walker":
+            v.err("legs.sides", f"{lk.key} is a {lk.kind}: one side only (it has no feet to "
                                 "walk on)", (1,))
 
     # targets
@@ -943,7 +943,8 @@ def spec_schema() -> dict:
                     "crank": {"enum": sorted(construction.CRANKS),
                               "default": DEFAULT_CRANKS["walker"],
                               "description": "default: " + ", ".join(
-                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())},
+                                  f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items() if v)
+                              + "; an arm has none"},
                     "heads": {"enum": ["best", "gap", "sink"], "default": BuildConfig.heads,
                               "description": "fasteners' heads: sunk into a layer, in thin "
                                              "clearance gaps, or best: sunk, and in gaps "
