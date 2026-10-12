@@ -79,6 +79,7 @@ from spiderpig.construction.base import (
     Realized,
     hardware,
 )
+from spiderpig.construction.joints import ErrorTerms, plain_hole
 from spiderpig.construction.pivots.common import (
     EPS,
     SLEEVE_COLOR,
@@ -203,6 +204,14 @@ class StandoffAxle:
         return key, best[0], float(d["head_d"]), float(d["head_h"])
 
     # -- dimensions and rules ---------------------------------------------------------------
+
+    def error_terms(self, ctx: Context) -> ErrorTerms:
+        """The links on the standoff in plain running holes (``Params.running_fit``); the
+        column's end float as the wobble note assumes it (``set_play``)."""
+        fit = ctx.params.running_fit
+        return plain_hole(fit, self.set_play,
+                          source=f"{self.key}: {self.od:g} mm standoff in "
+                                 f"{self.od + fit:g} mm holes")
 
     def dims(self, ctx: Context, pillar: bool) -> AxleDims:
         p = ctx.params

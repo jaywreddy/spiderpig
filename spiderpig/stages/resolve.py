@@ -69,6 +69,7 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
                          else tuple(sorted(spec.materials.link_sheets.items()))),
             pillar=spec.constructions.pillar or d.pillar, pin=spec.constructions.pin or d.pin,
             crank=spec.constructions.crank or "", heads=spec.constructions.heads or d.heads,
+            roles=tuple(sorted((spec.constructions.roles or {}).items())),
             params=spec.fit.params(),
         )
     except ParamError as e:     # the validator should have said it first
@@ -196,7 +197,7 @@ def _resolved(spec: Spec, config: BuildConfig, module: str, sides: int) -> dict:
                       "frame_sheet": config.frame_sheet, "crank_sheet": config.crank_sheet,
                       "link_sheets": link_sheets(config)},
         "constructions": {"pillar": config.pillar, "pin": config.pin, "crank": config.crank,
-                          "heads": config.heads},
+                          "heads": config.heads, **config.applied_roles()},
         "fit": fit,
         "outputs": list(spec.outputs),
     }

@@ -1294,6 +1294,33 @@ few angles is strong evidence, but it is not a proof, and the chassis has nothin
 
 With every part built, the last stage writes them out.
 
+### 6.6 The platform registries
+
+The engine grew from one walker into a design system for other robots (the robot-arm
+workstream of 2026-10-11). Every kind of choice is a registry, so a new part, process or
+robot is an entry rather than an edit across the stages:
+
+- **Fab methods** (`spiderpig/fabmethods.py`): how a body is made (`laser`, `printed`,
+  `purchased`). The BOM, the labels, the build's per-method folders and the fabrication
+  cache iterate `fabmethods.MADE` instead of spelling the keys.
+- **Construction roles** (`spiderpig/roles.py`): the slots of a design a construction fills.
+  `pillar`, `pin` and `crank` keep their own `BuildConfig` fields. Every later role is kept in
+  `BuildConfig.roles`, applies to the linkage kinds it lists, and flows through the spec's
+  `constructions` object, the resolved spec, the CLI (`--<role>`), the store and the MCP
+  catalog from that one table.
+- **Joint error terms** (`spiderpig/construction/joints.py`): a revolute joint is a support,
+  a transmission, an actuator and a sensor, each a construction that reports
+  `ErrorTerms` (play, backlash, resolution, stiffness). The precision analysis adds them
+  along the chain; lost motion (repeatability) is kept apart from compliance and
+  systematic error (accuracy, which calibration removes).
+- **Vendor CAD** (`spiderpig/hardware/cad.py`): every bought part's model goes through
+  one pinned-hash cache (the servos' too, `servos/cad.py` re-exports it). A model with no
+  direct URL (McMaster-Carr, whose pages refuse a scripted download) comes from its
+  vendor's fetcher or `cad.import_file`; clearances always use the catalog's dimensions,
+  never the model.
+- **Material constants** (`hardware/mass.py`): `MODULUS_GPA` and `CTE_UM_PER_M_K` beside
+  the density table; `materials.Sheet` carries both.
+
 ## 7. Outputs: stage 6
 
 Every output is written from a fabricated `Mechanism`, never from a separate model of the

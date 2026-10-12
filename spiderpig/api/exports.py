@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 
+from spiderpig import fabmethods
 from spiderpig.api import building  # (build, fabricate_at: through the module, where a patch goes)
 from spiderpig.api.reports import BuildReport, ExportReport, PlanReport
 from spiderpig.api.store_ops import _manifest, design_lock, load
@@ -260,7 +261,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
     return files, bom_summary
 
 
-GROUPED = ("laser", "printed")
+GROUPED = fabmethods.MADE
 
 
 @contextmanager

@@ -48,7 +48,7 @@ import tempfile
 import warnings
 from pathlib import Path
 
-from spiderpig import construction, linkage, servos, uptodate
+from spiderpig import construction, fabmethods, linkage, servos, uptodate
 from spiderpig.config import (
     ParamError,
     add_build_args,
@@ -219,7 +219,7 @@ def clear_generated(folder: Path) -> None:
 # the export worker: the grouping and the cut files beside the STEP and STL
 # ---------------------------------------------------------------------------
 
-GROUPED = ("laser", "printed")
+GROUPED = fabmethods.MADE
 
 
 class _ExportJob:
@@ -393,7 +393,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if opts is not None:
         uptodate.forget(opts)       # (a build that stops short is never current)
-    for owned in ("laser", "print"):     # no cut or print files left from an earlier build
+    for owned in fabmethods.folders():   # no cut or print files left from an earlier build
         clear_generated(out / owned)
     # an export's manifest no longer describes the folder (api.export reuses one by it):
     # this build writes its own once it has written everything; nor do an earlier build's

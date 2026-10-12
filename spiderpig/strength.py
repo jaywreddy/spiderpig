@@ -386,14 +386,13 @@ def level(row: dict) -> str | None:
 
 
 def _alt_sections(kind: str, note: dict) -> list[tuple[str, Section]]:
-    """The other sections a pivot could have (each with the option that builds it): the
-    Chicago screw's barrel for a pin, the goBILDA standoff for a pillar (the one-piece
-    steel shaft's alternative)."""
-    from spiderpig.construction.pivots.chicago import ChicagoShaft, chicago_section
-    from spiderpig.construction.pivots.standoff import StandoffAxle
+    """The other sections a pivot could have (each with the option that builds it): every
+    registered axle construction of that role with a section of its own (the Chicago
+    screw's barrel for a pin, the goBILDA standoff for a pillar, ...)."""
+    from spiderpig import construction
 
-    out = [("--pin chicago", chicago_section(ChicagoShaft())) if kind == "pin" else
-           ("--pillar standoff", StandoffAxle().section())]
+    out = [(f"--{kind} {key}", c.section()) for key, c in construction.AXLES.items()
+           if kind in getattr(c, "roles", ()) and hasattr(c, "section")]
     return [(k, s) for k, s in out if s.name != note["section"]["name"]]
 
 

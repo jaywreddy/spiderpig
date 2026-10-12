@@ -52,6 +52,8 @@ class Sheet:
     corner_r: float        # an inside corner comes out this round (mm)
     metal: bool
     sheet_mm: tuple[float, float]
+    modulus_gpa: float = 3.2       # Young's modulus (the item's, else the material's)
+    cte_um_per_m_k: float = 70.0   # linear thermal expansion
 
     @property
     def min_edge(self) -> float:
@@ -78,7 +80,7 @@ def sheet(key: str) -> Sheet:
     d = it.dims
     t = float(d["thickness"])
     material = d.get("material") or ("plywood" if "plywood" in key else "acrylic")
-    from spiderpig.hardware.mass import DENSITY
+    from spiderpig.hardware.mass import CTE_UM_PER_M_K, DENSITY, MODULUS_GPA
 
     return Sheet(
         key=key, name=it.name, material=material, thickness=t,
@@ -88,7 +90,10 @@ def sheet(key: str) -> Sheet:
         edge_mm=float(d.get("edge_mm", 0.0)),
         min_part=_pair(d.get("min_part", (0.0, 0.0))),
         corner_r=float(d.get("corner_r", 0.0)), metal=bool(d.get("metal", False)),
-        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))))
+        sheet_mm=_pair(d.get("sheet_mm", (300.0, 300.0))),
+        modulus_gpa=float(d.get("modulus_gpa", MODULUS_GPA.get(material, MODULUS_GPA["acrylic"]))),
+        cte_um_per_m_k=float(d.get("cte_um_per_m_k",
+                                   CTE_UM_PER_M_K.get(material, CTE_UM_PER_M_K["acrylic"]))))
 
 
 LINK_SHEETS: dict[str, dict[str, str]] = {

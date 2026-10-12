@@ -34,6 +34,13 @@ from spiderpig.store import PROJECT, Store, diff_json, report_doc
 # ---------------------------------------------------------------------------
 
 
+def _role_names() -> set[str]:
+    """The roles a resolved spec's ``constructions`` may name beside its own keys."""
+    from spiderpig import roles as rolemod
+
+    return {r.name for r in rolemod.extra()}
+
+
 def _config_from_resolved(resolved: dict) -> BuildConfig:
     """The config of a recorded design, from its resolved spec alone (every value written
     in, so a default that moved since never changes a stored design)."""
@@ -52,6 +59,7 @@ def _config_from_resolved(resolved: dict) -> BuildConfig:
         link_sheets=tuple(sorted((mat.get("link_sheets") or {}).items())),
         pillar=cons["pillar"], pin=cons["pin"], crank=cons["crank"],
         heads=cons.get("heads") or "sink",
+        roles=tuple(sorted((k, v) for k, v in cons.items() if k in _role_names())),
         params=Params(**{k: fit[k] for k in FIT_FIELDS if k in fit}),
     )
 

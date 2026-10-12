@@ -30,6 +30,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, fields
 
 from spiderpig import construction, linkage, servos
+from spiderpig import roles as rolemod
 from spiderpig.config import (
     CRANK_SHEET,
     DEFAULT_CRANKS,
@@ -287,12 +288,19 @@ class MaterialsSpec:
 
 @dataclass(frozen=True)
 class ConstructionsSpec:
-    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``)."""
+    """The pillar, pin and crank constructions (:data:`construction.AXLES`, ``.CRANKS``),
+    and every later role's (:mod:`spiderpig.roles`: ``roles``, written flat beside them in
+    the spec's ``constructions`` object)."""
 
     pillar: str | None = None
     pin: str | None = None
     crank: str | None = None
     heads: str | None = None     # fasteners' heads: "sink", "gap" or "best" (stack.StackSpec)
+    roles: Mapping[str, str] | None = None   # role -> key, for the roles without a field
+
+
+CONSTRUCTION_FIELDS = ("pillar", "pin", "crank", "heads")
+"""The ``constructions`` keys of their own; every other key there is a role's."""
 
 
 @dataclass(frozen=True)
@@ -373,6 +381,8 @@ class Spec:
         for name in ("materials", "constructions", "fit"):
             sub = _drop_none({f.name: getattr(getattr(self, name), f.name)
                               for f in fields(getattr(self, name))})
+            if name == "constructions":                 # the roles sit flat beside the rest
+                sub.update(sub.pop("roles", None) or {})
             if "sheet_size_mm" in sub:
                 sub["sheet_size_mm"] = list(sub["sheet_size_mm"])
             if sub:
@@ -396,6 +406,13 @@ def _drop_none(d: dict) -> dict:
     return {k: v for k, v in d.items() if v is not None}
 
 
+def _constructions(data: Mapping) -> ConstructionsSpec:
+    """The ``constructions`` object: its own keys, every other key a role's."""
+    own = {k: v for k, v in data.items() if k in CONSTRUCTION_FIELDS}
+    roles = {k: v for k, v in data.items() if k not in CONSTRUCTION_FIELDS}
+    return ConstructionsSpec(**own, roles=roles or None)
+
+
 def _build(data: Mapping) -> Spec:
     """``data`` as a :class:`Spec` (validated already)."""
     lk = data["linkage"]
@@ -414,7 +431,7 @@ def _build(data: Mapping) -> Spec:
         motion={k: _target(v) for k, v in (data.get("motion") or {}).items()},
         size={k: _target(v) for k, v in (data.get("size") or {}).items()},
         materials=MaterialsSpec(**(data.get("materials") or {})),
-        constructions=ConstructionsSpec(**(data.get("constructions") or {})),
+        constructions=_constructions(data.get("constructions") or {}),
         fit=FitSpec(**fit),
         budget={k: _target(v) for k, v in (data.get("budget") or {}).items()
                 if k != ALLOWANCE},
@@ -750,8 +767,11 @@ def validate(data: Mapping) -> list[SpecError]:
                   "(the acrylic crank was removed on 2026-10-07)", sheet_keys(True), CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
-    c = v.obj(top.get("constructions"), "constructions", ("pillar", "pin", "crank", "heads"))
+    extra = {r.name: r for r in rolemod.extra()}
+    c = v.obj(top.get("constructions"), "constructions", (*CONSTRUCTION_FIELDS, *extra))
     if c is not None:
+        for name in extra:
+            v.string(c.get(name), f"constructions.{name}", sorted(rolemod.registry(name)))
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])
         for what in ("pillar", "pin", "crank"):
             reg = sorted(construction.CRANKS if what == "crank" else construction.AXLES)
@@ -917,6 +937,11 @@ def spec_schema() -> dict:
                                              "clearance gaps, or best: sunk, and in gaps "
                                              "only when no sunk plan exists (the plan's "
                                              "proof says which was searched)"},
+                    **{r.name: {"enum": sorted(rolemod.registry(r.name)),
+                                "description": f"{r.title}: {r.help} (a "
+                                               f"{' or '.join(r.kinds)}'s; default: the "
+                                               "design's own)"}
+                       for r in rolemod.extra()},
                 },
             },
             "fit": {"type": "object", "additionalProperties": False, "properties": fit_props},

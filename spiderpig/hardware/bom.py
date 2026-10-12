@@ -51,6 +51,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+from spiderpig import fabmethods
 from spiderpig.hardware.catalog import get, sheet_name
 from spiderpig.hardware.mass import filament_density, surface_props, volume_props
 from spiderpig.hardware.mass import volume as part_volume
@@ -359,7 +360,7 @@ class Bom:
             lines.append(f"{len(self.unpriced)} item(s) have no listed price and are not in "
                          "the total: " + ", ".join(r.name for r in self.unpriced) + ".")
         lines.append("")
-        for method, title in (("laser", "Laser-cut"), ("printed", "3D printed")):
+        for method, title in ((k, fabmethods.get(k).title) for k in fabmethods.MADE):
             rows = [m for m in self.made if m.method == method]
             if not rows:
                 continue
@@ -1152,7 +1153,7 @@ def bom_from_mechanism(mech, title: str = "", filament: str | None = None,
     by_name = {b.name: b for b in mech.bodies}
     fil_of = printed_filaments(mech, filament)
     grams: dict[str | None, float] = {}         # filament key -> grams at 100 % infill
-    for method in ("laser", "printed"):
+    for method in fabmethods.MADE:
         bodies = [b for b in mech.bodies if b.fab == method and b.part is not None]
         if groups is not None and method in groups:
             found = groups[method]

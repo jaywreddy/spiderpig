@@ -34,6 +34,37 @@ DENSITY = {
 }
 SERVO_BOX_DENSITY = 1.5   # g/cm^3 of a servo's body box, when its spec has no weight
 
+# Young's modulus, GPa (room temperature, handbook typicals: the stiffness and precision
+# models read these; a sheet or stock item may carry its own ``modulus_gpa``)
+MODULUS_GPA = {
+    "acrylic": 3.2,       # cast PMMA (Röhm PLEXIGLAS GS: 3.3; 3.1-3.3 typical)
+    "polycarbonate": 2.35,  # PC (Makrolon: 2.35)
+    "plywood": 9.0,       # Baltic birch along the face grain (7-12)
+    "pla": 3.5,           # printed PLA, along the layers (2.7-4.1)
+    "steel": 200.0,       # carbon / alloy steel
+    "stainless": 193.0,   # 300-series stainless
+    "brass": 97.0,        # CuZn39Pb3
+    "aluminium": 69.0,    # 5052 70.3, 6061 68.9 (ASM handbook): the same stiffness
+    "plastic": 2.9,       # acetal (POM: 2.8-3.1)
+    "ptfe": 0.5,
+    "nylon": 2.8,         # PA66, dry
+}
+
+# Linear thermal expansion, micrometre per metre per kelvin (20-100 °C typicals)
+CTE_UM_PER_M_K = {
+    "acrylic": 70.0,      # PMMA 70-77
+    "polycarbonate": 65.0,
+    "plywood": 6.0,       # along the face grain
+    "pla": 68.0,
+    "steel": 12.0,
+    "stainless": 17.3,
+    "brass": 20.5,
+    "aluminium": 23.6,    # 6061 23.6, 5052 23.8
+    "plastic": 110.0,     # acetal
+    "ptfe": 120.0,
+    "nylon": 80.0,
+}
+
 
 def sheet_density(sheet: str) -> float:
     """g/cm^3 of a sheet catalog item (its ``density``, else by name; acrylic by default)."""

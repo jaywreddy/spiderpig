@@ -117,6 +117,7 @@ from typing import ClassVar
 
 from spiderpig.construction.axle import AxleDims, AxleGroup
 from spiderpig.construction.base import Build, ConstructionError, Context, Realized, hardware
+from spiderpig.construction.joints import ErrorTerms, plain_hole
 from spiderpig.construction.pivots.common import (
     EPS,
     SLEEVE_COLOR,
@@ -447,6 +448,17 @@ class ChicagoAxle:
 
     def hole(self) -> float:
         return self.shaft.d + self.running_fit
+
+    def error_terms(self, ctx: Context) -> ErrorTerms:
+        """The barrel in plain running holes: their clearance is the play; the end float is
+        set by the barrel length, between ``min_play`` and 0.1 mm more (the worst taken)."""
+        return plain_hole(self.running_fit, round(self.shaft.min_play + 0.1, 3),
+                          source=f"{self.key}: {self.shaft.d:g} mm barrel in "
+                                 f"{self.hole():g} mm holes")
+
+    def section(self) -> Section:
+        """The barrel's section, as the strength check reads it."""
+        return chicago_section(self.shaft)
 
     def column(self, *args, **kw) -> None:
         self.shaft.column(*args, **kw)

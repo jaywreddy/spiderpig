@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, cast
 
-from spiderpig import construction, linkage, servos
+from spiderpig import construction, fabmethods, linkage, servos
 from spiderpig.config import BuildConfig
 from spiderpig.construction.base import Build, Context, Realized
 from spiderpig.construction.robot import FrameTies, assemble_robot
@@ -324,7 +324,7 @@ def fabricate(tmpl, config: BuildConfig | None = None, t: float = 1.0, *,
     return fabcache.fabricated(store, tmpl, config, design, t, build)
 
 
-MADE = ("laser", "printed")
+MADE = fabmethods.MADE
 """The fabrications the design makes itself: each part one solid (a purchased model may be
 several)."""
 

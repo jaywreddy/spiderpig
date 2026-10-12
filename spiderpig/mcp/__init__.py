@@ -53,6 +53,7 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
 from spiderpig import api, construction, linkage, servos
+from spiderpig import roles as rolemod
 from spiderpig import walk as walk_model
 from spiderpig.config import ParamError
 from spiderpig.design import Design, engine_version, jsonable
@@ -323,7 +324,11 @@ def _sheet_card(key: str) -> dict:
 def _construction_card(c, roles: list[str]) -> dict:
     hw_catalog._load()
     knobs, hardware = {}, {}
-    for f in fields(c):
+    try:
+        own = fields(c)
+    except TypeError:          # (a construction that isn't a dataclass: no knobs listed)
+        own = ()
+    for f in own:
         v = getattr(c, f.name)
         if f.name in ("key", "label"):
             continue
@@ -352,6 +357,10 @@ def catalog_cards(category: str = "all") -> dict:
                       for _, c in sorted(construction.AXLES.items())],
             "cranks": [_construction_card(c, ["crank"])
                        for _, c in sorted(construction.CRANKS.items())],
+            # every later role (spiderpig.roles): its registry's constructions
+            **{r.name: [_construction_card(c, [r.name])
+                        for _, c in sorted(rolemod.registry(r.name).items())]
+               for r in rolemod.extra()},
         }
     return jsonable(out)
 

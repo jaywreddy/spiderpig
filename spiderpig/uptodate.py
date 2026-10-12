@@ -45,6 +45,8 @@ import json
 import os
 from pathlib import Path
 
+from spiderpig import fabmethods
+
 GENERATED = (".dxf", ".stl", ".csv")
 """What a build or an export writes under ``laser/`` and ``print/`` (the DXFs, the STLs,
 their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``)."""
@@ -183,7 +185,7 @@ def outputs(out: Path) -> list[Path]:
     """The files a build owns in ``out``: what it writes under ``laser/`` and ``print/``
     (:data:`GENERATED`), any STEP or STL beside them, the BOM and ``ORDER.md``."""
     out = Path(out)
-    files = [f for d in ("laser", "print") if (out / d).is_dir()
+    files = [f for d in fabmethods.folders() if (out / d).is_dir()
              for f in sorted((out / d).rglob("*"))
              if f.is_file() and f.suffix.lower() in GENERATED]
     if out.is_dir():

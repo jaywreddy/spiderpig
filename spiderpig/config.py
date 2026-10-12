@@ -202,6 +202,11 @@ def torque_limit_note(config: BuildConfig) -> str | None:
             "strength) at a jammed foot holding the servo at that limit.")
 
 
+def config_crank(config: BuildConfig) -> str:
+    """:func:`default_crank` of a config's linkage and module (the crank role's default)."""
+    return default_crank(config.lk, config.module)
+
+
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
     """The crank construction ``lk`` (in ``module``) gets when the config names none: its
     module's (:data:`MODULE_CRANKS`), else its own (:data:`LINKAGE_CRANKS`), else its kind's
@@ -252,6 +257,10 @@ class BuildConfig:
     #                                   pockets; "bolt_round": the round friction-clamped
     #                                   standoff). The keys removed on 2026-10-07:
     #                                   REMOVED_CONSTRUCTIONS
+    roles: tuple[tuple[str, str], ...] = ()   # (role, construction key) for every role
+    #                                   without a field of its own (spiderpig.roles: the
+    #                                   later kinds of part), only those that differ from
+    #                                   the role's default, sorted
     params: Params = field(default_factory=Params)
 
     def __post_init__(self) -> None:
@@ -279,6 +288,7 @@ class BuildConfig:
         object.__setattr__(self, "phases", self._phases(lk))
         object.__setattr__(self, "proportions", self._proportions(lk))
         object.__setattr__(self, "link_sheets", self._link_sheets(lk))
+        object.__setattr__(self, "roles", self._roles(lk))
         if self.heads not in ("best", "sink", "gap"):
             raise ParamError(f"heads must be best, sink or gap, got {self.heads!r}")
         from spiderpig.hardware.catalog import get
@@ -295,6 +305,48 @@ class BuildConfig:
         if not sheet(self.crank_sheet).metal:
             raise ParamError(f"crank_sheet {self.crank_sheet!r} is not metal (the acrylic crank "
                              f"was removed on {REMOVED}): an aluminium sheet, e.g. {CRANK_SHEET!r}")
+
+    def _roles(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...]:
+        """The roles named, validated: each a role of :mod:`spiderpig.roles` kept in
+        ``roles`` (a role with a field of its own is set there), applying to this linkage's
+        kind; a key equal to the role's default is dropped (one config per design). The
+        keys are checked against the role's registry where it is built
+        (:func:`construction.pick`), as the pins are."""
+        from spiderpig import roles as rolemod
+
+        out = {}
+        for name, key in (dict(self.roles) if self.roles else {}).items():
+            try:
+                role = rolemod.get(name)
+            except KeyError as e:
+                raise ParamError(e.args[0]) from None
+            if not role.stored_in_roles:
+                raise ParamError(f"role {name!r} is the config's {role.field!r} field")
+            if not rolemod.applies(name, lk.kind):
+                raise ParamError(f"{lk.key} is a {lk.kind}: it has no {role.title} "
+                                 f"(role {name!r} is a {' or '.join(role.kinds)}'s)")
+            if not isinstance(key, str) or not key:
+                raise ParamError(f"role {name!r} wants a construction key, got {key!r}")
+            out[name] = key
+        defaults = {n: rolemod.default_key(n, self) for n in out}
+        return tuple(sorted((n, k) for n, k in out.items() if k != defaults[n]))
+
+    def role(self, name: str) -> str:
+        """The construction key that fills role ``name`` (``""``: the role is empty)."""
+        from spiderpig import roles as rolemod
+
+        role = rolemod.get(name)
+        if role.field:
+            return str(getattr(self, role.field))
+        return dict(self.roles).get(name) or rolemod.default_key(name, self)
+
+    def applied_roles(self) -> dict[str, str]:
+        """Every :mod:`spiderpig.roles` role kept in ``roles`` that applies to this design,
+        with the key that fills it (the resolved spec writes them all in)."""
+        from spiderpig import roles as rolemod
+
+        kind = self.lk.kind
+        return {r.name: self.role(r.name) for r in rolemod.extra() if kind in r.kinds}
 
     def _link_sheets(self, lk: linkage.Linkage) -> tuple[tuple[str, str], ...] | None:
         """Link class -> sheet, validated; ``None`` when it is the linkage's own."""
@@ -525,6 +577,13 @@ def add_build_args(p) -> None:
                         + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items())
                         + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
                         + ")")
+    from spiderpig import roles as rolemod
+
+    for role in rolemod.extra():          # every later role: --<role> KEY (default: its own)
+        p.add_argument(f"--{role.name.replace('_', '-')}", dest=f"role_{role.name}",
+                       default=None, choices=sorted(rolemod.registry(role.name)),
+                       help=f"{role.title}: {role.help} (a {' or '.join(role.kinds)}; "
+                            "default: the design's own)")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
                    help="measured sheet thickness in mm (default: the sheet's nominal)")
@@ -566,6 +625,11 @@ def config_from_args(args, **fixed) -> BuildConfig:
                 raise ParamError(f"--link-sheet wants LINK=SHEET, got {item!r}")
             pairs.append((link.strip(), key.strip()))
         fields["link_sheets"] = tuple(pairs)
+    from spiderpig import roles as rolemod
+
+    named = {r.name: getattr(args, f"role_{r.name}", None) for r in rolemod.extra()}
+    if any(named.values()):
+        fields["roles"] = tuple((k, v) for k, v in named.items() if v)
     fields["crank"] = getattr(args, "crank", None) or ""        # the kind's default
     fields["crank_sheet"] = getattr(args, "crank_sheet", None) or ""   # the linkage's
     fields.update(phases=getattr(args, "phases", None),
@@ -621,9 +685,14 @@ def design_from_query(query: Mapping, base: BuildConfig | None = None,
     own = own_constructions(base)
     if (query.get("linkage") or base.linkage) != base.linkage:
         # (link_sheets name a linkage's own links: kept only with its linkage)
+        from spiderpig import roles as rolemod
+
+        kind = linkage.get(query.get("linkage") or base.linkage).kind
         materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
                      "frame_sheet": base.frame_sheet, "pillar": base.pillar, "pin": base.pin,
-                     "heads": base.heads, "params": base.params, **own}
+                     "heads": base.heads, "params": base.params,
+                     "roles": tuple((n, k) for n, k in base.roles if rolemod.applies(n, kind)),
+                     **own}
         return design_from_query(query, **{**materials, **fixed})
     props = dict(base.proportions)
     props.update(proportions)
