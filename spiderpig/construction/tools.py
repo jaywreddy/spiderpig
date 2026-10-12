@@ -163,7 +163,8 @@ def tool_plan(ctx: Context, plan, tool: Tool, groups=()) -> ToolPlan:
             tried.append(f"{side} the stack it reaches a frame plate")
             continue
         hit = next((h for rect, z in regions
-                    if (h := _hits(ctx, plan, body, f, ang, rect, z, hubs)) is not None), None)
+                    if (h := _hits(ctx, plan, body, f, ang, rect, z, hubs, groups)) is not None),
+                   None)
         if hit is None:
             return ToolPlan(tool, body, point, toward, s, tuple(regions))
         tried.append(f"{side} the stack it meets {hit}")
@@ -172,10 +173,11 @@ def tool_plan(ctx: Context, plan, tool: Tool, groups=()) -> ToolPlan:
 
 
 def _hits(ctx: Context, plan, body: str, f: np.ndarray, ang: np.ndarray, rect: Rect,
-          span: tuple[float, float], hubs: dict[str, float]) -> str | None:
+          span: tuple[float, float], hubs: dict[str, float], groups=()) -> str | None:
     """What meets the tool's outline ``rect`` over the box (in ``body``'s frame, its turn
-    from the first sample undone): a link in a layer ``span`` reaches, a frame pivot's
-    pillar or drive hub; ``None``: nothing."""
+    from the first sample undone): a link in a layer ``span`` reaches, a pin whose axle
+    crosses those layers, a drive's belt or cord there, a frame pivot's pillar or drive
+    hub; ``None``: nothing."""
     from spiderpig import construction
 
     pts = ctx.topo.geometry.points
@@ -202,6 +204,40 @@ def _hits(ctx: Context, plan, body: str, f: np.ndarray, ang: np.ndarray, rect: R
             slack = lat.get(a, 0.0) + lat.get(b, 0.0)
             if (seg_rect_many(la, lb, rect) < r_link + slack).any():
                 return f"{link} (layer {plan.layers[link]})"
+    def crosses(layers) -> bool:
+        z0, z1 = plan.z(min(layers))[0], plan.z(max(layers))[1]
+        return z1 > span[0] + 1e-9 and z0 < span[1] - 1e-9
+
+    for ax in ctx.topo.axes:                    # an axle crossing the tool's layers
+        if ax.kind == "frame" or not ax.members:
+            continue
+        layers = [plan.layers[m] for m in ax.members if m in plan.layers]
+        if not layers or body in ax.members or not crosses(layers):
+            continue
+        lp = local(np.asarray(pts[ax.name], dtype=float))
+        if (seg_rect_many(lp, lp, rect) < pin_head + MARGIN + lat.get(ax.name, 0.0)).any():
+            return f"the axle at {ax.name}"
+    from spiderpig.construction.transmissions import DriveGroup
+
+    for g in groups:                            # a drive's belt or cord: static, its layers
+        if not isinstance(g, DriveGroup):
+            continue
+        hub = g.hub(ctx)
+        if not crosses(hub.layers(plan.layers[hub.link])):
+            continue
+        hull = g.transmission.hull(ctx, hub) or [g.transmission.hub_r(ctx),
+                                                 g.transmission.motor_side_r(ctx)]
+        o = np.asarray(pts[hub.axis], dtype=float).reshape(-1, 2)[0]
+        m = np.asarray(hub.motor, dtype=float)
+        # the belt's half-width grows linearly between the pulleys (BeltDrive.hull): a
+        # capsule per short span, its larger end's radius
+        fr = np.linspace(0.0, 1.0, 21)
+        radii = np.interp(fr, np.linspace(0.0, 1.0, len(hull)), hull)
+        along = [local(o + f_ * (m - o)) for f_ in fr]
+        for i in range(len(fr) - 1):
+            r = max(radii[i], radii[i + 1]) + MARGIN
+            if (seg_rect_many(along[i], along[i + 1], rect) < r).any():
+                return f"{g.name}'s drive"
     heads = construction.axle(ctx.config.pillar).dims(ctx, True).head
     for ax in ctx.topo.axes_of("frame"):
         r = max(heads, hubs.get(ax.name, 0.0), p.frame_radius) + MARGIN

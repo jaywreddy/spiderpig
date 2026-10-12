@@ -42,6 +42,8 @@ from spiderpig.mechanism import Mechanism
 
 ROOT = "base_link"
 FRAME = "robot_frame"
+TOOL0 = "tool0"            # ROS-Industrial's name for the tool's tip frame
+NOMINAL_RPM = 300.0        # a stepper's speed the joints' velocity limits assume
 LINEAR_TOL = 1e-6          # a joint's angle within this of linear (rad) is linear
 COEF_TOL = 1e-9
 
@@ -58,6 +60,8 @@ class UrdfJoint:
     mimic: tuple[str, float] | None = None   # (leader, multiplier)
     coef: dict[str, float] = field(default_factory=dict)   # rad per input rad
     linear: bool = True
+    effort: float = 0.0                      # N·m (an actuated joint's: holding x ratio)
+    velocity: float = 0.0                    # rad/s (NOMINAL_RPM through the ratio)
 
 
 @dataclass
@@ -72,6 +76,7 @@ class UrdfModel:
     zero: dict[str, float]
     closures: list[tuple[str, str, str]]
     tables: dict[str, dict] = field(default_factory=dict)
+    floor: np.ndarray = field(default_factory=lambda: np.zeros(3))   # base_link (robot mm)
 
 
 def _angles(lk: linkage.Linkage, values: tuple[float, ...], inputs) -> dict[str, np.ndarray]:
@@ -237,7 +242,54 @@ def model(mech: Mechanism, config: BuildConfig, t: float) -> UrdfModel:
         head.append(UrdfJoint("frame_fixed", FRAME, frame, (0.0, 0.0, 0.0), (0.0, 0.0, 1.0),
                               kind="fixed"))
     origins[FRAME] = np.zeros(3)
-    return UrdfModel(links, head + joints, origins, zero, closures, tables)
+    # the tool's tip: a frame for planning (ROS-Industrial's tool0), under the cup
+    tool = mech.meta.get("tool")
+    if tool:
+        x, y, z = tool["axis"]
+        tip = (x, y - float(tool["drop_mm"]), z)
+        parent = "tool" if "tool" in links else tool["body"]
+        links[TOOL0] = []
+        origins[TOOL0] = np.asarray(tip)
+        joints.append(UrdfJoint("tool0_fixed", parent, TOOL0, tip, (0.0, 0.0, 1.0),
+                                kind="fixed"))
+    # the actuated joints' effort and speed: each motor's holding torque and a nominal
+    # speed through its reduction; a passive joint takes the most of them
+    rated = _ratings(mech)
+    for j in head + joints:
+        if j.name in rated:
+            j.effort, j.velocity = rated[j.name]
+    top = (max((e for e, _ in rated.values()), default=1.0),
+           max((v for _, v in rated.values()), default=1.0))
+    for j in head + joints:
+        if j.kind != "fixed" and j.name not in rated:
+            j.effort, j.velocity = top
+    floor = np.zeros(3)
+    if tree is not None:          # base_link on the base's floor under the yaw axis
+        info = mech.meta.get("turret", {})
+        floor = np.asarray(info.get("axis", (0.0, 0.0, 0.0)), dtype=float)
+    return UrdfModel(links, head + joints, origins, zero, closures, tables, floor)
+
+
+def _ratings(mech: Mechanism) -> dict[str, tuple[float, float]]:
+    """``joint -> (effort N·m, velocity rad/s)`` of each motor-driven joint."""
+    from spiderpig import actuators
+
+    out = {}
+
+    def rate(name: str, motor: str, ratio: float):
+        m = actuators.STEPPERS.get(motor)
+        if m is not None and ratio > 0:
+            out[name] = (m.holding_nm * ratio, NOMINAL_RPM / 60.0 * 2 * math.pi / ratio)
+
+    for d in (mech.meta.get("drive") or {}).values():
+        rate(d["input"], d["motor"], float(d["ratio"]))
+    tu = mech.meta.get("turret")
+    if tu:
+        rate("q1", tu["motor"], float(tu["ratio"]))
+    tool = mech.meta.get("tool")
+    if tool and tool.get("wrist"):
+        rate("q4", tool["wrist"], 1.0)
+    return out
 
 
 def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
@@ -295,7 +347,8 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
     fix = ET.SubElement(root, "joint", name="design_frame", type="fixed")
     ET.SubElement(fix, "parent", link=ROOT)
     ET.SubElement(fix, "child", link=FRAME)
-    ET.SubElement(fix, "origin", xyz="0 0 0", rpy=f"{math.pi / 2:.9f} 0 0")
+    fl = m.floor                    # the design's origin seen from the floor, in ROS's axes
+    ET.SubElement(fix, "origin", xyz=_m((-fl[0], fl[2], -fl[1])), rpy=f"{math.pi / 2:.9f} 0 0")
     for j in m.joints:
         el = ET.SubElement(root, "joint", name=j.name, type=j.kind)
         ET.SubElement(el, "parent", link=j.parent)
@@ -305,7 +358,10 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
         if j.kind != "fixed":
             ET.SubElement(el, "axis", xyz=" ".join(f"{v:g}" for v in j.axis))
             ET.SubElement(el, "limit", lower=f"{j.limits[0]:.6f}", upper=f"{j.limits[1]:.6f}",
-                          effort="1", velocity="1")
+                          effort=f"{j.effort:.4g}", velocity=f"{j.velocity:.4g}")
+            if j.mimic is None and j.coef and set(j.coef) != {j.name}:
+                el.append(ET.Comment(f" passive: follows {', '.join(sorted(j.coef))}; set it "
+                                     "from the sidecar's coefficients, not a free joint "))
         if j.mimic is not None:
             ET.SubElement(el, "mimic", joint=j.mimic[0], multiplier=f"{j.mimic[1]:.9g}",
                           offset="0")
@@ -316,6 +372,7 @@ def write(mech: Mechanism, config: BuildConfig, t: float, out: Path, name: str,
     path = out / f"{name}.urdf"
     path.write_text(ET.tostring(root, encoding="unicode") + "\n")
     side = {"zero_rad": m.zero, "units": "URDF angles are design angles less zero_rad",
+            "base_link": "on the base's floor under the yaw axis (ROS axes: z up, x forward)",
             "joints": {j.name: {"parent": j.parent, "child": j.child,
                                 "coefficients": j.coef, "linear": j.linear,
                                 "mimic": list(j.mimic) if j.mimic else None}

@@ -42,6 +42,16 @@ YAW_DRUM_R = 40.0
 """The turntable's capstan drum radius (mm): 11.6:1 on the 6 mm sleeve. Its travel is the
 wraps' walk the motor's 24 mm shaft leaves (:func:`.turret.turret_plan`): a larger drum
 turns less (15.9:1 on a 55 mm drum: about 174 deg)."""
+ECCENTRICITY_MM = 0.05
+"""How far the yaw's pulley or drum sits off the axis once centred on the hub with a sleeve
+at assembly (mm): a once-a-turn error of ``e / R`` at the joint, systematic (it calibrates
+out). An estimate."""
+AXIS_RUNOUT_MM = 0.05
+"""A clamping collar's face runout across its diameter (mm): the fixed shaft tilts by it
+over the collar, the yaw axis out of plumb, systematic. An estimate."""
+SWITCH_REPEAT_MM = 0.02
+"""A slotted optical switch's repeatability at its flag's edge (mm): the homed yaw differs
+by it over the flag's radius each time. A typical figure, unverified."""
 PRELOAD_ROW_FACTOR = 4.0
 """What tipping force (each bearing's radial reaction) a preloaded deep-groove pair takes
 before a row unloads, per newton of preload: about ``1 / tan`` of its contact angle (some
@@ -82,7 +92,9 @@ class Support:
         notes = (f"two {self.bearing} {spacing:g} mm apart",)
         if self.preload:
             notes += (f"preloaded by a {self.spring}: no play up to about "
-                      f"{self.capacity_nm(spacing):.1f} N·m of tipping moment (estimate)",)
+                      f"{self.capacity_nm(spacing):.1f} N·m of tipping moment (estimate)",
+                      "the upper bearing must slide on the shaft for the washer to load it "
+                      "(an h6 shaft may hold it by up to 8 um of interference)")
         else:
             notes += (f"each bearing's clearance and the shaft's fit, {c * 1000:.0f} um "
                       "diametral: the axis tilts by it over the spacing",)

@@ -99,6 +99,7 @@ class InputBudget:
     accuracy_mm: float = 0.0       # its systematic error (a microstep off its place)
     capacity_nm: float = 0.0       # what it holds at the joint (holding torque x ratio)
     load_nm: float = 0.0           # the payload's moment on its lever (an upper bound)
+    homing_mm: float = 0.0         # its homing switch's repeatability (lost on each homing)
 
 
 @dataclass(frozen=True)
@@ -121,12 +122,14 @@ class Precision:
     inputs: dict[str, InputBudget] = field(default_factory=dict)
     payload_g: float = DEFAULT_PAYLOAD_G
     tilt_mm: float = 0.0           # a robot's turntable tilting in its bearings' play
+    turret_accuracy_mm: float = 0.0   # its drive's eccentricity and its axis out of plumb
 
     @property
     def repeatability_mm(self) -> float:
-        """The joints' lost motion at the output, the drives' backlash through their levers
-        and the turntable's tilt (worst case: every play the same way)."""
-        return (self.plays.worst_mm + sum(b.backlash_mm for b in self.inputs.values())
+        """The joints' lost motion at the output, the drives' backlash and homing through
+        their levers, and the turntable's tilt (worst case: every play the same way)."""
+        return (self.plays.worst_mm
+                + sum(b.backlash_mm + b.homing_mm for b in self.inputs.values())
                 + self.tilt_mm)
 
     @property
@@ -150,6 +153,7 @@ class Precision:
                 "hole_tol_mm": self.hole_tol_mm, "reach_mm": round(self.reach_mm, 2),
                 "thermal_mm": round(self.thermal_mm, 4), "dt_k": self.dt_k,
                 "payload_g": self.payload_g, "tilt_mm": _num(self.tilt_mm),
+                "turret_accuracy_mm": _num(self.turret_accuracy_mm),
                 "inputs": {k: {f: (_num(v) if isinstance(v, float) else v)
                                for f, v in b.__dict__.items()} for k, b in self.inputs.items()},
                 "notes": list(self.notes)}
@@ -174,9 +178,13 @@ class Precision:
                            f"{b.backlash_mm:.3f} mm, a step {b.resolution_mm:.4f} mm, "
                            f"systematic {b.accuracy_mm:.3f} mm, {self.payload_g:g} g sags it "
                            f"{b.sag_mm:.3f} mm; holds {b.capacity_nm:.2f} N·m for "
-                           f"{b.load_nm:.3f}")
+                           f"{b.load_nm:.3f}"
+                           + (f"; homing {b.homing_mm:.3f} mm" if b.homing_mm else ""))
         if self.tilt_mm:
             out.append(f"  the turntable's tilt in its bearings: {self.tilt_mm:.3f} mm")
+        if self.turret_accuracy_mm:
+            out.append(f"  accuracy, the turntable's drive off centre and its axis out of "
+                       f"plumb: {self.turret_accuracy_mm:.3f} mm (calibrates out)")
         out.append(f"  accuracy, every hole off by {self.hole_tol_mm:g} mm: "
                    f"{self.accuracy_links_mm:.3f} mm (calibrates out)")
         out.append(f"  accuracy, {self.dt_k:g} K at {self.cte_um_per_m_k:g} um/m/K over "
@@ -358,16 +366,17 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     if lk.kind == "arm" and not inputs:
         notes.append("no transmission: the inputs' own backlash and resolution are not in "
                      "the budget (their levers say what they must be)")
-    tilt = 0.0
+    tilt = turret_acc = 0.0
     if turret:
-        yaw, tilt, yaw_notes = turret_budget(robot_cfg, design, target_mm)
+        yaw, tilt, turret_acc, yaw_notes = turret_budget(robot_cfg, design, target_mm)
         inputs = {"q1": yaw, **inputs}
         lev = {"q1": _yaw_lever(robot_cfg, design), **lev}
         need = {"q1": math.degrees(target_mm / lev["q1"]) if lev["q1"] > 0 else math.inf,
                 **need}
         notes += yaw_notes
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
-                     hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g, tilt)
+                     hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g, tilt,
+                     turret_acc)
 
 
 def _side_design(config: BuildConfig, design):
@@ -393,13 +402,21 @@ def _yaw_lever(config: BuildConfig, design) -> float:
 
 
 def turret_budget(config: BuildConfig, design, target_mm: float
-                  ) -> tuple[InputBudget, float, list[str]]:
+                  ) -> tuple[InputBudget, float, float, list[str]]:
     """The turntable's drive at the output (``q1``: its support's, transmission's and
-    motor's terms, :meth:`construction.rotary.turret.TurretPlan.error_terms`, through the
-    output's horizontal reach) and its tilt there (the support's tilt over the farthest
-    the tool's tip gets from the bearings' middle). No sag: gravity has no moment about a
+    motor's terms, :meth:`construction.rotary.turret.TurretPlan.error_terms`, and its
+    homing switch's repeatability over the flag's radius, through the output's horizontal
+    reach), its tilt there (the support's tilt over the farthest the tool's tip gets from
+    the bearings' middle), and its systematic error there (the drive's eccentricity over its
+    pitch radius, the shaft's tilt in its collars). No sag: gravity has no moment about a
     vertical axis."""
     from spiderpig.construction.robot import Turret
+    from spiderpig.construction.rotary import (
+        AXIS_RUNOUT_MM,
+        ECCENTRICITY_MM,
+        SWITCH_REPEAT_MM,
+    )
+    from spiderpig.hardware.catalog import get
 
     d = _side_design(config, design)
     tp, tool = Turret().plans(d, config)
@@ -413,12 +430,23 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     far = float(np.hypot(f[:, 0] - tp.x_a, f[:, 1] - drop - mid).max())
     _, tr, motor, _ = tp.preset.parts
     ratio = tr.ratio(None)
+    homing = SWITCH_REPEAT_MM / tp.sensor_r * lever if tp.preset.sensor != "none" else 0.0
     budget = InputBudget("q1", ratio, t.backlash_deg, t.resolution_deg, t.stiffness_nm_per_rad,
                          math.radians(t.backlash_deg) * lever,
                          math.radians(t.resolution_deg) * lever, 0.0, t.source,
-                         math.radians(t.accuracy_deg) * lever, motor.holding_nm * ratio, 0.0)
+                         math.radians(t.accuracy_deg) * lever, motor.holding_nm * ratio, 0.0,
+                         homing)
+    collar = float(get("collar_8mm").dims["od"])
+    systematic = ECCENTRICITY_MM / tp.drive_r() * lever + AXIS_RUNOUT_MM / collar * far
     notes = [f"the turntable ({tp.preset.key}): {n}" for n in t.notes]
-    return budget, math.radians(t.tilt_deg) * far, notes
+    notes.append(f"the turntable's homing: {SWITCH_REPEAT_MM * 1000:g} um at the flag's "
+                 f"{tp.sensor_r:.0f} mm radius, {homing:.3f} mm at the output (unverified)")
+    notes.append(f"the turntable's drive {ECCENTRICITY_MM:g} mm off centre and its shaft "
+                 f"{AXIS_RUNOUT_MM:g} mm out across a collar (estimates): {systematic:.3f} mm "
+                 "at the output, once a turn (it calibrates out)")
+    notes.append("the turntable's plates' and brackets' stiffness under the arm's moment is "
+                 "not modelled")
+    return budget, math.radians(t.tilt_deg) * far, systematic, notes
 
 
 def drive_budgets(config: BuildConfig, design, lev: dict[str, float],

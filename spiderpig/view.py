@@ -180,7 +180,8 @@ def resolve_args(args, store):
     """The design the build options ask for (``--linkage``, ``--module``, ``--pin``, ...:
     the same options as ``spiderpig build``), resolved into ``store`` through the API
     (:func:`spiderpig.api.spec_of`), so a CLI build can be viewed by its options; or
-    ``None`` when none was given."""
+    ``None`` when none was given. An arm resolves to its side (a spec builds an arm's side
+    only, until the spec carries its robot), where ``spiderpig build`` builds its turret."""
     given = {k: getattr(args, k) for k in DESIGN_OPTIONS if getattr(args, k, None) is not None}
     if not given or given == {"side_only": False}:
         return None

@@ -7,26 +7,34 @@ the vertical through the shoulder ``O`` at the stack's middle. Bottom up:
 * **the base**: a bottom plate and a top plate (the frame's aluminium) on four columns of
   round M3 standoffs, as tall as the yaw motor hanging under the top plate; under the top
   plate a **boss** of :data:`BOSS_N` discs bolted to it, through which the fixed 8 mm
-  **shaft** is clamped by a collar above the plate and one under the boss;
+  **shaft** is clamped by clamping collars above the plate and under the boss (their
+  faces square it; a hardened shaft takes no set screw);
 * **the drive** between the base and the hub: the belt's 80-tooth plate pulley (its bore
   drilled out to clear the collar under the hub, four 3.4 mm holes drilled on the hub's
-  screws' circle, :data:`TIE_PCD`) under
-  the hub, the 16-tooth on the motor's shaft (cut to it); the motor's screws in slots
-  along the belt, its tension set from above. Or the capstan's drum of laser-cut plates
-  (its bottom flange bored out over the boss's screw heads), the cord on a sleeve over the
-  motor's shaft, its travel what the shaft's length leaves the wraps' walk;
-* **the hub**: two stacks of :data:`seat plates <seat_n>` with the 608s bonded in, a
-  shoulder plate each against the bearings' inner faces, a printed spacer between them (the
-  bearings' centres :data:`~construction.rotary.SPACING` apart), all clamped with the
-  turntable by four M3 screws from under the pulley (or sunk in the drum's bottom flange),
-  nuts on the turntable. The lower inner ring sits on a shim on a collar; the upper is
-  held by a collar over a shim (``deep_groove_pair``) or a wave washer (the preload);
+  screws' circle, :data:`TIE_PCD`, on a drill press centred on its own bore) under the hub,
+  the 16-tooth on the motor's uncut shaft; a stock loop with at least
+  :data:`~construction.transmissions.belt.MIN_MESH` teeth in mesh; the motor's screws in
+  slots along the belt, its tension set from above. Or the capstan's drum of laser-cut
+  plates (its bottom flange bored out over the boss's screw heads), the cord on a sleeve
+  over the motor's shaft, its travel what the shaft's length leaves the wraps' walk, its
+  ends pinched by two anchor screws past the travel either side of where it leaves for the
+  motor (:meth:`TurretPlan.anchor_angles`), each in a notch from the rim;
+* **the hub**: two stacks of :data:`seat plates <seat_n>` with the 608s bonded in (on the
+  shaft, which centres them), a shoulder plate each against the bearings' inner faces, a
+  printed spacer between them (the bearings' centres :data:`~construction.rotary.SPACING`
+  apart), all clamped with the turntable by four M3 screws from under the pulley (or sunk in
+  the drum's bottom flange), nuts on the turntable. The lower inner ring sits on a shim on a
+  collar; the upper is held by a collar over a shim (``deep_groove_pair``) or a wave washer
+  (the preload);
 * **the turntable**: a disc the side's two frame plates stand on, each grown a **foot**
   (:class:`TurretFoot`) to its top face and held by two printed **brackets** outside it
   (an M3 through the plate from inside, nut on the bracket; an M3 up through the turntable,
   nut on the bracket), placed clear of the drives' motors and sliders outside the plates;
 * **the sensor**: a slotted optical endstop on standoffs on the base's top plate in front,
-  a printed half-circle flag under the turntable whose edge is in the beam at yaw 0.
+  a printed (opaque) half-circle flag at the turntable's rim whose edge is in the beam at
+  yaw 0: the larger its radius, the less the switch's repeatability turns the yaw.
+
+The cables loop loosely round the base (a spiral wrap): the shaft is solid.
 
 **Its height** (:func:`turret_plan`): the turntable's top is under everything of the side
 over the inputs' box: under every link (its pins' heads, the drives' hubs, the belts at the
@@ -55,6 +63,7 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.plane import point_rect, poly_rect, seg_rect
 from spiderpig.construction.rotary import SPACING, RotaryPreset
+from spiderpig.construction.transmissions.belt import MIN_MESH
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw, screw_solid
 from spiderpig.mechanism import Body
@@ -72,8 +81,8 @@ from spiderpig.shapes import (
 )
 
 BOSS_N = 3              # discs under the base's top plate the shaft is clamped through
-BOSS_R = 16.0
-BOSS_SCREW_R = 11.5
+BOSS_R = 18.5
+BOSS_SCREW_R = 12.5     # the boss's screws' heads clear the collar clamping the shaft over it
 FOOT_R = 6.0            # the frame plates' foot: a stadium with a flat underside
 FOOT_L = 40.0           # its half length either side of the yaw axis
 BRACKET = {"w": 12.0, "h": 16.0, "d": 16.0, "t": 5.0, "hole": 10.5}
@@ -83,10 +92,11 @@ COL_INSET = 6.0         # the columns in from the base's edge
 SHOULDER_D = 18.5       # the shoulder plates' bore: on a 608's outer ring, clear of its inner
 SEAT_FIT = 0.2          # a seat's bore over the bearing (bonded: :mod:`construction.pivots.ball`)
 SHAFT_HOLE = 8.1
-COLLAR_HOLE = 18.0      # what turns round a collar: the pulley's bore drilled out, the drum's
+COLLAR_HOLE = 20.0      # what turns round a collar: the pulley's bore drilled out, the drum's
+ANCHOR_IN = 6.0         # the capstan's anchor screws in from the drum's rim
 SCREW_HOLE = 3.4
 NUT_H = 2.4
-FLAG = {"t": 1.5, "flange": 3.0, "w": 8.0}
+FLAG = {"t": 2.0, "flange": 3.0, "w": 8.0}   # printed opaque (black): IR passes thin PLA
 FLAG_CLEAR = 10.0       # the flag's radius past the drive's (pulley's flange, drum's)
 TIE_PCD = {"belt": 34.0, "capstan": 44.0}
 """The hub's clamping screws' circle per drive: 2 x the plate's thickness of web from the
@@ -144,6 +154,24 @@ class TurretPlan:
     @property
     def spacing(self) -> float:
         return SPACING
+
+    def anchor_angles(self) -> list[float]:
+        """A capstan drum's two cord anchors (rad, the turret's frame at yaw 0): past the
+        travel's ends either side of where the cord leaves toward the motor
+        (:data:`transmissions.capstan.ANCHOR_MARGIN`), so it never leaves its groove."""
+        from spiderpig.construction.transmissions.capstan import ANCHOR_MARGIN
+
+        half = math.radians(self.travel_deg / 2 + ANCHOR_MARGIN)
+        return [self.phi_m + half, self.phi_m - half]
+
+    def drive_r(self) -> float:
+        """The pitch radius the yaw is turned at (the large pulley's, the drum's cord)."""
+        from spiderpig.construction.transmissions.capstan import CORD_D
+
+        _, tr, _, _ = self.preset.parts
+        if self.loop is not None:
+            return float(tr.big["pitch_d"]) / 2
+        return tr.drum_r + CORD_D / 2
 
     def drive_terms(self):
         _, tr, _, _ = self.preset.parts
@@ -268,7 +296,8 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
         need = max(BOSS_R + half_diag + 1.0,
                    (float(tr.big["flange_d"]) + float(tr.small["flange_d"])) / 2 + 2.0)
         fits = [(c, L) for L in _loops()
-                if (c := tr.centre_distance(L)) is not None and c >= need]
+                if (c := tr.centre_distance(L)) is not None and c >= need
+                and tr.teeth_in_mesh(c) >= MIN_MESH]
         if not fits:
             raise ConstructionError("turret: no stock GT2 loop keeps the motor clear of the "
                                     "shaft's boss")
@@ -287,7 +316,6 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
         hub_l = float(tr.small["hub_l"])
         h["drive_bot"] = h["bt_top"] + 0.5 + hub_l      # the pulleys' teeth from here
         h["hub_bot"] = h["drive_bot"] + w
-        h["shaft_top"] = h["hub_bot"] - 0.5             # the motor's, cut
     else:
         floor = h["bt_top"] + screw("bhcs", "3").head_h + 0.5   # over the motor's screws
         core_bot = floor + pitch
@@ -312,7 +340,9 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
         h["core_bot"] = core_bot
         h["n_core"] = float(n_core)
         h["hub_bot"] = core_bot + n_core * pitch + pitch
-        h["shaft_top"] = core_bot + n_core * pitch
+        h["sleeve_top"] = core_bot + n_core * pitch
+        if c - motor.shaft_d / 2 < drive_r + 0.5:      # the shaft past the sleeve, uncut
+            raise ConstructionError("turret: the yaw motor's shaft meets the drum's flange")
     # the collar under the lower inner ring clears the one clamping the shaft
     b_top = h["hub_bot"] + recess - 0.5
     lift = h["bt_top"] + collar_w - (b_top - collar_w)
@@ -322,11 +352,13 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
                                     "the shaft's")
         h["hub_bot"] += lift
         h["drive_bot"] += lift
-        h["shaft_top"] += lift
-    if h["shaft_top"] - h["bt_bot"] > motor.shaft_len + 1e-9:
+    h["shaft_top"] = h["bt_bot"] + motor.shaft_len      # the stock shaft, uncut
+    if key == "belt" and h["hub_bot"] > h["shaft_top"] + 1e-9:
         raise ConstructionError(f"turret: the yaw motor's {motor.shaft_len:g} mm shaft doesn't "
-                                "reach its pulley")
+                                "reach its pulley's top")
     h["hub_top"] = h["hub_bot"] + hub_h
+    if h["shaft_top"] > h["hub_top"] - 1.0:
+        raise ConstructionError("turret: the yaw motor's shaft reaches the turntable")
     h["table"] = h["hub_top"] + t
     d_top = h["hub_top"] - recess + spring + collar_w
     tie = screw("shcs", "3")
@@ -352,19 +384,25 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
                                     f"reach down to it)")
         brackets += [(plate, float(min(ok))), (plate, float(max(ok)))]
     hub_r = TIE_PCD[key] / 2 + SCREW_HOLE / 2 + 2 * t
-    sensor_r = drive_r + FLAG_CLEAR
     head_r = screw("shcs", "3").head_d / 2
-    reach = max(BRACKET["hole"],
-                sensor_r + FLAG["w"] / 2 + head_r + 1.0 - (z_a - faces["outer"]))
+    reach = BRACKET["hole"]
     depth = reach + BRACKET["hole"] - BRACKET["t"]      # as much leg past the hole as under
-    corners = []
+    corners, screws_r = [], []
     for plate, x in brackets:
         z0 = faces[plate]
-        z1 = z0 - depth if plate == "outer" else z0 + depth
+        sgn = -1.0 if plate == "outer" else 1.0
         corners += [math.hypot(xx - x_a, zz - z_a)
-                    for xx in (x - BRACKET["w"] / 2, x + BRACKET["w"] / 2) for zz in (z0, z1)]
+                    for xx in (x - BRACKET["w"] / 2, x + BRACKET["w"] / 2)
+                    for zz in (z0, z0 + sgn * depth)]
+        screws_r.append(math.hypot(x - x_a, z0 + sgn * reach - z_a))
     corners += [math.hypot(FOOT_L + FOOT_R, faces[pl] - z_a) for pl in faces]
-    r_table = max(max(corners) + 3.0, sensor_r + FLAG["w"] / 2 + 3.0, hub_r + 5.0)
+    r_table = max(max(corners) + 3.0, hub_r + 5.0)
+    # the homing flag at the turntable's rim (its edge's place over the most radius), past
+    # the drive and outside the brackets' screws under the turntable
+    rw = FLAG["w"] / 2
+    sensor_r = max(r_table - rw - 2.0, drive_r + FLAG_CLEAR,
+                   max(screws_r) + head_r + 1.0 + rw)
+    r_table = max(r_table, sensor_r + rw + 2.0)
 
     # the tool, wherever the flange passes over the base or the turntable
     if tool_plan is not None:
@@ -375,8 +413,8 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
         if over.any():
             low = float(f[over, 1].min()) - ctx.topo.geometry.lateral.get(
                 tool_plan.point, 0.0) - tool_plan.tool.drop()
-            if low - 1.0 < y_t:
-                y_t = low - 1.0
+            if low - protrude - 1.0 < y_t:        # (over the collar and nuts it stands)
+                y_t = low - protrude - 1.0
                 notes.append("the turntable stands lower for the tool passing over it")
     y_ground = y_t - h["table"]
     return TurretPlan(preset, x_a, z_a, y_t, y_ground, h, r_base, r_table, c, loop, travel,
@@ -662,20 +700,32 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
         head_z = z0
         tlen = length_for(h["table"] - head_z + NUT_H)
     else:
-        from spiderpig.construction.transmissions.capstan import FLANGE, WRAPS
+        from spiderpig.construction.transmissions.capstan import FLANGE, NOTCH_W, WRAPS
 
         n_core = int(h["n_core"])
         layers = [h["drive_bot"] + i * pitch for i in range(n_core + 2)]
+        r_a = tr.drum_r - ANCHOR_IN
+        anchors = [(r_a * math.cos(a), r_a * math.sin(a)) for a in tp.anchor_angles()]
+        notches = [Rect(((r_a + tr.drum_r) / 2 * math.cos(a), (r_a + tr.drum_r) / 2 * math.sin(a)),
+                        (ANCHOR_IN + 2.0, NOTCH_W), a) for a in tp.anchor_angles()]
         for i, z0 in enumerate(layers):
             flange = i in (0, n_core + 1)
             r = tr.drum_r + (FLANGE if flange else 0.0)
-            bore = 30.0 if i == 0 else COLLAR_HOLE
-            holes = [Cut(xy, 6.2 if i == 0 else SCREW_HOLE) for xy in ties]
+            bore = 32.0 if i == 0 else COLLAR_HOLE   # (the bottom one over the boss's heads)
+            holes: list[Cut | Rect] = [Cut(xy, 6.2 if i == 0 else SCREW_HOLE)
+                                       for xy in ties + anchors]
+            if not flange:
+                holes += notches
             add(f"yaw_drum{i}", cut_holes(ring(o, 2 * r, bore, z0, z0 + pitch), holes, z0,
                                           z0 + pitch), turns=True, fab="laser",
-                color="#7fb3e0")
+                color="#7fb3e0", sheet=ctx.sheet("link"))
+        alen = length_for(h["hub_bot"] - (h["drive_bot"] + pitch) + NUT_H)
+        for i, xy in enumerate(anchors):          # each pinches the cord's end between plates
+            add(f"yaw_anchor{i}", screw_solid(xy, sk, h["drive_bot"] + pitch, alen, up=True),
+                turns=True, fab="purchased", bom_key=sk.key(alen), color=STEEL)
+        extras.append(BomLine("m3_nut", len(anchors), "turret: the capstan's anchor screws"))
         add("yaw_capstan", ring(tuple(m), tr.capstan_d, motor.shaft_d + 0.1, h["core_bot"],
-                                h["shaft_top"]), fab="purchased", bom_key=tr.sleeve_key,
+                                h["sleeve_top"]), fab="purchased", bom_key=tr.sleeve_key,
             color="#c9cdd2")
         arc = 2 * tr.drum_r * math.radians(tp.travel_deg + 80.0)
         extras += [BomLine("dyneema_1mm", round((arc + WRAPS * math.pi * tr.capstan_d + 200.0)
@@ -764,6 +814,29 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
                           color=STEEL))
         turning += [f"foot_screw{i}a", f"foot_screw{i}b"]
     extras.append(BomLine("m3_nut", 2 * len(tp.brackets), "turret: the brackets' screws"))
+    extras.append(BomLine("spiral_wrap_6mm", 1.0, "turret: the cables' loop round the base"))
+    preload = (f"set the top collar so the wave washer stands at its working "
+               f"{float(get(support.spring).dims['work_h']):g} mm (a feeler gauge under the "
+               "collar's face), " if support.preload else "")
+    drive = ("drill the 80-tooth pulley's bore out to "
+             f"{COLLAR_HOLE:g} mm and its four 3.4 mm holes on a {TIE_PCD[key]:g} mm circle "
+             "on a drill press, centred on its own bore; tension the belt by sliding the "
+             "motor in its slots before tightening its screws"
+             if belt else "lead the cord in through one anchor's notch round its screw, round "
+             "the groove to the sleeve, its turns round it, back round the groove and in "
+             "through the other notch; pull it taut and tighten both anchors")
+    assembly = [
+        "Bolt the boss under the base's top plate, slide the shaft through and clamp it with "
+        "the two collars, square to the plate (a square against it as they close).",
+        "Bond the bearings into the hub's seats with the hub's plates stacked on the shaft "
+        "itself (the shaft centres them while the epoxy cures).",
+        f"For the drive: {drive}.",
+        "Centre the pulley or drum on the hub with a sleeve on the shaft before the hub's "
+        "screws are tightened (its eccentricity is the yaw's once-a-turn error).",
+        f"Lower the hub onto the lower collar and its shim; {preload}clamp the top collar.",
+        "Print the homing flag in black (opaque): the endstop's infrared passes thin pale "
+        "plastic.",
+        "Loop the cables loosely round the base in the spiral wrap: the yaw turns them."]
     fastened = [(b.name, "yaw_motor") for b in bodies if b.name.startswith("yaw_motor_screw")]
     names = {b.name for b in bodies}
     for b in bodies:
@@ -785,5 +858,5 @@ def turret_parts(tp: TurretPlan, ctx: Context) -> tuple[list[Body], list[str], l
             "centre_mm": round(tp.c, 3), "belt_mm": tp.loop,
             "shaft_mm": round(shaft_l, 1), "motor_shaft_mm": shaft_len,
             "columns": list(tp.columns), "notes": list(tp.notes), "fastened": fastened,
-            "parts": sorted(b.name for b in bodies)}
+            "parts": sorted(b.name for b in bodies), "assembly": assembly}
     return bodies, turning, extras, info

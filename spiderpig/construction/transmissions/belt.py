@@ -41,6 +41,9 @@ BACKLASH_MM = 0.02
 """A tensioned GT2 belt's lost motion at the small pulley's pitch line (mm): its teeth's
 clearance in the grooves. An assumption (Gates rates 2MGT 'low backlash'); measure it."""
 BELT_COLOR = "#202020"
+MIN_MESH = 6.0
+"""The least teeth in mesh on the small pulley (Gates' guideline for a timing belt): a loop
+whose centre distance wraps fewer is not offered."""
 
 
 @dataclass(frozen=True)
@@ -109,15 +112,23 @@ class BeltDrive(Transmission):
 
     def distances(self, ctx: Context, motor) -> list[tuple[float, int]]:
         """Every stock loop's centre distance that keeps the motor's body clear of the
-        pivot's pillar head and the pulleys apart, shortest first."""
+        pivot's pillar head and the pulleys apart, with :data:`MIN_MESH` teeth in mesh,
+        shortest first."""
         need = ((float(self.big["flange_d"]) + float(self.small["flange_d"])) / 2
                 + ctx.params.margin)
         out = []
         for length in GT2_LOOPS:
             c = self.centre_distance(length)
-            if c is not None and c >= need:
+            if c is not None and c >= need and self.teeth_in_mesh(c) >= MIN_MESH:
                 out.append((c, length))
         return out
+
+    def teeth_in_mesh(self, c: float) -> float:
+        """The small pulley's teeth in the belt at centre distance ``c``: its wrap,
+        ``pi - 2 asin((D - d) / 2C)``, over a tooth's angle."""
+        big, small = float(self.big["pitch_d"]), float(self.small["pitch_d"])
+        wrap = math.pi - 2 * math.asin(min(1.0, (big - small) / (2 * c)))
+        return wrap / (2 * math.pi) * float(self.small["teeth"])
 
     def ratio(self, detail) -> float:
         return float(self.big["teeth"]) / float(self.small["teeth"])

@@ -346,11 +346,12 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
             ops.append(Op(OTHER, (), whole(*left), "Remaining parts",
                           "The remaining parts, where they are drawn.", tag="other"))
     if turret_rows:          # an arm's turret (construction.rotary.turret): one step for now
+        text = " ".join([
+            "The base (its columns, the yaw motor under its top plate), the yaw drive, the "
+            "hub, the turntable; then the side stood on it, its feet bolted to the brackets.",
+            *(mech.meta.get("turret") or {}).get("assembly", ())])
         ops.append(Op(OTHER, (), whole(*sorted(r["name"] for r in turret_rows)), "The turret",
-                      "The base (its columns, the yaw motor under its top plate, the shaft "
-                      "clamped through the boss), the yaw drive, the hub with its bearings "
-                      "bonded in, the turntable; then the side stood on it, its feet bolted "
-                      "to the brackets: as drawn.", tag="turret"))
+                      text, tag="turret"))
     _check(ops, {r["name"] for r in rows + turret_rows})
     return _order(ops, ROBOT_ORDER if robot else SIDE_ORDER)
 

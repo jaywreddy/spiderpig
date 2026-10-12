@@ -489,22 +489,34 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   role (`tool`: `suction_cup`, `suction_wrist`, or `none`). Spatial joints are data on the
   mechanism (`kinematics.RobotTree`), which the bake, the URDF and the precision budget
   read. The URDF keeps a spanning tree of the side's pins, a `mimic` where a pin follows
-  one input; its sidecar maps the rest. M3 socket heads of 45 to 70 mm joined the screw
-  table (the hub's clamping screws).
-- **Why:** the yaw bearing a fixed 8 mm shaft through two skateboard 608s: stock, cheap,
-  McMaster-modelled, and the pair's tilt (its clearance over the spacing: about 0.3 mm at
-  the tool) is the MT4's weakness the preload removes. The belt and capstan reuse the
-  side's transmissions' numbers so a yaw and an elbow are judged alike. The capstan's yaw
-  drum is 40 mm (11.6:1), not larger: the wraps walk along a sleeve on the motor's 24 mm
-  shaft, and a 55 mm drum (15.9:1) would turn only 174 deg. The wrist's NEMA 11 doesn't fit
-  beside the end plate inside the stack, so it hangs under the flange (an 89.5 mm tool,
-  and a turntable that stands lower for it passing over).
-- **Open:** the shoulder stands about 170 mm over the base's floor and the palletizer's
-  input box reaches no lower than about 50 mm under the shoulder, so the work stands on a
-  platform (or the box grows); the frame plates' tipping load on the printed brackets and
-  the wave washer's force (30 N) are unverified; the preloaded pair's moment capacity is
-  an estimate; the spec and the MCP still build an arm's side only (phase 7); the guide
-  puts the turret in one step ("The turret"), its order not yet the hooks'.
+  one input, a `tool0` at the cup's tip, `base_link` on the base's floor; its sidecar maps
+  the rest. M3 socket heads of 45 to 70 mm joined the screw table (the hub's screws).
+- **Why:** the yaw bears on a fixed 8 mm shaft through two skateboard 608s: stock, cheap,
+  McMaster-modelled; the plain pair's tilt (its clearance over the spacing) is the MT4's
+  weakness the wave-washer preload removes. The belt and capstan reuse the side's
+  transmissions' numbers so a yaw and an elbow are judged alike. The capstan's yaw drum
+  radius is 40 mm (11.6:1), not larger: the wraps walk along a sleeve on the motor's 24 mm
+  shaft, and a 55 mm radius (15.9:1) would turn only 174 deg. The wrist's NEMA 11 doesn't
+  fit beside the end plate inside the stack, so it hangs under the flange (the turntable
+  then stands lower for it passing over).
+- **The phase's review** (integrated): the capstan drum got its cord anchors (past the
+  travel either side of the cord's tangent, notches from the rim); clamping collars (a
+  hardened shaft takes no set screw); the homing flag at the turntable's rim, printed
+  opaque; a GT2 loop needs 6 teeth in mesh on the small pulley (`belt.MIN_MESH`: the
+  side's planar belts too, so the palletizer's motors stand farther out); the yaw motor's
+  shaft is no longer cut; the precision budget gained the yaw's homing (repeatability),
+  its drive's eccentricity and its axis out of plumb (accuracy: estimates, named in
+  `construction.rotary`); the tool's check covers the axles crossing its layers and the
+  drives' belts; the assembly text says to drill the pulley centred, bond the bearings on
+  the shaft and set the preload with a feeler; the URDF's joints carry each motor's
+  effort and a nominal speed.
+- **Open:** the shoulder stands high over the base's floor and the palletizer's input box
+  reaches little below the shoulder, so the work stands on a platform (or the box grows);
+  the frame plates' tipping load on the printed brackets, the base plates' and the
+  turntable's stiffness, and the wave washer's force (30 N) are unverified or unmodelled;
+  an h6 shaft may hold the upper bearing by interference and defeat the preload (try it);
+  the cables loop round the solid shaft (no slip ring, no hollow shaft); the spec and the
+  MCP still build an arm's side only (phase 7); the guide puts the turret in one step.
 - **Where:** `spiderpig/construction/robot.py` (`LAYOUTS`, `Turret`),
   `spiderpig/construction/rotary/`, `spiderpig/construction/tools.py`,
   `spiderpig/kinematics/`, `spiderpig/urdf.py`, `spiderpig/hardware/robot_catalog.py`.

@@ -25,12 +25,24 @@ register(Item(
                "precision shafts"),),
     dims={"d": 8.0, "length": 100.0, "tolerance": "h6 (0 / -0.009)", "material": "steel"},
     notes="The turntable's fixed shaft: clamped by collars either side of the base's boss, "
-          "the hub's two 608 bearings turn on it."))
+          "the hub's two 608 bearings turn on it. An h6 shaft runs from a 9 um gap to an 8 um "
+          "interference in a 608's bore: the upper bearing must slide on it for the wave "
+          "washer to preload the pair (try the bearings on it; polish, or pick another)."))
 register(Item(
-    "collar_8mm", "Set-screw shaft collar, 8 mm bore, 16 mm OD x 8 mm", "collar",
+    "spiral_wrap_6mm", "Spiral cable wrap, 6 mm, per metre", "cable",
+    (_unpriced("Amazon", "https://www.amazon.com/s?k=spiral+cable+wrap+6mm", "spiral wrap"),),
+    dims={"d": 6.0},
+    notes="The turntable's cables (the steppers', the endstop's, the vacuum tube) bundled in "
+          "a loose loop round the base: the fixed shaft is solid, nothing passes through it, "
+          "so the loop takes the yaw's turn (no slip ring)."))
+register(Item(
+    "collar_8mm", "One-piece clamping shaft collar, 8 mm bore, 18 mm OD x 9 mm", "collar",
     (_unpriced(_MCM, "https://www.mcmaster.com/products/shaft-collars/", "8 mm bore "
-               "set-screw collars"),),
-    dims={"id": 8.0, "od": 16.0, "w": 8.0, "material": "steel"}))
+               "one-piece clamping collars"),),
+    dims={"id": 8.0, "od": 18.0, "w": 9.0, "material": "steel"},
+    notes="Clamping, not set-screw: a precision shaft is hardened and a set screw's cup "
+          "point won't bite it; the clamp's face squares the shaft against the boss. Sizes "
+          "are a typical listing's (UNVERIFIED: check the one bought)."))
 register(Item(
     "shim_8x12x0p5", "Shim washer 8.2 x 12 x 0.5 mm, steel", "washer",
     (_unpriced(_MCM, "https://www.mcmaster.com/products/shims/", "8 mm shaft shims"),),

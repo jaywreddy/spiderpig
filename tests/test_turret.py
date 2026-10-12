@@ -157,6 +157,20 @@ def test_the_turret_stands_under_the_side_and_holds_together(preset):
 
 
 @pytest.mark.no_fabricate
+def test_the_capstan_turrets_cord_never_leaves_its_groove():
+    """Its anchors stand past the travel's ends either side of where the cord leaves the
+    drum for the motor, at every yaw in the range."""
+    from spiderpig.construction.transmissions.capstan import ANCHOR_MARGIN
+
+    _, tp, _ = _plans(_robot(roles=(("turntable", "capstan_preload"),)))
+    lo, hi = tp.range_deg
+    for yaw in np.radians(np.linspace(lo, hi, 25)):
+        for a in tp.anchor_angles():          # where each anchor is at this yaw, from the cord
+            off = abs((a + yaw - tp.phi_m + math.pi) % (2 * math.pi) - math.pi)
+            assert math.degrees(off) >= ANCHOR_MARGIN - 1e-9
+
+
+@pytest.mark.no_fabricate
 def test_the_tool_finds_room_beside_the_end_plate():
     from spiderpig.construction.tools import TOOLS, ToolPlan
 
@@ -188,6 +202,10 @@ def test_the_turntable_joins_the_precision_budget():
     assert cap.inputs["q1"].backlash_mm == 0.0 < pre.inputs["q1"].backlash_mm
     assert cap.inputs["q1"].resolution_mm < pre.inputs["q1"].resolution_mm
     assert pre.lever_mm_per_rad["q1"] > 200.0                 # the flange's reach
+    assert pre.inputs["q1"].homing_mm > 0.0
+    assert pre.turret_accuracy_mm > 0.0
+    assert pre.repeatability_mm == pytest.approx(
+        pre.plays.worst_mm + sum(b.backlash_mm + b.homing_mm for b in pre.inputs.values()))
     alone = budget(_robot(robot=False))
     assert "q1" not in alone.inputs
     assert alone.tilt_mm == 0.0
@@ -196,39 +214,22 @@ def test_the_turntable_joins_the_precision_budget():
 # -- the robot built -----------------------------------------------------------------------
 
 
-THREADED = (("_motor_screw", "_motor"), ("_clamp", "torso"), ("_clamp", "frame_outer"),
-            ("_bolt", "_pulley_large"), ("base_col", "base_col_screw"),
-            ("yaw_endstop_post", "yaw_endstop_screw"), ("wrist_screw", "wrist_motor"))
-"""Pairs that meet by design: a screw in the tapped hole it threads into."""
-
-
-def _clashes(mech) -> list[tuple[str, str, float]]:
-    from tests._construction import overlapping_pairs
-
-    parts = {b.name: b.placed_part() for b in mech.bodies if b.part is not None}
-    out = []
-    for a, b in overlapping_pairs(parts):
-        if any((x in a and y in b) or (x in b and y in a) for x, y in THREADED):
-            continue
-        inter = parts[a] & parts[b]
-        vol = 0.0 if inter is None else sum(s.volume for s in inter.solids())
-        if vol > 1e-3:
-            out.append((a, b, round(vol, 3)))
-    return out
-
-
 @pytest.mark.slow
 @pytest.mark.parametrize("roles", [(), (("turntable", "capstan_preload"),),
                                    (("turntable", "mt4"), ("tool", "suction_wrist"))],
                          ids=["belt", "capstan", "mt4-wrist"])
 def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(roles):
+    from spiderpig.construction.contract import clashes
     from spiderpig.fabricate import split_parts
     from spiderpig.hardware.bom import bom_from_mechanism
 
     cfg = _robot(roles=roles)
     mech = cache.cached_robot(cfg, 1.0)
     assert split_parts(mech) == []
-    assert _clashes(mech) == []
+    for t in (1.0, 2.6, 4.4):          # over the tour: the tool and the links past the turret
+        assert clashes(cache.cached_robot(cfg, t)) == [], t   # a screw in its thread is not one
+    for a, b in mech.meta["fastened"]:  # and each pair said to thread does meet
+        assert {a, b} <= {x.name for x in mech.bodies}
     tree = RobotTree.from_meta(mech.meta["tree"])
     assert tree is not None
     turning = {n for n, j in tree.carried.items() if j == "q1"}
@@ -236,6 +237,8 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
     assert "base_top" not in tree.carried
     assert "yaw_motor" not in tree.carried
     rows = {r.key: r.qty for r in bom_from_mechanism(mech).purchased}
+    if dict(roles).get("turntable") == "capstan_preload":     # the cord's two anchors
+        assert {"yaw_anchor0", "yaw_anchor1"} <= {b.name for b in mech.bodies}
     assert rows["bearing_608zz"] == 2
     assert rows["collar_8mm"] == 4
     assert rows["shaft_8mm_h6_100"] == 1
@@ -246,16 +249,18 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
 
 
 @pytest.mark.slow
-def test_the_bake_turns_the_side_on_its_turntable():
-    """The baked end plate's flange is the linkage's, yawed by the sweep about the axis."""
+@pytest.mark.parametrize("tool", ["suction_cup", "suction_wrist"])
+def test_the_bake_turns_the_side_on_its_turntable(tool):
+    """The baked end plate's flange is the linkage's, yawed by the sweep about the axis; the
+    wrist's cup (turning about its own axis on the end plate) keeps its place on the flange."""
     import pygltflib
 
     from spiderpig.bake import T_REF, bake_gltf
     from spiderpig.fabricate import template_for
 
-    cfg = _robot()
+    cfg = _robot(roles=(("tool", tool),))
     mech = cache.cached_robot(cfg, T_REF)
-    out = cache.cache_dir() / "turret_bake_test.glb"
+    out = cache.cache_dir() / f"turret_bake_test_{tool}.glb"
     bake_gltf(out, cfg, n_frames=24, profile=False, fabricated=mech)
     g = pygltflib.GLTF2().load(str(out))
     blob = g.binary_blob()
@@ -278,20 +283,65 @@ def test_the_bake_turns_the_side_on_its_turntable():
     by = {b.name: b for b in mech.bodies}
     f0 = (by["b8"].pose @ by["b8"].joint("F").pose).matrix[:3, 3]
     f_t = template_for(cfg).sample(ts).joint_world["b8"]["F"]
-    trans, rot = track("b8", "translation"), track("b8", "rotation")
+    body, p0 = "b8", f0
+    if tool == "suction_wrist":           # (the bake's branch for a hosted joint)
+        body = "tool_cup"
+        bb = by[body].placed_part().bounding_box()
+        p0 = np.array([bb.center().X, bb.center().Y, bb.center().Z])
+    trans, rot = track(body, "translation"), track(body, "rotation")
     o = np.asarray(tree.joint("q1").origin)
     for k in range(len(ts)):
         x, y, z, w = rot[k]
         r = np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
                       [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
                       [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
-        got = r @ f0 + trans[k]
-        want = rotation((0, 1, 0), [yaw[k]])[0] @ (f_t[k] - o) + o
+        got = r @ p0 + trans[k]
+        want = rotation((0, 1, 0), [yaw[k]])[0] @ (f_t[k] + (p0 - f0) - o) + o
         np.testing.assert_allclose(got, want, atol=1e-2)
     i = names.index("base_top")
     assert not any(c.target.node == i and c.target.path == "rotation" and
                    np.ptp(track("base_top", "rotation"), axis=0).max() > 1e-6
                    for c in g.animations[0].channels)
+
+
+def _xml_fk(root, values: dict[str, float]) -> dict[str, np.ndarray]:
+    """Every link's pose in ``base_link`` (m) from the written URDF alone: each joint's
+    origin (xyz, rpy) then its rotation about its axis by its value (a mimic's from its
+    leader's)."""
+    from spiderpig.kinematics import rotation as rot
+
+    def rpy(r, p_, y):
+        return rot((0, 0, 1), [y])[0] @ rot((0, 1, 0), [p_])[0] @ rot((1, 0, 0), [r])[0]
+
+    joints = list(root.iter("joint"))
+    val = {}
+    for j in joints:
+        mim = j.find("mimic")
+        name = j.get("name")
+        if mim is not None:
+            val[name] = float(mim.get("multiplier")) * values.get(mim.get("joint"), 0.0) + \
+                float(mim.get("offset"))
+        else:
+            val[name] = values.get(name, 0.0)
+    pose = {"base_link": np.eye(4)}
+    pending = joints[:]
+    while pending:
+        for j in list(pending):
+            parent, child = j.find("parent").get("link"), j.find("child").get("link")
+            if parent not in pose:
+                continue
+            o = j.find("origin")
+            m = np.eye(4)
+            m[:3, :3] = rpy(*(float(v) for v in o.get("rpy").split()))
+            m[:3, 3] = [float(v) for v in o.get("xyz").split()]
+            if j.get("type") != "fixed":
+                ax = [float(v) for v in j.find("axis").get("xyz").split()]
+                r = np.eye(4)
+                r[:3, :3] = rot(ax, [val[j.get("name")]])[0]
+                m = m @ r
+            pose[child] = pose[parent] @ m
+            pending.remove(j)
+    return pose
 
 
 @pytest.mark.slow
@@ -313,6 +363,7 @@ def test_the_urdf_moves_as_the_linkage_does(tmp_path):
         assert j.find("parent").get("link") in links
         assert j.find("child").get("link") in links
     assert all((tmp_path / "meshes" / f"{n}.stl").exists() for n in ("b1", "torso", "tool"))
+    assert float(joints["q2"].find("limit").get("effort")) > 1.0     # 0.4 N·m x 5
     m = urdf.model(mech, cfg, 1.0)
     assert m.closures                           # the parallelograms' loops, left to the map
     lk = cfg.lk
@@ -321,9 +372,26 @@ def test_the_urdf_moves_as_the_linkage_does(tmp_path):
     q2, q3 = (np.ravel(g) for g in lk.box(5))
     sol = linkage.LegSolution(1, 0.0, cfg.values, lk.key).at(q2, q3)["F"].reshape(-1, 2)
     o = np.asarray(m.origins["torso"])
+    side = __import__("json").loads(files[1].read_text())
+    to_ros = rotation((1, 0, 0), [math.pi / 2])[0]
     for i in range(len(q2)):
-        for yaw in (0.0, 0.7):
-            pose = urdf.forward(m, {"q2": float(q2[i]), "q3": float(q3[i])}, {"q1": yaw})
+        for yaw, roll in ((0.0, 0.0), (0.7, 1.2)):
+            q = {"q2": float(q2[i]), "q3": float(q3[i])}
+            pose = urdf.forward(m, q, {"q1": yaw, "q4": roll})
             got = (pose["b8"] @ f0)[:3]
             want = rotation((0, 1, 0), [yaw])[0] @ (np.append(sol[i], f0[2]) - o) + o
             np.testing.assert_allclose(got, want, atol=1e-6)
+            # the written XML on its own, its passive joints from the sidecar
+            vals = {n: q[n] - m.zero[n] for n in m.zero} | {"q1": yaw, "q4": roll}
+            for name, j in side["joints"].items():
+                if name not in vals and j["mimic"] is None:
+                    vals[name] = sum(c * vals[k] for k, c in j["coefficients"].items())
+            xml = _xml_fk(root, vals)
+            tip = (pose["tool0"] @ np.append(m.origins["tool0"], 1.0))[:3]
+            np.testing.assert_allclose(xml["tool0"][:3, 3] * 1000.0,
+                                       to_ros @ (tip - m.floor), atol=1e-4)
+            # the wrist turns the cup about its own axis: the tip stays, the frame turns
+            np.testing.assert_allclose(xml["tool0"][:3, :3] @ [0, 1, 0],
+                                       to_ros @ [0, 1, 0], atol=1e-9)
+    turned = _xml_fk(root, {"q4": 1.0})["tool0"][:3, :3]
+    assert not np.allclose(turned, _xml_fk(root, {})["tool0"][:3, :3])
