@@ -114,6 +114,15 @@ def wrist_z(tool: Tool, lo: float, hi: float, floor: float, ceil: float) -> floa
     return min(max((lo + hi) / 2, floor + hz), ceil - hz)
 
 
+def axis_z(plan: ToolPlan, lo: float, hi: float, floor: float, ceil: float) -> float:
+    """The tool's axis across the plane (its cup's centre): the plain cup's holder's middle
+    beside the end plate (``lo..hi``), the wrist's under it (:func:`wrist_z`)."""
+    if plan.tool.wrist:
+        return wrist_z(plan.tool, lo, hi, floor, ceil)
+    face = hi if plan.s > 0 else lo
+    return face + plan.s * plan.tool.width() / 2
+
+
 def _regions(tool: Tool, u: np.ndarray, s: int, lo: float, hi: float, floor: float,
              ceil: float) -> list[tuple[Rect, tuple[float, float]]]:
     """What the tool fills beside an end plate in ``lo..hi``, its tab on side ``s``: the tab
@@ -285,8 +294,7 @@ class ToolMount(Group):
         sk = screw("shcs", "3")
         holes = [f + a * u for a in HOLES_AT]
         rotating: list[str] = []
-        zm = ((tz[0] + tz[1]) / 2 if not tool.wrist
-              else wrist_z(tool, bz0, bz1, build.z(0)[1], build.z(build.top)[0]))
+        zm = axis_z(tp, bz0, bz1, build.z(0)[1], build.z(build.top)[0])
         drop = BLOCK if not tool.wrist else CAP + WALL
         parts = [pill(tuple(f), tuple(f + TAB_L * u), TAB_R, *tz),
                  box((f[0], f[1] - drop / 2), (2 * TAB_R, drop, tz[1] - tz[0]), tz[0])]

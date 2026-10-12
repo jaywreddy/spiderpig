@@ -172,7 +172,7 @@ bracket with `prof.timed("label")`, `prof.bump(...)`, `prof.set_metric(...)`.
 Everything Python is the `spiderpig` package (`pyproject.toml`, hatchling; `uv sync`
 installs it editable). Engine layers, enforced by `lint-imports` (no exceptions): kinematics
 → linkage → stack → construction → fabricate → (sim | stages | urdf) → (bake | build | strength |
-precision | guide) → api → (mcp | server | cli).
+precision | guide) → (api | control) → (mcp | server | cli).
 
 | path | role |
 |---|---|
@@ -197,6 +197,7 @@ precision | guide) → api → (mcp | server | cli).
 | `spiderpig/workers.py` | `submit`: package functions in fresh processes (OCP holds the GIL) |
 | `spiderpig/strength.py` | joint and link safety factors at the sim's loads |
 | `spiderpig/precision.py` | the error budget at the output: pin play through the constraints, levers, tolerances, heat, a turret's yaw and tilt |
+| `spiderpig/control/` | driving an arm: IK/FK (`ArmModel`), steps (`Axis`), homing, calibration, Klipper config, a Moonraker host (`spiderpig control`) |
 | `spiderpig/kinematics/`, `urdf.py` | spatial joints over the side (`RobotTree`: the bake and the URDF read it); an arm's URDF |
 | `spiderpig/walk.py` | quasi-static walk model (`viewer/src/drive/model.ts` is its twin) |
 | `spiderpig/sim/` | MuJoCo: `mjcf.py`, `run.py`, `live.py` (`/ws/sim`), `loads.py` |

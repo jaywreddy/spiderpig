@@ -44,6 +44,8 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
              "serve the viewer for a stored design, no Node needed (prints the URL; --open)"),
     "precision": ("spiderpig.precision",
                   "the error budget at a design's output: joint play, levers, tolerances"),
+    "control": ("spiderpig.control.cli",
+                "an arm's kinematics, steps, homing and Klipper config"),
     "cad": ("spiderpig.tools.cad",
             "bought parts' vendor models: list, import, fetch (McMaster-Carr)"),
 }

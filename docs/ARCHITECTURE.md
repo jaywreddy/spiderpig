@@ -1387,6 +1387,18 @@ robot is an entry rather than an edit across the stages:
   a slip fit with its shoulder, retaining compound), else the laser-cut stack. The BOM buys
   the plate by the piece and notes the machine time; the milled rules join the
   manufacturing check (`manufacture.check`).
+- **Control** (`spiderpig/control/`, `spiderpig control`): an arm driven by steppers on a
+  3D-printer board running Klipper. `control.arm.ArmModel` is the arm's forward and inverse
+  kinematics in the URDF's `base_link` frame (the turntable's angle from the target's
+  bearing, the planar inputs by bounded least squares from a searched start); each joint's
+  angle maps to its motor's microsteps through its transmission's exact ratio and its
+  mounting's sense (`control.mapping.Axis`); homing runs the turntable onto its flag's edge
+  and takes the planar joints' zeros from an angle gauge on their links (their inputs are
+  the links' angles from horizontal), then snaps each motor to its nearest full step;
+  `control.calibrate.fit` fits the link lengths and the zeros to measured poses;
+  `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
+  degrees (its pins left to fill); `control.host` plans straight moves as synchronised joint
+  segments and posts them to Moonraker.
 - **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
   as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
   rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's

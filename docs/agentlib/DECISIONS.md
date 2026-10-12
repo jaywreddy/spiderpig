@@ -553,3 +553,27 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/milling.py`, `spiderpig/fabmethods.py`,
   `spiderpig/hardware/plate_catalog.py`, `spiderpig/construction/rotary/turret.py`
   (`TurretPlan.housing`), `spiderpig/hardware/bom.py` (`milled_stock`).
+
+### 2026-10-12: driving the arm: kinematics, steps, homing, Klipper (phase 6)
+
+- **What:** `spiderpig/control/` and `spiderpig control`: the arm's kinematics in the
+  URDF's frame (`ArmModel`: forward from the linkage and the turret, inverse by the
+  turntable's bearing and bounded least squares on the planar inputs), each joint's steps
+  through its transmission's ratio and its motor's mounting sense (`Axis`), homing (the
+  turntable onto its flag's edge from one side; the planar joints by a digital angle gauge
+  on their links, since the palletizer's inputs are those links' angles from horizontal;
+  then each motor snapped to its nearest full step), a calibration fit of link lengths and
+  zeros to measured poses, a Klipper `printer.cfg` (each joint a manual stepper in
+  joint degrees, TMC2209s, the endstop, the vacuum's pins) and a Moonraker host that
+  streams straight moves as synchronised joint segments.
+- **Why:** Klipper on a 3D-printer board is the cheapest stepper controller with UART
+  drivers and an HTTP API; it has no arm kinematics, so the host does them and each joint
+  moves in its own degrees. The planar joints carry no switch (no hard stop is designed and
+  stall homing would hit the arm's own parallelograms); a gauge on a link reads its input
+  directly, and the calibration refines it.
+- **Open:** a board's pins are placeholders (the user's board decides them); each motor's
+  sense is the design's and a jog checks it; the snap reads the driver's `MSCNT` by
+  `DUMP_TMC`, by hand; a hardware repeatability run (a dial indicator) is the user's test of
+  the precision budget; switches on the planar joints would make homing automatic.
+- **Where:** `spiderpig/control/` (`arm.py`, `mapping.py`, `homing.py`, `calibrate.py`,
+  `klipper.py`, `host.py`, `cli.py`).

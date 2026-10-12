@@ -147,7 +147,7 @@ type = "layers"
 # sits over the sim.
 layers = [
     "spiderpig.mcp : spiderpig.server : spiderpig.cli",
-    "spiderpig.api",
+    "spiderpig.api | spiderpig.control",
     "spiderpig.bake | spiderpig.build | spiderpig.strength | spiderpig.precision | spiderpig.guide",
     "spiderpig.sim | spiderpig.stages | spiderpig.urdf",
     "spiderpig.fabricate",
