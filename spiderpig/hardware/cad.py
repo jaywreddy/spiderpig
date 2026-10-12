@@ -112,7 +112,11 @@ def _good(path: Path, sha: str) -> bool:
 
 
 def cached_path(ref: CadRef) -> Path:
-    """Where the cache keeps ``ref``'s model file."""
+    """Where the cache keeps ``ref``'s model file: by its pinned hash, or (an unpinned
+    vendor model, ``sha256 == ""``) by vendor and part number."""
+    if not ref.sha256:
+        return (cache_dir() / "unpinned" / (ref.vendor or "any")
+                / (ref.part_number or Path(ref.filename).stem) / ref.filename)
     return cache_dir() / ref.sha256[:16] / ref.filename
 
 
@@ -150,6 +154,8 @@ def fetch(ref: CadRef, *, allow_download: bool | None = None,
         allow_download = not offline()
     try:
         path = cached_path(ref)
+        if not ref.sha256:          # unpinned: whatever import_file put there
+            return path if path.is_file() else None
         if _good(path, ref.sha256):
             return path
         if not allow_download or not ref.url:
@@ -256,13 +262,91 @@ def load(ref: CadRef, *, allow_download: bool | None = None):
 
 def import_file(ref: CadRef, src: Path) -> Path:
     """Put a model fetched by other means (a browser, by hand) into the cache as ``ref``'s:
-    the file must match ``ref.sha256``. Returns the cached path; :class:`ValueError` when
-    the file isn't ``ref``'s."""
+    a pinned ref's file must match ``ref.sha256`` (an unpinned one's is taken, and its
+    hash is what the caches key on: :func:`state`). Returns the cached path;
+    :class:`ValueError` when the file isn't ``ref``'s."""
     data = Path(src).read_bytes()
     got = hashlib.sha256(data).hexdigest()
-    if got != ref.sha256.lower():
+    if ref.sha256 and got != ref.sha256.lower():
         raise ValueError(f"{src}: sha256 {got[:16]}... is not {ref.filename}'s pinned "
                          f"{ref.sha256[:16]}...")
+    if not data.lstrip()[:16].upper().startswith(b"ISO-10303-21") and ref.format == "step":
+        raise ValueError(f"{src}: not a STEP file (no ISO-10303-21 header)")
     path = cached_path(ref)
     _write_atomic(path, data)
     return path
+
+
+def state(ref: CadRef) -> tuple[str, str]:
+    """What ``ref``'s model is to the caches: ``("parametric", "")`` when no file is in the
+    cache, else ``("cad", <the file's sha256>)`` (a pinned ref's is its pin; an unpinned
+    one's is read, so a re-imported file re-makes what it shapes)."""
+    path = fetch(ref, allow_download=False)
+    if path is None:
+        return ("parametric", "")
+    return ("cad", ref.sha256.lower() or sha256_file(path))
+
+
+PART_CAD: dict[str, CadRef] = {}
+"""Bought parts' vendor models by catalog key (a catalog data module registers them:
+:mod:`hardware.bearing_catalog`)."""
+
+
+def register_part_cad(key: str, ref: CadRef) -> CadRef:
+    if key in PART_CAD and PART_CAD[key] != ref:
+        raise ValueError(f"part model for {key!r} registered twice")
+    PART_CAD[key] = ref
+    return ref
+
+
+def part_cad(key: str) -> CadRef | None:
+    """The vendor model registered for catalog item ``key`` (loads the catalog)."""
+    from spiderpig.hardware.catalog import _load
+
+    _load()
+    return PART_CAD.get(key)
+
+
+PART_CAD_ENV = "SPIDERPIG_PART_CAD"     # "0" draws every bought part from its catalog dims
+
+
+def part_cad_enabled() -> bool:
+    """``SPIDERPIG_PART_CAD=0`` turns vendors' models of bought parts off (parametric)."""
+    return os.environ.get(PART_CAD_ENV, "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def load_axisymmetric(ref: CadRef, od: float, width: float, tol: float = 0.15):
+    """``ref``'s model of a round part (a bearing, a washer) centred on the origin with its
+    axis along z, its faces at ``z = 0`` and ``z = width``; ``None`` unless the file's
+    bounding box is the catalog's ``od`` x ``od`` x ``width`` within ``tol`` mm in some
+    orientation (a model that isn't the part the catalog says is never used). The axis is
+    the box's odd side; the transform is found, not trusted."""
+    if not part_cad_enabled():
+        return None
+    shape = load(ref, allow_download=False)
+    if shape is None:
+        return None
+    try:
+        from build123d import Location
+
+        bb = shape.bounding_box()
+        size = (bb.size.X, bb.size.Y, bb.size.Z)
+        axis = min(range(3), key=lambda i: abs(size[i] - width))
+        others = [size[i] for i in range(3) if i != axis]
+        if abs(size[axis] - width) > tol or any(abs(o - od) > tol for o in others):
+            log.warning("model %s is %.2f x %.2f x %.2f mm, not the catalog's %g x %g x %g: "
+                        "not used", ref.filename, *size, od, od, width)
+            return None
+        from build123d import Axis
+
+        c = bb.center()
+        moved = shape.moved(Location((-c.X, -c.Y, -c.Z)))
+        if axis == 0:               # the part's axis along x: turn it onto z about y
+            moved = moved.rotate(Axis.Y, 90.0)
+        elif axis == 1:             # along y: onto z about x
+            moved = moved.rotate(Axis.X, 90.0)
+        return moved.moved(Location((0, 0, width / 2)))
+    # an OCCT failure on a vendor's file: draw the part from the catalog instead
+    except Exception as e:  # noqa: BLE001
+        log.warning("model %s couldn't be placed: %s", ref.filename, e)
+        return None

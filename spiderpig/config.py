@@ -109,8 +109,11 @@ REMOVED_CONSTRUCTIONS: dict[str, dict[str, tuple[str, str, str]]] = {
         "bolt_hub_screw": ("bolt", REMOVED, "the hex crank screwed over its hub plate"),
         "bolt_unretained": ("bolt", REMOVED, "the hex crank without its thrust sleeves"),
     },
-    "pin": {k: ("chicago", REMOVED, w) for k, w in _PIVOTS_GONE.items() if "standoff" not in k},
-    "pillar": {k: ("standoff", REMOVED, w) for k, w in _PIVOTS_GONE.items()
+    # the removed MF63ZZ "bearing" pivot's replacement is the ball pivot (2026-10-11)
+    "pin": {k: ("ball" if k == "bearing" else "chicago", REMOVED, w)
+            for k, w in _PIVOTS_GONE.items() if "standoff" not in k},
+    "pillar": {k: ("ball_pillar" if k == "bearing" else "standoff", REMOVED, w)
+               for k, w in _PIVOTS_GONE.items()
                if k not in ("ptfe", "chicago_bushing")},          # (those two: pins only)
 }
 """Construction keys removed from :mod:`construction` (D1, W2), per :class:`BuildConfig`

@@ -23,14 +23,16 @@ from spiderpig.failure import Failure
 from spiderpig.spec import SpecErrors
 from spiderpig.store import Store
 
-KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago"}, "pillar": {"standoff"}}
+KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago", "ball"},
+        "pillar": {"standoff", "ball_pillar"}}
 
 REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table]
 
 
 def test_the_registries_are_the_kept_constructions():
     """D1: the cranks ``bolt`` and ``bolt_round``, the ``chicago`` pin, the one-piece
-    ``standoff`` pillar; no removed key is registered, every replacement is."""
+    ``standoff`` pillar, and since 2026-10-11 the ball-bearing pivots (the removed MF63ZZ
+    ``bearing``'s replacement); no removed key is registered, every replacement is."""
     assert set(construction.CRANKS) == KEPT["crank"]
     assert set(construction.AXLES) == KEPT["pin"] | KEPT["pillar"]
     for field, table in REMOVED_CONSTRUCTIONS.items():

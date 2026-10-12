@@ -149,6 +149,27 @@ def servo_state(config) -> tuple:
     return ("cad", present, state)
 
 
+def parts_cad_state(config) -> tuple:
+    """What decides the bought parts' models (:data:`hardware.cad.PART_CAD`) the config's
+    constructions draw (their ``cad_keys``): each one's :func:`hardware.cad.state` (the
+    cached file's hash, or parametric), all parametric under ``SPIDERPIG_PART_CAD=0``;
+    ``()`` when they draw none (every default design: its entries keep their names)."""
+    from spiderpig import construction
+    from spiderpig.hardware import cad
+
+    keys: list[str] = []
+    for key in {config.pin, config.pillar}:
+        keys += getattr(construction.AXLES.get(key), "cad_keys", ())
+    if not keys:
+        return ()
+    on = cad.part_cad_enabled()
+    out = []
+    for k in sorted(set(keys)):
+        ref = cad.part_cad(k)
+        out.append((k, cad.state(ref) if on and ref is not None else ("parametric", "")))
+    return tuple(out)
+
+
 def plan_fingerprint(plan) -> str:
     """Everything of a plan a fabrication reads: the layers, the top, the routes, how the
     heads were placed, the gaps, the thicknesses, the sunk heads and the planner's spec
@@ -174,8 +195,9 @@ def entry_name(tmpl, config, design, t: float) -> str:
     from spiderpig.fabricate import _key
 
     kind = "robot" if config.robot else "side"
+    parts = parts_cad_state(config)
     doc = repr((_key(tmpl, config), bool(config.robot), float(t),
-                plan_fingerprint(design.plan), servo_state(config)))
+                plan_fingerprint(design.plan), servo_state(config)) + ((parts,) if parts else ()))
     h = hashlib.sha256(doc.encode()).hexdigest()[:16]
     return slug(f"{config.key}_{kind}_t{float(t)!r}_{h}")
 

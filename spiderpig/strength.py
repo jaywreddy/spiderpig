@@ -391,9 +391,12 @@ def _alt_sections(kind: str, note: dict) -> list[tuple[str, Section]]:
     screw's barrel for a pin, the goBILDA standoff for a pillar, ...)."""
     from spiderpig import construction
 
-    out = [(f"--{kind} {key}", c.section()) for key, c in construction.AXLES.items()
-           if kind in getattr(c, "roles", ()) and hasattr(c, "section")]
-    return [(k, s) for k, s in out if s.name != note["section"]["name"]]
+    out: dict[str, tuple[str, Section]] = {}     # one per section: the first that builds it
+    for key, c in construction.AXLES.items():
+        if kind in getattr(c, "roles", ()) and hasattr(c, "section"):
+            s = c.section()
+            out.setdefault(s.name, (f"--{kind} {key}", s))
+    return [v for name, v in out.items() if name != note["section"]["name"]]
 
 
 def materials_sheet(key: str):

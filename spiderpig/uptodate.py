@@ -52,7 +52,8 @@ GENERATED = (".dxf", ".stl", ".csv")
 their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``)."""
 
 TOP_OUTPUTS = ("ORDER.md", "bom.csv", "bom.md", "bom.json")
-CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE")
+CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE",
+           "SPIDERPIG_PART_CAD")
 _OURS = ("--out", "--store", "--force")
 STORE_ENV, DEFAULT_ROOT = "SPIDERPIG_STORE", ".spiderpig"
 """:mod:`spiderpig.store`'s (that module imports the engine; ``tests/test_uptodate.py``
@@ -248,8 +249,14 @@ def inputs(opts: Options, config) -> dict:
 
     plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
                       store=None).id
-    return {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
-            "cad_env": cad_env(), "servo_files": servo_files(config)}
+    out = {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
+           "cad_env": cad_env(), "servo_files": servo_files(config)}
+    from spiderpig.fabcache import parts_cad_state
+
+    parts = parts_cad_state(config)
+    if parts:           # (a design drawing no bought part's model: the record as it was)
+        out["part_files"] = [list(p) for p in parts]
+    return out
 
 
 def record_path(opts: Options) -> Path:

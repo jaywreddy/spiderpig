@@ -1320,6 +1320,10 @@ robot is an entry rather than an edit across the stages:
   the catalog's dimensions, never the model.
 - **Material constants** (`hardware/mass.py`): `MODULUS_GPA` and `CTE_UM_PER_M_K` beside
   the density table; `materials.Sheet` carries both.
+- **Ball-bearing pivots** (`construction/pivots/ball.py`): `ball` (pins) and `ball_pillar`
+  (pillars) seat a shielded bearing in each link that turns on the axle (`AxleDims.seat`:
+  the bore the bearing fills); their play is the bearing's, their models McMaster-Carr's
+  through `spiderpig cad` (`spiderpig/tools/cad.py`), else drawn from the catalog.
 
 ## 7. Outputs: stage 6
 

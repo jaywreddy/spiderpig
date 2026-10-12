@@ -418,3 +418,26 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** each change's gate diff in [BOM-gate-diffs.md](BOM-gate-diffs.md); the gate
   baseline is `bom2-5989d50` (after the review and the merge; `bom-bbf7001` before). Also fixed: the crank router raised IndexError when no screw
   length fits any crank joint (`route._ranges`); it is now a planner blocker.
+
+### 2026-10-11: the platform registries; ball-bearing pivots back (user; the robot-arm workstream)
+
+- **What:** the engine becomes an extensible robot design system (a desktop palletizer arm
+  is its first new robot). Phase 0 adds the registries: fab methods, construction roles
+  (`BuildConfig.roles`, per design or per drive / joint), vendor CAD for every bought part,
+  joint error terms, material stiffness and expansion. Phase 1 brings ball bearings back as
+  swappable joinery: `--pin ball` (an MR84ZZ bonded into every rider link of the Chicago
+  pin) and `--pillar ball_pillar` (an MR106ZZ in every link on the standoff; `link_radius`
+  6.6 mm). The removed MF63ZZ `bearing` key now names `ball` / `ball_pillar` as its
+  replacement. The defaults stay `chicago` / `standoff` (the walkers are unchanged).
+- **Why:** an arm's precision is its joints' play: a plain hole is 0.2-0.35 mm of diametral
+  clearance, a bearing on the barrel 0.06 (the barrel's fit plus ISO 5753-1 CN). The user
+  asked for bearings as one of the swappable joinery types, with McMaster-Carr's CAD.
+- **McMaster CAD:** McMaster shows its catalog only to a logged-in browser; a scripted
+  session gets a login wall, and getting around it is not done. So the models come through
+  the user's own session (`spiderpig cad login`, then `fetch`), McMaster's Product
+  Information API (an approved customer's certificate: `api-fetch`), or a file downloaded
+  by hand (`cad import`); never committed. The bearings' McMaster offers point at the
+  trade-number listings, unpriced, until such a fetch confirms a part number.
+- **Where:** `spiderpig/roles.py`, `spiderpig/fabmethods.py`, `spiderpig/hardware/cad.py`,
+  `spiderpig/construction/joints.py`, `spiderpig/construction/pivots/ball.py`,
+  `spiderpig/hardware/bearing_catalog.py`, `spiderpig/tools/cad.py`.

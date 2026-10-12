@@ -179,8 +179,8 @@ def test_a_role_is_refused_where_it_does_not_apply(toy_role, monkeypatch):
 
 
 def test_choices_keep_the_constructions_that_serve_the_role():
-    assert rolemod.choices("pin") == ["chicago"]           # standoff serves pillars only
-    assert rolemod.choices("pillar") == ["standoff"]
+    assert rolemod.choices("pin") == ["ball", "chicago"]   # the pillars' don't serve pins
+    assert rolemod.choices("pillar") == ["ball_pillar", "standoff"]
 
 
 def test_a_later_role_round_trips_through_the_spec(toy_role):

@@ -1,10 +1,11 @@
 """Pivot constructions on purchased metal shafts: the pillars' and the link pins'.
 
 Registered in :data:`construction.AXLES` and picked with ``BuildConfig.pillar`` /
-``.pin``: ``--pillar standoff --pin chicago``, the only two since 2026-10-07 (the user's
-decision D1: the printed, rod, bolt, PTFE-lined, bearing, bushing and spliced pivots were
-removed; :data:`config.REMOVED_CONSTRUCTIONS` names each one's replacement, and the pivot
-review that chose these two is in :mod:`construction.pivots.chicago`'s docstring). Every
+``.pin``: ``--pillar standoff --pin chicago`` by default; the ball-bearing pivots
+``ball`` / ``ball_pillar`` since 2026-10-11 (the robot-arm workstream). The user's
+decision D1 of 2026-10-07 removed the printed, rod, bolt, PTFE-lined, bearing, bushing and
+spliced pivots (:data:`config.REMOVED_CONSTRUCTIONS` names each one's replacement; the
+pivot review that chose chicago and standoff is in :mod:`construction.pivots.chicago`). Every
 construction reports its links' tilt (:mod:`construction.wobble`).
 
 ==================  ================================================================
@@ -18,6 +19,10 @@ key                 construction
 ``chicago``         the pin: an M3 Chicago screw (4 mm barrel through the stack),
                     printed rings and a printed head spacer per end, lowest link
                     bonded to the barrel; pins only (:mod:`construction.pivots.chicago`)
+``ball``            the Chicago pin with an MR84ZZ ball bearing bonded into every link
+                    but the host (:mod:`construction.pivots.ball`, 2026-10-11)
+``ball_pillar``     the standoff pillar with an MR106ZZ bearing bonded into every link on
+                    it (link_radius 6.6 mm)
 ==================  ================================================================
 
 Every pivot's spacer rings and gap rings are printed (:func:`common.gap_washers`): an
@@ -33,7 +38,8 @@ the planner as unbuildable, with the link in the way.
 
 from __future__ import annotations
 
+from spiderpig.construction.pivots.ball import BallAxle, BallPillar
 from spiderpig.construction.pivots.chicago import ChicagoAxle
 from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (ChicagoAxle(), StandoffAxle())
+PIVOTS = (ChicagoAxle(), StandoffAxle(), BallAxle(), BallPillar())

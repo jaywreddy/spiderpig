@@ -48,6 +48,10 @@ class AxleDims:
     # the radius of the washers the axle carries through a clearance gap it crosses
     # (0: ``spacer``)
     washer: float = 0.0
+    # the radius it claims in its own links' layers (0: ``axle``): what sits in a link's
+    # bore beyond the shaft (a ball bearing bonded in: construction.pivots.ball); a
+    # shoulder still only has to overlap the shaft's hole to hold the link
+    seat: float = 0.0
 
 
 End = tuple[str, float]     # (label, radius) of one layer claimed beyond an axle's end
@@ -117,8 +121,8 @@ class AxleGroup(Group):
         p = ctx.params
         geo = ctx.topo.geometry
         ax, g, members = self.axis.name, self.name, self.axis.members
-        seat = d.axle
-        stop = p.hole(2 * seat) / 2 + STOP_OVERLAP       # a shoulder this wide holds a link
+        seat = d.seat or d.axle
+        stop = p.hole(2 * d.axle) / 2 + STOP_OVERLAP     # a shoulder this wide holds a link
         room: dict[str, float] = {}                      # link -> radius free around the axle
         for n, segs in ctx.topo.links.items():
             if n in members:
@@ -241,7 +245,8 @@ class AxleGroup(Group):
             mset = set(ms)
             lo, hi = ms[0], ms[-1]
             beside = {k for m in ms for k in (m - 1, m + 1)}
-            out = [Placed(k, Disc(ax, d.axle), g, f"{g} axle", seat=True) for k in ms]
+            out = [Placed(k, Disc(ax, d.seat or d.axle), g, f"{g} axle", seat=True)
+                   for k in ms]
             h_lo, h_hi = d.end_h
             for k in range(lo - 1, hi + 2):
                 if k in mset or (self.pillar and k in (0, L.top)):

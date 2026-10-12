@@ -61,7 +61,9 @@ robot; a mechanism's `single`, one side).
 
 - `BuildConfig()` is `linkage.DEFAULT` (Strider) in its `default_module`, the double robot,
   on the STS3215 servo.
-- Constructions: `--pin chicago --pillar standoff --crank bolt`. The `bolt` crank is single
+- Constructions: `--pin chicago --pillar standoff --crank bolt` (the ball-bearing pivots
+  `--pin ball` / `--pillar ball_pillar` are swappable in; their McMaster models: `spiderpig
+  cad`). The `bolt` crank is single
   aluminium web plates on steel hex-standoff crankpins (`construction/crank/`); `bolt_round`
   is the round friction-clamped standoff. Nothing else exists (`config.REMOVED_CONSTRUCTIONS`,
   `config.REMOVED_PARAMS`: a removed key fails with its replacement).
