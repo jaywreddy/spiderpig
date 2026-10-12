@@ -12,7 +12,9 @@
   with the upper arm under 90 deg (a gauge reads 0..90), the gauge zeroed on the base reads
   the upper arm (``q2``) and the forearm (``q3``: it keeps that direction), and those
   readings set the joints' zeros at the motors' counts there (:func:`set_from_gauge`). A
-  gauge's 0.05-0.1 deg is the zero's error until :mod:`.calibrate` refines it.
+  gauge's 0.05-0.1 deg is the zero's error until :mod:`.calibrate` refines it; an
+  inclinometer on each link (:mod:`.incline`, the role ``angle_sensor``) reads the same
+  angles by itself, to about 0.02 deg.
 * **The phase** (:func:`phase_move`): a switch's trigger wanders by a fraction of a step
   from homing to homing; the motor's driver counts its microstep phase (a TMC2209's
   ``MSCNT``, 1024 a turn of four full steps). The first homing records the phase at the
@@ -39,24 +41,37 @@ class HomingStep:
     action: str
 
 
-def plan(axes: dict[str, Axis]) -> list[HomingStep]:
-    """The homing sequence of ``axes`` (module docstring)."""
+def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None,
+         phase: bool = True) -> list[HomingStep]:
+    """The homing sequence of ``axes`` (module docstring). ``sensors``: each planar
+    input's angle sensor (:mod:`actuators.sensors`; ``gauge`` when not named); ``phase``:
+    the turntable's homing snaps to its driver's phase (a toothed drive: a belt's; not a
+    capstan's, whose cord may slip against the motor, which the snap would hide)."""
+    sensors = sensors or {}
     out: list[HomingStep] = []
     if "q1" in axes:
         out += [HomingStep("q1", "read the endstop: blocked, turn positive until it clears; "
                                  "clear, turn negative until it blocks"),
                 HomingStep("q1", "back off 2 deg, then approach again at a tenth of the speed "
                                  "from the same side until the beam changes"),
-                HomingStep("q1", "read the driver's phase (DUMP_TMC STEPPER=q1 "
-                                 "REGISTER=MSCNT): the first time, record it as the reference; "
-                                 "after, move to the nearest place with the reference phase"),
+                *([HomingStep("q1", "read the driver's phase (DUMP_TMC STEPPER=q1 "
+                                    "REGISTER=MSCNT): the first time, record it as the "
+                                    "reference; after, move to the nearest place with the "
+                                    "reference phase")] if phase else []),
                 HomingStep("q1", "that is yaw 0")]
     planar = [n for n in axes if n not in ("q1", "q4")]
-    if planar:
-        out.append(HomingStep(",".join(planar), "energise the motors (they hold), jog the arm "
+    gauged = [n for n in planar if sensors.get(n, "gauge") == "gauge"]
+    sensed = [n for n in planar if n not in gauged]
+    if gauged:
+        out.append(HomingStep(",".join(gauged), "energise the motors (they hold), jog the arm "
                               "to a pose with the upper arm under 90 deg; zero a digital "
                               "angle gauge on the base, read it on the upper arm (q2) and on "
                               "the forearm (q3); enter each with the motor's count there"))
+    if sensed:
+        out.append(HomingStep(",".join(sensed), "energise the motors (they hold), let the arm "
+                              "settle; read each link's inclinometer for half a second "
+                              "(spiderpig.control.incline, its assembly offset taken off) and "
+                              "set the joint's zero at the motor's count there"))
     if "q4" in axes:
         out.append(HomingStep("q4", "jog the cup to its mark: that is roll 0"))
     return out

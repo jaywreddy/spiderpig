@@ -638,3 +638,78 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   3 mm bearing's, ~1.5 deg free; a plain hole's) does not reach the tool
   (`precision.joint_clearances`). The bore-on-shaft gaps (0.05 / 0.03 mm) are assumed.
 - **Where:** `spiderpig/config.py`, `spiderpig/roles.py`, `spiderpig/stages/resolve.py`.
+
+### 2026-10-12: tilt in the budget; preloaded ball pairs (round 1 of the arm's precision review)
+
+- **Decision:** the error budget counts each link's tilt and end float out of the plane
+  (`precision.out_of_plane`: a linear programme over the bodies' rise and tilts, the loops
+  counted, each column's float shared by its links; added to the in-plane total in
+  quadrature), from the fabricated side's wobble notes. New pivots `ball_pair` /
+  `ball_pair_pillar` (`construction/pivots/pair.py`): each rider's bearing paired with an
+  open one in a hub laser-cut from the link's sheet and bonded to its face, in the spacer
+  layer beside it (the column's ring replaced; every spacer layer claims the hub's radius);
+  the column clamped through the inner rings by a DIN 2093 disc spring, so no end float. A
+  link with no free neighbour layer keeps one preloaded bearing.
+- **Why:** the user asked for iterative fixes against the field, weakest link first. With
+  tilt counted, the ball pivots' links (about 1.4 deg each) put the tool 10.9 mm out of the
+  plane, the largest term by far. Thick (6.35 mm) aluminium links with the pair inside were
+  tried first: the planner padded the stack to 54 layers (a thick link thickens its layer,
+  the drives' shafts stop reaching their hubs, and a rejected leaf teaches the search
+  nothing), so the pair went beside the link instead, as the MT4 puts thickness at the joint.
+- **Result (palletizer, belts):** out of the plane 10.85 -> 0.70 mm; 7 of 10 riders paired
+  (R, U and W single: their neighbour layers are taken); the plan unchanged in size.
+- **Open:** the pair's 0.02 deg tilt and the bore-on-shaft gaps are estimates; the rings'
+  inner-ring land is drawn as the plain ring; the planner can't yet place a link to give it a
+  hub, nor plan thick links well (`plan_z` thickness at search time, nogoods on leaf
+  rejections).
+- **Where:** `spiderpig/precision.py`, `spiderpig/construction/pivots/pair.py`,
+  `spiderpig/hardware/bearing_catalog.py`, `spiderpig/hardware/fastener_catalog.py`.
+
+### 2026-10-12: ground shafts under the ball pairs (round 2 of the arm's precision review)
+
+- **Decision:** `ball_pair` runs on a ground 4 mm g6 pin cut to length (`pair.GroundShaft`,
+  0.5 mm steps, an M2 socket head and a 2.2 x 5 washer at each end, the disc spring under
+  the top one, the host bonded to it as to a Chicago barrel), and `ball_pair_pillar` always
+  on the one-piece 6 mm steel shaft, ordered ground: the bearings' bore-on-shaft gap 12 um
+  at worst (`pair.GROUND_FIT`) where the Chicago barrel's was taken at 50 um and the goBILDA
+  standoff's at 30.
+- **Why:** with the tilt fixed, the in-plane joint play (1.25 mm) was the largest class,
+  every pin's gap multiplied by the elbow-drive parallelogram's gains (9 at O and E, 7 at C
+  and R). No precise arm runs bearings on a screw's barrel: the MT4's pairs ride 6 mm
+  shafts with M4-tapped ends.
+- **Result (palletizer, belts):** in-plane joint play 1.25 -> 0.39 mm; repeatability 2.37
+  -> 1.56 mm. The round-1 docstring's claim that a single bearing is preloaded was wrong
+  (rings on the inner ring only pass the spring's load inner ring to inner ring); its
+  numbers already counted it unloaded.
+- **Open:** the ground pin's M2-tapped ends on a 4 mm shaft and its price are unverified at
+  MISUMI; the disc spring's setting (0.25 mm of travel, set by 0.1 mm shims) is coarse; the
+  pairs' 0.02 deg against the pins' couples from `sim/loads.py` is unchecked.
+- **The hub rule (round 3's first finding):** which riders got a hub was the layering's
+  luck (with capstans, U, V, E and W lost theirs: out of the plane 1.45 mm). The pair
+  pivots now hold the planner to it (`pair.hub_layers` through the axle's `column` hook,
+  which `construction.axle` now passes the column's own links, each layer's room and the
+  spacer radius): every rider needs a free spacer layer beside it with the hub's room, one
+  hub a layer, the lower side first, as `PairSeat.hubs` builds them. Belts: 18 layers,
+  repeatability 1.41 mm; capstans and the preloaded capstan turntable: 22 layers, 0.50 mm.
+
+### 2026-10-12: an inclinometer on each arm link (round 3 of the arm's precision review)
+
+- **Decision:** a role `angle_sensor` (per drive; `actuators.sensors.ANGLE_SENSORS`): `gauge`
+  (the default: a digital angle gauge laid on each link by hand at homing, 0.05 deg) or
+  `scl3300` (a Murata SCL3300-D01 inclinometer bonded to the link, its two in-plane axes'
+  `atan2` averaged half a second at rest, 0.02 deg over a few kelvin of offset drift). The
+  budget now counts each planar input's homing (`InputBudget.homing_mm`: the sensor's
+  angle through the input's lever), which it had left out; the drive buys the sensor; the
+  host reads it over SPI (`control.incline`: the datasheet's frames and CRC, the off-frame
+  protocol), and `control.homing.plan` reads the inclinometers instead of the gauge and
+  skips the phase snap on a capstan turntable (its cord may slip against the motor).
+- **Why:** with the pivots and drives fixed, the review found the largest real term
+  outside the budget: the gauge's zero at every power-up, 0.11-0.26 mm per joint through
+  the 130 / 150 mm levers. The Dobot Magician reads its arms' angles from accelerometers in
+  the links; an AS5048 can't sit on the shoulder's pillar (two coaxial inputs, no shaft
+  end). Read at rest before each final approach, the sensors also take out a capstan's
+  creep and the drives' sag.
+- **Open (the review's):** printed rings in the preload path creep under 35 N (metal lands
+  at E, O, C and R); a g6 shaft can be 4 um tight in a bore (check each bearing slides);
+  Dyneema SK creeps (DM20 or Vectran); the C8 spring's seats; the inclinometer's mounting
+  offset and drift are datasheet figures; no SPI driver in Klipper (the host reads it).

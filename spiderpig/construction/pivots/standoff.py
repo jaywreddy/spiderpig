@@ -352,7 +352,8 @@ class StandoffAxle:
         return any(fits(sp) for n in range(1, 4) for sp in itertools.combinations(cand, n))
 
     def column(self, pillar: bool, links: list[int], top: int,
-               anchored: tuple[bool, bool], pitch: float, layout=None, air=None) -> None:
+               anchored: tuple[bool, bool], pitch: float, layout=None, air=None,
+               **_) -> None:
         """The planner's rule: a standoff must fill the column (at the plan's own z when
         ``layout`` is final)."""
         lo, hi = self.faces(links, top, anchored)

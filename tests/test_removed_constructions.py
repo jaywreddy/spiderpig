@@ -23,8 +23,8 @@ from spiderpig.failure import Failure
 from spiderpig.spec import SpecErrors
 from spiderpig.store import Store
 
-KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago", "ball"},
-        "pillar": {"standoff", "ball_pillar"}}
+KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago", "ball", "ball_pair"},
+        "pillar": {"standoff", "ball_pillar", "ball_pair_pillar"}}
 
 REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table]
 

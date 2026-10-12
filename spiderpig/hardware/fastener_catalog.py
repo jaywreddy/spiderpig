@@ -49,6 +49,57 @@ for _L in CHICAGO_LENGTHS:
               "are domed at the rim: measure a sample. McMaster sells no M3 (M4 and up).",
     ))
 
+DISC_SPRINGS = {
+    # key: (OD, ID, material t, free height h0, load at 75 % of h0 - t (N, estimate))
+    "disc_spring_din2093_c8": (8.0, 4.2, 0.2, 0.45, 39.0),
+    "disc_spring_din2093_c12p5": (12.5, 6.2, 0.35, 0.8, 115.0),
+}
+"""DIN 2093 series C disc springs: the preload of a ball pair's column
+(:mod:`construction.pivots.pair`): the C8 on a 4 mm barrel, the C12.5 on a 6 mm standoff,
+compressed by the shims under them to the column's preload. Loads are DIN 2093's nominal
+for the series (estimates: confirm at the vendor's table)."""
+
+for _k, (_od, _id, _t, _h0, _f) in DISC_SPRINGS.items():
+    register(Item(
+        _k, f"DIN 2093 series C disc spring {_od:g} x {_id:g} x {_t:g} mm", "spring",
+        (Offer("Amazon", f"https://www.amazon.com/s?k=DIN+2093+disc+spring+{_od:g}x{_id:g}",
+               pack_qty=10, price_usd=8.0, note="search; packs of 10-20, an estimate"),
+         Offer("McMaster-Carr", "https://www.mcmaster.com/metric-belleville-springs",
+               note=f"metric Belleville (disc) springs {_id:g} mm ID; part number not "
+                    "confirmed")),
+        # "t": its installed height with a 0.1 mm shim over it (the slot a ground pin's
+        # end keeps for it: construction.pivots.pair.GroundShaft)
+        dims={"od": _od, "id": _id, "t_mat": _t, "h0": _h0, "load_n": _f,
+              "t": round(_t + 0.25 * (_h0 - _t) + 0.1 + 0.15, 2)},
+        notes=f"About {_f:g} N at 75 % of its {_h0 - _t:.2f} mm travel (DIN 2093 series C, "
+              "an estimate)."))
+
+GROUND_LENGTHS = tuple(round(5.0 + 0.5 * i, 1) for i in range(111))
+"""The ground pin's lengths (mm): cut to order in 0.5 mm steps (5 to 60)."""
+
+
+def ground_pin(length: float) -> str:
+    return f"shaft_g6_4mm_{length:g}"
+
+
+for _L in GROUND_LENGTHS:
+    register(Item(
+        ground_pin(_L), f"Ground shaft 4 mm g6 x {_L:g} mm, both ends tapped M2", "fastener",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/selector/rotary-shafts/"
+               "tapped-rotary-shafts", price_usd=6.0,
+               note="rotary shaft, one or both ends tapped, length to order; whether a 4 mm "
+                    "shaft takes M2 both ends and the price are estimates (unverified)"),),
+        dims={"thread": 2.0, "barrel_d": 4.0, "head_d": 5.0, "head_h": 2.3,
+              "screw_head_h": 2.3, "length": float(_L), "tolerance": "g6 (-4/-12 um)"},
+        notes="The pin of a preloaded ball pair (construction.pivots.pair): an M2 x 4 socket "
+              "head and a 2.2 x 5 washer at each end (head 2.0 + washer 0.3 mm); the "
+              "washer's rim holds the stack, on the inner rings' land."))
+
+register(Item("m2_washer_din125", "DIN 125 flat washer M2 (2.2 x 5 x 0.3 mm)", "washer",
+              (Offer("Amazon", "https://www.amazon.com/s?k=M2+flat+washer+DIN+125",
+                     pack_qty=100, price_usd=6.0, note="search; an estimate"),),
+              dims={"id": 2.2, "od": 5.0, "t": 0.3}))
+
 register(
     Item("ptfe_washer_4x8x0p5", "PTFE flat washer 4.2 x 7 x 0.5 mm", "washer",
          (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",

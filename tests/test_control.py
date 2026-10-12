@@ -232,3 +232,40 @@ def test_the_forward_kinematics_is_where_the_fabricated_cup_is():
         pose = forward(u, {n: q[n] for n in model.inputs}, {"q1": q["q1"]})
         tip = (pose["tool0"] @ np.append(u.origins["tool0"], 1.0))[:3]
         np.testing.assert_allclose(model.to_base(tip), model.fk(q), atol=1e-6)
+
+
+def test_an_inclinometer_reads_its_links_angle_off_frame():
+    """The SCL3300's frames (the datasheet's codes carry their own CRCs), an answer frame
+    decoded, and a fake sensor at 30 deg read through the off-frame protocol: each
+    request's answer arrives with the next one."""
+    from spiderpig.control import incline
+
+    for word in (incline.READ_ACC_X, incline.READ_ACC_Y, incline.READ_STATUS,
+                 incline.SW_RESET, incline.MODE_4, incline.READ_WHOAMI):
+        assert incline.frame(word >> 24, (word >> 8) & 0xFFFF) == word
+    theta = math.radians(30.0)
+    raw = {incline.READ_ACC_X: round(12000 * math.sin(theta)) & 0xFFFF,
+           incline.READ_ACC_Y: round(12000 * math.cos(theta)) & 0xFFFF,
+           incline.READ_STATUS: 0, incline.READ_WHOAMI: incline.WHOAMI}
+    last = [None]
+
+    def xfer(word: int) -> int:       # answers the previous request, status RS = 01
+        prev, last[0] = last[0], word
+        data = raw.get(prev, 0)
+        op = ((prev or 0) >> 24) & 0x3F
+        return incline.frame((1 << 6) | op, data)
+
+    s = incline.SCL3300(xfer, offset_deg=incline.offset_from_gauge(30.4, 30.0))
+    s.start(sleep=lambda _: None)
+    assert s.angle(seconds=0.05, sleep=lambda _: None) == pytest.approx(29.6, abs=0.01)
+    with pytest.raises(incline.FrameError):
+        incline.decode(incline.frame(0x40, 1) ^ 1)        # a flipped bit: bad CRC
+
+
+def test_homing_reads_the_inclinometers_and_skips_a_capstans_phase():
+    a = Axis("q2", 5.0, 1.8, 16, -1)
+    steps = homing.plan({"q1": a, "q2": a, "q3": a}, {"q2": "scl3300", "q3": "gauge"},
+                        phase=False)
+    assert not any("MSCNT" in s.action for s in steps)
+    assert any(s.axis == "q2" and "inclinometer" in s.action for s in steps)
+    assert any(s.axis == "q3" and "gauge" in s.action for s in steps)

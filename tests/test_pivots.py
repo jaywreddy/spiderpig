@@ -30,7 +30,7 @@ from spiderpig.stack import verify_plan
 from tests import cache
 from tests._construction import overlapping_pairs
 
-KEYS = ("chicago", "standoff", "ball", "ball_pillar")
+KEYS = ("chicago", "standoff", "ball", "ball_pillar", "ball_pair", "ball_pair_pillar")
 T = 1.0
 
 

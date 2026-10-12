@@ -179,8 +179,8 @@ def test_a_role_is_refused_where_it_does_not_apply(toy_role, monkeypatch):
 
 
 def test_choices_keep_the_constructions_that_serve_the_role():
-    assert rolemod.choices("pin") == ["ball", "chicago"]   # the pillars' don't serve pins
-    assert rolemod.choices("pillar") == ["ball_pillar", "standoff"]
+    assert rolemod.choices("pin") == ["ball", "ball_pair", "chicago"]   # (no pillars)
+    assert rolemod.choices("pillar") == ["ball_pair_pillar", "ball_pillar", "standoff"]
 
 
 def test_a_later_role_round_trips_through_the_spec(toy_role):
@@ -376,8 +376,11 @@ def test_the_strength_alternatives_are_the_registered_sections():
     from spiderpig.strength import _alt_sections
 
     pin = _alt_sections("pin", {"section": {"name": "something else"}})
-    assert [(k, s.name) for k, s in pin] == [("--pin chicago", "chicago barrel 4 x 3 tube")]
+    assert [(k, s.name) for k, s in pin] == [("--pin chicago", "chicago barrel 4 x 3 tube"),
+                                             ("--pin ball_pair", "ground shaft 4 mm g6")]
     pillar = _alt_sections("pillar", {"section": {"name": "something else"}})
     assert [k for k, _ in pillar] == ["--pillar standoff"]
-    assert _alt_sections("pin", {"section": {"name": "chicago barrel 4 x 3 tube"}}) == []
+    # (the pin's own section isn't an alternative to itself)
+    assert [k for k, _ in _alt_sections("pin", {"section": {
+        "name": "chicago barrel 4 x 3 tube"}})] == ["--pin ball_pair"]
 

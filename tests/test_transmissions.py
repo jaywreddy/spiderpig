@@ -178,8 +178,10 @@ def test_the_drives_join_the_precision_budget():
     assert set(belt_r.inputs) == {"q2", "q3"}
     assert belt_r.inputs["q2"].backlash_mm > cap_r.inputs["q2"].backlash_mm == 0.0
     assert cap_r.inputs["q2"].resolution_mm < belt_r.inputs["q2"].resolution_mm
-    assert belt_r.repeatability_mm == pytest.approx(
-        belt_r.plays.worst_mm + sum(b.backlash_mm for b in belt_r.inputs.values()))
+    planar = belt_r.plays.worst_mm + sum(b.backlash_mm for b in belt_r.inputs.values())
+    assert belt_r.out_of_plane_mm > 0          # the links' tilt, across the plane
+    assert belt_r.repeatability_mm == pytest.approx(math.hypot(planar,
+                                                               belt_r.out_of_plane_mm))
     assert not any("no transmission" in n for n in belt_r.notes)
 
 
@@ -256,3 +258,18 @@ def test_the_capstan_arms_parts_meet_only_where_they_thread_and_its_drum_holds()
     walk = hub.travel_deg / 360 * hub.ratio
     assert core * design.ctx.pitch >= (WRAPS + walk) * CORD_PITCH
 
+
+
+@pytest.mark.no_fabricate
+def test_an_inclinometer_homes_a_joint_finer_than_the_gauge():
+    from spiderpig.precision import drive_budgets, levers
+
+    cfg = _arm()
+    sensed = _arm(roles=(("angle_sensor@q2", "scl3300"),))
+    _, design = cache.cached_design(cfg)
+    lev = levers(cfg.lk, cfg.values)
+    gauge = drive_budgets(cfg, design, lev, 50.0)
+    inc = drive_budgets(sensed, design, lev, 50.0)
+    assert gauge["q2"].homing_mm == pytest.approx(math.radians(0.05) * lev["q2"])
+    assert inc["q2"].homing_mm < gauge["q2"].homing_mm
+    assert inc["q3"].homing_mm == gauge["q3"].homing_mm        # q3 still on the gauge

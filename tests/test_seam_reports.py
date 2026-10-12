@@ -1234,11 +1234,15 @@ def test_crank_fixes_a_thicker_sheet_for_a_hex_pocket():
         "keep the servo's torque limit under 0.50 N·m")
 
 
-def test_a_pin_no_construction_clears_says_so():
+def test_a_pin_no_construction_clears_says_so(monkeypatch):
     """A pin already on the Chicago barrel in adjacent layers, its jam SF fine but its
-    walking SF short: no other section, no shorter span, no torque fix for the walking
-    case: the catch-all."""
+    walking SF short: no other section (the ground pin of the preloaded pairs left out of
+    the registry), no shorter span, no torque fix for the walking case: the catch-all."""
+    from spiderpig import construction
     from spiderpig.construction.pivots.chicago import ChicagoShaft, chicago_section
+
+    monkeypatch.setattr(construction, "AXLES", {k: v for k, v in construction.AXLES.items()
+                                                if k != "ball_pair"})
 
     n = _snote({"a": 1, "b": 2}, section=chicago_section(ChicagoShaft()))
     row = {"kind": "pin", "joint": "pin:J1", "jam": {"safety": 5.0}, "walk": {"safety": 1.0}}

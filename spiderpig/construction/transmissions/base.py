@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 
+from spiderpig.actuators import sensors
 from spiderpig.construction.base import (
     FRAME_INNER,
     FRAME_OUTER,
@@ -585,6 +586,12 @@ class DriveGroup(Group):
                 pairs += [(b.name, n.name) for n in out.bodies if n.name.endswith("_pulley_large")]
         fastened = out.notes.setdefault("fastened", {})
         fastened.update({f"{a}|{b}": [a, b] for a, b in pairs})
+        cfg = ctx.config
+        sensor = (sensors.get(cfg.role("angle_sensor", self.input)) if cfg is not None
+                  else None)
+        if sensor is not None and sensor.bom_key:
+            out.extras.append(BomLine(sensor.bom_key, 1, f"{self.name}: {self.link}'s angle "
+                                      "(on the link, its x along it)"))
         out.notes.setdefault("drive", {})[self.name] = {
             "input": self.input, "link": self.link, "transmission": self.transmission.key,
             "motor": mo.key, "ratio": round(hub.ratio, 4), "layers": layers,

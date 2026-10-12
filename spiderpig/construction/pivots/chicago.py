@@ -186,7 +186,11 @@ class ChicagoShaft:
     lock_per_pin: float = 0.01
 
     def item(self, length: float = CHICAGO_LENGTHS[0]) -> dict:
-        return get(chicago(length)).dims
+        return get(self.key(length)).dims
+
+    def key(self, length: float) -> str:
+        """The catalog key of the shaft ``length`` long."""
+        return chicago(length)
 
     @property
     def d(self) -> float:
@@ -226,7 +230,7 @@ class ChicagoShaft:
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None) -> None:
+               pitch: float, layout=None, air=None, **_) -> None:
         """The planner's rule: a stock barrel must span the pin's links (their layers, the
         washer and the least play; at the plan's own z, its gaps and thicker plates
         included): :class:`stack.Unbuildable` otherwise."""
@@ -372,7 +376,7 @@ class ChicagoShaft:
                        disc(xy, (d - self.model_gap) / 2, zb, zt),
                        disc(xy, head_d / 2, zt, zt + float(it["screw_head_h"]))])
         out.bodies.append(hardware(f"{stem}_screw", screw, host, fab="purchased",
-                                   bom_key=chicago(f.length), color=STEEL))
+                                   bom_key=self.key(f.length), color=STEEL))
         z = z_hi
         # the PTFE washer and the take-up shims as one printed spacer per end (unclamped:
         # the screw bottoms on the barrel, so they only set the column's axial play). A lower
@@ -398,14 +402,17 @@ class ChicagoShaft:
         out.notes.setdefault("chicago", {})[group.name] = {
             "length_mm": f.length, "stack_mm": round(z_hi - z_lo, 3),
             "spacer_lo_mm": f.shims_lo, "spacer_hi_mm": round(self.washer_t + f.shims_hi, 3),
-            "play_mm": round(f.play, 3), "item": chicago(f.length), "printed": True,
+            "play_mm": round(f.play, 3), "item": self.key(f.length), "printed": True,
             "bond_gap_mm": round(bond_gap, 3), "unprinted_hi_mm": 0.0}
         return f
 
 
 def chicago_section(shaft: ChicagoShaft) -> Section:
     """The barrel as a 304 tube, 4 mm over the M3 thread's 3 mm major diameter (the screw's
-    core inside it ignored: conservative)."""
+    core inside it ignored: conservative); a shaft that says its own (``section``), that."""
+    own = getattr(shaft, "section", None)
+    if own is not None:
+        return own()
     return Section.tube(shaft.d, 3.0, 215.0, name="chicago barrel 4 x 3 tube")
 
 

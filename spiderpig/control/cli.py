@@ -56,7 +56,12 @@ def main(argv: list[str] | None = None) -> int:
                   f"direction {a.direction:+d}")
         return 0
     if args.action == "homing":
-        for i, s in enumerate(homing.plan(axes), 1):
+        from spiderpig.construction.rotary import PRESETS
+
+        sensors = {n: cfg.role("angle_sensor", n) for n in axes if n not in ("q1", "q4")}
+        turn = cfg.role("turntable") if "q1" in axes else ""
+        phase = not turn or PRESETS[turn].transmission != "capstan"
+        for i, s in enumerate(homing.plan(axes, sensors, phase), 1):
             print(f"{i}. [{s.axis}] {s.action}")
         return 0
     if args.action == "klipper":

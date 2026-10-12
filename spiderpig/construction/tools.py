@@ -36,13 +36,15 @@ TAB_L = 15.0         # how far the tab runs from the flange toward the arm's oth
 HOLES_AT = (5.0, 12.0)   # the two screws along the tab from the flange
 BLOCK = 8.0          # the holder's block under the flange (the cup's thread in it)
 WALL = 5.0           # the wrist holder's tab, cap, wall and shelf thickness
-CAP = 6.5            # the wrist's cap stands this far under the flange (the plate's end over)
+CAP = 7.5            # the wrist's cap stands this far under the flange: the plate's end
+#                      over (an arm's 6.6 mm links, config.KIND_FIT) and CAP_GAP
 COUPLER = 10.0       # the wrist's printed coupler on the motor's shaft
 NUT_H = 2.4
 SCREW_HOLE = 3.4
 HOLDER_COLOR = "#e8a33d"
 CUP_COLOR = "#303030"
 MARGIN = 1.5         # the tool's clearance to whatever moves past it
+CAP_GAP = 0.5        # the end plate's end to the wrist's cap, the least
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,10 @@ def tool_plan(ctx: Context, plan, tool: Tool, groups=()) -> ToolPlan:
     lk = ctx.config.lk
     if lk.output is None or lk.output.kind != "point" or not lk.output.body:
         raise ConstructionError(f"tool: {lk.key} has no output point on a body to hold one")
+    if tool.wrist and ctx.params.link_radius + CAP_GAP > CAP + 1e-9:
+        raise ConstructionError(f"tool {tool.key}: its cap {CAP:g} mm under the flange meets "
+                                f"the end plate's {ctx.params.link_radius:g} mm-radius end "
+                                f"(link_radius {CAP - CAP_GAP:g} at most)")
     body = lk.output.body
     point = ctx.topo.point_of.get((body, lk.output.point), lk.output.point)
     toward = _toward(ctx, body, point)

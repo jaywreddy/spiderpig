@@ -192,8 +192,10 @@ class AxleGroup(Group):
             column = getattr(self.construction, "column", None)
             if column is not None:          # a construction's own rule over the whole column
                 # (a drive's hub layers round the column take no shims: passed as links')
+                # (its own links, and the room each other layer leaves it: a ball pair's
+                # hubs, construction.pivots.pair)
                 column(self.pillar, sorted(mset | nested), L.top, (down, up), L.pitch,
-                       layout=L, air=air)
+                       layout=L, air=air, members=ms, room=dict(free), spacer=d.spacer)
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]

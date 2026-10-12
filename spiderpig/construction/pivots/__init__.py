@@ -23,6 +23,10 @@ key                 construction
                     but the host (:mod:`construction.pivots.ball`, 2026-10-11)
 ``ball_pillar``     the standoff pillar with an MR106ZZ bearing bonded into every link on
                     it (link_radius 6.6 mm)
+``ball_pair``       ``ball`` with a preloaded pair in every link thick enough for two, the
+                    column clamped by a disc spring through the inner rings
+                    (:mod:`construction.pivots.pair`, 2026-10-12)
+``ball_pair_pillar`` ``ball_pillar`` likewise
 ==================  ================================================================
 
 Every pivot's spacer rings and gap rings are printed (:func:`common.gap_washers`): an
@@ -40,6 +44,8 @@ from __future__ import annotations
 
 from spiderpig.construction.pivots.ball import BallAxle, BallPillar
 from spiderpig.construction.pivots.chicago import ChicagoAxle
+from spiderpig.construction.pivots.pair import BallPairAxle, BallPairPillar
 from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (ChicagoAxle(), StandoffAxle(), BallAxle(), BallPillar())
+PIVOTS = (ChicagoAxle(), StandoffAxle(), BallAxle(), BallPillar(), BallPairAxle(),
+          BallPairPillar())

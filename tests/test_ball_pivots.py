@@ -58,8 +58,10 @@ def test_the_bearings_are_in_the_catalog_with_a_vendor_model():
         assert it.category == "bearing"
         assert (it.dims["id"], it.dims["od"], it.dims["w"]) == (d, od, w)
         assert it.dims["radial_clearance_mm"] == [0.002, 0.013]
-        assert "mcmaster.com" in it.offers[0].url
-        assert it.offers[0].price_usd is None             # nothing priced from memory
+        mcm = next(o for o in it.offers if "mcmaster.com" in o.url)
+        assert mcm.price_usd is None                      # nothing priced from memory there
+        assert it.offers[0].price_usd is not None          # the BOM's: a generic pack,
+        assert "estimate" in it.offers[0].note             # said to be an estimate
         ref = cad.part_cad(key)
         assert ref is not None
         assert (ref.vendor, ref.sha256, ref.url) == ("mcmaster", "", "")

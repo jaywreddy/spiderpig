@@ -27,6 +27,16 @@ over that lever (:attr:`Precision.need_deg`). ``∂F/∂p`` per length parameter
 parameter in drawing units is divided by the linkage's ``unit``) says what each
 proportion's error does, all its parts together.
 
+**Out of the plane.** Each link tips on its pin by its tilt (the smaller of its bore's free
+tilt and what the faces either side allow, :mod:`construction.wobble`) and slides along it
+by its column's end float. Each body's small motion out of the plane is a rise and two
+tilts; every interface bounds the difference between a body and its axle (the rise at the
+joint by half the end float, the tilt in every direction by the link's tilt; a bonded host
+and a pillar's frame plates by nothing), so the worst the tool's tip leaves the plane is a
+linear programme (:func:`out_of_plane`): the loops restrain what a serial chain would not,
+and its duals say which joint's tilt or float holds the answer up. An arm's only (a walker's
+foot out of the plane is not a placement).
+
 Every number is the worst over the arm's inputs' box (:meth:`Linkage.box`), or over the
 crank's turn (a walker's first foot, a mechanism's output).
 """
@@ -40,6 +50,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from spiderpig import linkage
+from spiderpig.actuators import sensors
 from spiderpig.config import BuildConfig, add_build_args, add_design_args, config_from_args
 from spiderpig.linkage.constraints import gains, layout, sample_inputs
 
@@ -123,14 +134,21 @@ class Precision:
     payload_g: float = DEFAULT_PAYLOAD_G
     tilt_mm: float = 0.0           # a robot's turntable tilting in its bearings' play
     turret_accuracy_mm: float = 0.0   # its drive's eccentricity and its axis out of plumb
+    oop: OutOfPlane | None = None  # the tool's tip out of the plane in the links' tilt
 
     @property
     def repeatability_mm(self) -> float:
         """The joints' lost motion at the output, the drives' backlash and homing through
-        their levers, and the turntable's tilt (worst case: every play the same way)."""
-        return (self.plays.worst_mm
-                + sum(b.backlash_mm + b.homing_mm for b in self.inputs.values())
-                + self.tilt_mm)
+        their levers and the turntable's tilt (worst case: every play the same way), with
+        the links' rise out of the plane, at right angles to those, added in quadrature."""
+        planar = (self.plays.worst_mm
+                  + sum(b.backlash_mm + b.homing_mm for b in self.inputs.values())
+                  + self.tilt_mm)
+        return math.hypot(planar, self.out_of_plane_mm)     # across the plane: orthogonal
+
+    @property
+    def out_of_plane_mm(self) -> float:
+        return self.oop.worst_mm if self.oop is not None else 0.0
 
     @property
     def accuracy_links_mm(self) -> float:
@@ -154,6 +172,9 @@ class Precision:
                 "thermal_mm": round(self.thermal_mm, 4), "dt_k": self.dt_k,
                 "payload_g": self.payload_g, "tilt_mm": _num(self.tilt_mm),
                 "turret_accuracy_mm": _num(self.turret_accuracy_mm),
+                "out_of_plane_mm": _num(self.out_of_plane_mm),
+                "out_of_plane_by_joint": ({j: _rounded(v) for j, v in self.oop.by_joint.items()}
+                                          if self.oop is not None else None),
                 "inputs": {k: {f: (_num(v) if isinstance(v, float) else v)
                                for f, v in b.__dict__.items()} for k, b in self.inputs.items()},
                 "notes": list(self.notes)}
@@ -180,6 +201,14 @@ class Precision:
                            f"{b.sag_mm:.3f} mm; holds {b.capacity_nm:.2f} N·m for "
                            f"{b.load_nm:.3f}"
                            + (f"; homing {b.homing_mm:.3f} mm" if b.homing_mm else ""))
+        if self.oop is not None:
+            out.append(f"  out of the plane (the links' tilt and end float, loops counted): "
+                       f"{self.oop.worst_mm:.3f} mm worst case; by joint:")
+            for j, v in sorted(self.oop.by_joint.items(), key=lambda kv: -sum(kv[1].values())):
+                tilt = max((t for (jj, _), t in self.oop.tilt_deg.items() if jj == j),
+                           default=0.0)
+                out.append(f"    {j:8} {sum(v.values()):.3f} mm (tilt {v['tilt']:.3f}, float "
+                           f"{v['float']:.3f}; links tilt up to {tilt:.3f} deg)")
         if self.tilt_mm:
             out.append(f"  the turntable's tilt in its bearings: {self.tilt_mm:.3f} mm")
         if self.turret_accuracy_mm:
@@ -285,6 +314,185 @@ def play_map(lk: linkage.Linkage, values: tuple[float, ...],
                    at_worst, accuracy, cond, g.singular)
 
 
+@dataclass(frozen=True)
+class OutOfPlane:
+    """How far the tool's tip leaves the plane in the links' tilt and end float, worst over
+    the box (:func:`out_of_plane`): ``worst_mm``; ``by_joint`` joint -> its share at the
+    worst pose (``tilt`` and ``float`` rows; they add up to ``worst_mm``); ``tilt_deg``
+    interface -> the tilt it was given; ``float_mm`` interface -> its end float."""
+
+    worst_mm: float
+    by_joint: dict[str, dict[str, float]]
+    tilt_deg: dict[Interface, float]
+    float_mm: dict[Interface, float]
+    point: tuple[float, float] = (0.0, 0.0)
+
+
+OOP_DIRECTIONS = 4
+"""Directions the tilt bound is taken in (each both ways: an octagon about the circle a
+tilt really is, at most 8 % over it)."""
+
+
+def out_of_plane(lk: linkage.Linkage, values: tuple[float, ...],
+                 tilt_deg: dict[Interface, float], float_mm: dict[Interface, float],
+                 n: int = 7, drop_mm: float = 0.0,
+                 columns: dict[str, tuple[float, dict[Interface, tuple[float, float]]]]
+                 | None = None) -> OutOfPlane:
+    """The worst rise of the output point (``drop_mm`` below it: the tool's tip) out of the
+    plane, over ``n`` poses a side of the box (module docstring). Each interface
+    ``(joint, body)`` tilts against its axle by up to ``tilt_deg`` and slides by half
+    ``float_mm`` (an interface not named is rigid); or, on a joint in ``columns`` (``joint ->
+    (end float g, {interface: (free tilt deg, face radius mm)})``, a column with float),
+    its links share the column's float: each tilts by up to its free tilt (its bore's), every
+    tilt ``a`` uses ``2 r a`` of the float at its faces, and the column's links slide
+    together by what is left, ``2 u + sum 2 r a <= g`` (:mod:`construction.wobble`'s
+    supported tilt, the float no longer counted once per link). Unbounded (``inf``) if the
+    bodies have a free motion out of the plane."""
+    from scipy.optimize import linprog
+
+    lay = layout(lk)
+    columns = {j: c for j, c in (columns or {}).items() if c[0] > 0}
+    with np.errstate(all="ignore"):
+        pts = linkage.LegSolution(1, 0.0, values, lk.key).at(*sample_inputs(lk, n))
+    names = [b for b in lay.bodies if b != "torso"] + [f"axle:{j}" for j in lay.axles]
+    col = {m: 3 * i for i, m in enumerate(names)}       # (rise, tilt about x, about y)
+    shared = [i for j, (_, links) in columns.items() for i in links if i in lay.interfaces]
+    s_of = {i: 3 * len(names) + k for k, i in enumerate(shared)}          # each one's tilt
+    u_of = {j: 3 * len(names) + len(shared) + k for k, j in enumerate(columns)}  # slide
+    nv = 3 * len(names) + len(shared) + len(columns)
+    bounds: list[tuple[float | None, float | None]] = [(None, None)] * (3 * len(names))
+    bounds += [(0.0, math.radians(columns[i[0]][1][i][0])) for i in shared]
+    bounds += [(0.0, None)] * len(columns)
+    dirs = [math.pi * k / OOP_DIRECTIONS for k in range(OOP_DIRECTIONS)]
+    poses = next(iter(pts.values())).shape[0]
+    best, best_rows, at = -1.0, None, (0.0, 0.0)
+    for s in range(poses):
+        rows: list[np.ndarray] = []
+        rhs: list[float] = []
+        tags: list[tuple[str, str]] = []
+
+        def add(row, bound, tag, both=True, rows=rows, rhs=rhs, tags=tags):
+            for r in ((row, -row) if both else (row,)):
+                rows.append(r)
+                rhs.append(bound)
+                tags.append(tag)
+
+        for j, b in lay.interfaces:
+            x, y = (float(v) for v in pts[j][s])
+            if not (math.isfinite(x) and math.isfinite(y)):
+                break
+            rz = np.zeros(nv)
+            for who, sign in ((b, 1.0), (f"axle:{j}", -1.0)):
+                if who in col:
+                    k = col[who]
+                    rz[k], rz[k + 1], rz[k + 2] = sign, sign * y, -sign * x
+            tilt_rows = []
+            for a in dirs:
+                rt = np.zeros(nv)
+                for who, sign in ((b, 1.0), (f"axle:{j}", -1.0)):
+                    if who in col:
+                        rt[col[who] + 1] += sign * math.cos(a)
+                        rt[col[who] + 2] += sign * math.sin(a)
+                tilt_rows.append(rt)
+            if (j, b) in s_of:           # shares its column's float
+                for r in (rz, -rz):
+                    r = r.copy()
+                    r[u_of[j]] = -1.0
+                    add(r, 0.0, (j, "float"), both=False)
+                for rt in tilt_rows:
+                    for r in (rt, -rt):
+                        r = r.copy()
+                        r[s_of[(j, b)]] = -1.0
+                        add(r, 0.0, (j, "tilt"), both=False)
+            elif j in columns:           # rigid in a column with float (the bonded host)
+                add(rz, 0.0, (j, "float"))
+                for rt in tilt_rows:
+                    add(rt, 0.0, (j, "tilt"))
+            else:
+                add(rz, float_mm.get((j, b), 0.0) / 2, (j, "float"))
+                t = math.radians(tilt_deg.get((j, b), 0.0))
+                for rt in tilt_rows:
+                    add(rt, t, (j, "tilt"))
+        else:
+            for j, (g, links) in columns.items():
+                r = np.zeros(nv)
+                r[u_of[j]] = 2.0
+                for i, (_, face_r) in links.items():
+                    if i in s_of:
+                        r[s_of[i]] = 2.0 * face_r
+                add(r, g, (j, "float"), both=False)
+            fx, fy = (float(v) for v in pts[lay.output_point][s])
+            fy -= drop_mm
+            k = col[lay.output_body]
+            c = np.zeros(nv)
+            c[k], c[k + 1], c[k + 2] = -1.0, -fy, fx           # maximise the rise
+            res = linprog(c, A_ub=np.array(rows), b_ub=np.array(rhs), bounds=bounds,
+                          method="highs")
+            if res.status == 3:
+                return OutOfPlane(math.inf, {}, dict(tilt_deg), dict(float_mm))
+            if res.status == 0 and -res.fun > best:
+                best, at = -res.fun, (fx, fy)
+                best_rows = (tags, rhs, np.abs(res.ineqlin.marginals),
+                             np.abs(res.upper.marginals))
+    by: dict[str, dict[str, float]] = {}
+    if best_rows is not None:
+        tags, rhs, duals, upper = best_rows
+        for (j, kind), d, r in zip(tags, duals, rhs, strict=True):
+            if d * r > 0:
+                by.setdefault(j, {"tilt": 0.0, "float": 0.0})[kind] += float(d * r)
+        for i, k in s_of.items():        # a free tilt's own bound
+            hi = bounds[k][1] or 0.0
+            if upper[k] * hi > 0:
+                by.setdefault(i[0], {"tilt": 0.0, "float": 0.0})["tilt"] += float(upper[k] * hi)
+    return OutOfPlane(max(best, 0.0), by, dict(tilt_deg), dict(float_mm), at)
+
+
+def radial_by_link(config: BuildConfig, wobble: dict) -> dict[Interface, float]:
+    """The interfaces whose wobble note gives the link's own radial play (``radial_mm``: a
+    ball pair's, a link on one bearing or two)."""
+    lay = layout(config.lk)
+    out = {}
+    for k, note in wobble.items():
+        j = k.split(":", 1)[-1]
+        for e in note.get("links", []):
+            if "radial_mm" in e and (j, e["link"]) in lay.interfaces:
+                out[(j, e["link"])] = float(e["radial_mm"])
+    return out
+
+
+def link_tilts(config: BuildConfig, wobble: dict) -> tuple[
+        dict[Interface, float], dict[Interface, float],
+        dict[str, tuple[float, dict[Interface, tuple[float, float]]]], list[str]]:
+    """Each interface's tilt (deg) and end float (mm) from a fabricated side's wobble notes
+    (``mech.meta["wobble"]``, keyed ``"<group>:<joint>"``): a link's own tilt, its column's
+    float; a body the note doesn't list (a pillar's frame plates) and a link with no tilt
+    (the bonded host) rigid. And per joint its column (:func:`out_of_plane`'s ``columns``:
+    the float its links share, each link's free tilt and face radius). Notes on the axles
+    with no wobble note (taken as rigid)."""
+    lay = layout(config.lk)
+    tilt: dict[Interface, float] = {}
+    flt: dict[Interface, float] = {}
+    columns: dict[str, tuple[float, dict[Interface, tuple[float, float]]]] = {}
+    notes = []
+    by_joint = {k.split(":", 1)[1]: v for k, v in wobble.items() if ":" in k}
+    for j in lay.axles:
+        note = by_joint.get(j)
+        if note is None:
+            notes.append(f"out of the plane: {j} has no wobble note (taken as rigid)")
+            continue
+        links = {}
+        for e in note.get("links", []):
+            if (j, e["link"]) in lay.interfaces and e.get("tilt_deg", 0.0) > 0:
+                tilt[(j, e["link"])] = float(e["tilt_deg"])
+                flt[(j, e["link"])] = float(note.get("play_mm", 0.0))
+                links[(j, e["link"])] = (float(e.get("free_deg", e["tilt_deg"])),
+                                         float(e.get("face_r_mm", 0.0)))
+        if links and float(note.get("play_mm", 0.0)) > 0 and all(
+                r > 0 for _, r in links.values()):
+            columns[j] = (float(note["play_mm"]), links)
+    return tilt, flt, columns, notes
+
+
 def joint_clearances(config: BuildConfig, design=None) -> tuple[dict[Interface, float],
                                                                  list[str]]:
     """Every interface's diametral clearance from the design's axle groups' error terms:
@@ -325,8 +533,12 @@ def joint_clearances(config: BuildConfig, design=None) -> tuple[dict[Interface, 
 
 def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TARGET_MM,
               dt_k: float = DEFAULT_DT_K, hole_tol_mm: float = DEFAULT_HOLE_TOL_MM,
-              n: int = 21, payload_g: float = DEFAULT_PAYLOAD_G) -> Precision:
-    """The error budget of ``config``'s side (module docstring)."""
+              n: int = 21, payload_g: float = DEFAULT_PAYLOAD_G,
+              wobble: dict | None = None, oop: bool = True) -> Precision:
+    """The error budget of ``config``'s side (module docstring). An arm's out-of-plane row
+    reads the side's wobble notes (``wobble``: a fabricated side's ``meta["wobble"]``);
+    without them and without ``design`` the side is fabricated for them, with ``design``
+    and none (or ``oop`` false) the row is left out (said in the notes)."""
     from dataclasses import replace
 
     from spiderpig.materials import sheet as sheet_record
@@ -341,6 +553,11 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     elif config.robot:                # (the side's design, given, stays: one module)
         config = config.side_config()
     clearances, notes = joint_clearances(config, design)
+    if lk.kind == "arm" and oop and wobble is None and design is None:
+        wobble = _wobble(config)
+    for (j, body), c in radial_by_link(config, wobble or {}).items():   # a link's own
+        if (j, body) in clearances:
+            clearances[(j, body)] = c
     pm = play_map(lk, values, clearances, n, hole_tol_mm)
     lev = levers(lk, values)
     need = {k: math.degrees(target_mm / v) if v > 0 else math.inf for k, v in lev.items()}
@@ -374,9 +591,41 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
         need = {"q1": math.degrees(target_mm / lev["q1"]) if lev["q1"] > 0 else math.inf,
                 **need}
         notes += yaw_notes
+    across = None
+    if lk.kind == "arm" and not oop:
+        notes.append("out of the plane: left out (the links' tilt is not in the budget)")
+    elif lk.kind == "arm":
+        if wobble is None:
+            notes.append("out of the plane: no wobble notes given (the side not fabricated): "
+                         "the links' tilt is not in the budget")
+        else:
+            tilts, floats, columns, oop_notes = link_tilts(config, wobble)
+            drop = _tool_drop(robot_cfg, design) if turret else 0.0
+            across = out_of_plane(lk, values, tilts, floats, drop_mm=drop, columns=columns)
+            notes += oop_notes
+            notes.append("out of the plane: the tool's tip as a point below the output (its "
+                         "offset across the stack, which turns tilt into a shift in the plane, "
+                         "not counted); the turntable's tilt is its own row")
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
                      hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g, tilt,
-                     turret_acc)
+                     turret_acc, across)
+
+
+def _wobble(config: BuildConfig) -> dict:
+    """The side's wobble notes, from its fabrication at the reference pose (the
+    fabrication cache's)."""
+    from spiderpig.fabricate import fabricate, template_for
+
+    side = config.side_config() if config.robot else config
+    return dict(fabricate(template_for(side), side, 0.0).meta.get("wobble") or {})
+
+
+def _tool_drop(config: BuildConfig, design) -> float:
+    """How far the tool's tip hangs below the output point (mm; 0 without a tool)."""
+    from spiderpig.construction.robot import Turret
+
+    _, tool = Turret().plans(_side_design(config, design), config)
+    return tool.tool.drop() if tool is not None else 0.0
 
 
 def _side_design(config: BuildConfig, design):
@@ -453,7 +702,9 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
                   payload_g: float) -> dict[str, InputBudget]:
     """Each arm input's drive through its lever (:class:`InputBudget`): the design's drive
     groups' error terms; the sag is a payload's moment on the input's lever over the
-    drive's stiffness, seen at the output (an upper bound: the whole lever horizontal)."""
+    drive's stiffness, seen at the output (an upper bound: the whole lever horizontal); its
+    homing, the zero its angle sensor leaves each time (:mod:`actuators.sensors`: a gauge
+    by hand, an inclinometer)."""
     from spiderpig.construction.transmissions import DriveGroup
 
     if design is None:
@@ -471,11 +722,13 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
                if math.isfinite(t.stiffness_nm_per_rad) and t.stiffness_nm_per_rad > 0
                else 0.0)
         ratio = g.hub(design.ctx).ratio
+        sensor = sensors.get(config.role("angle_sensor", g.input))   # its zero, each homing
         out[g.input] = InputBudget(
             g.input, ratio, t.backlash_deg, t.resolution_deg,
             t.stiffness_nm_per_rad, math.radians(t.backlash_deg) * lever,
-            math.radians(t.resolution_deg) * lever, sag, t.source,
-            math.radians(t.accuracy_deg) * lever, g.motor.holding_nm * ratio, torque)
+            math.radians(t.resolution_deg) * lever, sag, f"{t.source}; zero: {sensor.key}",
+            math.radians(t.accuracy_deg) * lever, g.motor.holding_nm * ratio, torque,
+            math.radians(sensor.repeat_deg) * lever)
     return out
 
 
@@ -526,6 +779,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--payload", type=float, default=DEFAULT_PAYLOAD_G, metavar="G",
                     help=f"the load at the output for the sag row (g; default "
                          f"{DEFAULT_PAYLOAD_G:g})")
+    ap.add_argument("--planar", action="store_true",
+                    help="leave the links' tilt out of the plane out (no fabrication: "
+                         "seconds, not a minute)")
     ap.add_argument("--json", action="store_true", help="print the report as JSON")
     ap.add_argument("--compare", action="store_true",
                     help="the same design with each pivot option (plain holes, ball pins, "
@@ -538,15 +794,17 @@ def main(argv: list[str] | None = None) -> int:
         config = replace(config, robot=False)
     if args.compare:
         print(f"{'pins / pillars / transmission':44} {'repeat mm':>9} {'joints rss':>10} "
-              f"{'step mm':>8} {'sag mm':>7}")
+              f"{'step mm':>8} {'sag mm':>7} {'oop mm':>7}")
         for label, cfg in compare_options(config):
-            r = precision(cfg, target_mm=args.target, dt_k=args.dt, payload_g=args.payload)
+            r = precision(cfg, target_mm=args.target, dt_k=args.dt, payload_g=args.payload,
+                          oop=not args.planar)
             step = max((b.resolution_mm for b in r.inputs.values()), default=0.0)
             sag = max((b.sag_mm for b in r.inputs.values()), default=0.0)
             print(f"{label:44} {r.repeatability_mm:9.3f} {r.plays.rss_mm:10.3f} "
-                  f"{step:8.4f} {sag:7.3f}")
+                  f"{step:8.4f} {sag:7.3f} {r.out_of_plane_mm:7.3f}")
         return 0
-    rep = precision(config, target_mm=args.target, dt_k=args.dt, payload_g=args.payload)
+    rep = precision(config, target_mm=args.target, dt_k=args.dt, payload_g=args.payload,
+                    oop=not args.planar)
     if args.json:
         import json
 

@@ -101,3 +101,14 @@ register(Item(
     dims={"mass_g": 200.0, "material": "steel"},
     notes="The wrist's motor. Holding torque and current from StepperOnline's listing; the "
           "51 mm length and 200 g are UNVERIFIED (measure)."))
+register(Item(
+    "inclinometer_scl3300", "Murata SCL3300-D01 inclinometer on a breakout board (SPI)",
+    "sensor",
+    (Offer("Mouser", "https://www.mouser.com/c/?q=SCL3300-D01", price_usd=30.0,
+           note="the bare SCL3300-D01 about $17-25; on a small carrier board with its "
+                "decoupling, about $30 (an estimate; Murata's eval board $77)"),),
+    dims={"mass_g": 3.0, "resolution_deg": 0.0055, "noise_deg_rthz": 0.001,
+          "offset_drift_deg_k": 0.005},
+    notes="Bonded flat on the link, its x along the link, y in the link's plane: the "
+          "link's angle from horizontal is atan2(x, y) of its accelerations "
+          "(spiderpig.control.incline). Wired by a 4-wire SPI flex to the host."))

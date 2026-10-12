@@ -213,8 +213,10 @@ def test_cards(server):
     assert sheet["sheet_mm"] == [300.0, 300.0]
     assert sheet["price_usd"] is None        # SendCutSend's upload quotes it (2026-10-08)
     axles = {a["key"]: a for a in cat["constructions"]["axles"]}
-    # (the rest removed on 2026-10-07; the ball-bearing pivots added on 2026-10-11)
-    assert set(axles) == {"chicago", "standoff", "ball", "ball_pillar"}
+    # (the rest removed on 2026-10-07; the ball-bearing pivots added on 2026-10-11, the
+    # preloaded pairs on 2026-10-12)
+    assert set(axles) == {"chicago", "standoff", "ball", "ball_pillar", "ball_pair",
+                          "ball_pair_pillar"}
     assert axles["ball"]["roles"] == ["pin"]
     assert axles["ball_pillar"]["roles"] == ["pillar"]
     assert axles["standoff"]["roles"] == ["pillar"]

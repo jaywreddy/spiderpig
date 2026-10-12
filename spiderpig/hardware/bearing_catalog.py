@@ -43,11 +43,30 @@ BEARINGS = {
     "bearing_mr84zz": ("MR84ZZ", 4.0, 8.0, 3.0, "MR84-2Z"),
     "bearing_mr106zz": ("MR106ZZ", 6.0, 10.0, 3.0, "MR106-2Z"),
     "bearing_608zz": ("608ZZ", 8.0, 22.0, 7.0, "608-2Z"),
+    "bearing_mr84": ("MR84", 4.0, 8.0, 2.0, "MR84"),
+    "bearing_mr106": ("MR106", 6.0, 10.0, 2.5, "MR106"),
 }
 """The bearings the ball pivots seat: MR84ZZ on the Chicago screw's 4 mm barrel
 (``ball``), MR106ZZ on the 6 mm standoff (``ball_pillar``); both 3 mm wide, a layer of
 the default 3 mm sheet; 608ZZ, the skateboard bearing, a pair under an arm's turntable
-(:mod:`construction.rotary`)."""
+(:mod:`construction.rotary`); the open MR84 and MR106 (2 and 2.5 mm), the hub's half of a
+ball pair (:mod:`construction.pivots.pair`)."""
+
+GENERIC_PACK = {"bearing_mr84zz": (10, 9.0), "bearing_mr106zz": (10, 10.0),
+                "bearing_608zz": (10, 9.0), "bearing_mr84": (10, 8.0),
+                "bearing_mr106": (10, 9.0)}
+"""A generic pack's (quantity, USD) per bearing (uxcell and similar on Amazon, ABEC-1 to 3,
+the prices an estimate of 2026-10-12, unverified): what the BOM prices them at."""
+
+
+def _generic(key: str, trade: str) -> tuple[Offer, ...]:
+    if key not in GENERIC_PACK:
+        return ()
+    n, usd = GENERIC_PACK[key]
+    return (Offer("Amazon", f"https://www.amazon.com/s?k={trade}+bearing", pack_qty=n,
+                  price_usd=usd, note=f"search; a generic pack of {n}, an estimate "
+                                      "(unverified)"),)
+
 
 FILL = 0.7
 """A bearing's mass over its solid annulus' (rings, balls, cage and shields: about 0.6 g for
@@ -62,12 +81,14 @@ def _mass_g(d: float, od: float, w: float) -> float:
 
 for _key, (_trade, _d, _od, _w, _mcm) in BEARINGS.items():
     register(Item(
-        _key, f"{_trade} shielded ball bearing {_d:g} x {_od:g} x {_w:g} mm", "bearing",
-        (_mcm_listing(_mcm),),
+        _key, f"{_trade} {'shielded' if _trade.endswith('ZZ') else 'open'} ball bearing "
+              f"{_d:g} x {_od:g} x {_w:g} mm", "bearing",
+        (*_generic(_key, _trade), _mcm_listing(_mcm)),     # the priced offer first: the BOM's
         dims={"id": _d, "od": _od, "w": _w, "radial_clearance_mm": list(ISO_CN_SMALL),
               "material": "steel", "trade": _trade, "mass_g": _mass_g(_d, _od, _w)},
-        notes=f"ISO 15 boundary dimensions; deep groove, both sides metal-shielded (ZZ / "
-              f"2Z). Radial clearance: ISO 5753-1 CN, {ISO_CN_SMALL[0] * 1000:g}-"
+        notes="ISO 15 boundary dimensions; deep groove, "
+              + ("both sides metal-shielded (ZZ / 2Z)" if _trade.endswith("ZZ") else "open")
+              + f". Radial clearance: ISO 5753-1 CN, {ISO_CN_SMALL[0] * 1000:g}-"
               f"{ISO_CN_SMALL[1] * 1000:g} um."))
     register_part_cad(_key, CadRef(url="", sha256="", filename=f"{_key}.step",
                                    license="McMaster-Carr CAD (for designing with the part;"

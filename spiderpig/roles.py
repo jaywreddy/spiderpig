@@ -151,6 +151,10 @@ register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSI
 register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
               default="nema17_17hs4401", per="drive",
               help="each input's stepper motor"))
+register(Role("angle_sensor", "joint angle sensor", "spiderpig.actuators.sensors:ANGLE_SENSORS",
+              ("arm",), default="gauge", per="drive",
+              help="what reads each planar input's angle at homing: a digital angle gauge "
+                   "by hand, or an SCL3300 inclinometer on the link (0.05 / 0.02 deg)"))
 register(Role("turntable", "turntable", "spiderpig.construction.rotary:PRESETS", ("arm",),
               default="belt_preload", robot=True,
               help="the robot's base rotation (yaw): its bearings, transmission, motor and "
