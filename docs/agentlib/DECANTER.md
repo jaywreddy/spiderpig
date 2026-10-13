@@ -178,9 +178,11 @@ stops there:
     pin E from 0.65 to 3.1.
   - On the bench, a ring into each pin's lower groove and the pin up through its lowest
     link; the other ring once its highest link is on. Nothing is glued or threadlocked.
-  - About USD 21-24 a pin (the discount is per length): B buys 11, A one. The M6 Chicago
-    screws (`chicago6`) are still there, `--pin chicago6`; the shoulder screws tried first
-    are in [DECISIONS.md](DECISIONS.md).
+  - About USD 21-24 a pin (the discount is per length), so only where the jam needs it
+    (`config.PRODUCT_PIN_JOINTS`): B's rod pin P and arm pin K, A's one pin E. B's J, J2, X
+    and Y stay M6 Chicago screws (8 mm barrel, 243 threadlocker, the barrel's head held
+    from below with taped pliers), which hold the 6 L's jam there at SF 1.39 to 2.19. The
+    shoulder screws tried first are in [DECISIONS.md](DECISIONS.md).
 - **The pillars** are 12 mm steel standoffs (MISUMI NETRF12, M6 ends;
   `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
   ones (SF 0.78 at B's O2). An M6 button head goes through each plate without a washer, to
@@ -355,26 +357,30 @@ The box's bounds per design are in `tests/test_cradle.py` (`PACK_BOX`).
 
 ## Loads and checks
 
-The design case is a sealed full 3 L bottle: 5.9 kg, with its centre of mass about 265 mm
-behind the mouth along the axis, plus the cradle's own weight.
+The design case is a sealed full 6 L methuselah: 11.1 kg, its centre of mass about 331 mm
+behind the mouth along the axis (estimated: 42 % of its length from the base), in the bare
+saddles (the drawn magnum's adapters out: `cradle_report.masses`), plus the cradle's own
+weight.
 
 The jam case is a firm push at the crank's grip on a blocked cradle
-(`cradle_report.JAM_HAND_N`, 40 N: about twice what the worst turn takes), through the
-worm at a hand's speed (`cradle_report.ETA_HAND`, 0.5): 36 N·m at the crank
-(`cradle_report.jam_nm`, `config.PRODUCT_JAM_NM`).
-- Rated at the gearbox's 20 N·m instead, as before, it was reached at less than the worst
-  turn's own force (16.8 against 21 N): no bound (all three reviews).
+(`cradle_report.JAM_HAND_N`, 40 N: about 1.7 x what the worst turn takes), through the
+worm at a hand's speed (`WormBox.eta_hand`, 0.55 on the NRV040): 66 N·m at B's crank on
+its 100 mm handle, 69.3 at A's on its 105 (`cradle_report.jam_nm`,
+`config.PRODUCT_JAM_NM`, per linkage).
+- Rated at the gearbox's rating instead, it would be reached at less than the worst turn's
+  own force: no bound (all three reviews of 2026-10-10).
 - It is not counted within 30° of crank round either toggle, where a blocked crank-rocker's
   forces grow without bound. There, only clearance protects: the decanter's lip and
   anything under the cradle.
-- What A holds there: the crankpin SF 1.9, the keyed plates 1.6, the rod's buckling 1.5,
-  the pillars and plates 2.9 and more, pin E (the M6 Chicago barrel) 1.33. Pin E yields
-  first, at about 53 N at the grip: its stainless barrel bends (the worm still holds).
-- Turning it: 15.1 N·m at the crank at worst (the gearbox's SF 1.32), 21.5 N at the grip.
-  It tips at 28.6° and takes a 27 N push at a bottle's top, the worst over the swing.
+- What A holds there: pin E (steel) 3.1, the crankpin 1.6, the keyed plates 1.9, the rod's
+  buckling 2.05, pillar G 2.85, the links 1.62 and more.
+- Turning it: 33.8 N·m at A's crank at worst (the NRV040's SF 1.33), 23.8 N at the grip.
+  It tips at 25.6° and takes a 40 N push at a bottle's top, the worst over the swing.
 - The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
-  lower (a stale plan's put it at 0.82). A product is never served a plan from another
-  engine version (`stages.planning._reuse_plan`): it re-plans, proven thinnest.
+  lower. A product is never served a plan from another engine version
+  (`stages.planning._reuse_plan`): it re-plans, proven thinnest.
+- A link's net section is rated at its own pin's or pillar's hole (8.35-12.35 mm:
+  `strength.link_rows`' ``holes``), not a walker's 6.35 mm.
 
 Every joint on both sides is rated at the full planar load (`cradle_report.SHARE` = 1),
 not a share of it. The rod drives one side, whose pivots carry half the weight plus the
@@ -392,14 +398,14 @@ rod's whole force.
 - **Joints and plates:** every pin, pillar and link plate rated by `strength.check` at
   both cases (`strength.design_loads` takes the report's loads for a cradle).
 - **Clashes:** the whole cradle's clashes over the swing, the hand crank's swept volume
-  against everything, and a 3 L bottle in the saddles (`cradle.jeroboam_hits`).
+  against everything, and a 6 L methuselah in the saddles (`cradle.bottle_hits`).
 
 `tests/test_cradle.py` holds the thresholds, for A:
 - each bottle's mouth wander under 0.5 mm;
 - tipping at 15° or more, and 25 N or more at the bottle's top, the worst over the swing;
 - the crank's grip force under 25 N;
-- the gearbox's safety factor at least 1.3, against its 20 N·m continuous rating at
-  1400 rpm input (the peak is a sealed full 3 L at one tilt, at hand speed);
+- the gearbox's safety factor at least 1.3, against its 45 N·m rating (the peak is a
+  sealed full 6 L at one tilt, at hand speed);
 - every pin and plate at least 3 walking and 1.3 jammed; the keyed plates at least 2.5
   walking and 1.5 jammed; the crankpin and the rod 1.5 jammed;
 - the cut rules pass, every printed part fits a 250 x 210 x 210 mm bed in its pose;
@@ -462,18 +468,21 @@ or a rule of the build:
 - **The stack is thin where it can be.** The cradle link b6 is alone under the inner plate
   at jam SF 6, so it is 0.125 in.
 
-**What it holds** (`cradle_report.report`, a sealed full 3 L walking, a 40 N push at the
-grip jammed):
+**What it holds** (`cradle_report.report`, a sealed full 6 L walking, a 40 N push at the
+grip jammed, 2026-10-13):
 
 | check | B |
 |---|---|
-| swing | −50.0° to +30.0°, the mouth still (0 mm), both bottles' mouths on the pivot |
+| swing | −50.0° to +30.0°, the mouth still (0 mm), every bottle's mouth on the pivot |
 | transmission | 36.7° at worst (the rod's); the parallelograms 48.5° and 51.5° |
-| gearbox | 14.46 N·m peak: SF 1.38 on its 20 N·m; 20.6 N at the grip |
-| jam | pin P 1.36, pillar O2 1.42, pillar O1 1.50, link b3 1.51, link b4 1.53, the crank's keyway 1.64, pin K 1.71, the rest 2.3 or more |
-| walking | every joint 8.6 or more; the crank's keyway 4.1 |
-| rod, crankpin | buckling 2.67 × its jam force; the crankpin 2.08 jammed |
-| stand | tips at 30.1° at worst (a full 3 L), a push of 26.6 N or more at a bottle's top |
+| gearbox | 32.0 N·m peak: SF 1.41 on the NRV040's 45 N·m; 23.7 N at the 100 mm grip |
+| jam (66 N·m) | pillar O2 1.31, pillar O1 1.39, pin J2 1.39 (Chicago), pin Y 1.49, pin X 1.72, links b3 and b4 1.73, the crank's keyway 2.0, pin J 2.19, pin P 3.51 and pin K 4.48 (steel) |
+| walking | every joint 6.5 or more; the crank's keyway 4.1 |
+| rod, crankpin | buckling 1.59 × its jam force; the crankpin 1.96 jammed |
+| stand | tips at 26.0° at worst (a full 6 L), a push of 41.9 N or more at a bottle's top |
+
+(For a 3 L on the NRV030, before 2026-10-13: the gearbox 1.38 on a 14.46 N·m peak, pin P
+1.36 at a 36 N·m jam, the stand 30.1°.)
 
 **The stand** (`cradle.STANDS`):
 - **The outer plate** is two triangles on the pivots' bar: O1–O, O2–O and O1–O2. A front
