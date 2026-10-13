@@ -49,7 +49,8 @@ _LASER = ((r"b\d+(_leg\d+)?$", "LK", "link"), (r"(frame_outer|torso)$", "FR", "f
           (r"crank_plate\d+$", "CW", "crank web"), (r"centre_plate\d+$", "CP", "centre plate"),
           (r"deck_plate$", "DK", "deck plate"))
 _PHRASES = (("heat_set_insert", "ins"), ("self_tap", "st"), ("set_screw", "set"),
-            ("pillar_shaft", "shaft"), ("servo_driver", "drv"), ("shim_din988", "shim"))
+            ("pillar_shaft", "shaft"), ("servo_driver", "drv"), ("shim_din988", "shim"),
+            ("pivot_pin8", "pp8"))
 _TOKENS = {"bhcs": "bh", "washer": "w", "chicago": "chi", "nut": "n", "standoff": "so",
            "round": "r", "hex": "hx", "nylon": "ny", "screw": "s", "m25": "m2.5"}
 CONSUMABLE = re.compile(r"threadlocker|epoxy|glue|cement|filament")

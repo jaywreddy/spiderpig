@@ -715,3 +715,38 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     with (a fresh drop of threadlocker on the tie screws).
 - **Where:** `spiderpig/cradle_pack.py`, `viewer/src/decant/{pack,main}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-13: the cradles' pins, hardened steel pivot pins (user: "Steel shoulder screws")
+
+- **What:** every cradle pin is a hardened 8 mm steel pivot pin made to its stack, an E-ring
+  at each end: MISUMI CCGH8-L-NC2.4 (`pivot8`, `construction.pivots.pivot_pin`,
+  `config.PRODUCT_PINS`). The M6 Chicago screw (`chicago6`) stays registered.
+- **Why:** at a 6 L bottle's jam (66 N·m at B's crank, 69.3 at A's) the M6 Chicago's 8 x 6
+  stainless barrel bent: B's pins P 0.74 and K 0.93, A's E 0.65. The pin is solid 1045 at
+  40-45 HRC, rated at class 8.8's minimum yield (640 MPa, conservative for that hardness):
+  4.3 x the barrel. On the same plans, jam SF: B's P 3.51, K 4.48, J2 6.7, Y 7.3, X 8.5,
+  J 10.6; A's E 3.12. Walking 18.4 and more. (The links keep their 8.2 mm holes.)
+- **The user's pick, tried first:** an ISO 7379 shoulder screw (McMaster 92981A, 8 mm, M6,
+  black-oxide alloy steel, USD 2.81-6.84). It was built and planned. Its 6 mm head over the
+  links and its 11 mm of thread, washer and nut under them take whole layers or a 6.3 mm
+  gap:
+  - A planned at 62.3 mm (59.4 before, at the 10 mm pillars and 0.187 in rod of the day);
+  - B at 88-91 mm (77 before), its links spread out (pin X's span 40 mm), its rod off the
+    crank block (the crankpin at jam SF 0.32) and its pillars weaker (O1 / O2 0.60 / 0.57
+    on NETRF10).
+  The pivot pin is steel with as wide a margin and keeps the stacks, the same layers, 0.2 mm
+  thinner than with the Chicago screws: B 79.95 mm (80.15), A 63.95 (64.15).
+- **The end:** the standard pin stands 3 mm past each groove; with the play, a hair over a
+  3.175 mm layer, so every end of B's took a clearance gap (94.5 mm). The alteration NC2.4
+  (the least for 8 mm) sinks every end into its layer.
+- **Why not another solid pin:** tapped 10 mm standoffs, rotary shafts and clevis pins start
+  at 15 mm long (MISUMI NETRF10, rotary shafts, both-ends-tapped clevis pins); the pins'
+  stacks are 11-16 mm. A 10 mm pin would also cut the links' net section. The pivot pin
+  starts at 10 mm, in 0.1 mm steps, and keeps the 8.2 mm holes.
+- **Cost:** USD 24.05 one-off, 22.42 at 2-4, 21.36 at 5-19 per length (the NC2.4
+  alteration 2.31 of it; pages rendered 2026-10-13), against the shoulder screw's ~3 and the
+  Chicago screw's ~0.50. B buys 11 pins in four lengths (USD 241.89), A one. Steel only
+  at the pins the Chicago screw can't hold (B's P and K, A's E) would buy 4; not done.
+- **Where:** `spiderpig/construction/pivots/pivot_pin.py`,
+  `spiderpig/hardware/cradle_catalog.py` (its own block), `spiderpig/cradle_pack.py`,
+  `tests/test_cradle.py`.

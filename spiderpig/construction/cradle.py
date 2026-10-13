@@ -539,7 +539,7 @@ class CradleTies(Group):
                    "The four tie rods onto the cradle link, an M5 button head "
                    "through the link from its leg side into each (threadlocker); the rods "
                    "stand up from its bay side. It goes onto the stack rods up, its bores "
-                   "down over the steel and the pin barrels it rides.", "cradle_link",
+                   "down over the steel and the pins it rides.", "cradle_link",
                    sub=True)]
 
     def motion(self, got: Realized) -> Motion:

@@ -100,7 +100,8 @@ def test_cradle_defaults_and_the_hand_crank_only_for_cradles():
     assert is_cradle(cfg)
     assert (cfg.crank, cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == (
         "hand", "al5052_3p2mm", "al5052_4p8mm", "al6061_3p2mm")
-    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("chicago6", "standoff", 11.0)
+    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("pivot8", "standoff", 11.0)
+    assert BuildConfig(linkage="decanter_hinge", robot=False, pin="chicago6").pin == "chicago6"
     from spiderpig.materials import link_sheets
 
     assert link_sheets(cfg) == {"b1": "al5052_4p8mm"}      # (b2: the default sheet's)
@@ -240,27 +241,68 @@ def test_a_cradle_side_stays_inside_its_claims(key, t):
 
 
 @pytest.mark.construction
-def test_a_cradle_pin_runs_in_every_link_and_buys_no_epoxy():
-    """The M6 Chicago pins aren't bonded (``CHICAGO_M6``): every link's hole is the running
-    fit, the order has no epoxy but the medium threadlocker the guide asks for, and the
-    guide holds the barrel instead of gluing it."""
+def test_a_cradle_pin_is_a_hardened_pivot_pin_made_to_its_stack():
+    """The pins (``PIVOT8``): MISUMI's hardened 8 mm pivot pin, an E-ring at each end, L
+    made to its stack to the 0.1 mm (no take-up, its play the least and under a step more);
+    every link's hole the running fit (the M6 Chicago barrel's 8.2 mm), nothing bonded,
+    threaded or glued; rated as a solid 8 mm rod at class 8.8's yield."""
+    import math
+
     from spiderpig.construction.axle import AxleGroup
     from spiderpig.construction.base import Build, Realized
     from spiderpig.construction.pivots.chicago import CHICAGO_M6
+    from spiderpig.construction.pivots.pivot_pin import PIVOT8
     from spiderpig.fabricate import design_side, template_for
+    from spiderpig.hardware.catalog import get
 
     cfg = BuildConfig(linkage="decanter_hinge", robot=False)
     tmpl = template_for(cfg)
     design = design_side(tmpl, cfg)
     build = Build(design.ctx, design.plan, tmpl.freeze_at(1.0))
     (pin,) = [g for g in design.groups if isinstance(g, AxleGroup) and not g.pillar]
-    assert pin.construction.key == CHICAGO_M6.key
-    assert not pin.construction.shaft.bonded
+    assert pin.construction.key == PIVOT8.key
+    assert PIVOT8.hole() == pytest.approx(CHICAGO_M6.hole())
     got = pin.realize(build, Realized())
     assert set(got.cuts) == set(pin.axis.members)
     for m in pin.axis.members:
-        assert [x.d for x in got.cuts[m]] == [pytest.approx(CHICAGO_M6.hole())]
-    assert {e.key for e in got.extras} == {"threadlocker_243"}    # (the guide's: stainless)
+        assert [x.d for x in got.cuts[m]] == [pytest.approx(PIVOT8.hole())]
+    assert got.extras == []                     # no epoxy, no threadlocker
+    note = got.notes["pivot_pin"][pin.name]
+    shaft = pin.construction.shaft
+    assert shaft.min_play - 1e-9 <= note["play_mm"] < shaft.min_play + 0.1
+    assert note["length_mm"] == pytest.approx(note["stack_mm"] + note["play_mm"])
+    (body,) = [b for b in got.bodies if b.name.endswith("_pin")]
+    assert body.bom_key == note["item"]
+    assert get(body.bom_key).offer.sku == f"CCGH8-{note['length_mm']:g}-NC2.4"
+    section = got.notes["wobble"][pin.name]["section"]
+    assert section["yield_mpa"] == 640.0
+    assert section["z_bend_mm3"] == pytest.approx(math.pi * 8 ** 3 / 32, abs=1e-3)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_pivot_pin_fits_its_stack_and_its_ends_a_layer():
+    """A pivot pin takes the length its stack and least play need, to the 0.1 mm, and no
+    shims; its ends (2.4 mm, the play over the top one) sink into a 3.175 mm layer; it is a
+    pin only, and an end taller than a clearance gap is refused."""
+    from dataclasses import replace
+
+    from spiderpig.construction import ConstructionError
+    from spiderpig.construction.pivots.pivot_pin import PIVOT8
+    from spiderpig.stack import GAP_MAX
+
+    shaft = PIVOT8.shaft
+    f = shaft.fit(12.83, 3.175)
+    assert (f.length, f.shims) == (pytest.approx(13.1), 0.0)
+    assert f.play == pytest.approx(0.27)
+    assert shaft.item()["screw_head_h"] + f.play < 3.175
+    assert max(shaft.base_heights()) < 3.175    # (with the clearance a gap keeps)
+    ctx = type("Ctx", (), {"pitch": 3.175})()
+    shaft.check(ctx, False)
+    with pytest.raises(ConstructionError, match="link pin only"):
+        shaft.check(ctx, True)
+    with pytest.raises(ConstructionError, match="clearance gap"):
+        replace(shaft, min_play=GAP_MAX).check(ctx, False)
 
 
 @pytest.mark.construction

@@ -237,12 +237,14 @@ PRODUCT_PARAMS: dict[str, dict[str, float]] = {
 }
 """Per product: the shared dimensions (:class:`fit.Params`) a design gets when it names
 the defaults. A decanting cradle's links are 22 mm wide (two plate thicknesses of web round
-an M6 Chicago barrel's 8.2 mm hole: SendCutSend's rule) and its frame arms 24 mm; its pins'
-spacer rings 12.5 mm (the M6 barrel's 8 mm and a wall)."""
+its pins' 8.2 mm holes, the 8 mm pivot pin's or the M6 Chicago barrel's: SendCutSend's rule)
+and its frame arms 24 mm; its pins' spacer rings 12.5 mm (the 8 mm pin and a wall)."""
 
-PRODUCT_PINS: dict[str, str] = {CRADLE: "chicago6"}
+PRODUCT_PINS: dict[str, str] = {CRADLE: "pivot8"}
 """Per product: the link pin a design gets when it names the default (``chicago``): a
-decanting cradle's M6 Chicago screws (:data:`construction.pivots.chicago.CHICAGO_M6`)."""
+decanting cradle's 8 mm hardened steel pivot pins (:data:`construction.pivots.pivot_pin.PIVOT8`,
+since 2026-10-13: a 6 L bottle's jam bent the M6 Chicago screw's stainless barrel;
+``chicago6`` is still there, ``--pin chicago6``)."""
 
 PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 """Per product: the default sheet (the layer pitch, the printed rings' and the order's
