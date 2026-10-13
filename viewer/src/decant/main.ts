@@ -81,6 +81,11 @@ function layout(): void {
 /** Frame the camera on the cradle's whole swing (posed at rest, mid-way and at full tilt),
  * not one pose: the bottle's base sweeps far up at full tilt. */
 function reframe(): void {
+  if (pack && packS > 0) {     // packed (or on the way): the box, and the clip left alone
+    frameBox();
+    dirty = true;
+    return;
+  }
   if (loaded && motion) {
     const box = new THREE.Box3();
     for (const turns of [0, motion.turns_to_full / 2, motion.turns_to_full, motion.ratio * 0.75]) {
@@ -219,7 +224,11 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
     // the room under the mouth (a fabrication: a minute the first time), then the riser
     void getJson<{ room: [number, number][]; room_pouring: [number, number][] }>(
       `/api/cradle/${encodeURIComponent(key)}/room`, signal).then((r) => {
-      if (mine === ticket && loaded === next) { pour.setRoom(r.room, r.room_pouring); dirty = true; }
+      if (mine === ticket && loaded === next) {
+        pour.setRoom(r.room, r.room_pouring);
+        if (packTarget > 0 || packS > 0) pour.setVisible(false);   // (packed meanwhile)
+        dirty = true;
+      }
     }).catch((err: unknown) => { if (!isAbort(err)) console.error(err); });
   } catch (err) {
     if (isAbort(err)) return;
@@ -251,17 +260,28 @@ function renderPackInfo(d: PackData): void {
   const how = document.createElement('p');
   how.textContent = 'It comes apart where it is already screwed together, in this order:';
   const ol = document.createElement('ol');
-  const seen = new Set<string>();
-  for (const m of d.modules) {
-    if (seen.has(m.key)) continue;           // (loose pieces: one module each, one step)
-    seen.add(m.key);
+  for (const step of d.steps) {
     const li = document.createElement('li');
-    const b = document.createElement('strong'); b.textContent = m.label;
-    li.append(b, document.createTextNode(`: ${m.how}`));
+    li.textContent = step;
     ol.appendChild(li);
   }
-  info.append(h, size, how, ol);
+  // the pieces as they go in the box: what is under another goes in first
+  const h2 = document.createElement('h3'); h2.textContent = `In the box, from the floor up (${d.modules.length} pieces)`;
+  const pieces = document.createElement('ol');
+  pieces.className = 'pack-pieces';
+  for (const m of d.modules) {
+    const li = document.createElement('li');
+    li.textContent = m.label;
+    li.title = m.how;
+    pieces.appendChild(li);
+  }
+  info.append(h, size, how, ol, h2, pieces);
   info.hidden = false;
+}
+
+/** How long the pieces take to fly into the box (or back), seconds: longer for more pieces. */
+function packSeconds(): number {
+  return Math.max(3, 0.3 * (packData?.modules.length ?? 0));
 }
 
 async function togglePack(): Promise<void> {
@@ -374,9 +394,9 @@ function tick(): void {
     f = (f + (dt * turnsPerSecond) / motion.ratio) % 1;
     dirty = true;
   }
-  if (pack && packS !== packTarget) {   // the modules on their way (3 s each way)
+  if (pack && packS !== packTarget) {   // the modules on their way (packSeconds each way)
     const was = packS;
-    const step = Math.min(0.5, raw) / 3;     // (real time: a slow GPU still takes 3 s)
+    const step = Math.min(0.5, raw) / packSeconds();     // (real time: a slow GPU takes as long)
     packS = packTarget > packS ? Math.min(packTarget, packS + step) : Math.max(packTarget, packS - step);
     pack.set(packS);
     dirty = true;

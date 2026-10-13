@@ -167,3 +167,5 @@ body:not(.side-open) #side { display: none; }
 #pack-info ol { padding-left: 18px; margin: 6px 0 0 0; display: flex; flex-direction: column; gap: 6px; }
 #pack-info li { line-height: 1.35; color: #b8c2cc; }
 #pack-info strong { color: #eef2f6; font-weight: 600; }
+#pack-info ol.pack-pieces { gap: 2px; }
+#pack-info ol.pack-pieces li { line-height: 1.25; }

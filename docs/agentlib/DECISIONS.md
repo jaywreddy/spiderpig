@@ -682,3 +682,36 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Where:** `spiderpig/linkages/decanters.py`, `spiderpig/construction/cradle.py`,
   `spiderpig/materials.py`, `spiderpig/cradle_report.py`, `tests/test_cradle.py`,
   `tests/test_mechanisms.py`. Only B changes.
+
+### 2026-10-13: the flat pack, rewritten (user: "look at the packing and make it better")
+
+- **What:** `spiderpig/cradle_pack.py` packs again from scratch ([DECANTER.md](DECANTER.md),
+  "Flat pack").
+  - **More pieces:** the cradle box comes apart where it is fastened: its tie screws, the
+    saddles' set screws, the light's and the base stop's screws. Each cradle link lies
+    flat with its loose spacers.
+  - **Levelled:** each such piece turns in its plane to its least bounding box.
+  - **The panels** drop onto a heightmap and nest.
+  - **The rest** fill a voxel grid of the box, cavities included, in an order they could
+    go in.
+  - **A hanging link** (B's b5, on J2 alone once its cradle link is off) swings into its
+    panel.
+  - **The steps** are read off the parts and the cradle link's joints. B's had been A's:
+    its cradle link b6 is pinned at X and Y, not on a pillar.
+- **Numbers** (outside, x × z × height, at e2597e9's parts):
+  - B: 615 × 547 × 516 mm (173 L) became 618 × 517 × 207 mm (66 L).
+  - A: 656 × 516 × 363 mm (123 L) became 658 × 518 × 189 mm (64 L).
+  - `flat_pack` takes about 2-3 s after the fabrication.
+- **Why:**
+  - The cradle box travelled whole and upright, about 391 mm tall: half the box was air.
+  - The pieces sat at odd heights on the bounding boxes of diagonal links.
+  - Apart and levelled, the cradle box's pieces fit in the cavities under the panels'
+    plates. The panels' pillars stand between each other's gearbox and brackets.
+- **Trade-offs:**
+  - It packs bounding boxes, one per part: a diagonal link's box is large, and a truss
+    plate's has no holes. Foam fills the rest.
+  - Every piece goes in straight down; nothing slides in sideways.
+  - The cradle box goes back together at the other end, from the fasteners it was built
+    with (a fresh drop of threadlocker on the tie screws).
+- **Where:** `spiderpig/cradle_pack.py`, `viewer/src/decant/{pack,main}.ts`,
+  `tests/test_cradle.py`.
