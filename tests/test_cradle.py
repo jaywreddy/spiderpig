@@ -557,23 +557,134 @@ def test_the_cradle_page_lists_the_cradles_and_serves_their_swing(monkeypatch):
     assert client.get("/api/cradle/strider").status_code == 404
 
 
+def _corners(lo, hi) -> np.ndarray:
+    lo, hi = np.asarray(lo, float), np.asarray(hi, float)
+    return np.array([[(lo, hi)[i & 1][0], (lo, hi)[(i >> 1) & 1][1], (lo, hi)[(i >> 2) & 1][2]]
+                     for i in range(8)])
+
+
+def _packed_ok(boxes: list[tuple[int, str, np.ndarray, np.ndarray]], lo, hi,
+               gap: float = 0.0) -> None:
+    """Packed parts' boxes (piece index in insertion order, name, min, max): inside
+    ``lo``..``hi``, two of different pieces at least ``gap`` apart along some axis, and of
+    two that overlap in plan the lower one's piece in first."""
+    lo, hi = np.asarray(lo, float), np.asarray(hi, float)
+    for _, n, a, b in boxes:
+        assert (a >= lo - 0.05).all(), (n, a, lo)
+        assert (b <= hi + 0.05).all(), (n, b, hi)
+    for x, (i, n, a, b) in enumerate(boxes):
+        for j, m, c, d in boxes[x + 1:]:
+            if i == j:
+                continue
+            ov = np.minimum(b, d) - np.maximum(a, c)
+            assert (ov <= -gap + 0.05).any(), (n, m, ov)
+            if ov[0] > 0.05 and ov[2] > 0.05:          # over each other: the lower one first
+                first, second = (i, j) if b[1] <= c[1] + 0.05 else (j, i)
+                assert first < second, (n, m)
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_the_packer_levels_drops_and_fills_in_order():
+    """``cradle_pack.pack`` on boxes: a base board stays at the bottom, as it is; two panels
+    (a plate on posts) lie flat, one on the other; a bar turned 30° in its plane lies
+    levelled (its own size, not its turned box's) and flat; small blocks fill
+    in; no two pieces meet (``CLEAR`` apart), all inside the box, each piece in after what
+    is under it. ``level`` finds the bar's turn; ``tuck`` swings a link hanging off its
+    panel in; the insertion order refuses a piece both over and under another."""
+    from spiderpig.cradle_pack import CLEAR, Placed, _Order, level, pack, tuck
+
+    turn = np.array([[math.cos(math.radians(30)), -math.sin(math.radians(30)), 0.0],
+                     [math.sin(math.radians(30)), math.cos(math.radians(30)), 0.0],
+                     [0.0, 0.0, 1.0]])
+    bar = [_corners((-100, -10, -2), (100, 10, 2)) @ turn.T]
+    assert level(bar) == pytest.approx(-30.0)
+    assert level(bar, tilt=30.0) == pytest.approx(-30.0)
+
+    def panel(z0: float) -> list[np.ndarray]:          # a plate in xy, four posts off it
+        posts = [_corners((x, y, z0 + 5), (x + 10, y + 10, z0 + 45))
+                 for x, y in ((-140, 10), (130, 10), (-140, 180), (60, 120))]
+        return [_corners((-150, 0, z0), (150, 200, z0 + 5)), *posts]
+
+    items = [("base", "base", [_corners((-200, -3, -160), (200, 0, 160)),
+                               _corners((-190, 0, -150), (-180, 15, -140))]),
+             ("p1", "panel", panel(0.0)), ("p2", "panel", panel(80.0)), ("bar", "fill", bar)]
+    items += [(f"block{i}", "fill", [_corners((0, 0, 0), (40, 25, 12))]) for i in range(5)]
+    res = pack(items)
+    assert sorted(res.order) == sorted(k for k, _, _ in items)
+    assert res.order[0] == "base"
+    assert np.allclose(res.placed["base"].matrix(), np.eye(4))    # the board stays put
+    for k in ("p1", "p2"):                                         # flat: the plate level
+        plate = res.placed[k].boxes[0]
+        assert plate[1, 1] - plate[0, 1] == pytest.approx(5.0)
+    b = res.placed["bar"].boxes[0]
+    assert sorted(np.round(b[1] - b[0], 6)) == pytest.approx([4.0, 20.0, 200.0])
+    assert b[1, 1] - b[0, 1] == pytest.approx(4.0)                 # flat
+    for i in range(5):
+        blk = res.placed[f"block{i}"].boxes[0]
+        assert blk[1, 1] - blk[0, 1] == pytest.approx(12.0)
+    rank = {k: i for i, k in enumerate(res.order)}
+    _packed_ok([(rank[k], f"{k}[{j}]", bx[0], bx[1]) for k, p in res.placed.items()
+                for j, bx in enumerate(p.boxes)], *res.inside, gap=CLEAR - 0.1)
+    # the box: the board (3 + the 15 mm post on it), two 50 mm panels, the gaps
+    assert res.inside[1, 1] - res.inside[0, 1] <= 15 + 2 * 50 + 4 * CLEAR + 2 * CLEAR + 4.0
+
+    # a link hanging off its panel's top swings in, about its pin, clear of the plate's posts
+    plate = panel(0.0)
+    link = [_corners((95, 150, 10), (105, 300, 15))]
+    deg = tuck(link, (100.0, 155.0), plate)
+    assert deg == pytest.approx(90.0)          # in, square to the plate, the least swing
+    assert tuck([_corners((95, 50, 10), (105, 150, 15))], (100.0, 55.0), plate) == 0.0
+
+    # a piece can't go in between two parts of another
+    order = _Order()
+    two = np.array([[[0, 0, 0], [100, 10, 100]], [[0, 50, 0], [100, 60, 100]]], float)
+    order.add(Placed("u", np.eye(3), np.zeros(3), two), (set(), set()))
+    assert order.relations(np.array([[[10, 20, 10], [50, 30, 50]]], float)) is None
+    assert order.relations(np.array([[[10, 70, 10], [50, 80, 50]]], float)) == ({0}, set())
+
+
+PACK_BOX = {"decanter_hinge": (665.0, 210.0, 525.0), "decanter_rcm": (625.0, 230.0, 530.0)}
+"""Each cradle's flat-pack box, outside (x, height, z; mm): at most."""
+PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
+"""Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
+
+
 @pytest.mark.slow
 @pytest.mark.construction
-def test_the_cradle_packs_flat_in_one_box():
-    """``cradle_pack.flat_pack`` of A (a fabrication at crank angle 0): every module placed
-    in one box no bigger than 660 x 520 x 380 mm outside, each loose adapter on its own,
-    the steps once each, every part but the display ones packed."""
-    from spiderpig.cradle_pack import DISPLAY, flat_pack
+@pytest.mark.parametrize("key", CRADLES)
+def test_the_cradle_packs_flat_in_one_box(key):
+    """``cradle_pack.flat_pack`` (a fabrication at crank angle 0): every part but the display
+    ones in exactly one piece; each part's packed bounding box (the part moved by its piece's
+    transform, or its own) inside the box and clear of every other piece's (a levelled piece
+    turns by any angle, so its parts' boxes are the moved parts', not their assembled boxes'
+    corners moved); of two pieces over each other the lower one goes in first; the box no
+    bigger than :data:`PACK_BOX`; the steps name where the cradle link comes off its side."""
+    from spiderpig.cradle_pack import flat_pack
     from spiderpig.fabricate import fabricate, template_for
+    from spiderpig.mechanism import Pose
+    from spiderpig.shapes import moved
 
-    cfg = BuildConfig(linkage="decanter_hinge", robot=False)
+    cfg = BuildConfig(linkage=key, robot=False)
     mech = fabricate(template_for(cfg), cfg, 0.0)
     p = flat_pack(mech, cfg.lk)
-    x, y, z = p["box"]["outside_mm"]
-    assert x <= 660.0, p["box"]
-    assert z <= 520.0, p["box"]
-    assert y <= 380.0, p["box"]
-    packed = {n for m in p["modules"] for n in m["parts"]}
-    assert packed == {b.name for b in mech.bodies if b.part is not None} - set(DISPLAY)
-    assert len(p["steps"]) == len({m["key"] for m in p["modules"]})
-    assert sum(m["key"] == "adapters" for m in p["modules"]) > 1
+    shipped = {b.name: b for b in mech.bodies if b.part is not None and b.fab != "display"}
+    names = [n for m in p["modules"] for n in m["parts"]]
+    assert sorted(names) == sorted(shipped)                 # each in exactly one piece
+    assert len({m["key"] for m in p["modules"]}) == len(p["modules"])
+    boxes = []
+    for i, m in enumerate(p["modules"]):
+        for n in m["parts"]:
+            mat = np.array(m.get("part_matrix", {}).get(n, m["matrix"]), float)
+            assert np.allclose(mat[:3, :3] @ mat[:3, :3].T, np.eye(3), atol=1e-5)
+            bb = moved(shipped[n].placed_part(), Pose(mat).to_location()).bounding_box()
+            boxes.append((i, n, np.array([bb.min.X, bb.min.Y, bb.min.Z]),
+                          np.array([bb.max.X, bb.max.Y, bb.max.Z])))
+    lo = np.asarray(p["box"]["floor"], float)
+    _packed_ok(boxes, lo, lo + np.asarray(p["box"]["inside_mm"], float))
+    assert all(np.asarray(p["box"]["outside_mm"]) <= PACK_BOX[key]), p["box"]
+    assert p["modules"][0]["key"] == "base"
+    pins, pillar = PACK_JOINTS[key]
+    text = " ".join(p["steps"])
+    assert pins in text, p["steps"]
+    assert (pillar in text) if pillar else ("pillar" not in text), p["steps"]

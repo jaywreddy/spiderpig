@@ -233,16 +233,51 @@ riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`).
 
 ## Flat pack
 
-The cradle comes apart where it is already fastened (`spiderpig/cradle_pack.py`,
-`flat_pack`): the hand crank (its set screw), the base plate (the six brackets' nuts; the
-carriage bolts stay in it), each inner plate (its five screws from the bay side), pin E's
-Chicago screw, then each side panel slides off its cradle link, leaving the cradle box (both
-links, the tie rods, the saddles, the light) whole; the base stop comes off the rear
-saddle (two screws). The modules stack in one box, about 656 x 516 x 363 mm outside (123 L):
-the base plate under the passive panel, the drive panel over it, the cradle box on top, the
-small pieces round them. The cradle page's Flat pack button flies each module there
-(`/api/cradle/{key}/pack`); taking the cradle box apart too (its eight tie screws) would
-bring the box down to about 250 mm.
+`spiderpig/cradle_pack.py` (`flat_pack`) takes the cradle apart for the trip and stacks it
+in one box. The cradle page's Flat pack button flies each piece into the box, in the order
+they go in (`/api/cradle/{key}/pack`).
+
+**What comes apart.** Only what is already fastened. The steps are read off the parts and
+the linkage, so they follow the design (`cradle_pack.pieces`):
+1. The bottle's adapters come out of the saddles. Every adapter and collar travels loose.
+2. The hand crank comes off its shaft (its set screw).
+3. The base plate comes off (the brackets' nuts). The carriage bolts stay in it.
+4. Each inner plate comes off (its screws, from the bay side).
+5. Each side panel comes off its cradle link, where the link meets the side
+   (`mech.connections`).
+   - A pin: its Chicago screw comes out and goes back into its barrel, which stays in the
+     side's link. A's pin E (drive side), B's pins X and Y (both sides).
+   - A pillar slides out of the link's bore: A's pillar G.
+   - The cradle box then comes away whole.
+6. The cradle box comes apart:
+   - the base stop and the light (its clip's screws) off their saddles;
+   - one cradle link off the tie rods (its tie screws, threadlocked);
+   - the saddles slid off the rods (their set screws), each with its liner;
+   - the other link off. Each tie rod travels with its two screws back in its ends, and
+     each cradle link with the loose spacers that sat over it.
+
+A link left hanging on one joint once its cradle link is off swings into its panel
+(`cradle_pack.tuck`): B's b5 on J2, which stood above the frame.
+
+**How it stacks** (`cradle_pack.pack`). It works on each part's bounding box, 3 mm apart
+(`CLEAR`):
+- **Levelled.** Every piece but the panels and the base plate is turned in the
+  mechanism's plane to its least bounding box (`level`). It then lies in one of its six
+  axis orientations.
+- **The base plate** stays at the bottom, where it is. The box is as wide as the largest
+  piece lying flat.
+- **The side panels** drop onto a heightmap, in both orders, either face down, either way
+  round; the lowest pair wins. They nest: one panel's pillars stand between the other's
+  gearbox and brackets.
+- **The rest fill in**, largest first, at the lowest free slot of a voxel grid. That
+  includes the cavities under a panel's plate. A slot is picked by:
+  - what raises the box least;
+  - then the lowest, the flattest;
+  - then the nearest a corner.
+  A piece never goes both over and under another: it couldn't go in.
+- **The order in**: bottom up, as the stack allows (what is under a piece goes in first).
+
+The box's bounds per design are in `tests/test_cradle.py` (`PACK_BOX`).
 
 ## Loads and checks
 

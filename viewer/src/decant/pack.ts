@@ -1,9 +1,10 @@
 /**
  * The cradle's flat pack (``/api/cradle/{key}/pack``, ``spiderpig.cradle_pack``): each
- * transport module (the base plate, the two side panels, the cradle box…) flies from the
- * assembled cradle into its place in the box, one after another, and the box fades in round
- * them. The transforms are in the baked model's own frame (the ``walker`` node's: x along
- * the linkage, y up, z across the bay), from each part's pose at the clip's first frame.
+ * piece it comes apart into (the base plate, the side panels, the cradle links, the tie
+ * rods, the saddles…) flies from the assembled cradle into its place in the box, one after
+ * another in the order they go in (bottom up), and the box fades in round them. The
+ * transforms are in the baked model's own frame (the ``walker`` node's: x along the
+ * linkage, y up, z across the bay), from each part's pose at the clip's first frame.
  */
 import * as THREE from 'three';
 
@@ -13,12 +14,13 @@ export interface PackModule {
   how: string;
   parts: string[];
   matrix: number[][];       // 4 x 4, row-major
+  part_matrix?: Record<string, number[][]>;   // a part's own (a hanging link swung in)
 }
 
 export interface PackData {
-  modules: PackModule[];
+  modules: PackModule[];    // in the order they go in the box, bottom up
   box: { inside_mm: number[]; outside_mm: number[]; floor: number[]; volume_l: number };
-  steps: string[];
+  steps: string[];          // how it comes apart, in order
 }
 
 interface Track { node: THREE.Object3D; from: Mover; to: Mover; module: number }
@@ -33,6 +35,14 @@ export interface Pack {
 }
 
 const WALL = 5;
+
+function matrix4(r: number[][]): THREE.Matrix4 {
+  return new THREE.Matrix4().set(
+    r[0]![0]!, r[0]![1]!, r[0]![2]!, r[0]![3]!,
+    r[1]![0]!, r[1]![1]!, r[1]![2]!, r[1]![3]!,
+    r[2]![0]!, r[2]![1]!, r[2]![2]!, r[2]![3]!,
+    0, 0, 0, 1);
+}
 
 function mover(m: THREE.Matrix4): Mover {
   const p = new THREE.Vector3(), q = new THREE.Quaternion(), s = new THREE.Vector3();
@@ -53,19 +63,16 @@ export function stagger(s: number, i: number, n: number, overlap = 0.5): number 
 export function createPack(walker: THREE.Object3D, data: PackData, hide: string[]): Pack {
   const tracks: Track[] = [];
   data.modules.forEach((m, i) => {
-    const r = m.matrix;
-    const pack = new THREE.Matrix4().set(
-      r[0]![0]!, r[0]![1]!, r[0]![2]!, r[0]![3]!,
-      r[1]![0]!, r[1]![1]!, r[1]![2]!, r[1]![3]!,
-      r[2]![0]!, r[2]![1]!, r[2]![2]!, r[2]![3]!,
-      0, 0, 0, 1);
+    const pack = matrix4(m.matrix);
     for (const name of m.parts) {
       // (GLTFLoader sanitizes node names: "L.frame_outer" is "Lframe_outer")
       const node = walker.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name));
       if (!node) continue;
       node.updateMatrix();
       const at0 = node.matrix.clone();
-      tracks.push({ node, from: mover(at0), to: mover(pack.clone().multiply(at0)), module: i });
+      const own = m.part_matrix?.[name];
+      const to = (own ? matrix4(own) : pack.clone()).multiply(at0);
+      tracks.push({ node, from: mover(at0), to: mover(to), module: i });
     }
   });
   const hidden = hide.map((n) => walker.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n)))
