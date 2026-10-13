@@ -422,7 +422,11 @@ class ChicagoShaft:
 
 def chicago_section(shaft: ChicagoShaft) -> Section:
     """The barrel as a 304 tube, its OD over its thread's major diameter (4 x 3 for the M3;
-    the screw's core inside it ignored: conservative)."""
+    the screw's core inside it ignored: conservative); a shaft with its own ``section`` (a
+    solid steel pin, :mod:`construction.pivots.pivot_pin`), that."""
+    own = getattr(shaft, "section", None)
+    if own is not None:
+        return own()
     thread = float(shaft.item().get("thread", 3.0))
     return Section.tube(shaft.d, thread, 215.0,
                         name=f"chicago barrel {shaft.d:g} x {thread:g} tube")

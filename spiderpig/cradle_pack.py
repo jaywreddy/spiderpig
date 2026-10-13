@@ -7,9 +7,11 @@ with no new joint, in the order :func:`pieces` gives as its steps:
 2. the hand crank off the gearbox's input shaft (its set screw);
 3. the cradle off the base board (the brackets' nuts: the carriage bolts stay in the board);
 4. each side's inner plate off (its screws from the bay side, back in its holes);
-5. the cradle link's own joints with its side (``mech.connections``): a pin's Chicago screw
-   out (it goes back into its barrel, which stays in the side's link), a pillar slid out of
-   the link's bore; each side panel then lifts off, leaving the cradle box whole;
+5. the cradle link's own joints with its side (``mech.connections``): a pivot pin's upper
+   E-ring off (the pin stays in the side's links, the ring back on it for the trip), or a
+   Chicago screw out of its barrel (``chicago6``: it goes back into the barrel, which stays
+   in the side's link), a pillar slid out of the link's bore; each side panel then lifts
+   off, leaving the cradle box whole;
 6. the cradle box apart: the base stop and the light off their saddles, one cradle link
    off the tie rods (their screws), the saddles slid off the rods (their set screws), the
    other link off. Each tie rod travels with its two screws back in its ends, each cradle
@@ -277,17 +279,27 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             (pins if kind == "pin" else pillars).setdefault(j, []).append(s)
     if pins:
         names = sorted(pins)
-        pin_screws = [f"{s}.pin_{j}_screw" for j in names for s in pins[j]]
-        chicago = all("chicago" in (parts[n].bom_key or "") for n in pin_screws if n in parts)
-        what = "Chicago screw" if chicago else "screw"
+        # (a Chicago screw's body is the pin's _screw; a pivot pin's, with its rings, _pin)
+        pin_parts = [n for j in names for s in pins[j]
+                     for n in (f"{s}.pin_{j}_screw", f"{s}.pin_{j}_pin") if n in parts]
+        chicago = all("chicago" in (parts[n].bom_key or "") for n in pin_parts)
         sides = sorted({s for j in names for s in pins[j]})
         on = "both sides" if len(sides) == 2 else side_word[sides[0]]
-        undo = (f"undo each one's {what} ({len(pin_screws)})" if len(pin_screws) > 1
-                else f"undo its {what}")
-        steps.append((f"Pin{'s' if len(names) > 1 else ''} {_join(names)} (the cradle link's, "
-                      f"on {on}): {undo} from the bay side, holding the barrel's head with "
-                      "taped pliers. The barrel stays in its link; the screw goes back into "
-                      "it for the trip.", []))
+        many = len(pin_parts) > 1
+        head = (f"Pin{'s' if len(names) > 1 else ''} {_join(names)} (the cradle link's, "
+                f"on {on}): ")
+        if chicago:
+            undo = (f"undo each one's Chicago screw ({len(pin_parts)})" if many
+                    else "undo its Chicago screw")
+            steps.append((f"{head}{undo} from the bay side, holding the barrel's head with "
+                          "taped pliers. The barrel stays in its link; the screw goes back "
+                          "into it for the trip.", []))
+        else:       # a pivot pin (pivot8): an E-ring over the cradle link
+            undo = (f"take each one's upper E-ring off ({len(pin_parts)})" if many
+                    else "take its upper E-ring off")
+            steps.append((f"{head}{undo} from the bay side (E-ring pliers, or a flat "
+                          "screwdriver in its opening). The pin stays in the side's links; "
+                          "the ring goes back on it for the trip.", []))
     panels = [panel[s] for s in SIDES if panel[s] in out]
     if panels:
         slide = (f" (its bore slides off pillar {_join(sorted(pillars))})" if pillars else "")

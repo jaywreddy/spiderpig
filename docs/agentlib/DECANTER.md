@@ -162,13 +162,25 @@ stops there:
     outer plate and then the gearbox's flange, read as a big disc either way). The gearbox
     sits on its small riser discs; the crank turns about 2 rpm behind the outer plate's
     truss, and the use limit keeps fingers out of the drive side.
-- **The pins** (`chicago6`, `config.PRODUCT_PINS`): M6 Chicago screws with an 8 mm
-  barrel.
-  - Unlike a walker's pins, these aren't glued in (`ChicagoShaft.bonded`). Every link runs
-    on the barrel, 0.25 mm of axial play at least.
-  - Hold the barrel's head from below with taped pliers while the screw goes in; the head
-    is in the open under the rod. No epoxy goes on the order. The screw takes the medium
-    threadlocker (243): the low-strength 222 cures poorly between two stainless parts.
+- **The pins** (`pivot8`, `config.PRODUCT_PINS`, since 2026-10-13): hardened steel pivot
+  pins, MISUMI's precision pivot pin, straight, retaining rings (CCGH8-L-NC2.4;
+  `construction.pivots.pivot_pin`).
+  - A solid 8 mm g6 pin of 1045 steel hardened to 40-45 HRC, black oxide. The length L
+    between its two ring grooves is made to the pin's stack to the 0.1 mm, so nothing takes
+    up: 0.25-0.35 mm of axial play. An E-ring (No. 7, 14 mm across) in each groove holds the
+    links on.
+  - The links turn on the pin between the rings, in the M6 Chicago barrel's 8.2 mm holes.
+  - Each end stands 2.4 mm past its link (the alteration NC2.4; the standard 3 mm end didn't
+    fit a 3.175 mm layer with the play), so it sinks into the layer beside it as the Chicago
+    screws' heads did: the stacks are as thin as with them.
+  - Rated as a solid 8 mm rod at class 8.8's minimum yield, 640 MPa (conservative for its
+    hardness): 4.3 x the M6 barrel. At the jam B's rod pin P went from SF 0.74 to 3.5, A's
+    pin E from 0.65 to 3.1.
+  - On the bench, a ring into each pin's lower groove and the pin up through its lowest
+    link; the other ring once its highest link is on. Nothing is glued or threadlocked.
+  - About USD 21-24 a pin (the discount is per length): B buys 11, A one. The M6 Chicago
+    screws (`chicago6`) are still there, `--pin chicago6`; the shoulder screws tried first
+    are in [DECISIONS.md](DECISIONS.md).
 - **The pillars** are 12 mm steel standoffs (MISUMI NETRF12, M6 ends;
   `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
   ones (SF 0.78 at B's O2). An M6 button head goes through each plate without a washer, to
@@ -307,8 +319,8 @@ the linkage, so they follow the design (`cradle_pack.pieces`):
 4. Each inner plate comes off (its screws, from the bay side).
 5. Each side panel comes off its cradle link, where the link meets the side
    (`mech.connections`).
-   - A pin: its Chicago screw comes out and goes back into its barrel, which stays in the
-     side's link. A's pin E (drive side), B's pins X and Y (both sides).
+   - A pin: its upper E-ring comes off; the pin stays in the side's links, the ring back on
+     it for the trip. A's pin E (drive side), B's pins X and Y (both sides).
    - A pillar slides out of the link's bore: A's pillar G.
    - The cradle box then comes away whole.
 6. The cradle box comes apart:

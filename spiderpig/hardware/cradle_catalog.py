@@ -322,3 +322,79 @@ register(
                "tail reaches a decanter's shoulder at rest (the Maglite Solitaire's 81 mm "
                "did). Mass estimated."),
 )
+
+
+# -- the steel pivot pins (construction.pivots.pivot_pin, 2026-10-13) -----------------------
+
+PIVOT8_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(100, 1001))
+"""MISUMI's precision pivot pins, straight, retaining rings, 8 mm (CCGH8-L): the length L
+between the ring grooves, 10.0-100.0 mm in 0.1 mm steps (+0.1/-0; the catalog page, 2019 US
+p. 939, and the series page rendered 2026-10-13)."""
+PIVOT8_NC = 2.4
+"""mm: the pin past each groove's inner edge, the ring and its stub: the alteration NC2.4, the
+least for D 8 (2.4-5; the standard 3 mm end, a hair over a 3.175 mm layer with the play, put
+every end of B's pins in a clearance gap: 94.5 mm of stack against 77)."""
+PIVOT8_TIERS: tuple[tuple[int, float], ...] = (
+    (1, 24.05), (2, 22.42), (5, 21.36), (20, 20.35), (50, 19.26))
+"""USD each by quantity of one part number, the NC2.4 alteration included (CCGH8-12.8-NC2.4's
+page rendered 2026-10-13; CCGH8-12.8's and CCGH8-16's, without it, both 21.74 at one: the
+price doesn't follow L)."""
+PIVOT8_SEEN: tuple[float, ...] = (12.8,)
+PIVOT8_YIELD = 640.0
+"""MPa: the yield the strength check takes for CCGH8 (1045 equivalent, hardened to 40-45 HRC
+min.): ISO 898-1 class 8.8's minimum (Bolt Depot's grade chart, rendered 2026-10-13), as for
+any steel at its hardness or more (8.8 spans 22-32 HRC; 10.9, 940 MPa, 32-39; 12.9, 1100 MPa,
+39-44): conservative, whether the pin is hardened through or only at its skin."""
+
+
+def pivot_pin8(length: float) -> str:
+    """The catalog key of the 8 mm pivot pin ``length`` mm between its grooves (made on first
+    use)."""
+    key = f"pivot_pin8_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _pivot8_item(L: float) -> Item:
+    pn = f"CCGH8-{L:g}-NC{PIVOT8_NC:g}"
+    return Item(
+        f"pivot_pin8_{L:g}", f"8 mm hardened steel pivot pin, {L:g} mm between its retaining "
+        f"rings (MISUMI {pn}, 2 E-rings included)", "dowel",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300095320/?HissuCode=" + pn,
+               pn, price_usd=PIVOT8_TIERS[0][1], tiers=PIVOT8_TIERS,
+               verified=L in PIVOT8_SEEN,
+               note="MISUMI precision pivot pin, straight, retaining rings: 1045 carbon steel "
+                    "equivalent hardened to 40-45 HRC, black oxide, 8 mm g6 (-0.005/-0.014), L "
+                    "between the grooves +0.1/-0 in 0.1 mm steps, 2.4 mm past each (the "
+                    "alteration NC2.4; 3 mm standard), two E-type retaining rings No. 7 "
+                    "(spring steel) included; the discount is per part number"),),
+        dims={"barrel_d": 8.0, "head_d": 14.0, "head_h": PIVOT8_NC,
+              "screw_head_h": PIVOT8_NC, "thread": 0.0, "length": L, "ring_t": 0.8,
+              "groove_w": 0.9, "groove_d": 7.0, "yield_mpa": PIVOT8_YIELD},
+        notes="A decanting cradle's link pin: the links turn on the pin between its two "
+              "E-rings (construction.pivots.pivot_pin).")
+
+
+def _pivot8_of(key: str) -> Item | None:
+    try:
+        n = round(float(key.removeprefix("pivot_pin8_")) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 100 <= n <= 1000 or f"pivot_pin8_{L:g}" != key:
+        return None
+    return _pivot8_item(L)
+
+
+register_factory("pivot_pin8_", _pivot8_of)
+
+register(
+    Item("e_ring_7", "E-type retaining ring No. 7 (JIS B 2804, for an 8-11 mm shaft), spring "
+         "steel", "clip",
+         (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300258420/?HissuCode=NETW7",
+                "NETW7", price_usd=0.34, verified=True,
+                note="spring steel 44-53 HRC, trivalent chromate; groove 7 mm, 14 mm across, "
+                     "0.8 mm thick; page rendered 2026-10-13 (two come with each pivot pin: a "
+                     "spare only)"),),
+         dims={"d": 7.0, "od": 14.0, "t": 0.8}),
+)

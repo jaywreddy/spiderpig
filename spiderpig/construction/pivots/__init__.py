@@ -19,7 +19,11 @@ key                 construction
                     printed rings and a printed head spacer per end, lowest link
                     bonded to the barrel; pins only (:mod:`construction.pivots.chicago`)
 ``chicago6``        the same with an M6 Chicago screw (8 mm barrel): a decanting
-                    cradle's pins (``config.PRODUCT_PINS``)
+                    cradle's pins until 2026-10-13
+``pivot8``          an 8 mm hardened steel pivot pin (MISUMI CCGH8) made to its stack,
+                    an E-ring at each end, on the Chicago screw's column: a decanting
+                    cradle's pins since 2026-10-13 (``config.PRODUCT_PINS``,
+                    :mod:`construction.pivots.pivot_pin`)
 ==================  ================================================================
 
 Every pivot's spacer rings and gap rings are printed (:func:`common.gap_washers`): an
@@ -36,6 +40,7 @@ the planner as unbuildable, with the link in the way.
 from __future__ import annotations
 
 from spiderpig.construction.pivots.chicago import CHICAGO_M6, ChicagoAxle
+from spiderpig.construction.pivots.pivot_pin import PIVOT8
 from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6)
+PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6, PIVOT8)
