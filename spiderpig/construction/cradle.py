@@ -245,8 +245,8 @@ class Stand:
 BASE_SHEET = "birch_9mm"        # the base board, both sides' outer plates bolted onto it:
 #                                 Baltic birch plywood, routed (2026-10-13, the user's)
 BASE_T = 9.0                    # its thickness
-BASE_HALF = 250.0               # its half-width across the bay: a 500 mm track (a 30° tip
-#                                 and a 26 N push at a bottle's top, the worst over the swing)
+BASE_HALF = 265.0               # its half-width across the bay: a 530 mm track (a full 6 L
+#                                 tips sideways past 25°: cradle_report.stability)
 FOOT_PAD_H = 8.0                # its printed TPU feet, snapped into its corner holes
 BASE_TOP_CLEAR = FOOT_PAD_H + BASE_T - 2.0  # what may hang under it: all but 2 mm of the feet
 BASE_TOP = -LIP_HEIGHT + FOOT_PAD_H + BASE_T    # its top, from the mouth
@@ -292,14 +292,14 @@ STANDS: dict[str, Stand] = {
     # a rail. The inner plate is the bar O1-O2: the tie rods pass behind it (the rear ones
     # never further round than 72° down, the bar at 90.5°) and the front ones above it.
     # Nothing crosses the bay: the decanter stands under the mouth, between the bars. The
-    # base board ends 70 mm behind O (its rear edge tips a full 6 L no sooner than its sides).
+    # base board ends 100 mm behind O (a full 6 L tips over its rear edge past 25°).
     "decanter_rcm": Stand(
         nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y)},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
                ("Ff", "Fr"), ("O2", "Fr")),
         inner=(("O1", "O2"),),
         feet=("Ff", "Fr"),
-        base=(-160.0, 436.0),
+        base=(-160.0, 466.0),
     ),
 }
 

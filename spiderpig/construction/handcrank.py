@@ -23,9 +23,9 @@ self-locking worm gear reducer instead of a servo:
   printed sleeve under the block down to the shaft's collar. A NETRF10 standoff through
   the block at the arm's middle (the *tie*), screwed at both ends, makes the plates one
   rigid block and clamps them.
-* **The crankpin**: a NETRF10 standoff (10 mm steel round) standing in the block from its
-  lowest plate (an M5 button head up through that plate into it) to the rod and on: the
-  rod turns on it over a printed spacer on the block, an M5 button head and a wide washer
+* **The crankpin**: a NETRF12 standoff (12 mm steel round) standing in the block from its
+  lowest plate (an M6 button head up through that plate into it) to the rod and on: the
+  rod turns on it over a printed spacer on the block, an M6 button head and a wide washer
   on its end over the rod. The rod rides just over the block, so the crankpin carries the
   rod's force a few millimetres off its socket (the 2026-10-10 review round 2: the arm had
   been on the key, the rod 21 mm over it, the crankpin a cantilever that long).
@@ -62,7 +62,7 @@ from spiderpig.construction.base import (
     hardware,
 )
 from spiderpig.hardware.catalog import get
-from spiderpig.hardware.cradle_catalog import NETRF10_THREAD, netrf10
+from spiderpig.hardware.cradle_catalog import NETRF10_THREAD, NETRF12_THREAD, netrf10, netrf12
 from spiderpig.hardware.fasteners import screw, screw_solid
 from spiderpig.materials import sheet as sheet_of
 from spiderpig.servos.mount import to_location
@@ -155,8 +155,10 @@ and key's length assumed (25 x 3, 6 x 6 x 30)."""
 BOXES = {b.key: b for b in (NRV030, NRV040)}
 
 
-CRANKPIN_D = 10.0       # the crankpin and the block's tie: NETRF10 standoffs (10 mm steel round,
-#                         M5 x 10 deep each end, made to length: hardware.cradle_catalog)
+CRANKPIN_D = 12.0       # the crankpin: a NETRF12 standoff (12 mm steel round, M6 x 12 deep each
+#                         end, made to length: hardware.cradle_catalog); the 6 L's jam bends a
+#                         10 mm one (SF 1.13, cradle_report)
+TIE_D = 10.0            # the block's tie and the handle's grip pin: NETRF10 (M5 x 10 deep)
 SOCKET_FIT = 0.3        # the block's holes over them (the standoff is 0/-0.1 mm; a laser's hole
 #                         +-0.13: thirteen of them must pass it)
 CRANKPIN_PLAY = 0.3     # the rod's axial play on the crankpin, under its washer, at most (the
@@ -171,6 +173,8 @@ HEADS_OVER = 3.3 + 1.5  # over the block: the end screw's M6 head (the tie's M5 
 #                         1.5 mm under the rod (the stack's tolerance: round 3 review)
 
 
+PIN_WASHER = "m6_washer_wide"   # over the crankpin's end, holding the rod on
+PIN_WASHER_T = 1.6
 GRIP_SOCKET = 3.0               # the grip's standoff stands this deep in the hand crank's arm
 GRIP_HEAD_SINK = 3.0            # the M5 under it: its head this deep in the arm's inner face
 M5 = screw("bhcs", "5")         # ISO 7380 M5 button heads: the standoffs' ends
@@ -181,14 +185,17 @@ HEAD_LAYER_T = 7.0              # the layer over the outer plate: the riser scre
 #                                 run (it also sets the keyed plates on the key's flanks)
 HEAD_LAYER = 1
 ARM_LAYER = 2
-KEYED_PLATES = 3                # the block's keyed plates: three crank-sheet plates (0.125 in
+KEYED_PLATES = 4                # the block's keyed plates: four crank-sheet plates (0.125 in
 #                                 6061 each: the key's 6.1 mm slot is legal in it), all on the
-#                                 key's straight flanks
+#                                 key's straight flanks (a 6 L's jam: three held 1.5)
 ARM_BORE_FIT = 0.25             # the arm plates' bore over the h6 shaft: over a laser's
 #                                 +-0.13 mm (the key drives; the end cap centres the arm)
 RISER_SHEET = ("al5052_3p2mm", 3.175)    # the riser's discs: the frame's sheet
 HANDLE_R = 100.0                # the hand crank's throw (mm): a full 6 L's worst turn under
 #                                 25 N at the grip (cradle_report: the drive)
+HANDLE_RS: dict[str, float] = {"decanter_hinge": 105.0}
+"""Per cradle, its handle's throw where it isn't :data:`HANDLE_R`: A's worst turn takes more
+(its jam, ``config.PRODUCT_JAM_NM``, grows with it)."""
 REACH = 100.0                   # its printed tube from the input shaft's end to its arm: the
 #                                 arm turns behind every moving part of the stack (it crosses
 #                                 the stack's side there, where nothing moves), clear of the
@@ -198,6 +205,12 @@ ARM_T, ARM_W = 10.0, 18.0       # the printed crank arm: along the shaft, across
 GRIP = (20.0, 25.0)             # its printed grip: d, length (on a 10 mm NETRF10)
 HUB_LEN = 18.0                  # the printed crank's hub on the input shaft (its radius the box's)
 HANDLE_SET = 6.0                # the M3 cup-point set screw on that key
+
+
+def handle_r(config) -> float:
+    """The hand crank's throw for ``config`` (its linkage's :data:`HANDLE_RS` entry, else
+    :data:`HANDLE_R`; a config-less context: the default)."""
+    return HANDLE_RS.get(getattr(config, "linkage", ""), HANDLE_R)
 
 
 @dataclass(frozen=True)
@@ -352,7 +365,7 @@ class HandCrank(Group):
         t = ctx.sheet_t("crank")
         head_r = M6.head_d / 2 + 0.3
         at_o = self.box.sleeve_d / 2 + m
-        over = get("m5_washer_wide").dims["od"] / 2 + 0.3   # their washers over it
+        over = get(PIN_WASHER).dims["od"] / 2 + 0.3   # their washers over it
 
         def both(layer, shape, label, **kw):
             return [Placed(layer, shape, GROUP, label, **kw),
@@ -428,14 +441,14 @@ class HandCrank(Group):
                                   f"screws' heads (z {heads + 0.3:.1f} mm), not in layer {r}")
             rod_top = z_of(L, r) + ctx.sheet_t("link", rider)
             length = rod_top + CRANKPIN_PLAY - (a0 + t)
-            if length < 2 * NETRF10_THREAD:
+            if length < 2 * NETRF12_THREAD:
                 raise Unbuildable(f"the crankpin standoff would be {length:.1f} mm, under the "
-                                  f"{2 * NETRF10_THREAD:g} its two M5 threads need")
+                                  f"{2 * NETRF12_THREAD:g} its two M6 threads need")
             out = []
             for layer in range(max(ks + hs) + 1, r):     # its printed spacer up to the rod
                 out += both(layer, Disc(pin, CRANKPIN_D / 2 + 2.0), "crankpin spacer")
             out.append(Placed(r, Disc(pin, CRANKPIN_D / 2), GROUP, "crankpin", seat=True))
-            head_top = rod_top + CRANKPIN_PLAY + 1.2 + M5.head_h + 0.3
+            head_top = rod_top + CRANKPIN_PLAY + PIN_WASHER_T + M6.head_h + 0.3
             hi = r + 1
             while hi < L.top and z_of(L, hi) < head_top - 1e-6:
                 out += both(hi, Disc(pin, over), "crankpin washer and screw")
@@ -557,11 +570,11 @@ class HandCrank(Group):
                                     f"screws' heads or the crankpin ({throw:.1f} mm out)")
         key_slot = Rect(tuple(o + kc * (box.shaft_d / 2 + box.key_proud / 2)),
                         (box.key_proud + 2.6, k_w + 0.1), key_ang)    # (1.3 under the key)
-        socket, through = CRANKPIN_D + SOCKET_FIT, M5.shank_d + 0.5
         for i, z_lo in enumerate(zs):
             # the crankpin stands on the lowest plate, the tie runs through all but the top
-            pins = [Cut(tuple(mxy), through if i == 0 else socket),
-                    Cut(tuple(tie), through if i == len(zs) - 1 else socket)]
+            pins = [Cut(tuple(mxy), M6.shank_d + 0.5 if i == 0 else CRANKPIN_D + SOCKET_FIT),
+                    Cut(tuple(tie), M5.shank_d + 0.5 if i == len(zs) - 1 else
+                        TIE_D + SOCKET_FIT)]
             if z_lo < riser.shaft_end - 1e-6:       # round the shaft: keyed (the key's
                 at_o = [Cut(tuple(o), box.shaft_d + ARM_BORE_FIT), key_slot]   # end in some)
             else:                                   # over its end: the end screw through
@@ -589,23 +602,32 @@ class HandCrank(Group):
         # M5 up through it) through the rod (a wide washer and an M5 over the rod)
         washer = get("m5_washer_wide").dims
         w_t, w_od = float(washer["t"]), float(washer["od"])
+        pin_w = get(PIN_WASHER).dims
+        pw_t, pw_od = float(pin_w["t"]), float(pin_w["od"])
 
-        def standoff(xy, z_lo: float, z_hi: float, up: bool) -> tuple[Shape3D, str]:
-            """A NETRF10 from ``z_lo`` to ``z_hi``, its length in 0.1 mm steps (``up``: at
-            least that long, else at most)."""
+        def standoff(xy, z_lo: float, z_hi: float, up: bool, d: float = TIE_D
+                     ) -> tuple[Shape3D, str]:
+            """A NETRF10 (or, ``d`` 12, a NETRF12) from ``z_lo`` to ``z_hi``, its length in
+            0.1 mm steps (``up``: at least that long, else at most)."""
             tenths = (z_hi - z_lo) * 10
             length = (math.ceil(tenths - 1e-6) if up else math.floor(tenths + 1e-6)) / 10
-            bore = M5.shank_d / 2 + 0.05            # (its tapped ends, the screws in them)
-            part = difference(disc(xy, CRANKPIN_D / 2, z_lo, z_lo + length),
-                              disc(xy, bore, z_lo - 1, z_lo + NETRF10_THREAD),
-                              disc(xy, bore, z_lo + length - NETRF10_THREAD, z_lo + length + 1))
-            return part, netrf10(length)
+            sc, deep = (M6, NETRF12_THREAD) if d == CRANKPIN_D else (M5, NETRF10_THREAD)
+            bore = sc.shank_d / 2 + 0.05            # (its tapped ends, the screws in them)
+            part = difference(disc(xy, d / 2, z_lo, z_lo + length),
+                              disc(xy, bore, z_lo - 1, z_lo + deep),
+                              disc(xy, bore, z_lo + length - deep, z_lo + length + 1))
+            return part, (netrf12 if d == CRANKPIN_D else netrf10)(length)
 
         def m5(grip: float) -> float:
             """The shortest stock M5 of 10 mm or more (one length to buy) through ``grip`` mm
             with 5 mm to a standoff's 10 mm thread."""
             return next(L for L in M5.lengths
                         if L >= 10.0 and 5.0 <= L - grip <= NETRF10_THREAD)
+
+        def m6(grip: float) -> float:
+            """The shortest stock M6 through ``grip`` mm with 6 mm to a NETRF12's 12 mm
+            thread."""
+            return next(L for L in M6.lengths if 6.0 <= L - grip <= NETRF12_THREAD)
 
         def add(name: str, part, key: str):
             out.bodies.append(hardware(name, part, crank, fab="purchased", bom_key=key,
@@ -625,17 +647,18 @@ class HandCrank(Group):
 
         r0 = build.z(build.layers[rider])[0]
         rod_top = r0 + ctx.sheet_t("link", rider)
-        pin_part, pin_key = standoff(tuple(mxy), a0 + t, rod_top + CRANKPIN_PLAY, up=False)
+        pin_part, pin_key = standoff(tuple(mxy), a0 + t, rod_top + CRANKPIN_PLAY, up=False,
+                                     d=CRANKPIN_D)
         out.bodies.append(hardware("crankpin", pin_part, crank, fab="purchased",
                                    bom_key=pin_key, color=STEEL))
         pin_top = a0 + t + _len_of(pin_key)
-        lo = m5(t)
-        add("crankpin_screw_lo", screw_solid(tuple(mxy), M5, a0, lo, up=True), M5.key(lo))
-        add("crankpin_washer", ring(tuple(mxy), w_od, M5.shank_d + 0.3, pin_top, pin_top + w_t),
-            "m5_washer_wide")
-        hi = m5(w_t)
-        add("crankpin_screw_hi", screw_solid(tuple(mxy), M5, pin_top + w_t, hi, up=False),
-            M5.key(hi))
+        lo = m6(t)
+        add("crankpin_screw_lo", screw_solid(tuple(mxy), M6, a0, lo, up=True), M6.key(lo))
+        add("crankpin_washer", ring(tuple(mxy), pw_od, M6.shank_d + 0.3, pin_top,
+                                    pin_top + pw_t), PIN_WASHER)
+        hi = m6(pw_t)
+        add("crankpin_screw_hi", screw_solid(tuple(mxy), M6, pin_top + pw_t, hi, up=False),
+            M6.key(hi))
         if r0 - block_top > 0.3:
             out.bodies.append(hardware("crankpin_spacer",
                                        ring(tuple(mxy), CRANKPIN_D + 4.0, CRANKPIN_D + 0.3,
@@ -645,7 +668,7 @@ class HandCrank(Group):
 
         # the hand crank on the input shaft, its arm behind every moving part of the stack
         end, d, zh = self.handle_axis(build, riser)
-        out.bodies += self._handle(end, d, zh, frame)
+        out.bodies += self._handle(end, d, zh, frame, handle_r(ctx.config))
         out.notes["hand_crank"] = {
             "gearbox": box.key, "ratio": box.ratio, "riser_discs": list(riser.discs),
             "riser_mm": riser.height, "riser_screw_mm": riser.screw,
@@ -662,7 +685,8 @@ class HandCrank(Group):
                        "dir": [round(float(v), 6) for v in d], "axis_z": round(zh, 3),
                        "reach_mm": REACH, "arm_t_mm": ARM_T, "hub_r_mm": self.box.crank_hub_r,
                        "hub_len_mm": HUB_LEN,
-                       "r_mm": HANDLE_R + GRIP[0] / 2 + 1.0, "grip_r_mm": HANDLE_R,
+                       "r_mm": handle_r(ctx.config) + GRIP[0] / 2 + 1.0,
+                       "grip_r_mm": handle_r(ctx.config),
                        "grip_len_mm": GRIP[1] + 1.2 + M5.head_h},
             "throw_mm": round(float(np.linalg.norm(mxy - o)), 3),
             "irreversible": box.irreversible(),
@@ -715,8 +739,8 @@ class HandCrank(Group):
                                             "crankpin_screw_lo"),
                "Crank block",
                "On the bench, the crank's lowest plate (keyed, one small hole at its end): "
-               "the long steel standoff (the crankpin) stood on its small hole, an M5 button "
-               "head up through the plate into it (threadlocker), tight; the short one (the "
+               "the thick steel standoff (the crankpin) stood on its small hole, an M6 button "
+               "head up through the plate into it (threadlocker), tight; the thin one (the "
                "tie) down through the plate's middle hole to its wide washer, an M5 button "
                "head up through the washer into it (threadlocker), snug: the washer, not the "
                "plate, holds the tie, so tape the washer to the plate until the top plate's "
@@ -731,14 +755,15 @@ class HandCrank(Group):
                "tight: it clamps the block; the M6 button head down into the shaft's end tap, "
                "dry, to 3 N·m (it clamps the block on the printed sleeve, which settles: after "
                "the first few pours take it out, threadlocker on it, and back to 3 N·m). Turn "
-               f"the gearbox's {self.box.input_d:g} mm input shaft by hand until the block has gone a whole turn "
+               f"the gearbox's {self.box.input_d:g} mm input shaft by hand until the block "
+               "has gone a whole turn "
                "(30 turns: the worm can't be turned from the block): nothing may touch the "
                "outer plate.", "layer"),
             Op(STACK, (ARM_LAYER, 2), whole("crankpin_spacer"), "",
                "The crankpin's printed spacer down over the crankpin onto the block.",
                "layer"),
             Op(STACK, (k_rod, 2), whole("crankpin_washer", "crankpin_screw_hi"), "",
-               "With the rod on the crankpin: the wide washer and the M5 button head into "
+               "With the rod on the crankpin: the wide washer and the M6 button head into "
                "the crankpin's top (threadlocker), tight. The rod must turn freely under the "
                "washer with a little end play (about 0.3 mm): if it binds, sand "
                "its printed spacer down (never shim it up: the washer keeps it off the screw "
@@ -805,7 +830,7 @@ class HandCrank(Group):
         cut += [disc(xy, b.face_thread / 2, z_face - FACE_DEPTH, z_face + 3) for xy in holes]
         return difference(part, *cut)
 
-    def _handle(self, end, d, z, host) -> list:
+    def _handle(self, end, d, z, host, throw: float = HANDLE_R) -> list:
         """The printed hand crank on the input shaft: its hub keyed over the shaft's 3 mm key
         (an M3 set screw down onto the key in a printed pilot), a tube :data:`REACH` on
         along the shaft and the arm there, :data:`HANDLE_R` out; its grip a printed sleeve
@@ -824,7 +849,7 @@ class HandCrank(Group):
         hub_r = self.box.crank_hub_r
         hub = rod(hub_r, -HUB_LEN, REACH)
         t_arm = REACH - ARM_T / 2                       # the arm's middle, along the shaft
-        arm_len = HANDLE_R + ARM_W / 2
+        arm_len = throw + ARM_W / 2
         arm = Box(ARM_T, arm_len, ARM_W).moved(Location((t_arm, -arm_len / 2, 0.0)))
         bore = rod(self.box.input_d / 2 + 0.15, -HUB_LEN - 0.5, 0.5)
         key_w, key_hub = self.box.input_key
@@ -839,9 +864,9 @@ class HandCrank(Group):
         # NETRF10 standing in a socket in the arm's outer face, an M5 up through the arm into
         # it (its head in a counterbore in the arm's inner face), a wide washer and an M5 on
         # its other end
-        down = Location((0.0, -HANDLE_R, 0.0))         # the arm's end
+        down = Location((0.0, -throw, 0.0))            # the arm's end
         g0 = REACH + 0.2                              # the grip from the arm's outer face
-        grip = rod(GRIP[0] / 2, g0, g0 + GRIP[1] - 0.4) - rod(CRANKPIN_D / 2 + 0.25, g0 - 1,
+        grip = rod(GRIP[0] / 2, g0, g0 + GRIP[1] - 0.4) - rod(TIE_D / 2 + 0.25, g0 - 1,
                                                                g0 + GRIP[1] + 1)
         inner = REACH - ARM_T                         # the arm's inner face
         s0 = REACH - GRIP_SOCKET                      # the standoff's foot, in its socket
@@ -849,7 +874,7 @@ class HandCrank(Group):
         washer = get("m5_washer_wide").dims
         w_t, w_od = float(washer["t"]), float(washer["od"])
         bore_m5 = M5.shank_d / 2 + 0.05
-        standoff = difference(rod(CRANKPIN_D / 2, s0, s0 + s_len),
+        standoff = difference(rod(TIE_D / 2, s0, s0 + s_len),
                               rod(bore_m5, s0 - 1, s0 + NETRF10_THREAD),
                               rod(bore_m5, s0 + s_len - NETRF10_THREAD, s0 + s_len + 1))
         seat = inner + GRIP_HEAD_SINK                 # the inner screw's head's seat
@@ -862,7 +887,7 @@ class HandCrank(Group):
         screw_hi = union([rod(M5.head_d / 2, top + w_t, top + w_t + M5.head_h),
                           rod(M5.shank_d / 2, top + w_t - hi_len, top + w_t)])
         hole = rod(M5.shank_d / 2 + 0.3, inner - 1, REACH + 1)
-        socket = rod(CRANKPIN_D / 2 + 0.1, s0, REACH + 1)
+        socket = rod(TIE_D / 2 + 0.1, s0, REACH + 1)
         sink = rod(M5.head_d / 2 + 0.5, inner - 1, seat)
         handle = difference(union([hub, arm]), bore, keyway, pilot, hole.moved(down),
                             socket.moved(down), sink.moved(down))
@@ -898,7 +923,7 @@ class HandCrankConstruction:
     gearbox: str = NRV040.key
     output_shaft: str = "nrv040_output_shaft_19"
     lock_key: str | None = "threadlocker_243"     # the block's, the end screw's, the grip's
-    crankpin: str = "pillar_shaft_10_m5"     # a NETRF10 made to length (the build's)
+    crankpin: str = "pillar_shaft_12_m6"     # a NETRF12 made to length (the build's)
     plate_t: float = 3.175      # one of the block's crank-sheet plates (6061-T6)
     yield_mpa: float = 276.0    # 6061-T6
     bearing_mpa: float = 386.0  # its bearing yield (1.4 x yield, ASM)

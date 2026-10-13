@@ -37,11 +37,13 @@ CHICAGO_M6_LENGTHS = tuple(float(L) for L in HARF_CHICAGO_M6)
 
 BD = "https://boltdepot.com/Product-Details?product="
 BD_NOTE = "18-8 (A-2); page rendered 2026-10-10 (WebFetch refused); sold singly"
-M6_BHCS_BD = {16: ("6645", 0.20, 13.54), 20: ("6646", 0.23, None), 25: ("6647", 0.28, None),
+M6_BHCS_BD = {8: ("6642", 0.17, 11.27), 10: ("6643", 0.18, 12.06), 12: ("6644", 0.19, 12.84),
+              16: ("6645", 0.20, 13.54), 20: ("6646", 0.23, None), 25: ("6647", 0.28, None),
               30: ("6648", 0.35, 23.66), 35: ("6649", 0.38, 25.56),
               40: ("6650", 0.41, 27.44), 45: ("6651", 0.46, 30.62)}
 """Bolt Depot's 18-8 M6 button heads (the list page rendered 2026-10-10; the 20 and 25 mm
-pages 2026-10-10, each price only)."""
+pages 2026-10-10, each price only; the 8, 10 and 12 mm from the list page rendered
+2026-10-13)."""
 M5_BHCS_BD = {8: ("6631", 0.12, 7.76), 10: ("6632", 0.12, 8.03), 12: ("6633", 0.13, 8.60),
               16: ("6634", 0.14, 9.60)}
 """Bolt Depot's 18-8 M5 button heads (pages rendered 2026-10-10: head 9.14-9.50 x 2.50-2.75,
@@ -65,6 +67,57 @@ NETRF10_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
 edges and the 100-150 and 300-600 bands' unit prices from MISUMI's price API (unverified).
 The discount is per part number: five of a length cost less than four."""
 NETRF10_SEEN: tuple[float, ...] = (45.0, 55.5, 58.0, 160.0, 175.0, 200.0, 255.0, 260.0)
+
+
+NETRF12_LENGTHS: tuple[float, ...] = tuple(L / 10 for L in range(250, 1001))
+"""MISUMI NETRF12's lengths: 25-700 mm in 0.1 mm steps (+-0.1); stocked here to 100 mm, the
+lengths priced."""
+NETRF12_ID = 5.0            # the strength check's bore: the M6 tap drill, as if tapped through
+NETRF12_THREAD = 12.0       # its M6 taps' depth (M x 2)
+NETRF12_TIERS: tuple[tuple[float, tuple[tuple[int, float], ...]], ...] = (
+    (50.0, ((1, 15.62), (5, 11.37), (10, 5.74))),
+    (100.0, ((1, 16.30), (5, 11.86), (10, 5.99))),
+)
+"""USD each by quantity of one length, per length band: NETRF12-30 and NETRF12-65 pages
+rendered 2026-10-13 with their quantity tables (the sourcing study
+``/root/scratch/decant/six/sourcing.md``)."""
+NETRF12_SEEN: tuple[float, ...] = (30.0, 65.0)
+
+
+def netrf12(length: float) -> str:
+    """The catalog key of the NETRF12 standoff ``length`` mm long (made on first use)."""
+    key = f"pillar_shaft_12_m6_{round(length, 1):g}"
+    CATALOG.get(key)
+    return key
+
+
+def _netrf12_item(L: float) -> Item:
+    pn = f"NETRF12-{L:g}"
+    tiers = next(t for top, t in NETRF12_TIERS if top + 1e-9 >= L)
+    return Item(
+        f"pillar_shaft_12_m6_{L:g}", f"12 mm round steel standoff, {L:g} mm, tapped M6 both "
+        f"ends (MISUMI {pn})", "standoff",
+        (Offer("MISUMI", "https://us.misumi-ec.com/vona2/detail/110300208270/?HissuCode="
+               + pn, pn, price_usd=tiers[0][1], tiers=tiers, verified=L in NETRF12_SEEN,
+               note="MISUMI circular standoff, tapped both ends, configurable length: 1018 "
+                    "steel, bare (oil it, keep it dry), 12 mm OD, M6 x 12 deep each end, "
+                    "length +-0.1 mm in 0.1 mm steps; the discount is per length"),),
+        dims={"d": 6.0, "od": 12.0, "length": L, "thread_depth": NETRF12_THREAD,
+              "id": NETRF12_ID, "yield_mpa": NETRF10_YIELD},
+        notes="A decanting cradle's pivot pillars and crankpin since it carries a 6 L bottle "
+              "(2026-10-13): the strength check takes it as a 12 x 5.0 tube of 1018 at 220 "
+              "MPa, 1.73 x the NETRF10's bending section.")
+
+
+def _netrf12_of(key: str) -> Item | None:
+    try:
+        n = round(float(key.removeprefix("pillar_shaft_12_m6_")) * 10)
+    except ValueError:
+        return None
+    L = n / 10
+    if not 250 <= n <= 1000 or f"pillar_shaft_12_m6_{L:g}" != key:
+        return None
+    return _netrf12_item(L)
 
 
 def netrf10(length: float) -> str:
@@ -105,6 +158,7 @@ def _netrf10_of(key: str) -> Item | None:
 
 
 register_factory("pillar_shaft_10_m5_", _netrf10_of)
+register_factory("pillar_shaft_12_m6_", _netrf12_of)
 
 register(
     Item("nrv030_30", "NRV030 worm gear reducer, 30:1, 9 mm input shaft, 14 mm hollow output "
@@ -198,6 +252,17 @@ register(
          (Offer("Bolt Depot", BD + "4515", "4515", price_usd=0.05, verified=True,
                 tiers=((1, 0.05), (100, 0.0234)), note=BD_NOTE),),
          dims={"id": 5.3, "od": 10.0, "t": 1.0}),
+    Item("m6_washer", "M6 flat washer (DIN 125, 6.4 x 12 x 1.6), 18-8", "washer",
+         (Offer("Bolt Depot", BD + "4516", "4516", price_usd=0.06, verified=True,
+                tiers=((1, 0.06), (100, 0.0395)),
+                note=BD_NOTE + "; page rendered 2026-10-13"),),
+         dims={"id": 6.4, "od": 12.0, "t": 1.6}),
+    Item("m6_washer_wide", "M6 fender washer (6 x 18), 18-8", "washer",
+         (Offer("Bolt Depot", BD + "7315", "7315", price_usd=0.12, verified=True,
+                tiers=((1, 0.12), (100, 0.0782)),
+                note=BD_NOTE + "; list page rendered 2026-10-13 (no standard named)"),),
+         dims={"id": 6.4, "od": 18.0, "t": 1.6},
+         notes="Over the 12 mm crankpin's end, holding the rod on (as the M5's on a NETRF10)."),
     Item("m5_washer_wide", "M5 fender washer (5 x 15)", "washer",
          (Offer("Bolt Depot", BD + "7314", "7314", price_usd=0.10, verified=True,
                 tiers=((1, 0.10), (100, 0.068)),
@@ -234,6 +299,16 @@ register(
                 note="not bought by the build: its printed rings take these steps"),),
          dims={"id": 10.0, "od": 16.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
          notes="Sizes the printed rings on a cradle's 10 mm pillar (steps, OD)."),
+    Item("ptfe_washer_12x18x0p5", "PTFE flat washer 12.2 x 18 x 0.5 mm", "washer",
+         (Offer("McMaster-Carr", "https://www.mcmaster.com/products/ptfe-washers/",
+                note="not bought by the build: it prints this face as a gap ring"),),
+         dims={"id": 12.2, "od": 18.0, "t": 0.5}),
+    Item("shim_din988_12x18", "DIN 988 shim ring 12 x 18 mm (0.1 / 0.2 / 0.3 / 0.5 / 1.0 mm)",
+         "washer",
+         (Offer("Accu", "https://accu-components.com/us/shim-washers/",
+                note="not bought by the build: its printed rings take these steps"),),
+         dims={"id": 12.0, "od": 18.0, "t": (0.1, 0.2, 0.3, 0.5, 1.0)},
+         notes="Sizes the printed rings on a cradle's 12 mm pillar and crankpin (steps, OD)."),
     Item("penlight_aaa", "AAA LED keychain light, twist switch (Olight i3E EOS), 14 x 60.5 mm",
          "electronics",
          (Offer("Battery Junction", "https://www.batteryjunction.com/products/olight-i3e-eos",

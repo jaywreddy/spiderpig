@@ -166,6 +166,8 @@ register(
     # the B cradle's most loaded levers
     _al("al6061_4p8mm", 0.187, alloy="6061", price=45.0, sheet_mm=SCS_MAX_MM),
     _al("al7075_4p8mm", 0.190, alloy="7075", sheet_mm=SCS_MAX_MM),
+    # the B cradle's connecting rod at a 6 L's jam (its buckling: 0.250 in held 1.46)
+    _al("al6061_8mm", 0.313, alloy="6061", sheet_mm=SCS_MAX_MM),
     _al("al6061_3p2mm", 0.125, alloy="6061", price=32.0),
     # a decanting cradle's base board (2026-10-13, the user's "the bottom board in wood")
     _plywood("birch_9mm", 0.354, 9.0),

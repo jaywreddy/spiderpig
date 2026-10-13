@@ -182,8 +182,8 @@ def torque_limit_nm(config: BuildConfig) -> float | None:
     and the joints' ratings assume: the servo's (``TORQUE_LIMIT_FRACTION`` of stall, at
     most ``JAM_TORQUE_NM``), lowered to the linkage's :data:`LINKAGE_TORQUE_LIMITS` entry;
     ``None`` for a servo with no stall torque."""
-    if config.lk.product in PRODUCT_JAM_NM:     # no servo: the hand through the gearbox
-        return PRODUCT_JAM_NM[config.lk.product]
+    if config.lk.product and config.linkage in PRODUCT_JAM_NM:   # no servo: the hand
+        return PRODUCT_JAM_NM[config.linkage]                   # through the gearbox
     limit = servos.get(config.servo).torque_limit_nm
     own = LINKAGE_TORQUE_LIMITS.get(config.linkage)
     if limit is None or own is None:
@@ -249,11 +249,12 @@ PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 material) when the config names the default (:data:`SHEET`): a decanting cradle is all
 aluminium, its links' 0.125 in 5052 (:data:`materials.CRADLE_LINK_SHEET`)."""
 
-PRODUCT_JAM_NM: dict[str, float] = {CRADLE: 66.0}
-"""Per product: the crank torque its joints are rated at in a jam, in place of a servo's
-firmware limit (:func:`torque_limit_nm`): a decanting cradle's, a firm 40 N push at its
-100 mm grip through its NRV040's 30:1 worm at a hand's speed
-(:func:`spiderpig.cradle_report.jam_nm`, which a test holds this to)."""
+PRODUCT_JAM_NM: dict[str, float] = {"decanter_hinge": 69.3, "decanter_rcm": 66.0}
+"""Per product linkage: the crank torque its joints are rated at in a jam, in place of a
+servo's firmware limit (:func:`torque_limit_nm`): a decanting cradle's, a firm 40 N push at
+its grip (B's 100 mm out, A's 105: ``construction.handcrank.HANDLE_RS``) through its
+NRV040's 30:1 worm at a hand's speed (:func:`spiderpig.cradle_report.jam_nm`, which a test
+holds these to)."""
 
 
 def product_defaults(product: str) -> dict:

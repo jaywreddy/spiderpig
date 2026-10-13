@@ -25,9 +25,9 @@ SHCS_LENGTHS: dict[str, tuple[float, ...]] = {
 BHCS_LENGTHS: dict[str, tuple[float, ...]] = {
     "3": (6, 8, 10, 12, 16, 20, 25, 30),
     # a decanting cradle's (hardware.cradle_catalog): its standoffs' M5 ends, its gearbox's
-    # M6 face and the crank arm's end screw
+    # M6 face, the crank arm's end screw and its 12 mm standoffs' M6 ends
     "5": (8, 10, 12, 16),
-    "6": (16, 20, 25, 30, 35, 40, 45),
+    "6": (8, 10, 12, 16, 20, 25, 30, 35, 40, 45),
 }
 SELF_TAP_LENGTHS: dict[str, tuple[float, ...]] = {"2": (4, 5, 6, 8, 10, 12)}
 

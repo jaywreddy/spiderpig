@@ -129,7 +129,10 @@ class StandoffAxle:
     size: str = "M4"                 # "M3": the one-piece shaft's M3 ends (one_piece)
     stock: str = ""                  # "": goBILDA M4 stock lengths; "shaft": a 6 mm round
     #                                  steel standoff tapped M3 both ends, made to length
-    #                                  (MISUMI NETRF6, one_piece)
+    #                                  (MISUMI NETRF6, one_piece); "shaft12": a cradle's
+    #                                  12 mm, tapped M6 (MISUMI NETRF12, cradle_shaft)
+    outside: float | None = None     # the head room outside a frame plate (None: a layer,
+    #                                  the pitch; a cradle's: its side is open there)
 
     @property
     def screw_d(self) -> float:
@@ -150,6 +153,10 @@ class StandoffAxle:
             from spiderpig.hardware.cradle_catalog import netrf10
 
             return netrf10(length)
+        if self.stock == "shaft12":
+            from spiderpig.hardware.cradle_catalog import netrf12
+
+            return netrf12(length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
@@ -165,6 +172,10 @@ class StandoffAxle:
             from spiderpig.hardware.cradle_catalog import NETRF10_LENGTHS
 
             return NETRF10_LENGTHS
+        if self.stock == "shaft12":
+            from spiderpig.hardware.cradle_catalog import NETRF12_LENGTHS
+
+            return NETRF12_LENGTHS
         return GOBILDA_LENGTHS
 
     @property
@@ -186,18 +197,19 @@ class StandoffAxle:
                        washer_key="m3_washer_9021", shim_key="shim_din988_3x6")
 
     def cradle_shaft(self) -> StandoffAxle:
-        """A decanting cradle's pillar (``construction._axle_groups``): one 10 mm round
-        steel standoff made to the column's length (MISUMI NETRF10, 0.1 mm steps), tapped
-        M5 both ends, an M5 button head through each plate (its 9.5 mm head bears on the
-        aluminium plate: no washer, so it fits a layer outside the plate). Its bottle's
-        load bends a 6 mm column between plates too far (B's O1 at the jam: SF 0.4,
-        ``cradle_report``); the 10 mm is 4.6 x as strong, and cheaper."""
-        from spiderpig.hardware.cradle_catalog import NETRF10_ID, NETRF10_YIELD
+        """A decanting cradle's pillar (``construction._axle_groups``): one 12 mm round
+        steel standoff made to the column's length (MISUMI NETRF12, 0.1 mm steps), tapped
+        M6 both ends, an M6 button head through each plate (its 10.5 mm head bears on the
+        aluminium plate: no washer). Its bottle's load bends a 6 mm column between plates
+        too far (B's O1 at the 3 L's jam: SF 0.4, ``cradle_report``), a 10 mm one at the
+        6 L's (0.78): the 12 mm is 1.73 x the 10 mm. Its 3.3 mm heads stand outside the
+        plates, where a cradle's side is open (the bay; the outside, its gearbox at O)."""
+        from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ID
 
-        return replace(self.one_piece(), stock="shaft10", size="M5", od=10.0, id_=NETRF10_ID,
-                       yield_mpa=NETRF10_YIELD, end_hole=5.5, stud_hole=5.3,
-                       min_engage=5.0, min_segment=20.0, washer_key=None,
-                       shim_key="m5_washer", tighten_nm=4.0)
+        return replace(self.one_piece(), stock="shaft12", size="M6", od=12.0, id_=NETRF12_ID,
+                       yield_mpa=NETRF10_YIELD, end_hole=6.6, stud_hole=6.4,
+                       min_engage=6.0, min_segment=24.0, washer_key=None,
+                       shim_key="m6_washer", tighten_nm=6.0, outside=3.5)
 
     def _running_play(self, build: Build, group: AxleGroup, out: Realized,
                       length: float) -> float:
@@ -285,7 +297,7 @@ class StandoffAxle:
             raise ConstructionError(f"no stock M4 screw fits a standoff pillar's ends in "
                                     f"{ctx.pitch:g} mm layers")
         w_od, _, w_t = self.washer()
-        if screw[3] + w_t > ctx.pitch + EPS:
+        if screw[3] + w_t > (self.outside or ctx.pitch) + EPS:
             from spiderpig.hardware.catalog import sheet_thickness
 
             need = screw[3] + w_t

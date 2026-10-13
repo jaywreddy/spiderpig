@@ -32,10 +32,17 @@ import numpy as np
 
 from spiderpig.config import BuildConfig, is_cradle
 from spiderpig.construction import cradle as cr
-from spiderpig.construction.handcrank import CRANKPIN_D, HANDLE_R, NRV040, HandCrank, WormBox
+from spiderpig.construction.handcrank import (
+    CRANKPIN_D,
+    HANDLE_R,
+    NRV040,
+    HandCrank,
+    WormBox,
+    handle_r,
+)
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
-from spiderpig.hardware.cradle_catalog import NETRF10_ID, NETRF10_YIELD
+from spiderpig.hardware.cradle_catalog import NETRF10_YIELD, NETRF12_ID
 from spiderpig.stack import body_class
 
 G = 9.81
@@ -281,7 +288,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
     near = _toggles(config, ts)
-    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm())
+    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm(grip_r=handle_r(config)))
     jam_f = np.where(near[:, None], 0.0, jam_f)
     box = NRV040
     peak = float(np.abs(torque).max())
@@ -322,16 +329,16 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                   "euler_n": round(p_cr, 1), "bottle_n": round(f_rod, 1),
                   "jam_n": round(f_rod_jam, 1), "sf_bottle": round(p_cr / max(f_rod, 1e-9), 2),
                   "sf_jam": round(p_cr / max(f_rod_jam, 1e-9), 2)}
-    # the crankpin: a NETRF10 standing in the crank block, the rod's force at the rod's
+    # the crankpin: a NETRF12 standing in the crank block, the rod's force at the rod's
     # mid-plane over the block's top (a cantilever that long out of its socket): it bends at
-    # the block's top, taken as the 10 x 4.2 tube its tapped end may be there, at 1018's
+    # the block's top, taken as the 12 x 5.0 tube its tapped end may be there, at 1018's
     # hot-rolled minimum yield
     note = mech.meta.get("hand_crank") or {}
     rod_mid = design.plan.z(design.plan.layers[rider])[0] + design.ctx.sheet_t(
         "link", rider) / 2
     lever = float(note.get("crankpin_lever_mm", rod_mid - (note.get("arm_z_mm") or
                                                            [0.0, 0.0])[1]))
-    od, bore = CRANKPIN_D, NETRF10_ID
+    od, bore = CRANKPIN_D, NETRF12_ID
     cap = math.pi * (od ** 4 - bore ** 4) / (32 * od) * NETRF10_YIELD / 1000.0  # N·m
     out["crankpin"] = {"lever_mm": round(lever, 2), "capacity_nm": round(cap, 2),
                        "bottle_nm": round(f_rod * lever / 1000.0, 2),
@@ -508,7 +515,7 @@ def loads(config: BuildConfig, store=None) -> dict:
     ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
-    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm())
+    _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm(grip_r=handle_r(config)))
     jam_f = np.where(_toggles(config, ts)[:, None], 0.0, jam_f)
     rows = joint_rows(config, HandCrank.rider(design.ctx), joints, forces, jam_f)
     return loads_doc(config, rows, float(np.abs(torque).max()))
@@ -531,7 +538,8 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
             "the crank, jam); cradle_report",
             "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
             "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
-            "torque_limit_nm": jam_nm(), "walk_torque_nm": round(crank_nm, 2),
+            "torque_limit_nm": jam_nm(grip_r=handle_r(config)),
+            "walk_torque_nm": round(crank_nm, 2),
             "joint_moment_factor": 1.0,
             "crank_basis": f"statics: the bottle's largest torque over a pour, a {JAM_HAND_N:g} "
                            "N push at the grip jammed"}

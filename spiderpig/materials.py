@@ -97,12 +97,13 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # (0.125 in, the user's allowance); its end grows round the hex crank's 8.8 mm bore to
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
-    # the B cradle (2026-10-10, refined, slimmed): the links sharing a layer (b2 with b3, b4
-    # with b5) both 0.187 in, so neither rides in a layer the other made taller (a thin link
-    # there would slide on its pin); the arms b2, b3 and the bar b4 in 6061 (cradle_report's
-    # jam); the 336 mm rod 0.250 in, alone in its layer (Euler: 2.7 x its jam force); the
-    # cradle link b6, alone under the inner plate, 0.125 in (jam SF 6): a thinner stack
-    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
+    # the B cradle (2026-10-10, refined, slimmed; 2026-10-13, a 6 L's jam): the links sharing
+    # a layer (b2 with b3, b4 with b5) both 0.187-0.190 in, so neither rides in a layer the
+    # other made taller (a thin link there would slide on its pin); the arms b2, b3 and the
+    # bar b4 in 7075 (cradle_report's jam: 6061 held 0.83); the 336 mm rod 0.313 in 6061,
+    # alone in its layer (Euler: 0.250 in held 1.46 x its jam force); the cradle link b6,
+    # alone under the inner plate, 0.125 in (jam SF 3.5): a thinner stack
+    "decanter_rcm": {"b1": "al6061_8mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
                      "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_3p2mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
@@ -123,9 +124,10 @@ def default_link_sheets(lk) -> dict[str, str]:
 
 CRADLE_LINK_SHEET = "al5052_3p2mm"
 """A decanting cradle's links (the user, 2026-10-09: aluminium first): 0.125 in 5052."""
-CRADLE_ROD_SHEET = "al5052_4p8mm"
-"""A decanting cradle's connecting rod (the link on the crankpin): 0.187 in 5052, so it
-doesn't buckle at the jam case's (:mod:`spiderpig.cradle_report`: a firm push at the grip)."""
+CRADLE_ROD_SHEET = "al5052_6p35mm"
+"""A decanting cradle's connecting rod (the link on the crankpin): 0.250 in 5052, so it
+doesn't buckle at the jam case's (:mod:`spiderpig.cradle_report`: a firm push at the grip;
+the 0.187 in held A's 6 L jam 0.83)."""
 
 
 def link_sheets(config) -> dict[str, str]:
@@ -169,7 +171,8 @@ WASHERS: dict[float, tuple[str, str]] = {
     4.0: ("ptfe_washer_4x8x0p5", "shim_din988_4x8"),
     6.0: ("ptfe_washer_6x12x0p5", "shim_din988_6x12"),
     8.0: ("ptfe_washer_8x14x0p5", "shim_din988_8x14"),     # a cradle's M6 Chicago barrel
-    10.0: ("ptfe_washer_10x16x0p5", "shim_din988_10x16"),  # a cradle's 10 mm pillar
+    10.0: ("ptfe_washer_10x16x0p5", "shim_din988_10x16"),  # a cradle's 10 mm standoffs
+    12.0: ("ptfe_washer_12x18x0p5", "shim_din988_12x18"),  # a cradle's 12 mm pillar
 }
 
 
