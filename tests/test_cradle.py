@@ -140,7 +140,7 @@ def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
     # the saddles sized for the fattest neck and body, the longest bottle the base stop's
     assert cr.DESIGN is cr.METHUSELAH
     assert all(cr.DESIGN.r >= z.r and cr.DESIGN.r_neck >= z.r_neck for z in cr.SIZES)
-    assert cr.SPINE_END > max(z.length for z in cr.SIZES)
+    assert max(z.length for z in cr.SIZES) < cr.SPINE_END
     for size in cr.SIZES:
         assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
     # every bottle but the 6 L methuselah on its adapters, the longer necks in collars; a
