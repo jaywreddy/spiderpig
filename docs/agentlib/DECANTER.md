@@ -2,7 +2,9 @@
 
 This design record covers the hand-cranked decanting cradles in this repo. The user asked
 for them on 2026-10-09: a linkage cradle that tips a 1.5 L magnum or a 3 L bottle to any
-angle, driven by a hand crank, not a servo, with an LED.
+angle, driven by a hand crank, not a servo, with an LED. Regular 750 ml bottles came on
+2026-10-10, and 6 L bottles on 2026-10-13 (the user: "both", a Bordeaux impériale and a
+Champagne methuselah); the methuselah is the design bottle since ("Sized for a 6 L").
 
 Two linkages are built, both from the same parts: the drive, the cradle box, the stand
 and the light.
@@ -52,18 +54,18 @@ stops there:
 
 | what | value | why |
 |---|---|---|
-| bottles | a 750 ml to a 3 L (double magnum, jeroboam) | the user, 2026-10-09 (magnum and 3 L), 2026-10-10 (regular bottles too) |
-| bottle diameter | 74–141 mm | Bordeaux 750 ml 74–77, Bordeaux magnum 99, Burgundy ~106, Champagne magnum 114.5, 3 L Bordeaux 120.6–139, Champagne jeroboam 140.8 |
-| bottle length | 295–470 mm | 750 ml 295–310, magnum 356–404, 3 L 380–470 |
-| full mass | 1.3–5.9 kg | glass 0.5–2.9 kg plus the wine |
+| bottles | a 750 ml to a 6 L (impériale, methuselah) | the user, 2026-10-09 (magnum and 3 L), 2026-10-10 (regular bottles too), 2026-10-13 (6 L, both shapes) |
+| bottle diameter | 74–174 mm | Bordeaux 750 ml 74–77, Bordeaux magnum 99, Champagne jeroboam 140.8, Bordeaux impériale 156.5–164.5, Champagne methuselah 170–174 (Saverglass) |
+| bottle length | 295–571 mm | 750 ml 295–310, magnum 356–404, 3 L 380–470, impériale 493, methuselah 571 |
+| full mass | 1.3–11.1 kg | glass 0.5–5.1 kg plus the wine |
 | the mouth | stays put over the whole pour, for either bottle | the decanter stands under it (US7708241) |
 | tilt | −50° (rest, neck up) to +30° (neck down) | the user, 2026-10-10: start nearly upright. At +20° both bottles' shoulders lie over the mouth's lowest lip, so they drain; one crank turn is one decant and back |
-| the mouth's height | 460 mm over the table | at −50° the 3 L's base stop hangs about 430 mm under it |
-| the bay | 260 mm between the inner plates | a standard decanter (up to 240 mm across) stands wholly between the side stacks |
+| the mouth's height | 550 mm over the table | at −50° the 6 L's base stop hangs about 520 mm under it |
+| the bay | 260 mm between the inner plates | a 174 mm bottle in 190 mm saddles; a standard decanter (up to 240 mm across) stands wholly between the side stacks |
 | vessel | a standard decanter or glass on a lab-jack riser | the vessel study (204–300 mm tall decanters, 155–240 across); the room under the mouth, below |
 | drive | hand crank, self-locking | holds any angle when let go |
 | light | an LED under the shoulder, riding the cradle | the candle's job |
-| material | aluminium first | the user; the look is decided from the viewer |
+| material | aluminium first; the base board wood | the user (2026-10-13: "the bottom board in wood"); the look is decided from the viewer |
 
 ## The machine
 
@@ -78,11 +80,16 @@ stops there:
 - **The cradle box.**
   - Four tie rods run between the two cradle links, at `decanters.TIES`. Each is a 10 mm
     steel standoff made to length (MISUMI NETRF10, M5 ends), with an M5 button head
-    through the link into each end.
+    through the link into each end. Two carry the front saddle under the neck, two the
+    rear saddle 275 and 360 mm behind the mouth.
   - Two printed saddles ride on the tie rods. The front one carries the neck, and its back
     face is the shoulder stop. The rear one carries the body. Each is locked on its rods
     by M3 set screws up from its underside, in printed pilots.
-  - Their Vs are sized for the 3 L. TPU liners line them.
+  - Their Vs are sized for the 6 L methuselah, 190 mm across (`cradle.SADDLE_HALF`). TPU
+    liners line them. The rear saddle is 125 mm long, so it reaches behind the 6 L's
+    centre of mass (331 mm from the mouth) and still under a 750 ml's body: a bottle bears
+    on both saddles, lying level or tipped. It is a V shell 22 mm thick
+    (`cradle.SHELL`): the block's outer corners carried nothing and weighed a third of it.
   - **The base stop** (`cradle._base_stop`): a printed spine screwed to the rear saddle's
     back face runs under the bottle, and a printed cup on it stops the bottle's base. An M5
     button head through the cup into a pilot of the spine's row sets it, in 5 mm steps.
@@ -90,41 +97,50 @@ stops there:
       then (at 25° nose up the liners' friction alone had held it, and a corkscrew's push
       of 6-13 N slid it back off the pivot: the mechanical review).
     - It is a stop at rest, not a backstop: the spine is printed. At rest its rounded end
-      comes down to about 20 mm over the base plate (keep it clear there).
-- **The bottles** (`cradle.adapter`, `cradle.seat`): both lie with the mouth on the pivot
-  and the axis level, so the mouth stays put for either.
-  - A magnum lies on two printed TPU adapter liners: 3.5 mm in front, 21 mm at the rear.
-    Its shoulder rests on the stop.
-  - A 750 ml (`cradle.STANDARD`, a Bordeaux, 300 x 76.6 mm) lies on its own two: 4 mm in
+      comes down to about 18 mm over the base board (keep it clear there).
+    - The spine runs to the 6 L's base (`cradle.SPINE_END`), 201 mm past the rear saddle;
+      its row of pilots serves every base behind that saddle (the 3 L and both 6 L).
+- **The bottles** (`cradle.adapter`, `cradle.seat`): every one lies with the mouth on the
+  pivot and the axis level, so the mouth stays put for each.
+  - A 6 L methuselah (`cradle.METHUSELAH`, the design bottle) lies in the saddles' liners
+    alone, a printed TPU C-collar 43 mm long round its neck against the stop. A 6 L
+    impériale and a 3 L lie on their own adapter liners, with collars too.
+  - A magnum lies on two printed TPU adapter liners: 8.5 mm in front, 37.5 mm at the rear,
+    the rear one closed behind its base (it ends inside the rear saddle). Its shoulder
+    rests on the stop.
+  - A 750 ml (`cradle.STANDARD`, a Bordeaux, 300 x 76.6 mm) lies on its own two: 9 mm in
     front, ending at its shoulder (its neck is 5 mm shorter than the stop's distance, so the
-    liner's end is its stop), and 32 mm at the rear, closed 1 mm behind its base (it ends
-    inside the rear saddle, where the base stop's cup can't reach). The model draws them
-    lying on the table in front.
-  - A 3 L lies in the liners alone, with a printed TPU C-collar, 20 mm long, snapped round
-    its neck against the stop.
-  - The model draws the magnum on its adapters, and the 3 L's collar lying on the table.
+    liner's end is its stop), and 48.7 mm at the rear, closed 1 mm behind its base (it ends
+    inside the rear saddle, where the base stop's cup can't reach).
+  - The 6 L necks' lengths and radii are estimates scaled from the jeroboam's (no maker
+    draws them): print the collars and front liners to the bottle in hand.
+  - The model draws the magnum on its adapters; the other sizes' collars stand in a row on
+    the table in front, their liners lie in two rows before them.
   - Another bottle: print adapters to its own neck and body (`adapter`).
 - **The drive** (`spiderpig/construction/handcrank.py`, `config.crank == "hand"`).
-  - **Gearbox:** an NRV030 worm gear reducer at 30:1 (Phidgets TRM4400_0). It stands
-    outboard on the drive side's outer plate, on one 0.125 in riser disc, held by four M6
-    button heads into its tapped face holes.
-  - **Holding:** its static efficiency at 30:1 is 0.39, under the 0.5 that the makers'
-    catalogues give for static irreversibility. So the cradle holds any angle when let go.
-  - **The crank block:** seven 0.125 in 6061 plates, each the arm's whole outline, stacked
-    on the stock 14 mm keyed output shaft (Phidgets TRM4004_0, modelled with its collar and
-    key).
-    - Every plate round the shaft is keyed, the lowest three on the key's straight flanks:
-      the shaft's keyseat is end-milled, so the key's ends are round (the fabrication
-      review).
+  - **Gearbox:** an NRV040 worm gear reducer at 30:1 (Phidgets TRM4401_0, rated 45 N·m;
+    `handcrank.NRV040`). It stands outboard on the drive side's outer plate, on 0.125 in
+    riser discs, held by four M6 button heads into its tapped face holes (75 mm PCD). A
+    full 6 L peaks at about 32 N·m at the crank: the NRV030 (20 N·m) that held a 3 L
+    couldn't.
+  - **Holding:** its static efficiency at 30:1 is 0.45 (Motovario's mesh data), under the
+    0.5 that the makers' catalogues give for static irreversibility. So the cradle holds
+    any angle when let go.
+  - **The crank block:** 0.125 in 6061 plates, each the arm's whole outline, stacked on the
+    stock 19 mm keyed output shaft (Phidgets TRM4006_0, modelled with its collar and key).
+    - Every plate round the shaft is keyed, the lowest four on the 6 mm key's straight
+      flanks: the shaft's keyseat is end-milled, so the key's ends are round (the
+      fabrication review).
     - The top plate lies over the shaft's end: an M6 button head through it into the
       shaft's end tap, to 3 N·m (it clamps the block on the printed sleeve). It goes in dry:
       the sleeve settles, so after the first few pours it comes out for threadlocker and
       goes back to 3 N·m.
-    - A NETRF10 through the block at 47 mm (`handcrank.TIE_R`), screwed at both ends, makes
-      the plates one rigid block and clamps them, its screw head and wide washer clear of
-      the riser screws.
-  - **Crankpin:** a NETRF10 standing in the block from its lowest plate (an M5 up through
-    it) through the rod, an M5 and a wide washer on its end over the rod, 0.2-0.3 mm of
+    - A NETRF10 through the block (`WormBox.tie_r`: 52 mm on the NRV040), screwed at both
+      ends, makes the plates one rigid block and clamps them, its screw head and wide
+      washer clear of the riser screws.
+  - **Crankpin:** a 12 mm NETRF12 standing in the block from its lowest plate (an M6 up
+    through it) through the rod, an M6 and a wide washer on its end over the rod (a 6 L's
+    jam bent the 10 mm one: SF 1.13), 0.2-0.3 mm of
     play (its length rounds down; a printed spacer under the rod, sanded on the bench,
     takes the plates' tolerance). The washer keeps the rod 0.26 mm (nominal) under the rear
     tie's screw head where that head crosses it, 1 to 4 handle turns from rest. The chain's
@@ -133,10 +149,11 @@ stops there:
     off the crankpin's socket. (Before, the arm sat on the key and the rod 21 mm over it: an ISO 7379
     crankpin's M8 thread was a cantilever that long, rated at SF 1.0-1.25 once its yield
     and preload were right.)
-  - **Hand crank:** a printed offset crank on the gearbox's 9 mm input shaft.
+  - **Hand crank:** a printed offset crank on the gearbox's 11 mm input shaft.
     - Its hub is keyed on the shaft, with an M3 set screw on the key.
-    - A 100 mm tube carries the 60 mm arm out to where no moving part of the stack ever
-      reaches, clear of the outer plate.
+    - A 100 mm tube carries the arm out to where no moving part of the stack ever reaches,
+      clear of the outer plate. The arm is 100 mm on B and 105 on A (`handcrank.HANDLE_RS`):
+      a full 6 L's worst turn under 25 N at the grip.
     - Its grip is a printed sleeve spinning on a NETRF10 standing in a socket in the arm, an
       M5 up through the arm into it and an M5 and a wide washer on its end. (An M6 shoulder
       screw's 11 mm thread through the 10 mm arm had caught 1 mm of its nut; the standoff
@@ -152,9 +169,11 @@ stops there:
   - Hold the barrel's head from below with taped pliers while the screw goes in; the head
     is in the open under the rod. No epoxy goes on the order. The screw takes the medium
     threadlocker (243): the low-strength 222 cures poorly between two stainless parts.
-- **The pillars and columns** are the same 10 mm steel standoffs as the tie rods
-  (`StandoffAxle.cradle_shaft`), each made to its plates' gap. An M5 button head goes
-  through each plate without a washer, to 4 N·m.
+- **The pillars** are 12 mm steel standoffs (MISUMI NETRF12, M6 ends;
+  `StandoffAxle.cradle_shaft`), each made to its plates' gap: a 6 L's jam bent the 10 mm
+  ones (SF 0.78 at B's O2). An M6 button head goes through each plate without a washer, to
+  6 N·m; its 3.3 mm head stands outside the plate, where a cradle's side is open
+  (`StandoffAxle.outside`). The stand's columns are 10 mm, as the tie rods.
   - Every printed ring fills its layer (`construction.axle.full_rings`), so every column's
     bought length is the gap between its plates. Touching rings print as one sleeve.
   - On the hinge the printed parts and the cradle link stop 0.3 mm short of the standoff
@@ -162,12 +181,15 @@ stops there:
 - **The sheets.**
   - Links: 0.125 in 5052, the cradle's default sheet.
   - Frame plates: 0.187 in 5052, 3.4× as stiff across as 0.125 in, and still cut with the
-    M5 screws' 5.5 mm holes. In 0.250 in, SendCutSend's least hole would be 6.35 mm.
-  - The rod: 0.187 in 5052, so it doesn't buckle.
-  - The crank block: 0.125 in 6061 (the keyway's 5.1 mm slot is legal in it).
-  - B's links are 0.187 in, its arms b2 and b3 and its bar b4 in 6061; its 336 mm rod is
-    0.250 in 5052 and its cradle link 0.125 in 5052, each alone in its layer.
-  - Everything is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`.
+    screws' holes. In 0.250 in, SendCutSend's least hole would be 6.35 mm.
+  - The rod: 0.250 in 5052 (`materials.CRADLE_ROD_SHEET`), so it doesn't buckle.
+  - The crank block: 0.125 in 6061 (the keyway's 6.1 mm slot is legal in it).
+  - B's links are 0.187-0.190 in: its arms b2 and b3 and its bar b4 in 7075-T6 (a 6 L's
+    jam: 6061 held 0.83; SendCutSend's datasheet, yield 69 ksi), b5 in 5052; its 336 mm
+    rod is 0.313 in 6061 (buckling: 0.250 in held 1.46) and its cradle link 0.125 in 5052,
+    each alone in its layer.
+  - The metal is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`. The
+    7075 and the 0.313 in 6061 have no fitted cutting price yet (quote at upload).
 - **The stand** (`cradle.STANDS`).
   - **Outer plate:** a truss outside every moving part's layer: from the hinge G down in
     front of the decanter to the front foot and back to the crank O, O's legs down and
@@ -178,17 +200,19 @@ stops there:
     down to about 300 mm over the table, tied to the outer plate by four columns.
     - Each side is then a deep box through its front leg.
   - Nothing crosses the bay over the mouth.
-- **The base plate** (`cradle._base_plate`): 0.125 in 5052, 500 mm across the bay
-  (`cradle.BASE_HALF`: the stand then takes a 30 N push at a bottle's top over its whole
-  swing, where 400 mm took 18 N).
+- **The base board** (`cradle._base_plate`, the part `base_plate`): 9 mm Baltic birch
+  plywood, routed by SendCutSend (`birch_9mm`, the user's of 2026-10-13), 530 mm across
+  the bay (`cradle.BASE_HALF`: a full 6 L tips past 25° sideways), 3× as stiff as the
+  0.125 in aluminium it replaced. SendCutSend publishes no plywood price: its cutting is
+  quoted at upload. Oil it; it isn't weather-proof.
   - Both outer plates' rails bolt onto it with printed L-brackets: an M5 screw and nut
-    through the upright and the outer plate, an M6 carriage bolt up through the base plate
-    and the foot (its square neck in a square hole, so its nut goes on from above: nothing
-    to reach under the plate).
-    - The holes are 7.3 mm square, drawn with SendCutSend's 0.8 mm round inside corners:
-      they clear a sharp 6.48 mm neck's corners by 0.25 mm (`cradle.CARRIAGE_SQUARE`).
-    - All six bolts go in with the base plate. The passive side is set down 7-15 mm out
-      from its place, inside its bolts, and pushed home.
+    through the upright and the outer plate, an M6 x 20 carriage bolt up through the board
+    and the foot (Bolt Depot 18220). Its hole is round (`cradle.CARRIAGE_HOLE`); its square
+    neck is pulled into the wood, as a carriage bolt is meant to be, so its nut goes on from
+    above: nothing to reach under the board. (A router can't cut the square hole the
+    aluminium plate had: its bit leaves 1.6 mm corners.)
+    - All the bolts go in with the board. The passive side is set down 7-15 mm out from its
+      place, inside its bolts, and pushed home.
   - A U-notch from its front edge takes the vessel's riser, slid in on the table; the
     notch's round end puts it under the mouth.
   - Four printed TPU feet snap into its corner holes (a cone and a bore up the stem).
@@ -199,7 +223,7 @@ stops there:
   - A longer light's tail reaches a decanter's shoulder at rest.
 - **Display only** (`fab="display"`: drawn, never bought, cut or printed): the bottle (a
   1.5 L Bordeaux magnum), a RIEDEL Ultra decanter (225 mm, `cradle.DECANTER_PROFILE`) and
-  its riser (`cradle.DECANTER_RISER`, 55 mm: the highest that clears the whole swing).
+  its riser (`cradle.DECANTER_RISER`, 135 mm: the highest that clears the whole swing).
 
 ## A, redone (2026-10-10)
 
@@ -214,20 +238,54 @@ every bar at once.
 - The rod's length is the binding bar: a longer rod buckles in the jam (SF 1.19 at 298 mm,
   1.52 at 267); the best transmission (47°) wanted the longer one.
 - The mouth rose to 460 mm and the bay widened to 260 mm (`cradle.LIP_HEIGHT`,
-  `cradle.BAY`); the saddles stay 160 mm long (`cradle.SADDLE_HALF`), centred on the rods.
+  `cradle.BAY`); the saddles stayed 160 mm long, centred on the rods. (The 6 L raised the
+  mouth to 550 mm and the saddles to 190: "Sized for a 6 L".)
+
+## Sized for a 6 L (2026-10-13)
+
+The user asked for 6 L bottles and, asked which, answered "both": a Bordeaux impériale
+(Saverglass Bordelaise Tradition 600 cl: 493 x 164.5 mm, 3.1 kg empty) and a Champagne
+methuselah (Saverglass Standard 600 cl: 571 x 174 mm, 5.1 kg empty, 11.1 kg full). The
+methuselah, fattest, longest and heaviest, is the design bottle (`cradle.DESIGN`); every
+other size lies on adapters. What it changed, and why:
+- **The mouth 550 mm over the table** (from 460): at rest, 50° neck up, the 6 L's base and
+  its base stop hang about 520 mm under the mouth. The stand's legs are 90 mm longer; the
+  linkages are unchanged relative to the mouth.
+- **The saddles and ties** (`cradle.SADDLES`, `decanters.TIES`): Vs for a 174 mm body and a
+  48 mm neck, 190 mm across; the rear saddle 125 mm long, reaching behind the 6 L's centre
+  of mass, and a V shell; the tie points lower and further back. Both cradles re-plan round
+  them.
+- **The drive:** a full 6 L takes about 32 N·m at the crank (B; A 34), 2.2 x the 3 L's. The
+  NRV030 (20 N·m) became an NRV040 (45 N·m: SF 1.41 on B, 1.33 on A), and the handle grew
+  to 100 mm (A 105), so the worst turn stays under 25 N at the grip.
+- **The jam grows with the handle.** A firm 40 N push on a 100 mm handle through the worm
+  at a hand's speed is 66 N·m at the crank (A 69.3: `config.PRODUCT_JAM_NM`), where it had
+  been 36. Whatever the ratio or the handle, a jam push about twice the worst turn's puts
+  the drive path at about twice the bottle's peak: every part between the crank and the
+  cradle needed 1.4-1.9 x its strength.
+  - The pillars and the crankpin: 12 mm NETRF12 (1.73 x the 10 mm's bending section).
+  - B's arms b2, b3 and bar b4: 7075-T6 0.190 in (1.72 x 6061's yield).
+  - The rods: B's 0.313 in 6061, A's 0.250 in 5052 (their buckling).
+  - The crank block: four keyed plates on the NRV040's 19 mm shaft and 6 mm key.
+  - The pins: steel ("The pins" above), the user's choice of 2026-10-13: an M6 Chicago
+    screw's 8 mm stainless barrel held 0.69 at B's rod pin P.
+- **The stand:** the base board 530 x 626 mm (from 500 x 596): a full 6 L tips past 25° over
+  its sides and its rear edge.
+- **The base board in wood** (the same day's ask): 9 mm Baltic birch, routed.
 
 ## The vessel under the mouth
 
 At rest, 50° neck up, the cradle box hangs straight under the mouth: the front tie rods, the
-front saddle and the light cross the decanter's axis from 300 mm over the table up.
+front saddle and the light cross the decanter's axis from 385 mm over the table up.
 `cradle_report.room` measures the room a vessel has round its axis at every height, over
-the whole swing and from the pour on (the cradle past −20°), with a 3 L bottle in the
+the whole swing and from the pour on (the cradle past −20°), with a 6 L methuselah in the
 saddles too; the cradle page (`/api/cradle/{key}/room`) stands each vessel on the highest
-riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`).
-- For the whole swing: 240 mm across up to 135 mm over the table, 125 mm across above that,
-  its rim no higher than 285 mm. A RIEDEL Ultra stands on a 55-60 mm riser, its rim about
-  175 mm under the mouth.
-- From the pour on: its rim up to about 390 mm over the table (65 mm across above 330), 70
+riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`). The spare sizes'
+adapters lying on the table don't ride the cradle (only the drawn magnum's do).
+- For the whole swing: 240 mm across up to 165 mm over the table, 95 mm across above that,
+  its rim no higher than 380 mm. A RIEDEL Ultra stands on a 135 mm riser, its rim about
+  190 mm under the mouth.
+- From the pour on: its rim up to about 520 mm over the table (55 mm across above 475), 30
   mm under the mouth. Raise the jack once the cradle is past −20° and lower it before
   cranking back to rest: the worm would push the cradle box down onto it.
 
@@ -241,7 +299,7 @@ they go in (`/api/cradle/{key}/pack`).
 the linkage, so they follow the design (`cradle_pack.pieces`):
 1. The bottle's adapters come out of the saddles. Every adapter and collar travels loose.
 2. The hand crank comes off its shaft (its set screw).
-3. The base plate comes off (the brackets' nuts). The carriage bolts stay in it.
+3. The base board comes off (the brackets' nuts). The carriage bolts stay in it.
 4. Each inner plate comes off (its screws, from the bay side).
 5. Each side panel comes off its cradle link, where the link meets the side
    (`mech.connections`).
@@ -261,10 +319,10 @@ A link left hanging on one joint once its cradle link is off swings into its pan
 
 **How it stacks** (`cradle_pack.pack`). It works on each part's bounding box, 3 mm apart
 (`CLEAR`):
-- **Levelled.** Every piece but the panels and the base plate is turned in the
+- **Levelled.** Every piece but the panels and the base board is turned in the
   mechanism's plane to its least bounding box (`level`). It then lies in one of its six
   axis orientations.
-- **The base plate** stays at the bottom, where it is. The box is as wide as the largest
+- **The base board** stays at the bottom, where it is. The box is as wide as the largest
   piece lying flat.
 - **The side panels** drop onto a heightmap, in both orders, either face down, either way
   round; the lowest pair wins. They nest: one panel's pillars stand between the other's
@@ -312,7 +370,7 @@ rod's whole force.
   grip, the jam's push and torque, the turns per pour.
 - **Rod and crankpin:** the rod's buckling, the crankpin standoff as a cantilever off the
   block.
-- **Stand:** the whole cradle's centre of mass over the swing against the base plate's
+- **Stand:** the whole cradle's centre of mass over the swing against the base board's
   feet: the margin, the tilt it tips at and the push at the bottle's top that tips it,
   each the worst over the swing (the code review: they had been read at one crank angle).
 - **Joints and plates:** every pin, pillar and link plate rated by `strength.check` at
@@ -341,7 +399,7 @@ print(json.dumps(report(BuildConfig(linkage='decanter_hinge', robot=False)), ind
 
 B (`decanters.RCM`, refined 2026-10-10) swings −50° to +30°: one crank turn is one decant
 and back, the crank-rocker's toggles the soft stops at both ends. It shares the drive, the
-cradle box, the saddles, the base stop, the base plate and the light with A.
+cradle box, the saddles, the base stop, the base board and the light with A.
 
 **The mechanism.** Two parallelograms keep the cradle turning about the mouth with nothing
 there:
@@ -403,11 +461,12 @@ grip jammed):
 
 **The stand** (`cradle.STANDS`):
 - **The outer plate** is two triangles on the pivots' bar: O1–O, O2–O and O1–O2. A front
-  leg runs from O2, a rear leg straight down from O, and a rail along the base plate.
+  leg runs from O2, a rear leg straight down from O, and a rail along the base board.
 - **The inner plate** is the bar O1–O2 alone, on its two pillars. Nothing crosses the bay.
-- **The base plate** runs from 160 mm in front of the mouth to 436 mm behind it: 596 by
-  500 mm. It tips a full 3 L at 30.1° over its sides; its rear edge holds as much or more.
-  The first refit's had run 827 mm, to 640 mm behind the mouth, with the crank 480 mm back.
+- **The base board** runs from 160 mm in front of the mouth to 466 mm behind it: 626 by
+  530 mm (a full 6 L tips past 25° over its sides and its rear edge; it was 596 by 500 for
+  a 3 L). The first refit's had run 827 mm, to 640 mm behind the mouth, with the crank 480
+  mm back.
 
 **Tried and dropped** (a search over the parameters, each candidate then planned and
 reported; [DECISIONS.md](DECISIONS.md) has the entry):
@@ -437,23 +496,25 @@ The assembly guide's order is `construction.assembly.CRADLE_ORDER`:
    - the crank block from its lowest plate, the two standoffs screwed to it on the bench;
    - its cradle link goes on with the four tie rods already screwed to it;
    - its inner plate.
-2. **The base plate:** the drive side bolts onto it (it can't stand alone).
+2. **The base board:** the drive side bolts onto it (it can't stand alone).
 3. **The cradle box:** the saddles slide onto the tie rods, then the light and the base
    stop go on.
 4. **The passive side:**
    - its cradle link onto the tie rods' free ends;
    - its stack, from outside: the pillar goes up through the cradle link;
    - what goes over the link, then its inner plate, then its brackets.
-5. **The hand crank**, then **the bottle:** its adapters (a magnum) or its collar (a 3 L),
-   the base stop set, then decanting.
+5. **The hand crank**, then **the bottle:** its adapters (all but a 6 L methuselah) and its
+   collar (a 3 L or a 6 L), the base stop set, then decanting.
 
 Things to know before cutting and on the bench:
 - **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit to
   the live quotes of 2026-10-10 for A's files (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50
-  then); the walkers' per-area rates had priced the base plate alone at USD 488.
+  then); the walkers' per-area rates had priced the old aluminium base plate alone at USD
+  488. The plywood board, the 7075 and the 0.313 in 6061 have no fitted price: the BOM
+  leaves them to the quote.
 - **Measure the gearbox** when it arrives: the output face's spigot (2.5 mm is drawn; under
-  2 mm, put an M6 washer under each riser screw's head) and where the output shaft's key
-  sits.
+  2 mm, put an M6 washer under each riser screw's head), the output shaft's collar and key
+  (drawn from Motovario's 18 mm NRV040 shaft: Phidgets' is 19 mm) and where the key sits.
 - **File the keyed plates' keyways to the key** if they bind. A laser-cut slot comes back
   ±0.13 mm.
 - **Oil the steel standoffs:** they are bare 1018. Wipe each with light oil, and keep the
@@ -462,12 +523,13 @@ Things to know before cutting and on the bench:
   pillar's screws are tight.
 - **Break the laser-cut edges** where hands go: the bay and the frame tops.
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's last step):
-  - 800 mm of headroom: a 3 L's base at full tilt reaches about 760 mm over the table.
-  - 50 mm behind the base plate: a 3 L's base comes to its rear edge at full tilt.
+  - 950 mm of headroom: a 6 L's base at full tilt reaches about 910 mm over the table.
+  - 150 mm behind the base board: a 6 L's base reaches past its rear edge at full tilt
+    (B 112 mm, A 138).
   - The vessel: as "The vessel under the mouth" above. It stands under the mouth's centre
     (`cradle.DECANTER_X`) on its riser, which the notch puts there.
-- **Keep the base plate clear behind the decanter:** at rest the base stop comes down to
-  about 20 mm over it.
+- **Keep the base board clear behind the decanter:** at rest the base stop comes down to
+  about 18 mm over it.
 - **Never force the crank.** If it stiffens, something is in the way: the drive holds a
   40 N push at the grip, and near either end of travel the cradle's force grows without
   bound. Keep fingers out of the drive side while it turns.

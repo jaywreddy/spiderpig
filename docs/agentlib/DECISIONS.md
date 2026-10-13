@@ -715,3 +715,45 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     with (a fresh drop of threadlocker on the tie screws).
 - **Where:** `spiderpig/cradle_pack.py`, `viewer/src/decant/{pack,main}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-13: the cradles carry a 6 L bottle (user: "we need to fit 6L magnums"; "both")
+
+- **What:** the user asked for 6 L bottles. Asked which, a Bordeaux impériale or a
+  Champagne methuselah, they answered "both". The methuselah (571 x 174 mm, 11.1 kg full)
+  is now the design bottle; every other size lies on adapters
+  ([DECANTER.md](DECANTER.md), "Sized for a 6 L").
+  - **Geometry:** the mouth 550 mm over the table (from 460); the saddles 190 mm across,
+    the rear one 125 mm long and a V shell; the tie points lower and further back; the base
+    stop's spine to the 6 L's base.
+  - **The drive:** the NRV040 at 30:1 (Phidgets TRM4401_0, 45 N·m) for the NRV030; a
+    100 mm handle (A 105).
+  - **The drive path:** NETRF12 pillars and crankpin; B's b2-b4 in 7075-T6; B's rod 0.313 in
+    6061, A's 0.250 in 5052; four keyed plates; steel pins (the user's choice).
+  - **The stand:** the base board 530 x 626 mm.
+  - **The base board** in 9 mm Baltic birch plywood (the user's, the same day), routed at
+    SendCutSend, with M6 x 20 carriage bolts in round holes.
+- **Numbers** (B at 5167f80, the pins aside):
+  - The crank's peak 32.0 N·m (the NRV040's SF 1.41), 23.7 N at the grip.
+  - The jam 66 N·m: pillars O1 1.38, O2 1.30; links b3 1.45, b4 1.46; the crank's keyway
+    2.0; the crankpin 1.81; the rod's buckling 2.86.
+  - The stand tips at 25.9°.
+- **Why:**
+  - A full 6 L's moment about the mouth is 2.2 x the 3 L's, and the NRV030 is rated 20 N·m.
+  - The handle force bar (under 25 N) and the jam push (40 N, about twice the worst turn)
+    fix the jam at about twice the peak, whatever the ratio or the handle's length. So the
+    drive path needed about twice its strength, not just a bigger gearbox.
+  - A per-cradle handle: A's worst turn took 24.98 N on a 100 mm handle. A longer handle on
+    both would have pushed B's pillar O2 under 1.3.
+- **Tried and dropped:**
+  - **Designing for the impériale alone:** the mouth up only about 15 mm and 1.5 x the
+    loads, but a Champagne 6 L wouldn't fit (the user: both).
+  - **A slip clutch on the handle:** to keep normal turning it must pass the worst turn's
+    torque at the worm's static efficiency. At the hand's efficiency that still lets 1.6 x
+    the peak through, so the parts need upgrading anyway.
+  - **A counterbalance spring:** it would over-balance a 750 ml, and it's a new mechanism.
+  - **M8 Chicago screws for the pins:** 1.69 x the section, and rod pin P only about 1.25.
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/construction/handcrank.py`,
+  `spiderpig/construction/pivots/standoff.py`, `spiderpig/linkages/decanters.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/config.py`, `spiderpig/materials.py`,
+  `spiderpig/hardware/{cradle_catalog,sheet_catalog,fasteners}.py`, `spiderpig/bake.py`,
+  `viewer/src/decant/`, `tests/test_cradle.py`.
