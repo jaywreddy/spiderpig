@@ -154,7 +154,7 @@ def bom_title(config) -> str:
         from spiderpig.construction.cradle import STUDIES
 
         study = STUDIES.get(config.linkage)
-        return (f"decanting cradle ({config.lk.name}), hand crank (NRV030 30:1), "
+        return (f"decanting cradle ({config.lk.name}), hand crank (NRV040 30:1), "
                 f"{config.pillar} pillars, {config.pin} pins, {config.frame_sheet} frame"
                 + (f" -- {study}" if study else ""))
     return (f"{config.module} {'robot' if config.robot else 'side'}, {config.servo}, "

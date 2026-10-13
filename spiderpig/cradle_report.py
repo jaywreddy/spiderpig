@@ -7,7 +7,7 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 * **The bottles** (:data:`construction.cradle.SIZES`): where each one's mouth sits off the
   pivot in the saddles (:func:`construction.cradle.seat`).
 * **The loads**: a quasi-static planar solve (:func:`statics`) of the side's bodies, the
-  cradle box's mass and a **sealed full 3 L bottle** (the worst a cradle carries: nothing
+  cradle box's mass and a **sealed full 6 L methuselah** (the worst a cradle carries: nothing
   pours out of it) on the cradle, gravity alone, at every crank angle: the crank's torque,
   every pin's force. A **jam** case puts a firm push at the grip on a blocked cradle
   (:data:`JAM_HAND_N`, about twice what the worst turn takes, through the worm at a hand's
@@ -32,7 +32,7 @@ import numpy as np
 
 from spiderpig.config import BuildConfig, is_cradle
 from spiderpig.construction import cradle as cr
-from spiderpig.construction.handcrank import CRANKPIN_D, HANDLE_R, NRV030, HandCrank, WormBox
+from spiderpig.construction.handcrank import CRANKPIN_D, HANDLE_R, NRV040, HandCrank, WormBox
 from spiderpig.fabricate import design_side, fabricate, template_for
 from spiderpig.hardware import mass as mass_mod
 from spiderpig.hardware.cradle_catalog import NETRF10_ID, NETRF10_YIELD
@@ -49,15 +49,14 @@ TOGGLE_DEG = 30.0       # the jam case leaves out crank angles this close to a t
 E_ALU = 69000.0         # MPa, 5052 / 6061
 WARN_HANDLE_N = 40.0    # a handle force a hand turns steadily for a minute
 JAM_HAND_N = 40.0       # the jam: a firm push at the grip against a blocked cradle (about twice
-#                         the worst turn's 21 N: a hand that feels it stop and pushes on)
-ETA_HAND = 0.5          # the worm's efficiency at a hand's speed (the catalogue's: 0.39
-#                         static, 0.66 at 1400 rpm; a hand turns it at about 60 rpm)
+#                         the worst turn's: a hand that feels it stop and pushes on)
 
 
-def jam_nm(box: WormBox = NRV030, grip_r: float = HANDLE_R) -> float:
+def jam_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
     """The jam case's crank torque (N·m): :data:`JAM_HAND_N` at the grip (``grip_r`` mm)
-    through the worm at :data:`ETA_HAND` (``config.PRODUCT_JAM_NM`` is this number)."""
-    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * ETA_HAND
+    through the worm at a hand's speed (``WormBox.eta_hand``: ``config.PRODUCT_JAM_NM`` is
+    this number)."""
+    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_hand
 
 
 @dataclass
@@ -104,14 +103,23 @@ def part_mass_kg(config: BuildConfig, b) -> float:
     return mass_mod.part_props(b.placed_part()).volume * dens / 1e6
 
 
-def masses(config: BuildConfig, mech) -> tuple[dict[str, float], dict[str, np.ndarray]]:
+def _adapted(name: str) -> bool:
+    """A bottle size's own adapter (its liners and collar: ``cradle.adapter``), not the
+    saddles' liners."""
+    return name.endswith("_collar") or any(name.endswith(f"_{z.key}_liner") for z in cr.SIZES)
+
+
+def masses(config: BuildConfig, mech, adapters: bool = True
+           ) -> tuple[dict[str, float], dict[str, np.ndarray]]:
     """Per side body class (both sides' parts summed: the motion is planar), its mass (kg)
-    and first moment (kg mm, world XY) in the fabricated cradle ``mech``."""
+    and first moment (kg mm, world XY) in the fabricated cradle ``mech``; ``adapters``
+    False leaves the bottle sizes' adapters out (the largest bottle lies in the bare
+    saddles: the drawn magnum's liners come out for it)."""
     by = {b.name: b for b in mech.bodies}
     m_of: dict[str, float] = {}
     mom: dict[str, np.ndarray] = {}
     for b in mech.bodies:
-        if b.part is None or b.fab == "display":
+        if b.part is None or b.fab == "display" or (not adapters and _adapted(b.name)):
             continue
         cls = body_class(_host(b, by))
         m = part_mass_kg(config, b)
@@ -129,7 +137,8 @@ def planar_model(config: BuildConfig, mech, t_ref: float, bottle: cr.BottleSize 
                  ) -> tuple[list[Rigid], list[tuple[str, str, str]]]:
     """The moving bodies (:class:`Rigid`) and the joints ``(point, body, body-or-ground)``."""
     lk = config.lk
-    m_of, moments = masses(config, mech)
+    # (the bottle in its own adapters: the largest has none, and the drawn one's come out)
+    m_of, moments = masses(config, mech, adapters=bottle is None or any(cr.adapter(bottle)))
     pts = _world_joints(config, [t_ref])
     links = {b: js for b, (js, _) in lk.links.items()}
     links["conn"] = lk.crank
@@ -268,13 +277,13 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                                "full_kg": size.mass_full_kg})
 
     mech = fabricate(tmpl, config, 1.0, store=store)
-    # the loads: a sealed full 3 L bottle; the jam: a firm push at the grip
-    rigid, joints = planar_model(config, mech, 1.0, cr.JEROBOAM)
+    # the loads: a sealed full 6 L methuselah; the jam: a firm push at the grip
+    rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
     near = _toggles(config, ts)
     _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm())
     jam_f = np.where(near[:, None], 0.0, jam_f)
-    box = NRV030
+    box = NRV040
     peak = float(np.abs(torque).max())
     handle = peak / (box.ratio * box.eta_static)
     hand = (mech.meta.get("hand_crank") or {}).get("handle") or {}
@@ -291,7 +300,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
         "jam_torque_nm": round(jam_nm(box, grip_r), 2),
         "handle_turns_per_pour": round(box.ratio / 2.0, 1),
         "deg_per_handle_turn_mean": round(float(np.ptp(tilt)) / (box.ratio / 2.0), 2),
-        "load_case": f"a sealed full {cr.JEROBOAM.name} ({cr.JEROBOAM.mass_full_kg} kg)",
+        "load_case": f"a sealed full {cr.DESIGN.name} ({cr.DESIGN.mass_full_kg} kg)",
     }
     if out["drive"]["handle_force_n"] > WARN_HANDLE_N:
         out.setdefault("warnings", []).append(
@@ -344,7 +353,8 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     return out
 
 
-WINE_KG = {"standard": 0.75, "magnum": 1.5, "jeroboam": 3.0}
+WINE_KG = {"standard": 0.75, "magnum": 1.5, "jeroboam": 3.0, "imperial": 6.0,
+           "methuselah": 6.0}
 """The wine in each bottle size full (``construction.cradle.SIZES``), kg: what an empty one
 weighs less."""
 
@@ -490,13 +500,13 @@ def joint_rows(config: BuildConfig, rider: str, joints, forces, jam_f) -> list[d
 def loads(config: BuildConfig, store=None) -> dict:
     """The joint loads :mod:`spiderpig.strength` rates a cradle at (what
     :func:`strength.design_loads` returns for one: the audit's, ``explain``'s and verify's
-    pin and plate rows): a sealed full 3 L bottle's walking, a firm push at the grip
+    pin and plate rows): a sealed full 6 L methuselah's walking, a firm push at the grip
     jammed (:func:`jam_nm`)."""
     tmpl = template_for(config)
     design = design_side(tmpl, config)
     mech = fabricate(tmpl, config, 1.0, store=store)
     ts = np.linspace(0.0, 2.0 * math.pi, 360, endpoint=False)
-    rigid, joints = planar_model(config, mech, 1.0, cr.JEROBOAM)
+    rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
     _, jam_f = statics(config, rigid, joints, ts, jam_nm=jam_nm())
     jam_f = np.where(_toggles(config, ts)[:, None], 0.0, jam_f)
@@ -516,7 +526,7 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
                        "frame": r["joint"] in ground, "links": bodies,
                        "walk": {"n": r["bottle_n"], "patterns": None},
                        "jam": {"n": r["jam_n"], "patterns": None}})
-    return {"source": "statics", "note": "a cradle's: a sealed full 3 L bottle (walk), a firm "
+    return {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), a firm "
             f"push at the grip on a blocked cradle ({JAM_HAND_N:g} N: {jam_nm():g} N·m at "
             "the crank, jam); cradle_report",
             "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
@@ -529,7 +539,7 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float) -> dict:
 
 def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float) -> dict:
     """The pins and link plates rated by :func:`spiderpig.strength.check` at the cradle's
-    loads: "walk" a sealed full 3 L bottle's, "jam" a firm push at the grip on a blocked
+    loads: "walk" a sealed full 6 L methuselah's, "jam" a firm push at the grip on a blocked
     cradle (per side, as :func:`report` shares them)."""
     from spiderpig import strength
 
@@ -580,7 +590,7 @@ def motion(config: BuildConfig, n: int = 360) -> dict:
     mouth = cr.mouth_name(lk)
     lip = pts[mouth]
     wander = float(np.linalg.norm(lip - lip.mean(axis=0), axis=1).max())
-    ratio = NRV030.ratio
+    ratio = NRV040.ratio
     turns = ((np.arange(n) - rest) % n) / n * ratio
     def outline_of(size: cr.BottleSize) -> list[tuple[float, float]]:
         y0, slope, x0 = cr.seat(size)
@@ -650,7 +660,7 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
     """The room a vessel has under the mouth (``/api/cradle/{key}/room``, the cradle page's
     fit check): at each height over the table (every :data:`ROOM_BAND` mm up to the mouth),
     the radius round the decanter's axis that no part of the cradle box, the bottle drawn
-    or a 3 L bottle enters over the whole swing (``room``), and from the pour on (the
+    or a 6 L methuselah enters over the whole swing (``room``), and from the pour on (the
     cradle past -20°, where an opened full bottle starts to pour: ``room_pouring``).
     ``mech``: the cradle fabricated at crank angle 0. The side stacks stand outside the
     bay (``construction.cradle.BAY``), so only the bay's parts count."""
@@ -668,12 +678,12 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
             continue
         p = _surface_points(b.placed_part())
         (moving if b.name.startswith(_MOVING) or "magnum_liner" in b.name else fixed).append(p)
-    # a 3 L bottle in the saddles too (the magnum is the bottle drawn)
-    y0, slope, x0 = cr.seat(cr.JEROBOAM)
+    # a 6 L methuselah in the saddles too (the magnum is the bottle drawn)
+    y0, slope, x0 = cr.seat(cr.DESIGN)
     c, s = math.cos(slope), math.sin(slope)
     phi = np.linspace(0.0, 2.0 * math.pi, 36, endpoint=False)
     big = []
-    for u, r in cr.JEROBOAM.profile():
+    for u, r in cr.DESIGN.profile():
         cx = x0 + u * c - r * np.cos(phi) * s
         cy = y0 + u * s + r * np.cos(phi) * c
         big.append(np.stack([cx, cy, r * np.sin(phi)], 1))

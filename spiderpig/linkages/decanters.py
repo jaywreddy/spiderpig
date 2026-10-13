@@ -1,6 +1,6 @@
 """Decanting cradles: a crank tips a wine bottle about its own mouth.
 
-A decanting cradle pours a large-format bottle (a 1.5 L magnum to a 3 L double magnum)
+A decanting cradle pours a large-format bottle (a 750 ml to a 6 L methuselah)
 slowly enough that the sediment stays in the bottle. These two hold the bottle's mouth
 still while it tips, so the decanter can stand under it for the whole pour (the
 prior art and why: ``docs/agentlib/DECANTER.md``). One turn of the crank is one decant:
@@ -40,13 +40,13 @@ from spiderpig.linkage import (
 R = sp.Rational
 SOURCE = "https://patents.google.com/patent/US7708241"   # the mouth on the tilt axis
 
-TIES = {"Tf1": (55, -40), "Tf2": (75, -40), "Tr1": (270, -112), "Tr2": (300, -112)}
+TIES = {"Tf1": (55, -47), "Tf2": (75, -47), "Tr1": (275, -136), "Tr2": (360, -136)}
 """Where the cradle box's tie rods ride on the cradle link, in the cradle's frame (mm: the
 mouth at the origin, x along the bottle's axis toward its base, y up with the bottle level):
 two under the neck carry the front saddle (the neck's V and the shoulder's stop), two under
-the body the rear saddle (the body's V, deep enough for a 3 L bottle, 141 mm). Each link
-point sweeps an arc about the mouth: :mod:`construction.cradle` keeps the frame clear of
-them."""
+the body the rear saddle (the body's V, deep enough for a 6 L bottle, 174 mm, and long
+enough to reach behind its centre of mass). Each link point sweeps an arc about the mouth:
+:mod:`construction.cradle` keeps the frame clear of them."""
 
 
 def _ties(at):

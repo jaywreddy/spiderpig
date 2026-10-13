@@ -1,6 +1,6 @@
 """Catalog data: what a decanting cradle buys beyond the walkers' hardware.
 
-The hand-cranked worm drive (:mod:`construction.handcrank`): the NRV030 gear reducer and its
+The hand-cranked worm drive (:mod:`construction.handcrank`): the NRV040 gear reducer and its
 output shaft, the riser's screws, the handle; the
 cradle's light (:mod:`construction.cradle`); and its standoffs: every pillar, stand column
 and tie rod is a 10 mm steel standoff made to length, MISUMI NETRF10 (M5 both ends,
@@ -122,6 +122,30 @@ register(
          notes="Motovario's NRV030 mesh data at 30:1: static efficiency 0.39, under the 0.5 "
                "of static irreversibility: a load on the cradle can't turn the handle. Mass "
                "about 1.2 kg (a search snippet: weigh it)."),
+    Item("nrv040_30", "NRV040 worm gear reducer, 30:1, 11 mm input shaft, 19 mm hollow output "
+         "(Phidgets 45 N·m 40 Series)", "gearbox",
+         (Offer("Phidgets", "https://www.phidgets.com/?prodid=869", "TRM4401_0",
+                price_usd=62.90, verified=True, tiers=((1, 62.90), (5, 60.38), (10, 57.87)),
+                note="30:1 only. 11 mm input with 4 mm keyway; 19 mm bore with 6 mm keyway; "
+                     "45 N·m; 3.5 kN radial; backlash 1/2°; 27 in stock. Ships from "
+                     "Calgary, Canada: check the shipping, duties and brokerage at checkout "
+                     "(not in the total); page fetched 2026-10-13"),),
+         dims={"ratio": 30, "centre_distance": 40.0, "input_d": 11.0, "input_len": 23.0,
+               "input_shoulder": 53.0, "bore": 19.0, "pcd": 75.0, "face_thread": "M6x11",
+               "spigot_d": 60.0, "width": 73.0, "mass_g": 2100.0},
+         notes="Motovario's NRV040 mesh data at 30:1: static efficiency 0.45, under the 0.5 "
+               "of static irreversibility: a load on the cradle can't turn the handle. "
+               "Mass: Motovario's 4.4 lb (2.0 kg) dry, about 2.1 kg with its oil. A decanting "
+               "cradle's since it carries a 6 L bottle (2026-10-13; the NRV030 held a 3 L)."),
+    Item("nrv040_output_shaft_19", "Single output shaft for a 40 series worm gearbox, 19 mm "
+         "keyed (keys, washers, snap ring)", "misc",
+         (Offer("Phidgets", "https://www.phidgets.com/?prodid=736", "TRM4006_0", price_usd=6.15,
+                verified=True, tiers=((1, 6.15), (5, 5.90), (10, 5.66)),
+                note="'keys, washers, and a snap ring'; 6 mm keyway; page fetched 2026-10-13"),),
+         dims={"d": 19.0, "fit": "h6", "length": 128.0, "protrusion": 43.0, "collar_d": 25.0,
+               "collar_t": 3.0, "key": (6.0, 6.0, 30.0), "centre_tap": "M6x15"},
+         notes="Lengths as Motovario's NRV040 low-speed shaft (18 h6 x 128, B1 43); its "
+               "collar and key length assumed: measure them."),
     Item("nrv030_output_shaft_14", "Single output shaft for NRV030, 14 mm keyed (keys, washers, "
          "snap ring)", "misc",
          (Offer("Phidgets", "https://www.phidgets.com/?prodid=734", "TRM4004_0", price_usd=4.45,
@@ -139,16 +163,17 @@ register(
            dims={"thread": 6.0, "barrel_d": 8.0, "head_d": 13.5, "head_h": 2.0,
                  "screw_head_h": 1.7, "screw_len": 10.0, "length": float(L)})
       for L, (vid, sku, n, usd) in HARF_CHICAGO_M6.items()),
-    Item("m6_carriage_16", "M6 x 16 carriage bolt (DIN 603), zinc-plated class 4.6", "fastener",
-         (Offer("Bolt Depot", BD + "18219", "18219", price_usd=0.22, verified=True,
-                tiers=((1, 0.22), (100, 0.1721)),
+    Item("m6_carriage_20", "M6 x 20 carriage bolt (DIN 603), zinc-plated class 4.6", "fastener",
+         (Offer("Bolt Depot", BD + "18220", "18220", price_usd=0.23, verified=True,
+                tiers=((1, 0.23), (100, 0.1764)),
                 note="zinc-plated class 4.6 steel (Bolt Depot has no M5 and no stainless "
-                     "metric carriage bolt); page rendered 2026-10-10"),),
-         dims={"d": 6.0, "length": 16.0, "head_d": 16.55, "head_h": 3.88, "neck": 6.48,
+                     "metric carriage bolt); page rendered 2026-10-13"),),
+         dims={"d": 6.0, "length": 20.0, "head_d": 16.55, "head_h": 3.88, "neck": 6.48,
                "neck_h": 4.6},
-         notes="A decanting cradle's base-plate bolt: its square neck in the base plate's "
-               "square hole holds it while its nut goes on from above (round 3 review: a "
-               "screw's head under the assembled cradle can't be held)."),
+         notes="A decanting cradle's base-board bolt: through a round hole in the plywood, "
+               "its square neck pulled into the wood holds it while its nut goes on from "
+               "above (round 3 review: a screw's head under the assembled cradle can't be "
+               "held)."),
     Item("m6_thin_nut", "M6 thin hex nut (DIN 439, 3.2 mm)", "nut",
          (Offer("Bolt Depot", BD + "13572", "13572", price_usd=0.10,
                 tiers=((1, 0.10), (100, 0.0641)), verified=True,

@@ -4,19 +4,19 @@ A decanting cradle (:mod:`linkages.decanters`, ``docs/agentlib/DECANTER.md`` has
 turned by hand, slowly, and must stay where it is let go, so its crank is driven through a
 self-locking worm gear reducer instead of a servo:
 
-* **The gearbox** (:class:`WormBox`, an NRV030 at 30:1) stands outboard of the drive side's
-  *outer* frame plate, its output axis on O, its output face toward the plate. Its static
-  efficiency at 30:1 is 0.39, under the 0.5 the maker's catalogue gives for static
-  irreversibility: a load on the cradle can't turn the worm. Its 9 mm input shaft points
-  back (``input_angle_deg``) and carries the printed hand crank.
+* **The gearbox** (:class:`WormBox`, an NRV040 at 30:1: :data:`NRV040`) stands outboard of
+  the drive side's *outer* frame plate, its output axis on O, its output face toward the
+  plate. Its static efficiency at 30:1 is 0.45, under the 0.5 the maker's catalogue gives
+  for static irreversibility: a load on the cradle can't turn the worm. Its 11 mm input
+  shaft points back (``input_angle_deg``) and carries the printed hand crank.
 * **The riser** (:func:`riser_for`): laser-cut 0.125 in discs between the gearbox's face and
-  the plate, the face's raised 55 mm spigot ring bearing on the first; four M6 button heads
+  the plate, the face's raised spigot ring bearing on the first; four M6 button heads
   come up through the plate and the discs into the face's tapped holes. The discs set how
-  far the gearbox's stock output shaft (14 mm, its collar on the hub's end, keyed 5 x 5 x
-  20 ending 5 short of its end, an M6 end tap; 32.5 past the hub's end) reaches into the
+  far the gearbox's stock output shaft (19 mm, its collar on the hub's end, keyed 6 x 6
+  ending 5 short of its end, an M6 end tap; 43 past the hub's end) reaches into the
   stack: the crank block's keyed plates on its key's straight flanks.
-* **The crank block** (the arm): laser-cut 0.125 in 6061-T6 plates (the crank sheet: a 5.1 mm
-  keyway is legal in it, not in 0.250 in), each the arm's whole outline, stacked on the shaft
+* **The crank block** (the arm): laser-cut 0.125 in 6061-T6 plates (the crank sheet: a 6.1 mm
+  keyway is legal in it), each the arm's whole outline, stacked on the shaft
   from its key to past its end: the lowest :data:`KEYED_PLATES` keyed over the key, the
   next bored round the shaft, the last two over its end, an M6 button head down through the
   one under the top plate into the shaft's end tap, its head in the top plate's hole. A
@@ -71,7 +71,7 @@ from spiderpig.stack import Claim, Disc, Layout, Pill, Placed, Unbuildable
 
 GROUP = "crank"
 STEEL = "#4a4a4a"
-GEARBOX_COLOR = "#2f5d8a"       # an NRV030's RAL 5010 blue
+GEARBOX_COLOR = "#2f5d8a"       # an NRV's RAL 5010 blue
 PRINT_COLOR = "#6a4fc7"
 
 
@@ -79,26 +79,29 @@ PRINT_COLOR = "#6a4fc7"
 class WormBox:
     """A worm gear reducer with a hollow output and a plug-in output shaft (mm, N·m).
 
-    The NRV030 (Motovario's VSF catalogue rev 0 2017; RS's NMRV030 datasheet 4001782;
-    Phidgets' TRM4400_0 and TRM4004_0 drawings, read 2026-10-10): the output face 4 x M6 x 11
-    on a 65 mm PCD at 45°, a 55 mm h8 spigot, the faces 29 mm each side of the worm's plane
-    (58 across), the output hub 63 long (2.5 past each face), the worm 30 off the output
-    axis, the 9 j6 input shaft (3 mm key) 20 long past its shoulder 45 from the output axis.
-    The single output shaft (14 h6 x 102, M6 x 15 centre tap) goes in from the plate's side:
-    a 20 x 2.5 collar against the hub's end, then 30 more (B1 = 32.5 past the hub's end, the
-    catalogue's "low speed shafts" row), keyed 5 x 5 x 20 ending 5 short of its end (the
-    shaft drawing). Mesh data at 30:1: lead 4°52', static efficiency 0.39 (statically
-    irreversible under 0.5), 0.66 at 1400 rpm; Mn2 21 N·m at 1140 rpm input (Phidgets rates
-    it 20 N·m, 1/2° backlash)."""
+    The defaults are the NRV030 (Motovario's VSF catalogue rev 0 2017; RS's NMRV030
+    datasheet 4001782; Phidgets' TRM4400_0 and TRM4004_0 drawings, read 2026-10-10): the
+    output face 4 x M6 x 11 on a 65 mm PCD at 45°, a 55 mm h8 spigot, the faces 29 mm each
+    side of the worm's plane (58 across), the output hub 63 long (2.5 past each face), the
+    worm 30 off the output axis, the 9 j6 input shaft (3 mm key) 20 long past its shoulder
+    45 from the output axis. The single output shaft (14 h6 x 102, M6 x 15 centre tap) goes
+    in from the plate's side: a 20 x 2.5 collar against the hub's end, then 30 more (B1 =
+    32.5 past the hub's end, the catalogue's "low speed shafts" row), keyed 5 x 5 x 20
+    ending 5 short of its end (the shaft drawing). Mesh data at 30:1: lead 4°52', static
+    efficiency 0.39 (statically irreversible under 0.5), 0.66 at 1400 rpm; Mn2 21 N·m at
+    1140 rpm input (Phidgets rates it 20 N·m, 1/2° backlash). :data:`NRV040` is the size up
+    the cradles carry a 6 L bottle on."""
 
     key: str = "nrv030_30"
     ratio: int = 30
     eta_static: float = 0.39
     eta_dynamic: float = 0.66       # the catalogue's, at 1400 rpm: a bound on the hand's
+    eta_hand: float = 0.5           # at a hand's speed (about 60 rpm): between the two
     rated_nm: float = 20.0
     pcd: float = 65.0
     face_thread: float = 6.0
     spigot_d: float = 55.0
+    spigot_h: float = 2.5           # its raised spigot ring (assumed: measure it)
     width: float = 58.0             # face to face, along the output axis
     hub_d: float = 25.0             # the output hub's end (assumed: not dimensioned)
     hub_out: float = 2.5
@@ -111,17 +114,45 @@ class WormBox:
     worm_offset: float = 30.0
     input_d: float = 9.0
     input_len: float = 20.0
+    input_key: tuple[float, float] = (3.0, 1.4)   # its key (DIN 6885) and how far it stands
+    #                                               into the hand crank's hub (t2)
     input_face: float = 45.0        # output axis to the input shaft's shoulder
     cap_face: float = 51.0          # output axis to the worm's far end (the VS's shoulder)
     below: float = 40.0             # output axis to the face away from the worm
+    sleeve_d: float = 24.0          # the printed sleeve and spacer on its output shaft
+    crank_hub_r: float = 12.0       # the printed hand crank's hub on its input shaft
 
     def irreversible(self) -> bool:
         """Static irreversibility, the maker's criterion: static efficiency under 0.5."""
         return self.eta_static < 0.5
 
+    def tie_r(self) -> float:
+        """How far out along the arm the crank block's tie standoff stands: its screw's
+        wide washer under the block clear of the riser screws' heads on the PCD."""
+        return math.ceil(self.pcd / 2 + M6.head_d / 2 + get("m5_washer_wide").dims["od"] / 2
+                         + 0.5)
+
 
 NRV030 = WormBox()
-
+NRV040 = WormBox(
+    key="nrv040_30", eta_static=0.45, eta_dynamic=0.71, eta_hand=0.55, rated_nm=45.0,
+    pcd=75.0, spigot_d=60.0, width=73.0, hub_d=30.0, shaft_d=19.0, shaft_out=43.0,
+    collar=(25.0, 3.0), shaft_key=(6.0, 6.0, 30.0), key_proud=2.5, worm_offset=40.0,
+    input_d=11.0, input_len=23.0, input_key=(4.0, 1.8), input_face=53.0, cap_face=60.0,
+    below=50.0, sleeve_d=28.0, crank_hub_r=14.0)
+"""The NRV040 at 30:1 the cradles are built on since they carry a 6 L bottle (2026-10-13):
+Phidgets' TRM4401_0 (an NMRV040 pattern, 45 N·m, 11 mm input with a 4 mm key, 19 mm bore
+with a 6 mm key, 1/2° backlash, phidgets.com/?prodid=869). Motovario's NRV040 (RS
+datasheet 4002371, the VSF US catalogue rev 0 2017): the output face 4 x M6 x 11 on a 75 mm
+PCD at 45°, a 60 mm h8 spigot, 73 mm face to face (36.5 each side of the worm's plane), the
+hub 78 long (G1), the worm 40 off the output axis (I), the 11 j6 input 23 long past its
+shoulder 53 from the output axis (G3), the far side's shoulder 60 (G2), 50 from the output
+axis to the face away from the worm (H); 2.0 kg dry. Mesh data at 30:1: lead 6°29', static
+efficiency 0.45 (statically irreversible, under 0.5), 0.71 at 1400 rpm; Mn2 469 in-lb
+(53 N·m) at 1750 rpm (Phidgets rates it 45). The low-speed shaft (Phidgets' TRM4006_0, 19
+mm): Motovario's 18 mm one's lengths (B1 43 past the hub's end, B 40 keyed), its collar
+and key's length assumed (25 x 3, 6 x 6 x 30)."""
+BOXES = {b.key: b for b in (NRV030, NRV040)}
 
 
 CRANKPIN_D = 10.0       # the crankpin and the block's tie: NETRF10 standoffs (10 mm steel round,
@@ -136,9 +167,6 @@ CRANKPIN_PLAY = 0.3     # the rod's axial play on the crankpin, under its washer
 #                         sanded on the bench, sets it (the rod only goes down)
 TIE_SHORT = 0.85        # the tie under the top plate: shorter than its six plates at their
 #                         thinnest (+-0.11 mm each), so its screws always clamp them
-TIE_R = 47.0            # the block's tie standoff, this far out along the arm: its screw head
-#                         and wide washer under the block clear the riser screws' heads (on
-#                         the gearbox's 65 mm PCD) and its hole the crankpin's
 HEADS_OVER = 3.3 + 1.5  # over the block: the end screw's M6 head (the tie's M5 is lower) and
 #                         1.5 mm under the rod (the stack's tolerance: round 3 review)
 
@@ -147,7 +175,6 @@ GRIP_SOCKET = 3.0               # the grip's standoff stands this deep in the ha
 GRIP_HEAD_SINK = 3.0            # the M5 under it: its head this deep in the arm's inner face
 M5 = screw("bhcs", "5")         # ISO 7380 M5 button heads: the standoffs' ends
 M6 = screw("bhcs", "6")         # ISO 7380 M6 button heads: the riser's, the shaft's end
-SPIGOT_H = 2.5                  # the gearbox's raised 55 mm spigot ring (assumed: measure it)
 FACE_DEPTH = 11.0               # the gearbox's face holes' thread depth
 HEAD_LAYER_T = 7.0              # the layer over the outer plate: the riser screws' heads and
 #                                 the block's standoffs' screw heads under it, with room to
@@ -155,13 +182,13 @@ HEAD_LAYER_T = 7.0              # the layer over the outer plate: the riser scre
 HEAD_LAYER = 1
 ARM_LAYER = 2
 KEYED_PLATES = 3                # the block's keyed plates: three crank-sheet plates (0.125 in
-#                                 6061 each: the key's 5.1 mm slot is legal in it, not in a
-#                                 0.250 in plate), all on the key's straight flanks
-SLEEVE_D = 24.0                 # the printed sleeve and spacer on the shaft (14.2 bore)
-ARM_BORE_FIT = 0.25             # the arm plates' bore over the 14 h6 shaft: over a laser's
+#                                 6061 each: the key's 6.1 mm slot is legal in it), all on the
+#                                 key's straight flanks
+ARM_BORE_FIT = 0.25             # the arm plates' bore over the h6 shaft: over a laser's
 #                                 +-0.13 mm (the key drives; the end cap centres the arm)
 RISER_SHEET = ("al5052_3p2mm", 3.175)    # the riser's discs: the frame's sheet
-HANDLE_R = 60.0                 # the hand crank's throw (mm)
+HANDLE_R = 100.0                # the hand crank's throw (mm): a full 6 L's worst turn under
+#                                 25 N at the grip (cradle_report: the drive)
 REACH = 100.0                   # its printed tube from the input shaft's end to its arm: the
 #                                 arm turns behind every moving part of the stack (it crosses
 #                                 the stack's side there, where nothing moves), clear of the
@@ -169,9 +196,7 @@ REACH = 100.0                   # its printed tube from the input shaft's end to
 #                                 itself swept through the crank arm)
 ARM_T, ARM_W = 10.0, 18.0       # the printed crank arm: along the shaft, across
 GRIP = (20.0, 25.0)             # its printed grip: d, length (on a 10 mm NETRF10)
-HUB_R, HUB_LEN = 12.0, 18.0     # the printed crank's hub on the 9 mm input shaft
-INPUT_KEY, INPUT_KEY_HUB = 3.0, 1.4   # the input shaft's key (3 x 3, DIN 6885) and how far
-#                                       it stands into the hub (its keyway's depth, t2)
+HUB_LEN = 18.0                  # the printed crank's hub on the input shaft (its radius the box's)
 HANDLE_SET = 6.0                # the M3 cup-point set screw on that key
 
 
@@ -188,7 +213,7 @@ class Riser:
     screw: float
 
 
-def riser_for(z0: float, a0: float, a1: float, box: WormBox = NRV030,
+def riser_for(z0: float, a0: float, a1: float, box: WormBox = NRV040,
               t_plate: float = 3.175) -> Riser:
     """The riser that puts the shaft's key under the arm (``a0``..``a1``, side z; ``z0`` the
     outer plate's outer face): the whole arm on the key's straight flanks (the shaft's
@@ -203,7 +228,7 @@ def riser_for(z0: float, a0: float, a1: float, box: WormBox = NRV030,
     why: list[str] = []
     for n in range(1, 5):
         height = n * RISER_SHEET[1]
-        face = z0 - height - SPIGOT_H
+        face = z0 - height - box.spigot_h
         hub = face + box.hub_out
         end = hub + box.shaft_out
         key = (end - box.key_short - key_len, end - box.key_short)
@@ -215,7 +240,7 @@ def riser_for(z0: float, a0: float, a1: float, box: WormBox = NRV030,
             continue
         # the screws through the plate, the discs and the spigot's gap: at least 1.2 d into
         # the face's tapped holes and short of their bottom
-        through = t_plate + height + SPIGOT_H
+        through = t_plate + height + box.spigot_h
         screw = next((L for L in M6.lengths
                       if 1.2 * box.face_thread <= L - through <= FACE_DEPTH - 0.5), None)
         if screw is None:
@@ -256,7 +281,7 @@ class HandCrank(Group):
     name = GROUP
     stack_only = True           # the contract checks only what is inside the stack
 
-    def __init__(self, box: WormBox = NRV030, input_angle_deg: float = 0.0):
+    def __init__(self, box: WormBox = NRV040, input_angle_deg: float = 0.0):
         self.box = box
         self.input_angle_deg = input_angle_deg    # the input shaft's world direction
 
@@ -287,7 +312,7 @@ class HandCrank(Group):
     def hub_r(self, ctx: Context) -> float:
         """The arm's hub round O: the key's notch (the key stands 2 mm proud of the shaft)
         and two thicknesses of plate past it (the cut rules' web)."""
-        return self.box.shaft_d / 2 + 2.3 + 2 * ctx.sheet_t("crank")
+        return self.box.shaft_d / 2 + self.box.key_proud + 0.3 + 2 * ctx.sheet_t("crank")
 
     def web_r(self, ctx: Context) -> float:
         """The arm's half-width at the crankpin: the standoff's hole and two thicknesses."""
@@ -326,7 +351,7 @@ class HandCrank(Group):
         hub, web = self.hub_r(ctx), self.web_r(ctx)
         t = ctx.sheet_t("crank")
         head_r = M6.head_d / 2 + 0.3
-        at_o = SLEEVE_D / 2 + m
+        at_o = self.box.sleeve_d / 2 + m
         over = get("m5_washer_wide").dims["od"] / 2 + 0.3   # their washers over it
 
         def both(layer, shape, label, **kw):
@@ -372,7 +397,7 @@ class HandCrank(Group):
                                   f"{L.z(ARM_LAYER)[0]:.2f}, not the {a0:.2f} over the plate "
                                   f"and the screw heads' layer")
             ks, hs, _ = block(L)
-            out = [Placed(0, Disc("O", SLEEVE_D / 2 + 1.0), GROUP, "sleeve", seat=True)]
+            out = [Placed(0, Disc("O", self.box.sleeve_d / 2 + 1.0), GROUP, "sleeve", seat=True)]
             out += [Placed(0, Disc(n, (self.box.face_thread + 0.6) / 2), GROUP,
                            "riser screw", seat=True) for n in names]
             out.append(Placed(0, Disc("O", at_o), GROUP, "sleeve", gap=True))
@@ -436,7 +461,7 @@ class HandCrank(Group):
         d = np.array([math.cos(a), math.sin(a)])
         n = np.array([-d[1], d[0]])      # the worm's side (_frame_of's e2)
         end = o + d * (self.box.input_face + self.box.input_len) + n * self.box.worm_offset
-        face = build.z(0)[0] - riser.height - SPIGOT_H
+        face = build.z(0)[0] - riser.height - self.box.spigot_h
         return end, d, face - self.box.width / 2
 
     # -- build ------------------------------------------------------------------------
@@ -458,13 +483,13 @@ class HandCrank(Group):
                                     f"not the {a0:.2f} its riser is sized for")
         u = (mxy - o) / max(float(np.linalg.norm(mxy - o)), 1e-9)
         arm_ang = math.atan2(u[1], u[0])
-        face = z0 - riser.height - SPIGOT_H          # the gearbox's output face
+        face = z0 - riser.height - box.spigot_h          # the gearbox's output face
 
         # the outer plate: the sleeve's hole, the screws' holes, solid round them (no guard
         # over the crank: the user's 2026-10-10 call, a minimal mount; the crank turns about
         # 2 rpm behind the truss, and the use limit keeps fingers out of the drive side)
         screws = self.screw_points(build)
-        out.cut(FRAME_OUTER, Cut(tuple(o), SLEEVE_D + 2.0))
+        out.cut(FRAME_OUTER, Cut(tuple(o), box.sleeve_d + 2.0))
         for xy in screws:
             out.cut(FRAME_OUTER, Cut(xy, box.face_thread + 0.6))
         pad = box.pcd / 2 + (box.face_thread + 0.6) / 2 + 2 * ctx.sheet_t("frame") + 0.5
@@ -475,7 +500,7 @@ class HandCrank(Group):
         for i, key in enumerate(reversed(riser.discs)):         # from the plate outward
             t = sheet_of(key).thickness
             r_out = box.pcd / 2 + (box.face_thread + 0.6) / 2 + 2 * t + 0.5
-            part = plate([], z - t, z, [Cut(tuple(o), SLEEVE_D + 2.0),
+            part = plate([], z - t, z, [Cut(tuple(o), box.sleeve_d + 2.0),
                                         *[Cut(xy, box.face_thread + 0.6) for xy in screws]],
                          discs=[(tuple(o), r_out)])
             out.bodies.append(hardware(f"riser_disc{i}", part, frame, fab="laser", sheet=key,
@@ -511,7 +536,7 @@ class HandCrank(Group):
             (float(o[0] + kc[0] * r_slot / 2), float(o[1] + kc[1] * r_slot / 2),
              (riser.hub_end + col_t + a0) / 2), (0, 0, math.degrees(key_ang))))
         out.bodies.append(hardware("crank_sleeve", difference(
-            ring(tuple(o), SLEEVE_D, bore, riser.hub_end + col_t, a0), slot), crank,
+            ring(tuple(o), box.sleeve_d, bore, riser.hub_end + col_t, a0), slot), crank,
             fab="printed", color=PRINT_COLOR))
 
         # the crank block: one plate a layer from the keyed plates' to its need, each the
@@ -523,13 +548,15 @@ class HandCrank(Group):
             raise ConstructionError("the crank block's end screw has no plate over the "
                                     "shaft's end to bear on")
         throw = float(np.linalg.norm(mxy - o))
-        tie = o + (mxy - o) * (TIE_R / throw)
+        tie_r = box.tie_r()
+        tie = o + (mxy - o) * (tie_r / throw)
         w_r = get("m5_washer_wide").dims["od"] / 2
-        if TIE_R - w_r - (box.pcd / 2 + M6.head_d / 2) < 0.5 or throw - TIE_R < CRANKPIN_D + \
+        if tie_r - w_r - (box.pcd / 2 + M6.head_d / 2) < 0.5 or throw - tie_r < CRANKPIN_D + \
                 SOCKET_FIT + 2 * t:
-            raise ConstructionError(f"the crank block's tie at {TIE_R:g} mm meets the riser "
+            raise ConstructionError(f"the crank block's tie at {tie_r:g} mm meets the riser "
                                     f"screws' heads or the crankpin ({throw:.1f} mm out)")
-        key_slot = Rect(tuple(o + kc * (box.shaft_d / 2 + 1.0)), (4.6, k_w + 0.1), key_ang)
+        key_slot = Rect(tuple(o + kc * (box.shaft_d / 2 + box.key_proud / 2)),
+                        (box.key_proud + 2.6, k_w + 0.1), key_ang)    # (1.3 under the key)
         socket, through = CRANKPIN_D + SOCKET_FIT, M5.shank_d + 0.5
         for i, z_lo in enumerate(zs):
             # the crankpin stands on the lowest plate, the tie runs through all but the top
@@ -633,7 +660,7 @@ class HandCrank(Group):
             "crankpin_lever_mm": round(r0 + ctx.sheet_t("link", rider) / 2 - block_top, 3),
             "handle": {"end_xy": [round(float(v), 3) for v in end],
                        "dir": [round(float(v), 6) for v in d], "axis_z": round(zh, 3),
-                       "reach_mm": REACH, "arm_t_mm": ARM_T, "hub_r_mm": HUB_R,
+                       "reach_mm": REACH, "arm_t_mm": ARM_T, "hub_r_mm": self.box.crank_hub_r,
                        "hub_len_mm": HUB_LEN,
                        "r_mm": HANDLE_R + GRIP[0] / 2 + 1.0, "grip_r_mm": HANDLE_R,
                        "grip_len_mm": GRIP[1] + 1.2 + M5.head_h},
@@ -704,7 +731,7 @@ class HandCrank(Group):
                "tight: it clamps the block; the M6 button head down into the shaft's end tap, "
                "dry, to 3 N·m (it clamps the block on the printed sleeve, which settles: after "
                "the first few pours take it out, threadlocker on it, and back to 3 N·m). Turn "
-               "the gearbox's 9 mm input shaft by hand until the block has gone a whole turn "
+               f"the gearbox's {self.box.input_d:g} mm input shaft by hand until the block has gone a whole turn "
                "(30 turns: the worm can't be turned from the block): nothing may touch the "
                "outer plate.", "layer"),
             Op(STACK, (ARM_LAYER, 2), whole("crankpin_spacer"), "",
@@ -757,16 +784,19 @@ class HandCrank(Group):
         return m
 
     def _gearbox(self, o, z_face, holes=()) -> Shape3D:
-        """The NRV030 drawn from its dimensions (enough for clearances and the look), its
-        face's tapped holes at ``holes`` (world XY) and its hub bored for the shaft."""
+        """The gearbox drawn from its dimensions (enough for clearances and the look; the
+        housing's square and the worm's barrel scaled from the NRV030's by the worm's
+        offset), its face's tapped holes at ``holes`` (world XY) and its hub bored for the
+        shaft."""
         b = self.box
-        body = Box(80.0, b.below + 45.0, b.width).moved(
-            Location((0.0, (45.0 - b.below) / 2, -b.width / 2)))
-        worm = Cylinder(22.0, b.input_face + b.cap_face, rotation=(0, 90, 0)).moved(
+        k = b.worm_offset / NRV030.worm_offset
+        body = Box(80.0 * k, b.below + 45.0 * k, b.width).moved(
+            Location((0.0, (45.0 * k - b.below) / 2, -b.width / 2)))
+        worm = Cylinder(22.0 * k, b.input_face + b.cap_face, rotation=(0, 90, 0)).moved(
             Location(((b.input_face - b.cap_face) / 2, b.worm_offset, -b.width / 2)))
         shaft = Cylinder(b.input_d / 2, b.input_len, rotation=(0, 90, 0)).moved(
             Location((b.input_face + b.input_len / 2, b.worm_offset, -b.width / 2)))
-        spigot = Cylinder(b.spigot_d / 2, SPIGOT_H).moved(Location((0.0, 0.0, SPIGOT_H / 2)))
+        spigot = Cylinder(b.spigot_d / 2, b.spigot_h).moved(Location((0.0, 0.0, b.spigot_h / 2)))
         hub = Cylinder(b.hub_d / 2, b.width + 2 * b.hub_out).moved(
             Location((0.0, 0.0, -b.width / 2)))
         local = union([body, worm, shaft, spigot, hub])
@@ -791,16 +821,18 @@ class HandCrank(Group):
         def rod(r: float, x0: float, x1: float):
             return Cylinder(r, x1 - x0, rotation=along_x).moved(Location(((x0 + x1) / 2, 0, 0)))
 
-        hub = rod(HUB_R, -HUB_LEN, REACH)
+        hub_r = self.box.crank_hub_r
+        hub = rod(hub_r, -HUB_LEN, REACH)
         t_arm = REACH - ARM_T / 2                       # the arm's middle, along the shaft
         arm_len = HANDLE_R + ARM_W / 2
         arm = Box(ARM_T, arm_len, ARM_W).moved(Location((t_arm, -arm_len / 2, 0.0)))
         bore = rod(self.box.input_d / 2 + 0.15, -HUB_LEN - 0.5, 0.5)
-        key_top = self.box.input_d / 2 + INPUT_KEY_HUB      # the key's top, over the axis
-        keyway = Box(HUB_LEN + 2.0, INPUT_KEY + 0.2, key_top + 0.2).moved(
+        key_w, key_hub = self.box.input_key
+        key_top = self.box.input_d / 2 + key_hub      # the key's top, over the axis
+        keyway = Box(HUB_LEN + 2.0, key_w + 0.2, key_top + 0.2).moved(
             Location((-HUB_LEN / 2, 0.0, (key_top + 0.2) / 2)))
-        pilot = Cylinder(1.3, HUB_R - key_top + 2.0).moved(
-            Location((-HUB_LEN / 2, 0.0, (HUB_R + key_top + 2.0) / 2)))
+        pilot = Cylinder(1.3, hub_r - key_top + 2.0).moved(
+            Location((-HUB_LEN / 2, 0.0, (hub_r + key_top + 2.0) / 2)))
         set_screw = Cylinder(1.25, HANDLE_SET).moved(
             Location((-HUB_LEN / 2, 0.0, key_top + 0.05 + HANDLE_SET / 2)))
         # the grip at the arm's end, out along the shaft: a printed sleeve spinning on a
@@ -861,10 +893,10 @@ class HandCrankConstruction:
     :class:`HandCrank`."""
 
     key: str = "hand"
-    label: str = ("hand crank: an NRV030 worm box, a crank block of 0.125 in plates keyed "
+    label: str = ("hand crank: an NRV040 worm box, a crank block of 0.125 in plates keyed "
                   "on its shaft, a steel standoff crankpin and a printed offset hand crank")
-    gearbox: str = NRV030.key
-    output_shaft: str = "nrv030_output_shaft_14"
+    gearbox: str = NRV040.key
+    output_shaft: str = "nrv040_output_shaft_19"
     lock_key: str | None = "threadlocker_243"     # the block's, the end screw's, the grip's
     crankpin: str = "pillar_shaft_10_m5"     # a NETRF10 made to length (the build's)
     plate_t: float = 3.175      # one of the block's crank-sheet plates (6061-T6)
@@ -900,16 +932,17 @@ class HandCrankConstruction:
         """The crank torque (N·m) each element holds at yield, ``throw`` the crank's (the
         built one's, else the nominal): the arm bent at its hub by the crankpin's force
         across it (the torque over the throw; its width the arm's at the crankpin,
-        :meth:`HandCrank.web_r`), and the arm's keyway bearing on the shaft's key (the key's
-        2 mm proud of the shaft, the arm's thickness, at the key's mean radius)."""
+        :meth:`HandCrank.web_r`), and the arm's keyway bearing on the shaft's key (what the
+        key stands proud of the shaft, the arm's thickness, at the key's mean radius)."""
+        box = BOXES[self.gearbox]
         r = throw or self.throw
         t = self.sheet_t
         w = 2 * ((CRANKPIN_D + SOCKET_FIT) / 2 + 2 * self.plate_t)
         z = t * w * w / 6
-        hub = NRV030.shaft_d / 2 + 2.3 + 2 * self.plate_t
+        hub = box.shaft_d / 2 + box.key_proud + 0.3 + 2 * self.plate_t
         arm = self.yield_mpa * z * r / max(r - hub, 1.0) / 1000.0
-        proud = 2.0
-        key = self.bearing_mpa * proud * t * (NRV030.shaft_d / 2 + proud / 2) / 1000.0
+        proud = box.key_proud
+        key = self.bearing_mpa * proud * t * (box.shaft_d / 2 + proud / 2) / 1000.0
         return {"arm": round(arm, 2), "arm keyway": round(key, 2)}
 
 

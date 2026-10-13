@@ -102,8 +102,8 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # there would slide on its pin); the arms b2, b3 and the bar b4 in 6061 (cradle_report's
     # jam); the 336 mm rod 0.250 in, alone in its layer (Euler: 2.7 x its jam force); the
     # cradle link b6, alone under the inner plate, 0.125 in (jam SF 6): a thinner stack
-    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al6061_4p8mm", "b3": "al6061_4p8mm",
-                     "b4": "al6061_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_3p2mm"},
+    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
+                     "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_3p2mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

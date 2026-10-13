@@ -13,18 +13,19 @@ one side at a time like any mechanism. The bottle lies between two sides, the **
   between the two cradle links, at the linkage's tie points (``decanters.TIES``), each
   screwed through its cradle link from outside. Two printed saddles ride on them: the
   front one under the neck, its V for the neck and its back face the shoulder's stop; the
-  rear one under the body, its V deep enough for a 3 L bottle. TPU liners line both Vs. An
+  rear one under the body, its V deep enough for a 6 L bottle. TPU liners line both Vs. An
   M3 set screw up from each saddle's underside, in a printed pilot, locks it on each tie.
 * **The light**: an AAA keychain light standing in a clip printed with the front saddle,
   its head under the shoulder (the sommelier's candle; its head twists it on).
-* **The bottles** (:func:`adapter`, :func:`seat`): a magnum on printed adapter liners, a
-  3 L in a printed collar, each with its mouth on the pivot and its axis level.
+* **The bottles** (:func:`adapter`, :func:`seat`): a 750 ml to a 3 L and a 6 L impériale
+  on printed adapter liners, a 6 L methuselah in the bare liners, a longer neck in a
+  printed collar, each with its mouth on the pivot and its axis level.
 * **The stand** (:data:`STANDS`, :class:`CradleStand`): each side's frame plates are the
   stand's members, not arms from O. The outer plate carries the hinge, the gearbox and the
   legs down to a rail. The inner plate holds the pillars and stiffens the side (A: a block
   round the hinge and a leg down the front, four columns; B: the bar O1-O2), so the tie
   rods pass it in the open.
-* **The base plate** (:func:`_base_plate`): both sides' rails bolted onto it with printed
+* **The base board** (:func:`_base_plate`): both sides' rails bolted onto it with printed
   brackets (:func:`_bracket`), the decanter in a notch from its front edge, printed TPU
   feet snapped into its corners.
 * **Display only** (``fab="display"``: drawn, never bought, cut or printed): the bottle (a
@@ -69,8 +70,9 @@ from spiderpig.mechanism import Body, Mechanism
 from spiderpig.shapes import Cut, Shape3D, cut_holes, difference, disc, moved, pill, union
 from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 
-LIP_HEIGHT = 460.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
-#                         3 L base stop's end hangs about 430 mm under it
+LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
+#                         6 L's base stop's end hangs about 520 mm under it, over the base
+#                         board's top (17 mm up)
 DECANTER_RISER = 55.0   # the drawn decanter's riser: the highest that keeps it clear of the
 #                         cradle box over the whole swing (cradle_report.room: at rest, 50°
 #                         neck up, the front saddle, the tie rods and the light hang across
@@ -82,7 +84,7 @@ DECANTER_PROFILE = ((0.0, 28.6), (6.3, 38.8), (21.7, 84.2), (30.0, 95.8), (40.7,
 (https://www.riedel.com/en-gb/riedel-ultra-decanter/240000014), its outline (height,
 radius) traced from RIEDEL's drawing (the vessel study of 2026-10-10, ``DECANTER.md``)."""
 RISER_W = 100.0         # the riser under it (display): a lab jack's 100 mm platform
-BAY = 260.0             # between the two inner plates' bay faces: a 141 mm bottle, and a
+BAY = 260.0             # between the two inner plates' bay faces: a 174 mm bottle, and a
 #                         decanter up to 240 mm across stands wholly between the side stacks
 TIE_D = 10.0            # the tie rods and columns: MISUMI NETRF10 (10 mm, M5 x 10 deep each end)
 TIE_THREAD = 10.0
@@ -91,13 +93,14 @@ TIE_SCREW = 12.0        # M5 x 12 button heads through a 3.2-4.8 mm plate: 7.2-8
 TIE_HOLE = 5.5          # their clearance holes (ISO 273 medium)
 M5_NUT = (8.0, 4.0)     # ISO 4032 M5 nut: across flats, height
 LINER = 2.0             # the saddles' TPU liners
-SADDLE_HALF = 80.0      # a saddle's half-length across the bay: 160 mm holds a 141 mm bottle
+SADDLE_HALF = 95.0      # a saddle's half-length across the bay: 190 mm holds a 174 mm bottle
 #                         in its liner and prints on a 250 mm bed; centred on the tie rods
 FRAME_COLOR = "#eb6834"
 SADDLE_COLOR = "#6a4fc7"
 ADAPTER_COLOR = "#8a8a8a"
 PARK_X = 170.0              # a spare bottle size's collar, lying on the table this far in
 #                             front of the mouth (clear of the decanter and the front feet)
+PARK_PITCH = 90.0           # the collars' pitch across
 LINER_COLOR = "#2b2b2b"
 TIE_COLOR = "#4a4a4a"
 BOTTLE_COLOR = "#20402a"
@@ -140,13 +143,23 @@ MAGNUM = BottleSize("magnum", "1.5 L Bordeaux magnum", 356.0, 49.5, 15.5, 85.0, 
                     2.6, 205.0)
 JEROBOAM = BottleSize("jeroboam", "3 L Champagne jeroboam", 470.0, 70.5, 19.0, 105.0, 190.0,
                       5.9, 265.0)
-SIZES = (STANDARD, MAGNUM, JEROBOAM)
+IMPERIAL = BottleSize("imperial", "6 L Bordeaux impériale", 493.0, 82.3, 23.5, 115.0, 195.0,
+                      9.1, 286.0)
+METHUSELAH = BottleSize("methuselah", "6 L Champagne methuselah", 571.0, 87.0, 24.0, 128.0,
+                        231.0, 11.1, 331.0)
+SIZES = (STANDARD, MAGNUM, JEROBOAM, IMPERIAL, METHUSELAH)
 """What the cradle is built for (``docs/agentlib/DECANTER.md``, Requirements): a standard
 750 ml Bordeaux (the Bordelaise moulds run about 295-310 x 74-77 mm; its neck to the
 shoulder about 80 mm, shorter than :data:`STOP_X`), a Bordeaux magnum (univerre: 356 x 99
-mm, 1.04 kg empty) to a Champagne jeroboam (Saverglass: 470 x 141 mm, 2.9 kg empty); full
-mass and centre of mass estimated (glass plus 0.75, 1.5 or 3 kg of wine, the centre about
-42 % of the length from the base)."""
+mm, 1.04 kg empty), a Champagne jeroboam (Saverglass: 470 x 141 mm, 2.9 kg empty), and the
+two 6 L shapes (2026-10-13, the user's "both"): a Bordeaux impériale (Saverglass
+Bordelaise Tradition 600 cl, ref. 0714: 492.8 mm tall, 164.5 mm at the shoulder, 156.5 at
+the base, 3.12 kg empty; univerre's NGBD06QFR 493.1 x 164.4, 2.95 kg) and a Champagne
+methuselah, the largest and heaviest (Saverglass Standard 600 cl, ref. 1742: 571 mm tall,
+174 mm at the shoulder, 170 at the base, 5.13 kg empty). Full mass and centre of mass
+estimated (glass plus 0.75, 1.5, 3 or 6 kg of wine, the centre about 42 % of the length
+from the base); the 6 L necks (radius, length to the shoulder) are estimates scaled from
+the jeroboam's (no maker draws them): the adapters are printed to the bottle in hand."""
 
 
 @dataclass(frozen=True)
@@ -168,9 +181,10 @@ def _apex(r: float) -> float:
     return -(r + LINER) * math.sqrt(2)
 
 
-DESIGN = JEROBOAM
-"""The bottle the saddles' Vs are sized for: it lies in them with its axis level through
-the pivot. A thinner one lies on adapter liners (:func:`adapter`) that put its axis there
+DESIGN = METHUSELAH
+"""The bottle the saddles' Vs are sized for, the fattest neck and body of :data:`SIZES` (and
+the longest and heaviest: the load case): it lies in them with its axis level through the
+pivot. A thinner one lies on adapter liners (:func:`adapter`) that put its axis there
 too."""
 STOP_X = MAGNUM.neck
 """The front saddle's back face, the shoulder stop (cradle frame): the shortest neck's
@@ -178,24 +192,27 @@ length, so the magnum's mouth is on the pivot; a longer neck takes a collar roun
 between the stop and its shoulder (:func:`adapter`)."""
 
 SADDLES = (
-    # the neck's V sized for the 3 L's neck; its back face the shoulder stop
-    # (its underside 7 mm under the 10 mm tie rods: an M3 x 6 set screw up to each)
-    Saddle("front_saddle", ("Tf1", "Tf2"), (45.0, STOP_X), -53.0,
+    # the neck's V sized for the 6 L's neck; its back face the shoulder stop
+    # (its underside 8 mm under the 10 mm tie rods: an M3 x 6 set screw up to each)
+    Saddle("front_saddle", ("Tf1", "Tf2"), (45.0, STOP_X), -60.0,
            _apex(DESIGN.r_neck), -8.0),
-    # the body's V sized for the 3 L
-    Saddle("rear_saddle", ("Tr1", "Tr2"), (255.0, 315.0), -125.0, _apex(DESIGN.r), -45.0),
+    # the body's V sized for the 6 L, long enough to reach behind its centre of mass (331 mm
+    # from the mouth: lying level or tipped, the bottle bears on both saddles) and still
+    # under a 750 ml's body (its base at 300)
+    Saddle("rear_saddle", ("Tr1", "Tr2"), (255.0, 380.0), -149.0, _apex(DESIGN.r), -45.0),
 )
 
 
 def adapter(size: BottleSize) -> tuple[float, float, float]:
     """What ``size`` needs to lie with its mouth on the pivot and its axis level: (the
     front adapter liner's wall, the rear's: what its neck and body are thinner than the
-    3 L's; the collar round its neck between the stop and its shoulder: what its neck is
-    longer than :data:`STOP_X`, or, negative, what it is shorter: its front liner then ends
-    there, its end the shoulder's stop), mm. The 750 ml: the two liners, the front one
-    short, the rear one closed behind its base (:func:`_adapter`); the magnum: the two
-    liners; the 3 L: the collar. A builder with another bottle prints these to its own
-    (``docs/agentlib/DECANTER.md``)."""
+    :data:`DESIGN` bottle's; the collar round its neck between the stop and its shoulder:
+    what its neck is longer than :data:`STOP_X`, or, negative, what it is shorter: its
+    front liner then ends there, its end the shoulder's stop), mm. The 750 ml: the two
+    liners, the front one short, the rear one closed behind its base (:func:`_adapter`);
+    the magnum: the two liners, the rear one closed; the 3 L and the impériale: the two
+    liners and a collar; the methuselah: the collar. A builder with another bottle prints
+    these to its own (``docs/agentlib/DECANTER.md``)."""
     return (DESIGN.r_neck - size.r_neck, DESIGN.r - size.r, size.neck - STOP_X)
 
 
@@ -220,35 +237,37 @@ class Stand:
     base_ties: tuple[str, ...] = ()
     bay_ties: tuple[str, ...] = ()
     member_r: float = 12.0
-    base: tuple[float, float] = (-200.0, 440.0)    # the base plate's front and rear edges
+    base: tuple[float, float] = (-200.0, 440.0)    # the base board's front and rear edges
     fillet_r: float = 20.0      # the plates' inside corners rounded this much (their joints
 #                                 read as one shape, not crossed bars)
 
 
-BASE_SHEET = "al5052_3p2mm"     # the base plate, both sides' outer plates bolted onto it
+BASE_SHEET = "birch_9mm"        # the base board, both sides' outer plates bolted onto it:
+#                                 Baltic birch plywood, routed (2026-10-13, the user's)
+BASE_T = 9.0                    # its thickness
 BASE_HALF = 250.0               # its half-width across the bay: a 500 mm track (a 30° tip
 #                                 and a 26 N push at a bottle's top, the worst over the swing)
 FOOT_PAD_H = 8.0                # its printed TPU feet, snapped into its corner holes
-BASE_TOP_CLEAR = FOOT_PAD_H + 3.175 - 2.0   # what may hang under it: all but 2 mm of the feet
-BASE_TOP = -LIP_HEIGHT + FOOT_PAD_H + 3.175     # its top, from the mouth
+BASE_TOP_CLEAR = FOOT_PAD_H + BASE_T - 2.0  # what may hang under it: all but 2 mm of the feet
+BASE_TOP = -LIP_HEIGHT + FOOT_PAD_H + BASE_T    # its top, from the mouth
 NOTCH_R = 126.0                 # the decanter's notch in it: a 244 mm decanter and play,
 #                                 slid in from the front onto the table, the notch's round
 #                                 end locating it under the mouth
 DECANTER_X = 0.0                # the decanter's axis, under the mouth (a stream lands -15..+16 mm
 #                                 from it over the pour: 2026-10-10 review round 2)
-_FOOT_Y = BASE_TOP + 12.5       # a foot's centre: its screw's boss (2 t) on the base plate
+_FOOT_Y = BASE_TOP + 12.5       # a foot's centre: its screw's boss (2 t) on the base board
 BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' height, wall
 """A stand foot is a printed L-bracket outside each outer plate, an M5 button head through
 it and the plate (its nut in the layer over the plate) and one down through it and the
-base plate (its nut under the base plate, in the feet's height)."""
+base board (its nut under the base board, in the feet's height)."""
 
 STANDS: dict[str, Stand] = {
     # A: the hinge G at the mouth, the crank O 173 behind and 202 under it. The outer plate
     # (outside every moving part's layer: any truss) from G down in front of the decanter
-    # to the front foot and back to O, O's legs down and back, a rail on the base plate.
+    # to the front foot and back to O, O's legs down and back, a rail on the base board.
     # The inner plate is a small block round G, tied to the outer by two columns in front of
     # the hinge, where nothing of the cradle ever goes; nothing crosses the bay over the
-    # mouth (the base plate and the cradle box hold the sides).
+    # mouth (the base board and the cradle box hold the sides).
     "decanter_hinge": Stand(
         # (2026-10-10, the user's −50° rest: O 300 under the mouth and 65 behind it; the
         # mouth 460 over the table) the feet: in front of the decanter, under O, at the rear
@@ -273,7 +292,7 @@ STANDS: dict[str, Stand] = {
     # a rail. The inner plate is the bar O1-O2: the tie rods pass behind it (the rear ones
     # never further round than 72° down, the bar at 90.5°) and the front ones above it.
     # Nothing crosses the bay: the decanter stands under the mouth, between the bars. The
-    # base plate ends 70 mm behind O (its rear edge tips a full 3 L no sooner than its sides).
+    # base board ends 70 mm behind O (its rear edge tips a full 6 L no sooner than its sides).
     "decanter_rcm": Stand(
         nodes={"Ff": (-110.0, _FOOT_Y), "Fr": (386.0, _FOOT_Y)},
         outer=(("O1", "O2"), ("O2", "Ff"), ("O2", "O"), ("O1", "O"), ("O", "Fr"),
@@ -697,7 +716,7 @@ def _bottle(size: BottleSize, axis_y0: float, slope: float, x0: float) -> Shape3
 
 def seat(size: BottleSize, adapted: bool = True) -> tuple[float, float, float]:
     """Where ``size`` lies in the saddles, on its adapter liners (``adapted``) or straight in
-    the 3 L-sized ones: (its axis's y at the mouth's x, the axis's slope in radians, the
+    the 6 L-sized ones: (its axis's y at the mouth's x, the axis's slope in radians, the
     mouth's x), in the cradle's frame."""
     front, rear = SADDLES
     a_f, a_r, collar = adapter(size) if adapted else (0.0, 0.0, 0.0)
@@ -711,6 +730,8 @@ def seat(size: BottleSize, adapted: bool = True) -> tuple[float, float, float]:
 
 SET_SCREW = 6.0            # the M3 cup-point set screw locking a saddle on each tie
 SET_PILOT = 2.6            # its printed pilot (the screw cuts its own thread in PLA)
+SHELL = 22.0               # the rear saddle's V walls, square to the V (the tie rods' bores
+#                            and the base stop's screws inside them)
 
 
 def _saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
@@ -725,6 +746,9 @@ def _saddle(s: Saddle, ties: Mapping[str, tuple[float, float]]
     outer = _vee(x0, x1, s.apex)             # the liner's back: the saddle's V
     inner = _vee(x0, x1, s.apex + LINER * math.sqrt(2))
     saddle = difference(block, outer)
+    if s is SADDLES[1]:         # a V shell (the block's outer corners carry nothing: a third
+        #                         of its mass, swung 300 mm behind the mouth)
+        saddle = cast(Shape3D, saddle & _vee(x0, x1, s.apex - SHELL * math.sqrt(2)))
     if s is SADDLES[0]:         # its front-bottom corner: over the decanter's neck at rest
         saddle = difference(saddle, Box(30.0, 30.0, 2 * half + 2).rotate(BAxis.Z, 45).moved(
             Location((x0, s.y0, 0.0))))
@@ -861,7 +885,7 @@ def _base_stop(rear: Saddle, size: BottleSize) -> tuple[Shape3D, Shape3D, list[S
     stays in the cradle whatever the drive does. (The spine, the cup, the flange's screws,
     the cup's screw, the saddle's pilots.)"""
     x1 = rear.x[1]
-    y_top = -DESIGN.r - SPINE_UNDER                  # the spine's top, under a 3 L's body
+    y_top = -DESIGN.r - SPINE_UNDER                  # the spine's top, under a 6 L's body
     y_bot = y_top - SPINE_H
     half = SPINE_W / 2
     flange = Box(SPINE_FLANGE[0], -DESIGN.r - 2.0 - y_bot, SPINE_FLANGE[1]).moved(
@@ -913,13 +937,15 @@ def _base_stop(rear: Saddle, size: BottleSize) -> tuple[Shape3D, Shape3D, list[S
 
 
 SPINE_W, SPINE_H = 30.0, 20.0   # the base stop's printed spine: across, deep
-SPINE_UNDER = 8.0               # its top under a 3 L's body (in the saddles' Vs)
-SPINE_END = JEROBOAM.length + 10.0     # it ends at the longest bottle's cup (at rest it comes
-#                                         down to about 40 mm over the base plate)
-SPINE_FLANGE = (6.0, 64.0)      # its flange on the rear saddle's back face: thick, across
-SPINE_SCREW_Z = 22.0            # the flange's screws, into the saddle's V walls under the liner
+SPINE_UNDER = 8.0               # its top under a 6 L's body (in the saddles' Vs)
+SPINE_END = DESIGN.length + 10.0       # it ends at the longest bottle's cup (at rest it comes
+#                                         down lowest of the cradle: LIP_HEIGHT)
+SPINE_FLANGE = (6.0, 84.0)      # its flange on the rear saddle's back face: thick, across
+SPINE_SCREW_Z = 30.0            # the flange's screws, into the saddle's V walls under the liner
+#                                 (the V 21 mm wide each side of the axis at their height)
 SPINE_SCREW = 16.0              # M5 x 16: 10 mm in the saddle
-STOP_HOLES = tuple(float(x) for x in range(340, 471, 10))   # the spine's pilots (cradle x)
+STOP_HOLES = tuple(float(x) for x in range(390, 561, 10))   # the spine's pilots (cradle x):
+#                                         every base behind the rear saddle (3 L to 6 L)
 CUP_HOLES = (12.0, 17.0)        # the cup's two holes, this far in front of its face
 CUP_LEN, CUP_STOP, CUP_WALL = 25.0, 6.0, 3.0   # its channel, its stop plate, its walls
 CUP_TOP = -30.0                 # the stop's top (cradle y): over both bottles' lower rims
@@ -949,11 +975,11 @@ CLIP_GAP = 16.0             # the clip starts this far under the head (the head 
 def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
              ) -> tuple[Shape3D, list[tuple[Shape3D, str]], tuple[float, float]]:
     """A foot's printed L-bracket outside an outer plate (world): its upright leg on the
-    plate's outer face (``face``; ``sign`` outward along z), its foot leg on the base plate
+    plate's outer face (``face``; ``sign`` outward along z), its foot leg on the base board
     (its top ``y_top``); an M5 button head through the upright and the plate into a nut over
-    the plate, one up from under the base plate through the foot into a nut on it (its head
+    the plate, one up from under the base board through the foot into a nut on it (its head
     in the feet's clearance, its nut in reach from above). (The bracket, its screws and nuts
-    with their catalog keys, the base plate's hole (x, z).)"""
+    with their catalog keys, the base board's hole (x, z).)"""
     length, height, wall = BRACKET
     fx, fy = xy
     zs = sorted((face, face + sign * wall))
@@ -964,24 +990,22 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     hole_up = disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1)
     hole_down = Cylinder(CARRIAGE[0] / 2 + 0.4, wall + 2, rotation=(90, 0, 0)).moved(
         Location((fx, y_top + wall / 2, zb)))
-    neck = Cylinder(CARRIAGE_NECK_HOLE / 2, 2 * (CARRIAGE[3] - 3.175 + 0.3),
-                    rotation=(90, 0, 0)).moved(
-        Location((fx, y_top, zb)))      # (the bolt's square neck stands this far up, + 0.3)
-    bracket = difference(union([up, foot]), hole_up, hole_down, neck)
+    bracket = difference(union([up, foot]), hole_up, hole_down)
     # through the upright and the plate, the nut over the plate's inner face
     l_side = _m5_length(wall + t_frame + M5_NUT[1])
     inner = face - sign * t_frame
     nut_z = sorted((inner, inner - sign * M5_NUT[1]))
     side_screw = _screw((fx, fy), face + sign * wall, sign, l_side)
     side_nut = _nut((fx, fy), *nut_z)
-    # a carriage bolt up from under the base plate (its square neck in the plate's square
-    # hole: it can't turn), through the foot, its nut on the foot from above
-    d, length, head_d, _, head_h = CARRIAGE
-    y_under = y_top - 3.175
+    # a carriage bolt up from under the base board (its square neck pulled into the wood:
+    # it can't turn), through the foot, its nut on the foot from above
+    d, length, head_d, neck_h, head_h = CARRIAGE
+    y_under = y_top - BASE_T
     if y_under - head_h < y_top - BASE_TOP_CLEAR:
-        raise ValueError("the base plate's carriage bolts' heads reach the table")
-    if 3.175 + wall + 3.2 > length:
-        raise ValueError("the carriage bolt doesn't reach through the foot and its nut")
+        raise ValueError("the base board's carriage bolts' heads reach the table")
+    if neck_h > BASE_T or BASE_T + wall + 3.2 + 1.0 > length:
+        raise ValueError("the carriage bolt doesn't reach through the board, the foot and "
+                         "its nut, a thread past it")
     up = (90, 0, 0)
     head = Cylinder(head_d / 2, head_h, rotation=up).moved(
         Location((fx, y_under - head_h / 2, zb)))
@@ -991,15 +1015,15 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     nut = Cylinder(5.0, 3.2, rotation=up).moved(Location((fx, y_nut + 1.6, zb))) - Cylinder(
         d / 2, 5.2, rotation=up).moved(Location((fx, y_nut + 1.6, zb)))
     return bracket, [(side_screw, M5.key(l_side)), (side_nut, "m5_nut"),
-                     (union([head, shank]), "m6_carriage_16"), (nut, "m6_thin_nut")], (fx, zb)
+                     (union([head, shank]), "m6_carriage_20"), (nut, "m6_thin_nut")], (fx, zb)
 
 
-CARRIAGE = (6.0, 16.0, 16.55, 4.6, 3.88)   # the base plate's bolts (DIN 603 M6 x 16, Bolt
-#                                            Depot 18219): d, length, head d, neck h, head h
-CARRIAGE_SQUARE = 7.3      # the base plate's square hole for its 6.48 mm neck, drawn with
-CARRIAGE_CORNER = 0.8      # SendCutSend's 0.8 mm round inside corners: they clear a sharp
-#                            neck's corners by 0.25 mm (a 5.88 mm neck still can't turn)
-CARRIAGE_NECK_HOLE = 9.6   # the bracket foot's relief over the neck's 6.48 mm square
+CARRIAGE = (6.0, 20.0, 16.55, 4.6, 3.88)   # the base board's bolts (DIN 603 M6 x 20, Bolt
+#                                            Depot 18220): d, length, head d, neck h, head h
+CARRIAGE_HOLE = 6.4        # the board's round hole for it: the square neck (6.48 across its
+#                            flats) is pulled into the wood by its nut, as a carriage bolt is
+#                            meant to (a router can't cut a square hole: its bit's 1.6 mm
+#                            corners would let the neck turn)
 
 
 def _m5_length(grip: float) -> float:
@@ -1014,11 +1038,12 @@ def _nut(xy, z0: float, z1: float) -> Shape3D:
 
 def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]]
                 ) -> tuple[Shape3D, list[tuple[float, float]]]:
-    """The base plate (world): from the stand's front to its rear edge, :data:`BASE_HALF`
+    """The base board (world): from the stand's front to its rear edge, :data:`BASE_HALF`
     each side of the bay's middle, under both sides' outer plates; a notch from its front
     edge round the decanter (its round end under the mouth locating it), the brackets'
-    screw holes, a hole in each corner for a TPU foot. (The plate, the feet's (x, z).)"""
-    t = 3.175
+    carriage bolts' holes, a hole in each corner for a TPU foot. (The board, the feet's
+    (x, z).)"""
+    t = BASE_T
     x0, x1 = float(lip[0]) + stand.base[0], float(lip[0]) + stand.base[1]
     plate = Box(x1 - x0, t, 2 * BASE_HALF).moved(Location(((x0 + x1) / 2, y_top - t / 2, 0.0)))
     xd = float(lip[0]) + DECANTER_X
@@ -1030,28 +1055,24 @@ def _base_plate(lip, stand: Stand, y_top: float, holes: list[tuple[float, float]
     inset = 25.0
     feet = [(x, z) for x in (x0 + inset, x1 - inset) for z in (-BASE_HALF + inset,
                                                                 BASE_HALF - inset)]
-    s, r = CARRIAGE_SQUARE, CARRIAGE_CORNER
-    cuts = [union([Box(s, t + 2, s - 2 * r), Box(s - 2 * r, t + 2, s),
-                   *(Cylinder(r, t + 2, rotation=up).moved(Location((cx, 0.0, cz)))
-                     for cx in (r - s / 2, s / 2 - r) for cz in (r - s / 2, s / 2 - r))]
-                  ).moved(Location((x, y_top - t / 2, z)))
-            for x, z in holes]          # the brackets' carriage bolts' square necks
+    cuts = [Cylinder(CARRIAGE_HOLE / 2, t + 2, rotation=up).moved(
+        Location((x, y_top - t / 2, z))) for x, z in holes]     # the carriage bolts
     cuts += [Cylinder(FOOT_STEM / 2 + 0.25, t + 2, rotation=up).moved(
         Location((x, y_top - t / 2, z))) for x, z in feet]
     return difference(plate, notch, *cuts), feet
 
 
-FOOT_STEM = 10.0            # a TPU foot's stem through the base plate's corner hole
+FOOT_STEM = 10.0            # a TPU foot's stem through the base board's corner hole
 
 
 def _tpu_foot(x: float, z: float, y_top: float) -> Shape3D:
-    """A printed TPU foot (world): a pad under the base plate's corner, a stem up through
+    """A printed TPU foot (world): a pad under the base board's corner, a stem up through
     its hole and a bulb over it that snaps it in: a cone (a 30° lead-in) on a ledge, the
     stem bored up the middle so it squeezes through the hole."""
     from build123d import Cone
 
     up = (-90, 0, 0)                         # a solid's axis along +y
-    t = 3.175
+    t = BASE_T
     pad = Cylinder(12.0, FOOT_PAD_H, rotation=up).moved(
         Location((x, y_top - t - FOOT_PAD_H / 2, z)))
     stem = Cylinder(FOOT_STEM / 2, t, rotation=up).moved(Location((x, y_top - t / 2, z)))
@@ -1261,7 +1282,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     for i, part in enumerate(clip_screws):
         extras.append(hardware(f"led_clip_screw{i}", _place(part, cf.lip, cf.tilt), host,
                                fab="purchased", bom_key=CLIP_SCREW, color=TIE_COLOR))
-    # the base plate, its TPU feet, and each foot's bracket bolting an outer plate onto it
+    # the base board, its TPU feet, and each foot's bracket bolting an outer plate onto it
     y_top = float(cf.lip[1]) + BASE_TOP
     t_frame = plan.t(0)
     base_holes = []
@@ -1287,19 +1308,22 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
     y0, slope, x0 = seat(shown)
     extras.append(hardware("bottle", _place(_bottle(shown, y0, slope, x0), cf.lip, cf.tilt),
                            host, fab="display", color=BOTTLE_COLOR))
-    # the 3 L's neck collar, not on the magnum shown: drawn lying on the table in front
-    for size in SIZES:
-        length = adapter(size)[2]
-        if size is not shown and length > 0:
-            ring = _collar(size, length).moved(Location((-STOP_X - length / 2, 0.0, 0.0)))
-            ring = ring.rotate(BAxis.Z, 90).moved(Location(
-                (float(cf.lip[0]) - PARK_X, float(cf.lip[1]) - LIP_HEIGHT + length / 2, 0.0)))
-            extras.append(hardware(f"{size.key}_collar", ring, frame_host, fab="printed",
-                                   color=ADAPTER_COLOR))
-    # the other bottles' adapter liners (the 750 ml's), lying on the table in front of the
-    # 3 L's collar, as they would sit in the saddles (cradle frame, level)
+    # the other bottles' collars, not on the magnum shown: drawn standing on the table in
+    # front, in a row across
     table = float(cf.lip[1]) - LIP_HEIGHT
-    ahead = PARK_X + 60.0
+    rings = [z for z in SIZES if z is not shown and adapter(z)[2] > 0]
+    for i, size in enumerate(rings):
+        length = adapter(size)[2]
+        ring = _collar(size, length).moved(Location((-STOP_X - length / 2, 0.0, 0.0)))
+        ring = ring.rotate(BAxis.Z, 90).moved(Location(
+            (float(cf.lip[0]) - PARK_X, table + length / 2,
+             (i - (len(rings) - 1) / 2) * PARK_PITCH)))
+        extras.append(hardware(f"{size.key}_collar", ring, frame_host, fab="printed",
+                               color=ADAPTER_COLOR))
+    # their adapter liners, lying on the table in front of the collars in two rows, as they
+    # would sit in the saddles (cradle frame, level)
+    ahead = [PARK_X + 60.0, PARK_X + 60.0]
+    k = 0
     for size in SIZES:
         if size is shown:
             continue
@@ -1307,11 +1331,14 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
         for s, wall in zip(SADDLES, (a_f, a_r), strict=True):
             if wall <= 0:
                 continue
+            row = k % 2
+            k += 1
             part = _adapter(s, wall, size)
             bb = part.bounding_box()
-            part = part.moved(Location((float(cf.lip[0]) - ahead - bb.max.X,
-                                        table - bb.min.Y + 0.5, 0.0)))
-            ahead += bb.size.X + 15.0
+            part = part.moved(Location((float(cf.lip[0]) - ahead[row] - bb.max.X,
+                                        table - bb.min.Y + 0.5,
+                                        (2 * row - 1) * (SADDLE_HALF + 10.0))))
+            ahead[row] += bb.size.X + 15.0
             extras.append(hardware(f"{s.name}_{size.key}_liner", part, frame_host,
                                    fab="printed", color=ADAPTER_COLOR))
     vessel, riser = _decanter(cf.lip)
@@ -1406,7 +1433,8 @@ def assembly(view) -> list:
                       "under the V, its flange's two M5 button heads into the saddle's pilots "
                       "(snug); the cup slid onto the spine from its end, its stop toward the "
                       "saddle. Set it for the bottle in use: lay the bottle in with its "
-                      "shoulder on the stop (on its collar, for a 3 L), slide the cup up to "
+                      "shoulder on the stop (on its collar, for a 3 L or a 6 L), slide the "
+                      "cup up to "
                       "its base and back to the first hole that lines up (the cup has two, "
                       "5 mm apart), and the M5 button head through it into the spine. The "
                       "bottle can't then slide back off the pivot when you uncork it.",
@@ -1425,7 +1453,7 @@ def assembly(view) -> list:
     base = [n for n in ("base_plate",) if n in view.z]
     feet = view.named(r"foot_boot_\w+")
     brackets = {s: view.named(rf"foot_bracket_[A-Za-z0-9]+{s}(_\w+)?") for s in SIDES_LR}
-    # every carriage bolt goes in with the base plate (from under it), the passive side's too
+    # every carriage bolt goes in with the base board (from under it), the passive side's too
     bolts = [n for n in brackets["R"] if n.endswith("_screw1")]
     brackets["R"] = [n for n in brackets["R"] if n not in bolts]
     how = ("At each foot a printed bracket outside the outer plate, over its carriage bolt: "
@@ -1433,12 +1461,13 @@ def assembly(view) -> list:
            "inside (an 8 mm wrench); the carriage bolt's M6 thin nut on the bracket's foot "
            "(a 10 mm wrench, snug: the foot is printed; threadlocker on both).")
     if base or feet or brackets["L"]:
-        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"], *bolts), "Base plate",
-                      "The TPU feet pushed up into the base plate's corner holes (a twist "
-                      "helps them through); the six M6 carriage bolts up through its square "
-                      "holes from under (their necks hold them: nothing to reach under the "
-                      "plate later). The drive side onto the base plate, its outer plate's "
-                      "rail on it, the notch at the front. " + how, "base"))
+        ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"], *bolts), "Base board",
+                      "The TPU feet pushed up into the base board's corner holes (a twist "
+                      "helps them through); the M6 carriage bolts up through its holes from "
+                      "under, each head tapped with a mallet until its square neck is in the "
+                      "wood (it holds them: nothing to reach under the board later). The "
+                      "drive side onto the base board, its outer plate's rail on it, the "
+                      "notch at the front. " + how, "base"))
     if brackets["R"]:
         ops.append(Op(FINISH, (1,), whole(*brackets["R"]), "", how + " Then turn the crank "
                       "through a whole pour again: both cradle links must still swing freely; "
@@ -1448,14 +1477,15 @@ def assembly(view) -> list:
     collars = view.named(r"\w+_collar")
     if adapters or collars:
         ops.append(Op(USE, (0,), whole(*adapters, *collars), "Bottle adapters",
-                      "A magnum lies on its two TPU adapter liners, laid in the saddles' "
-                      "liners, its shoulder against the front saddle's back face. A 750 ml "
-                      "lies on its own two: the front one shorter, its end the shoulder's "
-                      "stop, the rear one closed behind its base (the base stop's cup isn't "
-                      "used: slide it back out of the way). A 3 L "
-                      "lies in the liners alone, its TPU collar snapped round its neck "
-                      "against that face. Either way its mouth is on the pivot and its axis "
-                      "level. Another bottle: print adapters to its neck and body "
+                      "A 6 L methuselah lies in the saddles' liners alone, its TPU collar "
+                      "snapped round its neck against the front saddle's back face. Every "
+                      "other bottle lies on its own two TPU adapter liners, laid in the "
+                      "saddles' liners: a 6 L impériale and a 3 L with a collar too, a magnum "
+                      "with its shoulder against that face, a 750 ml with the front liner "
+                      "shorter, its end the shoulder's stop. A magnum's and a 750 ml's rear "
+                      "liner is closed behind its base (the base stop's cup isn't used: slide "
+                      "it back out of the way). Either way its mouth is on the pivot and its "
+                      "axis level. Another bottle: print adapters to its neck and body "
                       "(construction.cradle.adapter).", "adapters"))
     shown = [n for n in ("bottle", "decanter", "decanter_riser") if n in view.z]
     if shown:
@@ -1463,7 +1493,7 @@ def assembly(view) -> list:
                       "Not bought: crank the cradle to rest (neck up), set the base stop for "
                       "the bottle, lay the bottle in the saddles, its shoulder against the "
                       "front saddle's back face and its label up; stand the decanter on a riser "
-                      "(a lab jack) in the base plate's notch, under the mouth, and raise it "
+                      "(a lab jack) in the base board's notch, under the mouth, and raise it "
                       "until its rim is a finger's width under the front saddle; switch the "
                       "light on. Turn the "
                       "handle slowly, either way: the mouth stays where it is while the "
@@ -1476,7 +1506,7 @@ def assembly(view) -> list:
 SIDES_LR = ("L", "R")
 USE_LIMITS = (
     "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
-    "behind the base plate (a 3 L reaches its rear edge); keep the base plate clear behind "
+    "behind the base board (a 3 L reaches its rear edge); keep the base board clear behind "
     "the decanter (at rest the base stop comes down to 20 mm over it). A vessel left under "
     "the mouth for the whole swing stands on a riser with its rim no higher than 285 mm "
     "over the table: 240 mm across up to 135 mm, 125 mm across above that (at rest the "
@@ -1490,18 +1520,18 @@ USE_LIMITS = (
     "set, holding the neck, a corkscrew's lever lifted straight up; then slide the bottle "
     "forward onto its stop. Keep your hands off the decanter while the handle turns (near "
     "rest the cradle box comes down over it, and the worm doesn't stop for a hand). Lift "
-    "the cradle by its base plate, never by the hand crank. "
+    "the cradle by its base board, never by the hand crank. "
     "Hand-wash the printed parts (PLA softens at 55 °C).")
 """The guide's use limits (the room it needs: ``docs/agentlib/DECANTER.md``)."""
 
 
-def jeroboam_hits(mech) -> list[str]:
-    """The parts a 3 L bottle lying in the saddles (on their liners, in its collar, without
-    the magnum's adapters) would meet in the assembled cradle ``mech`` (the magnum is the
-    bottle drawn)."""
+def bottle_hits(mech, size: BottleSize = DESIGN) -> list[str]:
+    """The parts a bottle ``size`` lying in the saddles (on its liners, in its collar,
+    without the magnum's adapters) would meet in the assembled cradle ``mech`` (the magnum
+    is the bottle drawn); by default the largest, the 6 L methuselah."""
     lip = np.asarray(mech.meta["cradle_lip"], dtype=float)
-    y0, slope, x0 = seat(JEROBOAM)
-    part = _place(_bottle(JEROBOAM, y0, slope, x0), lip, float(mech.meta["cradle_tilt"]))
+    y0, slope, x0 = seat(size)
+    part = _place(_bottle(size, y0, slope, x0), lip, float(mech.meta["cradle_tilt"]))
     box = part.bounding_box()
     out = []
     for b in mech.bodies:

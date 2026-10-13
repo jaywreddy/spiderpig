@@ -75,26 +75,35 @@ bigger than the 300 x 300 mm the walkers' sheets are drawn on; SendCutSend price
 so the sheet a layout draws is only a page."""
 
 
+ALLOYS = {
+    # alloy: (temper, its page, density g/cm^3, yield MPa, the walkers' cut rate USD/cm^2)
+    "5052": ("H32", SCS_AL, 2.68, 193.0, 0.20),
+    "6061": ("T6", SCS_6061, 2.70, 276.0, 0.40),
+    # SendCutSend's datasheet (materials?sku=ALU7075-190, fetched 2026-10-13): .125, .190,
+    # .250 in; yield 69 ksi, 81 ksi ultimate, 7.9 % elongation, 176.26 lb/ft^3; no cut
+    # rate quoted (its cutting is left unpriced: quote at upload)
+    "7075": ("T6", "https://sendcutsend.com/materials/7075-aluminum/", 2.82, 476.0, None),
+}
+
+
 def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None,
         sheet_mm: tuple[float, float] = (300.0, 300.0)) -> Item:
     t = round(inch * IN, 3)
     name = f"{alloy} aluminium sheet {inch:.3f} in ({t:g} mm), laser cut"
-    url = SCS_AL if alloy == "5052" else SCS_6061
-    temper = "H32" if alloy == "5052" else "T6"
+    temper, url, density, yield_mpa, rate = ALLOYS[alloy]
     return Item(
         key, name, "sheet",
         (Offer("SendCutSend", url, note=f"{alloy}-{temper} {inch:.3f} in; {FETCHED}",
                price_usd=price),),
         dims={"thickness": t, "material": "aluminium", "alloy": f"{alloy}-{temper}",
-              "density": 2.68 if alloy == "5052" else 2.70,
-              "yield_mpa": 193.0 if alloy == "5052" else 276.0,
+              "density": density, "yield_mpa": yield_mpa,
               "min_hole": t, "sheet_mm": sheet_mm, **SCS_RULES_AL,
               # the cutting, material included (hardware.bom.cut_estimate, calibrated on
               # SendCutSend's live quotes of 2026-10-08): per cm^2 of part, least per part
-              "cut_usd_cm2": 0.20 if alloy == "5052" else 0.40, "cut_min_usd": 2.20},
-        notes=f"{alloy}-{temper}: yield {193 if alloy == '5052' else 276} MPa (ASM); "
-              "minimum hole = thickness, 2 t hole-to-edge, min part 6.35 x 9.5 mm "
-              "(SendCutSend).",
+              **({"cut_usd_cm2": rate, "cut_min_usd": 2.20} if rate is not None else {})},
+        notes=f"{alloy}-{temper}: yield {yield_mpa:g} MPa "
+              f"({'SendCutSend' if alloy == '7075' else 'ASM'}); minimum hole = thickness, "
+              "2 t hole-to-edge, min part 6.35 x 9.5 mm (SendCutSend).",
     )
 
 
@@ -106,6 +115,34 @@ def _acrylic(key: str, t: float, price: float | None = None) -> Item:
         dims={"thickness": t, "material": "acrylic", "density": 1.19, "yield_mpa": 50.0,
               "sheet_mm": (300.0, 300.0), **PONOKO_RULES_ACRYLIC},
         notes="Thin acrylic for clearance-gap fillers (a plate stack the gap splits).",
+    )
+
+
+SCS_PLY = "https://sendcutsend.com/materials/baltic-birch-plywood/"
+
+
+def _plywood(key: str, inch: float, mm: float) -> Item:
+    """SendCutSend's Baltic birch plywood, CNC routed (its 9.0 and 12.0 mm; the 3.2 and 6.3
+    mm are lasered). Its routed rules from the material's spec table (the page's
+    ``materials?sku=`` data, fetched 2026-10-10): tolerance +-.005 in, thickness
+    +.016/-.024 in (9 mm), min hole .125 in (the bit), hole to edge .106 in, min bridge .354
+    in, min part 1 x 2 in, max 44 x 44 in (the routing guideline says 44 x 30: drawn on
+    that); a routed inside corner is the bit's .063 in radius. Grade B/BB, identical faces;
+    43.2 lb/ft^3. No price is published (a DXF upload quotes): the BOM leaves its cutting
+    unpriced."""
+    return Item(
+        key, f"Baltic birch plywood {mm:g} mm ({inch:.3f} in), CNC routed", "sheet",
+        (Offer("SendCutSend", SCS_PLY,
+               note=f"Baltic birch, grade B/BB, {inch:.3f} in routed; rules fetched "
+                    "2026-10-10; no published price: quote at upload"),),
+        dims={"thickness": mm, "material": "plywood", "density": 0.692,
+              # (its strength isn't checked: a base board on the table, no link)
+              "yield_mpa": 30.0, "service": "SendCutSend", "process": "CNC router",
+              "min_hole": 0.125 * IN, "edge_t": 0.106 * IN / mm, "edge_mm": 0.354 * IN,
+              "corner_r": 0.063 * IN, "min_part": (1.0 * IN, 2.0 * IN), "metal": False,
+              "kerf_mm": 0.0, "sheet_mm": SCS_MAX_MM},
+        notes="Baltic birch plywood (SendCutSend: 'not weather-proof'; routed edges may show "
+              "witness marks and light burning: sand and oil it).",
     )
 
 
@@ -128,7 +165,10 @@ register(
     _al("al6061_6p35mm", 0.250, alloy="6061", price=60.0, sheet_mm=SCS_MAX_MM),
     # the B cradle's most loaded levers
     _al("al6061_4p8mm", 0.187, alloy="6061", price=45.0, sheet_mm=SCS_MAX_MM),
+    _al("al7075_4p8mm", 0.190, alloy="7075", sheet_mm=SCS_MAX_MM),
     _al("al6061_3p2mm", 0.125, alloy="6061", price=32.0),
+    # a decanting cradle's base board (2026-10-13, the user's "the bottom board in wood")
+    _plywood("birch_9mm", 0.354, 9.0),
     *(_al(k, v, price=18.0) for k, v in AL_THIN.items()),
     *(_al(k, v, alloy="6061", price=21.0) for k, v in AL6061_THIN.items()),
     *(_acrylic(k, v, price=9.0) for k, v in ACRYLIC_THIN.items()),
