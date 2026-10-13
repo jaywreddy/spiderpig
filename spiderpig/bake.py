@@ -219,6 +219,8 @@ _MATERIALS: dict[str, _Material] = {
     # laser-cut aluminium: links bare, the frame plates a touch darker (a decanting cradle)
     "aluminium": _Material((0.80, 0.82, 0.85, 1.0), 0.9, 0.35),
     "aluminium_frame": _Material((0.62, 0.64, 0.68, 1.0), 0.9, 0.4),
+    # routed Baltic birch plywood (a decanting cradle's base board), oiled
+    "plywood": _Material((0.85, 0.70, 0.50, 1.0), 0.0, 0.65),
     # a worm gearbox (RAL 5010 blue paint), an LED's face
     "gearbox": _Material((0.08, 0.25, 0.48, 1.0), 0.3, 0.5),
     "led": _Material((1.0, 0.98, 0.85, 1.0), 0.0, 0.2),
@@ -242,6 +244,8 @@ def _material_of(body: Body, metal: bool = False) -> str:
     as aluminium (a decanting cradle; a walker's plates all draw as acrylic)."""
     cls = body_class(body.name)
     if body.fab == "laser":
+        if (body.sheet or "").startswith("birch"):
+            return "plywood"
         metal = metal and (body.sheet or "").startswith("al")
         if is_link(body.name):
             return "aluminium" if metal else "acrylic"

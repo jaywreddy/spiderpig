@@ -3,7 +3,7 @@
  * environment (softboxes and a window, no downloaded HDRI: the box may be offline), a
  * key light with soft shadows, a walnut tabletop drawn in a canvas, a contact shadow
  * under the stand, and physical materials per fabrication kind (the baker names each
- * material after it: ``aluminium``, ``aluminium_frame``, ``metal``, ``gearbox``,
+ * material after it: ``aluminium``, ``aluminium_frame``, ``plywood``, ``metal``, ``gearbox``,
  * ``printed``, ``led``, ``glass_bottle``, ``glass_clear``; a node's name tells the
  * fasteners, the steel standoffs and the TPU liners and feet apart).
  *
@@ -247,13 +247,14 @@ function fresnelGlass(m: THREE.MeshPhysicalMaterial, edge: number): THREE.MeshPh
   return m;
 }
 
-type Kind = 'alu_link' | 'alu_frame' | 'zinc' | 'steel' | 'gearbox' | 'print' | 'tpu' | 'led' | 'glass_green' | 'glass_clear' | 'other';
+type Kind = 'alu_link' | 'alu_frame' | 'plywood' | 'zinc' | 'steel' | 'gearbox' | 'print' | 'tpu' | 'led' | 'glass_green' | 'glass_clear' | 'other';
 
 function kindOf(material: string, node: string): Kind {
   const n = node.toLowerCase();
   switch (material) {
     case 'aluminium': return 'alu_link';
     case 'aluminium_frame': return 'alu_frame';
+    case 'plywood': return 'plywood';
     case 'metal':
       return /screw|nut|washer|bolt|cap|set_screw|stud/.test(n) ? 'zinc' : 'steel';
     case 'gearbox': return 'gearbox';
@@ -371,11 +372,14 @@ export function createLook(stage: Stage, onChange: () => void): Look {
     alu_link: phys({ color: '#d5d8db', metalness: 1, roughness: 0.38 }, 1.1),
     // 5052 frame plates, mill / brushed finish: a touch glossier, a touch darker
     alu_frame: phys({ color: '#c8cbcf', metalness: 1, roughness: 0.27 }, 1.1),
+    // the base board: routed Baltic birch plywood, oiled (no UVs on the baked meshes: a tone)
+    plywood: phys({ color: '#d6b98c', metalness: 0, roughness: 0.62, sheen: 0.2,
+      sheenColor: new THREE.Color('#fff4e0'), sheenRoughness: 0.7 }, 0.6),
     // zinc-plated screws, nuts and washers: bluish bright
     zinc: phys({ color: '#c9d0d8', metalness: 1, roughness: 0.24 }, 1.0),
     // 1018 steel standoffs and shafts, zinc-plated too, duller
     steel: phys({ color: '#a8abaf', metalness: 1, roughness: 0.33 }, 1.0),
-    // the NRV030 worm box: cast, painted RAL 5010 gentian blue
+    // the NRV040 worm box: cast, painted RAL 5010 gentian blue
     gearbox: phys({ color: '#0e4c86', metalness: 0.0, roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.45 }, 0.8),
     print,
     tpu,

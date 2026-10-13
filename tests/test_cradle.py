@@ -3,7 +3,7 @@
 it tips (both from -50°, nearly upright, where an opened full bottle goes in, to +30°),
 both bottles lie with their mouths on the pivot, both sides plan with the hand crank, every
 part stays in its claims, the whole cradle is clash-free over the swing (the hand crank's
-sweep and a 3 L bottle too), it stands, the hand turns it, the pins hold, the cut files
+sweep and a 6 L bottle too), it stands, the hand turns it, the pins hold, the cut files
 pass the cut rules, and the guide has an order for every part."""
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import pytest
 from spiderpig import linkage
 from spiderpig.config import BuildConfig, ParamError, design_from_query, is_cradle
 from spiderpig.construction import cradle as cr
-from spiderpig.construction.handcrank import NRV030, HandCrank
+from spiderpig.construction.handcrank import HandCrank
 from spiderpig.linkages.decanters import TIES
 from tests.tiers import quick
 
@@ -103,7 +103,7 @@ def test_cradle_defaults_and_the_hand_crank_only_for_cradles():
     assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("chicago6", "standoff", 11.0)
     from spiderpig.materials import link_sheets
 
-    assert link_sheets(cfg) == {"b1": "al5052_4p8mm"}      # (b2: the default sheet's)
+    assert link_sheets(cfg) == {"b1": "al5052_6p35mm"}     # (b2: the default sheet's)
     with pytest.raises(ParamError, match="the hand crank builds a decanting cradle"):
         BuildConfig(linkage="hoecken", robot=False, crank="hand")
     with pytest.raises(ParamError, match="the hand crank builds a decanting cradle"):
@@ -131,18 +131,28 @@ def test_a_fit_override_keeps_the_rest_of_the_products_and_a_walker_drops_them()
 
 @pytest.mark.linkage
 def test_the_worm_holds_and_every_bottle_lies_with_its_mouth_on_the_pivot():
-    assert NRV030.irreversible()
-    assert NRV030.ratio == 30
-    assert [z.key for z in cr.SIZES] == ["standard", "magnum", "jeroboam"]
+    from spiderpig.construction.handcrank import NRV040
+
+    assert NRV040.irreversible()
+    assert NRV040.ratio == 30
+    assert [z.key for z in cr.SIZES] == ["standard", "magnum", "jeroboam", "imperial",
+                                         "methuselah"]
+    # the saddles sized for the fattest neck and body, the longest bottle the base stop's
+    assert cr.DESIGN is cr.METHUSELAH
+    assert all(cr.DESIGN.r >= z.r and cr.DESIGN.r_neck >= z.r_neck for z in cr.SIZES)
+    assert cr.SPINE_END > max(z.length for z in cr.SIZES)
     for size in cr.SIZES:
         assert cr.seat(size) == pytest.approx((0.0, 0.0, 0.0), abs=1e-9), size.name
-    # the 750 ml and the magnum on their adapters, the 3 L in its collar; a magnum straight
-    # in the 3 L's saddles would lie nose up, its mouth off the pivot
-    assert cr.adapter(cr.MAGNUM)[:2] == pytest.approx((3.5, 21.0))
-    assert cr.adapter(cr.JEROBOAM) == pytest.approx((0.0, 0.0, 20.0))
+    # every bottle but the 6 L methuselah on its adapters, the longer necks in collars; a
+    # magnum straight in the 6 L's saddles would lie nose up, its mouth off the pivot
+    assert cr.adapter(cr.MAGNUM)[:2] == pytest.approx((8.5, 37.5))
+    assert cr.adapter(cr.METHUSELAH) == pytest.approx((0.0, 0.0, 43.0))
+    # the 6 L's centre of mass between the saddles: lying level or tipped, it bears on both
+    front, rear = cr.SADDLES
+    for size in cr.SIZES:
+        assert front.x[1] < size.com_from_mouth < rear.x[1], size.name
     # the 750 ml: its neck short of the stop, so its front liner ends at its shoulder (the
     # stop); the rear one closed behind its base, inside the rear saddle
-    front, rear = cr.SADDLES
     a_f, a_r, collar = cr.adapter(cr.STANDARD)
     assert collar < 0
     bb = cr._adapter(front, a_f, cr.STANDARD).bounding_box()
@@ -290,7 +300,7 @@ def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
 def test_the_whole_cradle_is_clash_free_over_the_swing(key):
     """Both sides, the box, the stand on its base plate, the bottle and the decanter at
     rest, at full tilt and across the turn: no two parts meet, the hand crank's sweep meets
-    nothing, and a 3 L bottle in the saddles (its collar, no adapters) meets nothing."""
+    nothing, and a 6 L methuselah in the saddles (its collar, no adapters) meets nothing."""
     from spiderpig.construction.contract import bad_solids, clashes
     from spiderpig.cradle_report import wheel_sweep
     from spiderpig.fabricate import fabricate, template_for
@@ -304,11 +314,11 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
         assert wheel_sweep(mech) == [], t
-        assert cr.jeroboam_hits(mech) == [], t
+        assert cr.bottle_hits(mech) == [], t
     assert bad_solids(mech) == []
     names = {b.name for b in mech.bodies}
     assert {"L.gearbox", "bottle", "decanter", "led", "front_saddle", "rear_saddle",
-            "base_plate", "jeroboam_collar"} <= names
+            "base_plate", "jeroboam_collar", "methuselah_collar"} <= names
     assert not any(n.startswith("R.") and ("gearbox" in n or n == "R.b1") for n in names)
 
 
@@ -333,12 +343,15 @@ def test_the_cradle_stands_turns_easily_and_holds():
     """A, the one to build: the mouth still for both bottles, it stands at 15° and more and
     takes a 25 N push at the bottle's top (the worst over the swing), the hand turns it with
     under 25 N, the worm holds, the rod, the crankpin and every pin and plate hold a sealed
-    full 3 L bottle 3 x over and a firm 40 N push at the grip on a blocked cradle (the jam:
+    full 6 L bottle 3 x over and a firm 40 N push at the grip on a blocked cradle (the jam:
     ``cradle_report.jam_nm``, ``config.PRODUCT_JAM_NM``)."""
     from spiderpig.config import PRODUCT_JAM_NM
+    from spiderpig.construction.handcrank import handle_r
     from spiderpig.cradle_report import JAM_HAND_N, jam_nm, report
 
-    assert PRODUCT_JAM_NM["cradle"] == pytest.approx(jam_nm())
+    for key in CRADLES:
+        cfg = BuildConfig(linkage=key, robot=False)
+        assert PRODUCT_JAM_NM[key] == pytest.approx(jam_nm(grip_r=handle_r(cfg)), abs=0.05)
 
     r = report(BuildConfig(linkage="decanter_hinge", robot=False), clash_angles=0)
     assert r["swing"]["mouth_wander_mm"] < 1e-6
@@ -346,8 +359,7 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert r["stand"]["worst_tip_deg"] >= 15.0
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
-    # (against its 20 N·m continuous rating at 1400 rpm input; the peak is a sealed full 3 L
-    # at one tilt, at hand speed)
+    # (against its 45 N·m rating; the peak is a sealed full 6 L at one tilt, at hand speed)
     assert r["drive"]["gearbox_sf"] >= 1.3
     assert r["drive"]["handle_force_n"] < 25.0
     assert r["rod"]["sf_bottle"] >= 3.0
@@ -374,7 +386,7 @@ def test_b_stands_turns_easily_and_holds():
     """B, the virtual hinge (``docs/agentlib/DECANTER.md``): the mouth still for both
     bottles, it stands at 25° and takes a 25 N push at the bottle's top (the worst over the
     swing), the hand turns it with under 25 N, the worm holds within its rating, the rod and
-    the crankpin hold the jam, every pin, pillar and plate holds a sealed full 3 L bottle 2 x
+    the crankpin hold the jam, every pin, pillar and plate holds a sealed full 6 L bottle 2 x
     over and a firm 40 N push at the grip on a blocked cradle 1.3 x over."""
     from spiderpig.cradle_report import report
 
@@ -478,7 +490,7 @@ def test_verify_rates_a_cradles_joints_at_its_own_loads():
     d = api.resolve({"kind": "mechanism", "linkage": {"key": "decanter_hinge"}}, store=None)
     q = api.verify(d, "quick")      # the default level: a catalog floor with no servo in it
     (floor,) = [r for r in q.rows if r.requirement == "budget.cost_floor_usd"]
-    assert "NRV030" in floor.detail
+    assert "NRV040" in floor.detail
     assert "servo" not in floor.detail.lower()
     assert not [r for r in q.rows if r.requirement == "size.mass_g"]   # a build weighs it
     a = api.verify(d, "standard")

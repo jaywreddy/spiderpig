@@ -73,10 +73,10 @@ from spiderpig.stack import Claim, Disc, Layout, Placed, Unbuildable, body_class
 LIP_HEIGHT = 550.0      # the bottle's mouth over the table (mm): at rest, 50° neck up, the
 #                         6 L's base stop's end hangs about 520 mm under it, over the base
 #                         board's top (17 mm up)
-DECANTER_RISER = 55.0   # the drawn decanter's riser: the highest that keeps it clear of the
+DECANTER_RISER = 135.0  # the drawn decanter's riser: the highest that keeps it clear of the
 #                         cradle box over the whole swing (cradle_report.room: at rest, 50°
 #                         neck up, the front saddle, the tie rods and the light hang across
-#                         the axis from 300 mm over the table up)
+#                         the axis from 385 mm over the table up)
 DECANTER_PROFILE = ((0.0, 28.6), (6.3, 38.8), (21.7, 84.2), (30.0, 95.8), (40.7, 102.5),
                     (47.4, 100.8), (55.4, 91.2), (72.4, 52.4), (79.5, 41.3), (89.5, 32.3),
                     (108.5, 22.9), (133.5, 18.3), (165.9, 19.0), (189.9, 23.9), (225.0, 37.1))
@@ -1505,13 +1505,13 @@ def assembly(view) -> list:
 
 SIDES_LR = ("L", "R")
 USE_LIMITS = (
-    "Before you use it: give it 800 mm of headroom (a 3 L's base at full tilt) and 50 mm "
-    "behind the base board (a 3 L reaches its rear edge); keep the base board clear behind "
-    "the decanter (at rest the base stop comes down to 20 mm over it). A vessel left under "
-    "the mouth for the whole swing stands on a riser with its rim no higher than 285 mm "
-    "over the table: 240 mm across up to 135 mm, 125 mm across above that (at rest the "
+    "Before you use it: give it 950 mm of headroom (a 6 L's base at full tilt) and 150 mm "
+    "behind the base board (a 6 L reaches past its rear edge); keep the base board clear "
+    "behind the decanter (at rest the base stop comes down to 18 mm over it). A vessel left "
+    "under the mouth for the whole swing stands on a riser with its rim no higher than 380 "
+    "mm over the table: 240 mm across up to 165 mm, 95 mm across above that (at rest the "
     "cradle box hangs under the mouth). To pour closer, raise it once the cradle is past "
-    "−20° (its rim up to 390 mm, 65 mm across above 330 mm), and lower it again before you "
+    "−20° (its rim up to 520 mm, 55 mm across above 475 mm), and lower it again before you "
     "crank back to rest: the worm would bring the cradle box down onto it. Never force the "
     "handle: if it stiffens, stop and look (the drive holds a firm 40 N push at the grip "
     "against a blocked cradle, no more; if it stays stiff after "

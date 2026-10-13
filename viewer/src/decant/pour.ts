@@ -38,13 +38,15 @@ interface PourMotion extends CradleMotion {
   room?: [number, number][];
   /** the room once the cradle is past -20° (the pour), the same form */
   room_pouring?: [number, number][];
-  /** every bottle size the cradle takes (the 750 ml, the magnum, the 3 L) */
+  /** every bottle size the cradle takes (the 750 ml, the magnum, the 3 L, the two 6 L) */
   bottles?: { key: string; name: string; outline: [number, number][] }[];
 }
 
 /** The label's size line for a bottle's name ("1.5 L Bordeaux magnum": MAGNUM · 1,5 L). */
 function sizeLine(name: string): string {
   const n = name.toLowerCase();
+  if (n.includes('methuselah')) return 'MATHUSALEM · 6 L';
+  if (n.includes('6 l')) return 'IMPÉRIALE · 6 L';
   if (n.includes('3 l')) return 'JÉROBOAM · 3 L';
   if (n.includes('1.5 l') || n.includes('magnum')) return 'MAGNUM · 1,5 L';
   return '75 cl';

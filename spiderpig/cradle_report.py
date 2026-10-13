@@ -685,7 +685,9 @@ def room(config: BuildConfig, mech, n: int = 72) -> dict:
         if b.part is None or b.name.startswith(("L.", "R.")) or b.name.startswith("decanter"):
             continue
         p = _surface_points(b.placed_part())
-        (moving if b.name.startswith(_MOVING) or "magnum_liner" in b.name else fixed).append(p)
+        # (the spare sizes' adapters lie on the table: only the drawn magnum's ride)
+        rides = b.name.startswith(_MOVING) and not _adapted(b.name)
+        (moving if rides or "magnum_liner" in b.name else fixed).append(p)
     # a 6 L methuselah in the saddles too (the magnum is the bottle drawn)
     y0, slope, x0 = cr.seat(cr.DESIGN)
     c, s = math.cos(slope), math.sin(slope)
