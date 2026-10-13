@@ -5,7 +5,7 @@ with no new joint, in the order :func:`pieces` gives as its steps:
 
 1. the bottle adapters out of the saddles (every adapter travels loose);
 2. the hand crank off the gearbox's input shaft (its set screw);
-3. the cradle off the base plate (the brackets' nuts: the carriage bolts stay in the plate);
+3. the cradle off the base board (the brackets' nuts: the carriage bolts stay in the board);
 4. each side's inner plate off (its screws from the bay side, back in its holes);
 5. the cradle link's own joints with its side (``mech.connections``): a pin's Chicago screw
    out (it goes back into its barrel, which stays in the side's link), a pillar slid out of
@@ -21,10 +21,10 @@ about it into its panel (:func:`tuck`).
 **How it stacks** (:func:`pack`, on per-part bounding boxes, each grown by half of
 :data:`CLEAR`):
 
-* every piece but the panels and the base plate is first *levelled*: turned about z (the
+* every piece but the panels and the base board is first *levelled*: turned about z (the
   mechanism's plane normal) to the angle, by the degree (and the cradle's own tilt), that
   gives its xy bounding box the least area;
-* the base plate stays where it is, at the bottom; the box's footprint is centred on it and
+* the base board stays where it is, at the bottom; the box's footprint is centred on it and
   as large as the largest piece lying flat;
 * each side panel is dropped onto a heightmap of what is in (a rectangle max-filter per
   part), both orders, face up or down, either way round (and quarter turns where it fits);
@@ -171,7 +171,7 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
                 if mine == ln and (other in parts or is_frame(other)):
                     joints[s].append(("pillar" if is_frame(other) else "pin", j))
     base = parts.get("base_plate")
-    through: list[np.ndarray] = []           # the base plate's bolts (their xz axes)
+    through: list[np.ndarray] = []           # the base board's bolts (their xz axes)
     if base is not None:
         for n, p in parts.items():
             if (n.startswith("foot_bracket") and p.fab == "purchased" and p.lo[1] < base.lo[1]
@@ -194,11 +194,11 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             continue
         host = _side(p.rigid_with or "")[0] or crank_side
         if n == "base_plate" or n.startswith("foot_boot"):
-            put("base", "Base plate", "base", n)
+            put("base", "Base board", "base", n)
         elif n.startswith("foot_bracket"):
             axis = (p.lo + p.hi)[[0, 2]] / 2
             if p.fab == "purchased" and any(np.hypot(*(axis - t)) < 1.0 for t in through):
-                put("base", "Base plate", "base", n)     # a carriage bolt or its nut
+                put("base", "Base board", "base", n)     # a carriage bolt or its nut
             else:
                 put(panel[host], f"{panel[host].capitalize()} side panel", "panel", n)
         elif m := re.fullmatch(r"((?:base_|bay_)?tie_[A-Za-z0-9]+)(?:_screw[LR])?", n):
@@ -256,7 +256,7 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
                       "the gearbox's input shaft.", ["hand_crank"]))
     if "base" in out:
         nuts = [n for n in out["base"].parts if "nut" in (parts[n].bom_key or "")]
-        steps.append((f"Base plate: undo the {len(nuts)} {size_of(nuts)} nuts on the "
+        steps.append((f"Base board: undo the {len(nuts)} {size_of(nuts)} nuts on the "
                       "brackets' feet and lift the cradle off it. The carriage bolts stay in "
                       "the plate, their nuts back on.", ["base"]))
     inners = [f"inner_{s}" for s in SIDES if f"inner_{s}" in out]
@@ -700,7 +700,7 @@ def pack(items: Sequence[tuple[str, str, Sequence[np.ndarray]]], tilt: float = 0
     base = [(k, pts) for k, r, pts in items if r == "base"]
     panels = [(k, pts) for k, r, pts in items if r == "panel"]
     fills = [(k, pts) for k, r, pts in items if r == "fill"]
-    # the footprint: as large as the base plate and each panel lying flat, either face
+    # the footprint: as large as the base board and each panel lying flat, either face
     flat = {k: _aabbs(pts, _rot("x", -90)) for k, pts in panels}
     ext = [_aabbs(pts, np.eye(3)) for _, pts in base] + list(flat.values())
     sizes = np.array([[b[:, 1, 0].max() - b[:, 0, 0].min(), b[:, 1, 2].max() - b[:, 0, 2].min()]
@@ -837,7 +837,7 @@ def pack(items: Sequence[tuple[str, str, Sequence[np.ndarray]]], tilt: float = 0
 
 def part_infos(mech) -> dict[str, PartInfo]:
     """The fabricated cradle's parts (not the display ones) as :func:`pieces` and
-    :func:`pack` read them: a part that only ever turns by quarter turns (the base plate's,
+    :func:`pack` read them: a part that only ever turns by quarter turns (the base board's,
     the panels') by its bounding box's corners, the rest by their tessellations."""
     bodies = [b for b in mech.bodies if b.part is not None and b.fab != "display"]
     shapes = {b.name: b.placed_part() for b in bodies}

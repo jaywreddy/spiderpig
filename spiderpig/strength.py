@@ -241,7 +241,8 @@ def rider_hole(config: BuildConfig) -> float:
     return config.params.hole(crank.for_sheet(config.crank_sheet).rider_d(config.params))
 
 
-def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
+def link_rows(config: BuildConfig, loads: dict, holes: dict[str, float] | None = None
+              ) -> list[dict]:
     """Every link plate's stress at the design's own pin loads (``loads["joints"]``, the
     sim's), against its sheet's allowable: the net section at the most loaded hole
     (``LINK_KT`` x the pin load over ``(w - d) t``) and, for a link of three or more pins,
@@ -250,7 +251,8 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
     load is a cantilever's); a foot link whose foot is off its pins, the foot's lever to its
     nearest pin. Conservative: the loads' directions aren't used. ``needs`` names the sheet
     that would hold it when the link's own doesn't (jam SF under 2): the user's rule,
-    aluminium only where acrylic can't take the load."""
+    aluminium only where acrylic can't take the load. ``holes``: each joint's own hole (mm,
+    by stem: a decanting cradle's pins and pillars are 8-12 mm), else :data:`LINK_HOLE`."""
     from spiderpig import linkage as lk_mod
     from spiderpig.construction.plates import RIDER_BOSS_T
     from spiderpig.materials import FOOT_SHEET, link_sheets, sheet
@@ -282,7 +284,8 @@ def link_rows(config: BuildConfig, loads: dict) -> list[dict]:
         # (an aluminium rider's end grown to a boss of 1 x t of web round it,
         # plates.rider_bosses), else LINK_HOLE
         boss_w = max(w, bore + 2 * (RIDER_BOSS_T * t + 0.1)) if sh.metal else w
-        net = {pin: (boss_w - bore) * t if pin in crank_pins else an for pin in at}
+        net = {pin: (boss_w - bore) * t if pin in crank_pins else
+               (w - holes[pin]) * t if holes and pin in holes else an for pin in at}
         zg = t * w * w / 6
         pins = [n for n in at if n in pts]
         span = max((math.dist(pts[a], pts[b]) for a in pins for b in pins), default=0.0)
@@ -583,7 +586,11 @@ def check(notes: dict, meta: dict, config: BuildConfig, loads: dict) -> dict:
     crank = crank_strength(meta, config, loads)
     if crank is not None:
         rows.append(crank)
-    rows += link_rows(config, loads)
+    holes = None
+    if getattr(config.lk, "product", ""):   # a product's own pins' and pillars' holes (a
+        holes = {_stem(name): config.params.hole(float(note["section"]["bearing_d"]))
+                 for name, note in notes.items() if note.get("section")}  # walker's: LINK_HOLE
+    rows += link_rows(config, loads, holes)
     plates = centre_plate_row(meta, config, loads)
     if plates is not None:
         rows.append(plates)

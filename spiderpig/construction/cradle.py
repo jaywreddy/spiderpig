@@ -186,6 +186,8 @@ DESIGN = METHUSELAH
 the longest and heaviest: the load case): it lies in them with its axis level through the
 pivot. A thinner one lies on adapter liners (:func:`adapter`) that put its axis there
 too."""
+SHOWN = MAGNUM
+"""The bottle the model draws in the saddles, on its adapters."""
 STOP_X = MAGNUM.neck
 """The front saddle's back face, the shoulder stop (cradle frame): the shortest neck's
 length, so the magnum's mouth is on the pivot; a longer neck takes a collar round it
@@ -1235,7 +1237,7 @@ def assemble_cradle(side: Mechanism, design) -> Mechanism:
                                    color=TIE_COLOR))
     # the saddles, their liners, the light, the bottle: drawn in the cradle's frame
     light, clip, led_screw, clip_screws, clip_pilots = _led(SADDLES[0])
-    shown = MAGNUM                          # the bottle drawn: a magnum on its adapters
+    shown = SHOWN                           # the bottle drawn: a magnum on its adapters
     spine, cup, spine_screws, cup_lock, spine_pilots = _base_stop(SADDLES[1], shown)
     a_f, a_r, _ = adapter(shown)
     for s in SADDLES:
