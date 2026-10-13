@@ -72,17 +72,29 @@ def _crank_groups(ctx: Context, config) -> list[Group]:
 
 
 def _axle_groups(ctx: Context, config) -> list[Group]:
-    """One axle per pillar (``config.pillar``) and per link pin (``config.pin``)."""
+    """One axle per pillar (``config.pillar``) and per link pin (``config.pin``; a product's
+    joints with a pin of their own: ``config.PRODUCT_PIN_JOINTS``)."""
     kinds = {"frame": config.pillar, "pin": config.pin}
     made = {}
     for kind, key in kinds.items():
-        a = axle(key)
-        made[kind] = a.resolve(ctx) if hasattr(a, "resolve") else a   # per design (a rule)
+        made[kind] = _resolved(key, ctx)
         if kind == "frame" and _cradle(config) and hasattr(made[kind], "cradle_shaft"):
-            # a decanting cradle's pillars carry its bottle: always a 10 mm steel shaft, never
-            # the aluminium goBILDA standoff (cradle_report's strength rows)
+            # a decanting cradle's pillars carry its bottle: always a steel shaft, never the
+            # aluminium goBILDA standoff (cradle_report's strength rows)
             made[kind] = made[kind].cradle_shaft()
-    return [AxleGroup(ax, made[ax.kind]) for ax in ctx.topo.axes if ax.kind in kinds]
+    own: dict[str, str] = {}
+    if _cradle(config):
+        from spiderpig.config import PRODUCT_PIN_JOINTS, PRODUCT_PINS
+
+        if config.pin == PRODUCT_PINS.get(config.lk.product):    # (a pin asked for: all)
+            own = PRODUCT_PIN_JOINTS.get(config.linkage, {})
+    return [AxleGroup(ax, _resolved(own[ax.name], ctx) if ax.kind == "pin" and ax.name in own
+                      else made[ax.kind]) for ax in ctx.topo.axes if ax.kind in kinds]
+
+
+def _resolved(key: str, ctx: Context):
+    a = axle(key)
+    return a.resolve(ctx) if hasattr(a, "resolve") else a   # per design (a rule)
 
 
 def _cradle(config) -> bool:
