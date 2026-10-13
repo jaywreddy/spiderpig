@@ -100,10 +100,10 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # the B cradle (2026-10-10, refined, slimmed; 2026-10-13, a 6 L's jam): the links sharing
     # a layer (b2 with b3, b4 with b5) both 0.187-0.190 in, so neither rides in a layer the
     # other made taller (a thin link there would slide on its pin); the arms b2, b3 and the
-    # bar b4 in 7075 (cradle_report's jam: 6061 held 0.83); the 336 mm rod 0.313 in 6061,
-    # alone in its layer (Euler: 0.250 in held 1.46 x its jam force); the cradle link b6,
-    # alone under the inner plate, 0.125 in (jam SF 3.5): a thinner stack
-    "decanter_rcm": {"b1": "al6061_8mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
+    # bar b4 in 7075 (cradle_report's jam: 6061 held 0.83); the 336 mm rod 0.250 in, alone
+    # in its layer (Euler, at the cradle's 24 mm links: 1.6 x its jam force); the cradle
+    # link b6, alone under the inner plate, 0.125 in (jam SF 3.5): a thinner stack
+    "decanter_rcm": {"b1": "al5052_6p35mm", "b2": "al7075_4p8mm", "b3": "al7075_4p8mm",
                      "b4": "al7075_4p8mm", "b5": "al5052_4p8mm", "b6": "al5052_3p2mm"},
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links

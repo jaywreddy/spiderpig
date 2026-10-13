@@ -186,10 +186,13 @@ stops there:
   - The crank block: 0.125 in 6061 (the keyway's 6.1 mm slot is legal in it).
   - B's links are 0.187-0.190 in: its arms b2 and b3 and its bar b4 in 7075-T6 (a 6 L's
     jam: 6061 held 0.83; SendCutSend's datasheet, yield 69 ksi), b5 in 5052; its 336 mm
-    rod is 0.313 in 6061 (buckling: 0.250 in held 1.46) and its cradle link 0.125 in 5052,
+    rod is 0.250 in 5052 and its cradle link 0.125 in 5052,
     each alone in its layer.
   - The metal is cut at SendCutSend: `materials.LINK_SHEETS` and `config.PRODUCT_*`. The
-    7075 and the 0.313 in 6061 have no fitted cutting price yet (quote at upload).
+    7075 has no fitted cutting price yet (quote at upload).
+  - The cradle's links are 24 mm wide (`config.PRODUCT_*`'s `link_radius` 12, from 22): B's
+    336 mm rod in 0.250 in then holds 1.6 x its jam force in buckling (at 22 mm, 1.46), and
+    the bigger pins' holes keep a sheet's thickness of web.
 - **The stand** (`cradle.STANDS`).
   - **Outer plate:** a truss outside every moving part's layer: from the hinge G down in
     front of the decanter to the front foot and back to the crank O, O's legs down and
@@ -265,7 +268,8 @@ other size lies on adapters. What it changed, and why:
   cradle needed 1.4-1.9 x its strength.
   - The pillars and the crankpin: 12 mm NETRF12 (1.73 x the 10 mm's bending section).
   - B's arms b2, b3 and bar b4: 7075-T6 0.190 in (1.72 x 6061's yield).
-  - The rods: B's 0.313 in 6061, A's 0.250 in 5052 (their buckling).
+  - The rods: 0.250 in 5052 on both, and every link 24 mm wide (their buckling; a 0.313 in
+    rod failed SendCutSend's web rule round its pin).
   - The crank block: four keyed plates on the NRV040's 19 mm shaft and 6 mm key.
   - The pins: steel ("The pins" above), the user's choice of 2026-10-13: an M6 Chicago
     screw's 8 mm stainless barrel held 0.69 at B's rod pin P.
@@ -510,7 +514,7 @@ Things to know before cutting and on the bench:
 - **Get a live SendCutSend quote** (upload the DXFs). The BOM's cutting figure is a fit to
   the live quotes of 2026-10-10 for A's files (`hardware.bom.CRADLE_CUT_FITS`: USD 367.50
   then); the walkers' per-area rates had priced the old aluminium base plate alone at USD
-  488. The plywood board, the 7075 and the 0.313 in 6061 have no fitted price: the BOM
+  488. The plywood board and the 7075 have no fitted price: the BOM
   leaves them to the quote.
 - **Measure the gearbox** when it arrives: the output face's spigot (2.5 mm is drawn; under
   2 mm, put an M6 washer under each riser screw's head), the output shaft's collar and key

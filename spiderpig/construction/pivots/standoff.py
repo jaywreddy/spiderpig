@@ -321,8 +321,11 @@ class StandoffAxle:
              ) -> tuple[tuple[End, ...], tuple[End, ...]]:
         """A button head and washer outside each frame plate it reaches (over the inner
         plate: in the chassis' space between the robot's two inner plates), or over its last
-        link at a free end (a cantilever from the other plate)."""
-        return (("head", d.head),), (("head", d.head),)
+        link at a free end (a cantilever from the other plate); a head taller than a layer
+        (a cradle's M6, :attr:`outside`) claims two."""
+        n = 2 if self.outside is not None and self.outside > pitch + EPS else 1
+        head = (("head", d.head),) * n
+        return head, head
 
     @staticmethod
     def faces(links, top: int, anchored: tuple[bool, bool]) -> tuple[int, int]:

@@ -727,15 +727,16 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
     stop's spine to the 6 L's base.
   - **The drive:** the NRV040 at 30:1 (Phidgets TRM4401_0, 45 N·m) for the NRV030; a
     100 mm handle (A 105).
-  - **The drive path:** NETRF12 pillars and crankpin; B's b2-b4 in 7075-T6; B's rod 0.313 in
-    6061, A's 0.250 in 5052; four keyed plates; steel pins (the user's choice).
+  - **The drive path:** NETRF12 pillars and crankpin; B's b2-b4 in 7075-T6; the rods
+    0.250 in 5052 and every link 24 mm wide (B's rod's buckling; a 0.313 in rod failed the
+    web rule round its pin); four keyed plates; steel pins (the user's choice).
   - **The stand:** the base board 530 x 626 mm.
   - **The base board** in 9 mm Baltic birch plywood (the user's, the same day), routed at
     SendCutSend, with M6 x 20 carriage bolts in round holes.
 - **Numbers** (B at 5167f80, the pins aside):
   - The crank's peak 32.0 N·m (the NRV040's SF 1.41), 23.7 N at the grip.
   - The jam 66 N·m: pillars O1 1.38, O2 1.30; links b3 1.45, b4 1.46; the crank's keyway
-    2.0; the crankpin 1.81; the rod's buckling 2.86.
+    2.0; the crankpin 1.81.
   - The stand tips at 25.9°.
 - **Why:**
   - A full 6 L's moment about the mouth is 2.2 x the 3 L's, and the NRV030 is rated 20 N·m.

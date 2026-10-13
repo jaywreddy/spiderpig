@@ -100,7 +100,7 @@ def test_cradle_defaults_and_the_hand_crank_only_for_cradles():
     assert is_cradle(cfg)
     assert (cfg.crank, cfg.sheet, cfg.frame_sheet, cfg.crank_sheet) == (
         "hand", "al5052_3p2mm", "al5052_4p8mm", "al6061_3p2mm")
-    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("chicago6", "standoff", 11.0)
+    assert (cfg.pin, cfg.pillar, cfg.params.link_radius) == ("chicago6", "standoff", 12.0)
     from spiderpig.materials import link_sheets
 
     assert link_sheets(cfg) == {"b1": "al5052_6p35mm"}     # (b2: the default sheet's)
@@ -120,7 +120,7 @@ def test_a_fit_override_keeps_the_rest_of_the_products_and_a_walker_drops_them()
 
     cfg = BuildConfig(linkage="decanter_hinge", robot=False, params=Params(margin=0.6))
     assert cfg.params.margin == 0.6
-    assert (cfg.params.link_radius, cfg.params.frame_radius) == (11.0, 12.0)
+    assert (cfg.params.link_radius, cfg.params.frame_radius) == (12.0, 12.0)
     walker = design_from_query({"linkage": "strider"}, base=cfg)
     plain = BuildConfig()
     assert (walker.pin, walker.sheet, walker.frame_sheet) == (plain.pin, plain.sheet,

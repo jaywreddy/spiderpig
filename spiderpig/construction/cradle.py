@@ -944,8 +944,9 @@ SPINE_FLANGE = (6.0, 84.0)      # its flange on the rear saddle's back face: thi
 SPINE_SCREW_Z = 30.0            # the flange's screws, into the saddle's V walls under the liner
 #                                 (the V 21 mm wide each side of the axis at their height)
 SPINE_SCREW = 16.0              # M5 x 16: 10 mm in the saddle
-STOP_HOLES = tuple(float(x) for x in range(390, 561, 10))   # the spine's pilots (cradle x):
-#                                         every base behind the rear saddle (3 L to 6 L)
+STOP_HOLES = tuple(float(x) for x in range(410, 561, 10))   # the spine's pilots (cradle x):
+#                                         every base behind the rear saddle (3 L to 6 L), the
+#                                         cup's channel clear of the saddle at the first
 CUP_HOLES = (12.0, 17.0)        # the cup's two holes, this far in front of its face
 CUP_LEN, CUP_STOP, CUP_WALL = 25.0, 6.0, 3.0   # its channel, its stop plate, its walls
 CUP_TOP = -30.0                 # the stop's top (cradle y): over both bottles' lower rims

@@ -233,7 +233,7 @@ and still cut with the M5 screws' 5.5 mm holes (SendCutSend: a hole at least the
 thickness; 0.250 in would need 6.35)."""
 
 PRODUCT_PARAMS: dict[str, dict[str, float]] = {
-    CRADLE: {"link_radius": 11.0, "frame_radius": 12.0, "spacer_d": 12.5},
+    CRADLE: {"link_radius": 12.0, "frame_radius": 12.0, "spacer_d": 12.5},
 }
 """Per product: the shared dimensions (:class:`fit.Params`) a design gets when it names
 the defaults. A decanting cradle's links are 22 mm wide (two plate thicknesses of web round
