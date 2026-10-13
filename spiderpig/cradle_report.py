@@ -567,13 +567,14 @@ def strength_check(config: BuildConfig, mech, rows: list[dict], crank_nm: float)
 VERDICT = {
     "decanter_hinge": ("build", "The one to build: a four-bar crank-rocker whose rocker is the "
                        "cradle, hinged at the bottle's mouth. From 50° neck up (an opened "
-                       "full bottle goes in) to 30° neck down. Every check passes: the pins "
-                       "hold a forced crank (jam SF 1.33 at worst), the stand tips past 28°."),
+                       "full bottle goes in) to 30° neck down, a 750 ml to a 6 L. Every check "
+                       "passes with a full 6 L: the joints hold a forced crank (jam SF 1.6 at "
+                       "worst), the gearbox 1.33 x its rating, the stand tips past 25°."),
     "decanter_rcm": ("build", "To build too: an eight-bar double parallelogram turns the "
                      "cradle about a point with nothing there, so nothing stands at the "
                      "mouth; its pivots hang under the mouth, its crank behind. Every check "
-                     "passes: the pins hold a forced crank (jam SF 1.36 at worst), the "
-                     "gearbox 1.38 x its rating, the stand tips past 30°."),
+                     "passes with a full 6 L: the joints hold a forced crank (jam SF 1.31 at "
+                     "worst), the gearbox 1.41 x its rating, the stand tips past 26°."),
 }
 """Each cradle's standing (``docs/agentlib/DECANTER.md``): ``build`` or ``study``, and why."""
 
