@@ -220,7 +220,7 @@ def test_cards(server):
     assert axles["standoff"]["hardware"]["washer_key"]["key"] == "m4_washer"
     assert [c["key"] for c in cat["constructions"]["cranks"]] == ["bolt", "bolt_round", "hand"]
     hand = next(c for c in cat["constructions"]["cranks"] if c["key"] == "hand")
-    assert hand["hardware"]["gearbox"]["key"] == "nrv030_30"     # a decanting cradle's
+    assert hand["hardware"]["gearbox"]["key"] == "nrv040_30"     # a decanting cradle's
     bolt = next(c for c in cat["constructions"]["cranks"] if c["key"] == "bolt")
     assert bolt["roles"] == ["crank"]
     assert bolt["hardware"]["lock_key"]["key"] == "threadlocker_243"

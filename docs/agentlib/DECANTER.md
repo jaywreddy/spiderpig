@@ -372,9 +372,10 @@ its 100 mm handle, 69.3 at A's on its 105 (`cradle_report.jam_nm`,
 - It is not counted within 30° of crank round either toggle, where a blocked crank-rocker's
   forces grow without bound. There, only clearance protects: the decanter's lip and
   anything under the cradle.
-- What A holds there: pin E (steel) 3.1, the crankpin 1.6, the keyed plates 1.9, the rod's
-  buckling 2.05, pillar G 2.85, the links 1.62 and more.
-- Turning it: 33.8 N·m at A's crank at worst (the NRV040's SF 1.33), 23.8 N at the grip.
+- What A holds there: pin E (steel) 2.9, the crankpin 1.6, the keyed plates 1.9, the rod's
+  buckling 2.05, pillar G 2.6, the links 1.69 and more (its cradle link b2 is 0.187 in
+  5052: in 0.125 in its 12 mm pillar's hole left it at 1.13).
+- Turning it: 34.0 N·m at A's crank at worst (the NRV040's SF 1.33), 23.9 N at the grip.
   It tips at 25.6° and takes a 40 N push at a bottle's top, the worst over the swing.
 - The rating is the plan's: a wider stack between the rod and the cradle link puts pin E
   lower. A product is never served a plan from another engine version

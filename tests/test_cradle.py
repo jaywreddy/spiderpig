@@ -104,7 +104,7 @@ def test_cradle_defaults_and_the_hand_crank_only_for_cradles():
     assert BuildConfig(linkage="decanter_hinge", robot=False, pin="chicago6").pin == "chicago6"
     from spiderpig.materials import link_sheets
 
-    assert link_sheets(cfg) == {"b1": "al5052_6p35mm", "b2": "al6061_3p2mm"}
+    assert link_sheets(cfg) == {"b1": "al5052_6p35mm", "b2": "al5052_4p8mm"}
     with pytest.raises(ParamError, match="the hand crank builds a decanting cradle"):
         BuildConfig(linkage="hoecken", robot=False, crank="hand")
     with pytest.raises(ParamError, match="the hand crank builds a decanting cradle"):
@@ -698,7 +698,7 @@ def test_the_packer_levels_drops_and_fills_in_order():
     assert order.relations(np.array([[[10, 70, 10], [50, 80, 50]]], float)) == ({0}, set())
 
 
-PACK_BOX = {"decanter_hinge": (665.0, 285.0, 590.0), "decanter_rcm": (650.0, 325.0, 555.0)}
+PACK_BOX = {"decanter_hinge": (665.0, 310.0, 590.0), "decanter_rcm": (650.0, 325.0, 555.0)}
 """Each cradle's flat-pack box, outside (x, height, z; mm): at most (since the 6 L: its rear
 saddle and two rear liners, about 104 mm thick, lie over the panels)."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
