@@ -4,22 +4,26 @@ of the arm's review, the turret's variant C; the support ``base_pair``).
 Stock parts only but for four cut plates (the user's: "only stock parts except for the
 plates"). Bottom up, in the turret's frame (:class:`.turret.TurretPlan`):
 
-* **the bottom plate**, 1/8 in 5052, screwed to the bench through four :data:`FOOT` mm
-  spacers (the lower bearing and the columns' screw heads stand under it; on rubber feet
-  a base this light rocks and walks under the arm's moment: round 7's review). The slides
-  and the reference sheet lie on the bench in front (:func:`table_reach`):
+* **the bottom plate**, 3 mm cast acrylic (:data:`BOTTOM_SHEET`), screwed to the bench
+  through four :data:`FOOT` mm spacers (the lower bearing and the columns' screw heads
+  stand under it; on rubber feet a base this light rocks and walks under the arm's
+  moment: round 7's review). The slides and the reference sheet lie on the bench in front
+  (:func:`table_reach`):
   a work plate in one piece with it, as round 7's review asked, would be some 400 mm long,
   past the 300 mm blank the sheets are nested on, and the camera's homing re-references
   the sheet at every power-up anyway (:mod:`control.vision`);
-* **four columns** of 7 mm hex M4 standoffs (:data:`~spiderpig.hardware.robot_catalog.
+* **seven columns** of 7 mm hex M4 standoffs (:data:`~spiderpig.hardware.robot_catalog.
   M4_HEX_STANDOFF_LENGTHS`, the shortest past the yaw motor), two in front, two behind the
-  motor, an M4 button head through each plate into each end;
-* **the top plate**, 1/8 in 5052, the yaw motor hanging under it on slots along the belt
-  (its tension), its shaft up through it;
+  motor, three round the bearings (:data:`CENTRE_R`: the acrylic plate held flat where the
+  preload bears), an M4 button head through each plate into each end (a washer under it on
+  the acrylic);
+* **the top plate**, 1/8 in 5052 (:data:`TOP_SHEET`: the columns stand off it as
+  cantilevers), the yaw motor hanging under it on slots along the belt (its tension), its
+  shaft up through it;
 * **the bearings**: an F608ZZ bonded into each plate, its flange on the plate's top face,
   the bearings' centres the column's length and a plate apart (about four times the
   classic hub's: their play tilts the axis a quarter as much); the 8 mm h6 **shaft** turns
-  in them, slid through both while the retaining compound cures (the jig that lines them
+  in them, slid through both while the epoxy cures (the jig that lines them
   up; the columns tightened first, their holes' play past the compound's gap). The upper
   inner ring is clamped between two collars (on 0.5 mm shims clear of the seals): it holds
   the shaft both ways. The lower one floats on the shaft, a wave washer under a collar
@@ -27,12 +31,12 @@ plates"). Bottom up, in the turret's frame (:class:`.turret.TurretPlan`):
 * **the drive** over the top plate: the 80-tooth plate pulley on the shaft over the upper
   collar (its own bore centres it, four 3.4 mm holes drilled on its 30 mm circle), the
   16-tooth on the motor's uncut shaft, a stock loop;
-* **the turntable**, 1/8 in 5052, over a spacer disc (the frame sheet) that lifts it past
-  the motor's shaft and the small pulley's flange; four M3 screws through the turntable,
-  the spacer and the pulley, nuts under the pulley; an M4 screw and washer in the shaft's
+* **the turntable**, 1/8 in 5052 (:data:`TABLE_SHEET`: it bends under the arm's moment),
+  lifted past the motor's shaft and the small pulley's flange by a stack of M3 washers at
+  each of its four ties (:data:`LIFT_WASHER`); four M3 screws through the turntable, the
+  washers and the pulley, nuts under the pulley; an M4 screw and washer in the shaft's
   tapped end clamp the stack down on the over collar (a collar pushed down by hand clamps
-  too lightly to hold the arm's moment); the spacer runs out to the small pulley under the
-  turntable, which overhangs it less;
+  too lightly to hold the arm's moment);
 * **the homing flag**: an M2 screw hanging from the turntable outside the belt and the
   small pulley, its tip about 1 mm over the floor of a slotted optical endstop on posts on
   the top plate (in slots: the board centred on the flag at assembly), placed where
@@ -59,8 +63,13 @@ from spiderpig.hardware.fasteners import screw, screw_solid
 from spiderpig.mechanism import Body
 from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, ring, union
 
-BASE_SHEET = "al5052_3p2mm"     # the base's two plates and the turntable: 5052 as stiff as
-#                                 6061 (its strength unused) at half SendCutSend's rate
+BOTTOM_SHEET = "acrylic_3mm"    # the base's bottom plate: loaded in its plane, the columns
+#                                 pinned in it (round 2 of the cost loop: half 5052's cut)
+TOP_SHEET = "al5052_3p2mm"      # the top plate: the columns stand off it as cantilevers (an
+#                                 acrylic one let the base rack 6-25x more, round 2's
+#                                 review), the motor's heat and the belt's pull on it
+TABLE_SHEET = "al5052_3p2mm"    # the turntable: the arm's moment bends it; 5052 as stiff as
+#                                 6061 (its strength unused) at a cheaper rate
 STOCK_BRACKET = {"w": 16.0, "h": 20.0, "d": 20.0, "t": 2.0, "hole": 10.0}
 """The stock steel angle bracket (``angle_bracket_20``): its width, its legs (``h`` up the
 frame plate, ``d`` out along the turntable), its thickness and each leg's hole from the
@@ -68,6 +77,15 @@ corner."""
 SHIM = 0.5                      # a shim under a collar on an inner ring (clear of the seal)
 FOOT = 6.0                      # the bench spacers under the bottom plate (m4_spacer_6)
 SHAFT_KEY = "shaft_8mm_h6_tapped"
+LIFT_WASHER = "shim_din988_3x6_t0p5"   # the stacks under the turntable at its four ties
+#                                 (round 2 of the cost loop: in place of a cut spacer disc;
+#                                 shims from the kit already bought, not DIN 125 washers whose
+#                                 0.45-0.55 mm would tilt it: round 2's review)
+CENTRE_SHIM = "shim_8x12x0p5"   # and a stack on the shaft under its centre, where the M4
+#                                 clamp pulls it down
+CENTRE_R = 18.0                 # three more columns round the bearings: they close the
+#                                 preload's loop by the axis, the acrylic plates' bending
+#                                 out of it (round 2's review)
 HEX_R = 7.0 / math.sqrt(3)      # a 7 mm hex standoff's corner radius
 COL_GAP = 4.0                   # a column clear of the motor's body
 TAIL_EDGE = 4.0                 # the plates past a back column's corner
@@ -93,8 +111,8 @@ def heights(ctx: Context, support, tr, motor) -> tuple[dict[str, float], tuple[f
 
     from .turret import MOTOR_GAP
 
-    tb = _sheet_t(BASE_SHEET)
-    ts = ctx.sheet_t("frame")
+    tb, tp_ = _sheet_t(BOTTOM_SHEET), _sheet_t(TOP_SHEET)
+    tt = _sheet_t(TABLE_SHEET)
     brg = get(support.bearing).dims
     w_b, ft = float(brg["w"]), float(brg["flange_t"])
     cw = float(get("collar_8mm").dims["w"])
@@ -105,7 +123,7 @@ def heights(ctx: Context, support, tr, motor) -> tuple[dict[str, float], tuple[f
         raise ConstructionError(f"turret: no stock M4 hex standoff reaches {need:.1f} mm")
     b0 = FOOT                                                    # the bench at 0
     h: dict[str, float] = {"bottom": 0.0, "bp_bot": b0, "bp_top": b0 + tb,
-                           "bt_bot": b0 + tb + L, "bt_top": b0 + 2 * tb + L}
+                           "bt_bot": b0 + tb + L, "bt_top": b0 + tb + L + tp_}
     h["lb_top"] = b0 + tb + ft
     h["lb_bot"] = h["lb_top"] - w_b
     h["ub_top"] = h["bt_top"] + ft
@@ -126,10 +144,11 @@ def heights(ctx: Context, support, tr, motor) -> tuple[dict[str, float], tuple[f
         raise ConstructionError(f"turret: the yaw motor's {motor.shaft_len:g} mm shaft doesn't "
                                 "reach its pulley's top")
     lift = max(h["shaft_top"] + 1.0, h["drive_top"] + 0.5) - h["drive_top"]
-    n_sp = max(1, math.ceil(lift / ts - 1e-9))
-    h["n_spacer"] = float(n_sp)
-    h["tt_bot"] = h["drive_top"] + n_sp * ts
-    h["table"] = h["tt_bot"] + tb
+    wt = float(get(LIFT_WASHER).dims["t"])      # stacks of stock washers at the ties lift it
+    n_w = max(1, math.ceil(lift / wt - 1e-9))
+    h["n_washer"] = float(n_w)
+    h["tt_bot"] = h["drive_top"] + n_w * wt
+    h["table"] = h["tt_bot"] + tt
     h["shaft_end"] = h["table"] - 0.5           # under the clamp screw's washer
     if h["lb_bot"] < 1.0:
         raise ConstructionError("turret: the lower bearing reaches the bench")
@@ -187,12 +206,15 @@ def tail(motor, c: float) -> tuple[float, float]:
 
 
 def columns_xy(tp, motor) -> list[tuple[float, float]]:
-    """The four columns (the turret's frame): two in the base's round front at 45 deg, two
-    behind the motor."""
+    """The seven columns (the turret's frame): two in the base's round front at 45 deg, two
+    behind the motor, three round the bearings at :data:`CENTRE_R` (the acrylic plates held
+    flat by the axis, where the wave washer's preload bears)."""
     r = tp.h["front"] - HEX_R - TAIL_EDGE
     back = motor.frame / 2 + COL_GAP + HEX_R
     front = [(r * math.cos(a), r * math.sin(a)) for a in (math.radians(45), math.radians(-45))]
-    return front + [(-(tp.c + back), s * back) for s in (1, -1)]
+    centre = [(CENTRE_R * math.cos(math.radians(a)), CENTRE_R * math.sin(math.radians(a)))
+              for a in (0.0, 120.0, 240.0)]
+    return front + [(-(tp.c + back), s * back) for s in (1, -1)] + centre
 
 
 def table_reach(design, tool_plan, x_a: float, y_ground: float, keep_r: float
@@ -230,12 +252,18 @@ def racking(tp) -> tuple[float, str]:
     a = 7.0 / math.sqrt(3)
     i_hex = 5 * math.sqrt(3) / 16 * a ** 4 - math.pi * 3.3 ** 4 / 64
     L = sum(tp.columns)
-    k = 4 * 12 * E_ALU * i_hex / L ** 3                  # N/mm
+    from spiderpig import materials
+
+    n = len(columns_xy(tp, tp.preset.parts[2]))
+    fixed = 2 if materials.sheet(BOTTOM_SHEET).metal else 1     # ends held: 12 or 3 E I / L^3
+    k = n * (12 if fixed == 2 else 3) * E_ALU * i_hex / L ** 3   # N/mm
     per_nm = 1000.0 / tp.spacing / k / tp.spacing       # rad per N·m
-    return per_nm, (f"the base's four {L:g} mm hex columns rack {per_nm * 1e6:.1f} urad per "
-                    f"N·m of the arm's tipping moment (fixed-fixed beams, {k:.0f} N/mm: a lower "
-                    "bound: thin plates and screwed ends rack some 2-4x that); it changes "
-                    "with the pose as the moment does (accuracy, not repeatability)")
+    ends = ("fixed-fixed" if fixed == 2 else "cantilevers off the aluminium top plate, pinned "
+            "in the acrylic bottom one")
+    return per_nm, (f"the base's {n} {L:g} mm hex columns rack {per_nm * 1e6:.1f} urad per "
+                    f"N·m of the arm's tipping moment ({ends}, {k:.0f} N/mm: a lower bound: "
+                    "screwed ends rack more); it changes with the pose as the moment does "
+                    "(accuracy, not repeatability)")
 
 
 def _hw(name, part, *, fab, bom_key=None, color=None, sheet=None) -> Body:
@@ -268,8 +296,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
 
     support, tr, motor, sensor = tp.preset.parts
     h = tp.h
-    tb = _sheet_t(BASE_SHEET)
-    ts = ctx.sheet_t("frame")
+    tb, tp_ = _sheet_t(BOTTOM_SHEET), _sheet_t(TOP_SHEET)
+    tt = _sheet_t(TABLE_SHEET)
     bodies: list[Body] = []
     turning: list[str] = []
     extras: list[BomLine] = []
@@ -282,9 +310,13 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         if turns:
             turning.append(name)
 
+    def stocked(s, L) -> bool:      # a length the BOM's seller has (Bolt Depot: no M3 x 14)
+        offer = get(s.key(L)).offer
+        return offer is not None and offer.price_usd is not None
+
     def length_for(need: float, s=sk) -> float:
         try:
-            return next(L for L in s.lengths if need - 1e-6 <= L)
+            return next(L for L in s.lengths if need - 1e-6 <= L and stocked(s, L))
         except StopIteration:
             raise ConstructionError(f"turret: no stock screw reaches {need:.1f} mm") from None
 
@@ -343,7 +375,7 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
              (-depth + 6.0, 0.0)]
     add("base_bottom", cut_holes(outline(b0, b1), [Cut(o, 22.0 + 0.2), *col_cuts,
                                                    *(Cut(xy, 4.4) for xy in bench)], b0, b1),
-        fab="laser", color=PLATE_COLOR, sheet=BASE_SHEET)
+        fab="laser", color=PLATE_COLOR, sheet=BOTTOM_SHEET)
     for i, xy in enumerate(bench):                  # screwed to the bench on spacers
         add(f"base_spacer{i}", ring(xy, 8.0, 4.2, 0.0, b0), fab="purchased",
             bom_key="m4_spacer_6", color="#3a3a3a")
@@ -354,18 +386,26 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     top_cuts += [Rect(xy, (SCREW_HOLE + slot, SCREW_HOLE), 0.0) for xy in mscrews]
     top_cuts.append(Rect(tuple(m), (motor.boss_d + 0.4 + slot, motor.boss_d + 0.4), 0.0))
     add("base_top", cut_holes(outline(h["bt_bot"], h["bt_top"]), top_cuts, h["bt_bot"],
-                              h["bt_top"]), fab="laser", color=PLATE_COLOR, sheet=BASE_SHEET)
+                              h["bt_top"]), fab="laser", color=PLATE_COLOR, sheet=TOP_SHEET)
     L = sum(tp.columns)
     for i, xy in enumerate(cols):
         hexa = box(xy, (7.0, 7.0 / math.sqrt(3) * 2, L), b1)
         add(f"base_col{i}_0", cut_holes(hexa, [Cut(xy, 3.3)], b1, b1 + L), fab="purchased",
             bom_key=f"m4_hex_standoff_{L:g}", color="#3a3a3a")
-    clen = next((x for x in M4_BHCS_LENGTHS if x >= tb + 4.0 - 1e-6), M4_BHCS_LENGTHS[-1])
+    wd4 = get("m4_washer").dims             # under each head on the acrylic (its creep)
+    w4 = float(wd4["t"])
+
+    def m4_len(t: float) -> float:
+        return next((x for x in M4_BHCS_LENGTHS if x >= t + 4.0 - 1e-6), M4_BHCS_LENGTHS[-1])
+
+    clen_a, clen_b = m4_len(tb + w4), m4_len(tp_)
     for i, xy in enumerate(cols):
-        add(f"base_col_screw{i}a", _m4(xy, b0, clen, True), fab="purchased",
-            bom_key=m4_bhcs(clen), color=STEEL)
-        add(f"base_col_screw{i}b", _m4(xy, h["bt_top"], clen, False), fab="purchased",
-            bom_key=m4_bhcs(clen), color=STEEL)
+        add(f"base_col_washer{i}", ring(xy, float(wd4["od"]), float(wd4["id"]), b0 - w4, b0),
+            fab="purchased", bom_key="m4_washer", color=STEEL)
+        add(f"base_col_screw{i}a", _m4(xy, b0 - w4, clen_a, True), fab="purchased",
+            bom_key=m4_bhcs(clen_a), color=STEEL)
+        add(f"base_col_screw{i}b", _m4(xy, h["bt_top"], clen_b, False), fab="purchased",
+            bom_key=m4_bhcs(clen_b), color=STEEL)
 
     # the yaw motor
     shaft_len = round(h["shaft_top"] - h["bt_bot"], 1)
@@ -374,7 +414,7 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
                    disc(tuple(m), motor.boss_d / 2 - 0.2, h["bt_bot"], h["bt_bot"] + motor.boss_h),
                    disc(tuple(m), motor.shaft_d / 2 - 0.05, h["bt_bot"], h["bt_bot"] + shaft_len)])
     add("yaw_motor", mbody, fab="purchased", bom_key=motor.bom_key, color="#2b2b2b")
-    mlen = next(x for x in bh.lengths if tb + motor.hole_depth * 0.8 - 1e-6 <= x)
+    mlen = next(x for x in bh.lengths if tp_ + motor.hole_depth * 0.8 - 1e-6 <= x)
     for i, xy in enumerate(mscrews):
         add(f"yaw_motor_screw{i}", screw_solid(xy, bh, h["bt_top"], mlen, up=False),
             fab="purchased", bom_key=bh.key(mlen), color=STEEL)
@@ -398,8 +438,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     for name, z0 in (("yaw_bearing_lower", h["lb_bot"]), ("yaw_bearing_upper", h["ub_bot"])):
         add(name, bearing_solid(support.bearing, o, z0), fab="purchased",
             bom_key=support.bearing, color="#d0d0d0")
-        extras.append(BomLine("retaining_compound_641", GLUE, f"turret: {name} into its "
-                              "plate"))
+        extras.append(BomLine("epoxy_2part", GLUE, f"turret: {name} into its plate "
+                              "(abrade both)"))
     for name, z0 in (("yaw_collar_mid", h["mid_bot"]), ("yaw_collar_under", h["ul_bot"]),
                      ("yaw_collar_over", h["lo_bot"])):
         add(name, ring(o, cod, 8.0, z0, z0 + cw), turns=True, fab="purchased",
@@ -437,22 +477,20 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     add("yaw_belt", _belt_loop(o, tuple(m), float(big["od"]) / 2, float(small["od"]) / 2,
                                zm - 3.0, zm + 3.0), fab="purchased",
         bom_key=gt2_loop(int(tp.loop or 0)), color="#202020")
-    sp_r = tp.c - float(small["flange_d"]) / 2 - 1.5     # under the turntable to the small
-    #                                                       pulley (round 7's review)
-    if sp_r > tp.c - float(small["flange_d"]) / 2 - 1.0:
-        raise ConstructionError("turret: the turntable's spacer meets the small pulley")
     tie_cuts = [Cut(xy, SCREW_HOLE) for xy in ties]
-    n_sp = int(h["n_spacer"])
-    foot_cuts = [Cut(xy, SCREW_HOLE) for plate, x in tp.brackets
-                 if math.hypot(*(xy := tp.local_ab(x, tp.faces[plate] + (-1 if plate == "outer"
-                                                                         else 1) * tp.reach)))
-                 < sp_r + 3.0]
-    for i in range(n_sp):
-        zz = h["drive_top"] + i * ts
-        add(f"turntable_spacer{i}", cut_holes(disc(o, sp_r, zz, zz + ts),
-                                              [Cut(o, SHAFT_HOLE), *tie_cuts, *foot_cuts], zz,
-                                              zz + ts),
-            turns=True, fab="laser", color=PLATE_COLOR, sheet=ctx.sheet("frame"))
+    n_w = int(h["n_washer"])
+    wd = get(LIFT_WASHER).dims
+    for i, xy in enumerate(ties):                   # the washer stacks lifting the turntable
+        add(f"turntable_lift{i}", ring(xy, float(wd["od"]), float(wd["id"]), h["drive_top"],
+                                       h["tt_bot"]), turns=True, fab="purchased",
+            color=STEEL)
+    extras.append(BomLine(LIFT_WASHER, len(ties) * n_w, f"turret: {n_w} under the turntable "
+                          "at each of its four ties"))
+    cd_ = get(CENTRE_SHIM).dims
+    add("turntable_centre_shims", ring(o, float(cd_["od"]), float(cd_["id"]), h["drive_top"],
+                                       h["tt_bot"]), turns=True, fab="purchased", color=STEEL)
+    extras.append(BomLine(CENTRE_SHIM, n_w, f"turret: {n_w} on the shaft under the turntable's "
+                          "centre (the clamp's seat)"))
     flag_xy = (tp.sensor_r, 0.0)
     table_cuts: list[Cut | Rect] = [Cut(o, SHAFT_HOLE), *tie_cuts, Cut(flag_xy, 2.4)]
     for plate, x in tp.brackets:
@@ -460,7 +498,7 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         table_cuts.append(Cut(tp.local_ab(x, zc), SCREW_HOLE))
     add("turntable", cut_holes(disc(o, tp.r_table, h["tt_bot"], h["table"]), table_cuts,
                                h["tt_bot"], h["table"]), turns=True, fab="laser",
-        color=PLATE_COLOR, sheet=BASE_SHEET)
+        color=PLATE_COLOR, sheet=TABLE_SHEET)
     tlen = length_for(h["table"] - z0 + NUT_H)
     for i, xy in enumerate(ties):
         add(f"hub_screw{i}", screw_solid(xy, sk, h["table"], tlen, up=False), turns=True,
@@ -481,7 +519,7 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
                                 b_bot + bt)
         add("yaw_endstop", sensor_body, fab="purchased", bom_key=sensor.bom_key,
             color="#1f5f9f")
-        slen = length_for(bt + post + tb + NUT_H)     # through the board, post and plate
+        slen = length_for(bt + post + tp_ + NUT_H)    # through the board, post and plate
         for i, xy in enumerate(e_holes):
             add(f"yaw_endstop_screw{i}a", screw_solid(xy, sk, b_bot + bt, slen, up=False),
                 fab="purchased", bom_key=sk.key(slen), color=STEEL)
@@ -517,9 +555,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         s1 = screw_solid((x, tp.y_t + bk["hole"]), sk, inner_face, L1, up=plate == "inner")
         bodies.append(_hw(f"foot_screw{i}a", s1, fab="purchased", bom_key=sk.key(L1),
                           color=STEEL))
-        under = n_sp * ts if math.hypot(*tp.local_ab(x, zc)) < sp_r + 3.0 else 0.0
-        L2 = length_for(tb + under + bk["t"] + NUT_H)      # (through the spacer under it)
-        s2b = _along_y(screw_solid((x, zc), sk, tp.y_t - tb - under, L2, up=True))
+        L2 = length_for(tt + bk["t"] + NUT_H)
+        s2b = _along_y(screw_solid((x, zc), sk, tp.y_t - tt, L2, up=True))
         bodies.append(_hw(f"foot_screw{i}b", s2b, fab="purchased", bom_key=sk.key(L2),
                           color=STEEL))
         turning += [f"foot_screw{i}a", f"foot_screw{i}b"]
@@ -527,9 +564,11 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     extras.append(BomLine("spiral_wrap_6mm", 1.0, "turret: the cables' loop round the base"))
 
     assembly = [
-        "Screw the four hex columns between the bottom plate and the top plate, M4 button "
-        "heads through each plate; tighten them before the bearings go in.",
-        "Retain an F608 in each plate with Loctite 641 (off the shields), flange on the "
+        "Screw the seven hex columns between the bottom plate and the top plate, M4 button "
+        "heads through each plate (a washer under each on the acrylic); tighten them before "
+        "the bearings go in.",
+        "Bond an F608 into each plate with epoxy (both faces abraded, none on the shields), "
+        "flange on the "
         "plate's top face, the shaft slid through both (the mid collar, the wave washer, the "
         "under collar and its shim on it in order) while it cures: the shaft lines the two "
         "seats up. The lower bearing must slide on the shaft (pick one that does).",
@@ -538,8 +577,9 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         f"until the wave washer stands at its working {spring:g} mm (a feeler gauge) and "
         "clamp it: the pair preloaded.",
         "Drill the 80-tooth pulley's four 3.4 mm holes on its 30 mm circle (a drill press, "
-        "its own bore on a pin), slide it on the shaft onto the over collar, the spacer and "
-        "the turntable over it; screw the four M3s through, nuts under the pulley; screw the "
+        "its own bore on a pin), slide it on the shaft onto the over collar, a washer stack on "
+        "each of its holes and the turntable over them; screw the four M3s through, nuts "
+        "under the pulley; screw the "
         "M4 and its washer into the shaft's tapped end, clamping the stack.",
         "Hang the motor under the top plate, the small pulley on its shaft's flat in line "
         "with the large one, the belt on; slide the motor along its slots to tension it.",

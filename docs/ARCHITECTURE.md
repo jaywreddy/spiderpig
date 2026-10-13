@@ -1489,7 +1489,9 @@ ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the cla
 `bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
 offer. A sheet a service cuts is no purchase (`bom.cut_by`) but a cutting line per service
 and sheet, the material included (`bom.CutRow`: an area estimate, `bom.cut_estimate`,
-calibrated to SendCutSend's quotes); the total is the purchases and the cutting. It leaves
+fitted to SendCutSend's quotes: per part a fixed charge plus a rate per cm² at one off,
+times its quantity break, `bom.qty_factor`, the quantity a file's, `bom.same_files`); the
+total is the purchases and the cutting. It leaves
 out rows with no price, and the BOM says so;
 for the running example at the snapshot the unpriced rows were 8 M2 self-tapping screws and
 4 M3 × 18 mm screws, and the made parts came to 39 laser-cut parts in 8 shapes, 90 printed

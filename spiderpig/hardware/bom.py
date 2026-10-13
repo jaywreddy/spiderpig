@@ -41,6 +41,7 @@ only: none in a plastic horn).
 from __future__ import annotations
 
 import csv
+import itertools
 import json
 import math
 import re
@@ -121,25 +122,58 @@ class CutRow:
     usd: float | None
 
 
-CUT_SOURCE = ("an area estimate calibrated to SendCutSend's live quotes of 2026-10-08 (the "
-              "Strider double's 47 parts, USD 117.14 in all, free US shipping over USD 39: "
-              "bom-study/evidence/sheet/prices.json); upload the files for the real quote")
+CUT_SOURCE = ("an area estimate fitted to SendCutSend's live quotes of 2026-10-08 (the Strider "
+              "double's 47 parts, USD 117.14) and 2026-10-12 (the palletizer arm's 18 parts, "
+              "USD 163.01), free US shipping over USD 39; upload the files for the real quote")
 """Where :func:`cut_estimate`'s rates come from (what the BOM and ORDER.md say of it)."""
 
 
+def qty_factor(factors, qty: int) -> float:
+    """A part's price at ``qty`` off over its price at one: ``factors`` are a sheet's
+    ``cut_qty_factors``, ``(from qty, factor)`` ascending, linear in the quantity between
+    them (SendCutSend's own: 3 mm acrylic at 1.40 each at 2 off, 1.12 at 10, quoted 1.33 at
+    4 and 1.26 at 6) and flat past the last."""
+    pts = [(int(q), float(f)) for q, f in factors] or [(1, 1.0)]
+    if qty <= pts[0][0]:
+        return pts[0][1]
+    for (q0, f0), (q1, f1) in itertools.pairwise(pts):
+        if qty <= q1:
+            return f0 + (f1 - f0) * (qty - q0) / (q1 - q0)
+    return pts[-1][1]
+
+
 def cut_estimate(key: str, parts: list[tuple[float, int]]) -> float | None:
-    """What a service charges to cut ``parts`` (``(area cm^2, qty)`` each) from sheet ``key``,
-    the material included: each part ``max(cut_min_usd, cut_usd_cm2 x area)`` (the sheet
-    item's rates); ``None`` without them. Calibrated on SendCutSend's per-file live quotes of
-    2026-10-08 (:data:`CUT_SOURCE`): in 3 mm acrylic a small part is USD 1.26-1.40 whatever
-    its size (1.33 at 4 off), the 93 cm^2 deck plate 6.88; in 5052 0.080-0.090 in the
-    plates come to about 0.20 per cm^2, in 6061 0.100 in 0.40, a small one at least 2.20.
-    On the Strider double: acrylic 49.45 (quoted 49.44), aluminium 68.48 (67.70)."""
+    """What a service charges to cut ``parts`` (``(area cm^2, qty)`` each, a part's net
+    area) from sheet ``key``, the material included: each part
+    ``max(cut_min_usd, cut_fixed_usd + cut_usd_cm2 x area)`` at one off, times its
+    quantity's :func:`qty_factor` (the sheet item's ``cut_qty_factors``); ``None`` without
+    the rates.
+
+    Fitted (:data:`CUT_SOURCE`) on SendCutSend's per-file live quotes, 49 part prices at
+    one off with their quantity breaks: the Strider double's 21 files (2026-10-08) and the
+    palletizer arm's 16 files plus 6 alternatives (2026-10-12). At one off: 3 mm acrylic
+    USD 2.00 for any small part (0.5-17 cm^2), 6.88 at 94 cm^2, 12.42 at 222; 5.4 mm acrylic
+    about 2.6 + 0.097 / cm^2; 5052 about 3.3 + 0.107 / cm^2 whatever the thickness (0.080
+    and 0.125 in within 4 %); 6061 about 3.2 + 0.138. The quantity breaks: at 2 off 0.70 of
+    the one-off price in acrylic, 0.78 in 5052, 0.79 in 6061; at 10 off 0.56, 0.57, 0.67.
+    A part's price also follows its cut length (a plate full of holes costs more than its
+    area says), which the area doesn't see: single parts are within 10 % in acrylic
+    (rms 3 % in 3 mm, 9 % in 5.4 mm) but 20-25 % rms in aluminium (-36 % the Strider's
+    torso, +45 % a small 0.080 in centre plate). The totals: the arm's 163.01 estimated
+    163.86 (+0.5 %; 5052 +1.3 %, 6061 -1.2 %, 5.4 mm acrylic -2.3 %, 3 mm acrylic 0 %); the
+    Strider double's acrylic 49.44 estimated 48.72 on its quoted files (-1.5 %; 47.56,
+    -3.8 %, on its parts as the BOM groups them), its aluminium 67.70 estimated 61.69
+    (-8.9 %: its torso and frame plates are hole-dense). (The model of 2026-10-08,
+    per part ``max(min, rate x area)`` fitted on the Strider's quantity-discounted prices,
+    put the arm at 228.96: +40 %.)"""
     d = get(key).dims
     rate, least = d.get("cut_usd_cm2"), d.get("cut_min_usd")
     if rate is None or least is None:
         return None
-    return round(sum(q * max(float(least), float(rate) * a) for a, q in parts), 2)
+    fixed = float(d.get("cut_fixed_usd", 0.0))
+    factors = d.get("cut_qty_factors", ((1, 1.0),))
+    return round(sum(q * qty_factor(factors, q) * max(float(least), fixed + float(rate) * a)
+                     for a, q in parts), 2)
 
 
 def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
@@ -151,10 +185,24 @@ def cutting_rows(made: list[MadeRow]) -> list[CutRow]:
     out = []
     for key, rows in by.items():
         t_cm = float(get(key).dims.get("thickness", 3.0)) / 10.0
-        parts = [(m.volume_cm3 / t_cm, m.qty) for m in rows]
+        parts = same_files([(m.volume_cm3 / t_cm, m.qty) for m in rows])
         out.append(CutRow(cut_by(key), key, get(key).name, sum(m.qty for m in rows),
                           round(sum(a * q for a, q in parts), 1), cut_estimate(key, parts)))
     return sorted(out, key=lambda c: (c.service, c.sheet))
+
+
+def same_files(parts: list[tuple[float, int]], rel: float = 1e-3) -> list[tuple[float, int]]:
+    """``parts`` (``(area cm^2, qty)``) with the rows of one area (to ``rel``) as one: the
+    quantity a service's price break sees is a file's, and a file is a shape (congruent parts
+    and their mirrors), which an ungrouped BOM (``group=False``) lists a row each; so its
+    cutting costs what the grouped BOM's does."""
+    out: list[tuple[float, int]] = []
+    for a, q in sorted(parts):
+        if out and abs(a - out[-1][0]) <= rel * max(out[-1][0], 1.0):
+            out[-1] = (out[-1][0], out[-1][1] + q)
+        else:
+            out.append((a, q))
+    return out
 
 
 SAW_KERF = 1.0     # mm lost to each cut of rod stock (a hacksaw or a cut-off disc)

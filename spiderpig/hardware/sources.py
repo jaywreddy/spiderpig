@@ -171,6 +171,26 @@ _BOLT_DEPOT = {   # Bolt Depot 18-8 product pages rendered 2026-10-08: key -> (p
     "m3_set_screw_6": ("8707", 0.09, 5.96), "m3_set_screw_8": ("8708", 0.09, 6.24),
     "m3_set_screw_10": ("8709", 0.10, 6.77), "m3_set_screw_12": ("8710", 0.12, 7.97),
     "m3_set_screw_16": ("8711", 0.13, 8.84),
+    # the 18-8 listings rendered 2026-10-12 (:data:`_BOLT_DEPOT_OCT12`: the arm's screws,
+    # nuts and washers)
+    "m3_bhcs_10": ("7220", 0.06, 4.30), "m3_bhcs_12": ("7221", 0.07, 4.58),
+    "m3_bhcs_16": ("7222", 0.07, 4.75), "m3_bhcs_20": ("7223", 0.08, 5.07),
+    "m3_bhcs_25": ("15291", 0.09, 6.22), "m3_bhcs_30": ("15292", 0.11, 7.39),
+    "m3_shcs_6": ("6378", 0.05, 3.83), "m3_shcs_8": ("6379", 0.06, 4.07),
+    "m3_shcs_10": ("6380", 0.06, 4.27), "m3_shcs_12": ("6381", 0.06, 4.43),
+    "m3_shcs_16": ("6382", 0.06, 4.50), "m3_shcs_20": ("6383", 0.07, 4.84),
+    "m3_shcs_25": ("6384", 0.08, 5.83), "m3_shcs_30": ("6385", 0.10, 6.89),
+    "m3_shcs_35": ("6386", 0.15, 10.51), "m3_shcs_40": ("6387", 0.15, 11.01),
+    "m4_bhcs_6": ("6620", 0.08, 5.25), "m4_bhcs_8": ("6622", 0.08, 5.32),
+    "m4_bhcs_10": ("6623", 0.08, 5.53), "m4_bhcs_12": ("6624", 0.09, 5.72),
+    "m4_bhcs_16": ("6625", 0.11, 7.39),
+    "m2_shcs_4": ("6358", 0.09, 6.26), "m2_shcs_5": ("6362", 0.09, 6.59),
+    "m2_shcs_6": ("6363", 0.10, 6.84), "m2_shcs_8": ("6364", 0.11, 8.05),
+    "m2_shcs_10": ("6365", 0.12, 8.88), "m2_shcs_12": ("6366", 0.13, 9.25),
+    "m2_shcs_16": ("6367", 0.19, 13.24), "m2_shcs_20": ("6368", 0.22, 15.57),
+    "m2_nut": ("7362", 0.07, 2.21),              # 4 AF x 1.6 (ISO 4032)
+    "m2_washer_din125": ("7364", 0.05, 1.31),    # 2.2-2.34 x 5 x 0.25-0.35
+    "m4_washer": ("4514", 0.05, 1.66),           # 4.3-4.48 x 9 x 0.7-0.9 (DIN 125-A)
 }
 """The default robot's M3 button heads, nuts and wide washers: Bolt Depot sells them singly
 (BOM study 2026-10-08, evidence/fasteners/prices.json), so it is their first offer, ahead of
@@ -179,18 +199,42 @@ is the DIN 9021 size modelled; the DIN 125 washer (4513, 3.2 x 7 x 0.45-0.55) is
 clamped M3 shims are bought as (:data:`hardware.bom.SHIM_AS`, since 2026-10-08: Accu's
 DIN 433, 6 mm OD, was the one Accu line left); the M3 set screws are cup point (ISO 4029:
 the frame ties' studs thread into a standoff at each end, their point bearing on nothing),
-the user's decision of 2026-10-08, which leaves no Accu cart."""
+the user's decision of 2026-10-08, which leaves no Accu cart. The arm's (2026-10-12): every
+M3 button and socket head length Bolt Depot lists in 18-8 (no 14 or 18 mm socket head, in
+18-8 or 12.9: those stay McMaster's), the M4 button heads, the M2 socket heads, nut and
+washer, the M4 washer; the M3 socket heads were McMaster's black-oxide 12.9 (its 18-8 M3
+series stops at 20 mm), now its alternative."""
+
+
+_BOLT_DEPOT_OCT12 = frozenset(list(_BOLT_DEPOT)[list(_BOLT_DEPOT).index("m3_bhcs_10"):])
+"""The entries of :data:`_BOLT_DEPOT` read on 2026-10-12 (the rest on 2026-10-08)."""
 
 
 def _bolt_depot(key: str) -> tuple[Offer, ...]:
     if key not in _BOLT_DEPOT:
         return ()
     product, each, per_100 = _BOLT_DEPOT[key]
+    day = "2026-10-12" if key in _BOLT_DEPOT_OCT12 else "2026-10-08"
     return (Offer("Bolt Depot", f"https://boltdepot.com/Product-Details?product={product}",
                   product, pack_qty=1, price_usd=each, tiers=((1, each), (100, per_100 / 100)),
-                  verified=True, note="18-8 stainless (A-2), sold singly; page rendered "
-                                      "2026-10-08"),)
+                  verified=True, note=f"18-8 stainless (A-2), sold singly; page rendered "
+                                      f"{day}"),)
 
+
+_M2_KIT = Offer("Amazon", "https://www.amazon.com/dp/B0DCKCN2WM", "B0DCKCN2WM", pack_qty=900,
+                price_usd=7.58,
+                note="900-pc stainless M2 socket head, nut and washer kit (search-result price "
+                     "2026-10-12): the alternative to Bolt Depot's singles; lengths and counts "
+                     "per length not listed")
+_SHIM_KIT = Offer("Amazon", "https://www.amazon.com/dp/B0GQ3JGHPZ", "B0GQ3JGHPZ", pack_qty=17,
+                  price_usd=16.99,
+                  note="shim washer kit 3x6, 4x8, 5x9, 6x10, 8x12, 10x16 in 0.1 / 0.2 / 0.3 / "
+                       "0.5 mm (search-result price 2026-10-12): one kit for the 4 x 8 DIN 988 "
+                       "shims and the 8 x 12 x 0.5 (its bore 8.0-8.2: check one on the shaft); "
+                       "the count per size not listed (about 17 of each at the listing's USD "
+                       "0.04 a piece)")
+"""The arm's kits (2026-10-12): one pack covers every row that names it (same vendor and
+SKU: :func:`hardware.bom.bom_from_mechanism` buys it once)."""
 
 SOURCES: dict[str, tuple[Offer, ...]] = {
     **{f"m{d}_bhcs_{L}": (*_bolt_depot(f"m{d}_bhcs_{L}"),
@@ -205,11 +249,27 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                                    note=f"18-8 stainless ISO 4026 flat point M4 x {L}; seen on "
                                         "McMaster's own ISO 4026 listing"),)
        for L, (pn, n) in _MCM_M4_SET.items()},
-    **{f"m3_shcs_{L}": (Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=100,
+    **{f"m3_shcs_{L}": (*_bolt_depot(f"m3_shcs_{L}"),
+                        Offer(_MCM, f"https://www.mcmaster.com/{pn}/", pn, pack_qty=100,
                               note=f"black-oxide alloy steel 12.9 M3 x {L}"
                                    + (" (partially threaded)" if L >= 25 else "")
-                                   + f"; {_MCM_NOTE}; pack size not confirmed"),)
+                                   + f"; {_MCM_NOTE}; pack size not confirmed"))
        for L, pn in _MCM_M3_SHCS.items()},
+    **{f"m2_shcs_{L}": (*_bolt_depot(f"m2_shcs_{L}"), _M2_KIT)
+       for L in (4, 5, 6, 8, 10, 12, 16, 20)},
+    "m2_nut": (*_bolt_depot("m2_nut"), _M2_KIT),
+    "m2_washer_din125": (*_bolt_depot("m2_washer_din125"), _M2_KIT),
+    "m4_bhcs_8": (*_bolt_depot("m4_bhcs_8"),
+                  Offer("Amazon", "https://www.amazon.com/dp/B07ZKLL4JH", "B07ZKLL4JH",
+                        pack_qty=100, price_usd=5.97,
+                        note="M4 x 8 button head, alloy steel 10.9, 100 pcs (search-result "
+                             "price 2026-10-12)"),
+                  Offer(_MCM, "https://www.mcmaster.com/92095A189/", "92095A189",
+                        pack_qty=100, verified=True,
+                        note="18-8 stainless ISO 7380 M4 x 8; seen with its length and pack "
+                             "on McMaster's own listing (price shown only on the product "
+                             "page)")),
+    "shim_8x12x0p5": (_SHIM_KIT,),      # (the 4 x 8 DIN 988 ones below: the same kit)
     **{f"m3_set_screw_{L}": _bolt_depot(f"m3_set_screw_{L}") for L in (6, 8, 10, 12, 16)},
     "m3_washer": _bolt_depot("m3_washer"),
     "m3_round_standoff_ff_12": (Offer("Amazon", "https://www.amazon.com/dp/B0DBQMYT5T",
@@ -268,9 +328,10 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                              pack_qty=100, verified=True,
                              note="18-8 stainless oversized M3 washer, 3.2 x 9.0 x 0.7-0.9 "
                                   "(McMaster's page title, rendered 2026-10-05)"),),
-    "m4_washer": (Offer(_MCM, "https://www.mcmaster.com/93475A230/", "93475A230", pack_qty=100,
+    "m4_washer": (*_bolt_depot("m4_washer"),
+                  Offer(_MCM, "https://www.mcmaster.com/93475A230/", "93475A230", pack_qty=100,
                         verified=True, note="18-8 stainless M4 washer, 4.3 x 9.0 (McMaster's "
-                                            "page title, rendered 2026-10-05)"),),
+                                            "page title, rendered 2026-10-05)")),
     "m2_self_tap_6": (
         Offer("Accu", "https://accu-components.com/us/torx-pan-head-thread-forming-screws/"
               "993377-SHPRC-M2-6-CS-BZP", "SHPRC-M2-6-CS-BZP", pack_qty=1, price_usd=0.46,
@@ -311,7 +372,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               note="PTFE 6.3 x 12 x 0.5, minimum order 50 (USD 0.08 each in the maker's "
                    "TT-0000-00 table)"),),
     # -- DIN 988 shims, per thickness (hardware.shims) -----------------------------------
-    **{f"shim_din988_{i}x{o}_t{t:g}".replace(".", "p"): (Offer(
+    **{f"shim_din988_{i}x{o}_t{t:g}".replace(".", "p"): (
+        *((_SHIM_KIT,) if (i, o) in ((3, 6), (4, 8)) and t <= 0.5 else ()), Offer(
         "Accu", f"https://accu-components.com/us/shim-washers/{pid}-HSHN-{i}-{o}-"
         f"{f'{t:g}'.replace('.', '-')}-A2", f"HSHN-{i}-{o}-{t:g}-A2", pack_qty=1, verified=True,
         note=f"A2 stainless DIN 988 shim {i} x {o} x {t:g} (the maker's datasheet), sold "

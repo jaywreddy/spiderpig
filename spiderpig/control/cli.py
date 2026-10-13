@@ -63,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         # a capstan's turntable snaps to its driver's phase only where a camera then checks
         # the zero (a cord's slip: a full cycle's jump it sees)
         phase = (not turn or PRESETS[turn].transmission != "capstan"
-                 or cfg.role("homing_reference") == "vision_fiducial")
+                 or cfg.role("homing_reference").startswith("vision_fiducial"))
         for i, s in enumerate(homing.plan(axes, sensors, phase), 1):
             print(f"{i}. [{s.axis}] {s.action}")
         return 0

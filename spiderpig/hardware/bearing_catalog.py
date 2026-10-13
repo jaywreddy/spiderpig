@@ -8,9 +8,11 @@ same from every maker; ``radial_clearance_mm`` is ISO 5753-1's normal group (CN)
 of 10 mm or less, 2-13 um, the range a bearing bought without a clearance suffix comes in
 (an MC3 miniature, the Japanese makers' normal, is 5-10 um: inside it). ``mass_g`` is an
 estimate (:data:`FILL` of the steel annulus), for the mass model. No price is quoted
-from memory: McMaster-Carr's listings refuse a scripted fetch from here, so each offer
-points at McMaster's listing of that trade number, unpriced and ``verified=False``, until a
-fetch with the user's own session (``spiderpig cad fetch``) or an order confirms it.
+from memory. The BOM's offer (the first) is a generic 10-pack on Amazon (:data:`AMAZON`,
+read 2026-10-12: P0 / ABEC-1, the clearance not stated), then VXB's (:data:`VXB`), then
+McMaster's listing of the trade number, unpriced and ``verified=False`` (its listings refuse
+a scripted fetch) until a fetch with the user's own session (``spiderpig cad fetch``) or an
+order confirms it.
 
 Each bearing has a vendor model registered (:func:`hardware.cad.register_part_cad`):
 McMaster's STEP, unpinned (``sha256 == ""``) until a file is imported into the CAD cache
@@ -66,9 +68,22 @@ VXB = {
     "bearing_608zz": ("https://vxb.com/products/608zz-bearing-8x22x7-shielded", "608ZZ10", 10,
                       8.88),
 }
-"""The BOM's offer per bearing: VXB (a bearing house; the open MR106 its 2.5 mm one, not
-the 2 mm listed as "MR106"). Generic no-name packs run several times cheaper (3DJake's
-688ZZ: 10 for $5.68), at the cost of their clearance class."""
+"""VXB's offer per bearing (a bearing house; the open MR106 its 2.5 mm one, not the 2 mm
+listed as "MR106"): the alternative to the generic packs (:data:`AMAZON`), which run several
+times cheaper at the cost of a stated clearance class."""
+
+AMAZON = {
+    # key: ((ASIN, pack, USD, title), ...): Amazon search results read 2026-10-12 (delivered
+    # to Pittsburgh), the first the BOM's
+    "bearing_mr84zz": (("B0GWRGY86Z", 10, 7.49, "uxcell MR84ZZ 4 x 8 x 3 mm"),),
+    "bearing_mr84": (("B0FGJMHY3Y", 10, 7.59, "MR84 open 4 x 8 x 2 mm"),),
+    "bearing_mr106": (("B07RVJZZH9", 5, 7.69, "uxcell MR106 open 6 x 10 x 2.5 mm"),
+                      ("B0HKNYLBXN", 10, 10.84, "MR106 (L-1060) open 6 x 10 x 2.5 mm")),
+    "bearing_mr106zz": (("B0C4PGLSCY", 10, 7.49, "ACROPIX MR106ZZ 6 x 10 x 3 mm"),),
+}
+"""The BOM's offer per miniature bearing (the first): a generic pack (uxcell-type, P0 /
+ABEC-1; the radial clearance not stated: a pair preloaded by its disc spring takes up the
+play, measure a sample's)."""
 
 FREE_CAD = {
     # key: (url, sha256, license): a model anyone can download (pinned: a changed file is
@@ -94,11 +109,15 @@ them."""
 
 
 def _generic(key: str, trade: str) -> tuple[Offer, ...]:
+    amazon = tuple(Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=n,
+                         price_usd=usd, note=f"{title}, {n} a pack (P0 / ABEC-1, clearance "
+                                             "not stated); search-result price 2026-10-12")
+                   for asin, n, usd, title in AMAZON.get(key, ()))
     if key not in VXB:
-        return ()
+        return amazon
     url, sku, n, usd = VXB[key]
-    return (Offer("VXB", url, sku, pack_qty=n, price_usd=usd,
-                  note=f"{trade}, {n} a pack; read on 2026-10-12"),)
+    return (*amazon, Offer("VXB", url, sku, pack_qty=n, price_usd=usd,
+                           note=f"{trade}, {n} a pack; read on 2026-10-12"))
 
 
 FILL = 0.7

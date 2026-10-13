@@ -198,6 +198,10 @@ PONOKO_RULES_ACRYLIC_3MM = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6
                             "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1, "metal": False,
                             "kerf_mm": 0.2}
 
+CUT_ACRYLIC = {"cut_qty_factors": ((1, 1.0), (2, 0.70), (10, 0.56), (50, 0.45))}
+"""SendCutSend's quantity breaks in acrylic (3 and 5.4 mm alike): a part's price at 2, 10 and
+50 off over its price at one (:func:`hardware.bom.qty_factor`)."""
+
 _ACRYLIC_3MM = {"thickness": 3.0, "sheet_mm": (300.0, 300.0), "material": "acrylic",
                 "density": 1.19, "yield_mpa": 50.0}
 
@@ -218,16 +222,16 @@ register(
                 note="13 coloured 12 x 12 in cast sheets")),
          dims={**_ACRYLIC_3MM, **SCS_RULES_ACRYLIC,
                # the cutting, material included (hardware.bom.cut_estimate: SendCutSend's
-               # live quotes of 2026-10-08, a small part 1.33 at 4 off, the deck plate 6.88)
-               "cut_usd_cm2": 0.074, "cut_min_usd": 1.33},
+               # live quotes, a small part 2.00 at one off, 1.33 at 4; 6.88 at 94 cm^2)
+               **CUT_ACRYLIC, "cut_fixed_usd": 1.0, "cut_usd_cm2": 0.055, "cut_min_usd": 2.00},
          notes="Nominal 3 mm; SendCutSend's arrives 2.24-3.46 mm (+.018 / -.030 in). "
                "Measure yours and pass --thickness."),
     Item("acrylic_5p4mm", "5.4 mm (0.213 in) cast acrylic sheet, cut by SendCutSend", "sheet",
          (Offer("SendCutSend", "https://sendcutsend.com/materials/acrylic/",
                 note="one of its cast acrylic thicknesses (1.6, 3.0, 4.5, 5.4, 9.5, 12.7 mm, "
-                     "read 2026-10-12); the price per area an estimate (3 mm's x 1.8)"),),
+                     "read 2026-10-12); the arm's six links quoted USD 25.60 (2026-10-12)"),),
          dims={**_ACRYLIC_3MM, "thickness": 5.4, **SCS_RULES_ACRYLIC,
-               "cut_usd_cm2": 0.13, "cut_min_usd": 1.5},
+               **CUT_ACRYLIC, "cut_fixed_usd": 2.6, "cut_usd_cm2": 0.097, "cut_min_usd": 2.6},
          notes="An arm's links (2026-10-12): a preloaded pair of bearings fits inside a link "
                "this thick (an MR84ZZ and an MR84, 5.2 mm; two MR106, 5.2), no hub. Measure "
                "the sheet: a pair needs its 0.2 mm between them."),

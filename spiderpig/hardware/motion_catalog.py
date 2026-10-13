@@ -2,9 +2,10 @@
 GT2 timing pulleys and belts, the capstan's cord.
 
 Appended to the catalog from the end of :mod:`hardware.parts` (new items only). No price
-is quoted from memory: the offers name the listings, unpriced and ``verified=False``,
-until a fetch or an order confirms them (the McMaster ones through ``spiderpig cad``, which
-also fetches their models).
+is quoted from memory: the parts an arm buys have a marketplace listing first
+(:data:`AMAZON`, search-result prices of 2026-10-12, ``verified=False``); the rest name the
+listings, unpriced and ``verified=False``, until a fetch or an order confirms them (the
+McMaster ones through ``spiderpig cad``, which also fetches their models).
 
 **GT2** (2 mm pitch, Gates 2MGT's profile; the 3D printers' belt): a pulley's pitch
 diameter is ``teeth x 2 / pi``, its outside diameter 0.508 mm under it (the belt's pitch
@@ -57,10 +58,38 @@ def _unpriced(vendor: str, url: str, note: str) -> Offer:
     return Offer(vendor, url, None, note=f"{note}; not fetched: unpriced")
 
 
+def _amazon(asin: str, pack: int, usd: float, note: str) -> Offer:
+    return Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=pack,
+                 price_usd=usd, note=f"{note}; search-result price 2026-10-12")
+
+
+AMAZON: dict[str, Offer] = {
+    "stepper_17hs4401": _amazon("B07LCK19D5", 3, 33.99, "STEPPERONLINE 3-pack, NEMA 17 "
+                                "39 mm body, 45 N·cm, 1.5 A, 1 m cable and connector (the "
+                                "17HS4401 class)"),
+    "pulley_gt2_16t_5mm": _amazon("B077GMR328", 5, 6.99, "WINSINN GT2 16 teeth, 5 mm bore, "
+                                  "6 mm belt, 5 pcs"),
+    "pulley_gt2_80t_8mm": _amazon("B0GW4H3ML4", 1, 8.59, "GT2 80 teeth, 8 mm bore, 6 mm "
+                                  "belt, 1 pc: check its hub and drill and tap the four M3 "
+                                  "holes on the 30 mm circle (this item's notes)"),
+    gt2_loop(232): _amazon("B0FRFGBS6J", 5, 8.19, "MECCANIXITY GT2 6 mm closed loop 232 mm, "
+                           "5 pcs"),
+    gt2_loop(200): _amazon("B07V6N32B1", 10, 7.99, "3Dman GT2 6 mm closed loop 200 mm, "
+                           "10 pcs"),
+}
+"""The first (the BOM's) offer of the drive parts an arm buys, ahead of the item's own."""
+
+
+def _offers(key: str, *own: Offer) -> tuple[Offer, ...]:
+    return (AMAZON[key], *own) if key in AMAZON else own
+
+
 register(Item(
     "stepper_17hs4401", "NEMA 17 stepper 17HS4401 (40 mm, 0.40 N·m, 1.7 A)", "motor",
-    (_unpriced(_SO, "https://www.omc-stepperonline.com/nema-17-bipolar-40mm-64oz-in-45ncm-"
-                    "2a-4-lead-3d-printer-motor-17hs16-2004s1", "the 17HS4401 family"),),
+    _offers("stepper_17hs4401",
+            _unpriced(_SO, "https://www.omc-stepperonline.com/nema-17-bipolar-40mm-64oz-in-"
+                           "45ncm-2a-4-lead-3d-printer-motor-17hs16-2004s1", "the 17HS4401 "
+                           "family")),
     dims={"mass_g": 280.0, "material": "steel"}))
 register(Item(
     "stepper_17hs19", "NEMA 17 stepper 17HS19-2004S1 (48 mm, 0.59 N·m, 2.0 A)", "motor",
@@ -81,8 +110,8 @@ for _key, (_z, _bore, _hub_d, _hub_l) in PULLEYS.items():
     _pd = pitch_d(_z)
     register(Item(
         _key, f"GT2 timing pulley {_z} teeth, 6 mm belt, {_bore:g} mm bore", "pulley",
-        (_unpriced(_MCM, "https://www.mcmaster.com/products/timing-belt-pulleys/", "GT2 "
-                   "(2 mm pitch) pulleys"),),
+        _offers(_key, _unpriced(_MCM, "https://www.mcmaster.com/products/timing-belt-"
+                                      "pulleys/", "GT2 (2 mm pitch) pulleys")),
         dims={"teeth": _z, "pitch_d": round(_pd, 3), "od": round(_pd - 0.508, 3),
               "toothed_w": 7.0, "flange_t": 1.0, "flange_d": round(_pd + 4.0, 3),
               "bore": _bore, "hub_d": _hub_d, "hub_l": _hub_l, "material": "aluminium",
@@ -94,8 +123,8 @@ for _key, (_z, _bore, _hub_d, _hub_l) in PULLEYS.items():
 for _L in GT2_LOOPS:
     register(Item(
         gt2_loop(_L), f"GT2 closed-loop timing belt, 6 mm wide, {_L} mm", "belt",
-        (_unpriced(_MCM, "https://www.mcmaster.com/products/timing-belts/", "GT2 6 mm "
-                   "loops"),),
+        _offers(gt2_loop(_L), _unpriced(_MCM, "https://www.mcmaster.com/products/timing-"
+                                              "belts/", "GT2 6 mm loops")),
         dims={"length": float(_L), "width": 6.0, "pitch": GT2_PITCH, "teeth": _L // 2,
               "thickness": 1.38, "material": "nylon"}))
 

@@ -103,6 +103,11 @@ REFERENCES: dict[str, Reference] = {r.key: r for r in (
               "a Camera Module 3 Wide about 50 mm over an FR-4 board of copper dots, its "
               "lens locked; a dot's centroid to a tenth of a pixel; 10 um budgeted: "
               "control.vision (an estimate)"),
+    Reference("vision_fiducial_ov5647", "vision_fiducial with the cheaper OV5647 camera "
+              "(manual focus, 5 MP)", 0.015,
+              (("camera_ov5647_m12", 1.0), ("fiducial_pcb", 1.0)),
+              "an OV5647 on an M12 lens about 50 mm over the board, 39 um a pixel (the "
+              "Wide's 27): 15 um budgeted (an estimate, scaled from vision_fiducial's)"),
 )}
 """The user's (2026-10-12): "vision based homing to a fiducial target with a reference
 sheet, we don't need super accurate switch based homing". With ``vision_fiducial`` every

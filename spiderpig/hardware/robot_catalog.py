@@ -3,7 +3,9 @@
 homing sensor, the suction tool and its vacuum, the wrist's stepper.
 
 Appended to the catalog from the end of :mod:`hardware.parts` (new items only). No price
-is quoted from memory: every offer names a listing, unpriced, until a fetch or an order
+is quoted from memory: the parts the arm buys have a marketplace listing first (Amazon
+search-result prices of 2026-10-12, ``verified=False``; :func:`_amazon`), a price marked an
+estimate where none was seen; the rest name a listing, unpriced, until a fetch or an order
 confirms it (McMaster's through ``spiderpig cad``). A dimension a listing doesn't state
 is marked so in the item's notes (measure the part).
 """
@@ -19,6 +21,11 @@ def _unpriced(vendor: str, url: str, note: str) -> Offer:
     return Offer(vendor, url, None, note=f"{note}; not fetched: unpriced")
 
 
+def _amazon(asin: str, pack: int, usd: float, note: str) -> Offer:
+    return Offer("Amazon", f"https://www.amazon.com/dp/{asin}", asin, pack_qty=pack,
+                 price_usd=usd, note=f"{note}; search-result price 2026-10-12")
+
+
 register(Item(
     "shaft_8mm_h6_100", "8 mm precision steel shaft, h6, 100 mm (cut to length)", "shaft",
     (_unpriced(_MCM, "https://www.mcmaster.com/products/rotary-shafts/", "8 mm h6 "
@@ -32,9 +39,11 @@ register(Item(
           "must slide on it."))
 register(Item(
     "shaft_8mm_h6_tapped", "8 mm precision steel shaft, h6, one end tapped M4 x 10, cut to "
-    "length (Misumi PSFJ type, configured)", "shaft",
-    (_unpriced("Misumi", "https://us.misumi-ec.com/vona2/detail/110302634310/",
-               "PSFJ8, length and the M4 tap configured on the page"),),
+    "length (a MISUMI linear shaft, one end tapped, configured)", "shaft",
+    (Offer("Misumi", "https://us.misumi-ec.com/vona2/detail/110302634310/", price_usd=10.0,
+           note="the one-end-tapped family (the plain PSFJ has no taps): length and the M4 "
+                "tap configured on the page; part number unconfirmed, the price an estimate "
+                "(about USD 10, not seen: the configurator quotes it)"),),
     dims={"d": 8.0, "length": 100.0, "tap": "M4", "tap_depth": 10.0,
           "tolerance": "h6 (0 / -0.009)", "material": "steel"},
     notes="The base_pair turret's turning shaft: cut to length and tapped at the top by the "
@@ -51,15 +60,22 @@ register(Item(
           "and the column screws' heads stand under the plate."))
 register(Item(
     "spiral_wrap_6mm", "Spiral cable wrap, 6 mm, per metre", "cable",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=spiral+cable+wrap+6mm", "spiral wrap"),),
+    (_amazon("B0918XNP8J", 3, 5.99, "CSZD spiral wrap 1/4 in (6 mm), 10 ft (3 m) a pack"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=spiral+cable+wrap+6mm", "spiral wrap")),
     dims={"d": 6.0},
     notes="The turntable's cables (the steppers', the endstop's, the vacuum tube) bundled in "
           "a loose loop round the base: the fixed shaft is solid, nothing passes through it, "
           "so the loop takes the yaw's turn (no slip ring)."))
 register(Item(
     "collar_8mm", "One-piece clamping shaft collar, 8 mm bore, 18 mm OD x 9 mm", "collar",
-    (_unpriced(_MCM, "https://www.mcmaster.com/products/shaft-collars/", "8 mm bore "
-               "one-piece clamping collars"),),
+    (_amazon("B0DDC7JQXL", 4, 8.29, "PATIKIL two-piece clamping collar, 8 mm bore, steel, "
+             "18 mm OD x 9 mm, 4 pcs (round 3 of the cost loop: the 25 mm one below clashes "
+             "in the base_pair turret)"),
+     _amazon("B0FFLT81TK", 6, 9.39, "uxcell one-piece clamping collar, 8 mm bore, 6 pcs: "
+             "aluminium, 25 mm OD x 8 mm (the model's 18 x 9 steel collar is the clearance "
+             "it keeps: check the 25 mm clears the plates and pulley before ordering)"),
+     _unpriced(_MCM, "https://www.mcmaster.com/products/shaft-collars/", "8 mm bore "
+               "one-piece clamping collars")),
     dims={"id": 8.0, "od": 18.0, "w": 9.0, "material": "steel"},
     notes="Clamping, not set-screw: a precision shaft is hardened and a set screw's cup "
           "point won't bite it; the clamp's face squares the shaft against the boss. Sizes "
@@ -72,8 +88,11 @@ register(Item(
           "land is 12.1 mm), never on the shields."))
 register(Item(
     "wave_washer_8mm", "Wave spring washer for 8 mm shaft, 8.4 x 12 mm", "washer",
-    (_unpriced(_MCM, "https://www.mcmaster.com/products/wave-washers/", "8 mm wave "
-               "washers"),),
+    (_amazon("B00I2VV4VI", 25, 6.93, "Hillman M8 wave spring washer, zinc-plated steel, 25 "
+             "pcs: its OD, height and load not listed (check it against this item's 12 mm "
+             "OD and 30 N)"),
+     _unpriced(_MCM, "https://www.mcmaster.com/products/wave-washers/", "8 mm wave "
+               "washers")),
     dims={"id": 8.4, "od": 12.0, "t": 0.3, "free_h": 1.2, "work_h": 0.6,
           "load_n": 30.0, "material": "steel"},
     notes="The preloaded pair's spring, under the top collar on the upper inner ring (in "
@@ -83,8 +102,9 @@ register(Item(
 register(Item(
     "optical_endstop", "Slotted optical endstop module (TCST2103 type, 3D-printer board)",
     "electronics",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=optical+endstop+tcst2103", "optical "
-               "endstop boards"),),
+    (_amazon("B09BQ8SNMK", 6, 9.99, "optical endstop modules with 1 m cables, 6 pcs"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=optical+endstop+tcst2103", "optical "
+               "endstop boards")),
     dims={"board": [33.0, 10.5, 1.6], "slot_w": 3.0, "slot_h": 6.0, "body": [12.0, 6.0, 11.0],
           "hole_pitch": 19.0, "mass_g": 3.0},
     notes="The homing sensor: a flag through its slot breaks the beam. Board and body sizes "
@@ -92,29 +112,36 @@ register(Item(
 register(Item(
     "suction_cup_m5_10", "Vacuum suction cup, 10 mm NBR, M5 male (Festo VAS-10-M5-NBR)",
     "pneumatic",
-    (_unpriced("Festo", "https://www.festo.com/us/en/a/173440/", "VAS-10-M5-NBR"),),
+    (_amazon("B07MB8P3B2", 4, 8.18, "uxcell 10 mm suction cup, M5 male joint, silicone (not "
+             "NBR: fine on clean glass), 4 pcs"),
+     _unpriced("Festo", "https://www.festo.com/us/en/a/173440/", "VAS-10-M5-NBR")),
     dims={"d": 10.0, "h": 11.0, "thread": "M5", "mass_g": 2.0, "material": "nylon"},
     notes="The tool: picks glass slides by vacuum. Height is nominal (UNVERIFIED)."))
 register(Item(
     "vacuum_pump_12v", "12 V diaphragm vacuum pump (micro, about -60 kPa)", "pneumatic",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=12v+micro+vacuum+pump", "micro "
-               "vacuum pumps"),),
+    (_amazon("B0GQ9C828K", 1, 17.03, "CJVP28-AB12C 12 V micro 370 vacuum pump"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=12v+micro+vacuum+pump", "micro "
+               "vacuum pumps")),
     dims={"mass_g": 60.0},
     notes="Sits off the arm, on the bench; feeds the suction cup through the valve."))
 register(Item(
     "solenoid_valve_12v_3way", "12 V 3-way solenoid valve (vents the cup to release)",
     "pneumatic",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=12v+3+way+mini+solenoid+valve",
-               "mini 3-way valves"),),
+    (_amazon("B07XCV799G", 2, 9.99, "uxcell 2-position 3-way 12 V 0.2 A air valve, 2 pcs"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=12v+3+way+mini+solenoid+valve",
+               "mini 3-way valves")),
     dims={"mass_g": 20.0}))
 register(Item(
     "pu_tube_4mm", "PU tubing 4 mm OD x 2.5 mm ID, per metre", "pneumatic",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=4mm+pu+tubing", "4 mm PU tube"),),
+    (_amazon("B0DJZ1CRCC", 5, 6.89, "HARFINGTON PU tube 4 mm OD x 2.5 mm ID, 5 m a pack"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=4mm+pu+tubing", "4 mm PU tube")),
     dims={"od": 4.0, "id": 2.5}))
 register(Item(
     "barb_m5_4mm", "Push-in fitting, M5 male to 4 mm tube", "pneumatic",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=m5+push+in+fitting+4mm", "M5 to 4 mm "
-               "fittings"),),
+    (_amazon("B07KGMBZZJ", 10, 5.83, "uxcell straight push-in fitting M5 male x 4 mm tube, "
+             "10 pcs"),
+     _unpriced("Amazon", "https://www.amazon.com/s?k=m5+push+in+fitting+4mm", "M5 to 4 mm "
+               "fittings")),
     dims={"thread": "M5", "tube": 4.0, "mass_g": 3.0}))
 register(Item(
     "stepper_11hs20", "NEMA 11 stepper 11HS20-0674 (0.12 N·m, 0.67 A)", "motor",
@@ -149,7 +176,10 @@ register(Item(
     "camera_rpi_module3_wide", "Raspberry Pi Camera Module 3 Wide (12 MP, autofocus from "
     "5 cm, 120 deg), CSI cable", "electronics",
     (Offer("Raspberry Pi", "https://www.raspberrypi.com/products/camera-module-3/",
-           price_usd=35.0, note="the Wide; the list price"),),
+           price_usd=35.0, note="the Wide; the list price"),
+     _amazon("B07G9VLPZH", 1, 16.00, "an alternative, not the same camera: OV5647 5 MP with "
+             "an M12 lens (90 deg), manual focus (set it once at the working height), no "
+             "autofocus; 25 x 24 mm board (check its mounting)")),
     dims={"board": [25.0, 24.0, 12.4], "pixels": [4608, 2592], "min_focus_mm": 50.0,
           "mass_g": 4.0},
     notes="The homing reference's camera (control.vision): on the tool holder about 50 mm "
@@ -157,6 +187,16 @@ register(Item(
           "(a Raspberry Pi's) CSI port. The standard module focuses only from 10 cm. "
           "Mechanical drawing and STEP: Raspberry Pi's product information portal "
           "(pip.raspberrypi.com)."))
+register(Item(
+    "camera_ov5647_m12", "OV5647 5 MP camera for the Raspberry Pi, M12 lens (about 90 deg), "
+    "manual focus, CSI cable", "electronics",
+    (_amazon("B07G9VLPZH", 1, 16.00, "OV5647 with an M12 lens; set its focus once at the "
+             "working height and lock the lens"),),
+    dims={"board": [25.0, 24.0, 12.4], "pixels": [2592, 1944], "fov_deg": 90.0,
+          "mass_g": 4.0},
+    notes="The cheaper homing camera (round 2 of the cost loop): about 39 um a pixel 50 mm "
+          "over the board (the Camera Module 3 Wide's 27); a dot's centroid to a tenth of a "
+          "pixel all the same, its focus fixed by hand (no autofocus to drift)."))
 register(Item(
     "fiducial_pcb", "Reference board: FR-4 1.6 mm, 100 x 100 mm, a grid of copper dots "
     "(ENIG), screwed to the base plate", "electronics",
@@ -186,7 +226,7 @@ for _L in M4_HEX_STANDOFF_LENGTHS:
         (Offer("Amazon", "https://www.amazon.com/s?k=M4+hex+standoff+female+female",
                pack_qty=10, price_usd=9.0, note="search; packs of 10, an estimate"),),
         dims={"length": float(_L), "af": 7.0, "thread": "M4", "material": "aluminium"},
-        notes="A base_pair turret's column: four of them between its plates carry the arm's "
+        notes="A base_pair turret's column: seven of them between its plates carry the arm's "
               "tipping moment (a 7 mm hex racks about six times less than the M3 rounds)."))
 register(Item(
     "angle_bracket_20", "Steel L angle bracket 20 x 20 x 16 mm, 3.4 mm holes (corner brace)",

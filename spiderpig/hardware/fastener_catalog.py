@@ -60,10 +60,30 @@ compressed by the shims under them to the column's preload. Loads at 75 % of the
 travel (``h0`` is the free height, the cone ``h0 - t``): DIN 2093's table (39 N and 151 N;
 Lesjöfors' stainless C8 36 N), checked 2026-10-12."""
 
+DISC_SPRINGS_123 = {
+    # key: (123Bearing reference, (from qty, USD each), ...): its pages read 2026-10-12
+    "disc_spring_din2093_c8": ("S4206", ((1, 1.02), (5, 0.88), (10, 0.74))),
+    "disc_spring_din2093_c12p5": ("S4227", ((1, 1.22),)),
+}
+"""The disc springs' first (the BOM's) offer: 123Bearing's DIN 2093 springs, sold singly with
+quantity breaks (shipping not verified); Lesjöfors' the alternative."""
+
+
+def _disc_123(key: str) -> tuple[Offer, ...]:
+    if key not in DISC_SPRINGS_123:
+        return ()
+    ref, tiers = DISC_SPRINGS_123[key]
+    return (Offer("123Bearing", "https://www.123bearing.com/accessories/washer/spring-disc-"
+                  f"din2093/{ref.lower()}", ref, price_usd=tiers[0][1], tiers=tiers,
+                  note=f"DIN 2093 disc spring {ref}, sold singly, USD each from "
+                       + ", ".join(f"{q}: {p:.2f}" for q, p in tiers)
+                       + " (page read 2026-10-12; shipping not verified)"),)
+
 for _k, (_od, _id, _t, _h0, _f) in DISC_SPRINGS.items():
     register(Item(
         _k, f"DIN 2093 series C disc spring {_od:g} x {_id:g} x {_t:g} mm", "spring",
-        (Offer("Lesjöfors", "https://shop.lesjofors.com/fi/en-US/all-products/disc-springs-"
+        (*_disc_123(_k),
+         Offer("Lesjöfors", "https://shop.lesjofors.com/fi/en-US/all-products/disc-springs-"
                "washers/", f"DSS {_od:g}X{_id:g}X{_t:g}", pack_qty=1,
                price_usd=2.6 if _od < 10 else 3.5,
                note="stainless 1.4310; EUR 5.16 each, 2.35 from 25 (the C8, read 2026-10-12); "
@@ -104,12 +124,42 @@ for _L in GROUND_LENGTHS:
               "standard lengths start at 20 mm: a shorter pin is a special, or cut from a "
               "20 mm one and tapped. Price only in MISUMI's configurator: $6 an estimate."))
 
+CAPILLARY = {
+    # key: (ASIN, pack, USD, the tube): uxcell 304 stainless tube, Amazon 2026-10-12
+    "collar_5p5x4p1": ("B0BX4C4DYJ", 1, 7.59, "5.5 OD x 0.6 wall (4.3 ID) x 250 mm"),
+    "collar_7x6p1": ("B0GWMRQN6Q", 2, 7.49, "7 OD x 0.5 wall (6.0 ID) x 254 mm"),
+}
+"""A cheap stock tube for the collars, an alternative only: its OD and ends are not held to
+MISUMI's tolerances (cut and face each piece square; the 7 mm one's 6.0 ID may not pass a
+6 mm shaft)."""
+
+TUBE_PIECES = 12
+"""Spacers cut from one 250 mm capillary tube (the pins' are 5-15 mm; a saw's kerf each)."""
+
 for _k, (_od, _id) in {"collar_5p5x4p1": (5.5, 4.1), "collar_7x6p1": (7.0, 6.1)}.items():
+    _asin, _n, _usd, _tube = CAPILLARY[_k]
+    _cheap = (Offer("Amazon", f"https://www.amazon.com/dp/{_asin}", _asin,
+                    pack_qty=TUBE_PIECES, price_usd=_usd,
+                    note=f"uxcell 304 stainless capillary tube {_tube}: the pins' spacers cut "
+                         f"from it (about {TUBE_PIECES} a tube), each faced square and "
+                         "deburred; the disc spring takes up their length error (round 2 of "
+                         "the cost loop; search-result price 2026-10-12)"),)
     register(Item(
         _k, f"Precision collar (spacer tube) {_od:g} OD x {_id:g} ID, cut to length", "spacer",
-        (Offer("MISUMI", "https://my.misumi-ec.com/vona2/detail/110310886139/", price_usd=4.0,
+        (*(_cheap if _k == "collar_5p5x4p1" else (Offer(
+            "Amazon", "https://www.amazon.com/dp/B005WPASC8", "B005WPASC8",
+            pack_qty=2 * TUBE_PIECES, price_usd=10.19,
+            note="K&S 9825 brass tube 7 x 0.45 mm wall (6.1 ID) x 300 mm, 2 a pack: the "
+                 "pillars' spacers cut from it (about 12 a tube), each faced square and "
+                 "deburred (round 3 of the cost loop; search-result price 2026-10-12)"),)),
+         Offer("MISUMI", "https://my.misumi-ec.com/vona2/detail/110310886139/", price_usd=4.0,
                note="precision collar, OD in 0.5 mm and length in 0.1 mm steps; the price an "
-                    "estimate (MISUMI's configurator)"),),
+                    "estimate (MISUMI's configurator)"),
+         *(() if _k == "collar_5p5x4p1" else (Offer(
+             "Amazon", f"https://www.amazon.com/dp/{_asin}", _asin, pack_qty=_n,
+               price_usd=_usd, note=f"uxcell 304 stainless capillary tube {_tube}, {_n} a "
+               "pack (search-result price 2026-10-12): an alternative only, not ground; cut "
+               "each spacer and face its ends square, deburred"),))),
         dims={"od": _od, "id": _id},
         notes="A ball pair's column spacer (construction.pivots.pair.stock_tubes): one per "
               "gap between neighbouring links (or a hub), cut to the faces' distance; its OD "

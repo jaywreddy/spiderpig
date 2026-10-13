@@ -558,9 +558,9 @@ class BallPairPillar(BallPillar):
         """The one-piece steel shaft always (ordered ground), never a goBILDA standoff:
         aluminium, not ground."""
         own = super().column_axle(links, top, pitch, lo, layout, air)
-        if own is None or own.stock == "shaft":
+        if own is None:
             return own
-        return self.one_piece()
+        return replace(own if own.stock == "shaft" else self.one_piece(), ground=True)
 
     def resolve(self, ctx: Context) -> BallPairPillar:
         assert isinstance(self.seat, PairSeat)

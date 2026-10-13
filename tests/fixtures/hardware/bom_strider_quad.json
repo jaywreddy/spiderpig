@@ -1,15 +1,15 @@
 {
  "data": {
-  "cost_usd": 426.76,
+  "cost_usd": 407.24,
   "cuts": [],
   "cutting": [
    {
-    "area_cm2": 748.6,
+    "area_cm2": 748.4,
     "name": "3 mm (1/8 in) cast acrylic sheet, 12 x 12 in",
     "parts": 65,
     "service": "SendCutSend",
     "sheet": "acrylic_3mm",
-    "usd": 92.06
+    "usd": 75.72
    },
    {
     "area_cm2": 99.4,
@@ -17,7 +17,7 @@
     "parts": 6,
     "service": "SendCutSend",
     "sheet": "al5052_1p6mm",
-    "usd": 19.89
+    "usd": 23.74
    },
    {
     "area_cm2": 188.6,
@@ -25,7 +25,7 @@
     "parts": 4,
     "service": "SendCutSend",
     "sheet": "al5052_2mm",
-    "usd": 37.72
+    "usd": 26.04
    },
    {
     "area_cm2": 79.8,
@@ -33,10 +33,10 @@
     "parts": 12,
     "service": "SendCutSend",
     "sheet": "al6061_2p5mm",
-    "usd": 33.4
+    "usd": 38.05
    }
   ],
-  "cutting_usd": 183.07,
+  "cutting_usd": 163.55,
   "filaments": {
    "PETG filament": 1.9,
    "PLA filament": 70.9,
@@ -2290,11 +2290,11 @@
   "purchases_usd": 243.69,
   "title": ""
  },
- "engine_version": "0.1.0+6921c3f0aaf8",
+ "engine_version": "0.1.0+6609d6af4b1a",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-7ef154baaa7363a1"
+ "source_key": "gen-28582335c868fcab"
 }

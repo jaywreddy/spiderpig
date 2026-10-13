@@ -1,6 +1,6 @@
 {
  "data": {
-  "cost_usd": 416.14,
+  "cost_usd": 362.62,
   "cuts": [],
   "cutting": [
    {
@@ -9,7 +9,7 @@
     "parts": 17,
     "service": "SendCutSend",
     "sheet": "acrylic_3mm",
-    "usd": 28.15
+    "usd": 25.15
    },
    {
     "area_cm2": 99.4,
@@ -17,7 +17,7 @@
     "parts": 6,
     "service": "SendCutSend",
     "sheet": "al5052_1p6mm",
-    "usd": 19.89
+    "usd": 23.74
    },
    {
     "area_cm2": 232.1,
@@ -25,7 +25,7 @@
     "parts": 4,
     "service": "SendCutSend",
     "sheet": "al5052_2mm",
-    "usd": 46.43
+    "usd": 29.67
    },
    {
     "area_cm2": 42.9,
@@ -33,7 +33,7 @@
     "parts": 8,
     "service": "SendCutSend",
     "sheet": "al6061_2p5mm",
-    "usd": 19.35
+    "usd": 24.44
    },
    {
     "area_cm2": 265.7,
@@ -41,10 +41,10 @@
     "parts": 16,
     "service": "SendCutSend",
     "sheet": "al6061_3p2mm",
-    "usd": 106.29
+    "usd": 61.51
    }
   ],
-  "cutting_usd": 220.11,
+  "cutting_usd": 164.51,
   "filaments": {
    "PETG filament": 1.1,
    "PLA filament": 51.8,
@@ -1122,23 +1122,25 @@
    },
    {
     "alternatives": [
+     "https://www.amazon.com/dp/B07ZKLL4JH",
+     "https://www.mcmaster.com/92095A189/",
      "https://www.boltdepot.com/Metric_button_head_socket_cap_screws_Stainless_steel_18-8_M4_x_0.7.aspx",
      "https://www.amazon.com/s?k=M4+x+8mm+button+head+socket+screw"
     ],
     "category": "fastener",
-    "cost_usd": null,
+    "cost_usd": 1.28,
     "cut_by": "",
     "key": "m4_bhcs_8",
     "name": "M4 x 8 mm button head socket screw (ISO 7380)",
     "on_hand": false,
-    "pack_price_usd": null,
-    "pack_qty": 100,
-    "packs": 1,
+    "pack_price_usd": 0.08,
+    "pack_qty": 1,
+    "packs": 16,
     "qty": 16.0,
     "same_pack_as": "",
-    "sku": "92095A189",
-    "url": "https://www.mcmaster.com/92095A189/",
-    "vendor": "McMaster-Carr",
+    "sku": "6622",
+    "url": "https://boltdepot.com/Product-Details?product=6622",
+    "vendor": "Bolt Depot",
     "verified": true,
     "where": [
      "L.pillar_A_leg0_screw0",
@@ -1304,23 +1306,24 @@
    },
    {
     "alternatives": [
+     "https://www.mcmaster.com/93475A230/",
      "https://www.boltdepot.com/Metric_flat_washers.aspx",
      "https://www.amazon.com/s?k=M4+DIN+125+flat+washer"
     ],
     "category": "washer",
-    "cost_usd": null,
+    "cost_usd": 0.8,
     "cut_by": "",
     "key": "m4_washer",
     "name": "M4 flat washer (DIN 125-A, 4.3 x 9 x 0.8)",
     "on_hand": false,
-    "pack_price_usd": null,
-    "pack_qty": 100,
-    "packs": 1,
+    "pack_price_usd": 0.05,
+    "pack_qty": 1,
+    "packs": 16,
     "qty": 16.0,
     "same_pack_as": "",
-    "sku": "93475A230",
-    "url": "https://www.mcmaster.com/93475A230/",
-    "vendor": "McMaster-Carr",
+    "sku": "4514",
+    "url": "https://boltdepot.com/Product-Details?product=4514",
+    "vendor": "Bolt Depot",
     "verified": true,
     "where": [
      "L.pillar_A_leg0_washer0",
@@ -1994,14 +1997,14 @@
     ]
    }
   ],
-  "purchases_usd": 196.03,
+  "purchases_usd": 198.11,
   "title": ""
  },
- "engine_version": "0.1.0+6921c3f0aaf8",
+ "engine_version": "0.1.0+6609d6af4b1a",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[klann_lego_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-7ef154baaa7363a1"
+ "source_key": "gen-28582335c868fcab"
 }

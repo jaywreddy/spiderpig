@@ -275,7 +275,7 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
         assert rows["bearing_f608zz"] == 2
         assert rows["collar_8mm"] == 3
         assert rows[SHAFT_KEY] == 1
-        assert rows["m4_hex_standoff_45"] == 4
+        assert rows["m4_hex_standoff_45"] == 7          # three round the bearings
         assert rows["angle_bracket_20"] == 4
         assert not any(b.fab == "printed" for b in mech.bodies
                        if b.name.startswith(("base_", "yaw_", "turntable", "foot_")))

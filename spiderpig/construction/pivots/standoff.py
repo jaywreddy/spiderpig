@@ -126,6 +126,7 @@ class StandoffAxle:
     lock_key: str | None = "threadlocker_222"
     lock_per_screw: float = 0.01
     size: str = "M4"                 # "M3": the one-piece shaft's M3 ends (one_piece)
+    ground: bool = False             # the shaft ground (g6): a ball pair's pillar
     stock: str = ""                  # "": goBILDA M4 stock lengths; "shaft": a 6 mm round
     #                                  steel standoff tapped M3 both ends, made to length
     #                                  (MISUMI NETRF6, one_piece)
@@ -142,9 +143,9 @@ class StandoffAxle:
 
     def segment_key(self, length: float) -> str:
         if self.stock == "shaft":
-            from spiderpig.hardware.crank_catalog import pillar_shaft
+            from spiderpig.hardware.crank_catalog import ground_pillar_shaft, pillar_shaft
 
-            return pillar_shaft(length)
+            return ground_pillar_shaft(length) if self.ground else pillar_shaft(length)
         from spiderpig.hardware.crank_catalog import gobilda_1501
 
         return gobilda_1501(length)
@@ -154,8 +155,9 @@ class StandoffAxle:
     def lengths(self) -> tuple[float, ...]:
         from spiderpig.hardware.crank_catalog import GOBILDA_LENGTHS, PILLAR_SHAFT_LENGTHS
 
-        if self.stock == "shaft":
-            return PILLAR_SHAFT_LENGTHS
+        if self.stock == "shaft":     # a ground shaft in whole mm (the end shims the rest)
+            return (tuple(float(L) for L in range(8, 301)) if self.ground
+                    else PILLAR_SHAFT_LENGTHS)
         return GOBILDA_LENGTHS
 
     @property

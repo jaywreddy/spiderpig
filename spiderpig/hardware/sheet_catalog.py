@@ -38,9 +38,11 @@ Fetched 2026-10-04:
   its sheets' ``kerf_mm`` is 0.
 
 The inside-corner radius SendCutSend cuts in aluminium (0.8 mm) is the joinery plan's
-figure, not from a page; the laser's in acrylic is about its kerf (0.1 mm). Prices are
-estimates (neither service publishes a table: a DXF upload quotes), per 300 x 300 mm of
-nested parts.
+figure, not from a page; the laser's in acrylic is about its kerf (0.1 mm). Neither
+service publishes a price table (a DXF upload quotes): a sheet SendCutSend cuts is priced
+as its cutting, the material included (``cut_fixed_usd``, ``cut_usd_cm2``, ``cut_min_usd``,
+``cut_qty_factors``: :data:`CUT_RATES`, :func:`hardware.bom.cut_estimate`, fitted on its
+live quotes); an offer's ``price_usd`` is an estimate per 300 x 300 mm blank.
 
 ``shim_din988_3x6`` / ``shim_din988_6x12`` and ``ptfe_washer_3x6x0p5`` join the 4 mm ones
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)
@@ -69,6 +71,17 @@ PONOKO_RULES_ACRYLIC = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6.0, 
                         "kerf_mm": 0.2}
 
 
+CUT_RATES = {
+    "5052": {"cut_fixed_usd": 3.30, "cut_usd_cm2": 0.107, "cut_min_usd": 3.30,
+             "cut_qty_factors": ((1, 1.0), (2, 0.78), (10, 0.57), (50, 0.44))},
+    "6061": {"cut_fixed_usd": 3.20, "cut_usd_cm2": 0.138, "cut_min_usd": 3.20,
+             "cut_qty_factors": ((1, 1.0), (2, 0.79), (10, 0.67), (50, 0.48))},
+}
+"""SendCutSend's cutting of an aluminium part, the material included, by alloy (the thickness
+hardly matters: 5052 0.080 and 0.125 in quoted within 4 % on the same part): fitted by
+:func:`hardware.bom.cut_estimate`'s docstring."""
+
+
 def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) -> Item:
     t = round(inch * IN, 3)
     name = f"{alloy} aluminium sheet {inch:.3f} in ({t:g} mm), laser cut"
@@ -82,9 +95,10 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) 
               "density": 2.68 if alloy == "5052" else 2.70,
               "yield_mpa": 193.0 if alloy == "5052" else 276.0,
               "min_hole": t, "sheet_mm": (300.0, 300.0), **SCS_RULES_AL,
-              # the cutting, material included (hardware.bom.cut_estimate, calibrated on
-              # SendCutSend's live quotes of 2026-10-08): per cm^2 of part, least per part
-              "cut_usd_cm2": 0.20 if alloy == "5052" else 0.40, "cut_min_usd": 2.20},
+              # the cutting, material included (hardware.bom.cut_estimate, fitted on
+              # SendCutSend's live quotes of 2026-10-08 and 2026-10-12): per part at one off
+              # fixed + per cm^2 of part, at least the least; the quantity breaks
+              **CUT_RATES[alloy]},
         notes=f"{alloy}-{temper}: yield {193 if alloy == '5052' else 276} MPa (ASM); "
               "minimum hole = thickness, 2 t hole-to-edge, min part 6.35 x 9.5 mm "
               "(SendCutSend).",

@@ -900,3 +900,71 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   $628 listed ($659 on the classic turret: the three base plates in 1/8 in 5052, $129, as
   stiff as 6061 at half the rate), 18 cut parts (30) and 1 printed (7: the tool's holder
   left), 220 bought pieces (228).
+
+### 2026-10-12: honest prices for the arm (cost-reduction round 1)
+
+- **Decision:** the arm's BOM prices every part from a cheap current source (Amazon search
+  results, Bolt Depot's and 123Bearing's pages, read 2026-10-12), the source first so the
+  BOM prices it: generic 10-packs of the miniature bearings ahead of VXB
+  (`bearing_catalog.AMAZON`); the steppers, pulleys and belt loops (`motion_catalog.AMAZON`);
+  the pump, valve, cup, tube, fitting, endstops, collars, wave washer and spiral wrap
+  (`robot_catalog`); Bolt Depot's singles for the M2 / M3 / M4 screws, M2 nut and washers
+  and the M4 washer (`sources._BOLT_DEPOT`; no 14 or 18 mm M3 socket head there); one shim
+  kit for the 4 x 8 DIN 988 and 8 x 12 shims (the rows share its pack); 123Bearing's disc
+  springs; the tapped 8 mm shaft at an estimated USD 10. Kept: the MISUMI ground pins and
+  precision collars (an h8 rod fails the 0.1 mm budget; stainless capillary tube is listed
+  as an alternative only), the F608ZZ, the Pi Camera 3 Wide (an OV5647 M12 board the
+  alternative). The cutting is refitted (`bom.cut_estimate`): per part a fixed charge plus
+  a rate per cm² at one off, times SendCutSend's quantity break (`bom.qty_factor`), a
+  file's quantity (`bom.same_files`), the rates per sheet (`sheet_catalog.CUT_RATES`,
+  `parts.CUT_ACRYLIC`).
+- **Why:** the old cut model (2026-10-08, fitted on the Strider's small parts at 2-8 off)
+  quoted the arm's 18 parts at USD 229 against SendCutSend's live 163 (its 15-23 cm plates
+  2x high, the small 5.4 mm links 2x low); 29 of the arm's rows were unpriced, so its total
+  left them out. The new fit: the arm 163.86 against 163.01, the Strider's acrylic 48.72
+  against 49.44 and its aluminium 61.69 against 67.70 (its hole-dense plates: the area
+  doesn't see the cut length, single aluminium parts 20-25 % rms).
+- **Result:** the arm (`palletizer_reach` on `mt4_base`) USD 598.29, purchases 434.43 and
+  cutting 163.86 (was 627.65 with 29 rows unpriced: 398.69 + 228.96); unpriced now the M3 x
+  14 and x 18 socket heads and the retaining compound.
+- **Open:** a cut-length term (5052's residuals fall to about 10 % with it); the Amazon
+  listings unverified in a browser; Bolt Depot's and 123Bearing's shipping.
+
+### 2026-10-12: cost-reduction rounds 2-4 (the user's "keep reviewing until it's under $300")
+
+- **Round 2 (taken):** the base_pair turret's bottom plate in 3 mm acrylic
+  (`base_pair.BOTTOM_SHEET`, the bearing epoxied in), its turntable lifted on shim stacks
+  at its four ties and a stack on the shaft (`LIFT_WASHER`, `CENTRE_SHIM`: no cut spacer
+  disc), three more hex columns round the bearings (`CENTRE_R`: the preload's loop closed
+  by the axis); a cheaper homing camera (`vision_fiducial_ov5647`, the OV5647 M12 board,
+  15 um budgeted); the pins' spacers cut from stainless capillary tube.
+- **Round 3 (correctness, from its reviews):** the top plate back in 1/8 in 5052
+  (`TOP_SHEET`: on acrylic the seven columns racked 6-25x more than modelled, the plates
+  being rigid in the precision model), M4 washers under the screws on acrylic,
+  `base_pair.racking` with its real column count and ends; the shim kit's DIN 988 shims
+  (not DIN 125 washers, whose 0.45-0.55 mm tilted the turntable); 18 mm collars (the
+  cheap 25 mm ones clashed); screws only of a stocked length. **The ball pair pillars' shaft
+  was the MISUMI NETRF6 standoff, 6 mm 0 / -0.1, not ground**, though the model took it as
+  g6: with that play across power-ups would reach about 0.14 mm. It is now a ground g6
+  linear shaft tapped M3 both ends in whole mm (`StandoffAxle.ground`,
+  `crank_catalog.ground_pillar_shaft`, the MISUMI SFJW family; part number and price
+  estimates); the pillars' spacers K&S brass tube.
+- **A correction to the turret's round 7:** its 0.025 / 0.034 mm were computed without the
+  side's wobble notes (the pairs' tilt hysteresis, the clamped gaps' re-seating left out);
+  with them the arm repeats to 0.037 mm in a session and 0.061-0.065 across power-ups.
+- **Round 4 (a study, nothing built):** no build option reaches USD 300 at 0.1 mm. Every
+  pivot but `ball_pair` repeats to about 1.3 mm (`ball` / `ball_pillar` on 63 / 43 um of
+  clearance, W's load reversing over the tour); without the camera across power-ups is
+  0.159 mm; the cheapest arm the options make (chicago pins, 3 mm acrylic links and a 2 mm
+  acrylic frame, the `mt4` turntable, switches) is about USD 350 with its cutting priced, at
+  about 1.4 mm. A per-joint pin override (single bearings on the levelling rods) saved USD
+  16 and was dropped. `--pin ball` with mixed sheet thicknesses plans 32 layers (twelve of
+  spacers only): the planner's budget, not the pins (a million steps found none thinner).
+- **Result (`palletizer_reach`, `mt4_base`, `vision_fiducial_ov5647`, mixed links):** the
+  BOM USD 525.32 with every line priced (purchases 389.50, cutting 135.82), from USD 628
+  with 29 lines unpriced (about 820 priced); ISO RP 0.037 / 0.065 mm. Not in it: the
+  controller (an SKR Pico, a Pi Zero 2 W, a 12 V supply, about USD 65-110), shipping from
+  about ten vendors (USD 30-60), the MISUMI prices (estimates). The rest of the way to 300
+  is the user's own work: the plates cut on the Carvera from bought sheet (about USD 70 for
+  136 of cutting) and the pins and pillars cut and tapped from McMaster's -0.005 mm rods
+  (1327K507, 4143N12; about USD 40 off): some USD 420.
