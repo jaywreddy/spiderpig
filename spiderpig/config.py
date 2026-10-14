@@ -207,6 +207,27 @@ def torque_limit_note(config: BuildConfig) -> str | None:
             "strength) at a jammed foot holding the servo at that limit.")
 
 
+LINKAGE_OBJECTIVES: dict[str, str] = {
+    # none yet: a walker on "height" (its true lowest stack) searches every taller size
+    # with no route-cost pruning; the Strider double's proof doesn't end in minutes
+    # (DECISIONS.md 2026-10-14)
+}
+"""Per linkage: the planner's objective where its kind's isn't wanted (each with why):
+:func:`plan_objective`."""
+
+
+def plan_objective(lk: linkage.Linkage) -> str:
+    """The planner's objective (:attr:`stack.StackSpec.objective`) for ``lk``: its own
+    (:data:`LINKAGE_OBJECTIVES`), else a product's (a decanting cradle's) "height", the
+    lowest stack (then the route, the stock parts' cost, the prints), proven in seconds;
+    else a walker's "layers", the fewest layers, then the cheapest crank route, then the
+    lowest stack (2026-10-14: on "height" a walker's crank router can't prune on its
+    route's cost, and its taller sizes, which may be lower, are searched without end)."""
+    if lk.key in LINKAGE_OBJECTIVES:
+        return LINKAGE_OBJECTIVES[lk.key]
+    return "height" if lk.product else "layers"
+
+
 def default_crank(lk: linkage.Linkage, module: str = "") -> str:
     """The crank construction ``lk`` (in ``module``) gets when the config names none: a
     product's (:data:`PRODUCT_CRANKS`: a decanting cradle's hand crank), its module's

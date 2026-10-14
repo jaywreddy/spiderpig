@@ -236,14 +236,17 @@ class ChicagoShaft:
                                     f"more shims than two {ctx.pitch:g} mm end layers hold")
 
     def column(self, pillar: bool, links, top: int, anchored: tuple[bool, bool],
-               pitch: float, layout=None, air=None) -> None:
+               pitch: float, layout=None, air=None, hi=None) -> None:
         """The planner's rule: a stock barrel must span the pin's links (their layers, the
         washer and the least play; at the plan's own z, its gaps and thicker plates
-        included): :class:`stack.Unbuildable` otherwise."""
+        included): :class:`stack.Unbuildable` otherwise. A search's layout is a lower bound
+        of the stack (:class:`stack.Layout`): too long for the longest barrel there is too
+        long in every plan; the shims' rule (a maximum on what is left over, which a taller
+        plan may meet) waits for the plan's own z."""
         if pillar or not links:
             return
         stack = (max(links) - min(links) + 1) * pitch
-        if layout is not None and layout.final:
+        if layout is not None:
             stack = layout.z(max(links))[1] - layout.z(min(links))[0]
             if air is not None:         # its own parts' stack: the barrel closes the air
                 stack -= air(min(links), max(links))
@@ -321,6 +324,11 @@ class ChicagoShaft:
         from spiderpig.construction.pivots.common import HEAD_CLEARANCE
 
         it = self.item()
+        if not L.final and not L.estimate:
+            # a search's layout (a lower bound of the plan's z): the least each end needs in
+            # every plan, its head and washer (the shims and the play are the plan's)
+            return (float(it["head_h"]) + extra[0],
+                    float(it["screw_head_h"]) + self.washer_t + extra[1])
         stack = L.z(k1)[1] - L.z(k0)[0] + extra[0] + extra[1] - air
         gap_hi, gap_lo = L.gap(k1), L.gap(k0 - 1)
         try:

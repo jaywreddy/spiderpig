@@ -141,6 +141,43 @@ def _thicknesses(layers: Mapping[str, int], shapes: Iterable[Placed], spec: Stac
     return {k: v for k, v in t.items() if abs(v - spec.pitch) > EPS_Z}
 
 
+def gap_most(spec: StackSpec) -> float:
+    """The thickest a clearance gap can be in any plan: :data:`GAP_MAX` (washers and shims,
+    thickened at most to it: :func:`_gap_options`), or the thickest thin sheet where plates
+    run on through it."""
+    return max(GAP_MAX, *spec.gaps) if spec.gaps else GAP_MAX
+
+
+def bound_layout(spec: StackSpec, layers: Mapping[str, int], top: int,
+                 fixed: Mapping[int, float] | None = None, links: Iterable[str] | None = None,
+                 choices: Mapping[str, object] | None = None) -> Layout:
+    """A search's layout of ``layers`` (:class:`Layout`, not final): every plan it can still
+    become is at least as thick as it, layer by layer, and at most as thick as its upper
+    bounds. Its ``thick``: the frame plates' sheet, ``fixed`` (the layers a part with no
+    links makes thicker than the pitch, the hand crank's: :meth:`StackProblem.fixed_sheets`)
+    and the sheet of each placed link of ``links`` (all of them when ``None``); no gaps. Its
+    upper bounds: a fixed layer or any other at most the thickest link's sheet over that
+    (``open_t``), a gap at most :func:`gap_most`. A link of the default sheet or a thinner one
+    leaves its layer the pitch (as :func:`_thicknesses`)."""
+    pitch = spec.pitch
+    thick: dict[int, float] = {}
+    if spec.frame_t is not None:
+        thick[0] = thick[top] = spec.frame_t
+    for k, v in (fixed or {}).items():
+        if 0 < k < top:
+            thick[k] = max(thick.get(k, pitch), v)
+    lt = dict(spec.link_t)
+    for n in (layers if links is None else links):
+        k = layers.get(n)
+        if k is not None and n in lt and lt[n] > pitch + EPS_Z and 0 < k < top:
+            thick[k] = max(thick.get(k, pitch), lt[n])
+    open_t = max([pitch, *lt.values()])
+    hi = {k: max(v, open_t) for k, v in (fixed or {}).items() if 0 < k < top}
+    return Layout(layers, top, pitch, dict(choices or {}), {},
+                  {k: v for k, v in thick.items() if abs(v - pitch) > EPS_Z},
+                  thick_hi=hi, open_t=open_t, gap_hi=gap_most(spec))
+
+
 def _gap_options(k: int, h: float, spec: StackSpec, bridged: AbstractSet[int]) -> list[float]:
     """The thicknesses gap ``k`` may have for heads ``h`` tall, thinnest first: a thin
     sheet's where plates go on through it (``bridged``), else any :data:`GAP_STEP` up to
@@ -200,7 +237,9 @@ def _make_all(claims: Iterable[Claim], layout: Layout, memo: dict | None = None
     zs = memo.setdefault("z", {})
     lay = layout.layers
     z = (layout.top, layout.pitch, layout.final, tuple(sorted(layout.gaps.items())),
-         tuple(sorted(layout.thick.items())), tuple(sorted(layout.choices.items())))
+         tuple(sorted(layout.thick.items())), tuple(sorted(layout.choices.items())),
+         tuple(sorted(layout.thick_hi.items())), layout.open_t, layout.gap_hi,
+         layout.estimate)
     z = zs.setdefault(z, len(zs))           # the z, as a small int
     every = tuple(sorted(lay.items()))
     deps = memo.setdefault("deps", {})
@@ -368,20 +407,80 @@ def heads_claims(claims: Iterable[Claim], heads: str, keep: frozenset[str] = fro
                    if p.gap and p.toward else p
                    for p in out if not p.gap or p.toward or p.group in keep]
             for p in got:
-                if p.height > L.t(p.layer) + EPS_Z:
+                # (a search's layout: only where no plan of it makes the layer that thick)
+                if p.height > L.t_hi(p.layer) + EPS_Z:
                     raise Unbuildable(f"{p.label or p.group} needs {p.height:.2f} mm, more "
-                                      f"than layer {p.layer} ({L.t(p.layer):g} mm)")
+                                      f"than layer {p.layer} ({L.t_hi(p.layer):g} mm)")
             return got
         return f
 
     return tuple(replace(c, make=sunk(c.make), early=sunk(c.early)) for c in claims)
 
 
+DESCEND_TRIES = 6     # thinner thicknesses a settled gap tries (finalize's descent), each
+
+
+def _fits(shapes: list[Placed], sunk: AbstractSet[SunkKey], layout: Layout, spec: StackSpec,
+          layers: Mapping[str, int], thick: Mapping[int, float]) -> bool:
+    """Whether the claims' ``shapes`` made at ``layout`` fit it: every gap's heads within it
+    (none in a gap it lacks), every sunk head within its layer, no layer thicker than
+    ``thick`` asks."""
+    top = layout.top
+    for p in shapes:
+        if not (p.gap and p.height > 0):
+            continue
+        if p.toward and sunk_key(p) in sunk:
+            k = p.layer + (1 if p.toward > 0 else 0)
+            if p.height > layout.t(k) + EPS_Z:
+                return False
+        elif p.height > layout.gap(p.layer) + EPS_Z:
+            return False
+    want = _thicknesses(layers, shapes, spec, top)
+    return all(v <= thick.get(k, spec.pitch) + EPS_Z for k, v in want.items())
+
+
+def _descend(claims: tuple[Claim, ...], spec: StackSpec, layers: Mapping[str, int], top: int,
+             choices: Mapping[str, object], gaps: dict[int, float], thick: dict[int, float],
+             shapes: list[Placed], sunk: AbstractSet[SunkKey], memo: dict | None
+             ) -> tuple[dict[int, float], list[Placed], Layout]:
+    """The settled gaps, each lowered (one at a time, bottom up, again until none moves) to
+    the thinnest thickness at which the plan still builds and every head still fits: the
+    settling only grows a gap, so a gap a head needed at an earlier pass's z (a Chicago
+    screw's shims, at another barrel) would otherwise stay taller than the plan needs. The
+    plan's height is the objective (:meth:`StackProblem.solve`): the least z a layering
+    builds at, not the first."""
+    layout = Layout(layers, top, spec.pitch, choices, dict(gaps), dict(thick), final=True)
+    for _ in range(4):
+        moved = False
+        for k in sorted(gaps):
+            bridged = plate_bridged(shapes)
+            need = max((p.height for p in shapes if p.gap and p.height > 0 and p.layer == k
+                        and not (p.toward and sunk_key(p) in sunk)), default=0.0)
+            if need <= 0:
+                continue
+            tries = [g for g in _gap_options(k, need, spec, bridged)
+                     if g < gaps[k] - EPS_Z][:DESCEND_TRIES]
+            for g in tries:
+                trial_gaps = {**gaps, k: g}
+                trial = Layout(layers, top, spec.pitch, choices, dict(trial_gaps), dict(thick),
+                               final=True)
+                try:
+                    got = _make_all(claims, trial, memo)
+                except PlanReject:
+                    continue
+                if _fits(got, sunk, trial, spec, layers, thick):
+                    gaps, shapes, layout, moved = trial_gaps, got, trial, True
+                    break
+        if not moved:
+            break
+    return gaps, shapes, layout
+
+
 def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
              layers: Mapping[str, int], top: int,
              choices: Mapping[str, object] | None = None,
-             sink_all_but: frozenset[str] | None = None, memo: dict | None = None
-             ) -> StackPlan:
+             sink_all_but: frozenset[str] | None = None, memo: dict | None = None,
+             fixed: Mapping[int, float] | None = None) -> StackPlan:
     """The plan of a layering: which heads sink into a layer and which keep a clearance
     gap (:func:`_sinkable`), each gap's stock thickness and each layer's (the plates'
     sheets), and every claim made again at the z those give, until they settle (a
@@ -389,11 +488,14 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
     its arguments, so a stored layering re-makes the same plan. ``sink_all_but``: every
     head but those groups' sinks into its layer (the search placed them there:
     :meth:`StackProblem.plan` with a router's heads in gaps), unless the plan's z or a gap
-    kept beside it says otherwise."""
+    kept beside it says otherwise. The first pass makes the claims at the layering's least
+    z (:func:`bound_layout`, with ``fixed``: the search's own, no gaps) as an estimate of
+    the plan's (:attr:`Layout.estimate`: its heads with the shims that z gives them, refused
+    only as the search would); every later pass at the plan's z."""
     claims = tuple(claims)
     choices = dict(choices or {})
     layers = dict(layers)
-    nominal = Layout(layers, top, spec.pitch, choices)
+    nominal = replace(bound_layout(spec, layers, top, fixed, None, choices), estimate=True)
     shapes = _make_all(claims, nominal, memo)
     sunk = _sinkable(shapes, nominal, topo.geometry, spec.margin)
     if sink_all_but is not None:
@@ -438,6 +540,8 @@ def finalize(topo: Topology, claims: Iterable[Claim], spec: StackSpec,
             shapes = _make_all(claims, layout, memo)
     else:
         raise PlanReject("the clearance gaps and the claims made at their z don't settle")
+    gaps, shapes, layout = _descend(claims, spec, layers, top, choices, gaps, thick, shapes,
+                                    sunk, memo)
     placed = settle(shapes, sunk, layout)
     return StackPlan(spec, layers, top, topo, claims, tuple(placed), choices,
                      gaps=dict(gaps), thick=dict(thick), sunk=frozenset(sunk))

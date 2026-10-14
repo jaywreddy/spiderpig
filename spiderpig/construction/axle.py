@@ -139,13 +139,24 @@ class AxleGroup(Group):
                 own[L.layers[m]] = max(own.get(L.layers[m], 0.0), link_t[m])
 
             def air(a: int, b: int) -> float:
-                """What the plan's z leaves free in layers ``a``..``b`` around this axle's
-                own parts (its links and its default-sheet rings, in layers an aluminium
-                plate elsewhere made thicker): its stack closes it up."""
-                if not L.final:
-                    return 0.0
+                """What the z leaves free in layers ``a``..``b`` around this axle's own parts
+                (its links and its default-sheet rings, in layers an aluminium plate
+                elsewhere made thicker): its stack closes it up. A search's layout is a lower
+                bound (:class:`stack.Layout`), and so is its span less this: the axle's own
+                stack in every plan of it is at least that."""
                 return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
                            for k in range(a, b + 1) if 0 < k < L.top)
+
+            def stack_hi(a: int, b: int) -> float:
+                """The most this axle's own stack over layers ``a``..``b`` (its links' sheets,
+                its rings, the gaps among them) can be in any plan of the layout (the plan's
+                own: its span less :func:`air`)."""
+                if L.final:
+                    return L.span(a, b) - air(a, b)
+                rings = sum(own[k] if k in own else L.t_hi(k) if full else ctx.pitch
+                            for k in range(a, b + 1) if 0 < k < L.top)
+                gaps = sum(1 for k in range(a, b) if 0 <= k < L.top)
+                return rings + gaps * L.gap_hi
             free: dict[int, float] = {}
             who: dict[int, str] = {}
             for n, r in room.items():
@@ -177,7 +188,8 @@ class AxleGroup(Group):
                                       + " below its links and " + crossing(ku) + " above")
             column = getattr(self.construction, "column", None)
             if column is not None:          # a construction's own rule over the whole column
-                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air)
+                column(self.pillar, ms, L.top, (down, up), L.pitch, layout=L, air=air,
+                       hi=stack_hi)
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]

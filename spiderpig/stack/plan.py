@@ -69,7 +69,9 @@ class StackSpec:
     # a spec is made, so a test can take the clock out and bound a search by its nodes alone
     max_seconds: float = field(default_factory=lambda: MAX_SECONDS)
     drop_bearing: bool = False
-    workers: int = 1
+    workers: int | None = None
+    proof_nodes: int | None = None
+    objective: str = "height"
     prove: bool = True
     quick_first: bool = False
     symmetry: bool = False
@@ -147,6 +149,8 @@ class StackPlan:
     thick: dict[int, float] = field(default_factory=dict)   # layer -> thickness (not pitch)
     sunk: frozenset = frozenset()       # the heads sunk into a layer (``sunk_key``)
     heads: str = "gap"                  # how the plan placed heads (StackSpec.heads)
+    usd: float = 0.0                    # what its stock parts cost (the claims' ``tally``)
+    printed: int = 0                    # the parts it prints (the claims' ``tally``)
 
     @cached_property
     def layout(self) -> Layout:

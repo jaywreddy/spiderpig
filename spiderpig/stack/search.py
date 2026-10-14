@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import itertools
-import multiprocessing
 import re
-import time
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -15,22 +13,26 @@ from spiderpig.mechanism import body_class
 from spiderpig.stack.geometry import Disc, Layout, log, made
 from spiderpig.stack.plan import Deadline, StackSpec
 from spiderpig.stack.plan_z import (
+    EPS_Z,
     GAP_GROUPS,
-    GIVE_UP,
     HEADS_ORDER,
     PlanReject,
+    bound_layout,
     finalize,
     heads_claims,
     settle,
 )
-from spiderpig.stack.topology import PlanError, RouteConflict, RouteView
+from spiderpig.stack.topology import RouteConflict, RouteView
 from spiderpig.stack.verify import verify_plan
 
 if TYPE_CHECKING:
     from spiderpig.stack.geometry import Claim, Placed, Shape
     from spiderpig.stack.plan import StackPlan
     from spiderpig.stack.topology import Clearance, Router, Topology
-    from spiderpig.stack_pool import Remote
+
+
+HEIGHT_TOL = 1e-4
+"""mm: two heights this close are equal (the objective's first term, rounded to it)."""
 
 
 class _Budget(Exception):
@@ -57,7 +59,9 @@ class StackProblem:
                  hint: Mapping[str, int] | None = None):
         self.topo = topo
         self.hint = dict(hint or {})
-        self.give_up = 0              # (solve_heads) stop once this many layerings failed on
+        self.heads_rank = 0           # (stack.drive) this head placement's place among the
+        #                               searched: equal plans tie to the first
+        self.give_up = 0              # (stack.drive) stop once this many layerings failed on
         #                               the crank's washers in the plan's gaps with no plan
         #                               found (0: never); ``gave_up`` says so
         self.gave_up = ""
@@ -112,6 +116,47 @@ class StackProblem:
             fact = (tuple(sorted(members)), tuple(sorted(links)), anchored)
             for n in (*members, *links):
                 self.spans.setdefault(n, []).append(fact)
+        self._fixed: dict[int, dict[int, float]] = {}
+
+    # -- the search's z -----------------------------------------------------------------
+
+    def fixed_sheets(self, top: int) -> dict[int, float]:
+        """The layers a part with no links (a claim with no deps: the hand crank's head layer
+        and keyed plates) makes thicker than the pitch in a stack of ``top + 1`` layers: what
+        every plan of that size has there."""
+        got = self._fixed.get(top)
+        if got is None:
+            got = {}
+            probe = bound_layout(self.spec, {}, top)
+            for c in self.raw_claims:
+                if c.deps or c.final or c.choice is not None:
+                    continue
+                out, _ = made(c, probe)
+                for p in out or ():
+                    if p.sheet > self.spec.pitch + EPS_Z and not p.gap and 0 < p.layer < top:
+                        got[p.layer] = max(got.get(p.layer, 0.0), p.sheet)
+            self._fixed[top] = got
+        return got
+
+    def solo(self, c: Claim, early: bool, n: str, v: int, top: int
+             ) -> tuple[list[Placed] | None, str]:
+        """``c`` (its ``early`` part) made with link ``n`` alone in layer ``v`` of a stack of
+        ``top + 1``: what a link brings on its own (:class:`_Search`), remembered across the
+        searches of this problem (each job's search makes them again otherwise)."""
+        memo = self.__dict__.setdefault("_solo", {})
+        key = (id(c), early, n, v, top)
+        got = memo.get(key)
+        if got is None:
+            got = memo[key] = made(replace(c, make=c.early) if early else c,
+                                   self.bound_layout({n: v}, top))
+        return got
+
+    def bound_layout(self, layers: Mapping[str, int], top: int,
+                     links: Iterable[str] | None = None) -> Layout:
+        """The search's layout of ``layers`` (:func:`stack.plan_z.bound_layout`): the least
+        z every plan of it can have and the upper bounds; ``links``: the placed links whose
+        sheets it counts (all, when ``None``)."""
+        return bound_layout(self.spec, layers, top, self.fixed_sheets(top), links)
 
     # -- what blocked it ----------------------------------------------------------
 
@@ -146,306 +191,67 @@ class StackProblem:
     # -- search ----------------------------------------------------------------------
 
     def solve(self) -> StackPlan:
-        """The thinnest plan, with the cheapest route in it; :class:`PlanError` (saying what
-        blocked it, and how far each stack size got) when there is none up to
-        ``spec.max_top``, or none was found before the effort ran out. With
-        ``spec.heads`` "best": sunk, else in gaps; "gap_sink": the other way round
-        (:meth:`solve_heads`).
+        """The lowest plan (:meth:`key`: the stack's height, then the crank route's cost,
+        then what its stock parts cost, then the parts it prints), with both head placements
+        where ``spec.heads`` asks for both ("best", "gap_sink") and every stack size whose
+        least height could beat the best found, each searched in a job of its own, here or
+        in forked workers (:mod:`stack.drive`, :mod:`stack_pool`): the same answer either
+        way. :class:`PlanError` (saying what blocked it, and how far each stack size got)
+        when there is none up to ``spec.max_top``, or none was found before the effort ran
+        out."""
+        from spiderpig.stack.drive import solve
 
-        First the thinnest stack a short search finds a plan in, then, with the
-        full effort, the thinner sizes that short search didn't rule out, then a
-        cheaper route in the thinnest size found. The node budgets and the
-        deadline (``spec.max_seconds``) bound every part of it: the search
-        never runs longer than the deadline, whatever a node costs.
-        """
-        spec = self.spec
-        if spec.heads in HEADS_ORDER:
-            return self.solve_heads(HEADS_ORDER[spec.heads])
-        self.blocked.clear()
-        self._blocked_by.clear()
-        self.spent = 0
-        self.deadline = Deadline(spec.max_seconds)
-        self.tried = tried = {}
-        self.runs_of: dict[int, list[tuple]] = {}    # each size's runs: (budget, legs, first)
-        self.syms = []
-        if spec.symmetry:
-            from spiderpig.stack_symmetry import symmetries
+        return solve(self)
 
-            self.syms = symmetries(self)
-        self.pool = None
-        if spec.workers > 1 and "fork" in multiprocessing.get_all_start_methods():
-            from spiderpig.stack_pool import Pool
+    def key(self, plan: StackPlan) -> tuple:
+        """What the planner minimises, in order: the stack's height (frame plate to frame
+        plate, mm: what packs, what the pillars and the pins span), the crank route's cost
+        (its added features: :attr:`StackPlan.cost`), what the stock parts the plan chooses
+        cost (:attr:`StackPlan.usd`), the parts it prints (:attr:`StackPlan.printed`); then,
+        so that equal plans tie the same way wherever they were found, the head placement
+        (this problem's rank among the searched), the stack size, the layers and the
+        route. ``spec.objective`` "layers" (the proxy the planner minimised before
+        2026-10-14, kept for designs whose crank router prunes on its cost: the walkers):
+        the fewest layers, then the route's cost, then the height and the rest."""
+        tie = (self.heads_rank, plan.top, tuple(sorted(plan.layers.items())),
+               repr(sorted((k, repr(v)) for k, v in plan.choices.items())))
+        if self.spec.objective == "layers":
+            return (plan.top, plan.cost, round(plan.height, 4), round(plan.usd, 2),
+                    plan.printed, *tie)
+        return (round(plan.height, 4), plan.cost, round(plan.usd, 2), plan.printed, *tie)
 
-            self.pool = Pool(self, spec.workers)
-        try:
-            return self._solve(tried)
-        finally:
-            if self.pool is not None:
-                self.pool.close()
-                self.pool = None
+    def size_lb(self, top: int) -> float:
+        """The least height any plan of ``top + 1`` layers can have: every layer at least its
+        bound with no link in it (the frame plates, a fixed part's sheet), and of the links
+        thicker than the pitch, a set that pairwise share an axle (so no two share a layer)
+        each in a layer of its own at its sheet."""
+        h = self.bound_layout({}, top).height()
+        return h + self._apart()
 
-    def solve_heads(self, order: tuple[str, str] = ("sink", "gap")) -> StackPlan:
-        """Plan with the heads sunk into layers (the full-layer heads); in clearance gaps
-        only when that finds no plan (2026-10-04: searching both doubled the suite's time).
-        ``order`` ("gap", "sink" for a single-plate crank: its gap plans are the thinner and
-        the faster nearly everywhere, and with only the pivots' heads sunk it plans what
-        gaps don't, TrotBot's heel and toe): then the sunk search runs only when the gap
-        search gave up (:data:`GIVE_UP`), and the gap search again in full when the sunk
-        one finds none either. Each search has the whole budget."""
-        plans, errors = [], []
-        gave_up = ""
-        searched: list[str] = []
-        runs = list(order)
-        if order[0] == "gap":
-            # a gap search whose layerings keep failing on the crank's washers in the plan's
-            # gaps (TrotBot's heel and toe: no route keeps its washers clear of the pins'
-            # caps there) gives up early for the sunk one; with none there either it runs
-            # again in full (GIVE_UP)
-            runs.append("gap")
-        for i, heads in enumerate(runs):
-            spec = replace(self.spec, heads=heads)
-            if plans:
-                # the gap search only when the sunk plan failed (the user's rule of
-                # 2026-10-04: two searches doubled the suite's time for a few mm)
-                break
-            if len(runs) > 2 and i >= 1 and not gave_up:
-                # the gap search ran in full and found none: the sunk one found none on any
-                # design of the sweep of 2026-10-04 either (the Jansen decker and quad), so it
-                # isn't searched, and there is nothing to resume
-                break
-            sub = StackProblem(self.topo, self.raw_claims, spec,
-                               self.router, self.clearances, self.hint)
-            if i == 0 and len(runs) > 2:
-                sub.give_up = GIVE_UP
-            searched.append(heads)
-            try:
-                plans.append(sub.solve())
-            except PlanError as e:
-                errors.append(e)
-            gave_up = gave_up or sub.gave_up
-            for key, n in sub.blocked.items():
-                self.blocked[key] = self.blocked.get(key, 0) + n
-                self._blocked_by.setdefault(key, sub._blocked_by[key])
-            self.tried = getattr(sub, "tried", {})
-            self.spent = getattr(self, "spent", 0) + getattr(sub, "spent", 0)
-        if not plans:
-            e = errors[-1]
-            raise type(e)(e.summary, self.blockers(), e.notes, e.recommendations,
-                          expired=any(x.expired for x in errors))
-        best = min(plans, key=lambda p: (round(p.height, 3), len(p.gaps)))
-        other = [p for p in plans if p is not best]
-        if other:
-            o = other[0]
-            best.proof += (f"; heads {best.heads}: {best.height:.1f} mm against "
-                           f"{o.height:.1f} mm with them {o.heads} ({o.top + 1} layers"
-                           + (f", {len(o.gaps)} gaps" if o.gaps else "") + ")")
-        elif errors:
-            best.proof += (f"; with the heads {'gap' if best.heads == 'sink' else 'sink'}: "
-                           + (f"none (it {gave_up})" if gave_up else "none"))
-        unsearched = [m for m in dict.fromkeys(order) if m not in searched]
-        if unsearched:
-            # optimal is the thinnest with the heads as searched: the other placement wasn't
-            # (heads "best": sunk first, in gaps only when that finds no plan)
-            best.proof += (f"; heads {', '.join(unsearched)}: not searched (heads "
-                           f"{best.heads} first; it may be thinner)")
-        return best
+    def _apart(self) -> float:
+        """(:meth:`size_lb`) The most mm a set of the thick links that pairwise share an axle
+        adds over the pitch (greedily, thickest first: a lower bound either way)."""
+        got = getattr(self, "_apart_mm", None)
+        if got is None:
+            pitch = self.spec.pitch
+            thick = {n: t for n, t in self.spec.link_t if t > pitch + EPS_Z and n in self.partners}
+            chosen: list[str] = []
+            for n in sorted(thick, key=lambda x: (-thick[x], x)):
+                if all(m in self.partners[n] for m in chosen):
+                    chosen.append(n)
+            got = self._apart_mm = sum(thick[n] - pitch for n in chosen)
+        return got
 
-    def _new(self, top: int) -> _Search | Remote:
-        """A stack size to search: here, or in a worker already searching it
-        (:mod:`stack_pool`)."""
-        if self.pool is None or not self.pool.has(top):
-            return _Search(self, top)
-        from spiderpig.stack_pool import Remote
-
-        return Remote(self, top)
-
-    def _expect(self, ahead: list[tuple[int, str]]) -> None:
-        """What the search will likely run next (``(top, phase)``), for the workers to start."""
-        if self.pool is not None:
-            self.pool.expect(ahead)
-
-    def _solve(self, tried: dict[int, _Search | Remote]) -> StackPlan:
-        spec = self.spec
-        found = self._first(tried)
-        if found is None and not self.exhausted:
-            # the quick pass found nothing and effort is left: give the sizes it left
-            # open the full effort, thinnest first (a bounded search may have only a few)
-            self._expect([])
-            for top in sorted(t for t, s in tried.items() if not s.done):
-                if self.exhausted:
-                    break
-                s = tried[top]
-                self._run(s, spec.max_nodes)
-                if s.best is None and self.hint:
-                    self._run(s, spec.max_nodes, legs=True)
-                if s.best is not None:
-                    found = s
-                    break
-        if found is None:
-            last = max(tried, default=spec.min_top - 1)
-            ran_out = f"; {self.stopped}" if self.stopped else ""
-            raise PlanError(f"{self.topo.name}: no layer plan found with up to {last + 1} layers"
-                            f" after {self.spent} search steps in "
-                            f"{self.deadline.elapsed:.0f} CPU s{ran_out}", self.blockers(),
-                            [self.sizes(tried)], expired=self.deadline.expired)
-        if spec.prove:
-            self._expect([(found.top, "route")] + [
-                (t, "prove") for t in range(found.top - 1, spec.min_top - 1, -1)
-                if t not in tried or not tried[t].done])
-        for top in range(found.top - 1, spec.min_top - 1, -1):   # just thinner first
-            if self.exhausted or not spec.prove:
-                break
-            s = tried.get(top)
-            if s is None:
-                s = tried[top] = self._new(top)
-            self._run(s, spec.max_nodes // 2)
-            if s.best is None and self.hint:
-                self._run(s, spec.max_nodes // 2, legs=True)
-            if s.best is not None:
-                found = s
-        found = tried[found.top]                  # (a worker may search it now)
-        if spec.prove:
-            self._run(found, spec.max_nodes)      # a cheaper route, if not ruled out yet
-        plan = found.best
-        assert plan is not None     # found has a plan (_first, the loop above); runs keep it
-        below = [tried[t] for t in range(spec.min_top, plan.top) if t in tried]
-        open_ = [t + 1 for t in range(spec.min_top, plan.top)
-                 if t not in tried or not tried[t].done]
-        plan.optimal = found.done and not open_
-        why = self.stopped or ("the search stopped at its budget" if spec.prove else
-                               "the search stopped at the first plan: no proof asked")
-        here = (f"{plan.top + 1} layers searched to the end for the cheapest crank route "
-                f"({found.nodes} nodes)" if found.done else
-                f"a cheaper crank route in {plan.top + 1} layers not ruled out ({why}, "
-                f"{found.nodes} nodes)")
-        if open_:
-            proof = f"{', '.join(map(str, open_))} layers not ruled out ({why})"
-        else:
-            proof = (f"no plan in {plan.top} layers or fewer "
-                     f"({sum(t.nodes for t in below)} nodes)")
-        forced = [(t.top + 1, why, n) for t in below for why, n in t.unbuilt.items()]
-        if forced and self.router is not None:      # (only a router's rules force it)
-            top, why, n = forced[-1]
-            proof += (f"; the {self.router.group}'s own rules forced it taller: in {top} "
-                      f"layers the search met {n} layouts that fit everything else but {why}")
-        plan.proof = f"{proof}; {here}"
+    def tally(self, plan: StackPlan) -> StackPlan:
+        """``plan`` with what it buys and prints (the claims' ``tally`` at its z)."""
+        usd, printed = 0.0, 0
+        layout = plan.layout
+        for c in plan.claims:
+            if c.tally is not None:
+                u, n = c.tally(layout)
+                usd, printed = usd + u, printed + n
+        plan.usd, plan.printed = round(usd, 2), printed
         return plan
-
-    def _quick(self, tried: dict[int, _Search | Remote], top: int) -> _Search | Remote:
-        """A short search of one stack size (and one a leg at a time, with a hint)."""
-        s = tried[top] = self._new(top)
-        s.first_only = self.spec.quick_first
-        self._run(s, self.spec.quick_nodes)
-        if s.best is None and self.hint:
-            self._run(s, self.spec.quick_nodes, legs=True)
-        s.first_only = False
-        return s
-
-    def _first(self, tried: dict[int, _Search | Remote]) -> _Search | Remote | None:
-        """The thinnest stack size a quick search finds a plan in, or None.
-
-        Every size in turn while they are ruled out; once one exhausts its
-        quick budget instead, in doubling steps (a plan is then likely far
-        thicker, and every size in between costs its whole budget), then, a
-        plan found, back down the skipped sizes while they keep one. Sizes
-        skipped stay open for the proof. With none found up to
-        ``spec.max_top``, the skipped sizes in turn, while the effort lasts.
-        """
-        spec = self.spec
-        top, jump, found = spec.min_top, 0, None
-        while not self.exhausted:
-            last = tried.get(top - 1)
-            if self.pool is not None and last is not None and (last.nodes > 200 or not last.done):
-                # the sizes get dear: the next ones in workers, ruled out or not
-                nxt = [top + 1, top + 2, min(top + (1 << jump), spec.max_top),
-                       min(top + (1 << jump) + (2 << jump), spec.max_top)]
-                self._expect([(t, "quick") for t in dict.fromkeys([top, *nxt])
-                              if t not in tried and t <= spec.max_top])
-            s = self._quick(tried, top)
-            if s.best is not None:
-                found = s
-                break
-            if top >= spec.max_top:
-                break
-            if s.done:
-                top, jump = top + 1, 0
-            else:
-                top, jump = min(top + (1 << jump), spec.max_top), jump + 1
-        if found is not None:
-            for top in range(found.top - 1, spec.min_top - 1, -1):
-                if top in tried or self.exhausted:
-                    break
-                self._expect([(t, "quick") for t in range(top, max(top - 4, spec.min_top - 1), -1)
-                              if t not in tried])
-                s = self._quick(tried, top)
-                if s.best is None:
-                    break
-                found = s
-            return found
-        for top in range(spec.min_top, spec.max_top + 1):
-            if self.exhausted:
-                break
-            if top not in tried and self._quick(tried, top).best is not None:
-                return tried[top]
-        return None
-
-    @property
-    def exhausted(self) -> bool:
-        """The deadline or the total node budget ran out (or the search gave up: ``gave_up``):
-        no search starts or goes on."""
-        return (self.deadline.expired or self.spent >= self.spec.max_total_nodes
-                or bool(self.gave_up))
-
-    @property
-    def stopped(self) -> str:
-        """Which of the two ran out, as a phrase (``""``: neither)."""
-        if self.gave_up:
-            return self.gave_up
-        if self.deadline.expired:
-            return f"the {self.spec.max_seconds:g} CPU s deadline ran out"
-        if self.spent >= self.spec.max_total_nodes:
-            return f"the {self.spec.max_total_nodes} search-step budget ran out"
-        return ""
-
-    def sizes(self, tried: Mapping[int, _Search | Remote]) -> str:
-        """How far each stack size got: ruled out, left open at its budget (with nodes and
-        seconds), or not tried."""
-        runs: list[tuple[str, list[int]]] = []
-        for top in range(self.spec.min_top, self.spec.max_top + 1):
-            s = tried.get(top)
-            state = ("not tried" if s is None else "found" if s.best is not None
-                     else "ruled out" if s.done else "left open at their budget")
-            if runs and runs[-1][0] == state:
-                runs[-1][1].append(top)
-            else:
-                runs.append((state, [top]))
-        out = []
-        for state, tops in runs:
-            layers = (f"{tops[0] + 1}-{tops[-1] + 1} layers" if len(tops) > 1 else
-                      f"{tops[0] + 1} layers")
-            if state == "not tried":
-                out.append(f"{layers} not tried")
-                continue
-            nodes = sorted(tried[t].nodes for t in tops)
-            secs = sum(tried[t].seconds for t in tops)
-            span = f"{nodes[0]}" if nodes[0] == nodes[-1] else f"{nodes[0]}-{nodes[-1]}"
-            each = " each" if len(tops) > 1 else ""
-            out.append(f"{layers} {state} ({span} nodes{each}, {secs:.0f} s in all)")
-        return "sizes: " + "; ".join(out)
-
-    def _run(self, s: _Search | Remote, budget: int, legs: bool = False) -> None:
-        budget = min(budget, self.spec.max_total_nodes - self.spent)
-        if s.done or budget <= 0 or self.deadline.expired:
-            return
-        before, t0 = s.nodes, time.monotonic()
-        if self.pool is not None:
-            self.runs_of.setdefault(s.top, []).append((budget, legs, s.first_only))
-        s.run(budget, legs, self.deadline)
-        s.seconds += (time.monotonic() - t0) if isinstance(s, _Search) else s.last_seconds
-        self.spent += s.nodes - before
-        log.debug("%s: %d layers, %d nodes%s, %s", self.topo.name, s.top + 1, s.nodes,
-                  " (a leg at a time)" if legs else "",
-                  "found" if s.best else "none" if s.done else "budget")
 
     def plan(self, layers: Mapping[str, int], top: int,
              choices: Mapping[str, object] | None = None, heads: str | None = None
@@ -460,21 +266,25 @@ class StackProblem:
             # them): the claims as they are, every other head forced into its layer, so
             # an axle crossing one of the router's gaps carries its washers there
             plan = finalize(self.topo, self.raw_claims, self.spec, layers, top, choices,
-                            sink_all_but=self.gap_groups, memo=self._makes)
+                            sink_all_but=self.gap_groups, memo=self._makes,
+                            fixed=self.fixed_sheets(top))
             plan.heads = heads
-            return plan
+            return self.tally(plan)
         claims = (self.claims if heads == self.heads
                   else heads_claims(self.raw_claims, heads, self.gap_groups))
         plan = finalize(self.topo, claims, self.spec, layers, top, choices,
-                        memo=self._makes if claims is self.claims else None)
+                        memo=self._makes if claims is self.claims else None,
+                        fixed=self.fixed_sheets(top))
         plan.heads = heads
-        return plan
+        return self.tally(plan)
 
 
 class _Search:
     """One stack size: forward checking and conflict-directed backjumping over link layers
     (with learned nogoods), the router as a sub-check at every node, and branch and bound
-    on the route's cost.
+    on the objective (:meth:`StackProblem.key`): a node whose least height
+    (:meth:`lb_height`) is over the best plan's, found here or given (``key_bound``), is
+    cut.
 
     A conflict is the set of links whose layers explain a failure: the deps of
     the claims whose shapes collide, of a claim that can't be built, or of
@@ -497,8 +307,15 @@ class _Search:
         self.seconds = 0.0                # wall clock spent in this size, over every run
         self.deadline = Deadline()
         self.base: int | None = None      # the trail once the fixed claims are placed
-        self.bound: int | None = None
+        self.bound: int | None = None     # (a route's cost to beat: none, height first)
         self.best: StackPlan | None = None
+        self.best_key: tuple | None = None
+        self.key_bound: tuple | None = None   # a plan to beat from elsewhere (its key)
+        self.lb_bad = 0                       # leaves under their own least height (a bug)
+        self.height_first = prob.spec.objective == "height"
+        self.lt = {n: t for n, t in prob.spec.link_t if t > prob.spec.pitch + EPS_Z}
+        base = prob.bound_layout({}, top)
+        self.t0 = [base.t(k) for k in range(top + 1)]     # each layer's least, no link placed
         self.done = False
         self.legs = False
         self.first_only = False       # stop at the first plan (a short search, quick_first)
@@ -539,12 +356,12 @@ class _Search:
         self.touch: dict[str, dict[float, list[tuple[int, Placed]]]] = {n: {} for n in self.links}
         self.allow: dict[str, dict[int, int]] = {n: {} for n in self.links}
         for n in self.links:
-            solo = [(c, c.make) for c in self.claims if self.deps[id(c)] == {n}]
-            solo += [(c, c.early) for c in firsts if c.early_deps == {n}]
+            solo = [(c, False) for c in self.claims if self.deps[id(c)] == {n}]
+            solo += [(c, True) for c in firsts if c.early_deps == {n}]
             for v in range(1, top):
                 shapes: list[Placed] = []
-                for c, make in solo:
-                    out, why = made(replace(c, make=make), Layout({n: v}, top, self.pitch))
+                for c, early in solo:
+                    out, why = prob.solo(c, early, n, v, top)
                     if out is None:
                         prob._tally_why(c.owner, why)
                         break
@@ -579,6 +396,47 @@ class _Search:
             h = self.pairs[key] = self.geo.dist(a.core, b.core) < a.r + b.r + self.margin
         return h
 
+    def stuck(self, p: Placed) -> bool:
+        """Whether head ``p`` (in a clearance gap) can't sink into the layer beside it in any
+        plan below this node: it may not (``toward`` 0, a frame plate there), or another
+        group's shape placed there is in its way (what is placed stays)."""
+        if not p.toward:
+            return True
+        k = p.layer + (1 if p.toward > 0 else 0)
+        if not 0 < k < self.top:
+            return True
+        return any(q.group != p.group and self.hit(p.shape, q.shape)
+                   for q, _ in self.by_layer.get(k, ()))
+
+    def lb_height(self) -> float:
+        """The least height (frame plate to frame plate, mm) of any plan below this node:
+        each layer at least its bound (the frame plates, a fixed part's sheet, its placed
+        links' sheets) and each clearance gap at least its tallest head where some head in
+        it is :meth:`stuck` (a plan keeps that gap, and every head in it stays: the heads'
+        heights here are the least they need, :class:`stack.Layout`)."""
+        t = list(self.t0)
+        lt = self.lt
+        for n, k in self.layers.items():
+            v = lt.get(n)
+            if v is not None and v > t[k]:
+                t[k] = v
+        h = sum(t)
+        top = self.top
+        for slot, lst in self.by_layer.items():
+            k = int(slot)
+            if slot == k or not 0 <= k < top:
+                continue
+            heads = [p for p, _ in lst if p.height > 0]
+            if heads and any(self.stuck(p) for p in heads):
+                h += max(p.height for p in heads)
+        return h
+
+    def bound_h(self) -> float | None:
+        """The height a plan below this node must not exceed (the best plan's, here or
+        given): ``None`` before any."""
+        keys = [k for k in (self.key_bound, self.best_key) if k is not None]
+        return min(keys)[0] if keys else None
+
     def effects(self, p: Placed) -> tuple[tuple[int, ...], tuple[tuple[str, int], ...]]:
         """(the router pieces ``p`` blocks, the (link, layer) choices it rules out)."""
         key = (p.shape, p.slot, p.group)
@@ -608,7 +466,8 @@ class _Search:
         key = (i, *(self.layers[d] for d in deps))
         out = self.made.get(key)
         if out is None:
-            layout = Layout(self.layers, self.top, self.pitch)
+            # (the bound of its deps' sheets alone: the memo's key holds all it reads)
+            layout = self.prob.bound_layout(self.layers, self.top, deps)
             out = self.made[key] = made(replace(c, make=c.early) if early else c, layout)
         return out
 
@@ -689,8 +548,8 @@ class _Search:
             layers, dom, dm = self.layers, self.dom, self.dm
             open_ = {n: dom[n] for n in self.links if n not in layers}
             bits = {n: dm[n] for n in open_}
-        return RouteView(Layout(self.layers, self.top, self.pitch), self.bmask, open_, self.bound,
-                         bits)
+        return RouteView(self.prob.bound_layout(self.layers, self.top), self.bmask, open_,
+                         self.bound, bits)
 
     def explain(self, res: RouteConflict, group: str) -> frozenset[str]:
         """The links behind a router's dead end (the router's ``group``): the ones it names,
@@ -803,6 +662,9 @@ class _Search:
                     dm[x] = m
                 if not d:
                     return frozenset().union(*gone[x].values()) | {n}
+        if self.height_first and (h := self.bound_h()) is not None and \
+                self.lb_height() > h + HEIGHT_TOL:
+            return frozenset(self.layers)      # (no plan below can be as low as the best)
         return None
 
     def spans(self, n: str) -> frozenset[str] | None:
@@ -996,10 +858,21 @@ class _Search:
             self.prob._tally_why("the plan at its z", bad[0])
             return frozenset(self.layers)
         plan.cost = cost
-        self.best, self.bound = plan, cost
+        if plan.height < self.lb_height() - 1e-6:
+            # (the least height was over a plan's: a claim placed what its plan doesn't have)
+            self.lb_bad += 1
+            log.warning("%s: %d layers: a plan %.3f mm under its least height %.3f mm",
+                        self.prob.topo.name, self.top + 1, plan.height, self.lb_height())
+        key = self.prob.key(plan)
+        if self.best_key is None or key < self.best_key:
+            self.best, self.best_key = plan, key
         self.prob.found_any = True
-        if cost == 0:
-            raise _Done
+        if not self.height_first:
+            # (objective "layers": a cheaper route only, the router's bound; none is cheaper
+            # than none added)
+            self.bound = cost if self.bound is None else min(self.bound, cost)
+            if self.bound == 0:
+                raise _Done
         if self.first_only:
             raise _Budget           # a short search has found what it looks for
         return frozenset(self.layers)
@@ -1042,7 +915,7 @@ class _Search:
             self.base = 0
             for c in self.claims:
                 if not self.deps[id(c)]:
-                    out, why = made(c, Layout({}, self.top, self.pitch))
+                    out, why = made(c, self.prob.bound_layout({}, self.top))
                     if out is None:
                         self.prob._tally_why(c.owner, why)
                         self.done = True

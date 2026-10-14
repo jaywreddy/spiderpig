@@ -64,6 +64,7 @@ servo bay, each to ``tighten_nm``.
 
 from __future__ import annotations
 
+import bisect
 import functools
 import itertools
 from dataclasses import dataclass, replace
@@ -96,6 +97,15 @@ from spiderpig.hardware.bom import SHIM_STEP, BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.shapes import Cut, Shape3D, disc, ring, union
 from spiderpig.stack import Unbuildable
+
+
+@functools.cache
+def _stock(axle: StandoffAxle) -> tuple[tuple[float, ...], ...]:
+    """(:meth:`StandoffAxle.admissible`) The stock lengths of ``axle`` and of its one-piece
+    shaft, each sorted, from its shortest segment up."""
+    return tuple(tuple(sorted(L for L in c.lengths() if c.min_segment - EPS <= L))
+                 for c in (axle, axle.one_piece()))
+
 
 ALU = "#c8ccd0"
 COLUMN_TOL = 0.25    # the column within this of its gap (half the step)
@@ -421,16 +431,42 @@ class StandoffAxle:
 
         return any(fits(sp) for n in range(1, 4) for sp in itertools.combinations(cand, n))
 
+    def admissible(self, lo: float, hi: float) -> bool:
+        """Whether a column whose stack between its faces is ``lo`` to ``hi`` mm in the plans
+        a search's layout can become may be filled: some stock length of this construction or
+        its one-piece shaft lies within what :meth:`segment` takes over that range (its
+        shims under it, its ``max_long`` over). A window, not a bound: the rule itself (a
+        length within the window, the short odd column refused) waits for the plan's z."""
+        short = max(self.max_shims, self.max_short)
+        long = max(self.max_long, 0.1)
+        for lengths in _stock(self):
+            i = bisect.bisect_left(lengths, lo - short - EPS)
+            if i < len(lengths) and lengths[i] <= hi + long + EPS:
+                return True
+        return False
+
     def column(self, pillar: bool, links: list[int], top: int,
-               anchored: tuple[bool, bool], pitch: float, layout=None, air=None) -> None:
+               anchored: tuple[bool, bool], pitch: float, layout=None, air=None,
+               hi=None) -> None:
         """The planner's rule: a standoff must fill the column (at the plan's own z when
-        ``layout`` is final)."""
-        lo, hi = self.faces(links, top, anchored)
+        ``layout`` is final). A search's layout bounds the column's stack (its span less
+        ``air``, at least; ``hi``, at most): it is refused only where no stock length could
+        fill any stack in between (:meth:`admissible`)."""
+        lo, hi_face = self.faces(links, top, anchored)
+        if (pillar and layout is not None and not layout.final and air is not None
+                and hi is not None):
+            least = layout.z(hi_face)[0] - layout.z(lo)[1] - air(lo + 1, hi_face - 1)
+            most = hi(lo + 1, hi_face - 1)
+            if not self.admissible(least, most):
+                raise Unbuildable(
+                    f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
+                    f"shaft made to length fills its column ({least:.1f}-{most:.1f} mm)")
+            return
         final = layout if layout is not None and layout.final else None
-        if pillar and self.column_axle(links, hi, pitch, lo, final, air) is None:
+        if pillar and self.column_axle(links, hi_face, pitch, lo, final, air) is None:
             raise Unbuildable(
                 f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
-                f"shaft made to length fills its {(hi - lo - 1) * pitch:g} mm column")
+                f"shaft made to length fills its {(hi_face - lo - 1) * pitch:g} mm column")
 
     # -- strength ---------------------------------------------------------------------------
 

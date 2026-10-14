@@ -369,40 +369,68 @@ class HandCrank(Group):
         t = ctx.sheet_t("crank")
         head_r = M6.head_d / 2 + 0.3
         at_o = self.box.sleeve_d / 2 + m
-        over = get(PIN_WASHER).dims["od"] / 2 + 0.3   # their washers over it
+        over_r = get(PIN_WASHER).dims["od"] / 2 + 0.3   # their washers over it
 
         def both(layer, shape, label, **kw):
             return [Placed(layer, shape, GROUP, label, **kw),
                     Placed(layer, shape, GROUP, label, gap=True)]
 
-        def z_of(L: Layout, k: int) -> float:
-            """Layer ``k``'s bottom: the plan's own z, or (while searching, every layer the
-            pitch) the drive's thick layers under it and the pitch a layer over them: a lower
-            bound of the plan's z (a thicker link layer or a clearance gap raises it), so
-            the search may claim more than the plan would; the final layout's claims decide
-            (a plan the search proves thinnest is thinnest among the layouts this estimate
-            admits)."""
-            if L.final or L.thick or L.gaps:
+        def z_lo(L: Layout, k: int) -> float:
+            """Layer ``k``'s bottom (over the arm): the plan's own z, or (a search's layout,
+            :class:`stack.Layout`) the least it can be: the arm's top (fixed by the frame
+            plate and the head layer alone, :func:`arm_z`) and each layer between at least
+            its bound, no gap."""
+            if L.final:
                 return L.z(k)[0]
             a1 = arm_z(L.z(0)[0], ctx.sheet_t("frame"), KEYED_PLATES * t)[1]
-            return a1 + (k - ARM_LAYER - 1) * ctx.pitch
+            return a1 + sum(L.t(j) for j in range(ARM_LAYER + 1, k))
 
-        def block(L: Layout) -> tuple[list[int], list[int], float]:
+        def z_up(L: Layout, k: int) -> float:
+            """The most layer ``k``'s bottom can be in any plan of ``L`` (each layer between
+            the arm and it at its upper bound, a gap as thick as one can be over each)."""
+            if L.final:
+                return L.z(k)[0]
+            a1 = arm_z(L.z(0)[0], ctx.sheet_t("frame"), KEYED_PLATES * t)[1]
+            return (a1 + sum(L.t_hi(j) for j in range(ARM_LAYER + 1, k))
+                    + (k - ARM_LAYER) * L.gap_hi)
+
+        def rise_up(L: Layout, a: int, b: int) -> float:
+            """The most layer ``b``'s bottom can be over layer ``a``'s."""
+            if L.final:
+                return L.z(b)[0] - L.z(a)[0]
+            return sum(L.t_hi(j) + L.gap_hi for j in range(a, b))
+
+        def block(L: Layout) -> tuple[list[int], list[int], list[int], int, float]:
             """The layers the block crosses (the keyed plates' and up to its top), the ones
-            the heads over it cross (the end screw's, the tie's), and the heads' top."""
+            the heads over it cross (the end screw's, the tie's), the layers one of those
+            surely takes without its being known which (a search's layout), the highest
+            layer either may take, and the heads' top. At the plan's own z: exact (the
+            third empty). A search's layout claims only what every plan of it has: a layer
+            the block crosses whatever its z (its bottom under the block's top even at its
+            highest), and so on; a layer the bounds leave open takes what both would have
+            there (:func:`stack.Layout`)."""
             top = self.layout_z(ctx, L)[3]
             heads = top + HEADS_OVER
             ks = [ARM_LAYER]
-            while z_of(L, ks[-1] + 1) < top - 1e-6:
+            while z_up(L, ks[-1] + 1) < top - 1e-6:
                 ks.append(ks[-1] + 1)
                 if ks[-1] >= L.top - 2:
                     raise Unbuildable("the crank block reaches the inner plate")
-            hs = [ks[-1]] if z_of(L, ks[-1] + 1) > top + 1e-6 else []
+            hs = [ks[-1]] if z_lo(L, ks[-1] + 1) > top + 1e-6 else []
+            either: list[int] = []
             k = ks[-1] + 1
-            while z_of(L, k) < heads - 1e-6 and k < L.top:
-                hs.append(k)
+            while k < L.top and z_lo(L, k) < heads - 1e-6:
+                if z_up(L, k) >= heads - 1e-6:
+                    break               # (it may be over the heads: nothing sure from here)
+                if z_lo(L, k) >= top - 1e-6:
+                    hs.append(k)        # over the block's top in every plan: the heads'
+                else:
+                    either.append(k)    # the block's or the heads'
                 k += 1
-            return ks, hs, heads
+            most = k                    # the highest layer the block or its heads may take
+            while most < L.top and z_lo(L, most) < heads - 1e-6:
+                most += 1
+            return ks, hs, either, most - 1, heads
 
         def fixed(L: Layout):
             if L.top <= ARM_LAYER + 2:
@@ -413,7 +441,7 @@ class HandCrank(Group):
                 raise Unbuildable(f"the crank block's layer {ARM_LAYER} is at z "
                                   f"{L.z(ARM_LAYER)[0]:.2f}, not the {a0:.2f} over the plate "
                                   f"and the screw heads' layer")
-            ks, hs, _ = block(L)
+            ks, hs, either, _, _ = block(L)
             out = [Placed(0, Disc("O", self.box.sleeve_d / 2 + 1.0), GROUP, "sleeve", seat=True)]
             out += [Placed(0, Disc(n, (self.box.face_thread + 0.6) / 2), GROUP,
                            "riser screw", seat=True) for n in names]
@@ -422,7 +450,7 @@ class HandCrank(Group):
                            sheet=HEAD_LAYER_T) for n in names]
             out += both(HEAD_LAYER, Disc("O", at_o), "sleeve")
             # the block's standoffs' screw heads under it (the tie's on a wide washer)
-            out += both(HEAD_LAYER, Pill("O", pin, over), "block screw heads")
+            out += both(HEAD_LAYER, Pill("O", pin, over_r), "block screw heads")
             for k in ks:                            # (the keyed plates: one thick layer)
                 out.append(Placed(k, Disc("O", hub), GROUP, "crank block hub",
                                   sheet=KEYED_PLATES * t if k == ARM_LAYER else 0.0))
@@ -434,34 +462,45 @@ class HandCrank(Group):
                 out += both(k, Disc("O", head_r), "end screw head")
                 out += both(k, Pill("O", pin, CRANKPIN_D / 2 + 2.0),
                             "tie screw and crankpin spacer")
+            for k in either:                        # (a search's: what both have there)
+                out += both(k, Disc("O", min(hub, head_r)), "crank block or its heads")
+                out += both(k, Pill("O", pin, min(web, CRANKPIN_D / 2 + 2.0)),
+                            "crank block or its heads")
             return out
 
         def crankpin(L: Layout):
             a0, _, _, _ = self.layout_z(ctx, L)
-            ks, hs, heads = block(L)
+            ks, hs, either, most, heads = block(L)
             r = L.layers[rider]
-            if r <= max(ks + hs) or z_of(L, r) < heads + 0.3 - 1e-6:
+            sure = max(ks + hs + either)
+            # (a search's layout: only what holds in every plan of it, its upper bounds)
+            if r <= sure or z_up(L, r) < heads + 0.3 - 1e-6:
                 raise Unbuildable(f"the rod {rider} must ride over the crank block and its "
                                   f"screws' heads (z {heads + 0.3:.1f} mm), not in layer {r}")
-            rod_top = z_of(L, r) + ctx.sheet_t("link", rider)
+            rod_top = z_up(L, r) + ctx.sheet_t("link", rider)
             length = rod_top + CRANKPIN_PLAY - (a0 + t)
             if length < 2 * NETRF12_THREAD:
                 raise Unbuildable(f"the crankpin standoff would be {length:.1f} mm, under the "
                                   f"{2 * NETRF12_THREAD:g} its two M6 threads need")
             out = []
-            for layer in range(max(ks + hs) + 1, r):     # its printed spacer up to the rod
-                out += both(layer, Disc(pin, CRANKPIN_D / 2 + 2.0), "crankpin spacer")
+            spacer = CRANKPIN_D / 2 + 2.0
+            for layer in range(sure + 1, r):     # its printed spacer up to the rod
+                if layer > most:
+                    out += both(layer, Disc(pin, spacer), "crankpin spacer")
+                else:       # (a search's: the block's, its heads' or the spacer, all round pin)
+                    out += both(layer, Disc(pin, min(spacer, web)), "crankpin spacer")
             out.append(Placed(r, Disc(pin, CRANKPIN_D / 2), GROUP, "crankpin", seat=True))
-            head_top = rod_top + CRANKPIN_PLAY + PIN_WASHER_T + M6.head_h + 0.3
+            over = (ctx.sheet_t("link", rider) + CRANKPIN_PLAY + PIN_WASHER_T + M6.head_h
+                    + 0.3)                  # the washer and screw over the rod's bottom face
             hi = r + 1
-            while hi < L.top and z_of(L, hi) < head_top - 1e-6:
-                out += both(hi, Disc(pin, over), "crankpin washer and screw")
+            while hi < L.top and rise_up(L, r, hi) < over - 1e-6:
+                out += both(hi, Disc(pin, over_r), "crankpin washer and screw")
                 hi += 1
-            if L.final and z_of(L, hi) < head_top - 1e-6 and hi >= L.top:
+            if L.final and L.z(hi)[0] - L.z(r)[0] < over - 1e-6 and hi >= L.top:
                 # (only at the plan's own z: a clearance gap under the plate may take it, and
-                # the search's estimate has none, so it would be stricter than the plan)
+                # a search's bound has none, so it would be stricter than the plan)
                 raise Unbuildable(f"the crankpin's screw over {rider} reaches the inner plate")
-            out.append(Placed(r, Disc(pin, over), GROUP, "crankpin washer and screw",
+            out.append(Placed(r, Disc(pin, over_r), GROUP, "crankpin washer and screw",
                               gap=True))
             return out
 
