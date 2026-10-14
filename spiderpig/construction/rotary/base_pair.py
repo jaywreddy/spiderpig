@@ -57,7 +57,7 @@ import math
 
 import numpy as np
 
-from spiderpig.construction.base import ConstructionError, Context
+from spiderpig.construction.base import ConstructionError, Context, stock_length
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw, screw_solid
 from spiderpig.mechanism import Body
@@ -355,15 +355,8 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
         if turns:
             turning.append(name)
 
-    def stocked(s, L) -> bool:      # a length the BOM's seller has (Bolt Depot: no M3 x 14)
-        offer = get(s.key(L)).offer
-        return offer is not None and offer.price_usd is not None
-
     def length_for(need: float, s=sk) -> float:
-        try:
-            return next(L for L in s.lengths if need - 1e-6 <= L and stocked(s, L))
-        except StopIteration:
-            raise ConstructionError(f"turret: no stock screw reaches {need:.1f} mm") from None
+        return stock_length(s, need, "turret")
 
     # the motor behind the axis, its screws in slots along the belt
     m = np.array([-tp.c, 0.0])
@@ -388,9 +381,8 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
     if post is None:
         raise ConstructionError("turret: no room for the hard stop's post under the turntable")
     b_bot = h["bt_top"] + post
-    flen = next((L for L in sk.lengths if stocked(sk, L)
-                 and h["table"] - L <= b_bot - 2.0 + 1e-6), None)
-    if flen is None or h["table"] - flen < h["bt_top"] + sk.head_h + 1.0:
+    flen = length_for(h["table"] - b_bot + 2.0)    # its tip 2 mm under the post's top
+    if h["table"] - flen < h["bt_top"] + sk.head_h + 1.0:
         raise ConstructionError("turret: no stock M3 screw reaches the hard stop's post")
 
     # the base: a round core under the turntable, as wide, a lobe out the back round the motor
@@ -446,7 +438,7 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
                    disc(tuple(m), motor.boss_d / 2 - 0.2, h["bt_bot"], h["bt_bot"] + motor.boss_h),
                    disc(tuple(m), motor.shaft_d / 2 - 0.05, h["bt_bot"], h["bt_bot"] + shaft_len)])
     add("yaw_motor", mbody, fab="purchased", bom_key=motor.bom_key, color="#2b2b2b")
-    mlen = next(x for x in bh.lengths if tp_ + motor.hole_depth * 0.8 - 1e-6 <= x)
+    mlen = length_for(tp_ + motor.hole_depth * 0.8, bh)
     for i, xy in enumerate(mscrews):
         add(f"yaw_motor_screw{i}", screw_solid(xy, bh, h["bt_top"], mlen, up=False),
             fab="purchased", bom_key=bh.key(mlen), color=STEEL)

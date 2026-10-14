@@ -257,7 +257,7 @@ class BoltCrank(HexFitMixin, WebFitMixin, CapacityMixin):
             if not -below - EPS <= z0 <= plate - self.stub_seat + EPS:
                 continue
             depth = float(get(m3_round_standoff(S)).dims["thread_depth"])
-            for L in SCREWS["bhcs", "3"].lengths:
+            for L in SCREWS["bhcs", "3"].stock_lengths:
                 e = L - upper
                 if self.stub_screw_engage - EPS <= e <= depth + EPS:
                     return m3_round_standoff(S), S, z0, L

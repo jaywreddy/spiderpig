@@ -302,3 +302,18 @@ def test_a_length_made_on_demand_takes_its_sourced_offer_first(monkeypatch):
         assert len(item.offers) == 2                 # the item's own offer after it
     finally:
         dict.pop(CATALOG, key, None)
+
+
+def test_a_screw_picks_the_shortest_stocked_length_that_reaches():
+    """``Screw.length_for`` (the one picker, 2026-10-14): never a length the seller lacks
+    (Bolt Depot has no M3 x 14 socket head)."""
+    from spiderpig.hardware.fasteners import screw
+
+    sk = screw("shcs", "3")
+    assert 14 in sk.lengths
+    assert 14 not in sk.stock_lengths
+    assert sk.length_for(12.2) == 16
+    assert sk.length_for(12.0) == 12
+    assert sk.length_for(1e3, longest=True) == sk.stock_lengths[-1]
+    with pytest.raises(LookupError):
+        sk.length_for(1e3)

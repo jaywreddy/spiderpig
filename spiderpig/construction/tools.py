@@ -35,7 +35,15 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
-from spiderpig.construction.base import Build, ConstructionError, Context, Group, Realized, hardware
+from spiderpig.construction.base import (
+    Build,
+    ConstructionError,
+    Context,
+    Group,
+    Realized,
+    hardware,
+    stock_length,
+)
 from spiderpig.construction.plane import Rect, point_rect, seg_rect, seg_rect_many
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw, screw_solid
@@ -182,7 +190,7 @@ def _slot_parts(t: float) -> tuple[float, tuple[float, float], float]:
     nut_h = _dim(SLOT_NUT, "h")
     cb0 = -BLOCK + _edge()
     sk = screw("shcs", "3")
-    length = next(L for L in sk.lengths if t + _edge() + nut_h + 0.3 - 1e-6 <= L)
+    length = stock_length(sk, t + _edge() + nut_h + 0.3, "tool")
     return length, (cb0, cb0 + nut_h + 0.3), -BLOCK - t + length + 0.5
 
 
@@ -640,8 +648,7 @@ class ToolMount(Group):
                                        fab="purchased", bom_key=tool.camera, color="#2f6b3a"))
             m2 = screw("shcs", "2")
             nut_h = _dim("m2_nut", "h")
-            mlen = next(L for L in m2.lengths
-                        if t + cam_spacer() + bt + nut_h - 1e-6 <= L)
+            mlen = stock_length(m2, t + cam_spacer() + bt + nut_h, "tool: the camera")
             for i, xz in enumerate(cam_xz):
                 out.bodies.append(hardware(f"tool_camera_screw{i}", _from_xz(screw_solid(
                     xz, m2, sy1, mlen, up=False)), tp.body, fab="purchased",
@@ -655,7 +662,7 @@ class ToolMount(Group):
 
         # the hanger's screws: heads on the end plate's other face, nuts on its far face
         link_t = bz1 - bz0
-        length = next(L for L in sk.lengths if link_t + t + NUT_H - 1e-6 <= L)
+        length = stock_length(sk, link_t + t + NUT_H, "tool")
         head_z = bz0 if tp.s > 0 else bz1
         for i, xy in enumerate(holes):
             out.bodies.append(hardware(f"tool_screw{i}", screw_solid(
@@ -707,7 +714,7 @@ class ToolMount(Group):
         out.bodies.append(hardware("wrist_motor", motor, tp.body, fab="purchased",
                                    bom_key=mo.bom_key, color="#2b2b2b"))
         msk = screw("shcs", "2p5")
-        mlen = next(L for L in msk.lengths if WALL + mo.hole_depth * 0.8 - 1e-6 <= L)
+        mlen = stock_length(msk, WALL + mo.hole_depth * 0.8, "tool: the wrist's motor")
         hs = mo.hole_square / 2
         spots = [(f[0] + dx * hs, zm + dz * hs) for dx, dz in ((-1, -1), (1, -1), (1, 1),
                                                                (-1, 1))]
@@ -741,8 +748,7 @@ class ToolMount(Group):
                                  for i in range(4)}
         # the holder's screws: heads on the end plate's other face, nuts on the tab's far face
         link_t = bz1 - bz0
-        length = next(L for L in sk.lengths
-                      if link_t + abs(tab_far - face) + NUT_H - 1e-6 <= L)
+        length = stock_length(sk, link_t + abs(tab_far - face) + NUT_H, "tool")
         head_z = bz0 if tp.s > 0 else bz1
         for i, xy in enumerate(holes):
             out.bodies.append(hardware(f"tool_screw{i}", screw_solid(

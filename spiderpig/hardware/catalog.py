@@ -177,14 +177,6 @@ def get(key: str) -> Item:
         raise KeyError(f"no catalog item {key!r}") from None
 
 
-def pick_length(needed: float, lengths: tuple[float, ...]) -> float:
-    """The shortest standard length that is at least ``needed``."""
-    for length in sorted(lengths):
-        if length >= needed - 1e-9:
-            return length
-    raise ValueError(f"no standard length >= {needed:.1f} mm in {lengths}")
-
-
 def sheet_thickness(sheet: str, override: float | None = None) -> float:
     """The layer pitch: ``override`` (a measured sheet) or the sheet item's nominal thickness."""
     return override if override is not None else float(get(sheet).dims["thickness"])

@@ -140,7 +140,7 @@ class HexFitMixin:
         cap = min(self.hex_engage_max, (length - self.hex_tip_gap) / 2)
         best = None
         for k in (0, 1, 2):
-            for L in SCREWS["bhcs", "3"].lengths:
+            for L in SCREWS["bhcs", "3"].stock_lengths:
                 e = L - wt - k * et
                 if (self.hex_min_engage - EPS <= e <= cap + EPS
                         and (best is None or e > best[2] + EPS)):

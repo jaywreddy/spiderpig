@@ -19,6 +19,7 @@ from spiderpig.construction.base import (
     Group,
     Realized,
     hardware,
+    stock_length,
 )
 from spiderpig.construction.joints import ErrorTerms
 from spiderpig.hardware.bom import BomLine
@@ -190,7 +191,7 @@ def screw_length(sk, grip: float, depth: float) -> float:
     """A motor screw's stock length through ``grip`` mm of plate into a ``depth`` mm blind
     hole: at least :data:`ENGAGE` diameters of thread, never bottoming (0.3 mm short)."""
     lo, hi = grip + ENGAGE * sk.d, grip + depth - 0.3
-    for length in sk.lengths:
+    for length in sk.stock_lengths:
         if lo - 1e-6 <= length <= hi + 1e-6:
             return float(length)
     raise ConstructionError(f"no stock M{sk.d:g} screw goes through {grip:g} mm into the "
@@ -517,7 +518,7 @@ class DriveGroup(Group):
         it; or 6 mm into the hub's tapped holes."""
         sk = screw("bhcs", "3")
         need = link_t + (hub_t + 2.4 if self.transmission.nuts else 6.0)
-        return float(next((L for L in sk.lengths if need - 1e-6 <= L), sk.lengths[-1]))
+        return sk.length_for(need, longest=True)
 
     def _bolt_past(self, ctx: Context, pitch: float) -> int:
         """The layers a nutted bolt (its nut, its tip) takes past the hub."""
@@ -644,7 +645,7 @@ class DriveGroup(Group):
             out.bodies.append(hardware(f"{stem}_motor_screw{i}", screw_solid(
                 xy, sk, outer_face, length, up=not hub.down), frame, fab="purchased",
                 bom_key=sk.key(length), color=STEEL))
-        clamp = next(L for L in sk.lengths if st + ctx.sheet_t("frame") - 1e-6 <= L)
+        clamp = stock_length(sk, st + ctx.sheet_t("frame"), "drive: the slider's clamp")
         for i, xy in enumerate(self.clamp_points(hub)):
             out.bodies.append(hardware(f"{stem}_clamp{i}", screw_solid(
                 xy, sk, outer_face + sgn * st, clamp, up=hub.down), frame, fab="purchased",
