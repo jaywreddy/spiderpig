@@ -3,7 +3,9 @@
 What the planner of 2026-10-14 does to the gate's six designs against
 `~/.cache/spiderpig/gate/next-320384d/` (the 2026-10-14 entry of
 [DECISIONS.md](DECISIONS.md) has the why). The new baseline is
-`~/.cache/spiderpig/gate/planner-9da0548/` (TESTING.md). The planner's changes:
+`~/.cache/spiderpig/gate/planner-f667d6b/` (TESTING.md; `planner-9da0548`, the planner's
+before the merge of the cradles' design review round 1, differs from it only by the 15 mm
+hex standoff's price, below). The planner's changes:
 
 - the search's z is a bound of every plan (`stack.bound_layout`);
 - the plan's z is lowered to the least it builds at (`stack.plan_z._descend`), and a
@@ -19,12 +21,14 @@ then the cheapest crank route. No design changed its layer count or its route's 
 |---|--:|--:|---|--:|--:|--:|--:|--:|---|
 | strider_double | 14 | 68.86 -> 68.76 | gap | 9 | 173 -> 111 | 224.25 | 124.8 | 349.05 | True |
 | strider_quad | 24 | 133.16 -> 132.46 | gap | 19 | 333 -> 207 | 243.69 | 183.07 | 426.76 | False |
-| klann_lego_quad | 13 | 64.41 -> 57.81 | gap -> sink | 8 -> 7 | 207 -> 125 | 196.03 -> 190.36 | 220.11 -> 220.12 | 416.14 -> 410.48 | True |
+| klann_lego_quad | 13 | 64.41 -> 57.81 | gap -> sink | 8 -> 7 | 207 -> 125 | 196.03 -> 191.08 | 220.11 -> 220.12 | 416.14 -> 411.2 | True |
 | klann_quad | 13 | 72.99 -> 67.96 | gap | 10 -> 9 | 271 -> 143 | 289.04 -> 322.56 | 224.1 -> 224.13 | 513.14 -> 546.69 | True |
-| hoecken_pantograph | 9 | 36.76 -> 36.36 | gap | 4 | 34 -> 15 | 73.99 | 24.6 | 98.59 | True |
-| dwell_rocker | 7 | 30.96 -> 28.06 | gap -> sink | 4 -> 3 | 27 -> 15 | 57.59 -> 50.01 | 27.24 | 84.83 -> 77.25 | True |
+| hoecken_pantograph | 9 | 36.76 -> 36.36 | gap | 4 | 34 -> 15 | 73.99 -> 74.35 | 24.6 | 98.59 -> 98.95 | True |
+| dwell_rocker | 7 | 30.96 -> 28.06 | gap -> sink | 4 -> 3 | 27 -> 15 | 57.59 -> 50.37 | 27.24 | 84.83 -> 77.61 | True |
 
-(The cut cents: the plates' outlines at the new z, their DXF areas.)
+(The cut cents: the plates' outlines at the new z, their DXF areas. The Hoecken
+pantograph's USD 0.36 and part of the others': the 15 mm hex standoff, priced on
+2026-10-14, unpriced before.)
 
 ## By source
 
@@ -49,13 +53,15 @@ then the cheapest crank route. No design changed its layer count or its route's 
   - **the `klann_lego` quad**: see the next source.
 - **Both head placements** (the 2026-10-04 rule is gone). The `klann_lego` quad and the
   dwell rocker now plan with the pivots' heads sunk:
-  - the `klann_lego` quad: 64.41 to 57.81 mm, USD 5.67 less. Every gap is at its heads'
+  - the `klann_lego` quad: 64.41 to 57.81 mm, USD 4.94 less. Every gap is at its heads'
     need, and its pillars' columns at that z are 0.7 mm over their 52 mm goBILDA
     standoffs: the take-up shims come in 0.5 mm steps (`StandoffAxle.shims`, stock 0.5 mm
-    washers, `m4_washer_433`, unpriced), so 0.2 mm stays as play (pillar wobble 0.6 to 1.8
-    degrees; no audit warning). Its pillars' jam SF goes from 1.73 to 1.51 at worst (a
-    warning before and after).
-  - the dwell rocker: 30.96 to 28.06 mm, USD 7.58 less. At the sunk plan's least z its
+    washers, `m4_washer_433`, USD 6.00 the 100 at Accu), so 0.2 mm stays as play (below).
+    Its pillars' jam SF goes from 1.73 to 1.51 at worst (a warning before and after). Its
+    crank's journal is a 15 mm hex standoff (`hex_standoff_m3_15`, 16 mm before), priced on
+    2026-10-14 at USD 0.36 (`crank_catalog.WURTH_HEX_PRICES`: it was the line left
+    unpriced at `planner-9da0548`, as on the Hoecken pantograph and the dwell rocker).
+  - the dwell rocker: 30.96 to 28.06 mm, USD 7.22 less (its 15 mm hex standoff now priced). At the sunk plan's least z its
     24 mm goBILDA standoffs stood 0.2 mm proud of their 23.8 mm column; the plates stand
     on them, so that is taken into the gap over layer 2 (1.8 to 2.0 mm,
     `plan_z._take_up`): the height is the real one, and the pillars' play falls from 0.2
@@ -66,3 +72,17 @@ then the cheapest crank route. No design changed its layer count or its route's 
 - **Outside the gate.** The demo Klann single plans in 8 layers (10 before) and its double
   in 9 (10 before): their short standoff columns were refused at a pitch a layer, and fill
   at the plan's z.
+
+## Known regression
+
+- **The `klann_lego` quad's pillars keep 0.2 mm of play** (worst tilt 0.61 to 1.85
+  degrees; `mise run audit` passes it, no warning): at its lowest plan every gap is at its
+  heads' need, its pillars' columns stand 0.7 mm over their standoffs, and the take-up
+  comes in 0.5 mm washers. The fixes, none taken yet:
+  - finer take-up: DIN 988 shims or 0.3 mm washers beside the 0.5 mm ones
+    (`StandoffAxle.shims`), one BOM line more;
+  - take the 0.3 mm a second washer needs into a gap the columns cross (58.11 mm, the
+    plan's z then what the parts stand at, as `plan_z._take_up` does for a standoff too
+    long);
+  - a play term in the objective after the height, so of equally low plans the one whose
+    pillars fit wins.

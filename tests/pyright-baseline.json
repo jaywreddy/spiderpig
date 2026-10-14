@@ -1,8 +1,8 @@
 {
-  "errors": 20,
+  "errors": 19,
   "by_rule": {
     "reportReturnType": 10,
-    "reportAttributeAccessIssue": 6,
+    "reportAttributeAccessIssue": 5,
     "reportArgumentType": 3,
     "reportGeneralTypeIssues": 1
   }

@@ -1477,7 +1477,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   as if it were the plan's. They refused layerings every real plan of them builds:
   - **a cradle's pins made to length** (`PivotPinShaft`): two 0.190 in links in
     neighbouring layers looked 6.35 mm thick, not 9.65. A 10 mm pin's end then looked
-    3.4 mm too tall for any slot. B was "proven" thinnest at 16 layers;
+    3.4 mm too tall for any slot. B was "proven" thinnest a layer or two too thick;
   - **standoff pillars** (`StandoffAxle.column`): a short column that no stock length fills
     at a pitch a layer can be filled once the plan's gaps are in;
   - **the crank's stock standoffs and stub** (`BoltCrank._web_span_ok`, `stub_layers_web`):
@@ -1560,19 +1560,26 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   14-layer plan was the old one-ring-per-slot bookkeeping. Its "+2 real" was a gap ring
   under X's and Y's clevis heads, where the clevis pin's take-up spacer already is: that
   gap is now the spacer's (`ClevisPinAxle.sleeve_skip`).
-- **The cradles**, before and after (`cradle_report`, each pin's span and jam SF):
+- **The cradles**, before and after, on design review round 1's design (`decanting-cradle`
+  `a52a821` against it merged here; `cradle_report`, each pin's span and its jam SF, walking
+  in brackets):
 
-  | | layers | height mm | pin spans mm | jam SF (pins; O1, O2) | bought | printed |
+  | | layers | height mm | pin spans mm | jam (walk) SF: pins; pillars | bought | printed |
   |---|--:|--:|---|---|---|--:|
-  | B before | 16 | 79.68 | J, J2, K 8.00; P 8.76; X, Y 7.20 | J 2.21, J2 1.40, K 4.48, P 3.51, X 2.69, Y 2.36; 1.42, 1.33 | 36 lines, USD 382.58 | 63 |
-  | B after | 14 | 78.93 | J, J2, K 7.83; P 8.29; X, Y 7.10 | J 2.24, J2 1.42, K 4.56, P 3.69, X 2.72, Y 2.39; 1.44, 1.35 | the same lines, USD 382.58 | 51 |
-  | A before | 13 | 65.53 | E 8.73 | E 2.88; G 2.58 | 32 lines, USD 332.48 | 31 |
-  | A after | 12 | 65.35 | E 8.55 | E 2.93; G 2.58 | the same lines, USD 332.48 | 31 |
+  | B before | 17 | 84.23 | J, J2, K 8.00; P 11.94; X, Y 7.79 | J 11.36 (100.5), J2 2.30 (20.9), K 1.54 (7.17), P 2.87 (12.9), X 2.73 (9.52), Y 2.36 (21.2); O1 1.40 (13.27), O2 1.40 (5.70) | 46 lines, USD 421.68 | 73 |
+  | B after | 16 | 84.05 | J, J2, K 7.83; P, X, Y the same | J 11.57 (102.4), J2 2.35 (21.3), K 1.57 (7.30), P, X, Y the same; O1 1.40 (13.35), O2 1.41 (5.71) | the same lines, USD 421.68 | 61 |
+  | A before | 13 | 65.53 | E 8.73 | E 3.26 (15.5); G 1.82 (12.41) | 43 lines, USD 340.58 | 43 |
+  | A after | 12 | 65.35 | E 8.55 | E 3.31 (15.8); G 1.83 (12.48) | the same lines, USD 340.58 | 43 |
 
-  The lowest plan also has every pin's shortest span here, and every SF rises a little.
-  Strength stays downstream (`strength.check`), not part of the objective.
+  B's pillars, made to length in steps, stand 0.05 mm proud of their columns, which no gap
+  takes: it plans 84.10 mm as the parts stand, the height its objective ranked. The lowest
+  plan also has every pin's shortest span here; every other SF (the links, the crank, the
+  columns, the frame plates, the rod, the crankpin) is the same or a little higher.
+  Strength stays downstream (`strength.check`), not part of the objective. B's pack
+  (`spiderpig pack-inspect decanter_rcm`) keeps its box: 699 x 496 x 610 mm outside, 211.6
+  litres, automatic (its plan's packing 699 x 499 x 608 to 699 x 498 x 608).
 - **The walkers** (identity gate against `next-320384d`; the new baseline
-  `planner-9da0548` and every diff: [PLANNER-gate-diffs.md](PLANNER-gate-diffs.md)). Every
+  `planner-f667d6b` and every diff: [PLANNER-gate-diffs.md](PLANNER-gate-diffs.md)). Every
   design keeps its layer count and route; every stack is lower (0.1 to 6.6 mm) and prints
   fewer parts (the sleeve rule: 173 to 111 on the Strider double). The `klann_lego` quad
   and the dwell rocker plan with their heads sunk and cost less; the Klann quad costs USD
@@ -1580,13 +1587,10 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   outside the objective: the Klann quad's cantilever pillar falls to jam SF 0.84 (its audit
   failed before and fails on as many joints), the `klann_lego` quad's pillars keep 0.2 mm
   their 0.5 mm shims can't take.
-- **The flat pack.** A's box had grown 26 mm on a sub-millimetre change: the packer fills only
-  its three lowest panel arrangements, and near-ties reordered. It now fills each panel
-  order's best first (`cradle_pack.pack`): 279 mm again, in less time.
 - **Where:** `spiderpig/stack/{geometry,plan,plan_z,search,drive}.py`,
   `spiderpig/stack_pool.py`, `spiderpig/construction/axle.py`,
   `spiderpig/construction/handcrank.py`,
   `spiderpig/construction/pivots/{common,chicago,clevis,pivot_pin,standoff}.py`,
-  `spiderpig/construction/crank/web.py`, `spiderpig/cradle_pack.py`, `spiderpig/config.py`,
+  `spiderpig/construction/crank/web.py`, `spiderpig/config.py`,
   `spiderpig/fabricate.py`, `tests/brute.py`, `tests/test_seam_stack.py`,
   `tests/test_seam_pivots.py`.

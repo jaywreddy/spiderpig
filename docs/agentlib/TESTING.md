@@ -324,14 +324,15 @@ otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
 within 1e-9 relative / 1e-6 mm.
 
-**Baseline** (the planner's lowest stack, `9da0548`, 2026-10-14):
-`~/.cache/spiderpig/gate/planner-9da0548/` on the development box (`/root/.cache/...`), one
-`<design>.json` per design, their logs and `snapshot.json` (commit, branch, time). Compare
-against it from any worktree whose `spiderpig/` should match its output: `mise run gate --
-compare ~/.cache/spiderpig/gate/planner-9da0548`. It differs from the integration branch's
-baseline `next-320384d` (the STS3215 bus sockets, the BOM decisions and the assembly guide,
-`320384d`, 2026-10-08) by the planner's changes of 2026-10-14: every diff with its source in
-`PLANNER-gate-diffs.md`. `next-320384d` differs from W8's baseline `w8-2a130c8` (engine
+**Baseline** (the planner's lowest stack, merged with the cradles' design review round 1,
+`f667d6b`, 2026-10-14): `~/.cache/spiderpig/gate/planner-f667d6b/` on the development box
+(`/root/.cache/...`), one `<design>.json` per design, their logs and `snapshot.json` (commit,
+branch, time). Compare against it from any worktree whose `spiderpig/` should match its
+output: `mise run gate -- compare ~/.cache/spiderpig/gate/planner-f667d6b`. It differs from
+the integration branch's baseline `next-320384d` (the STS3215 bus sockets, the BOM decisions
+and the assembly guide, `320384d`, 2026-10-08) by the planner's changes of 2026-10-14: every
+diff with its source in `PLANNER-gate-diffs.md` (the planner's first, `planner-9da0548`, by
+the price of the 15 mm hex standoff alone). `next-320384d` differs from W8's baseline `w8-2a130c8` (engine
 `0.1.0+e91ed4bc0da8`; kept, as are the branches' own `bus-39502f7`, `bus2-92d11e4`,
 `bom-bbf7001`, `bom2-5989d50`, the first combined `next-ba41c10` and `next-ba68611`
 (before the boxed cables and the congruent centre plates) and `master-1eba876` /
