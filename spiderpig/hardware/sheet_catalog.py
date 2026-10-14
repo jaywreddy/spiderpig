@@ -46,7 +46,7 @@ nested parts.
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)
 as the washer families of :data:`materials.WASHERS`: their ODs size what an axle carries
 through a clearance gap (a printed ring on the pivots and the hex crank:
-:func:`construction.pivots.common.gap_washers`; bought washers and shims only on the round
+:func:`construction.pivots.common.build_sleeves`; bought washers and shims only on the round
 or M6 crankpins, :func:`materials.washer_stack`) and the clamped shims are bought per
 thickness (:mod:`hardware.shims`).
 """

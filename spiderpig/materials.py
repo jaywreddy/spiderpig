@@ -13,7 +13,7 @@ their own z.
 
 A **clearance gap** (:attr:`stack.Placed.gap`) is one of the thin sheets' thicknesses
 (:func:`gap_options`): an axle that crosses it carries a printed ring to that thickness
-(:func:`construction.pivots.common.gap_washers`; the round crankpin a stack of washers and
+(:func:`construction.pivots.common.build_sleeves`; the round crankpin a stack of washers and
 shims, :func:`washer_stack`).
 """
 

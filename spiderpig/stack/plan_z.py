@@ -368,13 +368,14 @@ def _thicker_gaps(err: PlanReject, spec: StackSpec, layers, top: int, choices,
 
 
 HEADS_ORDER = {"best": ("sink", "gap"), "gap_sink": ("gap", "sink")}
+"""The head placements :attr:`StackSpec.heads` searches, side by side (:mod:`stack.drive`),
+in the order equal plans tie to."""
 
 GIVE_UP = 200
-"""(``gap_sink``) The first gap search gives up for the sunk one after this many layerings
-failed on the crank's washers in the plan's gaps with no plan found (TrotBot's heel meets
-~65 a CPU second; the designs that plan in gaps meet a handful first)."""
-"""The heads searches :meth:`StackProblem.solve_heads` tries in turn, per
-:attr:`StackSpec.heads`."""
+"""(``gap_sink``) A job of the gap search gives up after this many layerings failed on the
+crank's washers in the plan's gaps with no plan found (TrotBot's heel meets ~65 a CPU second;
+the designs that plan in gaps meet a handful first), and the gap search with it: the plan is
+the sunk one's, unproven for the gaps."""
 
 GAP_GROUPS = ("drive",)
 """Groups whose heads stay in their clearance gaps beside a router's (the servo's, the
