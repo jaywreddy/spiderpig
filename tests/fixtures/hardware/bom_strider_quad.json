@@ -2176,11 +2176,11 @@
   "purchases_usd": 363.31,
   "title": ""
  },
- "engine_version": "0.1.0+9401b4433e36",
+ "engine_version": "0.1.0+8bc871b68646",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-c9cd4f4e5c4a0d81"
+ "source_key": "gen-82ca3218f3dd66f7"
 }
