@@ -1,12 +1,19 @@
 # The cheap checks on pushes to master and every PR (docs/agentlib/ROADMAP.md, W0): ruff,
 # the lock, the viewer's typecheck + vitest, the quick tier on the fabrication cache, and the doc
 # check (blocking, --strict, since W7). The full suite stays on `mise run remote-test`.
+# Opt-in: the slow tier (`slow`, below) on a PR labelled `slow` (every push while the label
+# stays) and on a manual run (workflow_dispatch); nightly.yml runs it on master.
 name: CI
 
 on:
   push:
     branches: [master]          # a PR's branch runs once, as the PR
   pull_request:
+    # the defaults, and `labeled`: adding the `slow` label starts the slow tier at once
+    # (any label re-runs the cheap jobs too: none is skipped, so a skipped check can never
+    # stand in for a failed one)
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,6 +26,9 @@ env:
   SPIDERPIG_OFFLINE: "1"          # never download a servo's CAD model: parametric servos
   UV_PYTHON: "3.12"
   FORCE_COLOR: "1"
+  # the planner's CPU budget, pinned: the node budgets alone bound a search (as the identity
+  # gate's), so how far a plan gets doesn't depend on the runner's speed
+  SPIDERPIG_PLAN_SECONDS: "3600"
 
 jobs:
   ruff:
@@ -137,3 +147,50 @@ jobs:
       # blocking since W7: a backticked name, path, task, flag or env var in the docs that
       # the code doesn't have fails the run (tests/doc_check_allow.txt for what isn't code)
       - run: uv run --locked python -m tests.doc_check --strict
+
+  # The slow tier (`-m 'slow and not e2e'`), opt-in: a PR labelled `slow`, or a manual run
+  # (Actions > CI > Run workflow, or `gh workflow run ci.yml --ref BRANCH`). Set up as
+  # nightly.yml's `slow` job; its fabrication cache under its own key, starting from the
+  # nightly's or the quick job's entries for the same engine
+  slow:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'slow'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      # the walk-model parity test runs the viewer's vitest: with node and its packages
+      # here, SPIDERPIG_REQUIRE_VIEWER_TESTS=1 makes a skip a failure (as the quick job)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: viewer/package-lock.json
+      - run: npm ci
+        working-directory: viewer
+      - id: engine
+        run: echo "version=$(uv run --locked python -m spiderpig.tools.engine_version)" >> "$GITHUB_OUTPUT"
+      - id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-slow-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+          restore-keys: |
+            test-cache-nightly-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+            test-cache-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}
+      - name: slow tests
+        env:
+          SPIDERPIG_REQUIRE_VIEWER_TESTS: "1"
+        run: uv run --locked pytest -p no:warnings -m "slow and not e2e" -n 4 --dist worksteal --durations 25
+      - if: always() && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/spiderpig/test-cache
+          key: test-cache-slow-${{ runner.os }}-${{ steps.engine.outputs.version }}-${{ hashFiles('uv.lock', 'tests/cache.py') }}

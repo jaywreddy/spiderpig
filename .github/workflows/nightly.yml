@@ -21,6 +21,8 @@ env:
   SPIDERPIG_OFFLINE: "1"          # never download a servo's CAD model: parametric servos
   UV_PYTHON: "3.12"
   FORCE_COLOR: "1"
+  # the planner's CPU budget, pinned as ci.yml's (the gate sets its own, the same)
+  SPIDERPIG_PLAN_SECONDS: "3600"
 
 jobs:
   slow:

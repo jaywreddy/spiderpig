@@ -93,7 +93,8 @@ robot; a mechanism's `single`, one side).
 ## Environment
 
 - `SPIDERPIG_STORE`: the project store (default `./.spiderpig`).
-- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget (60; outside `engine_version`'s hash).
+- `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget (60; outside `engine_version`'s hash; a
+  stored plan records the one its search had, `PlanReport.budget_s`; CI and the gate pin 3600).
 - `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`).
 - `SPIDERPIG_FAB_CACHE=off`: no product fabrication cache (`spiderpig/fabcache.py`,
   `<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model).
@@ -102,7 +103,9 @@ robot; a mechanism's `single`, one side).
 - `SPIDERPIG_OFFLINE=1` / `SPIDERPIG_SERVO_CAD=0` / `SPIDERPIG_CAD_CACHE`: servo CAD downloads;
   `SPIDERPIG_PART_CAD=0`: bought parts drawn from the catalog, not their vendor models
   (in the CAD cache's unpinned folder, filled by `spiderpig cad`); `SPIDERPIG_MCMASTER_STATE`: the
-  saved McMaster session (`spiderpig cad login`).
+  saved McMaster session (`spiderpig cad login`); `SPIDERPIG_CAD_STRICT=1`: a wanted vendor
+  model that can't be drawn raises `hardware.cad.CadError`, no parametric fallback (off by
+  default, as the gate and audit run; `spiderpig cad check` tries every model so).
 - `SPIDERPIG_VIEWER_DIST`: the built viewer the server mounts.
 - `SPIDERPIG_DEV_ORIGIN_PORT`: set by `mise run view` for the API (the Vite port whose
   loopback pages may open its WebSockets).
@@ -143,7 +146,8 @@ it `/` answers 503 and the API still works). `spiderpig view <design> [--store] 
 [--open]` serves that app with no Node on the machine (`docs/agentlib/API.md`, "View"; the
 build options instead of an id go through `view.resolve_args`). Routes:
 `/api/glb/{mode}?linkage=&module=&phases=&p.NAME=` bakes on demand into the store's
-`bakes/` (`strider_double_robot.glb`; a design with no plan, e.g. TrotBot's heel at
+`bakes/` (`strider_double_robot-<bake key>.glb`: `server.app.bake_key`, the code, libraries
+and CAD state as the fab cache keys them, so nothing stale is served; a design with no plan, e.g. TrotBot's heel at
 `p.unit=7`, answers 422), `/api/pose/{mode}?...&j.q2=` (an arm's baked model posed at joint
 angles, the viewer's joint sliders), `/api/walk`, `/api/linkages`, `/api/modes`, `/api/design/{id}`,
 and `/ws/sim?linkage=&module=` (the design live in MuJoCo, `spiderpig/sim/live.py`).

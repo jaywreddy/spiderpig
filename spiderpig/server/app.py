@@ -2,8 +2,10 @@
 
 Serves the three.js frontend and one self-contained ``.glb`` per design
 from the project store's ``bakes/`` (:func:`spiderpig.bake.default_bake_dir`),
-baked on first request (and again when a cached file is older than the
-package's Python sources). A background watcher re-runs the glTF bake for
+baked on first request under a name that keys everything that shapes it
+(:func:`bake_key`: the config, the code the bake reaches, the libraries and the vendor
+models in play), so a code or CAD change is a new file, never a stale one. A background
+watcher re-runs the glTF bake for
 every default design it has baked whenever a source ``.py`` file of the
 package changes and pushes a ``reload`` message to every connected browser
 over ``/ws``.
@@ -29,8 +31,9 @@ Design parameters (the walking model's contract, see ``walk.py``):
     the ids old URLs use (``klann``, ``double``, ``decker``,
     ``double_double``) are one side of that module (:data:`MODES`;
     ``/api/modes`` lists the ids the viewer's dropdown offers, with labels).
-    Every design is cached in the store's ``bakes/`` under its config's key (the
-    newest ``CACHE_SIZE`` non-default ones kept). A design the planner or a
+    Every design is cached in the store's ``bakes/`` as ``<config key>-<bake key>.glb``
+    (:func:`bake_key`; the newest ``CACHE_SIZE`` non-default ones kept). A design the
+    planner or a
     construction can't build: 422 with the reason. Bakes run one at a time.
 ``?design=<id>`` on ``/api/walk`` and ``/api/glb``
     A design recorded in the store (:func:`configure`; ``spiderpig view``): its
@@ -206,8 +209,57 @@ _FAILED: dict[Path, tuple[float, str]] = {}
 _BAKED: dict[Path, BuildConfig] = {}
 
 
+BAKE_ROOTS = ("spiderpig.bake:bake_gltf", "spiderpig.stages.planning:plan_config")
+"""What a bake runs beside the fabrication (:data:`spiderpig.keys.FAB_ROOTS`): the plan
+through the store, then the bake (meshes, animation, the glTF)."""
+
+
+def _code_key_job() -> str:
+    """:func:`spiderpig.keys.source_key` of the code a bake reaches (the fabrication's and
+    the bake's roots)."""
+    from spiderpig.keys import FAB_ROOTS, source_key
+
+    return source_key((*FAB_ROOTS, *BAKE_ROOTS), "bake")
+
+
+_CODE_KEYS: dict[float, str] = {}
+
+
+def _code_key() -> str:
+    """:func:`_code_key_job` for the sources as they are now (by their newest mtime): this
+    process's own answer is its import's code, so once the sources changed under it
+    (:func:`_stale_code`) a fresh worker process computes it, as it bakes."""
+    mtime = _sources_mtime()
+    key = _CODE_KEYS.get(mtime)
+    if key is None:
+        key = workers.submit(_code_key_job).result() if _stale_code() else _code_key_job()
+        _CODE_KEYS.clear()
+        _CODE_KEYS[mtime] = key
+    return key
+
+
+def bake_key(config: BuildConfig) -> str:
+    """Everything that shapes ``config``'s baked model, as the fabrication cache keys a
+    fabrication (:mod:`spiderpig.fabcache`): the config (its key), the code the bake
+    reaches (:func:`_code_key`: planning, fabrication and the bake, the third-party
+    versions they import), the cache's env tag (Python, build123d, OCP, numpy), the servo's
+    model in play (:func:`spiderpig.fabcache.servo_state`: parametric, or which pinned
+    files are in reach) and the bought parts' (:func:`spiderpig.fabcache.parts_cad_state`).
+    The plan comes from the store by the same code (a design's record re-made and
+    verified, never searched for again). 16 hex."""
+    import hashlib
+
+    from spiderpig import fabcache
+
+    doc = repr((config.key, _code_key(), fabcache.env_tag(), fabcache.servo_state(config),
+                fabcache.parts_cad_state(config)))
+    return hashlib.sha256(doc.encode()).hexdigest()[:16]
+
+
 def _glb_path(config: BuildConfig) -> Path:
-    return _data_dir() / f"{config.key}.glb"
+    """``bakes/<config key>-<bake key>.glb``: another key is another file (:func:`bake_key`),
+    so a file there is the current bake of its design."""
+    return _data_dir() / f"{config.key}-{bake_key(config)}.glb"
 
 
 def _sources_mtime() -> float:
@@ -316,7 +368,8 @@ def _acquire_bake_lock(gone=None) -> None:
 
 
 def _ensure_baked(config: BuildConfig, gone=None) -> Path:
-    """The design's ``.glb``, baked first when missing or older than the sources.
+    """The design's ``.glb``, baked first when missing (its file is named by
+    :func:`bake_key`: a code or CAD change asks for another file).
 
     422 when the linkage can't be assembled (checked first, from the
     kinematics alone), the planner finds no layout or a construction can't
@@ -341,7 +394,7 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
     _acquire_bake_lock(gone)
     try:
         _BAKED[path] = config
-        if _is_fresh(path):
+        if path.is_file():          # (its name keys everything that shapes it: current)
             return path
         mtime = _sources_mtime()
         failed = _FAILED.get(path)
@@ -412,7 +465,12 @@ def _rebake_all() -> None:
         _on_loop(_outdate_sims)
         for path, config in list(_BAKED.items()):
             if config.is_default and path.exists():
-                _bake(config)
+                now = _glb_path(config)         # (the edit may not reach the bake)
+                if now != path:
+                    del _BAKED[path]            # the old key's file: pruned as non-default
+                    _BAKED[now] = config
+                if not now.is_file():
+                    _bake(config)
 
 
 broadcaster = WatchBroadcaster(PACKAGE_ROOT, rebake=_rebake_all)

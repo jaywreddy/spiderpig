@@ -1,6 +1,7 @@
-# Roadmap: modular, testable, fast (2026-10-07; status 2026-10-08)
+# Roadmap: modular, testable, fast (2026-10-07; status 2026-10-14)
 
-The cleanup plan from the repo audit of 2026-10-07. Eight workstreams (W0-W7), each
+The cleanup plan from the repo audit of 2026-10-07, and since 2026-10-11 the platform's
+phases (the robot-arm workstream: "The platform", below). Eight workstreams (W0-W7), each
 with a goal, its scope, **acceptance criteria that a command can check**, and the angles
 its adversarial review attacks. A workstream is done when its criteria pass and a review
 round finds nothing (the loop, below). The scorecard (W0) measures every number here, so
@@ -61,11 +62,11 @@ PR, not committed. The pyright, ruff and CLAUDE.md rows are as merged (`155c8ab`
 | quick-tier coverage of `spiderpig/` | 79.2 % | 85.7 % | W4: + 5 points, met |
 | module tiers, wall | 12-61 s | 16-71 s (load 12-20) | W4: ≤ 20 s, not met under load |
 | largest module | 3315 lines (`crank.py`) | 1145 (`keys.py`) | W5: ≤ 1200, met |
-| pyright errors (without stub noise) | 733 (619) | 28, ratcheted in CI (21 since, "Next") | W6b: ≤ 150, met |
+| pyright errors (without stub noise) | 733 (619) | 28, ratcheted in CI (21 on 2026-10-14; the tests on a count of their own since) | W6b: ≤ 150, met |
 | ruff `RUF` findings | 117 | 0 (with `C4`, `PERF`, `PIE`, `RET`, `BLE`, `PLE`) | W6b: 0 with the extended set, met |
 | CLAUDE.md lines | 679 | 261 | W7: ≤ 300, met |
 | doc check misses | 48 | 0 (`--strict` in CI) | W7: 0, met |
-| identity gate, its designs | ~5 min | 225 s (the `w8-2a130c8` snapshot) | W3: ≤ 2 min, not met |
+| identity gate, its designs | ~5 min | 225 s (the `w8-2a130c8` snapshot, six designs; eight since the platform) | W3: ≤ 2 min, not met |
 
 The W3 and W4 wall-time targets were set on an idle machine; none was re-measured idle
 (the box was never under load 4, invariant 4), so "not met" above means "not shown".
@@ -81,23 +82,23 @@ own check of the docs mid-edit (`test_doc_check.py`), green once W7's edits land
 - The demo `klann` quad's audit still fails on jam SF (W8, unchanged; the wobbly demo).
 - The open product items under "Later", below.
 
-## Next (started 2026-10-08)
+## Next (started 2026-10-08; states as of 2026-10-14)
 
 The follow-ups after PR #28, each its own branch:
 
-- **Assembly guide**: a PDF pipeline from the design (the assembly order, each step's
-  parts and fasteners, drawn from the build), a prototype first.
+- **Assembly guide**: done 2026-10-08 (`spiderpig/guide/`, `mise run guide`; DECISIONS.md,
+  "the assembly guide, generated").
 - **STS3215 bus plugs**: done 2026-10-08 (top-entry sockets in the rear face, one per
   servo, each on its own boxed cable to one of the driver board's two bus ports, both rear
   screws kept: DECISIONS.md). Hand measurements remain: the plug-plus-wire height above the
   rear face (`ServoSpec.bus_ports`, expected 5.5-6.5) and whether the boxed cable reaches
   the board.
-- **BOM consolidation**: a study of the BOM: fewer fastener sizes and SKUs, less pack
-  waste, cheaper sources.
-- **Speed round 2**: the contract check, the BOM's congruence grouping, the build's
+- **BOM consolidation**: done 2026-10-08 (DECISIONS.md, "the BOM decisions"), and the
+  walkers repriced from sellers' pages on 2026-10-14.
+- **Speed round 2** (open): the contract check, the BOM's congruence grouping, the build's
   exports, the tests' start-up and `spiderpig/keys.py` (W3's and W4's targets, still not
   shown).
-- **The quickfix round** (this list's own branch, 2026-10-08):
+- **The quickfix round** (done, 2026-10-08):
   - the stale material out: the generated architecture page and its broken generator,
     SCOPE.md moved to `docs/history/`, this status table;
   - pyright's possible bugs: the booleans' build123d ShapeList (`shapes.difference` /
@@ -110,9 +111,58 @@ The follow-ups after PR #28, each its own branch:
     timed drive on a runner with no GPU, the gate's two snapshots on 4 cores);
   - `lint-imports` with no exceptions: resolve, the stage records, check and plan moved
     under bake/build into `spiderpig/stages/`.
-- **pyright's last 21**: JSON-typed returns in `spiderpig/mcp/` and `api/` and attribute
+- **pyright's last 21** (open): JSON-typed returns in `spiderpig/mcp/` and `api/` and attribute
   reads on `object`-typed parts (`build.py`, `bake.py`, `deck.py`, `store.py`): typing work,
-  none a known bug.
+  none a known bug. The tests, covered since 2026-10-14 on their own count, hold hundreds
+  more (optional reads of reports and parts): ratcheted, to be worked down file by file.
+- **Hardening, wave 1** (done 2026-10-14; DECISIONS.md): the slow tier on a PR by its `slow`
+  label or a manual run (TESTING.md), the planner's budget pinned in CI and kept in a plan's
+  record, a strict mode for vendor CAD, the server's bakes keyed on what shapes them, the
+  tests under pyright.
+
+## The platform (2026-10-11 to 2026-10-14)
+
+The engine became a robot design system: walkers, one-sided mechanisms and arms on shared
+registries, the desktop palletizer arm its first new robot. Each phase was its own commit
+and review round (DECISIONS.md, 2026-10-11 to 2026-10-14, holds each one's what, why and
+open items); the gate's baseline moved with each output change (TESTING.md, the baseline's
+story), now `platform-77c117c`, eight designs.
+
+| phase | what | state |
+|---|---|---|
+| 0 | registries: fab methods, construction roles, vendor CAD, joint error terms, material stiffness and expansion | done |
+| 1 | ball-bearing pivots as swappable joinery; McMaster models through `spiderpig cad` | done |
+| 2 | arms: ranged inputs and a tour; the palletizer side; the precision budget | done |
+| 3 | an arm's drives: steppers, GT2 belts (the capstan later pruned) | done |
+| 4 | an arm's robot: the turret, its tool, spatial joints, the URDF | done |
+| 5 | milled parts | done, then pruned (2026-10-14, the user's call) |
+| 6 | driving the arm: kinematics, steps, homing, calibration, Klipper, a Moonraker host | done |
+| 7 | an arm through every surface: spec, API, MCP, store, view, export | done |
+| reviews | precision rounds 1-7, simplification, cost and part-count loops, the base's looks | done: `palletizer_reach` approved and gated (`mt4_compact`, stall homing, the camera) |
+| merge | kinds by capability (`Linkage.ranged` / walks), drives by role, one screw picker | done |
+
+**Open** (each with its DECISIONS.md entry):
+- **Precision and strength targets.** The arm's budget reports against
+  `precision.DEFAULT_TARGET_MM` and the strength check rates joints, but neither holds a
+  design to a stated target the audit fails on (an ISO 9283 repeatability for
+  `palletizer_reach`, a safety factor per joint kind); the budget's unverified figures (the
+  pairs' tilt, belt span stiffness, rotor inertias) want a hardware run (a dial
+  indicator) to replace them.
+- **One MuJoCo emitter.** A walker's model comes from `spiderpig/sim/mjcf.py`, an arm's
+  from `urdf.mjcf` beside its URDF: two writers of one format, the arm's not driven by
+  `spiderpig sim`. One emitter over `kinematics.RobotTree`, for every kind.
+- **A homing registry.** Homing methods are branches on a sensor's name
+  (`control.homing.method`); a registry like the roles' would make a new sensor (switches
+  on the planar joints, automatic homing) data, not code.
+- **Agent and viewer surfaces.** The viewer's precision overlay (the error budget over the
+  workspace) isn't drawn; the joint sliders were checked by tests, never in a browser here;
+  the API and the MCP have no operation for the arm's precision budget or its control
+  outputs (Klipper config, homing plan): `spiderpig precision` and `spiderpig control` only.
+- **The walkers' out-of-plane metric.** The arm's budget solves its links' out-of-plane
+  bending through the loops (`precision.out_of_plane`); a walker's legs have no such number
+  (wobble is the strength check's), so a thinner or acrylic link can't be judged on it.
+- **The demo `klann` quad** still fails its audit on jam SF (DESIGNS.md); the Strider
+  quad's plan is unproven (proofs on the quads, "Later").
 
 ## Invariants (every workstream, every round)
 

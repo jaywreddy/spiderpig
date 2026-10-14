@@ -111,7 +111,8 @@ markers = [
 # compiled extensions without stubs (OCP, mujoco) get typings/: their names are Any, which
 # silences their noise without turning a rule off anywhere else.
 [tool.pyright]
-include = ["spiderpig"]
+# the tests too (2026-10-14), on a count of their own (tests/pyright_baseline.py)
+include = ["spiderpig", "tests"]
 exclude = ["**/node_modules", "**/__pycache__", "spiderpig/viewer/dist", "build", ".spiderpig"]
 stubPath = "typings"
 venvPath = "."

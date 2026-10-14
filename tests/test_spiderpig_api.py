@@ -897,7 +897,10 @@ def test_the_recommendation_says_which_module_it_checked():
     assert text.startswith("checked: the static stage passes, and its single module plans in "
                            "10 layers (37.639 mm); the quad module's own plan is not checked "
                            "here")
-    assert "the planner's deadline is 60 s" in text
+    from spiderpig.stack import StackSpec
+
+    # (the default 60 s, or SPIDERPIG_PLAN_SECONDS: CI pins it)
+    assert f"the planner's deadline is {StackSpec().max_seconds:g} s" in text
     assert rec._verify(BuildConfig(linkage="klann", module="single", robot=False), plan=False) \
         == "checked: the static stage passes, and it plans in 10 layers (37.639 mm)"
 

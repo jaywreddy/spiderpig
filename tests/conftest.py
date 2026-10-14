@@ -214,6 +214,7 @@ def _offline(tmp_path_factory):
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv(cadlib.OFFLINE_ENV, "1")
         mp.setenv(cadlib.CACHE_ENV, str(tmp_path_factory.mktemp("cad")))
+        mp.delenv(cadlib.STRICT_ENV, raising=False)     # the parametric fallback, as CI's
         mp.setenv("SPIDERPIG_STORE", str(tmp_path_factory.mktemp("store")))
         # the product's fabrication cache off: a test fabricates or uses tests/cache.py
         # (a `fresh=True` build must be fresh; tests that test the product cache set it)

@@ -273,17 +273,29 @@ def _cached_indices(doc: dict | None, n: int) -> list[int] | None:
 
 
 @lru_cache(maxsize=32)
-def cad_servo(spec: ServoSpec, state: tuple | None = None):
+def cad_servo(spec: ServoSpec, state: tuple | None = None, strict: bool | None = None):
     """The manufacturer's model without its output horn (servo frame), or ``None``.
-    ``state``: :func:`cad_state`, a key of the cache only.
+    ``state``: :func:`cad_state`, a key of the cache only; ``strict``: whether
+    ``SPIDERPIG_CAD_STRICT`` was on, likewise (a ``None`` remembered without it must not
+    answer a strict call).
 
     Which solids the strip drops is decided by a bounding box of every solid of the
     imported model (seconds for a detailed one); the answer is recorded beside the
     download (:func:`servos.cad.prepared_path`) and read back by every later process, so
     the shape is built from the same import exactly as the first time, without the boxes.
+
+    Under ``SPIDERPIG_CAD_STRICT=1`` (:func:`servos.cad.strict`) a servo none of whose
+    models can be drawn raises :class:`servos.cad.CadError` (every model's reason) instead
+    of giving ``None`` (the parametric servo); one model failing while a later one draws
+    is no error.
     """
+    errors: list[str] = []
     for ref in spec.cads:
-        shape = cadlib.load(ref)
+        try:
+            shape = cadlib.load(ref)
+        except cadlib.CadError as e:        # (strict) the next model may still draw
+            errors.append(str(e))
+            continue
         if shape is None:
             continue
         n = len(shape.solids())
@@ -295,9 +307,17 @@ def cad_servo(spec: ServoSpec, state: tuple | None = None):
                 cadlib.write_prepared(path, {"solids": n, "keep": keep})
             return strip_horn(shape, ref, keep)
         # OCCT's boolean and query errors aren't one class: a model whose horn can't be
-        # stripped is skipped for the next one (or the parametric servo), never fails a build
+        # stripped is skipped for the next one (or the parametric servo), never fails a
+        # build (unless strict, and no model draws)
         except Exception as e:  # noqa: BLE001
-            log.warning("%s: couldn't strip the horn from %s: %s", spec.key, ref.filename, e)
+            why = f"{spec.key}: couldn't strip the horn from {ref.filename}: {e}"
+            if cadlib.strict():
+                errors.append(why)
+            else:
+                log.warning("%s", why)
+    if errors:
+        raise cadlib.CadError(f"{spec.key}: no manufacturer model could be drawn: "
+                              + "; ".join(errors))
     return None
 
 
@@ -330,8 +350,8 @@ def unfit_idler(spec: ServoSpec, part):
 
 
 @lru_cache(maxsize=32)
-def _servo_part(spec: ServoSpec, state: tuple):
-    part = cad_servo(spec, state) if state else None
+def _servo_part(spec: ServoSpec, state: tuple, strict: bool = False):
+    part = cad_servo(spec, state, strict) if state else None
     if part is not None:
         part = unfit_idler(spec, part)
     return drill_mounts(spec, part if part is not None else parametric_servo(spec))
@@ -346,4 +366,4 @@ def servo_part(spec: ServoSpec, *, cad: bool = True, state: tuple | None = None)
     """
     if not cad:
         return _servo_part(spec, ())
-    return _servo_part(spec, cad_state(spec) if state is None else state)
+    return _servo_part(spec, cad_state(spec) if state is None else state, cadlib.strict())

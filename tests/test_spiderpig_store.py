@@ -360,6 +360,37 @@ def test_a_stored_plan_that_no_longer_holds_is_solved_again(tmp_path, design, mo
     assert json.loads(path.read_text())["layers"] == pr.layers
 
 
+def test_a_stored_plan_keeps_the_budget_it_was_searched_under(tmp_path, design, monkeypatch):
+    """The planner's CPU budget (``SPIDERPIG_PLAN_SECONDS``) is outside the design's id, so
+    the plan record keeps the one its search had: a reused plan reports the record's, says
+    so when this process's differs, and a record from before the field says it can't tell."""
+    from spiderpig import stack
+
+    design("single")
+    store = Store(tmp_path)
+    d = api.resolve(KLANN_SINGLE, store)
+    pr = api.plan(d)
+    assert pr.budget_s == stack.StackSpec().max_seconds
+    path = store.report_path(d.id, "plan")
+    doc = json.loads(path.read_text())
+    assert doc["budget_s"] == pr.budget_s
+    assert doc["budget_recorded"] is True
+
+    doc["budget_s"] = other = pr.budget_s + 1234.0 if pr.budget_s else 1234.0  # another
+    path.write_text(json.dumps(doc))
+    solved = _count(monkeypatch, stages_planning, "design_side")
+    got = api.plan(api.load(d.id, store))
+    assert solved == []
+    assert (got.reused, got.layers, got.budget_s) == ("store", pr.layers, other)
+    assert any(f"{other:g} CPU-s planner budget" in w for w in got.warnings)
+
+    del doc["budget_s"]                              # a record from before it was kept
+    path.write_text(json.dumps(doc))
+    got = api.plan(api.load(d.id, store))
+    assert (got.reused, got.budget_s, got.budget_recorded) == ("store", None, False)
+    assert api.load(d.id, store).id == d.id          # the budget never names the design
+
+
 # ---------------------------------------------------------------------------
 # gc, compare, derive
 # ---------------------------------------------------------------------------

@@ -143,6 +143,8 @@ class PlanOut(Result):
     warnings: list[str]
     heads: str | None           # fasteners' heads sunk into layers, or in clearance gaps
     gaps_mm: dict[str, float]   # layer -> the clearance gap over it (height_mm counts them)
+    budget_s: float | None      # the planner's CPU budget the search had (None: no clock)
+    budget_recorded: bool       # false: re-made from a record that didn't keep its budget
     seconds: float
 
 
