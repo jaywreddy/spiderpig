@@ -22,10 +22,16 @@ every belt-driven arm rely on, and what ISO 9283's same-direction cycle measures
 place approach the hover pose above the slide one-sidedly and then descend straight down
 (the turntable still: its backlash stays taken up; the arm's joints seated by gravity).
 
-**Homing** (:func:`home_gcode`) runs the turntable onto its flag's edge from the positive
-side (:mod:`.homing`), never farther than the half of its range the beam says home is in,
-slowly, sets that as 0, and reads its driver's phase (``DUMP_TMC STEPPER=q1
-REGISTER=MSCNT``) for :func:`homing.phase_move`.
+**Homing** (:func:`home_gcode`) follows each joint's sensor (:func:`.homing.method`). An
+endstop turntable runs onto its flag's edge from the positive side (:mod:`.homing`), never
+farther than the half of its range the beam says home is in, slowly, sets that as 0, and
+reads its driver's phase (``DUMP_TMC STEPPER=q1 REGISTER=MSCNT``) for
+:func:`homing.phase_move`. A stall joint (the turntable's ``hard_stop``, a planar input's
+``stall``) lowers its driver's current (:data:`.klipper.HOME_CURRENT`), turns toward its
+range's lower end no farther than the whole range and the stop past it, at half a motor
+turn a second (Klipper's sensorless homing guide: StallGuard wants speed), until the driver
+stalls on the hard stop (its ``virtual_endstop``), sets that as the stop's angle
+(:func:`stop_angle`), restores the run current, and backs off to the range's end.
 
 :class:`Moonraker` posts G-code to Moonraker's ``/printer/gcode/script`` (the standard
 library only); nothing here talks to hardware until it is called with a URL.
@@ -40,6 +46,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from spiderpig.control import homing
 from spiderpig.control.arm import ArmModel
 from spiderpig.control.mapping import Axis
 
@@ -47,6 +54,9 @@ MAX_TIP_MM_S = 25.0     # the tip's speed a straight move is held to (constant-s
 HOME_SPEED = 20.0       # the turntable's search speed (deg/s); the final approach a tenth
 APPROACH_DEG = 0.5      # past the target before a one-sided final approach (joint degrees),
 #                         at least: well over a GT2 5:1 drive's backlash (0.1 deg at the joint)
+STALL_REV_S = 0.5       # a stall's homing speed: motor turns a second (Klipper's guide: half
+#                         its rotation_distance a second)
+STALL_SETTLE_MS = 2000  # a wait after a stall for StallGuard to clear (Klipper's guide)
 APPROACH_X = 1.5        # ... and at least this many times the axis's own backlash (a cheap
 #                         planetary's: 25' to 3 deg)
 
@@ -113,13 +123,67 @@ def one_sided(axes: dict[str, Axis], before: dict[str, float], end: dict[str, fl
     return joints_gcode(axes, end, past, seconds) + joints_gcode(axes, past, back, seconds)
 
 
-def home_gcode(axes: dict[str, Axis]) -> list[str]:
-    """The turntable's homing (module docstring): onto the flag's edge from the positive
-    side, then 0 there, its phase read. The planar joints' zeros are the angle gauge's
-    (:mod:`.homing`)."""
-    if "q1" not in axes:
-        return []
-    ax = axes["q1"]
+def stop_angle(axis: Axis) -> float:
+    """A stall joint's hard stop (rad): :data:`homing.STALL_PAST_DEG` past its range's
+    lower end (nominal: calibration finds it)."""
+    return axis.limits[0] - math.radians(homing.STALL_PAST_DEG)
+
+
+def home_gcode(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> list[str]:
+    """The homing moves (module docstring), the turntable first: ``sensors`` each joint's
+    (:func:`homing.sensors_of`; by default the turntable's optical endstop alone). A joint
+    with no homing move (a gauge, an inclinometer: :mod:`.homing`) has none here."""
+    sensors = {"q1": homing.YAW_SENSOR} if sensors is None else sensors
+    out: list[str] = []
+    for n in sorted(axes, key=lambda n: n != "q1"):
+        how = homing.method(sensors.get(n, ""))
+        if how == "stall":
+            out += _stall_gcode(n, axes[n])
+        elif how == "endstop" and n == "q1":
+            out += _flag_gcode(axes[n])
+    return out
+
+
+def homed(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> dict[str, float]:
+    """Where :func:`home_gcode` leaves the joints it homes (rad)."""
+    sensors = {"q1": homing.YAW_SENSOR} if sensors is None else sensors
+    out = {}
+    for n, ax in axes.items():
+        how = homing.method(sensors.get(n, ""))
+        if how == "stall":
+            out[n] = ax.limits[0]
+        elif how == "endstop" and n == "q1":
+            out[n] = 0.0
+    return out
+
+
+def _stall_gcode(n: str, ax: Axis) -> list[str]:
+    """Joint ``n`` onto its hard stop by its driver's stall (module docstring)."""
+    from spiderpig.control.klipper import currents
+
+    amps = currents(ax)
+    if amps is None:
+        raise ValueError(f"{n}: a stall homing needs a catalogued motor (its current), "
+                         f"not {ax.motor!r}")
+    run, _, home = amps
+    lo, hi = ax.limits
+    stop = stop_angle(ax)
+    speed = STALL_REV_S * ax.deg_per_motor_rev                 # joint deg/s
+    seek = stop - math.radians(5.0)          # wherever it is, the stop is under hi - seek
+    return [f"MANUAL_STEPPER STEPPER={n} ENABLE=1",
+            f"SET_TMC_CURRENT STEPPER={n} CURRENT={home:.2f}",
+            f"MANUAL_STEPPER STEPPER={n} SET_POSITION={position_deg(ax, hi):.4f}",
+            f"MANUAL_STEPPER STEPPER={n} MOVE={position_deg(ax, seek):.4f} SPEED={speed:.3f} "
+            "STOP_ON_ENDSTOP=1",
+            f"MANUAL_STEPPER STEPPER={n} SET_POSITION={position_deg(ax, stop):.4f}",
+            f"G4 P{STALL_SETTLE_MS}",
+            f"SET_TMC_CURRENT STEPPER={n} CURRENT={run:.2f}",
+            f"MANUAL_STEPPER STEPPER={n} MOVE={position_deg(ax, lo):.4f} SPEED={speed:.3f}"]
+
+
+def _flag_gcode(ax: Axis) -> list[str]:
+    """The turntable onto its flag's edge from the positive side, then 0 there, its phase
+    read (module docstring)."""
     lo, hi = (math.degrees(v) for v in ax.limits)
     off = hi + 5.0             # home is at 0: blocked, it is under hi away; clear, under -lo
     on = -lo + 5.0
@@ -163,6 +227,9 @@ class ArmHost:
     axes: dict[str, Axis]
     client: Moonraker
     q: dict[str, float]
+    sensors: dict[str, str] | None = None
+    """Each joint's homing sensor (:func:`homing.sensors_of`; ``None``: the turntable's
+    optical endstop alone)."""
 
     def move_to(self, xyz, *, approach: bool = False, **kw) -> None:
         """A straight move to ``xyz``; ``approach``: ending one-sidedly (module docstring:
@@ -179,8 +246,8 @@ class ArmHost:
                             f"SET_PIN PIN=vacuum_release VALUE={0 if on else 1}"])
 
     def home(self) -> None:
-        self.client.script(home_gcode(self.axes))
-        self.q["q1"] = 0.0
+        self.client.script(home_gcode(self.axes, self.sensors))
+        self.q.update(homed(self.axes, self.sensors))
 
 
 def _last_start(model: ArmModel, start_q: dict[str, float], b, seg_mm: float) -> dict[str, float]:

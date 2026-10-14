@@ -165,6 +165,10 @@ register(Role("turntable", "turntable", "spiderpig.construction.rotary:PRESETS",
               default="belt_preload", robot=True,
               help="the robot's base rotation (yaw): its bearings, transmission, motor and "
                    "homing sensor, as a preset (construction.rotary.PRESETS)"))
+register(Role("pin_stack", "pin stacking", "spiderpig.stack.plan:PIN_STACKS", ("arm",),
+              default="free",
+              help="where a pin's links may sit in the stack: any layers (a spacer tube "
+                   "fills each layer between them) or consecutive ones (no spacers)"))
 register(Role("mill", "mill", "spiderpig.milling:MILLS", ("arm",), default="none",
               optional=True, robot=True,
               help="the user's own mill, if any: the parts that want one (the turntable's "
@@ -172,3 +176,8 @@ register(Role("mill", "mill", "spiderpig.milling:MILLS", ("arm",), default="none
 register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
               default="suction_cup", optional=True, robot=True,
               help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))
+register(Role("controller", "controller", "spiderpig.actuators.controllers:CONTROLLERS",
+              ("arm",), default="skr_pico_pi_zero", optional=True, robot=True,
+              help="the electronics that drive the steppers and run Klipper: a board with "
+                   "its drivers, the host computer, the supply and the cables (none: your "
+                   "own board, its pins left to fill in the Klipper config)"))

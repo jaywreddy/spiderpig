@@ -304,15 +304,17 @@ class Turret(Layout):
     def plans(self, design, config):
         """``(turret plan, tool plan or None)`` of ``design`` in the robot's ``config`` (its
         turntable and tool roles: the side's design doesn't hold them)."""
+        from spiderpig.actuators.sensors import REFERENCES
         from spiderpig.construction.rotary import PRESETS
         from spiderpig.construction.rotary.turret import turret_plan
-        from spiderpig.construction.tools import TOOLS, tool_plan
+        from spiderpig.construction.tools import TOOLS, camera_of, tool_plan
 
         cfg = config
         key = cfg.role("tool")
+        ref = REFERENCES.get(cfg.role("homing_reference"))    # its camera rides the tool
         tp = (None if not key          # (the role emptied: config.role says "")
               else tool_plan(design.ctx, design.plan, _pick(TOOLS, key, "tool"),
-                             design.groups))
+                             design.groups, camera=camera_of(ref.bom if ref else ())))
         preset = _pick(PRESETS, cfg.role("turntable"), "turntable")
         return turret_plan(design, preset, tp, mill=cfg.role("mill")), tp
 
@@ -332,6 +334,13 @@ class Turret(Layout):
 
         turret, _ = self.plans(design, config)
         bodies, turning, extras, info = turret_parts(turret, design.ctx)
+        if key := config.role("controller"):     # the electronics (actuators.controllers)
+            from spiderpig.actuators.controllers import get as controller
+            from spiderpig.hardware.bom import BomLine
+
+            extras = extras + [BomLine(k, q, f"controller: {key}")
+                               for k, q in controller(key).bom]
+
         def over(bb) -> bool:      # over the turret (a base_pair's keep-out: only that)
             return (not turret.keep_r or (turret.x_a + turret.keep_r > bb.min.X
                                           and turret.x_a - turret.r_base < bb.max.X))

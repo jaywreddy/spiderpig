@@ -135,6 +135,25 @@ for _L in _sk.lengths:
         notes="ISO 7380-1",
     ))
 
+# M2 button heads (ISO 7380-1): the ball pair's ground pin ends (pivots.pair.GroundShaft)
+_sk = SCREWS["button", "2"]
+for _L in _sk.lengths:
+    register(Item(
+        _sk.key(_L), f"M2 x {_L:g} mm button head socket screw", "fastener",
+        (*([Offer("Fastener Express", "https://www.fastener-express.com/"
+                  "M2x.4x4mmButtonSocketCapA2StainlessSteelQty.aspx", "60010", pack_qty=20,
+                  price_usd=5.84, verified=True,
+                  note="A2 stainless M2 x 4 button socket cap screw, 20 a pack (item 60010, "
+                       "BSMSS2004-5F2; page read 2026-10-13)")] if _L == 4 else []),
+         Offer("Amazon", "https://www.amazon.com/s?k=M2+button+head+socket+screw+stainless",
+               pack_qty=100, price_usd=7.0,
+               note=f"search: M2 x {_L:g} ISO 7380 stainless; the price an estimate")),
+        dims={"d": 2.0, "length": float(_L), "head_d": _sk.head_d, "head_h": _sk.head_h,
+              "clearance_d": CLEARANCE["2"]},
+        notes="ISO 7380-1 M2 (head 3.5-3.8 x 1.16-1.3 mm, Aspen Fasteners' drawing); under "
+              "it a DIN 125 M2 washer (5 mm), which bears on the disc spring's 4.2 mm bore.",
+    ))
+
 # ---------------------------------------------------------------------------
 # Self-tapping screws for plastic (the STS3215's case pilots are 1.6 mm, for PA2.0)
 # ---------------------------------------------------------------------------

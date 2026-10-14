@@ -118,12 +118,18 @@ register(Item(
     dims={"d": 10.0, "h": 11.0, "thread": "M5", "mass_g": 2.0, "material": "nylon"},
     notes="The tool: picks glass slides by vacuum. Height is nominal (UNVERIFIED)."))
 register(Item(
-    "vacuum_pump_12v", "12 V diaphragm vacuum pump (micro, about -60 kPa)", "pneumatic",
-    (_amazon("B0GQ9C828K", 1, 17.03, "CJVP28-AB12C 12 V micro 370 vacuum pump"),
+    "vacuum_pump_12v", "12 V diaphragm vacuum pump (micro 370, about -55 to -60 kPa)",
+    "pneumatic",
+    (Offer("Amazon", "https://www.amazon.com/dp/B0867NLHCF", "B0867NLHCF", pack_qty=2,
+           price_usd=14.20, note="12 V micro 370 vacuum pump with inlet and vent, 2 a pack: "
+           "0 to -55 kPa in a 100 cc tank in under 10 s at under 650 mA (its listing); "
+           "product-page price read 2026-10-13"),
+     _amazon("B0GQ9C828K", 1, 17.03, "CJVP28-AB12C 12 V micro 370 vacuum pump"),
      _unpriced("Amazon", "https://www.amazon.com/s?k=12v+micro+vacuum+pump", "micro "
                "vacuum pumps")),
     dims={"mass_g": 60.0},
-    notes="Sits off the arm, on the bench; feeds the suction cup through the valve."))
+    notes="Sits off the arm, on the bench; feeds the suction cup through the valve. At "
+          "-55 kPa a 10 mm cup holds about 4 N (a glass slide weighs some 5 g)."))
 register(Item(
     "solenoid_valve_12v_3way", "12 V 3-way solenoid valve (vents the cup to release)",
     "pneumatic",
@@ -142,7 +148,19 @@ register(Item(
              "10 pcs"),
      _unpriced("Amazon", "https://www.amazon.com/s?k=m5+push+in+fitting+4mm", "M5 to 4 mm "
                "fittings")),
-    dims={"thread": "M5", "tube": 4.0, "mass_g": 3.0}))
+    dims={"thread": "M5", "tube": 4.0, "mass_g": 3.0, "od": 10.0, "h": 14.0},
+    notes="On the tool's shelf, its thread down into the cup's coupling nut (clamping the "
+          "shelf). Body diameter and height over the shelf nominal (UNVERIFIED: measure)."))
+register(Item(
+    "m5_coupling_nut_15", "M5 coupling nut, 8 mm hex x 15 mm, threaded through (DIN 6334)",
+    "nut",
+    (_unpriced(_MCM, "https://www.mcmaster.com/products/coupling-nuts/", "M5 x 0.8 "
+               "coupling nuts, 8 mm hex, 15 mm long"),),
+    dims={"thread": "M5", "af": 8.0, "length": 15.0, "mass_g": 4.0, "material": "steel"},
+    notes="The suction cup's column under the tool's shelf: the push-in fitting screwed into "
+          "its top through the shelf, the cup into its bottom; the vacuum through its bore. "
+          "The cup's and the fitting's threads each need about 3 mm in it (UNVERIFIED: the "
+          "cup's thread length)."))
 register(Item(
     "stepper_11hs20", "NEMA 11 stepper 11HS20-0674 (0.12 N·m, 0.67 A)", "motor",
     (_unpriced("StepperOnline", "https://www.omc-stepperonline.com/nema-11-stepper-motor",
@@ -182,7 +200,7 @@ register(Item(
              "autofocus; 25 x 24 mm board (check its mounting)")),
     dims={"board": [25.0, 24.0, 12.4], "pixels": [4608, 2592], "min_focus_mm": 50.0,
           "mass_g": 4.0},
-    notes="The homing reference's camera (control.vision): on the tool holder about 50 mm "
+    notes="The homing reference's camera (control.vision): under the tool's shelf about 50 mm "
           "over the reference board, its lens locked once focused; on the Klipper host's "
           "(a Raspberry Pi's) CSI port. The standard module focuses only from 10 cm. "
           "Mechanical drawing and STEP: Raspberry Pi's product information portal "
@@ -193,10 +211,28 @@ register(Item(
     (_amazon("B07G9VLPZH", 1, 16.00, "OV5647 with an M12 lens; set its focus once at the "
              "working height and lock the lens"),),
     dims={"board": [25.0, 24.0, 12.4], "pixels": [2592, 1944], "fov_deg": 90.0,
-          "mass_g": 4.0},
+          "mass_g": 4.0, "hole_pitch": [21.0, 12.5], "hole_d": 2.2, "lens_d": 14.0,
+          "board_t": 1.0},
     notes="The cheaper homing camera (round 2 of the cost loop): about 39 um a pixel 50 mm "
           "over the board (the Camera Module 3 Wide's 27); a dot's centroid to a tenth of a "
-          "pixel all the same, its focus fixed by hand (no autofocus to drift)."))
+          "pixel all the same, its focus fixed by hand (no autofocus to drift). Hung under "
+          "the tool's shelf (construction.tools) on four M2 screws; its holes taken as the "
+          "Raspberry Pi camera's 21 x 12.5 mm, the lens on their centre, its holder 14 mm "
+          "across (UNVERIFIED: measure the board bought). Its cable: the kit's 15-pin one "
+          "doesn't fit the Pi Zero 2 W's 22-pin port (csi_cable_pi_zero_30)."))
+register(Item(
+    "csi_cable_pi_zero_30", "Raspberry Pi Zero camera cable, 15-pin 1 mm to 22-pin 0.5 mm "
+    "FFC, 30 cm", "electronics",
+    (Offer("Amazon", "https://www.amazon.com/dp/B07H3L3LM2", "B07H3L3LM2", price_usd=4.99,
+           note="DORHEA 30 cm Pi Zero camera cable, 15 pin 1.0 mm to 22 pin 0.5 mm; "
+                "product-page price read 2026-10-13"),
+     Offer("Amazon", "https://www.amazon.com/dp/B0DQBHNT9C", "B0DQBHNT9C", pack_qty=2,
+           price_usd=8.99, note="ZDE, two 30 cm cables; product-page price read "
+                                "2026-10-13")),
+    dims={"length_mm": 300.0, "pins": [15, 22]},
+    notes="The homing camera on the tool to the controller's Pi Zero 2 W (a 22-pin port). "
+          "30 cm from the tool along the arm: check it reaches the Pi where it sits (a "
+          "longer one, or a 15-pin extension through a joiner, if not)."))
 register(Item(
     "fiducial_pcb", "Reference board: FR-4 1.6 mm, 100 x 100 mm, a grid of copper dots "
     "(ENIG), screwed to the base plate", "electronics",

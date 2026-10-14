@@ -53,6 +53,7 @@ class AngleSensor:
     repeat_deg: float
     bom_key: str = ""
     source: str = ""
+    stop: tuple[tuple[str, float], ...] = ()    # what a hard stop buys per joint
 
 
 ANGLE_SENSORS: dict[str, AngleSensor] = {s.key: s for s in (
@@ -68,6 +69,13 @@ ANGLE_SENSORS: dict[str, AngleSensor] = {s.key: s for s in (
                 source=f"{PRECISE_REPEAT_MM * 1000:g} um (its datasheet's 2 um over 20 tries "
                        f"at 25 C, and drift) at a tab {PRECISE_FLAG_R:g} mm out (q2's on b1; "
                        "q3's on the crank b2 about 55)"),
+    AngleSensor("stall", "no sensor: the driver's stall detection (TMC2209 StallGuard) "
+                "against a hard stop at the end of the joint's travel", 0.72,
+                stop=(("m3_shcs_10", 1.0), ("m3_nut", 1.0)),
+                source="two full steps at the motor (Klipper's sensorless homing, at reduced "
+                       "current), 0.72 deg through 5:1; only coarse: a camera homing "
+                       "(vision_fiducial) sets every zero, so it leaves the budget (the cost "
+                       "loop's, 2026-10-13: the endstops dropped)"),
     AngleSensor("scl3300", "a Murata SCL3300-D01 inclinometer on each link", 0.02,
                 bom_key="inclinometer_scl3300",
                 source="Murata SCL3300-D01: 0.0055 deg/LSB, 0.001 deg/sqrt(Hz) noise, "

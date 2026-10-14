@@ -208,7 +208,7 @@ def test_the_tool_finds_room_beside_the_end_plate():
         assert isinstance(tool, ToolPlan)
         assert tool.body == "b8"
         assert tool.tool is TOOLS[key]
-        assert len(tool.regions) == (2 if TOOLS[key].wrist else 1)
+        assert len(tool.regions) == (2 if TOOLS[key].wrist else 4)   # the plates: 4 boxes
     _, _, none = _plans(_robot(roles=(("tool", rolemod.NONE),)))
     assert none is None
 
@@ -246,8 +246,9 @@ def test_the_turntable_joins_the_precision_budget():
 @pytest.mark.slow
 @pytest.mark.parametrize("roles", [(), (("turntable", "capstan_preload"),),
                                    (("turntable", "mt4"), ("tool", "suction_wrist")),
-                                   (("turntable", "mt4_base"),)],
-                         ids=["belt", "capstan", "mt4-wrist", "mt4-base"])
+                                   (("turntable", "mt4_base"),),
+                                   (("turntable", "mt4_base_stall"), ("angle_sensor", "stall"))],
+                         ids=["belt", "capstan", "mt4-wrist", "mt4-base", "mt4-base-stall"])
 def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(roles):
     from spiderpig.construction.contract import clashes
     from spiderpig.fabricate import split_parts
@@ -269,10 +270,13 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
     rows = {r.key: r.qty for r in bom_from_mechanism(mech).purchased}
     if dict(roles).get("turntable") == "capstan_preload":     # the cord's two anchors
         assert {"yaw_anchor0", "yaw_anchor1"} <= {b.name for b in mech.bodies}
-    if dict(roles).get("turntable") == "mt4_base":   # the bearings in the base's plates
+    if dict(roles).get("turntable", "").startswith("mt4_base"):   # the base's bearings
         from spiderpig.construction.rotary.base_pair import SHAFT_KEY
 
         assert rows["bearing_f608zz"] == 2
+        if dict(roles)["turntable"] == "mt4_base_stall":   # no switch anywhere: hard stops
+            assert "optical_endstop" not in rows
+            assert {"yaw_stop", "yaw_stop_post"} <= {b.name for b in mech.bodies}
         assert rows["collar_8mm"] == 3
         assert rows[SHAFT_KEY] == 1
         assert rows["m4_hex_standoff_45"] == 7          # three round the bearings
@@ -284,8 +288,14 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
         assert rows["collar_8mm"] == 4
         assert rows["shaft_8mm_h6_100"] == 1
     assert rows["suction_cup_m5_10"] == 1
-    assert rows["optical_endstop"] == 1
-    steppers = sum(q for k, q in rows.items() if k.startswith("stepper_"))
+    from spiderpig.actuators.controllers import get as controller  # the electronics
+
+    for key, qty in controller(cfg.role("controller")).bom:
+        assert rows[key] == qty, key
+    if dict(roles).get("turntable") != "mt4_base_stall":
+        assert rows["optical_endstop"] == 1
+    steppers = sum(q for k, q in rows.items()
+                   if k.startswith("stepper_") and not k.startswith("stepper_cable"))
     assert steppers == (4 if "suction_wrist" in dict(roles).values() else 3)
 
 

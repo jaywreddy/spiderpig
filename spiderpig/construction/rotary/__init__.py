@@ -140,6 +140,8 @@ SENSORS: dict[str, Sensor] = {s.key: s for s in (
            "the turntable", "optical_endstop"),
     Sensor("ee_sx67", "an Omron EE-SX67 slot sensor on the base, an aluminium flag under the "
            "turntable", "omron_ee_sx670", 0.005),
+    Sensor("hard_stop", "no sensor: an M3 screw under the turntable stalls the driver "
+           "(TMC2209 StallGuard) on a post on the base past the range's end", "", 0.75),
 )}
 """The EE-SX67's repeatability: its datasheet's reference graph, 2 um over 20 tries at
 25 C, 20-40 um of drift between 25 C and -25 / 55 C (about 0.7 um/K): 5 um budgeted (round
@@ -194,6 +196,9 @@ PRESETS: dict[str, RotaryPreset] = {p.key: p for p in (
                  "F608 pair in the base's plates, the driver at 1/64, an M2 screw through a "
                  "slot switch past the range's end (round 7's turret review)", "base_pair", "belt",
                  "nema17_17hs4401_x64", "optical_flag", (-120.0, 120.0)),
+    RotaryPreset("mt4_base_stall", "mt4_base homed without a switch: the driver's stall on a "
+                 "hard stop past the range's end (the camera then sets the zero)", "base_pair",
+                 "belt", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0)),
     RotaryPreset("capstan_precise", "cord capstan 11.6:1 on a preloaded 608 pair, an Omron "
                  "slot sensor, the driver at 1/64", "preloaded_pair", "capstan",
                  "nema17_17hs4401_x64", "ee_sx67", (-115.0, 115.0)),

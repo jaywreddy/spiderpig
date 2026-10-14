@@ -606,6 +606,9 @@ class DriveGroup(Group):
         if sensor is not None and sensor.bom_key:
             out.extras.append(BomLine(sensor.bom_key, 1, f"{self.name}: {self.link}'s angle "
                                       "(on the link, its x along it)"))
+        for key, qty in (sensor.stop if sensor is not None else ()):
+            out.extras.append(BomLine(key, qty, f"{self.name}: {self.link}'s hard stop at the "
+                                      "end of its travel (sensorless homing)"))
         out.notes.setdefault("drive", {})[self.name] = {
             "input": self.input, "link": self.link, "transmission": self.transmission.key,
             "motor": mo.key, "ratio": round(hub.ratio, 4), "layers": layers,

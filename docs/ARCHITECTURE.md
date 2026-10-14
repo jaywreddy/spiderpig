@@ -1367,7 +1367,8 @@ robot is an entry rather than an edit across the stages:
   (`construction.rotary.PRESETS`: a support, a transmission, a motor and a sensor; the
   plain or wave-washer-preloaded 608 pair, the side's own `belt` and `capstan` numbers on
   the yaw's geometry). The arm's tool is the role `tool` (`construction/tools.py`): a
-  vacuum cup on a printed holder bolted beside the end plate, or on a NEMA 11 wrist hung
+  vacuum cup under a laser-cut shelf T-slotted to a hanger plate bolted beside the end
+  plate (the homing camera hung under the shelf beside it), or on a NEMA 11 wrist hung
   under the flange, placed where no link sweeps over the inputs' box. A layout adds its
   side-level groups before the plates are cut (`robot_groups`: the frame ties, a turret's
   feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).

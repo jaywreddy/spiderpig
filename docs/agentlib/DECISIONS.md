@@ -968,3 +968,43 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   is the user's own work: the plates cut on the Carvera from bought sheet (about USD 70 for
   136 of cutting) and the pins and pillars cut and tapped from McMaster's -0.005 mm rods
   (1327K507, 4143N12; about USD 40 off): some USD 420.
+
+### 2026-10-13: "the best part is no part" (the arm's part-count loops 1-2)
+
+- **Why:** the user's: cross-sections of the pivots showed the spacer tubes, hubs and shims
+  only fill layers between a pin's links; "do we even need them?". Then loops of
+  investigators (pivots; turret and plates; drives, tool and homing; electronics) and a
+  reviewer combining them.
+- **The planner:** a role `pin_stack` (`stack.plan.PIN_STACKS`: `free`, `adjacent`, `near`
+  one layer at most; `StackSpec.adjacent`, `_Search.together`, `fabricate.adjacent_pins`, and
+  `plan_z.finalize` refusing a clearance gap between a pin's neighbours but a column's own
+  land washers). On `palletizer_reach` strict adjacency is infeasible (both drives' hubs
+  hug opposite frame plates while the elbow and levelling parallelograms chain b1-b4-b3-b2
+  and cross b5-b8: every pin strict, or all but one, fails in ~340 steps); `near` planned
+  18 layers before the land gaps and none after; `free` now plans 16 (60.5 mm).
+- **Taken:** b1 in 5.4 mm acrylic (its bearing pair inside it: both hubs gone); sensorless
+  homing (`angle_sensor` `stall`, the turntable preset `mt4_base_stall`, sensor
+  `hard_stop`: an M3 under the turntable stalls on a post past the range's end,
+  `base_pair.stop_radius`; the camera sets every zero; the three optical endstops, their
+  flag and posts gone, the base smaller); the suction tool's printed holder as two cut
+  plates that also mount the camera at a fixed offset (no printed part left); a cheaper
+  pump; the Pi Zero's CSI cable; the controller in the BOM (role `controller`,
+  `actuators.controllers`: SKR Pico + Pi Zero 2 W + 12 V brick + cables, about USD 115;
+  `control.klipper` generates its pins and StallGuard homing); MISUMI's whole-mm ground pin
+  lengths (`GROUND_LENGTHS`: SFJW4 from 10 mm in 1 mm steps); b4 in 1/8 in 5052.
+- **Bugs found and fixed:** the pins' top spacer bore on the top bearing's outer ring (no
+  inner-ring preload, a still washer rubbing a turning ring): a 4 x 6 x 0.5 inner-ring land
+  (`ChicagoShaft.land_key`); neighbours meeting face to face got a 0.5 mm land gap
+  (`pair.land_gaps`); M2 ISO 7380 button-head pin ends (`fasteners` family `button`) so
+  the end still sinks into a 3 mm layer; the disc spring's slot was also bought as a rigid
+  0.5 mm washer, so the screw flattened the spring (`pair.spring_slot`).
+- **Rejected or deferred:** T-slot feet (a captive M3 nut needs the plate as thick as its
+  5.5 mm width: the frame plates are 2 mm); one screw per pin (a bond's creep would drop
+  the preload silently); single bearings at O/b1, W/b8, E/b6 (power-up RP toward 0.085 mm;
+  needs a per-joint seat key: deferred); bent-tab feet and a bent tool L (SendCutSend's
+  bend fee may eat the USD 16: a live quote first); smaller motor sliders (USD 2).
+- **Result (`palletizer_reach`, `--pin-stack free`, `mt4_base_stall`, `stall`,
+  `vision_fiducial_ov5647`, b1-b8 but b4 in 5.4 mm acrylic, b4 1/8 in 5052):** BOM USD
+  630.13 with the electronics (about 515 without them, was 524.58), 287 bought pieces, 17
+  cut parts, none printed; 16 layers (60.5 mm); ISO RP 0.047 mm in a session, 0.075
+  across power-ups.

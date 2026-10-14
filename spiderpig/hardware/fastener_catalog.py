@@ -100,8 +100,10 @@ for _k, (_od, _id, _t, _h0, _f) in DISC_SPRINGS.items():
         notes=f"About {_f:g} N at 75 % of its {_h0 - _t:.2f} mm travel (DIN 2093 series C, "
               "an estimate)."))
 
-GROUND_LENGTHS = tuple(round(5.0 + 0.5 * i, 1) for i in range(111))
-"""The ground pin's lengths (mm): cut to order in 0.5 mm steps (5 to 60)."""
+GROUND_LENGTHS = tuple(float(L) for L in range(10, 61))
+"""The ground pin's lengths (mm): MISUMI's SFJW4 (g6, M2 both ends) is made from 10 mm in
+1 mm steps (its catalogue, p. 93; 0.1 mm steps are a special): the shims take up the rest
+(the cost loop's round 2, 2026-10-13: the 0.5 mm steps were specials)."""
 
 
 def ground_pin(length: float) -> str:
@@ -115,10 +117,12 @@ for _L in GROUND_LENGTHS:
                "tapped-rotary-shafts", price_usd=6.0,
                note="rotary shaft, one or both ends tapped, length to order; whether a 4 mm "
                     "shaft takes M2 both ends and the price are estimates (unverified)"),),
-        dims={"thread": 2.0, "barrel_d": 4.0, "head_d": 5.0, "head_h": 2.3,
-              "screw_head_h": 2.3, "length": float(_L), "tolerance": "g6 (-4/-12 um)"},
-        notes="The pin of a preloaded ball pair (construction.pivots.pair): an M2 x 4 socket "
-              "head and a 2.2 x 5 washer at each end (head 2.0 + washer 0.3 mm); the "
+        dims={"thread": 2.0, "barrel_d": 4.0, "head_d": 5.0, "head_h": 1.6,
+              "screw_head_h": 1.6, "length": float(_L), "tolerance": "g6 (-4/-12 um)"},
+        notes="The pin of a preloaded ball pair (construction.pivots.pair): an M2 x 4 button "
+              "head (ISO 7380) and a 2.2 x 5 washer at each end (head 1.3 + washer 0.3 mm; "
+              "a socket head's 2.0 put the top end over a 3 mm layer once the land was "
+              "under it, 2026-10-13); the "
               "washer's rim holds the stack, on the inner rings' land. MISUMI SFJW4 / "
               "PSFJW4-L-M2-N2 (a 4 mm shaft takes M2 both ends, its 2019 catalogue); its "
               "standard lengths start at 20 mm: a shorter pin is a special, or cut from a "

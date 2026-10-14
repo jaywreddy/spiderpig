@@ -1,10 +1,20 @@
 """How each joint finds its zero, and the phase that makes homing repeatable to the step.
 
-* **The turntable** (``q1``) by its optical endstop and half-circle flag
-  (:mod:`construction.rotary.turret`): the flag's edge is in the beam at yaw 0 and the flag
-  covers the negative half, so the beam's state says which way home is (blocked: turn
-  positive until it clears; clear: turn negative until it blocks), then back off and come
-  in again slowly from the same side: the edge, from one side only, every time.
+* **The turntable** (``q1``) by its preset's sensor (:data:`construction.rotary.SENSORS`):
+  an optical endstop and half-circle flag (:mod:`construction.rotary.turret`): the flag's
+  edge is in the beam at yaw 0 and the flag covers the negative half, so the beam's state
+  says which way home is (blocked: turn positive until it clears; clear: turn negative
+  until it blocks), then back off and come in again slowly from the same side: the edge,
+  from one side only, every time. Or ``hard_stop``: no sensor, the turntable's screw
+  stalls the driver on a post past the range's lower end (Klipper's sensorless homing:
+  the TMC2209's StallGuard on its DIAG pin, at a reduced current), coarse (two full steps):
+  the camera's fiducials (``homing_reference`` ``vision_fiducial``) set the fine zero.
+* **A stall** (``angle_sensor`` ``stall`` on a planar input, the turntable's
+  ``hard_stop``: :func:`method`): the joint is driven at a reduced current toward its
+  range's lower end until its driver stalls on the hard stop there; the stop's angle is
+  nominally :data:`STALL_PAST_DEG` past the range's end (its place found once by
+  calibration), then it backs off into the range at its run current. No phase snap: the
+  stall wanders by more than half a step.
 * **The planar inputs** (an arm's ``q2``, ``q3``: the palletizer's upper arm's and
   forearm's angles from horizontal, :mod:`linkages.palletizer`) by an angle gauge: with no
   switch on them, the motors are energised (a rotor jumps up to two full steps to its
@@ -31,6 +41,34 @@ from dataclasses import dataclass, replace
 from spiderpig.control.mapping import Axis
 
 MSCNT_STEP = 256        # a TMC2209's microstep counter per full step (1024 an electrical turn)
+STALL_PAST_DEG = 3.0    # a hard stop past its range's lower end (nominal: the turret's post,
+#                         construction.rotary.base_pair.stop_radius; calibration finds it)
+YAW_SENSOR = "optical_flag"     # the turntable's sensor when none is named (the classic's)
+ENDSTOPS = ("optical_flag", "ee_sx67")   # the turntable's switches (construction.rotary)
+STALLS = ("stall", "hard_stop")          # a planar input's, the turntable's: no sensor
+
+
+def method(sensor: str) -> str:
+    """How a joint with sensor ``sensor`` (an ``angle_sensor``, :mod:`actuators.sensors`,
+    or the turntable preset's, :data:`construction.rotary.SENSORS`) homes in Klipper:
+    ``"endstop"`` (a switch on an endstop input), ``"stall"`` (its driver's StallGuard on a
+    hard stop) or ``""`` (no homing move: a gauge, an inclinometer, none)."""
+    if sensor in STALLS:
+        return "stall"
+    if sensor in ENDSTOPS or sensor.startswith("endstop"):
+        return "endstop"
+    return ""
+
+
+def sensors_of(config, axes) -> dict[str, str]:
+    """Each joint's homing sensor in the robot's ``config``: the turntable's its preset's
+    (role ``turntable``), each planar input's its ``angle_sensor`` (the wrist's none)."""
+    out = {n: config.role("angle_sensor", n) for n in axes if n not in ("q1", "q4")}
+    if "q1" in axes:
+        from spiderpig.construction.rotary import PRESETS
+
+        out["q1"] = PRESETS[config.role("turntable")].sensor
+    return out
 
 
 @dataclass(frozen=True)
@@ -44,12 +82,19 @@ class HomingStep:
 def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None,
          phase: bool = True) -> list[HomingStep]:
     """The homing sequence of ``axes`` (module docstring). ``sensors``: each planar
-    input's angle sensor (:mod:`actuators.sensors`; ``gauge`` when not named); ``phase``:
+    input's angle sensor (:mod:`actuators.sensors`; ``gauge`` when not named) and the
+    turntable's (``q1``: its preset's, :data:`YAW_SENSOR` when not named; :func:`sensors_of`
+    reads a config's); ``phase``:
     the turntable's homing snaps to its driver's phase (a toothed drive: a belt's; not a
     capstan's, whose cord may slip against the motor, which the snap would hide)."""
     sensors = sensors or {}
     out: list[HomingStep] = []
-    if "q1" in axes:
+    yaw = method(sensors.get("q1", YAW_SENSOR))
+    if "q1" in axes and yaw == "stall":
+        out += _stall_steps("q1", "the turntable's screw on the post")
+        out.append(HomingStep("q1", "the camera's fiducials set the fine yaw zero "
+                                    "(homing_reference vision_fiducial)"))
+    elif "q1" in axes and yaw == "endstop":
         out += [HomingStep("q1", "read the endstop: blocked, turn positive until it clears; "
                                  "clear, turn negative until it blocks"),
                 HomingStep("q1", "back off 2 deg, then approach again at a tenth of the speed "
@@ -61,8 +106,11 @@ def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None,
                 HomingStep("q1", "that is yaw 0")]
     planar = [n for n in axes if n not in ("q1", "q4")]
     gauged = [n for n in planar if sensors.get(n, "gauge") == "gauge"]
-    switched = [n for n in planar if sensors.get(n) == "endstop"]
-    sensed = [n for n in planar if n not in gauged and n not in switched]
+    switched = [n for n in planar if method(sensors.get(n, "")) == "endstop"]
+    stalled = [n for n in planar if method(sensors.get(n, "")) == "stall"]
+    sensed = [n for n in planar if n not in gauged + switched + stalled]
+    for n in stalled:
+        out += _stall_steps(n, "the link on its hard stop")
     for n in switched:      # one joint at a time, each to its switch (the MT4's, GRBL's)
         out += [HomingStep(n, "turn toward the end of travel until the flag breaks the beam"),
                 HomingStep(n, "back off 3 deg, then approach again at a tenth of the speed "
@@ -82,6 +130,15 @@ def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None,
     if "q4" in axes:
         out.append(HomingStep("q4", "jog the cup to its mark: that is roll 0"))
     return out
+
+
+def _stall_steps(n: str, what: str) -> list[HomingStep]:
+    return [HomingStep(n, f"lower the driver's current, turn negative toward the range's end "
+                          f"until the driver stalls ({what}: Klipper's "
+                          f"tmc2209_{n}:virtual_endstop)"),
+            HomingStep(n, f"that is the stop's angle ({STALL_PAST_DEG:g} deg past the range's "
+                          "end, nominally: found once by calibration); restore the run "
+                          "current and back off to the range's end")]
 
 
 def phase_move(mscnt: int, reference: int, microsteps: int, sign: int = 1) -> int:

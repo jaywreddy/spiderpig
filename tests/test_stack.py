@@ -82,6 +82,30 @@ def test_links_that_collide_get_different_layers():
     assert all(0 < k < plan.top for k in plan.layers.values())
 
 
+def test_a_pins_links_stack_in_consecutive_layers_when_asked():
+    """``StackSpec.adjacent`` (the role ``pin_stack``: "adjacent"): the named links take
+    layers no wider apart than their window, whatever else crosses them."""
+    ts = np.zeros((2, 1))
+    z = ts * 0
+
+    def spoke(angle):           # four bars through one point: every pair crosses
+        c, s = np.cos(angle), np.sin(angle)
+        return (np.c_[z - 30 * c, z - 30 * s], np.c_[z + 30 * c, z + 30 * s])
+
+    topo, claims = _toy({n: spoke(i * np.pi / 4) for i, n in enumerate("abcd")})
+    free = StackProblem(topo, claims).solve()
+    assert free.top == 5
+    assert len(set(free.layers.values())) == 4
+    for pair in (("a", "c"), ("a", "d"), ("b", "d")):
+        spec = StackSpec(adjacent=((pair, 2),))
+        plan = StackProblem(topo, claims, spec).solve()
+        assert plan.top == 5                                # no thicker for it
+        assert abs(plan.layers[pair[0]] - plan.layers[pair[1]]) == 1, pair
+    spec = StackSpec(adjacent=((("a", "b", "c"), 3), (("a", "d"), 2), (("c", "d"), 2)))
+    with pytest.raises(stack.PlanError):                    # d can't be beside both ends
+        StackProblem(topo, claims, dataclasses.replace(spec, max_top=6)).solve()
+
+
 def test_a_claim_that_cannot_be_built_forces_another_layout():
     ts = np.zeros((2, 1))
     topo, claims = _toy({"a": (np.c_[ts * 0, ts * 0], np.c_[ts * 0 + 9, ts * 0])})

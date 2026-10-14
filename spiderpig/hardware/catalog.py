@@ -212,6 +212,7 @@ def _load() -> None:
         return
     _LOADED = True
     from spiderpig.hardware import (
+        arm_electronics,  # noqa: F401  (an arm's controller: actuators.controllers)
         electronics,  # noqa: F401  (the deck's electronics)
         parts,  # noqa: F401  (registers fasteners, bearings, sheets, ...)
         shims,  # noqa: F401  (each DIN 988 thickness, after parts)

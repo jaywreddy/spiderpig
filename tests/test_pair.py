@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from spiderpig.config import BuildConfig
-from spiderpig.construction.pivots.pair import PAIR_TILT_DEG, PairSeat
+from spiderpig.construction.pivots.pair import PAIR_TILT_DEG, PairSeat, land_gaps
 from tests import cache
 
 
@@ -23,6 +23,13 @@ def test_a_seat_pairs_in_a_thick_link_and_counts_a_single_bearings_play():
     assert seat.play(2) == pytest.approx(0.05)                  # the bore on the shaft
     assert seat.play(1) == pytest.approx(0.063)                 # and the balls' clearance
     assert seat.tilt_deg(2) == PAIR_TILT_DEG < seat.tilt_deg(1)
+
+
+def test_neighbours_face_to_face_keep_a_gap_for_a_land():
+    # the host (3) under a rider (4); a hub (5) of the rider in 6, bonded to it; a plate (0)
+    # two layers under the host
+    els = [(3, 3), (4, 4), (5, 6), (6, 6), (0, -1)]
+    assert land_gaps(els, 0.5) == {3: 0.5, 4: 0.5}
 
 
 @pytest.mark.slow     # (plans and fabricates the palletizer's side: ~30 s)
@@ -48,3 +55,14 @@ def test_the_palletizer_pairs_its_links_inside_its_claims():
     bom = {r.key: r.qty for r in bom_from_mechanism(mech).purchased}
     assert bom["bearing_mr84"] + bom.get("bearing_mr106", 0) == len(hubs)
     assert bom["disc_spring_din2093_c8"] >= 1
+    # the top spacer bears on the top rider's inner ring through a 4 x 6 land, never on
+    # its outer ring (the review of 2026-10-13)
+    by = {b.name: b for b in mech.bodies if b.part is not None}
+    tops = [n for n in by if n.startswith("pin_") and n.endswith("_spacer_hi")]
+    assert tops
+    for n in tops:
+        land = by[n.replace("_spacer_hi", "_land_hi")].part.bounding_box()
+        spacer = by[n].part.bounding_box()
+        assert abs(land.size.X - 6.0) < 0.01       # inside the inner ring's land
+        assert abs(spacer.min.Z - land.max.Z) < 1e-6
+    assert bom["shim_4x6x0p5"] == len(tops)

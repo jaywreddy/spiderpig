@@ -380,7 +380,8 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
         if key != "belt":
             raise ConstructionError("turret: the base_pair support takes the belt")
         h, columns, spacing_mm, protrude = bp.heights(ctx, support, tr, motor)
-        front, r_flag = bp.keep_radius(ctx, tr, motor, c, faces)
+        front, r_flag = bp.keep_radius(ctx, tr, motor, c, faces, preset.sensor,
+                                       preset.range_deg)
         h["front"] = front
         keep_r = front + ctx.params.margin
         depth_t, half_t = bp.tail(motor, c)
@@ -488,7 +489,10 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     sensor_r = max(r_table - rw - 2.0, drive_r + FLAG_CLEAR,
                    max(screws_r) + head_r + 1.0 + rw)
     r_table = max(r_table, sensor_r + rw + 2.0)
-    if support.key == "base_pair":          # the M2 flag outside the belt, nut under it
+    if support.key == "base_pair" and preset.sensor == "hard_stop":    # a post, no board
+        sensor_r = r_flag
+        r_table = max(max(corners) + 3.0, sensor_r + 4.0)
+    elif support.key == "base_pair":        # the M2 flag outside the belt, nut under it
         sensor_r = max(r_flag, max(screws_r) + head_r + 1.0 + 5.5)
         r_table = max(max(corners) + 3.0, sensor_r + 4.0)
         if bp.board_outer(sensor_r) + 1.0 > h["front"] + 1e-6:

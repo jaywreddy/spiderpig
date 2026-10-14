@@ -340,3 +340,73 @@ def test_a_geared_axis_goes_past_its_backlash():
     g = host.one_sided({"q2": a}, {"q2": 1.0}, {"q2": 0.9})
     past = math.degrees(0.9) - 1.5 * 0.8
     assert f"MOVE={host.position_deg(a, math.radians(past)):.5f}" in g[0]
+
+
+@pytest.mark.no_fabricate
+def test_an_arm_buys_its_controller_and_a_walker_none():
+    from spiderpig import roles
+    from spiderpig.actuators import controllers
+    from spiderpig.hardware.catalog import get
+
+    assert roles.choices("controller") == ["skr_pico_pi_zero", roles.NONE]
+    assert BuildConfig(linkage="palletizer").role("controller") == "skr_pico_pi_zero"
+    assert BuildConfig(linkage="palletizer",
+                       roles=(("controller", "none"),)).role("controller") == ""
+    assert "controller" not in BuildConfig().applied_roles()
+    ctl = controllers.get("skr_pico_pi_zero")
+    total = 0.0
+    for key, qty in ctl.bom:            # every row bought, priced and dated
+        offer = get(key).offer
+        assert offer is not None, key
+        assert offer.price_usd is not None, key
+        total += offer.buy(qty)[1] or 0.0
+    assert dict(ctl.bom)["stepper_cable_1m"] == 3
+    assert dict(ctl.bom)["diode_1n5819"] == 2
+    assert 100.0 < total < 120.0        # the notes' ~110 (2026-10-13)
+    assert [ctl.pins(n).port for n in ("q1", "q2", "q3", "q4")] == ["X", "Y", "Z", "E"]
+    assert sorted(p.uart_address for _, p in ctl.axes) == [0, 1, 2, 3]
+    with pytest.raises(ValueError, match="no motor port"):
+        ctl.pins("q5")
+
+
+@pytest.mark.no_fabricate
+def test_a_stall_arms_klipper_config_homes_on_its_drivers_with_every_pin_filled():
+    rng = (math.radians(-120.0), math.radians(120.0))
+    ax = {"q2": Axis("q2", 5.0, 1.8, 16, 1, 0.0, "nema17_17hs4401", (0.7, 2.0)),
+          "q3": Axis("q3", 5.0, 1.8, 16, -1, 0.0, "nema17_17hs4401", (-0.8, 0.35)),
+          "q1": Axis("q1", 5.0, 1.8, 64, 1, 0.0, "nema17_17hs4401_x64", rng)}
+    cfg = BuildConfig(linkage="palletizer", roles=(("turntable", "mt4_base_stall"),
+                                                   ("angle_sensor", "stall")))
+    sensors = homing.sensors_of(cfg, ax)
+    assert sensors == {"q1": "hard_stop", "q2": "stall", "q3": "stall"}
+    text = klipper.printer_cfg(ax, "palletizer", cfg.role("controller"), sensors)
+    assert "<" not in text                                  # no placeholder left
+    assert "serial: /dev/ttyAMA0" in text
+    for n, addr, diag in (("q1", 0, "^gpio4"), ("q2", 2, "^gpio3"), ("q3", 1, "^gpio25")):
+        sec = text.split(f"[tmc2209 manual_stepper {n}]")[1].split("\n[")[0]
+        assert f"endstop_pin: tmc2209_{n}:virtual_endstop" in text
+        assert f"uart_address: {addr}" in sec
+        assert "tx_pin: gpio8" in sec
+        assert "uart_pin: gpio9" in sec
+        assert f"diag_pin: {diag}" in sec
+        assert f"driver_SGTHRS: {klipper.SGTHRS}" in sec
+    assert "pin: gpio23" in text
+    assert "pin: gpio21" in text
+    # the host: the turntable first, at a lowered current, onto the stop; no phase snap
+    home = host.home_gcode(ax, sensors)
+    assert home[0] == "MANUAL_STEPPER STEPPER=q1 ENABLE=1"
+    run, _, low = klipper.currents(ax["q1"])
+    assert f"SET_TMC_CURRENT STEPPER=q1 CURRENT={low:.2f}" in home
+    assert f"SET_TMC_CURRENT STEPPER=q1 CURRENT={run:.2f}" in home
+    assert sum("STOP_ON_ENDSTOP=1" in h for h in home) == 3
+    assert not any("MSCNT" in h for h in home)
+    assert host.homed(ax, sensors) == {n: a.limits[0] for n, a in ax.items()}
+    steps = homing.plan(ax, sensors)
+    assert not any("MSCNT" in s.action for s in steps)
+    assert any(s.axis == "q1" and "virtual_endstop" in s.action for s in steps)
+    # an endstop arm on the board: its switch on the port's input, no stall settings
+    text = klipper.printer_cfg(ax, "palletizer", "skr_pico_pi_zero")
+    assert "endstop_pin: ^gpio4" in text
+    assert "virtual_endstop" not in text
+    assert "SGTHRS" not in text
+    assert "<" not in text

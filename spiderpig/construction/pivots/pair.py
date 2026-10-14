@@ -45,7 +45,8 @@ compression (:data:`Preload.n`, about ``0.005-0.01 kN/mm`` of bore: SKF's spring
 preload for deep-groove pairs).
 
 **The shaft.** A pin is a ground 4 mm g6 shaft (:class:`GroundShaft`, cut to length in
-0.5 mm steps, an M2 socket head and a 2.2 x 5 washer at each end, the host link bonded to
+0.5 mm steps, an M2 button head (ISO 7380, 1.3 mm) and a 2.2 x 5 washer at each end (the
+washer's 5 mm on the disc spring's 4.2 mm bore), the host link bonded to
 it as to a Chicago barrel): against the bearing's bore (+0 / -8 um) a 12 um gap at worst,
 where the Chicago barrel, tube and not ground, is taken at 50 um. Every precise arm runs its
 bearings on solid ground shafts (the MT4: 6 mm shafts with M4-tapped ends through F686ZZ
@@ -53,6 +54,21 @@ pairs; the review of 2026-10-12, round 2). A pillar is the one-piece 6 mm steel 
 (:meth:`standoff.StandoffAxle.one_piece`), ordered ground (g6, tapped M3: the same 12 um).
 The disc spring sits under the top washer (its slot: the spring, a 0.1 mm shim and its
 travel, :data:`hardware.fastener_catalog.DISC_SPRINGS`).
+
+**The pin's ends.** The host, the lowest link, is bonded to the pin: the spacer under it turns
+with it, nothing to clear. The top link always rides, its top bearing flush with its face:
+the top spacer (the 8 mm DIN 433 washer and any 4 x 8 shims, :func:`stock_spacers`) would
+cover its outer ring too, so the pair would not be preloaded through its inner rings and the
+still washer would rub the turning ring (the review of 2026-10-13). A 4 x 6 x 0.5 land
+(``shim_4x6x0p5``, :attr:`GroundShaft.land_key`) sits on that inner ring under the washer
+(steel, 0.5 mm: it carries the disc spring's 8 mm rim over the land, clear of the outer ring
+by the land's thickness); the pin is 0.5 mm longer for it (the column rule and the end
+heights count it: ``ChicagoShaft.end_t``; with the button heads the end still sinks into a
+3 mm layer). Between two neighbours, the column's tubes (:func:`stock_tubes`) bear on the
+inner rings; two neighbours in consecutive layers (the host and a rider, two riders, a hub
+and the next link, a pillar's link and its frame plate) would meet face to face, an outer
+ring on the other's face, so the planner keeps a 0.5 mm clearance gap between them
+(:func:`land_gaps`, the column's ``lands`` rule) and a land washer fills it.
 
 **Error terms.** The column has no end float. A pair tilts by its elastic compliance and
 the preload's hysteresis only (:data:`PAIR_TILT_DEG`, an estimate: a Hertz estimate of the
@@ -89,11 +105,12 @@ from spiderpig.construction.pivots.ball import (
 )
 from spiderpig.construction.pivots.chicago import ChicagoShaft, Fit
 from spiderpig.construction.pivots.common import EPS, STEEL, Column, host_of, stem_of, xy_of
+from spiderpig.construction.pivots.standoff import StandoffAxle
 from spiderpig.construction.wobble import Section
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.catalog import get
 from spiderpig.hardware.fastener_catalog import GROUND_LENGTHS, ground_pin
-from spiderpig.hardware.fasteners import shcs
+from spiderpig.hardware.fasteners import SCREWS
 from spiderpig.shapes import Cut, ring
 from spiderpig.stack import Unbuildable
 
@@ -102,6 +119,8 @@ PAIR_TILT_DEG = 0.02    # a preloaded pair's tilt under a reversing load: its co
 #                         elastic compliance at the pins' couples and the preload's
 #                         hysteresis (an estimate, unmeasured)
 HUB_GLUE = 0.003        # of the epoxy kit, per hub bonded to its link
+PIN_LAND = "shim_4x6x0p5"      # an MR84's inner-ring land washer
+PILLAR_LAND = "shim_6x8x0p5"   # an MR106's
 INNER_LAND = 5.2        # the rings' land on an MR84ZZ's inner ring (mm across; the
 #                         shields' bore clears it: unverified at the vendor's drawing)
 
@@ -304,12 +323,14 @@ TUBE_MIN = 0.2          # a gap this short between neighbours is left as the col
 
 
 def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
-                members, plates: bool = False) -> int:
+                members, plates: bool = False, land_key: str = "") -> int:
     """The column between its links made of stock tubes (precision collars cut to length):
     one per gap between neighbouring links or hubs, face to face, in place of the rings and
     gap spacers there (a ring is one default-sheet layer tall: in a layer a thick link
     thickens it left a gap, and the column's preload stopped at it: the review of
-    2026-10-12). Their OD bears on the bearings' inner rings only. Returns how many."""
+    2026-10-12). Their OD bears on the bearings' inner rings only. A span the land washers
+    (``land_key``) stack to, a clearance gap :func:`land_gaps` kept between two neighbours,
+    takes those instead. Returns how many tubes."""
     from spiderpig.hardware.catalog import get as _get
 
     ctx = build.ctx
@@ -342,11 +363,38 @@ def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
     out.bodies[:] = keep
     stem = stem_of(group)
     host = host or sorted(members, key=lambda m: build.layers[m])[0]
+    land = _get(land_key).dims if land_key else None
+    tubes = []
     for i, (lo, hi) in enumerate(spans):
+        n = round((hi - lo) / float(land["t"])) if land else 0
+        if land and 1 <= n <= LAND_MAX and abs(hi - lo - n * float(land["t"])) <= LAND_TOL:
+            out.bodies.append(hardware(f"{stem}_land{i}", ring(
+                xy, float(land["od"]), float(land["id"]), lo, lo + n * float(land["t"])),
+                host, fab="purchased", bom_key=land_key, color=STEEL))
+            if n > 1:
+                out.extras.append(BomLine(land_key, n - 1, f"{group.name}: {n} lands stacked"))
+            continue
+        tubes.append((lo, hi))
+    for i, (lo, hi) in enumerate(tubes):
         out.bodies.append(hardware(f"{stem}_tube{i}", ring(xy, od, bore, lo, hi), host,
                                    fab="purchased", bom_key=tube_key, color=STEEL))
-    out.notes.setdefault("tubes", {})[group.name] = [round(hi - lo, 1) for lo, hi in spans]
-    return len(spans)
+    out.notes.setdefault("tubes", {})[group.name] = [round(hi - lo, 1) for lo, hi in tubes]
+    return len(tubes)
+
+
+LAND_MAX = 2            # a span up to this many land washers takes them, not a tube
+LAND_TOL = 0.15         # ... within this (the disc spring takes it up)
+
+
+def land_gaps(elements: list[tuple[int, int]], height: float) -> dict[int, float]:
+    """The clearance gaps a column keeps for its inner-ring lands: over every element's
+    layer (``(layer, owner)``: a link, a hub with its link's layer as owner, a frame plate)
+    whose neighbour in the next layer up is another owner's, ``height`` (a land washer):
+    face to face, a bearing's outer ring would bear on its neighbour's face and the
+    preload bypass its balls (pin T of the arm, 2026-10-13)."""
+    els = sorted(elements)
+    return {a: height for (a, oa), (b, ob) in itertools.pairwise(els)
+            if b == a + 1 and oa != ob}
 
 
 def stock_spacers(out: Realized, build: Build, shim_key: str, land_key: str,
@@ -381,6 +429,34 @@ def stock_spacers(out: Realized, build: Build, shim_key: str, land_key: str,
                                       f"{b.name}: {h:.1f} mm of shims"))
     if riders:
         out.extras.append(BomLine(land_key, 2 * riders, "the riders' inner-ring lands"))
+
+
+def spring_slot(out: Realized, stem: str, slot: float, spring_key: str) -> None:
+    """The top spacer (``<stem>_spacer_hi``: the washer's slot and the take-up shims, one
+    printed piece from :meth:`ChicagoShaft.realize`) parted: the take-up shims (bought as a
+    DIN 988 stack, :func:`stock_spacers`) on the land, and the disc spring in its slot over
+    them, drawn (bought once: the preload's BOM line). Before the review of 2026-10-13 the
+    whole spacer, the spring's slot included, was bought as rigid shims: the screw then
+    flattened the spring, the preload set by its torque, not the spring's."""
+    from dataclasses import replace as _replace
+
+    for i, b in enumerate(out.bodies):
+        if b.name != f"{stem}_spacer_hi" or b.part is None:
+            continue
+        bb = cast(Any, b.part).bounding_box()
+        xy = ((bb.min.X + bb.max.X) / 2, (bb.min.Y + bb.max.Y) / 2)
+        z0, z1 = bb.min.Z, bb.max.Z
+        shims = z1 - z0 - slot
+        d = get(spring_key).dims
+        spring = hardware(f"{stem}_spring", ring(xy, float(d["od"]), float(d["id"]),
+                                                 z1 - slot, z1 - slot + float(d["h0"])),
+                          b.rigid_with or "", fab="purchased", color="#aa3333")
+        if shims > EPS:
+            out.bodies[i] = _replace(b, part=ring(xy, float(d["od"]), 4.2, z0, z0 + shims))
+            out.bodies.append(spring)
+        else:
+            out.bodies[i] = spring
+        return
 
 
 def _hubless(seat: PairSeat, ctx: Context) -> frozenset[str]:
@@ -418,12 +494,14 @@ def _assembly(seat: PairSeat, preload: Preload, group: AxleGroup, view) -> list:
                "a pin while it cures; a hub's open bearing flush with its far face, the hub "
                "bonded to its link's face on the same pin. The rings beside a link bear on "
                "its inner rings "
-               f"only (their {INNER_LAND:g} mm land). Once the column is assembled, shim the "
+               f"only (their {INNER_LAND:g} mm land; on a pin's top link, a 4 x 6 land washer "
+               "under the top washer). Once the column is assembled, shim the "
                f"disc spring ({preload.spring_key}) to about {preload.n:g} N: flat, then back "
                "a quarter of its travel.", "layer", sub=True)
             for k, names in sorted(by_layer.items())]
 
 
+END_SCREW_L = 4         # the ground pin's M2 button-head end screws (mm)
 GROUND_FIT = 0.012      # a g6 ground shaft in a bearing's bore (+0 / -8 um): the worst gap
 GROUND_YIELD = 350.0    # MPa: the ground shaft's steel, taken low (S45C-class, unhardened)
 
@@ -431,9 +509,11 @@ GROUND_YIELD = 350.0    # MPa: the ground shaft's steel, taken low (S45C-class, 
 @dataclass(frozen=True)
 class GroundShaft(ChicagoShaft):
     """A ground 4 mm g6 pin cut to length, M2 screws and washers at its ends, the disc spring
-    under the top one (module docstring): a Chicago screw's part in the column."""
+    under the top one, a 4 x 6 land on the top rider's inner ring under the top spacer (module
+    docstring): a Chicago screw's part in the column."""
 
     washer_key: str = "disc_spring_din2093_c8"
+    land_key: str | None = PIN_LAND   # on the top rider's inner ring (module docstring)
     lengths: tuple[float, ...] = GROUND_LENGTHS
 
     def item(self, length: float = GROUND_LENGTHS[0]) -> dict:
@@ -446,12 +526,13 @@ class GroundShaft(ChicagoShaft):
         return Section.rod(self.d, GROUND_YIELD, name="ground shaft 4 mm g6")
 
     def check(self, ctx, pillar: bool, extra: float = 0.0) -> None:
-        """Its end fits a layer, and its length steps the end slots' shims (its own
-        steps: 0.5 mm, cut to order)."""
+        """Its end (the button head and washer, the disc spring's slot and the land) fits a
+        layer, and its length steps the end slots' shims (its own steps: 0.5 mm, cut to
+        order)."""
         if pillar:
             raise ConstructionError("a ground pin is a link pin only")
         it = self.item()
-        top = float(it["screw_head_h"]) + self.washer_t + self.min_play + extra
+        top = float(it["screw_head_h"]) + self.end_t + self.min_play + extra
         if top > ctx.pitch + EPS:
             raise ConstructionError(f"a ground pin's {it['screw_head_h']:g} mm end, its disc "
                                     f"spring and play don't fit a {ctx.pitch:g} mm layer")
@@ -464,7 +545,8 @@ class GroundShaft(ChicagoShaft):
     def realize(self, build: Build, group: AxleGroup, col, out: Realized, *,
                 faces: dict[str, float] | None = None) -> Fit:
         f = super().realize(build, group, col, out, faces=faces)
-        out.extras += [BomLine(shcs("2", 4), 2, f"{group.name}: the pin's end screws"),
+        out.extras += [BomLine(SCREWS["button", "2"].key(END_SCREW_L), 2,
+                               f"{group.name}: the pin's end screws"),
                        BomLine("m2_washer_din125", 2, f"{group.name}: under the end screws")]
         return f
 
@@ -507,6 +589,20 @@ class BallPairAxle(BallAxle):
         hub_layers([k for k in ms[1:] if k not in inside], set(links), ms[0], ms[-1],
                    room or {}, spacer)
 
+    def lands(self, pillar: bool, links, top: int, anchored, *, members=None, layout=None,
+              room=None, spacer=0.0) -> dict[int, float]:
+        """The planner's clearance gaps for the inner-ring lands (:func:`land_gaps`): between
+        every two neighbouring members, the host included, or a hub and the next member
+        (the hubs :meth:`column` placed)."""
+        if pillar or not members:
+            return {}
+        ms = sorted(members)
+        inside = _inside_layers(self.hubless, layout)
+        hubs = hub_layers([k for k in ms[1:] if k not in inside], set(links), ms[0], ms[-1],
+                          room or {}, spacer)
+        return land_gaps([*((k, k) for k in ms), *((kn, k) for k, kn in hubs.items())],
+                         float(get(PIN_LAND).dims["t"]))
+
     def error_terms(self, ctx: Context) -> ErrorTerms:
         assert isinstance(self.seat, PairSeat)
         return _terms(self.seat, self.preload, super().error_terms(ctx), self.key)
@@ -527,7 +623,9 @@ class BallPairAxle(BallAxle):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, under the screw's head"))
-        stock_tubes(out, build, group, "collar_5p5x4p1", group.axis.members)
+        spring_slot(out, stem_of(group), self.shaft.washer_t, self.preload.spring_key)
+        stock_tubes(out, build, group, "collar_5p5x4p1", group.axis.members,
+                    land_key=PIN_LAND)
         stock_spacers(out, build, "shim_din988_4x8", "shim_4x6x0p5", 0)
         return out
 
@@ -556,11 +654,10 @@ class BallPairPillar(BallPillar):
     def column_axle(self, links, top: int, pitch: float, lo: int = 0, layout=None,
                     air=None):
         """The one-piece steel shaft always (ordered ground), never a goBILDA standoff:
-        aluminium, not ground."""
-        own = super().column_axle(links, top, pitch, lo, layout, air)
-        if own is None:
-            return own
-        return replace(own if own.stock == "shaft" else self.one_piece(), ground=True)
+        aluminium, not ground; ``None`` where no ground shaft's length fills the column
+        (a goBILDA length that would is no use: the planner's rule and the build agree)."""
+        ground = replace(self.one_piece(), ground=True)
+        return StandoffAxle.column_axle(ground, links, top, pitch, lo, layout, air)
 
     def resolve(self, ctx: Context) -> BallPairPillar:
         assert isinstance(self.seat, PairSeat)
@@ -575,6 +672,20 @@ class BallPairPillar(BallPillar):
             inside = _inside_layers(self.hubless, layout)
             hub_layers([k for k in sorted(members) if k not in inside], set(links), 0, top,
                        room or {}, spacer)
+
+    def lands(self, pillar: bool, links, top: int, anchored, *, members=None, layout=None,
+              room=None, spacer=0.0) -> dict[int, float]:
+        """As the pin's (:func:`land_gaps`): between neighbouring links and hubs, and a link
+        and the frame plate it's next to."""
+        if not members:
+            return {}
+        ms = sorted(members)
+        inside = _inside_layers(self.hubless, layout)
+        hubs = hub_layers([k for k in ms if k not in inside], set(links), 0, top,
+                          room or {}, spacer)
+        plates = [(k, -1 - k) for k, on in ((0, anchored[0]), (top, anchored[1])) if on]
+        return land_gaps([*((k, k) for k in ms), *((kn, k) for k, kn in hubs.items()),
+                          *plates], float(get(PILLAR_LAND).dims["t"]))
 
     def error_terms(self, ctx: Context) -> ErrorTerms:
         assert isinstance(self.seat, PairSeat)
@@ -594,7 +705,8 @@ class BallPairPillar(BallPillar):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, in the column's end shims"))
-        stock_tubes(out, build, group, "collar_7x6p1", group.axis.members, plates=True)
+        stock_tubes(out, build, group, "collar_7x6p1", group.axis.members, plates=True,
+                    land_key=PILLAR_LAND)
         stock_spacers(out, build, "shim_din988_6x12", "shim_6x8x0p5", 0)
         return out
 

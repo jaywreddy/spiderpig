@@ -174,6 +174,29 @@ def flag_radius(tr, c: float, screws_r: float) -> float:
                SCREW_HOLE)
 
 
+def stop_radius(tr, c: float, range_deg: tuple[float, float]) -> float:
+    """A hard stop's radius (the sensor ``hard_stop``): past the large pulley's flange, and
+    where both the post (fixed past the range's lower end) and the stop screw's sweep
+    (under the turntable, over the range) stay clear of the belt's runs to the motor behind
+    (straight from the large pulley's pitch circle to the small one's)."""
+    big, small = float(tr.big["pitch_d"]) / 2, float(tr.small["pitch_d"]) / 2
+    post_r, screw_r, gap = 3.0, 2.75, 2.0            # a 6 mm post; the M3 nut's corner
+    reach = max(abs(v) for v in range_deg)
+    r = float(tr.big["flange_d"]) / 2 + screw_r + gap
+    while r < c - small:
+        # the belt's run at radius r: from (0, big) to (-c, small), the point that far out
+        ts = np.linspace(0.0, 1.0, 401)
+        px, py = -c * ts, big + (small - big) * ts
+        k = int(np.argmin(np.abs(np.hypot(px, py) - r)))
+        belt = math.degrees(math.atan2(py[k], px[k]))        # from the front, 90..180
+        post = reach + 3.0 + math.degrees((post_r + gap) / r)
+        sweep = reach + math.degrees((screw_r + gap) / r)
+        if belt - post > 0 and belt - sweep > 0:
+            return r
+        r += 0.5
+    raise ConstructionError("turret: no hard stop's radius clears the belt")
+
+
 def board_outer(r_flag: float) -> float:
     """How far out the endstop's board reaches (its middle 2 mm outside the flag, as the
     classic turret's)."""
@@ -182,18 +205,23 @@ def board_outer(r_flag: float) -> float:
     return r_flag + 2.0 + float(get("optical_endstop").dims["board"][1]) / 2
 
 
-def keep_radius(ctx: Context, tr, motor, c: float, faces: dict[str, float]) -> tuple[float,
-                                                                                    float]:
+def keep_radius(ctx: Context, tr, motor, c: float, faces: dict[str, float],
+                sensor: str = "optical_flag", range_deg: tuple[float, float] = (-120.0, 120.0)
+                ) -> tuple[float, float]:
     """``(front, r_flag)``: the base's round front's radius (the turntable under the feet's
     brackets, the flag, the endstop's board), which the side's links over it must clear, and
-    the flag's radius (:func:`flag_radius`, with the brackets' screws' farthest bound)."""
+    the flag's radius (:func:`flag_radius`, with the brackets' screws' farthest bound; a
+    hard stop's: :func:`stop_radius`, no board)."""
     from .turret import FOOT_L, FOOT_R
 
     bk = STOCK_BRACKET
     half = (faces["inner"] - faces["outer"]) / 2
+    feet = math.hypot(FOOT_L + FOOT_R, half + bk["d"]) + 3.0
+    if sensor == "hard_stop":
+        r_flag = stop_radius(tr, c, range_deg)
+        return max(feet, r_flag + 4.0) + 1.0, r_flag
     screws_r = math.hypot(FOOT_L - bk["w"] / 2 - 1.0, half + bk["hole"])
     r_flag = flag_radius(tr, c, screws_r)
-    feet = math.hypot(FOOT_L + FOOT_R, half + bk["d"]) + 3.0
     table = max(feet, r_flag + 4.0)
     return max(table, board_outer(r_flag)) + 1.0, r_flag
 
@@ -334,7 +362,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     depth, half_w = tail(motor, tp.c)
     front = h["front"]
 
-    # the endstop and its flag
+    # the endstop and its flag (or a hard stop: a post and a screw)
+    stall = sensor is not None and sensor.key == "hard_stop"
     board = get("optical_endstop").dims
     bw, bd, bt = (float(v) for v in board["board"])
     body_h = float(board["body"][2])
@@ -349,16 +378,25 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     e_holes = [tuple(e_c + s * pitch_e / 2 * v) for s in (-1, 1)]
     body_top_max = h["tt_bot"] - float(nut2["h"]) - 0.5
     avail = body_top_max - body_h - bt - h["bt_top"]
+    if stall:   # the post's top under the brackets' screws' heads, which pass over it
+        avail = h["tt_bot"] - sk.head_h - 1.0 - h["bt_top"]
     post = max((x for x in M3_ROUND_STANDOFF_LENGTHS if x <= avail), default=None)
     if post is None:
         raise ConstructionError("turret: no room for the endstop under the turntable")
     b_bot = h["bt_top"] + post
     body_top = b_bot + bt + body_h
     s2 = screw("shcs", "2")
-    floor = body_top - slot_h + 0.8                 # its tip about 1 mm over the slot's floor
-    flen = max((L for L in s2.lengths if h["table"] - L >= floor - 1e-6), default=None)
-    if flen is None or h["table"] - flen > body_top - 2.0:
-        raise ConstructionError("turret: no stock M2 screw hangs into the endstop's slot")
+    if stall:   # an M3 hanging from the turntable to 2 mm under the post's top
+        s2 = sk
+        flen = next((L for L in sk.lengths if stocked(sk, L)
+                     and h["table"] - L <= b_bot - 2.0 + 1e-6), None)
+        if flen is None or h["table"] - flen < h["bt_top"] + sk.head_h + 1.0:
+            raise ConstructionError("turret: no stock M3 screw reaches the hard stop's post")
+    else:
+        floor = body_top - slot_h + 0.8             # its tip about 1 mm over the slot's floor
+        flen = max((L for L in s2.lengths if h["table"] - L >= floor - 1e-6), default=None)
+        if flen is None or h["table"] - flen > body_top - 2.0:
+            raise ConstructionError("turret: no stock M2 screw hangs into the endstop's slot")
 
     # the base
     tail_box = ((-depth / 2, 0.0), (depth, 2 * half_w))
@@ -381,7 +419,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
             bom_key="m4_spacer_6", color="#3a3a3a")
     slot = 4.0                                      # the belt's tension: the motor's travel
     top_cuts: list[Cut | Rect] = [Cut(o, 22.0 + 0.2), *col_cuts]
-    top_cuts += [Rect(e, (SCREW_HOLE + 2.0, SCREW_HOLE), phi_s) for e in e_holes]   # slots:
+    top_cuts += ([Cut(tuple(u * tp.sensor_r), SCREW_HOLE)] if stall else
+                 [Rect(e, (SCREW_HOLE + 2.0, SCREW_HOLE), phi_s) for e in e_holes])   # slots:
     #                                                 the board centred on the flag at assembly
     top_cuts += [Rect(xy, (SCREW_HOLE + slot, SCREW_HOLE), 0.0) for xy in mscrews]
     top_cuts.append(Rect(tuple(m), (motor.boss_d + 0.4 + slot, motor.boss_d + 0.4), 0.0))
@@ -492,7 +531,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     extras.append(BomLine(CENTRE_SHIM, n_w, f"turret: {n_w} on the shaft under the turntable's "
                           "centre (the clamp's seat)"))
     flag_xy = (tp.sensor_r, 0.0)
-    table_cuts: list[Cut | Rect] = [Cut(o, SHAFT_HOLE), *tie_cuts, Cut(flag_xy, 2.4)]
+    table_cuts: list[Cut | Rect] = [Cut(o, SHAFT_HOLE), *tie_cuts,
+                                     Cut(flag_xy, SCREW_HOLE if stall else 2.4)]
     for plate, x in tp.brackets:
         zc = tp.faces[plate] + (-1 if plate == "outer" else 1) * tp.reach
         table_cuts.append(Cut(tp.local_ab(x, zc), SCREW_HOLE))
@@ -506,8 +546,21 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
     extras.append(BomLine("m3_nut", len(ties), "turret: the turntable's screws, under the "
                           "pulley"))
 
+    # a hard stop: a post on the top plate past the range's lower end, an M3 hanging from
+    # the turntable stalls on it (the driver's stall detection homes the yaw coarsely)
+    if stall:
+        p_xy = tuple(u * tp.sensor_r)
+        add("yaw_stop_post", ring(p_xy, 6.0, 2.5, h["bt_top"], b_bot), fab="purchased",
+            bom_key=m3_round_standoff(post), color="#3a3a3a")
+        plen = length_for(tp_ + 4.0)
+        add("yaw_stop_post_screw", screw_solid(p_xy, bh, h["bt_bot"], plen, up=True),
+            fab="purchased", bom_key=bh.key(plen), color=STEEL)
+        add("yaw_stop", screw_solid(flag_xy, sk, h["table"], flen, up=False), turns=True,
+            fab="purchased", bom_key=sk.key(flen), color=STEEL)
+        add("yaw_stop_nut", ring(flag_xy, 6.0, 3.0, h["tt_bot"] - NUT_H, h["tt_bot"]),
+            turns=True, fab="purchased", bom_key="m3_nut", color=STEEL)
     # the endstop on posts, the M2 flag hanging from the turntable
-    if sensor is not None:
+    elif sensor is not None:
         for i, xy in enumerate(e_holes):
             add(f"yaw_endstop_post{i}", ring(xy, 6.0, 2.5, h["bt_top"], b_bot),
                 fab="purchased", bom_key=m3_round_standoff(post), color="#3a3a3a")
@@ -593,6 +646,8 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         "Loop the cables loosely round the base in the spiral wrap: the yaw turns them."]
     fastened = [(b.name, "yaw_motor") for b in bodies if b.name.startswith("yaw_motor_screw")]
     fastened.append(("yaw_clamp_screw", "yaw_shaft"))     # in its tapped end
+    if stall:                                              # into the post's female end
+        fastened.append(("yaw_stop_post_screw", "yaw_stop_post"))
     names = {b.name for b in bodies}
     for b in bodies:
         if b.name.startswith("base_col_screw"):

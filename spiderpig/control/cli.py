@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.action == "homing":
         from spiderpig.construction.rotary import PRESETS
 
-        sensors = {n: cfg.role("angle_sensor", n) for n in axes if n not in ("q1", "q4")}
+        sensors = homing.sensors_of(cfg, axes)
         turn = cfg.role("turntable") if "q1" in axes else ""
         # a capstan's turntable snaps to its driver's phase only where a camera then checks
         # the zero (a cord's slip: a full cycle's jump it sees)
@@ -70,8 +70,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.action == "klipper":
         args.out.mkdir(parents=True, exist_ok=True)
         path = args.out / "printer.cfg"
-        path.write_text(klipper.printer_cfg(axes, cfg.linkage))
-        print(f"wrote {path} ({len(axes)} joints; fill its <PLACEHOLDER> pins)")
+        ctl = cfg.role("controller")
+        path.write_text(klipper.printer_cfg(axes, cfg.linkage, ctl, homing.sensors_of(cfg, axes)))
+        print(f"wrote {path} ({len(axes)} joints; "
+              + (f"the {ctl} controller's pins)" if ctl else "fill its <PLACEHOLDER> pins)"))
         return 0
     model = ArmModel.from_config(cfg, design)
     if args.action == "fk":

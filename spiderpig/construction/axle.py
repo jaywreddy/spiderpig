@@ -199,6 +199,12 @@ class AxleGroup(Group):
                 # hubs, construction.pivots.pair)
                 column(self.pillar, sorted(mset | nested), L.top, (down, up), L.pitch,
                        layout=L, air=air, members=ms, room=dict(free), spacer=d.spacer)
+            lands = getattr(self.construction, "lands", None)    # a construction's own
+            # clearance gaps inside its column (a ball pair's inner-ring lands between two
+            # neighbours: construction.pivots.pair.land_gaps), as layer -> height
+            land_h = ({} if lands is None else
+                      lands(self.pillar, sorted(mset | nested), L.top, (down, up), members=ms,
+                            layout=L, room=dict(free), spacer=d.spacer))
             k0 = 0 if down else lo              # the retained stack: outer anchor or lowest link
             k1 = L.top if up else hi            # ... to inner anchor or highest link
             out = [Placed(k, Disc(ax, seat), g, f"{g} axle", seat=True) for k in ms]
@@ -238,7 +244,8 @@ class AxleGroup(Group):
             # a cantilever's), the gap between that end layer and the retainer: filled, so
             # the end's link can't slide
             wr = d.washer or d.spacer
-            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(w0, w1)]
+            out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True,
+                           height=land_h.get(k, 0.0)) for k in range(w0, w1)]
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
             for k in range(k0 + 1, k1):
                 if k in mset:

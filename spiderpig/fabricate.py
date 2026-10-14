@@ -113,7 +113,7 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
         # else the pivots' heads sunk with the crank's in gaps (stack.HEADS_ORDER)
         heads = "gap_sink"
     spec = StackSpec(pitch=ctx.pitch, margin=config.params.margin, heads=heads,
-                     **plate_z(ctx))
+                     adjacent=adjacent_pins(groups, config), **plate_z(ctx))
     if deadline is not None:
         spec = replace(spec, max_seconds=min(spec.max_seconds, deadline.remaining))
     crank = next((g for g in groups if isinstance(g, construction.CrankGroup)), None)
@@ -122,6 +122,30 @@ def side_problem(tmpl, config: BuildConfig, deadline: Deadline | None = None,
     problem = StackProblem(topo, claims, spec, router, side_clearances(ctx, groups),
                            hint=_leg_hint(config, deadline) if hint else None)
     return ctx, groups, problem
+
+
+def adjacent_pins(groups: list, config: BuildConfig) -> tuple:
+    """The pins whose links stack in consecutive layers (the role ``pin_stack``:
+    "adjacent"; :attr:`stack.StackSpec.adjacent`): each pin's links and the layers its
+    column may span: one a link, one more for each link thin enough to need a hub beside it
+    (``hubless``: :mod:`construction.pivots.pair`) but one: the lowest, the bonded host,
+    rides on nothing (if a thin one isn't lowest, its hub's rule refuses the layering)."""
+    kind = config.lk.kind
+    from spiderpig import roles as rolemod
+    from spiderpig.stack.plan import PIN_STACKS
+
+    if not rolemod.applies("pin_stack", kind) or config.role("pin_stack") in ("", "free"):
+        return ()
+    slack = PIN_STACKS[config.role("pin_stack")].slack
+    out = []
+    for g in groups:
+        ax, axle = getattr(g, "axis", None), getattr(g, "construction", None)
+        if ax is None or ax.kind != "pin" or len(ax.members) < 2:
+            continue
+        hubless = getattr(axle, "hubless", None)
+        thin = 0 if hubless is None else sum(m not in hubless for m in ax.members)
+        out.append((tuple(sorted(ax.members)), len(ax.members) + max(0, thin - 1) + slack))
+    return tuple(sorted(out))
 
 
 def plate_z(ctx: Context) -> dict:
