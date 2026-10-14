@@ -1116,7 +1116,7 @@ Things to know before cutting and on the bench:
 - **The room it needs** (`cradle.USE_LIMITS`, the guide's "Decanting" step):
   - 950 mm of headroom: a 6 L's base at full tilt reaches about 910 mm over the table.
   - 100 mm behind the base board: the base stop's rails reach past its rear edge at full
-    tilt (A 84 mm, B 42), and B's hand crank's 60 mm grip turns up to 87 mm past it.
+    tilt (A 84 mm, B 42), and B's hand crank's 60 mm grip turns up to 91 mm past it.
   - The vessel: as "The vessel under the mouth" above, one height for the whole swing. It
     stands under the mouth's centre (`cradle.DECANTER_X`) on a 100 x 100 mm lab jack in
     the jack locator's pocket.

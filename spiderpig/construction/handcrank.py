@@ -922,7 +922,7 @@ class HandCrank(Group):
                "slide a sheet of paper between them: it must pass. If it drags, take the "
                "crankpin's top screw and washer off, file 0.1 mm off the crankpin's top end, "
                "sand the rod's spacer to keep its play, and check again. Then the worm's "
-               "hold: with a full bottle (or about 11 kg of water bottles) in the cradle, "
+               "hold: with the heaviest full bottle you have (a 6 L at best) in the cradle, "
                "turn it to level, let go, tap the table and watch a pencil line across the "
                "crank's arm and the outer plate for 10 minutes: it must not move. If it creeps "
                "back toward rest, the worm holds less than drawn: an O-ring (about 12 x 2 mm) "
