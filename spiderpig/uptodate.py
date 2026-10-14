@@ -22,9 +22,11 @@ build answers in well under a second.
   exactly as given but ``--out`` and ``--force``, and the store's folder;
 - the store's **plan** is the one the build read (``designs/<id>/plan.json``, less when it
   was written): a re-planned or removed design builds again;
-- the **servo model**: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE`` and
-  ``SPIDERPIG_CAD_CACHE`` as they were, each pinned CAD file as it was (path, size,
-  modification time), and none missing that a build could download now;
+- the **servo model**: ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_OFFLINE``,
+  ``SPIDERPIG_CAD_CACHE``, ``SPIDERPIG_PART_CAD`` and ``SPIDERPIG_CAD_STRICT`` as they were
+  (a build without strict CAD may hold a parametric fallback a strict one refuses), each
+  pinned CAD file as it was (path, size, modification time), and none missing that a build
+  could download now;
 - **every output** there with its size and SHA-256, and no other cut, print, STEP or
   STL file beside them (the files a build owns: :func:`outputs`). A file whose size,
   modification and change times and inode are the recorded ones isn't read again (a
@@ -54,7 +56,7 @@ their ``parts.csv`` / ``order.csv`` / ``<name>_sheet_parts.csv``) and an arm's `
 
 TOP_OUTPUTS = ("ORDER.md", "bom.csv", "bom.md", "bom.json")
 CAD_ENV = ("SPIDERPIG_SERVO_CAD", "SPIDERPIG_OFFLINE", "SPIDERPIG_CAD_CACHE",
-           "SPIDERPIG_PART_CAD")
+           "SPIDERPIG_PART_CAD", "SPIDERPIG_CAD_STRICT")
 _OURS = ("--out", "--store", "--force")
 STORE_ENV, DEFAULT_ROOT = "SPIDERPIG_STORE", ".spiderpig"
 """:mod:`spiderpig.store`'s (that module imports the engine; ``tests/test_uptodate.py``
