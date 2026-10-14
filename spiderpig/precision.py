@@ -661,32 +661,18 @@ def precision(config: BuildConfig, design=None, *, target_mm: float = DEFAULT_TA
     rp = None
     if lk.kind == "arm" and oop:
         clamped = frozenset(radial_by_link(config, wobble or {}))
-        rp = _iso(config, pm, inputs, lev, across, payload_g, clamped,
-                  snap_all=ref is not None and ref.tool_mm is not None)
+        rp = _iso(config, pm, inputs, lev, across, payload_g, clamped)
     return Precision(lk.key, layout(lk).output_point, target_mm, lev, need, pm, tol,
                      hole_tol_mm, reach, cte, thermal, dt_k, notes, inputs, payload_g, tilt,
                      turret_acc, across, stiff, rp)
 
 
-def _slips(config: BuildConfig, axis: str) -> bool:
-    """Whether input ``axis``'s transmission is a friction drive (a capstan's cord): a
-    planar input's role, else the turntable's preset (``q1``)."""
-    from spiderpig import construction
-
-    if axis in config.lk.inputs:
-        return construction.transmission(config.role("transmission", axis)).slips
-    from spiderpig.construction.rotary import PRESETS
-
-    return PRESETS[config.role("turntable")].parts[1].slips
-
-
 def _iso(config: BuildConfig, pm: PlayMap, inputs: dict[str, InputBudget],
          lev: dict[str, float], across: OutOfPlane | None, payload_g: float,
-         clamped: frozenset = frozenset(), snap_all: bool = False) -> Rp:
-    """:func:`repeatability.iso_rp` of the budget's terms (module docstring there).
-    ``snap_all``: every axis's homing snaps to its driver's phase after the coarse switch
-    (with a camera's sighting, even a capstan's: a cord's slip shows up as a full cycle's
-    jump the camera sees, :mod:`control.homing`)."""
+         clamped: frozenset = frozenset()) -> Rp:
+    """:func:`repeatability.iso_rp` of the budget's terms (module docstring there). Every
+    axis's homing snaps to its driver's phase after the coarse switch (a toothed drive's:
+    a belt never slips against its motor, :mod:`control.homing`)."""
     from spiderpig.materials import sheet as sheet_record
     from spiderpig.materials import sheet_of
 
@@ -708,7 +694,7 @@ def _iso(config: BuildConfig, pm: PlayMap, inputs: dict[str, InputBudget],
     return iso_rp(config.lk, config.values, pm.clearance_mm, loads,
                   {k: b.backlash_deg for k, b in inputs.items()}, deg,
                   {k: b.resolution_deg for k, b in inputs.items()},
-                  {k: snap_all or not _slips(config, k) for k in inputs},
+                  dict.fromkeys(inputs, True),
                   across.worst_mm if across is not None else 0.0, lev.get("q1", 0.0),
                   clamped=clamped, slips=slips, nonlin_deg=nonlin)
 
@@ -785,17 +771,13 @@ def turret_budget(config: BuildConfig, design, target_mm: float
                   ) -> tuple[InputBudget, float, float, list[str]]:
     """The turntable's drive at the output (``q1``: its support's, transmission's and
     motor's terms, :meth:`construction.rotary.turret.TurretPlan.error_terms`, and its
-    homing switch's repeatability over the flag's radius, through the output's horizontal
+    homing's repeatability over the hard stop's radius, through the output's horizontal
     reach), its tilt there (the support's tilt over the farthest the tool's tip gets from
     the bearings' middle), and its systematic error there (the drive's eccentricity over its
     pitch radius, the shaft's tilt in its collars). No sag: gravity has no moment about a
     vertical axis."""
     from spiderpig.construction.robot import Turret
-    from spiderpig.construction.rotary import (
-        AXIS_RUNOUT_MM,
-        ECCENTRICITY_MM,
-        SWITCH_REPEAT_MM,
-    )
+    from spiderpig.construction.rotary import AXIS_RUNOUT_MM, ECCENTRICITY_MM
     from spiderpig.hardware.catalog import get
 
     d = _side_design(config, design)
@@ -808,11 +790,10 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     drop = tool.tool.drop() if tool is not None else 0.0
     mid = tp.y_ground + tp.h["hub_bot"] + (tp.h["hub_top"] - tp.h["hub_bot"]) / 2
     far = float(np.hypot(f[:, 0] - tp.x_a, f[:, 1] - drop - mid).max())
-    _, tr, motor, _ = tp.preset.parts
+    _, tr, motor, sensor = tp.preset.parts
     ratio = tr.ratio(None)
-    sensor = tp.preset.parts[3]
-    switch = sensor.repeat_mm if sensor is not None else SWITCH_REPEAT_MM
-    homing = switch / tp.sensor_r * lever if tp.preset.sensor != "none" else 0.0
+    switch = sensor.repeat_mm
+    homing = switch / tp.sensor_r * lever
     budget = InputBudget("q1", ratio, t.backlash_deg, t.resolution_deg, t.stiffness_nm_per_rad,
                          math.radians(t.backlash_deg) * lever,
                          math.radians(t.resolution_deg) * lever, 0.0, t.source,
@@ -821,16 +802,15 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     collar = float(get("collar_8mm").dims["od"])
     systematic = ECCENTRICITY_MM / tp.drive_r() * lever + AXIS_RUNOUT_MM / collar * far
     notes = [f"the turntable ({tp.preset.key}): {n}" for n in t.notes]
-    notes.append(f"the turntable's homing: {switch * 1000:g} um at the flag's "
+    notes.append(f"the turntable's homing: {switch * 1000:g} um at its {sensor.key}'s "
                  f"{tp.sensor_r:.0f} mm radius, {homing:.3f} mm at the output (unverified)")
     notes.append(f"the turntable's drive {ECCENTRICITY_MM:g} mm off centre and its shaft "
                  f"{AXIS_RUNOUT_MM:g} mm out across a collar (estimates): {systematic:.3f} mm "
                  "at the output, once a turn (it calibrates out)")
-    if tp.keep_r:                       # a base_pair: its columns rack under the moment
-        from spiderpig.construction.rotary.base_pair import racking
+    from spiderpig.construction.rotary.base_pair import racking
 
-        per_nm, note = racking(tp)
-        notes.append(f"{note}: {per_nm * far:.3f} mm at the farthest tip per N·m")
+    per_nm, note = racking(tp)          # the base's columns rack under the moment
+    notes.append(f"{note}: {per_nm * far:.3f} mm at the farthest tip per N·m")
     notes.append("the turntable's plates' and brackets' stiffness under the arm's moment is "
                  "not modelled")
     return budget, math.radians(t.tilt_deg) * far, systematic, notes

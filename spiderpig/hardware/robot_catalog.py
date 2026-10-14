@@ -1,6 +1,6 @@
 """Catalog data for an arm's robot-level parts (:mod:`construction.rotary`,
-:mod:`construction.tools`): the turntable's shaft, collars, shims and wave washer, the
-homing sensor, the suction tool and its vacuum, the wrist's stepper.
+:mod:`construction.tools`): the turntable's shaft, bearings, collars, shims and wave washer,
+the joints' homing sensors, the suction tool and its vacuum, the wrist's stepper.
 
 Appended to the catalog from the end of :mod:`hardware.parts` (new items only). No price
 is quoted from memory: the parts the arm buys have a marketplace listing first (Amazon
@@ -20,17 +20,6 @@ _MCM = "McMaster-Carr"
 
 
 register(Item(
-    "shaft_8mm_h6_100", "8 mm precision steel shaft, h6, 100 mm (cut to length)", "shaft",
-    (_unpriced(_MCM, "https://www.mcmaster.com/products/rotary-shafts/", "8 mm h6 "
-               "precision shafts"),),
-    dims={"d": 8.0, "length": 100.0, "tolerance": "h6 (0 / -0.009)", "material": "steel"},
-    notes="The turntable's fixed shaft: clamped by collars either side of the base's boss, "
-          "the hub's two 608 bearings turn on it. An h6 shaft runs from a 9 um gap to an 8 um "
-          "interference in a 608's bore: the upper bearing must slide on it for the wave "
-          "washer to preload the pair (try the bearings on it; polish, or pick another). In "
-          "the base_pair turret it turns, in the base's two bearings: the lower (floating) one "
-          "must slide on it."))
-register(Item(
     "shaft_8mm_h6_tapped", "8 mm precision steel shaft, h6, one end tapped M4 x 10, cut to "
     "length (a MISUMI linear shaft, one end tapped, configured)", "shaft",
     (Offer("Misumi", "https://us.misumi-ec.com/vona2/detail/110302634310/", price_usd=10.0,
@@ -39,11 +28,14 @@ register(Item(
                 "(about USD 10, not seen: the configurator quotes it)"),),
     dims={"d": 8.0, "length": 100.0, "tap": "M4", "tap_depth": 10.0,
           "tolerance": "h6 (0 / -0.009)", "material": "steel"},
-    notes="The base_pair turret's turning shaft: cut to length and tapped at the top by the "
-          "seller (a stock configured part), an M4 screw and washer in its end clamping the "
-          "pulley, the spacer and the turntable down on the over collar (round 7's review: a "
-          "collar pushed down by hand clamps the stack with some 50-100 N, too little to "
-          "hold the arm's moment without rocking in the bore)."))
+    notes="The turret's turning shaft (an h6 shaft runs from a 9 um gap to an 8 um "
+          "interference in a 608's bore: the lower, floating bearing must slide on it for "
+          "the wave washer to preload the pair; try the bearings on it): cut to length and "
+          "tapped at the top by the seller (a stock configured part), an M4 screw and "
+          "washer in its end clamping the pulley, the spacer and the turntable down on the "
+          "over collar (round 7's review: a collar pushed down by hand clamps the stack with "
+          "some 50-100 N, too little to hold the arm's moment without rocking in the "
+          "bore)."))
 register(Item(
     "m4_spacer_6", "Round aluminium spacer 4.2 x 8 x 6 mm (unthreaded)", "standoff",
     (Offer("Amazon", "https://www.amazon.com/s?k=M4+aluminum+round+spacer+6mm", pack_qty=20,
@@ -88,10 +80,9 @@ register(Item(
                "washers")),
     dims={"id": 8.4, "od": 12.0, "t": 0.3, "free_h": 1.2, "work_h": 0.6,
           "load_n": 30.0, "material": "steel"},
-    notes="The preloaded pair's spring, under the top collar on the upper inner ring (in "
-          "the base_pair turret over the lower inner ring, under the mid collar). Its "
-          "load at the working height (30 N) is a typical catalogue figure, UNVERIFIED: "
-          "check the listing."))
+    notes="The preloaded pair's spring, over the lower inner ring under the mid collar "
+          "(:mod:`construction.rotary.base_pair`). Its load at the working height (30 N) is "
+          "a typical catalogue figure, UNVERIFIED: check the listing."))
 register(Item(
     "optical_endstop", "Slotted optical endstop module (TCST2103 type, 3D-printer board)",
     "electronics",

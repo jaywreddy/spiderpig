@@ -44,14 +44,12 @@ BEARINGS = {
     # key: (trade name, shaft (bore), OD, width, McMaster trade number)
     "bearing_mr84zz": ("MR84ZZ", 4.0, 8.0, 3.0, "MR84-2Z"),
     "bearing_mr106zz": ("MR106ZZ", 6.0, 10.0, 3.0, "MR106-2Z"),
-    "bearing_608zz": ("608ZZ", 8.0, 22.0, 7.0, "608-2Z"),
     "bearing_mr84": ("MR84", 4.0, 8.0, 2.0, "MR84"),
     "bearing_mr106": ("MR106", 6.0, 10.0, 2.5, "MR106"),
 }
 """The bearings the ball pivots seat: MR84ZZ on the Chicago screw's 4 mm barrel
 (``ball``), MR106ZZ on the 6 mm standoff (``ball_pillar``); both 3 mm wide, a layer of
-the default 3 mm sheet; 608ZZ, the skateboard bearing, a pair under an arm's turntable
-(:mod:`construction.rotary`); the open MR84 and MR106 (2 and 2.5 mm), the hub's half of a
+the default 3 mm sheet; the open MR84 and MR106 (2 and 2.5 mm), the hub's half of a
 ball pair (:mod:`construction.pivots.pair`)."""
 
 VXB = {
@@ -65,8 +63,6 @@ VXB = {
                         "of-10", "MR106ZZ", 10, 29.99),
     "bearing_mr106": ("https://vxb.com/products/10-pack-6x10x2-5mm-ball-bearing-miniature",
                       "kit848", 10, 29.99),
-    "bearing_608zz": ("https://vxb.com/products/608zz-bearing-8x22x7-shielded", "608ZZ10", 10,
-                      8.88),
 }
 """VXB's offer per bearing (a bearing house; the open MR106 its 2.5 mm one, not the 2 mm
 listed as "MR106"): the alternative to the generic packs (:data:`AMAZON`), which run several
@@ -98,10 +94,6 @@ FREE_CAD = {
                         "MR106-EA017/MR106-EA017.stp",
                         "21aa6deb3f55ab2097df7e154bf9d0d4fe5ba1fbb62c9d31594ebba194872397",
                         "no license stated (a public repo): for designing with only"),
-    "bearing_608zz": ("https://raw.githubusercontent.com/FreeCAD/FreeCAD-library/master/"
-                      "Mechanical%20Parts/Bearings/608ZZ_Ball_Bearing.step",
-                      "45246a4cf1bc63c8186ad8de22a74f44a63aecb450294356592c321bf281e3d3",
-                      "CC-BY 3.0 (the FreeCAD library)"),
 }
 """Free models of the bearings, verified against the catalog's size by
 :func:`hardware.cad.load_axisymmetric` (2026-10-12); ``spiderpig cad download`` fetches

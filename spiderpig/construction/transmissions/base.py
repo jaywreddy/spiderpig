@@ -78,13 +78,13 @@ class DriveHub:
 class Transmission:
     """The contract a transmission implements (the drive group does the rest).
 
-    ``layers(ctx, travel_deg)``: the hub layers its parts take beside the link (the
-    capstan's grow with the turns its cord walks). ``hub_r(ctx)`` / ``motor_side_r(ctx)``:
-    the radii it claims in them at the pivot and at the motor. ``distances(ctx, motor)``:
-    candidate centre distances (pivot to motor shaft), each with its own record, in order
-    of preference. ``ratio(detail)``. ``hull(ctx, hub)``: the radii along the line
-    pivot-motor in the hub layers (a belt's spans), or ``None``. ``motor_hub(ctx)``: the
-    layers and radius the motor-side part takes past the hub layers, toward the plate.
+    ``layers(ctx, travel_deg)``: the hub layers its parts take beside the link.
+    ``hub_r(ctx)`` / ``motor_side_r(ctx)``: the radii it claims in them at the pivot and at
+    the motor. ``distances(ctx, motor)``: candidate centre distances (pivot to motor shaft),
+    each with its own record, in order of preference. ``ratio(detail)``.
+    ``hull(ctx, hub)``: the radii along the line pivot-motor in the hub layers (a belt's
+    spans), or ``None``. ``motor_hub(ctx)``: the layers and radius the motor-side part takes
+    past the hub layers, toward the plate.
     ``bolt_angles(hub)``: the hub's bolts' angles in the link's frame (``None``: evenly
     spaced). ``check(ctx, hub)``: its own parts' clearances to each other (the planner
     never checks a group's shapes against each other): :class:`ConstructionError`.
@@ -93,17 +93,11 @@ class Transmission:
     plate, clamped by screws from outside (a belt: tensioned after the stack is built),
     else bolted straight to the plate from inside. ``bolts`` / ``bolt_pcd``: the screws
     that hold the hub to the link and their circle; ``nuts``: nuts beyond the hub (else
-    they thread into it). ``family``: what kind it is whatever its key (``belt``,
-    ``capstan``: a turntable's layout follows it); ``reverses``: the output turns against
-    the motor; ``slips``: a friction drive, so a homing can't trust the driver's phase
-    alone.
+    they thread into it).
     """
 
     key: str = ""
     label: str = ""
-    family: str = ""
-    reverses: bool = False
-    slips: bool = False
     bolts: int = 4
     bolt_pcd: float = 30.0
     nuts: bool = False
@@ -338,7 +332,7 @@ class DriveGroup(Group):
 
     def lowest(self, ctx: Context) -> tuple[float, float]:
         """The lowest y of what this drive puts inside the stack (its hub round the pivot,
-        turning in place; the belt or the capstan at the motor) and outside its frame plate
+        turning in place; the belt at the motor) and outside its frame plate
         (the motor, its slider): a robot layout's floor stays under both."""
         hub = self.hub(ctx)
         tr = self.transmission

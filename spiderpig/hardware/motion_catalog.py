@@ -1,5 +1,5 @@
 """Catalog data for an arm's drives (:mod:`construction.transmissions`): stepper motors,
-GT2 timing pulleys and belts, the capstan's cord.
+GT2 timing pulleys and belts.
 
 Appended to the catalog from the end of :mod:`hardware.parts` (new items only). No price
 is quoted from memory: the parts an arm buys have a marketplace listing first
@@ -18,9 +18,6 @@ bore; a hubbed one would need the hub cut off). Closed-loop belts come in fixed 
 stretch like springs: :data:`GT2_SPECIFIC_STIFFNESS_N` per unit strain (the glass-fibre
 6 mm belt's, a manufacturer's typical figure, unverified: measure the deflection on the
 build).
-
-**The capstan's cord**: 1 mm braided Dyneema (UHMWPE, SK78), nearly no stretch and no
-creep; its stiffness is :data:`CORD_EA_N` (an effective modulus of the braid, unverified).
 """
 
 from __future__ import annotations
@@ -41,11 +38,6 @@ GT2_LOOPS: tuple[int, ...] = (158, 200, 232, 250, 280, 300, 350, 400, 500)
 GT2_SPECIFIC_STIFFNESS_N = 24000.0
 """A 6 mm glass-fibre GT2 belt's spring per unit strain (N): a span ``L`` mm long is
 ``c / L`` N/mm. A manufacturer's typical figure, unverified."""
-CORD_EA_N = 20000.0
-"""1 mm braided Dyneema's axial stiffness EA (N): an effective modulus of about 25 GPa on
-its 0.785 mm² (the fibre's is about 100 GPa; a braid stretches its weave first).
-Unverified."""
-CORD_D = 1.0
 
 
 def pitch_d(teeth: int) -> float:
@@ -133,22 +125,3 @@ for _L in GT2_LOOPS:
         dims={"length": float(_L), "width": 6.0, "pitch": GT2_PITCH, "teeth": _L // 2,
               "thickness": 1.38, "material": "nylon"}))
 
-register(Item(
-    "tube_al_6x5", "Aluminium tube 6 mm OD x 0.5 mm wall (5 mm ID), per 100 mm", "spacer",
-    (_unpriced("Amazon", "https://www.amazon.com/s?k=6mm+od+5mm+id+aluminum+tube",
-               "6 x 5 mm round tube"),),
-    dims={"od": 6.0, "id": 5.0, "length": 100.0, "material": "aluminium"},
-    notes="The capstan's sleeve: cut to the drum's core height and bonded over the motor's "
-          "D-flat shaft (retaining compound), so the cord wraps a round surface."))
-register(Item(
-    "dyneema_1mm", "1 mm braided Dyneema (UHMWPE) cord, per metre", "cord",
-    (_unpriced("GigaParts", "https://www.gigaparts.com/", "Mastrant-M 1 mm (100 % DM20 "
-               "core, polyester cover), SKU ZCB13112; out of stock 2026-10-12"),
-     _unpriced("Amazon", "https://www.amazon.com/s?k=1mm+dyneema+braided+line", "1 mm SK78 "
-               "braid: creeps (see notes)")),
-    dims={"d": CORD_D, "ea_n": CORD_EA_N, "material": "UHMWPE"},
-    notes="The capstan's cord: wraps the motor's capstan and is anchored at both ends of the "
-          "drum. Buy DM20 (Dyneema's creep-resistant grade): at 300 MPa and 30 C, SK75 "
-          "creeps 0.02 %/day, SK78 0.006, DM20 0.00007 (DSM via riggingdoctor.com); "
-          "SK-grade braid creeps enough to need re-tensioning (arXiv 1806.10632). EA "
-          "unverified."))

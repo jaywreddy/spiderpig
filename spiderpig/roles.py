@@ -152,8 +152,7 @@ register(Role("crank", "crank", "spiderpig.construction:CRANKS", ("walker", "mec
               help="the crankshaft the drive turns: webs and crankpins"))
 register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSIONS",
               ("arm",), default="belt", per="drive",
-              help="what turns each input's link from its motor: a GT2 belt (5:1), a cord "
-                   "capstan (8.7:1, no backlash)"))
+              help="what turns each input's link from its motor: a GT2 belt (5:1)"))
 register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
               default="nema17_17hs4401", per="drive",
               help="each input's stepper motor"))
@@ -168,17 +167,13 @@ register(Role("homing_reference", "homing reference",
               help="what the joints' fine zero comes from: each joint's switch or gauge, or "
                    "a camera on the tool sighting fiducials on a reference sheet"))
 register(Role("turntable", "turntable", "spiderpig.construction.rotary:PRESETS", ("arm",),
-              default="belt_preload", robot=True,
+              default="mt4_compact", robot=True,
               help="the robot's base rotation (yaw): its bearings, transmission, motor and "
                    "homing sensor, as a preset (construction.rotary.PRESETS)"))
 register(Role("pin_stack", "pin stacking", "spiderpig.stack.plan:PIN_STACKS", ("arm",),
               default="free",
               help="where a pin's links may sit in the stack: any layers (a spacer tube "
                    "fills each layer between them) or consecutive ones (no spacers)"))
-register(Role("mill", "mill", "spiderpig.milling:MILLS", ("arm",), default="none",
-              optional=True, robot=True,
-              help="the user's own mill, if any: the parts that want one (the turntable's "
-                   "bearing housings) are machined from plate on it, else laser-cut"))
 register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
               default="suction_cup", optional=True, robot=True,
               help="what the arm holds on its flange: a vacuum cup, fixed or on a wrist"))

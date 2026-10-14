@@ -83,9 +83,8 @@ LINKAGE_PIVOTS: dict[str, tuple[str, str]] = {
 
 LINKAGE_ROLES: dict[str, dict[str, str]] = {
     # the user's arm as approved on 2026-10-14: sensorless homing on hard stops, the camera
-    # sets every zero, the compact turret (a tight core under the turntable, the motor's
-    # lobe out the back)
-    "palletizer_reach": {"turntable": "mt4_compact", "angle_sensor": "stall",
+    # sets every zero (its turntable, mt4_compact, is every arm's)
+    "palletizer_reach": {"angle_sensor": "stall",
                          "homing_reference": "vision_fiducial_ov5647"},
 }
 """Per linkage: the keys its roles (:mod:`spiderpig.roles`) get when the config names none,
@@ -156,6 +155,7 @@ breaks a rule (each with why)."""
 
 
 REMOVED = "2026-10-07"
+PRUNED = "2026-10-14"           # the turret pruned to mt4_compact (the user's call)
 _PIVOTS_GONE = {            # a removed pin or pillar key -> what it was
     "printed": "the printed snap-together axle",
     "rod": "the 3 mm rod with push-on clips",
@@ -182,10 +182,32 @@ REMOVED_CONSTRUCTIONS: dict[str, dict[str, tuple[str, str, str]]] = {
     "pillar": {k: ("ball_pillar" if k == "bearing" else "standoff", REMOVED, w)
                for k, w in _PIVOTS_GONE.items()
                if k not in ("ptfe", "chicago_bushing")},          # (those two: pins only)
+    # an arm's turntable: only the approved mt4_compact kept (2026-10-14)
+    "turntable": {k: ("mt4_compact", PRUNED, w) for k, w in {
+        "belt_preload": "GT2 belt 5:1 on a preloaded 608 pair in the classic turret's hub",
+        "mt4": "GT2 belt 5:1 on a plain 608 pair in the classic turret's hub",
+        "capstan_preload": "cord capstan 11.6:1 on a preloaded 608 pair in the classic "
+                           "turret's hub",
+        "capstan_precise": "cord capstan 11.6:1 on a preloaded 608 pair, an Omron slot "
+                           "sensor",
+        "mt4_base": "GT2 belt 5:1 on the base's F608 pair, an optical endstop",
+        "mt4_base_stall": "GT2 belt 5:1 on the base's F608 pair, homed on a hard stop",
+    }.items()},
+    "transmission": {
+        "capstan": ("belt", PRUNED, "the Dyneema cord capstan on a laser-cut drum"),
+    },
 }
-"""Construction keys removed from :mod:`construction` (D1, W2), per :class:`BuildConfig`
-field: ``key -> (replacement, date removed, what it was)``; a config, spec, stored design or
-CLI option naming one fails with its replacement (:func:`removed_construction`)."""
+"""Construction keys removed from :mod:`construction` (D1, W2; the turret's, 2026-10-14),
+per :class:`BuildConfig` field or :mod:`spiderpig.roles` role (a per-slot role's keys under
+its plain name): ``key -> (replacement, date removed, what it was)``; a config, spec,
+stored design or CLI option naming one fails with its replacement
+(:func:`removed_construction`)."""
+
+REMOVED_ROLES: dict[str, tuple[str, str]] = {
+    "mill": (PRUNED, "the user's mill, which machined the classic turret's bearing housings"),
+}
+"""Roles removed from :mod:`spiderpig.roles`: ``name -> (date removed, what it chose)``; a
+config, spec or stored design naming one fails with that (:func:`removed_role`)."""
 
 
 REMOVED_PARAMS: dict[str, tuple[str, float, str]] = {
@@ -213,6 +235,16 @@ def removed_param(name: str, value=None) -> str | None:
     return (f"fit.{name} ({what}) was removed on {when}: no construction reads it since the "
             f"printed axle and crank went; drop it (it built as {default:g}; "
             "config.REMOVED_PARAMS)")
+
+
+def removed_role(name: str) -> str | None:
+    """Why role ``name`` can't be given any more, or ``None`` (not removed)."""
+    gone = REMOVED_ROLES.get(name)
+    if gone is None:
+        return None
+    when, what = gone
+    return (f"role {name!r} ({what}) was removed on {when}: drop it "
+            "(config.REMOVED_ROLES)")
 
 
 def removed_construction(field: str, key) -> tuple[str, str] | None:
@@ -394,9 +426,6 @@ class BuildConfig:
                     raise KeyError(key)
             except KeyError:
                 raise ParamError(f"{what} {key!r} is not a sheet in the catalog") from None
-            if get(key).dims.get("milled"):
-                raise ParamError(f"{what} {key!r} is a mill's plate (spiderpig.milling), not a "
-                                 "sheet a laser cuts")
         from spiderpig.materials import sheet
 
         if not sheet(self.crank_sheet).metal:
@@ -415,6 +444,8 @@ class BuildConfig:
         out = {}
         for qualified, key in (dict(self.roles) if self.roles else {}).items():
             name, slot = rolemod.split(str(qualified))
+            if (why := removed_role(name)) is not None:
+                raise ParamError(why)
             try:
                 role = rolemod.get(name)
             except KeyError as e:
@@ -432,6 +463,8 @@ class BuildConfig:
                 raise ParamError(f"role {qualified!r} wants a construction key, got {key!r}")
             if key == rolemod.NONE and not role.optional:
                 raise ParamError(f"role {name!r} can't be left empty ({rolemod.NONE!r})")
+            if (gone := removed_construction(name, key)) is not None:
+                raise ParamError(gone[0])
             out[str(qualified)] = key
         plain = {q: rolemod.default_key(q, self) for q in out if "@" not in q}
         return tuple(sorted((q, k) for q, k in out.items() if plain.get(q) != k))
@@ -480,9 +513,6 @@ class BuildConfig:
                 ok = False
             if not ok:
                 raise ParamError(f"link_sheets: {key!r} is not a sheet in the catalog")
-            if get(key).dims.get("milled"):
-                raise ParamError(f"link_sheets: {key!r} is a mill's plate, not a sheet a "
-                                 "laser cuts")
             out[link] = key
         if out == default_link_sheets(lk):
             return None
@@ -672,6 +702,18 @@ def default_robot(key: str) -> bool:
         raise ParamError(e.args[0]) from None
 
 
+def _kept(field: str):
+    """An argparse ``type`` for ``field`` (a config field or a role): a removed key's error
+    names its replacement (argparse: exit 2)."""
+    import argparse
+
+    def check(text: str) -> str:
+        if gone := removed_construction(field, text):
+            raise argparse.ArgumentTypeError(gone[0])
+        return text
+    return check
+
+
 def add_design_args(p) -> None:
     """``--linkage``, ``--module``, ``--phases`` and ``--proportion`` on an argparse parser.
     ``--module`` defaults to ``None``: :func:`config_from_args` fills in the linkage's
@@ -707,28 +749,20 @@ def add_design_args(p) -> None:
 
 def add_build_args(p) -> None:
     """The build options: ``--servo``, the constructions, the sheet."""
-    import argparse
-
     from spiderpig import construction  # (the registries: not at import, CAD-heavy)
 
     d = BuildConfig()
     axles, cranks = sorted(construction.AXLES), sorted(construction.CRANKS)
 
-    def kept(field: str):       # a removed key's error names its replacement (argparse: exit 2)
-        def check(text: str) -> str:
-            if gone := removed_construction(field, text):
-                raise argparse.ArgumentTypeError(gone[0])
-            return text
-        return check
     p.add_argument("--servo", default=d.servo, choices=servos.available(),
                    help=f"servo model (default {d.servo})")
     pivots = "; ".join(f"a {k}'s {v[0]} / {v[1]}" for k, v in DEFAULT_PIVOTS.items())
-    p.add_argument("--pillar", default=None, choices=axles, type=kept("pillar"),
+    p.add_argument("--pillar", default=None, choices=axles, type=_kept("pillar"),
                    help=f"construction of the frame pivots (default: the kind's; {pivots})")
-    p.add_argument("--pin", default=None, choices=axles, type=kept("pin"),
+    p.add_argument("--pin", default=None, choices=axles, type=_kept("pin"),
                    help=f"construction of the pivots between links (default: the kind's; "
                         f"{pivots})")
-    p.add_argument("--crank", default=None, choices=cranks, type=kept("crank"),
+    p.add_argument("--crank", default=None, choices=cranks, type=_kept("crank"),
                    help="crank construction (default: "
                         + ", ".join(f"{v} for a {k}" for k, v in DEFAULT_CRANKS.items() if v)
                         + "; " + ", ".join(f"{v} for {k}" for k, v in LINKAGE_CRANKS.items())
@@ -738,12 +772,13 @@ def add_build_args(p) -> None:
     for role in rolemod.extra():          # every later role: --<role> KEY (default: its own)
         p.add_argument(f"--{role.name.replace('_', '-')}", dest=f"role_{role.name}",
                        default=None, choices=rolemod.choices(role.name),
+                       type=_kept(role.name),
                        help=f"{role.title}: {role.help} (a {' or '.join(role.kinds)}'s; "
                             "default: the design's own)")
     p.add_argument("--role", dest="role_slots", action="append", default=None,
                    metavar="ROLE@SLOT=KEY",
                    help="one slot's construction for a per-drive or per-joint role, e.g. "
-                        "transmission@q2=capstan (repeatable)")
+                        "transmission@q2=belt (repeatable)")
     p.add_argument("--sheet", default=d.sheet, help=f"sheet stock catalog item (default {d.sheet})")
     p.add_argument("--thickness", type=float, default=None,
                    help="measured sheet thickness in mm (default: the sheet's nominal)")

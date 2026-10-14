@@ -11,14 +11,11 @@ key            construction
 ``belt``       a GT2 timing belt, 16 to 80 teeth (5:1): the large pulley bolted to the
                link's pad, a stock closed loop, the motor on a slider plate outside its
                frame plate, tensioned from outside (:mod:`construction.transmissions.belt`)
-``capstan``    a Dyneema cord wrapped on a sleeve on the motor's shaft and anchored on a
-               laser-cut drum bolted to the link (8.7:1, no backlash)
-               (:mod:`construction.transmissions.capstan`)
 =============  ===========================================================================
 
-**Where it goes.** The hub's parts (the large pulley, the drum's plates) stand in the
+**Where it goes.** The hub's parts (the large pulley) stand in the
 layers beside the driven link, coaxial with its pivot, and a layer short of the plate (the
-axle's thrust ring there); the motor's (its pulley, its capstan) in the same layers at the
+axle's thrust ring there); the motor's (its pulley) in the same layers at the
 motor, whose shaft comes in through its frame plate. The drives on one pivot alternate
 plates: the first's motor under the outer plate (its hub under its link), the next's on
 the inner plate (its hub over it). The drive publishes its hub (:class:`DriveHub`): the
@@ -31,7 +28,7 @@ checks its own parts against each other (:meth:`Transmission.check`): the planne
 compares a group's shapes with each other.
 
 **Its error terms** (:meth:`DriveGroup.error_terms`): the transmission's own (a belt's
-spans' stretch and its teeth's backlash, a cord's stretch) in series with the motor's seen
+spans' stretch and its teeth's backlash) in series with the motor's seen
 through the reduction (its microstep, its microstep's systematic error, its holding
 stiffness times the ratio squared).
 """
@@ -45,9 +42,8 @@ from spiderpig.construction.transmissions.base import (
     place_motor,
 )
 from spiderpig.construction.transmissions.belt import BeltDrive
-from spiderpig.construction.transmissions.capstan import CapstanDrive
 
-TRANSMISSIONS: dict[str, Transmission] = {c.key: c for c in (BeltDrive(), CapstanDrive())}
+TRANSMISSIONS: dict[str, Transmission] = {c.key: c for c in (BeltDrive(),)}
 
-__all__ = ["TRANSMISSIONS", "BeltDrive", "CapstanDrive", "DriveGroup", "DriveHub",
-           "Transmission", "place_motor"]
+__all__ = ["TRANSMISSIONS", "BeltDrive", "DriveGroup", "DriveHub", "Transmission",
+           "place_motor"]

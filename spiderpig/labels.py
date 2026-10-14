@@ -148,7 +148,7 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
     groups = dict(groups or {})
     for method in fabmethods.made():
         if method not in groups:
-            groups[method] = group_made(mech.bodies, method, mech.meta.get("milled"))
+            groups[method] = group_made(mech.bodies, method)
     filament = filament or mech.meta.get("filament", "pla_filament")
     fil_of = printed_filaments(mech, filament)
     by_name = {b.name: b for b in mech.bodies}
@@ -189,18 +189,6 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
                               list(g.names),
                               extra={"geo": _geo(ref.part), "role": role, "body": ref,
                                      "plate_mm2": float(ref.part.volume) / t_mm}))
-    specs = mech.meta.get("milled") or {}
-    for g in groups.get("milled", ()):     # the user's mill's (spiderpig.milling)
-        ref = g.ref
-        spec = specs.get(ref.name, {})
-        d = float(spec.get("outline_d") or max(_size(ref.part)))
-        t_mm = float(spec.get("thickness") or min(_size(ref.part)))
-        role = spec.get("role") or "milled part"
-        found.append(PartType(f"ML{_half(d)}x{_half(t_mm)}", "milled",
-                              f"{role}, milled, {_half(d)} mm across, {_half(t_mm)} mm "
-                              f"thick, {catalog.sheet_name(ref.sheet).split(',')[0]}",
-                              ref.name, list(g.names),
-                              extra={"geo": _geo(ref.part), "role": role, "body": ref}))
     found += _bought_types(mech)
     _disambiguate(found)
     for t in found:
@@ -209,8 +197,6 @@ def part_types(mech, order: list[str] | None = None, groups: dict | None = None,
     for t in found:
         if t.mirrored:
             t.file = t.extra["twin"].file.removesuffix(".stl") + "_mirrored.stl"
-        if t.kind == "milled":
-            t.file = f"{t.label}.step"
     rank = {n: i for i, n in enumerate(order or [b.name for b in mech.bodies])}
     big = len(rank)
     listing = fabmethods.kinds()

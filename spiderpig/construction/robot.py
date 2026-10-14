@@ -316,7 +316,7 @@ class Turret(Layout):
               else tool_plan(design.ctx, design.plan, _pick(TOOLS, key, "tool"),
                              design.groups, camera=camera_of(ref.bom if ref else ())))
         preset = _pick(PRESETS, cfg.role("turntable"), "turntable")
-        return turret_plan(design, preset, tp, mill=cfg.role("mill")), tp
+        return turret_plan(design, preset, tp), tp
 
     def side_groups(self, design, config) -> list:
         from spiderpig.actuators.sensors import REFERENCES
@@ -329,7 +329,7 @@ class Turret(Layout):
                                        if tool is not None else [])
 
     def assemble(self, side: Mechanism, design, config) -> Mechanism:
-        from spiderpig.construction.rotary.turret import turret_parts
+        from spiderpig.construction.rotary.base_pair import turret_parts
         from spiderpig.kinematics import RobotTree, SpatialJoint
 
         turret, _ = self.plans(design, config)
@@ -341,9 +341,9 @@ class Turret(Layout):
             extras = extras + [BomLine(k, q, f"controller: {key}")
                                for k, q in controller(key).bom]
 
-        def over(bb) -> bool:      # over the turret (a base_pair's keep-out: only that)
-            return (not turret.keep_r or (turret.x_a + turret.keep_r > bb.min.X
-                                          and turret.x_a - turret.r_base < bb.max.X))
+        def over(bb) -> bool:      # over the turret's keep-out (only that)
+            return (turret.x_a + turret.keep_r > bb.min.X
+                    and turret.x_a - turret.r_base < bb.max.X)
 
         low = min((bb.min.Y for b in side.bodies
                    if not b.joints and _static(b, side) and (pp := b.placed_part()) is not None
@@ -363,11 +363,8 @@ class Turret(Layout):
             carried.update(dict.fromkeys(tool["rotating"], "q4"))
         tree = RobotTree(tuple(joints), carried)
         fastened = list(side.meta.get("fastened", [])) + info.pop("fastened")
-        milled = info.pop("milled")
         meta = dict(side.meta, layout="turret", turret=info, tree=tree.to_meta(),
                     filament="pla_filament", fastened=fastened)
-        if milled:                 # the milled parts' specs, by body (spiderpig.milling)
-            meta.update(mill=info["mill"], milled=milled)
         return Mechanism(name=f"{side.name}_turret", bodies=list(side.bodies) + bodies,
                          connections=list(side.connections), meta=meta,
                          bom_extras=list(side.bom_extras) + extras)

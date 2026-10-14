@@ -354,8 +354,9 @@ def assembly_steps(mech, design, robot: bool | None = None) -> list[Step]:
                           "The remaining parts, where they are drawn.", tag="other"))
     if turret_rows:          # an arm's turret (construction.rotary.turret): one step for now
         text = " ".join([
-            "The base (its columns, the yaw motor under its top plate), the yaw drive, the "
-            "hub, the turntable; then the side stood on it, its feet bolted to the brackets.",
+            "The base (its columns, the yaw motor under its top plate, the bearings and the "
+            "shaft), the yaw drive, the turntable; then the side stood on it, its feet "
+            "bolted to the brackets.",
             *(mech.meta.get("turret") or {}).get("assembly", ())])
         ops.append(Op(OTHER, (), whole(*sorted(r["name"] for r in turret_rows)), "The turret",
                       text, tag="turret"))

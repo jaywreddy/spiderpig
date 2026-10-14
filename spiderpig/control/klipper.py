@@ -51,7 +51,7 @@ def printer_cfg(axes: dict[str, Axis], name: str = "arm", controller=None,
     """The config text (module docstring). ``controller``: a key of
     :data:`actuators.controllers.CONTROLLERS`, one, or ``None`` / ``""`` (placeholders);
     ``sensors``: each joint's homing sensor (:func:`.homing.sensors_of`; by default the
-    turntable's optical endstop and no other)."""
+    turntable's hard stop and no other)."""
     from spiderpig.actuators import controllers
 
     ctl = controllers.get(controller) if isinstance(controller, str) and controller \

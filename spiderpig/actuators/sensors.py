@@ -21,8 +21,8 @@ palletizer's ``q2``, ``q3``) find their zero at homing (:mod:`control.homing`):
   ``atan2`` of its two axes in the link's plane, averaged half a second at rest
   (0.001 deg/sqrt(Hz) noise), its offset set once at assembly against the gauge and
   drifting 0.005 deg/K: :attr:`AngleSensor.repeat_deg` over a few kelvin. Read at rest
-  before each final approach it also takes out what a capstan's creep or slip and the
-  drive's sag leave (:mod:`control.incline`). The Dobot Magician reads its arms' angles
+  before each final approach it also takes out what the drive's sag leaves
+  (:mod:`control.incline`). The Dobot Magician reads its arms' angles
   from accelerometers in the links the same way.
 
 ``repeat_deg`` is what homing leaves at the joint each time (a repeatability term: the
@@ -34,11 +34,11 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-SWITCH_REPEAT_MM = 0.02    # a slotted optical switch's repeatability at its flag's edge (as
-#                            the turntable's, construction.rotary; a typical figure,
-#                            unverified)
+SWITCH_REPEAT_MM = 0.02    # a slotted optical switch's repeatability at its flag's edge (a
+#                            typical figure, unverified)
 FLAG_R = 40.0              # the flag's edge from the joint's pivot, on the link (mm)
-PRECISE_REPEAT_MM = 0.005  # an Omron EE-SX67's, budgeted (construction.rotary.SENSORS)
+PRECISE_REPEAT_MM = 0.005  # an Omron EE-SX67's, budgeted: its datasheet's 2 um over 20
+#                            tries at 25 C and 20-40 um of drift over 25 C +-30 K
 PRECISE_FLAG_R = 45.0      # a tab on the link over the frame plate (the review's: q2 45, q3 55)
 
 

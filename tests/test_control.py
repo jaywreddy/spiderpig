@@ -64,14 +64,15 @@ def test_the_inverse_refuses_what_the_arm_cant_reach():
 
 @pytest.mark.no_fabricate
 def test_each_joint_counts_its_motors_steps_through_its_ratio():
-    cfg, design, _ = _model(roles=(("turntable", "capstan_preload"),))
+    cfg, design, _ = _model()
     ax = axes(cfg, design)
     assert set(ax) == {"q1", "q2", "q3"}
     q2, q3, q1 = ax["q2"], ax["q3"], ax["q1"]
     assert q2.per_rad == pytest.approx(5.0 * 200 * 16 / (2 * math.pi))
     assert (q2.direction, q3.direction) == (1, -1)   # outer plate's shaft +z, inner's -z
-    assert q1.direction == -1                         # the capstan reverses the sense
-    assert q1.ratio == pytest.approx(40.5 / 3.5)
+    assert q1.direction == 1                          # the turntable's motor points up
+    assert q1.ratio == pytest.approx(60 / 16)         # mt4_compact's belt: 16 to 60 teeth
+    assert q1.microsteps == 64
     a = q2
     for q in np.linspace(*a.limits, 7):
         assert a.angle(a.steps(float(q))) == pytest.approx(q, abs=0.5 / a.per_rad)
@@ -139,7 +140,7 @@ def test_the_klipper_config_drives_each_joint_in_degrees():
         assert f"[manual_stepper {n}]" in text
         assert f"rotation_distance: {a.deg_per_motor_rev:.6f}" in text
         assert f"[tmc2209 manual_stepper {n}]" in text
-    assert "endstop_pin: ^<Q1_ENDSTOP_PIN>" in text
+    assert "endstop_pin: tmc2209_q1:virtual_endstop" in text    # the turntable's stall
     assert "<MCU_SERIAL>" in text
     assert "[idle_timeout]" in text
     idle = text.split("[idle_timeout]")[1].split("\n[")[0]
@@ -168,15 +169,11 @@ def test_a_straight_move_is_synchronised_segments_on_the_line():
     first = {s.split()[1].split("=")[1]: s for s in segs[0]}
     assert set(first) == {"q1", "q2", "q3"}
     assert all("ACCEL=0" in s for s in lines)       # constant speed: the joints keep time
-    home = host.home_gcode(ax)
-    assert any("STOP_ON_ENDSTOP=1" in h for h in home)
-    lo, hi = (math.degrees(v) for v in ax["q1"].limits)
-    for h in home:                       # never farther than the half home is in, slowly
-        if "MOVE=" in h:
-            move = abs(float(h.split("MOVE=")[1].split()[0]))
-            assert move <= max(-lo, hi) + 5.0 + 1e-9
-            assert "SPEED=" in h
-    assert "DUMP_TMC STEPPER=q1 REGISTER=MSCNT" in home
+    home = host.home_gcode(ax)           # the turntable's hard stop, by default
+    assert home[0] == "MANUAL_STEPPER STEPPER=q1 ENABLE=1"
+    assert sum("STOP_ON_ENDSTOP=1" in h for h in home) == 1
+    assert all("SPEED=" in h for h in home if "MOVE=" in h)
+    assert not any("MSCNT" in h for h in home)          # a stall: no phase snap
 
 
 def test_the_host_talks_to_moonraker(tmp_path):
@@ -262,10 +259,9 @@ def test_an_inclinometer_reads_its_links_angle_off_frame():
         incline.decode(incline.frame(0x40, 1) ^ 1)        # a flipped bit: bad CRC
 
 
-def test_homing_reads_the_inclinometers_and_skips_a_capstans_phase():
+def test_homing_reads_the_inclinometers_and_a_gauge():
     a = Axis("q2", 5.0, 1.8, 16, -1)
-    steps = homing.plan({"q1": a, "q2": a, "q3": a}, {"q2": "scl3300", "q3": "gauge"},
-                        phase=False)
+    steps = homing.plan({"q1": a, "q2": a, "q3": a}, {"q2": "scl3300", "q3": "gauge"})
     assert not any("MSCNT" in s.action for s in steps)
     assert any(s.axis == "q2" and "inclinometer" in s.action for s in steps)
     assert any(s.axis == "q3" and "gauge" in s.action for s in steps)
@@ -305,25 +301,9 @@ def test_a_camera_finds_a_dot_and_the_sightings_fix_the_zeros():
     assert got["q3"] == pytest.approx(true["q3"], abs=1e-6)
 
 
-def test_the_sightings_fit_a_capstans_drifting_gain_too():
-    from spiderpig.control import vision
-
-    _, _, model = _model(robot=False)
-    off, gain = math.radians(0.05), 3e-4          # the q2 capstan warm: its ratio off
-    sightings = []
-    for q2, q3 in ((45.0, -40.0), (70.0, -20.0), (95.0, 5.0), (110.0, 15.0)):
-        q = {"q2": math.radians(q2), "q3": math.radians(q3)}
-        real = model.fk({"q2": q["q2"] * (1 + gain) + off, "q3": q["q3"]})
-        sightings.append(vision.Sighting(q, tuple(real[:2]), (0.0, 0.0)))
-    got = vision.zero_offsets(model, sightings, ("q2", "q3"), fit_gain=True)
-    assert got["q2"] == pytest.approx(off, abs=1e-6)
-    assert got["q2_gain"] == pytest.approx(gain, abs=1e-6)
-    assert got["q3_gain"] == pytest.approx(0.0, abs=1e-6)
-
-
 def test_a_move_ends_one_sidedly_past_and_back():
-    a = Axis("q1", 11.6, 1.8, 16, 1)
-    b = Axis("q2", 8.7, 1.8, 16, -1)
+    a = Axis("q1", 3.75, 1.8, 16, 1)
+    b = Axis("q2", 5.0, 1.8, 16, -1)
     axes = {"q1": a, "q2": b}
     before = {"q1": 0.3, "q2": 1.0}
     end = {"q1": 0.2, "q2": 1.1}               # q1 came in negative, q2 positive
@@ -375,8 +355,7 @@ def test_a_stall_arms_klipper_config_homes_on_its_drivers_with_every_pin_filled(
     ax = {"q2": Axis("q2", 5.0, 1.8, 16, 1, 0.0, "nema17_17hs4401", (0.7, 2.0)),
           "q3": Axis("q3", 5.0, 1.8, 16, -1, 0.0, "nema17_17hs4401", (-0.8, 0.35)),
           "q1": Axis("q1", 5.0, 1.8, 64, 1, 0.0, "nema17_17hs4401_x64", rng)}
-    cfg = BuildConfig(linkage="palletizer", roles=(("turntable", "mt4_base_stall"),
-                                                   ("angle_sensor", "stall")))
+    cfg = BuildConfig(linkage="palletizer", roles=(("angle_sensor", "stall"),))
     sensors = homing.sensors_of(cfg, ax)
     assert sensors == {"q1": "hard_stop", "q2": "stall", "q3": "stall"}
     text = klipper.printer_cfg(ax, "palletizer", cfg.role("controller"), sensors)
@@ -404,9 +383,11 @@ def test_a_stall_arms_klipper_config_homes_on_its_drivers_with_every_pin_filled(
     steps = homing.plan(ax, sensors)
     assert not any("MSCNT" in s.action for s in steps)
     assert any(s.axis == "q1" and "virtual_endstop" in s.action for s in steps)
-    # an endstop arm on the board: its switch on the port's input, no stall settings
-    text = klipper.printer_cfg(ax, "palletizer", "skr_pico_pi_zero")
-    assert "endstop_pin: ^gpio4" in text
+    # endstops on the planar joints: each switch on its port's input, no stall settings
+    text = klipper.printer_cfg(ax, "palletizer", "skr_pico_pi_zero",
+                               {"q2": "endstop", "q3": "endstop"})
+    assert "endstop_pin: ^gpio3" in text
+    assert "endstop_pin: ^gpio25" in text
     assert "virtual_endstop" not in text
     assert "SGTHRS" not in text
     assert "<" not in text

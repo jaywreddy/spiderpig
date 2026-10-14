@@ -7,7 +7,7 @@ horizontal reads ``(g sin theta, g cos theta)`` and its angle is ``atan2(x, y)``
 cancels, any of its modes), less the offset found once at assembly against the gauge
 (:func:`offset_from_gauge`). Averaged ``seconds`` at rest (its noise 0.001 deg/sqrt(Hz)),
 what homing reads (:func:`homing.set_from_gauge` with this reading) and what the host reads
-before each final approach, to correct a capstan's creep and the drive's sag.
+before each final approach, to correct the drive's sag.
 
 **The SPI frame** (the SCL3300 datasheet, "SPI frame"; the codes are the datasheet's and
 are unverified on hardware here): 32 bits, MSB first, mode 0, up to 8 MHz: an 8-bit
