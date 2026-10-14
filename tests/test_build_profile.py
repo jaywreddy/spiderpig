@@ -1,6 +1,7 @@
-"""The stage profiler (``spiderpig/tools/profiler.py``): the bake's summary unchanged, the
-build's ``--profile`` stages (``spiderpig.tools.build_profile.STAGES``) adding up to its wall
-time, and none of the measuring tools in the engine's hash."""
+"""The stage profiler (``spiderpig/tools/profiler.py``, the bake's and the build's): the
+bake's summary unchanged, the build's ``--profile`` stages
+(``spiderpig.tools.build_profile.STAGES``) adding up to its wall time, and none of the
+measuring tools in the engine's hash."""
 
 from __future__ import annotations
 
@@ -54,17 +55,34 @@ def test_a_disabled_profiler_records_nothing(caplog):
 
 
 def test_the_bake_keeps_its_summary_and_logger(caplog):
-    from spiderpig.bake import _Profiler
+    """The bake profiles with the shared profiler (one class, no copy) and its summary is
+    the one scripts parse: the title, the ``%bake`` column (shares of ``bake_total``), the
+    ``bake_gltf`` logger, the counters and metrics as they were."""
+    from spiderpig import bake
 
-    prof = _Profiler()
+    assert not hasattr(bake, "_Profiler")
+    prof = bake._profiler()
+    assert isinstance(prof, Profiler)
     with prof.timed("bake_total"), prof.timed("1_reference_build"):
         pass
+    prof.bump("mesh_shared", 3)
+    prof.set_metric("n_frames", 120)
+    prof.set_metric("peak_rss_mb", 1.5)
     with caplog.at_level(logging.INFO, logger="bake_gltf"):
         prof.log_summary()
     rec = caplog.records[-1]
     assert rec.name == "bake_gltf"
-    assert rec.getMessage().startswith("bake profile summary:")
-    assert "%bake" in rec.getMessage()
+    lines = rec.getMessage().splitlines()
+    assert lines[:3] == [
+        "bake profile summary:",
+        f"  {'label':40} {'calls':>6} {'total_s':>9} {'mean_ms':>9} {'p50_ms':>9} "
+        f"{'p95_ms':>9} {'%bake':>6}",
+        f"  {'-' * 40} {'-' * 6} {'-' * 9} {'-' * 9} {'-' * 9} {'-' * 9} {'-' * 6}"]
+    assert [ln.split()[0] for ln in lines[3:5]] == ["bake_total", "1_reference_build"]
+    assert lines[3].endswith(" 100.0")
+    assert lines[5:] == ["  counters:", "    mesh_shared: 3", "  metrics:",
+                         "    n_frames: 120", "    peak_rss_mb: 1.500"]
+    assert not bake._profiler(False).as_dict()["stages"]
 
 
 @pytest.mark.skipif(not os.path.exists("/proc/self/stat"), reason="no /proc")

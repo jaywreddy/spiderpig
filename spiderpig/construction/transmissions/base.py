@@ -510,9 +510,14 @@ class JointDrive(Group):
                     raise Unbuildable(f"{g}: the nuts on its hub's bolts and their tips need "
                                       f"{past} layers past {self.link}")
                 out += [Placed(j, Disc(b, 3.2), g, f"{g} nut") for b in bolts for j in beyond]
-            else:               # heads on the link's far face, threaded into the hub
+            else:               # heads on the link's far face, threaded into the hub: the
+                # layer beyond it, and the clearance gap between them where the plan puts
+                # one (the head bears on the link: it stands in that gap first; before
+                # 2026-10-14 it was outside its claims there)
                 out += [Placed(k - s, Disc(b, sk.head_d / 2), g, f"{g} bolt head")
                         for b in bolts]
+                out += [Placed(min(k, k - s), Disc(b, sk.head_d / 2), g, f"{g} bolt head",
+                               gap=True) for b in bolts]
             return out
 
         return [Claim(g, frozenset({self.link}), make)]

@@ -34,7 +34,11 @@ DXF's entities or a closed outline's start vertex in another order, body order, 
 file's lines reordered, a part's faces/edges counted otherwise at the same volume, area
 and box, an STL mesh with the B-rep unchanged) or **DIFFERENT** (anything else, listed).
 Exit status 0 / 1 / 2 accordingly. "Order differs" is a user decision (PLAN 4.3), not a
-merge.
+merge. Every design must also pass its own audit (no problems: the defaults of every
+registered design build a robot that holds together, 2026-10-14): ``compare`` and
+``snapshot`` list the designs whose audit fails and then exit 3 where they would have
+exited 0, but for those :data:`KNOWN_AUDIT_FAILURES` explains (``mise run gate -- audit
+DIR`` checks a snapshot alone).
 
 Reproducible: servos drawn parametrically (no CAD downloads, as the tests), a fresh
 store, ``PYTHONHASHSEED=0`` and the planner held by its node budgets alone
@@ -71,7 +75,8 @@ DESIGNS: dict[str, list[str]] = {
     "klann_quad": ["--linkage", "klann", "--module", "quad"],
     "hoecken_pantograph": ["--linkage", "hoecken_pantograph"],
     "dwell_rocker": ["--linkage", "dwell_rocker"],
-    # the robot arm (2026-10-12): the palletizer on its turret, its default parts
+    # the robot arm (2026-10-12): the palletizer on its turret, its default parts (the
+    # approved arm's pivots and links' sheets since 2026-10-14: its own failed a crash)
     "palletizer_turret": ["--linkage", "palletizer"],
     # the user's arm as approved (2026-10-14): ball_pair pivots, the mt4_compact turret,
     # sensorless homing and the camera, its links' own sheets (config.LINKAGE_PIVOTS,
@@ -640,6 +645,58 @@ def diff_dirs(base: Path, new: Path, names: list[str]) -> int:
     return worst
 
 
+KNOWN_AUDIT_FAILURES: dict[str, str] = {
+    "klann_quad": "the demo Klann quad's pins C, D and E of two legs span 27-40 mm (its links "
+                  "6-7 layers apart: the crank's riders and the cantilever pillars B force "
+                  "them; capped at 16, 20 or 23 mm barrels, or with every pin's links at most "
+                  "a layer apart, no plan is found; the variants' 0, 0, 180, 180 phasing "
+                  "finds none either): jam SF 0.30-0.43 at the family's 155 N, still short "
+                  "on the ground ball_pair pins (0.71). Its fix is the user's: prune the demo "
+                  "(DECISIONS.md 2026-10-14) or a stronger pin",
+}
+"""Gate designs whose audit fails, each with why and what would fix it: reported, not failed
+on (a design here that passes is: drop it). Empty is the goal."""
+
+
+def audit_failures(snap: Path, names: list[str]) -> dict[str, list[str]]:
+    """The designs of snapshot ``snap`` whose audit has problems, with them."""
+    out = {}
+    for name in names:
+        f = snap / f"{name}.json"
+        if f.is_file():
+            problems = (json.loads(f.read_text()).get("audit") or {}).get("problems") or []
+            if problems:
+                out[name] = list(problems)
+    return out
+
+
+def report_audits(snap: Path, names: list[str],
+                  known: dict[str, str] | None = None) -> int:
+    """Print every design's audit verdict in ``snap``: 0 when none has a problem but those
+    :data:`KNOWN_AUDIT_FAILURES` (``known``) explains, else 3 (a new failure, or a known
+    one that passes now: the table is stale)."""
+    known = KNOWN_AUDIT_FAILURES if known is None else known
+    bad = audit_failures(snap, names)
+    worst = 0
+    for name, problems in bad.items():
+        if name in known:
+            print(f"  {name}: fails its audit, known ({len(problems)} problems): "
+                  f"{known[name]}")
+            continue
+        worst = 3
+        print(f"  {name}: FAILS ITS AUDIT ({len(problems)} problems)")
+        for msg in problems[:5]:
+            print(f"    {_first_clause(msg)}")
+    for name in sorted(set(known) & set(names) - set(bad)):
+        if (snap / f"{name}.json").is_file():
+            worst = 3
+            print(f"  {name}: passes its audit now: drop it from KNOWN_AUDIT_FAILURES")
+    new = sum(n not in known for n in bad)
+    print("audits: every design passes" if not bad else
+          f"audits: {len(bad)} of {len(names)} designs fail ({new} not known)")
+    return worst
+
+
 # ---------------------------------------------------------------------------
 # the design numbers' one source (docs/agentlib/DESIGNS.md)
 # ---------------------------------------------------------------------------
@@ -767,6 +824,9 @@ def main(argv=None) -> int:
     p.add_argument("a", type=Path)
     p.add_argument("b", type=Path)
     p.add_argument("--designs", default=None)
+    p = sub.add_parser("audit", help="every design of a snapshot passes its audit (exit 3 "
+                                     "if one fails)")
+    p.add_argument("dir", type=Path, help="the snapshot folder")
     p = sub.add_parser("doc", help="write docs/agentlib/DESIGNS.md from a snapshot")
     p.add_argument("dir", type=Path, help="the snapshot folder")
     p.add_argument("--out", default=str(DESIGNS_MD),
@@ -786,13 +846,16 @@ def main(argv=None) -> int:
         return 0
     if args.cmd == "doc":
         return write_designs_doc(args.dir, None if args.out == "-" else Path(args.out))
+    if args.cmd == "audit":
+        held = sorted(p.stem for p in args.dir.glob("*.json") if p.stem in DESIGNS)
+        return report_audits(args.dir, held)
     names = (args.designs.split(",") if args.designs
              else sorted(p.stem for p in args.a.glob("*.json") if p.stem in DESIGNS))
     unknown = [n for n in names if n not in DESIGNS]
     if unknown:
         ap.error(f"unknown designs {unknown}: {', '.join(DESIGNS)}")
     if args.cmd == "snapshot":
-        return snapshot(args.dir, names, args.jobs)
+        return snapshot(args.dir, names, args.jobs) or report_audits(args.dir, names)
     if args.cmd == "diff":
         return diff_dirs(args.a, args.b, names)
     if args.designs == ",".join(DESIGNS):   # the default: the designs the baseline holds
@@ -804,7 +867,9 @@ def main(argv=None) -> int:
     if snapshot(new, names, args.jobs):
         print("the snapshot failed: no comparison")
         return 2
-    return diff_dirs(args.dir, new, names)
+    worst = diff_dirs(args.dir, new, names)
+    audits = report_audits(new, names)      # (printed whatever the identity's verdict)
+    return worst or audits
 
 
 if __name__ == "__main__":

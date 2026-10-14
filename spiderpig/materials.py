@@ -107,6 +107,11 @@ def _constant(dims: dict, name: str, table: dict, material: str, key: str) -> fl
                        f"spiderpig.hardware.mass or to the item's dims)") from None
 
 
+PALLETIZER_LINKS: dict[str, str] = {
+    **dict.fromkeys(("b1", "b2", "b3", "b5", "b6", "b7", "b8"), "acrylic_5p4mm"),
+    "b4": "al5052_3p2mm"}
+"""The palletizer arms' links' sheets (both linkages share the links ``b1`` .. ``b8``)."""
+
 LINK_SHEETS: dict[str, dict[str, str]] = {
     # the user's decision of 2026-10-04 (3): klann_lego's crank rider b1 jams past what
     # acrylic holds (strength.link_rows names 6061 for it), so it is cut from 6061 by default
@@ -114,9 +119,11 @@ LINK_SHEETS: dict[str, dict[str, str]] = {
     # 1 x t of web (plates.rider_bosses), the rest of it keeps Params.link_radius
     "klann_lego": {"b1": FOOT_SHEET},
     # the user's arm (2026-10-13): every link 5.4 mm acrylic (stiff across the plane, its
-    # bearings' seats inside it) but b4, the elbow's long lever, in 1/8 in 5052
-    "palletizer_reach": {**dict.fromkeys(("b1", "b2", "b3", "b5", "b6", "b7", "b8"),
-                                         "acrylic_5p4mm"), "b4": "al5052_3p2mm"},
+    # bearings' seats inside it) but b4, the elbow's long lever, in 1/8 in 5052; the plain
+    # palletizer's too since 2026-10-14 (the same links: its acrylic b4 broke at a crash at
+    # the tool, jam SF 0.48)
+    "palletizer_reach": PALLETIZER_LINKS,
+    "palletizer": PALLETIZER_LINKS,
 }
 """Per linkage: links cut from aluminium by default beyond a Klann variant's foot links
 (:func:`default_link_sheets`); ``BuildConfig.link_sheets`` overrides the lot."""

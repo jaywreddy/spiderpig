@@ -192,7 +192,8 @@ register(Role("controller", "controller", "spiderpig.actuators.controllers:CONTR
               ("walker", "arm"), default="spiderpig.actuators.controllers:default_key",
               optional=True, robot=True, implicit="esp32_bus_servo",
               help="the electronics that drive the motors: a walker's serial-bus servo "
-                   "board, battery and harness on its deck (esp32_bus_servo), an arm's "
+                   "board, battery and harness on its deck (esp32_bus_servo; a DYNAMIXEL "
+                   "servo's USB interface and power hub, u2d2_dynamixel), an arm's "
                    "stepper board running Klipper with its host computer, supply and cables "
                    "(skr_pico_pi_zero); none: your own (a walker's deck bare, an arm's "
                    "Klipper pins left to fill)"))

@@ -218,7 +218,7 @@ quality on the final layout, and W7 documents the result.
 on every push.
 
 **Scope.**
-- `spiderpig build --profile`: stage timings like the bake's `_Profiler`, through the
+- `spiderpig build --profile`: stage timings like the bake's (one `Profiler`, `spiderpig/tools/profiler.py`), through the
   `bake_gltf`-style logger; the stage keys are `import`, `template`, `plan`,
   `fabricate`, `group`, `step`, `stl`, `prints`, `dxf_sheets`, `dxf_parts`, `bom`,
   `order`.

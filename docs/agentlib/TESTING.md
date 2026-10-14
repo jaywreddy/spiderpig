@@ -285,6 +285,7 @@ mise run gate -- compare /tmp/gate/before       # on the branch: snapshots again
 mise run gate -- diff A B                       # two snapshots
 mise run gate -- compare DIR --designs klann_quad -j 1
 mise run gate -- doc DIR                        # docs/agentlib/DESIGNS.md from a snapshot
+mise run gate -- audit DIR                      # every design of a snapshot passes its audit
 ```
 
 `doc` writes `docs/agentlib/DESIGNS.md`, the one source of the designs' numbers (layers,
@@ -326,7 +327,17 @@ differs** (1: a DXF's entities in another order or a closed outline from another
 vertex, bodies reordered, a text file's lines reordered, a part's faces/edges counted
 otherwise at the same volume, area and box, an STL mesh with the B-rep unchanged) — a
 user decision, not a merge; **DIFFERENT** (2, every difference listed). Numbers compare
-within 1e-9 relative / 1e-6 mm.
+within 1e-9 relative / 1e-6 mm. Then every design's own audit (2026-10-14): a design whose
+audit has a problem is listed (`FAILS ITS AUDIT`) and the exit status is 3 where it would
+have been 0, unless `KNOWN_AUDIT_FAILURES` says why it fails (the demo `klann` quad's long
+pins, the user's call: a known failure is listed, and one that passes is reported for the
+table to lose it); `mise run gate -- audit DIR` checks a snapshot alone, and the slow
+`tests/test_gate_audits.py` runs the eight audits (a known failure a strict `xfail`).
+
+**Newest baseline** (wave 2, 2026-10-14): `~/.cache/spiderpig/gate/platform-78e35e8/`, from
+which DESIGNS.md is generated. It differs from `platform-5396098` (kept) by
+`palletizer_turret` alone: the approved arm's pivots and links' sheets, its audit passing
+(DECISIONS.md 2026-10-14, wave 2); the other seven identical.
 
 **Baseline** (the merged walkers-and-arm platform, `77c117c`, 2026-10-14: eight designs, the
 user's approved arm `palletizer_reach` among them): `~/.cache/spiderpig/gate/platform-77c117c/`

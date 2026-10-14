@@ -65,18 +65,19 @@ doesn't plan (each with why)."""
 DEFAULT_PIVOTS: dict[str, tuple[str, str]] = {
     "walker": ("chicago", "standoff"),
     "mechanism": ("chicago", "standoff"),
-    "arm": ("ball", "ball_pillar"),
+    "arm": ("ball_pair", "ball_pair_pillar"),
 }
 """The ``(pin, pillar)`` a design gets when it names none, per kind (:func:`default_pin`,
 :func:`default_pillar`): a walker's and a mechanism's plain holes (the Chicago screw, the
 standoff column; D1, 2026-10-07); an arm's ball bearings at every pivot (the user's call of
 2026-10-11 for the palletizer: plain holes' play, at the arm's levers, is millimetres at the
-tool; ``spiderpig precision --compare``)."""
+tool; ``spiderpig precision --compare``), since 2026-10-14 the approved arm's: each pivot a
+preloaded bearing pair on a ground pin (ISO 9283 RP 0.047 mm in a session; the single
+``ball``: 0.2 mm), which also holds a crash at the tool where the single bearing's barrel
+bent (the plain ``palletizer``'s elbow pin E, jam SF 0.44: DECISIONS.md 2026-10-14)."""
 
 LINKAGE_PIVOTS: dict[str, tuple[str, str]] = {
-    # the user's arm (2026-10-13/14, docs/agentlib/DECISIONS.md): each pivot a preloaded
-    # bearing pair on a ground pin, ISO 9283 RP 0.047 mm in a session (ball: 0.2 mm)
-    "palletizer_reach": ("ball_pair", "ball_pair_pillar"),
+    # empty since the approved arm's pivots became every arm's (2026-10-14)
 }
 """Per linkage: the ``(pin, pillar)`` it gets when it names none, where its kind's
 :data:`DEFAULT_PIVOTS` aren't its own design's (each with why)."""
@@ -95,9 +96,10 @@ KIND_FIT: dict[str, dict[str, float]] = {
 }
 """Per kind: the :class:`fit.Params` fields a design gets where :class:`fit.Params`' own
 default doesn't build its :data:`DEFAULT_PIVOTS` (each with why): an arm's links are
-6.6 mm in radius, the ``ball_pillar``'s 10 mm bearing seat plus ``min_wall``
-(``BearingSeat.check``). Applied when the config's ``params`` are the plain defaults
-(:func:`default_params`); a spec's ``fit`` starts from them (``FitSpec.params``)."""
+6.6 mm in radius, a pillar's 10 mm bearing seat (``ball_pillar``, ``ball_pair_pillar``)
+plus ``min_wall`` (``BearingSeat.check``). Applied when the config's ``params`` are the
+plain defaults (:func:`default_params`); a spec's ``fit`` starts from them
+(``FitSpec.params``)."""
 
 
 def default_pin(lk: linkage.Linkage) -> str:
@@ -318,6 +320,40 @@ def default_crank(lk: linkage.Linkage, module: str = "") -> str:
                              LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
 
 
+ROLE_FIELDS: dict[str, str] = {"servo": "servo", "crank_sheet": "crank"}
+""":class:`BuildConfig` fields that belong to a role (:mod:`spiderpig.roles`): the drive
+servo and the crank's sheet, a walker's and a mechanism's. Where the role isn't a slot of
+the design's kind (an arm: steppers, the role ``actuator``, and no crank) the field holds
+its default and naming another is refused (:func:`unused_field`). The default stays in the
+field, the key and the resolved spec rather than being left out: every stored arm's id
+(``BuildConfig.key``, ``design.spec_hash``, ``side_hash``) hashes it, so leaving it out
+would move them all (2026-10-14)."""
+
+
+def role_field_default(lk: linkage.Linkage, name: str) -> str:
+    """The value field ``name`` of :data:`ROLE_FIELDS` holds for ``lk`` when nothing names
+    it."""
+    return servos.DEFAULT if name == "servo" else default_crank_sheet(lk)
+
+
+def unused_field(lk: linkage.Linkage, name: str, value) -> str | None:
+    """Why ``value`` can't be ``lk``'s field ``name`` (:data:`ROLE_FIELDS`: its role isn't a
+    slot of ``lk``'s kind and the value isn't the field's default), or ``None``."""
+    from spiderpig import roles as rolemod
+
+    role = ROLE_FIELDS.get(name)
+    if role is None or rolemod.applies(role, lk.kind) or value in (None, ""):
+        return None
+    if value == role_field_default(lk, name):
+        return None
+    r = rolemod.get(role)
+    article = "an" if lk.kind[0] in "aeiou" else "a"
+    return (f"{lk.key} is {article} {lk.kind}: it has no {r.title} ({name} {value!r}; the role "
+            f"{role!r} is a {' or '.join(r.kinds)}'s"
+            + ("; its motors are the role 'actuator'" if name == "servo"
+               and rolemod.applies("actuator", lk.kind) else "") + ")")
+
+
 ROBOT_LAYOUTS: dict[str, str] = {"walker": "mirrored_pair", "arm": "turret"}
 """The robot each linkage kind makes (:data:`construction.robot.LAYOUTS`): a walker's two
 mirrored sides with the chassis between their servos; an arm's side standing on a turntable
@@ -365,11 +401,13 @@ class BuildConfig:
     #                                   DEFAULT_PIVOTS: a walker's 6 mm round standoff column,
     #                                   a stock goBILDA one or else one steel standoff made to
     #                                   length, never spliced, construction.pivots.standoff;
-    #                                   an arm's ball_pillar, an MR106ZZ in every link on it)
+    #                                   an arm's ball_pair_pillar, MR106ZZ pairs in hubs
+    #                                   beside its links on a ground shaft)
     pin: str = ""                     # pivots between links ("": default_pin, the kind's: a
     #                                   walker's M3 Chicago screw (4 mm barrel), printed rings
     #                                   and head spacers, construction.pivots.chicago; an
-    #                                   arm's ball, an MR84ZZ in every rider on the barrel)
+    #                                   arm's ball_pair, preloaded MR84ZZ pairs on a ground
+    #                                   pin)
     crank: str = ""                   # the crankshaft ("": default_crank: the linkage's own,
     #                                   LINKAGE_CRANKS, else its kind's, DEFAULT_CRANKS: "bolt",
     #                                   construction.crank.BoltCrank, single aluminium web plates
@@ -414,6 +452,9 @@ class BuildConfig:
         if self.servo not in servos.available():
             raise ParamError(f"unknown servo {self.servo!r}; have {servos.available()}")
         object.__setattr__(self, "phases", self._phases(lk))
+        for what in ROLE_FIELDS:
+            if (why := unused_field(lk, what, getattr(self, what))) is not None:
+                raise ParamError(why)
         if lk.ranged and (self.crank or self.phases is not None):
             raise ParamError(f"{lk.key} is an arm: its inputs drive links, so it has no crank "
                              f"and no crank phases (crank {self.crank!r}, phases "
@@ -906,13 +947,18 @@ def design_from_query(query: Mapping, base: BuildConfig | None = None,
         # (link_sheets name a linkage's own links: kept only with its linkage)
         from spiderpig import roles as rolemod
 
-        kind = linkage.get(query.get("linkage") or base.linkage).kind
-        materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
+        lk_new = linkage.get(query.get("linkage") or base.linkage)
+        kind = lk_new.kind
+        materials = {"sheet": base.sheet, "thickness": base.thickness,
+                     "servo": (servos.DEFAULT if unused_field(lk_new, "servo", base.servo)
+                               else base.servo),     # (an arm has no drive servo)
                      "frame_sheet": base.frame_sheet, "heads": base.heads,
                      "params": (Params() if base.params == default_params(base.lk)
                                 else base.params),
                      "roles": tuple((n, k) for n, k in base.roles if rolemod.applies(n, kind)),
                      **own}
+        if unused_field(lk_new, "crank_sheet", materials["crank_sheet"]):
+            materials["crank_sheet"] = ""       # (an arm has no crank: its default)
         return design_from_query(query, **{**materials, **fixed})
     props = dict(base.proportions)
     props.update(proportions)

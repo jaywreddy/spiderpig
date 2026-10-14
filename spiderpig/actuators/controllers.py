@@ -19,7 +19,10 @@ and what it drives (``drives``, a capability: :func:`of` matches it to the desig
   :mod:`hardware.electronics`): the ``protocol`` it speaks, its ``bus_ports`` and ``baud``
   (what :mod:`control.servos` writes into the servos). ``mount="deck"``: its parts are
   bodies of a walker, laid out by the electronics deck (:mod:`construction.deck`, drawn for
-  :data:`DECK_KIT`), so the BOM counts them from the bodies, not from ``bom``.
+  :data:`DECK_KIT`), so the BOM counts them from the bodies, not from ``bom``. A design's
+  default is the board that speaks its servo's protocol (:data:`BUS_DEFAULTS`): the deck's
+  ESP32 board for Feetech's STS servos, ROBOTIS's U2D2 for DYNAMIXEL's (bought as lines, the
+  deck bare).
 
 The key :data:`roles.NONE` is your own electronics: nothing bought, a walker's deck bare
 (:func:`construction.deck.deck_parts`), an arm's Klipper pins left to fill.
@@ -222,14 +225,29 @@ CONTROLLERS: dict[str, Controller] = {c.key: c for c in (
                        "dc_plug_5521_pigtail"),
         source="option 1 of the electronics review (2026-10-03, hardware.electronics); "
                "Waveshare's wiki: two bus servo ports, Feetech SCS/STS servos"),
+    Controller(
+        "u2d2_dynamixel", "ROBOTIS U2D2 (USB to the DYNAMIXEL bus) on its Power Hub Board: "
+        "your computer runs the walk over USB, your supply at the servos' voltage powers "
+        "the bus; the electronics deck bare",
+        (("u2d2", 1.0), ("u2d2_power_hub_set", 1.0)),
+        drives="bus_servo", protocol="dynamixel_2", bus_ports=1, baud=1_000_000,
+        source="robotis.us product pages and the e-manual, read 2026-10-14 "
+               "(hardware.electronics): the U2D2's TTL port (the XL servos chain from one "
+               "another), 9,600 to 6,000,000 bps, no power to the servos; the hub 3.5-24 V"),
 )}
 DEFAULT = "skr_pico_pi_zero"
 """A stepper-driven design's controller when it names none."""
 DECK_KIT = "esp32_bus_servo"
-"""A bus-servo design's controller when it names none, and the one the electronics deck is
-drawn for (:mod:`construction.deck`). The walkers carried it, unnamed, before the role
-reached them: it is the role's ``implicit`` key (:class:`roles.Role`): never move it."""
+"""A Feetech bus-servo design's controller when it names none (:data:`BUS_DEFAULTS`), and the
+one the electronics deck is drawn for (:mod:`construction.deck`). The STS3215 walkers
+carried it, unnamed, before the role reached them: it is the role's ``implicit`` key
+(:class:`roles.Role`): never move their default. (A DYNAMIXEL walker's moved on 2026-10-14,
+the user's call: its resolved spec names ``u2d2_dynamixel``, so its id moved with it.)"""
 DEFAULTS = {"stepper": DEFAULT, "bus_servo": DECK_KIT}
+BUS_DEFAULTS = {"feetech_sts": DECK_KIT, "dynamixel_2": "u2d2_dynamixel"}
+"""A bus-servo design's controller by its servo's protocol (:data:`PROTOCOLS`): one that
+speaks it (2026-10-14: an XL330 / XL430 walker had the deck's Feetech board). A servo naming
+no protocol gets :data:`DEFAULTS`' ``bus_servo``."""
 
 
 def get(key: str) -> Controller:
@@ -250,8 +268,14 @@ def motors_of(config) -> str:
 
 def default_key(config) -> str:
     """The role ``controller``'s default for ``config``: the one that drives its motors
-    (:data:`DEFAULTS`)."""
-    return DEFAULTS[motors_of(config)]
+    (:data:`DEFAULTS`), and on a serial bus the one that speaks its servo's protocol
+    (:data:`BUS_DEFAULTS`)."""
+    need = motors_of(config)
+    if need == "bus_servo":
+        from spiderpig import servos
+
+        return BUS_DEFAULTS.get(servos.get(config.servo).protocol, DEFAULTS[need])
+    return DEFAULTS[need]
 
 
 def of(config) -> Controller | None:
@@ -284,5 +308,7 @@ def protocol_note(config, ctl: Controller | None) -> str:
     spoken = servos.get(config.servo).protocol
     if not spoken or spoken == ctl.protocol:
         return ""
+    fit = BUS_DEFAULTS.get(spoken)
+    use = f"the role controller {fit}, or none: your own" if fit else "the role controller none"
     return (f"the {ctl.key} board speaks {ctl.protocol}, the {config.servo} {spoken}: drive "
-            "it from an adapter of its own (the role controller none)")
+            f"it from a board that speaks it ({use})")
