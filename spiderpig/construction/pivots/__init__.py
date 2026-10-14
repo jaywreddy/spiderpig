@@ -24,6 +24,10 @@ key                 construction
                     an E-ring at each end, on the Chicago screw's column: a decanting
                     cradle's pins since 2026-10-13 (``config.PRODUCT_PINS``,
                     :mod:`construction.pivots.pivot_pin`)
+``clevis8``         an 8 mm 18-8 clevis pin, its head inside the stack over a printed
+                    spacer, a hairpin cotter through its hole from the bay: a decanting
+                    cradle's quick-release pins (B's X and Y since 2026-10-13,
+                    ``config.PRODUCT_PIN_JOINTS``, :mod:`construction.pivots.clevis`)
 ==================  ================================================================
 
 Every pivot's spacer rings and gap rings are printed (:func:`common.gap_washers`): an
@@ -40,7 +44,8 @@ the planner as unbuildable, with the link in the way.
 from __future__ import annotations
 
 from spiderpig.construction.pivots.chicago import CHICAGO_M6, ChicagoAxle
+from spiderpig.construction.pivots.clevis import CLEVIS8
 from spiderpig.construction.pivots.pivot_pin import PIVOT8
 from spiderpig.construction.pivots.standoff import StandoffAxle
 
-PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6, PIVOT8)
+PIVOTS = (ChicagoAxle(), StandoffAxle(), CHICAGO_M6, PIVOT8, CLEVIS8)

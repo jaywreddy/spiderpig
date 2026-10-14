@@ -260,8 +260,8 @@ DECANTER_X = 0.0                # the decanter's axis, under the mouth (a stream
 _FOOT_Y = BASE_TOP + 12.5       # a foot's centre: its screw's boss (2 t) on the base board
 BRACKET = (36.0, 30.0, 5.0)     # a foot's printed bracket: its length, legs' height, wall
 """A stand foot is a printed L-bracket outside each outer plate, an M5 button head through
-it and the plate (its nut in the layer over the plate) and one down through it and the
-base board (its nut under the base board, in the feet's height)."""
+it and the plate (its nut in the layer over the plate) and a carriage bolt up through the
+base board and its foot, a knurled thumb nut on it (:func:`_bracket`)."""
 
 STANDS: dict[str, Stand] = {
     # A: the hinge G at the mouth, the crank O 173 behind and 202 under it. The outer plate
@@ -584,7 +584,10 @@ class CradlePlates(FramePlates):
                 raise ConstructionError(f"the cradle's {key} plate has no members")
             cuts = done.cuts.get(key, [])
             fillet = stand_of(build.ctx.config.lk).fillet_r
-            keep_out = _tie_paths(build) if key == FRAME_INNER else ()
+            keep_out = ()
+            if key == FRAME_INNER:
+                _tips_clear_the_inner_plate(build, done)
+                keep_out = _tie_paths(build) + _tip_paths(build)
             part = plate_part(pads, cuts, z0, z1, web, fillet, keep_out)
             out.bodies.append(hardware(name, part, frame, fab="laser", color=FRAME_COLOR,
                                        sheet=build.ctx.sheet("frame")))
@@ -645,33 +648,73 @@ def _tie_paths(build: Build) -> list[Shape3D]:
     return out
 
 
+def _tips(build: Build) -> list[Placed]:
+    """What else passes the inner plate's layer in its open: a pin's end past its clip (a
+    seat the pin claims there, ``tips``: :mod:`construction.pivots.clevis`)."""
+    return [p for p in build.plan.shapes(layer=build.top, gaps=False)
+            if p.seat and p.label.endswith(" tip") and isinstance(p.shape, Disc)]
+
+
+def _tip_paths(build: Build) -> list[Shape3D]:
+    """The inner plate's keep-outs for :func:`_tips`: each one's path over the turn (its
+    radius and the plan's margin), as solids through the layer."""
+    z0, z1 = build.z(build.top)
+    out = []
+    for p in _tips(build):
+        assert isinstance(p.shape, Disc)
+        path = np.asarray(build.plan.topo.geometry.points[p.shape.at], float).reshape(-1, 2)
+        step = max(1, len(path) // 48)
+        pts = [*path[::step], path[0]]
+        r = p.shape.r + build.plan.spec.margin
+        out += [pill(tuple(a), tuple(b), r, z0 - 1.0, z1 + 1.0)
+                for a, b in itertools.pairwise(pts)]
+    return out
+
+
+def _tips_clear_the_inner_plate(build: Build, done: Realized):
+    """Each of :func:`_tips` clears the inner plate's members and bosses over the turn by the
+    plan's margin (as the tie rods do: :func:`_ties_clear_the_inner_plate`)."""
+    for p in _tips(build):
+        assert isinstance(p.shape, Disc)
+        _clear_the_inner_plate(build, done, p.label, p.shape.at,
+                               p.shape.r + build.plan.spec.margin, "pin end")
+
+
 def _ties_clear_the_inner_plate(build: Build, done: Realized, ties: Mapping[str, str]):
     """Each tie rod passes the inner plate's layer in the plate's open, where the planner
     checks nothing (a frame plate's layer holds only what sits in its holes): its path over
     the whole turn must clear the plate's members and the bosses round its holes (as built
     so far: the stand's and the axles') by the plan's margin, or the rod would run into the
     plate."""
+    reach = TIE_D / 2 + build.plan.spec.margin
+    for tie, name in ties.items():
+        _clear_the_inner_plate(build, done, tie, name, reach, "tie rod")
+
+
+def _clear_the_inner_plate(build: Build, done: Realized, label: str, name: str,
+                           reach: float, what: str):
+    """Point ``name``'s path over the turn (``what`` ``label``'s) clears the inner plate's
+    members and the bosses round its holes by ``reach``: :class:`ConstructionError`
+    otherwise."""
     pads = done.pads.get(FRAME_INNER, [])
     web = boss_web(build.ctx.sheet("frame"))
     holes = [c for c in done.cuts.get(FRAME_INNER, []) if isinstance(c, Cut)]
-    reach = TIE_D / 2 + build.plan.spec.margin
-    for tie, name in ties.items():
-        path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
-        for a, b, r in pads:
-            a_, b_ = np.asarray(a[:2], float), np.asarray(b[:2], float)
-            ab = b_ - a_
-            u = np.clip(((path - a_) @ ab) / max(float(ab @ ab), 1e-18), 0.0, 1.0)
-            gap = float(np.linalg.norm(path - (a_ + u[:, None] * ab), axis=1).min()) - r
-            if gap < reach:
-                raise ConstructionError(f"tie rod {tie} comes within {gap:.1f} mm of the inner "
-                                        f"plate's member {a[:2]}-{b[:2]} over the turn (it "
-                                        f"needs {reach:.1f})")
-        for c in holes:
-            gap = float(np.linalg.norm(path - np.asarray(c.xy[:2], float), axis=1).min())
-            if gap - c.d / 2 - web < reach:
-                raise ConstructionError(f"tie rod {tie} comes within {gap - c.d / 2 - web:.1f} "
-                                        f"mm of the inner plate's boss at {c.xy[:2]} over the "
-                                        f"turn (it needs {reach:.1f})")
+    path = np.asarray(build.plan.topo.geometry.points[name], float).reshape(-1, 2)
+    for a, b, r in pads:
+        a_, b_ = np.asarray(a[:2], float), np.asarray(b[:2], float)
+        ab = b_ - a_
+        u = np.clip(((path - a_) @ ab) / max(float(ab @ ab), 1e-18), 0.0, 1.0)
+        gap = float(np.linalg.norm(path - (a_ + u[:, None] * ab), axis=1).min()) - r
+        if gap < reach:
+            raise ConstructionError(f"{what} {label} comes within {gap:.1f} mm of the inner "
+                                    f"plate's member {a[:2]}-{b[:2]} over the turn (it "
+                                    f"needs {reach:.1f})")
+    for c in holes:
+        gap = float(np.linalg.norm(path - np.asarray(c.xy[:2], float), axis=1).min())
+        if gap - c.d / 2 - web < reach:
+            raise ConstructionError(f"{what} {label} comes within {gap - c.d / 2 - web:.1f} "
+                                    f"mm of the inner plate's boss at {c.xy[:2]} over the "
+                                    f"turn (it needs {reach:.1f})")
 
 
 # --- parts -----------------------------------------------------------------------------
@@ -980,16 +1023,18 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     """A foot's printed L-bracket outside an outer plate (world): its upright leg on the
     plate's outer face (``face``; ``sign`` outward along z), its foot leg on the base board
     (its top ``y_top``); an M5 button head through the upright and the plate into a nut over
-    the plate, one up from under the base board through the foot into a nut on it (its head
-    in the feet's clearance, its nut in reach from above). (The bracket, its screws and nuts
-    with their catalog keys, the base board's hole (x, z).)"""
+    the plate, a carriage bolt up from under the base board through the foot, a knurled thumb
+    nut on it (:data:`THUMB_NUT`: by hand, so the side lifts off the board with no tool; its
+    head in the feet's clearance, :data:`BOLT_OUT` off the plate so the nut clears the
+    upright's screw head). (The bracket, its screws and nuts with their catalog keys, the base
+    board's hole (x, z).)"""
     length, height, wall = BRACKET
     fx, fy = xy
     zs = sorted((face, face + sign * wall))
     up = Box(length, height, wall).moved(Location((fx, y_top + height / 2, sum(zs) / 2)))
     zf = sorted((face, face + sign * height))
     foot = Box(length, wall, height).moved(Location((fx, y_top + wall / 2, sum(zf) / 2)))
-    zb = face + sign * (height - 11.0)               # the foot leg's screw
+    zb = face + sign * BOLT_OUT                      # the foot leg's bolt
     hole_up = disc((fx, fy), TIE_HOLE / 2, zs[0] - 1, zs[1] + 1)
     hole_down = Cylinder(CARRIAGE[0] / 2 + 0.4, wall + 2, rotation=(90, 0, 0)).moved(
         Location((fx, y_top + wall / 2, zb)))
@@ -1006,23 +1051,37 @@ def _bracket(xy, y_top: float, face: float, sign: int, t_frame: float
     y_under = y_top - BASE_T
     if y_under - head_h < y_top - BASE_TOP_CLEAR:
         raise ValueError("the base board's carriage bolts' heads reach the table")
-    if neck_h > BASE_T or BASE_T + wall + 3.2 + 1.0 > length:
+    nut_d, nut_h, collar_d, collar_h = THUMB_NUT
+    if neck_h > BASE_T or BASE_T + wall + nut_h + 1.0 > length:
         raise ValueError("the carriage bolt doesn't reach through the board, the foot and "
-                         "its nut, a thread past it")
+                         "its thumb nut, a thread past it")
+    if BOLT_OUT - nut_d / 2 < wall + M5.head_h + 1.0:
+        raise ValueError("the thumb nut would hit the upright's screw head")
     up = (90, 0, 0)
     head = Cylinder(head_d / 2, head_h, rotation=up).moved(
         Location((fx, y_under - head_h / 2, zb)))
     shank = Cylinder(d / 2 * 0.97, length, rotation=up).moved(
         Location((fx, y_under + length / 2, zb)))
     y_nut = y_top + wall
-    nut = Cylinder(5.0, 3.2, rotation=up).moved(Location((fx, y_nut + 1.6, zb))) - Cylinder(
-        d / 2, 5.2, rotation=up).moved(Location((fx, y_nut + 1.6, zb)))
+    nut = difference(union([
+        Cylinder(collar_d / 2, collar_h, rotation=up).moved(
+            Location((fx, y_nut + collar_h / 2, zb))),
+        Cylinder(nut_d / 2, nut_h - collar_h, rotation=up).moved(
+            Location((fx, y_nut + (nut_h + collar_h) / 2, zb)))]),
+        Cylinder(d / 2, nut_h + 2, rotation=up).moved(Location((fx, y_nut + nut_h / 2, zb))))
     return bracket, [(side_screw, M5.key(l_side)), (side_nut, "m5_nut"),
-                     (union([head, shank]), "m6_carriage_20"), (nut, "m6_thin_nut")], (fx, zb)
+                     (union([head, shank]), f"m6_carriage_{length:g}"), (nut, "m6_thumb_nut")
+                     ], (fx, zb)
 
 
-CARRIAGE = (6.0, 20.0, 16.55, 4.6, 3.88)   # the base board's bolts (DIN 603 M6 x 20, Bolt
-#                                            Depot 18220): d, length, head d, neck h, head h
+CARRIAGE = (6.0, 25.0, 16.55, 4.6, 3.88)   # the base board's bolts (DIN 603 M6 x 25, Bolt
+#                                            Depot 18221): d, length, head d, neck h, head h
+#                                            (a thumb nut and 5 mm of thread past it)
+THUMB_NUT = (24.0, 6.0, 12.0, 1.0)         # its nut: a knurled thumb nut, DIN 467 form
+#                                            (McMaster 92815A203): head d, height, collar d, h
+BOLT_OUT = 22.0            # the bolt this far out from the outer plate's face (19 under the
+#                            thin hex nut it had): the nut's knurl clears the upright's M5
+#                            screw head by 2.25 mm (a wing nut's 28-33 mm wings would hit it)
 CARRIAGE_HOLE = 6.4        # the board's round hole for it: the square neck (6.48 across its
 #                            flats) is pulled into the wood by its nut, as a carriage bolt is
 #                            meant to (a router can't cut a square hole: its bit's 1.6 mm
@@ -1461,8 +1520,9 @@ def assembly(view) -> list:
     brackets["R"] = [n for n in brackets["R"] if n not in bolts]
     how = ("At each foot a printed bracket outside the outer plate, over its carriage bolt: "
            "an M5 button head through the bracket and the plate, its nut over the plate's "
-           "inside (an 8 mm wrench); the carriage bolt's M6 thin nut on the bracket's foot "
-           "(a 10 mm wrench, snug: the foot is printed; threadlocker on both).")
+           "inside (an 8 mm wrench, threadlocker: the bracket stays on its side); the "
+           "carriage bolt's knurled thumb nut on the bracket's foot, by hand (snug: the foot "
+           "is printed; no threadlocker, it comes off to pack).")
     if base or feet or brackets["L"]:
         ops.append(Op(FINISH, (0,), whole(*base, *feet, *brackets["L"], *bolts), "Base board",
                       "The TPU feet pushed up into the base board's corner holes (a twist "

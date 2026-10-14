@@ -711,8 +711,9 @@ def _cradle_extra(key: str, part: str) -> Response:
 @app.get("/api/cradle/{key}/pack")
 def get_cradle_pack(key: str) -> Response:
     """How the cradle comes apart and stacks in a box (:func:`spiderpig.cradle_pack.flat_pack`:
-    its modules, each one's transform from the assembled pose at crank angle 0 to the box,
-    the box's size, the steps). A fabrication: seconds once the store's cache has it."""
+    its modules, each one's transform from the assembled pose at its pack pose (``pose``: B
+    is cranked to it first; crank angle 0 for a flat pack) to the box, the box's size, the
+    steps). Fabrications: seconds once the store's cache has them."""
     return _cradle_extra(key, "pack")
 
 

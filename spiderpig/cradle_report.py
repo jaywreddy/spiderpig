@@ -451,9 +451,9 @@ def stability(config: BuildConfig, mech, design, ts) -> dict:
 
 
 def wheel_sweep(mech) -> list[dict]:
-    """What the hand crank's turning would hit: its tube about the input shaft and the disc
-    its arm and grip sweep there, against every part but the crank's own and the gearbox it
-    rides (the crank is drawn at rest)."""
+    """What the hand crank's turning would hit: its tube about the input shaft, the disc its
+    hub's thumb screw sweeps, and the disc its arm and grip sweep, against every part but the
+    crank's own and the gearbox it rides (the crank is drawn at rest)."""
     from build123d import Axis, Cylinder, Location
 
     w = (mech.meta.get("hand_crank") or {}).get("handle")
@@ -472,6 +472,8 @@ def wheel_sweep(mech) -> list[dict]:
 
     sweep = cyl(float(w["hub_r_mm"]), -float(w.get("hub_len_mm", 0.0)), reach - t_arm) + cyl(
         float(w["r_mm"]), reach - t_arm, reach + float(w["grip_len_mm"]))
+    if "thumb_r_mm" in w:               # the hub's thumb screw's head, turning with it
+        sweep = sweep + cyl(float(w["thumb_r_mm"]), *map(float, w["thumb_x_mm"]))
     out = []
     box = sweep.bounding_box()
     for b in mech.bodies:

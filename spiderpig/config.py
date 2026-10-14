@@ -247,12 +247,15 @@ since 2026-10-13: a 6 L bottle's jam bent the M6 Chicago screw's stainless barre
 ``chicago6`` is still there, ``--pin chicago6``), but at :data:`PRODUCT_PIN_JOINTS`."""
 
 PRODUCT_PIN_JOINTS: dict[str, dict[str, str]] = {
-    "decanter_rcm": dict.fromkeys(("J", "J2", "X", "Y"), "chicago6"),
+    "decanter_rcm": {**dict.fromkeys(("J", "J2"), "chicago6"),
+                     **dict.fromkeys(("X", "Y"), "clevis8")},
 }
 """Per product linkage, with its product's own pin (:data:`PRODUCT_PINS`): the joints that take
-another pin instead. B's J, J2, X and Y hold a 6 L's jam on an M6 Chicago screw (SF 1.39 to
-2.19 at 66 N·m) at a fortieth of a pivot pin's price (2026-10-13: the user's cost); its rod's
-pin P and its arm's K take the steel, as A's one pin E does."""
+another pin instead. B's J and J2 hold a 6 L's jam on an M6 Chicago screw at a fortieth of a
+pivot pin's price (2026-10-13: the user's cost); its X and Y, where its cradle link meets
+each side, take a quick-release clevis pin (``clevis8``, 2026-10-13: the passive side panel
+slides off its cradle link once their two clips are out, ``cradle_pack``); its rod's pin P
+and its arm's K take the steel, as A's one pin E does."""
 
 PRODUCT_SHEETS: dict[str, str] = {CRADLE: "al5052_3p2mm"}
 """Per product: the default sheet (the layer pitch, the printed rings' and the order's

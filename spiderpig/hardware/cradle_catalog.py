@@ -388,6 +388,80 @@ def _pivot8_of(key: str) -> Item | None:
 
 register_factory("pivot_pin8_", _pivot8_of)
 
+# -- the quick-release pins (construction.pivots.clevis, 2026-10-13) --------------------------
+
+MCM = "https://www.mcmaster.com/"
+CLEVIS8 = {15.0: ("90378A701", 5.47), 25.0: ("90378A704", 9.76), 30.0: ("90378A705", 10.31),
+           44.0: ("90378A706", 11.00)}
+"""McMaster's 18-8 clevis pins, 8 mm (-0.050/-0.010), head 14 x 3, a cross hole for a 2 mm
+cotter at the usable length (the head's underside to the hole's near edge), 5 mm short of
+the end: usable length -> (part, USD each) (the 8 mm listing rendered 2026-10-13)."""
+CLEVIS8_LENGTHS = tuple(CLEVIS8)
+CLEVIS8_YIELD = 205.0
+"""MPa: the yield the strength check takes for an 18-8 clevis pin: ASTM A276's minimum for
+annealed 304 (McMaster states only Rockwell B80, a cold-worked 18-8's hardness: more)."""
+
+
+def clevis_pin8(usable: float) -> str:
+    """The catalog key of the 8 mm clevis pin ``usable`` mm under its head to its hole."""
+    return f"clevis_pin8_{usable:g}"
+
+
+register(
+    *(Item(clevis_pin8(U), f"8 mm clevis pin, 18-8 stainless, {U + 5:g} mm long, {U:g} mm "
+           "usable to its 2 mm cotter hole (head 14 x 3)", "dowel",
+           (Offer("McMaster-Carr", MCM + pn + "/", pn, price_usd=usd, verified=True,
+                  note="18-8 stainless clevis pin, 8 mm (-0.050/-0.010), head 14 x 3 mm, for "
+                       "a cotter up to 2 mm; Rockwell B80; the 8 mm listing rendered "
+                       "2026-10-13 (https://www.mcmaster.com/products/clevis-pins/"
+                       "diameter~8-mm/)"),),
+           dims={"barrel_d": 8.0, "head_d": 14.0, "head_h": 3.0, "screw_head_h": 0.0,
+                 "thread": 0.0, "length": U, "overall": U + 5.0, "hole_d": 2.0,
+                 "yield_mpa": CLEVIS8_YIELD},
+           notes="A decanting cradle's quick-release link pin (construction.pivots.clevis): "
+                 "its head inside the stack, a hairpin cotter through its hole from the bay.")
+      for U, (pn, usd) in CLEVIS8.items()),
+    Item("hairpin_cotter_2x50", "Hairpin cotter pin (R-clip), 2 mm wire, 50 mm, for a 6-11 mm "
+         "clevis pin", "clip",
+         (Offer("McMaster-Carr", MCM + "98350A131/", "98350A131", pack_qty=5, price_usd=3.68,
+                verified=True,
+                note="zinc-plated spring steel hairpin cotter (R-clip): for a 6 to 11 mm "
+                     "clevis pin, 2 mm wire, 10 mm eye, 50 mm long; pack of 5; the hairpin "
+                     "cotter listing rendered 2026-10-13 (https://www.mcmaster.com/products/"
+                     "hitch-pin-clips/)"),),
+         dims={"wire": 2.0, "eye": 10.0, "length": 50.0},
+         notes="Through a clevis pin's cross hole by hand, its bent leg over the pin: the "
+               "quick-release pins' retainer (construction.pivots.clevis)."),
+    Item("m6_carriage_25", "M6 x 25 carriage bolt (DIN 603), zinc-plated class 4.6", "fastener",
+         (Offer("Bolt Depot", BD + "18221", "18221", price_usd=0.26, verified=True,
+                tiers=((1, 0.26), (100, 0.1982)),
+                note="zinc-plated class 4.6 steel (Bolt Depot has no stainless metric "
+                     "carriage bolt); page rendered 2026-10-13"),),
+         dims={"d": 6.0, "length": 25.0, "head_d": 16.55, "head_h": 3.88, "neck": 6.48,
+               "neck_h": 4.6},
+         notes="A decanting cradle's base-board bolt (as m6_carriage_20), long enough for a "
+               "thumb nut and a thread past it."),
+    Item("m6_thumb_nut", "M6 low-profile knurled-head thumb nut (DIN 467 form), head 24 x 5, "
+         "black-oxide steel", "nut",
+         (Offer("McMaster-Carr", MCM + "92815A203/", "92815A203", price_usd=1.69, verified=True,
+                note="black-oxide steel, M6 x 1, knurled head 24 mm x 6 mm overall, collar 12 x "
+                     "1; the metric thumb-nut listing rendered 2026-10-13 (Bolt Depot lists no "
+                     "metric thumb nut; its M6 wing nuts, 6898 and 29213, span 28-33 mm and "
+                     "would hit the bracket's upright 14 mm off the bolt)"),),
+         dims={"d": 6.0, "head_d": 24.0, "h": 6.0, "collar_d": 12.0, "collar_h": 1.0},
+         notes="On a decanting cradle's base-board bolts, by hand: the side panels lift off "
+               "the board with no tool (cradle._bracket)."),
+    Item("m3_thumb_screw_9", "M3 x 9 knurled-head thumb screw, 18-8 (head 8 x 5)", "fastener",
+         (Offer("McMaster-Carr", MCM + "92545A115/", "92545A115", price_usd=1.76,
+                verified=True,
+                note="18-8 stainless, M3 x 0.5, 9 mm under the knurled 8 x 5 mm head, "
+                     "partially threaded; the metric stainless knurled-head thumb screw "
+                     "listing rendered 2026-10-13"),),
+         dims={"d": 3.0, "length": 9.0, "head_d": 8.0, "head_h": 5.0},
+         notes="Down through a decanting cradle's hand crank's hub onto the input shaft's key: "
+               "the hand crank comes off with no tool (construction.handcrank)."),
+)
+
 register(
     Item("e_ring_7", "E-type retaining ring No. 7 (JIS B 2804, for an 8-11 mm shaft), spring "
          "steel", "clip",

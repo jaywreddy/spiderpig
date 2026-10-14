@@ -14,8 +14,10 @@ short of that plate and is held by the other one (see :meth:`AxleGroup.claims`).
 The constructions (the ``standoff`` pillar, the ``chicago`` pin) live in
 :mod:`construction.pivots`; they state their radii through :class:`AxleDims` and their
 retainers through an optional ``ends`` method (else :func:`default_ends`) and
-``end_heights``. (The printed stepped axle, its snap segments and the flanged pivots'
-rules were removed on 2026-10-07: :data:`config.REMOVED_CONSTRUCTIONS`.)
+``end_heights``, and what passes beyond a retainer through ``tips`` (a clevis pin's end past
+its clip, :mod:`construction.pivots.clevis`). (The printed stepped axle, its snap segments
+and the flanged pivots' rules were removed on 2026-10-07:
+:data:`config.REMOVED_CONSTRUCTIONS`.)
 """
 
 from __future__ import annotations
@@ -216,6 +218,9 @@ class AxleGroup(Group):
             # the end's link can't slide
             wr = d.washer or d.spacer
             out += [Placed(k, Disc(ax, wr), g, f"{g} washer", gap=True) for k in range(w0, w1)]
+            tips = getattr(self.construction, "tips", None)
+            if tips is not None:            # what passes beyond its end's retainer (a clevis
+                out += tips(d, L, k0, k1, ax, g)    # pin's end past its clip)
             beside = {k for m in ms for k in (m - 1, m + 1)} - mset
             for k in range(k0 + 1, k1):
                 if k in mset:

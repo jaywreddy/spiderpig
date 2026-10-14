@@ -1,17 +1,34 @@
 """How a decanting cradle comes apart for transport, and how its pieces stack in a box.
 
-**What comes apart** (:func:`pieces`). The cradle comes apart where it is already fastened,
-with no new joint, in the order :func:`pieces` gives as its steps:
+**As modules** (:func:`module_pieces`: B, :data:`PACK_TURNS`, the user's of 2026-10-13). It
+is cranked to its pack pose first (:func:`pack_t`), then comes apart by hand into three
+modules and its hand crank:
+
+1. the cradle off the base board (the brackets' thumb nuts: the carriage bolts stay in the
+   board, the nuts back on them), both sides and the cradle box together;
+2. the clips of the cradle link's pins on the passive side out (B's X and Y: quick-release
+   clevis pins, :mod:`construction.pivots.clevis`; they go back in the pins' holes);
+3. the passive side panel slid straight off its cradle link, outward, its pins with it
+   (:func:`slide_hits` checks nothing is in its way); the drive side and the cradle box stay
+   one unit, the worm holding them as cranked;
+4. the hand crank off (its thumb screw).
+
+The other bottles' adapters and collars travel loose round them.
+
+**Flat** (:func:`pieces`: A, whose cradle link rides pillar G between its side's plates).
+The cradle comes apart where it is already fastened, with no new joint, in the order
+:func:`pieces` gives as its steps:
 
 1. the bottle adapters out of the saddles (every adapter travels loose);
-2. the hand crank off the gearbox's input shaft (its set screw);
-3. the cradle off the base board (the brackets' nuts: the carriage bolts stay in the board);
+2. the hand crank off the gearbox's input shaft (its thumb screw);
+3. the cradle off the base board (the brackets' thumb nuts: the carriage bolts stay in the
+   board);
 4. each side's inner plate off (its screws from the bay side, back in its holes);
 5. the cradle link's own joints with its side (``mech.connections``): a pivot pin's upper
-   E-ring off (the pin stays in the side's links, the ring back on it for the trip), or a
-   Chicago screw out of its barrel (``chicago6``: it goes back into the barrel, which stays
-   in the side's link), a pillar slid out of the link's bore; each side panel then lifts
-   off, leaving the cradle box whole;
+   E-ring off (the pin stays in the side's links, the ring back on it for the trip), a
+   clevis pin's clip out, or a Chicago screw out of its barrel (``chicago6``: it goes back
+   into the barrel, which stays in the side's link), a pillar slid out of the link's bore;
+   each side panel then lifts off, leaving the cradle box whole;
 6. the cradle box apart: the base stop and the light off their saddles, one cradle link
    off the tie rods (their screws), the saddles slid off the rods (their set screws), the
    other link off. Each tie rod travels with its two screws back in its ends, each cradle
@@ -42,8 +59,9 @@ about it into its panel (:func:`tuck`).
 
 :func:`flat_pack` returns each piece (``modules``: its parts and its 4 x 4 transform from the
 assembled pose to the packed one), in that order, with the box and the steps: the viewer's
-flat pack (``/api/cradle/{key}/pack``, ``viewer/decant.html``) flies each one there. Every
-pose is the fabricated cradle's at crank angle 0, the baked clip's first frame.
+pack (``/api/cradle/{key}/pack``, ``viewer/decant.html``) flies each one there. Every pose
+is the fabricated cradle's at its pack pose (``pose``: crank angle 0, the baked clip's first
+frame, for a flat pack; B's, 4 handle turns from rest).
 """
 
 from __future__ import annotations
@@ -137,14 +155,12 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
     link pairs); ``link``: the cradle link's class; ``fastened``: the cradle's
     ``meta["fastened"]`` pairs (a part, what it is fastened to)."""
     out: dict[str, Piece] = {}
-    where: dict[str, str] = {}
 
     def put(key: str, label: str, role: str, name: str) -> None:
         out.setdefault(key, Piece(key, label, role)).parts.append(name)
-        where[name] = key
 
     crank_side = next((s for s in SIDES if f"{s}.conn" in parts), "L")
-    panel = {s: ("drive" if s == crank_side else "passive") for s in SIDES}
+    panel ={s: ("drive" if s == crank_side else "passive") for s in SIDES}
     side_name = {s: ("drive side" if s == crank_side else "passive side") for s in SIDES}
     side_word = {s: f"the {side_name[s]}" for s in SIDES}
     # each side: its inner plate's screws (a head on its bay face), the loose parts between
@@ -172,13 +188,7 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             for mine, other, j in ((a, b, ja), (b, a, jb)):
                 if mine == ln and (other in parts or is_frame(other)):
                     joints[s].append(("pillar" if is_frame(other) else "pin", j))
-    base = parts.get("base_plate")
-    through: list[np.ndarray] = []           # the base board's bolts (their xz axes)
-    if base is not None:
-        for n, p in parts.items():
-            if (n.startswith("foot_bracket") and p.fab == "purchased" and p.lo[1] < base.lo[1]
-                    and p.hi[1] > base.hi[1]):
-                through.append((p.lo + p.hi)[[0, 2]] / 2)
+    through = _through_board(parts)
     saddles = [s.name for s in cr.SADDLES]
     for n in sorted(parts):
         p = parts[n]
@@ -198,8 +208,7 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
         if n == "base_plate" or n.startswith("foot_boot"):
             put("base", "Base board", "base", n)
         elif n.startswith("foot_bracket"):
-            axis = (p.lo + p.hi)[[0, 2]] / 2
-            if p.fab == "purchased" and any(np.hypot(*(axis - t)) < 1.0 for t in through):
+            if _on_board(p, through):
                 put("base", "Base board", "base", n)     # a carriage bolt or its nut
             else:
                 put(panel[host], f"{panel[host].capitalize()} side panel", "panel", n)
@@ -222,17 +231,9 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             put("base_stop", "Base stop", "fill", n)
         else:                               # (a part no rule knows: it travels on its own)
             put(n, n.replace("_", " ").capitalize(), "fill", n)
-    # a side's links left hanging on one joint once its cradle link is off (B's b5 on J2,
-    # A's rod on the crankpin): each swings about it
     for s in SIDES:
-        held: dict[str, list[str]] = {}
-        for (_, a, ja), (_, b, jb) in connections:
-            if _side(a)[0] == s and f"{s}.{link}" not in (a, b):
-                held.setdefault(a, []).append(ja)
-                held.setdefault(b, []).append(jb)
-        for body, js in sorted(held.items()):
-            if len(js) == 1 and is_link(body) and where.get(body) == panel[s]:
-                out[panel[s]].hanging.append((body, js[0]))
+        if panel[s] in out:
+            _hanging(out, connections, link, s, panel[s])
     fast: dict[str, set[str]] = {}
     for a, b in fastened:
         fast.setdefault(a, set()).add(b)
@@ -244,23 +245,15 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
     def size_of(names: Sequence[str]) -> str:
         return next((z for n in names if (z := _size(parts[n].bom_key))), "")
 
-    def screws(n: int, what: str) -> str:
-        return f"{n} {what}s" if n != 1 else f"its {what}"
-
     steps: list[tuple[str, list[str]]] = []
     adapters = [k for k, pc in out.items() if pc.label.startswith(("Adapter", "Collar"))]
     if adapters:
         steps.append(("Bottle adapters: lift those in the saddles out. Every adapter and "
                       "collar travels loose.", adapters))
     if "hand_crank" in out:
-        sets = [n for n in out["hand_crank"].parts if "set_screw" in n]
-        steps.append((f"Hand crank: loosen {screws(len(sets), 'set screw')} and pull it off "
-                      "the gearbox's input shaft.", ["hand_crank"]))
+        steps.append((_hand_crank_step(out["hand_crank"].parts), ["hand_crank"]))
     if "base" in out:
-        nuts = [n for n in out["base"].parts if "nut" in (parts[n].bom_key or "")]
-        steps.append((f"Base board: undo the {len(nuts)} {size_of(nuts)} nuts on the "
-                      "brackets' feet and lift the cradle off it. The carriage bolts stay in "
-                      "the plate, their nuts back on.", ["base"]))
+        steps.append((_base_step(out["base"].parts, parts, "the cradle"), ["base"]))
     inners = [f"inner_{s}" for s in SIDES if f"inner_{s}" in out]
     if inners:
         held = {s: [n for n in out[f"inner_{s}"].parts if not n.endswith(".torso")]
@@ -283,12 +276,15 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
         pin_parts = [n for j in names for s in pins[j]
                      for n in (f"{s}.pin_{j}_screw", f"{s}.pin_{j}_pin") if n in parts]
         chicago = all("chicago" in (parts[n].bom_key or "") for n in pin_parts)
+        clevis = all(f"{n.removesuffix('_pin')}_clip" in parts for n in pin_parts)
         sides = sorted({s for j in names for s in pins[j]})
         on = "both sides" if len(sides) == 2 else side_word[sides[0]]
         many = len(pin_parts) > 1
         head = (f"Pin{'s' if len(names) > 1 else ''} {_join(names)} (the cradle link's, "
                 f"on {on}): ")
-        if chicago:
+        if clevis:
+            steps.append((head + _clips_out(len(pin_parts)), []))
+        elif chicago:
             undo = (f"undo each one's Chicago screw ({len(pin_parts)})" if many
                     else "undo its Chicago screw")
             steps.append((f"{head}{undo} from the bay side, holding the barrel's head with "
@@ -303,9 +299,12 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
     panels = [panel[s] for s in SIDES if panel[s] in out]
     if panels:
         slide = (f" (its bore slides off pillar {_join(sorted(pillars))})" if pillars else "")
+        whole = (f" Its cradle link rides pillar {_join(sorted(pillars))} between the side's "
+                 "plates, so a side can't come off it at pins alone: the cradle comes apart "
+                 "flat." if pillars else "")
         steps.append((f"Side panels: lift each one off its cradle link{slide}. The cradle box "
                       "(both cradle links, the tie rods, the saddles, the light, the base "
-                      "stop) comes away whole.", panels))
+                      f"stop) comes away whole.{whole}", panels))
     for key, saddle, what in (("base_stop", saddles[-1], "Base stop"),
                               ("light", saddles[0], "Light")):
         if key in out:
@@ -349,6 +348,210 @@ def pieces(parts: dict[str, PartInfo], connections, link: str, fastened=()
             if k in out and not out[k].how:
                 out[k].how = text
     return list(out.values()), steps
+
+
+PACK_TURNS: dict[str, float] = {"decanter_rcm": 4.0}
+"""The cradles that pack as modules (:func:`module_pieces`), each one's pack pose: the
+handle turns from rest (the bottle neck up) it is cranked to first. B (2026-10-13, the
+user's three modules): its passive side's cradle link b6 overlaps that side's inner bar
+O1-O2 at rest, by about 2 mm until the bottle is 46° neck up; past that it clears it (14.6
+mm at 35°, 4 turns from rest; 38 mm at full tilt), so the side slides straight off it. Four
+turns, not full tilt, as the box goes: at full tilt the cradle box stands up out of the side
+(a 259 L box against about 190). A (not here) packs flat: its cradle link rides pillar G
+between its side's plates."""
+
+
+def pack_t(config) -> float:
+    """The crank angle (radians) a cradle packs at: :data:`PACK_TURNS` handle turns past rest
+    (the worm's ratio a crank turn), else 0 (the flat pack: the baked clip's first frame)."""
+    from spiderpig.construction.handcrank import NRV040
+
+    turns = PACK_TURNS.get(config.linkage)
+    if turns is None:
+        return 0.0
+    lk = config.lk
+    ts = np.linspace(0.0, 2.0 * math.pi, 2880, endpoint=False)
+    pts = lk.solve().evaluate(ts)
+    o, ax = cr.mouth_frame(lk)
+    d = pts[ax] - pts[o]
+    rest = float(ts[int(np.argmin(np.unwrap(np.arctan2(d[:, 1], d[:, 0]))))])
+    return float((rest + turns * 2.0 * math.pi / NRV040.ratio) % (2.0 * math.pi))
+
+
+def _hanging(out: dict[str, Piece], connections, link: str, s: str, key: str) -> None:
+    """Side ``s``'s links in piece ``key`` left hanging on one joint once its cradle link
+    is off (B's b5 on J2, A's rod on the crankpin): each swings about it (:func:`tuck`)."""
+    held: dict[str, list[str]] = {}
+    for (_, a, ja), (_, b, jb) in connections:
+        if _side(a)[0] == s and f"{s}.{link}" not in (a, b):
+            held.setdefault(a, []).append(ja)
+            held.setdefault(b, []).append(jb)
+    for body, js in sorted(held.items()):
+        if len(js) == 1 and is_link(body) and body in out[key].parts:
+            out[key].hanging.append((body, js[0]))
+
+
+def _through_board(parts: dict[str, PartInfo]) -> list[np.ndarray]:
+    """The base board's bolts (each one's xz axis): a bracket's purchased part through it."""
+    base = parts.get("base_plate")
+    if base is None:
+        return []
+    return [(p.lo + p.hi)[[0, 2]] / 2 for n, p in parts.items()
+            if n.startswith("foot_bracket") and p.fab == "purchased" and p.lo[1] < base.lo[1]
+            and p.hi[1] > base.hi[1]]
+
+
+def _on_board(p: PartInfo, through: Sequence[np.ndarray]) -> bool:
+    """A bracket's carriage bolt or its nut (on a bolt's axis): it stays with the board."""
+    axis = (p.lo + p.hi)[[0, 2]] / 2
+    return p.fab == "purchased" and any(np.hypot(*(axis - t)) < 1.0 for t in through)
+
+
+def module_pieces(parts: dict[str, PartInfo], connections, link: str, turns: float,
+                  tilt: float, fastened=()) -> tuple[list[Piece], list[tuple[str, list[str]]]]:
+    """The modules a cradle that packs whole (:data:`PACK_TURNS`) comes apart into, and the
+    steps that free them: the base board (its feet, its carriage bolts and their thumb nuts);
+    the passive side panel (every part of that side but its cradle link, its brackets: it
+    slides off the cradle link once the link's pins' clips are out); the drive side with the
+    cradle box (both cradle links, the tie rods, the saddles and what is in them, the light,
+    the base stop: the worm holds it as it was cranked); the hand crank; the spare bottle
+    sizes' adapters and collars, loose. ``turns`` the pack pose's handle turns from rest,
+    ``tilt`` the bottle's there (degrees); the rest as :func:`pieces`."""
+    out: dict[str, Piece] = {}
+
+    def put(key: str, label: str, role: str, name: str) -> None:
+        out.setdefault(key, Piece(key, label, role)).parts.append(name)
+
+    crank_side = next((s for s in SIDES if f"{s}.conn" in parts), "L")
+    other = next(s for s in SIDES if s != crank_side)
+    through = _through_board(parts)
+    held_by = {a for a, _ in fastened}
+    drive = ("drive", "Drive side with the cradle box", "panel")
+    passive = ("passive", "Passive side panel", "panel")
+    for n in sorted(parts):
+        p = parts[n]
+        s, stem = _side(n)
+        spare = re.fullmatch(r"(\w+_saddle)_(\w+)_liner", n)
+        if s == crank_side and stem.startswith("handle"):
+            put("hand_crank", "Hand crank", "fill", n)
+        elif s:
+            put(*(passive if s == other and stem != link else drive), n)
+        elif n == "base_plate" or n.startswith("foot_boot") or (
+                n.startswith("foot_bracket") and _on_board(p, through)):
+            put("base", "Base board", "base", n)
+        elif n.startswith("foot_bracket"):
+            host = _side(p.rigid_with or "")[0] or crank_side
+            put(*(passive if host == other else drive), n)
+        elif (spare or n.endswith("_collar")) and n not in held_by:
+            # a spare size's adapter or collar (lying on the table): it travels loose
+            label = (f"Adapter: {_bottle_size(spare.group(2))}, "
+                     f"{spare.group(1).replace('_', ' ')}" if spare
+                     else f"Collar: {_bottle_size(n.removesuffix('_collar'))}")
+            put(n, label, "fill", n)
+        else:
+            put(*drive, n)
+    if "passive" in out:
+        _hanging(out, connections, link, other, "passive")
+    pins = sorted({j for (_, a, ja), (_, b, jb) in connections
+                   for mine, o, j in ((a, b, ja), (b, a, jb))
+                   if mine == f"{other}.{link}" and o in parts and not is_frame(o)})
+    clips = [n for j in pins if (n := f"{other}.pin_{j}_clip") in parts]
+    steps: list[tuple[str, list[str]]] = [
+        (f"Crank it to the pack pose: to rest (the bottle neck up, where the cradle stops "
+         f"coming back), then {turns:g} handle turns on, the bottle {abs(tilt):.0f}° "
+         f"{'neck up' if tilt < 0 else 'neck down'}. There the passive side's cradle link "
+         "clears that side's inner bar, so the side slides straight off it.", [])]
+    if "base" in out:
+        steps.append((_base_step(out["base"].parts, parts,
+                                 "the cradle (both sides and the cradle box together)"),
+                      ["base"]))
+    if pins:
+        what = (f"Pin{'s' if len(pins) > 1 else ''} {_join(pins)} (the cradle link's, on the "
+                "passive side): ")
+        steps.append((what + (_clips_out(len(clips)) if clips else
+                              "take each one's retainer off from the bay side."), []))
+    if "passive" in out:
+        steps.append(("Passive side panel: slide it straight off its cradle link, outward (its "
+                      "pins come out of the link with it). The drive side and the cradle box "
+                      "stay one unit: the worm holds them where they were cranked to.",
+                      ["passive", "drive"]))
+    if "hand_crank" in out:
+        steps.append((_hand_crank_step(out["hand_crank"].parts), ["hand_crank"]))
+    spares = [k for k, pc in out.items() if pc.label.startswith(("Adapter", "Collar"))]
+    if spares:
+        steps.append(("The other bottles' adapters and collars travel loose round the "
+                      "modules.", spares))
+    for text, keys in steps:
+        for k in keys:
+            if k in out and not out[k].how:
+                out[k].how = text
+    return list(out.values()), steps
+
+
+def slide_hits(panel: dict, unit: dict, step: float = 0.5) -> list[tuple[str, str, float]]:
+    """What side panel ``panel`` (each part's placed shape, by name) meets as it slides
+    straight off along z, away from the bay (its own side's way: the bay's middle is z 0),
+    against ``unit`` (the drive side and the cradle box): each (panel part, unit part, how far
+    it had slid, mm) at its first meeting. The panel goes in ``step`` mm steps (under the
+    thinnest part either way), each part only as far as it takes to pass every unit part in
+    its way (a box test first, then the solids')."""
+    from build123d import Location
+
+    from spiderpig.shapes import moved
+
+    def box(sh) -> np.ndarray:
+        bb = sh.bounding_box()
+        return np.array([[bb.min.X, bb.min.Y, bb.min.Z], [bb.max.X, bb.max.Y, bb.max.Z]])
+
+    pb = {n: box(sh) for n, sh in panel.items()}
+    ub = {n: box(sh) for n, sh in unit.items()}
+    way = 1.0 if sum(b[0, 2] + b[1, 2] for b in pb.values()) > 0 else -1.0
+    hits = []
+    for pn, sh in panel.items():
+        a = pb[pn]
+        for un, q in unit.items():
+            c = ub[un]
+            if not ((a[0, :2] < c[1, :2]) & (c[0, :2] < a[1, :2])).all():
+                continue
+            travel = (c[1, 2] - a[0, 2]) if way > 0 else (a[1, 2] - c[0, 2])
+            for d in np.arange(0.0, travel + step, step):
+                z0, z1 = a[0, 2] + way * d, a[1, 2] + way * d
+                if z1 <= c[0, 2] or z0 >= c[1, 2]:
+                    continue
+                inter = moved(sh, Location((0.0, 0.0, float(way * d)))) & q
+                vol = sum(x.volume for x in inter.solids()) if inter is not None else 0.0
+                if vol > 0.01:
+                    hits.append((pn, un, round(float(d), 2)))
+                    break
+    return hits
+
+
+def _hand_crank_step(names: Sequence[str]) -> str:
+    """How the hand crank comes off: its thumb screw by hand (or a set screw's key)."""
+    thumbs = [n for n in names if "thumb_screw" in n]
+    if thumbs:
+        return ("Hand crank: loosen its thumb screw by hand and pull it off the gearbox's input "
+                "shaft; the screw goes back into its hub.")
+    sets = [n for n in names if "set_screw" in n]
+    many = f"{len(sets)} set screws" if len(sets) != 1 else "its set screw"
+    return f"Hand crank: loosen {many} and pull it off the gearbox's input shaft."
+
+
+def _base_step(names: Sequence[str], parts: dict[str, PartInfo], what: str) -> str:
+    """How ``what`` comes off the base board: the nuts on its brackets' carriage bolts."""
+    nuts = [n for n in names if "nut" in (parts[n].bom_key or "")]
+    size = next((z for n in nuts if (z := _size(parts[n].bom_key))), "")
+    thumb = all("thumb" in (parts[n].bom_key or "") for n in nuts)
+    kind = "thumb nuts" if thumb else "nuts"
+    how = " by hand" if thumb else ""
+    return (f"Base board: undo the {len(nuts)} {size} {kind} on the brackets' feet{how} and "
+            f"lift {what} off it. The carriage bolts stay in the board, their nuts back on.")
+
+
+def _clips_out(n: int) -> str:
+    many = f"pull each one's hairpin cotter (R-clip, {n})" if n > 1 else "pull its R-clip"
+    return (f"{many} from the bay side, by hand. The pin stays in the side's links; the clip "
+            "goes back in its hole for the trip.")
 
 
 # -- the packing ---------------------------------------------------------------------------
@@ -914,19 +1117,30 @@ def tuck(group: Sequence[np.ndarray], pivot, others: Sequence[np.ndarray]) -> fl
     return min((c for c in near if c[1] <= square * 1.01), key=lambda c: abs(c[2]))[2]
 
 
-def flat_pack(mech, lk) -> dict:
-    """The flat pack of the fabricated cradle ``mech`` (crank angle 0): its pieces
-    (``modules``, in the order they go in the box, bottom up: key, label, how it comes off,
-    parts, ``matrix``: the 4 x 4 row-major transform from the assembled pose to the packed
-    one, in the cradle's own frame: x along the linkage, y up, z across the bay; and
-    ``part_matrix``, a part's own where it moves within its piece: a hanging link swung in),
-    the box (its inside and outside sizes, mm, and its inside's lower corner, ``floor``),
-    and the steps that take it apart."""
+def flat_pack(mech, lk, t: float = 0.0) -> dict:
+    """How the fabricated cradle ``mech`` (at crank angle ``t``: :func:`pack_t`) packs:
+    flat (:func:`pieces`), or as modules where it is cranked to its pack pose first
+    (:data:`PACK_TURNS`, :func:`module_pieces`). Its pieces (``modules``, in the order they
+    go in the box, bottom up: key, label, how it comes off, parts, ``matrix``: the 4 x 4
+    row-major transform from the assembled pose to the packed one, in the cradle's own frame:
+    x along the linkage, y up, z across the bay; and ``part_matrix``, a part's own where it
+    moves within its piece: a hanging link swung in), the box (its inside and outside sizes,
+    mm, and its inside's lower corner, ``floor``), the steps that take it apart, ``mode``
+    (``"flat"`` or ``"modules"``), the ``pose`` the transforms start from (its crank angle,
+    its clip fraction ``t / 2 pi``, the bottle's tilt, the handle turns from rest) and, for
+    modules, ``slide_off``: what the passive side panel meets sliding off its cradle link
+    (:func:`slide_hits`, its clips out: none)."""
     from spiderpig.mesh import tessellate_many
 
     link = cr.cradle_link(lk)
     infos = part_infos(mech)
-    pcs, steps = pieces(infos, mech.connections, link, mech.meta.get("fastened", ()))
+    tilt = math.degrees(float(mech.meta.get("cradle_tilt", 0.0)))
+    fastened = mech.meta.get("fastened", ())
+    turns = PACK_TURNS.get(lk.key)
+    if turns is not None:
+        pcs, steps = module_pieces(infos, mech.connections, link, turns, tilt, fastened)
+    else:
+        pcs, steps = pieces(infos, mech.connections, link, fastened)
     # the parts that turn by any angle (the levelled pieces', the hanging links'): their
     # tessellations
     turned = [n for pc in pcs if pc.role == "fill" for n in pc.parts]
@@ -940,8 +1154,20 @@ def flat_pack(mech, lk) -> dict:
                                 np.asarray(pos, float))
     joints = {(b.name, j.name): (b.pose.matrix @ j.pose.matrix)[:2, 3]
               for b in mech.bodies for j in b.joints}
-    tilt = math.degrees(float(mech.meta.get("cradle_tilt", 0.0)))
-    return pack_cradle(pcs, steps, infos, joints, tilt)
+    out = pack_cradle(pcs, steps, infos, joints, tilt)
+    out["mode"] = "flat" if turns is None else "modules"
+    out["pose"] = {"crank_t": round(t, 6), "clip_fraction": round(t / (2.0 * math.pi), 6),
+                   "tilt_deg": round(tilt, 2), "turns_from_rest": turns}
+    if turns is not None:
+        by = {pc.key: pc for pc in pcs}
+        placed = {b.name: b.placed_part() for b in mech.bodies
+                  if b.part is not None and b.fab != "display"}
+        panel = {n: placed[n] for n in by["passive"].parts if not n.endswith("_clip")}
+        unit = {n: placed[n] for n in by["drive"].parts}
+        out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, unit)],
+                            "clips_out": sorted(n for n in by["passive"].parts
+                                                if n.endswith("_clip"))}
+    return out
 
 
 def pack_cradle(pcs: list[Piece], steps, infos: dict[str, PartInfo], joints, tilt: float
@@ -990,15 +1216,19 @@ def pack_cradle(pcs: list[Piece], steps, infos: dict[str, PartInfo], joints, til
 
 
 def payload(linkage: str, store: str | None = None) -> dict:
-    """``/api/cradle/{key}/pack``'s and ``/room``'s bodies: :func:`flat_pack` and
-    :func:`spiderpig.cradle_report.room` of the cradle fabricated at crank angle 0 (the baked
-    clip's first frame; the fabrication cache in ``store`` keeps it), a package function for
-    :func:`spiderpig.workers.submit`."""
+    """``/api/cradle/{key}/pack``'s and ``/room``'s bodies: :func:`flat_pack` of the cradle
+    fabricated at its pack pose (:func:`pack_t`) and :func:`spiderpig.cradle_report.room` of
+    it at crank angle 0 (the baked clip's first frame; the fabrication cache in ``store``
+    keeps both), a package function for :func:`spiderpig.workers.submit`."""
     from spiderpig.config import BuildConfig
     from spiderpig.cradle_report import room
     from spiderpig.fabricate import fabricate, template_for
     from spiderpig.store import Store
 
     cfg = BuildConfig(linkage=linkage, robot=False)
-    mech = fabricate(template_for(cfg), cfg, 0.0, store=Store.of(store) if store else None)
-    return {"pack": flat_pack(mech, cfg.lk), "room": room(cfg, mech)}
+    tmpl = template_for(cfg)
+    at = Store.of(store) if store else None
+    mech = fabricate(tmpl, cfg, 0.0, store=at)
+    t = pack_t(cfg)
+    packed = mech if t == 0.0 else fabricate(tmpl, cfg, t, store=at)
+    return {"pack": flat_pack(packed, cfg.lk, t), "room": room(cfg, mech)}

@@ -316,6 +316,123 @@ def test_a_pivot_pin_fits_its_stack_and_its_ends_a_layer():
 
 
 @pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_clevis_pin_takes_up_its_stack_and_its_clip_a_gap():
+    """``clevis8`` (B's X and Y, ``config.PRODUCT_PIN_JOINTS``): the 15 mm usable stock pin
+    over B's 11.2 mm stack with a printed spacer under its head to the 0.1 mm (the play the
+    least and under a step more), its head and spacer standing 6.8 mm out (two layers); its
+    clip a clearance gap; a pin only; a stack no stock pin spans, or one longer than the
+    linkage lets a pin be (``chicago.MAX_BARREL``), refused; rated as a solid 8 mm rod at
+    annealed 304's yield; the pin and its clip priced from their pages."""
+    import math
+    from dataclasses import replace
+
+    from spiderpig.config import PRODUCT_PIN_JOINTS
+    from spiderpig.construction import ConstructionError
+    from spiderpig.construction.pivots.clevis import CLEVIS8
+    from spiderpig.hardware.catalog import get
+    from spiderpig.stack import GAP_MAX
+
+    assert {PRODUCT_PIN_JOINTS["decanter_rcm"][j] for j in "XY"} == {"clevis8"}
+    shaft = CLEVIS8.shaft
+    f = shaft.take_up(11.2)
+    assert (f.length, f.shims_lo) == (15.0, pytest.approx(3.5))
+    assert shaft.min_play - 1e-9 <= f.play < shaft.min_play + 0.1
+    assert shaft.outer(11.2) == pytest.approx(15.0 - 11.2 + 3.0)
+    assert shaft.base_heights()[0] == 0.0 < shaft.base_heights()[1] <= GAP_MAX
+    ctx = type("Ctx", (), {"pitch": 3.175})()
+    shaft.check(ctx, False)
+    with pytest.raises(ConstructionError, match="link pin only"):
+        shaft.check(ctx, True)
+    with pytest.raises(ConstructionError, match="no stock clevis pin"):
+        replace(shaft, max_length=20.0).take_up(15.0)
+    sec = shaft.section()
+    assert sec.yield_mpa == 205.0
+    assert sec.z_bend == pytest.approx(math.pi * 8 ** 3 / 32)
+    pin, clip = get("clevis_pin8_15"), get("hairpin_cotter_2x50")
+    assert (pin.offer.sku, pin.offer.price_usd, pin.offer.verified) == ("90378A701", 5.47, True)
+    assert (clip.offer.sku, clip.offer.pack_qty, clip.offer.verified) == ("98350A131", 5, True)
+    assert pin.dims["hole_d"] <= clip.dims["wire"] + 0.01
+
+
+@pytest.mark.slow
+@pytest.mark.construction
+def test_bs_x_and_y_are_clevis_pins_its_clips_over_the_cradle_link():
+    """B's pins X and Y (``clevis8``): the plan claims the head and spacer in the two layers
+    outside b4 (b5), the clip's whole reach in the gap over the cradle link and the pin's end
+    in the inner plate's open (a seat; the plate keeps off its path); built, the pin, its
+    printed spacer and its clip, every link's hole the M6 barrel's 8.2 mm, the spacer the
+    take-up to the 0.1 mm, the clip over the link by its play, the side within its claims."""
+    from spiderpig.construction.axle import AxleGroup
+    from spiderpig.construction.base import Build, Realized
+    from spiderpig.construction.pivots.clevis import CLEVIS8, CLIP_REACH
+    from spiderpig.fabricate import design_side, template_for
+
+    cfg = BuildConfig(linkage="decanter_rcm", robot=False)
+    tmpl = template_for(cfg)
+    design = design_side(tmpl, cfg)
+    plan = design.plan
+    build = Build(design.ctx, plan, tmpl.freeze_at(1.0))
+    link = cr.cradle_link(cfg.lk)
+    for j, bar in (("X", "b4"), ("Y", "b5")):
+        (g,) = [g for g in design.groups if isinstance(g, AxleGroup) and g.name == f"pin:{j}"]
+        assert g.construction.key == CLEVIS8.key
+        k0, k1 = plan.layers[bar], plan.layers[link]
+        assert k1 == plan.top - 1
+        mine = plan.shapes(group=g.name)
+        assert {p.layer for p in mine if p.label.endswith("head")} == {k0 - 1, k0 - 2}
+        (clip,) = [p for p in mine if p.label.endswith("clip")]
+        assert (clip.layer, clip.gap, clip.shape.r) == (k1, True, CLIP_REACH)
+        assert plan.gaps[k1] >= clip.height
+        (tip,) = [p for p in mine if p.label.endswith("tip")]
+        assert (tip.layer, tip.seat) == (plan.top, True)
+        got = g.realize(build, Realized())
+        stem = g.name.replace(":", "_")
+        assert {b.name for b in got.bodies} >= {f"{stem}_pin", f"{stem}_spacer_lo",
+                                                f"{stem}_clip"}
+        keys = {b.name: b.bom_key for b in got.bodies}
+        assert keys[f"{stem}_pin"] == "clevis_pin8_15"
+        assert keys[f"{stem}_clip"] == "hairpin_cotter_2x50"
+        assert got.extras == []                 # nothing threaded, glued or locked
+        for m in g.axis.members:
+            assert [x.d for x in got.cuts[m]] == [pytest.approx(8.2)]
+        note = got.notes["clevis_pin"][g.name]
+        assert note["usable_mm"] == 15.0
+        assert note["spacer_mm"] + note["stack_mm"] + note["play_mm"] == pytest.approx(15.0)
+        assert 0.25 - 1e-9 <= note["play_mm"] < 0.35
+        assert got.notes["wobble"][g.name]["section"]["yield_mpa"] == 205.0
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_base_bracket_takes_a_thumb_nut_and_the_hand_crank_a_thumb_screw():
+    """The base board comes off by hand: each bracket's carriage bolt (M6 x 25) a knurled
+    thumb nut on it, its knurl clear of the bracket's upright and the upright's M5 screw
+    head, a thread past it; the hand crank's hub an M3 thumb screw down to the input key,
+    its head clear of the hub."""
+    from spiderpig.construction.handcrank import HANDLE_THUMB, HandCrank
+
+    bracket, parts, _ = cr._bracket((0.0, 0.0), 0.0, 0.0, 1, 4.75)
+    by = {key: part for part, key in parts}
+    assert set(by) >= {"m6_carriage_25", "m6_thumb_nut", "m5_nut"}
+    nut, bolt = by["m6_thumb_nut"], by["m6_carriage_25"]
+    side = next(part for part, key in parts if key.startswith("m5_bhcs"))
+    for other in (bracket, side, bolt):
+        inter = nut & other
+        assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+    assert bolt.bounding_box().max.Y - nut.bounding_box().max.Y >= 3.0     # thread past it
+    assert nut.bounding_box().min.Z >= side.bounding_box().max.Z + 2.0      # the knurl clear
+    hc = HandCrank()
+    bodies = {b.name: b for b in hc._handle((0.0, 0.0), (1.0, 0.0), 0.0, "frame")}
+    thumb = bodies["handle_thumb_screw"]
+    assert thumb.bom_key == f"m3_thumb_screw_{HANDLE_THUMB[0]:g}"
+    inter = thumb.part & bodies["handle"].part
+    assert inter is None or sum(x.volume for x in inter.solids()) < 1e-3
+    reach = thumb.part.bounding_box().max.Z
+    assert reach > hc.box.crank_hub_r + HANDLE_THUMB[2]
+
+
+@pytest.mark.construction
 def test_a_tie_rod_that_would_sweep_into_the_inner_plate_fails():
     """The planner checks nothing in the inner plate's layer (a frame plate's), so the ties
     check their paths over the turn against its members: one across a tie's arc fails."""
@@ -447,6 +564,14 @@ def test_b_stands_turns_easily_and_holds():
     assert min(walk) >= 2.0, [(x["joint"], x["walk_sf"]) for x in rows]
     jam = [x["jam_sf"] for x in rows if x["jam_sf"] is not None]
     assert min(jam) >= 1.3, [(x["joint"], x["jam_sf"]) for x in rows]
+    # the quick-release clevis pins at X and Y (2026-10-13): stronger than the M6 Chicago
+    # screws they replaced (1.72 and 1.49 jammed)
+    quick = {x["joint"]: x for x in rows if x["joint"] in ("pin:X", "pin:Y")}
+    assert set(quick) == {"pin:X", "pin:Y"}
+    for x in quick.values():
+        assert "clevis" in x["section"], x
+        assert x["jam_sf"] >= 2.0, x
+        assert x["walk_sf"] >= 6.0, x
 
 
 @pytest.mark.slow
@@ -698,31 +823,50 @@ def test_the_packer_levels_drops_and_fills_in_order():
     assert order.relations(np.array([[[10, 70, 10], [50, 80, 50]]], float)) == ({0}, set())
 
 
-PACK_BOX = {"decanter_hinge": (665.0, 310.0, 590.0), "decanter_rcm": (650.0, 325.0, 555.0)}
-"""Each cradle's flat-pack box, outside (x, height, z; mm): at most (since the 6 L: its rear
-saddle and two rear liners, about 104 mm thick, lie over the panels)."""
+PACK_BOX = {"decanter_hinge": (665.0, 310.0, 590.0)}
+"""A's flat-pack box, outside (x, height, z; mm): at most (since the 6 L: its rear saddle and
+two rear liners, about 104 mm thick, lie over the panels)."""
+MODULE_BOX = (30.0, 500.0, 600.0)
+"""A cradle packed as modules (B): its box, outside, over its base board's length and width
+(x, z: the board lies at the bottom, the other pieces over it) at most 30 mm (its walls and
+clearances take 16), at most 500 mm tall (the drive side with the cradle box lies flat, 442
+mm, on the 28 mm board and its bolts), and across no more than 30 mm over the larger of the
+board's width and 600 mm (the drive side's height in its plane at the pack pose, 596).
+B, 2026-10-13: 643 x 478 x 611 mm on its 626 x 530 board, about 188 L (its flat pack had
+been 112). Read off the board, so a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
+MODULES = {"decanter_hinge": None,
+           "decanter_rcm": {"base", "drive", "passive", "hand_crank"}}
+"""The pieces a cradle that packs as modules comes apart into (``cradle_pack.PACK_TURNS``),
+besides the spare bottles' adapters and collars; None: it packs flat."""
 
 
 @pytest.mark.slow
 @pytest.mark.construction
 @pytest.mark.parametrize("key", CRADLES)
-def test_the_cradle_packs_flat_in_one_box(key):
-    """``cradle_pack.flat_pack`` (a fabrication at crank angle 0): every part but the display
-    ones in exactly one piece; each part's packed bounding box (the part moved by its piece's
-    transform, or its own) inside the box and clear of every other piece's (a levelled piece
-    turns by any angle, so its parts' boxes are the moved parts', not their assembled boxes'
-    corners moved); of two pieces over each other the lower one goes in first; the box no
-    bigger than :data:`PACK_BOX`; the steps name where the cradle link comes off its side."""
-    from spiderpig.cradle_pack import flat_pack
+def test_the_cradle_packs_in_one_box(key):
+    """``cradle_pack.flat_pack`` (a fabrication at its pack pose, ``pack_t``): every part but
+    the display ones in exactly one piece; each part's packed bounding box (the part moved by
+    its piece's transform, or its own) inside the box and clear of every other piece's (a
+    levelled piece turns by any angle, so its parts' boxes are the moved parts', not their
+    assembled boxes' corners moved); of two pieces over each other the lower one goes in
+    first; the box no bigger than :data:`PACK_BOX` (modules: :data:`MODULE_BOX`, off the base
+    board's size); the steps name where the cradle link comes
+    off its side. A packs flat, from crank angle 0. B packs as three modules and its hand crank
+    (:data:`MODULES`, the spare adapters loose), cranked 4 turns from rest first: there its
+    passive side panel, its two clips out, slides straight off its cradle link and meets
+    nothing of the drive side or the cradle box (``slide_off``), where at rest the inner bar
+    would meet the cradle link."""
+    from spiderpig.cradle_pack import PACK_TURNS, flat_pack, pack_t
     from spiderpig.fabricate import fabricate, template_for
     from spiderpig.mechanism import Pose
     from spiderpig.shapes import moved
 
     cfg = BuildConfig(linkage=key, robot=False)
-    mech = fabricate(template_for(cfg), cfg, 0.0)
-    p = flat_pack(mech, cfg.lk)
+    t = pack_t(cfg)
+    mech = fabricate(template_for(cfg), cfg, t)
+    p = flat_pack(mech, cfg.lk, t)
     shipped = {b.name: b for b in mech.bodies if b.part is not None and b.fab != "display"}
     names = [n for m in p["modules"] for n in m["parts"]]
     assert sorted(names) == sorted(shipped)                 # each in exactly one piece
@@ -737,9 +881,75 @@ def test_the_cradle_packs_flat_in_one_box(key):
                           np.array([bb.max.X, bb.max.Y, bb.max.Z])))
     lo = np.asarray(p["box"]["floor"], float)
     _packed_ok(boxes, lo, lo + np.asarray(p["box"]["inside_mm"], float))
-    assert all(np.asarray(p["box"]["outside_mm"]) <= PACK_BOX[key]), p["box"]
+    out = np.asarray(p["box"]["outside_mm"])
+    if key in PACK_BOX:
+        assert all(out <= PACK_BOX[key]), p["box"]
+    else:                               # modules: the bound follows the base board
+        board = shipped["base_plate"].placed_part().bounding_box()
+        over, tall, plane = MODULE_BOX
+        assert out[0] <= board.size.X + over, (p["box"], board.size)
+        assert out[1] <= tall, p["box"]
+        assert out[2] <= max(board.size.Z, plane) + over, (p["box"], board.size)
     assert p["modules"][0]["key"] == "base"
     pins, pillar = PACK_JOINTS[key]
     text = " ".join(p["steps"])
     assert pins in text, p["steps"]
     assert (pillar in text) if pillar else ("pillar" not in text), p["steps"]
+    assert p["pose"]["clip_fraction"] == pytest.approx(t / (2 * math.pi), abs=1e-6)
+    by = {m["key"]: m for m in p["modules"]}
+    if MODULES[key] is None:
+        assert p["mode"] == "flat"
+        assert t == 0.0
+        assert "comes apart flat" in text                    # A's cradle link rides G
+        return
+    assert p["mode"] == "modules"
+    spares = set(by) - MODULES[key]
+    assert MODULES[key] <= set(by)
+    assert all(by[k]["label"].startswith(("Adapter", "Collar")) for k in spares), spares
+    # the cradle box (both cradle links, the ties, the saddles, the light, the base stop and
+    # whatever is fastened in it: the drawn bottle's adapters) travels on the drive side; the
+    # passive side has the rest of R
+    link = cr.cradle_link(cfg.lk)
+    drive, passive = set(by["drive"]["parts"]), set(by["passive"]["parts"])
+    assert {"L.gearbox", f"L.{link}", f"R.{link}", "tie_Tf1", "front_saddle", "rear_saddle",
+            "led", "base_stop_spine"} <= drive
+    assert {a for a, _ in mech.meta["fastened"] if a in shipped} <= drive
+    assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
+    assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
+    assert set(by["hand_crank"]["parts"]) == {n for n in shipped if n.startswith("L.handle")}
+    assert "L.handle_thumb_screw" in by["hand_crank"]["parts"]
+    base = set(by["base"]["parts"])
+    assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_nut1")} <= base
+    assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
+        "m6_carriage_25", "m6_thumb_nut"}
+    assert p["pose"]["turns_from_rest"] == PACK_TURNS[key]
+    assert p["pose"]["tilt_deg"] == pytest.approx(-34.8, abs=1.0)
+    assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"]}
+    for words in ("4 handle turns", "R-clip", "slide it straight off", "thumb nuts",
+                  "thumb screw"):
+        assert words in text, (words, p["steps"])
+
+
+@pytest.mark.construction
+@pytest.mark.no_fabricate
+def test_a_side_panel_slides_off_only_where_nothing_is_in_its_way():
+    """``cradle_pack.slide_hits`` on solids: a panel's plate under a cradle link it overlaps
+    in plan meets it as it slides off along z (its side's way: away from the bay's middle);
+    moved clear of it in plan, or the link past it, it doesn't; a pin through the link's hole
+    slides out of it; a clip over the link (not taken out) catches it; a panel on the other
+    side slides the other way."""
+    from build123d import Box, Cylinder, Location, Plane
+
+    from spiderpig.cradle_pack import slide_hits
+
+    link = Box(100, 40, 3).moved(Location((0, 0, 139.5))) - Cylinder(4.1, 10).moved(
+        Location((30, 0, 139.5)))
+    torso = Box(40, 40, 4.75).moved(Location((-20, 0, 132.4)))
+    pin = Cylinder(4.0, 20).moved(Location((30, 0, 140.0)))
+    clip = Box(30, 2, 2).moved(Location((40, 0, 136.0)))
+    assert slide_hits({"torso": torso}, {"link": link}) == [("torso", "link", 3.5)]
+    clear = torso.moved(Location((0, 60, 0)))
+    assert slide_hits({"torso": clear, "pin": pin}, {"link": link}) == []
+    assert slide_hits({"clip": clip}, {"link": link})[0][:2] == ("clip", "link")
+    assert slide_hits({"torso": torso.mirror(Plane.XY)},
+                      {"link": link.mirror(Plane.XY)}) == [("torso", "link", 3.5)]
