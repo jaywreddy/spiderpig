@@ -31,7 +31,10 @@ of the unit tests:
    falls back to the family's measured loads with a note): the bending case from the
    joint's layers (a two-link pin ``F s / 2``, a clevis, a cantilever pillar). A jam
    SF under 1 is a problem (the audit fails), under 2 jammed or 3 walking a warning,
-   each naming the joint, its load and SF and fixes recomputed to clear it.
+   each naming the joint, its load and SF and fixes recomputed to clear it. A walker's
+   feet across the plane too (:func:`strength.foot_stiffness`): each foot's compliance
+   (mm/N), and under a sideways foot load (its share of the weight times the floor's
+   friction) its deflection and the worst link tilt and splay. Reported, not failed.
 10. **manufacture** — :mod:`spiderpig.manufacture`: every laser-cut part against its
    sheet's service rules (the least hole, hole-to-edge distance, part size, inside corner
    radius); warnings, not failures.
@@ -110,7 +113,7 @@ def audit_module(module: str, config: BuildConfig, ts_contract, ts_clash, store=
     loads = strength.design_loads(config, store, override=pin_loads, sim=sim)
     notes = mech.meta.get("wobble") or {}
     rep["wobble"] = wobble_check(notes)
-    rep["strength"] = strength.check(notes, mech.meta, config, loads)
+    rep["strength"] = strength.check(notes, mech.meta, config, loads, design)
     if mech.meta.get("chicago"):
         rep["chicago"] = mech.meta["chicago"]
     if mech.meta.get("crank_bolt"):
@@ -346,6 +349,33 @@ def strength_lines(st: dict) -> list[str]:
         for f in st["findings"]:
             lines.append(f"* **{f['level'].upper()}** {f['message']}. Fixes: "
                          + "; ".join(f["fixes"]) + ".")
+    if st.get("feet"):
+        lines += ["", *feet_lines(st["feet"])]
+    return lines
+
+
+def feet_cell(st: dict) -> str:
+    """A walker's softest foot across the plane and the worst link tilt and splay under its
+    sideways load (:func:`strength.foot_stiffness`), one line: ``-`` without."""
+    feet = (st or {}).get("feet")
+    if not feet:
+        return "-"
+    w = feet["worst"]
+    return (f"{w['mm_per_n']:g} mm/N ({w['foot']}); at {feet['load_n']:g} N "
+            f"{w['deflection_mm']:g} mm, tilt {w['tilt_deg']:g} deg ({w['tilt_link']}), "
+            f"splay {w['splay_deg']:g} deg ({w['splay_joint']})")
+
+
+def feet_lines(feet: dict) -> list[str]:
+    """The feet across the plane (:func:`strength.foot_stiffness`): the sideways load, then
+    each foot's compliance, its deflection and the worst link tilt and splay at that load."""
+    lines = [f"Feet across the plane (reported, no limit): a sideways load of "
+             f"{feet['load_n']:g} N a foot ({feet['basis']}); {feet['note']}.", "",
+             "| foot | mm/N | worst at crank deg | deflection mm | link tilt deg | link "
+             "| splay deg | joint |", "|---|---:|---:|---:|---:|---|---:|---|"]
+    lines += [f"| {f['foot']} | {f['mm_per_n']:g} | {f['at_deg']:g} "
+              f"| {f['deflection_mm']:g} | {f['tilt_deg']:g} | {f['tilt_link']} "
+              f"| {f['splay_deg']:g} | {f['splay_joint']} |" for f in feet["feet"]]
     return lines
 
 
@@ -488,6 +518,8 @@ def main(argv=None) -> int:
               f"{sf_cell(rep, 'pillar')}, crank {sf_cell(rep, 'crank')}, link plate "
               f"{sf_cell(rep, 'link')}, centre plates {sf_cell(rep, 'chassis')} "
               f"({rep['strength']['loads'].get('source')} loads)")
+        if rep["strength"].get("feet"):
+            print(f"  feet across the plane: {feet_cell(rep['strength'])}")
         print(f"  {rep['parts']} parts, {rep['dxf_sheets']} DXF sheet(s), "
               f"{rep['bom'].get('items', 0)} BOM items: "
               f"{'OK' if not rep['problems'] else 'FAIL'} ({rep['seconds']} s)", flush=True)

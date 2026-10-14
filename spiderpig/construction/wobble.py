@@ -44,6 +44,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from spiderpig.hardware.mass import MODULUS_GPA
+
 DEG = 180.0 / math.pi
 
 
@@ -69,9 +71,14 @@ def supported_tilt_deg(thickness: float, play: float, face_r: float) -> float:
     return (phi - math.acos((t + g) / R)) * DEG
 
 
+STEEL_MPA = MODULUS_GPA["steel"] * 1000.0     # a steel shaft's Young's modulus
+
+
 @dataclass(frozen=True)
 class Section:
-    """A pivot shaft's section where the links bear on it (mm, MPa)."""
+    """A pivot shaft's section where the links bear on it (mm, MPa): its strength and, for
+    its bending stiffness (``E I``, :mod:`linkage.stiffness` across the plane), the
+    shaft's Young's modulus (``modulus_mpa``; steel unless it says)."""
 
     name: str
     bearing_d: float          # diameter the link (or its insert's bore) bears on
@@ -79,21 +86,29 @@ class Section:
     a_shear: float            # shear area (mm^2)
     yield_mpa: float          # the shaft's (or tube's) yield strength
     bearing_limit_mpa: float | None = None   # what a liner the links bear on takes (PTFE)
+    modulus_mpa: float = STEEL_MPA            # the shaft's Young's modulus
 
     @classmethod
-    def rod(cls, d: float, yield_mpa: float = 215.0, name: str = "rod") -> Section:
-        return cls(name, d, math.pi * d ** 3 / 32, math.pi * d * d / 4, yield_mpa)
+    def rod(cls, d: float, yield_mpa: float = 215.0, name: str = "rod",
+            modulus_mpa: float = STEEL_MPA) -> Section:
+        return cls(name, d, math.pi * d ** 3 / 32, math.pi * d * d / 4, yield_mpa,
+                   modulus_mpa=modulus_mpa)
 
     @classmethod
     def tube(cls, od: float, id_: float, yield_mpa: float = 215.0,
-             name: str = "tube") -> Section:
+             name: str = "tube", modulus_mpa: float = STEEL_MPA) -> Section:
         return cls(name, od, math.pi * (od ** 4 - id_ ** 4) / (32 * od),
-                   math.pi * (od * od - id_ * id_) / 4, yield_mpa)
+                   math.pi * (od * od - id_ * id_) / 4, yield_mpa, modulus_mpa=modulus_mpa)
+
+    @property
+    def inertia(self) -> float:
+        """The second moment of area (mm^4): a round section's ``Z d / 2``."""
+        return self.z_bend * self.bearing_d / 2
 
     def as_dict(self) -> dict:
         out = {"name": self.name, "bearing_d": self.bearing_d,
                "z_bend_mm3": round(self.z_bend, 3), "a_shear_mm2": round(self.a_shear, 3),
-               "yield_mpa": self.yield_mpa}
+               "yield_mpa": self.yield_mpa, "modulus_mpa": self.modulus_mpa}
         if self.bearing_limit_mpa is not None:
             out["bearing_limit_mpa"] = self.bearing_limit_mpa
         return out

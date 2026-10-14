@@ -95,6 +95,7 @@ from spiderpig.construction.pivots.common import (
 from spiderpig.construction.wobble import Section, column_wobble
 from spiderpig.hardware.bom import SHIM_STEP, BomLine
 from spiderpig.hardware.catalog import get
+from spiderpig.hardware.mass import MODULUS_GPA
 from spiderpig.shapes import Cut, disc, ring, union
 from spiderpig.stack import Unbuildable
 
@@ -375,7 +376,8 @@ class StandoffAxle:
             return Section.tube(self.od, self.id_, self.yield_mpa,
                                 name=f"6 mm 1018 steel standoff (as a 6 x {self.id_:g} tube)")
         return Section.tube(self.od, self.id_, self.yield_mpa,
-                            name=f"6 mm Al standoff (6061, as a 6 x {self.id_:g} tube)")
+                            name=f"6 mm Al standoff (6061, as a 6 x {self.id_:g} tube)",
+                            modulus_mpa=MODULUS_GPA["aluminium"] * 1000)
 
     def shim_od(self) -> float:
         """The end shims' ring: the widest they are bought as (:func:`hardware.bom.shim_od`:

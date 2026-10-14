@@ -58,3 +58,54 @@ def test_aluminium_links_sag_far_less_than_acrylic():
     al = compliance(pal, pal.values(), Section(13.2, 3.175, 69000.0), payload_n=0.49)
     assert al.sag_mm < acrylic.sag_mm / 15
     assert al.across_mm_per_n < acrylic.across_mm_per_n / 15
+
+
+def test_where_the_load_comes_in_and_whats_driven_is_by_capability():
+    """stiffness.outputs and drives (2026-10-14): an arm's tool point and its inputs' drives,
+    a mechanism's output and a walker's feet, each with its crank held at its centre; no
+    kind's name asked."""
+    from spiderpig.linkage.stiffness import drives, outputs
+
+    pal = linkage.get("palletizer")
+    assert outputs(pal) == ((pal.output.link, pal.output.point),)
+    assert drives(pal) == {pal.drives[k][0]: pal.drives[k][1] for k in pal.inputs}
+    strider = linkage.get("strider")
+    assert outputs(strider) == (("b3", "J4"), ("b7", "J8"))
+    assert drives(strider) == {"conn": "O"}
+    hp = linkage.get("hoecken_pantograph")
+    assert outputs(hp) == ((hp.output.link, hp.output.point),)
+    assert drives(hp) == {"conn": hp.crank[0]}
+
+
+def test_a_pin_partway_along_a_bar_splits_its_beam():
+    """Strider's b2 is a bar J3-J9 with the crankpin J1 partway along it: its beams run
+    J3-J1-J9 (and J9-J10), so the crank's load reaches the link."""
+    from spiderpig.linkage.engine import LegSolution
+    from spiderpig.linkage.stiffness import _beams
+
+    lk = linkage.get("strider")
+    js, segs = lk.links["b2"]
+    at = {k: v.reshape(-1, 2)[0] for k, v in LegSolution(1, 0.0, lk.values(), lk.key)
+          .at(np.array([0.3])).items()}
+    assert sorted(_beams(list(js), segs, at)) == sorted(
+        [("J3", "J1"), ("J1", "J9"), ("J9", "J10")])
+    assert len(_beams(["A", "B", "C"], (), at={})) == 3          # no outline: every pair
+
+
+def test_a_walkers_feet_across_the_plane():
+    """stiffness.across of a walker in one plane: each foot's compliance across it, finite
+    and the same for the Strider's two feet (its leg is symmetric in them), the foot link
+    the most tilted; aluminium links (69 GPa) over 15 times stiffer than acrylic (3.2)."""
+    from spiderpig.linkage.stiffness import across
+
+    lk = linkage.get("strider")
+    acrylic = across(lk, lk.values(), Section(12.0, 3.0, 3200.0))
+    assert [(a.body, a.point) for a in acrylic] == [("b3", "J4"), ("b7", "J8")]
+    for a in acrylic:
+        assert 0.1 < a.mm_per_n < 100
+        assert math.isfinite(a.tilt_deg_per_n)
+        assert a.tilt_link == a.body
+        assert 0 <= a.at < 2 * math.pi
+    assert acrylic[0].mm_per_n == pytest.approx(acrylic[1].mm_per_n, rel=1e-6)
+    al = across(lk, lk.values(), Section(12.0, 3.175, 69000.0))
+    assert al[0].mm_per_n < acrylic[0].mm_per_n / 15

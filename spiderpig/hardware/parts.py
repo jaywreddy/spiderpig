@@ -217,9 +217,12 @@ PONOKO_RULES_ACRYLIC_3MM = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6
                             "edge_t": 0.0, "edge_mm": 1.0, "corner_r": 0.1, "metal": False,
                             "kerf_mm": 0.2}
 
-CUT_ACRYLIC = {"cut_qty_factors": ((1, 1.0), (2, 0.70), (10, 0.56), (50, 0.45))}
+CUT_ACRYLIC = {"cut_qty_factors": ((1, 1.0), (2, 0.70), (10, 0.56), (50, 0.45)),
+               "cut_usd_cm": 0.0}
 """SendCutSend's quantity breaks in acrylic (3 and 5.4 mm alike): a part's price at 2, 10 and
-50 off over its price at one (:func:`hardware.bom.qty_factor`)."""
+50 off over its price at one (:func:`hardware.bom.qty_factor`); and no charge per cm of cut
+(its quotes show none: every 3 mm part up to 36 cm of cut quoted the 2.00 floor,
+:func:`hardware.bom.cut_estimate`)."""
 
 _ACRYLIC_3MM = {"thickness": 3.0, "sheet_mm": (300.0, 300.0), "material": "acrylic",
                 "density": 1.19, "yield_mpa": 50.0}

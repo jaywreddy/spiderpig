@@ -40,9 +40,9 @@ Fetched 2026-10-04:
 The inside-corner radius SendCutSend cuts in aluminium (0.8 mm) is the joinery plan's
 figure, not from a page; the laser's in acrylic is about its kerf (0.1 mm). Neither
 service publishes a price table (a DXF upload quotes): a sheet SendCutSend cuts is priced
-as its cutting, the material included (``cut_fixed_usd``, ``cut_usd_cm2``, ``cut_min_usd``,
-``cut_qty_factors``: :data:`CUT_RATES`, :func:`hardware.bom.cut_estimate`, fitted on its
-live quotes); an offer's ``price_usd`` is an estimate per 300 x 300 mm blank.
+as its cutting, the material included (``cut_fixed_usd``, ``cut_usd_cm2``, ``cut_usd_cm``,
+``cut_min_usd``, ``cut_qty_factors``: :data:`CUT_RATES`, :func:`hardware.bom.cut_estimate`,
+fitted on its live quotes); an offer's ``price_usd`` is an estimate per 300 x 300 mm blank.
 
 ``shim_din988_3x6`` / ``shim_din988_6x12`` and ``ptfe_washer_3x6x0p5`` join the 4 mm ones
 (:mod:`hardware.fastener_catalog`) and the 6 mm PTFE washer (:mod:`hardware.crank_catalog`)
@@ -72,14 +72,19 @@ PONOKO_RULES_ACRYLIC = {"service": "Ponoko", "min_hole": 1.0, "min_part": (6.0, 
 
 
 CUT_RATES = {
-    "5052": {"cut_fixed_usd": 3.30, "cut_usd_cm2": 0.107, "cut_min_usd": 3.30,
+    "5052": {"cut_fixed_usd": 0.0, "cut_usd_cm2": 0.076, "cut_usd_cm": 0.104,
+             "cut_min_usd": 2.70,
              "cut_qty_factors": ((1, 1.0), (2, 0.78), (10, 0.57), (50, 0.44))},
-    "6061": {"cut_fixed_usd": 3.20, "cut_usd_cm2": 0.138, "cut_min_usd": 3.20,
+    "6061": {"cut_fixed_usd": 3.20, "cut_usd_cm2": 0.138, "cut_usd_cm": 0.0,
+             "cut_min_usd": 3.20,
              "cut_qty_factors": ((1, 1.0), (2, 0.79), (10, 0.67), (50, 0.48))},
 }
 """SendCutSend's cutting of an aluminium part, the material included, by alloy (the thickness
-hardly matters: 5052 0.080 and 0.125 in quoted within 4 % on the same part): fitted by
-:func:`hardware.bom.cut_estimate`'s docstring."""
+hardly matters: 5052 0.080 and 0.125 in quoted within 4 % on the same part): per part at one
+off a fixed charge, a rate per cm^2 of the part and one per cm of its cut length (every
+contour, holes included: :func:`hardware.bom.cut_length_cm`), fitted by
+:func:`hardware.bom.cut_estimate`'s docstring (2026-10-14: 5052 pays for its cut length;
+6061's eight prices don't support a cut rate, so it keeps its area fit of 2026-10-12)."""
 
 
 def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) -> Item:
@@ -97,7 +102,8 @@ def _al(key: str, inch: float, alloy: str = "5052", price: float | None = None) 
               "min_hole": t, "sheet_mm": (300.0, 300.0), **SCS_RULES_AL,
               # the cutting, material included (hardware.bom.cut_estimate, fitted on
               # SendCutSend's live quotes of 2026-10-08 and 2026-10-12): per part at one off
-              # fixed + per cm^2 of part, at least the least; the quantity breaks
+              # fixed + per cm^2 of part + per cm of cut, at least the least; the
+              # quantity breaks
               **CUT_RATES[alloy]},
         notes=f"{alloy}-{temper}: yield {193 if alloy == '5052' else 276} MPa (ASM); "
               "minimum hole = thickness, 2 t hole-to-edge, min part 6.35 x 9.5 mm "
