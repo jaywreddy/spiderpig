@@ -873,9 +873,11 @@ raises an error.
 **The objective** (`StackProblem.key`, since 2026-10-14). What the planner minimises, in
 order:
 
-1. the stack's **height**, frame plate to frame plate: what the module occupies between its
-   plates, what packs and what the pillars and pins span (the heads outside the plates are
-   the same for every plan of a design, so they don't rank plans);
+1. the stack's **height**, frame plate to frame plate, as the parts stand (a standoff
+   longer than its column holds the plates apart: `Claim.hold`, section 5.7): what the
+   module occupies between its plates, what packs and what the pillars and pins span (the
+   heads outside the plates are the same for every plan of a design, so they don't rank
+   plans);
 2. the crank route's cost (its added features, below);
 3. what the stock parts the plan chooses cost (a pin made to its stack, a standoff of a stock
    length: each claim's `tally`, at its unit price);
@@ -924,7 +926,8 @@ the planner's own process with the same answer. The search spends its effort in 
    Sizes the short jobs rule out are done; once a size exhausts its short budget instead,
    the search jumps ahead in doubling steps until a size has a plan, then, on the height,
    goes back down the sizes it skipped (on `"layers"` the proof searches them, thinnest
-   first). Idle workers run the size the search likely asks next.
+   first). Once sizes get dear (`stack.drive.DEAR`), idle workers run the size the search
+   likely asks next; a short job whose answer isn't read is stopped.
 2. **The proof.** The best plan so far bounds the rest. Every size and head placement the
    objective needs (on the height: each size whose least height isn't over the plan's; on
    `"layers"`: the plan's own size, for a cheaper route, and every thinner one) that no
@@ -1061,9 +1064,13 @@ printed ring in 0.1 mm steps up to 4 mm), makes each layer as thick as its thick
 (`Layout.final`), so the crank's standoffs, the stub, the Chicago barrels and the pillar
 columns are checked at the heights they will be built at. Where a stock part fits only with
 a gap a little thicker, the gap is thickened (`_thicker_gaps`). The settling only grows a
-gap, so last each gap is lowered, one at a time, to the thinnest at which the plan still
-builds and every head still fits (`_descend`): the plan is the least z the layering builds
-at, which the height objective ranks. A layering that doesn't build at its own z raises
+gap, so then each gap is lowered, one at a time, to the thinnest at which the plan still
+builds and every head still fits (`_descend`). A standoff longer than its column (by up to
+`StandoffAxle.max_long`) holds the plates apart that far, its links loose by as much
+(`Claim.hold`): a gap is lowered only where the stack really is lower, and last a hold
+left is taken into a gap the column crosses (`_take_up`). The plan is the least z the
+layering really stands at, which the height objective ranks; a hold no gap could take
+counts there too (`StackPlan.hold`). A layering that doesn't build at its own z raises
 `PlanReject`, and the search takes it as a dead end. The plan records its z:
 `StackPlan.gaps`, `thick` and `heads`; a `Layout` answers `z`, `gap_z` and `slot_z`.
 

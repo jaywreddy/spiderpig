@@ -17,10 +17,10 @@ none with ``SPIDERPIG_WORKERS=0``) and whenever it runs.
 1. **A first plan**, as the planner always looked for the thinnest: short jobs
    (``quick_nodes``, each stopping at its first plan: ``StackSpec.quick_first``) from
    ``min_top`` up, every head placement side by side (and, with a hint, the plain search
-   and a leg at a time side by side), jumping ahead in doubling steps past sizes their
-   budget leaves open, then (on the height) back down the skipped sizes while they keep a
-   plan; idle workers run the size the search likely asks next (a job asked twice runs
-   once).
+   and a leg at a time side by side, the second stopped where its answer isn't read),
+   jumping ahead in doubling steps past sizes their budget leaves open, then (on the
+   height) back down the skipped sizes while they keep a plan; once sizes get dear, idle
+   workers run the size the search likely asks next (a job asked twice runs once).
 2. **The proof**: the best of those plans bounds every other. Every size and placement the
    objective needs (on the height: each whose least height, :meth:`StackProblem.size_lb`,
    isn't over the plan's; on "layers": the plan's size and every thinner one) and whose
@@ -70,8 +70,8 @@ PARTS = 4
 link's layers, its share of the job's budget."""
 
 DEAR = 200
-"""Nodes over which a stack size's short jobs count as dear (:meth:`_Drive._size`): the next
-size's then run a leg at a time beside the plain search, and the size after ahead."""
+"""Nodes over which a stack size's short jobs count as dear (:meth:`_Drive._size`): idle
+workers then run the size the search likely asks next."""
 
 MAX_WORKERS = 8
 """The most workers a plan forks by default: a module's jobs at once (B, a cradle, has about
@@ -266,12 +266,11 @@ class _Drive:
         modes = [m for m in self.modes if m not in self.gave_up]
         jobs = {m: self._quick(m, top) for m in modes}
         # (sizes get dear once the last one took more than a few hundred nodes or was left
-        # open: then a leg at a time beside the plain search, and the next size ahead;
-        # before, the plain search alone, a leg at a time only where it is left open)
+        # open: then the next size ahead too)
         last = [r for m in modes if (r := self.tried[m].get(top - 1)) is not None]
         dear = any(r["nodes"] > DEAR or not r["done"] for r in last)
         for js in jobs.values():
-            for job in js if dear else js[:1]:
+            for job in js:
                 self.runner.submit(job, front=True)
         if dear and ahead is not None and ahead != top and spec.min_top <= ahead <= spec.max_top:
             nxt = [job for m in modes if ahead not in self.tried[m]
