@@ -849,8 +849,9 @@ def test_verify_quick_prices_a_floor_from_the_catalog():
     # Since 2026-10-08 a sheet SendCutSend cuts is its cutting line, the material included
     # (bom.cut_estimate): the floor counts one part on each, its least charge (acrylic
     # $1.33, aluminium $2.20 until 2026-10-12; since, one part at one off: 3 mm acrylic
-    # $2.00, 5052 $3.30, 6061 $3.20); the epoxy $7.99 at J-B Weld
-    cut = 2.00 + 3.30 + 2 * 3.20
+    # $2.00, 5052 $3.30 (2.70 since the cut-length refit of 2026-10-14), 6061 $3.20); the
+    # epoxy $7.99 at J-B Weld
+    cut = 2.00 + 2.70 + 2 * 3.20
     assert total == pytest.approx(servo + 7.99 + cut, abs=0.01)
     assert unpriced == []
     assert priced[0].startswith("Feetech STS3215")
@@ -1188,8 +1189,9 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # (not the deck's inserts since round 10: a robot whose deck doesn't fit buys none)
     # (2026-10-08: the servos $20.00 at Seeed; a SendCutSend sheet is its cutting line, one
     # part's least charge in the floor ($2.20 in aluminium; since 2026-10-12 one part at one
-    # off: the 5052 frame $3.30, the 6061 crank $3.20), the plywood a $3.10 blank)
-    assert total == pytest.approx(40.0 + 3.10 + 7.99 + 3.30 + 3.20)
+    # off: the 5052 frame $3.30, $2.70 since 2026-10-14, the 6061 crank $3.20), the plywood
+    # a $3.10 blank)
+    assert total == pytest.approx(40.0 + 3.10 + 7.99 + 2.70 + 3.20)
     assert unpriced == []
     assert not any(line.startswith("Medium CA (cyanoacrylate) glue") for line in priced)
     assert sum(line.startswith("Titebond II") for line in priced) == 0
@@ -1203,8 +1205,9 @@ def test_the_cost_floor_counts_the_glue_and_the_nuts_and_says_what_a_build_adds(
     # pillars it was pinned to until 2026-10-07: 72.96, CA for the anchors, no crank blank
     # (2026-10-08: the servo $20.00, the epoxy $7.99, one part's cut on each SendCutSend
     # sheet: acrylic $1.33, the 5052 frame and the 6061 crank $2.20 each; since 2026-10-12
-    # one part at one off: acrylic $2.00, the frame $3.30, the crank $3.20)
-    lift_floor = 20.0 + 7.99 + 2.00 + 3.30 + 3.20
+    # one part at one off: acrylic $2.00, the frame $3.30 ($2.70 since 2026-10-14), the
+    # crank $3.20)
+    lift_floor = 20.0 + 7.99 + 2.00 + 2.70 + 3.20
     assert verify_module.cost_floor(lift)[0] == pytest.approx(lift_floor)
     row = next(r for r in api.verify(lift, "quick").rows
                if r.requirement == "budget.cost_floor_usd")

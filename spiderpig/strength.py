@@ -32,6 +32,13 @@ allows: the audit fails); under :data:`JAM_WARN` (2.0) jammed or :data:`WALK_WAR
 safety factor and fixes that clear it, checked by recomputing with the change: another
 pin or pillar construction, the shortest span the links could have, a lower servo
 torque limit.
+
+**The feet across the plane** (:func:`foot_stiffness`, a linkage that walks, 2026-10-14):
+a foot takes sideways loads (a turn, a slip, a push) the joints' in-plane loads don't
+see. Each foot's compliance across the plane (mm/N) over the gait and the worst link tilt
+and splay under a sideways foot load, from the 3D frame model the arm's precision uses
+(:func:`linkage.stiffness.across`: each link its sheet's section at its layer in the
+side's plan, each pin and pillar its own shaft between the layers): reported, no finding.
 """
 
 from __future__ import annotations
@@ -471,6 +478,130 @@ def centre_plate_row(meta: dict, config: BuildConfig, loads: dict) -> dict | Non
     return row
 
 
+# -- the feet across the plane ----------------------------------------------------------
+
+FOOT_POSES = 24
+"""Crank angles a revolution a foot's stiffness across the plane is sampled at."""
+
+
+def foot_load(config: BuildConfig, design) -> dict:
+    """The sideways load one foot takes (N) and what it comes from: the robot's weight
+    (:func:`walk.nominal_mass_breakdown`, within 2 % of the fabricated mass on the default
+    robots) shared evenly by the fewest feet that touch the ground over a straight walk
+    (:func:`walk.support`, both sides at one crank angle, the feet at their plan's z), times
+    the feet's friction on the floor (:attr:`sim.mjcf.SimParams.friction`, the sim's: TPU
+    socks on a hard floor). Past that the foot slips, so it is the most a foot takes across
+    the plane walking (a turn, a slip, a push against it)."""
+    from spiderpig import walk
+    from spiderpig.sim.mjcf import SimParams
+
+    legs = walk.side_legs(config, FOOT_POSES)
+    model = walk.walker(config, feet_z=walk.foot_z_planned(config, design), legs=legs,
+                        n=FOOT_POSES)
+    ts = walk.theta_grid(FOOT_POSES)
+    feet, _ = model.feet_at(ts, ts)
+    contacts = int(walk.support(feet, model.com).contacts.sum(axis=-1).min())
+    mu = SimParams().friction
+    weight = model.mass_g / 1000 * 9.81
+    return {"load_n": round(mu * weight / max(contacts, 1), 3), "mass_g": round(model.mass_g, 1),
+            "contacts": contacts, "friction": mu,
+            "basis": (f"the robot's {model.mass_g:.0f} g (nominal) on the fewest feet that "
+                      f"touch walking ({contacts}), times the floor's friction {mu:g}")}
+
+
+def _foot_rod(note: dict | None, d: float):
+    """A joint's shaft for the stiffness frame: its wobble note's section (the resolved
+    pin's or pillar's: :class:`construction.wobble.Section`), else a steel rod ``d``."""
+    from spiderpig.linkage.stiffness import Rod
+
+    s = (note or {}).get("section")
+    if not s:
+        return Rod(d)
+    inertia = float(s["z_bend_mm3"]) * float(s["bearing_d"]) / 2
+    return Rod.bending(inertia, float(s.get("modulus_mpa", Rod(d).modulus_mpa)))
+
+
+def foot_stiffness(config: BuildConfig, design, notes: dict | None = None) -> dict | None:
+    """Each foot's stiffness across the plane (module docstring), per leg of a side: the
+    leg's links at their layers in ``design``'s plan (each on its layer's floor, its own
+    sheet's thickness and modulus, ``2 link_radius`` wide), each pin and pillar its own shaft
+    (``notes``: the side's wobble notes, their sections; else a 4 mm pin, a 6 mm pillar),
+    the pillars held in both frame plates, the crank rigid (its webs and crankpins: the crank
+    sheet's plates on steel crankpins) and held by its drive. A foot's compliance (mm/N),
+    and at :func:`foot_load` its deflection and the worst link tilt and splay (deg), worst
+    over the revolution. ``None`` for a linkage that doesn't walk."""
+    lk = config.lk
+    if not lk.walks:
+        return None
+    from spiderpig.linkage.constraints import layout
+    from spiderpig.linkage.stiffness import Rod, Section, across, poses
+    from spiderpig.materials import sheet, sheet_of
+
+    pl, ctx = design.plan, design.ctx
+    n_legs = len(config.legs)
+    lay = layout(lk)
+    frame = set(lay.joints["torso"])
+    crank = set(lk.crank)
+    w = 2 * config.params.link_radius
+    crank_sheet = sheet(config.crank_sheet)
+    load = foot_load(config, design)
+    notes = notes or {}
+
+    def note_of(j: str, body: str) -> dict | None:
+        """The wobble note of joint ``j`` whose links hold ``body`` (a pillar two legs
+        share is one note)."""
+        for name, note in notes.items():
+            if _stem(name) == j and body in {e["link"] for e in note.get("links", [])}:
+                return note
+        return None
+
+    feet: list[dict] = []
+    for k in range(n_legs):
+        name = {b: b if n_legs == 1 else f"{b}_leg{k}" for b in lk.links}
+        z, sections = {}, {}
+        for b, nb in name.items():
+            t = ctx.sheet_t("link", nb)
+            z[b] = pl.z(pl.layers[nb])[0] + t / 2         # links sit on their layer's floor
+            sections[b] = Section(w, t, sheet(sheet_of(config, "link", nb)).modulus_gpa * 1000)
+        pins = crank - {lk.crank[0]}
+        riders = [b for b, (js, _) in lk.links.items() if pins & set(js)]
+        z["conn"] = sum(z[b] for b in riders) / len(riders) if riders else 0.0
+        sections["conn"] = Section(2 * config.params.web_radius, crank_sheet.thickness,
+                                   crank_sheet.modulus_gpa * 1000)
+        rods = {}
+        for j in lay.axles:
+            body = next((nb for b, nb in name.items() if j in lk.links[b][0]), "")
+            rods[j] = (Rod(config.params.crankpin_d) if j in crank
+                       else _foot_rod(note_of(j, body), 6.0 if j in frame else 4.0))
+        res = across(lk, config.values, sections[next(iter(lk.links))],
+                     ins=poses(lk, FOOT_POSES), z=z, rods=rods,
+                     frame_z=(pl.z(0)[1], pl.z(pl.top)[0]), sections=sections)
+        for a in res:
+            f = load["load_n"]
+            feet.append({
+                "foot": f"{name[a.body]}.{a.point}", "leg": k,
+                "mm_per_n": round(a.mm_per_n, 4), "at_deg": round(math.degrees(a.at), 1),
+                "deflection_mm": round(a.mm_per_n * f, 3),
+                "tilt_deg": round(a.tilt_deg_per_n * f, 3),
+                "tilt_link": name.get(a.tilt_link, a.tilt_link),
+                "splay_deg": round(a.splay_deg_per_n * f, 3),
+                "splay_joint": f"{a.splay_joint}{'' if n_legs == 1 else f'_leg{k}'}"})
+    if not feet:
+        return None
+    soft = max(feet, key=lambda r: r["mm_per_n"])
+    tilt = max(feet, key=lambda r: r["tilt_deg"])
+    splay = max(feet, key=lambda r: r["splay_deg"])
+    return {**load, "feet": feet,
+            "worst": {"mm_per_n": soft["mm_per_n"], "foot": soft["foot"],
+                      "deflection_mm": soft["deflection_mm"],
+                      "tilt_deg": tilt["tilt_deg"], "tilt_link": tilt["tilt_link"],
+                      "splay_deg": splay["splay_deg"], "splay_joint": splay["splay_joint"]},
+            "note": ("linkage.stiffness.across: each link a beam of its sheet at its layer, "
+                     "the pins and pillars their shafts, the crank rigid and driven, the "
+                     "frame plates rigid; the elastic part only (the joints' play, the wobble "
+                     "check's tilt, comes on top); worst over the revolution, swing included")}
+
+
 # -- findings and fixes -----------------------------------------------------------------
 
 
@@ -656,8 +787,10 @@ def findings(rows: list[dict], notes: dict, loads: dict, config: BuildConfig) ->
     return out
 
 
-def check(notes: dict, meta: dict, config: BuildConfig, loads: dict) -> dict:
-    """Every pivot's and the crank's strength rows, the worst per kind and the findings."""
+def check(notes: dict, meta: dict, config: BuildConfig, loads: dict, design=None) -> dict:
+    """Every pivot's and the crank's strength rows, the worst per kind and the findings;
+    with the side's ``design`` (its plan), a walker's feet across the plane
+    (:func:`foot_stiffness`, ``feet``)."""
     rows = [joint_strength(name, note, loads) for name, note in sorted(notes.items())
             if loads.get("walk_n") or loads.get("jam_n") or loads.get("joints")]
     crank = crank_strength(meta, config, loads)
@@ -676,5 +809,8 @@ def check(notes: dict, meta: dict, config: BuildConfig, loads: dict) -> dict:
                 w = min(have, key=lambda r: r[tag]["safety"])
                 worst.setdefault(kind, {})[tag] = {"safety": w[tag]["safety"],
                                                    "joint": w["joint"]}
-    return {"loads": {k: v for k, v in loads.items() if k != "joints"},
-            "rows": rows, "worst": worst, "findings": findings(rows, notes, loads, config)}
+    out = {"loads": {k: v for k, v in loads.items() if k != "joints"},
+           "rows": rows, "worst": worst, "findings": findings(rows, notes, loads, config)}
+    if design is not None and config.lk.walks:
+        out["feet"] = foot_stiffness(config, design, notes)
+    return out

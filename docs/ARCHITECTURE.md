@@ -1123,7 +1123,13 @@ hole is its pivot's bearing seat where the link holds one (`strength.link_hole`)
 cranked mechanism's loads are what it drives: not rated. The audit also reports each link's tilt out of plane
 (`construction/wobble.py`): free (bore clearance over bearing length) and held by the faces
 beside it; a link beside a clearance gap bears on what the column holds there (an end's
-head or printed spacer, a gap ring).
+head or printed spacer, a gap ring). For a linkage that walks, it reports the feet across
+the plane (`strength.foot_stiffness`, through the arm's frame model,
+`linkage.stiffness.across`: each link its sheet's section at its layer, each pin and pillar
+its own shaft from its wobble note, the crank rigid and driven): each foot's compliance
+across the plane over the revolution and, under a sideways foot load (`strength.foot_load`:
+the weight on the fewest feet touching, times the sim's floor friction), its deflection and
+the worst link tilt and splay. Reported, no limit; the joints' play comes on top.
 
 **The bolt crank** (`construction/crank/`: `BoltCrank` in `bolt.py`, its fits in `hex.py`
 and `web.py`, its ratings in `capacity.py`, its parts in `plates.py`'s `_WebPlates`). It is
@@ -1513,8 +1519,9 @@ ordered one line per thickness (`bom.split_shims`, `hardware/shims.py`), the cla
 0.5 mm ones bought as stock washers (`bom.SHIM_AS`: DIN 125 for M3, modelled at their 7 mm,
 `bom.shim_od`; DIN 433 for M4). Purchases are rounded up to whole packs of the preferred
 offer. A sheet a service cuts is no purchase (`bom.cut_by`) but a cutting line per service
-and sheet, the material included (`bom.CutRow`: an area estimate, `bom.cut_estimate`,
-fitted to SendCutSend's quotes: per part a fixed charge plus a rate per cm² at one off,
+and sheet, the material included (`bom.CutRow`, `bom.cut_estimate`, fitted to
+SendCutSend's quotes: per part a fixed charge, a rate per cm² and, in aluminium, one per cm
+of cut length at one off, the cut every contour of the part's face, `bom.cut_length_cm`;
 times its quantity break, `bom.qty_factor`, the quantity a file's, `bom.same_files`); the
 total is the purchases and the cutting. It leaves
 out rows with no price, and the BOM says so;
