@@ -38,7 +38,8 @@ interface PourMotion extends CradleMotion {
   riser_mm?: number;
   /** the room under the mouth: ``[[height_over_table_mm, max_radius_mm], ...]`` */
   room?: [number, number][];
-  /** the room once the cradle is past -20° (the pour), the same form */
+  /** the room once the cradle is past -20° (the pour), the same form: not offered (one jack
+   * height for the whole swing, never raised mid-pour) */
   room_pouring?: [number, number][];
 }
 
@@ -362,11 +363,6 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
     if (motion?.room?.length) return bestRiser(vessel.profile, motion.room, RISER_MAX) ?? 0;
     return Math.min(RISER_MAX, Math.max(0, mouthZ - RIM_UNDER_MOUTH - heightOf(vessel)));
   }
-  /** How high the jack may go once the cradle is past -20° (the pour), if higher. */
-  function pourRiser(): number | null {
-    const room = motion?.room_pouring;
-    return room?.length ? bestRiser(vessel.profile, room, RISER_MAX) : null;
-  }
   function setRiser(mm: number): void {
     riserMm = Math.round(Math.min(RISER_MAX, Math.max(0, mm)));
     riserIn.value = String(riserMm);
@@ -445,12 +441,11 @@ export function createPour(stage: Stage, onChange: () => void): Pour {
       badge.className = `badge ${fit.fits ? 'ok' : 'bad'}`;
       badge.textContent = fit.fits ? 'fits the whole swing'
         : `hit at rest (${(-fit.margin).toFixed(0)} mm at ${fit.at.toFixed(0)} mm)`;
-      const up = pourRiser();
-      if (up !== null && up > h0 + 5) {
-        const gap = mouthZ - (up + heightOf(vessel));
-        facts.appendChild(el('div', 'note', `Pouring closer: once the cradle is past −20°, `
-          + `raise the jack to ${up} mm (the rim ${gap.toFixed(0)} mm under the mouth); lower it `
-          + `before you crank back to rest, where the cradle box hangs over it.`));
+      // one jack height for the whole swing: raised mid-pour, the worm would drive the
+      // cradle box down onto the glass on the way back to rest (round 1's stand review)
+      if (fit.fits && h0 > 0) {
+        facts.appendChild(el('div', 'note', `Set the jack to ${h0.toFixed(0)} mm at rest and `
+          + `leave it there until the bottle is back at rest: never raise it during a pour.`));
       }
     } else {
       badge.hidden = true;
