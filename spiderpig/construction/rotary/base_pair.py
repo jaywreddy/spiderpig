@@ -471,7 +471,10 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
                  [Rect(e, (SCREW_HOLE + 2.0, SCREW_HOLE), phi_s) for e in e_holes])   # slots:
     #                                                 the board centred on the flag at assembly
     top_cuts += [Rect(xy, (SCREW_HOLE + slot, SCREW_HOLE), 0.0) for xy in mscrews]
-    top_cuts.append(Rect(tuple(m), (motor.boss_d + 0.4 + slot, motor.boss_d + 0.4), 0.0))
+    boss = motor.boss_d + 0.4                       # its round boss, slid along the slots:
+    top_cuts += [Cut((m[0] - slot / 2, 0.0), boss), Cut((m[0] + slot / 2, 0.0), boss),
+                 Rect(tuple(m), (slot, boss), 0.0)]  # a stadium (a rectangle left 2.6 mm
+    #                                                 of web to the screws' slots, 2026-10-14)
     add("base_top", cut_holes(outline(h["bt_bot"], h["bt_top"]), top_cuts, h["bt_bot"],
                               h["bt_top"]), fab="laser", color=PLATE_COLOR, sheet=TOP_SHEET)
     L = sum(tp.columns)

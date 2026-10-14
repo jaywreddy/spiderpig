@@ -1049,3 +1049,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Bugs:** `verify.cost_floor` priced a servo and a crank on an arm and raised `ConstructionError`. It now prices the arm's steppers.
 - **Hull checks:** `shapes.hull` refuses clockwise, nested or coincident circles.
 - **Catalog:** the unused `angle_bracket_20` and `rubber_feet_12mm` are gone.
+- **The approved arm's cut rules (the gate's first audit of it):**
+  - `b4` in 1/8 in 5052 kept 2.5 mm round its MR84 seats, under SendCutSend's 1 x thickness. A metal link now grows a boss round each bearing seat its width can't hold (`plates.seat_bosses`, as `rider_bosses` does round a crank bore): 3.27 mm, a warning only.
+  - The base's top plate cut the yaw motor's boss clearance as a rectangle, leaving 2.6 mm to the screws' slots. It is now a stadium.
+  - The audit is OK, with warnings only.
