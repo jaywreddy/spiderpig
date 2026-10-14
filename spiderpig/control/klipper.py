@@ -7,8 +7,8 @@ kinematics. A TMC2209 per motor on the board's UART (its ``uart_address``), its 
 share of the motor's rating; the vacuum pump and its release valve on two outputs.
 
 **Homing** follows each joint's sensor (:func:`.homing.method`): a switch is the joint's
-``endstop_pin`` on its port's endstop input; a **stall** (an ``angle_sensor`` ``stall``,
-the turntable preset's ``hard_stop``) is Klipper's sensorless homing: ``endstop_pin:
+``endstop_pin`` on its port's endstop input; a **stall** (a sensor homing on its driver's
+stall, a planar input's or the turntable's) is Klipper's sensorless homing: ``endstop_pin:
 tmc2209_<joint>:virtual_endstop`` (Klipper names the driver's chip ``tmc2209_`` and the
 section's last word), the driver's ``diag_pin`` (the port's DIAG jumper fitted),
 ``driver_SGTHRS`` a starting threshold to tune, and the host lowering the driver's current
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import math
 
-from spiderpig.control.homing import YAW_SENSOR, method
+from spiderpig.control.homing import method, yaw_sensor
 from spiderpig.control.mapping import Axis
 
 RUN_CURRENT = 0.7       # a TMC2209's run current as a share of the motor's rated current
@@ -56,7 +56,7 @@ def printer_cfg(axes: dict[str, Axis], name: str = "arm", controller=None,
 
     ctl = controllers.get(controller) if isinstance(controller, str) and controller \
         else controller or None
-    sensors = {"q1": YAW_SENSOR} if sensors is None else sensors
+    sensors = {"q1": yaw_sensor()} if sensors is None else sensors
     lines = [f"# {name}: written by spiderpig control klipper (spiderpig.control.klipper)."]
     if ctl is None:
         lines += ["# Fill every <PLACEHOLDER> from your board's pinout before loading it.", "",

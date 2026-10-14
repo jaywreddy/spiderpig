@@ -38,10 +38,11 @@ plates"). Bottom up, in the turret's frame (:class:`.turret.TurretPlan`):
   washers and the pulley, nuts under the pulley; an M4 screw and washer in the shaft's
   tapped end clamp the stack down on the over collar (a collar pushed down by hand clamps
   too lightly to hold the arm's moment);
-* **the hard stop** (the sensor ``hard_stop``): an M3 screw hanging from the turntable
-  stalls the yaw's driver on a post on the top plate just past the yaw's lower end
-  (:func:`stop_radius`): homing turns down until it stalls (the camera then fixes the
-  zero: :mod:`control.vision`);
+* **the hard stop** (the turret's construction of the homing sensor ``stall``,
+  :mod:`actuators.sensors`): an M3 screw hanging from the turntable stalls the yaw's
+  driver on a post on the top plate just past the yaw's lower end (:func:`stop_radius`):
+  homing turns down until it stalls (the camera then fixes the zero:
+  :mod:`control.vision`);
 * **the feet**: the frame plates' feet held to the turntable by stock steel angle brackets
   (:func:`stock_bracket`).
 
@@ -180,7 +181,7 @@ def heights(ctx: Context, support, tr, motor) -> tuple[dict[str, float], tuple[f
 
 
 def stop_radius(tr, c: float, range_deg: tuple[float, float]) -> float:
-    """A hard stop's radius (the sensor ``hard_stop``): past the large pulley's flange, and
+    """A hard stop's radius (the turntable's ``stall`` homing): past the large pulley's flange, and
     where both the post (fixed past the range's lower end) and the stop screw's sweep
     (under the turntable, over the range) stay clear of the belt's runs to the motor behind
     (straight from the large pulley's pitch circle to the small one's)."""

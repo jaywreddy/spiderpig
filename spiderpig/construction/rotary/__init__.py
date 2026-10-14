@@ -10,9 +10,12 @@ A rotary joint is four parts, each from its registry:
   belt (:data:`construction.transmissions.TRANSMISSIONS` ``belt``) on a 60-tooth large
   pulley (3.75:1, a stock 158 mm loop);
 * the **actuator** (:data:`spiderpig.actuators.STEPPERS`);
-* the **sensor** (:data:`SENSORS`): ``hard_stop``, no switch: a screw under the turntable
-  stalls the driver on a post on the base past the range's end, and the camera sets the
-  fine zero (:mod:`control.homing`).
+* the **homing sensor**, from the one registry every joint's homing uses
+  (:data:`actuators.sensors.SENSORS`): ``stall``, no switch: the driver stalls on a hard
+  stop past the range's end, its repeatability the motor's steps through the yaw's own
+  reduction, and the camera sets the fine zero (:mod:`control.homing`). The turret builds
+  the stop (a screw under the turntable, a post on the base: :mod:`.base_pair`), so the
+  turntable takes a stall's sensor and no other (:meth:`RotaryPreset.check`).
 
 A **preset** (:data:`PRESETS`, the role ``turntable``) names one of each, and the joint's
 range: ``mt4_compact``, the one the user approved (2026-10-14; the others were pruned
@@ -89,22 +92,6 @@ SUPPORTS: dict[str, Support] = {s.key: s for s in (
 
 
 @dataclass(frozen=True)
-class Sensor:
-    """A homing sensor: what the fixed side and the turning one do."""
-
-    key: str
-    label: str
-    bom_key: str
-    repeat_mm: float             # its repeatability at its radius (mm)
-
-
-SENSORS: dict[str, Sensor] = {s.key: s for s in (
-    Sensor("hard_stop", "no sensor: an M3 screw under the turntable stalls the driver "
-           "(TMC2209 StallGuard) on a post on the base past the range's end", "", 0.75),
-)}
-
-
-@dataclass(frozen=True)
 class RotaryPreset:
     """A rotary joint's four parts and its range (module docstring)."""
 
@@ -113,16 +100,29 @@ class RotaryPreset:
     support: str
     transmission: str
     actuator: str
-    sensor: str
+    sensor: str                  # its homing (:data:`actuators.sensors.SENSORS`)
     range_deg: tuple[float, float]
 
     @property
-    def parts(self) -> tuple[Support, Any, Any, Sensor]:
+    def parts(self) -> tuple[Support, Any, Any, Any]:
         """``(support, transmission, motor, sensor)``."""
         from spiderpig import actuators
+        from spiderpig.actuators import sensors
 
         return (SUPPORTS[self.support], yaw_transmission(self.transmission),
-                actuators.get(self.actuator), SENSORS[self.sensor])
+                actuators.get(self.actuator), sensors.get(self.sensor))
+
+    def check(self) -> None:
+        """Its sensor can home the yaw on this turret: not one read against gravity (no use
+        about a vertical axis), and one homing on the hard stop the turret builds (a switch
+        has no mount on it)."""
+        sensor = self.parts[3]
+        if sensor.gravity:
+            raise ValueError(f"turntable {self.key}: {sensor.key} reads its angle against "
+                             "gravity, no use about the yaw's vertical axis")
+        if not sensor.needs_stop:
+            raise ValueError(f"turntable {self.key}: the turret builds a hard stop only (a "
+                             f"stall's), no mount for {sensor.key}")
 
     def error_terms(self, spacing: float, drive: ErrorTerms) -> ErrorTerms:
         """The support's terms with the transmission's (``drive``, at its geometry) and the
@@ -149,7 +149,7 @@ PRESETS: dict[str, RotaryPreset] = {p.key: p for p in (
                  "range's end (the camera then sets the zero), the motor 38.5 mm from the "
                  "axis, the base a tight round core under a turntable as wide, a lobe out "
                  "the back round the motor (the user's 'an elegant machine', 2026-10-14)",
-                 "base_pair", "belt_60", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0)),
+                 "base_pair", "belt_60", "nema17_17hs4401_x64", "stall", (-120.0, 120.0)),
 )}
 DEFAULT = "mt4_compact"
 """The user's approved turntable (2026-10-14): the only one kept."""

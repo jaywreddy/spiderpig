@@ -166,11 +166,12 @@ register(Role("transmission", "transmission", "spiderpig.construction:TRANSMISSI
 register(Role("actuator", "actuator", "spiderpig.actuators:STEPPERS", ("arm",),
               default="nema17_17hs4401", per="drive",
               help="each input's stepper motor"))
-register(Role("angle_sensor", "joint angle sensor", "spiderpig.actuators.sensors:ANGLE_SENSORS",
+register(Role("angle_sensor", "joint angle sensor", "spiderpig.actuators.sensors:SENSORS",
               ("arm",), default="gauge", per="drive",
-              help="how each planar input finds its zero at homing: a digital angle gauge "
-                   "by hand, an optical endstop and a flag on the link (the MT4's), or an "
-                   "SCL3300 inclinometer on the link (0.05 / 0.03 / 0.02 deg)"))
+              help="how each planar input finds its zero at homing (the one homing registry, "
+                   "the turntable's too): a digital angle gauge by hand, an optical endstop "
+                   "and a flag on the link (the MT4's), its driver's stall on a hard stop, or "
+                   "an SCL3300 inclinometer on the link"))
 register(Role("homing_reference", "homing reference",
               "spiderpig.actuators.sensors:REFERENCES", ("arm",), default="switches",
               robot=True,

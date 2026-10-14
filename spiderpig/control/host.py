@@ -23,8 +23,8 @@ place approach the hover pose above the slide one-sidedly and then descend strai
 (the turntable still: its backlash stays taken up; the arm's joints seated by gravity).
 
 **Homing** (:func:`home_gcode`) follows each joint's sensor (:func:`.homing.method`). A
-stall joint (the turntable's ``hard_stop``, a planar input's ``stall``) lowers its
-driver's current (:data:`.klipper.HOME_CURRENT`), turns toward its range's lower end no
+stall joint (a sensor homing on its driver's stall: the turntable's, a planar input's)
+lowers its driver's current (:data:`.klipper.HOME_CURRENT`), turns toward its range's lower end no
 farther than the whole range and the stop past it, at half a motor turn a second
 (Klipper's sensorless homing guide: StallGuard wants speed), until the driver stalls on
 the hard stop (its ``virtual_endstop``), sets that as the stop's angle
@@ -130,7 +130,7 @@ def home_gcode(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> 
     (:func:`homing.sensors_of`; by default the turntable's hard stop alone). A joint with
     no homing move here (a gauge, an inclinometer, a planar switch: :mod:`.homing`) has
     none."""
-    sensors = {"q1": homing.YAW_SENSOR} if sensors is None else sensors
+    sensors = {"q1": homing.yaw_sensor()} if sensors is None else sensors
     out: list[str] = []
     for n in sorted(axes, key=lambda n: n != "q1"):
         how = homing.method(sensors.get(n, ""))
@@ -141,7 +141,7 @@ def home_gcode(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> 
 
 def homed(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> dict[str, float]:
     """Where :func:`home_gcode` leaves the joints it homes (rad)."""
-    sensors = {"q1": homing.YAW_SENSOR} if sensors is None else sensors
+    sensors = {"q1": homing.yaw_sensor()} if sensors is None else sensors
     out = {}
     for n, ax in axes.items():
         how = homing.method(sensors.get(n, ""))

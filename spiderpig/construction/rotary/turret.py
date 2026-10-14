@@ -182,6 +182,10 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None) -> TurretPlan:
     ctx: Context = design.ctx
     plan = design.plan
     support, tr, motor, _sensor = preset.parts
+    try:
+        preset.check()                  # its homing: a stall on the stop built here
+    except ValueError as e:
+        raise ConstructionError(str(e)) from None
     pts = ctx.topo.geometry.points
     o = np.asarray(pts["O"] if "O" in pts else pts[ctx.topo.axes_of("frame")[0].name],
                    dtype=float).reshape(-1, 2)[0]

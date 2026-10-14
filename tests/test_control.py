@@ -279,6 +279,26 @@ def test_an_endstop_homes_a_joint_the_mt4_way():
     assert ends.bom_key == "optical_endstop"
 
 
+@pytest.mark.no_fabricate
+def test_each_sensor_declares_how_it_homes():
+    """The homing method is the sensor's own (:attr:`HomingSensor.method`), never its name:
+    a sensor registered under any key homes the way it declares."""
+    from dataclasses import replace
+
+    from spiderpig.actuators import sensors
+
+    assert {k: s.method for k, s in sensors.SENSORS.items()} == {
+        "gauge": "", "endstop": "endstop", "endstop_ee_sx67": "endstop", "stall": "stall",
+        "scl3300": ""}
+    assert [homing.method(k) for k in ("stall", "endstop_ee_sx67", "gauge", "", "nope")] == [
+        "stall", "endstop", "", "", ""]
+    with pytest.raises(ValueError, match="method"):
+        replace(sensors.get("stall"), method="magic")
+    with pytest.raises(ValueError, match="one of them"):
+        replace(sensors.get("stall"), repeat_deg=0.5)
+    assert homing.yaw_sensor() == "stall"
+
+
 def test_a_camera_finds_a_dot_and_the_sightings_fix_the_zeros():
     """A synthetic dot found to a hundredth of a pixel; two sightings of a palletizer whose
     zeros are off by known angles give those angles back."""
@@ -358,7 +378,7 @@ def test_a_stall_arms_klipper_config_homes_on_its_drivers_with_every_pin_filled(
           "q1": Axis("q1", 5.0, 1.8, 64, 1, 0.0, "nema17_17hs4401_x64", rng)}
     cfg = BuildConfig(linkage="palletizer", roles=(("angle_sensor", "stall"),))
     sensors = homing.sensors_of(cfg, ax)
-    assert sensors == {"q1": "hard_stop", "q2": "stall", "q3": "stall"}
+    assert sensors == {"q1": "stall", "q2": "stall", "q3": "stall"}     # one registry
     text = klipper.printer_cfg(ax, "palletizer", cfg.role("controller"), sensors)
     assert "<" not in text                                  # no placeholder left
     assert "serial: /dev/ttyAMA0" in text
