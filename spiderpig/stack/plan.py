@@ -35,7 +35,8 @@ class StackSpec:
 
     ``objective`` (:meth:`StackProblem.key`): "height", the lowest stack (frame plate to
     frame plate), then the crank route's cost, what the stock parts cost and the parts
-    printed; "layers", the fewest layers, then the route's cost, then the height (a
+    printed; "layers", the fewest layers, then the route's cost, the search stopping at
+    the first plan with no route cost (equal ones then rank by the height and the rest; a
     walker's: ``config.plan_objective``). The search runs as jobs (:mod:`stack.drive`): a
     stack size and a head placement each, ``workers`` at once in forked processes
     (:mod:`stack_pool`; ``None``: ``SPIDERPIG_PLAN_WORKERS``, else up to

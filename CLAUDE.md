@@ -240,7 +240,8 @@ a **linkage**, a module in `spiderpig/linkages/` (`tests/test_linkage.py` checks
 
 `stack.StackProblem.solve()` finds the best plan under `StackProblem.key`: the lowest stack in
 mm, then the crank route's cost, the stock parts' cost, the parts printed (a walker's
-objective is "layers": fewest layers, then the route, then the height; `config.plan_objective`).
+objective is "layers": fewest layers, then the route, ties to the lower plan found;
+`config.plan_objective`).
 Static facts first (keep-outs, the crank's facts); then jobs (`stack/drive.py`), one stack size
 and one head placement each (both placements, side by side), in forked workers
 (`stack_pool.py`) or here with the same answer: a short job per size until one plans, then the

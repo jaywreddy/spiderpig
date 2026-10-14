@@ -883,9 +883,11 @@ order:
 
 and then a fixed tie-break (the head placement's rank, the size, the layers, the route), so
 equal plans tie the same way wherever they are found. A walker plans on the objective
-`"layers"` instead (`config.plan_objective`): the fewest layers, then the route's cost, then
-the height. On the height a walker's crank router can't prune on its route's cost, and the
-taller sizes, which may be lower, have to be searched too: the Strider double's proof
+`"layers"` instead (`config.plan_objective`): the fewest layers, then the route's cost; plans
+equal in those rank by the height and the rest, but a size's search stops at its first plan
+with no route cost, as it always did, so the height there is the first such plan's. On the
+height a walker's crank router can't prune on its route's cost, and the taller sizes, which
+may be lower, have to be searched too: the Strider double's proof
 doesn't end in minutes (the 2026-10-14 entry of `docs/agentlib/DECISIONS.md` has the numbers).
 
 **A sound search.** The search may refuse a partial layering only on a bound valid for every

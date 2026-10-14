@@ -213,7 +213,9 @@ class StackProblem:
         (this problem's rank among the searched), the stack size, the layers and the
         route. ``spec.objective`` "layers" (the proxy the planner minimised before
         2026-10-14, kept for designs whose crank router prunes on its cost: the walkers):
-        the fewest layers, then the route's cost, then the height and the rest."""
+        the fewest layers, then the route's cost; plans equal in those rank by the height
+        and the rest, but the search stops at the first plan with no route cost (it doesn't
+        search such a size on for a lower one: :class:`_Search`)."""
         tie = (self.heads_rank, plan.top, tuple(sorted(plan.layers.items())),
                repr(sorted((k, repr(v)) for k, v in plan.choices.items())))
         if self.spec.objective == "layers":
