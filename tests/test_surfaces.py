@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 
 from spiderpig import api
+from spiderpig.api import building as api_building
 from spiderpig.config import BuildConfig
 from spiderpig.store import Store
 from tests import _api
@@ -218,7 +219,7 @@ def test_the_cli_lists_candidates_and_says_what_each_command_does(capsys):
 def test_the_export_writes_the_guide_the_control_files_and_the_order(tmp_path, monkeypatch):
     from spiderpig.guide import make
 
-    monkeypatch.setattr(api.building, "fabricate_at", _api.fabricate_from_cache)
+    monkeypatch.setattr(api_building, "fabricate_at", _api.fabricate_from_cache)
     seen: dict = {}
 
     def guide(config, store, out, **kw):          # (the guide's own pipeline: test_guide.py)

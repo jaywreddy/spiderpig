@@ -243,7 +243,9 @@ def test_an_arm_traces_a_straight_path_by_its_inverse_kinematics():
     tasks._judge(c, task, {})
     checks = {k.requirement: k for k in c.checks}
     assert checks["path_mm"].ok
-    assert checks["straightness_mm"].value >= 0.2           # the path's own band in it
+    band = checks["straightness_mm"].value
+    assert band is not None
+    assert band >= 0.2                                      # the path's own band in it
     assert checks["straightness_mm"].ok is None             # a bound
     tasks._precision(c, {"metrics": {"repeatability_mm": 0.1, "rp_mm": 0.03}}, "x")
     tasks._judge(c, task, {})

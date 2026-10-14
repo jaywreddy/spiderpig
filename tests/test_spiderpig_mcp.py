@@ -785,7 +785,7 @@ def test_candidates_answers_a_task_with_specs_and_refuses_a_bad_one(fresh):
     assert doc["do"] == "place"
     assert {c["kind"] for c in doc["candidates"]} == {"arm"}
     first = doc["candidates"][0]
-    assert first["spec"]["precision"]["repeatability_mm"] == {"max": 0.1}   # every kind's
+    assert first["spec"]["precision"]["rp_mm"] == {"max": 0.1}     # a positioner: ISO RP
     assert {k["requirement"] for k in first["checks"]} >= {"repeatability_mm", "area_mm"}
     assert any("feet" in x["why"] for x in doc["excluded"])
     assert call(server, "resolve", spec=first["spec"])["ok"]

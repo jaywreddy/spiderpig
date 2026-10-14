@@ -7,7 +7,7 @@
     "reportGeneralTypeIssues": 1
   },
   "tests": {
-    "errors": 735,
+    "errors": 734,
     "by_rule": {
       "reportOptionalMemberAccess": 265,
       "reportArgumentType": 174,
@@ -19,8 +19,8 @@
       "reportPrivateImportUsage": 5,
       "reportIndexIssue": 4,
       "reportReturnType": 4,
-      "reportOptionalOperand": 3,
-      "reportPossiblyUnboundVariable": 3
+      "reportPossiblyUnboundVariable": 3,
+      "reportOptionalOperand": 2
     }
   }
 }
