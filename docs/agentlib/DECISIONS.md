@@ -1107,3 +1107,63 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
   base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
   DESIGNS.md regenerated from it.
+
+### 2026-10-14: walker models from the arm's: the cut length priced, the feet across the plane (wave 1)
+
+- **The cut length in the cutting cost** (`bom.cut_estimate`, `bom.cut_length_cm`,
+  `sheet_catalog.CUT_RATES`): the area model priced the Strider's hole-dense aluminium
+  8.9 % under SendCutSend's live quote (61.69 against 67.70). Each part's cut length (every
+  contour of its face, holes included: the DXF's contours) is now a term, refitted by
+  least squares of log(estimate / quote) on the 42 one-off prices recorded on 2026-10-08
+  (the Strider double, 21) and 2026-10-12 (the arm, 16 plus 5 alternatives), each quoted
+  DXF measured again. No new quotes; more would settle 6061.
+  - **5052** (14 prices): 0.076 / cm² + 0.104 / cm of cut, no fixed charge, at least 2.70
+    (just under the cheapest aluminium part quoted; never seen as a floor). Per part rms
+    24 % -> 12 %, worst +45 % -> +26 %; each part left out in turn 27 % -> 14 %.
+  - **6061** (8 prices): unchanged (3.20 + 0.138 / cm²). A cut rate fits its prices a
+    little better (rms 20 -> 15 %) but predicts a part left out worse (22 -> 35 %): the
+    arm's b4 and b1 pull it opposite ways; their bounding rectangles tell them apart (the
+    next term, on more prices).
+  - **Acrylic**: unchanged, no cut term: every 3 mm part up to 36 cm of cut quoted the
+    2.00 floor, which bounds any cut rate under 0.002 / cm.
+  - **Against the quotes:** the Strider's aluminium 67.70 at 68.98 (+1.9 %, was -8.9 %); its
+    acrylic 49.44 at 48.72 (unchanged); the arm 163.01 at 161.58 (-0.9 %, was +0.5 %; its
+    5052 -0.6 %, was +1.4 %).
+- **One file per shape** (`bom.same_files`): rows of one area to 1e-3 were priced as one
+  file, so the Strider's b4 and b8 (8.66 and 8.65 cm²) and b3 / b7 shared a quantity break
+  SendCutSend doesn't give them (it quoted them as separate files). Now area and cut length
+  to 1e-5. This is most of the acrylic's change below.
+- **The BOMs** (cutting, then the total; the gate `walker-f7036a7` against `platform-77c117c`):
+  - `strider_double`: cutting $113.92 -> $124.58, total $418.03 -> $428.69. 5052 0.080 in
+    26.04 -> 35.54 (the torso and frame plates), 0.063 in 23.74 -> 21.54, acrylic 44.24 ->
+    47.60.
+  - `strider_quad`: $163.55 -> $175.80; total $526.86 -> $539.11.
+  - `klann_lego_quad`: $164.51 -> $174.65; total $434.89 -> $445.03.
+  - `klann_quad`: $160.22 -> $178.28; total $522.57 -> $540.63.
+  - `hoecken_pantograph`: $32.61 -> $33.90; total $141.89 -> $143.18.
+  - `dwell_rocker`: $31.54 -> $36.49; total $130.42 -> $135.37.
+  - `palletizer_turret`: $83.40 -> $87.43; total $501.51 -> $505.54.
+  - `palletizer_reach`: $106.10 -> $109.21; total $618.89 -> $622.00.
+  - verify's cost floor counts a 5052 part at 2.70 (was 3.30).
+- **The feet across the plane** (`strength.foot_stiffness`, `linkage.stiffness.across`):
+  a walker's feet take sideways loads (a turn, a slip) that nothing reported. The arm's 3D
+  frame model now serves walkers by capability (`stiffness.outputs`: a ranged linkage's
+  tool point, a walker's feet; `stiffness.drives`: the inputs, or a crank held at its
+  centre; a segment split at a joint partway along it, Strider's J1 on b2). The arm's
+  numbers are unchanged, bit for bit.
+  - **The model:** each leg's links at their plan's layers, their own sheets' sections; each
+    pin and pillar its own shaft (the wobble note's section, with its modulus: the Al
+    standoff 69 GPa, `wobble.Section.modulus_mpa`); the crank rigid and driven; the frame
+    plates rigid.
+  - **The sideways load** (`strength.foot_load`): the robot's nominal weight on the fewest
+    feet touching over a straight walk (`walk.support`), times the sim's floor friction
+    (0.65): the most a foot takes before it slips.
+  - **Reported in the audit:** each foot's compliance across the plane (mm/N, worst over
+    the revolution), and at that load its deflection and the worst link tilt and splay.
+    This is the elastic part; the joints' play (the wobble check) comes on top. No limit.
+  - **Numbers:** the Strider double 2.05 mm/N, 2.35 mm at 1.15 N (719 g on 4 feet), b4
+    tilting 1.95°. klann_lego quad 0.48 mm/N (its 6061 foot links), 0.70 mm at 1.47 N,
+    0.37°. The demo Klann quad 9.6 mm/N, 15 mm at 1.59 N, 4.5° (its long acrylic b4).
+- **Open:** a bounding-rectangle (material) term for 6061 and 5.4 mm acrylic, on more
+  quotes. The feet's numbers count the swing too (the worst over the revolution), and a
+  joint held only by its play is not modelled (the wobble's separate row).

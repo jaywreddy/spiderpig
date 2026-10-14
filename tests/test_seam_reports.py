@@ -1036,7 +1036,7 @@ def _fake_audit(monkeypatch, *, dxf_error=None, bom_error=None, deck=None):
     st = {"loads": loads, "rows": [], "worst": {},
           "findings": [_finding("error", "pin:J1 jam SF 0.5", "fix A"),
                        _finding("warning", "crank jam SF 1.5", "fix B")]}
-    monkeypatch.setattr(strength, "check", lambda notes, m, config, lo: st)
+    monkeypatch.setattr(strength, "check", lambda notes, m, config, lo, design=None: st)
     monkeypatch.setattr(audit, "deck_clearance", lambda m: {
         "overlapping": [["horn", "deck"]], "blocked": [["deck", "J2 head", 1.5]]})
 
