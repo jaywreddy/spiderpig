@@ -82,14 +82,14 @@ from spiderpig.construction.base import (
 )
 from spiderpig.construction.pivots.common import (
     EPS,
-    SLEEVE_COLOR,
     STEEL,
     Column,
     bored,
+    build_sleeves,
     column_air,
-    gap_washers,
-    ring_runs,
+    column_slots,
     ring_z,
+    sleeve_count,
     xy_of,
 )
 from spiderpig.construction.wobble import Section, column_wobble
@@ -449,14 +449,15 @@ class StandoffAxle:
                anchored: tuple[bool, bool], pitch: float, layout=None, air=None,
                hi=None) -> None:
         """The planner's rule: a standoff must fill the column (at the plan's own z when
-        ``layout`` is final). A search's layout bounds the column's stack (its span less
-        ``air``, at least; ``hi``, at most): it is refused only where no stock length could
-        fill any stack in between (:meth:`admissible`)."""
+        ``layout`` is final). A search's layout bounds the column's stack between its faces
+        (its span less ``air``, at least; ``hi``, at most, the gaps over and under the faces
+        included): it is refused only where no stock length could fill any stack in between
+        (:meth:`admissible`)."""
         lo, hi_face = self.faces(links, top, anchored)
         if (pillar and layout is not None and not layout.final and air is not None
                 and hi is not None):
             least = layout.z(hi_face)[0] - layout.z(lo)[1] - air(lo + 1, hi_face - 1)
-            most = hi(lo + 1, hi_face - 1)
+            most = hi(lo + 1, hi_face - 1, lo, hi_face)   # (the gaps over and under its faces)
             if not self.admissible(least, most):
                 raise Unbuildable(
                     f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
@@ -467,6 +468,25 @@ class StandoffAxle:
             raise Unbuildable(
                 f"no stock standoff ({self.min_segment:g}-{self.max_segment:g} mm) nor a "
                 f"shaft made to length fills its {(hi_face - lo - 1) * pitch:g} mm column")
+
+    def prints(self, group: AxleGroup, view: Build, col: Column) -> int:
+        """The sleeves this pillar prints at the plan's z (:func:`common.sleeve_count`; the
+        rings' fill and the end shims' trim, which only move a sleeve's ends, aren't
+        modelled)."""
+        return sleeve_count(column_slots(view, group, col))
+
+    def stock_keys(self, group: AxleGroup, view: Build, col: Column) -> list[str]:
+        """The standoff this pillar buys at the plan's z."""
+        top = view.top
+        anchored = (0 in col.anchors, top in col.anchors)
+        a, b = self.faces(col.links, top, anchored)
+        axle = self.column_axle(set(col.links), b, view.ctx.pitch, a, view.plan.layout,
+                                lambda x, y: column_air(view, group, x, y))
+        if axle is None:
+            return []
+        span = view.z(b)[0] - view.z(a)[1] - column_air(view, group, a + 1, b - 1)
+        length = axle.segment(span, b - 1 > a and b - 1 not in col.links)
+        return [] if length is None else [axle.segment_key(length)]
 
     # -- strength ---------------------------------------------------------------------------
 
@@ -589,12 +609,6 @@ class StandoffAxle:
         for k in col.between:
             if col.roles[k][0] == "neck":
                 raise ConstructionError(f"{group.name}: a standoff can't neck down (layer {k})")
-        ring_of: dict[int, str] = {}        # layer -> the ring (or sleeve) round it
-        for ks, r, z0, z1 in ring_runs(build, col, fill):
-            out.bodies.append(hardware(f"{stem}_ring{ks[0]}",
-                                       ring(xy, 2 * r, self.od + self.ring_fit, z0, z1), host,
-                                       fab="printed", color=SLEEVE_COLOR))
-            ring_of.update(dict.fromkeys(ks, f"{stem}_ring{ks[0]}"))
         shimmed: dict[int, float] = {}      # face -> the shims' thickness under it
         trim: dict[int, float] = {}         # gap layer -> the height the shims take of it
         long = 0.0          # how far the stock standoff (and take-up) is off its gap
@@ -627,22 +641,17 @@ class StandoffAxle:
                 if len(sh) > 1:
                     out.extras.append(BomLine(self.shim_key, len(sh) - 1,
                                               f"{group.name}: {t:.1f} mm under layer {b}"))
-                sleeve = ring_of.get(b - 1, f"{stem}_ring{b - 1}")
-                for i, body in enumerate(out.bodies):
-                    if body.name == sleeve:
-                        bb = body.part.bounding_box()
-                        if zs0 + EPS < bb.max.Z:
-                            r = (bb.max.X - bb.min.X) / 2
-                            out.bodies[i] = hardware(
-                                sleeve, ring(xy, 2 * r, self.od + self.ring_fit, bb.min.Z,
-                                             zs0), host, fab="printed", color=SLEEVE_COLOR)
                 shimmed[b] = t
                 z1 = zs0
+        # the printed sleeves (common.sleeve_runs), stopped under the shims where they reach
+        # down into the spacer layer under the face
+        slots = [replace(sl, z1=min(sl.z1, z1)) for sl in
+                 column_slots(build, group, col, fill=fill, trim=trim) if sl.z0 < z1 - EPS]
+        long += build_sleeves(build, group, slots, out, self.od + self.ring_fit, host, stem)[0]
         bore = max(2.0, self.screw_d / 2)       # (its tapped ends, drawn through)
         seg = disc(xy, self.od / 2 - 0.01, z0, z1) - disc(xy, bore, z0 - 1, z1 + 1)
         out.bodies.append(hardware(f"{stem}_standoff{a}", seg, host, fab="purchased",
                                    bom_key=self.segment_key(length), color=ALU))
-        long += gap_washers(build, group, col, out, self.od, host, stem, trim=trim)
         long += self._running_play(build, group, out, length)
         w_od, w_id, w_t = self.washer()
         ends = [(a, -1.0, anchored[0]), (b, 1.0, anchored[1])]

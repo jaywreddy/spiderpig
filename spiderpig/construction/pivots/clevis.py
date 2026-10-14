@@ -139,6 +139,13 @@ class ClevisPinShaft(ChicagoShaft):
             spacer = 0.0
         return Fit(float(usable), round(spacer, 3), 0.0, round(usable - stack - spacer, 3))
 
+    def stock_key(self, stack: float) -> str | None:
+        """The catalog key of the pin a ``stack`` mm stack takes (``None``: none does)."""
+        try:
+            return self.key_of(self.take_up(stack).length)
+        except ConstructionError:
+            return None
+
     def outer(self, stack: float) -> float:
         """How far the head stands out past the lowest link's outer face at most (its
         spacer, the head and the play)."""
@@ -250,6 +257,12 @@ class ClevisPinAxle(ChicagoAxle):
         out = super().resolve(ctx)
         assert isinstance(out, ClevisPinAxle)
         return out
+
+    def sleeve_skip(self, col) -> tuple[int, ...]:
+        """The clearance gap under the lowest link, where the column crosses one: the pin's
+        take-up spacer fills what the head leaves of it (a ring there as well would stand
+        in the head's way)."""
+        return (col.k0 - 1,)
 
     def ends(self, d, pillar: bool, anchored: tuple[bool, bool], n: int, pitch: float,
              span: float | None = None):

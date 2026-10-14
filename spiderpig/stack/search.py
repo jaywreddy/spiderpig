@@ -245,10 +245,9 @@ class StackProblem:
     def tally(self, plan: StackPlan) -> StackPlan:
         """``plan`` with what it buys and prints (the claims' ``tally`` at its z)."""
         usd, printed = 0.0, 0
-        layout = plan.layout
         for c in plan.claims:
             if c.tally is not None:
-                u, n = c.tally(layout)
+                u, n = c.tally(plan)
                 usd, printed = usd + u, printed + n
         plan.usd, plan.printed = round(usd, 2), printed
         return plan

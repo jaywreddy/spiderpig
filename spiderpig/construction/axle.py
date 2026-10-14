@@ -147,15 +147,19 @@ class AxleGroup(Group):
                 return sum(max(0.0, L.t(k) - own.get(k, L.t(k) if full else ctx.pitch))
                            for k in range(a, b + 1) if 0 < k < L.top)
 
-            def stack_hi(a: int, b: int) -> float:
+            def stack_hi(a: int, b: int, g0: int | None = None, g1: int | None = None
+                         ) -> float:
                 """The most this axle's own stack over layers ``a``..``b`` (its links' sheets,
-                its rings, the gaps among them) can be in any plan of the layout (the plan's
-                own: its span less :func:`air`)."""
+                its rings) and the clearance gaps over layers ``g0``..``g1 - 1`` (default
+                ``a``..``b - 1``: the gaps among them) can be in any plan of the layout (the
+                plan's own: their z less :func:`air`)."""
+                g0, g1 = (a, b) if g0 is None or g1 is None else (g0, g1)
                 if L.final:
-                    return L.span(a, b) - air(a, b)
+                    return (L.span(a, b) - air(a, b)
+                            + sum(L.gap(k) for k in range(g0, g1) if not a <= k < b))
                 rings = sum(own[k] if k in own else L.t_hi(k) if full else ctx.pitch
                             for k in range(a, b + 1) if 0 < k < L.top)
-                gaps = sum(1 for k in range(a, b) if 0 <= k < L.top)
+                gaps = sum(1 for k in range(g0, g1) if 0 <= k < L.top)
                 return rings + gaps * L.gap_hi
             free: dict[int, float] = {}
             who: dict[int, str] = {}
@@ -274,8 +278,22 @@ class AxleGroup(Group):
                     out.append(Placed(k, Disc(ax, d.neck), g, f"{g} neck"))
             return out
 
+        def tally(plan) -> tuple[float, int]:
+            """What the axle buys and prints at a plan's z (the construction's
+            ``stock_keys`` at each one's unit price, its ``prints``): the planner's
+            objective after the height and the route (:meth:`stack.StackProblem.key`)."""
+            from spiderpig.construction.base import Build
+            from spiderpig.construction.pivots.common import Column, unit_usd
+
+            view = Build(ctx, plan, None)  # pyright: ignore[reportArgumentType]
+            col = Column.of(view, self)
+            stock = getattr(self.construction, "stock_keys", None)
+            prints = getattr(self.construction, "prints", None)
+            usd = sum(unit_usd(k) for k in stock(self, view, col)) if stock else 0.0
+            return usd, prints(self, view, col) if prints else 0
+
         return [Claim(g, frozenset(members) | frozenset(room), make, early=early,
-                      early_deps=frozenset(members))]
+                      early_deps=frozenset(members), tally=tally)]
 
     def realize(self, build: Build, done: Realized) -> Realized:
         return self.construction.realize(self, build)

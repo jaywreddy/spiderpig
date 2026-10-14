@@ -254,7 +254,8 @@ class _Drive:
                 found = top
             return found
         for top in range(spec.min_top, spec.max_top + 1):
-            if spent >= spec.max_total_nodes or len(self.gave_up) == len(self.modes):
+            if (spent >= spec.max_total_nodes or len(self.gave_up) == len(self.modes)
+                    or any(r["expired"] for _, _, r in self.order)):
                 break
             if all(top in self.tried[m] for m in self.modes if m not in self.gave_up):
                 continue
@@ -275,12 +276,15 @@ class _Drive:
         if best is None:
             self._merge_tally()
             last = max((t for m in self.modes for t in self.tried[m]), default=spec.min_top - 1)
+            spent = sum(r["nodes"] for _, _, r in self.order)
             stopped = "; ".join(dict.fromkeys(
                 [f"heads {m}: {w}" for m, w in self.gave_up.items()]
                 + [f"the {spec.max_seconds:g} CPU s deadline ran out"
-                   for _, _, r in self.order if r["expired"]][:1]))
+                   for _, _, r in self.order if r["expired"]][:1]
+                + ([f"the {spec.max_total_nodes} search-step budget ran out"]
+                   if spent >= spec.max_total_nodes else [])))
             raise PlanError(f"{prob.topo.name}: no layer plan found with up to {last + 1} layers"
-                            f" after {sum(r['nodes'] for _, _, r in self.order)} search steps"
+                            f" after {spent} search steps"
                             + (f"; {stopped}" if stopped else ""), prob.blockers(),
                             [self.sizes()], expired=any(r["expired"] for _, _, r in self.order))
         full: list[tuple[str, int, dict]] = []

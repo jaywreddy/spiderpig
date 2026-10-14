@@ -8,8 +8,12 @@ import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from spiderpig.stack.plan import StackPlan
 
 log = logging.getLogger("stack")
 
@@ -356,7 +360,7 @@ class Claim:
     shape of it lies inside one ``make`` returns later). The search checks it
     early; the plan is built from ``make``.
 
-    ``tally`` (optional): what the group buys and prints at a plan's z, ``(usd, parts)``:
+    ``tally`` (optional): what the group buys and prints in a plan, ``(usd, parts)``:
     the unit price of each stock part it chooses there (a pin made to its stack, a standoff
     of a stock length) and the parts it prints (one sleeve per run between what it retains:
     :func:`construction.pivots.common.sleeve_runs`). The objective's terms after the height
@@ -371,4 +375,4 @@ class Claim:
     choice: str | None = None
     early: Callable[[Layout], Iterable[Placed] | None] | None = None
     early_deps: frozenset[str] = frozenset()
-    tally: Callable[[Layout], tuple[float, int]] | None = None
+    tally: Callable[[StackPlan], tuple[float, int]] | None = None
