@@ -236,7 +236,7 @@ def test_cutting_is_an_area_and_cut_length_estimate_fitted_to_sendcutsends_quote
                                                                          [(5.0, 4)])
     assert cut_estimate("al6061_2p5mm", [(0.0, 1)]) == 3.20
     assert cut_estimate("al5052_2mm", [(0.0, 1)]) == 2.70
-    assert cut_estimate("acrylic_3mm_ponoko", [(10.0, 1)]) is None      # no rates there
+    assert priced("acrylic_3mm_ponoko", [(10.0, 1)]) is None      # no rates there
     # an ungrouped BOM's rows of one shape are one file's quantity (area and cut alike)
     assert same_files([(16.7, 1), (4.58, 1), (16.7001, 1)]) == [(4.58, 1), (16.7, 2)]
     assert same_files([(16.7, 1, 30.0), (16.7, 1, 40.0), (16.7, 2, 30.0)]) == [
