@@ -864,8 +864,9 @@ def _hold_rows(design: Design, rep: VerifyReport) -> list[Row]:
     fixed): ``sim.holds``, its motors holding it at its pose under gravity with its payload
     (:func:`hold_payload_g`, at its tool's tip or output: :func:`spiderpig.sim.run.hold`),
     the value the worst site's sag (mm); a cranked one's ``sim.torque`` too, its crank
-    driven through a turn (:func:`spiderpig.sim.run.turn`): the peak against the stall, as
-    a walker's."""
+    driven through a turn (:func:`spiderpig.sim.run.turn`): the peak against the torque
+    limit its servo is set to (:func:`config.torque_limit_nm`, the one its strength rates
+    its joints at; the stall before 2026-10-14's third round), not a walker's stall."""
     if importlib.util.find_spec("mujoco") is None:
         return [Row("sim.mujoco", "sim", "not installed", None, True, "estimated", False,
                     "pip install mujoco to simulate")]
@@ -893,8 +894,9 @@ def _hold_rows(design: Design, rep: VerifyReport) -> list[Row]:
         rows.append(Row(
             "sim.torque", "sim", t["torque_peak"], f"<= {t['torque_limit']:g}",
             not t["saturates"], "measured", False,
-            f"one turn at the servo's full speed: peak {t['torque_peak']:.3f} N·m of "
-            f"{t['torque_limit']:g} stall, mean {t['torque_mean']:.3f}"
+            f"one turn at the servo's full speed: peak {t['torque_peak']:.3f} N·m of the "
+            f"{t['torque_limit']:g} N·m torque limit it is set to ({t['stall']:g} stall), "
+            f"mean {t['torque_mean']:.3f}"
             + ("" if t["completed"] else
                f"; it stalled ({t['revolutions']:.2f} of a turn)"), unit="N·m"))
     return rows

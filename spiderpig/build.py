@@ -573,7 +573,7 @@ def main(argv=None) -> int:
     bom = bom_from_mechanism(mech, title=title, filament=filament, groups=groups)
     if args.no_dxf:
         bom.notes.append("Sheet stock not counted (--no-dxf).")
-    if config.mirrored and (note := torque_limit_note(config)):
+    if note := torque_limit_note(config):       # every crank servo's (its motor role)
         bom.notes.append(note)
     if custom or config.linkage != linkage.DEFAULT:
         bom.notes.append(f"Design: {design_note}.")

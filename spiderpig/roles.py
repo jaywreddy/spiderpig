@@ -13,9 +13,12 @@ fields (``field``): ``pillar``, ``pin``, ``crank``. Every later role lives in
 default), applies to the linkage kinds it lists (``kinds``: required, so a new role never
 reaches the walkers by accident), and is written into a resolved spec for every design it
 applies to (a stored design never depends on a default that later moves), but where its
-key is the role's ``implicit`` one: what the designs of a kind carried before the role
-reached it (the walkers' deck electronics, the role ``controller``), left out so their
-ids stay.
+key is the role's ``implicit`` one for the design's kind: what the designs of that kind
+carried before the role reached it (the walkers' deck electronics; a mechanism's nothing:
+the role ``controller``), left out so their ids stay. A resolved spec stored before reads
+back with the role's default (:meth:`config.BuildConfig.role`), so a kind whose designs
+carried nothing keeps nothing as its default (:func:`default_key`): its stored designs read
+back as they were, same id, same parts and BOM; a choice of a key enters the id.
 
 A role filled once per design is ``per="design"``. One filled per drive or per joint
 (``"drive"``, ``"joint"``: an arm's transmission on each of its inputs) takes one key for
@@ -53,10 +56,13 @@ class Role:
     design, or per drive / joint (:data:`PER`). ``optional``: :data:`NONE` empties it.
     ``robot``: a part of the robot round the side, not of the side (an arm's turntable, its
     tool): the side's design ignores it (:meth:`config.BuildConfig.side_config`), so one
-    plan serves every choice of it. ``implicit``: the key designs carried, unnamed, before
-    the role reached their kind (a walker's deck electronics, before 2026-10-14): where it
-    is a design's default it isn't written into the resolved spec, so the designs stored
-    before keep their ids (and read back with it: never move that default)."""
+    plan serves every choice of it. ``implicit``: per linkage kind, ``(kind, key)``, the key
+    designs of that kind carried, unnamed, before the role reached it (a walker's deck
+    electronics before 2026-10-14; a mechanism's none, :data:`NONE`): where it is a design's
+    default it isn't written into the resolved spec, so the designs stored before keep
+    their ids, and they read back with the default: never move it. Where it is
+    :data:`NONE` it is the kind's default too (:func:`default_key`), so a choice of a key
+    always enters the id."""
 
     name: str
     title: str
@@ -68,7 +74,7 @@ class Role:
     optional: bool = False
     help: str = ""
     robot: bool = False
-    implicit: str = ""
+    implicit: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self):
         if self.per not in PER:
@@ -77,10 +83,20 @@ class Role:
             raise ValueError(f"role name {self.name!r} must be an identifier")
         if not self.kinds:
             raise ValueError(f"role {self.name}: name the linkage kinds it applies to")
+        for kind, key in self.implicit:
+            if kind not in self.kinds:
+                raise ValueError(f"role {self.name}: implicit for {kind!r}, not a kind of it")
+            if key == NONE and not self.optional:
+                raise ValueError(f"role {self.name}: implicit {NONE!r} needs optional")
 
     @property
     def stored_in_roles(self) -> bool:
         return not self.field
+
+    def implicit_for(self, kind: str) -> str:
+        """The key designs of linkage kind ``kind`` carried before the role reached them
+        (``implicit``); ``""``: the role came with the kind (its key always written)."""
+        return dict(self.implicit).get(kind, "")
 
 
 ROLES: dict[str, Role] = {}
@@ -126,13 +142,19 @@ def choices(name: str) -> list[str]:
 
 def default_key(name: str, config) -> str:
     """The key role ``name`` gets in ``config`` when the config names none: its linkage's
-    (:data:`config.LINKAGE_ROLES`), else the role's."""
+    (:data:`config.LINKAGE_ROLES`), else :data:`NONE` where the designs of its kind carried
+    nothing before the role reached them (:attr:`Role.implicit`: a stored one reads back
+    with this default, so it never moves), else the role's."""
     from spiderpig.config import LINKAGE_ROLES
 
     own = LINKAGE_ROLES.get(getattr(config, "linkage", "") or "", {}).get(name)
     if own is not None:
         return own
-    d = get(name).default
+    role = get(name)
+    lk = getattr(config, "lk", None)
+    if lk is not None and role.implicit_for(lk.kind) == NONE:
+        return NONE
+    d = role.default
     if ":" in d:
         return str(_load(d)(config))
     return d
@@ -208,11 +230,14 @@ register(Role("tool", "tool", "spiderpig.construction.tools:TOOLS", ("arm",),
 register(Role("controller", "controller", "spiderpig.actuators.controllers:CONTROLLERS",
               ("walker", "mechanism", "arm"),
               default="spiderpig.actuators.controllers:default_key",
-              optional=True, robot=True, implicit="esp32_bus_servo",
+              optional=True, robot=True,
+              # the walkers carried the deck's kit unnamed; the mechanisms nothing (their
+              # default stays none: a stored mechanism reads back without a board)
+              implicit=(("walker", "esp32_bus_servo"), ("mechanism", NONE)),
               help="the electronics that drive the motors (every design that has motors): "
                    "a serial-bus servo board, battery and harness (esp32_bus_servo: on a "
                    "walker's deck, bought as lines for a mechanism; a DYNAMIXEL servo's USB "
                    "interface and power hub, u2d2_dynamixel), a stepper board running "
                    "Klipper with its host computer, supply and cables (skr_pico_pi_zero); "
                    "none: your own (a walker's deck bare, an arm's Klipper pins left to "
-                   "fill)"))
+                   "fill; a mechanism's default, the board named enters its id)"))

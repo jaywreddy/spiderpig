@@ -274,7 +274,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
         try:
             bom = bom_from_mechanism(replace(mech, bom_extras=extras), title=title,
                                      filament=filament, groups=groups)
-            if cfg.mirrored and (note := torque_limit_note(cfg)):
+            if note := torque_limit_note(cfg):      # every crank servo's (its motor role)
                 bom.notes.append(note)
             if "bom" in formats:
                 files += bom.write(out)

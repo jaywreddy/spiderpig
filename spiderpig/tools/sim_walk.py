@@ -26,7 +26,8 @@ same model (:mod:`sim.mjcf`), fixed to the world: it is held at its pose under g
 ``--seconds`` by its motors (:func:`sim.run.hold`), and the sag of its tool's tip and
 output, its joints' drift, its motors' torques and its loops' closure are printed; a
 cranked one's crank is then turned once at full speed (:func:`sim.run.turn`), its torque
-against the stall (exit status 1 when it doesn't hold or the crank stalls).
+against the torque limit its servo is set to (exit status 1 when it doesn't hold or the
+crank stalls on it).
 """
 
 from __future__ import annotations
@@ -265,9 +266,10 @@ def main(argv=None) -> int:
             _hold_report(cfg, held, args.seconds)
             if turned is not None:
                 print(f"  turned    one turn at full speed: peak {turned['torque_peak']:.3f} "
-                      f"N·m, mean {turned['torque_mean']:.3f} of {turned['torque_limit']:g} "
-                      "stall" + ("" if turned["completed"] else
-                                 f"; STALLED at {turned['revolutions']:.2f} of a turn"))
+                      f"N·m, mean {turned['torque_mean']:.3f} of its "
+                      f"{turned['torque_limit']:g} N·m torque limit"
+                      + ("" if turned["completed"] else
+                         f"; STALLED at {turned['revolutions']:.2f} of a turn"))
         return 0 if held["holds"] and (turned is None or not turned["saturates"]) else 1
     vmax, _ = drive_limits(servos.get(cfg.servo))
     left, right = parse_speed(args.left, vmax), parse_speed(args.right, vmax)
