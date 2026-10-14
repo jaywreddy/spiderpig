@@ -687,9 +687,10 @@ Everything so far is points and lines at z = 0. The next stage gives them thickn
 
 Section 4 ended with points that move in a plane. This stage decides, for one side, which
 layer each link sits in, how many layers the side needs, and how the crankshaft runs
-through them. Fewer layers make a lighter, stiffer side with shorter axles, so the planner
-looks for the thinnest stack. It does all this without building a single part. It is the
-largest and most original part of the code.
+through them. A lower stack makes a lighter, stiffer side with shorter axles, so the planner
+looks for the lowest one: its height in millimetres, which is not the number of layers once
+layers differ in thickness (a decanting cradle's run from 3.2 to 12.7 mm). It does all this
+without building a single part. It is the largest and most original part of the code.
 
 ### 5.1 Groups and claims
 
@@ -843,8 +844,9 @@ does any route still exist, and which states can each layer still have? That mak
 
 ### 5.4 The search
 
-`StackProblem.solve()` tries **stack sizes** (numbers of layers) from the thinnest up. For
-each size it searches over which layer each link takes (`_Search`). Each partial
+`StackProblem.solve()` tries **stack sizes** (numbers of layers) from the thinnest up, and
+for the proof every size the objective needs (below). For each size it searches over which
+layer each link takes (`_Search`). Each partial
 assignment the search visits is a **node**, and a **node budget** caps how many it may
 visit. Readers who know constraint solving will recognise the techniques; for everyone
 else, here is what each does:
@@ -860,56 +862,107 @@ else, here is what each does:
   the most recent link actually involved in the conflict, instead of the last one placed,
   and remembers small conflicting combinations (up to eight links) so it never tries them
   again.
-- **Branch and bound.** Once a plan exists, branches whose crank route can't be cheaper
-  are cut.
+- **Branch and bound.** Once a plan exists, branches that can't beat it are cut: on the
+  height, a node whose least height is over the plan's; on `"layers"`, a branch whose crank
+  route can't be cheaper.
 
 Every complete plan is re-checked from scratch before it is accepted (`verify_plan`: every
 claim re-made, every pair of shapes in every layer tested). A failure there is a bug and
 raises an error.
 
-**The effort schedule.** The search spends its effort in four steps:
+**The objective** (`StackProblem.key`, since 2026-10-14). What the planner minimises, in
+order:
 
-1. **Rule out thin stacks cheaply.** From the thinnest size up, each size gets a short
-   search (1,500 nodes). Sizes that it rules out are done.
-2. **Jump ahead.** Once a size runs out of its short budget without an answer, the search
-   moves up in doubling steps (one size, then two, then four) until a size has a plan,
-   then goes back to the sizes it skipped.
-3. **Try harder if nothing planned.** The sizes the short searches left open get the
-   full budget (`max_nodes`, 20,000 nodes), thinnest first.
-4. **Prove.** Every thinner size not yet ruled out is searched again with half the full
-   budget (`max_nodes // 2`, `spiderpig/stack/search.py:299-301`), and the plan's own
-   size gets the full budget once more to look for a cheaper crank route.
+1. the stack's **height**, frame plate to frame plate: what the module occupies between its
+   plates, what packs and what the pillars and pins span (the heads outside the plates are
+   the same for every plan of a design, so they don't rank plans);
+2. the crank route's cost (its added features, below);
+3. what the stock parts the plan chooses cost (a pin made to its stack, a standoff of a stock
+   length: each claim's `tally`, at its unit price);
+4. the parts it prints (one sleeve per run between an axle's retained parts, section 6.2);
+
+and then a fixed tie-break (the head placement's rank, the size, the layers, the route), so
+equal plans tie the same way wherever they are found. A walker plans on the objective
+`"layers"` instead (`config.plan_objective`): the fewest layers, then the route's cost, then
+the height. On the height a walker's crank router can't prune on its route's cost, and the
+taller sizes, which may be lower, have to be searched too: the Strider double's proof
+doesn't end in minutes (the 2026-10-14 entry of `docs/agentlib/DECISIONS.md` has the numbers).
+
+**A sound search.** The search may refuse a partial layering only on a bound valid for every
+plan it can become. Its z is such a bound (`stack.bound_layout`, `Layout`): every layer at
+least the frame plate's, a fixed part's (the hand crank's head layer and keyed plates,
+`StackProblem.fixed_sheets`) or its placed links' sheet, no gaps; and above, every layer at
+most the thickest sheet a layer may yet hold and every gap at most `stack.GAP_MAX`
+(`Layout.t_hi`, `span_hi`, `z_hi`). A rule that refuses what is too long reads the lower
+bound (no stock Chicago screw spans the stack); one that refuses what is too short reads the
+upper (a pivot pin made to its stack, 10 mm at least; the hand crank's rod over its block);
+a window (a standoff that fills its column, `StandoffAxle.admissible`; the crank's stock
+standoffs, `BoltCrank._web_span_ok`, `stub_layers_web`) refuses only where no z between them
+fits; everything else waits for the plan's own z. Before 2026-10-14 the search's z was a
+pitch a layer, which proved the cradles' plans two layers too thick: two 0.190 in links in
+neighbouring layers looked 6.35 mm thick under a pin made to length, not 9.65.
+
+**Branch and bound on the height.** A node's least height (`_Search.lb_height`) is its
+layers at their bounds plus every clearance gap holding a head that can't sink (into a
+frame plate, or into a layer where another group's placed shape is in its way: what is
+placed stays), at that head's least height; a node whose least height is over the best
+plan's is cut. A stack size's least height (`StackProblem.size_lb`: its fixed layers, the
+pitch elsewhere, and the thick links that share axles in layers of their own) bounds which
+sizes need searching at all.
+
+**The jobs** (`spiderpig/stack/drive.py`). The search runs as jobs, each one stack size with
+one head placement, a node budget and perhaps a plan to beat. A job's answer depends on
+nothing but the job, so the jobs run in forked workers (`spiderpig/stack_pool.py`; up to
+`stack.drive.MAX_WORKERS`, `SPIDERPIG_PLAN_WORKERS`; none with `SPIDERPIG_WORKERS=0`) or in
+the planner's own process with the same answer. The search spends its effort in two steps:
+
+1. **A first plan.** From the thinnest size up, each size gets a short job per head
+   placement (1,500 nodes), side by side. Sizes the short jobs rule out are done; once a
+   size exhausts its short budget instead, the search jumps ahead in doubling steps until a
+   size has a plan, then goes back down the sizes it skipped. Idle workers run the sizes
+   the search is likely to ask next.
+2. **The proof.** The best plan so far bounds the rest. Every size and head placement the
+   objective needs (on the height: each size whose least height isn't over the plan's; on
+   `"layers"`: the plan's own size, for a cheaper route, and every thinner one) that no
+   short job searched to the end gets a full job (`max_nodes`, 20,000 nodes; half for a
+   thinner size on `"layers"`), all at once.
+
+The plan is the least key of everything the jobs found, re-made in the planner's process.
+It is optimal when every job the objective needs ran to the end. Each job has the CPU
+deadline (`StackSpec.max_seconds`) of its own thread; node budgets, not the deadline, bound
+a search on any machine the planner is meant for, so the plan is the same on every machine
+and with any number of workers (`tests/test_seam_stack.py` checks 1, 2, 3 and 5).
 
 A multi-leg module first plans its `single` module and uses that plan as a hint for which
-layers to try first, and for a second strategy that places one leg at a time. The search
-itself is capped at 60,000 nodes in all and a **60 CPU-second deadline** (`stack.Deadline`,
-the thread's CPU time, so a loaded machine doesn't change how far a search gets;
-`SPIDERPIG_PLAN_SECONDS` sets it); the plan used as a hint shares it, and any
-recommendation checks after a failure get one more.
+layers to try first, and for a second strategy that places one leg at a time. The first
+step is capped at 60,000 nodes and every job at a **60 CPU-second deadline**
+(`stack.Deadline`, the thread's CPU time, so a loaded machine doesn't change how far a search
+gets; `SPIDERPIG_PLAN_SECONDS` sets it); the hint is the single module's first plan (its
+thinnest stack, no proof asked), and any recommendation checks after a failure get one more
+deadline.
 
 **Where the heads go.** Every fastener head beside a link either sinks into the layer
 beside it or stands in a thin clearance gap (section 5.7). `StackSpec.heads` picks:
-`"sink"`, `"gap"`, or `"best"` (the default: sunk, and in gaps only when that finds no
-plan). A design on the single-plate crank plans `heads="gap_sink"` the other way round
-(`StackProblem.solve_heads`, `stack.HEADS_ORDER`): in gaps first, since a sunk crank head
-would stand in a rider's layer; and only when that search gives up (after `stack.GIVE_UP`
-layerings that fail on the crank's washers in the plan's gaps) with the pivots' heads sunk
-and the crank's and the drive's (`stack.GAP_GROUPS`) still in their gaps
-(`heads_claims(keep=...)`, `finalize(sink_all_but=...)`). TrotBot's heel and toe plan
-only that way.
+`"sink"`, `"gap"`, or both: `"best"` (the default) and, for a design on the single-plate
+crank, `"gap_sink"`, whose sunk search keeps the crank's and the drive's heads
+(`stack.GAP_GROUPS`) in their gaps (`heads_claims(keep=...)`, `finalize(sink_all_but=...)`).
+Both placements are searched side by side and the better plan is kept
+(`stack.HEADS_ORDER`: the order equal plans tie to). Until 2026-10-14 the second placement
+was searched only when the first found no plan (2026-10-04: two searches in turn doubled
+the suite's time); in parallel jobs they cost no wall time. A gap search on the single-plate
+crank may still give up (after `stack.GIVE_UP` layerings that fail on the crank's washers in
+the plan's gaps): TrotBot's heel and toe plan with the pivots' heads sunk, unproven for the
+gaps.
 
 **The answer** is a `StackPlan`: each link's layer, the stack size, the crank route, the
-cost, whether the plan is **optimal** (no thinner stack and no cheaper route, both
-searched to the end), and a **proof** saying how that was established. For the running
-example with the keyed crank of 2026-10-03 (since removed): 16 layers, 48 mm, optimal,
-with the proof "no plan in 15 layers or fewer (240 nodes); the crank's own rules forced it
-taller: in 15 layers the search met 239 layouts that fit everything else but no crank
-route passes; 16 layers searched to the end for the cheapest crank route (17 nodes)"
-(with the snapshot's printed crank: 12 layers, 36 mm, "no plan in 11 layers or fewer (48
-nodes); 12 layers searched to the end ... (18 nodes)"). Today's plans and whether each is
-proven are in [DESIGNS.md](agentlib/DESIGNS.md). A plan
-that ran out of budget or time is still valid, because it was verified, but its proof
-names the sizes left open.
+cost, what its stock parts cost and the parts it prints (`usd`, `printed`), whether the plan
+is **optimal** (no better plan under the objective, with either head placement, every job it
+needs searched to the end), and a **proof** saying how that was established, for instance
+"78.93 mm in 14 layers (heads gap); no plan in 13 layers or fewer (828 nodes); every size up
+to 18 layers whose least height isn't over it searched to the end with heads sink and gap
+(998 nodes in the proof)". Today's plans and whether each is proven are in
+[DESIGNS.md](agentlib/DESIGNS.md). A plan that ran out of budget or time is still valid,
+because it was verified, but its proof names the sizes and placements left open.
 
 ### 5.5 When planning fails
 
@@ -980,24 +1033,29 @@ The planner also has four opt-in speed-ups, all off by default (section 11).
 
 ### 5.7 The plan's z: clearance gaps, layer thicknesses and sheets
 
-The search works on a nominal stack, every layer one `pitch` (the default sheet's
-thickness) and nothing between layers. The plan a layering becomes has real heights
-(`stack.finalize`, in `spiderpig/stack/plan_z.py`; the same function re-makes a stored
-plan, deterministically).
+The search works on a bound of every plan (section 5.4): every layer at least its sheet,
+nothing between layers. The plan a layering becomes has real heights (`stack.finalize`, in
+`spiderpig/stack/plan_z.py`; the same function re-makes a stored plan, deterministically).
 
 **Clearance gaps.** A fastener's head or nut beside a link (a Chicago screw's head, the
 servo's screws, the crank's screw heads) is a *clearance shape* (`Placed.gap`, with the
 `height` it needs and the layer it is `toward`). It either sinks into the layer beside its
 link, where nothing there is in its way, or stands in a thin gap over or under the link's
-layer. An axle crossing a gap claims its washers there. `finalize` decides which heads can
-sink, gives every other head a gap sized to the tallest it holds (a gap a plate stack runs
-through is a thin sheet's thickness, `materials.gap_options`; any other is a printed ring
-in 0.1 mm steps up to 4 mm), makes each layer as thick as its thickest plate (`Placed.sheet`,
-`StackSpec.link_t`, `frame_t`), and makes every claim again at that z (`Layout.final`), so
-the crank's standoffs, the stub, the Chicago barrels and the pillar columns are checked at
-the heights they will be built at. Where a stock part fits only with a gap a little
-thicker, the gap is thickened (`_thicker_gaps`). A layering that doesn't build at its own
-z raises `PlanReject`, and the search takes it as a dead end. The plan records its z:
+layer. An axle crossing a gap claims its ring there. `finalize` first makes every claim at an
+estimate of the plan's z (`Layout.estimate`: the nominal stack, every layer a pitch, each
+head with the shims that z gives it; where that settles into a z some claim can't be built
+at, once more from the layering's least z, which a cradle's thick links need), decides which
+heads can sink, gives every other head a gap sized to the tallest it holds (a gap a plate
+stack runs through is a thin sheet's thickness, `materials.gap_options`; any other is a
+printed ring in 0.1 mm steps up to 4 mm), makes each layer as thick as its thickest plate
+(`Placed.sheet`, `StackSpec.link_t`, `frame_t`), and makes every claim again at that z
+(`Layout.final`), so the crank's standoffs, the stub, the Chicago barrels and the pillar
+columns are checked at the heights they will be built at. Where a stock part fits only with
+a gap a little thicker, the gap is thickened (`_thicker_gaps`). The settling only grows a
+gap, so last each gap is lowered, one at a time, to the thinnest at which the plan still
+builds and every head still fits (`_descend`): the plan is the least z the layering builds
+at, which the height objective ranks. A layering that doesn't build at its own z raises
+`PlanReject`, and the search takes it as a dead end. The plan records its z:
 `StackPlan.gaps`, `thick` and `heads`; a `Layout` answers `z`, `gap_z` and `slot_z`.
 
 **Sheets.** A design has several: `BuildConfig.sheet` (3 mm acrylic: the links, rings and
@@ -1069,11 +1127,18 @@ sleeve), and the sim's floor friction is set for it (`SimParams.friction`, 0.65)
 standoff column runs from the outer frame plate's inner face to the inner plate's, a
 button head and washer through each plate from outside (no glue; the inner heads stand in
 the bay between the robot's inner plates, which the deck is notched round). The links turn
-on the standoff (a running fit), and a printed spacer ring fills every other layer, so
-every link has a face on both sides; where an aluminium link made a layer thicker, the
-rings grow to take up the air (`ring_fill`), and every gap the column crosses takes a
-printed gap ring. A column one stock goBILDA 1501 length fills is that aluminium M4
-standoff; any other is **one piece** (`StandoffAxle.one_piece`): a MISUMI NETRF6 round 1018
+on the standoff (a running fit), and printed spacers fill every other layer and every gap
+the column crosses, so every link has a face on both sides; where an aluminium link made a
+layer thicker, the rings grow to take up the air (`ring_fill`). **The sleeve rule**
+(2026-10-14, `construction.pivots.common.sleeve_runs`, every pivot): what an axle prints
+between the parts it retains (its links, the plates it is anchored in, its heads and clips)
+is one sleeve per contiguous run of rings and gap rings, stepped where their radii differ,
+and split only where printing needs it. A sleeve prints without support when its radius
+never grows away from the bed, so each piece is cut down to the running least from its bed
+end (the end that keeps the most), and a run splits where that would cut a ring under what
+it must keep (a shoulder's overlap of its link's hole). What an axle prints is then a
+property of the layout, which the planner counts (its `tally`, the objective's last term).
+A column one stock goBILDA 1501 length fills is that aluminium M4 standoff; any other is **one piece** (`StandoffAxle.one_piece`): a MISUMI NETRF6 round 1018
 steel standoff made to its length in 0.1 mm steps, tapped M3 both ends, an M3 button head
 and DIN 9021 washer each end (`crank_catalog.pillar_shaft` writes its catalog key). It is
 never spliced. A short column no stock length fills is refused unless goBILDA standoffs

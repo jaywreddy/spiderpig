@@ -86,7 +86,9 @@ robot; a mechanism's `single`, one side).
 
 - `SPIDERPIG_STORE`: the project store (default `./.spiderpig`).
 - `SPIDERPIG_PLAN_SECONDS`: the planner's CPU budget (60; outside `engine_version`'s hash).
-- `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`).
+- `SPIDERPIG_WORKERS=0`: no worker processes (`spiderpig/workers.py`; the planner's too).
+- `SPIDERPIG_PLAN_WORKERS`: the planner's forked workers (`stack.drive.workers_for`; unset: up
+  to `stack.drive.MAX_WORKERS`). The plan is the same with any number.
 - `SPIDERPIG_FAB_CACHE=off`: no product fabrication cache (`spiderpig/fabcache.py`,
   `<store>/fab/`, keyed by `spiderpig/keys.py`'s code closure, the plan and the servo model).
 - `SPIDERPIG_OCCT_THREADS`: OCCT's pool per process (`workers.occt_threads`; unset: every
@@ -236,17 +238,22 @@ a **linkage**, a module in `spiderpig/linkages/` (`tests/test_linkage.py` checks
 
 ## The planner
 
-`stack.StackProblem.solve()` finds the thinnest stack and the cheapest crank route in it:
-static facts first (keep-outs, the crank's facts); then a search per stack size, fewest
-layers first (`_Search`: forward checking, the router as a sub-check at every node,
-backjumping, learned nogoods, branch and bound); the exact route of a complete layering
-(`CrankRouter.route`: chains along a point, a stock standoff each, `JointRules`); then
-`verify_plan`. Effort: a short search per size until one plans; if none did, the sizes
-left open get `max_nodes`; then each thinner size gets `max_nodes // 2` to prove it out,
-then a cheaper route. Budgets (`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`,
-`max_seconds`) bound effort, never validity: a plan found unproven says so
-(`StackPlan.optimal`, `proof`). Sizes up to `StackSpec.max_top`. `tests/brute.py` is the
-independent brute force. Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/search.py`.
+`stack.StackProblem.solve()` finds the best plan under `StackProblem.key`: the lowest stack in
+mm, then the crank route's cost, the stock parts' cost, the parts printed (a walker's
+objective is "layers": fewest layers, then the route, then the height; `config.plan_objective`).
+Static facts first (keep-outs, the crank's facts); then jobs (`stack/drive.py`), one stack size
+and one head placement each (both placements, side by side), in forked workers
+(`stack_pool.py`) or here with the same answer: a short job per size until one plans, then the
+proof, a full job for every size the objective needs (on the height, each whose least height,
+`StackProblem.size_lb`, isn't over the best). A job is `_Search`: forward checking, the router
+as a sub-check, backjumping, learned nogoods, branch and bound (`_Search.lb_height`). The
+search's z is a bound of every plan (`stack.bound_layout`): a claim refuses a search's layout
+only on a bound valid for every completion (`Layout.t_hi`, `span_hi`). Then the exact route
+(`CrankRouter.route`, `JointRules`), the plan's z (`finalize`) and `verify_plan`. Budgets
+(`StackSpec.quick_nodes`, `max_nodes`, `max_total_nodes`, `max_seconds` per job) bound effort,
+never validity: a plan found unproven says so (`StackPlan.optimal`, `proof`). Sizes up to
+`StackSpec.max_top`. `tests/brute.py` is the independent brute force (`brute.lowest`).
+Details: `docs/ARCHITECTURE.md` §5, `spiderpig/stack/drive.py`, `spiderpig/stack/search.py`.
 
 Physical rules the claims encode: a crank crosses a rider's layer only along its crankpin
 (a built-up crankshaft, webs either side of each rider); layers 0 and `top` hold only the
