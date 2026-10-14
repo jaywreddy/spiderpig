@@ -927,3 +927,60 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_pack.py`, `spiderpig/hardware/cradle_catalog.py`,
   `spiderpig/hardware/bom.py`, `viewer/src/decant/{motion,pour,diagram}.ts`,
   `tests/test_cradle.py`.
+
+### 2026-10-14: a pin's links side by side (the arm's `pin_stack`), tried on the cradles: not taken (user: "the alternate adjacency constraint the palletizer used")
+
+- **What it is there** (branch `t3code/4b4a5773`, 867ae7e, the user's of 2026-10-13: "a
+  separate constraint that can be toggled on or off so that all pin links are
+  adjacent"): a role `pin_stack`, `free` / `adjacent` / `near` (one layer apart at most).
+  `StackSpec.adjacent` lists each pin's links and the layers they may span; the search
+  keeps an unplaced link inside that window (`_Search.together`); the plan's z refuses a
+  clearance gap between two of them. Its aim was to drop the spacer tubes, hubs and shims
+  that only fill the layers between a pin's links. The arm didn't take it: strict
+  adjacency had no plan on `palletizer_reach`, `near` planned 18 layers before its land
+  gaps and none after, and the arm plans `free` (16 layers, 60.5 mm). Its parts came out
+  elsewhere: bearing pairs seated inside 5.4 mm links, stock tubes, and the belt pulley's
+  hub in the frame plate's window (`platform-a1d6e49`: 18 to 16 layers, 52.1 to 46.1 mm).
+- **Here:** the same rule, rewritten (`StackSpec.adjacent`, `_Search.together`,
+  `plan_z.finalize`, `config.PIN_STACKS` per linkage, `fabricate.adjacent_pins`). It is
+  empty for every linkage, so every design plans as before. One fix came with it: a
+  side-by-side pin counts its links at their own thickness in the search's nominal z
+  (`construction.axle.side_by_side`). At a pitch a layer, two 0.190 in links under a pivot
+  pin made to length (10 mm at least) left a 3.4 mm take-up and an end no slot could hold,
+  so no cradle pin could plan side by side at all.
+- **Why not for the cradles.** For each pin, a head that another link sweeps right over
+  must sit between its two links. The planner names it, and it rules out every stack size
+  (to 61 layers for X, Y and E; to 56 for P and 42 for K, where its 60 s ran out):
+  - **B's P** (rod b1 to lever b2): K's lower end, under b2, is swept by the rod (−19.4 mm).
+  - **B's K** (b2 to b4): P's upper end, over b2, is swept by b4 (−19.4 mm).
+  - **B's X and Y** (b4/b5 to b6): J's cap is swept by b6 (−19.7 mm), and two rear tie-rod
+    screw heads by b4 (−17.8 mm).
+  - **A's E** (rod to cradle link): the rear tie rod's screw head on the cradle link's face is
+    swept by the rod (−17.6 mm). The 2026-10-10 entry had found no such plan either.
+  - **B's J and J2** can sit side by side, but b2 and b3 then part. The stack is 81.33 mm
+    (from 79.68). J goes from 2.21 to 2.94 and J2 from 1.40 to 1.86, but K drops from 4.48
+    to 3.81 (its span 8.0 to 9.65 mm), and pillar O2 falls to jam 1.26, under 1.3.
+- **Nor would it buy cheaper pins.** These are `strength.stresses` at the report's loads,
+  with each pin's links side by side (spans P 8.76 → 5.59, K 8.00 → 4.83, E 8.55 → 5.55 mm):
+  - the M6 Chicago screw, at about USD 0.5: P 0.98, K 1.24, E 0.80, all under 1.3;
+  - the 8 mm clevis pin, at USD 5.47 and a clip: P 1.61, K 2.10, E 1.32.
+
+  A clevis pin's head takes two whole layers beside its lowest link, so it can't sit side
+  by side either. The USD 22-24 pivot pins at P, K and E stay.
+- **What would make it pay:** flush ends. In a planning-only test, P was bonded in b2 with
+  its upper end flush, and K likewise with its lower end flush. Then P, K, J and J2 all
+  plan side by side: 73.33 mm, 6.35 less. With only P flush, K, J and J2 do, at 80.50 mm.
+  That needs a pin no catalog here has (a plain hardened pin bonded flush, one ring
+  groove), and the M6 Chicago still can't take P or K. Not done.
+- **Also seen:**
+  - **The all-gaps plan.** With the thickness-aware z for every cradle pin, B's thinnest
+    plan has every pin's links in consecutive layers, a clearance gap between instead of a
+    ring layer: 79.33 mm and 14 layers, A 65.35 mm. The pins gain about 2 %, and the
+    bought parts and the cost don't change (B USD 659.40, A 604.75). But B gains 12 printed
+    rings (63 to 75) and A 2, so it isn't taken.
+  - **K on the clevis pin** at today's layout holds a jam at 1.43 (walk 8.5), about USD 30
+    a cradle less. But its head takes two layers between the rod and b2: 82.85 mm, P at
+    2.66, pillar O2 at 1.31. Not built or clash-checked.
+- **Where:** `spiderpig/stack/{plan,search,plan_z}.py`, `spiderpig/config.py`,
+  `spiderpig/fabricate.py`, `spiderpig/construction/axle.py`, `tests/test_stack.py`,
+  `tests/test_cradle.py`. The walkers are identical (gate against `next-320384d`).

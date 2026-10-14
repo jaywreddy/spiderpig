@@ -898,6 +898,14 @@ and the crank's and the drive's (`stack.GAP_GROUPS`) still in their gaps
 (`heads_claims(keep=...)`, `finalize(sink_all_but=...)`). TrotBot's heel and toe plan
 only that way.
 
+**Pins side by side.** `StackSpec.adjacent` can hold a pin's links to consecutive layers
+with nothing between them: no ring, and no clearance gap. `_Search.together` keeps each
+unplaced link inside the window its placed partners leave, and `plan_z.finalize` refuses
+a gap between them. `config.PIN_STACKS` names the pins per linkage
+(`fabricate.adjacent_pins`). It is empty for every linkage. Tried on the cradles on
+2026-10-14 and not taken: there, another part's head must sit between nearly every pin's
+links (DECISIONS.md).
+
 **The answer** is a `StackPlan`: each link's layer, the stack size, the crank route, the
 cost, whether the plan is **optimal** (no thinner stack and no cheaper route, both
 searched to the end), and a **proof** saying how that was established. For the running

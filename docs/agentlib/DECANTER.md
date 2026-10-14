@@ -702,6 +702,14 @@ reported; [DECISIONS.md](DECISIONS.md) has the entry):
   SF 0.8.
 - **A crank 280–320 mm behind the mouth:** the lever crosses b3, the stack's order
   changes, and pin P (10.3 mm span) and pillar O2 fall to jam SF 1.2–1.3.
+- **Each pin's links side by side** (`config.PIN_STACKS`, 2026-10-14: the arm's
+  `pin_stack`), to shorten the pins' spans:
+  - **P, K, X and Y:** no plan. Each needs another part's head between its links, where a
+    neighbouring link sweeps it: K's under b2 (the rod), P's over b2 (b4), and J's and the
+    rear ties' under the cradle link (b6, b4).
+  - **J and J2:** they plan, but b2 and b3 part: 81.33 mm, K's span 9.65 mm, pillar O2 at
+    jam 1.26.
+  - Nor would the M6 Chicago screw then hold P or K (0.98 and 1.24 side by side).
 
 ## Building one
 
