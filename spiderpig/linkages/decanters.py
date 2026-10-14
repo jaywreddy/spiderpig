@@ -177,14 +177,19 @@ register(Linkage(
     key="decanter_rcm", name="Decanting cradle B: virtual hinge (double parallelogram)",
     program=decanter_rcm, params=RCM, angles=frozenset({"ray", "bell", "skew"}),
     links={"b1": _two("M", "P"),
-           "b2": (("O2", "P", "K"), (("O2", "P"), ("O2", "K"))),
+           # (the chord P-K makes the bell crank a triangle: the rod's moment about O2 goes
+           # round it as axial force, not through the roots of its lever and arm; design
+           # review round 1, 2026-10-14: as an L its lever's root held the jam at SF 0.8)
+           "b2": (("O2", "P", "K"), (("O2", "P"), ("O2", "K"), ("P", "K"))),
            "b3": (("O1", "J", "J2"), (("O1", "J"), ("O1", "J2"))),
            "b4": (("X", "J", "K"), (("X", "K"),)),
            "b5": _two("Y", "J2"),
-           # (no chord Y-Tr1: 200 mm from the mouth it would sweep across the pivot O1)
+           # (no chord Y-Tr1: 200 mm from the mouth it would sweep across the pivot O1; the
+           # chord X-Tf1 triangulates the front quad X-Y-Tf1-Tf2, which bent at X under the
+           # jam as a four-bar frame: design review round 1, 2026-10-14)
            "b6": (("X", "Y", "Lc", "Ax", *TIES),
-                  (("X", "Y"), ("Y", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "X"), ("X", "Tr1"),
-                   ("Tr1", "Tr2")))},
+                  (("X", "Y"), ("Y", "Tf1"), ("Tf1", "Tf2"), ("Tf2", "X"), ("X", "Tf1"),
+                   ("X", "Tr1"), ("Tr1", "Tr2")))},
     labels={"b1": "connecting rod", "b2": "lower arm O2-K (driven at P)",
             "b3": "copy arm O1-J-J2", "b4": "translating bar X-J-K",
             "b5": "cradle link Y-J2", "b6": "cradle (turns about the mouth Lc)"},

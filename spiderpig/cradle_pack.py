@@ -550,22 +550,25 @@ PACK_PLANS: dict[str, vp.Plan] = {
     "decanter_rcm": vp.Plan(
         "B: the passive panel flat on the board, the drive side on its gearbox over it",
         steps=(
-            vp.Step("passive", down="bay", spin=180,
+            vp.Step("passive", down="bay", spin=0, corner="+x-z",
                     why="in first, as it comes off the pins: flat on the board, its outer "
-                        "face up"),
-            vp.Step("drive", down="outer", spin=0, on="passive",
+                        "face up, to the board's +x end"),
+            vp.Step("drive", down="outer", spin=180, corner="-x-z",
                     why="as it lies when the panel comes off (round 1's breakdown: on its "
-                        "drive side): the gearbox down on the board beside the passive "
-                        "panel, its plates over the panel's, the cradle box up; it rests on "
-                        "both, no pads, the heaviest piece low"),
+                        "drive side): the gearbox down, its plates over the panel's, the "
+                        "cradle box up; it rests on the panel, no pads, the heaviest piece "
+                        "low"),
             vp.Step("hand_crank",
                     why="on the board under the drive side's plates, wherever it drops lowest"),
         ),
         note="B's pieces: the board, the two side modules, the hand crank. The drive side "
              "with its cradle box is 441 mm across the bay whichever way it lies: with the "
-             "board at the bottom the box is about 202 L, the board's footprint times that. "
+             "board at the bottom the box is about 211 L, the board's footprint times that. "
              "(Before round 1's pack pose the drive side went cradle box down, on 7 pads: "
-             "on its gearbox it tipped.)"),
+             "on its gearbox it tipped. Since round 1's structure the panel's inner plate "
+             "has a triangle and a leg on two columns where the gearbox had dropped past it, "
+             "the panel turned the other way and to the +x end: turned as before, the "
+             "drive side lands on the panel and tips.)"),
     "decanter_hinge": vp.Plan(
         "A: both side panels face down on the board, end to end, the loose parts in their "
         "open triangles",
@@ -706,11 +709,15 @@ def gather(mech, lk, t: float = 0.0, config=None) -> dict:
         pcs, _, _ = _pieces_of(out, lk)
         by = {pc.key: pc for pc in pcs}
         placed = dict(zip([b.name for b in bodies], shapes, strict=True))
-        panel = {n: placed[n] for n in by["passive"].parts if not n.endswith("_clip")}
+        # the clips out are the cradle link's pins' (X and Y on B); a clevis pin inside the
+        # side (B's K and J2) keeps its clip and slides off with the panel
+        on_link = set(lk.links[cr.cradle_link(lk)][0])
+        out_ = sorted(n for n in by["passive"].parts if n.endswith("_clip")
+                      and n.rsplit(".pin_", 1)[-1].removesuffix("_clip") in on_link)
+        panel = {n: placed[n] for n in by["passive"].parts if n not in out_}
         unit = {n: placed[n] for n in by["drive"].parts}
         out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, unit)],
-                            "clips_out": sorted(n for n in by["passive"].parts
-                                                if n.endswith("_clip"))}
+                            "clips_out": out_}
     return out
 
 
