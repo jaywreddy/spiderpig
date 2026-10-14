@@ -1107,3 +1107,38 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
   base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
   DESIGNS.md regenerated from it.
+
+### 2026-10-14: hardening, wave 1 (no product change: the gate identical)
+
+- **The slow tier on a PR, opt-in.** `ci.yml` gains a `slow` job (`-m "slow and not e2e"`,
+  set up as the nightly's) that runs on a PR labelled `slow` (and on every push while the
+  label stays) or on a manual run (`workflow_dispatch`). Why opt-in: up to four runner-hours
+  a run. Why a label in the same workflow, not a second one: the cheap jobs re-run on a
+  `labeled` event rather than being skipped there, since a skipped job reports success and
+  would stand in for a failed one on the PR's checks. TESTING.md says how to trigger it.
+- **The planner's budget, pinned and recorded.** `SPIDERPIG_PLAN_SECONDS` is CPU time,
+  outside a design's id, so how far a search gets (a plan found, its proof, a cheaper
+  route) depends on the machine. CI's and the nightly's jobs pin it to 3600, as the gate
+  does (the node budgets alone bound a search); a stored plan records the budget its search
+  had (`PlanReport.budget_s`, `None` for no clock) and a plan re-made from the store reports
+  the record's, with a warning when this process's differs (`budget_recorded` false for a
+  record from before). Plans and design ids are unchanged.
+- **Strict vendor CAD.** `SPIDERPIG_CAD_STRICT=1`: a vendor model a build wants that can't
+  be drawn (not cached and not downloaded, a hash mismatch, an import or placement failure,
+  the wrong size, a horn that won't strip) raises `hardware.cad.CadError` instead of the
+  parametric fallback; `spiderpig cad check` loads every registered model that way. Off by
+  default: the gate, the audit and CI stay offline and parametric.
+- **The server's bakes keyed on what shapes them.** `bakes/<config key>-<bake key>.glb`
+  (`server.app.bake_key`): the config, the code a bake reaches (the fabrication's roots, the
+  plan through the store and the bake; computed in a fresh worker once the sources changed
+  under the server), the fab cache's env tag and the servo's and bought parts' CAD state.
+  Before, a file named by the config alone was served while newer than the sources'
+  mtimes: another worktree's code sharing the store, an installed package or a vendor model
+  imported since could all serve a stale bake. A watcher's re-bake now skips a default
+  whose key didn't move. `spiderpig bake`'s own file (`bakes/<config key>.glb`) is no
+  longer served by the viewer's server.
+- **pyright over the tests.** `[tool.pyright]` includes `tests/`; they hold 743 errors
+  (optional reads of reports and parts, mostly), so they are ratcheted on a count of their
+  own (`tests/pyright-baseline.json`'s `"tests"`) beside the package's 21, each failing CI
+  if it rises; the scorecard's `errors` stays the package's.
+- **The roadmap** gained the platform's phases (2026-10-11 to 2026-10-14) and what is open.

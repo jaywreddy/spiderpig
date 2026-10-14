@@ -42,8 +42,12 @@ used other xdist workers or ran at loads over 2x apart, then every delta. CPU is
 workers included). The baseline is `docs/agentlib/scorecard-baseline.json`.
 
 CI (`.github/workflows/ci.yml`: pushes to master and every PR, read-only token, a newer
-run of a ref cancels the older): ruff (W6's extended rules), pyright's ratchet (`mise run pyright-check`:
-the count against `tests/pyright-baseline.json`, which only goes down; `-- --update` lowers it),
+run of a ref cancels the older; `SPIDERPIG_PLAN_SECONDS=3600` for every job, as the gate's:
+the node budgets alone bound a search, so a plan doesn't depend on the runner's speed): ruff
+(W6's extended rules), pyright's ratchet (`mise run pyright-check`: `[tool.pyright]` covers
+`spiderpig/` and `tests/`, each on its own count in `tests/pyright-baseline.json` (the
+package's at the top, the tests' under `"tests"`, hundreds when they were added on
+2026-10-14), neither of which may rise; `-- --update` lowers them),
 `uv lock --check`, the viewer's typecheck + vitest,
 the quick tier (`-n 4`, `SPIDERPIG_OFFLINE=1`; node and the viewer's packages installed with
 `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, so a viewer test that would skip fails; the fabrication
@@ -52,6 +56,21 @@ spiderpig.tools.engine_version`, plus `uv.lock` and `tests/cache.py`: no restore
 new engine starts empty), `lint-imports`, and the doc check with `--strict` (blocking
 since W7). `.pre-commit-config.yaml` runs ruff and
 `uv lock --check` (opt-in: `uvx pre-commit install`).
+
+**The slow tier on a PR** (opt-in, the `slow` job of `ci.yml`): `-m "slow and not e2e" -n 4`,
+set up as the nightly's (node, `SPIDERPIG_REQUIRE_VIEWER_TESTS=1`, the fabrication cache
+under its own key, starting from the nightly's or the quick job's entries for the same
+engine). It runs when
+
+- the PR carries the label `slow`: adding it starts a run at once (the workflow listens
+  for `labeled`), and every push runs it again while the label stays (`gh pr edit N
+  --add-label slow`; remove the label to stop). Adding any label re-runs the cheap jobs
+  too: none of them is ever skipped, so a skipped check can't stand in for a failed one;
+- or on a manual run of the workflow: Actions > CI > Run workflow on a branch, or
+  `gh workflow run ci.yml --ref BRANCH` (every job, the slow tier among them).
+
+It takes about as long as the nightly's (up to 4 h on a cold cache; its timeout). The
+browser tests and the gate's determinism check stay nightly-only.
 
 Nightly (`.github/workflows/nightly.yml`: 06:17 UTC on master, and `workflow_dispatch`):
 the slow tests (`-m "slow and not e2e" -n 4`, with node and
