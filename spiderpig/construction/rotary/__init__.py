@@ -159,7 +159,6 @@ class RotaryPreset:
     actuator: str
     sensor: str
     range_deg: tuple[float, float]
-    skin: bool = False     # a base_pair's round base wrapped in a stock tube (base_pair.SKIN)
 
     @property
     def parts(self) -> tuple[Support, Any, Any, Sensor | None]:
@@ -204,11 +203,10 @@ PRESETS: dict[str, RotaryPreset] = {p.key: p for p in (
                  "hard stop past the range's end (the camera then sets the zero)", "base_pair",
                  "belt", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0)),
     RotaryPreset("mt4_compact", "mt4_base_stall made small: GT2 16 to 60 teeth (3.75:1) on "
-                 "the 158 mm loop, the motor 38.5 mm from the axis, the base one round drum "
-                 "under a turntable as wide, wrapped in a black tube (the user's 'an elegant "
-                 "machine', 2026-10-14)",
-                 "base_pair", "belt_60", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0),
-                 skin=True),
+                 "the 158 mm loop, the motor 38.5 mm from the axis, the base a tight round "
+                 "core under a turntable as wide, a lobe out the back round the motor (the "
+                 "user's 'an elegant machine', 2026-10-14)",
+                 "base_pair", "belt_60", "nema17_17hs4401_x64", "hard_stop", (-120.0, 120.0)),
     RotaryPreset("capstan_precise", "cord capstan 11.6:1 on a preloaded 608 pair, an Omron "
                  "slot sensor, the driver at 1/64", "preloaded_pair", "capstan",
                  "nema17_17hs4401_x64", "ee_sx67", (-115.0, 115.0)),

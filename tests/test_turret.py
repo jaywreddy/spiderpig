@@ -148,7 +148,9 @@ def test_the_turret_stands_under_the_side_and_holds_together(preset):
         assert h["bt_top"] < h["drive_bot"] < h["hub_bot"] < h["hub_top"] < h["table"]
     assert tp.y_ground == pytest.approx(tp.y_t - h["table"])
     assert h["shaft_top"] - h["bt_bot"] <= tp.preset.parts[2].shaft_len + 1e-9
-    assert tp.r_base > tp.c + tp.preset.parts[2].frame / math.sqrt(2)
+    motor = tp.preset.parts[2]          # the base past the motor: its lobe past the far face
+    assert tp.r_base > tp.c + motor.frame / (2 if tp.preset.support == "base_pair"
+                                             else math.sqrt(2))
     assert len(tp.brackets) == 4
     assert {pl for pl, _ in tp.brackets} == {"outer", "inner"}
     lo, hi = tp.range_deg
@@ -280,7 +282,9 @@ def test_the_turret_robot_is_whole_and_its_parts_meet_only_where_they_thread(rol
         assert rows["collar_8mm"] == 3
         assert rows[SHAFT_KEY] == 1
         assert rows["m4_hex_standoff_45"] == 7          # three round the bearings
-        assert rows["angle_bracket_20"] == 4
+        from spiderpig.construction.rotary.base_pair import BRACKET_KEY
+
+        assert rows[BRACKET_KEY] == 4
         assert not any(b.fab == "printed" for b in mech.bodies
                        if b.name.startswith(("base_", "yaw_", "turntable", "foot_")))
     else:

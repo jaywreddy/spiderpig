@@ -119,6 +119,46 @@ def pill(p: XY, q: XY, radius: float, z0: float, z1: float) -> Shape3D:
     return Solid.extrude(Face(wire), Vector(0, 0, z1 - z0))
 
 
+def hull(circles: Sequence[tuple[XY, float]], z0: float, z1: float) -> Shape3D:
+    """The convex hull of circles ``(xy, r)``, given in counter-clockwise order round it
+    (each on the hull), extruded ``z0..z1``: one prism of the circles' arcs and their outer
+    tangents (no boolean, the outline a cutter reads as arcs). Circles inside the first
+    one are dropped."""
+    c0 = np.asarray(circles[0][0], dtype=float)[:2]
+    r0 = float(circles[0][1])
+    cs = [(c0, r0)] + [(np.asarray(xy, dtype=float)[:2], float(r)) for xy, r in circles[1:]
+                       if float(np.hypot(*(np.asarray(xy, dtype=float)[:2] - c0))) + r > r0]
+    if len(cs) == 1:
+        return disc(c0, r0, z0, z1)
+    n_ = len(cs)
+    tangents = []                       # the outward normal of the tangent from i to i + 1
+    for i in range(n_):
+        (p, rp), (q, rq) = cs[i], cs[(i + 1) % n_]
+        d = q - p
+        L = float(np.hypot(*d))
+        u = d / L
+        w = np.array([u[1], -u[0]])     # right of the way round: outward
+        k = (rp - rq) / L
+        tangents.append(k * u + math.sqrt(max(0.0, 1.0 - k * k)) * w)
+
+    def v(xy):
+        return Vector(float(xy[0]), float(xy[1]), z0)
+
+    edges = []
+    for i in range(n_):
+        (p, rp), (q, rq) = cs[i], cs[(i + 1) % n_]
+        n_in, n_out = tangents[i - 1], tangents[i]
+        a0 = math.atan2(n_in[1], n_in[0])
+        sweep = (math.atan2(n_out[1], n_out[0]) - a0) % (2 * math.pi)
+        mid = a0 + sweep / 2
+        if sweep > 1e-9:
+            edges.append(Edge.make_three_point_arc(
+                v(p + rp * n_in), v(p + rp * np.array([math.cos(mid), math.sin(mid)])),
+                v(p + rp * n_out)))
+        edges.append(Edge.make_line(v(p + rp * n_out), v(q + rq * n_out)))
+    return Solid.extrude(Face(Wire(edges)), Vector(0, 0, z1 - z0))
+
+
 def union(parts: Iterable[Shape3D]) -> Shape3D:
     """Fuse parts in one boolean (``a + b`` on two disjoint Solids returns a list)."""
     parts = [p for p in parts if p is not None]

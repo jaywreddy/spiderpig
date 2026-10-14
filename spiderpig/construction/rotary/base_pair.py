@@ -61,7 +61,7 @@ from spiderpig.construction.base import ConstructionError, Context
 from spiderpig.hardware.bom import BomLine
 from spiderpig.hardware.fasteners import screw, screw_solid
 from spiderpig.mechanism import Body
-from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, ring, union
+from spiderpig.shapes import Cut, Rect, box, cut_holes, disc, hull, ring, union
 
 BOTTOM_SHEET = "acrylic_3mm"    # the base's bottom plate: loaded in its plane, the columns
 #                                 pinned in it (round 2 of the cost loop: half 5052's cut)
@@ -70,10 +70,12 @@ TOP_SHEET = "al5052_3p2mm"      # the top plate: the columns stand off it as can
 #                                 review), the motor's heat and the belt's pull on it
 TABLE_SHEET = "al5052_3p2mm"    # the turntable: the arm's moment bends it; 5052 as stiff as
 #                                 6061 (its strength unused) at a cheaper rate
-STOCK_BRACKET = {"w": 16.0, "h": 20.0, "d": 20.0, "t": 2.0, "hole": 10.0}
-"""The stock steel angle bracket (``angle_bracket_20``): its width, its legs (``h`` up the
-frame plate, ``d`` out along the turntable), its thickness and each leg's hole from the
-corner."""
+STOCK_BRACKET = {"w": 12.0, "h": 16.0, "d": 16.0, "t": 1.6, "hole": 8.8}
+"""The stock steel angle bracket (``key``): its width, its legs (``h`` up the frame plate,
+``d`` out along the turntable), its thickness and each leg's hole from the corner (the
+16 mm ones in place of the 20 mm: the turntable, round the brackets' far corners, the
+smaller; the user's "an elegant machine", 2026-10-14)."""
+BRACKET_KEY = "angle_bracket_16"
 SHIM = 0.5                      # a shim under a collar on an inner ring (clear of the seal)
 FOOT = 6.0                      # the bench spacers under the bottom plate (m4_spacer_6)
 SHAFT_KEY = "shaft_8mm_h6_tapped"
@@ -83,13 +85,15 @@ LIFT_WASHER = "shim_din988_3x6_t0p5"   # the stacks under the turntable at its f
 #                                 0.45-0.55 mm would tilt it: round 2's review)
 CENTRE_SHIM = "shim_8x12x0p5"   # and a stack on the shaft under its centre, where the M4
 #                                 clamp pulls it down
-BASE_FOOT_L = 25.0              # the side's feet's half length on the turntable (the
-#                                 classic's 40: a smaller turntable, the user's "make the
+BASE_FOOT_L = 19.0              # the side's feet's half length on the turntable (the
+#                                 classic's 40): the shortest that holds the brackets'
+#                                 symmetric pair (a smaller turntable, the user's "make the
 #                                 plate smaller... an elegant machine", 2026-10-14)
 YAW_MIN_MESH = 5.0              # teeth in mesh on the yaw's 16-tooth pulley: 5 (Gates' 6 is
 #                                 for full rated load; the turntable's is light): the 200 mm
 #                                 loop, the motor 17 mm nearer the axis
-BASE_RIM = 4.0                  # the round base past the yaw motor's far corners
+BASE_RIM = 4.0                  # the base's lobe past the yaw motor's far corners
+LOBE_R = 8.0                    # the lobe's back corners' radius
 CENTRE_R = 18.0                 # three more columns round the bearings: they close the
 #                                 preload's loop by the axis, the acrylic plates' bending
 #                                 out of it (round 2's review)
@@ -223,7 +227,8 @@ def keep_radius(ctx: Context, tr, motor, c: float, faces: dict[str, float],
 
     bk = STOCK_BRACKET
     half = (faces["inner"] - faces["outer"]) / 2
-    feet = math.hypot(foot_l + FOOT_R, half + bk["d"]) + 3.0
+    feet = max(math.hypot(foot_l - 1.0, half + bk["d"]),     # a bracket's far corner, on
+               math.hypot(foot_l + FOOT_R, half)) + 3.0       # the foot; the foot's end
     if sensor == "hard_stop":
         r_flag = stop_radius(tr, c, range_deg)
         return max(feet, r_flag + 4.0) + 1.0, r_flag
@@ -233,43 +238,33 @@ def keep_radius(ctx: Context, tr, motor, c: float, faces: dict[str, float],
     return max(table, board_outer(r_flag)) + 1.0, r_flag
 
 
-SKIN = "tube_acrylic_black_140"   # the skin round the base (a stock tube cut to length)
-SKIN_LIP = 1.0                  # the plates past the skin's outside
+def lobe(c: float, motor) -> list[tuple[tuple[float, float], float]]:
+    """The base's lobe behind the axis round the yaw motor (and its slots' travel): its two
+    back corners' circles, the plates :data:`BASE_RIM` past the motor's far corners."""
+    x = -(c + motor.frame / 2 + 2.0 + BASE_RIM - LOBE_R)
+    y = motor.frame / 2 + BASE_RIM - LOBE_R
+    return [((x, y), LOBE_R), ((x, -y), LOBE_R)]
 
 
-def skin_radii() -> tuple[float, float]:
-    """The skin tube's ``(inner, outer)`` radius."""
-    from spiderpig.hardware.catalog import get
-
-    d = get(SKIN).dims
-    return float(d["id"]) / 2, float(d["od"]) / 2
-
-
-def base_radius(front: float, c: float, motor, skin: bool = False) -> float:
-    """The round base's radius: the turntable's keep-out (``front``), and the yaw motor
-    behind the axis (its far corners, and its slots' travel) inside it by :data:`BASE_RIM`
-    (or inside the skin tube's bore, the plates :data:`SKIN_LIP` past its outside): one
-    disc under the turntable, concentric (the user's, 2026-10-14: no tail)."""
-    motor_r = math.hypot(c + motor.frame / 2 + 2.0, motor.frame / 2)
-    if skin:
-        ri, ro = skin_radii()
-        if motor_r + 1.0 > ri:
-            raise ConstructionError(f"turret: the yaw motor's corner ({motor_r:.1f} mm) "
-                                    f"passes the skin's bore ({ri:.1f} mm)")
-        return max(front, ro + SKIN_LIP)
-    return max(front, motor_r + BASE_RIM)
+def base_radius(front: float, c: float, motor) -> float:
+    """How far the base reaches behind the axis: its round core (``front``, the turntable's
+    keep-out, the turntable as wide over it) or the lobe round the yaw motor out the back
+    (the user's, 2026-10-14: a tight circle for what turns, the motor out the back)."""
+    return max(front, c + motor.frame / 2 + 2.0 + BASE_RIM)
 
 
 OUTER_COLUMNS = (45.0, -45.0, 135.0, -135.0)     # deg: square to the arm, clear of the motor
+OUTER_COLUMNS_FLAG = (45.0, -45.0, 150.0, -150.0)   # with an endstop's board at the range's
+#                                                 lower end (-123 deg): the back pair past it
 
 
 def columns_xy(tp, motor) -> list[tuple[float, float]]:
-    """The seven columns (the turret's frame): four on a circle near the round base's rim
+    """The seven columns (the turret's frame): four on a circle near the round core's rim
     (:data:`OUTER_COLUMNS`), three round the bearings at :data:`CENTRE_R` (the acrylic plate
     held flat by the axis, where the wave washer's preload bears)."""
-    r = (skin_radii()[0] if tp.preset.skin else tp.h["front"]) - HEX_R - TAIL_EDGE
-    outer = [(r * math.cos(math.radians(a)), r * math.sin(math.radians(a)))
-             for a in OUTER_COLUMNS]
+    r = tp.h["front"] - HEX_R - TAIL_EDGE
+    angles = OUTER_COLUMNS if tp.preset.sensor == "hard_stop" else OUTER_COLUMNS_FLAG
+    outer = [(r * math.cos(math.radians(a)), r * math.sin(math.radians(a))) for a in angles]
     centre = [(CENTRE_R * math.cos(math.radians(a)), CENTRE_R * math.sin(math.radians(a)))
               for a in (0.0, 120.0, 240.0)]
     return outer + centre
@@ -427,24 +422,19 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         if flen is None or h["table"] - flen > body_top - 2.0:
             raise ConstructionError("turret: no stock M2 screw hangs into the endstop's slot")
 
-    # the base: one disc, concentric with the turntable
+    # the base: a round core under the turntable, as wide, a lobe out the back round the motor
     def outline(z0, z1):
-        return disc(o, front, z0, z1)
+        return hull([(o, front), *lobe(tp.c, motor)], z0, z1)
 
     lo_r, hi_r = h.get("reach_lo", math.nan), h.get("reach_hi", math.nan)
     col_cuts = [Cut(c, 4.4) for c in cols]
     b0, b1 = h["bp_bot"], h["bp_top"]
-    r_b = (skin_radii()[0] - 5.0 if tp.preset.skin else front - 6.0)   # three: a
-    #                                                 kinematic mount on the bench
+    r_b = front - 6.0                               # three: a kinematic mount on the bench
     bench = [(r_b * math.cos(math.radians(a)), r_b * math.sin(math.radians(a)))
              for a in (0.0, 90.0, -90.0)]
     add("base_bottom", cut_holes(outline(b0, b1), [Cut(o, 22.0 + 0.2), *col_cuts,
                                                    *(Cut(xy, 4.4) for xy in bench)], b0, b1),
         fab="laser", color=PLATE_COLOR, sheet=BOTTOM_SHEET)
-    if tp.preset.skin:      # the skin: cut 0.5 mm short (the columns carry the load)
-        ri, ro = skin_radii()
-        add("base_skin", ring(o, 2 * ro, 2 * ri, b1, h["bt_bot"] - 0.5), fab="purchased",
-            bom_key=SKIN, color="#1c1c1c")
     for i, xy in enumerate(bench):                  # screwed to the bench on spacers
         add(f"base_spacer{i}", ring(xy, 8.0, 4.2, 0.0, b0), fab="purchased",
             bom_key="m4_spacer_6", color="#3a3a3a")
@@ -631,7 +621,7 @@ def parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine], dict]
         part = difference(part, _along_y(disc((x, zc), SCREW_HOLE / 2, tp.y_t - 1,
                                               tp.y_t + bk["t"] + 1)))
         bodies.append(_hw(f"foot_bracket{i}", part, fab="purchased",
-                          bom_key="angle_bracket_20", color="#9a9a9a"))
+                          bom_key=BRACKET_KEY, color="#2b2b2b"))
         turning.append(f"foot_bracket{i}")
         inner_face = face + (ctx.sheet_t("frame") if plate == "outer"
                              else -ctx.sheet_t("frame"))

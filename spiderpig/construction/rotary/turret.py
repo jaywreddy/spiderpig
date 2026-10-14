@@ -394,8 +394,14 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
         foot_l = bp.BASE_FOOT_L
         front, r_flag = bp.keep_radius(ctx, tr, motor, c, faces, preset.sensor,
                                        preset.range_deg, foot_l)
-        h["front"] = r_base = bp.base_radius(front, c, motor, preset.skin)   # one round base
-        keep_r = r_base + ctx.params.margin
+        h["front"] = front                  # the round core, the lobe behind
+        r_base = bp.base_radius(front, c, motor)
+        keep_r = front + ctx.params.margin
+        half_t = motor.frame / 2 + bp.BASE_RIM
+        turn = max(abs(v) for v in preset.range_deg)
+        if r_base > front and turn + math.degrees(math.asin(min(1.0, half_t / keep_r))) > 175.0:
+            raise ConstructionError(f"turret: a {turn:.0f} deg yaw swings the arm's low links "
+                                    "over the base's lobe")
     else:
         columns = _stock_column(motor.length + MOTOR_GAP)
         h: dict[str, float] = {"bottom": 0.0}
@@ -505,13 +511,13 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
     if support.key == "base_pair" and preset.sensor == "hard_stop":    # a post, no board
         sensor_r = r_flag
         r_table = max(max(corners) + 3.0, sensor_r + 4.0)
-    if support.key == "base_pair":          # as wide as the round base: one drum
-        r_table = max(r_table, h["front"])
     elif support.key == "base_pair":        # the M2 flag outside the belt, nut under it
         sensor_r = max(r_flag, max(screws_r) + head_r + 1.0 + 5.5)
         r_table = max(max(corners) + 3.0, sensor_r + 4.0)
         if bp.board_outer(sensor_r) + 1.0 > h["front"] + 1e-6:
             raise ConstructionError("turret: the endstop's board passes the base's front")
+    if support.key == "base_pair":          # flush with the base's round core
+        r_table = max(r_table, h["front"])
 
     # the tool, wherever the flange passes over the base or the turntable
     if tool_plan is not None:
@@ -530,7 +536,7 @@ def turret_plan(design, preset: RotaryPreset, tool_plan=None, mill: str = "") ->
             if low - protrude - 1.0 < y_t:        # (over the collar and nuts it stands)
                 y_t = low - protrude - 1.0
                 notes.append("the turntable stands lower for the tool passing over it")
-    if keep_r and r_table > h["front"] + 1e-6:     # (as wide as it: one drum)
+    if keep_r and r_table > h["front"] + 1e-6:     # (as wide as it: flush)
         raise ConstructionError(f"turret: the turntable's {r_table:.1f} mm passes the base's "
                                 f"front of {h['front']:.1f} mm")
     y_ground = y_t - h["table"]

@@ -265,6 +265,17 @@ for _L in M4_HEX_STANDOFF_LENGTHS:
         notes="A base_pair turret's column: seven of them between its plates carry the arm's "
               "tipping moment (a 7 mm hex racks about six times less than the M3 rounds)."))
 register(Item(
+    "angle_bracket_16", "Steel L angle bracket 16 x 16 x 12 mm, black (corner brace)",
+    "bracket",
+    (Offer("Amazon", "https://www.amazon.com/s?k=uxcell+16x16mm+angle+bracket+black",
+           pack_qty=12, price_usd=8.0, note="search: uxcell 16 x 16 mm black L brackets, "
+           "12 pcs; the price an estimate (2026-10-14)"),),
+    dims={"w": 12.0, "leg": 16.0, "t": 1.6, "hole": 3.4},
+    notes="A frame plate's foot held to the turntable, the compact turret's (its turntable "
+          "four millimetres less round than the 20 mm brackets'). Width, thickness and the "
+          "holes UNVERIFIED (a listing's photo): measure; a hole under 3.4 mm drilled out for "
+          "M3."))
+register(Item(
     "angle_bracket_20", "Steel L angle bracket 20 x 20 x 16 mm, 3.4 mm holes (corner brace)",
     "bracket",
     (Offer("Amazon", "https://www.amazon.com/s?k=20mm+L+corner+brace+bracket+M3",
@@ -278,17 +289,3 @@ register(Item(
     dims={"d": 12.0, "h": 4.0},
     notes="Not used: round 7's review screws the base_pair turret to the bench (on "
           "rubber a light base rocks under the arm's moment)."))
-
-register(Item(
-    "tube_acrylic_black_140", "Cast acrylic tube 5.5 in OD x 1/8 in wall (139.7 x 133.35 mm), "
-    "black opaque, cut to length", "tube",
-    (Offer("TAP Plastics", "https://www.tapplastics.com/product/plastics/cut_to_size_plastic/"
-           "acrylic_tubes/526", price_usd=24.0,
-           note="cast acrylic tube 5-1/2 in OD x 1/8 in wall, cut to length; black opaque or "
-                "clear (paint its inside); the price an estimate for a 6 in length "
-                "(2026-10-14)"),),
-    dims={"od": 139.7, "id": 133.35, "length": 152.4, "material": "acrylic"},
-    notes="The compact turret's skin (construction.rotary.base_pair.SKIN): round the base "
-          "between its plates, 0.5 mm shorter than the columns so it carries nothing, held by "
-          "the plates' lips. Drill a few vent holes behind the yaw motor (3-5 W while it holds) "
-          "and file a notch for the cables at the bottom."))
