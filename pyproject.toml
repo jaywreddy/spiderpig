@@ -161,12 +161,12 @@ layers = [
 
 [[tool.importlinter.contracts]]
 name = "the part registries sit under the pipeline"
-# An arm's motors, sensors and controllers, the mill, the roles and fab methods registries
+# An arm's motors, sensors and controllers, the roles and fab methods registries
 # and the repeatability model are read by the constructions and the stages: none of them
 # reaches up into the pipeline or a front-end.
 type = "forbidden"
-source_modules = ["spiderpig.actuators", "spiderpig.milling", "spiderpig.roles",
-                  "spiderpig.fabmethods", "spiderpig.repeatability"]
+source_modules = ["spiderpig.actuators", "spiderpig.roles", "spiderpig.fabmethods",
+                  "spiderpig.repeatability"]
 forbidden_modules = ["spiderpig.fabricate", "spiderpig.sim", "spiderpig.stages",
                      "spiderpig.urdf", "spiderpig.bake", "spiderpig.build",
                      "spiderpig.strength", "spiderpig.precision", "spiderpig.guide",

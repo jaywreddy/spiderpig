@@ -1,5 +1,4 @@
-"""Can the services cut it? Every laser-cut part against its sheet's rules (and every
-milled part against the user's mill's: :func:`milling.check`).
+"""Can the services cut it? Every laser-cut part against its sheet's rules.
 
 The plates go to SendCutSend (the aluminium, and the 3 mm acrylic since 2026-10-08) and
 Ponoko (the thin acrylic; the 3 mm as ``acrylic_3mm_ponoko``), whose cut rules each sheet
@@ -266,20 +265,6 @@ def check(mech, default: str, dxf: bool = True) -> dict:
             if (bad := dxf_issue(b, fid)) is not None:
                 found.append(bad)
         issues.extend(dict(i, sheet=key) for i in found)
-    specs = (getattr(mech, "meta", None) or {}).get("milled") or {}
-    if specs:                      # the user's mill's parts against its rules
-        from spiderpig.milling import MILLS, MillPart
-        from spiderpig.milling import check as mill_check
-
-        mill = MILLS[mech.meta["mill"]]
-        seen: set[str] = set()
-        for body, spec in specs.items():     # each distinct part once (its first body)
-            part = MillPart.from_dict(spec)
-            key = repr(sorted((k, repr(v)) for k, v in spec.items() if k != "name"))
-            sheets.setdefault(part.stock, sheet(part.stock).label)
-            if key not in seen:
-                seen.add(key)
-                issues.extend(dict(i, part=body) for i in mill_check(part, mill))
     by_rule: dict[str, int] = {}
     errors: dict[str, int] = {}
     for i in issues:
@@ -291,7 +276,7 @@ def check(mech, default: str, dxf: bool = True) -> dict:
         return (i["rule"], -v if i["rule"] == "dxf" else v)
 
     issues.sort(key=worst_first)
-    return {"parts": len(bodies) + len(specs), "by_rule": by_rule, "errors": errors,
+    return {"parts": len(bodies), "by_rule": by_rule, "errors": errors,
             "issues": issues,
             "sheets": sheets, "kerf": kerf, "dxf": fids,
             "dxf_worst_mm": max((f["deviation_mm"] for f in fids.values()), default=None)}
@@ -299,10 +284,7 @@ def check(mech, default: str, dxf: bool = True) -> dict:
 
 RULES = {"min_hole": "minimum hole", "edge": "hole-to-edge distance",
          "web": "web round a cut-out", "dxf": "DXF matches the solid",
-         "min_part": "minimum part size", "corner": "inside corner radius",
-         "mill_stock": "milled part's stock", "mill_bed": "mill's bed",
-         "mill_depth": "mill's reach through the stock", "mill_tool": "a tool for each bore",
-         "mill_wall": "milled web"}
+         "min_part": "minimum part size", "corner": "inside corner radius"}
 """Each cut rule's name in a message."""
 
 

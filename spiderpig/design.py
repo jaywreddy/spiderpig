@@ -199,9 +199,9 @@ def spec_hash(resolved: Mapping) -> str:
     return hashlib.sha256(canonical_json(resolved).encode()).hexdigest()[:16]
 
 
-SIDE_FREE_ROLES = ("turntable", "mill", "homing_reference", "controller")
+SIDE_FREE_ROLES = ("turntable", "homing_reference", "controller")
 """An arm's robot roles that don't shape its side's layer plan (what stands under the side,
-the base's machining, the homing's camera, the electronics): designs differing only in
+the homing's camera, the electronics): designs differing only in
 them can share a plan (always re-made and verified: :func:`stages.planning._reuse_plan`)."""
 
 

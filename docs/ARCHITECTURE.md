@@ -1340,17 +1340,15 @@ robot is an entry rather than an edit across the stages:
   sheet's expansion, are the accuracy rows. `--compare` runs the pivot options.
 - **Drives for an arm** (`construction/transmissions/`, `spiderpig/actuators/`): each
   input a stepper (role `actuator`) and a transmission (role `transmission`, per drive:
-  `transmission@q3=capstan`): a GT2 belt (5:1, `belt`) or a Dyneema cord capstan on the
-  motor's shaft (8.7:1 on a 6 mm sleeve, no backlash, `capstan`); a belt's motor on a
-  slider plate outside its frame plate, tensioned from outside. The hub's parts stand in
+  `transmission@q3=belt`): a GT2 belt (5:1, `belt`), its motor on a slider plate outside
+  its frame plate, tensioned from outside. The hub's parts stand in
   the layers beside
   the driven link, coaxial with its pivot, whose axle then claims only a seat inside them
   (`nested`: `DriveHub`), the link growing a pad round the pivot for the hub's bolts
   (`plates.hub_pads`); the drives on one pivot alternate plates (the first's motor under
   the outer plate, the next's on the inner) so their hubs and shafts don't meet. Motors
   are placed before planning, clear of the frame's pillar heads; their shafts are cut to
-  the hub by default. Their error terms (the belt's or cord's stretch, the teeth's
-  backlash, the stepper's microstep and holding stiffness through the ratio) join the
+  the hub by default. Their error terms (the belt's stretch, the teeth's backlash, the stepper's microstep and holding stiffness through the ratio) join the
   precision budget per input.
 - **Ball-bearing pivots** (`construction/pivots/ball.py`): `ball` (pins) and `ball_pillar`
   (pillars) seat a shielded bearing in each link that turns on the axle (`AxleDims.seat`:
@@ -1359,14 +1357,16 @@ robot is an entry rather than an edit across the stages:
 - **Robot layouts** (`construction.robot.LAYOUTS`, `config.ROBOT_LAYOUTS`): how a robot
   is made of its planar side. A walker's `mirrored_pair` is the two-sided chassis robot; an
   arm's `turret` stands its side on a turntable about the vertical
-  (`construction/rotary/turret.py`): a base of two plates on standoff columns with the yaw
-  motor under it, a fixed 8 mm shaft clamped through a boss, a hub of laser-cut seat
-  plates with two 608s bonded in, the turntable, the frame plates grown a foot onto it and
-  held by printed brackets clear of the drives' motors, and a homing endstop with a
-  half-circle flag. The turntable is one preset of the role `turntable`
-  (`construction.rotary.PRESETS`: a support, a transmission, a motor and a sensor; the
-  plain or wave-washer-preloaded 608 pair, the side's own `belt` and `capstan` numbers on
-  the yaw's geometry). The arm's tool is the role `tool` (`construction/tools.py`): a
+  (`construction/rotary/turret.py`, the plan and the feet; `construction/rotary/base_pair.py`
+  builds it): a base of an acrylic bottom plate and an aluminium top plate on seven hex
+  columns with the yaw motor hanging under the top plate, an F608 bonded into each plate
+  and the 8 mm shaft turning in them, the pair preloaded by a wave washer, the large
+  pulley and the turntable clamped on the shaft, the frame plates grown a foot onto it
+  and held by stock angle brackets clear of the drives' motors, and a hard stop past the
+  yaw's lower end its driver stalls on (the camera sets the fine zero). The turntable is
+  the preset of the role `turntable` (`construction.rotary.PRESETS`: a support, a
+  transmission, a motor and a sensor): `mt4_compact` alone, the user's approved one
+  (2026-10-14: the others pruned, `config.REMOVED_CONSTRUCTIONS`). The arm's tool is the role `tool` (`construction/tools.py`): a
   vacuum cup under a laser-cut shelf T-slotted to a hanger plate bolted beside the end
   plate (the homing camera hung under the shelf beside it), or on a NEMA 11 wrist hung
   under the flange, placed where no link sweeps over the inputs' box. A layout adds its
@@ -1374,29 +1374,16 @@ robot is an entry rather than an edit across the stages:
   feet and tool) and assembles the robot round the fabricated side (`assemble_robot`).
   The robot-level roles (`roles.Role.robot`) are dropped from the side's config
   (`BuildConfig.side_config`), so one plan serves every turntable and tool.
-- **Milled parts** (`spiderpig/milling.py`, fab method `milled`, role `mill`): a part
-  machined from plate on the user's own mill (`milling.MILLS`: the Makera Carvera) where a
-  laser can't make it. A construction describes it as a `milling.MillPart`: its plate
-  (`hardware/plate_catalog.py`), its outline and its 2.5-D operations from one side
-  (spiral pockets, drilled holes, the profile last); its solid is drawn from that
-  description, `milling.check` holds it to the mill's rules (the bed with the clamps'
-  margin, a tool with chip room for every pocket within its flutes, a floor under each
-  blind pocket, the profile round the outline, the webs), and the build writes its STEP and
-  a setup sheet (the work holding, the finishing passes, the time). Milled parts group by
-  their specs (a part fitted upside down is one part; a mirror image is another). With a
-  mill the turntable's hub is two milled bearing housings (3/8 in 6061, each seat bored to
-  a slip fit with its shoulder, retaining compound), else the laser-cut stack. The BOM buys
-  the plate by the piece and notes the machine time; the milled rules join the
-  manufacturing check (`manufacture.check`).
 - **Control** (`spiderpig/control/`, `spiderpig control`): an arm driven by steppers on a
   3D-printer board running Klipper. `control.arm.ArmModel` is the arm's forward and inverse
   kinematics in the URDF's `base_link` frame (the turntable's angle from the target's
   bearing, the planar inputs by bounded least squares from a searched start); each joint's
   angle maps to its motor's microsteps through its transmission's exact ratio and its
-  mounting's sense (`control.mapping.Axis`); homing runs the turntable onto its flag's edge
-  and takes the planar joints' zeros from an angle gauge on their links (their inputs are
-  the links' angles from horizontal, read with the motors holding), and makes the
-  turntable's homing repeat to the step by its driver's recorded phase (`homing.phase_move`);
+  mounting's sense (`control.mapping.Axis`); homing stalls the turntable's driver on its
+  hard stop (the camera's fiducials then set the fine zero: `control.vision`) and takes the
+  planar joints' zeros from an angle gauge on their links (their inputs are the links'
+  angles from horizontal, read with the motors holding), a switch's homing repeating to the
+  step by its driver's recorded phase (`homing.phase_move`);
   `control.calibrate.fit` fits the link lengths and the zeros to measured poses;
   `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
   degrees (its pins left to fill, the motors never disabled when idle); `control.host` plans
@@ -1404,7 +1391,7 @@ robot is an entry rather than an edit across the stages:
 - **An arm through every surface** (2026-10-12, phase 7): the spec's `legs.robot` (an
   arm's whole robot by default) makes the API, the MCP and the store build an arm's turret;
   `api.export` writes `urdf` (with the arm's MuJoCo model: `urdf.mjcf`, the loops closed by
-  `connect` equalities, the motors as position actuators) and `mill`; the viewer poses an
+  `connect` equalities, the motors as position actuators); the viewer poses an
   arm by joint sliders (`viewer/src/arm.ts`, from `/api/pose/{mode}`: `spiderpig.pose`,
   each node's matrix from the clip's first frame at the joints given); the guide's arm
   steps say what an arm has (its drives, no crank or servo). The gate's designs include the
@@ -1442,7 +1429,6 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
-| `mill/<label>.step`, `mill/parts.csv`, `mill/SETUP.md` | the milled parts (a mill named: role `mill`): each distinct part's STEP in its own frame, and the setup sheet (stock and blank, every operation with its tool, depth and fit, the time) | with a mill only |
 | `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar | arms only |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names

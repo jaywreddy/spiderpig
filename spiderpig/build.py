@@ -121,7 +121,7 @@ def _list_options() -> None:
             print(f"  {key:14} {getattr(c, 'label', '')}")
     print("sheet stock (--sheet):")
     for key, it in sorted(CATALOG.items()):
-        if it.category == "sheet" and not it.dims.get("milled"):
+        if it.category == "sheet":
             print(f"  {key:14} {it.name}")
 
 
@@ -346,7 +346,7 @@ def _exports_job(go: str, parent: int, out: str, name: str, sheet: str,
         return None
     timings = {"load": time.perf_counter() - t0}
     t0 = time.perf_counter()
-    groups = {m: group_made(mech.bodies, m, mech.meta.get("milled")) for m in fabmethods.made()}
+    groups = {m: group_made(mech.bodies, m) for m in fabmethods.made()}
     timings["group"] = time.perf_counter() - t0
     res: dict = {"groups": {m: [(g.ref.name, list(g.names), list(g.mirrored)) for g in gs]
                             for m, gs in groups.items()}, "timings": timings}
@@ -392,7 +392,7 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     if opts is not None:
         uptodate.forget(opts)       # (a build that stops short is never current)
-    for stale in [*(out / "urdf").glob("*.joints.json"), out / "mill" / "SETUP.md"]:
+    for stale in (out / "urdf").glob("*.joints.json"):
         stale.unlink(missing_ok=True)
     for owned in (*fabmethods.folders(), "urdf"):   # no cut, print or URDF files left
         clear_generated(out / owned)              # from an earlier build
@@ -495,8 +495,7 @@ def main(argv=None) -> int:
     if job is not None:
         job.adopt(out)                      # (the build reports on them below)
     if done is None:
-        groups = {method: group_made(mech.bodies, method, mech.meta.get("milled"))
-                  for method in fabmethods.made()}
+        groups = {method: group_made(mech.bodies, method) for method in fabmethods.made()}
     else:
         by_name = {b.name: b for b in mech.bodies}
         groups = {m: [MadeGroup(m, by_name[ref], names, mirrored)
@@ -511,13 +510,6 @@ def main(argv=None) -> int:
     print(f"wrote {len(rows)} printed-part STLs for {n_print} parts to {out / 'print'}:")
     for r in rows:
         print(f"  {r['file']:28} {r['print']}")
-    if groups.get("milled"):           # the user's mill's parts (spiderpig.milling)
-        from spiderpig.labels import by_body
-        from spiderpig.milling import write_outputs
-
-        files = write_outputs(mech, groups["milled"], by_body(types), out / "mill")
-        print(f"wrote {len(files) - 2} milled-part STEPs, parts.csv and SETUP.md to "
-              f"{out / 'mill'}")
 
     order: list[dict] = []
     if not args.no_dxf:

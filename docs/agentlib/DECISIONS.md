@@ -1072,3 +1072,38 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - On the arm, `b4` (3.2 mm in a 5.4 mm layer) had its bearing standing 1 mm proud, and the hub the plan reserved beside it was silently dropped.
   - A tube now stands in a link's layer only inside the seat the axle claims there.
 - **Gate:** every walker's parts and BOM change (intended), and `palletizer_reach`'s `b4` gets its planned hub.
+
+### 2026-10-14: the turret pruned to mt4_compact (the user's call)
+
+- **The decision:** "prune all but mt4_compact". The arm's turntable keeps only the
+  approved preset (`base_pair`, `belt_60`, `nema17_17hs4401_x64`, `hard_stop`), now the
+  role's default for every arm, so `--linkage palletizer` gets it too.
+- **What went:**
+  - The presets `belt_preload`, `mt4`, `capstan_preload`, `mt4_base`, `mt4_base_stall` and
+    `capstan_precise`; the supports `deep_groove_pair` and `preloaded_pair`; the sensors
+    `optical_flag` and `ee_sx67`.
+  - The classic hub turret: the boss, the hub's seat plates and spacer, the printed
+    brackets and flag, its endstop. `turret.py` is now the plan and the feet; `base_pair.py`
+    builds the turret (`base_pair.turret_parts`), its optical-endstop branch gone.
+  - The cord capstan: its transmission, the yaw drum, `Transmission.family` / `reverses` /
+    `slips`, the control's reversed sense and phase flag, the host's flag homing, the
+    camera's gain fit, its catalog items (the sleeve, the Dyneema cord).
+  - Milling: `spiderpig/milling.py`, the role `mill`, the fab method `milled`, the `mill`
+    output, the mill's plates and retaining compound (the user owns a Carvera, but chose
+    to prune it).
+  - The catalog's `bearing_608zz` and `shaft_8mm_h6_100`, which only the classic hub used.
+- **A removed key fails with its replacement:** `config.REMOVED_CONSTRUCTIONS` now holds
+  roles' keys too (`turntable` -> `mt4_compact`, `transmission` `capstan` -> `belt`), and
+  `config.REMOVED_ROLES` the role `mill`: in a config, on the command line and in a spec.
+- **Size:** the code commit (`3a72784`) is 49 files, 2,388 lines removed and 518 added
+  (1,870 net): `turret.py` 772 out (96 in), `milling.py` 334, `capstan.py` 182,
+  `base_pair.py` 155 out (65 in), `test_milling.py` 155, `rotary/__init__.py` 112 out
+  (52 in), `plate_catalog.py` 52; the rest in control, precision, the BOM, the exports,
+  the config's removed-key tables and the tests.
+- **The gate** (`platform-3a72784` against `platform-379ad7e`): the six walkers identical;
+  `palletizer_reach` identical to its own snapshot at `65b9e6d` (its differences from
+  `379ad7e` are that commit's seat bosses and stadium cut); `palletizer_turret` different,
+  as intended: `belt_preload` became `mt4_compact` (the side's plan unchanged; 185
+  parts, 187 before; 17 laser parts, 30 before; DXF sheets 4 -> 3, one of them now the
+  base's 1/8 in 5052; BOM 54 lines, $477.75, $558.28 before; audit OK, 3 warnings).
+  DESIGNS.md regenerated from it.

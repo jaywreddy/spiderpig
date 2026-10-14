@@ -1,5 +1,5 @@
 """An arm's drives (:mod:`construction.transmissions`, :mod:`spiderpig.actuators`,
-2026-10-11): a stepper and a GT2 belt or a cord capstan per input, the roles that pick
+2026-10-11): a stepper and a GT2 belt per input, the roles that pick
 them per drive, where the motors go, the hub's layers the axle nests in, what they build
 and what they cost the output's precision."""
 
@@ -16,7 +16,6 @@ from spiderpig.config import BuildConfig
 from spiderpig.construction.transmissions import TRANSMISSIONS, DriveGroup, DriveHub
 from spiderpig.construction.transmissions.base import motor_ends, place_motor
 from spiderpig.construction.transmissions.belt import BeltDrive
-from spiderpig.construction.transmissions.capstan import CapstanDrive
 from tests import cache
 
 ARM = {"linkage": "palletizer", "robot": False}
@@ -62,13 +61,6 @@ def test_a_gt2_loop_sits_at_its_centre_distance():
 
 
 @pytest.mark.no_fabricate
-def test_a_capstans_ratio_is_its_radii():
-    c = CapstanDrive()
-    assert c.ratio(None) == pytest.approx((30 + 0.5) / (3 + 0.5))     # the 6 mm sleeve
-    assert c.distances(None, None) == [(30 + 3 + 1.0, None)]
-
-
-@pytest.mark.no_fabricate
 def test_a_motor_keeps_clear_of_the_heads_and_the_other_motor():
     m = actuators.get(actuators.DEFAULT)
     o = np.zeros(2)
@@ -84,11 +76,12 @@ def test_a_motor_keeps_clear_of_the_heads_and_the_other_motor():
 @pytest.mark.no_fabricate
 def test_the_roles_pick_each_drives_parts():
     assert rolemod.get("transmission").per == "drive"
-    assert rolemod.choices("transmission") == ["belt", "capstan"]
-    assert set(TRANSMISSIONS) == {"belt", "capstan"}
-    c = _arm(roles=(("transmission@q3", "capstan"),))
-    assert (c.role("transmission", "q2"), c.role("transmission", "q3")) == ("belt", "capstan")
-    assert c.role("actuator", "q2") == actuators.DEFAULT
+    assert rolemod.choices("transmission") == ["belt"]
+    assert set(TRANSMISSIONS) == {"belt"}
+    c = _arm(roles=(("actuator@q3", "nema17_17hs4401_x64"),))
+    assert (c.role("actuator", "q2"), c.role("actuator", "q3")) == (actuators.DEFAULT,
+                                                                    "nema17_17hs4401_x64")
+    assert c.role("transmission", "q3") == "belt"
     assert BuildConfig().applied_roles() == {}               # a walker has no drives
 
 
@@ -158,26 +151,13 @@ def test_the_guide_mounts_each_motor_and_its_drive(belt):
 
 
 @pytest.mark.slow
-def test_the_capstan_arm_plans_and_holds_its_contract():
-    from spiderpig.construction.contract import check_side
-
-    cfg = _arm(roles=(("transmission", "capstan"),))
-    tmpl, design = cache.cached_design(cfg)
-    for t in (0.0, 4.4):
-        assert check_side(design, tmpl.freeze_at(t)) == []
-    g = next(g for g in design.groups if isinstance(g, DriveGroup))
-    assert g.error_terms(design.ctx).backlash_deg == 0.0     # the cord never slips
-
-
-@pytest.mark.slow
 def test_the_drives_join_the_precision_budget():
     from spiderpig.precision import precision
 
     belt_r = precision(_arm(), n=9)
-    cap_r = precision(_arm(roles=(("transmission", "capstan"),)), n=9)
     assert set(belt_r.inputs) == {"q2", "q3"}
-    assert belt_r.inputs["q2"].backlash_mm > cap_r.inputs["q2"].backlash_mm == 0.0
-    assert cap_r.inputs["q2"].resolution_mm < belt_r.inputs["q2"].resolution_mm
+    assert belt_r.inputs["q2"].backlash_mm > 0.0
+    assert belt_r.inputs["q2"].resolution_mm > 0.0
     planar = belt_r.plays.worst_mm + sum(b.backlash_mm + b.homing_mm
                                          for b in belt_r.inputs.values())
     assert belt_r.out_of_plane_mm > 0          # the links' tilt, across the plane
@@ -236,29 +216,6 @@ def test_the_belt_arms_parts_meet_only_where_they_thread():
             plate = "frame_outer" if "q2" in b.name else "torso"
             assert _material_round(bodies[plate].placed_part(), (c.X, c.Y), 1.3,
                                    3.0) == pytest.approx(1.0, abs=0.01), b.name
-
-
-@pytest.mark.slow
-def test_the_capstan_arms_parts_meet_only_where_they_thread_and_its_drum_holds():
-    cfg = _arm(roles=(("transmission", "capstan"),))
-    fab = cache.cached_side(cfg, 1.0)
-    assert _clashes(fab) == []
-    # the drum's plates are the same parts whatever the pose (its notches in the link's
-    # frame): their areas match at two angles
-    other = cache.cached_side(cfg, 3.0)
-    area = {b.name: b.part.volume for b in fab.bodies if "_drum" in b.name}
-    assert area == {b.name: pytest.approx(b.part.volume, rel=1e-6)
-                    for b in other.bodies if "_drum" in b.name}
-    # the core holds the wraps and their walk over the input's travel
-    from spiderpig.construction.transmissions.capstan import CORD_PITCH, WRAPS
-
-    _, design = cache.cached_design(cfg)
-    g = next(g for g in design.groups if isinstance(g, DriveGroup))
-    hub = g.hub(design.ctx)
-    core = hub.below - 2
-    walk = hub.travel_deg / 360 * hub.ratio
-    assert core * design.ctx.pitch >= (WRAPS + walk) * CORD_PITCH
-
 
 
 @pytest.mark.no_fabricate

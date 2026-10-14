@@ -56,18 +56,8 @@ def main(argv: list[str] | None = None) -> int:
                   f"direction {a.direction:+d}")
         return 0
     if args.action == "homing":
-        from spiderpig.construction.rotary import PRESETS
-
         sensors = homing.sensors_of(cfg, axes)
-        turn = cfg.role("turntable") if "q1" in axes else ""
-        # a capstan's turntable snaps to its driver's phase only where a camera then checks
-        # the zero (a cord's slip: a full cycle's jump it sees)
-        from spiderpig.actuators.sensors import REFERENCES
-
-        ref = REFERENCES.get(cfg.role("homing_reference"))
-        phase = (not turn or not PRESETS[turn].parts[1].slips
-                 or (ref is not None and ref.tool_mm is not None))
-        for i, s in enumerate(homing.plan(axes, sensors, phase), 1):
+        for i, s in enumerate(homing.plan(axes, sensors), 1):
             print(f"{i}. [{s.axis}] {s.action}")
         return 0
     if args.action == "klipper":

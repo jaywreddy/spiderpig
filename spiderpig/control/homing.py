@@ -1,14 +1,10 @@
 """How each joint finds its zero, and the phase that makes homing repeatable to the step.
 
 * **The turntable** (``q1``) by its preset's sensor (:data:`construction.rotary.SENSORS`):
-  an optical endstop and half-circle flag (:mod:`construction.rotary.turret`): the flag's
-  edge is in the beam at yaw 0 and the flag covers the negative half, so the beam's state
-  says which way home is (blocked: turn positive until it clears; clear: turn negative
-  until it blocks), then back off and come in again slowly from the same side: the edge,
-  from one side only, every time. Or ``hard_stop``: no sensor, the turntable's screw
-  stalls the driver on a post past the range's lower end (Klipper's sensorless homing:
-  the TMC2209's StallGuard on its DIAG pin, at a reduced current), coarse (two full steps):
-  the camera's fiducials (``homing_reference`` ``vision_fiducial``) set the fine zero.
+  ``hard_stop``, no switch: the turntable's screw stalls the driver on a post past the
+  range's lower end (Klipper's sensorless homing: the TMC2209's StallGuard on its DIAG pin,
+  at a reduced current), coarse (two full steps): the camera's fiducials
+  (``homing_reference`` ``vision_fiducial``) set the fine zero.
 * **A stall** (``angle_sensor`` ``stall`` on a planar input, the turntable's
   ``hard_stop``: :func:`method`): the joint is driven at a reduced current toward its
   range's lower end until its driver stalls on the hard stop there; the stop's angle is
@@ -43,8 +39,7 @@ from spiderpig.control.mapping import Axis
 MSCNT_STEP = 256        # a TMC2209's microstep counter per full step (1024 an electrical turn)
 STALL_PAST_DEG = 3.0    # a hard stop past its range's lower end (nominal: the turret's post,
 #                         construction.rotary.base_pair.stop_radius; calibration finds it)
-YAW_SENSOR = "optical_flag"     # the turntable's sensor when none is named (the classic's)
-ENDSTOPS = ("optical_flag", "ee_sx67")   # the turntable's switches (construction.rotary)
+YAW_SENSOR = "hard_stop"        # the turntable's sensor when none is named (its preset's)
 STALLS = ("stall", "hard_stop")          # a planar input's, the turntable's: no sensor
 
 
@@ -55,7 +50,7 @@ def method(sensor: str) -> str:
     hard stop) or ``""`` (no homing move: a gauge, an inclinometer, none)."""
     if sensor in STALLS:
         return "stall"
-    if sensor in ENDSTOPS or sensor.startswith("endstop"):
+    if sensor.startswith("endstop"):
         return "endstop"
     return ""
 
@@ -79,31 +74,17 @@ class HomingStep:
     action: str
 
 
-def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None,
-         phase: bool = True) -> list[HomingStep]:
+def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> list[HomingStep]:
     """The homing sequence of ``axes`` (module docstring). ``sensors``: each planar
     input's angle sensor (:mod:`actuators.sensors`; ``gauge`` when not named) and the
     turntable's (``q1``: its preset's, :data:`YAW_SENSOR` when not named; :func:`sensors_of`
-    reads a config's); ``phase``:
-    the turntable's homing snaps to its driver's phase (a toothed drive: a belt's; not a
-    capstan's, whose cord may slip against the motor, which the snap would hide)."""
+    reads a config's)."""
     sensors = sensors or {}
     out: list[HomingStep] = []
-    yaw = method(sensors.get("q1", YAW_SENSOR))
-    if "q1" in axes and yaw == "stall":
+    if "q1" in axes and method(sensors.get("q1", YAW_SENSOR)) == "stall":
         out += _stall_steps("q1", "the turntable's screw on the post")
         out.append(HomingStep("q1", "the camera's fiducials set the fine yaw zero "
                                     "(homing_reference vision_fiducial)"))
-    elif "q1" in axes and yaw == "endstop":
-        out += [HomingStep("q1", "read the endstop: blocked, turn positive until it clears; "
-                                 "clear, turn negative until it blocks"),
-                HomingStep("q1", "back off 2 deg, then approach again at a tenth of the speed "
-                                 "from the same side until the beam changes"),
-                *([HomingStep("q1", "read the driver's phase (DUMP_TMC STEPPER=q1 "
-                                    "REGISTER=MSCNT): the first time, record it as the "
-                                    "reference; after, move to the nearest place with the "
-                                    "reference phase")] if phase else []),
-                HomingStep("q1", "that is yaw 0")]
     planar = [n for n in axes if n not in ("q1", "q4")]
     gauged = [n for n in planar if sensors.get(n, "gauge") == "gauge"]
     switched = [n for n in planar if method(sensors.get(n, "")) == "endstop"]

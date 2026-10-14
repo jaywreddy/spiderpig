@@ -2,7 +2,7 @@
 
 A revolute joint of a robot is four choices, each a construction from a registry: the
 **support** that carries it (a plain pin in laser-cut holes, a bearing pair, a crossed
-roller), the **transmission** that drives it (a servo horn on the crank, a belt, a capstan),
+roller), the **transmission** that drives it (a servo horn on the crank, a belt),
 the **actuator** (a servo, a stepper) and the **sensor** (a homing flag, an encoder). Each
 says how far it lets its joint wander through :class:`ErrorTerms`; the precision analysis
 (``spiderpig.precision``) adds them up along the kinematic chain, so a part added later is

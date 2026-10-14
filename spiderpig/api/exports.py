@@ -56,8 +56,7 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
-    its metadata), ``urdf`` (an arm's URDF, its meshes and joint map: :mod:`spiderpig.urdf`),
-    ``mill`` (the milled parts' STEPs and setup sheet, with a mill: :mod:`spiderpig.milling`);
+    its metadata), ``urdf`` (an arm's URDF, its meshes and joint map: :mod:`spiderpig.urdf`);
     and always ``manifest.json``. Builds first if nothing is built; a
     sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
@@ -118,11 +117,9 @@ def _export(design: Design, formats, out_dir, force: bool) -> ExportReport:
 
         clear_generated(out / "laser")
         clear_generated(out / "print")
-        for folder in ("urdf", "mill"):      # an arm's: its URDF and joint map, its setup sheet
-            for stale in [*(out / folder).glob("*.json"), *(out / folder).glob("*.md"),
-                          *(out / folder).glob("*.xml")]:
-                stale.unlink()
-            clear_generated(out / folder)
+        for stale in [*(out / "urdf").glob("*.json"), *(out / "urdf").glob("*.xml")]:
+            stale.unlink()                   # an arm's: its URDF and joint map
+        clear_generated(out / "urdf")
         (out / "ORDER.md").unlink(missing_ok=True)
     with contextlib.ExitStack() as stack:
         warned = stack.enter_context(capture_warnings(EXPORT_LOGGERS))
@@ -184,7 +181,7 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             mech.export_stl(out / f"{name}.stl")
         files.append(out / f"{name}.stl")
     groups = None
-    if "print" in formats or "bom" in formats or "mill" in formats:
+    if "print" in formats or "bom" in formats:
         with _timed("grouping" if grouping is None else "grouping (waiting for its worker)"):
             groups = _groups(mech, grouping)
     types: list = []
@@ -268,16 +265,6 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
             with _timed("urdf"):
                 build_t = design.build_t if design.build_t is not None else 1.0
                 files += urdf.write(mech, cfg, build_t, out / "urdf", name)
-    if "mill" in formats and groups is not None and groups.get("milled"):
-        from spiderpig.labels import by_body
-        from spiderpig.milling import write_outputs
-
-        with _timed("mill"):
-            files += write_outputs(mech, groups["milled"], by_body(labelled()), out / "mill")
-    elif "mill" in formats:
-        logging.getLogger("spiderpig.export").warning(
-            "mill: %s has no milled part (a mill is named by the role mill, and only an arm's "
-            "turntable mills its housings): the format is skipped", cfg.linkage)
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
     if "mjcf" in formats and design.kind != "walker":
@@ -313,19 +300,18 @@ def _start_group_job(mech):
         return None
     made = [(b.name, b.fab, workers.dump_shape(b.part)) for b in mech.bodies
             if b.fab in fabmethods.made() and b.part is not None]
-    return workers.submit(_group_job, made, mech.meta.get("milled"))
+    return workers.submit(_group_job, made)
 
 
-def _group_job(made, specs=None) -> dict[str, list[tuple[str, list[str], list[str]]]]:
-    """In a worker: the groups of ``made`` (name, fab, dumped part) by name (``specs``: the
-    milled parts', :func:`hardware.bom.group_made`)."""
+def _group_job(made) -> dict[str, list[tuple[str, list[str], list[str]]]]:
+    """In a worker: the groups of ``made`` (name, fab, dumped part) by name."""
     from types import SimpleNamespace
 
     from spiderpig.workers import load_shape
 
     bodies = [SimpleNamespace(name=n, fab=fab, part=load_shape(d)) for n, fab, d in made]
     return {m: [(g.ref.name, list(g.names), list(g.mirrored))
-                for g in group_made(bodies, m, specs)] for m in fabmethods.made()}
+                for g in group_made(bodies, m)] for m in fabmethods.made()}
 
 
 def _groups(mech, job) -> dict:
@@ -333,7 +319,7 @@ def _groups(mech, job) -> dict:
     from spiderpig.hardware.bom import MadeGroup
 
     if job is None:
-        return {m: group_made(mech.bodies, m, mech.meta.get("milled")) for m in fabmethods.made()}
+        return {m: group_made(mech.bodies, m) for m in fabmethods.made()}
     by_name = {b.name: b for b in mech.bodies}
     return {m: [MadeGroup(m, by_name[ref], names, mirrored) for ref, names, mirrored in gs]
             for m, gs in job.result().items()}

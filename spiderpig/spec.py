@@ -35,9 +35,11 @@ from spiderpig.config import (
     CRANK_SHEET,
     DEFAULT_CRANKS,
     REMOVED_PARAMS,
+    REMOVED_ROLES,
     BuildConfig,
     removed_construction,
     removed_param,
+    removed_role,
 )
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
@@ -47,7 +49,7 @@ from spiderpig.layout import DEFAULT_KERF
 
 SPEC_VERSION = "1"
 KINDS = ("walker", "mechanism", "arm")
-OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf", "mill")
+OUTPUTS = ("step", "stl", "print", "dxf", "bom", "glb", "mjcf", "urdf")
 DEFAULT_OUTPUTS = ("step", "stl", "print", "dxf", "bom")
 WILDCARDS = frozenset({"any", "*", "?", ""})
 FIT_FIELDS = tuple(f.name for f in fields(Params))
@@ -507,8 +509,7 @@ def nearest(key: str, options: Iterable[str]) -> str | None:
 def sheet_keys(metal: bool = False) -> list[str]:
     _load_catalog()
     return sorted(k for k, it in CATALOG.items()
-                  if it.category == "sheet" and not it.dims.get("milled")
-                  and (it.dims.get("metal") or not metal))
+                  if it.category == "sheet" and (it.dims.get("metal") or not metal))
 
 
 def module_keys() -> list[str]:
@@ -784,8 +785,11 @@ def validate(data: Mapping) -> list[SpecError]:
     slots = [q for q in (given if isinstance(given, Mapping) else ())
              if isinstance(q, str) and "@" in q
              and getattr(extra.get(rolemod.split(q)[0]), "per", "design") != "design"]
-    c = v.obj(given, "constructions", (*CONSTRUCTION_FIELDS, *extra, *slots))
+    c = v.obj(given, "constructions", (*CONSTRUCTION_FIELDS, *extra, *slots, *REMOVED_ROLES))
     if c is not None:
+        for name in REMOVED_ROLES:
+            if name in c and (why := removed_role(name)) is not None:
+                v.err(f"constructions.{name}", why, [*CONSTRUCTION_FIELDS, *extra])
         for q in [*extra, *slots]:
             name = rolemod.split(q)[0]
             if c.get(q) is None:
@@ -794,6 +798,8 @@ def validate(data: Mapping) -> list[SpecError]:
                 v.err(f"constructions.{q}", f"{lk.key} is a {lk.kind}: it has no "
                       f"{extra[name].title} role ({name!r} is a "
                       f"{' or '.join(extra[name].kinds)}'s)")
+            elif gone := removed_construction(name, c.get(q)):    # names the replacement
+                v.err(f"constructions.{q}", gone[0], rolemod.choices(name), gone[1])
             else:
                 v.string(c.get(q), f"constructions.{q}", rolemod.choices(name))
         v.string(c.get("heads"), "constructions.heads", ["best", "gap", "sink"])

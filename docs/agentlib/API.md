@@ -36,7 +36,7 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `constructions.pillar`, `.pin` | pillar `standoff` (a 6 mm round standoff column screwed through both frame plates, printed rings: a stock goBILDA M4 standoff where one length fills it, else one MISUMI steel standoff made to its length, M3 ends, never spliced); pin `chicago` (an M3 Chicago screw, printed rings and head spacers). The other pivots were removed on 2026-10-07: naming one is a `bad_parameter` / `invalid_spec` failure naming its replacement (`config.REMOVED_CONSTRUCTIONS`) | pillar `standoff`, pin `chicago` (an M3 Chicago screw, printed rings and head spacers, the lowest link bonded) |
 | `constructions.crank` | `bolt` (laser-cut aluminium, one plate per web, each crankpin a steel M3 hex standoff in hex pockets retained by a screw and wide washer at each end, the riders on a printed sleeve), `bolt_round` (the same on round standoffs clamped by friction; TrotBot's heel and toe). The printed, keyed and acrylic cranks and the hex crank's variants were removed on 2026-10-07; `materials.crank_sheet` must be aluminium | the linkage's (`config.default_crank`): `bolt`; `bolt_round` for TrotBot's heel and toe |
 | `fit.*` | every `construction.base.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf each sheet's service's (0 SendCutSend, 0.2 Ponoko); the sheet stock's size |
-| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf`, `urdf` (an arm's URDF, its MuJoCo model and joint map), `mill` (the milled parts' STEPs and setup sheet, with a mill) | `[step, stl, print, dxf, bom]` |
+| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf`, `urdf` (an arm's URDF, its MuJoCo model and joint map) | `[step, stl, print, dxf, bom]` |
 
 Every metric under `motion`, `size` and `budget` is a **Target**
 `{min?, max?, value?, tol?, weight: 1, hard?}` (a bare number is rejected). `value` is
@@ -409,7 +409,7 @@ before that); `build` of the single as a job ~10 s including the worker's start.
 
 ## Export and sim from the command line
 
-`spiderpig export <design> [--formats step stl print dxf bom glb mjcf urdf mill] [--out DIR]
+`spiderpig export <design> [--formats step stl print dxf bom glb mjcf urdf] [--out DIR]
 [--store PATH] [--force]` is `api.export` on the command line: the stored design's files
 (default: the spec's `outputs`) into its `exports/` in the store or `--out`, with
 `manifest.json`, and its `warnings` on stderr; given the build options instead of an id

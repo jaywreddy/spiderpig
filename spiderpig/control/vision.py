@@ -13,9 +13,8 @@ put it (:class:`Sighting`). Two sightings or more fix all three zeros at once
 ``q1``, ``q2``, ``q3``); more spread over the sheet average out the dots' print error.
 
 What it fixes is what a switch can't: every homing's zero to the sheet, not to a flag,
-and with it whatever has moved since (the links' sag and creep, the frame's heat; a
-capstan's pitch radius growing with its motor's heat is a gain, not an offset:
-``fit_gain`` fits one per joint from sightings spread over its range), to the camera's
+and with it whatever has moved since (the links' sag and creep, the frame's heat), to
+the camera's
 measurement (about :data:`VISION_REPEAT_MM` at the tip: a Raspberry Pi Camera Module 3
 *Wide* focuses from 5 cm, so about 50 mm over the sheet (the standard module only from
 10 cm, about 28 um a pixel there), its lens locked; a dot's centroid repeats to a tenth of
@@ -24,8 +23,7 @@ printed circuit board (copper dots, its etch the dots' places) screwed to the ba
 paper swells tens of um with the air's humidity from day to day. Its own accuracy is the
 arm's accuracy, not its repeatability: a chrome-on-glass target, or the dots' places
 measured once, makes it the arm's too. After a coarse homing each axis snaps to its
-driver's phase (:mod:`.homing`), the camera then catching a capstan's slip (a whole
-cycle's jump).
+driver's phase (:mod:`.homing`).
 """
 
 from __future__ import annotations
@@ -87,17 +85,14 @@ def image_offset_mm(image: np.ndarray, mm_per_px: float, yaw: float = 0.0,
 
 
 def zero_offsets(model, sightings: list[Sighting],
-                 joints: tuple[str, ...] = ("q1", "q2", "q3"),
-                 fit_gain: bool = False) -> dict[str, float]:
+                 joints: tuple[str, ...] = ("q1", "q2", "q3")) -> dict[str, float]:
     """The joints' zero offsets (rad: the true angle is the commanded one plus it) that put
     the model's tip where the sightings saw it (least squares of the tips' horizontal
-    places). ``model``: an :class:`arm.ArmModel` (``fk``). ``fit_gain``: each joint's gain
-    too (``<joint>_gain``: the true angle ``q (1 + gain) + offset``: a capstan's ratio
-    drifting with its heat), from sightings spread over each joint's range."""
+    places). ``model``: an :class:`arm.ArmModel` (``fk``)."""
     from scipy.optimize import least_squares
 
     names = [j for j in joints if (j == "q1" and model.yaw is not None) or j != "q1"]
-    unknowns = len(names) * (2 if fit_gain else 1)
+    unknowns = len(names)
     if 2 * len(sightings) < unknowns:
         raise ValueError(f"{unknowns} unknowns need {math.ceil(unknowns / 2)} sightings "
                          f"or more, got {len(sightings)}")
@@ -107,14 +102,9 @@ def zero_offsets(model, sightings: list[Sighting],
         for s in sightings:
             q = dict(s.q)
             for i, n in enumerate(names):
-                gain = x[len(names) + i] if fit_gain else 0.0
-                q[n] = q.get(n, 0.0) * (1 + gain) + x[i]
+                q[n] = q.get(n, 0.0) + x[i]
             out.extend(model.fk(q)[:2] - s.tip_xy)
         return np.asarray(out)
 
     r = least_squares(resid, np.zeros(unknowns), x_scale=1e-3)
-    out = dict(zip(names, (float(v) for v in r.x[:len(names)]), strict=True))
-    if fit_gain:
-        out.update({f"{n}_gain": float(v)
-                    for n, v in zip(names, r.x[len(names):], strict=True)})
-    return out
+    return dict(zip(names, (float(v) for v in r.x), strict=True))

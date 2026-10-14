@@ -226,8 +226,6 @@ def _material_of(body: Body) -> str:
     """Material key for a body: by ``fab``, then by role."""
     cls = body_class(body.name)
     made_of = fabmethods.stock(body.fab)
-    if body.fab == fabmethods.MILLED:
-        return "metal"
     if made_of == "sheet":
         return "acrylic" if is_link(body.name) else "acrylic_frame"
     if made_of == "filament":
