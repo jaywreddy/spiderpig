@@ -34,31 +34,30 @@ The cradle comes apart where it is already fastened, with no new joint, in the o
 A side's link left hanging on one joint once its cradle link is off (B's b5 on J2) swings
 about it into its panel (:func:`tuck`).
 
-**How it stacks** (:func:`pack`, on per-part bounding boxes, each grown by half of
-:data:`CLEAR`):
+**How it stacks** (:mod:`spiderpig.voxpack`: the parts' real shapes, tessellated and filled
+solid on :data:`CELL` voxels, :data:`CLEAR` of foam between two pieces):
 
 * every piece but the panels and the base board is first *levelled*: turned about z (the
   mechanism's plane normal) to the angle, by the degree (and the cradle's own tilt), that
-  gives its xy bounding box the least area;
+  gives its xy bounding box the least area (:func:`level`); a side's pieces know their
+  ``outer`` and ``bay`` faces;
 * the base board stays where it is, at the bottom; the box's footprint is centred on it and
   as large as the largest piece lying flat;
-* each side panel is dropped onto a heightmap of what is in (a rectangle max-filter per
-  part), both orders, face up or down, either way round (and quarter turns where it fits);
-* the other pieces, largest first, each in its six axis orientations, go to the lowest free
-  slot in a voxel grid of the box (:data:`CELL` across, :data:`CELL_Y` up; a 3-D
-  integral-volume box sum per part), cavities under a panel's frame included; the slot
-  that raises the box least wins, then the lowest, the flattest, the one laid along the
-  box, the one nearest a corner. A slot that would put a piece both over and under another
-  (it couldn't be put in) is refused;
-* the best few panel arrangements (:data:`ARRANGEMENTS`) are each filled, the lowest box
-  kept; the pieces go in the box in the order the stack allows, bottom up (a topological
-  sort: what is under a piece goes in first).
+* the pieces go in one after another, each dropped straight down onto what is in (its own
+  bottom over the box's heightmap, column by column), so a piece drops into another's open
+  triangles or bay, and the order they drop in is an order they can be put in; each takes
+  the orientation and slot that raise the box least, then the lowest, the one nearest a
+  corner, where it rests on what is under it (its centre of mass over its contacts, or
+  over foam pads under it: ``voxpack.support``);
+* the order and the orientations follow the cradle's plan (:data:`PACK_PLANS`), what it
+  leaves free picked as above (the panels first, in every order, the rest largest first).
 
 :func:`flat_pack` returns each piece (``modules``: its parts and its 4 x 4 transform from the
-assembled pose to the packed one), in that order, with the box and the steps: the viewer's
-pack (``/api/cradle/{key}/pack``, ``viewer/decant.html``) flies each one there. Every pose
-is the fabricated cradle's at its pack pose (``pose``: crank angle 0, the baked clip's first
-frame, for a flat pack; B's, 4 handle turns from rest).
+assembled pose to the packed one, how it rests), in that order, with the box, its true fill
+and the steps: the viewer's pack (``/api/cradle/{key}/pack``, ``viewer/decant.html``) flies
+each one there; ``spiderpig pack-inspect`` draws and judges it. Every pose is the fabricated
+cradle's at its pack pose (``pose``: crank angle 0, the baked clip's first frame, for a flat
+pack; B's, 4 handle turns from rest).
 """
 
 from __future__ import annotations
@@ -68,18 +67,14 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from itertools import permutations, product
+from pathlib import Path
 
 import numpy as np
 
+from spiderpig import voxpack as vp
 from spiderpig.construction import cradle as cr
 from spiderpig.mechanism import is_frame, is_link
 
-CLEAR = 3.0         # between two pieces and from a piece to the box's wall (foam, cardboard)
-WALL = 5.0          # the box's corrugated wall
-CELL = 5.0          # the packing grid across the box (x, z), mm
-CELL_Y = 2.0        # and up it
-ARRANGEMENTS = 3    # the side panels' best arrangements, each filled (the lowest box kept)
 SIDES = ("L", "R")
 
 
@@ -106,9 +101,8 @@ class Piece:
 
 @dataclass(frozen=True)
 class PartInfo:
-    """A fabricated part as :func:`pieces` and :func:`pack` read it: its body's ``fab``,
-    ``bom_key`` and ``rigid_with`` host, and ``points`` (the assembled pose): its bounding
-    box's corners, or its tessellation's vertices where it may turn by any angle."""
+    """A fabricated part as :func:`pieces` reads it: its body's ``fab``, ``bom_key`` and
+    ``rigid_with`` host, and ``points`` (the assembled pose): its bounding box's corners."""
 
     name: str
     fab: str | None
@@ -523,26 +517,11 @@ def _clips_out(n: int) -> str:
             "goes back in its hole for the trip.")
 
 
-# -- the packing ---------------------------------------------------------------------------
+# -- the packing (:mod:`spiderpig.voxpack`) -------------------------------------------------
 
-
-def _rot(axis: str, deg: float) -> np.ndarray:
-    c, s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
-    c, s = round(c, 15), round(s, 15)
-    if axis == "x":
-        return np.array([[1, 0, 0], [0, c, -s], [0, s, c]], float)
-    if axis == "y":
-        return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], float)
-    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], float)
-
-
-def _aabbs(points: Sequence[np.ndarray], rot: np.ndarray) -> np.ndarray:
-    """Each part's bounding box after ``rot``: ``(n, 2, 3)`` (min, max)."""
-    out = np.empty((len(points), 2, 3))
-    for i, p in enumerate(points):
-        q = p @ rot.T
-        out[i, 0], out[i, 1] = q.min(axis=0), q.max(axis=0)
-    return out
+CLEAR = vp.CLEAR    # between two pieces and from a piece to the box's wall (foam, cardboard)
+WALL = vp.WALL      # the box's corrugated wall
+CELL = vp.CELL      # the voxels' size
 
 
 def level(points: Sequence[np.ndarray], tilt: float = 0.0) -> float:
@@ -567,472 +546,62 @@ def level(points: Sequence[np.ndarray], tilt: float = 0.0) -> float:
     return float(cand[best])
 
 
-def _axis_rotations() -> list[np.ndarray]:
-    """The six ways an axis-aligned box lies: a proper rotation per permutation of its
-    axes."""
-    out = []
-    for perm in permutations(range(3)):
-        m = np.zeros((3, 3))
-        for i, j in enumerate(perm):
-            m[j, i] = 1.0
-        if np.linalg.det(m) < 0:
-            m[2] = -m[2]             # (flip what goes across the box: keeps it proper)
-        out.append(m)
-    return out
-
-
-@dataclass
-class Placed:
-    """A piece in the box: ``rot`` and ``shift`` (packed = rot @ assembled + shift), its
-    parts' packed bounding boxes ``boxes`` (``(n, 2, 3)``)."""
-
-    key: str
-    rot: np.ndarray
-    shift: np.ndarray
-    boxes: np.ndarray
-
-    def matrix(self) -> np.ndarray:
-        m = np.eye(4)
-        m[:3, :3] = self.rot
-        m[:3, 3] = self.shift
-        return m
-
-
-def _merged(boxes: np.ndarray, waste: float = 0.04) -> np.ndarray:
-    """Fewer boxes covering the same parts, for the grid's queries: greedily, the two whose
-    union wastes least merged while it wastes under ``waste`` of what they cover (a box
-    inside another is merged first: it wastes nothing)."""
-    bs = np.asarray(boxes, float).copy()
-    while len(bs) > 1:
-        lo = np.minimum(bs[:, None, 0], bs[None, :, 0])
-        hi = np.maximum(bs[:, None, 1], bs[None, :, 1])
-        il = np.maximum(bs[:, None, 0], bs[None, :, 0])
-        ih = np.minimum(bs[:, None, 1], bs[None, :, 1])
-        v = np.prod(bs[:, 1] - bs[:, 0], axis=-1)
-        cover = v[:, None] + v[None, :] - np.prod(np.clip(ih - il, 0.0, None), axis=-1)
-        extra = np.prod(hi - lo, axis=-1) - cover
-        np.fill_diagonal(extra, np.inf)
-        extra = np.where(extra <= waste * cover + 1e-6, extra, np.inf)
-        k = int(np.argmin(extra))
-        i, j = divmod(k, len(bs))
-        if not np.isfinite(extra[i, j]):
-            break
-        bs[i] = np.stack([lo[i, j], hi[i, j]])
-        bs = np.delete(bs, j, axis=0)
-    return bs
-
-
-def _turn(boxes: np.ndarray, rot: np.ndarray) -> np.ndarray:
-    """Axis-aligned ``boxes`` (``(n, 2, 3)``) turned by ``rot``, a quarter-turn rotation
-    (their bounding boxes stay exact)."""
-    a, b = boxes[:, 0] @ rot.T, boxes[:, 1] @ rot.T
-    return np.stack([np.minimum(a, b), np.maximum(a, b)], axis=1)
-
-
-class _Grid:
-    """The box's packing grid: the heightmap (``top``, per x-z cell) the panels drop onto,
-    the voxel occupancy the rest fills (``occ``, :data:`CELL` x :data:`CELL_Y` x
-    :data:`CELL`), both from every placed part's grown box."""
-
-    def __init__(self, x0: float, y0: float, z0: float, nx: int, nz: int, ny: int):
-        self.o = np.array([x0, y0, z0])
-        self.nx, self.nz, self.ny = nx, nz, ny
-        self.top = np.full((nx, nz), y0)
-        self.occ = np.zeros((nx, ny, nz), np.uint8)
-        self._sum: np.ndarray | None = None
-
-    def cells(self, box: np.ndarray) -> tuple[int, int, int, int, int, int]:
-        """The cells a grown box touches (conservative), clipped to the grid."""
-        g = np.array([CELL, CELL_Y, CELL])
-        lo = np.floor((box[0] - self.o) / g + 1e-6).astype(int)
-        hi = np.ceil((box[1] - self.o) / g - 1e-6).astype(int)
-        lo = np.clip(lo, 0, [self.nx, self.ny, self.nz])
-        hi = np.clip(hi, 0, [self.nx, self.ny, self.nz])
-        return int(lo[0]), int(hi[0]), int(lo[1]), int(hi[1]), int(lo[2]), int(hi[2])
-
-    def grow(self, ny: int) -> None:
-        if ny > self.ny:
-            self.occ = np.concatenate([self.occ, np.zeros((self.nx, ny - self.ny, self.nz),
-                                                          np.uint8)], axis=1)
-            self.ny = ny
-            self._sum = None
-
-    def add(self, grown: np.ndarray) -> None:
-        for b in grown:
-            need = math.ceil((b[1, 1] - self.o[1]) / CELL_Y - 1e-6)
-            self.grow(need)
-            i0, i1, j0, j1, k0, k1 = self.cells(b)
-            self.top[i0:i1, k0:k1] = np.maximum(self.top[i0:i1, k0:k1], b[1, 1])
-            if i1 <= i0 or j1 <= j0 or k1 <= k0:
-                continue
-            self.occ[i0:i1, j0:j1, k0:k1] = 1
-            if self._sum is not None:       # the integral, the box's own prefix sums added
-                cx = np.clip(np.arange(i0, self.nx + 1) - i0, 0, i1 - i0).astype(np.int32)
-                cy = np.clip(np.arange(j0, self.ny + 1) - j0, 0, j1 - j0).astype(np.int32)
-                cz = np.clip(np.arange(k0, self.nz + 1) - k0, 0, k1 - k0).astype(np.int32)
-                self._sum[i0:, j0:, k0:] += cx[:, None, None] * cy[None, :, None] * cz
-                # (a cell counted twice only makes a sum that was already > 0 larger)
-
-    def integral(self) -> np.ndarray:
-        """The occupancy's 3-D prefix sums, ``(nx + 1, ny + 1, nz + 1)``."""
-        if self._sum is None:
-            s = np.zeros((self.nx + 1, self.ny + 1, self.nz + 1), np.int32)
-            s[1:, 1:, 1:] = self.occ.cumsum(0, dtype=np.int32).cumsum(1).cumsum(2)
-            self._sum = s
-        return self._sum
-
-
-def _win_max(h: np.ndarray, w: int, d: int) -> np.ndarray:
-    """``out[u, v] = h[u:u+w, v:v+d].max()``."""
-    from numpy.lib.stride_tricks import sliding_window_view
-
-    a = sliding_window_view(h, w, axis=0).max(axis=-1)
-    return sliding_window_view(a, d, axis=1).max(axis=-1)
-
-
-@dataclass
-class _Body:
-    """A piece's parts in its own frame (after ``pre``: the panels' none, the others'
-    :func:`level` turn): their boxes and, grown by half of :data:`CLEAR` and merged, the
-    boxes the grid is asked about."""
-
-    pre: np.ndarray
-    boxes: np.ndarray
-    query: np.ndarray
-
-    @classmethod
-    def of(cls, points: Sequence[np.ndarray], pre: np.ndarray) -> _Body:
-        own = _aabbs(points, pre)
-        c = CLEAR / 2
-        return cls(pre, own, _merged(own + np.array([-c, c])[:, None]))
-
-
-@dataclass
-class _Shape:
-    """A piece in one orientation: ``rot`` (from the assembled pose), its parts' own boxes,
-    their grown union's corner ``lo`` and size, the query boxes in cells from that corner
-    (``cells``: a0, a1, b0, b1, c0, c1 along x, y, z) and each one's bottom over it."""
-
-    rot: np.ndarray
-    boxes: np.ndarray
-    lo: np.ndarray
-    size: np.ndarray
-    cells: np.ndarray
-    ylo: np.ndarray
-    span: tuple[int, int, int]  # its size in cells
-
-    @classmethod
-    def of(cls, body: _Body, turn: np.ndarray) -> _Shape:
-        own = _turn(body.boxes, turn)
-        q = _turn(body.query, turn)
-        lo, hi = q[:, 0].min(axis=0), q[:, 1].max(axis=0)
-        q = q - lo
-        g = np.array([CELL, CELL_Y, CELL])
-        a = np.floor(q[:, 0] / g + 1e-6).astype(int)
-        b = np.maximum(np.ceil(q[:, 1] / g - 1e-6).astype(int), a + 1)
-        span = np.ceil((hi - lo) / g - 1e-6).astype(int)
-        cells = np.stack([a[:, 0], b[:, 0], a[:, 1], b[:, 1], a[:, 2], b[:, 2]], axis=1)
-        return cls(turn @ body.pre, own, lo, hi - lo, cells, q[:, 0, 1],
-                   (int(span[0]), int(span[1]), int(span[2])))
-
-    def placed(self, key: str, at: np.ndarray) -> Placed:
-        """At ``at``: where its grown union's lower corner goes."""
-        shift = at - self.lo
-        return Placed(key, self.rot, shift, self.boxes + shift)
-
-
-class _Order:
-    """Which piece must go in before which (a part over another's, in plan): the DAG the
-    insertion order sorts, kept transitively closed."""
-
-    TOL = 0.05
-
-    def __init__(self) -> None:
-        self.placed: list[Placed] = []
-        self.reach = np.zeros((0, 0), bool)
-        self._boxes = np.zeros((0, 2, 3))           # every placed part's, and its piece
-        self._owner = np.zeros(0, int)
-
-    def relations(self, boxes: np.ndarray) -> tuple[set[int], set[int]] | None:
-        """(the pieces that must go in before ``boxes``, those after), or None when one is
-        both over and under them, or the two can't be ordered at all."""
-        t, b = self.TOL, self._boxes
-        ov = ((boxes[:, None, 1, 0] > b[None, :, 0, 0] + t)
-              & (b[None, :, 1, 0] > boxes[:, None, 0, 0] + t)
-              & (boxes[:, None, 1, 2] > b[None, :, 0, 2] + t)
-              & (b[None, :, 1, 2] > boxes[:, None, 0, 2] + t))
-        under = ((boxes[:, None, 1, 1] <= b[None, :, 0, 1] + t) & ov).any(axis=0)
-        above = ((boxes[:, None, 0, 1] >= b[None, :, 1, 1] - t) & ov).any(axis=0)
-        after = {int(i) for i in np.unique(self._owner[under])}
-        before = {int(i) for i in np.unique(self._owner[above])}
-        if before & after:
-            return None
-        if any(self.reach[a, b] for a in after for b in before):
-            return None
-        return before, after
-
-    def add(self, p: Placed, rel: tuple[set[int], set[int]]) -> None:
-        n = len(self.placed)
-        self._boxes = np.concatenate([self._boxes, p.boxes])
-        self._owner = np.concatenate([self._owner, np.full(len(p.boxes), n)])
-        r = np.zeros((n + 1, n + 1), bool)
-        r[:n, :n] = self.reach
-        before, after = rel
-        for b in before:
-            r[b, n] = True
-        for a in after:
-            r[n, a] = True
-        for k in range(n + 1):              # (closure through the new piece)
-            r |= r[:, k:k + 1] & r[k:k + 1, :]
-        self.reach = r
-        self.placed.append(p)
-
-    def order(self) -> list[int]:
-        """Bottom up: of the pieces whose predecessors are in, the lowest first."""
-        n = len(self.placed)
-        low = [float(p.boxes[:, 0, 1].min()) for p in self.placed]
-        done: list[int] = []
-        left = set(range(n))
-        while left:
-            ready = [i for i in left if not any(self.reach[j, i] for j in left if j != i)]
-            i = min(ready, key=lambda i: (low[i], i))
-            done.append(i)
-            left.remove(i)
-        return done
-
-
-@dataclass
-class Packed:
-    """:func:`pack`'s answer: each piece's placement, the insertion order (keys, bottom up),
-    the box's inside (``(2, 3)``: its lower corner and upper)."""
-
-    placed: dict[str, Placed]
-    order: list[str]
-    inside: np.ndarray
-
-
-def _fill(grid: _Grid, order: _Order, fills, best: float) -> float | None:
-    """Fill ``fills`` (key, its orientations, the flattest first) into ``grid`` in turn, each
-    to its best free slot (the module's docstring); the box's inside top once done, or None
-    once it can't beat ``best``."""
-    top = max((float(p.boxes[:, 1, 1].max()) + CLEAR for p in order.placed),
-              default=grid.o[1])
-    for key, shapes in fills:
-        while True:
-            cands = []
-            s = grid.integral()
-            for rank, sh in enumerate(shapes):
-                pw, ph, pd = sh.span
-                nu, nw, nv = grid.nx - pw + 1, grid.ny - ph + 1, grid.nz - pd + 1
-                if min(nu, nw, nv) <= 0:
-                    continue
-                tot = np.zeros((nu, nw, nv), np.int32)     # what each slot's boxes hold
-                for a0, a1, b0, b1, c0, c1 in sh.cells:
-                    tot += s[a1:a1 + nu, b1:b1 + nw, c1:c1 + nv]
-                    tot -= s[a0:a0 + nu, b1:b1 + nw, c1:c1 + nv]
-                    tot -= s[a1:a1 + nu, b0:b0 + nw, c1:c1 + nv]
-                    tot -= s[a1:a1 + nu, b1:b1 + nw, c0:c0 + nv]
-                    tot += s[a0:a0 + nu, b0:b0 + nw, c1:c1 + nv]
-                    tot += s[a0:a0 + nu, b1:b1 + nw, c0:c0 + nv]
-                    tot += s[a1:a1 + nu, b0:b0 + nw, c0:c0 + nv]
-                    tot -= s[a0:a0 + nu, b0:b0 + nw, c0:c0 + nv]
-                free = tot == 0
-                has = free.any(axis=1)
-                if not has.any():
-                    continue
-                w = free.argmax(axis=1)
-                u, v = np.nonzero(has)
-                w = w[u, v]
-                y = grid.o[1] + w * CELL_Y
-                ytop = y + sh.size[1]
-                gap_x = np.minimum(u, nu - 1 - u)
-                gap_z = np.minimum(v, nv - 1 - v)
-                cands.append((np.maximum(top, ytop + CLEAR / 2), y, ytop,
-                              np.full(len(u), rank), gap_x + gap_z, u, w, v, rank))
-            if cands:
-                break
-            grid.grow(grid.ny + math.ceil(min(sh.size[1] for sh in shapes) / CELL_Y) + 1)
-        cat = [np.concatenate([c[i] for c in cands]) for i in range(8)]
-        keys = (cat[4], cat[3], np.round(cat[2], 3), np.round(cat[1], 3), np.round(cat[0], 3))
-        idx = np.lexsort(keys)
-        done = False
-        for i in idx[:4000]:
-            sh = shapes[int(cat[3][i])]
-            at = grid.o + np.array([cat[5][i] * CELL, cat[6][i] * CELL_Y, cat[7][i] * CELL])
-            p = sh.placed(key, at)
-            rel = order.relations(p.boxes)
-            if rel is None:
-                continue
-            order.add(p, rel)
-            grid.add(p.boxes + np.array([-CLEAR / 2, CLEAR / 2])[:, None])
-            top = max(top, float(p.boxes[:, 1, 1].max()) + CLEAR)
-            done = True
-            break
-        if not done:
-            raise RuntimeError(f"no room for {key} in the box")
-        if top > best + 1e-6:
-            return None
-    return top
-
-
-def pack(items: Sequence[tuple[str, str, Sequence[np.ndarray]]], tilt: float = 0.0) -> Packed:
-    """Pack ``items`` (key, role, each part's points in the assembled pose; roles as
-    :class:`Piece`'s) in one box (the module's docstring). ``tilt``: the cradle's tilt
-    (degrees) in that pose, an angle :func:`level` tries."""
-    c = CLEAR / 2
-    pad = np.array([-c, c])[:, None]
-    base = [(k, pts) for k, r, pts in items if r == "base"]
-    panels = [(k, pts) for k, r, pts in items if r == "panel"]
-    fills = [(k, pts) for k, r, pts in items if r == "fill"]
-    # the footprint: as large as the base board and each panel lying flat, either face
-    flat = {k: _aabbs(pts, _rot("x", -90)) for k, pts in panels}
-    ext = [_aabbs(pts, np.eye(3)) for _, pts in base] + list(flat.values())
-    sizes = np.array([[b[:, 1, 0].max() - b[:, 0, 0].min(), b[:, 1, 2].max() - b[:, 0, 2].min()]
-                      for b in ext]) + 2 * c if ext else np.zeros((0, 2))
-    # each fill piece, levelled: the turn about z, then its six ways to lie
-    lev = {k: _rot("z", level(pts, tilt)) for k, pts in fills}
-    dims = {k: np.sort(np.ptp(np.concatenate([p @ lev[k].T for p in pts]), axis=0))
-            for k, pts in fills}
-    fx = float(sizes[:, 0].max()) if len(sizes) else 0.0
-    fz = float(sizes[:, 1].max()) if len(sizes) else 0.0
-    for d in dims.values():                 # (every piece lies flat in it somewhere)
-        if fx >= fz:
-            fx, fz = max(fx, d[2] + 2 * c), max(fz, d[1] + 2 * c)
-        else:
-            fx, fz = max(fx, d[1] + 2 * c), max(fz, d[2] + 2 * c)
-    nx, nz = math.ceil(fx / CELL - 1e-6), math.ceil(fz / CELL - 1e-6)
-    long_axis = 0 if nx >= nz else 2
-    if base:
-        b0 = np.concatenate([_aabbs(pts, np.eye(3)) for _, pts in base])
-        centre = (b0[:, 0].min(axis=0) + b0[:, 1].max(axis=0)) / 2
-        y0 = float(b0[:, 0, 1].min()) - c
-    else:
-        allp = np.concatenate([np.concatenate(pts) for _, _, pts in items])
-        centre = (allp.min(axis=0) + allp.max(axis=0)) / 2
-        y0 = float(allp[:, 1].min()) - c
-    x0, z0 = centre[0] - nx * CELL / 2, centre[2] - nz * CELL / 2
-    fill_shapes = []
-    for k, pts in sorted(fills, key=lambda kp: (-float(np.prod(dims[kp[0]])), kp[0])):
-        shapes = []
-        seen = set()
-        body = _Body.of(pts, lev[k])
-        for r in _axis_rotations():
-            sh = _Shape.of(body, r)
-            sig = (tuple(np.round(sh.size, 1)), tuple(map(tuple, sh.cells.tolist())))
-            if sig not in seen:
-                seen.add(sig)
-                shapes.append(sh)
-        # the flattest first: the least height, its greatest extent along the box
-        shapes.sort(key=lambda sh: (round(float(sh.size[1]), 1),
-                                    -float(sh.size[long_axis])))
-        fill_shapes.append((k, shapes))
-
-    def fresh() -> tuple[_Grid, _Order]:
-        g = _Grid(x0, y0, z0, nx, nz, 1)
-        o = _Order()
-        for k, pts in base:
-            p = Placed(k, np.eye(3), np.zeros(3), _aabbs(pts, np.eye(3)))
-            o.add(p, (set(range(len(o.placed))), set()))
-            g.add(p.boxes + pad)
-        return g, o
-
-    # the panels: every order, face and turn, each dropped on the heightmap of what is in
-    turns = []
-    for k, pts in panels:
-        opts = []
-        body = _Body.of(pts, np.eye(3))
-        for face, spin in product((-90, 90), (0, 180, 90, 270)):
-            sh = _Shape.of(body, _rot("y", spin) @ _rot("x", face))
-            if sh.span[0] <= nx and sh.span[2] <= nz:
-                opts.append(sh)
-        turns.append((k, opts))
-    arrangements: list[tuple[float, list[tuple[str, _Shape, np.ndarray]]]] = []
-
-    def drop(top: np.ndarray, sh: _Shape, cache: dict) -> np.ndarray:
-        """Where ``sh`` comes to rest on ``top``, nearest a corner: its grown corner."""
-        pw, _, pd = sh.span
-        nu, nv = nx - pw + 1, nz - pd + 1
-        need = np.full((nu, nv), y0)
-        for (a0, a1, _, _, c0, c1), yl in zip(sh.cells, sh.ylo, strict=True):
-            wm = cache.get((a1 - a0, c1 - c0))
-            if wm is None:
-                wm = cache[(a1 - a0, c1 - c0)] = _win_max(top, a1 - a0, c1 - c0)
-            need = np.maximum(need, wm[a0:a0 + nu, c0:c0 + nv] - yl)
-        u = np.arange(nu)[:, None]
-        v = np.arange(nv)[None, :]
-        gap = np.minimum(u, nu - 1 - u) + np.minimum(v, nv - 1 - v)
-        iu, iv = divmod(int(np.lexsort((gap.ravel(), need.ravel()))[0]), nv)
-        return np.array([x0 + iu * CELL, float(need[iu, iv]), z0 + iv * CELL])
-
-    def arrange(top: np.ndarray, left: list[int], done: list) -> None:
-        if not left:
-            arrangements.append((float(top.max()), done))
-            return
-        for i in left:                  # each panel next, each way it lies (one heightmap)
-            k, opts = turns[i]
-            cache: dict = {}
-            for sh in opts:
-                at = drop(top, sh, cache)
-                raised = top.copy()
-                for b in sh.placed(k, at).boxes + pad:
-                    i0, i1, _, _, k0, k1 = g0.cells(b)
-                    raised[i0:i1, k0:k1] = np.maximum(raised[i0:i1, k0:k1], b[1, 1])
-                arrange(raised, [j for j in left if j != i], [*done, (k, sh, at)])
-
-    g0, _ = fresh()
-    arrange(g0.top, list(range(len(turns))), [])
-    arrangements.sort(key=lambda a: a[0])
-    best: tuple[float, _Order] | None = None
-    tried: set[tuple] = set()
-    for under, done in arrangements:
-        sig = tuple((k, tuple(np.round(at, 1)), tuple(np.round(sh.rot, 3).ravel()))
-                    for k, sh, at in done)
-        if sig in tried:
-            continue
-        if len(tried) >= ARRANGEMENTS or (best and best[0] <= under + c + 1e-6):
-            break               # (the panels alone stand as high as the best box: done)
-        tried.add(sig)
-        g, o = fresh()
-        ok = True
-        for k, sh, at in done:
-            p = sh.placed(k, at)
-            rel = o.relations(p.boxes)
-            if rel is None:
-                ok = False
-                break
-            o.add(p, rel)
-            g.add(p.boxes + pad)
-        if not ok:
-            continue
-        g.grow(math.ceil((g.top.max() - y0) / CELL_Y - 1e-6))    # (more if need be)
-        top = _fill(g, o, fill_shapes, best[0] if best else math.inf)
-        if top is not None and (best is None or top < best[0] - 1e-6):
-            best = (top, o)
-    assert best is not None
-    _, o = best
-    allb = np.concatenate([p.boxes for p in o.placed])
-    inside = np.stack([allb[:, 0].min(axis=0) - CLEAR, allb[:, 1].max(axis=0) + CLEAR])
-    seq = o.order()
-    return Packed({p.key: p for p in o.placed}, [o.placed[i].key for i in seq], inside)
+PACK_PLANS: dict[str, vp.Plan] = {
+    "decanter_rcm": vp.Plan(
+        "B: the cradle box down on the board, the passive side over the drive side",
+        steps=(
+            vp.Step("drive", down="cradle box",
+                    why="the heaviest piece lowest: the cradle box (its far cradle link, the "
+                        "ties' ends) down on the board's thumb nuts, the drive side's plates "
+                        "over it, foam pads under their corners; its outer face down it would "
+                        "stand on the gearbox and tip"),
+            vp.Step("passive", down="outer", on="drive",
+                    why="face down on the drive side's plates, its links over theirs"),
+            vp.Step("hand_crank",
+                    why="on the board under the drive side's plates, wherever it drops lowest"),
+        ),
+        note="B's pieces: the board, the two side modules, the hand crank. The drive side "
+             "with its cradle box is 441 mm across the bay whichever way it lies: with the "
+             "board at the bottom the box is about 203 L, the board's footprint times that."),
+    "decanter_hinge": vp.Plan(
+        "A: both side panels face down on the board, end to end, the loose parts in their "
+        "open triangles",
+        steps=(
+            vp.Step("passive", down="outer",
+                    why="its plates flat on the board, its pillars up (foam pads level it)"),
+            vp.Step("drive", down="outer", spin=180,
+                    why="turned end for end: its plates lie beside the passive panel's, their "
+                        "pillars between each other's links, both on the board"),
+        ),
+        note="A's pieces: the board, the side panels, the inner plates, the cradle links, "
+             "the tie rods, the saddles, the light, the base stop, the hand crank; what the "
+             "plan leaves free (the saddles, the base stop, the links, the ties, the plates, "
+             "the light, the crank) drops into the panels' openings, the largest first."),
+}
+"""Each cradle's pack plan (:class:`spiderpig.voxpack.Plan`): the human packer's intent, per
+piece (its face down, where it goes, what goes in first); what a plan leaves free the packer
+picks (:meth:`spiderpig.voxpack.Packer.greedy`), a piece it doesn't name too. ``spiderpig
+pack-inspect`` judges a plan (and searches round it: ``--search``)."""
 
 
 # -- the cradle's flat pack ------------------------------------------------------------------
 
 
 def part_infos(mech) -> dict[str, PartInfo]:
-    """The fabricated cradle's parts (not the display ones) as :func:`pieces` and
-    :func:`pack` read them: a part that only ever turns by quarter turns (the base board's,
-    the panels') by its bounding box's corners, the rest by their tessellations."""
+    """The fabricated cradle's parts (not the display ones) as :func:`pieces` reads them:
+    each by its bounding box's corners."""
     bodies = [b for b in mech.bodies if b.part is not None and b.fab != "display"]
-    shapes = {b.name: b.placed_part() for b in bodies}
     corners = {}
-    for n, sh in shapes.items():
-        bb = sh.bounding_box()
-        lo, hi = (bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z)
-        corners[n] = np.array([[(lo, hi)[i & 1][0], (lo, hi)[(i >> 1) & 1][1],
-                                (lo, hi)[(i >> 2) & 1][2]] for i in range(8)], float)
+    for b in bodies:
+        bb = b.placed_part().bounding_box()
+        corners[b.name] = _corners((bb.min.X, bb.min.Y, bb.min.Z), (bb.max.X, bb.max.Y, bb.max.Z))
     return {b.name: PartInfo(b.name, b.fab, b.bom_key, b.rigid_with, corners[b.name])
             for b in bodies}
+
+
+def _corners(lo, hi) -> np.ndarray:
+    return np.array([[(lo, hi)[i & 1][0], (lo, hi)[(i >> 1) & 1][1], (lo, hi)[(i >> 2) & 1][2]]
+                     for i in range(8)], float)
 
 
 def tuck(group: Sequence[np.ndarray], pivot, others: Sequence[np.ndarray]) -> float:
@@ -1086,51 +655,52 @@ def tuck(group: Sequence[np.ndarray], pivot, others: Sequence[np.ndarray]) -> fl
     return min((c for c in near if c[1] <= square * 1.01), key=lambda c: abs(c[2]))[2]
 
 
-def flat_pack(mech, lk, t: float = 0.0) -> dict:
-    """How the fabricated cradle ``mech`` (at crank angle ``t``: :func:`pack_t`) packs:
-    flat (:func:`pieces`), or as modules where it is cranked to its pack pose first
-    (:data:`PACK_TURNS`, :func:`module_pieces`). Its pieces (``modules``, in the order they
-    go in the box, bottom up: key, label, how it comes off, parts, ``matrix``: the 4 x 4
-    row-major transform from the assembled pose to the packed one, in the cradle's own frame:
-    x along the linkage, y up, z across the bay; and ``part_matrix``, a part's own where it
-    moves within its piece: a hanging link swung in), the box (its inside and outside sizes,
-    mm, and its inside's lower corner, ``floor``), the steps that take it apart, ``mode``
-    (``"flat"`` or ``"modules"``), the ``pose`` the transforms start from (its crank angle,
-    its clip fraction ``t / 2 pi``, the bottle's tilt, the handle turns from rest) and, for
-    modules, ``slide_off``: what the passive side panel meets sliding off its cradle link
-    (:func:`slide_hits`, its clips out: none)."""
+MESH_TOLERANCE = (0.5, 0.5)
+"""The parts' tessellation for the packing (``mesh.tessellate_many``: relative, angular)."""
+
+
+def gather(mech, lk, t: float = 0.0, config=None) -> dict:
+    """What the packing needs of the fabricated cradle ``mech`` at crank angle ``t`` (its
+    pack pose, :func:`pack_t`), with no OCCT after it (:func:`cached_input` keeps it): the
+    linkage, its cradle link's class, the pose (``t``, the bottle's ``tilt``, the handle
+    ``turns`` from rest or None), each part's bounding box, fabrication, catalog key, host,
+    volume, mass (kg) and centre of mass, its tessellation (``meshes``: positions, triangles)
+    in the assembled pose, the mechanism's ``connections``, the cradle's ``fastened`` pairs,
+    each joint's xy and, for modules, ``slide_off`` (:func:`slide_hits`)."""
+    from spiderpig.config import BuildConfig
+    from spiderpig.cradle_report import part_mass_kg
+    from spiderpig.hardware import mass as mass_mod
     from spiderpig.mesh import tessellate_many
 
-    link = cr.cradle_link(lk)
+    cfg = config or BuildConfig(linkage=lk.key, robot=False)
+    bodies = [b for b in mech.bodies if b.part is not None and b.fab != "display"]
     infos = part_infos(mech)
-    tilt = math.degrees(float(mech.meta.get("cradle_tilt", 0.0)))
-    fastened = mech.meta.get("fastened", ())
+    shapes = [b.placed_part() for b in bodies]
+    meshes = tessellate_many(shapes, *MESH_TOLERANCE)
+    parts, mesh_of = {}, {}
+    for b, sh, (pos, idx, _) in zip(bodies, shapes, meshes, strict=True):
+        props = mass_mod.part_props(sh)
+        i = infos[b.name]
+        parts[b.name] = {"fab": b.fab, "bom_key": b.bom_key, "rigid_with": b.rigid_with,
+                         "lo": i.lo.tolist(), "hi": i.hi.tolist(),
+                         "volume": float(props.volume), "mass": float(part_mass_kg(cfg, b)),
+                         "com": [float(v) for v in props.com]}
+        mesh_of[b.name] = (np.asarray(pos, np.float32).reshape(-1, 3),
+                           np.asarray(idx, np.uint32).reshape(-1, 3))
     turns = PACK_TURNS.get(lk.key)
+    out = {"linkage": lk.key, "link": cr.cradle_link(lk), "t": float(t),
+           "tilt": math.degrees(float(mech.meta.get("cradle_tilt", 0.0))), "turns": turns,
+           "parts": parts, "meshes": mesh_of,
+           "connections": [[list(a), list(b)] for a, b in mech.connections],
+           "fastened": [list(p) for p in mech.meta.get("fastened", ())],
+           "joints": {f"{b.name}|{j.name}": [float(v) for v in
+                                             (b.pose.matrix @ j.pose.matrix)[:2, 3]]
+                      for b in mech.bodies for j in b.joints},
+           "slide_off": None}
     if turns is not None:
-        pcs, steps = module_pieces(infos, mech.connections, link, turns, tilt, fastened)
-    else:
-        pcs, steps = pieces(infos, mech.connections, link, fastened)
-    # the parts that turn by any angle (the levelled pieces', the hanging links'): their
-    # tessellations
-    turned = [n for pc in pcs if pc.role == "fill" for n in pc.parts]
-    turned += [n for pc in pcs for body, _ in pc.hanging for n in pc.parts
-               if n == body or infos[n].rigid_with == body]
-    shapes = {b.name: b for b in mech.bodies if b.name in set(turned)}
-    meshes = tessellate_many([shapes[n].placed_part() for n in turned], 0.5, 0.5)
-    for n, (pos, _, _) in zip(turned, meshes, strict=True):
-        if len(pos):
-            infos[n] = PartInfo(n, infos[n].fab, infos[n].bom_key, infos[n].rigid_with,
-                                np.asarray(pos, float))
-    joints = {(b.name, j.name): (b.pose.matrix @ j.pose.matrix)[:2, 3]
-              for b in mech.bodies for j in b.joints}
-    out = pack_cradle(pcs, steps, infos, joints, tilt)
-    out["mode"] = "flat" if turns is None else "modules"
-    out["pose"] = {"crank_t": round(t, 6), "clip_fraction": round(t / (2.0 * math.pi), 6),
-                   "tilt_deg": round(tilt, 2), "turns_from_rest": turns}
-    if turns is not None:
+        pcs, _ = _pieces_of(out)
         by = {pc.key: pc for pc in pcs}
-        placed = {b.name: b.placed_part() for b in mech.bodies
-                  if b.part is not None and b.fab != "display"}
+        placed = dict(zip([b.name for b in bodies], shapes, strict=True))
         panel = {n: placed[n] for n in by["passive"].parts if not n.endswith("_clip")}
         unit = {n: placed[n] for n in by["drive"].parts}
         out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, unit)],
@@ -1139,41 +709,146 @@ def flat_pack(mech, lk, t: float = 0.0) -> dict:
     return out
 
 
-def pack_cradle(pcs: list[Piece], steps, infos: dict[str, PartInfo], joints, tilt: float
-                ) -> dict:
-    """:func:`flat_pack`'s answer from its pieces and steps (:func:`pieces`), the parts'
-    ``infos`` (a hanging link's and the levelled pieces' by their tessellations), ``joints``
-    (a body and joint's xy as assembled) and the cradle's ``tilt`` (degrees)."""
+def _pieces_of(inp: dict) -> tuple[list[Piece], list[tuple[str, list[str]]]]:
+    """:func:`module_pieces` or :func:`pieces` of a :func:`gather`'s input."""
+    infos = {n: PartInfo(n, p["fab"], p["bom_key"], p["rigid_with"], _corners(p["lo"], p["hi"]))
+             for n, p in inp["parts"].items()}
+    conns = [(tuple(a), tuple(b)) for a, b in inp["connections"]]
+    fastened = [tuple(p) for p in inp["fastened"]]
+    if inp["turns"] is not None:
+        return module_pieces(infos, conns, inp["link"], inp["turns"], inp["tilt"], fastened)
+    return pieces(infos, conns, inp["link"], fastened)
+
+
+def pack_items(inp: dict, splits: dict[str, Sequence[str]] | None = None
+               ) -> tuple[list[Piece], list[tuple[str, list[str]]], list[vp.Item],
+                          dict[str, np.ndarray]]:
+    """The pieces of :func:`gather`'s input ``inp``, the steps that free them, each as a
+    :class:`spiderpig.voxpack.Item` (its parts' meshes, a hanging link swung in: :func:`tuck`;
+    a fill piece levelled: :func:`level`; a side's ``outer`` and ``bay`` faces, and the
+    ``cradle box``'s where the piece carries it: its bay's), and each
+    moved part's own 4 x 4 within its piece. ``splits``: a what-if (``spiderpig
+    pack-inspect --split``), a new piece's key -> the patterns (``fnmatch``) of the parts it
+    takes from theirs."""
+    pcs, steps = _pieces_of(inp)
+    if splits:
+        pcs = _split(pcs, splits)
+    mesh = {n: (np.asarray(p, float), np.asarray(t)) for n, (p, t) in inp["meshes"].items()}
+    com = {n: np.asarray(p["com"], float) for n, p in inp["parts"].items()}
+    rigid = {n: p["rigid_with"] for n, p in inp["parts"].items()}
+    moved: dict[str, np.ndarray] = {}
     for pc in pcs:              # each hanging link swung into its panel (:func:`tuck`)
         for body, joint in pc.hanging:
-            group = [n for n in pc.parts if n == body or infos[n].rigid_with == body]
-            rest = [infos[n].points for n in pc.parts if n not in group]
-            pivot = np.asarray(joints[(body, joint)], float)
-            deg = tuck([infos[n].points for n in group], pivot, rest)
+            group = [n for n in pc.parts if n == body or rigid[n] == body]
+            rest = [mesh[n][0] for n in pc.parts if n not in group]
+            pivot = np.asarray(inp["joints"][f"{body}|{joint}"], float)
+            deg = tuck([mesh[n][0] for n in group], pivot, rest)
             if deg == 0.0:
                 continue
             m = np.eye(4)
-            m[:3, :3] = _rot("z", deg)
+            m[:3, :3] = vp.rot_about("z", deg)
             m[:2, 3] = pivot - m[:2, :2] @ pivot
             for n in group:
-                i = infos[n]
-                infos[n] = PartInfo(n, i.fab, i.bom_key, i.rigid_with,
-                                    i.points @ m[:3, :3].T + m[:3, 3])
+                mesh[n] = (mesh[n][0] @ m[:3, :3].T + m[:3, 3], mesh[n][1])
+                com[n] = m[:3, :3] @ com[n] + m[:3, 3]
                 pc.moved[n] = m @ pc.moved.get(n, np.eye(4))
+                moved[n] = pc.moved[n]
+    items = []
+    for pc in pcs:
+        ms = [mesh[n] for n in pc.parts if len(mesh[n][1])]
+        mass = sum(inp["parts"][n]["mass"] for n in pc.parts)
+        c = (sum(inp["parts"][n]["mass"] * com[n] for n in pc.parts) / mass if mass > 0
+             else np.concatenate([p for p, _ in ms]).mean(axis=0))
+        pre = np.eye(3)
+        if pc.role == "fill":
+            pre = vp.rot_about("z", level([p for p, _ in ms], inp["tilt"]))
+        faces = {}
+        sides = [_side(n)[0] for n in pc.parts if _side(n)[0]]
+        if sides and pc.role != "base":
+            s = max(set(sides), key=lambda x: (sides.count(x), x))
+            zs = np.concatenate([mesh[n][0][:, 2] for n in pc.parts if _side(n)[0] == s])
+            out = np.array([0.0, 0.0, 1.0 if zs.mean() > 0 else -1.0])
+            faces = {"outer": pre @ out, "bay": -(pre @ out)}
+            if any(n.startswith("tie_") for n in pc.parts):     # (B's drive side's)
+                faces["cradle box"] = faces["bay"]
+        items.append(vp.Item(pc.key, pc.label, pc.role, ms, float(mass), np.asarray(c, float),
+                             float(sum(inp["parts"][n]["volume"] for n in pc.parts)), pre,
+                             faces))
+    return pcs, steps, items, moved
+
+
+def packed_meshes(items: Sequence[vp.Item], layout: vp.Layout) -> dict[str, list[vp.Mesh]]:
+    """Each piece's meshes where ``layout`` puts it (the box's frame)."""
+    by = {it.key: it for it in items}
+    out = {}
+    for p in layout.placed:
+        out[p.key] = [(pos @ p.rot.T + p.shift, tri) for pos, tri in by[p.key].meshes]
+    return out
+
+
+def _split(pcs: list[Piece], splits: dict[str, Sequence[str]]) -> list[Piece]:
+    """``pcs`` with each split's parts (by pattern) moved into a piece of its own (a
+    what-if: no step frees it); a piece left empty goes."""
+    import fnmatch
+
+    out = []
+    new = {k: Piece(k, f"What if: {k}", "fill", how="(a what-if)") for k in splits}
+    for pc in pcs:
+        keep = []
+        for n in pc.parts:
+            k = next((k for k, pats in splits.items()
+                      if any(fnmatch.fnmatchcase(n, p) for p in pats)), None)
+            (new[k].parts if k is not None else keep).append(n)
+        pc.parts = keep
+        pc.hanging = [(b, j) for b, j in pc.hanging if b in keep]
+        if keep:
+            out.append(pc)
+    return out + [pc for pc in new.values() if pc.parts]
+
+
+def pack_input(inp: dict, plan: vp.Plan | None | str = "default", cell: float = CELL,
+               seq: Sequence[vp.Choice] | None = None,
+               splits: dict[str, Sequence[str]] | None = None) -> dict:
+    """:func:`flat_pack`'s answer from :func:`gather`'s input ``inp``: packed by ``plan``
+    (``"default"``: :data:`PACK_PLANS`' for the linkage; None: automatic), or by an explicit
+    sequence of choices ``seq`` (``spiderpig pack-inspect --search``'s); ``splits`` a
+    what-if (:func:`pack_items`)."""
+    if plan == "default":
+        plan = PACK_PLANS.get(inp["linkage"])
+    assert plan is None or isinstance(plan, vp.Plan)
+    pcs, steps, items, _ = pack_items(inp, splits)
+    layout, packer = vp.pack(items, plan, cell, seq)
+    return layout_payload(inp, pcs, steps, items, layout, packer.plan)
+
+
+def layout_payload(inp: dict, pcs: list[Piece], steps, items: Sequence[vp.Item],
+                   layout: vp.Layout, plan: vp.Plan) -> dict:
+    """The payload (:func:`flat_pack`'s) of ``layout``."""
     by = {pc.key: pc for pc in pcs}
-    res = pack([(pc.key, pc.role, [infos[n].points for n in pc.parts]) for pc in pcs], tilt)
+    faces = {it.key: it.faces for it in items}
+    placed = packed_meshes(items, layout)
+    allp = np.concatenate([pos for ms in placed.values() for pos, _ in ms])
+    lo, hi = allp.min(axis=0) - CLEAR, allp.max(axis=0) + CLEAR
+    inside = [float(v) for v in hi - lo]
     mods = []
-    for k in res.order:
-        pc, p = by[k], res.placed[k]
-        mod = {"key": k, "label": pc.label, "how": pc.how, "parts": sorted(pc.parts),
-               "matrix": np.round(p.matrix(), 6).tolist()}
+    for p in layout.placed:
+        pc = by[p.key]
+        mod = {"key": p.key, "label": pc.label, "how": pc.how, "parts": sorted(pc.parts),
+               "matrix": np.round(p.matrix(), 6).tolist(), "rests": p.rest.how,
+               "on": list(p.rest.on), "pads": [list(q) for q in p.rest.pads]}
+        mod["down"], mod["spin"] = vp.describe(p.shape.ri, faces[p.key])
         if pc.moved:
             mod["part_matrix"] = {n: np.round(p.matrix() @ m, 6).tolist()
                                   for n, m in sorted(pc.moved.items())}
         mods.append(mod)
-    lo, hi = res.inside
-    inside = [float(v) for v in hi - lo]
-    return {
+    vol = sum(it.volume for it in items)
+    mass = sum(it.mass for it in items)
+    com_y = (sum(it.mass * (p.rot @ it.com + p.shift)[1]
+                 for it in items for p in layout.placed if p.key == it.key) / mass
+             if mass > 0 else float("nan"))
+    t = inp["t"]
+    out = {
+        "linkage": inp["linkage"],
         "modules": mods,
         "box": {"inside_mm": [round(v, 1) for v in inside],
                 "outside_mm": [round(v + 2 * WALL, 1) for v in inside],
@@ -1181,7 +856,122 @@ def pack_cradle(pcs: list[Piece], steps, infos: dict[str, PartInfo], joints, til
                 "volume_l": round(math.prod(v + 2 * WALL for v in inside) / 1e6, 1)},
         "steps": [text for text, _ in steps],
         "packed_mm": [round(v - 2 * CLEAR, 1) for v in inside],    # (what's in it)
+        "plan": plan.name,
+        "seq": [[c.key, c.ri, c.corner] for c in layout.seq],
+        "fill": round(vol / math.prod(inside), 4),
+        "mass_centre_mm": round(com_y - float(lo[1]), 1),
+        "unsupported": [p.key for p in layout.placed if not p.supported],
+        "mode": "flat" if inp["turns"] is None else "modules",
+        "pose": {"crank_t": round(t, 6), "clip_fraction": round(t / (2.0 * math.pi), 6),
+                 "tilt_deg": round(inp["tilt"], 2), "turns_from_rest": inp["turns"]},
     }
+    if inp.get("slide_off") is not None:
+        out["slide_off"] = inp["slide_off"]
+    return out
+
+
+def flat_pack(mech, lk, t: float = 0.0, config=None, plan: vp.Plan | None | str = "default"
+              ) -> dict:
+    """How the fabricated cradle ``mech`` (at crank angle ``t``: :func:`pack_t`) packs:
+    flat (:func:`pieces`), or as modules where it is cranked to its pack pose first
+    (:data:`PACK_TURNS`, :func:`module_pieces`), by its :data:`PACK_PLANS` plan (``plan``).
+    Its pieces (``modules``, in the order they go in the box, bottom up: key, label, how it
+    comes off, parts, ``matrix``: the 4 x 4 row-major transform from the assembled pose to
+    the packed one, in the cradle's own frame: x along the linkage, y up, z across the bay;
+    ``part_matrix``, a part's own where it moves within its piece: a hanging link swung in;
+    ``supported``: its centre of mass over what it rests on, ``on``), the box (its inside and
+    outside sizes, mm, and its inside's lower corner, ``floor``), the steps that take it
+    apart, the ``plan``'s name, the true ``fill`` (the parts' own volumes over the box's
+    inside), the mass centre's height over the floor, the ``unsupported`` pieces, ``mode``
+    (``"flat"`` or ``"modules"``), the ``pose`` the transforms start from (its crank angle,
+    its clip fraction ``t / 2 pi``, the bottle's tilt, the handle turns from rest) and, for
+    modules, ``slide_off``: what the passive side panel meets sliding off its cradle link
+    (:func:`slide_hits`, its clips out: none)."""
+    return pack_input(gather(mech, lk, t, config), plan)
+
+
+# -- the packing's input, kept ---------------------------------------------------------------
+
+
+def input_path(store, cfg, t: float) -> Path | None:
+    """Where :func:`cached_input` keeps the input of ``cfg``'s cradle at crank angle ``t``:
+    ``<store>/pack/<the fabrication's entry>-<the code's key>.npz`` (None: no store or no
+    key). The fabrication cache's entry names the fabricated parts (:mod:`spiderpig.fabcache`:
+    the code, the design, its plan, ``t``); :func:`spiderpig.keys.source_key` of
+    :func:`gather` the code that reads them."""
+    from spiderpig import fabcache, keys
+    from spiderpig.fabricate import design_side, template_for
+    from spiderpig.store import Store
+
+    st = Store.of(store)
+    if st is None:
+        return None
+    tmpl = template_for(cfg)
+    entry = fabcache.entry_name(tmpl, cfg, design_side(tmpl, cfg), t)
+    key = keys.source_key(("spiderpig.cradle_pack:gather", "spiderpig.cradle_pack:_save_input",
+                           "spiderpig.cradle_pack:_load_input"), "pack")
+    return st.root / "pack" / fabcache.folder_name() / f"{entry}-{key}.npz"
+
+
+def _save_input(inp: dict, path: Path) -> None:
+    import json
+    import os
+    import tempfile
+
+    arrays = {}
+    for n, (p, t) in inp["meshes"].items():
+        arrays[f"p|{n}"] = np.asarray(p, np.float32)
+        arrays[f"t|{n}"] = np.asarray(t, np.uint32)
+    meta = {k: v for k, v in inp.items() if k != "meshes"}
+    arrays["meta"] = np.frombuffer(json.dumps(meta).encode(), np.uint8)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".pack-", suffix=".npz")
+    os.close(fd)
+    np.savez_compressed(tmp, **arrays)
+    os.replace(tmp, path)
+
+
+def _load_input(path: Path) -> dict:
+    import json
+
+    with np.load(path) as data:
+        inp = json.loads(bytes(data["meta"]).decode())
+        names = [k[2:] for k in data.files if k.startswith("p|")]
+        inp["meshes"] = {n: (data[f"p|{n}"], data[f"t|{n}"]) for n in names}
+    return inp
+
+
+def cached_input(linkage: str, store=None, reuse_plan: bool = True) -> dict:
+    """:func:`gather`'s input of ``linkage``'s cradle at its pack pose (:func:`pack_t`),
+    from ``store``'s ``pack/`` when there (:func:`input_path`), else fabricated (through the
+    store's fabrication cache) and kept: seconds once kept. ``reuse_plan``: plan the design
+    through the store (:func:`spiderpig.stages.planning.plan_config`: its plan re-made, not
+    searched for again; the design recorded there), not afresh."""
+    import logging
+
+    from spiderpig.config import BuildConfig
+    from spiderpig.fabricate import fabricate, template_for
+    from spiderpig.store import Store
+
+    cfg = BuildConfig(linkage=linkage, robot=False)
+    t = pack_t(cfg)
+    at = Store.of(store) if store is not None else None
+    if at is not None and reuse_plan:
+        from spiderpig.stages.planning import plan_config
+
+        with contextlib.suppress(Exception):    # (the store's plan, re-made: no search)
+            plan_config(cfg, at)
+    path = input_path(at, cfg, t) if at is not None else None
+    if path is not None and path.is_file():
+        try:
+            return _load_input(path)
+        except (OSError, ValueError, KeyError) as e:
+            logging.getLogger(__name__).warning("%s: unreadable (%s): gathering again", path, e)
+    mech = fabricate(template_for(cfg), cfg, t, store=at)
+    inp = gather(mech, cfg.lk, t, cfg)
+    if path is not None:
+        _save_input(inp, path)
+    return inp
 
 
 def payload(linkage: str, store: str | None = None) -> dict:
@@ -1198,6 +988,9 @@ def payload(linkage: str, store: str | None = None) -> dict:
     tmpl = template_for(cfg)
     at = Store.of(store) if store else None
     mech = fabricate(tmpl, cfg, 0.0, store=at)
-    t = pack_t(cfg)
-    packed = mech if t == 0.0 else fabricate(tmpl, cfg, t, store=at)
-    return {"pack": flat_pack(packed, cfg.lk, t), "room": room(cfg, mech)}
+    inp = cached_input(linkage, at, reuse_plan=False) if at is not None else None
+    if inp is None:
+        t = pack_t(cfg)
+        packed = mech if t == 0.0 else fabricate(tmpl, cfg, t, store=at)
+        inp = gather(packed, cfg.lk, t, cfg)
+    return {"pack": pack_input(inp), "room": room(cfg, mech)}

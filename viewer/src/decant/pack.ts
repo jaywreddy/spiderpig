@@ -17,6 +17,11 @@ export interface PackModule {
   parts: string[];
   matrix: number[][];       // 4 x 4, row-major
   part_matrix?: Record<string, number[][]>;   // a part's own (a hanging link swung in)
+  rests?: 'direct' | 'padded' | 'none';       // on what it rests (``on``), on foam pads or not
+  on?: string[];
+  pads?: number[][];        // x, z, height (mm) of each foam pad under it
+  down?: string;            // the face it lies on, and its turn from there (degrees)
+  spin?: number;
 }
 
 export interface PackData {
@@ -26,6 +31,9 @@ export interface PackData {
   mode?: 'flat' | 'modules';
   /** The pose the transforms start from: the crank cranked to it (B: 4 turns from rest). */
   pose?: { crank_t: number; clip_fraction: number; tilt_deg: number; turns_from_rest: number | null };
+  linkage?: string;
+  plan?: string;            // the plan it was packed by (``cradle_pack.PACK_PLANS``)
+  fill?: number;            // the parts' own volume over the box's inside
 }
 
 /** The clip fraction the pack's transforms start from (0, the clip's first frame, if none). */
@@ -33,7 +41,43 @@ export function packFraction(data: PackData): number {
   return data.pose?.clip_fraction ?? 0;
 }
 
-interface Track { node: THREE.Object3D; from: Mover; to: Mover; module: number }
+/** ``a @ b`` of two 4 x 4 row-major matrices. */
+export function matmul(a: number[][], b: number[][]): number[][] {
+  return a.map((row) => [0, 1, 2, 3].map((j) => row.reduce((s, v, k) => s + v * b[k]![j]!, 0)));
+}
+
+/** A module moved by ``delta`` (4 x 4, row-major, the cradle's frame: applied after its
+ * matrix): its matrix and each of its parts' own (``part_matrix``). */
+export function movedModule(m: PackModule, delta: number[][]): PackModule {
+  const out: PackModule = { ...m, matrix: matmul(delta, m.matrix) };
+  if (m.part_matrix) {
+    out.part_matrix = Object.fromEntries(
+      Object.entries(m.part_matrix).map(([k, v]) => [k, matmul(delta, v)]));
+  }
+  return out;
+}
+
+/** The edit that turns a piece ``yaw`` quarter turns about the vertical and ``tip`` quarter
+ * turns about x, both through ``centre`` (mm), then shifts it by ``shift`` (mm), each
+ * component rounded to ``snap`` mm: 4 x 4, row-major. Quarter turns keep a packed piece's
+ * faces square to the box (``spiderpig pack-inspect --layout`` judges the result). */
+export function snappedDelta(centre: readonly number[], shift: readonly number[], yaw = 0,
+                             tip = 0, snap = 3): number[][] {
+  const turn = (q: number): [number, number] => {
+    const k = ((Math.round(q) % 4) + 4) % 4;
+    return [[1, 0], [0, 1], [-1, 0], [0, -1]][k] as [number, number];   // cos, sin
+  };
+  const [cy, sy] = turn(yaw), [cx, sx] = turn(tip);
+  const ry = [[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]];
+  const rx = [[1, 0, 0], [0, cx, -sx], [0, sx, cx]];
+  const r = ry.map((row) => [0, 1, 2].map((j) => row.reduce((s, v, k) => s + v * rx[k]![j]!, 0)));
+  const c = centre.slice(0, 3), d = shift.slice(0, 3).map((v) => Math.round(v / snap) * snap);
+  const t = [0, 1, 2].map((i) => c[i]! + d[i]! - r[i]!.reduce((s, v, k) => s + v * c[k]!, 0));
+  return [[...r[0]!, t[0]!], [...r[1]!, t[1]!], [...r[2]!, t[2]!], [0, 0, 0, 1]].map(
+    (row) => row.map((v) => (Object.is(v, -0) ? 0 : v)));
+}
+
+interface Track { node: THREE.Object3D; from: Mover; to: Mover; module: number; at0: THREE.Matrix4 }
 interface Mover { p: THREE.Vector3; q: THREE.Quaternion; s: THREE.Vector3 }
 
 export interface Pack {
@@ -41,6 +85,16 @@ export interface Pack {
   set(s: number): void;
   /** The box and the packed modules, for the camera. */
   bounds(): THREE.Box3;
+  /** The module ``node`` (a part's node or a mesh under it) belongs to, or -1. */
+  moduleOf(node: THREE.Object3D): number;
+  /** Module ``i`` packed, as it is now (edits included). */
+  module(i: number): PackModule;
+  /** Replace module ``i``'s packed transforms (an edit: ``movedModule``); posed packed. */
+  setModule(i: number, m: PackModule): void;
+  /** Module ``i``'s packed parts' box (the cradle's frame), for its edit's pivot. */
+  moduleBounds(i: number): THREE.Box3;
+  /** The pack as edited: the data with each module's transforms as they are now. */
+  data(): PackData;
   dispose(): void;
 }
 
@@ -73,19 +127,24 @@ export function stagger(s: number, i: number, n: number, overlap = 0.5): number 
  * decanter). */
 export function createPack(walker: THREE.Object3D, data: PackData, hide: string[]): Pack {
   const tracks: Track[] = [];
-  data.modules.forEach((m, i) => {
-    const pack = matrix4(m.matrix);
+  const mods = data.modules.map((m) => ({ ...m }));
+  const target = (m: PackModule, name: string, at0: THREE.Matrix4): Mover => {
+    const own = m.part_matrix?.[name];
+    return mover((own ? matrix4(own) : matrix4(m.matrix)).multiply(at0));
+  };
+  mods.forEach((m, i) => {
     for (const name of m.parts) {
       // (GLTFLoader sanitizes node names: "L.frame_outer" is "Lframe_outer")
       const node = walker.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(name));
       if (!node) continue;
       node.updateMatrix();
       const at0 = node.matrix.clone();
-      const own = m.part_matrix?.[name];
-      const to = (own ? matrix4(own) : pack.clone()).multiply(at0);
-      tracks.push({ node, from: mover(at0), to: mover(to), module: i });
+      tracks.push({ node, from: mover(at0), to: target(m, name, at0), module: i, at0 });
     }
   });
+  const nodeModule = new Map(tracks.map((t) => [t.node, t.module]));
+  const nodeName = new Map(mods.flatMap((m) => m.parts.map(
+    (n) => [THREE.PropertyBinding.sanitizeNodeName(n), n] as const)));
   const hidden = hide.map((n) => walker.getObjectByName(THREE.PropertyBinding.sanitizeNodeName(n)))
     .filter((o): o is THREE.Object3D => !!o);
 
@@ -136,6 +195,38 @@ export function createPack(walker: THREE.Object3D, data: PackData, hide: string[
     bounds(): THREE.Box3 {
       walker.updateMatrixWorld(true);
       return new THREE.Box3().setFromObject(walls);
+    },
+    moduleOf(node: THREE.Object3D): number {
+      for (let o: THREE.Object3D | null = node; o; o = o.parent) {
+        const i = nodeModule.get(o);
+        if (i !== undefined) return i;
+      }
+      return -1;
+    },
+    module(i: number): PackModule {
+      return mods[i]!;
+    },
+    setModule(i: number, m: PackModule): void {
+      mods[i] = m;
+      for (const t of tracks) {
+        const name = nodeName.get(t.node.name);
+        if (t.module !== i || name === undefined) continue;
+        t.to = target(m, name, t.at0);
+        t.node.matrix.compose(t.to.p, t.to.q, t.to.s);
+        t.node.matrix.decompose(t.node.position, t.node.quaternion, t.node.scale);
+      }
+    },
+    moduleBounds(i: number): THREE.Box3 {
+      walker.updateMatrixWorld(true);
+      const inv = walker.matrixWorld.clone().invert();
+      const b = new THREE.Box3();
+      for (const t of tracks) {
+        if (t.module === i) b.union(new THREE.Box3().setFromObject(t.node, true).applyMatrix4(inv));
+      }
+      return b;
+    },
+    data(): PackData {
+      return { ...data, modules: mods.map((m) => ({ ...m })) };
     },
     dispose(): void {
       walker.remove(box);

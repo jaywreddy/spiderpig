@@ -255,6 +255,21 @@ returns its `Store`; its one design is `store.ids()[0]`. `api.load(id, store)` +
 jobs find a finished build. The copy is the test's own. `SPIDERPIG_STORE` stays a fresh
 per-session folder (tests asserting on the project store expect it empty).
 
+## Judging a cradle's packing (`spiderpig pack-inspect`)
+
+`mise run pack-inspect -- decanter_rcm` (`spiderpig/tools/pack_inspect.py`) packs a
+decanting cradle by its plan (`cradle_pack.PACK_PLANS`) and with none (`--plan default
+auto`, the default), or judges a saved layout (`--layout pack.json`: a
+`/api/cradle/{key}/pack` body, or a `*.layout.json` it wrote), and writes per candidate a
+contact sheet (`build/pack/<linkage>/<name>.png`: four views, three slices, the legend), the
+metrics (`<name>.json`: `voxpack.metrics`) and the layout. `--search --seconds N --workers
+K` anneals round the plan (at most 6 processes); `--split KEY=GLOB` packs a what-if (parts
+off their piece). The first run fabricates and tessellates the cradle (minutes, cold); the
+input is then kept in the store's `pack/` (`cradle_pack.cached_input`), and a run is
+seconds. Its tests are the synthetic ones in `tests/test_cradle.py` (voxels, the drop,
+support and pads, the metrics, the search, the sheet: no fabrication) and the slow
+`test_the_cradle_packs_in_one_box`, which judges each cradle's flat pack on its real shapes.
+
 ## The identity gate (`tests/gate/identity_gate.py`)
 
 A script, not a test: run it before and after any change under `spiderpig/` that must
