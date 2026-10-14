@@ -1470,3 +1470,57 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   `spiderpig/cradle_report.py`, `spiderpig/config.py`, `spiderpig/strength.py`,
   `spiderpig/construction/cradle.py`, `spiderpig/cradle_pack.py`,
   `spiderpig/hardware/cradle_catalog.py`, `tests/test_cradle.py`.
+
+### 2026-10-14: cradle B's pack, turn 1: the cradle box off the drive side (user: "iterate multiple turns on the packing ... You can make design changes to assist with packing")
+
+- **What:** B comes apart into the base board, the passive side panel, the cradle box, the
+  drive side panel and the hand crank ([DECANTER.md](DECANTER.md), "Flat pack"). The
+  drive side no longer carries the cradle box: once the passive panel is off, the drive
+  side's two R-clips (its pins X and Y, quick-release clevis pins already) come out and the
+  box lifts straight up off it, the drive side still lying on its gearbox.
+  - **The keepers** (`cradle.KEEPER`, `cradle.keeper_names`): the ring each of the four
+    pins' plans puts in the gap between b4 (b5) and the cradle link is printed in TPU 95A
+    with a 7.6 mm bore on the 8 mm pin, so it grips the pin (`cradle_report.keepers`: 6.1 N
+    at the least interference, 0.2 mm, and TPU 95A's least published modulus, 26 MPa; 55 x
+    the pin's weight, the test's bar 10; on with about 52 N). A pin of a side lying down,
+    its clip out, has its head under its link with nothing under it: bare, it drops out. The
+    keeper holds it, so the box can come off the drive side as it lies, and the passive
+    panel's pins lift off with their keepers on: the loose spacer and its two steps go. The
+    keepers are the planned gap rings re-made in `assemble_cradle` (the pivots are the
+    planner's to edit); `bom.part_filament` prints them in TPU (`meta["keepers"]`).
+  - **The steps** (`cradle.module_steps`, the guide's): eight to take it apart (two more:
+    the drive side's clips, the box's lift), nine back together (the box onto the drive
+    side's pins first: pin X, then the box turned about it and b5 swung until Y drops in).
+    `cradle_pack.slide_hits` sweeps the box off the drive side too (its new `way`): nothing
+    meets.
+  - **The plan** (`cradle_pack.PACK_PLANS`): the cradle box on the board as it stands, the
+    hand crank beside it, the drive panel outer plate down over it, its gearbox beside the
+    box (6 foam pads to 54 mm), the passive panel bay down over the drive panel's, turned a
+    quarter (8 pads to 51 mm). Two searches (150 s x 4, 300 s x 5) found the same.
+- **Numbers:** 699 x 499 x 608 mm, 211.9 L, fill 4.0 % before; 740 x 316 x 600 mm, 140.6 L,
+  fill 6.2 % (-34 %), every piece supported, no overlaps, the mass centre 40 % up. The box
+  is the cradle box's length (723 mm levelled, Y's pins 122 mm in front of the mouth to the
+  rails' end 600 behind it: 41 mm over the board) by the board's width, the board, the box
+  standing (178 mm) and the two panels nested over it. Strength, stand and drive: no part
+  moved (the keepers have the gap rings' outlines; every report row as before). The BOM:
+  47 lines, USD 723.26 before and after (the four rings print in TPU, on hand).
+- **Why not turn the drive module over** (the drive side up, its pins' heads up, as the
+  passive's are when they lift): on its cradle box the module stands with its centre of
+  mass 18 mm inside the tie rods' heads and 274 mm up (it tips at 3.8°; 26 mm at best over
+  the pack poses' 20-44°); the passive panel and the box turned over together are a free
+  linkage (no worm on that side), and standing on the board neither side can slide off its
+  pins (its rail between its cleats, over its bolts). Standing the drive module back on the
+  board to slide the box off would be four more steps each way.
+- **The other leads, measured** (each a what-if searched 90-120 s, on this turn's pieces):
+  - The board narrower (its knobs' 508 mm): 137 L, 2.5 %: the panels stop nesting beside
+    each other; the sideways tipping would need outriggers. Dropped.
+  - The passive side planned on its own (44 mm thinner): 144 L, no gain: the panels already
+    nest over the standing box. Dropped (a second plan, its own plates and posts).
+  - The board shorter: no gain while the cradle box (723 mm) is longer than the board.
+  - The base stop's rails off the box: 124 L (-12 % more), the box then the board's length;
+    and with them off a 570 mm board: 116 L (-18 %). That takes a fifth piece with its four
+    socket screws made tool-free under the rear V block, and the board's rear tipping edge
+    (25.1°, the bar 25°) on a fold-out foot: proposed for the next turn, not made.
+- **Where:** `spiderpig/construction/cradle.py`, `spiderpig/cradle_pack.py`,
+  `spiderpig/cradle_report.py`, `spiderpig/hardware/bom.py`, `tests/test_cradle.py`,
+  `viewer/src/decant/pack.ts` (its comment).

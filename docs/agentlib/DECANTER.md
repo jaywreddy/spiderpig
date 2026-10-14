@@ -262,10 +262,15 @@ stops there:
     under the inner plate; the pin's end passes the inner plate's layer in its open, as a
     tie rod does (the bar O1-O2 never comes within 81 mm of X or Y).
   - With the cradle laid on its drive side, pull the two clips and the passive side panel
-    lifts straight up off the cradle link, its pins with it ("Flat pack"). The clips go back
-    in the pins' holes. Without its clip a pin is held only by friction: the steps back
-    together check both are in. (With the passive side down, a pin whose clip is out drops
-    out of its link: its head is under the link, nothing under it.)
+    lifts straight up off the cradle link, its pins with it; then pull the drive side's two
+    and the cradle box lifts straight up off it ("Flat pack"). The clips go back in the
+    pins' holes. Without its clip a pin is held only by its keeper's grip: the steps back
+    together check all four are in.
+  - **The keepers** (`cradle.KEEPER`, since the pack's turn 1 of 2026-10-14): the printed
+    ring in the gap between b4 (b5) and the cradle link on each of the four, printed in TPU
+    95A with a 7.6 mm bore, grips its pin. A side lying down with its clips out holds its
+    pins by them: each pin's head is under its link with nothing under it, and a bare pin
+    drops out. In use it is the gap ring it was.
   - Rated as a solid 8 mm rod at annealed 304's minimum yield (205 MPa): 1.39 x the M6
     Chicago barrel it replaced. Jammed, X 2.52 and Y 2.21 (as Chicago screws they had
     held 1.72 and 1.49).
@@ -700,13 +705,15 @@ riser that clears it (`viewer/src/decant/liquid.ts`, `bestRiser`).
 
 `spiderpig/cradle_pack.py` (`flat_pack`) takes the cradle apart for the trip and stacks it
 in one box. The cradle page's Flat pack button flies each piece into the box, in the order
-they go in (`/api/cradle/{key}/pack`). B packs as three modules, A flat.
+they go in (`/api/cradle/{key}/pack`). B packs as modules, A flat.
 
-**B: three modules and the hand crank** (`cradle_pack.module_pieces`, the user's of
+**B: four pieces and the hand crank** (`cradle_pack.module_pieces`, the user's of
 2026-10-13; the steps rewritten in round 1 of 2026-10-14: `cradle.module_steps`, also the
-guide's last two steps). No tool, no small part left loose: 696 x 608 x 499 mm outside, about
-211 L (the real-shape packer's plan; 202 L before round 1's structure: the box's inner
-plate and columns), where its flat pack was 112.
+guide's last two steps; the cradle box on its own since the pack's turn 1, the same day).
+The base board, the passive side panel, the cradle box, the drive side panel and the hand
+crank. No tool, no small part left loose: 740 x 316 x 600 mm outside, about 141 L (the
+real-shape packer's plan), where the drive side carrying the cradle box had packed in 699 x
+499 x 608, 212 L (its flat pack had been 112).
 1. Crank it to the pack pose: from rest, turn the handle the way that swings the crank's arm
    down, until the arm lies along the drive side's outer plate's rear leg, straight down
    from the gearbox (`cradle.PACK_POSES`, `pack_pose`; `cradle_pack.pack_t`). Seen from
@@ -734,55 +741,103 @@ plate and columns), where its flat pack was 112.
    pins, so no link can swing.
 5. Pull the two R-clips of pins X and Y on the passive side, reaching into the bay, from
    under the passive cradle link ("The quick-release pins"). Each pin stays in its link,
-   standing on its head.
+   standing on its head, its TPU keeper on it.
 6. Lift the passive side panel straight up off the pins by its outer plate, level, its pins
-   with it. The printed spacer that sat on each pin over the cradle link stays on the link:
-   slip it back onto its pin's end and push the clip through the pin's hole. The drive side
-   with the cradle box stays lying as it is, as it goes in the box, the worm holding it.
-   - Standing, as the steps had it before, the 6.8 kg drive module tipped over once the
-     pins cleared b6 (its centre of mass 66 mm past the one rail it stood on), dropping its
-     cradle box onto the table, and the panel fell the other way.
-   - Not on the passive side, as round 1's review proposed: each pin's head lies on its
-     link's outer face (`construction.pivots.clevis`), 50 mm and more over that side's outer
-     plate with nothing under it in plan, so with that side down and its clip out the pin
-     drops out of its link; the spacer between the links is left loose too.
+   and their keepers with it, and push each clip back through its pin's hole. The drive side
+   with the cradle box stays lying as it is, the worm holding it.
+7. Pull the two R-clips of pins X and Y on the drive side, reaching in from the side between
+   the drive side's cradle link and its inner plate (the cradle box is open at its sides).
+   Each pin stays in its link: its head is under the link, and its keeper holds it.
+8. Lift the cradle box straight up off the drive side's pins, level, by its top cradle link
+   and a tie rod (3.2 kg), and set it down as it was, on its other cradle link (it stands
+   there with its centre of mass 41 mm inside its tie rods' heads). Push each clip back
+   through its pin's hole. The drive side stays lying as it is, as it goes in the box; its
+   link b5, on its one pin J2 now, turns flat.
+   - Standing, as the steps had it before round 1, the 6.8 kg drive module tipped over once
+     the pins cleared b6 (its centre of mass 66 mm past the one rail it stood on), dropping
+     its cradle box onto the table, and the panel fell the other way. Standing on the board
+     neither side can slide off the pins (each rail is between its cleats, over its bolts),
+     and only the drive side holds the box (the worm): the passive side's links are free,
+     so the passive panel comes off first and the box last.
+   - **The keepers** (`cradle.KEEPER`, pack turn 1): each pin's head lies on its link's
+     outer face (`construction.pivots.clevis`), 50 mm and more over that side's outer plate
+     with nothing under it in plan, so with that side down and its clip out a bare pin drops
+     out of its link. The printed ring each pin's plan puts in the gap between b4 (b5) and
+     the cradle link is printed in TPU 95A with a 7.6 mm bore on the 8 mm pin: it grips the
+     pin and holds it, its side down, the clip out. That is what lets the cradle box come off
+     the drive side as it lies, and it takes the loose spacer out of the passive panel's
+     steps. Its grip (`cradle_report.keepers`): at the least interference a print gives
+     (0.2 mm on the diameter) and TPU 95A's least published modulus (26 MPa, UltiMaker's TDS
+     v5.00; its v2.01 of 2025-09-15 gives 56-67), on an oiled pin (friction 0.3), 6.1 N, 55
+     x the pin's 0.11 N (the bar 10); at its nominal 0.4 mm and 67 MPa it goes on with a
+     push of about 52 N. In use it is the gap ring it was: unclamped, the pins level.
+   - Turning the drive module over onto its cradle box instead (the box under, the drive
+     side up, its pins' heads up) was weighed and dropped: on its box the module stands with
+     its centre of mass 18 mm inside the tie rods' heads, 274 mm up (it tips at 3.8°; 26 mm
+     at best over the pack poses' range), and the passive panel and box turned over
+     together are a free linkage (no worm on that side).
    - `cradle_pack.slide_hits` sweeps the panel's parts along z in 0.5 mm steps against the
-     drive side and the cradle box: nothing meets (the payload's `slide_off`).
+     drive side and the cradle box, then the cradle box's against the drive side: nothing
+     meets (the payload's `slide_off`, with the box's `box`).
 
 **Back together** (the payload's `reassembly`, the guide's "Putting it back together"):
-1. The drive module on its drive side on a folded towel, its passive cradle link up.
-2. The passive panel on its outer plate, its pins held by their clips; its links set to the
+1. The drive side on its drive side on a folded towel, the gearbox down, its pins X and Y
+   standing in their links on their keepers, the clips out.
+2. The cradle box lowered onto it, level, its knobs' side up: pin X into its hole first,
+   then the box turned about it and b5 swung until Y drops into its. Both clips in from the
+   side.
+3. The passive panel on its outer plate, its pins held by their clips; its links set to the
    pack pose by the paint marks, a strip of masking tape across each pair while it turns
    over.
-3. Turned over and held level: each clip out, each spacer off its pin's end and over its
-   hole in the cradle link.
-4. Lowered level onto the cradle link: pin X through its spacer into its hole first, then
-   b5 nudged until Y drops into its. The tape off.
-5. Both clips in from under the cradle link: a pin without its clip is held by nothing.
-6. Stood up and set on the board: each rail between its cleats, the brackets' feet over
+4. Turned over and held level: each clip out; each pin hangs by its head, its keeper on it.
+5. Lowered level onto the cradle link: pin X into its hole first, then b5 nudged until Y
+   drops into its. The tape off.
+6. Both clips in from under the cradle link: a pin without its clip is held by its keeper's
+   grip alone.
+7. Stood up and set on the board: each rail between its cleats, the brackets' feet over
    their bolts; the washers and knobs on, the passive side's only started.
-7. The hand crank on; a whole pour and back with the passive knobs loose, then snug them at
+8. The hand crank on; a whole pour and back with the passive knobs loose, then snug them at
    rest: B's two remote centres settle together.
-8. The first build's checks again, the bottle out: both cradle links swing freely, the
+9. The first build's checks again, the bottle out: both cradle links swing freely, the
    handle turns evenly with a fingertip (under 5 N at the grip: `cradle.EMPTY_GRIP_N`; the
-   report's `empty_handle_force_n` is 3.6), and the rod's paper check.
+   report's `empty_handle_force_n` is 3.6), and the rod's paper check. All four clips in.
 
 The pieces: the base board (its feet, cleats and jack locator, its bolts, washers and
-knobs), the passive side panel (every part of that side but its cradle link, its brackets),
-the drive side with the cradle box (both cradle links, the ties, the saddles with their V
-blocks, knobs, post and lip gauge, the light, the base stop: the worm holds it as cranked)
-and the hand crank. The passive side's b5, hanging on J2, swings into its panel
-(`cradle_pack.tuck`). B's plan (`cradle_pack.PACK_PLANS`) packs them as they come apart:
-the passive panel in first, flat on the board at its +x end, its outer face up; the drive
-side over it as it lies once the panel is off, on its drive side, the gearbox down, its
-plates over the panel's, the cradle box up, 441 mm across the bay; the hand crank on the
-board under the drive side's plates. The drive side rests on the panel, no pads; the panel
-on the board on foam pads (24 mm at most); the mass centre 29 % up the box. (Since round
-1's structure the panel's inner plate has a triangle and a leg on two columns where the
-drive side's gearbox had dropped past it: the panel lies turned the other way, at the
-board's end.)
+knobs), the passive side panel (every part of that side but its cradle link, its
+brackets), the cradle box (both cradle links, the ties, the saddles with their V blocks,
+knobs, post and lip gauge, the light, the base stop), the drive side panel (the gearbox and
+every part of that side but its cradle link and the hand crank: the worm holds its links as
+cranked) and the hand crank. Each side's b5, hanging on J2, swings into its panel
+(`cradle_pack.tuck`). B's plan (`cradle_pack.PACK_PLANS`): the cradle box in first, on the
+board as it stands in use, along its length; the hand crank on the board beside it; the
+drive panel as it lay when the box came off, its outer plate down, its plates over the box
+and its gearbox down beside it, on six foam pads (54 mm at most); the passive panel last,
+its bay face down over the drive panel's, turned a quarter, on eight pads (51 mm at most);
+the mass centre 40 % up the box. The box's length is the cradle box's, 723 mm levelled
+from its links' front pins Y (122 mm in front of the mouth) to its rails' end (600 behind
+it), 41 mm longer than the board; its height the board, the box standing (178 mm) and the
+two panels nested over it. Packed the other ways a person would try: the passive panel on
+the board, the drive panel bay to bay over it, the box on top, 182 L; the drive panel on the
+board under the passive panel, the box on top, 186 L.
 
-The steps lift the cradle off the board before the panel comes off: its brackets' feet
+**The pack's leads, measured** (turn 1, 2026-10-14, on round 1's design; `--split` and a
+board swapped for a smaller box in a scratch driver; each searched 90-120 s on 4 processes;
+contact sheets in the worktree's `build/pack/`):
+
+| lead | box, outside | litres | what it takes |
+|---|---|---|---|
+| none (the drive side carries the box) | 699 x 499 x 608 | 212 | |
+| **the cradle box off the drive side (made)** | 740 x 316 x 600 | 141 | the drive side's clips out and a lift; TPU keepers on X and Y |
+| and the passive side planned on its own, 44 mm thinner | 741 x 323 x 601 | 144 | a second plan, its own plates and posts: no gain, the panels nest over the box anyway |
+| and the board 76 mm narrower (its knobs' width) | 741 x 352 x 526 | 137 | outriggers for the 25° sideways: 2.5 %, the panels no longer nest beside each other |
+| and the base stop's rails off the box | 700 x 296 x 600 | 124 | a fifth piece, its four socket screws made tool-free (thumb screws reachable under the rear V block) |
+| and the rails off and the board 570 mm long | 586 x 329 x 601 | 116 | the rear tipping edge (25.1°, the bar 25°) on a fold-out foot or outrigger |
+
+The board stops setting the box's length once the cradle box packs on its own: the box
+(723 mm) is longer than it. A shorter board or a split one pays only once the rails come
+off the box too.
+
+The steps lift the cradle off the board before a panel comes off: its brackets' feet
 sit on the bolts, between the cleats. The carriage bolts' square holes stop them turning but
 don't grip them: with the cradle off, the knobs go back on the bolts.
 
@@ -859,14 +914,15 @@ of mass over real contacts, pads named) answers "does it float" without it.
 | A | 698 x 295 x 602 mm, 123.9 L, fill 6.2 %; the hand crank and the rear saddle tip (the saddle floats on a box that isn't there) | 700 x 185 x 601 mm, 78.0 L, fill 10.1 %; the passive panel on 5 pads to 33 mm, two tie rods on pads to 42 mm |
 
 The search (60 s, 5 processes) found 77.8 L for A (698 mm long) and nothing better for B:
-B's box is its board's footprint times the drive side's 441 mm across the bay; A's is the
+B's box was its board's footprint times the drive side's 441 mm across the bay; A's is the
 board's times the drive panel's pillar G and stand columns, the hand crank and the rear
 saddle (148-153 mm). Before round 1's pack pose B's drive side packed cradle box down, on 7
 pads to 60 mm, its mass centre 55 % up: on its gearbox it tipped there.
 What-ifs (`--split`, on the design before round 1): B's cradle box off the drive side,
-754 x 316 x 602 mm, 143.5 L (searched; the cradle box on 4 pads over the two panels); B's
-gearbox off the drive side, no gain (its brackets and crank train stand as far out); A's
-stand columns off, no gain.
+754 x 316 x 602 mm, 143.5 L (searched; the cradle box on 4 pads over the two panels): made in
+the pack's turn 1, 740 x 316 x 600, 141 L by its plan (the searches of 150 and 300 s, 4 and
+5 processes, found the same); B's gearbox off the drive side, no gain (its brackets and
+crank train stand as far out); A's stand columns off, no gain.
 
 The box's bounds per design are in `tests/test_cradle.py`: `PACK_BOX` (A) and
 `MODULE_BOX` (B, read off its base board's size).
@@ -1032,6 +1088,9 @@ rod's whole force.
 - **Clashes:** the whole cradle's clashes over the swing, the hand crank's swept volume
   against everything, and every bottle at its own setting, its V blocks and base stop
   moved (`cradle.bottle_hits`, `cradle.at_setting`).
+- **Keepers** (B): each quick-release pin's TPU keeper's grip on its pin at the least
+  interference and modulus, against the pin's weight, and its push on by hand
+  (`cradle_report.keepers`, "Flat pack").
 
 `tests/test_cradle.py` holds the thresholds, for A:
 - each bottle's mouth wander under 0.5 mm;
@@ -1052,6 +1111,8 @@ rod's whole force.
   screws 3 x under their yield, the base stop's lock gripping and the rear lead screw's
   brake holding 3 x what they hold; every bottle's weight centred on its saddles by 40 mm
   or more at rest, level and full tilt, and the lip gauge falling back from its stop;
+- on B, each quick-release pin's keeper grips it with 10 x its weight or more, and goes on
+  with under 60 N;
 - the cut rules pass, every printed part fits a 250 x 210 x 210 mm bed in its pose;
 - the assembly order covers every part.
 

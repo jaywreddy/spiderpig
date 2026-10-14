@@ -562,27 +562,34 @@ def level(points: Sequence[np.ndarray], tilt: float = 0.0) -> float:
 
 PACK_PLANS: dict[str, vp.Plan] = {
     "decanter_rcm": vp.Plan(
-        "B: the passive panel flat on the board, the drive side on its gearbox over it",
+        "B: the cradle box on the board as it stands, the drive panel over it, the passive "
+        "panel on top",
         steps=(
-            vp.Step("passive", down="bay", spin=0, corner="+x-z",
-                    why="in first, as it comes off the pins: flat on the board, its outer "
-                        "face up, to the board's +x end"),
-            vp.Step("drive", down="outer", spin=180, corner="-x-z",
-                    why="as it lies when the panel comes off (round 1's breakdown: on its "
-                        "drive side): the gearbox down, its plates over the panel's, the "
-                        "cradle box up; it rests on the panel, no pads, the heaviest piece "
-                        "low"),
-            vp.Step("hand_crank",
-                    why="on the board under the drive side's plates, wherever it drops lowest"),
+            vp.Step("box", down="bottom", spin=0, corner="-x-z",
+                    why="in first, standing as in use (its axis level, its saddles' open "
+                        "tops up), on the board along its length, toward its -z side: 723 "
+                        "mm from its cradle links' front pins to its rails' end, the box's "
+                        "length"),
+            vp.Step("hand_crank", after=("box",),
+                    why="on the board beside the cradle box, under where the drive panel's "
+                        "plates go"),
+            vp.Step("drive", down="outer", spin=0, after=("box", "hand_crank"),
+                    why="as it lay when the box came off, its outer plate down: its plates "
+                        "over the box, the gearbox down beside it onto the board, on foam "
+                        "pads (the heaviest module low)"),
+            vp.Step("passive", down="bay", spin=270, corner="+x+z", after=("drive",),
+                    why="last, its bay face down over the drive panel's, turned a quarter, "
+                        "its links between the drive panel's, on foam pads"),
         ),
-        note="B's pieces: the board, the two side modules, the hand crank. The drive side "
-             "with its cradle box is 441 mm across the bay whichever way it lies: with the "
-             "board at the bottom the box is about 211 L, the board's footprint times that. "
-             "(Before round 1's pack pose the drive side went cradle box down, on 7 pads: "
-             "on its gearbox it tipped. Since round 1's structure the panel's inner plate "
-             "has a triangle and a leg on two columns where the gearbox had dropped past it, "
-             "the panel turned the other way and to the +x end: turned as before, the "
-             "drive side lands on the panel and tips.)"),
+        note="B's pieces since pack turn 1 (2026-10-14): the board, the passive side panel, "
+             "the cradle box, the drive side panel, the hand crank. The box's length is the "
+             "cradle box's (723 mm levelled, 41 mm longer than the board) and its height the "
+             "board, the cradle box standing (178 mm) and the two panels nested over it. "
+             "Before turn 1 the drive side carried the cradle box, 441 mm across the bay "
+             "whichever way it lay: the box was the board's footprint times that, about "
+             "211 L. (The other orders tried: the passive panel on the board, the drive "
+             "panel bay to bay over it and the box on top, 182 L; the drive panel on the "
+             "board under the passive, the box on top, 186 L.)"),
     "decanter_hinge": vp.Plan(
         "A: both side panels face down on the board, end to end, the loose parts in their "
         "open triangles",

@@ -434,7 +434,7 @@ def test_a_quick_release_pins_gap_ring_is_its_keeper():
     gap = ring((10.0, 20.0), 14.0, 8.3, -145.2, -142.2)
     keep = cr._keeper(gap)
     bb = keep.bounding_box()
-    assert (bb.size.X, bb.size.Y, bb.size.Z) == pytest.approx((14.0, 14.0, 3.0))
+    assert pytest.approx((14.0, 14.0, 3.0)) == (bb.size.X, bb.size.Y, bb.size.Z)
     r = (cr.KEEPER[0] / 2 + 4.0) / 2           # between its bore and the pin's surface
     probe = moved(cr._rod_y(0.0, 0.0, 0.05, -1.0, 1.0), Location((10.0 + r, 20.0, -143.7)))
     assert cr.KEEPER[0] < 8.0 - cr.KEEPER[1] + 1e-9
@@ -443,7 +443,8 @@ def test_a_quick_release_pins_gap_ring_is_its_keeper():
         inter = a & probe
         return 0.0 if inter is None else sum(p.volume for p in inter.solids())
 
-    assert vol(keep) > 1e-3 and vol(gap) < 1e-6
+    assert vol(keep) > 1e-3
+    assert vol(gap) < 1e-6
     lk = linkage.get("decanter_rcm")
 
     def side(*names):
@@ -1633,18 +1634,19 @@ PACK_BOX = {"decanter_hinge": (705.0, 200.0, 610.0)}
 the stand's 2026-10-14 refit, the walls round it; 185 mm tall since the real-shape packer of
 2026-10-14: both panels face down on the board, the loose parts in their open triangles,
 about 78 L where the boxes' packer had 124)."""
-MODULE_BOX = (30.0, 500.0, 600.0)
-"""A cradle packed as modules (B): its box, outside, over its base board's length and width
-(x, z: the board lies at the bottom, the other pieces over it) at most 30 mm (its walls and
-clearances take 16), at most 500 mm tall (the drive side with the cradle box lies on its
-drive side, the gearbox down, 441 mm across the bay, over the passive panel on the board),
-and across no more than 30 mm over the larger of the board's width and 600 mm (the drive
-side's height in its plane at the pack pose, 596). B, 2026-10-13: 643 x 478 x 611 mm on its
-626 x 530 board, about 188 L (its flat pack had been 112); 2026-10-14 (round 1: the knobs
-and cleats on the board, the pack pose at the rear leg): 702 x 485 x 606 on its 684 x 584
-board, 206 L; the real-shape packer's plan: 700 x 478 x 604, 202 L; round 1's structure (the
-inner plate's triangle and leg, its columns, the 680 mm board): 696 x 499 x 608, 211 L. Read
-off the board, so a larger board moves the bound with it."""
+MODULE_BOX = (30.0, 340.0, 600.0, 725.0, 150.0)
+"""A cradle packed as modules (B): its box, outside, along the board no more than 30 mm (its
+walls and clearances take 16) over the larger of the board's length and the cradle box's
+(725 mm: levelled, from its cradle links' front pins to its rails' end), at most 340 mm tall
+(the board, the cradle box standing on it, 178 mm, the two side panels nested over it),
+across no more than 30 mm over the larger of the board's width and 600 mm, and at most 150 L.
+B, 2026-10-13: 643 x 478 x 611 mm on its 626 x 530 board, about 188 L (its flat pack had
+been 112); 2026-10-14 (round 1: the knobs and cleats on the board, the pack pose at the rear
+leg): 702 x 485 x 606 on its 684 x 584 board, 206 L; the real-shape packer's plan: 700 x 478
+x 604, 202 L; round 1's structure (the inner plate's triangle and leg, its columns, the 682
+mm board): 699 x 499 x 608, 212 L, the drive side carrying the cradle box, 441 mm across the
+bay; pack turn 1 (the cradle box on its own): 740 x 316 x 600, 141 L. Read off the board, so
+a larger board moves the bound with it."""
 PACK_JOINTS = {"decanter_hinge": ("Pin E ", "pillar G"), "decanter_rcm": ("Pins X and Y ", None)}
 """Where each cradle link comes off its side: its pins and its pillar (the steps name them)."""
 MODULES = {"decanter_hinge": None,
@@ -1718,10 +1720,11 @@ def test_the_cradle_packs_in_one_box(key):
         assert all(out <= PACK_BOX[key]), p["box"]
     else:                               # modules: the bound follows the base board
         board = shipped["base_plate"].placed_part().bounding_box()
-        over, tall, plane = MODULE_BOX
-        assert out[0] <= board.size.X + over, (p["box"], board.size)
+        over, tall, plane, length, litres = MODULE_BOX
+        assert out[0] <= max(board.size.X, length) + over, (p["box"], board.size)
         assert out[1] <= tall, p["box"]
         assert out[2] <= max(board.size.Z, plane) + over, (p["box"], board.size)
+        assert p["box"]["volume_l"] <= litres, p["box"]
     assert p["modules"][0]["key"] == "base"
     assert 0.0 < p["fill"] < 0.2
     pins, pillar = PACK_JOINTS[key]
@@ -1755,7 +1758,8 @@ def test_the_cradle_packs_in_one_box(key):
     assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
     assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
     keepers = set(mech.meta["keepers"])
-    assert len(keepers) == 4 and keepers <= drive | passive
+    assert len(keepers) == 4
+    assert keepers <= drive | passive
     assert all(n.split(".")[0] == ("L" if n in drive else "R") for n in keepers)
     assert set(by["hand_crank"]["parts"]) == {n for n in shipped if n.startswith("L.handle")}
     assert "L.handle_thumb_screw" in by["hand_crank"]["parts"]
