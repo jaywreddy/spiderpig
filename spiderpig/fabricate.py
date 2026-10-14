@@ -139,11 +139,11 @@ _HINTS: dict[tuple, dict[str, int] | None] = {}
 
 
 def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str, int] | None:
-    """One leg's plan (the single module's first: its thinnest stack, with no proof asked,
-    ``StackSpec.prove``), for the planner to try each leg of a bigger module at (a hint for
-    the order it tries layers in, nothing more; the single module's lowest plan may take
-    more layers, which is no guide to the first plan of a bigger one). Remembered per
-    single module."""
+    """One leg's plan (the single module's, as the planner makes it: its fewest layers on a
+    walker's objective, "layers", proven), for the planner to try each leg of a bigger module
+    at (a hint for the order it tries layers in, nothing more). Its first plan alone is no
+    guide: the Strider's on the XL330 takes a layer more than its thinnest, and the double's
+    legs found no plan at it (2026-10-14). Remembered per single module."""
     if config.module == "single":
         return None
     one = replace(config, module="single", phases=None, robot=False)
@@ -154,7 +154,6 @@ def _leg_hint(config: BuildConfig, deadline: Deadline | None = None) -> dict[str
     try:
         _, _, problem = side_problem(tmpl, one, deadline, hint=False)
         static_stage(tmpl, problem)
-        problem.spec = replace(problem.spec, prove=False)
         got: dict[str, int] | None = dict(problem.solve().layers)
     except ValueError:
         got = None

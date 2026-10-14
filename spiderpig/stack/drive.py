@@ -74,6 +74,16 @@ DEAR = 200
 size's then run side by side in the workers, and idle workers run the size the search likely
 asks next; before, the short jobs run here, one at a time."""
 
+SPENT_SECONDS = 1.5
+"""A head placement's jobs together may take this many times ``StackSpec.max_seconds`` of CPU
+(each job ``max_seconds`` at most): the deadline is the safety net over a search whose nodes
+cost more than the budgets foresee (TrotBot's toe quad), and a placement that spends it is
+searched no further (each job after runs out at its first node: what it found stands,
+unproven). Half again: the jobs a placement's search is split into cost more than the one
+search did (the Strider quad's placements about 50-65 CPU s each, the 60 s one search had),
+and a design's leg hint takes as much again (TrotBot's toe quad returns in 80-100 s under a
+15 s deadline: `test_the_trotbot_modules_return_inside_the_deadlines`)."""
+
 MAX_WORKERS = 8
 """The most workers a plan forks by default: a module's jobs at once (B, a cradle, has about
 ten: five sizes, two head placements; the Strider double about twenty)."""
@@ -121,7 +131,8 @@ def run_job(subs: Mapping[str, StackProblem], job: Job, deadline: Deadline) -> d
             "key": s.best_key, "done": s.done, "nodes": s.nodes,
             "seconds": time.monotonic() - t0, "blocked": dict(sub.blocked),
             "by": dict(sub._blocked_by), "unbuilt": dict(s.unbuilt), "gave_up": sub.gave_up,
-            "expired": deadline.expired and not s.done, "lb_bad": s.lb_bad}
+            "expired": deadline.expired and not s.done, "lb_bad": s.lb_bad,
+            "cpu": deadline.elapsed}
 
 
 def combine(parts: list[dict], cover: bool) -> dict:
@@ -151,7 +162,7 @@ def combine(parts: list[dict], cover: bool) -> dict:
             "seconds": sum(r["seconds"] for r in parts), "blocked": blocked, "by": by,
             "unbuilt": unbuilt, "gave_up": next((r["gave_up"] for r in parts if r["gave_up"]), ""),
             "expired": any(r["expired"] for r in parts) and not done,
-            "lb_bad": sum(r["lb_bad"] for r in parts)}
+            "lb_bad": sum(r["lb_bad"] for r in parts), "cpu": sum(r["cpu"] for r in parts)}
 
 
 class Here:
@@ -161,6 +172,16 @@ class Here:
         self.subs = subs
         self.seconds = seconds
         self.results: dict[Job, dict] = {}
+        # (each head placement's CPU seconds left, its jobs' together: SPENT_SECONDS times
+        # ``seconds``; a job gets ``seconds`` at most, and what is left of its placement's)
+        self.left: dict[str, float] = dict.fromkeys(subs, SPENT_SECONDS * seconds)
+
+    def deadline(self, job: Job) -> float:
+        """The CPU seconds ``job`` may take: ``seconds``, or what its head placement has left."""
+        return max(min(self.seconds, self.left[job.heads]), 0.0)
+
+    def spend(self, job: Job, got: dict) -> None:
+        self.left[job.heads] -= got["cpu"]
 
     def submit(self, job: Job, front: bool = False) -> None:
         pass
@@ -180,7 +201,8 @@ class Here:
     def result(self, job: Job) -> dict:
         got = self.results.get(job)
         if got is None:
-            got = self.results[job] = run_job(self.subs, job, Deadline(self.seconds))
+            got = self.results[job] = run_job(self.subs, job, Deadline(self.deadline(job)))
+            self.spend(job, got)
         return got
 
     def here(self, job: Job) -> dict:
@@ -260,9 +282,15 @@ class _Drive:
     def _take(self, m: str, top: int, r: dict) -> dict:
         self.tried[m][top] = r
         self.order.append((m, top, r))
+        self._gives_up(m, r)
+        return r
+
+    def _gives_up(self, m: str, r: dict) -> None:
+        """Placement ``m`` searched no more: it gave up (:data:`GIVE_UP`). (One whose jobs
+        spent its CPU seconds, :data:`SPENT_SECONDS`, isn't: its next job runs out at its
+        first node, which stops the first step and leaves the proof's sizes open.)"""
         if r["gave_up"]:
             self.gave_up.setdefault(m, r["gave_up"])
-        return r
 
     def _size(self, top: int, ahead: int | None = None) -> dict[str, dict]:
         """Every placement still searched (not given up) at stack size ``top``: a short job
@@ -478,8 +506,7 @@ class _Drive:
                 r = combine([self.runner.result(p) for p in ps], cover=True)
                 full.append((job.heads, job.top, r))
                 self.order.append((job.heads, job.top, r))
-                if r["gave_up"]:
-                    self.gave_up.setdefault(job.heads, r["gave_up"])
+                self._gives_up(job.heads, r)
             got = self._best(self.order)
             assert got is not None          # (the first plans are among them)
             best = got

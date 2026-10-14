@@ -42,10 +42,11 @@ def _worker(subs: Mapping[str, StackProblem], conn: Connection, seconds: float) 
             while not conn.poll(1.0):
                 if os.getppid() != parent:
                     return
-            job = conn.recv()
-            if job is None:
+            msg = conn.recv()
+            if msg is None:
                 break
-            conn.send((job, run_job(subs, job, Deadline(seconds))))
+            job, secs = msg
+            conn.send((job, run_job(subs, job, Deadline(min(seconds, secs)))))
     except BaseException:  # noqa: BLE001 - the coordinator raises it (the traceback, below)
         with contextlib.suppress(Exception):
             conn.send((None, traceback.format_exc()))
@@ -85,7 +86,7 @@ class Pool(Here):
             if conn is None:
                 return
             job = self.queue.pop(0)
-            conn.send(job)
+            conn.send((job, self.deadline(job)))
             self.busy[conn] = job
             self.sent.add(job)
 
@@ -135,6 +136,7 @@ class Pool(Here):
                 raise RuntimeError(f"a planner worker failed:\n{out}")
             del self.busy[c]
             self.results[job] = out
+            self.spend(job, out)
         self._dispatch()
 
     def here(self, job: Job) -> dict:
