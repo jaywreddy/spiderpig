@@ -16,7 +16,9 @@ from spiderpig.hardware.cad import (  # noqa: F401 - the servos' names for the g
     MAX_BYTES,
     OFFLINE_ENV,
     PREPARED_FORMAT,
+    STRICT_ENV,
     TIMEOUT,
+    CadError,
     CadRef,
     _download,
     _good,
@@ -33,6 +35,8 @@ from spiderpig.hardware.cad import (  # noqa: F401 - the servos' names for the g
     prepared_path,
     read_prepared,
     sha256_file,
+    strict,
+    unavailable,
     write_prepared,
 )
 

@@ -10,6 +10,7 @@ the cache::
     spiderpig cad login                      # McMaster-Carr: log in once in a browser window
     spiderpig cad fetch [KEY ...]            # ... then fetch the missing models with it
     spiderpig cad api-fetch KEY --part-number PN   # McMaster's Product Information API
+    spiderpig cad check [KEY ...]            # does every model load, strictly? (exit 1 if not)
 
 **McMaster-Carr** shows its catalog only to a logged-in browser (a scripted session gets a
 login wall), and its pages are the user's to use under its terms. So the fetch is the
@@ -24,6 +25,11 @@ how to ``import`` the file by hand. ``api-fetch`` uses McMaster's Product Inform
 instead (an approved customer's client certificate and login: ``$SPIDERPIG_MCMASTER_CERT``
 (a .pfx), ``_CERT_PASSWORD``, ``_USER``, ``_PASSWORD``): subscribe, read the product's
 ``"3-D STEP"`` link, download it.
+
+``check`` loads each registered part model and each servo's manufacturer models the way a
+build would, under ``SPIDERPIG_CAD_STRICT=1`` (:func:`hardware.cad.strict`: no parametric
+fallback), and prints why one doesn't draw: what to run before a build that must carry
+the vendors' models (the same switch, set for the build, makes it fail instead).
 
 Neither McMaster path was exercised against the live site from the development box (its
 login wall; no API approval): the import, the cache and the use of a model are tested.
@@ -185,6 +191,65 @@ def cmd_download(args) -> int:
     return 1 if bad else 0
 
 
+def cmd_check(args) -> int:
+    """Load every registered vendor model (or ``args.keys``: part keys or servo keys) as a
+    build would, strictly (:data:`hardware.cad.STRICT_ENV`): one line each, ``ok`` or why
+    it doesn't draw; 1 when any doesn't."""
+    from spiderpig.hardware import cad
+
+    was = os.environ.get(cad.STRICT_ENV)
+    os.environ[cad.STRICT_ENV] = "1"
+    try:
+        return _check(args.keys)
+    finally:
+        if was is None:
+            os.environ.pop(cad.STRICT_ENV, None)
+        else:
+            os.environ[cad.STRICT_ENV] = was
+
+
+def _check(keys: list[str]) -> int:
+    from spiderpig import servos
+    from spiderpig.hardware import cad
+    from spiderpig.hardware.catalog import get
+    from spiderpig.servos import cad as cadlib
+    from spiderpig.servos.model import cad_servo
+
+    refs = _refs()
+    servo_keys = [k for k in servos.available() if servos.get(k).cads]
+    want = set(keys or [*refs, *servo_keys])
+    unknown = want - set(refs) - set(servo_keys)
+    if unknown:
+        print(f"no vendor model registered for {sorted(unknown)}", file=sys.stderr)
+        return 2
+    bad = 0
+    for key in sorted(want & set(refs)):
+        if not cad.part_cad_enabled():
+            print(f"{key:20} off ({cad.PART_CAD_ENV}=0: drawn from the catalog)")
+            continue
+        ref, dims = refs[key], get(key).dims
+        try:
+            if {"od", "w"} <= set(dims):        # a round part: placed as a build places it
+                cad.load_axisymmetric(ref, float(dims["od"]), float(dims["w"]))
+            else:
+                cad.load(ref, allow_download=False)
+            print(f"{key:20} ok")
+        except cad.CadError as e:
+            bad += 1
+            print(f"{key:20} FAILED: {e}")
+    for key in sorted(want & set(servo_keys)):
+        if not cadlib.cad_enabled():
+            print(f"{key:20} off ({cadlib.USE_CAD_ENV}=0: parametric)")
+            continue
+        try:
+            cad_servo(servos.get(key), None, True)          # (strict: its own memo key)
+            print(f"{key:20} ok (servo)")
+        except cad.CadError as e:
+            bad += 1
+            print(f"{key:20} FAILED: {e}")
+    return 1 if bad else 0
+
+
 def cmd_fetch(args) -> int:
     from playwright.sync_api import sync_playwright
 
@@ -309,12 +374,15 @@ def main(argv: list[str] | None = None) -> int:
                                      "saved session")
     f.add_argument("keys", nargs="*", help="catalog items (default: every missing one)")
     f.add_argument("--part-number", default="", help="the McMaster part number (one key)")
+    c = sub.add_parser("check", help="load every vendor model strictly "
+                                     "(SPIDERPIG_CAD_STRICT=1): exit 1 if one doesn't draw")
+    c.add_argument("keys", nargs="*", help="part or servo keys (default: every one)")
     a = sub.add_parser("api-fetch", help="McMaster-Carr's Product Information API")
     a.add_argument("key")
     a.add_argument("--part-number", required=True)
     args = ap.parse_args(argv)
     return {"list": cmd_list, "import": cmd_import, "download": cmd_download,
-            "login": cmd_login, "fetch": cmd_fetch,
+            "login": cmd_login, "fetch": cmd_fetch, "check": cmd_check,
             "api-fetch": cmd_api_fetch}[args.cmd](args)
 
 
