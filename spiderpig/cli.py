@@ -1,6 +1,8 @@
 """One entry point for every tool: ``spiderpig <command> [options]`` (the console script;
 ``python -m spiderpig.cli`` from a checkout).
 
+    spiderpig candidates task.json --measure 2           # a task's linkages, ranked
+    spiderpig build 1a2b3c4d5e6f7a8b                     # a stored design (its spec's roles)
     spiderpig build --module single --out build/single   # STEP/STL/DXF/BOM
     spiderpig build --profile --profile-json p.json      # ... with its stage timings
     spiderpig bake --linkage jansen --module double        # the viewer's .glb
@@ -9,6 +11,9 @@
     spiderpig tune --module decker --grid 5                # crank phases
     spiderpig sim --left 40rpm --right 40rpm               # MuJoCo
     spiderpig export 1a2b3c4d5e6f7a8b --formats glb mjcf   # a stored design's files
+    spiderpig export 1a2b3c4d5e6f7a8b --formats guide control order   # assemble, wire, buy
+    spiderpig guide 1a2b3c4d5e6f7a8b                       # ASSEMBLY.pdf
+    spiderpig control files 1a2b3c4d5e6f7a8b               # servos.json or printer.cfg
     spiderpig report --out build/linkages.json             # every linkage
     spiderpig mcp --store .spiderpig                       # MCP server (stdio)
     spiderpig view 1a2b3c4d5e6f7a8b --open                 # the viewer for a stored design
@@ -16,9 +21,11 @@
 
 Each command is a module's ``main(argv)``; ``spiderpig <command> --help`` shows its
 options. The design and build options are the same everywhere
-(:mod:`spiderpig.config`). ``mise run build|bake|audit|explain|tune|sim|report`` runs
-these from a checkout. Nothing here imports the engine until a command runs, so
-``--help`` is instant.
+(:mod:`spiderpig.config`); ``build``, ``guide``, ``control``, ``precision``, ``export``,
+``view`` and ``sim`` take a stored design's id (``DESIGN``: from ``candidates`` or the API's
+``resolve``) in their place, its config as recorded. ``mise run
+build|bake|audit|explain|tune|sim|report`` runs these from a checkout. Nothing here imports
+the engine until a command runs, so ``--help`` is instant.
 """
 
 from __future__ import annotations
@@ -27,7 +34,10 @@ import importlib
 import sys
 
 COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
-    "build": ("spiderpig.build", "build the robot: STEP/STL, print STLs, DXF sheets, BOM"),
+    "candidates": ("spiderpig.tools.candidates",
+                   "a task's linkages, ranked, each with its spec (TASK.json; --measure N)"),
+    "build": ("spiderpig.build",
+              "build a design: STEP/STL, print STLs, DXF sheets, BOM, ORDER.md"),
     "bake": ("spiderpig.bake", "bake the animated .glb for the viewer"),
     "guide": ("spiderpig.guide.make", "the assembly guide: ASSEMBLY.pdf and ASSEMBLY.md"),
     "audit": ("spiderpig.tools.audit", "fabrication audit: plan, contract, clashes, DXF, BOM"),
@@ -35,9 +45,10 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "tune": ("spiderpig.tools.tune",
              "search crank phases (and proportions) for a smoother walk"),
     "sim": ("spiderpig.tools.sim_walk",
-            "simulate the walker in MuJoCo (a design id, the build options, or --mjcf FILE)"),
+            "simulate a design in MuJoCo: a walker walks, the rest hold (DESIGN or --mjcf)"),
     "export": ("spiderpig.tools.export",
-               "write a design's files: step, stl, print, dxf, bom, glb, mjcf"),
+               "write a design's files: step, stl, print, dxf, bom, glb, mjcf, urdf, guide, "
+               "control, order"),
     "report": ("spiderpig.tools.report", "compare every registered linkage"),
     "mcp": ("spiderpig.mcp", "serve the agent-facing API over MCP (stdio; --store PATH)"),
     "view": ("spiderpig.view",
@@ -45,7 +56,7 @@ COMMANDS: dict[str, tuple[str, str]] = {      # command -> (module, one line)
     "precision": ("spiderpig.precision",
                   "the error budget at a design's output: joint play, levers, tolerances"),
     "control": ("spiderpig.control.cli",
-                "an arm's kinematics, steps, homing and Klipper config"),
+                "a design's motors: servos.json or Klipper printer.cfg, homing, an arm's IK"),
     "cad": ("spiderpig.tools.cad",
             "bought parts' vendor models: list, import, fetch (McMaster-Carr)"),
 }

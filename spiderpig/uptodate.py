@@ -242,16 +242,19 @@ def servo_files(config) -> list[list]:
     return out
 
 
-def inputs(opts: Options, config) -> dict:
+def inputs(opts: Options, config, plan_id: str | None = None) -> dict:
     """What the build of ``config`` reads beside its code, captured when it reads it
-    (after the plan, before fabricating): the stored plan, the servo model's files."""
+    (after the plan, before fabricating): the stored plan, the servo model's files.
+    ``plan_id``: the stored design whose plan it read (``spiderpig build DESIGN``), else
+    the design the options resolve to."""
     from dataclasses import replace
 
     from spiderpig.config import default_robot
     from spiderpig.stages.resolve import resolve, spec_of
 
-    plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
-                      store=None).id
+    if plan_id is None:
+        plan_id = resolve(spec_of(replace(config, robot=default_robot(config.linkage))),
+                          store=None).id
     out = {"plan_design": plan_id, "plan_hash": plan_hash(plan_file(opts.store, plan_id)),
            "cad_env": cad_env(), "servo_files": servo_files(config)}
     parts = part_files(config)

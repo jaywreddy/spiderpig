@@ -295,8 +295,8 @@ def test_a_store_from_another_engine_reverifies_the_plan_and_rebuilds_the_rest(
     pr = api.plan(d)
     api.attach_build(d, side("single", 1.0), 1.0)
     real = d.engine_version
-    # (load reads it in api.store_ops, resolve in stages.resolve)
-    monkeypatch.setattr(api.store_ops, "engine_version", lambda: "0.0.0+fake")
+    # (load and resolve read it in stages.resolve; load keeps its old import path)
+    assert api.store_ops.load is api.load is stages_resolve.load
     monkeypatch.setattr(stages_resolve, "engine_version", lambda: "0.0.0+fake")
 
     solved = _count(monkeypatch, stages_planning, "design_side")

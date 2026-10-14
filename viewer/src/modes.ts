@@ -39,12 +39,44 @@ export function pickMode(cat: ModeCatalogue, wanted?: Mode | null, own?: Mode | 
   return wanted && modes.includes(wanted) ? wanted : cat.default;
 }
 
-/** One entry of ``/api/linkages`` as the machine picker reads it. */
-export interface MachineInfo { key: string; name: string; kind: string; feet: number }
+/** One entry of ``/api/linkages`` as the linkage picker reads it. */
+export interface LinkageEntry { key: string; name: string; kind: string }
 
-/** The machine picker's options (label -> key): every linkage without feet (an arm, a
- * mechanism: no walk to tune), labelled by what the server calls it. */
-export function machines(linkages: readonly MachineInfo[]): Record<string, string> {
-  return Object.fromEntries(linkages.filter((l) => l.feet === 0)
-    .map((l) => [`${l.kind}: ${l.name}`, l.key]));
+/** A group of the linkage picker: one kind's linkages, each option ``[label, key]``. */
+export interface LinkageGroup { kind: string; label: string; options: [string, string][] }
+
+/** The linkage picker's groups: every registered linkage, one group per kind in the order
+ * the server lists them (``/api/linkages``), each option labelled by its name (a name two
+ * linkages share gets its key). One picker for every kind of machine: what the views and
+ * the tune panel then offer follows the linkage's declared capabilities (its modes from
+ * ``/api/modes``, its feet), never its kind's name. */
+export function linkageGroups(linkages: readonly LinkageEntry[]): LinkageGroup[] {
+  const groups: LinkageGroup[] = [];
+  const named = new Map<string, number>();
+  for (const l of linkages) named.set(l.name, (named.get(l.name) ?? 0) + 1);
+  for (const l of linkages) {
+    let g = groups.find((x) => x.kind === l.kind);
+    if (!g) groups.push((g = { kind: l.kind, label: `${l.kind}s`, options: [] }));
+    g.options.push([(named.get(l.name) ?? 0) > 1 ? `${l.name} (${l.key})` : l.name, l.key]);
+  }
+  return groups;
+}
+
+/** The dropdown's options (label -> key), the groups' in their order: what lil-gui takes. */
+export function linkageOptions(groups: readonly LinkageGroup[]): Record<string, string> {
+  return Object.fromEntries(groups.flatMap((g) => g.options));
+}
+
+/** Wrap a ``<select>``'s options (made from :func:`linkageOptions`, in that order) into one
+ * ``<optgroup>`` per kind. The options keep their order, so the select's ``selectedIndex``
+ * still maps onto the controller's values. */
+export function groupSelect(select: HTMLSelectElement, groups: readonly LinkageGroup[]): void {
+  const options = Array.from(select.options);
+  let i = 0;
+  for (const g of groups) {
+    const og = select.ownerDocument.createElement('optgroup');
+    og.label = g.label;
+    for (let k = 0; k < g.options.length && i < options.length; k++) og.append(options[i++]!);
+    select.append(og);
+  }
 }

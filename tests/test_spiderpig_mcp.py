@@ -486,6 +486,9 @@ def test_resources_and_prompts_read(server, single):
     assert {p.name for p in prompts.prompts} == {"design", "diagnose", "iterate"}
     assert "a 60 mm stride" in walker.messages[0].content.text
     assert "candidates(task)" in cast(Any, walker.messages[0].content).text
+    # past the files to make it: the guide, the controller's files, the shopping list
+    assert "export(design, ['guide', 'control', 'order'])" in \
+        cast(Any, walker.messages[0].content).text
     assert walker.messages[0].role == "user"
     assert single in diag.messages[0].content.text
     assert "bob_mm" in it.messages[0].content.text

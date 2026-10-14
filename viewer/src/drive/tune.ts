@@ -7,7 +7,7 @@ import GUI from 'three/examples/jsm/libs/lil-gui.module.min.js';
 import type { DriveHost } from './index';
 import { parseDrive, straightWalk, type DriveData, type Side, type WalkJson } from './model';
 import { f, fmt, MIN_MARGIN_MM } from './hud';
-import { machines } from '../modes';
+import { groupSelect, linkageGroups, linkageOptions } from '../modes';
 import type { DriveView } from './view';
 
 export interface WalkResponse extends WalkJson {
@@ -78,8 +78,7 @@ export function createTune(ctx: TuneHost) {
     props: Object.fromEntries(paramKeys(url).filter((k) => k.startsWith('p.'))
       .map((k) => [k.slice(2), Number(url.get(k))])) as Record<string, number>,
   };
-  // every registered linkage (/api/linkages): the walkers in the linkage dropdown, the rest
-  // (no feet: an arm, a mechanism) in the machine picker
+  // every registered linkage (/api/linkages), in the one linkage dropdown grouped by kind
   let linkages: LinkageInfo[] | null = null, defaultLinkage = SERVER_DEFAULT.linkage;
   const info = (): LinkageInfo | undefined => linkages?.find((l) => l.key === design.linkage);
   /** The module a design of ``design.linkage`` gets when a query names none: the catalogue's
@@ -134,9 +133,9 @@ export function createTune(ctx: TuneHost) {
     return card;
   }
 
-  /** The registered linkages (once): the walker dropdown (the linkages with feet), the
-   * design controls, and the machine picker (the rest: arms and mechanisms, each loaded in
-   * its own default view, ``host.loadLinkage``). */
+  /** The registered linkages (once): the one linkage dropdown (every kind, grouped by kind:
+   * walkers, mechanisms, arms) and the design controls. A linkage picked loads in its own
+   * default view, the view picker offering what it declares (``host.loadLinkage``). */
   async function loadLinkages(): Promise<void> {
     if (linkages) return;
     const r = await getJson<{ default: string; linkages: LinkageInfo[] }>('/api/linkages');
@@ -145,26 +144,12 @@ export function createTune(ctx: TuneHost) {
     // a module guessed before the catalogue came (and not changed since): the catalogue's
     if (guessedModule !== null && design.module === guessedModule) design.module = info()!.default_module;
     design.props = { ...defaults(), ...design.props };     // the URL's p.NAME win
-    const walkers = linkages.filter((l) => l.feet > 0);
-    linkageC = designF.add(design, 'linkage', Object.fromEntries(walkers.map((l) => [l.name, l.key])))
-      .onChange(() => queueMicrotask(switchLinkage));
-    const machine = { machine: info()?.feet === 0 ? design.linkage : '' };
-    designF.add(machine, 'machine', { '–': '', ...machines(linkages) })
-      .name('machine (arm, mechanism)')
-      .onChange((k: string) => { if (k) void pickMachine(k); });
+    const groups = linkageGroups(linkages);
+    linkageC = designF.add(design, 'linkage', linkageOptions(groups))
+      .onChange(() => queueMicrotask(() => void switchLinkage()));
+    const select = linkageC.domElement.querySelector('select');
+    if (select) groupSelect(select, groups);
     buildDesign();
-  }
-
-  /** A machine picked: the tune panel's design is its defaults, loaded in its own view. */
-  async function pickMachine(key: string): Promise<void> {
-    design.linkage = key;
-    design.module = info()?.default_module ?? 'single';
-    design.phases = null;
-    design.props = defaults();
-    buildDesign();
-    linkageC?.updateDisplay();
-    await host.loadLinkage(key).catch(fail);
-    ctx.syncUrl();
   }
 
   /** The module dropdown (the linkage's modules) and a slider per parameter. */
@@ -181,15 +166,29 @@ export function createTune(ctx: TuneHost) {
     }
   }
 
-  /** Another linkage: its defaults, its modules (keeping this one if it has it), and the parts re-baked. */
-  function switchLinkage(): void {
-    const mods = Object.keys(info()!.modules);
-    if (!mods.includes(design.module)) design.module = info()!.default_module;
+  /** Another linkage, of any kind: its defaults, its modules (keeping this one if it has it),
+   * and its model loaded; the view picker then offers what it declares (``/api/modes``: a
+   * walker's robot and modules, an arm's robot and side, a mechanism's side). One with feet
+   * walks: its robot re-baked with the tune panel's design, to drive (``rebuild``); one
+   * without loads in its own default view. A load that fails puts the panel back to the
+   * design on screen. */
+  async function switchLinkage(): Promise<void> {
+    const lk = info()!;
+    if (!Object.keys(lk.modules).includes(design.module)) design.module = lk.default_module;
     design.phases = null;
     design.props = defaults();
     buildDesign();
     if (ctx.preview()) request(0);
-    void rebuild();
+    if (lk.feet > 0) return rebuild();
+    tune.status = `loading ${lk.key}…`;
+    try {
+      await host.loadLinkage(lk.key);
+      tune.status = `${lk.key}: its own views (no feet: nothing to drive)`;
+    } catch (e) {
+      adoptLoaded();
+      fail(new Error(`load failed: ${(e as Error).message}`));
+    }
+    ctx.syncUrl();
   }
 
   let timer = 0, inflight: AbortController | null = null;

@@ -1501,3 +1501,48 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   this repository doesn't hold.
 - **`spiderpig.spec` and `spiderpig.task`** are under a lint-imports contract: neither
   reaches into the pipeline or a front-end.
+
+### 2026-10-14: one task flow on every surface, from the task to the files that make, wire and buy it (review fix 1)
+
+- **The decision:** a design id carries from `candidates` to every file a maker needs, on
+  every surface, toward the user's "a seamless merge of capabilities, not just two forking
+  code paths". The flow stopped at `export`: an agent holding an id had no assembly guide,
+  wiring, controller files or `ORDER.md`, and the CLI took only build options (a task's
+  spec, its roles, didn't survive).
+- **The maker's formats:** `api.export` writes `guide` (`ASSEMBLY.pdf` / `.md`, cached
+  beside the fabrication), `control` (`control/`) and `order` (`ORDER.md` with the
+  per-part DXFs of `laser/parts/` it uploads and the `print/` STLs it lists) beside the
+  spec's outputs (`api.MAKE_FORMATS`: export formats only, not a spec's `outputs`, whose
+  vocabulary `spec.py` owns). The MCP's `FORMATS` and `spiderpig export --formats` are
+  `api.formats_all()` (a test holds them equal); the MCP `design(task)` prompt goes on past
+  the files to the guide, the controller's files and the order.
+- **One dispatch on the motors:** `spiderpig.control.files` writes what drives the design
+  needs (`actuators.controllers.motors_of`, a key of `files.WRITERS`): a crank's bus servos'
+  `servos.json`, an arm's steppers' Klipper `printer.cfg`, and either's `HOMING.md`; `spiderpig
+  control servo|klipper|homing` print and write through the same functions, and `spiderpig
+  control files` writes them all. No kind's name is read.
+- **The layers:** `spiderpig.control` moved a layer down, beside the guide (it imports
+  nothing above the sim and the stages), so the API exports its files; `load` (and the
+  config of a recorded design) moved from `api.store_ops` to `stages.resolve` (re-exported,
+  the old path kept), so `spiderpig build`, `guide`, `precision` and `control` open a stored
+  design under the API: `stages.resolve.load_stored`, its plan through
+  `stages.planning.plan_stored`.
+- **The CLI:** `spiderpig build|guide|control|precision DESIGN` (as `export`, `view`, `sim`
+  already did): the config as recorded, its roles kept (a Strider on your own controller
+  writes `servos.json` with none, where the options' default names the ESP32 board);
+  `build`'s manifest names the design (another `--kerf` or `--sheet-size`, another design).
+  `spiderpig candidates TASK.json [--measure N] [--limit K] [--resolve K]` is
+  `api.candidates`, the best `K` (1) resolved into the store for their ids. The help says
+  what `sim`, `control` and `export` do for every kind.
+- **The viewer:** one linkage picker lists every linkage of `/api/linkages`, grouped by kind
+  (an `optgroup` each, `modes.linkageGroups`); the view picker follows the linkage picked
+  (one with feet re-baked as a robot to drive, one without in its own default view). The
+  separate machine picker of wave 2 is gone.
+- **The docs:** `docs/ARCHITECTURE.md` sections 1 and 3 now start from the task and run
+  the pipeline for all three kinds (a stage reads capabilities), API.md has the task flow
+  from the command line, the MCP guide a "make it" loop.
+- **The gate** (against `platform-78e35e8`, `strider_double` and `palletizer_reach`): the
+  parts and the plans identical. The BOM differs as that baseline predates the cut model
+  (`cut_cm`, the cutting estimate, ORDER.md's cutting line), the Strider's audit has the
+  feet's strength row (wave 1) and the arm's export no `urdf/*.mjcf.xml` (wave 2's one
+  MuJoCo path): none of it this change's, so no new baseline and DESIGNS.md unchanged.
