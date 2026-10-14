@@ -318,6 +318,40 @@ def default_crank(lk: linkage.Linkage, module: str = "") -> str:
                              LINKAGE_CRANKS.get(lk.key, DEFAULT_CRANKS[lk.kind]))
 
 
+ROLE_FIELDS: dict[str, str] = {"servo": "servo", "crank_sheet": "crank"}
+""":class:`BuildConfig` fields that belong to a role (:mod:`spiderpig.roles`): the drive
+servo and the crank's sheet, a walker's and a mechanism's. Where the role isn't a slot of
+the design's kind (an arm: steppers, the role ``actuator``, and no crank) the field holds
+its default and naming another is refused (:func:`unused_field`). The default stays in the
+field, the key and the resolved spec rather than being left out: every stored arm's id
+(``BuildConfig.key``, ``design.spec_hash``, ``side_hash``) hashes it, so leaving it out
+would move them all (2026-10-14)."""
+
+
+def role_field_default(lk: linkage.Linkage, name: str) -> str:
+    """The value field ``name`` of :data:`ROLE_FIELDS` holds for ``lk`` when nothing names
+    it."""
+    return servos.DEFAULT if name == "servo" else default_crank_sheet(lk)
+
+
+def unused_field(lk: linkage.Linkage, name: str, value) -> str | None:
+    """Why ``value`` can't be ``lk``'s field ``name`` (:data:`ROLE_FIELDS`: its role isn't a
+    slot of ``lk``'s kind and the value isn't the field's default), or ``None``."""
+    from spiderpig import roles as rolemod
+
+    role = ROLE_FIELDS.get(name)
+    if role is None or rolemod.applies(role, lk.kind) or value in (None, ""):
+        return None
+    if value == role_field_default(lk, name):
+        return None
+    r = rolemod.get(role)
+    article = "an" if lk.kind[0] in "aeiou" else "a"
+    return (f"{lk.key} is {article} {lk.kind}: it has no {r.title} ({name} {value!r}; the role "
+            f"{role!r} is a {' or '.join(r.kinds)}'s"
+            + ("; an arm's motors are the role 'actuator'" if lk.kind == "arm"
+               and name == "servo" else "") + ")")
+
+
 ROBOT_LAYOUTS: dict[str, str] = {"walker": "mirrored_pair", "arm": "turret"}
 """The robot each linkage kind makes (:data:`construction.robot.LAYOUTS`): a walker's two
 mirrored sides with the chassis between their servos; an arm's side standing on a turntable
@@ -414,6 +448,9 @@ class BuildConfig:
         if self.servo not in servos.available():
             raise ParamError(f"unknown servo {self.servo!r}; have {servos.available()}")
         object.__setattr__(self, "phases", self._phases(lk))
+        for what in ROLE_FIELDS:
+            if (why := unused_field(lk, what, getattr(self, what))) is not None:
+                raise ParamError(why)
         if lk.ranged and (self.crank or self.phases is not None):
             raise ParamError(f"{lk.key} is an arm: its inputs drive links, so it has no crank "
                              f"and no crank phases (crank {self.crank!r}, phases "
@@ -906,13 +943,18 @@ def design_from_query(query: Mapping, base: BuildConfig | None = None,
         # (link_sheets name a linkage's own links: kept only with its linkage)
         from spiderpig import roles as rolemod
 
-        kind = linkage.get(query.get("linkage") or base.linkage).kind
-        materials = {"sheet": base.sheet, "thickness": base.thickness, "servo": base.servo,
+        lk_new = linkage.get(query.get("linkage") or base.linkage)
+        kind = lk_new.kind
+        materials = {"sheet": base.sheet, "thickness": base.thickness,
+                     "servo": (servos.DEFAULT if unused_field(lk_new, "servo", base.servo)
+                               else base.servo),     # (an arm has no drive servo)
                      "frame_sheet": base.frame_sheet, "heads": base.heads,
                      "params": (Params() if base.params == default_params(base.lk)
                                 else base.params),
                      "roles": tuple((n, k) for n, k in base.roles if rolemod.applies(n, kind)),
                      **own}
+        if unused_field(lk_new, "crank_sheet", materials["crank_sheet"]):
+            materials["crank_sheet"] = ""       # (an arm has no crank: its default)
         return design_from_query(query, **{**materials, **fixed})
     props = dict(base.proportions)
     props.update(proportions)

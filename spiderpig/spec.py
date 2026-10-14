@@ -36,11 +36,13 @@ from spiderpig.config import (
     DEFAULT_CRANKS,
     REMOVED_PARAMS,
     REMOVED_ROLES,
+    ROLE_FIELDS,
     BuildConfig,
     removed_construction,
     removed_param,
     removed_role,
     robot_layout,
+    unused_field,
 )
 from spiderpig.config import default_module as config_default_module
 from spiderpig.construction.base import Params
@@ -848,6 +850,9 @@ def validate(data: Mapping) -> list[SpecError]:
                   "(the acrylic crank was removed on 2026-10-07)", sheet_keys(True), CRANK_SHEET)
         v.number(m.get("thickness_mm"), "materials.thickness_mm", positive=True)
         v.string(m.get("servo"), "materials.servo", servos.available())
+        for what in ROLE_FIELDS:          # (an arm: no drive servo, no crank sheet)
+            if lk is not None and (why := unused_field(lk, what, m.get(what))) is not None:
+                v.err(f"materials.{what}", why)
     extra = {r.name: r for r in rolemod.extra()}
     given = top.get("constructions")
     slots = [q for q in (given if isinstance(given, Mapping) else ())

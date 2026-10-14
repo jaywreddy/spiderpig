@@ -9,8 +9,10 @@ import math
 from pathlib import Path
 
 from spiderpig import linkage, servos
+from spiderpig import roles as rolemod
 from spiderpig import walk as walk_model
 from spiderpig.config import (
+    ROLE_FIELDS,
     BuildConfig,
     ParamError,
     default_params,
@@ -171,6 +173,9 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
     doc["legs"] = legs
     mats: dict = {"sheet": config.sheet, "servo": config.servo,
                   "frame_sheet": config.frame_sheet, "crank_sheet": config.crank_sheet}
+    for what, role in ROLE_FIELDS.items():      # (an arm's: no drive servo, no crank)
+        if not rolemod.applies(role, lk.kind):
+            del mats[what]
     if config.thickness is not None:
         mats["thickness_mm"] = config.thickness
     if config.link_sheets is not None:
