@@ -7,10 +7,10 @@
     "reportGeneralTypeIssues": 1
   },
   "tests": {
-    "errors": 743,
+    "errors": 740,
     "by_rule": {
       "reportOptionalMemberAccess": 265,
-      "reportArgumentType": 178,
+      "reportArgumentType": 175,
       "reportAttributeAccessIssue": 127,
       "reportOptionalSubscript": 73,
       "reportOperatorIssue": 42,

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import math
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 import sympy as sp
@@ -17,6 +18,7 @@ from spiderpig.api.reports import PrecisionReport
 from spiderpig.config import BuildConfig
 from spiderpig.construction.wobble import Section
 from spiderpig.linkage import Linkage, Output, P, crank_at, xy
+from spiderpig.linkage import engine as linkage_engine
 from spiderpig.repeatability import ACCEL_FACTOR, DRUM_G, HARDWARE_G, TOOL_G, static_loads
 from spiderpig.spec import Spec, spec_schema, validate
 
@@ -41,9 +43,9 @@ def toy():
                  frame=("O",), crank=(), inputs=("q",), ranges={"q": (0.0, 90.0)},
                  drives={"q": ("b1", "O")},
                  output=Output("point", "F", "path", ("O", "F"), body="b1"))
-    linkage.engine.REGISTRY[lk.key] = lk
+    linkage_engine.REGISTRY[lk.key] = lk
     yield lk
-    del linkage.engine.REGISTRY[lk.key]
+    del linkage_engine.REGISTRY[lk.key]
 
 
 # -- the spec: a target its linkage can't have is refused, by capability ----------------
@@ -220,7 +222,7 @@ def test_verify_fails_an_arms_overloaded_joint(monkeypatch, arm_loads):
         "pin:E": _note({"b1": 2, "b4": 6, "b6": 9})}}), config=BuildConfig(linkage=ARM),
         store=None, spec=SimpleNamespace(payload_g=None))
     rep = verify.VerifyReport("standard")
-    rows = verify._strength_rows(design, rep, "standard")
+    rows = verify._strength_rows(cast(Any, design), rep, "standard")
     assert rows[0].requirement == 'strength.joints'
     assert not rows[0].passed
     assert rows[0].hard
@@ -236,7 +238,7 @@ def test_a_cranked_mechanism_is_not_rated(monkeypatch):
                              config=BuildConfig(linkage=_mechanism(), robot=False),
                              spec=SimpleNamespace(payload_g=None))
     rep = verify.VerifyReport("standard")
-    rows = verify._strength_rows(design, rep, "standard")
+    rows = verify._strength_rows(cast(Any, design), rep, "standard")
     assert len(rows) == 1
     assert rows[0].value is None
     assert rows[0].passed

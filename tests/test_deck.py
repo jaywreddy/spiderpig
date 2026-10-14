@@ -5,6 +5,7 @@ reachable, and its mass, centre of mass, BOM rows and DXF plate are what the rob
 from __future__ import annotations
 
 import math
+from typing import Any, cast
 
 import numpy as np
 import pytest
@@ -381,12 +382,13 @@ def test_no_deck_carries_its_mass_as_a_payload():
 
     p = SimParams()
     assert p.payload_g == 0.0
-    assert payload_g(SimpleNamespace(meta={"deck": {"fitted": True}}), p) == 0.0
-    assert payload_g(SimpleNamespace(meta={"deck": {"fitted": False}}), p) == DECK_FALLBACK_G
-    assert math.isclose(payload_g(SimpleNamespace(meta={}), p), DECK_FALLBACK_G)
+    assert payload_g(cast(Any, SimpleNamespace(meta={"deck": {"fitted": True}})), p) == 0.0
+    unfitted = SimpleNamespace(meta={"deck": {"fitted": False}})
+    assert payload_g(cast(Any, unfitted), p) == DECK_FALLBACK_G
+    assert math.isclose(payload_g(cast(Any, SimpleNamespace(meta={})), p), DECK_FALLBACK_G)
     # a bare deck (controller none): the kit's catalogued electronics ride as a payload
     bare = SimpleNamespace(meta={"deck": {"fitted": True, "electronics": False}})
-    assert payload_g(bare, p) == pytest.approx(kit_mass_g())
+    assert payload_g(cast(Any, bare), p) == pytest.approx(kit_mass_g())
     assert 55.0 < kit_mass_g() < 70.0             # board, LiPo, charger, BMS, switch, nylon
 
 

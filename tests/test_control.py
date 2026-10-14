@@ -462,7 +462,10 @@ def test_the_servo_setup_writes_ids_mode_and_the_rated_torque_limit():
     assert doc["phase_lock"]["kp"] > 0
     assert doc["side_offset_deg"] == 0.0
     stall = servo_models.get("sts3215").stall_torque_nm
-    units = round(torque_limit_nm(BuildConfig()) / stall * 1000)
+    limit = torque_limit_nm(BuildConfig())
+    assert stall is not None
+    assert limit is not None
+    units = round(limit / stall * 1000)
     assert doc["torque_limit"]["units"] == units
     for s, sid in zip(doc["servos"], (1, 2), strict=True):
         w = {x["register"]: (x["address"], x["value"]) for x in s["writes"]}
