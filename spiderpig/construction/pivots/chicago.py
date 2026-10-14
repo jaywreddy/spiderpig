@@ -123,6 +123,7 @@ from spiderpig.construction.pivots.common import (
     SLEEVE_COLOR,
     STEEL,
     Column,
+    Stock,
     bored,
     column_air,
     gap_washers,
@@ -461,14 +462,16 @@ double and single plan as before). Not the Klann: the demo quad needs its longer
 
 @dataclass(frozen=True)
 class ChicagoAxle:
-    """M3 Chicago screw, printed spacer rings and head spacers (pins only)."""
+    """M3 Chicago screw, stock tube spacers cut to length between the links and shims under
+    the head (pins only)."""
 
     key: str = "chicago"
-    label: str = ("M3 Chicago screw (4 mm barrel) through the stack, printed rings and head "
-                  "spacers; lowest link bonded (pins only)")
+    label: str = ("M3 Chicago screw (4 mm barrel) through the stack, stock tubes cut to length "
+                  "between the links, shims under the head; lowest link bonded (pins only)")
     running_fit: float = 0.2      # a link's and a ring's hole over the 4 mm barrel
     shaft: ChicagoShaft = field(default_factory=ChicagoShaft)
     bonded_host: ClassVar[bool] = True     # the lowest link is bonded to the barrel
+    spacers: ClassVar[Stock | None] = Stock("collar_5p5x4p1", "shim_din988_4x8")
 
     @property
     def roles(self) -> tuple[str, ...]:

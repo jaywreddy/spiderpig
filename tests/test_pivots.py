@@ -210,7 +210,9 @@ def test_holes_cut_for_each_construction(side):
             assert [x.d for x in got.cuts[host]] == [pytest.approx(c.shaft.host_hole())]
             for m in set(g.axis.members) - {host}:
                 assert [x.d for x in got.cuts[m]] == [pytest.approx(c.hole())]
-            assert {e.key for e in got.extras} == {"epoxy_2part", "threadlocker_222"}
+            # (and the shims' extra pieces where a head spacer takes more than one)
+            assert {e.key for e in got.extras} - {"shim_din988_4x8"} == {"epoxy_2part",
+                                                                       "threadlocker_222"}
 
 
 def _assert_nothing_slides(side, which) -> list[str]:
@@ -271,11 +273,13 @@ def test_spacers_and_retainers_are_what_the_key_says(side):
     for g in axles:
         bodies = {b.name.split("_", 2)[2]: b for b in _group_bodies(fab, g)}
         col = Column.of(build, g)
-        rings = {n for n in bodies if n.startswith("ring")}
-        assert rings == {f"ring{k}" for k in col.between}, g.name
-        printed = {n for n, b in bodies.items() if b.fab == "printed"}
-        assert rings <= printed
-        assert {f"gap{k}_spacer" for k in col.washers} <= set(bodies), g.name
+        # nothing printed (the user's "fewer printed spacers", 2026-10-14): the column
+        # between its links is stock tubes cut to length, what's left shims or cut rings
+        assert not [n for n, b in bodies.items() if b.fab == "printed"], g.name
+        tubes = [b for n, b in bodies.items() if n.startswith("tube")]
+        assert all(b.fab == "purchased" and b.bom_key.startswith("collar_") for b in tubes)
+        if col.between:
+            assert tubes, g.name
         if g.pillar:
             (standoff,) = [b for n, b in bodies.items() if n.startswith("standoff")]
             assert standoff.bom_key.startswith(("gobilda_1501_", "pillar_shaft_"))
@@ -290,7 +294,8 @@ def test_spacers_and_retainers_are_what_the_key_says(side):
             assert screw.bom_key.startswith("chicago_m3_")
             host = min(g.axis.members, key=lambda m: (build.layers[m], m))
             assert screw.rigid_with == host                  # bonded into the lowest link
-            assert {n for n in bodies if n.startswith("spacer_")} <= printed
+            assert all(bodies[n].fab in ("purchased", "laser")
+                       for n in bodies if n.startswith("spacer_"))
 
 
 def test_bom_counts_per_construction(side):

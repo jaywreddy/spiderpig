@@ -628,7 +628,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
 
     # the driver board on its standoffs
     so, nut, bs = (get(k).dims for k in ("m25_nylon_standoff_mf_6", "m25_nylon_nut",
-                                          "m25_nylon_screw_5"))
+                                          "m25_nylon_screw_6"))
     r_af = STANDOFF_AF / 2
     for i, (x, z) in enumerate(board["holes"]):
         standoff = union([_cyl_y(x, z, r_af, yt, yt + so["length"]),
@@ -643,7 +643,7 @@ def deck_parts(design, z_mid: float, place: DeckPlace, host: dict[str, str],
                    Body(name=f"deck_nut{i}", part=nut_part, rigid_with=host["L"],
                         fab="purchased", bom_key="m25_nylon_nut", color=NYLON),
                    Body(name=f"deck_board_screw{i}", part=scr, rigid_with=host["L"],
-                        fab="purchased", bom_key="m25_nylon_screw_5", color=NYLON)]
+                        fab="purchased", bom_key="m25_nylon_screw_6", color=NYLON)]
         fastened += [(f"deck_board_screw{i}", f"deck_standoff{i}"),
                      (f"deck_standoff{i}", f"deck_nut{i}")]
     bd = board["dims"]

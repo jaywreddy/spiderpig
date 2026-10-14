@@ -85,6 +85,7 @@ from spiderpig.construction.pivots.common import (
     SLEEVE_COLOR,
     STEEL,
     Column,
+    Stock,
     bored,
     column_air,
     gap_washers,
@@ -108,9 +109,11 @@ class StandoffAxle:
 
     key: str = "standoff"
     label: str = ("6 mm round aluminium standoffs (goBILDA M4) where one stock length fills the "
-                  "column, else one 6 mm steel shaft made to its length (tapped M3), printed "
-                  "rings, button heads through both frame plates")
+                  "column, else one 6 mm steel shaft made to its length (tapped M3), stock "
+                  "tubes cut to length between the links, button heads through both frame "
+                  "plates")
     roles: ClassVar[tuple[str, ...]] = ("pillar",)
+    spacers: ClassVar[Stock | None] = Stock("collar_7x6p1", "shim_din988_6x12", plates=True)
     od: float = 6.0
     id_: float = 3.3                 # the strength check's bore (M4 tap drill)
     yield_mpa: float = 240.0         # 6061-T6

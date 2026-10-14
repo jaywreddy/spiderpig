@@ -301,7 +301,18 @@ class AxleGroup(Group):
                       early_deps=frozenset(members))]
 
     def realize(self, build: Build, done: Realized) -> Realized:
-        return self.construction.realize(self, build)
+        """The construction's parts, then its column's spacers from stock where it declares
+        them (``spacers``, :class:`construction.pivots.common.Stock`): tubes between the links,
+        shims and cut rings for the rest."""
+        out = self.construction.realize(self, build)
+        stock = getattr(self.construction, "spacers", None)
+        if stock is not None:
+            from spiderpig.construction.pivots.common import stock_spacers, stock_tubes
+
+            stock_tubes(out, build, self, stock.tube, self.axis.members, plates=stock.plates,
+                        land_key=stock.land)
+            stock_spacers(out, build, stock.shim, "", 0)
+        return out
 
     def assembly(self, view) -> list:
         """The construction's ``assembly(group, view)`` when it has one."""

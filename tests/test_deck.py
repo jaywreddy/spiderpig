@@ -170,19 +170,17 @@ def test_the_bom_lists_the_deck(built):
     for key in ("resistor_100k", "resistor_33k", "lipo_strap_10mm", "xt30_pigtail_pair",
                 "dc_plug_5521_pigtail", "foam_tape"):
         assert rows[key].qty == 1, key
-    for key in ("m25_nylon_standoff_mf_6", "m25_nylon_nut", "m25_nylon_screw_5"):
+    for key in ("m25_nylon_standoff_mf_6", "m25_nylon_nut", "m25_nylon_screw_6"):
         assert rows[key].qty == 4
-    assert all(rows[k].sku for k in ("m25_nylon_standoff_mf_6", "m25_nylon_nut",
-                                     "m25_nylon_screw_5"))   # distributor parts, not a kit
+    kit = [rows[k] for k in ("m25_nylon_standoff_mf_6", "m25_nylon_nut", "m25_nylon_screw_6")]
+    assert sum(not r.same_pack_as for r in kit) == 1    # one kit (2026-10-14), bought once
     screw = mech.meta["deck"]["screw"]
     assert sum("deck_screw" in w for w in rows[screw].where) == 4
     assert sum("deck_rail_deck_nut" in w for w in rows["m3_nut"].where) == 4  # captive
     assert "m3_heat_set_insert" not in rows                        # (since 2026-10-08)
     for key in (*ELECTRONICS, "resistor_100k", "resistor_33k"):
         assert rows[key].url.startswith("https://")
-        # the protection board's Amazon listing showed no price to the study's scripted
-        # session (hardware.sources, 2026-10-08)
-        assert rows[key].pack_price_usd or key == "bms_hx_2s_jh20"
+        assert rows[key].pack_price_usd, key        # every one priced (2026-10-14)
 
 
 def test_the_deck_plate_is_on_the_dxf_sheets(strider):

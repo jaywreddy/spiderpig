@@ -1053,3 +1053,22 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   - `b4` in 1/8 in 5052 kept 2.5 mm round its MR84 seats, under SendCutSend's 1 x thickness. A metal link now grows a boss round each bearing seat its width can't hold (`plates.seat_bosses`, as `rider_bosses` does round a crank bore): 3.27 mm, a warning only.
   - The base's top plate cut the yaw motor's boss clearance as a rectangle, leaving 2.6 mm to the screws' slots. It is now a stadium.
   - The audit is OK, with warnings only.
+
+### 2026-10-14: the walkers learn from the arm (the user's "honest BOM prices" and "fewer printed spacers")
+
+- **Honest prices:**
+  - Every Strider line is priced now; there were 5 unpriced, left out of the total.
+  - The prices came from sellers' pages read on 2026-10-14. No logins and no bot checks: Amazon, DigiKey, Mouser and MISUMI refused, and they stay as they were.
+  - The board's M2.5 nylon hardware is one Adafruit kit (#3299, $16.95, shared pack). Its screws are 6 mm, so `m25_nylon_screw_6` replaces the 5 mm one; the standoff's stud length is unverified.
+  - The protection board is diymore's ($4.99). The resistors and DC pigtail come from one ProtoSupplies cart.
+  - The battery's Amazon price is no longer marked verified (it came from a search page). The strap is named for what is bought.
+- **Fewer printed spacers:**
+  - A pivot construction declares its stock spacers (`spacers`, `construction.pivots.common.Stock`). `AxleGroup.realize` applies them as the arm's pivots did: stock tubes cut to length between the links (`stock_tubes`), DIN 988 shims for thin spacers (`stock_spacers`).
+  - Chicago pins use the 5.5 x 4.1 tube and 4 x 8 shims; standoff pillars use the 7 x 6.1 brass tube and 6 x 12 shims.
+  - The Strider double's printed parts go from 173 to 37: the crank's parts, the foot socks, the deck rail and cradle, and the horn spacer remain.
+  - Cost: about $50 of tube and one shim assortment, and about 44 tube pieces to cut by hand.
+- **Found on the way:**
+  - The pivots placed a link's bearings and tubes from its layer's middle, but links sit on the layer's floor (`pivots.common.link_z`).
+  - On the arm, `b4` (3.2 mm in a 5.4 mm layer) had its bearing standing 1 mm proud, and the hub the plan reserved beside it was silently dropped.
+  - A tube now stands in a link's layer only inside the seat the axle claims there.
+- **Gate:** every walker's parts and BOM change (intended), and `palletizer_reach`'s `b4` gets its planned hub.

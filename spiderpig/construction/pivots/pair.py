@@ -104,7 +104,15 @@ from spiderpig.construction.pivots.ball import (
     internal_tilt,
 )
 from spiderpig.construction.pivots.chicago import ChicagoShaft, Fit
-from spiderpig.construction.pivots.common import EPS, STEEL, Column, host_of, stem_of, xy_of
+from spiderpig.construction.pivots.common import (
+    EPS,
+    Column,
+    Stock,
+    host_of,
+    link_z,
+    stem_of,
+    xy_of,
+)
 from spiderpig.construction.pivots.standoff import StandoffAxle
 from spiderpig.construction.wobble import Section
 from spiderpig.hardware.bom import BomLine
@@ -190,13 +198,11 @@ class PairSeat(BearingSeat):
         (:meth:`pair`); the bore cut."""
         xy = xy_of(build, group)
         for m in sorted(riders):
-            k = build.layers[m]
-            z0, z1 = build.z(k)
             t = build.ctx.sheet_t("link", m)
             if self.width > t + EPS:
                 raise ConstructionError(f"{group.name}: {m} is {t:g} mm thick, under the "
                                         f"{self.width:g} mm bearing it seats")
-            mid = (z0 + z1) / 2
+            mid = sum(link_z(build, m)) / 2         # the link's middle, on its layer's floor
             two = self.in_link(t)
             seats = ([(two[0], mid - t / 2), (two[1], mid + t / 2 - _width(two[1]))] if two
                      else [(self.bearing_key, mid - self.width / 2)])
@@ -232,9 +238,7 @@ class PairSeat(BearingSeat):
             count[m] = 2 if self.pair(t) else 1
             if count[m] == 2:
                 continue
-            z0, z1 = build.z(k)
-            mid = (z0 + z1) / 2
-            for kn, face in ((k - 1, mid - t / 2), (k + 1, mid + t / 2)):
+            for kn, face in zip((k - 1, k + 1), link_z(build, m), strict=True):
                 if kn in taken or kn not in col.between or col.roles[kn][1] + EPS < hub_r:
                     continue
                 name = f"{stem}_ring{kn}"
@@ -319,73 +323,6 @@ def hub_layers(riders: list[int], occupied: set[int], lo: int, hi: int,
     return taken
 
 
-TUBE_MIN = 0.2          # a gap this short between neighbours is left as the column's play
-
-
-def stock_tubes(out: Realized, build: Build, group: AxleGroup, tube_key: str,
-                members, plates: bool = False, land_key: str = "") -> int:
-    """The column between its links made of stock tubes (precision collars cut to length):
-    one per gap between neighbouring links or hubs, face to face, in place of the rings and
-    gap spacers there (a ring is one default-sheet layer tall: in a layer a thick link
-    thickens it left a gap, and the column's preload stopped at it: the review of
-    2026-10-12). Their OD bears on the bearings' inner rings only. A span the land washers
-    (``land_key``) stack to, a clearance gap :func:`land_gaps` kept between two neighbours,
-    takes those instead. Returns how many tubes."""
-    from spiderpig.hardware.catalog import get as _get
-
-    ctx = build.ctx
-    xy = xy_of(build, group)
-    d = _get(tube_key).dims
-    od, bore = float(d["od"]), float(d["id"])
-    elements = []
-    for m in members:
-        z0, z1 = build.z(build.layers[m])
-        t, mid = ctx.sheet_t("link", m), (z0 + z1) / 2
-        elements.append((mid - t / 2, mid + t / 2))
-    for b in out.bodies:            # a hub; a pillar's end shims
-        if b.part is not None and ("_hub_" in b.name or "_shims" in b.name):
-            bb = cast(Any, b.part).bounding_box()
-            elements.append((bb.min.Z, bb.max.Z))
-    if plates:                      # a pillar's column runs to the frame plates it's in
-        elements += [build.z(k) for k in Column.of(build, group).anchors]
-    elements.sort()
-    spans = [(a[1], b[0]) for a, b in itertools.pairwise(elements) if b[0] - a[1] > TUBE_MIN]
-    host = None
-    keep = []
-    for b in out.bodies:            # the printed rings and gap spacers inside a span go
-        if b.fab == "printed" and b.part is not None:
-            bb = cast(Any, b.part).bounding_box()
-            zc = (bb.min.Z + bb.max.Z) / 2
-            if any(lo - EPS <= zc <= hi + EPS for lo, hi in spans):
-                host = host or b.rigid_with
-                continue
-        keep.append(b)
-    out.bodies[:] = keep
-    stem = stem_of(group)
-    host = host or sorted(members, key=lambda m: build.layers[m])[0]
-    land = _get(land_key).dims if land_key else None
-    tubes = []
-    for i, (lo, hi) in enumerate(spans):
-        n = round((hi - lo) / float(land["t"])) if land else 0
-        if land and 1 <= n <= LAND_MAX and abs(hi - lo - n * float(land["t"])) <= LAND_TOL:
-            out.bodies.append(hardware(f"{stem}_land{i}", ring(
-                xy, float(land["od"]), float(land["id"]), lo, lo + n * float(land["t"])),
-                host, fab="purchased", bom_key=land_key, color=STEEL))
-            if n > 1:
-                out.extras.append(BomLine(land_key, n - 1, f"{group.name}: {n} lands stacked"))
-            continue
-        tubes.append((lo, hi))
-    for i, (lo, hi) in enumerate(tubes):
-        out.bodies.append(hardware(f"{stem}_tube{i}", ring(xy, od, bore, lo, hi), host,
-                                   fab="purchased", bom_key=tube_key, color=STEEL))
-    out.notes.setdefault("tubes", {})[group.name] = [round(hi - lo, 1) for lo, hi in tubes]
-    return len(tubes)
-
-
-LAND_MAX = 2            # a span up to this many land washers takes them, not a tube
-LAND_TOL = 0.15         # ... within this (the disc spring takes it up)
-
-
 def land_gaps(elements: list[tuple[int, int]], height: float) -> dict[int, float]:
     """The clearance gaps a column keeps for its inner-ring lands: over every element's
     layer (``(layer, owner)``: a link, a hub with its link's layer as owner, a frame plate)
@@ -395,40 +332,6 @@ def land_gaps(elements: list[tuple[int, int]], height: float) -> dict[int, float
     els = sorted(elements)
     return {a: height for (a, oa), (b, ob) in itertools.pairwise(els)
             if b == a + 1 and oa != ob}
-
-
-def stock_spacers(out: Realized, build: Build, shim_key: str, land_key: str,
-                  riders: int) -> None:
-    """What the column holds between its links made from stock and cut plates only (the
-    user's of 2026-10-12: "only stock parts except for the plates"): a printed ring a full
-    default-sheet layer tall is cut from that sheet (``laser``: a cut plate); any other
-    printed spacer (a head spacer, a gap ring) is a stack of DIN 988 shims (``shim_key``,
-    :func:`hardware.bom.stack`). And a land washer (``land_key``) each side of ``riders``
-    links (0: the column's tubes are its lands, :func:`stock_tubes`)."""
-    from dataclasses import replace as _replace
-
-    from spiderpig.hardware.bom import stack
-    from spiderpig.hardware.catalog import get as _get
-
-    steps = tuple(float(t) for t in _get(shim_key).dims["t"])
-    pitch = build.ctx.pitch
-    for i, b in enumerate(out.bodies):
-        if b.fab != "printed" or b.part is None:
-            continue
-        bb = cast(Any, b.part).bounding_box()
-        h = bb.max.Z - bb.min.Z
-        if abs(h - pitch) < 0.05:
-            out.bodies[i] = _replace(b, fab="laser", sheet=None)
-            continue
-        shims, _ = stack(h, steps)
-        if not shims:
-            continue
-        out.bodies[i] = _replace(b, fab="purchased", bom_key=shim_key, color=STEEL)
-        if len(shims) > 1:
-            out.extras.append(BomLine(shim_key, len(shims) - 1,
-                                      f"{b.name}: {h:.1f} mm of shims"))
-    if riders:
-        out.extras.append(BomLine(land_key, 2 * riders, "the riders' inner-ring lands"))
 
 
 def spring_slot(out: Realized, stem: str, slot: float, spring_key: str) -> None:
@@ -556,6 +459,7 @@ class BallPairAxle(BallAxle):
     """Preloaded MR84ZZ pairs (one in a thin link) on a Chicago-screw pin (pins only)."""
 
     key: str = "ball_pair"
+    spacers: ClassVar[Stock | None] = Stock("collar_5p5x4p1", "shim_din988_4x8", land=PIN_LAND)
     label: str = ("MR84ZZ ball bearings, each paired in a hub beside its link where there is "
                   "room (or in a thick link), on a ground 4 mm g6 pin with M2 ends; "
                   "inner-ring rings; a disc spring under the top end; host link bonded "
@@ -624,10 +528,7 @@ class BallPairAxle(BallAxle):
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, under the screw's head"))
         spring_slot(out, stem_of(group), self.shaft.washer_t, self.preload.spring_key)
-        stock_tubes(out, build, group, "collar_5p5x4p1", group.axis.members,
-                    land_key=PIN_LAND)
-        stock_spacers(out, build, "shim_din988_4x8", "shim_4x6x0p5", 0)
-        return out
+        return out          # (its tubes, lands and shims: ``spacers``, the group applies)
 
 
 @dataclass(frozen=True)
@@ -636,6 +537,8 @@ class BallPairPillar(BallPillar):
     only)."""
 
     key: str = "ball_pair_pillar"
+    spacers: ClassVar[Stock | None] = Stock("collar_7x6p1", "shim_din988_6x12",
+                                          land=PILLAR_LAND, plates=True)
     label: str = ("MR106ZZ ball bearings, each paired in a hub beside its link where there "
                   "is room (or in a thick link), on a one-piece 6 mm steel shaft ordered "
                   "ground; inner-ring rings; a disc spring in the column's end shims (pillars "
@@ -705,10 +608,7 @@ class BallPairPillar(BallPillar):
                                                    self.seat, self.preload, count)
         out.extras.append(BomLine(self.preload.spring_key, 1,
                                   f"{group.name}: the preload, in the column's end shims"))
-        stock_tubes(out, build, group, "collar_7x6p1", group.axis.members, plates=True,
-                    land_key=PILLAR_LAND)
-        stock_spacers(out, build, "shim_din988_6x12", "shim_6x8x0p5", 0)
-        return out
+        return out          # (its tubes, lands and shims: ``spacers``, the group applies)
 
 
 __all__ = ["BallPairAxle", "BallPairPillar", "PairSeat", "Preload"]

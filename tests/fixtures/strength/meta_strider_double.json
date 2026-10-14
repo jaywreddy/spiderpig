@@ -575,6 +575,58 @@
   "tie_stud": "m3_set_screw_16",
   "tie_stud_engagement_mm": 3.2,
   "ties": 4,
+  "tubes": {
+   "pillar:J2_leg0": [
+    19.1,
+    21.7,
+    18.0
+   ],
+   "pillar:J6_leg0": [
+    19.1,
+    21.7,
+    18.0
+   ],
+   "pin:J10_leg0": [
+    2.7
+   ],
+   "pin:J10_leg1": [
+    2.2
+   ],
+   "pin:J11_leg0": [
+    3.0
+   ],
+   "pin:J11_leg1": [
+    3.0
+   ],
+   "pin:J3_leg0": [
+    2.7,
+    3.0
+   ],
+   "pin:J3_leg1": [
+    2.2,
+    3.0
+   ],
+   "pin:J4_leg0": [
+    3.0
+   ],
+   "pin:J4_leg1": [
+    3.0
+   ],
+   "pin:J7_leg0": [
+    2.7,
+    3.0
+   ],
+   "pin:J7_leg1": [
+    2.2,
+    3.0
+   ],
+   "pin:J8_leg0": [
+    2.7
+   ],
+   "pin:J8_leg1": [
+    2.2
+   ]
+  },
   "wobble": {
    "pillar:J2_leg0": {
     "anchors": [
@@ -1512,11 +1564,11 @@
    }
   }
  },
- "engine_version": "0.1.0+6921c3f0aaf8",
+ "engine_version": "0.1.0+653e7a01f3ff",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-7ef154baaa7363a1"
+ "source_key": "gen-339128493875139b"
 }

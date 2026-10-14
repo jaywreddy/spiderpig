@@ -651,6 +651,56 @@
   "tie_stud": "m3_set_screw_16",
   "tie_stud_engagement_mm": 3.2,
   "ties": 4,
+  "tubes": {
+   "pillar:A_leg0": [
+    9.0,
+    26.0,
+    19.0
+   ],
+   "pillar:A_leg1": [
+    14.9,
+    26.9,
+    12.2
+   ],
+   "pillar:B_leg0": [
+    2.7,
+    25.8,
+    25.8
+   ],
+   "pillar:B_leg1": [
+    9.0,
+    26.0,
+    19.0
+   ],
+   "pin:C_leg0": [
+    2.7
+   ],
+   "pin:C_leg1": [],
+   "pin:C_leg2": [
+    3.6
+   ],
+   "pin:C_leg3": [],
+   "pin:D_leg0": [
+    2.7
+   ],
+   "pin:D_leg1": [],
+   "pin:D_leg2": [
+    3.6
+   ],
+   "pin:D_leg3": [],
+   "pin:E_leg0": [
+    3.3
+   ],
+   "pin:E_leg1": [
+    2.7
+   ],
+   "pin:E_leg2": [
+    3.7
+   ],
+   "pin:E_leg3": [
+    3.6
+   ]
+  },
   "wobble": {
    "pillar:A_leg0": {
     "anchors": [
@@ -1738,11 +1788,11 @@
    }
   }
  },
- "engine_version": "0.1.0+6921c3f0aaf8",
+ "engine_version": "0.1.0+653e7a01f3ff",
  "generator": "tests/test_strength.py::test_the_order_designs_meta_current[klann_lego_quad]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-7ef154baaa7363a1"
+ "source_key": "gen-339128493875139b"
 }

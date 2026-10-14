@@ -115,7 +115,7 @@ register(
     Item("resistor_33k", "33 kOhm 1/4 W resistor (battery divider, bottom)", "electronics",
          (Offer("DigiKey", "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/"
                 "1686", "CFR-25JB-52-33K", price_usd=0.10, note=SEARCHED),)),
-    Item("lipo_strap_10mm", "Battery strap, 10 x 180 mm (Lumenier Kevlar, 3-pack)",
+    Item("lipo_strap_10mm", "Battery strap, 10 mm wide, 100 mm or longer",
          "electronics",
          (Offer("Amazon", "https://www.amazon.com/iFlight-Rubberized-Non-Slip-Fastening-"
                 "Quadcopter/dp/B07XL8NLLZ", "B07XL8NLLZ", pack_qty=10,
@@ -161,17 +161,20 @@ register(
                "spares otherwise)."),
 )
 
-# The board's M2.5 nylon hardware. Each piece is sourced singly first (hardware.sources: the
-# Essentra screw and nut at DigiKey, the Wurth standoff at Mouser); this kit, their shared
-# alternative (vendor + SKU shared), would be one pack for all three.
-_KIT = Offer("Amazon", "https://www.amazon.com/clp/B08XLHQVWM", "B08XLHQVWM", pack_qty=360,
-             note="Heayzoki 360 pc M2 / M2.5 / M3 nylon standoff kit; price not seen")
+# The board's M2.5 nylon hardware: one kit for all three (vendor + SKU shared: the BOM buys
+# one pack, hardware.bom ``same_pack_as``); the single Essentra / Wurth parts at DigiKey and
+# Mouser show no price to a scripted fetch (hardware.sources, the price check of 2026-10-14).
+_KIT = Offer("Adafruit", "https://www.adafruit.com/product/3299", "3299", pack_qty=380,
+             price_usd=16.95, verified=True,
+             note="Black nylon M2.5 screw and standoff set, 380 pieces (page read 2026-10-14): "
+                  "80 nuts, 6 mm and 4 mm screws, male-female hex standoffs (the stud's "
+                  "length not stated: the deck models the Wurth part's 8 mm, measure yours)")
 register(
     Item("m25_nylon_standoff_mf_6", "M2.5 x 6 mm nylon hex standoff, male-female", "standoff",
          (_KIT,), dims={"af": 5.0, "length": 6.0, "thread": 8.0,   # Wurth 971060155
                         "mass_g": 0.15}),
     Item("m25_nylon_nut", "M2.5 nylon hex nut", "nut", (_KIT,),
          dims={"af": 5.0, "h": 2.0, "mass_g": 0.05}),
-    Item("m25_nylon_screw_5", "M2.5 x 5 mm nylon pan head screw", "fastener", (_KIT,),
-         dims={"d": 2.5, "length": 5.0, "head_d": 5.0, "head_h": 1.7, "mass_g": 0.05}),  # ISO 7045
+    Item("m25_nylon_screw_6", "M2.5 x 6 mm nylon pan head screw", "fastener", (_KIT,),
+         dims={"d": 2.5, "length": 6.0, "head_d": 5.0, "head_h": 1.7, "mass_g": 0.05}),  # ISO 7045
 )

@@ -1,6 +1,6 @@
 {
  "data": {
-  "cost_usd": 338.17,
+  "cost_usd": 418.03000000000003,
   "cuts": [],
   "cutting": [
    {
@@ -39,7 +39,7 @@
   "cutting_usd": 113.92,
   "filaments": {
    "PETG filament": 1.9,
-   "PLA filament": 41.5,
+   "PLA filament": 19.1,
    "TPU 95A flexible filament": 1.2
   },
   "made": [
@@ -466,310 +466,6 @@
     "material": "PLA filament",
     "method": "printed",
     "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap1_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap1_spacer",
-     "L.pillar_J2_leg0_gap5_spacer",
-     "L.pillar_J6_leg0_gap1_spacer",
-     "L.pillar_J6_leg0_gap5_spacer",
-     "R.pillar_J2_leg0_gap1_spacer",
-     "R.pillar_J2_leg0_gap5_spacer",
-     "R.pillar_J6_leg0_gap1_spacer",
-     "R.pillar_J6_leg0_gap5_spacer"
-    ],
-    "qty": 8,
-    "sheet": "",
-    "size_mm": "12 x 12 x 4.0 mm",
-    "volume_cm3": 0.3276995296959511
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap2_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap2_spacer",
-     "L.pillar_J6_leg0_gap2_spacer",
-     "R.pillar_J2_leg0_gap2_spacer",
-     "R.pillar_J6_leg0_gap2_spacer"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "12 x 12 x 3.4 mm",
-    "volume_cm3": 0.27854460024155875
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap3_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap3_spacer",
-     "L.pillar_J6_leg0_gap3_spacer",
-     "R.pillar_J2_leg0_gap3_spacer",
-     "R.pillar_J6_leg0_gap3_spacer"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "12 x 12 x 2.7 mm",
-    "volume_cm3": 0.22119718254476708
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap4_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap4_spacer",
-     "L.pillar_J2_leg0_gap8_spacer",
-     "L.pillar_J2_leg0_gap10_spacer",
-     "L.pillar_J6_leg0_gap4_spacer",
-     "L.pillar_J6_leg0_gap8_spacer",
-     "L.pillar_J6_leg0_gap10_spacer",
-     "R.pillar_J2_leg0_gap4_spacer",
-     "R.pillar_J2_leg0_gap8_spacer",
-     "R.pillar_J2_leg0_gap10_spacer",
-     "R.pillar_J6_leg0_gap4_spacer",
-     "R.pillar_J6_leg0_gap8_spacer",
-     "R.pillar_J6_leg0_gap10_spacer"
-    ],
-    "qty": 12,
-    "sheet": "",
-    "size_mm": "12 x 12 x 3.0 mm",
-    "volume_cm3": 0.24577464727196344
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap6_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap6_spacer",
-     "L.pillar_J6_leg0_gap6_spacer",
-     "R.pillar_J2_leg0_gap6_spacer",
-     "R.pillar_J6_leg0_gap6_spacer"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "12 x 12 x 3.5 mm",
-    "volume_cm3": 0.28673708848395735
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_gap7_spacer",
-    "names": [
-     "L.pillar_J2_leg0_gap7_spacer",
-     "L.pillar_J6_leg0_gap7_spacer",
-     "R.pillar_J2_leg0_gap7_spacer",
-     "R.pillar_J6_leg0_gap7_spacer"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "12 x 12 x 2.2 mm",
-    "volume_cm3": 0.18023474133277334
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pillar_J2_leg0_ring1",
-    "names": [
-     "L.pillar_J2_leg0_ring1",
-     "L.pillar_J2_leg0_ring2",
-     "L.pillar_J2_leg0_ring3",
-     "L.pillar_J2_leg0_ring5",
-     "L.pillar_J2_leg0_ring6",
-     "L.pillar_J2_leg0_ring7",
-     "L.pillar_J2_leg0_ring9",
-     "L.pillar_J2_leg0_ring10",
-     "L.pillar_J2_leg0_ring11",
-     "L.pillar_J2_leg0_ring12",
-     "L.pillar_J6_leg0_ring1",
-     "L.pillar_J6_leg0_ring2",
-     "L.pillar_J6_leg0_ring3",
-     "L.pillar_J6_leg0_ring5",
-     "L.pillar_J6_leg0_ring6",
-     "L.pillar_J6_leg0_ring7",
-     "L.pillar_J6_leg0_ring9",
-     "L.pillar_J6_leg0_ring10",
-     "L.pillar_J6_leg0_ring11",
-     "L.pillar_J6_leg0_ring12",
-     "R.pillar_J2_leg0_ring1",
-     "R.pillar_J2_leg0_ring2",
-     "R.pillar_J2_leg0_ring3",
-     "R.pillar_J2_leg0_ring5",
-     "R.pillar_J2_leg0_ring6",
-     "R.pillar_J2_leg0_ring7",
-     "R.pillar_J2_leg0_ring9",
-     "R.pillar_J2_leg0_ring10",
-     "R.pillar_J2_leg0_ring11",
-     "R.pillar_J2_leg0_ring12",
-     "R.pillar_J6_leg0_ring1",
-     "R.pillar_J6_leg0_ring2",
-     "R.pillar_J6_leg0_ring3",
-     "R.pillar_J6_leg0_ring5",
-     "R.pillar_J6_leg0_ring6",
-     "R.pillar_J6_leg0_ring7",
-     "R.pillar_J6_leg0_ring9",
-     "R.pillar_J6_leg0_ring10",
-     "R.pillar_J6_leg0_ring11",
-     "R.pillar_J6_leg0_ring12"
-    ],
-    "qty": 40,
-    "sheet": "",
-    "size_mm": "9 x 9 x 3.0 mm",
-    "volume_cm3": 0.11097676048805946
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J10_leg0_gap3_spacer",
-    "names": [
-     "L.pin_J10_leg0_gap3_spacer",
-     "L.pin_J3_leg0_gap3_spacer",
-     "L.pin_J7_leg0_gap3_spacer",
-     "L.pin_J8_leg0_gap3_spacer",
-     "R.pin_J10_leg0_gap3_spacer",
-     "R.pin_J3_leg0_gap3_spacer",
-     "R.pin_J7_leg0_gap3_spacer",
-     "R.pin_J8_leg0_gap3_spacer"
-    ],
-    "qty": 8,
-    "sheet": "",
-    "size_mm": "8 x 8 x 2.7 mm",
-    "volume_cm3": 0.09650737012378827
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J10_leg0_spacer_hi",
-    "names": [
-     "L.pin_J10_leg0_spacer_hi",
-     "L.pin_J10_leg1_spacer_hi",
-     "L.pin_J3_leg0_spacer_hi",
-     "L.pin_J7_leg0_spacer_hi",
-     "L.pin_J8_leg0_spacer_hi",
-     "L.pin_J8_leg1_spacer_hi",
-     "R.pin_J10_leg0_spacer_hi",
-     "R.pin_J10_leg1_spacer_hi",
-     "R.pin_J3_leg0_spacer_hi",
-     "R.pin_J7_leg0_spacer_hi",
-     "R.pin_J8_leg0_spacer_hi",
-     "R.pin_J8_leg1_spacer_hi"
-    ],
-    "qty": 12,
-    "sheet": "",
-    "size_mm": "8 x 8 x 1.2 mm",
-    "volume_cm3": 0.043693270626126844
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J10_leg1_gap7_spacer",
-    "names": [
-     "L.pin_J10_leg1_gap7_spacer",
-     "L.pin_J3_leg1_gap7_spacer",
-     "L.pin_J7_leg1_gap7_spacer",
-     "L.pin_J8_leg1_gap7_spacer",
-     "R.pin_J10_leg1_gap7_spacer",
-     "R.pin_J3_leg1_gap7_spacer",
-     "R.pin_J7_leg1_gap7_spacer",
-     "R.pin_J8_leg1_gap7_spacer"
-    ],
-    "qty": 8,
-    "sheet": "",
-    "size_mm": "8 x 8 x 2.2 mm",
-    "volume_cm3": 0.0786356349156794
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J10_leg1_spacer_lo",
-    "names": [
-     "L.pin_J10_leg1_spacer_lo",
-     "L.pin_J8_leg1_spacer_lo",
-     "R.pin_J10_leg1_spacer_lo",
-     "R.pin_J8_leg1_spacer_lo"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "8 x 8 x 0.5 mm",
-    "volume_cm3": 0.018205529427552852
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J11_leg0_gap4_spacer",
-    "names": [
-     "L.pin_J11_leg0_gap4_spacer",
-     "L.pin_J11_leg1_gap8_spacer",
-     "L.pin_J3_leg0_gap4_spacer",
-     "L.pin_J3_leg1_gap8_spacer",
-     "L.pin_J4_leg0_gap4_spacer",
-     "L.pin_J4_leg1_gap8_spacer",
-     "L.pin_J7_leg0_gap4_spacer",
-     "L.pin_J7_leg1_gap8_spacer",
-     "R.pin_J11_leg0_gap4_spacer",
-     "R.pin_J11_leg1_gap8_spacer",
-     "R.pin_J3_leg0_gap4_spacer",
-     "R.pin_J3_leg1_gap8_spacer",
-     "R.pin_J4_leg0_gap4_spacer",
-     "R.pin_J4_leg1_gap8_spacer",
-     "R.pin_J7_leg0_gap4_spacer",
-     "R.pin_J7_leg1_gap8_spacer"
-    ],
-    "qty": 16,
-    "sheet": "",
-    "size_mm": "8 x 8 x 3.0 mm",
-    "volume_cm3": 0.10723041124865361
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J11_leg0_spacer_hi",
-    "names": [
-     "L.pin_J11_leg0_spacer_hi",
-     "L.pin_J11_leg1_spacer_hi",
-     "L.pin_J4_leg0_spacer_hi",
-     "L.pin_J4_leg1_spacer_hi",
-     "R.pin_J11_leg0_spacer_hi",
-     "R.pin_J11_leg1_spacer_hi",
-     "R.pin_J4_leg0_spacer_hi",
-     "R.pin_J4_leg1_spacer_hi"
-    ],
-    "qty": 8,
-    "sheet": "",
-    "size_mm": "8 x 8 x 0.9 mm",
-    "volume_cm3": 0.03276995296959499
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
-    "name": "L.pin_J3_leg1_spacer_hi",
-    "names": [
-     "L.pin_J3_leg1_spacer_hi",
-     "L.pin_J7_leg1_spacer_hi",
-     "R.pin_J3_leg1_spacer_hi",
-     "R.pin_J7_leg1_spacer_hi"
-    ],
-    "qty": 4,
-    "sheet": "",
-    "size_mm": "8 x 8 x 1.5 mm",
-    "volume_cm3": 0.05461658828265856
-   },
-   {
-    "material": "PLA filament",
-    "method": "printed",
-    "mirrored": 0,
     "name": "L.servo_horn_spacer",
     "names": [
      "L.servo_horn_spacer",
@@ -798,9 +494,9 @@
    "Horn screw shims (under each head): screws L.0, L.1, L.2, L.3, R.0, R.1, R.2, R.3: 1 mm (2 x M3 flat washer (DIN 125-A, 3.2 x 7 x 0.5)).",
    "Horn screws: a drop of low-strength threadlocker (Loctite 222) each (8), steel into the metal horn; none in a plastic horn.",
    "Chicago pins bonded off the barrel head (no printed spacer under it, thinner than a print): pin:J3_leg1 0.2 mm, pin:J7_leg1 0.2 mm; set the gap with a feeler gauge while the epoxy cures.",
-   "Printed parts need about 45 g of filament at 100 % infill (41 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 1 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
+   "Printed parts need about 22 g of filament at 100 % infill (19 g of PLA filament (1.24 g/cm3); 2 g of PETG filament (1.27 g/cm3); 1 g of TPU 95A flexible filament (1.22 g/cm3)); less with sparse infill."
   ],
-  "printed_g": 44.62119169199147,
+  "printed_g": 22.212637293899302,
   "purchased": [
    {
     "alternatives": [
@@ -862,23 +558,23 @@
    },
    {
     "alternatives": [
-     "https://www.amazon.com/clp/B08XLHQVWM"
+     "https://www.digikey.com/en/products/detail/essentra-components/50M025045N006/11638510"
     ],
     "category": "fastener",
-    "cost_usd": null,
+    "cost_usd": 16.95,
     "cut_by": "",
-    "key": "m25_nylon_screw_5",
-    "name": "M2.5 x 5 mm nylon pan head screw",
+    "key": "m25_nylon_screw_6",
+    "name": "M2.5 x 6 mm nylon pan head screw",
     "on_hand": false,
-    "pack_price_usd": null,
-    "pack_qty": 1,
-    "packs": 4,
+    "pack_price_usd": 16.95,
+    "pack_qty": 380,
+    "packs": 1,
     "qty": 4.0,
     "same_pack_as": "",
-    "sku": "50M025045N005",
-    "url": "https://www.digikey.com/en/products/detail/essentra-components/50M025045N005/11638495",
-    "vendor": "DigiKey",
-    "verified": false,
+    "sku": "3299",
+    "url": "https://www.adafruit.com/product/3299",
+    "vendor": "Adafruit",
+    "verified": true,
     "where": [
      "deck_board_screw0",
      "deck_board_screw1",
@@ -1074,23 +770,23 @@
    },
    {
     "alternatives": [
-     "https://www.amazon.com/clp/B08XLHQVWM"
+     "https://www.digikey.com/en/products/detail/essentra-components/04M025045HN/9677099"
     ],
     "category": "nut",
-    "cost_usd": null,
+    "cost_usd": 0.0,
     "cut_by": "",
     "key": "m25_nylon_nut",
     "name": "M2.5 nylon hex nut",
     "on_hand": false,
-    "pack_price_usd": null,
-    "pack_qty": 1,
-    "packs": 4,
+    "pack_price_usd": 16.95,
+    "pack_qty": 380,
+    "packs": 1,
     "qty": 4.0,
-    "same_pack_as": "",
-    "sku": "04M025045HN",
-    "url": "https://www.digikey.com/en/products/detail/essentra-components/04M025045HN/9677099",
-    "vendor": "DigiKey",
-    "verified": false,
+    "same_pack_as": "M2.5 x 6 mm nylon pan head screw",
+    "sku": "3299",
+    "url": "https://www.adafruit.com/product/3299",
+    "vendor": "Adafruit",
+    "verified": true,
     "where": [
      "deck_nut0",
      "deck_nut1",
@@ -1131,6 +827,106 @@
      "R.deck_rail_deck_nut1",
      "deck_cradle_nut0",
      "deck_cradle_nut1"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://accu-components.com/us/shim-washers/62854-HSHN-4-8-0-1-A2",
+     "https://accu-components.com/us/shim-washers/",
+     "https://www.mcmaster.com/products/shims/"
+    ],
+    "category": "washer",
+    "cost_usd": 16.99,
+    "cut_by": "",
+    "key": "shim_din988_4x8_t0p1",
+    "name": "DIN 988 shim ring 4 x 8 x 0.1 mm",
+    "on_hand": false,
+    "pack_price_usd": 16.99,
+    "pack_qty": 17,
+    "packs": 1,
+    "qty": 8.0,
+    "same_pack_as": "",
+    "sku": "B0GQ3JGHPZ",
+    "url": "https://www.amazon.com/dp/B0GQ3JGHPZ",
+    "vendor": "Amazon",
+    "verified": false,
+    "where": [
+     "L.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://accu-components.com/us/shim-washers/62855-HSHN-4-8-0-2-A2",
+     "https://accu-components.com/us/shim-washers/",
+     "https://www.mcmaster.com/products/shims/"
+    ],
+    "category": "washer",
+    "cost_usd": 0.0,
+    "cut_by": "",
+    "key": "shim_din988_4x8_t0p2",
+    "name": "DIN 988 shim ring 4 x 8 x 0.2 mm",
+    "on_hand": false,
+    "pack_price_usd": 16.99,
+    "pack_qty": 17,
+    "packs": 1,
+    "qty": 12.0,
+    "same_pack_as": "DIN 988 shim ring 4 x 8 x 0.1 mm",
+    "sku": "B0GQ3JGHPZ",
+    "url": "https://www.amazon.com/dp/B0GQ3JGHPZ",
+    "vendor": "Amazon",
+    "verified": false,
+    "where": [
+     "L.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J8_leg1_spacer_hi (1 + 0.2 mm)"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://accu-components.com/us/shim-washers/62856-HSHN-4-8-0-3-A2",
+     "https://accu-components.com/us/shim-washers/",
+     "https://www.mcmaster.com/products/shims/"
+    ],
+    "category": "washer",
+    "cost_usd": 0.0,
+    "cut_by": "",
+    "key": "shim_din988_4x8_t0p3",
+    "name": "DIN 988 shim ring 4 x 8 x 0.3 mm",
+    "on_hand": false,
+    "pack_price_usd": 16.99,
+    "pack_qty": 17,
+    "packs": 1,
+    "qty": 8.0,
+    "same_pack_as": "DIN 988 shim ring 4 x 8 x 0.1 mm",
+    "sku": "B0GQ3JGHPZ",
+    "url": "https://www.amazon.com/dp/B0GQ3JGHPZ",
+    "vendor": "Amazon",
+    "verified": false,
+    "where": [
+     "L.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)"
     ]
    },
    {
@@ -1221,6 +1017,58 @@
    },
    {
     "alternatives": [],
+    "category": "washer",
+    "cost_usd": 6.0,
+    "cut_by": "",
+    "key": "m4_washer_433",
+    "name": "M4 small flat washer (DIN 433, 4.3 x 8 x 0.5)",
+    "on_hand": false,
+    "pack_price_usd": 6.0,
+    "pack_qty": 100,
+    "packs": 1,
+    "qty": 48.0,
+    "same_pack_as": "",
+    "sku": "HRDW-M4-A2",
+    "url": "https://accu-components.com/us/metric-flat-washers/404898-HRDW-M4-A2",
+    "vendor": "Accu",
+    "verified": true,
+    "where": [
+     "L.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J10_leg1_spacer_lo (0.5 mm)",
+     "L.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J3_leg1_spacer_hi (1 + 0.5 mm)",
+     "L.pin_J3_leg1_spacer_hi (1 + 0.5 mm)",
+     "L.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "L.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J7_leg1_spacer_hi (1 + 0.5 mm)",
+     "L.pin_J7_leg1_spacer_hi (1 + 0.5 mm)",
+     "L.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
+     "L.pin_J8_leg1_spacer_lo (0.5 mm)",
+     "R.pin_J10_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J10_leg1_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J10_leg1_spacer_lo (0.5 mm)",
+     "R.pin_J11_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J11_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J3_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J3_leg1_spacer_hi (1 + 0.5 mm)",
+     "R.pin_J3_leg1_spacer_hi (1 + 0.5 mm)",
+     "R.pin_J4_leg0_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J4_leg1_spacer_hi (0.5 + 0.3 + 0.1 mm)",
+     "R.pin_J7_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J7_leg1_spacer_hi (1 + 0.5 mm)",
+     "R.pin_J7_leg1_spacer_hi (1 + 0.5 mm)",
+     "R.pin_J8_leg0_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J8_leg1_spacer_hi (1 + 0.2 mm)",
+     "R.pin_J8_leg1_spacer_lo (0.5 mm)"
+    ]
+   },
+   {
+    "alternatives": [],
     "category": "standoff",
     "cost_usd": 54.3,
     "cut_by": "",
@@ -1245,24 +1093,24 @@
    },
    {
     "alternatives": [
-     "https://www.mouser.com/ProductDetail/Wurth-Elektronik/971060155",
-     "https://www.amazon.com/clp/B08XLHQVWM"
+     "https://www.digikey.com/en/products/detail/w%C3%BCrth-elektronik/971060155/9488746",
+     "https://www.mouser.com/ProductDetail/Wurth-Elektronik/971060155"
     ],
     "category": "standoff",
-    "cost_usd": null,
+    "cost_usd": 0.0,
     "cut_by": "",
     "key": "m25_nylon_standoff_mf_6",
     "name": "M2.5 x 6 mm nylon hex standoff, male-female",
     "on_hand": false,
-    "pack_price_usd": null,
-    "pack_qty": 1,
-    "packs": 4,
+    "pack_price_usd": 16.95,
+    "pack_qty": 380,
+    "packs": 1,
     "qty": 4.0,
-    "same_pack_as": "",
-    "sku": "971060155",
-    "url": "https://www.digikey.com/en/products/detail/w%C3%BCrth-elektronik/971060155/9488746",
-    "vendor": "DigiKey",
-    "verified": false,
+    "same_pack_as": "M2.5 x 6 mm nylon pan head screw",
+    "sku": "3299",
+    "url": "https://www.adafruit.com/product/3299",
+    "vendor": "Adafruit",
+    "verified": true,
     "where": [
      "deck_standoff0",
      "deck_standoff1",
@@ -1355,6 +1203,95 @@
    },
    {
     "alternatives": [
+     "https://my.misumi-ec.com/vona2/detail/110310886139/"
+    ],
+    "category": "spacer",
+    "cost_usd": 22.77,
+    "cut_by": "",
+    "key": "collar_5p5x4p1",
+    "name": "Precision collar (spacer tube) 5.5 OD x 4.1 ID, cut to length",
+    "on_hand": false,
+    "pack_price_usd": 7.59,
+    "pack_qty": 12,
+    "packs": 3,
+    "qty": 32.0,
+    "same_pack_as": "",
+    "sku": "B0BX4C4DYJ",
+    "url": "https://www.amazon.com/dp/B0BX4C4DYJ",
+    "vendor": "Amazon",
+    "verified": false,
+    "where": [
+     "L.pin_J10_leg0_tube0",
+     "L.pin_J10_leg1_tube0",
+     "L.pin_J11_leg0_tube0",
+     "L.pin_J11_leg1_tube0",
+     "L.pin_J3_leg0_tube0",
+     "L.pin_J3_leg0_tube1",
+     "L.pin_J3_leg1_tube0",
+     "L.pin_J3_leg1_tube1",
+     "L.pin_J4_leg0_tube0",
+     "L.pin_J4_leg1_tube0",
+     "L.pin_J7_leg0_tube0",
+     "L.pin_J7_leg0_tube1",
+     "L.pin_J7_leg1_tube0",
+     "L.pin_J7_leg1_tube1",
+     "L.pin_J8_leg0_tube0",
+     "L.pin_J8_leg1_tube0",
+     "R.pin_J10_leg0_tube0",
+     "R.pin_J10_leg1_tube0",
+     "R.pin_J11_leg0_tube0",
+     "R.pin_J11_leg1_tube0",
+     "R.pin_J3_leg0_tube0",
+     "R.pin_J3_leg0_tube1",
+     "R.pin_J3_leg1_tube0",
+     "R.pin_J3_leg1_tube1",
+     "R.pin_J4_leg0_tube0",
+     "R.pin_J4_leg1_tube0",
+     "R.pin_J7_leg0_tube0",
+     "R.pin_J7_leg0_tube1",
+     "R.pin_J7_leg1_tube0",
+     "R.pin_J7_leg1_tube1",
+     "R.pin_J8_leg0_tube0",
+     "R.pin_J8_leg1_tube0"
+    ]
+   },
+   {
+    "alternatives": [
+     "https://my.misumi-ec.com/vona2/detail/110310886139/",
+     "https://www.amazon.com/dp/B0GWMRQN6Q"
+    ],
+    "category": "spacer",
+    "cost_usd": 10.19,
+    "cut_by": "",
+    "key": "collar_7x6p1",
+    "name": "Precision collar (spacer tube) 7 OD x 6.1 ID, cut to length",
+    "on_hand": false,
+    "pack_price_usd": 10.19,
+    "pack_qty": 24,
+    "packs": 1,
+    "qty": 12.0,
+    "same_pack_as": "",
+    "sku": "B005WPASC8",
+    "url": "https://www.amazon.com/dp/B005WPASC8",
+    "vendor": "Amazon",
+    "verified": false,
+    "where": [
+     "L.pillar_J2_leg0_tube0",
+     "L.pillar_J2_leg0_tube1",
+     "L.pillar_J2_leg0_tube2",
+     "L.pillar_J6_leg0_tube0",
+     "L.pillar_J6_leg0_tube1",
+     "L.pillar_J6_leg0_tube2",
+     "R.pillar_J2_leg0_tube0",
+     "R.pillar_J2_leg0_tube1",
+     "R.pillar_J2_leg0_tube2",
+     "R.pillar_J6_leg0_tube0",
+     "R.pillar_J6_leg0_tube1",
+     "R.pillar_J6_leg0_tube2"
+    ]
+   },
+   {
+    "alternatives": [
      "https://www.matterhackers.com/store/l/polymaker-polylite-petg-black-175mm-1kg/sk/MAW5MH42",
      "https://www.amazon.com/dp/B09Q28K49W"
     ],
@@ -1391,14 +1328,14 @@
     "pack_price_usd": 29.99,
     "pack_qty": 1,
     "packs": 1,
-    "qty": 0.041,
+    "qty": 0.019,
     "same_pack_as": "",
     "sku": "Prusament PLA Jet Black 1kg",
     "url": "https://www.prusa3d.com/product/prusament-pla-jet-black-1kg-nfc/",
     "vendor": "Prusa Research",
     "verified": true,
     "where": [
-     "printed parts: 41 g at 100 % infill"
+     "printed parts: 19 g at 100 % infill"
     ]
    },
    {
@@ -1583,31 +1520,33 @@
     ]
    },
    {
-    "alternatives": [],
+    "alternatives": [
+     "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-100K/245"
+    ],
     "category": "electronics",
-    "cost_usd": 0.1,
+    "cost_usd": 0.59,
     "cut_by": "",
     "key": "resistor_100k",
     "name": "100 kOhm 1/4 W resistor (battery divider, top)",
     "on_hand": false,
-    "pack_price_usd": 0.1,
-    "pack_qty": 1,
+    "pack_price_usd": 0.59,
+    "pack_qty": 25,
     "packs": 1,
     "qty": 1.0,
     "same_pack_as": "",
-    "sku": "100KQBK-ND",
-    "url": "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-100K/245",
-    "vendor": "DigiKey",
-    "verified": false,
+    "sku": "",
+    "url": "https://protosupplies.com/product/resistor-100k-5/",
+    "vendor": "ProtoSupplies",
+    "verified": true,
     "where": [
      "battery divider (top) to an ESP32 ADC pin"
     ]
    },
    {
     "alternatives": [
+     "https://www.buddyrc.com/products/tattu-450mah-2s-95c-7-6v-high-voltage-lipo-battery-pack-with-xt30-plug-long-pack",
      "https://www.getfpv.com/tattu-450mah-7-6v-hv-95c-2s-lipo-battery-long-size-xt-30.html",
      "https://us.ovonicshop.com/products/4-x-ovonic-7-4v-80c-450mah-2s-lipo-battery-long-size-with-xt30-plug-for-fpv-freestyle-racing-drones-tiny-whoop-drones-quadcopter",
-     "https://www.buddyrc.com/products/tattu-450mah-2s-95c-7-6v-high-voltage-lipo-battery-pack-with-xt30-plug-long-pack",
      "https://www.racedayquads.com/products/tattu-7-6v-2s-450mah-95c-lihv-micro-battery-long-type-xt30"
     ],
     "category": "electronics",
@@ -1624,51 +1563,54 @@
     "sku": "B0GS66YB4M",
     "url": "https://www.amazon.com/dp/B0GS66YB4M",
     "vendor": "Amazon",
-    "verified": true,
+    "verified": false,
     "where": [
      "deck_battery"
     ]
    },
    {
-    "alternatives": [],
+    "alternatives": [
+     "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/1686"
+    ],
     "category": "electronics",
-    "cost_usd": 0.1,
+    "cost_usd": 0.59,
     "cut_by": "",
     "key": "resistor_33k",
     "name": "33 kOhm 1/4 W resistor (battery divider, bottom)",
     "on_hand": false,
-    "pack_price_usd": 0.1,
-    "pack_qty": 1,
+    "pack_price_usd": 0.59,
+    "pack_qty": 25,
     "packs": 1,
     "qty": 1.0,
     "same_pack_as": "",
-    "sku": "33KQBK-ND",
-    "url": "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/1686",
-    "vendor": "DigiKey",
-    "verified": false,
+    "sku": "",
+    "url": "https://protosupplies.com/product/resistor-33k-5/",
+    "vendor": "ProtoSupplies",
+    "verified": true,
     "where": [
      "battery divider (bottom)"
     ]
    },
    {
     "alternatives": [
+     "https://www.digikey.com/en/products/detail/tensility-international-corp/CA-2189/568580",
      "https://www.amazon.com/JacobsParts-Pigtail-Security-Voltage-Applications/dp/B00R1XZ09K"
     ],
     "category": "electronics",
-    "cost_usd": null,
+    "cost_usd": 0.99,
     "cut_by": "",
     "key": "dc_plug_5521_pigtail",
     "name": "5.5 x 2.1 mm DC plug pigtail (male), 15 cm",
     "on_hand": false,
-    "pack_price_usd": null,
+    "pack_price_usd": 0.99,
     "pack_qty": 1,
     "packs": 1,
     "qty": 1.0,
     "same_pack_as": "",
-    "sku": "839-053-0188R-ND",
-    "url": "https://www.digikey.com/en/products/detail/tensility-international-corp/CA-2189/568580",
-    "vendor": "DigiKey",
-    "verified": false,
+    "sku": "",
+    "url": "https://protosupplies.com/product/dc-power-right-angle-plug-with-pigtail",
+    "vendor": "ProtoSupplies",
+    "verified": true,
     "where": [
      "switched battery to the board's DC jack"
     ]
@@ -1683,7 +1625,7 @@
     "cost_usd": 12.69,
     "cut_by": "",
     "key": "lipo_strap_10mm",
-    "name": "Battery strap, 10 x 180 mm (Lumenier Kevlar, 3-pack)",
+    "name": "Battery strap, 10 mm wide, 100 mm or longer",
     "on_hand": false,
     "pack_price_usd": 12.69,
     "pack_qty": 1,
@@ -1700,24 +1642,24 @@
    },
    {
     "alternatives": [
-     "https://www.diymore.cc/products/2s-10a-8-4v-7-4v-18650-lithium-protection-board-bms-pcm-pcb-li-ion-lipo-2-cell-pack-with-balance-function-charger-protect-module",
+     "https://www.amazon.com/HX-2S-JH20-Protection-Balanced-Function-Overcharged/dp/B0DTPHVHLL",
      "https://usa.banggood.com/HX-2S-JH20-2S-7_4V-8_4V-18650-Lithium-Battery-Protection-Board-with-Equalization-Overcharged-Protection-p-1816422.html"
     ],
     "category": "electronics",
-    "cost_usd": null,
+    "cost_usd": 4.99,
     "cut_by": "",
     "key": "bms_hx_2s_jh20",
     "name": "HX-2S-JH20 2S protection board with balancing (10 A)",
     "on_hand": false,
-    "pack_price_usd": null,
+    "pack_price_usd": 4.99,
     "pack_qty": 1,
     "packs": 1,
     "qty": 1.0,
     "same_pack_as": "",
-    "sku": "B0DTPHVHLL",
-    "url": "https://www.amazon.com/HX-2S-JH20-Protection-Balanced-Function-Overcharged/dp/B0DTPHVHLL",
-    "vendor": "Amazon",
-    "verified": false,
+    "sku": "012759",
+    "url": "https://www.diymore.cc/products/2s-10a-8-4v-7-4v-18650-lithium-protection-board-bms-pcm-pcb-li-ion-lipo-2-cell-pack-with-balance-function-charger-protect-module",
+    "vendor": "diymore (brand store)",
+    "verified": true,
     "where": [
      "deck_bms"
     ]
@@ -1841,14 +1783,14 @@
     ]
    }
   ],
-  "purchases_usd": 224.25,
+  "purchases_usd": 304.11,
   "title": ""
  },
- "engine_version": "0.1.0+6609d6af4b1a",
+ "engine_version": "0.1.0+653e7a01f3ff",
  "generator": "tests/test_order.py::test_the_order_designs_bom_current[strider_double]",
  "source": {
   "file": "tests/_strength.py",
   "name": null
  },
- "source_key": "gen-28582335c868fcab"
+ "source_key": "gen-339128493875139b"
 }

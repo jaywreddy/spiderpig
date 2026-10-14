@@ -69,6 +69,7 @@ from spiderpig.construction.pivots.common import (
     Column,
     gap_washers,
     host_of,
+    link_z,
     ring_z,
     stem_of,
     xy_of,
@@ -194,7 +195,8 @@ class BearingSeat:
             if self.width > z1 - z0 + EPS:
                 raise ConstructionError(f"{group.name}: {m} is {z1 - z0:g} mm thick, under the "
                                         f"{self.width:g} mm bearing it seats")
-            zb = (z0 + z1 - self.width) / 2
+            l0, l1 = link_z(build, m)               # centred in the link
+            zb = (l0 + l1 - self.width) / 2
             out.bodies.append(hardware(f"{stem}_bearing_{m}", bearing_solid(
                 self.bearing_key, xy, zb), m, fab="purchased", bom_key=self.bearing_key,
                 color=BEARING_COLOR))

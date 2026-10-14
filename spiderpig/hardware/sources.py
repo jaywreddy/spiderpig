@@ -35,6 +35,10 @@ from spiderpig.hardware.catalog import CATALOG, Item, Offer
 _MCM = "McMaster-Carr"
 _MCM_NOTE = ("part number from McMaster's spec table (reli-tool.com mirror) or listing; "
              "McMaster pages refuse a scripted fetch")
+_M25_KIT = Offer("Adafruit", "https://www.adafruit.com/product/3299", "3299", pack_qty=380,
+                 price_usd=16.95, verified=True,
+                 note="Black nylon M2.5 screw and standoff set, 380 pieces (page read "
+                      "2026-10-14): the board's screws, nuts and standoffs in one pack")
 _ACCU_SHIM = {   # (id, od) -> {thickness: Accu product id}; SKU HSHN-<id>-<od>-<t>-A2
     (3, 6): {0.1: 62835, 0.2: 62836, 0.3: 62837, 0.5: 62839, 1.0: 62840},
     (4, 8): {0.1: 62854, 0.2: 62855, 0.3: 62856, 0.5: 399092, 1.0: 399093},
@@ -340,16 +344,19 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                    "head 4.0 x 1.72; USD 0.46 each at 6 (page rendered 2026-10-05); buy only "
                    "if the servo's bag runs short: every STS3215 ships with its M2 x 6 case "
                    "screws (the SO-101 arm fastens its STS3215s with them and lists none)"),),
-    "m25_nylon_screw_5": (
+    "m25_nylon_screw_6": (
+        _M25_KIT,
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/essentra-components/"
-              "50M025045N005/11638495", "50M025045N005", pack_qty=1,
-              note="Essentra nylon 6/6 slotted pan head M2.5 x 5, head 5.0 x 1.7 mm (ISO "
-                   "7045), as modelled"),),
+              "50M025045N006/11638510", "50M025045N006", pack_qty=1,
+              note="Essentra nylon 6/6 slotted pan head M2.5 x 6, head 5.0 x 1.7 mm (ISO "
+                   "7045; no price to a scripted fetch, 2026-10-14)"),),
     "m25_nylon_nut": (
+        _M25_KIT,
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/essentra-components/"
               "04M025045HN/9677099", "04M025045HN", pack_qty=1,
               note="Essentra nylon 6/6 M2.5 hex nut, 5.0 AF x 2.0"),),
     "m25_nylon_standoff_mf_6": (
+        _M25_KIT,
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/w%C3%BCrth-elektronik/"
               "971060155/9488746", "971060155",
               note="the same Wurth part on DigiKey (listed, price not seen 2026-10-08): the "
@@ -423,10 +430,12 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               note="65 x 30 mm, 2.75 mm holes at 58 x 23 (measured on Waveshare's STEP)"),),
     "lipo_2s_450": (
         Offer("Amazon", "https://www.amazon.com/dp/B0GS66YB4M", "B0GS66YB4M", price_usd=9.29,
-              verified=True,
               note="TATTU 450mAh 2S1P 95C 7.6V HV, XT30, long pack, 1 pc (search-results "
                    "price 2026-10-08, the BOM study): one for the one robot, on the Amazon "
                    "cart; 62.5 x 16.2 x 14.7 mm, 29 g (BuddyRC's page)"),
+        Offer("BuddyRC", "https://www.buddyrc.com/products/tattu-450mah-2s-95c-7-6v-high-voltage-"
+              "lipo-battery-pack-with-xt30-plug-long-pack", price_usd=8.29, verified=True,
+              note="the same Tattu, 62.5 x 16.2 x 14.7 mm, XT30U-F (page read 2026-10-14)"),
         Offer("GetFPV", "https://www.getfpv.com/tattu-450mah-7-6v-hv-95c-2s-lipo-battery-long-"
               "size-xt-30.html", price_usd=12.49, verified=True,
               note="the same Tattu, in stock 2026-10-08 (search page)"),
@@ -447,14 +456,14 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                    "price shown to a scripted browser); sizes run 30-40 x "
                    "20 x 5-6.9 mm: measure yours against the deck's 30 x 20 x 5 box"),),
     "bms_hx_2s_jh20": (
-        Offer("Amazon", "https://www.amazon.com/HX-2S-JH20-Protection-Balanced-Function-"
-              "Overcharged/dp/B0DTPHVHLL", "B0DTPHVHLL",
-              note="HX-2S-JH20, 46.7 x 23 x 3.15 mm, on the Amazon cart (price not seen "
-                   "2026-10-08: Amazon throttled the scripted session)"),
         Offer("diymore (brand store)", "https://www.diymore.cc/products/2s-10a-8-4v-7-4v-18650-"
               "lithium-protection-board-bms-pcm-pcb-li-ion-lipo-2-cell-pack-with-balance-"
               "function-charger-protect-module", "012759", price_usd=4.99, verified=True,
-              note="HX-2S-JH20, 46.7 x 23 x 3.15 mm"),),
+              note="HX-2S-JH20, 46.7 x 23 x 3.15 mm (page read again 2026-10-14)"),
+        Offer("Amazon", "https://www.amazon.com/HX-2S-JH20-Protection-Balanced-Function-"
+              "Overcharged/dp/B0DTPHVHLL", "B0DTPHVHLL",
+              note="HX-2S-JH20 on the Amazon cart (no price to a scripted session, "
+                   "2026-10-08 and 2026-10-14)"),),
     "toggle_mts102": (
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/e-switch/100SP1T1B1M1QEH/"
               "378819", "EG2350-ND", price_usd=3.36,
@@ -464,9 +473,17 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
                    "design's 45 % torque limit about 2.4 A: don't switch with the servos "
                    "stalled. Part number from the datasheet and Octopart"),),
     "resistor_100k": (
+        Offer("ProtoSupplies", "https://protosupplies.com/product/resistor-100k-5/",
+              pack_qty=25, price_usd=0.59, verified=True,
+              note="100k 5 % 1/4 W carbon film, 25 per pack (page read 2026-10-14): one cart "
+                   "with the DC pigtail"),
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-100K/245",
               "100KQBK-ND", price_usd=0.10, note="Yageo CFR-25JB-52-100K"),),
     "resistor_33k": (
+        Offer("ProtoSupplies", "https://protosupplies.com/product/resistor-33k-5/",
+              pack_qty=25, price_usd=0.59, verified=True,
+              note="33k 5 % 1/4 W carbon film, 25 per pack (page read 2026-10-14): one cart "
+                   "with the DC pigtail"),
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/yageo/CFR-25JB-52-33K/1686",
               "33KQBK-ND", price_usd=0.10, note="Yageo CFR-25JB-52-33K"),),
     "xt30_pigtail_pair": (
@@ -477,6 +494,10 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               price_usd=1.49, verified=True,
               note="XT30 pigtail, 16 AWG, ~10 cm: one is enough (the battery has its own XT30)"),),
     "dc_plug_5521_pigtail": (
+        Offer("ProtoSupplies", "https://protosupplies.com/product/dc-power-right-angle-plug-"
+              "with-pigtail", price_usd=0.99, verified=True,
+              note="right-angle 5.5 x 2.1 mm plug, ~23 cm 20 AWG pigtail (page read 2026-10-14; "
+                   "longer and heavier than the CA-2189: trim it)"),
         Offer("DigiKey", "https://www.digikey.com/en/products/detail/tensility-international-"
               "corp/CA-2189/568580", "839-053-0188R-ND",
               note="Tensility CA-2189, right-angle 5.5 x 2.1 mm plug, 24 AWG pigtail: the deck "
@@ -486,9 +507,8 @@ SOURCES: dict[str, tuple[Offer, ...]] = {
               note="Furitek nylon strap 10 x 120 mm (search-result price 2026-10-08; pack "
                    "count not seen): the deck takes ~77 mm, its slots 10 mm"),
         Offer("RaceDayQuads", "https://www.racedayquads.com/products/lumenier-indestructible-"
-              "kevlar-lipo-strap-10x180mm-3", pack_qty=3, price_usd=8.49, verified=True,
-              note="the same Lumenier 3-pack (2026-10-08); RDQ ships USD 6.49 without a "
-                   "battery, free over 199"),
+              "kevlar-lipo-strap-10x180mm-3", pack_qty=3, price_usd=8.49,
+              note="the Lumenier 3-pack (2026-10-08; the page was gone on 2026-10-14)"),
         Offer("GetFPV", "https://www.getfpv.com/lumenier-indestructible-kevlar-lipo-strap-"
               "10x180mm-3pcs.html", "8872", pack_qty=3, price_usd=8.49, verified=True,
               note="Lumenier 10 x 180 mm Kevlar strap, 3 per pack"),),
