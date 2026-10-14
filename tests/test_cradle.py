@@ -615,7 +615,7 @@ def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:
         assert st["link_frames"]["jam"][link]["worst"]["chord"], link
         assert f"link:{link}" in rows
     for p in pillars:
-        assert p in st["posts"]["jam"]
+        assert p.split(":", 1)[-1] in st["posts"]["jam"]
         assert rows[p]["jam_sf"] is not None
     for c in columns:
         assert rows[c]["kind"] == "column"

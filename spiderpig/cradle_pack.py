@@ -1131,11 +1131,15 @@ def flat_pack(mech, lk, t: float = 0.0) -> dict:
         by = {pc.key: pc for pc in pcs}
         placed = {b.name: b.placed_part() for b in mech.bodies
                   if b.part is not None and b.fab != "display"}
-        panel = {n: placed[n] for n in by["passive"].parts if not n.endswith("_clip")}
+        # the clips out are the cradle link's pins' (X and Y on B); a clevis pin inside the
+        # side (B's K and J2) keeps its clip and slides off with the panel
+        on_link = set(lk.links[link][0])
+        out_ = sorted(n for n in by["passive"].parts if n.endswith("_clip")
+                      and n.rsplit(".pin_", 1)[-1].removesuffix("_clip") in on_link)
+        panel = {n: placed[n] for n in by["passive"].parts if n not in out_}
         unit = {n: placed[n] for n in by["drive"].parts}
         out["slide_off"] = {"hits": [list(h) for h in slide_hits(panel, unit)],
-                            "clips_out": sorted(n for n in by["passive"].parts
-                                                if n.endswith("_clip"))}
+                            "clips_out": out_}
     return out
 
 
