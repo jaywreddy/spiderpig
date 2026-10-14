@@ -11637,11 +11637,11 @@
    "theta_samples": 360
   }
  },
- "engine_version": "0.1.0+d3451bed7c34",
+ "engine_version": "0.1.0+e3e9d91fb009",
  "generator": "tests/test_walk.py::test_strider_walk_reference_fixture_is_current",
  "source": {
   "file": "tests/_linkage.py",
   "name": "strider_walk_reference_doc"
  },
- "source_key": "gen-07b18de49a20ff11"
+ "source_key": "gen-681ba5da46b53fa0"
 }
