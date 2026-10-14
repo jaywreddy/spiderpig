@@ -189,14 +189,14 @@ precision | guide) → (api | control) → (mcp | server | cli).
 | `spiderpig/mechanism.py` | `Body` / `Joint` / `Mechanism`; `MechanismTemplate` for batched sampling. Planar: z = 0 |
 | `spiderpig/stack/` | the layer planner: `geometry.py`, `topology.py`, `plan.py` (`StackSpec`, `StackPlan`), `search.py` (`StackProblem`), `plan_z.py` (`finalize`), `verify.py` |
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
-| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`, `pair.py`), `transmissions/` (an arm's drives: `belt.py`, `capstan.py`), `rotary/` (an arm's turntable: presets, `turret.py`, `base_pair.py`), `tools.py` (an arm's tool), `plates.py`, `chassis.py`, `deck.py`, `robot.py` (`LAYOUTS`: a walker's two sides, an arm's turret), `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
+| `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`, `pair.py`), `transmissions/` (an arm's drives: `belt.py`), `rotary/` (an arm's turntable: the `mt4_compact` preset, `turret.py` its plan, `base_pair.py` its parts), `tools.py` (an arm's tool), `plates.py`, `chassis.py`, `deck.py`, `robot.py` (`LAYOUTS`: a walker's two sides, an arm's turret), `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
 | `spiderpig/actuators/` | stepper motors for an arm's inputs (`StepperSpec`: holding stiffness, microsteps) |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass and material constants (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`), vendor CAD (`cad.py`) |
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
 | `spiderpig/roles.py`, `fabmethods.py` | the construction roles (`BuildConfig.roles`: every later kind of part) and the fab methods, as registries |
 | `spiderpig/materials.py` | sheets, thinnest sheet per role, gap options |
-| `spiderpig/manufacture.py`, `milling.py` | the cut rules (SendCutSend / Ponoko); the user's mill (`MillPart`, the Carvera's rules, setup sheets) |
+| `spiderpig/manufacture.py` | the cut rules (SendCutSend / Ponoko) |
 | `spiderpig/fabricate.py` | `design_side()`, `fabricate_side()`, `fabricate()` |
 | `spiderpig/fabcache.py`, `keys.py`, `uptodate.py` | the fabrication cache, incremental cache keys, the build skip |
 | `spiderpig/shapes.py`, `rounding.py` | build123d primitives; tie-stable reported numbers |

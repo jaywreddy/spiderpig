@@ -26,7 +26,9 @@ from spiderpig.store import Store
 KEPT = {"crank": {"bolt", "bolt_round"}, "pin": {"chicago", "ball", "ball_pair"},
         "pillar": {"standoff", "ball_pillar", "ball_pair_pillar"}}
 
-REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table]
+REMOVED = [(field, key) for field, table in REMOVED_CONSTRUCTIONS.items() for key in table
+           if field in KEPT]
+"""The removed keys of the config's own fields (the roles' are below)."""
 
 
 def test_the_registries_are_the_kept_constructions():
@@ -36,11 +38,29 @@ def test_the_registries_are_the_kept_constructions():
     assert set(construction.CRANKS) == KEPT["crank"]
     assert set(construction.AXLES) == KEPT["pin"] | KEPT["pillar"]
     for field, table in REMOVED_CONSTRUCTIONS.items():
+        if field not in KEPT:
+            continue
         registry = construction.CRANKS if field == "crank" else construction.AXLES
         assert not set(table) & set(registry), field
         for key, (replacement, when, what) in table.items():
             assert replacement in KEPT[field], (field, key)
             assert when == "2026-10-07"
+            assert what
+
+
+def test_a_roles_removed_keys_are_gone_and_their_replacements_kept():
+    """The turret pruned to ``mt4_compact`` (2026-10-14): a role's removed keys (its plain
+    name's table) are out of its registry, each replacement in it."""
+    from spiderpig import roles as rolemod
+
+    roles = {f for f in REMOVED_CONSTRUCTIONS if f not in KEPT}
+    assert roles == {"turntable", "transmission"}
+    for name in roles:
+        choices = rolemod.choices(name)
+        for key, (replacement, when, what) in REMOVED_CONSTRUCTIONS[name].items():
+            assert key not in choices, (name, key)
+            assert replacement in choices, (name, key)
+            assert when == "2026-10-14"
             assert what
 
 
