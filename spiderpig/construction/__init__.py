@@ -29,8 +29,8 @@ from spiderpig.construction.crank import CrankGroup as CrankGroup
 from spiderpig.construction.pivots import PIVOTS
 from spiderpig.construction.plates import FramePlates, LinkPlates
 from spiderpig.construction.transmissions import TRANSMISSIONS as TRANSMISSIONS
-from spiderpig.construction.transmissions import DriveGroup as ArmDrive
-from spiderpig.servos.mount import DriveGroup
+from spiderpig.construction.transmissions import JointDrive
+from spiderpig.servos.mount import ServoDrive
 
 AXLES = {c.key: c for c in PIVOTS}
 # ``bolt`` (the default, config.DEFAULT_CRANKS): hex standoff crankpins on single aluminium
@@ -70,11 +70,11 @@ def _drive_groups(ctx: Context, config) -> list[Group]:
         out: list[Group] = []
         for name in lk.inputs:
             link, about = lk.drives[name]
-            out.append(ArmDrive(name, link, about,
+            out.append(JointDrive(name, link, about,
                                 transmission(config.role("transmission", name)),
                                 actuators.get(config.role("actuator", name))))
         return out
-    return [DriveGroup(ctx.servo)]
+    return [ServoDrive(ctx.servo)]
 
 
 def _crank_groups(ctx: Context, config) -> list[Group]:

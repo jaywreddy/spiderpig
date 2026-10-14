@@ -30,7 +30,7 @@ from spiderpig.construction.robot import assemble_robot, robot_groups
 from spiderpig.construction.underside import underside
 from spiderpig.hardware.catalog import sheet_name
 from spiderpig.mechanism import Mechanism
-from spiderpig.servos.mount import DriveGroup
+from spiderpig.servos.mount import ServoDrive
 from spiderpig.stack import (
     Clearance,
     ClearanceError,
@@ -76,7 +76,7 @@ class SideDesign:
     facts: CrankFacts | None = None     # the crank router's static facts
 
     @property
-    def drive(self) -> DriveGroup:
+    def drive(self) -> ServoDrive:
         return self.groups[0]
 
     @property

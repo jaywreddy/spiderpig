@@ -246,7 +246,7 @@ class WebFitMixin:
         e_min = min(e_want, 1.5)
         for sk in kinds:
             best = None
-            for L in sk.stock_lengths:
+            for L in sk.lengths:
                 e = L - seg - spacer
                 shim = 0.0
                 if e > e_max + EPS:

@@ -131,7 +131,7 @@ class Transmission:
     def check(self, ctx: Context, hub: DriveHub) -> None:
         return None
 
-    def realize(self, build: Build, group: DriveGroup, hub: DriveHub, out: Realized,
+    def realize(self, build: Build, group: JointDrive, hub: DriveHub, out: Realized,
                 layers: list[int]) -> None:
         raise NotImplementedError
 
@@ -191,7 +191,7 @@ def screw_length(sk, grip: float, depth: float) -> float:
     """A motor screw's stock length through ``grip`` mm of plate into a ``depth`` mm blind
     hole: at least :data:`ENGAGE` diameters of thread, never bottoming (0.3 mm short)."""
     lo, hi = grip + ENGAGE * sk.d, grip + depth - 0.3
-    for length in sk.stock_lengths:
+    for length in sk.lengths:
         if lo - 1e-6 <= length <= hi + 1e-6:
             return float(length)
     raise ConstructionError(f"no stock M{sk.d:g} screw goes through {grip:g} mm into the "
@@ -200,7 +200,7 @@ def screw_length(sk, grip: float, depth: float) -> float:
 
 
 @dataclass
-class DriveGroup(Group):
+class JointDrive(Group):
     """One arm input's drive: a stepper on a frame plate and its transmission to the driven
     link's hub (module docstring). The drives on one pivot alternate sides: the first's
     motor under the outer plate (its hub under its link), the next's on the inner plate

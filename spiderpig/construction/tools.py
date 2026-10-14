@@ -478,10 +478,10 @@ def _hits(ctx: Context, plan, body: str, f: np.ndarray, ang: np.ndarray, rect: R
         lp = local(np.asarray(pts[ax.name], dtype=float))
         if (seg_rect_many(lp, lp, rect) < pin_head + MARGIN + lat.get(ax.name, 0.0)).any():
             return f"the axle at {ax.name}"
-    from spiderpig.construction.transmissions import DriveGroup
+    from spiderpig.construction.transmissions import JointDrive
 
     for g in groups:                            # a drive's belt or cord: static, its layers
-        if not isinstance(g, DriveGroup):
+        if not isinstance(g, JointDrive):
             continue
         hub = g.hub(ctx)
         if not crosses(hub.layers(plan.layers[hub.link])):
@@ -510,11 +510,11 @@ def _hits(ctx: Context, plan, body: str, f: np.ndarray, ang: np.ndarray, rect: R
 
 def drive_hubs(ctx: Context, groups) -> dict[str, float]:
     """Per frame pivot, the largest drive hub turning round it (its pulley or drum)."""
-    from spiderpig.construction.transmissions import DriveGroup
+    from spiderpig.construction.transmissions import JointDrive
 
     out: dict[str, float] = {}
     for g in groups:
-        if isinstance(g, DriveGroup):
+        if isinstance(g, JointDrive):
             axis = g.hub(ctx).axis
             out[axis] = max(out.get(axis, 0.0), g.transmission.hub_r(ctx))
     return out

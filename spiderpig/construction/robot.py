@@ -144,7 +144,7 @@ def mid_plane(design) -> float:
 class FrameTies(Group):
     """Side-level part of the frame ties and the deck rails: their screws' holes and pads in
     the inner frame plate (the screws' heads under the plate are the drive group's claims,
-    :meth:`servos.mount.DriveGroup.claims`)."""
+    :meth:`servos.mount.ServoDrive.claims`)."""
 
     name = "frame ties"
 

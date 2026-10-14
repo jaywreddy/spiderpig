@@ -1156,7 +1156,7 @@ The horn screws take shims under the head where a stock length is too long
 thread, else 0.1 mm DIN 988 steps). The horn holes keep the service's minimum hole and
 2 x t edge distance, the hub's and webs' rims 1 x t (`BoltCrank.web_edge_t`, the cut rules'
 error level). A crankpin within a screw head's reach of the horn's rim makes the printed
-horn spacer a layer thicker (`BoltCrank.hub_head_need`, `DriveGroup.spacer`). The crank is
+horn spacer a layer thicker (`BoltCrank.hub_head_need`, `ServoDrive.spacer`). The crank is
 rated by the hex's bearing in the plate's own pocket depth at the weaker of the plate's and
 the 300 MPa steel's yield (`hex_bearing_nm`, `hex_capacity`); the capped hex is rated in
 the hub's depth less the press's 0.1 mm.
@@ -1174,17 +1174,17 @@ note's `assembly`, an `assembly:` audit error).
 The router's rules for the crank (`BoltCrank.joint_rules`, `JointRules`) are in section
 5.3; the crank's plans use `heads="gap_sink"` (section 5.4).
 
-**The drive** (`servos/mount.py`, `DriveGroup`). The servo sits on top of the inner plate,
+**The drive** (`servos/mount.py`, `ServoDrive`). The servo sits on top of the inner plate,
 output face down, its axis on O, its body pointing away from the pillars. Its horn is
 turned on the toothed output shaft so the horn screws fall between the crank's webs, and a
 printed horn spacer sits between the horn and the hub plate. A linkage with a second input
 stops here with `ConstructionError`: there is one servo per side, so a second input has no
 drive. Every screw that comes up through the inner plate from the leg side (the servo's
 front screws, the frame ties', the deck rails') is the drive group's claim, its head in the
-gap under the plate (`DriveGroup.claims`, `chassis_screws`; the tie and rail positions are
+gap under the plate (`ServoDrive.claims`, `chassis_screws`; the tie and rail positions are
 known before a plan: `chassis.tie_points_ctx`, `deck.rail_screw_points`). A front screw
 hole with less than `Params.servo_screw_web_t` (1.0) x t of web to the horn's hole or a
-relief is left out (`DriveGroup.screw_web`; the front reliefs are cut at the model's
+relief is left out (`ServoDrive.screw_web`; the front reliefs are cut at the model's
 rectangle, `mount.RELIEF_CUT_GROW`); the servo uses all four front screws when the crank's
 hub sits a layer under the horn (`horn_layers`); `servo_screw_web_t=0` keeps all four.
 

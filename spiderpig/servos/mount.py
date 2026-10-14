@@ -9,7 +9,7 @@ Where the horn's outer face ends up inside the plate (a horn recessed into
 its case, like the XL430's), a printed **horn spacer** under the horn brings
 the coupling face down to the plate's bottom face; the crank's horn screws
 pass through it. The horn is turned on its spline so its holes sit between
-the crank webs (:meth:`DriveGroup.pattern_angle`).
+the crank webs (:meth:`ServoDrive.pattern_angle`).
 
 The plate gets the horn clearance hole, the front mounting-screw holes and a
 cut-out under every raised region of the servo's front face; the frame plate
@@ -17,7 +17,7 @@ grows a pad under the servo's footprint.
 
 **Mounting screws** go up through the plate into the servo's front face, so
 their heads sit under the plate, inside the leg stack. Only the front holes
-whose heads clear the crank hub are used (:meth:`DriveGroup.front_screws`;
+whose heads clear the crank hub are used (:meth:`ServoDrive.front_screws`;
 in the robot the rear face is screwed to the centre plates as well), and the
 drive group claims their heads: fixed points ``servo.screw<i>`` are added to
 the side's geometry, with a disc per head in the layer(s) under the plate
@@ -108,7 +108,7 @@ def _key(xy, u, z) -> tuple:
 
 @lru_cache(maxsize=64)
 def _placed_servo(spec: ServoSpec, key: tuple, state: tuple = ()):
-    """The servo in the world, cut back to what stands on the plate (see ``DriveGroup.realize``).
+    """The servo in the world, cut back to what stands on the plate (see ``ServoDrive.realize``).
     ``state``: the model in play (:func:`servos.model.cad_state`), so a switch or a
     download mid-process isn't served the earlier one."""
     ox, oy, ux, uy, plate_top = key
@@ -124,7 +124,7 @@ def _placed_servo(spec: ServoSpec, key: tuple, state: tuple = ()):
     return part
 
 
-class DriveGroup(Group):
+class ServoDrive(Group):
     """One servo on the inner frame plate."""
 
     name = GROUP

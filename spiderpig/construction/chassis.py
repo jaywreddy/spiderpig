@@ -197,7 +197,7 @@ class ServoFrame:
 
 
 def servo_frame(build: Build, drive) -> ServoFrame:
-    """The left servo's frame (the side's own servo) for ``drive`` (a :class:`DriveGroup`)."""
+    """The left servo's frame (the side's own servo) for ``drive`` (a :class:`ServoDrive`)."""
     u = np.asarray(drive.direction(build), dtype=float)
     u = u / np.linalg.norm(u)
     o = build.xy("O")
@@ -527,7 +527,7 @@ def _screw_choice(hole_key: str | None, grip: float, depth: float) -> tuple[Scre
     if parsed is None:
         raise ConstructionError(f"no screws modelled for the rear hole's {hole_key!r}")
     sk, _ = parsed
-    fits = [L for L in sk.stock_lengths if MIN_ENGAGE <= L - grip <= depth]
+    fits = [L for L in sk.lengths if MIN_ENGAGE <= L - grip <= depth]
     if not fits:
         raise ConstructionError(f"no {sk.key(0).rsplit('_', 1)[0]} length engages "
                                 f"{MIN_ENGAGE:g}..{depth:g} mm through {grip:g} mm of plate")
@@ -892,7 +892,7 @@ def _tie_parts(ctx, plan, tie_xy, z_mid: float, half: float, host, info, fastene
     shims = _shims(left)
     t_sh = round(sum(shims), 3)
     depth = min(thread_max, min(segs) / 2)
-    end = next(((L, L - t_in - t_sh) for L in bhcs.stock_lengths
+    end = next(((L, L - t_in - t_sh) for L in bhcs.lengths
                 if engage_min - EPS_CH <= L - t_in - t_sh <= depth + EPS_CH), None)
     stud = next(((L, (L - 2 * half) / 2) for L in M3_SET_LENGTHS
                  if 3.0 - EPS_CH <= (L - 2 * half) / 2 <= depth + EPS_CH), None)

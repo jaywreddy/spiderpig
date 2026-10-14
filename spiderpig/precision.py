@@ -101,7 +101,7 @@ class PlayMap:
 @dataclass(frozen=True)
 class InputBudget:
     """One input's drive at the output: its transmission's and motor's terms
-    (:meth:`construction.transmissions.DriveGroup.error_terms`) through the input's lever:
+    (:meth:`construction.transmissions.JointDrive.error_terms`) through the input's lever:
     backlash (repeatability), resolution, and the sag a payload's moment on the lever
     makes against the drive's stiffness."""
 
@@ -823,7 +823,7 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
     drive's stiffness, seen at the output (an upper bound: the whole lever horizontal); its
     homing, the zero its angle sensor leaves each time (:mod:`actuators.sensors`: a gauge
     by hand, an inclinometer)."""
-    from spiderpig.construction.transmissions import DriveGroup
+    from spiderpig.construction.transmissions import JointDrive
 
     if design is None:
         from spiderpig.fabricate import design_side, template_for
@@ -831,7 +831,7 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
         design = design_side(template_for(config), config)
     out = {}
     for g in design.groups:
-        if not isinstance(g, DriveGroup):
+        if not isinstance(g, JointDrive):
             continue
         t = g.error_terms(design.ctx)
         lever = lev.get(g.input, 0.0)                    # mm per radian

@@ -197,7 +197,7 @@ class StandoffAxle:
         _, _, wt = self.washer()
         depth = min(self.thread_max, self.min_segment / 2)
         best = None
-        lengths = SCREWS["bhcs", "3"].stock_lengths if self.size == "M3" else M4_BHCS_LENGTHS
+        lengths = SCREWS["bhcs", "3"].lengths if self.size == "M3" else M4_BHCS_LENGTHS
         for L in lengths:
             e = L - (pitch if plate else 0.0) - wt
             if self.min_engage - EPS <= e <= depth + EPS and (best is None or e > best[1]):

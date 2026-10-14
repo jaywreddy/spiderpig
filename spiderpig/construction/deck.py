@@ -864,7 +864,7 @@ def deck_clearance(mech) -> dict:
     (``overlapping``). ``blocked``: what stops the deck going in (:func:`deck_path`, the
     assembly's way down onto the rails). ``ok`` is all of it. The rails' screws are left
     out of the moving-part check: they come up through the inner plate from the leg side,
-    and their heads are the drive group's claims (:meth:`servos.mount.DriveGroup.claims`),
+    and their heads are the drive group's claims (:meth:`servos.mount.ServoDrive.claims`),
     which the planner keeps clear of every moving part in XY over the cycle wherever they
     sit, in the gap under the plate or sunk into the layer there (the plan's ``heads``)."""
     by_name = {b.name: b for b in mech.bodies}
