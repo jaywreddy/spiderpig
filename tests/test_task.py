@@ -198,3 +198,19 @@ def test_candidates_read_the_real_cards(tmp_path):
     assert trace.candidates[0].linkage == "hoecken"
     assert trace.candidates[0].ok
     assert "peaucellier_crank" in {c.linkage for c in trace.candidates}
+
+
+def test_an_arm_that_never_reaches_the_bench_misses_the_area():
+    """The turret's plan can say the tool never gets down to the bench (a riser under the
+    parts): the area check fails with that note, no number."""
+    task = Task.from_dict(PLACE)
+    c = tasks.Candidate("palletizer", "Palletizer", "arm", "single")
+    tasks._need(c, "area_mm", None, "estimated", "plan of x",
+                "the tool's tip stops 12.0 mm over the bench (a riser under the slides)")
+    tasks._judge(c, task, {})
+    area = next(k for k in c.checks if k.requirement == "area_mm")
+    assert area.ok is False
+    assert area.value is None
+    assert "riser" in area.detail
+    assert c.ok is False
+    assert c.scale is None

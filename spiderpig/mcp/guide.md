@@ -306,7 +306,7 @@ server process; the store keeps what they produced.
 - Leg modules are named presets (`single`, `double`, `decker`, `quad`, a linkage's own)
   with phases per leg; no explicit leg lists.
 - One machine per spec: no compound machines, no stacking of mechanisms.
-- No `tune` and no parameter `search`: one spec compiles one design; move parameters
+- No `tune` and no `search`: one spec compiles one design; move parameters
   yourself with `derive` and read `compare` (the card's `sensitivity` says which way each
   parameter pushes the foot path, or a mechanism's output). `candidates` ranks the
   registered linkages for a task at their own proportions (it suggests a `scale`, never

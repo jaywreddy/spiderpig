@@ -1228,3 +1228,43 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   and single-bearing pins) fails at a crash: `pin:E` jam SF 0.44 and `link:b4` 0.48, with
   the fixes the approved arm already has (an aluminium `b4`, the `ball_pair` pins, the
   links adjacent). DESIGNS.md regenerated from it.
+
+### 2026-10-14: the surfaces start from a task, for any kind of linkage (wave 2)
+
+- **The decision:** the ways in (the Python API, the MCP server, the viewer) take a task
+  and answer for every kind by what each linkage declares, toward the user's "one seamless
+  repo that can generate surfaces and linkages for a given task". A task
+  (`spiderpig.task.Task`: `walk`, `place` or `trace` and its numbers) names no linkage;
+  `api.candidates(task)` ranks the registered ones that can do it, each with its checks
+  (value, need, ok, tier, source) and a spec that asks for the task's numbers as targets,
+  and says why each other one can't. The MCP tool `candidates`, the resource
+  `spiderpig://schema/task` and the prompt `design(task)` replace the walker-only
+  prompt.
+- **Capabilities, never kinds:** feet (`Linkage.walks`), an output and its motion
+  (`spec.CAPABILITIES`), ranged inputs and how many, and the roles a design fills: a place
+  task takes three axes (two across the bench, one to lift), so one input (a path) and two
+  in a plane are refused with their count, and an arm's two inputs plus its turntable's yaw
+  (the role `turntable` applies) qualify. An arm's `repeatability_mm` is ISO 9283's
+  `precision.rp_mm` (what a maker quotes), a cranked mechanism's the worst-case bound.
+- **Cheap first, nothing fabricated:** the cards and the kinematics (an arm's reach over its
+  box about its yaw axis is a `bound`: it refutes, never confirms, since the bench its
+  turret stands on is the plan's); then what the store already measured for the same
+  machine whatever its targets; `measure=N` plans the best N (an arm's plan took 4-6 min
+  cold at load ~70, and its re-made plan 3.7 min). Measured: the approved arm's tool gets
+  down to the bench 149-288 mm out from its yaw axis over 240 deg of yaw, so a 200 x 150 mm
+  area misses by 29 mm (`sector_fit`); x1.19 of its lengths would hold it (unchecked, the
+  base's keep-out doesn't scale); its stored ISO RP, 0.042 mm, meets 0.1 mm.
+- **The viewer:** `/api/modes?linkage=` is the views the linkage declares
+  (`server.app.modes_of`: a robot per `config.robot_layout`, a walker's module sides, an arm's
+  or a mechanism's one side); the page's picker follows the linkage on screen, and a machine
+  picker lists every linkage without feet (it listed mechanisms only, and an arm's
+  `?linkage=` fell back to the Strider).
+- **The arm's guide:** the turret's base goes on in seven steps on the bench, then the side
+  stands on it (`base_pair.assembly`, its sentences the turret's meta, tagged), in the
+  layout's order (`assembly.LAYOUT_ORDERS`, `TURRET_ORDER`). The wiring step and its diagram
+  are the controller's declared wiring (`Controller.nodes`, `wiring`, `wiring_text`,
+  `wiring_extras`; `assembly.controller_ops`, `guide.wiring.wiring_of`): the walker's
+  harness sentence moved from the deck's hook into `esp32_bus_servo`, word for word; the
+  arm's step names its supply, host, ports (`q1 on X, q2 on Y, q3 on Z`), outputs and
+  camera, and its parts list buys the board's lines. A BOM line is a box only where no body
+  is its role's.

@@ -135,7 +135,8 @@ from spiderpig.api.store_ops import (
     list_designs,
     load,
 )
-from spiderpig.api.tasks import Candidate, CandidatesReport, candidates
+from spiderpig.api.tasks import Candidate, CandidatesReport
+from spiderpig.api.tasks import rank_candidates as candidates
 from spiderpig.api.walking import (
     _MODULE_STRIDES,
     NO_TRAVEL_MM,

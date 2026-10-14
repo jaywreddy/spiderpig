@@ -1,5 +1,6 @@
-"""A task's candidates (:func:`candidates`): which registered linkages can do what a
-:class:`spiderpig.task.Task` asks, ranked, with the numbers that justify each verdict.
+"""A task's candidates (:func:`rank_candidates`, the API's ``candidates``): which
+registered linkages can do what a :class:`spiderpig.task.Task` asks, ranked, with the
+numbers that justify each verdict.
 
 The linkages are read by what they declare, never by their kind's name: feet
 (:attr:`linkage.Linkage.walks`), an output point (:data:`spec.CAPABILITIES` ``output``)
@@ -105,7 +106,7 @@ class Candidate:
 
 @dataclass
 class CandidatesReport:
-    """:func:`candidates`' answer: the task as read, the ranked ``candidates``, the
+    """:func:`rank_candidates`' answer: the task as read, the ranked ``candidates``, the
     ``excluded`` linkages with why (the capability each lacks), ``notes``."""
 
     task: dict
@@ -144,7 +145,7 @@ class CandidatesReport:
 # ---------------------------------------------------------------------------
 
 
-def candidates(task: Task | dict, store: Store | str | Path | None = PROJECT, *,
+def rank_candidates(task: Task | dict, store: Store | str | Path | None = PROJECT, *,
                measure: int = 0, limit: int | None = None) -> CandidatesReport:
     """The registered linkages that can do ``task`` (a :class:`spiderpig.task.Task` or its
     document; :class:`spiderpig.spec.SpecErrors` for an invalid one), ranked: those that
@@ -539,11 +540,15 @@ def _measure(c: Candidate, task: Task, st: Store | None) -> None:
             if plans is not None:
                 tp, _ = plans(d.side, d.config)
                 lo, hi = tp.h.get("reach_lo", math.nan), tp.h.get("reach_hi", math.nan)
+                src = f"plan of {d.id}: where the tool's tip gets down to the bench"
+                c.numbers["yaw_deg"] = list(tp.range_deg)
                 if math.isfinite(lo) and math.isfinite(hi):
-                    c.numbers["yaw_deg"] = list(tp.range_deg)
                     _place_reach(c, task, (lo, hi), tp.range_deg, "estimated",
-                                 f"plan of {d.id}: where the tool's tip gets down to the "
-                                 "bench, past the base")
+                                 src + ", past the base")
+                elif task.area() is not None:        # it never gets down to the bench
+                    c.numbers.pop("reach_band_mm", None)
+                    _need(c, "area_mm", None, "estimated", src,
+                          next((n for n in tp.notes if "bench" in n), "it never does"))
 
 
 # ---------------------------------------------------------------------------
@@ -577,12 +582,13 @@ def _judge(c: Candidate, task: Task, scales: dict[str, list[str]]) -> None:
     area = task.area()
     if "area_mm" in ev and area is not None:
         tier, src, detail = ev["area_mm"]
-        slack = float(c.numbers["area_mm"])
+        v = c.numbers["area_mm"]
+        slack = -math.inf if v is None else float(v)     # (None: it never gets down there)
         met = slack >= 0
-        checks.append(Check("area_mm", slack, f"{area[0]:g} x {area[1]:g} mm in reach",
-                            _verdict(met, tier), tier, src,
-                            ("slack " if met else "misses by ") + f"{abs(slack):.1f} mm: "
-                            + detail))
+        checks.append(Check("area_mm", None if v is None else slack,
+                            f"{area[0]:g} x {area[1]:g} mm in reach", _verdict(met, tier), tier,
+                            src, detail if v is None else ("slack " if met else "misses by ")
+                            + f"{abs(slack):.1f} mm: " + detail))
         if not met:
             misses.append(("area_mm", 0.0))
     if task.height() and "height_mm" in ev:
@@ -600,7 +606,7 @@ def _judge(c: Candidate, task: Task, scales: dict[str, list[str]]) -> None:
     c.score = round((sum(1.0 for k in scored if k.ok) + sum(s for _, s in misses))
                     / len(scored), 3) if scored else 1.0
     c.scale = _scale(c, needs, scales.get(c.linkage, ()))
-    if area is not None and c.numbers.get("area_mm") is not None and c.numbers["area_mm"] < 0:
+    if area is not None and (c.numbers.get("area_mm") or 0.0) < 0:
         c.scale = _area_scale(c, area, scales.get(c.linkage, ())) or c.scale
     c.why = _why(c, task)
 
