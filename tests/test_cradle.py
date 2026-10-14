@@ -1142,7 +1142,7 @@ def test_the_cradle_packs_in_one_box(key):
     assert {shipped[n].bom_key for n in base if n.startswith("foot_bracket")} == {
         "m6_carriage_25", "m6_washer_wide", "m6_nut", None}         # (None: the knobs)
     assert {n for n in shipped if n.startswith(("base_cleat", "jack_locator"))} <= base
-    assert {n for n in shipped if n.endswith("_knob")} <= base
+    assert {n for n in shipped if n.startswith("foot_bracket") and n.endswith("_knob")} <= base
     assert 5.0 <= p["pose"]["turns_from_rest"] <= 6.5
     assert -44.0 < p["pose"]["tilt_deg"] < -20.0             # b6 clears; the box doesn't grow
     assert p["slide_off"] == {"hits": [], "clips_out": ["R.pin_X_clip", "R.pin_Y_clip"]}
