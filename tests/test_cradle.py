@@ -943,13 +943,13 @@ def test_the_cradle_packs_in_one_box(key):
     spares = set(by) - MODULES[key]
     assert MODULES[key] <= set(by)
     assert all(by[k]["label"].startswith(("Adapter", "Collar")) for k in spares), spares
-    # the cradle box (both cradle links, the ties, the saddles, the light, the base stop and
-    # whatever is fastened in it: the drawn bottle's adapters) travels on the drive side; the
-    # passive side has the rest of R
+    # the cradle box (both cradle links, the ties, the saddles with their V blocks and lip
+    # gauge, the light, the base stop) travels on the drive side; the passive side has the
+    # rest of R
     link = cr.cradle_link(cfg.lk)
     drive, passive = set(by["drive"]["parts"]), set(by["passive"]["parts"])
     assert {"L.gearbox", f"L.{link}", f"R.{link}", "tie_Tf1", "front_saddle", "rear_saddle",
-            "led", "base_stop_spine"} <= drive
+            "led", "base_stop_gate", "front_saddle_gauge"} <= drive
     assert {a for a, _ in mech.meta["fastened"] if a in shipped} <= drive
     assert {n for n in shipped if n.startswith("R.") and n != f"R.{link}"} <= passive
     assert {"R.pin_X_pin", "R.pin_X_clip", "R.pin_Y_clip", "R.frame_outer"} <= passive
