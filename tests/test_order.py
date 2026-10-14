@@ -200,7 +200,13 @@ def test_cutting_is_an_area_and_cut_length_estimate_fitted_to_sendcutsends_quote
     prices don't support one). A part at one off costs at least the sheet's least (3 mm
     acrylic 2.00, 5052 2.70, 6061 3.20), at 4 off SendCutSend's break (1.33 of 2.00: linear
     between its 2 and 10 off prices)."""
-    from spiderpig.hardware.bom import cut_estimate, same_files
+    from spiderpig.hardware.bom import cut_estimate as priced
+    from spiderpig.hardware.bom import same_files
+
+    def cut_estimate(key, parts) -> float:      # every sheet here is priced
+        out = priced(key, parts)
+        assert out is not None, key
+        return out
 
     acrylic = cut_estimate("acrylic_3mm", [(4.58, 8), (16.7, 4), (11.0, 4), (8.66, 4),
                                            (16.7, 4), (11.0, 4), (8.65, 4), (93.1, 1)])

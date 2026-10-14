@@ -67,12 +67,14 @@ def test_where_the_load_comes_in_and_whats_driven_is_by_capability():
     from spiderpig.linkage.stiffness import drives, outputs
 
     pal = linkage.get("palletizer")
+    assert pal.output is not None
     assert outputs(pal) == ((pal.output.link, pal.output.point),)
     assert drives(pal) == {pal.drives[k][0]: pal.drives[k][1] for k in pal.inputs}
     strider = linkage.get("strider")
     assert outputs(strider) == (("b3", "J4"), ("b7", "J8"))
     assert drives(strider) == {"conn": "O"}
     hp = linkage.get("hoecken_pantograph")
+    assert hp.output is not None
     assert outputs(hp) == ((hp.output.link, hp.output.point),)
     assert drives(hp) == {"conn": hp.crank[0]}
 
