@@ -200,6 +200,10 @@ What is cached, and when it is stale:
   without its optimality proof (`optimal = False`, the proof says why); when the check
   fails it is solved again. A new design of the same resolved spec under a new engine
   (a different id) seeds its plan from the old record the same way (`reused` = that id).
+  The planner's CPU budget (`SPIDERPIG_PLAN_SECONDS`) is not part of a design's id, so the
+  record keeps the one its search had (`PlanReport.budget_s`, `None` for no clock); a
+  reused plan reports the record's, with a warning when this process's differs, and
+  `budget_recorded` false for a record written before 2026-10-14.
 - A **build** reloads its parts from STEP (`api.attach_build`: masses, layers, groups
   and the envelope recomputed from the solids; `Part.pose` restored; the quad's 197 parts
   in a few seconds against an 8 s build) when the manifest's `t` and engine match;
