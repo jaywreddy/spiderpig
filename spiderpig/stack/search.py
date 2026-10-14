@@ -117,6 +117,7 @@ class StackProblem:
             for n in (*members, *links):
                 self.spans.setdefault(n, []).append(fact)
         self._fixed: dict[int, dict[int, float]] = {}
+        self.syms: list = []          # (spec.symmetry: stack.drive) the leg swaps it may use
 
     # -- the search's z -----------------------------------------------------------------
 

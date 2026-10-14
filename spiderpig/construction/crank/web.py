@@ -73,6 +73,8 @@ class WebFitMixin:
         pin_min_engage: float
         pin_od: float
         sleeve_od: float
+        stub_seat: float
+        recess_max: float
 
         @staticmethod
         def plate_z(L: Layout, k: int, t: float, hub: int | None = None
@@ -84,6 +86,8 @@ class WebFitMixin:
         # (HexFitMixin's)
         @staticmethod
         def hex_screw() -> tuple[float, float]: ...
+
+        def hex_lengths(self) -> tuple[float, ...]: ...
 
         @staticmethod
         def hex_washer() -> tuple[float, float, float]: ...

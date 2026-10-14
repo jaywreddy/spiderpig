@@ -54,7 +54,9 @@ def test_nothing_found_within_the_node_budget_raises_with_the_tally():
     assert msg.startswith("klann_double: no layer plan found with up to ")
     assert "; the 5 search-step budget ran out; what blocked it" in msg
     assert e.value.blockers
-    assert "sizes: 3-" in msg and "layers ruled out" in msg and " not tried" in msg
+    assert "sizes: 3-" in msg
+    assert "layers ruled out" in msg
+    assert " not tried" in msg
 
 
 def test_the_jansen_quad_has_no_plan_in_fourteen_layers():

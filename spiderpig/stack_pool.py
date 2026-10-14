@@ -19,6 +19,7 @@ import contextlib
 import multiprocessing
 import traceback
 from multiprocessing.connection import Connection, wait
+from multiprocessing.process import BaseProcess
 from typing import TYPE_CHECKING, cast
 
 from spiderpig.stack.drive import Here, Job, run_job
@@ -53,7 +54,7 @@ class Pool(Here):
         super().__init__(subs, seconds)
         self.n, self.seconds = n, seconds
         self.ctx = multiprocessing.get_context("fork")
-        self.procs: list[tuple[multiprocessing.process.BaseProcess, Connection]] = []
+        self.procs: list[tuple[BaseProcess, Connection]] = []
         self.busy: dict[Connection, Job] = {}
         self.queue: list[Job] = []
         self.sent: set[Job] = set()
