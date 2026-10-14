@@ -575,7 +575,7 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
     extras.append(BomLine("m3_nut", 2 * len(tp.brackets), "turret: the brackets' screws"))
     extras.append(BomLine("spiral_wrap_6mm", 1.0, "turret: the cables' loop round the base"))
 
-    assembly = [   # (the hook's tag, its sentence): :func:`assembly` turns them into ops
+    steps = [   # (the hook's tag, its sentence): :func:`assembly` turns them into ops
         ("columns", "Screw the seven hex columns between the bottom plate and the top plate, "
                     "M4 button heads through each plate (a washer under each on the "
                     "acrylic); tighten them before the bearings go in."),
@@ -624,7 +624,7 @@ def turret_parts(tp, ctx: Context) -> tuple[list[Body], list[str], list[BomLine]
             "columns": list(tp.columns),
             "reach_mm": [round(lo_r, 1), round(hi_r, 1)] if math.isfinite(hi_r) else None,
             "notes": list(tp.notes), "fastened": fastened,
-            "parts": sorted(b.name for b in bodies), "assembly": assembly}
+            "parts": sorted(b.name for b in bodies), "assembly": steps}
     return bodies, turning, extras, info
 
 
