@@ -177,9 +177,10 @@ the frame loop (`4_*`) under 1 %. 391 bodies share 246 meshes. Re-measure before
 The straight-line program of each linkage (`spiderpig/linkage/engine.py`) is compiled once
 per process; a leg's phase is a time shift (before `19e020e` the symbolic solve ran per leg
 per frame). Don't reintroduce per-leg or per-frame solves.
-The profiler class is `_Profiler` in `spiderpig/bake.py`; `spiderpig/tools/profiler.py` is
-its generalised copy behind `spiderpig build --profile` (`build_profile.STAGES`). Add a
-bracket with `prof.timed("label")`, `prof.bump(...)`, `prof.set_metric(...)`.
+One profiler class, `spiderpig/tools/profiler.py`'s `Profiler` (outside the engine's hash):
+the bake's (`bake._profiler`, logger `bake_gltf`) and `spiderpig build --profile`'s
+(`build_profile.STAGES`). Add a bracket with `prof.timed("label")`, `prof.bump(...)`,
+`prof.set_metric(...)`.
 
 ## Repository map
 
