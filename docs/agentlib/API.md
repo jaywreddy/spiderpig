@@ -25,11 +25,13 @@ A **Task** says what the machine must do before any linkage is named: `do` (`wal
 like a Spec, `SpecErrors` with the nearest key). A bare number is the bound the task means
 (`TaskField.bound`: a stride's least, a repeatability's most); a target object says it
 exactly. The numbers that are Spec targets (`TaskField.spec`: `stride_mm` is
-`motion.stride_mm`; an arm's `repeatability_mm` is ISO 9283's `precision.rp_mm`, a cranked
-mechanism's the worst-case `precision.repeatability_mm`) become each candidate's spec
-targets; the task's own geometry (`area_mm`, `points_mm` (their extent), `height_mm`,
-`path_mm` (its principal-axis length a stroke, a straight one a straightness within
-`tol_mm`), `obstacle_mm` (a lift and a ground clearance)) is read by the checks.
+`motion.stride_mm`; `repeatability_mm` is the worst-case `precision.repeatability_mm` for
+every kind, an arm's ISO 9283 RP shown beside it as `numbers.rp_mm`) become each
+candidate's spec targets; the task's own geometry (`area_mm`, `points_mm` (their extent),
+`height_mm`, `path_mm` (`[x, y]` in the output's plane: its principal-axis length a
+stroke, a straight one a straightness within `tol_mm`), `obstacle_mm` (a lift and a ground
+clearance: a `lift_mm` the task gives keeps its max, tol, weight and hardness, its min
+raised to the obstacle)) is read by the checks.
 
 | field | task | bare number | spec target |
 |---|---|---|---|
@@ -37,9 +39,9 @@ targets; the task's own geometry (`area_mm`, `points_mm` (their extent), `height
 | `obstacle_mm` | walk | (plain) | `motion.lift_mm`, `motion.ground_clearance_mm` min |
 | `area_mm` `[w, d]`, `points_mm`, `height_mm` | place | (geometry) | - |
 | `payload_g` | place | (plain) | `precision.payload_g` (ranged inputs) |
-| `repeatability_mm`, `accuracy_mm` | place, trace | max | `precision.rp_mm` (ranged) / `precision.repeatability_mm`; `precision.accuracy_mm` |
+| `repeatability_mm`, `accuracy_mm` | place, trace | max | `precision.repeatability_mm` (every kind: the worst-case bound), `precision.accuracy_mm` |
 | `motion`, `path_mm`, `tol_mm` | trace | (geometry) | - |
-| `stroke_mm`, `on_line_fraction`, `swing_deg`, `dwell_deg` / `straightness_mm`, `rotation_deg` | trace | min / max | `motion.*` (a cranked output's) |
+| `stroke_mm`, `on_line_fraction`, `swing_deg`, `dwell_deg` / `straightness_mm`, `rotation_deg` | trace | min / max | `motion.*` (a cranked output's; an arm's stroke and straightness are its controller's, checked, no target) |
 | `cost_usd`, `mass_g` | every task | max | `budget.cost_usd`, `size.mass_g` |
 
 `api.candidates(task, store=PROJECT, *, measure=0, limit=None)` returns a
@@ -56,13 +58,21 @@ place task needs three axes). Cheapest evidence first, nothing fabricated: the *
 (a walker's card: each module's stride at nominal feet, the modules that don't walk left
 out, a foot's lift; a cranked mechanism's output check; an arm's output over its inputs'
 box about its yaw axis, a `bound`, tier of a necessary condition that refutes and never
-confirms, since the bench its turret stands on is the plan's), the **store** (a design of
+confirms, since the bench its turret stands on is the plan's; an arm's trace under
+control: the task's `path_mm`, else a line of its stroke, solved point by point by the
+controller's inverse kinematics, `tasks.trace_path` with `control.arm.ArmModel.ik`, a
+waypoint every `tasks.SEG_MM` as `control.host.line` moves, the arm standing where the
+path fits: a `path_mm` check, the stroke `measured`, and the tip's band across the line a
+`bound` on the straightness until a precision budget adds twice the lost motion; a
+`dwell_deg`, `swing_deg`, `on_line_fraction` or `rotation_deg` measures a crank's turn and
+excludes it), the **store** (a design of
 the candidate's spec, whatever its targets, lends this engine's walk, check, precision and
-verify reports: an arm's ISO RP from a stored `precision`), then **measure** (`measure=N`:
+verify reports: an arm's worst-case bound and ISO RP from a stored complete `precision`; a
+metric the budget left unbounded, a singular pose, is a miss), then **measure** (`measure=N`:
 the best N that pass resolved into the store, checked, planned, walked or budgeted, an
 arm's bench band read off its turret's plan, `base_pair.table_reach`; an arm's plan is
 minutes cold). They rank by verdict, a missed length a `scale` meets, score, then the
-task's merit (`tasks._MERIT`). `sector_fit(w, d, lo, hi, span_deg)` is the area check: a
+task's merit (`tasks._MERIT`; a bound's number is no merit). `sector_fit(w, d, lo, hi, span_deg)` is the area check: a
 `w` x `d` rectangle in a band `lo`..`hi` out from an axis over a yaw, the better way round.
 
 ## The Spec (v1)
@@ -75,13 +85,13 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | field | values | default (inferred by `resolve`, written to `design.resolved`) |
 |---|---|---|
 | `version` | `"1"` | `"1"` |
-| `kind` | `walker` (feet) \| `mechanism` (a crank, an output) \| `arm` (ranged inputs, no crank) | required |
-| `linkage.key` | a registered linkage (`api.list_linkages()`) | required; its kind must match |
+| `kind` | `walker` (feet) \| `mechanism` (a crank, an output) \| `arm` (ranged inputs, no crank) | the linkage's; when given it must match |
+| `linkage.key` | a registered linkage (`api.list_linkages()`) | required |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`api.describe(key)` lists them: a length must be > 0; an angle, or a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules, **legs per side** (the robot has two): `single` (1: a 2-legged side pair), `double` (2, a mirrored pair: 4 legs), `decker` (2 on one crankshaft: 4), `quad` (4: 8 legs), or its own; there is no three-leg module, and which modules walk is on the card (`describe(key).modules[m].walks`: a stride of at least 20 mm a turn; a few mm is a shuffle, and a stride under 1 mm gets `walk`'s "no net travel" note) | the linkage's own default module (Strider: `double`), else `quad` (walker), `single` (mechanism) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
-| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism, arm) |
-| `legs.robot` | an arm's whole robot (`true`: its side on the turntable, its tool) or its side alone (`false`); an arm's only | `true` |
+| `legs.robot` | every kind's one word: the whole robot its kind makes (`true`: a walker's two mirrored sides and the chassis, an arm's side on its turntable with its tool) or its side alone (`false`); a mechanism makes none (`false` only) | the kind's (`config.default_robot`): `true` for a walker and an arm, `false` for a mechanism |
+| `legs.sides` | `robot`'s older name, still read (a stored spec's): a walker's `2` is `robot: true`, `1` `false`; `1` for any other kind; contradicting a `robot` given beside it is an error. `Spec.from_dict` writes it into `robot` (`spec.legs_robot`), and `design.resolved` keeps `legs.sides` as before, so every id stays | - |
 | `materials.sheet` | a catalog sheet item: `acrylic_3mm`, `plywood_3mm` (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness: **the layer pitch** every construction sizes its parts by (a value more than 12 % off the sheet's nominal is a warning on `resolve`; a `check` at too thin a pitch fails at `construction`; a standoff pillar's end screw names the thickness that works as a checked recommendation) | the sheet's nominal |
 | `materials.servo` | `sts3215`, `xl330_m288`, `xl430_w250` | `sts3215` |
@@ -355,7 +365,7 @@ removed on 2026-10-07: `config.REMOVED_CONSTRUCTIONS`).
 
 One side of the TrotBot heel at its drawing's 7 mm unit (35 s in all; the `single`
 module because a one-leg-per-side robot doesn't walk in the quasi-static model, so
-its stride would read 0). It is one side (`sides: 1`), so the parts and bodies are
+its stride would read 0). It is one side (`robot: false`), so the parts and bodies are
 `b7`; on the robot they are `L.b7` and `R.b7` (`design.mech.body("L.b7")`), and the
 same edit works there because `Part.locate` puts the cut in the part's own frame
 (a robot's left side sits below the mid-plane, its right side mirrored above it):
@@ -365,7 +375,7 @@ from build123d import Cylinder
 from spiderpig import api, apply_patch
 
 spec = {"kind": "walker", "linkage": {"key": "trotbot_heel", "params": {"unit": 7}},
-        "legs": {"module": "single", "sides": 1},
+        "legs": {"module": "single", "robot": False},
         "size": {"stack_mm": {"max": 45}}, "motion": {"ground_clearance_mm": {"min": 30}}}
 design = api.resolve(spec)
 report = api.check(design)

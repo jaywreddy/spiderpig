@@ -12,11 +12,15 @@ evidence first, nothing fabricated:
    card (:func:`describe`: each module's stride in the walk model, one foot's lift), a
    cranked mechanism's output check (stroke, straightness, swing, dwell...), an arm's
    output over its inputs' box (how far out and how high it reaches about the yaw axis).
-   An arm's reach there is a bound: the bench the turret stands it on is the plan's.
+   An arm's reach there is a bound: the bench the turret stands it on is the plan's. An arm
+   traces under control: the task's path (else a line of its stroke) is solved point by
+   point by the controller's inverse kinematics (:func:`trace_path`,
+   :class:`spiderpig.control.arm.ArmModel`), its band across the line a bound on the
+   straightness until its precision budget adds the lost motion.
 2. **stored** (free): a design of the candidate's spec already in the store (whatever
    targets it carried) lends its reports, this engine's only: the plan, the walk with the
-   feet at their layers, the precision budget (an arm's ISO 9283 RP), a verify's cost and
-   mass.
+   feet at their layers, the precision budget (its worst-case bound; an arm's ISO 9283 RP
+   beside it), a verify's cost and mass.
 3. **measure** (``measure=N``, opt-in): the best ``N`` that pass are resolved into the
    store, checked and planned (an arm's plan is minutes cold: the store keeps it), walked,
    and a cranked mechanism's precision budget taken (an arm's needs its side fabricated:
@@ -31,6 +35,7 @@ it offers one).
 
 from __future__ import annotations
 
+import itertools
 import math
 import time
 from collections.abc import Sequence
@@ -44,7 +49,8 @@ from spiderpig import linkage
 from spiderpig import roles as rolemod
 from spiderpig.api import walking
 from spiderpig.api.cards import describe, scale_params_table
-from spiderpig.config import BuildConfig, default_module, robot_layout
+from spiderpig.config import BuildConfig, default_module, robot_layout, role_field_default
+from spiderpig.control.arm import ArmModel, IKError
 from spiderpig.design import canonical_json, jsonable
 from spiderpig.spec import (
     CAPABILITIES,
@@ -208,7 +214,7 @@ def _walk(lk: linkage.Linkage, task: Task, st: Store | None) -> list[Candidate] 
         motion = lk.output.motion if lk.output else "no"
         return f"{lk.key} has no feet (its output is a {motion}): it doesn't walk"
     card = describe(lk.key, st)
-    rpm = walking.walk_model.servo_info(BuildConfig().servo)["rpm_max"]
+    rpm = walking.walk_model.servo_info(role_field_default(lk, "servo"))["rpm_max"]
     lift = (card.get("foot_path") or {}).get("lift_mm")
     out = []
     shuffles = []
@@ -347,15 +353,13 @@ def _trace(lk: linkage.Linkage, task: Task, st: Store | None) -> list[Candidate]
     c = Candidate(lk.key, lk.name, lk.kind, default_module(lk.key))
     c.numbers["motion"] = out.motion
     needs = task.needs()
-    if lk.ranged:     # any path in its box, its drives coordinated: its box's extent
-        asked = [k for k in needs if k in OUTPUT_TARGETS and k != "stroke_mm"]
+    if lk.ranged:     # any path its inverse kinematics reach, its drives coordinated
+        asked = [k for k in needs if k in OUTPUT_TARGETS and k not in RANGED_TRACE]
         if asked:
-            return (f"{lk.key} traces under control (its drives coordinated): its output's "
-                    f"{', '.join(asked)} is the controller's, not the linkage's")
-        reach = box_reach(lk)
-        ext = (reach["r_mm"][1] - reach["r_mm"][0]) if reach["r_mm"] else 0.0
-        _need(c, "stroke_mm", math.hypot(ext, reach["rise_mm"]), "bound",
-              "kinematics: its box's diagonal (a line inside it may be shorter)")
+            return (f"{lk.key} traces under control (its drives coordinated, a path at a "
+                    f"time): {', '.join(asked)} measures a crank's turn, which its ranged "
+                    "inputs don't make")
+        _ranged_trace(c, lk, task, needs)
         return [c]
     has = output_metrics(lk)
     lack = [k for k in needs if k in OUTPUT_TARGETS and k not in has]
@@ -373,19 +377,155 @@ def _trace(lk: linkage.Linkage, task: Task, st: Store | None) -> list[Candidate]
     return [c]
 
 
+RANGED_TRACE = ("stroke_mm", "straightness_mm")
+"""The output metrics an arm's traced path has (a line's length and its band across); the
+others measure a crank's turn."""
+SEG_MM = 5.0
+"""The controller's segment along a straight move (:func:`spiderpig.control.host.line`'s
+``seg_mm``): an inverse-kinematics waypoint every this many mm, the joints moving
+linearly between them."""
+CHORD_SAMPLES = 4
+"""Poses read between two waypoints (the tip's sag off the line there)."""
+LINE_DEG = (0.0, 90.0, 45.0, -45.0)
+"""The directions a line of the task's stroke is tried in, in the arm's plane, when the
+task gives no path."""
+
+
+def arm_model(lk: linkage.Linkage) -> ArmModel:
+    """An arm's side alone at its defaults (:class:`spiderpig.control.arm.ArmModel`, no
+    design: no turntable, no tool), its output point in its plane."""
+    assert lk.output is not None
+    ranges = {q: (math.radians(lo), math.radians(hi)) for q, (lo, hi) in lk.ranges.items()}
+    return ArmModel(lk.key, lk.values(), lk.output.point, tuple(lk.inputs), ranges)
+
+
+def _densify(path: np.ndarray, seg: float) -> np.ndarray:
+    """``path``'s points with a point every ``seg`` mm or less along each leg between them."""
+    out = [path[:1]]
+    for a, b in itertools.pairwise(path):
+        n = max(1, math.ceil(float(np.linalg.norm(b - a)) / seg))
+        out.append(a + (b - a) * (np.arange(1, n + 1)[:, None] / n))
+    return np.concatenate(out)
+
+
+def trace_path(lk: linkage.Linkage, path, n: int = 41, tries: int = 8) -> dict:
+    """Where an arm traces ``path`` (``[x, y]`` points in its plane, y up), as the
+    controller drives a line (:func:`spiderpig.control.host.line`): a waypoint every
+    :data:`SEG_MM` along each leg of the path, each solved by :meth:`ArmModel.ik` (its
+    inputs' ranges and band), the joints moving linearly between them. The arm stands where
+    the path fits (the path translated, not turned): the placements whose points lie
+    deepest inside the inputs' box (its ``n`` x ``n`` grid) are tried first, ``tries`` of
+    them. ``ok``; the ``offset_mm`` added to the path's points; ``band_mm``, the tip's band
+    across the path's principal line (the path's own band and the sag between waypoints);
+    ``chord_mm``, the sag alone; ``why`` a miss."""
+    from scipy.spatial import KDTree
+
+    model = arm_model(lk)
+    p = np.asarray(path, dtype=float)[:, :2]
+    pts = _densify(p, SEG_MM)
+    axes = [np.linspace(*model.ranges[q], n) for q in model.inputs]
+    flat = [m.ravel() for m in np.meshgrid(*axes, indexing="ij")]
+    idx = [m.ravel() for m in np.meshgrid(*[np.arange(n)] * len(axes), indexing="ij")]
+    with np.errstate(all="ignore"):
+        f = np.asarray(model.solution().at(*flat)[model.output], dtype=float).reshape(-1, 2)
+    depth = np.min([np.minimum(i, n - 1 - i) for i in idx], axis=0).astype(float)
+    if lk.band is not None and len(flat) == 2:      # the band's edges, in grid steps
+        step = min(math.degrees(float(a[1] - a[0])) for a in axes)
+        d = np.degrees(flat[0] - flat[1])
+        depth = np.minimum(depth, np.minimum(d - lk.band[0], lk.band[1] - d) / step)
+    ok = np.isfinite(f).all(axis=1) & (depth >= 0)
+    f, depth = f[ok], depth[ok]
+    if not len(f):
+        return {"ok": False, "why": "its inputs' box reaches nowhere inside its band"}
+    tree = KDTree(f)
+    h = 1.5 * float(np.median(tree.query(f, k=2)[0][:, 1]))   # the grid's spacing, about
+    offsets = f - pts.mean(axis=0)
+    dist, near = tree.query(pts[None, :, :] + offsets[:, None, :])
+    score = np.where((dist <= h).all(axis=1), depth[near].min(axis=1), -1.0)
+    why = (f"no placement of its {len(pts)} points lies inside its inputs' box (the nearest "
+           f"leaves a point {float(dist.max(axis=1).min()):.1f} mm out)")
+    for k in np.argsort(-score, kind="stable")[:tries]:
+        if score[k] < 0:
+            break
+        off = offsets[k]
+        try:
+            qs = [model.ik((float(x), 0.0, float(y))) for x, y in pts + off]
+        except IKError as e:
+            why = f"no placement tried reaches every point ({e})"
+            continue
+        q = np.array([[s[name] for name in model.inputs] for s in qs])
+        s = np.linspace(0.0, 1.0, CHORD_SAMPLES + 2)[1:-1]
+        mid = (q[:-1, None, :] + (q[1:] - q[:-1])[:, None, :] * s[None, :, None]).reshape(
+            -1, q.shape[1])
+        with np.errstate(all="ignore"):
+            tip = np.asarray(model.solution().at(*mid.T)[model.output],
+                             dtype=float).reshape(-1, 2) - off
+        a = np.repeat(pts[:-1], CHORD_SAMPLES, axis=0)
+        b = np.repeat(pts[1:], CHORD_SAMPLES, axis=0)
+        ab = b - a
+        t = np.clip(((tip - a) * ab).sum(axis=1) / np.maximum((ab * ab).sum(axis=1), 1e-12),
+                    0.0, 1.0)
+        chord = float(np.linalg.norm(tip - (a + ab * t[:, None]), axis=1).max())
+        c0 = p - p.mean(axis=0)
+        across = np.linalg.svd(c0, full_matrices=False)[2][1]
+        band = float(np.ptp(np.concatenate([pts, tip]) @ across))
+        return {"ok": True, "offset_mm": [round(float(v), 2) for v in off],
+                "band_mm": band, "chord_mm": chord, "waypoints": len(pts)}
+    return {"ok": False, "why": why}
+
+
+def _ranged_trace(c: Candidate, lk: linkage.Linkage, task: Task, needs: dict) -> None:
+    """An arm's trace: the task's path (else a line of its stroke, :data:`LINE_DEG`) traced
+    by its inverse kinematics (:func:`trace_path`): the path reached is the stroke, and the
+    tip's band across it, the drives' interpolation alone, a bound on the straightness
+    (the precision budget's lost motion adds to it: :func:`_precision`). Without a length
+    asked: its box's diagonal, a bound on the stroke."""
+    reach = box_reach(lk)
+    ext = (reach["r_mm"][1] - reach["r_mm"][0]) if reach["r_mm"] else 0.0
+    diag = math.hypot(ext, reach["rise_mm"])
+    stroke = needs.get("stroke_mm")
+    length = None if stroke is None else (stroke.min if stroke.min is not None
+                                          else stroke.value)
+    if task.path_mm:
+        info = task.path()
+        assert info is not None
+        tries = [(np.asarray([q[:2] for q in task.path_mm], dtype=float), "the task's path",
+                  info["length_mm"])]
+    elif length:
+        tries = [(np.array([[0.0, 0.0], [length * math.cos(math.radians(a)),
+                                         length * math.sin(math.radians(a))]]),
+                  f"a {length:g} mm line at {a:g} deg", length) for a in LINE_DEG]
+    else:
+        _need(c, "stroke_mm", diag, "bound",
+              "kinematics: its box's diagonal (a line inside it may be shorter)")
+        return
+    src = f"kinematics: ArmModel.ik at every point, a waypoint each {SEG_MM:g} mm"
+    got: dict = {}
+    for path, what, along in tries:
+        got = trace_path(lk, path)
+        if got["ok"]:
+            c.numbers["path_band_mm"] = round(got["band_mm"], 4)
+            c.numbers["path_offset_mm"] = got["offset_mm"]
+            _need(c, "path_mm", along, "measured", src,
+                  f"{what}, {got['waypoints']} waypoints, its points moved by "
+                  f"{got['offset_mm']} mm (the arm stands where it fits)")
+            _need(c, "stroke_mm", along, "measured", src, what)
+            if "straightness_mm" in needs:
+                _need(c, "straightness_mm", got["band_mm"], "bound", src,
+                      f"the tip's band across the line, {got['chord_mm']:.3g} mm of it the "
+                      "sag between waypoints: the precision budget's lost motion adds to it")
+            return
+    _need(c, "path_mm", None, "measured", src, f"{tries[-1][1]}: {got['why']}")
+    _need(c, "stroke_mm", diag, "bound",
+          "kinematics: its box's diagonal (a line inside it may be shorter)")
+
+
 _SCREENS = {"walk": _walk, "place": _place, "trace": _trace}
 
 
 # ---------------------------------------------------------------------------
 # the spec each candidate resolves to
 # ---------------------------------------------------------------------------
-
-
-def _target_path(lk: linkage.Linkage, name: str) -> str:
-    f = TASK_FIELDS[name]
-    if name == "repeatability_mm" and lk.ranged:       # what an arm's maker quotes
-        return "precision.rp_mm"
-    return f.spec
 
 
 def _spec(c: Candidate, task: Task) -> dict:
@@ -399,8 +539,7 @@ def _spec(c: Candidate, task: Task) -> dict:
     if "obstacle_mm" in task.plain and lk.walks:
         needs.setdefault("ground_clearance_mm", Target(min=task.plain["obstacle_mm"]))
     for name, t in needs.items():
-        path = (_target_path(lk, name) if name in TASK_FIELDS
-                else f"motion.{name}")
+        path = TASK_FIELDS[name].spec if name in TASK_FIELDS else f"motion.{name}"
         if not path:
             continue
         section, metric = path.split(".")
@@ -485,15 +624,34 @@ def _read_stored(c: Candidate, st: Store, i: str) -> bool:
 
 
 def _precision(c: Candidate, prec: dict, src: str) -> None:
+    """A precision budget's numbers on the candidate: the task's repeatability is the
+    worst-case bound for every kind (``precision.repeatability_mm``; an arm's ISO 9283 RP
+    beside it, informational), its accuracy the budget's. A metric the budget holds as
+    ``None`` (unbounded: a singular pose) is a miss, never unmeasured. An arm's traced
+    path's band gains twice the lost motion (either side of the line)."""
     m = prec["metrics"]
     lk = linkage.get(c.linkage)
-    key = "rp_mm" if lk.ranged else "repeatability_mm"
-    if m.get(key) is not None:
-        _need(c, "repeatability_mm", m[key], "estimated", f"{src} precision ({key})",
-              "ISO 9283 RP, mean + 3 sigma (the worst-case bound "
-              f"{m.get('repeatability_mm')} mm)" if key == "rp_mm" else "the worst-case bound")
-    if m.get("accuracy_mm") is not None:
-        _need(c, "accuracy_mm", m["accuracy_mm"], "estimated", f"{src} precision")
+    if m.get("rp_mm") is not None:
+        c.numbers["rp_mm"] = round(float(m["rp_mm"]), 4)
+    for name in ("repeatability_mm", "accuracy_mm"):
+        if name not in m:
+            continue
+        v = m[name]
+        if v is None or not math.isfinite(float(v)):
+            _need(c, name, math.inf, "estimated", f"{src} precision",
+                  "unbounded: the joint system is singular at a pose of the budget's")
+            continue
+        detail = ("the worst-case bound" + (f" (ISO 9283 RP, mean + 3 sigma: {m['rp_mm']} mm)"
+                                            if m.get("rp_mm") is not None else "")
+                  if name == "repeatability_mm" else "")
+        _need(c, name, v, "estimated", f"{src} precision", detail)
+    rep = c.numbers.get("repeatability_mm")
+    band = c.numbers.get("path_band_mm")
+    if (lk.ranged and band is not None and rep is not None and math.isfinite(rep)
+            and "straightness_mm" in c.evidence):
+        _need(c, "straightness_mm", band + 2 * rep, "estimated", f"{src} precision",
+              f"the tip's band across the line ({band:.3g} mm) and the worst-case lost "
+              f"motion either side ({rep:.3g} mm); what calibrates out (accuracy) left out")
 
 
 def _measure(c: Candidate, task: Task, st: Store | None) -> None:
@@ -576,9 +734,17 @@ def _judge(c: Candidate, task: Task, scales: dict[str, list[str]]) -> None:
             checks.append(Check(name, None, t.describe(), None, "unmeasured", src, detail))
             continue
         met, miss = t.check(float(v))
-        checks.append(Check(name, float(v), t.describe(), met, tier, src, detail))
+        checks.append(Check(name, float(v), t.describe(), _verdict(met, tier), tier, src,
+                            detail))
         if not met:
             misses.append((name, max(0.0, 1.0 - miss / t.scale_at(float(v)))))
+    if "path_mm" in ev:                  # an arm's: every point of the path in reach
+        tier, src, detail = ev["path_mm"]
+        v = c.numbers.get("path_mm")
+        checks.append(Check("path_mm", v, "every point in reach", v is not None, tier, src,
+                            detail))
+        if v is None:
+            misses.append(("path_mm", 0.0))
     area = task.area()
     if "area_mm" in ev and area is not None:
         tier, src, detail = ev["area_mm"]
@@ -612,7 +778,8 @@ def _judge(c: Candidate, task: Task, scales: dict[str, list[str]]) -> None:
 
 
 def _verdict(met: bool, tier: str) -> bool | None:
-    """A check's verdict: a bound (a necessary condition) refutes but never confirms."""
+    """A check's verdict: a bound (a necessary condition: an arm's box's diagonal for its
+    stroke, its traced band before its lost motion is known) refutes but never confirms."""
     return (None if met else False) if tier == "bound" else met
 
 
@@ -686,7 +853,8 @@ def _area_scale(c: Candidate, area: tuple[float, float], scale: Sequence[str]
 
 def _why(c: Candidate, task: Task) -> str:
     bad = [k for k in c.checks if k.ok is False]
-    open_ = [k.requirement for k in c.checks if k.ok is None]
+    open_ = [k.requirement + (" (a bound only)" if k.tier == "bound" else "")
+             for k in c.checks if k.ok is None]
     if bad:
         head = "misses " + "; ".join(
             f"{k.requirement} ({'-' if k.value is None else f'{k.value:.4g}'}, needs "
@@ -713,7 +881,8 @@ def _rank(cs: list[Candidate], task: Task) -> None:
         out = []
         for metric, sign in _MERIT[task.do]:
             v = c.numbers.get(metric)
-            out.append(-(sign * float(v)) if v is not None else math.inf)
+            bound = c.evidence.get(metric, ("",))[0] == "bound"   # (not the machine's value)
+            out.append(-(sign * float(v)) if v is not None and not bound else math.inf)
         return tuple(out)
 
     def key(c: Candidate):

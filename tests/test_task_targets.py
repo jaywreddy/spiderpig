@@ -246,6 +246,30 @@ def test_a_cranked_mechanism_is_not_rated(monkeypatch):
     assert rep.failures == []
 
 
+@pytest.mark.no_fabricate
+def test_a_cranked_mechanisms_precision_is_its_whole_budget_unfabricated(tmp_path):
+    """``api.precision`` of a cranked mechanism: no links' tilt to read (no ranged inputs),
+    so its budget is whole from the plan alone (``complete``), nothing fabricated; its
+    targets' rows, no ISO 9283 RP (an arm's), and the report stored."""
+    from tests import _api
+
+    _api.seed(_api.HOECKEN_CFG)                 # (the plan from the test cache)
+    store = tmp_path / "store"
+    d = api.resolve({**_api.HOECKEN, "precision": {"repeatability_mm": {"max": 50.0},
+                                                   "accuracy_mm": {"max": 50.0}}}, store)
+    rep = api.precision(d)
+    assert rep.ok
+    assert rep.complete
+    assert rep.metrics["repeatability_mm"] > 0
+    assert rep.metrics["accuracy_mm"] > 0
+    assert "rp_mm" not in rep.metrics
+    rows = {r.requirement: r for r in rep.rows}
+    assert rows["precision.repeatability_mm"].passed
+    assert rows["precision.accuracy_mm"].passed
+    assert (store / "designs" / d.id / "precision.json").is_file()
+    assert api.precision(api.load(d.id, store)).metrics == rep.metrics   # from the store
+
+
 # -- the approved arm, end to end -------------------------------------------------------
 
 

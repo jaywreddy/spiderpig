@@ -145,7 +145,7 @@ def test_every_tool_is_listed_with_schemas_and_hints(server):
     assert tools["gc"].annotations.destructive_hint is True
     assert tools["export"].annotations.destructive_hint is False
     spec = tools["resolve"].input_schema["properties"]["spec"]
-    assert spec["required"] == ["kind", "linkage"]
+    assert spec["required"] == ["linkage"]          # (the kind is the linkage's)
     assert spec["properties"]["linkage"]["properties"]["key"]["enum"][0] == "strider"
     assert spec["additionalProperties"] is False
     assert tools["verify"].input_schema["properties"]["level"]["enum"] == ["quick", "standard",
@@ -473,7 +473,7 @@ def test_resources_and_prompts_read(server, single):
         "spiderpig://linkages/{key}", "spiderpig://catalog/{category}",
         "spiderpig://designs/{design}/{stage}"}
     schema = json.loads(reads["spiderpig://schema/spec"].text)
-    assert schema["required"] == ["kind", "linkage"]
+    assert schema["required"] == ["linkage"]
     assert reads["spiderpig://schema/spec"].mime_type == "application/json"
     assert json.loads(reads["spiderpig://linkages/klann"].text)["key"] == "klann"
     assert json.loads(reads["spiderpig://catalog/servos"].text)["servos"][0]["key"] == "sts3215"
@@ -785,7 +785,7 @@ def test_candidates_answers_a_task_with_specs_and_refuses_a_bad_one(fresh):
     assert doc["do"] == "place"
     assert {c["kind"] for c in doc["candidates"]} == {"arm"}
     first = doc["candidates"][0]
-    assert first["spec"]["precision"]["rp_mm"] == {"max": 0.1}
+    assert first["spec"]["precision"]["repeatability_mm"] == {"max": 0.1}   # every kind's
     assert {k["requirement"] for k in first["checks"]} >= {"repeatability_mm", "area_mm"}
     assert any("feet" in x["why"] for x in doc["excluded"])
     assert call(server, "resolve", spec=first["spec"])["ok"]

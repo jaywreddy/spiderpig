@@ -7,20 +7,20 @@
     "reportGeneralTypeIssues": 1
   },
   "tests": {
-    "errors": 740,
+    "errors": 735,
     "by_rule": {
       "reportOptionalMemberAccess": 265,
-      "reportArgumentType": 175,
-      "reportAttributeAccessIssue": 127,
+      "reportArgumentType": 174,
+      "reportAttributeAccessIssue": 126,
       "reportOptionalSubscript": 73,
-      "reportOperatorIssue": 42,
-      "reportCallIssue": 25,
+      "reportOperatorIssue": 39,
+      "reportCallIssue": 24,
       "reportGeneralTypeIssues": 15,
       "reportPrivateImportUsage": 5,
       "reportIndexIssue": 4,
       "reportReturnType": 4,
-      "reportPossiblyUnboundVariable": 3,
-      "reportOptionalOperand": 2
+      "reportOptionalOperand": 3,
+      "reportPossiblyUnboundVariable": 3
     }
   }
 }

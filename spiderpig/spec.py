@@ -316,10 +316,16 @@ class LinkageSpec:
 @dataclass(frozen=True)
 class LegsSpec:
     """A named leg module of the linkage (``single``, ``double``, ``decker``, ``quad`` or its
-    own), the crank phase of each leg in degrees, and how many sides (2: the robot; 1: one
-    side). ``None`` is inferred: a walker's ``quad`` on 2 sides, a mechanism's ``single``.
-    ``robot``: an arm's whole robot (its side on the turntable, its tool) or its side
-    alone; ``None``: the robot (an arm's only: a walker's robot is its two sides)."""
+    own), the crank phase of each leg in degrees, and ``robot``: the whole robot the
+    linkage's kind makes (:data:`config.ROBOT_LAYOUTS`: a walker's two mirrored sides, an
+    arm's side on its turntable) or its side alone, every kind's one word (a mechanism makes
+    no robot: ``false`` only). ``None`` is inferred: the linkage's module
+    (:func:`default_module`) and its kind's robot (:func:`config.default_robot`).
+
+    ``sides`` is ``robot``'s older name, still read (a stored spec's): a walker's 2 is
+    ``robot: true``, 1 ``false``; one side is every other kind's only. :meth:`Spec.from_dict`
+    writes it into ``robot`` (:func:`legs_robot`), so a spec reads back in one vocabulary
+    and resolves to the id it had."""
 
     module: str | None = None
     phases_deg: tuple[float, ...] | None = None
@@ -472,22 +478,33 @@ def _constructions(data: Mapping) -> ConstructionsSpec:
     return ConstructionsSpec(**own, roles=roles or None)
 
 
+def legs_robot(lk: linkage.Linkage, legs: Mapping) -> bool | None:
+    """A ``legs`` object's robot (:class:`LegsSpec`): ``robot`` as given, else a walker's
+    ``sides`` (its older name: 2 is the robot), else ``None`` (the kind's default)."""
+    if legs.get("robot") is not None:
+        return bool(legs["robot"])
+    if legs.get("sides") is not None and lk.walks:
+        return int(legs["sides"]) == 2
+    return None
+
+
 def _build(data: Mapping) -> Spec:
-    """``data`` as a :class:`Spec` (validated already)."""
+    """``data`` as a :class:`Spec` (validated already): ``kind`` from the linkage when
+    not given, a walker's ``legs.sides`` written as ``legs.robot`` (:func:`legs_robot`)."""
     lk = data["linkage"]
     legs = data.get("legs") or {}
+    lko = linkage.get(lk["key"])
     fit = dict(data.get("fit") or {})
     if fit.get("sheet_size_mm") is not None:
         fit["sheet_size_mm"] = tuple(float(v) for v in fit["sheet_size_mm"])
     return Spec(
-        kind=data["kind"],
+        kind=data.get("kind") or lko.kind,
         linkage=LinkageSpec(lk["key"], {k: float(v) for k, v in (lk.get("params") or {}).items()}),
         version=str(data.get("version", SPEC_VERSION)),
         legs=LegsSpec(legs.get("module"),
                       None if legs.get("phases_deg") is None
                       else tuple(float(v) for v in legs["phases_deg"]),
-                      None if legs.get("sides") is None else int(legs["sides"]),
-                      None if legs.get("robot") is None else bool(legs["robot"])),
+                      None, legs_robot(lko, legs)),
         motion={k: _target(v) for k, v in (data.get("motion") or {}).items()},
         size={k: _target(v) for k, v in (data.get("size") or {}).items()},
         materials=MaterialsSpec(**(data.get("materials") or {})),
@@ -734,10 +751,8 @@ def validate(data: Mapping) -> list[SpecError]:
     if str(version) != SPEC_VERSION:
         v.err("version", f"unknown spec version {version!r}; this engine reads version "
                          f"{SPEC_VERSION!r}", (SPEC_VERSION,))
-    kind = None
-    if "kind" not in top:
-        v.err("kind", "required: walker, mechanism or arm", KINDS)
-    else:
+    kind = None             # (not given: the linkage's, read below)
+    if "kind" in top:
         kind = v.string(top["kind"], "kind", KINDS)
 
     # linkage
@@ -768,6 +783,8 @@ def validate(data: Mapping) -> list[SpecError]:
                     if kind is not None and lk.kind != kind:
                         v.err("linkage.key", f"{key} is a {lk.kind}, not a {kind}",
                               linkage.available(kind))
+                    elif "kind" not in top:
+                        kind = lk.kind          # inferred: the linkage says what it is
             params = v.obj(d.get("params"), "linkage.params",
                            list(lk.params) if lk is not None else ())
             if params is not None and lk is not None:
@@ -814,18 +831,28 @@ def validate(data: Mapping) -> list[SpecError]:
                     if len(phases) != n:
                         v.err("legs.phases_deg", f"{m} has {n} legs per side, got "
                                                  f"{len(phases)} phases")
+        # legs.sides: legs.robot's older name (a stored spec's), still read
         sides = v.number(legs.get("sides"), "legs.sides", integer=True)
         if sides is not None and int(sides) not in (1, 2):
-            v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g}", (1, 2))
+            v.err("legs.sides", f"must be 1 (one side) or 2 (the robot), got {sides:g} "
+                                "(legs.sides is legs.robot's older name)", (1, 2))
+            sides = None
         elif sides == 2 and lk is not None and not lk.walks:
             v.err("legs.sides", f"{lk.key} is a {lk.kind}: one side only (it has no feet to "
-                                "walk on)", (1,))
+                                "walk on; legs.robot names its robot)", (1,))
+            sides = None
         robot = legs.get("robot")
         if robot is not None and not isinstance(robot, bool):
             v.err("legs.robot", f"must be true or false, got {_kind(robot)}", (True, False))
-        elif robot is not None and lk is not None and robot_layout(lk) != "turret":
-            v.err("legs.robot", f"{lk.key} is a {lk.kind}: legs.robot is an arm's (its "
-                                "turntable); a walker's robot is legs.sides = 2", ())
+        elif robot and lk is not None and not robot_layout(lk):
+            v.err("legs.robot", f"{lk.key} is a {lk.kind}: no robot is made of it (a "
+                                "walker's two sides, an arm on its turntable), it is one side "
+                                "(robot false, the default)", (False,))
+        elif (robot is not None and sides is not None and lk is not None and lk.walks
+              and robot != (sides == 2)):
+            v.err("legs.sides", f"legs.sides {sides:g} contradicts legs.robot {robot}: sides "
+                                "is robot's older name (2: the robot); give robot alone",
+                  (2 if robot else 1,))
 
     # targets
     for section in SECTIONS:
@@ -981,10 +1008,12 @@ def spec_schema() -> dict:
         "title": "spiderpig Spec v1",
         "description": (__doc__ or "").split("\n\n")[0],
         "type": "object", "additionalProperties": False,
-        "required": ["kind", "linkage"],
+        "required": ["linkage"],
         "properties": {
             "version": {"const": SPEC_VERSION, "default": SPEC_VERSION},
-            "kind": {"enum": list(KINDS)},
+            "kind": {"enum": list(KINDS),
+                     "description": "the linkage's kind (default: read from the linkage; "
+                                    "checked against it when given)"},
             "linkage": {
                 "type": "object", "additionalProperties": False, "required": ["key"],
                 "properties": {
@@ -1006,11 +1035,14 @@ def spec_schema() -> dict:
                     "phases_deg": {"type": "array", "items": {"type": "number"},
                                    "description": "crank phase per leg (default: the "
                                                   "module's)"},
-                    "sides": {"enum": [1, 2], "description": "2: the robot (default for a "
-                                                             "walker); 1: one side"},
-                    "robot": {"type": "boolean", "description": "an arm's whole robot (its "
-                              "side on the turntable, its tool; the default) or its side "
-                              "alone"},
+                    "sides": {"enum": [1, 2], "description": "legs.robot's older name, still "
+                                                             "read: a walker's 2 is the robot, "
+                                                             "1 one side"},
+                    "robot": {"type": "boolean", "description": "the whole robot the "
+                              "linkage's kind makes (a walker's two mirrored sides, an arm's "
+                              "side on its turntable with its tool) or its side alone; "
+                              "default: the kind's (a walker's and an arm's robot; a "
+                              "mechanism is one side, false only)"},
                 },
             },
             "motion": sections["motion"],

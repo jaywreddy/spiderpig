@@ -122,10 +122,12 @@ A failure is always the same document under `failures`:
 A task is a JSON object (`spiderpig://schema/task`): `do` (`walk`, `place` or `trace`)
 and its numbers. A bare number is the bound the task means (a stride's least, a
 repeatability's most); a target object `{min, max, value, tol, hard}` says it exactly. The
-numbers that are Spec targets become the candidate's spec targets (an arm's
-`repeatability_mm` is ISO 9283's `precision.rp_mm`, what a maker quotes; a cranked
-mechanism's the worst-case `precision.repeatability_mm`); the task's own geometry
-(`area_mm`, `points_mm`, `height_mm`, `path_mm`, `obstacle_mm`) is read by the checks.
+numbers that are Spec targets become the candidate's spec targets (`repeatability_mm` is
+the worst-case `precision.repeatability_mm` for every kind; an arm's ISO 9283 RP, what a
+maker quotes and smaller, is shown beside it as `numbers.rp_mm`, and a spec may target
+`precision.rp_mm` itself); the task's own geometry (`area_mm`, `points_mm`, `height_mm`,
+`path_mm` (`[x, y]` in the output's plane), `obstacle_mm` (raises a `lift_mm`'s min, the
+rest of it kept)) is read by the checks.
 
 <<TASKS>>
 
@@ -137,19 +139,27 @@ output over its inputs' box about its yaw axis (its turntable's range: the role
 `turntable`). A place task needs three axes (two across the bench, one to lift): one input
 traces a path, two in a plane sweep it, an arm's two and its yaw place. The screen's
 reach of an arm is a **bound** (tier `bound`: it refutes, never confirms): where its tool
-gets down to the bench is its turret's plan's. (2) the **store**: a design of the
-candidate's spec (whatever its targets) lends its stored reports from this engine: the
-walk with the feet at their layers, the check's ground clearance, the precision budget
-(an arm's ISO RP), a verify's cost and mass. (3) **measure** (`measure=N`, opt-in): the
+gets down to the bench is its turret's plan's. An arm traces under control: the task's
+`path_mm` (else a line of its stroke) is solved point by point by the controller's
+inverse kinematics wherever it fits in the arm's plane, a waypoint every 5 mm as the
+controller moves a line: a `path_mm` check (every point in reach), the stroke measured,
+and the tip's band across the line a bound on the straightness until a precision budget
+adds the lost motion either side; `dwell_deg`, `swing_deg`, `on_line_fraction` and
+`rotation_deg` measure a crank's turn, which an arm doesn't make. (2) the **store**: a
+design of the candidate's spec (whatever its targets) lends its stored reports from this
+engine: the walk with the feet at their layers, the check's ground clearance, the precision
+budget (a metric it left unbounded, a singular pose, is a miss), a verify's cost and mass.
+(3) **measure** (`measure=N`, opt-in): the
 best N that pass are resolved into the store, checked and planned (walked; a cranked
 mechanism's precision budgeted; an arm's bench reach read off its turret's plan). Nothing
-is fabricated: an arm's RP needs `precision(design)` (a job).
+is fabricated: an arm's repeatability needs `precision(design)` (a job).
 
 A check's `ok` is null where this tier didn't measure it; its `source` says what does. A
 candidate's `ok` is false when any check fails, null when none fails but some are
 unmeasured. They rank by verdict, then a missed length that a `scale` of the proportions
 would meet, then score (the mean over the measured checks of `max(0, 1 - miss / need)`),
-then the task's merit (the longest stride, the best repeatability, the straightest line).
+then the task's merit (the longest stride, the best repeatability, the straightest line;
+a bound's number is no merit).
 The `scale` is unchecked (the stride, lift, stroke and straightness scale with the
 linkage; an arm's reach band too, its base's keep-out doesn't): `recommend` plans a scale
 before it offers one.
@@ -164,13 +174,13 @@ design: there is no search in v1.
 | field | values | default |
 |---|---|---|
 | `version` | `"1"` | `"1"` |
-| `kind` | `walker` (feet), `mechanism` (a crank and an output) or `arm` (inputs over ranges, no crank: the palletizer) | required |
-| `linkage.key` | a registered linkage (below) whose kind matches | required |
+| `kind` | `walker` (feet), `mechanism` (a crank and an output) or `arm` (inputs over ranges, no crank: the palletizer) | the linkage's (checked when given) |
+| `linkage.key` | a registered linkage (below) | required |
 | `linkage.params` | `{name: number}` overrides of that linkage's parameters (`describe` lists them; lengths in mm and > 0, angles in degrees; a coordinate such as a fixed pivot's x or y, marked `signed` on the card, may be zero or negative) | the linkage's defaults |
 | `legs.module` | one of the linkage's modules (legs **per side**, the robot has two; below): `single` (2 legs), `double` (4), `decker` (4), `quad` (8) or its own; there is no three-leg module | the linkage's own default (Strider: `double`), else `quad` (walker), `single` (mechanism, arm: one side, no legs) |
 | `legs.phases_deg` | one crank phase per leg of the module | the module's |
-| `legs.sides` | `2` (the robot: two mirrored sides and the chassis) or `1` (one side) | 2 (walker), 1 (mechanism, arm) |
-| `legs.robot` | an arm's whole robot (`true`: its side on the turntable, its tool, its controller) or its side alone (`false`); an arm's only (a walker's robot is `sides: 2`) | `true` |
+| `legs.robot` | every kind's: the whole robot (`true`: a walker's two mirrored sides and the chassis; an arm's side on its turntable, its tool, its controller) or its side alone (`false`); a mechanism makes none (`false` only) | the kind's: `true` (walker, arm), `false` (mechanism) |
+| `legs.sides` | `robot`'s older name, still read: a walker's `2` is `robot: true`, `1` `false`; the same id either way | - |
 | `materials.sheet` | a sheet item (sets the layer pitch) | `acrylic_3mm` |
 | `materials.thickness_mm` | a measured sheet thickness | the sheet's nominal |
 | `materials.servo` | the continuous-rotation servo that turns a crank (a walker's, a mechanism's; an arm's motors are its `actuator` role) | `sts3215` |

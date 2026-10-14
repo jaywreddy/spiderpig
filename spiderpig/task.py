@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -73,8 +73,9 @@ TASK_FIELDS: dict[str, TaskField] = _f(
      "they fit, so their extent is the area (and z the height)"),
     ("payload_g", ("place",), "g", "plain", "the load at the tool", "precision.payload_g"),
     ("repeatability_mm", ("place", "trace"), "mm", "max",
-     "how close it returns to a taught point: an arm's ISO 9283 RP (precision.rp_mm, what a "
-     "maker quotes), a cranked mechanism's worst-case bound (precision.repeatability_mm)",
+     "how close it returns to a taught point: the worst-case bound on the output's lost "
+     "motion, every kind's (precision.repeatability_mm; an arm's ISO 9283 RP, the mean + "
+     "3 sigma a maker quotes, is under it and shown beside it)",
      "precision.repeatability_mm"),
     ("accuracy_mm", ("place", "trace"), "mm", "max",
      "what calibrates out (holes off their drawing, heat, the drives' systematic errors)",
@@ -83,8 +84,10 @@ TASK_FIELDS: dict[str, TaskField] = _f(
     ("motion", ("trace",), "", "motion",
      "the output's motion: " + ", ".join(MOTIONS)),
     ("path_mm", ("trace",), "mm", "points",
-     "the path's points [x, y]: its extent along its principal axis is the stroke needed, "
-     "and a path within 2 % of a line asks for a line within tol_mm"),
+     "the path's points [x, y] in the output's plane (y up): its extent along its principal "
+     "axis is the stroke needed, and a path within 2 % of a line asks for a line within "
+     "tol_mm; an arm traces it under control, where its inverse kinematics reach every "
+     "point (it stands where the path fits)"),
     ("tol_mm", ("trace",), "mm", "plain",
      "how far a straight path's points may stray from its line (default 1 mm)"),
     ("stroke_mm", ("trace",), "mm", "min", "the output's travel along its line",
@@ -198,11 +201,13 @@ class Task:
         obstacle as a lift, the path's length as a stroke and, a straight path, its tol as
         a straightness."""
         out = dict(self.targets)
-        if "obstacle_mm" in self.plain:
+        if "obstacle_mm" in self.plain:      # (the user's lift kept whole, its min raised)
             ob = self.plain["obstacle_mm"]
             lift = out.get("lift_mm")
-            if lift is None or (lift.min or 0.0) < ob:
+            if lift is None:
                 out["lift_mm"] = Target(min=ob)
+            elif (lift.min or 0.0) < ob:
+                out["lift_mm"] = replace(lift, min=ob)
         path = self.path()
         if path is not None:
             if "stroke_mm" not in out:
