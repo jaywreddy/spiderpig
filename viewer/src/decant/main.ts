@@ -13,7 +13,10 @@ import { loadGlb, teardown, type LoadedScene } from '../loader';
 import { isAbort } from '../loads';
 import type { View } from '../types';
 import { COLORS, createDiagram, type Diagram } from './diagram';
-import { createPack, packFraction, type Pack, type PackData } from './pack';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import {
+  createPack, movedModule, packFraction, snappedDelta, type Pack, type PackData, type PackModule,
+} from './pack';
 import { createPour } from './pour';
 import {
   fractionAtTurns, phaseAt, tiltAt, tiltWords, turnsAt, type CradleMotion,
@@ -240,6 +243,7 @@ async function selectDesign(key: string, turns?: number): Promise<void> {
 // -- the flat pack ------------------------------------------------------------------------
 
 function resetPack(): void {
+  stopEditing();
   pack?.dispose();
   pack = null;
   packData = null;
@@ -288,8 +292,134 @@ function renderPackInfo(d: PackData): void {
     li.title = m.how;
     pieces.appendChild(li);
   }
-  info.append(h, size, how, ol, ...back, h2, pieces);
+  info.append(h, size, how, ol, ...back, h2, pieces, editPanel());
   info.hidden = false;
+}
+
+// -- editing the packing: move and turn a piece, export the layout --------------------------
+//
+// A piece picked (a click on it, packed) gets a move gizmo; R turns it a quarter turn about
+// the vertical, T tips it a quarter turn, Esc lets it go; moves snap to 3 mm. Export writes
+// the pack as edited (the /pack body's format) for ``spiderpig pack-inspect --layout``,
+// which judges it: the box, the overlaps, what rests on what.
+
+let editing = false;
+let picked = -1;
+let pickedFrom: PackModule | null = null;   // the piece as it was when picked
+const pickedCentre = new THREE.Vector3();
+let yaw = 0;
+let tip = 0;
+const gizmo = new TransformControls(stage.camera, canvas);
+gizmo.setMode('translate');
+gizmo.setSpace('world');
+const gizmoProxy = new THREE.Object3D();
+gizmoProxy.name = 'pack_edit_pivot';
+gizmo.addEventListener('dragging-changed', (e) => { stage.controls.enabled = !e.value; });
+gizmo.addEventListener('objectChange', () => applyEdit());
+gizmo.addEventListener('change', () => { dirty = true; });
+
+function editPanel(): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'pack-edit';
+  const edit = document.createElement('button');
+  edit.textContent = editing ? 'Stop editing' : 'Edit the packing';
+  edit.title = 'Pick a piece to move it (3 mm steps); R turns it, T tips it, Esc lets it go';
+  edit.addEventListener('click', () => {
+    if (editing) stopEditing(); else startEditing();
+    edit.textContent = editing ? 'Stop editing' : 'Edit the packing';
+  });
+  const out = document.createElement('button');
+  out.textContent = 'Export layout';
+  out.title = 'The pack as it is now, as JSON: spiderpig pack-inspect --layout judges it';
+  out.addEventListener('click', exportLayout);
+  const help = document.createElement('p');
+  help.className = 'pack-edit-help';
+  help.textContent = 'Editing: click a piece, drag its arrows; R turns it, T tips it, Esc lets it go.';
+  box.append(edit, out, help);
+  return box;
+}
+
+function startEditing(): void {
+  if (!pack || !loaded || packS < 1) return;
+  editing = true;
+  loaded.walker.add(gizmoProxy);
+  stage.scene.add(gizmo.getHelper());
+  document.body.classList.add('pack-editing');
+  dirty = true;
+}
+
+function stopEditing(): void {
+  editing = false;
+  picked = -1;
+  pickedFrom = null;
+  gizmo.detach();
+  gizmo.getHelper().removeFromParent();
+  gizmoProxy.removeFromParent();
+  stage.controls.enabled = true;
+  document.body.classList.remove('pack-editing');
+  dirty = true;
+}
+
+function pick(i: number): void {
+  if (!pack) return;
+  picked = i;
+  pickedFrom = pack.module(i);
+  yaw = 0;
+  tip = 0;
+  pack.moduleBounds(i).getCenter(pickedCentre);
+  gizmoProxy.position.copy(pickedCentre);
+  gizmo.attach(gizmoProxy);
+  status(`editing: ${pickedFrom.label}`);
+}
+
+function applyEdit(): void {
+  if (!pack || picked < 0 || !pickedFrom) return;
+  const shift = gizmoProxy.position.clone().sub(pickedCentre);
+  const delta = snappedDelta(pickedCentre.toArray(), shift.toArray(), yaw, tip);
+  pack.setModule(picked, movedModule(pickedFrom, delta));
+  dirty = true;
+}
+
+const pointerAt = new THREE.Vector2();
+canvas.addEventListener('pointerdown', (e) => pointerAt.set(e.clientX, e.clientY));
+canvas.addEventListener('pointerup', (e) => {
+  if (!editing || !pack || !loaded || gizmo.dragging || gizmo.axis !== null) return;
+  if (Math.hypot(e.clientX - pointerAt.x, e.clientY - pointerAt.y) > 4) return;   // (a turn)
+  const r = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1,
+    -((e.clientY - r.top) / r.height) * 2 + 1);
+  const ray = new THREE.Raycaster();
+  ray.setFromCamera(ndc, stage.camera);
+  for (const hit of ray.intersectObject(loaded.walker, true)) {
+    const i = pack.moduleOf(hit.object);
+    if (i >= 0) { pick(i); return; }
+  }
+});
+window.addEventListener('keydown', (e) => {
+  if (!editing || picked < 0) return;
+  const k = e.key.toLowerCase();
+  if (k === 'r') yaw += 1;
+  else if (k === 't') tip += 1;
+  else if (k === 'escape') { gizmo.detach(); picked = -1; status(''); dirty = true; return; }
+  else return;
+  applyEdit();
+});
+
+// (a hook for a browser test: edit without aiming a click at a piece)
+(window as unknown as { __packEdit: object }).__packEdit = {
+  start: startEditing, pick, data: () => pack?.data(), editing: () => editing,
+};
+
+function exportLayout(): void {
+  if (!pack || !motion) return;
+  const d = pack.data();
+  const edited = { ...d, linkage: motion.key, plan: `${d.plan ?? 'a packing'}, edited in the viewer` };
+  const blob = new Blob([JSON.stringify(edited)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${motion.key}.edited.layout.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 /** How long the pieces take to fly into the box (or back), seconds: longer for more pieces. */
@@ -300,6 +430,7 @@ function packSeconds(): number {
 async function togglePack(): Promise<void> {
   if (!motion || !loaded) return;
   if (packTarget > 0) {           // back to the assembled cradle
+    stopEditing();
     packTarget = 0;
     $('pack-toggle').textContent = 'Flat pack';
     return;
