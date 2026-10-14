@@ -251,28 +251,74 @@ def _code_key() -> str:
     return key
 
 
-def bake_key(config: BuildConfig) -> str:
+_BAKE_KEYS: dict[tuple, str] = {}
+""":func:`bake_key`'s memo: ``(config key, code key, CAD stamp)`` -> the key (cleared past
+``_BAKE_KEYS_MAX``), so a request for a design already keyed doesn't probe the CAD state
+again (a servo's strip record, each model's hash)."""
+_BAKE_KEYS_MAX = 256
+
+
+def _cad_stamp() -> str:
+    """What the CAD state a bake key reads can depend on, cheaply: the switches
+    (``SPIDERPIG_CAD_CACHE``, ``SPIDERPIG_OFFLINE``, ``SPIDERPIG_CAD_STRICT``,
+    ``SPIDERPIG_SERVO_CAD``, ``SPIDERPIG_PART_CAD``) and every file of the CAD cache by its
+    path, size and mtime (a download, an import or a derived record moves it). A hash."""
+    import hashlib
+
+    from spiderpig.hardware import cad
+    from spiderpig.servos import cad as servo_cad
+
+    env = tuple(os.environ.get(k, "") for k in (cad.CACHE_ENV, cad.OFFLINE_ENV,
+                                                cad.STRICT_ENV, servo_cad.USE_CAD_ENV,
+                                                cad.PART_CAD_ENV))
+    root = cad.cache_dir()
+    files = []
+    for dirpath, _dirs, names in os.walk(root):
+        for name in names:
+            full = os.path.join(dirpath, name)
+            try:
+                st = os.stat(full)
+            except OSError:         # (gone between the listing and the stat)
+                continue
+            files.append((os.path.relpath(full, root), st.st_size, st.st_mtime_ns))
+    return hashlib.sha256(repr((env, sorted(files))).encode()).hexdigest()
+
+
+def bake_key(config: BuildConfig, code: str | None = None) -> str:
     """Everything that shapes ``config``'s baked model, as the fabrication cache keys a
     fabrication (:mod:`spiderpig.fabcache`): the config (its key), the code the bake
-    reaches (:func:`_code_key`: planning, fabrication and the bake, the third-party
-    versions they import), the cache's env tag (Python, build123d, OCP, numpy), the servo's
-    model in play (:func:`spiderpig.fabcache.servo_state`: parametric, or which pinned
-    files are in reach) and the bought parts' (:func:`spiderpig.fabcache.parts_cad_state`).
-    The plan comes from the store by the same code (a design's record re-made and
-    verified, never searched for again). 16 hex."""
+    reaches (``code``, else :func:`_code_key`: planning, fabrication and the bake, the
+    third-party versions they import), the cache's env tag (Python, build123d, OCP, numpy),
+    the servo's model in play (:func:`spiderpig.fabcache.servo_state`, probed without
+    downloading: parametric, or which pinned files are in the cache), the bought parts'
+    (:func:`spiderpig.fabcache.parts_cad_state`) and strict vendor CAD
+    (``SPIDERPIG_CAD_STRICT``: a parametric fallback baked without it never answers a
+    strict request). The plan comes from the store by the same code (a design's record
+    re-made and verified, never searched for again). Memoised per config, code and
+    :func:`_cad_stamp` (``_BAKE_KEYS``). 16 hex."""
     import hashlib
 
     from spiderpig import fabcache
+    from spiderpig.hardware import cad
 
-    doc = repr((config.key, _code_key(), fabcache.env_tag(), fabcache.servo_state(config),
-                fabcache.parts_cad_state(config)))
-    return hashlib.sha256(doc.encode()).hexdigest()[:16]
+    code = _code_key() if code is None else code
+    memo = (config.key, code, _cad_stamp())
+    key = _BAKE_KEYS.get(memo)
+    if key is None:
+        doc = repr((config.key, code, fabcache.env_tag(),
+                    fabcache.servo_state(config, download=False),
+                    fabcache.parts_cad_state(config)) + (("strict",) if cad.strict() else ()))
+        key = hashlib.sha256(doc.encode()).hexdigest()[:16]
+        if len(_BAKE_KEYS) >= _BAKE_KEYS_MAX:
+            _BAKE_KEYS.clear()
+        _BAKE_KEYS[memo] = key
+    return key
 
 
-def _glb_path(config: BuildConfig) -> Path:
+def _glb_path(config: BuildConfig, code: str | None = None) -> Path:
     """``bakes/<config key>-<bake key>.glb``: another key is another file (:func:`bake_key`),
     so a file there is the current bake of its design."""
-    return _data_dir() / f"{config.key}-{bake_key(config)}.glb"
+    return _data_dir() / f"{config.key}-{bake_key(config, code)}.glb"
 
 
 def _sources_mtime() -> float:
@@ -313,14 +359,19 @@ def _bake_job(config: BuildConfig, store_root: str, out: str) -> tuple[int, bool
 
 
 def _bake(config: BuildConfig) -> Path:
-    """Bake ``config`` into its file atomically (a failed bake leaves no file behind). The
-    layer plan goes through the store first (:func:`spiderpig.api.plan_config`, as the
-    bake CLI does): a design that planned once is never searched for again, so a later
-    bake can't run out of the planner's budget on it."""
-    path = _glb_path(config)
-    log.info("baking %s -> %s", config.design_json(), path.name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.stem}.partial{path.suffix}")
+    """Bake ``config`` into its file atomically (a failed bake leaves no file behind) and
+    return that file. The layer plan goes through the store first
+    (:func:`spiderpig.api.plan_config`, as the bake CLI does): a design that planned once is
+    never searched for again, so a later bake can't run out of the planner's budget on it.
+
+    The file is named by the code the bake ran (its key taken as it starts: an edit during
+    the bake names the next one) and the CAD state it left (a servo model the bake
+    downloaded, a strip record it derived): so the next request's key finds it."""
+    code = _code_key()
+    first = _glb_path(config, code)
+    log.info("baking %s -> %s", config.design_json(), first.name)
+    first.parent.mkdir(parents=True, exist_ok=True)
+    tmp = first.with_name(f"{first.stem}.partial{first.suffix}")
     try:
         if _stale_code():       # the sources changed under this process: bake the new code
             layers, optimal, proof = workers.submit(_bake_job, config, str(store().root),
@@ -329,6 +380,7 @@ def _bake(config: BuildConfig) -> Path:
             layers, optimal, proof = _bake_job(config, str(store().root), str(tmp))
         log.info("plan for %s: %d layers, %s", config.key, layers,
                  "proven optimal" if optimal else f"not proven optimal ({proof})")
+        path = _glb_path(config, code)
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
@@ -403,18 +455,20 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
             walk.side_legs(config)
         except walk.LinkageError as e:
             raise HTTPException(status_code=422, detail=f"invalid linkage: {e}") from None
-    path = _glb_path(config)
     _acquire_bake_lock(gone)
     try:
-        _BAKED[path] = config
+        # keyed under the lock: an edit while this request waited its turn names another
+        # file, and the bake's own (the code it ran, the CAD state it left) is the answer
+        path = _glb_path(config)
         if path.is_file():          # (its name keys everything that shapes it: current)
+            _BAKED[path] = config
             return path
         mtime = _sources_mtime()
         failed = _FAILED.get(path)
         if failed is not None and failed[0] >= mtime:
             raise HTTPException(status_code=422, detail=failed[1])
         try:
-            _bake(config)
+            path = _bake(config)
         except api.PlanTimeout as e:
             raise HTTPException(status_code=422, detail=(
                 f"can't build this design yet: {e} (the planner's CPU budget ran out, which "
@@ -426,6 +480,7 @@ def _ensure_baked(config: BuildConfig, gone=None) -> Path:
             _FAILED[path] = (mtime, reason)             # the newest last
             _prune()
             raise HTTPException(status_code=422, detail=reason) from None
+        _BAKED[path] = config
         if not config.is_default:
             _prune()
     finally:
@@ -483,7 +538,10 @@ def _rebake_all() -> None:
                     del _BAKED[path]            # the old key's file: pruned as non-default
                     _BAKED[now] = config
                 if not now.is_file():
-                    _bake(config)
+                    written = _bake(config)
+                    if written != now:          # (the CAD state the bake left names it)
+                        del _BAKED[now]
+                        _BAKED[written] = config
 
 
 broadcaster = WatchBroadcaster(PACKAGE_ROOT, rebake=_rebake_all)

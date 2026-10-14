@@ -43,6 +43,13 @@ def test_the_gate_reports_a_design_that_fails_its_audit(tmp_path, capsys):
     assert set(identity_gate.KNOWN_AUDIT_FAILURES) <= set(identity_gate.DESIGNS)
 
 
+def test_compares_exit_status_masks_neither_verdict():
+    """An identity difference never hides an audit failure, nor the other way round."""
+    status = identity_gate.exit_status
+    assert [status(i, 0) for i in (0, 1, 2)] == [0, 1, 2]
+    assert [status(i, 3) for i in (0, 1, 2)] == [3, 4, 5]
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("name", [
     pytest.param(n, marks=pytest.mark.xfail(reason=identity_gate.KNOWN_AUDIT_FAILURES[n],

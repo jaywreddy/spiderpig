@@ -167,6 +167,35 @@ def test_the_servo_model_in_play_is_in_the_key(monkeypatch):
     assert not any(ok for _, ok in state[1])
 
 
+def test_a_strict_build_never_reads_an_entry_made_without_strict(monkeypatch, tmp_path):
+    """``SPIDERPIG_CAD_STRICT=1`` is in the entry's name: an entry fabricated without it may
+    hold a parametric fallback (a vendor model not in reach), which a strict build must
+    refuse, not be served."""
+    from types import SimpleNamespace
+
+    from spiderpig import fabricate
+    from spiderpig.hardware import cad
+
+    monkeypatch.setenv(fabcache.ENV, "on")
+    monkeypatch.setattr(fabcache, "plan_fingerprint", lambda plan: "plan")
+    monkeypatch.delenv(cad.STRICT_ENV, raising=False)
+    cfg = BuildConfig(linkage="hoecken_pantograph", robot=False)
+    tmpl = fabricate.template_for(cfg)
+    design = SimpleNamespace(plan=None)
+    store = Store.of(tmp_path / "store")
+    build = _Counter()
+    fabcache.fabricated(store, tmpl, cfg, design, 1.0, build)
+    fabcache.fabricated(store, tmpl, cfg, design, 1.0, build)
+    assert build.calls == 1
+    plain = fabcache.entry_name(tmpl, cfg, design, 1.0)
+    monkeypatch.setenv(cad.STRICT_ENV, "1")
+    assert fabcache.entry_name(tmpl, cfg, design, 1.0) != plain
+    fabcache.fabricated(store, tmpl, cfg, design, 1.0, build)
+    assert build.calls == 2                 # built (strictly), not the plain entry
+    fabcache.fabricated(store, tmpl, cfg, design, 1.0, build)
+    assert build.calls == 2                 # a strict entry serves a strict build
+
+
 def test_a_plan_re_made_from_the_store_is_the_solved_plans_entry():
     """The entry is keyed by the plan; the plan a store re-makes (``fabricate._reuse``) and
     the one a solve found are the same entry (the solve's spec names the head search

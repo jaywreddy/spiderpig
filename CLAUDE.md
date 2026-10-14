@@ -47,7 +47,7 @@ mise run clean
 ```
 
 `build`, `bake`, `guide`, `audit`, `explain`, `tune`, `sim`, `export`, `report`, `mcp`, `view`,
-`precision`, `control` (an arm's kinematics, homing, Klipper config) and `cad` are the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig <command>
+`precision`, `control` (driving a robot: an arm's kinematics, homing and Klipper config, a walker's or a mechanism's bus servos and `servos.json`) and `cad` are the subcommands of the `spiderpig` console script (`spiderpig/cli.py`; `spiderpig <command>
 --help`; from a checkout `uv run python -m spiderpig.cli <command>`, or `mise run <command>
 -- <options>`; `spiderpig mcp --store PATH` for an agent). E.g. `spiderpig bake --module
 single --side`, `spiderpig bake --linkage
@@ -192,7 +192,8 @@ the bake's (`bake._profiler`, logger `bake_gltf`) and `spiderpig build --profile
 Everything Python is the `spiderpig` package (`pyproject.toml`, hatchling; `uv sync`
 installs it editable). Engine layers, enforced by `lint-imports` (no exceptions): kinematics
 → linkage → stack → construction → fabricate → (sim | stages | urdf) → (bake | build | strength |
-precision | guide) → (api | control) → (mcp | server | cli).
+precision | guide) → (api | control | pose) → (mcp | server | cli); `spec` and `task`
+sit under the pipeline, as the part registries do (`actuators`, `roles`, `fabmethods`).
 
 | path | role |
 |---|---|
@@ -203,7 +204,7 @@ precision | guide) → (api | control) → (mcp | server | cli).
 | `spiderpig/stack_pool.py`, `stack_symmetry.py` | the planner's opt-in workers and mirrored-leg symmetry |
 | `spiderpig/construction/` | one group per functional part (`base.py` the contract): `axle.py`, `crank/` (`BoltCrank`: `bolt.py`, `hex.py`, `web.py`, `capacity.py`, `plates.py`), `route.py` (the crank's router), `pivots/` (`standoff.py`, `chicago.py`, `ball.py`, `pair.py`), `transmissions/` (an arm's drives: `belt.py`), `rotary/` (an arm's turntable: the `mt4_compact` preset, `turret.py` its plan, `base_pair.py` its parts), `tools.py` (an arm's tool), `plates.py`, `chassis.py`, `deck.py`, `robot.py` (`LAYOUTS`: a walker's two sides, an arm's turret), `assembly.py` (`ROBOT_ORDER`, the hooks' records), `underside.py`, `wobble.py`, `contract.py`, `envelope.py`, `joints.py` (`ErrorTerms`) |
 | `spiderpig/servos/` | `ServoSpec`, the drive group (`mount.py`), models and CAD cache |
-| `spiderpig/actuators/` | stepper motors for an arm's inputs (`StepperSpec`: holding stiffness, microsteps) |
+| `spiderpig/actuators/` | stepper motors for an arm's inputs (`StepperSpec`: holding stiffness, microsteps); `controllers.py` (the role `controller`: a robot's electronics, matched to its motors); `sensors.py` (`SENSORS`: every joint's homing sensor, the turntable's included) |
 | `spiderpig/hardware/` | catalog, sources, the one screw table (`fasteners.py`), mass and material constants (`mass.py`), BOM (`bom.py`, `shims.py`), `order.py` (`ORDER.md`), vendor CAD (`cad.py`) |
 | `spiderpig/config.py` | `BuildConfig`, defaults per linkage, removed keys, CLI args, query parsing |
 | `spiderpig/roles.py`, `fabmethods.py` | the construction roles (`BuildConfig.roles`: every later kind of part) and the fab methods, as registries |
@@ -217,14 +218,14 @@ precision | guide) → (api | control) → (mcp | server | cli).
 | `spiderpig/workers.py` | `submit`: package functions in fresh processes (OCP holds the GIL) |
 | `spiderpig/strength.py` | joint and link safety factors at the sim's loads |
 | `spiderpig/precision.py` | the error budget at the output: pin play through the constraints, levers, tolerances, heat, a turret's yaw and tilt |
-| `spiderpig/control/` | driving an arm: IK/FK (`ArmModel`), steps (`Axis`), homing, calibration, Klipper config, a Moonraker host (`spiderpig control`) |
+| `spiderpig/control/` | driving a robot (`spiderpig control`): an arm's IK/FK (`ArmModel`), steps (`Axis`), homing, calibration, Klipper config, a Moonraker host; a crank-driven design's bus servos (`servos.py`: IDs, phases, forward sense, each crank's zero, `servos.json`), a walker's too |
 | `spiderpig/kinematics/`, `urdf.py` | spatial joints over the side (`RobotTree`: the bake and the URDF read it); an arm's URDF |
 | `spiderpig/walk.py` | quasi-static walk model (`viewer/src/drive/model.ts` is its twin) |
-| `spiderpig/sim/` | MuJoCo: `mjcf.py`, `run.py`, `live.py` (`/ws/sim`), `loads.py` |
+| `spiderpig/sim/` | MuJoCo: `mjcf.py` (every kind's model), `run.py` (a walk; `hold`: a design that doesn't walk held at its pose), `live.py` (`/ws/sim`), `loads.py` |
 | `spiderpig/bake.py`, `build.py` | the `.glb` bake; STEP/STL/DXF/BOM/ORDER.md |
 | `spiderpig/guide/`, `labels.py` | the assembly guide (`docs/agentlib/GUIDE.md`); the part labels (SP8-0.7, LK75x27, M3-BH-8) the print and cut files share |
 | `spiderpig/explain.py`, `recommend.py` | stage verdicts; fixes checked by re-running the stage |
-| `spiderpig/spec.py`, `api/`, `failure.py`, `verify.py`, `design.py`, `store.py` | the agent surface (`docs/agentlib/API.md`) |
+| `spiderpig/spec.py`, `task.py`, `api/`, `failure.py`, `verify.py`, `design.py`, `store.py` | the agent surface (`docs/agentlib/API.md`): a `Task` (walk, place, trace) before any linkage, its candidates ranked (`api/tasks.py`); the output's error budget as a stage (`api/accuracy.py`) |
 | `spiderpig/stages/` | under bake/build and the API (which re-exports them): `resolve.py` (`resolve`, `spec_of`), `records.py`, `reports.py`, `planning.py` (`check`, `plan`, `plan_config`) |
 | `spiderpig/mcp/` | the MCP server over the API (`jobs.py`, `outputs.py`, `guide.md`) |
 | `spiderpig/server/app.py`, `view.py` | the viewer's FastAPI app; `spiderpig view` |

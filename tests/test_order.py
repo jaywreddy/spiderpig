@@ -199,7 +199,11 @@ def test_cutting_is_an_area_and_cut_length_estimate_fitted_to_sendcutsends_quote
     acrylic have no cut term (acrylic's small parts all quoted the 2.00 floor; 6061's eight
     prices don't support one). A part at one off costs at least the sheet's least (3 mm
     acrylic 2.00, 5052 2.70, 6061 3.20), at 4 off SendCutSend's break (1.33 of 2.00: linear
-    between its 2 and 10 off prices)."""
+    between its 2 and 10 off prices).
+
+    These are the shipped rates against the quotes they were fitted on (in sample: they
+    hold the rates in place, they don't show the model predicts):
+    :func:`test_the_cut_length_term_predicts_a_5052_quote_left_out_of_the_fit` does."""
     from spiderpig.hardware.bom import cut_estimate as priced
     from spiderpig.hardware.bom import same_files
 
@@ -236,11 +240,87 @@ def test_cutting_is_an_area_and_cut_length_estimate_fitted_to_sendcutsends_quote
                                                                          [(5.0, 4)])
     assert cut_estimate("al6061_2p5mm", [(0.0, 1)]) == 3.20
     assert cut_estimate("al5052_2mm", [(0.0, 1)]) == 2.70
-    assert priced("acrylic_3mm_ponoko", [(10.0, 1)]) is None      # no rates there
+    assert priced("acrylic_3mm_ponoko", [(10.0, 1)]) is None            # no rates there
     # an ungrouped BOM's rows of one shape are one file's quantity (area and cut alike)
     assert same_files([(16.7, 1), (4.58, 1), (16.7001, 1)]) == [(4.58, 1), (16.7, 2)]
     assert same_files([(16.7, 1, 30.0), (16.7, 1, 40.0), (16.7, 2, 30.0)]) == [
         (16.7, 3, 30.0), (16.7, 1, 40.0)]
+    # a shape's copies a cut-length rounding step apart (0.001 cm) are still one file
+    assert same_files([(16.7, 1, 30.0), (16.7, 1, 30.001), (16.7, 1, 30.01)]) == [
+        (16.7, 2, 30.0), (16.7, 1, 30.01)]
+
+
+FIVE052_QUOTES = [
+    # the Strider double's one-off prices of 2026-10-08 (the quote record's per-file lines):
+    # the torso, the outer frame plate, the two centre plates in 0.090 in and in 0.080 in
+    ([(51.84, 1, 88.0)], 13.72),
+    ([(42.56, 1, 61.9)], 9.85),
+    ([(16.4, 1, 29.6)], 4.39),
+    ([(16.17, 1, 30.2)], 4.14),
+    ([(16.4, 1, 29.6)], 3.74),
+    ([(16.17, 1, 30.2)], 3.47),
+    # the palletizer arm's two 5052 sheets of 2026-10-12, each its parts' quote summed
+    ([(221.6, 1, 91.9), (228.28, 1, 75.5), (194.28, 1, 61.4)], 68.61),
+    ([(73.98, 2, 88.9), (98.02, 1, 46.4), (31.61, 2, 38.6)], 50.31),
+]
+"""SendCutSend's 5052 quotes as the repository records them: ``([(area cm^2, qty, cut cm)],
+USD)`` (no floor binds: every part here is over 2.70)."""
+
+
+def _log_fit(X, y):
+    """The non-negative ``p`` minimising ``sum(log(X p / y)^2)`` (Gauss-Newton from the
+    linear least squares; the fit :func:`spiderpig.hardware.bom.cut_estimate` documents)."""
+    import numpy as np
+
+    p = np.clip(np.linalg.lstsq(X, y, rcond=None)[0], 1e-6, None)
+    for _ in range(50):
+        est = X @ p
+        r = np.log(est / y)
+        J = X / est[:, None]
+        step = np.linalg.lstsq(J, -r, rcond=None)[0]
+        p = np.clip(p + step, 1e-6, None)
+        if np.max(np.abs(step)) < 1e-12:
+            break
+    return p
+
+
+def test_the_cut_length_term_predicts_a_5052_quote_left_out_of_the_fit():
+    """DECISIONS.md (2026-10-14): 5052's cut-length term was chosen because it predicts a
+    quote left out of the fit better than the area alone. Here on the quotes the repository
+    records (:data:`FIVE052_QUOTES`, each one off or at its quantity break): each quote left
+    out in turn, both two-rate models refitted on the rest (area and cut, no fixed charge;
+    a fixed charge and the area) and the left-out quote predicted. The cut term's error is
+    about half the area's (rms 0.23 against 0.42; the arm's big 0.125 in plates, left out,
+    the worst of both), and on every quote the fitted rates are near the shipped ones."""
+    import numpy as np
+
+    from spiderpig.hardware.bom import qty_factor
+    from spiderpig.hardware.sheet_catalog import CUT_RATES
+
+    rates = CUT_RATES["5052"]
+    breaks = rates["cut_qty_factors"]
+
+    def row(parts):     # (parts, area, cut) each at its quantity's price
+        w = [q * qty_factor(breaks, q) for _, q, _ in parts]
+        return (sum(w), sum(wi * a for wi, (a, _, _) in zip(w, parts, strict=True)),
+                sum(wi * c for wi, (_, _, c) in zip(w, parts, strict=True)))
+
+    F = np.array([row(p) for p, _ in FIVE052_QUOTES])
+    y = np.array([usd for _, usd in FIVE052_QUOTES])
+    models = {"cut": F[:, 1:], "area": F[:, :2]}
+    loo = {}
+    for name, X in models.items():
+        errs = []
+        for i in range(len(y)):
+            rest = np.arange(len(y)) != i
+            p = _log_fit(X[rest], y[rest])
+            errs.append(float(X[i] @ p / y[i] - 1))
+        loo[name] = float(np.sqrt(np.mean(np.square(errs))))
+    assert loo["cut"] < 0.6 * loo["area"], loo
+    assert loo["cut"] < 0.25, loo
+    area, cut = _log_fit(models["cut"], y)
+    assert area == pytest.approx(rates["cut_usd_cm2"], rel=0.15)
+    assert cut == pytest.approx(rates["cut_usd_cm"], rel=0.15)
 
 
 def test_a_parts_cut_length_is_every_contour_of_its_face():

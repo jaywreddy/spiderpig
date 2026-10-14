@@ -36,8 +36,10 @@ and box, an STL mesh with the B-rep unchanged) or **DIFFERENT** (anything else, 
 Exit status 0 / 1 / 2 accordingly. "Order differs" is a user decision (PLAN 4.3), not a
 merge. Every design must also pass its own audit (no problems: the defaults of every
 registered design build a robot that holds together, 2026-10-14): ``compare`` and
-``snapshot`` list the designs whose audit fails and then exit 3 where they would have
-exited 0, but for those :data:`KNOWN_AUDIT_FAILURES` explains (``mise run gate -- audit
+``snapshot`` list the designs whose audit fails, but for those
+:data:`KNOWN_AUDIT_FAILURES` explains, and then exit 3 where they would have exited 0;
+``compare`` reports both verdicts, an audit failure beside an identity difference
+exiting 4 (order differs) or 5 (DIFFERENT): :func:`exit_status` (``mise run gate -- audit
 DIR`` checks a snapshot alone).
 
 Reproducible: servos drawn parametrically (no CAD downloads, as the tests), a fresh
@@ -697,6 +699,16 @@ def report_audits(snap: Path, names: list[str],
     return worst
 
 
+def exit_status(identity: int, audits: int) -> int:
+    """``compare``'s exit status from the identity's verdict (0 identical, 1 order differs,
+    2 DIFFERENT) and the audits' (0, or 3: a design fails its audit unexplained): either
+    alone as it is, both as ``identity + 3`` (4: order differs, 5: DIFFERENT, each with an
+    audit failure), so neither masks the other."""
+    if identity and audits:
+        return identity + 3
+    return identity or audits
+
+
 # ---------------------------------------------------------------------------
 # the design numbers' one source (docs/agentlib/DESIGNS.md)
 # ---------------------------------------------------------------------------
@@ -869,7 +881,11 @@ def main(argv=None) -> int:
         return 2
     worst = diff_dirs(args.dir, new, names)
     audits = report_audits(new, names)      # (printed whatever the identity's verdict)
-    return worst or audits
+    status = exit_status(worst, audits)
+    if worst and audits:
+        print(f"both: the identity {'DIFFERENT' if worst == 2 else 'order differs'} and an "
+              f"audit failure (exit {status})")
+    return status
 
 
 if __name__ == "__main__":

@@ -1142,7 +1142,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Found, not changed:** an XL330 or XL430 walker gets the deck's ESP32 board, which
   speaks Feetech's protocol, not DYNAMIXEL's (as before this change: its BOM is the same);
   `spiderpig control servo` says so (`controllers.protocol_note`). Changing its default
-  would move those designs' ids and BOMs: the user's call.
+  would move those designs' ids and BOMs: the user's call. (Changed in wave 2, below: "the
+  controller follows the servo", under the user's request of 2026-10-14 to merge the
+  walkers and the arm holistically and fix what the reviews found.)
 - **The gate** (against `platform-77c117c`): all eight designs identical (parts, plans,
   BOM, DXF, audit), so no new baseline and DESIGNS.md unchanged.
 
@@ -1175,8 +1177,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   imported since could all serve a stale bake. A watcher's re-bake now skips a default
   whose key didn't move. `spiderpig bake`'s own file (`bakes/<config key>.glb`) is no
   longer served by the viewer's server.
-- **pyright over the tests.** `[tool.pyright]` includes `tests/`; they hold 743 errors
-  (optional reads of reports and parts, mostly), so they are ratcheted on a count of their
+- **pyright over the tests.** `[tool.pyright]` includes `tests/`; they held 743 errors
+  when the ratchet began (optional reads of reports and parts, mostly; the baseline file
+  holds 740 since wave 1's merge, `0e0557a`), so they are ratcheted on a count of their
   own (`tests/pyright-baseline.json`'s `"tests"`) beside the package's 21, each failing CI
   if it rises; the scorecard's `errors` stays the package's.
 - **The roadmap** gained the platform's phases (2026-10-11 to 2026-10-14) and what is open.
@@ -1402,7 +1405,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **The decision:** the default build of every design the gate holds passes its own audit,
   and a design's defaults follow what it is (its servo's protocol, its kind's roles), toward
   the user's "one seamless repo".
-- **The plain `palletizer`** failed at a crash at the tool (`pin:E` jam SF 0.44, acrylic
+- **The plain `palletizer` holds a crash now:** it failed at a crash at the tool (`pin:E` jam SF 0.44, acrylic
   `link:b4` 0.48). The approved arm's pivots are now every arm's (`config.DEFAULT_PIVOTS`:
   `ball_pair` / `ball_pair_pillar`; `LINKAGE_PIVOTS` empty) and its links' sheets both
   palletizers' (`materials.PALLETIZER_LINKS`): the audit OK, 8 warnings (the worst jam SF
@@ -1423,7 +1426,7 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   (superseded by `klann_lego`, the order design, and the diywalkers variants); it is the
   family's measured loads (`strength.FALLBACK_PIN_LOADS`) and a test design in 44 test files
   (72 files in all), so pruning it means moving those to a variant.
-- **The plain `palletizer`** is superseded by `palletizer_reach` too (the same links; a
+- **Pruning the plain `palletizer`** (proposed): it is superseded by `palletizer_reach` too (the same links; a
   shorter elbow crank and a box that doesn't reach the table). Pruning it would touch 10 test
   files (`test_arm`, `test_band`, `test_control`, `test_pair`, `test_precision`,
   `test_repeatability`, `test_stiffness`, `test_transmissions`, `test_turret`,
@@ -1432,7 +1435,9 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   exit 3, unless `KNOWN_AUDIT_FAILURES` says why (one that passes is reported for the table
   to lose it); `mise run gate -- audit DIR`; the slow `tests/test_gate_audits.py` runs the
   eight audits (a known failure a strict `xfail`).
-- **The controller follows the servo** (`controllers.BUS_DEFAULTS`): an XL330 / XL430 walker
+- **The controller follows the servo** (`controllers.BUS_DEFAULTS`; the wave-1 entry left it
+  as the user's call: changed under the user's request of 2026-10-14 to merge the walkers
+  and the arm holistically and fix what the reviews found): an XL330 / XL430 walker
   had the deck's ESP32 board, which speaks Feetech's protocol, not DYNAMIXEL's. It now gets
   `u2d2_dynamixel`: ROBOTIS's U2D2 (USD 36.92) on its Power Hub Board Set (USD 21.85), both
   from robotis.us's product pages read 2026-10-14 (no login, no bot check; both shown sold
@@ -1457,3 +1462,42 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   (167), 19 laser parts (17), BOM 71 lines $595.79 ($501.51; two DIN 988 6 x 12 shim
   thicknesses newly unpriced, not guessed), audit OK with 8 warnings (FAIL (2) before);
   `klann_quad` fails, known. DESIGNS.md regenerated from it.
+
+### 2026-10-14: hardening after the merge's reviews (no part, plan or BOM moved)
+
+- **The viewer's server keys a bake under its lock** (`server.app._ensure_baked`): the key
+  was taken before a request waited its turn, and `_bake` keyed again, so a source edit
+  meanwhile returned a file never written (a 500, remembered as baked). Now the key is
+  taken under the lock and the answer is the file `_bake` wrote, named by the code it ran
+  (keyed as it starts) and the CAD state it left (a model it downloaded).
+- **Strict vendor CAD is in every cache's key**: the fabrication cache's entry
+  (`fabcache.entry_name`), the server's `bake_key` and the build skip (`uptodate.CAD_ENV`).
+  Before, an entry, a bake or a build made without `SPIDERPIG_CAD_STRICT=1`, which may hold
+  a parametric fallback, answered a strict request. Off (the default) the names are as
+  they were.
+- **A bake key is probed once:** every `GET /api/glb` keyed its design, and the servo's
+  probe could download (60 s timeout, again on every request offline). `bake_key` is
+  memoised per config, code key and a stat of the CAD cache and its switches
+  (`server.app._cad_stamp`), and probes the cache without downloading
+  (`fabcache.servo_state(config, download=False)`); the bake may still download, and its
+  file is named by the state it left.
+- **One file per shape, the cut to its rounding** (`bom.same_files`, `bom.CUT_TOL_CM`): cut
+  lengths are settled to 0.001 cm, so a shape's copies could read a step apart, which a
+  relative 1e-5 split into two files under 100 cm of cut. They match within 0.002 cm now.
+  On the gate's `strider_double` and `palletizer_reach` every sheet's files and price are
+  as before (their rows are already grouped).
+- **CI:** a label other than `slow` runs in a concurrency group of its own, so adding one
+  no longer cancels an in-flight slow tier (nor starts it again); removing `slow` starts
+  nothing (TESTING.md). The nightly gate goes on to its determinism compare after a first
+  snapshot whose audit fails (exit 3) and fails the job after it; `compare` reports both
+  verdicts (`identity_gate.exit_status`: 4 and 5 are "order differs" and "DIFFERENT" with
+  an audit failure).
+- **The cut model, left out:** `tests/test_order.py` now refits 5052's two rates with each
+  quote the repository records left out (the Strider's six one-off prices of 2026-10-08
+  and the arm's two 5052 sheets of 2026-10-12, summed: its per-part prices aren't kept
+  here) and predicts it: rms 23 % with the cut term against 42 % for a fixed charge and the
+  area, the fit on all of them within 6 and 9 % of the shipped rates. The per-part figures
+  of 2026-10-14 (14 % against 27 %, 14 prices) were measured on the quoted DXFs, which
+  this repository doesn't hold.
+- **`spiderpig.spec` and `spiderpig.task`** are under a lint-imports contract: neither
+  reaches into the pipeline or a front-end.

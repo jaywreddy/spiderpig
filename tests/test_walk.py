@@ -953,7 +953,7 @@ def stub_bakes(server_app, monkeypatch, tmp_path):
     monkeypatch.setattr(server_app, "_sources_mtime", lambda: 0.0)
     # a bake's file is <config key>-<bake key>.glb; the keying itself is
     # test_server_hardening's: here one key, so the names say which config was baked
-    monkeypatch.setattr(server_app, "bake_key", lambda config: "k")
+    monkeypatch.setattr(server_app, "bake_key", lambda config, code=None: "k")
     monkeypatch.setattr(server_app, "_FAILED", {})
     monkeypatch.setattr(server_app, "_BAKED", {})
     return calls

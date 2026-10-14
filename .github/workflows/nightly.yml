@@ -112,9 +112,13 @@ jobs:
 
   # the identity gate (tests/gate/identity_gate.py) as a determinism check: no baseline
   # here, so two snapshots of this tree, each from a fresh store, must be identical
-  # (compare exits 0; 1 is "order differs", 2 "DIFFERENT"); the second checks the contract
-  # exactly at every angle (GATE_EXACT_CONTRACT: check_side, not the audit's check_sides),
-  # so the fast and the exact contract are compared on the gate's designs every night
+  # (compare exits 0; 1 is "order differs", 2 "DIFFERENT"; 3 a design failing its own
+  # audit that KNOWN_AUDIT_FAILURES doesn't explain, the snapshots identical; 4 and 5 are 1
+  # and 2 with such an audit failure too); the second checks the contract exactly at every
+  # angle (GATE_EXACT_CONTRACT: check_side, not the audit's check_sides), so the fast and
+  # the exact contract are compared on the gate's designs every night. An audit failure
+  # in the first snapshot (exit 3: the snapshot itself is whole) doesn't skip the compare:
+  # the night's determinism verdict is still had, and the job fails after it
   gate:
     runs-on: ubuntu-latest
     timeout-minutes: 180
@@ -125,12 +129,25 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
-      - name: snapshot
-        run: uv run --locked python tests/gate/identity_gate.py snapshot "$RUNNER_TEMP/gate-a" -j 2
+      - id: snapshot
+        name: snapshot
+        run: |
+          rc=0
+          uv run --locked python tests/gate/identity_gate.py snapshot "$RUNNER_TEMP/gate-a" -j 2 || rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 3 ]; then
+            echo "::error::a design fails its own audit (exit 3): the compare runs, the job fails after it"
+          fi
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ]
       - name: snapshot again (the contract exactly) and compare
         env:
           GATE_EXACT_CONTRACT: "1"
         run: uv run --locked python tests/gate/identity_gate.py compare "$RUNNER_TEMP/gate-a" -j 2 --out "$RUNNER_TEMP/gate-b"
+      - name: the first snapshot's audits
+        if: steps.snapshot.outputs.rc == '3'
+        run: |
+          echo "::error::the first snapshot's audit failed (exit 3; its report is in the snapshot step's log)"
+          exit 3
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
