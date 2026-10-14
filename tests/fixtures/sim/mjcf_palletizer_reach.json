@@ -1,0 +1,599 @@
+{
+ "data": {
+  "meta": {
+   "actuators": {
+    "q1": {
+     "armature": 7.593750000000001e-05,
+     "ctrl_units": "rad: the joint's angle (an input's design angle; a spatial joint's from the pose fabricated)",
+     "ctrlrange": [
+      -2.0943951023931953,
+      2.0943951023931953
+     ],
+     "forcerange": [
+      -1.5,
+      1.5
+     ],
+     "joint": "q1",
+     "kp": 281.25,
+     "kv": 2.7329118900365437,
+     "motor": "nema17_17hs4401_x64",
+     "ratio": 3.75,
+     "ref": 0.0,
+     "stiffness": 281.25,
+     "type": "position"
+    },
+    "q2": {
+     "armature": 0.000135,
+     "ctrl_units": "rad: the joint's angle (an input's design angle; a spatial joint's from the pose fabricated)",
+     "ctrlrange": [
+      -0.17453292519943295,
+      1.9198621771937625
+     ],
+     "forcerange": [
+      -2.0,
+      2.0
+     ],
+     "joint": "q2",
+     "kp": 500.0,
+     "kv": 2.9612644849983893,
+     "motor": "nema17_17hs4401",
+     "ratio": 5.0,
+     "ref": -0.17453292519943295,
+     "stiffness": 500.0,
+     "type": "position"
+    },
+    "q3": {
+     "armature": 0.000135,
+     "ctrl_units": "rad: the joint's angle (an input's design angle; a spatial joint's from the pose fabricated)",
+     "ctrlrange": [
+      -1.5707963267948966,
+      0.17453292519943295
+     ],
+     "forcerange": [
+      -2.0,
+      2.0
+     ],
+     "joint": "q3",
+     "kp": 183.69139689180156,
+     "kv": 0.3673827937836031,
+     "motor": "nema17_17hs4401",
+     "ratio": 5.0,
+     "ref": -1.5707963267948966,
+     "stiffness": 500.0,
+     "type": "position"
+    }
+   },
+   "base": "base",
+   "bodies": {
+    "b1": {
+     "kind": "b1",
+     "kinematic": [
+      "b1"
+     ],
+     "mass": 0.07095125694895021,
+     "parent": "torso",
+     "pivot": "O",
+     "ref_pos": [
+      0.0,
+      0.0,
+      0.024532
+     ],
+     "side": null
+    },
+    "b2": {
+     "kind": "b2",
+     "kinematic": [
+      "b2"
+     ],
+     "mass": 0.06755832894895022,
+     "parent": "torso",
+     "pivot": "O",
+     "ref_pos": [
+      0.0,
+      0.0,
+      0.03833200000000001
+     ],
+     "side": null
+    },
+    "b3": {
+     "kind": "b3",
+     "kinematic": [
+      "b3"
+     ],
+     "mass": 0.01640059108641324,
+     "parent": "b4",
+     "pivot": "R",
+     "ref_pos": [
+      0.12802500789158705,
+      0.06742573690329906,
+      0.029932
+     ],
+     "side": null
+    },
+    "b4": {
+     "kind": "b4",
+     "kinematic": [
+      "b4"
+     ],
+     "mass": 0.03239403959824787,
+     "parent": "b1",
+     "pivot": "E",
+     "ref_pos": [
+      0.12802500789158705,
+      -0.022574263096700943,
+      0.0372195
+     ],
+     "side": null
+    },
+    "b5": {
+     "kind": "b5",
+     "kinematic": [
+      "b5"
+     ],
+     "mass": 0.015650417339579798,
+     "parent": "torso",
+     "pivot": "P",
+     "ref_pos": [
+      0.03064,
+      -0.02571,
+      0.007731999999999999
+     ],
+     "side": null
+    },
+    "b6": {
+     "kind": "b6",
+     "kinematic": [
+      "b6"
+     ],
+     "mass": 0.014961283743491482,
+     "parent": "b4",
+     "pivot": "E",
+     "ref_pos": [
+      0.12802500789158705,
+      -0.022574263096700943,
+      0.019132
+     ],
+     "side": null
+    },
+    "b7": {
+     "kind": "b7",
+     "kinematic": [
+      "b7"
+     ],
+     "mass": 0.018160096419667537,
+     "parent": "b6",
+     "pivot": "U",
+     "ref_pos": [
+      0.15866500789158705,
+      0.0031357369032990585,
+      0.029931999999999997
+     ],
+     "side": null
+    },
+    "b8": {
+     "kind": "b8",
+     "kinematic": [
+      "b8"
+     ],
+     "mass": 0.032068128846132374,
+     "parent": "b4",
+     "pivot": "W",
+     "ref_pos": [
+      0.12802500789158705,
+      -0.17257426309670096,
+      0.046732
+     ],
+     "side": null
+    },
+    "base": {
+     "kind": "base",
+     "kinematic": [],
+     "mass": 0.4927403952155754,
+     "parent": null,
+     "pivot": null,
+     "ref_pos": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "side": null
+    },
+    "torso": {
+     "kind": "spatial",
+     "kinematic": [
+      "torso"
+     ],
+     "mass": 0.9284149749863359,
+     "parent": "base",
+     "pivot": null,
+     "ref_pos": [
+      0.0,
+      -0.07486501894490467,
+      0.030232
+     ],
+     "side": null
+    }
+   },
+   "config": {
+    "linkage": "palletizer_reach",
+    "module": "single",
+    "phases": null,
+    "proportions": {},
+    "servo": "sts3215",
+    "sheet": "acrylic_3mm"
+   },
+   "crank_angle": "t = t_ref + crank_sign * qpos[S.crank]",
+   "crank_sign": 1,
+   "feet": {},
+   "format": "spiderpig-mjcf/1",
+   "frames": {
+    "base": "the base body's frame is the mech frame in metres",
+    "mech": "design frame (mm): x walking axis, y up, z lateral stack (left side z < 0); origin on the crank axis O at the mid-plane",
+    "mech_to_world_ref": [
+     [
+      0.001,
+      0.0,
+      0.0,
+      -0.0
+     ],
+     [
+      0.0,
+      0.0,
+      -0.001,
+      0.030232
+     ],
+     [
+      0.0,
+      0.001,
+      0.0,
+      0.157215
+     ],
+     [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+     ]
+    ],
+    "rest_pitch": 0.0,
+    "rotation_world_from_mech": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      -1.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0
+     ]
+    ],
+    "world": "z up, x forward, y left; gravity -z; the base fixed, its floor (a turret's, under the yaw axis: the URDF's base_link) at the origin"
+   },
+   "freejoint": null,
+   "loops": [
+    {
+     "body1": "b6",
+     "body2": "b5",
+     "name": "T"
+    },
+    {
+     "body1": "b7",
+     "body2": "b8",
+     "name": "V"
+    },
+    {
+     "body1": "b3",
+     "body2": "b2",
+     "name": "C"
+    }
+   ],
+   "mass": {
+    "by_material": {
+     "aluminium": 0.18354737299910429,
+     "electronics": 0.004,
+     "nylon": 0.8518759097977951,
+     "sheet": 0.4049158974320221,
+     "steel": 0.24496033290442232
+    },
+    "total": 1.689299513133344
+   },
+   "node_motion": "node_matrix(t) = D_body(t) @ node_matrix(frame 0), D_body(t) = X_base_body(t) @ inv(X_base_body(qpos0)) in mech mm",
+   "nodes": {
+    "b1": "b1",
+    "b2": "b2",
+    "b3": "b3",
+    "b4": "b4",
+    "b5": "b5",
+    "b6": "b6",
+    "b7": "b7",
+    "b8": "b8",
+    "base_bottom": "base",
+    "base_col0_0": "base",
+    "base_col1_0": "base",
+    "base_col2_0": "base",
+    "base_col3_0": "base",
+    "base_col4_0": "base",
+    "base_col5_0": "base",
+    "base_col6_0": "base",
+    "base_col_screw0a": "base",
+    "base_col_screw0b": "base",
+    "base_col_screw1a": "base",
+    "base_col_screw1b": "base",
+    "base_col_screw2a": "base",
+    "base_col_screw2b": "base",
+    "base_col_screw3a": "base",
+    "base_col_screw3b": "base",
+    "base_col_screw4a": "base",
+    "base_col_screw4b": "base",
+    "base_col_screw5a": "base",
+    "base_col_screw5b": "base",
+    "base_col_screw6a": "base",
+    "base_col_screw6b": "base",
+    "base_col_washer0": "base",
+    "base_col_washer1": "base",
+    "base_col_washer2": "base",
+    "base_col_washer3": "base",
+    "base_col_washer4": "base",
+    "base_col_washer5": "base",
+    "base_col_washer6": "base",
+    "base_spacer0": "base",
+    "base_spacer1": "base",
+    "base_spacer2": "base",
+    "base_top": "base",
+    "drive_q2_belt": "torso",
+    "drive_q2_bolt0": "b1",
+    "drive_q2_bolt1": "b1",
+    "drive_q2_bolt2": "b1",
+    "drive_q2_bolt3": "b1",
+    "drive_q2_clamp0": "torso",
+    "drive_q2_clamp1": "torso",
+    "drive_q2_motor": "torso",
+    "drive_q2_motor_screw0": "torso",
+    "drive_q2_motor_screw1": "torso",
+    "drive_q2_motor_screw2": "torso",
+    "drive_q2_motor_screw3": "torso",
+    "drive_q2_pulley_large": "b1",
+    "drive_q2_pulley_small": "torso",
+    "drive_q2_slider": "torso",
+    "drive_q3_belt": "torso",
+    "drive_q3_bolt0": "b2",
+    "drive_q3_bolt1": "b2",
+    "drive_q3_bolt2": "b2",
+    "drive_q3_bolt3": "b2",
+    "drive_q3_clamp0": "torso",
+    "drive_q3_clamp1": "torso",
+    "drive_q3_motor": "torso",
+    "drive_q3_motor_screw0": "torso",
+    "drive_q3_motor_screw1": "torso",
+    "drive_q3_motor_screw2": "torso",
+    "drive_q3_motor_screw3": "torso",
+    "drive_q3_pulley_large": "b2",
+    "drive_q3_pulley_small": "torso",
+    "drive_q3_slider": "torso",
+    "foot_bracket0": "torso",
+    "foot_bracket1": "torso",
+    "foot_bracket2": "torso",
+    "foot_bracket3": "torso",
+    "foot_screw0a": "torso",
+    "foot_screw0b": "torso",
+    "foot_screw1a": "torso",
+    "foot_screw1b": "torso",
+    "foot_screw2a": "torso",
+    "foot_screw2b": "torso",
+    "foot_screw3a": "torso",
+    "foot_screw3b": "torso",
+    "frame_outer": "torso",
+    "hub_screw0": "torso",
+    "hub_screw1": "torso",
+    "hub_screw2": "torso",
+    "hub_screw3": "torso",
+    "pillar_O_bearing_b1_0": "b1",
+    "pillar_O_bearing_b1_1": "b1",
+    "pillar_O_bearing_b2_0": "b2",
+    "pillar_O_bearing_b2_1": "b2",
+    "pillar_O_screw0": "torso",
+    "pillar_O_screw15": "torso",
+    "pillar_O_shims15": "torso",
+    "pillar_O_standoff0": "torso",
+    "pillar_O_tube0": "torso",
+    "pillar_O_tube1": "torso",
+    "pillar_O_tube2": "torso",
+    "pillar_O_washer0": "torso",
+    "pillar_O_washer15": "torso",
+    "pillar_P_bearing_b5_0": "b5",
+    "pillar_P_bearing_b5_1": "b5",
+    "pillar_P_screw0": "torso",
+    "pillar_P_screw15": "torso",
+    "pillar_P_shims15": "torso",
+    "pillar_P_standoff0": "torso",
+    "pillar_P_tube0": "torso",
+    "pillar_P_tube1": "torso",
+    "pillar_P_washer0": "torso",
+    "pillar_P_washer15": "torso",
+    "pin_C_bearing_b2_0": "b2",
+    "pin_C_bearing_b2_1": "b2",
+    "pin_C_land_hi": "b3",
+    "pin_C_screw": "b3",
+    "pin_C_spacer_hi": "b3",
+    "pin_C_spring": "b3",
+    "pin_C_tube0": "b3",
+    "pin_E_bearing_b1_0": "b1",
+    "pin_E_bearing_b1_1": "b1",
+    "pin_E_bearing_b4": "b4",
+    "pin_E_bearing_b4_hub": "b4",
+    "pin_E_hub_b4": "b4",
+    "pin_E_land_hi": "b6",
+    "pin_E_screw": "b6",
+    "pin_E_spacer_hi": "b6",
+    "pin_E_spacer_lo": "b6",
+    "pin_E_spring": "b6",
+    "pin_E_tube0": "b6",
+    "pin_R_bearing_b4": "b4",
+    "pin_R_bearing_b4_hub": "b4",
+    "pin_R_hub_b4": "b4",
+    "pin_R_land_hi": "b3",
+    "pin_R_screw": "b3",
+    "pin_R_spacer_hi": "b3",
+    "pin_R_spring": "b3",
+    "pin_T_bearing_b6_0": "b6",
+    "pin_T_bearing_b6_1": "b6",
+    "pin_T_land_hi": "b5",
+    "pin_T_screw": "b5",
+    "pin_T_spacer_hi": "b5",
+    "pin_T_spring": "b5",
+    "pin_T_tube0": "b5",
+    "pin_U_bearing_b7_0": "b7",
+    "pin_U_bearing_b7_1": "b7",
+    "pin_U_land_hi": "b6",
+    "pin_U_screw": "b6",
+    "pin_U_spacer_hi": "b6",
+    "pin_U_spring": "b6",
+    "pin_U_tube0": "b6",
+    "pin_V_bearing_b8_0": "b8",
+    "pin_V_bearing_b8_1": "b8",
+    "pin_V_land_hi": "b7",
+    "pin_V_screw": "b7",
+    "pin_V_spacer_hi": "b7",
+    "pin_V_spring": "b7",
+    "pin_V_tube0": "b7",
+    "pin_W_bearing_b8_0": "b8",
+    "pin_W_bearing_b8_1": "b8",
+    "pin_W_land_hi": "b4",
+    "pin_W_screw": "b4",
+    "pin_W_spacer_hi": "b4",
+    "pin_W_spring": "b4",
+    "pin_W_tube0": "b4",
+    "tool_camera": "b8",
+    "tool_camera_screw0": "b8",
+    "tool_camera_screw1": "b8",
+    "tool_camera_screw2": "b8",
+    "tool_camera_screw3": "b8",
+    "tool_column": "b8",
+    "tool_cup": "b8",
+    "tool_hanger": "b8",
+    "tool_screw0": "b8",
+    "tool_screw1": "b8",
+    "tool_shelf": "b8",
+    "tool_slot_screw0": "b8",
+    "torso": "torso",
+    "turntable": "torso",
+    "turntable_centre_shims": "torso",
+    "turntable_lift0": "torso",
+    "turntable_lift1": "torso",
+    "turntable_lift2": "torso",
+    "turntable_lift3": "torso",
+    "yaw_bearing_lower": "base",
+    "yaw_bearing_upper": "base",
+    "yaw_belt": "base",
+    "yaw_clamp_screw": "torso",
+    "yaw_clamp_washer": "torso",
+    "yaw_collar_mid": "torso",
+    "yaw_collar_over": "torso",
+    "yaw_collar_under": "torso",
+    "yaw_motor": "base",
+    "yaw_motor_screw0": "base",
+    "yaw_motor_screw1": "base",
+    "yaw_motor_screw2": "base",
+    "yaw_motor_screw3": "base",
+    "yaw_pulley_large": "torso",
+    "yaw_pulley_small": "base",
+    "yaw_shaft": "torso",
+    "yaw_shim_over": "torso",
+    "yaw_shim_under": "torso",
+    "yaw_spring": "torso",
+    "yaw_stop": "torso",
+    "yaw_stop_nut": "torso",
+    "yaw_stop_post": "base",
+    "yaw_stop_post_screw": "base"
+   },
+   "params": {
+    "clearance": 0.5,
+    "contact_solimp": [
+     0.9,
+     0.95,
+     0.001,
+     0.5,
+     2.0
+    ],
+    "contact_solref": [
+     0.01,
+     1.0
+    ],
+    "crank_armature": 0.005,
+    "crank_damping": 0.0,
+    "eq_solimp": [
+     0.99,
+     0.999,
+     0.0001,
+     0.5,
+     2.0
+    ],
+    "eq_solref": [
+     0.002,
+     1.0
+    ],
+    "friction": 0.65,
+    "hull_tolerance": 0.5,
+    "iterations": 100,
+    "ls_iterations": 50,
+    "payload_g": 0.0,
+    "payload_pos": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "phase_lock_ki": 4.0,
+    "phase_lock_kp": 1.0,
+    "pin_armature": 1e-06,
+    "pin_damping": 0.0001,
+    "pin_frictionloss": 0.0015,
+    "printed_fill": 1.0,
+    "rolling_friction": 0.0001,
+    "servo_mismatch": 0.03,
+    "stall_error": 0.1,
+    "timestep": 0.001,
+    "torsional_friction": 0.005
+   },
+   "rest_height": 0.157215,
+   "sites": {
+    "output": {
+     "body": "b8",
+     "ref_pos": [
+      0.16302500789158705,
+      -0.19997426309670097,
+      0.046732
+     ]
+    },
+    "tool0": {
+     "body": "b8",
+     "ref_pos": [
+      0.16302500789158705,
+      -0.23600626309670095,
+      0.034100000000000005
+     ]
+    }
+   },
+   "t_ref": 0.0,
+   "units": {
+    "design": "mm",
+    "model": "SI (m, kg, s, rad)"
+   }
+  },
+  "xml_bytes": 21857,
+  "xml_gz_b64": "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",
+  "xml_sha256": "303101e4b53c368f11ad9b36ce22ccb2cf34e46213e9c3c892dbeeabc1fa0020"
+ },
+ "engine_version": "0.1.0+5e61a02ee047",
+ "generator": "tests/test_sim.py::test_recorded_mjcf_current[palletizer_reach]",
+ "source": {
+  "file": "tests/test_sim.py",
+  "name": null
+ },
+ "source_key": "gen-494434f664020a1b"
+}

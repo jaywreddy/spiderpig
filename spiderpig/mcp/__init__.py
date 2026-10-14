@@ -758,7 +758,8 @@ def _register_tools(server: MCPServer, state: State) -> None:
             = GRACE_SECONDS) -> o.ExportOut:
         """Write the files: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per
         printed part + parts.csv), ``dxf`` (kerf-compensated sheets + parts.csv), ``bom``
-        (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (MuJoCo); always
+        (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (MuJoCo, every kind's),
+        ``urdf`` (an arm's, for ROS); always
         ``manifest.json``. Builds first if nothing is built. Returns the files' paths and
         the manifest. A long operation (a job when it outlasts ``wait_seconds``). An
         unknown format is refused by the input schema before the tool runs."""

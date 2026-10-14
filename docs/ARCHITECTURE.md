@@ -1438,8 +1438,9 @@ robot is an entry rather than an edit across the stages:
   straight moves as synchronised constant-speed joint segments and posts them to Moonraker.
 - **An arm through every surface** (2026-10-12, phase 7): the spec's `legs.robot` (an
   arm's whole robot by default) makes the API, the MCP and the store build an arm's turret;
-  `api.export` writes `urdf` (with the arm's MuJoCo model: `urdf.mjcf`, the loops closed by
-  `connect` equalities, the motors as position actuators); the viewer poses an
+  `api.export` writes `urdf` for ROS and `mjcf` from the one MuJoCo emitter every design
+  goes through (`sim.mjcf`, section 7.3: the arm fixed on its turret, its loops closed by
+  `connect` equalities, its steppers as position actuators); the viewer poses an
   arm by joint sliders (`viewer/src/arm.ts`, from `/api/pose/{mode}`: `spiderpig.pose`,
   each node's matrix from the clip's first frame at the joints given); the guide's arm
   steps say what an arm has (its drives, no crank or servo). The gate's designs include the
@@ -1447,7 +1448,8 @@ robot is an entry rather than an edit across the stages:
 - **Spatial joints** (`spiderpig/kinematics/`): what a layout adds out of the side's plane,
   as data on the mechanism (`meta["tree"]`, a `kinematics.RobotTree`): the turntable `q1`
   rides the world about the vertical, the wrist `q4` rides `q1` after the end plate's
-  planar motion. The bake composes them with the planar motions; the URDF writes them; the
+  planar motion. The bake composes them with the planar motions; the URDF and the MJCF
+  write them (a hinge about the joint's axis); the
   precision budget adds the turntable as an input (`q1`, through the flange's horizontal
   reach) and its support's tilt over the tool's distance from the bearings.
 
@@ -1477,7 +1479,7 @@ holds its outputs, from the same sources and options, does nothing
 | `laser/parts/<service>_<sheet>/<part>_x<qty>.dxf`, `laser/parts/order.csv` | the same parts, one DXF per distinct part (blue `CUT` layer, R2007), with each file's material, thickness and quantity: SendCutSend and Ponoko take one part per file (`layout.save_parts`) | not in the snapshot |
 | `bom.csv`, `bom.md`, `bom.json` | the bill of materials | 11 purchase rows, at least $124.87 |
 | `ORDER.md` | the shopping list (`hardware/order.py`) | not in the snapshot |
-| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar | arms only |
+| `urdf/<name>.urdf`, `urdf/meshes/`, `urdf/<name>.joints.json` | an arm's URDF for ROS (`spiderpig/urdf.py`): a link per rigid body, the actuated inputs and the robot's joints, the side's other pins as a spanning tree (a `mimic` where a pin follows one input), the loops' closing pins and every passive joint's map in the sidecar (its MuJoCo model is the export's `mjcf`, section 7.3) | arms only |
 
 `api.export` (and `spiderpig export`, the MCP's `export`) writes the formats a spec names
 (section 9.2); its `dxf` is the packed sheets only: `ORDER.md` and `laser/parts/` come
@@ -1571,7 +1573,22 @@ without asking the server.
 
 ### 7.3 The physics model: MJCF
 
-`spiderpig/sim/mjcf.py` writes one self-contained MuJoCo model. A free-floating base
+`spiderpig/sim/mjcf.py` writes one self-contained MuJoCo model, for every kind of design,
+through one reduction (`sim.mjcf.robot_model`) and one emitter (2026-10-14; before, an
+arm's came from a second writer beside its URDF). What differs is what the design
+declares: a walker (`Linkage.walks`) is free on a floor with its feet's contacts; any other
+design is fixed to the world with no floor (an arm's turret base, a mechanism's frame), its
+base's floor at the origin (a turret's under its yaw axis, the URDF's `base_link`). Its
+spatial joints (`meta["tree"]`, `kinematics.RobotTree`, what the bake and the URDF read)
+are hinges about their own axes; an input's link hangs from the frame on its drive's pivot,
+its hinge reading the input's design angle. Its motors go by what they drive: a servo's
+velocity actuator on each crank, a stepper's position actuator on each joint
+`actuators.joint_ratings` rates (its holding stiffness through the reduction, capped where
+the step can't hold it stably; its holding torque the force limit; its rotor's inertia
+through the reduction the joint's armature). The URDF stays the export for ROS; `spiderpig
+sim` holds a design that doesn't walk at its pose under gravity (`sim.run.hold`).
+
+The walker's model, the one the figures below are of: a free-floating base
 carries the frame, servos and chassis; each side's crank turns on a hinge at O; each link
 is a body on a hinge; the joints that close each loop become equality constraints. Masses
 and inertias are exact, taken from the fabricated parts. Contacts are computed only
@@ -1702,8 +1719,9 @@ shuffle forward isn't modelled.
 
 ### 8.2 MuJoCo
 
-`spiderpig sim`, and `verify` at level `full`, run the MJCF of section 7.3 in the MuJoCo
-simulator, with gravity, friction (coefficient 0.65 since the TPU feet; 0.5 at the
+`spiderpig sim`, and `verify` at level `full`, run a walker's MJCF of section 7.3 in the
+MuJoCo simulator (a design that doesn't walk, `spiderpig sim` holds at its pose:
+`sim.run.hold`), with gravity, friction (coefficient 0.65 since the TPU feet; 0.5 at the
 snapshot) and soft contacts. For the running example at the snapshot, with both servos at 80 % of their no-load speed (a loaded servo can't reach the
 full no-load speed), 4.5 simulated seconds take
 4.2 s of wall-clock time. The robot walks at 134 mm/s, 193 mm per crank turn, with 24 mm

@@ -56,7 +56,8 @@ def export(design: Design, formats=None, out_dir: str | Path | None = None,
     does: ``step`` / ``stl`` (the whole machine), ``print`` (one STL per different printed
     part + ``parts.csv``), ``dxf`` (kerf-compensated sheets + ``parts.csv``), ``bom``
     (csv, md, json), ``glb`` (the viewer's animated bake), ``mjcf`` (the MuJoCo model +
-    its metadata), ``urdf`` (an arm's URDF, its meshes and joint map: :mod:`spiderpig.urdf`);
+    its metadata, every kind's: :mod:`spiderpig.sim.mjcf`), ``urdf`` (an arm's URDF for
+    ROS, its meshes and joint map: :mod:`spiderpig.urdf`);
     and always ``manifest.json``. Builds first if nothing is built; a
     sheet-packing failure is ``layout``, a catalog miss ``bom``. What the bake and the
     constructions warned about while writing (a purchased model's faces the mesher
@@ -267,14 +268,6 @@ def _export_files(design: Design, formats: list[str], out: Path, rep: ExportRepo
                 files += urdf.write(mech, cfg, build_t, out / "urdf", name)
     with _timed("glb/mjcf" if job is None else "glb/mjcf (waiting for its worker)"):
         files += _robot_files(design, formats, out, job)
-    if "mjcf" in formats and not design.lk.walks:
-        # the MJCF is the walking robot's (two sides on a floor, the drives walking it); a
-        # mechanism has nothing to walk, so the format is skipped, not an error
-        logging.getLogger("spiderpig.export").warning(       # on ExportReport.warnings
-            "mjcf: %s is a%s %s, with nothing to walk: the MJCF is a walker's robot model "
-            "(verify(\"full\") runs it), so the format is skipped%s", cfg.linkage,
-            "n" if design.lk.ranged else "", design.kind,
-            " (an arm's MuJoCo model comes with urdf)" if design.lk.ranged else "")
     return files, bom_summary
 
 
@@ -325,11 +318,10 @@ def _groups(mech, job) -> dict:
             for m, gs in job.result().items()}
 
 
-def _walker_formats(design: Design, formats: list[str]) -> list[str]:
-    """The formats of the walker at the bake's reference angle: ``glb``, and ``mjcf`` for a
-    walker (a mechanism's is skipped, with a warning)."""
-    return [f for f in ("glb", "mjcf") if f in formats
-            and (f == "glb" or design.lk.walks)]
+def _robot_formats(formats: list[str]) -> list[str]:
+    """The formats of the design at the bake's reference angle: ``glb`` and ``mjcf`` (every
+    kind's: :mod:`spiderpig.sim.mjcf`)."""
+    return [f for f in ("glb", "mjcf") if f in formats]
 
 
 def _start_robot_job(design: Design, formats: list[str], before_build: bool = False):
@@ -346,7 +338,7 @@ def _start_robot_job(design: Design, formats: list[str], before_build: bool = Fa
 
     from spiderpig import workers
 
-    fmts = _walker_formats(design, formats)
+    fmts = _robot_formats(formats)
     others = [f for f in formats if f not in ("glb", "mjcf")]
     if (not fmts or not (others or before_build) or design.store is None
             or not workers.enabled() or not plan(design).ok):
@@ -401,8 +393,8 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
             logging.getLogger("spiderpig.export").warning("%s", w)
         return moved
     robot, props = None, {}          # the parts' mass properties: the bake's, for the MJCF
-    if "glb" in formats or ("mjcf" in formats and design.lk.walks):
-        # the viewer's bake and the MuJoCo model are both of the walker at the bake's
+    if "glb" in formats or "mjcf" in formats:
+        # the viewer's bake and the MuJoCo model are both of the design at the bake's
         # reference angle: fabricated once here from the design's own side (its plan), not
         # again by each from the config (which, in a fresh process, planned again first)
         from spiderpig.bake import T_REF
@@ -414,13 +406,13 @@ def _robot_files(design: Design, formats: list[str], out: Path, job=None) -> lis
         bake_gltf(out / f"{name}.glb", cfg, profile=False, fabricated=robot, side=design.side,
                   props=props)
         files.append(out / f"{name}.glb")
-    if "mjcf" in formats and design.lk.walks:
+    if "mjcf" in formats:
         import json
 
-        from spiderpig.sim.mjcf import build_mjcf, set_fabricated
+        from spiderpig.sim.mjcf import build_mjcf, model_config, set_fabricated
 
-        if cfg.robot:        # a one-sided design's MJCF is still the robot's
-            assert robot is not None    # fabricated above for a walker's mjcf
+        if model_config(cfg) == cfg:     # (a walker's one-sided design: still its robot's)
+            assert robot is not None    # fabricated above for the mjcf
             set_fabricated(cfg, robot, props)
         xml, meta = build_mjcf(cfg)
         (out / f"{name}.xml").write_text(xml)

@@ -1359,3 +1359,40 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
   BOM, DXF), so no new baseline and DESIGNS.md unchanged; the hooks stay out of the
   fabrication's code key (the turret's sentences are `turret_parts`' meta, its steps
   `base_pair.assembly`'s).
+
+### 2026-10-14: one MuJoCo model path for every design (wave 2)
+
+- **The decision:** `spiderpig/sim/mjcf.py` is the one MJCF emitter: every design (walker,
+  arm, mechanism) goes through one reduction (`sim.mjcf.robot_model`: the planar side's
+  bodies and pins, the spatial joints of `meta["tree"]`, `kinematics.RobotTree`, the tree
+  the bake and the URDF read) and one emitter, chosen by what the design declares, never by
+  its kind's name. Before, an arm's model came from a second writer beside its URDF
+  (`urdf.mjcf`, removed with its `urdf/<name>.mjcf.xml`), the export skipped `mjcf` for
+  anything that doesn't walk, and `spiderpig sim` ran walkers only.
+- **What a design declares:** `Linkage.walks` puts it free on a floor with its feet's
+  contacts (the walker's model, byte for byte as before: the Klann single and quad, the
+  Strider single and double and the TrotBot built before and after, identical XML and
+  metadata); anything else is fixed to the world, upright, with no floor (its base's floor
+  at the origin: a turret's under the yaw axis, so MuJoCo's world is the URDF's
+  `base_link` and `control.arm.ArmModel`'s base frame). A crank gets the servo's velocity
+  actuator as before; a joint `actuators.joint_ratings` rates (an input's transmission, the
+  turntable, the wrist: the URDF's limits read the same ratings) gets a stepper's position
+  actuator: its holding stiffness through the reduction (T_hold x rotor teeth x ratio²),
+  no stiffer than `HOLD_OMEGA_DT` (1.0) allows at the 1 ms step on the joint's tree inertia
+  (`dof_M0`), critically damped, its force its holding torque x ratio, its rotor's inertia
+  x ratio² the joint's armature. An input's hinge hangs from the frame on its drive's
+  pivot and reads its design angle (`ref`), so its `ctrl` is the input in radians.
+- **Why the tree inertia, not the loops':** capped on the inertia the elbow drives through
+  its parallelogram (a null-space projection of the joint-space inertia), the elbow's
+  stiff actuator fought its light rod's soft loop (a 2 N·m oscillation, 0.7 mm open,
+  measured on the palletizer). On `dof_M0` it is calm: the approved arm's `q3` at 184 of
+  500 N·m/rad, `q1` and `q2` at their motors' own.
+- **What runs it:** `api.export` writes `mjcf` for every kind through one path (the URDF
+  stays the ROS export, an arm's); `spiderpig sim` and `verify("full")` hold a fixed
+  design at its pose under gravity with its motors (`sim.run.hold`, the row `sim.holds`,
+  soft): `palletizer_reach` sags 0.043 mm at the tool's tip in 3 s, `q2` at 8 % of its
+  holding torque, its loops closed to 0.009 mm. A recorded fixture of it
+  (`tests/fixtures/sim/mjcf_palletizer_reach.json`) makes that a fast test.
+- **The gate:** parts, plans, BOMs and DXFs identical on all eight designs; the two arms'
+  `spiderpig build` no longer writes `urdf/<name>.mjcf.xml` (its MuJoCo model is the
+  export's `mjcf`), the one intended difference.

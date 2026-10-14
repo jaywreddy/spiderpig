@@ -20,8 +20,9 @@ Levels: ``quick`` (check + plan + walk, and the output's precision where it
 needs no fabrication; ~1 s), ``standard`` (+ build, the contract at two crank
 angles, clashes and solids at the build's, the DXF pack, the BOM, the whole
 precision budget and every kind's joint strength), ``full`` (the audit's four
-contract angles, clashes at two, and a walker's MuJoCo run when ``mujoco``
-imports: its speed is reported beside the walk model's, informational).
+contract angles, clashes at two, and MuJoCo when ``mujoco`` imports: a walker's run, its
+speed reported beside the walk model's, informational; any other design held at its pose
+under gravity by its motors, ``sim.holds``, soft).
 
 A hard target's miss fails the report (``ok``); a soft miss lowers ``score``
 (the weighted mean over the soft targets of ``max(0, 1 - miss / |bound|)``).
@@ -399,6 +400,8 @@ def verify(design: Design, level: str = "quick") -> VerifyReport:
     # -- sim (full) --------------------------------------------------------------
     if level == "full" and design.lk.walks:
         rows += _sim_rows(design, rep)
+    elif level == "full":              # the same model, fixed: held at its pose
+        rows += _hold_rows(design, rep)
     return _done(design, rep, t0)
 
 
@@ -836,6 +839,30 @@ def _sim_rows(design: Design, rep: VerifyReport) -> list[Row]:
             not m["saturates"], "measured", False,
             f"peak {m['torque_peak']:.3f} N·m of {m['torque_limit']:g} stall", unit="N·m"),
     ]
+
+
+def _hold_rows(design: Design, rep: VerifyReport) -> list[Row]:
+    """A design that doesn't walk in MuJoCo (the one model, :mod:`spiderpig.sim.mjcf`,
+    fixed): ``sim.holds``, its motors holding it at its pose under gravity
+    (:func:`spiderpig.sim.run.hold`), the value the worst site's sag (mm)."""
+    if importlib.util.find_spec("mujoco") is None:
+        return [Row("sim.mujoco", "sim", "not installed", None, True, "estimated", False,
+                    "pip install mujoco to simulate")]
+    from spiderpig.sim.run import HOLD_SAG_MM, HOLD_SECONDS, hold
+
+    try:
+        m = hold(design.config)
+    except Exception as e:  # noqa: BLE001 - MuJoCo's own errors are not ours to classify
+        rep.failures.append(Failure("sim", "sim_failed", str(e)))
+        return [Row("sim.run", "sim", "failed", None, False, "measured", True, str(e))]
+    worst = max(m["torque_fraction"].items(), key=lambda kv: kv[1], default=None)
+    detail = (f"held {HOLD_SECONDS:g} s under gravity by its motors: "
+              + ", ".join(f"{s} sags {v:.3f} mm" for s, v in m["sag"].items())
+              + (f"; {worst[0]} at {worst[1] * 100:.0f} % of its torque" if worst else "")
+              + f"; loops closed to {m['loop_error']:.3f} mm"
+              + ("" if m["finite"] else "; the state blew up"))
+    return [Row("sim.holds", "sim", round(m["sag_max"], 4), f"<= {HOLD_SAG_MM:g}",
+                bool(m["holds"]), "measured", False, detail, unit="mm")]
 
 
 def fall_detail(m: dict, design: Design | None = None) -> str:

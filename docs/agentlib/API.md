@@ -90,7 +90,7 @@ allowed, nearest}` (raised as `SpecErrors`; `validate(doc)` returns the list).
 | `constructions.<role>` | a later role of `spiderpig.roles` that applies to the kind (`--<role>` on the command line), e.g. `controller`: a walker's `esp32_bus_servo` (the electronics deck's board, battery and harness) or `none` (your own: the deck bare); an arm's `skr_pico_pi_zero` or `none`; a board that can't drive the design's motors fails at `construction` | the role's default for the design (a walker's `controller` is its `implicit` key: not written into `design.resolved`, so the walkers' ids stayed) |
 | `fit.*` | every `construction.base.Params` field (`margin`, `link_radius`, `frame_radius`, `min_wall`, `running_fit`, `glue_fit`, `print_fit`, `axle_d`, `spacer_d`, `neck_d`, `head_d`, `crankpin_d`, `web_radius`, `journal_d`, `stub_d`, `hub_thickness`, `servo_screw_web_t`), plus `kerf_mm` and `sheet_size_mm: [w, h]` | the engine's defaults; kerf each sheet's service's (0 SendCutSend, 0.2 Ponoko); the sheet stock's size |
 | `precision.payload_g` | an arm's load at the tool in grams (a plain number beside the precision targets, not a target; refused for a linkage without ranged inputs) | 50 (`repeatability.PAYLOAD_G`): the payload sag, the ISO RP's gravity seating and the strength check's static loads assume it |
-| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf`, `urdf` (an arm's URDF, its MuJoCo model and joint map) | `[step, stl, print, dxf, bom]` |
+| `outputs` | a list of `step`, `stl`, `print`, `dxf`, `bom`, `glb`, `mjcf` (the MuJoCo model and its `.json` metadata, every kind's: `sim.mjcf`), `urdf` (an arm's URDF for ROS, its meshes and joint map) | `[step, stl, print, dxf, bom]` |
 
 Every metric under `motion`, `size`, `budget` and `precision` is a **Target**
 `{min?, max?, value?, tol?, weight: 1, hard?}` (a bare number is rejected). `value` is
@@ -509,7 +509,11 @@ plan, re-made and verified (`api.plan_config`), else solve and record it; `audit
 stored design with its exported MJCF when the store has one (else it builds the model),
 and `spiderpig sim --mjcf FILE.xml` (with `FILE.json` beside it, what `export` and `sim
 --xml` write) runs that model for the design the other options describe; `spiderpig sim
---json` carries `fell_at_s` and `fell_axis` (when and how it fell) beside `fell`.
+--json` carries `fell_at_s` and `fell_axis` (when and how it fell) beside `fell`. A
+design that doesn't walk (an arm, a mechanism) has the same model, fixed to the world:
+`spiderpig sim` holds it at its pose under gravity with its motors (`sim.run.hold`: the
+tool's tip's and the output's sag, the joints' drift, the motors' torques, the loops'
+closure; exit status 1 when it doesn't hold).
 
 ## View (step 4, decision 6)
 

@@ -1,5 +1,7 @@
-"""Step the MuJoCo model of the walker and measure how it walks.
+"""Step the MuJoCo model of a design: a walker walking, anything else held at its pose.
 
+:func:`hold` holds a design that doesn't walk (an arm, a mechanism: the same model, fixed)
+at its pose under gravity with its motors and measures its sag. For a walker,
 :func:`simulate` runs the model (:mod:`sim.mjcf`) under crank-speed commands
 and records a :class:`SimResult` time series; :func:`walk_metrics` reduces it
 to numbers (speed, stride, bob, attitude, drive torque against the servo's
@@ -332,6 +334,75 @@ def simulate(
                      loops=loop_names, speed_max=vmax, torque_max=tau,
                      torque_rated=meta["actuators"][drives[0]].get("rated_torque"),
                      mass=meta["mass"]["total"], config=config, meta=meta)
+
+
+HOLD_SECONDS = 3.0
+HOLD_SAG_MM = 10.0          # a held site sagging further than this: it doesn't hold
+
+
+def hold(config: BuildConfig | None = None, seconds: float = HOLD_SECONDS, *,
+         params: SimParams | None = None, model_xml: str | None = None,
+         model_meta: dict | None = None) -> dict:
+    """A design that doesn't walk (an arm, a mechanism) held at its model's pose under
+    gravity for ``seconds``: every position actuator (a stepper) told its joint's angle at
+    ``qpos0``, every velocity actuator (a crank's servo) zero speed. ``model_xml`` with
+    ``model_meta`` runs an exported MJCF instead of building it.
+
+    Returns (lengths in mm, angles in degrees): ``sag`` (each site's, the tool's tip and
+    the output's, at the end, from where it started) and ``sag_max``; ``drift`` (each
+    actuated joint's at the end); ``torque`` (each actuator's at the end, N·m) and
+    ``torque_fraction`` (of its force limit; ``saturated`` when one sits on it);
+    ``loop_error`` (the worst loop's gap); ``finite`` (the state stayed a number);
+    ``holds`` (finite, unsaturated and every site within :data:`HOLD_SAG_MM`)."""
+    import mujoco
+
+    config = config or BuildConfig()
+    params = params or SimParams()
+    if model_xml is not None:
+        if model_meta is None:
+            raise ValueError("model_xml needs model_meta (the .json written beside the MJCF)")
+        model, meta = mujoco.MjModel.from_xml_string(model_xml), model_meta
+    else:
+        model, meta = load_model(config, params)
+    if meta.get("freejoint"):
+        raise ValueError(f"{config.linkage}: a walker's model stands on its feet: simulate "
+                         "it walking (simulate, walk_metrics), not held")
+    data = mujoco.MjData(model)
+    names = [model.actuator(i).name for i in range(model.nu)]
+    for i, name in enumerate(names):
+        info = meta["actuators"].get(name, {})
+        if info.get("type") == "position":
+            j = model.actuator_trnid[i, 0]
+            data.ctrl[i] = model.qpos0[model.jnt_qposadr[j]]
+    mujoco.mj_forward(model, data)
+    start = data.site_xpos.copy()
+    sites = [model.site(i).name for i in range(model.nsite)]
+    q0 = data.actuator_length.copy()
+    gaps = _LoopGaps(model)
+    finite, loop = True, 0.0
+    for _ in range(round(seconds / model.opt.timestep)):
+        mujoco.mj_step(model, data)
+        if not np.isfinite(data.qacc).all():
+            finite = False
+            break
+        if gaps.eq.size:
+            loop = max(loop, float(gaps(model, data).max()))
+    held = [s for s in sites if s not in ("base", *meta.get("feet", {}))]
+    sag = {s: float(np.linalg.norm(data.site_xpos[sites.index(s)] - start[sites.index(s)]))
+           * 1e3 for s in held}
+    limit = np.maximum(np.abs(model.actuator_forcerange).max(axis=1), 1e-12)
+    force = data.actuator_force.copy()
+    frac = {n: float(abs(force[i]) / limit[i]) for i, n in enumerate(names)}
+    saturated = any(f > 0.999 for f in frac.values())
+    sag_max = max(sag.values(), default=0.0)
+    return {
+        "seconds": float(data.time), "finite": finite, "sag": sag, "sag_max": sag_max,
+        "drift": {n: math.degrees(float(data.actuator_length[i] - q0[i]))
+                  for i, n in enumerate(names)},
+        "torque": {n: float(force[i]) for i, n in enumerate(names)},
+        "torque_fraction": frac, "saturated": saturated, "loop_error": loop * 1e3,
+        "holds": finite and not saturated and sag_max <= HOLD_SAG_MM,
+    }
 
 
 # ---------------------------------------------------------------------------
