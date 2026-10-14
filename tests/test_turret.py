@@ -115,7 +115,40 @@ def test_the_turntable_is_mt4_compact_its_pair_preloaded():
     assert pair.capacity_nm(48.0) > 1.0
     preset = PRESETS["mt4_compact"]
     assert preset.parts[1].ratio(None) == pytest.approx(60 / 16)
-    assert (preset.support, preset.sensor) == ("base_pair", "hard_stop")
+    assert (preset.support, preset.sensor) == ("base_pair", "stall")
+
+
+@pytest.mark.no_fabricate
+def test_the_turntable_homes_from_the_one_sensor_registry():
+    """Every joint's homing is one registry (2026-10-14): the turntable's preset names a
+    sensor of :data:`actuators.sensors.SENSORS`, the same ``stall`` the planar inputs use,
+    and a stall's repeatability is its motor's steps through each joint's own reduction."""
+    from spiderpig import actuators
+    from spiderpig.actuators import sensors
+    from spiderpig.construction import rotary
+
+    assert not hasattr(rotary, "SENSORS")
+    stall = sensors.get("stall")
+    for preset in PRESETS.values():
+        preset.check()
+        _, tr, motor, sensor = preset.parts
+        assert sensor is sensors.get(preset.sensor)
+        assert sensor.method == "stall"
+        assert sensor.needs_stop
+        assert not sensor.gravity
+        assert sensor.at_joint(motor, tr.ratio(None)) == pytest.approx(
+            sensors.STALL_FULL_STEPS * motor.step_deg / (60 / 16))
+    motor = actuators.get("nema17_17hs4401")
+    assert stall.at_joint(motor, 5.0) == pytest.approx(0.72)          # a belt drive's 5:1
+    assert stall.at_joint(motor, 3.75) == pytest.approx(0.96)         # the yaw's 60:16
+    with pytest.raises(ValueError, match="motor"):
+        stall.at_joint()
+    from dataclasses import replace
+
+    with pytest.raises(ValueError, match="vertical"):     # a gauge can't read the yaw
+        replace(PRESETS["mt4_compact"], sensor="gauge").check()
+    with pytest.raises(ValueError, match="hard stop"):    # the turret builds no switch's mount
+        replace(PRESETS["mt4_compact"], sensor="endstop").check()
 
 
 @pytest.mark.no_fabricate
@@ -223,7 +256,12 @@ def test_the_turntable_joins_the_precision_budget():
     assert pre.inputs["q1"].backlash_mm > 0.0                 # the belt's teeth
     assert any("rack" in n for n in pre.notes)                # the base's columns
     assert pre.lever_mm_per_rad["q1"] > 200.0                 # the flange's reach
-    assert pre.inputs["q1"].homing_mm > 0.0
+    from spiderpig.actuators import sensors
+
+    _, tr, motor, sensor = PRESETS[_robot().role("turntable")].parts
+    assert pre.inputs["q1"].homing_mm == pytest.approx(        # the stall's, at the yaw's ratio
+        math.radians(sensor.at_joint(motor, tr.ratio(None))) * pre.lever_mm_per_rad["q1"])
+    assert sensor is sensors.get("stall")
     assert pre.turret_accuracy_mm > 0.0
     assert pre.repeatability_mm == pytest.approx(
         pre.plays.worst_mm + sum(b.backlash_mm + b.homing_mm for b in pre.inputs.values()))

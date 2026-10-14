@@ -117,7 +117,7 @@ class InputBudget:
     accuracy_mm: float = 0.0       # its systematic error (a microstep off its place)
     capacity_nm: float = 0.0       # what it holds at the joint (holding torque x ratio)
     load_nm: float = 0.0           # the payload's moment on its lever (an upper bound)
-    homing_mm: float = 0.0         # its homing switch's repeatability (lost on each homing)
+    homing_mm: float = 0.0         # its homing sensor's repeatability (lost on each homing)
 
 
 @dataclass(frozen=True)
@@ -813,9 +813,10 @@ def turret_budget(config: BuildConfig, design, target_mm: float
                   ) -> tuple[InputBudget, float, float, list[str]]:
     """The turntable's drive at the output (``q1``: its support's, transmission's and
     motor's terms, :meth:`construction.rotary.turret.TurretPlan.error_terms`, and its
-    homing's repeatability over the hard stop's radius, through the output's horizontal
-    reach), its tilt there (the support's tilt over the farthest the tool's tip gets from
-    the bearings' middle), and its systematic error there (the drive's eccentricity over its
+    homing's repeatability at the joint, :meth:`actuators.sensors.HomingSensor.at_joint` of
+    its motor through its own reduction, through the output's horizontal reach), its tilt
+    there (the support's tilt over the farthest the tool's tip gets from the bearings'
+    middle), and its systematic error there (the drive's eccentricity over its
     pitch radius, the shaft's tilt in its collars). No sag: gravity has no moment about a
     vertical axis."""
     from spiderpig.construction.rotary import AXIS_RUNOUT_MM, ECCENTRICITY_MM
@@ -833,8 +834,8 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     far = float(np.hypot(f[:, 0] - tp.x_a, f[:, 1] - drop - mid).max())
     _, tr, motor, sensor = tp.preset.parts
     ratio = tr.ratio(None)
-    switch = sensor.repeat_mm
-    homing = switch / tp.sensor_r * lever
+    homing_deg = sensor.at_joint(motor, ratio)
+    homing = math.radians(homing_deg) * lever
     budget = InputBudget("q1", ratio, t.backlash_deg, t.resolution_deg, t.stiffness_nm_per_rad,
                          math.radians(t.backlash_deg) * lever,
                          math.radians(t.resolution_deg) * lever, 0.0, t.source,
@@ -843,8 +844,8 @@ def turret_budget(config: BuildConfig, design, target_mm: float
     collar = float(get("collar_8mm").dims["od"])
     systematic = ECCENTRICITY_MM / tp.drive_r() * lever + AXIS_RUNOUT_MM / collar * far
     notes = [f"the turntable ({tp.preset.key}): {n}" for n in t.notes]
-    notes.append(f"the turntable's homing: {switch * 1000:g} um at its {sensor.key}'s "
-                 f"{tp.sensor_r:.0f} mm radius, {homing:.3f} mm at the output (unverified)")
+    notes.append(f"the turntable's homing ({sensor.key}): {homing_deg:.3f} deg at the joint "
+                 f"through {ratio:.3g}:1, {homing:.3f} mm at the output ({sensor.source})")
     notes.append(f"the turntable's drive {ECCENTRICITY_MM:g} mm off centre and its shaft "
                  f"{AXIS_RUNOUT_MM:g} mm out across a collar (estimates): {systematic:.3f} mm "
                  "at the output, once a turn (it calibrates out)")
@@ -862,8 +863,9 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
     """Each arm input's drive through its lever (:class:`InputBudget`): the design's drive
     groups' error terms; the sag is a payload's moment on the input's lever over the
     drive's stiffness, seen at the output (an upper bound: the whole lever horizontal); its
-    homing, the zero its angle sensor leaves each time (:mod:`actuators.sensors`: a gauge
-    by hand, an inclinometer)."""
+    homing, the zero its sensor leaves each time
+    (:meth:`actuators.sensors.HomingSensor.at_joint`: a gauge by hand, an inclinometer, a
+    stall's motor steps through the drive's ratio)."""
     from spiderpig.construction.transmissions import JointDrive
 
     if design is None:
@@ -887,7 +889,7 @@ def drive_budgets(config: BuildConfig, design, lev: dict[str, float],
             t.stiffness_nm_per_rad, math.radians(t.backlash_deg) * lever,
             math.radians(t.resolution_deg) * lever, sag, f"{t.source}; zero: {sensor.key}",
             math.radians(t.accuracy_deg) * lever, g.motor.holding_nm * ratio, torque,
-            math.radians(sensor.repeat_deg) * lever)
+            math.radians(sensor.at_joint(g.motor, ratio)) * lever)
     return out
 
 

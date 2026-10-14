@@ -38,6 +38,10 @@ HEAD_CLEAR = 1.0     # a motor body's clearance to the frame's pillar heads and 
 SCREW_HOLE = 3.4     # an M3 clearance hole (ISO 273 medium)
 TAP_HOLE = 2.5       # an M3 tap drill: the frame plate's holes the slider's screws thread into
 TENSION = 2.0        # a tensioned motor's slider travel either way along the belt (mm)
+HARD_STOP = (("m3_shcs_10", 1.0), ("m3_nut", 1.0))
+"""What a drive buys for its hard stop at the end of its travel when its homing sensor
+homes on one (:attr:`actuators.sensors.HomingSensor.needs_stop`: a stall): an M3 screw and
+nut (the turntable's stop is the turret's own, :mod:`construction.rotary.base_pair`)."""
 ENGAGE = 1.2         # the least thread a motor screw takes in the motor, in diameters
 PAD_EDGE = 2.0       # a pad's web round the bolt holes it carries (mm)
 
@@ -607,7 +611,7 @@ class JointDrive(Group):
         if sensor is not None and sensor.bom_key:
             out.extras.append(BomLine(sensor.bom_key, 1, f"{self.name}: {self.link}'s angle "
                                       "(on the link, its x along it)"))
-        for key, qty in (sensor.stop if sensor is not None else ()):
+        for key, qty in (HARD_STOP if sensor is not None and sensor.needs_stop else ()):
             out.extras.append(BomLine(key, qty, f"{self.name}: {self.link}'s hard stop at the "
                                       "end of its travel (sensorless homing)"))
         out.notes.setdefault("drive", {})[self.name] = {

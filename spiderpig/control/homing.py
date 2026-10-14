@@ -1,12 +1,16 @@
 """How each joint finds its zero, and the phase that makes homing repeatable to the step.
 
-* **The turntable** (``q1``) by its preset's sensor (:data:`construction.rotary.SENSORS`):
-  ``hard_stop``, no switch: the turntable's screw stalls the driver on a post past the
-  range's lower end (Klipper's sensorless homing: the TMC2209's StallGuard on its DIAG pin,
-  at a reduced current), coarse (two full steps): the camera's fiducials
-  (``homing_reference`` ``vision_fiducial``) set the fine zero.
-* **A stall** (``angle_sensor`` ``stall`` on a planar input, the turntable's
-  ``hard_stop``: :func:`method`): the joint is driven at a reduced current toward its
+Every joint's sensor is from one registry (:data:`actuators.sensors.SENSORS`: a planar
+input's its role ``angle_sensor``, the turntable's its preset's, :func:`sensors_of`), and
+each declares how it homes (:attr:`~actuators.sensors.HomingSensor.method`, :func:`method`).
+
+* **The turntable** (``q1``) by its preset's sensor: ``stall``, no switch: the turntable's
+  screw stalls the driver on a post past the range's lower end (Klipper's sensorless
+  homing: the TMC2209's StallGuard on its DIAG pin, at a reduced current), coarse
+  (:data:`actuators.sensors.STALL_FULL_STEPS` full steps through the yaw's 3.75:1): the
+  camera's fiducials (``homing_reference`` ``vision_fiducial``) set the fine zero.
+* **A stall** (a sensor whose method is ``stall``, a planar input's or the turntable's:
+  :func:`method`): the joint is driven at a reduced current toward its
   range's lower end until its driver stalls on the hard stop there; the stop's angle is
   nominally :data:`STALL_PAST_DEG` past the range's end (its place found once by
   calibration), then it backs off into the range at its run current. No phase snap: the
@@ -39,20 +43,23 @@ from spiderpig.control.mapping import Axis
 MSCNT_STEP = 256        # a TMC2209's microstep counter per full step (1024 an electrical turn)
 STALL_PAST_DEG = 3.0    # a hard stop past its range's lower end (nominal: the turret's post,
 #                         construction.rotary.base_pair.stop_radius; calibration finds it)
-YAW_SENSOR = "hard_stop"        # the turntable's sensor when none is named (its preset's)
-STALLS = ("stall", "hard_stop")          # a planar input's, the turntable's: no sensor
+
+def yaw_sensor() -> str:
+    """The turntable's sensor when none is named: the default preset's."""
+    from spiderpig.construction.rotary import DEFAULT, PRESETS
+
+    return PRESETS[DEFAULT].sensor
 
 
 def method(sensor: str) -> str:
-    """How a joint with sensor ``sensor`` (an ``angle_sensor``, :mod:`actuators.sensors`,
-    or the turntable preset's, :data:`construction.rotary.SENSORS`) homes in Klipper:
-    ``"endstop"`` (a switch on an endstop input), ``"stall"`` (its driver's StallGuard on a
-    hard stop) or ``""`` (no homing move: a gauge, an inclinometer, none)."""
-    if sensor in STALLS:
-        return "stall"
-    if sensor.startswith("endstop"):
-        return "endstop"
-    return ""
+    """How a joint with sensor ``sensor`` (a key of :data:`actuators.sensors.SENSORS`)
+    homes in Klipper, as the sensor declares: ``"endstop"`` (a switch on an endstop input),
+    ``"stall"`` (its driver's StallGuard on a hard stop) or ``""`` (no homing move: a gauge,
+    an inclinometer, none or an unknown key)."""
+    from spiderpig.actuators import sensors
+
+    s = sensors.SENSORS.get(sensor)
+    return s.method if s is not None else ""
 
 
 def sensors_of(config, axes) -> dict[str, str]:
@@ -77,11 +84,11 @@ class HomingStep:
 def plan(axes: dict[str, Axis], sensors: dict[str, str] | None = None) -> list[HomingStep]:
     """The homing sequence of ``axes`` (module docstring). ``sensors``: each planar
     input's angle sensor (:mod:`actuators.sensors`; ``gauge`` when not named) and the
-    turntable's (``q1``: its preset's, :data:`YAW_SENSOR` when not named; :func:`sensors_of`
+    turntable's (``q1``: its preset's, :func:`yaw_sensor` when not named; :func:`sensors_of`
     reads a config's)."""
     sensors = sensors or {}
     out: list[HomingStep] = []
-    if "q1" in axes and method(sensors.get("q1", YAW_SENSOR)) == "stall":
+    if "q1" in axes and method(sensors["q1"] if "q1" in sensors else yaw_sensor()) == "stall":
         out += _stall_steps("q1", "the turntable's screw on the post")
         out.append(HomingStep("q1", "the camera's fiducials set the fine yaw zero "
                                     "(homing_reference vision_fiducial)"))

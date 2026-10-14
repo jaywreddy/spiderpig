@@ -1288,3 +1288,30 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **Open:** a bounding-rectangle (material) term for 6061 and 5.4 mm acrylic, on more
   quotes. The feet's numbers count the swing too (the worst over the revolution), and a
   joint held only by its play is not modelled (the wobble's separate row).
+
+### 2026-10-14: one homing-sensor registry for every joint, the turntable's included (wave 2)
+
+- **The decision:** every joint's homing is one registry, `actuators.sensors.SENSORS`
+  (`HomingSensor`; it was `ANGLE_SENSORS` for the planar inputs beside
+  `construction.rotary.SENSORS` for the turntable: one method, stall homing, in two
+  registries as `stall` and `hard_stop`). Each sensor declares how it homes
+  (`HomingSensor.method`: `endstop`, `stall` or none), whether it reads against gravity
+  (`gravity`: no use about the yaw's vertical axis) and what it buys; `control.homing.method`,
+  the Klipper config, the host, `precision` and a drive's BOM read the declaration, never
+  a key's name. The turntable preset `mt4_compact` names `stall` from it
+  (`RotaryPreset.check`: the turret builds a stall's stop only); each construction builds
+  that method's hardware at its joint (the turret's post and screw, `base_pair`; a planar
+  drive's M3 screw and nut, `transmissions.base.HARD_STOP`, as before).
+- **A stall's repeatability, derived:** `sensors.STALL_FULL_STEPS` (2) full steps of the
+  joint's motor through the joint's own reduction (`HomingSensor.at_joint`): the rotor lags
+  its field by up to a full step before it slips and a TMC2209 updates its StallGuard
+  result once a full step (an estimate, unmeasured). The belts' 5:1 keeps the planar
+  inputs' 0.72 deg; the yaw's 3.75:1 makes 0.96 deg, where the old fixed 0.75 mm at its
+  26 mm stop was 1.65 deg (it assumed nothing of the yaw's ratio).
+- **`palletizer_reach` (`spiderpig precision`, before / after):** ISO RP 0.042 mm in a
+  session and 0.065 across power-ups, both unchanged (the camera,
+  `vision_fiducial_ov5647`, sets every zero: each input's homing row stays its 0.015 mm);
+  the turntable's coarse stall homing at the output 8.863 -> 5.118 mm (a note, outside the
+  budget with the camera).
+- **The gate** (against `platform-5396098`): all eight designs identical, audits included.
+  DESIGNS.md unchanged.

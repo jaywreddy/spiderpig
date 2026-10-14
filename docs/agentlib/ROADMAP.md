@@ -151,9 +151,6 @@ story), now `platform-77c117c`, eight designs.
 - **One MuJoCo emitter.** A walker's model comes from `spiderpig/sim/mjcf.py`, an arm's
   from `urdf.mjcf` beside its URDF: two writers of one format, the arm's not driven by
   `spiderpig sim`. One emitter over `kinematics.RobotTree`, for every kind.
-- **A homing registry.** Homing methods are branches on a sensor's name
-  (`control.homing.method`); a registry like the roles' would make a new sensor (switches
-  on the planar joints, automatic homing) data, not code.
 - **Agent and viewer surfaces.** The viewer's precision overlay (the error budget over the
   workspace) isn't drawn; the joint sliders were checked by tests, never in a browser here;
   the API and the MCP have no operation for the arm's precision budget or its control

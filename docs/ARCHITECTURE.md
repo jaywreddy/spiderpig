@@ -1393,7 +1393,8 @@ robot is an entry rather than an edit across the stages:
   and held by stock angle brackets clear of the drives' motors, and a hard stop past the
   yaw's lower end its driver stalls on (the camera sets the fine zero). The turntable is
   the preset of the role `turntable` (`construction.rotary.PRESETS`: a support, a
-  transmission, a motor and a sensor): `mt4_compact` alone, the user's approved one
+  transmission, a motor and a homing sensor from the one registry every joint's homing
+  uses, `actuators.sensors.SENSORS`): `mt4_compact` alone, the user's approved one
   (2026-10-14: the others pruned, `config.REMOVED_CONSTRUCTIONS`). The arm's tool is the role `tool` (`construction/tools.py`): a
   vacuum cup under a laser-cut shelf T-slotted to a hanger plate bolted beside the end
   plate (the homing camera hung under the shelf beside it), or on a NEMA 11 wrist hung
@@ -1423,11 +1424,14 @@ robot is an entry rather than an edit across the stages:
   kinematics in the URDF's `base_link` frame (the turntable's angle from the target's
   bearing, the planar inputs by bounded least squares from a searched start); each joint's
   angle maps to its motor's microsteps through its transmission's exact ratio and its
-  mounting's sense (`control.mapping.Axis`); homing stalls the turntable's driver on its
-  hard stop (the camera's fiducials then set the fine zero: `control.vision`) and takes the
-  planar joints' zeros from an angle gauge on their links (their inputs are the links'
-  angles from horizontal, read with the motors holding), a switch's homing repeating to the
-  step by its driver's recorded phase (`homing.phase_move`);
+  mounting's sense (`control.mapping.Axis`); homing follows each joint's sensor from one
+  registry (`actuators.sensors.SENSORS`, each declaring its `method`: the turntable's
+  preset's and each planar input's role `angle_sensor`): a stall drives the joint onto its
+  hard stop until its driver stalls (repeatable to `sensors.STALL_FULL_STEPS` of the motor
+  through the joint's own reduction; the camera's fiducials then set the fine zero:
+  `control.vision`), a gauge reads the links' angles from horizontal with the motors
+  holding, a switch's homing repeats to the step by its driver's recorded phase
+  (`homing.phase_move`);
   `control.calibrate.fit` fits the link lengths and the zeros to measured poses;
   `control.klipper` writes a `printer.cfg` with each joint a Klipper manual stepper in joint
   degrees (its pins left to fill, the motors never disabled when idle); `control.host` plans
