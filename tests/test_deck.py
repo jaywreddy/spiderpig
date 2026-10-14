@@ -382,13 +382,20 @@ def test_no_deck_carries_its_mass_as_a_payload():
 
     p = SimParams()
     assert p.payload_g == 0.0
-    assert payload_g(cast(Any, SimpleNamespace(meta={"deck": {"fitted": True}})), p) == 0.0
-    unfitted = SimpleNamespace(meta={"deck": {"fitted": False}})
-    assert payload_g(cast(Any, unfitted), p) == DECK_FALLBACK_G
-    assert math.isclose(payload_g(cast(Any, SimpleNamespace(meta={})), p), DECK_FALLBACK_G)
+
+    def robot(**meta):
+        return cast(Any, SimpleNamespace(meta=meta, walks=True))
+
+    assert payload_g(robot(deck={"fitted": True}), p) == 0.0
+    assert payload_g(robot(deck={"fitted": False}), p) == DECK_FALLBACK_G
+    assert math.isclose(payload_g(robot(), p), DECK_FALLBACK_G)
     # a bare deck (controller none): the kit's catalogued electronics ride as a payload
-    bare = SimpleNamespace(meta={"deck": {"fitted": True, "electronics": False}})
-    assert payload_g(cast(Any, bare), p) == pytest.approx(kit_mass_g())
+    assert payload_g(robot(deck={"fitted": True, "electronics": False}), p) == \
+        pytest.approx(kit_mass_g())
+    # a fixed design (an arm, a mechanism) carries no deck: only what it is given
+    fixed = cast(Any, SimpleNamespace(meta={}, walks=False))
+    assert payload_g(fixed, p) == 0.0
+    assert payload_g(fixed, SimParams(payload_g=20.0)) == 20.0
     assert 55.0 < kit_mass_g() < 70.0             # board, LiPo, charger, BMS, switch, nylon
 
 
