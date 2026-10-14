@@ -403,9 +403,10 @@ STANDS: dict[str, Stand] = {
         wide={("O2", "O"): 32.0},
         column_d=12.0,
         # (round 1, 2026-10-14: with the corrected centre of mass and the board 40 mm
-        # toward the drive side, BASE_Z, the rear edge binds: 680 mm is the least board
-        # that keeps a full 6 L past 25° over it)
-        base=(-160.0, 520.0),
+        # toward the drive side, BASE_Z, the rear edge binds: 682 mm is the least board
+        # that keeps a full 6 L past 25° over it since round 1's drive, whose parts took the
+        # 680 mm board's 25.0° to 24.9°: 25.1° at 682)
+        base=(-160.0, 522.0),
     ),
 }
 
@@ -2475,7 +2476,8 @@ USE_LIMITS = (
     "whatever it has caught, so turn the handle back the way it came; never pull. When you "
     "leave it, take the handle off (its thumb screw): nothing turns without it. "
     "Never force the handle: if it stiffens, stop and look. Its clutch clicks round past "
-    "about 31 N at the grip, so a hard push can't break the drive: a click means something is "
+    "what its bench setting says (27 N at the grip on B's 125 mm crank, 40 on A's 85; 10 % "
+    "more at most), so a hard push can't break the drive: a click means something is "
     "in the way (with nothing in the way, a full 6 L started from a stop near level: turn "
     "back a little and on, steadily). It doesn't protect what is caught: in the last two or "
     "three handle turns before rest and before full tilt the cradle comes in with a force no "

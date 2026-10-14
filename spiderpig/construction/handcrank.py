@@ -40,9 +40,9 @@ self-locking worm gear reducer instead of a servo:
   insert, down onto the key: it comes off by hand, :data:`HANDLE_THUMB`) and runs on as a
   tube :data:`REACH` out along the shaft to a flange and a journal; the arm turns on the
   journal, three steel balls on springs in it pressed into conical seats in the flange, so
-  the arm slips round the tube past :data:`CLUTCH_SLIP_N` at the grip: no push at the grip
+  the arm slips round the tube past :data:`CLUTCH_SLIP_NM` at the input: no push at the grip
   puts more than ``config.PRODUCT_CLUTCH_NM`` on the crank (round 1's drive review). The
-  arm, :data:`HANDLE_R` throw, turns behind every moving part of the stack; its grip a
+  arm, :func:`handle_r` throw, turns behind every moving part of the stack; its grip a
   printed sleeve spinning on an M8 bolt through the arm (a nyloc nut).
 
 The rod sweeps across the axis O once a turn (the crank-rocker's folded toggle), so nothing
@@ -108,6 +108,12 @@ class WormBox:
     eta_dynamic: float = 0.66       # the catalogue's, at 1400 rpm: a bound on the hand's
     eta_hand: float = 0.5           # at a hand's speed (about 60 rpm): between the two
     rated_nm: float = 20.0
+    rated_hand_nm: float | None = None  # its rating at a hand's speed (None: rated_nm)
+    peak_factor: float = 2.0        # a momentary peak's limit over the rating (Motovario's
+    #                                 VSF catalogue, p. 9: "must not exceed 200% of ... Mn2")
+    input_fr: tuple[float, float, float] = (210.0, 86.0, 76.0)  # the input's radial load: Fr1
+    #                                 max (N, mid-shaft) and a, b of Frx = Fr1 a / (b + x), x
+    #                                 from its shoulder (the VSF catalogue, 2.11.2, p. 43)
     pcd: float = 65.0
     face_thread: float = 6.0
     spigot_d: float = 55.0
@@ -147,6 +153,7 @@ class WormBox:
 NRV030 = WormBox()
 NRV040 = WormBox(
     key="nrv040_30", eta_static=0.45, eta_dynamic=0.71, eta_hand=0.55, rated_nm=45.0,
+    rated_hand_nm=round(45.0 * 62.0 / 48.0, 1), input_fr=(350.0, 106.0, 95.0),
     pcd=75.0, spigot_d=60.0, width=73.0, hub_d=30.0, shaft_d=19.0, shaft_out=43.0,
     collar=(25.0, 3.0), shaft_key=(6.0, 6.0, 30.0), key_proud=2.5, worm_offset=40.0,
     input_d=11.0, input_len=23.0, input_key=(4.0, 1.8), input_face=53.0, cap_face=60.0,
@@ -162,7 +169,18 @@ axis to the face away from the worm (H); 2.0 kg dry. Mesh data at 30:1: lead 6°
 efficiency 0.45 (statically irreversible, under 0.5), 0.71 at 1400 rpm; Mn2 469 in-lb
 (53 N·m) at 1750 rpm (Phidgets rates it 45). The low-speed shaft (Phidgets' TRM4006_0, 19
 mm): Motovario's 18 mm one's lengths (B1 43 past the hub's end, B 40 keyed), its collar
-and key's length assumed (25 x 3, 6 x 6 x 30)."""
+and key's length assumed (25 x 3, 6 x 6 x 30).
+
+Its rating at a hand's speed (``rated_hand_nm``, design review round 1's drive, 2026-10-14):
+Motovario's NRV040 at i = 30 is rated Mn2 48 N·m at 1400 rpm input and 62 N·m at 500 rpm, the
+lowest speed its tables list (the VSF IEC catalogue, EN rev 0 2017, the NRV tables at printed
+pages 181 and 211; 34 at 2800, 46 at 1750, 51 at 1140, 53 at 900, pages 161, 171, 191, 201:
+it rises as the input slows, the mesh's wear and heat governing). A hand turns the input at
+about 60 rpm, so the 500 rpm figure is the cited rating nearest it on the safe side;
+Phidgets' clone, rated 45 N·m with no speed given, is taken at Motovario's 62 scaled by
+45 / 48: 58.1 N·m. The 45 N·m row is kept in the report beside it. A momentary peak up to
+2 x the rating (``peak_factor``: the catalogue, p. 9, "must not exceed 200% of the nominal
+torque Mn2"), taken on the 45."""
 BOXES = {b.key: b for b in (NRV030, NRV040)}
 
 
@@ -221,18 +239,35 @@ plate: as many as the guide's measurement says."""
 SHIM_D = (6.0, 12.0)
 END_SCREW_NM = 8.0              # the shaft's end screw: an M6 button head through the seat plate
 #                                 and the shims into the shaft's end tap, threadlocker (243)
-HANDLE_R = 100.0                # the hand crank's throw (mm): a full 6 L's worst turn about 25 N
-#                                 at the grip (cradle_report: the drive)
-HANDLE_RS: dict[str, float] = {"decanter_hinge": 105.0}
-"""Per cradle, its handle's throw where it isn't :data:`HANDLE_R`: A's worst turn takes more."""
+LIGHT_LOAD_N = 22.0
+"""The grip force bar (N): MIL-STD-1472H's light-load crank (§5.1.4.1.2.4.7, Figure 13
+"Cranks", p. 76: "Light Loads <22 N (5 lb); Wrist & Finger Movement", a 38 to 125 mm turning
+radius below 100 rpm, a grip 25 to 75 mm long and 10 to 16 mm across; at 22 N and over the
+crank is an arm's, 190 to 510 mm). A pour is about 15 handle turns (:data:`NRV040`'s 30:1
+over half a crank turn), the many-turn task the standard puts cranks to (§5.1.4.1.2.4.1.1),
+turned well under 100 rpm. A sealed full 6 L's worst starting turn stays under it
+(``tests/test_cradle.py``; design review round 1's drive, 2026-10-14)."""
+HANDLE_R = 125.0
+"""The hand crank's throw (mm): the longest :data:`LIGHT_LOAD_N`'s crank takes (MIL-STD-1472H
+Figure 13's 125 mm maximum below 100 rpm; the 100 mm throw took 26 N once the saddles grew,
+2026-10-14). B's; A's is :data:`HANDLE_RS`'."""
+HANDLE_RS: dict[str, float] = {"decanter_hinge": 85.0}
+"""Per linkage, a throw (mm) shorter than :data:`HANDLE_R`, where the hand crank's sweep would
+meet the cradle: A's cradle link b2 and its rear tie Tr2's screw pass 100-135 mm behind the
+input shaft's axis at about 165-195° and 330-345° of crank, so its disc (the throw, half the
+grip and 1 mm) clears only up to about 97 mm (design review round 1's drive, 2026-10-14: the
+105 mm throw met them there; the slow test's five angles had missed it). Its tube would have
+to be 130 mm longer to clear a 125 mm throw. At 85 mm A's worst starting turn is over
+:data:`LIGHT_LOAD_N`: open (``docs/agentlib/DECISIONS.md``, 2026-10-14, the drive)."""
 REACH = 100.0                   # its printed tube from the input shaft's end to its arm's outer
 #                                 face: the arm turns behind every moving part of the stack (it
 #                                 crosses the stack's side there, where nothing moves), clear of
 #                                 the outer plate (2026-10-10 review: a crank on the input shaft
 #                                 itself swept through the crank arm)
 ARM_T, ARM_W = 10.0, 18.0       # the printed crank arm's bar: along the shaft, across
-GRIP = (24.0, 60.0)             # its printed grip: d, length (round 1: a 25 mm knob was a pinch
-#                                 grip; a hand wants 60 or more)
+GRIP = (16.0, 60.0)             # its printed grip: d, length (round 1: a 25 mm knob was a pinch
+#                                 grip; a hand wants 60 or more): MIL-STD-1472H Figure 13's
+#                                 light-load handle, 25 to 75 long, at most 16 across
 HUB_LEN = 21.0                  # the printed crank's hub on the input shaft (23 long), printed
 #                                 solid; its radius the box's crank_hub_r
 HUB_BORE = 11.1                 # its bore, printed and reamed with an 11 mm drill (round 1: 11.3
@@ -245,10 +280,11 @@ HANDLE_THUMB = (9.0, 8.0, 5.0)  # the knurled-head M3 thumb screw down onto that
 #                                 undone at every pack)
 INSERT = (4.0, 5.7, "m3_heat_set_insert")   # an M3 heat-set insert: its hole's d, its length
 #                                             and catalog key (the hub's, the journal's end's)
-CLUTCH_SLIP_N = 31.5
-"""The grip force (N, at the grip's middle) the hand crank's slip clutch is set to slip at on
-the bench (:func:`clutch`): 1.1 x a sealed full 6 L's worst starting turn (25.4 N on either
-cradle, 2026-10-14) at the low end of its :data:`CLUTCH_SCATTER`."""
+CLUTCH_SLIP_NM = 3.375
+"""The input torque (N·m) the hand crank's slip clutch is set to slip at on the bench
+(:func:`clutch`; the grip force that is on each cradle's throw, 27 N at :data:`HANDLE_R`):
+at the low end of its :data:`CLUTCH_SCATTER`, 1.1 x a sealed full 6 L's worst starting turn
+at the input, A's 2.735 N·m (B's 2.602; the worm's static efficiency, 2026-10-14)."""
 CLUTCH_SCATTER = 0.10           # how far its slip drifts either way once set (a luggage scale's
 #                                 reading, the springs' set, the seats' wear; dry, never greased)
 CLUTCH_MARGIN = 1.1             # its least slip over the worst starting turn's
@@ -369,18 +405,19 @@ def shims_for(gap: float) -> tuple[float, ...]:
 
 def clutch(grip_r: float, ratio: int = 30, eta: float = 0.55) -> dict[str, float]:
     """The hand crank's slip clutch at a grip ``grip_r`` mm out: its slip torque at the
-    input (N·m) as set (:data:`CLUTCH_SLIP_N` at the grip) and at either end of its
-    :data:`CLUTCH_SCATTER`, the most it puts on the crank through the worm (``ratio``, at a
-    hand's speed ``eta``: the crank torque no push at the grip exceeds,
-    ``config.PRODUCT_CLUTCH_NM``), and each ball's spring force where it slips (at the top of
-    its climb out of its 90° seat, a friction angle of 6°: ``spring_n``) and seated
-    (``spring_set_n``, its spring that much less compressed: what the set screws are drawn
-    at; the scale sets it in the end)."""
-    set_nm = CLUTCH_SLIP_N * grip_r / 1000.0
+    input (N·m) as set (:data:`CLUTCH_SLIP_NM`) and at either end of its
+    :data:`CLUTCH_SCATTER`, the grip force it is set to on the bench (``slip_grip_n``), the
+    most it puts on the crank through the worm (``ratio``, at a hand's speed ``eta``: the
+    crank torque no push at the grip exceeds, ``config.PRODUCT_CLUTCH_NM``), and each ball's
+    spring force where it slips (at the top of its climb out of its 90° seat, a friction angle
+    of 6°: ``spring_n``) and seated (``spring_set_n``, its spring that much less compressed:
+    what the set screws are drawn at; the scale sets it in the end)."""
+    set_nm = CLUTCH_SLIP_NM
     lo, hi = set_nm * (1 - CLUTCH_SCATTER), set_nm * (1 + CLUTCH_SCATTER)
     ramp = math.tan(math.radians(45.0 + 6.0))
     peak = set_nm * 1000.0 / (CLUTCH["balls"] * CLUTCH["r"] * ramp)
     return {"slip_nm": round(set_nm, 3), "slip_lo_nm": round(lo, 3), "slip_hi_nm": round(hi, 3),
+            "slip_grip_n": round(set_nm * 1000.0 / grip_r, 1),
             "crank_cap_nm": round(hi * ratio * eta, 1), "spring_n": round(peak, 1),
             "spring_set_n": round(peak - CLUTCH_SPRING[2] * clutch_climb(), 1)}
 
@@ -805,6 +842,7 @@ class HandCrank(Group):
         screws = view.named(r"gearbox_screw\d+")
         plates = view.named(rf"{re.escape(arm)}_plate\d+")
         k = self.box.shaft_key
+        slip_n = clutch(handle_r(getattr(view.ctx, "config", None)))["slip_grip_n"]
         # the go/no-go: the shaft's end over the outer plate's inner face, and the seat
         # plate's underside there (the shims between, to the ring below)
         inner = view.layers[0][1]
@@ -900,9 +938,9 @@ class HandCrank(Group):
                "an M3 thumb screw through it into the insert, tight. Set the clutch: the hub's "
                "tube in a vise (a rag round it), a luggage scale on the grip's middle pulling "
                "square to the arm, slowly: it must click round at "
-               f"{CLUTCH_SLIP_N:g} N ({CLUTCH_SLIP_N / 9.81:.1f} kg on the scale). Under: "
+               f"{slip_n:g} N ({slip_n / 9.81:.1f} kg on the scale). Under: "
                "turn each set screw a quarter turn in, the same each; over: out; pull again, "
-               f"three times in a row within {CLUTCH_SLIP_N * CLUTCH_SCATTER:.0f} N of it. It "
+               f"three times in a row within {slip_n * CLUTCH_SCATTER:.0f} N of it. It "
                "is what keeps a hard push at the grip from breaking the cradle (it slips "
                "instead), so check it again yearly and after it has slipped hard. The grip: "
                f"an M{GRIP_BOLT[0]:g} washer, the printed grip, a washer and the arm's end "
@@ -991,7 +1029,7 @@ class HandCrank(Group):
         * The arm turns on the journal, held by a printed cap and an M3 thumb screw into an
           insert in the journal's end; :data:`CLUTCH`'s balls in its boss, each on a spring
           and an M8 set screw, press into conical seats in the flange's face: it slips round
-          the tube past :data:`CLUTCH_SLIP_N` at the grip.
+          the tube past :data:`CLUTCH_SLIP_NM` at the input.
         * The grip, a printed sleeve, spins on an M8 bolt's plain shank through the arm's
           end, a washer either side of it and a nyloc nut on the arm's inner face."""
         from build123d import Cone, Sphere

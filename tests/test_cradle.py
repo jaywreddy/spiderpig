@@ -739,7 +739,10 @@ def test_the_whole_cradle_is_clash_free_over_the_swing(key):
     tmpl = template_for(cfg)
     ts = np.linspace(0, 2 * math.pi, 721)
     tilt = _tilt(key, ts)
-    angles = [ts[int(np.argmin(tilt))], ts[int(np.argmax(tilt))], 1.0, 3.5, 5.2]
+    # (and where A's 105 mm hand crank met its cradle link b2 and tie Tr2's screw, design
+    # review round 1's drive: about 165-195° and 330-345° of crank)
+    angles = [ts[int(np.argmin(tilt))], ts[int(np.argmax(tilt))], 1.0, 3.5, 5.2,
+              *np.radians([165.0, 180.0, 345.0])]
     for t in angles:
         mech = fabricate(tmpl, cfg, float(t))
         assert clashes(mech) == [], t
@@ -776,9 +779,10 @@ def test_the_cradle_passes_the_cut_rules(key):
 def test_the_cradle_stands_turns_easily_and_holds():
     """A, the one to build: the mouth still for both bottles, it stands at 15° and more and
     takes a 25 N push at the bottle's top (the worst over the swing), the hand turns it with
-    under 25 N, the worm holds, the rod, the crankpin and every pin and plate hold a sealed
-    full 6 L bottle 3 x over and a firm 40 N push at the grip on a blocked cradle (the jam:
-    ``cradle_report.jam_nm``, ``config.PRODUCT_JAM_NM``)."""
+    under MIL-STD-1472H's light-load crank's 22 N, the worm holds within its rating at a
+    hand's speed, the rod, the crankpin and every pin and plate hold a sealed full 6 L bottle
+    3 x over and a firm 40 N push at the grip on a blocked cradle up to the clutch's cap (the
+    jam: ``cradle_report.jam_nm``, ``config.PRODUCT_JAM_NM``)."""
     from spiderpig.config import PRODUCT_JAM_NM
     from spiderpig.construction.handcrank import handle_r
     from spiderpig.cradle_report import JAM_HAND_N, jam_nm, report
@@ -793,14 +797,6 @@ def test_the_cradle_stands_turns_easily_and_holds():
     assert r["stand"]["worst_tip_deg"] >= 15.0
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
-    # (against its 45 N·m rating; the peak is a sealed full 6 L at one tilt, at hand speed.
-    # Since the corrected centre of mass, design review round 1, the peak is 36.0 N·m, SF
-    # 1.25, and 25.4 N at the grip, where the bars were 1.3 and 25 N. Kept by the drive
-    # round: the 45 N·m is Phidgets' continuous rating, turned by hand a few minutes a pour;
-    # the clutch, not a 40 N push, now bounds the jam, so the 25 N bar's reason (the push
-    # 1.6 x the turn) is gone; a counterbalance would halve both: DECISIONS.md 2026-10-14)
-    assert r["drive"]["gearbox_sf"] >= 1.2
-    assert r["drive"]["handle_force_n"] < 26.0
     assert r["rod"]["sf_bottle"] >= 3.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_bottle"] >= 3.0
@@ -820,17 +816,38 @@ def test_the_cradle_stands_turns_easily_and_holds():
     _the_structure_is_rated(r, ("b2",), {"pillar:G"},
                             {"column:C1", "column:C2", "column:D1", "column:D2"})
     _holds_the_clutchs_cap(r)
+    _the_drive_keeps_its_bars(r)       # (last: its grip misses the bar, open)
+
+
+def _the_drive_keeps_its_bars(r: dict) -> None:
+    """A report's drive against its cited bars (design review round 1's drive, 2026-10-14):
+    the NRV040 at a hand's speed (Motovario's 30:1 rating at its lowest listed input speed,
+    500 rpm, scaled to Phidgets' 45 N·m: ``handcrank.NRV040``) 1.3 x over the walking peak,
+    and within the 45 N·m row itself; the grip under MIL-STD-1472H's light-load crank's 22 N
+    (Figure 13: ``handcrank.LIGHT_LOAD_N``) at a throw within its 125 mm."""
+    from spiderpig.construction.handcrank import LIGHT_LOAD_N
+
+    drive = r["drive"]
+    assert drive["gearbox_sf_hand"] >= 1.3, (drive["gearbox_sf_hand"], drive["gearbox_sf"])
+    assert drive["gearbox_sf"] >= 1.0, drive["gearbox_sf"]
+    assert drive["handle_force_n"] < LIGHT_LOAD_N, (drive["handle_force_n"],
+                                                     drive["grip_radius_mm"])
+    assert drive["grip_radius_mm"] <= 125.0
 
 
 def _holds_the_clutchs_cap(r: dict) -> None:
     """A report's drive at its clutch (``cradle_drive``): its least slip clears the worst
-    starting turn by the margin, its cap under the 40 N push's torque; every part holds the
-    cap at SF 1.3 or more 30° and more from the toggles (where the 40 N push's case skipped,
-    every part is now rated: the band round a toggle where any falls under 1.3 is reported,
-    no wider); the gearbox's and the keyed plates' rows at the jams."""
+    starting turn by the margin; its cap is the jam case's torque (however hard the push),
+    within the gearbox's momentary limit (2 x its rating); the grip's force at the clutch's
+    top within the input shaft's radial load there; every part holds the cap at SF 1.3 or
+    more 30° and more from the toggles (where the old 40 N push's case skipped, every part
+    is now rated: the band round a toggle where any falls under 1.3 is reported, no wider);
+    the gearbox's and the keyed plates' rows at the jams."""
     clutch = r["drive"]["clutch"]
     assert clutch["margin"] >= clutch["margin_floor"]
-    assert clutch["crank_cap_nm"] < r["drive"]["jam_torque_nm"]
+    assert r["drive"]["jam_torque_nm"] == pytest.approx(clutch["crank_cap_nm"], abs=0.01)
+    assert r["drive"]["gearbox_jam_x_peak_limit"] <= 1.0
+    assert r["drive"]["input_overhung"]["sf"] >= 2.0
     capped = r["jam_capped"]
     assert capped["crank_nm"] == clutch["crank_cap_nm"]
     assert capped["away"][0] >= 1.3, capped["away"]
@@ -849,9 +866,10 @@ def _holds_the_clutchs_cap(r: dict) -> None:
 def test_b_stands_turns_easily_and_holds():
     """B, the virtual hinge (``docs/agentlib/DECANTER.md``): the mouth still for both
     bottles, it stands at 25° and takes a 25 N push at the bottle's top (the worst over the
-    swing), the hand turns it with under 25 N, the worm holds within its rating, the rod and
-    the crankpin hold the jam, every pin, pillar and plate holds a sealed full 6 L bottle 2 x
-    over and a firm 40 N push at the grip on a blocked cradle 1.3 x over."""
+    swing), the hand turns it with under MIL-STD-1472H's light-load crank's 22 N, the worm
+    holds within its rating at a hand's speed, the rod and the crankpin hold the jam, every
+    pin, pillar and plate holds a sealed full 6 L bottle 2 x over and a firm 40 N push at the
+    grip on a blocked cradle, up to the clutch's cap, 1.3 x over."""
     from spiderpig.cradle_report import report
 
     r = report(BuildConfig(linkage="decanter_rcm", robot=False), clash_angles=0)
@@ -860,11 +878,6 @@ def test_b_stands_turns_easily_and_holds():
     assert r["stand"]["worst_tip_deg"] >= 25.0
     assert min(c["push_at_top_n"] for c in r["stand"]["cases"]) >= 25.0
     assert r["drive"]["irreversible"]
-    assert r["drive"]["gearbox_sf"] >= 1.3
-    # (25.4 N since the corrected centre of mass, design review round 1; the bar was 25 N,
-    # the jam rule's push at 1.6 x the turn: the clutch replaces it, slipping at 1.1 x this
-    # at its least: DECISIONS.md 2026-10-14, the drive)
-    assert r["drive"]["handle_force_n"] < 26.0
     assert r["rod"]["sf_jam"] >= 1.5
     assert r["crankpin"]["sf_jam"] >= 1.5
     # the empty cradle turns with a fingertip (the guide's check after it goes back together)
@@ -898,6 +911,7 @@ def test_b_stands_turns_easily_and_holds():
     assert front["joints_n"]["J"] > 3.0 * max(x["jam_n"] or 0.0 for x in rows
                                               if x["joint"] == "pin:J")
     _holds_the_clutchs_cap(r)
+    _the_drive_keeps_its_bars(r)
 
 
 def _the_structure_is_rated(r: dict, links, pillars, columns) -> None:

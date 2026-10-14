@@ -4,10 +4,15 @@ gearbox and the keyed plates see at the jams, and the jam at the clutch's cap ra
 whole turn, the crank-rocker's toggles included (design review round 1, 2026-10-14).
 
 * **The clutch** (:func:`drive_limits`): set on the bench to slip at
-  ``handcrank.CLUTCH_SLIP_N`` at the grip, within ``handcrank.CLUTCH_SCATTER`` either way
+  ``handcrank.CLUTCH_SLIP_NM`` at the input (a force at the grip on the scale), within
+  ``handcrank.CLUTCH_SCATTER`` either way
   after; its least slip must clear the worst starting turn (the worm's static efficiency)
   by ``handcrank.CLUTCH_MARGIN``, and its most, through the worm at a hand's speed, is the
-  crank torque no push at the grip exceeds (its cap: ``config.PRODUCT_CLUTCH_NM``).
+  crank torque no push at the grip exceeds (its cap: ``config.PRODUCT_CLUTCH_NM``, the jam's
+  torque ``cradle_report.jam_nm``).
+* **The gearbox**: rated at a hand's speed (``WormBox.rated_hand_nm``, Motovario's low-speed
+  rating) against the walking peak, its 45 N·m row beside it, and the jam against the
+  momentary limit (``WormBox.peak_factor`` x the 45).
 * **The capped jam** (:func:`clutch_case`): the cap on a blocked cradle (held by a couple,
   as the jam case) over the whole turn, rated by the report's own model
   (``cradle_report.structure``, its joint rows and :func:`spiderpig.strength.check`) outside
@@ -29,27 +34,48 @@ BANDS = (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0)
 def drive_limits(box, grip_r: float, peak: float, start_nm: float) -> dict:
     """The drive's rows at the jams: ``box`` the gearbox, ``grip_r`` the grip's radius (mm),
     ``peak`` the bottle's largest crank torque (N·m) and ``start_nm`` the input torque that
-    starts it (the static efficiency). The jam's push (``cradle_report.jam_nm``) and the
-    clutch's cap against the gearbox's rating; the clutch's slip (input N·m and at the grip)
-    against the worst start; the keyed plates' keyway, one plate bearing alone (before the
-    four are filed together on the key) and the four."""
+    starts it (the static efficiency). The gearbox's rating at a hand's speed against the
+    peak; the jam (``cradle_report.jam_nm``: the clutch's cap) against the rating and the
+    momentary limit, the 40 N push's torque beside it; the grip's force at the clutch's top
+    on the input shaft against the catalogue's radial load there (``WormBox.input_fr``); the
+    clutch's slip (input N·m and at the grip) against the worst start; the keyed plates'
+    keyway, one plate bearing alone (before the four are filed together on the key) and the
+    four."""
     from spiderpig.construction.handcrank import (
         CLUTCH_MARGIN,
-        CLUTCH_SLIP_N,
+        GRIP,
         HAND_CRANK,
+        LIGHT_LOAD_N,
+        REACH,
         clutch,
     )
-    from spiderpig.cradle_report import JAM_HAND_N, jam_nm
+    from spiderpig.cradle_report import JAM_HAND_N, jam_nm, push_nm
 
     got = clutch(grip_r, box.ratio, box.eta_hand)
     jam = jam_nm(box, grip_r)
+    push = push_nm(box, grip_r)
     cap = got["crank_cap_nm"]
+    hand = box.rated_hand_nm or box.rated_nm
+    # the grip's force on the input shaft, its middle this far past the shaft's shoulder
+    fr1, fa, fb = box.input_fr
+    x = box.input_len + REACH + GRIP[1] / 2 + 1.6       # (a washer between it and the arm)
+    allowed = fr1 * fa / (fb + x)
+    at_slip = got["slip_hi_nm"] * 1000.0 / grip_r
     one = HAND_CRANK.keyway_one()
     four = HAND_CRANK.capacity()["arm keyway"]
     return {
+        "gearbox_rating_hand_nm": hand,
+        "gearbox_sf_hand": round(hand / max(peak, 1e-9), 2),
+        "gearbox_peak_limit_nm": round(box.peak_factor * box.rated_nm, 1),
         "gearbox_jam_x_rating": round(jam / box.rated_nm, 2),
+        "gearbox_jam_x_peak_limit": round(jam / (box.peak_factor * box.rated_nm), 2),
+        "jam_push_nm": round(push, 2),
+        "grip_light_load_n": LIGHT_LOAD_N,
+        "input_overhung": {"x_mm": round(x, 1), "allowed_n": round(allowed, 1),
+                           "at_slip_n": round(at_slip, 1),
+                           "sf": round(allowed / max(at_slip, 1e-9), 2)},
         "clutch": {
-            "slip_grip_n": CLUTCH_SLIP_N,
+            "slip_grip_n": got["slip_grip_n"],
             "slip_input_nm": [got["slip_lo_nm"], got["slip_nm"], got["slip_hi_nm"]],
             "slip_grip_range_n": [round(got["slip_lo_nm"] / grip_r * 1000.0, 1),
                                   round(got["slip_hi_nm"] / grip_r * 1000.0, 1)],
@@ -58,7 +84,7 @@ def drive_limits(box, grip_r: float, peak: float, start_nm: float) -> dict:
             "margin_floor": CLUTCH_MARGIN,
             "crank_cap_nm": cap,
             "cap_x_peak": round(cap / max(peak, 1e-9), 2),
-            "cap_x_jam_push": round(cap / jam, 2),
+            "cap_x_jam_push": round(cap / push, 2),
             "jam_push_n": JAM_HAND_N,
             "gearbox_cap_x_rating": round(cap / box.rated_nm, 2),
             "spring_n": [got["spring_set_n"], got["spring_n"]],      # seated, slipping
@@ -165,7 +191,8 @@ def clutch_case(config, mech, ts, tilt, cap: float, rod: dict, crankpin: dict, j
 def verdict(key: str, rep: dict) -> tuple[str, str]:
     """A cradle's standing and why (``cradle_report.VERDICT``), with this report's own
     numbers: the jam at the clutch's cap away from the toggles, the gearbox's walking
-    safety factor, the stand's tip."""
+    safety factor at a hand's speed (and on its 45 N·m row), the grip's force, the stand's
+    tip."""
     from spiderpig.cradle_report import VERDICT
 
     kind, why = VERDICT.get(key, ("study", ""))
@@ -178,7 +205,9 @@ def verdict(key: str, rep: dict) -> tuple[str, str]:
         bits.append(f"at the clutch's {capped['crank_nm']:g} N·m cap every part holds jam SF "
                     f"{sf:g} or more 30° and more from the toggles ({part} least)")
     if drive:
-        bits.append(f"the gearbox {drive['gearbox_sf']:g} x its rating walking")
+        bits.append(f"the gearbox {drive['gearbox_sf_hand']:g} x its rating at a hand's speed "
+                    f"walking ({drive['gearbox_sf']:g} x its 45 N·m)")
+        bits.append(f"the grip {drive['handle_force_n']:g} N at worst")
     if stand:
         bits.append(f"the stand tips at {stand['worst_tip_deg']:g}°")
     return kind, (why + (" This report: " + "; ".join(bits) + "." if bits else ""))

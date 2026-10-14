@@ -13,11 +13,11 @@ A cradle (:mod:`construction.cradle`) is judged here, not by the walking model o
 * **The loads**: a quasi-static planar solve (:func:`statics`) of the side's bodies, the
   cradle box's mass and a **sealed full 6 L methuselah** (the worst a cradle carries: nothing
   pours out of it) on the cradle, gravity alone, at every crank angle: the crank's torque,
-  every pin's force. A **jam** case puts a firm push at the grip on a blocked cradle
-  (:data:`JAM_HAND_N`, about twice what the worst turn takes, through the worm at a hand's
-  speed: :func:`jam_nm`), away from the crank-rocker's toggles (where nothing can bound
-  it). The pins are rated by :mod:`spiderpig.strength` at these loads ("walk" the bottle's,
-  "jam" the jam's).
+  every pin's force. A **jam** case puts the most the hand crank's slip clutch lets through
+  on a blocked cradle (since design review round 1: :func:`jam_nm`; a firm push at the grip,
+  :data:`JAM_HAND_N`, had been the case), away from the crank-rocker's toggles (where
+  nothing can bound it). The pins are rated by :mod:`spiderpig.strength` at these loads
+  ("walk" the bottle's, "jam" the jam's).
 * **The clutch's cap** (:func:`clutch_case`): the most the hand crank's slip clutch lets
   onto the crank, however hard the push (``config.PRODUCT_CLUTCH_NM``), on a blocked cradle
   over the whole turn, the toggles included: each part's safety factor as the excluded
@@ -46,9 +46,11 @@ from spiderpig.construction import cradle as cr
 from spiderpig.construction.handcrank import (
     CRANKPIN_D,
     HANDLE_R,
+    LIGHT_LOAD_N,
     NRV040,
     HandCrank,
     WormBox,
+    clutch,
     handle_r,
 )
 from spiderpig.cradle_drive import clutch_case, drive_limits, verdict
@@ -71,16 +73,25 @@ TOGGLE_DEG = 30.0       # the jam case leaves out crank angles this close to a t
 #                         the cradle moves under 1° per 10° of crank (it is at its end), and a
 #                         block's force grows without bound
 E_ALU = 69000.0         # MPa, 5052 / 6061
-WARN_HANDLE_N = 40.0    # a handle force a hand turns steadily for a minute
-JAM_HAND_N = 40.0       # the jam: a firm push at the grip against a blocked cradle (about twice
-#                         the worst turn's: a hand that feels it stop and pushes on)
+WARN_HANDLE_N = LIGHT_LOAD_N    # the grip force a light-load crank takes (MIL-STD-1472H)
+JAM_HAND_N = 40.0       # a firm push at the grip against a blocked cradle (about twice the
+#                         worst turn's: a hand that feels it stop and pushes on): no bound by
+#                         itself, so the jam is the clutch's cap (jam_nm); reported beside it
+
+
+def push_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
+    """The crank torque (N·m) of :data:`JAM_HAND_N` at the grip (``grip_r`` mm) through the
+    worm at a hand's speed (``WormBox.eta_hand``)."""
+    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_hand
 
 
 def jam_nm(box: WormBox = NRV040, grip_r: float = HANDLE_R) -> float:
-    """The jam case's crank torque (N·m): :data:`JAM_HAND_N` at the grip (``grip_r`` mm)
-    through the worm at a hand's speed (``WormBox.eta_hand``: ``config.PRODUCT_JAM_NM`` is
-    this number)."""
-    return JAM_HAND_N * grip_r / 1000.0 * box.ratio * box.eta_hand
+    """The jam case's crank torque (N·m): the most the hand crank's slip clutch lets through
+    (``construction.handcrank.clutch``'s cap, design review round 1's drive), however hard
+    the push at the grip (``grip_r`` mm out): :func:`push_nm`'s firm push is no bound (a hand
+    on a crank that feels stuck pushes 60-150 N), the clutch is. ``config.PRODUCT_JAM_NM``
+    is this number."""
+    return clutch(grip_r, box.ratio, box.eta_hand)["crank_cap_nm"]
 
 
 @dataclass
@@ -329,7 +340,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
                                "full_kg": size.mass_full_kg})
 
     mech = fabricate(tmpl, config, 1.0, store=store)
-    # the loads: a sealed full 6 L methuselah; the jam: a firm push at the grip
+    # the loads: a sealed full 6 L methuselah; the jam: the hand crank's clutch's cap
     rigid, joints = planar_model(config, mech, 1.0, cr.DESIGN)
     torque, forces = statics(config, rigid, joints, ts)
     near = _toggles(config, ts)
@@ -403,7 +414,7 @@ def report(config: BuildConfig, clash_angles: int = 6, store=None) -> dict:
     out["blocked"] = blocked(config, mech, ts=ts)
     cap = out["drive"]["clutch"]["crank_cap_nm"]
     out["jam_capped"] = clutch_case(config, mech, ts, tilt, cap, out["rod"], out["crankpin"],
-                                    out["drive"]["jam_torque_nm"])
+                                    out["drive"]["jam_push_nm"])
     out["blocked_capped"] = blocked(config, mech, ts=ts, crank_nm=cap)
     out["verdict"] = verdict(lk.key, out)
     moving = {*cr.REAR_MOVES, *cr.STOP_MOVES}
@@ -892,8 +903,8 @@ def joint_rows(config: BuildConfig, rider: str, joints, forces, jam_f) -> list[d
 def loads(config: BuildConfig, store=None) -> dict:
     """The joint loads :mod:`spiderpig.strength` rates a cradle at (what
     :func:`strength.design_loads` returns for one: the audit's, ``explain``'s and verify's
-    pin and plate rows): a sealed full 6 L methuselah's walking, a firm push at the grip
-    jammed (:func:`jam_nm`)."""
+    pin and plate rows): a sealed full 6 L methuselah's walking, the hand crank's clutch's
+    cap jammed (:func:`jam_nm`)."""
     tmpl = template_for(config)
     design = design_side(tmpl, config)
     mech = fabricate(tmpl, config, 1.0, store=store)
@@ -922,16 +933,16 @@ def loads_doc(config: BuildConfig, rows: list[dict], crank_nm: float,
                        "frame": r["joint"] in ground, "links": bodies,
                        "walk": {"n": r["bottle_n"], "patterns": None},
                        "jam": {"n": r["jam_n"], "patterns": None}})
-    out = {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), a "
-           f"firm push at the grip on a blocked cradle ({JAM_HAND_N:g} N: "
-           f"{jam_nm(grip_r=handle_r(config)):g} N·m at the crank, jam); cradle_report",
+    out = {"source": "statics", "note": "a cradle's: a sealed full 6 L methuselah (walk), the "
+           "most the hand crank's slip clutch lets onto a blocked cradle "
+           f"({jam_nm(grip_r=handle_r(config)):g} N·m at the crank, jam); cradle_report",
            "walk_n": max((j["walk"]["n"] for j in joints), default=0.0),
            "jam_n": max((j["jam"]["n"] for j in joints), default=0.0), "joints": joints,
            "torque_limit_nm": jam_nm(grip_r=handle_r(config)),
            "walk_torque_nm": round(crank_nm, 2),
            "joint_moment_factor": 1.0,
-           "crank_basis": f"statics: the bottle's largest torque over a pour, a {JAM_HAND_N:g} "
-                          "N push at the grip jammed"}
+           "crank_basis": "statics: the bottle's largest torque over a pour, the hand crank's "
+                          "clutch's cap jammed"}
     if struct is not None:
         out["link_frames"] = struct["link_frames"]
         out["posts"] = struct["pillars"]
