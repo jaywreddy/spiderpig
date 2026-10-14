@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from build123d import Box, Location
 
-from spiderpig import api
+from spiderpig import api, linkage
 from spiderpig.config import BuildConfig
 from spiderpig.failure import Failure, apply_patch, parse_blocker
 from spiderpig.hardware.bom import ON_HAND
@@ -119,7 +119,7 @@ def test_target_semantics():
 def test_schema_is_json_and_lists_the_vocabularies():
     schema = spec_schema()
     text = json.dumps(schema)
-    assert schema["required"] == ["kind", "linkage"]
+    assert schema["required"] == ["linkage"]          # the kind is the linkage's
     assert schema["properties"]["linkage"]["properties"]["key"]["enum"][0] == "strider"
     assert schema["properties"]["size"]["properties"]["stack_mm"]["properties"]["hard"]["default"]
     assert not schema["properties"]["motion"]["properties"]["bob_mm"]["properties"]["hard"][
@@ -160,6 +160,37 @@ def test_resolve_infers_the_rest_and_the_id_is_stable_with_defaults_dropped():
     assert not m.config.robot
     with pytest.raises(SpecErrors):
         api.resolve({"kind": "walker", "linkage": {"key": "hoecken"}})
+
+
+def test_one_legs_vocabulary_for_every_kind_and_the_ids_kept():
+    """``kind`` is the linkage's when not given (checked when it is); ``legs.robot`` names
+    every kind's robot (a walker's two sides, an arm's turret; a mechanism makes none), and
+    a walker's ``legs.sides`` is its older name, read into it: a spec written either way,
+    or without the kind, resolves to the same id."""
+    for key in ("klann", "hoecken", "palletizer_reach"):
+        lk = linkage.get(key)
+        old = {"kind": lk.kind, "linkage": {"key": key}}
+        new = {"linkage": {"key": key}}
+        assert api.resolve(old, None).id == api.resolve(new, None).id
+        assert Spec.from_dict(new).kind == lk.kind
+    walker = {"linkage": {"key": "klann"}, "legs": {"module": "single"}}
+    for sides, robot in ((2, True), (1, False)):
+        a = api.resolve({**walker, "kind": "walker",
+                         "legs": {"module": "single", "sides": sides}}, None)
+        b = api.resolve({**walker, "legs": {"module": "single", "robot": robot}}, None)
+        assert a.id == b.id
+        assert a.resolved["legs"]["sides"] == sides          # (the stored word: one id)
+        assert a.config.robot is robot
+        assert a.spec.to_dict()["legs"] == {"module": "single", "robot": robot}
+    errs = _errors({**walker, "legs": {"module": "single", "sides": 2, "robot": False}})
+    assert "contradicts" in errs["legs.sides"][0].message
+    errs = _errors({"linkage": {"key": "hoecken"}, "legs": {"robot": True}})
+    assert "no robot is made of it" in errs["legs.robot"][0].message
+    side = api.resolve({"linkage": {"key": "hoecken"}, "legs": {"robot": False}}, None)
+    assert side.id == api.resolve({"kind": "mechanism", "linkage": {"key": "hoecken"},
+                                   "legs": {"sides": 1}}, None).id
+    assert "klann is a walker, not a mechanism" in _errors(
+        {"kind": "mechanism", "linkage": {"key": "klann"}})["linkage.key"][0].message
 
 
 def test_linkage_cards():
@@ -1154,13 +1185,13 @@ def test_spec_of_a_config_round_trips():
     doc = api.spec_of(cfg)                                                    # entry 10
     assert doc["constructions"]["crank"] == "bolt_round"
     assert doc["materials"]["thickness_mm"] == 2.9
-    assert doc["legs"] == {"module": "single", "sides": 2}
+    assert doc["legs"] == {"module": "single", "robot": True}
     assert api.resolve(doc).config == cfg
     mech = api.spec_of(BuildConfig(linkage="hoecken", module="single", robot=False))
     assert mech["kind"] == "mechanism"
-    assert mech["legs"]["sides"] == 1
+    assert mech["legs"]["robot"] is False
     assert api.resolve(mech).config == BuildConfig(linkage="hoecken", module="single",
-                                                   robot=False)
+                                                   robot=False) == BuildConfig(linkage="hoecken")
 
 
 # ---------------------------------------------------------------------------
@@ -1569,8 +1600,8 @@ def test_r5_the_spec_messages_fit_the_kind():
     assert e.nearest == "hoecken"
     assert "hoecken" not in e.allowed
     errs = validate({"linkage": {"key": "klan"}})            # no kind: every key is allowed
-    assert [x.path for x in errs] == ["kind", "linkage.key"]
-    assert set(errs[1].allowed) == set(linkage_module.available())
+    assert [x.path for x in errs] == ["linkage.key"]        # (the kind is the linkage's)
+    assert set(errs[0].allowed) == set(linkage_module.available())
 
 
 def test_r5_a_one_sided_envelope_row_says_the_stack_not_the_stacks():

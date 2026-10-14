@@ -32,6 +32,7 @@ from spiderpig.spec import (
     SpecErrors,
     default_module,
     effective_hard,
+    legs_robot,
     validate,
 )
 from spiderpig.store import PROJECT, Store
@@ -57,7 +58,9 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
             raise SpecErrors(errors)
     lk = linkage.get(spec.linkage.key)
     module = spec.legs.module or default_module(lk)
-    sides = spec.legs.sides or (2 if lk.walks else 1)
+    robot = legs_robot(lk, {"robot": spec.legs.robot, "sides": spec.legs.sides})
+    robot = default_robot(lk.key) if robot is None else robot
+    sides = 2 if lk.walks and robot else 1     # (the resolved spec's word, as stored: one id)
     phases = (None if spec.legs.phases_deg is None
               else tuple(math.radians(p) for p in spec.legs.phases_deg))
     d = BuildConfig()
@@ -68,8 +71,7 @@ def resolve(spec: Spec | dict, store: Store | str | Path | None = PROJECT, *,
     try:
         config = BuildConfig(
             linkage=lk.key, module=module, phases=phases,
-            robot=(sides == 2 if robot_layout(lk) != "turret" else spec.legs.robot
-                   if spec.legs.robot is not None else default_robot(lk.key)),
+            robot=robot,
             proportions=tuple(sorted(spec.linkage.params.items())),
             sheet=sheet, thickness=thickness,
             servo=spec.materials.servo or d.servo,
@@ -104,8 +106,8 @@ def config_warnings(config: BuildConfig, sides: int | None = None) -> list[str]:
 def _warnings(lk, config: BuildConfig, sides: int) -> list[str]:
     warnings: list[str] = []
     if lk.walks and sides == 1:
-        warnings.append("sides = 1 builds one side (no chassis); the walk metrics still "
-                        "model the two-sided robot")
+        warnings.append("legs.robot false builds one side (no chassis); the walk metrics "
+                        "still model the two-sided robot")
     if len(lk.inputs) > 1 and not lk.ranged:      # (an arm's inputs are its drives')
         warnings.append(second_input_note(lk))
     if servos.get(config.servo).speed_rpm is None:
@@ -156,7 +158,8 @@ def _attach_store(design: Design, store: Store | None) -> None:
 
 def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
     """The Spec document of a :class:`config.BuildConfig` (a CLI's options as a spec): its
-    kind from the linkage, the proportions it overrides, module, phases and sides, the
+    kind from the linkage, the proportions it overrides, module, phases and robot
+    (``sides``: a walker's 1 is its side alone, whatever ``config.robot`` says), the
     materials and constructions, and the fit fields that differ from the defaults; no
     targets. ``resolve(spec_of(config))`` is a design with that config, so ``spiderpig
     view --linkage ... --pin bolt`` can show what ``spiderpig build`` built."""
@@ -164,10 +167,8 @@ def spec_of(config: BuildConfig, sides: int | None = None) -> dict:
     doc: dict = {"kind": lk.kind, "linkage": {"key": config.linkage}}
     if config.proportions:
         doc["linkage"]["params"] = dict(config.proportions)
-    legs: dict = {"module": config.module,
-                  "sides": config.sides if sides is None else int(sides)}
-    if robot_layout(lk) == "turret":
-        legs["robot"] = config.robot
+    robot = bool(config.robot) if sides is None or not lk.walks else int(sides) == 2
+    legs: dict = {"module": config.module, "robot": robot}
     if config.phases is not None:
         legs["phases_deg"] = [round(math.degrees(p), 6) for p in config.phases]
     doc["legs"] = legs

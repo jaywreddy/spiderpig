@@ -373,9 +373,11 @@ class BuildConfig:
     linkage: str = linkage.DEFAULT    # see linkage.available()
     module: str = ""                  # legs per side: one of the linkage's modules ("": its
     #                                   default, config.default_module: Strider's double)
-    robot: bool = True                # the whole robot (ROBOT_LAYOUTS: a walker's two
-    #                                   mirrored sides, servos back to back in one frame; an
-    #                                   arm's side on its turntable), else one side
+    robot: bool = None  # type: ignore[assignment]   # the whole robot (ROBOT_LAYOUTS: a
+    #                                   walker's two mirrored sides, servos back to back in one
+    #                                   frame; an arm's side on its turntable), else one side;
+    #                                   None: the linkage's kind's (default_robot: a
+    #                                   mechanism is one side), resolved before any key
     phases: tuple[float, ...] | None = None          # crank phase per leg (rad); None = module's
     proportions: tuple[tuple[str, float], ...] = ()  # overrides of the linkage's params
     sheet: str = "acrylic_3mm"        # the default sheet (the links, rings, deck): it sets
@@ -426,6 +428,8 @@ class BuildConfig:
             lk = linkage.get(self.linkage)
         except KeyError as e:
             raise ParamError(e.args[0]) from None
+        if self.robot is None:
+            object.__setattr__(self, "robot", lk.kind in ROBOT_LAYOUTS)   # (default_robot)
         if self.robot and lk.kind not in ROBOT_LAYOUTS:
             raise ParamError(f"{lk.key} is a {lk.kind}, not a walker or an arm: no robot is made "
                              f"of it (a walker's two sides, an arm on its turntable), so it "
