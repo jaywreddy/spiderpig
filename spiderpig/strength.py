@@ -114,8 +114,8 @@ def uniform_loads(walk: float, jam: float, source: str, note: str) -> dict:
 def design_loads(config: BuildConfig, store=None, *, override: tuple[float, float] | None
                  = None, sim: bool | str = True, payload_g: float | None = None) -> dict:
     """The loads the strength check uses for ``config`` (see the module doc): ``source``
-    ``sim`` / ``override`` / ``static`` (a ranged linkage's: :func:`arm_loads`) /
-    ``fallback`` / ``none`` (a cranked mechanism: what it drives sets its loads), a
+    ``sim`` / ``override`` / ``static`` (a linkage with no floor: a ranged one's
+    :func:`arm_loads`, a cranked mechanism's :func:`crank_loads`) / ``fallback``, a
     ``note`` saying where they came from, the largest walking and jam joint loads
     (``walk_n``, ``jam_n``), the sim's (or the static model's) ``joints`` and the crank's
     torques. ``sim="cached"``: the design's simulated loads only if the store has them.

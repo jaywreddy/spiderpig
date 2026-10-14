@@ -33,7 +33,7 @@ def test_the_motor_role_is_chosen_from_the_inputs_once():
         role = roles.motor_role(lk)
         assert role == ("actuator" if lk.ranged else "servo"), key
         assert roles.applies(role, lk.kind), key
-        (other,) = set(roles.MOTOR_ROLES) - {role}
+        (other,) = [r for r in roles.MOTOR_ROLES if r != role]
         assert not roles.applies(other, lk.kind), key
         assert controllers.motors_of(BuildConfig(linkage=key, robot=False)) == role
 
@@ -309,3 +309,24 @@ def test_the_arms_cover_names_its_pivots():
     assert "ball_pair_pillar pillars" in line
     assert "esp32_bus_servo controller" in constructions_line(BuildConfig(linkage=MECH,
                                                                           robot=False))
+
+
+@pytest.mark.no_fabricate
+def test_spiderpig_sim_turns_a_fixed_designs_crank(monkeypatch, capsys):
+    """``spiderpig sim`` on a cranked fixed design holds it, then turns its crank: the turn's
+    torque printed, exit 1 when the crank stalls."""
+    from spiderpig.tools import sim_walk
+
+    held = {"finite": True, "holds": True, "sag": {"output": 0.01}, "sag_max": 0.01,
+            "drift": {"drive": 0.0}, "torque": {"drive": 0.001},
+            "torque_fraction": {"drive": 0.001}, "loop_error": 0.001}
+    turned = {"torque_peak": 0.03, "torque_mean": 0.01, "torque_limit": 1.91,
+              "completed": True, "saturates": False, "revolutions": 1.0}
+    monkeypatch.setattr(sim_walk, "hold", lambda *a, **k: held)
+    monkeypatch.setattr(sim_walk, "turn", lambda *a, **k: turned)
+    assert sim_walk.main(["--linkage", MECH]) == 0
+    assert "one turn at full speed: peak 0.030 N·m" in capsys.readouterr().out
+    monkeypatch.setattr(sim_walk, "turn", lambda *a, **k: dict(
+        turned, completed=False, saturates=True, revolutions=0.4))
+    assert sim_walk.main(["--linkage", MECH]) == 1
+    assert "STALLED at 0.40 of a turn" in capsys.readouterr().out

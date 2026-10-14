@@ -1508,3 +1508,11 @@ by the audit. Most entries moved here from CLAUDE.md on 2026-10-08 (W7).
 - **The URDF** stays a ranged linkage's: `urdf.write` refuses a crank's design with
   `urdf.unsupported`'s reason (its joints follow the crank's full turn, which a URDF tree can
   only table; a walker has no fixed base), not exported half-way; its MuJoCo model holds it.
+- **The gate** (against `platform-78e35e8`): every design's parts, plans, DXF and meshes
+  identical. Intended: the two mechanisms' BOMs gain the ESP32 kit's 14 lines
+  (`hoecken_pantograph` USD 141.89 -> 248.59, `dwell_rocker` 130.42 -> 240.78, the cutting's
+  share of it the cut model's) and their audits' strength is rated (worst jam SF 2.04 and
+  2.01, link `b1`; the crank 15.8 and 38.0 at the new limits), both audits OK. The cut model's
+  BOM diffs (`cut_cm`, cutting USD), the walkers' `feet` and the arms' dropped
+  `urdf/*.mjcf.xml` predate this round (the baseline is older than the merged waves).
+  DESIGNS.md is not regenerated (no part moved).

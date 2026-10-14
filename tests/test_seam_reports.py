@@ -1603,7 +1603,7 @@ def test_a_fixed_designs_full_verify_holds_it_in_mujoco(monkeypatch):
     held = {"finite": True, "holds": True, "sag": {"tool0": 0.04, "output": 0.03},
             "sag_max": 0.04, "torque_fraction": {"q2": 0.08, "q3": 0.0}, "loop_error": 0.009}
     asked = []
-    monkeypatch.setattr(run, "hold", lambda config, params=None: asked.append(
+    monkeypatch.setattr(run, "hold", lambda config, params: asked.append(
         (config, params.payload_g)) or held)
     monkeypatch.setattr(run, "turn", lambda config, params=None: None)
     d: Any = _design()          # (a design's stand-in: its config and spec)

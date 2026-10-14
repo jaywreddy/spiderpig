@@ -517,7 +517,8 @@ and `spiderpig sim --mjcf FILE.xml` (with `FILE.json` beside it, what `export` a
 design that doesn't walk (an arm, a mechanism) has the same model, fixed to the world:
 `spiderpig sim` holds it at its pose under gravity with its motors (`sim.run.hold`: the
 tool's tip's and the output's sag, the joints' drift, the motors' torques, the loops'
-closure; exit status 1 when it doesn't hold).
+closure), then turns a cranked one's crank once at full speed (`sim.run.turn`: its torque
+against the stall); exit status 1 when it doesn't hold or the crank stalls.
 
 ## View (step 4, decision 6)
 
